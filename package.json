@@ -1,0 +1,17 @@
+{
+  "name": "@versa/v-voice",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node lab/gpt-live-h5/server.mjs",
+    "preview": "GPT_LIVE_H5_PREVIEW=1 node lab/gpt-live-h5/server.mjs",
+    "test": "node --test lab/gpt-live-h5/*.test.mjs lab/realtime-direct-tools/*.test.mjs lab/seeduplex-realtime-provider.test.mjs"
+  },
+  "dependencies": {
+    "ws": "8.18.3"
+  }
+}

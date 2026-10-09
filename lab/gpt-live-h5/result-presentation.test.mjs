@@ -1,0 +1,35 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {presentBackendResult,LONG_RESULT_NOTICE,readBackendResult,backendResultQuestion} from './result-presentation.mjs';
+
+test('short result remains exact; long result preserves complete body and uses brief source summary plus screen notice',()=>{
+ for(const text of ['已查到十二的记录。','日期尚未确认。','😀'.repeat(300)])assert.deepEqual(presentBackendResult({result:text}),{text,long:false,spokenText:text});
+ for(const text of ['😀'.repeat(301),'## 方案\n'+'原始日期、数字、限定条件。'.repeat(60),'```sh\ndate\n```','| 项目 | 日期 |\n| --- | --- |\n| 入学 | 2028-09 |',Array.from({length:8},(_,i)=>`- 条件${i}`).join('\n')]) {
+  const result=presentBackendResult({result:text});assert.equal(result.text,text);assert.equal(result.long,true);assert(result.spokenText.endsWith(LONG_RESULT_NOTICE));assert(result.spokenText.length<200);
+ }
+ assert([...LONG_RESULT_NOTICE].length<100);assert(!LONG_RESULT_NOTICE.includes('已经发送'));
+});
+test('missing, failed and cancelled results never announce a document or success',()=>{
+ for(const result of [null,undefined,{},'',{text:'   '},{cancelled:true,result:'x'.repeat(500)},{error:'真实失败',result:'x'.repeat(500)}])assert.equal(presentBackendResult(result),null);
+});
+
+
+test('same backend completion supplies a real short summary and untouched full document without another model run',()=>{
+ const summary='建议先访校，再按当年政策核对。入学时间预计是2028年9月。',text='## 完整方案\n'+'日期、来源和必要条件。'.repeat(70),raw=`【语音摘要】\n${summary}\n【完整方案】\n${text}`;
+ assert.deepEqual(readBackendResult(raw),{text,summary});assert.deepEqual(presentBackendResult(raw),{text,long:true,spokenText:summary+' '+LONG_RESULT_NOTICE});
+ assert.equal(presentBackendResult({result:text,spokenSummary:summary}).spokenText,summary+' '+LONG_RESULT_NOTICE);
+ assert.equal(readBackendResult('前置文字\n'+raw).text,'前置文字\n'+raw);
+ assert(backendResultQuestion('原始目标').startsWith('原始目标\n'));assert(backendResultQuestion('原始目标').includes('100字以内'));
+});
+
+test('legacy fallback selects actual conclusion instead of a completion preamble, retaining nearby qualifications',()=>{
+ const text='查完了。基于这次调研。\n## 核心结论\n优先选A，但仍需核对证件。预算目前只是参考。\n## 完整细节\n'+'后续来源与细节。'.repeat(60);
+ const result=presentBackendResult(text);assert(result.spokenText.startsWith('优先选A，但仍需核对证件。预算目前只是参考。'));assert(!result.spokenText.includes('查完了'));assert.equal(result.text,text);
+});
+
+
+test('oversized backend summary is shortened from its own conclusion, never a report table cell',()=>{
+ const summary='首选A，次选B，证件条件仍需确认。'+ '研究范围和后续行动。'.repeat(20),body='| 项 | 推荐 |\n| --- | --- |\n| 首选 | A |\n'+'全部正文'.repeat(200);
+ const result=presentBackendResult(`【语音摘要】\n${summary}\n【完整方案】\n${body}`);
+ assert.equal(result.text,body);assert(result.spokenText.startsWith('首选A，次选B，证件条件仍需确认。'));assert(!result.spokenText.startsWith('项'));
+});

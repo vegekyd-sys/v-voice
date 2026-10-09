@@ -1,0 +1,464 @@
+{
+  "schema": "v-voice-migration-v1",
+  "sourceRepository": "https://github.com/vegekyd-sys/v-openclaw-platform",
+  "sourceCommit": "52eefaab221ed8e1e20d439133875ee2cfcb4b19",
+  "sourceFilesSha256": "46d37da834c39ecdd9870bd27cf79fde2034fff0a4aa66937747e9f2fcade2d7",
+  "files": [
+    {
+      "path": "lab/gpt-live-h5/access.mjs",
+      "sha256": "5c993ab3540886b64bfd975a73876f78bb8fbd844c434af36a7517c7aecb2258"
+    },
+    {
+      "path": "lab/voice-decision-router.mjs",
+      "sha256": "95e1ff3ba31f87b8ab56cb1c28133b107425324fee0d436d4de1acda2fb21176"
+    },
+    {
+      "path": "lab/gpt-live-h5/avatar-telemetry.mjs",
+      "sha256": "1a81e2aad3e566bddec3c505fc4a8ed654fa5ea2e95dab20232b496a8e829318"
+    },
+    {
+      "path": "lab/gpt-live-h5/avatar-telemetry-log.mjs",
+      "sha256": "27066432d06804dcdba3eb94975a156de8ef1e409143884d31ba31aa1d6de491"
+    },
+    {
+      "path": "lab/gpt-live-h5/avatar.mjs",
+      "sha256": "b6f22fde5a054cda12460cb1a2874288f701bc182130a8580bb1251302cfb81a"
+    },
+    {
+      "path": "lab/gpt-live-h5/avatar-state.mjs",
+      "sha256": "94354fe4c3f0acd9815f0ffb70f200c6c39962d2553ed6f2c79cbeb3b7a324b9"
+    },
+    {
+      "path": "lab/gpt-live-h5/avatar-decision.mjs",
+      "sha256": "3a91530d70d8deed6d714b023a3ec7faebc52f5fe46e60d939200f128ed66547"
+    },
+    {
+      "path": "lab/gpt-live-h5/avatar-catalog.mjs",
+      "sha256": "400c320ae9abaf9627d0b461d8c4a989f78353db66029f8e647d86a4a9dd9a86"
+    },
+    {
+      "path": "lab/gpt-live-h5/avatar-reactions.mjs",
+      "sha256": "24b80ccc96033c1b70d8892a0f97078d0c7558a3f473a91a23563dc2e76f9ae7"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-idle-512.webp",
+      "sha256": "2e307524dd71cdd29d06930b27520f2cb731b166e63e461ff2575c874f9cb310"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-idle-256.webp",
+      "sha256": "30c87d7fc1015e38e29b424ef68d9432dd12af3a4114f09f13b06c31d0e33e42"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-listen-0-512.webp",
+      "sha256": "833c1a3a7eb362cdfd101e2b772a7e74bfcb4fc4343a1f4500119281f628c0c7"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-listen-0-256.webp",
+      "sha256": "e7fcc4010187535166cfe641399eba0897671d1eaa852f4e0c08fdfb9641e577"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-listen-1-512.webp",
+      "sha256": "ac3aaf41e8e3752ce9ed2d606e0189f662aafa13157b5f59a51d17f2cbe8ac21"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-listen-1-256.webp",
+      "sha256": "2912c4d86d52fe1a7f490ab4991bd6797e01a13176b66d0208e35b64391008cf"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-listen-2-512.webp",
+      "sha256": "003eba1199dc0508f6473a6f242998a611854f1d94ad1c98d2f554a6fdde30fe"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-listen-2-256.webp",
+      "sha256": "ea7eccc0382dff1acf9bdc626ffb5cd59ae55a553933648fec396819c1361ece"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-listen-3-512.webp",
+      "sha256": "d563741d1ab28128ab3efef74e091613cc2abd2bc89f71237786e378aaa6e7b1"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-listen-3-256.webp",
+      "sha256": "2b9c78a2d3912a118a437a6bf5dbcf80c5047be4a21afeb84f14e3373f1196f2"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-listen-4-512.webp",
+      "sha256": "f9501a7b15d66fe24bfe507fe9583b1efe5f85db38f6896e73d6ffecdac6eca4"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-listen-4-256.webp",
+      "sha256": "a12f6b101e6f6007294b125d803a36c408dd187163374c386b0f3a958d1f9769"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-listen-5-512.webp",
+      "sha256": "79d3023fc43673c3359cfa072b9904e3efa8cb0bf1395b2014e61e77fccdd320"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-listen-5-256.webp",
+      "sha256": "c6ffb450fe068d3bec6e44cc8556161d5fac2d458db32cd9d2ff9f201fc1bf3a"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-memory-0-512.webp",
+      "sha256": "2bd01eac382738f7c3b3b23890129e50094eb91f04545328d6ce7a8f90de29c2"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-memory-0-256.webp",
+      "sha256": "ab16a89b1f4c5ec32db29e01ae2a8a3fd6aae873298308c1f024f98eb14316b9"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-memory-1-512.webp",
+      "sha256": "06d156e48c89dd300d5b3451d0c5692a685a5351b77ba6d6596af1fb1b9e782d"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-memory-1-256.webp",
+      "sha256": "0af6f5f7ace3b271157ec0ab621dd81c540f3cecb45d766b8de28c8d8ce0fd10"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-memory-2-512.webp",
+      "sha256": "3dd7ad0e5a2c88883be9ceb34efab71b31120b1d2dc2bf896b3571364a8538be"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-memory-2-256.webp",
+      "sha256": "d3b2a9f6a1b51eb1f1bab4a4a732c9df7a92fce57499eb39a547091b3c0afbee"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-memory-3-512.webp",
+      "sha256": "85f95ccc83d5375e16921ba867eaecafaf8f4d170fa2d6adfb9bed4869aa663e"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-memory-3-256.webp",
+      "sha256": "81367f99123b13176d1b4bead57e020f03dbb742379812b465de51865c1a3977"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-memory-4-512.webp",
+      "sha256": "7542afc604e502ed3d6a7523aaa5e821793b78a6e481566f2b5eb1b6d9eb0df3"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-memory-4-256.webp",
+      "sha256": "ba6df6c9a2173e66790384185d4bbba7d30b4be6e7baab36515c42777778b728"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-memory-5-512.webp",
+      "sha256": "cd57b10244f5bbf2c824bb40d7fe2ab5dbddc5aaa2bbfa123743f74cce20a9bd"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-memory-5-256.webp",
+      "sha256": "9e82bb293351211c0773c4f8b2725bf2052e4b9b49c61c869fe67077f98b6ebf"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-web-0-512.webp",
+      "sha256": "82af55fec59f85d9c25308b7076b6ef301b043255bd02bad4a458cd620b373f9"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-web-0-256.webp",
+      "sha256": "c22870c76dc473f56c718c69e39f07067bbdf27666ac61cbec4a75878c145b5a"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-web-1-512.webp",
+      "sha256": "647c22f5560091c16ed6f5c37d2c62e1ea6629bf05715549274de654009eb31d"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-web-1-256.webp",
+      "sha256": "e04d86d62ae7875b39920239a2d3b16ec7c6d8942090d0dcd0c2bcf01d71ff52"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-web-2-512.webp",
+      "sha256": "6653c1bf8f06a71872ae7b1e5f3baec6da457372b1d5e2f19e4eb19a94ceea30"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-web-2-256.webp",
+      "sha256": "f81907e38c96f713a6aca485efb0f98b4ff185ce75c0e23060ec58d7429bd0d6"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-web-3-512.webp",
+      "sha256": "4076433f7bde4b09f8b37be77164756c367647af04a7680f106aa16d63801e14"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-web-3-256.webp",
+      "sha256": "9afa212688570572439f44a27904c4a15ddc8759b3f003e3ba1f361938a4fd58"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-web-4-512.webp",
+      "sha256": "55c55a7ebe3e2ae6a68dc30bc972e993d89f1cb0327db1bdfea469b510babf44"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-web-4-256.webp",
+      "sha256": "c736d04af782f24b69a4eee1cf2dc0c7093f5790ec4095f0dd71dc229b49fc08"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-web-5-512.webp",
+      "sha256": "3c66e3f1ae82c7a2dc6da114f85ed3ebcbcf61b891dc4d27940c7c174713c90a"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-web-5-256.webp",
+      "sha256": "3b6930b4830e20b1015139420a585d7eed55b5b6bf0fc74cace76105152c3625"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-calendar-0-512.webp",
+      "sha256": "483f4f0da341e45f07487518b05581428d48a3098027177750189007b48d2043"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-calendar-0-256.webp",
+      "sha256": "05aea9d9b7b7ee7b01e02d56d67d74afcc0ba1f67396294dfceb6b512eecc6fb"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-calendar-1-512.webp",
+      "sha256": "b3a2804b3e8637194334f6a8bd809d356994c40d2cd478c5d8c14d0791880f77"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-calendar-1-256.webp",
+      "sha256": "42093a3ed8c5aad4f00ee9b7952063f260b9a5dbea1626917ff6eb83970898c8"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-calendar-2-512.webp",
+      "sha256": "4136854d36dd3e197c481399617d72447d42edda21aebb113985474bdd69ca2e"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-calendar-2-256.webp",
+      "sha256": "fd9ddb2393cb70b620f6c2fc51028ea4edf296529f0e810c1366412b1c2c072d"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-calendar-3-512.webp",
+      "sha256": "e21fba0ec5b9a1d3dbd76776d0b305f32c2c087e58cc4594e34e9342b68840b4"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-calendar-3-256.webp",
+      "sha256": "4b866aec5bf5aaf9a5b208c924c42776a315d63a9fe76eb3801e3fbf892382fb"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-calendar-4-512.webp",
+      "sha256": "d0a8a3d2c7061d733943db0e43b9db77ea899552a190b5e5c5a6caf506fc53ed"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-calendar-4-256.webp",
+      "sha256": "c260f4957dbdd832f931194993afab62886ffde612fcf7c761e7f89b68d49bda"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-calendar-5-512.webp",
+      "sha256": "1396edebe13de69d27a7db32db822c5714fb3a85805b09d48fe4a104f982b801"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-calendar-5-256.webp",
+      "sha256": "690bd27d593c44ff787fe531515aa084fc8fbfd145666d2eb6f370e278be286a"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-background-0-512.webp",
+      "sha256": "ac74d15d710b39808bba8130a4cb096ab82ca44ba9f293bcce75a04bd372d760"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-background-0-256.webp",
+      "sha256": "f6c883ded104107c71b14a7f9c95b1e8c1b82f46055aae6e5d2df4a89532ef55"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-background-1-512.webp",
+      "sha256": "f818fd5e8cd034d102ceaed62ff5c5033c30f65c06550bb9a6f70bad9e15311b"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-background-1-256.webp",
+      "sha256": "91df2c850b85cb6930de079d207fb52bf52d7b52e43dad10a7a8b7ac7ff64c5b"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-background-2-512.webp",
+      "sha256": "92730bb0944771166dd4e38bdc50c73e7977cd4be8bb70fb9c71f90ea750faab"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-background-2-256.webp",
+      "sha256": "6b6af6b31f55d96ec6b6839755c38c4184426afbc087609d2951fd6fe650a3c8"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-background-3-512.webp",
+      "sha256": "aceb63e87c19bf1e49b0e8b4bb3f0f7225708d60adcc02ecd880eec8624ddd3a"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-background-3-256.webp",
+      "sha256": "e71a57562fd00c9544dfa86a78aaa06441e53cb8b53deec0eca9de51b9bcbfb4"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-background-4-512.webp",
+      "sha256": "dc79a4ec5b5eb2ee5e8c0696fbbb9704c7629ed1958ebade88ddb0ab801a1f9a"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-background-4-256.webp",
+      "sha256": "301b407b4a39eea442c660619a0d8ed017668b441c054cf36aff7ca76b44caad"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-background-5-512.webp",
+      "sha256": "85f19290a050eab6759e8e8f320ca4b7979353b060f8d3f523ed885dda730d92"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-background-5-256.webp",
+      "sha256": "e4e9da52615d92b3a92c717cdd1354974eee926d3f042d7e88b82d080025f587"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-complete-0-512.webp",
+      "sha256": "12701905b1674041f2cffe439f896ad590e1bd7ec45a8d24b3aa15d62f0ff0bc"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-complete-0-256.webp",
+      "sha256": "7162aa5d4bbb96615f450f4226fdd87fc1f698728bf5ba76f829ef804389c2c7"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-complete-1-512.webp",
+      "sha256": "5e34caa53f86323811630b775888d5b1dbdbb85c4f33b5b006ac3a62aa8c1883"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-complete-1-256.webp",
+      "sha256": "7dd1fbc91fc6dfe7abd9c9775710abd4fdf2896c617b40a0d5f242b389d49f0a"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-complete-2-512.webp",
+      "sha256": "d6db88435109bea087315f9bdb6bd3ffcfe262469735a07ac3db27f79741d819"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-complete-2-256.webp",
+      "sha256": "204779ef1fba69bf5d472ffb2f4b76cfa39bd9795fc51b1cd458013a00980283"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-complete-3-512.webp",
+      "sha256": "ced5f9d71848b170a2b27fe498610d9e979342eb377e20eb16d4c28bbe22e0d2"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-complete-3-256.webp",
+      "sha256": "f12a5121a504c0e9213e9f892372ad308241fc29f2b8fcc2e8833a00b7cd8b1c"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-complete-4-512.webp",
+      "sha256": "d7ae38463b4f646e921e5f23d9d9bd4e49b280b9f348616df21db6674217b616"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-complete-4-256.webp",
+      "sha256": "b110dcc4611386252da01faf13a0c57f40a132f12609f1f510ce1ceaa180cf98"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-complete-5-512.webp",
+      "sha256": "5acf3ed22f5e15cfeb5689b0ce2f330d9ebdfa253ef72338607ad6cfec74acfc"
+    },
+    {
+      "path": "lab/gpt-live-h5/assets/v-operator-square-complete-5-256.webp",
+      "sha256": "4b9d830bda56b1a15fca7254ded642093b6f53ccd56e439cfe0c6e11d9d07b7e"
+    },
+    {
+      "path": "lab/gpt-live-h5/personal-session.mjs",
+      "sha256": "6644ce28a63a2a4747f365a70139d79d6003d7d12e85aa9f5b4b13cf219e0e87"
+    },
+    {
+      "path": "lab/gpt-live-h5/persona.mjs",
+      "sha256": "44588037606a49621331942b099686ecb70e51934aa116623ce65259da480e55"
+    },
+    {
+      "path": "lab/gpt-live-h5/result-presentation.mjs",
+      "sha256": "2688f1c953cf069744e3dcd627c60273df483a77adaf25ee06cc05ae15497686"
+    },
+    {
+      "path": "lab/gpt-live-h5/server.mjs",
+      "sha256": "3b4e098fd29e085f63e4f46a7a7687f8dd3f7cfb3c23e0ec79934e34d11f5b0c"
+    },
+    {
+      "path": "lab/gpt-live-h5/events.mjs",
+      "sha256": "e75b34e8c4122c594c0048e1758d5b002ff0c503c5c4be977f7440f5584d5b4d"
+    },
+    {
+      "path": "lab/gpt-live-h5/duplex-playback.mjs",
+      "sha256": "96277ced425be51e97fe699f366ffb4080dc4c0fb108343a385bbc4f82c09204"
+    },
+    {
+      "path": "lab/gpt-live-h5/markdown.mjs",
+      "sha256": "7abb58134184a8111115cf3220d6214d72ea1e7dd76ae527622a77217324e23e"
+    },
+    {
+      "path": "lab/gpt-live-h5/vendor/marked-18.0.5.mjs",
+      "sha256": "43e1fc0927b2d397bdc786c0a9efa8414ce18e7781d0b3490faceea35b7d0d15"
+    },
+    {
+      "path": "lab/gpt-live-h5/vendor/marked-LICENSE",
+      "sha256": "8e3a3f82f59a60958f56ca08f445647c32a4733dc7ca6c2c46f6eb898471ab9c"
+    },
+    {
+      "path": "lab/gpt-live-h5/index.html",
+      "sha256": "4a1309916af28efe42ec35a3988d8fc6de9a5cde4d60dd0c1662f12d3a457d48"
+    },
+    {
+      "path": "lab/gpt-live-h5/app.js",
+      "sha256": "4a7f2144e1ad87ae1475fe52853a2b9f0353d4425db2ca508bebf56f5cbeff28"
+    },
+    {
+      "path": "lab/gpt-live-h5/styles.css",
+      "sha256": "52facb8264ea3e0698617515a76c58d78d8b4adb66cb9e5ad35c35571ef9e25f"
+    },
+    {
+      "path": "lab/gpt-live-h5/microphone-capture.mjs",
+      "sha256": "8f7f110e7ad7b3a036918032e7e05e011cb33babb14d2c6666a12b34b881db32"
+    },
+    {
+      "path": "lab/gpt-live-h5/microphone-session.mjs",
+      "sha256": "db81c5df4045ac42b92c30e2752bb9e2f2c34226306a709a675509a0af352486"
+    },
+    {
+      "path": "lab/gpt-live-h5/transcript-presentation.mjs",
+      "sha256": "d281abe8dac4b277086bf74a3a3205b1e774c07581e7fc1afb2250f80eb89363"
+    },
+    {
+      "path": "lab/gpt-live-h5/call-sounds.mjs",
+      "sha256": "9fdca8b7f2289e4c200fdc01b02694d5e405a0be5c4b999fea00ce37f1be0e71"
+    },
+    {
+      "path": "lab/rtc-h5/assets/v-idle-nohat-20260922.png",
+      "sha256": "deef85bfae8688026d4aee9ae68aa19150a05c6f8416835fc87faf9ecd336f48"
+    },
+    {
+      "path": "lab/gpt-live-h5/relay-audio.mjs",
+      "sha256": "2c90151d1cd559cb1c42c0a891e47ba45fb6bd619670f55424168722232ea12d"
+    },
+    {
+      "path": "lab/realtime-direct-tools/session.mjs",
+      "sha256": "6a8d5896fe346edc9dc84d798876efb46cc7871743bc5d08732f0dcdd45a003a"
+    },
+    {
+      "path": "lab/realtime-direct-tools/transcript-log.mjs",
+      "sha256": "33ee46e369e66bb05c9793ab7cf2153410151e5a48faeedc6310a2484f072fc1"
+    },
+    {
+      "path": "lab/realtime-direct-tools/tool-start-audio.mjs",
+      "sha256": "bc57b76060f06a0ac64db77c22de2863df1019ede7568179df1efe4399f3d428"
+    },
+    {
+      "path": "lab/realtime-direct-tools/assets/tool-start-provenance.json",
+      "sha256": "5f2613d7a58f12f2b19ccc234b9cb44474c7495f94341822b729ba150d47bd96"
+    },
+    {
+      "path": "lab/realtime-direct-tools/assets/tool-start-memory.pcm",
+      "sha256": "84e423044a799fbf4fbe13ca4af9684fa83906f399cca0175b6a7427d2a6027a"
+    },
+    {
+      "path": "lab/realtime-direct-tools/assets/tool-start-web.pcm",
+      "sha256": "6baeea80ba24118e571b95e073787a4c8327b7d5b54512193dee54f48ac24771"
+    },
+    {
+      "path": "lab/realtime-direct-tools/assets/tool-start-other.pcm",
+      "sha256": "f540e1643c0ab5eb322c2aa94acf4c42b15147b29bd7ab156ba2e2b2f3a88741"
+    },
+    {
+      "path": "lab/realtime-direct-tools/backend.mjs",
+      "sha256": "665bb4bac6c3d23c99a2f47a0d4da33a13b7bbe28c2b29f379be0b80cec39f67"
+    },
+    {
+      "path": "lab/gpt-live-consult-progress.mjs",
+      "sha256": "87e7425d454d6132e351d9b45d0fb943cc4d05b9495fbe1f195bf1108ee22f40"
+    },
+    {
+      "path": "lab/realtime-direct-tools/tools.mjs",
+      "sha256": "d6b829cac39e744821e21147e8728ab3cad9c28572611862be22103cd826d13d"
+    },
+    {
+      "path": "lab/realtime-direct-tools/grok-provider.mjs",
+      "sha256": "f10ddb16559d14ca20c2fb40203b61ea6bdac507b405307ef94f966cd3431d18"
+    },
+    {
+      "path": "lab/seeduplex-realtime-provider.mjs",
+      "sha256": "402e10504db4a01f0b8212c666e72106ee665d814228aa6858a7f144a6bb14fe"
+    },
+    {
+      "path": "lab/rtc-h5/assets/v-tool-busy-20260922.png",
+      "sha256": "d8baf67e0463242d20ebafb2564cb2bc601bde5e138cd8548d7d35af1781b101"
+    }
+  ]
+}
