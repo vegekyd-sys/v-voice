@@ -17,7 +17,8 @@ let avatarDiagnosticOwner = null;
 let liveReady = false;
 let entryError = null;
 let callerEntry = "tianyi";
-const apiUrl = route => `./api/${route}${callerEntry === "tianyi" ? "?entry=tianyi" : ""}`;
+const phoneEntry = new URLSearchParams(window.location.search).get("phone");
+const apiUrl = route => `./api/${route}?${phoneEntry ? `phone=${encodeURIComponent(phoneEntry)}` : `entry=${callerEntry}`}`;
 const duplexRecoveryMessage = "上一段语音还没确认结束。若仍无声音，请结束通话后重新开始。";
 const playbackRecoveryMessage = "声音播放被暂停了，点一下页面恢复声音。";
 const greetingGraceMs = 15000;
@@ -726,7 +727,7 @@ async function initializeEntry() {
       // existing HttpOnly voice cookie; never send it as a query or log field.
       await api("access", { access });
       const search = new URLSearchParams(window.location.search);
-      search.set("entry", "tianyi");
+      if (!phoneEntry) search.set("entry", "tianyi");
       window.history.replaceState(null, "", `${window.location.pathname}?${search}`);
     }
     const response = await fetch(apiUrl("status"));

@@ -75,6 +75,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   let greetingHeld=reservation.provider==='grok';
   const endpoint=new URL('./api/relay',location.href);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
+  const phone=new URLSearchParams(location.search).get('phone');if(phone)endpoint.searchParams.set('phone',phone);
   const socket=new WebSocket(endpoint);socket.binaryType='arraybuffer';
   let closed=false,ready=false,node,speaker,source,quietGain,ending=null,tailTimer,epoch=0,written=0,lastPlayedAt=null,lastSequence=0,blocked=false,outputComplete=false,playbackActive=false,busy=false,lastReceiveAt=null,statsTimer;
   const pendingOutput=[];
