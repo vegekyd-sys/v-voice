@@ -7,7 +7,7 @@ const run=(...args)=>execFileSync('git',['-C',root,...args],{encoding:'utf8'}).t
 if(run('status','--porcelain'))throw Error('Commit and test the exact source before packaging');
 const commit=run('rev-parse','HEAD');
 const baseline=JSON.parse(await readFile(join(root,'docs/migration-baseline.json'),'utf8'));
-const names=[...baseline.files.map(f=>f.path),'lib/gateway-client.mjs','lib/conversation-entries.mjs','package.json','package-lock.json'];
+const names=[...baseline.files.map(f=>f.path),'lib/gateway-client.mjs','lib/conversation-entries.mjs','lib/phone-provisioning.mjs','lib/private-phone-file.mjs','scripts/phone.mjs','package.json','package-lock.json'];
 const target=resolve(process.argv[2]??join(root,'artifacts',commit));
 await mkdir(dirname(target),{recursive:true});
 await mkdir(target,{recursive:false});

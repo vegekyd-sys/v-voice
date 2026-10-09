@@ -9,6 +9,7 @@ import { createAvatarReactionSelector, avatarEvaluatorFromEnv } from "./avatar-d
 import { AVATAR_FILES, taskActivity } from "./avatar-state.mjs";
 import { createVoiceAccess } from "./access.mjs";
 import { createConversationEntries } from "../../lib/conversation-entries.mjs";
+import { verifyPhoneSession } from "../../lib/phone-provisioning.mjs";
 import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
@@ -157,6 +158,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         }
         context.creatingSession = true;
         try {
+          // New phone entries cannot create a guessed or stale conversation.
+          // Keep the accepted legacy personal entry's startup path unchanged.
+          if (binding.id !== 'tianyi') await verifyPhoneSession(gateway, binding);
           await close(context);
           const sessionKey = binding.sessionKey;
           if (params.model && params.model !== 'gpt-live') {
@@ -213,7 +217,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       }
       if (pathname === "/api/offer") {
         if (typeof params.sdp !== "string" || !params.sdp.startsWith("v=0") || params.sdp.length > 65536) return json(res, 400, { error: "语音连接参数无效" });
-        const sdp = await offer(context.active.reservation, params.sdp);
+        const owner = context.active;
+        const sdp = await offer(owner.reservation, params.sdp);
+        if (context.active !== owner) return json(res, 409, { error: "通话已结束，请重新开始" });
         return json(res, 200, { sdp });
       }
       if (pathname === "/api/ready") {
@@ -302,11 +308,15 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     const url=new URL(req.url,expectedOrigin);
     if(url.pathname!==`${basePath}/api/relay`){socket.destroy();return;}
     const context=[local,...contexts.values()].find(c=>c.active?.direct&&c.active.reservation.voiceSessionId===url.searchParams.get('voiceSessionId'));
-    if(!context||!req.headers.cookie||req.headers.cookie!==context.active.cookie){socket.destroy();return;}
+    if(!context||!req.headers.cookie){socket.destroy();return;}
     // Re-check the live access cookie, not just a remembered session ticket.
     const binding=entries.resolve(url);
-    if(!binding||binding.sessionKey!==context.active.sessionKey){socket.destroy();return;}
-    if(hosted?!entryAccess(binding).read(req):!String(req.headers.cookie).split(/;\s*/u).includes(`v_live_experiment=${cookie}`)){socket.destroy();return;}
+    if(!binding||binding.id!==context.entry||binding.sessionKey!==context.active.sessionKey){socket.destroy();return;}
+    const visitor=hosted?entryAccess(binding).read(req):null;
+    const originalVisitor=hosted?entryAccess(binding).read({headers:{cookie:context.active.cookie}}):null;
+    // Compare the entry's visitor identity, not the entire browser cookie jar:
+    // opening another phone may legitimately add its cookie during this call.
+    if(hosted?(!visitor||visitor.id!==originalVisitor?.id):!String(req.headers.cookie).split(/;\s*/u).includes(`v_live_experiment=${cookie}`)){socket.destroy();return;}
     directVoice.upgrade(req,socket,head,url.searchParams.get('voiceSessionId'),url.searchParams.get('ticket'));
   });
   return { server, emit, dispose: async () => {
