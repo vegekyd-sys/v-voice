@@ -9,6 +9,7 @@ const commit=run('rev-parse','HEAD');
 const baseline=JSON.parse(await readFile(join(root,'docs/migration-baseline.json'),'utf8'));
 const names=[...baseline.files.map(f=>f.path),'lib/gateway-client.mjs','lib/conversation-entries.mjs','package.json','package-lock.json'];
 const target=resolve(process.argv[2]??join(root,'artifacts',commit));
+await mkdir(dirname(target),{recursive:true});
 await mkdir(target,{recursive:false});
 const files=[];
 for(const name of names.sort()){
