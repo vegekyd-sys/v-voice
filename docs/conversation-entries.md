@@ -24,6 +24,39 @@
 
 验收顺序：本人原入口回归 → 同一人两个真实会话，三个模型路由/上下文/重拨/并发 → 独立他人账号与 DM/群隔离 → 飞书“打给 V”按钮。当前没有新增真实他人电话入口，也没有发送按钮/链接。
 
+## 飞书常驻菜单入口
+
+单聊使用开发者后台的机器人悬浮菜单，跳转到 `https://HOST/voice/feishu`；群聊使用该群的会话菜单，跳转到 `https://HOST/voice/feishu?phone=PHONE_ID`。菜单 URL 不含 bearer、sessionKey 或 callerId。后端用飞书 OAuth v3 + S256 PKCE 确认实际点击者；服务端私有配置中列出的 phoneIds 才能被打开，默认 DM 也是显式登记的已有 session，不能从浏览器或 open_id 拼一个 session key。
+
+首次配置需在该飞书应用的安全设置中添加精确回调 `https://HOST/voice/feishu/callback`。登录不请求日历、通讯录、工具或 offline_access scopes；用户 token 仅用于获取应用内 open_id/tenant_key，不持久化、不发送给语音模型。OAuth state 绑定 HttpOnly 浏览器 cookie，五分钟过期且单次使用。成功后登录 cookie 保持八小时；服务重启使它失效，重新从飞书入口登录即可。打开菜单不会自动拨号。
+
+`VOICE_FEISHU_LOGIN_FILE` 指向服务端 0600 私有 JSON（示例均是假数据）：
+
+```json
+{
+  "appId": "cli_example",
+  "appSecret": "server-only-existing-bot-secret",
+  "actors": [{
+    "openId": "ou_verified_person",
+    "tenantKey": "verified_tenant",
+    "callerId": "tianyi",
+    "defaultPhoneId": "phone-person-dm",
+    "phoneIds": ["phone-person-dm", "phone-room-a"]
+  }]
+}
+```
+
+该配置不扩展 Tianyi 的既有工具权限，也不开放其他来电者。即使别人看到群菜单或复制 URL，未登记的飞书身份仍被拒绝。受保护 phone 的 HTTP API 与直接模型 WebSocket relay 都会重新检查登录身份；仅拿到旧 phone bearer 不能绕过这一检查。原个人入口的访问方式保持不变。
+
+群菜单需要机器人已入群以及 `im:chat.menu_tree:read`、`im:chat.menu_tree:write_only` 权限。管理工具使用同一应用的 `lark-cli --as bot`，先读现有菜单，追加一个链接，再读回核对；不替换其他菜单，不重复提交结果未知的写入。配置 CLI 时使用明确 profile 或任务独立的 CLI 配置目录，不切换用户已有配置。
+
+```sh
+node scripts/feishu-menu.mjs --chat oc_example --phone phone-room-a \
+  --origin https://HOST --out /private/path/new-menu-receipt.json
+```
+
+机器人单聊菜单需要发布飞书应用配置版本；这与 Voice 源码发布是两个操作。仅修改链接不需要 Gateway 重启。当前补丁只在 Voice 服务内处理 OAuth，使用既有 Gateway 会话接口；真实菜单点击、飞书登录、实际音频接通仍须分别记录，测试 fixture 不代表这些链路已验收。
+
 ## 配置独立电话
 
 管理员在自己的私有目录保存注册表；不放进 Git，不把个人入口凭据写入终端输出。下面的名称和会话均为示例，不代表已上线的第二个入口：

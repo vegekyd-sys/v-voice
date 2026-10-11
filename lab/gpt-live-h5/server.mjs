@@ -10,12 +10,13 @@ import { AVATAR_FILES, taskActivity } from "./avatar-state.mjs";
 import { createVoiceAccess } from "./access.mjs";
 import { createConversationEntries } from "../../lib/conversation-entries.mjs";
 import { verifyPhoneSession } from "../../lib/phone-provisioning.mjs";
+import {createFeishuPhoneLogin,readFeishuPhoneLoginFile} from '../../lib/feishu-phone-login.mjs';
 import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, conversationEntries = [] }) {
+export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, conversationEntries = [], feishuLogin }) {
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
   const hosted = Boolean(publicOrigin || accessToken);
@@ -23,6 +24,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
   if (hosted && (origin.protocol !== "https:" || origin.origin !== publicOrigin || !basePath)) throw new Error("Hosted voice requires an HTTPS origin and base path");
   if (!Number.isInteger(maxActiveSessions) || maxActiveSessions < 1 || maxActiveSessions > 50 || !Number.isInteger(maxActiveSessionsPerIp) || maxActiveSessionsPerIp < 1 || maxActiveSessionsPerIp > maxActiveSessions) throw new Error("Invalid voice call limits");
   const entries = createConversationEntries(conversationEntries, accessToken);
+  const phoneLogin = feishuLogin ? createFeishuPhoneLogin({...feishuLogin, publicOrigin, basePath, entries}) : null;
   const accessors = new Map();
   const entryAccess = binding => {
     if (!hosted) return null;
@@ -66,11 +68,32 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       if (basePath && url.pathname === basePath && req.method === "GET") { res.writeHead(308, { location: `${basePath}/${url.search}`, "cache-control": "no-store" }); res.end(); return; }
       if (basePath && !url.pathname.startsWith(`${basePath}/`)) return json(res, 404, { error: "没有这个入口" });
       const pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
+      if (phoneLogin && req.method === 'GET' && (pathname === '/feishu' || pathname === '/feishu/callback')) {
+        try {
+          let location;
+          if (pathname === '/feishu/callback') location = await phoneLogin.complete(req, res, url);
+          else {
+            const selected = phoneLogin.select(req, url.searchParams.get('phone'));
+            if (selected) {
+              entryAccess(selected).issue(res);
+              location = `${basePath}/?phone=${encodeURIComponent(selected.id)}`;
+            } else location = phoneLogin.begin(req, res, url.searchParams.get('phone'));
+          }
+          res.writeHead(302, {location, 'cache-control': 'no-store'}); res.end(); return;
+        } catch { return json(res, 403, {error:'暂时无法确认这个电话入口。请使用已开通的飞书账号重新打开。'}); }
+      }
       if (url.searchParams.get("entry") === "visitor") return json(res, 404, { error: "普通人电话入口尚未开放。" });
       const binding = entries.resolve(url);
       if (!binding) return json(res,404,{error:"这个电话入口不存在或已关闭。"});
       const entry = binding.id;
       const access = entryAccess(binding);
+      if (phoneLogin?.protects(binding) && !phoneLogin.permits(req, binding)
+        && (pathname === '/' || pathname.startsWith('/api/'))) {
+        if (req.method === 'GET' && pathname === '/') {
+          res.writeHead(302, {location: `${basePath}/feishu?phone=${encodeURIComponent(entry)}`, 'cache-control':'no-store'}); res.end(); return;
+        }
+        return json(res, 401, {error:'请从飞书电话入口登录后拨号。'});
+      }
       const staticFiles = new Map([
         ["/", [join(here, "index.html"), "text/html; charset=utf-8"]],
         ["/markdown.mjs", [join(here, "markdown.mjs"), "text/javascript; charset=utf-8"]],
@@ -312,6 +335,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     // Re-check the live access cookie, not just a remembered session ticket.
     const binding=entries.resolve(url);
     if(!binding||binding.id!==context.entry||binding.sessionKey!==context.active.sessionKey){socket.destroy();return;}
+    if(phoneLogin?.protects(binding)&&!phoneLogin.permits(req,binding)){socket.destroy();return;}
     const visitor=hosted?entryAccess(binding).read(req):null;
     const originalVisitor=hosted?entryAccess(binding).read({headers:{cookie:context.active.cookie}}):null;
     // Compare the entry's visitor identity, not the entire browser cookie jar:
@@ -363,6 +387,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     bridge = createLiveH5Server({ gateway,
       directVoice, avatarLog,
       conversationEntries: process.env.VOICE_ENTRIES_FILE ? JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,"utf8")) : [],
+      feishuLogin: process.env.VOICE_FEISHU_LOGIN_FILE ? await readFeishuPhoneLoginFile(process.env.VOICE_FEISHU_LOGIN_FILE) : undefined,
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",
       publicOrigin: process.env.GPT_LIVE_H5_PUBLIC_ORIGIN ?? process.env.RTC_H5_PUBLIC_ORIGIN
         ?? (process.env.RTC_H5_BASE_PATH && process.env.RTC_H5_ACCESS_TOKEN ? "https://openclaw.tianyi.live" : ""),
