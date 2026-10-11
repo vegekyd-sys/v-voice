@@ -49,9 +49,12 @@ test('Feishu OAuth selects the trusted DM and group, uses PKCE, and retains no p
   assert.equal(f.login.select(req).id,actor.defaultPhoneId);
   assert.equal(f.login.select(req,records[1].id).id,records[1].id);
   assert.throws(()=>f.login.select(req,records[2].id));
-  const tokenBody=new URLSearchParams(f.requests[0].init.body);
-  assert.equal(createHash('sha256').update(tokenBody.get('code_verifier')).digest('base64url'),flow.url.searchParams.get('code_challenge'));
-  assert.equal(f.requests[0].url,'https://accounts.feishu.cn/oauth/v3/token');
+  const tokenBody=JSON.parse(f.requests[0].init.body);
+  assert.equal(createHash('sha256').update(tokenBody.code_verifier).digest('base64url'),flow.url.searchParams.get('code_challenge'));
+  assert.equal(f.requests[0].url,'https://open.feishu.cn/open-apis/authen/v2/oauth/token');
+  assert.equal(f.requests[0].init.headers['content-type'],'application/json; charset=utf-8');
+  assert.equal(tokenBody.redirect_uri,origin+'/voice/feishu/callback');
+  assert.equal(tokenBody.client_id,'cli_test');
   assert.equal(f.requests[1].init.headers.authorization,'Bearer private-user-token');
   assert.equal(JSON.stringify(f.login.read(req)).includes('private-user-token'),false);
   assert.match(res.headers['set-cookie'],/HttpOnly; Secure; SameSite=Lax/);
