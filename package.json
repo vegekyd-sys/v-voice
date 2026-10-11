@@ -10,9 +10,10 @@
     "start": "node lab/gpt-live-h5/server.mjs",
     "preview": "GPT_LIVE_H5_PREVIEW=1 node lab/gpt-live-h5/server.mjs",
     "test": "node --test lab/gpt-live-h5/*.test.mjs lab/realtime-direct-tools/*.test.mjs lab/seeduplex-realtime-provider.test.mjs tests/*.test.mjs",
-    "package": "node scripts/package.mjs"
+    "package": "node scripts/package.mjs",
+    "phone": "node scripts/phone.mjs"
   },
   "dependencies": {
-    "ws": "8.18.3"
+    "ws": "8.22.0"
   }
 }
