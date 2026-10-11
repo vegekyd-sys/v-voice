@@ -2,7 +2,11 @@ import test from 'node:test';import assert from 'node:assert/strict';import {req
 import {createLiveH5Server} from '../lab/gpt-live-h5/server.mjs';
 import WebSocket,{WebSocketServer} from 'ws';
 const origin='https://voice.example.com';
-const entries=['a','b','alias'].map((suffix,i)=>({id:'phone-room-'+suffix,agentId:'makaron',sessionKey:'agent:makaron:feishu:group:oc_room_'+(suffix==='alias'?'a':suffix),accountId:'existing-account',kind:'group',callerId:'tianyi',permissionProfile:'personal-tianyi',accessToken:String(i+1).repeat(40)}));
+const selected=process.env.VOICE_TEST_TARGETS_JSON?JSON.parse(process.env.VOICE_TEST_TARGETS_JSON):null;
+const entries=['a','b','alias'].map((suffix,i)=>({
+ ...(selected?selected[suffix==='alias'?0:i]:{id:'phone-room-'+suffix,agentId:'makaron',sessionKey:'agent:makaron:feishu:group:oc_room_'+(suffix==='alias'?'a':suffix),accountId:'existing-account',kind:'group'}),
+ ...(selected&&suffix==='alias'?{id:selected[0].id+'-alias'}:{}),
+ callerId:'tianyi',permissionProfile:'personal-tianyi',accessToken:String(i+1).repeat(40)}));
 async function fixture(t,options={}){
  const calls=[];let serial=0;
  const bridge=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:entries,
