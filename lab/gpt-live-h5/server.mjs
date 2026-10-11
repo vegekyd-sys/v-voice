@@ -10,7 +10,7 @@ import { AVATAR_FILES, taskActivity } from "./avatar-state.mjs";
 import { createVoiceAccess } from "./access.mjs";
 import { createConversationEntries } from "../../lib/conversation-entries.mjs";
 import { verifyPhoneSession } from "../../lib/phone-provisioning.mjs";
-import {createFeishuPhoneLogin,readFeishuPhoneLoginFile} from '../../lib/feishu-phone-login.mjs';
+import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure} from '../../lib/feishu-phone-login.mjs';
 import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
@@ -80,7 +80,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
             } else location = phoneLogin.begin(req, res, url.searchParams.get('phone'));
           }
           res.writeHead(302, {location, 'cache-control': 'no-store'}); res.end(); return;
-        } catch { return json(res, 403, {error:'暂时无法确认这个电话入口。请使用已开通的飞书账号重新打开。'}); }
+        } catch (error) {
+          console.warn(JSON.stringify({type:'voice.feishu-login-error', ...feishuPhoneLoginFailure(error)}));
+          return json(res, 403, {error:'暂时无法确认这个电话入口。请使用已开通的飞书账号重新打开。'});
+        }
       }
       if (url.searchParams.get("entry") === "visitor") return json(res, 404, { error: "普通人电话入口尚未开放。" });
       const binding = entries.resolve(url);

@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {request} from 'node:http';
 import {Readable} from 'node:stream';
 import {createConversationEntries} from '../lib/conversation-entries.mjs';
-import {createFeishuPhoneLogin,readFeishuPhoneLoginFile} from '../lib/feishu-phone-login.mjs';
+import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure} from '../lib/feishu-phone-login.mjs';
 import {mkdtemp,writeFile,chmod,symlink,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {createLiveH5Server} from '../lab/gpt-live-h5/server.mjs';
@@ -105,4 +105,16 @@ test('real HTTP login gates protected phone APIs, preserves legacy entry and nev
   const legacy=await get('/voice/api/access','',{access:'legacy'.repeat(8)});
   assert.equal(legacy.status,200);
   assert.equal(calls.length,0);
+});
+
+test('login diagnostics identify failed stages without exposing provider credentials or user data',async()=>{
+  const f=fixture({fetchImpl:async()=>Response.json({code:20049,error_description:'private-token-and-code'},{status:400})}),flow=f.begin();
+  await assert.rejects(f.login.complete(flow.req,response(),flow.callback),error=>{
+    assert.deepEqual(feishuPhoneLoginFailure(error),{reason:'provider_rejected',stage:'token',httpStatus:400,providerCode:20049});return true;
+  });
+  const g=fixture(),pending=g.begin();
+  await assert.rejects(g.login.complete({headers:{}},response(),pending.callback),error=>{
+    assert.deepEqual(feishuPhoneLoginFailure(error),{reason:'invalid_state',pending:true,browserMatched:false});return true;
+  });
+  assert.deepEqual(feishuPhoneLoginFailure(new Error('private-token')),{reason:'unexpected_login_failure'});
 });
