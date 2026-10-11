@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {mkdtemp,readFile,writeFile,lstat,rm,symlink} from 'node:fs/promises';
+import {mkdtemp,readFile,writeFile,lstat,rm,symlink,chmod} from 'node:fs/promises';
 import {tmpdir} from 'node:os';import {join} from 'node:path';
 import {provisionPhone,phoneLink} from '../lib/phone-provisioning.mjs';
 import {readPhoneFile,updatePhoneFile} from '../lib/private-phone-file.mjs';
@@ -25,7 +25,8 @@ test('private atomic registry updates reject failed probes, competing writers an
  await assert.rejects(updatePhoneFile(file,async()=>{await writeFile(file,'[]\n');return [a];}),/changed/);
  assert.equal(await readFile(file,'utf8'),'[]\n');
  const alias=join(dir,'alias.json');await symlink(file,alias);await assert.rejects(readPhoneFile(alias),/private regular/);
- await writeFile(join(dir,'public.json'),'[]',{mode:0o644});await assert.rejects(readPhoneFile(join(dir,'public.json')),/0600/);
+ const publicFile=join(dir,'public.json');await writeFile(publicFile,'[]');await chmod(publicFile,0o644);
+ await assert.rejects(readPhoneFile(publicFile),/0600/);
 });
 test('link/list commands never print the bearer; generated link is exclusive and private',async t=>{
  const dir=await temporary(t),file=join(dir,'entries.json'),out=join(dir,'phone-link.txt');
