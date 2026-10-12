@@ -427,10 +427,11 @@ function providerMessage(event) {
     duplexDiagnostic(active, { type: "native-turn-created", at, role: data.turn.role });
     if (data.turn.role === "user") {
       const old=active.nativeAssistantPlayback?.get(active.currentNativeAssistantTurnId);
-      if(old?.audioObserved&&(old.terminalAt===null||at-old.terminalAt<250)&&active.channel?.readyState==='open'){
+      if(active.backendFinalReady&&old?.audioObserved&&(old.terminalAt===null||at-old.terminalAt<250)&&active.channel?.readyState==='open'){
         active.channel.send(JSON.stringify({type:'session.context.append',channel:'developer',content:[{type:'input_text',text:'The caller has interrupted the previous spoken reply. Its remaining speech plan is permanently retired, including any backend result reading. Never resume or append that old answer after the caller finishes. Respond only to the latest caller turn. This is silent host state, not a request to speak or cancel backend work.'}]}));
         duplexDiagnostic(active,{type:'native-speech-plan-retired',at,turnId:active.currentNativeAssistantTurnId});
       }
+      active.backendFinalReady=false;
       active.nativeAssistantPlayback?.clear(); active.currentNativeAssistantTurnId = null;
       active.completedNativeUserText=null;
       active.latestNativeUserTurnId = typeof data.turn.id === "string" ? data.turn.id : null;
@@ -619,6 +620,8 @@ async function startCall() {
     active.channel = active.pc.createDataChannel("oai-events"); active.channel.onmessage = (event) => { if (call === active) providerMessage(event); };
     active.events = new EventSource(apiUrl("events"));
     const applyNativeControl = value => {
+      if(value.type==='tool.call')active.backendFinalReady=false;
+      if(value.type==='tool.result'&&value.backendFinal===true)active.backendFinalReady=true;
       if(value.type==='voice.end.accepted')requestVoiceHostEnd(active,value);
       if (value.type === "tool.result") requestAutomaticEnd(active, value);
       if (value.type === "tool.error" && value.name === "openclaw_end_call" &&

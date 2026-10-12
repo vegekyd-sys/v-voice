@@ -269,7 +269,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       const view = context.active.presentation;
       if (view) {
         message.revision = ++view.revision;
-        if (message.name === 'openclaw_end_call') {
+        if (message.name === 'openclaw_end_call' || message.backendFinal === true) {
           view.controls.push(message);
           if(view.controls.length > 64)view.controls.shift();
         }
@@ -291,6 +291,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     if (!["tool.call", "tool.result", "tool.error"].includes(item?.type)) return;
     const message = { voiceSessionId: context.active.reservation.voiceSessionId, type: item.type, callId: item.callId };
     if (item.type === "tool.call") message.activity = taskActivity(item.payload?.name);
+    if (item.type === "tool.result" && item.payload?.name === "openclaw_agent_consult") message.backendFinal = true;
     if (item.payload?.name === "openclaw_end_call") {
       message.name = "openclaw_end_call";
       if (typeof item.payload.requestId === "string") message.requestId = item.payload.requestId;

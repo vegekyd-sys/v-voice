@@ -1185,6 +1185,11 @@ test('host farewell can finish the existing assistant turn without borrowing ear
 
 test('native caller barge-in retires a played reply plan without muting or cancelling work',async t=>{
  const f=await fixture(t);await f.context.startCall();const peer=f.peers[0];peer.connectionState='connected';peer.onconnectionstatechange();const send=x=>peer.channel.onmessage({data:JSON.stringify(x)}),sent=[];peer.channel.readyState='open';peer.channel.send=x=>sent.push(JSON.parse(x));await peer.ontrack({track:track()});
- send({type:'turn.created',turn:{role:'assistant',id:'actual-final'}});f.meter(50,0,.1);send({type:'turn.created',turn:{role:'user',id:'interrupt'}});
+ f.eventSources[0].onmessage({data:JSON.stringify({voiceSessionId:'voice-1',type:'tool.result',callId:'actual-backend',backendFinal:true})});send({type:'turn.created',turn:{role:'assistant',id:'actual-final'}});f.meter(50,0,.1);send({type:'turn.created',turn:{role:'user',id:'interrupt'}});
  assert.equal(sent.length,1);assert.equal(sent[0].type,'session.context.append');assert.equal(sent[0].channel,'developer');assert.match(sent[0].content[0].text,/permanently retired/);assert.equal(peer.closed,false);
+});
+
+test('ordinary spoken acknowledgment does not receive final-result retirement instruction',async t=>{
+ const f=await fixture(t);await f.context.startCall();const peer=f.peers[0];peer.connectionState='connected';peer.onconnectionstatechange();const send=x=>peer.channel.onmessage({data:JSON.stringify(x)}),sent=[];peer.channel.readyState='open';peer.channel.send=x=>sent.push(JSON.parse(x));await peer.ontrack({track:track()});
+ send({type:'turn.created',turn:{role:'assistant',id:'ordinary-ack'}});f.meter(50,0,.1);send({type:'turn.created',turn:{role:'user',id:'end-now'}});assert.equal(sent.length,0);assert.equal(peer.closed,false);
 });
