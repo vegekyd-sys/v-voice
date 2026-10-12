@@ -17,7 +17,7 @@ export function createTranscriptPresentation() {
   const rows = [], nativeTurns = new Map(), openByRole = new Map(), fragments = new Map(), seenEvents = new Set();
   const view = row => ({
     key: row.key, role: row.role, speaker: row.document ? 'V · 完整方案' : row.role === 'user' ? '你' : 'V',
-    text: row.text, at: row.at, time: formatTranscriptTime(row.at), complete: row.complete,
+    text: row.text, document: row.document === true, at: row.at, time: formatTranscriptTime(row.at), complete: row.complete,
   });
   const snapshot = () => ({
     history: rows.filter(row => row.complete && row.text.trim()).map(view),

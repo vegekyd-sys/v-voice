@@ -24,3 +24,18 @@ test('model HTML and javascript links stay inert; external images cannot disclos
 test('streaming incomplete Markdown replaces prior output without duplicating the final answer',()=>{
  const r=render('## 结果\n\n**还在');renderMarkdown(r,'## 结果\n\n**完整答案**',doc);assert.equal(r.find('h2').length,1);assert.equal(r.find('strong')[0].textContent,'完整答案');assert.doesNotMatch(r.textContent,/还在/);
 });
+
+test('opened reader renders approved media in Markdown order while unrelated links stay links',()=>{
+ const target=new Node();
+ renderMarkdown(target,'开头\n\n![画面](https://cdn.test/a.webp)\n\n中间\n\n[视频](https://cdn.test/a.mp4)\n\n[官网](https://example.com/)\n\n结尾',doc,{media:href=>href==='https://cdn.test/a.webp'?new Node('img'):href==='https://cdn.test/a.mp4'?new Node('video'):null});
+ assert.equal(target.find('img').length,1);assert.equal(target.find('video').length,1);assert.equal(target.find('a').length,1);
+ assert.deepEqual(target.children.map(n=>n.textContent),['开头','','中间','','官网','结尾']);
+});
+
+
+test('GFM plain media links surviving attachment extraction render inside the actual reader',()=>{
+ const target=new Node();
+ renderMarkdown(target,'已生成：小赛车。\n\n链接：https://cdn.test/a.jpg',doc,{media:href=>href==='https://cdn.test/a.jpg'?new Node('img'):null});
+ assert.equal(target.find('img').length,1);assert.equal(target.find('a').length,0);
+ assert(target.textContent.includes('小赛车'));
+});

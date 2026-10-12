@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {createVoiceCallControl,callControlEvaluatorFromEnv} from './call-control.mjs';
 import { randomUUID, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -11,10 +12,12 @@ import { createVoiceAccess } from "./access.mjs";
 import { createConversationEntries } from "../../lib/conversation-entries.mjs";
 import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
+import {createVoiceLarkReader} from '../realtime-direct-tools/lark-readonly.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
+import {voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, conversationEntries = [] }) {
+export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai" }) {
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
   const hosted = Boolean(publicOrigin || accessToken);
@@ -49,6 +52,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
   };
   const close = async (context = local) => {
     const old = context.active;
+    old?.callControl?.close();
     if (old) visual.forget(old.reservation.voiceSessionId);
     if (old?.direct) await directVoice.close(old.reservation.voiceSessionId);
     else if (old) await gateway.request("talk.client.close", { sessionKey: old.sessionKey, voiceSessionId: old.reservation.voiceSessionId });
@@ -77,7 +81,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
-        ...["microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
+        ...["media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "product-controls.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
         ...AVATAR_FILES.map(name => [`/assets/${name}`, [join(here, "assets", name), name.endsWith(".webp") ? "image/webp" : "image/png"]]),
         ...["v-idle-nohat-20260922.png", "v-tool-busy-20260922.png"].map((name) => [`/assets/${name}`, [join(here, "../rtc-h5/assets", name), "image/png"]]),
@@ -165,12 +169,21 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
             rememberAvatarCall(context,context.active,params.model);
             return json(res,200,reservation);
           }
-          const reservation = await gateway.request("talk.client.create", { sessionKey, provider: "openai", model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
+          const reservation = await gateway.request("talk.client.create", { sessionKey, provider: gptProvider, model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
           context.active = { sessionKey, reservation, touchedAt: Date.now(), presentation: { revision: 0, pending: new Map(), documents: new Map(), controls: [] } };
           if (reservation.model !== "gpt-live-1-codex" || reservation.transport !== "webrtc" || reservation.offerUrl !== "/plugins/openai/realtime/calls") {
             await close(context);
             return json(res, 409, { error: "候选语音配置与 GPT Live 实验不匹配" });
           }
+          const owned=context.active;
+          owned.callControl=createVoiceCallControl({evaluate:callControlEvaluate,audit:event=>callControlAudit({...event,voiceSessionId:owned.reservation.voiceSessionId}),isCurrent:()=>context.active===owned,onAccepted:async value=>{
+            if(context.active!==owned)return;
+            const proof=await gateway.request('voice.product.control',{clientSecret:owned.reservation.clientSecret,mode:'end'},{timeoutMs:3000});
+            if(proof?.ok!==true||context.active!==owned)return;
+            const message={...value,voiceSessionId:owned.reservation.voiceSessionId,revision:++owned.presentation.revision};
+            owned.presentation.controls.push(message);if(owned.presentation.controls.length>64)owned.presentation.controls.shift();
+            for(const response of context.listeners)response.write(`data: ${JSON.stringify(message)}\n\n`);
+          }});
           rememberAvatarCall(context,context.active,'openai');
           return json(res, 200, { voiceSessionId: reservation.voiceSessionId, model: reservation.model });
         } finally {
@@ -251,11 +264,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     const context = [local, ...contexts.values()].find(item => item.active?.reservation.voiceSessionId === event.payload?.voiceSessionId);
     if (!context) return;
     const item = event.payload.talkEvent;
+    if(['transcript.done','output.text.done'].includes(item?.type))void context.active.callControl?.observe({role:item.type==='output.text.done'?'assistant':item.payload?.role,text:item.payload?.text,final:true});
     const publish = message => {
       const view = context.active.presentation;
       if (view) {
         message.revision = ++view.revision;
-        if (message.name === 'openclaw_end_call') {
+        if (message.name === 'openclaw_end_call' || message.backendFinal === true) {
           view.controls.push(message);
           if(view.controls.length > 64)view.controls.shift();
         }
@@ -277,13 +291,14 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     if (!["tool.call", "tool.result", "tool.error"].includes(item?.type)) return;
     const message = { voiceSessionId: context.active.reservation.voiceSessionId, type: item.type, callId: item.callId };
     if (item.type === "tool.call") message.activity = taskActivity(item.payload?.name);
+    if (item.type === "tool.result" && item.payload?.name === "openclaw_agent_consult") message.backendFinal = true;
     if (item.payload?.name === "openclaw_end_call") {
       message.name = "openclaw_end_call";
       if (typeof item.payload.requestId === "string") message.requestId = item.payload.requestId;
       if (typeof item.payload.originUserTurnId === "string") message.originUserTurnId = item.payload.originUserTurnId;
       if (item.payload.source === "backend_model_client_tool") {
         message.source = item.payload.source;
-        for (const field of ["nativeDelegationId", "backendRunId", "backendToolCallId", "status"])
+        for (const field of ["nativeDelegationId", "backendRunId", "backendToolCallId", "status", "nativeAssistantTurnIdAtAcceptance"])
           if (typeof item.payload[field] === "string") message[field] = item.payload[field];
         if (Number.isSafeInteger(item.payload.delegationGeneration)) message.delegationGeneration = item.payload.delegationGeneration;
       }
@@ -328,8 +343,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const token = String(config.gateway.auth.token).replace(/\$\{([^}]+)\}/gu, (_, key) => process.env[key] ?? "");
     const { GatewayClient } = await import("../../lib/gateway-client.mjs");
     await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("Candidate Gateway unavailable")), 15000);
-      gateway = new GatewayClient({ url: `ws://127.0.0.1:${config.gateway.port}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", scopes: ["operator.read", "operator.write", "operator.admin"], caps:["voice-direct-tools","tool-events"], onHelloOk: () => { clearTimeout(timeout); resolve(); }, onEvent: (event) => bridge?.emit(event), onConnectError: (error) => { clearTimeout(timeout); reject(error); } }); gateway.start();
+      const timeout = setTimeout(() => { gateway?.stop(); reject(new Error("Gateway startup timed out")); }, 60000);
+      gateway = new GatewayClient({ url: `ws://127.0.0.1:${config.gateway.port}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", scopes: ["operator.read", "operator.write", "operator.admin"], caps:["voice-direct-tools","tool-events"], onHelloOk: () => { clearTimeout(timeout); resolve(); }, onEvent: (event) => bridge?.emit(event), onConnectError: (error) => {
+        if(error.code === "UNAVAILABLE" && error.retryable === true) return;
+        clearTimeout(timeout); gateway?.stop(); reject(error);
+      } }); gateway.start();
     });
     const {createDirectVoiceService}=await import('../realtime-direct-tools/session.mjs');
     const wsModule=await import('ws');
@@ -340,7 +358,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     avatarLog=createAvatarTelemetryLog({directory:process.env.RTC_H5_AVATAR_LOG_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-avatar-events'),
       onError:({code})=>console.warn(JSON.stringify({type:'voice.avatar-write-error',code})),
     });
-    const directVoice=createDirectVoiceService({gateway,wsModule,
+    const lark=createVoiceLarkReader({environment:process.env});
+    const directVoice=createDirectVoiceService({gateway,wsModule,calendar:lark.calendar,larkRead:lark.read,
       audit:transcriptLog.audit,
       toolEnvironment:Object.fromEntries(["LARKSUITE_CLI_CONFIG_DIR","LARKSUITE_CLI_DATA_DIR"].filter(key=>process.env[key]).map(key=>[key,process.env[key]])),
       apiKeys:{
@@ -348,10 +367,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       grok:process.env.XAI_API_KEY,
     },loadContext:async sessionKey=>{
       const history=await gateway.request('chat.history',{sessionKey,limit:6},{timeoutMs:10000});
-      return JSON.stringify((history.messages??[]).map(m=>({role:m.role,content:m.content}))).slice(-12000);
+      return voiceConversationContext(history.messages??[]);
     }});
     bridge = createLiveH5Server({ gateway,
-      directVoice, avatarLog,
+      directVoice, avatarLog,callControlAudit:transcriptLog.audit,
       conversationEntries: process.env.VOICE_ENTRIES_FILE ? JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,"utf8")) : [],
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",
       publicOrigin: process.env.GPT_LIVE_H5_PUBLIC_ORIGIN ?? process.env.RTC_H5_PUBLIC_ORIGIN

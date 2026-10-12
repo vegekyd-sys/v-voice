@@ -55,3 +55,11 @@ test('existing symlink cannot redirect private transcripts into another file',as
   const logger=createVoiceTranscriptLog({directory:f.directory,now:()=>Date.parse('2026-10-09T01:00:00Z')});logger.audit({type:'call.created',voiceSessionId:'x',provider:'grok',model:'grok-voice-agent',sessionKey:'personal'});
   assert.equal((await logger.close()).failed,1);assert.equal(await readFile(target,'utf8'),'preserved');
 });
+
+test('provider diagnostics persist only fixed classifications and numeric codes, never raw errors or audio',async t=>{
+  const f=await fixture(t);f.created();
+  f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'upstream-error',category:'input-timeout',upstreamCode:'55000000',sessionAgeMs:72000,attempt:1,message:'SECRET',audio:'SECRET',event:{apiKey:'SECRET'}});
+  f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'reconnecting',category:'SECRET',upstreamCode:'SECRET',attempt:-1});
+  await f.log.close();const rows=await f.rows();assert(!JSON.stringify(rows).includes('SECRET'));
+  assert.equal(rows[1].upstreamCode,'55000000');assert.equal(rows[1].sessionAgeMs,72000);assert.equal(rows[2].category,undefined);assert.equal(rows[2].attempt,undefined);
+});

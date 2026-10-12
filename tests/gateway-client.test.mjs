@@ -30,3 +30,16 @@ test('credentials cannot be placed in an insecure remote URL',()=>{
  assert.throws(()=>new GatewayClient({url:'ws://example.com',token:'x'}),/loopback/);
  assert.throws(()=>new GatewayClient({url:'wss://example.com?token=x'}),/credentials/);
 });
+test('a retryable startup rejection retains its cause and reconnects without replaying work',async t=>{
+ const server=new WebSocketServer({port:0,host:'127.0.0.1'});await new Promise(r=>server.once('listening',r));
+ let connects=0,client;const errors=[];
+ server.on('connection',ws=>{ws.send(JSON.stringify({type:'event',event:'connect.challenge',payload:{nonce:'startup'}}));ws.on('message',raw=>{
+  const f=JSON.parse(raw);assert.equal(f.method,'connect');connects++;
+  ws.send(JSON.stringify(connects===1?{type:'res',id:f.id,ok:false,error:{code:'UNAVAILABLE',message:'gateway starting',retryable:true,retryAfterMs:500,details:{reason:'startup-sidecars'}}}:{type:'res',id:f.id,ok:true,payload:{protocol:4}}));
+ });});
+ t.after(async()=>{client?.stop();for(const c of server.clients)c.terminate();await new Promise(r=>server.close(r));});
+ await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Handshake never recovered')),2000);
+  client=new GatewayClient({url:`ws://127.0.0.1:${server.address().port}`,token:'fixture-only',reconnectMs:10,onConnectError:e=>errors.push(e),onHelloOk:()=>{clearTimeout(timer);resolve();}});client.start();
+ });
+ assert.equal(connects,2);assert.equal(errors.length,1);assert.equal(errors[0].retryable,true);assert.equal(errors[0].details.reason,'startup-sidecars');assert.equal(client.ready,true);
+});

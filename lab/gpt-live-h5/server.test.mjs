@@ -171,6 +171,7 @@ test('owned backend model end receipts preserve real tool/run and native identit
     type: 'tool.result', callId: 'call_real_end', payload: { name: 'openclaw_end_call', source: 'backend_model_client_tool',
       status: 'accepted', requestId: 'item_native', nativeDelegationId: 'item_native', originUserTurnId: 'turn_native',
       delegationGeneration: 3, backendToolCallId: 'call_real_end', backendRunId: 'talk-realtime-consult:actual:parent',
+      nativeAssistantTurnIdAtAcceptance:'native_combined',
       closeAfterPlayback: true, userTurnText: 'private caller phrase', args: { secret: 'must not leak' }, hidden: 'not-for-browser' } } } });
   const body = new TextDecoder().decode((await reader.read()).value);
   const value = JSON.parse(body.slice(body.indexOf('data: ') + 6).trim());
@@ -179,6 +180,7 @@ test('owned backend model end receipts preserve real tool/run and native identit
   assert.equal(value.requestId, 'item_native'); assert.equal(value.nativeDelegationId, 'item_native');
   assert.equal(value.originUserTurnId, 'turn_native'); assert.equal(value.delegationGeneration, 3);
   assert.equal(value.backendRunId, 'talk-realtime-consult:actual:parent');
+  assert.equal(value.nativeAssistantTurnIdAtAcceptance,'native_combined');
   assert.doesNotMatch(body, /private caller|secret|hidden|not-for-browser/u);
   stop.abort(); await reader.cancel().catch(() => {});
 });
@@ -231,10 +233,10 @@ test('authenticated presentation snapshot recovers pending work and full documen
  let view=await read();assert.equal(view.revision,1);assert.deepEqual(view.pending.map(x=>x.callId),['run']);assert(!JSON.stringify(view).includes('private query'));
  const text='## 完整原始报告\n'+ '日期和条件不变。'.repeat(500);
  emit('tool.result','run',{name:'openclaw_agent_consult'});emit('tool.result','doc',{name:'openclaw_backend_result',text});
- view=await read(1);assert.equal(view.pending.length,0);assert.equal(view.documents[0].text,text);assert.equal(view.revision,3);
+ view=await read(1);assert.equal(view.controls[0].backendFinal,true);assert.equal(view.controls[0].callId,'run');assert.equal(view.pending.length,0);assert.equal(view.documents[0].text,text);assert.equal(view.revision,3);
  assert.equal((await read(3)).documents.length,0);
  emit('tool.result','end',{name:'openclaw_end_call',requestId:'end',originUserTurnId:'u',closeAfterPlayback:true,secret:'excluded'});
- view=await read(3);assert.equal(view.controls.length,1);assert.equal(view.controls[0].closeAfterPlayback,true);assert(!JSON.stringify(view.controls).includes('excluded'));
+ view=await read(3);assert.equal(view.controls.length,2);assert.equal(view.controls[1].closeAfterPlayback,true);assert(!JSON.stringify(view.controls).includes('excluded'));
  const controlsAfter=await fetch(f.url+'/api/presentation?controlsAfter=4',{headers:{cookie:f.cookie}});assert.equal((await controlsAfter.json()).controls.length,0);
  await f.request('close',{voiceSessionId:'voice-private'});assert.equal((await read()).voiceSessionId,null);
  await f.request('session');view=await read();assert.equal(view.revision,0);assert.equal(view.documents.length,0);
