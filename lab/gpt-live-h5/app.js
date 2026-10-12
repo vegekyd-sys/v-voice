@@ -190,6 +190,9 @@ function applyVoiceHostEnd(active){
  active.pendingVoiceEnd=null;
  const request=endCallRequest(active,value.requestId,active.latestNativeUserTurnId);if(!request)return;
  request.accepted=true;request.providerObserved=true;request.voiceHostPath=true;request.expectedFarewell='再见下次聊';
+ // GPT Live may append the requested farewell inside its already-open turn.
+ const current=active.nativeAssistantPlayback?.get(active.currentNativeAssistantTurnId);
+ if(current&&current.terminalAt===null)request.turnId=active.currentNativeAssistantTurnId;
  active.endNativeRequestId=request.requestId;armAutomaticEnd(active,request);
  if(active.channel?.readyState==='open')active.channel.send(JSON.stringify({type:'session.context.append',event_id:'voice-farewell-'+value.requestId,content:[{type:'input_text',text:'当前用户已经明确结束这次电话。停止旧结果播报，只说一句：再见，下次聊。然后安静等待主机关闭。'}],channel:'speakable'}));
 }

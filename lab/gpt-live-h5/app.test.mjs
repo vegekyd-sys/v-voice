@@ -1173,3 +1173,12 @@ test('Voice host acceptance cannot close a foreign call or a different current u
  for(const voiceSessionId of ['foreign','voice-1'])f.eventSources[0].onmessage({data:JSON.stringify({voiceSessionId,type:'voice.end.accepted',source:'voice_host_control',requestId:'old',userText:'拜拜',closeAfterPlayback:true})});
  assert.equal(f.body.dataset.callState,'connected');assert.equal(f.peers[0].closed,false);
 });
+
+test('host farewell can finish the existing assistant turn without borrowing earlier audio',async t=>{
+ const f=await fixture(t);await f.context.startCall();const peer=f.peers[0];peer.connectionState='connected';peer.onconnectionstatechange();const send=x=>peer.channel.onmessage({data:JSON.stringify(x)});peer.channel.readyState='open';peer.channel.send=()=>{};
+ send({type:'turn.created',turn:{role:'user',id:'u-host-open'}});send({type:'turn.done',turn:{role:'user',id:'u-host-open',transcript:'请挂断电话'}});
+ await peer.ontrack({track:track()});send({type:'turn.created',turn:{role:'assistant',id:'open'}});f.meter(50,0,.1);
+ f.eventSources[0].onmessage({data:JSON.stringify({voiceSessionId:'voice-1',type:'voice.end.accepted',source:'voice_host_control',requestId:'host-open',userText:'请挂断电话',closeAfterPlayback:true})});
+ f.meter(100,0,.1);send({type:'turn.done',turn:{role:'assistant',id:'open',transcript:'好的，再见。再见，下次聊。'}});
+ for(let at=150;at<=1000;at+=50)f.meter(at,0,0);await tick();assert.equal(peer.closed,true);
+});
