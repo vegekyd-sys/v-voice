@@ -1121,3 +1121,35 @@ test("connection progress lives in the pill while a busy rejection remains an ac
   assert.equal(f.element("status").dataset.notice, "message");
   assert.equal(f.element("status").textContent, "正在连接 V，请稍等。");
 });
+
+test('host-selected in-flight assistant turn can contain both acknowledgment and goodbye',async t=>{
+ const f=await backendEndCallFixture(t);f.native();
+ f.send({type:'turn.created',turn:{role:'assistant',id:'combined'}});
+ f.meter(50,0,.12);f.meter(100,0,.12);
+ f.tool({nativeAssistantTurnIdAtAcceptance:'combined'});
+ assert.equal(f.body.dataset.callState,'ending');
+ f.meter(150,0,.12);f.setNow(175);f.send({type:'turn.done',turn:{role:'assistant',id:'combined'}});
+ for(let at=200;at<=950;at+=50)f.meter(at,0,0);
+ await tick();assert.equal(f.peer.closed,true);
+});
+test('late presentation receipt joins host-selected played turn without borrowing another user audio',async t=>{
+ const f=await backendEndCallFixture(t);f.native();
+ f.send({type:'turn.created',turn:{role:'assistant',id:'combined'}});
+ f.meter(50,0,.12);f.setNow(75);f.send({type:'turn.done',turn:{role:'assistant',id:'combined'}});
+ for(let at=100;at<=900;at+=50)f.meter(at,0,0);
+ assert.equal(f.peer.closed,false);
+ f.tool({nativeAssistantTurnIdAtAcceptance:'foreign'});f.meter(950,0,0);
+ assert.equal(f.peer.closed,false,'an unknown host turn cannot reuse unrelated audio');
+ f.send({type:'turn.created',turn:{role:'user',id:'new-user'}});
+ f.tool({nativeAssistantTurnIdAtAcceptance:'combined'});f.meter(1000,0,0);
+ assert.equal(f.peer.closed,false,'a new caller turn revokes the old receipt');
+});
+test('farewell completed before delayed host receipt closes only after matching host/native/audio proofs',async t=>{
+ const f=await backendEndCallFixture(t);f.native();
+ f.send({type:'turn.created',turn:{role:'assistant',id:'combined'}});
+ f.meter(50,0,.12);f.setNow(75);f.send({type:'turn.done',turn:{role:'assistant',id:'combined'}});
+ for(let at=100;at<=900;at+=50)f.meter(at,0,0);
+ assert.equal(f.peer.closed,false);
+ f.tool({nativeAssistantTurnIdAtAcceptance:'combined'});f.meter(950,0,0);
+ await tick();assert.equal(f.peer.closed,true);
+});

@@ -171,6 +171,7 @@ test('owned backend model end receipts preserve real tool/run and native identit
     type: 'tool.result', callId: 'call_real_end', payload: { name: 'openclaw_end_call', source: 'backend_model_client_tool',
       status: 'accepted', requestId: 'item_native', nativeDelegationId: 'item_native', originUserTurnId: 'turn_native',
       delegationGeneration: 3, backendToolCallId: 'call_real_end', backendRunId: 'talk-realtime-consult:actual:parent',
+      nativeAssistantTurnIdAtAcceptance:'native_combined',
       closeAfterPlayback: true, userTurnText: 'private caller phrase', args: { secret: 'must not leak' }, hidden: 'not-for-browser' } } } });
   const body = new TextDecoder().decode((await reader.read()).value);
   const value = JSON.parse(body.slice(body.indexOf('data: ') + 6).trim());
@@ -179,6 +180,7 @@ test('owned backend model end receipts preserve real tool/run and native identit
   assert.equal(value.requestId, 'item_native'); assert.equal(value.nativeDelegationId, 'item_native');
   assert.equal(value.originUserTurnId, 'turn_native'); assert.equal(value.delegationGeneration, 3);
   assert.equal(value.backendRunId, 'talk-realtime-consult:actual:parent');
+  assert.equal(value.nativeAssistantTurnIdAtAcceptance,'native_combined');
   assert.doesNotMatch(body, /private caller|secret|hidden|not-for-browser/u);
   stop.abort(); await reader.cancel().catch(() => {});
 });

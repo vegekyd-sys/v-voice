@@ -189,6 +189,8 @@ function requestAutomaticEnd(active, value) {
       !/^[a-zA-Z0-9_.:-]{1,256}$/.test(value.backendRunId ?? "") ||
       !Number.isSafeInteger(value.delegationGeneration) || value.delegationGeneration < 1 ||
       !active.completedNativeUserTurns?.has(value.originUserTurnId)) return;
+    if (value.nativeAssistantTurnIdAtAcceptance !== undefined &&
+      !/^[a-zA-Z0-9_.:-]{1,160}$/.test(value.nativeAssistantTurnIdAtAcceptance)) return;
   } else if (value.callId !== value.requestId) return;
   const request = endCallRequest(active, value.requestId, value.originUserTurnId);
   if (!request) return;
@@ -203,6 +205,13 @@ function requestAutomaticEnd(active, value) {
     const observed = active.nativeCallControlDelegations?.get(value.nativeDelegationId);
     request.providerObserved = observed?.originUserTurnId === value.originUserTurnId;
     if (request.providerObserved) active.endNativeRequestId = request.requestId;
+    // The provider can append goodbye to an already open assistant turn.
+    // Only the authenticated host may identify that turn at tool acceptance.
+    const played = active.nativeAssistantPlayback?.get(value.nativeAssistantTurnIdAtAcceptance);
+    if (played?.originUserTurnId === request.originUserTurnId) {
+      request.turnId = value.nativeAssistantTurnIdAtAcceptance;
+      for (const field of ["terminalAt", "audioObserved", "quietSince", "lastSampleAt"]) request[field] = played[field];
+    }
   }
   request.accepted = true;
   armAutomaticEnd(active, request);
@@ -234,11 +243,19 @@ function observeNativeEndDelegation(active, item) {
   armAutomaticEnd(active, request);
 }
 function observeAutomaticEnd(active, at, energy) {
+  const audio = $("remoteAudio");
+  const played = active.nativeAssistantPlayback?.get(active.currentNativeAssistantTurnId);
+  if (played) {
+    if (played.lastSampleAt !== null && at - played.lastSampleAt > 125) played.quietSince = null;
+    played.lastSampleAt = at;
+    if (active.context?.state !== "running" || audio.paused || audio.muted || active.playbackNeedsGesture) played.quietSince = null;
+    else if (energy > .003) { played.audioObserved = true; played.quietSince = null; }
+    else if (played.terminalAt !== null && played.audioObserved) played.quietSince ??= at;
+  }
   // Keep the genuine native farewell observation even if the host SSE travels
   // slower than WebRTC. It authorizes closing only when both proofs join.
   const ending = active.endRequests?.get(active.endNativeRequestId);
   if (!ending || ending.invalidated || !ending.providerObserved || !ending.turnId || call !== active) return;
-  const audio = $("remoteAudio");
   if (ending.lastSampleAt !== null && at - ending.lastSampleAt > 125) ending.quietSince = null;
   ending.lastSampleAt = at;
   if (active.context?.state !== "running" || audio.paused || audio.muted || active.playbackNeedsGesture) {
@@ -392,6 +409,7 @@ function providerMessage(event) {
     const at = performance.now();
     duplexDiagnostic(active, { type: "native-turn-created", at, role: data.turn.role });
     if (data.turn.role === "user") {
+      active.nativeAssistantPlayback?.clear(); active.currentNativeAssistantTurnId = null;
       active.latestNativeUserTurnId = typeof data.turn.id === "string" ? data.turn.id : null;
       for (const request of active.endRequests?.values() ?? []) request.invalidated = true;
       active.endNativeRequestId = null;
@@ -400,6 +418,11 @@ function providerMessage(event) {
       // This is a native turn event, not a phrase/keyword match on captions.
       cancelAutomaticEnd(active);
     } else if (typeof data.turn.id === "string" && data.turn.id.trim()) {
+      active.nativeAssistantPlayback ??= new Map();
+      active.currentNativeAssistantTurnId = data.turn.id;
+      active.nativeAssistantPlayback.set(data.turn.id, { originUserTurnId: active.latestNativeUserTurnId,
+        terminalAt: null, audioObserved: false, quietSince: null, lastSampleAt: null });
+      if (active.nativeAssistantPlayback.size > 32) active.nativeAssistantPlayback.delete(active.nativeAssistantPlayback.keys().next().value);
       active.duplex.notifyAssistantTurnCreated(data.turn.id, at);
       const request = active.endRequests?.get(active.endNativeRequestId);
       if (request && !request.invalidated && (!request.backendPath || request.accepted && request.providerObserved)) {
@@ -410,6 +433,8 @@ function providerMessage(event) {
   }
   if (active && data.type === "turn.done" && data.turn?.role === "assistant") {
     const at = performance.now();
+    const played = active.nativeAssistantPlayback?.get(data.turn.id);
+    if (played) played.terminalAt = at;
     duplexDiagnostic(active, { type: "native-turn-done", at, role: "assistant" });
     if (typeof data.turn.id === "string" && data.turn.id.trim())
       active.duplex.notifyAssistantTurnDone(data.turn.id, at);

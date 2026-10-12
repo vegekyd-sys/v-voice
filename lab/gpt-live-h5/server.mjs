@@ -286,7 +286,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       if (typeof item.payload.originUserTurnId === "string") message.originUserTurnId = item.payload.originUserTurnId;
       if (item.payload.source === "backend_model_client_tool") {
         message.source = item.payload.source;
-        for (const field of ["nativeDelegationId", "backendRunId", "backendToolCallId", "status"])
+        for (const field of ["nativeDelegationId", "backendRunId", "backendToolCallId", "status", "nativeAssistantTurnIdAtAcceptance"])
           if (typeof item.payload[field] === "string") message[field] = item.payload[field];
         if (Number.isSafeInteger(item.payload.delegationGeneration)) message.delegationGeneration = item.payload.delegationGeneration;
       }
