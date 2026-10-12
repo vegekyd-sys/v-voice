@@ -3,6 +3,7 @@ import {createJevEvaluator} from '../voice-decision-router.mjs';
 // A dedicated, fail-closed call action. It never selects business tools or
 // touches Agent jobs. Only finalized provider transcripts enter this controller.
 export function callControlEvaluatorFromEnv(env=process.env){
+ if(env.VOICE_HOST_CALL_CONTROL!=='1')return null;
  const apiKey=env.VOICE_CALL_CONTROL_API_KEY??env.VOICE_JEV_API_KEY??env.OPENROUTER_API_KEY;
  if(!apiKey)return null;
  return createJevEvaluator({apiKey,model:env.VOICE_CALL_CONTROL_MODEL??'openai/gpt-6-luna-decisions',timeoutMs:1800});
