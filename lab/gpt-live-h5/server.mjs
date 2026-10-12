@@ -331,8 +331,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const token = String(config.gateway.auth.token).replace(/\$\{([^}]+)\}/gu, (_, key) => process.env[key] ?? "");
     const { GatewayClient } = await import("../../lib/gateway-client.mjs");
     await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("Candidate Gateway unavailable")), 15000);
-      gateway = new GatewayClient({ url: `ws://127.0.0.1:${config.gateway.port}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", scopes: ["operator.read", "operator.write", "operator.admin"], caps:["voice-direct-tools","tool-events"], onHelloOk: () => { clearTimeout(timeout); resolve(); }, onEvent: (event) => bridge?.emit(event), onConnectError: (error) => { clearTimeout(timeout); reject(error); } }); gateway.start();
+      const timeout = setTimeout(() => { gateway?.stop(); reject(new Error("Gateway startup timed out")); }, 60000);
+      gateway = new GatewayClient({ url: `ws://127.0.0.1:${config.gateway.port}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", scopes: ["operator.read", "operator.write", "operator.admin"], caps:["voice-direct-tools","tool-events"], onHelloOk: () => { clearTimeout(timeout); resolve(); }, onEvent: (event) => bridge?.emit(event), onConnectError: (error) => {
+        if(error.code === "UNAVAILABLE" && error.retryable === true) return;
+        clearTimeout(timeout); gateway?.stop(); reject(error);
+      } }); gateway.start();
     });
     const {createDirectVoiceService}=await import('../realtime-direct-tools/session.mjs');
     const wsModule=await import('ws');
