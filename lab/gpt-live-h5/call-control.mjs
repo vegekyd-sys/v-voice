@@ -25,7 +25,7 @@ export function createVoiceCallControl({evaluate,onAccepted=()=>{},audit=()=>{},
     const end=answer?.answers?.endIntent;
     audit({type:'voice.call-control.decision',revision:own,selected:end?.type==='noul'&&Number.isFinite(end.noul)&&end.noul>=.97&&end.noul<=1});
     if(end?.type!=='noul'||!Number.isFinite(end.noul)||end.noul<.97||end.noul>1||accepted)return;
-    accepted=true;onAccepted({type:'voice.end.accepted',source:'voice_host_control',requestId:randomUUID(),revision:own,userText:text.trim(),closeAfterPlayback:true});
+    accepted=true;await onAccepted({type:'voice.end.accepted',source:'voice_host_control',requestId:randomUUID(),revision:own,userText:text.trim(),closeAfterPlayback:true});
    }catch{audit({type:'voice.call-control.unavailable',revision:own});}
   },
   close(){closed=true;++revision;pending?.abort();},

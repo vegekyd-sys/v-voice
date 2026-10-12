@@ -176,8 +176,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
             return json(res, 409, { error: "候选语音配置与 GPT Live 实验不匹配" });
           }
           const owned=context.active;
-          owned.callControl=createVoiceCallControl({evaluate:callControlEvaluate,audit:event=>callControlAudit({...event,voiceSessionId:owned.reservation.voiceSessionId}),isCurrent:()=>context.active===owned,onAccepted:value=>{
+          owned.callControl=createVoiceCallControl({evaluate:callControlEvaluate,audit:event=>callControlAudit({...event,voiceSessionId:owned.reservation.voiceSessionId}),isCurrent:()=>context.active===owned,onAccepted:async value=>{
             if(context.active!==owned)return;
+            const proof=await gateway.request('voice.product.control',{clientSecret:owned.reservation.clientSecret,mode:'end'},{timeoutMs:3000});
+            if(proof?.ok!==true||context.active!==owned)return;
             const message={...value,voiceSessionId:owned.reservation.voiceSessionId,revision:++owned.presentation.revision};
             owned.presentation.controls.push(message);if(owned.presentation.controls.length>64)owned.presentation.controls.shift();
             for(const response of context.listeners)response.write(`data: ${JSON.stringify(message)}\n\n`);

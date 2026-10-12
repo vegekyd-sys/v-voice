@@ -1161,9 +1161,9 @@ test('Voice host hangup binds the complete current user turn and waits for actua
  const accepted={voiceSessionId:'voice-1',type:'voice.end.accepted',source:'voice_host_control',requestId:'host-1',userText:'今天就这样，拜拜',closeAfterPlayback:true};
  f.eventSources[0].onmessage({data:JSON.stringify(accepted)});assert.equal(f.body.dataset.callState,'connected','an incomplete turn is not end authority');
  send({type:'turn.done',turn:{role:'user',id:'u-host',transcript:'今天就这样，拜拜'}});
- assert.equal(f.body.dataset.callState,'ending');assert.equal(sent.length,1);assert.equal(peer.closed,false);
+ assert.equal(f.body.dataset.callState,'ending');assert.equal(sent.length,1);assert.equal(sent[0].content[0].type,'input_text');assert.match(sent[0].content[0].text,/再见，下次聊/);assert.equal(peer.closed,false);
  await peer.ontrack({track:track()});send({type:'turn.created',turn:{role:'assistant',id:'bye-host'}});f.meter(50,0,.1);
- send({type:'turn.done',turn:{role:'assistant',id:'bye-host',transcript:'拜拜'}});
+ send({type:'turn.done',turn:{role:'assistant',id:'bye-host',transcript:'再见，下次聊。'}});
  for(let at=100;at<=950;at+=50)f.meter(at,0,0);
  await tick();assert.equal(peer.closed,true);
 });
