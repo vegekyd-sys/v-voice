@@ -1182,3 +1182,9 @@ test('host farewell can finish the existing assistant turn without borrowing ear
  f.meter(100,0,.1);send({type:'turn.done',turn:{role:'assistant',id:'open',transcript:'好的，再见。再见，下次聊。'}});
  for(let at=150;at<=1000;at+=50)f.meter(at,0,0);await tick();assert.equal(peer.closed,true);
 });
+
+test('native caller barge-in retires a played reply plan without muting or cancelling work',async t=>{
+ const f=await fixture(t);await f.context.startCall();const peer=f.peers[0];peer.connectionState='connected';peer.onconnectionstatechange();const send=x=>peer.channel.onmessage({data:JSON.stringify(x)}),sent=[];peer.channel.readyState='open';peer.channel.send=x=>sent.push(JSON.parse(x));await peer.ontrack({track:track()});
+ send({type:'turn.created',turn:{role:'assistant',id:'actual-final'}});f.meter(50,0,.1);send({type:'turn.created',turn:{role:'user',id:'interrupt'}});
+ assert.equal(sent.length,1);assert.equal(sent[0].type,'session.context.append');assert.equal(sent[0].channel,'commentary');assert.match(sent[0].content[0].text,/permanently retired/);assert.equal(peer.closed,false);
+});

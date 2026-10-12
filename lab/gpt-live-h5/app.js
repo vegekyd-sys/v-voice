@@ -426,6 +426,11 @@ function providerMessage(event) {
     const at = performance.now();
     duplexDiagnostic(active, { type: "native-turn-created", at, role: data.turn.role });
     if (data.turn.role === "user") {
+      const old=active.nativeAssistantPlayback?.get(active.currentNativeAssistantTurnId);
+      if(old?.audioObserved&&(old.terminalAt===null||at-old.terminalAt<250)&&active.channel?.readyState==='open'){
+        active.channel.send(JSON.stringify({type:'session.context.append',channel:'commentary',content:[{type:'input_text',text:'The caller has interrupted the previous spoken reply. Its remaining speech plan is permanently retired, including any backend result reading. Never resume or append that old answer after the caller finishes. Respond only to the latest caller turn. This is silent host state, not a request to speak or cancel backend work.'}]}));
+        duplexDiagnostic(active,{type:'native-speech-plan-retired',at,turnId:active.currentNativeAssistantTurnId});
+      }
       active.nativeAssistantPlayback?.clear(); active.currentNativeAssistantTurnId = null;
       active.completedNativeUserText=null;
       active.latestNativeUserTurnId = typeof data.turn.id === "string" ? data.turn.id : null;
