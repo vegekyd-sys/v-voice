@@ -624,5 +624,11 @@ test('long backend document keeps full paired history but commits only short spe
  const text='## 全文\n'+'日期和限定。'.repeat(100),spokenText='结果在屏幕上，可以整理成文档发给你。';
  bridge.completeBackgroundTool('doc',{result:text},{spokenText,displayedFullResult:true});bridge.completeBackgroundTool('doc',{result:text},{spokenText,displayedFullResult:true});
  const history=socket.sent.find(x=>x.items?.length===2);assert.equal(history.items[1].content[0].text,text);
- assert.deepEqual(socket.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text),[spokenText]);assert(!texts.some(x=>x[1]===text));bridge.close();
+ assert.deepEqual(socket.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text),[spokenText]);assert(!texts.some(x=>x[1]===text));
+ assert.equal(texts.length,0,'Submitting the summary is not proof it played');
+ socket.message({type:'response.output_audio.started',response_id:'summary',tts_type:'chat_tts_text'});
+ assert.equal(texts.length,0);
+ socket.message({type:'response.output_audio.delta',response_id:'summary',delta:floatAudio([.1])});
+ socket.message({type:'response.output_audio.delta',response_id:'summary',delta:floatAudio([.2])});
+ assert.deepEqual(texts,[['assistant',spokenText,true,'V-backend-summary']]);bridge.close();
 });

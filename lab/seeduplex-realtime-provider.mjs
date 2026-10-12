@@ -444,6 +444,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.request.onClearAudio?.("reconnecting");
     this.responseActive = false;
     this.pendingGreeting = null;
+    this.pendingSpeechCaption = null;
     this.#diagnostic({stage:"reconnecting",attempt:this.reconnectAttempts.length});
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -475,11 +476,12 @@ export class SeeduplexRealtimeVoiceBridge {
       {role:"assistant",content:[{type:"input_text",text}]},
     ]});
     if (!options.displayedFullResult) this.request.onTranscript?.("assistant", text, true, "V-backend");
-    this.speakProgress(options.spokenText ?? text);
+    this.speakProgress(options.spokenText ?? text, { caption: options.displayedFullResult === true });
   }
 
-  speakProgress(text) {
+  speakProgress(text, { caption = false } = {}) {
     if (this.terminal || (!this.ready && !this.reconnecting)) return;
+    this.pendingSpeechCaption = caption ? { text, started: false, responseId: null } : null;
     this.injectedSpeech = true;
     this.responseActive = true;
     this.outputClosed = false;
@@ -533,6 +535,7 @@ export class SeeduplexRealtimeVoiceBridge {
    */
   #cancelUpstreamResponse(force = false) {
     this.bargeInPending = false;
+    this.pendingSpeechCaption = null;
     if (!this.ready || this.cancelledOutputPending || (!this.responseActive && !force)) return;
     this.cancelledOutputPending = true;
     const retiredId = this.audioResponseId ?? this.responseOwnerId;
@@ -676,6 +679,14 @@ export class SeeduplexRealtimeVoiceBridge {
       this.outputClosed = false;
       this.responseActive = true;
       this.audioResponseId = responseId;
+      const caption = this.pendingSpeechCaption;
+      if (caption) {
+        if (event.tts_type === "chat_tts_text" && !caption.started) {
+          caption.started = true; caption.responseId = responseId;
+        } else if (event.tts_type === "default" || responseId !== caption.responseId) {
+          this.pendingSpeechCaption = null;
+        }
+      }
       if (this.pendingGreeting) {
         if (event.tts_type === "chat_tts_text" && !this.pendingGreeting.started) {
           this.pendingGreeting.started = true;
@@ -831,6 +842,13 @@ export class SeeduplexRealtimeVoiceBridge {
     ) {
       try {
         const audio = decodeSeeduplexFloat32Pcm(event.delta);
+        const caption = this.pendingSpeechCaption;
+        if (audio.length && caption?.started &&
+          (!responseId || responseId === caption.responseId) &&
+          (this.audioResponseId ?? responseId ?? null) === caption.responseId) {
+          this.pendingSpeechCaption = null;
+          this.request.onTranscript?.("assistant", caption.text, true, "V-backend-summary");
+        }
         const greeting = this.pendingGreeting;
         if (audio.length && greeting?.started &&
           (!responseId || responseId === greeting.responseId) &&
@@ -848,6 +866,7 @@ export class SeeduplexRealtimeVoiceBridge {
     }
     if (type === "response.output_audio.done") {
       this.pendingGreeting = null;
+      this.pendingSpeechCaption = null;
       this.request.onAudioSegmentDone?.();
       const continuing = this.toolBatches.find(
         (batch) =>
