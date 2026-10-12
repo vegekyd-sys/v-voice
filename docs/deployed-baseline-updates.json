@@ -56,6 +56,26 @@
     {
       "path": "lab/seeduplex-realtime-provider.mjs",
       "sha256": "b37a587e86988a0829ee98680657ce146079a77150744e360bb5adf4336f0c48"
+    },
+    {
+      "path": "lab/gpt-live-h5/content-view.mjs",
+      "sha256": "6ff1ee1a94b28066e25002993593b048af0d8e99b265ae901d680f55518a7bf9"
+    },
+    {
+      "path": "lab/gpt-live-h5/content-view.test.mjs",
+      "sha256": "e4636455e6192a2c051fddec2ac2f71c8969fc0a41a9ab4711a55cecf3a9b7d9"
+    },
+    {
+      "path": "lab/gpt-live-h5/product-controls.mjs",
+      "sha256": "80a848c835bc61258ced54a121ea652c6f909dfa266e1a5b3b5f04de1f35d28e"
+    },
+    {
+      "path": "lab/gpt-live-h5/product-controls.test.mjs",
+      "sha256": "d2aef6cd0a12dc1f68cfd3628d6197938f07c989329fb044021f272dc22be612"
+    },
+    {
+      "path": "lab/gpt-live-h5/avatar-approved-reactions.test.mjs",
+      "sha256": "e0dfddee51bcfd56769b44acb37d31808f43391d47c1b28dfdb3646ebb1e89e1"
     }
   ]
 }

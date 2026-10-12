@@ -160,7 +160,7 @@ export function decodeSeeduplexFloat32Pcm(encoded) {
 async function createDefaultWebSocket(url, options) {
   // production-worker is a sibling of the pinned OpenClaw runtime. Keeping the
   // dependency inside that runtime avoids a second, independently drifting ws.
-  const { WebSocket } = await import("../openclaw/node_modules/ws/wrapper.mjs");
+  const { WebSocket } = await import("ws");
   return new WebSocket(url, options);
 }
 
