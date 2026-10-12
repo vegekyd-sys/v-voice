@@ -5,6 +5,7 @@ import vm from "node:vm";
 import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 import { createPageMicrophoneSession } from "./microphone-session.mjs";
+import { createScreenWakeLock } from "./screen-wake-lock.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 
 const appSource = readFileSync(new URL("./app.js", import.meta.url), "utf8")
@@ -72,6 +73,7 @@ async function fixture(t, options = {}) {
   const timeouts = new Map();
   let timerId = 0;
   let sessionId = 0;
+  let relayTurnId = 0;
   let now = 0;
   const levels = { microphone: 0, remote: 0 };
   class Peer {
@@ -107,7 +109,13 @@ async function fixture(t, options = {}) {
     close() { this.closed = true; }
   }
   const context = vm.createContext({
-    renderMarkdown: (target,text) => { target.textContent = text; }, createTranscriptPresentation, createPageMicrophoneSession, createAvatarTasks, ACTIVITY_LABELS,
+    renderMarkdown: (target,text) => { target.textContent = text; }, createTranscriptPresentation, createPageMicrophoneSession, createScreenWakeLock, createAvatarTasks, ACTIVITY_LABELS,
+    createContentView: () => options.contentView,
+    mountProductControls: () => ({ callState() {}, refreshModels() {} }),
+    createRelayAudio: values => options.relayFactory(values),
+    mountAvatar: () => options.avatar,
+    createAvatarReactions: () => options.reactions,
+    crypto: { randomUUID: () => `relay-turn-${++relayTurnId}` },
     createAvatarTelemetry: values=>options.telemetry?.(values)??{close(){},decision(){},display(){}},
     AbortSignal,
     AbortController,
@@ -117,9 +125,11 @@ async function fixture(t, options = {}) {
     },
     createH5DuplexPlaybackGate: values => createH5DuplexPlaybackGate({...values, mode: options.playbackMode ?? values.mode}),
     performance: { now: () => now },
-    document: { body, getElementById: element, createElement: () => new Element() },
+    document: { body, getElementById: element, createElement: () => new Element(),
+      ...(options.contentView ? { querySelector: () => null } : {}) },
     URLSearchParams,
     window: {
+      ...(options.avatar ? { Image: function Image() {} } : {}),
       location: { hash: options.hash ?? "", pathname: "/voice/", search: options.search ?? "" },
       history: { replaceState: (...args) => options.replaceState?.(...args) },
       addEventListener: (type, listener) => pageEvents.set(type, listener),
@@ -1006,6 +1016,66 @@ test('full backend document renders separately from spoken caption and retired c
  await f.context.stopCall();await f.context.startCall();old.onmessage({data:JSON.stringify(e)});assert.equal(history.children.length,0);
 });
 
+test('relay greeting text appears in chat and reaches avatar context, with retired-call captions rejected', async t => {
+ let relay;const snapshots=[];
+ const f=await fixture(t,{
+  api:(route,payload,result)=>route==='session'?{...result,transport:'gateway-relay',provider:'seeduplex'}:result,
+  relayFactory:values=>{relay=values;return {start:async()=>{},dispose(){}};},
+  avatar:{show(){},select(){},attend(){},context(){return {}; }},
+  reactions:{update:values=>snapshots.push(values.snapshot),dispose(){}},
+ });
+ await f.context.startCall();
+ const text='天意，你好，我是 V，在呢。';
+ relay.onEvent({type:'transcript',role:'assistant',text,final:true,source:'greeting'});
+ assert.equal(f.element('transcriptHistory').children.length,1);
+ assert.equal(f.element('transcriptHistory').children[0].parts.text.textContent,text);
+ assert.equal(f.body.dataset.conversation,'started');
+ assert.equal(snapshots.at(-1).history[0].text,text);
+ await f.context.stopCall();
+ relay.onEvent({type:'transcript',role:'assistant',text,final:true,source:'greeting'});
+ assert.equal(f.body.dataset.conversation,'empty');
+ assert.equal(f.element('transcriptHistory').children.length,0);
+});
+
+test('hangup returns to the initial empty entry and late call events cannot restore chat or reports', async t => {
+ let resets = 0;
+ const f = await fixture(t, { contentView: {
+   reset() { resets++; },
+   render(target, item) { target.textContent = item.text; },
+ } });
+ await f.context.startCall();
+ const old = f.eventSources[0], channel = f.peers[0].channel;
+ channel.onmessage({data: JSON.stringify({type:'output_transcript.added',item:{id:'spoken',text:'我查到了。'}})});
+ const result = {voiceSessionId:'voice-1',type:'backend.result',callId:'doc',text:'## 完整方案\n实际查询结果'};
+ old.onmessage({data: JSON.stringify(result)});
+ assert.equal(f.body.dataset.conversation, 'started');
+ assert.equal(f.element('transcriptHistory').children.length, 1);
+ assert.equal(f.element('transcriptCurrentRows').children.length, 1);
+ f.element('steerText').value = '未发送的补充';
+ f.element('conversation').scrollTop = 200;
+ const before = resets;
+ await f.context.stopCall();
+ assert.equal(resets, before + 1, 'Hangup closes and clears the current content reader');
+ assert.equal(f.body.dataset.callState, 'idle');
+ assert.equal(f.body.dataset.conversation, 'empty');
+ assert.equal(f.element('transcriptHistory').children.length, 0);
+ assert.equal(f.element('transcriptCurrentRows').children.length, 0);
+ assert.equal(f.element('transcriptCurrent').hidden, true);
+ assert.equal(f.element('conversation').scrollTop, 0);
+ assert.equal(f.element('steerText').value, '');
+ assert.equal(f.element('start').hidden, false);
+ assert.equal(f.element('start').disabled, false);
+ assert.equal(f.element('stop').hidden, true);
+ old.onmessage({data: JSON.stringify(result)});
+ channel.onmessage({data: JSON.stringify({type:'output_transcript.added',item:{id:'late',text:'旧通话迟到的回复'}})});
+ assert.equal(f.body.dataset.conversation, 'empty');
+ assert.equal(f.element('transcriptHistory').children.length, 0);
+ assert.equal(f.element('transcriptCurrentRows').children.length, 0);
+ await f.context.startCall();
+ assert.equal(f.body.dataset.conversation, 'empty');
+ assert.equal(f.peers.length, 2);
+});
+
 
 test('native snapshot recovers actual task and full Markdown without SSE, but an old voice cannot change a redial',async t=>{
  let response={voiceSessionId:'voice-1',revision:1,pending:[{type:'tool.call',callId:'pending',name:'openclaw_agent_consult'}],documents:[]};
@@ -1034,4 +1104,20 @@ test('snapshot carries only current real end-tool acceptance and rejection throu
 test('avatar recorder uses exact voice owner and public snapshot, sends keepalive batches, and does not delay stop',async t=>{
  let values,closed=0;const pending=deferred();const f=await fixture(t,{telemetry:v=>{values=v;return {close(){closed++;},display(){},decision(){}};},api:(route,payload,result,init)=>{if(route==='avatar-events'){assert.equal(payload.voiceSessionId,'voice-1');assert.equal(init.keepalive,true);return pending.promise;}return result;}});
  await f.context.startCall();assert(values);const sending=values.send({captureId:'11111111-1111-4111-8111-111111111111',events:[]});await f.context.stopCall();assert.equal(closed,1);assert(f.requests.some(r=>r.route==='close'));pending.resolve({accepted:0});await sending;
+});
+
+
+test("connection progress lives in the pill while a busy rejection remains an actionable notice", async t => {
+  const session = deferred();
+  const f = await fixture(t, { api: (route, payload, result) => route === "session" ? session.promise : result });
+  const starting = f.context.startCall();
+  await tick();
+  assert.equal(f.body.dataset.callState, "dialing");
+  assert.equal(f.element("badge").textContent, "连接中");
+  assert.equal(f.element("status").dataset.notice, "progress");
+  session.reject(new Error("正在连接 V，请稍等。"));
+  await starting;
+  assert.equal(f.body.dataset.callState, "idle");
+  assert.equal(f.element("status").dataset.notice, "message");
+  assert.equal(f.element("status").textContent, "正在连接 V，请稍等。");
 });

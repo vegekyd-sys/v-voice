@@ -1,8 +1,8 @@
 import { marked } from './vendor/marked-18.0.5.mjs';
 
-// Build DOM from Markdown tokens, never from model-supplied HTML. Images stay
-// text so viewing a private answer cannot cause an external image request.
-export function renderMarkdown(target, text, document = target.ownerDocument) {
+// Build DOM from Markdown tokens, never from model-supplied HTML. Media is
+// inert by default; an opened reader may supply its validated media renderer.
+export function renderMarkdown(target, text, document = target.ownerDocument, options = {}) {
   const fragment = document.createDocumentFragment();
   const add = (parent, tag, tokens) => {
     const node = document.createElement(tag); parent.append(node);
@@ -15,6 +15,8 @@ export function renderMarkdown(target, text, document = target.ownerDocument) {
         case 'codespan': add(parent, 'code').textContent = token.text; break;
         case 'br': add(parent, 'br'); break;
         case 'link': {
+          const media = options.media?.(token.href);
+          if (media) { parent.append(media); break; }
           let url; try { url = new URL(token.href); } catch {}
           if (url && ['https:', 'http:', 'mailto:'].includes(url.protocol)) {
             const link = add(parent, 'a', token.tokens); link.href = url.href;
@@ -22,7 +24,10 @@ export function renderMarkdown(target, text, document = target.ownerDocument) {
           } else inline(parent, token.tokens ?? [{type:'text',text:token.text}]);
           break;
         }
-        case 'image': parent.append(document.createTextNode(token.text ?? '')); break;
+        case 'image': {
+          const media = options.media?.(token.href);
+          parent.append(media ?? document.createTextNode(token.text ?? '')); break;
+        }
         default:
           if (token.tokens) inline(parent, token.tokens);
           else parent.append(document.createTextNode(token.text ?? token.raw ?? ''));

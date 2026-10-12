@@ -1,0 +1,61 @@
+{
+  "sourceCommit": "6a5805db59de9e98cbe11cb26dc5eb75e87ffee9",
+  "files": [
+    {
+      "path": "lab/gpt-live-h5/avatar-state.mjs",
+      "sha256": "0553c1018abcc5889c9004f1341757b9f8f6c35b2d0b51a8c30cf940562db42e"
+    },
+    {
+      "path": "lab/gpt-live-h5/avatar-catalog.mjs",
+      "sha256": "78e585356b063d8dae79e9bca2e4e452d4b402f6ad306f647064a8a9a73e84f2"
+    },
+    {
+      "path": "lab/gpt-live-h5/result-presentation.mjs",
+      "sha256": "01fd936d91e6a8f859a9e0a7442a02f1efcbc5c175e4fca236314316773cd2d2"
+    },
+    {
+      "path": "lab/gpt-live-h5/server.mjs",
+      "sha256": "d9f5e50281920dc7d603ed24a9dad5ad94b75fab6765a664517922b093989581"
+    },
+    {
+      "path": "lab/gpt-live-h5/markdown.mjs",
+      "sha256": "a556476a8a88b35aba790f993a8bde333150aebab9dc7fdce14aa2e3c586ace0"
+    },
+    {
+      "path": "lab/gpt-live-h5/index.html",
+      "sha256": "d54a961abce6291699085f032182cfeb83dce46dd990793d34696d79e6a97eec"
+    },
+    {
+      "path": "lab/gpt-live-h5/app.js",
+      "sha256": "e803a458692dd0a296965f0f3971d03dcb4c6cbca9a424356fd4854e3d876cb4"
+    },
+    {
+      "path": "lab/gpt-live-h5/styles.css",
+      "sha256": "a454a792e512c69808c14dd7c5b88260d207b8e2569c9f3caaeca2ce13774f49"
+    },
+    {
+      "path": "lab/gpt-live-h5/transcript-presentation.mjs",
+      "sha256": "9a041e4103eaa7348dc63b903ce3bf57b1e5e247a99f855bd2300092211d2b79"
+    },
+    {
+      "path": "lab/realtime-direct-tools/session.mjs",
+      "sha256": "d77a7caff4ebbc2cd76edc0c70cce65000a37b9214cba25423584e57316b6b54"
+    },
+    {
+      "path": "lab/realtime-direct-tools/transcript-log.mjs",
+      "sha256": "8b4751b76d20d812a598435057f7af743e34ba475b64b3f6273cf82405dcd10c"
+    },
+    {
+      "path": "lab/realtime-direct-tools/backend.mjs",
+      "sha256": "7152e89572a3153bcfec2ed8cf7d4fce8558da5dc25c56a6aa9ae57b5c346868"
+    },
+    {
+      "path": "lab/realtime-direct-tools/tools.mjs",
+      "sha256": "4f2aaf820a75b8d60c89b56411e7dab98aca41d0c02ac90ce145243acb7d95f9"
+    },
+    {
+      "path": "lab/seeduplex-realtime-provider.mjs",
+      "sha256": "b37a587e86988a0829ee98680657ce146079a77150744e360bb5adf4336f0c48"
+    }
+  ]
+}

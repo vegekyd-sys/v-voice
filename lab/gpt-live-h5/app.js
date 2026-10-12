@@ -3,11 +3,14 @@ import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { createAvatarTelemetry } from "./avatar-telemetry.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
+import { createContentView } from "./content-view.mjs";
+import { mountProductControls } from "./product-controls.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 import { createPageMicrophoneSession } from "./microphone-session.mjs";
 import { createCallSounds } from "./call-sounds.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 import { createRelayAudio } from "./relay-audio.mjs";
+import { createScreenWakeLock } from "./screen-wake-lock.mjs";
 
 const $ = (id) => document.getElementById(id);
 let microphoneSession = createPageMicrophoneSession();
@@ -24,18 +27,25 @@ const playbackRecoveryMessage = "声音播放被暂停了，点一下页面恢�
 const greetingGraceMs = 15000;
 const presentation = createTranscriptPresentation();
 const renderedTurns = new Map();
+const contentView = document.querySelector ? createContentView(document, window) : null;
+const productControls = document.querySelector ? mountProductControls(document, window, {
+  onMute: muted => { if (!call?.stream) return false; for (const track of call.stream.getAudioTracks()) track.enabled = !muted; return true; },
+}) : null;
 const tasks = createAvatarTasks();
 const avatar = typeof window.Image === "function" ? mountAvatar(document, window, {owner:()=>call?.voiceSessionId,onDisplayed:event=>call?.avatarTelemetry?.display(event)}) : null;
 const sceneAnimations = new Map();
+const screenWakeLock = createScreenWakeLock({ navigator, document, onState: state => { document.body.dataset.screenWakeLock = state; } });
 function setCallState(state) {
+  screenWakeLock.setActive(state !== 'idle');
   if (document.body.dataset.callState === state) return;
-  const animate = window.matchMedia?.("(max-width: 900px)").matches
+  const animate = typeof window.matchMedia === "function"
     && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const elements = animate ? [document.querySelector?.(".portrait-wrap"), document.querySelector?.(".call-actions")].filter(Boolean) : [];
   const before = elements.map(element => element.getBoundingClientRect());
   for (const animation of sceneAnimations.values()) animation.cancel();
   sceneAnimations.clear();
   document.body.dataset.callState = state;
+  productControls?.callState(state);
   elements.forEach((element, index) => {
     const from = before[index], to = element.getBoundingClientRect();
     if (!from.width || !to.width || typeof element.animate !== "function") return;
@@ -49,9 +59,11 @@ function setCallState(state) {
     animation.onfinish = () => { if (sceneAnimations.get(element) === animation) sceneAnimations.delete(element); };
   });
 }
-const setStatus = (text) => {
+const setStatus = (text, { tone = "info" } = {}) => {
   $("status").textContent = text;
-  $("status").dataset.notice = text === "拨号后，直接说话。" ? "normal" : "message";
+  $("status").dataset.tone = tone;
+  $("status").dataset.notice = ["拨号后，直接说话。", "V 正在听，直接说话就好"].includes(text) ? "normal"
+    : ["正在连接 V…", "正在结束通话…"].includes(text) ? "progress" : "message";
 };
 function duplexDiagnostic(active, entry) {
   if (call !== active) return;
@@ -346,10 +358,11 @@ function renderTranscript(snapshot) {
       if (row.parts.time.textContent !== item.time) row.parts.time.textContent = item.time;
       const dateTime = new Date(item.at).toISOString();
       if (row.parts.time.dateTime !== dateTime) row.parts.time.dateTime = dateTime;
-      if (row.rawText !== item.text) {
-        if (item.role === "assistant") renderMarkdown(row.parts.text, item.text, document);
+      if (row.rawText !== item.text || row.complete !== item.complete) {
+        if (item.role === "assistant" && contentView) contentView.render(row.parts.text, item, {auto:item.document === true});
+        else if (item.role === "assistant") renderMarkdown(row.parts.text, item.text, document);
         else row.parts.text.textContent = item.text;
-        row.rawText = item.text;
+        row.rawText = item.text; row.complete = item.complete;
       }
       if (parent.children[index] !== row) parent.insertBefore(row, parent.children[index] ?? null);
     }
@@ -358,7 +371,7 @@ function renderTranscript(snapshot) {
   avatarContext(snapshot);
 }
 function resetTranscript() {
-  presentation.reset(); renderedTurns.clear();
+  contentView?.reset(); presentation.reset(); renderedTurns.clear();
   $("transcriptHistory").replaceChildren(); $("transcriptCurrentRows").replaceChildren();
   renderTranscript(presentation.snapshot());
 }
@@ -409,7 +422,7 @@ function providerMessage(event) {
     active.duplex.notifyOutputAudioCleared(at);
   }
   renderTranscript(presentation.consume(data, Date.now()));
-  if (data.type === "error") setStatus("语音服务报告错误，请结束通话后重试。");
+  if (data.type === "error") setStatus("语音服务报告错误，请结束通话后重试。", { tone: "error" });
 }
 async function stopCall() {
   const active = call; call = null;
@@ -431,8 +444,10 @@ async function stopCall() {
   $("remoteAudio").srcObject = null;
   $("remoteAudio").muted = false;
   tasks.clear(); taskState(); document.body.dataset.voiceState = "idle";
+  resetTranscript();
+  $("conversation").scrollTop = 0;
+  $("steerText").value = "";
   setCallState("idle");
-  renderTranscript(presentation.snapshot());
   $("start").hidden = false; $("start").disabled = false; $("stop").hidden = true;
   $("steerText").disabled = true; $("steer").disabled = true;
   $("badge").textContent = liveReady ? "可以拨号" : "页面预览";
@@ -448,7 +463,7 @@ async function startCall() {
   if (starting || call) return;
   if (!liveReady) { setStatus(entryError ?? "当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
   $("start").disabled = true; $("start").hidden = true; $("stop").hidden = false;
-  $("stopLabel").textContent = "取消拨号"; $("badge").textContent = "拨号中";
+  $("stopLabel").textContent = "取消拨号"; $("badge").textContent = "连接中";
   setCallState("dialing"); setStatus("正在连接 V…");
   resetTranscript();
   const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController() }; call = active; starting = active;
@@ -518,7 +533,7 @@ async function startCall() {
       await active.contextResume;
       if(call!==active)return;
       active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,
-        onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message));},
+        onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message, { tone: "error" }));},
         onClosed:()=>{if(call===active)void stopCall();},
         onPlaybackActivity:speaking=>{if(call===active)document.body.dataset.voiceState=speaking?'speaking':'listening';},
         onEvent:value=>{
@@ -529,6 +544,8 @@ async function startCall() {
           if(value.type.startsWith('tool.'))taskState();
           if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
           if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
+          if(value.type==='provider.reconnecting')setStatus('正在恢复语音连接…');
+          if(value.type==='provider.recovered')setStatus('V 正在听，直接说话就好');
           if(value.type==='transcript') {
             active.relayTurns??={};
             const id=active.relayTurns[value.role]??=crypto.randomUUID();
@@ -669,7 +686,7 @@ async function startCall() {
         $("steerText").disabled = false; $("steer").disabled = false;
         void greetWhenReady(active);
       } else if (["failed", "disconnected"].includes(active.pc.connectionState)) {
-        void stopCall().then(() => { if (!call) setStatus("连接已中断，可以重新开始通话。"); });
+        void stopCall().then(() => { if (!call) setStatus("连接已中断，可以重新开始通话。", { tone: "error" }); });
       }
     };
     await active.pc.setLocalDescription(await active.pc.createOffer());
@@ -686,28 +703,29 @@ async function startCall() {
     await active.pc.setRemoteDescription({ type: "answer", sdp: result.sdp });
     if (call !== active) return;
     active.heartbeat = setInterval(() => { if (call === active) void api("heartbeat", { voiceSessionId: active.voiceSessionId }).catch(() => {}); }, 15000);
-  } catch (error) { if (call === active) { await stopCall(); if (!call) setStatus(error.name === "NotAllowedError" ? "请允许麦克风访问后重试。" : error.message); } }
+  } catch (error) { if (call === active) { await stopCall(); if (!call) setStatus(error.name === "NotAllowedError" ? "请允许麦克风访问后重试。" : error.message, { tone: "error" }); } }
   finally { if (starting === active) starting = null; if (!call) $("start").disabled = false; }
 }
 $("start").addEventListener("click", startCall);
 $("stop").addEventListener("click", () => void stopCall());
 // A tap anywhere can restore browser playback. Never gate/stop the microphone
 // or cancel accepted work while requesting this user gesture.
-window.addEventListener("pointerdown", () => void recoverPlaybackGesture());
+window.addEventListener("pointerdown", () => { screenWakeLock.ensure(); void recoverPlaybackGesture(); });
 window.addEventListener("keydown", () => void recoverPlaybackGesture());
 $("steerForm").addEventListener("submit", async (event) => {
   event.preventDefault(); const text = $("steerText").value.trim(); if (!text || !call) return;
   const active = call;
-  try { await api("steer", { voiceSessionId: active.voiceSessionId, text, mode: "steer" }); if (call === active) { $("steerText").value = ""; setStatus("补充条件已交给 V 的后台任务。"); } }
-  catch (error) { if (call === active) setStatus(error.message); }
+  try { await api("steer", { voiceSessionId: active.voiceSessionId, text, mode: "steer" }); if (call === active) { $("steerText").value = ""; productControls?.sent(); setStatus("补充条件已交给 V 的后台任务。", { tone: "success" }); } }
+  catch (error) { if (call === active) setStatus(error.message, { tone: "error" }); }
 });
 $("cancel").addEventListener("click", async () => {
   if (!call) return;
   const active = call;
-  try { await api("steer", { voiceSessionId: active.voiceSessionId, text: "取消当前后台任务，不要继续执行。", mode: "cancel" }); if (call === active) setStatus("已请求取消后台任务。"); }
-  catch (error) { if (call === active) setStatus(error.message); }
+  try { await api("steer", { voiceSessionId: active.voiceSessionId, text: "取消当前后台任务，不要继续执行。", mode: "cancel" }); if (call === active) setStatus("已请求取消后台任务。", { tone: "success" }); }
+  catch (error) { if (call === active) setStatus(error.message, { tone: "error" }); }
 });
 window.addEventListener("pagehide", () => {
+  screenWakeLock.setActive(false);
   microphoneSession.close();
   const active = call;
   if (!active) return;
@@ -738,13 +756,18 @@ async function initializeEntry() {
       const option=[...$("voiceModel").options].find(o=>o.value===model.id);
       if(option)option.disabled=!model.available;
     }
+    const select = $("voiceModel");
+    if (select?.options && [...select.options].find(option => option.value === select.value)?.disabled) {
+      select.value = ['seeduplex', 'gpt-live', 'grok'].find(id => [...select.options].some(option => option.value === id && !option.disabled)) ?? select.value;
+    }
+    productControls?.refreshModels();
     $("badge").textContent = liveReady ? "可以拨号" : "页面预览";
     if (!liveReady) setStatus("这是页面预览，真实通话需连接候选服务。");
   } catch (error) {
     liveReady = false;
     entryError = error.message ?? "暂时无法连接 V，请稍后重试。";
     $("badge").textContent = "暂未连接";
-    setStatus(entryError);
+    setStatus(entryError, { tone: "error" });
   }
 }
 void initializeEntry();

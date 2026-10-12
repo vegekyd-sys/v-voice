@@ -2,12 +2,13 @@
 import {readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';
 import {resolve,dirname,join} from 'node:path';
 import {createHash} from 'node:crypto';import {execFileSync} from 'node:child_process';
+import {AVATAR_FILES} from '../lab/gpt-live-h5/avatar-state.mjs';
 const root=resolve(import.meta.dirname,'..');
 const run=(...args)=>execFileSync('git',['-C',root,...args],{encoding:'utf8'}).trim();
 if(run('status','--porcelain'))throw Error('Commit and test the exact source before packaging');
 const commit=run('rev-parse','HEAD');
 const baseline=JSON.parse(await readFile(join(root,'docs/migration-baseline.json'),'utf8'));
-const names=[...baseline.files.map(f=>f.path),'lib/gateway-client.mjs','lib/conversation-entries.mjs','package.json','package-lock.json'];
+const names=[...new Set([...baseline.files.map(f=>f.path),...AVATAR_FILES.map(n=>'lab/gpt-live-h5/assets/'+n),'lib/gateway-client.mjs','lib/conversation-entries.mjs','lab/gpt-live-h5/capability-policy.mjs','lab/gpt-live-h5/instructions.mjs','lab/gpt-live-h5/media-references.mjs','lab/gpt-live-h5/screen-wake-lock.mjs','lab/gpt-live-h5/avatar-approved-reactions.mjs','lab/realtime-direct-tools/lark-readonly.mjs','package.json','package-lock.json'])];
 const target=resolve(process.argv[2]??join(root,'artifacts',commit));
 await mkdir(dirname(target),{recursive:true});
 await mkdir(target,{recursive:false});

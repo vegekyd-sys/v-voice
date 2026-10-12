@@ -55,6 +55,8 @@ test('terminal wait reconciles only durable exact-run public text',async()=>{
   const f=fixture(async(method,args)=>{if(method==='agent.wait')return {status:'ok'};if(method==='chat.history')return {messages:[{role:'assistant',__openclaw:{runId:f.backend.snapshot().runId},text:'后台真实答案'},{role:'assistant',__openclaw:{runId:'other'},text:'另一个会话'}]};});
   assert.equal((await f.start()).result,'后台真实答案');
   assert.equal(visibleText({phase:'analysis',text:'不能公开'}),'');assert.equal(visibleText({phase:'commentary',text:'不是最终值'}),'');
+  assert.equal(visibleText({openclawStreamFallback:{source:'segment'},text:'图片已提交，现在开始做视频。'}),'');
+  assert.equal(visibleText({stopReason:'toolUse',content:[{type:'text',text:'现在运行Makaron。'},{type:'toolCall',name:'exec'}]}),'');
 });
 test('unconfirmed cancellation blocks another goal until exact-run termination is observed',async()=>{
   let cancelled=false,confirmed=false;const f=fixture(method=>method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:confirmed?'error':'timeout',aborted:confirmed}:new Promise(()=>{}));

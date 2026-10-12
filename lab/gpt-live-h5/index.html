@@ -1,75 +1,251 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#f6f1f8">
-  <title>和 V 通话</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='28'%3EV%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./styles.css">
-</head>
-<body data-voice-state="idle" data-avatar-state="idle" data-call-state="idle">
-  <main class="app-shell">
-    <header class="topbar">
-      <div class="connection-options"><label class="sr-only" for="voiceModel">语音模型</label><select id="voiceModel" class="voice-model" aria-label="语音模型"><option value="gpt-live">GPT Live</option><option value="seeduplex" disabled>豆包 · 小何</option><option value="grok" disabled>Grok Voice</option></select><span id="badge" class="connection-badge" role="status">连接中</span></div>
-    </header>
-    <div class="voice-layout">
-      <section class="voice-stage" aria-labelledby="voiceTitle">
-        <div class="ambient ambient-one" aria-hidden="true"></div>
-        <div class="ambient ambient-two" aria-hidden="true"></div>
-        <div class="portrait-wrap">
-          <span class="sound-ring ring-one"></span><span class="sound-ring ring-two"></span>
-          <div class="avatar-stack" aria-hidden="true">
-            <img width="512" height="512" decoding="async" fetchpriority="high" id="avatar" src="./assets/v-operator-idle-256.webp" alt="">
-            <img id="avatarPrevious" alt="" hidden>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#f6f3f9" />
+    <title>和 V 通话</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='28'%3EV%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body
+    data-voice-state="idle"
+    data-avatar-state="idle"
+    data-call-state="idle"
+    data-reading="false"
+  >
+    <main class="app-shell">
+      <div id="voiceLayout" class="voice-layout">
+        <section class="voice-stage" aria-label="V 的反应">
+          <div id="avatarHome">
+            <div id="portrait" class="portrait-wrap">
+              <span class="sound-ring ring-one"></span
+              ><span class="sound-ring ring-two"></span>
+              <div class="avatar-stack">
+                <img
+                  width="512"
+                  height="512"
+                  decoding="async"
+                  fetchpriority="high"
+                  id="avatar"
+                  src="./assets/v-operator-idle-256.webp"
+                  alt="V"
+                />
+                <img id="avatarPrevious" alt="" hidden />
+              </div>
+              <span class="presence-dot" aria-hidden="true"></span>
+            </div>
           </div>
           <a class="avatar-name" href="./" aria-label="V 通话首页">V</a>
-          <span class="presence-dot"></span>
-        </div>
-        <div class="voice-copy">
-          <h1 id="voiceTitle">和 V 通话</h1>
-          <p id="status" class="status-text" role="status">拨号后，直接说话。</p>
-        </div>
-        <div class="call-actions">
-          <button id="start" class="call-button call-start talk-button" type="button">
-            <span class="call-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m8.5 3.5 2.1 4.4-2.3 2.3a15.5 15.5 0 0 0 5.5 5.5l2.3-2.3 4.4 2.1v3a2 2 0 0 1-2.2 2C10.4 20 4 13.6 3.5 5.7a2 2 0 0 1 2-2.2h3Z"/></svg></span>
-            <span id="startLabel" class="button-label">拨号</span>
-          </button>
-          <button id="stop" class="call-button call-stop stop-button" type="button" hidden>
-            <span class="call-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3 11.8c5.1-4.4 12.9-4.4 18 0v3.7l-4.5.5-.7-3.2a12.3 12.3 0 0 0-7.6 0l-.7 3.2-4.5-.5v-3.7Z"/></svg></span>
-            <span id="stopLabel" class="button-label">结束通话</span>
-          </button>
-        </div>
-      </section>
-      <aside class="conversation-panel" aria-labelledby="conversationTitle">
-        <div class="conversation-heading">
-          <div class="conversation-title">
-            <h2 id="conversationTitle">对话</h2>
-            <span id="taskStatus" class="task-status" role="status"></span>
+          <h1 id="voiceTitle" class="sr-only">和 V 通话</h1>
+          <div class="call-actions">
+            <button
+              id="start"
+              class="call-button call-start talk-button"
+              type="button"
+              aria-label="拨号"
+              title="拨号"
+            >
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="m8.5 3.5 2.1 4.4-2.3 2.3a15.5 15.5 0 0 0 5.5 5.5l2.3-2.3 4.4 2.1v3a2 2 0 0 1-2.2 2C10.4 20 4 13.6 3.5 5.7a2 2 0 0 1 2-2.2h3Z"
+                /></svg
+              ><span id="startLabel" class="sr-only">拨号</span>
+            </button>
           </div>
-          <span class="wave-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        </section>
+        <aside class="conversation-panel" aria-label="聊天内容">
+          <div
+            id="conversation"
+            class="conversation"
+            role="log"
+            aria-label="通话内容"
+            aria-live="polite"
+            aria-relevant="additions text"
+          >
+            <div id="conversationEmpty" class="empty" hidden></div>
+            <div id="transcriptHistory" class="transcript-history"></div>
+            <section
+              id="transcriptCurrent"
+              class="transcript-current"
+              aria-label="正在说的内容"
+              hidden
+            >
+              <h3 id="currentLabel" class="sr-only">正在说</h3>
+              <div
+                id="transcriptCurrentRows"
+                class="transcript-current-rows"
+              ></div>
+            </section>
+          </div>
+          <div id="conversationFooter">
+            <div id="statusHome">
+              <p
+                id="status"
+                class="status-text"
+                data-notice="normal"
+                role="status"
+              >
+                拨号后，直接说话。
+              </p>
+            </div>
+            <div class="task-progress">
+              <span id="taskStatus" class="task-status" role="status"></span
+              ><button
+                id="cancel"
+                type="button"
+                hidden
+                disabled
+                aria-label="取消后台任务"
+                title="取消后台任务"
+              >
+                取消
+              </button>
+            </div>
+            <form id="steerForm" class="steer-form" data-open="false">
+              <label class="sr-only" for="steerText">补充内容</label
+              ><input
+                id="steerText"
+                placeholder="说点什么吧…"
+                maxlength="2000"
+                autocomplete="off"
+                disabled
+              />
+              <button
+                id="steer"
+                type="submit"
+                aria-label="发送补充内容"
+                disabled
+              >
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="m3 3 19 8-9 3-3 9-7-20Zm9 10L22 3" />
+                </svg>
+              </button>
+              <button
+                id="composerClose"
+                type="button"
+                aria-label="收起文字输入"
+              >
+                ×
+              </button>
+            </form>
+          </div>
+        </aside>
+      </div>
+      <div id="pillHome">
+        <div id="callPill" class="call-pill" aria-label="通话控制">
+          <div id="pillAvatar" class="pill-avatar">
+            <img
+              id="pillPortrait"
+              src="./assets/v-operator-idle-256.webp"
+              alt=""
+            />
+          </div>
+          <div class="model-picker">
+            <label class="sr-only" for="voiceModel">语音模型</label
+            ><select id="voiceModel" class="sr-only" aria-label="语音模型">
+              <option value="gpt-live">GPT Live</option>
+              <option value="seeduplex" selected disabled>豆包 SeedDuplex</option>
+              <option value="grok" disabled>Grok Voice</option>
+            </select>
+            <button
+              id="modelTrigger"
+              type="button"
+              aria-label="选择语音模型"
+              aria-haspopup="menu"
+              aria-expanded="false"
+            >
+              <span id="modelName">豆包 SeedDuplex</span
+              ><span aria-hidden="true">⌄</span>
+            </button>
+            <div
+              id="modelMenu"
+              class="model-menu"
+              role="menu"
+              aria-label="语音模型"
+              hidden
+            ></div>
+            <span id="badge" class="connection-badge" role="status"
+              >连接中</span
+            >
+          </div>
+          <button
+            id="textToggle"
+            type="button"
+            aria-label="打开文字输入"
+            aria-expanded="false"
+            aria-controls="steerForm"
+            hidden
+          >
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="2" y="5" width="20" height="14" rx="3" />
+              <path
+                d="M6 9h1m3 0h1m3 0h1m3 0h1M6 12h1m3 0h1m3 0h1m3 0h1M7 16h10"
+              />
+            </svg>
+          </button>
+          <button
+            id="mute"
+            type="button"
+            aria-label="静音麦克风"
+            aria-pressed="false"
+            hidden
+          >
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="9" y="2" width="6" height="13" rx="3" />
+              <path d="M6 10v2a6 6 0 0 0 12 0v-2M12 18v4m-4 0h8" />
+              <path class="mute-slash" d="m3 3 18 18" />
+            </svg>
+          </button>
+          <span id="mutedNotice" class="sr-only" role="status" hidden
+            >麦克风已静音</span
+          >
+          <button
+            id="stop"
+            class="call-button call-stop stop-button"
+            type="button"
+            hidden
+            aria-label="结束通话"
+            title="结束通话"
+          >
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M3 11.8c5.1-4.4 12.9-4.4 18 0v3.7l-4.5.5-.7-3.2a12.3 12.3 0 0 0-7.6 0l-.7 3.2-4.5-.5v-3.7Z"
+              /></svg
+            ><span id="stopLabel" class="sr-only">结束通话</span>
+          </button>
         </div>
-        <div id="conversation" class="conversation" role="log" aria-label="通话内容" aria-live="polite" aria-relevant="additions text">
-          <div id="conversationEmpty" class="empty"><p>拨号后，对话会显示在这里。</p></div>
-          <div id="transcriptHistory" class="transcript-history"></div>
-          <section id="transcriptCurrent" class="transcript-current" aria-label="正在说的内容" hidden>
-            <h3 id="currentLabel" class="current-label">正在说</h3>
-            <div id="transcriptCurrentRows" class="transcript-current-rows"></div>
-          </section>
-        </div>
-        <div class="live-controls">
-          <form id="steerForm" class="steer-form">
-            <label class="sr-only" for="steerText">补充内容</label>
-            <input id="steerText" placeholder="输入补充内容" maxlength="2000" autocomplete="off" disabled>
-            <button id="steer" class="steer-button" type="submit" disabled>补充</button>
-          </form>
-          <button id="cancel" class="cancel-task" type="button" hidden disabled>取消后台任务</button>
-        </div>
-      </aside>
-    </div>
-    <audio id="remoteAudio" autoplay playsinline></audio>
-    <audio id="callSound" preload="none" playsinline></audio>
-  </main>
-  <script type="module" src="./app.js"></script>
-</body>
+      </div>
+      <audio id="remoteAudio" autoplay playsinline></audio
+      ><audio id="callSound" preload="none" playsinline></audio>
+    </main>
+    <section
+      id="contentReader"
+      class="reader-layer"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="readerTitle"
+      hidden
+    >
+      <div id="readerBackdrop" class="reader-backdrop"></div>
+      <div id="readerMorph" class="reader-morph" hidden></div>
+      <article id="readerSurface" class="reader-surface">
+        <header class="reader-header">
+          <button id="readerBack" type="button" aria-label="收起内容">
+            ← 收起</button
+          ><span id="readerTitle"></span
+          ><a id="readerDownload" download>↓ 保存</a>
+        </header>
+        <div id="readerBody" class="reader-body markdown-body"></div>
+      </article>
+      <div id="readerDock" class="reader-dock"></div>
+    </section>
+    <script type="module" src="./app.js"></script>
+  </body>
 </html>

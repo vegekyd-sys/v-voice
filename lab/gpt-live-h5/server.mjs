@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import {GPT_LIVE_CALL_INSTRUCTIONS} from './instructions.mjs';
+import {V_FRONTEND_PERSONA} from './persona.mjs';
 import { randomUUID, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -11,6 +13,7 @@ import { createVoiceAccess } from "./access.mjs";
 import { createConversationEntries } from "../../lib/conversation-entries.mjs";
 import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
+import {createVoiceLarkReader} from '../realtime-direct-tools/lark-readonly.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -77,7 +80,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
-        ...["microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
+        ...["media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "product-controls.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
         ...AVATAR_FILES.map(name => [`/assets/${name}`, [join(here, "assets", name), name.endsWith(".webp") ? "image/webp" : "image/png"]]),
         ...["v-idle-nohat-20260922.png", "v-tool-busy-20260922.png"].map((name) => [`/assets/${name}`, [join(here, "../rtc-h5/assets", name), "image/png"]]),
@@ -165,7 +168,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
             rememberAvatarCall(context,context.active,params.model);
             return json(res,200,reservation);
           }
-          const reservation = await gateway.request("talk.client.create", { sessionKey, provider: "openai", model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
+          const reservation = await gateway.request("talk.client.create", { sessionKey, provider: "openai", model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"], voiceInstructions: `${GPT_LIVE_CALL_INSTRUCTIONS}\n\n${V_FRONTEND_PERSONA}` }, { timeoutMs: 45000 });
           context.active = { sessionKey, reservation, touchedAt: Date.now(), presentation: { revision: 0, pending: new Map(), documents: new Map(), controls: [] } };
           if (reservation.model !== "gpt-live-1-codex" || reservation.transport !== "webrtc" || reservation.offerUrl !== "/plugins/openai/realtime/calls") {
             await close(context);
@@ -340,7 +343,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     avatarLog=createAvatarTelemetryLog({directory:process.env.RTC_H5_AVATAR_LOG_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-avatar-events'),
       onError:({code})=>console.warn(JSON.stringify({type:'voice.avatar-write-error',code})),
     });
-    const directVoice=createDirectVoiceService({gateway,wsModule,
+    const lark=createVoiceLarkReader({environment:process.env});
+    const directVoice=createDirectVoiceService({gateway,wsModule,calendar:lark.calendar,larkRead:lark.read,
       audit:transcriptLog.audit,
       toolEnvironment:Object.fromEntries(["LARKSUITE_CLI_CONFIG_DIR","LARKSUITE_CLI_DATA_DIR"].filter(key=>process.env[key]).map(key=>[key,process.env[key]])),
       apiKeys:{

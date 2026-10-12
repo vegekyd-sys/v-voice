@@ -1,3 +1,4 @@
+import { APPROVED_REACTION_ADDITIONS } from './avatar-approved-reactions.mjs';
 // Hand-reviewed visual labels for every approved picture. One ID per pose,
 // shared by the Decision schema and browser. No model-generated file paths.
 const rows = {
@@ -116,6 +117,7 @@ const reactions = {
 };
 export const AVATAR_DIALOGUE_ACTIONS = Object.freeze({welcome:'欢迎',clarify:'好奇追问',empathize:'共情陪伴',acknowledge:'认真接话',reflect:'回想',consider:'斟酌',wonder:'好奇想象',explain:'解释分享',investigate:'探究细节',compare:'权衡',surprise:'轻松惊讶',encourage:'鼓励',organize:'整理',remind:'关心提醒',confirm:'确认',discover:'发现办法',celebrate:'庆祝',share:'共享收获','apologize-thank':'谦逊道歉或致谢',reassure:'安慰'});
 export const AVATAR_CATALOG = Object.freeze([
+ ...APPROVED_REACTION_ADDITIONS,
  {id:'idle',category:'welcome',scene:'idle',frame:0,label:'等待接听',action:'面向用户微笑招呼',emotions:'温暖、平静',contexts:'未拨号、等待、问候',avoid:'沉重倾诉'},
  ...Object.entries(rows).flatMap(([scene,poses])=>poses.map(([label,action,emotions,contexts,avoid],frame)=>{
   const [dialogue,affect,energy,gaze,gesture,family]=reactions[scene][frame];
@@ -144,4 +146,4 @@ const continuations={
  background:[['memory-4','background-3'],['memory-1','background-5'],['complete-0','memory-2'],['memory-0','listen-1'],['background-1','memory-4'],['memory-1','background-1']],
  complete:[['complete-1','complete-5'],['complete-0','complete-5'],['listen-4','complete-1'],['complete-5','listen-5'],['memory-3','web-2'],['listen-3','listen-5']],
 };
-export function avatarContinuationPlan(id){const p=avatarPicture(id);return p&&p.id!=='idle'?[...continuations[p.scene][p.frame]]:[];}
+export function avatarContinuationPlan(id){const p=avatarPicture(id);return p&&p.id!=='idle'?[...(p.continuations??continuations[p.scene][p.frame])]:[];}

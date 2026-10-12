@@ -3,7 +3,7 @@ import {constants} from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 
-/** Existing public text callbacks only. No PCM, protocol, tools or credentials. */
+/** Text and whitelisted connection diagnostics. No PCM, protocol or credentials. */
 export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},maxPending=256}={}) {
   if(!directory||!path.isAbsolute(directory))throw Error('An absolute private transcript directory is required');
   const captureId=randomUUID(),owners=new Map();
@@ -38,6 +38,14 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       return enqueue({...owners.get(id),type:'call.created'});
     }
     const owner=owners.get(id);if(!owner)return false;
+    if(event.type==='call.provider-status'){
+      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed'].includes(event.stage))return false;
+      const safe={stage:event.stage};
+      if(['configuration','input-timeout','upstream-transient','upstream-rejected','network','setup-timeout'].includes(event.category))safe.category=event.category;
+      if(typeof event.upstreamCode==='string'&&/^\d{3,8}$/.test(event.upstreamCode))safe.upstreamCode=event.upstreamCode;
+      for(const key of ['sessionAgeMs','attempt'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      return enqueue({...owner,type:event.type,...safe});
+    }
     if(event.type==='transcript'){
       if(!['user','assistant'].includes(event.role)||typeof event.text!=='string'||!event.text.trim()||typeof event.final!=='boolean')return false;
       // A delta remains a delta; interrupted speech need not produce final.
