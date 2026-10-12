@@ -15,6 +15,7 @@ import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
 import {createVoiceLarkReader} from '../realtime-direct-tools/lark-readonly.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
+import {voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, conversationEntries = [] }) {
@@ -355,7 +356,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       grok:process.env.XAI_API_KEY,
     },loadContext:async sessionKey=>{
       const history=await gateway.request('chat.history',{sessionKey,limit:6},{timeoutMs:10000});
-      return JSON.stringify((history.messages??[]).map(m=>({role:m.role,content:m.content}))).slice(-12000);
+      return voiceConversationContext(history.messages??[]);
     }});
     bridge = createLiveH5Server({ gateway,
       directVoice, avatarLog,
