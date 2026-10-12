@@ -1153,3 +1153,23 @@ test('farewell completed before delayed host receipt closes only after matching 
  f.tool({nativeAssistantTurnIdAtAcceptance:'combined'});f.meter(950,0,0);
  await tick();assert.equal(f.peer.closed,true);
 });
+
+test('Voice host hangup binds the complete current user turn and waits for actual farewell playback',async t=>{
+ const f=await fixture(t);await f.context.startCall();const peer=f.peers[0];peer.connectionState='connected';peer.onconnectionstatechange();const send=x=>peer.channel.onmessage({data:JSON.stringify(x)});
+ const sent=[];peer.channel.readyState='open';peer.channel.send=x=>sent.push(JSON.parse(x));
+ send({type:'turn.created',turn:{role:'user',id:'u-host'}});
+ const accepted={voiceSessionId:'voice-1',type:'voice.end.accepted',source:'voice_host_control',requestId:'host-1',userText:'今天就这样，拜拜',closeAfterPlayback:true};
+ f.eventSources[0].onmessage({data:JSON.stringify(accepted)});assert.equal(f.body.dataset.callState,'connected','an incomplete turn is not end authority');
+ send({type:'turn.done',turn:{role:'user',id:'u-host',transcript:'今天就这样，拜拜'}});
+ assert.equal(f.body.dataset.callState,'ending');assert.equal(sent.length,1);assert.equal(peer.closed,false);
+ await peer.ontrack({track:track()});send({type:'turn.created',turn:{role:'assistant',id:'bye-host'}});f.meter(50,0,.1);
+ send({type:'turn.done',turn:{role:'assistant',id:'bye-host',transcript:'拜拜'}});
+ for(let at=100;at<=950;at+=50)f.meter(at,0,0);
+ await tick();assert.equal(peer.closed,true);
+});
+test('Voice host acceptance cannot close a foreign call or a different current utterance',async t=>{
+ const f=await fixture(t);await f.context.startCall();f.peers[0].connectionState='connected';f.peers[0].onconnectionstatechange();const send=x=>f.peers[0].channel.onmessage({data:JSON.stringify(x)});
+ send({type:'turn.created',turn:{role:'user',id:'continue'}});send({type:'turn.done',turn:{role:'user',id:'continue',transcript:'不要挂断，继续'}});
+ for(const voiceSessionId of ['foreign','voice-1'])f.eventSources[0].onmessage({data:JSON.stringify({voiceSessionId,type:'voice.end.accepted',source:'voice_host_control',requestId:'old',userText:'拜拜',closeAfterPlayback:true})});
+ assert.equal(f.body.dataset.callState,'connected');assert.equal(f.peers[0].closed,false);
+});

@@ -17,7 +17,7 @@ import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-lo
 import {voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai" }) {
+export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai" }) {
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
   const hosted = Boolean(publicOrigin || accessToken);
@@ -176,7 +176,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
             return json(res, 409, { error: "候选语音配置与 GPT Live 实验不匹配" });
           }
           const owned=context.active;
-          owned.callControl=createVoiceCallControl({evaluate:callControlEvaluate,isCurrent:()=>context.active===owned,onAccepted:value=>{
+          owned.callControl=createVoiceCallControl({evaluate:callControlEvaluate,audit:event=>callControlAudit({...event,voiceSessionId:owned.reservation.voiceSessionId}),isCurrent:()=>context.active===owned,onAccepted:value=>{
             if(context.active!==owned)return;
             const message={...value,voiceSessionId:owned.reservation.voiceSessionId,revision:++owned.presentation.revision};
             owned.presentation.controls.push(message);if(owned.presentation.controls.length>64)owned.presentation.controls.shift();
@@ -367,7 +367,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       return voiceConversationContext(history.messages??[]);
     }});
     bridge = createLiveH5Server({ gateway,
-      directVoice, avatarLog,
+      directVoice, avatarLog,callControlAudit:transcriptLog.audit,
       conversationEntries: process.env.VOICE_ENTRIES_FILE ? JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,"utf8")) : [],
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",
       publicOrigin: process.env.GPT_LIVE_H5_PUBLIC_ORIGIN ?? process.env.RTC_H5_PUBLIC_ORIGIN
