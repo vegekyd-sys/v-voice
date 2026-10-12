@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-import {GPT_LIVE_CALL_INSTRUCTIONS} from './instructions.mjs';
-import {V_FRONTEND_PERSONA} from './persona.mjs';
+import {createVoiceCallControl,callControlEvaluatorFromEnv} from './call-control.mjs';
 import { randomUUID, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -18,7 +17,7 @@ import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-lo
 import {voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, conversationEntries = [] }) {
+export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai" }) {
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
   const hosted = Boolean(publicOrigin || accessToken);
@@ -53,6 +52,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
   };
   const close = async (context = local) => {
     const old = context.active;
+    old?.callControl?.close();
     if (old) visual.forget(old.reservation.voiceSessionId);
     if (old?.direct) await directVoice.close(old.reservation.voiceSessionId);
     else if (old) await gateway.request("talk.client.close", { sessionKey: old.sessionKey, voiceSessionId: old.reservation.voiceSessionId });
@@ -169,12 +169,19 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
             rememberAvatarCall(context,context.active,params.model);
             return json(res,200,reservation);
           }
-          const reservation = await gateway.request("talk.client.create", { sessionKey, provider: "openai", model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"], voiceInstructions: `${GPT_LIVE_CALL_INSTRUCTIONS}\n\n${V_FRONTEND_PERSONA}` }, { timeoutMs: 45000 });
+          const reservation = await gateway.request("talk.client.create", { sessionKey, provider: gptProvider, model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
           context.active = { sessionKey, reservation, touchedAt: Date.now(), presentation: { revision: 0, pending: new Map(), documents: new Map(), controls: [] } };
           if (reservation.model !== "gpt-live-1-codex" || reservation.transport !== "webrtc" || reservation.offerUrl !== "/plugins/openai/realtime/calls") {
             await close(context);
             return json(res, 409, { error: "候选语音配置与 GPT Live 实验不匹配" });
           }
+          const owned=context.active;
+          owned.callControl=createVoiceCallControl({evaluate:callControlEvaluate,isCurrent:()=>context.active===owned,onAccepted:value=>{
+            if(context.active!==owned)return;
+            const message={...value,voiceSessionId:owned.reservation.voiceSessionId,revision:++owned.presentation.revision};
+            owned.presentation.controls.push(message);if(owned.presentation.controls.length>64)owned.presentation.controls.shift();
+            for(const response of context.listeners)response.write(`data: ${JSON.stringify(message)}\n\n`);
+          }});
           rememberAvatarCall(context,context.active,'openai');
           return json(res, 200, { voiceSessionId: reservation.voiceSessionId, model: reservation.model });
         } finally {
@@ -255,6 +262,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     const context = [local, ...contexts.values()].find(item => item.active?.reservation.voiceSessionId === event.payload?.voiceSessionId);
     if (!context) return;
     const item = event.payload.talkEvent;
+    if(['transcript.done','output.text.done'].includes(item?.type))void context.active.callControl?.observe({role:item.type==='output.text.done'?'assistant':item.payload?.role,text:item.payload?.text,final:true});
     const publish = message => {
       const view = context.active.presentation;
       if (view) {

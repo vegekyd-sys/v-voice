@@ -180,6 +180,19 @@ function armAutomaticEnd(active, request) {
     setStatus("语音尚未确认播完，可以点按钮结束通话。");
   }, 15000);
 }
+function requestVoiceHostEnd(active,value){
+  if(call!==active||value.source!=='voice_host_control'||value.closeAfterPlayback!==true||typeof value.userText!=='string'||typeof value.requestId!=='string')return;
+  active.pendingVoiceEnd=value;applyVoiceHostEnd(active);
+}
+function applyVoiceHostEnd(active){
+ const value=active.pendingVoiceEnd;
+ if(!value||value.userText!==active.completedNativeUserText||!active.completedNativeUserTurns?.has(active.latestNativeUserTurnId))return;
+ active.pendingVoiceEnd=null;
+ const request=endCallRequest(active,value.requestId,active.latestNativeUserTurnId);if(!request)return;
+ request.accepted=true;request.providerObserved=true;request.voiceHostPath=true;
+ active.endNativeRequestId=request.requestId;armAutomaticEnd(active,request);
+ if(active.channel?.readyState==='open')active.channel.send(JSON.stringify({type:'session.context.append',text:'当前用户已经明确结束这次电话。只说一句简短告别，停止旧结果播报，然后安静等待主机关闭。',channel:'speakable'}));
+}
 function requestAutomaticEnd(active, value) {
   if (call !== active || value.name !== "openclaw_end_call" || value.closeAfterPlayback !== true) return;
   const backendPath = value.source === "backend_model_client_tool";
@@ -403,6 +416,7 @@ function providerMessage(event) {
   if (active && data.type === "turn.done" && data.turn?.role === "user" &&
     data.turn.id === active.latestNativeUserTurnId && typeof data.turn.transcript === "string" && data.turn.transcript.trim()) {
     active.completedNativeUserTurns ??= new Set(); active.completedNativeUserTurns.add(data.turn.id);
+    active.completedNativeUserText=data.turn.transcript.trim();applyVoiceHostEnd(active);
     if (active.completedNativeUserTurns.size > 256) active.completedNativeUserTurns.delete(active.completedNativeUserTurns.values().next().value);
   }
   if (active && data.type === "turn.created" && ["user", "assistant"].includes(data.turn?.role)) {
@@ -410,6 +424,7 @@ function providerMessage(event) {
     duplexDiagnostic(active, { type: "native-turn-created", at, role: data.turn.role });
     if (data.turn.role === "user") {
       active.nativeAssistantPlayback?.clear(); active.currentNativeAssistantTurnId = null;
+      active.completedNativeUserText=null;
       active.latestNativeUserTurnId = typeof data.turn.id === "string" ? data.turn.id : null;
       for (const request of active.endRequests?.values() ?? []) request.invalidated = true;
       active.endNativeRequestId = null;
@@ -590,6 +605,7 @@ async function startCall() {
     active.channel = active.pc.createDataChannel("oai-events"); active.channel.onmessage = (event) => { if (call === active) providerMessage(event); };
     active.events = new EventSource(apiUrl("events"));
     const applyNativeControl = value => {
+      if(value.type==='voice.end.accepted')requestVoiceHostEnd(active,value);
       if (value.type === "tool.result") requestAutomaticEnd(active, value);
       if (value.type === "tool.error" && value.name === "openclaw_end_call" &&
         (value.callId === value.requestId || value.source === "backend_model_client_tool" &&

@@ -1,0 +1,1 @@
+{"id":"v-voice-gpt-live","name":"V Voice GPT Live adapter","version":"0.1.0","entry":"./index.mjs","activation":{"onCapabilities":["realtimeVoice"]},"configSchema":{"type":"object","additionalProperties":false,"properties":{}}}
