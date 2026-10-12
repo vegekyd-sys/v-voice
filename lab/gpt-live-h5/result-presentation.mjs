@@ -2,7 +2,7 @@ import { mediaReferences } from './media-references.mjs';
 // One host-owned policy for backend documents; provider captions remain captions.
 export const LONG_RESULT_NOTICE = '详细方案在屏幕上，需要的话也可以整理成文档发给你。';
 export const MAKARON_MEDIA_INSTRUCTIONS = '媒体生成任务通过 exec 调用已安装的 makaron CLI，复用执行环境已有凭据，不读取或输出 key。优先 makaron chat --project auto -b --json；续做同一作品使用已返回的 projectId。保存返回的 runId/id，仅用 makaron responses get 同一ID --wait --json 跟进，等待命令用原生 process 轮询，不用 nohup 或脱离管理的后台进程。只依据 completed 的 image/video 输出交付，不把计划、提交成功或 design JSON 当成最终图片/MP4；未知状态先查询原任务，不重复付费提交。用户指定 Makaron 时不要改用 image_generate/video_generate。最终保留图片、视频及用户需要的说明文字，不展示命令、私有路径、凭据或内部验收信息。';
-export const BACKEND_RESULT_INSTRUCTIONS = '图片、视频任务须实际调用可用的媒体生成能力，跟进同一任务到完成，不重复付费提交；最终给出可访问的HTTPS链接：图片用 ![图片说明](URL)，视频用 [视频说明](实际MP4的URL)。不能只给本地路径、任务ID或假链接。能力或权限不可用时明确说明未完成。\n电话结果呈现：如果最终结果是较长方案，最后一次回答同时写语音摘要和完整正文，不另起任务。严格使用这两个标题：\n【语音摘要】\n两到三句自然中文，100字以内，直接说最重要的结论、推荐或下一步，保留影响结论的必要条件和未完成项。不能只说完成了或让用户看屏幕，不能编造原结果没有的事实。\n【完整方案】\n完整Markdown正文，保留全部事实、来源、条件和细节。不要把摘要当成正文的替代。普通短答案直接回答，不需要这两个标题。';
+export const BACKEND_RESULT_INSTRUCTIONS = '图片、视频任务须实际调用可用的媒体生成能力，跟进同一任务到完成，不重复付费提交；最终给出可访问的HTTPS链接：图片用 ![图片说明](URL)，视频用 [视频说明](实际MP4的URL)。不能只给本地路径、任务ID或假链接。能力或权限不可用时明确说明未完成。\n电话结果呈现：如果最终结果超过120字，或含有表格、代码、多个列表项，最后一次回答必须同时写语音摘要和完整正文，不另起任务。严格使用这两个标题：\n【语音摘要】\n两到三句自然中文，100字以内，直接说最重要的结论、推荐或下一步，保留影响结论的必要条件和未完成项。用户指定要念的项目、范围、数字优先写进语音摘要；例如要求念前十个结果，就完整写出这十个结果，不能从表格只抽两格代替。不能只说完成了或让用户看屏幕，不能编造原结果没有的事实。\n【完整方案】\n完整Markdown正文，保留全部事实、来源、条件和细节。不要把摘要当成正文的替代。普通短答案直接回答，不需要这两个标题。';
 export function backendResultQuestion(question) {
   return `${question}\n\n${MAKARON_MEDIA_INSTRUCTIONS}\n\n${BACKEND_RESULT_INSTRUCTIONS}`;
 }
