@@ -15,10 +15,13 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   if(method==='tools.catalog')return {groups:[{tools:['memory_search','web_search','web_fetch','exec','process'].map(id=>({id}))}]};
   invocations.push(args);return invoke(args,method);
  }};
- const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),...options});
+ const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,...options});
  const reservation=await service.reserve({model,sessionKey:'agent:makaron:explicit:personal-fixture'});
- const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>client.sent.push(JSON.parse(raw));client.close=()=>{client.readyState=3;client.emit('close');};
- service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);await delay(5);
+ const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
+ service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
+ // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
+ for(let attempt=0;attempt<200&&!client.sent.some(e=>e.type==='ready');attempt++)await delay(5);
+ assert(client.sent.some(e=>e.type==='ready'),'Fixture provider did not become ready');
  const upstream=peers[0],event=v=>upstream.emit('message',Buffer.from(JSON.stringify(v)),false);
  const call=(name,args,id='call-1')=>{event({type:'response.created',response:{id:'response-'+id}});event({type:'response.function_call_arguments.done',response_id:'response-'+id,call_id:id,name,arguments:JSON.stringify(args)});event({type:'response.done',response:{id:'response-'+id,status:'completed'}});};
  return {service,reservation,client,upstream,event,call,audit,invocations,peers};
@@ -286,4 +289,28 @@ test('local read survives ordinary interruption; hangup aborts and waits for rea
  f.event({type:'input_audio_buffer.speech_started'});assert.equal(signal.aborted,false);
  await f.service.steer(f.reservation.voiceSessionId,{mode:'append',text:'顺便问一下'});assert.equal(signal.aborted,false);
  const close=f.service.close(f.reservation.voiceSessionId);assert.equal(cleanupDone,false);await close;assert.equal(signal.aborted,true);assert.equal(cleanupDone,true);assert.equal(f.audit.filter(e=>e.type==='call.closed').length,1);assert.equal(f.invocations.length,0);await f.service.dispose();
+});
+
+test('show_content publishes exact Markdown locally and confirms actual UI receipt',async()=>{
+ const f=await fixture();const markdown='# 完整资料\n\n![图](https://cdn.test/a.webp)\n\n真实结果';
+ f.call('show_content',{markdown});await delay(30);
+ const doc=f.client.sent.find(x=>x.type==='backend.result');assert.equal(doc.text,markdown);
+ assert.equal(f.audit.find(x=>x.type==='tool.delivered').result.shown,true);
+ assert(!f.invocations.some(x=>x.name==='show_content'));
+ assert.equal(f.service.presentation(f.reservation.voiceSessionId).documents[0].text,markdown);
+ assert.equal(f.service.contentShown('foreign-owner',doc.callId),false);
+ await f.service.dispose();
+});
+test('missing UI receipt is submitted, not a false display success; a snapshot recovers the document',async()=>{
+ const f=await fixture(undefined,'grok',{autoContentAck:false});f.call('show_content',{markdown:'# 真实报告\n结果未确认上屏'});await delay(30);
+ const result=f.audit.find(x=>x.type==='tool.delivered').result;assert.equal(result.published,true);assert.equal(result.shown,false);
+ const snap=f.service.presentation(f.reservation.voiceSessionId);assert.equal(snap.documents.length,1);
+ assert.equal(f.service.presentation(f.reservation.voiceSessionId,snap.revision).documents.length,0);
+ assert.equal(f.service.contentShown(f.reservation.voiceSessionId,'unknown-report'),false);await f.service.dispose();
+});
+
+test('displaying existing content does not pretend to query new sources',async()=>{
+ const f=await fixture(undefined,'seeduplex');f.event({type:'response.function_call_arguments.done',items:[{call_id:'show-first',name:'show_content',arguments:JSON.stringify({markdown:'# 已有结果\n甲方案7元'})}]});await delay(30);
+ assert(f.client.sent.some(x=>x.type==='backend.result'));assert.equal(f.audit.find(x=>x.type==='tool.delivered').result.shown,true);
+ assert(!f.client.sent.some(x=>x.source==='cached-native-tool-start'));assert(!f.audit.some(x=>x.type==='transcript'&&x.source==='tool-start'));await f.service.dispose();
 });

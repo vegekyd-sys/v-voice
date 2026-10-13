@@ -125,13 +125,20 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       if (preview) return json(res, 503, { error: "当前是页面预览，还未连接 VLab 候选服务。" });
       if (req.method === "GET" && pathname === "/api/presentation") {
         const active = context.active;
-        if (!active || active.direct) return json(res, 200, { voiceSessionId: null });
+        if (!active) return json(res, 200, { voiceSessionId: null });
+        if(active.direct)return json(res,200,directVoice.presentation(active.reservation.voiceSessionId,Number(url.searchParams.get("after")??0))??{voiceSessionId:null});
         const view = active.presentation;
         const after = Number(url.searchParams.get("after") ?? 0);
         return json(res, 200, { voiceSessionId: active.reservation.voiceSessionId,
           revision: view.revision, pending: [...view.pending.values()],
           documents: [...view.documents.values()].filter(item => item.revision > after),
           controls: view.controls.filter(item => item.revision > Number(url.searchParams.get('controlsAfter') ?? 0)) });
+      }
+      if(req.method==='POST' && pathname==='/api/content-shown'){
+        const body=await readBody();const active=context.active;
+        if(!active||body.voiceSessionId!==active.reservation.voiceSessionId||typeof body.callId!=='string'||!body.callId||body.callId.length>200)return json(res,409,{error:'展示归属不匹配'});
+        const shown=active.direct?directVoice.contentShown(body.voiceSessionId,body.callId):active.presentation.documents.has(body.callId);
+        return json(res,shown?200:409,{shown});
       }
       if (req.method === "GET" && pathname === "/api/events") {
         if (context.listeners.size >= 2) return json(res, 429, { error: "通话连接已打开" });

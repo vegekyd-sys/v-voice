@@ -875,7 +875,7 @@ body[data-reading="true"] .content-card {
     padding: max(12px, env(safe-area-inset-top)) 16px
       max(8px, env(safe-area-inset-bottom));
     min-height: 0;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: 128px minmax(0, 1fr) 74px;
     gap: 8px;
   }
@@ -1118,3 +1118,17 @@ body[data-reading="true"] .content-card {
 .markdown-media .media-error[hidden] { display: none; }
 
 .reader-layer:not([data-kind="report"]) .markdown-media { display: contents; }
+
+/* A report title must never become the mobile grid's minimum width. */
+.conversation-panel, #pillHome, .reader-dock { min-width: 0; max-width: 100%; }
+.content-card { min-width: 0; max-width: 100%; grid-template-columns: 48px minmax(0, 1fr) 12px; }
+.content-card > span { min-width: 0; }
+.content-card strong { overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  html, body { width: 100%; overflow: hidden; }
+  .call-pill { max-width: 100%; }
+  .call-pill .model-picker { min-width: 0; }
+  .call-pill #modelName { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .call-pill #modelTrigger { max-width: 136px; }
+  .content-card { grid-template-columns: 39px minmax(0, 1fr) 12px; }
+}
