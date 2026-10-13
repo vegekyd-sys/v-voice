@@ -20,6 +20,10 @@
     data-call-state="idle"
     data-reading="false"
   >
+    <button id="changelogOpen" class="changelog-trigger" type="button" aria-haspopup="dialog" aria-controls="changelogDialog" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1" /></svg>
+      更新日志
+    </button>
     <main class="app-shell">
       <div id="voiceLayout" class="voice-layout">
         <section class="voice-stage" aria-label="V 的反应">
@@ -29,12 +33,12 @@
               ><span class="sound-ring ring-two"></span>
               <div class="avatar-stack">
                 <img
-                  width="512"
-                  height="512"
+                  width="1024"
+                  height="1024"
                   decoding="async"
                   fetchpriority="high"
                   id="avatar"
-                  src="./assets/v-operator-idle-256.webp"
+                  src="./assets/v-operator-home-1024.webp"
                   alt="V"
                 />
                 <img id="avatarPrevious" alt="" hidden />
@@ -246,6 +250,13 @@
       </article>
       <div id="readerDock" class="reader-dock"></div>
     </section>
+    <dialog id="changelogDialog" class="changelog-dialog" aria-labelledby="changelogTitle">
+      <header class="changelog-header">
+        <div><span class="changelog-eyebrow">V VOICE</span><h2 id="changelogTitle">更新日志</h2></div>
+        <button id="changelogClose" type="button" aria-label="关闭更新日志" autofocus><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+      </header>
+      <div id="changelogEntries" class="changelog-entries" tabindex="0" aria-label="已上线的更新"></div>
+    </dialog>
     <script type="module" src="./app.js"></script>
   </body>
 </html>
