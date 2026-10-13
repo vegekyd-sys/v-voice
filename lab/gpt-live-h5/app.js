@@ -186,14 +186,23 @@ function requestVoiceHostEnd(active,value){
 }
 function applyVoiceHostEnd(active){
  const value=active.pendingVoiceEnd;
- if(!value||value.userText!==active.completedNativeUserText||!active.completedNativeUserTurns?.has(active.latestNativeUserTurnId))return;
+ if(!value||value.userText!==active.nativeUserText||!active.latestNativeUserTurnId||active.microphoneQuietSince==null||performance.now()-active.microphoneQuietSince<600||performance.now()-(active.nativeUserTextAt??performance.now())<1200)return;
+ if(value.type==='voice.end.proposed'){
+  if(active.confirmingVoiceEnd===value.requestId)return;
+  active.confirmingVoiceEnd=value.requestId;
+  void api('call-control-confirm',{voiceSessionId:active.voiceSessionId,control:value}).then(accepted=>{
+   if(call!==active||active.pendingVoiceEnd!==value||active.nativeUserText!==value.userText||active.microphoneQuietSince==null)return;
+   active.pendingVoiceEnd=accepted;applyVoiceHostEnd(active);
+  }).catch(()=>{if(active.pendingVoiceEnd===value)active.pendingVoiceEnd=null;}).finally(()=>{if(active.confirmingVoiceEnd===value.requestId)active.confirmingVoiceEnd=null;});
+  return;
+ }
  active.pendingVoiceEnd=null;
  const request=endCallRequest(active,value.requestId,active.latestNativeUserTurnId);if(!request)return;
  request.accepted=true;request.providerObserved=true;request.voiceHostPath=true;request.expectedFarewell='再见下次聊';
  // GPT Live may append the requested farewell inside its already-open turn.
  const current=active.nativeAssistantPlayback?.get(active.currentNativeAssistantTurnId);
  if(current&&current.terminalAt===null)request.turnId=active.currentNativeAssistantTurnId;
- active.endNativeRequestId=request.requestId;armAutomaticEnd(active,request);
+ request.userText=value.userText;active.endNativeRequestId=request.requestId;armAutomaticEnd(active,request);
  if(active.channel?.readyState==='open')active.channel.send(JSON.stringify({type:'session.context.append',event_id:'voice-farewell-'+value.requestId,content:[{type:'input_text',text:'当前用户已经明确结束这次电话。停止旧结果播报，只说一句：再见，下次聊。然后安静等待主机关闭。'}],channel:'speakable'}));
 }
 function requestAutomaticEnd(active, value) {
@@ -408,6 +417,13 @@ function resetTranscript() {
   $("transcriptHistory").replaceChildren(); $("transcriptCurrentRows").replaceChildren();
   renderTranscript(presentation.snapshot());
 }
+function updateNativeUserText(active,text){
+ const next=text.trim();if(next===active.nativeUserText)return;
+ active.nativeUserText=next;active.nativeUserTextAt=performance.now();
+ if(active.pendingVoiceEnd&&active.pendingVoiceEnd.userText!==next)active.pendingVoiceEnd=null;
+ const request=active.endRequests?.get(active.endNativeRequestId);
+ if(request?.voiceHostPath&&request.userText!==next){request.invalidated=true;active.endNativeRequestId=null;cancelAutomaticEnd(active);}
+}
 function providerMessage(event) {
   let data;
   try { data = JSON.parse(event.data); } catch { return; }
@@ -419,7 +435,7 @@ function providerMessage(event) {
   if (active && data.type === "turn.done" && data.turn?.role === "user" &&
     data.turn.id === active.latestNativeUserTurnId && typeof data.turn.transcript === "string" && data.turn.transcript.trim()) {
     active.completedNativeUserTurns ??= new Set(); active.completedNativeUserTurns.add(data.turn.id);
-    active.completedNativeUserText=data.turn.transcript.trim();applyVoiceHostEnd(active);
+    active.completedNativeUserText=data.turn.transcript.trim();updateNativeUserText(active,data.turn.transcript);applyVoiceHostEnd(active);
     if (active.completedNativeUserTurns.size > 256) active.completedNativeUserTurns.delete(active.completedNativeUserTurns.values().next().value);
   }
   if (active && data.type === "turn.created" && ["user", "assistant"].includes(data.turn?.role)) {
@@ -433,8 +449,9 @@ function providerMessage(event) {
       }
       active.backendFinalReady=false;
       active.nativeAssistantPlayback?.clear(); active.currentNativeAssistantTurnId = null;
-      active.completedNativeUserText=null;
+      active.completedNativeUserText=null;active.pendingVoiceEnd=null;active.nativeUserText='';active.microphoneQuietSince=null;
       active.latestNativeUserTurnId = typeof data.turn.id === "string" ? data.turn.id : null;
+      updateNativeUserText(active,data.turn.transcript??'');
       for (const request of active.endRequests?.values() ?? []) request.invalidated = true;
       active.endNativeRequestId = null;
       active.duplex.notifyUserTurnStarted(at);
@@ -455,6 +472,7 @@ function providerMessage(event) {
       }
     }
   }
+  if(active&&data.type==='turn.delta'&&data.turn_id===active.latestNativeUserTurnId&&typeof data.delta==='string')updateNativeUserText(active,(active.nativeUserText??'')+data.delta);
   if (active && data.type === "turn.done" && data.turn?.role === "assistant") {
     const at = performance.now();
     const played = active.nativeAssistantPlayback?.get(data.turn.id);
@@ -622,7 +640,7 @@ async function startCall() {
     const applyNativeControl = value => {
       if(value.type==='tool.call')active.backendFinalReady=false;
       if(value.type==='tool.result'&&value.backendFinal===true)active.backendFinalReady=true;
-      if(value.type==='voice.end.accepted')requestVoiceHostEnd(active,value);
+      if(['voice.end.proposed','voice.end.accepted'].includes(value.type))requestVoiceHostEnd(active,value);
       if (value.type === "tool.result") requestAutomaticEnd(active, value);
       if (value.type === "tool.error" && value.name === "openclaw_end_call" &&
         (value.callId === value.requestId || value.source === "backend_model_client_tool" &&
@@ -729,6 +747,8 @@ async function startCall() {
           if ($("status").textContent === duplexRecoveryMessage) connectedStatus(active);
         }
         document.body.dataset.voiceState = energy > .008 && !duplex.localPlaybackMuted && !active.playbackNeedsGesture ? "speaking" : "listening";
+        if(duplex.localUserSpeaking||microphoneEnergy>.01)active.microphoneQuietSince=null;else active.microphoneQuietSince??=at;
+        applyVoiceHostEnd(active);
         observeAutomaticEnd(active, at, energy);
       }, 50);
       void greetWhenReady(active);

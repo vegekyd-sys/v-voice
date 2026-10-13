@@ -14,7 +14,7 @@ async function fixture(t, overrides = {}) {
     return method === "talk.client.create" ? reservation : { ok: true };
   } };
   const offers = [];
-  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice });
+  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice,callControlEvaluate:overrides.callControlEvaluate });
   await new Promise((resolve) => bridge.server.listen(0, "127.0.0.1", resolve));
   t.after(() => bridge.dispose());
   const url = `http://127.0.0.1:${bridge.server.address().port}`;
@@ -289,4 +289,16 @@ test('all three providers persist browser reports under their authoritative voic
   assert.equal((await f.request('avatar-events',body)).status,200);assert.equal(rows[0].owner.provider,model==='gpt-live'?'openai':model);assert.equal(rows[0].owner.model,model==='gpt-live'?'gpt-live-1-codex':model+'-real-reservation');
   await f.request('close',{voiceSessionId});rows[0].owner.endedAt=Date.now()-300001;assert.equal((await f.request('avatar-events',body)).status,409);
  }
+});
+test('streamed USER control is owned, current and confirmed separately from proposal',async t=>{
+ const f=await fixture(t,{callControlEvaluate:async()=>({answers:{endIntent:{type:'noul',noul:1}}})});await f.request('session');
+ const emit=(text,turnId='u')=>f.bridge.emit({event:'talk.event',payload:{voiceSessionId:'voice-private',talkEvent:{type:'transcript.delta',turnId,payload:{role:'user',text}}}});
+ emit('请');emit('挂断电话');await new Promise(r=>setTimeout(r,1250));
+ const snapshot=await (await fetch(f.url+'/api/presentation',{headers:{cookie:f.cookie}})).json();const value=snapshot.controls.at(-1);
+ assert.equal(value.type,'voice.end.proposed');assert.equal(value.userText,'请挂断电话');assert.equal(f.calls.filter(x=>x.method==='voice.product.control').length,0);
+ assert.equal((await f.request('call-control-confirm',{voiceSessionId:'foreign',control:value})).status,409);
+ emit('之前查一下日程');assert.equal((await f.request('call-control-confirm',{voiceSessionId:'voice-private',control:value})).status,409);assert.equal(f.calls.filter(x=>x.method==='voice.product.control').length,0);
+ f.bridge.emit({event:'talk.event',payload:{voiceSessionId:'voice-private',talkEvent:{type:'transcript.done',turnId:'bye',payload:{role:'user',text:'拜拜'}}}});await new Promise(r=>setImmediate(r));
+ const last=await (await fetch(f.url+'/api/presentation',{headers:{cookie:f.cookie}})).json();const confirmed=await f.request('call-control-confirm',{voiceSessionId:'voice-private',control:last.controls.at(-1)});
+ assert.equal(confirmed.status,200);assert.equal((await confirmed.json()).type,'voice.end.accepted');assert.equal(f.calls.filter(x=>x.method==='voice.product.control').length,1);
 });
