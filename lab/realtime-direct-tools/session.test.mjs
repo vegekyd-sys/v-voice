@@ -305,3 +305,9 @@ test('missing UI receipt is submitted, not a false display success; a snapshot r
  assert.equal(f.service.presentation(f.reservation.voiceSessionId,snap.revision).documents.length,0);
  assert.equal(f.service.contentShown(f.reservation.voiceSessionId,'unknown-report'),false);await f.service.dispose();
 });
+
+test('displaying existing content does not pretend to query new sources',async()=>{
+ const f=await fixture(undefined,'seeduplex');f.event({type:'response.function_call_arguments.done',items:[{call_id:'show-first',name:'show_content',arguments:JSON.stringify({markdown:'# 已有结果\n甲方案7元'})}]});await delay(30);
+ assert(f.client.sent.some(x=>x.type==='backend.result'));assert.equal(f.audit.find(x=>x.type==='tool.delivered').result.shown,true);
+ assert(!f.client.sent.some(x=>x.source==='cached-native-tool-start'));assert(!f.audit.some(x=>x.type==='transcript'&&x.source==='tool-start'));await f.service.dispose();
+});
