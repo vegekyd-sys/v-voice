@@ -29,14 +29,14 @@ export function createVoiceCallControl({evaluate,onAccepted=()=>{},audit=()=>{},
   finally{if(pending===controller)pending=null;}
  };
  return{
-  async observe({role,text,final,turnId}){
+  async observe({role,text,final,turnId,snapshot=false}){
    if(closed||!isCurrent()||!['user','assistant'].includes(role)||typeof text!=='string'||!text.trim())return;
    if(role==='assistant'){if(final)remember(role,text.trim());return;}
    if(!final&&(typeof turnId!=='string'||!turnId))return;
    if(turnId&&retiredTurns.has(turnId))return;
    if(current?.turnId&&turnId!==current.turnId)retiredTurns.add(current.turnId);
    // Normalized transcript.delta contains a fragment; done contains the body.
-   const next=final?text.trim():((current&&current.turnId===turnId&&!current.final?current.text:'')+text).trim();
+   const next=final||snapshot?text.trim():((current&&current.turnId===turnId&&!current.final?current.text:'')+text).trim();
    if(next===current?.text&&turnId===current?.turnId){if(final){current.final=true;clearTimeout(timer);if(!candidate&&!pending)return decide(revision);}return;}
    if(current?.final)remember('user',current.text);
    current={turnId,text:next.slice(-2400),final:Boolean(final)};
