@@ -6,6 +6,7 @@ import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 import { createPageMicrophoneSession } from "./microphone-session.mjs";
 import { createScreenWakeLock } from "./screen-wake-lock.mjs";
+import { mountChangelog } from "./changelog.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 
 const appSource = readFileSync(new URL("./app.js", import.meta.url), "utf8")
@@ -112,6 +113,7 @@ async function fixture(t, options = {}) {
     renderMarkdown: (target,text) => { target.textContent = text; }, createTranscriptPresentation, createPageMicrophoneSession, createScreenWakeLock, createAvatarTasks, ACTIVITY_LABELS,
     createContentView: () => options.contentView,
     mountProductControls: () => ({ callState() {}, refreshModels() {} }),
+    mountChangelog,
     createRelayAudio: values => options.relayFactory(values),
     mountAvatar: () => options.avatar,
     createAvatarReactions: () => options.reactions,

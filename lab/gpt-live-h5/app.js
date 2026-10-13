@@ -11,8 +11,10 @@ import { createCallSounds } from "./call-sounds.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 import { createRelayAudio } from "./relay-audio.mjs";
 import { createScreenWakeLock } from "./screen-wake-lock.mjs";
+import { mountChangelog } from "./changelog.mjs";
 
 const $ = (id) => document.getElementById(id);
+if (document.querySelector) mountChangelog(document, window);
 let microphoneSession = createPageMicrophoneSession();
 let call = null;
 let starting = null;
