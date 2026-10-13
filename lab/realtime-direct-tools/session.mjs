@@ -176,7 +176,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       try {if(backgroundAck){
         const presentation=presentBackendResult(result);
         const receipt=(presentation?.long || presentation?.media)?await publishContent(s,call.callId,presentation.text):null;
-        if(!current(s)||s.epoch!==epoch)return;
+        if(receipt&&(!current(s)||s.epoch!==epoch))return;
         const spokenText=receipt?.shown?presentation.spokenText:presentation?.spokenText.replace('详细方案在屏幕上，需要的话也可以整理成文档发给你。','完整结果已准备好，屏幕正在同步。');
         s.bridge.completeBackgroundTool(call.callId,(presentation?.long || presentation?.media)?{...result,result:presentation.text}:result,(presentation?.long || presentation?.media)?{spokenText,displayedFullResult:true}:{});
       }else s.bridge.submitToolResult(call.callId,result);}
