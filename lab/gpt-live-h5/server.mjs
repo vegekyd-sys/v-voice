@@ -222,6 +222,14 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         }
         return json(res,400,{error:'当前模型使用实时音频通道'});
       }
+      if(pathname==='/api/call-control-input'){
+        const owned=context.active;
+        if(!Number.isSafeInteger(params.revision)||params.revision<1||typeof params.turnId!=='string'||!params.turnId||params.turnId.length>160||typeof params.text!=='string'||params.text.length>2400||typeof params.final!=='boolean')return json(res,400,{error:'通话字幕无效'});
+        if(params.revision<=(owned.callControlCaptionRevision??0))return json(res,409,{error:'通话字幕已更新'});
+        owned.callControlCaptionRevision=params.revision;
+        void owned.callControl?.observe({role:'user',turnId:params.turnId,text:params.text,final:params.final,snapshot:true});
+        return json(res,200,{ok:true});
+      }
       if (pathname === '/api/call-control-confirm') {
         const owned=context.active,value=params.control;
         if(!owned.callControl?.matches(value))return json(res,409,{error:'挂断意图已更新'});
@@ -269,7 +277,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     const context = [local, ...contexts.values()].find(item => item.active?.reservation.voiceSessionId === event.payload?.voiceSessionId);
     if (!context) return;
     const item = event.payload.talkEvent;
-    if(['transcript.delta','transcript.done','output.text.done'].includes(item?.type))void context.active.callControl?.observe({role:item.type==='output.text.done'?'assistant':item.payload?.role,text:item.payload?.text,turnId:item.turnId,final:item.type!=='transcript.delta'});
+    // Native caption snapshots are the single USER source: they also arrive when
+    // a deployment filters Gateway transcript events. Mixing normalized and
+    // native turn IDs would incorrectly revoke the current decision.
+    if(item?.type==='output.text.done')void context.active.callControl?.observe({role:'assistant',text:item.payload?.text,final:true});
     const publish = message => {
       const view = context.active.presentation;
       if (view) {

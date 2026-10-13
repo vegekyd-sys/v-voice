@@ -417,9 +417,14 @@ function resetTranscript() {
   $("transcriptHistory").replaceChildren(); $("transcriptCurrentRows").replaceChildren();
   renderTranscript(presentation.snapshot());
 }
+function reportNativeCaller(active,final=false){
+ if(call!==active||!active.nativeUserText||!active.latestNativeUserTurnId)return;
+ const revision=active.callControlCaptionRevision=(active.callControlCaptionRevision??0)+1;
+ void api('call-control-input',{voiceSessionId:active.voiceSessionId,revision,turnId:active.latestNativeUserTurnId,text:active.nativeUserText.slice(-2400),final}).catch(()=>{});
+}
 function updateNativeUserText(active,text){
  const next=text.trim();if(next===active.nativeUserText)return;
- active.nativeUserText=next;active.nativeUserTextAt=performance.now();
+ active.nativeUserText=next;active.nativeUserTextAt=performance.now();reportNativeCaller(active);
  if(active.pendingVoiceEnd&&active.pendingVoiceEnd.userText!==next)active.pendingVoiceEnd=null;
  const request=active.endRequests?.get(active.endNativeRequestId);
  if(request?.voiceHostPath&&request.userText!==next){request.invalidated=true;active.endNativeRequestId=null;cancelAutomaticEnd(active);}
@@ -435,7 +440,7 @@ function providerMessage(event) {
   if (active && data.type === "turn.done" && data.turn?.role === "user" &&
     data.turn.id === active.latestNativeUserTurnId && typeof data.turn.transcript === "string" && data.turn.transcript.trim()) {
     active.completedNativeUserTurns ??= new Set(); active.completedNativeUserTurns.add(data.turn.id);
-    active.completedNativeUserText=data.turn.transcript.trim();updateNativeUserText(active,data.turn.transcript);applyVoiceHostEnd(active);
+    active.completedNativeUserText=data.turn.transcript.trim();updateNativeUserText(active,data.turn.transcript);reportNativeCaller(active,true);applyVoiceHostEnd(active);
     if (active.completedNativeUserTurns.size > 256) active.completedNativeUserTurns.delete(active.completedNativeUserTurns.values().next().value);
   }
   if (active && data.type === "turn.created" && ["user", "assistant"].includes(data.turn?.role)) {

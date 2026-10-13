@@ -292,13 +292,23 @@ test('all three providers persist browser reports under their authoritative voic
 });
 test('streamed USER control is owned, current and confirmed separately from proposal',async t=>{
  const f=await fixture(t,{callControlEvaluate:async()=>({answers:{endIntent:{type:'noul',noul:1}}})});await f.request('session');
- const emit=(text,turnId='u')=>f.bridge.emit({event:'talk.event',payload:{voiceSessionId:'voice-private',talkEvent:{type:'transcript.delta',turnId,payload:{role:'user',text}}}});
- emit('请');emit('挂断电话');await new Promise(r=>setTimeout(r,1250));
+ let revision=0;const emit=(text,turnId='u',final=false)=>f.request('call-control-input',{voiceSessionId:'voice-private',revision:++revision,turnId,text,final});
+ await emit('请');await emit('请挂断电话');await new Promise(r=>setTimeout(r,1250));
  const snapshot=await (await fetch(f.url+'/api/presentation',{headers:{cookie:f.cookie}})).json();const value=snapshot.controls.at(-1);
  assert.equal(value.type,'voice.end.proposed');assert.equal(value.userText,'请挂断电话');assert.equal(f.calls.filter(x=>x.method==='voice.product.control').length,0);
  assert.equal((await f.request('call-control-confirm',{voiceSessionId:'foreign',control:value})).status,409);
- emit('之前查一下日程');assert.equal((await f.request('call-control-confirm',{voiceSessionId:'voice-private',control:value})).status,409);assert.equal(f.calls.filter(x=>x.method==='voice.product.control').length,0);
- f.bridge.emit({event:'talk.event',payload:{voiceSessionId:'voice-private',talkEvent:{type:'transcript.done',turnId:'bye',payload:{role:'user',text:'拜拜'}}}});await new Promise(r=>setImmediate(r));
+ await emit('请挂断电话之前查一下日程');assert.equal((await f.request('call-control-confirm',{voiceSessionId:'voice-private',control:value})).status,409);assert.equal(f.calls.filter(x=>x.method==='voice.product.control').length,0);
+ await emit('拜拜','bye',true);await new Promise(r=>setImmediate(r));
  const last=await (await fetch(f.url+'/api/presentation',{headers:{cookie:f.cookie}})).json();const confirmed=await f.request('call-control-confirm',{voiceSessionId:'voice-private',control:last.controls.at(-1)});
  assert.equal(confirmed.status,200);assert.equal((await confirmed.json()).type,'voice.end.accepted');assert.equal(f.calls.filter(x=>x.method==='voice.product.control').length,1);
+});
+test('caption input rejects another reservation and obsolete revisions without allowing Gateway transcripts to revoke native input',async t=>{
+ const f=await fixture(t,{callControlEvaluate:async()=>({answers:{endIntent:{type:'noul',noul:1}}})});await f.request('session');
+ const caption={voiceSessionId:'voice-private',turnId:'native-current',text:'请挂断电话',final:true,revision:2};
+ assert.equal((await f.request('call-control-input',{...caption,voiceSessionId:'foreign'})).status,409);
+ assert.equal((await f.request('call-control-input',caption)).status,200);await new Promise(r=>setImmediate(r));
+ assert.equal((await f.request('call-control-input',{...caption,text:'旧字幕',revision:1})).status,409);
+ f.bridge.emit({event:'talk.event',payload:{voiceSessionId:'voice-private',talkEvent:{type:'transcript.done',turnId:'normalized-previous',payload:{role:'user',text:'旧话轮'}}}});
+ const snapshot=await (await fetch(f.url+'/api/presentation',{headers:{cookie:f.cookie}})).json();assert.equal(snapshot.controls.at(-1).userText,'请挂断电话');
+ assert.equal((await f.request('call-control-confirm',{voiceSessionId:'voice-private',control:snapshot.controls.at(-1)})).status,200);
 });

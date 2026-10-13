@@ -21,3 +21,7 @@ test('continuing an unfinished sentence revokes a pending streamed decision and 
  await c.observe({role:'user',text:'之前先帮我查日程',turnId:'u',final:false});finish[0]({answers:{endIntent:{type:'noul',noul:1}}});await new Promise(r=>setTimeout(r,20));assert.equal(events.length,0);
  finish[1]({answers:{endIntent:{type:'noul',noul:0}}});await new Promise(r=>setImmediate(r));assert.equal(events.length,0);c.close();
 });
+test('native caption snapshots replace rather than duplicate USER fragments',async()=>{
+ const texts=[],events=[];const c=createVoiceCallControl({evaluate:async x=>{texts.push(x.request);return {answers:{endIntent:{type:'noul',noul:1}}};},onAccepted:x=>events.push(x)});
+ await c.observe({role:'user',turnId:'native-u',text:'请',final:false,snapshot:true});await c.observe({role:'user',turnId:'native-u',text:'请挂断',final:false,snapshot:true});await c.observe({role:'user',turnId:'native-u',text:'请挂断电话',final:true,snapshot:true});assert.deepEqual(texts,['请挂断电话']);assert.equal(events.length,1);c.close();
+});
