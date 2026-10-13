@@ -178,8 +178,6 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
           const owned=context.active;
           owned.callControl=createVoiceCallControl({evaluate:callControlEvaluate,audit:event=>callControlAudit({...event,voiceSessionId:owned.reservation.voiceSessionId}),isCurrent:()=>context.active===owned,onAccepted:async value=>{
             if(context.active!==owned)return;
-            const proof=await gateway.request('voice.product.control',{clientSecret:owned.reservation.clientSecret,mode:'end'},{timeoutMs:3000});
-            if(proof?.ok!==true||context.active!==owned)return;
             const message={...value,voiceSessionId:owned.reservation.voiceSessionId,revision:++owned.presentation.revision};
             owned.presentation.controls.push(message);if(owned.presentation.controls.length>64)owned.presentation.controls.shift();
             for(const response of context.listeners)response.write(`data: ${JSON.stringify(message)}\n\n`);
@@ -224,6 +222,13 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         }
         return json(res,400,{error:'当前模型使用实时音频通道'});
       }
+      if (pathname === '/api/call-control-confirm') {
+        const owned=context.active,value=params.control;
+        if(!owned.callControl?.matches(value))return json(res,409,{error:'挂断意图已更新'});
+        const proof=await gateway.request('voice.product.control',{clientSecret:owned.reservation.clientSecret,mode:'end'},{timeoutMs:3000});
+        if(proof?.ok!==true||context.active!==owned||!owned.callControl.matches(value))return json(res,409,{error:'挂断意图已更新'});
+        return json(res,200,{...value,type:'voice.end.accepted',voiceSessionId:owned.reservation.voiceSessionId});
+      }
       if (pathname === "/api/offer") {
         if (typeof params.sdp !== "string" || !params.sdp.startsWith("v=0") || params.sdp.length > 65536) return json(res, 400, { error: "语音连接参数无效" });
         const sdp = await offer(context.active.reservation, params.sdp);
@@ -264,7 +269,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     const context = [local, ...contexts.values()].find(item => item.active?.reservation.voiceSessionId === event.payload?.voiceSessionId);
     if (!context) return;
     const item = event.payload.talkEvent;
-    if(['transcript.done','output.text.done'].includes(item?.type))void context.active.callControl?.observe({role:item.type==='output.text.done'?'assistant':item.payload?.role,text:item.payload?.text,final:true});
+    if(['transcript.delta','transcript.done','output.text.done'].includes(item?.type))void context.active.callControl?.observe({role:item.type==='output.text.done'?'assistant':item.payload?.role,text:item.payload?.text,turnId:item.turnId,final:item.type!=='transcript.delta'});
     const publish = message => {
       const view = context.active.presentation;
       if (view) {

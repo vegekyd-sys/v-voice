@@ -1161,10 +1161,11 @@ test('Voice host hangup binds the complete current user turn and waits for actua
  const accepted={voiceSessionId:'voice-1',type:'voice.end.accepted',source:'voice_host_control',requestId:'host-1',userText:'今天就这样，拜拜',closeAfterPlayback:true};
  f.eventSources[0].onmessage({data:JSON.stringify(accepted)});assert.equal(f.body.dataset.callState,'connected','an incomplete turn is not end authority');
  send({type:'turn.done',turn:{role:'user',id:'u-host',transcript:'今天就这样，拜拜'}});
+ await peer.ontrack({track:track()});for(let at=50;at<=1250;at+=50)f.meter(at,0,0);
  assert.equal(f.body.dataset.callState,'ending');assert.equal(sent.length,1);assert.equal(sent[0].content[0].type,'input_text');assert.match(sent[0].content[0].text,/再见，下次聊/);assert.equal(peer.closed,false);
- await peer.ontrack({track:track()});send({type:'turn.created',turn:{role:'assistant',id:'bye-host'}});f.meter(50,0,.1);
+ send({type:'turn.created',turn:{role:'assistant',id:'bye-host'}});f.meter(1300,0,.1);
  send({type:'turn.done',turn:{role:'assistant',id:'bye-host',transcript:'再见，下次聊。'}});
- for(let at=100;at<=950;at+=50)f.meter(at,0,0);
+ for(let at=1350;at<=2150;at+=50)f.meter(at,0,0);
  await tick();assert.equal(peer.closed,true);
 });
 test('Voice host acceptance cannot close a foreign call or a different current utterance',async t=>{
@@ -1177,10 +1178,10 @@ test('Voice host acceptance cannot close a foreign call or a different current u
 test('host farewell can finish the existing assistant turn without borrowing earlier audio',async t=>{
  const f=await fixture(t);await f.context.startCall();const peer=f.peers[0];peer.connectionState='connected';peer.onconnectionstatechange();const send=x=>peer.channel.onmessage({data:JSON.stringify(x)});peer.channel.readyState='open';peer.channel.send=()=>{};
  send({type:'turn.created',turn:{role:'user',id:'u-host-open'}});send({type:'turn.done',turn:{role:'user',id:'u-host-open',transcript:'请挂断电话'}});
- await peer.ontrack({track:track()});send({type:'turn.created',turn:{role:'assistant',id:'open'}});f.meter(50,0,.1);
+ await peer.ontrack({track:track()});for(let at=50;at<=1250;at+=50)f.meter(at,0,0);send({type:'turn.created',turn:{role:'assistant',id:'open'}});f.meter(1300,0,.1);
  f.eventSources[0].onmessage({data:JSON.stringify({voiceSessionId:'voice-1',type:'voice.end.accepted',source:'voice_host_control',requestId:'host-open',userText:'请挂断电话',closeAfterPlayback:true})});
- f.meter(100,0,.1);send({type:'turn.done',turn:{role:'assistant',id:'open',transcript:'好的，再见。再见，下次聊。'}});
- for(let at=150;at<=1000;at+=50)f.meter(at,0,0);await tick();assert.equal(peer.closed,true);
+ f.meter(1350,0,.1);send({type:'turn.done',turn:{role:'assistant',id:'open',transcript:'好的，再见。再见，下次聊。'}});
+ for(let at=1400;at<=2250;at+=50)f.meter(at,0,0);await tick();assert.equal(peer.closed,true);
 });
 
 test('native caller barge-in retires a played reply plan without muting or cancelling work',async t=>{
@@ -1192,4 +1193,20 @@ test('native caller barge-in retires a played reply plan without muting or cance
 test('ordinary spoken acknowledgment does not receive final-result retirement instruction',async t=>{
  const f=await fixture(t);await f.context.startCall();const peer=f.peers[0];peer.connectionState='connected';peer.onconnectionstatechange();const send=x=>peer.channel.onmessage({data:JSON.stringify(x)}),sent=[];peer.channel.readyState='open';peer.channel.send=x=>sent.push(JSON.parse(x));await peer.ontrack({track:track()});
  send({type:'turn.created',turn:{role:'assistant',id:'ordinary-ack'}});f.meter(50,0,.1);send({type:'turn.created',turn:{role:'user',id:'end-now'}});assert.equal(sent.length,0);assert.equal(peer.closed,false);
+});
+test('streamed hangup confirms only current stable native text plus microphone silence, without USER done',async t=>{
+ const f=await fixture(t,{api:(route,payload,result)=>route==='call-control-confirm'?{...payload.control,type:'voice.end.accepted'}:result});await f.context.startCall();const peer=f.peers[0];peer.connectionState='connected';peer.onconnectionstatechange();await peer.ontrack({track:track()});peer.channel.readyState='open';const sent=[];peer.channel.send=x=>sent.push(JSON.parse(x));const send=x=>peer.channel.onmessage({data:JSON.stringify(x)});
+ send({type:'turn.created',turn:{role:'user',id:'stream',transcript:'请'}});send({type:'turn.delta',turn_id:'stream',delta:'挂断电话'});
+ const value={voiceSessionId:'voice-1',type:'voice.end.proposed',source:'voice_host_control',requestId:'stream-end',decisionRevision:1,userText:'请挂断电话',closeAfterPlayback:true};f.eventSources[0].onmessage({data:JSON.stringify(value)});
+ for(let at=50;at<=1250;at+=50)f.meter(at,.1,0);await tick();assert.equal(f.requests.filter(x=>x.route==='call-control-confirm').length,0,'live caller speech blocks confirmation');
+ for(let at=1300;at<=3000;at+=50)f.meter(at,0,0);await tick();assert.equal(f.body.dataset.callState,'ending');assert.equal(sent.length,1);assert.equal(peer.closed,false,'decision alone is not farewell playback');
+ send({type:'turn.created',turn:{role:'assistant',id:'stream-bye'}});f.meter(3050,0,.1);send({type:'turn.done',turn:{role:'assistant',id:'stream-bye',transcript:'再见，下次聊。'}});
+ for(let at=3100;at<=3900;at+=50)f.meter(at,0,0);await tick();assert.equal(peer.closed,true);
+});
+test('a same native turn continuation invalidates an in-flight hangup confirmation',async t=>{
+ const result=deferred();const f=await fixture(t,{api:(route,payload,value)=>route==='call-control-confirm'?result.promise:value});await f.context.startCall();const peer=f.peers[0];peer.connectionState='connected';peer.onconnectionstatechange();await peer.ontrack({track:track()});peer.channel.readyState='open';let sends=0;peer.channel.send=()=>sends++;const send=x=>peer.channel.onmessage({data:JSON.stringify(x)});
+ send({type:'turn.created',turn:{role:'user',id:'continue-stream',transcript:'请挂断电话'}});
+ const value={voiceSessionId:'voice-1',type:'voice.end.proposed',source:'voice_host_control',requestId:'old-stream',decisionRevision:1,userText:'请挂断电话',closeAfterPlayback:true};f.eventSources[0].onmessage({data:JSON.stringify(value)});
+ for(let at=50;at<=1300;at+=50)f.meter(at,0,0);await tick();assert.equal(f.requests.filter(x=>x.route==='call-control-confirm').length,1);
+ send({type:'turn.delta',turn_id:'continue-stream',delta:'之前先查一下明天日程'});result.resolve({...value,type:'voice.end.accepted'});await tick();assert.equal(f.body.dataset.callState,'connected');assert.equal(sends,0);assert.equal(peer.closed,false);
 });
