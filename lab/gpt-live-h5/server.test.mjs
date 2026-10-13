@@ -312,3 +312,15 @@ test('caption input rejects another reservation and obsolete revisions without a
  const snapshot=await (await fetch(f.url+'/api/presentation',{headers:{cookie:f.cookie}})).json();assert.equal(snapshot.controls.at(-1).userText,'请挂断电话');
  assert.equal((await f.request('call-control-confirm',{voiceSessionId:'voice-private',control:snapshot.controls.at(-1)})).status,200);
 });
+
+test('relay reports recover through the owned presentation endpoint and require the matching UI receipt',async t=>{
+ const received=[];const directVoice={reserve:async()=>({voiceSessionId:'direct-report',transport:'gateway-relay'}),close:async()=>{},dispose:async()=>{},
+  presentation:(id,after)=>({voiceSessionId:id,revision:3,pending:[],documents:after<3?[{type:'backend.result',voiceSessionId:id,callId:'report-1',revision:3,text:'# 真实报告'}]:[],controls:[]}),
+  contentShown:(id,callId)=>{received.push([id,callId]);return callId==='report-1';}};
+ const f=await fixture(t,{directVoice});await f.request('session',{model:'seeduplex'});
+ const view=await fetch(f.url+'/api/presentation?after=0',{headers:{cookie:f.cookie}});const data=await view.json();assert.equal(data.documents[0].text,'# 真实报告');
+ assert.equal((await f.request('content-shown',{voiceSessionId:'foreign',callId:'report-1'})).status,409);assert.equal(received.length,0);
+ assert.equal((await f.request('content-shown',{voiceSessionId:'direct-report',callId:'unknown'})).status,409);
+ assert.equal((await f.request('content-shown',{voiceSessionId:'direct-report',callId:'report-1'})).status,200);
+ assert.equal((await fetch(f.url+'/api/presentation?after=3',{headers:{cookie:f.cookie}}).then(r=>r.json())).documents.length,0);
+});

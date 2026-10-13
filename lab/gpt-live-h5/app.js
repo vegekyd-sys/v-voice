@@ -370,6 +370,40 @@ function taskState() {
   document.body.dataset.avatarState = tasks.size > 1 ? "very-busy" : tasks.size ? "busy" : "idle";
   avatarContext();
 }
+function receiveDocument(active,value){
+  if(call!==active||value.voiceSessionId!==active.voiceSessionId)return;
+  renderTranscript(presentation.consume(value));
+  if(![...renderedTurns.values()].some(row=>row.dataset.documentCallId===value.callId))return;
+  void api('content-shown',{voiceSessionId:active.voiceSessionId,callId:value.callId}).catch(()=>{});
+}
+function startPresentationRecovery(active,applyNativeControl=()=>{}){
+    // Authenticated recovery is shared by native and relay transports.
+    const refreshPresentation = async () => {
+      if (call !== active || active.presentationFetching) return;
+      active.presentationFetching = true;
+      active.presentationAbort ??= new AbortController();
+      try {
+        const response = await fetch(apiUrl('presentation') + `&after=${active.documentRevision ?? 0}&controlsAfter=${active.controlRevision ?? 0}`, { signal: active.presentationAbort.signal });
+        if (!response.ok) return;
+        const value = await response.json();
+        if (call !== active || value.voiceSessionId !== active.voiceSessionId ||
+          !Number.isSafeInteger(value.revision) || value.revision < (active.presentationRevision ?? 0)) return;
+        for(const item of value.controls ?? []) {
+          if(item.voiceSessionId !== active.voiceSessionId || !Number.isSafeInteger(item.revision) || item.revision <= (active.controlRevision ?? 0))continue;
+          applyNativeControl(item); active.controlRevision = item.revision;
+        }
+        tasks.clear();
+        for (const item of value.pending ?? []) tasks.consume(item);
+        for (const item of value.documents ?? []) receiveDocument(active,item);
+        active.presentationRevision = value.revision;
+        active.documentRevision = value.revision;
+        taskState();
+      } catch { /* A transient presentation failure never closes the audio call. */ }
+      finally { active.presentationFetching = false; }
+    };
+    active.presentationPoll = setInterval(() => void refreshPresentation(), 1500);
+    void refreshPresentation();
+ }
 function renderTranscript(snapshot) {
   const log = $("conversation");
   const follow = log.scrollHeight - log.scrollTop - log.clientHeight < 64;
@@ -394,6 +428,7 @@ function renderTranscript(snapshot) {
         row.parts = { speaker, time, text };
         renderedTurns.set(item.key, row);
       }
+      if(item.document)row.dataset.documentCallId=item.callId;
       const streaming = String(Boolean(call) && !item.complete);
       if (row.dataset.streaming !== streaming) row.dataset.streaming = streaming;
       if (row.parts.speaker.textContent !== item.speaker) row.parts.speaker.textContent = item.speaker;
@@ -618,7 +653,7 @@ async function startCall() {
           if(call!==active)return;
           if (value.type === 'avatar.expression') { avatar?.expression(value.expression); return; }
       tasks.consume(value);
-          if(value.type==='backend.result')renderTranscript(presentation.consume(value));
+          if(value.type==='backend.result')receiveDocument(active,value);
           if(value.type.startsWith('tool.'))taskState();
           if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
           if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
@@ -633,6 +668,7 @@ async function startCall() {
           }
         }});
       await active.relay.start();if(call!==active)return;
+      startPresentationRecovery(active);
       setCallState('connected');$("badge").textContent='通话中';$("stopLabel").textContent='结束通话';
       $("steerText").disabled=false;$("steer").disabled=false;setStatus('V 正在听，直接说话就好');
       void active.sounds.connected();
@@ -665,37 +701,11 @@ async function startCall() {
       if (Number.isSafeInteger(value.revision)) active.presentationRevision = Math.max(active.presentationRevision ?? 0, value.revision);
       if (value.type === 'avatar.expression') { avatar?.expression(value.expression); return; }
       tasks.consume(value);
-      if(value.type==='backend.result')renderTranscript(presentation.consume(value));
+      if(value.type==='backend.result')receiveDocument(active,value);
       applyNativeControl(value);
       taskState();
     };
-    // Native voice audio remains on WebRTC. This authenticated snapshot only
-    // recovers task/document presentation when an HTTPS proxy buffers SSE.
-    const refreshPresentation = async () => {
-      if (call !== active || active.presentationFetching) return;
-      active.presentationFetching = true;
-      active.presentationAbort ??= new AbortController();
-      try {
-        const response = await fetch(apiUrl('presentation') + `&after=${active.documentRevision ?? 0}&controlsAfter=${active.controlRevision ?? 0}`, { signal: active.presentationAbort.signal });
-        if (!response.ok) return;
-        const value = await response.json();
-        if (call !== active || value.voiceSessionId !== active.voiceSessionId ||
-          !Number.isSafeInteger(value.revision) || value.revision < (active.presentationRevision ?? 0)) return;
-        for(const item of value.controls ?? []) {
-          if(item.voiceSessionId !== active.voiceSessionId || !Number.isSafeInteger(item.revision) || item.revision <= (active.controlRevision ?? 0))continue;
-          applyNativeControl(item); active.controlRevision = item.revision;
-        }
-        tasks.clear();
-        for (const item of value.pending ?? []) tasks.consume(item);
-        for (const item of value.documents ?? []) renderTranscript(presentation.consume(item));
-        active.presentationRevision = value.revision;
-        active.documentRevision = value.revision;
-        taskState();
-      } catch { /* A transient presentation failure never closes the audio call. */ }
-      finally { active.presentationFetching = false; }
-    };
-    active.presentationPoll = setInterval(() => void refreshPresentation(), 1500);
-    void refreshPresentation();
+    startPresentationRecovery(active,applyNativeControl);
     active.pc.ontrack = async (event) => {
       if (call !== active) return;
       const stream = new MediaStream([event.track]); $("remoteAudio").srcObject = stream;
