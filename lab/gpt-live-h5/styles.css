@@ -417,8 +417,14 @@ body:not([data-call-state="idle"]) .call-actions {
 #pillHome {
   grid-column: 1/-1;
   grid-row: 2;
-  justify-self: center;
-  align-self: center;
+  /* Keep this grid item's box stable while the pill moves into the reader.
+     WebKit otherwise centers the empty box, then restores the pill at that
+     stale origin (half a pill too far right and down). */
+  justify-self: stretch;
+  align-self: stretch;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 .call-pill {
   display: flex;
@@ -884,7 +890,9 @@ body[data-reading="true"] .content-card {
     grid-row: 1;
     padding: 0;
     align-self: start;
+    /* Preserve the avatar home width while its portrait is in the pill. */
     justify-self: center;
+    min-width: 98px;
   }
   .portrait-wrap {
     width: 98px;
