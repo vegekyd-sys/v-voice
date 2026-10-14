@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {createVoiceGptProvider,VOICE_GPT_PROVIDER} from './provider.mjs';
+import {readVoiceTaskResult} from './delivery.mjs';
 test('Voice provider freezes product instructions and preserves host admission callbacks',async()=>{
  let observed;const base={createBrowserSession:async r=>{observed=r;return {provider:'openai',clientSecret:'private'};},cancelBrowserSession:async()=>true};
  const p=createVoiceGptProvider({getBase:()=>base,isConfigured:()=>true});let actual;const runner=x=>{actual=x;return 42;},control={bindCallLifecycle(){}};
@@ -9,4 +10,19 @@ test('Voice provider freezes product instructions and preserves host admission c
 test('unsupported models and missing cleanup fail explicitly',async()=>{
  const p=createVoiceGptProvider({getBase:()=>({createBrowserSession(){}}),isConfigured:()=>true});
  await assert.rejects(p.createBrowserSession({model:'other'}),/Unsupported/);await assert.rejects(p.cancelBrowserSession({},{}),/cleanup/);
+});
+test('closed media retains exact runner result only for its authenticated host',async()=>{
+ let observed;const done=Promise.withResolvers(),reservations=new Map();
+ const base={createBrowserSession:async r=>{observed=r;return {clientSecret:'opaque'};}};
+ const p=createVoiceGptProvider({getBase:()=>base,isConfigured:()=>true,reservations});
+ await p.createBrowserSession({model:'gpt-live-1-codex',cfg:{},ownerConnId:'real-host',gatewayControl:{onClose(){}},
+  runAgentConsult:params=>{params.onRunStarted({runId:'exact-run'});return done.promise;}});
+ const running=observed.runAgentConsult({continuationIdentity:{delegationItemId:'native-delegation'}});
+ observed.gatewayControl.onClose();
+ const params={clientSecret:'opaque',runId:'exact-run'};
+ assert.equal(readVoiceTaskResult(reservations,params,'real-host').status,'running');
+ assert.throws(()=>readVoiceTaskResult(reservations,params,'foreign-host'),/authenticated/);
+ assert.throws(()=>readVoiceTaskResult(reservations,{...params,runId:'foreign-run'},'real-host'),/not owned/);
+ done.resolve({text:'实际 runner 返回的完整结果'});await running;
+ assert.deepEqual(readVoiceTaskResult(reservations,params,'real-host'),{runId:'exact-run',status:'ok',text:'实际 runner 返回的完整结果'});
 });
