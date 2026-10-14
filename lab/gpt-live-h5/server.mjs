@@ -85,6 +85,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         ...["media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "product-controls.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
         ["/changelog.mjs", [join(here, "changelog.mjs"), "text/javascript; charset=utf-8"]],
+        ["/assets/v-voice-icon.svg", [join(here, "assets/v-voice-icon.svg"), "image/svg+xml"]],
+        ...["v-voice-icon-32.png", "v-voice-apple-touch.png"].map(name => [`/assets/${name}`, [join(here, "assets", name), "image/png"]]),
         ...AVATAR_FILES.map(name => [`/assets/${name}`, [join(here, "assets", name), name.endsWith(".webp") ? "image/webp" : "image/png"]]),
         ...["v-idle-nohat-20260922.png", "v-tool-busy-20260922.png"].map((name) => [`/assets/${name}`, [join(here, "../rtc-h5/assets", name), "image/png"]]),
       ]);
