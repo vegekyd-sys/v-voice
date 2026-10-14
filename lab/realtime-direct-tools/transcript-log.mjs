@@ -6,7 +6,7 @@ import {randomUUID} from 'node:crypto';
 /** Text and whitelisted connection diagnostics. No PCM, protocol or credentials. */
 export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},maxPending=256}={}) {
   if(!directory||!path.isAbsolute(directory))throw Error('An absolute private transcript directory is required');
-  const captureId=randomUUID(),owners=new Map();
+  const captureId=randomUUID(),owners=new Map(),closedOwners=new Map();
   let tail=Promise.resolve(),sequence=0,pending=0,dropped=0,failed=0,closed=false;
   const notify=error=>{failed++;try{onError({code:error.code??'transcript_write_failed'});}catch{}};
   const write=async line=>{
@@ -33,11 +33,11 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     if(closed||!event||typeof event.voiceSessionId!=='string')return false;
     const id=event.voiceSessionId;
     if(event.type==='call.created'){
-      if(!['seeduplex','grok'].includes(event.provider)||typeof event.sessionKey!=='string'||typeof event.model!=='string')return false;
+      if(!['seeduplex','grok','openai'].includes(event.provider)||typeof event.sessionKey!=='string'||typeof event.model!=='string')return false;
       owners.set(id,{voiceSessionId:id,sessionKey:event.sessionKey,provider:event.provider,model:event.model,modelSource:'voice_reservation'});
       return enqueue({...owners.get(id),type:'call.created'});
     }
-    const owner=owners.get(id);if(!owner)return false;
+    const owner=owners.get(id)??(event.type.startsWith('task.delivery-')?closedOwners.get(id):null);if(!owner)return false;
     if(event.type==='call.provider-status'){
       if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed'].includes(event.stage))return false;
       const safe={stage:event.stage};
@@ -53,7 +53,15 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
         ...(typeof event.source==='string'?{source:event.source}:{}),
         ...(typeof event.callId==='string'?{callId:event.callId}:{})});
     }
+    if(['task.delivery-confirmed','task.delivery-failed'].includes(event.type)){
+      const receipt=event.receipt??{};
+      return enqueue({...owner,type:event.type,...(typeof event.runId==='string'?{runId:event.runId}:{}),
+        ...(typeof event.kind==='string'?{kind:event.kind}:{}),
+        ...(typeof receipt.messageId==='string'?{messageId:receipt.messageId}:{}),
+        ...(typeof event.error==='string'?{error:event.error.slice(0,300)}:{})});
+    }
     if(event.type==='call.closed'){
+      closedOwners.set(id,owner);if(closedOwners.size>256)closedOwners.delete(closedOwners.keys().next().value);
       owners.delete(id);return enqueue({...owner,type:'call.closed'});
     }
     return false;

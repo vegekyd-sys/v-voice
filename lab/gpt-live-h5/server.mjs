@@ -12,6 +12,7 @@ import { createVoiceAccess } from "./access.mjs";
 import { createConversationEntries } from "../../lib/conversation-entries.mjs";
 import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
+import {createTaskDelivery} from '../realtime-direct-tools/task-delivery.mjs';
 import {createVoiceLarkReader} from '../realtime-direct-tools/lark-readonly.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
 import {voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
@@ -33,7 +34,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
   };
   const access = entryAccess(entries.resolve(new URL("http://localhost")));
   const visual = createAvatarReactionSelector({evaluate:avatarEvaluate});
-  const contexts = new Map();
+  const contexts = new Map(),nativeTasks=new Map(),nativeTaskOwners=new Set();let stopping=false;
   const local = { active: null, creatingSession: false, listeners: new Set(), touchedAt: Date.now(), entry: "tianyi" };
   const attempts = new Map();
   const allow = key => {
@@ -52,15 +53,18 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
   };
   const close = async (context = local) => {
     const old = context.active;
+    old?.taskDelivery?.close();
     old?.callControl?.close();
     if (old) visual.forget(old.reservation.voiceSessionId);
     if (old?.direct) await directVoice.close(old.reservation.voiceSessionId);
     else if (old) await gateway.request("talk.client.close", { sessionKey: old.sessionKey, voiceSessionId: old.reservation.voiceSessionId });
+    if(old&&!old.direct)callControlAudit({type:'call.closed',voiceSessionId:old.reservation.voiceSessionId});
     if (context.active === old) {context.active = null;const owner=context.avatarOwners?.get(old?.reservation.voiceSessionId);if(owner)owner.endedAt=Date.now();}
   };
   const server = createServer(async (req, res) => {
     res.setHeader("referrer-policy", "no-referrer"); res.setHeader("x-content-type-options", "nosniff");
     try {
+      if(stopping)return json(res,503,{error:"服务正在收尾，请稍后重新拨号"});
       const host = req.headers.host ?? "";
       if (hosted ? host !== origin.host : !/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host)) return json(res, 403, { error: "请求入口不匹配" });
       const requestOrigin = hosted ? publicOrigin : `http://${host}`;
@@ -178,7 +182,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
             return json(res,200,reservation);
           }
           const reservation = await gateway.request("talk.client.create", { sessionKey, provider: gptProvider, model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
-          context.active = { sessionKey, reservation, touchedAt: Date.now(), presentation: { revision: 0, pending: new Map(), documents: new Map(), controls: [] } };
+          const taskDelivery=createTaskDelivery({gateway,sessionKey,ownerId:reservation.voiceSessionId,audit:callControlAudit,onIdle:()=>{nativeTaskOwners.delete(taskDelivery);if(nativeTasks.get(reservation.voiceSessionId)===taskDelivery)nativeTasks.delete(reservation.voiceSessionId);}});
+          nativeTaskOwners.add(taskDelivery);
+          // Task audit only. Native GPT captions remain Gateway-owned.
+          callControlAudit({type:'call.created',voiceSessionId:reservation.voiceSessionId,sessionKey,provider:'openai',model:reservation.model});
+          context.active = { sessionKey, reservation, touchedAt: Date.now(), taskDelivery, presentation: { revision: 0, pending: new Map(), documents: new Map(), controls: [] } };
+          nativeTasks.set(reservation.voiceSessionId,context.active.taskDelivery);
           if (reservation.model !== "gpt-live-1-codex" || reservation.transport !== "webrtc" || reservation.offerUrl !== "/plugins/openai/realtime/calls") {
             await close(context);
             return json(res, 409, { error: "候选语音配置与 GPT Live 实验不匹配" });
@@ -235,6 +244,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         if(!Number.isSafeInteger(params.revision)||params.revision<1||typeof params.turnId!=='string'||!params.turnId||params.turnId.length>160||typeof params.text!=='string'||params.text.length>2400||typeof params.final!=='boolean')return json(res,400,{error:'通话字幕无效'});
         if(params.revision<=(owned.callControlCaptionRevision??0))return json(res,409,{error:'通话字幕已更新'});
         owned.callControlCaptionRevision=params.revision;
+        if(params.final&&owned.taskDelivery?.observeUser(params.text))void owned.taskDelivery.subscribe().catch(error=>callControlAudit({type:'task.delivery-failed',voiceSessionId:params.voiceSessionId,error:error.message}));
         void owned.callControl?.observe({role:'user',turnId:params.turnId,text:params.text,final:params.final,snapshot:true});
         return json(res,200,{ok:true});
       }
@@ -281,6 +291,14 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
   }, 15000); timer.unref();
   const emit = (event) => {
     directVoice?.handleEvent(event);
+    for(const delivery of nativeTaskOwners)delivery.handleEvent(event);
+    const taskEvent=event.event==='talk.event'?event.payload?.talkEvent:null;
+    if(taskEvent?.type==='tool.progress'&&taskEvent.payload?.name==='openclaw_background_task'){
+      nativeTasks.get(event.payload.voiceSessionId)?.watch(taskEvent.payload.runId,taskEvent.callId);
+    }
+    if(event.event==='talk.event'&&event.payload?.talkEvent?.type==='tool.call'&&event.payload.talkEvent.payload?.name==='openclaw_agent_consult'){
+      nativeTasks.get(event.payload.voiceSessionId)?.watch(event.payload.talkEvent.callId);
+    }
     if (event.event !== "talk.event") return;
     const context = [local, ...contexts.values()].find(item => item.active?.reservation.voiceSessionId === event.payload?.voiceSessionId);
     if (!context) return;
@@ -348,10 +366,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     if(hosted?!entryAccess(binding).read(req):!String(req.headers.cookie).split(/;\s*/u).includes(`v_live_experiment=${cookie}`)){socket.destroy();return;}
     directVoice.upgrade(req,socket,head,url.searchParams.get('voiceSessionId'),url.searchParams.get('ticket'));
   });
-  return { server, emit, dispose: async () => {
-    clearInterval(timer);
+  return { server, emit, dispose: async ({drain=false}={}) => {
+    stopping=true;clearInterval(timer);
     for (const context of [local, ...contexts.values()]) { for (const response of context.listeners) response.end(); await close(context).catch(() => {}); }
-    await directVoice?.dispose();
+    if(drain)while([...nativeTaskOwners].some(d=>d.pending))await new Promise(resolve=>setTimeout(resolve,50));
+    for(const delivery of nativeTaskOwners)delivery.dispose();nativeTaskOwners.clear();nativeTasks.clear();
+    await directVoice?.dispose({drain});
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
   } };
 }
@@ -408,5 +428,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     } });
   } else bridge = createLiveH5Server({ preview: true });
   bridge.server.listen(port, "127.0.0.1", () => console.log(JSON.stringify({ ready: true, host: "127.0.0.1", port, preview })));
-  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void bridge.dispose().finally(async () => { await transcriptLog?.close(); await avatarLog?.close(); gateway?.stop(); process.exit(0); }));
+  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void bridge.dispose({drain:true}).finally(async () => { await transcriptLog?.close(); await avatarLog?.close(); gateway?.stop(); process.exit(0); }));
 }

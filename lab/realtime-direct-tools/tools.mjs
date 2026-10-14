@@ -13,9 +13,10 @@ export const TOOLS=[
  {type:'function',name:'current_time',description:'获取当前上海时间，用于解释今天、明天和周末。',parameters:object({})},
  {type:'function',name:'show_content',description:'将已有的真实结果以完整Markdown提交到当前电话屏幕，形成可展开阅读的卡片。用户要求放屏幕时必须实际调用，不用重新检索同一结果。不能编造资料；需要调研时先delegate_to_v。只有返回shown=true才能说屏幕已显示，published只代表提交。支持Markdown中的图片和视频HTTPS链接。',parameters:object({markdown:str},['markdown'])},
  {type:'function',name:'delegate_to_v',description:'真正调用个人 V 的后端语言模型。没有合适直接工具时，即使只是发一条飞书消息、改一个日程或写文档，也必须交给它；图片视频生成、多步调研、跨资料整合、规划和长时间任务同样交给它。语音模型没有这个能力不是拒绝理由。用户要求交给后端模型或后台处理时必须用本工具；即使用户给出了命令也不能只口头委派然后自己 exec/process。简单明确查询直接用原生工具。V 会自主继续全部步骤，返回公开进展和最终结果；等待时仍可聊天，不重复派发同一任务。context 传递用户条件和已有资料，不能扩大授权。',parameters:object({question:str,context:str},['question'])},
+ {type:'function',name:'send_task_updates',description:'用户要求电话任务的进展和结果发到飞书群时调用，订阅本电话绑定群的真实进展与完成结果，不重做任务、不接受自填收件人。必须有真实用户的发送要求；普通挂断不取消后台任务。accepted 只表示接续已接受，不表示结果已发送。',parameters:object({})},
  {type:'function',name:'cancel_task',description:'仅当用户明确取消的对象与仍在执行的当前后台任务相同时调用。已完成的旧视频或图片不能用取消另一个无关任务代替；目标不清楚先澄清。普通插话、闲聊或补充条件不表示取消。只取消本次电话发起的任务。',parameters:object({})},
  {type:'function',name:'openclaw_tool',description:'直接执行 OpenClaw 工具，不调用另一个语言模型。可用工具和用法以本次会话提供的目录为准。飞书日历用 feishu_calendar，其他飞书只读查询用本地 lark_read；不要经 Gateway exec 执行 lark-cli。写操作交 delegate_to_v 且外部写入遵守用户授权，禁止自行确认。arguments 是原工具参数的 JSON 字符串。',parameters:object({tool:str,arguments:str},['tool','arguments'])},
- {type:'function',name:'end_call',description:'结束当前电话。用户向你告别，例如“好了，那我们就聊到这里”“拜拜啦”“今天先这样，下次再聊”，立即调用本工具，不只口头告别，也不等用户再次要求挂断。先理解上下文：讨论挂断功能、引用别人的告别、转话题继续提问或取消一个任务都不要挂断。调用成功后简短告别，系统等待真实告别音频播完才关闭。',parameters:object({})}
+ {type:'function',name:'end_call',description:'只结束当前电话，不取消已启动的后台任务。需要取消任务时必须另外调用 cancel_task。用户向你告别，例如“好了，那我们就聊到这里”“拜拜啦”“今天先这样，下次再聊”，立即调用本工具，不只口头告别，也不等用户再次要求挂断。先理解上下文：讨论挂断功能、引用别人的告别、转话题继续提问或取消一个任务都不要挂断。调用成功后简短告别，系统等待真实告别音频播完才关闭。',parameters:object({})}
 ];
 export function validateTool(name,args){
  const tool=TOOLS.find(t=>t.name===name);if(!tool)throw Error('不支持这个工具');
