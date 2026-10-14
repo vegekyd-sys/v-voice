@@ -114,7 +114,7 @@ async function fixture(t, options = {}) {
     renderMarkdown: (target,text) => { target.textContent = text; }, createTranscriptPresentation, createPageMicrophoneSession, createScreenWakeLock, createAvatarTasks, ACTIVITY_LABELS,
     createContentView: () => options.contentView,
     mountProductControls: () => ({ callState() {}, refreshModels() {} }),
-    entryStartup, startVoiceEntry, mountChangelog,
+    entryStartup, startVoiceEntry, markVoiceTiming: () => {}, mountChangelog,
     createRelayAudio: values => options.relayFactory(values),
     mountAvatar: () => options.avatar,
     createAvatarReactions: () => options.reactions,
