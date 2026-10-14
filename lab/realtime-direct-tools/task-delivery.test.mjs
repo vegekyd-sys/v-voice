@@ -55,3 +55,15 @@ test('owned native completion after hangup reconciles final when agent.wait has 
  for(let i=0;i<50&&!calls.some(c=>c.message==='已验证的原任务结果');i++)await new Promise(r=>setTimeout(r,5));
  await d.flush();assert.equal(historyReads,1);assert.equal(calls.filter(c=>c.message==='已验证的原任务结果').length,1);assert.equal(d.pending,false);d.dispose();
 });
+
+test('hangup can retire native events; wait timeout reconciles only the exact persisted final',async()=>{
+ const calls=[];let reads=0;
+ const d=createTaskDelivery({gateway:{request:async(m,p)=>{
+  if(m==='agent.wait')return {status:'timeout'};
+  if(m==='chat.history')return {messages:++reads===1?[{role:'assistant',__openclaw:{runId:'foreign'},content:[{type:'text',text:'别的任务'}]}]:[{role:'assistant',__openclaw:{runId:'native'},stopReason:'stop',content:[{type:'text',text:'原任务实际最终结果'}]}]};
+  calls.push(p);return {messageId:'om-'+calls.length};
+ }},sessionKey:'agent:makaron:feishu:group:oc_test',ownerId:'call'});
+ d.observeUser('结果发群');d.watch('native');d.close();
+ for(let i=0;i<100&&!calls.some(c=>c.message==='原任务实际最终结果');i++)await new Promise(r=>setTimeout(r,5));
+ await d.flush();assert.equal(reads,2);assert(calls.some(c=>c.message==='原任务实际最终结果'));assert(!calls.some(c=>c.message==='别的任务'));assert.equal(d.pending,false);d.dispose();
+});

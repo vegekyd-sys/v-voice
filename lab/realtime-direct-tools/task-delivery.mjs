@@ -82,11 +82,17 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,audit=()=>{},onId
           }
           if(disposed||currentByDelegation.get(delegationId)!==runId)return;
           if(state.aborted||state.status==='error')throw Error(state.error??'后台任务结束但没有完成');
-          if(state.status!=='ok'||state.yielded){await new Promise(r=>setTimeout(r,50));continue;}
+          if(state.yielded){await new Promise(r=>setTimeout(r,50));continue;}
+          // Closing a native media owner may also stop its terminal event. A
+          // wait timeout is not failure or proof of running: reconcile the
+          // exact persisted run as a fallback, never another run's latest text.
           const history=await gateway.request('chat.history',{agentId:target?.agentId??'makaron',sessionKey,limit:60},{timeoutMs:10000});
           const final=[...(history.messages??[])].reverse().find(m=>m.role==='assistant'&&m.__openclaw?.runId===runId&&m.phase!=='analysis'&&m.phase!=='commentary'&&!m.isReasoning&&m.stopReason!=='toolUse');
           const text=typeof final?.content==='string'?final.content:(final?.content??[]).filter(b=>b.type==='text'&&!b.isReasoning&&b.phase!=='analysis').map(b=>b.text??'').join('\n');
-          if(!text?.trim())throw Error('后台已结束，但尚未核对到这个任务的结果');
+          if(!text?.trim()){
+            if(state.status==='ok')throw Error('后台已结束，但尚未核对到这个任务的结果');
+            await new Promise(r=>setTimeout(r,250));continue;
+          }
           const result=readBackendResult(text).text;lastResult={runId,text:result};await send(runId,'final',result);if(activeRun===runId)activeRun=undefined;return;
         }
       })().catch(error=>{if(currentByDelegation.get(delegationId)===runId)void send(runId,'failure',`电话中的后台任务未确认完成：${error.message}。`).catch(()=>{});}).finally(()=>{if(activeRun===runId)activeRun=undefined;watched.delete(runId);observers.get(runId)?.observer.close();observers.delete(runId);if(closed&&!watched.size)onIdle();});
