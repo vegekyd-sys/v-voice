@@ -1298,14 +1298,22 @@ body[data-reading="true"] .changelog-trigger { visibility: hidden; pointer-event
     left: 50%;
     bottom: calc(-1 * max(8px, env(safe-area-inset-bottom)));
     width: 100vw;
-    height: 112px;
+    height: 96px;
     transform: translateX(-50%);
-    background: linear-gradient(0deg, rgba(249,246,252,.63), rgba(249,246,252,.18));
+    /* Let conversation text remain visible beneath the floating controls.
+       A light tint and gradual blur avoid a full-width opaque-looking band. */
+    background: linear-gradient(0deg, rgba(249,246,252,.18), rgba(249,246,252,0));
+    backdrop-filter: blur(10px) saturate(125%);
+    -webkit-backdrop-filter: blur(10px) saturate(125%);
+    mask-image: linear-gradient(transparent, rgba(0,0,0,.55) 65%, #000);
+    -webkit-mask-image: linear-gradient(transparent, rgba(0,0,0,.55) 65%, #000);
+    pointer-events: none;
+  }
+  .steer-form[data-open="true"] {
+    background: rgba(255,253,255,.38);
+    border-color: rgba(255,255,255,.8);
     backdrop-filter: blur(16px) saturate(125%);
     -webkit-backdrop-filter: blur(16px) saturate(125%);
-    mask-image: linear-gradient(transparent, #000 40%);
-    -webkit-mask-image: linear-gradient(transparent, #000 40%);
-    pointer-events: none;
   }
   .call-pill {
     background: rgba(255,253,255,.5);
