@@ -1,5 +1,12 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {createTaskDelivery,requestsTaskDelivery,voiceFeishuTarget} from './task-delivery.mjs';
+test('native spaced captions authorize this group but preserve denial and other-group boundaries',()=>{
+ assert(requestsTaskDelivery('这是 语 音 验 收 测试，请 交 给 后台 运行 一个 等待 二 十 秒 再 输出 验 收 成功 的 命 令，完成 后 把 结果 发到 这个 群，不要 做 其他 操作'));
+ assert(requestsTaskDelivery('完成 后 把 结 果 发 到 飞 书 群 里'));
+ assert(!requestsTaskDelivery('不要 把 结 果 发 到 这个 群'));
+ assert(!requestsTaskDelivery('把 结 果 发 到 销 售 群'));
+ assert(!requestsTaskDelivery('他说“把 结 果 发 到 这个 群”是什么意思'));
+});
 test('delivery requires a real user instruction and a server-bound Feishu target',async()=>{
  const calls=[],d=createTaskDelivery({gateway:{request:async(m,p)=>{calls.push(p);return {messageId:'om-real'};}},sessionKey:'agent:makaron:feishu:group:oc_test',ownerId:'call'});
  await assert.rejects(d.subscribe(),/尚未要求/);d.started('run');await d.completed('run','已有结果');assert.equal(calls.length,0);
@@ -21,7 +28,7 @@ test('rejected send produces failure evidence, never a success receipt',async()=
 test('native final is reconciled only from its exact run after the call closes',async()=>{
  let finish;const waiting=new Promise(r=>finish=r),calls=[];
  const d=createTaskDelivery({gateway:{request:async(m,p)=>{if(m==='agent.wait')return waiting;if(m==='chat.history')return {messages:[{role:'assistant',__openclaw:{runId:'foreign'},content:[{type:'text',text:'错的任务'}]},{role:'assistant',__openclaw:{runId:'native'},content:[{type:'text',text:'已完成的真实结果'}]}]};calls.push(p);return {messageId:'om-'+calls.length};}},sessionKey:'agent:makaron:feishu:group:oc_test',ownerId:'call'});
- d.observeUser('结果发群');d.watch('native');d.close();finish({status:'ok'});
+ d.observeUser('结 果 发 到 这个 群');d.watch('native');d.close();finish({status:'ok'});
  for(let i=0;i<50&&!calls.some(c=>c.message==='已完成的真实结果');i++)await new Promise(r=>setTimeout(r,5));
  assert(calls.some(c=>c.message==='已完成的真实结果'));assert(!calls.some(c=>c.message==='错的任务'));d.dispose();
 });
