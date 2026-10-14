@@ -78,6 +78,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         ["/", [join(here, "index.html"), "text/html; charset=utf-8"]],
         ["/markdown.mjs", [join(here, "markdown.mjs"), "text/javascript; charset=utf-8"]],
         ["/vendor/marked-18.0.5.mjs", [join(here, "vendor/marked-18.0.5.mjs"), "text/javascript; charset=utf-8"]],
+        ["/entry-startup.mjs", [join(here, "entry-startup.mjs"), "text/javascript; charset=utf-8"]],
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
@@ -90,7 +91,24 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       if (req.method === "GET" && staticFiles.has(pathname)) {
         if (pathname === "/" && !hosted) res.setHeader("set-cookie", `v_live_experiment=${cookie}; HttpOnly; SameSite=Strict; Path=/`);
         const [file, type] = staticFiles.get(pathname);
-        const contents = await readFile(file);
+        let contents = await readFile(file);
+        if (pathname === "/") {
+          // The first frame needs this CSS, so return the exact release bytes
+          // in the HTML instead of requiring another mobile-network round trip.
+          const css = await readFile(join(here, "styles.css"), "utf8");
+          let html = contents.toString("utf8").replace('<link rel="stylesheet" href="./styles.css" />', `<style data-voice-entry>${css}</style>`);
+          // Only an authenticated request receives an entry snapshot. It is a
+          // presentation hint; every session/tool request still authorizes itself.
+          const visitor = hosted ? access.read(req) : null;
+          const canCheckEntry = visitor && (contexts.has(`${entry}:${visitor.id}`) || contexts.size < 512);
+          if (!hosted || canCheckEntry) {
+            const initial = JSON.stringify({ ready: !preview,
+              ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
+            }).replaceAll("<", "\\u003c");
+            html = html.replace('<script type="module" src="./app.js"></script>', `<script type="application/json" id="voiceEntryStatus">${initial}</script><script type="module" src="./app.js"></script>`);
+          }
+          contents = Buffer.from(html);
+        }
         res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
       }
       const readBody = async () => {

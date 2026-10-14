@@ -38,6 +38,10 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       return enqueue({...owners.get(id),type:'call.created'});
     }
     const owner=owners.get(id);if(!owner)return false;
+    if(event.type==='call.connection-stage'){
+      if(!['catalog-requested','catalog-ready','context-requested','context-ready','provider-connecting','provider-ready'].includes(event.stage))return false;
+      return enqueue({...owner,type:event.type,stage:event.stage});
+    }
     if(event.type==='call.provider-status'){
       if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed'].includes(event.stage))return false;
       const safe={stage:event.stage};

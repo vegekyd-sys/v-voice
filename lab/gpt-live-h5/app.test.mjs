@@ -6,6 +6,7 @@ import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 import { createPageMicrophoneSession } from "./microphone-session.mjs";
 import { createScreenWakeLock } from "./screen-wake-lock.mjs";
+import { entryStartup, startVoiceEntry } from "./entry-startup.mjs";
 import { mountChangelog } from "./changelog.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 
@@ -113,7 +114,7 @@ async function fixture(t, options = {}) {
     renderMarkdown: (target,text) => { target.textContent = text; }, createTranscriptPresentation, createPageMicrophoneSession, createScreenWakeLock, createAvatarTasks, ACTIVITY_LABELS,
     createContentView: () => options.contentView,
     mountProductControls: () => ({ callState() {}, refreshModels() {} }),
-    mountChangelog,
+    entryStartup, startVoiceEntry, mountChangelog,
     createRelayAudio: values => options.relayFactory(values),
     mountAvatar: () => options.avatar,
     createAvatarReactions: () => options.reactions,
@@ -166,6 +167,19 @@ async function fixture(t, options = {}) {
   };
   return { context, element, body, requests, peers, contexts, sounds, pageEvents, beacons, eventSources, intervals, timeouts, meter, setNow: value => {now = value;} };
 }
+
+test("dial stays unavailable until the real entry check finishes; no session starts while waiting", async t => {
+  const status = deferred();
+  const f = await fixture(t, { api: (route, payload, fallback) => route === "status" ? status.promise : fallback });
+  // Match the initial HTML's disabled button in this minimal DOM fixture.
+  f.element("start").disabled = true;
+  await f.context.startCall();
+  assert.equal(f.requests.some(row => row.route === "session"), false);
+  status.resolve({ ready: true });
+  await tick();
+  assert.equal(f.element("start").disabled, false);
+  assert.equal(f.element("badge").textContent, "可以拨号");
+});
 
 test("shared voice link exchanges fragment access before status and removes the credential", async t => {
   const replaced = [];

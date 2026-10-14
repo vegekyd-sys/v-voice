@@ -113,3 +113,22 @@ test("SSE tool events only reach the cookie owning the voice session", async t =
   assert.equal(await Promise.race([readerB.read().then(() => "leaked"), new Promise(resolve => setTimeout(() => resolve("quiet"), 30))]), "quiet");
   await readerA.cancel(); await readerB.cancel();
 });
+
+test('first-frame styles are exact and only verified cookies receive an entry hint',async t=>{
+ const f=await fixture(t);
+ const anonymous=await f.request('/voice/');const publicHtml=await anonymous.text();
+ assert.equal(anonymous.headers.get('cache-control'),'no-store');
+ assert.match(publicHtml,/<style data-voice-entry>/u);
+ assert.doesNotMatch(publicHtml,/id="voiceEntryStatus"/u);
+ const css=await (await f.request('/voice/styles.css')).text();
+ assert.equal(publicHtml.split('<style data-voice-entry>')[1].split('</style>')[0],css);
+ const cookie=await f.visitor();
+ const html=await (await f.request('/voice/',cookie)).text();
+ const hint=JSON.parse(html.match(/id="voiceEntryStatus">([^<]+)<\/script>/u)[1]);
+ assert.deepEqual(hint,{ready:true});
+ assert.doesNotMatch(html,new RegExp(token));
+ const denied=await (await f.request('/voice/',cookie+'broken')).text();
+ assert.doesNotMatch(denied,/id="voiceEntryStatus"/u);
+ assert.equal((await f.request('/voice/api/session',cookie+'broken',{})).status,401);
+ assert.equal(f.calls.length,0);
+});

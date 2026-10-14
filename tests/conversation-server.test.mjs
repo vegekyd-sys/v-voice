@@ -11,7 +11,9 @@ async function fixture(t){
  const request=(id,path,cookie,body)=>new Promise((resolve,reject)=>{
  const req=httpRequest({hostname:'127.0.0.1',port:bridge.server.address().port,path:`/voice/api/${path}?phone=${id}`,method:body===undefined?'GET':'POST',headers:{host:new URL(origin).host,origin,...(cookie?{cookie}:{}),'content-type':'application/json'}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end(body===undefined?undefined:JSON.stringify(body));});
  const login=async entry=>{const r=await request(entry.id,'access','',{access:entry.accessToken});assert.equal(r.status,200);return r.headers.get('set-cookie').split(';')[0];};
- return {calls,request,login};
+ const html=(id,cookie)=>new Promise((resolve,reject)=>{
+  const req=httpRequest({hostname:'127.0.0.1',port:bridge.server.address().port,path:`/voice/?phone=${id}`,headers:{host:new URL(origin).host,...(cookie?{cookie}:{})}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end();});
+ return {calls,request,login,html};
 }
 test('separate phones run concurrently; same-session alias cannot replace an owner',async t=>{
  const f=await fixture(t),[a,b,c]=await Promise.all(entries.map(f.login));
@@ -37,4 +39,14 @@ for(const model of ['seeduplex','grok'])test(`${model} uses the same phone bindi
  const r=await f.request(entries[1].id,'session',cookie,{model});assert.equal(r.status,200);
  assert.equal(f.calls[0].method,'direct.reserve');assert.equal(f.calls[0].args.sessionKey,entries[1].sessionKey);
  assert.equal(f.calls[0].args.model,model);
+});
+
+test('inline readiness cannot cross phone-cookie ownership and reveals no session binding',async t=>{
+ const f=await fixture(t),cookie=await f.login(entries[0]);
+ const owner=await (await f.html(entries[0].id,cookie)).text();
+ assert.match(owner,/id="voiceEntryStatus"/u);
+ const foreign=await (await f.html(entries[1].id,cookie)).text();
+ assert.doesNotMatch(foreign,/id="voiceEntryStatus"/u);
+ for(const e of entries){assert(!owner.includes(e.sessionKey));assert(!owner.includes(e.accessToken));}
+ assert.equal(f.calls.length,0);
 });

@@ -63,3 +63,16 @@ test('provider diagnostics persist only fixed classifications and numeric codes,
   await f.log.close();const rows=await f.rows();assert(!JSON.stringify(rows).includes('SECRET'));
   assert.equal(rows[1].upstreamCode,'55000000');assert.equal(rows[1].sessionAgeMs,72000);assert.equal(rows[2].category,undefined);assert.equal(rows[2].attempt,undefined);
 });
+
+test('connection profiling persists only known stages for the reserved call owner',async t=>{
+  const f=await fixture(t);f.created();
+  assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'foreign',stage:'provider-ready'}),false);
+  assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'v1',stage:'arbitrary SECRET'}),false);
+  for(const stage of ['catalog-requested','catalog-ready','context-requested','context-ready','provider-connecting','provider-ready']){
+    f.tick(10);assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'v1',stage,token:'SECRET',text:'SECRET'}),true);
+  }
+  await f.log.close();const rows=await f.rows();
+  assert.equal(rows.filter(r=>r.type==='call.connection-stage').length,6);
+  assert(!JSON.stringify(rows).includes('SECRET'));
+  assert(rows.every(r=>r.sessionKey==='personal'));
+});
