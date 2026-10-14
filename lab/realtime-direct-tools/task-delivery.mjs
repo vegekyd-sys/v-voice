@@ -55,6 +55,10 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,audit=()=>{},onId
     get detached(){return closed;},
     get pending(){return Boolean(activeRun||watched.size);},
     handleEvent(event){
+      const native=event.event==='talk.event'&&event.payload?.voiceSessionId===ownerId?event.payload.talkEvent:null;
+      const completed=native&&observers.get(native.callId);
+      if(completed&&native.payload?.name==='openclaw_agent_consult'&&['tool.result','tool.error'].includes(native.type))
+        completed.terminal.resolve(native.type==='tool.result'?{status:'ok'}:{status:'error',error:'原后台任务执行失败'});
       const row=observers.get(event.payload?.runId);if(!row||event.event!=='agent')return;
       if(event.payload.stream==='tool'&&event.payload.data?.phase==='result')row.hasToolResult=true;
       if(row.hasToolResult)row.observer.onAgentEvent(event.payload);
@@ -62,13 +66,17 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,audit=()=>{},onId
     watch(runId,delegationId=runId){
       if(typeof runId!=='string'||!runId)return;
       if(watched.has(runId))return;currentByDelegation.set(delegationId,runId);watched.add(runId);activeRun=runId;
-      observers.set(runId,{hasToolResult:false,observer:createGptLiveConsultProgressObserver({runId,onProgress:p=>{if(authorized&&p.text?.length<=220)void send(runId,'progress',p.text).catch(()=>{});}})});
+      const terminal=Promise.withResolvers();
+      observers.set(runId,{terminal,hasToolResult:false,observer:createGptLiveConsultProgressObserver({runId,onProgress:p=>{if(authorized&&p.text?.length<=220)void send(runId,'progress',p.text).catch(()=>{});}})});
       if(authorized)void send(runId,'accepted','已接续这通电话的后台任务，后续进展和结果会发在这里。').catch(()=>{});
       void (async()=>{
         let misses=0;const deadline=Date.now()+600000;
         while(!disposed&&currentByDelegation.get(delegationId)===runId){
           if(Date.now()>deadline)throw Error("等待后台结果超过十分钟，请在飞书继续查询原任务，不要重复执行");
-          let state;try{state=await gateway.request('agent.wait',{runId,timeoutMs:20000},{timeoutMs:25000});}catch{
+          // Native consults report completion to their original host, but need
+          // not populate agent.wait's completion cache. Keep the exact run and
+          // owner checks, then reconcile its canonical persisted final.
+          let state;try{state=await Promise.race([gateway.request('agent.wait',{runId,timeoutMs:20000},{timeoutMs:25000}),terminal.promise]);}catch{
             if(++misses>=3)throw Error('暂时无法核对后台结果，请在飞书继续查询原任务，不要重复下单');
             await new Promise(r=>setTimeout(r,500));continue;
           }

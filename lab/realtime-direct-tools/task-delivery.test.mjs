@@ -40,3 +40,18 @@ test('native resumed run supersedes old outcome without cancelling either run',a
  for(let i=0;i<50&&!calls.some(c=>c.message==='接续任务完成');i++)await new Promise(r=>setTimeout(r,5));
  await d.flush();assert(calls.some(c=>c.message==='接续任务完成'));assert(!calls.some(c=>c.message.includes('未确认完成')));d.dispose();
 });
+
+test('owned native completion after hangup reconciles final when agent.wait has no terminal cache',async()=>{
+ const calls=[];let historyReads=0;
+ const d=createTaskDelivery({gateway:{request:async(m,p)=>{
+  if(m==='agent.wait')return new Promise(()=>{});
+  if(m==='chat.history'){historyReads++;return {messages:[{role:'assistant',__openclaw:{runId:'native'},content:[{type:'text',text:'已验证的原任务结果'}]}]};}
+  calls.push(p);return {messageId:'om-'+calls.length};
+ }},sessionKey:'agent:makaron:feishu:group:oc_test',ownerId:'owned-call'});
+ d.observeUser('结 果 发 到 这个 群');d.watch('native');d.close();
+ const event=id=>({event:'talk.event',payload:{voiceSessionId:id,talkEvent:{type:'tool.result',callId:'native',payload:{name:'openclaw_agent_consult'}}}});
+ d.handleEvent(event('foreign-call'));await new Promise(r=>setImmediate(r));assert.equal(historyReads,0);
+ d.handleEvent(event('owned-call'));
+ for(let i=0;i<50&&!calls.some(c=>c.message==='已验证的原任务结果');i++)await new Promise(r=>setTimeout(r,5));
+ await d.flush();assert.equal(historyReads,1);assert.equal(calls.filter(c=>c.message==='已验证的原任务结果').length,1);assert.equal(d.pending,false);d.dispose();
+});
