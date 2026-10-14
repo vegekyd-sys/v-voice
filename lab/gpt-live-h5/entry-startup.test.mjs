@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {startVoiceEntry} from './entry-startup.mjs';
+import {startVoiceEntry,publishVoiceTiming} from './entry-startup.mjs';
 const location={pathname:'/voice/',search:'?entry=tianyi',hash:''};
 test('entry status starts immediately without requesting a microphone or a voice session',async()=>{
  const requests=[],marks=[];let finish;
@@ -38,4 +38,15 @@ test('authenticated HTML status avoids a second status round trip but an access 
  const fresh=await startVoiceEntry({location:{...location,hash:'#access=fixture-only'},initialStatus,replaceState:()=>{},fetch:async url=>{urls.push(url);return {ok:true,json:async()=>({ready:true})};}});
  assert.equal(fresh.status.ready,true);
  assert.deepEqual(urls,['./api/access?entry=tianyi','./api/status?entry=tianyi']);
+});
+
+test('DOM profiling exports whitelisted timestamps rather than arbitrary marks or payloads',t=>{
+ const previous=globalThis.document;const root={dataset:{}};
+ globalThis.document={documentElement:root};
+ t.after(()=>{if(previous===undefined)delete globalThis.document;else globalThis.document=previous;performance.clearMarks('voice.dial.requested');performance.clearMarks('voice.private.SECRET');});
+ performance.mark('voice.dial.requested');performance.mark('voice.private.SECRET');publishVoiceTiming();
+ const value=JSON.parse(root.dataset.voiceTiming);
+ assert(value.marks.some(m=>m.name==='voice.dial.requested'&&typeof m.ms==='number'));
+ assert(!root.dataset.voiceTiming.includes('SECRET'));
+ assert.deepEqual(Object.keys(value).sort(),['fcpMs','marks','ttfbMs']);
 });

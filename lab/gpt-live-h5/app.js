@@ -1,4 +1,4 @@
-import { entryStartup, startVoiceEntry } from "./entry-startup.mjs";
+import { entryStartup, startVoiceEntry, markVoiceTiming } from "./entry-startup.mjs";
 import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
 import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { createAvatarTelemetry } from "./avatar-telemetry.mjs";
@@ -39,7 +39,7 @@ const avatar = typeof window.Image === "function" ? mountAvatar(document, window
 const sceneAnimations = new Map();
 const screenWakeLock = createScreenWakeLock({ navigator, document, onState: state => { document.body.dataset.screenWakeLock = state; } });
 function setCallState(state) {
-  if (state === "connected" && document.body.dataset.callState === "dialing") performance.mark?.("voice.connection.ready");
+  if (state === "connected" && document.body.dataset.callState === "dialing") markVoiceTiming("voice.connection.ready");
   screenWakeLock.setActive(state !== 'idle');
   if (document.body.dataset.callState === state) return;
   const animate = typeof window.matchMedia === "function"
@@ -581,7 +581,7 @@ async function startCall() {
   if (!liveReady) { setStatus(entryError ?? "当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
   for (const name of ["voice.dial.requested", "voice.microphone.ready", "voice.reservation.ready", "voice.connection.ready"])
     performance.clearMarks?.(name);
-  performance.mark?.("voice.dial.requested");
+  markVoiceTiming("voice.dial.requested");
   $("start").disabled = true; $("start").hidden = true; $("stop").hidden = false;
   $("stopLabel").textContent = "取消拨号"; $("badge").textContent = "连接中";
   setCallState("dialing"); setStatus("正在连接 V…");
@@ -619,10 +619,10 @@ async function startCall() {
       isCurrent: () => call === active,
       onDiagnostics: (metadata) => { if (call === active) active.duplexDiagnostics.microphone = metadata; },
     });
-    performance.mark?.("voice.microphone.ready");
+    markVoiceTiming("voice.microphone.ready");
     active.stream = active.capture.stream;
     if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
-    const reservation = await api("session", {model:['seeduplex','grok'].includes($("voiceModel")?.value)?$("voiceModel").value:'gpt-live'}); active.voiceSessionId = reservation.voiceSessionId; performance.mark?.("voice.reservation.ready");
+    const reservation = await api("session", {model:['seeduplex','grok'].includes($("voiceModel")?.value)?$("voiceModel").value:'gpt-live'}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     const diagnosticOwner=avatarDiagnosticOwner=Symbol('avatar-call');
     document.body.dataset.avatarReactionRequests='0';
@@ -841,7 +841,7 @@ async function initializeEntry() {
     const result = await (entryStartup ?? startVoiceEntry({
       location: window.location, fetch: (...args) => fetch(...args),
       replaceState: url => window.history.replaceState(null, "", url),
-      mark: name => performance.mark?.(name),
+      mark: markVoiceTiming,
     }));
     if (result.error) throw new Error(result.error);
     const { status } = result;
@@ -857,7 +857,7 @@ async function initializeEntry() {
     productControls?.refreshModels();
     $("badge").textContent = liveReady ? "可以拨号" : "页面预览";
     $("start").disabled = !liveReady;
-    if (liveReady) performance.mark?.("voice.dial.ready");
+    if (liveReady) markVoiceTiming("voice.dial.ready");
     if (!liveReady) setStatus("这是页面预览，真实通话需连接候选服务。");
   } catch (error) {
     liveReady = false;

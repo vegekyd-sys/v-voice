@@ -1,3 +1,33 @@
+// DOM-visible diagnostics let a read-only browser inspector observe timings.
+// Only stage names and milliseconds are included; no speech or call identity.
+const visibleTimingStages = new Set([
+  'voice.entry.start', 'voice.entry.failed', 'voice.status.start',
+  'voice.status.inline', 'voice.status.complete', 'voice.dial.ready',
+  'voice.dial.requested', 'voice.microphone.ready', 'voice.reservation.ready',
+  'voice.connection.ready',
+]);
+export function publishVoiceTiming() {
+  if (typeof document === 'undefined' || typeof performance === 'undefined') return;
+  const nav = performance.getEntriesByType?.('navigation')[0];
+  const fcp = performance.getEntriesByName?.('first-contentful-paint')[0];
+  const marks = (performance.getEntriesByType?.('mark') ?? [])
+    .filter(entry => visibleTimingStages.has(entry.name))
+    .map(entry => ({ name: entry.name, ms: Math.round(entry.startTime * 10) / 10 }));
+  document.documentElement.dataset.voiceTiming = JSON.stringify({
+    ttfbMs: nav ? Math.round(nav.responseStart * 10) / 10 : null,
+    fcpMs: fcp ? Math.round(fcp.startTime * 10) / 10 : null, marks,
+  });
+}
+export function markVoiceTiming(name) {
+  performance.mark?.(name);
+  publishVoiceTiming();
+}
+if (typeof window !== 'undefined' && window.document && window.PerformanceObserver) {
+  const observer = new window.PerformanceObserver(() => publishVoiceTiming());
+  observer.observe({ type: 'paint', buffered: true });
+  window.addEventListener('pagehide', () => observer.disconnect(), { once: true });
+}
+
 // Start the existing entry authorization/status request independently of the
 // audio, avatar and Markdown module graph. No microphone or call is started.
 export function startVoiceEntry({ location, fetch: request, replaceState, initialStatus, mark = () => {} }) {
@@ -46,5 +76,5 @@ function initialEntryStatus() {
 export const entryStartup = typeof window !== 'undefined' && window.document
   ? startVoiceEntry({ initialStatus: initialEntryStatus(), location: window.location, fetch: (...args) => fetch(...args),
     replaceState: url => window.history.replaceState(null, '', url),
-    mark: name => performance.mark?.(name) })
+    mark: markVoiceTiming })
   : null;
