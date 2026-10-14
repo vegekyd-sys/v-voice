@@ -25,7 +25,7 @@ export function createVoiceGptProvider({getBase,isConfigured,reservations=new Ma
       }:undefined;
       const session=await base.createBrowserSession({...request,
         runAgentConsult:params=>request.runAgentConsult(delivery.begin(params)),
-        ...(control?{gatewayControl:control}:{}),instructions:`${GPT_LIVE_CALL_INSTRUCTIONS.split('\n\n').filter(block=>!block.startsWith('Call-action priority:')&&!block.startsWith('End-call host tool:')).join('\n\n')}\n\n通话主机独立判断完整用户道别并执行挂断，不排队等待后台任务。用户明确结束电话时不要新委派后台，只简短告别。说停下或插话时立即让出，不取消后台工作。\n\n${V_FRONTEND_PERSONA}`});
+        ...(control?{gatewayControl:control}:{}),instructions:`${GPT_LIVE_CALL_INSTRUCTIONS.split('\n\n').filter(block=>!block.startsWith('Call-action priority:')&&!block.startsWith('End-call host tool:')).join('\n\n')}\n\n通话主机独立判断完整用户道别并执行挂断，不排队等待后台任务。普通挂断只结束语音，已经由主机接纳的后台任务继续执行；用户要求进展或结果发群时，保留完整的发送要求。用户明确结束电话时不要新委派后台，只简短告别。说停下或插话时立即让出，不取消后台工作。\n\n${V_FRONTEND_PERSONA}`});
       if(typeof session.clientSecret!=='string'||!request.ownerConnId)throw Error('Voice reservation requires a host owner');
       secret=session.clientSecret;
       reservations.set(session.clientSecret,{ownerConnId:request.ownerConnId,delivery});
