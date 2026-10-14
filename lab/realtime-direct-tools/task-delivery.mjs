@@ -18,7 +18,7 @@ export function requestsTaskDelivery(text) {
 }
 
 /** One delivery subscription per exact task. Hangup does not own its lifetime. */
-export function createTaskDelivery({gateway,sessionKey,ownerId,audit=()=>{},onIdle=()=>{}}) {
+export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,audit=()=>{},onIdle=()=>{}}) {
   let authorized=false,closed=false,activeRun,lastResult;
   const watched=new Set(),observers=new Map(),currentByDelegation=new Map();let disposed=false;
   const outcomes=new Map();let tail=Promise.resolve();
@@ -73,6 +73,15 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,audit=()=>{},onId
         let misses=0;const deadline=Date.now()+600000;
         while(!disposed&&currentByDelegation.get(delegationId)===runId){
           if(Date.now()>deadline)throw Error("等待后台结果超过十分钟，请在飞书继续查询原任务，不要重复执行");
+          if(readNativeResult){
+            const result=await readNativeResult(runId);
+            if(result.runId!==runId)throw Error('后台结果不属于原任务');
+            if(result.status==='error')throw Error(result.error??'后台任务未完成');
+            if(result.status==='ok'&&typeof result.text==='string'&&result.text.trim()){
+              const text=readBackendResult(result.text).text;lastResult={runId,text};await send(runId,'final',text);if(activeRun===runId)activeRun=undefined;return;
+            }
+            await new Promise(r=>setTimeout(r,1000));continue;
+          }
           // Native consults report completion to their original host, but need
           // not populate agent.wait's completion cache. Keep the exact run and
           // owner checks, then reconcile its canonical persisted final.

@@ -67,3 +67,10 @@ test('hangup can retire native events; wait timeout reconciles only the exact pe
  for(let i=0;i<100&&!calls.some(c=>c.message==='原任务实际最终结果');i++)await new Promise(r=>setTimeout(r,5));
  await d.flush();assert.equal(reads,2);assert(calls.some(c=>c.message==='原任务实际最终结果'));assert(!calls.some(c=>c.message==='别的任务'));assert.equal(d.pending,false);d.dispose();
 });
+test('Voice native owner result avoids redacted history and does not accept another run',async()=>{
+ const calls=[],d=createTaskDelivery({gateway:{request:async(m,p)=>{assert.equal(m,'send');calls.push(p);return {messageId:'om-'+calls.length};}},
+  readNativeResult:async runId=>({runId,status:'ok',text:'原 runner 的真实结果'}),sessionKey:'agent:makaron:feishu:group:oc_test',ownerId:'call'});
+ d.observeUser('结 果 发 到 这个 群');d.watch('exact');d.close();
+ for(let i=0;i<50&&!calls.some(c=>c.message==='原 runner 的真实结果');i++)await new Promise(r=>setTimeout(r,5));
+ await d.flush();assert(calls.some(c=>c.message==='原 runner 的真实结果'));assert.equal(d.pending,false);d.dispose();
+});
