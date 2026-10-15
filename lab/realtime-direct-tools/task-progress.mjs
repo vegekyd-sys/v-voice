@@ -8,6 +8,11 @@ const stages = Object.freeze({
   web_fetch:['web','正在读取网页','网页读取已返回'],
   feishu_calendar:['calendar','正在处理日程','日程操作已返回'],
 });
+const preparationStages=Object.freeze({
+  preparing_workspace:'正在准备任务环境',
+  preparing_context:'正在读取任务上下文',
+  starting_model:'正在等待后台模型响应',
+});
 export function createTaskProgress({runId,onUpdate=()=>{},now=Date.now}) {
   const pending=new Map(),completed=new Set(),startedAt=now();let closed=false,last='',sequence=0;
   const emit=(activity,text)=>{
@@ -19,6 +24,9 @@ export function createTaskProgress({runId,onUpdate=()=>{},now=Date.now}) {
     consume(event){
       if(closed||event?.event!=='agent'||event.payload?.runId!==runId)return;
       const p=event.payload,d=p.data??{};
+      if(p.stream==='run_status'&&Object.hasOwn(preparationStages,d.phase)){
+        emit('background',preparationStages[d.phase]);return;
+      }
       if(p.stream==='lifecycle'&&d.phase==='start'){emit('background','后台已开始处理');return;}
       if(p.stream!=='tool'||typeof d.toolCallId!=='string'||!d.toolCallId)return;
       const stage=stages[d.name]??['background','正在执行操作','操作已返回'];

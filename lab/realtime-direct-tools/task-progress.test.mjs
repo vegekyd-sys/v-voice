@@ -23,3 +23,11 @@ test('a failed tool result is not presented as task success',()=>{
  for(const phase of ['start','result'])p.consume({event:'agent',payload:{runId:'r',stream:'tool',data:{phase,name:'exec',toolCallId:'x',result:{isError:true}}}});
  assert.match(updates.at(-1).text,/错误/);assert(!updates.at(-1).text.includes('完成'));
 });
+test('real worker preparation receipts replace queued state without exposing payload details',()=>{
+ const updates=[],p=createTaskProgress({runId:'owned',onUpdate:x=>updates.push(x)});p.accepted();
+ const phase=(runId,phase)=>p.consume({event:'agent',payload:{runId,stream:'run_status',data:{phase,workspace:'/PRIVATE',prompt:'PRIVATE TEXT'}}});
+ phase('foreign','starting_model');assert.equal(updates.length,1);
+ phase('owned','preparing_workspace');phase('owned','preparing_context');phase('owned','starting_model');phase('owned','unknown_phase');
+ assert.deepEqual(updates.map(x=>x.text),['任务已接收，等待后台执行','正在准备任务环境','正在读取任务上下文','正在等待后台模型响应']);
+ assert.doesNotMatch(JSON.stringify(updates),/PRIVATE/);p.close();phase('owned','preparing_context');assert.equal(updates.length,4);
+});
