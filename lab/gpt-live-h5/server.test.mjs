@@ -354,3 +354,16 @@ test('Grok voice selection is validated before closing a call and server keeps i
  for(const voice of ['',null,'unknown'])assert.equal((await f.request('session',{model:'grok',voice})).status,400);
  assert.equal(closed.length,0);assert.equal(received.length,1);
 });
+
+test('native exact-run activity persists in presentation while foreign and late events cannot resurrect tasks',async t=>{
+ const f=await fixture(t,{request:(method,params,reservation)=>method==='talk.client.create'?reservation:method==='agent.wait'?new Promise(()=>{}):{ok:true}});
+ await f.request('session');
+ const native=item=>f.bridge.emit({event:'talk.event',payload:{voiceSessionId:'voice-private',talkEvent:item}});
+ native({type:'tool.call',callId:'owned-run',payload:{name:'openclaw_agent_consult'}});
+ f.bridge.emit({event:'agent',payload:{runId:'owned-run',sessionKey:GPT_LIVE_PERSONAL_SESSION_KEY,stream:'tool',data:{phase:'start',name:'memory_search',toolCallId:'actual-tool',args:{query:'PRIVATE_QUERY'}}}});
+ const view=await (await fetch(f.url+'/api/presentation',{headers:{cookie:f.cookie}})).json();
+ assert.equal(view.pending.length,1);assert.equal(view.pending[0].text,'正在查记忆');assert(!JSON.stringify(view).includes('PRIVATE_QUERY'));
+ native({type:'tool.result',callId:'owned-run',payload:{name:'openclaw_agent_consult'}});
+ f.bridge.emit({event:'agent',payload:{runId:'owned-run',stream:'tool',data:{phase:'start',name:'web_search',toolCallId:'late-tool'}}});
+ const final=await (await fetch(f.url+'/api/presentation',{headers:{cookie:f.cookie}})).json();assert.equal(final.pending.length,0);
+});

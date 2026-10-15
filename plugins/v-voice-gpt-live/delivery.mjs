@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
-import {VOICE_RESULT_DELIVERY_INSTRUCTIONS} from '../../lab/gpt-live-h5/result-presentation.mjs';
+import {VOICE_RESULT_DELIVERY_INSTRUCTIONS,readBackendResult,presentBackendResult} from '../../lab/gpt-live-h5/result-presentation.mjs';
+import {VOICE_TASK_SCOPE,VOICE_TASK_EFFICIENCY} from '../../lib/voice-task-policy.mjs';
 export function readVoiceTaskResult(reservations,params,connId){
  const row=typeof params?.clientSecret==='string'?reservations.get(params.clientSecret):null;
  if(!row||!connId||row.ownerConnId!==connId||typeof params?.runId!=='string')throw Error('Voice result requires its authenticated reservation owner');
@@ -24,10 +25,12 @@ export function createVoiceDeliveryOwner({onTranscript,onBackendResult}={}){
    const id=params.continuationIdentity?.delegationItemId;
    if(typeof id!=='string'||!id)throw Error('Voice delivery requires the real native delegation identity');
    const row={revision};runs.set(id,row);
-   return {...params,...(typeof params.question==='string'?{question:params.question+'\n\n'+VOICE_RESULT_DELIVERY_INSTRUCTIONS}:{}),onProgress:progress=>{if(!closed&&!closing&&row.revision===revision)params.onProgress?.(progress);}};
+   return {...params,...(typeof params.question==='string'?{question:params.question+'\n\n'+VOICE_TASK_SCOPE+'\n'+VOICE_TASK_EFFICIENCY+'\n'+VOICE_RESULT_DELIVERY_INSTRUCTIONS}:{}),onProgress:progress=>{if(!closed&&!closing&&row.revision===revision)params.onProgress?.(progress);}};
   },
   result({delegationId,text}){
-   const spoken=onBackendResult?.({delegationId,text});
+   const hosted=onBackendResult?.({delegationId,text});
+   const parsed=readBackendResult(text),document=presentBackendResult(text);
+   const spoken=parsed?.summary?(document?.long?document.spokenText:parsed.summary):hosted;
    const row=runs.get(delegationId);runs.delete(delegationId);
    if(!row)throw Error('Voice result is not owned by a registered native delegation');
    if(closed||closing||row.revision!==revision)return {spokenText:typeof spoken==='string'?spoken:text.slice(0,300),channel:'commentary'};

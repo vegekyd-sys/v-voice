@@ -1,13 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setTimeout as delay} from 'node:timers/promises';
-import {createBackendDelegation,visibleText} from './backend.mjs';
+import {createBackendDelegation,visibleText,backendQuestion} from './backend.mjs';
+
+test('the host keeps the complete caller goal ahead of an expanded frontend paraphrase',()=>{
+ const original='请查一下我们的合作，说明两条业务线和各自状态。';
+ const message=backendQuestion('只核对晨报是否恢复，再扫描所有文件','参考资料',['之前请介绍合作背景。',original]);
+ assert(message.startsWith('天意本人'));assert(message.includes('完整目标：'+original));
+ assert(message.indexOf('完整目标：'+original)<message.indexOf('只核对晨报'));
+ assert.match(message,/不新增步骤、范围或授权/);assert.match(message,/仅用较早原话解释当前指代/);
+});
 
 function fixture(handler=()=>new Promise(()=>{})){
   const calls=[],progress=[],audit=[],sessionKey='agent:makaron:feishu:group:personal-test';
   const gateway={request:async(method,args)=>{calls.push({method,args});if(method==='chat.send')return {runId:args.idempotencyKey,status:'started'};return handler(method,args);}};
   const backend=createBackendDelegation({gateway,sessionKey,ownerId:'call-owner',onProgress:p=>progress.push(p),audit:e=>audit.push(e)});
-  return {backend,calls,progress,audit,sessionKey,start:()=>backend.run({question:'先查记忆，再上网核对，比较后给出结论',context:'上海；不要替我预订',callId:'native-function-1',signal:new AbortController().signal}),
+  return {backend,gateway,calls,progress,audit,sessionKey,start:()=>backend.run({question:'先查记忆，再上网核对，比较后给出结论',context:'上海；不要替我预订',callId:'native-function-1',signal:new AbortController().signal}),
     event:(runId,state,message)=>backend.handleEvent({event:'chat',payload:{runId,sessionKey,state,message}})};
 }
 test('one complete goal uses configured V session; unrelated run cannot complete it',async()=>{
@@ -36,6 +44,45 @@ test('yield/wait timeout cannot reconcile unrelated session history as final',as
   assert.equal(f.calls.some(c=>c.method==='chat.history'),false);assert.ok(f.backend.snapshot());
   f.event(f.backend.snapshot().runId,'final',{text:'完整最终结果'});await promise;
 });
+test('a transient wait RPC timeout keeps the admitted run alive for its real final',async()=>{
+  const f=fixture(async method=>{if(method==='agent.wait')throw Object.assign(Error('poll timed out'),{code:'TIMEOUT'});});
+  const pending=f.start();await delay(0);const {runId}=f.backend.snapshot();
+  assert(f.audit.some(e=>e.type==='backend.wait-retry'));
+  assert.equal(f.calls.filter(c=>c.method==='chat.send').length,1);
+  assert.equal(f.calls.some(c=>c.method==='chat.abort'),false);
+  f.event(runId,'final',{text:'同一任务的真实结论'});
+  assert.equal((await pending).result,'同一任务的真实结论');
+  assert.equal(f.calls.some(c=>c.method==='chat.abort'),false);
+});
+test('status uses exact-owner stage receipts without waiting on another RPC',async()=>{
+  const f=fixture(),pending=f.start();await delay(0);const {runId}=f.backend.snapshot();
+  const event=(scope,key)=>f.backend.handleEvent({event:'agent',payload:{runId:scope,sessionKey:key,stream:'tool',data:{phase:'start',name:'memory_search',toolCallId:'memory',args:{query:'PRIVATE QUERY'}}}});
+  event('foreign',f.sessionKey);event(runId,'foreign-session');
+  let result=await f.backend.control({mode:'status',text:'查得怎么样了'});
+  assert.equal(result.lastConfirmedStage,'任务已接收，等待后台执行');
+  event(runId,f.sessionKey);
+  result=await f.backend.control({mode:'status',text:'查的过程中汇报进度'});
+  assert.equal(result.lastConfirmedStage,'正在查记忆');assert.equal(result.admissionConfirmed,true);
+  assert.equal(result.source,'owned-live-events');assert.doesNotMatch(JSON.stringify(result),/PRIVATE QUERY/);
+  assert.equal(f.calls.some(c=>c.method==='voice.product.task-control'),false);
+  f.gateway.ready=false;
+  result=await f.backend.control({mode:'status',text:'现在呢'});
+  assert.equal(result.connectionUncertain,true);assert.match(result.message,/执行状态未确认/);
+  f.event(runId,'final',{text:'查询完成'});await pending;
+  assert.equal((await f.backend.control({mode:'status',text:'现在呢'})).active,false);
+});
+test('a completed receipt remains queryable while speech is pending and retires on a new goal or cancellation',async()=>{
+  const f=fixture(),pending=f.start();await delay(0);const {runId}=f.backend.snapshot();
+  f.event(runId,'final',{text:'后台已核实的真实结论'});await pending;
+  const done=await f.backend.control({mode:'status',text:'怎么样了'});
+  assert.equal(done.ok,true);assert.equal(done.completed,true);assert.equal(done.active,false);assert.equal(done.runId,runId);
+  assert.match(done.message,/结果已经返回/);assert.equal(done.source,'owned-terminal-receipt');
+  const next=f.start();await delay(0);
+  const current=await f.backend.control({mode:'status',text:'现在呢'});
+  assert.notEqual(current.runId,runId);assert.equal(current.completed,undefined);
+  f.event(f.backend.snapshot().runId,'final',{text:'新的真实结果'});await next;
+  await f.backend.cancel();assert.equal((await f.backend.control({mode:'status',text:'现在呢'})).ok,false);
+});
 test('cancellation uses exact owned run and requires observed terminal, ignoring late facts',async()=>{
   let cancelled=false;const f=fixture(method=>method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:'error',aborted:true}:new Promise(()=>{}));
   const pending=f.start();const rejection=assert.rejects(pending,/取消|未完成/);await delay(0);
@@ -61,6 +108,8 @@ test('terminal native poll without sessionId releases only its exact owned proce
   tool({name:'process',phase:'result',toolCallId:'other-poll',result:{details:{status:'completed'}}});
   f.event(runId,'final',{text:'消息已发送'});await first;
   assert.ok(f.backend.snapshot());await assert.rejects(f.start(),/已有一个/);
+  const awaitingExit=await f.backend.control({mode:'status',text:'后台结束了吗'});
+  assert.equal(awaitingExit.resultReturned,true);assert.equal(awaitingExit.completed,false);assert.equal(awaitingExit.active,true);
   tool({name:'process',phase:'result',toolCallId:'poll',result:{details:{status:'completed',name:'python3'}}});
   assert.equal(f.backend.snapshot(),null);
   const second=f.start();await delay(0);f.event(f.backend.snapshot().runId,'final',{text:'日程已修改'});await second;

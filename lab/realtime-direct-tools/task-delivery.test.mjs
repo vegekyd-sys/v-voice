@@ -84,3 +84,14 @@ test('actual phone request recognizes destination-first delivery after hangup',a
  d.started('actual-run');assert(d.observeUser(request));await d.subscribe();d.close();await d.completed('actual-run','最新要求已标出勇士队，挂断后完成的报告');await d.flush();
  assert.equal(calls.length,2);assert.equal(calls[1].to,'oc_test');assert.match(calls[1].message,/勇士队/);assert.equal(d.pending,false);
 });
+
+test('native progress is visible without send authorization, ignores foreign sessions and stops after hangup',async()=>{
+ const progress=[],d=createTaskDelivery({gateway:{request:()=>new Promise(()=>{})},sessionKey:'agent:makaron:feishu:group:oc_test',ownerId:'call',onActivity:p=>progress.push(p)});
+ d.watch('owned');
+ const emit=(data,sessionKey='agent:makaron:feishu:group:oc_test',stream='tool')=>d.handleEvent({event:'agent',payload:{runId:'owned',sessionKey,stream,data}});
+ emit({phase:'start',name:'memory_search',toolCallId:'memory',args:{query:'PRIVATE'}});assert.equal(progress.at(-1).text,'正在查记忆');
+ emit({phase:'start',name:'web_search',toolCallId:'foreign'},'foreign-session');assert.equal(progress.at(-1).text,'正在查记忆');
+ emit({phase:'result',name:'memory_search',toolCallId:'memory'});
+ emit({kind:'preamble',phase:'end',progressText:'已确认两条合作线。'},undefined,'item');assert.equal(progress.at(-1).text,'已确认两条合作线。');
+ assert(!JSON.stringify(progress).includes('PRIVATE'));const n=progress.length;d.close();emit({phase:'start',name:'web_search',toolCallId:'late'});assert.equal(progress.length,n);d.dispose();
+});

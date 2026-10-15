@@ -22,6 +22,7 @@ let starting = null;
 let avatarDiagnosticOwner = null;
 let liveReady = false;
 let entryError = null;
+let taskStatusTimer = null;
 let callerEntry = "tianyi";
 function refreshGrokVoicePicker() {
   const picker = $("grokVoicePicker"), select = $("grokVoice");
@@ -378,7 +379,9 @@ function avatarContext(snapshot = presentation.snapshot()) {
     taskOutcome:tasks.size ? 'pending' : tasks.completion ? tasks.completion.ok ? 'success' : 'error' : 'none'});
 }
 function taskState() {
-  $("taskStatus").textContent = ACTIVITY_LABELS[tasks.pose] ?? "";
+  $("taskStatus").textContent = tasks.status;
+  if(tasks.size&&!taskStatusTimer)taskStatusTimer=setInterval(()=>{$("taskStatus").textContent=tasks.status;},1000);
+  if(!tasks.size&&taskStatusTimer){clearInterval(taskStatusTimer);taskStatusTimer=null;}
   $("cancel").disabled = tasks.size === 0;
   $("cancel").hidden = tasks.size === 0;
   void avatar?.show(tasks.pose, tasks.completion);

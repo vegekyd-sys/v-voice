@@ -1,6 +1,7 @@
 import {createGptLiveConsultProgressObserver} from '../gpt-live-consult-progress.mjs';
 import {createHash} from 'node:crypto';
 import {readBackendResult} from '../gpt-live-h5/result-presentation.mjs';
+import {createTaskProgress} from './task-progress.mjs';
 
 // The destination comes from the authenticated phone entry, never tool arguments.
 export function voiceFeishuTarget(sessionKey) {
@@ -18,7 +19,7 @@ export function requestsTaskDelivery(text) {
 }
 
 /** One delivery subscription per exact task. Hangup does not own its lifetime. */
-export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,audit=()=>{},onIdle=()=>{}}) {
+export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,audit=()=>{},onIdle=()=>{},onActivity=()=>{}}) {
   let authorized=false,closed=false,activeRun,lastResult;
   const watched=new Set(),observers=new Map(),currentByDelegation=new Map();let disposed=false;
   const outcomes=new Map();let tail=Promise.resolve();
@@ -60,6 +61,8 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,
       if(completed&&native.payload?.name==='openclaw_agent_consult'&&['tool.result','tool.error'].includes(native.type))
         completed.terminal.resolve(native.type==='tool.result'?{status:'ok'}:{status:'error',error:'原后台任务执行失败'});
       const row=observers.get(event.payload?.runId);if(!row||event.event!=='agent')return;
+      if(event.payload.sessionKey&&event.payload.sessionKey!==sessionKey)return;
+      row.activity.consume(event);
       if(event.payload.stream==='tool'&&event.payload.data?.phase==='result')row.hasToolResult=true;
       if(row.hasToolResult)row.observer.onAgentEvent(event.payload);
     },
@@ -67,7 +70,12 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,
       if(typeof runId!=='string'||!runId)return;
       if(watched.has(runId))return;currentByDelegation.set(delegationId,runId);watched.add(runId);activeRun=runId;
       const terminal=Promise.withResolvers();
-      observers.set(runId,{terminal,hasToolResult:false,observer:createGptLiveConsultProgressObserver({runId,onProgress:p=>{if(authorized&&p.text?.length<=220)void send(runId,'progress',p.text).catch(()=>{});}})});
+      const activity=createTaskProgress({runId,onUpdate:p=>{if(!closed)onActivity({...p,callId:runId});}});
+      observers.set(runId,{terminal,activity,hasToolResult:false,observer:createGptLiveConsultProgressObserver({runId,onProgress:p=>{
+        if(!closed)onActivity({runId,callId:runId,kind:'commentary',text:p.text});
+        if(authorized&&p.text?.length<=220)void send(runId,'progress',p.text).catch(()=>{});
+      }})});
+      activity.accepted();
       if(authorized)void send(runId,'accepted','已接续这通电话的后台任务，后续进展和结果会发在这里。').catch(()=>{});
       void (async()=>{
         let misses=0;const deadline=Date.now()+600000;
@@ -104,9 +112,9 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,
           }
           const result=readBackendResult(text).text;lastResult={runId,text:result};await send(runId,'final',result);if(activeRun===runId)activeRun=undefined;return;
         }
-      })().catch(error=>{if(currentByDelegation.get(delegationId)===runId)void send(runId,'failure',`电话中的后台任务未确认完成：${error.message}。`).catch(()=>{});}).finally(()=>{if(activeRun===runId)activeRun=undefined;watched.delete(runId);observers.get(runId)?.observer.close();observers.delete(runId);if(closed&&!watched.size)onIdle();});
+      })().catch(error=>{if(currentByDelegation.get(delegationId)===runId)void send(runId,'failure',`电话中的后台任务未确认完成：${error.message}。`).catch(()=>{});}).finally(()=>{if(activeRun===runId)activeRun=undefined;watched.delete(runId);observers.get(runId)?.observer.close();observers.get(runId)?.activity.close();observers.delete(runId);if(closed&&!watched.size)onIdle();});
     },
-    dispose(){disposed=true;for(const r of observers.values())r.observer.close();observers.clear();},
+    dispose(){disposed=true;for(const r of observers.values()){r.observer.close();r.activity.close();}observers.clear();},
     flush:()=>tail,
   };
 }

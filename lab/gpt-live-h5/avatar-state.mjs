@@ -28,7 +28,7 @@ export function taskActivity(name, args = {}, depth = 0) {
   if (name === 'exec' && typeof args?.command === 'string' && !/[;&|`\n$]/u.test(args.command) && /^\s*['"]?lark-cli['"]?\s+['"]?calendar['"]?\s+['"]?\+agenda(?:['"]?\s|['"]?$)/u.test(args.command)) return 'calendar';
   return 'background';
 }
-export function createAvatarTasks() {
+export function createAvatarTasks(now=Date.now) {
   const pending = new Map();
   let completion = null;
   return {
@@ -37,7 +37,19 @@ export function createAvatarTasks() {
       if (event.type === 'tool.call') {
         const activity = Object.hasOwn(ACTIVITY_LABELS, event.activity) || event.activity === 'control'
           ? event.activity : taskActivity(event.name);
-        if (activity !== 'control' && !pending.has(event.callId)) pending.set(event.callId, activity);
+        if (activity !== 'control') {
+          const previous=pending.get(event.callId);
+          const at=Number.isFinite(event.startedAt)&&event.startedAt>=0&&event.startedAt<=now()?event.startedAt:now();
+          if(!previous)pending.set(event.callId,{activity,at,text:''});
+          const task=pending.get(event.callId);
+          if(Object.hasOwn(ACTIVITY_LABELS,event.activity))task.activity=event.activity;
+          if(typeof event.text==='string'&&event.text.trim())task.text=event.text.slice(0,220);
+        }
+      } else if(event.type==='tool.progress'&&pending.has(event.callId)) {
+        const task=pending.get(event.callId);
+        if(Number.isFinite(event.startedAt)&&event.startedAt>=0&&event.startedAt<=now())task.at=event.startedAt;
+        if(Object.hasOwn(ACTIVITY_LABELS,event.activity))task.activity=event.activity;
+        if(typeof event.text==='string'&&event.text.trim())task.text=event.text.slice(0,220);
       } else if (['tool.result','tool.error'].includes(event.type) && pending.delete(event.callId)) {
         completion = {id:event.callId, ok:event.type === 'tool.result'};
       }
@@ -45,6 +57,12 @@ export function createAvatarTasks() {
     clear() { pending.clear(); completion = null; },
     get completion() { return completion; },
     get size() { return pending.size; },
-    get pose() { return [...pending.values()].at(-1) ?? 'idle'; },
+    get pose() { return [...pending.values()].at(-1)?.activity ?? 'idle'; },
+    get status() {
+      const task=[...pending.values()].at(-1);
+      if(!task)return '';
+      const seconds=Math.max(0,Math.floor((now()-task.at)/1000));
+      return `${task.text||ACTIVITY_LABELS[task.activity]} · ${seconds<60?seconds+'秒':Math.floor(seconds/60)+'分'+seconds%60+'秒'}`;
+    },
   };
 }

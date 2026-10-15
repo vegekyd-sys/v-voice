@@ -94,6 +94,20 @@ test('native direct call executes real Gateway tool, retains personal session an
  assert.equal(f.audit.filter(x=>x.type==='tool.delivered').length,1);
  assert.equal(f.upstream.sent.filter(x=>x.item?.type==='function_call_output').length,1);await f.service.dispose();
 });
+test('delegation preserves host-observed caller speech before a narrowed model paraphrase',async t=>{
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}));
+ t.after(()=>f.service.dispose());
+ const original='让后台查一下我们的整个合作，说明两条线分别是什么。';
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:original});
+ f.call('delegate_to_v',{question:'仅核对上次提到的晨报是否恢复'});await delay(5);
+ const sent=f.invocations.find(x=>typeof x.message==='string');assert(sent);
+ assert(sent.message.includes('完整目标：'+original));
+ // Later progress questions cannot rewrite the already admitted goal.
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'现在查得怎么样了'});
+ assert.equal(f.invocations.filter(x=>typeof x.message==='string').length,1);
+ const run=f.audit.find(x=>x.type==='backend.started');
+ f.service.handleEvent({event:'chat',payload:{runId:run.runId,sessionKey:run.sessionKey,state:'final',message:{text:'两条线的完整结论'}}});
+});
 test('ordinary steering preserves pending work; explicit cancellation retires its late facts',async()=>{
  let finish;const f=await fixture(()=>new Promise(resolve=>finish=resolve));f.call('web_search',{query:'天气'});await delay(2);
  await f.service.steer(f.reservation.voiceSessionId,{mode:'append',text:'我再补充一下'});
@@ -382,4 +396,17 @@ test('SeedDuplex steers and appends to the exact existing backend without a seco
  assert.equal(receipt.queued,true);assert.equal(receipt.applied,false);assert.equal(starts.length,1);
  f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text:'新版要求和总结已完成。'}]}}});
  await delay(250);assert(f.audit.some(e=>e.type==='backend.completed'&&e.runId===started.runId));
+});
+
+test('backend tool activity reaches the screen during user speech and survives presentation recovery without producing speech',async t=>{
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}));t.after(()=>f.service.dispose());
+ f.call('delegate_to_v',{question:'查人物合作'},'goal');await delay(5);const started=f.audit.find(x=>x.type==='backend.started');
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:true})),false);
+ f.service.handleEvent({event:'agent',payload:{runId:started.runId,sessionKey:started.sessionKey,stream:'tool',data:{phase:'start',name:'memory_search',toolCallId:'memory',args:{query:'PRIVATE_QUERY'}}}});
+ const progress=f.client.sent.filter(e=>e.type==='tool.progress').at(-1);
+ assert.equal(progress.text,'正在查记忆');assert.equal(progress.callId,'goal');assert(!JSON.stringify(progress).includes('PRIVATE'));
+ assert.equal(f.upstream.sent.some(x=>x.item?.type==='force_message'),false);
+ const pending=f.service.presentation(f.reservation.voiceSessionId).pending.find(x=>x.callId==='goal');assert.equal(pending.text,'正在查记忆');assert.equal(pending.type,'tool.call');
+ f.service.handleEvent({event:'chat',payload:{runId:started.runId,state:'final',message:{text:'实际结果'}}});
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:false})),false);await delay(250);
 });
