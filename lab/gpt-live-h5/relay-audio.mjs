@@ -64,7 +64,7 @@ export class BackendSpeechOnset {
     if(!this.fired&&this.voicedMs>=80){this.fired=true;return true;}return false;
   }
 }
-export function createRelayAudio({context,stream,reservation,onEvent,onError,onClosed,onPlaybackActivity=()=>{}}) {
+export function createRelayAudio({context,stream,reservation,onEvent,onError,onClosed,onPlaybackActivity=()=>{},greeting=true,inputGated=false}) {
   // Recorded Grok packets: 245ms of speech, then a 595ms arrival gap.
   // 400ms protects that real startup cadence; Xiaohe retains its smaller lead.
   const startBufferMs=reservation.provider==='grok'?400:120;
@@ -112,7 +112,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   const promise=new Promise((resolve,reject)=>{
     socket.onmessage=e=>{if(closed)return;try{
       const value=JSON.parse(e.data);if(value.voiceSessionId!==reservation.voiceSessionId)return;
-      if(value.type==='ready'&&!ready){ready=true;resolve();send({type:'greeting'});reportBusy();statsTimer=setInterval(()=>send({type:'playback.stats',...stats}),2000);}
+      if(value.type==='ready'&&!ready){ready=true;resolve();if(greeting)send({type:'greeting'});reportBusy();statsTimer=setInterval(()=>send({type:'playback.stats',...stats}),2000);}
       if(value.type==='audio')play(value);
       if(value.type==='audio.clear')flush();
       if(value.type==='audio.done'){outputComplete=true;greetingHeld=false;speaker?.port.postMessage({type:'done',epoch});}
@@ -143,7 +143,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     quietGain=context.createGain();quietGain.gain.value=0;source.connect(node);node.connect(quietGain);quietGain.connect(context.destination);
     node.port.onmessage=e=>{if(closed)return;const frame=e.data;
       if(ready&&socket.readyState===WebSocket.OPEN){
-        if(backendOnset.observe(frame,backendPlayback&&stats.queuedOutputBytes>0)){
+        if(!inputGated&&backendOnset.observe(frame,backendPlayback&&stats.queuedOutputBytes>0)){
           if(backendResponseId){retiredResponses.add(backendResponseId);if(retiredResponses.size>256)retiredResponses.delete(retiredResponses.values().next().value);}
           flush();send({type:'barge-in'});}
         if(socket.bufferedAmount>480000){onError(Error('音频上传积压，请重新拨号'));return;}socket.send(frame);stats.inputBytes+=frame.byteLength;}

@@ -25,7 +25,7 @@ export function directInstructions(catalog,context='',model='') {
 }
 
 /** One real provider connection per dial; tool authorization stays in OpenClaw. */
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,speakerRouting}) {
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
   const sessions=new Map(),detached=new Set();
@@ -93,14 +93,14 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       // Retire local tools/audio only; the admitted Agent retains its controller.
       const result=await cancel(s,{includeBackend:false});
       for(const id of s.pending.keys())if(id!==s.backgroundCallId)s.pending.delete(id);
-      clearInterval(s.progressTimer);s.bridge?.close();s.client?.close();
+      clearInterval(s.progressTimer);speakerRouting?.close(id);s.bridge?.close();s.client?.close();
       s.cleanupFailed=result.processCleanupFailures>0;
       if(s.cleanupFailed){audit({type:'call.cleanup-unconfirmed',voiceSessionId:id,result});throw Error('电话已结束，后台任务退出尚未确认');}
       sessions.delete(id);audit({type:'call.closed',voiceSessionId:id});
     })();
     try{return await s.closePromise;}finally{s.closePromise=null;}
   };
-  async function reserve({model,sessionKey,voice}) {
+  async function reserve({model,sessionKey,voice,inputPolicy}) {
     if([...sessions.values()].some(s=>s.cleanupFailed))throw Error('上一通电话的后台任务正在确认退出，请稍后重试');
     const spec=models().find(m=>m.id===model);if(!spec)throw Error('没有这个语音模型');
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
@@ -113,7 +113,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,taskDelivery:s.delivery,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}}});
     sessions.set(s.id,s);
     audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model,voice:s.voice,...(model==='grok'?{speed:grokSpeed,expressiveTags:grokExpressiveTags}:{})});
-    return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket};
+    const speaker=speakerRouting?.reserve(s.id,{model,policy:inputPolicy??'speaker'});
+    s.speakerRouting=Boolean(speaker);
+    return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket,...speaker?{speakerRouting:speaker}:{}};
   }
   async function start(s,client) {
     s.client=client;
@@ -221,6 +223,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       onAudio:(audio,metadata)=>{if(!current(s))return;s.responseActive=true;if(s.ending)s.ending.hasAudio=true;deliverAudio(audio,metadata);},
       onTranscript:(role,text,final,source)=>{
         if(!current(s))return;
+        if(role==='assistant'&&final)speakerRouting?.assistant(s.id,text);
         if(role==='user'){s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
         if(role==='user'&&final&&s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{})});
@@ -244,7 +247,14 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       :new GrokVoiceBridge(request,{createWebSocket,apiKey:apiKeys.grok,model:grokModel,voice:s.voice,speed:grokSpeed,expressiveTags:grokExpressiveTags});
     client.on('message',(data,binary)=>{
       if(!current(s))return;
-      if(binary){if(data.length%2===0&&data.length<=24000)s.bridge.sendAudio(data);else client.close(1008);return;}
+      if(binary){
+        try{
+          if(data.length%2||data.length>24000){client.close(1008);return;}
+          if(s.speakerRouting){if(!speakerRouting.has(s.id))throw Error('说话人识别已中断，请结束后重拨');speakerRouting.audio(s.id,Buffer.from(data));}
+          else s.bridge.sendAudio(data);
+        }catch(error){emit(s,{type:'error',message:error.message});void close(s.id).catch(()=>{});}
+        return;
+      }
       try{const e=JSON.parse(data.toString());if(e.type==='greeting'&&!s.greeted){s.greeted=true;s.bridge.triggerGreeting('电话已接通。请用中文向天意简短打个招呼，然后听他说话。');}
       else if(e.type==='barge-in') {s.bridge.handleBargeIn();audit({type:'client.barge-in',voiceSessionId:s.id});}
       else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000)s.bridge.sendUserMessage(e.text);
@@ -257,7 +267,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       }catch{client.close(1008);}
     });
     connectionStage('provider-connecting');
-    await s.bridge.connect();if(current(s)){connectionStage('provider-ready');emit(s,{type:'ready',model:s.model,tools:TOOLS.map(t=>t.name)});}
+    await s.bridge.connect();
+    if(current(s)&&speakerRouting?.has(s.id))await speakerRouting.bind(s.id,{forward:audio=>s.bridge.sendAudio(audio),context:text=>s.bridge.sendUserMessage(text),interrupt:()=>s.bridge.handleBargeIn()},value=>emit(s,value));
+    if(current(s)){connectionStage('provider-ready');emit(s,{type:'ready',model:s.model,tools:TOOLS.map(t=>t.name)});}
   }
   return {
     models,reserve,close,

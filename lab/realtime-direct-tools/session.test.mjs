@@ -383,3 +383,16 @@ test('SeedDuplex steers and appends to the exact existing backend without a seco
  f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text:'新版要求和总结已完成。'}]}}});
  await delay(250);assert(f.audit.some(e=>e.type==='backend.completed'&&e.runId===started.runId));
 });
+
+
+test('speaker routing failure closes the call without falling back to raw native audio',async t=>{
+ let present=true,routed=0;
+ const routing={reserve:()=>({policy:'speaker'}),has:()=>present,bind:async()=>{},close:()=>{present=false;},audio:()=>{routed++;}};
+ const f=await fixture(undefined,'grok',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ const before=f.upstream.sent.filter(e=>e.type==='input_audio_buffer.append').length;
+ f.client.emit('message',Buffer.alloc(960),true);assert.equal(routed,1);
+ present=false;f.client.emit('message',Buffer.alloc(960),true);await delay(5);
+ assert.equal(f.upstream.sent.filter(e=>e.type==='input_audio_buffer.append').length,before);
+ assert(f.client.sent.some(e=>e.type==='error'&&e.message.includes('识别已中断')));
+ assert.equal(f.client.readyState,3);
+});
