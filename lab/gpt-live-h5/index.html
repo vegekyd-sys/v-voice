@@ -69,6 +69,12 @@
             </div>
           </div>
           <a class="avatar-name" href="./" aria-label="V 通话首页">V</a>
+          <label id="grokVoicePicker" class="grok-voice-picker" hidden>
+            <span>候选女声</span>
+            <select id="grokVoice" aria-label="选择 Grok 女声" aria-describedby="grokVoiceHint"></select>
+            <small id="grokVoiceHint">选好声音，再拨号试聊</small>
+          </label>
+          <a id="grokListen" class="grok-listen-link" href="./compare" hidden>先听一组表达对比 →</a>
           <h1 id="voiceTitle" class="sr-only">和 V 通话</h1>
           <div class="call-actions">
             <button
@@ -179,7 +185,7 @@
             ><select id="voiceModel" class="sr-only" aria-label="语音模型">
               <option value="gpt-live">GPT Live</option>
               <option value="seeduplex" selected disabled>豆包 SeedDuplex</option>
-              <option value="grok" disabled>Grok Voice</option>
+              <option value="grok" disabled>Grok Voice 3.0</option>
             </select>
             <button
               id="modelTrigger"

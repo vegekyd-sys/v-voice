@@ -120,3 +120,13 @@ test('no-send also prevents a delivery still queued behind the current send',asy
  const d=createTaskDelivery({gateway:{request:async(m,p)=>{calls.push(p);await blocked;return {messageId:'om-'+calls.length};}},sessionKey:'agent:makaron:feishu:group:oc_test',ownerId:'call'});
  d.observeUser('结果发群里');d.started('run');await new Promise(r=>setImmediate(r));d.progress('run','排队中的进展');d.observeUser('不要发群');release();await d.flush();assert.equal(calls.length,1);
 });
+
+test('actual phone request recognizes destination-first delivery after hangup',async()=>{
+ const request='电话要挂断了，所以你之后就都在群里面给我发吧，好吗？';
+ assert(requestsTaskDelivery(request));
+ for(const text of ['之后就在群里面给我发吧','完成后在这个群里给我发结果','电话挂了以后都在当前群里面给我发'])assert(requestsTaskDelivery(text),text);
+ for(const text of ['不要在群里面给我发','别在群里给我发了','在销售群里给我发','在另一个群里面给我发','他说“在群里面给我发”是什么意思','可以发到别的群吗'])assert(!requestsTaskDelivery(text),text);
+ const calls=[],d=createTaskDelivery({gateway:{request:async(method,params)=>{assert.equal(method,'send');calls.push(params);return {messageId:'om-'+calls.length};}},sessionKey:'agent:makaron:feishu:group:oc_test',ownerId:'actual-call'});
+ d.started('actual-run');assert(d.observeUser(request));await d.subscribe();d.close();await d.completed('actual-run','最新要求已标出勇士队，挂断后完成的报告');await d.flush();
+ assert.equal(calls.length,2);assert.equal(calls[1].to,'oc_test');assert.match(calls[1].message,/勇士队/);assert.equal(d.pending,false);
+});

@@ -26,3 +26,9 @@ test('unknown delegation cannot invoke an open host callback',()=>{
  let calls=0;const owner=createVoiceDeliveryOwner({onBackendResult:()=>calls++});
  assert.throws(()=>owner.result({delegationId:'foreign',text:'wrong'}),/not owned/);assert.equal(calls,0);
 });
+
+test('native and direct backend questions share the host-owned result-delivery contract',()=>{
+ const owner=createVoiceDeliveryOwner(),signal=new AbortController().signal;
+ const p=owner.begin({question:'整理一份报告',signal,continuationIdentity:{delegationItemId:'exact'}});
+ assert(p.question.startsWith('整理一份报告\n'));assert.match(p.question,/Voice 主机/);assert.match(p.question,/独立业务操作/);assert.equal(p.signal,signal);
+});

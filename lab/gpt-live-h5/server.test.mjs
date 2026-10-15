@@ -13,14 +13,15 @@ async function fixture(t, overrides = {}) {
     if (overrides.request) return overrides.request(method, params, reservation);
     return method === "talk.client.create" ? reservation : { ok: true };
   } };
+  if (overrides.gatewayReady !== undefined) gateway.ready = overrides.gatewayReady;
   const offers = [];
-  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice,callControlEvaluate:overrides.callControlEvaluate });
+  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice,callControlEvaluate:overrides.callControlEvaluate });
   await new Promise((resolve) => bridge.server.listen(0, "127.0.0.1", resolve));
   t.after(() => bridge.dispose());
   const url = `http://127.0.0.1:${bridge.server.address().port}`;
   const page = await fetch(url); const cookie = page.headers.get("set-cookie").split(";", 1)[0]; await page.text();
   const request = (route, payload = {}, headers = {}) => fetch(`${url}/api/${route}`, { method: "POST", headers: { cookie, "content-type": "application/json", ...headers }, body: JSON.stringify(payload) });
-  return { bridge, calls, offers, url, cookie, request, reservation };
+  return { bridge, gateway, calls, offers, url, cookie, request, reservation };
 }
 
 test("exact native model reservation and SDP proxy keep credentials off the browser", async (t) => {
@@ -323,4 +324,33 @@ test('relay reports recover through the owned presentation endpoint and require 
  assert.equal((await f.request('content-shown',{voiceSessionId:'direct-report',callId:'unknown'})).status,409);
  assert.equal((await f.request('content-shown',{voiceSessionId:'direct-report',callId:'report-1'})).status,200);
  assert.equal((await fetch(f.url+'/api/presentation?after=3',{headers:{cookie:f.cookie}}).then(r=>r.json())).documents.length,0);
+});
+
+test('candidate default model is server-owned and included in both readiness paths',async t=>{
+ const f=await fixture(t,{preview:true,defaultModel:'grok'});
+ const html=await (await fetch(f.url)).text();assert.match(html,/"defaultModel":"grok"/);
+ const status=await (await fetch(f.url+'/api/status?model=gpt-live',{headers:{cookie:f.cookie}})).json();
+ assert.equal(status.defaultModel,'grok');assert.equal(f.calls.length,0);
+});
+test('unsupported default voice models fail at startup',()=>{
+ assert.throws(()=>createLiveH5Server({defaultModel:'arbitrary'}),/Invalid default voice model/);
+});
+
+test('disconnected Gateway is not dial-ready and cannot allocate a provider session',async t=>{
+ const f=await fixture(t,{gatewayReady:false});
+ const html=await (await fetch(f.url)).text();assert.match(html,/"ready":false,"preview":false/);
+ const status=await (await fetch(f.url+'/api/status',{headers:{cookie:f.cookie}})).json();assert.equal(status.ready,false);assert.equal(status.preview,false);
+ const blocked=await f.request('session',{model:'grok'});assert.equal(blocked.status,503);assert.match((await blocked.json()).error,/后端正在重新连接/);assert.equal(f.calls.length,0);
+ f.gateway.ready=true;
+ assert.equal((await (await fetch(f.url+'/api/status',{headers:{cookie:f.cookie}})).json()).ready,true);
+});
+
+test('Grok voice selection is validated before closing a call and server keeps identity binding',async t=>{
+ const received=[],closed=[];
+ const f=await fixture(t,{directVoice:{models:()=>[],reserve:async params=>{received.push(params);return {voiceSessionId:'selected',transport:'gateway-relay',voice:params.voice};},close:async id=>closed.push(id),dispose:async()=>{}}});
+ const response=await f.request('session',{model:'grok',voice:'iris',sessionKey:'untrusted-browser'});
+ assert.equal(response.status,200);assert.equal((await response.json()).voice,'iris');
+ assert.deepEqual(received,[{model:'grok',voice:'iris',sessionKey:GPT_LIVE_PERSONAL_SESSION_KEY}]);
+ for(const voice of ['',null,'unknown'])assert.equal((await f.request('session',{model:'grok',voice})).status,400);
+ assert.equal(closed.length,0);assert.equal(received.length,1);
 });

@@ -9,7 +9,7 @@ import { createAvatarRenderer } from './avatar.mjs';
 import { createLiveH5Server } from './server.mjs';
 
 test('approved reactions are selectable and render shipped frames; rejected table images never enter the gallery',async()=>{
- assert.equal(APPROVED_REACTION_ADDITIONS.length,10);
+ assert.equal(APPROVED_REACTION_ADDITIONS.length,15);
  assert.ok(!APPROVED_REACTION_ADDITIONS.some(p=>p.candidateId.startsWith('stop-')));
  for(const p of APPROVED_REACTION_ADDITIONS){
   let criteria;
@@ -37,5 +37,22 @@ test('browser can load the additions module and both image sizes without opening
   const file=AVATAR_SEQUENCES[p.scene][p.frame].replace('-512.webp',`-${size}.webp`);
   const response=await fetch(url+'/assets/'+file,{headers:{cookie}});assert.equal(response.status,200);
   assert.deepEqual(Buffer.from(await response.arrayBuffer()),fs.readFileSync(new URL('./assets/'+file,import.meta.url)));
+ }
+});
+
+
+test('October 15 approvals append stable IDs with listening/speaking boundaries and lightweight assets',()=>{
+ const expected=['play-listen-v1','play-reply-v1','correction-listen-v1','rephrase-reply-v1','interest-listen-v1'];
+ assert.equal(APPROVED_REACTION_ADDITIONS[0].candidateId,'clarify-01');
+ assert.equal(APPROVED_REACTION_ADDITIONS[9].candidateId,'video-reply-v1');
+ for(const [i,candidateId] of expected.entries()){
+  const p=APPROVED_REACTION_ADDITIONS[10+i];assert.equal(p.candidateId,candidateId);assert.equal(p.id,`reaction-${10+i}`);
+  assert.equal(p.tags.phase,p.phase);assert.equal(p.tags.speaker,p.phase==='user_listening'?'user':'V');
+  for(const key of ['target','dialogue_act','emotion','gaze','posture','energy','task_domain','task_stage','avoid'])assert.notEqual(p.tags[key],undefined);
+  assert.ok(p.tags.avoid.length);assert.equal(p.gaze,'user');
+  for(const [size,limit] of [[256,30*1024],[512,80*1024]]){
+   const file=AVATAR_SEQUENCES[p.scene][p.frame].replace('-512.webp',`-${size}.webp`);
+   assert.ok(fs.statSync(new URL('./assets/'+file,import.meta.url)).size<=limit);
+  }
  }
 });

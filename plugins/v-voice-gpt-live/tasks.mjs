@@ -1,8 +1,9 @@
+import {validateVoiceTaskControl} from '../../lib/voice-task-control.mjs';
 import {randomUUID} from 'node:crypto';
 
 // The authenticated telephone connection owns the task, independently of media.
 // Public OpenClaw SDK admission owns execution, child lineage and continuation.
-export function createVoiceTasks({consult,agentRuntime,getConfig,logger,subscribe}){
+export function createVoiceTasks({consult,control,agentRuntime,getConfig,logger,subscribe}){
  const tasks=new Map(),requests=new Map();
  const requestKey=(p,conn)=>JSON.stringify([conn,p?.voiceSessionId,p?.callId]);
  const owned=(p,conn)=>{
@@ -53,6 +54,15 @@ export function createVoiceTasks({consult,agentRuntime,getConfig,logger,subscrib
   },
   read(params,connId){return snapshot(owned(params,connId));},
   lookup(params,connId){const r=requests.get(requestKey(params,connId));return r?snapshot(owned({taskId:r.taskId},connId)):{found:false};},
+  async control(params,connId){
+   const r=owned(params,connId),input=validateVoiceTaskControl(params);
+   const current=()=>tasks.get(r.taskId)===r&&r.status==='running'&&!r.controller.signal.aborted;
+   if(!current())return {taskId:r.taskId,ok:false,active:false,queued:false,reason:'no_active_run'};
+   if(input.mode==='cancel')return {taskId:r.taskId,ok:false,queued:false,reason:'use_explicit_cancel'};
+   const result=await control({sessionKey:r.sessionKey,...input,runTarget:{runId:r.runId,signal:r.controller.signal,isCurrent:current}});
+   if(result.queued&&!current())return {taskId:r.taskId,ok:false,queued:false,applied:false,queueAcceptedBeforeOwnerChanged:true,reason:'owner_changed'};
+   return {...result,taskId:r.taskId,...(result.queued?{applied:false}:{})};
+  },
   async cancel(params,connId){
    const r=owned(params,connId);
    if(r.status==='ok')return {taskId:r.taskId,cancelled:false,completed:true};

@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {WebSocketServer} from 'ws';
-import {GatewayClient} from '../lib/gateway-client.mjs';
+import {GatewayClient,connectGatewayClient} from '../lib/gateway-client.mjs';
 import {setTimeout as delay} from 'node:timers/promises';
-async function fixture(t,respond=()=>{}){
+async function fixture(t,respond=()=>{},options={}){
  const server=new WebSocketServer({port:0,host:'127.0.0.1'});await new Promise(r=>server.once('listening',r));
  const requests=[];let peer;
  server.on('connection',ws=>{peer=ws;ws.send(JSON.stringify({type:'event',event:'connect.challenge',payload:{nonce:'real-challenge'}}));ws.on('message',raw=>{const f=JSON.parse(raw);requests.push(f);if(f.method==='connect')ws.send(JSON.stringify({type:'res',id:f.id,ok:true,payload:{type:'hello-ok',protocol:4}}));else respond(ws,f);});});
  let hello;const ready=new Promise(r=>hello=r);const events=[];
- const client=new GatewayClient({url:`ws://127.0.0.1:${server.address().port}`,token:'fixture-only',onHelloOk:hello,onEvent:e=>events.push(e),reconnectMs:30});client.start();await ready;
+ const client=new GatewayClient({url:`ws://127.0.0.1:${server.address().port}`,token:'fixture-only',...options,onHelloOk:hello,onEvent:e=>events.push(e),reconnectMs:30});client.start();await ready;
  t.after(async()=>{client.stop();for(const c of server.clients)c.terminate();await new Promise(r=>server.close(r));});
  return {client,requests,events,get peer(){return peer;}};
 }
@@ -42,4 +42,36 @@ test('a retryable startup rejection retains its cause and reconnects without rep
   client=new GatewayClient({url:`ws://127.0.0.1:${server.address().port}`,token:'fixture-only',reconnectMs:10,onConnectError:e=>errors.push(e),onHelloOk:()=>{clearTimeout(timer);resolve();}});client.start();
  });
  assert.equal(connects,2);assert.equal(errors.length,1);assert.equal(errors[0].retryable,true);assert.equal(errors[0].details.reason,'startup-sidecars');assert.equal(client.ready,true);
+});
+
+test('reconnect reads the current server-side credential without replaying business requests',async t=>{
+ let token='before',reads=0;
+ const f=await fixture(t,()=>{},{getToken:async()=>{reads++;return token;}});
+ assert.equal(f.requests[0].params.auth.token,'before');token='after';f.peer.terminate();
+ for(let i=0;i<100&&(!f.client.ready||reads<2);i++)await delay(10);
+ assert(f.client.ready);assert.equal(reads,2);
+ assert.deepEqual(f.requests.filter(r=>r.method==='connect').map(r=>r.params.auth.token),['before','after']);
+ assert.equal(f.requests.filter(r=>r.method!=='connect').length,0);
+});
+
+test('a credential read completing after stop cannot send a late handshake',async t=>{
+ const server=new WebSocketServer({port:0,host:'127.0.0.1'});await new Promise(r=>server.once('listening',r));
+ const requests=[];let finish,reading;const readStarted=new Promise(r=>reading=r);
+ server.on('connection',ws=>{ws.on('message',raw=>requests.push(JSON.parse(raw)));ws.send(JSON.stringify({type:'event',event:'connect.challenge',payload:{nonce:'retired'}}));});
+ const client=new GatewayClient({url:`ws://127.0.0.1:${server.address().port}`,getToken:()=>new Promise(r=>{finish=r;reading();})});
+ t.after(async()=>{client.stop();for(const c of server.clients)c.terminate();await new Promise(r=>server.close(r));});
+ client.start();await readStarted;client.stop();finish('retired-token');await delay(20);assert.equal(requests.length,0);assert.equal(client.ready,false);
+});
+
+test('the admitted Voice connection recovers after a later auth rejection rather than stopping',async t=>{
+ const server=new WebSocketServer({port:0,host:'127.0.0.1'});await new Promise(r=>server.once('listening',r));
+ let client,peer,connects=0,token='first';const auth=[],errors=[];
+ server.on('connection',ws=>{peer=ws;ws.send(JSON.stringify({type:'event',event:'connect.challenge',payload:{nonce:'voice'}}));ws.on('message',raw=>{
+  const f=JSON.parse(raw);assert.equal(f.method,'connect');connects++;auth.push(f.params.auth.token);
+  ws.send(JSON.stringify(connects===2?{type:'res',id:f.id,ok:false,error:{code:'UNAUTHORIZED'}}:{type:'res',id:f.id,ok:true,payload:{protocol:4}}));
+ });});
+ t.after(async()=>{client?.stop();for(const c of server.clients)c.terminate();await new Promise(r=>server.close(r));});
+ client=await connectGatewayClient({url:`ws://127.0.0.1:${server.address().port}`,getToken:async()=>token,reconnectMs:10},{startupTimeoutMs:2000,onConnectError:e=>{errors.push(e.code);token='current';}});
+ peer.terminate();for(let i=0;i<200&&(connects<3||!client.ready);i++)await delay(10);
+ assert.equal(client.ready,true);assert.equal(client.stopped,false);assert.equal(connects,3);assert.deepEqual(errors,['UNAUTHORIZED']);assert.deepEqual(auth,['first','first','current']);
 });

@@ -1,4 +1,4 @@
-import {getRealtimeVoiceProvider,resolveConfiguredRealtimeVoiceProvider,consultRealtimeVoiceAgent} from 'openclaw/plugin-sdk/realtime-voice';
+import {getRealtimeVoiceProvider,resolveConfiguredRealtimeVoiceProvider,consultRealtimeVoiceAgent,controlRealtimeVoiceAgentRun} from 'openclaw/plugin-sdk/realtime-voice';
 import {createVoiceTasks} from './tasks.mjs';
 import {createVoiceGptProvider} from './provider.mjs';
 import {readVoiceTaskResult} from './delivery.mjs';
@@ -6,7 +6,7 @@ export default {
  id:'v-voice-gpt-live',name:'V Voice GPT Live adapter',
  register(api){
  const reservations=new Map();
- const tasks=createVoiceTasks({consult:consultRealtimeVoiceAgent,agentRuntime:api.runtime.agent,getConfig:()=>api.config,logger:api.logger,subscribe:fn=>api.runtime.events.onAgentEvent(fn)});
+ const tasks=createVoiceTasks({consult:consultRealtimeVoiceAgent,control:controlRealtimeVoiceAgentRun,agentRuntime:api.runtime.agent,getConfig:()=>api.config,logger:api.logger,subscribe:fn=>api.runtime.events.onAgentEvent(fn)});
  api.registerGatewayMethod('voice.product.task.start',async({params,client,context,respond})=>{
   let sent=false;
   const started=value=>{if(!sent){sent=true;respond(true,value);}};
@@ -21,6 +21,9 @@ export default {
  },{scope:'operator.read'});
  api.registerGatewayMethod('voice.product.task.cancel',async({params,client,respond})=>{
   try{respond(true,await tasks.cancel(params,client?.connId));}catch{respond(false,undefined,{code:'INVALID_REQUEST',message:'Voice task requires its authenticated owner'});}
+ },{scope:'operator.write'});
+ api.registerGatewayMethod('voice.product.task.control',async({params,client,respond})=>{
+  try{respond(true,await tasks.control(params,client?.connId));}catch{respond(false,undefined,{code:'INVALID_REQUEST',message:'Voice control requires its exact authenticated task owner'});}
  },{scope:'operator.write'});
  api.registerGatewayMethod('voice.product.task-result',({params,client,respond})=>{
   try{respond(true,readVoiceTaskResult(reservations,params,client?.connId));}

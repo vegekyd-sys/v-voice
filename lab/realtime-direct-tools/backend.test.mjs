@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {setTimeout as delay} from 'node:timers/promises';
 import {createBackendDelegation,visibleText} from './backend.mjs';
 function fixture(){let status='running',text='真实最终结果',runId='initial',cancelError=false;const calls=[],audit=[],progress=[],delivered=[];
-const gateway={request:async(method,args)=>{calls.push({method,args});if(method==='voice.product.task.start')return {taskId:'owned-task',runId:'initial'};if(method==='voice.product.task.read')return {taskId:'owned-task',status,text,runId,runs:['initial',runId],progress:[]};if(method==='voice.product.task.cancel'){if(cancelError)throw Error('cancel unconfirmed');status='cancelled';return {taskId:'owned-task',cancelled:true};}throw Error('Unexpected method '+method);}};
+const gateway={request:async(method,args)=>{calls.push({method,args});if(method==='voice.product.task.start')return {taskId:'owned-task',runId:'initial'};if(method==='voice.product.task.read')return {taskId:'owned-task',status,text,runId,runs:['initial',runId],progress:[]};if(method==='voice.product.task.control')return {taskId:args.taskId,ok:true,queued:true};if(method==='voice.product.task.cancel'){if(cancelError)throw Error('cancel unconfirmed');status='cancelled';return {taskId:'owned-task',cancelled:true};}throw Error('Unexpected method '+method);}};
 const backend=createBackendDelegation({gateway,sessionKey:'agent:makaron:feishu:group:oc_test',ownerId:'call',pollMs:1,audit:x=>audit.push(x),onProgress:p=>progress.push(p),taskDelivery:{started(){},completed:async(run,text)=>delivered.push({run,text}),failed:async()=>{},cancelled:async()=>{}}});
 return {backend,gateway,calls,audit,progress,delivered,start:(signal)=>backend.run({question:'完整查询目标',context:'上海；不要替我付款',callId:'tool',signal}),set:(v)=>{if(v.status)status=v.status;if(v.runId)runId=v.runId;if(v.text)text=v.text;if(v.cancelError!==undefined)cancelError=v.cancelError;}};}
 test('one logical SDK task carries full goal and never uses chat latest-text reconciliation',async()=>{
@@ -28,4 +28,13 @@ const f=fixture(),original=f.gateway.request;f.gateway.request=async(m,a)=>m==='
 });
 test('reasoning, commentary, partial tool output and tool-use messages are not public final',()=>{
 for(const m of [{phase:'analysis',text:'private'},{phase:'commentary',text:'progress'},{openclawStreamFallback:{source:'segment'},text:'partial'},{stopReason:'toolUse',text:'tool plan'}])assert.equal(visibleText(m),'');
+});
+
+test('control uses the existing opaque task, not a caller supplied run or a fresh delegation',async()=>{
+ const f=fixture(),pending=f.start();await delay(5);
+ for(const mode of ['steer','followup'])assert.equal((await f.backend.control({mode,text:'用户原要求'})).applied,false);
+ assert.deepEqual(f.calls.filter(x=>x.method==='voice.product.task.control').map(x=>x.args),['steer','followup'].map(mode=>({taskId:'owned-task',mode,text:'用户原要求'})));
+ assert.equal(f.calls.filter(x=>x.method==='voice.product.task.start').length,1);
+ f.set({status:'ok'});await pending;
+ assert.equal((await f.backend.control({mode:'steer',text:'late'})).queued,false);
 });

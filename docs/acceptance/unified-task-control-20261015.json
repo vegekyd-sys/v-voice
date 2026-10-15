@@ -1,0 +1,133 @@
+{
+  "candidateId": "candidate-2003076a-8c0b-403c-a6dc-4df01d7ccbba",
+  "backendModel": "openrouter/google/gemini-3.5-flash",
+  "thinking": "off",
+  "testOutputBudget": 2048,
+  "baseRelease": "history-image-e3-20261015b",
+  "runtimeSha": "0bfc70085b87e1b9b810aeeb12226762b3f65ea4829bf3623e3d9ab01f7d3ecf",
+  "passed": true,
+  "serverElapsedMs": 95267,
+  "testElapsedMs": 92071,
+  "sharedGatewayPidBefore": 122630,
+  "sharedGatewayPidAfter": 122630,
+  "integrationLeaseUsed": false,
+  "productionChanged": false,
+  "controller": "openclaw/plugin-sdk/realtime-voice.controlRealtimeVoiceAgentRun",
+  "scenarios": [
+    {
+      "name": "same-run-markers",
+      "runId": "voice-e36c3ac2-5220-4840-8e07-98c82a7763be-0ff64634-175b-4efd-9ca6-f819e433f141",
+      "statusActive": true,
+      "steerAccepted": true,
+      "followupAccepted": true,
+      "foreignRejected": true,
+      "staleRejected": true,
+      "originalRunPreserved": true,
+      "timeline": [
+        {
+          "ms": 1030,
+          "action": "start"
+        },
+        {
+          "ms": 8160,
+          "action": "tool-start"
+        },
+        {
+          "ms": 8166,
+          "action": "foreign-rejected"
+        },
+        {
+          "ms": 8262,
+          "action": "status",
+          "active": true
+        },
+        {
+          "ms": 8319,
+          "action": "steer",
+          "queued": true,
+          "applied": false
+        },
+        {
+          "ms": 8343,
+          "action": "followup",
+          "queued": true,
+          "applied": false
+        },
+        {
+          "ms": 28414,
+          "action": "final"
+        },
+        {
+          "ms": 28668,
+          "action": "stale-rejected"
+        }
+      ]
+    },
+    {
+      "name": "changed-budget-and-added-rain-plan",
+      "runId": "voice-730615f6-6d70-4b4e-96b0-bf84fb1b9f2b-4da7330e-7dc0-4b8b-ad2c-f24ee3dccb48",
+      "statusActive": true,
+      "steerAccepted": true,
+      "followupAccepted": true,
+      "foreignRejected": true,
+      "staleRejected": true,
+      "originalRunPreserved": true,
+      "timeline": [
+        {
+          "ms": 154,
+          "action": "start"
+        },
+        {
+          "ms": 15298,
+          "action": "tool-start"
+        },
+        {
+          "ms": 15306,
+          "action": "foreign-rejected"
+        },
+        {
+          "ms": 15317,
+          "action": "status",
+          "active": true
+        },
+        {
+          "ms": 15328,
+          "action": "steer",
+          "queued": true,
+          "applied": false
+        },
+        {
+          "ms": 15347,
+          "action": "followup",
+          "queued": true,
+          "applied": false
+        },
+        {
+          "ms": 38428,
+          "action": "final",
+          "artifact": {
+            "budget": 500,
+            "rainPlan": true
+          }
+        },
+        {
+          "ms": 38530,
+          "action": "stale-rejected"
+        }
+      ]
+    }
+  ],
+  "additionalModelResult": {
+    "model": "openai/gpt-6-luna",
+    "candidateId": "candidate-a10ff7c0-a5e3-4eda-a412-260f2bd6036a",
+    "passed": false,
+    "passedScenarios": 1,
+    "totalScenarios": 2,
+    "failure": "Rain plan file assertion remained false despite queued receipt"
+  },
+  "verificationLimits": [
+    "Real backend Agent and RPC; not real frontend voice model tool selection",
+    "No real microphone, iPhone audio or external group delivery acceptance",
+    "Functional test budget; not production latency baseline"
+  ]
+}
