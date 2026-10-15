@@ -18,7 +18,7 @@ export function backendQuestion(question,context='',callerTurns=[]) {
 // unmarked assistant text, or another run's history for progress narration.
 export function telephoneProgress(text) {
   if(typeof text!=='string')return [];
-  return [...text.matchAll(/(?:^|\n)【电话进展】([^\n]{1,220})(?=\n|$)/gu)]
+  return [...text.matchAll(/(?:^|\n)【电话进展】[ \t]*(?:\n[ \t]*)?([^\n]{1,220})(?=\n|$)/gu)]
     .map(m=>m[1].trim()).filter(t=>/[。！？.!?][”」"]?$/u.test(t));
 }
 export function visibleText(message) {
@@ -158,7 +158,8 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
     const live=new Promise((resolve,reject)=>Object.assign(row,{resolve,reject}));
     void live.catch(()=>{});
     row.observer=createGptLiveConsultProgressObserver({runId:row.runId,onProgress:p=>{
-      if(active===row&&!row.retired){row.publicFact=p.text;row.publicFactAt=Date.now();onProgress({...p,callId:row.callId,runId:row.runId});taskDelivery?.progress(row.runId,p.text);}
+      const text=p.text.replace(/^【电话进展】\s*/u,'').trim();
+      if(active===row&&!row.retired&&text&&row.publicFact!==text){row.publicFact=text;row.publicFactAt=Date.now();onProgress({...p,text,callId:row.callId,runId:row.runId});taskDelivery?.progress(row.runId,text);}
     }});
     active=row;
     const abort=()=>{void cancelRow(row).catch(error=>{log(row,'backend.cancel-unconfirmed',{error:error.message});row.reject(error);});};

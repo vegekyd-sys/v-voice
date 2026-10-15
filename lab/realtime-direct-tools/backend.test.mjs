@@ -7,6 +7,7 @@ test('telephone progress requires an explicitly marked complete public line',()=
  assert.deepEqual(telephoneProgress('普通最终答案。'),[]);
  assert.deepEqual(telephoneProgress('【电话进展】10月21日有'),[]);
  assert.deepEqual(telephoneProgress('【电话进展】已拿到官方赛程，正在筛选勇士场次。'),['已拿到官方赛程，正在筛选勇士场次。']);
+ assert.deepEqual(telephoneProgress('【电话进展】\n已拿到官方赛程，正在筛选勇士场次。'),['已拿到官方赛程，正在筛选勇士场次。']);
 });
 
 test('completion-provider progress reconciles only owned public tool-turn text before final',async()=>{
@@ -59,8 +60,8 @@ test('progress admits public complete commentary only and deduplicates source mi
   f.backend.handleEvent({event:'agent',payload:{runId,stream:'tool',data:{phase:'result',name:'memory_search',toolCallId:'real-step'}}});
   agent({kind:'reasoning',phase:'end',progressText:'私有推理。'});
   agent({kind:'preamble',phase:'end',isReasoning:true,progressText:'隐私思考。'});
-  agent({kind:'preamble',phase:'update',itemId:'item',progressText:'记忆已查到第一条记录。下一'});
-  agent({kind:'preamble',phase:'end',itemId:'item',progressText:'记忆已查到第一条记录。下一步网页已核对。'});
+  agent({kind:'preamble',phase:'update',itemId:'item',progressText:'【电话进展】 记忆已查到第一条记录。下一'});
+  agent({kind:'preamble',phase:'end',itemId:'item',progressText:'【电话进展】 记忆已查到第一条记录。下一步网页已核对。'});
   assert.deepEqual(f.progress.map(p=>p.text),['记忆已查到第一条记录。','下一步网页已核对。']);
   f.event(runId,'final',{text:'完成'});await promise;
 });
