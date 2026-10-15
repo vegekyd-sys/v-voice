@@ -49,7 +49,7 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
       const history=await gateway.request('chat.history',{agentId:'makaron',sessionKey,limit:30},{timeoutMs:5000});
       for(const m of history.messages??[]){
         if(m.role!=='assistant'||m.__openclaw?.runId!==row.runId||m.stopReason!=='toolUse'||m.isReasoning||m.phase==='analysis')continue;
-        publicTelephoneText(row,(m.content??[]).filter(b=>b.type==='text'&&!b.isReasoning&&b.phase!=='analysis').map(b=>b.text??'').join('\n'));
+        publicTelephoneText(row,(Array.isArray(m.content)?m.content:[]).filter(b=>b.type==='text'&&!b.isReasoning&&b.phase!=='analysis').map(b=>b.text??'').join('\n'));
       }
     }catch(error){log(row,'backend.progress-read-deferred',{code:error.code??'READ_FAILED'});}
     finally{row.progressRead=false;}
@@ -178,7 +178,7 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
           const observed=await gateway.request('agent.wait',{runId:row.runId,timeoutMs:20000},{timeoutMs:25000});
           log(row,'backend.wait-observed',{observed});
           if(observed.status==='error'||observed.aborted)throw Error(observed.error??'V 后台任务未完成');
-          if(!terminal(observed))continue;
+          if(!terminal(observed)){if(row.hasToolResult)void reconcileProgress(row);continue;}
           // A timeout/yield is not completion. Reconcile only an exact run's
           // durable final, never the session's latest unrelated assistant text.
           for(let attempt=0;attempt<3&&!row.retired;attempt++){

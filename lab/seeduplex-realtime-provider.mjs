@@ -459,7 +459,7 @@ export class SeeduplexRealtimeVoiceBridge {
     // Finish the native function immediately; the host owns the async job.
     // Keeping a native continuation open suppresses later conversational turns.
     this.backgroundTools.set(callId, question);
-    this.submitToolResult(callId, {accepted:true,status:"working",message:"已交给 V 后台，我会继续做完。",instruction:"简短说明任务已开始，随后正常回应用户聊天。任务仍在后台继续，不要声称已完成。"}, {backgroundAck:true});
+    this.submitToolResult(callId, {accepted:true,status:"working",message:"已交给 V 后台，我会继续做完。",instruction:"这只是受理回执，没有查询结果。只用一句话说明已接到当前任务，不补充日期、数字、比赛或其他事实，不复述历史任务；等真实进展或结果返回再说。随后正常回应用户聊天，不声称已完成。"}, {backgroundAck:true});
   }
 
   completeBackgroundTool(callId, result, options = {}) {
