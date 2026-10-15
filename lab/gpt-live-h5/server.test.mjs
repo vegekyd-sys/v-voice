@@ -14,7 +14,7 @@ async function fixture(t, overrides = {}) {
     return method === "talk.client.create" ? reservation : { ok: true };
   } };
   const offers = [];
-  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice,callControlEvaluate:overrides.callControlEvaluate });
+  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice,callControlEvaluate:overrides.callControlEvaluate });
   await new Promise((resolve) => bridge.server.listen(0, "127.0.0.1", resolve));
   t.after(() => bridge.dispose());
   const url = `http://127.0.0.1:${bridge.server.address().port}`;
@@ -323,4 +323,14 @@ test('relay reports recover through the owned presentation endpoint and require 
  assert.equal((await f.request('content-shown',{voiceSessionId:'direct-report',callId:'unknown'})).status,409);
  assert.equal((await f.request('content-shown',{voiceSessionId:'direct-report',callId:'report-1'})).status,200);
  assert.equal((await fetch(f.url+'/api/presentation?after=3',{headers:{cookie:f.cookie}}).then(r=>r.json())).documents.length,0);
+});
+
+test('candidate default model is server-owned and included in both readiness paths',async t=>{
+ const f=await fixture(t,{preview:true,defaultModel:'grok'});
+ const html=await (await fetch(f.url)).text();assert.match(html,/"defaultModel":"grok"/);
+ const status=await (await fetch(f.url+'/api/status?model=gpt-live',{headers:{cookie:f.cookie}})).json();
+ assert.equal(status.defaultModel,'grok');assert.equal(f.calls.length,0);
+});
+test('unsupported default voice models fail at startup',()=>{
+ assert.throws(()=>createLiveH5Server({defaultModel:'arbitrary'}),/Invalid default voice model/);
 });

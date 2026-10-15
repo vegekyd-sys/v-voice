@@ -851,6 +851,7 @@ async function initializeEntry() {
       if(option){option.disabled=!model.available;if(model.label)option.textContent=model.label;}
     }
     const select = $("voiceModel");
+    if (select?.options && [...select.options].some(option => option.value === status.defaultModel && !option.disabled)) select.value = status.defaultModel;
     if (select?.options && [...select.options].find(option => option.value === select.value)?.disabled) {
       select.value = ['seeduplex', 'gpt-live', 'grok'].find(id => [...select.options].some(option => option.value === id && !option.disabled)) ?? select.value;
     }
