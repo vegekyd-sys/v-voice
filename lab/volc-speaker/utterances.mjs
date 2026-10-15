@@ -16,7 +16,7 @@ export class FinalUtterances {
     for(const raw of event.body?.result?.utterances??[]){
       const turn=normalizeUtterance(raw);if(!turn)continue;
       const old=this.seen.find(x=>Math.abs(x.endMs-turn.endMs)<300&&Math.abs(x.startMs-turn.startMs)<500);
-      if(old){if(old.speakerId!==turn.speakerId)output.push({type:'identity-revision',before:old,after:turn});continue;}
+      if(old){if(old.speakerId!==turn.speakerId){output.push({type:'identity-revision',before:{...old},after:turn});Object.assign(old,turn);}continue;}
       this.seen.push(turn);output.push({type:'utterance',turn});
     }
     return output;
