@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SpeakerConversation, validateDecision } from './decision.mjs';
+import { SpeakerConversation, validateDecision, shouldInterrupt } from './decision.mjs';
 import { FinalUtterances } from '../volc-speaker/utterances.mjs';
 const answer=(p,extra={})=>({shouldRespond:true,addresseeIds:[p.activeTargetId],nextTargetId:p.activeTargetId,nextMode:p.mode,policyChangeRequested:false,policyEvidence:null,pendingFocus:p.pendingFocus,identityUpdates:[],style:'neutral',reason:'回应当前问题',reply:'你好。',...extra});
 const input=(id,text='你好')=>({speakerId:id,text,startMs:0,endMs:1000});
@@ -36,9 +36,9 @@ test('explicit focus handoff then filters the former speaker',async()=>{
  c.register('0');c.register('1');await c.accept(input('0','现在只和十二聊天'));assert.equal(c.targetId,'speaker:1');assert.equal(c.history.length,0);
  assert.equal((await c.accept(input('0','SECRET AFTER HANDOFF'))).modelCalled,false);
 });
-test('exclusive rejects undeclared audience or mode changes',async()=>{
+test('undeclared mode or exclusive audience drift is contained without breaking ordinary dialogue',async()=>{
  const c=new SpeakerConversation({mode:'exclusive',evaluate:evaluator(()=>({nextTargetId:'speaker:1'}))});c.register('0');c.register('1');
- await assert.rejects(c.accept(input('0')),/未声明|违反专注/);
+ const r=await c.accept(input('0'));assert.equal(r.targetId,'speaker:0');assert.equal(r.decision.shouldRespond,false);assert.ok(r.policyGuard);
 });
 test('entering exclusive clears prior conversation while retaining identity roster',async()=>{
  const payloads=[];const c=new SpeakerConversation({evaluate:async p=>{payloads.push(p);return{decision:answer(p)};}});
@@ -92,4 +92,46 @@ test('exclusive strips third-party quotes carried in the active speaker profile'
  const payloads=[];const c=new SpeakerConversation({evaluate:async p=>{payloads.push(p);return{decision:answer(p)};}});c.register('0');c.register('1');
  c.participants[1].evidence=[{turnId:'old',quote:'SECRET THIRD PARTY INTRODUCTION'}];c.configure({mode:'exclusive',targetId:'speaker:1'});
  await c.accept(input('1','你好'));await c.accept(input('1','接着聊'));assert.doesNotMatch(JSON.stringify(payloads),/SECRET/);
+});
+
+test('regression: model drift after a guarded switch cannot turn acknowledgements into repeated errors',async()=>{
+ const c=new SpeakerConversation({evaluate:evaluator(()=>({nextMode:'exclusive',policyChangeRequested:false}))});
+ for(const text of ['没有，无所谓。','嗯，了解了。','那就结束吧。']){const r=await c.accept(input('0',text));assert.equal(r.mode,'adaptive');assert.ok(r.policyGuard);}
+ assert.equal(c.history.some(t=>'reason'in t),false);
+});
+test('adaptive preserves main speaker for a one-off reply while group addresses everyone',async()=>{
+ for(const mode of ['adaptive','group']){
+  const c=new SpeakerConversation({mode,evaluate:evaluator(p=>({nextTargetId:p.turn.speaker.id,addresseeIds:['speaker:0','speaker:1']}))});c.register('0');c.register('1');
+  const r=await c.accept(input('1','我也想问一个问题'));
+  if(mode==='adaptive'){assert.equal(r.targetId,'speaker:0');assert.deepEqual(r.decision.addresseeIds,['speaker:1']);}
+  else assert.deepEqual(r.decision.addresseeIds,['speaker:0','speaker:1']);
+ }
+});
+test('compact model reply inherits mode and identities without repetitive metadata',async()=>{
+ const c=new SpeakerConversation({mode:'group',evaluate:async()=>({decision:{reply:'我们一起想想。'}})});const r=await c.accept(input('0','你好'));
+ assert.equal(r.mode,'group');assert.equal(r.decision.shouldRespond,true);assert.deepEqual(r.decision.addresseeIds,['speaker:0']);
+});
+
+test('same bystander comment is quiet in adaptive but joins the discussion in group',async()=>{
+ for(const mode of ['adaptive','group']){
+  const c=new SpeakerConversation({mode,evaluate:evaluator(p=>({addresseeIds:[p.turn.speaker.id]}))});c.register('0');c.register('1');
+  const r=await c.accept(input('1','我觉得先把入口做简单。'));assert.equal(r.decision.shouldRespond,mode==='group');
+ }
+});
+test('malformed optional policy evidence cannot break a normal compact reply',async()=>{
+ const c=new SpeakerConversation({evaluate:async()=>({decision:{reply:'你好。',policyEvidence:'not a citation',nextMode:'exclusive',policyChangeRequested:false}})});
+ const r=await c.accept(input('0','嗯，知道了'));assert.equal(r.mode,'adaptive');assert.equal(r.decision.reply,'你好。');
+});
+
+test('compact exclusive handoff defaults reply audience and style to the new target',async()=>{
+ const c=new SpeakerConversation({evaluate:async p=>({decision:{reply:'十二，我们接着聊。',nextTargetId:'speaker:1',nextMode:'exclusive',policyChangeRequested:true}})});c.register('0');c.register('1');c.participants[1].role='child';
+ const r=await c.accept(input('0','现在只和十二聊'));assert.deepEqual(r.decision.addresseeIds,['speaker:1']);assert.equal(r.decision.style,'child');assert.equal(r.decision.shouldRespond,true);
+});
+
+test('bystander comment does not interrupt main speech in adaptive or exclusive',()=>{
+ const state={targetId:'speaker:0',speaker:{id:'speaker:1'}};
+ assert.equal(shouldInterrupt({...state,mode:'adaptive'},'我觉得入口简单一些'),false);
+ assert.equal(shouldInterrupt({...state,mode:'exclusive'},'V，我有问题'),false);
+ assert.equal(shouldInterrupt({...state,mode:'adaptive'},'V，我有问题'),true);
+ assert.equal(shouldInterrupt({...state,mode:'group'},'我觉得入口简单一些'),true);
 });

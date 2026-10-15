@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {loadCredentials} from '../volc-speaker/credentials.mjs';
 import {SpeakerConversation,createArkEvaluator} from './decision.mjs';
 const env=await loadCredentials(),{Id:endpointId}=JSON.parse(await readFile('artifacts/volc-speaker/ark-endpoint.json','utf8'));
-const real=await createArkEvaluator(env,{endpointId}),results=[];
+const invalid=[];const real=await createArkEvaluator(env,{endpointId,onInvalidDecision:(decision,error)=>invalid.push({decision,error:error.message})}),results=[];
 const evaluate=async(p,o)=>{const r=await real(p,o);results.push({input:p,result:r});return r;};
 const turn=(speakerId,text)=>({speakerId,text,startMs:0,endMs:1000});
 let failure;const checks={};
@@ -21,5 +21,5 @@ try{
  await correction.accept(turn('0','纠正一下，刚才说错了，我叫小李，不叫小林。'));
  assert.equal(correction.participants[0].name,'小李');assert.equal(correction.participants[0].source,'correction');checks.spokenNameCorrection=true;
 }catch(error){failure=error.message;}
-await writeFile('artifacts/volc-speaker/auto/model-edges.json',JSON.stringify({passed:!failure,textOnly:true,checks,failure,results},null,2),{mode:0o600});
+await writeFile('artifacts/volc-speaker/auto/model-edges.json',JSON.stringify({passed:!failure,textOnly:true,checks,failure,results,invalid},null,2),{mode:0o600});
 console.log(JSON.stringify({passed:!failure,textOnly:true,checks,failure,calls:results.length,tokens:results.reduce((n,r)=>n+(r.result.usage?.total_tokens??0),0)}));if(failure)process.exitCode=1;

@@ -29,8 +29,9 @@ try{
  assert.equal(handoff.mode,'exclusive');assert.equal(handoff.targetId,b.turn.speaker.id);checks.dialogueHandoff=true;
  assert.equal(filteredA.modelCalled,false);assert.equal(filteredC.modelCalled,false);checks.formerSpeakerAndBystanderWithheld=true;
  assert.equal(reply.decision.style,'child');assert.deepEqual(reply.decision.addresseeIds,[b.turn.speaker.id]);checks.childReply=true;
- const speech=await wait(e=>e.type==='speech'&&e.forTurn.startMs===last.turn.startMs);
- await writeFile(`${dir}/verified-reply.mp3`,Buffer.from(speech.audio,'base64'),{mode:0o600});checks.realSpeechReturned=true;
+ const speech=await wait(e=>e.type==='speech-end'&&e.forTurn.startMs===last.turn.startMs);
+ const audio=Buffer.concat(events.filter(e=>e.type==='speech-chunk'&&e.speechId===speech.speechId).map(e=>Buffer.from(e.audio,'base64')));assert.equal(audio.length,speech.audioBytes);
+ await writeFile(`${dir}/verified-reply.mp3`,audio,{mode:0o600});checks.realSpeechReturned=true;
  const after=await(await fetch(origin+'/health')).json();assert.equal(after.modelCalls-before.modelCalls,turns.filter(t=>t.modelCalled).length);checks.actualModelCallsMatchGating=true;
 }catch(error){failure=error.message;}
 finally{

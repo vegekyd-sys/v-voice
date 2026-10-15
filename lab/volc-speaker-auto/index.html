@@ -9,12 +9,16 @@
 <p class="intro">把说话人、话语和会话状态一起交给模型。无需注册声纹或手动校准。先区分 Speaker，再从自然对话中关联名字、判断可能是谁和切换对象。</p>
 <div class="notice"><strong>当前验证范围：轮流讲话。</strong> 姓名来自对话告知或模型推测，界面会标明依据与不确定性。专注模式在对话模型前筛选转写内容；尚不具备重叠人声的音频分离能力。</div>
 <div class="layout"><aside class="panel">
-<label for="mode">对话模式</label><select id="mode"><option value="adaptive">多人自适应 · 模型决定跟谁聊</option><option value="exclusive">专注一人 · 只传指定人物的话</option><option value="group">共同对话 · 可以回应多人</option></select>
+<label for="mode">对话模式</label><select id="mode"><option value="adaptive">多人自适应 · 围绕主要对象</option><option value="exclusive">专注一人 · 只传指定人物的话</option><option value="group">共同对话 · 面向大家讨论</option></select>
+<p class="small" id="mode-help"></p>
 <label for="target">当前主要对象 / 专注对象</label><select id="target"><option value="">自动 · 首个说话人</option></select>
 <p class="small">更改模式会清空模型上下文，避免专注模式带入此前旁人的话。自适应模式可通过说话交接对象；专注模式默认锁定首个说话人。</p>
 <div class="row"><button class="primary" id="start">开始真人测试</button><button id="stop" disabled>结束</button></div>
 <div class="row"><button id="replay">回放自动识人测试</button></div>
+<div class="row"><button id="compare">回放旁人评论 · 对照当前模式</button></div>
+<p class="small">对照：A 提产品问题，B 说“我觉得入口简单一点就好”。自适应应安静，共同对话应接话；切换模式后可回放同一段。</p>
 <div class="state"><div class="small">模型当前主要对话对象</div><div class="target" id="audience">等待首个 Speaker</div><div class="status" id="status" role="status">尚未开始，麦克风未开启</div></div>
+<p class="small mono" id="latency">耗时将在回复时分段显示。</p>
 <h2>自动识别的 Speaker</h2>
 <p class="small">直接开始聊天即可。可以自然地说“我是天意”“这是我儿子十二”，也可以先匿名聊天。姓名告知不等于声纹认证。</p>
 <div id="speakers" class="small">尚无人开口，不预设人物。</div>
