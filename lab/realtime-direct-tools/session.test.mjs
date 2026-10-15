@@ -186,7 +186,15 @@ test('Seed automatically speaks a real sustained PDF phase without a progress qu
  assert(f.client.sent.some(e=>e.type==='transcript'&&e.text==='正在读取 PDF 文档'&&e.final));
  assert.doesNotMatch(JSON.stringify(spoken),/PRIVATE/);
  f.event({type:'response.output_audio.done',response_id:'progress'});
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:false})),false);
+ f.event({type:'response.output_audio.started',response_id:'progress-sentence-2',tts_type:'chat_tts_text'});
+ f.event({type:'response.output_audio.delta',response_id:'progress-sentence-2',delta:pcm.toString('base64')});
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:true})),false);
  f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{text:'报告已完成'}}});
+ await delay(5);
+ assert(f.upstream.sent.some(e=>e.type==='response.cancel'));
+ assert(f.client.sent.some(e=>e.type==='audio.clear'));
+ assert.equal(f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').at(-1).text,'报告已完成');
 });
 test('hybrid explicit cancellation aborts only its own backend run and never feeds late final',async()=>{
  let cancelled=false;const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:'error',aborted:true}:new Promise(()=>{}));
