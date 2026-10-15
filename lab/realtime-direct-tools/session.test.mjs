@@ -177,7 +177,7 @@ test('Seed automatically speaks a real sustained PDF phase without a progress qu
  const started=f.audit.find(e=>e.type==='backend.started');assert(started);
  f.event({type:'response.output_audio.done',response_id:'ack'});
  f.service.handleEvent({event:'agent',payload:{runId:started.runId,sessionKey:started.sessionKey,stream:'tool',data:{phase:'start',name:'pdf',toolCallId:'pdf-1',args:{pdf:'/PRIVATE'}}}});
- await delay(8300);
+ await delay(2300);
  const spoken=f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit');
  assert.equal(spoken.length,1);assert.equal(spoken[0].text,'正在读取 PDF 文档');
  f.event({type:'response.output_audio.started',response_id:'progress',tts_type:'chat_tts_text'});

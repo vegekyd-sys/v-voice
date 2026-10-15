@@ -48,7 +48,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(s.backendResult){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;s.activityProgress=null;resolve();return;}
     if(s.pending.size!==1||!s.backend.snapshot()||Date.now()-s.lastProgressAt<10000)return;
     const p=s.progress??s.activityProgress;
-    if(!p||!s.progress&&Date.now()-p.observedAt<8000)return;
+    // Coalesce a burst of quick tool changes, without leaving a stable phase
+    // silent for most of a short research task.
+    if(!p||!s.progress&&Date.now()-p.observedAt<2000)return;
     s.progress=null;s.activityProgress=null;if(p.text.length>220||p.text===s.lastProgressText)return;
     s.lastProgressText=p.text;
     s.lastProgressAt=Date.now();s.responseActive=true;s.progressSpeech=true;
