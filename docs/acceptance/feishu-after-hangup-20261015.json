@@ -1,0 +1,37 @@
+{
+  "schema": "voice-feishu-handoff-acceptance-v1",
+  "candidateId": "candidate-3ceeb8a0-da22-47be-a61a-2128455c09f0",
+  "voiceModel": "seeduplex/1.2.6.1",
+  "backendModel": "openrouter/google/gemini-3.5-flash",
+  "input": "Synthetic speech replay of the reported utterance; no raw user audio recorded",
+  "passed": true,
+  "originalRunPreserved": true,
+  "groupReadbackConfirmed": true,
+  "resultContainsWarriors": true,
+  "feishuMessageIdVerified": true,
+  "backendStartedAt": 1792044335028,
+  "conditionAcceptedAt": 1792044355557,
+  "hangupAt": 1792044359835,
+  "backendCompletedAt": 1792044856017,
+  "finalSentAt": 1792044856942,
+  "finalSentAfterHangupMs": 497107,
+  "sendAfterBackendCompletionMs": 925,
+  "observerResumedAfterInitialSixMinuteDeadline": true,
+  "taskRedispatched": false,
+  "gatewayProductionChanged": false,
+  "sharedGatewayRestarted": false,
+  "integrationLeaseUsed": false,
+  "voiceRegressionTests": 426,
+  "platformRebaseTargetedTests": 21,
+  "candidateTransport": "Existing group bot outbound API; unregistered loopback webhook; inbound groups and DMs disabled",
+  "runtimeFileSha256": {
+    "lab/realtime-direct-tools/task-delivery.mjs": "959bde9e851f6836125c873cd35743cdec17b31c702d20578b859d470ee24b65",
+    "lab/gpt-live-h5/result-presentation.mjs": "276bf0bbd8a4b914050ae90f6ae9d2eba1801eabe4bbeac8dea114386f9a1cfb",
+    "plugins/v-voice-gpt-live/delivery.mjs": "7321ce63bdd605e736ca51429a3954c9623540e08529b8b2242828e981d03886"
+  },
+  "limits": [
+    "Synthetic voice does not prove real-phone acoustics",
+    "Full NBA schedule accuracy is not separately audited",
+    "This report covers SeedDuplex voice with Gemini; no new Grok voice run"
+  ]
+}
