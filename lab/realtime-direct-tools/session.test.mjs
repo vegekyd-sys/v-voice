@@ -7,7 +7,7 @@ import {VOICE_CAPABILITY_POLICY} from '../gpt-live-h5/capability-policy.mjs';
 
 async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}),model='grok',options={}) {
  const peers=[],audit=[],invocations=[];
- class WS extends EventEmitter {constructor(){super();this.readyState=1;this.sent=[];peers.push(this);setImmediate(()=>this.emit('open'));}
+ class WS extends EventEmitter {constructor(url){super();this.url=url;this.readyState=1;this.sent=[];peers.push(this);setImmediate(()=>this.emit('open'));}
   send(raw){const value=JSON.parse(raw);this.sent.push(value);if(value.type==='session.update')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.updated'})),false));if(value.type==='session.create')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.created',session:{id:value.session.id??'fixture-dialog'}})),false));}
   close(){this.readyState=3;this.emit('close');}}
  class Server {handleUpgrade(req,socket,head,done){done(socket);}close(){}}
@@ -16,7 +16,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   invocations.push(args);return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,...options});
- const reservation=await service.reserve({model,sessionKey:'agent:makaron:explicit:personal-fixture'});
+ const reservation=await service.reserve({model,sessionKey:'agent:makaron:explicit:personal-fixture',voice:options.voice});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -330,6 +330,35 @@ test('ordinary hangup detaches its real backend, redial is possible, late final 
  const next=await f.service.reserve({model:'grok',sessionKey:'agent:makaron:explicit:personal-fixture'});assert(next.voiceSessionId!==f.reservation.voiceSessionId);
  f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{text:'真实任务完成'}}});await delay(10);
  assert.equal(cancelled,false);assert.equal(sends.length,0);assert(!f.client.sent.some(e=>e.type==='backend.result'));await f.service.dispose();
+});
+
+for(const grokModel of ['grok-voice-3.0','grok-voice-2.0','grok-voice-think-fast-2.0'])test(`Grok reservation, catalog, audit and upstream agree on ${grokModel}`,async t=>{
+ const f=await fixture(undefined,'grok',{grokModel});t.after(()=>f.service.dispose());
+ assert.equal(f.reservation.model,grokModel);
+ assert.equal(f.service.models().find(m=>m.id==='grok').model,grokModel);
+ assert.equal(f.service.models().find(m=>m.id==='grok').label,`Grok Voice ${grokModel==='grok-voice-3.0'?'3.0':'2.0'}`);
+ assert.equal(f.audit.find(e=>e.type==='call.created').model,grokModel);
+ assert.equal(new URL(f.upstream.url).searchParams.get('model'),grokModel);
+ assert(!JSON.stringify(f.reservation).includes('fixture-key'));
+});
+
+ test('Grok voices are pinned per reservation and invalid selection creates no call',async t=>{
+  const f=await fixture(undefined,'grok',{voice:'iris'});t.after(()=>f.service.dispose());
+  assert.equal(f.reservation.voice,'iris');assert.equal(f.upstream.sent[0].session.voice,'iris');
+  assert.equal(f.audit.find(e=>e.type==='call.created').voice,'iris');
+  assert(f.service.models().find(m=>m.id==='grok').voices.some(v=>v.id==='iris'));
+  await assert.rejects(f.service.reserve({model:'grok',voice:'arbitrary',sessionKey:'unused'}),/不支持/);
+  const next=await f.service.reserve({model:'grok',voice:'ara',sessionKey:'unused'});
+  assert.equal(next.voice,'ara');assert.equal(f.upstream.sent[0].session.voice,'iris');
+ });
+
+test('candidate delivery experiment is Grok-only and propagates catalog to real session config',async t=>{
+ const options={grokSpeed:1.06,grokExpressiveTags:true};
+ const grok=await fixture(undefined,'grok',options);t.after(()=>grok.service.dispose());
+ assert.equal(grok.service.models().find(m=>m.id==='grok').speed,1.06);
+ assert.equal(grok.upstream.sent[0].session.audio.output.speed,1.06);assert(grok.upstream.sent[0].session.instructions.includes('[chuckle]'));
+ const seed=await fixture(undefined,'seeduplex',options);t.after(()=>seed.service.dispose());
+ assert.equal(seed.upstream.sent[0].session.audio.output.speed,0);assert(!seed.upstream.sent[0].session.instructions.includes('Grok speech delivery experiment'));
 });
 
 test('SeedDuplex steers and appends to the exact existing backend without a second delegation',async t=>{

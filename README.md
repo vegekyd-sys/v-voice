@@ -16,6 +16,8 @@ npm run preview
 
 三个模型的实际凭据、头像 Decision 凭据、飞书 CLI 账号和日志目录继续放在服务器私有环境，不提交 Git。
 
+Grok 默认使用固定版本 `grok-voice-3.0`，凭据沿用服务端 `XAI_API_KEY`。对照或回退时由服务端设置 `XAI_VOICE_MODEL=grok-voice-2.0`；页面会显示实际配置版本。真实 API 隔离评测与验收边界见 [Grok 3.0 接入与对照](docs/grok-voice-3.md)。
+
 ## 会话电话
 
 正式 `/voice/` 保留当前 Tianyi 本人入口。新增电话格式 `/voice/?phone=<入口编号>#access=<私有入口凭据>`：凭据换成按入口隔离的 HttpOnly cookie 后清除 fragment。通过 `VOICE_ENTRIES_FILE` 指定服务器私有映射 JSON；入口的 session 必须来自 Gateway 现有会话，不能根据姓名或浏览器请求编造。

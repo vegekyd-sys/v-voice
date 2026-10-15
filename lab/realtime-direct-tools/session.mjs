@@ -3,7 +3,7 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import {SeeduplexRealtimeVoiceBridge} from '../seeduplex-realtime-provider.mjs';
 import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
 import {TOOLS,createToolExecutor,validateTool,processExited} from './tools.mjs';
-import {GrokVoiceBridge,GROK_VOICE_MODEL} from './grok-provider.mjs';
+import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICES,grokVoice,grokVoiceModel,grokVoiceLabel,grokVoiceSpeed} from './grok-provider.mjs';
 import {createTaskDelivery} from './task-delivery.mjs';
 import {createBackendDelegation} from './backend.mjs';
 import {loadToolStartClips,toolStartClip} from './tool-start-audio.mjs';
@@ -17,7 +17,7 @@ const CALL_ENDING = '通话控制：用户对你说“好了，那我们就聊�
 
 export const DIRECT_MODELS = [
   {id:'seeduplex',label:'豆包 SeedDuplex',model:'1.2.6.1',voice:'xiaohe'},
-  {id:'grok',label:'Grok Voice',model:GROK_VOICE_MODEL,voice:'eve'},
+  {id:'grok',label:grokVoiceLabel(GROK_VOICE_MODEL),model:GROK_VOICE_MODEL,voice:'eve'},
 ];
 export function directInstructions(catalog,context='',model='') {
   const startNotice=model==='seeduplex'?'\n需要查询或执行任务时，立即在当前这一轮调用工具。工具开始时系统会用你的声音说明正在做什么，你不要先单独说“我查一下”再结束回复，也不要等用户第二句话才调用工具。后续步骤继续执行，不逐个重复播报。普通聊天直接回答。':'';
@@ -25,7 +25,9 @@ export function directInstructions(catalog,context='',model='') {
 }
 
 /** One real provider connection per dial; tool authorization stays in OpenClaw. */
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500}) {
+  grokModel=grokVoiceModel(grokModel);
+  grokSpeed=grokVoiceSpeed(grokSpeed);
   const sessions=new Map(),detached=new Set();
   const deferred=s=>{
     if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking||Date.now()-s.lastUserAt<1200)return;
@@ -37,7 +39,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
   };
   const websocketServer=new wsModule.WebSocketServer({noServer:true,maxPayload:65536});
   const configured=id=>id==='seeduplex'?Boolean(apiKeys.seeduplex):id==='grok'&&Boolean(apiKeys.grok);
-  const models=()=>DIRECT_MODELS.map(m=>({...m,available:configured(m.id),billing:m.id==='grok'?'api':'api'}));
+  const models=()=>DIRECT_MODELS.map(m=>({...m,...(m.id==='grok'?{model:grokModel,label:grokVoiceLabel(grokModel),voices:GROK_VOICES,speed:grokSpeed,expressiveTags:grokExpressiveTags}:{}),available:configured(m.id),billing:'api'}));
   const current=s=>Boolean(s)&&!s.closed&&sessions.get(s.id)===s;
   const emit=(s,value)=>{
     if(!current(s))return;
@@ -98,19 +100,20 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
     })();
     try{return await s.closePromise;}finally{s.closePromise=null;}
   };
-  async function reserve({model,sessionKey}) {
+  async function reserve({model,sessionKey,voice}) {
     if([...sessions.values()].some(s=>s.cleanupFailed))throw Error('上一通电话的后台任务正在确认退出，请稍后重试');
-    const spec=DIRECT_MODELS.find(m=>m.id===model);if(!spec)throw Error('没有这个语音模型');
+    const spec=models().find(m=>m.id===model);if(!spec)throw Error('没有这个语音模型');
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
-    const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,sessionKey,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map()};
+    const selectedVoice=model==='grok'?grokVoice(voice):spec.voice;
+    const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map()};
     Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,progress:null});
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
     s.delivery=createTaskDelivery({gateway,sessionKey,ownerId:s.id,audit});
     s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,taskDelivery:s.delivery,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}}});
     sessions.set(s.id,s);
-    audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model});
-    return {voiceSessionId:s.id,model:spec.model,provider:model,transport:'gateway-relay',relayTicket:s.ticket};
+    audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model,voice:s.voice,...(model==='grok'?{speed:grokSpeed,expressiveTags:grokExpressiveTags}:{})});
+    return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket};
   }
   async function start(s,client) {
     s.client=client;
@@ -238,7 +241,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
     if(!current(s))return;
     const createWebSocket=async(url,options)=>new wsModule.WebSocket(url,options);
     s.bridge=s.model==='seeduplex'?new SeeduplexRealtimeVoiceBridge(request,{createWebSocket})
-      :new GrokVoiceBridge(request,{createWebSocket,apiKey:apiKeys.grok});
+      :new GrokVoiceBridge(request,{createWebSocket,apiKey:apiKeys.grok,model:grokModel,voice:s.voice,speed:grokSpeed,expressiveTags:grokExpressiveTags});
     client.on('message',(data,binary)=>{
       if(!current(s))return;
       if(binary){if(data.length%2===0&&data.length<=24000)s.bridge.sendAudio(data);else client.close(1008);return;}
