@@ -6,7 +6,7 @@ export default {
  id:'v-voice-gpt-live',name:'V Voice GPT Live adapter',
  register(api){
  const reservations=new Map();
- const tasks=createVoiceTasks({consult:consultRealtimeVoiceAgent,agentRuntime:api.runtime.agent,getConfig:()=>api.config,logger:api.logger});
+ const tasks=createVoiceTasks({consult:consultRealtimeVoiceAgent,agentRuntime:api.runtime.agent,getConfig:()=>api.config,logger:api.logger,subscribe:fn=>api.runtime.events.onAgentEvent(fn)});
  api.registerGatewayMethod('voice.product.task.start',async({params,client,context,respond})=>{
   let sent=false;
   const started=value=>{if(!sent){sent=true;respond(true,value);}};
@@ -16,8 +16,11 @@ export default {
  api.registerGatewayMethod('voice.product.task.read',({params,client,respond})=>{
   try{respond(true,tasks.read(params,client?.connId));}catch{respond(false,undefined,{code:'INVALID_REQUEST',message:'Voice task requires its authenticated owner'});}
  },{scope:'operator.read'});
- api.registerGatewayMethod('voice.product.task.cancel',({params,client,respond})=>{
-  try{respond(true,tasks.cancel(params,client?.connId));}catch{respond(false,undefined,{code:'INVALID_REQUEST',message:'Voice task requires its authenticated owner'});}
+ api.registerGatewayMethod('voice.product.task.lookup',({params,client,respond})=>{
+  try{respond(true,tasks.lookup(params,client?.connId));}catch{respond(false,undefined,{code:'INVALID_REQUEST',message:'Voice task requires its authenticated owner'});}
+ },{scope:'operator.read'});
+ api.registerGatewayMethod('voice.product.task.cancel',async({params,client,respond})=>{
+  try{respond(true,await tasks.cancel(params,client?.connId));}catch{respond(false,undefined,{code:'INVALID_REQUEST',message:'Voice task requires its authenticated owner'});}
  },{scope:'operator.write'});
  api.registerGatewayMethod('voice.product.task-result',({params,client,respond})=>{
   try{respond(true,readVoiceTaskResult(reservations,params,client?.connId));}

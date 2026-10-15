@@ -6,16 +6,20 @@ import {createDirectVoiceService} from './session.mjs';
 import {VOICE_CAPABILITY_POLICY} from '../gpt-live-h5/capability-policy.mjs';
 
 async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}),model='grok',options={}) {
- const peers=[],audit=[],invocations=[];
+ const peers=[],audit=[],invocations=[];let sdkTask;
  class WS extends EventEmitter {constructor(){super();this.readyState=1;this.sent=[];peers.push(this);setImmediate(()=>this.emit('open'));}
   send(raw){const value=JSON.parse(raw);this.sent.push(value);if(value.type==='session.update')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.updated'})),false));if(value.type==='session.create')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.created',session:{id:value.session.id??'fixture-dialog'}})),false));}
   close(){this.readyState=3;this.emit('close');}}
  class Server {handleUpgrade(req,socket,head,done){done(socket);}close(){}}
  const gateway={request:async(method,args)=>{
   if(method==='tools.catalog')return {groups:[{tools:['memory_search','web_search','web_fetch','exec','process'].map(id=>({id}))}]};
-  invocations.push(args);return invoke(args,method);
+  invocations.push(args);
+  if(method==='voice.product.task.start'){sdkTask={taskId:'sdk-fixture-task',runId:'sdk-fixture-run',runs:['sdk-fixture-run'],status:'running',progress:[]};return {taskId:sdkTask.taskId,runId:sdkTask.runId};}
+  if(method==='voice.product.task.read'){await delay(1);return {...sdkTask,progress:[...sdkTask.progress]};}
+  if(method==='voice.product.task.cancel'){sdkTask.status='cancelled';return {taskId:sdkTask.taskId,cancelled:true};}
+  return invoke(args,method);
  }};
- const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,...options});
+ const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,...options});
  const reservation=await service.reserve({model,sessionKey:'agent:makaron:explicit:personal-fixture'});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
@@ -24,7 +28,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
  assert(client.sent.some(e=>e.type==='ready'),'Fixture provider did not become ready');
  const upstream=peers[0],event=v=>upstream.emit('message',Buffer.from(JSON.stringify(v)),false);
  const call=(name,args,id='call-1')=>{event({type:'response.created',response:{id:'response-'+id}});event({type:'response.function_call_arguments.done',response_id:'response-'+id,call_id:id,name,arguments:JSON.stringify(args)});event({type:'response.done',response:{id:'response-'+id,status:'completed'}});};
- return {service,reservation,client,upstream,event,call,audit,invocations,peers};
+ return {service,reservation,client,upstream,event,call,audit,invocations,peers,completeBackend:text=>{sdkTask.status='ok';sdkTask.text=text;},progressBackend:text=>sdkTask.progress.push({text,kind:'commentary',provenance:{runId:sdkTask.runId,sequence:sdkTask.progress.length+1}})};
 }
 
 for (const model of ['grok', 'seeduplex']) test(`${model} session initializes with the shared capability policy and real backend adapter`, async t => {
@@ -57,7 +61,7 @@ test('SeedDuplex upstream recovery keeps the browser and owned backend alive, th
  native(next,'delegated','delegate_to_v',{question:'整理报告，用户已授权发送'});await delay(5);
  assert.equal(f.audit.filter(e=>e.type==='backend.started').length,1);
  assert.equal(cancelled,false);
- f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text:'报告已整理并发送。'}]}}});await delay(250);
+ f.completeBackend('报告已整理并发送。');await delay(250);
  assert.equal(f.audit.filter(e=>e.type==='tool.delivered'&&e.callId==='delegated').length,1);
  assert.equal(f.client.sent.filter(e=>e.type==='transcript'&&e.source==='V-backend').length,1);
  assert.equal(next.sent.filter(e=>e.type==='speech_text_buffer.commit').length,1);
@@ -123,13 +127,13 @@ test('hybrid tool keeps one backend run alive during chat; progress and final wa
  const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}));
  f.call('delegate_to_v',{question:'比较多种方案，完成所有步骤'});await delay(5);
  const started=f.audit.find(x=>x.type==='backend.started');assert(started);
- const backend=e=>f.service.handleEvent({event:e.event??'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,...e.payload}});
+ const backend=e=>{if(e.payload?.state==='final')f.completeBackend(e.payload.message.content[0].text);else if(e.payload?.stream==='item')f.progressBackend(e.payload.data.progressText);};
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:true})),false);
  backend({event:'agent',payload:{stream:'tool',data:{phase:'result',name:'memory_search'}}});
  backend({event:'agent',payload:{stream:'item',data:{kind:'preamble',phase:'end',progressText:'第一步查到了实际记录，正在核对网页。'}}});
  await delay(250);assert.equal(f.upstream.sent.some(x=>x.item?.type==='force_message'),false);
  await f.service.steer(f.reservation.voiceSessionId,{mode:'steer',text:'顺便和我聊聊天'});
- assert.equal(f.invocations.filter(x=>x.message?.includes('完整目标')).length,1);
+ assert.equal(f.invocations.filter(x=>x.question?.includes('完整目标')).length,1);
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:false})),false);
  await delay(250);
  const progress=f.upstream.sent.find(x=>x.item?.type==='force_message');assert.equal(progress.item.content[0].text,'第一步查到了实际记录，正在核对网页。');assert.equal(progress.item.interruptible,true);
@@ -145,7 +149,7 @@ test('hybrid explicit cancellation aborts only its own backend run and never fee
  await f.service.steer(f.reservation.voiceSessionId,{mode:'cancel',text:'取消这个任务'});
  f.service.handleEvent({event:'chat',payload:{runId:started.runId,state:'final',message:{text:'不要播报的旧结果'}}});await delay(5);
  const result=f.audit.find(x=>x.type==='tool.delivered');assert.equal(result.result.cancelled,true);assert(!JSON.stringify(result).includes('不要播报'));
- assert(f.invocations.some(x=>x.runId===started.runId&&x.sessionKey===started.sessionKey));assert(!f.client.sent.some(x=>x.type==='backend.result'));await f.service.dispose();
+ assert(f.invocations.some(x=>x.taskId==='sdk-fixture-task'));assert(!f.client.sent.some(x=>x.type==='backend.result'));await f.service.dispose();
 });
 
 test('unconfirmed process termination retains call ownership and prevents redial until cleanup retry',async()=>{
@@ -158,12 +162,12 @@ test('unconfirmed process termination retains call ownership and prevents redial
  assert.equal(f.audit.filter(x=>x.type==='call.closed').length,1);await f.service.dispose();
 });
 
-test('backend cancellation uses its Worker registry; never sends backend IDs to Gateway process',async()=>{
+test('backend cancellation uses its SDK task owner; never sends backend IDs to Gateway process',async()=>{
  let cancelled=false,started;
  const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:method==='vlab.workers.voice.cancelProcesses'?(cancelled=true,{runId:args.runId,sessionKey:args.sessionKey,confirmed:true,pendingExecs:0,processes:[{sessionId:'worker-owned',result:{details:{status:'failed',exitSignal:'SIGTERM'}}}]}):method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:'error',aborted:true}:new Promise(()=>{}));
  f.call('delegate_to_v',{question:'后台执行长命令'});await delay(5);started=f.audit.find(x=>x.type==='backend.started');
  f.service.handleEvent({event:'agent',payload:{runId:started.runId,sessionKey:started.sessionKey,stream:'tool',data:{phase:'result',name:'exec',toolCallId:'exec',result:{details:{status:'running',sessionId:'worker-owned'}}}}});
- const answer=await f.service.steer(f.reservation.voiceSessionId,{mode:'cancel',text:'取消后台'});assert(answer.cancelled);assert(!f.invocations.some(x=>x.name==='process'));assert(f.audit.some(x=>x.type==='backend.process-cancel-observed'));await f.service.dispose();
+ const answer=await f.service.steer(f.reservation.voiceSessionId,{mode:'cancel',text:'取消后台'});assert(answer.cancelled);assert(!f.invocations.some(x=>x.name==='process'));assert(f.audit.some(x=>x.type==='backend.cancel-observed'));assert(f.invocations.some(x=>x.taskId==='sdk-fixture-task'));await f.service.dispose();
 });
 
 test('invalid or concurrent delegation returns native error without falsely acknowledging a new backend job',async()=>{
@@ -219,10 +223,10 @@ test('Xiaohe cached native notice uses the same sequenced FIFO and leaves the pe
 test('owned long backend result publishes full document and speaks brief notice with exactly one backend run',async()=>{
  const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}));
  f.call('delegate_to_v',{question:'比较多种方案'});await delay(5);const started=f.audit.find(x=>x.type==='backend.started'),text='## 完整结果\n'+'原始事实与限制。'.repeat(100);
- const event={event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text}]}}};f.service.handleEvent(event);f.service.handleEvent(event);await delay(250);
+ const event={event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text}]}}};f.completeBackend(text);f.service.handleEvent(event);await delay(250);
  const docs=f.client.sent.filter(x=>x.type==='backend.result');assert.equal(docs.length,1);assert.equal(docs[0].text,text);assert.equal(docs[0].callId,'call-1');assert.equal(docs[0].voiceSessionId,f.reservation.voiceSessionId);
  const speech=f.upstream.sent.filter(x=>x.item?.type==='force_message');assert.equal(speech.length,1);assert(speech[0].item.content[0].text.includes('屏幕'));assert(speech[0].item.content[0].text.includes('原始事实'));assert(speech[0].item.content[0].text.length<200);
- assert.equal(f.invocations.filter(x=>x.message?.includes('完整目标')).length,1);await f.service.dispose();
+ assert.equal(f.invocations.filter(x=>x.question?.includes('完整目标')).length,1);await f.service.dispose();
 });
 
 test('direct tools emit actual activity; contextual picture decisions belong only to the shared H5 path',async()=>{
@@ -261,7 +265,7 @@ test('short image and video completions publish one UI result and one spoken cap
   const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}));
   f.call('delegate_to_v',{question:'生成赛车媒体'});await delay(5);const started=f.audit.find(x=>x.type==='backend.started');
   const text=`小赛车在积木赛道上。\n[赛车](${url})`;
-  f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text}]}}});await delay(250);
+  f.completeBackend(text);await delay(250);
   assert.equal(f.client.sent.filter(x=>x.type==='backend.result').length,1);
   assert.equal(f.client.sent.find(x=>x.type==='backend.result').text,text);
   const speech=f.upstream.sent.filter(x=>x.item?.type==='force_message');assert.equal(speech.length,1);assert(!speech[0].item.content[0].text.includes('https:'));assert(speech[0].item.content[0].text.includes('小赛车'));
@@ -328,6 +332,6 @@ test('ordinary hangup detaches its real backend, redial is possible, late final 
  // Fixture uses a non-Feishu session; the task must still survive without sending anywhere.
  await f.service.close(f.reservation.voiceSessionId);assert.equal(cancelled,false);assert.equal(f.client.readyState,3);
  const next=await f.service.reserve({model:'grok',sessionKey:'agent:makaron:explicit:personal-fixture'});assert(next.voiceSessionId!==f.reservation.voiceSessionId);
- f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{text:'真实任务完成'}}});await delay(10);
+ f.completeBackend('真实任务完成');await delay(10);
  assert.equal(cancelled,false);assert.equal(sends.length,0);assert(!f.client.sent.some(e=>e.type==='backend.result'));await f.service.dispose();
 });
