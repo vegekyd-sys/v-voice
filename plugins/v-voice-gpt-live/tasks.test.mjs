@@ -52,3 +52,13 @@ test('control accepted while owner completes does not claim a current queued cha
  f.done.resolve({text:'complete'});await f.pending;queue.resolve({ok:true,queued:true});
  assert.equal((await control).reason,'owner_changed');
 });
+
+test('the same admitted task mints its own runtime authority without changing tool or sender policy',async()=>{
+ const f=fixture(),calls=[];f.input.agentRuntime.__proto__.runEmbeddedAgent=async p=>calls.push(p);
+ const params={runId:'root',senderIsOwner:false,toolsAllow:['memory_search'],abortSignal:f.input.abortSignal};
+ await f.input.agentRuntime.runEmbeddedAgent(params);await f.input.agentRuntime.runEmbeddedAgent({...params,runId:'resumed'});
+ assert.match(calls[0].toolAuthorityFingerprint,/^[a-f0-9]{64}$/);assert.equal(calls[1].toolAuthorityFingerprint,calls[0].toolAuthorityFingerprint);
+ assert.deepEqual(calls[0],{...params,toolAuthorityFingerprint:calls[0].toolAuthorityFingerprint});
+ await f.input.agentRuntime.runEmbeddedAgent({...params,toolAuthorityFingerprint:'already-prepared-host-policy'});assert.equal(calls[2].toolAuthorityFingerprint,'already-prepared-host-policy');
+ f.done.resolve({text:'done'});await f.pending;
+});
