@@ -1,4 +1,12 @@
 import {randomUUID} from 'node:crypto';
+export function readVoiceTaskResult(reservations,params,connId){
+ const row=typeof params?.clientSecret==='string'?reservations.get(params.clientSecret):null;
+ if(!row||!connId||row.ownerConnId!==connId||typeof params?.runId!=='string')throw Error('Voice result requires its authenticated reservation owner');
+ const task=row.taskResults.get(params.runId);
+ if(!task)throw Error('Task is not owned by this Voice reservation');
+ if(row.expiresAt<Date.now()&&task.status!=='running'){reservations.delete(params.clientSecret);throw Error('Voice result expired');}
+ return {...task};
+}
 // Only delivery is retired on new caller speech. Real Agent work and its
 // original permission/confirmation context are never cancelled or replaced.
 export function createVoiceDeliveryOwner({onTranscript,onBackendResult}={}){

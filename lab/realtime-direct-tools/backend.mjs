@@ -17,7 +17,7 @@ export function visibleText(message) {
 const terminal=r=>r?.status==='error'||r?.status==='aborted'||r?.aborted===true||r?.status==='ok'&&!r.yielded;
 
 /** One backend goal per telephone owner; ordinary speech never calls cancel. */
-export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{},onProgress=()=>{},onProcess=()=>{},timeoutMs=600000,processProofTimeoutMs=10000}) {
+export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{},onProgress=()=>{},onProcess=()=>{},timeoutMs=600000,processProofTimeoutMs=10000,taskDelivery}) {
   let active;
   const log=(row,type,extra={})=>audit({type,voiceSessionId:ownerId,callId:row.callId,runId:row.runId,sessionKey,...extra});
   const retire=row=>{row.retired=true;row.observer.close();};
@@ -115,7 +115,7 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
     const live=new Promise((resolve,reject)=>Object.assign(row,{resolve,reject}));
     void live.catch(()=>{});
     row.observer=createGptLiveConsultProgressObserver({runId:row.runId,onProgress:p=>{
-      if(active===row&&!row.retired)onProgress({...p,callId:row.callId,runId:row.runId});
+      if(active===row&&!row.retired){onProgress({...p,callId:row.callId,runId:row.runId});taskDelivery?.progress(row.runId,p.text);}
     }});
     active=row;
     const abort=()=>{void cancelRow(row).catch(error=>{log(row,'backend.cancel-unconfirmed',{error:error.message});row.reject(error);});};
@@ -125,7 +125,7 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
       log(row,'backend.start-requested');
       const ack=await gateway.request('chat.send',{agentId:'makaron',sessionKey,message:backendQuestion(question,context),deliver:false,idempotencyKey:row.runId},{timeoutMs:30000});
       if(ack.runId!==row.runId)throw Error('V 后台返回了不同任务身份，不能绑定或取消它');
-      log(row,'backend.started',{ack});
+      log(row,'backend.started',{ack});taskDelivery?.started(row.runId);
       if(row.retired||signal?.aborted){await cancelRow(row);throw Error('任务已取消');}
       deadline=setTimeout(()=>{void cancelRow(row).catch(error=>log(row,'backend.cancel-unconfirmed',{error:error.message}));row.reject(Error('V 后台任务超时，已请求取消'));},timeoutMs);
       deadline.unref?.();
@@ -153,8 +153,10 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
       row.completed=true;
       log(row,'backend.completed',{result});
       const parsed=readBackendResult(result);
+      await taskDelivery?.completed(row.runId,parsed.text).catch(()=>{});
       return {backend:'V',runId:row.runId,result:parsed.text,...(parsed.summary?{spokenSummary:parsed.summary}:{})};
     } catch(error) {
+      if(!row.retired)await taskDelivery?.failed(row.runId,error).catch(()=>{});
       // A start timeout may still have launched the exact idempotency run.
       if(!row.retired)await cancelRow(row).catch(e=>log(row,'backend.cancel-unconfirmed',{error:e.message}));
       throw error;
@@ -166,6 +168,6 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
   }
   return {run,handleEvent,cancel:async()=>{
     const row=active;if(!row)return {cancelled:true};
-    const result=await cancelRow(row);if(active===row&&row.retired&&!row.cleanupUnconfirmed)active=undefined;return result;
+    const result=await cancelRow(row);await taskDelivery?.cancelled(row.runId).catch(()=>{});if(active===row&&row.retired&&!row.cleanupUnconfirmed)active=undefined;return result;
   },snapshot:()=>active?{callId:active.callId,runId:active.runId,retired:active.retired}:null};
 }

@@ -314,3 +314,20 @@ test('displaying existing content does not pretend to query new sources',async()
  assert(f.client.sent.some(x=>x.type==='backend.result'));assert.equal(f.audit.find(x=>x.type==='tool.delivered').result.shown,true);
  assert(!f.client.sent.some(x=>x.source==='cached-native-tool-start'));assert(!f.audit.some(x=>x.type==='transcript'&&x.source==='tool-start'));await f.service.dispose();
 });
+
+test('ordinary hangup detaches its real backend, redial is possible, late final only goes to Feishu',async()=>{
+ let cancelled=false;const sends=[];
+ const f=await fixture(async(args,method)=>{
+  if(method==='chat.send')return {runId:args.idempotencyKey,status:'started'};
+  if(method==='send'){sends.push(args);return {messageId:'om-'+sends.length};}
+  if(method==='chat.abort'){cancelled=true;return {ok:true};}
+  return cancelled?{status:'error',aborted:true}:new Promise(()=>{});
+ });
+ f.call('delegate_to_v',{question:'处理一个任务'});await delay(10);const started=f.audit.find(e=>e.type==='backend.started');
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'我挂电话了，之后把进展都发在群里面'});
+ // Fixture uses a non-Feishu session; the task must still survive without sending anywhere.
+ await f.service.close(f.reservation.voiceSessionId);assert.equal(cancelled,false);assert.equal(f.client.readyState,3);
+ const next=await f.service.reserve({model:'grok',sessionKey:'agent:makaron:explicit:personal-fixture'});assert(next.voiceSessionId!==f.reservation.voiceSessionId);
+ f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{text:'真实任务完成'}}});await delay(10);
+ assert.equal(cancelled,false);assert.equal(sends.length,0);assert(!f.client.sent.some(e=>e.type==='backend.result'));await f.service.dispose();
+});

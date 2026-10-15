@@ -76,3 +76,10 @@ test('connection profiling persists only known stages for the reserved call owne
   assert(!JSON.stringify(rows).includes('SECRET'));
   assert(rows.every(r=>r.sessionKey==='personal'));
 });
+
+test('post-hangup delivery receipt survives without accepting late transcript or protocol',async t=>{
+ const f=await fixture(t);f.created();f.log.audit({type:'call.closed',voiceSessionId:'v1'});
+ assert(f.log.audit({type:'task.delivery-confirmed',voiceSessionId:'v1',runId:'owned-run',kind:'final',receipt:{messageId:'om-real',token:'SECRET'},audio:'SECRET'}));
+ assert.equal(f.log.audit({type:'transcript',voiceSessionId:'v1',role:'assistant',text:'late',final:true}),false);
+ await f.log.close();const rows=await f.rows();assert.equal(rows.at(-1).messageId,'om-real');assert.equal(rows.at(-1).runId,'owned-run');assert(!JSON.stringify(rows).includes('SECRET'));
+});
