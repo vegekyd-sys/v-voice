@@ -50,3 +50,7 @@ test('a short plain media URL surviving OpenClaw attachment extraction is still 
  assert(!result.spokenText.includes('https:'));
  for(const text of ['https://user:password@cdn.test/a.png','http://other.test/a.png','https://example.test/'])assert.equal(presentBackendResult(text).media,undefined);
 });
+
+test('backend report delivery stays with Voice without suppressing explicit message tasks',()=>{
+ const q=backendResultQuestion('整理报告');assert.match(q,/Voice 主机/);assert.match(q,/不要为这项结果交付再查询群/);assert.match(q,/独立业务操作/);assert.match(q,/不得在没有发送回执/);
+});

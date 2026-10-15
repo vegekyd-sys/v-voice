@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {backendResultQuestion,readBackendResult} from '../gpt-live-h5/result-presentation.mjs';
 import {processExited} from './tools.mjs';
 import {createGptLiveConsultProgressObserver} from '../gpt-live-consult-progress.mjs';
+import {controlVoiceTask} from '../../lib/voice-task-control.mjs';
 
 // Use V's normal conversation runner and configured agent/model/tool policy.
 // No provider credentials, model overrides, or caller-supplied run IDs enter here.
@@ -166,7 +167,13 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
       if(active===row&&!row.cleanupUnconfirmed&&row.ownedProcesses.size===0&&row.pendingExecs.size===0)active=undefined;
     }
   }
-  return {run,handleEvent,cancel:async()=>{
+  return {run,handleEvent,control:async input=>{
+    const row=active;
+    if(!row||row.retired)return {ok:false,active:false,queued:false,reason:'no_active_run',message:'当前电话没有可修改的后台任务。'};
+    const result=await controlVoiceTask({gateway,sessionKey,runId:row.runId,voiceSessionId:ownerId},input);
+    log(row,'backend.control',{mode:input.mode,ok:result.ok===true,queued:result.queued===true,applied:result.applied===true});
+    return result;
+  },cancel:async()=>{
     const row=active;if(!row)return {cancelled:true};
     const result=await cancelRow(row);await taskDelivery?.cancelled(row.runId).catch(()=>{});if(active===row&&row.retired&&!row.cleanupUnconfirmed)active=undefined;return result;
   },snapshot:()=>active?{callId:active.callId,runId:active.runId,retired:active.retired}:null};

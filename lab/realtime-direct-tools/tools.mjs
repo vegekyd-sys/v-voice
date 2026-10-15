@@ -1,7 +1,9 @@
 import {buildLarkReadArgv,calendarReadArgs} from './lark-readonly.mjs';
+import {VOICE_TASK_CONTROL_TOOL,validateVoiceTaskControl} from '../../lib/voice-task-control.mjs';
 const object=(properties,required=[])=>({type:'object',properties,required,additionalProperties:false});
 const str={type:'string'};
 export const TOOLS=[
+ VOICE_TASK_CONTROL_TOOL,
  {type:'function',name:'read',description:'直接读取工作目录中的文件。文件名区分大小写，AGENTS.md 是指引文件；可用 offset/limit 分页。',parameters:object({path:str,offset:{type:'integer',minimum:1,maximum:100000},limit:{type:'integer',minimum:1,maximum:300}},['path'])},
  {type:'function',name:'exec',description:'短、明确的原生执行操作。command 是完整命令，timeoutSeconds 是超时秒数。需要长时间等待、反复轮询或用户要求后端模型执行时用 delegate_to_v；本工具不调用后端语言模型。返回 running/sessionId 时用 process 跟进。外部写入需用户授权。',parameters:object({command:str,timeoutSeconds:{type:'integer',minimum:1,maximum:300}},['command'])},
  {type:'function',name:'process',description:'跟进本通电话发起的执行会话。poll 查询，timeout 最大5000毫秒；长时间等待交给 delegate_to_v。用户明确取消时用 cancel_task。不可管理其他电话的进程。',parameters:object({action:{type:'string',enum:['poll','log']},sessionId:str,timeout:{type:'integer',minimum:1,maximum:5000}},['action','sessionId'])},
@@ -33,6 +35,7 @@ export function validateTool(name,args){
  if(name==='web_fetch'){const u=new URL(args.url);if(u.protocol!=='https:'&&u.protocol!=='http:')throw Error('只读取网页');}
  if(name==='feishu_calendar')for(const value of Object.values(args))if(!/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2}))?$/.test(value))throw Error('无效日程日期');
  if(name==='lark_read')buildLarkReadArgv(args.argv);
+ if(name==='openclaw_agent_control')validateVoiceTaskControl(args);
  return args;
 }
 export function createToolExecutor({invoke,allowedTools,calendar,larkRead,delegate,showContent}){return async(name,args,callId,signal)=>{

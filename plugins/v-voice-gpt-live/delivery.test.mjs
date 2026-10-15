@@ -12,3 +12,9 @@ test('accepted host end mutes results without cancelling Agent and rejects inven
  const owner=createVoiceDeliveryOwner();assert.throws(()=>owner.begin({}),/real native/);
  let n=0;const p=owner.begin({continuationIdentity:{delegationItemId:'real'},onProgress:()=>n++});assert.equal(owner.end().ok,true);p.onProgress({text:'late'});assert.equal(n,0);assert.equal(owner.result({delegationId:'real',text:'结果'}).channel,'commentary');owner.close();assert.throws(()=>owner.end(),/closed/);
 });
+
+test('native and direct backend questions share the host-owned result-delivery contract',()=>{
+ const owner=createVoiceDeliveryOwner(),signal=new AbortController().signal;
+ const p=owner.begin({question:'整理一份报告',signal,continuationIdentity:{delegationItemId:'exact'}});
+ assert(p.question.startsWith('整理一份报告\n'));assert.match(p.question,/Voice 主机/);assert.match(p.question,/独立业务操作/);assert.equal(p.signal,signal);
+});
