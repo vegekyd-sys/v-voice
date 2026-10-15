@@ -60,7 +60,7 @@ try{
  const voiceSessionId=randomUUID(),runId='voice-'+voiceSessionId+'-'+randomUUID(),sessionKey='agent:makaron:explicit:voice-control-'+randomUUID();
  const prompt='只做这次隔离测试：先用 exec 执行 sleep 12。工具完成后，最终只回复 CONTROL_OLD。等待时如收到用户的新条件，以最新条件为准。不要外部发送、不要写文件、不要启动子任务。';
  const ack=await client.request('chat.send',{agentId:'makaron',sessionKey,message:prompt,thinking:'off',deliver:false,idempotencyKey:runId},{timeoutMs:30000});assert.equal(ack.runId,runId);
- for(let i=0;i<1200&&!events.some(e=>e.event==='agent'&&e.payload?.runId===runId&&e.payload.stream==='tool');i++)await delay(100);
+ for(let i=0;i<1200&&!events.some(e=>e.event==='agent'&&e.payload?.runId===runId&&e.payload.stream==='tool');i++){const failure=events.find(e=>e.payload?.runId===runId&&(e.event==='chat'&&e.payload.state==='error'||e.event==='agent'&&e.payload.stream==='lifecycle'&&e.payload.data?.phase==='error'));assert(!failure,'Backend run failed before its tool step');await delay(100);}
  assert(events.some(e=>e.event==='agent'&&e.payload?.runId===runId&&e.payload.stream==='tool'),'Real task never reached its tool step');
  const base={voiceSessionId,runId,sessionKey};
  let rejected=false;try{await foreign.request('voice.product.task-control',{...base,mode:'steer',text:'FORBIDDEN_FOREIGN'},{timeoutMs:15000});}catch{rejected=true;}assert(rejected);
@@ -74,7 +74,7 @@ try{
  report.results.push({runId,statusActive:status.active,steerAccepted:steer.queued,followupAccepted:followup.queued,final:text,foreignRejected:rejected,originalRunPreserved:true});
  fs.writeFileSync(path.join(state,'unified-control-report.json'),JSON.stringify(report,null,2),{mode:0o600});console.log(JSON.stringify(report));
 }catch(error){
- const tail=fs.readFileSync(path.join(state,'gateway-output.log'),'utf8').slice(-5500).replace(/(token|api.?key|authorization|secret|password)[=: ]+[^\s]+/giu,'$1=[redacted]').replace(/https?:\/\/\S+/giu,'[endpoint]');console.error(JSON.stringify({candidateError:error.message,gatewayLog:tail}));throw error;
+ const tail=fs.readFileSync(path.join(state,'gateway-output.log'),'utf8').slice(-5500).replace(/(token|api.?key|authorization|secret|password)[=: ]+[^\s]+/giu,'$1=[redacted]').replace(/https?:\/\/\S+/giu,'[endpoint]');console.error(JSON.stringify({candidateError:error.message,observedEvents:events.slice(-15).map(e=>({event:e.event,runId:e.payload?.runId,stream:e.payload?.stream,state:e.payload?.state})),gatewayLog:tail}));throw error;
 }finally{
  client?.stop();foreign?.stop();gateway.kill('SIGTERM');for(let i=0;i<100&&gateway.exitCode===null;i++)await delay(100);if(gateway.exitCode===null)gateway.kill('SIGKILL');fs.closeSync(out);
 }
