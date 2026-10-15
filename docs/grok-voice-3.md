@@ -47,3 +47,15 @@ node scripts/compare-grok-voice.mjs --run --rounds 2 --out /absolute/private/gro
 ## 候选后端重连
 
 页面就绪状态必须跟随真实 Gateway 连接；后端断线时不接受新的 provider reservation，并显示后端重连状态。Voice 连接器在每次重新握手前重新读取同一私有配置的凭据，兼容其他已授权运维更新凭据的情况；不改变 Gateway 权限或重放业务请求。迟到的凭据读取不能在连接已关闭后发起握手。
+
+## 自主表达与试听
+
+页面支持 Iris、Eve、Ara、Carina、Luna 五种女声，每次拨号固定所选音色。候选目前推荐 Iris，语速为 1.06 倍。服务端配置 `XAI_VOICE_SPEED=1.06`、`XAI_VOICE_EXPRESSIVE_TAGS=1` 开启本轮自主表达；不设置时仍为 1 倍语速、不追加表达标签提示词。
+
+优化版把完整的 26 种行内及包裹标签交给模型自主选择，不规定每轮个数、轮换顺序或固定情绪触发模板。提示词强调完整短语中的连贯表达、自然标点和语气衔接，减少机械的句首声音和逐词变调。已知标签从实时字幕中清除，包括跨流式分片的标签；工具参数与原始文档保持原文。
+
+`scripts/generate-grok-listening.mjs /absolute/private/listening` 是显式运行的付费离线实验，不由网页触发。它使用服务端 `XAI_API_KEY`，并要求通过 `VOICE_PREVIOUS_PROMPT` 指定旧提示词文件，先记录自主标注，再让普通实时回复和独立 xAI TTS 分别演绎相同脚本。三个场景、四种标注版本、两条语音路径共 24 段；独立 TTS 没有模型版本 pin，不能称为固定版本 Grok 3.0 TTS。
+
+设置 `VOICE_LISTENING_DIR` 指向生成的外部目录后，`/voice/compare` 提供固定样本播放、隐藏名称盲听和标注核对。样本及 manifest 不提交仓库、不随发布包分发。音频 API 沿用本人入口验证和服务端映射；完整本人电话链接中的 fragment 换取 HttpOnly Cookie 后才可从电话页面进入试听，只有 `entry=tianyi` 的地址不能在未验证的浏览器建立本人身份。
+
+本轮已完成候选试听与真人通话试用。Tianyi 的反馈是优化版自主可保留、速度较快，但仍不够像真人；这是有限试用反馈，不代表完整手机、长通话或全部工具回归验收。已授权 PR 合入，正式发布等待与其他改动一起安排；合入本身不包含部署或正式环境配置变更。
