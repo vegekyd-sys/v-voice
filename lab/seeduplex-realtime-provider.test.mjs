@@ -646,11 +646,26 @@ for (const acknowledge of [true,false]) test(`host progress interruption preserv
  if(acknowledge)socket.message({type:'response.canceled'});
  assert.equal(await work,true);
  bridge.speakProgress('最终答案。',{caption:true});
+ const cancels=socket.sent.filter(e=>e.type==='response.cancel').length;
+ socket.message({type:'conversation.item.input_audio_transcription.started'});
+ assert.equal(socket.sent.filter(e=>e.type==='response.cancel').length,cancels,'an unconfirmed provider ASR hint must not cancel the new answer');
  socket.message({type:'response.output_audio.started',response_id:'final',tts_type:'chat_tts_text'});
  // A delayed or duplicate acknowledgement has no response ID on the real API.
  socket.message({type:'response.canceled'});
  socket.message({type:'response.canceled',response_id:'progress'});
  socket.message({type:'response.output_audio.delta',response_id:'final',delta:floatAudio([.2])});
- assert.equal(audio.length,3);assert.equal(captions.at(-1),'最终答案。');assert.equal(clears.length,1);
+ assert.equal(audio.length,3);assert.equal(captions.at(-1),'最终答案。');assert.equal(clears.length,2);
+ socket.message({type:'conversation.item.input_audio_transcription.completed',transcript:'等一下'});
+ assert.equal(socket.sent.filter(e=>e.type==='response.cancel').length,cancels+1,'confirmed caller words still cancel injected speech');
  bridge.close();
+});
+
+test('completed host TTS flushes only local queued audio, with no stale upstream cancellation',async()=>{
+ const socket=new FakeSocket(),audio=[],captions=[],clears=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{voice:'xiaohe',apiKey:'fixture-key'},onAudio:x=>audio.push(x),onTranscript:(role,text)=>captions.push(text),onClearAudio:x=>clears.push(x),onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const connecting=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created',session:{id:'fixture'}});await connecting;
+ bridge.speakProgress('中间进展。',{caption:true});socket.message({type:'response.output_audio.started',response_id:'progress',tts_type:'chat_tts_text'});socket.message({type:'response.output_audio.delta',response_id:'progress',delta:floatAudio([.1])});socket.message({type:'response.output_audio.done',response_id:'progress'});
+ assert.equal(await bridge.interruptProgress(),true);assert(!socket.sent.some(e=>e.type==='response.cancel'));assert.equal(clears.length,1);
+ bridge.speakProgress('最终答案。',{caption:true});socket.message({type:'response.output_audio.started',response_id:'final',tts_type:'chat_tts_text'});socket.message({type:'response.output_audio.delta',response_id:'final',delta:floatAudio([.2])});
+ assert.equal(captions.at(-1),'最终答案。');assert.equal(audio.length,2);bridge.close();
 });

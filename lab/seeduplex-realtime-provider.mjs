@@ -530,12 +530,21 @@ export class SeeduplexRealtimeVoiceBridge {
     this.bargeInPending = true;
     // Host-injected backend speech may postpone native ASR until its TTS ends.
     // A client speech onset must retire that playback, not wait for ASREnded.
-    if (this.injectedSpeech) this.#cancelUpstreamResponse(true);
+    if (this.injectedSpeech && this.responseActive) this.#cancelUpstreamResponse(true);
   }
 
   interruptProgress() {
     if (this.progressInterruption) return this.progressInterruption.promise;
     if (!this.injectedSpeech) return Promise.resolve(false);
+    if (!this.responseActive) {
+      // TTS may finish generating seconds before the browser drains its FIFO.
+      // A new upstream cancel here resets ASR and can cancel the next answer.
+      for (const id of this.injectedResponseIds) this.retiredResponses.add(id);
+      while (this.retiredResponses.size > 256) this.retiredResponses.delete(this.retiredResponses.values().next().value);
+      this.pendingSpeechCaption = null;
+      this.request.onClearAudio?.('progress-completed');
+      return Promise.resolve(true);
+    }
     let resolve;
     const promise = new Promise(done => { resolve = done; });
     const finish = () => {
@@ -776,7 +785,8 @@ export class SeeduplexRealtimeVoiceBridge {
       this.outputClosed = false;
     }
     if (type === "conversation.item.input_audio_transcription.started") {
-      if (this.injectedSpeech && this.responseActive) this.#cancelUpstreamResponse(true);
+      // Provider ASR-start hints also occur after a host cancellation on pure
+      // silence. Actual client speech onset or confirmed words own cancellation.
       this.responseOwnerAnnounced = false;
       this.responseOwnerId = undefined;
     }
@@ -786,7 +796,7 @@ export class SeeduplexRealtimeVoiceBridge {
       // right to tear the upstream generation down. This runs after the reset
       // above so the fresh suppression is not immediately cleared.
       const spoken = optionalString(event.transcript) ?? optionalString(event.text);
-      if (spoken && this.bargeInPending) this.#cancelUpstreamResponse();
+      if (spoken && (this.bargeInPending || this.injectedSpeech)) this.#cancelUpstreamResponse();
       this.bargeInPending = false;
     }
     const continuingBatch = this.toolBatches.find((batch) => batch.continuing);
