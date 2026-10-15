@@ -1,9 +1,9 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {EventEmitter} from 'node:events';
-import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICE_MODELS} from './grok-provider.mjs';
+import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICE_MODELS,GROK_EXPRESSIVE_INSTRUCTIONS} from './grok-provider.mjs';
 class Socket extends EventEmitter {constructor(){super();this.readyState=1;this.sent=[];}send(s){this.sent.push(JSON.parse(s));}close(){this.readyState=3;this.emit('close');}}
-async function fixture(model=GROK_VOICE_MODEL,voice='eve'){const ws=new Socket(),calls=[],audio=[],text=[];
+async function fixture(model=GROK_VOICE_MODEL,voice='eve',options={}){const ws=new Socket(),calls=[],audio=[],text=[];
  const bridge=new GrokVoiceBridge({instructions:'中文',tools:[{type:'function',name:'memory_search',parameters:{type:'object'}}],onToolCall:c=>calls.push(c),onAudio:b=>audio.push(b),onTranscript:(...a)=>text.push(a)},
- {apiKey:'private-key',model,voice,createWebSocket:async(url,options)=>{assert.equal(new URL(url).searchParams.get('model'),model);assert.equal(options.headers.Authorization,'Bearer private-key');return ws;}});
+ {apiKey:'private-key',model,voice,...options,createWebSocket:async(url,options)=>{assert.equal(new URL(url).searchParams.get('model'),model);assert.equal(options.headers.Authorization,'Bearer private-key');return ws;}});
  const opening=bridge.connect();await new Promise(r=>setImmediate(r));ws.emit('open');bridge.receive({type:'session.updated'});await opening;
  return {ws,calls,audio,text,bridge};}
 test('Grok config is Chinese PCM plus native functions; keys are not provider events',async()=>{const f=await fixture();assert.equal(f.ws.sent[0].session.audio.input.format.rate,24000);assert.equal(f.ws.sent[0].session.audio.input.transcription.language_hint,'zh');assert.equal(f.ws.sent[0].session.tools[0].name,'memory_search');f.bridge.receive({type:'response.output_audio.delta',delta:Buffer.from([0,1]).toString('base64')});assert.deepEqual(f.audio,[Buffer.from([0,1])]);f.bridge.close();});
@@ -57,4 +57,22 @@ test('chosen voice reaches the realtime session; unsupported voices fail before 
   const f=await fixture(GROK_VOICE_MODEL,voice);assert.equal(f.ws.sent[0].session.voice,voice);f.bridge.close();
  }
  for(const voice of ['unknown','',null,{id:'iris'}])assert.throws(()=>new GrokVoiceBridge({}, {voice}),/不支持/);
+});
+
+test('Grok delivery controls reach upstream; defaults preserve old style and invalid speed fails early',async()=>{
+ const old=await fixture();assert.equal(old.ws.sent[0].session.audio.output.speed,1);assert.equal(old.ws.sent[0].session.instructions,'中文');old.bridge.close();
+ const f=await fixture(GROK_VOICE_MODEL,'iris',{speed:1.06,expressiveTags:true});
+ assert.equal(f.ws.sent[0].session.audio.output.speed,1.06);assert(f.ws.sent[0].session.instructions.endsWith(GROK_EXPRESSIVE_INSTRUCTIONS));
+ assert.equal(f.ws.sent[0].session.tools[0].name,'memory_search');f.bridge.close();
+ for(const speed of [0,0.69,1.51,NaN,Infinity,'1.06',null])assert.throws(()=>new GrokVoiceBridge({}, {speed}),/语速/);
+});
+test('split speech tags are hidden in captions while spoken text, user text and tool payloads stay intact',async()=>{
+ const f=await fixture(GROK_VOICE_MODEL,'iris',{expressiveTags:true});
+ for(const delta of ['好！[ch','uckle] 这个<em','phasis>点子</emphasis>很棒。[pa','use] 我们试试？'])f.bridge.receive({type:'response.output_audio_transcript.delta',response_id:'tagged',delta});
+ assert.equal(f.text.map(t=>t[1]).join(''),'好！ 这个点子很棒。 我们试试？');
+ f.bridge.receive({type:'response.output_audio_transcript.done',response_id:'tagged',transcript:'好！[chuckle] 这个<emphasis>点子</emphasis>很棒。[pause] 我们试试？'});
+ assert.deepEqual(f.text.at(-1),['assistant','好！ 这个点子很棒。 我们试试？',true]);
+ f.bridge.receive({type:'conversation.item.input_audio_transcription.completed',transcript:'标签 [pause] 是什么？'});assert.equal(f.text.at(-1)[1],'标签 [pause] 是什么？');
+ f.bridge.receive({type:'response.output_audio_transcript.done',response_id:'literal',transcript:'保留[unknown]和<code>原文</code>'});assert.equal(f.text.at(-1)[1],'保留[unknown]和<code>原文</code>');
+ f.bridge.speakProgress('实际结果 <code>不改</code>');assert.equal(f.ws.sent.at(-1).item.content[0].text,'实际结果 <code>不改</code>');f.bridge.close();
 });

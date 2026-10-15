@@ -351,3 +351,12 @@ for(const grokModel of ['grok-voice-3.0','grok-voice-2.0','grok-voice-think-fast
   const next=await f.service.reserve({model:'grok',voice:'ara',sessionKey:'unused'});
   assert.equal(next.voice,'ara');assert.equal(f.upstream.sent[0].session.voice,'iris');
  });
+
+test('candidate delivery experiment is Grok-only and propagates catalog to real session config',async t=>{
+ const options={grokSpeed:1.06,grokExpressiveTags:true};
+ const grok=await fixture(undefined,'grok',options);t.after(()=>grok.service.dispose());
+ assert.equal(grok.service.models().find(m=>m.id==='grok').speed,1.06);
+ assert.equal(grok.upstream.sent[0].session.audio.output.speed,1.06);assert(grok.upstream.sent[0].session.instructions.includes('[chuckle]'));
+ const seed=await fixture(undefined,'seeduplex',options);t.after(()=>seed.service.dispose());
+ assert.equal(seed.upstream.sent[0].session.audio.output.speed,0);assert(!seed.upstream.sent[0].session.instructions.includes('Grok speech delivery experiment'));
+});

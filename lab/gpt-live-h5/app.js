@@ -28,7 +28,7 @@ function refreshGrokVoicePicker() {
   if (!picker || !select) return;
   picker.hidden = $("voiceModel")?.value !== 'grok' || !select.options.length;
   select.disabled = document.body.dataset.callState !== 'idle';
-  $("grokVoiceHint").textContent = select.disabled ? "挂断后可以切换声音" : "选好声音，再拨号试聊";
+  $("grokVoiceHint").textContent = select.disabled ? "挂断后可以切换声音" : select.dataset.deliveryHint || "选好声音，再拨号试聊";
 }
 $("voiceModel")?.addEventListener('change', refreshGrokVoicePicker);
 const phoneEntry = new URLSearchParams(window.location.search).get("phone");
@@ -868,6 +868,8 @@ async function initializeEntry() {
     productControls?.refreshModels();
     const grokVoices = status.models?.find(model=>model.id==='grok')?.voices ?? [];
     if ($("grokVoice")) {
+      const grok = status.models?.find(model=>model.id==='grok');
+      $("grokVoice").dataset.deliveryHint = [grok?.speed && grok.speed !== 1 ? `${grok.speed}× 语速` : '',grok?.expressiveTags ? '语气增强试用' : ''].filter(Boolean).join(' · ');
       $("grokVoice").replaceChildren(...grokVoices.map(voice=>{
         const option = document.createElement('option'); option.value = voice.id; option.textContent = voice.label; return option;
       }));
