@@ -924,7 +924,8 @@ body[data-reading="true"] .content-card {
     padding: 0;
   }
   .conversation {
-    padding: 9px 3px 12px 0;
+    /* Keep conversation text and cards comfortably inside the mobile edge. */
+    padding: 9px 12px 12px;
   }
   .transcript-turn {
     font-size: 18px;
@@ -1277,7 +1278,8 @@ body[data-reading="true"] .changelog-trigger { visibility: hidden; pointer-event
     z-index: 0;
   }
   body:is([data-call-state="connected"], [data-call-state="ending"]) .conversation {
-    padding: 122px 0 96px;
+    /* Preserve the shared horizontal gutter while scrolling behind the glass. */
+    padding-block: 122px 96px;
     scroll-padding-top: 122px;
     scroll-padding-bottom: 96px;
   }
