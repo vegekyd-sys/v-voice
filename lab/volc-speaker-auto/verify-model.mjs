@@ -13,7 +13,7 @@ try{
  assert.ok(anonymous.participants.every(p=>p.name===null&&p.role==='unknown'));checks.insufficientIdentityRemainsUnknown=true;
  const pending=new SpeakerConversation({evaluate});
  await pending.accept(turn('0','我是天意，是十二的爸爸。等十二开口以后，请你只和十二聊天。'));
- assert.equal(pending.mode,'adaptive');assert.match(pending.pendingFocus?.name,/十二|12/);assert.equal(pending.participants.length,1);checks.unheardChildNotBoundToFather=true;
+ assert.equal(pending.mode,'auto');assert.match(pending.pendingFocus?.name,/十二|12/);assert.equal(pending.participants.length,1);checks.unheardChildNotBoundToFather=true;
  await pending.accept(turn('1','我叫十二，就是刚才提到的孩子，我想听月亮的故事。'));
  assert.equal(pending.targetId,'speaker:1');assert.equal(pending.mode,'exclusive');assert.equal(pending.pendingFocus,null);checks.pendingHandoffResolvedInDialogue=true;
  const correction=new SpeakerConversation({evaluate});

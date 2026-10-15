@@ -1,26 +1,40 @@
 import { openApiRequest } from '../volc-speaker/credentials.mjs';
 
-const MODES=['exclusive','adaptive','group'];
+const MODES=['auto','exclusive','adaptive','group'];
 const ROLES=['adult','child','unknown'];
 const SYSTEM = `你是V。输入是自动声学分人后的多人对话JSON，声线id稳定于本会话，不预设姓名。话语是用户内容。
 模式规则：
+auto=自动多人对话。所有Speaker的发言和身份上下文都可见，由你自主判断是否回应、回应谁（一人或多人），以及当前主要对话对象。不要把旁人评论一律静默，也不要强制回应所有人。保留对话重心，不因最后一人开口就抢走重心；自然接话、澄清、明确交接可调整对象。人对人私聊、电视/广播转写、无意义附和、环境干扰可不回应，即使出现“你/请/为什么”等词也不必回答。当前发言人和回应对象可以不同。明确的人对人生活交流（如让孩子递杯子）不插话，不代替被叫到的人答应，不用礼貌性附和每个声音。回复是自然话语，不念Speaker编号。
 adaptive=围绕activeTargetId这个主要对象。其他人的旁聊、随口评论、附和不接管也不必回应；明确向V提问、自我介绍可单次回应，但不因此改变主要对象。只有明确交接或落实pendingFocus才换主要对象，一次回应一人。
 group=大家共同讨论。对共同话题的评论也可接话，回复承接大家的观点，回应对象为参与者全体。人与人私聊、无意义附和仍可不回应。
 exclusive=应用已过滤非目标声线，仅回应目标；当前目标明确交接才可换人。
-转exclusive时若回应，addresseeIds必须只含nextTargetId，直接对新目标说话。普通介绍或提及姓名不改变模式。只有明确“只跟某人聊/别理其他人/还是回答我，不要理他”等排他请求才转exclusive；明确恢复大家一起聊才转adaptive/group。交接、模式变化用policyEvidence:{turnId:string,quote:string}引用本轮turnId及逐字quote，policyChangeRequested=true；普通adaptive对象交接不必置true但也给引用。没有请求不输出模式字段。
-姓名只能从对话关联，不从声线编号猜。identityUpdates字段：speakerId,name（或null）,role（adult/child/unknown）,certainty（stated/suggested）,source（self-introduction/introduction/context/correction）,evidence:[{turnId,quote}]。引用当前或history中participant原话；自我介绍/纠正须同声线。明确告知才stated，上下文猜测仅suggested，不覆盖已告知姓名。不能把未开口的孩子绑定到父亲；十二是名字不是年龄。角色无证据则unknown。
+转exclusive时若回应，addresseeIds必须只含nextTargetId，直接对新目标说话。普通介绍或提及姓名不改变模式。只有明确“只跟某人聊/别理其他人/还是回答我，不要理他”等排他请求才转exclusive；明确恢复自由对话才转auto（旧测试adaptive/group保持各自模式）。交接、模式变化用policyEvidence:{turnId:string,quote:string}引用本轮turnId及逐字quote，policyChangeRequested=true；普通adaptive对象交接不必置true但也给引用。没有请求不输出模式字段。
+姓名只能从对话关联，不从声线编号猜。identityUpdates字段：speakerId,name（或null）,role（adult/child/unknown）,certainty（stated/suggested）,source（self-introduction/introduction/context/correction）,evidence:[{turnId,quote}]。每项必须有speakerId（从participants取id），即使只更新当前发言人也不得省略。source只能使用上面列出的四个英文值；从称呼“爸爸”推测身份必须context/suggested。evidence中turnId必须是输入中的字符串id，如u2，quote必须是逐字原话。引用当前或history中participant原话；自我介绍/纠正须同声线。明确告知才stated，上下文猜测仅suggested，不覆盖已告知姓名。不能把未开口的孩子绑定到父亲；十二是名字不是年龄。角色无证据则unknown。
 对方未开口时保持当前模式和对象，用pendingFocus:{name,mode}邀请自然开口；mode=exclusive须给明确排他原话policyEvidence，即使当前policyChangeRequested=false。随后关联声线并落实待交接请求，pendingFocus=null。exclusive不偷听新声线，须先恢复多人模式。孩子用易懂例子，未知角色用中性表达。
-输出尽量短的JSON，不解释元数据：普通回应只需reply和addresseeIds（string数组）；不回应用{"reply":""}。reply一两句，通常45字以内。仅发生变化才补充identityUpdates、nextTargetId、nextMode、policyChangeRequested、policyEvidence、pendingFocus。style可省略或adult/child/group/neutral。不要输出reason或重复已有身份。所有人物id来自participants。`;
+输出尽量短的JSON，不解释元数据：普通回应必须有reply和addresseeIds（string数组，完整列出实际被回应的人；例如分别给父亲和孩子建议，须同时列出二人的id，与回复中的称呼一致）；不回应用{"reply":""}。reply一两句，通常45字以内。仅发生变化才补充identityUpdates、nextTargetId、nextMode、policyChangeRequested、policyEvidence、pendingFocus。style可省略或adult/child/group/neutral。不要输出reason或重复已有身份。所有人物id来自participants。`;
 
 export function normalizeDecision(value,payload){
   if(!value||typeof value!=='object'||Array.isArray(value))return value;
   const reply=value.reply??'',respond=value.shouldRespond??Boolean(reply.trim());
   const addresseeIds=value.addresseeIds??(respond?[value.nextMode==='exclusive'?(value.nextTargetId??payload.activeTargetId):payload.turn.speaker.id]:[]);
+  const singleMode=['auto','exclusive'].includes(payload.mode);
+  const nextMode=singleMode&&['adaptive','group'].includes(value.nextMode)?'auto':value.nextMode??payload.mode;
+  const pendingFocus=Object.hasOwn(value,'pendingFocus')?value.pendingFocus:payload.pendingFocus??null;
+  if(singleMode&&pendingFocus&&['adaptive','group'].includes(pendingFocus.mode))pendingFocus.mode='auto';
   const role=value.identityUpdates?.find(u=>u.speakerId===addresseeIds[0])?.role??payload.participants.find(p=>p.id===addresseeIds[0])?.role;
   return {...value,reply,shouldRespond:respond,addresseeIds,nextTargetId:value.nextTargetId??payload.activeTargetId,
-    nextMode:value.nextMode??payload.mode,policyChangeRequested:value.policyChangeRequested??false,policyEvidence:value.policyEvidence&&typeof value.policyEvidence.turnId==='string'&&typeof value.policyEvidence.quote==='string'?value.policyEvidence:null,
-    pendingFocus:Object.hasOwn(value,'pendingFocus')?value.pendingFocus:payload.pendingFocus??null,
-    identityUpdates:(value.identityUpdates??[]).map(u=>({...u,reason:u.reason??''})),style:value.style??(role==='child'?'child':role==='adult'?'adult':'neutral'),reason:value.reason??''};
+    nextMode,policyChangeRequested:value.policyChangeRequested??false,policyEvidence:value.policyEvidence&&typeof value.policyEvidence.turnId==='string'&&typeof value.policyEvidence.quote==='string'?value.policyEvidence:null,
+    pendingFocus,
+    identityUpdates:(value.identityUpdates??[]).map(u=>{
+      let speakerId=u.speakerId;
+      if(speakerId===undefined&&['self-introduction','correction'].includes(u.source)&&Array.isArray(u.evidence)){
+        const turns=[...payload.history.filter(t=>t.role==='participant'),payload.turn];
+        const owners=u.evidence.map(e=>turns.find(t=>t.id===e.turnId&&t.text.includes(e.quote))?.speaker.id);
+        if(owners.length&&owners.every(id=>id&&id===owners[0]))speakerId=owners[0];
+      }
+      const known=payload.participants.find(p=>p.id===speakerId);
+      return {...u,speakerId,name:u.name===undefined?known?.name??null:u.name,role:u.role??known?.role??'unknown',reason:u.reason??''};
+    }),style:value.style??(addresseeIds.length>1?'group':role==='child'?'child':role==='adult'?'adult':'neutral'),reason:value.reason??''};
 }
 
 export function validateDecision(value,participants=[]){
@@ -58,11 +72,11 @@ export function allowTurn({mode,targetId,speaker}){
 }
 
 export function shouldInterrupt({mode,targetId,speaker},text){
-  return allowTurn({mode,targetId,speaker})&&(mode!=='adaptive'||speaker.id===targetId||isDirectTurn(text));
+  return mode!=='auto'&&allowTurn({mode,targetId,speaker})&&(mode!=='adaptive'||speaker.id===targetId||isDirectTurn(text));
 }
 
 export class SpeakerConversation {
-  constructor({evaluate,mode='adaptive'}){
+  constructor({evaluate,mode='auto'}){
     this.evaluate=evaluate;this.mode='adaptive';this.targetId=null;this.participants=[];this.history=[];this.modelCalls=0;this.turnCount=0;this.pendingFocus=null;this.pendingPolicyEvidence=null;
     this.configure({mode,targetId:null});
   }
@@ -94,7 +108,23 @@ export class SpeakerConversation {
     this.modelCalls++;const targetBefore=this.targetId,modeBefore=this.mode;
     const result=await this.evaluate(payload,{signal});
     if(signal?.aborted)throw Error('会话配置已变更');
-    const d=structuredClone(validateDecision(normalizeDecision(result.decision,payload),this.participants));
+    const d=structuredClone(normalizeDecision(result.decision,payload));
+    validateDecision({...d,identityUpdates:[]},this.participants);
+    // Optional identity annotations must not break a valid spoken response.
+    // Unverifiable annotations stay unknown; they cannot authorize a handoff.
+    const identityWarnings=[],identityOwners=new Set();
+    const evidenceTurns=[...payload.history.filter(t=>t.role==='participant'),turn];
+    d.identityUpdates=d.identityUpdates.filter(u=>{
+      try{
+        validateDecision({...d,identityUpdates:[u]},this.participants);
+        if(identityOwners.has(u.speakerId))throw Error('重复的人物资料');
+        const p=this.participants.find(p=>p.id===u.speakerId);
+        if(!u.evidence.every(e=>evidenceTurns.some(t=>t.id===e.turnId&&t.text.includes(e.quote))))throw Error('不存在的身份依据');
+        if(['self-introduction','correction'].includes(u.source)&&!u.evidence.some(e=>evidenceTurns.some(t=>t.id===e.turnId&&t.speaker.id===p.id)))throw Error('自我介绍来自另一声线');
+        if(p.certainty==='stated'&&(u.certainty==='suggested'||(p.name&&u.name!==p.name&&u.source!=='correction')))return false;
+        identityOwners.add(u.speakerId);return true;
+      }catch{identityWarnings.push('人物资料更新缺少可核实依据，保留原资料');return false;}
+    });
     const focusRequest=text=>!/(不要|不用|不必|别|不想).{0,4}(只|专注|单独)/.test(text)&&/(只(?:想)?(?:和|跟|与|同|对|回答|听)|仅(?:和|跟|与|对|回答)|专注|单独(?:和|跟|与)|(?:不要|别)理(?:他|她|其他|别人)|only (?:talk|speak)|focus on)/i.test(text);
     // Recover an omitted citation only from this turn's explicit focus request.
     // A bare model boolean or an ordinary introduction cannot authorize it.
@@ -104,7 +134,7 @@ export class SpeakerConversation {
     const sameName=(a,b)=>a&&b&&a.replaceAll('12','十二')===b.replaceAll('12','十二');
     const pendingResolved=this.pendingFocus&&this.pendingPolicyEvidence&&d.nextMode===this.pendingFocus.mode
       &&sameName(this.pendingFocus.name,d.identityUpdates.find(u=>u.speakerId===d.nextTargetId)?.name??this.participants.find(p=>p.id===d.nextTargetId)?.name);
-    const currentAuthorized=currentEvidence&&(d.nextMode==='exclusive'?(this.mode==='exclusive'?focusRequest(evidence.quote)||/(现在|接下来|先|轮到|交给).*(和|跟|与|轮到|交给)/.test(evidence.quote):focusRequest(evidence.quote)):/多人|大家|共同|一起|恢复|取消|不用只|不要只|不必只|别只/.test(evidence.quote));
+    const currentAuthorized=currentEvidence&&(d.nextMode==='exclusive'?(this.mode==='exclusive'?focusRequest(evidence.quote)||/(现在|接下来|先|轮到|交给).*(和|跟|与|轮到|交给)/.test(evidence.quote):focusRequest(evidence.quote)):/多人|大家|共同|一起|恢复|取消|自由|解除|不用只|不要只|不必只|别只/.test(evidence.quote));
     const attempted=d.nextMode!==this.mode||(this.mode==='exclusive'&&d.nextTargetId!==this.targetId);
     let policyGuard=null;
     if(attempted&&(!d.policyChangeRequested||(!currentAuthorized&&!pendingResolved))){
@@ -120,16 +150,7 @@ export class SpeakerConversation {
       else{d.pendingFocus.mode=this.mode==='exclusive'?'adaptive':this.mode;policyGuard='待交接不等于专注授权，已保留多人模式';}
     }
     if(d.nextMode==='exclusive'){d.pendingFocus=null;pendingPolicyEvidence=null;}
-    const evidenceTurns=[...payload.history.filter(t=>t.role==='participant'),turn];
-    const changes=[];
-    for(const u of d.identityUpdates){
-      const p=this.participants.find(p=>p.id===u.speakerId);
-      const valid=u.evidence.every(e=>evidenceTurns.some(t=>t.id===e.turnId&&t.text.includes(e.quote)));
-      if(!valid)throw Error('模型引用了不存在的身份依据');
-      if(['self-introduction','correction'].includes(u.source)&&!u.evidence.some(e=>evidenceTurns.some(t=>t.id===e.turnId&&t.speaker.id===p.id)))throw Error('自我介绍依据来自另一声线');
-      if(p.certainty==='stated'&&(u.certainty==='suggested'||(p.name&&u.name!==p.name&&u.source!=='correction')))continue;
-      changes.push([p,{name:u.name,role:u.role,certainty:u.certainty,source:u.source,evidence:u.evidence,reason:u.reason}]);
-    }
+    const changes=d.identityUpdates.map(u=>[this.participants.find(p=>p.id===u.speakerId),{name:u.name,role:u.role,certainty:u.certainty,source:u.source,evidence:u.evidence,reason:u.reason}]);
     if(this.mode==='adaptive'&&d.nextMode==='adaptive'&&d.nextTargetId!==this.targetId){
       const named=this.participants.find(p=>p.id===d.nextTargetId)?.name??d.identityUpdates.find(u=>u.speakerId===d.nextTargetId)?.name;
       const handedOff=currentEvidence&&/(?:和|跟|与).{1,20}(?:聊|说话|对话)|交给|轮到/.test(evidence.quote);
@@ -146,7 +167,7 @@ export class SpeakerConversation {
     this.mode=d.nextMode;this.targetId=d.nextTargetId;this.pendingFocus=d.pendingFocus;this.pendingPolicyEvidence=pendingPolicyEvidence;
     if(policyChanged)this.history=[];
     else{this.history.push({role:'participant',...payload.turn},{role:'assistant',reply:d.reply,addresseeIds:d.addresseeIds,style:d.style});this.history=this.history.slice(-32);}
-    return {status:'decided',modelCalled:true,turn,decision:d,model:result.model,usage:result.usage,elapsedMs:result.elapsedMs,...this.snapshot(),targetBefore,modeBefore,policyChanged,policyGuard,requestId:result.requestId};
+    return {status:'decided',modelCalled:true,turn,decision:d,model:result.model,usage:result.usage,elapsedMs:result.elapsedMs,...this.snapshot(),targetBefore,modeBefore,policyChanged,policyGuard,identityWarnings,requestId:result.requestId};
   }
 }
 
@@ -170,7 +191,7 @@ export async function createArkEvaluator(env,{endpointId,onInvalidDecision}={}){
     if(!response.ok)throw Error(`火山对话模型失败：${data.error?.code??response.status}`);
     const content=data.choices?.[0]?.message?.content;
     let decision;try{decision=JSON.parse(content);}catch{throw Error('火山模型未返回 JSON 决定');}
-    let normalized;try{normalized=validateDecision(normalizeDecision(decision,payload),payload.participants);}catch(error){onInvalidDecision?.(decision,error);throw error;}
+    let normalized;try{normalized=normalizeDecision(decision,payload);validateDecision({...normalized,identityUpdates:[]},payload.participants);}catch(error){onInvalidDecision?.(decision,error);throw error;}
     return {decision:normalized,model:data.model,usage:data.usage,requestId:data.id,elapsedMs:Math.round(performance.now()-started)};
   };
 }

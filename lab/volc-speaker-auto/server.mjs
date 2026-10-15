@@ -24,7 +24,7 @@ const server=http.createServer(async(req,res)=>{
       const filename=staticFiles.get(path);res.setHeader('Content-Type',filename.endsWith('.html')?'text/html; charset=utf-8':'text/javascript; charset=utf-8');
       res.end(await readFile(new URL(filename==='capture-worklet.js'?'../volc-speaker/capture-worklet.js':filename,import.meta.url)));return;
     }
-    if(req.method==='GET'&&path==='/health'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({ready:true,asr:'doubao-seed-asr-2.0',model:'doubao-seed-2-1-lite-260915',voice:'xiaohe',speakerIdentity:'anonymous-then-dialogue',manualCalibration:false,activeSession:Boolean(liveOwner),streamingSpeech:true,voiceprintIdentityVerified:false,modelCalls,audioSeconds:audioBytes/32000,limits}));return;}
+    if(req.method==='GET'&&path==='/health'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({ready:true,asr:'doubao-seed-asr-2.0',model:'doubao-seed-2-1-lite-260915',voice:'xiaohe',speakerIdentity:'anonymous-then-dialogue',manualCalibration:false,dialogueMode:'auto',activeSession:Boolean(liveOwner),streamingSpeech:true,voiceprintIdentityVerified:false,modelCalls,audioSeconds:audioBytes/32000,limits}));return;}
     if(req.method==='GET'&&path==='/mode-fixture.pcm'){res.setHeader('Content-Type','application/octet-stream');res.end(await readFile(new URL('auto/mode-comparison.pcm',artifactRoot)));return;}
     if(req.method==='GET'&&path==='/fixture.pcm'){res.setHeader('Content-Type','application/octet-stream');res.end(await readFile(new URL('auto/turn-taking.pcm',artifactRoot)));return;}
     res.writeHead(404).end();
@@ -47,7 +47,7 @@ wss.on('connection',ws=>{
   const configure=value=>{
     abort.abort();speechAbort.abort();abort=new AbortController();revision++;
     if(conversation)conversation.configure({mode:value.mode??conversation.mode,targetId:value.targetId??conversation.targetId});
-    else conversation=new SpeakerConversation({evaluate:limitedEvaluate,mode:value.mode??'adaptive'});
+    else conversation=new SpeakerConversation({evaluate:limitedEvaluate,mode:value.mode??'auto'});
     send({type:'configured',...conversation.snapshot(),revision});
   };
   const close=()=>{if(closed)return;closed=true;revision++;abort.abort();speechAbort.abort();asr?.close();if(liveOwner===session)liveOwner=null;};
@@ -63,12 +63,13 @@ wss.on('connection',ws=>{
       speechAbort.abort();speechAbort=new AbortController();speechSequence++;
       send({type:'speech-cancel'});
     }
-    const speechController=speechAbort,speechId=`${epoch}:${speechSequence}`;
+    let speechController=speechAbort,speechId=`${epoch}:${speechSequence}`;
     try{
       const result=await owner.accept(annotated,{signal:controller.signal});
       if(closed||epoch!==revision)return;
       timings.modelMs=result.elapsedMs??0;send({type:'decision',turn:annotated,...result,timings});
       if(result.decision?.shouldRespond){
+        if(result.modeBefore==='auto'){speechAbort.abort();speechAbort=new AbortController();speechSequence++;speechController=speechAbort;speechId=`${epoch}:${speechSequence}`;send({type:'speech-cancel'});}
         const text=result.decision.reply;ttsCharacters+=text.length;
         if(ttsCharacters>limits.ttsCharacters)throw Error('本次实验语音输出上限已到');
         // Speech runs independently: later decisions need not wait for full TTS.

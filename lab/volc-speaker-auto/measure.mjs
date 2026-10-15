@@ -3,7 +3,7 @@ import {WebSocket} from 'ws';
 const label=process.argv[2]??'after',origin=process.env.VOLC_SPEAKER_ORIGIN??'http://127.0.0.1:26319';
 const ws=new WebSocket(origin.replace('http','ws')+'/stream',{origin}),events=[],sent=[];let ready=false,started;
 ws.on('message',raw=>{const e=JSON.parse(raw);if(e.type==='ready')ready=true;events.push({...e,at:performance.now()});});
-await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});ws.send(JSON.stringify({type:'start',mode:'adaptive'}));
+await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});ws.send(JSON.stringify({type:'start',mode:'auto'}));
 while(!ready){if(events.some(e=>e.type==='error'))throw Error('server error');await new Promise(r=>setTimeout(r,50));}
 const pcm=await readFile('artifacts/volc-speaker/auto/turn-taking.pcm');started=performance.now();
 for(let i=0;i<pcm.length;i+=6400){const chunk=pcm.subarray(i,i+6400);ws.send(chunk);sent.push({start:i/32,end:(i+chunk.length)/32,at:performance.now()});await new Promise(r=>setTimeout(r,200));}ws.send(JSON.stringify({type:'finish'}));

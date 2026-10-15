@@ -1,3 +1,49 @@
+# 自动多人对话 Candidate
+
+当前入口（2026-10-16）：<http://127.0.0.1:26319/>。只显示一个“自动多人对话”，不再让用户选择“多人自适应/共同对话”。本候选独立于生产 Voice V、GPT Live、Grok 原生入口和 Gateway。
+
+默认 `auto` 下，所有辨认出的 Speaker 话语与身份、历史、当前重心一起交给同一文本模型。模型自主选择是否回应、回应一人或多人、调整对话重心。程序不再按问句关键词静默旁人评论，不强制把回复扩展到全体，也不把最后开口者直接当成主要对象。保持安静时不启动 TTS、不取消旧语音；决定回应后才切换播放。这也意味着本候选自动模式的语义打断需等模型判定，并非即时声学打断。
+
+“只跟十二聊”等明确指令是会话中的专注约束：保留原有依据校验和模型前过滤；“解除专注，大家自由聊”回到 auto。历史 adaptive/group 协议仍供旧测试复现，页面不提供这些入口，auto/exclusive 链路也不会进入它们。
+
+实际链路仍为：火山 Seed ASR 2.0 分人 → Doubao Seed 2.1 Lite 文字决策 → 原 Seed TTS 2.0 / 小何 → 原 MP3 流式播放器。此次不改模型、音色、TTS 参数和播放协议；模型用于对象判断的控制字段不念出声。人物资料更新如果缺字段或缺可核实原话，会保留原资料/未知状态，不再让可选资料错误中断正常回复；这些被隔离的资料也不能用来完成专注交接。
+
+重要边界：这是输入信息增强和多人决策的候选验证，并非三家原生语音模型的完整接入。对原生入口，需要把人物信息对齐到音频轮次，并处理模型自动开口与标注先后到达的问题，不能简单在音频旁追加一条无关联的姓名提示。
+
+| 原生入口 | 目前确认的接入点 | 本轮状态 |
+|---|---|---|
+| GPT Live / gpt-live-1-codex | 现有 H5 用 `session.context.append`；当前官方 Live 文档的 `session.thinking.append` 等事件与当前代码存在版本差异 | 只读核对；未调用或修改原生模型，需按实际服务版本验证 |
+| 豆包·小何 / Seeduplex | 当前端点是 `/api/v3/duplex/realtime/dialogue`。官方 Seeduplex 3.0 JSON 协议与本地适配器支持上下文注入；本地 `sendUserMessage` 只追加历史，不能当成一次响应触发。另一套端到端协议的 ChatTextQuery 不可直接套到此端点 | 当前通过的是分人＋文字模型＋小何 TTS；原生链路未验证 |
+| Grok Voice 3.0 | 官方支持 user `input_text` 和 `response.create`，现有适配器已有该路径 | 接口可适配；Speaker 对齐、静默及不中断行为未做真实调用验收 |
+
+官方依据：[OpenAI Live](https://developers.openai.com/api/reference/resources/live/primary-websocket)、[火山 Seeduplex 接入协议](https://docs.volcengine.com/docs/DoubaoVoice/access-mustread?lang=zh)、[Grok Speech to Speech](https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech)。不能拿 OpenAI Realtime 的 `conversation.item.create` 直接替代当前项目使用的 GPT Live 协议。
+
+新候选保留以下限制：匿名声线只在本次会话有效；姓名是对话告知或模型推测，不是认证；短句可能被 ASR 合并；重叠语音波形分离未通过。电视/旁聊测试只能证明模型能对相应转写选择安静，不代表真正声学电视声检测或噪音分离。真人原始音频不保存，验证素材是合成音色。
+
+单会话 3 分钟，进程上限 60 次对话调用、10 分钟输入、6000 字 TTS。沿用单轮约 5 美元、合计不超 10 美元的 API 试验预算，以供应商实际账单为准。凭据仅从 `VOLC_SPEAKER_ENV_FILE` 读取，推理接入点文件在忽略的 `artifacts/volc-speaker/ark-endpoint.json`。
+
+当前 35 项本地测试和旧实验 7 项回归通过；旧 adaptive/group 相关测试保留作历史回归。真实供应商音频链路的 57.58 秒合成输入验证通过：8 次发言、3 个 Speaker、自然姓名关联和明确专注交接、2 次非目标过滤、实际 TTS 返回；拼接 MP3 完整解码通过。此结果不代表真人声线验收。
+
+自主策略的文字模型试验存在不稳定结果。曾观察到单人/多人回应、普通评论接话、人对人交流和电视式转写静默；“我们去拿水，等会再聊”则被礼貌回应，不能保证旁聊必然静默。最新严格验证 `auto-model-verification.json` 的 `passed=false`：第 4 次调用给出父亲和孩子各自建议，却只把孩子列为回答对象，因而双人对象断言失败，后续场景未执行。失败回执保留；不通过程序强制扩展为全体来掩盖这一语义/标注偏差，也不以此前偶然通过替代稳定性证据。
+
+2026-10-16 内置浏览器回放“自然插话”：自动识别 A/B 两位 Speaker，A 自我介绍关联姓名；B 的普通补充由模型回应，重心仍保留 A。两条回复没有策略错误卡片；最新音频播放到 6.816 秒结束，readyState=4、error=null。页面估算本轮停口到首音分别为 3906/2392 ms，属于两次观测，不是延迟基准。684 px 侧栏页面无横向溢出、无框架遮罩，应用控制台无错误；截图 `/tmp/v-voice-auto-dialogue.png`。测试未访问麦克风，完成后释放会话。原生三模型的 Speaker 对齐、语义静默和抢话均未通过此次 Candidate 证明，不能据此直接上线。
+
+复现（根目录）：
+
+```sh
+npm run test:volc-speaker-auto
+node lab/volc-speaker-auto/verify-auto.mjs
+node lab/volc-speaker-auto/verify-model.mjs
+node lab/volc-speaker-auto/verify.mjs
+npm run lab:volc-speaker-auto
+```
+
+先结束真人/浏览器会话，再执行端到端音频验证。原先 v2 通过回执备份为忽略目录中的 `v2-verification.json`、`v2-model-edges.json`。本轮新回执以实际 `passed` 字段为准；未通过的中间结果不算验收。候选 launchd 标签 `com.versa.v-voice.volc-speaker-auto-candidate`，只监听回环端口 26319。生产、旧 26318 实验及三家原生适配器均不在此次变更范围。
+
+---
+
+以下是此前多模式试验及延迟优化的历史记录；与本页开头描述冲突时，以当前 auto 行为为准。
+
 # 无注册、无校准的自动 Speaker Candidate
 
 独立候选入口：<http://127.0.0.1:26319/>。代码位于 `codex/volc-speaker-modes` worktree；旧的 `lab/volc-speaker` / 26318 保留，不接入生产 Voice V、Gateway 或音箱。人物关联仅用于对话，不授予工具或账号权限。

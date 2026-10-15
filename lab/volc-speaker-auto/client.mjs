@@ -7,7 +7,6 @@ function roster(value){
   for(const p of people)target.add(new Option(label(p.id),p.id));
   target.value=value.targetId??'';$('audience').textContent=label(value.targetId);
   if(value.mode)$('mode').value=value.mode;modeHelp();
-  if(value.mode==='group')$('audience').textContent=`共同对话 · ${people.length} 位 Speaker`;
   $('speakers').replaceChildren();
   for(const p of people){const item=document.createElement('p');item.textContent=`${label(p.id)} · ${p.certainty==='stated'?'对话告知':p.certainty==='suggested'?'模型推测':'姓名未知'} · ${p.role==='child'?'孩子':p.role==='adult'?'成人':'角色未知'}`;
     const evidence=document.createElement('span');evidence.style.display='block';evidence.textContent=(p.evidence??[]).map(e=>`依据 ${e.turnId}：“${e.quote}”`).join('；');item.append(evidence);$('speakers').append(item);}
@@ -53,8 +52,7 @@ function timing(value){
   $('latency').textContent=`说话人确认 ${t.asrMs??'—'} ms · 排队 ${t.queueMs??'—'} ms · 模型 ${t.modelMs??'—'} ms · 语音首包 ${t.ttsFirstMs??'—'} ms${t.heardAfterEndMs!==undefined?` · 估算停口到首音 ${t.heardAfterEndMs} ms`:''}`;
 }
 const modeHelp=()=>{
-  const mode=$('mode').value;
-  $('mode-help').textContent=mode==='adaptive'?'围绕主要对象。旁人随口评论不接管；向 V 提问可以单次回应，明确交接才更换主要对象。':mode==='group'?'大家共同讨论。共同话题的评论也可接话，回复面向已加入的所有 Speaker。':'只传指定声线给对话模型；其他声线在模型前过滤。';
+  $('mode-help').textContent=$('mode').value==='exclusive'?`当前约束：只回应 ${label($('target').value)}。可通过对话请求恢复自由交流。`:'当前约束：自由交流，由模型判断回应对象或保持安静。';
 };
 async function stop(){
   const old=active;active=null;controls(false);stopSpeech();
@@ -62,15 +60,10 @@ async function stop(){
   await old.context?.close().catch(()=>{});if(old.ws?.readyState===1)old.ws.send(JSON.stringify({type:'stop'}));old.ws?.close();
   status('已结束，麦克风已释放');
 }
-function configure(){
-  modeHelp();
-  $('audience').textContent=label($('target').value);stopSpeech(true);
-  if(active?.ws.readyState===1)active.ws.send(JSON.stringify({type:'configure',mode:$('mode').value,targetId:$('target').value||null}));
-}
-$('mode').onchange=configure;$('target').onchange=configure;$('stop').onclick=stop;
+$('stop').onclick=stop;
 async function start(synthetic=false){
   if(active)return;
-  const session={closed:false};active=session;lastTimingKey=null;lastTimings={};$('latency').textContent='耗时将在回复时分段显示。';stopSpeech(true);$('log').replaceChildren();$('interim').textContent='等待发言…';controls(true);roster({participants:[],targetId:null});status('连接火山识别服务…');
+  const session={closed:false};active=session;lastTimingKey=null;lastTimings={};$('latency').textContent='耗时将在回复时分段显示。';stopSpeech(true);$('log').replaceChildren();$('interim').textContent='等待发言…';controls(true);roster({participants:[],targetId:null,mode:'auto'});status('连接火山识别服务…');
   const ws=new WebSocket(`ws://${location.host}/stream`);session.ws=ws;
   let finishCount=0;
   ws.onopen=()=>ws.send(JSON.stringify({type:'start',mode:$('mode').value,targetId:$('target').value||null,synthetic}));
@@ -102,7 +95,7 @@ async function start(synthetic=false){
     else if(value.type==='decision'){
       finishCount++;roster(value);timing(value);if(value.policyGuard)card('模式保持',value.policyGuard);
       if(value.status==='withheld')card('专注过滤 · 未调用对话模型',value.reason,'withheld');
-      else{const d=value.decision;card(d.shouldRespond?`V → ${d.addresseeIds.map(label).join('、')} · ${d.style==='child'?'适合孩子的表达':d.style==='adult'?'成人表达':d.style}`:'V 决定保持安静',`${d.reply||'（不回应）'}${d.reason?`\n${d.reason}`:''} · ${value.elapsedMs} ms`,'reply');}
+      else{const d=value.decision;card(d.shouldRespond?`V → ${d.addresseeIds.map(label).join('、')} · ${d.style==='child'?'适合孩子的表达':d.style==='adult'?'成人表达':d.style==='group'?'回应多人':'自然表达'}`:'V 决定保持安静',`${d.reply||'（不回应）'}${d.reason?`\n${d.reason}`:''} · ${value.elapsedMs} ms`,'reply');}
       status(`已处理 ${finishCount} 句话${synthetic?' · 合成测试':' · 正在听'}`);
     }
     else if(value.type==='speech-cancel')stopSpeech(true);
