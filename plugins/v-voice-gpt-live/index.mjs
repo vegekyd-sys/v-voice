@@ -1,10 +1,12 @@
-import {getRealtimeVoiceProvider,resolveConfiguredRealtimeVoiceProvider} from 'openclaw/plugin-sdk/realtime-voice';
+import {getRealtimeVoiceProvider,resolveConfiguredRealtimeVoiceProvider,controlRealtimeVoiceAgentRun} from 'openclaw/plugin-sdk/realtime-voice';
+import {createVoiceTaskControlHandler} from './task-control.mjs';
 import {createVoiceGptProvider} from './provider.mjs';
 import {readVoiceTaskResult} from './delivery.mjs';
 export default {
  id:'v-voice-gpt-live',name:'V Voice GPT Live adapter',
  register(api){
  const reservations=new Map();
+ api.registerGatewayMethod('voice.product.task-control',createVoiceTaskControlHandler(controlRealtimeVoiceAgentRun),{scope:'operator.write'});
  api.registerGatewayMethod('voice.product.task-result',({params,client,respond})=>{
   try{respond(true,readVoiceTaskResult(reservations,params,client?.connId));}
   catch{respond(false,undefined,{code:'INVALID_REQUEST',message:'Voice result requires its exact authenticated task owner'});}

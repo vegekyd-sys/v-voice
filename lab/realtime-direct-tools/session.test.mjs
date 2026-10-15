@@ -128,7 +128,7 @@ test('hybrid tool keeps one backend run alive during chat; progress and final wa
  backend({event:'agent',payload:{stream:'tool',data:{phase:'result',name:'memory_search'}}});
  backend({event:'agent',payload:{stream:'item',data:{kind:'preamble',phase:'end',progressText:'第一步查到了实际记录，正在核对网页。'}}});
  await delay(250);assert.equal(f.upstream.sent.some(x=>x.item?.type==='force_message'),false);
- await f.service.steer(f.reservation.voiceSessionId,{mode:'steer',text:'顺便和我聊聊天'});
+ await f.service.steer(f.reservation.voiceSessionId,{mode:'append',text:'顺便和我聊聊天'});
  assert.equal(f.invocations.filter(x=>x.message?.includes('完整目标')).length,1);
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:false})),false);
  await delay(250);
@@ -330,4 +330,27 @@ test('ordinary hangup detaches its real backend, redial is possible, late final 
  const next=await f.service.reserve({model:'grok',sessionKey:'agent:makaron:explicit:personal-fixture'});assert(next.voiceSessionId!==f.reservation.voiceSessionId);
  f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{text:'真实任务完成'}}});await delay(10);
  assert.equal(cancelled,false);assert.equal(sends.length,0);assert(!f.client.sent.some(e=>e.type==='backend.result'));await f.service.dispose();
+});
+
+test('SeedDuplex steers and appends to the exact existing backend without a second delegation',async t=>{
+ const controls=[],starts=[];
+ const f=await fixture(async(args,method)=>{
+  if(method==='chat.send'){starts.push(args);return {runId:args.idempotencyKey,status:'started'};}
+  if(method==='voice.product.task-control'){controls.push(args);return {ok:true,queued:true};}
+  await delay(10);return {status:'running'};
+ },'seeduplex');t.after(()=>f.service.dispose());
+ const native=(id,name,args)=>f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+ native('original','delegate_to_v',{question:'整理一份原始报告'});
+ for(let i=0;i<100&&!f.audit.some(e=>e.type==='backend.started');i++)await delay(5);
+ const started=f.audit.find(e=>e.type==='backend.started');assert(started);
+ native('correction','openclaw_agent_control',{mode:'steer',text:'只保留新版要求'});
+ native('addition','openclaw_agent_control',{mode:'followup',text:'最后追加一个总结'});
+ for(let i=0;i<100&&controls.length<2;i++)await delay(5);
+ assert.equal(controls.length,2);assert.equal(starts.length,1);
+ assert(controls.every(e=>e.runId===started.runId&&e.voiceSessionId===f.reservation.voiceSessionId));
+ assert.deepEqual(controls.map(e=>e.mode),['steer','followup']);
+ const receipt=await f.service.steer(f.reservation.voiceSessionId,{mode:'steer',text:'文字输入也改原任务'});
+ assert.equal(receipt.queued,true);assert.equal(receipt.applied,false);assert.equal(starts.length,1);
+ f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text:'新版要求和总结已完成。'}]}}});
+ await delay(250);assert(f.audit.some(e=>e.type==='backend.completed'&&e.runId===started.runId));
 });

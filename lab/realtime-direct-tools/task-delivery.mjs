@@ -12,9 +12,9 @@ export function requestsTaskDelivery(text) {
   // Native captions may put spaces between Chinese words. Interpret the same
   // final USER instruction without changing the authenticated destination.
   if(typeof text==='string')text=text.replace(/\s+/gu,'');
-  if(typeof text!=='string'||/[“"「『]|(?:不要|不用|别|不必).{0,20}(?:发|同步)/u.test(text))return false;
+  if(typeof text!=='string'||/[“"「『]|(?:不要|不用|别|不必).{0,20}(?:发|同步|汇报|通知)/u.test(text))return false;
   if(/(?:发|同步)(?:送)?(?:到|在|给)(?!这个群|当前群|群里|群里面|飞书(?:群)?(?:里|上|$))[^，。]{1,16}群/u.test(text))return false;
-  return /(?:进展|结果|报告|内容|后续).{0,40}(?:发|同步).{0,12}(?:群|飞书)|(?:发|同步).{0,12}(?:群里|群里面|飞书群)/u.test(text);
+  return /(?:进展|结果|报告|内容|后续).{0,40}(?:发|同步).{0,12}(?:群|飞书)|(?:发|同步).{0,12}(?:群里|群里面|飞书群)|(?:在|到|就)(?:这个|当前|我们(?:的)?|咱们(?:的)?)?(?:飞书)?群(?:里面|里).{0,20}(?:发给我|发送|同步|汇报|通知)/u.test(text);
 }
 
 /** One delivery subscription per exact task. Hangup does not own its lifetime. */

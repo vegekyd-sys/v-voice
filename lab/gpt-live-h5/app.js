@@ -816,7 +816,7 @@ window.addEventListener("keydown", () => void recoverPlaybackGesture());
 $("steerForm").addEventListener("submit", async (event) => {
   event.preventDefault(); const text = $("steerText").value.trim(); if (!text || !call) return;
   const active = call;
-  try { await api("steer", { voiceSessionId: active.voiceSessionId, text, mode: "steer" }); if (call === active) { $("steerText").value = ""; productControls?.sent(); setStatus("补充条件已交给 V 的后台任务。", { tone: "success" }); } }
+  try { const receipt = await api("steer", { voiceSessionId: active.voiceSessionId, text, mode: "steer" }); if (call === active) { $("steerText").value = ""; productControls?.sent(); setStatus(receipt.queued === true ? "条件已交给原任务，等待后台应用。" : "补充内容已发送。", { tone: "success" }); } }
   catch (error) { if (call === active) setStatus(error.message, { tone: "error" }); }
 });
 $("cancel").addEventListener("click", async () => {
