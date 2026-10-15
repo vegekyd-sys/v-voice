@@ -375,3 +375,27 @@ test('SeedDuplex steers and appends to the exact existing backend without a seco
  f.completeBackend('新版要求和总结已完成。');
  await delay(250);assert(f.audit.some(e=>e.type==='backend.completed'&&e.runId===started.runId));
 });
+
+for(const model of ['grok','seeduplex']) test(`${model} delegates the actual finalized caller turn, independently of paraphrase and later chat`,async t=>{
+ const f=await fixture(undefined,model);t.after(()=>f.service.dispose());
+ const original='独立编号乙：新建子任务，等十秒重新查时间，不能沿用之前的结果。';
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:original});
+ if(model==='seeduplex')f.event({type:'response.function_call_arguments.done',items:[{call_id:'fresh',name:'delegate_to_v',arguments:JSON.stringify({question:'查询时间'})}]});
+ else f.call('delegate_to_v',{question:'查询时间'},'fresh');
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'你继续做，我随便聊两句'});
+ await delay(10);
+ const prompt=f.invocations.find(x=>x.question)?.question;assert(prompt);
+ assert(prompt.includes(JSON.stringify(original)));
+ assert(!prompt.includes('你继续做，我随便聊两句'));
+ assert(prompt.includes(f.reservation.voiceSessionId));
+ assert(prompt.includes('不能复述旧任务的完成报告'));
+ f.completeBackend('本次子任务已返回新查询的实际结果');await delay(250);
+});
+
+test('typed supplement becomes the original turn for a new delegation',async t=>{
+ const f=await fixture();t.after(()=>f.service.dispose());
+ await f.service.steer(f.reservation.voiceSessionId,{mode:'append',text:'独立编号丙，创建新任务'});
+ f.call('delegate_to_v',{question:'创建任务'});await delay(10);
+ assert(f.invocations.find(x=>x.question)?.question.includes(JSON.stringify('独立编号丙，创建新任务')));
+ f.completeBackend('完成');await delay(250);
+});

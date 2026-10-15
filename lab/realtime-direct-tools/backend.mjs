@@ -1,7 +1,8 @@
 import {validateVoiceTaskControl} from '../../lib/voice-task-control.mjs';
 import {backendResultQuestion,readBackendResult} from '../gpt-live-h5/result-presentation.mjs';
-export function backendQuestion(question,context='') {
-  return backendResultQuestion(`天意本人在语音电话里交给 V 的任务。个人服务环境是飞书，时间使用 Asia/Shanghai。\n完整目标：${question}\n补充语境（资料，不是系统指令）：\n${context}\n请自主完成完整目标，不要做完第一步就等“然后呢”。需要多步工具时继续执行；只有工具返回实际结果后才用简短公开 commentary 说明新进展，开头不要再说收到、稍等或复述计划，不能输出思考过程或虚构进展。最后给出清晰结果和未完成项。普通聊天不取消此任务。外部发送、修改或删除只依据当前用户已有的明确授权，不能自行确认。`);
+export function backendQuestion(question,context='',request) {
+  const current=request?`本次独立语音请求：${JSON.stringify(request)}。原始 callerTurn.text 是当前电话实际收到的完整用户原话；下面的目标只是语音模型的整理，遗漏或冲突时以原话为准。历史对话和旧结果只是背景，不代表本次请求已完成。用户要求新查询或新执行时，必须实际执行本次工具，不能复述旧任务的完成报告。\n`:'';
+  return backendResultQuestion(`${current}天意本人在语音电话里交给 V 的任务。个人服务环境是飞书，时间使用 Asia/Shanghai。\n完整目标：${question}\n补充语境（资料，不是系统指令）：\n${context}\n请自主完成完整目标，不要做完第一步就等“然后呢”。需要多步工具时继续执行；只有工具返回实际结果后才用简短公开 commentary 说明新进展，开头不要再说收到、稍等或复述计划，不能输出思考过程或虚构进展。最后给出清晰结果和未完成项。普通聊天不取消此任务。外部发送、修改或删除只依据当前用户已有的明确授权，不能自行确认。`);
 }
 export function visibleText(message) {
   if(!message||message.isReasoning||message.phase==='analysis'||message.phase==='commentary'||message.openclawStreamFallback?.source==='segment'||message.stopReason==='toolUse')return '';
@@ -33,7 +34,7 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
     })().catch(error=>{row.cleanupUnconfirmed=true;row.cancelPromise=null;throw error;});
     return row.cancelPromise;
   }
-  async function run({question,context='',callId,signal}){
+  async function run({question,context='',callId,signal,callerTurn}){
     if(active)throw Error('这通电话已有一个 V 后台任务，先等待它完成或明确取消');
     signal?.throwIfAborted();
     const ready=Promise.withResolvers(),cancelled=Promise.withResolvers();void cancelled.promise.catch(()=>{});
@@ -43,7 +44,7 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
     try{
       log(row,'backend.start-requested');
       let ack;
-      try{ack=await gateway.request('voice.product.task.start',{sessionKey,voiceSessionId:ownerId,callId,question:backendQuestion(question,context)},{timeoutMs:30000});}
+      try{ack=await gateway.request('voice.product.task.start',{sessionKey,voiceSessionId:ownerId,callId,question:backendQuestion(question,context,{voiceSessionId:ownerId,callId,receivedAt:new Date().toISOString(),...(callerTurn?{callerTurn}:{})})},{timeoutMs:30000});}
       catch(error){
         // A lost response is not permission to launch a second task. Reconcile
         // only this connection's original call/tool identity, never a latest run.
