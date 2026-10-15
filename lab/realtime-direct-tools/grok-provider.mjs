@@ -103,7 +103,7 @@ export class GrokVoiceBridge {
   speakProgress(text){this.send({type:'conversation.item.create',item:{type:'force_message',role:'assistant',interruptible:true,content:[{type:'output_text',text}]}});}
   beginBackgroundTool(callId){
     this.backgroundTools.add(callId);
-    this.submitToolResult(callId,{accepted:true,status:'working',instruction:'这只是受理回执，没有查询结果。只用一句话说明已接到当前任务，不补充日期、数字或其他事实，不复述历史任务；等真实进展或结果返回再说。后台继续执行，正常回应用户聊天，不声称已完成。'});
+    this.submitToolResult(callId,{accepted:true,status:'working',instruction:'这只是受理回执，没有查询结果。现在只说一句不超过15字的话，例如‘我来查，查到就告诉你。’不要复述任务清单或计划，不补充日期、数字或其他事实，不复述历史任务；等真实进展或结果返回再说。后台继续执行，正常回应用户聊天，不声称已完成。'});
   }
   completeBackgroundTool(callId,result,options={}){
     if(!this.backgroundTools.delete(callId)||result?.cancelled)return;
