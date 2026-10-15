@@ -7,7 +7,7 @@ function fixture(handler=()=>new Promise(()=>{})){
   const calls=[],progress=[],audit=[],sessionKey='agent:makaron:feishu:group:personal-test';
   const gateway={request:async(method,args)=>{calls.push({method,args});if(method==='chat.send')return {runId:args.idempotencyKey,status:'started'};return handler(method,args);}};
   const backend=createBackendDelegation({gateway,sessionKey,ownerId:'call-owner',onProgress:p=>progress.push(p),audit:e=>audit.push(e)});
-  return {backend,calls,progress,audit,sessionKey,start:()=>backend.run({question:'先查记忆，再上网核对，比较后给出结论',context:'上海；不要替我预订',callId:'native-function-1',signal:new AbortController().signal}),
+  return {backend,gateway,calls,progress,audit,sessionKey,start:()=>backend.run({question:'先查记忆，再上网核对，比较后给出结论',context:'上海；不要替我预订',callId:'native-function-1',signal:new AbortController().signal}),
     event:(runId,state,message)=>backend.handleEvent({event:'chat',payload:{runId,sessionKey,state,message}})};
 }
 test('one complete goal uses configured V session; unrelated run cannot complete it',async()=>{
@@ -35,6 +35,33 @@ test('yield/wait timeout cannot reconcile unrelated session history as final',as
   const promise=f.start();await delay(0);release({status:'timeout',yielded:true});await delay(0);
   assert.equal(f.calls.some(c=>c.method==='chat.history'),false);assert.ok(f.backend.snapshot());
   f.event(f.backend.snapshot().runId,'final',{text:'完整最终结果'});await promise;
+});
+test('a transient wait RPC timeout keeps the admitted run alive for its real final',async()=>{
+  const f=fixture(async method=>{if(method==='agent.wait')throw Object.assign(Error('poll timed out'),{code:'TIMEOUT'});});
+  const pending=f.start();await delay(0);const {runId}=f.backend.snapshot();
+  assert(f.audit.some(e=>e.type==='backend.wait-retry'));
+  assert.equal(f.calls.filter(c=>c.method==='chat.send').length,1);
+  assert.equal(f.calls.some(c=>c.method==='chat.abort'),false);
+  f.event(runId,'final',{text:'同一任务的真实结论'});
+  assert.equal((await pending).result,'同一任务的真实结论');
+  assert.equal(f.calls.some(c=>c.method==='chat.abort'),false);
+});
+test('status uses exact-owner stage receipts without waiting on another RPC',async()=>{
+  const f=fixture(),pending=f.start();await delay(0);const {runId}=f.backend.snapshot();
+  const event=(scope,key)=>f.backend.handleEvent({event:'agent',payload:{runId:scope,sessionKey:key,stream:'tool',data:{phase:'start',name:'memory_search',toolCallId:'memory',args:{query:'PRIVATE QUERY'}}}});
+  event('foreign',f.sessionKey);event(runId,'foreign-session');
+  let result=await f.backend.control({mode:'status',text:'查得怎么样了'});
+  assert.equal(result.lastConfirmedStage,'任务已接收，等待后台执行');
+  event(runId,f.sessionKey);
+  result=await f.backend.control({mode:'status',text:'查的过程中汇报进度'});
+  assert.equal(result.lastConfirmedStage,'正在查记忆');assert.equal(result.admissionConfirmed,true);
+  assert.equal(result.source,'owned-live-events');assert.doesNotMatch(JSON.stringify(result),/PRIVATE QUERY/);
+  assert.equal(f.calls.some(c=>c.method==='voice.product.task-control'),false);
+  f.gateway.ready=false;
+  result=await f.backend.control({mode:'status',text:'现在呢'});
+  assert.equal(result.connectionUncertain,true);assert.match(result.message,/执行状态未确认/);
+  f.event(runId,'final',{text:'查询完成'});await pending;
+  assert.equal((await f.backend.control({mode:'status',text:'现在呢'})).active,false);
 });
 test('cancellation uses exact owned run and requires observed terminal, ignoring late facts',async()=>{
   let cancelled=false;const f=fixture(method=>method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:'error',aborted:true}:new Promise(()=>{}));

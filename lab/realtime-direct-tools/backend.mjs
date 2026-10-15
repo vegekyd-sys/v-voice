@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {backendResultQuestion,readBackendResult} from '../gpt-live-h5/result-presentation.mjs';
 import {processExited} from './tools.mjs';
 import {createGptLiveConsultProgressObserver} from '../gpt-live-consult-progress.mjs';
-import {controlVoiceTask} from '../../lib/voice-task-control.mjs';
+import {controlVoiceTask,validateVoiceTaskControl} from '../../lib/voice-task-control.mjs';
 import {VOICE_TASK_SCOPE,VOICE_TASK_EFFICIENCY} from '../../lib/voice-task-policy.mjs';
 import {createTaskProgress} from './task-progress.mjs';
 
@@ -115,12 +115,14 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
   async function run({question,context='',callId,signal}) {
     if(active)throw Error('这通电话已有一个 V 后台任务，先等待它完成或明确取消');
     signal?.throwIfAborted();
-    const row={callId,runId:`voice-${ownerId}-${randomUUID()}`,retired:false,pendingExecs:new Set(),ownedProcesses:new Set(),processCalls:new Map()};
-    row.activity=createTaskProgress({runId:row.runId,onUpdate:p=>onActivity({...p,callId:row.callId})});
+    const row={callId,runId:`voice-${ownerId}-${randomUUID()}`,createdAt:Date.now(),retired:false,pendingExecs:new Set(),ownedProcesses:new Set(),processCalls:new Map()};
+    row.activity=createTaskProgress({runId:row.runId,onUpdate:p=>{
+      row.lastActivity=p.text;row.lastConfirmedAt=Date.now();onActivity({...p,callId:row.callId});
+    }});
     const live=new Promise((resolve,reject)=>Object.assign(row,{resolve,reject}));
     void live.catch(()=>{});
     row.observer=createGptLiveConsultProgressObserver({runId:row.runId,onProgress:p=>{
-      if(active===row&&!row.retired){onProgress({...p,callId:row.callId,runId:row.runId});taskDelivery?.progress(row.runId,p.text);}
+      if(active===row&&!row.retired){row.publicFact=p.text;row.publicFactAt=Date.now();onProgress({...p,callId:row.callId,runId:row.runId});taskDelivery?.progress(row.runId,p.text);}
     }});
     active=row;
     const abort=()=>{void cancelRow(row).catch(error=>{log(row,'backend.cancel-unconfirmed',{error:error.message});row.reject(error);});};
@@ -130,12 +132,13 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
       log(row,'backend.start-requested');
       const ack=await gateway.request('chat.send',{agentId:'makaron',sessionKey,message:backendQuestion(question,context),deliver:false,idempotencyKey:row.runId},{timeoutMs:30000});
       if(ack.runId!==row.runId)throw Error('V 后台返回了不同任务身份，不能绑定或取消它');
-      log(row,'backend.started',{ack});row.activity.accepted();taskDelivery?.started(row.runId);
+      row.acceptedAt=Date.now();log(row,'backend.started',{ack});row.activity.accepted();taskDelivery?.started(row.runId);
       if(row.retired||signal?.aborted){await cancelRow(row);throw Error('任务已取消');}
       deadline=setTimeout(()=>{void cancelRow(row).catch(error=>log(row,'backend.cancel-unconfirmed',{error:error.message}));row.reject(Error('V 后台任务超时，已请求取消'));},timeoutMs);
       deadline.unref?.();
       const reconciled=(async()=>{
         while(active===row&&!row.retired){
+          try {
           const observed=await gateway.request('agent.wait',{runId:row.runId,timeoutMs:20000},{timeoutMs:25000});
           log(row,'backend.wait-observed',{observed});
           if(observed.status==='error'||observed.aborted)throw Error(observed.error??'V 后台任务未完成');
@@ -149,6 +152,15 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
             await new Promise(resolve=>setTimeout(resolve,250));
           }
           throw Error('V 后台已结束，但没有此任务的确认结果');
+          } catch(error) {
+            // This read may time out while the admitted run is still working.
+            // Keep the same owner, deadline and live event listener; never
+            // turn a transient observation failure into cancellation/replay.
+            if(!['TIMEOUT','CONNECTION_CLOSED','TRANSPORT_ERROR'].includes(error.code))throw error;
+            if(row.retired)break;
+            log(row,'backend.wait-retry',{code:error.code});
+            await new Promise(resolve=>setTimeout(resolve,1000));
+          }
         }
         throw Error('任务已取消');
       })();
@@ -172,9 +184,22 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
     }
   }
   return {run,handleEvent,control:async input=>{
+    const params=validateVoiceTaskControl(input);
     const row=active;
     if(!row||row.retired)return {ok:false,active:false,queued:false,reason:'no_active_run',message:'当前电话没有可修改的后台任务。'};
-    const result=await controlVoiceTask({gateway,sessionKey,runId:row.runId,voiceSessionId:ownerId},input);
+    if(params.mode==='status'){
+      const connected=gateway.ready!==false;
+      const message=!row.acceptedAt?'已发出任务请求，尚未收到后台受理回执。':
+        `${connected?'尚未收到完成回执。':'后台连接暂时中断，当前执行状态未确认。'}最近确认的阶段：${row.lastActivity??'任务已受理'}。${row.publicFact?'最近取得的结果：'+row.publicFact:''}`;
+      const result={ok:true,mode:'status',active:true,queued:false,runId:row.runId,source:'owned-live-events',
+        admissionConfirmed:Boolean(row.acceptedAt),connectionUncertain:!connected,elapsedMs:Date.now()-row.createdAt,
+        lastConfirmedAt:row.lastConfirmedAt??null,...(row.lastActivity?{lastConfirmedStage:row.lastActivity}:{}),
+        ...(row.publicFact?{publicFact:row.publicFact,publicFactAt:row.publicFactAt}:{}),message,
+        instruction:'只报告最近已确认的阶段、事实和未收到完成回执；不要说刚刚查询了后台，不据此保证后台当前仍在执行。'};
+      log(row,'backend.control',{mode:'status',ok:true,queued:false,applied:false,source:result.source});
+      return result;
+    }
+    const result=await controlVoiceTask({gateway,sessionKey,runId:row.runId,voiceSessionId:ownerId},params);
     log(row,'backend.control',{mode:input.mode,ok:result.ok===true,queued:result.queued===true,applied:result.applied===true});
     return result;
   },cancel:async()=>{
