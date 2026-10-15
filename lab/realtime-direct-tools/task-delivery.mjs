@@ -8,13 +8,37 @@ export function voiceFeishuTarget(sessionKey) {
   if(!match)return null;
   return {agentId:match[1],channel:'feishu',to:match[3]};
 }
+// Only interpret the caller's own delivery instruction. Quoted output payloads
+// and reported instructions are data, not authorization. Destinations remain
+// bound to the authenticated phone entry, never to words supplied by the caller.
+function taskDeliveryIntent(text) {
+  if(typeof text!=='string')return null;
+  const unquoted=text.replace(/“[^”]*”|「[^」]*」|『[^』]*』|"(?:\\.|[^"\\])*"|‘[^’]*’|'[^']*'/gu,'');
+  const clauses=unquoted.split(/[，,。.!！？?；;\n]/u).map(s=>s.replace(/\s+/gu,''));
+  const group='(?:(?:这个|当前|我们(?:的)?|咱们(?:的)?)(?:飞书)?群|本群|飞书群|群)(?:里面|里|内|中)?';
+  const destination=`(?:${group}|飞书(?:上|里)?)`;
+  const targetEnd='(?=$|吧|吗|啊|呀|哦|哈|呢|就|再|并|同时|给|让|等|好|谢谢|可以|行不行)';
+  const sendFirst=new RegExp(`^(?:一下|一份|一条|这份|这个|任务|的|进展|最终|结果|报告|内容|消息|信息|通知|后续|都|也|给我|给大家)*(?:到|在|至|往|向|给)?${destination}${targetEnd}`,'u');
+  const targetFirst=new RegExp(`(?:在|到|就|往|向)${destination}(?:把|将|任务|的|进展|最终|结果|报告|内容|消息|信息|通知|后续|都|也|给我|给大家|再|直接|及时|持续|一下|完成后|不要|不用|别|不必|无需|不需要)*$`,'u');
+  // Negation must govern THIS send verb. An unrelated action such as
+  // "不要付款" must not veto the later "结果发群里", even without ASR punctuation.
+  const denial=/(?:不要|不用|别|不必|无需|禁止|勿|不需要|不想|不能|不准)(?:再|继续|直接|自动|主动|帮我|替我|你|把|将|任何|这些|那些|这个|当前|我们|咱们|飞书|本群|群|里面|里|在|到|往|向|给我|给大家|任务|的|进展|最终|结果|报告|内容|消息|信息|通知|后续|都|也|全部|东西|一份|一条|一下|先)*$/u;
+  let intent=null;
+  for(const clause of clauses){
+    // Questions about another person's words and hypothetical examples are not
+    // requests to send. Removing a quoted payload still permits "把报告发群里".
+    if(/[“"「『‘']|(?:他说|她说|别人说|有人说|例如|比如说|假如|假设|如果说|是什么意思|什么意思|已经|刚才|之前)/u.test(clause))continue;
+    for(const match of clause.matchAll(/发送|同步|汇报|通知|发/gu)){
+      const before=clause.slice(0,match.index),after=clause.slice(match.index+match[0].length);
+      if(!sendFirst.test(after)&&!targetFirst.test(before))continue;
+      const prefix=before.replace(/(?:不要|别)忘(?:记)?(?:了)?/gu,'请');
+      intent=!denial.test(prefix);
+    }
+  }
+  return intent;
+}
 export function requestsTaskDelivery(text) {
-  // Native captions may put spaces between Chinese words. Interpret the same
-  // final USER instruction without changing the authenticated destination.
-  if(typeof text==='string')text=text.replace(/\s+/gu,'');
-  if(typeof text!=='string'||/[“"「『]|(?:不要|不用|别|不必).{0,20}(?:发|同步|汇报|通知)/u.test(text))return false;
-  if(/(?:发|同步)(?:送)?(?:到|在|给)(?!这个群|当前群|群里|群里面|飞书(?:群)?(?:里|上|$))[^，。]{1,16}群/u.test(text))return false;
-  return /(?:进展|结果|报告|内容|后续).{0,40}(?:发|同步).{0,12}(?:群|飞书)|(?:发|同步).{0,12}(?:群里|群里面|飞书群)|(?:在|到|就)(?:这个|当前|我们(?:的)?|咱们(?:的)?)?(?:飞书)?群(?:里面|里).{0,20}(?:发给我|给我发|发送|同步|汇报|通知)/u.test(text);
+  return taskDeliveryIntent(text)===true;
 }
 
 /** One delivery subscription per exact task. Hangup does not own its lifetime. */
@@ -29,6 +53,7 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,
     const key=`voice:${runId}:${kind}:${digest}`;
     if(outcomes.has(key))return outcomes.get(key);
     const work=tail.then(async()=>{
+      if(!authorized)return {sent:false};
       const receipt=await gateway.request('send',{...target,message:text,idempotencyKey:key},{timeoutMs:20000});
       if(!receipt||receipt.ok===false||receipt.status==='error'||!receipt.messageId&&!receipt.messageIds?.length&&!receipt.results?.some(r=>r.messageId))throw Error('飞书没有确认发送回执');
       audit({type:'task.delivery-confirmed',voiceSessionId:ownerId,runId,kind,receipt});
@@ -38,7 +63,7 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,
     return work;
   };
   return {
-    observeUser(text){if(requestsTaskDelivery(text))authorized=true;return authorized;},
+    observeUser(text){const intent=taskDeliveryIntent(text);if(intent!==null)authorized=intent;return authorized;},
     async subscribe(){
       if(!authorized)throw Error('用户尚未要求把任务进展发到飞书群');
       if(!target)throw Error('当前电话没有经过验证的飞书交付入口');

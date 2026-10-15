@@ -25,7 +25,7 @@ export function directInstructions(catalog,context='',model='') {
 }
 
 /** One real provider connection per dial; tool authorization stays in OpenClaw. */
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000}) {
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
   const sessions=new Map(),detached=new Set();
@@ -110,7 +110,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
     s.delivery=createTaskDelivery({gateway,sessionKey,ownerId:s.id,audit});
-    s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,taskDelivery:s.delivery,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}}});
+    s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,taskDelivery:s.delivery,pollMs:backendPollMs,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}}});
     sessions.set(s.id,s);
     audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model,voice:s.voice,...(model==='grok'?{speed:grokSpeed,expressiveTags:grokExpressiveTags}:{})});
     return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket};
