@@ -1,0 +1,25 @@
+{
+  "scope": "isolated Candidate functional control before shared integration",
+  "runtimeCommit": "45005229027b05688a564b18d987939d8799dc43",
+  "filesSha256": "560b600cef0cb1b421197053671c92dd36fcbccb6ea6c450dbbde99c92dfc97a",
+  "candidate": "candidate-c3836029-61a5-4cc6-b10a-33cf43317e29",
+  "passed": true,
+  "actualChecks": [
+    "real SDK delegated task",
+    "same opaque task accepted steer",
+    "same opaque task accepted followup",
+    "actual final contained both changes",
+    "foreign authenticated connection rejected"
+  ],
+  "coreCombination": [
+    "platform#371",
+    "platform#374",
+    "platform#385"
+  ],
+  "excludedPlatformPatch": 386,
+  "model": "DeepSeek Flash",
+  "boundedOutputTokens": 2048,
+  "sourceTests": 18,
+  "sharedGatewayUnchanged": true,
+  "productionTouched": false
+}
