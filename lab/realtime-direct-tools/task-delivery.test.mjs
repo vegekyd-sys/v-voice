@@ -74,3 +74,49 @@ test('Voice native owner result avoids redacted history and does not accept anot
  for(let i=0;i<50&&!calls.some(c=>c.message==='原 runner 的真实结果');i++)await new Promise(r=>setTimeout(r,5));
  await d.flush();assert(calls.some(c=>c.message==='原 runner 的真实结果'));assert.equal(d.pending,false);d.dispose();
 });
+
+const naturalDeliveryCases=[
+ ['这是语音发版验收，请交给后台做一个测试，先用工具等待20秒，再回复语音“后台验收成功”，不要点外卖，不要付款，挂电话以后，把进展和最终结果发在这个飞书群里',true],
+ ['先回复“验收成功”，把进展和结果发在群里',true],
+ ['不要付款，挂电话以后，把进展和结果发在群里',true],
+ ['不要付款挂电话以后把进展和结果发在这个飞书群里',true],
+ ['任务结束之后，在这个飞书群里面给我通知一声',true],
+ ['结果发到当前飞书群里就好',true],
+ ['请把报告同步到我们群里',true],
+ ['把结果发本群',true],
+ ['别忘了把结果发群里',true],
+ ['不要忘记把报告发到群里',true],
+ ['把结果发到群里，别付款',true],
+ ['完 成 后 把 结 果 发 在 这 个 飞 书 群 里',true],
+ ['把“后台验收成功”发到群里',true],
+ ['不要把结果发到这个飞书群里',false],
+ ['不用发群',false],
+ ['不要在这个飞书群里发结果',false],
+ ['在这个飞书群里不要发结果',false],
+ ['把结果发群里，先别发群',false],
+ ['不需要把任务结果同步到群里',false],
+ ['不要付款，也不要把结果发群里',false],
+ ['他说“把进展发群”是什么意思',false],
+ ['他说把结果发在这个群里是什么意思',false],
+ ['如果说“把结果发群”，系统会怎么处理',false],
+ ['把结果发到销售群',false],
+ ['把结果发到别的飞书群里',false],
+ ['请在销售群里通知我',false],
+ ['把结果发到“销售群”',false],
+ ['结果已经发到这个群了吗',false],
+ ['我已经把结果发到群里了',false],
+ ['我已经把结果发群里',false],
+ ['假设把结果发到群里，系统会怎样',false],
+];
+for(const [text,expected] of naturalDeliveryCases)test(`natural delivery authorization: ${text}`,()=>assert.equal(requestsTaskDelivery(text),expected));
+test('an explicit no-send revokes delivery, while unrelated payment denial does not',async()=>{
+ const calls=[];const d=createTaskDelivery({gateway:{request:async(m,p)=>{calls.push(p);return {messageId:'om-'+calls.length};}},sessionKey:'agent:makaron:feishu:group:oc_test',ownerId:'call'});
+ d.observeUser('结果发在这个飞书群里');assert(d.observeUser('不要付款'));assert.equal(d.observeUser('结果先别发群'),false);
+ d.started('run');await d.completed('run','不得投递');await d.flush();assert.equal(calls.length,0);
+ d.observeUser('现在把结果发到本群');await d.subscribe();assert.equal(calls.length,1);assert.equal(calls[0].to,'oc_test');
+});
+test('no-send also prevents a delivery still queued behind the current send',async()=>{
+ let release;const blocked=new Promise(r=>release=r),calls=[];
+ const d=createTaskDelivery({gateway:{request:async(m,p)=>{calls.push(p);await blocked;return {messageId:'om-'+calls.length};}},sessionKey:'agent:makaron:feishu:group:oc_test',ownerId:'call'});
+ d.observeUser('结果发群里');d.started('run');await new Promise(r=>setImmediate(r));d.progress('run','排队中的进展');d.observeUser('不要发群');release();await d.flush();assert.equal(calls.length,1);
+});
