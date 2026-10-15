@@ -138,10 +138,11 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
       // Reconcile the explicit public line from this exact run, without
       // waiting for the long-running next tool or starting another agent.
       if(p.stream==='tool'&&p.data?.phase==='start'&&row.hasToolResult)void reconcileProgress(row);
-      if(row.hasToolResult)row.observer.onAgentEvent(p);
+      if(row.hasToolResult)row.observer.onAgentEvent(p.stream==='item'&&typeof p.data?.progressText==='string'
+        ?{...p,data:{...p.data,progressText:p.data.progressText.replace(/^【电话进展】\s*/u,'')}}:p);
     }
     if(event.event!=='chat')return;
-    if(row.hasToolResult&&p.state==='delta'&&p.message?.phase==='commentary')row.observer.onPartialReply({text:(p.message.content??[]).filter(b=>b.type==='text').map(b=>b.text??'').join(''),phase:'commentary',isReasoning:p.message.isReasoning});
+    if(row.hasToolResult&&p.state==='delta'&&p.message?.phase==='commentary')row.observer.onPartialReply({text:(p.message.content??[]).filter(b=>b.type==='text').map(b=>b.text??'').join('').replace(/^【电话进展】\s*/u,''),phase:'commentary',isReasoning:p.message.isReasoning});
     if(p.state==='final'){
       const text=visibleText(p.message);
       if(text)row.resolve(text);
