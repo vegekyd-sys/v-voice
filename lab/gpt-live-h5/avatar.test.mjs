@@ -149,3 +149,23 @@ test('mobile home uses the high resolution hero while live reactions retain 256p
  f.body.dataset.callState='connected';f.events.visibilitychange();await settle();f.avatar.select('listen-1');await settle();
  assert.match(f.image.src,/listen-1-256\.webp$/);f.avatar.dispose();
 });
+
+test('live task status shows exact public facts and duration without creating orphan work',()=>{
+ let clock=10000;const tasks=createAvatarTasks(()=>clock);
+ tasks.consume({type:'tool.progress',callId:'orphan',text:'不能创建任务'});assert.equal(tasks.size,0);
+ tasks.consume({type:'tool.call',callId:'goal',name:'delegate_to_v'});clock+=23000;
+ tasks.consume({type:'tool.progress',callId:'goal',activity:'memory',text:'正在读取记忆原文'});
+ assert.equal(tasks.status,'正在读取记忆原文 · 23秒');assert.equal(tasks.pose,'memory');
+ tasks.consume({type:'tool.call',callId:'goal',activity:'web',text:'正在读取网页'});
+ assert.equal(tasks.size,1);assert.equal(tasks.status,'正在读取网页 · 23秒');
+ tasks.consume({type:'tool.result',callId:'goal'});tasks.consume({type:'tool.progress',callId:'goal',text:'迟到'});
+ assert.equal(tasks.status,'');assert.equal(tasks.pose,'idle');
+});
+
+test('presentation recovery retains the observed task start instead of restarting its duration',()=>{
+ const tasks=createAvatarTasks(()=>90000);
+ tasks.consume({type:'tool.call',callId:'recovered',activity:'web',text:'正在读取网页',startedAt:10000});
+ assert.equal(tasks.status,'正在读取网页 · 1分20秒');
+ tasks.consume({type:'tool.progress',callId:'recovered',text:'已核对来源。',startedAt:10000});
+ assert.equal(tasks.status,'已核对来源。 · 1分20秒');
+});

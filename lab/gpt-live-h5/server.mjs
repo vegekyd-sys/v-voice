@@ -220,6 +220,15 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, pre
           }
           const reservation = await gateway.request("talk.client.create", { sessionKey, provider: gptProvider, model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
           const taskDelivery=createTaskDelivery({gateway,sessionKey,ownerId:reservation.voiceSessionId,
+            onActivity:progress=>{
+              const active=context.active;
+              if(active?.reservation.voiceSessionId!==reservation.voiceSessionId)return;
+              const view=active.presentation,previous=view.pending.get(progress.callId);
+              if(!previous)return;
+              const message={...progress,type:'tool.progress',voiceSessionId:reservation.voiceSessionId,revision:++view.revision};
+              view.pending.set(progress.callId,{...previous,...message,type:'tool.call'});
+              for(const response of context.listeners)response.write(`data: ${JSON.stringify(message)}\n\n`);
+            },
             ...(gptProvider==='v-voice-gpt-live'?{readNativeResult:runId=>gateway.request('voice.product.task-result',{clientSecret:reservation.clientSecret,runId},{timeoutMs:10000})}:{}),
             audit:callControlAudit,onIdle:()=>{nativeTaskOwners.delete(taskDelivery);if(nativeTasks.get(reservation.voiceSessionId)===taskDelivery)nativeTasks.delete(reservation.voiceSessionId);}});
           nativeTaskOwners.add(taskDelivery);

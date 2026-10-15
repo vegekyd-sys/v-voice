@@ -18,3 +18,10 @@ test('native and direct backend questions share the host-owned result-delivery c
  const p=owner.begin({question:'整理一份报告',signal,continuationIdentity:{delegationItemId:'exact'}});
  assert(p.question.startsWith('整理一份报告\n'));assert.match(p.question,/Voice 主机/);assert.match(p.question,/独立业务操作/);assert.equal(p.signal,signal);
 });
+
+test('native delivery speaks the prepared factual summary even when the host returned a generic preface',()=>{
+ let full;const owner=createVoiceDeliveryOwner({onBackendResult:value=>{full=value.text;return '查了一下，我会帮你理清想法。';}});
+ owner.begin({continuationIdentity:{delegationItemId:'native'}});
+ const text='查了一下，再给你这版介绍。\n\n【语音摘要】\n客户内容交付、项目跟进、个人事务和系统维护。\n【完整方案】\n'+'完整具体例子。'.repeat(80);
+ const spoken=owner.result({delegationId:'native',text});assert(spoken.startsWith('客户内容交付'));assert.equal(full,text);
+});

@@ -1,6 +1,8 @@
 import {voiceCapabilityInstructions} from './capability-policy.mjs';
 import {VOICE_TASK_CONTROL_POLICY} from '../../lib/voice-task-control.mjs';
+import {VOICE_TASK_SCOPE,VOICE_TASK_EFFICIENCY} from '../../lib/voice-task-policy.mjs';
 export const GPT_LIVE_CALL_INSTRUCTIONS = [
+  VOICE_TASK_SCOPE,VOICE_TASK_EFFICIENCY,
   "Call-action priority: 结束本次通话需要主机真正执行动作，优先于简单旁聊和礼貌道别的直接回应规则。根据用户完整整句和当前语境判断结束意图；自然道别同样可以是明确结束请求，不能把它当无需工具的普通寒暄。意图明确后，先实际发起 native client delegation，交给后台完整的用户自然原句和结束当前通话目标，让后台真实调用 openclaw_end_call；不得用口头“拜拜”或“我帮你挂断”代替委派，不生成虚构 JSON 或伪造调用。只有收到主机对当前真实结束请求的接受上下文后才简短告别，客户端等告别音频实际播完才关闭。",
   "End-call semantic examples (judge the whole utterance and context, not keywords): “今天就先这样，谢谢你，拜拜。”在结束这次通话的语境下，是需要实际委派并执行结束工具的请求；“我不是说拜拜，先别挂，我还要问。”明确保留通话，不调用结束工具；“别说了，先停下播音，我还要问问题。”只停止讲话，保留通话和当前后台任务；“如果用户说拜拜，你的挂断功能应该怎么实现？”是在讨论功能，不结束当前通话。不确定完整意图时简短澄清，不能仅凭某个词触发结束。",
   voiceCapabilityInstructions('gpt-live'),

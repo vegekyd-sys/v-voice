@@ -54,3 +54,8 @@ test('a short plain media URL surviving OpenClaw attachment extraction is still 
 test('backend report delivery stays with Voice without suppressing explicit message tasks',()=>{
  const q=backendResultQuestion('整理报告');assert.match(q,/Voice 主机/);assert.match(q,/不要为这项结果交付再查询群/);assert.match(q,/独立业务操作/);assert.match(q,/不得在没有发送回执/);
 });
+
+test('a leading backend preface cannot replace a prepared concrete spoken answer',()=>{
+ const raw='查了一下，再给你这版介绍。\n\n【语音摘要】\n我帮你做客户内容交付、项目跟进、个人事务和系统维护。\n【完整方案】\n'+'完整具体例子。'.repeat(80);
+ const result=presentBackendResult(raw);assert.equal(result.text,raw);assert(result.spokenText.startsWith('我帮你做客户内容交付'));
+});
