@@ -7,6 +7,8 @@
     "node": ">=22"
   },
   "scripts": {
+    "lab:volc-speaker": "node lab/volc-speaker/server.mjs",
+    "test:volc-speaker": "node --test lab/volc-speaker/decision.test.mjs",
     "start": "node lab/gpt-live-h5/server.mjs",
     "preview": "GPT_LIVE_H5_PREVIEW=1 node lab/gpt-live-h5/server.mjs",
     "test": "node --test lab/gpt-live-h5/*.test.mjs lab/realtime-direct-tools/*.test.mjs lab/seeduplex-realtime-provider.test.mjs tests/*.test.mjs plugins/*/*.test.mjs",
