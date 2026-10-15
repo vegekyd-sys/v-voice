@@ -7,7 +7,7 @@ import {VOICE_CAPABILITY_POLICY} from '../gpt-live-h5/capability-policy.mjs';
 
 async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}),model='grok',options={}) {
  const peers=[],audit=[],invocations=[];
- class WS extends EventEmitter {constructor(){super();this.readyState=1;this.sent=[];peers.push(this);setImmediate(()=>this.emit('open'));}
+ class WS extends EventEmitter {constructor(url){super();this.url=url;this.readyState=1;this.sent=[];peers.push(this);setImmediate(()=>this.emit('open'));}
   send(raw){const value=JSON.parse(raw);this.sent.push(value);if(value.type==='session.update')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.updated'})),false));if(value.type==='session.create')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.created',session:{id:value.session.id??'fixture-dialog'}})),false));}
   close(){this.readyState=3;this.emit('close');}}
  class Server {handleUpgrade(req,socket,head,done){done(socket);}close(){}}
@@ -330,4 +330,14 @@ test('ordinary hangup detaches its real backend, redial is possible, late final 
  const next=await f.service.reserve({model:'grok',sessionKey:'agent:makaron:explicit:personal-fixture'});assert(next.voiceSessionId!==f.reservation.voiceSessionId);
  f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{text:'真实任务完成'}}});await delay(10);
  assert.equal(cancelled,false);assert.equal(sends.length,0);assert(!f.client.sent.some(e=>e.type==='backend.result'));await f.service.dispose();
+});
+
+for(const grokModel of ['grok-voice-3.0','grok-voice-2.0','grok-voice-think-fast-2.0'])test(`Grok reservation, catalog, audit and upstream agree on ${grokModel}`,async t=>{
+ const f=await fixture(undefined,'grok',{grokModel});t.after(()=>f.service.dispose());
+ assert.equal(f.reservation.model,grokModel);
+ assert.equal(f.service.models().find(m=>m.id==='grok').model,grokModel);
+ assert.equal(f.service.models().find(m=>m.id==='grok').label,`Grok Voice ${grokModel==='grok-voice-3.0'?'3.0':'2.0'}`);
+ assert.equal(f.audit.find(e=>e.type==='call.created').model,grokModel);
+ assert.equal(new URL(f.upstream.url).searchParams.get('model'),grokModel);
+ assert(!JSON.stringify(f.reservation).includes('fixture-key'));
 });

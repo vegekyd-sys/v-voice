@@ -426,6 +426,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     });
     const lark=createVoiceLarkReader({environment:process.env});
     const directVoice=createDirectVoiceService({gateway,wsModule,calendar:lark.calendar,larkRead:lark.read,
+      grokModel:process.env.XAI_VOICE_MODEL,
       audit:transcriptLog.audit,
       toolEnvironment:Object.fromEntries(["LARKSUITE_CLI_CONFIG_DIR","LARKSUITE_CLI_DATA_DIR"].filter(key=>process.env[key]).map(key=>[key,process.env[key]])),
       apiKeys:{

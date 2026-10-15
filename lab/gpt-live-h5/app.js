@@ -848,7 +848,7 @@ async function initializeEntry() {
     liveReady = status.ready === true;
     if ($("voiceModel")) for(const model of status.models??[]) {
       const option=[...$("voiceModel").options].find(o=>o.value===model.id);
-      if(option)option.disabled=!model.available;
+      if(option){option.disabled=!model.available;if(model.label)option.textContent=model.label;}
     }
     const select = $("voiceModel");
     if (select?.options && [...select.options].find(option => option.value === select.value)?.disabled) {

@@ -1,9 +1,16 @@
 import {createHash} from 'node:crypto';
 // xAI's documented speech-to-speech API. Credentials never cross the H5 relay.
-export const GROK_VOICE_MODEL = 'grok-voice-think-fast-2.0';
+export const GROK_VOICE_MODEL = 'grok-voice-3.0';
+// Explicit pins keep comparisons and rollback independent of the latest alias.
+export const GROK_VOICE_MODELS = Object.freeze([GROK_VOICE_MODEL,'grok-voice-2.0','grok-voice-think-fast-2.0']);
+export function grokVoiceModel(model = GROK_VOICE_MODEL) {
+  if(!GROK_VOICE_MODELS.includes(model))throw Error('不支持这个 Grok Voice 模型，请使用明确的 3.0 或 2.0 版本');
+  return model;
+}
+export const grokVoiceLabel = model => `Grok Voice ${grokVoiceModel(model)===GROK_VOICE_MODEL?'3.0':'2.0'}`;
 export class GrokVoiceBridge {
-  constructor(request, {createWebSocket, apiKey, upstream = 'wss://api.x.ai/v1/realtime', connectTimeoutMs = 20000}) {
-    Object.assign(this, {request, createWebSocket, apiKey, upstream, connectTimeoutMs});
+  constructor(request, {createWebSocket, apiKey, model = GROK_VOICE_MODEL, upstream = 'wss://api.x.ai/v1/realtime', connectTimeoutMs = 20000}) {
+    Object.assign(this, {request, createWebSocket, apiKey, model:grokVoiceModel(model), upstream, connectTimeoutMs});
     this.closed = false; this.ready = false; this.calls = new Map(); this.batches = new Map(); this.backgroundTools = new Set(); this.seenEvents = new Map();
   }
   connect() {
@@ -14,7 +21,7 @@ export class GrokVoiceBridge {
   async open() {
     try {
       if (!this.apiKey) throw Error('Grok Voice API 凭据尚未配置');
-      const ws=await this.createWebSocket(`${this.upstream}?model=${GROK_VOICE_MODEL}`, {
+      const ws=await this.createWebSocket(`${this.upstream}?model=${encodeURIComponent(this.model)}`, {
         headers:{Authorization:`Bearer ${this.apiKey}`}, handshakeTimeout:15000,
         maxPayload:1048576,perMessageDeflate:false});
       if(this.closed){ws.close();return;}
