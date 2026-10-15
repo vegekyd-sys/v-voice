@@ -16,6 +16,7 @@ import {createTaskDelivery} from '../realtime-direct-tools/task-delivery.mjs';
 import {createVoiceLarkReader} from '../realtime-direct-tools/lark-readonly.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
 import {voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
+import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai" }) {
@@ -180,6 +181,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       if (pathname === "/api/session") {
         if (!backendReady()) return json(res,503,{error:"V 后端正在重新连接，请稍后重拨。"});
         if (params.model && !['gpt-live','seeduplex','grok'].includes(params.model)) return json(res,400,{error:'没有这个语音模型'});
+        if (params.model === 'grok') {
+          try { grokVoice(params.voice); } catch (error) { return json(res,400,{error:error.message}); }
+        }
         if (params.model && params.model !== 'gpt-live' && !directVoice) return json(res,503,{error:'这个语音模型尚未接入'});
         if (context.creatingSession) return json(res, 409, { error: "正在连接 V，请稍等。" });
         // All devices share the selected personal conversation. Do not let a
@@ -199,7 +203,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
           await close(context);
           const sessionKey = binding.sessionKey;
           if (params.model && params.model !== 'gpt-live') {
-            const reservation = await directVoice.reserve({model:params.model,sessionKey});
+            const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice});
             context.active={sessionKey,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
             rememberAvatarCall(context,context.active,params.model);
             return json(res,200,reservation);

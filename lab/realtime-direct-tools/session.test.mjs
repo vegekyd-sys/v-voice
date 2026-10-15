@@ -16,7 +16,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   invocations.push(args);return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,...options});
- const reservation=await service.reserve({model,sessionKey:'agent:makaron:explicit:personal-fixture'});
+ const reservation=await service.reserve({model,sessionKey:'agent:makaron:explicit:personal-fixture',voice:options.voice});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -341,3 +341,13 @@ for(const grokModel of ['grok-voice-3.0','grok-voice-2.0','grok-voice-think-fast
  assert.equal(new URL(f.upstream.url).searchParams.get('model'),grokModel);
  assert(!JSON.stringify(f.reservation).includes('fixture-key'));
 });
+
+ test('Grok voices are pinned per reservation and invalid selection creates no call',async t=>{
+  const f=await fixture(undefined,'grok',{voice:'iris'});t.after(()=>f.service.dispose());
+  assert.equal(f.reservation.voice,'iris');assert.equal(f.upstream.sent[0].session.voice,'iris');
+  assert.equal(f.audit.find(e=>e.type==='call.created').voice,'iris');
+  assert(f.service.models().find(m=>m.id==='grok').voices.some(v=>v.id==='iris'));
+  await assert.rejects(f.service.reserve({model:'grok',voice:'arbitrary',sessionKey:'unused'}),/不支持/);
+  const next=await f.service.reserve({model:'grok',voice:'ara',sessionKey:'unused'});
+  assert.equal(next.voice,'ara');assert.equal(f.upstream.sent[0].session.voice,'iris');
+ });

@@ -3,14 +3,26 @@ import {createHash} from 'node:crypto';
 export const GROK_VOICE_MODEL = 'grok-voice-3.0';
 // Explicit pins keep comparisons and rollback independent of the latest alias.
 export const GROK_VOICE_MODELS = Object.freeze([GROK_VOICE_MODEL,'grok-voice-2.0','grok-voice-think-fast-2.0']);
+// Built-in female voices verified with xAI /v1/tts/voices; shared realtime roster.
+export const GROK_VOICES = Object.freeze([
+  {id:'iris',label:'Iris · 活泼亲切（推荐）'},
+  {id:'eve',label:'Eve · 元气明快'},
+  {id:'ara',label:'Ara · 温暖自然'},
+  {id:'carina',label:'Carina · 柔和体贴'},
+  {id:'luna',label:'Luna · 温柔耐心'},
+].map(Object.freeze));
+export function grokVoice(voice = 'eve') {
+  if(!GROK_VOICES.some(item=>item.id===voice))throw Error('不支持这个 Grok 音色，请从页面列表选择');
+  return voice;
+}
 export function grokVoiceModel(model = GROK_VOICE_MODEL) {
   if(!GROK_VOICE_MODELS.includes(model))throw Error('不支持这个 Grok Voice 模型，请使用明确的 3.0 或 2.0 版本');
   return model;
 }
 export const grokVoiceLabel = model => `Grok Voice ${grokVoiceModel(model)===GROK_VOICE_MODEL?'3.0':'2.0'}`;
 export class GrokVoiceBridge {
-  constructor(request, {createWebSocket, apiKey, model = GROK_VOICE_MODEL, upstream = 'wss://api.x.ai/v1/realtime', connectTimeoutMs = 20000}) {
-    Object.assign(this, {request, createWebSocket, apiKey, model:grokVoiceModel(model), upstream, connectTimeoutMs});
+  constructor(request, {createWebSocket, apiKey, model = GROK_VOICE_MODEL, voice = 'eve', upstream = 'wss://api.x.ai/v1/realtime', connectTimeoutMs = 20000}) {
+    Object.assign(this, {request, createWebSocket, apiKey, model:grokVoiceModel(model), voice:grokVoice(voice), upstream, connectTimeoutMs});
     this.closed = false; this.ready = false; this.calls = new Map(); this.batches = new Map(); this.backgroundTools = new Set(); this.seenEvents = new Map();
   }
   connect() {
@@ -27,7 +39,7 @@ export class GrokVoiceBridge {
       if(this.closed){ws.close();return;}
       this.socket=ws;
       this.timer=setTimeout(()=>this.fail('Grok Voice 连接超时'),this.connectTimeoutMs);
-      ws.on('open',()=>this.send({type:'session.update',session:{voice:'eve',
+      ws.on('open',()=>this.send({type:'session.update',session:{voice:this.voice,
         instructions:this.request.instructions,reasoning:{effort:'high'},
         audio:{input:{format:{type:'audio/pcm',rate:24000},transcription:{language_hint:'zh'}},output:{format:{type:'audio/pcm',rate:24000}}},
         turn_detection:{type:'server_vad'},tools:this.request.tools}}));

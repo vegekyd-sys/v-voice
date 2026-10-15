@@ -3,7 +3,7 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import {SeeduplexRealtimeVoiceBridge} from '../seeduplex-realtime-provider.mjs';
 import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
 import {TOOLS,createToolExecutor,validateTool,processExited} from './tools.mjs';
-import {GrokVoiceBridge,GROK_VOICE_MODEL,grokVoiceModel,grokVoiceLabel} from './grok-provider.mjs';
+import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICES,grokVoice,grokVoiceModel,grokVoiceLabel} from './grok-provider.mjs';
 import {createTaskDelivery} from './task-delivery.mjs';
 import {createBackendDelegation} from './backend.mjs';
 import {loadToolStartClips,toolStartClip} from './tool-start-audio.mjs';
@@ -37,7 +37,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   };
   const websocketServer=new wsModule.WebSocketServer({noServer:true,maxPayload:65536});
   const configured=id=>id==='seeduplex'?Boolean(apiKeys.seeduplex):id==='grok'&&Boolean(apiKeys.grok);
-  const models=()=>DIRECT_MODELS.map(m=>({...m,...(m.id==='grok'?{model:grokModel,label:grokVoiceLabel(grokModel)}:{}),available:configured(m.id),billing:'api'}));
+  const models=()=>DIRECT_MODELS.map(m=>({...m,...(m.id==='grok'?{model:grokModel,label:grokVoiceLabel(grokModel),voices:GROK_VOICES}:{}),available:configured(m.id),billing:'api'}));
   const current=s=>Boolean(s)&&!s.closed&&sessions.get(s.id)===s;
   const emit=(s,value)=>{
     if(!current(s))return;
@@ -98,19 +98,20 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     })();
     try{return await s.closePromise;}finally{s.closePromise=null;}
   };
-  async function reserve({model,sessionKey}) {
+  async function reserve({model,sessionKey,voice}) {
     if([...sessions.values()].some(s=>s.cleanupFailed))throw Error('上一通电话的后台任务正在确认退出，请稍后重试');
     const spec=models().find(m=>m.id===model);if(!spec)throw Error('没有这个语音模型');
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
-    const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,sessionKey,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map()};
+    const selectedVoice=model==='grok'?grokVoice(voice):spec.voice;
+    const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map()};
     Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,progress:null});
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
     s.delivery=createTaskDelivery({gateway,sessionKey,ownerId:s.id,audit});
     s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,taskDelivery:s.delivery,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}}});
     sessions.set(s.id,s);
-    audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model});
-    return {voiceSessionId:s.id,model:spec.model,provider:model,transport:'gateway-relay',relayTicket:s.ticket};
+    audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model,voice:s.voice});
+    return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket};
   }
   async function start(s,client) {
     s.client=client;
@@ -231,7 +232,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(!current(s))return;
     const createWebSocket=async(url,options)=>new wsModule.WebSocket(url,options);
     s.bridge=s.model==='seeduplex'?new SeeduplexRealtimeVoiceBridge(request,{createWebSocket})
-      :new GrokVoiceBridge(request,{createWebSocket,apiKey:apiKeys.grok,model:grokModel});
+      :new GrokVoiceBridge(request,{createWebSocket,apiKey:apiKeys.grok,model:grokModel,voice:s.voice});
     client.on('message',(data,binary)=>{
       if(!current(s))return;
       if(binary){if(data.length%2===0&&data.length<=24000)s.bridge.sendAudio(data);else client.close(1008);return;}

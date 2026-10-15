@@ -344,3 +344,13 @@ test('disconnected Gateway is not dial-ready and cannot allocate a provider sess
  f.gateway.ready=true;
  assert.equal((await (await fetch(f.url+'/api/status',{headers:{cookie:f.cookie}})).json()).ready,true);
 });
+
+test('Grok voice selection is validated before closing a call and server keeps identity binding',async t=>{
+ const received=[],closed=[];
+ const f=await fixture(t,{directVoice:{models:()=>[],reserve:async params=>{received.push(params);return {voiceSessionId:'selected',transport:'gateway-relay',voice:params.voice};},close:async id=>closed.push(id),dispose:async()=>{}}});
+ const response=await f.request('session',{model:'grok',voice:'iris',sessionKey:'untrusted-browser'});
+ assert.equal(response.status,200);assert.equal((await response.json()).voice,'iris');
+ assert.deepEqual(received,[{model:'grok',voice:'iris',sessionKey:GPT_LIVE_PERSONAL_SESSION_KEY}]);
+ for(const voice of ['',null,'unknown'])assert.equal((await f.request('session',{model:'grok',voice})).status,400);
+ assert.equal(closed.length,0);assert.equal(received.length,1);
+});

@@ -1,9 +1,9 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {EventEmitter} from 'node:events';
 import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICE_MODELS} from './grok-provider.mjs';
 class Socket extends EventEmitter {constructor(){super();this.readyState=1;this.sent=[];}send(s){this.sent.push(JSON.parse(s));}close(){this.readyState=3;this.emit('close');}}
-async function fixture(model=GROK_VOICE_MODEL){const ws=new Socket(),calls=[],audio=[],text=[];
+async function fixture(model=GROK_VOICE_MODEL,voice='eve'){const ws=new Socket(),calls=[],audio=[],text=[];
  const bridge=new GrokVoiceBridge({instructions:'中文',tools:[{type:'function',name:'memory_search',parameters:{type:'object'}}],onToolCall:c=>calls.push(c),onAudio:b=>audio.push(b),onTranscript:(...a)=>text.push(a)},
- {apiKey:'private-key',model,createWebSocket:async(url,options)=>{assert.equal(new URL(url).searchParams.get('model'),model);assert.equal(options.headers.Authorization,'Bearer private-key');return ws;}});
+ {apiKey:'private-key',model,voice,createWebSocket:async(url,options)=>{assert.equal(new URL(url).searchParams.get('model'),model);assert.equal(options.headers.Authorization,'Bearer private-key');return ws;}});
  const opening=bridge.connect();await new Promise(r=>setImmediate(r));ws.emit('open');bridge.receive({type:'session.updated'});await opening;
  return {ws,calls,audio,text,bridge};}
 test('Grok config is Chinese PCM plus native functions; keys are not provider events',async()=>{const f=await fixture();assert.equal(f.ws.sent[0].session.audio.input.format.rate,24000);assert.equal(f.ws.sent[0].session.audio.input.transcription.language_hint,'zh');assert.equal(f.ws.sent[0].session.tools[0].name,'memory_search');f.bridge.receive({type:'response.output_audio.delta',delta:Buffer.from([0,1]).toString('base64')});assert.deepEqual(f.audio,[Buffer.from([0,1])]);f.bridge.close();});
@@ -51,4 +51,10 @@ for(const model of GROK_VOICE_MODELS)test(`Grok pins ${model} without changing v
 });
 test('Grok rejects unpinned or unsupported models before opening a socket',()=>{
  for(const model of ['grok-voice-latest','grok-3','',null])assert.throws(()=>new GrokVoiceBridge({}, {model}),/不支持/);
+});
+test('chosen voice reaches the realtime session; unsupported voices fail before connecting',async()=>{
+ for(const voice of ['iris','eve','ara','carina','luna']){
+  const f=await fixture(GROK_VOICE_MODEL,voice);assert.equal(f.ws.sent[0].session.voice,voice);f.bridge.close();
+ }
+ for(const voice of ['unknown','',null,{id:'iris'}])assert.throws(()=>new GrokVoiceBridge({}, {voice}),/不支持/);
 });

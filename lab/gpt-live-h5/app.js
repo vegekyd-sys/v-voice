@@ -23,6 +23,14 @@ let avatarDiagnosticOwner = null;
 let liveReady = false;
 let entryError = null;
 let callerEntry = "tianyi";
+function refreshGrokVoicePicker() {
+  const picker = $("grokVoicePicker"), select = $("grokVoice");
+  if (!picker || !select) return;
+  picker.hidden = $("voiceModel")?.value !== 'grok' || !select.options.length;
+  select.disabled = document.body.dataset.callState !== 'idle';
+  $("grokVoiceHint").textContent = select.disabled ? "挂断后可以切换声音" : "选好声音，再拨号试聊";
+}
+$("voiceModel")?.addEventListener('change', refreshGrokVoicePicker);
 const phoneEntry = new URLSearchParams(window.location.search).get("phone");
 const apiUrl = route => `./api/${route}?${phoneEntry ? `phone=${encodeURIComponent(phoneEntry)}` : `entry=${callerEntry}`}`;
 const duplexRecoveryMessage = "上一段语音还没确认结束。若仍无声音，请结束通话后重新开始。";
@@ -50,6 +58,7 @@ function setCallState(state) {
   sceneAnimations.clear();
   document.body.dataset.callState = state;
   productControls?.callState(state);
+  refreshGrokVoicePicker();
   elements.forEach((element, index) => {
     const from = before[index], to = element.getBoundingClientRect();
     if (!from.width || !to.width || typeof element.animate !== "function") return;
@@ -567,7 +576,7 @@ async function stopCall() {
   setCallState("idle");
   $("start").hidden = false; $("start").disabled = false; $("stop").hidden = true;
   $("steerText").disabled = true; $("steer").disabled = true;
-  $("badge").textContent = liveReady ? "可以拨号" : status.preview === false ? "后端重连中" : "页面预览";
+  $("badge").textContent = liveReady ? "可以拨号" : "暂未连接";
   $("startLabel").textContent = "拨号"; $("stopLabel").textContent = "结束通话";
   if ($("voiceModel")) $("voiceModel").disabled = false;
   setStatus("拨号后，直接说话。");
@@ -622,7 +631,8 @@ async function startCall() {
     markVoiceTiming("voice.microphone.ready");
     active.stream = active.capture.stream;
     if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
-    const reservation = await api("session", {model:['seeduplex','grok'].includes($("voiceModel")?.value)?$("voiceModel").value:'gpt-live'}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
+    const selectedModel = ['seeduplex','grok'].includes($("voiceModel")?.value)?$("voiceModel").value:'gpt-live';
+    const reservation = await api("session", {model:selectedModel,...(selectedModel==='grok'?{voice:$("grokVoice")?.value || undefined}:{})}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     const diagnosticOwner=avatarDiagnosticOwner=Symbol('avatar-call');
     document.body.dataset.avatarReactionRequests='0';
@@ -856,6 +866,14 @@ async function initializeEntry() {
       select.value = ['seeduplex', 'gpt-live', 'grok'].find(id => [...select.options].some(option => option.value === id && !option.disabled)) ?? select.value;
     }
     productControls?.refreshModels();
+    const grokVoices = status.models?.find(model=>model.id==='grok')?.voices ?? [];
+    if ($("grokVoice")) {
+      $("grokVoice").replaceChildren(...grokVoices.map(voice=>{
+        const option = document.createElement('option'); option.value = voice.id; option.textContent = voice.label; return option;
+      }));
+      if (grokVoices.some(voice=>voice.id==='iris')) $("grokVoice").value = 'iris';
+    }
+    refreshGrokVoicePicker();
     $("badge").textContent = liveReady ? "可以拨号" : status.preview === false ? "后端重连中" : "页面预览";
     $("start").disabled = !liveReady;
     if (liveReady) markVoiceTiming("voice.dial.ready");
