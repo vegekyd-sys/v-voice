@@ -193,10 +193,12 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
   return {run,handleEvent,control:async input=>{
     const params=validateVoiceTaskControl(input);
     const row=active;
-    if(params.mode==='status'&&lastCompleted&&(!row||row.completed))return {
-      ok:true,mode:'status',active:false,completed:true,queued:false,source:'owned-terminal-receipt',...lastCompleted,
-      message:'后台结果已经返回，正在交给这通电话呈现。',
-      instruction:'说明后台已完成、结果正在同步；不要说任务未登记或仍在排队，也不要保证已经显示或播完。'};
+    if(params.mode==='status'&&lastCompleted&&(!row||row.completed)){
+      const cleanupPending=Boolean(row&&(row.cleanupUnconfirmed||row.ownedProcesses.size||row.pendingExecs.size));
+      return {ok:true,mode:'status',active:cleanupPending,completed:!cleanupPending,resultReturned:true,queued:false,source:'owned-terminal-receipt',...lastCompleted,
+        message:cleanupPending?'后台结果已返回，但执行操作的退出仍待确认。':'后台结果已经返回，正在交给这通电话呈现。',
+        instruction:'按回执说明结果已返回；退出未确认时不能声称任务全部结束。不要说任务未登记或仍在排队，也不要保证已经显示或播完。'};
+    }
     if(!row||row.retired)return {ok:false,active:false,queued:false,reason:'no_active_run',message:'当前电话没有可修改的后台任务。'};
     if(params.mode==='status'){
       const connected=gateway.ready!==false;

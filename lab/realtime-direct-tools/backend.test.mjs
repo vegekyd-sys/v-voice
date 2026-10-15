@@ -108,6 +108,8 @@ test('terminal native poll without sessionId releases only its exact owned proce
   tool({name:'process',phase:'result',toolCallId:'other-poll',result:{details:{status:'completed'}}});
   f.event(runId,'final',{text:'消息已发送'});await first;
   assert.ok(f.backend.snapshot());await assert.rejects(f.start(),/已有一个/);
+  const awaitingExit=await f.backend.control({mode:'status',text:'后台结束了吗'});
+  assert.equal(awaitingExit.resultReturned,true);assert.equal(awaitingExit.completed,false);assert.equal(awaitingExit.active,true);
   tool({name:'process',phase:'result',toolCallId:'poll',result:{details:{status:'completed',name:'python3'}}});
   assert.equal(f.backend.snapshot(),null);
   const second=f.start();await delay(0);f.event(f.backend.snapshot().runId,'final',{text:'日程已修改'});await second;
