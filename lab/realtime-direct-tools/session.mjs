@@ -31,14 +31,21 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   grokSpeed=grokVoiceSpeed(grokSpeed);
   const sessions=new Map(),detached=new Set();
   const deferred=s=>{
-    if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking||Date.now()-s.lastUserAt<1200)return;
+    if(!current(s)||s.ending||s.userSpeaking||Date.now()-s.lastUserAt<1200)return;
+    if(s.backendResult&&s.progressSpeech){
+      // A finished result outranks our own progress TTS, never caller speech
+      // or an unrelated conversational reply. Retire its queued audio too.
+      s.progressSpeech=false;s.bridge.handleBargeIn();s.responseActive=false;s.playing=false;
+      audit({type:'backend.progress-preempted',voiceSessionId:s.id});
+    }
+    if(s.responseActive||s.playing)return;
     if(s.backendResult){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;s.activityProgress=null;resolve();return;}
     if(s.pending.size!==1||!s.backend.snapshot()||Date.now()-s.lastProgressAt<10000)return;
     const p=s.progress??s.activityProgress;
     if(!p||!s.progress&&Date.now()-p.observedAt<8000)return;
     s.progress=null;s.activityProgress=null;if(p.text.length>220||p.text===s.lastProgressText)return;
     s.lastProgressText=p.text;
-    s.lastProgressAt=Date.now();s.responseActive=true;
+    s.lastProgressAt=Date.now();s.responseActive=true;s.progressSpeech=true;
     s.bridge.speakProgress(p.text,{caption:true});audit({type:'backend.progress-spoken',voiceSessionId:s.id,...p});
   };
   const websocketServer=new wsModule.WebSocketServer({noServer:true,maxPayload:65536});
@@ -188,7 +195,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         }
         if(call.name==='delegate_to_v'){
           if(s.backend.snapshot())throw Error('新任务未启动：这通电话已有一个 V 后台任务。未加入队列，不要说正在做。修改或补充原任务请调用 openclaw_agent_control 的 steer/followup；用户明确取消时先调用 cancel_task，再委派新任务。');
-          s.lastProgressText=null;s.lastProgressAt=0;s.progress=null;s.activityProgress=null;
+          s.lastProgressText=null;s.lastProgressAt=0;s.progress=null;s.activityProgress=null;s.progressSpeech=false;
           s.backgroundCallId=call.callId;s.bridge.beginBackgroundTool(call.callId,call.args.question);backgroundAck=true;
         }
         if(!['send_task_updates','openclaw_agent_control'].includes(call.name))result=await execute(call.name,call.args,call.callId,controller.signal);
@@ -234,15 +241,15 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       onTranscript:(role,text,final,source)=>{
         if(!current(s))return;
         if(role==='user'&&final&&text.trim())rememberCaller(text);
-        if(role==='user'){s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
+        if(role==='user'){s.progressSpeech=false;s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
         if(role==='user'&&final&&s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{})});
       },
-      onClearAudio:()=>{s.responseActive=false;if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});},
+      onClearAudio:()=>{s.progressSpeech=false;s.responseActive=false;if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});},
       onAudioSegmentDone:()=>{s.responseActive=false;},
       onResponseDone:e=>{s.responseActive=false;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed')emit(s,{type:'end.after-playback',callId:s.ending.callId});},
       onEvent:e=>{if(['response.created'].includes(e.type))s.responseActive=true;
-        if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.userSpeaking=true;s.lastUserAt=Date.now();}
+        if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.progressSpeech=false;s.userSpeaking=true;s.lastUserAt=Date.now();}
         if(e.type==='input_audio_buffer.speech_stopped'){s.userSpeaking=false;s.lastUserAt=Date.now();}
         audit({type:'provider.event',voiceSessionId:s.id,...e});},
       onProtocolEvent:e=>audit({type:'provider.protocol',voiceSessionId:s.id,event:{...e,...(e.delta&&e.type?.includes('audio')?{delta:'[audio retained separately]'}:{})}}),
@@ -260,8 +267,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if(binary){if(data.length%2===0&&data.length<=24000)s.bridge.sendAudio(data);else client.close(1008);return;}
       try{const e=JSON.parse(data.toString());if(e.type==='greeting'&&!s.greeted){s.greeted=true;s.bridge.triggerGreeting('电话已接通。请用中文向天意简短打个招呼，然后听他说话。');}
       else if(e.type==='barge-in') {s.bridge.handleBargeIn();audit({type:'client.barge-in',voiceSessionId:s.id});}
-      else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){rememberCaller(e.text);s.bridge.sendUserMessage(e.text);}
-      else if(e.type==='playback.state'&&typeof e.speaking==='boolean')s.playing=e.speaking;
+      else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){s.progressSpeech=false;rememberCaller(e.text);s.bridge.sendUserMessage(e.text);}
+      else if(e.type==='playback.state'&&typeof e.speaking==='boolean'){s.playing=e.speaking;if(!s.playing&&!s.responseActive)s.progressSpeech=false;}
       else if(e.type==='playback.stats'){
         const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
         audit({type:'client.playback-stats',voiceSessionId:s.id,stats});
@@ -283,7 +290,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       s.ticket=null;websocketServer.handleUpgrade(req,socket,head,client=>{client.on('error',()=>void close(s.id).catch(()=>{}));void start(s,client).catch(()=>{emit(s,{type:'error',message:'语音或工具环境尚未就绪'});void close(s.id).catch(()=>{});});});
     },
     async steer(id,{mode,text}){const s=sessions.get(id);if(!current(s)||!s.bridge)throw Error('语音会话已结束');
-      if(mode==='append'||mode==='steer'&&!s.backend.snapshot()){s.bridge.sendUserMessage(text);return {ok:true,forwardedToVoice:true,queued:false};}
+      if(mode==='append'||mode==='steer'&&!s.backend.snapshot()){s.progressSpeech=false;s.bridge.sendUserMessage(text);return {ok:true,forwardedToVoice:true,queued:false};}
       const result=mode==='cancel'?await cancel(s):await s.backend.control({mode,text});
       return {...result,...(mode==='cancel'?{ok:result.cancelled===true}:{})};},
     async dispose({drain=false}={}){

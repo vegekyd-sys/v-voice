@@ -133,7 +133,7 @@ test('cancel kills and polls only process IDs actually created by this call',asy
  f.call('openclaw_tool',{tool:'process',arguments:JSON.stringify({action:'kill',sessionId:'foreign'})},'foreign');await delay(5);
  assert.equal(f.invocations.some(x=>x.args.sessionId==='foreign'),false);await f.service.dispose();
 });
-test('hybrid tool keeps one backend run alive during chat; progress and final wait for actual playback idle',async()=>{
+test('progress waits for chat playback; a final result preempts only host progress without cancelling its run',async()=>{
  const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}));
  f.call('delegate_to_v',{question:'比较多种方案，完成所有步骤'});await delay(5);
  const started=f.audit.find(x=>x.type==='backend.started');assert(started);
@@ -148,10 +148,27 @@ test('hybrid tool keeps one backend run alive during chat; progress and final wa
  await delay(250);
  const progress=f.upstream.sent.find(x=>x.item?.type==='force_message');assert.equal(progress.item.content[0].text,'第一步查到了实际记录，正在核对网页。');assert.equal(progress.item.interruptible,true);
  backend({payload:{state:'final',message:{content:[{type:'text',text:'所有步骤完成，结论如下'}]}}});await delay(5);
- assert.equal(f.upstream.sent.filter(x=>x.item?.type==='force_message').length,1);
- f.event({type:'response.done',response:{id:'progress-speech',status:'completed'}});await delay(250);
+ assert.equal(f.upstream.sent.filter(x=>x.item?.type==='force_message').length,2);
+ assert(f.upstream.sent.some(x=>x.type==='response.cancel'));
+ assert(f.client.sent.some(x=>x.type==='audio.clear'));
+ assert(!f.invocations.some(x=>x.runId&&x.mode==='cancel'));
  assert.equal(f.upstream.sent.filter(x=>x.item?.type==='force_message').at(-1).item.content[0].text,'所有步骤完成，结论如下');
  assert.equal(f.client.sent.filter(x=>x.type==='tool.result').length,1);await f.service.dispose();
+});
+test('final delivery waits for a real caller interruption and the ensuing conversational reply',async t=>{
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}));t.after(()=>f.service.dispose());
+ f.call('delegate_to_v',{question:'整理报告'});await delay(5);const row=f.audit.find(x=>x.type==='backend.started');
+ const event=(stream,data)=>f.service.handleEvent({event:'agent',payload:{runId:row.runId,sessionKey:row.sessionKey,stream,data}});
+ event('tool',{phase:'result',name:'memory_search'});event('item',{kind:'preamble',phase:'end',progressText:'已查到第一部分。'});await delay(250);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'那你先解释一下这个词'});
+ f.event({type:'response.created',response:{id:'caller-reply'}});
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:true})),false);
+ f.service.handleEvent({event:'chat',payload:{runId:row.runId,sessionKey:row.sessionKey,state:'final',message:{text:'完整报告'}}});await delay(1300);
+ assert.equal(f.upstream.sent.filter(x=>x.item?.type==='force_message').length,1);
+ assert(!f.upstream.sent.some(x=>x.type==='response.cancel'));
+ f.event({type:'response.done',response:{id:'caller-reply',status:'completed'}});
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:false})),false);await delay(250);
+ assert.equal(f.upstream.sent.filter(x=>x.item?.type==='force_message').at(-1).item.content[0].text,'完整报告');
 });
 test('Seed automatically speaks a real sustained PDF phase without a progress question, with audible captions',async t=>{
  const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}),'seeduplex');
