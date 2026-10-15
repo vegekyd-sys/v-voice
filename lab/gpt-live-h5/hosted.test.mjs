@@ -132,3 +132,11 @@ test('first-frame styles are exact and only verified cookies receive an entry hi
  assert.equal((await f.request('/voice/api/session',cookie+'broken',{})).status,401);
  assert.equal(f.calls.length,0);
 });
+
+test('pre-generated listening samples require entry access and never create a voice session',async t=>{
+ const accesses=[];const f=await fixture(t,{listening:{manifest:{schema:'voice-listening-v1',clips:[{id:'clip'}]},audio:async(id,range)=>{accesses.push({id,range});return id==='clip'?{status:206,headers:{'content-type':'audio/wav','content-range':'bytes 0-3/10','content-length':'4'},body:Buffer.from('RIFF')}:null;}}});
+ assert.equal((await f.request('/voice/api/comparison')).status,401);assert.equal((await f.request('/voice/api/comparison/audio/clip')).status,401);assert.equal(accesses.length,0);
+ const cookie=await f.visitor();assert.equal((await f.request('/voice/api/comparison',cookie)).status,200);
+ const audio=await f.request('/voice/api/comparison/audio/clip',cookie,undefined,{range:'bytes=0-3'});assert.equal(audio.status,206);assert.equal(await audio.text(),'RIFF');assert.deepEqual(accesses,[{id:'clip',range:'bytes=0-3'}]);
+ assert.equal((await f.request('/voice/api/comparison/audio/unknown',cookie)).status,404);assert.equal(f.calls.length,0);
+});

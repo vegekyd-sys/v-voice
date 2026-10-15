@@ -119,6 +119,7 @@ h3 {
 }
 .grok-voice-picker select:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .grok-voice-picker small { font-size: 11px; }
+.grok-listen-link { display:block; width:fit-content; margin:0 auto 12px; color:#96617d; font-size:12px; text-underline-offset:4px; }
 body:is([data-call-state="connected"], [data-call-state="ending"]) .grok-voice-picker { display: none; }
 .portrait-wrap {
   position: relative;

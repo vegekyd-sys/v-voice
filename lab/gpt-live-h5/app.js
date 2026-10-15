@@ -28,6 +28,8 @@ function refreshGrokVoicePicker() {
   if (!picker || !select) return;
   picker.hidden = $("voiceModel")?.value !== 'grok' || !select.options.length;
   select.disabled = document.body.dataset.callState !== 'idle';
+  const listen = $("grokListen");
+  if(listen)listen.hidden = picker.hidden || select.disabled || listen.dataset.available !== 'true';
   $("grokVoiceHint").textContent = select.disabled ? "挂断后可以切换声音" : select.dataset.deliveryHint || "选好声音，再拨号试聊";
 }
 $("voiceModel")?.addEventListener('change', refreshGrokVoicePicker);
@@ -867,6 +869,7 @@ async function initializeEntry() {
     }
     productControls?.refreshModels();
     const grokVoices = status.models?.find(model=>model.id==='grok')?.voices ?? [];
+    if ($("grokListen")) { $("grokListen").dataset.available = String(status.comparisonAvailable === true); $("grokListen").href = `./compare${window.location.search}`; }
     if ($("grokVoice")) {
       const grok = status.models?.find(model=>model.id==='grok');
       $("grokVoice").dataset.deliveryHint = [grok?.speed && grok.speed !== 1 ? `${grok.speed}× 语速` : '',grok?.expressiveTags ? '自主表达试用' : ''].filter(Boolean).join(' · ');

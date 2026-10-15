@@ -19,7 +19,7 @@ import {voiceConversationContext} from '../realtime-direct-tools/conversation-co
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai" }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai" }) {
   if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
@@ -83,6 +83,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       const access = entryAccess(binding);
       const staticFiles = new Map([
         ["/", [join(here, "index.html"), "text/html; charset=utf-8"]],
+        ["/compare", [join(here, "comparison.html"), "text/html; charset=utf-8"]],
+        ["/comparison.mjs", [join(here, "comparison.mjs"), "text/javascript; charset=utf-8"]],
+        ["/comparison.css", [join(here, "comparison.css"), "text/css; charset=utf-8"]],
         ["/markdown.mjs", [join(here, "markdown.mjs"), "text/javascript; charset=utf-8"]],
         ["/vendor/marked-18.0.5.mjs", [join(here, "vendor/marked-18.0.5.mjs"), "text/javascript; charset=utf-8"]],
         ["/entry-startup.mjs", [join(here, "entry-startup.mjs"), "text/javascript; charset=utf-8"]],
@@ -111,7 +114,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
           const visitor = hosted ? access.read(req) : null;
           const canCheckEntry = visitor && (contexts.has(`${entry}:${visitor.id}`) || contexts.size < 512);
           if (!hosted || canCheckEntry) {
-            const initial = JSON.stringify({ ready: backendReady(), preview, defaultModel,
+            const initial = JSON.stringify({ ready: backendReady(), preview, defaultModel, ...(listening?{comparisonAvailable:true}:{}),
               ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
             }).replaceAll("<", "\\u003c");
             html = html.replace('<script type="module" src="./app.js"></script>', `<script type="application/json" id="voiceEntryStatus">${initial}</script><script type="module" src="./app.js"></script>`);
@@ -147,9 +150,15 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       } else if (!String(req.headers.cookie ?? "").split(/;\s*/u).includes(`v_live_experiment=${cookie}`)) return json(res, 401, { error: "请先打开实验页面" });
       context.touchedAt = Date.now();
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
-        ready: backendReady(), preview, defaultModel, model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
+        ready: backendReady(), preview, defaultModel, ...(listening?{comparisonAvailable:true}:{}), model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
         ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
       });
+      if(req.method==='GET'&&pathname==='/api/comparison')return listening?json(res,200,listening.manifest):json(res,404,{error:'当前没有试听样本'});
+      if(['GET','HEAD'].includes(req.method)&&pathname.startsWith('/api/comparison/audio/')){
+        const id=pathname.slice('/api/comparison/audio/'.length),audio=await listening?.audio(id,req.headers.range);
+        if(!audio)return json(res,404,{error:'没有这个试听样本'});
+        res.writeHead(audio.status,audio.headers);res.end(req.method==='HEAD'?undefined:audio.body);return;
+      }
       if (preview) return json(res, 503, { error: "当前是页面预览，还未连接 VLab 候选服务。" });
       if (req.method === "GET" && pathname === "/api/presentation") {
         const active = context.active;
@@ -446,6 +455,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       return voiceConversationContext(history.messages??[]);
     }});
     bridge = createLiveH5Server({ gateway,
+      listening:process.env.VOICE_LISTENING_DIR ? await (await import('./listening.mjs')).loadVoiceListening(process.env.VOICE_LISTENING_DIR) : undefined,
       directVoice, avatarLog,callControlAudit:transcriptLog.audit,
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",
       conversationEntries: process.env.VOICE_ENTRIES_FILE ? JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,"utf8")) : [],

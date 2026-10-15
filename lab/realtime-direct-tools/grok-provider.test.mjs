@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {EventEmitter} from 'node:events';
-import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICE_MODELS,GROK_EXPRESSIVE_INSTRUCTIONS,GROK_SPEECH_TAGS} from './grok-provider.mjs';
+import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICE_MODELS,GROK_EXPRESSIVE_INSTRUCTIONS,GROK_SPEECH_TAGS,inspectGrokSpeechTags} from './grok-provider.mjs';
 class Socket extends EventEmitter {constructor(){super();this.readyState=1;this.sent=[];}send(s){this.sent.push(JSON.parse(s));}close(){this.readyState=3;this.emit('close');}}
 async function fixture(model=GROK_VOICE_MODEL,voice='eve',options={}){const ws=new Socket(),calls=[],audio=[],text=[];
  const bridge=new GrokVoiceBridge({instructions:'中文',tools:[{type:'function',name:'memory_search',parameters:{type:'object'}}],onToolCall:c=>calls.push(c),onAudio:b=>audio.push(b),onTranscript:(...a)=>text.push(a)},
@@ -92,4 +92,10 @@ test('full documented delivery vocabulary supports nested styles and tags split 
   f.bridge.receive({type:'response.output_audio_transcript.done',response_id:'style-'+index,transcript:'前<'+tag+'>后</'+tag+'>'});assert.equal(f.text.at(-1)[1],'前后');
  }
  f.bridge.close();
+});
+
+test('comparison annotation checks distinguish valid phrase styling from orphan and crossed tags',()=>{
+ assert.equal(inspectGrokSpeechTags('<soft>先<emphasis>缓缓</emphasis>。</soft>[sigh]').valid,true);
+ for(const text of ['只有闭合</sing-song>','<soft>没有闭合','<soft><slow>交叉</soft></slow>','[invented]'])assert.equal(inspectGrokSpeechTags(text).valid,false,text);
+ assert.equal(inspectGrokSpeechTags('<soft>台词</soft>').plain,'台词');
 });
