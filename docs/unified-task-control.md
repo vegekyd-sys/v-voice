@@ -21,3 +21,36 @@ Voice 服务及插件放在独立 v-voice PR；公共 SDK 的两处必要修复�
 测试证据分别记录自动回归、真实 Agent 控制和真实语音。自动测试不能替代真实模型工具选择、手机音频或真人体验验收。
 
 本轮共享环境收尾已撤回 `voice-background-20261015` 并释放 lease；生产没有成功加载该 runtime。下一次正式发版必须现场检查平台 #371 的任务生命周期两处文件是否已经进入基线。若尚未进入，需要将已合入的 #371 产物与本轮 SDK 权限证明修复一同组合发布，不能把源码已合入当成生产已经生效。其他 agent 已接手的共享版本不由本任务覆盖。
+
+## 本任务交接边界
+
+按 Tianyi 本轮要求，本线程只做独立 Candidate 开发、验证和 PR 更新。Candidate 通过后报告实际调用、结果、限制与精确提交，由 Tianyi 指定的其他线程合 PR、做共享 VLab 集成和发布；本线程不领取 integration lease，也不重启共享或生产 Gateway。
+
+Voice 产物的 `gatewayRestartRequired:false` 只表示切换独立 Voice 服务本身不重启 Gateway。本轮新增 Voice 插件 RPC 并依赖公共 SDK 修复，接手线程必须先完成平台/插件加载，再切换 Voice。不能依据这一产物字段跳过平台依赖。
+
+功能验证使用真实 Worker，测试副本限制输出为 2048 token、使用低思考，禁止渠道、cron、浏览器和外部发送。它验证控制条件进入原任务并产生真实结果，不是生产默认输出预算的性能基线，也不代表手机音频验收。测试副本退出后回收，只保留脱敏 receipt。Tianyi 指出 DeepSeek 服务异常后，后续测试显式选择 `openai/gpt-6-luna` 且关闭模型回退；只向测试副本提供未过期的访问凭据，不复制刷新凭据，不修改共享或生产的模型和登录配置。
+
+## 已完成的独立执行证据
+
+Candidate `016afd84-baf5-4ba2-acd4-522ea51118f4` 在 `history-image-e3-20261015b` 基线上完成两个真实 Worker 场景。该轮在切换要求之前使用 DeepSeek；不能据此声称 Luna 已通过。
+
+| 场景 | 原任务 | 执行中的修改和追加 | 实际结果 |
+| --- | --- | --- | --- |
+| 同一任务文本结果 | exec 等待 12 秒后输出旧标记 | steer 改为新标记；followup 追加标记 | 原 run 返回 `CONTROL_NEW` 和 `FOLLOWUP_OK`，没有旧标记 |
+| 修改预算并增加雨天备选 | exec 等待后写预算 1000、无雨天备选的 JSON | steer 改预算为 500；followup 增加雨天备选 | 独立读取 Agent 真正写出的文件，得到 `budget:500, rainPlan:true` |
+
+两项分别在开始后约 21.9 秒和 23.6 秒取得最终结果，修改和追加均留在原 run。其他连接控制被拒绝，任务结束后的旧登记也被拒绝。整个 Candidate 含准备和清理约 132.6 秒，其中测试约 81.0 秒；共享 Gateway PID 前后保持 122630，未占共享 lease。
+
+Voice 自动回归 423/423；最新聚焦的共享协议、豆包会话与插件身份测试 45/45；平台 SDK、生命周期、GPT 原生控制及 catalog 相关测试 78/78。真实执行证据针对后台 Agent 与 RPC；豆包上游和 GPT 语音模型的自动用工具选择、手机音频不在这份结果中。
+
+## 非 DeepSeek 复验与测试配置
+
+切换要求之后的测试不再调用 DeepSeek。Luna (`openai/gpt-6-luna`) 已实际通过 Codex harness 执行工具；Candidate `a10ff7c0-a5e3-4eda-a412-260f2bd6036a` 中，第一项修改与追加标记在原 run 最终通过（约 25.2 秒）。第二项的两条条件均得到 queued 回执，但文件雨天字段仍为 false，所以该轮整体不通过，不能把接受回执当成生效证明。
+
+替代 API 模型采用已登记的 `openrouter/google/gemini-3.5-flash`，使用其支持的 off 思考档位；Luna 则为 low。复验结果以独立 receipt 为准，不因文本接近或调用成功就标记通过。
+
+测试器在私有插件登记后，通过 OpenClaw config-runtime 的 writeConfigFile 保存候选配置，清缓存后读回，并在 Gateway 启动后用 config.get 核对渠道关闭、单 Worker。模型显式绑定测试 session，关闭回退。45 秒控制请求等待仅属于测试器，不修改线上超时。凭据通过服务器私有临时文件提供，读取后删除；OAuth 只复制未过期 access，不复制 refresh。源码、PR 和报告不包含凭据。
+
+最新非 DeepSeek 真实复验已通过：Candidate `2003076a-8c0b-403c-a6dc-4df01d7ccbba`，使用 `openrouter/google/gemini-3.5-flash`、off 思考、2048 输出测试预算。两个场景均在原 run 完成，标记结果约 28.4 秒；真实文件 `budget:500, rainPlan:true` 约 38.4 秒。控制回执分别约 57/24 毫秒与 11/19 毫秒。两个场景的外来连接与结束后控制均被拒绝；整个服务器流程约 95.3 秒。共享 PID 仍为 122630，未占 lease、未改生产。脱敏结果见 `docs/acceptance/unified-task-control-20261015.json`。
+
+测试器现在必须显式传入非 DeepSeek 的 `--model`，不再静默沿用共享默认模型。Luna 可调用，但该轮 1/2 的执行结果不足以作为通过证据，本轮交付以 Gemini 的实际执行结果为准。
