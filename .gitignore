@@ -6,3 +6,5 @@ state/
 artifacts/
 *.log
 .DS_Store
+
+/tmp/

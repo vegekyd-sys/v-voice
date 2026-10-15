@@ -51,10 +51,27 @@ test('simultaneous delegation does not launch duplicate runs; one call can conti
   const second=f.start();await delay(0);f.event(f.backend.snapshot().runId,'final',{text:'第二个完成'});await second;
   assert.equal(f.calls.filter(c=>c.method==='chat.send').length,2);
 });
+test('terminal native poll without sessionId releases only its exact owned process',async()=>{
+  const f=fixture(),first=f.start();await delay(0);const {runId}=f.backend.snapshot();
+  const tool=(data,scope=runId)=>f.backend.handleEvent({event:'agent',payload:{runId:scope,sessionKey:f.sessionKey,stream:'tool',data}});
+  tool({name:'exec',phase:'result',toolCallId:'exec',result:{details:{status:'running',sessionId:'owned'}}});
+  tool({name:'process',phase:'start',toolCallId:'poll',args:{action:'poll',sessionId:'owned'}});
+  tool({name:'process',phase:'result',toolCallId:'poll',result:{details:{status:'completed'}}},'foreign');
+  tool({name:'process',phase:'start',toolCallId:'other-poll',args:{action:'poll',sessionId:'foreign-process'}});
+  tool({name:'process',phase:'result',toolCallId:'other-poll',result:{details:{status:'completed'}}});
+  f.event(runId,'final',{text:'消息已发送'});await first;
+  assert.ok(f.backend.snapshot());await assert.rejects(f.start(),/已有一个/);
+  tool({name:'process',phase:'result',toolCallId:'poll',result:{details:{status:'completed',name:'python3'}}});
+  assert.equal(f.backend.snapshot(),null);
+  const second=f.start();await delay(0);f.event(f.backend.snapshot().runId,'final',{text:'日程已修改'});await second;
+  assert.equal(f.calls.filter(c=>c.method==='chat.send').length,2);
+});
 test('terminal wait reconciles only durable exact-run public text',async()=>{
   const f=fixture(async(method,args)=>{if(method==='agent.wait')return {status:'ok'};if(method==='chat.history')return {messages:[{role:'assistant',__openclaw:{runId:f.backend.snapshot().runId},text:'后台真实答案'},{role:'assistant',__openclaw:{runId:'other'},text:'另一个会话'}]};});
   assert.equal((await f.start()).result,'后台真实答案');
   assert.equal(visibleText({phase:'analysis',text:'不能公开'}),'');assert.equal(visibleText({phase:'commentary',text:'不是最终值'}),'');
+  assert.equal(visibleText({openclawStreamFallback:{source:'segment'},text:'图片已提交，现在开始做视频。'}),'');
+  assert.equal(visibleText({stopReason:'toolUse',content:[{type:'text',text:'现在运行Makaron。'},{type:'toolCall',name:'exec'}]}),'');
 });
 test('unconfirmed cancellation blocks another goal until exact-run termination is observed',async()=>{
   let cancelled=false,confirmed=false;const f=fixture(method=>method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:confirmed?'error':'timeout',aborted:confirmed}:new Promise(()=>{}));

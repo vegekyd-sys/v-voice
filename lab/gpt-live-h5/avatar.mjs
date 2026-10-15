@@ -1,5 +1,5 @@
 import { avatarPicture } from './avatar-catalog.mjs';
-import { AVATAR_POSES, AVATAR_SEQUENCES } from './avatar-state.mjs';
+import { AVATAR_POSES, AVATAR_SEQUENCES, HOME_AVATAR_FILE } from './avatar-state.mjs';
 
 export const MAX_REACTION_DWELL_MS = 5000;
 export const THINKING_POSE_DWELL_MS = MAX_REACTION_DWELL_MS;
@@ -35,7 +35,9 @@ export function mountAvatar(document, window, {onDisplayed=()=>{},owner=()=>null
   const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const cache = new Map(), decoded = new Set();
   const load = file => {
-    const url = './assets/' + (small ? file.replace('-512.webp','-256.webp') : file);
+    // The first-screen hero needs Retina detail; reactions keep their existing
+    // lightweight mobile/desktop sizes and their existing download schedule.
+    const url = './assets/' + (file === AVATAR_POSES.idle ? HOME_AVATAR_FILE : small ? file.replace('-512.webp','-256.webp') : file);
     if (!cache.has(url)) cache.set(url, new Promise(resolve => {
       const preload = new window.Image();
       preload.onload = async () => { try { await preload.decode?.(); decoded.add(file); resolve(url); } catch { cache.delete(url); resolve(null); } };

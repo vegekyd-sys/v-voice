@@ -14,7 +14,7 @@ async function fixture(t, overrides = {}) {
     return method === "talk.client.create" ? reservation : { ok: true };
   } };
   const offers = [];
-  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice });
+  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice,callControlEvaluate:overrides.callControlEvaluate });
   await new Promise((resolve) => bridge.server.listen(0, "127.0.0.1", resolve));
   t.after(() => bridge.dispose());
   const url = `http://127.0.0.1:${bridge.server.address().port}`;
@@ -171,6 +171,7 @@ test('owned backend model end receipts preserve real tool/run and native identit
     type: 'tool.result', callId: 'call_real_end', payload: { name: 'openclaw_end_call', source: 'backend_model_client_tool',
       status: 'accepted', requestId: 'item_native', nativeDelegationId: 'item_native', originUserTurnId: 'turn_native',
       delegationGeneration: 3, backendToolCallId: 'call_real_end', backendRunId: 'talk-realtime-consult:actual:parent',
+      nativeAssistantTurnIdAtAcceptance:'native_combined',
       closeAfterPlayback: true, userTurnText: 'private caller phrase', args: { secret: 'must not leak' }, hidden: 'not-for-browser' } } } });
   const body = new TextDecoder().decode((await reader.read()).value);
   const value = JSON.parse(body.slice(body.indexOf('data: ') + 6).trim());
@@ -179,6 +180,7 @@ test('owned backend model end receipts preserve real tool/run and native identit
   assert.equal(value.requestId, 'item_native'); assert.equal(value.nativeDelegationId, 'item_native');
   assert.equal(value.originUserTurnId, 'turn_native'); assert.equal(value.delegationGeneration, 3);
   assert.equal(value.backendRunId, 'talk-realtime-consult:actual:parent');
+  assert.equal(value.nativeAssistantTurnIdAtAcceptance,'native_combined');
   assert.doesNotMatch(body, /private caller|secret|hidden|not-for-browser/u);
   stop.abort(); await reader.cancel().catch(() => {});
 });
@@ -231,10 +233,10 @@ test('authenticated presentation snapshot recovers pending work and full documen
  let view=await read();assert.equal(view.revision,1);assert.deepEqual(view.pending.map(x=>x.callId),['run']);assert(!JSON.stringify(view).includes('private query'));
  const text='## 完整原始报告\n'+ '日期和条件不变。'.repeat(500);
  emit('tool.result','run',{name:'openclaw_agent_consult'});emit('tool.result','doc',{name:'openclaw_backend_result',text});
- view=await read(1);assert.equal(view.pending.length,0);assert.equal(view.documents[0].text,text);assert.equal(view.revision,3);
+ view=await read(1);assert.equal(view.controls[0].backendFinal,true);assert.equal(view.controls[0].callId,'run');assert.equal(view.pending.length,0);assert.equal(view.documents[0].text,text);assert.equal(view.revision,3);
  assert.equal((await read(3)).documents.length,0);
  emit('tool.result','end',{name:'openclaw_end_call',requestId:'end',originUserTurnId:'u',closeAfterPlayback:true,secret:'excluded'});
- view=await read(3);assert.equal(view.controls.length,1);assert.equal(view.controls[0].closeAfterPlayback,true);assert(!JSON.stringify(view.controls).includes('excluded'));
+ view=await read(3);assert.equal(view.controls.length,2);assert.equal(view.controls[1].closeAfterPlayback,true);assert(!JSON.stringify(view.controls).includes('excluded'));
  const controlsAfter=await fetch(f.url+'/api/presentation?controlsAfter=4',{headers:{cookie:f.cookie}});assert.equal((await controlsAfter.json()).controls.length,0);
  await f.request('close',{voiceSessionId:'voice-private'});assert.equal((await read()).voiceSessionId,null);
  await f.request('session');view=await read();assert.equal(view.revision,0);assert.equal(view.documents.length,0);
@@ -287,4 +289,38 @@ test('all three providers persist browser reports under their authoritative voic
   assert.equal((await f.request('avatar-events',body)).status,200);assert.equal(rows[0].owner.provider,model==='gpt-live'?'openai':model);assert.equal(rows[0].owner.model,model==='gpt-live'?'gpt-live-1-codex':model+'-real-reservation');
   await f.request('close',{voiceSessionId});rows[0].owner.endedAt=Date.now()-300001;assert.equal((await f.request('avatar-events',body)).status,409);
  }
+});
+test('streamed USER control is owned, current and confirmed separately from proposal',async t=>{
+ const f=await fixture(t,{callControlEvaluate:async()=>({answers:{endIntent:{type:'noul',noul:1}}})});await f.request('session');
+ let revision=0;const emit=(text,turnId='u',final=false)=>f.request('call-control-input',{voiceSessionId:'voice-private',revision:++revision,turnId,text,final});
+ await emit('请');await emit('请挂断电话');await new Promise(r=>setTimeout(r,1250));
+ const snapshot=await (await fetch(f.url+'/api/presentation',{headers:{cookie:f.cookie}})).json();const value=snapshot.controls.at(-1);
+ assert.equal(value.type,'voice.end.proposed');assert.equal(value.userText,'请挂断电话');assert.equal(f.calls.filter(x=>x.method==='voice.product.control').length,0);
+ assert.equal((await f.request('call-control-confirm',{voiceSessionId:'foreign',control:value})).status,409);
+ await emit('请挂断电话之前查一下日程');assert.equal((await f.request('call-control-confirm',{voiceSessionId:'voice-private',control:value})).status,409);assert.equal(f.calls.filter(x=>x.method==='voice.product.control').length,0);
+ await emit('拜拜','bye',true);await new Promise(r=>setImmediate(r));
+ const last=await (await fetch(f.url+'/api/presentation',{headers:{cookie:f.cookie}})).json();const confirmed=await f.request('call-control-confirm',{voiceSessionId:'voice-private',control:last.controls.at(-1)});
+ assert.equal(confirmed.status,200);assert.equal((await confirmed.json()).type,'voice.end.accepted');assert.equal(f.calls.filter(x=>x.method==='voice.product.control').length,1);
+});
+test('caption input rejects another reservation and obsolete revisions without allowing Gateway transcripts to revoke native input',async t=>{
+ const f=await fixture(t,{callControlEvaluate:async()=>({answers:{endIntent:{type:'noul',noul:1}}})});await f.request('session');
+ const caption={voiceSessionId:'voice-private',turnId:'native-current',text:'请挂断电话',final:true,revision:2};
+ assert.equal((await f.request('call-control-input',{...caption,voiceSessionId:'foreign'})).status,409);
+ assert.equal((await f.request('call-control-input',caption)).status,200);await new Promise(r=>setImmediate(r));
+ assert.equal((await f.request('call-control-input',{...caption,text:'旧字幕',revision:1})).status,409);
+ f.bridge.emit({event:'talk.event',payload:{voiceSessionId:'voice-private',talkEvent:{type:'transcript.done',turnId:'normalized-previous',payload:{role:'user',text:'旧话轮'}}}});
+ const snapshot=await (await fetch(f.url+'/api/presentation',{headers:{cookie:f.cookie}})).json();assert.equal(snapshot.controls.at(-1).userText,'请挂断电话');
+ assert.equal((await f.request('call-control-confirm',{voiceSessionId:'voice-private',control:snapshot.controls.at(-1)})).status,200);
+});
+
+test('relay reports recover through the owned presentation endpoint and require the matching UI receipt',async t=>{
+ const received=[];const directVoice={reserve:async()=>({voiceSessionId:'direct-report',transport:'gateway-relay'}),close:async()=>{},dispose:async()=>{},
+  presentation:(id,after)=>({voiceSessionId:id,revision:3,pending:[],documents:after<3?[{type:'backend.result',voiceSessionId:id,callId:'report-1',revision:3,text:'# 真实报告'}]:[],controls:[]}),
+  contentShown:(id,callId)=>{received.push([id,callId]);return callId==='report-1';}};
+ const f=await fixture(t,{directVoice});await f.request('session',{model:'seeduplex'});
+ const view=await fetch(f.url+'/api/presentation?after=0',{headers:{cookie:f.cookie}});const data=await view.json();assert.equal(data.documents[0].text,'# 真实报告');
+ assert.equal((await f.request('content-shown',{voiceSessionId:'foreign',callId:'report-1'})).status,409);assert.equal(received.length,0);
+ assert.equal((await f.request('content-shown',{voiceSessionId:'direct-report',callId:'unknown'})).status,409);
+ assert.equal((await f.request('content-shown',{voiceSessionId:'direct-report',callId:'report-1'})).status,200);
+ assert.equal((await fetch(f.url+'/api/presentation?after=3',{headers:{cookie:f.cookie}}).then(r=>r.json())).documents.length,0);
 });

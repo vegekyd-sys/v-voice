@@ -1,3 +1,4 @@
+import { APPROVED_REACTION_ADDITIONS } from './avatar-approved-reactions.mjs';
 // Only a coarse visual category crosses the wire; never arguments or results.
 export const AVATAR_POSES = Object.freeze({
   idle: 'v-operator-idle-512.webp',
@@ -7,10 +8,12 @@ export const AVATAR_POSES = Object.freeze({
   calendar: 'v-operator-square-calendar-0-512.webp',
   background: 'v-operator-square-background-0-512.webp',
   complete: 'v-operator-square-complete-0-512.webp',
+  reaction: 'v-operator-square-reaction-0-512.webp',
 });
 export const AVATAR_SEQUENCES = Object.freeze(Object.fromEntries(Object.keys(AVATAR_POSES).map(pose => [pose,
-  Object.freeze(pose === 'idle' ? [AVATAR_POSES.idle] : Array.from({length:6}, (_,i)=>`v-operator-square-${pose}-${i}-512.webp`))])));
-export const AVATAR_FILES = Object.values(AVATAR_SEQUENCES).flatMap(files => files.flatMap(file => [file,file.replace('-512.webp','-256.webp')]));
+  Object.freeze(pose === 'idle' ? [AVATAR_POSES.idle] : Array.from({length:pose==='reaction'?APPROVED_REACTION_ADDITIONS.length:6}, (_,i)=>`v-operator-square-${pose}-${i}-512.webp`))])));
+export const HOME_AVATAR_FILE = 'v-operator-home-1024.webp';
+export const AVATAR_FILES = [HOME_AVATAR_FILE, ...Object.values(AVATAR_SEQUENCES).flatMap(files => files.flatMap(file => [file,file.replace('-512.webp','-256.webp')]))];
 export const ACTIVITY_LABELS = Object.freeze({memory:'正在查记忆', web:'正在查资料', calendar:'正在查日程', background:'后台处理中'});
 export function taskActivity(name, args = {}, depth = 0) {
   if (['end_call','openclaw_end_call','openclaw_live_call_control','cancel_task','current_time'].includes(name)) return 'control';

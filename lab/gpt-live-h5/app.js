@@ -1,15 +1,21 @@
+import { entryStartup, startVoiceEntry, markVoiceTiming } from "./entry-startup.mjs";
 import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
 import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { createAvatarTelemetry } from "./avatar-telemetry.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
+import { createContentView } from "./content-view.mjs";
+import { mountProductControls } from "./product-controls.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 import { createPageMicrophoneSession } from "./microphone-session.mjs";
 import { createCallSounds } from "./call-sounds.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 import { createRelayAudio } from "./relay-audio.mjs";
+import { createScreenWakeLock } from "./screen-wake-lock.mjs";
+import { mountChangelog } from "./changelog.mjs";
 
 const $ = (id) => document.getElementById(id);
+if (document.querySelector) mountChangelog(document, window);
 let microphoneSession = createPageMicrophoneSession();
 let call = null;
 let starting = null;
@@ -17,24 +23,33 @@ let avatarDiagnosticOwner = null;
 let liveReady = false;
 let entryError = null;
 let callerEntry = "tianyi";
-const apiUrl = route => `./api/${route}${callerEntry === "tianyi" ? "?entry=tianyi" : ""}`;
+const phoneEntry = new URLSearchParams(window.location.search).get("phone");
+const apiUrl = route => `./api/${route}?${phoneEntry ? `phone=${encodeURIComponent(phoneEntry)}` : `entry=${callerEntry}`}`;
 const duplexRecoveryMessage = "上一段语音还没确认结束。若仍无声音，请结束通话后重新开始。";
 const playbackRecoveryMessage = "声音播放被暂停了，点一下页面恢复声音。";
 const greetingGraceMs = 15000;
 const presentation = createTranscriptPresentation();
 const renderedTurns = new Map();
+const contentView = document.querySelector ? createContentView(document, window) : null;
+const productControls = document.querySelector ? mountProductControls(document, window, {
+  onMute: muted => { if (!call?.stream) return false; for (const track of call.stream.getAudioTracks()) track.enabled = !muted; return true; },
+}) : null;
 const tasks = createAvatarTasks();
 const avatar = typeof window.Image === "function" ? mountAvatar(document, window, {owner:()=>call?.voiceSessionId,onDisplayed:event=>call?.avatarTelemetry?.display(event)}) : null;
 const sceneAnimations = new Map();
+const screenWakeLock = createScreenWakeLock({ navigator, document, onState: state => { document.body.dataset.screenWakeLock = state; } });
 function setCallState(state) {
+  if (state === "connected" && document.body.dataset.callState === "dialing") markVoiceTiming("voice.connection.ready");
+  screenWakeLock.setActive(state !== 'idle');
   if (document.body.dataset.callState === state) return;
-  const animate = window.matchMedia?.("(max-width: 900px)").matches
+  const animate = typeof window.matchMedia === "function"
     && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const elements = animate ? [document.querySelector?.(".portrait-wrap"), document.querySelector?.(".call-actions")].filter(Boolean) : [];
   const before = elements.map(element => element.getBoundingClientRect());
   for (const animation of sceneAnimations.values()) animation.cancel();
   sceneAnimations.clear();
   document.body.dataset.callState = state;
+  productControls?.callState(state);
   elements.forEach((element, index) => {
     const from = before[index], to = element.getBoundingClientRect();
     if (!from.width || !to.width || typeof element.animate !== "function") return;
@@ -48,9 +63,11 @@ function setCallState(state) {
     animation.onfinish = () => { if (sceneAnimations.get(element) === animation) sceneAnimations.delete(element); };
   });
 }
-const setStatus = (text) => {
+const setStatus = (text, { tone = "info" } = {}) => {
   $("status").textContent = text;
-  $("status").dataset.notice = text === "拨号后，直接说话。" ? "normal" : "message";
+  $("status").dataset.tone = tone;
+  $("status").dataset.notice = ["拨号后，直接说话。", "V 正在听，直接说话就好"].includes(text) ? "normal"
+    : ["正在连接 V…", "正在结束通话…"].includes(text) ? "progress" : "message";
 };
 function duplexDiagnostic(active, entry) {
   if (call !== active) return;
@@ -167,6 +184,31 @@ function armAutomaticEnd(active, request) {
     setStatus("语音尚未确认播完，可以点按钮结束通话。");
   }, 15000);
 }
+function requestVoiceHostEnd(active,value){
+  if(call!==active||value.source!=='voice_host_control'||value.closeAfterPlayback!==true||typeof value.userText!=='string'||typeof value.requestId!=='string')return;
+  active.pendingVoiceEnd=value;applyVoiceHostEnd(active);
+}
+function applyVoiceHostEnd(active){
+ const value=active.pendingVoiceEnd;
+ if(!value||value.userText!==active.nativeUserText||!active.latestNativeUserTurnId||active.microphoneQuietSince==null||performance.now()-active.microphoneQuietSince<600||performance.now()-(active.nativeUserTextAt??performance.now())<1200)return;
+ if(value.type==='voice.end.proposed'){
+  if(active.confirmingVoiceEnd===value.requestId)return;
+  active.confirmingVoiceEnd=value.requestId;
+  void api('call-control-confirm',{voiceSessionId:active.voiceSessionId,control:value}).then(accepted=>{
+   if(call!==active||active.pendingVoiceEnd!==value||active.nativeUserText!==value.userText||active.microphoneQuietSince==null)return;
+   active.pendingVoiceEnd=accepted;applyVoiceHostEnd(active);
+  }).catch(()=>{if(active.pendingVoiceEnd===value)active.pendingVoiceEnd=null;}).finally(()=>{if(active.confirmingVoiceEnd===value.requestId)active.confirmingVoiceEnd=null;});
+  return;
+ }
+ active.pendingVoiceEnd=null;
+ const request=endCallRequest(active,value.requestId,active.latestNativeUserTurnId);if(!request)return;
+ request.accepted=true;request.providerObserved=true;request.voiceHostPath=true;request.expectedFarewell='再见下次聊';
+ // GPT Live may append the requested farewell inside its already-open turn.
+ const current=active.nativeAssistantPlayback?.get(active.currentNativeAssistantTurnId);
+ if(current&&current.terminalAt===null)request.turnId=active.currentNativeAssistantTurnId;
+ request.userText=value.userText;active.endNativeRequestId=request.requestId;armAutomaticEnd(active,request);
+ if(active.channel?.readyState==='open')active.channel.send(JSON.stringify({type:'session.context.append',event_id:'voice-farewell-'+value.requestId,content:[{type:'input_text',text:'当前用户已经明确结束这次电话。停止旧结果播报，只说一句：再见，下次聊。然后安静等待主机关闭。'}],channel:'speakable'}));
+}
 function requestAutomaticEnd(active, value) {
   if (call !== active || value.name !== "openclaw_end_call" || value.closeAfterPlayback !== true) return;
   const backendPath = value.source === "backend_model_client_tool";
@@ -176,6 +218,8 @@ function requestAutomaticEnd(active, value) {
       !/^[a-zA-Z0-9_.:-]{1,256}$/.test(value.backendRunId ?? "") ||
       !Number.isSafeInteger(value.delegationGeneration) || value.delegationGeneration < 1 ||
       !active.completedNativeUserTurns?.has(value.originUserTurnId)) return;
+    if (value.nativeAssistantTurnIdAtAcceptance !== undefined &&
+      !/^[a-zA-Z0-9_.:-]{1,160}$/.test(value.nativeAssistantTurnIdAtAcceptance)) return;
   } else if (value.callId !== value.requestId) return;
   const request = endCallRequest(active, value.requestId, value.originUserTurnId);
   if (!request) return;
@@ -190,6 +234,13 @@ function requestAutomaticEnd(active, value) {
     const observed = active.nativeCallControlDelegations?.get(value.nativeDelegationId);
     request.providerObserved = observed?.originUserTurnId === value.originUserTurnId;
     if (request.providerObserved) active.endNativeRequestId = request.requestId;
+    // The provider can append goodbye to an already open assistant turn.
+    // Only the authenticated host may identify that turn at tool acceptance.
+    const played = active.nativeAssistantPlayback?.get(value.nativeAssistantTurnIdAtAcceptance);
+    if (played?.originUserTurnId === request.originUserTurnId) {
+      request.turnId = value.nativeAssistantTurnIdAtAcceptance;
+      for (const field of ["terminalAt", "audioObserved", "quietSince", "lastSampleAt"]) request[field] = played[field];
+    }
   }
   request.accepted = true;
   armAutomaticEnd(active, request);
@@ -221,11 +272,19 @@ function observeNativeEndDelegation(active, item) {
   armAutomaticEnd(active, request);
 }
 function observeAutomaticEnd(active, at, energy) {
+  const audio = $("remoteAudio");
+  const played = active.nativeAssistantPlayback?.get(active.currentNativeAssistantTurnId);
+  if (played) {
+    if (played.lastSampleAt !== null && at - played.lastSampleAt > 125) played.quietSince = null;
+    played.lastSampleAt = at;
+    if (active.context?.state !== "running" || audio.paused || audio.muted || active.playbackNeedsGesture) played.quietSince = null;
+    else if (energy > .003) { played.audioObserved = true; played.quietSince = null; }
+    else if (played.terminalAt !== null && played.audioObserved) played.quietSince ??= at;
+  }
   // Keep the genuine native farewell observation even if the host SSE travels
   // slower than WebRTC. It authorizes closing only when both proofs join.
   const ending = active.endRequests?.get(active.endNativeRequestId);
   if (!ending || ending.invalidated || !ending.providerObserved || !ending.turnId || call !== active) return;
-  const audio = $("remoteAudio");
   if (ending.lastSampleAt !== null && at - ending.lastSampleAt > 125) ending.quietSince = null;
   ending.lastSampleAt = at;
   if (active.context?.state !== "running" || audio.paused || audio.muted || active.playbackNeedsGesture) {
@@ -315,6 +374,40 @@ function taskState() {
   document.body.dataset.avatarState = tasks.size > 1 ? "very-busy" : tasks.size ? "busy" : "idle";
   avatarContext();
 }
+function receiveDocument(active,value){
+  if(call!==active||value.voiceSessionId!==active.voiceSessionId)return;
+  renderTranscript(presentation.consume(value));
+  if(![...renderedTurns.values()].some(row=>row.dataset.documentCallId===value.callId))return;
+  void api('content-shown',{voiceSessionId:active.voiceSessionId,callId:value.callId}).catch(()=>{});
+}
+function startPresentationRecovery(active,applyNativeControl=()=>{}){
+    // Authenticated recovery is shared by native and relay transports.
+    const refreshPresentation = async () => {
+      if (call !== active || active.presentationFetching) return;
+      active.presentationFetching = true;
+      active.presentationAbort ??= new AbortController();
+      try {
+        const response = await fetch(apiUrl('presentation') + `&after=${active.documentRevision ?? 0}&controlsAfter=${active.controlRevision ?? 0}`, { signal: active.presentationAbort.signal });
+        if (!response.ok) return;
+        const value = await response.json();
+        if (call !== active || value.voiceSessionId !== active.voiceSessionId ||
+          !Number.isSafeInteger(value.revision) || value.revision < (active.presentationRevision ?? 0)) return;
+        for(const item of value.controls ?? []) {
+          if(item.voiceSessionId !== active.voiceSessionId || !Number.isSafeInteger(item.revision) || item.revision <= (active.controlRevision ?? 0))continue;
+          applyNativeControl(item); active.controlRevision = item.revision;
+        }
+        tasks.clear();
+        for (const item of value.pending ?? []) tasks.consume(item);
+        for (const item of value.documents ?? []) receiveDocument(active,item);
+        active.presentationRevision = value.revision;
+        active.documentRevision = value.revision;
+        taskState();
+      } catch { /* A transient presentation failure never closes the audio call. */ }
+      finally { active.presentationFetching = false; }
+    };
+    active.presentationPoll = setInterval(() => void refreshPresentation(), 1500);
+    void refreshPresentation();
+ }
 function renderTranscript(snapshot) {
   const log = $("conversation");
   const follow = log.scrollHeight - log.scrollTop - log.clientHeight < 64;
@@ -339,16 +432,18 @@ function renderTranscript(snapshot) {
         row.parts = { speaker, time, text };
         renderedTurns.set(item.key, row);
       }
+      if(item.document)row.dataset.documentCallId=item.callId;
       const streaming = String(Boolean(call) && !item.complete);
       if (row.dataset.streaming !== streaming) row.dataset.streaming = streaming;
       if (row.parts.speaker.textContent !== item.speaker) row.parts.speaker.textContent = item.speaker;
       if (row.parts.time.textContent !== item.time) row.parts.time.textContent = item.time;
       const dateTime = new Date(item.at).toISOString();
       if (row.parts.time.dateTime !== dateTime) row.parts.time.dateTime = dateTime;
-      if (row.rawText !== item.text) {
-        if (item.role === "assistant") renderMarkdown(row.parts.text, item.text, document);
+      if (row.rawText !== item.text || row.complete !== item.complete) {
+        if (item.role === "assistant" && contentView) contentView.render(row.parts.text, item, {auto:item.document === true});
+        else if (item.role === "assistant") renderMarkdown(row.parts.text, item.text, document);
         else row.parts.text.textContent = item.text;
-        row.rawText = item.text;
+        row.rawText = item.text; row.complete = item.complete;
       }
       if (parent.children[index] !== row) parent.insertBefore(row, parent.children[index] ?? null);
     }
@@ -357,9 +452,21 @@ function renderTranscript(snapshot) {
   avatarContext(snapshot);
 }
 function resetTranscript() {
-  presentation.reset(); renderedTurns.clear();
+  contentView?.reset(); presentation.reset(); renderedTurns.clear();
   $("transcriptHistory").replaceChildren(); $("transcriptCurrentRows").replaceChildren();
   renderTranscript(presentation.snapshot());
+}
+function reportNativeCaller(active,final=false){
+ if(call!==active||!active.nativeUserText||!active.latestNativeUserTurnId)return;
+ const revision=active.callControlCaptionRevision=(active.callControlCaptionRevision??0)+1;
+ void api('call-control-input',{voiceSessionId:active.voiceSessionId,revision,turnId:active.latestNativeUserTurnId,text:active.nativeUserText.slice(-2400),final}).catch(()=>{});
+}
+function updateNativeUserText(active,text){
+ const next=text.trim();if(next===active.nativeUserText)return;
+ active.nativeUserText=next;active.nativeUserTextAt=performance.now();reportNativeCaller(active);
+ if(active.pendingVoiceEnd&&active.pendingVoiceEnd.userText!==next)active.pendingVoiceEnd=null;
+ const request=active.endRequests?.get(active.endNativeRequestId);
+ if(request?.voiceHostPath&&request.userText!==next){request.invalidated=true;active.endNativeRequestId=null;cancelAutomaticEnd(active);}
 }
 function providerMessage(event) {
   let data;
@@ -372,13 +479,23 @@ function providerMessage(event) {
   if (active && data.type === "turn.done" && data.turn?.role === "user" &&
     data.turn.id === active.latestNativeUserTurnId && typeof data.turn.transcript === "string" && data.turn.transcript.trim()) {
     active.completedNativeUserTurns ??= new Set(); active.completedNativeUserTurns.add(data.turn.id);
+    active.completedNativeUserText=data.turn.transcript.trim();updateNativeUserText(active,data.turn.transcript);reportNativeCaller(active,true);applyVoiceHostEnd(active);
     if (active.completedNativeUserTurns.size > 256) active.completedNativeUserTurns.delete(active.completedNativeUserTurns.values().next().value);
   }
   if (active && data.type === "turn.created" && ["user", "assistant"].includes(data.turn?.role)) {
     const at = performance.now();
     duplexDiagnostic(active, { type: "native-turn-created", at, role: data.turn.role });
     if (data.turn.role === "user") {
+      const old=active.nativeAssistantPlayback?.get(active.currentNativeAssistantTurnId);
+      if(active.backendFinalReady&&old?.audioObserved&&(old.terminalAt===null||at-old.terminalAt<250)&&active.channel?.readyState==='open'){
+        active.channel.send(JSON.stringify({type:'session.context.append',channel:'developer',content:[{type:'input_text',text:'The caller has interrupted the previous spoken reply. Its remaining speech plan is permanently retired, including any backend result reading. Never resume or append that old answer after the caller finishes. Respond only to the latest caller turn. This is silent host state, not a request to speak or cancel backend work.'}]}));
+        duplexDiagnostic(active,{type:'native-speech-plan-retired',at,turnId:active.currentNativeAssistantTurnId});
+      }
+      active.backendFinalReady=false;
+      active.nativeAssistantPlayback?.clear(); active.currentNativeAssistantTurnId = null;
+      active.completedNativeUserText=null;active.pendingVoiceEnd=null;active.nativeUserText='';active.microphoneQuietSince=null;
       active.latestNativeUserTurnId = typeof data.turn.id === "string" ? data.turn.id : null;
+      updateNativeUserText(active,data.turn.transcript??'');
       for (const request of active.endRequests?.values() ?? []) request.invalidated = true;
       active.endNativeRequestId = null;
       active.duplex.notifyUserTurnStarted(at);
@@ -386,6 +503,11 @@ function providerMessage(event) {
       // This is a native turn event, not a phrase/keyword match on captions.
       cancelAutomaticEnd(active);
     } else if (typeof data.turn.id === "string" && data.turn.id.trim()) {
+      active.nativeAssistantPlayback ??= new Map();
+      active.currentNativeAssistantTurnId = data.turn.id;
+      active.nativeAssistantPlayback.set(data.turn.id, { originUserTurnId: active.latestNativeUserTurnId,
+        terminalAt: null, audioObserved: false, quietSince: null, lastSampleAt: null });
+      if (active.nativeAssistantPlayback.size > 32) active.nativeAssistantPlayback.delete(active.nativeAssistantPlayback.keys().next().value);
       active.duplex.notifyAssistantTurnCreated(data.turn.id, at);
       const request = active.endRequests?.get(active.endNativeRequestId);
       if (request && !request.invalidated && (!request.backendPath || request.accepted && request.providerObserved)) {
@@ -394,13 +516,22 @@ function providerMessage(event) {
       }
     }
   }
+  if(active&&data.type==='turn.delta'&&data.turn_id===active.latestNativeUserTurnId&&typeof data.delta==='string')updateNativeUserText(active,(active.nativeUserText??'')+data.delta);
   if (active && data.type === "turn.done" && data.turn?.role === "assistant") {
     const at = performance.now();
+    const played = active.nativeAssistantPlayback?.get(data.turn.id);
+    if (played) played.terminalAt = at;
     duplexDiagnostic(active, { type: "native-turn-done", at, role: "assistant" });
     if (typeof data.turn.id === "string" && data.turn.id.trim())
       active.duplex.notifyAssistantTurnDone(data.turn.id, at);
     const request = active.endRequests?.get(active.endNativeRequestId);
-    if (request && !request.invalidated && request.turnId === data.turn?.id) request.terminalAt = at;
+    if (request && !request.invalidated && request.turnId === data.turn?.id){
+      if(request.voiceHostPath){
+       const spoken=typeof data.turn.transcript==='string'?data.turn.transcript.replace(/[\s，,。.!！?？、]/gu,''):'';
+       if(!spoken.includes(request.expectedFarewell)){request.turnId=null;request.terminalAt=null;request.audioObserved=false;request.quietSince=null;return;}
+      }
+      request.terminalAt=at;
+    }
   }
   if (active && data.type === "output_audio_buffer.cleared") {
     const at = performance.now();
@@ -408,7 +539,7 @@ function providerMessage(event) {
     active.duplex.notifyOutputAudioCleared(at);
   }
   renderTranscript(presentation.consume(data, Date.now()));
-  if (data.type === "error") setStatus("语音服务报告错误，请结束通话后重试。");
+  if (data.type === "error") setStatus("语音服务报告错误，请结束通话后重试。", { tone: "error" });
 }
 async function stopCall() {
   const active = call; call = null;
@@ -430,8 +561,10 @@ async function stopCall() {
   $("remoteAudio").srcObject = null;
   $("remoteAudio").muted = false;
   tasks.clear(); taskState(); document.body.dataset.voiceState = "idle";
+  resetTranscript();
+  $("conversation").scrollTop = 0;
+  $("steerText").value = "";
   setCallState("idle");
-  renderTranscript(presentation.snapshot());
   $("start").hidden = false; $("start").disabled = false; $("stop").hidden = true;
   $("steerText").disabled = true; $("steer").disabled = true;
   $("badge").textContent = liveReady ? "可以拨号" : "页面预览";
@@ -446,8 +579,11 @@ async function stopCall() {
 async function startCall() {
   if (starting || call) return;
   if (!liveReady) { setStatus(entryError ?? "当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
+  for (const name of ["voice.dial.requested", "voice.microphone.ready", "voice.reservation.ready", "voice.connection.ready"])
+    performance.clearMarks?.(name);
+  markVoiceTiming("voice.dial.requested");
   $("start").disabled = true; $("start").hidden = true; $("stop").hidden = false;
-  $("stopLabel").textContent = "取消拨号"; $("badge").textContent = "拨号中";
+  $("stopLabel").textContent = "取消拨号"; $("badge").textContent = "连接中";
   setCallState("dialing"); setStatus("正在连接 V…");
   resetTranscript();
   const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController() }; call = active; starting = active;
@@ -483,9 +619,10 @@ async function startCall() {
       isCurrent: () => call === active,
       onDiagnostics: (metadata) => { if (call === active) active.duplexDiagnostics.microphone = metadata; },
     });
+    markVoiceTiming("voice.microphone.ready");
     active.stream = active.capture.stream;
     if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
-    const reservation = await api("session", {model:['seeduplex','grok'].includes($("voiceModel")?.value)?$("voiceModel").value:'gpt-live'}); active.voiceSessionId = reservation.voiceSessionId;
+    const reservation = await api("session", {model:['seeduplex','grok'].includes($("voiceModel")?.value)?$("voiceModel").value:'gpt-live'}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     const diagnosticOwner=avatarDiagnosticOwner=Symbol('avatar-call');
     document.body.dataset.avatarReactionRequests='0';
@@ -517,17 +654,19 @@ async function startCall() {
       await active.contextResume;
       if(call!==active)return;
       active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,
-        onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message));},
+        onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message, { tone: "error" }));},
         onClosed:()=>{if(call===active)void stopCall();},
         onPlaybackActivity:speaking=>{if(call===active)document.body.dataset.voiceState=speaking?'speaking':'listening';},
         onEvent:value=>{
           if(call!==active)return;
           if (value.type === 'avatar.expression') { avatar?.expression(value.expression); return; }
       tasks.consume(value);
-          if(value.type==='backend.result')renderTranscript(presentation.consume(value));
+          if(value.type==='backend.result')receiveDocument(active,value);
           if(value.type.startsWith('tool.'))taskState();
           if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
           if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
+          if(value.type==='provider.reconnecting')setStatus('正在恢复语音连接…');
+          if(value.type==='provider.recovered')setStatus('V 正在听，直接说话就好');
           if(value.type==='transcript') {
             active.relayTurns??={};
             const id=active.relayTurns[value.role]??=crypto.randomUUID();
@@ -537,6 +676,7 @@ async function startCall() {
           }
         }});
       await active.relay.start();if(call!==active)return;
+      startPresentationRecovery(active);
       setCallState('connected');$("badge").textContent='通话中';$("stopLabel").textContent='结束通话';
       $("steerText").disabled=false;$("steer").disabled=false;setStatus('V 正在听，直接说话就好');
       void active.sounds.connected();
@@ -547,6 +687,9 @@ async function startCall() {
     active.channel = active.pc.createDataChannel("oai-events"); active.channel.onmessage = (event) => { if (call === active) providerMessage(event); };
     active.events = new EventSource(apiUrl("events"));
     const applyNativeControl = value => {
+      if(value.type==='tool.call')active.backendFinalReady=false;
+      if(value.type==='tool.result'&&value.backendFinal===true)active.backendFinalReady=true;
+      if(['voice.end.proposed','voice.end.accepted'].includes(value.type))requestVoiceHostEnd(active,value);
       if (value.type === "tool.result") requestAutomaticEnd(active, value);
       if (value.type === "tool.error" && value.name === "openclaw_end_call" &&
         (value.callId === value.requestId || value.source === "backend_model_client_tool" &&
@@ -566,37 +709,11 @@ async function startCall() {
       if (Number.isSafeInteger(value.revision)) active.presentationRevision = Math.max(active.presentationRevision ?? 0, value.revision);
       if (value.type === 'avatar.expression') { avatar?.expression(value.expression); return; }
       tasks.consume(value);
-      if(value.type==='backend.result')renderTranscript(presentation.consume(value));
+      if(value.type==='backend.result')receiveDocument(active,value);
       applyNativeControl(value);
       taskState();
     };
-    // Native voice audio remains on WebRTC. This authenticated snapshot only
-    // recovers task/document presentation when an HTTPS proxy buffers SSE.
-    const refreshPresentation = async () => {
-      if (call !== active || active.presentationFetching) return;
-      active.presentationFetching = true;
-      active.presentationAbort ??= new AbortController();
-      try {
-        const response = await fetch(apiUrl('presentation') + `&after=${active.documentRevision ?? 0}&controlsAfter=${active.controlRevision ?? 0}`, { signal: active.presentationAbort.signal });
-        if (!response.ok) return;
-        const value = await response.json();
-        if (call !== active || value.voiceSessionId !== active.voiceSessionId ||
-          !Number.isSafeInteger(value.revision) || value.revision < (active.presentationRevision ?? 0)) return;
-        for(const item of value.controls ?? []) {
-          if(item.voiceSessionId !== active.voiceSessionId || !Number.isSafeInteger(item.revision) || item.revision <= (active.controlRevision ?? 0))continue;
-          applyNativeControl(item); active.controlRevision = item.revision;
-        }
-        tasks.clear();
-        for (const item of value.pending ?? []) tasks.consume(item);
-        for (const item of value.documents ?? []) renderTranscript(presentation.consume(item));
-        active.presentationRevision = value.revision;
-        active.documentRevision = value.revision;
-        taskState();
-      } catch { /* A transient presentation failure never closes the audio call. */ }
-      finally { active.presentationFetching = false; }
-    };
-    active.presentationPoll = setInterval(() => void refreshPresentation(), 1500);
-    void refreshPresentation();
+    startPresentationRecovery(active,applyNativeControl);
     active.pc.ontrack = async (event) => {
       if (call !== active) return;
       const stream = new MediaStream([event.track]); $("remoteAudio").srcObject = stream;
@@ -653,6 +770,8 @@ async function startCall() {
           if ($("status").textContent === duplexRecoveryMessage) connectedStatus(active);
         }
         document.body.dataset.voiceState = energy > .008 && !duplex.localPlaybackMuted && !active.playbackNeedsGesture ? "speaking" : "listening";
+        if(duplex.localUserSpeaking||microphoneEnergy>.01)active.microphoneQuietSince=null;else active.microphoneQuietSince??=at;
+        applyVoiceHostEnd(active);
         observeAutomaticEnd(active, at, energy);
       }, 50);
       void greetWhenReady(active);
@@ -668,7 +787,7 @@ async function startCall() {
         $("steerText").disabled = false; $("steer").disabled = false;
         void greetWhenReady(active);
       } else if (["failed", "disconnected"].includes(active.pc.connectionState)) {
-        void stopCall().then(() => { if (!call) setStatus("连接已中断，可以重新开始通话。"); });
+        void stopCall().then(() => { if (!call) setStatus("连接已中断，可以重新开始通话。", { tone: "error" }); });
       }
     };
     await active.pc.setLocalDescription(await active.pc.createOffer());
@@ -685,28 +804,29 @@ async function startCall() {
     await active.pc.setRemoteDescription({ type: "answer", sdp: result.sdp });
     if (call !== active) return;
     active.heartbeat = setInterval(() => { if (call === active) void api("heartbeat", { voiceSessionId: active.voiceSessionId }).catch(() => {}); }, 15000);
-  } catch (error) { if (call === active) { await stopCall(); if (!call) setStatus(error.name === "NotAllowedError" ? "请允许麦克风访问后重试。" : error.message); } }
+  } catch (error) { if (call === active) { await stopCall(); if (!call) setStatus(error.name === "NotAllowedError" ? "请允许麦克风访问后重试。" : error.message, { tone: "error" }); } }
   finally { if (starting === active) starting = null; if (!call) $("start").disabled = false; }
 }
 $("start").addEventListener("click", startCall);
 $("stop").addEventListener("click", () => void stopCall());
 // A tap anywhere can restore browser playback. Never gate/stop the microphone
 // or cancel accepted work while requesting this user gesture.
-window.addEventListener("pointerdown", () => void recoverPlaybackGesture());
+window.addEventListener("pointerdown", () => { screenWakeLock.ensure(); void recoverPlaybackGesture(); });
 window.addEventListener("keydown", () => void recoverPlaybackGesture());
 $("steerForm").addEventListener("submit", async (event) => {
   event.preventDefault(); const text = $("steerText").value.trim(); if (!text || !call) return;
   const active = call;
-  try { await api("steer", { voiceSessionId: active.voiceSessionId, text, mode: "steer" }); if (call === active) { $("steerText").value = ""; setStatus("补充条件已交给 V 的后台任务。"); } }
-  catch (error) { if (call === active) setStatus(error.message); }
+  try { const receipt = await api("steer", { voiceSessionId: active.voiceSessionId, text, mode: "steer" }); if (call === active) { $("steerText").value = ""; productControls?.sent(); setStatus(receipt.queued === true ? "条件已交给原任务，等待后台应用。" : "补充内容已发送。", { tone: "success" }); } }
+  catch (error) { if (call === active) setStatus(error.message, { tone: "error" }); }
 });
 $("cancel").addEventListener("click", async () => {
   if (!call) return;
   const active = call;
-  try { await api("steer", { voiceSessionId: active.voiceSessionId, text: "取消当前后台任务，不要继续执行。", mode: "cancel" }); if (call === active) setStatus("已请求取消后台任务。"); }
-  catch (error) { if (call === active) setStatus(error.message); }
+  try { await api("steer", { voiceSessionId: active.voiceSessionId, text: "取消当前后台任务，不要继续执行。", mode: "cancel" }); if (call === active) setStatus("已请求取消后台任务。", { tone: "success" }); }
+  catch (error) { if (call === active) setStatus(error.message, { tone: "error" }); }
 });
 window.addEventListener("pagehide", () => {
+  screenWakeLock.setActive(false);
   microphoneSession.close();
   const active = call;
   if (!active) return;
@@ -718,32 +838,33 @@ window.addEventListener("pagehide", () => {
 window.addEventListener("pageshow",event=>{if(event.persisted)microphoneSession=createPageMicrophoneSession();});
 async function initializeEntry() {
   try {
-    const fragment = new URLSearchParams(window.location.hash.slice(1));
-    const access = fragment.get("access");
-    if (access) {
-      callerEntry = "tianyi";
-      // The share credential stays in the URL fragment until exchanged for the
-      // existing HttpOnly voice cookie; never send it as a query or log field.
-      await api("access", { access });
-      const search = new URLSearchParams(window.location.search);
-      search.set("entry", "tianyi");
-      window.history.replaceState(null, "", `${window.location.pathname}?${search}`);
-    }
-    const response = await fetch(apiUrl("status"));
-    const status = await response.json();
-    if (!response.ok) throw new Error(status.error ?? "暂时无法连接 V，请稍后重试。");
+    const result = await (entryStartup ?? startVoiceEntry({
+      location: window.location, fetch: (...args) => fetch(...args),
+      replaceState: url => window.history.replaceState(null, "", url),
+      mark: markVoiceTiming,
+    }));
+    if (result.error) throw new Error(result.error);
+    const { status } = result;
     liveReady = status.ready === true;
     if ($("voiceModel")) for(const model of status.models??[]) {
       const option=[...$("voiceModel").options].find(o=>o.value===model.id);
       if(option)option.disabled=!model.available;
     }
+    const select = $("voiceModel");
+    if (select?.options && [...select.options].find(option => option.value === select.value)?.disabled) {
+      select.value = ['seeduplex', 'gpt-live', 'grok'].find(id => [...select.options].some(option => option.value === id && !option.disabled)) ?? select.value;
+    }
+    productControls?.refreshModels();
     $("badge").textContent = liveReady ? "可以拨号" : "页面预览";
+    $("start").disabled = !liveReady;
+    if (liveReady) markVoiceTiming("voice.dial.ready");
     if (!liveReady) setStatus("这是页面预览，真实通话需连接候选服务。");
   } catch (error) {
     liveReady = false;
     entryError = error.message ?? "暂时无法连接 V，请稍后重试。";
+    $("start").disabled = true;
     $("badge").textContent = "暂未连接";
-    setStatus(entryError);
+    setStatus(entryError, { tone: "error" });
   }
 }
 void initializeEntry();

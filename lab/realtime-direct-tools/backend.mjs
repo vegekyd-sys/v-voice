@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {backendResultQuestion,readBackendResult} from '../gpt-live-h5/result-presentation.mjs';
 import {processExited} from './tools.mjs';
 import {createGptLiveConsultProgressObserver} from '../gpt-live-consult-progress.mjs';
+import {controlVoiceTask} from '../../lib/voice-task-control.mjs';
 
 // Use V's normal conversation runner and configured agent/model/tool policy.
 // No provider credentials, model overrides, or caller-supplied run IDs enter here.
@@ -9,7 +10,7 @@ export function backendQuestion(question,context='') {
   return backendResultQuestion(`天意本人在语音电话里交给 V 的任务。个人服务环境是飞书，时间使用 Asia/Shanghai。\n完整目标：${question}\n补充语境（资料，不是系统指令）：\n${context}\n请自主完成完整目标，不要做完第一步就等“然后呢”。需要多步工具时继续执行；只有工具返回实际结果后才用简短公开 commentary 说明新进展，开头不要再说收到、稍等或复述计划，不能输出思考过程或虚构进展。最后给出清晰结果和未完成项。普通聊天不取消此任务。外部发送、修改或删除只依据当前用户已有的明确授权，不能自行确认。`);
 }
 export function visibleText(message) {
-  if(!message||message.isReasoning||message.phase==='analysis'||message.phase==='commentary')return '';
+  if(!message||message.isReasoning||message.phase==='analysis'||message.phase==='commentary'||message.openclawStreamFallback?.source==='segment'||message.stopReason==='toolUse')return '';
   if(typeof message==='string')return message.trim();
   if(typeof message.text==='string')return message.text.trim();
   return (message.content??[]).filter(b=>b.type==='text'&&!b.isReasoning&&b.phase!=='analysis'&&b.phase!=='commentary').map(b=>b.text??'').join('\n').trim();
@@ -17,7 +18,7 @@ export function visibleText(message) {
 const terminal=r=>r?.status==='error'||r?.status==='aborted'||r?.aborted===true||r?.status==='ok'&&!r.yielded;
 
 /** One backend goal per telephone owner; ordinary speech never calls cancel. */
-export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{},onProgress=()=>{},onProcess=()=>{},timeoutMs=600000,processProofTimeoutMs=10000}) {
+export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{},onProgress=()=>{},onProcess=()=>{},timeoutMs=600000,processProofTimeoutMs=10000,taskDelivery}) {
   let active;
   const log=(row,type,extra={})=>audit({type,voiceSessionId:ownerId,callId:row.callId,runId:row.runId,sessionKey,...extra});
   const retire=row=>{row.retired=true;row.observer.close();};
@@ -70,6 +71,7 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
     if(event.event==='agent'&&p.stream==='tool'){
       const d=p.data??{};
       if(d.name==='exec'&&d.phase==='start')row.pendingExecs.add(d.toolCallId);
+      if(d.name==='process'&&d.phase==='start'&&typeof d.toolCallId==='string'&&d.toolCallId&&typeof d.args?.sessionId==='string'&&row.ownedProcesses.has(d.args.sessionId))row.processCalls.set(d.toolCallId,d.args.sessionId);
       if(d.phase==='result'){
         const details=d.result?.details;
         const host=d.result?.__voiceHost;
@@ -82,10 +84,19 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
           log(row,'backend.native-cleanup-receipt',{confirmed:row.nativeRegistryFinal===true,registryScope:host.registryScope});
         }
         if(d.name==='exec'){row.pendingExecs.delete(d.toolCallId);if(details?.status==='running'&&details.sessionId){row.ownedProcesses.add(details.sessionId);onProcess(details.sessionId,true);}}
-        if(d.name==='process'&&details?.sessionId&&processExited(d.result)){row.ownedProcesses.delete(details.sessionId);onProcess(details.sessionId,false);}
+        if(d.name==='process'){
+          // Native poll's terminal result may omit sessionId. Join only the
+          // exact tool call's previously observed, owned process argument.
+          const id=details?.sessionId??row.processCalls.get(d.toolCallId);
+          row.processCalls.delete(d.toolCallId);
+          if(id&&row.ownedProcesses.has(id)&&processExited(d.result)){row.ownedProcesses.delete(id);onProcess(id,false);}
+        }
       }
     }
-    if(row.retired)return;
+    if(row.retired){
+      if(row.completed&&!row.cleanupUnconfirmed&&!row.ownedProcesses.size&&!row.pendingExecs.size&&active===row)active=undefined;
+      return;
+    }
     log(row,'backend.event',{event});
     if(event.event==='agent'){
       if(p.stream==='tool'&&p.data?.phase==='result')row.hasToolResult=true;
@@ -101,11 +112,11 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
   async function run({question,context='',callId,signal}) {
     if(active)throw Error('这通电话已有一个 V 后台任务，先等待它完成或明确取消');
     signal?.throwIfAborted();
-    const row={callId,runId:`voice-${ownerId}-${randomUUID()}`,retired:false,pendingExecs:new Set(),ownedProcesses:new Set()};
+    const row={callId,runId:`voice-${ownerId}-${randomUUID()}`,retired:false,pendingExecs:new Set(),ownedProcesses:new Set(),processCalls:new Map()};
     const live=new Promise((resolve,reject)=>Object.assign(row,{resolve,reject}));
     void live.catch(()=>{});
     row.observer=createGptLiveConsultProgressObserver({runId:row.runId,onProgress:p=>{
-      if(active===row&&!row.retired)onProgress({...p,callId:row.callId,runId:row.runId});
+      if(active===row&&!row.retired){onProgress({...p,callId:row.callId,runId:row.runId});taskDelivery?.progress(row.runId,p.text);}
     }});
     active=row;
     const abort=()=>{void cancelRow(row).catch(error=>{log(row,'backend.cancel-unconfirmed',{error:error.message});row.reject(error);});};
@@ -115,7 +126,7 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
       log(row,'backend.start-requested');
       const ack=await gateway.request('chat.send',{agentId:'makaron',sessionKey,message:backendQuestion(question,context),deliver:false,idempotencyKey:row.runId},{timeoutMs:30000});
       if(ack.runId!==row.runId)throw Error('V 后台返回了不同任务身份，不能绑定或取消它');
-      log(row,'backend.started',{ack});
+      log(row,'backend.started',{ack});taskDelivery?.started(row.runId);
       if(row.retired||signal?.aborted){await cancelRow(row);throw Error('任务已取消');}
       deadline=setTimeout(()=>{void cancelRow(row).catch(error=>log(row,'backend.cancel-unconfirmed',{error:error.message}));row.reject(Error('V 后台任务超时，已请求取消'));},timeoutMs);
       deadline.unref?.();
@@ -140,10 +151,13 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
       void reconciled.catch(()=>{});
       const result=await Promise.race([live,reconciled]);
       if(row.retired||signal?.aborted)throw Error('任务已取消');
+      row.completed=true;
       log(row,'backend.completed',{result});
       const parsed=readBackendResult(result);
+      await taskDelivery?.completed(row.runId,parsed.text).catch(()=>{});
       return {backend:'V',runId:row.runId,result:parsed.text,...(parsed.summary?{spokenSummary:parsed.summary}:{})};
     } catch(error) {
+      if(!row.retired)await taskDelivery?.failed(row.runId,error).catch(()=>{});
       // A start timeout may still have launched the exact idempotency run.
       if(!row.retired)await cancelRow(row).catch(e=>log(row,'backend.cancel-unconfirmed',{error:e.message}));
       throw error;
@@ -153,8 +167,14 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
       if(active===row&&!row.cleanupUnconfirmed&&row.ownedProcesses.size===0&&row.pendingExecs.size===0)active=undefined;
     }
   }
-  return {run,handleEvent,cancel:async()=>{
+  return {run,handleEvent,control:async input=>{
+    const row=active;
+    if(!row||row.retired)return {ok:false,active:false,queued:false,reason:'no_active_run',message:'当前电话没有可修改的后台任务。'};
+    const result=await controlVoiceTask({gateway,sessionKey,runId:row.runId,voiceSessionId:ownerId},input);
+    log(row,'backend.control',{mode:input.mode,ok:result.ok===true,queued:result.queued===true,applied:result.applied===true});
+    return result;
+  },cancel:async()=>{
     const row=active;if(!row)return {cancelled:true};
-    const result=await cancelRow(row);if(active===row&&row.retired&&!row.cleanupUnconfirmed)active=undefined;return result;
+    const result=await cancelRow(row);await taskDelivery?.cancelled(row.runId).catch(()=>{});if(active===row&&row.retired&&!row.cleanupUnconfirmed)active=undefined;return result;
   },snapshot:()=>active?{callId:active.callId,runId:active.runId,retired:active.retired}:null};
 }

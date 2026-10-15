@@ -6,10 +6,11 @@ export function createVoiceAccess(token, basePath, now = Date.now, { entry = "ti
     const left = Buffer.from(String(a)), right = Buffer.from(String(b));
     return left.length === right.length && timingSafeEqual(left, right);
   };
-  const cookieName = entry === "visitor" ? "v_voice_visitor" : "v_voice_access";
+  if (!/^[a-z0-9_-]{1,64}$/u.test(entry)) throw new Error("Invalid voice entry");
+  const cookieName = entry === "tianyi" ? "v_voice_access" : entry === "visitor" ? "v_voice_visitor" : `v_voice_${entry}`;
   const sign = (id, expiresAt) => {
     const payload = `${id}.${expiresAt}`;
-    return `${payload}.${createHmac("sha256", token).update(entry === "visitor" ? `visitor:${payload}` : payload).digest("base64url")}`;
+    return `${payload}.${createHmac("sha256", token).update(entry === "tianyi" ? payload : `${entry}:${payload}`).digest("base64url")}`;
   };
   return {
     accepts: value => equal(value ?? "", token),

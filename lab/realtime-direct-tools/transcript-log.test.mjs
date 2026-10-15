@@ -55,3 +55,31 @@ test('existing symlink cannot redirect private transcripts into another file',as
   const logger=createVoiceTranscriptLog({directory:f.directory,now:()=>Date.parse('2026-10-09T01:00:00Z')});logger.audit({type:'call.created',voiceSessionId:'x',provider:'grok',model:'grok-voice-agent',sessionKey:'personal'});
   assert.equal((await logger.close()).failed,1);assert.equal(await readFile(target,'utf8'),'preserved');
 });
+
+test('provider diagnostics persist only fixed classifications and numeric codes, never raw errors or audio',async t=>{
+  const f=await fixture(t);f.created();
+  f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'upstream-error',category:'input-timeout',upstreamCode:'55000000',sessionAgeMs:72000,attempt:1,message:'SECRET',audio:'SECRET',event:{apiKey:'SECRET'}});
+  f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'reconnecting',category:'SECRET',upstreamCode:'SECRET',attempt:-1});
+  await f.log.close();const rows=await f.rows();assert(!JSON.stringify(rows).includes('SECRET'));
+  assert.equal(rows[1].upstreamCode,'55000000');assert.equal(rows[1].sessionAgeMs,72000);assert.equal(rows[2].category,undefined);assert.equal(rows[2].attempt,undefined);
+});
+
+test('connection profiling persists only known stages for the reserved call owner',async t=>{
+  const f=await fixture(t);f.created();
+  assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'foreign',stage:'provider-ready'}),false);
+  assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'v1',stage:'arbitrary SECRET'}),false);
+  for(const stage of ['catalog-requested','catalog-ready','context-requested','context-ready','provider-connecting','provider-ready']){
+    f.tick(10);assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'v1',stage,token:'SECRET',text:'SECRET'}),true);
+  }
+  await f.log.close();const rows=await f.rows();
+  assert.equal(rows.filter(r=>r.type==='call.connection-stage').length,6);
+  assert(!JSON.stringify(rows).includes('SECRET'));
+  assert(rows.every(r=>r.sessionKey==='personal'));
+});
+
+test('post-hangup delivery receipt survives without accepting late transcript or protocol',async t=>{
+ const f=await fixture(t);f.created();f.log.audit({type:'call.closed',voiceSessionId:'v1'});
+ assert(f.log.audit({type:'task.delivery-confirmed',voiceSessionId:'v1',runId:'owned-run',kind:'final',receipt:{messageId:'om-real',token:'SECRET'},audio:'SECRET'}));
+ assert.equal(f.log.audit({type:'transcript',voiceSessionId:'v1',role:'assistant',text:'late',final:true}),false);
+ await f.log.close();const rows=await f.rows();assert.equal(rows.at(-1).messageId,'om-real');assert.equal(rows.at(-1).runId,'owned-run');assert(!JSON.stringify(rows).includes('SECRET'));
+});

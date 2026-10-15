@@ -521,6 +521,40 @@ test('Seeduplex greeting uses native SayHello rather than injecting unpaired his
   bridge.close();
 });
 
+test('greeting caption is the exact requested speech, emitted once at its first valid audio frame', async () => {
+ const socket = new FakeSocket(), events = [];
+ const bridge = new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture-key'},greetingText:'你好，天意，我在呢。',
+  onTranscript:(...args)=>events.push(['text',...args]), onAudio:()=>events.push(['audio']),
+  onError:error=>assert.fail(error.message),onClose(){}},{createWebSocket:async()=>socket});
+ bridge.triggerGreeting();assert.equal(socket.sent.length,0);
+ const connecting=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await connecting;
+ bridge.triggerGreeting();bridge.triggerGreeting();
+ assert.equal(socket.sent.filter(e=>e.type==='speech_text_buffer.commit').length,1);
+ assert.equal(events.length,0,'Submitting speech does not manufacture an audible greeting');
+ socket.message({type:'response.output_audio.started',response_id:'hello',tts_type:'chat_tts_text'});
+ assert.equal(events.length,0,'Sentence-start without PCM does not display the greeting');
+ socket.message({type:'response.output_audio.delta',response_id:'hello',delta:floatAudio([.1,.2])});
+ socket.message({type:'response.output_audio.delta',response_id:'hello',delta:floatAudio([.3])});
+ socket.message({type:'response.output_audio.done',response_id:'hello'});
+ assert.deepEqual(events,[['text','assistant','你好，天意，我在呢。',true,'greeting'],['audio'],['audio']]);
+ socket.message({type:'response.output_text.done',response_id:'next',text:'听得见，你说吧。'});
+ assert.deepEqual(events.at(-1),['text','assistant','听得见，你说吧。',true]);
+ bridge.close();
+});
+
+for (const ending of ['close','barge-in','no-audio','superseded']) test(`unplayed greeting is never shown after ${ending}`,async()=>{
+ const socket=new FakeSocket(),texts=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture-key'},onTranscript:(...args)=>texts.push(args),onAudio(){},onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const connecting=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await connecting;
+ bridge.triggerGreeting();socket.message({type:'response.output_audio.started',response_id:'hello',tts_type:'chat_tts_text'});
+ if(ending==='close')bridge.close();
+ if(ending==='barge-in')bridge.handleBargeIn();
+ if(ending==='no-audio')socket.message({type:'response.output_audio.done',response_id:'hello'});
+ if(ending==='superseded')socket.message({type:'response.output_audio.started',response_id:'next',tts_type:'default'});
+ socket.message({type:'response.output_audio.delta',response_id:ending==='superseded'?'next':'hello',delta:floatAudio([.1])});
+ assert.equal(texts.length,0);bridge.close();
+});
+
 test('async background tool releases the native call, accepts chat, and adds actual final paired context once',async()=>{
  const socket=new FakeSocket(),texts=[];
  const bridge=buildSeeduplexRealtimeVoiceProvider({env:{VOLCENGINE_REALTIME_API_KEY:'test'},createWebSocket:async()=>socket}).createBridge({providerConfig:{voice:'xiaohe'},tools:[{type:'function',name:'delegate_to_v',parameters:{type:'object',properties:{}}}],onAudio(){},onToolCall:call=>bridge.beginBackgroundTool(call.callId,'完整真实任务'),onTranscript:(...args)=>texts.push(args),onError:e=>assert.fail(e.message),onClose(){}});
@@ -590,5 +624,11 @@ test('long backend document keeps full paired history but commits only short spe
  const text='## 全文\n'+'日期和限定。'.repeat(100),spokenText='结果在屏幕上，可以整理成文档发给你。';
  bridge.completeBackgroundTool('doc',{result:text},{spokenText,displayedFullResult:true});bridge.completeBackgroundTool('doc',{result:text},{spokenText,displayedFullResult:true});
  const history=socket.sent.find(x=>x.items?.length===2);assert.equal(history.items[1].content[0].text,text);
- assert.deepEqual(socket.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text),[spokenText]);assert(!texts.some(x=>x[1]===text));bridge.close();
+ assert.deepEqual(socket.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text),[spokenText]);assert(!texts.some(x=>x[1]===text));
+ assert.equal(texts.length,0,'Submitting the summary is not proof it played');
+ socket.message({type:'response.output_audio.started',response_id:'summary',tts_type:'chat_tts_text'});
+ assert.equal(texts.length,0);
+ socket.message({type:'response.output_audio.delta',response_id:'summary',delta:floatAudio([.1])});
+ socket.message({type:'response.output_audio.delta',response_id:'summary',delta:floatAudio([.2])});
+ assert.deepEqual(texts,[['assistant',spokenText,true,'V-backend-summary']]);bridge.close();
 });

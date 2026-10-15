@@ -3,25 +3,91 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {setTimeout as delay} from 'node:timers/promises';
 import {createDirectVoiceService} from './session.mjs';
+import {VOICE_CAPABILITY_POLICY} from '../gpt-live-h5/capability-policy.mjs';
 
 async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}),model='grok',options={}) {
  const peers=[],audit=[],invocations=[];
- class WS extends EventEmitter {constructor(){super();this.readyState=1;this.sent=[];peers.push(this);queueMicrotask(()=>this.emit('open'));}
-  send(raw){const value=JSON.parse(raw);this.sent.push(value);if(value.type==='session.update')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.updated'})),false));if(value.type==='session.create')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.created'})),false));}
+ class WS extends EventEmitter {constructor(){super();this.readyState=1;this.sent=[];peers.push(this);setImmediate(()=>this.emit('open'));}
+  send(raw){const value=JSON.parse(raw);this.sent.push(value);if(value.type==='session.update')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.updated'})),false));if(value.type==='session.create')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.created',session:{id:value.session.id??'fixture-dialog'}})),false));}
   close(){this.readyState=3;this.emit('close');}}
  class Server {handleUpgrade(req,socket,head,done){done(socket);}close(){}}
  const gateway={request:async(method,args)=>{
   if(method==='tools.catalog')return {groups:[{tools:['memory_search','web_search','web_fetch','exec','process'].map(id=>({id}))}]};
   invocations.push(args);return invoke(args,method);
  }};
- const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),...options});
+ const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,...options});
  const reservation=await service.reserve({model,sessionKey:'agent:makaron:explicit:personal-fixture'});
- const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>client.sent.push(JSON.parse(raw));client.close=()=>{client.readyState=3;client.emit('close');};
- service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);await delay(5);
+ const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
+ service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
+ // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
+ for(let attempt=0;attempt<200&&!client.sent.some(e=>e.type==='ready');attempt++)await delay(5);
+ assert(client.sent.some(e=>e.type==='ready'),'Fixture provider did not become ready');
  const upstream=peers[0],event=v=>upstream.emit('message',Buffer.from(JSON.stringify(v)),false);
  const call=(name,args,id='call-1')=>{event({type:'response.created',response:{id:'response-'+id}});event({type:'response.function_call_arguments.done',response_id:'response-'+id,call_id:id,name,arguments:JSON.stringify(args)});event({type:'response.done',response:{id:'response-'+id,status:'completed'}});};
- return {service,reservation,client,upstream,event,call,audit,invocations};
+ return {service,reservation,client,upstream,event,call,audit,invocations,peers};
 }
+
+for (const model of ['grok', 'seeduplex']) test(`${model} session initializes with the shared capability policy and real backend adapter`, async t => {
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:{status:'ok'},model);
+ t.after(()=>f.service.dispose());
+ const setup=f.upstream.sent.find(e=>e.type==='session.update'||e.type==='session.create');
+ assert(setup, 'provider session must actually be initialized');
+ const serialized=JSON.stringify(setup);
+ assert(serialized.includes(JSON.stringify(VOICE_CAPABILITY_POLICY).slice(1,-1)));
+ assert.equal(serialized.split('V_CAPABILITY_POLICY_V1').length,2);
+ assert(serialized.includes('delegate_to_v'));
+ assert(serialized.includes('只读工具的限制只约束该工具'));
+});
+
+test('SeedDuplex upstream recovery keeps the browser and owned backend alive, then permits end_call',async t=>{
+ let cancelled=false;
+ const f=await fixture(async(args,method)=>{
+   if(method==='chat.send')return {runId:args.idempotencyKey,status:'started'};
+   if(method==='chat.abort'){cancelled=true;return {ok:true};}
+   await delay(10);return {status:cancelled?'error':'running',aborted:cancelled};
+ },'seeduplex');
+ t.after(()=>f.service.dispose());
+ const native=(socket,id,name,args={})=>socket.emit('message',Buffer.from(JSON.stringify({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]})),false);
+ native(f.upstream,'delegated','delegate_to_v',{question:'整理报告，用户已授权发送'});await delay(5);
+ const started=f.audit.find(e=>e.type==='backend.started');assert(started);
+ f.upstream.close();await delay(350);
+ assert.equal(f.peers.length,2);assert.equal(f.client.readyState,1);assert(!f.client.sent.some(e=>e.type==='error'));
+ assert(f.client.sent.some(e=>e.type==='provider.recovered'));
+ const next=f.peers[1];assert.equal(next.sent[0].session.id,'fixture-dialog');
+ native(next,'delegated','delegate_to_v',{question:'整理报告，用户已授权发送'});await delay(5);
+ assert.equal(f.audit.filter(e=>e.type==='backend.started').length,1);
+ assert.equal(cancelled,false);
+ f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text:'报告已整理并发送。'}]}}});await delay(250);
+ assert.equal(f.audit.filter(e=>e.type==='tool.delivered'&&e.callId==='delegated').length,1);
+ assert.equal(f.client.sent.filter(e=>e.type==='transcript'&&e.source==='V-backend').length,1);
+ assert.equal(next.sent.filter(e=>e.type==='speech_text_buffer.commit').length,1);
+ native(next,'ending','end_call');await delay(5);
+ const pcm=Buffer.alloc(8);pcm.writeFloatLE(.1,0);pcm.writeFloatLE(.2,4);
+ next.emit('message',Buffer.from(JSON.stringify({type:'response.output_audio.started',response_id:'bye',tts_type:'default'})),false);
+ next.emit('message',Buffer.from(JSON.stringify({type:'response.output_audio.delta',response_id:'bye',delta:pcm.toString('base64')})),false);
+ next.emit('message',Buffer.from(JSON.stringify({type:'response.output_audio.done',response_id:'bye'})),false);
+ assert(f.client.sent.some(e=>e.type==='end.after-playback'));
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:'ending'})),false);await delay(5);
+ assert.equal(f.client.readyState,3);assert.equal(f.audit.filter(e=>e.type==='call.closed').length,1);
+});
+test('Seeduplex audible greeting reaches the browser transcript and audit exactly once',async t=>{
+ const f=await fixture(undefined,'seeduplex');t.after(()=>f.service.dispose());
+ await delay(0);
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);
+ assert.equal(f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').length,1);
+ assert.equal(f.client.sent.filter(e=>e.type==='transcript').length,0);
+ f.event({type:'response.output_audio.started',response_id:'hello',tts_type:'chat_tts_text'});
+ const pcm=Buffer.alloc(8);pcm.writeFloatLE(.1,0);pcm.writeFloatLE(.2,4);
+ f.event({type:'response.output_audio.delta',response_id:'hello',delta:pcm.toString('base64')});
+ f.event({type:'response.output_audio.delta',response_id:'hello',delta:pcm.toString('base64')});
+ const text=f.client.sent.filter(e=>e.type==='transcript');
+ assert.equal(text.length,1);assert.equal(text[0].text,'天意，你好，我是 V，在呢。');
+ assert.equal(text[0].role,'assistant');assert.equal(text[0].final,true);assert.equal(text[0].source,'greeting');
+ assert.equal(f.client.sent.filter(e=>e.type==='audio').length,2);
+ assert.equal(f.audit.filter(e=>e.type==='transcript'&&e.source==='greeting').length,1);
+});
+
 test('native direct call executes real Gateway tool, retains personal session and never delegates to a model',async()=>{
  const f=await fixture();f.call('memory_search',{query:'家庭'});await delay(5);
  assert.equal(f.invocations[0].name,'memory_search');assert.equal(f.invocations[0].sessionKey,'agent:makaron:explicit:personal-fixture');
@@ -62,7 +128,7 @@ test('hybrid tool keeps one backend run alive during chat; progress and final wa
  backend({event:'agent',payload:{stream:'tool',data:{phase:'result',name:'memory_search'}}});
  backend({event:'agent',payload:{stream:'item',data:{kind:'preamble',phase:'end',progressText:'第一步查到了实际记录，正在核对网页。'}}});
  await delay(250);assert.equal(f.upstream.sent.some(x=>x.item?.type==='force_message'),false);
- await f.service.steer(f.reservation.voiceSessionId,{mode:'steer',text:'顺便和我聊聊天'});
+ await f.service.steer(f.reservation.voiceSessionId,{mode:'append',text:'顺便和我聊聊天'});
  assert.equal(f.invocations.filter(x=>x.message?.includes('完整目标')).length,1);
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:false})),false);
  await delay(250);
@@ -187,4 +253,104 @@ for (const model of ['grok','seeduplex']) test(`${model} public transcript callb
  assert(rows.every(r=>r.voiceSessionId===f.reservation.voiceSessionId&&r.provider===model&&r.sessionKey==='agent:makaron:explicit:personal-fixture'));
  assert.equal(rows.at(-1).type,'call.closed');
  assert(!JSON.stringify(rows).includes('fixture-key'));assert(!JSON.stringify(rows).includes(f.reservation.relayTicket));
+});
+
+
+test('short image and video completions publish one UI result and one spoken caption',async()=>{
+ for (const url of ['https://cdn.test/car.webp','https://cdn.test/car.mp4']) {
+  const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}));
+  f.call('delegate_to_v',{question:'生成赛车媒体'});await delay(5);const started=f.audit.find(x=>x.type==='backend.started');
+  const text=`小赛车在积木赛道上。\n[赛车](${url})`;
+  f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text}]}}});await delay(250);
+  assert.equal(f.client.sent.filter(x=>x.type==='backend.result').length,1);
+  assert.equal(f.client.sent.find(x=>x.type==='backend.result').text,text);
+  const speech=f.upstream.sent.filter(x=>x.item?.type==='force_message');assert.equal(speech.length,1);assert(!speech[0].item.content[0].text.includes('https:'));assert(speech[0].item.content[0].text.includes('小赛车'));
+  await f.service.dispose();
+ }
+});
+test('busy delegation is explicitly not started and cannot silently queue another media job',async()=>{
+ let cancelled=false;const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:'error',aborted:true}:new Promise(()=>{}));
+ f.call('delegate_to_v',{question:'调研'},'first');await delay(5);
+ f.call('delegate_to_v',{question:'作图'},'second');await delay(5);
+ const result=f.audit.find(x=>x.type==='tool.delivered'&&x.callId==='second').result;
+ assert(result.error.includes('新任务未启动'));assert(result.error.includes('未加入队列'));
+ assert.equal(f.audit.filter(x=>x.type==='backend.started').length,1);await f.service.dispose();
+});
+
+for(const model of ['grok','seeduplex'])test(`${model} calendar and other Feishu reads execute locally, with no Gateway exec`,async t=>{
+ const reads=[];const f=await fixture(async()=>{throw Error('no Gateway tools expected');},model,{calendar:async(args,id,signal)=>{reads.push({args,id,signal});return {details:{status:'completed',exitCode:0,source:'voice-local-lark'},content:[{type:'text',text:'{"ok":true,"data":{"events":[]}}'}]};},larkRead:async(args,id,signal)=>{reads.push({args,id,signal});return {content:[{type:'text',text:'{"ok":true}'}]};}});t.after(()=>f.service.dispose());
+ if(model==='seeduplex')f.event({type:'response.function_call_arguments.done',items:[{call_id:'calendar',name:'feishu_calendar',arguments:'{}'}]});else f.call('feishu_calendar',{},'calendar');await delay(10);
+ if(model==='seeduplex')f.event({type:'response.function_call_arguments.done',items:[{call_id:'contact',name:'lark_read',arguments:JSON.stringify({argv:['contact','+search-user','--query','同事']})}]});else f.call('lark_read',{argv:['contact','+search-user','--query','同事']},'contact');await delay(10);
+ assert.equal(reads.length,2);assert(reads.every(r=>r.signal instanceof AbortSignal));assert.equal(f.invocations.length,0);assert.equal(f.audit.filter(e=>e.type==='tool.local-result').length,2);assert.equal(f.audit.filter(e=>e.type==='tool.delivered').length,2);
+});
+test('local read survives ordinary interruption; hangup aborts and waits for real child cleanup',async()=>{
+ let signal,cleanupDone=false;const f=await fixture(undefined,'grok',{calendar:(args,id,s)=>{signal=s;return new Promise((resolve,reject)=>s.addEventListener('abort',()=>setTimeout(()=>{cleanupDone=true;reject(Object.assign(Error('cancelled'),{name:'AbortError'}));},30),{once:true}));}});
+ f.call('feishu_calendar',{},'local');await delay(5);
+ f.event({type:'input_audio_buffer.speech_started'});assert.equal(signal.aborted,false);
+ await f.service.steer(f.reservation.voiceSessionId,{mode:'append',text:'顺便问一下'});assert.equal(signal.aborted,false);
+ const close=f.service.close(f.reservation.voiceSessionId);assert.equal(cleanupDone,false);await close;assert.equal(signal.aborted,true);assert.equal(cleanupDone,true);assert.equal(f.audit.filter(e=>e.type==='call.closed').length,1);assert.equal(f.invocations.length,0);await f.service.dispose();
+});
+
+test('show_content publishes exact Markdown locally and confirms actual UI receipt',async()=>{
+ const f=await fixture();const markdown='# 完整资料\n\n![图](https://cdn.test/a.webp)\n\n真实结果';
+ f.call('show_content',{markdown});await delay(30);
+ const doc=f.client.sent.find(x=>x.type==='backend.result');assert.equal(doc.text,markdown);
+ assert.equal(f.audit.find(x=>x.type==='tool.delivered').result.shown,true);
+ assert(!f.invocations.some(x=>x.name==='show_content'));
+ assert.equal(f.service.presentation(f.reservation.voiceSessionId).documents[0].text,markdown);
+ assert.equal(f.service.contentShown('foreign-owner',doc.callId),false);
+ await f.service.dispose();
+});
+test('missing UI receipt is submitted, not a false display success; a snapshot recovers the document',async()=>{
+ const f=await fixture(undefined,'grok',{autoContentAck:false});f.call('show_content',{markdown:'# 真实报告\n结果未确认上屏'});await delay(30);
+ const result=f.audit.find(x=>x.type==='tool.delivered').result;assert.equal(result.published,true);assert.equal(result.shown,false);
+ const snap=f.service.presentation(f.reservation.voiceSessionId);assert.equal(snap.documents.length,1);
+ assert.equal(f.service.presentation(f.reservation.voiceSessionId,snap.revision).documents.length,0);
+ assert.equal(f.service.contentShown(f.reservation.voiceSessionId,'unknown-report'),false);await f.service.dispose();
+});
+
+test('displaying existing content does not pretend to query new sources',async()=>{
+ const f=await fixture(undefined,'seeduplex');f.event({type:'response.function_call_arguments.done',items:[{call_id:'show-first',name:'show_content',arguments:JSON.stringify({markdown:'# 已有结果\n甲方案7元'})}]});await delay(30);
+ assert(f.client.sent.some(x=>x.type==='backend.result'));assert.equal(f.audit.find(x=>x.type==='tool.delivered').result.shown,true);
+ assert(!f.client.sent.some(x=>x.source==='cached-native-tool-start'));assert(!f.audit.some(x=>x.type==='transcript'&&x.source==='tool-start'));await f.service.dispose();
+});
+
+test('ordinary hangup detaches its real backend, redial is possible, late final only goes to Feishu',async()=>{
+ let cancelled=false;const sends=[];
+ const f=await fixture(async(args,method)=>{
+  if(method==='chat.send')return {runId:args.idempotencyKey,status:'started'};
+  if(method==='send'){sends.push(args);return {messageId:'om-'+sends.length};}
+  if(method==='chat.abort'){cancelled=true;return {ok:true};}
+  return cancelled?{status:'error',aborted:true}:new Promise(()=>{});
+ });
+ f.call('delegate_to_v',{question:'处理一个任务'});await delay(10);const started=f.audit.find(e=>e.type==='backend.started');
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'我挂电话了，之后把进展都发在群里面'});
+ // Fixture uses a non-Feishu session; the task must still survive without sending anywhere.
+ await f.service.close(f.reservation.voiceSessionId);assert.equal(cancelled,false);assert.equal(f.client.readyState,3);
+ const next=await f.service.reserve({model:'grok',sessionKey:'agent:makaron:explicit:personal-fixture'});assert(next.voiceSessionId!==f.reservation.voiceSessionId);
+ f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{text:'真实任务完成'}}});await delay(10);
+ assert.equal(cancelled,false);assert.equal(sends.length,0);assert(!f.client.sent.some(e=>e.type==='backend.result'));await f.service.dispose();
+});
+
+test('SeedDuplex steers and appends to the exact existing backend without a second delegation',async t=>{
+ const controls=[],starts=[];
+ const f=await fixture(async(args,method)=>{
+  if(method==='chat.send'){starts.push(args);return {runId:args.idempotencyKey,status:'started'};}
+  if(method==='voice.product.task-control'){controls.push(args);return {ok:true,queued:true};}
+  await delay(10);return {status:'running'};
+ },'seeduplex');t.after(()=>f.service.dispose());
+ const native=(id,name,args)=>f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+ native('original','delegate_to_v',{question:'整理一份原始报告'});
+ for(let i=0;i<100&&!f.audit.some(e=>e.type==='backend.started');i++)await delay(5);
+ const started=f.audit.find(e=>e.type==='backend.started');assert(started);
+ native('correction','openclaw_agent_control',{mode:'steer',text:'只保留新版要求'});
+ native('addition','openclaw_agent_control',{mode:'followup',text:'最后追加一个总结'});
+ for(let i=0;i<100&&controls.length<2;i++)await delay(5);
+ assert.equal(controls.length,2);assert.equal(starts.length,1);
+ assert(controls.every(e=>e.runId===started.runId&&e.voiceSessionId===f.reservation.voiceSessionId));
+ assert.deepEqual(controls.map(e=>e.mode),['steer','followup']);
+ const receipt=await f.service.steer(f.reservation.voiceSessionId,{mode:'steer',text:'文字输入也改原任务'});
+ assert.equal(receipt.queued,true);assert.equal(receipt.applied,false);assert.equal(starts.length,1);
+ f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text:'新版要求和总结已完成。'}]}}});
+ await delay(250);assert(f.audit.some(e=>e.type==='backend.completed'&&e.runId===started.runId));
 });
