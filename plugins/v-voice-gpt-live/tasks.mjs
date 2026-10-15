@@ -1,5 +1,5 @@
 import {validateVoiceTaskControl} from '../../lib/voice-task-control.mjs';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 
 // The authenticated telephone connection owns the task, independently of media.
 // Public OpenClaw SDK admission owns execution, child lineage and continuation.
@@ -29,6 +29,14 @@ export function createVoiceTasks({consult,control,agentRuntime,getConfig,logger,
    void accepted.promise.catch(()=>{});
    const row={taskId,ownerConnId:connId,requestKey:key,sessionKey:params.sessionKey,question:params.question,controller,accepted,done,status:'starting',runs:[],progress:[],expiresAt:Infinity};
    tasks.set(taskId,row);requests.set(key,row);
+   // The public runtime accepts an opaque Gateway-side tool-authority identity.
+   // Its Worker bridge validates that identity, then translates it to the
+   // Worker's independently prepared tool policy. Never take it from RPC input,
+   // and never change toolsAllow, sender identity, or configured permissions.
+   const authority=createHash('sha256').update(JSON.stringify([connId,taskId,randomUUID()])).digest('hex');
+   const ownedRuntime=Object.create(agentRuntime);
+   Object.defineProperty(ownedRuntime,'runEmbeddedAgent',{value:params=>agentRuntime.runEmbeddedAgent({...params,toolAuthorityFingerprint:params.toolAuthorityFingerprint??authority})});
+
    const toolResults=new Set(),unsubscribe=subscribe?.(event=>{if(event.stream==='tool'&&event.data?.phase==='result')toolResults.add(event.runId);});
    const started=value=>{
     if(typeof value?.runId!=='string')throw Error('Voice SDK returned no admitted run');
@@ -37,7 +45,7 @@ export function createVoiceTasks({consult,control,agentRuntime,getConfig,logger,
     const receipt={taskId,runId:row.runs[0]};accepted.resolve(receipt);onStarted?.(receipt);
    };
    try{
-    const result=await consult({cfg,agentRuntime,logger,agentId:match[1],sessionKey:params.sessionKey,
+    const result=await consult({cfg,agentRuntime:ownedRuntime,logger,agentId:match[1],sessionKey:params.sessionKey,
      args:{question:params.question},transcript:[],surface:'a V Voice telephone',userLabel:'User',questionSourceLabel:'user',
      runIdPrefix:'voice-product-task',lane:'talk',thinkLevel:cfg.talk?.consultThinkingLevel??cfg.agents?.defaults?.thinkingDefault,
      abortSignal:controller.signal,onRunStarted:started,onResumeRunStarted:started,
