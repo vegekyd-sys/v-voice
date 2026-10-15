@@ -32,11 +32,14 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   const sessions=new Map(),detached=new Set();
   const deferred=s=>{
     if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking||Date.now()-s.lastUserAt<1200)return;
-    if(s.backendResult){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;resolve();return;}
-    if(!s.progress||s.pending.size!==1||!s.backend.snapshot()||Date.now()-s.lastProgressAt<10000)return;
-    const p=s.progress;s.progress=null;if(p.text.length>220)return;
+    if(s.backendResult){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;s.activityProgress=null;resolve();return;}
+    if(s.pending.size!==1||!s.backend.snapshot()||Date.now()-s.lastProgressAt<10000)return;
+    const p=s.progress??s.activityProgress;
+    if(!p||!s.progress&&Date.now()-p.observedAt<8000)return;
+    s.progress=null;s.activityProgress=null;if(p.text.length>220||p.text===s.lastProgressText)return;
+    s.lastProgressText=p.text;
     s.lastProgressAt=Date.now();s.responseActive=true;
-    s.bridge.speakProgress(p.text);audit({type:'backend.progress-spoken',voiceSessionId:s.id,...p});
+    s.bridge.speakProgress(p.text,{caption:true});audit({type:'backend.progress-spoken',voiceSessionId:s.id,...p});
   };
   const websocketServer=new wsModule.WebSocketServer({noServer:true,maxPayload:65536});
   const configured=id=>id==='seeduplex'?Boolean(apiKeys.seeduplex):id==='grok'&&Boolean(apiKeys.grok);
@@ -76,7 +79,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     else throw Error('执行会话退出尚未确认');
   };
   const cancel=async(s,{includeBackend=true}={})=>{s.epoch++;for(const [id,c] of s.pending)if(includeBackend||id!==s.backgroundCallId)c.abort();s.ending=null;emit(s,{type:'end.cancelled'});
-    s.progress=null;s.backendResult?.resolve();s.backendResult=null;
+    s.progress=null;s.activityProgress=null;s.backendResult?.resolve();s.backendResult=null;
     const backend=await Promise.allSettled([includeBackend?s.backend?.cancel():undefined]);
     const local=await Promise.allSettled([...s.localCleanups]);
     const results=[...backend,...local,...await Promise.allSettled([...s.processes].map(id=>killOwned(s,id)))];
@@ -113,7 +116,10 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     // controller is responsible for cleanup; Gateway process is never fallback.
     s.delivery=createTaskDelivery({gateway,sessionKey,ownerId:s.id,audit});
     s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,taskDelivery:s.delivery,
-      onActivity:p=>{if(current(s))emit(s,{type:'tool.progress',...p,name:'delegate_to_v'});},
+      onActivity:p=>{if(current(s)){
+        emit(s,{type:'tool.progress',...p,name:'delegate_to_v'});
+        if(['start','result','error'].includes(p.phase))s.activityProgress={...p,observedAt:Date.now()};
+      }},
       onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v',text:p.text,kind:'commentary'});}}});
     sessions.set(s.id,s);
     audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model,voice:s.voice,...(model==='grok'?{speed:grokSpeed,expressiveTags:grokExpressiveTags}:{})});
@@ -182,6 +188,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         }
         if(call.name==='delegate_to_v'){
           if(s.backend.snapshot())throw Error('新任务未启动：这通电话已有一个 V 后台任务。未加入队列，不要说正在做。修改或补充原任务请调用 openclaw_agent_control 的 steer/followup；用户明确取消时先调用 cancel_task，再委派新任务。');
+          s.lastProgressText=null;s.lastProgressAt=0;s.progress=null;s.activityProgress=null;
           s.backgroundCallId=call.callId;s.bridge.beginBackgroundTool(call.callId,call.args.question);backgroundAck=true;
         }
         if(!['send_task_updates','openclaw_agent_control'].includes(call.name))result=await execute(call.name,call.args,call.callId,controller.signal);

@@ -1,7 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setTimeout as delay} from 'node:timers/promises';
-import {createBackendDelegation,visibleText,backendQuestion} from './backend.mjs';
+import {createBackendDelegation,visibleText,backendQuestion,telephoneProgress} from './backend.mjs';
+
+test('telephone progress requires an explicitly marked complete public line',()=>{
+ assert.deepEqual(telephoneProgress('普通最终答案。'),[]);
+ assert.deepEqual(telephoneProgress('【电话进展】10月21日有'),[]);
+ assert.deepEqual(telephoneProgress('【电话进展】已拿到官方赛程，正在筛选勇士场次。'),['已拿到官方赛程，正在筛选勇士场次。']);
+});
+
+test('completion-provider progress reconciles only owned public tool-turn text before final',async()=>{
+ let history=[];
+ const f=fixture(async method=>method==='chat.history'?{messages:history}:new Promise(()=>{})),work=f.start();await delay(0);
+ const {runId}=f.backend.snapshot();
+ const marked='【电话进展】已经取得官方赛程，正在筛选首月比赛。';
+ history=[
+  {role:'assistant',__openclaw:{runId:'foreign'},stopReason:'toolUse',content:[{type:'text',text:'【电话进展】不能播的外来内容。'}]},
+  {role:'assistant',__openclaw:{runId},stopReason:'toolUse',content:[{type:'thinking',thinking:'【电话进展】不能播的推理。'},{type:'text',text:marked}]},
+  {role:'assistant',__openclaw:{runId},stopReason:'stop',content:[{type:'text',text:'【电话进展】不是中间进展。'}]},
+ ];
+ const tool=(phase,id)=>f.backend.handleEvent({event:'agent',payload:{runId,sessionKey:f.sessionKey,stream:'tool',data:{phase,name:'pdf',toolCallId:id}}});
+ tool('result','download');tool('start','parse');await delay(5);
+ assert.deepEqual(f.progress.map(p=>p.text),['已经取得官方赛程，正在筛选首月比赛。']);
+ f.backend.handleEvent({event:'agent',payload:{runId,stream:'assistant',data:{text:marked}}});
+ assert.equal(f.progress.length,1);
+ f.backend.handleEvent({event:'agent',payload:{runId,stream:'reasoning',data:{text:'【电话进展】不能播的推理。'}}});
+ f.event(runId,'final',{text:'报告已完成'});assert.equal((await work).result,'报告已完成');
+ tool('start','late');await delay(5);assert.equal(f.progress.length,1);
+});
 
 test('the host keeps the complete caller goal ahead of an expanded frontend paraphrase',()=>{
  const original='请查一下我们的合作，说明两条业务线和各自状态。';

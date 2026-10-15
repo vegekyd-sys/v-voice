@@ -6,6 +6,8 @@ const stages = Object.freeze({
   web_search:['web','正在搜索资料','资料搜索已返回'],
   x_search:['web','正在搜索资料','资料搜索已返回'],
   web_fetch:['web','正在读取网页','网页读取已返回'],
+  pdf:['background','正在读取 PDF 文档','PDF 文档读取已返回'],
+  progress_card:['background','正在更新任务记录','任务记录更新已返回'],
   feishu_calendar:['calendar','正在处理日程','日程操作已返回'],
 });
 const preparationStages=Object.freeze({
@@ -15,9 +17,9 @@ const preparationStages=Object.freeze({
 });
 export function createTaskProgress({runId,onUpdate=()=>{},now=Date.now}) {
   const pending=new Map(),completed=new Set(),startedAt=now();let closed=false,last='',sequence=0;
-  const emit=(activity,text)=>{
+  const emit=(activity,text,phase)=>{
     if(closed||text===last)return;
-    last=text;onUpdate({runId,kind:'activity',activity,text,sequence:++sequence,startedAt,elapsedMs:Math.max(0,now()-startedAt),completedSteps:completed.size});
+    last=text;onUpdate({runId,kind:'activity',activity,text,...(phase?{phase}:{}),sequence:++sequence,startedAt,elapsedMs:Math.max(0,now()-startedAt),completedSteps:completed.size});
   };
   return {
     accepted(){if(!sequence)emit('background','任务已接收，等待后台执行');},
@@ -32,14 +34,15 @@ export function createTaskProgress({runId,onUpdate=()=>{},now=Date.now}) {
       const stage=stages[d.name]??['background','正在执行操作','操作已返回'];
       if(d.phase==='start'){
         if(completed.has(d.toolCallId)||pending.has(d.toolCallId))return;
-        pending.set(d.toolCallId,stage);emit(stage[0],stage[1]);
+        pending.set(d.toolCallId,stage);emit(stage[0],stage[1],'start');
       } else if(d.phase==='result'){
         if(completed.has(d.toolCallId))return;
         // Only count calls observed starting on this exact run.
         if(!pending.delete(d.toolCallId))return;
         completed.add(d.toolCallId);
         const next=[...pending.values()].at(-1);
-        emit(next?.[0]??stage[0],next?.[1]??(d.isError||d.result?.isError?'操作返回错误，等待后台处理':stage[2]+'，正在整理'));
+        const failed=d.isError===true||d.result?.isError===true;
+        emit(next?.[0]??stage[0],failed?'这一步返回错误，后台正在处理':next?.[1]??stage[2]+'，正在整理',failed?'error':'result');
       }
     },
     close(){closed=true;pending.clear();completed.clear();},

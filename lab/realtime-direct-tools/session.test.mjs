@@ -153,6 +153,24 @@ test('hybrid tool keeps one backend run alive during chat; progress and final wa
  assert.equal(f.upstream.sent.filter(x=>x.item?.type==='force_message').at(-1).item.content[0].text,'所有步骤完成，结论如下');
  assert.equal(f.client.sent.filter(x=>x.type==='tool.result').length,1);await f.service.dispose();
 });
+test('Seed automatically speaks a real sustained PDF phase without a progress question, with audible captions',async t=>{
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}),'seeduplex');
+ t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'report',name:'delegate_to_v',arguments:JSON.stringify({question:'首月赛程报告'})}]});await delay(5);
+ const started=f.audit.find(e=>e.type==='backend.started');assert(started);
+ f.event({type:'response.output_audio.done',response_id:'ack'});
+ f.service.handleEvent({event:'agent',payload:{runId:started.runId,sessionKey:started.sessionKey,stream:'tool',data:{phase:'start',name:'pdf',toolCallId:'pdf-1',args:{pdf:'/PRIVATE'}}}});
+ await delay(8300);
+ const spoken=f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit');
+ assert.equal(spoken.length,1);assert.equal(spoken[0].text,'正在读取 PDF 文档');
+ f.event({type:'response.output_audio.started',response_id:'progress',tts_type:'chat_tts_text'});
+ const pcm=Buffer.alloc(8);pcm.writeFloatLE(.1,0);pcm.writeFloatLE(.2,4);
+ f.event({type:'response.output_audio.delta',response_id:'progress',delta:pcm.toString('base64')});
+ assert(f.client.sent.some(e=>e.type==='transcript'&&e.text==='正在读取 PDF 文档'&&e.final));
+ assert.doesNotMatch(JSON.stringify(spoken),/PRIVATE/);
+ f.event({type:'response.output_audio.done',response_id:'progress'});
+ f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{text:'报告已完成'}}});
+});
 test('hybrid explicit cancellation aborts only its own backend run and never feeds late final',async()=>{
  let cancelled=false;const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:'error',aborted:true}:new Promise(()=>{}));
  f.call('delegate_to_v',{question:'做一个较长任务'});await delay(5);const started=f.audit.find(x=>x.type==='backend.started');

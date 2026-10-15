@@ -17,3 +17,13 @@ test('keeps text verbatim without JSON quoting and bounds the retained context',
   assert.equal(voiceConversationContext([{role:'user',content:text}]),`人：${text}`);
   assert.equal(voiceConversationContext([{role:'user',content:'1234567890'}],5),'67890');
 });
+
+test('new calls do not import old delegation envelopes or backend task replies',()=>{
+ const value=voiceConversationContext([
+  {role:'user',content:'天意本人在语音电话里交给 V 的任务。\n完整目标：给旧伙伴介绍V'},
+  {role:'assistant',__openclaw:{runId:'voice-old-call-task'},content:[{type:'text',text:'旧报告和旧任务。'}]},
+  {role:'assistant',provenance:{kind:'realtime_voice'},content:[{type:'text',text:'这是已经说过的一句对话。'}]},
+  {role:'user',content:'我喜欢勇士队'},
+ ]);
+ assert.equal(value,'V：这是已经说过的一句对话。\n\n人：我喜欢勇士队');
+});
