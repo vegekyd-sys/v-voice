@@ -23,6 +23,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
   const hosted = Boolean(publicOrigin || accessToken);
+  const backendReady = () => !preview && gateway?.ready !== false;
   const origin = hosted ? new URL(publicOrigin) : null;
   if (hosted && (origin.protocol !== "https:" || origin.origin !== publicOrigin || !basePath)) throw new Error("Hosted voice requires an HTTPS origin and base path");
   if (!Number.isInteger(maxActiveSessions) || maxActiveSessions < 1 || maxActiveSessions > 50 || !Number.isInteger(maxActiveSessionsPerIp) || maxActiveSessionsPerIp < 1 || maxActiveSessionsPerIp > maxActiveSessions) throw new Error("Invalid voice call limits");
@@ -109,7 +110,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
           const visitor = hosted ? access.read(req) : null;
           const canCheckEntry = visitor && (contexts.has(`${entry}:${visitor.id}`) || contexts.size < 512);
           if (!hosted || canCheckEntry) {
-            const initial = JSON.stringify({ ready: !preview, defaultModel,
+            const initial = JSON.stringify({ ready: backendReady(), preview, defaultModel,
               ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
             }).replaceAll("<", "\\u003c");
             html = html.replace('<script type="module" src="./app.js"></script>', `<script type="application/json" id="voiceEntryStatus">${initial}</script><script type="module" src="./app.js"></script>`);
@@ -145,7 +146,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       } else if (!String(req.headers.cookie ?? "").split(/;\s*/u).includes(`v_live_experiment=${cookie}`)) return json(res, 401, { error: "请先打开实验页面" });
       context.touchedAt = Date.now();
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
-        ready: !preview, defaultModel, model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
+        ready: backendReady(), preview, defaultModel, model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
         ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
       });
       if (preview) return json(res, 503, { error: "当前是页面预览，还未连接 VLab 候选服务。" });
@@ -177,6 +178,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       if (req.method !== "POST") return json(res, 404, { error: "没有这个入口" });
       const params = await readBody();
       if (pathname === "/api/session") {
+        if (!backendReady()) return json(res,503,{error:"V 后端正在重新连接，请稍后重拨。"});
         if (params.model && !['gpt-live','seeduplex','grok'].includes(params.model)) return json(res,400,{error:'没有这个语音模型'});
         if (params.model && params.model !== 'gpt-live' && !directVoice) return json(res,503,{error:'这个语音模型尚未接入'});
         if (context.creatingSession) return json(res, 409, { error: "正在连接 V，请稍等。" });
@@ -408,14 +410,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if (!configPath) throw new Error("OPENCLAW_CONFIG_PATH is required");
     const config = JSON.parse(await readFile(configPath, "utf8"));
     const token = String(config.gateway.auth.token).replace(/\$\{([^}]+)\}/gu, (_, key) => process.env[key] ?? "");
-    const { GatewayClient } = await import("../../lib/gateway-client.mjs");
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => { gateway?.stop(); reject(new Error("Gateway startup timed out")); }, 60000);
-      gateway = new GatewayClient({ url: `ws://127.0.0.1:${config.gateway.port}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", scopes: ["operator.read", "operator.write", "operator.admin"], caps:["voice-direct-tools","tool-events"], onHelloOk: () => { clearTimeout(timeout); resolve(); }, onEvent: (event) => bridge?.emit(event), onConnectError: (error) => {
-        if(error.code === "UNAVAILABLE" && error.retryable === true) return;
-        clearTimeout(timeout); gateway?.stop(); reject(error);
-      } }); gateway.start();
-    });
+    const { connectGatewayClient } = await import("../../lib/gateway-client.mjs");
+    gateway = await connectGatewayClient({url:`ws://127.0.0.1:${config.gateway.port}`,token,
+      getToken:async()=>{
+        const latest=JSON.parse(await readFile(configPath,"utf8"));
+        return String(latest.gateway.auth.token).replace(/\$\{([^}]+)\}/gu,(_,key)=>process.env[key]??"");
+      },
+      scopes:["operator.read","operator.write","operator.admin"],caps:["voice-direct-tools","tool-events"],onEvent:event=>bridge?.emit(event),
+    },{onConnectError:error=>console.warn(JSON.stringify({type:"voice.gateway-connection-error",code:/^[A-Z0-9_]{1,80}$/.test(error.code??"")?error.code:"CONNECT_ERROR"}))});
     const {createDirectVoiceService}=await import('../realtime-direct-tools/session.mjs');
     const wsModule=await import('ws');
     transcriptLog=createVoiceTranscriptLog({

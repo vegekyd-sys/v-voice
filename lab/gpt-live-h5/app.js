@@ -567,7 +567,7 @@ async function stopCall() {
   setCallState("idle");
   $("start").hidden = false; $("start").disabled = false; $("stop").hidden = true;
   $("steerText").disabled = true; $("steer").disabled = true;
-  $("badge").textContent = liveReady ? "可以拨号" : "页面预览";
+  $("badge").textContent = liveReady ? "可以拨号" : status.preview === false ? "后端重连中" : "页面预览";
   $("startLabel").textContent = "拨号"; $("stopLabel").textContent = "结束通话";
   if ($("voiceModel")) $("voiceModel").disabled = false;
   setStatus("拨号后，直接说话。");
@@ -856,10 +856,10 @@ async function initializeEntry() {
       select.value = ['seeduplex', 'gpt-live', 'grok'].find(id => [...select.options].some(option => option.value === id && !option.disabled)) ?? select.value;
     }
     productControls?.refreshModels();
-    $("badge").textContent = liveReady ? "可以拨号" : "页面预览";
+    $("badge").textContent = liveReady ? "可以拨号" : status.preview === false ? "后端重连中" : "页面预览";
     $("start").disabled = !liveReady;
     if (liveReady) markVoiceTiming("voice.dial.ready");
-    if (!liveReady) setStatus("这是页面预览，真实通话需连接候选服务。");
+    if (!liveReady) setStatus(status.preview === false ? "V 后端正在重新连接，恢复后请刷新页面。" : "这是页面预览，真实通话需连接候选服务。");
   } catch (error) {
     liveReady = false;
     entryError = error.message ?? "暂时无法连接 V，请稍后重试。";

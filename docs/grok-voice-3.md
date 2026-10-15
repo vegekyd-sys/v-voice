@@ -43,3 +43,7 @@ node scripts/compare-grok-voice.mjs --run --rounds 2 --out /absolute/private/gro
 ## 验收边界
 
 本改动只影响 Voice 的模型适配与界面标注，使用既有 Gateway 契约，适合 Candidate 验证。`npm test` 覆盖固定模型请求、目录/审计一致性及已有工具/挂断回归。页面预览不创建语音连接。上线前仍需真实 Candidate 通话，覆盖手机权限、声学回声、真人插话、长通话、后台任务与实际告别播放完成。独立 worktree 的测试通过不表示已合入或上线。
+
+## 候选后端重连
+
+页面就绪状态必须跟随真实 Gateway 连接；后端断线时不接受新的 provider reservation，并显示后端重连状态。Voice 连接器在每次重新握手前重新读取同一私有配置的凭据，兼容其他已授权运维更新凭据的情况；不改变 Gateway 权限或重放业务请求。迟到的凭据读取不能在连接已关闭后发起握手。

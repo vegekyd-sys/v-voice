@@ -13,6 +13,7 @@ async function fixture(t, overrides = {}) {
     if (overrides.request) return overrides.request(method, params, reservation);
     return method === "talk.client.create" ? reservation : { ok: true };
   } };
+  if (overrides.gatewayReady !== undefined) gateway.ready = overrides.gatewayReady;
   const offers = [];
   const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice,callControlEvaluate:overrides.callControlEvaluate });
   await new Promise((resolve) => bridge.server.listen(0, "127.0.0.1", resolve));
@@ -20,7 +21,7 @@ async function fixture(t, overrides = {}) {
   const url = `http://127.0.0.1:${bridge.server.address().port}`;
   const page = await fetch(url); const cookie = page.headers.get("set-cookie").split(";", 1)[0]; await page.text();
   const request = (route, payload = {}, headers = {}) => fetch(`${url}/api/${route}`, { method: "POST", headers: { cookie, "content-type": "application/json", ...headers }, body: JSON.stringify(payload) });
-  return { bridge, calls, offers, url, cookie, request, reservation };
+  return { bridge, gateway, calls, offers, url, cookie, request, reservation };
 }
 
 test("exact native model reservation and SDP proxy keep credentials off the browser", async (t) => {
@@ -333,4 +334,13 @@ test('candidate default model is server-owned and included in both readiness pat
 });
 test('unsupported default voice models fail at startup',()=>{
  assert.throws(()=>createLiveH5Server({defaultModel:'arbitrary'}),/Invalid default voice model/);
+});
+
+test('disconnected Gateway is not dial-ready and cannot allocate a provider session',async t=>{
+ const f=await fixture(t,{gatewayReady:false});
+ const html=await (await fetch(f.url)).text();assert.match(html,/"ready":false,"preview":false/);
+ const status=await (await fetch(f.url+'/api/status',{headers:{cookie:f.cookie}})).json();assert.equal(status.ready,false);assert.equal(status.preview,false);
+ const blocked=await f.request('session',{model:'grok'});assert.equal(blocked.status,503);assert.match((await blocked.json()).error,/后端正在重新连接/);assert.equal(f.calls.length,0);
+ f.gateway.ready=true;
+ assert.equal((await (await fetch(f.url+'/api/status',{headers:{cookie:f.cookie}})).json()).ready,true);
 });
