@@ -26,19 +26,28 @@ export function grokVoiceSpeed(value = 1) {
 }
 // Candidate-only experiment: xAI documents these delivery tags for speech
 // synthesis. Keep the experiment explicit and separate from tool permissions.
+export const GROK_SPEECH_TAGS = Object.freeze({
+  inline:Object.freeze(['pause','long-pause','hum-tune','laugh','chuckle','giggle','cry','tsk','tongue-click','lip-smack','breath','inhale','exhale','sigh']),
+  wrapping:Object.freeze(['soft','whisper','loud','build-intensity','decrease-intensity','higher-pitch','lower-pitch','slow','fast','sing-song','singing','emphasis']),
+});
 export const GROK_EXPRESSIVE_INSTRUCTIONS = `## Grok speech delivery experiment
-你正在使用支持表达标签的 Grok 声音。说话轻快、自然、有情境反应，不刻意表演。
-在给用户说的口语中，按语境少量使用语音标签：[chuckle] 表示短促轻笑，[pause] 表示短停顿，<emphasis>重要短语</emphasis> 表示重读，<soft>安慰的话</soft> 表示柔和表达。
-例如听到好消息可以说：太好了！[chuckle] 这次<emphasis>终于跑通了</emphasis>，你最满意哪一点？
-轻笑只用于轻松、开心或好笑的语境；严肃、难过、失败或风险信息不加笑声。普通回复通常不超过一个表达效果，不要每句都加标签，不加入长停顿。
-标签用于语音表达，不把标签名字作为单词朗读，不说括号里的舞台说明。工具参数、原始结果、引用、代码、屏幕文档保持原文，不添加标签。表达方式不改变事实、用户要求、工具选择或授权规则。`;
-const SPEECH_TAGS = ['[chuckle]','[pause]','<emphasis>','</emphasis>','<soft>','</soft>'];
+你是正在和天意交流的 V。你的目标是让说话有鲜活的人味：有自己的感受、好奇心、幽默、态度和随交流起伏的声音。让自然的情绪反应贯穿聊天、讲故事和解释，不只在开头客套一句，再平铺直叙地念答案。
+你可以使用下面完整的表达标签。由你根据当下的内容、用户语气、双方关系和对话节奏，自主决定用什么、用在哪里、持续多久，以及如何组合。更主动、更经常地把你想表达的情绪、呼吸、重音、音高和节奏变化写进语音标签，不必等用户要求；没有每轮个数上限，也没有固定的情绪触发模板或轮换顺序。表达要随话语自然展开，语义和交流仍然清楚。
+行内标签在对应位置发出声音或停顿：
+${GROK_SPEECH_TAGS.inline.map(tag=>`[${tag}]`).join(' ')}
+它们分别包含停顿、长停顿、哼曲，大笑、轻笑、咯咯笑、哭声，咂舌、弹舌、抿嘴，以及呼吸、吸气、呼气和叹气。
+包裹标签用 <标签>完整短语</标签> 改变一段话的表达，可组合或嵌套：
+${GROK_SPEECH_TAGS.wrapping.map(tag=>`<${tag}>…</${tag}>`).join(' ')}
+它们分别调整柔和、耳语、响亮、渐强、渐弱，升调、降调、慢、快，以及有旋律地说、唱和重读。让声音能随着一个想法里的转折变化，不把整段话机械地处理成同一种语气。
+这些标签是给声音渲染的表达标记，不把标签名字作为词朗读，不用舞台说明代替实际表达。工具参数、原始结果、引用、代码和屏幕文档保持原文。表达方式不改变事实、用户要求、工具选择或授权规则。`;
+const SPEECH_TAGS = [...GROK_SPEECH_TAGS.inline.map(tag=>`[${tag}]`),...GROK_SPEECH_TAGS.wrapping.flatMap(tag=>[`<${tag}>`,`</${tag}>`])];
+const MAX_TAG_PREFIX = Math.max(...SPEECH_TAGS.map(tag=>tag.length-1));
 // Audio transcripts contain the delivery markup too. Hide only our known
 // control tokens, including tokens split across streamed deltas.
 export function cleanGrokSpeechCaption(text, partial = false) {
   let value = text;
   for(const tag of SPEECH_TAGS)value=value.split(tag).join('');
-  if(partial)for(let length=Math.min(value.length,12);length>0;length--){
+  if(partial)for(let length=Math.min(value.length,MAX_TAG_PREFIX);length>0;length--){
     if(SPEECH_TAGS.some(tag=>tag.startsWith(value.slice(-length))))return value.slice(0,-length);
   }
   return value;

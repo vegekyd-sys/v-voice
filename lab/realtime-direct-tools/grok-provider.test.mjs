@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {EventEmitter} from 'node:events';
-import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICE_MODELS,GROK_EXPRESSIVE_INSTRUCTIONS} from './grok-provider.mjs';
+import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICE_MODELS,GROK_EXPRESSIVE_INSTRUCTIONS,GROK_SPEECH_TAGS} from './grok-provider.mjs';
 class Socket extends EventEmitter {constructor(){super();this.readyState=1;this.sent=[];}send(s){this.sent.push(JSON.parse(s));}close(){this.readyState=3;this.emit('close');}}
 async function fixture(model=GROK_VOICE_MODEL,voice='eve',options={}){const ws=new Socket(),calls=[],audio=[],text=[];
  const bridge=new GrokVoiceBridge({instructions:'中文',tools:[{type:'function',name:'memory_search',parameters:{type:'object'}}],onToolCall:c=>calls.push(c),onAudio:b=>audio.push(b),onTranscript:(...a)=>text.push(a)},
@@ -75,4 +75,21 @@ test('split speech tags are hidden in captions while spoken text, user text and 
  f.bridge.receive({type:'conversation.item.input_audio_transcription.completed',transcript:'标签 [pause] 是什么？'});assert.equal(f.text.at(-1)[1],'标签 [pause] 是什么？');
  f.bridge.receive({type:'response.output_audio_transcript.done',response_id:'literal',transcript:'保留[unknown]和<code>原文</code>'});assert.equal(f.text.at(-1)[1],'保留[unknown]和<code>原文</code>');
  f.bridge.speakProgress('实际结果 <code>不改</code>');assert.equal(f.ws.sent.at(-1).item.content[0].text,'实际结果 <code>不改</code>');f.bridge.close();
+});
+
+test('full documented delivery vocabulary supports nested styles and tags split at every character',async()=>{
+ const f=await fixture(GROK_VOICE_MODEL,'iris',{expressiveTags:true});
+ assert.equal(GROK_SPEECH_TAGS.inline.length+GROK_SPEECH_TAGS.wrapping.length,26);
+ const spoken='哎，这个转折真没想到。我们接着聊。';
+ const raw='[sigh]<decrease-intensity><lower-pitch>哎，这个转折真没想到。</lower-pitch></decrease-intensity>[tongue-click]<build-intensity><sing-song>我们接着聊。</sing-song></build-intensity>';
+ for(const delta of raw)f.bridge.receive({type:'response.output_audio_transcript.delta',response_id:'nested',delta});
+ assert.equal(f.text.map(t=>t[1]).join(''),spoken);
+ f.bridge.receive({type:'response.output_audio_transcript.done',response_id:'nested',transcript:raw});assert.equal(f.text.at(-1)[1],spoken);
+ for(const [index,tag] of GROK_SPEECH_TAGS.inline.entries()){
+  f.bridge.receive({type:'response.output_audio_transcript.done',response_id:'inline-'+index,transcript:'前['+tag+']后'});assert.equal(f.text.at(-1)[1],'前后');
+ }
+ for(const [index,tag] of GROK_SPEECH_TAGS.wrapping.entries()){
+  f.bridge.receive({type:'response.output_audio_transcript.done',response_id:'style-'+index,transcript:'前<'+tag+'>后</'+tag+'>'});assert.equal(f.text.at(-1)[1],'前后');
+ }
+ f.bridge.close();
 });

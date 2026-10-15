@@ -869,7 +869,7 @@ async function initializeEntry() {
     const grokVoices = status.models?.find(model=>model.id==='grok')?.voices ?? [];
     if ($("grokVoice")) {
       const grok = status.models?.find(model=>model.id==='grok');
-      $("grokVoice").dataset.deliveryHint = [grok?.speed && grok.speed !== 1 ? `${grok.speed}× 语速` : '',grok?.expressiveTags ? '语气增强试用' : ''].filter(Boolean).join(' · ');
+      $("grokVoice").dataset.deliveryHint = [grok?.speed && grok.speed !== 1 ? `${grok.speed}× 语速` : '',grok?.expressiveTags ? '自主表达试用' : ''].filter(Boolean).join(' · ');
       $("grokVoice").replaceChildren(...grokVoices.map(voice=>{
         const option = document.createElement('option'); option.value = voice.id; option.textContent = voice.label; return option;
       }));
