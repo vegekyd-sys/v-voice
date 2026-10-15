@@ -640,6 +640,8 @@ for (const acknowledge of [true,false]) test(`host progress interruption preserv
  bridge.speakProgress('中间进展。',{caption:true});
  socket.message({type:'response.output_audio.started',response_id:'progress',tts_type:'chat_tts_text'});
  socket.message({type:'response.output_audio.delta',response_id:'progress',delta:floatAudio([.1])});
+ socket.message({type:'response.output_audio.started',response_id:'progress-sentence-2',tts_type:'chat_tts_text'});
+ socket.message({type:'response.output_audio.delta',response_id:'progress-sentence-2',delta:floatAudio([.15])});
  const work=bridge.interruptProgress();assert(socket.sent.some(e=>e.type==='response.cancel'));
  if(acknowledge)socket.message({type:'response.canceled'});
  assert.equal(await work,true);
@@ -647,7 +649,8 @@ for (const acknowledge of [true,false]) test(`host progress interruption preserv
  socket.message({type:'response.output_audio.started',response_id:'final',tts_type:'chat_tts_text'});
  // A delayed or duplicate acknowledgement has no response ID on the real API.
  socket.message({type:'response.canceled'});
+ socket.message({type:'response.canceled',response_id:'progress'});
  socket.message({type:'response.output_audio.delta',response_id:'final',delta:floatAudio([.2])});
- assert.equal(audio.length,2);assert.equal(captions.at(-1),'最终答案。');assert.equal(clears.length,1);
+ assert.equal(audio.length,3);assert.equal(captions.at(-1),'最终答案。');assert.equal(clears.length,1);
  bridge.close();
 });

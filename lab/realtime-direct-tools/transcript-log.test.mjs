@@ -83,3 +83,16 @@ test('post-hangup delivery receipt survives without accepting late transcript or
  assert.equal(f.log.audit({type:'transcript',voiceSessionId:'v1',role:'assistant',text:'late',final:true}),false);
  await f.log.close();const rows=await f.rows();assert.equal(rows.at(-1).messageId,'om-real');assert.equal(rows.at(-1).runId,'owned-run');assert(!JSON.stringify(rows).includes('SECRET'));
 });
+
+test('output diagnostics retain only owned event names and IDs, never audio, text or credentials',async t=>{
+ const f=await fixture(t);f.created();
+ const event={type:'response.output_audio.delta',response_id:'owned-response',delta:'SECRET_AUDIO',text:'SECRET_TEXT',apiKey:'SECRET_KEY'};
+ assert.equal(f.log.audit({type:'provider.protocol',voiceSessionId:'foreign',event}),false);
+ assert.equal(f.log.audit({type:'provider.protocol',voiceSessionId:'v1',event}),true);
+ assert.equal(f.log.audit({type:'provider.protocol',voiceSessionId:'v1',event}),false);
+ assert.equal(f.log.audit({type:'provider.protocol',voiceSessionId:'v1',event:{type:'session.created',token:'SECRET_TOKEN'}}),false);
+ f.log.audit({type:'backend.progress-preempted',voiceSessionId:'v1',raw:'SECRET_STATE'});
+ await f.log.close();const rows=await f.rows();assert(!JSON.stringify(rows).includes('SECRET'));
+ assert.equal(rows.filter(r=>r.type==='call.output-protocol').length,1);
+ assert.equal(rows.find(r=>r.type==='call.output-protocol').responseId,'owned-response');
+});

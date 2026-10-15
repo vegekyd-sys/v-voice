@@ -6,7 +6,7 @@ import {randomUUID} from 'node:crypto';
 /** Text and whitelisted connection diagnostics. No PCM, protocol or credentials. */
 export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},maxPending=256}={}) {
   if(!directory||!path.isAbsolute(directory))throw Error('An absolute private transcript directory is required');
-  const captureId=randomUUID(),owners=new Map(),closedOwners=new Map();
+  const captureId=randomUUID(),owners=new Map(),closedOwners=new Map(),audioResponses=new Set();
   let tail=Promise.resolve(),sequence=0,pending=0,dropped=0,failed=0,closed=false;
   const notify=error=>{failed++;try{onError({code:error.code??'transcript_write_failed'});}catch{}};
   const write=async line=>{
@@ -38,6 +38,20 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       return enqueue({...owners.get(id),type:'call.created'});
     }
     const owner=owners.get(id)??(event.type.startsWith('task.delivery-')?closedOwners.get(id):null);if(!owner)return false;
+    if(event.type==='provider.protocol'){
+      const p=event.event??{};
+      if(!['response.created','response.canceled','response.done','response.output_audio.started','response.output_audio.done','response.output_audio.delta','conversation.item.input_audio_transcription.started','conversation.item.input_audio_transcription.completed','error'].includes(p.type))return false;
+      const responseId=p.response_id??p.response?.id;
+      if(p.type==='response.output_audio.delta'){
+        const key=id+':'+responseId;if(audioResponses.has(key))return false;
+        audioResponses.add(key);if(audioResponses.size>1024)audioResponses.delete(audioResponses.values().next().value);
+      }
+      return enqueue({...owner,type:'call.output-protocol',eventType:p.type,
+        ...(typeof responseId==='string'&&/^[\w-]{1,128}$/.test(responseId)?{responseId}:{}),
+        ...(['default','chat_tts_text'].includes(p.tts_type)?{ttsType:p.tts_type}:{}),
+        ...(typeof p.error?.code==='string'&&/^[\w-]{1,80}$/.test(p.error.code)?{errorCode:p.error.code}:{})});
+    }
+    if(['backend.progress-spoken','backend.progress-preempted'].includes(event.type))return enqueue({...owner,type:event.type});
     if(event.type==='call.connection-stage'){
       if(!['catalog-requested','catalog-ready','context-requested','context-ready','provider-connecting','provider-ready'].includes(event.stage))return false;
       return enqueue({...owner,type:event.type,stage:event.stage});

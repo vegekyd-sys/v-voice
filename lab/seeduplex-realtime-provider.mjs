@@ -274,6 +274,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.responseActive = false;
     this.injectedSpeech = false;
     this.speechRevision = 0;
+    this.injectedResponseIds = new Set();
     this.greetingRequested = false;
     this.pendingGreeting = null;
     this.retiredResponses = new Set();
@@ -483,6 +484,7 @@ export class SeeduplexRealtimeVoiceBridge {
   speakProgress(text, { caption = false } = {}) {
     if (this.terminal || (!this.ready && !this.reconnecting)) return;
     this.speechRevision++;
+    this.injectedResponseIds.clear();
     this.pendingSpeechCaption = caption ? { text, started: false, responseId: null } : null;
     this.injectedSpeech = true;
     this.responseActive = true;
@@ -560,7 +562,10 @@ export class SeeduplexRealtimeVoiceBridge {
     this.cancelledSpeechRevision = this.speechRevision;
     this.cancelledSpeechResponseId = retiredId;
     if (retiredId) this.retiredResponses.add(retiredId);
-    if (this.retiredResponses.size > 256) this.retiredResponses.delete(this.retiredResponses.values().next().value);
+    // One speech commit can have several sentence response IDs. Retire all
+    // of them, so a cancellation for its first sentence cannot clear the final.
+    if (this.injectedSpeech) for (const id of this.injectedResponseIds) this.retiredResponses.add(id);
+    while (this.retiredResponses.size > 256) this.retiredResponses.delete(this.retiredResponses.values().next().value);
     this.responseActive = false;
     this.cancelEventId = `event_${randomUUID()}`;
     this.#send({ type: "response.cancel", event_id: this.cancelEventId });
@@ -704,6 +709,7 @@ export class SeeduplexRealtimeVoiceBridge {
     // This service emits TTSSentenceStart, without response.created. Use its
     // actual response ID as the boundary; an old tail cannot reopen playback.
     if (type === "response.output_audio.started") {
+      if (this.injectedSpeech && event.tts_type === "chat_tts_text" && responseId) this.injectedResponseIds.add(responseId);
       this.cancelledOutputPending = false;
       this.outputClosed = false;
       this.responseActive = true;

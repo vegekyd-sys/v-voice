@@ -454,3 +454,14 @@ test('backend tool activity reaches the screen during user speech and survives p
  f.service.handleEvent({event:'chat',payload:{runId:started.runId,state:'final',message:{text:'实际结果'}}});
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:false})),false);await delay(250);
 });
+
+test('an empty ASR completion releases speech-start activity without inventing a caller turn',async t=>{
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}));t.after(()=>f.service.dispose());
+ f.call('delegate_to_v',{question:'整理报告'});await delay(5);const row=f.audit.find(x=>x.type==='backend.started');
+ f.event({type:'conversation.item.input_audio_transcription.started'});
+ f.service.handleEvent({event:'chat',payload:{runId:row.runId,sessionKey:row.sessionKey,state:'final',message:{text:'最终报告'}}});await delay(5);
+ assert.equal(f.client.sent.filter(x=>x.type==='tool.result').length,0);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:''});await delay(1450);
+ assert.equal(f.client.sent.filter(x=>x.type==='tool.result').length,1);
+ assert(!f.audit.some(x=>x.type==='transcript'&&x.role==='user'&&x.text.trim()));
+});
