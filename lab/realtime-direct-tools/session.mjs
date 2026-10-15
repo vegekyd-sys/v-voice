@@ -108,7 +108,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
     const selectedVoice=model==='grok'?grokVoice(voice):spec.voice;
     const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map()};
-    Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,progress:null});
+    Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,progress:null,callerTurns:[]});
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
     s.delivery=createTaskDelivery({gateway,sessionKey,ownerId:s.id,audit});
@@ -155,7 +155,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       cleanup.then(()=>s.localCleanups.delete(cleanup),()=>{});
       return work.then(result=>{audit({type:'tool.local-result',voiceSessionId:s.id,callId,name,result});return result;});
     });
-    const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',calendar),larkRead:localRead('lark_read',larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),delegate:args=>s.backend.run(args)});
+    const rememberCaller=text=>{if(s.callerTurns.at(-1)!==text)s.callerTurns.push(text);if(s.callerTurns.length>4)s.callerTurns.shift();};
+    const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',calendar),larkRead:localRead('lark_read',larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),delegate:args=>s.backend.run({...args,callerTurns:[...s.callerTurns]})});
     s.progressTimer=setInterval(()=>deferred(s),200);s.progressTimer.unref?.();
     const onToolCall=async call=>{
       if(!current(s))return;
@@ -225,6 +226,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       onAudio:(audio,metadata)=>{if(!current(s))return;s.responseActive=true;if(s.ending)s.ending.hasAudio=true;deliverAudio(audio,metadata);},
       onTranscript:(role,text,final,source)=>{
         if(!current(s))return;
+        if(role==='user'&&final&&text.trim())rememberCaller(text);
         if(role==='user'){s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
         if(role==='user'&&final&&s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{})});
@@ -251,7 +253,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if(binary){if(data.length%2===0&&data.length<=24000)s.bridge.sendAudio(data);else client.close(1008);return;}
       try{const e=JSON.parse(data.toString());if(e.type==='greeting'&&!s.greeted){s.greeted=true;s.bridge.triggerGreeting('电话已接通。请用中文向天意简短打个招呼，然后听他说话。');}
       else if(e.type==='barge-in') {s.bridge.handleBargeIn();audit({type:'client.barge-in',voiceSessionId:s.id});}
-      else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000)s.bridge.sendUserMessage(e.text);
+      else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){rememberCaller(e.text);s.bridge.sendUserMessage(e.text);}
       else if(e.type==='playback.state'&&typeof e.speaking==='boolean')s.playing=e.speaking;
       else if(e.type==='playback.stats'){
         const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));

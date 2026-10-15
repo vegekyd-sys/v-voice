@@ -94,6 +94,20 @@ test('native direct call executes real Gateway tool, retains personal session an
  assert.equal(f.audit.filter(x=>x.type==='tool.delivered').length,1);
  assert.equal(f.upstream.sent.filter(x=>x.item?.type==='function_call_output').length,1);await f.service.dispose();
 });
+test('delegation preserves host-observed caller speech before a narrowed model paraphrase',async t=>{
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}));
+ t.after(()=>f.service.dispose());
+ const original='让后台查一下我们的整个合作，说明两条线分别是什么。';
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:original});
+ f.call('delegate_to_v',{question:'仅核对上次提到的晨报是否恢复'});await delay(5);
+ const sent=f.invocations.find(x=>typeof x.message==='string');assert(sent);
+ assert(sent.message.includes('完整目标：'+original));
+ // Later progress questions cannot rewrite the already admitted goal.
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'现在查得怎么样了'});
+ assert.equal(f.invocations.filter(x=>typeof x.message==='string').length,1);
+ const run=f.audit.find(x=>x.type==='backend.started');
+ f.service.handleEvent({event:'chat',payload:{runId:run.runId,sessionKey:run.sessionKey,state:'final',message:{text:'两条线的完整结论'}}});
+});
 test('ordinary steering preserves pending work; explicit cancellation retires its late facts',async()=>{
  let finish;const f=await fixture(()=>new Promise(resolve=>finish=resolve));f.call('web_search',{query:'天气'});await delay(2);
  await f.service.steer(f.reservation.voiceSessionId,{mode:'append',text:'我再补充一下'});

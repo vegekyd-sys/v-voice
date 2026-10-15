@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setTimeout as delay} from 'node:timers/promises';
-import {createBackendDelegation,visibleText} from './backend.mjs';
+import {createBackendDelegation,visibleText,backendQuestion} from './backend.mjs';
+
+test('the host keeps the complete caller goal ahead of an expanded frontend paraphrase',()=>{
+ const original='请查一下我们的合作，说明两条业务线和各自状态。';
+ const message=backendQuestion('只核对晨报是否恢复，再扫描所有文件','参考资料',['之前请介绍合作背景。',original]);
+ assert(message.startsWith('天意本人'));assert(message.includes('完整目标：'+original));
+ assert(message.indexOf('完整目标：'+original)<message.indexOf('只核对晨报'));
+ assert.match(message,/不新增步骤、范围或授权/);assert.match(message,/仅用较早原话解释当前指代/);
+});
 
 function fixture(handler=()=>new Promise(()=>{})){
   const calls=[],progress=[],audit=[],sessionKey='agent:makaron:feishu:group:personal-test';
@@ -62,6 +70,18 @@ test('status uses exact-owner stage receipts without waiting on another RPC',asy
   assert.equal(result.connectionUncertain,true);assert.match(result.message,/执行状态未确认/);
   f.event(runId,'final',{text:'查询完成'});await pending;
   assert.equal((await f.backend.control({mode:'status',text:'现在呢'})).active,false);
+});
+test('a completed receipt remains queryable while speech is pending and retires on a new goal or cancellation',async()=>{
+  const f=fixture(),pending=f.start();await delay(0);const {runId}=f.backend.snapshot();
+  f.event(runId,'final',{text:'后台已核实的真实结论'});await pending;
+  const done=await f.backend.control({mode:'status',text:'怎么样了'});
+  assert.equal(done.ok,true);assert.equal(done.completed,true);assert.equal(done.active,false);assert.equal(done.runId,runId);
+  assert.match(done.message,/结果已经返回/);assert.equal(done.source,'owned-terminal-receipt');
+  const next=f.start();await delay(0);
+  const current=await f.backend.control({mode:'status',text:'现在呢'});
+  assert.notEqual(current.runId,runId);assert.equal(current.completed,undefined);
+  f.event(f.backend.snapshot().runId,'final',{text:'新的真实结果'});await next;
+  await f.backend.cancel();assert.equal((await f.backend.control({mode:'status',text:'现在呢'})).ok,false);
 });
 test('cancellation uses exact owned run and requires observed terminal, ignoring late facts',async()=>{
   let cancelled=false;const f=fixture(method=>method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:'error',aborted:true}:new Promise(()=>{}));
