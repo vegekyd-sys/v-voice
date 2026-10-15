@@ -12,3 +12,17 @@ test('accepted host end mutes results without cancelling Agent and rejects inven
  const owner=createVoiceDeliveryOwner();assert.throws(()=>owner.begin({}),/real native/);
  let n=0;const p=owner.begin({continuationIdentity:{delegationItemId:'real'},onProgress:()=>n++});assert.equal(owner.end().ok,true);p.onProgress({text:'late'});assert.equal(n,0);assert.equal(owner.result({delegationId:'real',text:'结果'}).channel,'commentary');owner.close();assert.throws(()=>owner.end(),/closed/);
 });
+test('closed media retains admitted ownership without invoking a retired host',()=>{
+ let calls=0;const owner=createVoiceDeliveryOwner({onBackendResult:()=>{calls++;throw Error('host closed');}});
+ owner.begin({continuationIdentity:{delegationItemId:'admitted'}});owner.close();
+ assert.throws(()=>owner.begin({continuationIdentity:{delegationItemId:'late'}}),/closed/);
+ assert.throws(()=>owner.result({delegationId:'foreign',text:'wrong'}),/not owned/);
+ assert.equal(calls,0);
+ assert.deepEqual(owner.result({delegationId:'admitted',text:'完整结果'}),{spokenText:'完整结果',channel:'commentary'});
+ assert.throws(()=>owner.result({delegationId:'admitted',text:'replay'}),/not owned/);
+ assert.equal(calls,0);
+});
+test('unknown delegation cannot invoke an open host callback',()=>{
+ let calls=0;const owner=createVoiceDeliveryOwner({onBackendResult:()=>calls++});
+ assert.throws(()=>owner.result({delegationId:'foreign',text:'wrong'}),/not owned/);assert.equal(calls,0);
+});
