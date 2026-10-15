@@ -632,3 +632,22 @@ test('long backend document keeps full paired history but commits only short spe
  socket.message({type:'response.output_audio.delta',response_id:'summary',delta:floatAudio([.2])});
  assert.deepEqual(texts,[['assistant',spokenText,true,'V-backend-summary']]);bridge.close();
 });
+
+for (const acknowledge of [true,false]) test(`host progress interruption preserves new result audio after a late cancellation (${acknowledge?'ack':'timeout'})`,async()=>{
+ const socket=new FakeSocket(),audio=[],captions=[],clears=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{voice:'xiaohe',apiKey:'fixture-key'},onAudio:x=>audio.push(x),onTranscript:(role,text)=>captions.push(text),onClearAudio:x=>clears.push(x),onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket,progressInterruptTimeoutMs:10});
+ const connecting=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created',session:{id:'fixture'}});await connecting;
+ bridge.speakProgress('中间进展。',{caption:true});
+ socket.message({type:'response.output_audio.started',response_id:'progress',tts_type:'chat_tts_text'});
+ socket.message({type:'response.output_audio.delta',response_id:'progress',delta:floatAudio([.1])});
+ const work=bridge.interruptProgress();assert(socket.sent.some(e=>e.type==='response.cancel'));
+ if(acknowledge)socket.message({type:'response.canceled'});
+ assert.equal(await work,true);
+ bridge.speakProgress('最终答案。',{caption:true});
+ socket.message({type:'response.output_audio.started',response_id:'final',tts_type:'chat_tts_text'});
+ // A delayed or duplicate acknowledgement has no response ID on the real API.
+ socket.message({type:'response.canceled'});
+ socket.message({type:'response.output_audio.delta',response_id:'final',delta:floatAudio([.2])});
+ assert.equal(audio.length,2);assert.equal(captions.at(-1),'最终答案。');assert.equal(clears.length,1);
+ bridge.close();
+});

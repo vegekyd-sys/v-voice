@@ -193,6 +193,7 @@ test('Seed automatically speaks a real sustained PDF phase without a progress qu
  f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{text:'报告已完成'}}});
  await delay(5);
  assert(f.upstream.sent.some(e=>e.type==='response.cancel'));
+ f.event({type:'response.canceled'});await delay(5);
  assert(f.client.sent.some(e=>e.type==='audio.clear'));
  assert.equal(f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').at(-1).text,'报告已完成');
 });

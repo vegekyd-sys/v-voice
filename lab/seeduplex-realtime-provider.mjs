@@ -273,6 +273,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.pendingWorkingSpeech = undefined;
     this.responseActive = false;
     this.injectedSpeech = false;
+    this.speechRevision = 0;
     this.greetingRequested = false;
     this.pendingGreeting = null;
     this.retiredResponses = new Set();
@@ -481,6 +482,7 @@ export class SeeduplexRealtimeVoiceBridge {
 
   speakProgress(text, { caption = false } = {}) {
     if (this.terminal || (!this.ready && !this.reconnecting)) return;
+    this.speechRevision++;
     this.pendingSpeechCaption = caption ? { text, started: false, responseId: null } : null;
     this.injectedSpeech = true;
     this.responseActive = true;
@@ -529,6 +531,22 @@ export class SeeduplexRealtimeVoiceBridge {
     if (this.injectedSpeech) this.#cancelUpstreamResponse(true);
   }
 
+  interruptProgress() {
+    if (this.progressInterruption) return this.progressInterruption.promise;
+    if (!this.injectedSpeech) return Promise.resolve(false);
+    let resolve;
+    const promise = new Promise(done => { resolve = done; });
+    const finish = () => {
+      clearTimeout(timer); this.cancelledOutputPending = false;
+      this.progressInterruption = null; resolve(true);
+    };
+    const timer = setTimeout(finish, this.options.progressInterruptTimeoutMs ?? 500);
+    this.progressInterruption = {promise, finish};
+    this.handleBargeIn();
+    if (!this.cancelledOutputPending) finish();
+    return promise;
+  }
+
   /**
    * Tear down the upstream generation. Reserved for a confirmed user utterance,
    * a sustained client speech onset during host-injected TTS may cancel immediately.
@@ -539,6 +557,8 @@ export class SeeduplexRealtimeVoiceBridge {
     if (!this.ready || this.cancelledOutputPending || (!this.responseActive && !force)) return;
     this.cancelledOutputPending = true;
     const retiredId = this.audioResponseId ?? this.responseOwnerId;
+    this.cancelledSpeechRevision = this.speechRevision;
+    this.cancelledSpeechResponseId = retiredId;
     if (retiredId) this.retiredResponses.add(retiredId);
     if (this.retiredResponses.size > 256) this.retiredResponses.delete(this.retiredResponses.values().next().value);
     this.responseActive = false;
@@ -671,6 +691,15 @@ export class SeeduplexRealtimeVoiceBridge {
     this.request.onProtocolEvent?.(event);
     const type = event?.type;
     const responseId = optionalString(event.response_id) ?? optionalString(event.response?.id);
+    // This is the acknowledgement of our own retired output. A late id-less
+    // acknowledgement must not clear or complete the subsequent host speech.
+    if (type === "response.canceled" && this.cancelledSpeechRevision !== undefined &&
+      (!responseId || responseId === this.cancelledSpeechResponseId) &&
+      (this.cancelledOutputPending || this.speechRevision > this.cancelledSpeechRevision)) {
+      this.cancelledOutputPending = false;
+      this.progressInterruption?.finish();
+      return;
+    }
     if (responseId && this.retiredResponses.has(responseId) && type?.startsWith("response.")) return;
     // This service emits TTSSentenceStart, without response.created. Use its
     // actual response ID as the boundary; an old tail cannot reopen playback.
@@ -703,6 +732,7 @@ export class SeeduplexRealtimeVoiceBridge {
       /no.*response|response.*(?:ended|finished|cancel|not.*active)/i.test(event.error?.message ?? "")) {
       // response.cancel is documented to return an error when its target ended
       // in the race between local playback and the upstream command.
+      this.progressInterruption?.finish();
       return;
     }
     if (type === "error") return this.#recover(classifySeeduplexError(event));

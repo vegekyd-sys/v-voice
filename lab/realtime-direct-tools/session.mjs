@@ -30,12 +30,18 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
   const sessions=new Map(),detached=new Set();
-  const deferred=s=>{
-    if(!current(s)||s.ending||s.userSpeaking||Date.now()-s.lastUserAt<1200)return;
+  const deferred=async s=>{
+    if(!current(s)||s.ending||s.preemptingProgress||s.userSpeaking||Date.now()-s.lastUserAt<1200)return;
     if(s.backendResult&&s.progressSpeech){
       // A finished result outranks our own progress TTS, never caller speech
       // or an unrelated conversational reply. Retire its queued audio too.
-      s.progressSpeech=false;s.bridge.handleBargeIn();s.responseActive=false;s.playing=false;
+      const requestedAt=Date.now();s.preemptingProgress=true;s.progressSpeech=false;
+      try {
+        const interrupted=s.bridge.interruptProgress?await s.bridge.interruptProgress():(s.bridge.handleBargeIn(),true);
+        if(!interrupted)return;
+      } finally {s.preemptingProgress=false;}
+      if(!current(s)||s.ending||s.userSpeaking||s.lastUserAt>=requestedAt)return;
+      s.responseActive=false;s.playing=false;
       audit({type:'backend.progress-preempted',voiceSessionId:s.id});
     }
     if(s.responseActive||s.playing)return;
