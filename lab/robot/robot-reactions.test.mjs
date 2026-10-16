@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {setTimeout as delay} from 'node:timers/promises';
 import {ROBOT_REACTIONS,ROBOT_REACTION_CHOICES,robotReaction} from './robot-catalog.mjs';
-import {createRobotReactionDriver,ruleReaction,createDeepSeekChoiceEvaluator} from './robot-reactions.mjs';
+import {createRobotReactionDriver,ruleReaction,createDeepSeekChoiceEvaluator,freshReaction} from './robot-reactions.mjs';
 
 test('catalog is unique, renderable and every continuation exists', () => {
   assert.equal(new Set(ROBOT_REACTIONS.map(r => r.id)).size, ROBOT_REACTIONS.length);
@@ -98,4 +98,28 @@ test('DeepSeek evaluator returns the Decision answer shape', async () => {
   assert.deepEqual(result, {answers:{reaction:{type:'choice', choice:'laugh'}}});
   assert.equal(request.response_format.type, 'json_object');
   assert.match(request.messages[0].content, /laugh: 笑/);
+});
+
+test('recent faces leave the candidate list and a repeated pick is swapped for a fresh one', async () => {
+  const seen = [];
+  const {driver, sent} = harness(async (state, questions) => {seen.push(Object.keys(questions.reaction.criteria));return {answers:{reaction:{type:'choice', choice:'explain'}}};});
+  for (const text of ['第一句', '第二句', '第三句']) {
+    driver.observe({type:'transcript', role:'user', text, final:true});
+    await delay(5);
+  }
+  assert.deepEqual(sent.map(e => e.id), ['explain', 'nod-agree', 'listen-attentive'], 'never the same face twice in a row');
+  assert(seen[1].every(id => id !== 'explain'), 'the last face is not offered again');
+  assert(!seen[2].includes('nod-agree') && !seen[2].includes('explain'));
+});
+
+test('goodbye and apologies keep their meaning even when repeated', () => {
+  assert.equal(freshReaction('bye', 'user', ['bye']), 'bye');
+  assert.equal(freshReaction('laugh', 'user', ['laugh']), robotReaction('laugh').next[0] ?? 'listen-attentive');
+});
+
+test('one tool used several times in a row shows one searching face', () => {
+  const {driver, sent} = harness(null);
+  driver.observe({type:'tool.call', name:'web_search'});
+  driver.observe({type:'tool.call', name:'web_search'});
+  assert.deepEqual(sent.map(e => e.id), ['searching']);
 });
