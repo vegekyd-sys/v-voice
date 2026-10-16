@@ -64,3 +64,12 @@ clipping (peak 11593). Cropped original input failed through SeedDuplex; the
 same crop at 2× gain received a reply. Device configuration now supports an
 opt-in `inputGain` (1–4, default 1); only the physical Candidate speaker is set
 to 2. Phone input and the simulator retain unity. Hardware retest is required.
+
+
+The 2× profile alone did not resolve the subsequent live hardware trial. An
+opt-in hardware noise gate is now available for testing room-noise effects on
+provider endpointing: default disabled, raw PCM RMS threshold configurable,
+and a sample-counted 500 ms hold preserves quiet speech tails despite bursty
+network arrivals. Tests cover real PCM pacing and unchanged default pass-through.
+Only the Candidate physical speaker enables this calibration. It is not a
+verified repair until physical testing returns the expected reply.

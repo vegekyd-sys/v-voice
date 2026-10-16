@@ -24,7 +24,9 @@ export function parseDeviceEntries(records = []) {
     if (!models.includes(model)) throw Error('The default device model must be allowed');
     const inputGain = record.inputGain ?? 1;
     if (!Number.isFinite(inputGain) || inputGain < 1 || inputGain > 4) throw Error('Device input gain must be between 1 and 4');
-    devices.push(Object.freeze({inputGain,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
+    const noiseGateRms = record.noiseGateRms ?? 0, noiseGateHoldMs = record.noiseGateHoldMs ?? 500;
+    if (!Number.isInteger(noiseGateRms) || noiseGateRms < 0 || noiseGateRms > 2000 || !Number.isInteger(noiseGateHoldMs) || noiseGateHoldMs < 40 || noiseGateHoldMs > 2000) throw Error('Invalid device noise gate');
+    devices.push(Object.freeze({inputGain,noiseGateRms,noiseGateHoldMs,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
   }
   return devices;
 }
@@ -102,7 +104,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       call.ended = true;clearInterval(call.timer);
       if (connection.call === call) connection.call = null;
       if (call.id) audit({type:'device.call',voiceSessionId:call.id,stage:'closed',deviceId:device.id,reason:call.reason ?? reason,
-        durationMs:now() - call.startedAt,inputBytes:call.inputBytes,outputBytes:call.outputBytes,userTurns:call.userTurns,maxInputGapMs:call.maxInputGapMs ?? 0});
+        durationMs:now() - call.startedAt,inputBytes:call.inputBytes,outputBytes:call.outputBytes,userTurns:call.userTurns,gatedInputBytes:call.gatedInputBytes ?? 0,maxInputGapMs:call.maxInputGapMs ?? 0});
       sendJson(ws, {type:'call.closed',reason:call.reason ?? reason});
     };
     call.end = reason => {
@@ -157,14 +159,15 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     const call = connection.call;
     if (binary) {
       // 16 kHz mono PCM16, at most 0.5 s per frame. Drop audio outside a call.
-      if (!call?.client || call.ended) return;
+      if (!call?.client || call.ended || !data.length) return;
       if (data.length % 2 !== 0 || data.length > 16000) return connection.ws.close(1008, 'invalid audio frame');
       const at = now();
       if (call.lastInputAt) call.maxInputGapMs = Math.max(call.maxInputGapMs ?? 0, at - call.lastInputAt);
       call.lastInputAt = at;call.inputBytes += data.length;
+      let sum = 0;for (let i = 0; i < data.length; i += 2) {const v = data.readInt16LE(i);sum += v * v;}
+      const level = Math.sqrt(sum / (data.length / 2));
       if (!call.firstVoiceAt && call.readyAt) {
-        let sum = 0;for (let i = 0; i < data.length; i += 2) {const v = data.readInt16LE(i);sum += v * v;}
-        if (Math.sqrt(sum / (data.length / 2)) >= 450) {
+        if (level >= 450) {
           call.firstVoiceAt = at;
           audit({type:'device.call',voiceSessionId:call.id,stage:'input-speech',deviceId:connection.device.id,latencyMs:at - call.startedAt});
         }
@@ -172,7 +175,15 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       // Calibrate a quiet hardware microphone independently of the phone path.
       // Unity is byte-for-byte passthrough; never modify the received WS buffer.
       let pcm = data;
-      if (connection.device.inputGain !== 1) {
+      const gate = connection.device.noiseGateRms;
+      if (gate) {
+        // Count captured samples, not packet arrival time: network jitter must
+        // not shorten the speech tail. Preserve soft endings for the hold.
+        const hold = connection.device.noiseGateHoldMs * DEVICE_INPUT_SAMPLE_RATE / 1000;
+        call.quietSamples = level >= gate ? 0 : (call.quietSamples ?? hold) + data.length / 2;
+        if (call.quietSamples > hold) {pcm = Buffer.alloc(data.length);call.gatedInputBytes = (call.gatedInputBytes ?? 0) + data.length;}
+      }
+      if (pcm === data && connection.device.inputGain !== 1) {
         pcm = Buffer.allocUnsafe(data.length);
         for (let i = 0; i < data.length; i += 2) pcm.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(data.readInt16LE(i) * connection.device.inputGain))), i);
       }

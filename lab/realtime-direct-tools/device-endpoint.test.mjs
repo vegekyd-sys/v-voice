@@ -50,6 +50,7 @@ test('device entries require a private token and an existing Feishu session bind
   assert.throws(() => parseDeviceEntries([record({callerId:'visitor'})]), /actor-scoped/);
   assert.throws(() => parseDeviceEntries([record({model:'gpt-live'})]), /model/);
   for (const inputGain of [0,5,NaN,Infinity,'2']) assert.throws(() => parseDeviceEntries([record({inputGain})]), /input gain/);
+  for (const noiseGateRms of [-1,2001,NaN,'450']) assert.throws(() => parseDeviceEntries([record({noiseGateRms})]), /noise gate/);
   assert.throws(() => parseDeviceEntries([record(), record({id:'speaker-two'})]), /private token/);
   assert.equal(parseDeviceEntries([record({models:['seeduplex','grok'],model:'grok'})])[0].model, 'grok');
 });
@@ -223,4 +224,18 @@ test('hardware microphone gain is opt-in and saturates signed PCM safely', async
   const result = Buffer.from(f.peers[0].sent.find(e => e.type === 'input_audio_buffer.append').audio,'base64');
   assert.deepEqual([0,2,4,6].map(i => result.readInt16LE(i)),[2000,-2000,32767,-32768]);
   assert.equal(frame.readInt16LE(0),1000);
+});
+
+
+test('opt-in hardware noise gate preserves soft speech tails in sample time', async t => {
+  const f = await fixture({record:{inputGain:2,noiseGateRms:450,noiseGateHoldMs:40}});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+  const frame = level => {const b=Buffer.alloc(640);for(let i=0;i<b.length;i+=2)b.writeInt16LE(level,i);return b;};
+  // Burst arrival deliberately differs from captured sample time.
+  for(const level of [100,1000,100,100,100])device.send(frame(level),{binary:true});
+  await f.until(() => f.peers[0].sent.filter(e => e.type === 'input_audio_buffer.append').length === 5, 'all frames paced');
+  const levels=f.peers[0].sent.filter(e=>e.type==='input_audio_buffer.append').map(e=>Buffer.from(e.audio,'base64').readInt16LE(0));
+  assert.deepEqual(levels,[0,2000,200,200,0]);
 });
