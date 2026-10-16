@@ -3,17 +3,24 @@
   "id": "busy-natural-hangup-20261016",
   "baseCommit": "d37ac85",
   "sourceBranch": "codex/voice-busy-natural-hangup",
-  "status": "candidate-real-acceptance-in-progress",
+  "status": "candidate-partial-real-acceptance",
   "deployed": false,
   "gatewayRestartRequired": false,
   "automaticTests": {
-    "passed": 505,
+    "passed": 506,
     "failed": 0
   },
   "realModelAcceptance": {
-    "gpt-live": "pending",
-    "seeduplex": "pending"
+    "gpt-live": "partial; see acceptance report",
+    "seeduplex": "partial; see acceptance report"
   },
   "productionRegistration": "current.json",
-  "shippedHomepageNotes": "unchanged until actual delivery; inherited #25 notes retained"
+  "shippedHomepageNotes": "unchanged until actual delivery; inherited #25 notes retained",
+  "sourceCommit": "e020b7347150f1c8ecd72dc3fea788a9e84c0b40",
+  "acceptanceReport": "../acceptance/busy-natural-hangup-20261016.md",
+  "ci": "not started: account billing/spending-limit rejection",
+  "hostConfigurationRequired": {
+    "VOICE_HOST_CALL_CONTROL": "1",
+    "decisionProviderCredential": "existing private environment; no values in repository"
+  }
 }

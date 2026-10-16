@@ -4,7 +4,7 @@
 
 SeedDuplex uses the existing host semantic call controller independently of tool completion. The relay confirms matching caller captions after microphone silence, receives an identified real farewell response, and closes only after its terminal audio and actual rendering drain. New caller speech revokes stale decisions. Accepted Agent work retains its existing lifetime and bound Feishu delivery.
 
-Candidate only; no merge or production deployment. Real-model acceptance remains in progress. Homepage shipped notes retain the #25 baseline until actual delivery.
+Candidate only; no merge or production deployment. Real-model acceptance is partial: ordinary farewell/drain, active backend-report interruption and speech revocation passed on GPT Live and SeedDuplex; SeedDuplex admitted-task continuation and final Feishu delivery passed. The full per-model matrix and final-source continuity repeats remain open. See [acceptance report](docs/acceptance/busy-natural-hangup-20261016.md). Homepage shipped notes retain the #25 baseline until actual delivery.
 
 ## Unreleased — publication visibility and pending-work checks
 
