@@ -21,7 +21,7 @@ export const DIRECT_MODELS = [
 ];
 // A household speaker has no screen. Keep the shared policy, but never offer a
 // display it cannot provide; long results stay spoken summaries.
-export const SPEAKER_SURFACE = '现在你通过家里的智能音箱和家人对话，默认是 Tianyi（天意）在说话；音箱没有屏幕，回答要简短口语化。不能把内容放到屏幕，也不要说“屏幕上”；长结果只说两三句要点，需要完整内容时提出整理成文档发到飞书，用户同意后再实际发送。';
+export const SPEAKER_SURFACE = '现在你通过家里的智能音箱和 Tianyi（天意）本人进行测试；当前设备只开放本人使用，不能把旁人声音当作已经验证的本人授权；音箱没有屏幕，回答要简短口语化。不能把内容放到屏幕，也不要说“屏幕上”；长结果只说两三句要点，需要完整内容时提出整理成文档发到飞书，用户同意后再实际发送。';
 const SPEAKER_LONG_RESULT_NOTICE = '完整内容比较长，需要的话我可以整理成文档发到飞书。';
 export function speakerSpokenText(presentation) {
   if (!presentation) return undefined;

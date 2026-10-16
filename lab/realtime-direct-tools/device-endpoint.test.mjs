@@ -24,8 +24,8 @@ async function fixture(options = {}) {
   const gateway = {request:async method => method === 'tools.catalog' ? {groups:[{tools:[{id:'web_search'}]}]} : {ok:true}};
   const directVoice = createDirectVoiceService({gateway,wsModule:{WebSocket:ProviderSocket,WebSocketServer:class {close() {}}},apiKeys:{seeduplex:'k',grok:'k'},audit:v => audit.push(v)});
   let busy = false;
-  const endpoint = createDeviceEndpoint({directVoice,wsModule:ws,devices:parseDeviceEntries([record(options.record)]),audit:v => audit.push(v),
-    isSessionBusy:() => busy,tickMs:10,idleMs:options.idleMs ?? 5000,initialIdleMs:options.initialIdleMs ?? 5000,followUpMs:options.followUpMs ?? 5000,chatterMs:options.chatterMs ?? 5000,toolHoldMs:5000});
+  const endpoint = createDeviceEndpoint({directVoice,wsModule:ws,devices:parseDeviceEntries([record(options.record),...(options.extraDevices ?? [])]),audit:v => audit.push(v),
+    maxBufferedBytes:options.maxBufferedBytes,isSessionBusy:() => busy,tickMs:10,idleMs:options.idleMs ?? 5000,initialIdleMs:options.initialIdleMs ?? 5000,followUpMs:options.followUpMs ?? 5000,chatterMs:options.chatterMs ?? 5000,toolHoldMs:5000});
   const server = createServer((req, res) => {res.writeHead(404);res.end();});
   server.on('upgrade', (req, socket, head) => endpoint.handleUpgrade(req, socket, head));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -44,6 +44,8 @@ async function fixture(options = {}) {
 
 test('device entries require a private token and an existing Feishu session binding', () => {
   assert.throws(() => parseDeviceEntries([record({token:'short'})]), /private token/);
+  assert.throws(() => parseDeviceEntries([record({token:'x'.repeat(257)})]), /private token/);
+  assert.throws(() => parseDeviceEntries([record({token:'bad token'.repeat(5)})]), /private token/);
   assert.throws(() => parseDeviceEntries([record({sessionKey:'agent:makaron:explicit:x'})]), /Feishu session/);
   assert.throws(() => parseDeviceEntries([record({callerId:'visitor'})]), /actor-scoped/);
   assert.throws(() => parseDeviceEntries([record({model:'gpt-live'})]), /model/);
@@ -165,4 +167,44 @@ test('room conversation that never becomes a request does not hold the session',
   t.after(() => clearInterval(chatter));
   await f.until(() => device.events.some(e => e.type === 'call.closed'), 'chatter close');
   assert.equal(device.events.find(e => e.type === 'call.closed').reason, 'background-speech');
+});
+
+
+test('two authenticated devices cannot start calls in the same bound session', async t => {
+  const secondToken = 'another-device-token-0123456789abcdef';
+  const f = await fixture({extraDevices:[record({id:'speaker-second',token:secondToken})]});t.after(f.close);
+  const first = await f.connect(), second = await f.connect(secondToken);
+  t.after(() => {first.close();second.close();});
+  // Send before either provider has become ready: reservations count as busy.
+  first.send(JSON.stringify({type:'call.start'}));
+  second.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => second.events.some(e => e.type === 'call.error'), 'second call rejected');
+  assert.equal(second.events.find(e => e.type === 'call.error').reason, 'session-busy');
+  assert.equal(f.endpoint.activeCalls(), 1);
+});
+
+test('a stalled speaker has bounded output memory and releases its provider', async t => {
+  const f = await fixture({maxBufferedBytes:1024});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+  const provider = f.peers[0];
+  provider.emit('message', Buffer.from(JSON.stringify({type:'response.created',response_id:'r1'})), false);
+  provider.emit('message', Buffer.from(JSON.stringify({type:'response.output_audio.delta',response_id:'r1',delta:floatAudio(Array(1024).fill(0.25))})), false);
+  await f.until(() => device.events.some(e => e.type === 'call.closed'), 'slow playback closes');
+  assert.equal(device.events.find(e => e.type === 'call.closed').reason, 'slow-playback');
+  assert.equal(f.endpoint.activeCalls(), 0);
+  await f.until(() => provider.readyState === 3, 'provider closes after its bounded shutdown');
+});
+
+test('the same speaker protocol selects Grok without changing the phone default', async t => {
+  const f = await fixture({record:{models:['seeduplex','grok']}});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start',model:'grok'}));
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'grok ready');
+  assert.equal(device.events.find(e => e.type === 'call.ready').model, 'grok');
+  const setup = f.peers[0].sent.find(e => e.type === 'session.update');
+  assert.equal(setup.session.audio.input.format.rate, 16000);
+  assert.equal(setup.session.audio.output.format.rate, 24000);
+  assert(!setup.session.tools.some(t => t.name === 'show_content'));
 });

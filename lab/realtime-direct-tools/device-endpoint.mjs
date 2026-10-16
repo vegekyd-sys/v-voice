@@ -17,7 +17,7 @@ export function parseDeviceEntries(records = []) {
     if (!/^[a-z0-9][a-z0-9_-]{2,63}$/u.test(record?.id ?? '') || devices.some(d => d.id === record.id)) throw Error('Invalid or duplicate device ID');
     if (record.agentId !== 'makaron' || record.callerId !== 'tianyi' || record.permissionProfile !== 'personal-tianyi') throw Error('Other caller identities require Gateway actor-scoped authorization');
     if (typeof record.sessionKey !== 'string' || !/^agent:makaron:feishu:(group|direct):[A-Za-z0-9_]+$/u.test(record.sessionKey)) throw Error('A device must bind an existing Feishu session');
-    if (typeof record.token !== 'string' || record.token.length < 32 || devices.some(d => timingSafeEqual(d.tokenDigest, digest(record.token)))) throw Error('Each device needs its own private token');
+    if (typeof record.token !== 'string' || !/^[A-Za-z0-9._~+/=-]{32,256}$/u.test(record.token) || devices.some(d => timingSafeEqual(d.tokenDigest, digest(record.token)))) throw Error('Each device needs its own private token');
     const models = record.models ?? [record.model ?? 'seeduplex'];
     if (!Array.isArray(models) || !models.length || models.some(m => !DEVICE_MODELS.includes(m))) throw Error('Unsupported device voice model');
     const model = record.model ?? models[0];
@@ -40,7 +40,7 @@ class DeviceCallClient extends EventEmitter {
 }
 
 export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '/device/voice',audit = () => {},isSessionBusy = () => false,
-  now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,toolHoldMs = 180000,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000}) {
+  now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,toolHoldMs = 180000,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = 4 * 1024 * 1024}) {
   if (!/^\/[a-zA-Z0-9/_-]+$/u.test(path)) throw Error('Invalid device path');
   const server = new wsModule.WebSocketServer({noServer:true,maxPayload:65536,perMessageDeflate:false});
   const connections = new Map();
@@ -58,7 +58,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
   function startCall(connection, request = {}) {
     const {device, ws} = connection;
     if (connection.call) return sendJson(ws, {type:'call.error',reason:'busy',message:'上一次对话还没有结束'});
-    if (isSessionBusy(device.sessionKey)) return sendJson(ws, {type:'call.error',reason:'session-busy',message:'这个会话正在另一台设备上通话'});
+    if (isSessionBusy(device.sessionKey) || [...connections.values()].some(c => c !== connection && c.call && c.device.sessionKey === device.sessionKey)) return sendJson(ws, {type:'call.error',reason:'session-busy',message:'这个会话正在另一台设备上通话'});
     const model = request.model === undefined ? device.model : request.model;
     if (!device.models.includes(model)) return sendJson(ws, {type:'call.error',reason:'model',message:'这个音箱没有开放该语音模型'});
     const call = {connection,model,startedAt:now(),readyAt:0,lastActivityAt:now(),replyEndedAt:0,userTurns:0,outputBytes:0,inputBytes:0,playing:false,ended:false,client:null,id:null,timer:null};
@@ -69,6 +69,9 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       if (event.type === 'audio') {
         const pcm = Buffer.from(String(event.audio ?? ''), 'base64');
         if (!pcm.length || ws.readyState !== 1) return;
+        // A blocked hardware link must not accumulate unbounded provider audio in
+        // this process or consume memory needed by the normal phone service.
+        if (ws.bufferedAmount + pcm.length > maxBufferedBytes) return call.end('slow-playback');
         call.outputBytes += pcm.length;call.lastActivityAt = now();
         ws.send(pcm, {binary:true});
         return;
