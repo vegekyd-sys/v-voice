@@ -1184,6 +1184,19 @@ test('Voice host hangup binds the complete current user turn and waits for actua
  for(let at=1350;at<=2150;at+=50)f.meter(at,0,0);
  await tick();assert.equal(peer.closed,true);
 });
+test('a delivered natural farewell variant closes after host acceptance, but an acknowledgment does not',async t=>{
+ for(const [transcript,closes] of [['好的，这就为你结束通话。嗯，再见，下次再聊。',true],['好的，我查一下。',false]]){
+  await t.test(transcript,async t=>{
+   const f=await fixture(t);await f.context.startCall();const peer=f.peers[0];peer.connectionState='connected';peer.onconnectionstatechange();const send=x=>peer.channel.onmessage({data:JSON.stringify(x)});peer.channel.readyState='open';peer.channel.send=()=>{};
+   send({type:'turn.created',turn:{role:'user',id:'farewell-user'}});send({type:'turn.done',turn:{role:'user',id:'farewell-user',transcript:'今天就聊这里，谢谢，拜拜，请结束通话'}});
+   await peer.ontrack({track:track()});for(let at=50;at<=1250;at+=50)f.meter(at,0,0);
+   f.eventSources[0].onmessage({data:JSON.stringify({voiceSessionId:'voice-1',type:'voice.end.accepted',source:'voice_host_control',requestId:'farewell-variant',userText:'今天就聊这里，谢谢，拜拜，请结束通话',closeAfterPlayback:true})});
+   send({type:'turn.created',turn:{role:'assistant',id:'farewell-assistant'}});f.meter(1300,0,.1);send({type:'turn.done',turn:{role:'assistant',id:'farewell-assistant',transcript}});
+   for(let at=1350;at<=1950;at+=50)f.meter(at,0,0);await tick();assert.equal(peer.closed,false,'no close before actual audio tail drains');
+   for(let at=2000;at<=2200;at+=50)f.meter(at,0,0);await tick();assert.equal(peer.closed,closes);
+  });
+ }
+});
 test('Voice host acceptance cannot close a foreign call or a different current utterance',async t=>{
  const f=await fixture(t);await f.context.startCall();f.peers[0].connectionState='connected';f.peers[0].onconnectionstatechange();const send=x=>f.peers[0].channel.onmessage({data:JSON.stringify(x)});
  send({type:'turn.created',turn:{role:'user',id:'continue'}});send({type:'turn.done',turn:{role:'user',id:'continue',transcript:'不要挂断，继续'}});
