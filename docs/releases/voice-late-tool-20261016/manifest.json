@@ -91,13 +91,25 @@
       "actualDisplayAckMs": 45410,
       "firstValidAudioCaptionMs": 45807,
       "asrToAudioMs": 90
+    },
+    {
+      "scenario": "gpt-live-native-late-result",
+      "candidateId": "candidate-fc1c92c8-1158-4e6a-a956-2c8d90fb5ef8",
+      "sharedUnchanged": true,
+      "inputSha256": "d29dba2c9e08f2c379405fbf93b6b18f5cd9935f65ad9fbbddee94ad2ea1790a",
+      "receiptSha256": "c53710697237f5c9cfa37f4f47b43b357572caa143db2004a339624e098ebb1a",
+      "finalTranscriptObservedMs": 46986,
+      "inboundRtpBytes": 218283,
+      "sameUserTurnDelegationEvents": 2,
+      "backendResultSubmissions": 2,
+      "fullGatewayDedupAccepted": false
     }
   ],
   "realBackend": false,
   "realFeishu": false,
   "syntheticMicrophone": true,
   "physicalIphoneAccepted": false,
-  "gptLiveAcceptance": "pending",
+  "gptLiveAcceptance": "native-wire-wait-and-late-result-observed; full Gateway dedup not covered",
   "testedSourceCommit": "2c5a1043ce67cc43738a504f020e1aae57b4baba",
   "localTests": {
     "full": 511,
@@ -113,5 +125,7 @@
   "ci": {
     "status": "not-started-account-billing-limit",
     "jobId": 116800514218
-  }
+  },
+  "rebaseOnto": "1172bc0",
+  "runtimeSourceBytesUnchangedAfterRebase": true
 }
