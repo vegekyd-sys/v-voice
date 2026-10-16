@@ -1,5 +1,7 @@
 # 独立发布边界
 
+当前入口与 Gateway 插件版本分别登记在 [current.json](releases/current.json)。仅前端变更时两者提交可以不同；必须证明插件、lib 与 server 字节相同，不能只看目录名，也不要为改目录名重启 Gateway。历史完整平台发版记录仍在平台 CHANGELOG。
+
 ## 运行接口
 
 Voice 使用 Gateway wire protocol 4：`talk.client.*`、`chat.history/send/abort`、`agent.wait`、`tools.catalog/invoke`、已有 `vlab.workers.voice.cancelProcesses`，以及当前 `talk.event/chat/agent` 事件。Gateways 的这些扩展需另行验收；protocol 4 握手成功不等于全部语音能力可用。
