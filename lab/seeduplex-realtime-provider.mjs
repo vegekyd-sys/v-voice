@@ -690,7 +690,7 @@ export class SeeduplexRealtimeVoiceBridge {
       if (caption) {
         if (event.tts_type === "chat_tts_text" && !caption.started) {
           caption.started = true; caption.responseId = responseId;
-          this.callControlSpeech=caption.callControlId?{id:caption.callControlId,responseId}:null;
+          this.callControlSpeech=caption.callControlId&&responseId?{id:caption.callControlId,responseId}:null;
         } else if (event.tts_type === "default" || responseId !== caption.responseId) {
           this.pendingSpeechCaption = null;
         }
@@ -876,6 +876,13 @@ export class SeeduplexRealtimeVoiceBridge {
       this.pendingGreeting = null;
       this.pendingSpeechCaption = null;
       this.request.onAudioSegmentDone?.();
+      // Host farewell is a separate speech response. A still-waiting tool
+      // continuation must not consume its terminal audio event.
+      if(this.callControlSpeech&&this.callControlSpeech.responseId===responseId){
+        this.#onResponseDone({status:"completed",responseId});
+        this.responseActive=false;
+        return;
+      }
       const continuing = this.toolBatches.find(
         (batch) =>
           batch.continuing &&

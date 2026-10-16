@@ -164,3 +164,16 @@ test('ordinary native speech still uses upstream interruption rather than the fi
  const f=await fixture(t,'seeduplex');f.event({type:'audio',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(24000).buffer).toString('base64'),responseId:'native'});
  const mic=f.nodes.find(n=>n.name==='v-direct-mic');for(let i=0;i<10;i++)mic.port.onmessage({data:pcm(480,3000).buffer});assert.equal(f.relay.stats.clears,0);assert.equal(f.relay.stats.inputBytes,9600);
 });
+test('relay confirms the current semantic proposal after microphone silence and revokes it on fresh onset',async t=>{
+ let at=0;t.mock.method(performance,'now',()=>at);
+ const f=await fixture(t,'seeduplex'),mic=f.nodes.find(n=>n.name==='v-direct-mic');
+ const sendFrame=value=>mic.port.onmessage({data:new Int16Array(480).fill(value).buffer});
+ const messages=()=>f.sent.filter(x=>typeof x==='string').map(x=>JSON.parse(x));
+ f.event({type:'transcript',role:'user',text:'今天先这样',final:true});
+ f.event({type:'voice.end.proposed',source:'voice_host_control',userText:'今天先这样',requestId:'current'});
+ for(let n=0;n<40;n++)sendFrame(0);assert(!messages().some(x=>x.type==='call-control.confirm'));
+ at=1300;sendFrame(0);assert.equal(messages().filter(x=>x.type==='call-control.confirm').length,1);
+ f.event({type:'voice.end.proposed',source:'voice_host_control',userText:'今天先这样',requestId:'stale'});
+ for(let n=0;n<4;n++)sendFrame(6000);assert(messages().some(x=>x.type==='call-control.interrupt'));
+ at=3000;for(let n=0;n<40;n++)sendFrame(0);assert.equal(messages().filter(x=>x.type==='call-control.confirm').length,1);
+});
