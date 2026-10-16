@@ -137,6 +137,20 @@ export class Pcm24To16Resampler {
   }
 }
 
+/** A 16 kHz hardware source already matches the upstream input rate. */
+class Pcm16Passthrough {
+  push(audio) {
+    if (!Buffer.isBuffer(audio) || audio.length % 2 !== 0) {
+      throw new Error("Seeduplex input must be PCM16LE");
+    }
+    return audio;
+  }
+}
+
+function inputResampler(request) {
+  return request.inputSampleRate === 16_000 ? new Pcm16Passthrough() : new Pcm24To16Resampler();
+}
+
 /** The pinned service labels output as PCM but sends float32 little-endian. */
 export function decodeSeeduplexFloat32Pcm(encoded) {
   if (typeof encoded !== "string") throw new Error("Invalid Seeduplex audio frame");
@@ -251,7 +265,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.ready = false;
     this.terminal = false;
     this.closeNotified = false;
-    this.resampler = new Pcm24To16Resampler();
+    this.resampler = inputResampler(this.request);
     this.pendingInput = Buffer.alloc(0);
     this.toolBatches = [];
     this.seenToolCalls = new Map();
@@ -436,7 +450,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.ready = false;
     this.connected = false;
     this.pendingInput = Buffer.alloc(0);
-    this.resampler = new Pcm24To16Resampler();
+    this.resampler = inputResampler(this.request);
     clearTimeout(this.connectTimer);
     clearTimeout(this.pacingTimer);this.pacingTimer = null;
     const old = this.socket;this.socket = null;
