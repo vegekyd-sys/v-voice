@@ -539,7 +539,10 @@ function providerMessage(event) {
     if (request && !request.invalidated && request.turnId === data.turn?.id){
       if(request.voiceHostPath){
        const spoken=typeof data.turn.transcript==='string'?data.turn.transcript.replace(/[\s，,。.!！?？、]/gu,''):'';
-       if(!spoken.includes(request.expectedFarewell)){request.turnId=null;request.terminalAt=null;request.audioObserved=false;request.quietSince=null;return;}
+       // The provider may say “下次再聊” for the requested “下次聊”. Both
+       // preserve the farewell; host authority and actual audio drain are
+       // still required. An ordinary acknowledgment must not close the call.
+       if(!spoken.includes(request.expectedFarewell)&&!spoken.includes('再见下次再聊')){request.turnId=null;request.terminalAt=null;request.audioObserved=false;request.quietSince=null;return;}
       }
       request.terminalAt=at;
     }
