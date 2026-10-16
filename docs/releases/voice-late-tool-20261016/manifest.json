@@ -117,7 +117,7 @@
     "passed": true
   },
   "artifact": {
-    "commit": "2c5a1043ce67cc43738a504f020e1aae57b4baba",
+    "commit": "e76df1c76801e154fdbe66030a4d43edea1f1c99",
     "files": 177,
     "filesSha256": "4527f7cf869d2ddaa639b45897bc13d66fa3769ce35f7d7e12858af3adb6b3de",
     "verified": true
