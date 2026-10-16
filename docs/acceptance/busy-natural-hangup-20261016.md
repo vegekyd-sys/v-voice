@@ -1,71 +1,86 @@
-# Busy natural hangup candidate — 2026-10-16
+# Busy natural hangup acceptance — 2026-10-16
 
-Status: partial real-model acceptance; **not release approval**. PR #27 is a draft. No production deployment, entry switch, shared configuration change or production/shared Gateway restart occurred.
+Status: requested real-model scenarios observed; **CI blocked, not release approval**. PR #27 remains a draft. No merge, production deployment, entry switch, shared configuration write, or production/shared Gateway restart occurred.
 
-## Implementation
+## Change
 
-SeedDuplex uses the existing host semantic call controller, independently of pending tools. Matching final ASR, a current decision revision and caller microphone silence are required before confirmation. Fresh caller audio invalidates the pending close. A dedicated farewell ownership record binds the host request to its actual provider response and audio frames. Late native text/output and cancellation acknowledgements cannot steal or revoke that ownership. The browser closes only after the matching terminal response and actual audio rendering drain. Existing admitted backend-task lifetime and bound-group delivery remain in place.
+SeedDuplex shares the existing host semantic call controller, independently of pending tools. Matching final ASR, the current decision revision and caller microphone silence are required before confirmation. Fresh caller audio invalidates pending closure. Dedicated farewell ownership binds the host request to its actual provider response and audio frames. Late native output and cancellation acknowledgements cannot steal or revoke that ownership. Media closes only after the matching terminal response and actual browser playback drain.
 
-The decision model handles call control only. Task admission, cancellation, children and delivery policies are unchanged. No Gateway core changes are included. The Candidate explicitly enables `VOICE_HOST_CALL_CONTROL=1` and provides its existing decision-provider credential through the private environment; a release must verify this host-side configuration. No credential values or shared configuration are changed by this PR.
+Task admission, task/child cancellation policy and delivery routing are unchanged. Existing admitted work keeps its separate lifetime and bound-group delivery. No Gateway core changes are included.
 
-## Environment and evidence
+The Candidate enables `VOICE_HOST_CALL_CONTROL=1` and supplies the existing decision-provider credential through its private environment. A release must verify this host configuration; this PR contains no credential values or shared configuration changes.
 
-Real GPT Live native WebRTC and SeedDuplex relay sessions ran against isolated VLab Candidates, using synthetic Mandarin microphone audio through the product browser UI. Model/provider transport was real. No Grok call was made. Raw user audio was not recorded. Private logs, credentials, session cookies, access-bearing URLs and recipient identifiers are excluded from Git.
+## Environment and validation
 
-The implementation under the final regression was `e020b73`. Local automated checks: **506 passed, 0 failed**. GitHub Actions did not start because account billing/spending limits rejected the job; this is not a passing CI check.
+Real GPT Live native WebRTC and SeedDuplex relay calls ran through the product UI in the Codex in-app browser, against isolated VLab Candidates. Microphone input was synthetic Mandarin speech; models and backend execution were real. No Grok call or raw user-audio recording was made. Private evidence remains outside Git.
 
-## Actual observations
+Implementation: `e020b7347150f1c8ecd72dc3fea788a9e84c0b40`. Four key runtime files were hash-matched between the worktree and final Candidates. Documentation commits do not change that implementation.
+
+- Local automated checks: **506 passed, 0 failed**.
+- Five requested scenarios per model, plus a combined discussion/quotation/negation example, were actually exercised below.
+- GitHub Actions did not start: account payments/spending-limit rejection. This is not a passing CI check.
+- Both final backend-continuity messages were independently read back from the dedicated approved test group, sent by V - Lab.
+- Before shutdown, both final test entrances reported active calls 0, creating sessions 0 and background tasks 0.
+
+## Real-model matrix
 
 | Scenario | GPT Live | SeedDuplex |
 | --- | --- | --- |
-| Ordinary natural goodbye → real farewell → rendered drain → idle | Passed on final source | Passed; repeated on final source after a revoked goodbye |
-| Tool/backend work outstanding at goodbye | Passed real fast-tool overlap: persisted backend transcript shows web_search awaiting its result when final goodbye ASR arrived; 259 ms overlap, then actual farewell/drain/idle. This is a narrow overlap, not a long-delay stress test | Passed with a real web-search call and a controlled 16 s test delay; no tool result preceded close |
-| Admitted backend task continues after hangup and reaches dedicated test group | Not repeated for GPT | Passed: same task/run completed after call close; final Feishu message independently read back |
-| Final backend report is actively speaking when goodbye begins | Passed on final source: actual backend-final result → new assistant report turn → real rendered speech → synthetic microphone goodbye → farewell/drain/idle | Passed on final source: real backend result → identified report audio → synthetic microphone goodbye 303 ms later → farewell/drain/idle |
-| New caller speech revokes pending hangup | Passed: second ASR and live response, call remained connected | Passed on final source; subsequent new goodbye also drained and closed |
-| Discussion/quoted/conditional hangup is not a command | Passed one combined real-ASR negative example | Passed one combined real-ASR negative example |
+| Ordinary goodbye → real farewell → rendered drain → idle | Passed | Passed, including a fresh goodbye after revoked closure |
+| Goodbye while a fast tool is pending | Passed: persisted real web_search result arrived 259 ms after goodbye final ASR. This is a narrow natural overlap, not a long-delay stress test | Passed on final source: real web_search path with an explicit controlled 16 s pre-RPC test delay; no tool result before media close |
+| Admitted long work continues after hangup | Passed on final source: same native backend run executed a real sleep after close, then final Feishu message read back | Passed on final source: same task/run completed after close, then final Feishu message read back |
+| Goodbye during actual final-report playback | Passed: backend-final result, new report turn, rendered speech, microphone goodbye, farewell and drain | Passed: backend result, identified injected report audio, microphone goodbye 303 ms later, farewell and drain |
+| New speech revokes pending hangup | Passed: new final ASR and live answer; call remained connected | Passed: accepted ending was cancelled; new ASR answered; a later fresh goodbye completed normally |
+| Discussion/quoted/conditional wording is not a hangup command | Passed one combined real-ASR negative example | Passed one combined real-ASR negative example |
 
-Fixture tests and model statements are not counted as real-model acceptance. The table does not claim five completed acceptance scenarios per model.
+Fixtures and model promises are not counted as real-model acceptance. The SeedDuplex fast-tool delay is a test condition, not claimed production/provider latency. An actual new nested-child completion after hangup was not separately retested; this change retains the existing child lifetime policy and its automated coverage.
 
-## Causal timeline (Asia/Shanghai)
+## Causal timelines (Asia/Shanghai)
 
-SeedDuplex admitted-task acceptance used source `362057b`, before the final additional farewell-ownership fix. It remains continuity evidence, and is not represented as a final-source repeat of every scenario.
+### GPT Live long work, final implementation
 
-- 12:05:55.212 — real backend task admitted with an assigned task ID and run ID.
-- 12:06:35.695 — real final ASR requested hangup while preserving backend work and reporting to the bound test group.
-- 12:06:37.092 — host ending accepted.
-- 12:06:37.554 — identified farewell audio/caption began.
-- 12:06:37.685 — corresponding audio response terminal.
-- 12:06:40.218 — browser reported matching playback drain.
-- 12:06:40.323 — call closed.
-- 12:06:46.124 — the **same** task/run completed.
-- 12:06:46.681 — final delivery receipt; independent Feishu readback confirmed the actual final message in the dedicated test group.
+- 13:06:22.675 — native backend run accepted.
+- 13:06:33.982 — final hangup ASR while the backend call remained pending.
+- 13:06:39.225 — actual assistant farewell terminal.
+- 13:06:40.541 — server media close, following native playback-drained evidence and idle UI.
+- 13:06:42.309 — that same backend run issued an actual `exec` containing `sleep 40`, after media had already closed.
+- 13:07:23.570 — successful exec tool result persisted.
+- 13:07:27.690 — final Feishu delivery receipt; independent user-side readback confirmed the final test marker and date in the dedicated group.
 
-The tool's claimed “wait 40 seconds” is not used as proof that an actual sleep tool ran. Task admission, call close, later completion and independently observed delivery establish the continuity claim.
+### SeedDuplex long work, final implementation
 
-Final-source SeedDuplex regression:
+- 13:09:27.746 — backend task admitted with its run ID; final task ID was retained on completion.
+- 13:09:31.186 — actual exec containing `sleep 40` persisted.
+- 13:09:39.433 — host ending accepted while the original backend task was still pending.
+- 13:09:39.795 — identified real farewell audio/caption.
+- 13:09:40.119 — corresponding audio response terminal.
+- 13:09:42.255 — matching browser playback drain.
+- 13:09:42.363 — media closed.
+- 13:10:11.318 — successful sleep/exec result persisted after close.
+- 13:10:14.198 — the same task/run completed.
+- 13:10:14.740 — final Feishu delivery receipt, independently read back from the dedicated group.
 
-- First goodbye was accepted, then fresh caller speech caused `end.cancelled`; the model answered the new ASR and the call remained connected.
-- Second goodbye final ASR at 12:39:33.086; accepted 12:39:34.584; identified farewell 12:39:34.908; audio terminal 12:39:35.395; browser drain 12:39:37.634; call close 12:39:37.770.
+### Report playback and fast-tool checks
 
-Final-source GPT baseline: final user ASR 12:35:42.066; semantic selection 12:35:42.995; real assistant farewell terminal 12:35:47.512; native playback-drained diagnostic observed; server call close 12:35:48.654; UI idle.
+GPT report: backend-final result 13:01:04.088; new report turn 13:01:04.842; rendered speech and microphone goodbye 13:01:05.241; report turn interrupted 13:01:07.318; goodbye final ASR 13:01:11.952; farewell terminal 13:01:17.608; native playback-drained diagnostic and idle UI.
 
-Final-source SeedDuplex active-report acceptance: backend result at 12:57:39.913; actual injected report audio at 12:57:40.808; microphone goodbye began 12:57:41.111; final goodbye ASR 12:57:47.318; host accepted 12:57:48.721; own farewell audio 12:57:49.095; terminal 12:57:49.256; playback drain 12:57:51.617; UI idle. The result included the retained earlier report request as well as the current two-sentence test report; it was an actual backend result, not a progress acknowledgement.
+SeedDuplex report: backend result 12:57:39.913; identified report audio 12:57:40.808; microphone goodbye 12:57:41.111; final ASR 12:57:47.318; host accepted 12:57:48.721; own farewell 12:57:49.095; terminal 12:57:49.256; drain 12:57:51.617; idle UI. The real result included a retained earlier report request and the current short test report; progress acknowledgements were excluded.
 
-GPT fast-tool trace: web_search call persisted at 12:40:35.792; goodbye final ASR 12:40:38.637; tool result persisted 12:40:38.896; farewell terminal 12:40:44.453; server close 12:40:45.419 with native playback-drained diagnostic and idle UI.
+GPT fast tool: real web_search call 12:40:35.792; goodbye final ASR 12:40:38.637; tool result 12:40:38.896; farewell terminal 12:40:44.453; server close 12:40:45.419 with native playback-drained evidence.
 
-Final-source GPT active-report acceptance: backend-final tool result 13:01:04.088; new report assistant turn 13:01:04.842; rendered-speech marker and microphone goodbye 13:01:05.241; report turn interrupted 13:01:07.318; final user goodbye ASR 13:01:11.952; assistant farewell terminal 13:01:17.608; native playback-drained diagnostic recorded and UI idle. An earlier later-than-report goodbye was excluded; a separate no-ASR media-disconnection attempt was also excluded.
+Final SeedDuplex fast tool: tool call 13:12:08.626, controlled delay entered 13:12:08.627; goodbye final ASR 13:12:16.286; host accepted 13:12:17.673; own farewell terminal 13:12:18.190; drain 13:12:20.535; media close 13:12:20.684. The pending tool had not returned before close.
 
-## Issues found during real testing
+## Failures found and excluded
 
-1. A delayed cancellation acknowledgement from old native output revoked an already accepted host farewell. Fixed by keeping response-cancelled acknowledgements separate from fresh caller speech.
-2. A late native output boundary could overwrite the ordinary pending caption before dedicated farewell audio began. Fixed with independent farewell ownership and response identity.
-3. SSH-carried audio tests had input backlog/overflow and no final ASR. Excluded, then replaced with protected hosted media transport.
-4. A private empty-schema fixture omitted canonical FTS triggers and rejected task admission. This was a test environment problem, not accepted application behavior. A later report attempt reached the backend but exhausted the private 2048-token output cap; it was also excluded, and the isolated cap was increased to 8192 for the retry.
-5. Starting a second call on the same conversation interrupted a report test. Excluded.
+1. An old native response-cancelled acknowledgement revoked accepted host farewell. Fixed by separating that acknowledgement from fresh caller speech.
+2. A late native output boundary overwrote the pending farewell caption/audio binding. Fixed with dedicated ownership and response identity.
+3. SSH-carried audio tests had backlog/overflow without final ASR. Replaced with protected hosted media transport; excluded from acceptance.
+4. An empty private database fixture omitted canonical FTS triggers. Repaired only in the Candidate. A private Worker output cap also caused report truncation; corrected in its separate test configuration and retried.
+5. A second call on the same conversation interrupted one test; another goodbye started after report playback. Both were excluded. A later GPT media-disconnection attempt without ASR was excluded before a successful fresh repeat.
+6. One earlier Candidate lifecycle receipt exited 1; its isolation receipt still reported sharedUnchanged=true. Subsequent completed Candidate receipt exited 0 with sharedUnchanged=true. Per-scenario results above come from causal media/task evidence, not runner exit codes.
 
-## Remaining release gates
+## Release limits
 
-Complete the missing real-model matrix rows; repeat busy/delivery acceptance against the exact final source; obtain required CI once account billing is restored; then let the owning release task review and decide merge/deployment. Keep `current.json` and shipped homepage notes on their verified baseline until actual delivery. Physical iPhone/Safari acoustics and real-user microphone behavior were not accepted here.
+Required CI must run successfully after account billing is restored, followed by owning-task review and its explicit merge/deployment decision. `current.json` and shipped homepage notes retain their verified #25 baseline until actual delivery. Physical iPhone/Safari acoustics and real-user microphone behavior were not accepted here.
 
-Cost receipts only cover the decision endpoint and are not a reconciled total provider bill. A complete paid-usage total must not be inferred from these receipts.
+Decision-endpoint usage receipts are preserved privately. Backend transcript cost fields contain zero placeholders and speech billing was not reconciled; neither is evidence of free calls or a complete provider total. No reconciled total spend is claimed.

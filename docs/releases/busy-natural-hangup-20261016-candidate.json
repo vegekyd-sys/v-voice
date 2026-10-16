@@ -3,7 +3,7 @@
   "id": "busy-natural-hangup-20261016",
   "baseCommit": "d37ac85",
   "sourceBranch": "codex/voice-busy-natural-hangup",
-  "status": "candidate-partial-real-acceptance",
+  "status": "candidate-real-model-matrix-passed-ci-blocked",
   "deployed": false,
   "gatewayRestartRequired": false,
   "automaticTests": {
@@ -11,8 +11,8 @@
     "failed": 0
   },
   "realModelAcceptance": {
-    "gpt-live": "partial; see acceptance report",
-    "seeduplex": "partial; see acceptance report"
+    "gpt-live": "five requested scenarios plus semantic negative passed; synthetic microphone, real model/backend",
+    "seeduplex": "five requested scenarios plus semantic negative passed on final implementation; controlled fast-tool delay"
   },
   "productionRegistration": "current.json",
   "shippedHomepageNotes": "unchanged until actual delivery; inherited #25 notes retained",
@@ -22,5 +22,9 @@
   "hostConfigurationRequired": {
     "VOICE_HOST_CALL_CONTROL": "1",
     "decisionProviderCredential": "existing private environment; no values in repository"
+  },
+  "finalGroupReadback": {
+    "gpt-live": true,
+    "seeduplex": true
   }
 }
