@@ -88,7 +88,7 @@ export class GrokVoiceBridge {
       this.timer=setTimeout(()=>this.fail('Grok Voice 连接超时'),this.connectTimeoutMs);
       ws.on('open',()=>this.send({type:'session.update',session:{voice:this.voice,
         instructions:[this.request.instructions,this.expressiveTags?GROK_EXPRESSIVE_INSTRUCTIONS:''].filter(Boolean).join('\n\n'),reasoning:{effort:'high'},
-        audio:{input:{format:{type:'audio/pcm',rate:24000},transcription:{language_hint:'zh'}},output:{format:{type:'audio/pcm',rate:24000},speed:this.speed}},
+        audio:{input:{format:{type:'audio/pcm',rate:this.request.inputSampleRate===16000?16000:24000},transcription:{language_hint:'zh'}},output:{format:{type:'audio/pcm',rate:24000},speed:this.speed}},
         turn_detection:{type:'server_vad'},tools:this.request.tools}}));
       ws.on('message',(data,binary)=>{if(binary)return this.fail('Grok Voice 返回了无效事件');try{this.receive(JSON.parse(data.toString()));}catch{this.fail('Grok Voice 协议解析失败');}});
       ws.on('unexpected-response',(_,r)=>{r.resume?.();this.fail(`Grok Voice API 拒绝连接（${r.statusCode}）`);});

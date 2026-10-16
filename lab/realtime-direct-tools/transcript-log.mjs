@@ -82,6 +82,14 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
         ...(typeof receipt.messageId==='string'?{messageId:receipt.messageId}:{}),
         ...(typeof event.error==='string'?{error:event.error.slice(0,300)}:{})});
     }
+    if(event.type==='device.call'){
+      // Speaker lifecycle diagnostics: counters and stage names only, no audio.
+      if(!['start','ready','input-speech','closed'].includes(event.stage))return false;
+      const safe={stage:event.stage};
+      for(const key of ['deviceId','reason'])if(typeof event[key]==='string'&&/^[a-z0-9_-]{1,64}$/u.test(event[key]))safe[key]=event[key];
+      for(const key of ['latencyMs','durationMs','inputBytes','outputBytes','userTurns','gatedInputBytes','maxInputGapMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      return enqueue({...owner,type:event.type,...safe});
+    }
     if(event.type==='call.closed'){
       closedOwners.set(id,owner);if(closedOwners.size>256)closedOwners.delete(closedOwners.keys().next().value);
       owners.delete(id);return enqueue({...owner,type:'call.closed'});
