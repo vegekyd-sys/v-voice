@@ -1,0 +1,19 @@
+{
+  "schema": "v-voice-candidate-registration-v1",
+  "id": "busy-natural-hangup-20261016",
+  "baseCommit": "d37ac85",
+  "sourceBranch": "codex/voice-busy-natural-hangup",
+  "status": "candidate-real-acceptance-in-progress",
+  "deployed": false,
+  "gatewayRestartRequired": false,
+  "automaticTests": {
+    "passed": 505,
+    "failed": 0
+  },
+  "realModelAcceptance": {
+    "gpt-live": "pending",
+    "seeduplex": "pending"
+  },
+  "productionRegistration": "current.json",
+  "shippedHomepageNotes": "unchanged until actual delivery; inherited #25 notes retained"
+}

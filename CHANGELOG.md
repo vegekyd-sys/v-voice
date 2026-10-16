@@ -1,5 +1,11 @@
 # Voice release log
 
+## Unreleased — busy natural hangup candidate
+
+SeedDuplex uses the existing host semantic call controller independently of tool completion. The relay confirms matching caller captions after microphone silence, receives an identified real farewell response, and closes only after its terminal audio and actual rendering drain. New caller speech revokes stale decisions. Accepted Agent work retains its existing lifetime and bound Feishu delivery.
+
+Candidate only; no merge or production deployment. Real-model acceptance remains in progress. Homepage shipped notes retain the #25 baseline until actual delivery.
+
 ## Unreleased — publication visibility and pending-work checks
 
 Restore the missing October 16 homepage release notes and make product-facing notes a release preflight requirement. Authenticated status now exposes whether active calls, session creation, or pending backend delivery prevents an entry cutover. Persist only bounded causal event metadata and numeric playback counters to distinguish received speech, tool waits and missing output; no tool arguments, result bodies or audio are added.
