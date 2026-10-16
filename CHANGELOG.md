@@ -1,5 +1,11 @@
 # Voice release log
 
+## Unreleased — publication visibility and pending-work checks
+
+Restore the missing October 16 homepage release notes and make product-facing notes a release preflight requirement. Authenticated status now exposes whether active calls, session creation, or pending backend delivery prevents an entry cutover. Persist only bounded causal event metadata and numeric playback counters to distinguish received speech, tool waits and missing output; no tool arguments, result bodies or audio are added.
+
+This does not claim to fix the reported SeedDuplex silent replies. The companion platform PR changes only the Voice publication controller, with no Gateway runtime or systemd policy changes.
+
 ## 2026-10-16 — Voice #23 farewell wording
 
 GPT Live may say “再见，下次再聊” after an accepted caller hangup request. The page now recognizes that equivalent variant alongside “再见，下次聊”, while retaining host authority, current-user ownership, a terminal assistant turn and actual audio drain.
