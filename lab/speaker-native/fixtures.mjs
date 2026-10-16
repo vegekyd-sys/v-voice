@@ -20,10 +20,10 @@ for(const [id,voice,text] of clips){
   const target=new URL(id+'.mp3',dir);try{await access(target);}catch{const r=await synthesizeReply(env.DOUBAO_SPEECH_API_KEY,text,{speaker:voice==='A'?'zh_male_dayi_uranus_bigtts':voice==='B'?'zh_female_vv_uranus_bigtts':'zh_male_shaonianzixin_uranus_bigtts'});await writeFile(target,r.audio,{mode:0o600});}
   execFileSync('ffmpeg',['-v','error','-y','-i',target.pathname,'-ar','16000','-ac','1','-f','s16le',new URL(id+'.pcm',dir).pathname]);
 }
-const scenarios={question:['ask-v2'],dialogue:['intro','child','side','collective','focus','bystander','child-question'],side:['side'],collective:['collective']},manifest={syntheticOnly:true,scenarios:{}};
+const scenarios={question:['ask-v2'],dialogue:['intro','child','side','collective','focus','bystander','child-question'],side:['side'],collective:['collective'],steady:['intro','ask-v2','ask-v2','ask-v2']},manifest={syntheticOnly:true,scenarios:{}};
 for(const [name,ids] of Object.entries(scenarios)){
   const parts=[],turns=[];let bytes=0;
-  for(const id of ids){const pcm=await readFile(new URL(id+'.pcm',dir)),spec=clips.find(c=>c[0]===id);turns.push({id,voice:spec[1],text:spec[2],startMs:bytes/32,endMs:(bytes+pcm.length)/32});parts.push(pcm,Buffer.alloc(32*(ids.length===1?2500:12000)));bytes+=pcm.length+parts.at(-1).length;}
+  for(const id of ids){const pcm=await readFile(new URL(id+'.pcm',dir)),spec=clips.find(c=>c[0]===id);turns.push({id,voice:spec[1],text:spec[2],startMs:bytes/32,endMs:(bytes+pcm.length)/32});parts.push(pcm,Buffer.alloc(32*(name==='steady'?20000:ids.length===1?2500:12000)));bytes+=pcm.length+parts.at(-1).length;}
   const pcm=Buffer.concat(parts);await writeFile(new URL(name+'-sequence.pcm',dir),pcm,{mode:0o600});
   execFileSync('ffmpeg',['-v','error','-y','-f','s16le','-ar','16000','-ac','1','-i',new URL(name+'-sequence.pcm',dir).pathname,new URL(name+'.wav',dir).pathname]);manifest.scenarios[name]={durationMs:pcm.length/32,turns};
 }

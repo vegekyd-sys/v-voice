@@ -30,6 +30,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   grokSpeed=grokVoiceSpeed(grokSpeed);
   const sessions=new Map(),detached=new Set();
   const deferred=s=>{
+    if(s.backendResult&&s.backgroundBridge&&s.backgroundBridge!==s.bridge){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;resolve();return;}
+    if(speakerRouting?.pending?.(s.id))return;
     if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking||Date.now()-s.lastUserAt<1200)return;
     if(s.backendResult){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;resolve();return;}
     if(!s.progress||s.pending.size!==1||!s.backend.snapshot()||Date.now()-s.lastProgressAt<10000)return;
@@ -93,7 +95,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       // Retire local tools/audio only; the admitted Agent retains its controller.
       const result=await cancel(s,{includeBackend:false});
       for(const id of s.pending.keys())if(id!==s.backgroundCallId)s.pending.delete(id);
-      clearInterval(s.progressTimer);speakerRouting?.close(id);s.bridge?.close();s.client?.close();
+      clearInterval(s.progressTimer);speakerRouting?.close(id);s.bridge?.close();for(const old of s.retiredBridges??[])old.close();s.retiredBridges?.clear();s.client?.close();
       s.cleanupFailed=result.processCleanupFailures>0;
       if(s.cleanupFailed){audit({type:'call.cleanup-unconfirmed',voiceSessionId:id,result});throw Error('电话已结束，后台任务退出尚未确认');}
       sessions.delete(id);audit({type:'call.closed',voiceSessionId:id});
@@ -106,7 +108,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
     const selectedVoice=model==='grok'?grokVoice(voice):spec.voice;
     const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map()};
-    Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,progress:null});
+    Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,progress:null,toolOwners:new Map(),retiredBridges:new Set()});
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
     s.delivery=createTaskDelivery({gateway,sessionKey,ownerId:s.id,audit});
@@ -163,6 +165,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       s.seen.set(call.callId,signature);
       if(s.seen.size>2048)for(const id of s.seen.keys()){if(s.seen.size<=2048)break;if(!s.pending.has(id))s.seen.delete(id);}
       const controller=new AbortController(),epoch=s.epoch;
+      const ownerBridge=s.bridge;s.toolOwners.set(call.callId,ownerBridge);
       s.pending.set(call.callId,controller);
       audit({type:'tool.call',voiceSessionId:s.id,...call});emit(s,{type:'tool.call',callId:call.callId,name:call.name,activity:taskActivity(call.name,call.args)});
       let result,backgroundAck=false;
@@ -179,7 +182,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         }
         if(call.name==='delegate_to_v'){
           if(s.backend.snapshot())throw Error('新任务未启动：这通电话已有一个 V 后台任务。未加入队列，不要说正在做。修改或补充原任务请调用 openclaw_agent_control 的 steer/followup；用户明确取消时先调用 cancel_task，再委派新任务。');
-          s.backgroundCallId=call.callId;s.bridge.beginBackgroundTool(call.callId,call.args.question);backgroundAck=true;
+          s.backgroundCallId=call.callId;s.backgroundBridge=ownerBridge;ownerBridge.beginBackgroundTool(call.callId,call.args.question);backgroundAck=true;
         }
         if(!['send_task_updates','openclaw_agent_control'].includes(call.name))result=await execute(call.name,call.args,call.callId,controller.signal);
         if(call.name==='delegate_to_v'&&current(s)&&s.epoch===epoch){
@@ -188,19 +191,22 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(call.name==='cancel_task')result=await cancel(s);
         if(call.name==='end_call'&&current(s)&&s.epoch===epoch){s.ending={callId:call.callId,hasAudio:false};emit(s,{type:'end.accepted',callId:call.callId});}
       } catch(error){result={error:controller.signal.aborted?'任务已取消。不要继续旧任务。':error.message};}
-      finally{s.pending.delete(call.callId);if(call.callId===s.backgroundCallId){s.backgroundCallId=null;if(!s.backend.snapshot())detached.delete(s);}}
+      finally{s.pending.delete(call.callId);s.toolOwners.delete(call.callId);if(s.retiredBridges.has(ownerBridge)&&![...s.toolOwners.values()].includes(ownerBridge)){ownerBridge.close();s.retiredBridges.delete(ownerBridge);}if(call.callId===s.backgroundCallId){s.backgroundCallId=null;s.backgroundBridge=null;if(!s.backend.snapshot())detached.delete(s);}}
       if(!current(s))return;
       // Explicit cancellation retires results, while ordinary conversational
       // interruption leaves background work alive. Never feed a late old fact.
       if(s.epoch!==epoch&&call.name!=='cancel_task'&&!(call.name==='openclaw_agent_control'&&call.args.mode==='cancel'))result={cancelled:true,instruction:'旧任务已取消，不继续，也不播报旧结果。'};
       try {if(backgroundAck){
         const presentation=presentBackendResult(result);
-        const receipt=(presentation?.long || presentation?.media)?await publishContent(s,call.callId,presentation.text):null;
+        const moved=ownerBridge!==s.bridge;
+        const receipt=(moved||presentation?.long || presentation?.media)?await publishContent(s,call.callId,presentation?.text??JSON.stringify(result)):null;
         if(receipt&&(!current(s)||s.epoch!==epoch))return;
         const spokenText=receipt?.shown?presentation.spokenText:presentation?.spokenText.replace('详细方案在屏幕上，需要的话也可以整理成文档发给你。','完整结果已准备好，屏幕正在同步。');
-        s.bridge.completeBackgroundTool(call.callId,(presentation?.long || presentation?.media)?{...result,result:presentation.text}:result,(presentation?.long || presentation?.media)?{spokenText,displayedFullResult:true}:{});
-      }else s.bridge.submitToolResult(call.callId,result);}
-      catch {result={error:'工具结果过大或无法续传，请缩小范围并分页读取。'};s.bridge.submitToolResult(call.callId,result);}
+        // A task remains owned by its original native session. After an audience
+        // switch its result stays on screen instead of speaking to the new person.
+        if(!moved)ownerBridge.completeBackgroundTool(call.callId,(presentation?.long || presentation?.media)?{...result,result:presentation.text}:result,(presentation?.long || presentation?.media)?{spokenText,displayedFullResult:true}:{});
+      }else if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
+      catch {result={error:'工具结果过大或无法续传，请缩小范围并分页读取。'};if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
       audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId,result});
       emit(s,{type:'tool.result',callId:call.callId,name:call.name});
     };
@@ -208,29 +214,35 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const context=await loadContext(s.sessionKey);
     if(!current(s))return;
     connectionStage('context-ready');
+    const routeOutput=(kind,value,deliver)=>{if(!current(s))return;if(!speakerRouting?.dispatch?.(s.id,kind,value,deliver))deliver();};
+    const baseInstructions=directInstructions(entries,context,s.model);
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
-      instructions:directInstructions(entries,context,s.model),tools:TOOLS,
-      onToolCall:call=>void onToolCall(call),
+      instructions:speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions,tools:TOOLS,
+      onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),
       toolStartNotice:call=>{
         return noticeClips?toolStartClip(call,noticeClips)?.text:null;
       },
       onToolStartNotice:(text,call)=>{
-        if(!current(s))return;const clip=toolStartClip(call,noticeClips);
+        routeOutput('notice',call,()=>{if(!current(s))return;const clip=toolStartClip(call,noticeClips);
         emit(s,{type:'transcript',role:'assistant',text,final:true,source:'tool-start'});
         audit({type:'transcript',voiceSessionId:s.id,role:'assistant',text,final:true,source:'tool-start',callId:call.callId});
         deliverAudio(clip.pcm,{source:clip.source,sha256:clip.sha256,callId:call.callId});emit(s,{type:'audio.done'});
+        });
       },
-      onAudio:(audio,metadata)=>{if(!current(s))return;s.responseActive=true;if(s.ending)s.ending.hasAudio=true;deliverAudio(audio,metadata);},
+      onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.responseActive=true;if(s.ending)s.ending.hasAudio=true;deliverAudio(audio,metadata);}),
       onTranscript:(role,text,final,source)=>{
         if(!current(s))return;
+        const deliver=()=>{
         if(role==='assistant'&&final)speakerRouting?.assistant(s.id,text);
         if(role==='user'){s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
         if(role==='user'&&final&&s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{})});
+        };
+        if(role==='assistant')routeOutput('transcript',{role,text,final,source},deliver);else deliver();
       },
-      onClearAudio:()=>{s.responseActive=false;if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});},
-      onAudioSegmentDone:()=>{s.responseActive=false;},
-      onResponseDone:e=>{s.responseActive=false;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed')emit(s,{type:'end.after-playback',callId:s.ending.callId});},
+      onClearAudio:()=>routeOutput('clear',null,()=>{s.responseActive=false;if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});}),
+      onAudioSegmentDone:()=>routeOutput('done',null,()=>{s.responseActive=false;}),
+      onResponseDone:e=>routeOutput('done',e,()=>{s.responseActive=false;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed')emit(s,{type:'end.after-playback',callId:s.ending.callId});}),
       onEvent:e=>{if(['response.created'].includes(e.type))s.responseActive=true;
         if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.userSpeaking=true;s.lastUserAt=Date.now();}
         if(e.type==='input_audio_buffer.speech_stopped'){s.userSpeaking=false;s.lastUserAt=Date.now();}
@@ -243,8 +255,14 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     };
     if(!current(s))return;
     const createWebSocket=async(url,options)=>new wsModule.WebSocket(url,options);
-    s.bridge=s.model==='seeduplex'?new SeeduplexRealtimeVoiceBridge(request,{createWebSocket})
-      :new GrokVoiceBridge(request,{createWebSocket,apiKey:apiKeys.grok,model:grokModel,voice:s.voice,speed:grokSpeed,expressiveTags:grokExpressiveTags});
+    const makeBridge=(instructions=request.instructions)=>{
+      const generation=s.providerGeneration=(s.providerGeneration??0)+1;
+      const owned={...request,instructions};
+      for(const [key,value]of Object.entries(owned))if(key.startsWith('on')&&typeof value==='function')owned[key]=(...args)=>{if(current(s)&&generation===s.providerGeneration)return value(...args);};
+      return s.model==='seeduplex'?new SeeduplexRealtimeVoiceBridge(owned,{createWebSocket})
+        :new GrokVoiceBridge(owned,{createWebSocket,apiKey:apiKeys.grok,model:grokModel,voice:s.voice,speed:grokSpeed,expressiveTags:grokExpressiveTags});
+    };
+    s.bridge=makeBridge();
     client.on('message',(data,binary)=>{
       if(!current(s))return;
       if(binary){
@@ -267,8 +285,20 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       }catch{client.close(1008);}
     });
     connectionStage('provider-connecting');
-    await s.bridge.connect();
-    if(current(s)&&speakerRouting?.has(s.id))await speakerRouting.bind(s.id,{forward:audio=>s.bridge.sendAudio(audio),context:text=>s.bridge.sendUserMessage(text),interrupt:()=>s.bridge.handleBargeIn()},value=>emit(s,value));
+    if(!speakerRouting?.lazyNative?.(s.id))await s.bridge.connect();
+    if(current(s)&&speakerRouting?.has(s.id))await speakerRouting.bind(s.id,{
+      forward:audio=>s.bridge.sendAudio(audio),context:text=>s.bridge.sendUserMessage(text),interrupt:()=>s.bridge.handleBargeIn(),
+      cancel:()=>s.bridge.cancelPendingResponse(),invalidate:()=>{s.personaKey=null;},
+      prepare:async(instructions,key,history=[])=>{
+        if(!current(s))throw Error('通话已结束');
+        if(s.personaKey===key&&s.bridge.ready)return;
+        const old=s.bridge;
+        const historyContext=history.length?'\n近期已获准的对话，仅供衔接，不逐条朗读：'+JSON.stringify(history):'';
+        const next=makeBridge(request.instructions+'\n\n'+instructions+historyContext);s.bridge=next;
+        if([...s.toolOwners.values()].includes(old))s.retiredBridges.add(old);else old.close();
+        await next.connect();if(!current(s)||s.bridge!==next){next.close();throw Error('人物准备已取消');}s.personaKey=key;
+      },
+    },value=>emit(s,value));
     if(current(s)){connectionStage('provider-ready');emit(s,{type:'ready',model:s.model,tools:TOOLS.map(t=>t.name)});}
   }
   return {

@@ -4,7 +4,7 @@ export function renderSpeakerEvent(value){
   let row=document.getElementById('speakerRoster');
   if(!row){row=document.createElement('div');row.id='speakerRoster';row.className='status-text';row.setAttribute('aria-label','当前对话人物');document.getElementById('conversationFooter')?.prepend(row);}
   if(value.type==='speaker.error'){row.textContent='这一句暂时没有判断清楚，请再说一次；也可以结束后重拨。';row.dataset.error='true';return;}
-  if(value.type==='speaker.ready'){row.textContent='自动多人对话 · 无需注册声纹';return;}
+  if(value.type==='speaker.ready'){row.textContent=value.streaming?'自动多人对话 · 流式识人':'自动多人对话 · 无需注册声纹';return;}
   if(value.type!=='speaker.decision')return;
   delete row.dataset.error;
   const label=id=>{const p=value.participants.find(p=>p.id===id);return p?.name??p?.label??id;};

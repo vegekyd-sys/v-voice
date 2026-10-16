@@ -27,6 +27,33 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
  return {service,reservation,client,upstream,event,call,audit,invocations,peers};
 }
 
+test('a speaker switch preserves an admitted tool but never sends its old result to the new native persona',async t=>{
+ let native,finish;
+ const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,value)=>{native=value;},close(){},audio(){}};
+ const f=await fixture(()=>new Promise(r=>{finish=r;}),'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'old-search',name:'web_search',arguments:JSON.stringify({query:'实际查询'})}]});
+ for(let i=0;i<100&&!finish;i++)await delay(2);assert(finish);
+ await native.prepare('当前只和孩子十二交谈。','child',[]);
+ assert.equal(f.peers.length,2);assert.equal(f.upstream.readyState,1);assert.equal(f.client.readyState,1);
+ finish({ok:true,output:{text:'原人物的查询结果'}});for(let i=0;i<250&&f.upstream.readyState!==3;i++)await delay(5);
+ assert.equal(f.upstream.readyState,3);assert.equal(f.client.readyState,1);
+ assert.equal(JSON.stringify(f.peers[1].sent).includes('old-search'),false);
+ assert(f.client.sent.some(e=>e.type==='tool.result'&&e.callId==='old-search'));
+});
+
+test('a background result after a speaker switch is shown without speaking to the new person',async t=>{
+ let native;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,value)=>{native=value;},close(){},audio(){}};
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}),'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'old-task',name:'delegate_to_v',arguments:JSON.stringify({question:'完成原人物的任务'})}]});await delay(5);
+ const started=f.audit.find(e=>e.type==='backend.started');assert(started);
+ await native.prepare('现在只和十二聊天。','child',[]);
+ f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text:'原人物任务已完成，结果已核对。'}]}}});
+ for(let i=0;i<100&&!f.client.sent.some(e=>e.type==='backend.result');i++)await delay(10);
+ assert(f.client.sent.some(e=>e.type==='backend.result'&&e.text.includes('任务已完成')));
+ assert.equal(f.peers[1].sent.filter(e=>e.type==='speech_text_buffer.commit').length,0);
+ assert.equal(f.client.readyState,1);assert.equal(f.invocations.some(x=>x.method==='chat.abort'),false);
+});
+
 for (const model of ['grok', 'seeduplex']) test(`${model} session initializes with the shared capability policy and real backend adapter`, async t => {
  const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:{status:'ok'},model);
  t.after(()=>f.service.dispose());
