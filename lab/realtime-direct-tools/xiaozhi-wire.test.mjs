@@ -4,7 +4,7 @@ import {EventEmitter} from 'node:events';
 import {createXiaozhiWire} from './xiaozhi-wire.mjs';
 
 // A fake xiaozhi socket and a manual clock: frames and tts states are recorded.
-function harness() {
+function harness(options = {}) {
   let clock = 0;const timers = new Set();
   const ws = new EventEmitter();
   ws.readyState = 1;ws.out = [];
@@ -14,6 +14,7 @@ function harness() {
     now: () => clock,
     setTimer: (fn, ms) => {const t = {at:clock + ms, fn};timers.add(t);return t;},
     clearTimer: t => timers.delete(t),
+    ...options,
   });
   const device = [];
   wire.on('message', (data, binary) => {if (!binary) device.push(JSON.parse(data.toString()));});
@@ -73,4 +74,12 @@ test('barge-in stops at once and forgets pending callbacks', () => {
   h.advance(2000);
   assert.deepEqual(h.tts(), ['start', 'stop']);
   assert(!h.device.some(e => e.type === 'playback.drained'));
+});
+
+test('an operator volume is applied through the firmware MCP tool on hello', () => {
+  const h = harness({volume:35});
+  h.ws.emit('message', Buffer.from(JSON.stringify({type:'hello', audio_params:{format:'opus', sample_rate:16000}})), false);
+  const mcp = h.ws.out.find(e => e.type === 'mcp');
+  assert.deepEqual(mcp.payload.params, {name:'self.audio_speaker.set_volume', arguments:{volume:35}});
+  assert.equal(harness().ws.out.length, 0);
 });

@@ -12,7 +12,7 @@ export const XIAOZHI_FRAME_MS = 60;
 const DOWN_FRAME_BYTES = XIAOZHI_DOWNLINK_RATE * XIAOZHI_FRAME_MS / 1000 * 2;  // 2880
 const PLAYBACK_MARGIN_MS = 400;
 
-export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, sessionId = 'voice'} = {}) {
+export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, sessionId = 'voice', volume = null} = {}) {
   const wire = new EventEmitter();
   const decoder = new OpusScript(XIAOZHI_UPLINK_RATE, 1, OpusScript.Application.VOIP);
   let encoder = new OpusScript(XIAOZHI_DOWNLINK_RATE, 1, OpusScript.Application.AUDIO);
@@ -84,6 +84,8 @@ export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, cl
       if (event.audio_params && (event.audio_params.format !== 'opus' || event.audio_params.sample_rate !== XIAOZHI_UPLINK_RATE)) return ws.close(1008, 'unsupported audio');
       helloSeen = true;
       sendJson({type:'hello', transport:'websocket', audio_params:{format:'opus', sample_rate:XIAOZHI_DOWNLINK_RATE, channels:1, frame_duration:XIAOZHI_FRAME_MS}});
+      // An operator volume from the device record, applied through the firmware's own MCP tool.
+      if (volume !== null) sendJson({type:'mcp', payload:{jsonrpc:'2.0', id:1, method:'tools/call', params:{name:'self.audio_speaker.set_volume', arguments:{volume}}}});
       // One xiaozhi channel is one call.
       deviceSays({type:'call.start'});
       return;

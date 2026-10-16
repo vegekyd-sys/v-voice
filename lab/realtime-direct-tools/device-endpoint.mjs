@@ -37,8 +37,10 @@ export function parseDeviceEntries(records = []) {
     // xiaozhi firmware fetches its WebSocket URL and token from an OTA endpoint at
     // boot. Only a device registered with its MAC address may receive them.
     const mac = record.mac === undefined ? null : String(record.mac).toLowerCase();
+    const volume = record.volume ?? null;
+    if (volume !== null && (!Number.isInteger(volume) || volume < 0 || volume > 100)) throw Error('Device volume must be 0-100');
     if (mac !== null && !/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/u.test(mac)) throw Error('Invalid device MAC address');
-    devices.push(Object.freeze({inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,robot:record.robot === true,mac,otaToken:mac ? record.token : null,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
+    devices.push(Object.freeze({inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,volume,robot:record.robot === true,mac,otaToken:mac ? record.token : null,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
   }
   return devices;
 }
@@ -257,7 +259,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       server.handleUpgrade(req, socket, head, raw => {
         // xiaozhi-esp32 firmware (e.g. StackChan) speaks its own protocol; the
         // wire adapter makes it an ordinary device connection for everything below.
-        const ws = dialect === 'xiaozhi' ? createXiaozhiWire(raw) : raw;
+        const ws = dialect === 'xiaozhi' ? createXiaozhiWire(raw, {volume:device.volume}) : raw;
         const old = connections.get(device.id);
         if (old) {old.call?.end('replaced');old.ws.close(4000, 'replaced');}
         const connection = {device,ws,call:null,connectedAt:now(),missed:0};
