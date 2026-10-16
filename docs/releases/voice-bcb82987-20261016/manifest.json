@@ -32,7 +32,8 @@
     "exactRecordedFarewellVariantRegression": "baseline-fails-patch-passes",
     "liveGPTFarewellUsedCanonicalWording": true,
     "physicalIPhoneSafariRetested": false,
-    "scope": "farewell and initial-page reset only; no new task/media/Feishu tests"
+    "scope": "farewell and initial-page reset only; no new task/media/Feishu tests",
+    "verifiedAt": "2026-10-16T10:35:56.343061+08:00"
   },
   "artifactManifest": "artifact-manifest.json",
   "driftSentinelCoversVoice": false,
@@ -46,5 +47,5 @@
     "secondAttempt": "all original controller guards and explicit process-environment/HTTP/served-hash checks passed",
     "firstAttemptControllerProblemResolved": false
   },
-  "at": "2026-10-16T10:34:00+08:00"
+  "at": "2026-10-16T10:33:58.232000+08:00"
 }
