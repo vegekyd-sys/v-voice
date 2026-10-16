@@ -1,6 +1,6 @@
 {
   "schema": "v-voice-production-registration-v1",
-  "status": "active",
+  "status": "superseded",
   "sourceRepository": "https://github.com/vegekyd-sys/v-voice",
   "sourceCommit": "bcb82987c7cc6c61e87ecc9f28c320df6bfb470b",
   "voicePR": 23,
@@ -47,5 +47,6 @@
     "secondAttempt": "all original controller guards and explicit process-environment/HTTP/served-hash checks passed",
     "firstAttemptControllerProblemResolved": false
   },
-  "at": "2026-10-16T10:33:58.232000+08:00"
+  "at": "2026-10-16T10:33:58.232000+08:00",
+  "supersededBy": "d37ac851487b8fd9023ad0c922bdb1cf485984ec"
 }

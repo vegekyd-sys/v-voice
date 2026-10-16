@@ -1,10 +1,10 @@
 # Voice release log
 
-## Unreleased — publication visibility and pending-work checks
+## 2026-10-16 — Homepage notes and safe Voice entry publication
 
 Restore the missing October 16 homepage release notes and make product-facing notes a release preflight requirement. Authenticated status now exposes whether active calls, session creation, or pending backend delivery prevents an entry cutover. Persist only bounded causal event metadata and numeric playback counters to distinguish received speech, tool waits and missing output; no tool arguments, result bodies or audio are added.
 
-This does not claim to fix the reported SeedDuplex silent replies. The companion platform PR changes only the Voice publication controller, with no Gateway runtime or systemd policy changes.
+Production entry `d37ac851` is active, registered in [current.json](docs/releases/current.json). [Platform #396](https://github.com/vegekyd-sys/v-openclaw-platform/pull/396) adds the entry publication guard and verified legacy graceful-drain migration. The old H5 exited normally; no forced kill, Gateway restart or config change. All 177 package hashes and the unchanged plugin bytes match. Candidate checks: 80 Voice and 12 controller tests. The public homepage shows October 16 notes with no browser console errors. Late-result replies and busy natural hangup remain separate unresolved tasks; physical iPhone Safari was not retested.
 
 ## 2026-10-16 — Voice #23 farewell wording
 
