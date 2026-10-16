@@ -71,8 +71,8 @@ opt-in hardware noise gate is now available for testing room-noise effects on
 provider endpointing: default disabled, raw PCM RMS threshold configurable,
 and a sample-counted 500 ms hold preserves quiet speech tails despite bursty
 network arrivals. Tests cover real PCM pacing and unchanged default pass-through.
-Only the Candidate physical speaker enables this calibration. It is not a
-verified repair until physical testing returns the expected reply.
+This optional calibration is not enabled in the Candidate device mapping. It
+must not be described as a verified repair.
 
 
 ## Native duplex and long-answer transport candidate
@@ -96,3 +96,12 @@ patch. Server pacing tests exercise 30 seconds of exact sample preservation,
 clear before the old answer finishes, source/end ordering, late-turn clock
 reset and bounded socket backlog. Firmware compiles and the 80/300 ms backend
 speech-onset helper passes a native host test.
+
+The first synthetic native-duplex hardware round connected in 1077 ms, had a
+maximum audio-pump loop gap of 33 ms, and reported 11 receive-ring underflows.
+It is not a passing long-answer/interruption result. Code inspection found
+that receive-ring depletion could trigger rebuffering while the separate
+500 ms speaker queue still contained audio. Firmware now waits for arriving
+packets while that queue drains, rather than fading/rebuffering on each packet.
+A fresh human long-answer/interruption check is pending. The physical speaker
+remains on VLab; no production Voice or Gateway was restarted for these changes.
