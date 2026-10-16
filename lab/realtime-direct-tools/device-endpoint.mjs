@@ -34,7 +34,11 @@ export function parseDeviceEntries(records = []) {
     // Wi-Fi stalls; it does not delay interruption.
     const playoutLeadMs = record.playoutLeadMs ?? 480;
     if (!Number.isInteger(playoutLeadMs) || playoutLeadMs < 200 || playoutLeadMs > 5000) throw Error('Device playout lead must be 200-5000 ms');
-    devices.push(Object.freeze({inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,robot:record.robot === true,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
+    // xiaozhi firmware fetches its WebSocket URL and token from an OTA endpoint at
+    // boot. Only a device registered with its MAC address may receive them.
+    const mac = record.mac === undefined ? null : String(record.mac).toLowerCase();
+    if (mac !== null && !/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/u.test(mac)) throw Error('Invalid device MAC address');
+    devices.push(Object.freeze({inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,robot:record.robot === true,mac,otaToken:mac ? record.token : null,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
   }
   return devices;
 }
@@ -51,7 +55,7 @@ class DeviceCallClient extends EventEmitter {
   }
 }
 
-export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '/device/voice',xiaozhiPath = null,audit = () => {},isSessionBusy = () => false,
+export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '/device/voice',xiaozhiPath = null,otaPath = null,xiaozhiPublicUrl = null,audit = () => {},isSessionBusy = () => false,
   now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,toolHoldMs = 180000,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = 4 * 1024 * 1024,robotEvaluate = null}) {
   if (!/^\/[a-zA-Z0-9/_-]+$/u.test(path)) throw Error('Invalid device path');
   const server = new wsModule.WebSocketServer({noServer:true,maxPayload:65536,perMessageDeflate:false});
@@ -226,6 +230,24 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
   return {
     path,
     xiaozhiPath,
+    otaPath,
+    /** xiaozhi OTA check: hand the registered device its V WebSocket. */
+    async handleOta(req, res) {
+      const reply = (status, body) => {res.writeHead(status, {'content-type':'application/json', 'cache-control':'no-store'});res.end(JSON.stringify(body));};
+      if (!xiaozhiPublicUrl || !['GET','POST'].includes(req.method)) return reply(404, {error:'not found'});
+      let size = 0, raw = '';
+      for await (const chunk of req) {size += chunk.length;if (size > 16384) return reply(413, {error:'too large'});raw += chunk;}
+      const mac = String(req.headers['device-id'] ?? '').toLowerCase();
+      const device = mac ? devices.find(d => d.mac === mac && !d.disabled) : null;
+      audit({type:'device.ota', voiceSessionId:'ota', deviceId:device?.id ?? 'unknown', known:Boolean(device)});
+      if (!device) return reply(403, {error:'device not registered'});
+      let version = '0.0.0';
+      try {const body = raw ? JSON.parse(raw) : {};if (typeof body?.application?.version === 'string') version = body.application.version.slice(0, 40);} catch {}
+      // Echo the running version so the firmware never self-upgrades from here,
+      // and omit activation/mqtt so it goes straight to this WebSocket.
+      reply(200, {server_time:{timestamp:now(), timezone_offset:480}, firmware:{version, url:''},
+        websocket:{url:xiaozhiPublicUrl, token:device.otaToken, version:1}});
+    },
     activeCalls: () => [...connections.values()].filter(c => c.call).length,
     busy: sessionKey => [...connections.values()].some(c => c.call && c.device.sessionKey === sessionKey),
     connected: () => [...connections.values()].map(c => ({deviceId:c.device.id,inCall:Boolean(c.call),connectedAt:c.connectedAt})),

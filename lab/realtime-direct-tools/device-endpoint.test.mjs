@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {createServer} from 'node:http';
+import {Readable} from 'node:stream';
 import {setTimeout as delay} from 'node:timers/promises';
 import * as ws from 'ws';
 import OpusScript from 'opusscript';
@@ -327,4 +328,24 @@ test('a xiaozhi device with the wrong audio format is refused', async t => {
   client.send(JSON.stringify({type:'hello', transport:'websocket', audio_params:{format:'pcm', sample_rate:16000}}));
   assert.equal(await closed, 1008);
   assert.equal(f.peers.length, 0);
+});
+
+test('xiaozhi OTA hands only a registered MAC its WebSocket and never an upgrade', async () => {
+  const devices = parseDeviceEntries([record({mac:'02:00:00:5C:4A:01', robot:true})]);
+  const endpoint = createDeviceEndpoint({directVoice:{}, wsModule:ws, devices, otaPath:'/xiaozhi/ota/', xiaozhiPublicUrl:'wss://voice.example/device/xiaozhi'});
+  const call = async (mac, body) => {
+    const req = Readable.from(body ? [Buffer.from(JSON.stringify(body))] : []);
+    req.method = 'POST';req.headers = mac ? {'device-id':mac} : {};
+    const res = {status:0, body:'', writeHead(s) {this.status = s;}, end(b) {this.body = b;}};
+    await endpoint.handleOta(req, res);
+    return {status:res.status, body:JSON.parse(res.body)};
+  };
+  const ok = await call('02:00:00:5c:4a:01', {application:{version:'1.4.2'}});
+  assert.equal(ok.status, 200);
+  assert.deepEqual(ok.body.websocket, {url:'wss://voice.example/device/xiaozhi', token:TOKEN, version:1});
+  assert.equal(ok.body.firmware.version, '1.4.2', 'echo the running version: no self-upgrade');
+  assert(!('activation' in ok.body) && !('mqtt' in ok.body));
+  assert.equal((await call('aa:bb:cc:dd:ee:ff', {})).status, 403);
+  assert.equal((await call(null, {})).status, 403);
+  assert.throws(() => parseDeviceEntries([record({mac:'not-a-mac'})]), /MAC/);
 });

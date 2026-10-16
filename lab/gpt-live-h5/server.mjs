@@ -70,6 +70,11 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, pre
     try {
       if(stopping)return json(res,503,{error:"服务正在收尾，请稍后重新拨号"});
       const host = req.headers.host ?? "";
+      if (deviceEndpoint?.otaPath && new URL(req.url, "http://device.invalid").pathname === deviceEndpoint.otaPath) {
+        const hostname = (() => {try {return new URL(`http://${host}`).hostname;} catch {return "";}})();
+        if (hosted ? hostname !== origin.hostname : !/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host)) return json(res, 403, { error: "请求入口不匹配" });
+        return deviceEndpoint.handleOta(req, res);
+      }
       if (hosted ? host !== origin.host : !/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host)) return json(res, 403, { error: "请求入口不匹配" });
       const requestOrigin = hosted ? publicOrigin : `http://${host}`;
       if (req.headers.origin && req.headers.origin !== requestOrigin || hosted && req.method === "POST" && req.headers.origin !== requestOrigin) return json(res, 403, { error: "请求来源不匹配" });
@@ -488,6 +493,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         devices:parseDeviceEntries(JSON.parse(await readFile(process.env.VOICE_DEVICES_FILE,"utf8"))),
         path:process.env.VOICE_DEVICE_PATH ?? "/device/voice",
         xiaozhiPath:process.env.VOICE_XIAOZHI_PATH ?? null,
+        otaPath:process.env.VOICE_XIAOZHI_OTA_PATH ?? null,
+        xiaozhiPublicUrl:process.env.VOICE_XIAOZHI_PUBLIC_URL ?? null,
         isSessionBusy:sessionKey=>bridge?.sessionBusy(sessionKey) ?? true,
         robotEvaluate:await robotEvaluatorFromEnv(process.env)});
     }
