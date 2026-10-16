@@ -425,6 +425,7 @@ test('Seed hangup retains release ownership until the actual final delivery rece
 
 test('host semantic hangup bypasses a waiting tool, requires its own farewell audio and cancels on new speech',async t=>{
  const f=await fixture(async()=>{await delay(100);return {ok:true,output:{answer:'old'}};},'seeduplex',{callControlEvaluate:async()=>({answers:{endIntent:{type:'noul',noul:1}}})});t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'waiting-weather',name:'web_search',arguments:JSON.stringify({query:'上海天气'})}]});await delay(0);assert(f.audit.some(e=>e.type==='tool.call'&&e.callId==='waiting-weather'));
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'先这样吧，你继续在后台做，做好发群里。'});await delay(0);
  const proposal=f.client.sent.find(e=>e.type==='voice.end.proposed');assert(proposal);
  const send=e=>f.client.emit('message',Buffer.from(JSON.stringify(e)),false);
