@@ -135,3 +135,7 @@ Voice 实际运行 `04ab11f850e0ea0f741f9a2bc5a084fddd4bd8d6`，本分支之后�
 `83d1807` 增加按设备的 `playoutLeadMs`（200–5000，默认 480 不变），VLab 物理音箱为 2000：设备收到 `audio.clear` 会丢弃全部缓冲，提前量只用于吸收短时停顿，不推迟打断。523 tests 通过。VLab Candidate 现运行 `speaker-83d1807`；音箱另经 V 的 8443 直连入口（仅 nginx 转发，经 tailnet 到 VLab）接入，正式 Voice/Gateway 未改动、未重启。
 
 根本解决需要国内音频中转节点（理想是国内运行音箱的 SeedDuplex 会话，仅工具/Agent RPC 跨境），待用户决定服务器。在此之前不能宣称晚间流畅。
+
+## 2026-10-17 02:20 CST：国内 Voice 节点
+
+本分支 `af3e191` 发布包已部署到腾讯云上海轻量服务器，专供音箱：音箱 ↔ 上海 Voice ↔ 火山 SeedDuplex 全在国内，Gateway RPC 经只能转发的 SSH 隧道回 VLab Candidate Gateway（26470）。未改代码，未改动正式 Voice/Gateway。家里模拟器对照：首句 1.3–1.6 s、最大包间隔 92–151 ms、虚拟欠载 0；同时段经新加坡/VLab 为 5.2–8.6 s 与偶发 2 s 输入中断。真机静音诊断 3/3 通过（设备欠载 0，服务端无 `input-paused`）。工具一致性仍受 VLab Candidate 限制（Lark、Codex provider）；Grok 从国内节点的可达性未验证，GPT Live 仍未接入音箱。
