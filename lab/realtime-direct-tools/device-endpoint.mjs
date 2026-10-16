@@ -40,7 +40,7 @@ class DeviceCallClient extends EventEmitter {
 }
 
 export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '/device/voice',audit = () => {},isSessionBusy = () => false,
-  now = Date.now,idleMs = 15000,initialIdleMs = 20000,toolHoldMs = 180000,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000}) {
+  now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,toolHoldMs = 180000,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000}) {
   if (!/^\/[a-zA-Z0-9/_-]+$/u.test(path)) throw Error('Invalid device path');
   const server = new wsModule.WebSocketServer({noServer:true,maxPayload:65536,perMessageDeflate:false});
   const connections = new Map();
@@ -61,7 +61,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     if (isSessionBusy(device.sessionKey)) return sendJson(ws, {type:'call.error',reason:'session-busy',message:'这个会话正在另一台设备上通话'});
     const model = request.model === undefined ? device.model : request.model;
     if (!device.models.includes(model)) return sendJson(ws, {type:'call.error',reason:'model',message:'这个音箱没有开放该语音模型'});
-    const call = {connection,model,startedAt:now(),readyAt:0,lastActivityAt:now(),userTurns:0,outputBytes:0,inputBytes:0,playing:false,ended:false,client:null,id:null,timer:null};
+    const call = {connection,model,startedAt:now(),readyAt:0,lastActivityAt:now(),replyEndedAt:0,userTurns:0,outputBytes:0,inputBytes:0,playing:false,ended:false,client:null,id:null,timer:null};
     connection.call = call;
     call.fromSession = raw => {
       if (call.ended) return;
@@ -81,7 +81,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       if (event.type === 'transcript') {
         // Transcript text stays in Voice's private audit; the speaker needs none.
         call.lastActivityAt = now();
-        if (event.role === 'user' && event.final) call.userTurns++;
+        if (event.role === 'user' && event.final) {call.userTurns++;call.turnSinceReply = true;}
         return;
       }
       if (event.type === 'tool.call' || event.type === 'tool.progress') {call.lastActivityAt = now();return sendJson(ws, {type:'busy',active:true});}
@@ -117,7 +117,16 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       if (!call.readyAt) {if (at - call.startedAt > 45000) call.end('connect-timeout');return;}
       // Tool calls and delegated work are quiet but real activity. Hold them for
       // a bounded period instead of cutting the task when the room goes silent.
-      const limit = state.pendingTools || state.backgroundTask ? toolHoldMs : call.userTurns ? idleMs : initialIdleMs;
+      if (state.pendingTools || state.backgroundTask) {if (at - call.lastActivityAt > toolHoldMs) call.end('idle');return;}
+      // A household speaker has a follow-up window: after V finishes speaking,
+      // someone must start talking soon. Room conversation that never becomes a
+      // finished request must not keep the model session open indefinitely.
+      if (call.replyEndedAt && !call.playing && !state.responseActive) {
+        const spokeSince = state.lastUserAt > call.replyEndedAt;
+        if (!spokeSince && at - call.replyEndedAt > followUpMs) return call.end('idle');
+        if (spokeSince && !call.turnSinceReply && at - call.replyEndedAt > chatterMs) return call.end('background-speech');
+      }
+      const limit = call.userTurns ? idleMs : initialIdleMs;
       if (at - call.lastActivityAt > limit) call.end('idle');
     };
     void (async () => {
@@ -164,7 +173,10 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     if (event.type === 'call.start') return startCall(connection, event);
     if (!call) return;
     if (event.type === 'call.end') return call.end('device');
-    if (event.type === 'playback.state' && typeof event.speaking === 'boolean') {call.playing = event.speaking;call.lastActivityAt = now();}
+    if (event.type === 'playback.state' && typeof event.speaking === 'boolean') {
+      if (call.playing && !event.speaking) {call.replyEndedAt = now();call.turnSinceReply = false;}
+      call.playing = event.speaking;call.lastActivityAt = now();
+    }
     if (event.type === 'input.activity') call.lastActivityAt = now();
     // The shared session validates these exactly as it does for browser relay.
     if (['playback.state','playback.drained','barge-in','playback.stats'].includes(event.type) && call.client) call.client.emit('message', Buffer.from(JSON.stringify(event)), false);

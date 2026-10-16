@@ -25,7 +25,7 @@ async function fixture(options = {}) {
   const directVoice = createDirectVoiceService({gateway,wsModule:{WebSocket:ProviderSocket,WebSocketServer:class {close() {}}},apiKeys:{seeduplex:'k',grok:'k'},audit:v => audit.push(v)});
   let busy = false;
   const endpoint = createDeviceEndpoint({directVoice,wsModule:ws,devices:parseDeviceEntries([record(options.record)]),audit:v => audit.push(v),
-    isSessionBusy:() => busy,tickMs:10,idleMs:options.idleMs ?? 5000,initialIdleMs:options.initialIdleMs ?? 5000,toolHoldMs:5000});
+    isSessionBusy:() => busy,tickMs:10,idleMs:options.idleMs ?? 5000,initialIdleMs:options.initialIdleMs ?? 5000,followUpMs:options.followUpMs ?? 5000,chatterMs:options.chatterMs ?? 5000,toolHoldMs:5000});
   const server = createServer((req, res) => {res.writeHead(404);res.end();});
   server.on('upgrade', (req, socket, head) => endpoint.handleUpgrade(req, socket, head));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -136,4 +136,33 @@ test('a reconnecting device replaces its previous connection and call', async t 
   await closed;
   await f.until(() => f.directVoice.activity(id) === null, 'old call closed');
   assert.equal(f.endpoint.connected().length, 1);
+});
+
+test('after a reply, silence past the follow-up window ends the call', async t => {
+  const f = await fixture({followUpMs:80});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+  device.send(JSON.stringify({type:'playback.state',speaking:true}));
+  await delay(30);
+  device.send(JSON.stringify({type:'playback.state',speaking:false}));
+  const ended = Date.now();
+  await f.until(() => device.events.some(e => e.type === 'call.closed'), 'follow-up close');
+  assert.equal(device.events.find(e => e.type === 'call.closed').reason, 'idle');
+  assert(Date.now() - ended >= 70, 'the follow-up window is honoured');
+});
+
+test('room conversation that never becomes a request does not hold the session', async t => {
+  const f = await fixture({followUpMs:1000,chatterMs:120});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+  device.send(JSON.stringify({type:'playback.state',speaking:true}));
+  await delay(20);
+  device.send(JSON.stringify({type:'playback.state',speaking:false}));
+  await delay(20);
+  const chatter = setInterval(() => f.peers[0].emit('message', Buffer.from(JSON.stringify({type:'conversation.item.input_audio_transcription.started'})), false), 15);
+  t.after(() => clearInterval(chatter));
+  await f.until(() => device.events.some(e => e.type === 'call.closed'), 'chatter close');
+  assert.equal(device.events.find(e => e.type === 'call.closed').reason, 'background-speech');
 });
