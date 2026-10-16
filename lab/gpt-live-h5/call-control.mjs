@@ -44,6 +44,7 @@ export function createVoiceCallControl({evaluate,onAccepted=()=>{},audit=()=>{},
    if(final)return decide(own);
    timer=setTimeout(()=>{timer=null;void decide(own);},stableMs);timer.unref?.();
   },
+  interrupt(){++revision;clearTimeout(timer);pending?.abort();pending=null;candidate=null;current=null;},
   matches(value){return Boolean(candidate&&valid(candidate.decisionRevision)&&value?.requestId===candidate.requestId&&value?.decisionRevision===candidate.decisionRevision&&value?.userText===candidate.userText);},
   close(){closed=true;++revision;clearTimeout(timer);pending?.abort();candidate=null;},
  };

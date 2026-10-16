@@ -422,3 +422,21 @@ test('Seed hangup retains release ownership until the actual final delivery rece
  for(let n=0;n<100&&f.service.backgroundTaskCount();n++)await delay(2);
  assert.equal(f.service.backgroundTaskCount(),0);assert(f.audit.some(e=>e.type==='task.delivery-confirmed'&&e.kind==='final'));
 });
+
+test('host semantic hangup bypasses a waiting tool, requires its own farewell audio and cancels on new speech',async t=>{
+ const f=await fixture(async()=>{await delay(100);return {ok:true,output:{answer:'old'}};},'seeduplex',{callControlEvaluate:async()=>({answers:{endIntent:{type:'noul',noul:1}}})});t.after(()=>f.service.dispose());
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'先这样吧，你继续在后台做，做好发群里。'});await delay(0);
+ const proposal=f.client.sent.find(e=>e.type==='voice.end.proposed');assert(proposal);
+ const send=e=>f.client.emit('message',Buffer.from(JSON.stringify(e)),false);
+ send({type:'call-control.confirm',control:proposal});
+ assert(f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'&&e.text==='再见，下次聊。'));
+ send({type:'playback.drained',callId:proposal.requestId});assert.equal(f.client.readyState,1);
+ const audio=Buffer.alloc(8);audio.writeFloatLE(.1,0);audio.writeFloatLE(.2,4);
+ f.event({type:'response.output_audio.started',response_id:'farewell',tts_type:'chat_tts_text'});
+ f.event({type:'response.output_audio.delta',response_id:'farewell',delta:audio.toString('base64')});
+ assert(f.client.sent.some(e=>e.type==='audio'&&e.callControlId===proposal.requestId));
+ f.event({type:'response.output_audio.done',response_id:'old'});assert(!f.client.sent.some(e=>e.type==='end.after-playback'));
+ f.event({type:'response.output_audio.done',response_id:'farewell'});assert(f.client.sent.some(e=>e.type==='end.after-playback'));
+ send({type:'call-control.interrupt'});send({type:'playback.drained',callId:proposal.requestId});assert.equal(f.client.readyState,1);
+ send({type:'call-control.confirm',control:proposal});assert.equal(f.client.sent.filter(e=>e.type==='end.accepted').length,1);
+});

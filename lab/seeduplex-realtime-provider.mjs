@@ -489,6 +489,13 @@ export class SeeduplexRealtimeVoiceBridge {
     this.#send({ type: "speech_text_buffer.commit", event_id: `event_${randomUUID()}`, text });
   }
 
+  speakFarewell(text, callControlId) {
+    this.#cancelUpstreamResponse(true);
+    this.speakProgress(text, {caption:true});
+    this.pendingSpeechCaption.callControlId=callControlId;
+    this.callControlSpeech=null;
+  }
+
   sendUserMessage(text) {
     const normalized = optionalString(text);
     if (!normalized || !this.ready) return;
@@ -683,6 +690,7 @@ export class SeeduplexRealtimeVoiceBridge {
       if (caption) {
         if (event.tts_type === "chat_tts_text" && !caption.started) {
           caption.started = true; caption.responseId = responseId;
+          this.callControlSpeech=caption.callControlId?{id:caption.callControlId,responseId}:null;
         } else if (event.tts_type === "default" || responseId !== caption.responseId) {
           this.pendingSpeechCaption = null;
         }
@@ -858,7 +866,7 @@ export class SeeduplexRealtimeVoiceBridge {
           this.pendingGreeting = null;
           this.request.onTranscript?.("assistant", greeting.text, true, "greeting");
         }
-        this.request.onAudio(audio, { ...(this.injectedSpeech ? {source:"injected-speech"} : {}), responseId: this.audioResponseId ?? responseId });
+        this.request.onAudio(audio, { ...(this.callControlSpeech&&this.callControlSpeech.responseId===(this.audioResponseId ?? responseId)?{callControlId:this.callControlSpeech.id}:{}), ...(this.injectedSpeech ? {source:"injected-speech"} : {}), responseId: this.audioResponseId ?? responseId });
         this.request.onMark?.(`seeduplex-audio-${randomUUID()}`);
       } catch {
         return this.#fail(new Error("Invalid Seeduplex audio output"));

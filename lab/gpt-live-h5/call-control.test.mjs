@@ -25,3 +25,8 @@ test('native caption snapshots replace rather than duplicate USER fragments',asy
  const texts=[],events=[];const c=createVoiceCallControl({evaluate:async x=>{texts.push(x.request);return {answers:{endIntent:{type:'noul',noul:1}}};},onAccepted:x=>events.push(x)});
  await c.observe({role:'user',turnId:'native-u',text:'请',final:false,snapshot:true});await c.observe({role:'user',turnId:'native-u',text:'请挂断',final:false,snapshot:true});await c.observe({role:'user',turnId:'native-u',text:'请挂断电话',final:true,snapshot:true});assert.deepEqual(texts,['请挂断电话']);assert.equal(events.length,1);c.close();
 });
+
+test('speech onset revokes a decision before the delayed ASR completes',async()=>{
+ let resolve;const events=[];const c=createVoiceCallControl({evaluate:()=>new Promise(r=>resolve=r),onAccepted:e=>events.push(e)});
+ const work=c.observe({role:'user',text:'再见',final:true,turnId:'old'});c.interrupt();resolve({answers:{endIntent:{type:'noul',noul:1}}});await work;assert.equal(events.length,0);c.close();
+});
