@@ -313,8 +313,10 @@ test('a xiaozhi-firmware robot talks to the same Voice session through the wire 
   provider.emit('message', Buffer.from(JSON.stringify({type:'response.output_audio.done', response_id:'r1'})), false);
   provider.emit('message', Buffer.from(JSON.stringify({type:'response.done', response_id:'r1', response:{status:'completed'}})), false);
   await f.until(() => client.events.some(e => e.type === 'tts' && e.state === 'stop'), 'tts stop');
+  provider.emit('message', Buffer.from(JSON.stringify({type:'response.done', response_id:'r1', response:{status:'completed'}})), false);
+  await delay(20);
   const order = client.events.filter(e => e.type === 'tts').map(e => e.state);
-  assert.deepEqual(order, ['start', 'stop']);
+  assert.deepEqual(order, ['start', 'stop'], 'a repeated audio.done stops only once');
   assert(client.audio.length >= 5, 'audio arrives as 60 ms Opus frames');
   const dec = new OpusScript(24000, 1);t.after(() => dec.delete());
   assert.equal(dec.decode(client.audio[0]).length, 2880);

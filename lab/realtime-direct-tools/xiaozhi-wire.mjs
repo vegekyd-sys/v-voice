@@ -16,7 +16,7 @@ export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, cl
   const wire = new EventEmitter();
   const decoder = new OpusScript(XIAOZHI_UPLINK_RATE, 1, OpusScript.Application.VOIP);
   let encoder = new OpusScript(XIAOZHI_DOWNLINK_RATE, 1, OpusScript.Application.AUDIO);
-  let pending = Buffer.alloc(0), speaking = false, playEnd = 0, drainTimer = null, closed = false, helloSeen = false;
+  let pending = Buffer.alloc(0), speaking = false, stopping = false, playEnd = 0, drainTimer = null, closed = false, helloSeen = false;
   const sendJson = value => {if (ws.readyState === 1) ws.send(JSON.stringify({session_id:sessionId, ...value}));};
   // Native events emitted *to* the endpoint as if the device had sent them.
   const deviceSays = value => wire.emit('message', Buffer.from(JSON.stringify(value)), false);
@@ -33,7 +33,7 @@ export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, cl
   function startSpeaking() {
     if (speaking) return;
     clearTimer(drainTimer);drainTimer = null;
-    speaking = true;playEnd = now();
+    speaking = true;stopping = false;playEnd = now();
     sendJson({type:'tts', state:'start'});
     deviceSays({type:'playback.state', speaking:true});
   }
@@ -44,14 +44,17 @@ export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, cl
   }
   function stopSpeaking(then) {
     if (!speaking) {then?.();return;}
+    // A response can report audio.done more than once; stop exactly once.
+    if (stopping) {if (then) afterPlayback(() => {speaking = false;stopping = false;deviceSays({type:'playback.state', speaking:false});then();});return;}
+    stopping = true;
     flush();
     // xiaozhi drains its own playback queue after tts stop before listening again.
     sendJson({type:'tts', state:'stop'});
-    afterPlayback(() => {speaking = false;deviceSays({type:'playback.state', speaking:false});then?.();});
+    afterPlayback(() => {speaking = false;stopping = false;deviceSays({type:'playback.state', speaking:false});then?.();});
   }
   function interrupt() {
     clearTimer(drainTimer);drainTimer = null;pending = Buffer.alloc(0);
-    if (speaking) {sendJson({type:'tts', state:'stop'});speaking = false;deviceSays({type:'playback.state', speaking:false});}
+    if (speaking) {if (!stopping) sendJson({type:'tts', state:'stop'});speaking = false;stopping = false;deviceSays({type:'playback.state', speaking:false});}
     // Fresh encoder so the next response starts without the old prediction state.
     encoder.delete();encoder = new OpusScript(XIAOZHI_DOWNLINK_RATE, 1, OpusScript.Application.AUDIO);
   }
