@@ -20,7 +20,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,...options});
- const reservation=await service.reserve({model,sessionKey:'agent:makaron:explicit:personal-fixture',voice:options.voice});
+ const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -398,4 +398,27 @@ test('typed supplement becomes the original turn for a new delegation',async t=>
  f.call('delegate_to_v',{question:'创建任务'});await delay(10);
  assert(f.invocations.find(x=>x.question)?.question.includes(JSON.stringify('独立编号丙，创建新任务')));
  f.completeBackend('完成');await delay(250);
+});
+
+test('Seed hangup retains release ownership until the actual final delivery receipt arrives',async t=>{
+ let finalSend,finalStarted=false;
+ const receipt=new Promise(resolve=>finalSend=resolve);
+ const f=await fixture(async(args,method)=>{
+   if(method==='send'){
+     if(args.message==='原后台最终结果'){finalStarted=true;return receipt;}
+     return {messageId:'accepted-message'};
+   }
+   return {ok:true};
+ },'seeduplex',{sessionKey:'agent:makaron:feishu:group:oc_test'});
+ t.after(()=>f.service.dispose());
+ f.event({type:'conversation.item.input_audio_transcription.completed',text:'做好后把结果发到群里'});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'job',name:'delegate_to_v',arguments:JSON.stringify({question:'原任务'})}]});
+ for(let n=0;n<100&&!f.audit.some(e=>e.type==='backend.started');n++)await delay(2);
+ assert.equal(f.service.backgroundTaskCount(),1);await f.service.close(f.reservation.voiceSessionId);
+ assert.equal(f.service.backgroundTaskCount(),1);f.completeBackend('原后台最终结果');
+ for(let n=0;n<100&&!finalStarted;n++)await delay(2);
+ assert(finalStarted);assert.equal(f.service.backgroundTaskCount(),1,'An unconfirmed send is still pending work');
+ finalSend({messageId:'actual-final-message'});
+ for(let n=0;n<100&&f.service.backgroundTaskCount();n++)await delay(2);
+ assert.equal(f.service.backgroundTaskCount(),0);assert(f.audit.some(e=>e.type==='task.delivery-confirmed'&&e.kind==='final'));
 });

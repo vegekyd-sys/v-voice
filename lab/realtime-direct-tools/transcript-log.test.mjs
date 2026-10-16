@@ -83,3 +83,20 @@ test('post-hangup delivery receipt survives without accepting late transcript or
  assert.equal(f.log.audit({type:'transcript',voiceSessionId:'v1',role:'assistant',text:'late',final:true}),false);
  await f.log.close();const rows=await f.rows();assert.equal(rows.at(-1).messageId,'om-real');assert.equal(rows.at(-1).runId,'owned-run');assert(!JSON.stringify(rows).includes('SECRET'));
 });
+
+test('causal diagnostics distinguish ASR, tool wait, backend completion and output without retaining payloads',async t=>{
+ const f=await fixture(t);f.created();
+ for(const row of [
+  {type:'provider.event',providerEventType:'conversation.item.input_audio_transcription.started',responseId:'turn'},
+  {type:'tool.call',callId:'tool',name:'web_search',args:{query:'SECRET'}},
+  {type:'tool.delivered',callId:'tool',result:{text:'SECRET'}},
+  {type:'backend.started',callId:'job',ack:{taskId:'owned-task',runId:'owned-run',token:'SECRET'}},
+  {type:'response.done',status:'completed',responseId:'response'},
+ ])assert(f.log.audit({...row,voiceSessionId:'v1',audio:'SECRET',text:'SECRET'}));
+ assert.equal(f.log.audit({type:'provider.event',voiceSessionId:'v1',providerEventType:'response.output_audio.delta',audio:'SECRET'}),false);
+ assert(f.log.audit({type:'client.playback-stats',voiceSessionId:'v1',stats:{inputBytes:48000,outputBytes:96000,raw:'SECRET',audio:'SECRET'}}));
+ f.log.audit({type:'call.closed',voiceSessionId:'v1'});
+ assert(f.log.audit({type:'backend.completed',voiceSessionId:'v1',runId:'owned-run',result:'SECRET'}));
+ await f.log.close();const rows=await f.rows();assert(!JSON.stringify(rows).includes('SECRET'));
+ assert.equal(rows.find(r=>r.type==='backend.started').taskId,'owned-task');assert.equal(rows.at(-1).type,'backend.completed');
+});

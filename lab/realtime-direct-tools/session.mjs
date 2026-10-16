@@ -229,13 +229,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(role==='user'&&final&&s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{})});
       },
-      onClearAudio:()=>{s.responseActive=false;if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});},
+      onClearAudio:()=>{audit({type:'audio.clear',voiceSessionId:s.id});s.responseActive=false;if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});},
       onAudioSegmentDone:()=>{s.responseActive=false;},
       onResponseDone:e=>{s.responseActive=false;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed')emit(s,{type:'end.after-playback',callId:s.ending.callId});},
       onEvent:e=>{if(['response.created'].includes(e.type))s.responseActive=true;
         if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.userSpeaking=true;s.lastUserAt=Date.now();}
         if(e.type==='input_audio_buffer.speech_stopped'){s.userSpeaking=false;s.lastUserAt=Date.now();}
-        audit({type:'provider.event',voiceSessionId:s.id,...e});},
+        audit({type:'provider.event',voiceSessionId:s.id,providerEventType:e.type,responseId:e.responseId});},
       onProtocolEvent:e=>audit({type:'provider.protocol',voiceSessionId:s.id,event:{...e,...(e.delta&&e.type?.includes('audio')?{delta:'[audio retained separately]'}:{})}}),
       onDiagnostic:e=>{if(!current(s))return;audit({type:'call.provider-status',voiceSessionId:s.id,...e});
         if(['reconnecting','recovered'].includes(e.stage))emit(s,{type:`provider.${e.stage}`});},

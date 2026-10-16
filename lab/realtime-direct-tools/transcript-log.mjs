@@ -37,7 +37,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       owners.set(id,{voiceSessionId:id,sessionKey:event.sessionKey,provider:event.provider,model:event.model,modelSource:'voice_reservation'});
       return enqueue({...owners.get(id),type:'call.created'});
     }
-    const owner=owners.get(id)??(event.type.startsWith('task.delivery-')?closedOwners.get(id):null);if(!owner)return false;
+    const owner=owners.get(id)??(/^(?:task\.delivery-|backend\.)/.test(event.type)?closedOwners.get(id):null);if(!owner)return false;
     if(event.type==='call.connection-stage'){
       if(!['catalog-requested','catalog-ready','context-requested','context-ready','provider-connecting','provider-ready'].includes(event.stage))return false;
       return enqueue({...owner,type:event.type,stage:event.stage});
@@ -49,6 +49,24 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       if(typeof event.upstreamCode==='string'&&/^\d{3,8}$/.test(event.upstreamCode))safe.upstreamCode=event.upstreamCode;
       for(const key of ['sessionAgeMs','attempt'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
+    }
+    // Causal metadata only: never persist tool arguments, results, PCM or raw
+    // provider frames. A received utterance without a reply must be diagnosable.
+    if(['tool.call','tool.delivered','backend.start-requested','backend.started','backend.completed','backend.control','backend.cancel-observed','backend.cancel-unconfirmed','response.done','provider.event','audio.clear'].includes(event.type)){
+      if(event.type==='provider.event'&&!['conversation.item.input_audio_transcription.started','response.created','response.output_audio.started'].includes(event.providerEventType))return false;
+      if(event.type==='tool.call'&&(typeof event.name!=='string'||typeof event.callId!=='string'))return false;
+      const safe={};
+      for(const key of ['callId','runId','taskId','responseId','providerEventType','name','mode','status'])if(typeof event[key]==='string')safe[key]=event[key].slice(0,160);
+      if(event.type==='backend.started'&&typeof event.ack?.taskId==='string')safe.taskId=event.ack.taskId;
+      if(event.type==='backend.started'&&typeof event.ack?.runId==='string')safe.runId=event.ack.runId;
+      if(event.type==='tool.delivered')safe.status=event.result?.error?'error':event.result?.cancelled?'cancelled':'ok';
+      for(const key of ['ok','queued','applied'])if(typeof event[key]==='boolean')safe[key]=event[key];
+      return enqueue({...owner,type:event.type,...safe});
+    }
+    if(event.type==='client.playback-stats'){
+      const stats={};
+      for(const key of ['inputBytes','outputBytes','queuedOutputBytes','clears','underflows','maxReceiveGapMs'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0)stats[key]=event.stats[key];
+      return enqueue({...owner,type:event.type,stats});
     }
     if(event.type==='transcript'){
       if(!['user','assistant'].includes(event.role)||typeof event.text!=='string'||!event.text.trim()||typeof event.final!=='boolean')return false;
