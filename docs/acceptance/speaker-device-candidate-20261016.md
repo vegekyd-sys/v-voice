@@ -105,3 +105,11 @@ that receive-ring depletion could trigger rebuffering while the separate
 packets while that queue drains, rather than fading/rebuffering on each packet.
 A fresh human long-answer/interruption check is pending. The physical speaker
 remains on VLab; no production Voice or Gateway was restarted for these changes.
+
+A read-only Candidate Gateway catalog check and a real `exec` marker invocation
+succeeded through the existing `tools.invoke` RPC. This proves the tool transport,
+not full tool/account parity. The private Candidate currently has no Voice-owned
+Lark CLI configuration, and its Codex provider is disabled in the older VLab
+baseline. Personal Feishu queries and complete backend model parity are therefore
+still outstanding. Production OAuth state was not copied or refreshed for this
+check. No household caller identity or permission was added.
