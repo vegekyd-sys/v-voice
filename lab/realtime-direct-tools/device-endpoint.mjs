@@ -97,7 +97,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       call.ended = true;clearInterval(call.timer);
       if (connection.call === call) connection.call = null;
       if (call.id) audit({type:'device.call',voiceSessionId:call.id,stage:'closed',deviceId:device.id,reason:call.reason ?? reason,
-        durationMs:now() - call.startedAt,inputBytes:call.inputBytes,outputBytes:call.outputBytes,userTurns:call.userTurns});
+        durationMs:now() - call.startedAt,inputBytes:call.inputBytes,outputBytes:call.outputBytes,userTurns:call.userTurns,maxInputGapMs:call.maxInputGapMs ?? 0});
       sendJson(ws, {type:'call.closed',reason:call.reason ?? reason});
     };
     call.end = reason => {
@@ -145,7 +145,16 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       // 16 kHz mono PCM16, at most 0.5 s per frame. Drop audio outside a call.
       if (!call?.client || call.ended) return;
       if (data.length % 2 !== 0 || data.length > 16000) return connection.ws.close(1008, 'invalid audio frame');
-      call.inputBytes += data.length;
+      const at = now();
+      if (call.lastInputAt) call.maxInputGapMs = Math.max(call.maxInputGapMs ?? 0, at - call.lastInputAt);
+      call.lastInputAt = at;call.inputBytes += data.length;
+      if (!call.firstVoiceAt && call.readyAt) {
+        let sum = 0;for (let i = 0; i < data.length; i += 2) {const v = data.readInt16LE(i);sum += v * v;}
+        if (Math.sqrt(sum / (data.length / 2)) >= 450) {
+          call.firstVoiceAt = at;
+          audit({type:'device.call',voiceSessionId:call.id,stage:'input-speech',deviceId:connection.device.id,latencyMs:at - call.startedAt});
+        }
+      }
       call.client.emit('message', data, true);
       return;
     }
@@ -172,15 +181,16 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       server.handleUpgrade(req, socket, head, ws => {
         const old = connections.get(device.id);
         if (old) {old.call?.end('replaced');old.ws.close(4000, 'replaced');}
-        const connection = {device,ws,call:null,connectedAt:now(),alive:true};
+        const connection = {device,ws,call:null,connectedAt:now(),missed:0};
         connections.set(device.id, connection);
-        ws.on('pong', () => {connection.alive = true;});
+        // Any frame proves the device is alive. A speaker applying TCP
+        // backpressure to a long reply can delay its pong, so allow misses.
+        ws.on('pong', () => {connection.missed = 0;});
         const ping = setInterval(() => {
-          if (!connection.alive) return ws.terminate();
-          connection.alive = false;
+          if (++connection.missed > 3) return ws.terminate();
           try {ws.ping();} catch {}
         }, pingMs);ping.unref?.();
-        ws.on('message', (data, binary) => {try {onMessage(connection, data, binary);} catch {ws.close(1011, 'device event failed');}});
+        ws.on('message', (data, binary) => {connection.missed = 0;try {onMessage(connection, data, binary);} catch {ws.close(1011, 'device event failed');}});
         ws.on('close', () => {clearInterval(ping);connection.call?.end('device-disconnected');if (connections.get(device.id) === connection) connections.delete(device.id);});
         ws.on('error', () => {});
         sendJson(ws, {type:'hello',deviceId:device.id,model:device.model,models:device.models});

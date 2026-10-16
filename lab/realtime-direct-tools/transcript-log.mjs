@@ -84,10 +84,10 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     }
     if(event.type==='device.call'){
       // Speaker lifecycle diagnostics: counters and stage names only, no audio.
-      if(!['start','ready','closed'].includes(event.stage))return false;
+      if(!['start','ready','input-speech','closed'].includes(event.stage))return false;
       const safe={stage:event.stage};
       for(const key of ['deviceId','reason'])if(typeof event[key]==='string'&&/^[a-z0-9_-]{1,64}$/u.test(event[key]))safe[key]=event[key];
-      for(const key of ['latencyMs','durationMs','inputBytes','outputBytes','userTurns'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      for(const key of ['latencyMs','durationMs','inputBytes','outputBytes','userTurns','maxInputGapMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
     }
     if(event.type==='call.closed'){
