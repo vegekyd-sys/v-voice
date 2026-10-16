@@ -403,9 +403,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, pre
     const host=req.headers.host??'';
     // Hardware clients authenticate with their own device token, not a browser
     // cookie or Origin. They still arrive only through the configured host.
-    if(deviceEndpoint&&new URL(req.url,'http://device.invalid').pathname===deviceEndpoint.path){
-      if(hosted?host!==origin.host:!/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host)){socket.destroy();return;}
-      deviceEndpoint.handleUpgrade(req,socket,head);return;
+    const devicePath=deviceEndpoint&&new URL(req.url,'http://device.invalid').pathname;
+    if(deviceEndpoint&&(devicePath===deviceEndpoint.path||deviceEndpoint.xiaozhiPath&&devicePath===deviceEndpoint.xiaozhiPath)){
+      // Device clients authenticate by token; some firmware omits the port in Host.
+      const hostname=(()=>{try{return new URL(`http://${host}`).hostname;}catch{return '';}})();
+      if(hosted?hostname!==origin.hostname:!/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host)){socket.destroy();return;}
+      deviceEndpoint.handleUpgrade(req,socket,head,{dialect:devicePath===deviceEndpoint.path?'native':'xiaozhi'});return;
     }
     const expectedOrigin=hosted?publicOrigin:`http://${host}`;
     if(!directVoice||(hosted?host!==origin.host:!/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host))||req.headers.origin!==expectedOrigin){socket.destroy();return;}
@@ -484,6 +487,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       deviceEndpoint = createDeviceEndpoint({directVoice,wsModule,audit:transcriptLog.audit,
         devices:parseDeviceEntries(JSON.parse(await readFile(process.env.VOICE_DEVICES_FILE,"utf8"))),
         path:process.env.VOICE_DEVICE_PATH ?? "/device/voice",
+        xiaozhiPath:process.env.VOICE_XIAOZHI_PATH ?? null,
         isSessionBusy:sessionKey=>bridge?.sessionBusy(sessionKey) ?? true,
         robotEvaluate:await robotEvaluatorFromEnv(process.env)});
     }

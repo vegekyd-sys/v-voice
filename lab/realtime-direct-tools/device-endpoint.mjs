@@ -1,6 +1,7 @@
 import {createDevicePlayout} from './device-playout.mjs';
 import {EventEmitter} from 'node:events';
 import {createRobotReactionDriver} from '../robot/robot-reactions.mjs';
+import {createXiaozhiWire} from './xiaozhi-wire.mjs';
 import {createHash,timingSafeEqual} from 'node:crypto';
 
 // A hardware speaker is one more Voice client. It owns only audio I/O, wake and
@@ -50,7 +51,7 @@ class DeviceCallClient extends EventEmitter {
   }
 }
 
-export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '/device/voice',audit = () => {},isSessionBusy = () => false,
+export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '/device/voice',xiaozhiPath = null,audit = () => {},isSessionBusy = () => false,
   now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,toolHoldMs = 180000,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = 4 * 1024 * 1024,robotEvaluate = null}) {
   if (!/^\/[a-zA-Z0-9/_-]+$/u.test(path)) throw Error('Invalid device path');
   const server = new wsModule.WebSocketServer({noServer:true,maxPayload:65536,perMessageDeflate:false});
@@ -224,13 +225,17 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
 
   return {
     path,
+    xiaozhiPath,
     activeCalls: () => [...connections.values()].filter(c => c.call).length,
     busy: sessionKey => [...connections.values()].some(c => c.call && c.device.sessionKey === sessionKey),
     connected: () => [...connections.values()].map(c => ({deviceId:c.device.id,inCall:Boolean(c.call),connectedAt:c.connectedAt})),
-    handleUpgrade(req, socket, head) {
+    handleUpgrade(req, socket, head, {dialect = 'native'} = {}) {
       const device = authenticate(req);
       if (!device) {socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');socket.destroy();return;}
-      server.handleUpgrade(req, socket, head, ws => {
+      server.handleUpgrade(req, socket, head, raw => {
+        // xiaozhi-esp32 firmware (e.g. StackChan) speaks its own protocol; the
+        // wire adapter makes it an ordinary device connection for everything below.
+        const ws = dialect === 'xiaozhi' ? createXiaozhiWire(raw) : raw;
         const old = connections.get(device.id);
         if (old) {old.call?.end('replaced');old.ws.close(4000, 'replaced');}
         const connection = {device,ws,call:null,connectedAt:now(),missed:0};

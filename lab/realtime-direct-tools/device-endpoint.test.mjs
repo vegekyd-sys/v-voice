@@ -4,6 +4,7 @@ import {EventEmitter} from 'node:events';
 import {createServer} from 'node:http';
 import {setTimeout as delay} from 'node:timers/promises';
 import * as ws from 'ws';
+import OpusScript from 'opusscript';
 import {createDirectVoiceService} from './session.mjs';
 import {createDeviceEndpoint,parseDeviceEntries} from './device-endpoint.mjs';
 
@@ -27,7 +28,7 @@ async function fixture(options = {}) {
   const endpoint = createDeviceEndpoint({directVoice,wsModule:ws,devices:parseDeviceEntries([record(options.record),...(options.extraDevices ?? [])]),audit:v => audit.push(v),
     maxBufferedBytes:options.maxBufferedBytes,robotEvaluate:options.robotEvaluate,isSessionBusy:() => busy,tickMs:10,idleMs:options.idleMs ?? 5000,initialIdleMs:options.initialIdleMs ?? 5000,followUpMs:options.followUpMs ?? 5000,chatterMs:options.chatterMs ?? 5000,toolHoldMs:5000});
   const server = createServer((req, res) => {res.writeHead(404);res.end();});
-  server.on('upgrade', (req, socket, head) => endpoint.handleUpgrade(req, socket, head));
+  server.on('upgrade', (req, socket, head) => endpoint.handleUpgrade(req, socket, head, {dialect:req.url.startsWith('/device/xiaozhi') ? 'xiaozhi' : 'native'}));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const url = `ws://127.0.0.1:${server.address().port}/device/voice`;
   const connect = async (token = TOKEN) => {
@@ -269,4 +270,61 @@ test('a robot device receives reactions chosen from the shared session; a plain 
   plain.peers[0].emit('message', Buffer.from(JSON.stringify({type:'conversation.item.input_audio_transcription.completed', transcript:'哈哈'})), false);
   await delay(30);
   assert(!speaker.events.some(e => e.type === 'reaction'));
+});
+
+test('a xiaozhi-firmware robot talks to the same Voice session through the wire adapter', async t => {
+  const f = await fixture({record:{robot:true}, robotEvaluate: async () => ({answers:{reaction:{type:'choice', choice:'laugh'}}})});
+  t.after(f.close);
+  const url = f.url.replace('/device/voice', '/device/xiaozhi');
+  const client = new ws.WebSocket(url, {headers:{authorization:`Bearer ${TOKEN}`}});
+  client.events = [];client.audio = [];
+  client.on('message', (data, binary) => binary ? client.audio.push(Buffer.from(data)) : client.events.push(JSON.parse(data.toString())));
+  await new Promise((resolve, reject) => {client.once('open', resolve);client.once('error', reject);});
+  t.after(() => client.close());
+  client.send(JSON.stringify({type:'hello', version:1, transport:'websocket', audio_params:{format:'opus', sample_rate:16000, channels:1, frame_duration:60}}));
+  await f.until(() => client.events.some(e => e.type === 'hello'), 'xiaozhi hello');
+  const hello = client.events.find(e => e.type === 'hello');
+  assert.equal(hello.transport, 'websocket');
+  assert.deepEqual(hello.audio_params, {format:'opus', sample_rate:24000, channels:1, frame_duration:60});
+  assert(!client.events.some(e => e.type === 'call.ready'), 'native frames never reach xiaozhi firmware');
+  await f.until(() => f.peers[0]?.sent.some(e => e.type === 'session.create'), 'provider session');
+  const setup = f.peers[0].sent.find(e => e.type === 'session.create');
+  assert.match(setup.session.instructions, /智能音箱/);
+
+  // Uplink: 60 ms Opus frames at 16 kHz arrive at the provider as PCM.
+  const enc = new OpusScript(16000, 1, OpusScript.Application.VOIP);t.after(() => enc.delete());
+  const pcm = Buffer.alloc(1920);for (let i = 0; i < 960; i++) pcm.writeInt16LE(Math.round(6000 * Math.sin(i / 7)), i * 2);
+  client.send(JSON.stringify({type:'listen', state:'start', mode:'auto'}));
+  client.send(enc.encode(pcm, 960), {binary:true});
+  await f.until(() => f.peers[0].sent.some(e => e.type === 'input_audio_buffer.append'), 'uplink reached provider');
+
+  // A user turn yields an llm emotion carrying the robot reaction id.
+  const provider = f.peers[0];
+  provider.emit('message', Buffer.from(JSON.stringify({type:'conversation.item.input_audio_transcription.completed', transcript:'哈哈哈'})), false);
+  await f.until(() => client.events.some(e => e.type === 'llm'), 'reaction');
+  assert.equal(client.events.find(e => e.type === 'llm').emotion, 'laugh');
+
+  // Downlink: tts start precedes Opus audio; audio.done yields tts stop.
+  const samples = new Float32Array(24000 * 0.3).map((_, i) => 0.3 * Math.sin(i / 9));
+  const floats = Buffer.alloc(samples.length * 4);samples.forEach((v, i) => floats.writeFloatLE(v, i * 4));
+  provider.emit('message', Buffer.from(JSON.stringify({type:'response.created', response_id:'r1'})), false);
+  provider.emit('message', Buffer.from(JSON.stringify({type:'response.output_audio.delta', response_id:'r1', delta:floats.toString('base64')})), false);
+  provider.emit('message', Buffer.from(JSON.stringify({type:'response.output_audio.done', response_id:'r1'})), false);
+  provider.emit('message', Buffer.from(JSON.stringify({type:'response.done', response_id:'r1', response:{status:'completed'}})), false);
+  await f.until(() => client.events.some(e => e.type === 'tts' && e.state === 'stop'), 'tts stop');
+  const order = client.events.filter(e => e.type === 'tts').map(e => e.state);
+  assert.deepEqual(order, ['start', 'stop']);
+  assert(client.audio.length >= 5, 'audio arrives as 60 ms Opus frames');
+  const dec = new OpusScript(24000, 1);t.after(() => dec.delete());
+  assert.equal(dec.decode(client.audio[0]).length, 2880);
+});
+
+test('a xiaozhi device with the wrong audio format is refused', async t => {
+  const f = await fixture();t.after(f.close);
+  const client = new ws.WebSocket(f.url.replace('/device/voice', '/device/xiaozhi'), {headers:{authorization:`Bearer ${TOKEN}`}});
+  await new Promise((resolve, reject) => {client.once('open', resolve);client.once('error', reject);});
+  const closed = new Promise(resolve => client.once('close', code => resolve(code)));
+  client.send(JSON.stringify({type:'hello', transport:'websocket', audio_params:{format:'pcm', sample_rate:16000}}));
+  assert.equal(await closed, 1008);
+  assert.equal(f.peers.length, 0);
 });

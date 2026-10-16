@@ -13,6 +13,7 @@
     "package": "node scripts/package.mjs"
   },
   "dependencies": {
+    "opusscript": "0.1.1",
     "ws": "8.18.3"
   }
 }
