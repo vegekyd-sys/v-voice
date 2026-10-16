@@ -1,0 +1,51 @@
+{
+  "schema": "v-voice-production-registration-v1",
+  "status": "active",
+  "sourceRepository": "https://github.com/vegekyd-sys/v-voice",
+  "sourceCommit": "bcb82987c7cc6c61e87ecc9f28c320df6bfb470b",
+  "voicePR": 23,
+  "filesSha256": "b56c554db7d1eb71e265cbc7cc7941e5cbe3d05d58887820779f8c863ef911f0",
+  "fileCount": 177,
+  "entryDirectory": "/opt/openclaw-voice-h5/releases/gpt-live-bcb82987c7cc6c61e87ecc9f28c320df6bfb470b",
+  "entryService": "openclaw-rtc-h5.service",
+  "gatewayPluginDirectory": "/opt/openclaw-voice-h5/releases/gpt-live-a9ac516860a8856470262957ad6ea0cc2670cb0e/plugins/v-voice-gpt-live",
+  "gatewayPluginCommit": "a9ac516860a8856470262957ad6ea0cc2670cb0e",
+  "gatewayPluginFilesByteIdentical": true,
+  "gatewayRuntimeReleaseUnchanged": "v2026.9.1-db91.6-voice-task-continuity-20261016-r3",
+  "gatewayRestarted": false,
+  "gatewayConfigChanged": false,
+  "changedFiles": [
+    "lab/gpt-live-h5/app.js"
+  ],
+  "acceptanceEnvironment": "Voice frontend Candidate; shared Gateway gate not required by Voice AGENTS.md",
+  "productionAcceptance": {
+    "models": [
+      "gpt-live",
+      "seeduplex"
+    ],
+    "syntheticNaturalSpeech": true,
+    "realASRAndProviderAudio": true,
+    "finalState": "idle",
+    "transcriptReset": true,
+    "servedAppMatches": true,
+    "browserConsoleErrors": 0,
+    "exactRecordedFarewellVariantRegression": "baseline-fails-patch-passes",
+    "liveGPTFarewellUsedCanonicalWording": true,
+    "physicalIPhoneSafariRetested": false,
+    "scope": "farewell and initial-page reset only; no new task/media/Feishu tests",
+    "verifiedAt": "2026-10-16T10:35:56.343061+08:00"
+  },
+  "artifactManifest": "artifact-manifest.json",
+  "driftSentinelCoversVoice": false,
+  "activation": {
+    "h5Pid": 1568585,
+    "gatewayPidUnchanged": 1462235,
+    "gatewayConfigUnchanged": true,
+    "attempts": 2,
+    "firstAttemptRolledBack": true,
+    "firstAttemptNote": "Product startup ready was logged but controller did not write a successful receipt; exact failing assertion was not retained. Original H5 stop reached its existing 20 second timeout. Original entry restored before analysis. No Gateway restart or systemd policy change.",
+    "secondAttempt": "all original controller guards and explicit process-environment/HTTP/served-hash checks passed",
+    "firstAttemptControllerProblemResolved": false
+  },
+  "at": "2026-10-16T10:33:58.232000+08:00"
+}
