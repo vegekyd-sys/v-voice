@@ -81,11 +81,37 @@
           "ms": 45596
         }
       ]
+    },
+    {
+      "scenario": "real-service-relay-browser-dom",
+      "candidateId": "candidate-f7a3f062-9f1f-492a-bd16-0390300ab5cd",
+      "sharedUnchanged": true,
+      "inputSha256": "76c58e62acd914b318e2ae1a1aaeaeaf3c30a734b2c05e3d5e27552a2a69baf7",
+      "receiptSha256": "40ef64d163728911d5ec88c9b8612dbdd804498c57277427abac3517d985b1e6",
+      "actualDisplayAckMs": 45410,
+      "firstValidAudioCaptionMs": 45807,
+      "asrToAudioMs": 90
     }
   ],
   "realBackend": false,
   "realFeishu": false,
   "syntheticMicrophone": true,
   "physicalIphoneAccepted": false,
-  "gptLiveAcceptance": "pending"
+  "gptLiveAcceptance": "pending",
+  "testedSourceCommit": "2c5a1043ce67cc43738a504f020e1aae57b4baba",
+  "localTests": {
+    "full": 511,
+    "targeted": 90,
+    "passed": true
+  },
+  "artifact": {
+    "commit": "2c5a1043ce67cc43738a504f020e1aae57b4baba",
+    "files": 177,
+    "filesSha256": "4527f7cf869d2ddaa639b45897bc13d66fa3769ce35f7d7e12858af3adb6b3de",
+    "verified": true
+  },
+  "ci": {
+    "status": "not-started-account-billing-limit",
+    "jobId": 116800514218
+  }
 }
