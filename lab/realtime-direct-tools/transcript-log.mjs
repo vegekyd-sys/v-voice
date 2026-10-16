@@ -82,6 +82,11 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
         ...(typeof receipt.messageId==='string'?{messageId:receipt.messageId}:{}),
         ...(typeof event.error==='string'?{error:event.error.slice(0,300)}:{})});
     }
+    if(event.type==='robot.reaction'){
+      const safe={};
+      for(const key of ['id','beat','source','deviceId'])if(typeof event[key]==='string'&&/^[a-z0-9_-]{1,64}$/u.test(event[key]))safe[key]=event[key];
+      return enqueue({...owner,type:event.type,...safe});
+    }
     if(event.type==='device.call'){
       // Speaker lifecycle diagnostics: counters and stage names only, no audio.
       if(!['start','ready','input-speech','closed'].includes(event.stage))return false;

@@ -25,7 +25,7 @@ async function fixture(options = {}) {
   const directVoice = createDirectVoiceService({gateway,wsModule:{WebSocket:ProviderSocket,WebSocketServer:class {close() {}}},apiKeys:{seeduplex:'k',grok:'k'},audit:v => audit.push(v)});
   let busy = false;
   const endpoint = createDeviceEndpoint({directVoice,wsModule:ws,devices:parseDeviceEntries([record(options.record),...(options.extraDevices ?? [])]),audit:v => audit.push(v),
-    maxBufferedBytes:options.maxBufferedBytes,isSessionBusy:() => busy,tickMs:10,idleMs:options.idleMs ?? 5000,initialIdleMs:options.initialIdleMs ?? 5000,followUpMs:options.followUpMs ?? 5000,chatterMs:options.chatterMs ?? 5000,toolHoldMs:5000});
+    maxBufferedBytes:options.maxBufferedBytes,robotEvaluate:options.robotEvaluate,isSessionBusy:() => busy,tickMs:10,idleMs:options.idleMs ?? 5000,initialIdleMs:options.initialIdleMs ?? 5000,followUpMs:options.followUpMs ?? 5000,chatterMs:options.chatterMs ?? 5000,toolHoldMs:5000});
   const server = createServer((req, res) => {res.writeHead(404);res.end();});
   server.on('upgrade', (req, socket, head) => endpoint.handleUpgrade(req, socket, head));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -245,4 +245,28 @@ test('a device may absorb Wi-Fi stalls with a larger bounded playout lead', () =
   assert.equal(parseDeviceEntries([record({playoutLeadMs:2000})])[0].playoutLeadMs, 2000);
   assert.throws(() => parseDeviceEntries([record({playoutLeadMs:100})]), /lead/);
   assert.throws(() => parseDeviceEntries([record({playoutLeadMs:9000})]), /lead/);
+});
+
+test('a robot device receives reactions chosen from the shared session; a plain speaker does not', async t => {
+  const asked = [];
+  const f = await fixture({record:{robot:true}, robotEvaluate: async state => {asked.push(state.beat);return {answers:{reaction:{type:'choice', choice:'laugh'}}};}});
+  t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+  const provider = f.peers[0];
+  provider.emit('message', Buffer.from(JSON.stringify({type:'conversation.item.input_audio_transcription.completed', transcript:'哈哈哈你太逗了'})), false);
+  await f.until(() => device.events.some(e => e.type === 'reaction'), 'reaction');
+  assert.deepEqual(device.events.find(e => e.type === 'reaction'), {type:'reaction', id:'laugh', beat:'user_meaning'});
+  assert.equal(asked[0].kind, 'user_meaning');
+  assert(f.audit.some(e => e.type === 'robot.reaction' && e.id === 'laugh'));
+
+  const plain = await fixture();
+  t.after(plain.close);
+  const speaker = await plain.connect();t.after(() => speaker.close());
+  speaker.send(JSON.stringify({type:'call.start'}));
+  await plain.until(() => speaker.events.some(e => e.type === 'call.ready'), 'ready');
+  plain.peers[0].emit('message', Buffer.from(JSON.stringify({type:'conversation.item.input_audio_transcription.completed', transcript:'哈哈'})), false);
+  await delay(30);
+  assert(!speaker.events.some(e => e.type === 'reaction'));
 });

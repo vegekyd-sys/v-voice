@@ -1,5 +1,6 @@
 import {createDevicePlayout} from './device-playout.mjs';
 import {EventEmitter} from 'node:events';
+import {createRobotReactionDriver} from '../robot/robot-reactions.mjs';
 import {createHash,timingSafeEqual} from 'node:crypto';
 
 // A hardware speaker is one more Voice client. It owns only audio I/O, wake and
@@ -32,7 +33,7 @@ export function parseDeviceEntries(records = []) {
     // Wi-Fi stalls; it does not delay interruption.
     const playoutLeadMs = record.playoutLeadMs ?? 480;
     if (!Number.isInteger(playoutLeadMs) || playoutLeadMs < 200 || playoutLeadMs > 5000) throw Error('Device playout lead must be 200-5000 ms');
-    devices.push(Object.freeze({inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
+    devices.push(Object.freeze({inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,robot:record.robot === true,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
   }
   return devices;
 }
@@ -50,7 +51,7 @@ class DeviceCallClient extends EventEmitter {
 }
 
 export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '/device/voice',audit = () => {},isSessionBusy = () => false,
-  now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,toolHoldMs = 180000,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = 4 * 1024 * 1024}) {
+  now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,toolHoldMs = 180000,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = 4 * 1024 * 1024,robotEvaluate = null}) {
   if (!/^\/[a-zA-Z0-9/_-]+$/u.test(path)) throw Error('Invalid device path');
   const server = new wsModule.WebSocketServer({noServer:true,maxPayload:65536,perMessageDeflate:false});
   const connections = new Map();
@@ -76,9 +77,15 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     call.playout = createDevicePlayout({now,maxBytes:maxBufferedBytes,maxLeadMs:device.playoutLeadMs,bufferedBytes:()=>ws.bufferedAmount,
       sendAudio:pcm=>{if(ws.readyState===1){call.outputBytes+=pcm.length;call.lastActivityAt=now();ws.send(pcm,{binary:true});}},
       sendEvent:event=>sendJson(ws,event)});
+    // A robot face reacts to the same shared session events. Reactions to V's
+    // own speech follow the queued audio; reactions to the user go at once.
+    call.robot = device.robot ? createRobotReactionDriver({evaluate:robotEvaluate,
+      send:event=>event.beat?.startsWith('assistant')?call.playout.event(event):sendJson(ws,event),
+      audit:event=>audit({...event,voiceSessionId:call.id,deviceId:device.id})}) : null;
     call.fromSession = raw => {
       if (call.ended) return;
       let event;try {event = JSON.parse(raw);} catch {return;}
+      if (call.robot && (event.type === 'transcript' || event.type?.startsWith('tool.'))) call.robot.observe(event);
       if (event.type === 'audio') {
         const pcm = Buffer.from(String(event.audio ?? ''), 'base64');
         if (!pcm.length || ws.readyState !== 1) return;
@@ -111,7 +118,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     };
     call.closed = reason => {
       if (call.ended) return;
-      call.ended = true;clearInterval(call.timer);call.playout.dispose();
+      call.ended = true;clearInterval(call.timer);call.playout.dispose();call.robot?.dispose();
       if (connection.call === call) connection.call = null;
       if (call.id) audit({type:'device.call',voiceSessionId:call.id,stage:'closed',deviceId:device.id,reason:call.reason ?? reason,
         durationMs:now() - call.startedAt,inputBytes:call.inputBytes,outputBytes:call.outputBytes,userTurns:call.userTurns,gatedInputBytes:call.gatedInputBytes ?? 0,maxInputGapMs:call.maxInputGapMs ?? 0});

@@ -471,13 +471,21 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       const history=await gateway.request('chat.history',{sessionKey,limit:6},{timeoutMs:10000});
       return voiceConversationContext(history.messages??[]);
     }});
+    // Robot faces pick reactions with a fast classifier; without one they use
+    // conservative keyword rules. Cosmetic only, never on the speech path.
+    const robotEvaluatorFromEnv = async env => {
+      if (env.ROBOT_REACTION_PROVIDER === 'deepseek' && env.DEEPSEEK_API_KEY) return (await import('../robot/robot-reactions.mjs')).createDeepSeekChoiceEvaluator({apiKey:env.DEEPSEEK_API_KEY});
+      if (env.ROBOT_REACTION_PROVIDER === 'decisions') return avatarEvaluatorFromEnv(env);
+      return null;
+    };
     let deviceEndpoint = null;
     if (process.env.VOICE_DEVICES_FILE) {
       const {createDeviceEndpoint,parseDeviceEntries} = await import('../realtime-direct-tools/device-endpoint.mjs');
       deviceEndpoint = createDeviceEndpoint({directVoice,wsModule,audit:transcriptLog.audit,
         devices:parseDeviceEntries(JSON.parse(await readFile(process.env.VOICE_DEVICES_FILE,"utf8"))),
         path:process.env.VOICE_DEVICE_PATH ?? "/device/voice",
-        isSessionBusy:sessionKey=>bridge?.sessionBusy(sessionKey) ?? true});
+        isSessionBusy:sessionKey=>bridge?.sessionBusy(sessionKey) ?? true,
+        robotEvaluate:await robotEvaluatorFromEnv(process.env)});
     }
     bridge = createLiveH5Server({ gateway, deviceEndpoint,
       listening:process.env.VOICE_LISTENING_DIR ? await (await import('./listening.mjs')).loadVoiceListening(process.env.VOICE_LISTENING_DIR) : undefined,
