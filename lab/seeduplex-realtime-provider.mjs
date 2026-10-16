@@ -444,7 +444,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.request.onClearAudio?.("reconnecting");
     this.responseActive = false;
     this.pendingGreeting = null;
-    this.pendingSpeechCaption = null;
+    this.pendingSpeechCaption = null;this.pendingCallControlSpeech=null;this.callControlSpeech=null;
     this.#diagnostic({stage:"reconnecting",attempt:this.reconnectAttempts.length});
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -491,8 +491,10 @@ export class SeeduplexRealtimeVoiceBridge {
 
   speakFarewell(text, callControlId) {
     this.#cancelUpstreamResponse(true);
-    this.speakProgress(text, {caption:true});
-    this.pendingSpeechCaption.callControlId=callControlId;
+    // Native text/audio can still finish after cancellation. Its caption state
+    // must never overwrite the separately owned host farewell request.
+    this.speakProgress(text);
+    this.pendingCallControlSpeech={id:callControlId,text,started:false,responseId:null,shown:false};
     this.callControlSpeech=null;
   }
 
@@ -530,6 +532,7 @@ export class SeeduplexRealtimeVoiceBridge {
     // confirmed to have actually said something, in #cancelUpstreamResponse.
     this.request.onClearAudio?.("barge-in");
     this.pendingGreeting = null;
+    this.pendingCallControlSpeech=null;this.callControlSpeech=null;
     this.bargeInPending = true;
     // Host-injected backend speech may postpone native ASR until its TTS ends.
     // A client speech onset must retire that playback, not wait for ASREnded.
@@ -686,11 +689,16 @@ export class SeeduplexRealtimeVoiceBridge {
       this.outputClosed = false;
       this.responseActive = true;
       this.audioResponseId = responseId;
+      const farewell=this.pendingCallControlSpeech;
+      if(farewell&&!farewell.started&&event.tts_type==='chat_tts_text'&&responseId){
+        farewell.started=true;farewell.responseId=responseId;
+        this.callControlSpeech={id:farewell.id,responseId};
+      }
       const caption = this.pendingSpeechCaption;
       if (caption) {
         if (event.tts_type === "chat_tts_text" && !caption.started) {
           caption.started = true; caption.responseId = responseId;
-          this.callControlSpeech=caption.callControlId&&responseId?{id:caption.callControlId,responseId}:null;
+
         } else if (event.tts_type === "default" || responseId !== caption.responseId) {
           this.pendingSpeechCaption = null;
         }
@@ -704,6 +712,7 @@ export class SeeduplexRealtimeVoiceBridge {
         }
       }
       if (event.tts_type === "default") this.injectedSpeech = false;
+      if (event.tts_type === "chat_tts_text") this.injectedSpeech = true;
     }
 
     if (type === "error" && this.cancelledOutputPending &&
@@ -748,6 +757,7 @@ export class SeeduplexRealtimeVoiceBridge {
       this.outputClosed = false;
     }
     if (type === "conversation.item.input_audio_transcription.started") {
+      this.pendingCallControlSpeech=null;this.callControlSpeech=null;
       if (this.injectedSpeech && this.responseActive) this.#cancelUpstreamResponse(true);
       this.responseOwnerAnnounced = false;
       this.responseOwnerId = undefined;
@@ -850,6 +860,10 @@ export class SeeduplexRealtimeVoiceBridge {
     ) {
       try {
         const audio = decodeSeeduplexFloat32Pcm(event.delta);
+        const farewell=this.pendingCallControlSpeech;
+        if(audio.length&&farewell?.started&&!farewell.shown&&(responseId??this.audioResponseId)===farewell.responseId){
+          farewell.shown=true;this.request.onTranscript?.('assistant',farewell.text,true,'call-control');
+        }
         const caption = this.pendingSpeechCaption;
         if (audio.length && caption?.started &&
           (!responseId || responseId === caption.responseId) &&
@@ -866,7 +880,7 @@ export class SeeduplexRealtimeVoiceBridge {
           this.pendingGreeting = null;
           this.request.onTranscript?.("assistant", greeting.text, true, "greeting");
         }
-        this.request.onAudio(audio, { ...(this.callControlSpeech&&this.callControlSpeech.responseId===(this.audioResponseId ?? responseId)?{callControlId:this.callControlSpeech.id}:{}), ...(this.injectedSpeech ? {source:"injected-speech"} : {}), responseId: this.audioResponseId ?? responseId });
+        this.request.onAudio(audio, { ...(this.callControlSpeech&&this.callControlSpeech.responseId===(responseId ?? this.audioResponseId)?{callControlId:this.callControlSpeech.id}:{}), ...(this.injectedSpeech ? {source:"injected-speech"} : {}), responseId: responseId ?? this.audioResponseId });
         this.request.onMark?.(`seeduplex-audio-${randomUUID()}`);
       } catch {
         return this.#fail(new Error("Invalid Seeduplex audio output"));

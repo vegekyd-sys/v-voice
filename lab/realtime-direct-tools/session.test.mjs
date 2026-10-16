@@ -433,6 +433,7 @@ test('host semantic hangup bypasses a waiting tool, requires its own farewell au
  assert(f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'&&e.text==='再见，下次聊。'));
  send({type:'playback.drained',callId:proposal.requestId});assert.equal(f.client.readyState,1);
  const audio=Buffer.alloc(8);audio.writeFloatLE(.1,0);audio.writeFloatLE(.2,4);
+ f.event({type:'response.output_audio.started',response_id:'late-native',tts_type:'default'});
  f.event({type:'response.output_audio.started',response_id:'farewell',tts_type:'chat_tts_text'});
  f.event({type:'response.canceled',response_id:'previous-native-response'});assert(!f.client.sent.some(e=>e.type==='end.cancelled'));
  f.event({type:'response.output_audio.delta',response_id:'farewell',delta:audio.toString('base64')});
