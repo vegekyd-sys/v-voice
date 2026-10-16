@@ -27,7 +27,12 @@ export function parseDeviceEntries(records = []) {
     if (!Number.isFinite(inputGain) || inputGain < 1 || inputGain > 4) throw Error('Device input gain must be between 1 and 4');
     const noiseGateRms = record.noiseGateRms ?? 0, noiseGateHoldMs = record.noiseGateHoldMs ?? 500;
     if (!Number.isInteger(noiseGateRms) || noiseGateRms < 0 || noiseGateRms > 2000 || !Number.isInteger(noiseGateHoldMs) || noiseGateHoldMs < 40 || noiseGateHoldMs > 2000) throw Error('Invalid device noise gate');
-    devices.push(Object.freeze({inputGain,noiseGateRms,noiseGateHoldMs,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
+    // Lead is how far PCM may run ahead of real time on the wire. The speaker
+    // discards its whole buffer on audio.clear, so a larger lead only absorbs
+    // Wi-Fi stalls; it does not delay interruption.
+    const playoutLeadMs = record.playoutLeadMs ?? 480;
+    if (!Number.isInteger(playoutLeadMs) || playoutLeadMs < 200 || playoutLeadMs > 5000) throw Error('Device playout lead must be 200-5000 ms');
+    devices.push(Object.freeze({inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
   }
   return devices;
 }
@@ -68,7 +73,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     if (!device.models.includes(model)) return sendJson(ws, {type:'call.error',reason:'model',message:'这个音箱没有开放该语音模型'});
     const call = {connection,model,startedAt:now(),readyAt:0,lastActivityAt:now(),replyEndedAt:0,userTurns:0,outputBytes:0,inputBytes:0,playing:false,ended:false,client:null,id:null,timer:null};
     connection.call = call;
-    call.playout = createDevicePlayout({now,maxBytes:maxBufferedBytes,bufferedBytes:()=>ws.bufferedAmount,
+    call.playout = createDevicePlayout({now,maxBytes:maxBufferedBytes,maxLeadMs:device.playoutLeadMs,bufferedBytes:()=>ws.bufferedAmount,
       sendAudio:pcm=>{if(ws.readyState===1){call.outputBytes+=pcm.length;call.lastActivityAt=now();ws.send(pcm,{binary:true});}},
       sendEvent:event=>sendJson(ws,event)});
     call.fromSession = raw => {

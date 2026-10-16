@@ -239,3 +239,10 @@ test('opt-in hardware noise gate preserves soft speech tails in sample time', as
   const levels=f.peers[0].sent.filter(e=>e.type==='input_audio_buffer.append').map(e=>Buffer.from(e.audio,'base64').readInt16LE(0));
   assert.deepEqual(levels,[0,2000,200,200,0]);
 });
+
+test('a device may absorb Wi-Fi stalls with a larger bounded playout lead', () => {
+  assert.equal(parseDeviceEntries([record()])[0].playoutLeadMs, 480);
+  assert.equal(parseDeviceEntries([record({playoutLeadMs:2000})])[0].playoutLeadMs, 2000);
+  assert.throws(() => parseDeviceEntries([record({playoutLeadMs:100})]), /lead/);
+  assert.throws(() => parseDeviceEntries([record({playoutLeadMs:9000})]), /lead/);
+});
