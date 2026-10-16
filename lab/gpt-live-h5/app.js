@@ -32,6 +32,7 @@ function speakerEvent(value){
   let events;try{events=JSON.parse(document.body.dataset.speakerEvents??'[]');}catch{events=[];}
   events.push({...safe,at:performance.now(),...audio?{audioBytes:Math.floor(audio.length*.75)}:{}});document.body.dataset.speakerEvents=JSON.stringify(events.slice(-300));
   if(value.type?.startsWith('speaker.'))renderSpeakerEvent(value);
+  if(['speaker.utterance','speaker.decision'].includes(value.type))renderTranscript(presentation.consume(value));
 }
 function refreshGrokVoicePicker() {
   const picker = $("grokVoicePicker"), select = $("grokVoice");
@@ -456,9 +457,12 @@ function renderTranscript(snapshot) {
         renderedTurns.set(item.key, row);
       }
       if(item.document)row.dataset.documentCallId=item.callId;
+      if(item.speakerId){row.dataset.speakerId=item.speakerId;row.dataset.speakerTone=String(item.speakerTone);row.dataset.listenOnly=String(item.listenOnly);}
+      if(speakerCandidate())row.dataset.speakerLabeled=String(Boolean(item.speakerId)||item.role==='assistant');
       const streaming = String(Boolean(call) && !item.complete);
       if (row.dataset.streaming !== streaming) row.dataset.streaming = streaming;
-      if (row.parts.speaker.textContent !== item.speaker) row.parts.speaker.textContent = item.speaker;
+      const speakerLabel=item.speaker+(item.listenOnly?' · 仅倾听':'');
+      if (row.parts.speaker.textContent !== speakerLabel) row.parts.speaker.textContent = speakerLabel;
       if (row.parts.time.textContent !== item.time) row.parts.time.textContent = item.time;
       const dateTime = new Date(item.at).toISOString();
       if (row.parts.time.dateTime !== dateTime) row.parts.time.dateTime = dateTime;
@@ -476,6 +480,7 @@ function renderTranscript(snapshot) {
 }
 function resetTranscript() {
   contentView?.reset(); presentation.reset(); renderedTurns.clear();
+  if(speakerCandidate()){$('speakerRoster')?.remove();delete document.body.dataset.speakerState;}
   $("transcriptHistory").replaceChildren(); $("transcriptCurrentRows").replaceChildren();
   renderTranscript(presentation.snapshot());
 }
@@ -563,7 +568,8 @@ function providerMessage(event) {
     duplexDiagnostic(active, { type: "native-output-audio-cleared", at });
     active.duplex.notifyOutputAudioCleared(at);
   }
-  renderTranscript(presentation.consume(data, Date.now()));
+  const routedUserCaption=active?.speakerGate&&(data.turn?.role==='user'||/^(session\.)?input_transcript\./u.test(data.type??'')||data.type==='turn.delta'&&data.turn_id===active.latestNativeUserTurnId);
+  if(!routedUserCaption)renderTranscript(presentation.consume(data, Date.now()));
   if (data.type === "error") setStatus("语音服务报告错误，请结束通话后重试。", { tone: "error" });
 }
 async function stopCall() {
@@ -698,7 +704,7 @@ async function startCall() {
           if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
           if(value.type==='provider.reconnecting')setStatus('正在恢复语音连接…');
           if(value.type==='provider.recovered')setStatus('V 正在听，直接说话就好');
-          if(value.type==='transcript') {
+          if(value.type==='transcript'&&!(reservation.speakerRouting&&value.role==='user')) {
             active.relayTurns??={};
             const id=active.relayTurns[value.role]??=crypto.randomUUID();
             renderTranscript(presentation.consume(value.final?{type:'turn.done',turn:{id,role:value.role,transcript:value.text}}:

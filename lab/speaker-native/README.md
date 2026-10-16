@@ -24,7 +24,7 @@ npm run start:speaker-native
 
 默认 `http://127.0.0.1:26320/`，可用 `VOICE_SPEAKER_PORT` 修改。Gateway 远端固定为本任务私有实例的 26367，SSH 本地端口可用 `VOICE_SPEAKER_GATEWAY_LOCAL_PORT` 设置。收据校验拒绝其他实例。私有 Gateway 初始化见 `provision-gateway.py`；需要先上传此仓库的插件源码至候选根目录 `voice/`，配置包含官方 codex/openai 插件。首次插件安装收敛后再启动一次私有实例。不要修改 pinned runtime 或生产配置。
 
-本轮已运行的产品进程由 `com.versa.v-voice.speaker-native-product` 管理，专属 SSH 转发由 `com.versa.v-voice.speaker-native-tunnel` 管理；私有 V 单元为 `voice-speaker-native-gateway-01a13f2c.service`。启动配置在忽略目录，不能提交。
+本轮已运行的产品进程由 `com.versa.v-voice.speaker-native-product` 管理，专属 SSH 转发由 `com.versa.v-voice.speaker-native-tunnel` 管理；私有 V 单元为 `voice-speaker-native-gateway-01a13f2c-bubbles.service`。启动配置在忽略目录，不能提交。
 
 ## 复验
 

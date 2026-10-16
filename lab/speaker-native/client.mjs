@@ -6,9 +6,9 @@ export function renderSpeakerEvent(value){
   if(value.type==='speaker.error'){row.textContent='这一句暂时没有判断清楚，请再说一次；也可以结束后重拨。';row.dataset.error='true';return;}
   if(value.type==='speaker.ready'){row.textContent='自动多人对话 · 无需注册声纹';return;}
   if(value.type!=='speaker.decision')return;
-  const names=value.participants.map(p=>`${p.label}${p.name?' · '+(p.certainty==='suggested'?'可能是 ':'')+p.name:''}`);
+  delete row.dataset.error;
   const label=id=>{const p=value.participants.find(p=>p.id===id);return p?.name??p?.label??id;};
-  row.textContent=names.join('　')+(value.mode==='exclusive'?' · 只和 '+label(value.targetId)+' 交谈':'')+' · '+(value.shouldRespond?'回应 '+value.addresseeIds.map(label).join('、'):'保持安静');
+  row.textContent=(value.mode==='exclusive'?'只和 '+label(value.targetId)+' 交谈':'自动多人对话')+(value.shouldRespond?' · 回应 '+value.addresseeIds.map(label).join('、'):'');
   document.body.dataset.speakerState=JSON.stringify({participants:value.participants,targetId:value.targetId,mode:value.mode,shouldRespond:value.shouldRespond,addresseeIds:value.addresseeIds,timings:value.timings});
 }
 
