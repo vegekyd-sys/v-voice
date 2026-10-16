@@ -632,3 +632,30 @@ test('long backend document keeps full paired history but commits only short spe
  socket.message({type:'response.output_audio.delta',response_id:'summary',delta:floatAudio([.2])});
  assert.deepEqual(texts,[['assistant',spokenText,true,'V-backend-summary']]);bridge.close();
 });
+
+for (const replacement of ['caller','backend-tts']) test(`late native results after ${replacement} use one host delivery without replay`,async()=>{
+ const socket=new FakeSocket(),calls=[],late=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},tools:[{name:'web_search',parameters:{type:'object'}}],onAudio(){},onToolCall:c=>calls.push(c),onLateToolResult:r=>late.push(r),onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const opening=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await opening;
+ socket.message({type:'conversation.item.input_audio_transcription.completed',text:'查一下原来的资料'});
+ const event={type:'response.function_call_arguments.done',items:[{call_id:'late',name:'web_search',arguments:'{}'}]};socket.message(event);
+ if(replacement==='caller'){socket.message({type:'conversation.item.input_audio_transcription.started'});socket.message({type:'conversation.item.input_audio_transcription.completed',text:'听得见吗'});}else bridge.speakProgress('另一个后台任务完成。');
+ socket.message({type:'response.output_audio.done',response_id:'new-reply'});
+ bridge.submitToolResult('late',{answer:'未查到公开资料。'});bridge.submitToolResult('late',{answer:'重复'});socket.message(event);
+ assert.equal(calls.length,1);assert.equal(late.length,1);assert.equal(late[0].question,'查一下原来的资料');assert.equal(late[0].text,'未查到公开资料。');
+ assert(!socket.sent.some(e=>e.items?.some(i=>i.role==='tool')));assert.equal(bridge.pendingToolCalls.size,0);assert.equal(bridge.toolBatches.length,0);
+ assert(!socket.sent.some(e=>e.type==='response.create'));bridge.close();
+});
+test('cancelled displaced result never enters history, display or speech',async()=>{
+ const socket=new FakeSocket(),late=[];const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},tools:[{name:'web_search',parameters:{type:'object'}}],onAudio(){},onToolCall(){},onLateToolResult:r=>late.push(r),onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const opening=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await opening;
+ socket.message({type:'response.function_call_arguments.done',items:[{call_id:'cancelled',name:'web_search',arguments:'{}'}]});socket.message({type:'conversation.item.input_audio_transcription.completed',text:'取消'});
+ const before=socket.sent.length;bridge.submitToolResult('cancelled',{cancelled:true,result:'旧任务结果'});assert.equal(late.length,0);assert.equal(socket.sent.length,before);assert.equal(bridge.pendingToolCalls.size,0);bridge.close();
+});
+
+test('an unconfirmed speech onset does not divert the normal native function result',async()=>{
+ const socket=new FakeSocket(),late=[];const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},tools:[{name:'web_search',parameters:{type:'object'}}],onAudio(){},onToolCall(){},onLateToolResult:r=>late.push(r),onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const opening=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await opening;
+ socket.message({type:'response.function_call_arguments.done',items:[{call_id:'normal',name:'web_search',arguments:'{}'}]});socket.message({type:'conversation.item.input_audio_transcription.started'});socket.message({type:'conversation.item.input_audio_transcription.completed',text:''});bridge.submitToolResult('normal',{answer:'真实结果'});
+ assert.equal(late.length,0);assert.equal(socket.sent.filter(e=>e.items?.[0]?.role==='tool').length,1);bridge.close();
+});

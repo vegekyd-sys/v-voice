@@ -422,3 +422,21 @@ test('Seed hangup retains release ownership until the actual final delivery rece
  for(let n=0;n<100&&f.service.backgroundTaskCount();n++)await delay(2);
  assert.equal(f.service.backgroundTaskCount(),0);assert(f.audit.some(e=>e.type==='task.delivery-confirmed'&&e.kind==='final'));
 });
+
+for(const action of ['idle','talking','new-topic','cancel'])test(`late SeedDuplex result is displayed once and respects ${action}`,async t=>{
+ let finish;const f=await fixture(async()=>new Promise(r=>finish=r),'seeduplex');t.after(()=>f.service.dispose());
+ const user=text=>f.event({type:'conversation.item.input_audio_transcription.completed',text});
+ const call=(id,name,args={})=>f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+ user('查一下资料');call('late','web_search',{query:'资料'});await delay(5);
+ f.event({type:'conversation.item.input_audio_transcription.started'});user('听得见吗');f.event({type:'response.output_audio.done',response_id:'hearing'});
+ if(action==='talking')f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:true})),false);
+ finish({ok:true,output:{content:[{type:'text',text:'实际查询结果'}]}});await delay(10);
+ assert.equal(f.client.sent.filter(e=>e.type==='backend.result').length,1);
+ assert(f.client.sent.find(e=>e.type==='backend.result').text.includes('实际查询结果'));
+ if(action==='new-topic'){f.event({type:'conversation.item.input_audio_transcription.started'});user('换个话题');}
+ if(action==='cancel'){call('cancel','cancel_task',{});await delay(10);}
+ await delay(1450);
+ assert.equal(f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit'&&e.text.includes('请求有结果')).length,action==='idle'?1:0);
+ assert.equal(f.audit.filter(e=>e.type==='tool.call'&&e.name==='web_search').length,1);
+ assert(!f.upstream.sent.some(e=>e.items?.some(i=>i.role==='tool'&&i.call_id==='late')));
+});

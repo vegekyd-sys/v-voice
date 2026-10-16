@@ -77,12 +77,13 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
   const phone=new URLSearchParams(location.search).get('phone');if(phone)endpoint.searchParams.set('phone',phone);
   const socket=new WebSocket(endpoint);socket.binaryType='arraybuffer';
-  let closed=false,ready=false,node,speaker,source,quietGain,ending=null,tailTimer,epoch=0,written=0,lastPlayedAt=null,lastSequence=0,blocked=false,outputComplete=false,playbackActive=false,busy=false,lastReceiveAt=null,statsTimer;
+  let closed=false,ready=false,node,speaker,source,quietGain,ending=null,tailTimer,epoch=0,written=0,lastPlayedAt=null,lastSequence=0,blocked=false,outputComplete=false,playbackActive=false,busy=false,lastReceiveAt=null,statsTimer,lastInputFrameAt=null;
   const pendingOutput=[];
   const maxQueuedOutputBytes=16*1024*1024;
-  const stats={inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs,contextState:context.state,contextSampleRate:context.sampleRate,playbackDrained:false};
+  const stats={inputFrames:0,inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs,contextState:context.state,contextSampleRate:context.sampleRate,playbackDrained:false};
   const activity=value=>{if(playbackActive!==value){playbackActive=value;onPlaybackActivity(value);}};
   const send=e=>{if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(e));};
+  const reportStats=()=>{const track=stream.getAudioTracks?.()[0];send({type:'playback.stats',...stats,contextState:context.state,inputFrameAgeMs:lastInputFrameAt===null?null:Math.max(0,performance.now()-lastInputFrameAt),micTrackState:track?.readyState??'unknown',micTrackMuted:track?.muted===true,micTrackEnabled:track?.enabled!==false});};
   const reportBusy=()=>{const next=stats.queuedOutputBytes>0||playbackActive;if(next!==busy){busy=next;send({type:'playback.state',speaking:busy});}};
   const flush=()=>{backendPlayback=false;backendOnset.reset();epoch++;written=0;pendingOutput.length=0;outputComplete=false;greetingHeld=false;stats.queuedOutputBytes=0;lastPlayedAt=null;speaker?.port.postMessage({type:'clear',epoch});stats.clears++;activity(false);reportBusy();ending=null;clearTimeout(tailTimer);};
   const checkEnd=()=>{if(closed||!ending)return;
@@ -112,7 +113,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   const promise=new Promise((resolve,reject)=>{
     socket.onmessage=e=>{if(closed)return;try{
       const value=JSON.parse(e.data);if(value.voiceSessionId!==reservation.voiceSessionId)return;
-      if(value.type==='ready'&&!ready){ready=true;resolve();send({type:'greeting'});reportBusy();statsTimer=setInterval(()=>send({type:'playback.stats',...stats}),2000);}
+      if(value.type==='ready'&&!ready){ready=true;resolve();send({type:'greeting'});reportBusy();statsTimer=setInterval(reportStats,2000);}
       if(value.type==='audio')play(value);
       if(value.type==='audio.clear')flush();
       if(value.type==='audio.done'){outputComplete=true;greetingHeld=false;speaker?.port.postMessage({type:'done',epoch});}
@@ -141,7 +142,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     for(const buffer of pendingOutput)transfer(buffer);pendingOutput.length=0;if(outputComplete)speaker.port.postMessage({type:'done',epoch});
     node=new AudioWorkletNode(context,'v-direct-mic');source=context.createMediaStreamSource(stream);
     quietGain=context.createGain();quietGain.gain.value=0;source.connect(node);node.connect(quietGain);quietGain.connect(context.destination);
-    node.port.onmessage=e=>{if(closed)return;const frame=e.data;
+    node.port.onmessage=e=>{if(closed)return;const frame=e.data;lastInputFrameAt=performance.now();stats.inputFrames++;
       if(ready&&socket.readyState===WebSocket.OPEN){
         if(backendOnset.observe(frame,backendPlayback&&stats.queuedOutputBytes>0)){
           if(backendResponseId){retiredResponses.add(backendResponseId);if(retiredResponses.size>256)retiredResponses.delete(retiredResponses.values().next().value);}
@@ -156,5 +157,5 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
       // the actual upstream ready event. Greeting PCM is retained above.
       await promise;if(!closed)await capture();
     },sendText:text=>send({type:'text',text}),
-    dispose(){send({type:'playback.stats',...stats});closed=true;clearInterval(statsTimer);clearTimeout(tailTimer);context.removeEventListener?.('statechange',stateChanged);flush();node?.port.close();node?.disconnect();speaker?.port.close();speaker?.disconnect();source?.disconnect();quietGain?.disconnect();socket.close();}};
+    dispose(){reportStats();closed=true;clearInterval(statsTimer);clearTimeout(tailTimer);context.removeEventListener?.('statechange',stateChanged);flush();node?.port.close();node?.disconnect();speaker?.port.close();speaker?.disconnect();source?.disconnect();quietGain?.disconnect();socket.close();}};
 }

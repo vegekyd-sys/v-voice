@@ -257,6 +257,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.seenToolCalls = new Map();
     this.seenEvents = new Map();
     this.pendingToolCalls = new Map();
+    this.latestUserText = "";
     this.backgroundTools = new Map();
     this.toolNoticeUsed = false;
     this.completedResponses = new Set();
@@ -481,6 +482,9 @@ export class SeeduplexRealtimeVoiceBridge {
 
   speakProgress(text, { caption = false } = {}) {
     if (this.terminal || (!this.ready && !this.reconnecting)) return;
+    // After host TTS the original native continuation is no longer reliable.
+    // Track its owner so a late result has an explicit host delivery path.
+    for (const batch of this.toolBatches) if (batch.phase === "collecting") batch.displaced = true;
     this.pendingSpeechCaption = caption ? { text, started: false, responseId: null } : null;
     this.injectedSpeech = true;
     this.responseActive = true;
@@ -576,11 +580,34 @@ export class SeeduplexRealtimeVoiceBridge {
     });
     batch.continuing = options.willContinue === true;
     this.#flushToolBatch(batch);
+
   }
 
   #flushToolBatch(batch) {
     if (batch.results.size !== batch.ids.length) return;
-    this.#send({
+    if (batch.displaced && !batch.continuing) {
+      // A newer conversational turn or host TTS consumed the native response.
+      // Retire the old call exactly once; never replay the operation or forge a
+      // fresh human query to make the model execute it again.
+      const results = batch.ids.map(id => ({callId:id,result:JSON.parse(batch.results.get(id).content[0].text)}))
+        .filter(row => !row.result?.cancelled);
+      if (results.length) {
+        const text = results.map(({result}) => {
+          if (typeof result === "string") return result;
+          if (result === null) return "null";
+          const plain = [result.result,result.text,result.answer].find(value=>typeof value === "string" && value.trim());
+          const blocks = Array.isArray(result.content) ? result.content.filter(block=>block.type === "text").map(block=>block.text).join("\n") : "";
+          return plain || blocks || JSON.stringify(result,null,2);
+        }).join("\n");
+        this.#send({type:"conversation.item.create",items:[
+          {role:"user",content:[{type:"input_text",text:batch.question}]},
+          {role:"assistant",content:[{type:"input_text",text:text.slice(0,MAX_CONSULT_RESULT_CHARS)}]},
+        ]});
+        if (this.request.onLateToolResult) this.request.onLateToolResult({callIds:results.map(row=>row.callId),question:batch.question,text});
+        else this.request.onTranscript?.("assistant",text,true,"late-tool-result");
+        this.#diagnostic({stage:"tool-result-host-delivery",callIds:results.map(row=>row.callId)});
+      }
+    } else this.#send({
       type: "conversation.item.create",
       event_id: `event_${randomUUID()}`,
       items: batch.ids.map((id) => batch.results.get(id)),
@@ -813,6 +840,8 @@ export class SeeduplexRealtimeVoiceBridge {
     if (type === "conversation.item.input_audio_transcription.completed") {
       const text = optionalString(event.transcript) ?? optionalString(event.text);
       if (text) {
+        for (const batch of this.toolBatches) if (batch.phase === "collecting") batch.displaced = true;
+        this.latestUserText = text;
         this.toolNoticeUsed = false;
         this.request.onTranscript?.("user", text, true);
       }
@@ -974,6 +1003,8 @@ export class SeeduplexRealtimeVoiceBridge {
     }
     const batch = {
       ids: calls.map((call) => call.callId),
+      question: this.latestUserText || calls.map(call=>call.name).join(", "),
+      displaced: false,
       results: new Map(),
       continuing: false,
       finalResults: new Map(),

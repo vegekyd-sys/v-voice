@@ -1,0 +1,131 @@
+{
+  "schema": "v-voice-candidate-registration-v1",
+  "status": "candidate-only-not-deployed",
+  "baseCommit": "1172bc080e3306709e3730e226c8224540d93d29",
+  "productionRegistrationUnchanged": true,
+  "gatewayRestartRequired": false,
+  "scope": "late SeedDuplex native tool result host presentation and input diagnostics",
+  "sourceFiles": [
+    {
+      "path": "lab/seeduplex-realtime-provider.mjs",
+      "sha256": "63874fcebf46dabebd8f3b38024cf2f8a3622749429983d73cb765ebac9c5c0b"
+    },
+    {
+      "path": "lab/realtime-direct-tools/session.mjs",
+      "sha256": "db6b7141a6220ed73b0164d42d3bf8b9d10b08616bb512a6bdc5b507d51a1bcd"
+    },
+    {
+      "path": "lab/gpt-live-h5/relay-audio.mjs",
+      "sha256": "c41250d6f913892a74b371547d67ab4c070143cc8d3d5f499d85ee0adf04d8e8"
+    },
+    {
+      "path": "lab/gpt-live-h5/changelog.mjs",
+      "sha256": "76eb464789c49dfca2eddd5ed68d515519859ed374db40603c7f62866f9743d6"
+    }
+  ],
+  "evidence": [
+    {
+      "scenario": "baseline",
+      "candidateId": "candidate-d1b7b38f-80e9-4ff9-8943-96531bea7784",
+      "sharedUnchanged": true,
+      "inputSha256": "581275656cdd7b630b879075c7ad95181c189d2eeb1967066985c0c01df751cd",
+      "receiptSha256": "116086448db3f6ab1ea0366a367ec98f2cd101f25a2428810af10c204ce0b445",
+      "timelineMs": [
+        {
+          "type": "response.output_audio.started",
+          "ms": 12295
+        },
+        {
+          "type": "response.output_audio.started",
+          "ms": 20650
+        },
+        {
+          "type": "response.output_audio.started",
+          "ms": 28707
+        },
+        {
+          "type": "test.web-completed",
+          "ms": 44012
+        }
+      ]
+    },
+    {
+      "scenario": "fixed",
+      "candidateId": "candidate-ca38eb5f-3777-4fe5-b181-3add9b2da169",
+      "sharedUnchanged": true,
+      "inputSha256": "4a9138507ff9584815d16af219b57b4697fffa0dae167f0ae734e0f8f761a7d1",
+      "receiptSha256": "bfbcb46ed8712497ba21c0d190f97ca4bf3b80052ec9a1bbb12b32ef516c6dc3",
+      "timelineMs": [
+        {
+          "type": "response.output_audio.started",
+          "ms": 12531
+        },
+        {
+          "type": "response.output_audio.started",
+          "ms": 20902
+        },
+        {
+          "type": "response.output_audio.started",
+          "ms": 28541
+        },
+        {
+          "type": "test.web-completed",
+          "ms": 44272
+        },
+        {
+          "type": "host.result-presented",
+          "ms": 44272
+        },
+        {
+          "type": "response.output_audio.started",
+          "ms": 45596
+        }
+      ]
+    },
+    {
+      "scenario": "real-service-relay-browser-dom",
+      "candidateId": "candidate-f7a3f062-9f1f-492a-bd16-0390300ab5cd",
+      "sharedUnchanged": true,
+      "inputSha256": "76c58e62acd914b318e2ae1a1aaeaeaf3c30a734b2c05e3d5e27552a2a69baf7",
+      "receiptSha256": "40ef64d163728911d5ec88c9b8612dbdd804498c57277427abac3517d985b1e6",
+      "actualDisplayAckMs": 45410,
+      "firstValidAudioCaptionMs": 45807,
+      "asrToAudioMs": 90
+    },
+    {
+      "scenario": "gpt-live-native-late-result",
+      "candidateId": "candidate-fc1c92c8-1158-4e6a-a956-2c8d90fb5ef8",
+      "sharedUnchanged": true,
+      "inputSha256": "d29dba2c9e08f2c379405fbf93b6b18f5cd9935f65ad9fbbddee94ad2ea1790a",
+      "receiptSha256": "c53710697237f5c9cfa37f4f47b43b357572caa143db2004a339624e098ebb1a",
+      "finalTranscriptObservedMs": 46986,
+      "inboundRtpBytes": 218283,
+      "sameUserTurnDelegationEvents": 2,
+      "backendResultSubmissions": 2,
+      "fullGatewayDedupAccepted": false
+    }
+  ],
+  "realBackend": false,
+  "realFeishu": false,
+  "syntheticMicrophone": true,
+  "physicalIphoneAccepted": false,
+  "gptLiveAcceptance": "native-wire-wait-and-late-result-observed; full Gateway dedup not covered",
+  "testedSourceCommit": "2c5a1043ce67cc43738a504f020e1aae57b4baba",
+  "localTests": {
+    "full": 511,
+    "targeted": 90,
+    "passed": true
+  },
+  "artifact": {
+    "commit": "e76df1c76801e154fdbe66030a4d43edea1f1c99",
+    "files": 177,
+    "filesSha256": "4527f7cf869d2ddaa639b45897bc13d66fa3769ce35f7d7e12858af3adb6b3de",
+    "verified": true
+  },
+  "ci": {
+    "status": "not-started-account-billing-limit",
+    "jobId": 116800514218
+  },
+  "rebaseOnto": "1172bc0",
+  "runtimeSourceBytesUnchangedAfterRebase": true
+}

@@ -2,6 +2,13 @@
 // experiments and unaccepted capabilities do not belong in this list.
 export const VOICE_UPDATES = [
   {
+    date: '2026-10-16', title: '插话后，迟到的结果也能接住',
+    items: [
+      '豆包查询等待期间继续聊天，迟到的工具结果会保留在屏幕上，并在空闲时提示。',
+      '再次换话题或取消任务后，不会重播旧结果，也不会重复执行原来的操作。',
+    ],
+  },
+  {
     date: '2026-10-16', title: '电话挂断，任务继续',
     items: [
       '后台任务与通话分开管理：已接纳的任务会继续执行；你要求发到飞书时，进展和结果会发到当前电话绑定的会话。',
