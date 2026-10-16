@@ -816,7 +816,7 @@ export class SeeduplexRealtimeVoiceBridge {
       type === "conversation.item.input_audio_transcription.started" ||
       type === "response.canceled"
     ) {
-      this.request.onClearAudio?.("barge-in");
+      this.request.onClearAudio?.(type === "response.canceled" ? "response-cancelled" : "user-speech");
     }
     if (type === "conversation.item.input_audio_transcription.completed") {
       const text = optionalString(event.transcript) ?? optionalString(event.text);

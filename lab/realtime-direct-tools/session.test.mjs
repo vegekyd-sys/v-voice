@@ -434,10 +434,28 @@ test('host semantic hangup bypasses a waiting tool, requires its own farewell au
  send({type:'playback.drained',callId:proposal.requestId});assert.equal(f.client.readyState,1);
  const audio=Buffer.alloc(8);audio.writeFloatLE(.1,0);audio.writeFloatLE(.2,4);
  f.event({type:'response.output_audio.started',response_id:'farewell',tts_type:'chat_tts_text'});
+ f.event({type:'response.canceled',response_id:'previous-native-response'});assert(!f.client.sent.some(e=>e.type==='end.cancelled'));
  f.event({type:'response.output_audio.delta',response_id:'farewell',delta:audio.toString('base64')});
  assert(f.client.sent.some(e=>e.type==='audio'&&e.callControlId===proposal.requestId));
  f.event({type:'response.output_audio.done',response_id:'old'});assert(!f.client.sent.some(e=>e.type==='end.after-playback'));
  f.event({type:'response.output_audio.done',response_id:'farewell'});assert(f.client.sent.some(e=>e.type==='end.after-playback'));
  send({type:'call-control.interrupt'});send({type:'playback.drained',callId:proposal.requestId});assert.equal(f.client.readyState,1);
  send({type:'call-control.confirm',control:proposal});assert.equal(f.client.sent.filter(e=>e.type==='end.accepted').length,1);
+});
+
+test('semantic media close keeps the exact admitted task and its final bound-group delivery alive',async t=>{
+ const f=await fixture(async(args,method)=>method==='send'?{messageId:'owned-test-final'}:{ok:true,output:{}},'seeduplex',{sessionKey:'agent:makaron:feishu:group:oc_test',callControlEvaluate:async()=>({answers:{endIntent:{type:'noul',noul:1}}})});t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'same-background',name:'delegate_to_v',arguments:JSON.stringify({question:'等待后返回测试结果'})}]});await delay(5);
+ const started=f.audit.find(e=>e.type==='backend.started');assert(started);assert.equal(f.service.backgroundTaskCount(),1);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'现在结束电话，后台继续，结果发在这个飞书群里。'});await delay(0);
+ const proposal=f.client.sent.find(e=>e.type==='voice.end.proposed');assert(proposal);
+ const send=e=>f.client.emit('message',Buffer.from(JSON.stringify(e)),false);send({type:'call-control.confirm',control:proposal});
+ const audio=Buffer.alloc(8);audio.writeFloatLE(.1,0);audio.writeFloatLE(.2,4);
+ f.event({type:'response.output_audio.started',response_id:'host-goodbye',tts_type:'chat_tts_text'});
+ f.event({type:'response.output_audio.delta',response_id:'host-goodbye',delta:audio.toString('base64')});f.event({type:'response.output_audio.done',response_id:'host-goodbye'});
+ send({type:'playback.drained',callId:proposal.requestId});await delay(0);assert.equal(f.client.readyState,3);assert.equal(f.service.backgroundTaskCount(),1);
+ f.completeBackend('同一已接纳任务的实际最终结果');for(let n=0;n<100&&f.service.backgroundTaskCount();n++)await delay(2);
+ assert.equal(f.service.backgroundTaskCount(),0);assert(!f.audit.some(e=>e.type==='backend.cancel-observed'));
+ assert(f.audit.some(e=>e.type==='task.delivery-confirmed'&&e.kind==='final'&&e.runId===started.runId));
+ assert.equal(f.audit.filter(e=>e.type==='backend.started').length,1);
 });

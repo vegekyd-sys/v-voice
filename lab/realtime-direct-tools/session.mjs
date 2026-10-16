@@ -235,7 +235,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(role==='user'&&final&&s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{})});
       },
-      onClearAudio:()=>{audit({type:'audio.clear',voiceSessionId:s.id});s.responseActive=false;interruptEnd();if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});},
+      onClearAudio:reason=>{audit({type:'audio.clear',voiceSessionId:s.id,reason});if(s.ending?.host&&reason==='response-cancelled')return;s.responseActive=false;interruptEnd();if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});},
       onAudioSegmentDone:()=>{s.responseActive=false;},
       onResponseDone:e=>{s.responseActive=false;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'&&(!s.ending.host||e.responseId===s.ending.responseId)){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}},
       onEvent:e=>{if(['response.created'].includes(e.type))s.responseActive=true;
