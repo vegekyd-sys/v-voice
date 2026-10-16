@@ -1,5 +1,12 @@
 # Voice release log
 
+## Unreleased — Late SeedDuplex tool delivery
+
+Native tool results that arrive after a newer caller turn or host speech now use explicit host presentation instead of an orphaned native continuation. Results remain on screen; a short receipt waits for idle playback and is retired by a newer user turn or cancellation. The operation is never replayed. Normal uninterrupted tool calls retain native continuation.
+
+Capture diagnostics now record frame counts/age, microphone track state and AudioContext state without retaining microphone audio. Candidate evidence and limitations are recorded in `docs/acceptance/20261016-late-tool-delivery.md`; production registration remains unchanged until the release owner deploys this PR.
+
+
 ## 2026-10-16 — Homepage notes and safe Voice entry publication
 
 Restore the missing October 16 homepage release notes and make product-facing notes a release preflight requirement. Authenticated status now exposes whether active calls, session creation, or pending backend delivery prevents an entry cutover. Persist only bounded causal event metadata and numeric playback counters to distinguish received speech, tool waits and missing output; no tool arguments, result bodies or audio are added.

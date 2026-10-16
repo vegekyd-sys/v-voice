@@ -31,6 +31,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   const sessions=new Map(),detached=new Set();
   const deferred=s=>{
     if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking||Date.now()-s.lastUserAt<1200)return;
+    if(s.lateResults.length){
+      const next=s.lateResults.shift();
+      // A newer caller turn keeps the result on screen without reviving speech
+      // about an older topic. Explicit cancellation clears this queue too.
+      if(next.epoch===s.epoch&&next.userTurn===s.latestUserTurn){s.responseActive=true;s.bridge.speakProgress(next.spokenText,{caption:true});}
+      return;
+    }
     if(s.backendResult){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;resolve();return;}
     if(!s.progress||s.pending.size!==1||!s.backend.snapshot()||Date.now()-s.lastProgressAt<10000)return;
     const p=s.progress;s.progress=null;if(p.text.length>220)return;
@@ -74,7 +81,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     else throw Error('执行会话退出尚未确认');
   };
   const cancel=async(s,{includeBackend=true}={})=>{s.epoch++;for(const [id,c] of s.pending)if(includeBackend||id!==s.backgroundCallId)c.abort();s.ending=null;emit(s,{type:'end.cancelled'});
-    s.progress=null;s.backendResult?.resolve();s.backendResult=null;
+    s.progress=null;s.lateResults.length=0;s.backendResult?.resolve();s.backendResult=null;
     const backend=await Promise.allSettled([includeBackend?s.backend?.cancel():undefined]);
     const local=await Promise.allSettled([...s.localCleanups]);
     const results=[...backend,...local,...await Promise.allSettled([...s.processes].map(id=>killOwned(s,id)))];
@@ -106,7 +113,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
     const selectedVoice=model==='grok'?grokVoice(voice):spec.voice;
     const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map()};
-    Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,progress:null});
+    Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,progress:null,lateResults:[]});
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
     s.delivery=createTaskDelivery({gateway,sessionKey,ownerId:s.id,audit});
@@ -213,6 +220,18 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       instructions:directInstructions(entries,context,s.model),tools:TOOLS,
       onToolCall:call=>void onToolCall(call),
+      onLateToolResult:row=>{
+        if(!current(s)||s.ending)return;
+        const callId=row.callIds[0],epoch=s.epoch,userTurn=s.latestUserTurn;
+        // Actual tool output is always reviewable, including structured errors.
+        // Only a brief notification is spoken; arbitrary tool text is data.
+        void publishContent(s,callId,`刚才的请求：${row.question}\n\n${row.text}`).then(receipt=>{
+          if(!current(s)||s.epoch!==epoch)return;
+          s.lateResults.push({epoch,userTurn,spokenText:receipt.shown?'刚才的请求有结果了，已经放到屏幕上。':'刚才的请求有结果了，屏幕正在同步。'});
+          audit({type:'tool.late-result-presented',voiceSessionId:s.id,callIds:row.callIds,shown:receipt.shown});
+          deferred(s);
+        }).catch(()=>{});
+      },
       toolStartNotice:call=>{
         return noticeClips?toolStartClip(call,noticeClips)?.text:null;
       },
@@ -254,7 +273,10 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){s.latestUserTurn=Object.freeze({text:e.text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(e.text);}
       else if(e.type==='playback.state'&&typeof e.speaking==='boolean')s.playing=e.speaking;
       else if(e.type==='playback.stats'){
-        const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
+        const stats=Object.fromEntries(['inputFrames','inputFrameAgeMs','inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
+        if(['running','suspended','interrupted','closed'].includes(e.contextState))stats.contextState=e.contextState;
+        if(['live','ended','unknown'].includes(e.micTrackState))stats.micTrackState=e.micTrackState;
+        for(const key of ['micTrackMuted','micTrackEnabled'])if(typeof e[key]==='boolean')stats[key]=e[key];
         audit({type:'client.playback-stats',voiceSessionId:s.id,stats});
       }
       else if(e.type==='playback.drained'&&s.ending?.callId===e.callId)void close(s.id).catch(()=>{});

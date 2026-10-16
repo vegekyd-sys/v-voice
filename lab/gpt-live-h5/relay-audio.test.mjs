@@ -164,3 +164,11 @@ test('ordinary native speech still uses upstream interruption rather than the fi
  const f=await fixture(t,'seeduplex');f.event({type:'audio',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(24000).buffer).toString('base64'),responseId:'native'});
  const mic=f.nodes.find(n=>n.name==='v-direct-mic');for(let i=0;i<10;i++)mic.port.onmessage({data:pcm(480,3000).buffer});assert.equal(f.relay.stats.clears,0);assert.equal(f.relay.stats.inputBytes,9600);
 });
+
+test('capture diagnostics distinguish a suspended context from continued input frames without audio content',async t=>{
+ const f=await fixture(t,'seeduplex');const mic=f.nodes.find(n=>n.name==='v-direct-mic');
+ mic.port.onmessage({data:new Int16Array(480).buffer});assert.equal(f.relay.stats.inputFrames,1);
+ f.ctx.state='interrupted';f.relay.dispose();
+ const report=f.sent.filter(v=>typeof v==='string').map(JSON.parse).findLast(e=>e.type==='playback.stats');
+ assert.equal(report.contextState,'interrupted');assert.equal(report.inputBytes,960);assert.equal(report.inputFrames,1);assert(report.inputFrameAgeMs>=0);assert(!('audio' in report));
+});
