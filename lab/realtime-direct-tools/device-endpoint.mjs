@@ -1,3 +1,4 @@
+import {createDevicePlayout} from './device-playout.mjs';
 import {EventEmitter} from 'node:events';
 import {createHash,timingSafeEqual} from 'node:crypto';
 
@@ -67,17 +68,17 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     if (!device.models.includes(model)) return sendJson(ws, {type:'call.error',reason:'model',message:'这个音箱没有开放该语音模型'});
     const call = {connection,model,startedAt:now(),readyAt:0,lastActivityAt:now(),replyEndedAt:0,userTurns:0,outputBytes:0,inputBytes:0,playing:false,ended:false,client:null,id:null,timer:null};
     connection.call = call;
+    call.playout = createDevicePlayout({now,maxBytes:maxBufferedBytes,bufferedBytes:()=>ws.bufferedAmount,
+      sendAudio:pcm=>{if(ws.readyState===1){call.outputBytes+=pcm.length;call.lastActivityAt=now();ws.send(pcm,{binary:true});}},
+      sendEvent:event=>sendJson(ws,event)});
     call.fromSession = raw => {
       if (call.ended) return;
       let event;try {event = JSON.parse(raw);} catch {return;}
       if (event.type === 'audio') {
         const pcm = Buffer.from(String(event.audio ?? ''), 'base64');
         if (!pcm.length || ws.readyState !== 1) return;
-        // A blocked hardware link must not accumulate unbounded provider audio in
-        // this process or consume memory needed by the normal phone service.
-        if (ws.bufferedAmount + pcm.length > maxBufferedBytes) return call.end('slow-playback');
-        call.outputBytes += pcm.length;call.lastActivityAt = now();
-        ws.send(pcm, {binary:true});
+        if (!call.playout.push(pcm,{backendSpeech:event.source==='injected-speech'})) return call.end('slow-playback');
+        call.lastActivityAt = now();
         return;
       }
       if (event.type === 'ready') {
@@ -96,12 +97,16 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       if (event.type === 'error') return sendJson(ws, {type:'call.error',reason:'voice',message:String(event.message ?? '').slice(0,200)});
       if (FORWARDED.has(event.type)) {
         call.lastActivityAt = now();
+        if(event.type==='audio.clear')call.playout.clear();
+        if(event.type==='audio.done'||event.type==='end.after-playback') {
+          call.playout.event({type:event.type,...(typeof event.callId==='string'?{callId:event.callId}:{})});return;
+        }
         return sendJson(ws, {type:event.type,...(typeof event.callId === 'string' ? {callId:event.callId} : {})});
       }
     };
     call.closed = reason => {
       if (call.ended) return;
-      call.ended = true;clearInterval(call.timer);
+      call.ended = true;clearInterval(call.timer);call.playout.dispose();
       if (connection.call === call) connection.call = null;
       if (call.id) audit({type:'device.call',voiceSessionId:call.id,stage:'closed',deviceId:device.id,reason:call.reason ?? reason,
         durationMs:now() - call.startedAt,inputBytes:call.inputBytes,outputBytes:call.outputBytes,userTurns:call.userTurns,gatedInputBytes:call.gatedInputBytes ?? 0,maxInputGapMs:call.maxInputGapMs ?? 0});
@@ -118,7 +123,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       const state = directVoice.activity(call.id);
       if (!state) return call.end('session-ended');
       const at = now();
-      if (state.userSpeaking || state.responseActive || state.playing || call.playing) call.lastActivityAt = at;
+      if (call.playout.pendingBytes() || state.userSpeaking || state.responseActive || state.playing || call.playing) call.lastActivityAt = at;
       if (state.lastUserAt > call.lastActivityAt) call.lastActivityAt = state.lastUserAt;
       if (at - call.startedAt > maxCallMs) return call.end('max-duration');
       if (!call.readyAt) {if (at - call.startedAt > 45000) call.end('connect-timeout');return;}

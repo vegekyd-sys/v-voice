@@ -73,3 +73,26 @@ and a sample-counted 500 ms hold preserves quiet speech tails despite bursty
 network arrivals. Tests cover real PCM pacing and unchanged default pass-through.
 Only the Candidate physical speaker enables this calibration. It is not a
 verified repair until physical testing returns the expected reply.
+
+
+## Native duplex and long-answer transport candidate
+
+Tianyi confirmed that a natural hardware question received a formal reply and
+that the timbre is correct; the reported remaining problems are stutter later
+in a long answer and inability to interrupt. Keep the successful 6fc29ab runtime
+as the rollback reference. The optional noise-gate experiment is not enabled.
+
+The next transport patch limits PCM wire lead to 480 ms, retains unsent PCM in
+a bounded server queue, clears it immediately on the shared Voice audio.clear,
+and preserves audio.done/end.after-playback ordering. Source metadata marks
+host-injected speech so hardware uses the same backend-speech barge-in contract
+as the web relay. This creates no model, task, transcript or tool execution path.
+Firmware continuously uploads XMOS post-AEC input during native model speech;
+only local device acknowledgement is guarded. WS writes move off the audio-pump
+loop, and native clear also retires already-buffered hardware output.
+
+Hardware long-answer, echo and interruption acceptance is pending for this
+patch. Server pacing tests exercise 30 seconds of exact sample preservation,
+clear before the old answer finishes, source/end ordering, late-turn clock
+reset and bounded socket backlog. Firmware compiles and the 80/300 ms backend
+speech-onset helper passes a native host test.
