@@ -127,3 +127,11 @@ Voice 实际运行 `04ab11f850e0ea0f741f9a2bc5a084fddd4bd8d6`，本分支之后�
 当前设备保留失败诊断固件，代码已保存为 Speaker commit `f1c5bff2e61a92faffaad589caf0ded69f1ea38b`，app SHA256 `de5c0c3dd8067e7ffadd7f52bb65d6754cf6a9681fd0b7214f22cf7e04ce23a7`，没有继续刷回滚。Speaker 工作区与详细交接：`/Users/tianyicai/v-speaker/.claude/worktrees/speaker-v-integration-review-ac3615/verification/voice-relay-takeover-20261016.md`，含私有证据位置、负结果、回滚 hash/命令和待 review 的控制帧短写/连接销毁边界。已知曾能回答的保守参考是固件 `f4919448…` 配 Voice `6fc29ab`，但半双工和长句仍有限制，不是完整验收基线。
 
 下一位先决定是否恢复保守基线，再同步捕获各段实际时间，分别定位上行停止与下行积压，避免继续盲调 buffer。稳定后才验真人长回复、打断、工具进度、自然告别。独立 Candidate 的 Lark 账号与 Codex provider parity、三模型选择、家庭权限、十二家最终绑定、线路录音和一周试用均未完成。所有工作仍在独立分支，没有合入平台 dev 或正式上线。
+
+## 2026-10-17 续接：卡顿根因是家庭国际链路丢包
+
+夜间从家庭网络实测：到 V（新加坡）丢包 14–23%，到 VLab（首尔）14–25%，到 Cloudflare 隧道节点 20–28%（RTT 约 200+ ms），到国内 0%。此前“Mac 模拟器同 Candidate 正常”的对照走的是 Mac 本地代理（fake-ip），不代表家庭直连；Mac 改走家庭直连后同样出现 2.4 s 收包间隔和多次欠载。硬件上的 2–16 s 停顿与 TCP 重传退避相符。Voice 服务端、pacing 和 tunnel 均不是主因。
+
+`83d1807` 增加按设备的 `playoutLeadMs`（200–5000，默认 480 不变），VLab 物理音箱为 2000：设备收到 `audio.clear` 会丢弃全部缓冲，提前量只用于吸收短时停顿，不推迟打断。523 tests 通过。VLab Candidate 现运行 `speaker-83d1807`；音箱另经 V 的 8443 直连入口（仅 nginx 转发，经 tailnet 到 VLab）接入，正式 Voice/Gateway 未改动、未重启。
+
+根本解决需要国内音频中转节点（理想是国内运行音箱的 SeedDuplex 会话，仅工具/Agent RPC 跨境），待用户决定服务器。在此之前不能宣称晚间流畅。
