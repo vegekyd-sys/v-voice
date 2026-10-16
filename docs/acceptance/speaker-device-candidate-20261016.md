@@ -113,3 +113,17 @@ Lark CLI configuration, and its Codex provider is disabled in the older VLab
 baseline. Personal Feishu queries and complete backend model parity are therefore
 still outstanding. Production OAuth state was not copied or refreshed for this
 check. No household caller identity or permission was added.
+
+## 2026-10-16 冻结交接：功能接通，可靠性未通过
+
+用户要求停止当前实验、交接下一位。真人曾确认音箱能够收到正式回答、音色正常；随后仍有长句卡顿、不能自然打断，以及唤醒蓝灯亮但没有正式回答。不能将当前 Candidate 交付为可稳定使用。
+
+现场仍使用同一套 Voice session/provider/tool/task/end_call 路径，没有另建音箱 Agent 服务。正式 V 的旧音箱 bridge 和早期音箱 Candidate 已停；正式 Voice/Gateway active，本任务没有重启它们。音箱改在自有 VLab Candidate（独立 Gateway 26470、Voice 26471、私有 state 和 tunnel），没有占用共享 VLab integration lease。正式 V 的首字和全部功能没有做全面真人回归，不以健康状态替代此项验收。
+
+Voice 实际运行 `04ab11f850e0ea0f741f9a2bc5a084fddd4bd8d6`，本分支之后的提交只更新记录。服务端验证 522 tests 通过，包含 PCM pacing、clear 与 done/end 顺序；它们不证明真实设备听感。可重复的 Mac 模拟对照收到 1407 ms 音频，首 PCM 为问题结束后 1851 ms，最大 chunk gap 204 ms，400 ms 预缓冲下虚拟 underrun 为 0。
+
+设备本轮明确观察到两类失败：一通真人失败只有 3200 B（100 ms）上行、无用户最终转写；其他通话已有正式输出但硬件收包空档达 2.4–16.6 秒。SDK 升级、IPv4/IPv6、TCP_NODELAY、写超时调整均未证明有效。最后 common TLS lock 实验又出现 1500 ms 锁超时、6 次 underrun、I2S ISR queue overflow，并以 `uplink-failed` 结束。尚未完成 provider → Node 实际发送 → cloudflared → ESP 接收 → I2S 的同 turn 时序定位。
+
+当前设备保留失败诊断固件，代码已保存为 Speaker commit `f1c5bff2e61a92faffaad589caf0ded69f1ea38b`，app SHA256 `de5c0c3dd8067e7ffadd7f52bb65d6754cf6a9681fd0b7214f22cf7e04ce23a7`，没有继续刷回滚。Speaker 工作区与详细交接：`/Users/tianyicai/v-speaker/.claude/worktrees/speaker-v-integration-review-ac3615/verification/voice-relay-takeover-20261016.md`，含私有证据位置、负结果、回滚 hash/命令和待 review 的控制帧短写/连接销毁边界。已知曾能回答的保守参考是固件 `f4919448…` 配 Voice `6fc29ab`，但半双工和长句仍有限制，不是完整验收基线。
+
+下一位先决定是否恢复保守基线，再同步捕获各段实际时间，分别定位上行停止与下行积压，避免继续盲调 buffer。稳定后才验真人长回复、打断、工具进度、自然告别。独立 Candidate 的 Lark 账号与 Codex provider parity、三模型选择、家庭权限、十二家最终绑定、线路录音和一周试用均未完成。所有工作仍在独立分支，没有合入平台 dev 或正式上线。
