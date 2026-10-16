@@ -49,6 +49,7 @@ test('device entries require a private token and an existing Feishu session bind
   assert.throws(() => parseDeviceEntries([record({sessionKey:'agent:makaron:explicit:x'})]), /Feishu session/);
   assert.throws(() => parseDeviceEntries([record({callerId:'visitor'})]), /actor-scoped/);
   assert.throws(() => parseDeviceEntries([record({model:'gpt-live'})]), /model/);
+  for (const inputGain of [0,5,NaN,Infinity,'2']) assert.throws(() => parseDeviceEntries([record({inputGain})]), /input gain/);
   assert.throws(() => parseDeviceEntries([record(), record({id:'speaker-two'})]), /private token/);
   assert.equal(parseDeviceEntries([record({models:['seeduplex','grok'],model:'grok'})])[0].model, 'grok');
 });
@@ -207,4 +208,19 @@ test('the same speaker protocol selects Grok without changing the phone default'
   assert.equal(setup.session.audio.input.format.rate, 16000);
   assert.equal(setup.session.audio.output.format.rate, 24000);
   assert(!setup.session.tools.some(t => t.name === 'show_content'));
+});
+
+
+test('hardware microphone gain is opt-in and saturates signed PCM safely', async t => {
+  const f = await fixture({record:{inputGain:2}});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+  const frame = Buffer.alloc(640);
+  [1000,-1000,20000,-20000].forEach((v,i) => frame.writeInt16LE(v,i*2));
+  device.send(frame,{binary:true});
+  await f.until(() => f.peers[0].sent.some(e => e.type === 'input_audio_buffer.append'), 'amplified PCM');
+  const result = Buffer.from(f.peers[0].sent.find(e => e.type === 'input_audio_buffer.append').audio,'base64');
+  assert.deepEqual([0,2,4,6].map(i => result.readInt16LE(i)),[2000,-2000,32767,-32768]);
+  assert.equal(frame.readInt16LE(0),1000);
 });

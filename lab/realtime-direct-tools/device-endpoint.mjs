@@ -22,7 +22,9 @@ export function parseDeviceEntries(records = []) {
     if (!Array.isArray(models) || !models.length || models.some(m => !DEVICE_MODELS.includes(m))) throw Error('Unsupported device voice model');
     const model = record.model ?? models[0];
     if (!models.includes(model)) throw Error('The default device model must be allowed');
-    devices.push(Object.freeze({id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
+    const inputGain = record.inputGain ?? 1;
+    if (!Number.isFinite(inputGain) || inputGain < 1 || inputGain > 4) throw Error('Device input gain must be between 1 and 4');
+    devices.push(Object.freeze({inputGain,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
   }
   return devices;
 }
@@ -167,7 +169,14 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
           audit({type:'device.call',voiceSessionId:call.id,stage:'input-speech',deviceId:connection.device.id,latencyMs:at - call.startedAt});
         }
       }
-      call.client.emit('message', data, true);
+      // Calibrate a quiet hardware microphone independently of the phone path.
+      // Unity is byte-for-byte passthrough; never modify the received WS buffer.
+      let pcm = data;
+      if (connection.device.inputGain !== 1) {
+        pcm = Buffer.allocUnsafe(data.length);
+        for (let i = 0; i < data.length; i += 2) pcm.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(data.readInt16LE(i) * connection.device.inputGain))), i);
+      }
+      call.client.emit('message', pcm, true);
       return;
     }
     let event;try {event = JSON.parse(data.toString());} catch {return connection.ws.close(1008, 'invalid event');}

@@ -44,3 +44,23 @@ GPT Live relay is not implemented by the recovered candidate (only SeedDuplex
 and Grok); do not advertise all three models on hardware yet. The recovered
 firmware is half duplex; do not label it as verified interruption support.
 Raw audio, transcripts, device mappings, credentials and images remain private.
+
+
+## Isolation correction requested by Tianyi
+
+All speaker services on production V were stopped. Testing moved to an independent
+VLab Candidate with own Gateway 26470, Voice 26471, state, token and one Worker;
+channel ingress, scheduled jobs and heartbeat are disabled. Shared VLab's Gateway
+and lease remain unchanged. The production Gateway and web phone identities were
+preserved. Resource caps alone were not treated as proof of zero interference.
+
+The first real VLab SeedDuplex PCM question passed: server ready in 804 ms,
+first output 2984 ms after question end, 75454 output bytes, no virtual underrun.
+Physical acoustic and Agent-tool parity remain separate acceptance gates.
+
+
+The captured hardware uplink was intelligible to local offline ASR with no
+clipping (peak 11593). Cropped original input failed through SeedDuplex; the
+same crop at 2× gain received a reply. Device configuration now supports an
+opt-in `inputGain` (1–4, default 1); only the physical Candidate speaker is set
+to 2. Phone input and the simulator retain unity. Hardware retest is required.
