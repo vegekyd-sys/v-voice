@@ -173,6 +173,11 @@ test('room conversation that never becomes a request does not hold the session',
   await f.until(() => f.peers[0].sent.some(e => e.type === 'speech_text_buffer.commit' && e.text === BACKGROUND_LEAVE_LINE), 'parting line');
   clearInterval(chatter);
   assert(!device.events.some(e => e.type === 'call.closed'), 'still open while the line plays');
+  // Room chatter tripping the speaker's barge-in must not cut the line.
+  const before = f.peers[0].sent.length;
+  device.send(JSON.stringify({type:'barge-in'}));
+  await delay(20);
+  assert(!f.peers[0].sent.slice(before).some(e => /cancel|clear|interrupt/.test(e.type ?? '')), 'barge-in ignored while leaving');
   device.send(JSON.stringify({type:'playback.state',speaking:true}));
   await delay(20);
   device.send(JSON.stringify({type:'playback.state',speaking:false}));

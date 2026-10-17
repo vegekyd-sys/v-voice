@@ -101,7 +101,9 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       if (event.type === 'audio') {
         const pcm = Buffer.from(String(event.audio ?? ''), 'base64');
         if (!pcm.length || ws.readyState !== 1) return;
-        if (!call.playout.push(pcm,{backendSpeech:event.source==='injected-speech'})) return call.end('slow-playback');
+        // The parting line is played as ordinary speech: speakers must not barge
+        // on it, since it is only said while the room is full of chatter.
+        if (!call.playout.push(pcm,{backendSpeech:event.source==='injected-speech' && !call.leaving})) return call.end('slow-playback');
         call.lastActivityAt = now();
         return;
       }
@@ -248,6 +250,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     }
     if (event.type === 'input.activity') call.lastActivityAt = now();
     // The shared session validates these exactly as it does for browser relay.
+    if (event.type === 'barge-in' && call.leaving) return;  // never cut the parting line
     if (['playback.state','playback.drained','barge-in','playback.stats'].includes(event.type) && call.client) call.client.emit('message', Buffer.from(JSON.stringify(event)), false);
   }
 
