@@ -9,10 +9,25 @@ import OpusScript from 'opusscript';
 export const XIAOZHI_UPLINK_RATE = 16000;
 export const XIAOZHI_DOWNLINK_RATE = 24000;
 export const XIAOZHI_FRAME_MS = 60;
+
+// Small robot speakers top out quietly even at firmware volume 100. A per-device
+// gain lifts the reply PCM; peaks above the knee are rounded off instead of clipped.
+const GAIN_KNEE = 24000;
+export function applyOutputGain(pcm, gain) {
+  if (gain === 1) return pcm;
+  const out = Buffer.from(pcm);  // a trailing odd byte, if any, passes through
+  const room = 32767 - GAIN_KNEE;
+  for (let i = 0; i + 1 < out.length; i += 2) {
+    const y = pcm.readInt16LE(i) * gain, a = Math.abs(y);
+    const v = a <= GAIN_KNEE ? y : Math.sign(y) * (GAIN_KNEE + room * Math.tanh((a - GAIN_KNEE) / room));
+    out.writeInt16LE(Math.round(v), i);
+  }
+  return out;
+}
 const DOWN_FRAME_BYTES = XIAOZHI_DOWNLINK_RATE * XIAOZHI_FRAME_MS / 1000 * 2;  // 2880
 const PLAYBACK_MARGIN_MS = 400;
 
-export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, sessionId = 'voice', volume = null} = {}) {
+export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, sessionId = 'voice', volume = null, outputGain = 1} = {}) {
   const wire = new EventEmitter();
   const decoder = new OpusScript(XIAOZHI_UPLINK_RATE, 1, OpusScript.Application.VOIP);
   let encoder = new OpusScript(XIAOZHI_DOWNLINK_RATE, 1, OpusScript.Application.AUDIO);
@@ -114,6 +129,7 @@ export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, cl
     if (closed) return;
     if (options.binary) {
       startSpeaking();
+      data = applyOutputGain(Buffer.from(data), outputGain);
       pending = pending.length ? Buffer.concat([pending, data]) : Buffer.from(data);
       while (pending.length >= DOWN_FRAME_BYTES) {encodeFrame(pending.subarray(0, DOWN_FRAME_BYTES));pending = pending.subarray(DOWN_FRAME_BYTES);}
       return;

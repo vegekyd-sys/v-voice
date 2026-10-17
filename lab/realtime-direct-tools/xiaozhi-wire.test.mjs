@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
-import {createXiaozhiWire} from './xiaozhi-wire.mjs';
+import {createXiaozhiWire, applyOutputGain} from './xiaozhi-wire.mjs';
 
 // A fake xiaozhi socket and a manual clock: frames and tts states are recorded.
 function harness(options = {}) {
@@ -110,4 +110,16 @@ test('a mid-call volume change waits for the firmware MCP reply', async () => {
   const pending = h.wire.setVolume(80);
   h.ws.emit('close', 1000);
   await assert.rejects(pending, /断开/);
+});
+
+test('output gain lifts quiet speech and rounds off peaks without clipping', () => {
+  const pcm = Buffer.alloc(8);
+  [1000, -1000, 20000, -32000].forEach((v, i) => pcm.writeInt16LE(v, i * 2));
+  const out = applyOutputGain(pcm, 2);
+  const s = i => out.readInt16LE(i * 2);
+  assert.equal(s(0), 2000);
+  assert.equal(s(1), -2000);
+  assert(s(2) > 24000 && s(2) < 32767, 'a loud sample is compressed above the knee');
+  assert(s(3) < -24000 && s(3) >= -32767);
+  assert.equal(applyOutputGain(pcm, 1), pcm, 'unity gain is a no-op');
 });
