@@ -1,3 +1,4 @@
+import {appendFileSync} from 'node:fs';
 import {createDevicePlayout} from './device-playout.mjs';
 import {EventEmitter} from 'node:events';
 import {createRobotReactionDriver} from '../robot/robot-reactions.mjs';
@@ -233,6 +234,11 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       if (pcm === data && connection.device.inputGain !== 1) {
         pcm = Buffer.allocUnsafe(data.length);
         for (let i = 0; i < data.length; i += 2) pcm.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(data.readInt16LE(i) * connection.device.inputGain))), i);
+      }
+      // Debug only (off unless VOICE_DEVICE_DUMP_DIR is set): raw uplink per call
+      // for diagnosing device audio processing. Never enable in normal use.
+      if (process.env.VOICE_DEVICE_DUMP_DIR) {
+        try {appendFileSync(`${process.env.VOICE_DEVICE_DUMP_DIR}/${call.id}.pcm`, pcm);} catch {}
       }
       call.client.emit('message', pcm, true);
       return;
