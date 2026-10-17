@@ -297,6 +297,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       const s=sessions.get(id);if(!s||s.ticket!==ticket||s.client)return false;
       s.ticket=null;attachClient(s,client);return true;
     },
+    /** Speak a fixed line in V's voice on a live call (a hardware client's own notice). */
+    say(id,text){
+      const s=sessions.get(id);if(!current(s)||!s.bridge||s.ending)return false;
+      s.responseActive=true;s.bridge.speakProgress(text);audit({type:'device.notice-spoken',voiceSessionId:s.id,text});return true;
+    },
     /** Bounded state for a hardware client's idle policy; never conversation content. */
     activity(id){
       const s=sessions.get(id);if(!current(s))return null;

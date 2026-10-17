@@ -10,6 +10,8 @@ import {createHash,timingSafeEqual} from 'node:crypto';
 export const DEVICE_MODELS = ['seeduplex','grok'];
 export const DEVICE_INPUT_SAMPLE_RATE = 16000;
 export const DEVICE_OUTPUT_SAMPLE_RATE = 24000;
+// Said before a household speaker leaves a call that only heard room conversation.
+export const BACKGROUND_LEAVE_LINE = '你们先聊，需要我再叫我';
 const FORWARDED = new Set(['audio.clear','audio.done','end.accepted','end.after-playback','end.cancelled','provider.reconnecting','provider.recovered']);
 const digest = value => createHash('sha256').update(String(value)).digest();
 
@@ -145,6 +147,8 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       const state = directVoice.activity(call.id);
       if (!state) return call.end('session-ended');
       const at = now();
+      // Leaving: the parting line plays first; never wait on it for long.
+      if (call.leaving) {if (at - call.leaving.at > 10000) call.end(call.leaving.reason);return;}
       if (call.playout.pendingBytes() || state.userSpeaking || state.responseActive || state.playing || call.playing) call.lastActivityAt = at;
       if (state.lastUserAt > call.lastActivityAt) call.lastActivityAt = state.lastUserAt;
       if (at - call.startedAt > maxCallMs) return call.end('max-duration');
@@ -158,7 +162,12 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       if (call.replyEndedAt && !call.playing && !state.responseActive) {
         const spokeSince = state.lastUserAt > call.replyEndedAt;
         if (!spokeSince && at - call.replyEndedAt > followUpMs) return call.end('idle');
-        if (spokeSince && !call.turnSinceReply && at - call.replyEndedAt > chatterMs) return call.end('background-speech');
+        if (spokeSince && !call.turnSinceReply && at - call.replyEndedAt > chatterMs) {
+          // Say why before leaving, so the household is not left with a silent exit.
+          if (directVoice.say?.(call.id, BACKGROUND_LEAVE_LINE)) call.leaving = {reason:'background-speech', at, spoke:false};
+          else call.end('background-speech');
+          return;
+        }
       }
       const limit = call.userTurns ? idleMs : initialIdleMs;
       if (at - call.lastActivityAt > limit) call.end('idle');
@@ -235,6 +244,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     if (event.type === 'playback.state' && typeof event.speaking === 'boolean') {
       if (call.playing && !event.speaking) {call.replyEndedAt = now();call.turnSinceReply = false;}
       call.playing = event.speaking;call.lastActivityAt = now();
+      if (call.leaving) {if (event.speaking) call.leaving.spoke = true;else if (call.leaving.spoke) call.end(call.leaving.reason);}
     }
     if (event.type === 'input.activity') call.lastActivityAt = now();
     // The shared session validates these exactly as it does for browser relay.

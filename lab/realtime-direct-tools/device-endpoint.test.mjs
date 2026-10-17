@@ -7,7 +7,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import * as ws from 'ws';
 import OpusScript from 'opusscript';
 import {createDirectVoiceService} from './session.mjs';
-import {createDeviceEndpoint,parseDeviceEntries} from './device-endpoint.mjs';
+import {createDeviceEndpoint,parseDeviceEntries,BACKGROUND_LEAVE_LINE} from './device-endpoint.mjs';
 
 const TOKEN = 'device-fixture-token-0123456789abcdef';
 const SESSION = 'agent:makaron:feishu:group:oc_fixture';
@@ -169,6 +169,13 @@ test('room conversation that never becomes a request does not hold the session',
   await delay(20);
   const chatter = setInterval(() => f.peers[0].emit('message', Buffer.from(JSON.stringify({type:'conversation.item.input_audio_transcription.started'})), false), 15);
   t.after(() => clearInterval(chatter));
+  // V first says why it is leaving, then the call closes once that line has played.
+  await f.until(() => f.peers[0].sent.some(e => e.type === 'speech_text_buffer.commit' && e.text === BACKGROUND_LEAVE_LINE), 'parting line');
+  clearInterval(chatter);
+  assert(!device.events.some(e => e.type === 'call.closed'), 'still open while the line plays');
+  device.send(JSON.stringify({type:'playback.state',speaking:true}));
+  await delay(20);
+  device.send(JSON.stringify({type:'playback.state',speaking:false}));
   await f.until(() => device.events.some(e => e.type === 'call.closed'), 'chatter close');
   assert.equal(device.events.find(e => e.type === 'call.closed').reason, 'background-speech');
 });
