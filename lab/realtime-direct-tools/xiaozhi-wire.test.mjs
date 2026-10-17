@@ -83,3 +83,31 @@ test('an operator volume is applied through the firmware MCP tool on hello', () 
   assert.deepEqual(mcp.payload.params, {name:'self.audio_speaker.set_volume', arguments:{volume:35}});
   assert.equal(harness().ws.out.length, 0);
 });
+
+test('a mid-call volume change waits for the firmware MCP reply', async () => {
+  const h = harness({volume:35});
+  await assert.rejects(h.wire.setVolume(50), /尚未连接/, 'no MCP before the device said hello');
+  h.ws.emit('message', Buffer.from(JSON.stringify({type:'hello', audio_params:{format:'opus', sample_rate:16000}})), false);
+  const reply = payload => h.ws.emit('message', Buffer.from(JSON.stringify({session_id:'voice', type:'mcp', payload:{jsonrpc:'2.0', ...payload}})), false);
+  const lastMcp = () => h.ws.out.filter(e => e.type === 'mcp').at(-1).payload;
+
+  const confirmed = h.wire.setVolume(50);
+  const first = lastMcp();
+  assert.notEqual(first.id, 1, 'the hello volume keeps its own id');
+  assert.deepEqual(first.params, {name:'self.audio_speaker.set_volume', arguments:{volume:50}});
+  reply({id:1, result:{content:[{type:'text', text:'true'}], isError:false}});  // the hello call's late reply
+  reply({id:first.id, result:{content:[{type:'text', text:'true'}], isError:false}});
+  assert.deepEqual(await confirmed, {volume:50, confirmed:true});
+
+  const refused = h.wire.setVolume(60);
+  reply({id:lastMcp().id, error:{message:'Unknown tool'}});
+  await assert.rejects(refused, /Unknown tool/);
+
+  const silent = h.wire.setVolume(70);
+  h.advance(3000);
+  assert.deepEqual(await silent, {volume:70, confirmed:false}, 'older firmware may not answer');
+
+  const pending = h.wire.setVolume(80);
+  h.ws.emit('close', 1000);
+  await assert.rejects(pending, /断开/);
+});

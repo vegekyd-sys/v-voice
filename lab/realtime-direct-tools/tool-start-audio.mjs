@@ -18,7 +18,7 @@ export function loadToolStartClips() {
   clips=loaded;return clips;
 }
 export function toolStartClip(call,loaded=loadToolStartClips()) {
-  if(['end_call','cancel_task','delegate_to_v','process','show_content'].includes(call.name))return null;
+  if(['end_call','cancel_task','delegate_to_v','process','show_content','set_speaker_volume'].includes(call.name))return null;
   const name=call.name==='openclaw_tool'?call.args?.tool:call.name;
   if(['end_call','cancel_task','delegate_to_v','process','show_content'].includes(name))return null;
   return loaded[name==='memory_search'?'memory':['web_search','web_fetch'].includes(name)?'web':'other'];

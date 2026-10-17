@@ -20,8 +20,10 @@ export const TOOLS=[
  {type:'function',name:'openclaw_tool',description:'直接执行 OpenClaw 工具，不调用另一个语言模型。可用工具和用法以本次会话提供的目录为准。飞书日历用 feishu_calendar，其他飞书只读查询用本地 lark_read；不要经 Gateway exec 执行 lark-cli。写操作交 delegate_to_v 且外部写入遵守用户授权，禁止自行确认。arguments 是原工具参数的 JSON 字符串。',parameters:object({tool:str,arguments:str},['tool','arguments'])},
  {type:'function',name:'end_call',description:'只结束当前电话，不取消已启动的后台任务。需要取消任务时必须另外调用 cancel_task。用户向你告别，例如“好了，那我们就聊到这里”“拜拜啦”“今天先这样，下次再聊”，立即调用本工具，不只口头告别，也不等用户再次要求挂断。先理解上下文：讨论挂断功能、引用别人的告别、转话题继续提问或取消一个任务都不要挂断。调用成功后简短告别，系统等待真实告别音频播完才关闭。',parameters:object({})}
 ];
+// Declared only on calls from a speaker whose firmware has a volume control.
+export const SPEAKER_VOLUME_TOOL={type:'function',name:'set_speaker_volume',description:'调节正在通话的这台音箱自身的播放音量，范围0-100。用户说“大声点”“小声点”时传 change=up/down（每次约15），说“音量调到70”时传 volume=70；volume 和 change 只给一个。收到结果后才能说已调好，并说出新的音量；confirmed=false 表示指令已发出但音箱没有回执。不能调手机、电视或其他设备。',parameters:object({volume:{type:'integer',minimum:0,maximum:100},change:{type:'string',enum:['up','down']}})};
 export function validateTool(name,args){
- const tool=TOOLS.find(t=>t.name===name);if(!tool)throw Error('不支持这个工具');
+ const tool=[...TOOLS,SPEAKER_VOLUME_TOOL].find(t=>t.name===name);if(!tool)throw Error('不支持这个工具');
  if(!args||typeof args!=='object'||Array.isArray(args))throw Error('工具参数必须是对象');
  for(const key of Object.keys(args))if(!(key in tool.parameters.properties))throw Error('未知工具参数');
  for(const key of tool.parameters.required)if(!(key in args))throw Error('缺少工具参数');
@@ -35,11 +37,13 @@ export function validateTool(name,args){
  if(name==='web_fetch'){const u=new URL(args.url);if(u.protocol!=='https:'&&u.protocol!=='http:')throw Error('只读取网页');}
  if(name==='feishu_calendar')for(const value of Object.values(args))if(!/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2}))?$/.test(value))throw Error('无效日程日期');
  if(name==='lark_read')buildLarkReadArgv(args.argv);
+ if(name==='set_speaker_volume'&&('volume' in args)===('change' in args))throw Error('音量只给 volume 或 change 其中一个');
  if(name==='openclaw_agent_control')validateVoiceTaskControl(args);
  return args;
 }
-export function createToolExecutor({invoke,allowedTools,calendar,larkRead,delegate,showContent}){return async(name,args,callId,signal)=>{
+export function createToolExecutor({invoke,allowedTools,calendar,larkRead,delegate,showContent,speakerVolume}){return async(name,args,callId,signal)=>{
  validateTool(name,args);
+ if(name==='set_speaker_volume'){if(!speakerVolume)throw Error('这台终端不能调音量');return speakerVolume(args,callId,signal);}
  if(name==='show_content'){if(!showContent)throw Error('屏幕展示尚未就绪');return showContent(args,callId,signal);}
  if(name==='current_time')return {timezone:'Asia/Shanghai',now:new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'})};
  if(name==='end_call')return {accepted:true,instruction:'简短告别，然后结束本次电话。'};

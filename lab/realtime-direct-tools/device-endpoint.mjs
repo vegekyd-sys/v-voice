@@ -2,6 +2,7 @@ import {createDevicePlayout} from './device-playout.mjs';
 import {EventEmitter} from 'node:events';
 import {createRobotReactionDriver} from '../robot/robot-reactions.mjs';
 import {createXiaozhiWire} from './xiaozhi-wire.mjs';
+import {createVolumeStore,targetVolume} from './device-volume.mjs';
 import {createHash,timingSafeEqual} from 'node:crypto';
 
 // A hardware speaker is one more Voice client. It owns only audio I/O, wake and
@@ -58,7 +59,7 @@ class DeviceCallClient extends EventEmitter {
 }
 
 export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '/device/voice',xiaozhiPath = null,otaPath = null,xiaozhiPublicUrl = null,audit = () => {},isSessionBusy = () => false,
-  now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,toolHoldMs = 180000,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = 4 * 1024 * 1024,robotEvaluate = null}) {
+  now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,toolHoldMs = 180000,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = 4 * 1024 * 1024,robotEvaluate = null,volumeStore = createVolumeStore()}) {
   if (!/^\/[a-zA-Z0-9/_-]+$/u.test(path)) throw Error('Invalid device path');
   const server = new wsModule.WebSocketServer({noServer:true,maxPayload:65536,perMessageDeflate:false});
   const connections = new Map();
@@ -160,9 +161,18 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       const limit = call.userTurns ? idleMs : initialIdleMs;
       if (at - call.lastActivityAt > limit) call.end('idle');
     };
+    // Only firmware that exposes a volume control gets the spoken volume tool.
+    const speaker = typeof ws.setVolume === 'function' ? {setVolume:async request => {
+      const previous = volumeStore.get(device.id, device.volume);
+      const volume = targetVolume(previous, request);
+      const {confirmed} = await ws.setVolume(volume);
+      const persisted = volumeStore.set(device.id, volume, device.volume);
+      audit({type:'device.volume',voiceSessionId:call.id,deviceId:device.id,volume,previous,confirmed,persisted});
+      return {volume,previous,confirmed,...(confirmed ? {} : {note:'音量指令已发出，音箱没有回执'})};
+    }} : null;
     void (async () => {
       try {
-        const reservation = await directVoice.reserve({model,sessionKey:device.sessionKey,voice:device.voice,surface:'speaker',inputSampleRate:DEVICE_INPUT_SAMPLE_RATE});
+        const reservation = await directVoice.reserve({model,sessionKey:device.sessionKey,voice:device.voice,surface:'speaker',inputSampleRate:DEVICE_INPUT_SAMPLE_RATE,speaker});
         call.id = reservation.voiceSessionId;
         audit({type:'device.call',voiceSessionId:call.id,stage:'start',deviceId:device.id,latencyMs:now() - call.startedAt});
         if (call.ended || ws.readyState !== 1) {await directVoice.close(call.id).catch(() => {});return;}
@@ -259,7 +269,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       server.handleUpgrade(req, socket, head, raw => {
         // xiaozhi-esp32 firmware (e.g. StackChan) speaks its own protocol; the
         // wire adapter makes it an ordinary device connection for everything below.
-        const ws = dialect === 'xiaozhi' ? createXiaozhiWire(raw, {volume:device.volume}) : raw;
+        const ws = dialect === 'xiaozhi' ? createXiaozhiWire(raw, {volume:volumeStore.get(device.id, device.volume)}) : raw;
         const old = connections.get(device.id);
         if (old) {old.call?.end('replaced');old.ws.close(4000, 'replaced');}
         const connection = {device,ws,call:null,connectedAt:now(),missed:0};

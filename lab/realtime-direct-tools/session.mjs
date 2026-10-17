@@ -2,7 +2,7 @@ import { taskActivity } from '../gpt-live-h5/avatar-state.mjs';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {SeeduplexRealtimeVoiceBridge} from '../seeduplex-realtime-provider.mjs';
 import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
-import {TOOLS,createToolExecutor,validateTool,processExited} from './tools.mjs';
+import {TOOLS,SPEAKER_VOLUME_TOOL,createToolExecutor,validateTool,processExited} from './tools.mjs';
 import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICES,grokVoice,grokVoiceModel,grokVoiceLabel,grokVoiceSpeed} from './grok-provider.mjs';
 import {createTaskDelivery} from './task-delivery.mjs';
 import {createBackendDelegation} from './backend.mjs';
@@ -110,14 +110,17 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     })();
     try{return await s.closePromise;}finally{s.closePromise=null;}
   };
-  async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000}) {
+  // The tools one call declares: no screen tool without a display, and device
+  // controls only when the attached hardware provides them.
+  const sessionTools=s=>[...(s.display?TOOLS:TOOLS.filter(t=>t.name!=='show_content')),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[])];
+  async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null}) {
     if(!['phone','speaker'].includes(surface))throw Error('不支持的语音终端');
     if(![16000,24000].includes(inputSampleRate))throw Error('不支持的输入采样率');
     if([...sessions.values()].some(s=>s.cleanupFailed))throw Error('上一通电话的后台任务正在确认退出，请稍后重试');
     const spec=models().find(m=>m.id===model);if(!spec)throw Error('没有这个语音模型');
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
     const selectedVoice=model==='grok'?grokVoice(voice):spec.voice;
-    const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map(),surface,display:surface!=='speaker',inputSampleRate};
+    const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map(),surface,display:surface!=='speaker',inputSampleRate,speaker:surface==='speaker'?speaker:null};
     Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,progress:null});
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
@@ -168,7 +171,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       return work.then(result=>{audit({type:'tool.local-result',voiceSessionId:s.id,callId,name,result});return result;});
     });
     const admittedUserTurns=new Map();
-    const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',calendar),larkRead:localRead('lark_read',larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),delegate:args=>s.backend.run({...args,callerTurn:admittedUserTurns.get(args.callId)})});
+    const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',calendar),larkRead:localRead('lark_read',larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,delegate:args=>s.backend.run({...args,callerTurn:admittedUserTurns.get(args.callId)})});
     s.progressTimer=setInterval(()=>deferred(s),200);s.progressTimer.unref?.();
     const onToolCall=async call=>{
       if(!current(s))return;
@@ -227,7 +230,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(!current(s))return;
     connectionStage('context-ready');
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
-      instructions:directInstructions(entries,context,s.model,s.surface),tools:s.display?TOOLS:TOOLS.filter(t=>t.name!=='show_content'),inputSampleRate:s.inputSampleRate,
+      instructions:directInstructions(entries,context,s.model,s.surface),tools:sessionTools(s),inputSampleRate:s.inputSampleRate,
       onToolCall:call=>void onToolCall(call),
       toolStartNotice:call=>{
         return noticeClips?toolStartClip(call,noticeClips)?.text:null;
@@ -277,7 +280,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       }catch{client.close(1008);}
     });
     connectionStage('provider-connecting');
-    await s.bridge.connect();if(current(s)){connectionStage('provider-ready');emit(s,{type:'ready',model:s.model,tools:TOOLS.map(t=>t.name)});}
+    await s.bridge.connect();if(current(s)){connectionStage('provider-ready');emit(s,{type:'ready',model:s.model,tools:sessionTools(s).map(t=>t.name)});}
   }
   return {
     models,reserve,close,

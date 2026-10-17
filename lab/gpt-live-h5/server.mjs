@@ -489,7 +489,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     let deviceEndpoint = null;
     if (process.env.VOICE_DEVICES_FILE) {
       const {createDeviceEndpoint,parseDeviceEntries} = await import('../realtime-direct-tools/device-endpoint.mjs');
+      const {createVolumeStore} = await import('../realtime-direct-tools/device-volume.mjs');
       deviceEndpoint = createDeviceEndpoint({directVoice,wsModule,audit:transcriptLog.audit,
+        // Spoken volume changes; without a file they last until the service restarts.
+        volumeStore:createVolumeStore({file:process.env.VOICE_DEVICE_VOLUME_FILE ?? null}),
         devices:parseDeviceEntries(JSON.parse(await readFile(process.env.VOICE_DEVICES_FILE,"utf8"))),
         path:process.env.VOICE_DEVICE_PATH ?? "/device/voice",
         xiaozhiPath:process.env.VOICE_XIAOZHI_PATH ?? null,

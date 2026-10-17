@@ -351,3 +351,49 @@ test('xiaozhi OTA hands only a registered MAC its WebSocket and never an upgrade
   assert.equal((await call(null, {})).status, 403);
   assert.throws(() => parseDeviceEntries([record({mac:'not-a-mac'})]), /MAC/);
 });
+
+test('a xiaozhi robot changes its volume by voice and keeps it for the next call', async t => {
+  const f = await fixture({record:{robot:true, volume:85}});
+  t.after(f.close);
+  const open = async () => {
+    const client = new ws.WebSocket(f.url.replace('/device/voice', '/device/xiaozhi'), {headers:{authorization:`Bearer ${TOKEN}`}});
+    client.events = [];
+    client.on('message', (data, binary) => {if (!binary) client.events.push(JSON.parse(data.toString()));});
+    await new Promise((resolve, reject) => {client.once('open', resolve);client.once('error', reject);});
+    client.send(JSON.stringify({type:'hello', version:1, transport:'websocket', audio_params:{format:'opus', sample_rate:16000, channels:1, frame_duration:60}}));
+    await f.until(() => client.events.some(e => e.type === 'mcp'), 'hello volume');
+    return client;
+  };
+  const volumeCalls = client => client.events.filter(e => e.type === 'mcp').map(e => e.payload);
+  const first = await open();
+  assert.equal(volumeCalls(first)[0].params.arguments.volume, 85, 'the operator volume applies at hello');
+  await f.until(() => f.peers[0]?.sent.some(e => e.type === 'session.create'), 'provider session');
+  const tools = f.peers[0].sent.find(e => e.type === 'session.create').session.tools.map(tool => tool.name);
+  assert(tools.includes('set_speaker_volume'));
+
+  // "小声点": the provider calls the tool, the firmware confirms, the model hears the new level.
+  f.peers[0].emit('message', Buffer.from(JSON.stringify({type:'response.function_call_arguments.done', items:[{call_id:'quieter', name:'set_speaker_volume', arguments:JSON.stringify({change:'down'})}]})), false);
+  await f.until(() => volumeCalls(first).length === 2, 'mid-call volume');
+  const request = volumeCalls(first)[1];
+  assert.equal(request.params.arguments.volume, 70);
+  first.send(JSON.stringify({session_id:'voice', type:'mcp', payload:{jsonrpc:'2.0', id:request.id, result:{content:[{type:'text', text:'true'}], isError:false}}}));
+  await f.until(() => f.audit.some(e => e.type === 'tool.delivered' && e.callId === 'quieter'), 'tool result');
+  assert.deepEqual(f.audit.find(e => e.type === 'tool.delivered' && e.callId === 'quieter').result, {volume:70, previous:85, confirmed:true});
+  assert(f.audit.some(e => e.type === 'device.volume' && e.deviceId === 'speaker-test' && e.volume === 70));
+
+  first.close();
+  await f.until(() => f.endpoint.activeCalls() === 0 && f.directVoice.activity(f.audit.find(e => e.type === 'call.created').voiceSessionId) === null, 'first call closed');
+  const second = await open();t.after(() => second.close());
+  assert.equal(volumeCalls(second)[0].params.arguments.volume, 70, 'the next call starts at the spoken level');
+});
+
+test('a native speaker without a volume control never sees the volume tool', async t => {
+  const f = await fixture();
+  t.after(f.close);
+  const client = await f.connect();t.after(() => client.close());
+  client.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => f.peers[0]?.sent.some(e => e.type === 'session.create'), 'provider session');
+  const tools = f.peers[0].sent.find(e => e.type === 'session.create').session.tools.map(tool => tool.name);
+  assert(!tools.includes('set_speaker_volume'));
+  assert(tools.includes('end_call'));
+});

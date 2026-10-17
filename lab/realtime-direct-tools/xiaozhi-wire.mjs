@@ -18,6 +18,8 @@ export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, cl
   let encoder = new OpusScript(XIAOZHI_DOWNLINK_RATE, 1, OpusScript.Application.AUDIO);
   let pending = Buffer.alloc(0), speaking = false, stopping = false, playEnd = 0, drainTimer = null, closed = false, helloSeen = false;
   let afterStop = [];
+  // Firmware MCP calls made during the call, answered by JSON-RPC id. id 1 is the hello volume.
+  let mcpId = 1;const mcpWaiters = new Map();
   const sendJson = value => {if (ws.readyState === 1) ws.send(JSON.stringify({session_id:sessionId, ...value}));};
   // Native events emitted *to* the endpoint as if the device had sent them.
   const deviceSays = value => wire.emit('message', Buffer.from(JSON.stringify(value)), false);
@@ -91,9 +93,19 @@ export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, cl
       return;
     }
     if (event.type === 'abort') {deviceSays({type:'barge-in'});interrupt();return;}
+    if (event.type === 'mcp') {
+      const reply = event.payload, waiter = mcpWaiters.get(reply?.id);
+      if (!waiter) return;
+      mcpWaiters.delete(reply.id);clearTimer(waiter.timer);
+      if (reply.error || reply.result?.isError) return waiter.reject(Error(String(reply.error?.message ?? reply.result?.content?.[0]?.text ?? '音箱拒绝了这个操作').slice(0, 200)));
+      return waiter.resolve(true);
+    }
     // listen start/stop/detect: the shared Voice session owns turn-taking.
   });
-  ws.on('close', (...args) => {closed = true;clearTimer(drainTimer);decoder.delete();encoder.delete();wire.emit('close', ...args);});
+  ws.on('close', (...args) => {
+    closed = true;
+    for (const waiter of mcpWaiters.values()) {clearTimer(waiter.timer);waiter.reject(Error('音箱已断开'));}
+    mcpWaiters.clear();clearTimer(drainTimer);decoder.delete();encoder.delete();wire.emit('close', ...args);});
   ws.on('error', error => wire.emit('error', error));
   ws.on('pong', (...args) => wire.emit('pong', ...args));
 
@@ -121,6 +133,15 @@ export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, cl
       default: return;  // hello, call.started, call.ready, busy, pong, audio.source
     }
   };
+  /** Set the speaker volume mid-call. Resolves whether the firmware confirmed it;
+   * older firmware may apply the call without replying. */
+  wire.setVolume = (level, {timeoutMs = 3000} = {}) => new Promise((resolve, reject) => {
+    if (closed || !helloSeen || ws.readyState !== 1) return reject(Error('音箱尚未连接'));
+    const id = ++mcpId;
+    const timer = setTimer(() => {mcpWaiters.delete(id);resolve({volume:level, confirmed:false});}, timeoutMs);
+    mcpWaiters.set(id, {timer, reject, resolve:() => resolve({volume:level, confirmed:true})});
+    sendJson({type:'mcp', payload:{jsonrpc:'2.0', id, method:'tools/call', params:{name:'self.audio_speaker.set_volume', arguments:{volume:level}}}});
+  });
   wire.close = (code, reason) => {if (ws.readyState === 1) ws.close(code, reason);};
   wire.terminate = () => ws.terminate();
   wire.ping = () => ws.ping();
