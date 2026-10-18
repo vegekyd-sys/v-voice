@@ -123,3 +123,27 @@ test('one tool used several times in a row shows one searching face', () => {
   driver.observe({type:'tool.call', name:'web_search'});
   assert.deepEqual(sent.map(e => e.id), ['searching']);
 });
+
+test('task status badge follows pending tool calls like the web avatar', () => {
+  const {driver, sent} = harness(null, {status: true});
+  const status = () => sent.filter(e => e.type === 'status').map(e => e.id);
+  driver.observe({type:'tool.call', callId:'a', name:'web_search'});
+  driver.observe({type:'tool.call', callId:'b', name:'delegate_to_v'});
+  driver.observe({type:'tool.call', callId:'c', name:'set_speaker_volume'});
+  driver.observe({type:'tool.result', callId:'a', name:'web_search'});
+  assert.deepEqual(status(), ['web', 'background'], 'a finished search leaves the background task showing');
+  driver.observe({type:'tool.result', callId:'b', name:'delegate_to_v'});
+  assert.deepEqual(status(), ['web', 'background', 'done']);
+  driver.observe({type:'tool.call', callId:'d', name:'memory_search'});
+  driver.observe({type:'tool.error', callId:'d', name:'memory_search'});
+  assert.deepEqual(status(), ['web', 'background', 'done', 'memory', 'none']);
+  driver.observe({type:'tool.call', callId:'e', name:'look'});
+  assert.equal(status().at(-1), 'look', 'the camera has its own badge');
+});
+
+test('task status stays off unless the device asks for it', () => {
+  const {driver, sent} = harness(null);
+  driver.observe({type:'tool.call', callId:'a', name:'web_search'});
+  driver.observe({type:'tool.result', callId:'a', name:'web_search'});
+  assert(!sent.some(e => e.type === 'status'));
+});

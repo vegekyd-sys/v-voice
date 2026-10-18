@@ -39,10 +39,17 @@ export function freshReaction(id,role,recent){
  * endpoint already receives and pushes `{type:'reaction', id, beat}` frames.
  * Cosmetic only: it never delays speech, tools or the call lifecycle.
  */
-export function createRobotReactionDriver({evaluate=null,send,now=Date.now,audit=()=>{},timeoutMs=1600,assistantBeatMs=ROBOT_ASSISTANT_BEAT_MS}={}) {
+export function createRobotReactionDriver({evaluate=null,send,now=Date.now,audit=()=>{},timeoutMs=1600,assistantBeatMs=ROBOT_ASSISTANT_BEAT_MS,status=false}={}) {
   let closed=false,busy=false,pending=null,controller=null,epoch=0;
   const recent=[];let lastEmit={id:null,at:-Infinity};
   const turns=[];let assistant='',assistantFirst=false,assistantAt=-Infinity,lastAssistantText='';
+  // Task status badge, like the web phone's avatar: one coarse activity per
+  // pending tool call (never its arguments), shown until the last call ends.
+  const tasks=new Map();let shownStatus='none';
+  const showStatus=id=>{
+    if(!status||closed||id===shownStatus)return;
+    shownStatus=id;send({type:'status',id});audit({type:'robot.status',id});
+  };
   const push=(role,text)=>{turns.push({role,text:text.slice(-600)});if(turns.length>6)turns.shift();};
   const emit=(id,beat,source)=>{
     if(closed||!robotReaction(id))return;
@@ -101,10 +108,18 @@ export function createRobotReactionDriver({evaluate=null,send,now=Date.now,audit
       }
       if(event.type==='tool.call'){
         const activity=event.activity??taskActivity(event.name);
+        // The robot's own camera gets its own badge (the web avatar has no camera pose).
+        const badge=event.name==='look'?'look':activity;
+        if(activity!=='control'&&event.callId&&!tasks.has(event.callId)){tasks.set(event.callId,badge);showStatus(badge);}
         const id=TOOL_REACTIONS[activity];
         // Several calls of one tool in a row are one visible activity.
         if(id&&!(lastEmit.id===id&&now()-lastEmit.at<TOOL_REPEAT_MS))emit(id,'task_change','tool');
         return;
+      }
+      if((event.type==='tool.result'||event.type==='tool.error')&&tasks.delete(event.callId)){
+        // done flashes a check on the device and then clears itself.
+        showStatus(tasks.size?[...tasks.values()].at(-1):event.type==='tool.result'?'done':'none');
+        if(shownStatus==='done')shownStatus='none';
       }
       if(event.type==='tool.error')emit('oops','task_change','tool');
     },

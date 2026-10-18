@@ -50,7 +50,7 @@ export function parseDeviceEntries(records = []) {
     // Firmware with its own echo cancellation sends abort only once someone has
     // really started talking over V, so that abort may cancel the reply at once.
     if (record.deviceBargeIn !== undefined && typeof record.deviceBargeIn !== 'boolean') throw Error('deviceBargeIn must be true or false');
-    devices.push(Object.freeze({deviceBargeIn:record.deviceBargeIn === true,inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,volume,outputGain,robot:record.robot === true,camera:record.camera === true,mac,otaToken:mac ? record.token : null,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
+    devices.push(Object.freeze({deviceBargeIn:record.deviceBargeIn === true,inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,volume,outputGain,robot:record.robot === true,robotStatus:record.robotStatus === true,camera:record.camera === true,mac,otaToken:mac ? record.token : null,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
   }
   return devices;
 }
@@ -103,7 +103,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       sendEvent:event=>sendJson(ws,event)});
     // A robot face reacts to the same shared session events. Reactions to V's
     // own speech follow the queued audio; reactions to the user go at once.
-    call.robot = device.robot ? createRobotReactionDriver({evaluate:robotEvaluate,
+    call.robot = device.robot ? createRobotReactionDriver({evaluate:robotEvaluate,status:device.robotStatus,
       send:event=>event.beat?.startsWith('assistant')?call.playout.event(event):sendJson(ws,event),
       audit:event=>audit({...event,voiceSessionId:call.id,deviceId:device.id})}) : null;
     call.fromSession = raw => {
