@@ -16,7 +16,7 @@ export const HOME_AVATAR_FILE = 'v-operator-home-1024.webp';
 export const AVATAR_FILES = [HOME_AVATAR_FILE, ...Object.values(AVATAR_SEQUENCES).flatMap(files => files.flatMap(file => [file,file.replace('-512.webp','-256.webp')]))];
 export const ACTIVITY_LABELS = Object.freeze({memory:'正在查记忆', web:'正在查资料', calendar:'正在查日程', background:'后台处理中'});
 export function taskActivity(name, args = {}, depth = 0) {
-  if (['end_call','openclaw_end_call','openclaw_live_call_control','cancel_task','current_time'].includes(name)) return 'control';
+  if (['end_call','openclaw_end_call','openclaw_live_call_control','cancel_task','current_time','set_speaker_volume'].includes(name)) return 'control';
   if (['memory_search','memory_get'].includes(name)) return 'memory';
   if (['web_search','web_fetch'].includes(name)) return 'web';
   if (name === 'feishu_calendar') return 'calendar';

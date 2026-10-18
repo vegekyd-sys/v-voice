@@ -1,12 +1,19 @@
-import {createDevicePlayout} from './device-playout.mjs';
+import {appendFileSync} from 'node:fs';
+import {createDevicePlayout,DEVICE_PLAYOUT_MAX_BYTES} from './device-playout.mjs';
 import {EventEmitter} from 'node:events';
-import {createHash,timingSafeEqual} from 'node:crypto';
+import {createRobotReactionDriver} from '../robot/robot-reactions.mjs';
+import {createXiaozhiWire} from './xiaozhi-wire.mjs';
+import {createVolumeStore,targetVolume} from './device-volume.mjs';
+import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
+import {photoAnswer,photoUpload,readLimitedBody} from './device-vision.mjs';
 
 // A hardware speaker is one more Voice client. It owns only audio I/O, wake and
 // local playback; model sessions, tools, tasks and endings stay in Voice.
 export const DEVICE_MODELS = ['seeduplex','grok'];
 export const DEVICE_INPUT_SAMPLE_RATE = 16000;
 export const DEVICE_OUTPUT_SAMPLE_RATE = 24000;
+// Said before a household speaker leaves a call that only heard room conversation.
+export const BACKGROUND_LEAVE_LINE = '你们先聊，需要我再叫我';
 const FORWARDED = new Set(['audio.clear','audio.done','end.accepted','end.after-playback','end.cancelled','provider.reconnecting','provider.recovered']);
 const digest = value => createHash('sha256').update(String(value)).digest();
 
@@ -32,7 +39,18 @@ export function parseDeviceEntries(records = []) {
     // Wi-Fi stalls; it does not delay interruption.
     const playoutLeadMs = record.playoutLeadMs ?? 480;
     if (!Number.isInteger(playoutLeadMs) || playoutLeadMs < 200 || playoutLeadMs > 5000) throw Error('Device playout lead must be 200-5000 ms');
-    devices.push(Object.freeze({inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
+    // xiaozhi firmware fetches its WebSocket URL and token from an OTA endpoint at
+    // boot. Only a device registered with its MAC address may receive them.
+    const mac = record.mac === undefined ? null : String(record.mac).toLowerCase();
+    const volume = record.volume ?? null;
+    const outputGain = record.outputGain ?? 1;
+    if (typeof outputGain !== 'number' || outputGain < 1 || outputGain > 4) throw Error('Device output gain must be 1-4');
+    if (volume !== null && (!Number.isInteger(volume) || volume < 0 || volume > 100)) throw Error('Device volume must be 0-100');
+    if (mac !== null && !/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/u.test(mac)) throw Error('Invalid device MAC address');
+    // Firmware with its own echo cancellation sends abort only once someone has
+    // really started talking over V, so that abort may cancel the reply at once.
+    if (record.deviceBargeIn !== undefined && typeof record.deviceBargeIn !== 'boolean') throw Error('deviceBargeIn must be true or false');
+    devices.push(Object.freeze({deviceBargeIn:record.deviceBargeIn === true,inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,volume,outputGain,robot:record.robot === true,camera:record.camera === true,mac,otaToken:mac ? record.token : null,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
   }
   return devices;
 }
@@ -49,9 +67,9 @@ class DeviceCallClient extends EventEmitter {
   }
 }
 
-export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '/device/voice',audit = () => {},isSessionBusy = () => false,
-  now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,toolHoldMs = 180000,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = 4 * 1024 * 1024}) {
-  if (!/^\/[a-zA-Z0-9/_-]+$/u.test(path)) throw Error('Invalid device path');
+export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '/device/voice',xiaozhiPath = null,otaPath = null,xiaozhiPublicUrl = null,audit = () => {},isSessionBusy = () => false,
+  now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,toolHoldMs = 180000,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = DEVICE_PLAYOUT_MAX_BYTES,stallMs = 20000,robotEvaluate = null,volumeStore = createVolumeStore(),visionPath = null,describeImage = null}) {
+  if (!/^\/[a-zA-Z0-9/_-]+$/u.test(path) || visionPath !== null && !/^\/[a-zA-Z0-9/_-]+$/u.test(visionPath)) throw Error('Invalid device path');
   const server = new wsModule.WebSocketServer({noServer:true,maxPayload:65536,perMessageDeflate:false});
   const connections = new Map();
   const authenticate = req => {
@@ -64,6 +82,13 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     return found && !found.disabled ? found : null;
   };
   const sendJson = (ws, value) => {if (ws.readyState === 1) ws.send(JSON.stringify(value));};
+  // Same origin the device reached for its WebSocket: the configured public URL
+  // when there is one (a device may omit the port from Host), else the Host header.
+  const visionUrl = req => {
+    if (xiaozhiPublicUrl) {const url = new URL(xiaozhiPublicUrl);return `${url.protocol === 'ws:' ? 'http:' : 'https:'}//${url.host}${visionPath}`;}
+    const host = String(req.headers.host ?? '');
+    return `${/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host) ? 'http' : 'https'}://${host}${visionPath}`;
+  };
 
   function startCall(connection, request = {}) {
     const {device, ws} = connection;
@@ -76,13 +101,21 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     call.playout = createDevicePlayout({now,maxBytes:maxBufferedBytes,maxLeadMs:device.playoutLeadMs,bufferedBytes:()=>ws.bufferedAmount,
       sendAudio:pcm=>{if(ws.readyState===1){call.outputBytes+=pcm.length;call.lastActivityAt=now();ws.send(pcm,{binary:true});}},
       sendEvent:event=>sendJson(ws,event)});
+    // A robot face reacts to the same shared session events. Reactions to V's
+    // own speech follow the queued audio; reactions to the user go at once.
+    call.robot = device.robot ? createRobotReactionDriver({evaluate:robotEvaluate,
+      send:event=>event.beat?.startsWith('assistant')?call.playout.event(event):sendJson(ws,event),
+      audit:event=>audit({...event,voiceSessionId:call.id,deviceId:device.id})}) : null;
     call.fromSession = raw => {
       if (call.ended) return;
       let event;try {event = JSON.parse(raw);} catch {return;}
+      if (call.robot && (event.type === 'transcript' || event.type?.startsWith('tool.'))) call.robot.observe(event);
       if (event.type === 'audio') {
         const pcm = Buffer.from(String(event.audio ?? ''), 'base64');
         if (!pcm.length || ws.readyState !== 1) return;
-        if (!call.playout.push(pcm,{backendSpeech:event.source==='injected-speech'})) return call.end('slow-playback');
+        // The parting line is played as ordinary speech: speakers must not barge
+        // on it, since it is only said while the room is full of chatter.
+        if (!call.playout.push(pcm,{backendSpeech:event.source==='injected-speech' && !call.leaving})) return call.end('slow-playback');
         call.lastActivityAt = now();
         return;
       }
@@ -111,7 +144,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     };
     call.closed = reason => {
       if (call.ended) return;
-      call.ended = true;clearInterval(call.timer);call.playout.dispose();
+      call.ended = true;clearInterval(call.timer);call.playout.dispose();call.robot?.dispose();
       if (connection.call === call) connection.call = null;
       if (call.id) audit({type:'device.call',voiceSessionId:call.id,stage:'closed',deviceId:device.id,reason:call.reason ?? reason,
         durationMs:now() - call.startedAt,inputBytes:call.inputBytes,outputBytes:call.outputBytes,userTurns:call.userTurns,gatedInputBytes:call.gatedInputBytes ?? 0,maxInputGapMs:call.maxInputGapMs ?? 0});
@@ -128,6 +161,10 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       const state = directVoice.activity(call.id);
       if (!state) return call.end('session-ended');
       const at = now();
+      // A speaker that stopped reading its socket would hold the session forever.
+      if (call.playout.stalledMs() > stallMs) return call.end('slow-playback');
+      // Leaving: the parting line plays first; never wait on it for long.
+      if (call.leaving) {if (at - call.leaving.at > 10000) call.end(call.leaving.reason);return;}
       if (call.playout.pendingBytes() || state.userSpeaking || state.responseActive || state.playing || call.playing) call.lastActivityAt = at;
       if (state.lastUserAt > call.lastActivityAt) call.lastActivityAt = state.lastUserAt;
       if (at - call.startedAt > maxCallMs) return call.end('max-duration');
@@ -141,14 +178,46 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       if (call.replyEndedAt && !call.playing && !state.responseActive) {
         const spokeSince = state.lastUserAt > call.replyEndedAt;
         if (!spokeSince && at - call.replyEndedAt > followUpMs) return call.end('idle');
-        if (spokeSince && !call.turnSinceReply && at - call.replyEndedAt > chatterMs) return call.end('background-speech');
+        if (spokeSince && !call.turnSinceReply && at - call.replyEndedAt > chatterMs) {
+          // Say why before leaving, so the household is not left with a silent exit.
+          if (directVoice.say?.(call.id, BACKGROUND_LEAVE_LINE)) call.leaving = {reason:'background-speech', at, spoke:false};
+          else call.end('background-speech');
+          return;
+        }
       }
       const limit = call.userTurns ? idleMs : initialIdleMs;
       if (at - call.lastActivityAt > limit) call.end('idle');
     };
+    // Only firmware that exposes a volume control gets the spoken volume tool.
+    const speaker = typeof ws.setVolume === 'function' ? {setVolume:async request => {
+      const previous = volumeStore.get(device.id, device.volume);
+      const volume = targetVolume(previous, request);
+      const {confirmed} = await ws.setVolume(volume);
+      const persisted = volumeStore.set(device.id, volume, device.volume);
+      audit({type:'device.volume',voiceSessionId:call.id,deviceId:device.id,volume,previous,confirmed,persisted});
+      return {volume,previous,confirmed,...(confirmed ? {} : {note:'音量指令已发出，音箱没有回执'})};
+    }} : null;
+    // Only a camera device given this call's vision token can look. The photo
+    // goes from the firmware to handleVision; its answer comes back as the MCP result.
+    const look = typeof ws.takePhoto === 'function' ? async ({question}) => {
+      if (connection.looking) throw Error('正在拍照，请稍等');
+      connection.looking = call;
+      const started = now();
+      try {
+        const description = photoAnswer(await ws.takePhoto(question));
+        audit({type:'device.look',voiceSessionId:call.id,deviceId:device.id,ok:true,latencyMs:now() - started});
+        return {description,source:'robot-camera',note:'这是机器人摄像头刚拍到的画面，由看图模型描述。只能按这段描述回答，不要补充描述里没有的内容。'};
+      } catch (error) {
+        audit({type:'device.look',voiceSessionId:call.id,deviceId:device.id,ok:false,latencyMs:now() - started,error:String(error?.message ?? error).slice(0,200)});
+        throw error;
+      } finally {
+        if (connection.looking === call) connection.looking = null;
+      }
+    } : null;
+    const deviceTools = speaker || look ? {...speaker,...(look ? {look} : {})} : null;
     void (async () => {
       try {
-        const reservation = await directVoice.reserve({model,sessionKey:device.sessionKey,voice:device.voice,surface:'speaker',inputSampleRate:DEVICE_INPUT_SAMPLE_RATE});
+        const reservation = await directVoice.reserve({model,sessionKey:device.sessionKey,voice:device.voice,surface:'speaker',inputSampleRate:DEVICE_INPUT_SAMPLE_RATE,speaker:deviceTools});
         call.id = reservation.voiceSessionId;
         audit({type:'device.call',voiceSessionId:call.id,stage:'start',deviceId:device.id,latencyMs:now() - call.startedAt});
         if (call.ended || ws.readyState !== 1) {await directVoice.close(call.id).catch(() => {});return;}
@@ -197,6 +266,11 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
         pcm = Buffer.allocUnsafe(data.length);
         for (let i = 0; i < data.length; i += 2) pcm.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(data.readInt16LE(i) * connection.device.inputGain))), i);
       }
+      // Debug only (off unless VOICE_DEVICE_DUMP_DIR is set): raw uplink per call
+      // for diagnosing device audio processing. Never enable in normal use.
+      if (process.env.VOICE_DEVICE_DUMP_DIR) {
+        try {appendFileSync(`${process.env.VOICE_DEVICE_DUMP_DIR}/${call.id}.pcm`, pcm);} catch {}
+      }
       call.client.emit('message', pcm, true);
       return;
     }
@@ -209,24 +283,79 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     if (event.type === 'playback.state' && typeof event.speaking === 'boolean') {
       if (call.playing && !event.speaking) {call.replyEndedAt = now();call.turnSinceReply = false;}
       call.playing = event.speaking;call.lastActivityAt = now();
+      if (call.leaving) {if (event.speaking) call.leaving.spoke = true;else if (call.leaving.spoke) call.end(call.leaving.reason);}
     }
     if (event.type === 'input.activity') call.lastActivityAt = now();
     // The shared session validates these exactly as it does for browser relay.
+    if (event.type === 'barge-in' && call.leaving) return;  // never cut the parting line
+    // Whether a barge-in is confirmed speech is the device record's call, never the frame's.
+    if (event.type === 'barge-in') event = {type:'barge-in',deviceId:connection.device.id,...(connection.device.deviceBargeIn ? {confirmed:true} : {})};
     if (['playback.state','playback.drained','barge-in','playback.stats'].includes(event.type) && call.client) call.client.emit('message', Buffer.from(JSON.stringify(event)), false);
   }
 
   return {
     path,
+    xiaozhiPath,
+    otaPath,
+    visionPath:describeImage ? visionPath : null,
+    /** Photo upload from a camera device's take_photo, during that device's look. */
+    async handleVision(req, res) {
+      const reply = (status, body) => {if (!res.headersSent) {res.writeHead(status, {'content-type':'application/json', 'cache-control':'no-store'});res.end(JSON.stringify(body));}req.resume();};
+      if (!describeImage || req.method !== 'POST') return reply(404, {success:false, message:'not found'});
+      const match = /^Bearer ([A-Za-z0-9._~+/=-]{32,256})$/u.exec(String(req.headers.authorization ?? ''));
+      let connection = null;
+      if (match) {
+        const presented = digest(match[1]);
+        for (const c of connections.values()) if (c.visionDigest && timingSafeEqual(c.visionDigest, presented)) connection = c;
+      }
+      // The token is per channel, and only valid while V is waiting for this photo.
+      const call = connection?.looking;
+      if (!call || call.ended || connection.call !== call) return reply(401, {success:false, message:'unauthorized'});
+      let upload;
+      try {upload = photoUpload(await readLimitedBody(req), req.headers['content-type']);}
+      catch (error) {return reply(error?.status ?? 400, {success:false, message:error?.status === 413 ? '照片太大' : '照片格式不对'});}
+      const started = now();
+      try {
+        const result = await describeImage(upload);
+        audit({type:'device.vision',voiceSessionId:call.id,deviceId:connection.device.id,ok:true,photoBytes:upload.image.length,latencyMs:now() - started});
+        reply(200, {success:true, result});
+      } catch (error) {
+        audit({type:'device.vision',voiceSessionId:call.id,deviceId:connection.device.id,ok:false,photoBytes:upload.image.length,latencyMs:now() - started,error:String(error?.message ?? error).slice(0,200)});
+        reply(200, {success:false, message:'看图服务暂时没有结果'});
+      }
+    },
+    /** xiaozhi OTA check: hand the registered device its V WebSocket. */
+    async handleOta(req, res) {
+      const reply = (status, body) => {res.writeHead(status, {'content-type':'application/json', 'cache-control':'no-store'});res.end(JSON.stringify(body));};
+      if (!xiaozhiPublicUrl || !['GET','POST'].includes(req.method)) return reply(404, {error:'not found'});
+      let size = 0, raw = '';
+      for await (const chunk of req) {size += chunk.length;if (size > 16384) return reply(413, {error:'too large'});raw += chunk;}
+      const mac = String(req.headers['device-id'] ?? '').toLowerCase();
+      const device = mac ? devices.find(d => d.mac === mac && !d.disabled) : null;
+      audit({type:'device.ota', voiceSessionId:'ota', deviceId:device?.id ?? 'unknown', known:Boolean(device)});
+      if (!device) return reply(403, {error:'device not registered'});
+      let version = '0.0.0';
+      try {const body = raw ? JSON.parse(raw) : {};if (typeof body?.application?.version === 'string') version = body.application.version.slice(0, 40);} catch {}
+      // Echo the running version so the firmware never self-upgrades from here,
+      // and omit activation/mqtt so it goes straight to this WebSocket.
+      reply(200, {server_time:{timestamp:now(), timezone_offset:480}, firmware:{version, url:''},
+        websocket:{url:xiaozhiPublicUrl, token:device.otaToken, version:1}});
+    },
     activeCalls: () => [...connections.values()].filter(c => c.call).length,
     busy: sessionKey => [...connections.values()].some(c => c.call && c.device.sessionKey === sessionKey),
     connected: () => [...connections.values()].map(c => ({deviceId:c.device.id,inCall:Boolean(c.call),connectedAt:c.connectedAt})),
-    handleUpgrade(req, socket, head) {
+    handleUpgrade(req, socket, head, {dialect = 'native'} = {}) {
       const device = authenticate(req);
       if (!device) {socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');socket.destroy();return;}
-      server.handleUpgrade(req, socket, head, ws => {
+      server.handleUpgrade(req, socket, head, raw => {
+        // xiaozhi-esp32 firmware (e.g. StackChan) speaks its own protocol; the
+        // wire adapter makes it an ordinary device connection for everything below.
+        // A camera device gets a fresh vision token per channel (one channel is one call).
+        const vision = dialect === 'xiaozhi' && device.camera && describeImage && visionPath ? {url:visionUrl(req),token:randomBytes(24).toString('base64url')} : null;
+        const ws = dialect === 'xiaozhi' ? createXiaozhiWire(raw, {volume:volumeStore.get(device.id, device.volume), outputGain:device.outputGain, vision}) : raw;
         const old = connections.get(device.id);
         if (old) {old.call?.end('replaced');old.ws.close(4000, 'replaced');}
-        const connection = {device,ws,call:null,connectedAt:now(),missed:0};
+        const connection = {device,ws,call:null,connectedAt:now(),missed:0,looking:null,visionDigest:vision ? digest(vision.token) : null};
         connections.set(device.id, connection);
         // Any frame proves the device is alive. A speaker applying TCP
         // backpressure to a long reply can delay its pong, so allow misses.
