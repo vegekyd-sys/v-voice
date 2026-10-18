@@ -1,3 +1,4 @@
+import {createSpeakerDiagnostics} from './diagnostics.mjs';
 import {readFile} from 'node:fs/promises';
 import {WebSocket,WebSocketServer} from 'ws';
 import {GatewayClient} from '../../lib/gateway-client.mjs';
@@ -21,10 +22,11 @@ const accessToken=process.env.VOICE_STREAM_ACCESS_TOKEN_FILE?(await readFile(pro
 if(process.env.VOICE_STREAM_LINUX==='1'&&(!publicOrigin||!basePath||accessToken.length<32||gatewayPort!==receipt.gatewayPort))throw Error('Linux candidate requires hosted admission and a server-local private Gateway');
 const embedding=createEmbeddingWorker({python:process.env.VOICE_SPEAKER_PYTHON??new URL('../../artifacts/speaker-native/embedding-venv/bin/python',import.meta.url).pathname,model:process.env.VOICE_SPEAKER_MODEL??new URL('../../artifacts/speaker-native/speaker-embedding.onnx',import.meta.url).pathname});
 await embedding.ready;
+const diagnostics=createSpeakerDiagnostics({directory:process.env.VOICE_STREAM_DIAGNOSTICS_DIR});
 let bridge;
 const gateway=new GatewayClient({url:gatewayOrigin.replace('http:','ws:'),token:receipt.gatewayToken,caps:['voice-direct-tools','tool-events'],scopes:['operator.admin','operator.read','operator.write'],onEvent:e=>bridge?.emit(e),onHelloOk:()=>console.log('Private speaker Gateway ready'),onConnectError:e=>console.warn('Private candidate unavailable:',e.code??'CONNECT_ERROR')});gateway.start();
-const speakerRouting=process.env.VOICE_STREAM_COMPARE_SERIAL==='1'?createSpeakerRoutingService({env}):createStreamingSpeakerRoutingService({env,embedding});
-const directVoice=createDirectVoiceService({gateway,wsModule:{WebSocket,WebSocketServer},speakerRouting,apiKeys:{seeduplex:env.VOLCENGINE_REALTIME_API_KEY},loadContext:async()=>''});
+const speakerRouting=process.env.VOICE_STREAM_COMPARE_SERIAL==='1'?createSpeakerRoutingService({env}):createStreamingSpeakerRoutingService({env,embedding,onAudit:diagnostics.audit});
+const directVoice=createDirectVoiceService({gateway,wsModule:{WebSocket,WebSocketServer},speakerRouting,audit:diagnostics.audit,apiKeys:{seeduplex:env.VOLCENGINE_REALTIME_API_KEY},loadContext:async()=>''});
 const fixtures=new Set(['question','dialogue','side','collective','steady']);
 bridge=createLiveH5Server({gateway,directVoice,speakerRouting,publicOrigin,basePath,accessToken,candidateRelease:process.env.VOICE_STREAM_LINUX==='1'?LINUX_SPEAKER_CANDIDATE_RELEASE:undefined,maxActiveSessions:2,maxActiveSessionsPerIp:1,defaultModel:'seeduplex',gptProvider:'v-voice-gpt-live',avatarEvaluate:null,callControlEvaluate:null,
   speakerFixture:async id=>fixtures.has(id)?readFile(new URL('../../artifacts/speaker-native/'+id+'.wav',import.meta.url)):null,
