@@ -40,6 +40,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
   };
   const feed=async(s,c,profile,approved=false)=>{
     if(s.closed||c.cancelled)return;
+    clearTimeout(s.responseDeadline);
     if(s.input&&s.input!==c){s.input.cancelled=true;s.gate.deny(s.input.token);}
     s.input=c;c.profileKey=profile.key;s.gate.begin(c.token);s.native.cancel?.();s.nativeBusy=false;
     const preparedAt=performance.now();
@@ -50,18 +51,18 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     if(approved)s.gate.allow(c.token);
     send(s,{type:'speaker.stream-start',token:c.token,speakerId:c.speakerId,startMs:c.startMs,bufferMs:Math.round(s.window.bytes/32-c.startMs),prepareMs:Math.round(performance.now()-preparedAt),fallback:Boolean(c.fallback)});
   };
-  const recover=async(s,reason)=>{
-    if(s.closed||s.router.mode==='exclusive'||performance.now()-(s.lastRecoveryAt??-Infinity)<8000)return;
+  const recover=async(s,reason,authorized=false)=>{
+    if(s.closed||s.router.mode==='exclusive'&&!authorized||performance.now()-(s.lastRecoveryAt??-Infinity)<8000)return;
     s.lastRecoveryAt=performance.now();
     const c={token:'recovery'+(++s.serial),cancelled:false,decided:true,recovery:true,segmentIds:new Set()};
     if(s.input)s.input.cancelled=true;
-    s.input=c;s.gate.begin(c.token);s.native.cancel?.();s.nativeBusy=false;
+    clearTimeout(s.responseDeadline);s.input=c;s.gate.begin(c.token);s.native.cancel?.();s.nativeBusy=false;
     send(s,{type:'speaker.recovery',reason,token:c.token});
     try{
       await s.native.prepare('刚才输入未能可靠区分。只简短请对方重新说一句或轮流说话，不猜身份，不调用工具。','speaker-recovery',[]);
       if(s.closed||s.input!==c||c.cancelled)return;
       s.prepared=true;s.gate.allow(c.token);
-      s.native.context?.('请现在只说一句：“'+(reason==='mixed-speakers'?'刚才你们的声音重叠了，请轮流说，我在听。':'刚才那句我没听清，请再说一次，我在听。')+'”');
+      s.native.clarify?.(reason==='mixed-speakers'?'刚才你们的声音重叠了，请轮流说，我在听。':'刚才那句我没听清，请再说一次，我在听。');
     }catch(error){if(!s.closed&&s.input===c)send(s,{type:'speaker.error',reason:'recovery-unavailable',message:'这句没听清，请再说一次。'});}
   };
   const identified=(s,e)=>{
@@ -76,12 +77,17 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     const c={token:'stream'+(++s.serial),speakerId:seg.speakerId,startMs:seg.startMs,endMs:seg.endMs,segmentIds:new Set([seg.id])};
     void feed(s,c,earlyProfile(s,seg.speakerId));
   };
+  const enqueue=(s,turn)=>{
+    s.latestFinalEnd=Math.max(s.latestFinalEnd??0,turn.endMs);
+    s.tail=s.tail.then(()=>process(s,turn)).catch(error=>fail(s,error));
+  };
   const process=async(s,turn)=>{
     if(s.closed)return;
     const inputAt=performance.now(),anchor=s.clock.find(c=>c.startMs<=turn.endMs&&c.endMs>=turn.endMs),endAt=anchor?anchor.at-(anchor.endMs-turn.endMs):inputAt;
     send(s,{type:'speaker.utterance',turn});
     let result;try{result=await s.router.accept(turn,{signal:s.abort.signal});}catch(error){
       if(s.closed)return;
+      if(turn.endMs<(s.latestFinalEnd??0)-200){send(s,{type:'speaker.superseded',reason:'stale-decision-error',turn});return;}
       if(s.input)s.input.cancelled=true;
       s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;
       send(s,{type:'speaker.error',message:'这一句人物判断未完成，请再说一次。',reason:error.name==='TimeoutError'?'decision-timeout':'decision-unavailable'});
@@ -90,13 +96,15 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     if(s.closed)return;
     const timings={asrMs:Math.round(inputAt-endAt),decisionMs:result.decisionMs??0,afterEndMs:Math.round(performance.now()-endAt)};
     send(s,{type:'speaker.decision',...result,timings});
+    if(turn.endMs<(s.latestFinalEnd??0)-200){send(s,{type:'speaker.superseded',reason:'newer-final-turn',turn});return;}
     const c=s.input,matches=c&&!c.cancelled&&c.speakerId===turn.speakerId&&c.startMs<turn.endMs&&(!c.endMs||c.endMs>=turn.startMs-200);
-    if(!result.shouldRespond){if(matches){c.cancelled=true;s.gate.deny(c.token);s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;}return;}
+    if(!result.shouldRespond){if(matches){clearTimeout(s.responseDeadline);c.cancelled=true;s.gate.deny(c.token);s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;}return;}
     const profile=speakerProfile({speakerId:result.turn.speakerId,...result});
     s.acceptedHistory.push({role:'user',text:turn.text});s.acceptedHistory=s.acceptedHistory.slice(-8);
     if(matches&&c.profileKey===profile.key&&!c.fed)await c.preparation;
     if(s.closed)return;
-    if(matches&&c.fed&&c.profileKey===profile.key){c.decided=true;s.gate.allow(c.token);send(s,{type:'speaker.stream-accepted',token:c.token,timings,avoidedReplayMs:Math.round(turn.endMs-turn.startMs)});return;}
+    if(s.input!==c||turn.endMs<(s.latestFinalEnd??0)-200){send(s,{type:'speaker.superseded',reason:'newer-input-during-prepare',turn});return;}
+    if(matches&&c.fed&&c.profileKey===profile.key){c.decided=true;c.endMs=turn.endMs;s.gate.allow(c.token);send(s,{type:'speaker.stream-accepted',token:c.token,timings,avoidedReplayMs:Math.round(turn.endMs-turn.startMs)});return;}
     if(c){c.cancelled=true;s.gate.deny(c.token);s.native.cancel?.();}
     const fallback={token:'stream'+(++s.serial),speakerId:turn.speakerId,startMs:turn.startMs,endMs:turn.endMs,segmentIds:new Set(),fallback:true,decided:true};
     send(s,{type:'speaker.stream-fallback',reason:matches?'人物或回应对象已更新':'首次或身份未确认',timings});
@@ -107,7 +115,10 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     for(const raw of event.body?.result?.utterances??[]){
       if(!raw.definite||!raw.text?.trim()||!Number.isFinite(raw.start_time)||!Number.isFinite(raw.end_time))continue;
       const key=raw.start_time+':'+raw.end_time;if(s.seen.has(key))continue;
-      const overlaps=s.tracker.overlaps(raw.start_time,raw.end_time);let ids=[...new Set(overlaps.map(x=>x.segment.speakerId).filter(Boolean))];
+      if(raw.end_time<(s.latestFinalEnd??0)-200){s.seen.add(key);send(s,{type:'speaker.superseded',reason:'late-asr-final'});continue;}
+      const overlaps=s.tracker.overlaps(raw.start_time,raw.end_time);
+      if(overlaps.some(x=>x.segment.ambiguous)){s.seen.add(key);void recover(s,'mixed-speakers');continue;}
+      let ids=[...new Set(overlaps.map(x=>x.segment.speakerId).filter(Boolean))];
       if(ids.length<=1&&(!ids.length||overlaps.some(x=>!x.segment.speakerId&&x.ms>250))){
         if(s.backfilled.has(key)){
           const verified=s.backfilled.get(key);
@@ -118,7 +129,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
           if(!s.backfilling.has(key)){
             s.backfilling.add(key);
             let pcm;try{pcm=s.window.slice(raw.start_time,Math.min(raw.end_time,raw.start_time+8000));}catch{s.backfilling.delete(key);s.seen.add(key);void recover(s,'audio-window-expired');continue;}
-            void s.tracker.verifyWindow(pcm).then(id=>{if(s.closed)return;s.backfilled.set(key,id);for(const turn of normalizeFinals(s,s.latestAsr))s.tail=s.tail.then(()=>process(s,turn)).catch(error=>fail(s,error));}).catch(error=>fail(s,error));
+            void s.tracker.verifyWindow(pcm).then(id=>{if(s.closed)return;s.backfilled.set(key,id);for(const turn of normalizeFinals(s,s.latestAsr))enqueue(s,turn);}).catch(error=>fail(s,error));
           }
           continue;
         }
@@ -134,7 +145,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     }
     const merged=[];for(const turn of output){const last=merged.at(-1);if(last&&last.speakerId===turn.speakerId&&turn.startMs-last.endMs<1200){last.text+=turn.text;last.endMs=turn.endMs;}else merged.push(turn);}return merged;
   };
-  const close=id=>{const s=sessions.get(id);if(!s)return;send(s,{type:'speaker.closed',decisionCalls:s.decisionCalls,inputSeconds:s.inputBytes/48000});s.closed=true;s.abort.abort();if(s.input)s.input.cancelled=true;s.gate.deny();clearInterval(s.timer);clearTimeout(s.expiry);s.asr?.close();s.tracker.close();s.window.chunks=[];s.listener=null;sessions.delete(id);};
+  const close=id=>{const s=sessions.get(id);if(!s)return;send(s,{type:'speaker.closed',decisionCalls:s.decisionCalls,inputSeconds:s.inputBytes/48000});s.closed=true;s.abort.abort();if(s.input)s.input.cancelled=true;s.gate.deny();clearInterval(s.timer);clearTimeout(s.responseDeadline);clearTimeout(s.expiry);s.asr?.close();s.tracker.close();s.window.chunks=[];s.listener=null;sessions.delete(id);};
   return {
     reserve(id,{model,policy='speaker'}={}){
       if(model!=='seeduplex'||policy==='native')return null;
@@ -156,24 +167,29 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
       s.asr=createAsr({apiKey:env.VOLCENGINE_ASR_API_KEY,onResult:event=>{
         s.latestAsr=event;
         if(env.VOICE_STREAM_SYNTHETIC_TRACE==='1')send(s,{type:'speaker.asr-state',utterances:(event.body?.result?.utterances??[]).map(u=>({definite:u.definite,startMs:u.start_time,endMs:u.end_time,textLength:u.text?.length}))});
-        for(const turn of normalizeFinals(s,event))s.tail=s.tail.then(()=>process(s,turn)).catch(error=>fail(s,error));
+        for(const turn of normalizeFinals(s,event))enqueue(s,turn);
       },onError:error=>fail(s,error),onClose:()=>{if(!s.closed)fail(s,Error('语音识别已断开，请重拨'));}});
       await s.asr.connect();if(s.closed){s.asr.close();return;}s.ready=true;
       s.timer=setInterval(()=>{
         if(s.closed||!s.prepared)return;
         const c=s.input;
         try{
+          if(c?.fed&&!c.cancelled&&c.decided&&!c.inputComplete&&c.cursor>=c.endMs){
+            c.inputComplete=true;send(s,{type:'speaker.native-input-complete',token:c.token,endMs:c.endMs});
+            if(!c.responded){s.responseDeadline=setTimeout(()=>{if(!s.closed&&s.input===c&&!c.cancelled&&s.gate.status==='allowed'&&!c.responded)void recover(s,'native-no-output',true);},limits.responseMs??12000);s.responseDeadline.unref?.();}
+          }
           if(c?.fed&&!c.cancelled){
             const end=c.endMs===null?s.window.bytes/32:c.endMs+700;
-            if(c.cursor+20<=Math.min(end,s.window.bytes/32)){native.forward(pcm16to24(s.window.slice(c.cursor,c.cursor+20)));c.cursor+=20;return;}
+            if(c.cursor+20<=Math.min(end,s.window.bytes/32)){native.forward(pcm16to24(s.window.slice(c.cursor,c.cursor+20)));c.cursor+=20;
+              return;}
           }
           native.forward(Buffer.alloc(960));
         }catch(error){fail(s,error);}
       },20);s.timer.unref?.();send(s,{type:'speaker.ready',streaming:true});
     },
     audio(id,pcm24){const s=sessions.get(id);if(!s?.ready||s.closed)throw Error('流式识人尚未就绪');inputBytes+=pcm24.length;s.inputBytes+=pcm24.length;if(s.inputBytes>48000*(limits.inputSeconds??1800))throw Error('本轮音频预算已用完');const pcm=s.resampler.push(pcm24),startMs=s.window.bytes/32;s.window.append(pcm);s.clock.push({startMs,endMs:s.window.bytes/32,at:performance.now()});if(s.clock.length>1200)s.clock.shift();s.asr.append(pcm);s.tracker.push(pcm);
-      if(s.latestAsr)for(const turn of normalizeFinals(s,s.latestAsr))s.tail=s.tail.then(()=>process(s,turn)).catch(error=>fail(s,error));return true;},
-    dispatch(id,kind,value,deliver){const s=sessions.get(id);if(!s)return false;if(s.gate.status!=='closed'){if(kind==='audio')s.nativeBusy=true;if(kind==='done')s.nativeBusy=false;}try{s.gate.dispatch(deliver,kind==='audio'?value.length:0);}catch(error){if(s.input)s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;send(s,{type:'speaker.error',message:error.message});}return true;},
+      if(s.latestAsr)for(const turn of normalizeFinals(s,s.latestAsr))enqueue(s,turn);return true;},
+    dispatch(id,kind,value,deliver){const s=sessions.get(id);if(!s)return false;if(s.gate.status!=='closed'){if(kind==='audio')s.nativeBusy=true;if(kind==='done')s.nativeBusy=false;}try{const c=s.input;s.gate.dispatch(()=>{if(c&&s.input===c&&['audio','tool'].includes(kind)){c.responded=true;clearTimeout(s.responseDeadline);}deliver();},kind==='audio'?value.length:0);}catch(error){if(s.input)s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;send(s,{type:'speaker.error',message:error.message});}return true;},
     assistant(id,text){const s=sessions.get(id);if(s&&text?.trim()){s.router.assistant(text);s.acceptedHistory.push({role:'assistant',text:text.slice(-800)});s.acceptedHistory=s.acceptedHistory.slice(-8);}},
     initialInstructions(id,text){return sessions.has(id)?text.replace('现在正在电话中和 Tianyi（天意）本人交流','正在电话中与主机当前指定的人物交流；账号与工具仍属于原电话入口，不随人物切换'):text;},
     close,upgrade(_req,socket){socket.destroy();},

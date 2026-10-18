@@ -2,17 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStreamingSpeakerRoutingService,TurnOutputGate,speakerProfile} from './stream-service.mjs';
 
-const wait=async predicate=>{for(let i=0;i<200;i++){if(predicate())return;await new Promise(r=>setTimeout(r,5));}throw Error('Test deadline');};
+const wait=async predicate=>{for(let i=0;i<600;i++){if(predicate())return;await new Promise(r=>setTimeout(r,5));}throw Error('Test deadline');};
 const answers=(questions,{action='respond',child=false}={})=>({answers:Object.fromEntries(Object.entries(questions).map(([id])=>[id,{type:'choice',choice:id==='action'?action:id.startsWith('role_')?(child?'child':'unknown'):id.startsWith('name_')&&child?'n_0':'keep'}]))});
 const voice=()=>{const pcm=Buffer.alloc(57600);for(let i=0;i<pcm.length;i+=2)pcm.writeInt16LE(6000,i);return pcm;};
 async function fixture(t,{evaluate,prepare=async()=>{},limits}={}){
-  let asr;const events=[],forwarded=[],profiles=[];
+  let asr;const events=[],forwarded=[],profiles=[],clarifications=[];
   const service=createStreamingSpeakerRoutingService({env:{},embedding:{ready:Promise.resolve(),compute:async()=>({embedding:[1,0],inferenceMs:1})},evaluate:evaluate??(async(_s,q)=>answers(q)),limits,createAsr:o=>{asr=o;return {connect:async()=>{},append(){},close(){}};}});
   service.reserve('call',{model:'seeduplex'});t.after(()=>service.dispose());
-  await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},forward:b=>forwarded.push(b),cancel(){},invalidate(){}},e=>events.push(e));
+  await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},forward:b=>forwarded.push(b),cancel(){},invalidate(){},clarify:text=>clarifications.push(text)},e=>events.push(e));
   service.audio('call',voice());
   const emit=(text='V，天空为什么是蓝色的？',start=0,end=1100)=>asr.onResult({body:{result:{utterances:[{definite:true,start_time:start,end_time:end,text,speaker_id:'wrong-cloud-id'}]}}});
-  return {service,events,forwarded,profiles,emit};
+  return {service,events,forwarded,profiles,emit,clarifications};
 }
 
 test('pending native audio, captions and tools are discarded together; stale admission cannot reopen them',()=>{
@@ -72,5 +72,12 @@ test('decision budget belongs to each call rather than the whole server lifetime
  const f=await fixture(t,{limits:{decisionCalls:1}});f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.decision'));f.service.close('call');f.service.reserve('call',{model:'seeduplex'});await f.service.bind('call',{prepare:async()=>{},forward(){},cancel(){},invalidate(){},context(){}},e=>f.events.push(e));f.service.audio('call',voice());f.emit();await wait(()=>f.events.filter(e=>e.type==='speaker.decision').length===2);assert.equal(f.events.some(e=>e.reason==='decision-unavailable'),false);
 });
 test('unidentifiable short speech produces native clarification rather than an immortal pending turn',async t=>{
- const f=await fixture(t);const before=f.profiles.length;f.emit('什么？',1300,1500);await wait(()=>f.events.some(e=>e.type==='speaker.recovery'));assert.ok(f.profiles.length>before);assert.match(f.profiles.at(-1)[0],/不猜身份/);f.emit('什么？',1300,1500);assert.equal(f.events.filter(e=>e.type==='speaker.recovery').length,1);
+ const f=await fixture(t);const before=f.profiles.length;f.emit('什么？',1300,1500);await wait(()=>f.events.some(e=>e.type==='speaker.recovery'));assert.ok(f.profiles.length>before);assert.match(f.profiles.at(-1)[0],/不猜身份/);await wait(()=>f.clarifications.length===1);assert.match(f.clarifications[0],/没听清/);f.emit('什么？',1300,1500);assert.equal(f.events.filter(e=>e.type==='speaker.recovery').length,1);
+});
+test('a delayed older decision never cancels or releases the newer final utterance',async t=>{
+ let resolve,calls=0;const f=await fixture(t,{evaluate:async(_s,q)=>{if(++calls===1)await new Promise(r=>{resolve=r;});return answers(q);}});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>resolve);f.service.audio('call',Buffer.alloc(24000));f.service.audio('call',voice());f.emit('V，给我讲故事。',1800,2800);resolve();await wait(()=>f.events.some(e=>e.type==='speaker.superseded'));await wait(()=>f.events.filter(e=>e.type==='speaker.decision').length===2);assert.ok(f.events.some(e=>e.type==='speaker.stream-accepted'||e.type==='speaker.stream-fallback'));
+});
+test('an admitted native turn with no audio or tool has a bounded spoken recovery',async t=>{
+ const f=await fixture(t,{limits:{responseMs:30}});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+ f.service.audio('call',Buffer.alloc(48000));await wait(()=>f.events.some(e=>e.type==='speaker.native-input-complete'));await wait(()=>f.events.some(e=>e.type==='speaker.recovery'&&e.reason==='native-no-output'));await wait(()=>f.clarifications.length===1);
 });

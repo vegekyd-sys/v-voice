@@ -32,3 +32,13 @@ test('temporary audio clips preserve exact samples and enforce bounded retention
 test('anonymous turns never send an invalid one-option name choice to the provider',()=>{
   const q=routingQuestions({participants:[{id:'speaker:0',label:'Speaker A'}],nameCandidates:[]});assert.equal(q.name_0,undefined);for(const value of Object.values(q))if(value.type==='choice')assert.ok(Object.keys(value.criteria).length>=2);
 });
+test('a verified focus request is acknowledged even when quiet refers to the other people',async()=>{
+ const c=new SpeakerRouter({evaluate:evaluator((id,s)=>id==='action'&&s.turn.text.includes('只跟')?'quiet':id==='constraint'&&s.turn.text.includes('只跟')?'only_speaker:1':undefined)});await say(c,'0','我是天意。');await say(c,'1','我是十二。');const r=await say(c,'0','V，接下来只跟十二聊，其他人说话不用回答。');assert.equal(r.mode,'exclusive');assert.equal(r.shouldRespond,true);assert.deepEqual(r.addresseeIds,['speaker:1']);
+});
+test('uncertain quiet in open conversation can respond, confident bystander silence is preserved',async()=>{
+ const evaluate=async(s,q)=>{const r=await evaluator((id)=>id==='action'?'quiet':id==='audience'?'to_1':undefined)(s,q);r.answers.action.probabilities={quiet:s.turn.text==='旁聊'?.98:.65,respond:s.turn.text==='旁聊'?.02:.35};return r;};
+ const c=new SpeakerRouter({evaluate});assert.equal((await say(c,'0','天空为什么是蓝色的？')).shouldRespond,true);assert.equal((await say(c,'0','旁聊')).shouldRespond,false);
+});
+test('a high confidence direct request overrules contradictory quiet without opening exclusive admission',async()=>{
+ const evaluate=async(s,q)=>{const r=await evaluator(id=>id==='action'?'quiet':undefined)(s,q);r.answers.action.probabilities={quiet:.92,respond:.08};r.answers.addressed={type:'choice',choice:'v',probabilities:{v:.98,other:.02}};return r;};const c=new SpeakerRouter({evaluate});const r=await say(c,'0','V，你能帮我拿东西吗？');assert.equal(r.shouldRespond,true);assert.equal(r.admission.reason,'direct-request');
+});

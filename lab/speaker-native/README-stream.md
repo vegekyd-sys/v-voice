@@ -46,9 +46,9 @@ VOICE_VERIFY_ORIGIN=http://127.0.0.1:26325 node lab/speaker-native/verify-relay.
 VOICE_VERIFY_ORIGIN=http://127.0.0.1:26325 node lab/speaker-native/verify-relay.mjs speaker steady trial
 ```
 
-产品 `?fixture=question` 可复验浏览器播放；正常入口不用 query。两者都需要点击拨号。每通最多5分钟、5人；进程最多160次 Decision/1800秒输入，重启只清理本候选额度。人的 PCM 不落盘，内存最多保留20秒；声线原型仅当次通话有效，结束即清除。合成测试产物保存在忽略目录。
+产品 `?fixture=question` 可复验浏览器播放；正常入口不用 query。两者都需要点击拨号。每通最多30分钟、5人；每通独立限制300次 Decision/1800秒输入，不跨通话累计。人的 PCM 不落盘，内存最多保留20秒；声线原型仅当次通话有效，结束即清除。合成测试产物保存在忽略目录。
 
-短句、相似声线、低音量、远场和重叠说话可能无法确认；候选会提示重说或丢弃该轮，不能宣称实现了声源分离。排他模式下无法凭被过滤者的声音解除专注。人物姓名是对话关联，不是现实身份认证；“十二”不是年龄。首次/切换轮次仍有重连和重放代价，且保留原生工具可能触发额外查网/重复补充。真实父子、手机麦克风/AEC、外放回声、长通话与听感仍需人体验。
+短句、相似声线、低音量、远场和重叠说话可能无法确认；自动模式下候选会尽量用原生语音请人重说；排他模式未确认声线仍不送入小何，不能宣称实现了声源分离。排他模式下无法凭被过滤者的声音解除专注。人物姓名是对话关联，不是现实身份认证；“十二”不是年龄。首次/切换轮次仍有重连和重放代价，且保留原生工具可能触发额外查网/重复补充。真实父子、手机麦克风/AEC、外放回声、长通话与听感仍需人体验。
 
 Decision 偶发超时只拒绝当前句，不结束电话；下一句可以继续。ASR/本地声线服务断连等致命错误仍要求重拨，不自动绕过过滤。
 
@@ -56,7 +56,7 @@ Decision 偶发超时只拒绝当前句，不结束电话；下一句可以继�
 
 ## 独立 Linux 候选
 
-`speaker-stream-linux.20261019.1` 已将同一声线模型与 Voice 产品服务放到 Linux。浏览器只采集和播放；不需要 WASM、Mac 进程或 SSH 转发。既有私有 Gateway 也在该服务器，使用 loopback26367；不会连生产 Gateway。运行时版本为 Node22.23.1、Python3.12、sherpa-onnx1.13.8、numpy2.5.4。
+`speaker-stream-linux.20261019.2` 已将同一声线模型与 Voice 产品服务放到 Linux。浏览器只采集和播放；不需要 WASM、Mac 进程或 SSH 转发。既有私有 Gateway 也在该服务器，使用 loopback26367；不会连生产 Gateway。运行时版本为 Node22.23.1、Python3.12、sherpa-onnx1.13.8、numpy2.5.4。
 
 Linux 模式必须设置 `VOICE_STREAM_LINUX=1`、`VOICE_SPEAKER_GATEWAY_LOCAL_PORT=26367`，并配置 `VOICE_SPEAKER_GATEWAY_RECEIPT`、HTTPS `VOICE_STREAM_PUBLIC_ORIGIN`、`VOICE_STREAM_BASE_PATH=/voice`、`VOICE_STREAM_ACCESS_TOKEN_FILE`。入口令牌只保存在私有文件，经 URL fragment 换取 HttpOnly Cookie；API/音频通道仍复核访问资格，不能匿名拨号。只复制该试验所需的语音/ASR/Decision 凭据，不复制个人环境文件、生产聊天或 refresh token。
 
@@ -65,3 +65,16 @@ Linux 模式必须设置 `VOICE_STREAM_LINUX=1`、`VOICE_SPEAKER_GATEWAY_LOCAL_P
 `VOICE_STREAM_COMPARE_SERIAL=1` 仅用于切到旧串行链路做基准，交付时必须删除该配置并重启本候选恢复流式。批量验证设置 `VOICE_VERIFY_ORIGIN=https://<candidate-host>/voice`、`VOICE_VERIFY_ACCESS_FILE` 和 `VOICE_VERIFY_COOKIE_FILE`；复用 Cookie 避免反复登录触发每十分钟六次的访问限制，不放宽服务端保护。
 
 Linux 实际结果与 Mac 停转发的独立性验证见 [2026-10-19 验证记录](../../docs/experiments/speaker-stream-linux-2026-10-19.md)。候选版本说明通过现有首页更新日志展示，只影响注入候选元数据的入口。
+
+
+## 第二版修复与诊断
+
+新声线需要两个一致窗口（首次声线约1秒、不同新声线通常1.6秒），片段内固定身份，并为高置信已知声线保留最多3个参考样本。可减少短前缀反复建号；不能保证相似、重叠或真实家庭声线准确。连续讲话超过4秒暂不再检查声线切换，仍为限制。
+
+Decision 仍是一次并行 typed questions 请求，补充“是否向V说”的判定；自动模式仅在高置信安静时直接抑制，强直接请求可覆盖矛盾静默。明确专注设置短确认；排他模式非目标声线仍在模型前拦截。该策略需要继续用真实旁聊验收，不等于永不误插话。
+
+同人物连接尚在准备时等待同一准备 Promise，避免重复重连；ASR和Decision迟到的旧句不取消新句。已放行语音喂完后12秒无音频/工具，采用本轮一次性原生澄清；有工具活动仍按原工具链处理，不因网络慢额外重复发请求。
+
+澄清使用原生 `speech_text_buffer.commit`，只播报固定重说提示；普通答案仍由小何听原音生成。`conversation.item.create` 只更新历史，不会触发回答，不能用于澄清播报。
+
+可设置绝对路径 `VOICE_STREAM_DIAGNOSTICS_DIR`；记录限于阶段、匿名Speaker编号、决定/置信度、文本长度、首音频和播放状态，不保存正文/名字/参数/音频/声纹。单文件约4MiB轮转，最多保留当前和上一个文件，目录0700、文件0600。诊断与合成验证收据都不提交。

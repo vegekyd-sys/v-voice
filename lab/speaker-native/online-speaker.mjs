@@ -21,6 +21,8 @@ export function createEmbeddingWorker({python,model}){
   };
 }
 
+const normalized=a=>{const n=Math.sqrt(a.reduce((s,x)=>s+x*x,0));return a.map(x=>x/(n||1));};
+const score=(embedding,p)=>Math.max(...(p.references??[p.embedding]).map(ref=>cosine(embedding,ref)));
 const cosine=(a,b)=>a.reduce((n,x,i)=>n+x*b[i],0);
 // All prototypes are anonymous, learned during this call, and discarded on close.
 export class OnlineSpeakerTracker{
@@ -49,22 +51,36 @@ export class OnlineSpeakerTracker{
     try{
       const {embedding,inferenceMs}=await this.embed(pcm.subarray(0,Math.min(pcm.length,128000)));
       if(this.closed)return;
-      const ranks=this.prototypes.map(p=>({p,score:cosine(embedding,p.embedding)})).sort((a,b)=>b.score-a.score);
+      const ranks=this.prototypes.map(p=>({p,score:score(embedding,p)})).sort((a,b)=>b.score-a.score);
       const best=ranks[0],margin=best?best.score-(ranks[1]?.score??0):1;
-      let selected=best?.score>=.55&&margin>=.12?best.p:null;
-      if(!selected&&(!best||best.score<.40||duration>=1600&&best.score<.55)&&this.prototypes.length<this.maxPeople){selected={id:'local'+this.prototypes.length,embedding};this.prototypes.push(selected);}
+      // Do not turn an unstable short prefix into another permanent person.
+      // A new voice needs two agreeing windows, while admitted segment identity
+      // remains fixed. Keep a small gallery only from high confidence matches.
+      let selected=s.speakerId?this.prototypes.find(p=>p.id===s.speakerId):best?.score>=.50&&margin>=.08?best.p:null;
+      if(!selected){
+        const distinct=!best||best.score<.45;
+        const confirmed=s.candidate&&cosine(embedding,s.candidate)>=.65&&duration>=1600;
+        if(distinct&&(!best||confirmed)&&this.prototypes.length<this.maxPeople){
+          const reference=s.candidate?normalized(embedding.map((x,i)=>x+s.candidate[i])):embedding;
+          selected={id:'local'+this.prototypes.length,embedding:reference,references:[reference]};this.prototypes.push(selected);
+        }
+        s.candidate=embedding;
+      }
       if(!selected)return;
-      const previous=s.speakerId;s.speakerId=selected.id;s.confidence=best?.p===selected?best.score:1;
-      if(previous&&previous!==selected.id)this.onEvent({type:'revision',segment:s,previous});
-      else if(!previous)this.onEvent({type:'identified',segment:s,inferenceMs,afterStartMs:this.position-s.startMs,confidence:s.confidence});
-      // Keep the first clean prototype stable; never adapt it from mixed speech.
+      const previous=s.speakerId;
+      if(previous&&best?.p!==selected&&best?.score>=.55){s.challengerCount=(s.challengerId===best.p.id?s.challengerCount:0)+1;s.challengerId=best.p.id;if(s.challengerCount>=2)s.ambiguous=true;}else{s.challengerCount=0;s.challengerId=null;}
+      s.speakerId=selected.id;s.confidence=best?.p===selected?best.score:1;
+      if(!previous)this.onEvent({type:'identified',segment:s,inferenceMs,afterStartMs:this.position-s.startMs,confidence:s.confidence});
+      if(previous&&best?.p===selected&&best.score>=.72&&margin>=.20&&!s.referenceAdded){
+        selected.references??=[selected.embedding];if(selected.references.length<3)selected.references.push(embedding);s.referenceAdded=true;
+      }
     }catch(error){if(!this.closed)this.onEvent({type:'error',message:error.message});}
     finally{s.pending=false;if(!this.closed&&!s.speakerId&&s.endMs&&duration>=1000&&!final&&duration<s.frames.length*20)void this.classify(s,true);}
   }
   overlaps(startMs,endMs){return this.segments.map(s=>({segment:s,ms:Math.max(0,Math.min(s.endMs??this.position,endMs)-Math.max(s.startMs,startMs))})).filter(x=>x.ms>0);}
   async verifyWindow(pcm){
-    const {embedding}=await this.embed(pcm),ranks=this.prototypes.map(p=>({id:p.id,score:cosine(embedding,p.embedding)})).sort((a,b)=>b.score-a.score);
-    const best=ranks[0];return best?.score>=.55&&best.score-(ranks[1]?.score??0)>=.12?best.id:null;
+    const {embedding}=await this.embed(pcm),ranks=this.prototypes.map(p=>({id:p.id,score:score(embedding,p)})).sort((a,b)=>b.score-a.score);
+    const best=ranks[0];return best?.score>=.50&&best.score-(ranks[1]?.score??0)>=.08?best.id:null;
   }
   close(){this.closed=true;for(const s of this.segments)s.frames=[];this.segments=[];this.prototypes=[];this.pre=[];this.pending=Buffer.alloc(0);}
 }

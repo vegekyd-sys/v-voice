@@ -287,7 +287,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     connectionStage('provider-connecting');
     if(!speakerRouting?.lazyNative?.(s.id))await s.bridge.connect();
     if(current(s)&&speakerRouting?.has(s.id))await speakerRouting.bind(s.id,{
-      forward:audio=>s.bridge.sendAudio(audio),context:text=>s.bridge.sendUserMessage(text),interrupt:()=>s.bridge.handleBargeIn(),
+      forward:audio=>s.bridge.sendAudio(audio),context:text=>s.bridge.sendUserMessage(text),clarify:text=>s.bridge.speakProgress(text,{caption:true}),interrupt:()=>s.bridge.handleBargeIn(),
       cancel:()=>s.bridge.cancelPendingResponse(),invalidate:()=>{s.personaKey=null;},
       prepare:async(instructions,key,history=[])=>{
         if(!current(s))throw Error('通话已结束');
