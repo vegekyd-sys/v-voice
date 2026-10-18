@@ -140,3 +140,16 @@ test('pre-generated listening samples require entry access and never create a vo
  const audio=await f.request('/voice/api/comparison/audio/clip',cookie,undefined,{range:'bytes=0-3'});assert.equal(audio.status,206);assert.equal(await audio.text(),'RIFF');assert.deepEqual(accesses,[{id:'clip',range:'bytes=0-3'}]);
  assert.equal((await f.request('/voice/api/comparison/audio/unknown',cookie)).status,404);assert.equal(f.calls.length,0);
 });
+
+test("a camera device's photo upload reaches the device endpoint outside the page path, only on the public host", async t => {
+  const uploads = [];
+  const deviceEndpoint = { path: "/device/voice", otaPath: null, visionPath: "/device/vision", activeCalls: () => 0, busy: () => false, dispose: async () => {},
+    handleVision: (req, res) => { uploads.push(req.headers.host); res.writeHead(200, { "content-type": "application/json" }); res.end('{"success":true,"result":"ok"}'); } };
+  const f = await fixture(t, { deviceEndpoint });
+  // Firmware sends no browser Origin and may omit the port from Host.
+  const upload = await f.request("/device/vision", "", {}, { origin: "", host: new URL(origin).hostname });
+  assert.equal(upload.status, 200);
+  assert.deepEqual(await upload.json(), { success: true, result: "ok" });
+  assert.equal((await f.request("/device/vision", "", {}, { host: "attacker.example" })).status, 403);
+  assert.equal(uploads.length, 1);
+});

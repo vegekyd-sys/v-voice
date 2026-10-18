@@ -70,10 +70,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, pre
     try {
       if(stopping)return json(res,503,{error:"服务正在收尾，请稍后重新拨号"});
       const host = req.headers.host ?? "";
-      if (deviceEndpoint?.otaPath && new URL(req.url, "http://device.invalid").pathname === deviceEndpoint.otaPath) {
+      const devicePathname = deviceEndpoint && new URL(req.url, "http://device.invalid").pathname;
+      if (deviceEndpoint && (deviceEndpoint.otaPath && devicePathname === deviceEndpoint.otaPath || deviceEndpoint.visionPath && devicePathname === deviceEndpoint.visionPath)) {
+        // Device HTTP (OTA check, camera photo upload) authenticates itself; some firmware omits the port in Host.
         const hostname = (() => {try {return new URL(`http://${host}`).hostname;} catch {return "";}})();
         if (hosted ? hostname !== origin.hostname : !/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host)) return json(res, 403, { error: "请求入口不匹配" });
-        return deviceEndpoint.handleOta(req, res);
+        return devicePathname === deviceEndpoint.otaPath ? deviceEndpoint.handleOta(req, res) : deviceEndpoint.handleVision(req, res);
       }
       if (hosted ? host !== origin.host : !/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host)) return json(res, 403, { error: "请求入口不匹配" });
       const requestOrigin = hosted ? publicOrigin : `http://${host}`;
@@ -499,6 +501,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         otaPath:process.env.VOICE_XIAOZHI_OTA_PATH ?? null,
         xiaozhiPublicUrl:process.env.VOICE_XIAOZHI_PUBLIC_URL ?? null,
         isSessionBusy:sessionKey=>bridge?.sessionBusy(sessionKey) ?? true,
+        // Camera devices (devices.json camera:true) look through DeepSeek's image model.
+        visionPath:process.env.VOICE_DEVICE_VISION_PATH ?? "/device/vision",
+        describeImage:process.env.DEEPSEEK_API_KEY ? (await import('../realtime-direct-tools/device-vision.mjs')).createDeepSeekVision({apiKey:process.env.DEEPSEEK_API_KEY,model:process.env.VOICE_DEVICE_VISION_MODEL ?? 'deepseek-flash'}) : null,
         robotEvaluate:await robotEvaluatorFromEnv(process.env)});
     }
     bridge = createLiveH5Server({ gateway, deviceEndpoint,

@@ -112,6 +112,41 @@ test('a mid-call volume change waits for the firmware MCP reply', async () => {
   await assert.rejects(pending, /断开/);
 });
 
+test('a camera device learns its vision upload URL and token from MCP initialize', () => {
+  const h = harness({volume:35, vision:{url:'https://voice.example/device/vision', token:'t'.repeat(32)}});
+  h.ws.emit('message', Buffer.from(JSON.stringify({type:'hello', audio_params:{format:'opus', sample_rate:16000}})), false);
+  const mcp = h.ws.out.filter(e => e.type === 'mcp').map(e => e.payload);
+  const init = mcp.find(p => p.method === 'initialize');
+  assert.deepEqual(init.params.capabilities, {vision:{url:'https://voice.example/device/vision', token:'t'.repeat(32)}});
+  assert.notEqual(init.id, 1, 'the hello volume keeps id 1');
+  const plain = harness();
+  plain.ws.emit('message', Buffer.from(JSON.stringify({type:'hello', audio_params:{format:'opus', sample_rate:16000}})), false);
+  assert(!plain.ws.out.some(e => e.type === 'mcp'), 'no camera, no initialize');
+  assert.equal(plain.wire.takePhoto, undefined);
+});
+
+test('take_photo returns the firmware tool text, and times out or fails honestly', async () => {
+  const h = harness({vision:{url:'https://voice.example/device/vision', token:'t'.repeat(32)}});
+  await assert.rejects(h.wire.takePhoto('这是什么'), /尚未连接/);
+  h.ws.emit('message', Buffer.from(JSON.stringify({type:'hello', audio_params:{format:'opus', sample_rate:16000}})), false);
+  const reply = payload => h.ws.emit('message', Buffer.from(JSON.stringify({session_id:'voice', type:'mcp', payload:{jsonrpc:'2.0', ...payload}})), false);
+  const lastMcp = () => h.ws.out.filter(e => e.type === 'mcp').at(-1).payload;
+
+  const seen = h.wire.takePhoto('我手里拿的是什么');
+  assert.deepEqual(lastMcp().params, {name:'self.camera.take_photo', arguments:{question:'我手里拿的是什么'}});
+  reply({id:lastMcp().id, result:{content:[{type:'text', text:'{"success":true,"result":"一个苹果"}'}], isError:false}});
+  assert.equal(await seen, '{"success":true,"result":"一个苹果"}');
+
+  const broken = h.wire.takePhoto('这是什么');
+  reply({id:lastMcp().id, error:{message:'Failed to capture photo'}});
+  await assert.rejects(broken, /Failed to capture photo/);
+
+  const slow = h.wire.takePhoto('这是什么');
+  h.advance(14999);
+  h.advance(1);
+  await assert.rejects(slow, /拍照超时/);
+});
+
 test('output gain lifts quiet speech and rounds off peaks without clipping', () => {
   const pcm = Buffer.alloc(8);
   [1000, -1000, 20000, -32000].forEach((v, i) => pcm.writeInt16LE(v, i * 2));

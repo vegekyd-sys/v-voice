@@ -6,5 +6,6 @@ test('native notice assets have validated provenance and match the actual select
   assert.equal(toolStartClip({name:'memory_search'}).text,'我查一下记忆里的记录。');
   assert.equal(toolStartClip({name:'openclaw_tool',args:{tool:'web_fetch'}}).text,'我上网查一下。');
   assert.equal(toolStartClip({name:'feishu_calendar'}).text,'我查一下相关资料。');
+  assert.equal(toolStartClip({name:'look',args:{question:'这是什么'}}),null,'no cached clip says "我看看"; never claim to be looking things up');
   for(const name of ['process','delegate_to_v','cancel_task','end_call'])assert.equal(toolStartClip({name:'openclaw_tool',args:{tool:name}}),null);
 });

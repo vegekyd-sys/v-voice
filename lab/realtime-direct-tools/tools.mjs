@@ -22,8 +22,10 @@ export const TOOLS=[
 ];
 // Declared only on calls from a speaker whose firmware has a volume control.
 export const SPEAKER_VOLUME_TOOL={type:'function',name:'set_speaker_volume',description:'调节正在通话的这台音箱自身的播放音量，范围0-100。用户说“大声点”“小声点”时传 change=up/down（每次约15），说“音量调到70”时传 volume=70；volume 和 change 只给一个。收到结果后才能说已调好，并说出新的音量；confirmed=false 表示指令已发出但音箱没有回执。不能调手机、电视或其他设备。',parameters:object({volume:{type:'integer',minimum:0,maximum:100},change:{type:'string',enum:['up','down']}})};
+// Declared only on calls from a device with a camera (for example StackChan).
+export const LOOK_TOOL={type:'function',name:'look',description:'让正在通话的这台机器人用自己的摄像头拍一张照片，再由看图模型回答 question。用户说“你看看这是什么”“我手里拿的是什么”“帮我看一下”时调用；question 写清要看什么，例如“用户手里拿的是什么”。只能看到机器人正前方摄像头拍到的画面，看不到别处、屏幕外或过去的事。结果是对真实照片的识别：只能按返回的 description 回答，不得编造或补充没看到的细节；没看清或失败就如实说，可以请用户把东西放到机器人面前再试。',parameters:object({question:str},['question'])};
 export function validateTool(name,args){
- const tool=[...TOOLS,SPEAKER_VOLUME_TOOL].find(t=>t.name===name);if(!tool)throw Error('不支持这个工具');
+ const tool=[...TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL].find(t=>t.name===name);if(!tool)throw Error('不支持这个工具');
  if(!args||typeof args!=='object'||Array.isArray(args))throw Error('工具参数必须是对象');
  for(const key of Object.keys(args))if(!(key in tool.parameters.properties))throw Error('未知工具参数');
  for(const key of tool.parameters.required)if(!(key in args))throw Error('缺少工具参数');
@@ -41,8 +43,9 @@ export function validateTool(name,args){
  if(name==='openclaw_agent_control')validateVoiceTaskControl(args);
  return args;
 }
-export function createToolExecutor({invoke,allowedTools,calendar,larkRead,delegate,showContent,speakerVolume}){return async(name,args,callId,signal)=>{
+export function createToolExecutor({invoke,allowedTools,calendar,larkRead,delegate,showContent,speakerVolume,look}){return async(name,args,callId,signal)=>{
  validateTool(name,args);
+ if(name==='look'){if(!look)throw Error('这台终端没有摄像头');return look(args,callId,signal);}
  if(name==='set_speaker_volume'){if(!speakerVolume)throw Error('这台终端不能调音量');return speakerVolume(args,callId,signal);}
  if(name==='show_content'){if(!showContent)throw Error('屏幕展示尚未就绪');return showContent(args,callId,signal);}
  if(name==='current_time')return {timezone:'Asia/Shanghai',now:new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'})};

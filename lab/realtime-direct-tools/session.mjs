@@ -2,7 +2,7 @@ import { taskActivity } from '../gpt-live-h5/avatar-state.mjs';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {SeeduplexRealtimeVoiceBridge} from '../seeduplex-realtime-provider.mjs';
 import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
-import {TOOLS,SPEAKER_VOLUME_TOOL,createToolExecutor,validateTool,processExited} from './tools.mjs';
+import {TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,createToolExecutor,validateTool,processExited} from './tools.mjs';
 import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICES,grokVoice,grokVoiceModel,grokVoiceLabel,grokVoiceSpeed} from './grok-provider.mjs';
 import {createTaskDelivery} from './task-delivery.mjs';
 import {createBackendDelegation} from './backend.mjs';
@@ -112,7 +112,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   };
   // The tools one call declares: no screen tool without a display, and device
   // controls only when the attached hardware provides them.
-  const sessionTools=s=>[...(s.display?TOOLS:TOOLS.filter(t=>t.name!=='show_content')),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[])];
+  const sessionTools=s=>[...(s.display?TOOLS:TOOLS.filter(t=>t.name!=='show_content')),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[])];
   async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null}) {
     if(!['phone','speaker'].includes(surface))throw Error('不支持的语音终端');
     if(![16000,24000].includes(inputSampleRate))throw Error('不支持的输入采样率');
@@ -171,7 +171,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       return work.then(result=>{audit({type:'tool.local-result',voiceSessionId:s.id,callId,name,result});return result;});
     });
     const admittedUserTurns=new Map();
-    const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',calendar),larkRead:localRead('lark_read',larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,delegate:args=>s.backend.run({...args,callerTurn:admittedUserTurns.get(args.callId)})});
+    const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',calendar),larkRead:localRead('lark_read',larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,look:s.speaker?.look,delegate:args=>s.backend.run({...args,callerTurn:admittedUserTurns.get(args.callId)})});
     s.progressTimer=setInterval(()=>deferred(s),200);s.progressTimer.unref?.();
     const onToolCall=async call=>{
       if(!current(s))return;

@@ -27,7 +27,7 @@ export function applyOutputGain(pcm, gain) {
 const DOWN_FRAME_BYTES = XIAOZHI_DOWNLINK_RATE * XIAOZHI_FRAME_MS / 1000 * 2;  // 2880
 const PLAYBACK_MARGIN_MS = 400;
 
-export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, sessionId = 'voice', volume = null, outputGain = 1} = {}) {
+export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, sessionId = 'voice', volume = null, outputGain = 1, vision = null} = {}) {
   const wire = new EventEmitter();
   const decoder = new OpusScript(XIAOZHI_UPLINK_RATE, 1, OpusScript.Application.VOIP);
   let encoder = new OpusScript(XIAOZHI_DOWNLINK_RATE, 1, OpusScript.Application.AUDIO);
@@ -103,6 +103,9 @@ export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, cl
       sendJson({type:'hello', transport:'websocket', audio_params:{format:'opus', sample_rate:XIAOZHI_DOWNLINK_RATE, channels:1, frame_duration:XIAOZHI_FRAME_MS}});
       // An operator volume from the device record, applied through the firmware's own MCP tool.
       if (volume !== null) sendJson({type:'mcp', payload:{jsonrpc:'2.0', id:1, method:'tools/call', params:{name:'self.audio_speaker.set_volume', arguments:{volume}}}});
+      // A camera device learns where to upload photos (and this call's own token)
+      // from the MCP initialize capabilities; its take_photo tool posts there.
+      if (vision) sendJson({type:'mcp', payload:{jsonrpc:'2.0', id:++mcpId, method:'initialize', params:{protocolVersion:'2024-11-05', capabilities:{vision:{url:vision.url, token:vision.token}}, clientInfo:{name:'v-voice', version:'1'}}}});
       // One xiaozhi channel is one call.
       deviceSays({type:'call.start'});
       return;
@@ -113,7 +116,7 @@ export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, cl
       if (!waiter) return;
       mcpWaiters.delete(reply.id);clearTimer(waiter.timer);
       if (reply.error || reply.result?.isError) return waiter.reject(Error(String(reply.error?.message ?? reply.result?.content?.[0]?.text ?? '音箱拒绝了这个操作').slice(0, 200)));
-      return waiter.resolve(true);
+      return waiter.resolve(reply.result);
     }
     // listen start/stop/detect: the shared Voice session owns turn-taking.
   });
@@ -157,6 +160,15 @@ export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, cl
     const timer = setTimer(() => {mcpWaiters.delete(id);resolve({volume:level, confirmed:false});}, timeoutMs);
     mcpWaiters.set(id, {timer, reject, resolve:() => resolve({volume:level, confirmed:true})});
     sendJson({type:'mcp', payload:{jsonrpc:'2.0', id, method:'tools/call', params:{name:'self.audio_speaker.set_volume', arguments:{volume:level}}}});
+  });
+  /** Have a camera device take a photo and ask the vision service the question.
+   * Resolves the tool's text result: the vision endpoint's reply, relayed by the firmware. */
+  if (vision) wire.takePhoto = (question, {timeoutMs = 15000} = {}) => new Promise((resolve, reject) => {
+    if (closed || !helloSeen || ws.readyState !== 1) return reject(Error('机器人尚未连接'));
+    const id = ++mcpId;
+    const timer = setTimer(() => {mcpWaiters.delete(id);reject(Error('机器人拍照超时'));}, timeoutMs);
+    mcpWaiters.set(id, {timer, reject, resolve:result => resolve((result?.content ?? []).filter(b => b?.type === 'text').map(b => String(b.text ?? '')).join('\n'))});
+    sendJson({type:'mcp', payload:{jsonrpc:'2.0', id, method:'tools/call', params:{name:'self.camera.take_photo', arguments:{question}}}});
   });
   wire.close = (code, reason) => {if (ws.readyState === 1) ws.close(code, reason);};
   wire.terminate = () => ws.terminate();

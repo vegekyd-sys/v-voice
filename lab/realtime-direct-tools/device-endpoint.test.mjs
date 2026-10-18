@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
-import {createServer} from 'node:http';
+import {createServer,request as httpRequest} from 'node:http';
 import {Readable} from 'node:stream';
 import {setTimeout as delay} from 'node:timers/promises';
 import * as ws from 'ws';
@@ -27,8 +27,8 @@ async function fixture(options = {}) {
   const directVoice = createDirectVoiceService({gateway,wsModule:{WebSocket:ProviderSocket,WebSocketServer:class {close() {}}},apiKeys:{seeduplex:'k',grok:'k'},audit:v => audit.push(v)});
   let busy = false;
   const endpoint = createDeviceEndpoint({directVoice,wsModule:ws,devices:parseDeviceEntries([record(options.record),...(options.extraDevices ?? [])]),audit:v => audit.push(v),
-    maxBufferedBytes:options.maxBufferedBytes,robotEvaluate:options.robotEvaluate,isSessionBusy:() => busy,tickMs:10,idleMs:options.idleMs ?? 5000,initialIdleMs:options.initialIdleMs ?? 5000,followUpMs:options.followUpMs ?? 5000,chatterMs:options.chatterMs ?? 5000,toolHoldMs:5000});
-  const server = createServer((req, res) => {res.writeHead(404);res.end();});
+    maxBufferedBytes:options.maxBufferedBytes,robotEvaluate:options.robotEvaluate,visionPath:options.visionPath,describeImage:options.describeImage,isSessionBusy:() => busy,tickMs:10,idleMs:options.idleMs ?? 5000,initialIdleMs:options.initialIdleMs ?? 5000,followUpMs:options.followUpMs ?? 5000,chatterMs:options.chatterMs ?? 5000,toolHoldMs:5000});
+  const server = createServer((req, res) => {if (endpoint.visionPath && req.url === endpoint.visionPath) return endpoint.handleVision(req, res);res.writeHead(404);res.end();});
   server.on('upgrade', (req, socket, head) => endpoint.handleUpgrade(req, socket, head, {dialect:req.url.startsWith('/device/xiaozhi') ? 'xiaozhi' : 'native'}));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const url = `ws://127.0.0.1:${server.address().port}/device/voice`;
@@ -444,4 +444,94 @@ test('a native speaker without a volume control never sees the volume tool', asy
   const tools = f.peers[0].sent.find(e => e.type === 'session.create').session.tools.map(tool => tool.name);
   assert(!tools.includes('set_speaker_volume'));
   assert(tools.includes('end_call'));
+});
+
+// The firmware's Explain(): chunked multipart with a question field and camera.jpg.
+const BOUNDARY = '----ESP32_CAMERA_BOUNDARY';
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 0xff, 0xd9]);
+const photoBody = (question, jpeg = JPEG) => Buffer.concat([
+  Buffer.from(`--${BOUNDARY}\r\nContent-Disposition: form-data; name="question"\r\n\r\n${question}\r\n--${BOUNDARY}\r\nContent-Disposition: form-data; name="file"; filename="camera.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`),
+  jpeg, Buffer.from(`\r\n--${BOUNDARY}--\r\n`)]);
+const uploadPhoto = (url, token, body) => new Promise((resolve, reject) => {
+  const req = httpRequest(url, {method:'POST', headers:{authorization:`Bearer ${token}`, 'content-type':`multipart/form-data; boundary=${BOUNDARY}`, 'transfer-encoding':'chunked'}}, res => {
+    const chunks = [];res.on('data', c => chunks.push(c));res.on('end', () => resolve({status:res.statusCode, text:Buffer.concat(chunks).toString()}));
+  });
+  req.on('error', reject);
+  req.write(body.subarray(0, 40));req.end(body.subarray(40));
+});
+const openXiaozhi = async f => {
+  const client = new ws.WebSocket(f.url.replace('/device/voice', '/device/xiaozhi'), {headers:{authorization:`Bearer ${TOKEN}`}});
+  client.events = [];
+  client.on('message', (data, binary) => {if (!binary) client.events.push(JSON.parse(data.toString()));});
+  await new Promise((resolve, reject) => {client.once('open', resolve);client.once('error', reject);});
+  client.send(JSON.stringify({type:'hello', version:1, transport:'websocket', audio_params:{format:'opus', sample_rate:16000, channels:1, frame_duration:60}}));
+  await f.until(() => f.peers[0]?.sent.some(e => e.type === 'session.create'), 'provider session');
+  return client;
+};
+const mcpOut = client => client.events.filter(e => e.type === 'mcp').map(e => e.payload);
+
+test('a camera robot looks: V asks for a photo, the firmware uploads it, the description comes back', async t => {
+  const seen = [];
+  const f = await fixture({record:{robot:true, camera:true}, visionPath:'/device/vision',
+    describeImage:async ({question, image}) => {seen.push({question, image});return '用户手里拿着一个红苹果。';}});
+  t.after(f.close);
+  const client = await openXiaozhi(f);t.after(() => client.close());
+  const init = mcpOut(client).find(p => p.method === 'initialize');
+  assert(init, 'MCP initialize after hello');
+  const {url, token} = init.params.capabilities.vision;
+  assert.equal(url, `http://${new URL(f.url).host}/device/vision`, 'same origin as the device WebSocket');
+  assert.match(token, /^[A-Za-z0-9_-]{32}$/u);
+  const tools = f.peers[0].sent.find(e => e.type === 'session.create').session.tools;
+  assert(tools.some(tool => tool.name === 'look'));
+
+  // The token alone is not enough: V must be waiting for this device's photo.
+  assert.equal((await uploadPhoto(url, token, photoBody('偷拍'))).status, 401);
+  assert.equal(seen.length, 0);
+
+  f.peers[0].emit('message', Buffer.from(JSON.stringify({type:'response.function_call_arguments.done', items:[{call_id:'look-1', name:'look', arguments:JSON.stringify({question:'我手里拿的是什么'})}]})), false);
+  await f.until(() => mcpOut(client).some(p => p.params?.name === 'self.camera.take_photo'), 'take_photo');
+  const shot = mcpOut(client).find(p => p.params?.name === 'self.camera.take_photo');
+  assert.deepEqual(shot.params.arguments, {question:'我手里拿的是什么'});
+  assert.equal((await uploadPhoto(url, 'x'.repeat(32), photoBody('?'))).status, 401, 'another token is refused');
+  assert.equal((await uploadPhoto(url, token, photoBody('?', Buffer.from('not a jpeg')))).status, 400);
+  const upload = await uploadPhoto(url, token, photoBody('我手里拿的是什么'));
+  assert.equal(upload.status, 200);
+  assert.deepEqual(JSON.parse(upload.text), {success:true, result:'用户手里拿着一个红苹果。'});
+  assert.equal(seen[0].question, '我手里拿的是什么');
+  assert.deepEqual(seen[0].image, JPEG);
+  // The firmware relays the endpoint's body as the MCP tool result text.
+  client.send(JSON.stringify({session_id:'voice', type:'mcp', payload:{jsonrpc:'2.0', id:shot.id, result:{content:[{type:'text', text:upload.text}], isError:false}}}));
+  await f.until(() => f.audit.some(e => e.type === 'tool.delivered' && e.callId === 'look-1'), 'tool result');
+  assert.equal(f.audit.find(e => e.type === 'tool.delivered' && e.callId === 'look-1').result.description, '用户手里拿着一个红苹果。');
+  assert(f.audit.some(e => e.type === 'device.vision' && e.ok && e.photoBytes === JPEG.length));
+  assert(f.audit.some(e => e.type === 'device.look' && e.ok));
+  assert(!JSON.stringify(f.audit).includes(JPEG.toString('base64')), 'photos are never audited');
+  assert.equal((await uploadPhoto(url, token, photoBody('再拍'))).status, 401, 'the look is over');
+});
+
+test('an oversized photo is refused and a failed look reaches the model as a tool error', async t => {
+  const f = await fixture({record:{robot:true, camera:true}, visionPath:'/device/vision', describeImage:async () => {throw Error('model down');}});
+  t.after(f.close);
+  const client = await openXiaozhi(f);t.after(() => client.close());
+  const {url, token} = mcpOut(client).find(p => p.method === 'initialize').params.capabilities.vision;
+  f.peers[0].emit('message', Buffer.from(JSON.stringify({type:'response.function_call_arguments.done', items:[{call_id:'look-2', name:'look', arguments:JSON.stringify({question:'这是什么'})}]})), false);
+  await f.until(() => mcpOut(client).some(p => p.params?.name === 'self.camera.take_photo'), 'take_photo');
+  const shot = mcpOut(client).find(p => p.params?.name === 'self.camera.take_photo');
+  assert.equal((await uploadPhoto(url, token, photoBody('这是什么', Buffer.concat([JPEG, Buffer.alloc(1024 * 1024)])))).status, 413);
+  const upload = await uploadPhoto(url, token, photoBody('这是什么'));
+  assert.deepEqual(JSON.parse(upload.text), {success:false, message:'看图服务暂时没有结果'});
+  client.send(JSON.stringify({session_id:'voice', type:'mcp', payload:{jsonrpc:'2.0', id:shot.id, result:{content:[{type:'text', text:upload.text}], isError:false}}}));
+  await f.until(() => f.audit.some(e => e.type === 'device.look' && !e.ok), 'look failure');
+  assert.match(f.audit.find(e => e.type === 'device.look' && !e.ok).error, /看图服务暂时没有结果/);
+  await f.until(() => f.audit.some(e => e.type === 'tool.delivered' && e.callId === 'look-2'), 'tool error');
+  assert.match(f.audit.find(e => e.type === 'tool.delivered' && e.callId === 'look-2').result.error, /看图服务暂时没有结果/, 'the model hears it did not see, never a guess');
+});
+
+test('a xiaozhi device without a camera gets no vision capability and no look tool', async t => {
+  const f = await fixture({record:{robot:true}, visionPath:'/device/vision', describeImage:async () => 'never'});
+  t.after(f.close);
+  const client = await openXiaozhi(f);t.after(() => client.close());
+  assert(!mcpOut(client).some(p => p.method === 'initialize'));
+  assert(!f.peers[0].sent.find(e => e.type === 'session.create').session.tools.some(tool => tool.name === 'look'));
+  assert.equal(parseDeviceEntries([record()])[0].camera, false, 'camera is off unless the record says so');
 });
