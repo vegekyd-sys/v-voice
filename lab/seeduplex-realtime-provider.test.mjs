@@ -651,21 +651,31 @@ test('a confirmed device barge-in cancels a reply mid-generation and the next ut
  socket.message({type:'response.output_audio.started',response_id:'answer'});
  socket.message({type:'response.output_audio.delta',response_id:'answer',delta:floatAudio([.25])});
  assert.equal(audio.length,2,'the reply to the interruption plays');
- // Generation has finished but Seeduplex still plays it on its own clock and
- // will not transcribe until then: a confirmed barge-in cancels it too.
+ // Once generation has finished a confirmed barge-in only flushes locally:
+ // Seeduplex hears the talk-over itself, and a cancel then broke its ASR.
  socket.message({type:'response.output_audio.done',response_id:'answer'});
  bridge.handleBargeIn({confirmed:true});
- const cancels=socket.sent.filter(e=>e.type==='response.cancel');
- assert.equal(cancels.length,2);
- // A refused cancel is not a session failure, whatever its wording.
- socket.message({type:'error',error:{event_id:cancels[1].event_id,message:'something unexpected'}});
- assert.deepEqual(events.slice(-2),['client.response.cancel','client.response.cancel.rejected']);
- socket.message({type:'response.done'});
+ assert.equal(socket.sent.filter(e=>e.type==='response.cancel').length,1);
+ assert.deepEqual(events.filter(e=>e==='client.response.cancel').length,1);
+ bridge.close();
+});
+
+test('after a cancel, the next turn keeps the reply text that precedes its first audio',async()=>{
+ const socket=new FakeSocket(),texts=[],audio=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},onAudio:b=>audio.push(b),onTranscript:(role,text,final)=>final&&texts.push([role,text]),onClearAudio(){},onResponseDone(){},onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+ socket.message({type:'response.output_audio.started',response_id:'story'});
+ bridge.handleBargeIn({confirmed:true});
+ // A refused cancel never ends the session.
+ const cancel=socket.sent.find(e=>e.type==='response.cancel');
+ socket.message({type:'error',error:{event_id:cancel.event_id,message:'unexpected'}});
+ socket.message({type:'response.output_text.done',response_id:'story',text:'旧故事的尾巴'});
  socket.message({type:'conversation.item.input_audio_transcription.started'});
  socket.message({type:'conversation.item.input_audio_transcription.completed',transcript:'今天星期几'});
- assert.deepEqual(texts.at(-1),['user','今天星期几']);
+ socket.message({type:'response.output_text.done',text:'今天是星期日。'});
  socket.message({type:'response.output_audio.started',response_id:'weekday'});
  socket.message({type:'response.output_audio.delta',response_id:'weekday',delta:floatAudio([.25])});
- assert.equal(audio.length,3);
+ assert.deepEqual(texts,[['user','今天星期几'],['assistant','今天是星期日。']]);
+ assert.equal(audio.length,1);
  bridge.close();
 });

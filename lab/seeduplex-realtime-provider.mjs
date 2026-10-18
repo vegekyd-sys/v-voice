@@ -541,10 +541,11 @@ export class SeeduplexRealtimeVoiceBridge {
     // Host-injected backend speech may postpone native ASR until its TTS ends.
     // A client speech onset must retire that playback, not wait for ASREnded.
     // A confirmed barge-in (a speaker whose own echo cancellation heard someone
-    // talk over V) is already the evidence. Seeduplex keeps its own clock of the
-    // speech it is playing, even after generation has finished, and does not
-    // transcribe until that ends or it hears the talk-over itself, so tell it.
-    if (this.injectedSpeech || confirmed) this.#cancelUpstreamResponse(true);
+    // talk over V) is already the evidence: while a long answer is still being
+    // generated Seeduplex sends no transcription, so waiting would let it resume.
+    // Once generation has finished, leave it to Seeduplex: a cancel then left
+    // its ASR starting turns that never completed (device test 2026-10-18).
+    if (this.injectedSpeech || (confirmed && this.responseActive)) this.#cancelUpstreamResponse(true);
   }
 
   /**
@@ -770,6 +771,10 @@ export class SeeduplexRealtimeVoiceBridge {
       // right to tear the upstream generation down. This runs after the reset
       // above so the fresh suppression is not immediately cleared.
       const spoken = optionalString(event.transcript) ?? optionalString(event.text);
+      // A finished utterance after an earlier cancel opens the next turn, whose
+      // reply text arrives before its first audio. Retired response ids still
+      // filter the cancelled tail.
+      if (spoken && this.cancelledOutputPending) this.cancelledOutputPending = false;
       if (spoken && this.bargeInPending) this.#cancelUpstreamResponse();
       this.bargeInPending = false;
     }
