@@ -634,8 +634,8 @@ test('long backend document keeps full paired history but commits only short spe
 });
 
 test('a confirmed device barge-in cancels a reply mid-generation and the next utterance is still heard',async()=>{
- const socket=new FakeSocket(),audio=[],texts=[];
- const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},onAudio:b=>audio.push(b),onTranscript:(role,text,final)=>final&&texts.push([role,text]),onClearAudio(){},onResponseDone(){},onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const socket=new FakeSocket(),audio=[],texts=[],events=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},onAudio:b=>audio.push(b),onTranscript:(role,text,final)=>final&&texts.push([role,text]),onEvent:e=>events.push(e.type),onClearAudio(){},onResponseDone(){},onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
  const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
  // A long story: Seeduplex sends no transcription while it is still generating.
  socket.message({type:'response.output_audio.started',response_id:'story'});
@@ -651,9 +651,21 @@ test('a confirmed device barge-in cancels a reply mid-generation and the next ut
  socket.message({type:'response.output_audio.started',response_id:'answer'});
  socket.message({type:'response.output_audio.delta',response_id:'answer',delta:floatAudio([.25])});
  assert.equal(audio.length,2,'the reply to the interruption plays');
- // Once generation has finished, a confirmed barge-in has nothing upstream to cancel.
+ // Generation has finished but Seeduplex still plays it on its own clock and
+ // will not transcribe until then: a confirmed barge-in cancels it too.
  socket.message({type:'response.output_audio.done',response_id:'answer'});
  bridge.handleBargeIn({confirmed:true});
- assert.equal(socket.sent.filter(e=>e.type==='response.cancel').length,1);
+ const cancels=socket.sent.filter(e=>e.type==='response.cancel');
+ assert.equal(cancels.length,2);
+ // A refused cancel is not a session failure, whatever its wording.
+ socket.message({type:'error',error:{event_id:cancels[1].event_id,message:'something unexpected'}});
+ assert.deepEqual(events.slice(-2),['client.response.cancel','client.response.cancel.rejected']);
+ socket.message({type:'response.done'});
+ socket.message({type:'conversation.item.input_audio_transcription.started'});
+ socket.message({type:'conversation.item.input_audio_transcription.completed',transcript:'今天星期几'});
+ assert.deepEqual(texts.at(-1),['user','今天星期几']);
+ socket.message({type:'response.output_audio.started',response_id:'weekday'});
+ socket.message({type:'response.output_audio.delta',response_id:'weekday',delta:floatAudio([.25])});
+ assert.equal(audio.length,3);
  bridge.close();
 });
