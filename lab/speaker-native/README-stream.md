@@ -53,3 +53,15 @@ VOICE_VERIFY_ORIGIN=http://127.0.0.1:26325 node lab/speaker-native/verify-relay.
 Decision 偶发超时只拒绝当前句，不结束电话；下一句可以继续。ASR/本地声线服务断连等致命错误仍要求重拨，不自动绕过过滤。
 
 实际结果见 [2026-10-17 验证记录](../../docs/experiments/speaker-stream-2026-10-17.md)。本轮没有发布生产，因此不在首页已发布更新列表中登记未验收能力。
+
+## 独立 Linux 候选
+
+`speaker-stream-linux.20261019.1` 已将同一声线模型与 Voice 产品服务放到 Linux。浏览器只采集和播放；不需要 WASM、Mac 进程或 SSH 转发。既有私有 Gateway 也在该服务器，使用 loopback26367；不会连生产 Gateway。运行时版本为 Node22.23.1、Python3.12、sherpa-onnx1.13.8、numpy2.5.4。
+
+Linux 模式必须设置 `VOICE_STREAM_LINUX=1`、`VOICE_SPEAKER_GATEWAY_LOCAL_PORT=26367`，并配置 `VOICE_SPEAKER_GATEWAY_RECEIPT`、HTTPS `VOICE_STREAM_PUBLIC_ORIGIN`、`VOICE_STREAM_BASE_PATH=/voice`、`VOICE_STREAM_ACCESS_TOKEN_FILE`。入口令牌只保存在私有文件，经 URL fragment 换取 HttpOnly Cookie；API/音频通道仍复核访问资格，不能匿名拨号。只复制该试验所需的语音/ASR/Decision 凭据，不复制个人环境文件、生产聊天或 refresh token。
+
+部署使用独立低权限系统用户与 systemd 单元，限制 CPU100%、内存1GiB、进程数128。正式服务、Nginx、既有 Cloudflare 隧道均不改动。新专属 Cloudflare Quick Tunnel 只代理本机候选端口26327；公网入口是临时测试地址，隧道重建后可能变化，需要同步 publicOrigin 与新试用链接，不能作为正式域名承诺。停用时仅停止该候选的 voice/tunnel 单元，不停止复用的私有 Gateway 或线上服务。
+
+`VOICE_STREAM_COMPARE_SERIAL=1` 仅用于切到旧串行链路做基准，交付时必须删除该配置并重启本候选恢复流式。批量验证设置 `VOICE_VERIFY_ORIGIN=https://<candidate-host>/voice`、`VOICE_VERIFY_ACCESS_FILE` 和 `VOICE_VERIFY_COOKIE_FILE`；复用 Cookie 避免反复登录触发每十分钟六次的访问限制，不放宽服务端保护。
+
+Linux 实际结果与 Mac 停转发的独立性验证见 [2026-10-19 验证记录](../../docs/experiments/speaker-stream-linux-2026-10-19.md)。候选版本说明通过现有首页更新日志展示，只影响注入候选元数据的入口。

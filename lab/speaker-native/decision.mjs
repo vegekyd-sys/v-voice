@@ -20,9 +20,9 @@ export function nameCandidates(turns) {
 export function routingQuestions(state){
   const people=state.participants;
   if(people.length>5)throw Error('当前候选最多支持五位会话 Speaker');
-  const criteria={quiet:'V保持安静：人对人旁聊、电视式内容、无需回应的附和，或没有足够理由插话。',respond:'V应该自然接话或回答当前请求。'};
+  const criteria={quiet:'V保持安静：人对人旁聊、生活中的实物协作指令、电视式内容、无需回应的附和，或没有足够理由插话。',respond:'当前是在向V提问、聊天或请求它能够提供的帮助，V应该自然接话或回答。'};
   const q={
-    action:{type:'choice',instructions:'根据整个对话关系，选择本轮V是否接话。电话已接通，默认首位Speaker和当前主要对象在与V对话，普通问题与自然接话不需要唤醒词，即使ASR没有识别出V也应该回应。有人对人生活交流时不代替被叫的人答应；电视式内容、旁聊可安静，不是每个问句都在问V。共同话题的补充可以自然回应。参考最新speaker、activeTargetId和对话历史，不按关键词机械决策。',criteria},
+    action:{type:'choice',instructions:'先判断这句是在对V还是对身边的人说，再选择V是否接话。电话已接通，普通问题与自然接话不需要唤醒词，即使ASR没有识别出V也应该回应。但默认对话关系不能覆盖明显的人际生活交流。ASR也可能漏掉被叫人的名字：拿递实物、替对方动手等生活协作，且没有明确向V请求信息、提醒或可用设备控制时，应视为身边人之间的话并保持安静，不要插话解释V没有手、不能递东西。有人明确向V问“你能拿东西吗”等能力问题仍可回答。电视式内容、旁聊和无需回应的附和可安静；共同话题的补充可以自然回应。结合最新speaker、activeTargetId、人物关系和历史语义，不按关键词机械决策。',criteria},
     focus:{type:'choice',instructions:'如果本轮需要调整主要对话对象，选择对应人，否则保持。一次回应旁人不必永久切换重心。',criteria:{keep:'保持现有对话重心',...Object.fromEntries(people.map(p=>[p.id,`主要和${p.name??p.label}（${p.id}）交谈`]))}},
     constraint:{type:'choice',instructions:'只判断最新一句是否明确改变排他专注约束。普通提到姓名、自我介绍、单次问答不改变约束。只跟某人聊才专注；解除专注或大家自由聊才恢复。',criteria:{keep:'没有明确改变专注约束，保持原状',free:'明确解除专注，恢复自由多人交流',...Object.fromEntries(people.map(p=>['only_'+p.id,`明确要求只和${p.name??p.label}（${p.id}）交谈`]))}},
   };

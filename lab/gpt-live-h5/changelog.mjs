@@ -74,7 +74,11 @@ export function mountChangelog(document, view = globalThis) {
   const list = document.getElementById('changelogEntries');
   if (!trigger || !dialog || !closeButton || !list || !dialog.showModal) return;
 
-  for (const entry of VOICE_UPDATES) {
+  // An isolated candidate may show its own notes without changing shipped notes.
+  let candidate;try{candidate=JSON.parse(document.getElementById('voiceCandidateRelease')?.textContent??'null');}catch{}
+  const entries=candidate&&typeof candidate.date==='string'&&typeof candidate.title==='string'&&Array.isArray(candidate.items)?[candidate,...VOICE_UPDATES]:VOICE_UPDATES;
+  if(entries!==VOICE_UPDATES)list.setAttribute?.('aria-label','候选与已发布更新');
+  for (const entry of entries) {
     const section = document.createElement('section');
     section.className = 'changelog-entry';
     const date = document.createElement('time');
