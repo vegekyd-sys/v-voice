@@ -140,6 +140,8 @@ export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, cl
     let event;try {event = JSON.parse(data);} catch {return;}
     switch (event.type) {
       case 'reaction': return sendJson({type:'llm', emotion:event.id});
+      // Task status badge on V robot firmware (status:memory|web|calendar|background|done|none).
+      case 'status': return sendJson({type:'llm', emotion:`status:${event.id}`});
       case 'audio.done': return stopSpeaking();
       case 'audio.clear': return interrupt();
       case 'end.after-playback': return stopSpeaking(() => deviceSays({type:'playback.drained', callId:event.callId}));
