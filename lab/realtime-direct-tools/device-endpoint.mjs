@@ -1,5 +1,5 @@
 import {appendFileSync} from 'node:fs';
-import {createDevicePlayout} from './device-playout.mjs';
+import {createDevicePlayout,DEVICE_PLAYOUT_MAX_BYTES} from './device-playout.mjs';
 import {EventEmitter} from 'node:events';
 import {createRobotReactionDriver} from '../robot/robot-reactions.mjs';
 import {createXiaozhiWire} from './xiaozhi-wire.mjs';
@@ -46,7 +46,10 @@ export function parseDeviceEntries(records = []) {
     if (typeof outputGain !== 'number' || outputGain < 1 || outputGain > 4) throw Error('Device output gain must be 1-4');
     if (volume !== null && (!Number.isInteger(volume) || volume < 0 || volume > 100)) throw Error('Device volume must be 0-100');
     if (mac !== null && !/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/u.test(mac)) throw Error('Invalid device MAC address');
-    devices.push(Object.freeze({inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,volume,outputGain,robot:record.robot === true,mac,otaToken:mac ? record.token : null,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
+    // Firmware with its own echo cancellation sends abort only once someone has
+    // really started talking over V, so that abort may cancel the reply at once.
+    if (record.deviceBargeIn !== undefined && typeof record.deviceBargeIn !== 'boolean') throw Error('deviceBargeIn must be true or false');
+    devices.push(Object.freeze({deviceBargeIn:record.deviceBargeIn === true,inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,volume,outputGain,robot:record.robot === true,mac,otaToken:mac ? record.token : null,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
   }
   return devices;
 }
@@ -64,7 +67,7 @@ class DeviceCallClient extends EventEmitter {
 }
 
 export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '/device/voice',xiaozhiPath = null,otaPath = null,xiaozhiPublicUrl = null,audit = () => {},isSessionBusy = () => false,
-  now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,toolHoldMs = 180000,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = 4 * 1024 * 1024,robotEvaluate = null,volumeStore = createVolumeStore()}) {
+  now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,toolHoldMs = 180000,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = DEVICE_PLAYOUT_MAX_BYTES,stallMs = 20000,robotEvaluate = null,volumeStore = createVolumeStore()}) {
   if (!/^\/[a-zA-Z0-9/_-]+$/u.test(path)) throw Error('Invalid device path');
   const server = new wsModule.WebSocketServer({noServer:true,maxPayload:65536,perMessageDeflate:false});
   const connections = new Map();
@@ -150,6 +153,8 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       const state = directVoice.activity(call.id);
       if (!state) return call.end('session-ended');
       const at = now();
+      // A speaker that stopped reading its socket would hold the session forever.
+      if (call.playout.stalledMs() > stallMs) return call.end('slow-playback');
       // Leaving: the parting line plays first; never wait on it for long.
       if (call.leaving) {if (at - call.leaving.at > 10000) call.end(call.leaving.reason);return;}
       if (call.playout.pendingBytes() || state.userSpeaking || state.responseActive || state.playing || call.playing) call.lastActivityAt = at;
@@ -257,6 +262,8 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     if (event.type === 'input.activity') call.lastActivityAt = now();
     // The shared session validates these exactly as it does for browser relay.
     if (event.type === 'barge-in' && call.leaving) return;  // never cut the parting line
+    // Whether a barge-in is confirmed speech is the device record's call, never the frame's.
+    if (event.type === 'barge-in') event = {type:'barge-in',deviceId:connection.device.id,...(connection.device.deviceBargeIn ? {confirmed:true} : {})};
     if (['playback.state','playback.drained','barge-in','playback.stats'].includes(event.type) && call.client) call.client.emit('message', Buffer.from(JSON.stringify(event)), false);
   }
 

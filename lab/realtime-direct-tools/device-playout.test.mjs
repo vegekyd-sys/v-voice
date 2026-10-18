@@ -32,3 +32,14 @@ test('socket backpressure cannot grow the wire queue beyond the short lead',t=>{
  let pending=24000;const sent=[];const p=createDevicePlayout({sendAudio:b=>sent.push(b),sendEvent:()=>{},bufferedBytes:()=>pending,tickMs:1000000});t.after(()=>p.dispose());
  assert(p.push(Buffer.alloc(48000)));assert.equal(sent.length,0);pending=0;p.pump();assert.equal(sent.reduce((n,b)=>n+b.length,0),480*48);
 });
+
+test('a minutes-long answer queues whole; only a speaker that stops reading counts as stalled',t=>{
+ let at=0,pending=0;const sent=[];const p=createDevicePlayout({now:()=>at,sendAudio:b=>sent.push(b.length),sendEvent:()=>{},bufferedBytes:()=>pending,tickMs:1000000});t.after(()=>p.dispose());
+ // Two minutes of generated speech arrives in a few seconds of model time.
+ for(let i=0;i<120;i++)assert(p.push(Buffer.alloc(48000)),`second ${i} queued`);
+ for(let i=0;i<500;i++){at+=20;p.pump();}
+ assert.equal(p.stalledMs(),0,'paced playback is progress, not a stall');
+ pending=1e6;at+=30000;p.pump();assert.equal(p.stalledMs(),30000);
+ pending=0;p.pump();assert.equal(p.stalledMs(),0);
+ p.clear();assert.equal(p.stalledMs(),0);
+});

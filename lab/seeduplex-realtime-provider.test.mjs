@@ -632,3 +632,28 @@ test('long backend document keeps full paired history but commits only short spe
  socket.message({type:'response.output_audio.delta',response_id:'summary',delta:floatAudio([.2])});
  assert.deepEqual(texts,[['assistant',spokenText,true,'V-backend-summary']]);bridge.close();
 });
+
+test('a confirmed device barge-in cancels a reply mid-generation and the next utterance is still heard',async()=>{
+ const socket=new FakeSocket(),audio=[],texts=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},onAudio:b=>audio.push(b),onTranscript:(role,text,final)=>final&&texts.push([role,text]),onClearAudio(){},onResponseDone(){},onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+ // A long story: Seeduplex sends no transcription while it is still generating.
+ socket.message({type:'response.output_audio.started',response_id:'story'});
+ socket.message({type:'response.output_audio.delta',response_id:'story',delta:floatAudio([.5])});
+ bridge.handleBargeIn({confirmed:true});
+ assert.equal(socket.sent.filter(e=>e.type==='response.cancel').length,1);
+ socket.message({type:'response.output_audio.started',response_id:'story'});
+ socket.message({type:'response.output_audio.delta',response_id:'story',delta:floatAudio([.5])});
+ assert.equal(audio.length,1,'the cancelled story does not resume');
+ socket.message({type:'conversation.item.input_audio_transcription.started'});
+ socket.message({type:'conversation.item.input_audio_transcription.completed',transcript:'停一下，换个故事'});
+ assert.deepEqual(texts.at(-1),['user','停一下，换个故事']);
+ socket.message({type:'response.output_audio.started',response_id:'answer'});
+ socket.message({type:'response.output_audio.delta',response_id:'answer',delta:floatAudio([.25])});
+ assert.equal(audio.length,2,'the reply to the interruption plays');
+ // Once generation has finished, a confirmed barge-in has nothing upstream to cancel.
+ socket.message({type:'response.output_audio.done',response_id:'answer'});
+ bridge.handleBargeIn({confirmed:true});
+ assert.equal(socket.sent.filter(e=>e.type==='response.cancel').length,1);
+ bridge.close();
+});

@@ -100,3 +100,11 @@ test('causal diagnostics distinguish ASR, tool wait, backend completion and outp
  await f.log.close();const rows=await f.rows();assert(!JSON.stringify(rows).includes('SECRET'));
  assert.equal(rows.find(r=>r.type==='backend.started').taskId,'owned-task');assert.equal(rows.at(-1).type,'backend.completed');
 });
+test('a barge-in records which speaker sent it, without any frame payload',async t=>{
+  const f=await fixture(t);f.created();
+  assert(f.log.audit({type:'client.barge-in',voiceSessionId:'v1',deviceId:'stackchan',confirmed:true,audio:'SECRET'}));
+  assert(f.log.audit({type:'client.barge-in',voiceSessionId:'v1',deviceId:'Bad Id!'}));
+  await f.log.close();const rows=(await f.rows()).filter(r=>r.type==='client.barge-in');
+  assert.deepEqual(rows.map(r=>[r.deviceId,r.confirmed]),[['stackchan',true],[undefined,undefined]]);
+  assert(!JSON.stringify(rows).includes('SECRET'));
+});

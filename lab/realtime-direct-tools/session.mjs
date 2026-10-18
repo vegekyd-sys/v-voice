@@ -269,7 +269,10 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if(!current(s))return;
       if(binary){if(data.length%2===0&&data.length<=24000)s.bridge.sendAudio(data);else client.close(1008);return;}
       try{const e=JSON.parse(data.toString());if(e.type==='greeting'&&!s.greeted){s.greeted=true;s.bridge.triggerGreeting('电话已接通。请用中文向天意简短打个招呼，然后听他说话。');}
-      else if(e.type==='barge-in') {s.bridge.handleBargeIn();audit({type:'client.barge-in',voiceSessionId:s.id});}
+      else if(e.type==='barge-in') {
+        // Only a speaker endpoint can mark a barge-in as confirmed speech (device echo cancellation).
+        const device=s.surface==='speaker'&&typeof e.deviceId==='string'?e.deviceId:null,confirmed=Boolean(device&&e.confirmed===true);
+        s.bridge.handleBargeIn({confirmed});audit({type:'client.barge-in',voiceSessionId:s.id,...(device?{deviceId:device,confirmed}:{})});}
       else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){s.latestUserTurn=Object.freeze({text:e.text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(e.text);}
       else if(e.type==='playback.state'&&typeof e.speaking==='boolean')s.playing=e.speaking;
       else if(e.type==='playback.stats'){

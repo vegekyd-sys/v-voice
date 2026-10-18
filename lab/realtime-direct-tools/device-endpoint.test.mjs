@@ -213,6 +213,42 @@ test('a stalled speaker has bounded output memory and releases its provider', as
   await f.until(() => provider.readyState === 3, 'provider closes after its bounded shutdown');
 });
 
+test('a story longer than the old 87-second cap plays whole instead of hanging up', async t => {
+  const f = await fixture();t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+  const provider = f.peers[0], second = floatAudio(Array(24000).fill(0.1));
+  provider.emit('message', Buffer.from(JSON.stringify({type:'response.output_audio.started',response_id:'story'})), false);
+  // The model hands over two minutes of speech far faster than real time.
+  for (let i = 0; i < 120; i++) provider.emit('message', Buffer.from(JSON.stringify({type:'response.output_audio.delta',response_id:'story',delta:second})), false);
+  await delay(50);
+  assert(!device.events.some(e => e.type === 'call.closed'), 'a long answer is not a slow speaker');
+  assert.equal(f.endpoint.activeCalls(), 1);
+});
+
+test('a confirmed device abort cancels the reply still being generated; a plain barge-in waits for speech', async t => {
+  const start = async f => {
+    const device = await f.connect();t.after(() => device.close());
+    device.send(JSON.stringify({type:'call.start'}));
+    await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+    f.peers[0].emit('message', Buffer.from(JSON.stringify({type:'response.output_audio.started',response_id:'story'})), false);
+    return device;
+  };
+  const aec = await fixture({record:{deviceBargeIn:true}});t.after(aec.close);
+  (await start(aec)).send(JSON.stringify({type:'barge-in'}));
+  await aec.until(() => aec.peers[0].sent.some(e => e.type === 'response.cancel'), 'upstream reply cancelled');
+  assert(aec.audit.some(e => e.type === 'client.barge-in' && e.deviceId === 'speaker-test' && e.confirmed === true));
+
+  // A speaker without echo cancellation cannot promote its own frame.
+  const plain = await fixture();t.after(plain.close);
+  (await start(plain)).send(JSON.stringify({type:'barge-in',confirmed:true}));
+  await plain.until(() => plain.audit.some(e => e.type === 'client.barge-in'), 'barge-in audited');
+  assert(!plain.peers[0].sent.some(e => e.type === 'response.cancel'));
+  assert(plain.audit.some(e => e.type === 'client.barge-in' && e.deviceId === 'speaker-test' && e.confirmed === false));
+  assert.throws(() => parseDeviceEntries([record({deviceBargeIn:'yes'})]), /deviceBargeIn/);
+});
+
 test('the same speaker protocol selects Grok without changing the phone default', async t => {
   const f = await fixture({record:{models:['seeduplex','grok']}});t.after(f.close);
   const device = await f.connect();t.after(() => device.close());

@@ -87,6 +87,13 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       for(const key of ['id','beat','source','deviceId'])if(typeof event[key]==='string'&&/^[a-z0-9_-]{1,64}$/u.test(event[key]))safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
     }
+    if(event.type==='client.barge-in'){
+      // Who interrupted: a speaker's own abort carries its deviceId; a phone does not.
+      const safe={};
+      if(typeof event.deviceId==='string'&&/^[a-z0-9_-]{1,64}$/u.test(event.deviceId))safe.deviceId=event.deviceId;
+      if(typeof event.confirmed==='boolean')safe.confirmed=event.confirmed;
+      return enqueue({...owner,type:event.type,...safe});
+    }
     if(event.type==='device.call'){
       // Speaker lifecycle diagnostics: counters and stage names only, no audio.
       if(!['start','ready','input-speech','closed'].includes(event.stage))return false;
