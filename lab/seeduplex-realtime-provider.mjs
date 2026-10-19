@@ -398,7 +398,10 @@ export class SeeduplexRealtimeVoiceBridge {
     if (!converted.length) return;
     this.pendingInput = Buffer.concat([this.pendingInput, converted]);
     if (this.pendingInput.length > MAX_PENDING_INPUT_BYTES) {
-      this.#fail(new Error("Seeduplex pending input audio overflow"));
+      // Delayed transport can deliver seconds of old audio in one burst.
+      // Keep the call and dialog identity, discard stale unsent input and
+      // recover explicitly instead of treating congestion as a terminal call.
+      this.#recover({category:"input-backlog",recoverable:true,pendingAudioMs:Math.round(this.pendingInput.length/32)});
       return;
     }
     this.#pumpInput();
@@ -435,7 +438,7 @@ export class SeeduplexRealtimeVoiceBridge {
   }
 
   #watchInput() {
-    if (!this.ready || this.terminal || this.inputMuted || Date.now() - this.lastInputAt < (this.options.inputIdleMs ?? 2_000)) return;
+    if (!this.ready || this.terminal || this.inputMuted || this.pendingInput.length >= INPUT_FRAME_BYTES || Date.now() - this.lastInputAt < (this.options.inputIdleMs ?? 2_000)) return;
     this.inputMuted = true;
     this.#send({type:"input_audio_mute.commit"});
     this.#diagnostic({stage:"input-paused"});
@@ -470,7 +473,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       void this.#open();
-    }, this.options.reconnectDelayMs ?? Math.min(4_000, 250 * 2 ** (this.reconnectAttempts.length-1)));
+    }, this.options.reconnectDelayMs ?? (reason.category === "input-backlog" ? 1_000 : Math.min(4_000, 250 * 2 ** (this.reconnectAttempts.length-1))));
     this.reconnectTimer.unref?.();
   }
 

@@ -122,3 +122,7 @@ test('Safari causal capture counters persist only bounded scalar fields',async t
  await f.log.close();const rows=(await f.rows()).filter(r=>r.type==='client.playback-stats');
  assert.equal(rows[0].stats.contextState,'interrupted');assert.equal(rows[0].stats.inputActiveFrames,4);assert.equal(rows[0].stats.trackMuted,true);assert.deepEqual(rows[1].stats,{});assert(!JSON.stringify(rows).includes('SECRET'));
 });
+test('input backlog recovery retains only its category and numeric queued duration',async t=>{
+ const f=await fixture(t);f.created();f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'upstream-error',category:'input-backlog',pendingAudioMs:10400,message:'SECRET',audio:'SECRET'});
+ await f.log.close();const row=(await f.rows()).find(r=>r.type==='call.provider-status');assert.equal(row.category,'input-backlog');assert.equal(row.pendingAudioMs,10400);assert(!JSON.stringify(row).includes('SECRET'));
+});

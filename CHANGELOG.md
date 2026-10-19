@@ -1,7 +1,8 @@
 # Voice release log
 
-## Unreleased — Safari capture recovery candidate
+## Unreleased — Safari capture and delayed-input recovery candidate
 
+- Recover an oversized delayed Seeduplex input burst within the same dialog, show that discarded speech must be repeated, and avoid mute/unmute oscillation while draining paced input.
 - Re-check the current AudioContext after provider readiness; recover a foreground audio interruption and re-check when Safari returns to the foreground.
 - Replace a cached microphone track when the browser reports it system-muted, preserving ordinary same-page microphone reuse.
 - Persist only bounded capture activity counters and context/track states to distinguish silent input from stopped capture or page execution. Physical iPhone repeated-call acceptance remains pending; no production release or Speaker change is included.

@@ -105,6 +105,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   const visible=()=>{if(globalThis.document?.hidden!==true){recoveryAttempted=false;stateChanged();}};
   globalThis.document?.addEventListener?.('visibilitychange',visible);
   const reportStats=()=>{
+    stats.inputBufferedBytes=socket.bufferedAmount;
     stats.contextState=context.state;stats.contextTimeMs=Math.round(context.currentTime*1000);
     stats.inputIdleMs=Math.round(performance.now()-(lastInputAt??inputStartedAt));
     stats.trackMuted=inputTrack?.muted===true;stats.trackEnabled=inputTrack?.enabled===true;stats.trackLive=inputTrack?.readyState==='live';

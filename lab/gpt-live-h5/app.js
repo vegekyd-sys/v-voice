@@ -705,8 +705,9 @@ async function startCall() {
           if(value.type.startsWith('tool.'))taskState();
           if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
           if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
-          if(value.type==='provider.reconnecting')setStatus('正在恢复语音连接…');
-          if(value.type==='provider.recovered')setStatus('V 正在听，直接说话就好');
+          if(value.type==='provider.input-backlog'){active.inputBacklogRecovery=true;setStatus('音频传输延迟，正在恢复连接；刚才延迟的内容请再说一次。');}
+          if(value.type==='provider.reconnecting')setStatus(active.inputBacklogRecovery?'音频传输延迟，正在恢复连接；刚才延迟的内容请再说一次。':'正在恢复语音连接…');
+          if(value.type==='provider.recovered'){setStatus(active.inputBacklogRecovery?'连接已恢复。延迟的音频已丢弃，请再说一次。':'V 正在听，直接说话就好');active.inputBacklogRecovery=false;}
           if(value.type==='transcript'&&!(reservation.speakerRouting&&value.role==='user')) {
             active.relayTurns??={};
             const id=active.relayTurns[value.role]??=crypto.randomUUID();
