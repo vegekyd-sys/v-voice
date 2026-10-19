@@ -1,5 +1,12 @@
 # Voice release log
 
+## Voice · 20261019 streaming multi-speaker
+
+- 豆包流式匿名 Speaker、对话关联姓名和角色、语义接话与原生语音并行；不改变工具身份。
+- 主机确认自然告别并等待真实播放回执；挂断和后台任务分别管理。
+- 保留正式入口记忆、搜索、Reaction、后台交付和发布空闲检查，GPT Live/Grok 不启用 Speaker 路由。
+- Linux 独立声线进程和模型 SHA256 校验；通过配置关闭，保留原正式产物及独立服务回滚。
+
 ## 2026-10-16 — Homepage notes and safe Voice entry publication
 
 Restore the missing October 16 homepage release notes and make product-facing notes a release preflight requirement. Authenticated status now exposes whether active calls, session creation, or pending backend delivery prevents an entry cutover. Persist only bounded causal event metadata and numeric playback counters to distinguish received speech, tool waits and missing output; no tool arguments, result bodies or audio are added.

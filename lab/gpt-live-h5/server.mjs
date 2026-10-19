@@ -440,7 +440,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const preview = process.env.GPT_LIVE_H5_PREVIEW === "1";
   const port = Number(process.env.GPT_LIVE_H5_PORT ?? process.env.RTC_H5_PORT ?? 26244);
-  let gateway, bridge, transcriptLog, avatarLog;
+  let gateway, bridge, transcriptLog, avatarLog, productionSpeaker;
   if (!preview) {
     const configPath = process.env.OPENCLAW_CONFIG_PATH;
     if (!configPath) throw new Error("OPENCLAW_CONFIG_PATH is required");
@@ -463,12 +463,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     avatarLog=createAvatarTelemetryLog({directory:process.env.RTC_H5_AVATAR_LOG_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-avatar-events'),
       onError:({code})=>console.warn(JSON.stringify({type:'voice.avatar-write-error',code})),
     });
+    productionSpeaker=await (await import('../speaker-native/production.mjs')).createProductionSpeaker({audit:transcriptLog.audit});
+    const speakerRouting=productionSpeaker?.service;
     const lark=createVoiceLarkReader({environment:process.env});
-    const directVoice=createDirectVoiceService({gateway,wsModule,calendar:lark.calendar,larkRead:lark.read,
+    const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,calendar:lark.calendar,larkRead:lark.read,
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),
       grokExpressiveTags:process.env.XAI_VOICE_EXPRESSIVE_TAGS === '1',
-      audit:transcriptLog.audit,
+      audit:productionSpeaker?.audit??transcriptLog.audit,
       toolEnvironment:Object.fromEntries(["LARKSUITE_CLI_CONFIG_DIR","LARKSUITE_CLI_DATA_DIR"].filter(key=>process.env[key]).map(key=>[key,process.env[key]])),
       apiKeys:{
       seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY??process.env.DOUBAO_SPEECH_API_KEY,
@@ -479,7 +481,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     }});
     bridge = createLiveH5Server({ gateway,
       listening:process.env.VOICE_LISTENING_DIR ? await (await import('./listening.mjs')).loadVoiceListening(process.env.VOICE_LISTENING_DIR) : undefined,
-      directVoice, avatarLog,callControlAudit:transcriptLog.audit,
+      directVoice, speakerRouting, avatarLog,callControlAudit:transcriptLog.audit,
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",
       conversationEntries: process.env.VOICE_ENTRIES_FILE ? JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,"utf8")) : [],
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",
@@ -494,5 +496,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     } });
   } else bridge = createLiveH5Server({ preview: true });
   bridge.server.listen(port, "127.0.0.1", () => console.log(JSON.stringify({ ready: true, host: "127.0.0.1", port, preview })));
-  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void bridge.dispose({drain:true}).finally(async () => { await transcriptLog?.close(); await avatarLog?.close(); gateway?.stop(); process.exit(0); }));
+  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void bridge.dispose({drain:true}).finally(async () => { await transcriptLog?.close(); await avatarLog?.close(); productionSpeaker?.close(); gateway?.stop(); process.exit(0); }));
 }

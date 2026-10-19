@@ -306,7 +306,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if([...s.toolOwners.values()].includes(old))s.retiredBridges.add(old);else old.close();
         await next.connect();if(!current(s)||s.bridge!==next){next.close();throw Error('人物准备已取消');}s.personaKey=key;
       },
-    },value=>{emit(s,value);if(value.type==='error')void close(s.id).catch(()=>{});});
+    },value=>{if(value.type==='transcript'&&value.role==='user'&&value.final&&value.text?.trim())s.latestUserTurn=Object.freeze({text:value.text,receivedAt:new Date().toISOString()});emit(s,value);if(value.type==='error')void close(s.id).catch(()=>{});});
     if(current(s)){connectionStage('provider-ready');emit(s,{type:'ready',model:s.model,tools:voiceTools.map(t=>t.name)});}
   }
   return {

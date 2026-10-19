@@ -51,7 +51,7 @@ test('a background result after a speaker switch is shown without speaking to th
  f.event({type:'response.function_call_arguments.done',items:[{call_id:'old-task',name:'delegate_to_v',arguments:JSON.stringify({question:'完成原人物的任务'})}]});await delay(5);
  const started=f.audit.find(e=>e.type==='backend.started');assert(started);
  await native.prepare('现在只和十二聊天。','child',[]);
- f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text:'原人物任务已完成，结果已核对。'}]}}});
+ f.completeBackend('原人物任务已完成，结果已核对。');
  for(let i=0;i<100&&!f.client.sent.some(e=>e.type==='backend.result');i++)await delay(10);
  assert(f.client.sent.some(e=>e.type==='backend.result'&&e.text.includes('任务已完成')));
  assert.equal(f.peers[1].sent.filter(e=>e.type==='speech_text_buffer.commit').length,0);
