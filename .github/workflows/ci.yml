@@ -11,3 +11,4 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm test
+      - run: npm run test:speaker-native
