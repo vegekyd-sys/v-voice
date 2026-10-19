@@ -9,7 +9,7 @@ async function fixture(t,{evaluate,prepare=async()=>{},limits}={}){
   let asr;const events=[],forwarded=[],profiles=[],clarifications=[],endings=[],rejectedEnds=[];
   const service=createStreamingSpeakerRoutingService({env:{},embedding:{ready:Promise.resolve(),compute:async()=>({embedding:[1,0],inferenceMs:1})},evaluate:evaluate??(async(_s,q)=>answers(q)),limits,createAsr:o=>{asr=o;return {connect:async()=>{},append(){},close(){}};}});
   service.reserve('call',{model:'seeduplex'});t.after(()=>service.dispose());
-  await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},forward:b=>forwarded.push(b),cancel(){},invalidate(){},clarify:text=>clarifications.push(text),context:text=>clarifications.push(text),end:value=>endings.push(value),cancelEnd:()=>endings.push({revoked:true}),rejectNativeEnd:call=>rejectedEnds.push(call)},e=>events.push(e));
+  await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},forward:b=>forwarded.push(b),cancel(){},invalidate(){},clarify:text=>clarifications.push(text),end:value=>endings.push(value),cancelEnd:()=>endings.push({revoked:true}),rejectNativeEnd:call=>rejectedEnds.push(call)},e=>events.push(e));
   service.audio('call',voice());
   const emit=(text='V，天空为什么是蓝色的？',start=0,end=1100)=>asr.onResult({body:{result:{utterances:[{definite:true,start_time:start,end_time:end,text,speaker_id:'wrong-cloud-id',...(start===null?{start_time:undefined}:{})}]}}});
   return {service,events,forwarded,profiles,emit,clarifications,endings,rejectedEnds,disconnectAsr:()=>asr.onClose()};
@@ -109,12 +109,4 @@ test('call duration expiry closes its route and releases the anonymous roster',a
 
 test('an ordinary admitted reply cannot execute the native models competing end_call',async t=>{
  const f=await fixture(t);await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));let executed=false;f.service.dispatch('call','tool',{name:'end_call',callId:'native-end'},()=>{executed=true;});assert.equal(f.rejectedEnds.length,0);f.emit('谢谢，拜拜。对了，五加六等于几？');await wait(()=>f.rejectedEnds.length===1);assert.equal(executed,false);assert.equal(f.service.has('call'),true);assert(f.events.some(e=>e.type==='speaker.end-withheld'));
-});
-
-test('keyboard input discards speculative voice output and uses account context without inventing a speaker',async t=>{
- const f=await fixture(t);await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));
- const effects=[];f.service.dispatch('call','audio',Buffer.alloc(10),()=>effects.push('old'));
- await f.service.text('call','五加六等于几');f.service.dispatch('call','audio',Buffer.alloc(10),()=>effects.push('typed'));
- assert.deepEqual(effects,['typed']);assert.deepEqual(f.clarifications,['五加六等于几']);assert.equal(f.profiles.at(-1)[1],'keyboard-input');
- f.emit();await new Promise(r=>setTimeout(r,30));assert.equal(f.events.some(e=>e.type==='speaker.decision'),false);
 });

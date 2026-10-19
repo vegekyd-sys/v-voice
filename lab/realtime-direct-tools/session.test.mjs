@@ -485,12 +485,6 @@ test('Seed hangup retains release ownership until the actual final delivery rece
  assert.equal(f.service.backgroundTaskCount(),0);assert(f.audit.some(e=>e.type==='task.delivery-confirmed'&&e.kind==='final'));
 });
 
-test('speaker-routed keyboard text goes through the prepared account context',async t=>{
- const seen=[];const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async()=>{},close(){},audio(){},text:async(id,text)=>seen.push(text)};
- const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
- f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'文字查询'})),false);await delay(5);assert.deepEqual(seen,['文字查询']);
-});
-
 test('speaker delegation freezes admitted ASR, ignoring earlier speculative native transcription',async t=>{
  let admitted;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,_native,listener)=>{admitted=listener;},close(){},audio(){}};
  const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
