@@ -4,7 +4,7 @@
 
 基线：线上 Voice d37ac851；Gateway 插件 a9ac5168。候选 c873c898 的真人体验、真实接口与播放验证见此前验收；本发布分支合入 main，保留正式后台任务 SDK 和 releaseReadiness。发布来源保持独立分支，不自动合入 main/dev。
 
-运行配置：VOICE_STREAM_SPEAKER=1，VOICE_SPEAKER_PYTHON、VOICE_SPEAKER_MODEL、VOLCENGINE_ASR_API_KEY、既有服务端 Decision 凭据。Linux CPU 推理，模型固定 SHA256 校验；声线模板仅在通话内存中存在。
+运行配置：VOICE_STREAM_SPEAKER=1，VOICE_SPEAKER_PYTHON、VOICE_SPEAKER_MODEL、VOLCENGINE_ASR_API_KEY、既有服务端 Decision 凭据。Linux CPU 推理，模型固定 SHA256 校验；声线模板仅在通话内存中存在。正式流式通话采用独立的 2 小时 / 3000 次判断上限，不沿用 Candidate 的 30 分钟测试预算。
 
 发布核对和回滚：使用平台既有独立 Voice 发布控制器，正式服务无通话、无创建和后台任务、无 relay 连接时切换；保留原 pointer、启动 drop-in、私有环境、Gateway PID/start/invocation/config 哈希及旧产物。额外 Speaker drop-in 和 runtime 在独立目录；回滚恢复原 launcher/pointer，去除本次 Speaker drop-in，Gateway 不重启。私有操作记录位于服务器 release 的 receipt，不能提交凭据和真实聊天记录。
 

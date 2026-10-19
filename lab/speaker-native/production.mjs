@@ -16,6 +16,6 @@ export async function createProductionSpeaker({env=process.env,audit=()=>{},read
   const diagnostics=createSpeakerDiagnostics({directory:env.VOICE_SPEAKER_DIAGNOSTICS_DIR});
   const record=event=>{audit(event);diagnostics.audit(event);};
   const embedding=worker({python:env.VOICE_SPEAKER_PYTHON,model:env.VOICE_SPEAKER_MODEL});
-  try{await embedding.ready;const service=routing({env,embedding,onAudit:record});return {service,audit:record,close(){service.dispose();embedding.close();}};}
+  try{await embedding.ready;const service=routing({env,embedding,onAudit:record,limits:{durationMs:7200000,inputSeconds:7200,decisionCalls:3000}});return {service,audit:record,close(){service.dispose();embedding.close();}};}
   catch(error){embedding.close();throw error;}
 }
