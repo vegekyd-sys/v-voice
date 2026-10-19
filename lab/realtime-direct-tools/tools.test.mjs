@@ -21,3 +21,14 @@ test('process registry failure never claims a live owned process exited',()=>{
  assert.equal(processExited({details:{status:'completed',exitCode:0}}),true);
 });
 test('native process SIGTERM exit is terminal, but a registry miss remains failure',()=>{assert(processExited({details:{status:'failed',sessionId:'owned',exitSignal:'SIGTERM'}}));assert(!processExited({isError:true,details:{status:'failed',exitSignal:'SIGTERM'}}));});
+test('speaker volume takes exactly one of an absolute level or a step, and needs a speaker',async()=>{
+ assert.deepEqual(validateTool('set_speaker_volume',{volume:70}),{volume:70});
+ assert.deepEqual(validateTool('set_speaker_volume',{change:'down'}),{change:'down'});
+ for(const args of [{},{volume:70,change:'up'},{volume:101},{volume:5.5},{change:'max'}])assert.throws(()=>validateTool('set_speaker_volume',args));
+ await assert.rejects(createToolExecutor({invoke:()=>{throw Error('must not reach OpenClaw');}})('set_speaker_volume',{change:'up'},'v'),/不能调音量/);
+ assert.deepEqual(await createToolExecutor({speakerVolume:async a=>({volume:a.volume})})('set_speaker_volume',{volume:30},'v'),{volume:30});
+ assert.deepEqual(validateTool('look',{question:'这是什么'}),{question:'这是什么'});
+ for(const args of [{},{question:''},{question:'x',zoom:2}])assert.throws(()=>validateTool('look',args));
+ await assert.rejects(createToolExecutor({invoke:()=>{throw Error('must not reach OpenClaw');}})('look',{question:'这是什么'},'v'),/没有摄像头/);
+ assert.deepEqual(await createToolExecutor({look:async a=>({description:a.question})})('look',{question:'这是什么'},'v'),{description:'这是什么'});
+});

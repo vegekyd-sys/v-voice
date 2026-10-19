@@ -137,6 +137,20 @@ export class Pcm24To16Resampler {
   }
 }
 
+/** A 16 kHz hardware source already matches the upstream input rate. */
+class Pcm16Passthrough {
+  push(audio) {
+    if (!Buffer.isBuffer(audio) || audio.length % 2 !== 0) {
+      throw new Error("Seeduplex input must be PCM16LE");
+    }
+    return audio;
+  }
+}
+
+function inputResampler(request) {
+  return request.inputSampleRate === 16_000 ? new Pcm16Passthrough() : new Pcm24To16Resampler();
+}
+
 /** The pinned service labels output as PCM but sends float32 little-endian. */
 export function decodeSeeduplexFloat32Pcm(encoded) {
   if (typeof encoded !== "string") throw new Error("Invalid Seeduplex audio frame");
@@ -251,7 +265,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.ready = false;
     this.terminal = false;
     this.closeNotified = false;
-    this.resampler = new Pcm24To16Resampler();
+    this.resampler = inputResampler(this.request);
     this.pendingInput = Buffer.alloc(0);
     this.toolBatches = [];
     this.seenToolCalls = new Map();
@@ -443,7 +457,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.ready = false;
     this.connected = false;
     this.pendingInput = Buffer.alloc(0);
-    this.resampler = new Pcm24To16Resampler();
+    this.resampler = inputResampler(this.request);
     clearTimeout(this.connectTimer);
     clearTimeout(this.pacingTimer);this.pacingTimer = null;
     const old = this.socket;this.socket = null;
@@ -519,7 +533,7 @@ export class SeeduplexRealtimeVoiceBridge {
       text});
   }
 
-  handleBargeIn() {
+  handleBargeIn({ confirmed = false } = {}) {
     if (!this.ready) return;
     // Flushing local playback is the whole barge-in, matching the GPT Live One
     // bridge. A barge-in signal is only ever a guess by input VAD, and during a
@@ -533,7 +547,12 @@ export class SeeduplexRealtimeVoiceBridge {
     this.bargeInPending = true;
     // Host-injected backend speech may postpone native ASR until its TTS ends.
     // A client speech onset must retire that playback, not wait for ASREnded.
-    if (this.injectedSpeech) this.#cancelUpstreamResponse(true);
+    // A confirmed barge-in (a speaker whose own echo cancellation heard someone
+    // talk over V) is already the evidence: while a long answer is still being
+    // generated Seeduplex sends no transcription, so waiting would let it resume.
+    // Once generation has finished, leave it to Seeduplex: a cancel then left
+    // its ASR starting turns that never completed (device test 2026-10-18).
+    if (this.injectedSpeech || (confirmed && this.responseActive)) this.#cancelUpstreamResponse(true);
   }
 
   /**
@@ -551,6 +570,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.responseActive = false;
     this.cancelEventId = `event_${randomUUID()}`;
     this.#send({ type: "response.cancel", event_id: this.cancelEventId });
+    this.request.onEvent?.({ direction: "client", type: "client.response.cancel" });
   }
 
   submitToolResult(callId, result, options = {}) {
@@ -706,10 +726,11 @@ export class SeeduplexRealtimeVoiceBridge {
     }
 
     if (type === "error" && this.cancelledOutputPending &&
-      (event.error?.event_id === this.cancelEventId || event.event_id === this.cancelEventId) &&
-      /no.*response|response.*(?:ended|finished|cancel|not.*active)/i.test(event.error?.message ?? "")) {
+      (event.error?.event_id === this.cancelEventId || event.event_id === this.cancelEventId)) {
       // response.cancel is documented to return an error when its target ended
-      // in the race between local playback and the upstream command.
+      // in the race between local playback and the upstream command. A refused
+      // cancel never ends the session; record that it happened, not its text.
+      this.request.onEvent?.({ direction: "server", type: "client.response.cancel.rejected" });
       return;
     }
     if (type === "error") return this.#recover(classifySeeduplexError(event));
@@ -757,6 +778,10 @@ export class SeeduplexRealtimeVoiceBridge {
       // right to tear the upstream generation down. This runs after the reset
       // above so the fresh suppression is not immediately cleared.
       const spoken = optionalString(event.transcript) ?? optionalString(event.text);
+      // A finished utterance after an earlier cancel opens the next turn, whose
+      // reply text arrives before its first audio. Retired response ids still
+      // filter the cancelled tail.
+      if (spoken && this.cancelledOutputPending) this.cancelledOutputPending = false;
       if (spoken && this.bargeInPending) this.#cancelUpstreamResponse();
       this.bargeInPending = false;
     }

@@ -2,7 +2,7 @@
 
 正式入口：https://openclaw.tianyi.live/voice/?entry=tianyi
 
-运行源码：`931c30e54a24d2bdae65a26443643767932ad9e0`；分支：`codex/speaker-production-20261019`。Linux 独立 Voice 服务已上线；没有自动合入 main 或平台 dev。Gateway 与正式隧道的 PID、Gateway invocation/start/config、原入口环境保持本次发布前基线。188 个运行文件逐 hash 校验，正式 HTTPS 的 app、Speaker 客户端、音频模块、样式和首页日志均匹配。
+运行源码：`931c30e54a24d2bdae65a26443643767932ad9e0`；分支：`codex/speaker-production-20261019`。Linux 独立 Voice 服务最初从分支上线；按用户要求补交 PR 合入 `v-voice/main`，平台 dev 不在合入范围。合入整合了主分支后续音箱及机器人支持，但本次补合入不重新部署该整合版本，线上运行源码仍为上述提交。Gateway 与正式隧道的 PID、Gateway invocation/start/config、原入口环境保持本次发布前基线。188 个运行文件逐 hash 校验，正式 HTTPS 的 app、Speaker 客户端、音频模块、样式和首页日志均匹配。
 
 ## 交付内容
 
@@ -39,6 +39,14 @@
 UI和首页日志优先用内置浏览器核对；其无法注入合成麦克风，故按项目允许的特定浏览器能力，使用独立Chrome启动参数注入测试WAV，走正常getUserMedia、AudioWorklet与正式接口；没有生产fixture API或demo页，没有采集真人声音。截图与私有测试收据保留在本机验收目录。
 
 早期预启动换人问答接口首音频约3.1秒，旧版公网两个清晰问答样本为3.0秒和9.5秒；它们不是最新Chrome或手机听感的精确延迟指标，尾延迟不宣称已全部解决。
+
+## 后续记忆搜索复测
+
+正式 Gateway 连续查询天意、Makaron、十二，各返回3条记忆，耗时5146/2002/1080ms。正式语音产品页使用合成麦克风实际触发 memory_search，服务端调用至交付1263ms、status=ok；V据此介绍Makaron后继续回答3+4=7，再自然告别并回到拨号，页面错误和ASR重连均为0。此前25秒超时本轮未复现，根因仍未定位；本次没有修改配置或重启服务。
+
+## 发布流程
+
+后续正式版本统一先PR合入 `v-voice/main`、核对检查，再从已合入提交构建发布。未合入分支只用于Candidate，不得上线。
 
 ## 回滚
 

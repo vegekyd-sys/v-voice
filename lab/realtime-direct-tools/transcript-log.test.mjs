@@ -100,3 +100,18 @@ test('causal diagnostics distinguish ASR, tool wait, backend completion and outp
  await f.log.close();const rows=await f.rows();assert(!JSON.stringify(rows).includes('SECRET'));
  assert.equal(rows.find(r=>r.type==='backend.started').taskId,'owned-task');assert.equal(rows.at(-1).type,'backend.completed');
 });
+test('a barge-in records which speaker sent it, without any frame payload',async t=>{
+  const f=await fixture(t);f.created();
+  assert(f.log.audit({type:'client.barge-in',voiceSessionId:'v1',deviceId:'stackchan',confirmed:true,audio:'SECRET'}));
+  assert(f.log.audit({type:'client.barge-in',voiceSessionId:'v1',deviceId:'Bad Id!'}));
+  await f.log.close();const rows=(await f.rows()).filter(r=>r.type==='client.barge-in');
+  assert.deepEqual(rows.map(r=>[r.deviceId,r.confirmed]),[['stackchan',true],[undefined,undefined]]);
+  assert(!JSON.stringify(rows).includes('SECRET'));
+});
+test('upstream cancels and their refusals are kept as event types only',async t=>{
+  const f=await fixture(t);f.created();
+  for(const providerEventType of ['client.response.cancel','client.response.cancel.rejected','response.canceled','error'])f.log.audit({type:'provider.event',voiceSessionId:'v1',providerEventType,message:'SECRET'});
+  await f.log.close();const rows=(await f.rows()).filter(r=>r.type==='provider.event');
+  assert.deepEqual(rows.map(r=>r.providerEventType),['client.response.cancel','client.response.cancel.rejected','response.canceled']);
+  assert(!JSON.stringify(rows).includes('SECRET'));
+});

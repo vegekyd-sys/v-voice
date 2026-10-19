@@ -632,3 +632,50 @@ test('long backend document keeps full paired history but commits only short spe
  socket.message({type:'response.output_audio.delta',response_id:'summary',delta:floatAudio([.2])});
  assert.deepEqual(texts,[['assistant',spokenText,true,'V-backend-summary']]);bridge.close();
 });
+
+test('a confirmed device barge-in cancels a reply mid-generation and the next utterance is still heard',async()=>{
+ const socket=new FakeSocket(),audio=[],texts=[],events=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},onAudio:b=>audio.push(b),onTranscript:(role,text,final)=>final&&texts.push([role,text]),onEvent:e=>events.push(e.type),onClearAudio(){},onResponseDone(){},onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+ // A long story: Seeduplex sends no transcription while it is still generating.
+ socket.message({type:'response.output_audio.started',response_id:'story'});
+ socket.message({type:'response.output_audio.delta',response_id:'story',delta:floatAudio([.5])});
+ bridge.handleBargeIn({confirmed:true});
+ assert.equal(socket.sent.filter(e=>e.type==='response.cancel').length,1);
+ socket.message({type:'response.output_audio.started',response_id:'story'});
+ socket.message({type:'response.output_audio.delta',response_id:'story',delta:floatAudio([.5])});
+ assert.equal(audio.length,1,'the cancelled story does not resume');
+ socket.message({type:'conversation.item.input_audio_transcription.started'});
+ socket.message({type:'conversation.item.input_audio_transcription.completed',transcript:'停一下，换个故事'});
+ assert.deepEqual(texts.at(-1),['user','停一下，换个故事']);
+ socket.message({type:'response.output_audio.started',response_id:'answer'});
+ socket.message({type:'response.output_audio.delta',response_id:'answer',delta:floatAudio([.25])});
+ assert.equal(audio.length,2,'the reply to the interruption plays');
+ // Once generation has finished a confirmed barge-in only flushes locally:
+ // Seeduplex hears the talk-over itself, and a cancel then broke its ASR.
+ socket.message({type:'response.output_audio.done',response_id:'answer'});
+ bridge.handleBargeIn({confirmed:true});
+ assert.equal(socket.sent.filter(e=>e.type==='response.cancel').length,1);
+ assert.deepEqual(events.filter(e=>e==='client.response.cancel').length,1);
+ bridge.close();
+});
+
+test('after a cancel, the next turn keeps the reply text that precedes its first audio',async()=>{
+ const socket=new FakeSocket(),texts=[],audio=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},onAudio:b=>audio.push(b),onTranscript:(role,text,final)=>final&&texts.push([role,text]),onClearAudio(){},onResponseDone(){},onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+ socket.message({type:'response.output_audio.started',response_id:'story'});
+ bridge.handleBargeIn({confirmed:true});
+ // A refused cancel never ends the session.
+ const cancel=socket.sent.find(e=>e.type==='response.cancel');
+ socket.message({type:'error',error:{event_id:cancel.event_id,message:'unexpected'}});
+ socket.message({type:'response.output_text.done',response_id:'story',text:'旧故事的尾巴'});
+ socket.message({type:'conversation.item.input_audio_transcription.started'});
+ socket.message({type:'conversation.item.input_audio_transcription.completed',transcript:'今天星期几'});
+ socket.message({type:'response.output_text.done',text:'今天是星期日。'});
+ socket.message({type:'response.output_audio.started',response_id:'weekday'});
+ socket.message({type:'response.output_audio.delta',response_id:'weekday',delta:floatAudio([.25])});
+ assert.deepEqual(texts,[['user','今天星期几'],['assistant','今天是星期日。']]);
+ assert.equal(audio.length,1);
+ bridge.close();
+});

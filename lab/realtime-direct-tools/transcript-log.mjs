@@ -53,7 +53,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     // Causal metadata only: never persist tool arguments, results, PCM or raw
     // provider frames. A received utterance without a reply must be diagnosable.
     if(['tool.call','tool.delivered','backend.start-requested','backend.started','backend.completed','backend.control','backend.cancel-observed','backend.cancel-unconfirmed','response.done','provider.event','audio.clear'].includes(event.type)){
-      if(event.type==='provider.event'&&!['conversation.item.input_audio_transcription.started','response.created','response.output_audio.started'].includes(event.providerEventType))return false;
+      if(event.type==='provider.event'&&!['conversation.item.input_audio_transcription.started','response.created','response.output_audio.started','response.canceled','input_audio_buffer.speech_started','input_audio_buffer.speech_stopped','client.response.cancel','client.response.cancel.rejected','conversation.item.input_audio_transcription.completed'].includes(event.providerEventType))return false;
       if(event.type==='tool.call'&&(typeof event.name!=='string'||typeof event.callId!=='string'))return false;
       const safe={};
       for(const key of ['callId','runId','taskId','responseId','providerEventType','name','mode','status'])if(typeof event[key]==='string')safe[key]=event[key].slice(0,160);
@@ -81,6 +81,26 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
         ...(typeof event.kind==='string'?{kind:event.kind}:{}),
         ...(typeof receipt.messageId==='string'?{messageId:receipt.messageId}:{}),
         ...(typeof event.error==='string'?{error:event.error.slice(0,300)}:{})});
+    }
+    if(event.type==='robot.reaction'){
+      const safe={};
+      for(const key of ['id','beat','source','deviceId'])if(typeof event[key]==='string'&&/^[a-z0-9_-]{1,64}$/u.test(event[key]))safe[key]=event[key];
+      return enqueue({...owner,type:event.type,...safe});
+    }
+    if(event.type==='client.barge-in'){
+      // Who interrupted: a speaker's own abort carries its deviceId; a phone does not.
+      const safe={};
+      if(typeof event.deviceId==='string'&&/^[a-z0-9_-]{1,64}$/u.test(event.deviceId))safe.deviceId=event.deviceId;
+      if(typeof event.confirmed==='boolean')safe.confirmed=event.confirmed;
+      return enqueue({...owner,type:event.type,...safe});
+    }
+    if(event.type==='device.call'){
+      // Speaker lifecycle diagnostics: counters and stage names only, no audio.
+      if(!['start','ready','input-speech','closed'].includes(event.stage))return false;
+      const safe={stage:event.stage};
+      for(const key of ['deviceId','reason'])if(typeof event[key]==='string'&&/^[a-z0-9_-]{1,64}$/u.test(event[key]))safe[key]=event[key];
+      for(const key of ['latencyMs','durationMs','inputBytes','outputBytes','userTurns','gatedInputBytes','maxInputGapMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      return enqueue({...owner,type:event.type,...safe});
     }
     if(event.type==='call.closed'){
       closedOwners.set(id,owner);if(closedOwners.size>256)closedOwners.delete(closedOwners.keys().next().value);
