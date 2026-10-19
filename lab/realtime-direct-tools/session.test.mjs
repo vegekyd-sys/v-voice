@@ -490,3 +490,14 @@ test('speaker-routed keyboard text goes through the prepared account context',as
  const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
  f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'文字查询'})),false);await delay(5);assert.deepEqual(seen,['文字查询']);
 });
+
+test('speaker delegation freezes admitted ASR, ignoring earlier speculative native transcription',async t=>{
+ let admitted;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,_native,listener)=>{admitted=listener;},close(){},audio(){}};
+ const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'未准入的旧句'});
+ admitted({type:'speaker.admitted',turn:{text:'通过准入的完整后台目标'}});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'原生ASR滞后的旧声音'});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'admitted-job',name:'delegate_to_v',arguments:JSON.stringify({question:'简短转述'})}]});await delay(10);
+ const question=f.invocations.find(x=>x.question)?.question;assert(question?.includes('通过准入的完整后台目标'));assert(!question.includes('原生ASR滞后的旧声音'));
+ f.completeBackend('完成');await delay(30);
+});

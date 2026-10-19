@@ -237,6 +237,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.responseActive=true;if(s.ending)s.ending.hasAudio=true;deliverAudio(audio,metadata);}),
       onTranscript:(role,text,final,source)=>{
         if(!current(s))return;
+        if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
         const deliver=()=>{
         if(role==='assistant'&&final)speakerRouting?.assistant(s.id,text);
         if(role==='user'){if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
@@ -306,7 +307,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if([...s.toolOwners.values()].includes(old))s.retiredBridges.add(old);else old.close();
         await next.connect();if(!current(s)||s.bridge!==next){next.close();throw Error('人物准备已取消');}s.personaKey=key;
       },
-    },value=>{if(value.type==='transcript'&&value.role==='user'&&value.final&&value.text?.trim())s.latestUserTurn=Object.freeze({text:value.text,receivedAt:new Date().toISOString()});emit(s,value);if(value.type==='error')void close(s.id).catch(()=>{});});
+    },value=>{if(value.type==='speaker.admitted'&&value.turn?.text?.trim()){
+      const text=value.turn.text;s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=false;
+      audit({type:'transcript',voiceSessionId:s.id,role:'user',text,final:true,source:'speaker-asr'});
+      if(s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));
+    }emit(s,value);if(value.type==='error')void close(s.id).catch(()=>{});});
     if(current(s)){connectionStage('provider-ready');emit(s,{type:'ready',model:s.model,tools:voiceTools.map(t=>t.name)});}
   }
   return {

@@ -116,6 +116,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     }
     const c=s.input,matches=c&&!c.cancelled&&c.speakerId===turn.speakerId&&c.startMs<turn.endMs&&(!c.endMs||c.endMs>=turn.startMs-200);
     if(!result.shouldRespond){if(matches){clearTimeout(s.responseDeadline);c.cancelled=true;s.gate.deny(c.token);s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;}return;}
+    send(s,{type:'speaker.admitted',turn:result.turn});
     const profile=speakerProfile({speakerId:result.turn.speakerId,...result});
     s.acceptedHistory.push({role:'user',text:turn.text});s.acceptedHistory=s.acceptedHistory.slice(-8);
     if(matches&&c.profileKey===profile.key&&!c.fed)await c.preparation;
