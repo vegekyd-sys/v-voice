@@ -1,8 +1,8 @@
 {
   "schema": "v-voice-current-release-v1",
-  "entryCommit": "d37ac851487b8fd9023ad0c922bdb1cf485984ec",
+  "entryCommit": "931c30e54a24d2bdae65a26443643767932ad9e0",
   "gatewayPluginCommit": "a9ac516860a8856470262957ad6ea0cc2670cb0e",
-  "registration": "voice-d37ac851-20261016/manifest.json",
-  "runtimeDifference": "four Voice entry/logging files; Gateway plugin bytes unchanged",
+  "registration": "speaker-stream-20261019/manifest.json",
+  "runtimeDifference": "Voice-only streaming Speaker and host-owned farewell; browser 20ms and cloud ASR 100ms; Gateway plugin unchanged",
   "gatewayRestartRequired": false
 }

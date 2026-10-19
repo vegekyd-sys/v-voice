@@ -1,11 +1,12 @@
 # Voice release log
 
-## Voice · 20261019 streaming multi-speaker
+## Voice · 20261019 streaming multi-speaker · source 931c30e
 
 - 豆包流式匿名 Speaker、对话关联姓名和角色、语义接话与原生语音并行；不改变工具身份。
 - 主机确认自然告别并等待真实播放回执；挂断和后台任务分别管理。
 - 保留正式入口记忆、搜索、Reaction、后台交付和发布空闲检查，GPT Live/Grok 不启用 Speaker 路由。
-- 正式公网保留原生 20ms 小帧上传，避免候选 100ms 聚合在公网测试中积压。
+- 正式公网保留原生20ms上传；云端ASR独立聚合有界100ms，逐字节保持输入顺序及末尾数据。
+- 首轮混合验收失败后实际回滚，修正版通过正式产品页混合恢复与后台取消、告别闭环。
 - Linux 独立声线进程和模型 SHA256 校验；通过配置关闭，保留原正式产物及独立服务回滚。
 
 ## 2026-10-16 — Homepage notes and safe Voice entry publication

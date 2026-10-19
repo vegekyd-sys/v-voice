@@ -1,13 +1,60 @@
-# Voice 流式多人发布 20261019
+# 豆包流式多人正式发布
 
-范围：正式 Voice 启动入口启用豆包流式多人，使用正式既有 Gateway、入口身份、工具、记忆与搜索；保留 Reaction、GPT Live/Grok 原生路线。未复制 Candidate 数据库、私有 Gateway 或记忆快照。Gateway 插件保持生产原版本，不因源码包包含插件而装载它。
+正式入口：https://openclaw.tianyi.live/voice/?entry=tianyi
 
-基线：线上 Voice d37ac851；Gateway 插件 a9ac5168。候选 c873c898 的真人体验、真实接口与播放验证见此前验收；本发布分支合入 main，保留正式后台任务 SDK 和 releaseReadiness。发布来源保持独立分支，不自动合入 main/dev。
+运行源码：`931c30e54a24d2bdae65a26443643767932ad9e0`；分支：`codex/speaker-production-20261019`。Linux 独立 Voice 服务已上线；没有自动合入 main 或平台 dev。Gateway 与正式隧道的 PID、Gateway invocation/start/config、原入口环境保持本次发布前基线。188 个运行文件逐 hash 校验，正式 HTTPS 的 app、Speaker 客户端、音频模块、样式和首页日志均匹配。
 
-运行配置：VOICE_STREAM_SPEAKER=1，VOICE_SPEAKER_PYTHON、VOICE_SPEAKER_MODEL、VOLCENGINE_ASR_API_KEY、既有服务端 Decision 凭据。Linux CPU 推理，模型固定 SHA256 校验；声线模板仅在通话内存中存在。正式流式通话采用独立的 2 小时 / 3000 次判断上限，不沿用 Candidate 的 30 分钟测试预算。
+## 交付内容
 
-发布核对和回滚：使用平台既有独立 Voice 发布控制器，正式服务无通话、无创建和后台任务、无 relay 连接时切换；保留原 pointer、启动 drop-in、私有环境、Gateway PID/start/invocation/config 哈希及旧产物。额外 Speaker drop-in 和 runtime 在独立目录；回滚恢复原 launcher/pointer，去除本次 Speaker drop-in，Gateway 不重启。私有操作记录位于服务器 release 的 receipt，不能提交凭据和真实聊天记录。
+- 豆包支持无预注册 Speaker、对话关联姓名与人物关系、语义接话、原生语音和人物气泡。人物识别只影响表达及回应对象，不授予新账号或工具权限。
+- 浏览器20ms实时上传，Linux并行识人/ASR/原生语音；服务器另为云端ASR聚合有界100ms包。声线模板仅在通话内存中保留，无Mac识人或转接依赖。
+- 主机确认自然告别，等待真实原生音频及浏览器播放完成后关闭；继续提问、取消后台与结束电话分别处理。
+- 正式既有Gateway、上下文、工具、Reaction与入口身份保留。未复制Candidate的私有Gateway、聊天数据库或记忆快照到生产。
+- GPT Live保留原生WebRTC，Grok保留原生Relay；本轮没有为二者新增外部分人路线或重做其音频能力验收。
 
-验收环境选择：只涉及 Voice 内部音频、模型适配和既有 Gateway 接口，沿用独立 Candidate，不写共享 VLab。正式预启动与切换后继续验证真实 ASR/Decision/豆包、身份与工具；无跨服务协议和授权变更。
+## 实际验证
 
-限制：合成音频真实接口检查不代表新增手机蜂窝、物理外放 AEC 或多账号验收。具体上线版本、产物哈希、测试结果与回滚状态在发布后登记。
+| 检查 | 结果 |
+|---|---|
+| 自动回归 | 514个主套件、50个Speaker检查，共564个通过 |
+| 独立Linux修正版Candidate | 同一合成麦克风序列：两人、混合抢麦、恢复7/11、原生播放、拜拜自动关闭；无ASR重连 |
+| 最终正式产品页：混合轮 | 正式HTTPS、正常产品页面和采集Worklet；两位Speaker、重叠后恢复、7/11实际播放、主机告别、自动回到拨号；无控制台错误，无ASR重连 |
+| 最终正式产品页：后台轮 | 实际调用delegate_to_v，后台等待期间另一位继续问答；cancel_task实际返回cancelled=true；继续回答11，告别实际播放后自动回到拨号；无控制台错误，无ASR重连 |
+| 混合轮上传 | 浏览器发送5082帧、4,878,720字节，最大观察发送间隔44ms |
+| 搜索 | 正式网络搜索实际2条；记忆接口可调用但既有后端25秒超时，未计成功 |
+| 回滚 | 已实际恢复原d37ac851，核对原177文件、原launcher/unit/env及Gateway未变化，再发布修正版；当前新版本回滚守卫再次通过 |
+
+后台轮的服务端记录独立确认：任务已接纳、取消结果为true、主机告别已确认、通话已关闭。仅有模型口头回复或浏览器按钮变化不算后台执行证据。
+
+## 失败记录和验证边界
+
+首轮fc2e8dd普通双人和告别通过，但混合轮出现ASR重连、部分后续话语未识别，未完成自动告别。因此实际回滚原版后才修正和重发，没有把首轮算作发布通过。修正后，同段混合音频在独立Candidate和正式域名各通过一轮；最终正式产品页又通过后台/换人/取消/告别完整流程。
+
+独立Node WebSocket压测曾出现上行停顿与ASR重连上限关闭；修正后一次Node后台测试完成实际取消和继续问答，但等待socket关闭回执仍超出脚本期限。该次保留为失败，不冒充协议全通过；随后同版本真实浏览器产品页的完整后台告别闭环通过。没有宣称所有网络和所有长连接压力场景均通过。
+
+某次重复旧计划的接口请求只口头称交给后台而未实际调用工具，未算成功；后续全新任务和完整浏览器后台轮均验证实际工具及服务端取消回执。
+
+记忆搜索超时由绕过Speaker的正式Gateway RPC直调复现，本次没有热改Gateway/Worker。未新增验收物理麦克风、iPhone Safari、蜂窝弱网、外放AEC、五位真人或多账号。此前29分钟长测属于Candidate阶段，不冒充最终正式版本完成了29分钟长测。混合测试证明恢复，不代表同时分离两路人声。
+
+UI和首页日志优先用内置浏览器核对；其无法注入合成麦克风，故按项目允许的特定浏览器能力，使用独立Chrome启动参数注入测试WAV，走正常getUserMedia、AudioWorklet与正式接口；没有生产fixture API或demo页，没有采集真人声音。截图与私有测试收据保留在本机验收目录。
+
+早期预启动换人问答接口首音频约3.1秒，旧版公网两个清晰问答样本为3.0秒和9.5秒；它们不是最新Chrome或手机听感的精确延迟指标，尾延迟不宣称已全部解决。
+
+## 回滚
+
+目标：发布前的d37ac851原服务。原始177文件、launcher、unit、私有环境及哈希保留在Linux服务器，私有备份0600，未进入Git。脚本验证当前版本/单元归属、Gateway PID/start/invocation/config、入口环境、旧产物、无通话/创建/后台及无媒体连接后，才切换Voice；不重启Gateway或隧道。工作仍在进行或他人修改时拒绝执行，不强杀。
+
+检查：
+
+```sh
+ssh v 'sudo python3 /var/lib/openclaw-voice-release-20261019/rollback-to-original.py --check'
+```
+
+执行：
+
+```sh
+ssh v 'sudo python3 /var/lib/openclaw-voice-release-20261019/rollback-to-original.py'
+```
+
+
+
