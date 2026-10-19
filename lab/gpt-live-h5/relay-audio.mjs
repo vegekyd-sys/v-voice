@@ -77,10 +77,12 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
   const phone=new URLSearchParams(location.search).get('phone');if(phone)endpoint.searchParams.set('phone',phone);
   const socket=new WebSocket(endpoint);socket.binaryType='arraybuffer';
-  let closed=false,ready=false,node,speaker,source,quietGain,ending=null,tailTimer,epoch=0,written=0,lastPlayedAt=null,lastSequence=0,blocked=false,outputComplete=false,playbackActive=false,busy=false,lastReceiveAt=null,statsTimer;
+  let closed=false,ready=false,node,speaker,source,quietGain,ending=null,tailTimer,epoch=0,written=0,lastPlayedAt=null,lastSequence=0,blocked=false,outputComplete=false,playbackActive=false,busy=false,lastReceiveAt=null,statsTimer,uploadFailed=false;
   const pendingOutput=[];
+  const inputBatch=[];let inputBatchBytes=0;
+  const flushInput=()=>{if(!inputBatchBytes)return;const bytes=new Uint8Array(inputBatchBytes);let at=0;for(const frame of inputBatch){bytes.set(new Uint8Array(frame),at);at+=frame.byteLength;}inputBatch.length=0;inputBatchBytes=0;socket.send(bytes.buffer);stats.inputBytes+=bytes.byteLength;stats.inputBatches++;};
   const maxQueuedOutputBytes=16*1024*1024;
-  const stats={inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs,contextState:context.state,contextSampleRate:context.sampleRate,playbackDrained:false};
+  const stats={inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs,contextState:context.state,contextSampleRate:context.sampleRate,playbackDrained:false,peakInputBufferedBytes:0,inputBatches:0};
   const activity=value=>{if(playbackActive!==value){playbackActive=value;onPlaybackActivity(value);}};
   const send=e=>{if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(e));};
   const reportBusy=()=>{const next=stats.queuedOutputBytes>0||playbackActive;if(next!==busy){busy=next;send({type:'playback.state',speaking:busy});}};
@@ -141,12 +143,17 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     for(const buffer of pendingOutput)transfer(buffer);pendingOutput.length=0;if(outputComplete)speaker.port.postMessage({type:'done',epoch});
     node=new AudioWorkletNode(context,'v-direct-mic');source=context.createMediaStreamSource(stream);
     quietGain=context.createGain();quietGain.gain.value=0;source.connect(node);node.connect(quietGain);quietGain.connect(context.destination);
-    node.port.onmessage=e=>{if(closed)return;const frame=e.data;
+    node.port.onmessage=e=>{if(closed||uploadFailed)return;const frame=e.data;
       if(ready&&socket.readyState===WebSocket.OPEN){
         if(!inputGated&&backendOnset.observe(frame,backendPlayback&&stats.queuedOutputBytes>0)){
           if(backendResponseId){retiredResponses.add(backendResponseId);if(retiredResponses.size>256)retiredResponses.delete(retiredResponses.values().next().value);}
           flush();send({type:'barge-in'});}
-        if(socket.bufferedAmount>480000){onError(Error('音频上传积压，请重新拨号'));return;}socket.send(frame);stats.inputBytes+=frame.byteLength;}
+        stats.peakInputBufferedBytes=Math.max(stats.peakInputBufferedBytes,socket.bufferedAmount);
+        if(socket.bufferedAmount>480000){uploadFailed=true;onEvent({type:'upload.backpressure',bufferedBytes:socket.bufferedAmount,inputBytes:stats.inputBytes});onError(Error('音频上传积压，请重新拨号'));return;}
+        inputBatch.push(frame);inputBatchBytes+=frame.byteLength;
+        // Speaker routing consumes arbitrary PCM block sizes; group at most
+        // 100ms instead of emitting fifty WebSocket messages each second.
+        if(!inputGated||inputBatchBytes>=4800)flushInput();}
     };
   }
   return {ready:promise,stats,async start(){

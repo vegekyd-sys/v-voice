@@ -5,6 +5,8 @@ export function renderSpeakerEvent(value){
   if(!row){row=document.createElement('div');row.id='speakerRoster';row.className='status-text';row.setAttribute('aria-label','当前对话人物');document.getElementById('conversationFooter')?.prepend(row);}
   if(value.type==='speaker.error'){row.textContent='这一句暂时没有判断清楚，请再说一次；也可以结束后重拨。';row.dataset.error='true';return;}
   if(value.type==='speaker.recovery'){delete row.dataset.error;row.textContent=value.reason==='mixed-speakers'?'声音重叠了 · 请轮流说，我在听':'这句没听清 · 请再说一次，我在听';return;}
+  if(value.type==='speaker.asr-reconnecting'){row.textContent='网络短暂不稳 · 正在恢复识别，通话保持中';return;}
+  if(value.type==='speaker.asr-recovered'){delete row.dataset.error;row.textContent='识别已恢复 · 可以继续说';return;}
   if(value.type==='speaker.ready'){row.textContent=value.streaming?'自动多人对话 · 流式识人':'自动多人对话 · 无需注册声纹';return;}
   if(value.type!=='speaker.decision')return;
   delete row.dataset.error;
@@ -21,8 +23,7 @@ export async function createSpeakerGate({context,stream,reservation,channel,isCu
   const readyPromise=new Promise((resolve,reject)=>{
     ws.onmessage=event=>{if(disposed)return;let value;try{value=JSON.parse(event.data);}catch{return;}
       onEvent(value);renderSpeakerEvent(value);
-      if(value.type==='speaker.recovery'){delete row.dataset.error;row.textContent=value.reason==='mixed-speakers'?'声音重叠了 · 请轮流说，我在听':'这句没听清 · 请再说一次，我在听';return;}
-  if(value.type==='speaker.ready'){ready=true;resolve();}
+      if(value.type==='speaker.ready'){ready=true;resolve();}
       if(value.type==='speaker.error')reject(Error(value.message));
       if(value.type==='speaker.replay'){
         const revision=++replayRevision;

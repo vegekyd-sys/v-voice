@@ -31,7 +31,7 @@ export function speakerProfile({speakerId,participants,addresseeIds,mode='auto',
 export function createStreamingSpeakerRoutingService({env,embedding,evaluate=decisionEvaluator(env),createAsr=o=>new VolcAsrStream(o),onAudit=()=>{},limits={}}){
   const sessions=new Map();let decisionCalls=0,inputBytes=0;
   const send=(s,event)=>{if(s.closed)return;const row={...event,voiceSessionId:s.id};s.listener?.(row);onAudit(row);};
-  const fail=(s,error)=>{send(s,{type:'speaker.error',message:error.message});close(s.id);};
+  const fail=(s,error)=>{const reason=/ASR|识别.*断开/.test(error.message)?'asr-disconnected':/声线计算超时/.test(error.message)?'embedding-timeout':/声线.*积压/.test(error.message)?'embedding-overload':/声线模型/.test(error.message)?'embedding-unavailable':/窗口|保留|音频.*范围/.test(error.message)?'audio-window-expired':'stream-unavailable';send(s,{type:'speaker.error',fatal:true,reason,message:error.message});send(s,{type:'error',reason,message:'识人语音通道暂时断开，请重新拨号。'});close(s.id);};
   const earlyProfile=(s,speakerId)=>{
     const id=personId(speakerId),snapshot=s.router.snapshot();
     let p=snapshot.participants.find(p=>p.id===id);
@@ -112,7 +112,9 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
   };
   const normalizeFinals=(s,event)=>{
     const output=[];
-    for(const raw of event.body?.result?.utterances??[]){
+    for(const entry of event.body?.result?.utterances??[]){
+      // ASR's protobuf JSON omits zero-valued start_time on a first utterance.
+      const raw={...entry,start_time:entry.start_time??0};
       if(!raw.definite||!raw.text?.trim()||!Number.isFinite(raw.start_time)||!Number.isFinite(raw.end_time))continue;
       const key=raw.start_time+':'+raw.end_time;if(s.seen.has(key))continue;
       if(raw.end_time<(s.latestFinalEnd??0)-200){s.seen.add(key);send(s,{type:'speaker.superseded',reason:'late-asr-final'});continue;}
@@ -137,7 +139,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
       if(ids.length>1){
         if(!raw.words?.length){send(s,{type:'speaker.error',message:'这一句多人声音混在一起，请轮流说话。'});s.seen.add(key);s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;if(s.input)s.input.cancelled=true;void recover(s,'mixed-speakers');continue;}
         const groups=[];
-        for(const word of raw.words){const mid=(word.start_time+word.end_time)/2;const owner=overlaps.find(x=>x.segment.speakerId&&mid>=x.segment.startMs&&mid<=(x.segment.endMs??s.window.bytes/32))?.segment;
+        for(const word of raw.words){const mid=((word.start_time??0)+(word.end_time??raw.end_time))/2;const owner=overlaps.find(x=>x.segment.speakerId&&mid>=x.segment.startMs&&mid<=(x.segment.endMs??s.window.bytes/32))?.segment;
           if(!owner)continue;let g=groups.at(-1);if(!g||g.speakerId!==owner.speakerId){g={speakerId:owner.speakerId,startMs:word.start_time,endMs:word.end_time,text:''};groups.push(g);}g.text+=word.text??'';g.endMs=word.end_time;}
         if(!groups.length){s.seen.add(key);void recover(s,'mixed-speakers');continue;}output.push(...groups.filter(g=>g.text.trim()&&g.endMs>g.startMs));
       }else output.push({speakerId:ids[0],startMs:raw.start_time,endMs:raw.end_time,text:raw.text.trim()});
@@ -145,11 +147,40 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     }
     const merged=[];for(const turn of output){const last=merged.at(-1);if(last&&last.speakerId===turn.speakerId&&turn.startMs-last.endMs<1200){last.text+=turn.text;last.endMs=turn.endMs;}else merged.push(turn);}return merged;
   };
-  const close=id=>{const s=sessions.get(id);if(!s)return;send(s,{type:'speaker.closed',decisionCalls:s.decisionCalls,inputSeconds:s.inputBytes/48000});s.closed=true;s.abort.abort();if(s.input)s.input.cancelled=true;s.gate.deny();clearInterval(s.timer);clearTimeout(s.responseDeadline);clearTimeout(s.expiry);s.asr?.close();s.tracker.close();s.window.chunks=[];s.listener=null;sessions.delete(id);};
+  const connectAsr=async(s,startMs=0)=>{
+    const epoch=++s.asrEpoch;s.asrReady=false;
+    const recoverAsr=error=>{
+      if(s.closed||epoch!==s.asrEpoch)return;
+      s.asrEpoch++;s.asrReady=false;s.asr?.close();
+      const now=performance.now();s.asrRetries=s.asrRetries.filter(t=>now-t<60000);
+      if(s.asrRetries.length>=2){fail(s,error);return;}
+      s.asrRetries.push(now);send(s,{type:'speaker.asr-reconnecting',reason:'asr-disconnected'});
+      const resumeMs=Math.max(0,s.window.bytes/32-400);
+      s.asrRetry=setTimeout(()=>void connectAsr(s,resumeMs).catch(e=>fail(s,e)),250);s.asrRetry.unref?.();
+    };
+    const shift=u=>({...u,start_time:(u.start_time??0)+startMs,end_time:Number.isFinite(u.end_time)?u.end_time+startMs:u.end_time,...u.words?{words:u.words.map(shift)}:{}});
+    const asr=createAsr({apiKey:env.VOLCENGINE_ASR_API_KEY,onResult:event=>{
+      if(s.closed||epoch!==s.asrEpoch)return;
+      const result=event.body?.result;const absolute=result?{...event,body:{...event.body,result:{...result,utterances:(result.utterances??[]).map(shift)}}}:event;
+      s.latestAsr=absolute;
+      if(env.VOICE_STREAM_SYNTHETIC_TRACE==='1')send(s,{type:'speaker.asr-state',utterances:(absolute.body?.result?.utterances??[]).map(u=>({definite:u.definite,startMs:u.start_time,endMs:u.end_time,textLength:u.text?.length}))});
+      for(const turn of normalizeFinals(s,absolute))enqueue(s,turn);
+    },onError:recoverAsr,onClose:()=>recoverAsr(Error('语音识别已断开'))});s.asr=asr;
+    try{await asr.connect();}catch(error){recoverAsr(error);return;}
+    if(s.closed||epoch!==s.asrEpoch){asr.close();return;}
+    s.asrReady=true;
+    const end=s.window.bytes/32,from=Math.max(startMs,end-3000);
+    // ASR is nonstream-capable; at most three seconds recover from the existing
+    // private ring buffer. All returned timestamps retain the absolute origin.
+    if(from>startMs){s.asrEpoch++;asr.close();void connectAsr(s,from).catch(error=>fail(s,error));return;}
+    for(let at=from;at<end;at+=100)asr.append(s.window.slice(at,Math.min(end,at+100)));
+    if(startMs>0)send(s,{type:'speaker.asr-recovered'});
+  };
+  const close=id=>{const s=sessions.get(id);if(!s)return;send(s,{type:'speaker.closed',decisionCalls:s.decisionCalls,inputSeconds:s.inputBytes/48000});s.closed=true;s.abort.abort();if(s.input)s.input.cancelled=true;s.gate.deny();clearInterval(s.timer);clearTimeout(s.responseDeadline);clearTimeout(s.asrRetry);clearTimeout(s.expiry);s.asr?.close();s.tracker.close();s.window.chunks=[];s.listener=null;sessions.delete(id);};
   return {
     reserve(id,{model,policy='speaker'}={}){
       if(model!=='seeduplex'||policy==='native')return null;
-      const s={id,decisionCalls:0,inputBytes:0,router:new SpeakerRouter({evaluate:async(...args)=>{decisionCalls++;if(++s.decisionCalls>(limits.decisionCalls??300))throw Error('本轮判断预算已用完');return evaluate(...args);}}),window:new AudioWindow(),resampler:new Pcm24To16Resampler(),clock:[],gate:new TurnOutputGate(),abort:new AbortController(),acceptedHistory:[],seen:new Set(),backfilled:new Map(),backfilling:new Set(),serial:0,tail:Promise.resolve(),ready:false,nativeBusy:false,closed:false};
+      const s={id,decisionCalls:0,inputBytes:0,router:new SpeakerRouter({evaluate:async(...args)=>{decisionCalls++;if(++s.decisionCalls>(limits.decisionCalls??300))throw Error('本轮判断预算已用完');return evaluate(...args);}}),window:new AudioWindow(),resampler:new Pcm24To16Resampler(),clock:[],gate:new TurnOutputGate(),abort:new AbortController(),acceptedHistory:[],seen:new Set(),backfilled:new Map(),backfilling:new Set(),serial:0,asrEpoch:0,asrRetries:[],tail:Promise.resolve(),ready:false,nativeBusy:false,closed:false};
       s.tracker=new OnlineSpeakerTracker({embed:pcm=>embedding.compute(pcm),onEvent:e=>{
         if(s.closed)return;
         if(e.type==='identified')identified(s,e);
@@ -164,12 +195,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     pending:id=>sessions.get(id)?.gate.status==='pending',
     async bind(id,native,listener){
       const s=sessions.get(id);if(!s)return;s.native=native;s.listener=listener;await embedding.ready;
-      s.asr=createAsr({apiKey:env.VOLCENGINE_ASR_API_KEY,onResult:event=>{
-        s.latestAsr=event;
-        if(env.VOICE_STREAM_SYNTHETIC_TRACE==='1')send(s,{type:'speaker.asr-state',utterances:(event.body?.result?.utterances??[]).map(u=>({definite:u.definite,startMs:u.start_time,endMs:u.end_time,textLength:u.text?.length}))});
-        for(const turn of normalizeFinals(s,event))enqueue(s,turn);
-      },onError:error=>fail(s,error),onClose:()=>{if(!s.closed)fail(s,Error('语音识别已断开，请重拨'));}});
-      await s.asr.connect();if(s.closed){s.asr.close();return;}s.ready=true;
+      await connectAsr(s);if(s.closed)return;s.ready=true;
       s.timer=setInterval(()=>{
         if(s.closed||!s.prepared)return;
         const c=s.input;
@@ -187,7 +213,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
         }catch(error){fail(s,error);}
       },20);s.timer.unref?.();send(s,{type:'speaker.ready',streaming:true});
     },
-    audio(id,pcm24){const s=sessions.get(id);if(!s?.ready||s.closed)throw Error('流式识人尚未就绪');inputBytes+=pcm24.length;s.inputBytes+=pcm24.length;if(s.inputBytes>48000*(limits.inputSeconds??1800))throw Error('本轮音频预算已用完');const pcm=s.resampler.push(pcm24),startMs=s.window.bytes/32;s.window.append(pcm);s.clock.push({startMs,endMs:s.window.bytes/32,at:performance.now()});if(s.clock.length>1200)s.clock.shift();s.asr.append(pcm);s.tracker.push(pcm);
+    audio(id,pcm24){const s=sessions.get(id);if(!s?.ready||s.closed)throw Error('流式识人尚未就绪');inputBytes+=pcm24.length;s.inputBytes+=pcm24.length;if(s.inputBytes>48000*(limits.inputSeconds??1800))throw Error('本轮音频预算已用完');const pcm=s.resampler.push(pcm24),startMs=s.window.bytes/32;s.window.append(pcm);s.clock.push({startMs,endMs:s.window.bytes/32,at:performance.now()});if(s.clock.length>1200)s.clock.shift();if(s.asrReady)s.asr.append(pcm);s.tracker.push(pcm);
       if(s.latestAsr)for(const turn of normalizeFinals(s,s.latestAsr))enqueue(s,turn);return true;},
     dispatch(id,kind,value,deliver){const s=sessions.get(id);if(!s)return false;if(s.gate.status!=='closed'){if(kind==='audio')s.nativeBusy=true;if(kind==='done')s.nativeBusy=false;}try{const c=s.input;s.gate.dispatch(()=>{if(c&&s.input===c&&['audio','tool'].includes(kind)){c.responded=true;clearTimeout(s.responseDeadline);}deliver();},kind==='audio'?value.length:0);}catch(error){if(s.input)s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;send(s,{type:'speaker.error',message:error.message});}return true;},
     assistant(id,text){const s=sessions.get(id);if(s&&text?.trim()){s.router.assistant(text);s.acceptedHistory.push({role:'assistant',text:text.slice(-800)});s.acceptedHistory=s.acceptedHistory.slice(-8);}},

@@ -11,8 +11,8 @@ async function fixture(t,{evaluate,prepare=async()=>{},limits}={}){
   service.reserve('call',{model:'seeduplex'});t.after(()=>service.dispose());
   await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},forward:b=>forwarded.push(b),cancel(){},invalidate(){},clarify:text=>clarifications.push(text)},e=>events.push(e));
   service.audio('call',voice());
-  const emit=(text='V，天空为什么是蓝色的？',start=0,end=1100)=>asr.onResult({body:{result:{utterances:[{definite:true,start_time:start,end_time:end,text,speaker_id:'wrong-cloud-id'}]}}});
-  return {service,events,forwarded,profiles,emit,clarifications};
+  const emit=(text='V，天空为什么是蓝色的？',start=0,end=1100)=>asr.onResult({body:{result:{utterances:[{definite:true,start_time:start,end_time:end,text,speaker_id:'wrong-cloud-id',...(start===null?{start_time:undefined}:{})}]}}});
+  return {service,events,forwarded,profiles,emit,clarifications,disconnectAsr:()=>asr.onClose()};
 }
 
 test('pending native audio, captions and tools are discarded together; stale admission cannot reopen them',()=>{
@@ -80,4 +80,12 @@ test('a delayed older decision never cancels or releases the newer final utteran
 test('an admitted native turn with no audio or tool has a bounded spoken recovery',async t=>{
  const f=await fixture(t,{limits:{responseMs:30}});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
  f.service.audio('call',Buffer.alloc(48000));await wait(()=>f.events.some(e=>e.type==='speaker.native-input-complete'));await wait(()=>f.events.some(e=>e.type==='speaker.recovery'&&e.reason==='native-no-output'));await wait(()=>f.clarifications.length===1);
+});
+
+test('a first utterance whose zero start_time is omitted still reaches speaker decision and native admission',async t=>{
+ const f=await fixture(t);await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit('V，听得到吗？',null,1100);await wait(()=>f.events.some(e=>e.type==='speaker.decision'));assert.equal(f.events.find(e=>e.type==='speaker.utterance').turn.startMs,0);
+});
+
+test('ASR reconnect retains the live call and restores absolute timestamps instead of leaving an open dead uploader',async t=>{
+ const f=await fixture(t);f.disconnectAsr();assert.equal(f.service.has('call'),true);await wait(()=>f.events.some(e=>e.type==='speaker.asr-recovered'));f.service.audio('call',Buffer.alloc(24000));f.service.audio('call',voice());f.emit('V，继续聊。',0,1100);await wait(()=>f.events.some(e=>e.type==='speaker.decision'));assert.equal(f.events.find(e=>e.type==='speaker.utterance').turn.startMs,800);assert.equal(f.events.some(e=>e.type==='error'),false);
 });

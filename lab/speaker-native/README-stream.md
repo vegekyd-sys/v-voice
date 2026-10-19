@@ -56,9 +56,9 @@ Decision 偶发超时只拒绝当前句，不结束电话；下一句可以继�
 
 ## 独立 Linux 候选
 
-`speaker-stream-linux.20261019.2` 已将同一声线模型与 Voice 产品服务放到 Linux。浏览器只采集和播放；不需要 WASM、Mac 进程或 SSH 转发。既有私有 Gateway 也在该服务器，使用 loopback26367；不会连生产 Gateway。运行时版本为 Node22.23.1、Python3.12、sherpa-onnx1.13.8、numpy2.5.4。
+`speaker-stream-linux.20261019.3` 已将同一声线模型与 Voice 产品服务放到 Linux。浏览器只采集和播放；不需要 WASM、Mac 进程或 SSH 转发。本轮独立产品 Gateway 使用 loopback26369，配套独立 Worker、Memory 索引与 Web Search；不会连生产 Gateway。运行时版本为 Node22.23.1、Python3.12、sherpa-onnx1.13.8、numpy2.5.4。
 
-Linux 模式必须设置 `VOICE_STREAM_LINUX=1`、`VOICE_SPEAKER_GATEWAY_LOCAL_PORT=26367`，并配置 `VOICE_SPEAKER_GATEWAY_RECEIPT`、HTTPS `VOICE_STREAM_PUBLIC_ORIGIN`、`VOICE_STREAM_BASE_PATH=/voice`、`VOICE_STREAM_ACCESS_TOKEN_FILE`。入口令牌只保存在私有文件，经 URL fragment 换取 HttpOnly Cookie；API/音频通道仍复核访问资格，不能匿名拨号。只复制该试验所需的语音/ASR/Decision 凭据，不复制个人环境文件、生产聊天或 refresh token。
+Linux 模式必须设置 `VOICE_STREAM_LINUX=1`、`VOICE_SPEAKER_GATEWAY_LOCAL_PORT=26369`，并配置 `VOICE_SPEAKER_GATEWAY_RECEIPT`、HTTPS `VOICE_STREAM_PUBLIC_ORIGIN`、`VOICE_STREAM_BASE_PATH=/voice`、`VOICE_STREAM_ACCESS_TOKEN_FILE`。入口令牌只保存在私有文件，经 URL fragment 换取 HttpOnly Cookie；API/音频通道仍复核访问资格，不能匿名拨号。只复制该试验所需的语音/ASR/Decision 凭据，不复制个人环境文件、生产聊天或 refresh token。
 
 部署使用独立低权限系统用户与 systemd 单元，限制 CPU100%、内存1GiB、进程数128。正式服务、Nginx、既有 Cloudflare 隧道均不改动。新专属 Cloudflare Quick Tunnel 只代理本机候选端口26327；公网入口是临时测试地址，隧道重建后可能变化，需要同步 publicOrigin 与新试用链接，不能作为正式域名承诺。停用时仅停止该候选的 voice/tunnel 单元，不停止复用的私有 Gateway 或线上服务。
 
@@ -78,3 +78,16 @@ Decision 仍是一次并行 typed questions 请求，补充“是否向V说”�
 澄清使用原生 `speech_text_buffer.commit`，只播报固定重说提示；普通答案仍由小何听原音生成。`conversation.item.create` 只更新历史，不会触发回答，不能用于澄清播报。
 
 可设置绝对路径 `VOICE_STREAM_DIAGNOSTICS_DIR`；记录限于阶段、匿名Speaker编号、决定/置信度、文本长度、首音频和播放状态，不保存正文/名字/参数/音频/声纹。单文件约4MiB轮转，最多保留当前和上一个文件，目录0700、文件0600。诊断与合成验证收据都不提交。
+
+
+## 第三版：后台工作期间继续多人通话
+
+首句 ASR JSON 可能省略值为零的 start_time；现在按零处理，避免第一句消失。ASR 短暂断连在原通话内最多重试两次，重放有界尾音并恢复绝对时间戳；持续失败立即关闭对应浏览器通道，后台任务保持原有归属，不留下仍在上传的死通道。UI 显示识别重连状态。
+
+仅 Speaker 候选将五个20ms采集帧合并为100ms上传，样本顺序不变，消息数降至每秒10个；原生单人链路保持原有发送行为。诊断增加上传峰值、批次数及后台开始、完成、取消事件，不保存人声、正文或工具参数。
+
+独立 Gateway 采用当前已安装的 core/Worker 与 DeepSeek 配置，建立私有记忆快照索引；未复制生产聊天历史，不同步修改线上记忆。启动后必须实际调用 memory_search、web_search 并检查结果，目录列出工具不算通过。
+
+合成双声线长测：`node lab/speaker-native/background-fixture.mjs` 生成授权测试材料；`node lab/speaker-native/verify-background.mjs <label>` 检查真实原生语音、真实后台结果与人物归属。设置 `VOICE_VERIFY_DIAGNOSTICS_FILE` 可追加后台完成、未误取消及讲话覆盖真实执行期的断言。浏览器测试材料由 `background-browser-fixture.mjs` 生成，经产品 `?fixture=background` 输入，不采集麦克风。这些结果不能替代真人重叠、远场与回声验收。
+
+旧本地26325可运行 `legacy-entry.mjs`，只将书签转向 Linux HTTPS 产品入口，不处理音频、凭据或推理。详情见 [后台卡住修复与验收](../../docs/experiments/speaker-background-2026-10-19.md)。

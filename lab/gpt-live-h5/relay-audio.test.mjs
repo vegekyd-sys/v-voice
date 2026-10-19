@@ -174,3 +174,6 @@ test('speaker-gated input cannot interrupt backend playback before a routing dec
  assert(!f.sent.some(x=>typeof x==='string'&&JSON.parse(x).type==='barge-in'));
  f.event({type:'audio.clear'});assert.equal(f.relay.stats.clears,1);
 });
+test('speaker candidate uploads exact ordered PCM in 100ms groups while keeping the native-only path immediate',async t=>{
+ const f=await fixture(t,'seeduplex',false,{inputGated:true});const mic=f.nodes.find(n=>n.name==='v-direct-mic');for(let i=1;i<=5;i++)mic.port.onmessage({data:new Int16Array(480).fill(i).buffer});const sent=f.sent.filter(x=>x instanceof ArrayBuffer);assert.equal(sent.length,1);assert.equal(sent[0].byteLength,4800);const pcm=new Int16Array(sent[0]);for(let i=0;i<5;i++)assert(pcm.subarray(i*480,(i+1)*480).every(n=>n===i+1));assert.equal(f.relay.stats.inputBytes,4800);
+});

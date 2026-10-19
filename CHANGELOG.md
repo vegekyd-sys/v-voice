@@ -1,5 +1,15 @@
 # V Voice changelog
 
+## Candidate · speaker-stream-linux.20261019.3
+
+- 修复 ASR 首句零时间戳被省略时漏句，短暂断连自动恢复并校正时间轴。
+- Speaker 致命错误及时关闭音频通道，避免继续上传到失效路由；保留已受理后台任务。
+- 候选音频按100ms合批，减少消息开销，并记录上传峰值及后台生命周期。
+- 独立产品 Gateway/Worker 恢复 Memory Search、Web Search 和真实后台处理，使用私有记忆快照。
+- 增加两声线在真实后台运行期间及完成后继续对话的端到端验证。
+
+状态：独立 Candidate，未合入及未发布线上。验收见 `docs/experiments/speaker-background-2026-10-19.md`。
+
 ## Candidate · speaker-stream-linux.20261019.2
 
 - 修正跨通话累计判断/音频预算和五分钟静默过期；每通独立限制，最长三十分钟。

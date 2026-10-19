@@ -1,6 +1,6 @@
 # 自动多人对话：Speaker + Decision + 原生语音候选
 
-2026-10-17 新的豆包流式候选使用 `npm run start:speaker-stream`，默认端口 **26325**。下面的 26320 是保留的串行对照。GPT Live 保留原生，不继续定制多人门控。流式安装、机制、测量与已知边界见 [README-stream.md](README-stream.md)。
+当前交付为独立 Linux 流式候选 `.20261019.3`；旧26325入口转向 Linux。开发仍可使用 `npm run start:speaker-stream`，默认端口 **26325**。下面的 26320 是保留的串行对照。GPT Live 保留原生，不继续定制多人门控。流式安装、机制、测量与已知边界见 [README-stream.md](README-stream.md)。
 
 本候选直接复用 Voice H5 产品的拨号、模型选择、头像、字幕、补充内容、工具与结果展示。没有另一套 demo UI。默认自动多人对话，支持小何和 GPT Live，Grok 未接入本轮。
 

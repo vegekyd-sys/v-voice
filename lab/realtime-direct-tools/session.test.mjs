@@ -423,3 +423,9 @@ test('speaker routing failure closes the call without falling back to raw native
  assert(f.client.sent.some(e=>e.type==='error'&&e.message.includes('识别已中断')));
  assert.equal(f.client.readyState,3);
 });
+test('a fatal speaker channel error promptly closes the browser transport without cancelling admitted background work',async t=>{
+ let listener,cancelled=false;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,_native,emit)=>{listener=emit;},close(){},audio(){}};
+ const f=await fixture(async(args,method)=>{if(method==='chat.send')return {runId:args.idempotencyKey,status:'started'};if(method==='chat.abort'){cancelled=true;return {ok:true};}await delay(10);return {status:cancelled?'error':'running',aborted:cancelled};},'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'ongoing',name:'delegate_to_v',arguments:JSON.stringify({question:'整理原任务'})}]});for(let i=0;i<100&&!f.audit.some(e=>e.type==='backend.started');i++)await delay(5);assert(f.audit.some(e=>e.type==='backend.started'));
+ listener({type:'error',reason:'asr-disconnected',message:'识人语音通道暂时断开，请重新拨号。'});for(let i=0;i<100&&f.client.readyState!==3;i++)await delay(5);assert.equal(f.client.readyState,3);assert.equal(cancelled,false);assert.equal(f.service.backgroundTaskCount(),1);
+});
