@@ -1,19 +1,21 @@
 import {relayWorkletSource} from './relay-audio.mjs';
 
 export function renderSpeakerEvent(value){
+  if(!['speaker.error','speaker.recovery','speaker.asr-reconnecting','speaker.asr-recovered','speaker.end-accepted','speaker.end-revoked','speaker.ready','speaker.decision'].includes(value.type))return;
   let row=document.getElementById('speakerRoster');
-  if(!row){row=document.createElement('div');row.id='speakerRoster';row.className='status-text';row.setAttribute('aria-label','当前对话人物');document.getElementById('conversationFooter')?.prepend(row);}
-  if(value.type==='speaker.error'){row.textContent='这一句暂时没有判断清楚，请再说一次；也可以结束后重拨。';row.dataset.error='true';return;}
-  if(value.type==='speaker.recovery'){delete row.dataset.error;row.textContent=value.reason==='mixed-speakers'?'声音重叠了 · 请轮流说，我在听':'这句没听清 · 请再说一次，我在听';return;}
-  if(value.type==='speaker.asr-reconnecting'){row.textContent='网络短暂不稳 · 正在恢复识别，通话保持中';return;}
-  if(value.type==='speaker.asr-recovered'){delete row.dataset.error;row.textContent='识别已恢复 · 可以继续说';return;}
-  if(value.type==='speaker.end-accepted'){row.textContent='正在道别 · 播完后挂断';return;}
-  if(value.type==='speaker.end-revoked'){row.textContent='继续通话 · 已取消挂断';return;}
-  if(value.type==='speaker.ready'){row.textContent=value.streaming?'自动多人对话 · 流式识人':'自动多人对话 · 无需注册声纹';return;}
-  if(value.type!=='speaker.decision')return;
+  if(!row){row=document.createElement('div');row.id='speakerRoster';row.className='speaker-status';row.setAttribute('aria-label','当前对话人物');row.setAttribute('role','status');(document.getElementById('callStatusBar')??document.getElementById('conversationFooter'))?.prepend(row);}
   delete row.dataset.error;
-  const label=id=>{const p=value.participants.find(p=>p.id===id);return p?.name??p?.label??id;};
-  row.textContent=(value.mode==='exclusive'?'只和 '+label(value.targetId)+' 交谈':'自动多人对话')+(value.shouldRespond?' · 回应 '+value.addresseeIds.map(label).join('、'):'');
+  row.dataset.notice='normal';
+  const show=text=>{row.textContent=text;row.title=text;};
+  if(value.type==='speaker.error'){show(value.fatal||/重新拨号|重拨|已关闭|断开/.test(value.message??'')?'识别断开 · 请重拨':value.reason==='farewell-no-audio'?'告别未播放 · 可点挂断':'没听清 · 请再说一次');row.title=value.message??row.textContent;row.dataset.error='true';row.dataset.notice='message';return;}
+  if(value.type==='speaker.recovery'){show(value.reason==='mixed-speakers'?'声音重叠 · 请轮流说':'没听清 · 请再说一次');row.dataset.notice='message';return;}
+  if(value.type==='speaker.asr-reconnecting'){show('识别恢复中');row.dataset.notice='message';return;}
+  if(value.type==='speaker.asr-recovered'){show('识别已恢复');return;}
+  if(value.type==='speaker.end-accepted'){show('道别后挂断');row.dataset.notice='message';return;}
+  if(value.type==='speaker.end-revoked'){show('继续通话');return;}
+  if(value.type==='speaker.ready'){show('多人对话');return;}
+  const label=id=>{const p=value.participants.find(p=>p.id===id);return p?.name??p?.label??'对方';};
+  show(value.mode==='exclusive'?'只和'+label(value.targetId):value.shouldRespond?value.addresseeIds.map(label).join('、'):'倾听中');
   document.body.dataset.speakerState=JSON.stringify({participants:value.participants,targetId:value.targetId,mode:value.mode,shouldRespond:value.shouldRespond,addresseeIds:value.addresseeIds,timings:value.timings});
 }
 

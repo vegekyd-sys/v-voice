@@ -1,3 +1,9 @@
+## Candidate - Compact multi-speaker status
+
+- Keep the current person and active search/background work on one line; shorten Speaker notices and truncate long names without expanding the footer.
+- Show recovery/errors in place of routine work text while preserving the task cancel control and full accessible text.
+- Source integration only; this PR does not activate a production release.
+
 ## 2026-10-20 - Pickup greeting and retired call ownership
 
 - Correct the personal name to Tianyi / 天懿 in native voice prompts, greetings and tool descriptions; entry IDs and account permissions stay unchanged.

@@ -118,28 +118,30 @@
             </section>
           </div>
           <div id="conversationFooter">
-            <div id="statusHome">
-              <p
-                id="status"
-                class="status-text"
-                data-notice="normal"
-                role="status"
-              >
-                拨号后，直接说话。
-              </p>
-            </div>
-            <div class="task-progress">
-              <span id="taskStatus" class="task-status" role="status"></span
-              ><button
-                id="cancel"
-                type="button"
-                hidden
-                disabled
-                aria-label="取消后台任务"
-                title="取消后台任务"
-              >
-                取消
-              </button>
+            <div id="callStatusBar" class="call-status-bar">
+              <div id="statusHome">
+                <p
+                  id="status"
+                  class="status-text"
+                  data-notice="normal"
+                  role="status"
+                >
+                  拨号后，直接说话。
+                </p>
+              </div>
+              <div class="task-progress">
+                <span id="taskStatus" class="task-status" role="status"></span
+                ><button
+                  id="cancel"
+                  type="button"
+                  hidden
+                  disabled
+                  aria-label="取消后台任务"
+                  title="取消后台任务"
+                >
+                  取消
+                </button>
+              </div>
             </div>
             <form id="steerForm" class="steer-form" data-open="false">
               <label class="sr-only" for="steerText">补充内容</label
