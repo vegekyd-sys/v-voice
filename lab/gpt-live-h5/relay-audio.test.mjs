@@ -64,7 +64,7 @@ async function fixture(t,provider,deferReady=false,options={}){
  const realm=vm.createContext({Int16Array,Float32Array,sampleRate:48000,currentTime:0,registerProcessor:(name,K)=>classes.set(name,K),AudioWorkletProcessor:class{constructor(){this.port={postMessage:e=>this.toHost?.(e)}}}});
  class Worklet{constructor(context,name,options){this.name=name;this.processor=new(classes.get(name))(options);this.port={postMessage:(e,transfer=[])=>this.processor.port.onmessage?.({data:structuredClone(e,{transfer})}),close(){}};this.processor.toHost=e=>this.port.onmessage?.({data:e});nodes.push(this)}connect(){}disconnect(){this.disconnected=true}}
  Object.assign(globalThis,{WebSocket:Socket,location:{href:'https://voice.test/voice/'},AudioWorkletNode:Worklet});
- const ctx={state:'running',currentTime:0,destination:{},audioWorklet:{addModule:async url=>vm.runInContext(await(await fetch(url)).text(),realm)},addEventListener:(name,cb)=>listeners.set(name,cb),removeEventListener:name=>listeners.delete(name),createMediaStreamSource:()=>({connect(){},disconnect(){}}),createGain:()=>({gain:{value:1},connect(){},disconnect(){}})};
+ const ctx={state:'running',resumeCalls:0,async resume(){this.resumeCalls++;if(options.resume)await options.resume(this);},currentTime:0,destination:{},audioWorklet:{addModule:async url=>vm.runInContext(await(await fetch(url)).text(),realm)},addEventListener:(name,cb)=>listeners.set(name,cb),removeEventListener:name=>listeners.delete(name),createMediaStreamSource:()=>({connect(){},disconnect(){}}),createGain:()=>({gain:{value:1},connect(){},disconnect(){}})};
  const relay=createRelayAudio({context:ctx,stream:{},reservation:{voiceSessionId:'fixture',relayTicket:'fixture',provider},onEvent:e=>events.push(e),onError:e=>errors.push(e.message),onClosed(){},...options});
  const event=e=>socket.onmessage({data:JSON.stringify({voiceSessionId:'fixture',...e})});const started=relay.start();if(!deferReady){event({type:'ready'});await started;}
  t.after(()=>{relay.dispose();Object.assign(globalThis,old)});
@@ -176,4 +176,22 @@ test('speaker-gated input cannot interrupt backend playback before a routing dec
 });
 test('speaker routing preserves exact ordered PCM with immediate 20ms uplink frames',async t=>{
  const f=await fixture(t,'seeduplex',false,{inputGated:true});const mic=f.nodes.find(n=>n.name==='v-direct-mic');for(let i=1;i<=5;i++)mic.port.onmessage({data:new Int16Array(480).fill(i).buffer});const sent=f.sent.filter(x=>x instanceof ArrayBuffer);assert.equal(sent.length,5);for(let i=0;i<5;i++){assert.equal(sent[i].byteLength,960);assert(new Int16Array(sent[i]).every(n=>n===i+1));}assert.equal(f.relay.stats.inputBytes,4800);
+});
+test('capture rechecks Safari context after ready, independently of the fulfilled dial resume',async t=>{
+ const f=await fixture(t,'seeduplex',true,{resume:ctx=>{ctx.state='running';}});
+ f.ctx.state='interrupted';f.event({type:'ready'});await f.started;
+ assert.equal(f.ctx.resumeCalls,1);assert.equal(f.nodes.filter(n=>n.name==='v-direct-mic').length,1);
+});
+test('foreground context interruption resumes once; disposal removes the old recovery listener',async t=>{
+ const f=await fixture(t,'seeduplex',false,{resume:ctx=>{ctx.state='running';}});
+ f.ctx.state='interrupted';f.listeners.get('statechange')();await Promise.resolve();
+ assert.equal(f.ctx.state,'running');assert.equal(f.ctx.resumeCalls,1);
+ const old=f.listeners.get('statechange');f.relay.dispose();old();assert.equal(f.ctx.resumeCalls,1);
+});
+test('input diagnostics distinguish active frames, muted tracks and absent worklet callbacks without retaining PCM',async t=>{
+ const f=await fixture(t);const mic=f.nodes.find(n=>n.name==='v-direct-mic');
+ mic.port.onmessage({data:new Int16Array(480).fill(1600).buffer});mic.port.onmessage({data:new Int16Array(480).buffer});
+ f.relay.dispose();const stats=f.sent.filter(x=>typeof x==='string').map(x=>JSON.parse(x)).find(x=>x.type==='playback.stats');
+ assert.equal(stats.inputFrames,2);assert.equal(stats.inputActiveFrames,1);assert.equal(stats.inputBytes,1920);assert.equal(stats.contextState,'running');
+ assert.equal('audio' in stats,false);assert.equal('samples' in stats,false);
 });

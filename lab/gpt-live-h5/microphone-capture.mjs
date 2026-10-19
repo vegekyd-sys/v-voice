@@ -58,6 +58,7 @@ export function microphoneProcessingDiagnostics(track, supported = {}) {
     processing: Object.fromEntries(PROCESSING_KEYS.map(key => [key, status(actual[key])])),
     trackLive: track?.readyState === "live",
     trackEnabled: track?.enabled === true,
+    trackMuted: track?.muted === true,
     acousticEchoTestPassed: false,
     // No device IDs, labels, audio, transcript or permission/session identifiers.
   };
