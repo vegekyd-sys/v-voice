@@ -1,3 +1,9 @@
+## Candidate - Home entry guidance
+
+- Present missing/expired personal-link guidance under the home portrait, with concise copy and no unusable dial controls.
+- Give temporary connection failures a manual reconnect action; keep call-time status separate and preserve existing entry authorization.
+- Candidate only; production remains on the rollback baseline.
+
 ## Candidate - Compact multi-speaker status
 
 - Keep the current person and active search/background work on one line; shorten Speaker notices and truncate long names without expanding the footer.
