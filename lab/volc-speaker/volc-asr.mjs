@@ -29,7 +29,7 @@ export function decodeAsrFrame(data) {
 export class VolcAsrStream {
   constructor({apiKey,resource=ASR_RESOURCE,voiceprints,identifyOnly=false,onResult=()=>{},onError=()=>{},onClose=()=>{}}){
     this.apiKey=apiKey;this.resource=resource;this.voiceprints=voiceprints;this.identifyOnly=identifyOnly;
-    this.onResult=onResult;this.onError=onError;this.onClose=onClose;this.requestId=randomUUID();
+    this.pendingAudio=Buffer.alloc(0);this.onResult=onResult;this.onError=onError;this.onClose=onClose;this.requestId=randomUUID();
   }
   connect(){return new Promise((resolve,reject)=>{
     this.socket=new WebSocket(ASR_URL,{headers:{'X-Api-Key':this.apiKey,'X-Api-Resource-Id':this.resource,
@@ -55,9 +55,15 @@ export class VolcAsrStream {
     this.socket.on('error',error=>{reject(error);this.onError(error);});
     this.socket.on('close',()=>this.onClose());
   });}
-  append(pcm){if(this.socket?.readyState===WebSocket.OPEN)this.socket.send(encodeAsrFrame(2,pcm));}
-  finish(){if(this.socket?.readyState===WebSocket.OPEN)this.socket.send(encodeAsrFrame(2,Buffer.alloc(0),{last:true}));}
-  close(){this.socket?.close();}
+  append(pcm){
+    if(this.socket?.readyState!==WebSocket.OPEN)return;
+    this.pendingAudio=Buffer.concat([this.pendingAudio,pcm]);
+    // Browser/native transport stays at 20ms. The cloud recognizer receives
+    // bounded 100ms frames, independently of caller packet sizes.
+    while(this.pendingAudio.length>=3200){this.socket.send(encodeAsrFrame(2,this.pendingAudio.subarray(0,3200)));this.pendingAudio=this.pendingAudio.subarray(3200);}
+  }
+  finish(){if(this.socket?.readyState!==WebSocket.OPEN)return;if(this.pendingAudio.length)this.socket.send(encodeAsrFrame(2,this.pendingAudio));this.pendingAudio=Buffer.alloc(0);this.socket.send(encodeAsrFrame(2,Buffer.alloc(0),{last:true}));}
+  close(){this.pendingAudio=Buffer.alloc(0);this.socket?.close();}
 }
 
 export async function voiceprintRequest(apiKey, action, body){
