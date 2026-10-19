@@ -13,7 +13,7 @@ names.push('plugins/v-voice-gpt-live/tasks.mjs',
  ...['production.mjs','diagnostics.mjs','stream-service.mjs','service.mjs','online-speaker.mjs','embedding-worker.py','requirements-stream.txt','decision.mjs'].map(n=>'lab/speaker-native/'+n),
  ...['volc-asr.mjs','utterances.mjs'].map(n=>'lab/volc-speaker/'+n),
  'lab/voice-decision-router.mjs');
-names.push('lab/realtime-direct-tools/device-endpoint.mjs','lab/realtime-direct-tools/device-playout.mjs');
+names.push('lab/realtime-direct-tools/device-endpoint.mjs','lab/realtime-direct-tools/device-playout.mjs','lab/realtime-direct-tools/device-volume.mjs');
 names.push('lab/realtime-direct-tools/xiaozhi-wire.mjs','lab/realtime-direct-tools/device-vision.mjs','lab/robot/robot-catalog.mjs','lab/robot/robot-reactions.mjs');
 const target=resolve(process.argv[2]??join(root,'artifacts',commit));
 await mkdir(dirname(target),{recursive:true});
