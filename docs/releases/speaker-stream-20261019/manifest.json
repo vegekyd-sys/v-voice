@@ -1,0 +1,79 @@
+{
+  "schema": "v-voice-production-registration-v1",
+  "status": "active",
+  "sourceRepository": "https://github.com/vegekyd-sys/v-voice",
+  "sourceCommit": "931c30e54a24d2bdae65a26443643767932ad9e0",
+  "release": "voice-stream-speaker-20261019.2",
+  "entryDirectory": "/opt/openclaw-voice-h5/releases/gpt-live-931c30e54a24d2bdae65a26443643767932ad9e0",
+  "entryService": "openclaw-rtc-h5.service",
+  "filesSha256": "1a9890ba045ae7953b8a1ea826581219734e23cbe82e09ed5a14968d8e65001d",
+  "fileCount": 188,
+  "gatewayPluginCommit": "a9ac516860a8856470262957ad6ea0cc2670cb0e",
+  "gatewayRestarted": false,
+  "gatewayConfigChanged": false,
+  "tunnelRestarted": false,
+  "validation": {
+    "mainTests": 514,
+    "speakerTests": 50,
+    "candidateMixedAudio": {
+      "twoPeople": true,
+      "nativeSeven": true,
+      "nativeEleven": true,
+      "hostConfirmedFarewell": true,
+      "actualPlayback": true,
+      "returnedToDial": true
+    },
+    "productionMixedAudio": {
+      "twoPeople": true,
+      "nativeSeven": true,
+      "nativeEleven": true,
+      "hostConfirmedFarewell": true,
+      "actualPlayback": true,
+      "returnedToDial": true
+    },
+    "productionBackgroundAudio": {
+      "actualDelegation": true,
+      "actualCancelResult": true,
+      "twoPeople": true,
+      "nativeSeven": true,
+      "nativeEleven": true,
+      "hostConfirmedFarewell": true,
+      "actualPlayback": true,
+      "returnedToDial": true
+    },
+    "productionMixedAsrReconnects": 0,
+    "productionBackgroundAsrReconnects": 0,
+    "runtimeFilesVerified": 188,
+    "publicAssetsVerified": 5,
+    "syntheticMicrophoneOnly": true,
+    "physicalIPhoneSafariRetested": false
+  },
+  "models": {
+    "seeduplex": "streaming Speaker + Decision + native voice",
+    "gpt-live": "existing native WebRTC",
+    "grok": "existing native Relay"
+  },
+  "rollback": {
+    "restoreCommit": "d37ac851487b8fd9023ad0c922bdb1cf485984ec",
+    "script": "/var/lib/openclaw-voice-release-20261019/rollback-to-original.py",
+    "actuallyExecutedAndVerified": true,
+    "currentReleaseGuardChecked": true
+  },
+  "releaseHistory": [
+    {
+      "commit": "fc2e8dd71cb6aadc3f0d2afb5791eb0cc8d73cc4",
+      "status": "rolled_back",
+      "reason": "mixed-speech product acceptance failed; restored original service and unit before repair"
+    },
+    {
+      "commit": "931c30e54a24d2bdae65a26443643767932ad9e0",
+      "status": "active",
+      "change": "browser 20ms uplink, server ASR exact bounded 100ms batches"
+    }
+  ],
+  "knownIssues": [
+    "Existing Gateway memory_search returned disabled/unavailable with a 25-second timeout; not repaired or counted as successful retrieval.",
+    "Standalone Node protocol test completed backend cancellation and continued dialogue, but its socket-close receipt exceeded the harness deadline; retained as failed evidence. The same final release passed full browser background/cancel/farewell acceptance."
+  ],
+  "at": "2026-10-19T14:33:35.159305+00:00"
+}

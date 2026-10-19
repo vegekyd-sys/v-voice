@@ -31,6 +31,33 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
  return {service,reservation,client,upstream,event,call,audit,invocations,peers,completeBackend:text=>{sdkTask.status='ok';sdkTask.text=text;},progressBackend:text=>sdkTask.progress.push({text,kind:'commentary',provenance:{runId:sdkTask.runId,sequence:sdkTask.progress.length+1}})};
 }
 
+test('a speaker switch preserves an admitted tool but never sends its old result to the new native persona',async t=>{
+ let native,finish;
+ const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,value)=>{native=value;},close(){},audio(){}};
+ const f=await fixture(()=>new Promise(r=>{finish=r;}),'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'old-search',name:'web_search',arguments:JSON.stringify({query:'实际查询'})}]});
+ for(let i=0;i<100&&!finish;i++)await delay(2);assert(finish);
+ await native.prepare('当前只和孩子十二交谈。','child',[]);
+ assert.equal(f.peers.length,2);assert.equal(f.upstream.readyState,1);assert.equal(f.client.readyState,1);
+ finish({ok:true,output:{text:'原人物的查询结果'}});for(let i=0;i<250&&f.upstream.readyState!==3;i++)await delay(5);
+ assert.equal(f.upstream.readyState,3);assert.equal(f.client.readyState,1);
+ assert.equal(JSON.stringify(f.peers[1].sent).includes('old-search'),false);
+ assert(f.client.sent.some(e=>e.type==='tool.result'&&e.callId==='old-search'));
+});
+
+test('a background result after a speaker switch is shown without speaking to the new person',async t=>{
+ let native;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,value)=>{native=value;},close(){},audio(){}};
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}),'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'old-task',name:'delegate_to_v',arguments:JSON.stringify({question:'完成原人物的任务'})}]});await delay(5);
+ const started=f.audit.find(e=>e.type==='backend.started');assert(started);
+ await native.prepare('现在只和十二聊天。','child',[]);
+ f.completeBackend('原人物任务已完成，结果已核对。');
+ for(let i=0;i<100&&!f.client.sent.some(e=>e.type==='backend.result');i++)await delay(10);
+ assert(f.client.sent.some(e=>e.type==='backend.result'&&e.text.includes('任务已完成')));
+ assert.equal(f.peers[1].sent.filter(e=>e.type==='speech_text_buffer.commit').length,0);
+ assert.equal(f.client.readyState,1);assert.equal(f.invocations.some(x=>x.method==='chat.abort'),false);
+});
+
 for (const model of ['grok', 'seeduplex']) test(`${model} session initializes with the shared capability policy and real backend adapter`, async t => {
  const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:{status:'ok'},model);
  t.after(()=>f.service.dispose());
@@ -376,6 +403,41 @@ test('SeedDuplex steers and appends to the exact existing backend without a seco
  await delay(250);assert(f.audit.some(e=>e.type==='backend.completed'&&e.runId===started.runId));
 });
 
+
+test('speaker routing failure closes the call without falling back to raw native audio',async t=>{
+ let present=true,routed=0;
+ const routing={reserve:()=>({policy:'speaker'}),has:()=>present,bind:async()=>{},close:()=>{present=false;},audio:()=>{routed++;}};
+ const f=await fixture(undefined,'grok',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ const before=f.upstream.sent.filter(e=>e.type==='input_audio_buffer.append').length;
+ f.client.emit('message',Buffer.alloc(960),true);assert.equal(routed,1);
+ present=false;f.client.emit('message',Buffer.alloc(960),true);await delay(5);
+ assert.equal(f.upstream.sent.filter(e=>e.type==='input_audio_buffer.append').length,before);
+ assert(f.client.sent.some(e=>e.type==='error'&&e.message.includes('识别已中断')));
+ assert.equal(f.client.readyState,3);
+});
+test('a fatal speaker channel error promptly closes the browser transport without cancelling admitted background work',async t=>{
+ let listener,cancelled=false;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,_native,emit)=>{listener=emit;},close(){},audio(){}};
+ const f=await fixture(async(args,method)=>{if(method==='chat.send')return {runId:args.idempotencyKey,status:'started'};if(method==='chat.abort'){cancelled=true;return {ok:true};}await delay(10);return {status:cancelled?'error':'running',aborted:cancelled};},'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'ongoing',name:'delegate_to_v',arguments:JSON.stringify({question:'整理原任务'})}]});for(let i=0;i<100&&!f.audit.some(e=>e.type==='backend.started');i++)await delay(5);assert(f.audit.some(e=>e.type==='backend.started'));
+ listener({type:'error',reason:'asr-disconnected',message:'识人语音通道暂时断开，请重新拨号。'});for(let i=0;i<100&&f.client.readyState!==3;i++)await delay(5);assert.equal(f.client.readyState,3);assert.equal(cancelled,false);assert.equal(f.service.backgroundTaskCount(),1);
+});
+test('speaker farewell requires actual audio, completed response and matching playback drain',async t=>{
+ let native;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,value)=>{native=value;},close(){},audio(){}};
+ const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ native.end({turnId:'sp1'});const id='speaker-end-sp1';assert(f.client.sent.some(e=>e.type==='end.accepted'&&e.callId===id));assert(f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'&&e.text.includes('拜拜')));
+ const drained=()=>f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:id})),false);
+ drained();assert.equal(f.client.readyState,1);f.event({type:'response.output_audio.delta',delta:Buffer.alloc(960).toString('base64')});drained();assert.equal(f.client.readyState,1);
+ f.event({type:'response.done',response:{id:'bye',status:'completed'}});assert(f.client.sent.some(e=>e.type==='end.after-playback'));drained();await delay(5);assert.equal(f.client.readyState,3);assert(f.audit.some(e=>e.type==='speaker.end-played'));
+});
+test('new speech revokes a speaker farewell so stale playback acknowledgements cannot close the call',async t=>{
+ let native;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,value)=>{native=value;},close(){},audio(){}};
+ const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());native.end({turnId:'sp1'});native.cancelEnd();f.event({type:'response.output_audio.delta',delta:Buffer.alloc(960).toString('base64')});f.event({type:'response.done',response:{id:'bye',status:'completed'}});f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:'speaker-end-sp1'})),false);await delay(5);assert.equal(f.client.readyState,1);assert(f.client.sent.some(e=>e.type==='end.cancelled'));
+});
+
+test('host-owned speaker ending removes native end_call advertising while other direct modes retain it',async t=>{
+ const routing={reserve:()=>({policy:'streaming'}),has:()=>true,controlsEnding:()=>true,bind:async()=>{},close(){},audio(){}};const controlled=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>controlled.service.dispose());assert.equal(controlled.client.sent.find(e=>e.type==='ready').tools.includes('end_call'),false);assert.match(JSON.stringify(controlled.upstream.sent),/通话控制由主机负责/);
+ const original=await fixture(undefined,'seeduplex');t.after(()=>original.service.dispose());assert(original.client.sent.find(e=>e.type==='ready').tools.includes('end_call'));
+});
 for(const model of ['grok','seeduplex']) test(`${model} delegates the actual finalized caller turn, independently of paraphrase and later chat`,async t=>{
  const f=await fixture(undefined,model);t.after(()=>f.service.dispose());
  const original='独立编号乙：新建子任务，等十秒重新查时间，不能沿用之前的结果。';
@@ -421,4 +483,15 @@ test('Seed hangup retains release ownership until the actual final delivery rece
  finalSend({messageId:'actual-final-message'});
  for(let n=0;n<100&&f.service.backgroundTaskCount();n++)await delay(2);
  assert.equal(f.service.backgroundTaskCount(),0);assert(f.audit.some(e=>e.type==='task.delivery-confirmed'&&e.kind==='final'));
+});
+
+test('speaker delegation freezes admitted ASR, ignoring earlier speculative native transcription',async t=>{
+ let admitted;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,_native,listener)=>{admitted=listener;},close(){},audio(){}};
+ const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'未准入的旧句'});
+ admitted({type:'speaker.admitted',turn:{text:'通过准入的完整后台目标'}});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'原生ASR滞后的旧声音'});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'admitted-job',name:'delegate_to_v',arguments:JSON.stringify({question:'简短转述'})}]});await delay(10);
+ const question=f.invocations.find(x=>x.question)?.question;assert(question?.includes('通过准入的完整后台目标'));assert(!question.includes('原生ASR滞后的旧声音'));
+ f.completeBackend('完成');await delay(30);
 });

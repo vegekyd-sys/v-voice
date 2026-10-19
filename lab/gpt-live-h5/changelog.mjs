@@ -2,6 +2,14 @@
 // experiments and unaccepted capabilities do not belong in this list.
 export const VOICE_UPDATES = [
   {
+    date: '2026-10-19', title: '豆包可以和大家一起聊了',
+    items: [
+      '不用预先登记声纹，通话中自动区分说话人，在气泡上显示人物，并通过对话关联名字。',
+      '根据当前说话人和对话对象调整表达；旁聊可以只听不答，后台任务进行时也能换人继续聊。',
+      '识人和原生语音并行处理，保留实时小帧上传；自然说拜拜后，V 告别播放完成再挂断。',
+    ],
+  },
+  {
     date: '2026-10-16', title: '电话挂断，任务继续',
     items: [
       '后台任务与通话分开管理：已接纳的任务会继续执行；你要求发到飞书时，进展和结果会发到当前电话绑定的会话。',
@@ -82,7 +90,11 @@ export function mountChangelog(document, view = globalThis) {
   const list = document.getElementById('changelogEntries');
   if (!trigger || !dialog || !closeButton || !list || !dialog.showModal) return;
 
-  for (const entry of VOICE_UPDATES) {
+  // An isolated candidate may show its own notes without changing shipped notes.
+  let candidate;try{candidate=JSON.parse(document.getElementById('voiceCandidateRelease')?.textContent??'null');}catch{}
+  const entries=candidate&&typeof candidate.date==='string'&&typeof candidate.title==='string'&&Array.isArray(candidate.items)?[candidate,...VOICE_UPDATES]:VOICE_UPDATES;
+  if(entries!==VOICE_UPDATES)list.setAttribute?.('aria-label','候选与已发布更新');
+  for (const entry of entries) {
     const section = document.createElement('section');
     section.className = 'changelog-entry';
     const date = document.createElement('time');

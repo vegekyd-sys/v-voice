@@ -57,7 +57,7 @@ test('fast long speech releases queue capacity after playback, independently of 
  for(let i=0;i<70*24000;i+=24000)render(q,24000);assert.equal(q.frames,0);assert.equal(q.consumed,70*24000);assert.equal(q.underflows,0);
 });
 
-async function fixture(t,provider,deferReady=false){
+async function fixture(t,provider,deferReady=false,options={}){
  const old={WebSocket:globalThis.WebSocket,location:globalThis.location,AudioWorkletNode:globalThis.AudioWorkletNode};
  let socket;const sent=[],nodes=[],classes=new Map(),events=[],errors=[],listeners=new Map();
  class Socket{static OPEN=1;readyState=1;bufferedAmount=0;constructor(){socket=this}send(e){sent.push(e)}close(){this.readyState=3;this.onclose?.()}}
@@ -65,7 +65,7 @@ async function fixture(t,provider,deferReady=false){
  class Worklet{constructor(context,name,options){this.name=name;this.processor=new(classes.get(name))(options);this.port={postMessage:(e,transfer=[])=>this.processor.port.onmessage?.({data:structuredClone(e,{transfer})}),close(){}};this.processor.toHost=e=>this.port.onmessage?.({data:e});nodes.push(this)}connect(){}disconnect(){this.disconnected=true}}
  Object.assign(globalThis,{WebSocket:Socket,location:{href:'https://voice.test/voice/'},AudioWorkletNode:Worklet});
  const ctx={state:'running',currentTime:0,destination:{},audioWorklet:{addModule:async url=>vm.runInContext(await(await fetch(url)).text(),realm)},addEventListener:(name,cb)=>listeners.set(name,cb),removeEventListener:name=>listeners.delete(name),createMediaStreamSource:()=>({connect(){},disconnect(){}}),createGain:()=>({gain:{value:1},connect(){},disconnect(){}})};
- const relay=createRelayAudio({context:ctx,stream:{},reservation:{voiceSessionId:'fixture',relayTicket:'fixture',provider},onEvent:e=>events.push(e),onError:e=>errors.push(e.message),onClosed(){}});
+ const relay=createRelayAudio({context:ctx,stream:{},reservation:{voiceSessionId:'fixture',relayTicket:'fixture',provider},onEvent:e=>events.push(e),onError:e=>errors.push(e.message),onClosed(){},...options});
  const event=e=>socket.onmessage({data:JSON.stringify({voiceSessionId:'fixture',...e})});const started=relay.start();if(!deferReady){event({type:'ready'});await started;}
  t.after(()=>{relay.dispose();Object.assign(globalThis,old)});
  const speaker=nodes.find(n=>n.name==='v-direct-speaker');const pump=n=>{const output=[];for(let i=0;i<n;i+=128){realm.currentTime=ctx.currentTime;const block=new Float32Array(128);speaker.processor.process([],[[block]]);output.push(...block);ctx.currentTime+=128/48000;}return output;};
@@ -163,4 +163,17 @@ test('a sustained client utterance retires backend final PCM within four 20ms fr
 test('ordinary native speech still uses upstream interruption rather than the fixed-speech detector',async t=>{
  const f=await fixture(t,'seeduplex');f.event({type:'audio',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(24000).buffer).toString('base64'),responseId:'native'});
  const mic=f.nodes.find(n=>n.name==='v-direct-mic');for(let i=0;i<10;i++)mic.port.onmessage({data:pcm(480,3000).buffer});assert.equal(f.relay.stats.clears,0);assert.equal(f.relay.stats.inputBytes,9600);
+});
+
+
+test('speaker-gated input cannot interrupt backend playback before a routing decision',async t=>{
+ const f=await fixture(t,'seeduplex',false,{inputGated:true});
+ f.event({type:'audio',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(24000).buffer).toString('base64'),source:'injected-speech',responseId:'final-1'});
+ const mic=f.nodes.find(n=>n.name==='v-direct-mic');for(let i=0;i<10;i++)mic.port.onmessage({data:pcm(480,3000).buffer});
+ assert.equal(f.relay.stats.clears,0);assert.equal(f.relay.stats.inputBytes,9600);
+ assert(!f.sent.some(x=>typeof x==='string'&&JSON.parse(x).type==='barge-in'));
+ f.event({type:'audio.clear'});assert.equal(f.relay.stats.clears,1);
+});
+test('speaker routing preserves exact ordered PCM with immediate 20ms uplink frames',async t=>{
+ const f=await fixture(t,'seeduplex',false,{inputGated:true});const mic=f.nodes.find(n=>n.name==='v-direct-mic');for(let i=1;i<=5;i++)mic.port.onmessage({data:new Int16Array(480).fill(i).buffer});const sent=f.sent.filter(x=>x instanceof ArrayBuffer);assert.equal(sent.length,5);for(let i=0;i<5;i++){assert.equal(sent[i].byteLength,960);assert(new Int16Array(sent[i]).every(n=>n===i+1));}assert.equal(f.relay.stats.inputBytes,4800);
 });

@@ -24,7 +24,7 @@ async function fixture(options = {}) {
     close() {this.readyState = 3;this.emit('close');}
   }
   const gateway = {request:async method => method === 'tools.catalog' ? {groups:[{tools:[{id:'web_search'}]}]} : {ok:true}};
-  const directVoice = createDirectVoiceService({gateway,wsModule:{WebSocket:ProviderSocket,WebSocketServer:class {close() {}}},apiKeys:{seeduplex:'k',grok:'k'},audit:v => audit.push(v)});
+  const directVoice = createDirectVoiceService({gateway,wsModule:{WebSocket:ProviderSocket,WebSocketServer:class {close() {}}},apiKeys:{seeduplex:'k',grok:'k'},speakerRouting:options.speakerRouting,audit:v => audit.push(v)});
   let busy = false;
   const endpoint = createDeviceEndpoint({directVoice,wsModule:ws,devices:parseDeviceEntries([record(options.record),...(options.extraDevices ?? [])]),audit:v => audit.push(v),
     maxBufferedBytes:options.maxBufferedBytes,robotEvaluate:options.robotEvaluate,visionPath:options.visionPath,describeImage:options.describeImage,isSessionBusy:() => busy,tickMs:10,idleMs:options.idleMs ?? 5000,initialIdleMs:options.initialIdleMs ?? 5000,followUpMs:options.followUpMs ?? 5000,chatterMs:options.chatterMs ?? 5000,toolHoldMs:5000});
@@ -63,8 +63,8 @@ test('an unknown device token is rejected before any voice session exists', asyn
   assert.equal(f.peers.length, 0);
 });
 
-test('a speaker call uses the shared Voice session with 16 kHz input and no screen', async t => {
-  const f = await fixture();t.after(f.close);
+test('a speaker call keeps native 16 kHz input and no screen when phone Speaker routing is enabled', async t => {
+  const f = await fixture({speakerRouting:{reserve(){throw Error('Phone Speaker routing must not capture hardware');},has:()=>false,close(){}}});t.after(f.close);
   const device = await f.connect();t.after(() => device.close());
   await f.until(() => device.events.some(e => e.type === 'hello'), 'hello');
   device.send(JSON.stringify({type:'call.start'}));

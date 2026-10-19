@@ -404,6 +404,13 @@ export class SeeduplexRealtimeVoiceBridge {
     this.#pumpInput();
   }
 
+  // Candidate routing may reject a speculative turn before any output or tool
+  // is released. Retire its input backlog and generation together.
+  cancelPendingResponse() {
+    this.pendingInput = Buffer.alloc(0);
+    this.#cancelUpstreamResponse();
+  }
+
   #pumpInput() {
     if (!this.ready || this.terminal || this.pendingInput.length < INPUT_FRAME_BYTES) return;
     const wait = 20 - (Date.now() - this.lastFrameAt);

@@ -13,6 +13,7 @@ import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 import { createRelayAudio } from "./relay-audio.mjs";
 import { createScreenWakeLock } from "./screen-wake-lock.mjs";
 import { mountChangelog } from "./changelog.mjs";
+import { createSpeakerGate, createSpeakerFixture, renderSpeakerEvent } from "./speaker-routing.mjs";
 
 const $ = (id) => document.getElementById(id);
 if (document.querySelector) mountChangelog(document, window);
@@ -23,6 +24,16 @@ let avatarDiagnosticOwner = null;
 let liveReady = false;
 let entryError = null;
 let callerEntry = "tianyi";
+const speakerCandidate=()=>document.body?.dataset?.speakerRouting==='true';
+function speakerEvent(value){
+  if(!speakerCandidate())return;
+  if(value.type==='turn.done'&&value.turn?.role==='assistant'||value.type==='audio.done')document.body.dataset.speakerAnswerDone='true';
+  const {audio,delta,...safe}=value;
+  let events;try{events=JSON.parse(document.body.dataset.speakerEvents??'[]');}catch{events=[];}
+  events.push({...safe,at:performance.now(),...audio?{audioBytes:Math.floor(audio.length*.75)}:{}});document.body.dataset.speakerEvents=JSON.stringify(events.slice(-300));
+  if(value.type?.startsWith('speaker.'))renderSpeakerEvent(value);
+  if(['speaker.utterance','speaker.decision'].includes(value.type))renderTranscript(presentation.consume(value));
+}
 function refreshGrokVoicePicker() {
   const picker = $("grokVoicePicker"), select = $("grokVoice");
   if (!picker || !select) return;
@@ -49,6 +60,7 @@ const avatar = typeof window.Image === "function" ? mountAvatar(document, window
 const sceneAnimations = new Map();
 const screenWakeLock = createScreenWakeLock({ navigator, document, onState: state => { document.body.dataset.screenWakeLock = state; } });
 function setCallState(state) {
+  if(state==='connected'&&call?.fixture&&!call.fixtureStarted){call.fixtureStarted=true;const owner=call;setTimeout(()=>{if(call===owner)owner.fixture.start();},1500);}
   if (state === "connected" && document.body.dataset.callState === "dialing") markVoiceTiming("voice.connection.ready");
   screenWakeLock.setActive(state !== 'idle');
   if (document.body.dataset.callState === state) return;
@@ -110,6 +122,7 @@ function connectedStatus(active) {
   else setStatus("V 正在听，直接说话就好");
 }
 async function greetWhenReady(active) {
+  if(active.fixture||active.speakerGate)return;
   if (call !== active || active.greetingPending || active.greetingRequested || active.greetingSuppressed
     || active.greetingExpired || active.ending
     || active.pc.connectionState !== "connected" || active.context?.state !== "running"
@@ -444,9 +457,12 @@ function renderTranscript(snapshot) {
         renderedTurns.set(item.key, row);
       }
       if(item.document)row.dataset.documentCallId=item.callId;
+      if(item.speakerId){row.dataset.speakerId=item.speakerId;row.dataset.speakerTone=String(item.speakerTone);row.dataset.listenOnly=String(item.listenOnly);}
+      if(speakerCandidate())row.dataset.speakerLabeled=String(Boolean(item.speakerId)||item.role==='assistant');
       const streaming = String(Boolean(call) && !item.complete);
       if (row.dataset.streaming !== streaming) row.dataset.streaming = streaming;
-      if (row.parts.speaker.textContent !== item.speaker) row.parts.speaker.textContent = item.speaker;
+      const speakerLabel=item.speaker+(item.listenOnly?' · 仅倾听':'');
+      if (row.parts.speaker.textContent !== speakerLabel) row.parts.speaker.textContent = speakerLabel;
       if (row.parts.time.textContent !== item.time) row.parts.time.textContent = item.time;
       const dateTime = new Date(item.at).toISOString();
       if (row.parts.time.dateTime !== dateTime) row.parts.time.dateTime = dateTime;
@@ -464,6 +480,7 @@ function renderTranscript(snapshot) {
 }
 function resetTranscript() {
   contentView?.reset(); presentation.reset(); renderedTurns.clear();
+  if(speakerCandidate()){$('speakerRoster')?.remove();delete document.body.dataset.speakerState;}
   $("transcriptHistory").replaceChildren(); $("transcriptCurrentRows").replaceChildren();
   renderTranscript(presentation.snapshot());
 }
@@ -483,6 +500,8 @@ function providerMessage(event) {
   let data;
   try { data = JSON.parse(event.data); } catch { return; }
   const active = call;
+  active?.speakerGate?.observe(data);
+  if(speakerCandidate()&&['session.started','session.context.appended','turn.created','turn.done','error'].includes(data.type))speakerEvent(data);
   if (active && data.type === "session.started") void greetWhenReady(active);
   if (active && ((["turn.created", "turn.done"].includes(data.type) && data.turn?.role === "user")
     || (data.type === "input_transcript.added" && typeof data.item?.text === "string" && data.item.text.trim()))) suppressGreetingForCaller(active);
@@ -552,7 +571,8 @@ function providerMessage(event) {
     duplexDiagnostic(active, { type: "native-output-audio-cleared", at });
     active.duplex.notifyOutputAudioCleared(at);
   }
-  renderTranscript(presentation.consume(data, Date.now()));
+  const routedUserCaption=active?.speakerGate&&(data.turn?.role==='user'||/^(session\.)?input_transcript\./u.test(data.type??'')||data.type==='turn.delta'&&data.turn_id===active.latestNativeUserTurnId);
+  if(!routedUserCaption)renderTranscript(presentation.consume(data, Date.now()));
   if (data.type === "error") setStatus("语音服务报告错误，请结束通话后重试。", { tone: "error" });
 }
 async function stopCall() {
@@ -562,6 +582,7 @@ async function stopCall() {
     active.avatarTelemetry?.close();
     active.avatarReactions?.dispose();
     active.relay?.dispose();
+    active.speakerGate?.dispose();
     clearInterval(active.levelTimer); clearInterval(active.heartbeat); clearInterval(active.presentationPoll);
     active.presentationAbort?.abort();
     clearTimeout(active.ending?.timeout); clearTimeout(active.greetingRetryTimer);
@@ -602,7 +623,7 @@ async function startCall() {
   resetTranscript();
   const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController() }; call = active; starting = active;
   if ($("voiceModel")) $("voiceModel").disabled = true;
-  if (['seeduplex','grok'].includes($("voiceModel")?.value)) {
+  if (speakerCandidate()||['seeduplex','grok'].includes($("voiceModel")?.value)) {
     // Create/resume in the dial gesture, before microphone and network awaits.
     active.context = new AudioContext({latencyHint:"interactive"});
     active.contextResume = active.context.resume();
@@ -628,16 +649,19 @@ async function startCall() {
   active.duplexDiagnostics.playbackMode = active.duplex.snapshot().mode;
   active.duplexDiagnostics.interruptionOwner = active.duplex.snapshot().interruptionOwner;
   try {
-    active.capture = await microphoneSession.acquire({
+    const fixtureId=speakerCandidate()?new URLSearchParams(location.search).get('fixture'):null;
+    if(speakerCandidate()){document.body.dataset.speakerEvents='[]';document.body.dataset.speakerAnswerDone='false';}
+    active.capture = fixtureId?await createSpeakerFixture(active.context,fixtureId,{onEvent:speakerEvent}):await microphoneSession.acquire({
       mediaDevices: navigator.mediaDevices, signal: active.captureAbort.signal,
       isCurrent: () => call === active,
       onDiagnostics: (metadata) => { if (call === active) active.duplexDiagnostics.microphone = metadata; },
     });
     markVoiceTiming("voice.microphone.ready");
     active.stream = active.capture.stream;
+    if(fixtureId)active.fixture=active.capture;
     if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
     const selectedModel = ['seeduplex','grok'].includes($("voiceModel")?.value)?$("voiceModel").value:'gpt-live';
-    const reservation = await api("session", {model:selectedModel,...(selectedModel==='grok'?{voice:$("grokVoice")?.value || undefined}:{})}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
+    const reservation = await api("session", {model:selectedModel,...speakerCandidate()?{inputPolicy:new URLSearchParams(location.search).get('inputPolicy')==='native'?'native':'speaker'}:{},...(selectedModel==='grok'?{voice:$("grokVoice")?.value || undefined}:{})}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     const diagnosticOwner=avatarDiagnosticOwner=Symbol('avatar-call');
     document.body.dataset.avatarReactionRequests='0';
@@ -668,12 +692,13 @@ async function startCall() {
     if (reservation.transport === 'gateway-relay') {
       await active.contextResume;
       if(call!==active)return;
-      active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,
+      active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,greeting:!active.fixture,inputGated:Boolean(reservation.speakerRouting),
         onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message, { tone: "error" }));},
         onClosed:()=>{if(call===active)void stopCall();},
-        onPlaybackActivity:speaking=>{if(call===active)document.body.dataset.voiceState=speaking?'speaking':'listening';},
+        onPlaybackActivity:speaking=>{if(call===active){document.body.dataset.voiceState=speaking?'speaking':'listening';if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
         onEvent:value=>{
           if(call!==active)return;
+          if(speakerCandidate()&&(value.type.startsWith('speaker.')||value.type.startsWith('end.')||value.type==='transcript'&&value.final||['audio.done','audio.clear','error','upload.backpressure'].includes(value.type)))speakerEvent(value);
           if (value.type === 'avatar.expression') { avatar?.expression(value.expression); return; }
       tasks.consume(value);
           if(value.type==='backend.result')receiveDocument(active,value);
@@ -682,7 +707,7 @@ async function startCall() {
           if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
           if(value.type==='provider.reconnecting')setStatus('正在恢复语音连接…');
           if(value.type==='provider.recovered')setStatus('V 正在听，直接说话就好');
-          if(value.type==='transcript') {
+          if(value.type==='transcript'&&!(reservation.speakerRouting&&value.role==='user')) {
             active.relayTurns??={};
             const id=active.relayTurns[value.role]??=crypto.randomUUID();
             renderTranscript(presentation.consume(value.final?{type:'turn.done',turn:{id,role:value.role,transcript:value.text}}:
@@ -698,7 +723,9 @@ async function startCall() {
       active.heartbeat=setInterval(()=>void api('heartbeat',{voiceSessionId:active.voiceSessionId}).catch(()=>{}),15000);
       return;
     }
-    for (const track of active.stream.getAudioTracks()) active.pc.addTrack(track, active.stream);
+    if(reservation.speakerRouting){active.speakerGate=await createSpeakerGate({context:active.context,stream:active.stream,reservation:reservation.speakerRouting,channel:()=>active.channel,isCurrent:()=>call===active,onEvent:speakerEvent});}
+    const outgoing=active.speakerGate?.stream??active.stream;
+    for (const track of outgoing.getAudioTracks()) active.pc.addTrack(track, outgoing);
     active.channel = active.pc.createDataChannel("oai-events"); active.channel.onmessage = (event) => { if (call === active) providerMessage(event); };
     active.events = new EventSource(apiUrl("events"));
     const applyNativeControl = value => {
@@ -734,7 +761,7 @@ async function startCall() {
       const stream = new MediaStream([event.track]); $("remoteAudio").srcObject = stream;
       await startRemotePlayback(active, "track");
       if (call !== active) return;
-      active.context = new AudioContext();
+      active.context ??= new AudioContext();
       try { await active.context.resume(); }
       catch (error) {
         if (call !== active) return;
@@ -752,7 +779,7 @@ async function startCall() {
       const analyser = active.context.createAnalyser(); analyser.fftSize = 1024;
       active.context.createMediaStreamSource(stream).connect(analyser);
       const microphoneAnalyser = active.context.createAnalyser(); microphoneAnalyser.fftSize = 1024;
-      active.context.createMediaStreamSource(active.stream).connect(microphoneAnalyser);
+      active.context.createMediaStreamSource(active.speakerGate?.stream??active.stream).connect(microphoneAnalyser);
       const samples = new Float32Array(analyser.fftSize);
       const microphoneSamples = new Float32Array(microphoneAnalyser.fftSize);
       active.levelTimer = setInterval(() => {
@@ -762,6 +789,9 @@ async function startCall() {
         const energy = Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length);
         const microphoneEnergy = Math.sqrt(microphoneSamples.reduce((sum, value) => sum + value * value, 0) / microphoneSamples.length);
         const at = performance.now();
+        if(speakerCandidate()&&energy>.008&&!active.speakerAudioActive)speakerEvent({type:'playback.activity',speaking:true});
+        if(speakerCandidate()&&energy<=.008&&active.speakerAudioActive)speakerEvent({type:'playback.activity',speaking:false});
+        active.speakerAudioActive=energy>.008;
         // This analyser reads the inbound stream before HTML playback muting,
         // so a local gate cannot manufacture evidence of a provider audio gap.
         const duplex = active.duplex.observe({ at, microphoneRms: microphoneEnergy, remoteRms: energy });

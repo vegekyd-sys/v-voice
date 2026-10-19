@@ -1340,3 +1340,38 @@ body[data-reading="true"] .changelog-trigger { visibility: hidden; pointer-event
     -webkit-backdrop-filter: blur(12px) saturate(145%);
   }
 }
+
+/* Call-scoped speaker labels use the same quiet palette as the conversation. */
+.transcript-turn[data-speaker-labeled="true"] {
+  --speaker-accent: #8a72a6;
+  --speaker-fill: #eee7f4;
+}
+.transcript-turn[data-speaker-tone="1"] { --speaker-accent: #438d88; --speaker-fill: #e8f2ef; }
+.transcript-turn[data-speaker-tone="2"] { --speaker-accent: #9c7d48; --speaker-fill: #f5eee2; }
+.transcript-turn[data-speaker-tone="3"] { --speaker-accent: #6e88af; --speaker-fill: #eaf0f8; }
+.transcript-turn[data-speaker-tone="4"] { --speaker-accent: #ab7587; --speaker-fill: #f6eaf0; }
+.transcript-turn[data-speaker-labeled="true"] .transcript-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 3px 5px;
+  color: #756e80;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.6;
+  letter-spacing: .02em;
+}
+.transcript-turn[data-speaker-labeled="true"] .transcript-speaker::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin: 0 6px 2px 0;
+  border-radius: 50%;
+  background: var(--speaker-accent);
+}
+.transcript-turn[data-speaker-labeled="true"] .transcript-time { display: none; }
+.transcript-turn.user[data-speaker-labeled="true"] { flex-direction: column; align-items: flex-end; }
+.transcript-turn.user[data-speaker-labeled="true"] .transcript-text { background: var(--speaker-fill); }
+.transcript-turn[data-listen-only="true"] .transcript-meta { color: #8a8490; }
+.transcript-turn[data-listen-only="true"] .transcript-text { opacity: .7; }

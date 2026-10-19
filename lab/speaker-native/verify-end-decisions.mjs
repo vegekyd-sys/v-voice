@@ -1,0 +1,10 @@
+import {writeFile} from 'node:fs/promises';
+import {loadCredentials} from '../volc-speaker/credentials.mjs';
+import {SpeakerRouter,decisionEvaluator} from './decision.mjs';
+const env=await loadCredentials(process.env.VOICE_CREDENTIAL_ENV_FILE),evaluate=decisionEvaluator(env);
+const cases=[['好，那就这样吧，拜拜。',true],['就这样吧，拜拜。',true],['我们就这样吧，拜拜。',true],['V，今天先聊到这里，下次见。',true],['V，不要挂断，我们继续聊。',false],['十二，我是跟你说拜拜，我继续跟V聊天。',false],['V，刚才他说拜拜，这是什么意思？',false],['V，谢谢，拜拜。对了，五加六等于几？',false],['V，你能自动挂断吗？',false],['等后台完成再挂断，现在继续聊。',false],['取消后台任务，但电话别挂。',false],['我们结束这个话题，聊聊恐龙。',false]];
+const contextual=[['local0','好，那就这样吧，拜拜。',true],['local1','爸爸拜拜，我去做作业，你继续跟V聊。',false],['local0','我先走了，你跟十二继续聊。',false],['local0','后台继续做，我们先挂电话，拜拜。',true],['local1','哥哥再见，V，我们继续聊。',false],['local0','你等会儿再挂断，我还想问你一个问题。',false],['local0','你刚才说拜拜是不是要挂断？别挂。',false]];
+cases.push(...contextual.map(([who,text,expected])=>[text,expected,who]));
+const rows=[];
+for(const[text,expected,who]of cases){const router=new SpeakerRouter({evaluate});if(who){router.participants=[{id:'speaker:local0',speakerId:'local0',label:'Speaker A',name:'天意',role:'adult',certainty:'stated'},{id:'speaker:local1',speakerId:'local1',label:'Speaker B',name:'十二',role:'child',certainty:'stated'}];router.targetId='speaker:local1';router.history=[{role:'participant',speakerId:'speaker:local0',text:'你先跟十二聊天。'},{role:'assistant',text:'好的，后台在做计划，现在跟十二聊天。以后有什么需要随时找我。'}];}const result=await router.accept({speakerId:who??'local0',text,startMs:0,endMs:2000});const mustRespond=['取消后台任务，但电话别挂。','我们结束这个话题，聊聊恐龙。'].includes(text);const row={text,contextual:Boolean(who),expected,actual:result.endCall,shouldRespond:result.shouldRespond,passed:result.endCall===expected&&(!mustRespond||result.shouldRespond),decisionMs:result.decisionMs,usage:result.usage};rows.push(row);console.log(JSON.stringify(row));}
+await writeFile(new URL('../../artifacts/speaker-native/ending-decisions.private.json',import.meta.url),JSON.stringify(rows,null,2),{mode:0o600});if(rows.some(r=>!r.passed))process.exitCode=1;

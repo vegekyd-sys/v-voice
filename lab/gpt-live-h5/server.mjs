@@ -20,7 +20,7 @@ import {voiceConversationContext} from '../realtime-direct-tools/conversation-co
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, listening, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null }) {
   if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
@@ -59,6 +59,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, pre
     const old = context.active;
     old?.taskDelivery?.close();
     old?.callControl?.close();
+    if(old)speakerRouting?.close(old.reservation.voiceSessionId);
     if (old) visual.forget(old.reservation.voiceSessionId);
     if (old?.direct) await directVoice.close(old.reservation.voiceSessionId);
     else if (old) await gateway.request("talk.client.close", { sessionKey: old.sessionKey, voiceSessionId: old.reservation.voiceSessionId });
@@ -100,6 +101,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, pre
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
+        ["/speaker-routing.mjs", [join(here, "../speaker-native/client.mjs"), "text/javascript; charset=utf-8"]],
         ...["media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "product-controls.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
         ["/changelog.mjs", [join(here, "changelog.mjs"), "text/javascript; charset=utf-8"]],
@@ -117,12 +119,14 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, pre
           // in the HTML instead of requiring another mobile-network round trip.
           const css = await readFile(join(here, "styles.css"), "utf8");
           let html = contents.toString("utf8").replace('<link rel="stylesheet" href="./styles.css" />', `<style data-voice-entry>${css}</style>`);
+          if(speakerRouting)html=html.replace('<body','<body data-speaker-routing="true"');
+          if(candidateRelease)html=html.replace('<script type="module" src="./app.js"></script>',`<script type="application/json" id="voiceCandidateRelease">${JSON.stringify(candidateRelease).replaceAll('<','\\u003c')}</script><script type="module" src="./app.js"></script>`);
           // Only an authenticated request receives an entry snapshot. It is a
           // presentation hint; every session/tool request still authorizes itself.
           const visitor = hosted ? access.read(req) : null;
           const canCheckEntry = visitor && (contexts.has(`${entry}:${visitor.id}`) || contexts.size < 512);
           if (!hosted || canCheckEntry) {
-            const initial = JSON.stringify({ ready: backendReady(), preview, defaultModel, ...(listening?{comparisonAvailable:true}:{}),
+            const initial = JSON.stringify({ ready: backendReady(), preview, defaultModel, ...(speakerRouting?{speakerRouting:true}:{}), ...(listening?{comparisonAvailable:true}:{}),
               ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
             }).replaceAll("<", "\\u003c");
             html = html.replace('<script type="module" src="./app.js"></script>', `<script type="application/json" id="voiceEntryStatus">${initial}</script><script type="module" src="./app.js"></script>`);
@@ -158,7 +162,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, pre
       } else if (!String(req.headers.cookie ?? "").split(/;\s*/u).includes(`v_live_experiment=${cookie}`)) return json(res, 401, { error: "请先打开实验页面" });
       context.touchedAt = Date.now();
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
-        ready: backendReady(), preview, defaultModel,
+        ready: backendReady(), preview, defaultModel, ...(speakerRouting?{speakerRouting:true,speakerStats:speakerRouting.snapshot()}:{}),
         releaseReadiness: {
           known: !directVoice || typeof directVoice.backgroundTaskCount === 'function',
           activeCalls: [local, ...contexts.values()].filter(c=>c.active).length + (deviceEndpoint?.activeCalls() ?? 0),
@@ -169,6 +173,11 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, pre
         ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
       });
       if(req.method==='GET'&&pathname==='/api/comparison')return listening?json(res,200,listening.manifest):json(res,404,{error:'当前没有试听样本'});
+      if(req.method==='GET'&&pathname==='/api/speaker-fixture'){
+        const fixture=await speakerFixture?.(url.searchParams.get('id'));
+        if(!fixture)return json(res,404,{error:'没有这个内部验证音频'});
+        res.writeHead(200,{'content-type':'audio/wav','cache-control':'no-store'});res.end(fixture);return;
+      }
       if(['GET','HEAD'].includes(req.method)&&pathname.startsWith('/api/comparison/audio/')){
         const id=pathname.slice('/api/comparison/audio/'.length),audio=await listening?.audio(id,req.headers.range);
         if(!audio)return json(res,404,{error:'没有这个试听样本'});
@@ -204,6 +213,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, pre
       const params = await readBody();
       if (pathname === "/api/session") {
         if (!backendReady()) return json(res,503,{error:"V 后端正在重新连接，请稍后重拨。"});
+        if(speakerRouting&&params.inputPolicy!==undefined&&!['native','speaker'].includes(params.inputPolicy))return json(res,400,{error:'没有这个输入策略'});
         if (params.model && !['gpt-live','seeduplex','grok'].includes(params.model)) return json(res,400,{error:'没有这个语音模型'});
         if (params.model === 'grok') {
           try { grokVoice(params.voice); } catch (error) { return json(res,400,{error:error.message}); }
@@ -227,7 +237,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, pre
           await close(context);
           const sessionKey = binding.sessionKey;
           if (params.model && params.model !== 'gpt-live') {
-            const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice});
+            const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...speakerRouting?{inputPolicy:params.inputPolicy??'speaker'}:{}});
             context.active={sessionKey,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
             rememberAvatarCall(context,context.active,params.model);
             return json(res,200,reservation);
@@ -239,7 +249,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, pre
           nativeTaskOwners.add(taskDelivery);
           // Task audit only. Native GPT captions remain Gateway-owned.
           callControlAudit({type:'call.created',voiceSessionId:reservation.voiceSessionId,sessionKey,provider:'openai',model:reservation.model});
-          context.active = { sessionKey, reservation, touchedAt: Date.now(), taskDelivery, presentation: { revision: 0, pending: new Map(), documents: new Map(), controls: [] } };
+          context.active = { sessionKey, reservation, cookie:req.headers.cookie, touchedAt: Date.now(), taskDelivery, presentation: { revision: 0, pending: new Map(), documents: new Map(), controls: [] } };
           nativeTasks.set(reservation.voiceSessionId,context.active.taskDelivery);
           if (reservation.model !== "gpt-live-1-codex" || reservation.transport !== "webrtc" || reservation.offerUrl !== "/plugins/openai/realtime/calls") {
             await close(context);
@@ -253,7 +263,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, pre
             for(const response of context.listeners)response.write(`data: ${JSON.stringify(message)}\n\n`);
           }});
           rememberAvatarCall(context,context.active,'openai');
-          return json(res, 200, { voiceSessionId: reservation.voiceSessionId, model: reservation.model });
+          const speaker=speakerRouting?.reserve(reservation.voiceSessionId,{model:'gpt-live',policy:params.inputPolicy??'speaker'});
+          return json(res, 200, { voiceSessionId: reservation.voiceSessionId, model: reservation.model,...speaker?{speakerRouting:speaker}:{} });
         } finally {
           context.creatingSession = false;
         }
@@ -420,14 +431,16 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, pre
     const expectedOrigin=hosted?publicOrigin:`http://${host}`;
     if(!directVoice||(hosted?host!==origin.host:!/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host))||req.headers.origin!==expectedOrigin){socket.destroy();return;}
     const url=new URL(req.url,expectedOrigin);
-    if(url.pathname!==`${basePath}/api/relay`){socket.destroy();return;}
-    const context=[local,...contexts.values()].find(c=>c.active?.direct&&c.active.reservation.voiceSessionId===url.searchParams.get('voiceSessionId'));
+    const speakerPath=url.pathname===`${basePath}/api/speaker-stream`&&speakerRouting;
+    if(url.pathname!==`${basePath}/api/relay`&&!speakerPath){socket.destroy();return;}
+    const context=[local,...contexts.values()].find(c=>(speakerPath||c.active?.direct)&&c.active?.reservation.voiceSessionId===url.searchParams.get('voiceSessionId'));
     if(!context||!req.headers.cookie||req.headers.cookie!==context.active.cookie){socket.destroy();return;}
     // Re-check the live access cookie, not just a remembered session ticket.
     const binding=entries.resolve(url);
     if(!binding||binding.sessionKey!==context.active.sessionKey){socket.destroy();return;}
     if(hosted?!entryAccess(binding).read(req):!String(req.headers.cookie).split(/;\s*/u).includes(`v_live_experiment=${cookie}`)){socket.destroy();return;}
-    directVoice.upgrade(req,socket,head,url.searchParams.get('voiceSessionId'),url.searchParams.get('ticket'));
+    if(speakerPath)speakerRouting.upgrade(req,socket,head,url.searchParams.get('voiceSessionId'),url.searchParams.get('ticket'));
+    else directVoice.upgrade(req,socket,head,url.searchParams.get('voiceSessionId'),url.searchParams.get('ticket'));
   });
   const sessionBusy = sessionKey => [local, ...contexts.values()].some(item => item.sessionKey === sessionKey && (item.active || item.creatingSession));
   return { server, emit, sessionBusy, dispose: async ({drain=false}={}) => {
@@ -437,6 +450,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, pre
     if(drain)while([...nativeTaskOwners].some(d=>d.pending))await new Promise(resolve=>setTimeout(resolve,50));
     for(const delivery of nativeTaskOwners)delivery.dispose();nativeTaskOwners.clear();nativeTasks.clear();
     await directVoice?.dispose({drain});
+    speakerRouting?.dispose();
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
   } };
 }
@@ -444,7 +458,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, pre
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const preview = process.env.GPT_LIVE_H5_PREVIEW === "1";
   const port = Number(process.env.GPT_LIVE_H5_PORT ?? process.env.RTC_H5_PORT ?? 26244);
-  let gateway, bridge, transcriptLog, avatarLog;
+  let gateway, bridge, transcriptLog, avatarLog, productionSpeaker;
   if (!preview) {
     const configPath = process.env.OPENCLAW_CONFIG_PATH;
     if (!configPath) throw new Error("OPENCLAW_CONFIG_PATH is required");
@@ -467,12 +481,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     avatarLog=createAvatarTelemetryLog({directory:process.env.RTC_H5_AVATAR_LOG_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-avatar-events'),
       onError:({code})=>console.warn(JSON.stringify({type:'voice.avatar-write-error',code})),
     });
+    productionSpeaker=await (await import('../speaker-native/production.mjs')).createProductionSpeaker({audit:transcriptLog.audit});
+    const speakerRouting=productionSpeaker?.service;
     const lark=createVoiceLarkReader({environment:process.env});
-    const directVoice=createDirectVoiceService({gateway,wsModule,calendar:lark.calendar,larkRead:lark.read,
+    const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,calendar:lark.calendar,larkRead:lark.read,
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),
       grokExpressiveTags:process.env.XAI_VOICE_EXPRESSIVE_TAGS === '1',
-      audit:transcriptLog.audit,
+      audit:productionSpeaker?.audit??transcriptLog.audit,
       toolEnvironment:Object.fromEntries(["LARKSUITE_CLI_CONFIG_DIR","LARKSUITE_CLI_DATA_DIR"].filter(key=>process.env[key]).map(key=>[key,process.env[key]])),
       apiKeys:{
       seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY??process.env.DOUBAO_SPEECH_API_KEY,
@@ -508,7 +524,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     }
     bridge = createLiveH5Server({ gateway, deviceEndpoint,
       listening:process.env.VOICE_LISTENING_DIR ? await (await import('./listening.mjs')).loadVoiceListening(process.env.VOICE_LISTENING_DIR) : undefined,
-      directVoice, avatarLog,callControlAudit:transcriptLog.audit,
+      directVoice, speakerRouting, avatarLog,callControlAudit:transcriptLog.audit,
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",
       conversationEntries: process.env.VOICE_ENTRIES_FILE ? JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,"utf8")) : [],
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",
@@ -523,5 +539,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     } });
   } else bridge = createLiveH5Server({ preview: true });
   bridge.server.listen(port, "127.0.0.1", () => console.log(JSON.stringify({ ready: true, host: "127.0.0.1", port, preview })));
-  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void bridge.dispose({drain:true}).finally(async () => { await transcriptLog?.close(); await avatarLog?.close(); gateway?.stop(); process.exit(0); }));
+  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void bridge.dispose({drain:true}).finally(async () => { await transcriptLog?.close(); await avatarLog?.close(); productionSpeaker?.close(); gateway?.stop(); process.exit(0); }));
 }

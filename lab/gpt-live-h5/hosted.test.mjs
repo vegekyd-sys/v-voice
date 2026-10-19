@@ -140,6 +140,14 @@ test('pre-generated listening samples require entry access and never create a vo
  const audio=await f.request('/voice/api/comparison/audio/clip',cookie,undefined,{range:'bytes=0-3'});assert.equal(audio.status,206);assert.equal(await audio.text(),'RIFF');assert.deepEqual(accesses,[{id:'clip',range:'bytes=0-3'}]);
  assert.equal((await f.request('/voice/api/comparison/audio/unknown',cookie)).status,404);assert.equal(f.calls.length,0);
 });
+test('candidate release notes are opt-in, inert JSON and preserve hosted admission',async t=>{
+ const release={version:'linux-candidate',date:'2026-10-18',title:'Linux candidate',items:['A </script> tag stays text']};
+ const f=await fixture(t,{candidateRelease:release});const html=await(await f.request('/voice/')).text();
+ const raw=html.match(/id="voiceCandidateRelease">([^<]+)<\/script>/u)[1];
+ assert.deepEqual(JSON.parse(raw),release);assert.doesNotMatch(raw,/<\/script>/u);
+ assert.equal((await f.request('/voice/api/status')).status,401);
+ const normal=await fixture(t);assert.doesNotMatch(await(await normal.request('/voice/')).text(),/id="voiceCandidateRelease"/u);
+});
 
 test("a camera device's photo upload reaches the device endpoint outside the page path, only on the public host", async t => {
   const uploads = [];
