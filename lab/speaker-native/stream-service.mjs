@@ -208,7 +208,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
       sessions.set(id,s);s.expiry=setTimeout(()=>fail(s,Error('本次候选通话已达时长上限，请重拨')),limits.durationMs??1800000);s.expiry.unref?.();
       return {voiceSessionId:id,model,transport:'relay',policy:'streaming'};
     },
-    has:id=>sessions.has(id),lazyNative:id=>sessions.has(id),
+    has:id=>sessions.has(id),lazyNative:id=>sessions.has(id),controlsEnding:id=>sessions.has(id),
     pending:id=>sessions.get(id)?.gate.status==='pending',
     async bind(id,native,listener){
       const s=sessions.get(id);if(!s)return;s.native=native;s.listener=listener;await embedding.ready;
@@ -232,7 +232,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     },
     audio(id,pcm24){const s=sessions.get(id);if(!s?.ready||s.closed)throw Error('流式识人尚未就绪');inputBytes+=pcm24.length;s.inputBytes+=pcm24.length;if(s.inputBytes>48000*(limits.inputSeconds??1800))throw Error('本轮音频预算已用完');const pcm=s.resampler.push(pcm24),startMs=s.window.bytes/32;s.window.append(pcm);s.clock.push({startMs,endMs:s.window.bytes/32,at:performance.now()});if(s.clock.length>1200)s.clock.shift();if(s.asrReady)s.asr.append(pcm);s.tracker.push(pcm);
       if(s.latestAsr)for(const turn of normalizeFinals(s,s.latestAsr))enqueue(s,turn);return true;},
-    dispatch(id,kind,value,deliver){const s=sessions.get(id);if(!s)return false;if(s.gate.status!=='closed'){if(kind==='audio')s.nativeBusy=true;if(kind==='done')s.nativeBusy=false;}try{const c=s.input;s.gate.dispatch(()=>{if(c&&s.input===c&&['audio','tool'].includes(kind)){c.responded=true;clearTimeout(s.responseDeadline);}deliver();},kind==='audio'?value.length:0);}catch(error){if(s.input)s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;send(s,{type:'speaker.error',message:error.message});}return true;},
+    dispatch(id,kind,value,deliver){const s=sessions.get(id);if(!s)return false;if(s.gate.status!=='closed'){if(kind==='audio')s.nativeBusy=true;if(kind==='done')s.nativeBusy=false;}try{const c=s.input;s.gate.dispatch(()=>{if(kind==='tool'&&value.name==='end_call'){s.native.rejectNativeEnd?.(value);send(s,{type:'speaker.end-withheld',reason:'native-end-unconfirmed'});return;}if(c&&s.input===c&&['audio','tool'].includes(kind)){c.responded=true;clearTimeout(s.responseDeadline);}deliver();},kind==='audio'?value.length:0);}catch(error){if(s.input)s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;send(s,{type:'speaker.error',message:error.message});}return true;},
     assistant(id,text){const s=sessions.get(id);if(s&&text?.trim()){s.router.assistant(text);s.acceptedHistory.push({role:'assistant',text:text.slice(-800)});s.acceptedHistory=s.acceptedHistory.slice(-8);}},
     initialInstructions(id,text){return sessions.has(id)?text.replace('现在正在电话中和 Tianyi（天意）本人交流','正在电话中与主机当前指定的人物交流；账号与工具仍属于原电话入口，不随人物切换'):text;},
     close,upgrade(_req,socket){socket.destroy();},

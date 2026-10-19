@@ -441,3 +441,8 @@ test('new speech revokes a speaker farewell so stale playback acknowledgements c
  let native;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,value)=>{native=value;},close(){},audio(){}};
  const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());native.end({turnId:'sp1'});native.cancelEnd();f.event({type:'response.output_audio.delta',delta:Buffer.alloc(960).toString('base64')});f.event({type:'response.done',response:{id:'bye',status:'completed'}});f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:'speaker-end-sp1'})),false);await delay(5);assert.equal(f.client.readyState,1);assert(f.client.sent.some(e=>e.type==='end.cancelled'));
 });
+
+test('host-owned speaker ending removes native end_call advertising while other direct modes retain it',async t=>{
+ const routing={reserve:()=>({policy:'streaming'}),has:()=>true,controlsEnding:()=>true,bind:async()=>{},close(){},audio(){}};const controlled=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>controlled.service.dispose());assert.equal(controlled.client.sent.find(e=>e.type==='ready').tools.includes('end_call'),false);assert.match(JSON.stringify(controlled.upstream.sent),/通话控制由主机负责/);
+ const original=await fixture(undefined,'seeduplex');t.after(()=>original.service.dispose());assert(original.client.sent.find(e=>e.type==='ready').tools.includes('end_call'));
+});

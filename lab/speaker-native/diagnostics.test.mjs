@@ -4,3 +4,7 @@ test('diagnostics retain stage timings and decisions without chat, voice, names 
  log.audit({type:'speaker.decision',voiceSessionId:'call',shouldRespond:false,timings:{afterEndMs:123},turn:{speakerId:'local0',text:'PRIVATE_CHAT',startMs:0,endMs:1000},participants:[{name:'PRIVATE_NAME'}],audio:'PRIVATE_PCM',args:{token:'SECRET'}});
  const raw=readFileSync(join(dir,'routing.jsonl'),'utf8'),row=JSON.parse(raw);assert.equal(row.turn.textLength,12);assert.equal(row.people,1);assert.equal(row.timings.afterEndMs,123);assert.doesNotMatch(raw,/PRIVATE|SECRET/);assert.equal(statSync(join(dir,'routing.jsonl')).mode&0o077,0);
 });
+
+test('cancellation completion retains only the boolean proof and tool name',t=>{
+ const dir=mkdtempSync(join(tmpdir(),'speaker-cancel-audit-'));t.after(()=>rmSync(dir,{recursive:true}));const log=createSpeakerDiagnostics({directory:dir});log.audit({type:'tool.delivered',voiceSessionId:'call',name:'cancel_task',result:{cancelled:true,secret:'PRIVATE_RESULT'}});const raw=readFileSync(join(dir,'routing.jsonl'),'utf8'),row=JSON.parse(raw);assert.equal(row.cancelled,true);assert.equal(row.tool,'cancel_task');assert.doesNotMatch(raw,/PRIVATE_RESULT|secret|result/);
+});

@@ -51,3 +51,10 @@ test('ending requires both an explicit end choice and confidence that the latest
 test('a non-target farewell cannot end an exclusive call',async()=>{
  const c=new SpeakerRouter({evaluate:evaluator((id,s)=>id==='endConfidence'?0:id==='constraint'&&s.turn.text.includes('只跟')?'only_speaker:1':undefined)});await say(c,'0','你好');await say(c,'1','我是十二');await say(c,'0','只跟十二聊');const r=await say(c,'0','拜拜');assert.equal(r.status,'withheld');assert.equal(r.endCall,undefined);
 });
+test('uncertain farewell gets current-utterance confirmation without passing old focus or background history',async()=>{
+ const calls=[];const evaluate=async(s,q)=>{calls.push(s);if(s.request)return {answers:{endIntent:{type:'choice',choice:'end',probabilities:{end:.99}},addressed:{type:'choice',choice:'v',probabilities:{v:.99}}},usage:{cost:.01}};const r=await evaluator(id=>id==='action'?'quiet':undefined)(s,q);r.answers.endIntent={type:'choice',choice:'end',probabilities:{end:.71}};r.answers.addressed={type:'choice',choice:'v',probabilities:{v:.81}};r.usage={cost:.02};return r;};const c=new SpeakerRouter({evaluate});c.history=[{role:'assistant',text:'后台继续，现在跟孩子聊天。'}];const r=await say(c,'0','后台继续做，我们先挂电话，拜拜。');assert.equal(r.endCall,true);assert.equal(r.endVerification,'confirmed');assert.equal(r.usage.cost,.03);assert.equal(calls.length,2);assert.equal(calls[1].history,undefined);assert.equal(calls[1].activeTargetId,undefined);
+});
+test('unavailable end confirmation stays open and a non-ending turn has no extra request',async()=>{
+ let calls=0;const c=new SpeakerRouter({evaluate:async(s,q)=>{calls++;if(s.request)throw Error('Confirmation unavailable');const r=await evaluator(()=>undefined)(s,q);r.answers.endIntent={type:'choice',choice:'end',probabilities:{end:.7}};return r;}});const r=await say(c,'0','拜拜。');assert.equal(r.endCall,false);assert.equal(r.endVerification,'unavailable');assert.equal(calls,2);
+ let ordinary=0;await say(new SpeakerRouter({evaluate:async(s,q)=>{ordinary++;return evaluator(()=>undefined)(s,q);}}),'0','继续聊天');assert.equal(ordinary,1);
+});

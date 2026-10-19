@@ -50,7 +50,7 @@ export class VerificationCall {
   }
   async farewell(id='end-bye') {
     const turn=await this.speak(id);await this.wait(()=>this.events.some(e=>e.type==='end.after-playback'&&e.at>=turn.start),35000);
-    const end=this.events.find(e=>e.type==='end.after-playback'&&e.at>=turn.start),audio=this.events.filter(e=>e.type==='audio'&&e.at>=turn.start);
+    const end=this.events.find(e=>e.type==='end.after-playback'&&e.at>=turn.start);if(!end.callId?.startsWith('speaker-end-')||!this.events.some(e=>e.type==='speaker.end-accepted'&&e.at>=turn.start))throw Error('Hangup bypassed host speaker confirmation');const audio=this.events.filter(e=>e.type==='audio'&&e.at>=turn.start);
     if(!audio.length)throw Error('Farewell had no real audio');
     // API proof is paced PCM drain; browser verification separately proves actual playback.
     await delay(audio.reduce((n,e)=>n+e.bytes,0)/48+800);this.ws.send(JSON.stringify({type:'playback.drained',callId:end.callId}));

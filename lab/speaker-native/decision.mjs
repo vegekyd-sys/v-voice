@@ -20,11 +20,11 @@ export function nameCandidates(turns) {
 export function routingQuestions(state){
   const people=state.participants;
   if(people.length>5)throw Error('当前候选最多支持五位会话 Speaker');
-  const criteria={quiet:'V保持安静：人对人旁聊、生活中的实物协作指令、电视式内容、无需回应的附和，或没有足够理由插话。',respond:'当前是在向V提问、聊天、自我介绍、纠正称呼、交接对话对象、向V告别结束电话或请求它能够提供的帮助，V应该自然接话、确认或回答。'};
+  const criteria={quiet:'V保持安静：人对人旁聊、生活中的实物协作指令、电视式内容、无需回应的附和，或没有足够理由插话。',respond:'当前是在向V提问、聊天、自我介绍、纠正称呼、交接对话对象、向V告别结束电话、明确要求V查询或执行、取消或修改当前后台任务、切换聊天话题或请求它能够提供的帮助，V应该自然接话、确认或回答。'};
   const q={
-    endIntent:{type:'choice',instructions:'仅根据最新完整话语判断是否现在结束整通电话。自然的“好，那就这样吧，拜拜”是向V结束电话，即使没有说V的名字；不要把它当成无意义附和。不要按拜拜关键词判断。',criteria:{end:'当前说话人明确向电话里的V告别，现在结束整通电话',continue:'继续电话，包括否定、引用、功能讨论、条件句、仅取消后台任务或告别后又继续提问',other:'向身边另一个人道别，未结束与V的通话'}},
+    endIntent:{type:'choice',instructions:'只判断语音电话是否现在结束，不判断后台任务是否结束。这是两个独立生命周期：后台继续做、我们先挂电话，必须选end；等后台完成后再挂，选continue。自然的好那就这样吧拜拜是向V结束电话，即使没有说V名字。auto模式下任何当前说话人都可以明确结束电话，旧的主要对象或正在与孩子聊天不能覆盖当前告别。不按拜拜关键词判断。',criteria:{end:'现在结束与V的整通语音电话。可以允许后台任务在挂断后继续；后台进行中不影响挂断',continue:'现在保持语音电话。包括否定、引用、功能讨论、只取消任务、要求先执行或取消任务再挂、告别后继续提问、一个人离开但其他人继续和V聊天',other:'只向身边另一个人道别，未结束与V的通话'}},
     action:{type:'choice',instructions:'先判断这句是在对V还是对身边的人说，再选择V是否接话。电话已接通，普通问题、明确自我介绍、名字纠正、明确对话交接与自然接话不需要唤醒词，即使ASR没有识别出V也应该回应。自我介绍和交接不是无意义附和，不必带问号。不因多人开口或身份尚未确认就一律安静；能辨认出对V的请求，应回应或澄清。但默认对话关系不能覆盖明显的人际生活交流。ASR也可能漏掉被叫人的名字：拿递实物、替对方动手等生活协作，且没有明确向V请求信息、提醒或可用设备控制时，应视为身边人之间的话并保持安静，不要插话解释V没有手、不能递东西。有人明确向V问“你能拿东西吗”等能力问题仍可回答。电视式内容、旁聊和无需回应的附和可安静；共同话题的补充可以自然回应。auto模式的activeTargetId不是发言准入限制：即使刚刚主要和孩子说话，父亲接着向V提问也应该回应父亲。优先判断最新完整话语，历史安静和重心不得把当前清楚的问题变为旁聊。结合最新speaker、人物关系和历史语义，不按关键词机械决策。',criteria},
-    addressed:{type:'choice',instructions:'只判断最新一句向谁说，不沿用上一句的安静状态或主要人物。明确向V自然告别、结束电话是在对V说，不需要唤醒词，也不是无意义附和；向身边另一个人道别才是other。明确点名V的能力询问（如“V，你能帮我拿东西吗”）是向V提问，即使V没有手也应回答；不带唤醒词的普通科普提问也可向V。引用、电视和对身边人的实物请求不是向V。',criteria:{v:'最新一句向电话里的V提问、自我介绍、交接、请求确认或告别结束电话',other:'最新一句是人对人旁话、引用、广播或无意义声音'}},
+    addressed:{type:'choice',instructions:'只判断最新一句向谁说，不沿用上一句的安静状态或主要人物。明确要求V取消或修改当前后台任务、保持通话或切换聊天话题，是向V发出请求，选择v；没有唤醒词也一样。只有在转述别人的事情、引用或对身边人说时才选other。明确向V自然告别、结束电话是在对V说，不需要唤醒词，也不是无意义附和；向身边另一个人道别才是other。明确点名V的能力询问（如“V，你能帮我拿东西吗”）是向V提问，即使V没有手也应回答；不带唤醒词的普通科普提问也可向V。引用、电视和对身边人的实物请求不是向V。',criteria:{v:'最新一句向电话里的V提问、自我介绍、交接、请求确认、取消或修改当前后台任务、切换聊天话题或告别结束电话',other:'最新一句是人对人旁话、引用、广播或无意义声音'}},
     focus:{type:'choice',instructions:'如果本轮需要调整主要对话对象，选择对应人，否则保持。一次回应旁人不必永久切换重心。',criteria:{keep:'保持现有对话重心',...Object.fromEntries(people.map(p=>[p.id,`主要和${p.name??p.label}（${p.id}）交谈`]))}},
     constraint:{type:'choice',instructions:'只判断最新一句是否明确改变排他专注约束。普通提到姓名、自我介绍、单次问答不改变约束。只跟某人聊才专注；解除专注或大家自由聊才恢复。',criteria:{keep:'没有明确改变专注约束，保持原状',free:'明确解除专注，恢复自由多人交流',...Object.fromEntries(people.map(p=>['only_'+p.id,`明确要求只和${p.name??p.label}（${p.id}）交谈`]))}},
   };
@@ -56,7 +56,7 @@ export class SpeakerRouter{
     if(this.mode==='exclusive'&&id!==this.targetId)return {turn,status:'withheld',modelCalled:false,shouldRespond:false,addresseeIds:[],...this.snapshot()};
     const generation=this.generation;
     const turns=[...this.history.filter(t=>t.role==='participant'),{...turn,role:'participant'}];
-    const state={purpose:'只判断人物关系、是否接话与回应对象，不生成任何回复文字。人物关系不授予工具或账号权限。',participants:structuredClone(this.participants),activeTargetId:this.targetId,mode:this.mode,turn,history:this.history.slice(-12),nameCandidates:nameCandidates(turns)};
+    const state={purpose:'判断人物关系、是否接话、回应对象与当前电话是否结束，不生成回复文字。电话结束和后台工作结束彼此独立；人物关系不授予工具或账号权限。',participants:structuredClone(this.participants),activeTargetId:this.targetId,mode:this.mode,turn,history:this.history.slice(-12),nameCandidates:nameCandidates(turns)};
     const questions=routingQuestions(state),started=performance.now();
     const raw=await this.evaluate(state,questions,signal);
     if(signal?.aborted||generation!==this.generation)throw Error('旧的分人判断已取消');
@@ -68,7 +68,19 @@ export class SpeakerRouter{
     const address=raw.answers?.addressed;
     const directlyAddressed=address?.choice==='v'&&(address.probabilities?.v??0)>=.8;
     const end=raw.answers?.endIntent;
-    const endCall=end?.type==='choice'&&end.choice==='end'&&Number.isFinite(end.probabilities?.end)&&end.probabilities.end>=.9&&end.probabilities.end<=1&&directlyAddressed;
+    const confirmedEnding=answers=>answers?.endIntent?.type==='choice'&&answers.endIntent.choice==='end'&&Number.isFinite(answers.endIntent.probabilities?.end)&&answers.endIntent.probabilities.end>=.9&&answers.endIntent.probabilities.end<=1&&answers.addressed?.type==='choice'&&answers.addressed.choice==='v'&&(answers.addressed.probabilities?.v??0)>=.8;
+    let endCall=confirmedEnding(raw.answers),endVerification,extraUsage;
+    // Active conversation focus and background history can dilute an otherwise
+    // explicit farewell. Only an end candidate gets a narrow, current-utterance
+    // confirmation; ordinary dialogue still uses one request. This controls the
+    // local phone only and never authorizes tools or cancels background work.
+    if(!endCall&&end?.choice==='end'&&Number.isFinite(end.probabilities?.end)&&end.probabilities.end>=.5){
+      try{
+        const confirmation=await this.evaluate({purpose:'仅判断当前完整发言是否向V结束整通电话。没有证据就保持通话；不判断任何后台任务。',request:turn.text,speaker:id,callActive:true},{endIntent:questions.endIntent,addressed:questions.addressed},signal);
+        if(signal?.aborted||generation!==this.generation)throw Error('旧的告别判断已取消');
+        endCall=confirmedEnding(confirmation.answers);extraUsage=confirmation.usage;endVerification=endCall?'confirmed':'withheld';
+      }catch(error){if(signal?.aborted||generation!==this.generation)throw error;endVerification='unavailable';}
+    }
     const action=endCall||this.mode==='auto'&&rawAction==='quiet'&&(directlyAddressed||Number.isFinite(quietProbability)&&quietProbability<.8)?'respond':rawAction;
     let addresseeIds=[];
     if(action==='respond'&&state.participants.length===1)addresseeIds=[state.participants[0].id];
@@ -99,7 +111,8 @@ export class SpeakerRouter{
     }
     if(this.mode==='exclusive'&&action!=='quiet')addresseeIds=[this.targetId];
     this.history.push({...turn,role:'participant'});this.history=this.history.slice(-16);
-    const result={status:'decided',turn,endCall,modelCalled:true,model:raw.model,usage:raw.usage,decisionMs:Math.round(performance.now()-started),shouldRespond:addresseeIds.length>0,addresseeIds,rawChoices:{action:rawAction,focus,constraint},admission:{action,quietProbability,directlyAddressed,reason:endCall?'end-call':rawAction!==action?(directlyAddressed?'direct-request':'uncertain-quiet'):'model-choice'},...this.snapshot()};
+    const usage=extraUsage?Object.fromEntries([...new Set([...Object.keys(raw.usage??{}),...Object.keys(extraUsage)])].filter(k=>Number.isFinite(raw.usage?.[k]??0)&&Number.isFinite(extraUsage[k]??0)).map(k=>[k,(raw.usage?.[k]??0)+(extraUsage[k]??0)])):raw.usage;
+    const result={status:'decided',turn,endCall,...endVerification?{endVerification}:{},modelCalled:true,model:raw.model,usage,decisionMs:Math.round(performance.now()-started),shouldRespond:addresseeIds.length>0,addresseeIds,rawChoices:{action:rawAction,focus,constraint},admission:{action,quietProbability,directlyAddressed,reason:endCall?'end-call':rawAction!==action?(directlyAddressed?'direct-request':'uncertain-quiet'):'model-choice'},...this.snapshot()};
     this.onTrace({state,questions,result,raw});return result;
   }
   assistant(text){if(text?.trim())this.history.push({role:'assistant',text:text.slice(-1200)});this.history=this.history.slice(-16);}

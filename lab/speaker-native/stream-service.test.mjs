@@ -6,13 +6,13 @@ const wait=async predicate=>{for(let i=0;i<600;i++){if(predicate())return;await 
 const answers=(questions,{action='respond',child=false}={})=>({answers:Object.fromEntries(Object.entries(questions).map(([id])=>[id,{type:'choice',choice:id==='action'?action:id.startsWith('role_')?(child?'child':'unknown'):id.startsWith('name_')&&child?'n_0':'keep'}]))});
 const voice=()=>{const pcm=Buffer.alloc(57600);for(let i=0;i<pcm.length;i+=2)pcm.writeInt16LE(6000,i);return pcm;};
 async function fixture(t,{evaluate,prepare=async()=>{},limits}={}){
-  let asr;const events=[],forwarded=[],profiles=[],clarifications=[],endings=[];
+  let asr;const events=[],forwarded=[],profiles=[],clarifications=[],endings=[],rejectedEnds=[];
   const service=createStreamingSpeakerRoutingService({env:{},embedding:{ready:Promise.resolve(),compute:async()=>({embedding:[1,0],inferenceMs:1})},evaluate:evaluate??(async(_s,q)=>answers(q)),limits,createAsr:o=>{asr=o;return {connect:async()=>{},append(){},close(){}};}});
   service.reserve('call',{model:'seeduplex'});t.after(()=>service.dispose());
-  await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},forward:b=>forwarded.push(b),cancel(){},invalidate(){},clarify:text=>clarifications.push(text),end:value=>endings.push(value),cancelEnd:()=>endings.push({revoked:true})},e=>events.push(e));
+  await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},forward:b=>forwarded.push(b),cancel(){},invalidate(){},clarify:text=>clarifications.push(text),end:value=>endings.push(value),cancelEnd:()=>endings.push({revoked:true}),rejectNativeEnd:call=>rejectedEnds.push(call)},e=>events.push(e));
   service.audio('call',voice());
   const emit=(text='V，天空为什么是蓝色的？',start=0,end=1100)=>asr.onResult({body:{result:{utterances:[{definite:true,start_time:start,end_time:end,text,speaker_id:'wrong-cloud-id',...(start===null?{start_time:undefined}:{})}]}}});
-  return {service,events,forwarded,profiles,emit,clarifications,endings,disconnectAsr:()=>asr.onClose()};
+  return {service,events,forwarded,profiles,emit,clarifications,endings,rejectedEnds,disconnectAsr:()=>asr.onClose()};
 }
 
 test('pending native audio, captions and tools are discarded together; stale admission cannot reopen them',()=>{
@@ -105,4 +105,8 @@ test('repeated ASR disconnects exhaust a bounded retry budget and close routing 
 });
 test('call duration expiry closes its route and releases the anonymous roster',async t=>{
  const f=await fixture(t,{limits:{durationMs:40}});await wait(()=>f.events.some(e=>e.type==='error'));assert.equal(f.service.has('call'),false);assert.equal(f.service.snapshot().activeSessions,0);assert(f.events.some(e=>e.type==='speaker.closed'));
+});
+
+test('an ordinary admitted reply cannot execute the native models competing end_call',async t=>{
+ const f=await fixture(t);await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));let executed=false;f.service.dispatch('call','tool',{name:'end_call',callId:'native-end'},()=>{executed=true;});assert.equal(f.rejectedEnds.length,0);f.emit('谢谢，拜拜。对了，五加六等于几？');await wait(()=>f.rejectedEnds.length===1);assert.equal(executed,false);assert.equal(f.service.has('call'),true);assert(f.events.some(e=>e.type==='speaker.end-withheld'));
 });

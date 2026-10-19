@@ -1,6 +1,6 @@
 # 豆包流式多人 Candidate
 
-当前 Linux 候选 `speaker-stream-linux.20261019.4`，独立分支 `codex/volc-speaker-modes`。复用 Voice 产品，不合入或替换线上；26320 保留为串行对照，26325 旧书签转到 Linux。GPT Live 直接使用原生能力。
+当前 Linux 候选 `speaker-stream-linux.20261019.5`，独立分支 `codex/volc-speaker-modes`。复用 Voice 产品，不合入或替换线上；26320 保留为串行对照，26325 旧书签转到 Linux。GPT Live 直接使用原生能力。
 
 ## 数据路径
 
@@ -56,7 +56,7 @@ Decision 偶发超时只拒绝当前句，不结束电话；下一句可以继�
 
 ## 独立 Linux 候选
 
-`speaker-stream-linux.20261019.4` 已将同一声线模型与 Voice 产品服务放到 Linux。浏览器只采集和播放；不需要 WASM、Mac 进程或 SSH 转发。本轮独立产品 Gateway 使用 loopback26369，配套独立 Worker、Memory 索引与 Web Search；不会连生产 Gateway。运行时版本为 Node22.23.1、Python3.12、sherpa-onnx1.13.8、numpy2.5.4。
+`speaker-stream-linux.20261019.5` 已将同一声线模型与 Voice 产品服务放到 Linux。浏览器只采集和播放；不需要 WASM、Mac 进程或 SSH 转发。本轮独立产品 Gateway 使用 loopback26369，配套独立 Worker、Memory 索引与 Web Search；不会连生产 Gateway。运行时版本为 Node22.23.1、Python3.12、sherpa-onnx1.13.8、numpy2.5.4。
 
 Linux 模式必须设置 `VOICE_STREAM_LINUX=1`、`VOICE_SPEAKER_GATEWAY_LOCAL_PORT=26369`，并配置 `VOICE_SPEAKER_GATEWAY_RECEIPT`、HTTPS `VOICE_STREAM_PUBLIC_ORIGIN`、`VOICE_STREAM_BASE_PATH=/voice`、`VOICE_STREAM_ACCESS_TOKEN_FILE`。入口令牌只保存在私有文件，经 URL fragment 换取 HttpOnly Cookie；API/音频通道仍复核访问资格，不能匿名拨号。只复制该试验所需的语音/ASR/Decision 凭据，不复制个人环境文件、生产聊天或 refresh token。
 
@@ -97,8 +97,11 @@ Decision 仍是一次并行 typed questions 请求，补充“是否向V说”�
 
 在同一次 Speaker Decision 中同时判断“最新完整话语是否向V说”和“是否现在结束整通电话”，两项达到门槛才接纳告别；该控制优先于普通静默。对身边人道别、引用、否定或告别后继续提问不触发结束。排他模式非目标Speaker仍不能通过告别结束电话。
 
-接纳后准备独立的小何原生连接，播放固定短告别。主机只在真实音频和完成事件都到达、浏览器返回匹配的播放完成回执后关闭。新声音会撤销挂断；准备过程中还有后续语音或更新的ASR定稿也不结束。15秒仍无告别音频时保留电话并提示重试，不假装播过。普通挂断继续沿用既有后台任务生命周期，不取消已受理任务。
+流式多人模式不再向小何声明原生end_call工具；若模型仍提出挂断，会返回未确认的结果并继续当前问题，避免绕过主机判断。其他原生模式保留原挂断工具。接纳后准备独立的小何原生连接，播放固定短告别。主机只在真实音频和完成事件都到达、浏览器返回匹配的播放完成回执后关闭。新声音会撤销挂断；准备过程中还有后续语音或更新的ASR定稿也不结束。15秒仍无告别音频时保留电话并提示重试，不假装播过。普通挂断继续沿用既有后台任务生命周期，不取消已受理任务。
 
 真实语义矩阵：`verify-end-decisions.mjs`；完整真实音频保护与告别：`verify-ending.mjs`，浏览器素材 `ending-fixture.mjs` / `?fixture=ending`。长时与重连：`verify-soak.mjs`，最多29分钟，真实时间发送PCM并周期换人发问。`verify-native-concurrency.mjs` 仅在指定私有Gateway内验证两路媒体并行及隔离，不改变产品每个人只允许一台设备通话的保护，也不代表开放多账号。`verify-overlap.mjs` 验证混音后恢复清晰多人问答，不代表声源分离。
 
 所有声音材料都是合成测试资产。告别播放、页面回到可拨号以真实产品浏览器为准；接口脚本的播放回执只证明协议闭环。正式发布适配、真机声学条件与多人音源分离不由这些脚本代替。
+
+
+第五版补充：在“后台仍在做、刚与孩子聊天”等历史上下文里，综合判定的告别分数可能被旧重心稀释。只有综合判定已经选中结束、但置信度不足的候选，才追加一次仅包含当前完整话语的电话控制确认；不携带旧重心和后台历史。仍须确认向V说且结束整通电话，不改变任务授权或取消后台工作。普通对话保持一次Decision请求；二次确认不可用时保持电话，不猜测挂断。两次请求的用量合计记录。
