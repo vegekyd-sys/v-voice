@@ -126,3 +126,7 @@ test('input backlog recovery retains only its category and numeric queued durati
  const f=await fixture(t);f.created();f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'upstream-error',category:'input-backlog',pendingAudioMs:10400,message:'SECRET',audio:'SECRET'});
  await f.log.close();const row=(await f.rows()).find(r=>r.type==='call.provider-status');assert.equal(row.category,'input-backlog');assert.equal(row.pendingAudioMs,10400);assert(!JSON.stringify(row).includes('SECRET'));
 });
+test('independent ingress timing excludes audio and persists only safe counters',async t=>{
+ const f=await fixture(t);f.created();f.log.audit({type:'call.input-timing',voiceSessionId:'v1',serverInputBytes:9600,serverInputFrames:10,serverMaxInputGapMs:2400,serverMaxLoopGapMs:205,serverInputIdleMs:2000,providerPendingAudioMs:140,providerInputFramesSent:3,providerBufferedBytes:0,audio:'SECRET',host:'SECRET'});
+ await f.log.close();const row=(await f.rows()).find(r=>r.type==='call.input-timing');assert.equal(row.serverInputFrames,10);assert.equal(row.providerPendingAudioMs,140);assert(!JSON.stringify(row).includes('SECRET'));
+});

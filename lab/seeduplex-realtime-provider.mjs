@@ -267,6 +267,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.closeNotified = false;
     this.resampler = inputResampler(this.request);
     this.pendingInput = Buffer.alloc(0);
+    this.inputFramesSent = 0;
     this.toolBatches = [];
     this.seenToolCalls = new Map();
     this.seenEvents = new Map();
@@ -407,6 +408,11 @@ export class SeeduplexRealtimeVoiceBridge {
     this.#pumpInput();
   }
 
+  inputDiagnostics() {
+    return {providerPendingAudioMs:Math.round(this.pendingInput.length/32),
+      providerInputFramesSent:this.inputFramesSent,providerBufferedBytes:this.socket?.bufferedAmount??0};
+  }
+
   // Candidate routing may reject a speculative turn before any output or tool
   // is released. Retire its input backlog and generation together.
   cancelPendingResponse() {
@@ -430,6 +436,7 @@ export class SeeduplexRealtimeVoiceBridge {
     const frame = this.pendingInput.subarray(0, INPUT_FRAME_BYTES);
     this.pendingInput = this.pendingInput.subarray(INPUT_FRAME_BYTES);
     this.#send({ type: "input_audio_buffer.append", audio: frame.toString("base64") });
+    this.inputFramesSent++;
     const now = Date.now(), deadline = this.lastFrameAt + 20;
     // Compensate small timer jitter instead of accumulating one millisecond of
     // backlog per packet over hours. A large stall never emits a catch-up burst.

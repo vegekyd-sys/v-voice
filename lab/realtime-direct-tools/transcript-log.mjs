@@ -42,6 +42,10 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       if(!['catalog-requested','catalog-ready','context-requested','context-ready','provider-connecting','provider-ready'].includes(event.stage))return false;
       return enqueue({...owner,type:event.type,stage:event.stage});
     }
+    if(event.type==='call.input-timing'){
+      const safe={};for(const key of ['serverInputBytes','serverInputFrames','serverMaxInputGapMs','serverMaxLoopGapMs','serverInputIdleMs','providerPendingAudioMs','providerInputFramesSent','providerBufferedBytes'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      return enqueue({...owner,type:event.type,...safe});
+    }
     if(event.type==='call.provider-status'){
       if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed'].includes(event.stage))return false;
       const safe={stage:event.stage};

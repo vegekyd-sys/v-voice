@@ -495,3 +495,10 @@ test('speaker delegation freezes admitted ASR, ignoring earlier speculative nati
  const question=f.invocations.find(x=>x.question)?.question;assert(question?.includes('通过准入的完整后台目标'));assert(!question.includes('原生ASR滞后的旧声音'));
  f.completeBackend('完成');await delay(30);
 });
+test('server records ingress and upstream pacing even when no client statistics arrive',async t=>{
+ const f=await fixture(async()=>({ok:true}),'seeduplex');t.after(()=>f.service.dispose());
+ for(let i=0;i<10;i++)f.client.emit('message',Buffer.alloc(960),true);
+ for(let i=0;i<50&&!f.audit.some(e=>e.type==='call.input-timing');i++)await delay(50);
+ const row=f.audit.find(e=>e.type==='call.input-timing');assert(row);assert.equal(row.serverInputBytes,9600);assert.equal(row.serverInputFrames,10);assert(row.providerInputFramesSent>0);assert.equal(row.providerPendingAudioMs,0);assert(row.serverInputIdleMs>1000);
+ assert.equal(f.audit.some(e=>e.type==='client.playback-stats'),false);
+});
