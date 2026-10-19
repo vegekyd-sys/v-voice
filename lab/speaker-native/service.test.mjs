@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {createSpeakerRoutingService} from './service.mjs';
-const answer=(questions,action)=>({model:'fixture',answers:Object.fromEntries(Object.entries(questions).map(([id,q])=>[id,q.type==='noul'?{type:'noul',noul:1}:{type:'choice',choice:id==='action'?action:id.startsWith('role_')?'unknown':'keep'}]))});
+const answer=(questions,action)=>({model:'fixture',answers:Object.fromEntries(Object.entries(questions).map(([id,q])=>[id,q.type==='noul'?{type:'noul',noul:0}:{type:'choice',choice:id==='action'?action:id.startsWith('role_')?'unknown':'keep'}]))});
 const utterance={body:{result:{utterances:[{definite:true,speaker_id:0,text:'V，你好。',start_time:0,end_time:800}]}}};
 async function setup(t,evaluate){
   let asr;const events=[],forwarded=[],contexts=[];let interrupts=0;

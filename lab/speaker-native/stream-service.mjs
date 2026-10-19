@@ -97,6 +97,22 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     const timings={asrMs:Math.round(inputAt-endAt),decisionMs:result.decisionMs??0,afterEndMs:Math.round(performance.now()-endAt)};
     send(s,{type:'speaker.decision',...result,timings});
     if(turn.endMs<(s.latestFinalEnd??0)-200){send(s,{type:'speaker.superseded',reason:'newer-final-turn',turn});return;}
+    if(result.endCall){
+      if((s.tracker.current?.lastVoiceMs??0)>turn.endMs+200){send(s,{type:'speaker.superseded',reason:'speech-after-farewell',turn});return;}
+      if(s.input)s.input.cancelled=true;
+      clearTimeout(s.responseDeadline);s.gate.deny();s.native.cancel?.();s.nativeBusy=false;
+      const control={token:'ending'+(++s.serial),speakerId:turn.speakerId,decided:true,ending:true,segmentIds:new Set()};s.input=control;
+      // A fresh native connection cannot leak delayed transcription or a prior
+      // person's reply into the farewell. Existing background owners are kept.
+      const profile=speakerProfile({speakerId:result.turn.speakerId,...result});
+      await s.native.prepare(profile.instructions,'speaker-end:'+result.turn.id,s.acceptedHistory.slice(-6));
+      if(s.closed||s.input!==control||control.cancelled)return;
+      if(turn.endMs<(s.latestFinalEnd??0)-200||(s.tracker.current?.lastVoiceMs??0)>turn.endMs+200){control.cancelled=true;send(s,{type:'speaker.end-revoked',reason:'newer-speech-during-prepare'});return;}
+      s.prepared=true;s.gate.begin(control.token);s.gate.allow(control.token);
+      send(s,{type:'speaker.end-accepted',turn:result.turn});
+      s.responseDeadline=setTimeout(()=>{if(s.closed||s.input!==control||control.cancelled||control.responded)return;control.ending=false;s.native.cancelEnd?.();s.native.cancel?.();s.gate.deny();send(s,{type:'speaker.error',reason:'farewell-no-audio',message:'告别语音暂时没有播放，可以再说一次拜拜，或点挂断。'});},limits.farewellMs??15000);s.responseDeadline.unref?.();
+      s.native.end?.({turnId:result.turn.id});return;
+    }
     const c=s.input,matches=c&&!c.cancelled&&c.speakerId===turn.speakerId&&c.startMs<turn.endMs&&(!c.endMs||c.endMs>=turn.startMs-200);
     if(!result.shouldRespond){if(matches){clearTimeout(s.responseDeadline);c.cancelled=true;s.gate.deny(c.token);s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;}return;}
     const profile=speakerProfile({speakerId:result.turn.speakerId,...result});
@@ -183,6 +199,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
       const s={id,decisionCalls:0,inputBytes:0,router:new SpeakerRouter({evaluate:async(...args)=>{decisionCalls++;if(++s.decisionCalls>(limits.decisionCalls??300))throw Error('本轮判断预算已用完');return evaluate(...args);}}),window:new AudioWindow(),resampler:new Pcm24To16Resampler(),clock:[],gate:new TurnOutputGate(),abort:new AbortController(),acceptedHistory:[],seen:new Set(),backfilled:new Map(),backfilling:new Set(),serial:0,asrEpoch:0,asrRetries:[],tail:Promise.resolve(),ready:false,nativeBusy:false,closed:false};
       s.tracker=new OnlineSpeakerTracker({embed:pcm=>embedding.compute(pcm),onEvent:e=>{
         if(s.closed)return;
+        if(e.type==='start'&&s.input?.ending){s.input.cancelled=true;s.gate.deny();s.native.cancelEnd?.();s.native.cancel?.();s.nativeBusy=false;send(s,{type:'speaker.end-revoked',reason:'new-speech'});}
         if(e.type==='identified')identified(s,e);
         if(e.type==='end'&&s.input?.segmentIds.has(e.segment.id))s.input.endMs=e.segment.endMs;
         if(e.type==='revision'){if(s.input?.segmentIds.has(e.segment.id)){s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;}send(s,{type:'speaker.stream-fallback',reason:'短片段声线需要复核'});}

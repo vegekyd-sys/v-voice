@@ -242,7 +242,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       },
       onClearAudio:()=>routeOutput('clear',null,()=>{s.responseActive=false;if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});}),
       onAudioSegmentDone:()=>routeOutput('done',null,()=>{s.responseActive=false;}),
-      onResponseDone:e=>routeOutput('done',e,()=>{s.responseActive=false;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed')emit(s,{type:'end.after-playback',callId:s.ending.callId});}),
+      onResponseDone:e=>routeOutput('done',e,()=>{s.responseActive=false;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}}),
       onEvent:e=>{if(['response.created'].includes(e.type))s.responseActive=true;
         if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.userSpeaking=true;s.lastUserAt=Date.now();}
         if(e.type==='input_audio_buffer.speech_stopped'){s.userSpeaking=false;s.lastUserAt=Date.now();}
@@ -281,7 +281,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','inputBatches'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
         audit({type:'client.playback-stats',voiceSessionId:s.id,stats});
       }
-      else if(e.type==='playback.drained'&&s.ending?.callId===e.callId)void close(s.id).catch(()=>{});
+      else if(e.type==='playback.drained'&&s.ending?.callId===e.callId&&s.ending.hasAudio&&s.ending.completed){audit({type:'speaker.end-played',voiceSessionId:s.id});void close(s.id).catch(()=>{});}
       }catch{client.close(1008);}
     });
     connectionStage('provider-connecting');
@@ -289,6 +289,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(current(s)&&speakerRouting?.has(s.id))await speakerRouting.bind(s.id,{
       forward:audio=>s.bridge.sendAudio(audio),context:text=>s.bridge.sendUserMessage(text),clarify:text=>s.bridge.speakProgress(text,{caption:true}),interrupt:()=>s.bridge.handleBargeIn(),
       cancel:()=>s.bridge.cancelPendingResponse(),invalidate:()=>{s.personaKey=null;},
+      end:({turnId})=>{if(!current(s)||!s.bridge.ready)return;s.ending={callId:'speaker-end-'+turnId,hasAudio:false,source:'speaker'};emit(s,{type:'end.accepted',callId:s.ending.callId});s.bridge.speakProgress('好，拜拜，下次聊。',{caption:true});},
+      cancelEnd:()=>{if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}},
       prepare:async(instructions,key,history=[])=>{
         if(!current(s))throw Error('通话已结束');
         if(s.personaKey===key&&s.bridge.ready)return;

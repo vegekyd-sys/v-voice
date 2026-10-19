@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {SpeakerRouter,nameCandidates,nativeSpeakerContext,routingQuestions} from './decision.mjs';
 import {AudioWindow,pcm16to24} from './service.mjs';
-const evaluator=select=>async(state,questions)=>({model:'fixture',answers:Object.fromEntries(Object.entries(questions).map(([id,q])=>[id,q.type==='noul'?{type:'noul',noul:select(id,state,q)??1}:{type:'choice',choice:select(id,state,q)??(id.startsWith('role_')?'unknown':id==='action'?'respond':id==='audience'?'to_'+((1<<state.participants.length)-1):'keep')}]))});
+const evaluator=select=>async(state,questions)=>({model:'fixture',answers:Object.fromEntries(Object.entries(questions).map(([id,q])=>[id,q.type==='noul'?{type:'noul',noul:select(id,state,q)??0}:{type:'choice',choice:select(id,state,q)??(id.startsWith('role_')?'unknown':id==='endIntent'?'continue':id==='action'?'respond':id==='audience'?'to_'+((1<<state.participants.length)-1):'keep')}]))});
 const say=(c,speakerId,text)=>c.accept({speakerId,text,startMs:0,endMs:1000});
 test('only selects actions and source names; it never generates spoken text',async()=>{
   const c=new SpeakerRouter({evaluate:evaluator((id,s)=>id==='name_0'&&s.turn.text.includes('我叫天意')?'n_0':undefined)});
@@ -41,4 +41,13 @@ test('uncertain quiet in open conversation can respond, confident bystander sile
 });
 test('a high confidence direct request overrules contradictory quiet without opening exclusive admission',async()=>{
  const evaluate=async(s,q)=>{const r=await evaluator(id=>id==='action'?'quiet':undefined)(s,q);r.answers.action.probabilities={quiet:.92,respond:.08};r.answers.addressed={type:'choice',choice:'v',probabilities:{v:.98,other:.02}};return r;};const c=new SpeakerRouter({evaluate});const r=await say(c,'0','V，你能帮我拿东西吗？');assert.equal(r.shouldRespond,true);assert.equal(r.admission.reason,'direct-request');
+});
+
+test('ending requires both an explicit end choice and confidence that the latest speech addresses V',async()=>{
+ for(const [probability,address,choice] of [[0,1,'end'],[.89,1,'end'],[.9,.8,'end'],[1,1,'end'],[NaN,1,'end'],[.99,.79,'end'],[1,1,'other']]){
+  const c=new SpeakerRouter({evaluate:async(s,q)=>{const r=await evaluator(id=>id==='action'?'quiet':undefined)(s,q);r.answers.endIntent={type:'choice',choice,probabilities:{end:probability}};r.answers.addressed={type:'choice',choice:'v',probabilities:{v:address}};return r;}});const r=await say(c,'0','好，那就这样吧，拜拜。');assert.equal(r.endCall,probability>=.9&&address>=.8&&choice==='end');
+ }
+});
+test('a non-target farewell cannot end an exclusive call',async()=>{
+ const c=new SpeakerRouter({evaluate:evaluator((id,s)=>id==='endConfidence'?0:id==='constraint'&&s.turn.text.includes('只跟')?'only_speaker:1':undefined)});await say(c,'0','你好');await say(c,'1','我是十二');await say(c,'0','只跟十二聊');const r=await say(c,'0','拜拜');assert.equal(r.status,'withheld');assert.equal(r.endCall,undefined);
 });

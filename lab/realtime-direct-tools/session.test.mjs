@@ -429,3 +429,15 @@ test('a fatal speaker channel error promptly closes the browser transport withou
  f.event({type:'response.function_call_arguments.done',items:[{call_id:'ongoing',name:'delegate_to_v',arguments:JSON.stringify({question:'整理原任务'})}]});for(let i=0;i<100&&!f.audit.some(e=>e.type==='backend.started');i++)await delay(5);assert(f.audit.some(e=>e.type==='backend.started'));
  listener({type:'error',reason:'asr-disconnected',message:'识人语音通道暂时断开，请重新拨号。'});for(let i=0;i<100&&f.client.readyState!==3;i++)await delay(5);assert.equal(f.client.readyState,3);assert.equal(cancelled,false);assert.equal(f.service.backgroundTaskCount(),1);
 });
+test('speaker farewell requires actual audio, completed response and matching playback drain',async t=>{
+ let native;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,value)=>{native=value;},close(){},audio(){}};
+ const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ native.end({turnId:'sp1'});const id='speaker-end-sp1';assert(f.client.sent.some(e=>e.type==='end.accepted'&&e.callId===id));assert(f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'&&e.text.includes('拜拜')));
+ const drained=()=>f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:id})),false);
+ drained();assert.equal(f.client.readyState,1);f.event({type:'response.output_audio.delta',delta:Buffer.alloc(960).toString('base64')});drained();assert.equal(f.client.readyState,1);
+ f.event({type:'response.done',response:{id:'bye',status:'completed'}});assert(f.client.sent.some(e=>e.type==='end.after-playback'));drained();await delay(5);assert.equal(f.client.readyState,3);assert(f.audit.some(e=>e.type==='speaker.end-played'));
+});
+test('new speech revokes a speaker farewell so stale playback acknowledgements cannot close the call',async t=>{
+ let native;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,value)=>{native=value;},close(){},audio(){}};
+ const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());native.end({turnId:'sp1'});native.cancelEnd();f.event({type:'response.output_audio.delta',delta:Buffer.alloc(960).toString('base64')});f.event({type:'response.done',response:{id:'bye',status:'completed'}});f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:'speaker-end-sp1'})),false);await delay(5);assert.equal(f.client.readyState,1);assert(f.client.sent.some(e=>e.type==='end.cancelled'));
+});

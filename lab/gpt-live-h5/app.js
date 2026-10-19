@@ -695,7 +695,7 @@ async function startCall() {
         onPlaybackActivity:speaking=>{if(call===active){document.body.dataset.voiceState=speaking?'speaking':'listening';if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
         onEvent:value=>{
           if(call!==active)return;
-          if(speakerCandidate()&&(value.type.startsWith('speaker.')||value.type==='transcript'&&value.final||['audio.done','audio.clear','error','upload.backpressure'].includes(value.type)))speakerEvent(value);
+          if(speakerCandidate()&&(value.type.startsWith('speaker.')||value.type.startsWith('end.')||value.type==='transcript'&&value.final||['audio.done','audio.clear','error','upload.backpressure'].includes(value.type)))speakerEvent(value);
           if (value.type === 'avatar.expression') { avatar?.expression(value.expression); return; }
       tasks.consume(value);
           if(value.type==='backend.result')receiveDocument(active,value);

@@ -20,10 +20,11 @@ export function nameCandidates(turns) {
 export function routingQuestions(state){
   const people=state.participants;
   if(people.length>5)throw Error('当前候选最多支持五位会话 Speaker');
-  const criteria={quiet:'V保持安静：人对人旁聊、生活中的实物协作指令、电视式内容、无需回应的附和，或没有足够理由插话。',respond:'当前是在向V提问、聊天、自我介绍、纠正称呼、交接对话对象或请求它能够提供的帮助，V应该自然接话、确认或回答。'};
+  const criteria={quiet:'V保持安静：人对人旁聊、生活中的实物协作指令、电视式内容、无需回应的附和，或没有足够理由插话。',respond:'当前是在向V提问、聊天、自我介绍、纠正称呼、交接对话对象、向V告别结束电话或请求它能够提供的帮助，V应该自然接话、确认或回答。'};
   const q={
+    endIntent:{type:'choice',instructions:'仅根据最新完整话语判断是否现在结束整通电话。自然的“好，那就这样吧，拜拜”是向V结束电话，即使没有说V的名字；不要把它当成无意义附和。不要按拜拜关键词判断。',criteria:{end:'当前说话人明确向电话里的V告别，现在结束整通电话',continue:'继续电话，包括否定、引用、功能讨论、条件句、仅取消后台任务或告别后又继续提问',other:'向身边另一个人道别，未结束与V的通话'}},
     action:{type:'choice',instructions:'先判断这句是在对V还是对身边的人说，再选择V是否接话。电话已接通，普通问题、明确自我介绍、名字纠正、明确对话交接与自然接话不需要唤醒词，即使ASR没有识别出V也应该回应。自我介绍和交接不是无意义附和，不必带问号。不因多人开口或身份尚未确认就一律安静；能辨认出对V的请求，应回应或澄清。但默认对话关系不能覆盖明显的人际生活交流。ASR也可能漏掉被叫人的名字：拿递实物、替对方动手等生活协作，且没有明确向V请求信息、提醒或可用设备控制时，应视为身边人之间的话并保持安静，不要插话解释V没有手、不能递东西。有人明确向V问“你能拿东西吗”等能力问题仍可回答。电视式内容、旁聊和无需回应的附和可安静；共同话题的补充可以自然回应。auto模式的activeTargetId不是发言准入限制：即使刚刚主要和孩子说话，父亲接着向V提问也应该回应父亲。优先判断最新完整话语，历史安静和重心不得把当前清楚的问题变为旁聊。结合最新speaker、人物关系和历史语义，不按关键词机械决策。',criteria},
-    addressed:{type:'choice',instructions:'只判断最新一句向谁说，不沿用上一句的安静状态或主要人物。明确点名V的能力询问（如“V，你能帮我拿东西吗”）是向V提问，即使V没有手也应回答；不带唤醒词的普通科普提问也可向V。引用、电视和对身边人的实物请求不是向V。',criteria:{v:'最新一句向电话里的V提问、自我介绍、交接或请求确认',other:'最新一句是人对人旁话、引用、广播或无意义声音'}},
+    addressed:{type:'choice',instructions:'只判断最新一句向谁说，不沿用上一句的安静状态或主要人物。明确向V自然告别、结束电话是在对V说，不需要唤醒词，也不是无意义附和；向身边另一个人道别才是other。明确点名V的能力询问（如“V，你能帮我拿东西吗”）是向V提问，即使V没有手也应回答；不带唤醒词的普通科普提问也可向V。引用、电视和对身边人的实物请求不是向V。',criteria:{v:'最新一句向电话里的V提问、自我介绍、交接、请求确认或告别结束电话',other:'最新一句是人对人旁话、引用、广播或无意义声音'}},
     focus:{type:'choice',instructions:'如果本轮需要调整主要对话对象，选择对应人，否则保持。一次回应旁人不必永久切换重心。',criteria:{keep:'保持现有对话重心',...Object.fromEntries(people.map(p=>[p.id,`主要和${p.name??p.label}（${p.id}）交谈`]))}},
     constraint:{type:'choice',instructions:'只判断最新一句是否明确改变排他专注约束。普通提到姓名、自我介绍、单次问答不改变约束。只跟某人聊才专注；解除专注或大家自由聊才恢复。',criteria:{keep:'没有明确改变专注约束，保持原状',free:'明确解除专注，恢复自由多人交流',...Object.fromEntries(people.map(p=>['only_'+p.id,`明确要求只和${p.name??p.label}（${p.id}）交谈`]))}},
   };
@@ -66,7 +67,9 @@ export class SpeakerRouter{
     // identified side speech is suppressed; exclusive admission stays unchanged.
     const address=raw.answers?.addressed;
     const directlyAddressed=address?.choice==='v'&&(address.probabilities?.v??0)>=.8;
-    const action=this.mode==='auto'&&rawAction==='quiet'&&(directlyAddressed||Number.isFinite(quietProbability)&&quietProbability<.8)?'respond':rawAction;
+    const end=raw.answers?.endIntent;
+    const endCall=end?.type==='choice'&&end.choice==='end'&&Number.isFinite(end.probabilities?.end)&&end.probabilities.end>=.9&&end.probabilities.end<=1&&directlyAddressed;
+    const action=endCall||this.mode==='auto'&&rawAction==='quiet'&&(directlyAddressed||Number.isFinite(quietProbability)&&quietProbability<.8)?'respond':rawAction;
     let addresseeIds=[];
     if(action==='respond'&&state.participants.length===1)addresseeIds=[state.participants[0].id];
     if(action==='respond'&&state.participants.length>1){
@@ -96,7 +99,7 @@ export class SpeakerRouter{
     }
     if(this.mode==='exclusive'&&action!=='quiet')addresseeIds=[this.targetId];
     this.history.push({...turn,role:'participant'});this.history=this.history.slice(-16);
-    const result={status:'decided',turn,modelCalled:true,model:raw.model,usage:raw.usage,decisionMs:Math.round(performance.now()-started),shouldRespond:addresseeIds.length>0,addresseeIds,rawChoices:{action:rawAction,focus,constraint},admission:{action,quietProbability,directlyAddressed,reason:rawAction!==action?(directlyAddressed?'direct-request':'uncertain-quiet'):'model-choice'},...this.snapshot()};
+    const result={status:'decided',turn,endCall,modelCalled:true,model:raw.model,usage:raw.usage,decisionMs:Math.round(performance.now()-started),shouldRespond:addresseeIds.length>0,addresseeIds,rawChoices:{action:rawAction,focus,constraint},admission:{action,quietProbability,directlyAddressed,reason:endCall?'end-call':rawAction!==action?(directlyAddressed?'direct-request':'uncertain-quiet'):'model-choice'},...this.snapshot()};
     this.onTrace({state,questions,result,raw});return result;
   }
   assistant(text){if(text?.trim())this.history.push({role:'assistant',text:text.slice(-1200)});this.history=this.history.slice(-16);}

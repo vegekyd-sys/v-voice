@@ -7,6 +7,8 @@ export function renderSpeakerEvent(value){
   if(value.type==='speaker.recovery'){delete row.dataset.error;row.textContent=value.reason==='mixed-speakers'?'声音重叠了 · 请轮流说，我在听':'这句没听清 · 请再说一次，我在听';return;}
   if(value.type==='speaker.asr-reconnecting'){row.textContent='网络短暂不稳 · 正在恢复识别，通话保持中';return;}
   if(value.type==='speaker.asr-recovered'){delete row.dataset.error;row.textContent='识别已恢复 · 可以继续说';return;}
+  if(value.type==='speaker.end-accepted'){row.textContent='正在道别 · 播完后挂断';return;}
+  if(value.type==='speaker.end-revoked'){row.textContent='继续通话 · 已取消挂断';return;}
   if(value.type==='speaker.ready'){row.textContent=value.streaming?'自动多人对话 · 流式识人':'自动多人对话 · 无需注册声纹';return;}
   if(value.type!=='speaker.decision')return;
   delete row.dataset.error;

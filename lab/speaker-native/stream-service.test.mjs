@@ -6,13 +6,13 @@ const wait=async predicate=>{for(let i=0;i<600;i++){if(predicate())return;await 
 const answers=(questions,{action='respond',child=false}={})=>({answers:Object.fromEntries(Object.entries(questions).map(([id])=>[id,{type:'choice',choice:id==='action'?action:id.startsWith('role_')?(child?'child':'unknown'):id.startsWith('name_')&&child?'n_0':'keep'}]))});
 const voice=()=>{const pcm=Buffer.alloc(57600);for(let i=0;i<pcm.length;i+=2)pcm.writeInt16LE(6000,i);return pcm;};
 async function fixture(t,{evaluate,prepare=async()=>{},limits}={}){
-  let asr;const events=[],forwarded=[],profiles=[],clarifications=[];
+  let asr;const events=[],forwarded=[],profiles=[],clarifications=[],endings=[];
   const service=createStreamingSpeakerRoutingService({env:{},embedding:{ready:Promise.resolve(),compute:async()=>({embedding:[1,0],inferenceMs:1})},evaluate:evaluate??(async(_s,q)=>answers(q)),limits,createAsr:o=>{asr=o;return {connect:async()=>{},append(){},close(){}};}});
   service.reserve('call',{model:'seeduplex'});t.after(()=>service.dispose());
-  await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},forward:b=>forwarded.push(b),cancel(){},invalidate(){},clarify:text=>clarifications.push(text)},e=>events.push(e));
+  await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},forward:b=>forwarded.push(b),cancel(){},invalidate(){},clarify:text=>clarifications.push(text),end:value=>endings.push(value),cancelEnd:()=>endings.push({revoked:true})},e=>events.push(e));
   service.audio('call',voice());
   const emit=(text='V，天空为什么是蓝色的？',start=0,end=1100)=>asr.onResult({body:{result:{utterances:[{definite:true,start_time:start,end_time:end,text,speaker_id:'wrong-cloud-id',...(start===null?{start_time:undefined}:{})}]}}});
-  return {service,events,forwarded,profiles,emit,clarifications,disconnectAsr:()=>asr.onClose()};
+  return {service,events,forwarded,profiles,emit,clarifications,endings,disconnectAsr:()=>asr.onClose()};
 }
 
 test('pending native audio, captions and tools are discarded together; stale admission cannot reopen them',()=>{
@@ -88,4 +88,21 @@ test('a first utterance whose zero start_time is omitted still reaches speaker d
 
 test('ASR reconnect retains the live call and restores absolute timestamps instead of leaving an open dead uploader',async t=>{
  const f=await fixture(t);f.disconnectAsr();assert.equal(f.service.has('call'),true);await wait(()=>f.events.some(e=>e.type==='speaker.asr-recovered'));f.service.audio('call',Buffer.alloc(24000));f.service.audio('call',voice());f.emit('V，继续聊。',0,1100);await wait(()=>f.events.some(e=>e.type==='speaker.decision'));assert.equal(f.events.find(e=>e.type==='speaker.utterance').turn.startMs,800);assert.equal(f.events.some(e=>e.type==='error'),false);
+});
+
+test('an accepted farewell speaks through native control without replaying the user audio; new speech revokes it',async t=>{
+ const f=await fixture(t,{evaluate:async(_s,q)=>{const r=answers(q,{action:'quiet'});r.answers.endIntent={type:'choice',choice:'end',probabilities:{end:1}};r.answers.addressed={type:'choice',choice:'v',probabilities:{v:1}};return r;}});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit('好，就这样吧，拜拜。');await wait(()=>f.endings.length===1);assert.equal(f.endings[0].turnId,'sp1');assert(f.profiles.some(p=>p[1]==='speaker-end:sp1'));assert.equal(f.events.some(e=>e.type==='speaker.stream-accepted'),false);
+ f.service.audio('call',Buffer.alloc(24000));f.service.audio('call',voice());assert.equal(f.endings.at(-1).revoked,true);assert(f.events.some(e=>e.type==='speaker.end-revoked'));
+});
+test('continued speech during farewell connection preparation prevents ending the ongoing question',async t=>{
+ let finish,preparing=false;const f=await fixture(t,{evaluate:async(_s,q)=>{const r=answers(q);r.answers.endIntent={type:'choice',choice:'end',probabilities:{end:1}};r.answers.addressed={type:'choice',choice:'v',probabilities:{v:1}};return r;},prepare:async(_instructions,key)=>{if(key.startsWith('speaker-end:')){preparing=true;await new Promise(r=>finish=r);}}});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit('拜拜。');await wait(()=>preparing);f.service.audio('call',voice());finish();await wait(()=>f.events.some(e=>e.type==='speaker.end-revoked'));assert.equal(f.endings.length,0);
+});
+test('missing farewell audio revokes ending and keeps the call available for retry',async t=>{
+ const f=await fixture(t,{limits:{farewellMs:30},evaluate:async(_s,q)=>{const r=answers(q);r.answers.endIntent={type:'choice',choice:'end',probabilities:{end:1}};r.answers.addressed={type:'choice',choice:'v',probabilities:{v:1}};return r;}});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit('拜拜。');await wait(()=>f.events.some(e=>e.reason==='farewell-no-audio'));assert.equal(f.service.has('call'),true);assert(f.endings.some(e=>e.revoked));
+});
+test('repeated ASR disconnects exhaust a bounded retry budget and close routing instead of bypassing it',async t=>{
+ const f=await fixture(t);f.disconnectAsr();await wait(()=>f.events.filter(e=>e.type==='speaker.asr-recovered').length===1);f.disconnectAsr();await wait(()=>f.events.filter(e=>e.type==='speaker.asr-recovered').length===2);f.disconnectAsr();await wait(()=>f.events.some(e=>e.type==='error'));assert.equal(f.service.has('call'),false);assert(f.events.some(e=>e.type==='speaker.error'&&e.fatal&&e.reason==='asr-disconnected'));
+});
+test('call duration expiry closes its route and releases the anonymous roster',async t=>{
+ const f=await fixture(t,{limits:{durationMs:40}});await wait(()=>f.events.some(e=>e.type==='error'));assert.equal(f.service.has('call'),false);assert.equal(f.service.snapshot().activeSessions,0);assert(f.events.some(e=>e.type==='speaker.closed'));
 });

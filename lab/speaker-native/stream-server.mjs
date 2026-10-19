@@ -28,7 +28,7 @@ let bridge;
 const gateway=new GatewayClient({url:gatewayOrigin.replace('http:','ws:'),token:receipt.gatewayToken,caps:['voice-direct-tools','tool-events'],scopes:['operator.admin','operator.read','operator.write'],onEvent:e=>bridge?.emit(e),onHelloOk:()=>console.log('Private speaker Gateway ready'),onConnectError:e=>console.warn('Private candidate unavailable:',e.code??'CONNECT_ERROR')});gateway.start();
 const speakerRouting=process.env.VOICE_STREAM_COMPARE_SERIAL==='1'?createSpeakerRoutingService({env}):createStreamingSpeakerRoutingService({env,embedding,onAudit:diagnostics.audit});
 const directVoice=createDirectVoiceService({gateway,wsModule:{WebSocket,WebSocketServer},speakerRouting,audit:diagnostics.audit,apiKeys:{seeduplex:env.VOLCENGINE_REALTIME_API_KEY},loadContext:async()=>''});
-const fixtures=new Set(['question','dialogue','side','collective','steady','background']);
+const fixtures=new Set(['question','dialogue','side','collective','steady','background','ending']);
 bridge=createLiveH5Server({gateway,directVoice,speakerRouting,publicOrigin,basePath,accessToken,candidateRelease:process.env.VOICE_STREAM_LINUX==='1'?LINUX_SPEAKER_CANDIDATE_RELEASE:undefined,maxActiveSessions:2,maxActiveSessionsPerIp:1,defaultModel:'seeduplex',gptProvider:'v-voice-gpt-live',avatarEvaluate:null,callControlEvaluate:null,
   speakerFixture:async id=>fixtures.has(id)?readFile(new URL('../../artifacts/speaker-native/'+id+'.wav',import.meta.url)):null,
   offer:async(reservation,sdp)=>{const r=await fetch(gatewayOrigin+reservation.offerUrl,{method:'POST',headers:{authorization:'Bearer '+reservation.clientSecret,'content-type':'application/sdp'},body:sdp,signal:AbortSignal.timeout(45000)});if(!r.ok)throw Error('Native GPT unavailable: '+r.status);return r.text();},
