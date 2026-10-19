@@ -17,7 +17,7 @@ const target=resolve(process.argv[2]??join(root,'artifacts',commit));
 await mkdir(dirname(target),{recursive:true});
 await mkdir(target,{recursive:false});
 const files=[];
-for(const name of names.sort()){
+for(const name of [...new Set(names)].sort()){
  const bytes=await readFile(join(root,name)),dest=join(target,name);await mkdir(dirname(dest),{recursive:true});await copyFile(join(root,name),dest);
  files.push({path:name,sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length});
 }
