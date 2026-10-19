@@ -55,6 +55,3 @@ ssh v 'sudo python3 /var/lib/openclaw-voice-release-20261019/rollback-to-origina
 ```sh
 ssh v 'sudo python3 /var/lib/openclaw-voice-release-20261019/rollback-to-original.py'
 ```
-
-
-
