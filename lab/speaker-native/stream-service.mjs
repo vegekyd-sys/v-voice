@@ -78,6 +78,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     void feed(s,c,earlyProfile(s,seg.speakerId));
   };
   const enqueue=(s,turn)=>{
+    if(turn.endMs<=(s.typedAtMs??-1))return;
     s.latestFinalEnd=Math.max(s.latestFinalEnd??0,turn.endMs);
     s.tail=s.tail.then(()=>process(s,turn)).catch(error=>fail(s,error));
   };
@@ -207,6 +208,13 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
       }});
       sessions.set(id,s);s.expiry=setTimeout(()=>fail(s,Error('本次候选通话已达时长上限，请重拨')),limits.durationMs??1800000);s.expiry.unref?.();
       return {voiceSessionId:id,model,transport:'relay',policy:'streaming'};
+    },
+    async text(id,text){
+      const s=sessions.get(id);if(!s||s.closed)throw Error('通话已结束');
+      if(s.input)s.input.cancelled=true;clearTimeout(s.responseDeadline);s.gate.deny();s.native.cancelEnd?.();s.native.cancel?.();s.nativeBusy=false;
+      const c={token:'keyboard'+(++s.serial),decided:true,segmentIds:new Set()};s.input=c;s.typedAtMs=s.window.bytes/32;s.gate.begin(c.token);
+      await s.native.prepare('当前这一轮是电话本人在键盘输入的文字，不依据上一位声音猜输入者的名字或年龄；按本人原有方式回答。','keyboard-input',s.acceptedHistory.slice(-6));
+      if(s.closed||s.input!==c||c.cancelled)return;s.prepared=true;s.gate.allow(c.token);s.native.context(text);
     },
     has:id=>sessions.has(id),lazyNative:id=>sessions.has(id),controlsEnding:id=>sessions.has(id),
     pending:id=>sessions.get(id)?.gate.status==='pending',
