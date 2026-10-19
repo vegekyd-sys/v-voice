@@ -151,9 +151,9 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
         stats.peakInputBufferedBytes=Math.max(stats.peakInputBufferedBytes,socket.bufferedAmount);
         if(socket.bufferedAmount>480000){uploadFailed=true;onEvent({type:'upload.backpressure',bufferedBytes:socket.bufferedAmount,inputBytes:stats.inputBytes});onError(Error('音频上传积压，请重新拨号'));return;}
         inputBatch.push(frame);inputBatchBytes+=frame.byteLength;
-        // Speaker routing consumes arbitrary PCM block sizes; group at most
-        // 100ms instead of emitting fifty WebSocket messages each second.
-        if(!inputGated||inputBatchBytes>=4800)flushInput();}
+        // Preserve the native 20ms uplink cadence across hosted proxies.
+        // A speaker decision still owns interruption; batching does not.
+        flushInput();}
     };
   }
   return {ready:promise,stats,async start(){
