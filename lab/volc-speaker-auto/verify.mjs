@@ -22,7 +22,7 @@ try{
  const a=at('intro-a'),b=at('intro-b'),guess=at('guess-b'),handoff=at('focus-a'),filteredA=at('filtered-a'),filteredC=at('filtered-c'),reply=at('reply-b');
  assert.ok(a&&b&&guess&&handoff&&filteredA&&filteredC&&reply,'expected separate final turns');
  assert.notEqual(a.turn.speaker.id,b.turn.speaker.id);assert.notEqual(filteredC.turn.speaker.id,b.turn.speaker.id);checks.threeAnonymousSpeakers=true;
- assert.match(a.participants.find(p=>p.id===a.turn.speaker.id).name,/天意|天一/);checks.spokenAdultName=true;
+ assert.match(a.participants.find(p=>p.id===a.turn.speaker.id).name,/天懿|天一/);checks.spokenAdultName=true;
  const guessed=guess.participants.find(p=>p.id===guess.turn.speaker.id);assert.ok(['unknown','suggested'].includes(guessed.certainty));if(guessed.name!==null)assert.match(guessed.name,/十二|12/);checks.contextualGuessMarkedUncertain=true;
  const child=b.participants.find(p=>p.id===b.turn.speaker.id);assert.match(child.name,/十二|12/);assert.equal(child.certainty,'stated');assert.equal(child.role,'child');checks.spokenNameConfirmsGuess=true;
  assert.equal(b.mode,'auto');assert.equal(at('ask-a').mode,'auto');checks.noPrematureExclusiveMode=true;

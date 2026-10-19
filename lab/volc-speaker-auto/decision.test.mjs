@@ -4,7 +4,7 @@ import { SpeakerConversation, validateDecision, shouldInterrupt } from './decisi
 import { FinalUtterances } from '../volc-speaker/utterances.mjs';
 const answer=(p,extra={})=>({shouldRespond:true,addresseeIds:[p.activeTargetId],nextTargetId:p.activeTargetId,nextMode:p.mode,policyChangeRequested:false,policyEvidence:null,pendingFocus:p.pendingFocus,identityUpdates:[],style:'neutral',reason:'回应当前问题',reply:'你好。',...extra});
 const input=(id,text='你好')=>({speakerId:id,text,startMs:0,endMs:1000});
-const update=(p,extra={})=>({speakerId:p.turn.speaker.id,name:'天意',role:'adult',certainty:'stated',source:'self-introduction',evidence:[{turnId:p.turn.id,quote:p.turn.text}],reason:'本人告知',...extra});
+const update=(p,extra={})=>({speakerId:p.turn.speaker.id,name:'天懿',role:'adult',certainty:'stated',source:'self-introduction',evidence:[{turnId:p.turn.id,quote:p.turn.text}],reason:'本人告知',...extra});
 const evaluator=fn=>async p=>({decision:answer(p,fn?.(p))});
 test('no enrollment: anonymous speakers are independent and the first becomes initial audience',async()=>{
  const c=new SpeakerConversation({mode:'adaptive',evaluate:evaluator()});await c.accept(input('0'));await c.accept(input('1'));
@@ -16,16 +16,16 @@ test('exclusive locks first speaker and never sends bystander content to model',
  await c.accept(input('0','接着聊'));assert.equal(payloads.length,2);assert.doesNotMatch(JSON.stringify(payloads),/SECRET/);
 });
 test('spoken self introduction associates name without changing acoustic id',async()=>{
- const c=new SpeakerConversation({mode:'adaptive',evaluate:evaluator(p=>({identityUpdates:[update(p)]}))});const r=await c.accept(input('7','我是天意'));
- assert.equal(r.participants[0].name,'天意');assert.equal(r.targetId,'speaker:7');assert.equal(r.participants[0].certainty,'stated');
+ const c=new SpeakerConversation({mode:'adaptive',evaluate:evaluator(p=>({identityUpdates:[update(p)]}))});const r=await c.accept(input('7','我是天懿'));
+ assert.equal(r.participants[0].name,'天懿');assert.equal(r.targetId,'speaker:7');assert.equal(r.participants[0].certainty,'stated');
 });
 test('a contextual guess stays suggested and cannot overwrite a stated identity',async()=>{
  let count=0;const c=new SpeakerConversation({mode:'adaptive',evaluate:evaluator(p=>({identityUpdates:[update(p,++count===1?{}:{name:'十二',certainty:'suggested',source:'context'})]}))});
- await c.accept(input('0','我是天意'));await c.accept(input('0','也许呢'));assert.equal(c.participants[0].name,'天意');assert.equal(c.participants[0].certainty,'stated');
+ await c.accept(input('0','我是天懿'));await c.accept(input('0','也许呢'));assert.equal(c.participants[0].name,'天懿');assert.equal(c.participants[0].certainty,'stated');
 });
 test('explicit same-speaker correction can change a stated name',async()=>{
  let count=0;const c=new SpeakerConversation({mode:'adaptive',evaluate:evaluator(p=>({identityUpdates:[update(p,++count===1?{}:{name:'小天',source:'correction'})]}))});
- await c.accept(input('0','我是天意'));await c.accept(input('0','纠正一下，我叫小天'));assert.equal(c.participants[0].name,'小天');assert.equal(c.targetId,'speaker:0');
+ await c.accept(input('0','我是天懿'));await c.accept(input('0','纠正一下，我叫小天'));assert.equal(c.participants[0].name,'小天');assert.equal(c.targetId,'speaker:0');
 });
 test('unknown target can be pending without inventing a speaker',async()=>{
  const c=new SpeakerConversation({mode:'adaptive',evaluate:evaluator(()=>({pendingFocus:{name:'十二',mode:'adaptive'}}))});await c.accept(input('0','等十二来就只和他聊'));
@@ -51,11 +51,11 @@ test('fabricated identity evidence is quarantined without breaking a valid reply
 });
 test('a self introduction cannot be sourced from another speaker',async()=>{
  const c=new SpeakerConversation({mode:'adaptive',evaluate:evaluator(p=>({identityUpdates:[update(p,{speakerId:'speaker:1'})]}))});c.register('1');
- const r=await c.accept(input('0','我是天意'));assert.equal(r.identityWarnings.length,1);assert.equal(c.participants.find(p=>p.id==='speaker:1').name,null);
+ const r=await c.accept(input('0','我是天懿'));assert.equal(r.identityWarnings.length,1);assert.equal(c.participants.find(p=>p.id==='speaker:1').name,null);
 });
 test('abort during evaluation cannot commit stale identities',async()=>{
  const controller=new AbortController();const c=new SpeakerConversation({mode:'adaptive',evaluate:async p=>{controller.abort();return{decision:answer(p,{identityUpdates:[update(p)]})};}});
- await assert.rejects(c.accept(input('0','我是天意'),{signal:controller.signal}),/已变更/);assert.equal(c.participants[0].name,null);
+ await assert.rejects(c.accept(input('0','我是天懿'),{signal:controller.signal}),/已变更/);assert.equal(c.participants[0].name,null);
 });
 test('malformed or invented speaker ids are rejected',()=>{
  const p={activeTargetId:'speaker:0',mode:'adaptive',pendingFocus:null};
@@ -63,7 +63,7 @@ test('malformed or invented speaker ids are rejected',()=>{
  assert.throws(()=>validateDecision(answer(p,{shouldRespond:false}),[{id:'speaker:0'}]),/有效/);
 });
 test('ASR revisions invalidate names and pause a revised active audience',async()=>{
- const c=new SpeakerConversation({mode:'adaptive',evaluate:evaluator(p=>({identityUpdates:[update(p)]}))});await c.accept(input('0','我是天意'));c.invalidateSpeakers(['0','1']);
+ const c=new SpeakerConversation({mode:'adaptive',evaluate:evaluator(p=>({identityUpdates:[update(p)]}))});await c.accept(input('0','我是天懿'));c.invalidateSpeakers(['0','1']);
  assert.equal(c.participants[0].name,null);assert.equal(c.history.length,0);await assert.rejects(c.accept(input('1')),/重新开始/);
 });
 test('ASR records deduplicate and emit a speaker revision only once',()=>{
@@ -74,8 +74,8 @@ test('ASR records deduplicate and emit a speaker revision only once',()=>{
 
 test('exclusive does not reintroduce prior bystander speech through identity evidence',async()=>{
  const payloads=[];const c=new SpeakerConversation({mode:'adaptive',evaluate:async p=>{payloads.push(p);return{decision:answer(p,{identityUpdates:p.turn.text.includes('SECRET')?[update(p)]:[]})};}});
- await c.accept(input('1','我是天意 SECRET IDENTITY QUOTE'));c.register('0');c.configure({mode:'exclusive',targetId:'speaker:0'});await c.accept(input('0','继续'));
- assert.doesNotMatch(JSON.stringify(payloads[1]),/SECRET/);assert.equal(c.participants[0].name,'天意');
+ await c.accept(input('1','我是天懿 SECRET IDENTITY QUOTE'));c.register('0');c.configure({mode:'exclusive',targetId:'speaker:0'});await c.accept(input('0','继续'));
+ assert.doesNotMatch(JSON.stringify(payloads[1]),/SECRET/);assert.equal(c.participants[0].name,'天懿');
 });
 
 test('ordinary introduction cannot escalate pending focus or enter exclusive',async()=>{

@@ -1041,7 +1041,7 @@ test('relay greeting text appears in chat and reaches avatar context, with retir
   reactions:{update:values=>snapshots.push(values.snapshot),dispose(){}},
  });
  await f.context.startCall();
- const text='天意，你好，我是 V，在呢。';
+ const text='天懿，你好，我是 V，在呢。';
  relay.onEvent({type:'transcript',role:'assistant',text,final:true,source:'greeting'});
  assert.equal(f.element('transcriptHistory').children.length,1);
  assert.equal(f.element('transcriptHistory').children[0].parts.text.textContent,text);

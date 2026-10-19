@@ -8,7 +8,7 @@ const c=new SpeakerConversation({evaluate:real});
 const say=async(speakerId,text)=>{const r=await c.accept({speakerId,text,startMs:0,endMs:1000});results.push({input:{speakerId,text},...r});return r;};
 let failure;const checks={};
 try{
- await say('0','我是天意，是十二的爸爸。V，我们一起想想如何把产品入口做简单。');
+ await say('0','我是天懿，是十二的爸爸。V，我们一起想想如何把产品入口做简单。');
  await say('1','爸爸，我也想问，月亮为什么会变成弯弯的小船？');
  await say('1','我叫十二，是刚才提到的孩子，我也参加讨论。');
  const collective=await say('1','V，爸爸和我刚才说的点子，你帮我们比较一下，并分别给我们一个建议。');

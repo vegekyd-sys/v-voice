@@ -526,7 +526,7 @@ export class SeeduplexRealtimeVoiceBridge {
     if (!this.ready || this.terminal || this.greetingRequested) return;
     // Seeduplex conversation.item.create injects paired history; it does not
     // trigger an assistant turn. SayHello is the documented speech event.
-    const text = this.request.greetingText ?? "天意，你好，我是 V，在呢。";
+    const text = this.request.greetingText ?? "天懿，你好，我是 V，在呢。";
     this.greetingRequested = true;
     this.pendingGreeting = { text, started: false, responseId: null };
     this.#send({type: "speech_text_buffer.commit", event_id: `event_${randomUUID()}`,

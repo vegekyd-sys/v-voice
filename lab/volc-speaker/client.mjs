@@ -1,4 +1,4 @@
-const $=id=>document.getElementById(id),names={tianyi:'天意',shier:'十二',unknown:'未知人物'};
+const $=id=>document.getElementById(id),names={tianyi:'天懿',shier:'十二',unknown:'未知人物'};
 let active=null,audioUrl=null;
 const status=text=>{$('status').textContent=text;};
 function card(title,text,kind=''){
@@ -35,7 +35,7 @@ async function start(synthetic=false){
       status(synthetic?'正在按真实速度回放三人合成音频':'正在听 · 请先校准两位人物');
       try{
         if(synthetic){
-          $('bindings').textContent='合成素材校准：声线 0 = 天意角色；声线 1 = 十二角色；声线 2 = 未知。';
+          $('bindings').textContent='合成素材校准：声线 0 = 天懿角色；声线 1 = 十二角色；声线 2 = 未知。';
           const pcm=new Uint8Array(await(await fetch('/fixture.pcm')).arrayBuffer());
           for(let offset=0;offset<pcm.length&&active===session;offset+=6400){ws.send(pcm.slice(offset,offset+6400));await new Promise(r=>setTimeout(r,200));}
           if(active===session){ws.send(JSON.stringify({type:'finish'}));status('合成输入已结束，等待最后的模型决定与语音。');}

@@ -6,7 +6,7 @@ const DEFAULT_CRITERIA = {
   memory_search:'查询个人记忆，包括人物身份、偏好、私人项目和内部流程。“某某是谁/某某喜欢什么/某项目或模式是什么”都先检索。某某可以是尚未认识的人名、昵称或数字昵称；不需要上下文先证明这个对象存在，未知的答案正是检索目的。给已经谈过的人推荐礼物先查他的记忆偏好，history 可确认指代。查询某模式不等于启用该模式。排除明确公共互联网问题、复杂报告与明确要求交给后端 Agent 的任务。',
   web_search:'One straightforward public web lookup. Excludes comparisons/reports and excludes explicit requests for the backend Agent.',
   web_fetch:'读取用户指定或已检索到的一个网页原文。',
-  feishu_calendar:'查询天意本人的飞书日程，不是微信；只读查询。',
+  feishu_calendar:'查询天懿本人的飞书日程，不是微信；只读查询。',
   current_time:'查询当前日期或时间。',
   end_call:'The caller is ending this phone call NOW. Natural polite farewells (今天就先这样，谢谢你，拜拜 / 我先挂了，下次再聊) are requests to end, even without an imperative or the word 挂. Exclude negated, quoted, future/conditional or hypothetical hangup; exclude only ending a task/topic.',
   cancel_task:'用户明确取消当前后台任务或当前工具，电话继续；普通插话、补充和询问进度不是取消。',

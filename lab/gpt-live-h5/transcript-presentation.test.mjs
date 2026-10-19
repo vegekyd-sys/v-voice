@@ -191,11 +191,11 @@ test('speaker input labels bind to their own utterance and later names update ea
  const turn={speakerId:'0',text:'你好',startMs:0,endMs:1000};
  p.consume({type:'speaker.utterance',turn},100);
  assert.equal(p.snapshot().history[0].speaker,'Speaker A');
- p.consume({type:'speaker.decision',turn:{...turn,speakerId:'speaker:0'},participants:[{id:'speaker:0',label:'Speaker A',name:'天意',certainty:'stated'}],shouldRespond:true},110);
- p.consume({type:'speaker.decision',turn:{speakerId:'speaker:1',text:'我叫十二',startMs:2000,endMs:3000},participants:[{id:'speaker:0',label:'Speaker A',name:'天意',certainty:'stated'},{id:'speaker:1',label:'Speaker B',name:'十二',certainty:'stated'}],shouldRespond:false},120);
+ p.consume({type:'speaker.decision',turn:{...turn,speakerId:'speaker:0'},participants:[{id:'speaker:0',label:'Speaker A',name:'天懿',certainty:'stated'}],shouldRespond:true},110);
+ p.consume({type:'speaker.decision',turn:{speakerId:'speaker:1',text:'我叫十二',startMs:2000,endMs:3000},participants:[{id:'speaker:0',label:'Speaker A',name:'天懿',certainty:'stated'},{id:'speaker:1',label:'Speaker B',name:'十二',certainty:'stated'}],shouldRespond:false},120);
  const rows=p.snapshot().history;
- assert.equal(rows.length,2);assert.equal(rows[0].speaker,'天意 · Speaker A');assert.equal(rows[0].speakerId,'speaker:0');assert.equal(rows[1].speaker,'十二 · Speaker B');assert.equal(rows[1].listenOnly,true);assert.notEqual(rows[0].speakerTone,rows[1].speakerTone);
+ assert.equal(rows.length,2);assert.equal(rows[0].speaker,'天懿 · Speaker A');assert.equal(rows[0].speakerId,'speaker:0');assert.equal(rows[1].speaker,'十二 · Speaker B');assert.equal(rows[1].listenOnly,true);assert.notEqual(rows[0].speakerTone,rows[1].speakerTone);
  p.consume(done('assistant','v','你好十二'),130);assert.equal(p.snapshot().history[2].speaker,'V');
- assert.equal(p.snapshot().history[0].speaker,'天意 · Speaker A','a later speaker must never relabel earlier turns');
+ assert.equal(p.snapshot().history[0].speaker,'天懿 · Speaker A','a later speaker must never relabel earlier turns');
  p.reset();p.consume({type:'speaker.utterance',turn},140);assert.equal(p.snapshot().history[0].speaker,'Speaker A');
 });

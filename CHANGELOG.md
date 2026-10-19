@@ -1,5 +1,6 @@
 ## 2026-10-20 - Pickup greeting and retired call ownership
 
+- Correct the personal name to Tianyi / 天懿 in native voice prompts, greetings and tool descriptions; entry IDs and account permissions stay unchanged.
 - Restore the native Seeduplex welcome without requiring a registered voice or first utterance; caller speech supersedes a pending greeting.
 - Reconcile web entry ownership with the direct transport registry before admission, releasing fully closed calls while preserving live and cleanup-pending sessions.
 - Mobile latency remains under investigation; these repairs do not claim a fix for international media transport stalls.

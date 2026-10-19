@@ -514,16 +514,16 @@ test('Seeduplex greeting uses native SayHello rather than injecting unpaired his
   const socket = new FakeSocket();
   const bridge = buildSeeduplexRealtimeVoiceProvider({env:{VOLCENGINE_REALTIME_API_KEY:'test'},createWebSocket:async()=>socket}).createBridge({providerConfig:{voice:'xiaohe'},onAudio(){},onError:error=>assert.fail(error.message),onClose(){}});
   const connecting=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await connecting;
-  bridge.triggerGreeting('请向天意问候');
+  bridge.triggerGreeting('请向天懿问候');
   assert.equal(socket.sent.at(-1).type,'speech_text_buffer.commit');
-  assert.equal(socket.sent.at(-1).text,'天意，你好，我是 V，在呢。');
+  assert.equal(socket.sent.at(-1).text,'天懿，你好，我是 V，在呢。');
   assert(!socket.sent.some(event=>event.type==='conversation.item.create'));
   bridge.close();
 });
 
 test('greeting caption is the exact requested speech, emitted once at its first valid audio frame', async () => {
  const socket = new FakeSocket(), events = [];
- const bridge = new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture-key'},greetingText:'你好，天意，我在呢。',
+ const bridge = new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture-key'},greetingText:'你好，天懿，我在呢。',
   onTranscript:(...args)=>events.push(['text',...args]), onAudio:()=>events.push(['audio']),
   onError:error=>assert.fail(error.message),onClose(){}},{createWebSocket:async()=>socket});
  bridge.triggerGreeting();assert.equal(socket.sent.length,0);
@@ -536,7 +536,7 @@ test('greeting caption is the exact requested speech, emitted once at its first 
  socket.message({type:'response.output_audio.delta',response_id:'hello',delta:floatAudio([.1,.2])});
  socket.message({type:'response.output_audio.delta',response_id:'hello',delta:floatAudio([.3])});
  socket.message({type:'response.output_audio.done',response_id:'hello'});
- assert.deepEqual(events,[['text','assistant','你好，天意，我在呢。',true,'greeting'],['audio'],['audio']]);
+ assert.deepEqual(events,[['text','assistant','你好，天懿，我在呢。',true,'greeting'],['audio'],['audio']]);
  socket.message({type:'response.output_text.done',response_id:'next',text:'听得见，你说吧。'});
  assert.deepEqual(events.at(-1),['text','assistant','听得见，你说吧。',true]);
  bridge.close();

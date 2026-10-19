@@ -153,7 +153,7 @@ test('a device parting line passes the gate as host speech without Decision',asy
 });
 test('device instructions name the host-selected person while keeping the entry identity',async t=>{
   const f=await fixture(t,{reserve:device});
-  const text=f.service.initialInstructions('call','你是 V，现在你通过家里的智能音箱和 Tianyi（天意）本人进行测试；当前设备只开放本人使用');
+  const text=f.service.initialInstructions('call','你是 V，现在你通过家里的智能音箱和 Tianyi（天懿）本人进行测试；当前设备只开放本人使用');
   assert.match(text,/主机当前指定的人物/);assert.match(text,/账号与工具仍属于原入口/);assert.match(text,/当前设备只开放本人使用/);
 });
 test('a device call keeps its native path when the voice worker has died',()=>{
@@ -178,6 +178,6 @@ test('speech during pickup preparation prevents the late greeting from interrupt
 
 test('learning a name releases the original audio without replay, while still waiting for semantic admission',async t=>{
  let admit;const f=await fixture(t,{evaluate:(_s,q)=>new Promise(resolve=>{admit=()=>{const r=answers(q);r.answers.name_0={type:'choice',choice:'n_0'};resolve(r);};})});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));
- const output=[];f.service.dispatch('call','audio',Buffer.alloc(10),()=>output.push('real reply'));f.emit('我叫天意，三加四等于几？');await wait(()=>admit);assert.deepEqual(output,[]);admit();
- await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));assert.deepEqual(output,['real reply']);assert.equal(f.profiles.length,1);assert.equal(f.events.find(e=>e.type==='speaker.decision').participants[0].name,'天意');assert.equal(f.events.some(e=>e.type==='speaker.stream-fallback'),false);
+ const output=[];f.service.dispatch('call','audio',Buffer.alloc(10),()=>output.push('real reply'));f.emit('我叫天懿，三加四等于几？');await wait(()=>admit);assert.deepEqual(output,[]);admit();
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));assert.deepEqual(output,['real reply']);assert.equal(f.profiles.length,1);assert.equal(f.events.find(e=>e.type==='speaker.decision').participants[0].name,'天懿');assert.equal(f.events.some(e=>e.type==='speaker.stream-fallback'),false);
 });

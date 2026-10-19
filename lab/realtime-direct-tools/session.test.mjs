@@ -113,7 +113,7 @@ test('Seeduplex audible greeting reaches the browser transcript and audit exactl
  f.event({type:'response.output_audio.delta',response_id:'hello',delta:pcm.toString('base64')});
  f.event({type:'response.output_audio.delta',response_id:'hello',delta:pcm.toString('base64')});
  const text=f.client.sent.filter(e=>e.type==='transcript');
- assert.equal(text.length,1);assert.equal(text[0].text,'天意，你好，我是 V，在呢。');
+ assert.equal(text.length,1);assert.equal(text[0].text,'天懿，你好，我是 V，在呢。');
  assert.equal(text[0].role,'assistant');assert.equal(text[0].final,true);assert.equal(text[0].source,'greeting');
  assert.equal(f.client.sent.filter(e=>e.type==='audio').length,2);
  assert.equal(f.audit.filter(e=>e.type==='transcript'&&e.source==='greeting').length,1);

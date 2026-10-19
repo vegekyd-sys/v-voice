@@ -3,8 +3,8 @@ const env=await loadCredentials(process.env.VOICE_CREDENTIAL_ENV_FILE??process.e
 const label=process.argv[2]??'';if(label&&!/^[-a-zA-Z0-9]+$/.test(label))throw Error('Invalid verification label');
 const c=new SpeakerRouter({evaluate:decisionEvaluator(env),onTrace:trace=>traces.push(trace)});
 const cases=[
- ['intro','0','我叫天意，是十二的爸爸。',r=>r.shouldRespond&&r.participants[0].name==='天意'&&r.participants[0].certainty==='stated'],
- ['child','1','我叫十二，是天意的孩子。V，月亮为什么有时候是弯弯的？',r=>r.shouldRespond&&r.addresseeIds.join()==='speaker:1'&&r.participants[1].name==='十二'],
+ ['intro','0','我叫天懿，是十二的爸爸。',r=>r.shouldRespond&&r.participants[0].name==='天懿'&&r.participants[0].certainty==='stated'],
+ ['child','1','我叫十二，是天懿的孩子。V，月亮为什么有时候是弯弯的？',r=>r.shouldRespond&&r.addresseeIds.join()==='speaker:1'&&r.participants[1].name==='十二'],
  ['split-child-question','1','问月亮为什么有时候是弯弯的？',r=>r.shouldRespond&&r.addresseeIds.join()==='speaker:1'],
  ['parent-rejoins','0','问天空为什么是蓝色的？请一句话回答。',r=>r.shouldRespond&&r.addresseeIds.join()==='speaker:0'],
  ['side','0','十二，把抽屉里的杯子递给我。',r=>!r.shouldRespond],
