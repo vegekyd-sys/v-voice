@@ -526,3 +526,10 @@ test('a slow native lookup gets a cached progress line, never upstream TTS, and 
  for(let i=0;i<100&&!f.client.sent.some(e=>e.type==='tool.result'&&e.callId==='web');i++)await delay(2);
  assert.equal(f.client.sent.find(e=>e.type==='tool.result'&&e.callId==='web').failed,true);
 });
+
+test('streaming pickup asks the Speaker host to open a greeting gate before native SayHello',async t=>{
+ let host,requests=0;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,lazyNative:()=>false,bind:async(_id,native)=>{host=native;},greet:async()=>{requests++;host.greet();},close(){},audio(){}};
+ const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);
+ assert.equal(requests,1);assert.equal(f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').length,1);
+});

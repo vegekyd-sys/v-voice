@@ -1,3 +1,9 @@
+## 2026-10-20 - Pickup greeting and retired call ownership
+
+- Restore the native Seeduplex welcome without requiring a registered voice or first utterance; caller speech supersedes a pending greeting.
+- Reconcile web entry ownership with the direct transport registry before admission, releasing fully closed calls while preserving live and cleanup-pending sessions.
+- Mobile latency remains under investigation; these repairs do not claim a fix for international media transport stalls.
+
 # Voice release log
 
 ## Voice · 20261020 long calls and robot multi-speaker · source main

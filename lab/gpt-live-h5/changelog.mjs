@@ -2,6 +2,13 @@
 // experiments and unaccepted capabilities do not belong in this list.
 export const VOICE_UPDATES = [
   {
+    date: '2026-10-20', title: '接通有问候，断线后能重拨',
+    items: [
+      '恢复豆包自动多人通话的接通欢迎语；你先开口时，问候会让位给你的发言。',
+      '修复连接已结束后仍提示“另一台设备正在和 V 通话”的残留占用。',
+    ],
+  },
+  {
     date: '2026-10-20', title: '长时间通话更稳，开着电视也能聊',
     items: [
       '查资料久了，V 会说一声“还在查”；没查成或查到了还没开口，V 会主动说明，不再冷场或直接挂断。',

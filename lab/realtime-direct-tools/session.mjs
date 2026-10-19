@@ -315,7 +315,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         }catch(error){emit(s,{type:'error',message:error.message});void close(s.id).catch(()=>{});}
         return;
       }
-      try{const e=JSON.parse(data.toString());if(e.type==='greeting'&&!s.greeted){s.greeted=true;s.bridge.triggerGreeting('电话已接通。请用中文向天意简短打个招呼，然后听他说话。');}
+      try{const e=JSON.parse(data.toString());if(e.type==='greeting'&&!s.greeted){s.greeted=true;if(s.speakerRouting&&speakerRouting.greet)void speakerRouting.greet(s.id);else s.bridge.triggerGreeting('电话已接通。请用中文向天意简短打个招呼，然后听他说话。');}
       else if(e.type==='barge-in') {
         // Only a speaker endpoint can mark a barge-in as confirmed speech (device echo cancellation).
         const device=s.surface==='speaker'&&typeof e.deviceId==='string'?e.deviceId:null,confirmed=Boolean(device&&e.confirmed===true);
@@ -332,6 +332,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     connectionStage('provider-connecting');
     if(!speakerRouting?.lazyNative?.(s.id))await s.bridge.connect();
     if(current(s)&&speakerRouting?.has(s.id))await speakerRouting.bind(s.id,{
+      greet:()=>s.bridge.triggerGreeting(),
       forward:audio=>s.bridge.sendAudio(audio),context:text=>s.bridge.sendUserMessage(text),clarify:text=>s.bridge.speakProgress(text,{caption:true}),interrupt:()=>s.bridge.handleBargeIn(),
       cancel:()=>s.bridge.cancelPendingResponse(),invalidate:()=>{s.personaKey=null;},
       end:({turnId})=>{if(!current(s)||!s.bridge.ready)return;s.ending={callId:'speaker-end-'+turnId,hasAudio:false,source:'speaker'};emit(s,{type:'end.accepted',callId:s.ending.callId});s.bridge.speakProgress('好，拜拜，下次聊。',{caption:true});},
@@ -355,6 +356,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   }
   return {
     models,reserve,close,
+    hasSession:id=>sessions.has(id),
     backgroundTaskCount:()=>[...new Set([...sessions.values(),...detached])].filter(s=>s.backend.snapshot()).length,
     presentation(id,after=0){const s=sessions.get(id);if(!current(s))return null;return {voiceSessionId:s.id,revision:s.presentation.revision,pending:[...s.presentation.pending.values()],documents:[...s.presentation.documents.values()].filter(x=>x.revision>after),controls:[]};},
     contentShown(id,callId){const s=sessions.get(id);if(!current(s)||!s.presentation.documents.has(callId))return false;s.contentWaiters.get(callId)?.(true);return true;},

@@ -5,14 +5,14 @@ import {createStreamingSpeakerRoutingService,TurnOutputGate,speakerProfile,echoO
 const wait=async predicate=>{for(let i=0;i<600;i++){if(predicate())return;await new Promise(r=>setTimeout(r,5));}throw Error('Test deadline');};
 const answers=(questions,{action='respond',child=false}={})=>({answers:Object.fromEntries(Object.entries(questions).map(([id])=>[id,{type:'choice',choice:id==='action'?action:id.startsWith('role_')?(child?'child':'unknown'):id.startsWith('name_')&&child?'n_0':'keep'}]))});
 const voice=()=>{const pcm=Buffer.alloc(57600);for(let i=0;i<pcm.length;i+=2)pcm.writeInt16LE(6000,i);return pcm;};
-async function fixture(t,{evaluate,prepare=async()=>{},limits,reserve={}}={}){
-  let asr;const events=[],forwarded=[],profiles=[],clarifications=[],endings=[],rejectedEnds=[];
+async function fixture(t,{evaluate,prepare=async()=>{},limits,reserve={},initialAudio=true}={}){
+  let asr;const events=[],forwarded=[],profiles=[],clarifications=[],endings=[],rejectedEnds=[],greetings=[];
   const service=createStreamingSpeakerRoutingService({env:{},embedding:{ready:Promise.resolve(),compute:async()=>({embedding:[1,0],inferenceMs:1})},evaluate:evaluate??(async(_s,q)=>answers(q)),limits,createAsr:o=>{asr=o;return {connect:async()=>{},append(){},close(){}};}});
   service.reserve('call',{model:'seeduplex',...reserve});t.after(()=>service.dispose());
-  await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},forward:b=>forwarded.push(b),cancel(){},invalidate(){},clarify:text=>clarifications.push(text),end:value=>endings.push(value),cancelEnd:()=>endings.push({revoked:true}),rejectNativeEnd:call=>rejectedEnds.push(call)},e=>events.push(e));
-  service.audio('call',reserve.inputSampleRate===16000?voice().subarray(0,38400):voice());
+  await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},forward:b=>forwarded.push(b),cancel(){},invalidate(){},greet:()=>greetings.push(true),clarify:text=>clarifications.push(text),end:value=>endings.push(value),cancelEnd:()=>endings.push({revoked:true}),rejectNativeEnd:call=>rejectedEnds.push(call)},e=>events.push(e));
+  if(initialAudio)service.audio('call',reserve.inputSampleRate===16000?voice().subarray(0,38400):voice());
   const emit=(text='V，天空为什么是蓝色的？',start=0,end=1100)=>asr.onResult({body:{result:{utterances:[{definite:true,start_time:start,end_time:end,text,speaker_id:'wrong-cloud-id',...(start===null?{start_time:undefined}:{})}]}}});
-  return {service,events,forwarded,profiles,emit,clarifications,endings,rejectedEnds,disconnectAsr:()=>asr.onClose()};
+  return {service,events,forwarded,profiles,emit,clarifications,endings,rejectedEnds,greetings,disconnectAsr:()=>asr.onClose()};
 }
 
 test('pending native audio, captions and tools are discarded together; stale admission cannot reopen them',()=>{
@@ -160,4 +160,17 @@ test('a device call keeps its native path when the voice worker has died',()=>{
   const events=[],service=createStreamingSpeakerRoutingService({env:{},embedding:{ready:Promise.resolve(),closed:true,compute:async()=>{throw Error('closed');}},evaluate:async()=>({}),onAudit:e=>events.push(e),createAsr:()=>({connect:async()=>{},append(){},close(){}})});
   assert.equal(service.reserve('device-call',{model:'seeduplex',...device}),null);assert.equal(events[0].reason,'embedding-closed');
   service.dispose();
+});
+
+test('streaming pickup greets exactly once without a caller voiceprint, transcript or decision',async t=>{
+ const f=await fixture(t,{initialAudio:false});await f.service.greet('call');await f.service.greet('call');
+ assert.equal(f.greetings.length,1);assert.equal(f.profiles.length,1);assert.equal(f.events.some(e=>e.type==='speaker.decision'),false);
+ const delivered=[];f.service.dispatch('call','audio',Buffer.alloc(20),()=>delivered.push('audio'));f.service.dispatch('call','tool',{name:'web_search'},()=>delivered.push('tool'));assert.deepEqual(delivered,['audio']);
+ f.service.audio('call',voice());await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'||e.type==='speaker.stream-fallback'));
+ assert(f.events.some(e=>e.type==='speaker.greeting-cancelled'));assert.equal(f.service.has('call'),true);
+});
+test('speech during pickup preparation prevents the late greeting from interrupting the caller',async t=>{
+ let release;const f=await fixture(t,{initialAudio:false,prepare:async(_i,key)=>{if(key==='speaker-greeting')await new Promise(r=>release=r);}});
+ const work=f.service.greet('call');await wait(()=>release);f.service.audio('call',voice());release();await work;
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));assert.equal(f.greetings.length,0);assert.equal(f.service.has('call'),true);
 });
