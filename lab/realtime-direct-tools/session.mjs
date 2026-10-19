@@ -26,7 +26,7 @@ export function directInstructions(catalog,context='',model='',{hostCallControl=
 }
 
 /** One real provider connection per dial; tool authorization stays in OpenClaw. */
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,speakerRouting}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting}) {
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
   const sessions=new Map(),detached=new Set();
@@ -113,7 +113,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
     s.delivery=createTaskDelivery({gateway,sessionKey,ownerId:s.id,audit});
-    s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,taskDelivery:s.delivery,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}}});
+    s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,taskDelivery:s.delivery,pollMs:backendPollMs,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}}});
     sessions.set(s.id,s);
     audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model,voice:s.voice,...(model==='grok'?{speed:grokSpeed,expressiveTags:grokExpressiveTags}:{})});
     const speaker=speakerRouting?.reserve(s.id,{model,policy:inputPolicy??'speaker'});
@@ -156,7 +156,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       cleanup.then(()=>s.localCleanups.delete(cleanup),()=>{});
       return work.then(result=>{audit({type:'tool.local-result',voiceSessionId:s.id,callId,name,result});return result;});
     });
-    const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',calendar),larkRead:localRead('lark_read',larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),delegate:args=>s.backend.run(args)});
+    const admittedUserTurns=new Map();
+    const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',calendar),larkRead:localRead('lark_read',larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),delegate:args=>s.backend.run({...args,callerTurn:admittedUserTurns.get(args.callId)})});
     s.progressTimer=setInterval(()=>deferred(s),200);s.progressTimer.unref?.();
     const onToolCall=async call=>{
       if(!current(s))return;
@@ -183,6 +184,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         }
         if(call.name==='delegate_to_v'){
           if(s.backend.snapshot())throw Error('新任务未启动：这通电话已有一个 V 后台任务。未加入队列，不要说正在做。修改或补充原任务请调用 openclaw_agent_control 的 steer/followup；用户明确取消时先调用 cancel_task，再委派新任务。');
+          admittedUserTurns.set(call.callId,s.latestUserTurn);
           s.backgroundCallId=call.callId;s.backgroundBridge=ownerBridge;ownerBridge.beginBackgroundTool(call.callId,call.args.question);backgroundAck=true;
         }
         if(!['send_task_updates','openclaw_agent_control'].includes(call.name))result=await execute(call.name,call.args,call.callId,controller.signal);
@@ -192,7 +194,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(call.name==='cancel_task')result=await cancel(s);
         if(call.name==='end_call'&&current(s)&&s.epoch===epoch){s.ending={callId:call.callId,hasAudio:false};emit(s,{type:'end.accepted',callId:call.callId});}
       } catch(error){result={error:controller.signal.aborted?'任务已取消。不要继续旧任务。':error.message};}
-      finally{s.pending.delete(call.callId);s.toolOwners.delete(call.callId);if(s.retiredBridges.has(ownerBridge)&&![...s.toolOwners.values()].includes(ownerBridge)){ownerBridge.close();s.retiredBridges.delete(ownerBridge);}if(call.callId===s.backgroundCallId){s.backgroundCallId=null;s.backgroundBridge=null;if(!s.backend.snapshot())detached.delete(s);}}
+      finally{admittedUserTurns.delete(call.callId);s.pending.delete(call.callId);s.toolOwners.delete(call.callId);if(s.retiredBridges.has(ownerBridge)&&![...s.toolOwners.values()].includes(ownerBridge)){ownerBridge.close();s.retiredBridges.delete(ownerBridge);}if(call.callId===s.backgroundCallId){s.backgroundCallId=null;s.backgroundBridge=null;if(!s.backend.snapshot())detached.delete(s);}}
       if(!current(s))return;
       // Explicit cancellation retires results, while ordinary conversational
       // interruption leaves background work alive. Never feed a late old fact.
@@ -237,19 +239,19 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(!current(s))return;
         const deliver=()=>{
         if(role==='assistant'&&final)speakerRouting?.assistant(s.id,text);
-        if(role==='user'){s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
+        if(role==='user'){if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
         if(role==='user'&&final&&s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{})});
         };
         if(role==='assistant')routeOutput('transcript',{role,text,final,source},deliver);else deliver();
       },
-      onClearAudio:()=>routeOutput('clear',null,()=>{s.responseActive=false;if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});}),
+      onClearAudio:()=>routeOutput('clear',null,()=>{audit({type:'audio.clear',voiceSessionId:s.id});s.responseActive=false;if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});}),
       onAudioSegmentDone:()=>routeOutput('done',null,()=>{s.responseActive=false;}),
       onResponseDone:e=>routeOutput('done',e,()=>{s.responseActive=false;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}}),
       onEvent:e=>{if(['response.created'].includes(e.type))s.responseActive=true;
         if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.userSpeaking=true;s.lastUserAt=Date.now();}
         if(e.type==='input_audio_buffer.speech_stopped'){s.userSpeaking=false;s.lastUserAt=Date.now();}
-        audit({type:'provider.event',voiceSessionId:s.id,...e});},
+        audit({type:'provider.event',voiceSessionId:s.id,providerEventType:e.type,responseId:e.responseId});},
       onProtocolEvent:e=>audit({type:'provider.protocol',voiceSessionId:s.id,event:{...e,...(e.delta&&e.type?.includes('audio')?{delta:'[audio retained separately]'}:{})}}),
       onDiagnostic:e=>{if(!current(s))return;audit({type:'call.provider-status',voiceSessionId:s.id,...e});
         if(['reconnecting','recovered'].includes(e.stage))emit(s,{type:`provider.${e.stage}`});},
@@ -278,7 +280,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       }
       try{const e=JSON.parse(data.toString());if(e.type==='greeting'&&!s.greeted){s.greeted=true;s.bridge.triggerGreeting('电话已接通。请用中文向天意简短打个招呼，然后听他说话。');}
       else if(e.type==='barge-in') {s.bridge.handleBargeIn();audit({type:'client.barge-in',voiceSessionId:s.id});}
-      else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000)s.bridge.sendUserMessage(e.text);
+      else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){s.latestUserTurn=Object.freeze({text:e.text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(e.text);}
       else if(e.type==='playback.state'&&typeof e.speaking==='boolean'){s.playing=e.speaking;audit({type:'client.playback-state',voiceSessionId:s.id,speaking:e.speaking});}
       else if(e.type==='playback.stats'){
         const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','inputBatches'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
@@ -318,7 +320,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       s.ticket=null;websocketServer.handleUpgrade(req,socket,head,client=>{client.on('error',()=>void close(s.id).catch(()=>{}));void start(s,client).catch(()=>{emit(s,{type:'error',message:'语音或工具环境尚未就绪'});void close(s.id).catch(()=>{});});});
     },
     async steer(id,{mode,text}){const s=sessions.get(id);if(!current(s)||!s.bridge)throw Error('语音会话已结束');
-      if(mode==='append'||mode==='steer'&&!s.backend.snapshot()){s.bridge.sendUserMessage(text);return {ok:true,forwardedToVoice:true,queued:false};}
+      if(mode==='append'||mode==='steer'&&!s.backend.snapshot()){s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(text);return {ok:true,forwardedToVoice:true,queued:false};}
       const result=mode==='cancel'?await cancel(s):await s.backend.control({mode,text});
       return {...result,...(mode==='cancel'?{ok:result.cancelled===true}:{})};},
     async dispose({drain=false}={}){

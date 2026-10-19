@@ -2,6 +2,14 @@
 // experiments and unaccepted capabilities do not belong in this list.
 export const VOICE_UPDATES = [
   {
+    date: '2026-10-16', title: '电话挂断，任务继续',
+    items: [
+      '后台任务与通话分开管理：已接纳的任务会继续执行；你要求发到飞书时，进展和结果会发到当前电话绑定的会话。',
+      'GPT Live 与豆包共用任务修改、补充和追加机制；子任务完成后，后台会继续汇总。',
+      '修复 GPT Live 说“再见，下次再聊”后仍停在结束中的问题。',
+    ],
+  },
+  {
     date: '2026-10-13', title: '报告收起后，回到熟悉的位置',
     items: [
       '修复 iPhone Safari 打开、滚动、收起报告后，头像和底部通话条偏移的问题。',

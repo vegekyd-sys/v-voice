@@ -1,0 +1,46 @@
+{
+  "candidate": "candidate-4cca1ba2-5b08-407d-88cd-5b67aa6d3182",
+  "voiceCommit": "8c47c23573128215b07d402220c96a73060084e2",
+  "voiceFilesSha256": "cd5ef51124df79350987707bccb4b2aef7d19a616509046a22190427aa59be68",
+  "provider": "SeedDuplex",
+  "backend": "DeepSeek Flash",
+  "passed": true,
+  "actualChildSpawn": true,
+  "actualYield": true,
+  "actualExec": "sleep 10; TZ=Asia/Shanghai date",
+  "toolOutputFreshForCall": true,
+  "resultMatchesActualToolOutput": true,
+  "sameLogicalTaskAcrossNativeRuns": true,
+  "afterHangupMs": 34249,
+  "independentFeishuReadback": true,
+  "syntheticSpeechOnly": true,
+  "rawUserAudioRecorded": false,
+  "productionTouched": false,
+  "sharedGatewayTouched": false,
+  "scope": "Candidate-only SeedDuplex child continuation and final Feishu delivery",
+  "gatewayAPI": "Public consultRealtimeVoiceAgent and api.runtime.agent; Voice-owned plugin RPC",
+  "platformPrerequisites": [
+    "PR371 Voice task lifetime",
+    "PR385 canonical parent projection preflight"
+  ],
+  "sharedVLabAccepted": false,
+  "productionDeployed": false,
+  "sourceUnitTests": {
+    "environment": "Candidate Linux, Node v22.23.1",
+    "tests": 447,
+    "passed": 447,
+    "failed": 0
+  },
+  "limitations": [
+    "Synthetic Chinese speech with real SeedDuplex upstream ASR and private Candidate state; no human handset audio acceptance",
+    "No production or shared Gateway change",
+    "GPT Live was not called again in this repair turn; its adapter source is unchanged"
+  ],
+  "cancellationRegression": {
+    "requestedTaskCancelled": true,
+    "actualThirtySecondChildProcessExited": true,
+    "workerPoolIdle": true,
+    "elapsedMs": 15258,
+    "note": "Behavior confirmed; self-imposed 15-second timing target missed by 258 ms. No retest to optimize model reply timing."
+  }
+}

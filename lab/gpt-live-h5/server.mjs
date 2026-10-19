@@ -155,7 +155,14 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       } else if (!String(req.headers.cookie ?? "").split(/;\s*/u).includes(`v_live_experiment=${cookie}`)) return json(res, 401, { error: "请先打开实验页面" });
       context.touchedAt = Date.now();
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
-        ready: backendReady(), preview, defaultModel, ...(speakerRouting?{speakerRouting:true,speakerStats:speakerRouting.snapshot()}:{}), ...(listening?{comparisonAvailable:true}:{}), model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
+        ready: backendReady(), preview, defaultModel, ...(speakerRouting?{speakerRouting:true,speakerStats:speakerRouting.snapshot()}:{}),
+        releaseReadiness: {
+          known: !directVoice || typeof directVoice.backgroundTaskCount === 'function',
+          activeCalls: [local, ...contexts.values()].filter(c=>c.active).length,
+          creatingSessions: [local, ...contexts.values()].filter(c=>c.creatingSession).length,
+          backgroundTasks: [...nativeTaskOwners].filter(task=>task.pending).length + (directVoice?.backgroundTaskCount?.() ?? 0),
+        },
+        ...(listening?{comparisonAvailable:true}:{}), model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
         ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
       });
       if(req.method==='GET'&&pathname==='/api/comparison')return listening?json(res,200,listening.manifest):json(res,404,{error:'当前没有试听样本'});

@@ -354,3 +354,36 @@ test('Grok voice selection is validated before closing a call and server keeps i
  for(const voice of ['',null,'unknown'])assert.equal((await f.request('session',{model:'grok',voice})).status,400);
  assert.equal(closed.length,0);assert.equal(received.length,1);
 });
+
+test('release readiness stays busy after direct hangup until backend execution and delivery settle', async t => {
+ let pending=1;
+ const f=await fixture(t,{directVoice:{models:()=>[],backgroundTaskCount:()=>pending,reserve:async()=>({voiceSessionId:'detached',transport:'gateway-relay'}),close:async()=>{},dispose:async()=>{}}});
+ const status=async()=> (await (await fetch(f.url+'/api/status',{headers:{cookie:f.cookie}})).json());
+ await f.request('session',{model:'seeduplex'});await f.request('close',{voiceSessionId:'detached'});
+ const after=await status();assert.equal(after.activeCall,false);assert.deepEqual(after.releaseReadiness,{known:true,activeCalls:0,creatingSessions:0,backgroundTasks:1});
+ pending=0;assert.equal((await status()).releaseReadiness.backgroundTasks,0);
+ assert.equal((await fetch(f.url+'/api/status')).status,401);
+});
+
+test('release readiness never treats an adapter without lifecycle reporting as idle', async t=>{
+ const f=await fixture(t,{directVoice:{models:()=>[],dispose:async()=>{}}});
+ const s=await (await fetch(f.url+'/api/status',{headers:{cookie:f.cookie}})).json();assert.equal(s.releaseReadiness.known,false);
+});
+
+test('native GPT task remains visible to release checks after its media owner closes',async t=>{
+ let terminal;const final=new Promise(resolve=>terminal=resolve);
+ const f=await fixture(t,{request:async(method,params,reservation)=>{
+  if(method==='talk.client.create')return reservation;
+  if(method==='agent.wait')return final;
+  if(method==='chat.history')return {messages:[{role:'assistant',content:'已完成原任务',__openclaw:{runId:'original-run'}}]};
+  return {ok:true};
+ }});
+ await f.request('session');
+ f.bridge.emit({event:'talk.event',payload:{voiceSessionId:'voice-private',talkEvent:{type:'tool.call',callId:'original-run',payload:{name:'openclaw_agent_consult'}}}});
+ await f.request('close',{voiceSessionId:'voice-private'});
+ const status=async()=> (await (await fetch(f.url+'/api/status',{headers:{cookie:f.cookie}})).json()).releaseReadiness;
+ assert.equal((await status()).backgroundTasks,1);assert.equal((await status()).activeCalls,0);
+ terminal({status:'ok'});
+ for(let n=0;n<20&&(await status()).backgroundTasks;n++)await new Promise(r=>setImmediate(r));
+ assert.equal((await status()).backgroundTasks,0);
+});
