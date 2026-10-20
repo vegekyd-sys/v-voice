@@ -16,5 +16,6 @@ test('every browser module imported by the real entry is served successfully',as
   for(const m of code.matchAll(/(?:\bfrom\s*|\bimport\s*\()(['"])(\.[^'"]+)\1/g))pending.push(new URL(m[2],url).href);
  }
  assert.ok(seen.has(origin+'/content-view.mjs'));
- assert.ok(seen.has(origin+'/product-controls.mjs'));
+ assert.ok(seen.has(origin+'/ui-bundle.mjs'));
+ assert.ok(seen.has(origin+'/call-view.mjs'));
 });

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
+import { createCallView } from "./call-view.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 import { createPageMicrophoneSession } from "./microphone-session.mjs";
 import { createScreenWakeLock } from "./screen-wake-lock.mjs";
@@ -65,6 +66,7 @@ async function fixture(t, options = {}) {
     return elements.get(id);
   };
   const body = { dataset: {} };
+  let view;
   const requests = [];
   const peers = [];
   const eventSources = [];
@@ -113,7 +115,7 @@ async function fixture(t, options = {}) {
   const context = vm.createContext({
     renderMarkdown: (target,text) => { target.textContent = text; }, createTranscriptPresentation, createPageMicrophoneSession, createScreenWakeLock, createAvatarTasks, ACTIVITY_LABELS,
     createContentView: () => options.contentView,
-    mountProductControls: () => ({ callState() {}, refreshModels() {} }),
+    createCallView: (...values) => (view = createCallView(...values)), mountCallUi: () => {},
     entryStartup, startVoiceEntry, markVoiceTiming: () => {}, mountChangelog,
     createRelayAudio: values => options.relayFactory(values),
     mountAvatar: () => options.avatar,
@@ -165,20 +167,18 @@ async function fixture(t, options = {}) {
     now = at; levels.microphone = microphone; levels.remote = remote;
     for (const value of intervals.values()) if (value.delay === 50) value.callback();
   };
-  return { context, element, body, requests, peers, contexts, sounds, pageEvents, beacons, eventSources, intervals, timeouts, meter, setNow: value => {now = value;} };
+  return { get view() { return view; }, context, element, body, requests, peers, contexts, sounds, pageEvents, beacons, eventSources, intervals, timeouts, meter, setNow: value => {now = value;} };
 }
 
 test("dial stays unavailable until the real entry check finishes; no session starts while waiting", async t => {
   const status = deferred();
   const f = await fixture(t, { api: (route, payload, fallback) => route === "status" ? status.promise : fallback });
-  // Match the initial HTML's disabled button in this minimal DOM fixture.
-  f.element("start").disabled = true;
   await f.context.startCall();
   assert.equal(f.requests.some(row => row.route === "session"), false);
   status.resolve({ ready: true });
   await tick();
-  assert.equal(f.element("start").disabled, false);
-  assert.equal(f.element("badge").textContent, "可以拨号");
+  assert.equal(f.view.get().dial.disabled, false);
+  assert.equal(f.view.get().badge, "可以拨号");
 });
 
 test("shared voice link exchanges fragment access before status and removes the credential", async t => {
@@ -215,7 +215,7 @@ test("stopping before microphone permission returns releases every late track wi
   assert.equal(f.peers[0].closed, true);
   assert.equal(f.contexts.length, 0);
   assert.equal(f.intervals.size, 0);
-  assert.equal(f.element("start").disabled, false);
+  assert.equal(f.view.get().dial.disabled, false);
   assert.equal(f.body.dataset.voiceState, "idle");
 });
 
@@ -260,10 +260,10 @@ test("a rejected old playback cannot overwrite the stopped call status", async (
   const playing = f.peers[0].ontrack({ track: track() });
   await tick();
   await f.context.stopCall();
-  const status = f.element("status").textContent;
+  const status = f.view.get().statusText;
   playback.reject(new Error("late autoplay failure"));
   await playing;
-  assert.equal(f.element("status").textContent, status);
+  assert.equal(f.view.get().statusText, status);
   assert.equal(f.contexts.length, 0);
   assert.equal(f.intervals.size, 0);
 });
@@ -288,19 +288,19 @@ test("native transcript added and turn.done update a single row and repeated fin
   const send = (payload) => f.peers[0].channel.onmessage({ data: JSON.stringify(payload) });
   send({ type: "input_transcript.added", item: { id: "fragment-1", text: "请查" } });
   send({ type: "input_transcript.added", item: { id: "fragment-2", text: "周四" } });
-  const current = f.element("transcriptCurrentRows"), history = f.element("transcriptHistory");
-  const row = current.children[0];
-  assert.equal(current.children.length, 1);
-  assert.equal(row.parts.text.textContent, "请查周四");
+  const current = () => f.view.get().transcript.current, history = () => f.view.get().transcript.history;
+  const row = current()[0];
+  assert.equal(current().length, 1);
+  assert.equal(row.text, "请查周四");
   send({ type: "turn.done", turn: { id: "turn-user-1", role: "user", transcript: "请查周四的日程" } });
   send({ type: "turn.done", turn: { id: "turn-user-1", role: "user", transcript: "请查周四的日程" } });
-  assert.equal(history.children.length, 1);
-  assert.equal(current.children.length, 0);
-  assert.equal(history.children[0], row, "The same row moves from live content to completed history");
-  assert.equal(row.parts.text.textContent, "请查周四的日程");
+  assert.equal(history().length, 1);
+  assert.equal(current().length, 0);
+  assert.equal(history()[0].key, row.key, "The same row moves from live content to completed history");
+  assert.equal(history()[0].text, "请查周四的日程");
   send({ type: "output_transcript.added", item: { id: "assistant-fragment", text: "正在查询" } });
   send({ type: "turn.done", turn: { id: "turn-assistant-1", role: "assistant", transcript: "正在查询你的日程" } });
-  assert.deepEqual(history.children.map((row) => [row.parts.speaker.textContent, row.parts.text.textContent]), [["你", "请查周四的日程"], ["V", "正在查询你的日程"]]);
+  assert.deepEqual(history().map((row) => [row.speaker, row.text]), [["你", "请查周四的日程"], ["V", "正在查询你的日程"]]);
 });
 
 test("data channel and event stream callbacks from an old call cannot alter the new call UI", async (t) => {
@@ -313,18 +313,18 @@ test("data channel and event stream callbacks from an old call cannot alter the 
   const currentPeer = f.peers[1];
   currentPeer.connectionState = "connected";
   currentPeer.onconnectionstatechange();
-  const before = { status: f.element("status").textContent, badge: f.element("badge").textContent, taskStatus: f.element("taskStatus").textContent };
+  const before = { status: f.view.get().statusText, badge: f.view.get().badge, tasks: f.view.get().tasks.length };
   oldPeer.channel.onmessage({ data: JSON.stringify({ type: "input_transcript.added", item: { text: "旧通话字幕" } }) });
   oldPeer.channel.onmessage({ data: JSON.stringify({ type: "error" }) });
   oldEvents.onmessage({ data: JSON.stringify({ voiceSessionId: "voice-1", type: "tool.call", callId: "old-task" }) });
   oldPeer.connectionState = "disconnected";
   oldPeer.onconnectionstatechange();
   await tick();
-  assert.deepEqual({ status: f.element("status").textContent, badge: f.element("badge").textContent, taskStatus: f.element("taskStatus").textContent }, before);
-  assert.equal(f.element("transcriptHistory").children.length + f.element("transcriptCurrentRows").children.length, 0);
+  assert.deepEqual({ status: f.view.get().statusText, badge: f.view.get().badge, tasks: f.view.get().tasks.length }, before);
+  assert.equal(f.view.get().transcript.history.length + f.view.get().transcript.current.length, 0);
   assert.equal(currentPeer.closed, false);
   currentPeer.channel.onmessage({ data: JSON.stringify({ type: "output_transcript.added", item: { text: "新通话字幕" } }) });
-  assert.equal(f.element("transcriptCurrentRows").children[0].parts.text.textContent, "新通话字幕");
+  assert.equal(f.view.get().transcript.current[0].text, "新通话字幕");
 });
 
 test("an old close response cannot reset a new connected call UI or its remote audio", async (t) => {
@@ -340,11 +340,11 @@ test("an old close response cannot reset a new connected call UI or its remote a
   await peer.ontrack({ track: track() });
   const audio = f.element("remoteAudio").srcObject;
   const state = () => ({
-    status: f.element("status").textContent,
-    badge: f.element("badge").textContent,
-    startHidden: f.element("start").hidden,
-    stopHidden: f.element("stop").hidden,
-    steerDisabled: f.element("steer").disabled,
+    status: f.view.get().statusText,
+    badge: f.view.get().badge,
+    call: f.view.get().call,
+    dialDisabled: f.view.get().dial.disabled,
+    composerEnabled: f.view.get().composer.enabled,
     voiceState: f.body.dataset.voiceState,
   });
   const before = state();
@@ -360,10 +360,7 @@ for (const mode of ["steer", "cancel"]) for (const outcome of ["success", "failu
     const reply = deferred();
     const f = await fixture(t, { api: (route, payload, result) => route === "steer" && payload.voiceSessionId === "voice-1" ? reply.promise : result });
     await f.context.startCall();
-    f.element("steerText").value = "旧通话条件";
-    const request = mode === "steer"
-      ? f.element("steerForm").listeners.get("submit")({ preventDefault() {} })
-      : f.element("cancel").listeners.get("click")();
+    const request = mode === "steer" ? f.context.sendSteer("旧通话条件") : f.context.cancelTasks();
     await tick();
     assert.equal(f.requests.at(-1).route, "steer");
     assert.equal(f.requests.at(-1).payload.mode, mode);
@@ -373,11 +370,11 @@ for (const mode of ["steer", "cancel"]) for (const outcome of ["success", "failu
     peer.connectionState = "connected";
     peer.onconnectionstatechange();
     f.element("steerText").value = "新通话尚未提交的条件";
-    const status = f.element("status").textContent;
+    const status = f.view.get().statusText;
     if (outcome === "success") reply.resolve({ ok: true });
     else reply.reject(new Error("old call request failed"));
     await request;
-    assert.equal(f.element("status").textContent, status);
+    assert.equal(f.view.get().statusText, status);
     assert.equal(f.element("steerText").value, "新通话尚未提交的条件");
     assert.equal(peer.closed, false);
   });
@@ -396,11 +393,11 @@ test("old disconnected-call cleanup cannot replace a new connected call status",
   const peer = f.peers[1];
   peer.connectionState = "connected";
   peer.onconnectionstatechange();
-  const status = f.element("status").textContent;
+  const status = f.view.get().statusText;
   closing.resolve({ ok: true });
   await tick();
-  assert.equal(f.element("status").textContent, status);
-  assert.equal(f.element("badge").textContent, "通话中");
+  assert.equal(f.view.get().statusText, status);
+  assert.equal(f.view.get().badge, "通话中");
   assert.equal(peer.closed, false);
 });
 
@@ -415,7 +412,7 @@ test("real app microphone gate mutes playback while leaving the call and backend
   assert.equal(f.element("remoteAudio").srcObject, incoming);
   assert.equal(peer.closed, false);
   assert(peer.tracks.every(value => value.stopped === 0));
-  assert.equal(f.element("cancel").disabled, false, "Accepted backend request remains pending");
+  assert.equal(f.view.get().cancelEnabled, true, "Accepted backend request remains pending");
   assert.equal(f.requests.length, before, "Local speech does not send a cancel/steer/close API call");
   assert.equal(f.body.dataset.voiceState, "listening");
   assert.equal(f.context.__gptLiveDuplexDiagnostics.events.at(-1).remoteActive, true,
@@ -529,13 +526,13 @@ test("missing terminal proof offers a restart without timing out into old playba
   f.meter(0, .04, .2); f.meter(50, .04, .2); f.meter(100, .04, .2);
   for (let at = 150; at <= 4600; at += 50) f.meter(at, 0, 0);
   assert.equal(f.element("remoteAudio").muted, true);
-  assert.match(f.element("status").textContent, /结束通话后重新开始/u);
+  assert.match(f.view.get().statusText, /结束通话后重新开始/u);
   assert(!f.requests.some(({route}) => route === "steer" || route === "close"));
   f.setNow(4625);
   f.peers[0].channel.onmessage({data: JSON.stringify({type: "turn.done", turn: {role: "assistant", id: "delayed"}})});
   for (let at = 4650; at <= 4900; at += 50) f.meter(at, 0, 0);
   assert.equal(f.element("remoteAudio").muted, false);
-  assert.equal(f.element("status").textContent, "V 正在听，直接说话就好");
+  assert.equal(f.view.get().statusText, "V 正在听，直接说话就好");
 });
 
 test("stopping a muted call clears its meter and gate without muting the replacement call", async (t) => {
@@ -562,7 +559,7 @@ test("dialing can be canceled and pickup is triggered by a real connected state 
   const f = await fixture(t, {getUserMedia: () => requests++ === 0 ? permission.promise : stream([track()])});
   const pending = f.context.startCall(); await tick();
   assert.equal(f.body.dataset.callState, "dialing");
-  assert.equal(f.element("stopLabel").textContent, "取消拨号");
+  assert.equal(f.view.get().stopLabel, "取消拨号");
   assert.equal(f.sounds[0].dialing, 1); assert.equal(f.sounds[0].pickups, 0);
   await f.context.stopCall(); await pending;
   assert.equal(f.body.dataset.callState, "idle"); assert.equal(f.sounds[0].disposed, 1);
@@ -572,7 +569,7 @@ test("dialing can be canceled and pickup is triggered by a real connected state 
   const next = f.peers[1]; assert.equal(f.sounds[1].pickups, 0, "A completed SDP handshake does not mean pickup");
   next.connectionState = "connected"; next.onconnectionstatechange();
   assert.equal(f.body.dataset.callState, "connected");
-  assert.equal(f.element("stopLabel").textContent, "结束通话");
+  assert.equal(f.view.get().stopLabel, "结束通话");
   assert.equal(f.sounds[1].pickups, 1);
   await f.context.stopCall();
   next.onconnectionstatechange(); assert.equal(f.sounds[1].pickups, 1, "Late connection callbacks cannot sound after hangup");
@@ -583,21 +580,17 @@ test("a reported disabled AEC track rejects before a paid reservation; metadata 
   const f = await fixture(t, {getUserMedia: () => stream([mic])}); await f.context.startCall();
   assert.equal(f.requests.filter(value => value.route === "session").length, 0);
   assert(mic.stopped >= 1); assert.equal(f.peers[0].closed, true);
-  assert.match(f.element("status").textContent, /回声消除/u);
+  assert.match(f.view.get().statusText, /回声消除/u);
   assert.equal(f.context.__gptLiveDuplexDiagnostics.microphone.processing.echoCancellation, "disabled");
   assert.doesNotMatch(JSON.stringify(f.context.__gptLiveDuplexDiagnostics), /private-device|private-group/u);
 });
 
-test("transcript renders real text safely and reading history prevents auto scroll", async t => {
+test("transcript keeps caption text as data for the UI, never as markup", async t => {
   const f = await fixture(t); await f.context.startCall();
-  const log = f.element("conversation"); Object.defineProperty(log, "scrollHeight", {get: () => 1000}); log.scrollTop = 100;
   f.peers[0].channel.onmessage({data: JSON.stringify({type:"output_transcript.added", item:{id:"s",text:"<img src=x onerror=alert(1)>"}})});
-  const row = f.element("transcriptCurrentRows").children[0];
-  assert.equal(row.parts.text.textContent, "<img src=x onerror=alert(1)>");
-  assert.equal(row.parts.text.children.length, 0); assert.equal(log.scrollTop, 100);
-  log.scrollTop = 880;
+  assert.equal(f.view.get().transcript.current[0].text, "<img src=x onerror=alert(1)>");
   f.peers[0].channel.onmessage({data: JSON.stringify({type:"turn.done",turn:{role:"assistant",id:"a",transcript:"安全正文"}})});
-  assert.equal(log.scrollTop, 1000);
+  assert.equal(f.view.get().transcript.history[0].text, "安全正文");
 });
 
 
@@ -615,19 +608,16 @@ test("hangup releases the dial owner while an old reservation is still pending",
   await f.context.startCall(); assert.equal(f.peers.length, 2, "The old finally must not unlock the active replacement dial owner");
   replacement.resolve({voiceSessionId: "voice-2"}); await second;
   f.peers[1].connectionState = "connected"; f.peers[1].onconnectionstatechange();
-  assert.equal(f.element("badge").textContent, "通话中");
+  assert.equal(f.view.get().badge, "通话中");
 });
 
 test("unrelated wire activity does not rewrite or move unchanged history text", async t => {
   const f = await fixture(t); await f.context.startCall();
   const send = data => f.peers[0].channel.onmessage({data: JSON.stringify(data)});
   send({type:"turn.done",turn:{role:"assistant",id:"a",transcript:"完成的正文"}});
-  const parent = f.element("transcriptHistory"), row = parent.children[0]; let writes=0, moves=0;
-  const value = row.parts.text.textContent;
-  Object.defineProperty(row.parts.text,"textContent",{get:()=>value,set:()=>{writes++;}});
-  parent.insertBefore = () => {moves++;};
+  const before = f.view.get().transcript.history;
   send({type:"session.context.appended"});
-  assert.equal(writes,0); assert.equal(moves,0);
+  assert.deepEqual(f.view.get().transcript.history.map(row => [row.key, row.text]), before.map(row => [row.key, row.text]));
 });
 
 
@@ -664,7 +654,7 @@ test("default native playback leaves a continuous new reply audible after caller
   assert.equal(f.body.dataset.voiceState,"speaking");
   assert(peer.tracks.every(value=>value.stopped===0&&value.enabled));
   assert.equal(f.requests.length,before,"The client has not cancelled backend work or sent undocumented controls");
-  assert.equal(f.element("cancel").disabled,false);
+  assert.equal(f.view.get().cancelEnabled,true);
   const diagnostics=f.context.__gptLiveDuplexDiagnostics;
   assert.equal(diagnostics.playbackMode,"native"); assert.equal(diagnostics.interruptionOwner,"provider");
   assert(!diagnostics.events.some(value=>value.type==="local-playback-gate"));
@@ -682,11 +672,11 @@ test("autoplay rejection stays visible after connect and a fresh gesture actuall
   await f.context.startCall(); const peer=f.peers[0]; await peer.ontrack({track:track()});
   assert.equal(f.element("remoteAudio").paused,true);
   peer.connectionState="connected"; peer.onconnectionstatechange();
-  assert.match(f.element("status").textContent,/恢复声音/u);
+  assert.match(f.view.get().statusText,/恢复声音/u);
   const before=f.requests.length;
   f.pageEvents.get("pointerdown")(); await tick();
   assert.equal(attempts,2); assert.equal(f.element("remoteAudio").paused,false);
-  assert.equal(f.element("status").textContent,"V 正在听，直接说话就好");
+  assert.equal(f.view.get().statusText,"V 正在听，直接说话就好");
   assert.deepEqual(f.requests.slice(before).map(value=>value.route), ['ready']);
   const events=f.context.__gptLiveDuplexDiagnostics.events;
   assert(events.some(value=>value.type==="playback-rejected"&&value.errorName==="NotAllowedError"&&value.source==="track"));
@@ -699,10 +689,10 @@ test("an AudioContext rejection has its own visible recovery and does not leave 
   const f=await fixture(t,{resume:()=>++resumes===1?Promise.reject(Object.assign(new Error("blocked"),{name:"NotAllowedError"})):Promise.resolve()});
   await f.context.startCall(); const peer=f.peers[0]; await peer.ontrack({track:track()});
   peer.connectionState="connected"; peer.onconnectionstatechange();
-  assert.match(f.element("status").textContent,/恢复声音/u);
+  assert.match(f.view.get().statusText,/恢复声音/u);
   assert(f.context.__gptLiveDuplexDiagnostics.events.some(value=>value.type==="context-resume-rejected"));
   f.pageEvents.get("keydown")(); await tick();
-  assert.equal(resumes,2); assert.equal(f.element("status").textContent,"V 正在听，直接说话就好");
+  assert.equal(resumes,2); assert.equal(f.view.get().statusText,"V 正在听，直接说话就好");
 });
 
 test("an unexpected playback pause is diagnosed while a gesture recovery from an ended call cannot touch its replacement", async t => {
@@ -710,15 +700,15 @@ test("an unexpected playback pause is diagnosed while a gesture recovery from an
   const f=await fixture(t,{play:()=>++attempts===2?pending.promise:Promise.resolve()});
   await f.context.startCall(); const old=f.peers[0]; await old.ontrack({track:track()});
   f.element("remoteAudio").paused=true; f.meter(0,0,.2);
-  assert.match(f.element("status").textContent,/恢复声音/u);
+  assert.match(f.view.get().statusText,/恢复声音/u);
   f.pageEvents.get("pointerdown")(); await tick();
   const diagnostics=f.context.__gptLiveDuplexDiagnostics;
   await f.context.stopCall(); await f.context.startCall();
   const replacement=f.peers[1]; replacement.connectionState="connected"; replacement.onconnectionstatechange();
   await replacement.ontrack({track:track()});
-  const status=f.element("status").textContent;
+  const status=f.view.get().statusText;
   pending.reject(Object.assign(new Error("late blocked"),{name:"NotAllowedError"})); await tick();
-  assert.equal(f.element("status").textContent,status); assert.equal(replacement.closed,false);
+  assert.equal(f.view.get().statusText,status); assert.equal(replacement.closed,false);
   assert.equal(diagnostics.closed,true);
   assert(diagnostics.events.some(value=>value.type==="playback-not-running"&&value.paused));
   assert(!diagnostics.events.some(value=>value.type==="playback-rejected"&&value.source==="gesture"));
@@ -860,7 +850,7 @@ test('greeting retries past four early backend failures and still accepts exactl
   peer.onconnectionstatechange(); peer.channel.onmessage({data:JSON.stringify({type:'session.started'})}); await tick();
   assert.equal(ready,5);
   assert.equal(f.context.__gptLiveDuplexDiagnostics.counts['greeting-ready-accepted'],1);
-  assert.equal(f.element('transcriptHistory').children.length+f.element('transcriptCurrentRows').children.length,0,'Acceptance never creates synthetic greeting text');
+  assert.equal(f.view.get().transcript.history.length+f.view.get().transcript.current.length,0,'Acceptance never creates synthetic greeting text');
   assert.equal(peer.closed,false);
 });
 
@@ -1024,12 +1014,12 @@ test('full backend document renders separately from spoken caption and retired c
  const f=await fixture(t);await f.context.startCall();
  const body='## 完整方案\n| 日期 | 状态 |\n| --- | --- |\n| 2028-09 | 尚未核实 |';
  const e={voiceSessionId:'voice-1',type:'backend.result',callId:'doc',text:body};
- const old=f.eventSources[0];old.onmessage({data:JSON.stringify({...e,voiceSessionId:'foreign'})});assert.equal(f.element('transcriptHistory').children.length,0);
+ const old=f.eventSources[0];old.onmessage({data:JSON.stringify({...e,voiceSessionId:'foreign'})});assert.equal(f.view.get().transcript.history.length,0);
  old.onmessage({data:JSON.stringify(e)});old.onmessage({data:JSON.stringify(e)});
- const history=f.element('transcriptHistory');assert.equal(history.children.length,1);assert.equal(history.children[0].parts.speaker.textContent,'V · 完整方案');assert.equal(history.children[0].parts.text.textContent,body);
+ const history=()=>f.view.get().transcript.history;assert.equal(history().length,1);assert.equal(history()[0].speaker,'V · 完整方案');assert.equal(history()[0].text,body);
  f.peers[0].channel.onmessage({data:JSON.stringify({type:'output_transcript.added',item:{id:'spoken',text:'结果在屏幕上。'}})});
- assert.equal(f.element('transcriptCurrentRows').children[0].parts.text.textContent,'结果在屏幕上。');
- await f.context.stopCall();await f.context.startCall();old.onmessage({data:JSON.stringify(e)});assert.equal(history.children.length,0);
+ assert.equal(f.view.get().transcript.current[0].text,'结果在屏幕上。');
+ await f.context.stopCall();await f.context.startCall();old.onmessage({data:JSON.stringify(e)});assert.equal(history().length,0);
 });
 
 test('relay greeting text appears in chat and reaches avatar context, with retired-call captions rejected', async t => {
@@ -1043,14 +1033,14 @@ test('relay greeting text appears in chat and reaches avatar context, with retir
  await f.context.startCall();
  const text='天懿，你好，我是 V，在呢。';
  relay.onEvent({type:'transcript',role:'assistant',text,final:true,source:'greeting'});
- assert.equal(f.element('transcriptHistory').children.length,1);
- assert.equal(f.element('transcriptHistory').children[0].parts.text.textContent,text);
+ assert.equal(f.view.get().transcript.history.length,1);
+ assert.equal(f.view.get().transcript.history[0].text,text);
  assert.equal(f.body.dataset.conversation,'started');
  assert.equal(snapshots.at(-1).history[0].text,text);
  await f.context.stopCall();
  relay.onEvent({type:'transcript',role:'assistant',text,final:true,source:'greeting'});
  assert.equal(f.body.dataset.conversation,'empty');
- assert.equal(f.element('transcriptHistory').children.length,0);
+ assert.equal(f.view.get().transcript.history.length,0);
 });
 
 test('hangup returns to the initial empty entry and late call events cannot restore chat or reports', async t => {
@@ -1065,28 +1055,24 @@ test('hangup returns to the initial empty entry and late call events cannot rest
  const result = {voiceSessionId:'voice-1',type:'backend.result',callId:'doc',text:'## 完整方案\n实际查询结果'};
  old.onmessage({data: JSON.stringify(result)});
  assert.equal(f.body.dataset.conversation, 'started');
- assert.equal(f.element('transcriptHistory').children.length, 1);
- assert.equal(f.element('transcriptCurrentRows').children.length, 1);
+ assert.equal(f.view.get().transcript.history.length, 1);
+ assert.equal(f.view.get().transcript.current.length, 1);
  f.element('steerText').value = '未发送的补充';
- f.element('conversation').scrollTop = 200;
  const before = resets;
  await f.context.stopCall();
  assert.equal(resets, before + 1, 'Hangup closes and clears the current content reader');
  assert.equal(f.body.dataset.callState, 'idle');
  assert.equal(f.body.dataset.conversation, 'empty');
- assert.equal(f.element('transcriptHistory').children.length, 0);
- assert.equal(f.element('transcriptCurrentRows').children.length, 0);
- assert.equal(f.element('transcriptCurrent').hidden, true);
- assert.equal(f.element('conversation').scrollTop, 0);
+ assert.equal(f.view.get().transcript.history.length, 0);
+ assert.equal(f.view.get().transcript.current.length, 0);
  assert.equal(f.element('steerText').value, '');
- assert.equal(f.element('start').hidden, false);
- assert.equal(f.element('start').disabled, false);
- assert.equal(f.element('stop').hidden, true);
+ assert.equal(f.view.get().call, 'idle');
+ assert.equal(f.view.get().dial.disabled, false);
  old.onmessage({data: JSON.stringify(result)});
  channel.onmessage({data: JSON.stringify({type:'output_transcript.added',item:{id:'late',text:'旧通话迟到的回复'}})});
  assert.equal(f.body.dataset.conversation, 'empty');
- assert.equal(f.element('transcriptHistory').children.length, 0);
- assert.equal(f.element('transcriptCurrentRows').children.length, 0);
+ assert.equal(f.view.get().transcript.history.length, 0);
+ assert.equal(f.view.get().transcript.current.length, 0);
  await f.context.startCall();
  assert.equal(f.body.dataset.conversation, 'empty');
  assert.equal(f.peers.length, 2);
@@ -1099,11 +1085,11 @@ test('native snapshot recovers actual task and full Markdown without SSE, but an
  assert.equal(f.body.dataset.avatarState,'busy');
  const poll=[...f.intervals.values()].find(v=>v.delay===1500).callback;
  response={voiceSessionId:'voice-1',revision:3,pending:[],documents:[{revision:3,type:'backend.result',voiceSessionId:'voice-1',callId:'doc',text:'## 完整方案\n实际条件和来源'}]};
- poll();await tick();assert.equal(f.body.dataset.avatarState,'idle');assert.equal(f.element('transcriptHistory').children.length,1);
- assert.equal(f.element('transcriptHistory').children[0].parts.text.textContent,response.documents[0].text);
+ poll();await tick();assert.equal(f.body.dataset.avatarState,'idle');assert.equal(f.view.get().transcript.history.length,1);
+ assert.equal(f.view.get().transcript.history[0].text,response.documents[0].text);
  const late=deferred();response=late.promise;const fetching=poll();await tick();await f.context.stopCall();await f.context.startCall();
  late.resolve({voiceSessionId:'voice-1',revision:4,pending:[],documents:[{type:'backend.result',voiceSessionId:'voice-1',callId:'late',text:'旧报告'}]});await tick();
- assert.equal(f.element('transcriptHistory').children.length,0);
+ assert.equal(f.view.get().transcript.history.length,0);
 });
 
 
@@ -1129,13 +1115,13 @@ test("connection progress lives in the pill while a busy rejection remains an ac
   const starting = f.context.startCall();
   await tick();
   assert.equal(f.body.dataset.callState, "dialing");
-  assert.equal(f.element("badge").textContent, "连接中");
-  assert.equal(f.element("status").dataset.notice, "progress");
+  assert.equal(f.view.get().badge, "连接中");
+  assert.equal(f.view.get().message, null, "Dialing progress is the status line's own voice state");
   session.reject(new Error("正在连接 V，请稍等。"));
   await starting;
   assert.equal(f.body.dataset.callState, "idle");
-  assert.equal(f.element("status").dataset.notice, "message");
-  assert.equal(f.element("status").textContent, "正在连接 V，请稍等。");
+  assert.equal(f.view.get().homeNote, "正在连接 V，请稍等。");
+  assert.equal(f.view.get().statusText, "正在连接 V，请稍等。");
 });
 
 test('host-selected in-flight assistant turn can contain both acknowledgment and goodbye',async t=>{

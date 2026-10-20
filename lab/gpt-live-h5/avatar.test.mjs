@@ -69,7 +69,7 @@ test('failed assets keep last good portrait and allow a retry; reduced motion sk
 function mountFixture({stall=false,reduced=false,small=false,onDisplayed,owner,paint=false}={}){
  const image={src:'idle',complete:true,naturalWidth:512,getBoundingClientRect:()=>({width:200,height:200,top:0,left:0,bottom:200,right:200}),getAttribute(){return this.src;}},previous={hidden:true},body={dataset:{callState:'connected'}};
  const events={};const document={body,hidden:false,getElementById:id=>id==='avatar'?image:previous,addEventListener(k,f){events[k]=f;},removeEventListener(){}};
- const window={navigator:{},Image:class{set src(value){if(stall&&!/listen-[35]-512/.test(value))return;queueMicrotask(()=>this.onload());}async decode(){}},matchMedia:q=>({matches:(reduced&&q.includes('reduced-motion'))||(small&&q.includes('max-width')),addEventListener(){},removeEventListener(){}}),MutationObserver:class{observe(){}disconnect(){}},addEventListener(){}};
+ const window={navigator:small?{connection:{saveData:true}}:{},Image:class{set src(value){if(stall&&!/listen-[35]-512/.test(value))return;queueMicrotask(()=>this.onload());}async decode(){}},matchMedia:q=>({matches:(reduced&&q.includes('reduced-motion'))||(small&&q.includes('max-width')),addEventListener(){},removeEventListener(){}}),MutationObserver:class{observe(){}disconnect(){}},addEventListener(){}};
  const frames=[];if(paint){window.requestAnimationFrame=f=>frames.push(f);window.innerWidth=1000;window.innerHeight=800;}
  return {avatar:mountAvatar(document,window,{onDisplayed,owner}),image,body,document,events,paint(){while(frames.length)frames.shift()();}};
 }
@@ -141,8 +141,8 @@ test('only decoded matching visible frames are reported, with owner and revision
  f.avatar.select('memory-3');await settle();f.image.getBoundingClientRect=()=>({width:200,height:200,top:900,left:0,bottom:1100,right:200});f.paint();assert.equal(rows.length,count);f.avatar.dispose();
 });
 
-// Hero detail must not increase bandwidth for the live reaction gallery.
-test('mobile home uses the high resolution hero while live reactions retain 256px assets',async t=>{
+// The phone stage is large enough for 512px frames; Data Saver opts out.
+test('Data Saver keeps 256px live reactions while the home hero stays high resolution',async t=>{
  t.mock.timers.enable({apis:['setTimeout','Date'],now:0});const f=mountFixture({small:true});await settle();
  assert.match(f.image.src,/-256\.webp$/);
  f.body.dataset.callState='idle';f.events.visibilitychange();await settle();assert.match(f.image.src,/home-1024\.webp$/);
