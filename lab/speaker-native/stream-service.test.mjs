@@ -81,6 +81,24 @@ test('an admitted native turn with no audio or tool has a bounded spoken recover
  const f=await fixture(t,{limits:{responseMs:30}});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
  f.service.audio('call',Buffer.alloc(48000));await wait(()=>f.events.some(e=>e.type==='speaker.native-input-complete'));await wait(()=>f.events.some(e=>e.type==='speaker.recovery'&&e.reason==='native-no-output'));await wait(()=>f.clarifications.length===1);
 });
+test('a turn Doubao has transcribed gets a thinking budget before the no-output recovery',async t=>{
+ const f=await fixture(t,{limits:{responseMs:30,thinkingMs:250}});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+ f.service.audio('call',Buffer.alloc(48000));await wait(()=>f.events.some(e=>e.type==='speaker.native-input-complete'));
+ // Doubao's own transcription ends after ours, then it composes a long function call silently.
+ f.service.nativeHeard('call');assert.equal(f.events.filter(e=>e.type==='speaker.native-heard').length,1);
+ await new Promise(r=>setTimeout(r,120));assert.equal(f.events.some(e=>e.type==='speaker.recovery'),false);
+ const effects=[];f.service.dispatch('call','tool',{name:'delegate_to_v'},()=>effects.push('tool'));assert.deepEqual(effects,['tool']);
+ await new Promise(r=>setTimeout(r,300));assert.equal(f.events.some(e=>e.type==='speaker.recovery'),false);assert.equal(f.clarifications.length,0);
+});
+test('a transcribed turn that stays silent past the thinking budget still gets its spoken recovery',async t=>{
+ const f=await fixture(t,{limits:{responseMs:30,thinkingMs:120}});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+ f.service.nativeHeard('call');const heardAt=performance.now();
+ f.service.audio('call',Buffer.alloc(48000));await wait(()=>f.events.some(e=>e.type==='speaker.recovery'&&e.reason==='native-no-output'));
+ assert.ok(performance.now()-heardAt>=110);await wait(()=>f.clarifications.length===1);
+});
+test('a native transcription for a cancelled or unfed input does not postpone recovery',async t=>{
+ const f=await fixture(t,{prepare:()=>new Promise(()=>{})});f.service.nativeHeard('call');assert.equal(f.events.some(e=>e.type==='speaker.native-heard'),false);
+});
 
 test('a first utterance whose zero start_time is omitted still reaches speaker decision and native admission',async t=>{
  const f=await fixture(t);await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit('V，听得到吗？',null,1100);await wait(()=>f.events.some(e=>e.type==='speaker.decision'));assert.equal(f.events.find(e=>e.type==='speaker.utterance').turn.startMs,0);

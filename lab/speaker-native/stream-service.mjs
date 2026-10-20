@@ -87,6 +87,20 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
       s.native.clarify?.(reason==='mixed-speakers'?'刚才你们的声音重叠了，请轮流说，我在听。':'刚才那句我没听清，请再说一次，我在听。');
     }catch(error){if(!s.closed&&s.input===c)send(s,{type:'speaker.error',reason:'recovery-unavailable',message:'这句没听清，请再说一次。'});}
   };
+  // Doubao says nothing between finishing its own transcription and emitting a
+  // function call, and a long delegated request's arguments took up to 11 s to
+  // arrive (synthetic calls 2026-10-20). Its transcription can also end seconds
+  // after ours. A turn it has heard therefore gets a thinking budget counted
+  // from that transcription; one it never finished hearing keeps the short one.
+  const awaitNative=(s,c,ms)=>{
+    clearTimeout(s.responseDeadline);
+    s.responseDeadline=setTimeout(()=>{
+      if(s.closed||s.input!==c||c.cancelled||s.gate.status!=='allowed'||c.responded)return;
+      const thinking=(c.heardAt??-Infinity)+(limits.thinkingMs??20000)-performance.now();
+      if(thinking>0){awaitNative(s,c,thinking);return;}
+      void recover(s,'native-no-output',true);
+    },ms);s.responseDeadline.unref?.();
+  };
   const identified=(s,e)=>{
     const seg=e.segment;
     send(s,{type:'speaker.identity',speakerId:seg.speakerId,startMs:seg.startMs,afterStartMs:e.afterStartMs,inferenceMs:e.inferenceMs});
@@ -280,7 +294,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
         try{
           if(c?.fed&&!c.cancelled&&c.decided&&!c.inputComplete&&c.cursor>=c.endMs){
             c.inputComplete=true;send(s,{type:'speaker.native-input-complete',token:c.token,endMs:c.endMs});
-            if(!c.responded){s.responseDeadline=setTimeout(()=>{if(!s.closed&&s.input===c&&!c.cancelled&&s.gate.status==='allowed'&&!c.responded)void recover(s,'native-no-output',true);},limits.responseMs??12000);s.responseDeadline.unref?.();}
+            if(!c.responded)awaitNative(s,c,limits.responseMs??12000);
           }
           if(c?.fed&&!c.cancelled){
             const end=c.endMs===null?s.window.bytes/32:c.endMs+700;
@@ -295,6 +309,8 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     audio(id,input){const s=sessions.get(id);if(!s?.ready||s.closed)throw Error('流式识人尚未就绪');const bytes=s.inputRate===16000?input.length*1.5:input.length;inputBytes+=bytes;s.inputBytes+=bytes;if(s.inputBytes>48000*(limits.inputSeconds??1800))throw Error('本轮音频预算已用完');const pcm=s.inputRate===16000?Buffer.from(input):s.resampler.push(input),startMs=s.window.bytes/32;s.window.append(pcm);s.clock.push({startMs,endMs:s.window.bytes/32,at:performance.now()});if(s.clock.length>1200)s.clock.shift();if(s.asrReady)s.asr.append(pcm);s.tracker.push(pcm);
       if(s.latestAsr)for(const turn of normalizeFinals(s,s.latestAsr))enqueue(s,turn);return true;},
     dispatch(id,kind,value,deliver){const s=sessions.get(id);if(!s)return false;if(s.gate.status!=='closed'){if(kind==='audio')s.nativeBusy=true;if(kind==='done'){s.nativeBusy=false;if(s.input?.host)s.input.hostDone=true;if(s.input&&!s.input.greeting&&!s.input.recovery&&!s.input.host)s.lastDoneAt=performance.now();}if(kind==='tool'&&value?.name!=='end_call')s.lastToolAt=performance.now();}try{const c=s.input;s.gate.dispatch(()=>{if(kind==='tool'&&c?.greeting)return;if(kind==='tool'&&value.name==='end_call'){s.native.rejectNativeEnd?.(value);send(s,{type:'speaker.end-withheld',reason:'native-end-unconfirmed'});return;}if(c&&s.input===c&&['audio','tool'].includes(kind)){c.responded=true;clearTimeout(s.responseDeadline);}deliver();},kind==='audio'?value.length:0);}catch(error){if(s.input)s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;send(s,{type:'speaker.error',message:error.message});}return true;},
+    /** The native session finished transcribing the user's speech itself. */
+    nativeHeard(id){const s=sessions.get(id),c=s?.input;if(!c?.fed||c.cancelled||c.responded||s.closed)return;if(c.heardAt===undefined)send(s,{type:'speaker.native-heard',token:c.token});c.heardAt=performance.now();},
     assistant(id,text){const s=sessions.get(id);if(s&&text?.trim()){s.router.assistant(text);s.lastAssistantAt=performance.now();s.recentAssistant.push(plain(text).slice(-1200));s.recentAssistant=s.recentAssistant.slice(-4);s.acceptedHistory.push({role:'assistant',text:text.slice(-800)});s.acceptedHistory=s.acceptedHistory.slice(-8);}},
     initialInstructions(id,text){return sessions.has(id)?text.replace('现在正在电话中和 Tianyi（天懿）本人交流','正在电话中与主机当前指定的人物交流；账号与工具仍属于原电话入口，不随人物切换').replace('现在你通过家里的智能音箱和 Tianyi（天懿）本人进行测试','现在你通过家里的智能音箱与主机当前指定的人物交流；账号与工具仍属于原入口，不随人物切换'):text;},
     /** A fixed host line in V's voice (a device's parting line). It replaces any
