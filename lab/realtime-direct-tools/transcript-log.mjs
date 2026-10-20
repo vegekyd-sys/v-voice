@@ -53,11 +53,11 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     }
     // Causal metadata only: never persist tool arguments, results, PCM or raw
     // provider frames. A received utterance without a reply must be diagnosable.
-    if(['tool.call','tool.delivered','backend.start-requested','backend.started','backend.completed','backend.control','backend.cancel-observed','backend.cancel-unconfirmed','response.done','provider.event','audio.clear'].includes(event.type)){
+    if(['tool.call','tool.delivered','backend.start-requested','backend.started','backend.completed','backend.child-run','backend.control','backend.cancel-observed','backend.cancel-unconfirmed','response.done','provider.event','audio.clear'].includes(event.type)){
       if(event.type==='provider.event'&&!['conversation.item.input_audio_transcription.started','response.created','response.output_audio.started','response.canceled','input_audio_buffer.speech_started','input_audio_buffer.speech_stopped','client.response.cancel','client.response.cancel.rejected','conversation.item.input_audio_transcription.completed'].includes(event.providerEventType))return false;
       if(event.type==='tool.call'&&(typeof event.name!=='string'||typeof event.callId!=='string'))return false;
       const safe={};
-      for(const key of ['callId','runId','taskId','responseId','providerEventType','name','mode','status'])if(typeof event[key]==='string')safe[key]=event[key].slice(0,160);
+      for(const key of ['callId','runId','taskId','responseId','providerEventType','name','mode','status','childRunId'])if(typeof event[key]==='string')safe[key]=event[key].slice(0,160);
       if(event.type==='backend.started'&&typeof event.ack?.taskId==='string')safe.taskId=event.ack.taskId;
       if(event.type==='backend.started'&&typeof event.ack?.runId==='string')safe.runId=event.ack.runId;
       if(event.type==='tool.delivered')safe.status=event.result?.error?'error':event.result?.cancelled?'cancelled':'ok';

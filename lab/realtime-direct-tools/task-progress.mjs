@@ -17,6 +17,19 @@ export const toolStageLabel = name => {
   return Object.hasOwn(TOOL_LABELS, base) ? TOOL_LABELS[base] : null;
 };
 
+/**
+ * The Gateway's own acceptance of a sub-agent spawned by this task's run: the
+ * child's run and session then belong to the same task. Nothing else is read.
+ */
+export function spawnedChild(payload) {
+  const d = payload?.data ?? {};
+  if (payload?.stream !== 'tool' || d.phase !== 'result' || toolStageLabel(d.name) !== '安排子任务' || d.isError === true) return null;
+  let value = d.result?.details;
+  if (!value?.childSessionKey) try { value = JSON.parse(d.result?.content?.find(c => c?.type === 'text')?.text ?? ''); } catch { value = null; }
+  const runId = typeof value?.runId === 'string' ? value.runId.trim() : '', sessionKey = typeof value?.childSessionKey === 'string' ? value.childSessionKey.trim() : '';
+  return value?.status === 'accepted' && runId && sessionKey ? {runId, sessionKey} : null;
+}
+
 /** Tracks tool calls of the task's own runs. Returns true when the stage changed. */
 export function createTaskStages({now = Date.now} = {}) {
   const pending = new Map(), done = new Set(), streams = {};
@@ -56,7 +69,8 @@ export function createTaskStages({now = Date.now} = {}) {
   };
 }
 
-const minutes = ms => ms < 60000 ? `${Math.max(1, Math.round(ms / 10000)) * 10}秒` : `${Math.round(ms / 30000) / 2}分钟`.replace('.5分钟', '分半钟');
+// Rounded down: "已经40秒了" is never more than the time that actually passed.
+const minutes = ms => ms < 60000 ? `${Math.max(1, Math.floor(ms / 10000)) * 10}秒` : `${Math.floor(ms / 30000) / 2}分钟`.replace('.5分钟', '分半钟');
 
 /**
  * One short spoken line from verified state only: elapsed time since the task

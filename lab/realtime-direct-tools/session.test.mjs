@@ -574,3 +574,18 @@ test('under multi-speaker routing task narration passes the output gate as host 
  assert.deepEqual(hosted[0],{text:'后台正在查记忆。',options:{source:'task-progress'}});
  assert.equal(f.upstream.sent.some(x=>x.type==='speech_text_buffer.commit'&&x.text.startsWith('后台')),false,'not past the gate');
 });
+test('a sub-agent spawned by the task is the same task: its stages are narrated, a stranger session is not',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:FAST_NARRATION});t.after(()=>f.service.dispose());
+ const spoken=()=>f.upstream.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text);
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'task',name:'delegate_to_v',arguments:JSON.stringify({question:'调研一下'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ toolEvent(f,'sdk-fixture-run','start','sessions_spawn','spawn-1');
+ f.service.handleEvent({event:'session.tool',payload:{runId:'sdk-fixture-run',stream:'tool',data:{phase:'result',name:'sessions_spawn',toolCallId:'spawn-1',result:{details:{status:'accepted',childSessionKey:'agent:makaron:subagent:child-1',runId:'child-run-1'}}}}});
+ assert(f.audit.some(e=>e.type==='backend.child-run'&&e.childRunId==='child-run-1'));
+ f.service.handleEvent({event:'session.tool',payload:{runId:'unrelated-run',sessionKey:'agent:makaron:subagent:someone-else',stream:'tool',data:{phase:'start',name:'memory_search',toolCallId:'m-x'}}});
+ f.service.handleEvent({event:'session.tool',payload:{runId:'child-run-1',sessionKey:'agent:makaron:subagent:child-1',stream:'tool',data:{phase:'start',name:'web_fetch',toolCallId:'w-1'}}});
+ assert(await until(()=>spoken().includes('后台正在读网页。')),'the child stage is announced');
+ f.service.handleEvent({event:'session.tool',payload:{runId:'child-run-2',sessionKey:'agent:makaron:subagent:child-1',stream:'tool',data:{phase:'start',name:'pdf',toolCallId:'p-1'}}});
+ assert(await until(()=>spoken().includes('后台正在读 PDF 文档。')),'a later run of the same child session counts too');
+ assert.equal(spoken().some(x=>x.includes('查记忆')),false);
+});
