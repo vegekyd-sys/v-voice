@@ -208,3 +208,13 @@ test('with one voice in the call, an unverified sentence is still that person in
   assert.equal(events.find(e=>e.type==='speaker.decision').turn.speakerId,'speaker:local0');
   assert.equal(events.some(e=>e.type==='speaker.recovery'||e.type==='speaker.error'),false);assert.deepEqual(clarifications,[]);
 });
+
+test('on a phone, the greeting heard back through the speaker is not taken as the caller',async t=>{
+  let calls=0;const f=await fixture(t,{evaluate:async(_s,q)=>{calls++;return answers(q);}});
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));
+  f.service.assistant('call','天懿，你好，我是 V，在呢。');
+  f.emit('你好，我是V，在呢');
+  await wait(()=>f.events.some(e=>e.type==='speaker.echo-dropped'));
+  assert.equal(calls,0);assert.equal(f.events.some(e=>e.type==='speaker.utterance'),false);
+  f.emit('你好，听得见吗？我想问个问题。',1200,2600);await wait(()=>f.events.some(e=>e.type==='speaker.decision'));assert.equal(calls,1);
+});

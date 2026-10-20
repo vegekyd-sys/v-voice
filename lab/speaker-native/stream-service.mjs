@@ -107,7 +107,10 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
   const process=async(s,turn)=>{
     if(s.closed)return;
     const inputAt=performance.now(),anchor=s.clock.find(c=>c.startMs<=turn.endMs&&c.endMs>=turn.endMs),endAt=anchor?anchor.at-(anchor.endMs-turn.endMs):inputAt;
-    if(s.farField&&echoOf(turn.text,s.recentAssistant)){
+    // A phone on speaker leaks V's voice into the mic too, worst right after
+    // pickup while the browser's echo canceller is still converging. There it
+    // only counts as echo shortly after V said those words.
+    if(echoOf(turn.text,s.recentAssistant)&&(s.farField||performance.now()-(s.lastAssistantAt??-Infinity)<20000)){
       const c=s.input;if(c?.speakerId===turn.speakerId)dropUndecided(s);
       send(s,{type:'speaker.echo-dropped',speakerId:turn.speakerId,textLength:turn.text.length});return;
     }
@@ -292,7 +295,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     audio(id,input){const s=sessions.get(id);if(!s?.ready||s.closed)throw Error('流式识人尚未就绪');const bytes=s.inputRate===16000?input.length*1.5:input.length;inputBytes+=bytes;s.inputBytes+=bytes;if(s.inputBytes>48000*(limits.inputSeconds??1800))throw Error('本轮音频预算已用完');const pcm=s.inputRate===16000?Buffer.from(input):s.resampler.push(input),startMs=s.window.bytes/32;s.window.append(pcm);s.clock.push({startMs,endMs:s.window.bytes/32,at:performance.now()});if(s.clock.length>1200)s.clock.shift();if(s.asrReady)s.asr.append(pcm);s.tracker.push(pcm);
       if(s.latestAsr)for(const turn of normalizeFinals(s,s.latestAsr))enqueue(s,turn);return true;},
     dispatch(id,kind,value,deliver){const s=sessions.get(id);if(!s)return false;if(s.gate.status!=='closed'){if(kind==='audio')s.nativeBusy=true;if(kind==='done'){s.nativeBusy=false;if(s.input?.host)s.input.hostDone=true;if(s.input&&!s.input.greeting&&!s.input.recovery&&!s.input.host)s.lastDoneAt=performance.now();}if(kind==='tool'&&value?.name!=='end_call')s.lastToolAt=performance.now();}try{const c=s.input;s.gate.dispatch(()=>{if(kind==='tool'&&c?.greeting)return;if(kind==='tool'&&value.name==='end_call'){s.native.rejectNativeEnd?.(value);send(s,{type:'speaker.end-withheld',reason:'native-end-unconfirmed'});return;}if(c&&s.input===c&&['audio','tool'].includes(kind)){c.responded=true;clearTimeout(s.responseDeadline);}deliver();},kind==='audio'?value.length:0);}catch(error){if(s.input)s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;send(s,{type:'speaker.error',message:error.message});}return true;},
-    assistant(id,text){const s=sessions.get(id);if(s&&text?.trim()){s.router.assistant(text);if(s.farField){s.recentAssistant.push(plain(text).slice(-1200));s.recentAssistant=s.recentAssistant.slice(-4);}s.acceptedHistory.push({role:'assistant',text:text.slice(-800)});s.acceptedHistory=s.acceptedHistory.slice(-8);}},
+    assistant(id,text){const s=sessions.get(id);if(s&&text?.trim()){s.router.assistant(text);s.lastAssistantAt=performance.now();s.recentAssistant.push(plain(text).slice(-1200));s.recentAssistant=s.recentAssistant.slice(-4);s.acceptedHistory.push({role:'assistant',text:text.slice(-800)});s.acceptedHistory=s.acceptedHistory.slice(-8);}},
     initialInstructions(id,text){return sessions.has(id)?text.replace('现在正在电话中和 Tianyi（天懿）本人交流','正在电话中与主机当前指定的人物交流；账号与工具仍属于原电话入口，不随人物切换').replace('现在你通过家里的智能音箱和 Tianyi（天懿）本人进行测试','现在你通过家里的智能音箱与主机当前指定的人物交流；账号与工具仍属于原入口，不随人物切换'):text;},
     /** A fixed host line in V's voice (a device's parting line). It replaces any
      * speculative input and passes the gate; it does not consult Decision. */
