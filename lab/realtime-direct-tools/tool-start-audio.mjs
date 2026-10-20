@@ -23,3 +23,21 @@ export function toolStartClip(call,loaded=loadToolStartClips()) {
   if(['end_call','cancel_task','delegate_to_v','process','show_content'].includes(name))return null;
   return loaded[name==='memory_search'?'memory':['web_search','web_fetch'].includes(name)?'web':'other'];
 }
+
+// Said while a slow tool is still running. Like the start notice it is host-owned
+// PCM, never SayHello: injected TTS during a native wait can lose the result.
+export const TOOL_PROGRESS_LINES = ['还在查，稍等一下。','这个查得有点久，马上就好。'];
+let progressClips;
+/** Validated progress clips, or none until scripts/generate-notice-clips.mjs has made them. */
+export function loadToolProgressClips(root) {
+  if(!root)return progressClips??=loadToolProgressClips(new URL('./assets/',import.meta.url));
+  let manifest;
+  try{manifest=JSON.parse(fs.readFileSync(new URL('tool-progress-provenance.json',root),'utf8'));}
+  catch(error){if(error.code==='ENOENT')return [];throw error;}
+  if(manifest.provider!=='seeduplex'||manifest.voice!=='xiaohe'||manifest.sampleRate!==24000||manifest.format!=='pcm16le')throw Error('Invalid tool progress audio format');
+  return TOOL_PROGRESS_LINES.map((text,i)=>{
+    const key=`progress-${i+1}`,spec=manifest.clips?.[key],pcm=fs.readFileSync(new URL(`tool-${key}.pcm`,root));
+    if(spec?.text!==text||pcm.length!==spec.bytes||pcm.length%2||createHash('sha256').update(pcm).digest('hex')!==spec.sha256)throw Error('Tool progress audio hash mismatch');
+    return {...spec,pcm,sampleRate:24000,source:'cached-native-tool-progress'};
+  });
+}

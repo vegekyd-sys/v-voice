@@ -7,7 +7,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import * as ws from 'ws';
 import OpusScript from 'opusscript';
 import {createDirectVoiceService} from './session.mjs';
-import {createDeviceEndpoint,parseDeviceEntries,BACKGROUND_LEAVE_LINE} from './device-endpoint.mjs';
+import {createDeviceEndpoint,parseDeviceEntries,BACKGROUND_LEAVE_LINE,TOOL_FAILURE_LINE} from './device-endpoint.mjs';
 
 const TOKEN = 'device-fixture-token-0123456789abcdef';
 const SESSION = 'agent:makaron:feishu:group:oc_fixture';
@@ -23,11 +23,12 @@ async function fixture(options = {}) {
       if (value.type === 'session.create') queueMicrotask(() => this.emit('message', Buffer.from(JSON.stringify({type:'session.created',session:{id:'fixture-dialog'}})), false));}
     close() {this.readyState = 3;this.emit('close');}
   }
-  const gateway = {request:async method => method === 'tools.catalog' ? {groups:[{tools:[{id:'web_search'}]}]} : {ok:true}};
-  const directVoice = createDirectVoiceService({gateway,wsModule:{WebSocket:ProviderSocket,WebSocketServer:class {close() {}}},apiKeys:{seeduplex:'k',grok:'k'},speakerRouting:options.speakerRouting,audit:v => audit.push(v)});
+  const gateway = options.gateway ?? {request:async method => method === 'tools.catalog' ? {groups:[{tools:[{id:'web_search'}]}]} : {ok:true}};
+  const directVoice = createDirectVoiceService({gateway,wsModule:{WebSocket:ProviderSocket,WebSocketServer:class {close() {}}},apiKeys:{seeduplex:'k',grok:'k'},speakerRouting:options.speakerRouting,toolProgressClips:options.toolProgressClips,audit:v => audit.push(v)});
   let busy = false;
   const endpoint = createDeviceEndpoint({directVoice,wsModule:ws,devices:parseDeviceEntries([record(options.record),...(options.extraDevices ?? [])]),audit:v => audit.push(v),
-    maxBufferedBytes:options.maxBufferedBytes,robotEvaluate:options.robotEvaluate,visionPath:options.visionPath,describeImage:options.describeImage,isSessionBusy:() => busy,tickMs:10,idleMs:options.idleMs ?? 5000,initialIdleMs:options.initialIdleMs ?? 5000,followUpMs:options.followUpMs ?? 5000,chatterMs:options.chatterMs ?? 5000,toolHoldMs:5000});
+    maxBufferedBytes:options.maxBufferedBytes,robotEvaluate:options.robotEvaluate,visionPath:options.visionPath,describeImage:options.describeImage,isSessionBusy:() => busy,tickMs:10,idleMs:options.idleMs ?? 5000,initialIdleMs:options.initialIdleMs ?? 5000,followUpMs:options.followUpMs ?? 5000,chatterMs:options.chatterMs ?? 5000,
+    chatterSpeechGraceMs:options.chatterSpeechGraceMs ?? 5000,toolHoldMs:options.toolHoldMs ?? 5000,toolProgressMs:options.toolProgressMs ?? 5000,toolProgressRepeatMs:options.toolProgressRepeatMs ?? 5000,toolProgressMax:options.toolProgressMax ?? 3,toolFailureMs:options.toolFailureMs ?? 5000,staleSpeechMs:options.staleSpeechMs ?? 5000});
   const server = createServer((req, res) => {if (endpoint.visionPath && req.url === endpoint.visionPath) return endpoint.handleVision(req, res);res.writeHead(404);res.end();});
   server.on('upgrade', (req, socket, head) => endpoint.handleUpgrade(req, socket, head, {dialect:req.url.startsWith('/device/xiaozhi') ? 'xiaozhi' : 'native'}));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -159,7 +160,7 @@ test('after a reply, silence past the follow-up window ends the call', async t =
 });
 
 test('room conversation that never becomes a request does not hold the session', async t => {
-  const f = await fixture({followUpMs:1000,chatterMs:120});t.after(f.close);
+  const f = await fixture({followUpMs:1000,chatterMs:120,chatterSpeechGraceMs:150});t.after(f.close);
   const device = await f.connect();t.after(() => device.close());
   device.send(JSON.stringify({type:'call.start'}));
   await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
@@ -185,6 +186,120 @@ test('room conversation that never becomes a request does not hold the session',
   assert.equal(device.events.find(e => e.type === 'call.closed').reason, 'background-speech');
 });
 
+
+// A lookup the test answers by hand, like a 27-48 s memory_search on the node.
+const slowGateway = () => {
+  const waiting = new Map();
+  return {waiting,request:async (method, params) => {
+    if (method === 'tools.catalog') return {groups:[{tools:[{id:'memory_search'},{id:'web_search'}]}]};
+    if (method === 'tools.invoke') return new Promise(resolve => waiting.set(params.name, resolve));
+    return {ok:true};
+  }};
+};
+const PROGRESS = ['还在查，稍等一下。','这个查得有点久，马上就好。'].map((text, i) => ({text,pcm:Buffer.alloc(480, i + 1),sampleRate:24000,source:'cached-native-tool-progress',sha256:`fixture-${i}`}));
+const provide = (f, value) => f.peers[0].emit('message', Buffer.from(JSON.stringify(value)), false);
+const nativeCall = (f, callId, name, args = {}) => provide(f, {type:'response.function_call_arguments.done',items:[{call_id:callId,name,arguments:JSON.stringify(args)}]});
+const waitFor = async (predicate, label, ms = 5000) => {const end = Date.now() + ms;while (!predicate() && Date.now() < end) await delay(10);assert(predicate(), label);};
+const commits = f => f.peers[0].sent.filter(e => e.type === 'speech_text_buffer.commit').map(e => e.text);
+
+test('a slow lookup while the room talks is answered, not taken for background talk (2026-10-20 10:55)', async t => {
+  const gateway = slowGateway();
+  const f = await fixture({gateway,toolProgressClips:PROGRESS,followUpMs:300,chatterMs:300,chatterSpeechGraceMs:150,staleSpeechMs:150,
+    toolProgressMs:100,toolProgressRepeatMs:250,toolProgressMax:2,idleMs:10000,toolHoldMs:10000});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+  // V's previous answer ends, then "你查一下呗" starts memory_search.
+  device.send(JSON.stringify({type:'playback.state',speaking:true}));await delay(20);
+  device.send(JSON.stringify({type:'playback.state',speaking:false}));
+  nativeCall(f, 'mem', 'memory_search', {query:'在帮哪些项目'});
+  await f.until(() => gateway.waiting.has('memory_search'), 'lookup running');
+  // Someone in the room talks over the wait; ASR starts a turn it never finishes.
+  provide(f, {type:'conversation.item.input_audio_transcription.started'});
+  // Well past the chatter window and its grace: the old rule left here.
+  await waitFor(() => f.audit.filter(e => e.type === 'device.tool-progress').length === 2, 'two progress lines, then no more');
+  await delay(400);
+  assert(!device.events.some(e => e.type === 'call.closed'), 'a running lookup holds the call');
+  const progress = f.audit.filter(e => e.type === 'device.tool-progress');
+  assert.deepEqual(progress.map(e => e.played), [true,true]);
+  assert(progress[1].waitedMs - progress[0].waitedMs >= 250, 'progress lines are spaced');
+  assert.deepEqual(f.audit.filter(e => e.type === 'transcript' && e.source === 'tool-progress').map(e => e.text), PROGRESS.map(c => c.text));
+  assert(device.audio.some(pcm => pcm.includes(PROGRESS[0].pcm)), 'the cached line reaches the speaker');
+  assert.deepEqual(commits(f), [], 'no upstream TTS while the native function waits');
+
+  gateway.waiting.get('memory_search')({ok:true,output:{content:[{type:'text',text:'V Voice、Makaron'}]}});
+  await f.until(() => f.peers[0].sent.some(e => e.type === 'conversation.item.create' && JSON.stringify(e).includes('V Voice')), 'result to the model');
+  await delay(150);
+  assert(!device.events.some(e => e.type === 'call.closed'), 'the windows restart when the result is back');
+  // V answers; only after that answer does the follow-up window close the call.
+  provide(f, {type:'response.created',response_id:'answer'});
+  provide(f, {type:'response.output_audio.delta',response_id:'answer',delta:floatAudio([0.1,-0.1])});
+  provide(f, {type:'response.done',response_id:'answer',response:{id:'answer',status:'completed'}});
+  device.send(JSON.stringify({type:'playback.state',speaking:true}));await delay(20);
+  device.send(JSON.stringify({type:'playback.state',speaking:false}));
+  const answered = Date.now();
+  await f.until(() => device.events.some(e => e.type === 'call.closed'), 'follow-up close');
+  assert.equal(device.events.find(e => e.type === 'call.closed').reason, 'idle');
+  assert(Date.now() - answered >= 250, 'counted from the answer');
+  assert(!commits(f).includes(BACKGROUND_LEAVE_LINE));
+});
+
+test('a lookup that fails at once and gets no reply makes V say so instead of hanging up (2026-10-19 11:03)', async t => {
+  // No local calendar is configured, as on the Shanghai node: feishu_calendar fails in 1 ms.
+  const f = await fixture({toolFailureMs:100,followUpMs:300,idleMs:300});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+  nativeCall(f, 'cal', 'feishu_calendar');
+  await f.until(() => f.audit.some(e => e.type === 'tool.delivered' && e.callId === 'cal' && e.result.error), 'tool failed');
+  await waitFor(() => commits(f).includes(TOOL_FAILURE_LINE), 'V says the lookup failed');
+  assert(!device.events.some(e => e.type === 'call.closed'), 'not hung up in silence');
+  assert(f.audit.some(e => e.type === 'device.tool-failure-notice' && e.tool === 'feishu_calendar' && e.spoken));
+  // The room then has the normal follow-up window to answer the question.
+  provide(f, {type:'response.created',response_id:'line'});
+  provide(f, {type:'response.done',response_id:'line',response:{id:'line',status:'completed'}});
+  device.send(JSON.stringify({type:'playback.state',speaking:true}));await delay(20);
+  device.send(JSON.stringify({type:'playback.state',speaking:false}));
+  await f.until(() => device.events.some(e => e.type === 'call.closed'), 'follow-up close');
+  assert.equal(commits(f).filter(text => text === TOOL_FAILURE_LINE).length, 1, 'said once');
+});
+
+test('a failed lookup V answers itself, or a new turn takes over, gets no extra line', async t => {
+  const f = await fixture({toolFailureMs:100});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+  nativeCall(f, 'cal', 'feishu_calendar');
+  await f.until(() => f.audit.some(e => e.type === 'tool.delivered' && e.callId === 'cal'), 'tool failed');
+  // "日历的配置还没准备好，我帮你交给后台查可以吗？"
+  provide(f, {type:'response.created',response_id:'sorry'});
+  provide(f, {type:'response.output_audio.delta',response_id:'sorry',delta:floatAudio([0.1])});
+  provide(f, {type:'response.done',response_id:'sorry',response:{id:'sorry',status:'completed'}});
+  // Then the model chains a second lookup that fails too, and the user speaks before any line.
+  nativeCall(f, 'cal2', 'feishu_calendar', {start:'2026-10-19'});
+  await f.until(() => f.audit.some(e => e.type === 'tool.delivered' && e.callId === 'cal2'), 'second failure');
+  provide(f, {type:'conversation.item.input_audio_transcription.completed',transcript:'不用了，你上网查一下 NBA'});
+  await delay(2600);
+  assert(!commits(f).includes(TOOL_FAILURE_LINE));
+});
+
+test('a request still being spoken when the chatter window closes is not cut off', async t => {
+  const f = await fixture({followUpMs:2000,chatterMs:150,chatterSpeechGraceMs:500});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+  device.send(JSON.stringify({type:'playback.state',speaking:true}));await delay(20);
+  device.send(JSON.stringify({type:'playback.state',speaking:false}));
+  await delay(100);
+  // A long question begins just before the window closes and runs past it.
+  provide(f, {type:'conversation.item.input_audio_transcription.started'});
+  await delay(300);
+  assert.deepEqual(commits(f), [], 'still listening to the speaker');
+  provide(f, {type:'conversation.item.input_audio_transcription.completed',transcript:'那你帮我看一下明天下午有没有空，顺便把会议改到周五'});
+  await delay(400);
+  assert.deepEqual(commits(f), [], 'a finished request is not background talk');
+  assert(!device.events.some(e => e.type === 'call.closed'));
+});
 
 test('two authenticated devices cannot start calls in the same bound session', async t => {
   const secondToken = 'another-device-token-0123456789abcdef';
