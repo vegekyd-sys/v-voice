@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {setTimeout as delay} from 'node:timers/promises';
 import {createDirectVoiceService} from './session.mjs';
+import {speakerProfile} from '../speaker-native/stream-service.mjs';
 import {VOICE_CAPABILITY_POLICY} from '../gpt-live-h5/capability-policy.mjs';
 
 async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}),model='grok',options={}) {
@@ -95,6 +96,72 @@ test('in speaker routing a background result is spoken through the host gate',as
  assert.equal(back.sent.filter(e=>e.type==='speech_text_buffer.commit').length,1);
  // The caption is published when its audio starts, not ahead of it.
  assert.equal(f.client.sent.some(e=>e.type==='transcript'&&e.source==='V-backend'),false);
+});
+
+// Call 6683ae19 (2026-10-20 21:39): the father asked for a company summary,
+// the child then asked V to talk only to her, the task finished during that,
+// and the result was never said, not even when the father came back.
+const family=[{id:'speaker:local1',label:'Speaker A'},{id:'speaker:local0',label:'Speaker B'}];
+const persona=(speakerId,mode='auto',targetId)=>speakerProfile({speakerId,participants:family,addresseeIds:[speakerId],mode,targetId});
+async function heldForFather(t){
+ let native;const said=[];
+ const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,value)=>{native=value;},close(){},audio(){},assistant(){},hostSpeech:async(_id,text)=>{said.push(text);native.clarify(text);return true;}};
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}),'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ const father=persona('speaker:local1'),child=persona('speaker:local0','exclusive','speaker:local0');
+ await native.prepare(father.instructions,father.key,[]);
+ const asked=f.peers.at(-1);asked.emit('message',Buffer.from(JSON.stringify({type:'response.function_call_arguments.done',items:[{call_id:'company-summary',name:'delegate_to_v',arguments:JSON.stringify({question:'总结公司运转情况'})}]})),false);
+ for(let i=0;i<100&&!f.audit.some(e=>e.type==='backend.started');i++)await delay(5);
+ await native.prepare(child.instructions,child.key,[]);const childBridge=f.peers.at(-1);
+ f.completeBackend('公司运转正常，夜班交付了六个项目。');
+ for(let i=0;i<200&&!f.audit.some(e=>e.type==='backend.result-held');i++)await delay(5);
+ return {f,said,native,childBridge,back:async()=>{const p=persona('speaker:local1','exclusive','speaker:local0');await native.prepare(p.instructions,p.key,[]);return f.peers.at(-1);}};
+}
+
+test('a result finished while V talks to someone else is held, not spoken to them',async t=>{
+ const {f,said,childBridge}=await heldForFather(t);
+ assert(f.audit.some(e=>e.type==='backend.result-held'&&e.callId==='company-summary'));
+ for(let i=0;i<100&&!said.length;i++)await delay(10);
+ // The child hears only that a result exists, never the father's content.
+ assert.equal(said.length,1);assert.doesNotMatch(said[0],/六个项目/);
+ assert.equal(JSON.stringify(childBridge.sent).includes('六个项目'),false);
+});
+
+test('the held result reaches the requester as soon as their persona exists and is spoken if unanswered',async t=>{
+ const {f,said,back}=await heldForFather(t);
+ for(let i=0;i<100&&!said.length;i++)await delay(10);
+ const father=await back();
+ // Learned before the father's words reach the model, so it does not look it up again.
+ assert(father.sent.some(e=>e.type==='conversation.item.create'&&JSON.stringify(e.items).includes('六个项目')));
+ for(let i=0;i<100&&said.length<2;i++)await delay(10);
+ assert.match(said[1],/六个项目/);
+ assert(f.audit.some(e=>e.type==='backend.result-spoken-late'));
+});
+
+test('a held result the requester was already answered from is not repeated',async t=>{
+ const {f,said,back}=await heldForFather(t);
+ for(let i=0;i<100&&!said.length;i++)await delay(10);
+ const father=await back();
+ father.emit('message',Buffer.from(JSON.stringify({type:'response.output_text.done',text:'公司运转正常，夜班交付了六个项目。'})),false);
+ for(let i=0;i<100&&!f.audit.some(e=>e.type==='backend.result-answered');i++)await delay(10);
+ assert(f.audit.some(e=>e.type==='backend.result-answered'));assert.equal(said.length,1);
+});
+
+test('a held result is still spoken when the requester came back about something else',async t=>{
+ const {f,said,back}=await heldForFather(t);
+ for(let i=0;i<100&&!said.length;i++)await delay(10);
+ const father=await back();
+ father.emit('message',Buffer.from(JSON.stringify({type:'response.output_text.done',text:'五加六等于十一，还有别的想算的吗？'})),false);
+ for(let i=0;i<100&&said.length<2;i++)await delay(10);
+ assert.match(said[1]??'',/六个项目/);assert.equal(f.audit.some(e=>e.type==='backend.result-answered'),false);
+});
+
+test('asking about a task that already finished returns its result instead of nothing running',async t=>{
+ const {f,back}=await heldForFather(t);
+ const father=await back();
+ father.emit('message',Buffer.from(JSON.stringify({type:'response.function_call_arguments.done',items:[{call_id:'progress',name:'openclaw_agent_control',arguments:JSON.stringify({mode:'status',text:'怎么查那么久'})}]})),false);
+ for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='progress');i++)await delay(5);
+ const delivered=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='progress');
+ assert.equal(delivered.result.status,'completed');assert.match(delivered.result.result,/六个项目/);assert.match(delivered.result.instruction,/不要重新查询/);
 });
 
 for (const model of ['grok', 'seeduplex']) test(`${model} session initializes with the shared capability policy and real backend adapter`, async t => {
