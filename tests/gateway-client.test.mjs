@@ -96,3 +96,11 @@ test('a startup credential rejection still fails admission at once',async t=>{
  t.after(async()=>{for(const c of server.clients)c.terminate();await new Promise(r=>server.close(r));});
  await assert.rejects(connectGatewayClient({url:`ws://127.0.0.1:${server.address().port}`,token:'fixture-only',reconnectMs:20},{startupTimeoutMs:3000}),/UNAUTHORIZED/);
 });
+test('a session subscriber renews sessions.subscribe on every connection, and only when asked',async t=>{
+ const plain=await fixture(t);await delay(10);assert.equal(plain.requests.some(r=>r.method==='sessions.subscribe'),false);
+ const f=await fixture(t,(ws,r)=>{if(r.method==='sessions.subscribe')ws.send(JSON.stringify({type:'res',id:r.id,ok:true,payload:{subscribed:true}}));},{subscribeSessions:true});
+ for(let i=0;i<50&&!f.requests.some(r=>r.method==='sessions.subscribe');i++)await delay(5);
+ assert.equal(f.requests.filter(r=>r.method==='sessions.subscribe').length,1);
+ f.peer.terminate();for(let i=0;i<100&&f.requests.filter(r=>r.method==='sessions.subscribe').length<2;i++)await delay(10);
+ assert.equal(f.requests.filter(r=>r.method==='sessions.subscribe').length,2,'a new socket is a new subscription');
+});

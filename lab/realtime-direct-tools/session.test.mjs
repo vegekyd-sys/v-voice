@@ -19,7 +19,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   if(method==='voice.product.task.cancel'){sdkTask.status='cancelled';return {taskId:sdkTask.taskId,cancelled:true};}
   return invoke(args,method);
  }};
- const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,...options});
+ const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
  const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
@@ -571,4 +571,101 @@ test('streaming pickup asks the Speaker host to open a greeting gate before nati
  const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
  f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);
  assert.equal(requests,1);assert.equal(f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').length,1);
+});
+
+const FAST_NARRATION={firstMs:0,firstHeartbeatMs:300,settleMs:20,stageGapMs:60,factGapMs:0,heartbeatMs:300,quietAfterUserMs:0,startMs:30};
+const until=async(predicate,ms=3000)=>{for(const end=Date.now()+ms;Date.now()<end;await delay(5))if(predicate())return true;return false;};
+const toolEvent=(f,runId,phase,name,toolCallId,args)=>f.service.handleEvent({event:'session.tool',payload:{runId,stream:'tool',sessionKey:'agent:makaron:explicit:personal-fixture',data:{phase,name,toolCallId,...(args?{args}:{})}}});
+test('a long background task narrates its real stages on an idle phone line, then its result still arrives',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:FAST_NARRATION});t.after(()=>f.service.dispose());
+ const spoken=()=>f.upstream.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text);
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'task',name:'delegate_to_v',arguments:JSON.stringify({question:'查资料并整理成简短报告'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ toolEvent(f,'another-session-run','start','memory_search','foreign');
+ toolEvent(f,'sdk-fixture-run','start','web_search','search-1',{query:'勇士 新赛季 前十场 赛程'});
+ assert(await until(()=>spoken().includes('后台在搜“勇士 新赛季 前十场 赛程”。')),'what the backend searches for is announced');
+ toolEvent(f,'sdk-fixture-run','result','web_search','search-1');toolEvent(f,'sdk-fixture-run','start','web_fetch','fetch-1',{url:'https://www.nba.com/warriors/schedule?x=1'});
+ assert(await until(()=>spoken().includes('后台在看 nba.com 上的网页。')),'a new subject is announced after the gap; only the site, not the path');
+ assert(await until(()=>spoken().some(x=>/^还在弄，已经\d+秒了，刚才在看 nba\.com 上的网页。$/.test(x))),'an unchanged stage is repeated with elapsed time');
+ assert.equal(spoken().some(x=>x.includes('查记忆')),false,'another run never speaks on this call');
+ assert.deepEqual([...new Set(f.audit.filter(e=>e.type==='backend.progress-spoken').map(e=>e.kind))],['stage','heartbeat']);
+ const before=spoken().length;f.completeBackend('报告整理好了，一共三条结论。');
+ assert(await until(()=>spoken().slice(before).some(x=>x.includes('三条结论'))),'the result follows the narration');
+ assert(f.audit.some(e=>e.type==='backend.stages-observed'&&e.steps===2));
+});
+test('task narration never injects speech while a native lookup is still pending',async t=>{
+ const f=await fixture(()=>new Promise(()=>{}),'seeduplex',{narration:FAST_NARRATION});t.after(()=>f.service.dispose());
+ const native=(id,name,args)=>f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+ native('task','delegate_to_v',{question:'做一个长任务'});assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ native('lookup','memory_search',{query:'正在等的原生查询'});assert(await until(()=>f.audit.some(e=>e.type==='tool.invoke'&&e.name==='memory_search')));
+ toolEvent(f,'sdk-fixture-run','start','web_search','search-1');await delay(700);
+ assert.equal(f.upstream.sent.some(x=>x.type==='speech_text_buffer.commit'&&x.text.startsWith('后台')),false);
+ assert.equal(f.audit.some(e=>e.type==='backend.progress-spoken'),false);
+});
+test('under multi-speaker routing task narration passes the output gate as host speech',async t=>{
+ const hosted=[];
+ const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async()=>{},close(){},audio(){},pending:()=>false,hostSpeech:async(_id,text,options)=>{hosted.push({text,options});return true;}};
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{speakerRouting:routing,narration:FAST_NARRATION});t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'task',name:'delegate_to_v',arguments:JSON.stringify({question:'查资料'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ toolEvent(f,'sdk-fixture-run','start','memory_search','memory-1');
+ assert(await until(()=>hosted.length>0));
+ assert.deepEqual(hosted[0],{text:'后台在翻记忆里的记录。',options:{source:'task-progress'}});
+ assert.equal(f.upstream.sent.some(x=>x.type==='speech_text_buffer.commit'&&x.text.startsWith('后台')),false,'not past the gate');
+});
+test('a sub-agent spawned by the task is the same task: its stages are narrated, a stranger session is not',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:FAST_NARRATION});t.after(()=>f.service.dispose());
+ const spoken=()=>f.upstream.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text);
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'task',name:'delegate_to_v',arguments:JSON.stringify({question:'调研一下'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ toolEvent(f,'sdk-fixture-run','start','sessions_spawn','spawn-1');
+ f.service.handleEvent({event:'session.tool',payload:{runId:'sdk-fixture-run',stream:'tool',data:{phase:'result',name:'sessions_spawn',toolCallId:'spawn-1',result:{details:{status:'accepted',childSessionKey:'agent:makaron:subagent:child-1',runId:'child-run-1'}}}}});
+ assert(f.audit.some(e=>e.type==='backend.child-run'&&e.childRunId==='child-run-1'));
+ f.service.handleEvent({event:'session.tool',payload:{runId:'unrelated-run',sessionKey:'agent:makaron:subagent:someone-else',stream:'tool',data:{phase:'start',name:'memory_search',toolCallId:'m-x'}}});
+ f.service.handleEvent({event:'session.tool',payload:{runId:'child-run-1',sessionKey:'agent:makaron:subagent:child-1',stream:'tool',data:{phase:'start',name:'web_fetch',toolCallId:'w-1'}}});
+ assert(await until(()=>spoken().includes('后台在读网页。')),'the child stage is announced');
+ f.service.handleEvent({event:'session.tool',payload:{runId:'child-run-2',sessionKey:'agent:makaron:subagent:child-1',stream:'tool',data:{phase:'start',name:'pdf',toolCallId:'p-1'}}});
+ assert(await until(()=>spoken().includes('后台在读 PDF 文档。')),'a later run of the same child session counts too');
+ assert.equal(spoken().some(x=>x.includes('查记忆')),false);
+});
+test('quick tool calls with long model thinking between them are still narrated (as on V, 2026-10-20)',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:FAST_NARRATION});t.after(()=>f.service.dispose());
+ const spoken=()=>f.upstream.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text);
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'task',name:'delegate_to_v',arguments:JSON.stringify({question:'查官方售价'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ const quick=(name,id,args)=>{toolEvent(f,'sdk-fixture-run','start',name,id,args);toolEvent(f,'sdk-fixture-run','result',name,id);};
+ quick('exec','e1',{command:'curl -s https://example.com'});await delay(200);
+ assert.equal(spoken().some(x=>x.includes('命令')),false,'a shell command tells the caller nothing');
+ quick('web_fetch','w1',{url:'https://www.nba.com/schedule'});
+ assert(await until(()=>spoken().includes('后台在看 nba.com 上的网页。')),'a step that already returned is still what the backend is doing');
+ quick('exec','e2',{command:'python3 parse.py'});quick('web_search','s1',{query:'勇士 直播 平台'});
+ assert(await until(()=>spoken().includes('后台在搜“勇士 直播 平台”。')),'the latest describable step');
+});
+test('in self-notice mode a phone plays no cached line before a tool, and V is told to say its own',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{answer:'查到了'}}),'seeduplex',{toolStartNotice:'model'});t.after(()=>f.service.dispose());
+ const create=f.upstream.sent.find(x=>x.type==='session.create'||x.type==='session.update');
+ assert.match(JSON.stringify(create),/用你自己的话自然地说一句很短的话/);assert.doesNotMatch(JSON.stringify(create),/系统会用你的声音说明正在做什么/);
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'look',name:'memory_search',arguments:JSON.stringify({query:'StackChan'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered')));
+ assert.equal(f.client.sent.some(e=>e.type==='audio'&&e.source==='cached-native-tool-start'),false);
+ assert.equal(f.client.sent.some(e=>e.type==='transcript'&&e.source==='tool-start'),false);
+ assert.equal(f.service.progressNotice(f.reservation.voiceSessionId,0),false,'no cached waiting line either');
+});
+test('the cached tool-start line remains the default for a direct service and for devices',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{answer:'查到了'}}),'seeduplex');t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'look',name:'memory_search',arguments:JSON.stringify({query:'StackChan'})}]});
+ assert(await until(()=>f.client.sent.some(e=>e.type==='transcript'&&e.source==='tool-start')));
+});
+test("the backend's own preamble is said before its first tool returns, and only once",async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:FAST_NARRATION});t.after(()=>f.service.dispose());
+ const spoken=()=>f.upstream.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text);
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'task',name:'delegate_to_v',arguments:JSON.stringify({question:'查勇士赛程'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ const preamble=(runId,text)=>f.service.handleEvent({event:'agent',payload:{runId,stream:'item',data:{kind:'preamble',phase:'end',progressText:text}}});
+ preamble('stranger-run','别人的进展');preamble('sdk-fixture-run','先去 NBA 官网拿勇士前十场赛程。');
+ assert(await until(()=>spoken().includes('先去 NBA 官网拿勇士前十场赛程。')));
+ f.progressBackend('先去 NBA 官网拿勇士前十场赛程。');preamble('sdk-fixture-run','先去 NBA 官网拿勇士前十场赛程。');preamble('sdk-fixture-run','见 https://nba.com/x');await delay(300);
+ assert.equal(spoken().filter(x=>x.includes('NBA 官网')).length,1,'the same line from both sources is said once');
+ assert.equal(spoken().some(x=>x.includes('别人')||x.includes('https')),false);
+ assert(f.audit.some(e=>e.type==='backend.progress-spoken'&&e.kind==='fact'));
 });

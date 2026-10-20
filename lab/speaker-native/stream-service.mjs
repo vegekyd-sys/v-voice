@@ -307,7 +307,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     initialInstructions(id,text){return sessions.has(id)?text.replace('现在正在电话中和 Tianyi（天懿）本人交流','正在电话中与主机当前指定的人物交流；账号与工具仍属于原电话入口，不随人物切换').replace('现在你通过家里的智能音箱和 Tianyi（天懿）本人进行测试','现在你通过家里的智能音箱与主机当前指定的人物交流；账号与工具仍属于原入口，不随人物切换'):text;},
     /** A fixed host line in V's voice (a device's parting line). It replaces any
      * speculative input and passes the gate; it does not consult Decision. */
-    async hostSpeech(id,text){
+    async hostSpeech(id,text,options){
       const s=sessions.get(id);if(!s||s.closed||!s.native)return false;
       if(s.input)s.input.cancelled=true;
       clearTimeout(s.responseDeadline);
@@ -317,7 +317,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
       try{if(!s.prepared)await s.native.prepare('主机会用你的声音说一句固定的话。不调用工具。','speaker-host',[]);}
       catch{return false;}
       if(s.closed||s.input!==c||c.cancelled)return false;
-      s.prepared=true;s.gate.allow(c.token);s.native.clarify?.(text);return true;
+      s.prepared=true;s.gate.allow(c.token);s.native.clarify?.(text,options);return true;
     },
     close,upgrade(_req,socket){socket.destroy();},
     snapshot:()=>({enabled:true,streaming:true,activeSessions:sessions.size,decisionCalls,inputSeconds:inputBytes/48000}),
