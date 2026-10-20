@@ -5,7 +5,7 @@ import {synthesizeReply} from '../volc-speaker/tts.mjs';
 const dir='artifacts/volc-speaker/auto';await mkdir(dir,{recursive:true,mode:0o700});
 const env=await loadCredentials();
 const fixtures=[
- ['intro-a','zh_male_dayi_uranus_bigtts','你好，我叫天意，是十二的爸爸。我们先聊聊产品设计，怎么把复杂的功能做简单？','A'],
+ ['intro-a','zh_male_dayi_uranus_bigtts','你好，我叫天懿，是十二的爸爸。我们先聊聊产品设计，怎么把复杂的功能做简单？','A'],
  ['guess-b','zh_female_vv_uranus_bigtts','爸爸，我也想问，月亮为什么会变成弯弯的小船？','B'],
  ['ask-a','zh_male_dayi_uranus_bigtts','你先跟他介绍一下自己吧，然后再问月亮的问题。','A'],
  ['intro-b','zh_female_vv_uranus_bigtts','我叫十二，是刚才提到的孩子。你可以用简单的例子解释月亮吗？','B'],

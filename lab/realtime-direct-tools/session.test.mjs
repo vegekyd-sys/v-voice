@@ -113,7 +113,7 @@ test('Seeduplex audible greeting reaches the browser transcript and audit exactl
  f.event({type:'response.output_audio.delta',response_id:'hello',delta:pcm.toString('base64')});
  f.event({type:'response.output_audio.delta',response_id:'hello',delta:pcm.toString('base64')});
  const text=f.client.sent.filter(e=>e.type==='transcript');
- assert.equal(text.length,1);assert.equal(text[0].text,'天意，你好，我是 V，在呢。');
+ assert.equal(text.length,1);assert.equal(text[0].text,'天懿，你好，我是 V，在呢。');
  assert.equal(text[0].role,'assistant');assert.equal(text[0].final,true);assert.equal(text[0].source,'greeting');
  assert.equal(f.client.sent.filter(e=>e.type==='audio').length,2);
  assert.equal(f.audit.filter(e=>e.type==='transcript'&&e.source==='greeting').length,1);
@@ -525,4 +525,11 @@ test('a slow native lookup gets a cached progress line, never upstream TTS, and 
  native('web','web_search',{query:'NBA'});
  for(let i=0;i<100&&!f.client.sent.some(e=>e.type==='tool.result'&&e.callId==='web');i++)await delay(2);
  assert.equal(f.client.sent.find(e=>e.type==='tool.result'&&e.callId==='web').failed,true);
+});
+
+test('streaming pickup asks the Speaker host to open a greeting gate before native SayHello',async t=>{
+ let host,requests=0;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,lazyNative:()=>false,bind:async(_id,native)=>{host=native;},greet:async()=>{requests++;host.greet();},close(){},audio(){}};
+ const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);
+ assert.equal(requests,1);assert.equal(f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').length,1);
 });

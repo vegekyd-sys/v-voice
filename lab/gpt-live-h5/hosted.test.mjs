@@ -161,3 +161,17 @@ test("a camera device's photo upload reaches the device endpoint outside the pag
   assert.equal((await f.request("/device/vision", "", {}, { host: "attacker.example" })).status, 403);
   assert.equal(uploads.length, 1);
 });
+
+
+test('a retired direct transport releases its visitor lock before heartbeat expiry, without evicting a live or cleanup-pending call',async t=>{
+ const live=new Set();let id=0;const directVoice={models:()=>[{id:'seeduplex',available:true}],reserve:async()=>{const voiceSessionId='direct-'+(++id);live.add(voiceSessionId);return {voiceSessionId,transport:'gateway-relay'};},hasSession:id=>live.has(id),close:async id=>live.delete(id),dispose:async()=>{}};
+ const f=await fixture(t,{directVoice}),a=await f.visitor(),b=await f.visitor();
+ const old=await(await f.request('/voice/api/session?entry=tianyi',a,{model:'seeduplex'})).json();
+ assert.equal((await f.request('/voice/api/session?entry=tianyi',b,{model:'seeduplex'})).status,409);
+ // The transport has finished its own cleanup, while the dead phone cannot POST close.
+ live.delete(old.voiceSessionId);
+ const status=await(await f.request('/voice/api/status?entry=tianyi',a)).json();assert.equal(status.activeCall,false);assert.equal(status.releaseReadiness.activeCalls,0);
+ const next=await(await f.request('/voice/api/session?entry=tianyi',b,{model:'seeduplex'})).json();assert.notEqual(next.voiceSessionId,old.voiceSessionId);
+ assert.equal((await f.request('/voice/api/close?entry=tianyi',a,old)).status,409);
+ assert(live.has(next.voiceSessionId));
+});

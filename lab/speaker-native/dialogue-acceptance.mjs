@@ -1,7 +1,7 @@
 // Assertions for the fixed synthetic father/child corpus, never routing rules.
 export function dialogueAcceptance(events){
   const decisions=events.filter(e=>e.type==='speaker.decision'),last=decisions.at(-1),people=last?.participants??[];
-  const father=people.find(p=>p.name==='天意'&&p.role==='adult'),child=people.find(p=>['十二','12'].includes(p.name)&&p.role==='child');
+  const father=people.find(p=>p.name==='天懿'&&p.role==='adult'),child=people.find(p=>['十二','12'].includes(p.name)&&p.role==='child');
   const childQuestion=decisions.find(e=>/月亮.*弯/.test(e.turn?.text??''));
   const side=decisions.find(e=>/杯子/.test(e.turn?.text??'')),both=decisions.find(e=>/分别.*建议/.test(e.turn?.text??''));
   const focus=decisions.find(e=>/接下来只/.test(e.turn?.text??'')),bystander=decisions.find(e=>/方法.*有意思/.test(e.turn?.text??''));

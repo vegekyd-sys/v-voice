@@ -69,6 +69,17 @@
             </div>
           </div>
           <a class="avatar-name" href="./" aria-label="V 通话首页">V</a>
+          <section id="entryNotice" class="entry-notice" role="status" aria-live="polite" aria-atomic="true" aria-labelledby="entryNoticeTitle" hidden>
+            <span class="entry-notice-icon" aria-hidden="true">
+              <svg class="entry-link-icon" viewBox="0 0 24 24" fill="none"><path d="M8 10V7a4 4 0 0 1 8 0v3M7 10h10a2 2 0 0 1 2 2v7H5v-7a2 2 0 0 1 2-2Zm5 4v2" /></svg>
+              <svg class="entry-connection-icon" viewBox="0 0 24 24" fill="none"><path d="M4 8a12 12 0 0 1 16 0M7 12a7.5 7.5 0 0 1 10 0m-7 4a3 3 0 0 1 4 0m-2 4h.01" /></svg>
+            </span>
+            <div class="entry-notice-copy">
+              <h2 id="entryNoticeTitle"></h2>
+              <p id="entryNoticeDescription"></p>
+              <button id="entryNoticeRetry" type="button" hidden>重新连接</button>
+            </div>
+          </section>
           <label id="grokVoicePicker" class="grok-voice-picker" hidden>
             <span>候选女声</span>
             <select id="grokVoice" aria-label="选择 Grok 女声" aria-describedby="grokVoiceHint"></select>
@@ -118,28 +129,30 @@
             </section>
           </div>
           <div id="conversationFooter">
-            <div id="statusHome">
-              <p
-                id="status"
-                class="status-text"
-                data-notice="normal"
-                role="status"
-              >
-                拨号后，直接说话。
-              </p>
-            </div>
-            <div class="task-progress">
-              <span id="taskStatus" class="task-status" role="status"></span
-              ><button
-                id="cancel"
-                type="button"
-                hidden
-                disabled
-                aria-label="取消后台任务"
-                title="取消后台任务"
-              >
-                取消
-              </button>
+            <div id="callStatusBar" class="call-status-bar">
+              <div id="statusHome">
+                <p
+                  id="status"
+                  class="status-text"
+                  data-notice="normal"
+                  role="status"
+                >
+                  拨号后，直接说话。
+                </p>
+              </div>
+              <div class="task-progress">
+                <span id="taskStatus" class="task-status" role="status"></span
+                ><button
+                  id="cancel"
+                  type="button"
+                  hidden
+                  disabled
+                  aria-label="取消后台任务"
+                  title="取消后台任务"
+                >
+                  取消
+                </button>
+              </div>
             </div>
             <form id="steerForm" class="steer-form" data-open="false">
               <label class="sr-only" for="steerText">补充内容</label

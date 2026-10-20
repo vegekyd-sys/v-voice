@@ -6,8 +6,8 @@ const dir=new URL('../../artifacts/speaker-native/',import.meta.url);await mkdir
 const env=await loadCredentials(process.env.VOICE_CREDENTIAL_ENV_FILE??process.env.VOLC_SPEAKER_ENV_FILE);
 const clips=[
   ['ask-v2','A','V，天空为什么是蓝色的？请用一句话回答。'],
-  ['intro','A','我叫天意，是十二的爸爸。'],
-  ['child','B','我叫十二，是天意的孩子。V，月亮为什么有时候是弯弯的？'],
+  ['intro','A','我叫天懿，是十二的爸爸。'],
+  ['child','B','我叫十二，是天懿的孩子。V，月亮为什么有时候是弯弯的？'],
   ['side','A','十二，把抽屉里的杯子递给我。'],
   ['collective','A','V，分别给我和十二一个建议，怎么一起做一个简单的小游戏？'],
   ['focus','A','V，接下来只跟十二聊，其他人说话不用回答。'],

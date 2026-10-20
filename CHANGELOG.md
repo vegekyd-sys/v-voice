@@ -1,3 +1,23 @@
+## Candidate - Home entry guidance
+
+- Present missing/expired personal-link guidance under the home portrait, with concise copy and no unusable dial controls.
+- Give temporary connection failures a manual reconnect action; keep call-time status separate and preserve existing entry authorization.
+- Source integration only; no production activation is included.
+
+## Candidate - Compact multi-speaker status
+
+- Keep the current person and active search/background work on one line; shorten Speaker notices and truncate long names without expanding the footer.
+- Show recovery/errors in place of routine work text while preserving the task cancel control and full accessible text.
+- Source integration only; this PR does not activate a production release.
+
+## 2026-10-20 - Pickup greeting and retired call ownership
+
+- Retain already streamed audio on a name-only update; speaker, role and addressee changes still prepare a new native persona.
+- Correct the personal name to Tianyi / 天懿 in native voice prompts, greetings and tool descriptions; entry IDs and account permissions stay unchanged.
+- Restore the native Seeduplex welcome without requiring a registered voice or first utterance; caller speech supersedes a pending greeting.
+- Reconcile web entry ownership with the direct transport registry before admission, releasing fully closed calls while preserving live and cleanup-pending sessions.
+- Safari latency/redial diagnosis remains separate in PR #33; this change does not claim a fix for it.
+
 # Voice release log
 
 ## Voice · 20261020 long calls and robot multi-speaker · source main

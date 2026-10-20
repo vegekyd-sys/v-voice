@@ -12,8 +12,8 @@ await mkdir(dir,{recursive:true,mode:0o700});
 const port=26324,origin='http://127.0.0.1:'+port;
 const voices={A:'zh_male_dayi_uranus_bigtts',B:'zh_female_vv_uranus_bigtts'};
 const samples=[
-  ['intro-A','A','你好，我叫天意，是十二的爸爸。'],
-  ['intro-B','B','你好，我叫十二，是天意的孩子。'],
+  ['intro-A','A','你好，我叫天懿，是十二的爸爸。'],
+  ['intro-B','B','你好，我叫十二，是天懿的孩子。'],
   ['identity-A','A','现在是谁在说话？请只说我的名字。不确定就说不确定。'],
   ['identity-B','B','现在是谁在说话？请只说我的名字。不确定就说不确定。'],
   ['topic-A','A','V，月亮为什么有时候是弯弯的？请简短解释。'],

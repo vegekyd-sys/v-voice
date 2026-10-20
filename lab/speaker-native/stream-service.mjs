@@ -29,8 +29,9 @@ export function echoOf(text,recent=[]){
 export function speakerProfile({speakerId,participants,addresseeIds,mode='auto',targetId}){
   const people=participants.map(({id,label,name,role,certainty})=>({id,name:name??label,role,certainty}));
   const to=addresseeIds.map(id=>people.find(p=>p.id===id)).filter(Boolean);
-  // A name/role change requires a fresh native session, not a late context ACK.
-  const key=JSON.stringify({speakerId,to,mode,targetId:mode==='exclusive'?targetId:null});
+  // Names are already audible in the admitted introduction. Only routing or
+  // treatment changes require a fresh native persona and audio replay.
+  const key=JSON.stringify({speakerId,to:to.map(({id,role})=>({id,role})),mode,targetId:mode==='exclusive'?targetId:null});
   const instructions='当前人物信息由通话主机提供，仅影响对话对象与表达，不授予任何账号或工具权限。'+JSON.stringify({speaker:speakerId,people,to,mode,focus:targetId})+'。本轮只向to中的人物回答，开头自然称呼对方。孩子用简单直观的解释和具体例子，成人正常准确表达。不朗读人物标注。普通科普、小故事、简单家庭小游戏建议直接回答，不需要后台；明确要求查询、执行或复杂任务时仍实际调用工具。';
   return {key,instructions};
 }
@@ -225,6 +226,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
       s.tracker=new OnlineSpeakerTracker({embed:pcm=>embedding.compute(pcm),recycle:s.farField,onEvent:e=>{
         if(s.closed)return;
         if(e.type==='evicted'){s.router.forget(personId(e.speakerId));send(s,{type:'speaker.evicted',speakerId:e.speakerId});}
+        if(e.type==='start'&&s.input?.greeting){s.input.cancelled=true;clearTimeout(s.responseDeadline);s.gate.deny();s.native.cancel?.();s.nativeBusy=false;send(s,{type:'speaker.greeting-cancelled',reason:'new-speech'});}
         if(e.type==='start'&&s.input?.ending){s.input.cancelled=true;s.gate.deny();s.native.cancelEnd?.();s.native.cancel?.();s.nativeBusy=false;send(s,{type:'speaker.end-revoked',reason:'new-speech'});}
         if(e.type==='identified')identified(s,e);
         if(e.type==='end'&&s.input?.segmentIds.has(e.segment.id))s.input.endMs=e.segment.endMs;
@@ -236,6 +238,27 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     },
     has:id=>sessions.has(id),lazyNative:id=>sessions.has(id),controlsEnding:id=>sessions.has(id),
     pending:id=>sessions.get(id)?.gate.status==='pending',
+    async greet(id){
+      const s=sessions.get(id);if(!s?.ready||s.closed||s.greetingRequested)return;
+      s.greetingRequested=true;
+      // A caller who has already started speaking takes precedence over pickup.
+      if(s.input||s.tracker.current)return;
+      const c={token:'greeting',greeting:true,decided:true,segmentIds:new Set()};
+      s.input=c;s.gate.begin(c.token);
+      try{
+        await s.native.prepare('电话刚接通，只说一次简短欢迎语，然后听对方说话。不要猜新说话人的身份或调用工具。','speaker-greeting',[]);
+        if(s.closed||s.input!==c||c.cancelled)return;
+        s.prepared=true;s.gate.allow(c.token);
+        send(s,{type:'speaker.greeting-start'});
+        s.responseDeadline=setTimeout(()=>{if(s.closed||s.input!==c||c.cancelled||c.responded)return;c.cancelled=true;s.gate.deny(c.token);s.native.cancel?.();s.nativeBusy=false;send(s,{type:'speaker.greeting-unavailable'});},limits.greetingMs??8000);s.responseDeadline.unref?.();
+        s.native.greet?.();
+      }catch{
+        if(s.closed||s.input!==c||c.cancelled)return;
+        c.cancelled=true;s.gate.deny(c.token);s.nativeBusy=false;
+        send(s,{type:'speaker.greeting-unavailable'});
+      }
+    },
+
     async bind(id,native,listener){
       const s=sessions.get(id);if(!s)return;s.native=native;s.listener=listener;await embedding.ready;
       await connectAsr(s);if(s.closed)return;s.ready=true;
@@ -259,9 +282,9 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     // Input is the session's own rate; budgets count 24 kHz-equivalent bytes.
     audio(id,input){const s=sessions.get(id);if(!s?.ready||s.closed)throw Error('流式识人尚未就绪');const bytes=s.inputRate===16000?input.length*1.5:input.length;inputBytes+=bytes;s.inputBytes+=bytes;if(s.inputBytes>48000*(limits.inputSeconds??1800))throw Error('本轮音频预算已用完');const pcm=s.inputRate===16000?Buffer.from(input):s.resampler.push(input),startMs=s.window.bytes/32;s.window.append(pcm);s.clock.push({startMs,endMs:s.window.bytes/32,at:performance.now()});if(s.clock.length>1200)s.clock.shift();if(s.asrReady)s.asr.append(pcm);s.tracker.push(pcm);
       if(s.latestAsr)for(const turn of normalizeFinals(s,s.latestAsr))enqueue(s,turn);return true;},
-    dispatch(id,kind,value,deliver){const s=sessions.get(id);if(!s)return false;if(s.gate.status!=='closed'){if(kind==='audio')s.nativeBusy=true;if(kind==='done'){s.nativeBusy=false;if(s.input?.host)s.input.hostDone=true;}}try{const c=s.input;s.gate.dispatch(()=>{if(kind==='tool'&&value.name==='end_call'){s.native.rejectNativeEnd?.(value);send(s,{type:'speaker.end-withheld',reason:'native-end-unconfirmed'});return;}if(c&&s.input===c&&['audio','tool'].includes(kind)){c.responded=true;clearTimeout(s.responseDeadline);}deliver();},kind==='audio'?value.length:0);}catch(error){if(s.input)s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;send(s,{type:'speaker.error',message:error.message});}return true;},
+    dispatch(id,kind,value,deliver){const s=sessions.get(id);if(!s)return false;if(s.gate.status!=='closed'){if(kind==='audio')s.nativeBusy=true;if(kind==='done'){s.nativeBusy=false;if(s.input?.host)s.input.hostDone=true;}}try{const c=s.input;s.gate.dispatch(()=>{if(kind==='tool'&&c?.greeting)return;if(kind==='tool'&&value.name==='end_call'){s.native.rejectNativeEnd?.(value);send(s,{type:'speaker.end-withheld',reason:'native-end-unconfirmed'});return;}if(c&&s.input===c&&['audio','tool'].includes(kind)){c.responded=true;clearTimeout(s.responseDeadline);}deliver();},kind==='audio'?value.length:0);}catch(error){if(s.input)s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;send(s,{type:'speaker.error',message:error.message});}return true;},
     assistant(id,text){const s=sessions.get(id);if(s&&text?.trim()){s.router.assistant(text);if(s.farField){s.recentAssistant.push(plain(text).slice(-1200));s.recentAssistant=s.recentAssistant.slice(-4);}s.acceptedHistory.push({role:'assistant',text:text.slice(-800)});s.acceptedHistory=s.acceptedHistory.slice(-8);}},
-    initialInstructions(id,text){return sessions.has(id)?text.replace('现在正在电话中和 Tianyi（天意）本人交流','正在电话中与主机当前指定的人物交流；账号与工具仍属于原电话入口，不随人物切换').replace('现在你通过家里的智能音箱和 Tianyi（天意）本人进行测试','现在你通过家里的智能音箱与主机当前指定的人物交流；账号与工具仍属于原入口，不随人物切换'):text;},
+    initialInstructions(id,text){return sessions.has(id)?text.replace('现在正在电话中和 Tianyi（天懿）本人交流','正在电话中与主机当前指定的人物交流；账号与工具仍属于原电话入口，不随人物切换').replace('现在你通过家里的智能音箱和 Tianyi（天懿）本人进行测试','现在你通过家里的智能音箱与主机当前指定的人物交流；账号与工具仍属于原入口，不随人物切换'):text;},
     /** A fixed host line in V's voice (a device's parting line). It replaces any
      * speculative input and passes the gate; it does not consult Decision. */
     async hostSpeech(id,text){

@@ -882,7 +882,7 @@ body[data-reading="true"] .content-card {
   }
   body:is([data-call-state="idle"]:not([data-conversation="started"]),
     [data-call-state="dialing"]) .conversation-panel:not(:has(
-      .status-text[data-notice="message"]:not(:empty), #taskStatus:not(:empty))) {
+      .status-text[data-notice="message"]:not(:empty), #taskStatus:not(:empty), #speakerRoster:not(:empty))) {
     display: none;
   }
   body:is([data-call-state="idle"]:not([data-conversation="started"]),
@@ -1305,7 +1305,7 @@ body[data-reading="true"] .changelog-trigger { visibility: hidden; pointer-event
     scroll-padding-top: 122px;
     scroll-padding-bottom: 96px;
   }
-  body:is([data-call-state="connected"], [data-call-state="ending"]) .conversation-panel #conversationFooter:not(:has(.steer-form[data-open="true"], .status-text[data-notice="message"]:not(:empty), #taskStatus:not(:empty))) {
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .conversation-panel #conversationFooter:not(:has(.steer-form[data-open="true"], .status-text[data-notice="message"]:not(:empty), #taskStatus:not(:empty), #speakerRoster:not(:empty))) {
     display: none;
   }
   body:is([data-call-state="connected"], [data-call-state="ending"]) .conversation-panel #conversationFooter {
@@ -1375,3 +1375,68 @@ body[data-reading="true"] .changelog-trigger { visibility: hidden; pointer-event
 .transcript-turn.user[data-speaker-labeled="true"] .transcript-text { background: var(--speaker-fill); }
 .transcript-turn[data-listen-only="true"] .transcript-meta { color: #8a8490; }
 .transcript-turn[data-listen-only="true"] .transcript-text { opacity: .7; }
+
+/* One quiet status line for the current person, active work and recovery. */
+.call-status-bar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  margin-bottom: 8px;
+  color: #887094;
+  font-size: 12px;
+  line-height: 20px;
+}
+.call-status-bar > #statusHome { min-width: 0; flex: 1; }
+.call-status-bar > #statusHome:has(.status-text:is([data-notice="normal"], [data-notice="progress"])) { display: none; }
+.call-status-bar :is(.speaker-status, .status-text, .task-status) {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: inherit;
+  line-height: inherit;
+  margin: 0;
+}
+.call-status-bar .speaker-status { flex: 0 1 auto; }
+.call-status-bar:has(.task-status:not(:empty)) .speaker-status { max-width: 45%; }
+.call-status-bar .task-progress { min-width: 0; flex: 1; margin: 0; font-size: inherit; }
+.call-status-bar .task-progress button { flex: 0 0 auto; }
+.call-status-bar:has(.task-status:empty) .task-progress { display: none; }
+.call-status-bar:has(#status[data-notice="message"]:not(:empty)) .speaker-status,
+.call-status-bar:has(#status[data-notice="message"]:not(:empty)) .task-status,
+.call-status-bar:has(.speaker-status[data-notice="message"]) .task-status { display: none; }
+.call-status-bar:has(.speaker-status[data-notice="message"]) .speaker-status { max-width: 100%; flex: 1; }
+.call-status-bar:has(#status[data-notice="message"]:not(:empty), .speaker-status[data-notice="message"]) .task-progress { flex: 0 0 auto; }
+.call-status-bar:has(#status[data-notice="message"]:not(:empty), .speaker-status[data-notice="message"]) .task-progress:has(button[hidden]) { display: none; }
+.call-status-bar .speaker-status[data-error="true"] { color: #a46d83; }
+.reader-dock .call-status-bar { padding: 0 8px; }
+.reader-dock .call-status-bar :is(#statusHome, .task-progress) { padding: 0; }
+
+/* First-entry guidance stays with the home portrait, away from call status. */
+.entry-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: min(340px, 100%);
+  margin: 20px auto 0;
+  padding: 17px 18px;
+  border: 1px solid #e9e2ef;
+  border-radius: 18px;
+  background: #fff9;
+  text-align: left;
+}
+.entry-notice-icon { display: grid; place-items: center; flex: 0 0 26px; width: 26px; height: 26px; color: #9b88ad; }
+.entry-notice-icon svg { width: 22px; height: 22px; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.entry-notice-copy { min-width: 0; }
+.entry-notice h2 { font-size: 14px; font-weight: 600; line-height: 26px; color: #60516d; }
+.entry-notice p { margin-top: 3px; font-size: 13px; line-height: 1.7; color: #887990; overflow-wrap: anywhere; }
+.entry-notice button { min-height: 36px; margin: 9px -5px -5px; padding: 5px; font-size: 13px; font-weight: 500; color: #806191; }
+.entry-notice .entry-connection-icon, .entry-notice[data-kind="connection"] .entry-link-icon { display: none; }
+.entry-notice[data-kind="connection"] .entry-connection-icon { display: block; }
+body[data-entry-state="unavailable"] :is(.call-actions, #pillHome) { display: none; }
+body[data-entry-state="unavailable"]:not([data-conversation="started"]) .conversation-panel { display: none; }
+body[data-entry-state="unavailable"] .voice-stage { padding-bottom: 0; }
+body[data-entry-state="unavailable"] .portrait-wrap { width: min(280px, 100%, calc(var(--voice-height) - 280px)); }

@@ -66,6 +66,18 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     if(old&&!old.direct)callControlAudit({type:'call.closed',voiceSessionId:old.reservation.voiceSessionId});
     if (context.active === old) {context.active = null;const owner=context.avatarOwners?.get(old?.reservation.voiceSessionId);if(owner)owner.endedAt=Date.now();}
   };
+  const releaseClosedDirectCalls=()=>{
+    if(typeof directVoice?.hasSession!=='function')return;
+    for(const context of [local,...contexts.values()]){
+      const old=context.active;
+      // Reserved, live and cleanup-pending sessions remain owned. Only a
+      // fully retired native session can release another device's lock.
+      if(!old?.direct||directVoice.hasSession(old.reservation.voiceSessionId))continue;
+      visual.forget(old.reservation.voiceSessionId);
+      context.active=null;
+      const owner=context.avatarOwners?.get(old.reservation.voiceSessionId);if(owner)owner.endedAt=Date.now();
+    }
+  };
   const server = createServer(async (req, res) => {
     res.setHeader("referrer-policy", "no-referrer"); res.setHeader("x-content-type-options", "nosniff");
     try {
@@ -160,6 +172,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           contexts.set(contextId, context);
         }
       } else if (!String(req.headers.cookie ?? "").split(/;\s*/u).includes(`v_live_experiment=${cookie}`)) return json(res, 401, { error: "请先打开实验页面" });
+      releaseClosedDirectCalls();
       context.touchedAt = Date.now();
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
         ready: backendReady(), preview, defaultModel, ...(speakerRouting?{speakerRouting:true,speakerStats:speakerRouting.snapshot()}:{}),
@@ -348,6 +361,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     }
   });
   const timer = setInterval(() => {
+    releaseClosedDirectCalls();
     for (const [id, context] of [...contexts, [null, local]]) {
       if (context.active && Date.now() - context.active.touchedAt > 45000) void close(context).catch(() => {});
       if (id && id !== "local-tianyi" && !context.active && !context.creatingSession && !context.listeners.size && Date.now() - context.touchedAt > 1800000) contexts.delete(id);

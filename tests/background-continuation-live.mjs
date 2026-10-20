@@ -35,7 +35,7 @@ try{
  const upstream=peers[0],push=e=>upstream.emit('message',Buffer.from(JSON.stringify(e)),false);
  const mark='VOICE_CANDIDATE_CONTINUE_'+randomUUID().slice(0,8);
  push({type:'conversation.item.input_audio_transcription.completed',transcript:'这是语音 Candidate 测试。挂电话后把进展和结果发在群里。'});
- push({type:'response.function_call_arguments.done',items:[{call_id:'candidate-long-task',name:'delegate_to_v',arguments:JSON.stringify({question:`这是天意授权的语音 Candidate 测试，不点外卖、不付款、不调浏览器、不生成媒体。请实际用 exec 运行 node -e "setTimeout(()=>console.log('${mark}'),8000)"，若返回 process session 就 poll 到退出。只有进程退出后最终回复：语音 Candidate 测试完成：${mark}，挂断后后台正常继续。不得自己发送飞书，宿主会交付。`})}]});
+ push({type:'response.function_call_arguments.done',items:[{call_id:'candidate-long-task',name:'delegate_to_v',arguments:JSON.stringify({question:`这是天懿授权的语音 Candidate 测试，不点外卖、不付款、不调浏览器、不生成媒体。请实际用 exec 运行 node -e "setTimeout(()=>console.log('${mark}'),8000)"，若返回 process session 就 poll 到退出。只有进程退出后最终回复：语音 Candidate 测试完成：${mark}，挂断后后台正常继续。不得自己发送飞书，宿主会交付。`})}]});
  let started;for(let i=0;i<300&&!started;i++){started=audit.find(e=>e.type==='backend.started');await delay(20);}
  assert(started,'Real VLab backend was not admitted');
  await service.close(reservation.voiceSessionId);assert.equal(client.readyState,3);

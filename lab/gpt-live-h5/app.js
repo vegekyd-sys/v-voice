@@ -881,6 +881,20 @@ window.addEventListener("pagehide", () => {
   void stopCall();
 });
 window.addEventListener("pageshow",event=>{if(event.persisted)microphoneSession=createPageMicrophoneSession();});
+function showEntryNotice(message, { reconnecting = false } = {}) {
+  const needsLink = /本人入口|完整.*入口/u.test(message);
+  const invalidLink = /分享链接.*(?:无效|失效)|入口.*(?:不存在|已关闭)/u.test(message);
+  const crowded = /尝试次数过多|访问的人有点多/u.test(message);
+  $("entryNoticeTitle").textContent = needsLink ? "请从专属链接进入" : invalidLink ? "通话链接暂不可用" : reconnecting ? "V 正在重新连接" : crowded ? "稍等一下，再来找 V" : "暂时没连上 V";
+  $("entryNoticeDescription").textContent = needsLink ? "重新打开完整的个人通话链接，就能和 V 聊天。" : invalidLink ? "请使用最新的完整个人链接重新打开。" : reconnecting ? "稍等片刻，再试着连接。" : crowded ? "当前连接较多，请稍后重试。" : "请检查网络，或稍后重新连接。";
+  $("entryNoticeRetry").hidden = needsLink || invalidLink;
+  $("entryNotice").dataset.kind = needsLink || invalidLink ? "link" : "connection";
+  $("entryNotice").hidden = false;
+  document.body.dataset.entryState = "unavailable";
+  // Initial entry failures belong to the home scene, not the in-call footer.
+  setStatus("拨号后，直接说话。");
+}
+$("entryNoticeRetry").addEventListener("click", () => window.location.reload());
 async function initializeEntry() {
   try {
     const result = await (entryStartup ?? startVoiceEntry({
@@ -914,14 +928,18 @@ async function initializeEntry() {
     refreshGrokVoicePicker();
     $("badge").textContent = liveReady ? "可以拨号" : status.preview === false ? "后端重连中" : "页面预览";
     $("start").disabled = !liveReady;
-    if (liveReady) markVoiceTiming("voice.dial.ready");
-    if (!liveReady) setStatus(status.preview === false ? "V 后端正在重新连接，恢复后请刷新页面。" : "这是页面预览，真实通话需连接候选服务。");
+    if (liveReady) {
+      $("entryNotice").hidden = true;
+      delete document.body.dataset.entryState;
+      markVoiceTiming("voice.dial.ready");
+    } else if (status.preview === false) showEntryNotice("V 后端正在重新连接", { reconnecting: true });
+    else setStatus("这是页面预览，真实通话需连接候选服务。");
   } catch (error) {
     liveReady = false;
     entryError = error.message ?? "暂时无法连接 V，请稍后重试。";
     $("start").disabled = true;
     $("badge").textContent = "暂未连接";
-    setStatus(entryError, { tone: "error" });
+    showEntryNotice(entryError);
   }
 }
 void initializeEntry();
