@@ -484,7 +484,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     productionSpeaker=await (await import('../speaker-native/production.mjs')).createProductionSpeaker({audit:transcriptLog.audit});
     const speakerRouting=productionSpeaker?.service;
     const lark=createVoiceLarkReader({environment:process.env});
-    const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,calendar:lark.calendar,larkRead:lark.read,
+    if(!lark.available)console.warn(JSON.stringify({type:'voice.lark-unavailable'}));
+    const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,calendar:lark.available?lark.calendar:null,larkRead:lark.available?lark.read:null,
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),
       grokExpressiveTags:process.env.XAI_VOICE_EXPRESSIVE_TAGS === '1',

@@ -6,6 +6,7 @@ import {createXiaozhiWire} from './xiaozhi-wire.mjs';
 import {createVolumeStore,targetVolume} from './device-volume.mjs';
 import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
 import {photoAnswer,photoUpload,readLimitedBody} from './device-vision.mjs';
+import {createNearFieldGate,NEAR_FIELD_DEFAULT_DB} from './near-field-gate.mjs';
 
 // A hardware speaker is one more Voice client. It owns only audio I/O, wake and
 // local playback; model sessions, tools, tasks and endings stay in Voice.
@@ -66,7 +67,14 @@ export function parseDeviceEntries(records = []) {
     // Firmware with its own echo cancellation sends abort only once someone has
     // really started talking over V, so that abort may cancel the reply at once.
     if (record.deviceBargeIn !== undefined && typeof record.deviceBargeIn !== 'boolean') throw Error('deviceBargeIn must be true or false');
-    devices.push(Object.freeze({deviceBargeIn:record.deviceBargeIn === true,followUpMs,inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,volume,outputGain,robot:record.robot === true,robotStatus:record.robotStatus === true,camera:record.camera === true,mac,otaToken:mac ? record.token : null,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
+    // Streaming multi-speaker routing (anonymous in-call voices, Decision before
+    // V answers). Off unless the record opts in; needs VOICE_STREAM_SPEAKER=1.
+    if (record.multiSpeaker !== undefined && typeof record.multiSpeaker !== 'boolean') throw Error('multiSpeaker must be true or false');
+    // Adaptive near-field gate: pass only speech this many dB above the learned
+    // room background (TV, far voices). On by default with multiSpeaker; 0 = off.
+    const nearFieldGateDb = record.nearFieldGateDb ?? (record.multiSpeaker === true ? NEAR_FIELD_DEFAULT_DB : 0);
+    if (typeof nearFieldGateDb !== 'number' || !Number.isFinite(nearFieldGateDb) || nearFieldGateDb < 0 || nearFieldGateDb > 30) throw Error('nearFieldGateDb must be 0-30');
+    devices.push(Object.freeze({deviceBargeIn:record.deviceBargeIn === true,followUpMs,multiSpeaker:record.multiSpeaker === true,nearFieldGateDb,inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,volume,outputGain,robot:record.robot === true,robotStatus:record.robotStatus === true,camera:record.camera === true,mac,otaToken:mac ? record.token : null,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
   }
   return devices;
 }
@@ -86,7 +94,7 @@ class DeviceCallClient extends EventEmitter {
 export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '/device/voice',xiaozhiPath = null,otaPath = null,xiaozhiPublicUrl = null,audit = () => {},isSessionBusy = () => false,
   now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,chatterSpeechGraceMs = 15000,toolHoldMs = 180000,
   toolProgressMs = 4000,toolProgressRepeatMs = 15000,toolProgressMax = 3,toolFailureMs = 4000,staleSpeechMs = 6000,
-  resultSilenceMs = 8000,unheardTurnMs = 5000,inputSilentMs = 3000,inputLoudRms = 300,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = DEVICE_PLAYOUT_MAX_BYTES,stallMs = 20000,robotEvaluate = null,volumeStore = createVolumeStore(),visionPath = null,describeImage = null}) {
+  resultSilenceMs = 8000,unheardTurnMs = 5000,inputSilentMs = 3000,inputLoudRms = 300,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = DEVICE_PLAYOUT_MAX_BYTES,stallMs = 20000,uplinkGapMs = 300,uplinkFillMs = 100,robotEvaluate = null,volumeStore = createVolumeStore(),visionPath = null,describeImage = null}) {
   if (!/^\/[a-zA-Z0-9/_-]+$/u.test(path) || visionPath !== null && !/^\/[a-zA-Z0-9/_-]+$/u.test(visionPath)) throw Error('Invalid device path');
   const server = new wsModule.WebSocketServer({noServer:true,maxPayload:65536,perMessageDeflate:false});
   const connections = new Map();
@@ -123,6 +131,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       lastExchangeAt:now()};
     const touch = () => {call.lastActivityAt = call.lastExchangeAt = now();};
     connection.call = call;
+    if (device.nearFieldGateDb) call.nearField = createNearFieldGate({gateDb:device.nearFieldGateDb,sampleRate:DEVICE_INPUT_SAMPLE_RATE});
     call.playout = createDevicePlayout({now,maxBytes:maxBufferedBytes,maxLeadMs:device.playoutLeadMs,bufferedBytes:()=>ws.bufferedAmount,
       sendAudio:pcm=>{if(ws.readyState===1){call.outputBytes+=pcm.length;call.lastActivityAt=now();ws.send(pcm,{binary:true});}},
       sendEvent:event=>sendJson(ws,event)});
@@ -135,6 +144,14 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       if (call.ended) return;
       let event;try {event = JSON.parse(raw);} catch {return;}
       if (call.robot && (event.type === 'transcript' || event.type?.startsWith('tool.'))) call.robot.observe(event.failed ? {...event,type:'tool.error'} : event);
+      // Multi-speaker routing: an admitted turn is the user's finished request;
+      // any tracked voice (TV, room talk) only counts as room speech.
+      if (event.type === 'speaker.admitted' && typeof event.turn?.text === 'string') {
+        call.lastActivityAt = now();call.userTurns++;call.turnSinceReply = true;
+        call.robot?.observe({type:'transcript',role:'user',text:event.turn.text,final:true});
+        return;
+      }
+      if (event.type === 'speaker.identity' || event.type === 'speaker.utterance') {call.roomSpeechAt = now();return;}
       if (event.type === 'audio') {
         const pcm = Buffer.from(String(event.audio ?? ''), 'base64');
         if (!pcm.length || ws.readyState !== 1) return;
@@ -191,10 +208,10 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     };
     call.closed = reason => {
       if (call.ended) return;
-      call.ended = true;clearInterval(call.timer);call.playout.dispose();call.robot?.dispose();
+      call.ended = true;clearInterval(call.timer);clearInterval(call.fillTimer);call.playout.dispose();call.robot?.dispose();
       if (connection.call === call) connection.call = null;
       if (call.id) audit({type:'device.call',voiceSessionId:call.id,stage:'closed',deviceId:device.id,reason:call.reason ?? reason,
-        durationMs:now() - call.startedAt,inputBytes:call.inputBytes,outputBytes:call.outputBytes,userTurns:call.userTurns,gatedInputBytes:call.gatedInputBytes ?? 0,maxInputGapMs:call.maxInputGapMs ?? 0});
+        durationMs:now() - call.startedAt,inputBytes:call.inputBytes,outputBytes:call.outputBytes,userTurns:call.userTurns,gatedInputBytes:call.gatedInputBytes ?? 0,maxInputGapMs:call.maxInputGapMs ?? 0,...(call.nearField ? {nearField:call.nearField.summary()} : {})});
       sendJson(ws, {type:'call.closed',reason:call.reason ?? reason});
     };
     call.end = reason => {
@@ -265,7 +282,9 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       }
       // The provider opened a user turn that never produced text although the
       // microphone has been quiet for seconds: ask once, rather than wait.
-      if (state.userSpeaking && call.speechSince && call.askedAgainFor !== call.speechSince && at - call.speechSince >= unheardTurnMs && micQuiet && gap) {
+      // Under multi-speaker routing the provider only hears speculative input,
+      // and the routing layer owns re-asking (silent for unattributed room talk).
+      if (!call.multiSpeaker && state.userSpeaking && call.speechSince && call.askedAgainFor !== call.speechSince && at - call.speechSince >= unheardTurnMs && micQuiet && gap) {
         call.askedAgainFor = call.speechSince;
         const spoken = Boolean(directVoice.say?.(call.id, UNHEARD_TURN_LINE));
         audit({type:'device.unheard-turn',voiceSessionId:call.id,deviceId:device.id,openMs:at - call.speechSince,spoken});
@@ -278,7 +297,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       // someone must start talking soon. Room conversation that never becomes a
       // finished request must not keep the model session open indefinitely.
       if (call.replyEndedAt && !call.playing && !state.responseActive) {
-        const spokeSince = state.lastUserAt > call.replyEndedAt;
+        const spokeSince = Math.max(state.lastUserAt, call.roomSpeechAt ?? 0) > call.replyEndedAt;
         if (!spokeSince && at - call.replyEndedAt > (device.followUpMs ?? followUpMs)) return call.end('idle');
         if (spokeSince && !call.turnSinceReply && at - call.replyEndedAt > chatterMs) {
           // Say why before leaving, so the household is not left with a silent exit.
@@ -319,14 +338,22 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     const deviceTools = speaker || look ? {...speaker,...(look ? {look} : {})} : null;
     void (async () => {
       try {
-        const reservation = await directVoice.reserve({model,sessionKey:device.sessionKey,voice:device.voice,surface:'speaker',inputSampleRate:DEVICE_INPUT_SAMPLE_RATE,speaker:deviceTools});
+        const reservation = await directVoice.reserve({model,sessionKey:device.sessionKey,voice:device.voice,surface:'speaker',inputSampleRate:DEVICE_INPUT_SAMPLE_RATE,speaker:deviceTools,...(device.multiSpeaker ? {inputPolicy:'speaker'} : {})});
         call.id = reservation.voiceSessionId;
-        audit({type:'device.call',voiceSessionId:call.id,stage:'start',deviceId:device.id,latencyMs:now() - call.startedAt});
+        // Routing is real only when the server has it and the model supports it.
+        call.multiSpeaker = Boolean(reservation.speakerRouting);
+        audit({type:'device.call',voiceSessionId:call.id,stage:'start',deviceId:device.id,latencyMs:now() - call.startedAt,...(device.multiSpeaker ? {multiSpeaker:call.multiSpeaker} : {})});
         if (call.ended || ws.readyState !== 1) {await directVoice.close(call.id).catch(() => {});return;}
         call.client = new DeviceCallClient(call);
         if (!directVoice.attach(call.id, reservation.relayTicket, call.client)) throw Error('attach failed');
         sendJson(ws, {type:'call.started',voiceSessionId:call.id,model});
         call.timer = setInterval(call.tick, tickMs);call.timer.unref?.();
+        // The device stops its uplink while V speaks. Routing's cloud ASR and
+        // voice tracker expect one continuous stream, so fill gaps with silence.
+        if (call.multiSpeaker) {call.fillTimer = setInterval(() => {
+          if (call.ended || !call.readyAt || !call.client || now() - (call.lastInputAt ?? call.readyAt) < uplinkGapMs) return;
+          call.client.emit('message', Buffer.alloc(uplinkFillMs * DEVICE_INPUT_SAMPLE_RATE / 500), true);
+        }, uplinkFillMs);call.fillTimer.unref?.();}
       } catch (error) {
         sendJson(ws, {type:'call.error',reason:'start',message:String(error?.message ?? '对话没有建立').slice(0,200)});
         call.reason = 'start-failed';
@@ -341,6 +368,8 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     if (binary) {
       // 16 kHz mono PCM16, at most 0.5 s per frame. Drop audio outside a call.
       if (!call?.client || call.ended || !data.length) return;
+      // Routing accepts audio only once it is bound (the session's ready event).
+      if (call.multiSpeaker && !call.readyAt) return;
       if (data.length % 2 !== 0 || data.length > 16000) return connection.ws.close(1008, 'invalid audio frame');
       const at = now();
       if (call.lastInputAt) call.maxInputGapMs = Math.max(call.maxInputGapMs ?? 0, at - call.lastInputAt);
@@ -365,6 +394,9 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
         call.quietSamples = level >= gate ? 0 : (call.quietSamples ?? hold) + data.length / 2;
         if (call.quietSamples > hold) {pcm = Buffer.alloc(data.length);call.gatedInputBytes = (call.gatedInputBytes ?? 0) + data.length;}
       }
+      // Far, continuous voices (a TV across the room) become silence before ASR,
+      // the voice tracker and the model; the person at the device passes.
+      if (pcm === data && call.nearField && !call.nearField.pass(level, data.length / 2)) {pcm = Buffer.alloc(data.length);call.gatedInputBytes = (call.gatedInputBytes ?? 0) + data.length;}
       if (pcm === data && connection.device.inputGain !== 1) {
         pcm = Buffer.allocUnsafe(data.length);
         for (let i = 0; i < data.length; i += 2) pcm.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(data.readInt16LE(i) * connection.device.inputGain))), i);

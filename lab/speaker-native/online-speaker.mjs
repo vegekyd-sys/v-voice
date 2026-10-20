@@ -15,6 +15,7 @@ export function createEmbeddingWorker({python,model}){
   const fail=()=>{closed=true;clearTimeout(startup);rejectReady(Error('本地声线模型已关闭'));for(const p of pending.values()){clearTimeout(p.timer);p.reject(Error('声线计算已取消'));}pending.clear();};
   child.on('error',fail);child.on('exit',fail);child.stderr.on('data',()=>{});
   return {ready,
+    get closed(){return closed;},
     async compute(pcm){await ready;if(closed)throw Error('本地声线模型已关闭');if(pending.size>=8)throw Error('声线计算积压，请重拨');
       return new Promise((resolve,reject)=>{const id=++serial,timer=setTimeout(()=>{pending.delete(id);reject(Error('声线计算超时'));},2000);pending.set(id,{resolve,reject,timer});child.stdin.write(JSON.stringify({id,audio:pcm.toString('base64')})+'\n');});},
     close(){fail();child.kill();},
@@ -26,7 +27,18 @@ const score=(embedding,p)=>Math.max(...(p.references??[p.embedding]).map(ref=>co
 const cosine=(a,b)=>a.reduce((n,x,i)=>n+x*b[i],0);
 // All prototypes are anonymous, learned during this call, and discarded on close.
 export class OnlineSpeakerTracker{
-  constructor({embed,onEvent=()=>{},minMs=1000,silenceMs=400,maxPeople=5}={}){Object.assign(this,{embed,onEvent,minMs,silenceMs,maxPeople});this.segments=[];this.prototypes=[];this.position=0;this.serial=0;this.pre=[];this.pending=Buffer.alloc(0);this.voiced=0;this.quiet=0;this.closed=false;}
+  // recycle: a household device hears a TV and passers-by for a long time. When
+  // the roster is full, the longest-unheard voice that never addressed V (never
+  // pinned) gives up its slot instead of locking out a new real speaker.
+  constructor({embed,onEvent=()=>{},minMs=1000,silenceMs=400,maxPeople=5,recycle=false,recycleIdleMs=20000}={}){Object.assign(this,{embed,onEvent,minMs,silenceMs,maxPeople,recycle,recycleIdleMs});this.segments=[];this.prototypes=[];this.position=0;this.serial=0;this.voices=0;this.pre=[];this.pending=Buffer.alloc(0);this.voiced=0;this.quiet=0;this.closed=false;}
+  pin(id){const p=this.prototypes.find(p=>p.id===id);if(p)p.pinned=true;}
+  #vacancy(){
+    if(this.prototypes.length<this.maxPeople)return true;
+    if(!this.recycle)return false;
+    const victim=this.prototypes.filter(p=>!p.pinned&&this.position-(p.lastSeenMs??0)>=this.recycleIdleMs).sort((a,b)=>(a.lastSeenMs??0)-(b.lastSeenMs??0))[0];
+    if(!victim)return false;
+    this.prototypes.splice(this.prototypes.indexOf(victim),1);this.onEvent({type:'evicted',speakerId:victim.id});return true;
+  }
   push(pcm){
     if(this.closed)return;
     pcm=Buffer.concat([this.pending,pcm]);this.pending=pcm.subarray(pcm.length-pcm.length%640);pcm=pcm.subarray(0,pcm.length-pcm.length%640);
@@ -60,16 +72,16 @@ export class OnlineSpeakerTracker{
       if(!selected){
         const distinct=!best||best.score<.45;
         const confirmed=s.candidate&&cosine(embedding,s.candidate)>=.65&&duration>=1600;
-        if(distinct&&(!best||confirmed)&&this.prototypes.length<this.maxPeople){
+        if(distinct&&(!best||confirmed)&&this.#vacancy()){
           const reference=s.candidate?normalized(embedding.map((x,i)=>x+s.candidate[i])):embedding;
-          selected={id:'local'+this.prototypes.length,embedding:reference,references:[reference]};this.prototypes.push(selected);
+          selected={id:'local'+(this.voices++),embedding:reference,references:[reference]};this.prototypes.push(selected);
         }
         s.candidate=embedding;
       }
       if(!selected)return;
       const previous=s.speakerId;
       if(previous&&best?.p!==selected&&best?.score>=.55){s.challengerCount=(s.challengerId===best.p.id?s.challengerCount:0)+1;s.challengerId=best.p.id;if(s.challengerCount>=2)s.ambiguous=true;}else{s.challengerCount=0;s.challengerId=null;}
-      s.speakerId=selected.id;s.confidence=best?.p===selected?best.score:1;
+      s.speakerId=selected.id;s.confidence=best?.p===selected?best.score:1;selected.lastSeenMs=this.position;
       if(!previous)this.onEvent({type:'identified',segment:s,inferenceMs,afterStartMs:this.position-s.startMs,confidence:s.confidence});
       if(previous&&best?.p===selected&&best.score>=.72&&margin>=.20&&!s.referenceAdded){
         selected.references??=[selected.embedding];if(selected.references.length<3)selected.references.push(embedding);s.referenceAdded=true;

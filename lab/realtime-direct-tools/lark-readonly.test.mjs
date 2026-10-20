@@ -58,3 +58,7 @@ test('timeout and oversized output stop real local child and do not truncate int
   const large=fixture(t,`console.log(JSON.stringify({ok:true,data:'x'.repeat(10000)}));`);
   await assert.rejects(large.reader({maxBytes:100}).calendar({}),/过大/);
 });
+test('a service without its own Feishu profile reports the local reader unavailable',t=>{
+  assert.equal(fixture(t,'').reader().available,true);
+  assert.equal(createVoiceLarkReader({environment:{PATH:'/usr/bin'}}).available,false);
+});

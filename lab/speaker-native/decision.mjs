@@ -46,11 +46,18 @@ const explicitFree=text=>/恢复|解除|取消专注|大家.*(?:聊|交流)|自�
 export class SpeakerRouter{
   constructor({evaluate=decisionEvaluator(process.env),onTrace=()=>{}}={}){this.evaluate=evaluate;this.onTrace=onTrace;this.participants=[];this.history=[];this.targetId=null;this.mode='auto';this.count=0;this.generation=0;}
   snapshot(){return structuredClone({participants:this.participants,targetId:this.targetId,mode:this.mode});}
-  invalidate(){this.generation++;this.participants=[];this.history=[];this.targetId=null;this.mode='auto';}
+  invalidate(){this.generation++;this.participants=[];this.labels=0;this.history=[];this.targetId=null;this.mode='auto';}
+  /** Drop a voice the tracker recycled. An exclusive focus target is never dropped. */
+  forget(id){
+    if(this.mode==='exclusive'&&id===this.targetId)return false;
+    const before=this.participants.length;this.participants=this.participants.filter(p=>p.id!==id);
+    if(this.targetId===id)this.targetId=null;
+    return this.participants.length<before;
+  }
   async accept(input,{signal}={}){
     const id='speaker:'+input.speakerId;
     let speaker=this.participants.find(p=>p.id===id);
-    if(!speaker){if(this.participants.length>=5)throw Error('会话 Speaker 数量已达上限');speaker={id,speakerId:String(input.speakerId),label:'Speaker '+String.fromCharCode(65+this.participants.length),name:null,role:'unknown',certainty:'unknown'};this.participants.push(speaker);}
+    if(!speaker){if(this.participants.length>=5)throw Error('会话 Speaker 数量已达上限');const n=this.labels=(this.labels??this.participants.length)+1;speaker={id,speakerId:String(input.speakerId),label:'Speaker '+(n<=26?String.fromCharCode(64+n):n),name:null,role:'unknown',certainty:'unknown'};this.participants.push(speaker);}
     this.targetId??=id;
     const turn={...input,id:'sp'+(++this.count),speakerId:id};
     if(this.mode==='exclusive'&&id!==this.targetId)return {turn,status:'withheld',modelCalled:false,shouldRespond:false,addresseeIds:[],...this.snapshot()};

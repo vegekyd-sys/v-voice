@@ -75,3 +75,24 @@ test('the admitted Voice connection recovers after a later auth rejection rather
  peer.terminate();for(let i=0;i<200&&(connects<3||!client.ready);i++)await delay(10);
  assert.equal(client.ready,true);assert.equal(client.stopped,false);assert.equal(connects,3);assert.deepEqual(errors,['UNAUTHORIZED']);assert.deepEqual(auth,['first','first','current']);
 });
+
+test('startup waits through a restarting Gateway that still refuses connections',async t=>{
+ const probe=new WebSocketServer({port:0,host:'127.0.0.1'});await new Promise(r=>probe.once('listening',r));
+ const port=probe.address().port;await new Promise(r=>probe.close(r));
+ const errors=[];let server,client;
+ t.after(async()=>{client?.stop();if(!server)return;for(const c of server.clients)c.terminate();await new Promise(r=>server.close(r));});
+ const pending=connectGatewayClient({url:`ws://127.0.0.1:${port}`,token:'fixture-only',reconnectMs:20},{startupTimeoutMs:3000,onConnectError:e=>errors.push(e.code)});
+ pending.catch(()=>{});
+ await delay(150);
+ server=new WebSocketServer({port,host:'127.0.0.1'});await new Promise(r=>server.once('listening',r));
+ server.on('connection',ws=>{ws.send(JSON.stringify({type:'event',event:'connect.challenge',payload:{nonce:'restarted'}}));ws.on('message',raw=>{const f=JSON.parse(raw);ws.send(JSON.stringify({type:'res',id:f.id,ok:true,payload:{protocol:4}}));});});
+ client=await pending;
+ assert.equal(client.ready,true);assert(errors.length>=1);assert(errors.every(code=>code==='TRANSPORT_ERROR'));
+});
+
+test('a startup credential rejection still fails admission at once',async t=>{
+ const server=new WebSocketServer({port:0,host:'127.0.0.1'});await new Promise(r=>server.once('listening',r));
+ server.on('connection',ws=>{ws.send(JSON.stringify({type:'event',event:'connect.challenge',payload:{nonce:'bad'}}));ws.on('message',raw=>{const f=JSON.parse(raw);ws.send(JSON.stringify({type:'res',id:f.id,ok:false,error:{code:'UNAUTHORIZED'}}));});});
+ t.after(async()=>{for(const c of server.clients)c.terminate();await new Promise(r=>server.close(r));});
+ await assert.rejects(connectGatewayClient({url:`ws://127.0.0.1:${server.address().port}`,token:'fixture-only',reconnectMs:20},{startupTimeoutMs:3000}),/UNAUTHORIZED/);
+});
