@@ -116,12 +116,12 @@ test("native transcript projection excludes reasoning and preserves final text",
 
 test("the frozen H5 serves its own stylesheet and every browser module", async t => {
   const f = await fixture(t, {preview:true});
-  for (const name of ["app.js", "events.mjs", "duplex-playback.mjs", "microphone-capture.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "styles.css"]) {
+  for (const name of ["app.js", "ui-bundle.mjs", "call-view.mjs", "events.mjs", "duplex-playback.mjs", "microphone-capture.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "styles.css"]) {
     const response = await fetch(`${f.url}/${name}`);
     assert.equal(response.status, 200, name); assert.match(response.headers.get("content-type"), name.endsWith("css") ? /text\/css/u : /javascript/u);
     assert((await response.text()).length > 0);
   }
-  const css = await (await fetch(`${f.url}/styles.css`)).text(); assert.match(css, /\.transcript-turn/u);
+  const css = await (await fetch(`${f.url}/styles.css`)).text(); assert.match(css, /\.turn-text/u);
   assert.equal(f.calls.length, 0, "Static preview does not create a model session");
 });
 

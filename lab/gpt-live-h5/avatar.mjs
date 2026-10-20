@@ -31,7 +31,9 @@ export function createAvatarRenderer({ image, previous, load, reducedMotion = ()
 }
 
 export function mountAvatar(document, window, {onDisplayed=()=>{},owner=()=>null} = {}) {
-  const small = window.matchMedia('(max-width: 900px)').matches || window.navigator.connection?.saveData;
+  // The phone stage shows V at ~250 CSS px, so 512px frames are needed for
+  // Retina detail. Data Saver keeps the lighter 256px reaction frames.
+  const small = window.navigator.connection?.saveData === true;
   const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const cache = new Map(), decoded = new Set();
   const load = file => {
