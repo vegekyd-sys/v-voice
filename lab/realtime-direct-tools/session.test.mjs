@@ -146,6 +146,15 @@ test('a held result the requester was already answered from is not repeated',asy
  assert(f.audit.some(e=>e.type==='backend.result-answered'));assert.equal(said.length,1);
 });
 
+test('a held result is still spoken when the requester came back about something else',async t=>{
+ const {f,said,back}=await heldForFather(t);
+ for(let i=0;i<100&&!said.length;i++)await delay(10);
+ const father=await back();
+ father.emit('message',Buffer.from(JSON.stringify({type:'response.output_text.done',text:'五加六等于十一，还有别的想算的吗？'})),false);
+ for(let i=0;i<100&&said.length<2;i++)await delay(10);
+ assert.match(said[1]??'',/六个项目/);assert.equal(f.audit.some(e=>e.type==='backend.result-answered'),false);
+});
+
 test('asking about a task that already finished returns its result instead of nothing running',async t=>{
  const {f,back}=await heldForFather(t);
  const father=await back();

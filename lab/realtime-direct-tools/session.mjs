@@ -72,6 +72,12 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     s.bridge.adoptBackgroundTool(h.callId,h.question);s.bridge.completeBackgroundTool(h.callId,h.result,{...h.options,speak:()=>{}});
     h.contextBridge=s.bridge;h.contextAt=Date.now();audit({type:'backend.result-context',voiceSessionId:s.id,callId:h.callId});
   };
+  // Whether V's own replies since the requester got the result already told it:
+  // most of what V said is wording from the result, not an unrelated answer.
+  const told=(s,h)=>{
+    const plain=t=>String(t??'').replace(/[\s\p{P}\p{S}]/gu,''),source=plain(h.text);
+    return (s.answers??[]).filter(a=>a.at>=h.contextAt).some(({text})=>{const t=plain(text);if(t.length<9)return false;let hit=0;for(let i=0;i<t.length-1;i++)if(source.includes(t.slice(i,i+2)))hit++;return hit/(t.length-1)>=0.5;});
+  };
   const hostSay=(s,text,type,callId)=>void Promise.resolve(speakerRouting?.hostSpeech?.(s.id,text)).then(spoken=>audit({type:spoken?type:'backend.result-unspoken',voiceSessionId:s.id,callId}),()=>audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId}));
   // While a delegated task runs, V says what is really happening: a public fact
   // the backend wrote, or the stage its own runs are in (Gateway tool events),
@@ -99,7 +105,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const h=s.heldResult;
     if(h&&h.contextBridge===s.bridge&&servesHeld(s)){
       s.heldResult=null;
-      if((s.lastAnswerAt??-1)>=h.contextAt){audit({type:'backend.result-answered',voiceSessionId:s.id,callId:h.callId});return;}
+      if(told(s,h)){audit({type:'backend.result-answered',voiceSessionId:s.id,callId:h.callId});return;}
       hostSay(s,h.spoken,'backend.result-spoken-late',h.callId);return;
     }
     // Someone else has V now: say only that the result is ready, never its content.
@@ -323,7 +329,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         // else its result is shown and held until the person who asked is back.
         if(!target&&s.speakerRouting&&requester.length&&!result?.cancelled){
           const spoken=spokenText??(typeof result?.error==='string'?`后台任务没有完成：${result.error}`:presentation?.text);
-          if(spoken){s.heldResult={callId:call.callId,question:call.args.question??'',result:payload,options:(presentation?.long || presentation?.media)?{spokenText,displayedFullResult:true}:{},spoken,requester,heldAt:Date.now()};audit({type:'backend.result-held',voiceSessionId:s.id,callId:call.callId});}
+          if(spoken){s.heldResult={callId:call.callId,question:call.args.question??'',result:payload,options:(presentation?.long || presentation?.media)?{spokenText,displayedFullResult:true}:{},spoken,text:String(presentation?.text??spoken),requester,heldAt:Date.now()};audit({type:'backend.result-held',voiceSessionId:s.id,callId:call.callId});}
         }
         if(target){
           if(target!==ownerBridge)target.adoptBackgroundTool(call.callId,call.args.question??"");
@@ -367,7 +373,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(!current(s))return;
         if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
         const deliver=()=>{
-        if(role==='assistant'&&final){speakerRouting?.assistant(s.id,text);if(!source)s.lastAnswerAt=Date.now();}
+        if(role==='assistant'&&final){speakerRouting?.assistant(s.id,text);if(!source){s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
         if(role==='user'){if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
         if(role==='user'&&final&&s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{})});
