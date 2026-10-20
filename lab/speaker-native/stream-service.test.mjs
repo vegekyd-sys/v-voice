@@ -218,3 +218,13 @@ test('on a phone, the greeting heard back through the speaker is not taken as th
   assert.equal(calls,0);assert.equal(f.events.some(e=>e.type==='speaker.utterance'),false);
   f.emit('你好，听得见吗？我想问个问题。',1200,2600);await wait(()=>f.events.some(e=>e.type==='speaker.decision'));assert.equal(calls,1);
 });
+test('a turn let through but not yet answered is awaiting a response until audio, a tool, host speech or the bound',async t=>{
+  const f=await fixture(t,{limits:{awaitResponseMs:200,responseMs:5000}});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));
+  assert.equal(f.service.awaitingResponse('call'),false,'nothing let through yet');
+  f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+  assert.equal(f.service.awaitingResponse('call'),true,'admitted, V has not answered');
+  f.service.dispatch('call','audio',Buffer.alloc(10),()=>{});assert.equal(f.service.awaitingResponse('call'),false,'V answered with audio');
+  f.emit('V，再问一个问题',1200,2300);await wait(()=>f.events.filter(e=>e.type==='speaker.stream-accepted').length===2||f.events.filter(e=>e.type==='speaker.admitted').length===2);
+  if(f.service.awaitingResponse('call')){await new Promise(r=>setTimeout(r,260));assert.equal(f.service.awaitingResponse('call'),false,'bounded');}
+  await f.service.hostSpeech('call','主机的话');assert.equal(f.service.awaitingResponse('call'),false,'host speech is not a caller turn');
+});

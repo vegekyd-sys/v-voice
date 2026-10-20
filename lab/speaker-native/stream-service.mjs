@@ -297,6 +297,14 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     dispatch(id,kind,value,deliver){const s=sessions.get(id);if(!s)return false;if(s.gate.status!=='closed'){if(kind==='audio')s.nativeBusy=true;if(kind==='done'){s.nativeBusy=false;if(s.input?.host)s.input.hostDone=true;if(s.input&&!s.input.greeting&&!s.input.recovery&&!s.input.host)s.lastDoneAt=performance.now();}if(kind==='tool'&&value?.name!=='end_call')s.lastToolAt=performance.now();}try{const c=s.input;s.gate.dispatch(()=>{if(kind==='tool'&&c?.greeting)return;if(kind==='tool'&&value.name==='end_call'){s.native.rejectNativeEnd?.(value);send(s,{type:'speaker.end-withheld',reason:'native-end-unconfirmed'});return;}if(c&&s.input===c&&['audio','tool'].includes(kind)){c.responded=true;clearTimeout(s.responseDeadline);}deliver();},kind==='audio'?value.length:0);}catch(error){if(s.input)s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;send(s,{type:'speaker.error',message:error.message});}return true;},
     assistant(id,text){const s=sessions.get(id);if(s&&text?.trim()){s.router.assistant(text);s.lastAssistantAt=performance.now();s.recentAssistant.push(plain(text).slice(-1200));s.recentAssistant=s.recentAssistant.slice(-4);s.acceptedHistory.push({role:'assistant',text:text.slice(-800)});s.acceptedHistory=s.acceptedHistory.slice(-8);}},
     initialInstructions(id,text){return sessions.has(id)?text.replace('现在正在电话中和 Tianyi（天懿）本人交流','正在电话中与主机当前指定的人物交流；账号与工具仍属于原电话入口，不随人物切换').replace('现在你通过家里的智能音箱和 Tianyi（天懿）本人进行测试','现在你通过家里的智能音箱与主机当前指定的人物交流；账号与工具仍属于原入口，不随人物切换'):text;},
+    /** A caller's turn is let through but V has not yet answered it with audio or a
+     * tool. Host speech now would cancel that turn, so it must wait. Bounded: an
+     * answer that never comes is the native-no-output recovery's job. */
+    awaitingResponse(id){
+      const s=sessions.get(id),c=s?.input;
+      if(!c||c.host||!c.decided||c.cancelled||c.responded)return false;
+      c.awaitSince??=performance.now();return performance.now()-c.awaitSince<(limits.awaitResponseMs??15000);
+    },
     /** A fixed host line in V's voice (a device's parting line). It replaces any
      * speculative input and passes the gate; it does not consult Decision. */
     async hostSpeech(id,text,options){

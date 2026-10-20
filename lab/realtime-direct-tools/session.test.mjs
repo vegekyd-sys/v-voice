@@ -630,3 +630,24 @@ test("the backend's own preamble is said before its first tool returns, and only
  assert.equal(spoken().some(x=>x.includes('别人')||x.includes('https')),false);
  assert(f.audit.some(e=>e.type==='backend.progress-spoken'&&e.kind==='fact'));
 });
+test('narration never cuts in between an admitted question and V answering it (joint candidate 2026-10-20)',async t=>{
+ const hosted=[];let awaiting=false;
+ const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async()=>{},close(){},audio(){},pending:()=>false,awaitingResponse:()=>awaiting,hostSpeech:async(_id,text)=>{hosted.push(text);return true;}};
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{speakerRouting:routing,narration:FAST_NARRATION});t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'task',name:'delegate_to_v',arguments:JSON.stringify({question:'查资料'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ awaiting=true;   // a second person's question was let through; the model has not spoken yet
+ f.progressBackend('记忆里有这台机器，现在去查官方售价。');toolEvent(f,'sdk-fixture-run','start','web_search','s1',{query:'StackChan 价格'});
+ await delay(500);assert.deepEqual(hosted,[],'no host speech while the admitted question waits for its answer');
+ awaiting=false;
+ assert(await until(()=>hosted.includes('记忆里有这台机器，现在去查官方售价。')),'said once V has answered');
+});
+test("the backend's own line also waits until the caller has been quiet a while",async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:{...FAST_NARRATION,quietAfterUserMs:400}});t.after(()=>f.service.dispose());
+ const spoken=()=>f.upstream.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text);
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'task',name:'delegate_to_v',arguments:JSON.stringify({question:'查资料'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'顺便问一句'});f.progressBackend('第一条发现。');
+ await delay(250);assert.equal(spoken().includes('第一条发现。'),false);
+ assert(await until(()=>spoken().includes('第一条发现。')));
+});
