@@ -132,7 +132,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,taskDelivery:s.delivery,pollMs:backendPollMs,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}}});
     sessions.set(s.id,s);
     audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model,voice:s.voice,surface,...(model==='grok'?{speed:grokSpeed,expressiveTags:grokExpressiveTags}:{})});
-    const route=surface==='phone'?speakerRouting?.reserve(s.id,{model,policy:inputPolicy??'speaker'}):null;
+    // A household device joins streaming multi-speaker routing only when its
+    // operator record asks for it (inputPolicy 'speaker'); phones default to it.
+    const route=surface==='phone'||inputPolicy==='speaker'?speakerRouting?.reserve(s.id,{model,policy:inputPolicy??'speaker',surface,inputSampleRate}):null;
     s.speakerRouting=Boolean(route);
     return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket,...route?{speakerRouting:route}:{}};
   }
@@ -367,7 +369,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     /** Speak a fixed line in V's voice on a live call (a hardware client's own notice). */
     say(id,text){
       const s=sessions.get(id);if(!current(s)||!s.bridge||s.ending)return false;
-      s.responseActive=true;s.bridge.speakProgress(text);audit({type:'device.notice-spoken',voiceSessionId:s.id,text});return true;
+      s.responseActive=true;
+      // Under multi-speaker routing the line must pass the output gate as host speech.
+      if(s.speakerRouting&&speakerRouting.hostSpeech)void speakerRouting.hostSpeech(s.id,text).catch(()=>{});else s.bridge.speakProgress(text);audit({type:'device.notice-spoken',voiceSessionId:s.id,text});return true;
     },
     /** Play the cached progress line while a slow native lookup is still running. */
     progressNotice(id,index=0){const s=sessions.get(id);return current(s)&&typeof s.progressNotice==='function'?s.progressNotice(index):false;},
