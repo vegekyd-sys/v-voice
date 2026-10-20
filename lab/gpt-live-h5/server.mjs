@@ -484,7 +484,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         const latest=JSON.parse(await readFile(configPath,"utf8"));
         return String(latest.gateway.auth.token).replace(/\$\{([^}]+)\}/gu,(_,key)=>process.env[key]??"");
       },
-      scopes:["operator.read","operator.write","operator.admin"],caps:["voice-direct-tools","tool-events"],onEvent:event=>bridge?.emit(event),
+      scopes:["operator.read","operator.write","operator.admin"],caps:["voice-direct-tools","tool-events"],subscribeSessions:true,onEvent:event=>bridge?.emit(event),
     },{onConnectError:error=>console.warn(JSON.stringify({type:"voice.gateway-connection-error",code:/^[A-Z0-9_]{1,80}$/.test(error.code??"")?error.code:"CONNECT_ERROR"}))});
     const {createDirectVoiceService}=await import('../realtime-direct-tools/session.mjs');
     const wsModule=await import('ws');
@@ -499,7 +499,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const speakerRouting=productionSpeaker?.service;
     const lark=createVoiceLarkReader({environment:process.env});
     if(!lark.available)console.warn(JSON.stringify({type:'voice.lark-unavailable'}));
-    const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,calendar:lark.available?lark.calendar:null,larkRead:lark.available?lark.read:null,
+    const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,// Experimental: V's own line before a tool. Off by default: on 2026-10-20 Seeduplex lost 3 of 5 results it had spoken before.
+      toolStartNotice:process.env.VOICE_TOOL_START_NOTICE==='model'?'model':'cached',calendar:lark.available?lark.calendar:null,larkRead:lark.available?lark.read:null,
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),
       grokExpressiveTags:process.env.XAI_VOICE_EXPRESSIVE_TAGS === '1',

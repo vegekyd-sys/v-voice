@@ -679,3 +679,14 @@ test('after a cancel, the next turn keeps the reply text that precedes its first
  assert.equal(audio.length,1);
  bridge.close();
 });
+
+test('host task narration is captioned with its own source, only once its audio actually plays',async()=>{
+ const socket=new FakeSocket(),texts=[];
+ const bridge=buildSeeduplexRealtimeVoiceProvider({env:{VOLCENGINE_REALTIME_API_KEY:'test'},createWebSocket:async()=>socket}).createBridge({providerConfig:{voice:'xiaohe'},tools:[],onAudio(){},onToolCall(){},onTranscript:(...args)=>texts.push(args),onError:e=>assert.fail(e.message),onClose(){}});
+ const connecting=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await connecting;
+ bridge.speakProgress('后台正在读网页。',{caption:true,source:'task-progress'});
+ assert.deepEqual(socket.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text),['后台正在读网页。']);assert.equal(texts.length,0);
+ socket.message({type:'response.output_audio.started',response_id:'stage',tts_type:'chat_tts_text'});
+ socket.message({type:'response.output_audio.delta',response_id:'stage',delta:floatAudio([.1])});
+ assert.deepEqual(texts,[['assistant','后台正在读网页。',true,'task-progress']]);bridge.close();
+});

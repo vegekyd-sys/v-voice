@@ -54,3 +54,11 @@ test('a short plain media URL surviving OpenClaw attachment extraction is still 
 test('backend report delivery stays with Voice without suppressing explicit message tasks',()=>{
  const q=backendResultQuestion('整理报告');assert.match(q,/Voice 主机/);assert.match(q,/不要为这项结果交付再查询群/);assert.match(q,/独立业务操作/);assert.match(q,/不得在没有发送回执/);
 });
+test('a spoken progress line before the headings keeps the document whole but still speaks the written summary',()=>{
+ const summary='前10场从10月22日客场打湖人开始，最值得看揭幕战。',body='## 赛程\n'+'| 日期 | 对手 |\n|---|---|\n| 10-22 | 湖人 |\n'.repeat(12);
+ for(const raw of [`赛程拿到了：前10场有5场全美直播。【语音摘要】\n${summary}\n【完整方案】\n${body}`,`赛程拿到了。\n【语音摘要】\n${summary}\n【完整方案】\n${body}`]){
+  const read=readBackendResult(raw);assert.equal(read.text,raw);assert.equal(read.summary,summary);
+  const shown=presentBackendResult(raw);assert(shown.spokenText.startsWith(summary));assert.doesNotMatch(shown.spokenText,/【/u);
+ }
+ assert.doesNotMatch(presentBackendResult('前置文字。【语音摘要】\n'+'很长'.repeat(80)+'\n'+body).spokenText,/【语音摘要】|【完整方案】/u,'a marker is never read aloud');
+});
