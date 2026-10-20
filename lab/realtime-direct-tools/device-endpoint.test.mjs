@@ -56,6 +56,8 @@ test('device entries require a private token and an existing Feishu session bind
   assert.throws(() => parseDeviceEntries([record({model:'gpt-live'})]), /model/);
   for (const inputGain of [0,5,NaN,Infinity,'2']) assert.throws(() => parseDeviceEntries([record({inputGain})]), /input gain/);
   for (const noiseGateRms of [-1,2001,NaN,'450']) assert.throws(() => parseDeviceEntries([record({noiseGateRms})]), /noise gate/);
+  for (const followUpMs of [4999,60001,1.5,'30000']) assert.throws(() => parseDeviceEntries([record({followUpMs})]), /follow-up window/);
+  assert.equal(parseDeviceEntries([record()])[0].followUpMs, null);
   assert.throws(() => parseDeviceEntries([record(), record({id:'speaker-two'})]), /private token/);
   assert.equal(parseDeviceEntries([record({models:['seeduplex','grok'],model:'grok'})])[0].model, 'grok');
 });
@@ -360,6 +362,18 @@ test('a request still being spoken when the chatter window closes is not cut off
   await delay(400);
   assert.deepEqual(commits(f), [], 'a finished request is not background talk');
   assert(!device.events.some(e => e.type === 'call.closed'));
+});
+
+test('a device may keep listening longer after a reply than the household default', async t => {
+  const f = await fixture({followUpMs:80,record:{followUpMs:5000}});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+  device.send(JSON.stringify({type:'playback.state',speaking:true}));
+  await delay(30);
+  device.send(JSON.stringify({type:'playback.state',speaking:false}));
+  await delay(250);
+  assert(!device.events.some(e => e.type === 'call.closed'), 'the device window, not the default, applies');
 });
 
 test('two authenticated devices cannot start calls in the same bound session', async t => {
