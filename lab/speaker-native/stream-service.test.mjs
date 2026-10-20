@@ -144,6 +144,24 @@ test('a device stays silent on short or unattributable room speech instead of as
   // The speculative input is released, so background results are not held behind it.
   assert.equal(f.service.pending('call'),false);assert.deepEqual(effects,[]);
 });
+test('an unresolved speculative stream holds host speech only while the room may still be talking',async t=>{
+  const f=await fixture(t,{limits:{pendingQuietMs:60}});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));
+  // Mid-utterance: a background result waits.
+  assert.equal(f.service.pending('call'),true);
+  f.service.audio('call',Buffer.alloc(48000));
+  assert.equal(f.service.pending('call'),true);
+  // No final ever arrives for this stream; once the room is quiet it stops holding.
+  await new Promise(r=>setTimeout(r,90));
+  assert.equal(f.service.pending('call'),false);
+  assert.equal(await f.service.hostSpeech('call','夜班模式小图已经做好了。'),true);
+  assert.deepEqual(f.clarifications,['夜班模式小图已经做好了。']);
+});
+test('a speculative stream left open by continuous sound stops holding host speech after a bound',async t=>{
+  const f=await fixture(t,{limits:{pendingMaxMs:60}});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));
+  assert.equal(f.service.pending('call'),true);
+  await new Promise(r=>setTimeout(r,90));f.service.audio('call',voice());
+  assert.equal(f.service.pending('call'),false);
+});
 test('a device parting line passes the gate as host speech without Decision',async t=>{
   let calls=0;const f=await fixture(t,{reserve:device,evaluate:async(_s,q)=>{calls++;return answers(q);}});
   await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));

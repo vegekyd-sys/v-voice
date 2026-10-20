@@ -58,6 +58,45 @@ test('a background result after a speaker switch is shown without speaking to th
  assert.equal(f.client.readyState,1);assert.equal(f.invocations.some(x=>x.method==='chat.abort'),false);
 });
 
+// Call 373fa048 (2026-10-20 13:53–13:56): the requester asked for a picture, a
+// second voice briefly opened a stream, the requester spoke again, and the
+// finished result was only put on screen because the native session had been
+// rebuilt twice in between.
+async function returnedAudience(t,routingExtra={}){
+ let native;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,value)=>{native=value;},close(){},audio(){},assistant(){},...routingExtra(()=>native)};
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}),'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ await native.prepare('现在和天懿聊天。','speaker:local1',[]);
+ const requester=f.peers.at(-1),emit=v=>requester.emit('message',Buffer.from(JSON.stringify(v)),false);
+ emit({type:'response.function_call_arguments.done',items:[{call_id:'picture-task',name:'delegate_to_v',arguments:JSON.stringify({question:'用 V 的形象做一张夜班模式小图'})}]});
+ for(let i=0;i<100&&!f.audit.some(e=>e.type==='backend.started');i++)await delay(5);
+ assert(f.audit.some(e=>e.type==='backend.started'));
+ await native.prepare('现在和另一位说话人聊天。','speaker:local0',[]);
+ await native.prepare('现在和天懿聊天。','speaker:local1',[]);
+ const back=f.peers.at(-1);assert.notEqual(back,requester);
+ f.completeBackend('夜班模式小图已经做好了。');
+ for(let i=0;i<200&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='picture-task');i++)await delay(5);
+ for(let i=0;i<50&&!back.sent.some(e=>e.type==='speech_text_buffer.commit');i++)await delay(5);
+ return {f,back};
+}
+
+test('a background result is spoken when the requester is the audience again after another voice',async t=>{
+ const {back}=await returnedAudience(t,()=>({}));
+ const spoken=back.sent.filter(e=>e.type==='speech_text_buffer.commit');
+ assert.equal(spoken.length,1);assert.match(spoken[0].text,/小图已经做好/);
+ // The new native session also learns what was asked and what came back.
+ const history=back.sent.find(e=>e.type==='conversation.item.create'&&JSON.stringify(e.items).includes('夜班模式小图'));
+ assert(history);assert.match(JSON.stringify(history.items),/已经做好/);
+});
+
+test('in speaker routing a background result is spoken through the host gate',async t=>{
+ const said=[];
+ const {f,back}=await returnedAudience(t,native=>({hostSpeech:async(_id,text)=>{said.push(text);native().clarify(text);return true;}}));
+ assert.equal(said.length,1);assert.match(said[0],/小图已经做好/);
+ assert.equal(back.sent.filter(e=>e.type==='speech_text_buffer.commit').length,1);
+ // The caption is published when its audio starts, not ahead of it.
+ assert.equal(f.client.sent.some(e=>e.type==='transcript'&&e.source==='V-backend'),false);
+});
+
 for (const model of ['grok', 'seeduplex']) test(`${model} session initializes with the shared capability policy and real backend adapter`, async t => {
  const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:{status:'ok'},model);
  t.after(()=>f.service.dispose());
