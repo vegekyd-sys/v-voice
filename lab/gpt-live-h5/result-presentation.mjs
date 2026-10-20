@@ -18,7 +18,10 @@ export function readBackendResult(result) {
   if (typeof raw !== 'string') return null;
   const pair = /^\s*【语音摘要】\s*\n([\s\S]*?)\n【完整方案】\s*\n([\s\S]+)$/u.exec(raw);
   const text = pair ? pair[2] : raw;
-  const supplied = pair ? pair[1].trim() : result?.spokenSummary;
+  // A spoken progress line can precede the headings. The document stays whole,
+  // but the summary the backend wrote is still the one to speak.
+  const late = pair ? null : /(?:^|\n|[。！？.!?])\s*【语音摘要】\s*\n([\s\S]*?)\n【完整方案】\s*\n/u.exec(raw);
+  const supplied = pair ? pair[1].trim() : late ? late[1].trim() : result?.spokenSummary;
   // A backend that exceeds its summary budget still supplied the summary's
   // source. Extract from that source, rather than accidentally reading a table
   // cell from the full document as the recommendation.
@@ -30,7 +33,7 @@ export function readBackendResult(result) {
 // Legacy or nonconforming results still speak actual source content. This is an
 // extractive fallback, not another model call or a claim of semantic summary QA.
 export function extractResultSummary(text) {
-  const clean = text.replace(/```[^\n]*\n[\s\S]*?```/gu, '')
+  const clean = text.replace(/```[^\n]*\n[\s\S]*?```/gu, '').replace(/【(?:语音摘要|完整方案)】/gu, '')
     .replace(/\[([^\]]+)\]\([^\n)]+\)/gu, '$1').replace(/[*_`]/gu, '');
   const allLines = clean.split('\n').map(line => line.trim());
   const conclusion = allLines.findIndex(line => /^#{1,6}\s.*(?:结论|建议|推荐|总结)/u.test(line));

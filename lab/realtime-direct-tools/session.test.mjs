@@ -617,3 +617,16 @@ test('the cached tool-start line remains the default for a direct service and fo
  f.event({type:'response.function_call_arguments.done',items:[{call_id:'look',name:'memory_search',arguments:JSON.stringify({query:'StackChan'})}]});
  assert(await until(()=>f.client.sent.some(e=>e.type==='transcript'&&e.source==='tool-start')));
 });
+test("the backend's own preamble is said before its first tool returns, and only once",async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:FAST_NARRATION});t.after(()=>f.service.dispose());
+ const spoken=()=>f.upstream.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text);
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'task',name:'delegate_to_v',arguments:JSON.stringify({question:'查勇士赛程'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ const preamble=(runId,text)=>f.service.handleEvent({event:'agent',payload:{runId,stream:'item',data:{kind:'preamble',phase:'end',progressText:text}}});
+ preamble('stranger-run','别人的进展');preamble('sdk-fixture-run','先去 NBA 官网拿勇士前十场赛程。');
+ assert(await until(()=>spoken().includes('先去 NBA 官网拿勇士前十场赛程。')));
+ f.progressBackend('先去 NBA 官网拿勇士前十场赛程。');preamble('sdk-fixture-run','先去 NBA 官网拿勇士前十场赛程。');preamble('sdk-fixture-run','见 https://nba.com/x');await delay(300);
+ assert.equal(spoken().filter(x=>x.includes('NBA 官网')).length,1,'the same line from both sources is said once');
+ assert.equal(spoken().some(x=>x.includes('别人')||x.includes('https')),false);
+ assert(f.audit.some(e=>e.type==='backend.progress-spoken'&&e.kind==='fact'));
+});
