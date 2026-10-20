@@ -115,3 +115,12 @@ test('upstream cancels and their refusals are kept as event types only',async t=
   assert.deepEqual(rows.map(r=>r.providerEventType),['client.response.cancel','client.response.cancel.rejected','response.canceled']);
   assert(!JSON.stringify(rows).includes('SECRET'));
 });
+
+test('where a background result went is recorded without its content',async t=>{
+  const f=await fixture(t);f.created();
+  for(const type of ['backend.read-retry','backend.result-held','backend.result-context','backend.result-notice','backend.result-spoken-late','backend.result-answered','backend.result-superseded','backend.result-unspoken'])
+    assert.notEqual(f.log.audit({type,voiceSessionId:'v1',callId:'task',error:'SECRET',result:'SECRET'}),false);
+  await f.log.close();const rows=await f.rows();
+  assert.deepEqual(rows.filter(r=>r.type.startsWith('backend.')).map(r=>r.type),['backend.read-retry','backend.result-held','backend.result-context','backend.result-notice','backend.result-spoken-late','backend.result-answered','backend.result-superseded','backend.result-unspoken']);
+  assert(!JSON.stringify(rows).includes('SECRET'));
+});

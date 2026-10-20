@@ -12,13 +12,13 @@ export function visibleText(message) {
   return (message.content??[]).filter(b=>b.type==='text'&&!b.isReasoning&&b.phase!=='analysis'&&b.phase!=='commentary').map(b=>b.text??'').join('\n').trim();
 }
 /** The SDK task owns the entire Agent/child chain. A media close owns none of it. */
-export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{},onProgress=()=>{},onStage=()=>{},timeoutMs=600000,pollMs=1000,taskDelivery}) {
+export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{},onProgress=()=>{},onStage=()=>{},timeoutMs=600000,pollMs=1000,readFailureMs=120000,taskDelivery}) {
   let active;
   const log=(row,type,extra={})=>audit({type,voiceSessionId:ownerId,callId:row.callId,runId:row.runId,sessionKey,...extra});
   const pause=()=>new Promise(r=>setTimeout(r,pollMs));
   const read=async row=>{
     const value=await gateway.request('voice.product.task.read',{taskId:row.taskId},{timeoutMs:10000});
-    if(value.taskId!==row.taskId)throw Error('后台结果不属于这通电话的原任务');
+    if(value.taskId!==row.taskId)throw Object.assign(Error('后台结果不属于这通电话的原任务'),{foreign:true});
     return value;
   };
   async function cancelRow(row){
@@ -60,8 +60,18 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
       if(row.retired||signal?.aborted){await cancelRow(row);throw Error('任务已取消');}
       taskDelivery?.started(row.runId);
       const complete=(async()=>{
+        let lastReadAt=Date.now();
         while(!row.retired){
-          const result=await read(row);
+          let result;
+          // A status read is only a look at the task. One that times out while
+          // the Gateway is busy says nothing about the task itself (call
+          // 606f9977 cancelled a running task over one read TIMEOUT).
+          try{result=await read(row);lastReadAt=Date.now();}
+          catch(error){
+            if(row.retired)throw Error('任务已取消');
+            if(error.foreign||Date.now()-lastReadAt>=readFailureMs)throw error;
+            log(row,'backend.read-retry',{error:error.message,sinceReadMs:Date.now()-lastReadAt});await pause();continue;
+          }
           if(row.retired)throw Error('任务已取消');
           // A resumed task continues on further runs; their events are the same task's.
           for(const id of result.runs??[])if(typeof id==='string')row.runs.add(id);

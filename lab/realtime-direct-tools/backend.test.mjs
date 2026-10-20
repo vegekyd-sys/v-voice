@@ -38,3 +38,20 @@ test('control uses the existing opaque task, not a caller supplied run or a fres
  f.set({status:'ok'});await pending;
  assert.equal((await f.backend.control({mode:'steer',text:'late'})).queued,false);
 });
+
+test('a status read that times out while the Gateway is busy neither fails nor cancels the task',async()=>{
+ // Call 606f9977: one voice.product.task.read TIMEOUT ended a running task.
+ const f=fixture(),original=f.gateway.request;let timeouts=2;
+ f.gateway.request=async(m,a)=>{if(m==='voice.product.task.read'&&timeouts>0&&f.calls.some(x=>x.method==='voice.product.task.start')){timeouts--;f.calls.push({method:m,args:a});throw Error('Gateway request voice.product.task.read TIMEOUT');}return original(m,a);};
+ const p=f.start();await delay(20);
+ assert.equal(timeouts,0);assert(f.backend.snapshot());assert.equal(f.calls.some(x=>x.method==='voice.product.task.cancel'),false);
+ assert.equal(f.audit.filter(x=>x.type==='backend.read-retry').length,2);
+ f.set({status:'ok',text:'忙碌后照常完成'});assert.equal((await p).result,'忙碌后照常完成');
+});
+test('status reads failing for the whole window still end the task',async()=>{
+ const audit=[],calls=[];
+ const gateway={request:async(method,args)=>{calls.push(method);if(method==='voice.product.task.start')return {taskId:'owned-task',runId:'initial'};if(method==='voice.product.task.read')throw Error('Gateway request voice.product.task.read TIMEOUT');if(method==='voice.product.task.cancel')return {taskId:'owned-task',cancelled:true};return {};}};
+ const backend=createBackendDelegation({gateway,sessionKey:'agent:makaron:feishu:group:oc_test',ownerId:'call',pollMs:1,readFailureMs:30,audit:x=>audit.push(x)});
+ await assert.rejects(backend.run({question:'目标',callId:'tool'}),/TIMEOUT/);
+ assert(audit.some(x=>x.type==='backend.read-retry'));
+});
