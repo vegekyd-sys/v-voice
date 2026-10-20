@@ -84,10 +84,34 @@ export function parseDeviceEntries(records = []) {
   return devices;
 }
 
+// The session starts listening only after its tools and context load, while the
+// firmware streams right after wake. Uplink held until then, newest kept. Well
+// under Seeduplex's own pre-ready limit, which fails the call when exceeded.
+export const EARLY_UPLINK_MS = 4000;
+const EARLY_UPLINK_BYTES = EARLY_UPLINK_MS * DEVICE_INPUT_SAMPLE_RATE / 500;
+
 /** Virtual relay client handed to the shared direct voice session. */
 class DeviceCallClient extends EventEmitter {
-  constructor(call) {super();this.call = call;this.readyState = 1;}
+  constructor(call) {
+    super();this.call = call;this.readyState = 1;this.held = [];this.heldBytes = 0;
+    // Fires before the listener is added; hand the held uplink over right after.
+    this.on('newListener', event => {if (event === 'message') queueMicrotask(() => this.release());});
+  }
   send(raw) {this.call.fromSession(raw);}
+  /** Uplink PCM; `voiced` samples are what the call audit counts as speech. */
+  input(pcm, voiced) {
+    if (!this.held.length && this.listenerCount('message')) return void this.emit('message', pcm, true);
+    this.held.push({pcm,voiced});this.heldBytes += pcm.length;
+    while (this.heldBytes > EARLY_UPLINK_BYTES) {const old = this.held.shift();this.heldBytes -= old.pcm.length;this.call.droppedVoicedSamples += old.voiced;}
+    this.release();
+  }
+  release() {
+    while (this.held.length && this.readyState === 1 && this.listenerCount('message')) {
+      const {pcm} = this.held.shift();this.heldBytes -= pcm.length;this.emit('message', pcm, true);
+    }
+  }
+  /** Speech still held when the call ends never reached the session. */
+  discard() {for (const {voiced} of this.held.splice(0)) this.call.droppedVoicedSamples += voiced;this.heldBytes = 0;}
   close() {
     if (this.readyState !== 1) return;
     this.readyState = 3;
@@ -216,7 +240,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     };
     call.closed = reason => {
       if (call.ended) return;
-      call.ended = true;clearInterval(call.timer);clearInterval(call.fillTimer);call.playout.dispose();call.robot?.dispose();
+      call.ended = true;clearInterval(call.timer);clearInterval(call.fillTimer);call.playout.dispose();call.robot?.dispose();call.client?.discard();
       if (connection.call === call) connection.call = null;
       const listen = connection.dialect === 'xiaozhi' ? {listenDetects:call.listen.detect,listenStarts:call.listen.start,listenStops:call.listen.stop,...(call.listenMode ? {mode:call.listenMode} : {})} : {};
       audit({type:'device.call',voiceSessionId:call.id ?? DEVICE_START_SESSION_ID,stage:'closed',deviceId:device.id,reason:call.reason ?? reason,
@@ -365,7 +389,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
         // voice tracker expect one continuous stream, so fill gaps with silence.
         if (call.multiSpeaker) {call.fillTimer = setInterval(() => {
           if (call.ended || !call.readyAt || !call.client || now() - (call.lastInputAt ?? call.readyAt) < uplinkGapMs) return;
-          call.client.emit('message', Buffer.alloc(uplinkFillMs * DEVICE_INPUT_SAMPLE_RATE / 500), true);
+          call.client.input(Buffer.alloc(uplinkFillMs * DEVICE_INPUT_SAMPLE_RATE / 500), 0);
         }, uplinkFillMs);call.fillTimer.unref?.();}
       } catch (error) {
         sendJson(ws, {type:'call.error',reason:'start',message:String(error?.message ?? '对话没有建立').slice(0,200)});
@@ -388,12 +412,10 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       let sum = 0;for (let i = 0; i < data.length; i += 2) {const v = data.readInt16LE(i);sum += v * v;}
       const level = Math.sqrt(sum / (data.length / 2));
       // Audit: all speech the device sent, and the part the session never got
-      // (dropped here, or sent before the session started listening).
-      if (level >= VOICED_RMS) {
-        call.voicedSamples += data.length / 2;
-        if (early || !call.client.listenerCount('message')) call.droppedVoicedSamples += data.length / 2;
-      }
-      if (early) return;
+      // (dropped here, or by the client: held too long or still held at the end).
+      const voiced = level >= VOICED_RMS ? data.length / 2 : 0;
+      call.voicedSamples += voiced;
+      if (early) {call.droppedVoicedSamples += voiced;return;}
       const at = now();
       if (call.lastInputAt) call.maxInputGapMs = Math.max(call.maxInputGapMs ?? 0, at - call.lastInputAt);
       call.lastInputAt = at;call.inputBytes += data.length;
@@ -427,7 +449,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       if (process.env.VOICE_DEVICE_DUMP_DIR) {
         try {appendFileSync(`${process.env.VOICE_DEVICE_DUMP_DIR}/${call.id}.pcm`, pcm);} catch {}
       }
-      call.client.emit('message', pcm, true);
+      call.client.input(pcm, voiced);
       return;
     }
     let event;try {event = JSON.parse(data.toString());} catch {return connection.ws.close(1008, 'invalid event');}

@@ -9,8 +9,9 @@ import OpusScript from 'opusscript';
 import {createDirectVoiceService} from './session.mjs';
 import {TOOL_PROGRESS_LINES} from './tool-start-audio.mjs';
 import {DEVICE_START_SESSION_ID} from './transcript-log.mjs';
-import {createDeviceEndpoint,parseDeviceEntries,BACKGROUND_LEAVE_LINE,TOOL_FAILURE_LINE,TOOL_RESULT_PROMPT_LINE,UNHEARD_TURN_LINE} from './device-endpoint.mjs';
+import {createDeviceEndpoint,parseDeviceEntries,EARLY_UPLINK_MS,BACKGROUND_LEAVE_LINE,TOOL_FAILURE_LINE,TOOL_RESULT_PROMPT_LINE,UNHEARD_TURN_LINE} from './device-endpoint.mjs';
 import {createStreamingSpeakerRoutingService} from '../speaker-native/stream-service.mjs';
+import {MAX_PENDING_INPUT_BYTES as SEEDUPLEX_MAX_PENDING_INPUT_BYTES} from '../seeduplex-realtime-provider.mjs';
 
 const TOKEN = 'device-fixture-token-0123456789abcdef';
 const SESSION = 'agent:makaron:feishu:group:oc_fixture';
@@ -879,28 +880,91 @@ test('nearFieldGateDb 0 turns the server gate off even with multiSpeaker (firmwa
 const pcmFrame = (ms, amplitude) => {const b = Buffer.alloc(ms * 32);for (let i = 0; i < ms * 16; i++) b.writeInt16LE(Math.round(amplitude * Math.sin(i / 7)), i * 2);return b;};
 const closedRow = audit => audit.find(e => e.type === 'device.call' && e.stage === 'closed');
 
-test('the closing audit counts voiced uplink and the part the session never received', async t => {
-  let releaseCatalog;const catalogHeld = new Promise(resolve => {releaseCatalog = resolve;});
-  const f = await fixture({gateway:{request:async method => {if (method === 'tools.catalog') {await catalogHeld;return {groups:[{tools:[{id:'web_search'}]}]};}return {ok:true};}}});
-  t.after(f.close);
+// The session loads tools and context before it listens; the firmware streams right after wake.
+const heldCatalog = () => {
+  let release;const held = new Promise(resolve => {release = resolve;});
+  return {release,gateway:{request:async method => {if (method === 'tools.catalog') {await held;return {groups:[{tools:[{id:'web_search'}]}]};}return {ok:true};}}};
+};
+const appended = f => Buffer.concat(f.peers[0]?.sent.filter(e => e.type === 'input_audio_buffer.append').map(e => Buffer.from(e.audio, 'base64')) ?? []);
+const levelFrame = (ms, value) => {const b = Buffer.alloc(ms * 32);for (let i = 0; i < b.length; i += 2) b.writeInt16LE(value, i);return b;};
+
+test('speech sent while the session loads its tools reaches the provider in order, and is not counted as dropped', async t => {
+  const catalog = heldCatalog();
+  const f = await fixture({gateway:catalog.gateway});t.after(f.close);
   const device = await f.connect();t.after(() => device.close());
   device.send(JSON.stringify({type:'call.start'}));
   await f.until(() => device.events.some(e => e.type === 'call.started'), 'attached');
-  // Attached, but the session is still loading its tools: this speech is lost.
-  for (let i = 0; i < 3; i++) device.send(pcmFrame(100, 6000));
+  // Attached, but the session is still loading its tools: this speech is held.
+  const early = [pcmFrame(100, 5000), pcmFrame(100, 6000), pcmFrame(100, 7000)];
+  for (const frame of early) device.send(frame);
   device.send(pcmFrame(100, 0));
   await delay(30);
-  releaseCatalog();
+  assert.equal(f.peers.length, 0, 'no provider yet');
+  catalog.release();
   await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
-  for (let i = 0; i < 5; i++) device.send(pcmFrame(100, 6000));
+  for (let i = 0; i < 5; i++) device.send(pcmFrame(100, 4000));
   device.send(pcmFrame(200, 100));  // room tone below the voiced threshold
-  await f.until(() => f.peers[0]?.sent.some(e => e.type === 'input_audio_buffer.append'), 'uplink reached provider');
+  await f.until(() => appended(f).length >= 9600, 'held speech paced to the provider');
+  assert.deepEqual(appended(f).subarray(0, 9600), Buffer.concat(early), 'first in, first out, before live audio');
   device.send(JSON.stringify({type:'call.end'}));
   await f.until(() => closedRow(f.audit), 'closed audit');
   const closed = closedRow(f.audit);
   assert.equal(closed.voicedMs, 800);
-  assert.equal(closed.droppedVoicedMs, 300);
+  assert.equal(closed.droppedVoicedMs, 0);
   assert(!('listenDetects' in closed), 'a native speaker sends no firmware listen states');
+});
+
+test('a long wait keeps only the newest held speech, within the provider limit, and counts the rest as dropped', async t => {
+  const catalog = heldCatalog();
+  const f = await fixture({gateway:catalog.gateway});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.started'), 'attached');
+  // 5 s of speech, each 100 ms frame at its own level; 4 s fit.
+  for (let i = 0; i < 50; i++) device.send(levelFrame(100, 1000 + i * 10));
+  await delay(50);
+  catalog.release();
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+  await f.until(() => appended(f).length >= 640, 'held speech reached the provider');
+  assert.equal(appended(f).readInt16LE(0), 1000 + (50 - EARLY_UPLINK_MS / 100) * 10, 'the oldest second was dropped');
+  assert(EARLY_UPLINK_MS * 32 < SEEDUPLEX_MAX_PENDING_INPUT_BYTES / 2, 'room left for audio while the provider connects');
+  assert(!f.audit.some(e => e.type === 'device.call' && e.stage === 'closed'), 'the provider did not fail on the backlog');
+  device.send(JSON.stringify({type:'call.end'}));
+  await f.until(() => closedRow(f.audit), 'closed audit');
+  assert.equal(closedRow(f.audit).voicedMs, 5000);
+  assert.equal(closedRow(f.audit).droppedVoicedMs, 1000);
+});
+
+test('speech still held when the call ends is counted as dropped', async t => {
+  const catalog = heldCatalog();t.after(catalog.release);
+  const f = await fixture({gateway:catalog.gateway});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.started'), 'attached');
+  for (let i = 0; i < 3; i++) device.send(pcmFrame(100, 6000));
+  await delay(30);
+  device.send(JSON.stringify({type:'call.end'}));
+  await f.until(() => closedRow(f.audit), 'closed audit');
+  assert.equal(closedRow(f.audit).voicedMs, 300);
+  assert.equal(closedRow(f.audit).droppedVoicedMs, 300);
+});
+
+test('under Speaker routing, speech before ready is still not sent and is counted as dropped', async t => {
+  const routing = routingFixture();t.after(() => routing.service.dispose());
+  const catalog = heldCatalog();
+  const f = await fixture({record:{multiSpeaker:true},speakerRouting:routing.service,gateway:catalog.gateway});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.started'), 'attached');
+  for (let i = 0; i < 3; i++) device.send(loud(100), {binary:true});
+  await delay(30);
+  catalog.release();
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+  await delay(20);
+  assert.equal(routing.asr.appended, 0, 'routing gets audio only once bound');
+  device.send(JSON.stringify({type:'call.end'}));
+  await f.until(() => closedRow(f.audit), 'closed audit');
+  assert.equal(closedRow(f.audit).droppedVoicedMs, 300);
 });
 
 test('a call whose start fails is still audited, under a fixed id with its error', async t => {

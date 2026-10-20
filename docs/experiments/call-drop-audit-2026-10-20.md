@@ -166,7 +166,7 @@ ReSpeaker 的 4 通真实通话里，3 通是用户道别结束，1 通是 V 说
 上面 1–4 项都已补上，只增加数值、布尔和固定枚举字段，不落任何文字：
 
 - `device.call` 新增阶段 `listen-detect` / `listen-start` / `listen-stop`（`latencyMs` 为距接通的毫秒数，`mode` 为 auto / manual / realtime）。唤醒词文字在 xiaozhi 适配层就被丢弃，不进入端点。每通最多记 20 条，`closed` 上的计数不受这个上限影响。
-- `device.call closed` 新增：`voicedMs`（设备上行 RMS ≥ 450 的累计时长）；`droppedVoicedMs`（其中会话没有收到的部分：会话还在加载工具和上下文、尚未开始收音时的语音会被丢掉）；xiaozhi 设备另有 `listenDetects` / `listenStarts` / `listenStops` / `mode`。
+- `device.call closed` 新增：`voicedMs`（设备上行 RMS ≥ 450 的累计时长）；`droppedVoicedMs`（其中会话没有收到的部分）。会话要先加载工具和上下文才开始收音，这期间的上行由设备端点暂存，最多保留最新的 4 秒，会话开始收音后按顺序补发；补发成功的不算 dropped。超出 4 秒被挤掉的、通话结束时还在暂存里的、多人路由就绪前的上行，计入 dropped；xiaozhi 设备另有 `listenDetects` / `listenStarts` / `listenStops` / `mode`。
 - 还没拿到 voiceSessionId 就结束的设备通话（`start-failed`、预约期间设备断开），用固定 id `device-start` 记一条 `closed`，带 `errorKind`。`device.ota` 用固定 id `ota` 落盘，只记 `deviceId` 和 `known`。
 - `tool.delivered`、`device.look`、`device.vision`、`call.connection-error` 只记 `errorKind`（not-configured / timeout / unavailable / permission / other），按错误文字做正则分类，原文不落盘。
 - `device.volume`、`device.tool-progress`、`device.tool-failure-notice`、`device.tool-result-prompt`、`device.unheard-turn`、`speaker.end-played` 加进白名单。
@@ -177,7 +177,7 @@ ReSpeaker 的 4 通真实通话里，3 通是用户道别结束，1 通是 V 说
 |---|---|
 | `listenDetects ≥ 1`，`voicedMs` 接近 0（低于约 300 ms），没有 `input-speech` 阶段 | 唤醒误触发，没人接着说话 |
 | `listenStarts = 0`，或 `listen-stop` 出现得很早并且 `inputBytes` 很小 | 固件没有进入收音或提前停止收音（固件侧，归入 R11） |
-| `voicedMs` 有 1 秒以上，`droppedVoicedMs` 接近 `voicedMs` | 说了，但都落在会话就绪前（V 启动阶段丢音） |
+| `voicedMs` 有 1 秒以上，`droppedVoicedMs` 接近 `voicedMs` | 说了，但都落在会话就绪前（启动阶段超过 4 秒，或在暂存期间挂断） |
 | `voicedMs` 有 1 秒以上，`droppedVoicedMs` 远小于它，seeduplex 没有 `speech_started` / `transcription.started` | 说了，模型侧没听到（再用 `VOICE_DEVICE_DUMP_DIR` 录一次上行来定因） |
 
 `voicedMs` 只看音量。电视等远处的声音也会被计入，需要结合 `gatedInputBytes` 一起看。
@@ -190,6 +190,7 @@ ReSpeaker 的 4 通真实通话里，3 通是用户道别结束，1 通是 V 说
 | [#37](https://github.com/vegekyd-sys/v-voice/pull/37) | `claude/voice-lark-tools-gated` | R8 本地飞书未配置时不声明工具 |
 | [#38](https://github.com/vegekyd-sys/v-voice/pull/38) | `claude/voice-gateway-startup-retry` | 一、Gateway 启动期瞬断导致崩溃重启；部署文档要求 `Wants=` |
 | [#39](https://github.com/vegekyd-sys/v-voice/pull/39) | `claude/voice-device-follow-up-window` | R2 追问窗口可以按设备配置 |
+| [#44](https://github.com/vegekyd-sys/v-voice/pull/44) | `claude/voice-device-early-uplink` | R3 候选原因之一：会话开始收音前的上行被丢弃，改为暂存后补发 |
 
 ## 没修的问题及原因
 
