@@ -158,3 +158,17 @@ test('output gain lifts quiet speech and rounds off peaks without clipping', () 
   assert(s(3) < -24000 && s(3) >= -32767);
   assert.equal(applyOutputGain(pcm, 1), pcm, 'unity gain is a no-op');
 });
+
+test('firmware listen states reach the endpoint as state and mode only', () => {
+  const h = harness();
+  const listen = value => h.ws.emit('message', Buffer.from(JSON.stringify({session_id:'voice', type:'listen', ...value})), false);
+  listen({state:'detect', text:'你好小智'});
+  assert.equal(h.device.length, 0, 'nothing before hello');
+  h.ws.emit('message', Buffer.from(JSON.stringify({type:'hello', audio_params:{format:'opus', sample_rate:16000}})), false);
+  listen({state:'detect', text:'你好小智'});
+  listen({state:'start', mode:'realtime'});
+  listen({state:'stop', mode:'<script>'});
+  listen({state:'pause', mode:'auto'});
+  assert.deepEqual(h.device.filter(e => e.type === 'listen'), [{type:'listen', state:'detect'}, {type:'listen', state:'start', mode:'realtime'}, {type:'listen', state:'stop'}]);
+  assert(!JSON.stringify(h.device).includes('你好小智'));
+});
