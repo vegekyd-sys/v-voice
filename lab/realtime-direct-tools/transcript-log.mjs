@@ -2,6 +2,7 @@ import {mkdir,open} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {STAGE_LABELS} from './task-progress.mjs';
 
 /** Text and whitelisted connection diagnostics. No PCM, protocol or credentials. */
 export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},maxPending=256}={}) {
@@ -61,6 +62,19 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       if(event.type==='backend.started'&&typeof event.ack?.runId==='string')safe.runId=event.ack.runId;
       if(event.type==='tool.delivered')safe.status=event.result?.error?'error':event.result?.cancelled?'cancelled':'ok';
       for(const key of ['ok','queued','applied'])if(typeof event[key]==='boolean')safe[key]=event[key];
+      return enqueue({...owner,type:event.type,...safe});
+    }
+    // Task narration: which kind of line and the verified counts behind it. The
+    // spoken words themselves are already the assistant transcript.
+    if(['backend.stage','backend.progress-spoken','backend.stages-observed'].includes(event.type)){
+      const safe={};
+      for(const key of ['callId','runId'])if(typeof event[key]==='string')safe[key]=event[key].slice(0,160);
+      if(event.type==='backend.progress-spoken'&&['fact','stage','heartbeat'].includes(event.kind))safe.kind=event.kind;
+      if(typeof event.label==='string'&&STAGE_LABELS.has(event.label))safe.label=event.label;
+      if(typeof event.running==='boolean')safe.running=event.running;
+      for(const key of ['elapsedMs','completed','failed','events','steps'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      if(event.type==='backend.stages-observed'&&event.streams&&typeof event.streams==='object')
+        safe.streams=Object.fromEntries(Object.entries(event.streams).filter(([k,v])=>/^[a-z_]{1,24}(?:\/[a-z_]{1,24}){0,2}$/.test(k)&&Number.isSafeInteger(v)).slice(0,24));
       return enqueue({...owner,type:event.type,...safe});
     }
     if(event.type==='client.playback-stats'){

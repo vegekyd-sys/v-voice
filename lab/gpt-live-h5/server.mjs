@@ -484,7 +484,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         const latest=JSON.parse(await readFile(configPath,"utf8"));
         return String(latest.gateway.auth.token).replace(/\$\{([^}]+)\}/gu,(_,key)=>process.env[key]??"");
       },
-      scopes:["operator.read","operator.write","operator.admin"],caps:["voice-direct-tools","tool-events"],onEvent:event=>bridge?.emit(event),
+      scopes:["operator.read","operator.write","operator.admin"],caps:["voice-direct-tools","tool-events"],subscribeSessions:true,onEvent:event=>bridge?.emit(event),
     },{onConnectError:error=>console.warn(JSON.stringify({type:"voice.gateway-connection-error",code:/^[A-Z0-9_]{1,80}$/.test(error.code??"")?error.code:"CONNECT_ERROR"}))});
     const {createDirectVoiceService}=await import('../realtime-direct-tools/session.mjs');
     const wsModule=await import('ws');

@@ -500,9 +500,9 @@ export class SeeduplexRealtimeVoiceBridge {
     this.speakProgress(options.spokenText ?? text, { caption: options.displayedFullResult === true });
   }
 
-  speakProgress(text, { caption = false } = {}) {
+  speakProgress(text, { caption = false, source = "V-backend-summary" } = {}) {
     if (this.terminal || (!this.ready && !this.reconnecting)) return;
-    this.pendingSpeechCaption = caption ? { text, started: false, responseId: null } : null;
+    this.pendingSpeechCaption = caption ? { text, source, started: false, responseId: null } : null;
     this.injectedSpeech = true;
     this.responseActive = true;
     this.outputClosed = false;
@@ -879,7 +879,7 @@ export class SeeduplexRealtimeVoiceBridge {
           (!responseId || responseId === caption.responseId) &&
           (this.audioResponseId ?? responseId ?? null) === caption.responseId) {
           this.pendingSpeechCaption = null;
-          this.request.onTranscript?.("assistant", caption.text, true, "V-backend-summary");
+          this.request.onTranscript?.("assistant", caption.text, true, caption.source);
         }
         const greeting = this.pendingGreeting;
         if (audio.length && greeting?.started &&

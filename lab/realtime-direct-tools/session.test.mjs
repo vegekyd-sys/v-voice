@@ -19,7 +19,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   if(method==='voice.product.task.cancel'){sdkTask.status='cancelled';return {taskId:sdkTask.taskId,cancelled:true};}
   return invoke(args,method);
  }};
- const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,...options});
+ const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
  const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
@@ -532,4 +532,45 @@ test('streaming pickup asks the Speaker host to open a greeting gate before nati
  const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
  f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);
  assert.equal(requests,1);assert.equal(f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').length,1);
+});
+
+const FAST_NARRATION={firstMs:0,firstHeartbeatMs:300,settleMs:20,stageGapMs:60,factGapMs:0,heartbeatMs:300,quietAfterUserMs:0,startMs:30};
+const until=async(predicate,ms=3000)=>{for(const end=Date.now()+ms;Date.now()<end;await delay(5))if(predicate())return true;return false;};
+const toolEvent=(f,runId,phase,name,toolCallId)=>f.service.handleEvent({event:'session.tool',payload:{runId,stream:'tool',sessionKey:'agent:makaron:explicit:personal-fixture',data:{phase,name,toolCallId}}});
+test('a long background task narrates its real stages on an idle phone line, then its result still arrives',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:FAST_NARRATION});t.after(()=>f.service.dispose());
+ const spoken=()=>f.upstream.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text);
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'task',name:'delegate_to_v',arguments:JSON.stringify({question:'查资料并整理成简短报告'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ toolEvent(f,'another-session-run','start','memory_search','foreign');
+ toolEvent(f,'sdk-fixture-run','start','web_search','search-1');
+ assert(await until(()=>spoken().includes('后台正在上网搜索。')),'the running tool is announced');
+ toolEvent(f,'sdk-fixture-run','result','web_search','search-1');toolEvent(f,'sdk-fixture-run','start','web_fetch','fetch-1');
+ assert(await until(()=>spoken().includes('后台正在读网页。')),'a new stage is announced after the gap');
+ assert(await until(()=>spoken().some(x=>/^后台还在读网页，已经\d+秒了。$/.test(x))),'an unchanged stage is repeated with elapsed time');
+ assert.equal(spoken().some(x=>x.includes('查记忆')),false,'another run never speaks on this call');
+ assert.deepEqual([...new Set(f.audit.filter(e=>e.type==='backend.progress-spoken').map(e=>e.kind))],['stage','heartbeat']);
+ const before=spoken().length;f.completeBackend('报告整理好了，一共三条结论。');
+ assert(await until(()=>spoken().slice(before).some(x=>x.includes('三条结论'))),'the result follows the narration');
+ assert(f.audit.some(e=>e.type==='backend.stages-observed'&&e.steps===2));
+});
+test('task narration never injects speech while a native lookup is still pending',async t=>{
+ const f=await fixture(()=>new Promise(()=>{}),'seeduplex',{narration:FAST_NARRATION});t.after(()=>f.service.dispose());
+ const native=(id,name,args)=>f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+ native('task','delegate_to_v',{question:'做一个长任务'});assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ native('lookup','memory_search',{query:'正在等的原生查询'});assert(await until(()=>f.audit.some(e=>e.type==='tool.invoke'&&e.name==='memory_search')));
+ toolEvent(f,'sdk-fixture-run','start','web_search','search-1');await delay(700);
+ assert.equal(f.upstream.sent.some(x=>x.type==='speech_text_buffer.commit'&&x.text.startsWith('后台')),false);
+ assert.equal(f.audit.some(e=>e.type==='backend.progress-spoken'),false);
+});
+test('under multi-speaker routing task narration passes the output gate as host speech',async t=>{
+ const hosted=[];
+ const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async()=>{},close(){},audio(){},pending:()=>false,hostSpeech:async(_id,text,options)=>{hosted.push({text,options});return true;}};
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{speakerRouting:routing,narration:FAST_NARRATION});t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'task',name:'delegate_to_v',arguments:JSON.stringify({question:'查资料'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ toolEvent(f,'sdk-fixture-run','start','memory_search','memory-1');
+ assert(await until(()=>hosted.length>0));
+ assert.deepEqual(hosted[0],{text:'后台正在查记忆。',options:{source:'task-progress'}});
+ assert.equal(f.upstream.sent.some(x=>x.type==='speech_text_buffer.commit'&&x.text.startsWith('后台')),false,'not past the gate');
 });

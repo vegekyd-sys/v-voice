@@ -7,6 +7,7 @@ import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICES,grokVoice,grokVoiceModel,gr
 import {createTaskDelivery} from './task-delivery.mjs';
 import {createBackendDelegation} from './backend.mjs';
 import {loadToolStartClips,loadToolProgressClips,toolStartClip} from './tool-start-audio.mjs';
+import {stageLine} from './task-progress.mjs';
 import {presentBackendResult,LONG_RESULT_NOTICE} from '../gpt-live-h5/result-presentation.mjs';
 import {voiceCapabilityInstructions} from '../gpt-live-h5/capability-policy.mjs';
 import {VOICE_TASK_CONTROL_POLICY} from '../../lib/voice-task-control.mjs';
@@ -36,19 +37,44 @@ export function directInstructions(catalog,context='',model='',options={}) {
 }
 
 /** One real provider connection per dial; tool authorization stays in OpenClaw. */
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,toolProgressClips=null}) {
+// Pacing of task narration (ms). A stage must hold for settleMs before it is
+// announced, so a burst of quick tool calls becomes one line.
+export const NARRATION_DEFAULTS=Object.freeze({firstMs:6000,firstHeartbeatMs:15000,settleMs:2000,stageGapMs:12000,factGapMs:6000,heartbeatMs:30000,quietAfterUserMs:4000,startMs:2500,max:12});
+const stageKey=stage=>stage.running?'run:'+(stage.label??''):stage.failed?'failed:'+stage.failed:'done:'+(stage.completed?1:0);
+
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,toolProgressClips=null,narration}) {
+  const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
   const sessions=new Map(),detached=new Set();
+  // While a delegated task runs, V says what is really happening: a public fact
+  // the backend wrote, or the stage its own runs are in (Gateway tool events),
+  // or how long it has been running. Only on an idle line, and only when no
+  // native lookup is pending: injected speech then costs that lookup its result.
+  const narrate=(s,text,kind,stage)=>{
+    const now=Date.now();
+    s.lastProgressAt=now;s.narrationBusyUntil=now+NARRATION.startMs;s.narrations=(s.narrations??0)+1;s.backend.stageSpoken(stageKey(stage));
+    // Under multi-speaker routing V's voice passes the output gate as host speech.
+    if(s.speakerRouting&&speakerRouting?.hostSpeech)void speakerRouting.hostSpeech(s.id,text,{source:'task-progress'}).catch(()=>{});
+    else s.bridge.speakProgress(text,{caption:true,source:'task-progress'});
+    audit({type:'backend.progress-spoken',voiceSessionId:s.id,kind,text,elapsedMs:now-stage.admittedAt,completed:stage.completed,events:stage.events});
+  };
   const deferred=s=>{
     if(s.backendResult&&s.backgroundBridge&&s.backgroundBridge!==s.bridge){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;resolve();return;}
     if(speakerRouting?.pending?.(s.id))return;
-    if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking||Date.now()-s.lastUserAt<1200)return;
+    if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking||Date.now()-s.lastUserAt<1200||Date.now()<s.narrationBusyUntil)return;
     if(s.backendResult){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;resolve();return;}
-    if(!s.progress||s.pending.size!==1||!s.backend.snapshot()||Date.now()-s.lastProgressAt<10000)return;
-    const p=s.progress;s.progress=null;if(p.text.length>220)return;
-    s.lastProgressAt=Date.now();s.responseActive=true;
-    s.bridge.speakProgress(p.text);audit({type:'backend.progress-spoken',voiceSessionId:s.id,...p});
+    if(s.pending.size!==1||!s.backend.snapshot())return;
+    const stage=s.backend.stage();if(!stage)return;
+    const now=Date.now(),elapsed=now-stage.admittedAt,since=now-Math.max(s.lastProgressAt,stage.admittedAt-NARRATION.heartbeatMs+NARRATION.firstHeartbeatMs);
+    if(elapsed<NARRATION.firstMs||(s.narrations??0)>=NARRATION.max)return;
+    const p=s.progress;
+    if(p&&since>=NARRATION.factGapMs){s.progress=null;if(p.text.length<=220){narrate(s,p.text,'fact',stage);return;}}
+    // Stage and elapsed-time lines are telephone narration; a device keeps its own policy.
+    if(s.surface!=='phone'||now-s.lastUserAt<NARRATION.quietAfterUserMs)return;
+    const changed=stageKey(stage)!==stage.lastSpoken&&stage.events>0;
+    if(changed&&since>=NARRATION.stageGapMs&&now-stage.changedAt>=NARRATION.settleMs)narrate(s,stageLine(stage,{elapsedMs:elapsed}),'stage',stage);
+    else if(since>=NARRATION.heartbeatMs)narrate(s,stageLine(stage,{elapsedMs:elapsed,heartbeat:true}),'heartbeat',stage);
   };
   const websocketServer=new wsModule.WebSocketServer({noServer:true,maxPayload:65536});
   const configured=id=>id==='seeduplex'?Boolean(apiKeys.seeduplex):id==='grok'&&Boolean(apiKeys.grok);
@@ -127,11 +153,12 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
     const selectedVoice=model==='grok'?grokVoice(voice):spec.voice;
     const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map(),surface,display:surface!=='speaker',inputSampleRate,speaker:surface==='speaker'?speaker:null};
-    Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,progress:null,toolOwners:new Map(),retiredBridges:new Set()});
+    Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,narrationBusyUntil:0,narrations:0,progress:null,toolOwners:new Map(),retiredBridges:new Set()});
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
     s.delivery=createTaskDelivery({gateway,sessionKey,ownerId:s.id,audit});
-    s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,taskDelivery:s.delivery,pollMs:backendPollMs,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}}});
+    s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,taskDelivery:s.delivery,pollMs:backendPollMs,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}},
+      onStage:stage=>{if(current(s)){audit({type:'backend.stage',voiceSessionId:s.id,callId:stage.callId,label:stage.label,running:stage.running,completed:stage.completed,failed:stage.failed});emit(s,{type:'tool.progress',callId:stage.callId,name:'delegate_to_v',...(stage.label?{stage:stage.label}:{})});}}});
     sessions.set(s.id,s);
     audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model,voice:s.voice,surface,...(model==='grok'?{speed:grokSpeed,expressiveTags:grokExpressiveTags}:{})});
     // A household device joins streaming multi-speaker routing only when its
@@ -219,7 +246,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(call.name==='delegate_to_v'){
           if(s.backend.snapshot())throw Error('新任务未启动：这通电话已有一个 V 后台任务。未加入队列，不要说正在做。修改或补充原任务请调用 openclaw_agent_control 的 steer/followup；用户明确取消时先调用 cancel_task，再委派新任务。');
           admittedUserTurns.set(call.callId,s.latestUserTurn);
-          s.backgroundCallId=call.callId;s.backgroundBridge=ownerBridge;ownerBridge.beginBackgroundTool(call.callId,call.args.question);backgroundAck=true;
+          s.backgroundCallId=call.callId;s.backgroundBridge=ownerBridge;s.narrations=0;ownerBridge.beginBackgroundTool(call.callId,call.args.question);backgroundAck=true;
         }
         if(!['send_task_updates','openclaw_agent_control'].includes(call.name))result=await execute(call.name,call.args,call.callId,controller.signal);
         if(call.name==='delegate_to_v'&&current(s)&&s.epoch===epoch){
@@ -270,7 +297,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         deliverAudio(clip.pcm,{source:clip.source,sha256:clip.sha256,callId:call.callId});emit(s,{type:'audio.done'});
         });
       },
-      onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.responseActive=true;if(s.ending)s.ending.hasAudio=true;deliverAudio(audio,metadata);}),
+      onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.responseActive=true;s.narrationBusyUntil=0;if(s.ending)s.ending.hasAudio=true;deliverAudio(audio,metadata);}),
       onTranscript:(role,text,final,source)=>{
         if(!current(s))return;
         if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
@@ -284,7 +311,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       },
       onClearAudio:()=>routeOutput('clear',null,()=>{audit({type:'audio.clear',voiceSessionId:s.id});s.responseActive=false;if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});}),
       onAudioSegmentDone:()=>routeOutput('done',null,()=>{s.responseActive=false;}),
-      onResponseDone:e=>routeOutput('done',e,()=>{s.responseActive=false;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}}),
+      onResponseDone:e=>routeOutput('done',e,()=>{s.responseActive=false;s.narrationBusyUntil=0;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}}),
       onEvent:e=>{if(['response.created'].includes(e.type))s.responseActive=true;
         if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.userSpeaking=true;s.lastUserAt=Date.now();}
         if(e.type==='input_audio_buffer.speech_stopped'){s.userSpeaking=false;s.lastUserAt=Date.now();}
@@ -333,7 +360,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(!speakerRouting?.lazyNative?.(s.id))await s.bridge.connect();
     if(current(s)&&speakerRouting?.has(s.id))await speakerRouting.bind(s.id,{
       greet:()=>s.bridge.triggerGreeting(),
-      forward:audio=>s.bridge.sendAudio(audio),context:text=>s.bridge.sendUserMessage(text),clarify:text=>s.bridge.speakProgress(text,{caption:true}),interrupt:()=>s.bridge.handleBargeIn(),
+      forward:audio=>s.bridge.sendAudio(audio),context:text=>s.bridge.sendUserMessage(text),clarify:(text,options)=>s.bridge.speakProgress(text,{caption:true,...options}),interrupt:()=>s.bridge.handleBargeIn(),
       cancel:()=>s.bridge.cancelPendingResponse(),invalidate:()=>{s.personaKey=null;},
       end:({turnId})=>{if(!current(s)||!s.bridge.ready)return;s.ending={callId:'speaker-end-'+turnId,hasAudio:false,source:'speaker'};emit(s,{type:'end.accepted',callId:s.ending.callId});s.bridge.speakProgress('好，拜拜，下次聊。',{caption:true});},
       cancelEnd:()=>{if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}},
