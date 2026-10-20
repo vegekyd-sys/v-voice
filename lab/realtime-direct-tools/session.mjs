@@ -181,6 +181,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     // A household device joins streaming multi-speaker routing only when its
     // operator record asks for it (inputPolicy 'speaker'); phones default to it.
     const route=surface==='phone'||inputPolicy==='speaker'?speakerRouting?.reserve(s.id,{model,policy:inputPolicy??'speaker',surface,inputSampleRate}):null;
+    // A running background task counts as V being busy for repeat prompts.
+    if(route)speakerRouting.setBusyProbe?.(s.id,()=>Boolean(s.backend?.snapshot?.()));
     s.speakerRouting=Boolean(route);
     return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket,...route?{speakerRouting:route}:{}};
   }
@@ -318,6 +320,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       },
       onToolStartNotice:(text,call)=>{
         routeOutput('notice',call,()=>{if(!current(s))return;const clip=toolStartClip(call,noticeClips);
+        speakerRouting?.spoken?.(s.id,text);
         emit(s,{type:'transcript',role:'assistant',text,final:true,source:'tool-start'});
         audit({type:'transcript',voiceSessionId:s.id,role:'assistant',text,final:true,source:'tool-start',callId:call.callId});
         deliverAudio(clip.pcm,{source:clip.source,sha256:clip.sha256,callId:call.callId});emit(s,{type:'audio.done'});
