@@ -6,7 +6,7 @@ import {OnlineSpeakerTracker} from './online-speaker.mjs';
 
 export class TurnOutputGate{
   constructor(){this.status='closed';this.queue=[];this.bytes=0;}
-  begin(token){this.token=token;this.status='pending';this.queue=[];this.bytes=0;}
+  begin(token){this.token=token;this.status='pending';this.queue=[];this.bytes=0;this.beganAt=performance.now();}
   dispatch(deliver,bytes=0){
     if(this.status==='allowed'){deliver();return;}
     if(this.status!=='pending')return;
@@ -241,7 +241,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
         if(e.type==='start'&&s.input?.greeting){s.input.cancelled=true;clearTimeout(s.responseDeadline);s.gate.deny();s.native.cancel?.();s.nativeBusy=false;send(s,{type:'speaker.greeting-cancelled',reason:'new-speech'});}
         if(e.type==='start'&&s.input?.ending){s.input.cancelled=true;s.gate.deny();s.native.cancelEnd?.();s.native.cancel?.();s.nativeBusy=false;send(s,{type:'speaker.end-revoked',reason:'new-speech'});}
         if(e.type==='identified')identified(s,e);
-        if(e.type==='end'&&s.input?.segmentIds.has(e.segment.id))s.input.endMs=e.segment.endMs;
+        if(e.type==='end'){s.speechEndedAt=performance.now();if(s.input?.segmentIds.has(e.segment.id))s.input.endMs=e.segment.endMs;}
         if(e.type==='revision'){if(s.input?.segmentIds.has(e.segment.id)){s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;}send(s,{type:'speaker.stream-fallback',reason:'短片段声线需要复核'});}
         if(e.type==='error')fail(s,Error(e.message));
       }});
@@ -249,7 +249,15 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
       return {voiceSessionId:id,model,transport:'relay',policy:'streaming'};
     },
     has:id=>sessions.has(id),lazyNative:id=>sessions.has(id),controlsEnding:id=>sessions.has(id),
-    pending:id=>sessions.get(id)?.gate.status==='pending',
+    /** Whether host speech (a background result, a progress line) should wait
+     * for the turn in flight. A speculative stream that never resolves (call
+     * 373fa048 left one undecided for 75 s) only counts while someone may still
+     * be talking. */
+    pending:id=>{
+      const s=sessions.get(id);if(s?.gate.status!=='pending')return false;
+      const now=performance.now();if(now-s.gate.beganAt>=(limits.pendingMaxMs??30000))return false;
+      return Boolean(s.tracker.current)||now-(s.speechEndedAt??-Infinity)<(limits.pendingQuietMs??8000);
+    },
     async greet(id){
       const s=sessions.get(id);if(!s?.ready||s.closed||s.greetingRequested)return;
       s.greetingRequested=true;
