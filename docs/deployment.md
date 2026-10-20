@@ -17,6 +17,10 @@ GPT Live 仍由 Gateway 原生实时接口承接；本次没有把其原生语�
 5. 经授权上线时确认原电话的 GPT Live openVoices=0、直接模型 relayConnections=0，且带认证访问 `/api/status` 返回 `releaseReadiness.known=true`、`activeCalls=0`、`creatingSessions=0`、`backgroundTasks=0`。挂断不代表后台投递已完成；后台任务或发送尚在继续时必须延期，不能 stop 服务或靠 systemd 超时终止。旧版没有此字段时属于未知，不能按 0 处理，先核对任务与最终发送回执。保留原 release/pointer/启动配置/环境，只切换 `openclaw-rtc-h5.service`。出现异常恢复同一原服务与 pointer。
 6. HTTPS 正式入口逐 hash 核验；真人测试音频流畅、后台任务、打断、挂断、重拨。保留部署和验收两个结论。
 
+## 电话服务与 Gateway 的 systemd 依赖
+
+`openclaw-rtc-h5.service` 只能 `Wants=` + `After=openclaw-gateway.service`，不能用 `Requires=` 或 `BindsTo=`。用 `Requires=` 的话，每次 Gateway 停止或重启，systemd 都会连带停掉电话服务，正在进行的通话和后台投递会被直接切断，上面第 5 步的空闲检查也就失效了。2026-10-13 至 10-20 这一周，电话服务停了 68 次，其中 38 次就是这样连带停掉的，见 [断线审计](experiments/call-drop-audit-2026-10-20.md)。Voice 运行中和 Gateway 断开后会自动重连，不需要跟着重启；上海节点的音箱服务没有这个依赖，经历同样的 Gateway 重启后一次也没有重启。启动时如果 Gateway 还在重启，Voice 会在 60 秒内等待它就绪，超时后才退出，交给 systemd 重新拉起。修改生产 unit 需要 Tianyi 授权，并在没有通话时执行 `daemon-reload`。
+
 ## 验收环境选择
 
 共享 VLab 不是固定必经步骤。每个 PR 根据实际改动和依赖选择环境，并在验收报告说明理由。
