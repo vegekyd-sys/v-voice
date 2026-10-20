@@ -242,7 +242,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       catch {result={error:'工具结果过大或无法续传，请缩小范围并分页读取。'};if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
       audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId,name:call.name,result});
       // A hardware client must know a lookup failed: V has to say something then.
-      emit(s,{type:'tool.result',callId:call.callId,name:call.name,...(typeof result?.error==='string'?{failed:true}:{})});
+      emit(s,{type:'tool.result',callId:call.callId,name:call.name,...(typeof result?.error==='string'?{failed:true}:{}),...(result?.cancelled===true?{cancelled:true}:{})});
     };
     connectionStage('context-requested');
     const context=await loadContext(s.sessionKey);
