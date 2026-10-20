@@ -16,7 +16,7 @@ PR #32 的豆包流式多人链路（并行 ASR、通话内匿名 Speaker、换�
 
 ```
 设备 (xiaozhi Opus 16 kHz / 原生 PCM 16 kHz)
-  └─ device-endpoint.mjs：解码、增益、噪声门；multiSpeaker 时：
+  └─ device-endpoint.mjs：解码、静态噪声门、近场门（nearFieldGateDb）、增益；multiSpeaker 时：
        · 会话 ready 之前的上行丢弃（识人服务还没绑定）
        · 上行停顿超过 300 ms 时补 100 ms 静音（设备在 V 说话时停上行）
   └─ session.mjs：surface=speaker 且 inputPolicy=speaker → speakerRouting.reserve(surface:'speaker', 16 kHz)
@@ -44,6 +44,20 @@ PR #32 的豆包流式多人链路（并行 ASR、通话内匿名 Speaker、换�
 
 ## 嘈杂环境：电视、孩子、回声
 
+**第零道：近场门（`near-field-gate.mjs`）**
+
+2026-10-20 11:15 的 3 分钟实测（背景循环播放两人对话的电视音轨，音量比说话人小）：原生链路下 seeduplex 把电视声和用户的话拼成一轮，单轮长达 31 秒，6 句只答了 2 句，最后以 background-speech 挂断。根本原因是远处连续不断的人声进了用户轮次，模型一直等不到这句话说完。
+
+近场门在音频进入会话之前起作用，ASR、声线追踪和豆包都在它之后：
+
+- 用最近约 12 秒内**没有放行**的帧估计背景电平（按样本数加权的中位数，即电视加房间底噪）。只有比背景高 `nearFieldGateDb`（默认 10 dB）的帧才放行；放行后保持 400 ms，保住句尾。没放行的帧换成静音。
+- 放行的帧几乎不计入背景，这样用户自己说话不会把门槛越抬越高。门连续开超过 6 秒（不像人对机器人说话，更像电视被调大了）时，放行的帧也按正常权重计入背景，几秒后门会重新关上。
+- 上行静音的帧（设备在 V 说话时）不参与估计。
+- 合成测试（电视在中位数附近 −8 到 +6 dB 起伏、有停顿，用户的话叠加在电视上）：用户比电视中位数高 8 dB 时约 94% 的帧放行，高 10 dB 时约 98%，高 12 dB 及以上全部放行；电视泄漏 0%。把 `nearFieldGateDb` 设成 8 时，比电视只高 6 dB 的用户也能放行约 92%，但电视会泄漏 7–28% 的帧。所以默认值 10 适合用户在 1 米内、电视在房间另一头的情况。
+- 每通结束时，审计 `device.call stage:"closed"` 带 `nearField:{gateDb,thresholdDb,gatedMs,inputMs,levelDb:{p10,p50,p90}}`（只有数值），可以据此调参：如果用户的话被切掉（转写缺字），调低到 8；如果电视还在进入转写，调到 12–15。设成 0 关闭。
+
+`nearFieldGateDb` 在 `multiSpeaker: true` 时默认 10，其他设备默认 0（关闭）。它也可以单独用在原生链路上（不开 multiSpeaker，只设 `nearFieldGateDb`），方便和多人链路做 A/B 对比。
+
 **电视和旁人的话怎么不被当成指令**
 
 1. 任何 ASR 定稿都要经 Decision 判断"是否在对 V 说"才放行；被拒绝的话连同豆包已经生成的音频、字幕和工具调用一起丢弃，不会执行工具。
@@ -64,14 +78,26 @@ PR #32 的豆包流式多人链路（并行 ASR、通话内匿名 Speaker、换�
 - 自动模式为了降低延迟，会先把刚识别出的声线音频送给豆包（结果在门控里等待 Decision），所以电视声音也会让豆包白算；被拒后下一轮要重建原生连接，延迟会高一些。
 - 第一个被听到的声音默认是对话重心（可能是电视）；自动模式下只影响默认称呼对象，排他模式只能由明确指令设定。
 - 不是声源分离：两人同时说话时只能请大家轮流说（设备上默认静默）。
+- 近场门靠音量差。如果电视和用户在麦克风处的音量差不到约 8 dB（电视很近或开得很大、用户离得远），电视仍会进入；如果孩子离得远、说话轻，也可能被门挡掉。
 - 每一句电视定稿都会调一次 Decision。电视一直开着大约每分钟 10–20 次，20 分钟 200–400 次，单通上限 3000 次。
 
 ## 开关怎么开
 
 1. 服务端启用识人服务（见下方部署）：`VOICE_STREAM_SPEAKER=1`。
-2. `devices.json` 里给设备加 `"multiSpeaker": true`（只能是布尔值）。只有 seeduplex 通话会走多人；同一设备选 grok 时仍走原生。
+2. `devices.json` 里给设备加 `"multiSpeaker": true`（只能是布尔值）。只有 seeduplex 通话会走多人；同一设备选 grok 时仍走原生。近场门随之默认开启（`nearFieldGateDb` 默认 10，可设 0–30，0 表示关闭）。
 3. 设备配置在启动时读取，改完要在空闲时重启服务。
 4. 审计里 `device.call stage:"start"` 带 `multiSpeaker:true` 表示这通确实走了多人；如果服务端没启用或识人进程已退出，会是 `false` 并自动按原生链路通话。
+
+## 对 11:15 实测场景的预期
+
+同样的电视音轨、同样的 6 句测试，部署后预期如下：
+
+1. 电视比用户小 8 dB 以上时，近场门会把电视变成静音。ASR 和声线追踪只听到用户的话，每句话都是独立的短片段，说完停顿后由 ASR 自己断句定稿，不会再出现 31 秒的拼接轮次。
+2. 漏过来的电视片段多半很短，或者分不出是谁说的，设备会静默丢弃。较长的片段会成为一个匿名声线，经 Decision 判断不是在对 V 说，就不放行；它从没对 V 说过话，名额紧张时会被回收。
+3. 每句话从说完到 V 开口：ASR 断句定稿，加上 Decision（上海到 OpenRouter 往返约 0.45 s，再加模型时间），再加豆包首个音频。第一句或者换人时，还要建一次原生连接。
+4. 只有放行的话才算用户轮次；被门挡掉的电视声音也不算房间里有人说话。所以 V 说完后 10 秒内有人对它说话，通话就继续，不会再因为 background-speech 挂断。
+
+判断的依据：transcripts 里用户话应该只有 `source:"speaker-asr"` 的短句、不夹带电视文字；`device.call` closed 的 `nearField.gatedMs` 应该接近电视播放的时长，`userTurns` 接近 6。如果用户的话被切掉，看 `nearField.levelDb` 和 `thresholdDb`，把 `nearFieldGateDb` 调到 8。
 
 ## 资源评估（上海节点，2026-10-20 只读查看）
 
@@ -135,7 +161,7 @@ PR #32 的豆包流式多人链路（并行 ASR、通话内匿名 Speaker、换�
 7. **分两步打开**：
    - 先保持 `devices.json` 不变，空闲时重启。检查日志里没有 `speaker.unavailable`，`ps` 能看到 `embedding-worker.py` 子进程，服务内存在预期内；真机拨一通确认原生链路（`multiSpeaker` 未开）行为不变。
    - 再备份 `devices.json`（`devices.json.before-multispeaker`），给 `stackchan` 加 `"multiSpeaker": true`（ReSpeaker 的 `speaker-test` 视情况再开），空闲时再重启。
-8. **真机验收看什么**：`device.call stage:"start" multiSpeaker:true`；transcripts 里用户话是 `source:"speaker-asr"`；有 `speaker.decision`、`speaker.admitted`；电视开着时出现 `speaker.recovery-suppressed`/`speaker.evicted` 而 V 不开口；V 说完后的残余出现 `speaker.echo-dropped`；结束原因不是 `asr-disconnected`/`embedding-*`。
+8. **真机验收看什么**：`device.call stage:"start" multiSpeaker:true`；closed 时的 `nearField`（被挡掉的时长、门槛、电平分布）；transcripts 里用户话是 `source:"speaker-asr"`；有 `speaker.decision`、`speaker.admitted`；电视开着时出现 `speaker.recovery-suppressed`/`speaker.evicted` 而 V 不开口；V 说完后的残余出现 `speaker.echo-dropped`；结束原因不是 `asr-disconnected`/`embedding-*`。
 
 ## 回滚
 
@@ -145,6 +171,6 @@ PR #32 的豆包流式多人链路（并行 ASR、通话内匿名 Speaker、换�
 
 ## 测试
 
-- `npm test`：设备端点含多人链路的端到端用例（真实 stream-service，假 ASR/声线）：16 kHz 不重采样、只计放行轮次、上行停顿补静音、无识人服务时回退原生、电视话不放行时仍说完原因再挂断。
+- `npm test`：近场门（连续电视加近处说话、安静房间、电视被调大、上行静音），以及设备端点含多人链路的端到端用例（真实 stream-service，假 ASR/声线）：16 kHz 不重采样、只计放行轮次、上行停顿补静音、无识人服务时回退原生、电视话不放行时仍说完原因再挂断。
 - `npm run test:speaker-native`：16 kHz 帧、回声过滤、设备静默恢复、host speech、名额回收、Decision 人物表移除、可选启动、worker 退出后回退原生。
 - 现有 `verify-*.mjs`（`verify-relay`、`verify-soak`、`verify-ending` 等）都走网页的 `/api/speaker-stream` 通道并调用真实收费接口，不覆盖设备 WebSocket / xiaozhi Opus 链路，不能代替设备验收。设备链路以真机长测为准：3、10、20 分钟，电视开着、十二在旁边，观察上面第 8 步列出的审计事件和结束原因。

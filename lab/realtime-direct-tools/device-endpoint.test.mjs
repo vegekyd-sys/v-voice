@@ -793,3 +793,31 @@ test('under Speaker routing, room speech that never addresses V still ends with 
   assert.equal(device.events.find(e => e.type === 'call.closed').reason, 'background-speech');
   assert.equal(f.audit.find(e => e.type === 'device.call' && e.stage === 'closed').userTurns, 1);
 });
+
+test('nearFieldGateDb defaults on with multiSpeaker, can be tuned or disabled, and is validated', () => {
+  assert.equal(parseDeviceEntries([record()])[0].nearFieldGateDb, 0);
+  assert.equal(parseDeviceEntries([record({multiSpeaker:true})])[0].nearFieldGateDb, 10);
+  assert.equal(parseDeviceEntries([record({multiSpeaker:true,nearFieldGateDb:0})])[0].nearFieldGateDb, 0);
+  assert.equal(parseDeviceEntries([record({nearFieldGateDb:8})])[0].nearFieldGateDb, 8);
+  for (const nearFieldGateDb of [-1,31,'10',NaN]) assert.throws(() => parseDeviceEntries([record({nearFieldGateDb})]), /nearFieldGateDb/);
+});
+
+test('the near-field gate silences a quieter continuous background before the voice session', async t => {
+  const f = await fixture({record:{nearFieldGateDb:10}});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'call.ready');
+  const tone = (amplitude, ms = 60) => {const pcm = Buffer.alloc(ms * 32);for (let i = 0; i < pcm.length; i += 4) {pcm.writeInt16LE(amplitude, i);pcm.writeInt16LE(-amplitude, i + 2);}return pcm;};
+  for (let i = 0; i < 40; i++) device.send(tone(180), {binary:true});        // far background, ~2.4 s
+  for (let i = 0; i < 10; i++) device.send(tone(1800), {binary:true});       // near speech, 20 dB louder
+  // The bridge re-cuts input into 20 ms appends; read back one sample per 60 ms device frame.
+  const forwarded = () => Buffer.concat(f.peers[0].sent.filter(e => e.type === 'input_audio_buffer.append').map(e => Buffer.from(e.audio, 'base64')));
+  for (let i = 0; i < 160 && forwarded().length < 50 * 1920; i++) await delay(50);  // the bridge paces input in real time
+  const pcm = forwarded(), levels = Array.from({length:50}, (_, i) => pcm.readInt16LE(i * 1920));
+  assert(levels.slice(25, 40).every(v => v === 0), 'background after warm-up is silence');
+  assert(levels.slice(40).every(v => v === 1800), 'near speech passes unchanged');
+  device.send(JSON.stringify({type:'call.end'}));
+  await f.until(() => f.audit.some(e => e.type === 'device.call' && e.stage === 'closed'), 'closed');
+  const {nearField} = f.audit.find(e => e.type === 'device.call' && e.stage === 'closed');
+  assert(nearField.gatedMs >= 900 && nearField.levelDb.p90 > nearField.levelDb.p10, JSON.stringify(nearField));
+});

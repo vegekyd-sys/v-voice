@@ -6,6 +6,7 @@ import {createXiaozhiWire} from './xiaozhi-wire.mjs';
 import {createVolumeStore,targetVolume} from './device-volume.mjs';
 import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
 import {photoAnswer,photoUpload,readLimitedBody} from './device-vision.mjs';
+import {createNearFieldGate,NEAR_FIELD_DEFAULT_DB} from './near-field-gate.mjs';
 
 // A hardware speaker is one more Voice client. It owns only audio I/O, wake and
 // local playback; model sessions, tools, tasks and endings stay in Voice.
@@ -65,7 +66,11 @@ export function parseDeviceEntries(records = []) {
     // Streaming multi-speaker routing (anonymous in-call voices, Decision before
     // V answers). Off unless the record opts in; needs VOICE_STREAM_SPEAKER=1.
     if (record.multiSpeaker !== undefined && typeof record.multiSpeaker !== 'boolean') throw Error('multiSpeaker must be true or false');
-    devices.push(Object.freeze({deviceBargeIn:record.deviceBargeIn === true,multiSpeaker:record.multiSpeaker === true,inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,volume,outputGain,robot:record.robot === true,robotStatus:record.robotStatus === true,camera:record.camera === true,mac,otaToken:mac ? record.token : null,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
+    // Adaptive near-field gate: pass only speech this many dB above the learned
+    // room background (TV, far voices). On by default with multiSpeaker; 0 = off.
+    const nearFieldGateDb = record.nearFieldGateDb ?? (record.multiSpeaker === true ? NEAR_FIELD_DEFAULT_DB : 0);
+    if (typeof nearFieldGateDb !== 'number' || !Number.isFinite(nearFieldGateDb) || nearFieldGateDb < 0 || nearFieldGateDb > 30) throw Error('nearFieldGateDb must be 0-30');
+    devices.push(Object.freeze({deviceBargeIn:record.deviceBargeIn === true,multiSpeaker:record.multiSpeaker === true,nearFieldGateDb,inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,volume,outputGain,robot:record.robot === true,robotStatus:record.robotStatus === true,camera:record.camera === true,mac,otaToken:mac ? record.token : null,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
   }
   return devices;
 }
@@ -122,6 +127,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       lastExchangeAt:now()};
     const touch = () => {call.lastActivityAt = call.lastExchangeAt = now();};
     connection.call = call;
+    if (device.nearFieldGateDb) call.nearField = createNearFieldGate({gateDb:device.nearFieldGateDb,sampleRate:DEVICE_INPUT_SAMPLE_RATE});
     call.playout = createDevicePlayout({now,maxBytes:maxBufferedBytes,maxLeadMs:device.playoutLeadMs,bufferedBytes:()=>ws.bufferedAmount,
       sendAudio:pcm=>{if(ws.readyState===1){call.outputBytes+=pcm.length;call.lastActivityAt=now();ws.send(pcm,{binary:true});}},
       sendEvent:event=>sendJson(ws,event)});
@@ -201,7 +207,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       call.ended = true;clearInterval(call.timer);clearInterval(call.fillTimer);call.playout.dispose();call.robot?.dispose();
       if (connection.call === call) connection.call = null;
       if (call.id) audit({type:'device.call',voiceSessionId:call.id,stage:'closed',deviceId:device.id,reason:call.reason ?? reason,
-        durationMs:now() - call.startedAt,inputBytes:call.inputBytes,outputBytes:call.outputBytes,userTurns:call.userTurns,gatedInputBytes:call.gatedInputBytes ?? 0,maxInputGapMs:call.maxInputGapMs ?? 0});
+        durationMs:now() - call.startedAt,inputBytes:call.inputBytes,outputBytes:call.outputBytes,userTurns:call.userTurns,gatedInputBytes:call.gatedInputBytes ?? 0,maxInputGapMs:call.maxInputGapMs ?? 0,...(call.nearField ? {nearField:call.nearField.summary()} : {})});
       sendJson(ws, {type:'call.closed',reason:call.reason ?? reason});
     };
     call.end = reason => {
@@ -384,6 +390,9 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
         call.quietSamples = level >= gate ? 0 : (call.quietSamples ?? hold) + data.length / 2;
         if (call.quietSamples > hold) {pcm = Buffer.alloc(data.length);call.gatedInputBytes = (call.gatedInputBytes ?? 0) + data.length;}
       }
+      // Far, continuous voices (a TV across the room) become silence before ASR,
+      // the voice tracker and the model; the person at the device passes.
+      if (pcm === data && call.nearField && !call.nearField.pass(level, data.length / 2)) {pcm = Buffer.alloc(data.length);call.gatedInputBytes = (call.gatedInputBytes ?? 0) + data.length;}
       if (pcm === data && connection.device.inputGain !== 1) {
         pcm = Buffer.allocUnsafe(data.length);
         for (let i = 0; i < data.length; i += 2) pcm.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(data.readInt16LE(i) * connection.device.inputGain))), i);
