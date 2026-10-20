@@ -32,7 +32,7 @@ function useNow(active) {
   return now;
 }
 function useViewport() {
-  const read = () => ({width: Math.min(window.innerWidth, 560), height: window.visualViewport?.height ?? window.innerHeight});
+  const read = () => ({width: window.innerWidth, height: window.visualViewport?.height ?? window.innerHeight});
   const [size, setSize] = useState(read);
   useEffect(() => {
     // iOS keeps 100dvh when the keyboard opens; size the page to what is
@@ -112,7 +112,7 @@ function Turn({row, options, quiet}) {
   );
 }
 
-function Conversation({state, options, history, setHistory, onOverflow}) {
+function Conversation({state, options, history, setHistory, onOverflow, wide}) {
   const turns = splitTurns(state.transcript);
   const scroller = useRef(null), pinned = useRef(true);
   const all = [...turns.earlier, ...turns.now];
@@ -134,7 +134,7 @@ function Conversation({state, options, history, setHistory, onOverflow}) {
   if (!all.length) return <div className="conversation" />;
   return (
     <div className="conversation" data-history={String(history)}>
-      {all.length > turns.now.length || history
+      {!wide && (all.length > turns.now.length || history)
         ? <button type="button" className="conversation-toggle" onClick={() => setHistory(!history)} aria-expanded={history}>{history ? '收起' : '全部'}</button>
         : null}
       {!history && turns.earlier.length > 0 && (
@@ -318,9 +318,13 @@ function CallPage({view, actions, options}) {
   useEffect(() => { setOverflow(false); }, [firstNow]);
   useEffect(() => { if (main.current) main.current.inert = state.reading; }, [state.reading]);
   // Long replies borrow room from the portrait; the keyboard does the same.
-  const {width, height} = viewport;
-  const compact = inCall && (overflow || height < 560 || state.composer.open && height < 700);
+  // Desktop keeps the two-column page: V's stage on the left, the full
+  // conversation in a chat panel on the right. Phones get the stacked stage.
+  const wide = viewport.width >= 701;
+  const width = Math.min(viewport.width, 560), {height} = viewport;
+  const compact = inCall && !wide && (overflow || height < 560 || state.composer.open && height < 700);
   const size = !inCall ? Math.min(width * .72, height * .4, 300)
+    : wide ? Math.min(viewport.width * .26, height * .48, 360)
     : history ? 52 : compact ? Math.min(width * .38, height * .2, 150) : Math.min(width * .62, height * .3, 250);
   const openTasks = working ? () => setSheet(true) : undefined;
   const latchOverflow = useCallback(() => setOverflow(true), []);
@@ -337,7 +341,7 @@ function CallPage({view, actions, options}) {
         <Icon d={SPARK} />更新日志
       </button>
       <main ref={main} className="call-page" data-call={state.call} data-voice={voice} data-work={String(working)}
-        data-alert={status && ['error', 'warn'].includes(status.key) ? status.key : undefined} data-history={String(history)} data-compact={String(compact)}
+        data-alert={status && ['error', 'warn'].includes(status.key) ? status.key : undefined} data-history={String(!wide && history)} data-compact={String(compact)}
         style={{'--avatar-size': Math.round(size) + 'px', '--controls-height': Math.ceil(controlsHeight) + 'px'}}>
         <header className="topbar" aria-live="off">
           {state.call === 'connected' || state.call === 'ending' ? <time className="call-clock">{state.callStartedAt ? clock(now - state.callStartedAt) : ''}</time> : null}
@@ -366,8 +370,12 @@ function CallPage({view, actions, options}) {
           )}
           {inCall && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
         </section>
-        {inCall && <Conversation state={state} options={options} history={history} setHistory={setHistory} onOverflow={latchOverflow} />}
-        {inCall && !state.reading && <Controls state={state} actions={actions} onHeight={setControlsHeight} />}
+        {inCall && (
+          <aside className="chat-panel" aria-label="聊天内容">
+            <Conversation state={state} options={options} history={wide || history} setHistory={setHistory} onOverflow={latchOverflow} wide={wide} />
+            {!state.reading && <Controls state={state} actions={actions} onHeight={setControlsHeight} />}
+          </aside>
+        )}
       </main>
       {state.reading && document.getElementById('readerDock') && createPortal(dock, document.getElementById('readerDock'))}
       {sheet && working && <TaskSheet state={state} now={now} actions={actions} onClose={() => setSheet(false)} />}
