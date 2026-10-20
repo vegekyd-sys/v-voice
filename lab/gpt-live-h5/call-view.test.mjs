@@ -45,7 +45,7 @@ test('V state: dialing, speaking, thinking, listen-only aside and who is talking
   const hearing = resolveStatus(view.get(), 1_000);
   assert.deepEqual([hearing.text, hearing.who.label, hearing.who.tone], ['在听', 'Tianyi', 0]);
   view.speakerEvent({type: 'speaker.decision', shouldRespond: true, participants: [], addresseeIds: []}, 2_000);
-  assert.equal(resolveStatus(view.get(), 2_500).text, '在想');
+  assert.equal(resolveStatus(view.get(), 2_500).text, '在想…');
   view.voice('speaking');
   assert.equal(resolveStatus(view.get(), 3_000).text, '在说');
   view.voice('listening');

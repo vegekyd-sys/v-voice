@@ -11,10 +11,10 @@ const TASK_LABELS = Object.freeze({memory: '查记忆', web: '查资料', calend
 export function messageDisplay(text, tone = 'info') {
   if (typeof text !== 'string' || !text || NORMAL.has(text)) return null;
   const full = text;
-  if (/^正在结束通话/u.test(text)) return {kind: 'ending', text: '正在结束', dots: true, full};
+  if (/^正在结束通话/u.test(text)) return {kind: 'ending', text: '正在结束', spinner: true, full};
   if (/声音播放(被|已)暂停|恢复声音播放/u.test(text)) return {kind: 'action', text: '声音暂停', action: 'resume', actionLabel: '轻点恢复', full};
   if (/上一段语音还没确认结束/u.test(text)) return {kind: 'warn', text: '若无声音，请重拨', full};
-  if (/正在恢复语音连接/u.test(text)) return {kind: 'warn', text: '恢复连接中', dots: true, full};
+  if (/正在恢复语音连接/u.test(text)) return {kind: 'warn', text: '恢复连接中', spinner: true, full};
   if (/语音尚未确认播完/u.test(text)) return {kind: 'notice', text: '可点挂断结束', full};
   if (tone === 'error') {
     const short = /语音服务报告错误/u.test(text) ? '语音服务出错' : /连接已中断/u.test(text) ? '连接已中断'
@@ -40,9 +40,9 @@ export function speakerDisplay(value) {
     return {kind: 'notice', text: '没听清，请再说一次', transient: true, full};
   }
   if (value.type === 'speaker.recovery') return {kind: 'notice', text: value.reason === 'mixed-speakers' ? '声音重叠，请轮流说' : '没听清，请再说一次', transient: true, full};
-  if (value.type === 'speaker.asr-reconnecting') return {kind: 'warn', text: '识别恢复中', dots: true, full};
+  if (value.type === 'speaker.asr-reconnecting') return {kind: 'warn', text: '识别恢复中', spinner: true, full};
   if (value.type === 'speaker.asr-recovered') return {kind: 'notice', tone: 'success', text: '识别已恢复', transient: true, full};
-  if (value.type === 'speaker.end-accepted') return {kind: 'ending', text: '正在道别', dots: true, full};
+  if (value.type === 'speaker.end-accepted') return {kind: 'ending', text: '正在道别', spinner: true, full};
   if (value.type === 'speaker.end-revoked') return null;
   return undefined;
 }
@@ -68,7 +68,7 @@ export function resolveStatus(state, now = Date.now()) {
     if (item) return {key: kind, tone: kind, ...item};
   }
   if (state.call === 'ending' || pick('ending')) {
-    const item = pick('ending') ?? {text: '正在结束', dots: true, full: '正在结束通话'};
+    const item = pick('ending') ?? {text: '正在结束', spinner: true, full: '正在结束通话'};
     return {key: 'ending', tone: 'notice', ...item};
   }
   const notice = pick('notice');
@@ -86,9 +86,9 @@ export function resolveStatus(state, now = Date.now()) {
 }
 
 function voiceStatus(state, now) {
-  if (state.call === 'dialing') return {key: 'voice', tone: 'voice', text: '正在连接', dots: true, full: '正在连接 V'};
+  if (state.call === 'dialing') return {key: 'voice', tone: 'voice', text: '正在连接', spinner: true, full: '正在连接 V'};
   if (state.voice === 'speaking') return {key: 'voice', tone: 'voice', text: '在说', full: 'V 在说话'};
-  if (state.thinkingAt != null && now - state.thinkingAt < THINKING_MS) return {key: 'voice', tone: 'voice', text: '在想', dots: true, full: 'V 在想'};
+  if (state.thinkingAt != null && now - state.thinkingAt < THINKING_MS) return {key: 'voice', tone: 'voice', text: '在想…', thinking: true, full: 'V 在想'};
   const speaker = state.speaker;
   if (speaker.listenOnly) return {key: 'voice', tone: 'voice', text: '只听不答', full: '旁聊，V 只听不答'};
   const person = speaker.lastSpeakerId && speaker.people.find(p => p.id === speaker.lastSpeakerId);

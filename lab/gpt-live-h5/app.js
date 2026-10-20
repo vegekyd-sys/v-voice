@@ -32,8 +32,10 @@ if (document.querySelector) mountCallUi(document, view, {
     redial: () => void stopCall().then(() => startCall()),
     resume: () => void recoverPlaybackGesture(),
     steer: text => sendSteer(text), cancelTasks: () => cancelTasks(),
-    mute: muted => setMuted(muted),
+    // Toggle from the store, not the last render, so quick taps alternate.
+    mute: () => setMuted(!view.get().muted),
     compose: open => view.set(state => ({ composer: { ...state.composer, open } })),
+    composerOpen: () => view.get().composer.open,
     chooseModel: id => { if (view.get().models.some(model => model.id === id && model.available)) view.set({ model: id }); },
     chooseGrokVoice: id => view.set(state => ({ grok: { ...state.grok, voice: id } })),
   },

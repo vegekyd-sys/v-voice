@@ -30,6 +30,8 @@ button {
   border: 0;
   background: transparent;
   -webkit-tap-highlight-color: transparent;
+  /* Quick repeated taps (mute, keyboard) must not zoom the page on iOS. */
+  touch-action: manipulation;
 }
 button:disabled { opacity: .45; cursor: default; }
 button:focus-visible, input:focus-visible, a:focus-visible, [role="button"]:focus-visible {
@@ -179,6 +181,8 @@ p, h1, h2, h3 { margin: 0; }
 .home {
   width: 100%;
   min-width: 0;
+  /* Same height while dialing, so the portrait does not jump. */
+  min-height: 227px;
   padding: 0 16px;
   display: flex;
   flex-direction: column;
@@ -204,6 +208,20 @@ p, h1, h2, h3 { margin: 0; }
   box-shadow: 0 12px 26px #d7497040;
 }
 .dial svg { width: 28px; height: 28px; }
+.dial { position: relative; transition: transform .12s ease, box-shadow .3s ease; }
+.dial:active:not(:disabled) { transform: scale(.94); }
+/* Connecting: the same red circle, now "cancel", ringed by a slow spinner. */
+.dial.dialing::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 2px solid #f3d3de;
+  border-top-color: var(--accent);
+  animation: spin 1.1s linear infinite;
+}
+.dial.dialing svg { width: 30px; height: 30px; }
+.dialing-note { display: inline-flex; align-items: center; gap: 7px; margin-top: 18px; font-size: 13px; color: var(--muted); }
 .model-picker { position: relative; margin-top: 16px; }
 #modelTrigger {
   display: inline-flex;
@@ -283,6 +301,7 @@ p, h1, h2, h3 { margin: 0; }
   min-width: 0;
   animation: status-in .28s cubic-bezier(.22, 1, .36, 1);
 }
+.status-open:active, .status-action:active { opacity: .6; }
 .status-open {
   display: inline-flex;
   align-items: center;
@@ -301,14 +320,16 @@ p, h1, h2, h3 { margin: 0; }
 .status-who[data-tone="4"] { color: #ab7587; }
 .status-time { color: var(--faint); font-size: 13.5px; font-variant-numeric: tabular-nums; }
 .status-chevron { color: var(--faint); }
-.status-dots::after {
-  content: "…";
-  display: inline-block;
-  width: 1.2em;
-  overflow: hidden;
-  vertical-align: bottom;
-  animation: status-dots 1.4s steps(4) infinite;
+.status-spinner {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.6px solid #e4d8ec;
+  border-top-color: var(--lav-strong);
+  animation: spin .9s linear infinite;
 }
+.status[data-tone="warn"] .status-spinner { border-color: #efe2c6; border-top-color: #b08a3c; }
 .status-action {
   flex: 0 0 auto;
   height: 30px;
@@ -325,7 +346,6 @@ p, h1, h2, h3 { margin: 0; }
 .status[data-tone="error"] { color: #8f4e68; background: #f9edf2; }
 .status[data-tone="action"] { background: #fff; box-shadow: 0 0 0 1px #f3d3de; }
 @keyframes status-in { from { opacity: 0; transform: translateY(4px); } }
-@keyframes status-dots { from { width: 0; } to { width: 1.2em; } }
 
 /* ---------- conversation: earlier turns quiet, current turn readable ---------- */
 .conversation {
@@ -524,9 +544,11 @@ body[data-reading="true"] .content-card { opacity: 0; }
   display: grid;
   place-items: center;
   color: #7e6a8c;
-  transition: background .16s, color .16s;
+  transition: background .16s, color .16s, transform .12s ease;
 }
-.pill button[aria-pressed="true"], .pill button[aria-expanded="true"] { background: #eee4f5; color: #bc4264; }
+.pill button:active { transform: scale(.92); }
+.pill button[aria-expanded="true"] { background: #eee4f5; color: #785b91; }
+.pill button[aria-pressed="true"] { background: #f6e3ea; color: #bc4264; }
 .pill .hangup { width: 56px; border-radius: 28px; background: var(--accent); color: #fff; }
 .pill .hangup svg { width: 24px; height: 24px; }
 
