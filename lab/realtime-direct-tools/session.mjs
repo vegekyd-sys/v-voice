@@ -76,16 +76,19 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if(!resultBridge(s,s.backgroundBridge)){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;resolve();return;}
     }
     if(speakerRouting?.pending?.(s.id))return;
-    if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking||Date.now()-s.lastUserAt<1200||Date.now()<s.narrationBusyUntil)return;
+    // A turn let through but not yet answered: host speech would cancel it.
+    if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking||Date.now()-s.lastUserAt<1200||Date.now()<s.narrationBusyUntil||speakerRouting?.awaitingResponse?.(s.id))return;
     if(s.backendResult){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;resolve();return;}
     if(s.pending.size!==1||!s.backend.snapshot())return;
     const stage=s.backend.stage();if(!stage)return;
     const now=Date.now(),elapsed=now-stage.admittedAt,since=now-Math.max(s.lastProgressAt,stage.admittedAt-NARRATION.heartbeatMs+NARRATION.firstHeartbeatMs);
     if(elapsed<NARRATION.firstMs||(s.narrations??0)>=NARRATION.max)return;
+    // Nothing is said right after the caller spoke: V's answer to them comes first.
+    if(now-s.lastUserAt<NARRATION.quietAfterUserMs)return;
     const p=s.progress;
     if(p&&since>=NARRATION.factGapMs){s.progress=null;if(p.text.length<=220){narrate(s,p.text,'fact',stage);return;}}
     // Stage and elapsed-time lines are telephone narration; a device keeps its own policy.
-    if(s.surface!=='phone'||now-s.lastUserAt<NARRATION.quietAfterUserMs)return;
+    if(s.surface!=='phone')return;
     const changed=Boolean(stage.latest)&&stageKey(stage)!==stage.lastSpoken;
     if(changed&&since>=NARRATION.stageGapMs&&now-stage.changedAt>=NARRATION.settleMs)narrate(s,stageLine(stage,{elapsedMs:elapsed}),'stage',stage);
     else if(since>=NARRATION.heartbeatMs)narrate(s,stageLine(stage,{elapsedMs:elapsed,heartbeat:true}),'heartbeat',stage);
