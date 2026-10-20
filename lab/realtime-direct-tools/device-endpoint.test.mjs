@@ -161,6 +161,24 @@ test('after a reply, silence past the follow-up window ends the call', async t =
   assert(Date.now() - ended >= 70, 'the follow-up window is honoured');
 });
 
+// Audit 2026-10-20 R1: barging in clears playback after the user's onset, so
+// the follow-up window alone hung up 10 s into the utterance. The speech grace
+// (longer than the follow-up window) must hold the call for that utterance.
+test('someone barging in is still talking: the follow-up window does not hang up on them', async t => {
+  const f = await fixture({followUpMs:80,chatterSpeechGraceMs:5000});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+  device.send(JSON.stringify({type:'playback.state',speaking:true}));
+  await delay(30);
+  // The user starts talking over V; the cleared playback stops a moment later.
+  f.peers[0].emit('message', Buffer.from(JSON.stringify({type:'conversation.item.input_audio_transcription.started'})), false);
+  await delay(10);
+  device.send(JSON.stringify({type:'playback.state',speaking:false}));
+  await delay(250);
+  assert(!device.events.some(e => e.type === 'call.closed'), 'still listening to the utterance in progress');
+});
+
 test('room conversation that never becomes a request does not hold the session', async t => {
   const f = await fixture({followUpMs:1000,chatterMs:120,chatterSpeechGraceMs:150});t.after(f.close);
   const device = await f.connect();t.after(() => device.close());
