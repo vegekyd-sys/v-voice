@@ -174,3 +174,10 @@ test('speech during pickup preparation prevents the late greeting from interrupt
  const work=f.service.greet('call');await wait(()=>release);f.service.audio('call',voice());release();await work;
  await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));assert.equal(f.greetings.length,0);assert.equal(f.service.has('call'),true);
 });
+
+
+test('learning a name releases the original audio without replay, while still waiting for semantic admission',async t=>{
+ let admit;const f=await fixture(t,{evaluate:(_s,q)=>new Promise(resolve=>{admit=()=>{const r=answers(q);r.answers.name_0={type:'choice',choice:'n_0'};resolve(r);};})});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));
+ const output=[];f.service.dispatch('call','audio',Buffer.alloc(10),()=>output.push('real reply'));f.emit('我叫天意，三加四等于几？');await wait(()=>admit);assert.deepEqual(output,[]);admit();
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));assert.deepEqual(output,['real reply']);assert.equal(f.profiles.length,1);assert.equal(f.events.find(e=>e.type==='speaker.decision').participants[0].name,'天意');assert.equal(f.events.some(e=>e.type==='speaker.stream-fallback'),false);
+});

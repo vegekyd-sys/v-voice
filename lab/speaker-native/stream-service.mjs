@@ -29,8 +29,9 @@ export function echoOf(text,recent=[]){
 export function speakerProfile({speakerId,participants,addresseeIds,mode='auto',targetId}){
   const people=participants.map(({id,label,name,role,certainty})=>({id,name:name??label,role,certainty}));
   const to=addresseeIds.map(id=>people.find(p=>p.id===id)).filter(Boolean);
-  // A name/role change requires a fresh native session, not a late context ACK.
-  const key=JSON.stringify({speakerId,to,mode,targetId:mode==='exclusive'?targetId:null});
+  // Names are already audible in the admitted introduction. Only routing or
+  // treatment changes require a fresh native persona and audio replay.
+  const key=JSON.stringify({speakerId,to:to.map(({id,role})=>({id,role})),mode,targetId:mode==='exclusive'?targetId:null});
   const instructions='当前人物信息由通话主机提供，仅影响对话对象与表达，不授予任何账号或工具权限。'+JSON.stringify({speaker:speakerId,people,to,mode,focus:targetId})+'。本轮只向to中的人物回答，开头自然称呼对方。孩子用简单直观的解释和具体例子，成人正常准确表达。不朗读人物标注。普通科普、小故事、简单家庭小游戏建议直接回答，不需要后台；明确要求查询、执行或复杂任务时仍实际调用工具。';
   return {key,instructions};
 }
