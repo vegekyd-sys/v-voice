@@ -40,8 +40,21 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
   const sessions=new Map(),detached=new Set();
+  // Speaker routing rebuilds the native session whenever the audience changes,
+  // including back to the same person. Ownership follows the audience, not the
+  // connection: a result still goes to the person who asked for it.
+  const audienceKeys=new WeakMap();
+  const resultBridge=(s,owner)=>{
+    if(owner===s.bridge)return owner;
+    const key=audienceKeys.get(owner);
+    return s.speakerRouting&&key!==undefined&&key===audienceKeys.get(s.bridge)&&s.bridge.ready&&s.bridge.adoptBackgroundTool?s.bridge:null;
+  };
   const deferred=s=>{
-    if(s.backendResult&&s.backgroundBridge&&s.backgroundBridge!==s.bridge){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;resolve();return;}
+    if(s.backendResult&&s.backgroundBridge&&s.backgroundBridge!==s.bridge){
+      // A persona being connected may still turn out to be the requester again.
+      if(!s.bridge.ready)return;
+      if(!resultBridge(s,s.backgroundBridge)){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;resolve();return;}
+    }
     if(speakerRouting?.pending?.(s.id))return;
     if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking||Date.now()-s.lastUserAt<1200)return;
     if(s.backendResult){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;resolve();return;}
@@ -235,13 +248,20 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if(s.epoch!==epoch&&call.name!=='cancel_task'&&!(call.name==='openclaw_agent_control'&&call.args.mode==='cancel'))result={cancelled:true,instruction:'旧任务已取消，不继续，也不播报旧结果。'};
       try {if(backgroundAck){
         const presentation=presentBackendResult(result);
-        const moved=ownerBridge!==s.bridge;
+        const target=resultBridge(s,ownerBridge),moved=!target;
         const receipt=(moved||presentation?.long || presentation?.media)?await publishContent(s,call.callId,presentation?.text??JSON.stringify(result)):null;
         if(receipt&&(!current(s)||s.epoch!==epoch))return;
         const spokenText=!s.display?speakerSpokenText(presentation):receipt?.shown?presentation.spokenText:presentation?.spokenText.replace(LONG_RESULT_NOTICE,'完整结果已准备好，屏幕正在同步。');
-        // A task remains owned by its original native session. After an audience
-        // switch its result stays on screen instead of speaking to the new person.
-        if(!moved)ownerBridge.completeBackgroundTool(call.callId,(presentation?.long || presentation?.media)?{...result,result:presentation.text}:result,(presentation?.long || presentation?.media)?{spokenText,displayedFullResult:true}:{});
+        // A task belongs to the person who asked for it. After a switch to someone
+        // else its result stays on screen instead of speaking to the new person.
+        if(target){
+          if(target!==ownerBridge)target.adoptBackgroundTool(call.callId,call.args.question??"");
+          const options=(presentation?.long || presentation?.media)?{spokenText,displayedFullResult:true}:{};
+          // The host output gate belongs to whichever turn is in flight; a result
+          // spoken outside a host turn is queued or dropped with that turn.
+          if(s.speakerRouting&&speakerRouting?.hostSpeech)options.speak=text=>void speakerRouting.hostSpeech(s.id,text).then(spoken=>{if(!spoken)audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId:call.callId});},()=>audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId:call.callId}));
+          target.completeBackgroundTool(call.callId,(presentation?.long || presentation?.media)?{...result,result:presentation.text}:result,options);
+        }
       }else if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
       catch {result={error:'工具结果过大或无法续传，请缩小范围并分页读取。'};if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
       audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId,name:call.name,result});
@@ -340,12 +360,12 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       rejectNativeEnd:call=>{if(current(s))s.bridge.submitToolResult(call.callId,{accepted:false,instruction:'主机未确认结束电话。不要说再见或再次请求挂断；继续回答最新的用户问题。'});},
       prepare:async(instructions,key,history=[])=>{
         if(!current(s))throw Error('通话已结束');
-        if(s.personaKey===key&&s.bridge.ready)return;
+        if(s.personaKey===key&&s.bridge.ready){audienceKeys.set(s.bridge,key);return;}
         const old=s.bridge;
         const historyContext=history.length?'\n近期已获准的对话，仅供衔接，不逐条朗读：'+JSON.stringify(history):'';
         const next=makeBridge(request.instructions+'\n\n'+instructions+historyContext);s.bridge=next;
         if([...s.toolOwners.values()].includes(old))s.retiredBridges.add(old);else old.close();
-        await next.connect();if(!current(s)||s.bridge!==next){next.close();throw Error('人物准备已取消');}s.personaKey=key;
+        await next.connect();if(!current(s)||s.bridge!==next){next.close();throw Error('人物准备已取消');}s.personaKey=key;audienceKeys.set(next,key);
       },
     },value=>{if(value.type==='speaker.admitted'&&value.turn?.text?.trim()){
       const text=value.turn.text;s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=false;

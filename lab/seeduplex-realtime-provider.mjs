@@ -483,6 +483,11 @@ export class SeeduplexRealtimeVoiceBridge {
     this.submitToolResult(callId, {accepted:true,status:"working",message:"已交给 V 后台，我会继续做完。",instruction:"简短说明任务已开始，随后正常回应用户聊天。任务仍在后台继续，不要声称已完成。"}, {backgroundAck:true});
   }
 
+  /** Take over a background task whose native session was replaced for the same audience. */
+  adoptBackgroundTool(callId, question) {
+    this.backgroundTools.set(callId, question);
+  }
+
   completeBackgroundTool(callId, result, options = {}) {
     const question = this.backgroundTools.get(callId);
     if (question === undefined) return;
@@ -496,8 +501,11 @@ export class SeeduplexRealtimeVoiceBridge {
       {role:"user",content:[{type:"input_text",text:question}]},
       {role:"assistant",content:[{type:"input_text",text}]},
     ]});
+    const spoken = options.spokenText ?? text;
+    // A host-provided speaker captions the line when its audio starts.
+    if (options.speak) return void options.speak(spoken);
     if (!options.displayedFullResult) this.request.onTranscript?.("assistant", text, true, "V-backend");
-    this.speakProgress(options.spokenText ?? text, { caption: options.displayedFullResult === true });
+    this.speakProgress(spoken, { caption: options.displayedFullResult === true });
   }
 
   speakProgress(text, { caption = false } = {}) {
