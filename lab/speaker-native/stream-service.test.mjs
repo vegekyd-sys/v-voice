@@ -92,7 +92,7 @@ test('ASR reconnect retains the live call and restores absolute timestamps inste
 
 test('an accepted farewell speaks through native control without replaying the user audio; new speech revokes it',async t=>{
  const f=await fixture(t,{evaluate:async(_s,q)=>{const r=answers(q,{action:'quiet'});r.answers.endIntent={type:'choice',choice:'end',probabilities:{end:1}};r.answers.addressed={type:'choice',choice:'v',probabilities:{v:1}};return r;}});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit('好，就这样吧，拜拜。');await wait(()=>f.endings.length===1);assert.equal(f.endings[0].turnId,'sp1');assert(f.profiles.some(p=>p[1]==='speaker-end:sp1'));assert.equal(f.events.some(e=>e.type==='speaker.stream-accepted'),false);
- f.service.audio('call',Buffer.alloc(24000));f.service.audio('call',voice());assert.equal(f.endings.at(-1).revoked,true);assert(f.events.some(e=>e.type==='speaker.end-revoked'));
+ f.service.audio('call',Buffer.alloc(24000));f.service.audio('call',voice());await wait(()=>f.events.some(e=>e.type==='speaker.end-revoked'));assert.equal(f.endings.at(-1).revoked,true);
 });
 test('continued speech during farewell connection preparation prevents ending the ongoing question',async t=>{
  let finish,preparing=false;const f=await fixture(t,{evaluate:async(_s,q)=>{const r=answers(q);r.answers.endIntent={type:'choice',choice:'end',probabilities:{end:1}};r.answers.addressed={type:'choice',choice:'v',probabilities:{v:1}};return r;},prepare:async(_instructions,key)=>{if(key.startsWith('speaker-end:')){preparing=true;await new Promise(r=>finish=r);}}});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit('拜拜。');await wait(()=>preparing);f.service.audio('call',voice());finish();await wait(()=>f.events.some(e=>e.type==='speaker.end-revoked'));assert.equal(f.endings.length,0);
@@ -245,4 +245,41 @@ test('a turn let through but not yet answered is awaiting a response until audio
   f.emit('V，再问一个问题',1200,2300);await wait(()=>f.events.filter(e=>e.type==='speaker.stream-accepted').length===2||f.events.filter(e=>e.type==='speaker.admitted').length===2);
   if(f.service.awaitingResponse('call')){await new Promise(r=>setTimeout(r,260));assert.equal(f.service.awaitingResponse('call'),false,'bounded');}
   await f.service.hostSpeech('call','主机的话');assert.equal(f.service.awaitingResponse('call'),false,'host speech is not a caller turn');
+});
+
+test('V own farewell heard back from a voice that never talked to V does not call the goodbye back',async t=>{
+  let asr;const events=[],endings=[];
+  // A steady tone is the caller; a buzzing tone is the phone speaker playing V.
+  const embed=async pcm=>{let flips=0;for(let i=2;i<pcm.length;i+=2)if(Math.sign(pcm.readInt16LE(i))!==Math.sign(pcm.readInt16LE(i-2)))flips++;return {embedding:flips>pcm.length/200?[0,1]:[1,0],inferenceMs:1};};
+  const service=createStreamingSpeakerRoutingService({env:{},embedding:{ready:Promise.resolve(),compute:embed},evaluate:async(_s,q)=>{const r=answers(q,{action:'quiet'});r.answers.endIntent={type:'choice',choice:'end',probabilities:{end:1}};r.answers.addressed={type:'choice',choice:'v',probabilities:{v:1}};return r;},createAsr:o=>{asr=o;return {connect:async()=>{},append(){},close(){}};}});
+  service.reserve('call',{model:'seeduplex'});t.after(()=>service.dispose());
+  await service.bind('call',{prepare:async()=>{},forward(){},cancel(){},invalidate(){},greet(){},clarify(){},end:v=>endings.push(v),cancelEnd:()=>endings.push({revoked:true}),rejectNativeEnd(){}},e=>events.push(e));
+  const tone=(buzz=false)=>{const pcm=Buffer.alloc(57600);for(let i=0;i<pcm.length;i+=2)pcm.writeInt16LE(buzz&&Math.floor(i/16)%2?-12000:12000,i);return pcm;};
+  service.audio('call',tone());
+  await wait(()=>events.some(e=>e.type==='speaker.identity'));
+  asr.onResult({body:{result:{utterances:[{definite:true,start_time:0,end_time:1100,text:'好，就这样吧，拜拜。'}]}}});
+  await wait(()=>endings.length===1);
+  // A new voice needs a couple of seconds before it is a person of its own.
+  service.audio('call',Buffer.alloc(24000));for(let k=0;k<3;k++){service.audio('call',tone(true));await new Promise(r=>setTimeout(r,20));}
+  await wait(()=>events.some(e=>e.type==='speaker.end-kept'));
+  assert.equal(events.some(e=>e.type==='speaker.end-revoked'),false);assert.equal(endings.some(e=>e.revoked),false);
+  // The caller themself speaking again still calls it back.
+  service.audio('call',Buffer.alloc(24000));service.audio('call',tone());
+  await wait(()=>events.some(e=>e.type==='speaker.end-revoked'));
+});
+
+test('cached tool-start lines and host lines leaking back into a phone mic are echo',async t=>{
+  let calls=0;const f=await fixture(t,{evaluate:async(_s,q)=>{calls++;return answers(q);}});
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));
+  f.service.spoken('call','我查一下相关资料。');
+  f.emit('我查一下相关资料');
+  await wait(()=>f.events.some(e=>e.type==='speaker.echo-dropped'));
+  assert.equal(calls,0);
+});
+
+test('a running background task keeps repeat prompts quiet',async t=>{
+  const f=await fixture(t);f.service.setBusyProbe('call',()=>true);
+  f.emit('什么？',1300,1500);
+  await wait(()=>f.events.some(e=>e.type==='speaker.recovery-suppressed'));
+  assert.equal(f.events.some(e=>e.type==='speaker.recovery'),false);assert.deepEqual(f.clarifications,[]);
 });
