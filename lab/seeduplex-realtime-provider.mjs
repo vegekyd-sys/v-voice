@@ -10,7 +10,7 @@ export const SEEDUPLEX_VOICES = Object.freeze({
 });
 
 const INPUT_FRAME_BYTES = 640;
-const MAX_PENDING_INPUT_BYTES = 16_000 * 2 * 10;
+export const MAX_PENDING_INPUT_BYTES = 16_000 * 2 * 10;
 const MAX_TOOL_CALLS = 100;
 const MAX_TOOL_RESULT_BYTES = 32_000;
 const MAX_CONSULT_RESULT_CHARS = 8_000;

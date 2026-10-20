@@ -7,6 +7,7 @@ import {createVolumeStore,targetVolume} from './device-volume.mjs';
 import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
 import {photoAnswer,photoUpload,readLimitedBody} from './device-vision.mjs';
 import {createNearFieldGate,NEAR_FIELD_DEFAULT_DB} from './near-field-gate.mjs';
+import {DEVICE_START_SESSION_ID} from './transcript-log.mjs';
 
 // A hardware speaker is one more Voice client. It owns only audio I/O, wake and
 // local playback; model sessions, tools, tasks and endings stay in Voice.
@@ -28,6 +29,10 @@ export const UNHEARD_TURN_LINE = '刚才没听清，能再说一遍吗？';
 // Controls and delegation are not lookups; their failures are not "没查成".
 const NOT_LOOKUPS = new Set(['delegate_to_v','end_call','cancel_task','openclaw_agent_control','send_task_updates','set_speaker_volume','look','show_content']);
 const FORWARDED = new Set(['audio.clear','audio.done','end.accepted','end.after-playback','end.cancelled','provider.reconnecting','provider.recovered']);
+// Uplink frames at least this loud count as someone speaking (call audit only).
+const VOICED_RMS = 450;
+// Firmware listen states audited per call; the closing counters keep counting.
+const LISTEN_AUDIT_MAX = 20;
 const digest = value => createHash('sha256').update(String(value)).digest();
 
 /** Device records are private operator configuration, like phone entries. */
@@ -79,10 +84,34 @@ export function parseDeviceEntries(records = []) {
   return devices;
 }
 
+// The session starts listening only after its tools and context load, while the
+// firmware streams right after wake. Uplink held until then, newest kept. Well
+// under Seeduplex's own pre-ready limit, which fails the call when exceeded.
+export const EARLY_UPLINK_MS = 4000;
+const EARLY_UPLINK_BYTES = EARLY_UPLINK_MS * DEVICE_INPUT_SAMPLE_RATE / 500;
+
 /** Virtual relay client handed to the shared direct voice session. */
 class DeviceCallClient extends EventEmitter {
-  constructor(call) {super();this.call = call;this.readyState = 1;}
+  constructor(call) {
+    super();this.call = call;this.readyState = 1;this.held = [];this.heldBytes = 0;
+    // Fires before the listener is added; hand the held uplink over right after.
+    this.on('newListener', event => {if (event === 'message') queueMicrotask(() => this.release());});
+  }
   send(raw) {this.call.fromSession(raw);}
+  /** Uplink PCM; `voiced` samples are what the call audit counts as speech. */
+  input(pcm, voiced) {
+    if (!this.held.length && this.listenerCount('message')) return void this.emit('message', pcm, true);
+    this.held.push({pcm,voiced});this.heldBytes += pcm.length;
+    while (this.heldBytes > EARLY_UPLINK_BYTES) {const old = this.held.shift();this.heldBytes -= old.pcm.length;this.call.droppedVoicedSamples += old.voiced;}
+    this.release();
+  }
+  release() {
+    while (this.held.length && this.readyState === 1 && this.listenerCount('message')) {
+      const {pcm} = this.held.shift();this.heldBytes -= pcm.length;this.emit('message', pcm, true);
+    }
+  }
+  /** Speech still held when the call ends never reached the session. */
+  discard() {for (const {voiced} of this.held.splice(0)) this.call.droppedVoicedSamples += voiced;this.heldBytes = 0;}
   close() {
     if (this.readyState !== 1) return;
     this.readyState = 3;
@@ -126,6 +155,9 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       // Native lookups still running (callId -> name). Background delegation is
       // tracked by the session itself and is never narrated from here.
       tools:new Map(),waitStartedAt:0,notices:0,lastNoticeAt:0,failure:null,answerDue:null,lastAudioAt:0,speechSince:0,lastLoudInputAt:0,askedAgainFor:0,
+      // Audit only: voiced uplink (RMS >= VOICED_RMS), the part of it the
+      // session never received, and firmware listen states.
+      voicedSamples:0,droppedVoicedSamples:0,listen:{detect:0,start:0,stop:0},listenMode:null,listenBacklog:[],listenAudits:0,
       // V's own side of the exchange: what a tool hold is measured from, so
       // room speech alone cannot keep a hold open.
       lastExchangeAt:now()};
@@ -208,10 +240,13 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     };
     call.closed = reason => {
       if (call.ended) return;
-      call.ended = true;clearInterval(call.timer);clearInterval(call.fillTimer);call.playout.dispose();call.robot?.dispose();
+      call.ended = true;clearInterval(call.timer);clearInterval(call.fillTimer);call.playout.dispose();call.robot?.dispose();call.client?.discard();
       if (connection.call === call) connection.call = null;
-      if (call.id) audit({type:'device.call',voiceSessionId:call.id,stage:'closed',deviceId:device.id,reason:call.reason ?? reason,
-        durationMs:now() - call.startedAt,inputBytes:call.inputBytes,outputBytes:call.outputBytes,userTurns:call.userTurns,gatedInputBytes:call.gatedInputBytes ?? 0,maxInputGapMs:call.maxInputGapMs ?? 0,...(call.nearField ? {nearField:call.nearField.summary()} : {})});
+      const listen = connection.dialect === 'xiaozhi' ? {listenDetects:call.listen.detect,listenStarts:call.listen.start,listenStops:call.listen.stop,...(call.listenMode ? {mode:call.listenMode} : {})} : {};
+      audit({type:'device.call',voiceSessionId:call.id ?? DEVICE_START_SESSION_ID,stage:'closed',deviceId:device.id,reason:call.reason ?? reason,
+        durationMs:now() - call.startedAt,inputBytes:call.inputBytes,outputBytes:call.outputBytes,userTurns:call.userTurns,gatedInputBytes:call.gatedInputBytes ?? 0,maxInputGapMs:call.maxInputGapMs ?? 0,
+        voicedMs:Math.round(call.voicedSamples * 1000 / DEVICE_INPUT_SAMPLE_RATE),droppedVoicedMs:Math.round(call.droppedVoicedSamples * 1000 / DEVICE_INPUT_SAMPLE_RATE),...listen,
+        ...(call.startError ? {error:call.startError} : {}),...(call.nearField ? {nearField:call.nearField.summary()} : {})});
       sendJson(ws, {type:'call.closed',reason:call.reason ?? reason});
     };
     call.end = reason => {
@@ -343,6 +378,8 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
         // Routing is real only when the server has it and the model supports it.
         call.multiSpeaker = Boolean(reservation.speakerRouting);
         audit({type:'device.call',voiceSessionId:call.id,stage:'start',deviceId:device.id,latencyMs:now() - call.startedAt,...(device.multiSpeaker ? {multiSpeaker:call.multiSpeaker} : {})});
+        // Listen states the firmware sent while the session was being reserved.
+        for (const row of call.listenBacklog.splice(0)) audit({...row,voiceSessionId:call.id});
         if (call.ended || ws.readyState !== 1) {await directVoice.close(call.id).catch(() => {});return;}
         call.client = new DeviceCallClient(call);
         if (!directVoice.attach(call.id, reservation.relayTicket, call.client)) throw Error('attach failed');
@@ -352,11 +389,11 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
         // voice tracker expect one continuous stream, so fill gaps with silence.
         if (call.multiSpeaker) {call.fillTimer = setInterval(() => {
           if (call.ended || !call.readyAt || !call.client || now() - (call.lastInputAt ?? call.readyAt) < uplinkGapMs) return;
-          call.client.emit('message', Buffer.alloc(uplinkFillMs * DEVICE_INPUT_SAMPLE_RATE / 500), true);
+          call.client.input(Buffer.alloc(uplinkFillMs * DEVICE_INPUT_SAMPLE_RATE / 500), 0);
         }, uplinkFillMs);call.fillTimer.unref?.();}
       } catch (error) {
         sendJson(ws, {type:'call.error',reason:'start',message:String(error?.message ?? '对话没有建立').slice(0,200)});
-        call.reason = 'start-failed';
+        call.reason = 'start-failed';call.startError = String(error?.message ?? error);
         if (call.id) await directVoice.close(call.id).catch(() => {});
         call.closed('start-failed');
       }
@@ -367,18 +404,24 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     const call = connection.call;
     if (binary) {
       // 16 kHz mono PCM16, at most 0.5 s per frame. Drop audio outside a call.
-      if (!call?.client || call.ended || !data.length) return;
-      // Routing accepts audio only once it is bound (the session's ready event).
-      if (call.multiSpeaker && !call.readyAt) return;
-      if (data.length % 2 !== 0 || data.length > 16000) return connection.ws.close(1008, 'invalid audio frame');
+      if (!call || call.ended || !data.length) return;
+      // Audio is dropped while the session cannot take it yet (still reserving;
+      // routing accepts it only once bound).
+      const early = !call.client || call.multiSpeaker && !call.readyAt;
+      if (data.length % 2 !== 0 || data.length > 16000) {if (!early) connection.ws.close(1008, 'invalid audio frame');return;}
+      let sum = 0;for (let i = 0; i < data.length; i += 2) {const v = data.readInt16LE(i);sum += v * v;}
+      const level = Math.sqrt(sum / (data.length / 2));
+      // Audit: all speech the device sent, and the part the session never got
+      // (dropped here, or by the client: held too long or still held at the end).
+      const voiced = level >= VOICED_RMS ? data.length / 2 : 0;
+      call.voicedSamples += voiced;
+      if (early) {call.droppedVoicedSamples += voiced;return;}
       const at = now();
       if (call.lastInputAt) call.maxInputGapMs = Math.max(call.maxInputGapMs ?? 0, at - call.lastInputAt);
       call.lastInputAt = at;call.inputBytes += data.length;
-      let sum = 0;for (let i = 0; i < data.length; i += 2) {const v = data.readInt16LE(i);sum += v * v;}
-      const level = Math.sqrt(sum / (data.length / 2));
       if (level >= Math.max(inputLoudRms, connection.device.noiseGateRms)) call.lastLoudInputAt = at;
       if (!call.firstVoiceAt && call.readyAt) {
-        if (level >= 450) {
+        if (level >= VOICED_RMS) {
           call.firstVoiceAt = at;
           audit({type:'device.call',voiceSessionId:call.id,stage:'input-speech',deviceId:connection.device.id,latencyMs:at - call.startedAt});
         }
@@ -406,7 +449,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       if (process.env.VOICE_DEVICE_DUMP_DIR) {
         try {appendFileSync(`${process.env.VOICE_DEVICE_DUMP_DIR}/${call.id}.pcm`, pcm);} catch {}
       }
-      call.client.emit('message', pcm, true);
+      call.client.input(pcm, voiced);
       return;
     }
     let event;try {event = JSON.parse(data.toString());} catch {return connection.ws.close(1008, 'invalid event');}
@@ -415,6 +458,18 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     if (event.type === 'call.start') return startCall(connection, event);
     if (!call) return;
     if (event.type === 'call.end') return call.end('device');
+    // Firmware listen states (xiaozhi wake detect / start / stop), audit only:
+    // they tell a wake that nobody followed from speech that was not heard.
+    if (event.type === 'listen') {
+      if (!Object.hasOwn(call.listen, event.state)) return;
+      call.listen[event.state]++;
+      const mode = ['auto','manual','realtime'].includes(event.mode) ? event.mode : null;
+      if (mode) call.listenMode = mode;
+      if (call.listenAudits >= LISTEN_AUDIT_MAX) return;
+      call.listenAudits++;
+      const row = {type:'device.call',stage:`listen-${event.state}`,deviceId:connection.device.id,latencyMs:now() - call.startedAt,...(mode ? {mode} : {})};
+      return call.id ? audit({...row,voiceSessionId:call.id}) : void call.listenBacklog.push(row);
+    }
     if (event.type === 'playback.state' && typeof event.speaking === 'boolean') {
       if (call.playing && !event.speaking) {call.replyEndedAt = now();call.turnSinceReply = false;}
       call.playing = event.speaking;call.lastActivityAt = call.lastExchangeAt = now();
@@ -490,7 +545,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
         const ws = dialect === 'xiaozhi' ? createXiaozhiWire(raw, {volume:volumeStore.get(device.id, device.volume), outputGain:device.outputGain, vision}) : raw;
         const old = connections.get(device.id);
         if (old) {old.call?.end('replaced');old.ws.close(4000, 'replaced');}
-        const connection = {device,ws,call:null,connectedAt:now(),missed:0,looking:null,visionDigest:vision ? digest(vision.token) : null};
+        const connection = {device,ws,dialect,call:null,connectedAt:now(),missed:0,looking:null,visionDigest:vision ? digest(vision.token) : null};
         connections.set(device.id, connection);
         // Any frame proves the device is alive. A speaker applying TCP
         // backpressure to a long reply can delay its pong, so allow misses.
