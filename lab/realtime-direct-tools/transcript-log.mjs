@@ -3,6 +3,48 @@ import {constants} from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 
+// A device call that ended before Voice gave it an id (start failed, device
+// left while reserving) is audited under this fixed id, with no session owner.
+export const DEVICE_START_SESSION_ID='device-start';
+const SAFE_ID=/^[a-z0-9_-]{1,64}$/u;
+/** Error text never reaches the audit: only which of a few fixed kinds it was. */
+export function errorKind(message){
+  if(typeof message!=='string'||!message)return 'other';
+  if(/未配置|尚未配置|未就绪|not configured|not set up|missing (?:config|credential)/iu.test(message))return 'not-configured';
+  if(/权限|授权|未开放|身份.{0,6}(?:不可用|无效)|permission|unauthori[sz]ed|forbidden|denied|\b40[13]\b/iu.test(message))return 'permission';
+  if(/超时|timed? ?out|timeout|ETIMEDOUT|deadline/iu.test(message))return 'timeout';
+  if(/不可用|无法启动|无法连接|尚未连接|已断开|unavailable|ECONN(?:REFUSED|RESET)|ENOTFOUND|EAI_AGAIN|TRANSPORT_ERROR|fetch failed|socket hang up|\b50[234]\b/iu.test(message))return 'unavailable';
+  return 'other';
+}
+// Speaker-side events: per type, the only fields kept. Numbers, booleans and
+// identifier-shaped names (deviceId, tool); free text becomes errorKind.
+const DEVICE_EVENTS={
+  'device.look':{ints:['latencyMs'],bools:['ok'],error:'error'},
+  'device.vision':{ints:['latencyMs','photoBytes'],bools:['ok'],error:'error'},
+  'device.volume':{ints:['volume','previous'],bools:['confirmed','persisted']},
+  'device.tool-progress':{ints:['index','waitedMs'],bools:['played']},
+  'device.tool-failure-notice':{ids:['tool'],bools:['spoken']},
+  'device.tool-result-prompt':{ids:['tool'],bools:['spoken']},
+  'device.unheard-turn':{ints:['openMs'],bools:['spoken']},
+  'call.connection-error':{error:'message'},
+  'speaker.end-played':{},
+};
+const pick=(event,{ids=[],ints=[],bools=[],error}={})=>{
+  const safe={};
+  for(const key of ['deviceId',...ids])if(typeof event[key]==='string'&&SAFE_ID.test(event[key]))safe[key]=event[key];
+  for(const key of ints)if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+  for(const key of bools)if(typeof event[key]==='boolean')safe[key]=event[key];
+  if(error&&event[error]!==undefined)safe.errorKind=errorKind(event[error]);
+  return safe;
+};
+const DEVICE_CALL={ids:['reason'],
+  ints:['latencyMs','durationMs','inputBytes','outputBytes','userTurns','gatedInputBytes','maxInputGapMs','voicedMs','droppedVoicedMs','listenDetects','listenStarts','listenStops'],
+  bools:['multiSpeaker'],error:'error'};
+const deviceCall=(owner,event)=>{
+  if(!['start','ready','input-speech','closed','listen-detect','listen-start','listen-stop'].includes(event.stage))return null;
+  return {...owner,type:event.type,stage:event.stage,...pick(event,DEVICE_CALL),...(['auto','manual','realtime'].includes(event.mode)?{mode:event.mode}:{})};
+};
+
 /** Text and whitelisted connection diagnostics. No PCM, protocol or credentials. */
 export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},maxPending=256}={}) {
   if(!directory||!path.isAbsolute(directory))throw Error('An absolute private transcript directory is required');
@@ -37,6 +79,12 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       owners.set(id,{voiceSessionId:id,sessionKey:event.sessionKey,provider:event.provider,model:event.model,modelSource:'voice_reservation'});
       return enqueue({...owners.get(id),type:'call.created'});
     }
+    // Device events from before a call had an id: fixed ids, no session owner.
+    if(id==='ota'&&event.type==='device.ota')return enqueue({voiceSessionId:id,type:event.type,...pick(event,{bools:['known']})});
+    if(id===DEVICE_START_SESSION_ID){
+      const row=event.type==='device.call'&&event.stage==='closed'?deviceCall({voiceSessionId:id},event):null;
+      return row?enqueue(row):false;
+    }
     const owner=owners.get(id)??(/^(?:task\.delivery-|backend\.)/.test(event.type)?closedOwners.get(id):null);if(!owner)return false;
     if(event.type==='call.connection-stage'){
       if(!['catalog-requested','catalog-ready','context-requested','context-ready','provider-connecting','provider-ready'].includes(event.stage))return false;
@@ -60,6 +108,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       if(event.type==='backend.started'&&typeof event.ack?.taskId==='string')safe.taskId=event.ack.taskId;
       if(event.type==='backend.started'&&typeof event.ack?.runId==='string')safe.runId=event.ack.runId;
       if(event.type==='tool.delivered')safe.status=event.result?.error?'error':event.result?.cancelled?'cancelled':'ok';
+      if(safe.status==='error')safe.errorKind=errorKind(event.result.error);
       for(const key of ['ok','queued','applied'])if(typeof event[key]==='boolean')safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
     }
@@ -96,12 +145,10 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     }
     if(event.type==='device.call'){
       // Speaker lifecycle diagnostics: counters and stage names only, no audio.
-      if(!['start','ready','input-speech','closed'].includes(event.stage))return false;
-      const safe={stage:event.stage};
-      for(const key of ['deviceId','reason'])if(typeof event[key]==='string'&&/^[a-z0-9_-]{1,64}$/u.test(event[key]))safe[key]=event[key];
-      for(const key of ['latencyMs','durationMs','inputBytes','outputBytes','userTurns','gatedInputBytes','maxInputGapMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
-      return enqueue({...owner,type:event.type,...safe});
+      const row=deviceCall(owner,event);
+      return row?enqueue(row):false;
     }
+    if(Object.hasOwn(DEVICE_EVENTS,event.type))return enqueue({...owner,type:event.type,...pick(event,DEVICE_EVENTS[event.type])});
     if(event.type==='call.closed'){
       closedOwners.set(id,owner);if(closedOwners.size>256)closedOwners.delete(closedOwners.keys().next().value);
       owners.delete(id);return enqueue({...owner,type:'call.closed'});
