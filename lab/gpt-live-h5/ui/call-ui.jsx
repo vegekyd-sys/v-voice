@@ -35,7 +35,14 @@ function useViewport() {
   const read = () => ({width: Math.min(window.innerWidth, 560), height: window.visualViewport?.height ?? window.innerHeight});
   const [size, setSize] = useState(read);
   useEffect(() => {
-    const update = () => setSize(read());
+    // iOS keeps 100dvh when the keyboard opens; size the page to what is
+    // actually visible so the text field and call controls stay above it.
+    const update = () => {
+      const next = read();
+      document.documentElement.style.setProperty('--voice-height', next.height + 'px');
+      setSize(next);
+    };
+    update();
     window.visualViewport?.addEventListener('resize', update);
     window.addEventListener('resize', update);
     return () => { window.visualViewport?.removeEventListener('resize', update); window.removeEventListener('resize', update); };
@@ -70,7 +77,8 @@ function StatusLine({status, onTask, actions}) {
   const who = status.who;
   const content = (
     <>
-      <span className="status-text">{status.text}{who && <> <b className="status-who" data-tone={who.tone}>{who.label}</b></>}{status.dots && <span className="status-dots" aria-hidden="true" />}</span>
+      {status.spinner && <span className="status-spinner" aria-hidden="true" />}
+      <span className="status-text">{status.text}{who && <> <b className="status-who" data-tone={who.tone}>{who.label}</b></>}</span>
       {status.time && <span className="status-time">{status.time}</span>}
       {status.tappable && <span className="status-chevron" aria-hidden="true">›</span>}
     </>
@@ -145,7 +153,13 @@ function Controls({state, actions}) {
   const input = useRef(null);
   const active = ['connected', 'ending'].includes(state.call);
   const {open, enabled} = state.composer;
-  useEffect(() => { if (open) input.current?.focus({preventScroll: true}); }, [open]);
+  // iOS raises the keyboard only for focus() inside the tap itself, so the
+  // field is shown synchronously and focused in the same handler.
+  const toggleComposer = () => {
+    if (actions.composerOpen()) { input.current?.blur(); actions.compose(false); return; }
+    flushSync(() => actions.compose(true));
+    input.current?.focus({preventScroll: true});
+  };
   const submit = async event => {
     event.preventDefault();
     const text = input.current.value.trim();
@@ -162,12 +176,12 @@ function Controls({state, actions}) {
       </form>
       <div id="callPill" className="pill" aria-label="通话控制">
         {active && (
-          <button id="textToggle" type="button" aria-label={open ? '收起文字输入' : '打开文字输入'} aria-expanded={open} aria-controls="steerForm" onClick={() => actions.compose(!open)}>
+          <button id="textToggle" type="button" aria-label={open ? '收起文字输入' : '打开文字输入'} aria-expanded={open} aria-controls="steerForm" onClick={toggleComposer}>
             <Icon><rect x="2" y="5" width="20" height="14" rx="3" /><path d="M6 9h1m3 0h1m3 0h1m3 0h1M6 12h1m3 0h1m3 0h1m3 0h1M7 16h10" /></Icon>
           </button>
         )}
         {active && (
-          <button id="mute" type="button" aria-pressed={state.muted} aria-label={state.muted ? '打开麦克风' : '静音麦克风'} onClick={() => actions.mute(!state.muted)}>
+          <button id="mute" type="button" aria-pressed={state.muted} aria-label={state.muted ? '打开麦克风' : '静音麦克风'} onClick={() => actions.mute()}>
             <Icon><rect x="9" y="2" width="6" height="13" rx="3" /><path d="M6 10v2a6 6 0 0 0 12 0v-2M12 18v4m-4 0h8" />{state.muted && <path d="m3 3 18 18" />}</Icon>
           </button>
         )}
@@ -277,6 +291,8 @@ function TaskSheet({state, now, actions, onClose}) {
 function CallPage({view, actions, options}) {
   const state = useView(view);
   const active = state.call !== 'idle';
+  // Dialing keeps the home scene: the same red circle turns into "cancel".
+  const dialing = state.call === 'dialing', inCall = active && !dialing;
   const now = useNow(active);
   const viewport = useViewport();
   const [history, setHistory] = useState(false);
@@ -291,16 +307,16 @@ function CallPage({view, actions, options}) {
   useEffect(() => { if (main.current) main.current.inert = state.reading; }, [state.reading]);
   // Long replies borrow room from the portrait; the keyboard does the same.
   const {width, height} = viewport;
-  const compact = active && (overflow || height < 560 || state.composer.open && height < 700);
-  const size = !active ? Math.min(width * .72, height * .4, 300)
+  const compact = inCall && (overflow || height < 560 || state.composer.open && height < 700);
+  const size = !inCall ? Math.min(width * .72, height * .4, 300)
     : history ? 52 : compact ? Math.min(width * .38, height * .2, 150) : Math.min(width * .62, height * .3, 250);
   const openTasks = working ? () => setSheet(true) : undefined;
   const latchOverflow = useCallback(() => setOverflow(true), []);
-  const voice = state.call === 'dialing' ? 'dialing' : status?.key === 'voice' ? (status.text === '在想' ? 'thinking' : state.voice === 'speaking' ? 'speaking' : status.who ? 'hearing' : 'listening') : state.voice === 'speaking' ? 'speaking' : 'listening';
+  const voice = state.call === 'dialing' ? 'dialing' : status?.key === 'voice' ? (status.thinking ? 'thinking' : state.voice === 'speaking' ? 'speaking' : status.who ? 'hearing' : 'listening') : state.voice === 'speaking' ? 'speaking' : 'listening';
   const dock = (
     <>
-      {active && <StatusLine status={status} onTask={openTasks} actions={actions} />}
-      {active && <Controls state={state} actions={actions} />}
+      {inCall && <StatusLine status={status} onTask={openTasks} actions={actions} />}
+      {inCall && <Controls state={state} actions={actions} />}
     </>
   );
   return (
@@ -316,11 +332,16 @@ function CallPage({view, actions, options}) {
         </header>
         <section className="stage" aria-label="V">
           <Avatar onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? '查看后台任务' : 'V'} />
-          {!active && (
+          {!inCall && (
             <div className="home">
               <a className="avatar-name" href="./" aria-label="V 通话首页">V</a>
               <h1 className="sr-only">和 V 通话</h1>
-              {state.entry ? <EntryNotice entry={state.entry} /> : (
+              {dialing ? (
+                <>
+                  <button id="stop" className="dial dialing" type="button" aria-label={state.stopLabel} title={state.stopLabel} onClick={actions.hangup}><Icon d={HANG} /></button>
+                  <span id="badge" className="home-badge dialing-note" role="status">{state.badge}</span>
+                </>
+              ) : state.entry ? <EntryNotice entry={state.entry} /> : (
                 <>
                   <GrokPicker state={state} actions={actions} />
                   <button id="start" className="dial" type="button" disabled={state.dial.disabled} aria-label={state.dial.label} title={state.dial.label} onClick={actions.dial}><Icon d={PHONE} /></button>
@@ -331,11 +352,10 @@ function CallPage({view, actions, options}) {
               )}
             </div>
           )}
-          {active && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
+          {inCall && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
         </section>
-        {active && state.call !== 'dialing' && <Conversation state={state} options={options} history={history} setHistory={setHistory} onOverflow={latchOverflow} />}
-        {active && state.call === 'dialing' && <div className="conversation" />}
-        {active && !state.reading && <Controls state={state} actions={actions} />}
+        {inCall && <Conversation state={state} options={options} history={history} setHistory={setHistory} onOverflow={latchOverflow} />}
+        {inCall && !state.reading && <Controls state={state} actions={actions} />}
       </main>
       {state.reading && document.getElementById('readerDock') && createPortal(dock, document.getElementById('readerDock'))}
       {sheet && working && <TaskSheet state={state} now={now} actions={actions} onClose={() => setSheet(false)} />}
