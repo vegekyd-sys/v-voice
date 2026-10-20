@@ -547,7 +547,7 @@ test('a long background task narrates its real stages on an idle phone line, the
  assert(await until(()=>spoken().includes('后台正在上网搜索。')),'the running tool is announced');
  toolEvent(f,'sdk-fixture-run','result','web_search','search-1');toolEvent(f,'sdk-fixture-run','start','web_fetch','fetch-1');
  assert(await until(()=>spoken().includes('后台正在读网页。')),'a new stage is announced after the gap');
- assert(await until(()=>spoken().some(x=>/^后台还在读网页，已经\d+秒了。$/.test(x))),'an unchanged stage is repeated with elapsed time');
+ assert(await until(()=>spoken().some(x=>/^后台还在处理，已经\d+秒了，刚才在读网页。$/.test(x))),'an unchanged stage is repeated with elapsed time');
  assert.equal(spoken().some(x=>x.includes('查记忆')),false,'another run never speaks on this call');
  assert.deepEqual([...new Set(f.audit.filter(e=>e.type==='backend.progress-spoken').map(e=>e.kind))],['stage','heartbeat']);
  const before=spoken().length;f.completeBackend('报告整理好了，一共三条结论。');
@@ -586,6 +586,17 @@ test('a sub-agent spawned by the task is the same task: its stages are narrated,
  f.service.handleEvent({event:'session.tool',payload:{runId:'child-run-1',sessionKey:'agent:makaron:subagent:child-1',stream:'tool',data:{phase:'start',name:'web_fetch',toolCallId:'w-1'}}});
  assert(await until(()=>spoken().includes('后台正在读网页。')),'the child stage is announced');
  f.service.handleEvent({event:'session.tool',payload:{runId:'child-run-2',sessionKey:'agent:makaron:subagent:child-1',stream:'tool',data:{phase:'start',name:'pdf',toolCallId:'p-1'}}});
- assert(await until(()=>spoken().includes('后台正在读 PDF 文档。')),'a later run of the same child session counts too');
+ assert(await until(()=>spoken().some(x=>x.startsWith('后台正在读 PDF 文档'))),'a later run of the same child session counts too');
  assert.equal(spoken().some(x=>x.includes('查记忆')),false);
+});
+test('quick tool calls with long model thinking between them are still narrated (as on V, 2026-10-20)',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:FAST_NARRATION});t.after(()=>f.service.dispose());
+ const spoken=()=>f.upstream.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text);
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'task',name:'delegate_to_v',arguments:JSON.stringify({question:'查官方售价'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ const quick=(name,id)=>{toolEvent(f,'sdk-fixture-run','start',name,id);toolEvent(f,'sdk-fixture-run','result',name,id);};
+ quick('exec','e1');
+ assert(await until(()=>spoken().includes('后台刚做完运行命令这一步，还在继续。')));
+ quick('web_fetch','w1');quick('exec','e2');quick('web_fetch','w2');
+ assert(await until(()=>spoken().includes('后台刚做完读网页这一步，一共做了4步，还在继续。')),'the latest kind of step, with the real count');
 });

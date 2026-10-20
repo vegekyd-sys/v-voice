@@ -7,7 +7,7 @@ import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICES,grokVoice,grokVoiceModel,gr
 import {createTaskDelivery} from './task-delivery.mjs';
 import {createBackendDelegation} from './backend.mjs';
 import {loadToolStartClips,loadToolProgressClips,toolStartClip} from './tool-start-audio.mjs';
-import {stageLine} from './task-progress.mjs';
+import {stageLine,stageKey} from './task-progress.mjs';
 import {presentBackendResult,LONG_RESULT_NOTICE} from '../gpt-live-h5/result-presentation.mjs';
 import {voiceCapabilityInstructions} from '../gpt-live-h5/capability-policy.mjs';
 import {VOICE_TASK_CONTROL_POLICY} from '../../lib/voice-task-control.mjs';
@@ -40,7 +40,6 @@ export function directInstructions(catalog,context='',model='',options={}) {
 // Pacing of task narration (ms). A stage must hold for settleMs before it is
 // announced, so a burst of quick tool calls becomes one line.
 export const NARRATION_DEFAULTS=Object.freeze({firstMs:6000,firstHeartbeatMs:15000,settleMs:2000,stageGapMs:12000,factGapMs:6000,heartbeatMs:30000,quietAfterUserMs:4000,startMs:2500,max:12});
-const stageKey=stage=>stage.running?'run:'+(stage.label??''):stage.failed?'failed:'+stage.failed:'done:'+(stage.completed?1:0);
 
 export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,toolProgressClips=null,narration}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
@@ -72,7 +71,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(p&&since>=NARRATION.factGapMs){s.progress=null;if(p.text.length<=220){narrate(s,p.text,'fact',stage);return;}}
     // Stage and elapsed-time lines are telephone narration; a device keeps its own policy.
     if(s.surface!=='phone'||now-s.lastUserAt<NARRATION.quietAfterUserMs)return;
-    const changed=stageKey(stage)!==stage.lastSpoken&&stage.events>0;
+    const changed=stage.steps>0&&stageKey(stage)!==stage.lastSpoken;
     if(changed&&since>=NARRATION.stageGapMs&&now-stage.changedAt>=NARRATION.settleMs)narrate(s,stageLine(stage,{elapsedMs:elapsed}),'stage',stage);
     else if(since>=NARRATION.heartbeatMs)narrate(s,stageLine(stage,{elapsedMs:elapsed,heartbeat:true}),'heartbeat',stage);
   };
@@ -158,7 +157,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     // controller is responsible for cleanup; Gateway process is never fallback.
     s.delivery=createTaskDelivery({gateway,sessionKey,ownerId:s.id,audit});
     s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,taskDelivery:s.delivery,pollMs:backendPollMs,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}},
-      onStage:stage=>{if(current(s)){audit({type:'backend.stage',voiceSessionId:s.id,callId:stage.callId,label:stage.label,running:stage.running,completed:stage.completed,failed:stage.failed});emit(s,{type:'tool.progress',callId:stage.callId,name:'delegate_to_v',...(stage.label?{stage:stage.label}:{})});}}});
+      onStage:stage=>{if(current(s)){audit({type:'backend.stage',voiceSessionId:s.id,callId:stage.callId,label:stage.latest,running:stage.latestRunning,completed:stage.completed,failed:stage.failed});emit(s,{type:'tool.progress',callId:stage.callId,name:'delegate_to_v',...(stage.latest?{stage:stage.latest}:{})});}}});
     sessions.set(s.id,s);
     audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model,voice:s.voice,surface,...(model==='grok'?{speed:grokSpeed,expressiveTags:grokExpressiveTags}:{})});
     // A household device joins streaming multi-speaker routing only when its

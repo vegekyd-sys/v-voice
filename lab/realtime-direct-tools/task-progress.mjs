@@ -30,20 +30,27 @@ export function spawnedChild(payload) {
   return value?.status === 'accepted' && runId && sessionKey ? {runId, sessionKey} : null;
 }
 
-/** Tracks tool calls of the task's own runs. Returns true when the stage changed. */
+/**
+ * Tracks tool calls of the task's own runs. Returns true when the stage changed.
+ * Tools usually return within a second while the model thinks between them, so
+ * the stage is the latest step taken, and whether it is still running.
+ */
 export function createTaskStages({now = Date.now} = {}) {
   const pending = new Map(), done = new Set(), streams = {};
-  let failed = 0, changedAt = 0, lastLabel = null, events = 0;
+  let failed = 0, changedAt = 0, lastLabel = null, events = 0, latest = null;
   const start = (id, name) => {
     if (done.has(id) || pending.has(id)) return false;
-    pending.set(id, {label:toolStageLabel(name), at:now()});changedAt = now();return true;
+    latest = {id, label:toolStageLabel(name), failed:false};
+    pending.set(id, latest);changedAt = now();return true;
   };
   const end = (id, error) => {
-    if (done.has(id) || !pending.delete(id)) return false;
-    done.add(id);if (error) failed++;changedAt = now();return true;
+    const step = pending.get(id);
+    if (done.has(id) || !step) return false;
+    pending.delete(id);done.add(id);if (error) {failed++;step.failed = true;}
+    changedAt = now();return true;
   };
   return {
-    /** Only events whose runId belongs to this task are passed in. */
+    /** Only events whose run belongs to this task are passed in. */
     consume(payload) {
       const d = payload?.data ?? {}, stream = payload?.stream;
       events++;const key = [stream, d.kind, d.phase].filter(Boolean).join('/');streams[key] = (streams[key] ?? 0) + 1;
@@ -58,30 +65,31 @@ export function createTaskStages({now = Date.now} = {}) {
       return false;
     },
     snapshot() {
-      const running = [...pending.values()].at(-1);
-      return {running:Boolean(running), label:running?.label ?? null, runningSince:running?.at ?? null,
-        completed:done.size, failed, changedAt, events};
+      return {latest:latest?.label ?? null, latestRunning:Boolean(latest && pending.has(latest.id)), latestFailed:Boolean(latest?.failed),
+        steps:done.size + pending.size, completed:done.size, failed, changedAt, events};
     },
     /** Remember what was last said, so the same stage is not announced twice. */
-    spoken(label) {lastLabel = label;},
+    spoken(key) {lastLabel = key;},
     lastSpoken: () => lastLabel,
     observed: () => ({events, streams:{...streams}, steps:done.size + pending.size}),
   };
 }
+/** What makes a stage worth a new line: another kind of step, or a failure. */
+export const stageKey = stage => stage.steps ? `${stage.latest ?? '?'}|${stage.failed}` : 'none';
 
 // Rounded down: "已经40秒了" is never more than the time that actually passed.
 const minutes = ms => ms < 60000 ? `${Math.max(1, Math.floor(ms / 10000)) * 10}秒` : `${Math.floor(ms / 30000) / 2}分钟`.replace('.5分钟', '分半钟');
 
 /**
  * One short spoken line from verified state only: elapsed time since the task
- * was admitted, the tool that is actually running, and how many steps returned.
- * `heartbeat` marks a repeat of an unchanged stage, which then leads with time.
+ * was admitted, the latest step the backend actually took, and how many steps.
+ * `heartbeat` repeats an unchanged stage, leading with time.
  */
 export function stageLine(stage, {elapsedMs, heartbeat = false} = {}) {
-  const time = minutes(elapsedMs);
-  if (stage.running && stage.label) return heartbeat ? `后台还在${stage.label}，已经${time}了。` : `后台正在${stage.label}。`;
-  if (stage.running) return heartbeat ? `后台还在处理，已经${time}了。` : `后台在做下一步。`;
-  if (stage.failed && !heartbeat) return `有一步没成功，后台还在继续。`;
-  if (stage.completed) return heartbeat ? `后台已经做完${stage.completed}步，还在继续，已经${time}了。` : `后台做完了${stage.completed}步，还在继续。`;
-  return `后台还在处理，已经${time}了。`;
+  const time = minutes(elapsedMs), label = stage.latest, n = stage.steps;
+  if (heartbeat) return label ? `后台还在处理，已经${time}了，刚才在${label}。` : `后台还在处理，已经${time}了。`;
+  if (!n) return `后台还在处理，已经${time}了。`;
+  if (stage.latestFailed && !stage.latestRunning) return `刚才有一步没成功，后台还在继续。`;
+  if (stage.latestRunning) return label ? `后台正在${label}${n >= 3 ? `，这是第${n}步` : ''}。` : `后台在做第${n}步。`;
+  return label ? `后台刚做完${label}这一步${n >= 3 ? `，一共做了${n}步` : ''}，还在继续。` : `后台做完了${n}步，还在继续。`;
 }
