@@ -60,6 +60,10 @@ export function parseDeviceEntries(records = []) {
     if (typeof outputGain !== 'number' || outputGain < 1 || outputGain > 4) throw Error('Device output gain must be 1-4');
     if (volume !== null && (!Number.isInteger(volume) || volume < 0 || volume > 100)) throw Error('Device volume must be 0-100');
     if (mac !== null && !/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/u.test(mac)) throw Error('Invalid device MAC address');
+    // How long V waits after a reply for the next request. A robot people chat
+    // with needs longer than a household speaker answering one-off questions.
+    const followUpMs = record.followUpMs ?? null;
+    if (followUpMs !== null && (!Number.isInteger(followUpMs) || followUpMs < 5000 || followUpMs > 60000)) throw Error('Device follow-up window must be 5000-60000 ms');
     // Firmware with its own echo cancellation sends abort only once someone has
     // really started talking over V, so that abort may cancel the reply at once.
     if (record.deviceBargeIn !== undefined && typeof record.deviceBargeIn !== 'boolean') throw Error('deviceBargeIn must be true or false');
@@ -70,7 +74,7 @@ export function parseDeviceEntries(records = []) {
     // room background (TV, far voices). On by default with multiSpeaker; 0 = off.
     const nearFieldGateDb = record.nearFieldGateDb ?? (record.multiSpeaker === true ? NEAR_FIELD_DEFAULT_DB : 0);
     if (typeof nearFieldGateDb !== 'number' || !Number.isFinite(nearFieldGateDb) || nearFieldGateDb < 0 || nearFieldGateDb > 30) throw Error('nearFieldGateDb must be 0-30');
-    devices.push(Object.freeze({deviceBargeIn:record.deviceBargeIn === true,multiSpeaker:record.multiSpeaker === true,nearFieldGateDb,inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,volume,outputGain,robot:record.robot === true,robotStatus:record.robotStatus === true,camera:record.camera === true,mac,otaToken:mac ? record.token : null,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
+    devices.push(Object.freeze({deviceBargeIn:record.deviceBargeIn === true,followUpMs,multiSpeaker:record.multiSpeaker === true,nearFieldGateDb,inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,volume,outputGain,robot:record.robot === true,robotStatus:record.robotStatus === true,camera:record.camera === true,mac,otaToken:mac ? record.token : null,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
   }
   return devices;
 }
@@ -294,7 +298,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       // finished request must not keep the model session open indefinitely.
       if (call.replyEndedAt && !call.playing && !state.responseActive) {
         const spokeSince = Math.max(state.lastUserAt, call.roomSpeechAt ?? 0) > call.replyEndedAt;
-        if (!spokeSince && at - call.replyEndedAt > followUpMs) return call.end('idle');
+        if (!spokeSince && at - call.replyEndedAt > (device.followUpMs ?? followUpMs)) return call.end('idle');
         if (spokeSince && !call.turnSinceReply && at - call.replyEndedAt > chatterMs) {
           // Say why before leaving, so the household is not left with a silent exit.
           if (directVoice.say?.(call.id, BACKGROUND_LEAVE_LINE)) call.leaving = {reason:'background-speech', at, spoke:false};
