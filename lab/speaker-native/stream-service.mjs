@@ -61,12 +61,19 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     send(s,{type:'speaker.stream-start',token:c.token,speakerId:c.speakerId,startMs:c.startMs,bufferMs:Math.round(s.window.bytes/32-c.startMs),prepareMs:Math.round(performance.now()-preparedAt),fallback:Boolean(c.fallback)});
   };
   const dropUndecided=s=>{const c=s.input;if(!c||c.decided||c.cancelled)return;clearTimeout(s.responseDeadline);c.cancelled=true;s.gate.deny(c.token);s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;};
+  // V is mid-answer, waiting on a lookup, or just finished: an unattributable
+  // fragment then is far more likely V's own tail, a breath or a late echo
+  // than a new question, and asking to repeat would cut the answer short.
+  const busy=s=>{const now=performance.now();return s.nativeBusy||(s.lastToolAt??-Infinity)>(s.lastDoneAt??-Infinity)&&now-s.lastToolAt<30000||now-(s.lastDoneAt??-Infinity)<8000;};
+  // With one voice in the call there is no one else the words could belong to.
+  const soleSpeaker=s=>s.tracker.prototypes.length===1?s.tracker.prototypes[0].id:null;
   const recover=async(s,reason,authorized=false)=>{
     // A far-field device hears TV and room talk all day: an unattributable or
     // short final there is not evidence anyone spoke to V, so V stays silent
     // instead of asking the room to repeat. An admitted turn left unanswered
     // (native-no-output) still gets its spoken retry.
     if(!s.closed&&s.farField&&reason!=='native-no-output'){dropUndecided(s);send(s,{type:'speaker.recovery-suppressed',reason});return;}
+    if(!s.closed&&reason!=='native-no-output'&&busy(s)){send(s,{type:'speaker.recovery-suppressed',reason});return;}
     if(s.closed||s.router.mode==='exclusive'&&!authorized||performance.now()-(s.lastRecoveryAt??-Infinity)<8000)return;
     s.lastRecoveryAt=performance.now();
     const c={token:'recovery'+(++s.serial),cancelled:false,decided:true,recovery:true,segmentIds:new Set()};
@@ -161,9 +168,11 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
       if(ids.length<=1&&(!ids.length||overlaps.some(x=>!x.segment.speakerId&&x.ms>250))){
         if(s.backfilled.has(key)){
           const verified=s.backfilled.get(key);
-          if(!verified&&s.farField){s.seen.add(key);void recover(s,'identity-uncertain');continue;}
-          if(!verified){s.seen.add(key);s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;if(s.input)s.input.cancelled=true;send(s,{type:'speaker.error',reason:'identity-uncertain',message:'这一句声线暂未确认，请再说一句完整的话。'});void recover(s,'identity-uncertain');continue;}
-          ids=[verified];
+          const sole=verified?null:soleSpeaker(s);
+          if(!verified&&!sole&&s.farField){s.seen.add(key);void recover(s,'identity-uncertain');continue;}
+          if(!verified&&!sole&&busy(s)){s.seen.add(key);send(s,{type:'speaker.recovery-suppressed',reason:'identity-uncertain'});continue;}
+          if(!verified&&!sole){s.seen.add(key);s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;if(s.input)s.input.cancelled=true;send(s,{type:'speaker.error',reason:'identity-uncertain',message:'这一句声线暂未确认，请再说一句完整的话。'});void recover(s,'identity-uncertain');continue;}
+          ids=[verified||sole];
         }else{
           if(raw.end_time-raw.start_time<400){s.seen.add(key);void recover(s,'short-utterance');continue;}
           if(!s.backfilling.has(key)){
@@ -282,7 +291,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     // Input is the session's own rate; budgets count 24 kHz-equivalent bytes.
     audio(id,input){const s=sessions.get(id);if(!s?.ready||s.closed)throw Error('流式识人尚未就绪');const bytes=s.inputRate===16000?input.length*1.5:input.length;inputBytes+=bytes;s.inputBytes+=bytes;if(s.inputBytes>48000*(limits.inputSeconds??1800))throw Error('本轮音频预算已用完');const pcm=s.inputRate===16000?Buffer.from(input):s.resampler.push(input),startMs=s.window.bytes/32;s.window.append(pcm);s.clock.push({startMs,endMs:s.window.bytes/32,at:performance.now()});if(s.clock.length>1200)s.clock.shift();if(s.asrReady)s.asr.append(pcm);s.tracker.push(pcm);
       if(s.latestAsr)for(const turn of normalizeFinals(s,s.latestAsr))enqueue(s,turn);return true;},
-    dispatch(id,kind,value,deliver){const s=sessions.get(id);if(!s)return false;if(s.gate.status!=='closed'){if(kind==='audio')s.nativeBusy=true;if(kind==='done'){s.nativeBusy=false;if(s.input?.host)s.input.hostDone=true;}}try{const c=s.input;s.gate.dispatch(()=>{if(kind==='tool'&&c?.greeting)return;if(kind==='tool'&&value.name==='end_call'){s.native.rejectNativeEnd?.(value);send(s,{type:'speaker.end-withheld',reason:'native-end-unconfirmed'});return;}if(c&&s.input===c&&['audio','tool'].includes(kind)){c.responded=true;clearTimeout(s.responseDeadline);}deliver();},kind==='audio'?value.length:0);}catch(error){if(s.input)s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;send(s,{type:'speaker.error',message:error.message});}return true;},
+    dispatch(id,kind,value,deliver){const s=sessions.get(id);if(!s)return false;if(s.gate.status!=='closed'){if(kind==='audio')s.nativeBusy=true;if(kind==='done'){s.nativeBusy=false;if(s.input?.host)s.input.hostDone=true;if(s.input&&!s.input.greeting&&!s.input.recovery&&!s.input.host)s.lastDoneAt=performance.now();}if(kind==='tool'&&value?.name!=='end_call')s.lastToolAt=performance.now();}try{const c=s.input;s.gate.dispatch(()=>{if(kind==='tool'&&c?.greeting)return;if(kind==='tool'&&value.name==='end_call'){s.native.rejectNativeEnd?.(value);send(s,{type:'speaker.end-withheld',reason:'native-end-unconfirmed'});return;}if(c&&s.input===c&&['audio','tool'].includes(kind)){c.responded=true;clearTimeout(s.responseDeadline);}deliver();},kind==='audio'?value.length:0);}catch(error){if(s.input)s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;send(s,{type:'speaker.error',message:error.message});}return true;},
     assistant(id,text){const s=sessions.get(id);if(s&&text?.trim()){s.router.assistant(text);if(s.farField){s.recentAssistant.push(plain(text).slice(-1200));s.recentAssistant=s.recentAssistant.slice(-4);}s.acceptedHistory.push({role:'assistant',text:text.slice(-800)});s.acceptedHistory=s.acceptedHistory.slice(-8);}},
     initialInstructions(id,text){return sessions.has(id)?text.replace('现在正在电话中和 Tianyi（天懿）本人交流','正在电话中与主机当前指定的人物交流；账号与工具仍属于原电话入口，不随人物切换').replace('现在你通过家里的智能音箱和 Tianyi（天懿）本人进行测试','现在你通过家里的智能音箱与主机当前指定的人物交流；账号与工具仍属于原入口，不随人物切换'):text;},
     /** A fixed host line in V's voice (a device's parting line). It replaces any
