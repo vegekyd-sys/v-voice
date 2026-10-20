@@ -715,10 +715,10 @@ test('a xiaozhi device without a camera gets no vision capability and no look to
 
 const routingAnswers = (questions, action = 'respond') => ({answers:Object.fromEntries(Object.keys(questions).map(id => [id,{type:'choice',choice:id === 'action' ? action : id.startsWith('role_') ? 'unknown' : 'keep'}]))});
 function routingFixture(action = () => 'respond') {
-  const asr = {appended:0,options:null};
+  const asr = {appended:0,options:null,peaks:[]};
   const service = createStreamingSpeakerRoutingService({env:{},embedding:{ready:Promise.resolve(),compute:async () => ({embedding:[1,0],inferenceMs:1})},
     evaluate:async (state, questions) => routingAnswers(questions, action(state)),
-    createAsr:options => {asr.options = options;return {connect:async () => {},append:pcm => {asr.appended += pcm.length;},close() {}};}});
+    createAsr:options => {asr.options = options;return {connect:async () => {},append:pcm => {asr.appended += pcm.length;let peak = 0;for (let i = 0; i + 1 < pcm.length; i += 2) peak = Math.max(peak, Math.abs(pcm.readInt16LE(i)));asr.peaks.push(peak);},close() {}};}});
   return {service,asr};
 }
 const loud = ms => {const pcm = Buffer.alloc(ms * 32);for (let i = 0; i < pcm.length; i += 2) pcm.writeInt16LE(6000, i);return pcm;};
@@ -820,4 +820,21 @@ test('the near-field gate silences a quieter continuous background before the vo
   await f.until(() => f.audit.some(e => e.type === 'device.call' && e.stage === 'closed'), 'closed');
   const {nearField} = f.audit.find(e => e.type === 'device.call' && e.stage === 'closed');
   assert(nearField.gatedMs >= 900 && nearField.levelDb.p90 > nearField.levelDb.p10, JSON.stringify(nearField));
+});
+
+test('nearFieldGateDb 0 turns the server gate off even with multiSpeaker (firmware-gated StackChan)', async t => {
+  const routing = routingFixture();t.after(() => routing.service.dispose());
+  const f = await fixture({record:{multiSpeaker:true,nearFieldGateDb:0},speakerRouting:routing.service});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'call.ready');
+  assert(f.audit.some(e => e.type === 'device.call' && e.stage === 'start' && e.multiSpeaker === true), 'routing is on');
+  const quiet = Buffer.alloc(1920);for (let i = 0; i < quiet.length; i += 2) quiet.writeInt16LE(180, i);
+  const before = routing.asr.peaks.length;
+  for (let i = 0; i < 60; i++) device.send(quiet, {binary:true});  // 3.6 s of steady quiet background
+  await f.until(() => routing.asr.peaks.slice(before).filter(p => p === 180).length >= 60, 'every quiet frame reaches ASR unchanged');
+  device.send(JSON.stringify({type:'call.end'}));
+  await f.until(() => f.audit.some(e => e.type === 'device.call' && e.stage === 'closed'), 'closed');
+  const closed = f.audit.find(e => e.type === 'device.call' && e.stage === 'closed');
+  assert.equal(closed.nearField, undefined);assert.equal(closed.gatedInputBytes, 0);
 });

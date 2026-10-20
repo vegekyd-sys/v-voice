@@ -40,6 +40,7 @@ PR #32 的豆包流式多人链路（并行 ASR、通话内匿名 Speaker、换�
 | 长回答播放 | 门控放行后直通，不受待确认 1 MB 上限影响；playout 队列不变 |
 | 说完原因再挂断 | `你们先聊，需要我再叫我` 改走 `hostSpeech`：替换待定输入、直接放行，不经 Decision |
 | 告别挂断 | 由主机 Decision 判断（同网页电话），原生 `end_call` 不再声明 |
+| #34 的等工具 / 结果提示 | 查询失败（"没查成"）和结果未播（"结果查到了"）的提示照常，经 `hostSpeech` 放行；"还在查"的缓存提示音在多人模式下不播（#34 自己就已跳过）；"刚才没听清"的提示在多人模式下关闭，因为豆包只听到推测输入，它的 userSpeaking 会被卡住，重说的提示由识人层负责（对房间里的话保持静默） |
 | 空闲策略 | 只有放行的话算用户轮次；被追踪到的任何声音（电视、旁人）只算"房间里有人说话"。V 说完后 10 秒没人出声就结束；房间里一直有声音但 30 秒内没人对 V 说话，先说原因再离开（阈值沿用现有设备默认值） |
 
 ## 嘈杂环境：电视、孩子、回声
@@ -55,6 +56,8 @@ PR #32 的豆包流式多人链路（并行 ASR、通话内匿名 Speaker、换�
 - 上行静音的帧（设备在 V 说话时）不参与估计。
 - 合成测试（电视在中位数附近 −8 到 +6 dB 起伏、有停顿，用户的话叠加在电视上）：用户比电视中位数高 8 dB 时约 94% 的帧放行，高 10 dB 时约 98%，高 12 dB 及以上全部放行；电视泄漏 0%。把 `nearFieldGateDb` 设成 8 时，比电视只高 6 dB 的用户也能放行约 92%，但电视会泄漏 7–28% 的帧。所以默认值 10 适合用户在 1 米内、电视在房间另一头的情况。
 - 每通结束时，审计 `device.call stage:"closed"` 带 `nearField:{gateDb,thresholdDb,gatedMs,inputMs,levelDb:{p10,p50,p90}}`（只有数值），可以据此调参：如果用户的话被切掉（转写缺字），调低到 8；如果电视还在进入转写，调到 12–15。设成 0 关闭。
+
+**StackChan 用固件近场门**：它的固件门有预录（pre-roll）和衰减，已经通过真实电视测试。所以 StackChan 的 devices.json 写 `"multiSpeaker": true, "nearFieldGateDb": 0`，服务端门关闭，避免两道门叠加切掉句首。`nearFieldGateDb: 0` 在开着 multiSpeaker 时也会完全关闭服务端门，有测试覆盖。服务端门留给没有固件门的设备，比如 ReSpeaker。
 
 `nearFieldGateDb` 在 `multiSpeaker: true` 时默认 10，其他设备默认 0（关闭）。它也可以单独用在原生链路上（不开 multiSpeaker，只设 `nearFieldGateDb`），方便和多人链路做 A/B 对比。
 
@@ -160,7 +163,7 @@ PR #32 的豆包流式多人链路（并行 ASR、通话内匿名 Speaker、换�
 6. **systemd**：备份 unit（`v-voice-speaker.service.before-<sha>`），把 `WorkingDirectory`/`ExecStart` 指向新发布目录，`MemoryMax=400M` 改为 `MemoryMax=768M`（Python worker 是服务的子进程，在同一个 cgroup 里）。`ProtectSystem=strict` 下 `/opt` 只读即可，诊断目录在已有的 `ReadWritePaths=/var/lib/v-voice-speaker` 下。`systemctl daemon-reload`。
 7. **分两步打开**：
    - 先保持 `devices.json` 不变，空闲时重启。检查日志里没有 `speaker.unavailable`，`ps` 能看到 `embedding-worker.py` 子进程，服务内存在预期内；真机拨一通确认原生链路（`multiSpeaker` 未开）行为不变。
-   - 再备份 `devices.json`（`devices.json.before-multispeaker`），给 `stackchan` 加 `"multiSpeaker": true`（ReSpeaker 的 `speaker-test` 视情况再开），空闲时再重启。
+   - 再备份 `devices.json`（`devices.json.before-multispeaker`），给 `stackchan` 加 `"multiSpeaker": true, "nearFieldGateDb": 0`（用固件门；ReSpeaker 的 `speaker-test` 视情况再开，用服务端默认门），空闲时再重启。
 8. **真机验收看什么**：`device.call stage:"start" multiSpeaker:true`；closed 时的 `nearField`（被挡掉的时长、门槛、电平分布）；transcripts 里用户话是 `source:"speaker-asr"`；有 `speaker.decision`、`speaker.admitted`；电视开着时出现 `speaker.recovery-suppressed`/`speaker.evicted` 而 V 不开口；V 说完后的残余出现 `speaker.echo-dropped`；结束原因不是 `asr-disconnected`/`embedding-*`。
 
 ## 回滚
