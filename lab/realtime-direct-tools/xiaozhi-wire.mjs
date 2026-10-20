@@ -24,6 +24,7 @@ export function applyOutputGain(pcm, gain) {
   }
   return out;
 }
+const LISTEN_STATES = new Set(['detect','start','stop']), LISTEN_MODES = new Set(['auto','manual','realtime']);
 const DOWN_FRAME_BYTES = XIAOZHI_DOWNLINK_RATE * XIAOZHI_FRAME_MS / 1000 * 2;  // 2880
 const PLAYBACK_MARGIN_MS = 400;
 
@@ -118,7 +119,10 @@ export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, cl
       if (reply.error || reply.result?.isError) return waiter.reject(Error(String(reply.error?.message ?? reply.result?.content?.[0]?.text ?? '音箱拒绝了这个操作').slice(0, 200)));
       return waiter.resolve(reply.result);
     }
-    // listen start/stop/detect: the shared Voice session owns turn-taking.
+    // listen start/stop/detect: the shared Voice session owns turn-taking, so
+    // these are only passed on for the call audit. State and mode only: a detect
+    // carries the wake word as text, which never leaves this adapter.
+    if (event.type === 'listen' && helloSeen && LISTEN_STATES.has(event.state)) deviceSays({type:'listen', state:event.state, ...(LISTEN_MODES.has(event.mode) ? {mode:event.mode} : {})});
   });
   ws.on('close', (...args) => {
     closed = true;

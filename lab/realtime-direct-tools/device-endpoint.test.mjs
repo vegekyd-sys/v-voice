@@ -8,6 +8,7 @@ import * as ws from 'ws';
 import OpusScript from 'opusscript';
 import {createDirectVoiceService} from './session.mjs';
 import {TOOL_PROGRESS_LINES} from './tool-start-audio.mjs';
+import {DEVICE_START_SESSION_ID} from './transcript-log.mjs';
 import {createDeviceEndpoint,parseDeviceEntries,BACKGROUND_LEAVE_LINE,TOOL_FAILURE_LINE,TOOL_RESULT_PROMPT_LINE,UNHEARD_TURN_LINE} from './device-endpoint.mjs';
 import {createStreamingSpeakerRoutingService} from '../speaker-native/stream-service.mjs';
 
@@ -28,7 +29,7 @@ async function fixture(options = {}) {
   const gateway = options.gateway ?? {request:async method => method === 'tools.catalog' ? {groups:[{tools:[{id:'web_search'}]}]} : {ok:true}};
   const directVoice = createDirectVoiceService({gateway,wsModule:{WebSocket:ProviderSocket,WebSocketServer:class {close() {}}},apiKeys:{seeduplex:'k',grok:'k'},speakerRouting:options.speakerRouting,toolProgressClips:options.toolProgressClips,audit:v => audit.push(v)});
   let busy = false;
-  const endpoint = createDeviceEndpoint({directVoice,wsModule:ws,devices:parseDeviceEntries([record(options.record),...(options.extraDevices ?? [])]),audit:v => audit.push(v),
+  const endpoint = createDeviceEndpoint({directVoice:options.directVoice ?? directVoice,wsModule:ws,devices:parseDeviceEntries([record(options.record),...(options.extraDevices ?? [])]),audit:v => audit.push(v),
     maxBufferedBytes:options.maxBufferedBytes,robotEvaluate:options.robotEvaluate,visionPath:options.visionPath,describeImage:options.describeImage,isSessionBusy:() => busy,tickMs:10,idleMs:options.idleMs ?? 5000,initialIdleMs:options.initialIdleMs ?? 5000,followUpMs:options.followUpMs ?? 5000,chatterMs:options.chatterMs ?? 5000,
     chatterSpeechGraceMs:options.chatterSpeechGraceMs ?? 5000,toolHoldMs:options.toolHoldMs ?? 5000,toolProgressMs:options.toolProgressMs ?? 5000,toolProgressRepeatMs:options.toolProgressRepeatMs ?? 5000,toolProgressMax:options.toolProgressMax ?? 3,toolFailureMs:options.toolFailureMs ?? 5000,staleSpeechMs:options.staleSpeechMs ?? 5000,
     resultSilenceMs:options.resultSilenceMs ?? 5000,unheardTurnMs:options.unheardTurnMs ?? 5000,inputSilentMs:options.inputSilentMs ?? 3000});
@@ -872,4 +873,74 @@ test('nearFieldGateDb 0 turns the server gate off even with multiSpeaker (firmwa
   await f.until(() => f.audit.some(e => e.type === 'device.call' && e.stage === 'closed'), 'closed');
   const closed = f.audit.find(e => e.type === 'device.call' && e.stage === 'closed');
   assert.equal(closed.nearField, undefined);assert.equal(closed.gatedInputBytes, 0);
+});
+
+// Call audit for "connected, but nothing was recognised" (2026-10-17..20: 46/170).
+const pcmFrame = (ms, amplitude) => {const b = Buffer.alloc(ms * 32);for (let i = 0; i < ms * 16; i++) b.writeInt16LE(Math.round(amplitude * Math.sin(i / 7)), i * 2);return b;};
+const closedRow = audit => audit.find(e => e.type === 'device.call' && e.stage === 'closed');
+
+test('the closing audit counts voiced uplink and the part the session never received', async t => {
+  let releaseCatalog;const catalogHeld = new Promise(resolve => {releaseCatalog = resolve;});
+  const f = await fixture({gateway:{request:async method => {if (method === 'tools.catalog') {await catalogHeld;return {groups:[{tools:[{id:'web_search'}]}]};}return {ok:true};}}});
+  t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => device.events.some(e => e.type === 'call.started'), 'attached');
+  // Attached, but the session is still loading its tools: this speech is lost.
+  for (let i = 0; i < 3; i++) device.send(pcmFrame(100, 6000));
+  device.send(pcmFrame(100, 0));
+  await delay(30);
+  releaseCatalog();
+  await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
+  for (let i = 0; i < 5; i++) device.send(pcmFrame(100, 6000));
+  device.send(pcmFrame(200, 100));  // room tone below the voiced threshold
+  await f.until(() => f.peers[0]?.sent.some(e => e.type === 'input_audio_buffer.append'), 'uplink reached provider');
+  device.send(JSON.stringify({type:'call.end'}));
+  await f.until(() => closedRow(f.audit), 'closed audit');
+  const closed = closedRow(f.audit);
+  assert.equal(closed.voicedMs, 800);
+  assert.equal(closed.droppedVoicedMs, 300);
+  assert(!('listenDetects' in closed), 'a native speaker sends no firmware listen states');
+});
+
+test('a call whose start fails is still audited, under a fixed id with its error', async t => {
+  const failing = {reserve:async () => {throw Error('Gateway unavailable');},close:async () => {},activity:() => null};
+  const f = await fixture({directVoice:failing});t.after(f.close);
+  const device = await f.connect();t.after(() => device.close());
+  device.send(JSON.stringify({type:'call.start'}));
+  await f.until(() => closedRow(f.audit), 'closed audit');
+  const closed = closedRow(f.audit);
+  assert.equal(closed.voiceSessionId, DEVICE_START_SESSION_ID);
+  assert.equal(closed.reason, 'start-failed');
+  assert.equal(closed.error, 'Gateway unavailable', 'the transcript log turns this into an errorKind');
+  assert.equal(closed.voicedMs, 0);
+  assert(device.events.some(e => e.type === 'call.error' && e.reason === 'start'));
+});
+
+test('xiaozhi listen states become call audit stages, without the wake word', async t => {
+  const f = await fixture({record:{robot:true}});t.after(f.close);
+  const client = new ws.WebSocket(f.url.replace('/device/voice', '/device/xiaozhi'), {headers:{authorization:`Bearer ${TOKEN}`}});
+  client.events = [];client.on('message', (data, binary) => {if (!binary) client.events.push(JSON.parse(data.toString()));});
+  await new Promise((resolve, reject) => {client.once('open', resolve);client.once('error', reject);});
+  client.send(JSON.stringify({type:'hello', version:1, transport:'websocket', audio_params:{format:'opus', sample_rate:16000, channels:1, frame_duration:60}}));
+  // The firmware reports the wake word right after hello, while V is still reserving.
+  client.send(JSON.stringify({type:'listen', state:'detect', text:'你好小智'}));
+  client.send(JSON.stringify({type:'listen', state:'start', mode:'auto'}));
+  client.send(JSON.stringify({type:'listen', state:'shout', mode:'auto'}));
+  await f.until(() => f.audit.some(e => e.type === 'device.call' && e.stage === 'start'), 'call start');
+  for (let i = 0; i < 24; i++) client.send(JSON.stringify({type:'listen', state:'detect', text:'你好小智'}));
+  client.send(JSON.stringify({type:'listen', state:'stop', mode:'sideways'}));
+  await f.until(() => f.audit.filter(e => e.type === 'device.call' && e.stage?.startsWith('listen-')).length === 20, 'listen audits');
+  await delay(20);
+  client.close();
+  await f.until(() => closedRow(f.audit), 'closed audit');
+  const id = f.audit.find(e => e.type === 'device.call' && e.stage === 'start').voiceSessionId;
+  const listen = f.audit.filter(e => e.type === 'device.call' && e.stage?.startsWith('listen-'));
+  assert.equal(listen.length, 20, 'listen audits are capped per call');
+  assert.deepEqual(listen.slice(0, 2).map(e => [e.stage, e.mode]), [['listen-detect', undefined], ['listen-start', 'auto']]);
+  assert(listen.every(e => e.voiceSessionId === id && Number.isInteger(e.latencyMs)), 'early states are audited once the call has its id');
+  const closed = closedRow(f.audit);
+  assert.equal(closed.voiceSessionId, id);
+  assert.deepEqual([closed.listenDetects, closed.listenStarts, closed.listenStops, closed.mode], [25, 1, 1, 'auto']);
+  assert(!JSON.stringify(f.audit).includes('你好小智'), 'the wake word never reaches the audit');
 });
