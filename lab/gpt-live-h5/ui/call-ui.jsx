@@ -149,8 +149,19 @@ function Conversation({state, options, history, setHistory, onOverflow}) {
   );
 }
 
-function Controls({state, actions}) {
-  const input = useRef(null);
+function Controls({state, actions, onHeight}) {
+  const input = useRef(null), box = useRef(null);
+  // The page floats these controls over the conversation and reserves their
+  // height below the latest line, so text scrolls behind the glass.
+  const report = () => { if (onHeight && box.current) onHeight(box.current.getBoundingClientRect().height); };
+  // Every render (the text field opening) plus later size changes (fonts).
+  useLayoutEffect(report);
+  useLayoutEffect(() => {
+    if (!onHeight || !box.current || typeof ResizeObserver !== 'function') return;
+    const observer = new ResizeObserver(report);
+    observer.observe(box.current);
+    return () => observer.disconnect();
+  }, [onHeight]);
   const active = ['connected', 'ending'].includes(state.call);
   const {open, enabled} = state.composer;
   // iOS raises the keyboard only for focus() inside the tap itself, so the
@@ -167,7 +178,7 @@ function Controls({state, actions}) {
     if (await actions.steer(text)) input.current.value = '';
   };
   return (
-    <div className="controls">
+    <div className="controls" ref={box}>
       <form id="steerForm" className="composer" data-open={String(open && active)} onSubmit={submit}
         onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); actions.compose(false); } }}>
         <label className="sr-only" htmlFor="steerText">补充内容</label>
@@ -298,6 +309,7 @@ function CallPage({view, actions, options}) {
   const [history, setHistory] = useState(false);
   const [overflow, setOverflow] = useState(false);
   const [sheet, setSheet] = useState(false);
+  const [controlsHeight, setControlsHeight] = useState(0);
   const main = useRef(null);
   const status = resolveStatus(state, now);
   const working = state.tasks.length > 0;
@@ -326,7 +338,7 @@ function CallPage({view, actions, options}) {
       </button>
       <main ref={main} className="call-page" data-call={state.call} data-voice={voice} data-work={String(working)}
         data-alert={status && ['error', 'warn'].includes(status.key) ? status.key : undefined} data-history={String(history)} data-compact={String(compact)}
-        style={{'--avatar-size': Math.round(size) + 'px'}}>
+        style={{'--avatar-size': Math.round(size) + 'px', '--controls-height': Math.ceil(controlsHeight) + 'px'}}>
         <header className="topbar" aria-live="off">
           {state.call === 'connected' || state.call === 'ending' ? <time className="call-clock">{state.callStartedAt ? clock(now - state.callStartedAt) : ''}</time> : null}
         </header>
@@ -355,7 +367,7 @@ function CallPage({view, actions, options}) {
           {inCall && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
         </section>
         {inCall && <Conversation state={state} options={options} history={history} setHistory={setHistory} onOverflow={latchOverflow} />}
-        {inCall && !state.reading && <Controls state={state} actions={actions} />}
+        {inCall && !state.reading && <Controls state={state} actions={actions} onHeight={setControlsHeight} />}
       </main>
       {state.reading && document.getElementById('readerDock') && createPortal(dock, document.getElementById('readerDock'))}
       {sheet && working && <TaskSheet state={state} now={now} actions={actions} onClose={() => setSheet(false)} />}

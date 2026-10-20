@@ -552,6 +552,27 @@ body[data-reading="true"] .content-card { opacity: 0; }
 .pill .hangup { width: 56px; border-radius: 28px; background: var(--accent); color: #fff; }
 .pill .hangup svg { width: 24px; height: 24px; }
 
+/* In a call the controls float over the conversation: text scrolls behind
+   the glass, and the list keeps their measured height free below the latest
+   line (that height already includes the bottom safe area). */
+.call-page:is([data-call="connected"], [data-call="ending"]) { padding-bottom: 0; }
+.call-page > .controls {
+  position: absolute;
+  z-index: 4;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  pointer-events: none;
+}
+.call-page > .controls > * { pointer-events: auto; }
+.call-page .turns {
+  padding-bottom: calc(var(--controls-height, 76px) + 12px);
+  scroll-padding-bottom: calc(var(--controls-height, 76px) + 12px);
+}
+
 /* ---------- full history ---------- */
 .call-page[data-history="true"] .stage {
   flex-direction: row;
