@@ -181,3 +181,30 @@ test('learning a name releases the original audio without replay, while still wa
  const output=[];f.service.dispatch('call','audio',Buffer.alloc(10),()=>output.push('real reply'));f.emit('我叫天懿，三加四等于几？');await wait(()=>admit);assert.deepEqual(output,[]);admit();
  await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));assert.deepEqual(output,['real reply']);assert.equal(f.profiles.length,1);assert.equal(f.events.find(e=>e.type==='speaker.decision').participants[0].name,'天懿');assert.equal(f.events.some(e=>e.type==='speaker.stream-fallback'),false);
 });
+
+test('while V is answering or waiting on a lookup, unclear speech never asks to repeat or cancels the answer',async t=>{
+  const f=await fixture(t);f.emit();
+  await wait(()=>f.events.some(e=>e.type==='speaker.admitted'));
+  f.service.dispatch('call','tool',{name:'web_search'},()=>{});
+  f.emit('什么？',1300,1500);
+  await wait(()=>f.events.some(e=>e.type==='speaker.recovery-suppressed'));
+  assert.equal(f.events.some(e=>e.type==='speaker.recovery'),false);assert.deepEqual(f.clarifications,[]);
+  f.service.dispatch('call','done',null,()=>{});
+  f.emit('嗯？',1600,1800);
+  await wait(()=>f.events.filter(e=>e.type==='speaker.recovery-suppressed').length===2);
+  assert.deepEqual(f.clarifications,[],'just after V answered, a stray fragment stays quiet');
+});
+
+test('with one voice in the call, an unverified sentence is still that person instead of a request to repeat',async t=>{
+  let unsure=false,asr;const events=[],clarifications=[];
+  const service=createStreamingSpeakerRoutingService({env:{},embedding:{ready:Promise.resolve(),compute:async()=>({embedding:unsure?[0,1]:[1,0],inferenceMs:1})},evaluate:async(_s,q)=>answers(q),createAsr:o=>{asr=o;return {connect:async()=>{},append(){},close(){}};}});
+  service.reserve('call',{model:'seeduplex'});t.after(()=>service.dispose());
+  await service.bind('call',{prepare:async()=>{},forward(){},cancel(){},invalidate(){},greet(){},clarify:text=>clarifications.push(text)},e=>events.push(e));
+  service.audio('call',voice());service.audio('call',Buffer.alloc(48000*3));
+  await wait(()=>events.some(e=>e.type==='speaker.identity'));
+  unsure=true;
+  asr.onResult({body:{result:{utterances:[{definite:true,start_time:2000,end_time:3200,text:'库里能上场吗？'}]}}});
+  await wait(()=>events.some(e=>e.type==='speaker.decision'));
+  assert.equal(events.find(e=>e.type==='speaker.decision').turn.speakerId,'speaker:local0');
+  assert.equal(events.some(e=>e.type==='speaker.recovery'||e.type==='speaker.error'),false);assert.deepEqual(clarifications,[]);
+});
