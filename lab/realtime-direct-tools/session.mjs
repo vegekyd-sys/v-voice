@@ -116,7 +116,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   };
   // The tools one call declares: no screen tool without a display, and device
   // controls only when the attached hardware provides them.
-  const sessionTools=s=>[...(s.display?TOOLS:TOOLS.filter(t=>t.name!=='show_content')),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[])];
+  // Local Feishu reads are declared only when this service has them configured.
+  const localTools=TOOLS.filter(t=>(calendar||t.name!=='feishu_calendar')&&(larkRead||t.name!=='lark_read'));
+  const sessionTools=s=>[...(s.display?localTools:localTools.filter(t=>t.name!=='show_content')),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[])];
   async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy}) {
     if(!['phone','speaker'].includes(surface))throw Error('不支持的语音终端');
     if(![16000,24000].includes(inputSampleRate))throw Error('不支持的输入采样率');

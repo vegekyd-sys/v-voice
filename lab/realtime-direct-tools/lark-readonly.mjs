@@ -86,5 +86,8 @@ export function createVoiceLarkReader({environment=process.env,binary='lark-cli'
       signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
     });
   };
-  return {read,calendar:(args,callId,signal)=>read(calendarReadArgs(args),callId,signal)};
+  // A service without its own Feishu profile must not offer these tools: every
+  // call would fail at once and the question would go unanswered.
+  let available=false;try{privateEnvironment(environment);available=true;}catch{}
+  return {read,calendar:(args,callId,signal)=>read(calendarReadArgs(args),callId,signal),available};
 }
