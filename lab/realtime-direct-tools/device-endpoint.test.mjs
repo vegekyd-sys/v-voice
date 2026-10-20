@@ -7,6 +7,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import * as ws from 'ws';
 import OpusScript from 'opusscript';
 import {createDirectVoiceService} from './session.mjs';
+import {TOOL_PROGRESS_LINES} from './tool-start-audio.mjs';
 import {createDeviceEndpoint,parseDeviceEntries,BACKGROUND_LEAVE_LINE,TOOL_FAILURE_LINE} from './device-endpoint.mjs';
 
 const TOKEN = 'device-fixture-token-0123456789abcdef';
@@ -196,7 +197,7 @@ const slowGateway = () => {
     return {ok:true};
   }};
 };
-const PROGRESS = ['还在查，稍等一下。','这个查得有点久，马上就好。'].map((text, i) => ({text,pcm:Buffer.alloc(480, i + 1),sampleRate:24000,source:'cached-native-tool-progress',sha256:`fixture-${i}`}));
+const PROGRESS = TOOL_PROGRESS_LINES.map((text, i) => ({text,pcm:Buffer.alloc(480, i + 1),sampleRate:24000,source:'cached-native-tool-progress',sha256:`fixture-${i}`}));
 const provide = (f, value) => f.peers[0].emit('message', Buffer.from(JSON.stringify(value)), false);
 const nativeCall = (f, callId, name, args = {}) => provide(f, {type:'response.function_call_arguments.done',items:[{call_id:callId,name,arguments:JSON.stringify(args)}]});
 const waitFor = async (predicate, label, ms = 5000) => {const end = Date.now() + ms;while (!predicate() && Date.now() < end) await delay(10);assert(predicate(), label);};
@@ -223,7 +224,7 @@ test('a slow lookup while the room talks is answered, not taken for background t
   const progress = f.audit.filter(e => e.type === 'device.tool-progress');
   assert.deepEqual(progress.map(e => e.played), [true,true]);
   assert(progress[1].waitedMs - progress[0].waitedMs >= 250, 'progress lines are spaced');
-  assert.deepEqual(f.audit.filter(e => e.type === 'transcript' && e.source === 'tool-progress').map(e => e.text), PROGRESS.map(c => c.text));
+  assert.deepEqual(f.audit.filter(e => e.type === 'transcript' && e.source === 'tool-progress').map(e => e.text), PROGRESS.slice(0, 2).map(c => c.text));
   assert(device.audio.some(pcm => pcm.includes(PROGRESS[0].pcm)), 'the cached line reaches the speaker');
   assert.deepEqual(commits(f), [], 'no upstream TTS while the native function waits');
 

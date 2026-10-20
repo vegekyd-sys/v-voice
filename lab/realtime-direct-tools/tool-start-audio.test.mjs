@@ -22,5 +22,7 @@ test('progress clips are optional until generated, and must match their provenan
  assert.deepEqual(loadToolProgressClips(root).map(c=>c.text),TOOL_PROGRESS_LINES);
  await writeFile(`${dir}/tool-progress-provenance.json`,JSON.stringify({...manifest,clips:{...clips,'progress-1':{...clips['progress-1'],sha256:'0'.repeat(64)}}}));
  assert.throws(()=>loadToolProgressClips(root),/hash mismatch/);
- assert.deepEqual(loadToolProgressClips(),loadToolProgressClips(),'the shipped assets load once');
+ const shipped=loadToolProgressClips();assert.equal(shipped,loadToolProgressClips(),'the shipped assets load once');
+ assert.deepEqual(shipped.map(c=>c.text),TOOL_PROGRESS_LINES,'the generated Xiaohe clips ship with the source');
+ for(const clip of shipped)assert(clip.seconds>1&&clip.seconds<4&&clip.source==='cached-native-tool-progress');
 });

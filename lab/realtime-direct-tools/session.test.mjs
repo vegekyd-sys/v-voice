@@ -497,7 +497,8 @@ test('speaker delegation freezes admitted ASR, ignoring earlier speculative nati
 });
 
 test('a slow native lookup gets a cached progress line, never upstream TTS, and a failed one is marked failed',async t=>{
- const PROGRESS=['还在查，稍等一下。','这个查得有点久，马上就好。'].map((text,i)=>({text,pcm:Buffer.alloc(240,i+1),source:'cached-native-tool-progress',sha256:'fixture-'+i}));
+ const {TOOL_PROGRESS_LINES}=await import('./tool-start-audio.mjs');
+ const PROGRESS=TOOL_PROGRESS_LINES.map((text,i)=>({text,pcm:Buffer.alloc(240,i+1),source:'cached-native-tool-progress',sha256:'fixture-'+i}));
  let finish;
  const f=await fixture((args)=>args.name==='web_search'?{ok:false,error:{code:'unavailable',message:'搜索不可用'}}:new Promise(resolve=>{finish=resolve;}),'seeduplex',{toolProgressClips:PROGRESS});
  t.after(()=>f.service.dispose());

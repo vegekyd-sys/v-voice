@@ -26,7 +26,7 @@ export function toolStartClip(call,loaded=loadToolStartClips()) {
 
 // Said while a slow tool is still running. Like the start notice it is host-owned
 // PCM, never SayHello: injected TTS during a native wait can lose the result.
-export const TOOL_PROGRESS_LINES = ['还在查，稍等一下。','这个查得有点久，马上就好。'];
+export const TOOL_PROGRESS_LINES = ['还在查，稍等一下。','这个查得有点久，马上就好。','还在等结果，再给我一点时间。'];
 let progressClips;
 /** Validated progress clips, or none until scripts/generate-notice-clips.mjs has made them. */
 export function loadToolProgressClips(root) {
