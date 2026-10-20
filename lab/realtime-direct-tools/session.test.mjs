@@ -314,6 +314,13 @@ for(const model of ['grok','seeduplex'])test(`${model} calendar and other Feishu
  if(model==='seeduplex')f.event({type:'response.function_call_arguments.done',items:[{call_id:'contact',name:'lark_read',arguments:JSON.stringify({argv:['contact','+search-user','--query','同事']})}]});else f.call('lark_read',{argv:['contact','+search-user','--query','同事']},'contact');await delay(10);
  assert.equal(reads.length,2);assert(reads.every(r=>r.signal instanceof AbortSignal));assert.equal(f.invocations.length,0);assert.equal(f.audit.filter(e=>e.type==='tool.local-result').length,2);assert.equal(f.audit.filter(e=>e.type==='tool.delivered').length,2);
 });
+test('local Feishu tools are offered only when this service has them configured',async t=>{
+ const declared=f=>f.upstream.sent.find(e=>e.type==='session.update').session.tools.map(t=>t.name);
+ const bare=await fixture();t.after(()=>bare.service.dispose());
+ assert(!declared(bare).includes('feishu_calendar'));assert(!declared(bare).includes('lark_read'));assert(declared(bare).includes('delegate_to_v'));
+ const local=await fixture(undefined,'grok',{calendar:async()=>({}),larkRead:async()=>({})});t.after(()=>local.service.dispose());
+ assert(declared(local).includes('feishu_calendar'));assert(declared(local).includes('lark_read'));
+});
 test('local read survives ordinary interruption; hangup aborts and waits for real child cleanup',async()=>{
  let signal,cleanupDone=false;const f=await fixture(undefined,'grok',{calendar:(args,id,s)=>{signal=s;return new Promise((resolve,reject)=>s.addEventListener('abort',()=>setTimeout(()=>{cleanupDone=true;reject(Object.assign(Error('cancelled'),{name:'AbortError'}));},30),{once:true}));}});
  f.call('feishu_calendar',{},'local');await delay(5);

@@ -222,6 +222,9 @@ const provide = (f, value) => f.peers[0].emit('message', Buffer.from(JSON.string
 const nativeCall = (f, callId, name, args = {}) => provide(f, {type:'response.function_call_arguments.done',items:[{call_id:callId,name,arguments:JSON.stringify(args)}]});
 const waitFor = async (predicate, label, ms = 5000) => {const end = Date.now() + ms;while (!predicate() && Date.now() < end) await delay(10);assert(predicate(), label);};
 const newsGateway = {request:async method => method === 'tools.catalog' ? {groups:[{tools:[{id:'web_search'}]}]} : {ok:true,output:{content:[{type:'text',text:'今日新闻摘要'}]}}};
+// A lookup the Gateway refuses at once, like the unconfigured calendar on the
+// Shanghai node did before local Feishu tools were gated on configuration.
+const failingGateway = {request:async method => {if (method === 'tools.catalog') return {groups:[{tools:[{id:'web_search'}]}]};if (method === 'tools.invoke') throw Error('Gateway unavailable');return {ok:true};}};
 const commits = f => f.peers[0].sent.filter(e => e.type === 'speech_text_buffer.commit').map(e => e.text);
 
 test('a slow lookup while the room talks is answered, not taken for background talk (2026-10-20 10:55)', async t => {
@@ -267,16 +270,16 @@ test('a slow lookup while the room talks is answered, not taken for background t
 });
 
 test('a lookup that fails at once and gets no reply makes V say so instead of hanging up (2026-10-19 11:03)', async t => {
-  // No local calendar is configured, as on the Shanghai node: feishu_calendar fails in 1 ms.
-  const f = await fixture({toolFailureMs:100,followUpMs:300,idleMs:300});t.after(f.close);
+  // On the Shanghai node the unconfigured feishu_calendar failed in 1 ms; any lookup that fails at once.
+  const f = await fixture({gateway:failingGateway,toolFailureMs:100,followUpMs:300,idleMs:300});t.after(f.close);
   const device = await f.connect();t.after(() => device.close());
   device.send(JSON.stringify({type:'call.start'}));
   await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
-  nativeCall(f, 'cal', 'feishu_calendar');
+  nativeCall(f, 'cal', 'web_search', {query:'今天的工作安排'});
   await f.until(() => f.audit.some(e => e.type === 'tool.delivered' && e.callId === 'cal' && e.result.error), 'tool failed');
   await waitFor(() => commits(f).includes(TOOL_FAILURE_LINE), 'V says the lookup failed');
   assert(!device.events.some(e => e.type === 'call.closed'), 'not hung up in silence');
-  assert(f.audit.some(e => e.type === 'device.tool-failure-notice' && e.tool === 'feishu_calendar' && e.spoken));
+  assert(f.audit.some(e => e.type === 'device.tool-failure-notice' && e.tool === 'web_search' && e.spoken));
   // The room then has the normal follow-up window to answer the question.
   provide(f, {type:'response.created',response_id:'line'});
   provide(f, {type:'response.done',response_id:'line',response:{id:'line',status:'completed'}});
@@ -287,18 +290,18 @@ test('a lookup that fails at once and gets no reply makes V say so instead of ha
 });
 
 test('a failed lookup V answers itself, or a new turn takes over, gets no extra line', async t => {
-  const f = await fixture({toolFailureMs:100});t.after(f.close);
+  const f = await fixture({gateway:failingGateway,toolFailureMs:100});t.after(f.close);
   const device = await f.connect();t.after(() => device.close());
   device.send(JSON.stringify({type:'call.start'}));
   await f.until(() => device.events.some(e => e.type === 'call.ready'), 'ready');
-  nativeCall(f, 'cal', 'feishu_calendar');
+  nativeCall(f, 'cal', 'web_search', {query:'今天的工作安排'});
   await f.until(() => f.audit.some(e => e.type === 'tool.delivered' && e.callId === 'cal'), 'tool failed');
   // "日历的配置还没准备好，我帮你交给后台查可以吗？"
   provide(f, {type:'response.created',response_id:'sorry'});
   provide(f, {type:'response.output_audio.delta',response_id:'sorry',delta:floatAudio([0.1])});
   provide(f, {type:'response.done',response_id:'sorry',response:{id:'sorry',status:'completed'}});
   // Then the model chains a second lookup that fails too, and the user speaks before any line.
-  nativeCall(f, 'cal2', 'feishu_calendar', {start:'2026-10-19'});
+  nativeCall(f, 'cal2', 'web_search', {query:'明天的日程'});
   await f.until(() => f.audit.some(e => e.type === 'tool.delivered' && e.callId === 'cal2'), 'second failure');
   provide(f, {type:'conversation.item.input_audio_transcription.completed',transcript:'不用了，你上网查一下 NBA'});
   await delay(2600);
