@@ -2,7 +2,7 @@
 
 - Present missing/expired personal-link guidance under the home portrait, with concise copy and no unusable dial controls.
 - Give temporary connection failures a manual reconnect action; keep call-time status separate and preserve existing entry authorization.
-- Candidate only; production remains on the rollback baseline.
+- Source integration only; no production activation is included.
 
 ## Candidate - Compact multi-speaker status
 
@@ -12,10 +12,11 @@
 
 ## 2026-10-20 - Pickup greeting and retired call ownership
 
+- Retain already streamed audio on a name-only update; speaker, role and addressee changes still prepare a new native persona.
 - Correct the personal name to Tianyi / 天懿 in native voice prompts, greetings and tool descriptions; entry IDs and account permissions stay unchanged.
 - Restore the native Seeduplex welcome without requiring a registered voice or first utterance; caller speech supersedes a pending greeting.
 - Reconcile web entry ownership with the direct transport registry before admission, releasing fully closed calls while preserving live and cleanup-pending sessions.
-- Mobile latency remains under investigation; these repairs do not claim a fix for international media transport stalls.
+- Safari latency/redial diagnosis remains separate in PR #33; this change does not claim a fix for it.
 
 # Voice release log
 
