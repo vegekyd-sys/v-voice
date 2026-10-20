@@ -28,6 +28,9 @@ try{
  const one=await speak('bg-switch-one');await answer(one,/七|(?<!\d)7(?!\d)/);checks.chatDuringTask=one.duringPending&&one.answered;
  const two=await speak('bg-switch-two');await answer(two,/十一|(?<!\d)11(?!\d)/);checks.secondChat=two.answered;
  await wait(()=>ended,120000);checks.taskTerminal=true;checks.taskProducedResult=events.some(e=>e.type==='backend.result'&&e.text?.trim());
+ // bg-request and bg-switch-two are the same person, so the finished result must be spoken, not only shown.
+ const endedAt=events.find(e=>e.type==='tool.result'&&e.name==='delegate_to_v').at,resultLine=()=>events.find(e=>e.at>=endedAt-2000&&e.type==='transcript'&&e.role==='assistant'&&e.final&&/^V-backend/.test(e.source??''));
+ await wait(()=>resultLine(),20000).catch(()=>{});const line=resultLine();checks.resultSpokenToRequester=Boolean(line&&events.some(e=>e.type==='audio'&&!e.callId&&e.at>=line.at-3000&&e.at<=line.at+5000));if(line)console.log(JSON.stringify({stage:'result-spoken',at:line.at,afterResultMs:line.at-endedAt,source:line.source}));
  const three=await speak('bg-switch-three');await answer(three,/十七|(?<!\d)17(?!\d)/);checks.chatAfterTask=three.answered;
  for(const [row,id] of [[one,'speaker:local1'],[two,'speaker:local0'],[three,'speaker:local1']]){const d=events.filter(e=>e.type==='speaker.decision'&&e.at>=row.start&&e.at<=row.replyAt).at(-1);row.correctSpeaker=d?.turn?.speakerId===id;row.correctAudience=d?.addresseeIds?.length===1&&d.addresseeIds[0]===id;}checks.correctPeople=[one,two,three].every(r=>r.correctSpeaker&&r.correctAudience);
  checks.stableRoster=events.filter(e=>e.type==='speaker.decision').at(-1)?.participants?.length===2;
