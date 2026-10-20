@@ -42,12 +42,16 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       if(!['catalog-requested','catalog-ready','context-requested','context-ready','provider-connecting','provider-ready'].includes(event.stage))return false;
       return enqueue({...owner,type:event.type,stage:event.stage});
     }
+    if(event.type==='call.input-timing'){
+      const safe={};for(const key of ['serverInputBytes','serverInputFrames','serverMaxInputGapMs','serverMaxLoopGapMs','serverInputIdleMs','providerPendingAudioMs','providerInputFramesSent','providerBufferedBytes'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      return enqueue({...owner,type:event.type,...safe});
+    }
     if(event.type==='call.provider-status'){
       if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed'].includes(event.stage))return false;
       const safe={stage:event.stage};
-      if(['configuration','input-timeout','upstream-transient','upstream-rejected','network','setup-timeout'].includes(event.category))safe.category=event.category;
+      if(['input-backlog','configuration','input-timeout','upstream-transient','upstream-rejected','network','setup-timeout'].includes(event.category))safe.category=event.category;
       if(typeof event.upstreamCode==='string'&&/^\d{3,8}$/.test(event.upstreamCode))safe.upstreamCode=event.upstreamCode;
-      for(const key of ['sessionAgeMs','attempt'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      for(const key of ['sessionAgeMs','attempt','pendingAudioMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
     }
     // Causal metadata only: never persist tool arguments, results, PCM or raw
@@ -65,7 +69,9 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     }
     if(event.type==='client.playback-stats'){
       const stats={};
-      for(const key of ['inputBytes','outputBytes','queuedOutputBytes','clears','underflows','maxReceiveGapMs'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0)stats[key]=event.stats[key];
+      for(const key of ['inputBytes','outputBytes','queuedOutputBytes','clears','underflows','maxReceiveGapMs','contextSampleRate','inputBufferedBytes','peakInputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0)stats[key]=event.stats[key];
+      for(const key of ['trackMuted','trackEnabled','trackLive','pageHidden'])if(typeof event.stats?.[key]==='boolean')stats[key]=event.stats[key];
+      if(['running','suspended','interrupted','closed'].includes(event.stats?.contextState))stats.contextState=event.stats.contextState;
       return enqueue({...owner,type:event.type,stats});
     }
     if(event.type==='transcript'){

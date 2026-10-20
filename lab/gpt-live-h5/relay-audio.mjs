@@ -77,12 +77,15 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
   const phone=new URLSearchParams(location.search).get('phone');if(phone)endpoint.searchParams.set('phone',phone);
   const socket=new WebSocket(endpoint);socket.binaryType='arraybuffer';
+  let recoveryAttempted=false;
   let closed=false,ready=false,node,speaker,source,quietGain,ending=null,tailTimer,epoch=0,written=0,lastPlayedAt=null,lastSequence=0,blocked=false,outputComplete=false,playbackActive=false,busy=false,lastReceiveAt=null,statsTimer,uploadFailed=false;
   const pendingOutput=[];
   const inputBatch=[];let inputBatchBytes=0;
   const flushInput=()=>{if(!inputBatchBytes)return;const bytes=new Uint8Array(inputBatchBytes);let at=0;for(const frame of inputBatch){bytes.set(new Uint8Array(frame),at);at+=frame.byteLength;}inputBatch.length=0;inputBatchBytes=0;socket.send(bytes.buffer);stats.inputBytes+=bytes.byteLength;stats.inputBatches++;};
   const maxQueuedOutputBytes=16*1024*1024;
-  const stats={inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs,contextState:context.state,contextSampleRate:context.sampleRate,playbackDrained:false,peakInputBufferedBytes:0,inputBatches:0};
+  const inputTrack=stream.getAudioTracks?.()[0];
+  const inputStartedAt=performance.now();let lastInputAt=null;
+  const stats={inputFrames:0,inputActiveFrames:0,maxInputGapMs:0,inputIdleMs:0,inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs,contextState:context.state,contextSampleRate:context.sampleRate,playbackDrained:false,peakInputBufferedBytes:0,inputBatches:0};
   const activity=value=>{if(playbackActive!==value){playbackActive=value;onPlaybackActivity(value);}};
   const send=e=>{if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(e));};
   const reportBusy=()=>{const next=stats.queuedOutputBytes>0||playbackActive;if(next!==busy){busy=next;send({type:'playback.state',speaking:busy});}};
@@ -92,8 +95,22 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     else tailTimer=setTimeout(checkEnd,100);
   };
   const stateChanged=()=>{if(closed)return;stats.contextState=context.state;
-    if(context.state==='running'){if(blocked){blocked=false;onEvent({type:'playback.resumed'});}}
-    else if(!blocked){blocked=true;activity(false);onEvent({type:'playback.blocked'});}
+    if(context.state==='running'){recoveryAttempted=false;if(blocked){blocked=false;onEvent({type:'playback.resumed'});}}
+    else {if(!blocked){blocked=true;activity(false);onEvent({type:'playback.blocked'});}
+      if(context.state!=='closed'&&globalThis.document?.hidden!==true&&!recoveryAttempted){
+        recoveryAttempted=true;void context.resume().catch(()=>{});
+      }
+    }
+  };
+  const visible=()=>{if(globalThis.document?.hidden!==true){recoveryAttempted=false;stateChanged();}};
+  globalThis.document?.addEventListener?.('visibilitychange',visible);
+  const reportStats=()=>{
+    stats.inputBufferedBytes=socket.bufferedAmount;
+    stats.contextState=context.state;stats.contextTimeMs=Math.round(context.currentTime*1000);
+    stats.inputIdleMs=Math.round(performance.now()-(lastInputAt??inputStartedAt));
+    stats.trackMuted=inputTrack?.muted===true;stats.trackEnabled=inputTrack?.enabled===true;stats.trackLive=inputTrack?.readyState==='live';
+    stats.pageHidden=globalThis.document?.hidden===true;
+    send({type:'playback.stats',...stats});
   };
   context.addEventListener?.('statechange',stateChanged);
   const transfer=buffer=>speaker.port.postMessage({type:'audio',buffer,epoch},[buffer]);
@@ -114,7 +131,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   const promise=new Promise((resolve,reject)=>{
     socket.onmessage=e=>{if(closed)return;try{
       const value=JSON.parse(e.data);if(value.voiceSessionId!==reservation.voiceSessionId)return;
-      if(value.type==='ready'&&!ready){ready=true;resolve();if(greeting)send({type:'greeting'});reportBusy();statsTimer=setInterval(()=>send({type:'playback.stats',...stats}),2000);}
+      if(value.type==='ready'&&!ready){ready=true;resolve();if(greeting)send({type:'greeting'});reportBusy();statsTimer=setInterval(reportStats,2000);}
       if(value.type==='audio')play(value);
       if(value.type==='audio.clear')flush();
       if(value.type==='audio.done'){outputComplete=true;greetingHeld=false;speaker?.port.postMessage({type:'done',epoch});}
@@ -127,6 +144,11 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     socket.onclose=()=>{reject(Error('实时语音连接已关闭'));if(!closed)onClosed();};
   });void promise.catch(()=>{});
   async function capture(){
+    // A fulfilled dial-gesture resume does not survive Safari activating the
+    // microphone or returning from another app. Check the current context.
+    if(context.state!=='running')await context.resume();
+    if(closed)return;
+    if(context.state!=='running')throw Error('麦克风和声音已暂停，请轻点页面后重新拨号。');
     const url=URL.createObjectURL(new Blob([relayWorkletSource()],{type:'text/javascript'}));
     try{await context.audioWorklet.addModule(url);}finally{URL.revokeObjectURL(url);}
     if(closed)return;
@@ -144,6 +166,10 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     node=new AudioWorkletNode(context,'v-direct-mic');source=context.createMediaStreamSource(stream);
     quietGain=context.createGain();quietGain.gain.value=0;source.connect(node);node.connect(quietGain);quietGain.connect(context.destination);
     node.port.onmessage=e=>{if(closed||uploadFailed)return;const frame=e.data;
+      const at=performance.now();if(lastInputAt!==null)stats.maxInputGapMs=Math.max(stats.maxInputGapMs,Math.round(at-lastInputAt));lastInputAt=at;stats.inputFrames++;
+      // Count activity only; never retain samples, labels or device identifiers.
+      const samples=new Int16Array(frame);let energy=0;for(const sample of samples)energy+=(sample/32768)**2;
+      if(Math.sqrt(energy/Math.max(1,samples.length))>=.02)stats.inputActiveFrames++;
       if(ready&&socket.readyState===WebSocket.OPEN){
         if(!inputGated&&backendOnset.observe(frame,backendPlayback&&stats.queuedOutputBytes>0)){
           if(backendResponseId){retiredResponses.add(backendResponseId);if(retiredResponses.size>256)retiredResponses.delete(retiredResponses.values().next().value);}
@@ -163,5 +189,5 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
       // the actual upstream ready event. Greeting PCM is retained above.
       await promise;if(!closed)await capture();
     },sendText:text=>send({type:'text',text}),
-    dispose(){send({type:'playback.stats',...stats});closed=true;clearInterval(statsTimer);clearTimeout(tailTimer);context.removeEventListener?.('statechange',stateChanged);flush();node?.port.close();node?.disconnect();speaker?.port.close();speaker?.disconnect();source?.disconnect();quietGain?.disconnect();socket.close();}};
+    dispose(){if(closed)return;reportStats();closed=true;clearInterval(statsTimer);clearTimeout(tailTimer);context.removeEventListener?.('statechange',stateChanged);globalThis.document?.removeEventListener?.('visibilitychange',visible);flush();node?.port.close();node?.disconnect();speaker?.port.close();speaker?.disconnect();source?.disconnect();quietGain?.disconnect();socket.close();}};
 }

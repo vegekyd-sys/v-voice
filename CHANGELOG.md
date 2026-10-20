@@ -1,5 +1,12 @@
 # Voice release log
 
+## Unreleased — Safari capture and delayed-input recovery candidate
+
+- Recover an oversized delayed Seeduplex input burst within the same dialog, show that discarded speech must be repeated, and avoid mute/unmute oscillation while draining paced input.
+- Re-check the current AudioContext after provider readiness; recover a foreground audio interruption and re-check when Safari returns to the foreground.
+- Replace a cached microphone track when the browser reports it system-muted, preserving ordinary same-page microphone reuse.
+- Persist only bounded capture activity counters and context/track states to distinguish silent input from stopped capture or page execution. Physical iPhone repeated-call acceptance remains pending; no production release or Speaker change is included.
+
 ## Voice · 20261019 streaming multi-speaker · source 931c30e
 
 - 豆包流式匿名 Speaker、对话关联姓名和角色、语义接话与原生语音并行；不改变工具身份。

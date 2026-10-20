@@ -679,3 +679,34 @@ test('after a cancel, the next turn keeps the reply text that precedes its first
  assert.equal(audio.length,1);
  bridge.close();
 });
+
+test('delayed input burst recovers the same dialog instead of terminating the call',async t=>{
+ t.mock.timers.enable({apis:['Date','setTimeout','setInterval'],now:100000});
+ const sockets=[],errors=[],closed=[],diagnostics=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{},audio:{input:{format:{rate:24000}}},onError:e=>errors.push(e.message),onClose:r=>closed.push(r),onDiagnostic:e=>diagnostics.push(e)},
+  {env:{VOLCENGINE_REALTIME_API_KEY:'fixture'},createWebSocket:async()=>{const socket=new FakeSocket();sockets.push(socket);return socket;}});
+ t.after(()=>bridge.close());const connecting=bridge.connect();await new Promise(r=>setImmediate(r));
+ sockets[0].open();sockets[0].message({type:'session.created',session:{id:'dialog-original'}});await connecting;
+ // Twelve seconds arriving in a burst matches transport buffering, not live capture.
+ for(let n=0;n<600;n++)bridge.sendAudio(Buffer.alloc(960));
+ assert.equal(bridge.terminal,false);assert.equal(bridge.reconnecting,true);assert.equal(bridge.pendingInput.length,0);
+ assert.deepEqual(errors,[]);assert.deepEqual(closed,[]);
+ assert(diagnostics.some(e=>e.category==='input-backlog'&&e.pendingAudioMs>10000));
+ t.mock.timers.tick(1000);await new Promise(r=>setImmediate(r));assert.equal(sockets.length,2);
+ sockets[1].open();assert.equal(sockets[1].sent[0].session.id,'dialog-original');
+ sockets[1].message({type:'session.created',session:{id:'dialog-original'}});
+ assert.equal(bridge.ready,true);assert(diagnostics.some(e=>e.stage==='recovered'));
+ bridge.sendAudio(Buffer.alloc(960));assert(sockets[1].sent.some(e=>e.type==='input_audio_buffer.append'));assert.deepEqual(errors,[]);assert.deepEqual(closed,[]);
+});
+
+test('draining delayed input does not repeatedly mute and unmute the provider',async t=>{
+ t.mock.timers.enable({apis:['Date','setTimeout','setInterval'],now:100000});
+ const socket=new FakeSocket(),diagnostics=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{},onDiagnostic:e=>diagnostics.push(e)}, {env:{VOLCENGINE_REALTIME_API_KEY:'fixture'},createWebSocket:async()=>socket});
+ t.after(()=>bridge.close());const connecting=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created',session:{id:'dialog'}});await connecting;
+ // Queue eight seconds; producer goes quiet while the paced provider drains.
+ for(let n=0;n<400;n++)bridge.sendAudio(Buffer.alloc(960));
+ t.mock.timers.tick(3000);assert.equal(bridge.pendingInput.length>0,true);
+ assert.equal(diagnostics.filter(e=>e.stage==='input-paused').length,0);
+ assert.equal(socket.sent.filter(e=>e.type==='input_audio_mute.commit').length,0);
+});

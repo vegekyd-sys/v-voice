@@ -115,3 +115,18 @@ test('upstream cancels and their refusals are kept as event types only',async t=
   assert.deepEqual(rows.map(r=>r.providerEventType),['client.response.cancel','client.response.cancel.rejected','response.canceled']);
   assert(!JSON.stringify(rows).includes('SECRET'));
 });
+test('Safari causal capture counters persist only bounded scalar fields',async t=>{
+ const f=await fixture(t);f.created();
+ f.log.audit({type:'client.playback-stats',voiceSessionId:'v1',stats:{contextState:'interrupted',trackMuted:true,trackEnabled:true,trackLive:true,pageHidden:false,inputFrames:40,inputActiveFrames:4,inputIdleMs:5000,maxInputGapMs:2000,contextTimeMs:4000,contextSampleRate:48000,audio:'SECRET',label:'SECRET'}});
+ f.log.audit({type:'client.playback-stats',voiceSessionId:'v1',stats:{contextState:'SECRET',trackMuted:'SECRET',inputFrames:-1}});
+ await f.log.close();const rows=(await f.rows()).filter(r=>r.type==='client.playback-stats');
+ assert.equal(rows[0].stats.contextState,'interrupted');assert.equal(rows[0].stats.inputActiveFrames,4);assert.equal(rows[0].stats.trackMuted,true);assert.deepEqual(rows[1].stats,{});assert(!JSON.stringify(rows).includes('SECRET'));
+});
+test('input backlog recovery retains only its category and numeric queued duration',async t=>{
+ const f=await fixture(t);f.created();f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'upstream-error',category:'input-backlog',pendingAudioMs:10400,message:'SECRET',audio:'SECRET'});
+ await f.log.close();const row=(await f.rows()).find(r=>r.type==='call.provider-status');assert.equal(row.category,'input-backlog');assert.equal(row.pendingAudioMs,10400);assert(!JSON.stringify(row).includes('SECRET'));
+});
+test('independent ingress timing excludes audio and persists only safe counters',async t=>{
+ const f=await fixture(t);f.created();f.log.audit({type:'call.input-timing',voiceSessionId:'v1',serverInputBytes:9600,serverInputFrames:10,serverMaxInputGapMs:2400,serverMaxLoopGapMs:205,serverInputIdleMs:2000,providerPendingAudioMs:140,providerInputFramesSent:3,providerBufferedBytes:0,audio:'SECRET',host:'SECRET'});
+ await f.log.close();const row=(await f.rows()).find(r=>r.type==='call.input-timing');assert.equal(row.serverInputFrames,10);assert.equal(row.providerPendingAudioMs,140);assert(!JSON.stringify(row).includes('SECRET'));
+});

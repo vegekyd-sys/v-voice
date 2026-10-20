@@ -1239,3 +1239,12 @@ test('a same native turn continuation invalidates an in-flight hangup confirmati
  for(let at=50;at<=1300;at+=50)f.meter(at,0,0);await tick();assert.equal(f.requests.filter(x=>x.route==='call-control-confirm').length,1);
  send({type:'turn.delta',turn_id:'continue-stream',delta:'之前先查一下明天日程'});result.resolve({...value,type:'voice.end.accepted'});await tick();assert.equal(f.body.dataset.callState,'connected');assert.equal(sends,0);assert.equal(peer.closed,false);
 });
+
+test('input backlog recovery keeps the connected page and asks for the discarded speech again',async t=>{
+ let relay;const f=await fixture(t,{api:(route,payload,result)=>route==='session'?{...result,transport:'gateway-relay',provider:'seeduplex'}:result,
+ relayFactory:value=>{relay=value;return {start:async()=>{},dispose(){}};}});
+ await f.context.startCall();relay.onEvent({type:'provider.input-backlog'});relay.onEvent({type:'provider.reconnecting'});
+ assert.equal(f.body.dataset.callState,'connected');assert.match(f.element('status').textContent,/音频传输延迟/u);
+ relay.onEvent({type:'provider.recovered'});assert.match(f.element('status').textContent,/已恢复.*已丢弃.*再说一次/u);
+ assert.equal(f.element('stop').hidden,false);assert.equal(f.peers[0].closed,false);
+});

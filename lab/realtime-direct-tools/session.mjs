@@ -178,7 +178,15 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     });
     const admittedUserTurns=new Map();
     const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',calendar),larkRead:localRead('lark_read',larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,look:s.speaker?.look,delegate:args=>s.backend.run({...args,callerTurn:admittedUserTurns.get(args.callId)})});
-    s.progressTimer=setInterval(()=>deferred(s),200);s.progressTimer.unref?.();
+    s.inputTiming={serverInputBytes:0,serverInputFrames:0,serverMaxInputGapMs:0,serverMaxLoopGapMs:0};
+    let lastInputAt=null,lastTickAt=performance.now(),lastAuditAt=lastTickAt;
+    s.progressTimer=setInterval(()=>{
+      const at=performance.now();s.inputTiming.serverMaxLoopGapMs=Math.max(s.inputTiming.serverMaxLoopGapMs,Math.round(at-lastTickAt));lastTickAt=at;
+      if(at-lastAuditAt>=2000){lastAuditAt=at;audit({type:'call.input-timing',voiceSessionId:s.id,...s.inputTiming,
+        serverInputIdleMs:lastInputAt===null?0:Math.round(at-lastInputAt),...s.bridge?.inputDiagnostics?.()});}
+      deferred(s);
+    },200);s.progressTimer.unref?.();
+    s.observeInput=bytes=>{const at=performance.now();if(lastInputAt!==null)s.inputTiming.serverMaxInputGapMs=Math.max(s.inputTiming.serverMaxInputGapMs,Math.round(at-lastInputAt));lastInputAt=at;s.inputTiming.serverInputBytes+=bytes;s.inputTiming.serverInputFrames++;};
     const onToolCall=async call=>{
       if(!current(s))return;
       const signature=JSON.stringify([call.name,call.args]),old=s.seen.get(call.callId);
@@ -276,6 +284,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         audit({type:'provider.event',voiceSessionId:s.id,providerEventType:e.type,responseId:e.responseId});},
       onProtocolEvent:e=>audit({type:'provider.protocol',voiceSessionId:s.id,event:{...e,...(e.delta&&e.type?.includes('audio')?{delta:'[audio retained separately]'}:{})}}),
       onDiagnostic:e=>{if(!current(s))return;audit({type:'call.provider-status',voiceSessionId:s.id,...e});
+        if(e.stage==='upstream-error'&&e.category==='input-backlog')emit(s,{type:'provider.input-backlog'});
         if(['reconnecting','recovered'].includes(e.stage))emit(s,{type:`provider.${e.stage}`});},
       onError:e=>{audit({type:'call.connection-error',voiceSessionId:s.id,model:s.model,message:e.message});emit(s,{type:'error',message:e.message});void close(s.id).catch(()=>{});},
       onClose:()=>{if(current(s))void close(s.id).catch(()=>{});},
@@ -295,6 +304,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if(binary){
         try{
           if(data.length%2||data.length>24000){client.close(1008);return;}
+          s.observeInput(data.length);
           if(s.speakerRouting){if(!speakerRouting.has(s.id))throw Error('说话人识别已中断，请结束后重拨');speakerRouting.audio(s.id,Buffer.from(data));}
           else s.bridge.sendAudio(data);
         }catch(error){emit(s,{type:'error',message:error.message});void close(s.id).catch(()=>{});}
@@ -308,7 +318,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){s.latestUserTurn=Object.freeze({text:e.text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(e.text);}
       else if(e.type==='playback.state'&&typeof e.speaking==='boolean'){s.playing=e.speaking;audit({type:'client.playback-state',voiceSessionId:s.id,speaking:e.speaking});}
       else if(e.type==='playback.stats'){
-        const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','inputBatches'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
+        const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','inputBatches','inputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
+        for(const key of ['trackMuted','trackEnabled','trackLive','pageHidden'])if(typeof e[key]==='boolean')stats[key]=e[key];
+        if(['running','suspended','interrupted','closed'].includes(e.contextState))stats.contextState=e.contextState;
         audit({type:'client.playback-stats',voiceSessionId:s.id,stats});
       }
       else if(e.type==='playback.drained'&&s.ending?.callId===e.callId&&s.ending.hasAudio&&s.ending.completed){audit({type:'speaker.end-played',voiceSessionId:s.id});void close(s.id).catch(()=>{});}

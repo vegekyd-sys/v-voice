@@ -29,7 +29,7 @@ test('a later turn cannot spend old silence as an oversized sending window',t=>{
 });
 
 test('socket backpressure cannot grow the wire queue beyond the short lead',t=>{
- let pending=24000;const sent=[];const p=createDevicePlayout({sendAudio:b=>sent.push(b),sendEvent:()=>{},bufferedBytes:()=>pending,tickMs:1000000});t.after(()=>p.dispose());
+ let pending=24000;const sent=[];const p=createDevicePlayout({now:()=>0,sendAudio:b=>sent.push(b),sendEvent:()=>{},bufferedBytes:()=>pending,tickMs:1000000});t.after(()=>p.dispose());
  assert(p.push(Buffer.alloc(48000)));assert.equal(sent.length,0);pending=0;p.pump();assert.equal(sent.reduce((n,b)=>n+b.length,0),480*48);
 });
 
