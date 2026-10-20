@@ -14,6 +14,18 @@ export const DEVICE_INPUT_SAMPLE_RATE = 16000;
 export const DEVICE_OUTPUT_SAMPLE_RATE = 24000;
 // Said before a household speaker leaves a call that only heard room conversation.
 export const BACKGROUND_LEAVE_LINE = '你们先聊，需要我再叫我';
+// Said when a lookup failed and V itself stayed silent, so the room is never left
+// waiting for an answer that will not come. A failed tool started nothing.
+export const TOOL_FAILURE_LINE = '这个刚才没查成，要不要我交给后台再试试？';
+// Said when a lookup's result is back but V never started answering it (an ASR
+// turn the provider opened right after the result can swallow the reply). The
+// result is already in the model's context, so a "yes" gets the answer.
+export const TOOL_RESULT_PROMPT_LINE = '结果查到了，要我现在说说吗？';
+// Said when the provider opened a user turn, the microphone has gone quiet, and
+// the turn still has no text: ask again instead of waiting to be hung up.
+export const UNHEARD_TURN_LINE = '刚才没听清，能再说一遍吗？';
+// Controls and delegation are not lookups; their failures are not "没查成".
+const NOT_LOOKUPS = new Set(['delegate_to_v','end_call','cancel_task','openclaw_agent_control','send_task_updates','set_speaker_volume','look','show_content']);
 const FORWARDED = new Set(['audio.clear','audio.done','end.accepted','end.after-playback','end.cancelled','provider.reconnecting','provider.recovered']);
 const digest = value => createHash('sha256').update(String(value)).digest();
 
@@ -68,7 +80,9 @@ class DeviceCallClient extends EventEmitter {
 }
 
 export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '/device/voice',xiaozhiPath = null,otaPath = null,xiaozhiPublicUrl = null,audit = () => {},isSessionBusy = () => false,
-  now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,toolHoldMs = 180000,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = DEVICE_PLAYOUT_MAX_BYTES,stallMs = 20000,robotEvaluate = null,volumeStore = createVolumeStore(),visionPath = null,describeImage = null}) {
+  now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,chatterSpeechGraceMs = 15000,toolHoldMs = 180000,
+  toolProgressMs = 4000,toolProgressRepeatMs = 15000,toolProgressMax = 3,toolFailureMs = 4000,staleSpeechMs = 6000,
+  resultSilenceMs = 8000,unheardTurnMs = 5000,inputSilentMs = 3000,inputLoudRms = 300,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = DEVICE_PLAYOUT_MAX_BYTES,stallMs = 20000,robotEvaluate = null,volumeStore = createVolumeStore(),visionPath = null,describeImage = null}) {
   if (!/^\/[a-zA-Z0-9/_-]+$/u.test(path) || visionPath !== null && !/^\/[a-zA-Z0-9/_-]+$/u.test(visionPath)) throw Error('Invalid device path');
   const server = new wsModule.WebSocketServer({noServer:true,maxPayload:65536,perMessageDeflate:false});
   const connections = new Map();
@@ -96,7 +110,14 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     if (isSessionBusy(device.sessionKey) || [...connections.values()].some(c => c !== connection && c.call && c.device.sessionKey === device.sessionKey)) return sendJson(ws, {type:'call.error',reason:'session-busy',message:'这个会话正在另一台设备上通话'});
     const model = request.model === undefined ? device.model : request.model;
     if (!device.models.includes(model)) return sendJson(ws, {type:'call.error',reason:'model',message:'这个音箱没有开放该语音模型'});
-    const call = {connection,model,startedAt:now(),readyAt:0,lastActivityAt:now(),replyEndedAt:0,userTurns:0,outputBytes:0,inputBytes:0,playing:false,ended:false,client:null,id:null,timer:null};
+    const call = {connection,model,startedAt:now(),readyAt:0,lastActivityAt:now(),replyEndedAt:0,userTurns:0,outputBytes:0,inputBytes:0,playing:false,ended:false,client:null,id:null,timer:null,
+      // Native lookups still running (callId -> name). Background delegation is
+      // tracked by the session itself and is never narrated from here.
+      tools:new Map(),waitStartedAt:0,notices:0,lastNoticeAt:0,failure:null,answerDue:null,lastAudioAt:0,speechSince:0,lastLoudInputAt:0,askedAgainFor:0,
+      // V's own side of the exchange: what a tool hold is measured from, so
+      // room speech alone cannot keep a hold open.
+      lastExchangeAt:now()};
+    const touch = () => {call.lastActivityAt = call.lastExchangeAt = now();};
     connection.call = call;
     call.playout = createDevicePlayout({now,maxBytes:maxBufferedBytes,maxLeadMs:device.playoutLeadMs,bufferedBytes:()=>ws.bufferedAmount,
       sendAudio:pcm=>{if(ws.readyState===1){call.outputBytes+=pcm.length;call.lastActivityAt=now();ws.send(pcm,{binary:true});}},
@@ -109,32 +130,54 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     call.fromSession = raw => {
       if (call.ended) return;
       let event;try {event = JSON.parse(raw);} catch {return;}
-      if (call.robot && (event.type === 'transcript' || event.type?.startsWith('tool.'))) call.robot.observe(event);
+      if (call.robot && (event.type === 'transcript' || event.type?.startsWith('tool.'))) call.robot.observe(event.failed ? {...event,type:'tool.error'} : event);
       if (event.type === 'audio') {
         const pcm = Buffer.from(String(event.audio ?? ''), 'base64');
         if (!pcm.length || ws.readyState !== 1) return;
         // The parting line is played as ordinary speech: speakers must not barge
         // on it, since it is only said while the room is full of chatter.
         if (!call.playout.push(pcm,{backendSpeech:event.source==='injected-speech' && !call.leaving})) return call.end('slow-playback');
-        call.lastActivityAt = now();
+        touch();call.lastAudioAt = call.lastExchangeAt;
         return;
       }
       if (event.type === 'ready') {
-        call.readyAt = now();call.lastActivityAt = call.readyAt;
+        call.readyAt = now();call.lastActivityAt = call.lastExchangeAt = call.readyAt;
         audit({type:'device.call',voiceSessionId:call.id,stage:'ready',deviceId:device.id,latencyMs:call.readyAt - call.startedAt});
         return sendJson(ws, {type:'call.ready',voiceSessionId:call.id,model,inputSampleRate:DEVICE_INPUT_SAMPLE_RATE,outputSampleRate:DEVICE_OUTPUT_SAMPLE_RATE});
       }
       if (event.type === 'transcript') {
         // Transcript text stays in Voice's private audit; the speaker needs none.
-        call.lastActivityAt = now();
-        if (event.role === 'user' && event.final) {call.userTurns++;call.turnSinceReply = true;}
+        if (event.role === 'user') call.lastActivityAt = now();else touch();
+        // Someone answering a failed lookup has taken the turn; V replies to that.
+        if (event.role === 'user' && event.final) {call.userTurns++;call.turnSinceReply = true;call.failure = call.answerDue = null;}
         return;
       }
-      if (event.type === 'tool.call' || event.type === 'tool.progress') {call.lastActivityAt = now();return sendJson(ws, {type:'busy',active:true});}
-      if (event.type === 'tool.result' || event.type === 'tool.error') {call.lastActivityAt = now();return sendJson(ws, {type:'busy',active:false});}
+      if (event.type === 'tool.call' || event.type === 'tool.progress') {
+        touch();
+        if (event.type === 'tool.call') {
+          call.failure = call.answerDue = null;
+          if (event.name !== 'delegate_to_v' && typeof event.callId === 'string') {
+            if (!call.tools.size) {call.waitStartedAt = now();call.notices = 0;}
+            call.tools.set(event.callId, event.name);
+          }
+        }
+        return sendJson(ws, {type:'busy',active:true});
+      }
+      if (event.type === 'tool.result' || event.type === 'tool.error') {
+        touch();call.tools.delete(event.callId);
+        // The wait is not the room's turn: follow-up and chatter windows start
+        // again when the last result is back, not from the "我查一下" clip.
+        if (!call.tools.size) {
+          call.replyEndedAt = call.lastExchangeAt;call.turnSinceReply = false;
+          const lookup = !NOT_LOOKUPS.has(event.name) && !event.cancelled;
+          if (lookup && (event.failed || event.type === 'tool.error')) call.failure = {at:call.lastExchangeAt,name:event.name};
+          else if (lookup) call.answerDue = {at:call.lastExchangeAt,name:event.name};
+        }
+        return sendJson(ws, {type:'busy',active:false});
+      }
       if (event.type === 'error') return sendJson(ws, {type:'call.error',reason:'voice',message:String(event.message ?? '').slice(0,200)});
       if (FORWARDED.has(event.type)) {
-        call.lastActivityAt = now();
+        touch();
         if(event.type==='audio.clear')call.playout.clear();
         if(event.type==='audio.done'||event.type==='end.after-playback') {
           call.playout.event({type:event.type,...(typeof event.callId==='string'?{callId:event.callId}:{})});return;
@@ -167,11 +210,66 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       if (call.leaving) {if (at - call.leaving.at > 10000) call.end(call.leaving.reason);return;}
       if (call.playout.pendingBytes() || state.userSpeaking || state.responseActive || state.playing || call.playing) call.lastActivityAt = at;
       if (state.lastUserAt > call.lastActivityAt) call.lastActivityAt = state.lastUserAt;
+      // When the utterance now in progress began (repeated onsets do not move it).
+      call.speechSince = state.userSpeaking ? call.speechSince || at : 0;
       if (at - call.startedAt > maxCallMs) return call.end('max-duration');
       if (!call.readyAt) {if (at - call.startedAt > 45000) call.end('connect-timeout');return;}
-      // Tool calls and delegated work are quiet but real activity. Hold them for
-      // a bounded period instead of cutting the task when the room goes silent.
-      if (state.pendingTools || state.backgroundTask) {if (at - call.lastActivityAt > toolHoldMs) call.end('idle');return;}
+      // V may speak a host line only into a gap: nothing playing or being
+      // generated, and nobody just started talking. An utterance that has run
+      // for seconds with no new onset, or whose microphone has gone quiet, is a
+      // stuck ASR turn or the TV, not someone addressing V.
+      const micQuiet = at - call.lastLoudInputAt >= inputSilentMs;
+      const gap = !call.playing && !state.playing && !state.responseActive && !call.playout.pendingBytes()
+        && (state.userSpeaking ? at - state.lastUserAt > staleSpeechMs || micQuiet : at - state.lastUserAt > 1200);
+      // Tool calls and delegated work are quiet but real activity. Hold every
+      // ending rule while they run, bounded by V's own last sign of life.
+      if (state.pendingTools || state.backgroundTask) {
+        // A slow lookup gets a short "still looking" line, spaced and capped.
+        const due = call.notices ? call.lastNoticeAt + toolProgressRepeatMs : call.waitStartedAt + toolProgressMs;
+        if (call.tools.size && call.notices < toolProgressMax && at >= due && gap) {
+          const played = Boolean(directVoice.progressNotice?.(call.id, call.notices));
+          audit({type:'device.tool-progress',voiceSessionId:call.id,deviceId:device.id,index:call.notices,played,waitedMs:at - call.waitStartedAt});
+          call.notices++;call.lastNoticeAt = at;
+        }
+        if (at - call.lastExchangeAt > toolHoldMs) call.end('idle');
+        return;
+      }
+      // A lookup failed and V has not said anything since: say so, rather than
+      // leaving the room in silence until the follow-up window hangs up.
+      if (call.failure) {
+        if (call.lastAudioAt > call.failure.at || at - call.failure.at > toolFailureMs + 20000) call.failure = null;
+        else {
+          if (at - call.failure.at >= toolFailureMs && gap) {
+            const spoken = Boolean(directVoice.say?.(call.id, TOOL_FAILURE_LINE));
+            audit({type:'device.tool-failure-notice',voiceSessionId:call.id,deviceId:device.id,tool:call.failure.name,spoken});
+            call.failure = null;
+          }
+          return;
+        }
+      }
+      // A result is back but V has not started answering it. Never hang up on it.
+      if (call.answerDue) {
+        if (call.lastAudioAt > call.answerDue.at || at - call.answerDue.at > resultSilenceMs + 20000) call.answerDue = null;
+        else {
+          if (at - call.answerDue.at >= resultSilenceMs && gap) {
+            const spoken = Boolean(directVoice.say?.(call.id, TOOL_RESULT_PROMPT_LINE));
+            audit({type:'device.tool-result-prompt',voiceSessionId:call.id,deviceId:device.id,tool:call.answerDue.name,spoken});
+            call.answerDue = null;
+          }
+          return;
+        }
+      }
+      // The provider opened a user turn that never produced text although the
+      // microphone has been quiet for seconds: ask once, rather than wait.
+      if (state.userSpeaking && call.speechSince && call.askedAgainFor !== call.speechSince && at - call.speechSince >= unheardTurnMs && micQuiet && gap) {
+        call.askedAgainFor = call.speechSince;
+        const spoken = Boolean(directVoice.say?.(call.id, UNHEARD_TURN_LINE));
+        audit({type:'device.unheard-turn',voiceSessionId:call.id,deviceId:device.id,openMs:at - call.speechSince,spoken});
+        return;
+      }
+      // A turn still being spoken or transcribed is never ended under the
+      // speaker: let it finish (bounded from its onset) before any window applies.
+      if (state.userSpeaking && call.speechSince && at - call.speechSince < chatterSpeechGraceMs) return;
       // A household speaker has a follow-up window: after V finishes speaking,
       // someone must start talking soon. Room conversation that never becomes a
       // finished request must not keep the model session open indefinitely.
@@ -245,6 +343,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       call.lastInputAt = at;call.inputBytes += data.length;
       let sum = 0;for (let i = 0; i < data.length; i += 2) {const v = data.readInt16LE(i);sum += v * v;}
       const level = Math.sqrt(sum / (data.length / 2));
+      if (level >= Math.max(inputLoudRms, connection.device.noiseGateRms)) call.lastLoudInputAt = at;
       if (!call.firstVoiceAt && call.readyAt) {
         if (level >= 450) {
           call.firstVoiceAt = at;
@@ -282,7 +381,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     if (event.type === 'call.end') return call.end('device');
     if (event.type === 'playback.state' && typeof event.speaking === 'boolean') {
       if (call.playing && !event.speaking) {call.replyEndedAt = now();call.turnSinceReply = false;}
-      call.playing = event.speaking;call.lastActivityAt = now();
+      call.playing = event.speaking;call.lastActivityAt = call.lastExchangeAt = now();
       if (call.leaving) {if (event.speaking) call.leaving.spoke = true;else if (call.leaving.spoke) call.end(call.leaving.reason);}
     }
     if (event.type === 'input.activity') call.lastActivityAt = now();

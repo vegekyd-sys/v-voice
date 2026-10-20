@@ -495,3 +495,27 @@ test('speaker delegation freezes admitted ASR, ignoring earlier speculative nati
  const question=f.invocations.find(x=>x.question)?.question;assert(question?.includes('通过准入的完整后台目标'));assert(!question.includes('原生ASR滞后的旧声音'));
  f.completeBackend('完成');await delay(30);
 });
+
+test('a slow native lookup gets a cached progress line, never upstream TTS, and a failed one is marked failed',async t=>{
+ const {TOOL_PROGRESS_LINES}=await import('./tool-start-audio.mjs');
+ const PROGRESS=TOOL_PROGRESS_LINES.map((text,i)=>({text,pcm:Buffer.alloc(240,i+1),source:'cached-native-tool-progress',sha256:'fixture-'+i}));
+ let finish;
+ const f=await fixture((args)=>args.name==='web_search'?{ok:false,error:{code:'unavailable',message:'搜索不可用'}}:new Promise(resolve=>{finish=resolve;}),'seeduplex',{toolProgressClips:PROGRESS});
+ t.after(()=>f.service.dispose());
+ const id=f.reservation.voiceSessionId,native=(callId,name,args)=>f.event({type:'response.function_call_arguments.done',items:[{call_id:callId,name,arguments:JSON.stringify(args)}]});
+ assert.equal(f.service.progressNotice(id,0),false,'nothing is running');
+ native('mem','memory_search',{query:'项目'});
+ for(let i=0;i<100&&!finish;i++)await delay(2);
+ assert.equal(f.service.progressNotice(id,1),true);
+ const audio=f.client.sent.filter(e=>e.type==='audio'&&e.source==='cached-native-tool-progress');
+ assert.equal(audio.length,1);assert.deepEqual(Buffer.from(audio[0].audio,'base64'),PROGRESS[1].pcm);
+ assert(f.client.sent.some(e=>e.type==='transcript'&&e.source==='tool-progress'&&e.text===PROGRESS[1].text));
+ assert(!f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'),'the pending native function keeps its turn');
+ finish({ok:true,output:{answer:'V Voice'}});
+ for(let i=0;i<100&&!f.client.sent.some(e=>e.type==='tool.result'&&e.callId==='mem');i++)await delay(2);
+ assert.equal(f.client.sent.find(e=>e.type==='tool.result'&&e.callId==='mem').failed,undefined);
+ assert.equal(f.service.progressNotice(id,0),false,'nothing left to wait for');
+ native('web','web_search',{query:'NBA'});
+ for(let i=0;i<100&&!f.client.sent.some(e=>e.type==='tool.result'&&e.callId==='web');i++)await delay(2);
+ assert.equal(f.client.sent.find(e=>e.type==='tool.result'&&e.callId==='web').failed,true);
+});

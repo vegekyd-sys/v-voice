@@ -6,7 +6,7 @@ import {TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,createToolExecutor,validateTool,proc
 import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICES,grokVoice,grokVoiceModel,grokVoiceLabel,grokVoiceSpeed} from './grok-provider.mjs';
 import {createTaskDelivery} from './task-delivery.mjs';
 import {createBackendDelegation} from './backend.mjs';
-import {loadToolStartClips,toolStartClip} from './tool-start-audio.mjs';
+import {loadToolStartClips,loadToolProgressClips,toolStartClip} from './tool-start-audio.mjs';
 import {presentBackendResult,LONG_RESULT_NOTICE} from '../gpt-live-h5/result-presentation.mjs';
 import {voiceCapabilityInstructions} from '../gpt-live-h5/capability-policy.mjs';
 import {VOICE_TASK_CONTROL_POLICY} from '../../lib/voice-task-control.mjs';
@@ -36,7 +36,7 @@ export function directInstructions(catalog,context='',model='',options={}) {
 }
 
 /** One real provider connection per dial; tool authorization stays in OpenClaw. */
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,toolProgressClips=null}) {
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
   const sessions=new Map(),detached=new Set();
@@ -149,8 +149,18 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(!current(s))return;
     connectionStage('catalog-ready');
     const entries=(catalog.groups??[]).flatMap(g=>g.tools??[]),allowedTools=new Set(entries.map(t=>t.id));
-    const noticeClips=s.model==='seeduplex'?loadToolStartClips():null;
+    const noticeClips=s.model==='seeduplex'?loadToolStartClips():null,progressClips=s.model==='seeduplex'?toolProgressClips??loadToolProgressClips():[];
     const deliverAudio=(audio,metadata={})=>{if(!current(s))return;emit(s,{type:'audio',sequence:++s.audioSequence,audio:audio.toString('base64'),sampleRate:24000,...metadata});onOutputAudio(s.id,audio);audit({type:'audio',voiceSessionId:s.id,bytes:audio.length,...metadata});};
+    // A slow native lookup gets a cached "still looking" line, delivered like the
+    // start notice: never upstream TTS, which can cost the pending function its turn.
+    s.progressNotice=index=>{
+      const clip=progressClips[index%(progressClips.length||1)];
+      const waiting=[...s.pending.keys()].filter(id=>id!==s.backgroundCallId).map(id=>JSON.parse(s.seen.get(id)??'[]'));
+      if(!clip||s.ending||s.speakerRouting||!waiting.length||waiting.some(([name,args])=>!toolStartClip({name,args},noticeClips)))return false;
+      emit(s,{type:'transcript',role:'assistant',text:clip.text,final:true,source:'tool-progress'});
+      audit({type:'transcript',voiceSessionId:s.id,role:'assistant',text:clip.text,final:true,source:'tool-progress'});
+      deliverAudio(clip.pcm,{source:clip.source,sha256:clip.sha256});emit(s,{type:'audio.done'});return true;
+    };
     const invoke=async(name,args,callId,signal)=>{
       if(signal.aborted||!current(s))throw Error('本次任务已取消');
       if(!allowedTools.has(name))throw Error('OpenClaw 未开放这个工具');
@@ -231,7 +241,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       }else if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
       catch {result={error:'工具结果过大或无法续传，请缩小范围并分页读取。'};if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
       audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId,name:call.name,result});
-      emit(s,{type:'tool.result',callId:call.callId,name:call.name});
+      // A hardware client must know a lookup failed: V has to say something then.
+      emit(s,{type:'tool.result',callId:call.callId,name:call.name,...(typeof result?.error==='string'?{failed:true}:{}),...(result?.cancelled===true?{cancelled:true}:{})});
     };
     connectionStage('context-requested');
     const context=await loadContext(s.sessionKey);
@@ -358,6 +369,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       const s=sessions.get(id);if(!current(s)||!s.bridge||s.ending)return false;
       s.responseActive=true;s.bridge.speakProgress(text);audit({type:'device.notice-spoken',voiceSessionId:s.id,text});return true;
     },
+    /** Play the cached progress line while a slow native lookup is still running. */
+    progressNotice(id,index=0){const s=sessions.get(id);return current(s)&&typeof s.progressNotice==='function'?s.progressNotice(index):false;},
     /** Bounded state for a hardware client's idle policy; never conversation content. */
     activity(id){
       const s=sessions.get(id);if(!current(s))return null;

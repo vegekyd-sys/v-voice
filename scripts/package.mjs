@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';import {existsSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {createHash} from 'node:crypto';import {execFileSync} from 'node:child_process';
 import {AVATAR_FILES} from '../lab/gpt-live-h5/avatar-state.mjs';
@@ -14,6 +14,8 @@ names.push('plugins/v-voice-gpt-live/tasks.mjs',
  ...['volc-asr.mjs','utterances.mjs'].map(n=>'lab/volc-speaker/'+n),
  'lab/voice-decision-router.mjs');
 names.push('lab/realtime-direct-tools/device-endpoint.mjs','lab/realtime-direct-tools/device-playout.mjs','lab/realtime-direct-tools/device-volume.mjs');
+// Generated progress clips ship once scripts/generate-notice-clips.mjs has made them.
+if(existsSync(join(root,'lab/realtime-direct-tools/assets/tool-progress-provenance.json')))names.push(...['tool-progress-provenance.json','tool-progress-1.pcm','tool-progress-2.pcm','tool-progress-3.pcm'].map(n=>'lab/realtime-direct-tools/assets/'+n));
 names.push('lab/realtime-direct-tools/xiaozhi-wire.mjs','lab/realtime-direct-tools/device-vision.mjs','lab/robot/robot-catalog.mjs','lab/robot/robot-reactions.mjs');
 const target=resolve(process.argv[2]??join(root,'artifacts',commit));
 await mkdir(dirname(target),{recursive:true});
