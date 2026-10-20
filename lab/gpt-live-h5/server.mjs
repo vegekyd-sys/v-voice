@@ -499,7 +499,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const speakerRouting=productionSpeaker?.service;
     const lark=createVoiceLarkReader({environment:process.env});
     if(!lark.available)console.warn(JSON.stringify({type:'voice.lark-unavailable'}));
-    const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,calendar:lark.available?lark.calendar:null,larkRead:lark.available?lark.read:null,
+    const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,toolStartNotice:process.env.VOICE_TOOL_START_NOTICE==='cached'?'cached':'model',calendar:lark.available?lark.calendar:null,larkRead:lark.available?lark.read:null,
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),
       grokExpressiveTags:process.env.XAI_VOICE_EXPRESSIVE_TAGS === '1',

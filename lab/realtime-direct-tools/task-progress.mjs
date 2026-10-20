@@ -1,6 +1,7 @@
 // Real backend stages for one delegated task, from the Gateway's own agent
-// events for the task's exact runs. A tool name maps to a fixed phrase; tool
-// arguments, outputs, paths and model reasoning never reach narration.
+// events for the task's exact runs. What the caller hears is what the backend
+// is actually doing: the search terms it used, the memory it looks up, the
+// site it reads. Tool outputs and model reasoning never reach narration.
 const TOOL_LABELS = Object.freeze({
   memory_search:'查记忆', memory_get:'读记忆原文',
   web_search:'上网搜索', x_search:'搜索资料', web_fetch:'读网页',
@@ -12,6 +13,28 @@ const TOOL_LABELS = Object.freeze({
   message:'发消息', write:'写文件', edit:'改文件', apply_patch:'改文件',
 });
 export const STAGE_LABELS = new Set(Object.values(TOOL_LABELS));
+const QUIET_LABELS = new Set(['运行命令', '等命令跑完']);
+const clip = (text, max = 32) => {
+  const flat = String(text).replace(/[\s\u200b]+/gu, ' ').replace(/["“”「」]/gu, '').trim();
+  return flat.length <= max ? flat : flat.slice(0, max).replace(/[\s,，、.。;；:：-]*\S*$/u, '') || flat.slice(0, max);
+};
+/** The caller-facing subject of one tool call, from its own arguments. */
+export function stepDetail(name, args) {
+  const base = typeof name === 'string' ? name.split(/[.:/]/u).at(-1) : '';
+  if (!args || typeof args !== 'object') return null;
+  if (['web_search', 'x_search', 'memory_search'].includes(base) && typeof args.query === 'string' && args.query.trim()) return clip(args.query);
+  if (base === 'web_fetch' && typeof args.url === 'string') {
+    try {return new URL(args.url).hostname.replace(/^www\./u, '');} catch {return null;}
+  }
+  return null;
+}
+/** One spoken sentence for a step; the detail is the backend's own words. */
+export function stepPhrase(label, detail) {
+  if (label === '上网搜索' || label === '搜索资料') return detail ? `后台在搜“${detail}”` : '后台在上网搜索';
+  if (label === '查记忆') return detail ? `后台在翻记忆里“${detail}”的记录` : '后台在翻记忆里的记录';
+  if (label === '读网页') return detail ? `后台在看 ${detail} 上的网页` : '后台在读网页';
+  return label ? `后台在${label}` : '后台在处理下一步';
+}
 export const toolStageLabel = name => {
   const base = typeof name === 'string' ? name.split(/[.:/]/u).at(-1) : '';
   return Object.hasOwn(TOOL_LABELS, base) ? TOOL_LABELS[base] : null;
@@ -38,10 +61,13 @@ export function spawnedChild(payload) {
 export function createTaskStages({now = Date.now} = {}) {
   const pending = new Map(), done = new Set(), streams = {};
   let failed = 0, changedAt = 0, lastLabel = null, events = 0, latest = null;
-  const start = (id, name) => {
+  const start = (id, name, args) => {
     if (done.has(id) || pending.has(id)) return false;
-    latest = {id, label:toolStageLabel(name), failed:false};
-    pending.set(id, latest);changedAt = now();return true;
+    const step = {id, label:toolStageLabel(name), detail:stepDetail(name, args), failed:false};
+    // A shell command or an unknown tool says nothing about the task to the
+    // caller: it counts as a step but the stage stays on the last describable one.
+    if (step.label && !QUIET_LABELS.has(step.label)) latest = step;
+    pending.set(id, step);changedAt = now();return true;
   };
   const end = (id, error) => {
     const step = pending.get(id);
@@ -58,14 +84,14 @@ export function createTaskStages({now = Date.now} = {}) {
       if (!id) return false;
       // The same call arrives as both a `tool` and an `item` event; one id, one step.
       if (stream === 'tool' || (stream === 'item' && d.kind === 'tool')) {
-        if (d.phase === 'start') return start(id, d.name);
+        if (d.phase === 'start') return start(id, d.name, d.args);
         if (d.phase === 'result' || d.phase === 'end')
           return end(id, d.isError === true || d.result?.isError === true || d.status === 'failed');
       }
       return false;
     },
     snapshot() {
-      return {latest:latest?.label ?? null, latestRunning:Boolean(latest && pending.has(latest.id)), latestFailed:Boolean(latest?.failed),
+      return {latest:latest?.label ?? null, detail:latest?.detail ?? null, latestRunning:Boolean(latest && pending.has(latest.id)), latestFailed:Boolean(latest?.failed),
         steps:done.size + pending.size, completed:done.size, failed, changedAt, events};
     },
     /** Remember what was last said, so the same stage is not announced twice. */
@@ -74,22 +100,21 @@ export function createTaskStages({now = Date.now} = {}) {
     observed: () => ({events, streams:{...streams}, steps:done.size + pending.size}),
   };
 }
-/** What makes a stage worth a new line: another kind of step, or a failure. */
-export const stageKey = stage => stage.steps ? `${stage.latest ?? '?'}|${stage.failed}` : 'none';
+/** What makes a stage worth a new line: a new subject or kind of step, or a failure. */
+export const stageKey = stage => stage.steps ? `${stage.latest ?? '?'}|${stage.detail ?? ''}|${stage.failed}` : 'none';
 
 // Rounded down: "已经40秒了" is never more than the time that actually passed.
 const minutes = ms => ms < 60000 ? `${Math.max(1, Math.floor(ms / 10000)) * 10}秒` : `${Math.floor(ms / 30000) / 2}分钟`.replace('.5分钟', '分半钟');
 
 /**
- * One short spoken line from verified state only: elapsed time since the task
- * was admitted, the latest step the backend actually took, and how many steps.
- * `heartbeat` repeats an unchanged stage, leading with time.
+ * One short spoken line from verified state only: what the backend is doing
+ * (its latest step and that step's own subject) and, for a repeat, how long the
+ * task has been running. Counting steps tells the caller nothing, so it is not said.
  */
 export function stageLine(stage, {elapsedMs, heartbeat = false} = {}) {
-  const time = minutes(elapsedMs), label = stage.latest, n = stage.steps;
-  if (heartbeat) return label ? `后台还在处理，已经${time}了，刚才在${label}。` : `后台还在处理，已经${time}了。`;
-  if (!n) return `后台还在处理，已经${time}了。`;
-  if (stage.latestFailed && !stage.latestRunning) return `刚才有一步没成功，后台还在继续。`;
-  if (stage.latestRunning) return label ? `后台正在${label}${n >= 3 ? `，这是第${n}步` : ''}。` : `后台在做第${n}步。`;
-  return label ? `后台刚做完${label}这一步${n >= 3 ? `，一共做了${n}步` : ''}，还在继续。` : `后台做完了${n}步，还在继续。`;
+  const time = minutes(elapsedMs);
+  if (!stage.steps || !stage.latest) return `后台还在处理，已经${time}了。`;
+  if (stage.latestFailed && !stage.latestRunning && !heartbeat) return '刚才有一步没成功，后台还在继续。';
+  const doing = stepPhrase(stage.latest, stage.detail);
+  return heartbeat ? `还在弄，已经${time}了，刚才${doing.replace(/^后台/u, '')}。` : `${doing}。`;
 }
