@@ -33,7 +33,7 @@ export function contentItems(item, base = "https://voice.invalid/voice/") {
 
 // One reader holds the original controls: opening content never recreates the
 // call, microphone, event subscriptions, task ownership, or avatar renderer.
-export function createContentView(document, window) {
+export function createContentView(document, window, { onReading = () => {} } = {}) {
   const $ = (id) => document.getElementById(id);
   const layer = $("contentReader"),
     surface = $("readerSurface"),
@@ -43,9 +43,6 @@ export function createContentView(document, window) {
     closing = false,
     automatic = new Set(),
     animations = [];
-  const homeFooter = $("conversationFooter").parentElement,
-    homePill = $("pillHome"),
-    homeAvatar = $("avatarHome");
   const cancelAnimations = () => {
     for (const animation of animations) animation.cancel();
     animations = [];
@@ -150,10 +147,9 @@ export function createContentView(document, window) {
         content.title.replace(/[\\/:*?"<>|]/gu, "-") + ".md";
       $("readerDownload").hidden = false;
     } else $("readerDownload").hidden = true;
-    $("readerDock").append($("conversationFooter"), $("callPill"));
-    $("pillAvatar").append($("portrait"));
-    $("voiceLayout").inert = true;
-    homePill.inert = true;
+    // The page renders its status line and call controls into the reader
+    // dock; the call itself, its microphone and its listeners never move.
+    onReading(true);
     $("readerBack").focus({ preventScroll: true });
     void morph(from, surface.getBoundingClientRect());
   }
@@ -168,11 +164,7 @@ export function createContentView(document, window) {
     if (!immediate) await morph(from, to, true);
     if ($("readerDownload").getAttribute("href")?.startsWith("blob:"))
       URL.revokeObjectURL($("readerDownload").href);
-    homeFooter.append($("conversationFooter"));
-    homePill.append($("callPill"));
-    homeAvatar.prepend($("portrait"));
-    $("voiceLayout").inert = false;
-    homePill.inert = false;
+    onReading(false);
     layer.hidden = true;
     body.replaceChildren();
     document.body.dataset.reading = "false";

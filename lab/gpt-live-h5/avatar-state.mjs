@@ -30,19 +30,32 @@ export function taskActivity(name, args = {}, depth = 0) {
 }
 export function createAvatarTasks() {
   const pending = new Map();
+  // Start time and backend stage outlive clear(): presentation recovery
+  // replays the same pending calls, which must not restart their clocks.
+  const details = new Map();
   let completion = null;
   return {
-    consume(event) {
+    consume(event, now = Date.now()) {
       if (typeof event?.callId !== 'string' || !event.callId) return;
       if (event.type === 'tool.call') {
         const activity = Object.hasOwn(ACTIVITY_LABELS, event.activity) || event.activity === 'control'
           ? event.activity : taskActivity(event.name);
         if (activity !== 'control' && !pending.has(event.callId)) pending.set(event.callId, activity);
+        if (activity !== 'control' && !details.has(event.callId)) details.set(event.callId, {startedAt: now, stage: null, step: 0});
+      } else if (event.type === 'tool.progress' && pending.has(event.callId) && typeof event.stage === 'string' && event.stage) {
+        const detail = details.get(event.callId);
+        if (detail && detail.stage !== event.stage) { detail.stage = event.stage; detail.step++; }
       } else if (['tool.result','tool.error'].includes(event.type) && pending.delete(event.callId)) {
+        details.delete(event.callId);
         completion = {id:event.callId, ok:event.type === 'tool.result'};
       }
     },
     clear() { pending.clear(); completion = null; },
+    reset() { pending.clear(); details.clear(); completion = null; },
+    list(now = Date.now()) {
+      return [...pending].map(([callId, activity]) => ({callId, activity, startedAt: details.get(callId)?.startedAt ?? now,
+        stage: details.get(callId)?.stage ?? null, step: details.get(callId)?.step ?? 0}));
+    },
     get completion() { return completion; },
     get size() { return pending.size; },
     get pose() { return [...pending.values()].at(-1) ?? 'idle'; },

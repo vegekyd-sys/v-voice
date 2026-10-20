@@ -9,6 +9,8 @@
     <meta name="theme-color" content="#f6f3f9" />
     <title>和 V 通话</title>
     <link rel="modulepreload" href="./app.js" />
+    <link rel="modulepreload" href="./ui-bundle.mjs" />
+    <link rel="modulepreload" href="./call-view.mjs" />
     <link rel="modulepreload" href="./avatar-approved-reactions.mjs" />
     <link rel="modulepreload" href="./avatar-catalog.mjs" />
     <link rel="modulepreload" href="./avatar-reactions.mjs" />
@@ -25,7 +27,6 @@
     <link rel="modulepreload" href="./media-references.mjs" />
     <link rel="modulepreload" href="./microphone-capture.mjs" />
     <link rel="modulepreload" href="./microphone-session.mjs" />
-    <link rel="modulepreload" href="./product-controls.mjs" />
     <link rel="modulepreload" href="./relay-audio.mjs" />
     <link rel="modulepreload" href="./screen-wake-lock.mjs" />
     <link rel="modulepreload" href="./transcript-presentation.mjs" />
@@ -42,235 +43,20 @@
     data-call-state="idle"
     data-reading="false"
   >
-    <button id="changelogOpen" class="changelog-trigger" type="button" aria-haspopup="dialog" aria-controls="changelogDialog" aria-expanded="false">
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1" /></svg>
-      更新日志
-    </button>
-    <main class="app-shell">
-      <div id="voiceLayout" class="voice-layout">
-        <section class="voice-stage" aria-label="V 的反应">
-          <div id="avatarHome">
-            <div id="portrait" class="portrait-wrap">
-              <span class="sound-ring ring-one"></span
-              ><span class="sound-ring ring-two"></span>
-              <div class="avatar-stack">
-                <img
-                  width="1024"
-                  height="1024"
-                  decoding="async"
-                  fetchpriority="high"
-                  id="avatar"
-                  src="./assets/v-operator-home-1024.webp"
-                  alt="V"
-                />
-                <img id="avatarPrevious" alt="" hidden />
-              </div>
-              <span class="presence-dot" aria-hidden="true"></span>
-            </div>
+    <!-- The React UI (ui-bundle.mjs) replaces this first frame on start. -->
+    <div id="app">
+      <main class="call-page" data-call="idle" style="--avatar-size: min(72vw, 40dvh, 300px)">
+        <header class="topbar"></header>
+        <section class="stage" aria-label="V">
+          <div class="avatar">
+            <div class="avatar-face"><div class="portrait"><img width="1024" height="1024" decoding="async" fetchpriority="high" src="./assets/v-operator-home-1024.webp" alt="V" /></div></div>
           </div>
-          <a class="avatar-name" href="./" aria-label="V 通话首页">V</a>
-          <section id="entryNotice" class="entry-notice" role="status" aria-live="polite" aria-atomic="true" aria-labelledby="entryNoticeTitle" hidden>
-            <span class="entry-notice-icon" aria-hidden="true">
-              <svg class="entry-link-icon" viewBox="0 0 24 24" fill="none"><path d="M8 10V7a4 4 0 0 1 8 0v3M7 10h10a2 2 0 0 1 2 2v7H5v-7a2 2 0 0 1 2-2Zm5 4v2" /></svg>
-              <svg class="entry-connection-icon" viewBox="0 0 24 24" fill="none"><path d="M4 8a12 12 0 0 1 16 0M7 12a7.5 7.5 0 0 1 10 0m-7 4a3 3 0 0 1 4 0m-2 4h.01" /></svg>
-            </span>
-            <div class="entry-notice-copy">
-              <h2 id="entryNoticeTitle"></h2>
-              <p id="entryNoticeDescription"></p>
-              <button id="entryNoticeRetry" type="button" hidden>重新连接</button>
-            </div>
-          </section>
-          <label id="grokVoicePicker" class="grok-voice-picker" hidden>
-            <span>候选女声</span>
-            <select id="grokVoice" aria-label="选择 Grok 女声" aria-describedby="grokVoiceHint"></select>
-            <small id="grokVoiceHint">选好声音，再拨号试聊</small>
-          </label>
-          <a id="grokListen" class="grok-listen-link" href="./compare" hidden>先听一组表达对比 →</a>
-          <h1 id="voiceTitle" class="sr-only">和 V 通话</h1>
-          <div class="call-actions">
-            <button
-              id="start"
-              disabled
-              class="call-button call-start talk-button"
-              type="button"
-              aria-label="拨号"
-              title="拨号"
-            >
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path
-                  d="m8.5 3.5 2.1 4.4-2.3 2.3a15.5 15.5 0 0 0 5.5 5.5l2.3-2.3 4.4 2.1v3a2 2 0 0 1-2.2 2C10.4 20 4 13.6 3.5 5.7a2 2 0 0 1 2-2.2h3Z"
-                /></svg
-              ><span id="startLabel" class="sr-only">拨号</span>
-            </button>
-          </div>
+          <div class="home"><span class="avatar-name">V</span></div>
         </section>
-        <aside class="conversation-panel" aria-label="聊天内容">
-          <div
-            id="conversation"
-            class="conversation"
-            role="log"
-            aria-label="通话内容"
-            aria-live="polite"
-            aria-relevant="additions text"
-          >
-            <div id="conversationEmpty" class="empty" hidden></div>
-            <div id="transcriptHistory" class="transcript-history"></div>
-            <section
-              id="transcriptCurrent"
-              class="transcript-current"
-              aria-label="正在说的内容"
-              hidden
-            >
-              <h3 id="currentLabel" class="sr-only">正在说</h3>
-              <div
-                id="transcriptCurrentRows"
-                class="transcript-current-rows"
-              ></div>
-            </section>
-          </div>
-          <div id="conversationFooter">
-            <div id="callStatusBar" class="call-status-bar">
-              <div id="statusHome">
-                <p
-                  id="status"
-                  class="status-text"
-                  data-notice="normal"
-                  role="status"
-                >
-                  拨号后，直接说话。
-                </p>
-              </div>
-              <div class="task-progress">
-                <span id="taskStatus" class="task-status" role="status"></span
-                ><button
-                  id="cancel"
-                  type="button"
-                  hidden
-                  disabled
-                  aria-label="取消后台任务"
-                  title="取消后台任务"
-                >
-                  取消
-                </button>
-              </div>
-            </div>
-            <form id="steerForm" class="steer-form" data-open="false">
-              <label class="sr-only" for="steerText">补充内容</label
-              ><input
-                id="steerText"
-                placeholder="说点什么吧…"
-                maxlength="2000"
-                autocomplete="off"
-                disabled
-              />
-              <button
-                id="steer"
-                type="submit"
-                aria-label="发送补充内容"
-                disabled
-              >
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="m3 3 19 8-9 3-3 9-7-20Zm9 10L22 3" />
-                </svg>
-              </button>
-              <button
-                id="composerClose"
-                type="button"
-                aria-label="收起文字输入"
-              >
-                ×
-              </button>
-            </form>
-          </div>
-        </aside>
-      </div>
-      <div id="pillHome">
-        <div id="callPill" class="call-pill" aria-label="通话控制">
-          <div id="pillAvatar" class="pill-avatar">
-            <img
-              id="pillPortrait"
-              src="./assets/v-operator-idle-256.webp"
-              alt=""
-            />
-          </div>
-          <div class="model-picker">
-            <label class="sr-only" for="voiceModel">语音模型</label
-            ><select id="voiceModel" class="sr-only" aria-label="语音模型">
-              <option value="gpt-live">GPT Live</option>
-              <option value="seeduplex" selected disabled>豆包 SeedDuplex</option>
-              <option value="grok" disabled>Grok Voice 3.0</option>
-            </select>
-            <button
-              id="modelTrigger"
-              type="button"
-              aria-label="选择语音模型"
-              aria-haspopup="menu"
-              aria-expanded="false"
-            >
-              <span id="modelName">豆包 SeedDuplex</span
-              ><span aria-hidden="true">⌄</span>
-            </button>
-            <div
-              id="modelMenu"
-              class="model-menu"
-              role="menu"
-              aria-label="语音模型"
-              hidden
-            ></div>
-            <span id="badge" class="connection-badge" role="status"
-              >连接中</span
-            >
-          </div>
-          <button
-            id="textToggle"
-            type="button"
-            aria-label="打开文字输入"
-            aria-expanded="false"
-            aria-controls="steerForm"
-            hidden
-          >
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <rect x="2" y="5" width="20" height="14" rx="3" />
-              <path
-                d="M6 9h1m3 0h1m3 0h1m3 0h1M6 12h1m3 0h1m3 0h1m3 0h1M7 16h10"
-              />
-            </svg>
-          </button>
-          <button
-            id="mute"
-            type="button"
-            aria-label="静音麦克风"
-            aria-pressed="false"
-            hidden
-          >
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <rect x="9" y="2" width="6" height="13" rx="3" />
-              <path d="M6 10v2a6 6 0 0 0 12 0v-2M12 18v4m-4 0h8" />
-              <path class="mute-slash" d="m3 3 18 18" />
-            </svg>
-          </button>
-          <span id="mutedNotice" class="sr-only" role="status" hidden
-            >麦克风已静音</span
-          >
-          <button
-            id="stop"
-            class="call-button call-stop stop-button"
-            type="button"
-            hidden
-            aria-label="结束通话"
-            title="结束通话"
-          >
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M3 11.8c5.1-4.4 12.9-4.4 18 0v3.7l-4.5.5-.7-3.2a12.3 12.3 0 0 0-7.6 0l-.7 3.2-4.5-.5v-3.7Z"
-              /></svg
-            ><span id="stopLabel" class="sr-only">结束通话</span>
-          </button>
-        </div>
-      </div>
-      <audio id="remoteAudio" autoplay playsinline></audio
-      ><audio id="callSound" preload="none" playsinline></audio>
-    </main>
+      </main>
+    </div>
+    <audio id="remoteAudio" autoplay playsinline></audio
+    ><audio id="callSound" preload="none" playsinline></audio>
     <section
       id="contentReader"
       class="reader-layer"

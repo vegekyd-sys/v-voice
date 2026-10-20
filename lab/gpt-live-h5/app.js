@@ -1,11 +1,12 @@
 import { entryStartup, startVoiceEntry, markVoiceTiming } from "./entry-startup.mjs";
-import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
+import { createAvatarTasks } from "./avatar-state.mjs";
 import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { createAvatarTelemetry } from "./avatar-telemetry.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
 import { createContentView } from "./content-view.mjs";
-import { mountProductControls } from "./product-controls.mjs";
+import { createCallView } from "./call-view.mjs";
+import { mountCallUi } from "./ui-bundle.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 import { createPageMicrophoneSession } from "./microphone-session.mjs";
 import { createCallSounds } from "./call-sounds.mjs";
@@ -13,9 +14,32 @@ import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 import { createRelayAudio } from "./relay-audio.mjs";
 import { createScreenWakeLock } from "./screen-wake-lock.mjs";
 import { mountChangelog } from "./changelog.mjs";
-import { createSpeakerGate, createSpeakerFixture, renderSpeakerEvent } from "./speaker-routing.mjs";
+import { createSpeakerGate, createSpeakerFixture } from "./speaker-routing.mjs";
 
 const $ = (id) => document.getElementById(id);
+// app.js is the call engine; everything the page shows is written to this view
+// and rendered by the React UI. Audio elements and the reader stay in the HTML.
+const view = createCallView();
+const contentView = document.querySelector ? createContentView(document, window, { onReading: reading => view.set({ reading }) }) : null;
+const renderAssistant = (target, item) => {
+  if (contentView) contentView.render(target, item, { auto: item.document === true });
+  else renderMarkdown(target, item.text, document);
+};
+if (document.querySelector) mountCallUi(document, view, {
+  renderAssistant, onDocumentShown: callId => documentShown(callId),
+  actions: {
+    dial: () => void startCall(), hangup: () => void stopCall(),
+    redial: () => void stopCall().then(() => startCall()),
+    resume: () => void recoverPlaybackGesture(),
+    steer: text => sendSteer(text), cancelTasks: () => cancelTasks(),
+    // Toggle from the store, not the last render, so quick taps alternate.
+    mute: () => setMuted(!view.get().muted),
+    compose: open => view.set(state => ({ composer: { ...state.composer, open } })),
+    composerOpen: () => view.get().composer.open,
+    chooseModel: id => { if (view.get().models.some(model => model.id === id && model.available)) view.set({ model: id }); },
+    chooseGrokVoice: id => view.set(state => ({ grok: { ...state.grok, voice: id } })),
+  },
+});
 if (document.querySelector) mountChangelog(document, window);
 let microphoneSession = createPageMicrophoneSession();
 let call = null;
@@ -31,66 +55,46 @@ function speakerEvent(value){
   const {audio,delta,...safe}=value;
   let events;try{events=JSON.parse(document.body.dataset.speakerEvents??'[]');}catch{events=[];}
   events.push({...safe,at:performance.now(),...audio?{audioBytes:Math.floor(audio.length*.75)}:{}});document.body.dataset.speakerEvents=JSON.stringify(events.slice(-300));
-  if(value.type?.startsWith('speaker.'))renderSpeakerEvent(value);
+  if(value.type?.startsWith('speaker.'))view.speakerEvent(value);
+  if(value.type==='speaker.decision')document.body.dataset.speakerState=JSON.stringify({participants:value.participants,targetId:value.targetId,mode:value.mode,shouldRespond:value.shouldRespond,addresseeIds:value.addresseeIds,timings:value.timings});
   if(['speaker.utterance','speaker.decision'].includes(value.type))renderTranscript(presentation.consume(value));
 }
-function refreshGrokVoicePicker() {
-  const picker = $("grokVoicePicker"), select = $("grokVoice");
-  if (!picker || !select) return;
-  picker.hidden = $("voiceModel")?.value !== 'grok' || !select.options.length;
-  select.disabled = document.body.dataset.callState !== 'idle';
-  const listen = $("grokListen");
-  if(listen)listen.hidden = picker.hidden || select.disabled || listen.dataset.available !== 'true';
-  $("grokVoiceHint").textContent = select.disabled ? "挂断后可以切换声音" : select.dataset.deliveryHint || "选好声音，再拨号试聊";
-}
-$("voiceModel")?.addEventListener('change', refreshGrokVoicePicker);
 const phoneEntry = new URLSearchParams(window.location.search).get("phone");
 const apiUrl = route => `./api/${route}?${phoneEntry ? `phone=${encodeURIComponent(phoneEntry)}` : `entry=${callerEntry}`}`;
 const duplexRecoveryMessage = "上一段语音还没确认结束。若仍无声音，请结束通话后重新开始。";
 const playbackRecoveryMessage = "声音播放被暂停了，点一下页面恢复声音。";
 const greetingGraceMs = 15000;
 const presentation = createTranscriptPresentation();
-const renderedTurns = new Map();
-const contentView = document.querySelector ? createContentView(document, window) : null;
-const productControls = document.querySelector ? mountProductControls(document, window, {
-  onMute: muted => { if (!call?.stream) return false; for (const track of call.stream.getAudioTracks()) track.enabled = !muted; return true; },
-}) : null;
 const tasks = createAvatarTasks();
 const avatar = typeof window.Image === "function" ? mountAvatar(document, window, {owner:()=>call?.voiceSessionId,onDisplayed:event=>call?.avatarTelemetry?.display(event)}) : null;
-const sceneAnimations = new Map();
 const screenWakeLock = createScreenWakeLock({ navigator, document, onState: state => { document.body.dataset.screenWakeLock = state; } });
 function setCallState(state) {
   if(state==='connected'&&call?.fixture&&!call.fixtureStarted){call.fixtureStarted=true;const owner=call;setTimeout(()=>{if(call===owner)owner.fixture.start();},1500);}
   if (state === "connected" && document.body.dataset.callState === "dialing") markVoiceTiming("voice.connection.ready");
   screenWakeLock.setActive(state !== 'idle');
+  const live = ["connected", "ending"].includes(state);
+  view.set(current => ({ call: state, callStartedAt: live ? current.callStartedAt ?? Date.now() : null,
+    ...(live ? {} : { composer: { ...current.composer, open: false }, muted: false }) }));
+  if (!live) document.body.dataset.microphoneMuted = "false";
   if (document.body.dataset.callState === state) return;
-  const animate = typeof window.matchMedia === "function"
-    && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const elements = animate ? [document.querySelector?.(".portrait-wrap"), document.querySelector?.(".call-actions")].filter(Boolean) : [];
-  const before = elements.map(element => element.getBoundingClientRect());
-  for (const animation of sceneAnimations.values()) animation.cancel();
-  sceneAnimations.clear();
   document.body.dataset.callState = state;
-  productControls?.callState(state);
-  refreshGrokVoicePicker();
-  elements.forEach((element, index) => {
-    const from = before[index], to = element.getBoundingClientRect();
-    if (!from.width || !to.width || typeof element.animate !== "function") return;
-    const dx = from.x + from.width / 2 - to.x - to.width / 2;
-    const dy = from.y + from.height / 2 - to.y - to.height / 2;
-    const animation = element.animate([
-      { transform: `translate(${dx}px, ${dy}px) scale(${from.width / to.width}, ${from.height / to.height})`, transformOrigin: "center" },
-      { transform: "none", transformOrigin: "center" },
-    ], { duration: 620, easing: "cubic-bezier(.22, 1, .36, 1)" });
-    sceneAnimations.set(element, animation);
-    animation.onfinish = () => { if (sceneAnimations.get(element) === animation) sceneAnimations.delete(element); };
-  });
 }
+function setVoiceState(state) {
+  document.body.dataset.voiceState = state;
+  view.voice(state);
+}
+function setMuted(muted) {
+  if (!call?.stream) return;
+  for (const track of call.stream.getAudioTracks()) track.enabled = !muted;
+  document.body.dataset.microphoneMuted = String(muted);
+  view.set({ muted });
+}
+// The last full sentence, for the few places that compare it; the view keeps
+// its short display form for the one status line.
+let statusText = "拨号后，直接说话。";
 const setStatus = (text, { tone = "info" } = {}) => {
-  $("status").textContent = text;
-  $("status").dataset.tone = tone;
-  $("status").dataset.notice = ["拨号后，直接说话。", "V 正在听，直接说话就好"].includes(text) ? "normal"
-    : ["正在连接 V…", "正在结束通话…"].includes(text) ? "progress" : "message";
+  statusText = text;
+  view.message(text, tone);
 };
 function duplexDiagnostic(active, entry) {
   if (call !== active) return;
@@ -177,7 +181,7 @@ function cancelAutomaticEnd(active) {
   if (!active.ending) return;
   clearTimeout(active.ending.timeout); active.ending = null;
   setCallState("connected");
-  $("badge").textContent = "通话中";
+  view.set({ badge: "通话中" });
   connectedStatus(active);
 }
 function endCallRequest(active, requestId, originUserTurnId) {
@@ -200,7 +204,7 @@ function armAutomaticEnd(active, request) {
     || active.latestNativeUserTurnId !== request.originUserTurnId || active.ending) return;
   active.ending = request;
   setCallState("ending");
-  $("badge").textContent = "正在结束"; connectedStatus(active);
+  view.set({ badge: "正在结束" }); connectedStatus(active);
   // Silence or a timer alone is not proof of a delivered farewell. Keep the
   // manual button available if transport/playback evidence never arrives.
   request.timeout = setTimeout(() => {
@@ -336,7 +340,7 @@ async function startRemotePlayback(active, source) {
     active.playbackAudioBlocked = false;
     active.playbackNeedsGesture = Boolean(active.playbackContextBlocked);
     duplexDiagnostic(active, { type: "playback-started", at: performance.now(), source, ...playbackState(active) });
-    if (source === "gesture" || $("status").textContent === playbackRecoveryMessage) connectedStatus(active);
+    if (source === "gesture" || statusText === playbackRecoveryMessage) connectedStatus(active);
     void greetWhenReady(active);
     return true;
   } catch (error) {
@@ -391,9 +395,7 @@ function avatarContext(snapshot = presentation.snapshot()) {
     taskOutcome:tasks.size ? 'pending' : tasks.completion ? tasks.completion.ok ? 'success' : 'error' : 'none'});
 }
 function taskState() {
-  $("taskStatus").textContent = ACTIVITY_LABELS[tasks.pose] ?? "";
-  $("cancel").disabled = tasks.size === 0;
-  $("cancel").hidden = tasks.size === 0;
+  view.set({ tasks: tasks.list(), cancelEnabled: tasks.size > 0 });
   void avatar?.show(tasks.pose, tasks.completion);
   document.body.dataset.avatarState = tasks.size > 1 ? "very-busy" : tasks.size ? "busy" : "idle";
   avatarContext();
@@ -401,8 +403,15 @@ function taskState() {
 function receiveDocument(active,value){
   if(call!==active||value.voiceSessionId!==active.voiceSessionId)return;
   renderTranscript(presentation.consume(value));
-  if(![...renderedTurns.values()].some(row=>row.dataset.documentCallId===value.callId))return;
-  void api('content-shown',{voiceSessionId:active.voiceSessionId,callId:value.callId}).catch(()=>{});
+}
+// The UI reports a document row once it is actually on screen.
+function documentShown(callId){
+  const active=call;
+  if(!active?.voiceSessionId||typeof callId!=='string')return;
+  active.shownDocuments??=new Set();
+  if(active.shownDocuments.has(callId))return;
+  active.shownDocuments.add(callId);
+  void api('content-shown',{voiceSessionId:active.voiceSessionId,callId}).catch(()=>{});
 }
 function startPresentationRecovery(active,applyNativeControl=()=>{}){
     // Authenticated recovery is shared by native and relay transports.
@@ -433,55 +442,15 @@ function startPresentationRecovery(active,applyNativeControl=()=>{}){
     void refreshPresentation();
  }
 function renderTranscript(snapshot) {
-  const log = $("conversation");
-  const follow = log.scrollHeight - log.scrollTop - log.clientHeight < 64;
   const all = [...snapshot.history, ...snapshot.current];
   document.body.dataset.conversation = all.some(item => item.text?.trim()) ? "started" : "empty";
-  const visibleKeys = new Set(all.map(item => item.key));
-  for (const [key, row] of renderedTurns) if (!visibleKeys.has(key)) { row.remove(); renderedTurns.delete(key); }
-  $("currentLabel").textContent = call ? "正在说" : "最后的片段";
-  $("conversationEmpty").hidden = all.length > 0;
-  $("transcriptCurrent").hidden = snapshot.current.length === 0;
-  for (const [items, parent] of [[snapshot.history, $("transcriptHistory")], [snapshot.current, $("transcriptCurrentRows")]]) {
-    for (const [index, item] of items.entries()) {
-      let row = renderedTurns.get(item.key);
-      if (!row) {
-        row = document.createElement("article");
-        row.className = `transcript-turn ${item.role}`;
-        const meta = document.createElement("div"); meta.className = "transcript-meta";
-        const speaker = document.createElement("span"); speaker.className = "transcript-speaker";
-        const time = document.createElement("time"); time.className = "transcript-time";
-        const text = document.createElement("div"); text.className = "transcript-text";
-        meta.append(speaker, time); row.append(meta, text);
-        row.parts = { speaker, time, text };
-        renderedTurns.set(item.key, row);
-      }
-      if(item.document)row.dataset.documentCallId=item.callId;
-      if(item.speakerId){row.dataset.speakerId=item.speakerId;row.dataset.speakerTone=String(item.speakerTone);row.dataset.listenOnly=String(item.listenOnly);}
-      if(speakerCandidate())row.dataset.speakerLabeled=String(Boolean(item.speakerId)||item.role==='assistant');
-      const streaming = String(Boolean(call) && !item.complete);
-      if (row.dataset.streaming !== streaming) row.dataset.streaming = streaming;
-      const speakerLabel=item.speaker+(item.listenOnly?' · 仅倾听':'');
-      if (row.parts.speaker.textContent !== speakerLabel) row.parts.speaker.textContent = speakerLabel;
-      if (row.parts.time.textContent !== item.time) row.parts.time.textContent = item.time;
-      const dateTime = new Date(item.at).toISOString();
-      if (row.parts.time.dateTime !== dateTime) row.parts.time.dateTime = dateTime;
-      if (row.rawText !== item.text || row.complete !== item.complete) {
-        if (item.role === "assistant" && contentView) contentView.render(row.parts.text, item, {auto:item.document === true});
-        else if (item.role === "assistant") renderMarkdown(row.parts.text, item.text, document);
-        else row.parts.text.textContent = item.text;
-        row.rawText = item.text; row.complete = item.complete;
-      }
-      if (parent.children[index] !== row) parent.insertBefore(row, parent.children[index] ?? null);
-    }
-  }
-  if (follow) log.scrollTop = log.scrollHeight;
+  view.set({ transcript: snapshot });
   avatarContext(snapshot);
 }
 function resetTranscript() {
-  contentView?.reset(); presentation.reset(); renderedTurns.clear();
-  if(speakerCandidate()){$('speakerRoster')?.remove();delete document.body.dataset.speakerState;}
-  $("transcriptHistory").replaceChildren(); $("transcriptCurrentRows").replaceChildren();
+  contentView?.reset(); presentation.reset();
+  if(speakerCandidate())delete document.body.dataset.speakerState;
+  view.set({ speaker: { multi: false, people: [], lastSpeakerId: null, listenOnly: false, status: null }, thinkingAt: null });
   renderTranscript(presentation.snapshot());
 }
 function reportNativeCaller(active,final=false){
@@ -510,6 +479,7 @@ function providerMessage(event) {
     data.turn.id === active.latestNativeUserTurnId && typeof data.turn.transcript === "string" && data.turn.transcript.trim()) {
     active.completedNativeUserTurns ??= new Set(); active.completedNativeUserTurns.add(data.turn.id);
     active.completedNativeUserText=data.turn.transcript.trim();updateNativeUserText(active,data.turn.transcript);reportNativeCaller(active,true);applyVoiceHostEnd(active);
+    view.thinking();
     if (active.completedNativeUserTurns.size > 256) active.completedNativeUserTurns.delete(active.completedNativeUserTurns.values().next().value);
   }
   if (active && data.type === "turn.created" && ["user", "assistant"].includes(data.turn?.role)) {
@@ -595,16 +565,12 @@ async function stopCall() {
   }
   $("remoteAudio").srcObject = null;
   $("remoteAudio").muted = false;
-  tasks.clear(); taskState(); document.body.dataset.voiceState = "idle";
+  tasks.reset(); taskState(); setVoiceState("idle");
   resetTranscript();
-  $("conversation").scrollTop = 0;
-  $("steerText").value = "";
+  if ($("steerText")) $("steerText").value = "";
   setCallState("idle");
-  $("start").hidden = false; $("start").disabled = false; $("stop").hidden = true;
-  $("steerText").disabled = true; $("steer").disabled = true;
-  $("badge").textContent = liveReady ? "可以拨号" : "暂未连接";
-  $("startLabel").textContent = "拨号"; $("stopLabel").textContent = "结束通话";
-  if ($("voiceModel")) $("voiceModel").disabled = false;
+  view.set(state => ({ dial: { ...state.dial, disabled: false }, stopLabel: "结束通话", badge: liveReady ? "可以拨号" : "暂未连接",
+    composer: { enabled: false, open: false }, modelDisabled: false }));
   setStatus("拨号后，直接说话。");
   if (active) {
     await active.context?.close().catch(() => {});
@@ -617,13 +583,12 @@ async function startCall() {
   for (const name of ["voice.dial.requested", "voice.microphone.ready", "voice.reservation.ready", "voice.connection.ready"])
     performance.clearMarks?.(name);
   markVoiceTiming("voice.dial.requested");
-  $("start").disabled = true; $("start").hidden = true; $("stop").hidden = false;
-  $("stopLabel").textContent = "取消拨号"; $("badge").textContent = "连接中";
+  view.set(state => ({ dial: { ...state.dial, disabled: true }, stopLabel: "取消拨号", badge: "连接中", modelDisabled: true }));
   setCallState("dialing"); setStatus("正在连接 V…");
   resetTranscript();
   const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController() }; call = active; starting = active;
-  if ($("voiceModel")) $("voiceModel").disabled = true;
-  if (speakerCandidate()||['seeduplex','grok'].includes($("voiceModel")?.value)) {
+  const chosenModel = view.get().model;
+  if (speakerCandidate()||['seeduplex','grok'].includes(chosenModel)) {
     // Create/resume in the dial gesture, before microphone and network awaits.
     active.context = new AudioContext({latencyHint:"interactive"});
     active.contextResume = active.context.resume();
@@ -660,8 +625,8 @@ async function startCall() {
     active.stream = active.capture.stream;
     if(fixtureId)active.fixture=active.capture;
     if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
-    const selectedModel = ['seeduplex','grok'].includes($("voiceModel")?.value)?$("voiceModel").value:'gpt-live';
-    const reservation = await api("session", {model:selectedModel,...speakerCandidate()?{inputPolicy:new URLSearchParams(location.search).get('inputPolicy')==='native'?'native':'speaker'}:{},...(selectedModel==='grok'?{voice:$("grokVoice")?.value || undefined}:{})}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
+    const selectedModel = ['seeduplex','grok'].includes(chosenModel)?chosenModel:'gpt-live';
+    const reservation = await api("session", {model:selectedModel,...speakerCandidate()?{inputPolicy:new URLSearchParams(location.search).get('inputPolicy')==='native'?'native':'speaker'}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:{})}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     const diagnosticOwner=avatarDiagnosticOwner=Symbol('avatar-call');
     document.body.dataset.avatarReactionRequests='0';
@@ -695,7 +660,7 @@ async function startCall() {
       active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,greeting:!active.fixture,inputGated:Boolean(reservation.speakerRouting),
         onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message, { tone: "error" }));},
         onClosed:()=>{if(call===active)void stopCall();},
-        onPlaybackActivity:speaking=>{if(call===active){document.body.dataset.voiceState=speaking?'speaking':'listening';if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
+        onPlaybackActivity:speaking=>{if(call===active){setVoiceState(speaking?'speaking':'listening');if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
         onEvent:value=>{
           if(call!==active)return;
           if(speakerCandidate()&&(value.type.startsWith('speaker.')||value.type.startsWith('end.')||value.type==='transcript'&&value.final||['audio.done','audio.clear','error','upload.backpressure'].includes(value.type)))speakerEvent(value);
@@ -713,12 +678,13 @@ async function startCall() {
             renderTranscript(presentation.consume(value.final?{type:'turn.done',turn:{id,role:value.role,transcript:value.text}}:
               {type:'output_transcript.delta',turn_id:id,delta:value.text}));
             if(value.final)delete active.relayTurns[value.role];
+            if(value.final&&value.role==='user')view.thinking();
           }
         }});
       await active.relay.start();if(call!==active)return;
       startPresentationRecovery(active);
-      setCallState('connected');$("badge").textContent='通话中';$("stopLabel").textContent='结束通话';
-      $("steerText").disabled=false;$("steer").disabled=false;setStatus('V 正在听，直接说话就好');
+      setCallState('connected');view.set({badge:'通话中',stopLabel:'结束通话',composer:{enabled:true,open:false}});
+      setStatus('V 正在听，直接说话就好');
       void active.sounds.connected();
       active.heartbeat=setInterval(()=>void api('heartbeat',{voiceSessionId:active.voiceSessionId}).catch(()=>{}),15000);
       return;
@@ -812,9 +778,9 @@ async function startCall() {
           setStatus(duplexRecoveryMessage);
         } else if (!duplex.localPlaybackMuted && active.duplexRecoveryNotice) {
           active.duplexRecoveryNotice = false;
-          if ($("status").textContent === duplexRecoveryMessage) connectedStatus(active);
+          if (statusText === duplexRecoveryMessage) connectedStatus(active);
         }
-        document.body.dataset.voiceState = energy > .008 && !duplex.localPlaybackMuted && !active.playbackNeedsGesture ? "speaking" : "listening";
+        setVoiceState(energy > .008 && !duplex.localPlaybackMuted && !active.playbackNeedsGesture ? "speaking" : "listening");
         if(duplex.localUserSpeaking||microphoneEnergy>.01)active.microphoneQuietSince=null;else active.microphoneQuietSince??=at;
         applyVoiceHostEnd(active);
         observeAutomaticEnd(active, at, energy);
@@ -826,10 +792,8 @@ async function startCall() {
       if (active.pc.connectionState === "connected") {
         setCallState("connected");
         void active.sounds.connected();
-        $("stopLabel").textContent = "结束通话";
-        $("badge").textContent = "通话中"; connectedStatus(active);
-        $("start").hidden = true; $("stop").hidden = false;
-        $("steerText").disabled = false; $("steer").disabled = false;
+        view.set({ badge: "通话中", stopLabel: "结束通话", composer: { enabled: true, open: false } });
+        connectedStatus(active);
         void greetWhenReady(active);
       } else if (["failed", "disconnected"].includes(active.pc.connectionState)) {
         void stopCall().then(() => { if (!call) setStatus("连接已中断，可以重新开始通话。", { tone: "error" }); });
@@ -850,26 +814,30 @@ async function startCall() {
     if (call !== active) return;
     active.heartbeat = setInterval(() => { if (call === active) void api("heartbeat", { voiceSessionId: active.voiceSessionId }).catch(() => {}); }, 15000);
   } catch (error) { if (call === active) { await stopCall(); if (!call) setStatus(error.name === "NotAllowedError" ? "请允许麦克风访问后重试。" : error.message, { tone: "error" }); } }
-  finally { if (starting === active) starting = null; if (!call) $("start").disabled = false; }
+  finally { if (starting === active) starting = null; if (!call) view.set(state => ({ dial: { ...state.dial, disabled: false } })); }
 }
-$("start").addEventListener("click", startCall);
-$("stop").addEventListener("click", () => void stopCall());
 // A tap anywhere can restore browser playback. Never gate/stop the microphone
 // or cancel accepted work while requesting this user gesture.
 window.addEventListener("pointerdown", () => { screenWakeLock.ensure(); void recoverPlaybackGesture(); });
 window.addEventListener("keydown", () => void recoverPlaybackGesture());
-$("steerForm").addEventListener("submit", async (event) => {
-  event.preventDefault(); const text = $("steerText").value.trim(); if (!text || !call) return;
+async function sendSteer(value) {
+  const text = String(value ?? "").trim(); if (!text || !call) return false;
   const active = call;
-  try { const receipt = await api("steer", { voiceSessionId: active.voiceSessionId, text, mode: "steer" }); if (call === active) { $("steerText").value = ""; productControls?.sent(); setStatus(receipt.queued === true ? "条件已交给原任务，等待后台应用。" : "补充内容已发送。", { tone: "success" }); } }
-  catch (error) { if (call === active) setStatus(error.message, { tone: "error" }); }
-});
-$("cancel").addEventListener("click", async () => {
+  try {
+    const receipt = await api("steer", { voiceSessionId: active.voiceSessionId, text, mode: "steer" });
+    if (call !== active) return false;
+    view.set(state => ({ composer: { ...state.composer, open: false } }));
+    setStatus(receipt.queued === true ? "条件已交给原任务，等待后台应用。" : "补充内容已发送。", { tone: "success" });
+    return true;
+  } catch (error) { if (call === active) setStatus(error.message, { tone: "problem" }); }
+  return false;
+}
+async function cancelTasks() {
   if (!call) return;
   const active = call;
   try { await api("steer", { voiceSessionId: active.voiceSessionId, text: "取消当前后台任务，不要继续执行。", mode: "cancel" }); if (call === active) setStatus("已请求取消后台任务。", { tone: "success" }); }
-  catch (error) { if (call === active) setStatus(error.message, { tone: "error" }); }
-});
+  catch (error) { if (call === active) setStatus(error.message, { tone: "problem" }); }
+}
 window.addEventListener("pagehide", () => {
   screenWakeLock.setActive(false);
   microphoneSession.close();
@@ -885,16 +853,22 @@ function showEntryNotice(message, { reconnecting = false } = {}) {
   const needsLink = /本人入口|完整.*入口/u.test(message);
   const invalidLink = /分享链接.*(?:无效|失效)|入口.*(?:不存在|已关闭)/u.test(message);
   const crowded = /尝试次数过多|访问的人有点多/u.test(message);
-  $("entryNoticeTitle").textContent = needsLink ? "请从专属链接进入" : invalidLink ? "通话链接暂不可用" : reconnecting ? "V 正在重新连接" : crowded ? "稍等一下，再来找 V" : "暂时没连上 V";
-  $("entryNoticeDescription").textContent = needsLink ? "重新打开完整的个人通话链接，就能和 V 聊天。" : invalidLink ? "请使用最新的完整个人链接重新打开。" : reconnecting ? "稍等片刻，再试着连接。" : crowded ? "当前连接较多，请稍后重试。" : "请检查网络，或稍后重新连接。";
-  $("entryNoticeRetry").hidden = needsLink || invalidLink;
-  $("entryNotice").dataset.kind = needsLink || invalidLink ? "link" : "connection";
-  $("entryNotice").hidden = false;
+  view.set({ entry: {
+    kind: needsLink || invalidLink ? "link" : "connection",
+    title: needsLink ? "请从专属链接进入" : invalidLink ? "通话链接暂不可用" : reconnecting ? "V 正在重新连接" : crowded ? "稍等一下，再来找 V" : "暂时没连上 V",
+    description: needsLink ? "重新打开完整的个人通话链接，就能和 V 聊天。" : invalidLink ? "请使用最新的完整个人链接重新打开。" : reconnecting ? "稍等片刻，再试着连接。" : crowded ? "当前连接较多，请稍后重试。" : "请检查网络，或稍后重新连接。",
+    retry: !needsLink && !invalidLink,
+  } });
   document.body.dataset.entryState = "unavailable";
-  // Initial entry failures belong to the home scene, not the in-call footer.
+  // Initial entry failures belong to the home scene, not the call status line.
   setStatus("拨号后，直接说话。");
 }
-$("entryNoticeRetry").addEventListener("click", () => window.location.reload());
+const MODEL_CHOICES = [
+  { id: "gpt-live", label: "GPT Live", available: true },
+  { id: "seeduplex", label: "豆包 SeedDuplex", available: false },
+  { id: "grok", label: "Grok Voice 3.0", available: false },
+];
+view.set({ models: MODEL_CHOICES, model: "seeduplex" });
 async function initializeEntry() {
   try {
     const result = await (entryStartup ?? startVoiceEntry({
@@ -905,31 +879,24 @@ async function initializeEntry() {
     if (result.error) throw new Error(result.error);
     const { status } = result;
     liveReady = status.ready === true;
-    if ($("voiceModel")) for(const model of status.models??[]) {
-      const option=[...$("voiceModel").options].find(o=>o.value===model.id);
-      if(option){option.disabled=!model.available;if(model.label)option.textContent=model.label;}
-    }
-    const select = $("voiceModel");
-    if (select?.options && [...select.options].some(option => option.value === status.defaultModel && !option.disabled)) select.value = status.defaultModel;
-    if (select?.options && [...select.options].find(option => option.value === select.value)?.disabled) {
-      select.value = ['seeduplex', 'gpt-live', 'grok'].find(id => [...select.options].some(option => option.value === id && !option.disabled)) ?? select.value;
-    }
-    productControls?.refreshModels();
-    const grokVoices = status.models?.find(model=>model.id==='grok')?.voices ?? [];
-    if ($("grokListen")) { $("grokListen").dataset.available = String(status.comparisonAvailable === true); $("grokListen").href = `./compare${window.location.search}`; }
-    if ($("grokVoice")) {
-      const grok = status.models?.find(model=>model.id==='grok');
-      $("grokVoice").dataset.deliveryHint = [grok?.speed && grok.speed !== 1 ? `${grok.speed}× 语速` : '',grok?.expressiveTags ? '自主表达试用' : ''].filter(Boolean).join(' · ');
-      $("grokVoice").replaceChildren(...grokVoices.map(voice=>{
-        const option = document.createElement('option'); option.value = voice.id; option.textContent = voice.label; return option;
-      }));
-      if (grokVoices.some(voice=>voice.id==='iris')) $("grokVoice").value = 'iris';
-    }
-    refreshGrokVoicePicker();
-    $("badge").textContent = liveReady ? "可以拨号" : status.preview === false ? "后端重连中" : "页面预览";
-    $("start").disabled = !liveReady;
+    const models = MODEL_CHOICES.map(choice => {
+      const model = status.models?.find(item => item.id === choice.id);
+      return model ? { ...choice, available: Boolean(model.available), ...(model.label ? { label: model.label } : {}) } : choice;
+    });
+    const usable = id => models.some(model => model.id === id && model.available);
+    let model = usable(status.defaultModel) ? status.defaultModel : view.get().model;
+    if (!usable(model)) model = ["seeduplex", "gpt-live", "grok"].find(usable) ?? model;
+    const grok = status.models?.find(item => item.id === "grok");
+    const grokVoices = grok?.voices ?? [];
+    view.set({ models, model, grok: {
+      voices: grokVoices.map(voice => ({ id: voice.id, label: voice.label })),
+      voice: grokVoices.some(voice => voice.id === "iris") ? "iris" : grokVoices[0]?.id ?? null,
+      hint: [grok?.speed && grok.speed !== 1 ? `${grok.speed}× 语速` : "", grok?.expressiveTags ? "自主表达试用" : ""].filter(Boolean).join(" · "),
+      listenHref: `./compare${window.location.search}`, listenAvailable: status.comparisonAvailable === true,
+    } });
+    view.set(state => ({ badge: liveReady ? "可以拨号" : status.preview === false ? "后端重连中" : "页面预览", dial: { ...state.dial, disabled: !liveReady } }));
     if (liveReady) {
-      $("entryNotice").hidden = true;
+      view.set({ entry: null });
       delete document.body.dataset.entryState;
       markVoiceTiming("voice.dial.ready");
     } else if (status.preview === false) showEntryNotice("V 后端正在重新连接", { reconnecting: true });
@@ -937,8 +904,7 @@ async function initializeEntry() {
   } catch (error) {
     liveReady = false;
     entryError = error.message ?? "暂时无法连接 V，请稍后重试。";
-    $("start").disabled = true;
-    $("badge").textContent = "暂未连接";
+    view.set(state => ({ badge: "暂未连接", dial: { ...state.dial, disabled: true } }));
     showEntryNotice(entryError);
   }
 }
