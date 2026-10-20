@@ -58,3 +58,16 @@ test('unavailable end confirmation stays open and a non-ending turn has no extra
  let calls=0;const c=new SpeakerRouter({evaluate:async(s,q)=>{calls++;if(s.request)throw Error('Confirmation unavailable');const r=await evaluator(()=>undefined)(s,q);r.answers.endIntent={type:'choice',choice:'end',probabilities:{end:.7}};return r;}});const r=await say(c,'0','拜拜。');assert.equal(r.endCall,false);assert.equal(r.endVerification,'unavailable');assert.equal(calls,2);
  let ordinary=0;await say(new SpeakerRouter({evaluate:async(s,q)=>{ordinary++;return evaluator(()=>undefined)(s,q);}}),'0','继续聊天');assert.equal(ordinary,1);
 });
+test('a recycled voice leaves the roster and a new voice can join with a fresh label',async()=>{
+  const c=new SpeakerRouter({evaluate:evaluator(()=>undefined)});
+  for(const id of ['0','1','2','3','4'])await say(c,id,'你好');
+  await assert.rejects(say(c,'5','你好'),/上限/);
+  assert.equal(c.forget('speaker:2'),true);
+  const r=await say(c,'5','你好');assert.equal(r.participants.length,5);assert.equal(r.participants.at(-1).label,'Speaker F');
+  assert.equal(new Set(r.participants.map(p=>p.label)).size,5);
+});
+test('an exclusive focus target is never forgotten',async()=>{
+  const e=evaluator((id,s)=>id==='constraint'&&s.participants.length===2?'only_speaker:1':undefined);
+  const c=new SpeakerRouter({evaluate:e});await say(c,'0','你好');await say(c,'1','我是十二');await say(c,'0','只跟十二聊');
+  assert.equal(c.forget('speaker:1'),false);assert.equal(c.forget('speaker:0'),true);
+});

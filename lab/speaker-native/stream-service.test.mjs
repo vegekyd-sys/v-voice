@@ -1,16 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createStreamingSpeakerRoutingService,TurnOutputGate,speakerProfile} from './stream-service.mjs';
+import {createStreamingSpeakerRoutingService,TurnOutputGate,speakerProfile,echoOf} from './stream-service.mjs';
 
 const wait=async predicate=>{for(let i=0;i<600;i++){if(predicate())return;await new Promise(r=>setTimeout(r,5));}throw Error('Test deadline');};
 const answers=(questions,{action='respond',child=false}={})=>({answers:Object.fromEntries(Object.entries(questions).map(([id])=>[id,{type:'choice',choice:id==='action'?action:id.startsWith('role_')?(child?'child':'unknown'):id.startsWith('name_')&&child?'n_0':'keep'}]))});
 const voice=()=>{const pcm=Buffer.alloc(57600);for(let i=0;i<pcm.length;i+=2)pcm.writeInt16LE(6000,i);return pcm;};
-async function fixture(t,{evaluate,prepare=async()=>{},limits}={}){
+async function fixture(t,{evaluate,prepare=async()=>{},limits,reserve={}}={}){
   let asr;const events=[],forwarded=[],profiles=[],clarifications=[],endings=[],rejectedEnds=[];
   const service=createStreamingSpeakerRoutingService({env:{},embedding:{ready:Promise.resolve(),compute:async()=>({embedding:[1,0],inferenceMs:1})},evaluate:evaluate??(async(_s,q)=>answers(q)),limits,createAsr:o=>{asr=o;return {connect:async()=>{},append(){},close(){}};}});
-  service.reserve('call',{model:'seeduplex'});t.after(()=>service.dispose());
+  service.reserve('call',{model:'seeduplex',...reserve});t.after(()=>service.dispose());
   await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},forward:b=>forwarded.push(b),cancel(){},invalidate(){},clarify:text=>clarifications.push(text),end:value=>endings.push(value),cancelEnd:()=>endings.push({revoked:true}),rejectNativeEnd:call=>rejectedEnds.push(call)},e=>events.push(e));
-  service.audio('call',voice());
+  service.audio('call',reserve.inputSampleRate===16000?voice().subarray(0,38400):voice());
   const emit=(text='V，天空为什么是蓝色的？',start=0,end=1100)=>asr.onResult({body:{result:{utterances:[{definite:true,start_time:start,end_time:end,text,speaker_id:'wrong-cloud-id',...(start===null?{start_time:undefined}:{})}]}}});
   return {service,events,forwarded,profiles,emit,clarifications,endings,rejectedEnds,disconnectAsr:()=>asr.onClose()};
 }
@@ -109,4 +109,55 @@ test('call duration expiry closes its route and releases the anonymous roster',a
 
 test('an ordinary admitted reply cannot execute the native models competing end_call',async t=>{
  const f=await fixture(t);await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));let executed=false;f.service.dispatch('call','tool',{name:'end_call',callId:'native-end'},()=>{executed=true;});assert.equal(f.rejectedEnds.length,0);f.emit('谢谢，拜拜。对了，五加六等于几？');await wait(()=>f.rejectedEnds.length===1);assert.equal(executed,false);assert.equal(f.service.has('call'),true);assert(f.events.some(e=>e.type==='speaker.end-withheld'));
+});
+
+const device={surface:'speaker',inputSampleRate:16000};
+test('a household device streams its 16 kHz uplink to the native model without resampling',async t=>{
+  const f=await fixture(t,{reserve:device});await wait(()=>f.forwarded.some(b=>b.some(x=>x!==0)));
+  assert.ok(f.forwarded.length>0);assert.ok(f.forwarded.every(b=>b.length===640));
+});
+test('a phone keeps its 24 kHz native input frames',async t=>{
+  const f=await fixture(t);await wait(()=>f.forwarded.some(b=>b.some(x=>x!==0)));assert.ok(f.forwarded.every(b=>b.length===960));
+});
+test('V own reply heard back through a device microphone is dropped before Decision',async t=>{
+  let calls=0;const f=await fixture(t,{reserve:device,evaluate:async(_s,q)=>{calls++;return answers(q);}});
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));
+  f.service.assistant('call','天空看起来是蓝色的，是因为瑞利散射，蓝光更容易被空气散射开。');
+  const effects=[];f.service.dispatch('call','audio',Buffer.alloc(10),()=>effects.push('speculative'));
+  f.emit('蓝光更容易被空气散射开');
+  await wait(()=>f.events.some(e=>e.type==='speaker.echo-dropped'));
+  assert.equal(calls,0);assert.equal(f.events.some(e=>e.type==='speaker.utterance'),false);assert.deepEqual(effects,[]);
+  f.emit('那晚霞为什么是红的？',1200,2000);await wait(()=>f.events.some(e=>e.type==='speaker.decision'));assert.equal(calls,1);
+});
+test('echo matching tolerates ASR slips but keeps real replies to V',()=>{
+  const said=['我给你讲一个小兔子找胡萝卜的故事'];
+  assert.equal(echoOf('小兔子找胡萝卜的故事',said),true);
+  assert.equal(echoOf('小兔子找胡箩卜的故事',said),true);
+  assert.equal(echoOf('我想听小猪佩奇的故事',said),false);
+  assert.equal(echoOf('好的',['好的好的']),false);
+});
+test('a device stays silent on short or unattributable room speech instead of asking to repeat',async t=>{
+  const f=await fixture(t,{reserve:device});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));
+  const effects=[];f.service.dispatch('call','audio',Buffer.alloc(10),()=>effects.push('speculative'));
+  f.emit('什么？',1300,1500);await wait(()=>f.events.some(e=>e.type==='speaker.recovery-suppressed'));
+  assert.equal(f.events.some(e=>e.type==='speaker.recovery'),false);assert.deepEqual(f.clarifications,[]);
+  // The speculative input is released, so background results are not held behind it.
+  assert.equal(f.service.pending('call'),false);assert.deepEqual(effects,[]);
+});
+test('a device parting line passes the gate as host speech without Decision',async t=>{
+  let calls=0;const f=await fixture(t,{reserve:device,evaluate:async(_s,q)=>{calls++;return answers(q);}});
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));
+  assert.equal(await f.service.hostSpeech('call','你们先聊，需要我再叫我'),true);
+  assert.deepEqual(f.clarifications,['你们先聊，需要我再叫我']);
+  const effects=[];f.service.dispatch('call','audio',Buffer.alloc(10),()=>effects.push('line'));assert.deepEqual(effects,['line']);assert.equal(calls,0);
+});
+test('device instructions name the host-selected person while keeping the entry identity',async t=>{
+  const f=await fixture(t,{reserve:device});
+  const text=f.service.initialInstructions('call','你是 V，现在你通过家里的智能音箱和 Tianyi（天意）本人进行测试；当前设备只开放本人使用');
+  assert.match(text,/主机当前指定的人物/);assert.match(text,/账号与工具仍属于原入口/);assert.match(text,/当前设备只开放本人使用/);
+});
+test('a device call keeps its native path when the voice worker has died',()=>{
+  const events=[],service=createStreamingSpeakerRoutingService({env:{},embedding:{ready:Promise.resolve(),closed:true,compute:async()=>{throw Error('closed');}},evaluate:async()=>({}),onAudit:e=>events.push(e),createAsr:()=>({connect:async()=>{},append(){},close(){}})});
+  assert.equal(service.reserve('device-call',{model:'seeduplex',...device}),null);assert.equal(events[0].reason,'embedding-closed');
+  service.dispose();
 });

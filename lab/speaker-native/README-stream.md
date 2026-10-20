@@ -1,5 +1,7 @@
 # 豆包流式多人 Candidate
 
+设备（StackChan / ReSpeaker）接入见 [README-device.md](README-device.md)。
+
 当前 Linux 候选 `speaker-stream-linux.20261019.5`，独立分支 `codex/volc-speaker-modes`。复用 Voice 产品，不合入或替换线上；26320 保留为串行对照，26325 旧书签转到 Linux。GPT Live 直接使用原生能力。
 
 ## 数据路径
