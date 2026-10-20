@@ -273,7 +273,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.responseActive=true;if(s.ending)s.ending.hasAudio=true;deliverAudio(audio,metadata);}),
       onTranscript:(role,text,final,source)=>{
         if(!current(s))return;
-        if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
+        if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;if(final)speakerRouting.nativeHeard?.(s.id);return;}
         const deliver=()=>{
         if(role==='assistant'&&final)speakerRouting?.assistant(s.id,text);
         if(role==='user'){if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}

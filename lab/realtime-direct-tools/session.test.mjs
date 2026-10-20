@@ -411,6 +411,14 @@ test('SeedDuplex steers and appends to the exact existing backend without a seco
 });
 
 
+test('a finished Doubao transcription under speaker routing tells routing the native session heard the turn',async t=>{
+ let heard=0;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async()=>{},nativeHeard:()=>{heard++;},close(){},audio(){}};
+ const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ f.event({type:'conversation.item.input_audio_transcription.started'});f.event({type:'conversation.item.input_audio_transcription.completed',transcript:''});assert.equal(heard,0);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'交给后台查一下勇士队前十场的对手'});assert.equal(heard,1);
+ assert.equal(f.audit.some(e=>e.type==='transcript'&&e.role==='user'),false);
+});
+
 test('speaker routing failure closes the call without falling back to raw native audio',async t=>{
  let present=true,routed=0;
  const routing={reserve:()=>({policy:'speaker'}),has:()=>present,bind:async()=>{},close:()=>{present=false;},audio:()=>{routed++;}};
