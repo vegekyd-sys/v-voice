@@ -150,3 +150,5 @@ UI 实操发现原 20 帧（400 ms）主线程交接阈值，在从后台切到�
 ![方案展开并保留通话控制](evidence/build8-reader-simulator.jpg)
 
 ![iPad 横屏多人内容双栏](evidence/build8-ipad-simulator.png)
+
+本轮功能源码提交：`78c87ad`。版本／安装状态登记在 [versions.json](versions.json)；后续文档提交不改变已签名 App。

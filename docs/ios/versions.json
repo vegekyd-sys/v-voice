@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "version": "1.0.0",
+  "build": 8,
+  "sourceCommit": "78c87ad",
+  "candidateOnly": true,
+  "signedArchiveVerified": true,
+  "exportedIPAVerified": true,
+  "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab",
+  "installedOnRequestedIPhone": true,
+  "realVoiceAcceptance": "pending",
+  "localTests": {
+    "core": 10,
+    "native": 28,
+    "existingService": 79,
+    "longReplyTargetedRerun": 1
+  },
+  "backgroundActionButton": {
+    "intentMetadataVerified": true,
+    "lastUserAcceptedBuild": 5,
+    "build8DeviceAcceptance": "pending"
+  },
+  "remainingParity": [
+    "GPT Live native transport",
+    "H5 avatar observation retry/gap behavior",
+    "new Dynamic Island Reaction, real waveform and card-state implementation"
+  ]
+}
