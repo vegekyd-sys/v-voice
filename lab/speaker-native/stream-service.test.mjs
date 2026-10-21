@@ -145,6 +145,17 @@ test('ASR reconnect retains the live call and restores absolute timestamps inste
  const f=await fixture(t);f.disconnectAsr();assert.equal(f.service.has('call'),true);await wait(()=>f.events.some(e=>e.type==='speaker.asr-recovered'));f.service.audio('call',Buffer.alloc(24000));f.service.audio('call',voice());f.emit('V，继续聊。',0,1100);await wait(()=>f.events.some(e=>e.type==='speaker.decision'));assert.equal(f.events.find(e=>e.type==='speaker.utterance').turn.startMs,800);assert.equal(f.events.some(e=>e.type==='error'),false);
 });
 
+test('an initial ASR failure cannot announce a listening call while its retry is pending',async t=>{
+ let attempts=0,initialize;const events=[];
+ const service=createStreamingSpeakerRoutingService({env:{},embedding:{ready:Promise.resolve()},evaluate:async()=>({}),createAsr:()=>({connect:async()=>{if(++attempts===1)throw Error('ASR initialization failed');await new Promise(resolve=>{initialize=resolve;});},close(){},append(){}})});
+ t.after(()=>service.dispose());service.reserve('call',{model:'seeduplex'});
+ const binding=service.bind('call',{forward(){}},e=>events.push(e));
+ await wait(()=>events.some(e=>e.type==='speaker.asr-reconnecting'));
+ assert(!events.some(e=>e.type==='speaker.ready'));
+ await wait(()=>initialize);initialize();await binding;
+ assert(events.some(e=>e.type==='speaker.asr-ready'));assert(events.some(e=>e.type==='speaker.ready'));
+});
+
 test('an accepted farewell speaks through native control without replaying the user audio; new speech revokes it',async t=>{
  const f=await fixture(t,{evaluate:async(_s,q)=>{const r=answers(q,{action:'quiet'});r.answers.endIntent={type:'choice',choice:'end',probabilities:{end:1}};r.answers.addressed={type:'choice',choice:'v',probabilities:{v:1}};return r;}});await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit('好，就这样吧，拜拜。');await wait(()=>f.endings.length===1);assert.equal(f.endings[0].turnId,'sp1');assert(f.profiles.some(p=>p[1]==='speaker-end:sp1'));assert.equal(f.events.some(e=>e.type==='speaker.stream-accepted'),false);
  f.service.audio('call',Buffer.alloc(24000));f.service.audio('call',voice());await wait(()=>f.events.some(e=>e.type==='speaker.end-revoked'));assert.equal(f.endings.at(-1).revoked,true);

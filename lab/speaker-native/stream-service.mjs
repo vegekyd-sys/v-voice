@@ -229,7 +229,10 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     const shift=u=>({...u,start_time:(u.start_time??0)+startMs,end_time:Number.isFinite(u.end_time)?u.end_time+startMs:u.end_time,...u.words?{words:u.words.map(shift)}:{}});
     const asr=createAsr({apiKey:env.VOLCENGINE_ASR_API_KEY,onResult:event=>{
       if(s.closed||epoch!==s.asrEpoch)return;
+      s.asrPackets=(s.asrPackets??0)+1;
       const result=event.body?.result;const absolute=result?{...event,body:{...event.body,result:{...result,utterances:(result.utterances??[]).map(shift)}}}:event;
+      const finals=(result?.utterances??[]).filter(u=>u.definite===true).length;
+      if(s.asrPackets===1||finals)send(s,{type:'speaker.asr-response',packets:s.asrPackets,utterances:result?.utterances?.length??0,finals});
       s.latestAsr=absolute;
       if(env.VOICE_STREAM_SYNTHETIC_TRACE==='1')send(s,{type:'speaker.asr-state',utterances:(absolute.body?.result?.utterances??[]).map(u=>({definite:u.definite,startMs:u.start_time,endMs:u.end_time,textLength:u.text?.length}))});
       for(const turn of normalizeFinals(s,absolute))enqueue(s,turn);
@@ -237,14 +240,16 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     try{await asr.connect();}catch(error){recoverAsr(error);return;}
     if(s.closed||epoch!==s.asrEpoch){asr.close();return;}
     s.asrReady=true;
+    send(s,{type:'speaker.asr-ready'});
     const end=s.window.bytes/32,from=Math.max(startMs,end-3000);
     // ASR is nonstream-capable; at most three seconds recover from the existing
     // private ring buffer. All returned timestamps retain the absolute origin.
     if(from>startMs){s.asrEpoch++;asr.close();void connectAsr(s,from).catch(error=>fail(s,error));return;}
     for(let at=from;at<end;at+=100)asr.append(s.window.slice(at,Math.min(end,at+100)));
     if(startMs>0)send(s,{type:'speaker.asr-recovered'});
+    s.asrReadyWait?.();
   };
-  const close=id=>{const s=sessions.get(id);if(!s)return;send(s,{type:'speaker.closed',decisionCalls:s.decisionCalls,inputSeconds:s.inputBytes/48000});s.closed=true;s.abort.abort();if(s.input)s.input.cancelled=true;s.gate.deny();clearInterval(s.timer);clearTimeout(s.responseDeadline);clearTimeout(s.asrRetry);clearTimeout(s.expiry);s.asr?.close();s.tracker.close();s.window.chunks=[];s.listener=null;sessions.delete(id);};
+  const close=id=>{const s=sessions.get(id);if(!s)return;send(s,{type:'speaker.closed',decisionCalls:s.decisionCalls,inputSeconds:s.inputBytes/48000});s.closed=true;s.asrReadyWait?.();s.abort.abort();if(s.input)s.input.cancelled=true;s.gate.deny();clearInterval(s.timer);clearTimeout(s.responseDeadline);clearTimeout(s.asrRetry);clearTimeout(s.expiry);s.asr?.close();s.tracker.close();s.window.chunks=[];s.listener=null;sessions.delete(id);};
   return {
     // surface 'speaker' is a household device: 16 kHz uplink, far-field room.
     reserve(id,{model,policy='speaker',surface='phone',inputSampleRate=24000}={}){
@@ -298,7 +303,9 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
 
     async bind(id,native,listener){
       const s=sessions.get(id);if(!s)return;s.native=native;s.listener=listener;await embedding.ready;
-      await connectAsr(s);if(s.closed)return;s.ready=true;
+      const initialized=new Promise(resolve=>{s.asrReadyWait=resolve;});
+      await connectAsr(s);if(!s.asrReady&&!s.closed)await initialized;s.asrReadyWait=null;
+      if(s.closed||!s.asrReady)return;s.ready=true;
       s.timer=setInterval(()=>{
         if(s.closed||!s.prepared)return;
         const c=s.input;

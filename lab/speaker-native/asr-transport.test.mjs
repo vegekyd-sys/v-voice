@@ -1,8 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {gunzipSync} from 'node:zlib';
-import {VolcAsrStream} from '../volc-speaker/volc-asr.mjs';
+import {EventEmitter} from 'node:events';
+import {VolcAsrStream,encodeAsrFrame} from '../volc-speaker/volc-asr.mjs';
 const payload=frame=>gunzipSync(frame.subarray(8));
+test('WebSocket open is not ASR readiness; service initialization must be acknowledged',async()=>{
+ const socket=new EventEmitter();socket.send=()=>{};socket.close=()=>socket.emit('close');
+ const asr=new VolcAsrStream({apiKey:'test',createWebSocket:()=>socket});let ready=false;
+ const pending=asr.connect().then(()=>{ready=true;});socket.emit('open');await Promise.resolve();assert.equal(ready,false);
+ socket.emit('message',encodeAsrFrame(9,{result:{}},{json:true}));await pending;assert.equal(ready,true);asr.close();
+});
+test('an opened ASR socket without an initialization response has a bounded failure',async()=>{
+ const socket=new EventEmitter();socket.send=()=>{};socket.close=()=>socket.emit('close');
+ const asr=new VolcAsrStream({apiKey:'test',createWebSocket:()=>socket,setupTimeoutMs:20});
+ const pending=assert.rejects(asr.connect(),/initialization timed out/);socket.emit('open');
+ const keepAlive=setTimeout(()=>{},100);try{await pending;}finally{clearTimeout(keepAlive);}
+});
 test('cloud ASR receives exact 100ms PCM batches independently of 20ms caller packets',()=>{
  const frames=[],asr=new VolcAsrStream({apiKey:'test'});asr.socket={readyState:1,send:b=>frames.push(b),close(){}};
  const input=Array.from({length:12},(_,n)=>Buffer.alloc(640,n+1));

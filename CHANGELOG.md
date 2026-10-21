@@ -2,6 +2,7 @@
 
 - Recheck the current AudioContext before attaching capture/playback worklets, resume a foreground interruption, and replace a system-muted cached microphone on redial.
 - Preserve an admitted question, its output gate and recovery deadline until a later request is confirmed. Quiet or undecided acoustic segments cannot cancel its search or spoken reply.
+- Wait for the ASR application initialization response before announcing readiness; an initial retry cannot expose an uninitialized listening call. Record bounded ASR response counters.
 - Retain only bounded audio lifecycle counters and states for physical-phone diagnosis. No raw audio or device identifiers are added.
 - Candidate only; physical iPhone acceptance, merge and production release remain pending. The candidate's homepage notes are registered in `docs/releases/voice-mobile-turn-candidate-20261021/candidate.json`; shipped homepage notes and the production version pointer remain unchanged.
 
