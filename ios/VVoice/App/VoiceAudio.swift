@@ -41,7 +41,10 @@ private final class CaptureHandoff: @unchecked Sendable {
     private var reported = false
     func reserve() -> (accepted: Bool, report: Bool) {
         lock.lock(); defer { lock.unlock() }
-        if pending < 20 { pending += 1; return (true, false) }
+        // UI scene transitions may briefly occupy the main actor. Keep at most
+        // 1.28 s / 61 KB of 20 ms PCM here, still below the relay's 96 KB bound.
+        // Normal delivery remains one frame at a time; sustained backlog fails.
+        if pending < 64 { pending += 1; return (true, false) }
         let report = !reported; reported = true; return (false, report)
     }
     func release() { lock.lock(); pending = max(0, pending - 1); lock.unlock() }
@@ -106,7 +109,7 @@ private final class CaptureHandoff: @unchecked Sendable {
                 let slot = handoff.reserve()
                 guard slot.accepted else {
                     if slot.report { Task { @MainActor [weak self] in
-                        guard let self, self.generation == captureOwner else { return }; self.onFailure?(VoiceError.bufferOverflow)
+                        guard let self, self.generation == captureOwner else { return }; CallDiagnostics.record("audio.capture-overflow"); self.onFailure?(VoiceError.bufferOverflow)
                     } }
                     return
                 }

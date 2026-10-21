@@ -1,6 +1,7 @@
 import XCTest
 import Foundation
 import AVFoundation
+import SwiftUI
 import VVoiceCore
 @testable import VVoice
 
@@ -129,6 +130,69 @@ import VVoiceCore
         try await until { call.resultID == "fixture-result" }
         XCTAssertTrue(call.resultText.contains("完整内容"))
         await call.end(); XCTAssertTrue(call.resultText.isEmpty); XCTAssertNil(call.resultID)
+    }
+
+    func testBackgroundReportOnlyAcknowledgesWhenActuallyOpenedAndKeepsCall() async throws {
+        let call = try await client(); try await call.startOrContinue()
+        call.sceneChanged(.background)
+        try await fixture("report")
+        try await until { call.documents.last?.id == "fixture-plan" }
+        let snapshot = call.activityState
+        XCTAssertEqual(snapshot.documentTitle, "今天的安排与建议")
+        XCTAssertEqual(snapshot.documentID, "fixture-plan")
+        XCTAssertLessThan(try JSONEncoder().encode(snapshot).count, 4_096)
+        await call.resultWasShown("fixture-plan")
+        let hidden = try await stats()
+        XCTAssertEqual((hidden["acknowledgements"] as? [String])?.count, 0)
+        call.sceneChanged(.active)
+        async let first: Void = call.resultWasShown("fixture-plan")
+        async let second: Void = call.resultWasShown("fixture-plan")
+        _ = await (first, second)
+        let opened = try await stats()
+        XCTAssertEqual(opened["acknowledgements"] as? [String], ["fixture-plan"])
+        XCTAssertNil(call.activityState.documentID)
+        XCTAssertEqual(opened["sessions"] as? Int, 1)
+        XCTAssertTrue(call.active)
+        await call.end(); XCTAssertTrue(call.documents.isEmpty); XCTAssertTrue(call.conversation.turns.isEmpty)
+    }
+    func testOpeningNativeReportWhileCapturingKeepsSameCallAndAcknowledgesVisibleContent() async throws {
+        let call = try await client(); try await call.startOrContinue()
+        try await fixture("report")
+        try await until { call.documents.last?.id == "fixture-plan" }
+        let document = try XCTUnwrap(call.documents.last)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let prior = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = UIHostingController(rootView: CallDocumentReader(call: call, document: document))
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; prior?.makeKeyAndVisible() }
+        try await until { (try await self.stats()["acknowledgements"] as? [String]) == ["fixture-plan"] }
+        XCTAssertTrue(call.active, call.detail)
+        let bytes = try await stats()["inputBytes"] as? Int ?? 0
+        try await until { try await self.stats()["inputBytes"] as? Int ?? 0 > bytes + 9_600 }
+        XCTAssertTrue(call.active, call.detail)
+        let current = try await stats()
+        XCTAssertEqual(current["sessions"] as? Int, 1)
+    }
+    func testCaptionPreviewCanBeHiddenWithoutStoppingAudio() async throws {
+        let call = try await client(); try await call.startOrContinue()
+        let prior = call.islandCaptions; defer { call.islandCaptions = prior }
+        try await fixture("demo")
+        try await until { call.conversation.turns.count >= 3 }
+        XCTAssertTrue(call.activityState.caption.contains("日程"))
+        call.islandCaptions = false
+        XCTAssertTrue(call.activityState.caption.isEmpty)
+        XCTAssertTrue(call.active)
+        let before = try await stats()["inputBytes"] as? Int ?? 0
+        try await until { try await self.stats()["inputBytes"] as? Int ?? 0 > before }
+    }
+    func testTypedSupplementUsesExistingOwnedSession() async throws {
+        let call = try await client(); try await call.startOrContinue()
+        try await call.sendSupplement("下午留出半小时")
+        XCTAssertEqual(call.conversation.turns.last?.text, "下午留出半小时")
+        let current = try await stats()
+        XCTAssertEqual(current["sessions"] as? Int, 1)
+        XCTAssertEqual((current["supplements"] as? [[String: Any]])?.last?["mode"] as? String, "steer")
     }
 
     func testAudioArrivingBeforeMicrophoneReadyIsBufferedAndPlayed() async throws {

@@ -5,6 +5,26 @@ import AVFoundation
 /// Exercises physical Voice Processing I/O without opening a network connection,
 /// storing microphone samples, or contacting a model.
 @MainActor final class DeviceAudioTests: XCTestCase {
+    private func simulateShortSceneTransition() {
+        // A bounded UI pause, not a network stall or an unbounded audio buffer.
+        Thread.sleep(forTimeInterval: 0.7)
+    }
+    func testShortSceneTransitionDoesNotStopPhysicalCapture() async throws {
+        guard AVAudioApplication.shared.recordPermission == .granted else { throw XCTSkip("Microphone permission required") }
+        let audio = VoiceAudio()
+        var bytes = 0
+        var failure: Error?
+        audio.onInput = { data, _ in bytes += data.count }
+        audio.onFailure = { failure = $0 }
+        defer { audio.stop() }
+        try audio.start(); try await audio.waitUntilCapturing()
+        let before = bytes
+        simulateShortSceneTransition()
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertNil(failure)
+        XCTAssertTrue(audio.isRunning)
+        XCTAssertGreaterThan(bytes, before + 960)
+    }
     func testAudioCapturesPlaysAndRestartsWithoutNetwork() async throws {
         XCTAssertEqual(AVAudioApplication.shared.recordPermission, .granted,
                        "Authorize the microphone in V Voice before device acceptance")

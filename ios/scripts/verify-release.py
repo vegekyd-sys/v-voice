@@ -7,6 +7,10 @@ assert info['CFBundleIdentifier']=='com.versa.vvoice'
 assert info.get('NSSupportsLiveActivities') is True
 assert info.get('UIBackgroundModes')==['audio']
 assert info.get('NSMicrophoneUsageDescription')
+assert info.get('UIDeviceFamily') == [1, 2], 'Native layout must support iPhone and iPad'
+assert (a.app/'H5Markdown.js').is_file()
+assert (a.app/'H5DesignSource.json').is_file()
+assert (a.app/'H5Reader.css').read_bytes() == (pathlib.Path(__file__).resolve().parents[2]/'lab/gpt-live-h5/styles.css').read_bytes(), 'H5 design must remain synchronized'
 assert 'NSAppTransportSecurity' not in info, 'Release must retain normal TLS enforcement'
 binary=a.app/info['CFBundleExecutable']; data=binary.read_bytes()
 for marker in [b'--local-voice-fixture',b'127.0.0.1:29837',b'fixture-cookie']:

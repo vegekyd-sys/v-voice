@@ -30,9 +30,29 @@ import VVoiceCore
     var active: Bool { phase.isActive }
     var muted: Bool { state.muted }
     private(set) var activitiesEnabled = ActivityAuthorizationInfo().areActivitiesEnabled
+    private(set) var conversation = ConversationPresentation()
+    private(set) var documents: [CallDocument] = []
+    private(set) var tasks: [CallTask] = []
+    private(set) var presentationID = UUID().uuidString
+    var islandCaptions = UserDefaults.standard.object(forKey: "islandCaptions") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(islandCaptions, forKey: "islandCaptions"); publish() }
+    }
+    var statusLine: String {
+        if phase == .interrupted || phase == .reconnecting { return detail }
+        if let task = tasks.last { return task.title }
+        switch phase {
+        case .listening: return "在听"
+        case .thinking: return "在想…"
+        case .speaking: return "在说"
+        case .muted: return "麦克风已静音"
+        default: return phase.title
+        }
+    }
+
 
     @ObservationIgnored let api: VoiceAPI
     @ObservationIgnored private let audio = VoiceAudio()
+    @ObservationIgnored private var captionUpdate: Task<Void, Never>?
     @ObservationIgnored private var closing: Task<Void, Never>?
     @ObservationIgnored private var lastFailure: VoiceError?
     @ObservationIgnored private var transport: RelayTransport?
@@ -66,6 +86,7 @@ import VVoiceCore
     private(set) var resultID: String?
     private(set) var resultText = ""
     @ObservationIgnored private var shownResults: Set<String> = []
+    @ObservationIgnored private var acknowledgingResults: Set<String> = []
     @ObservationIgnored private var initialized = false
     @ObservationIgnored private var appIsActive = false
 
@@ -142,6 +163,7 @@ import VVoiceCore
         guard let owner = state.begin() else { return }
         CallDiagnostics.record("call.start")
         lastFailure = nil
+        conversation.reset(); documents.removeAll(); tasks.removeAll(); presentationID = owner.uuidString
         startedAt = Date(); lastCaption = ""; resultID = nil; resultText = ""; shownResults.removeAll(); detail = "接通后会提示你开口"
         retiredResponses.removeAll(); publish()
         do {
@@ -253,9 +275,17 @@ import VVoiceCore
         case "audio.clear": earlyAudio.removeAll(); earlyAudioBytes = 0; earlyOutputDone = false; audio.clear(); injectedSpeech = false; pendingEndID = nil; naturalEnd?.cancel()
         case "audio.done": if audioReady { audio.markOutputDone() } else { earlyOutputDone = true }
         case "transcript":
-            if let text = v["text"] as? String { lastCaption = String(text.suffix(500)) }
+            if let text = v["text"] as? String, let role = v["role"] as? String {
+                lastCaption = String(text.suffix(500))
+                conversation.receive(role: role, text: text, final: v["final"] as? Bool == true)
+                scheduleCaptionUpdate()
+            }
             if v["role"] as? String == "user", v["final"] as? Bool == true { setPhase(.thinking, owner: owner) }
-        case "tool.call", "tool.progress": if audio.queuedFrames == 0 { setPhase(.thinking, owner: owner) }
+        case "tool.call", "tool.progress":
+            receiveTask(v)
+            if audio.queuedFrames == 0 { setPhase(.thinking, owner: owner) }
+        case "tool.result", "tool.error":
+            tasks.removeAll { $0.id == v["callId"] as? String }; publish()
         case "end.after-playback": pendingEndID = v["callId"] as? String; if audio.queuedFrames == 0 { drained(owner: owner) }
         case "end.cancelled": pendingEndID = nil; naturalEnd?.cancel()
         case "backend.result": receiveResult(v)
@@ -279,18 +309,72 @@ import VVoiceCore
         if earlyOutputDone { earlyOutputDone = false; audio.markOutputDone() }
     }
     private func receiveResult(_ value: [String: Any]) {
-        guard let id = value["callId"] as? String, let text = value["text"] as? String, !text.isEmpty else { return }
-        resultID = id; resultText = String(text.prefix(60_000))
+        guard let id = value["callId"] as? String, !id.isEmpty, id.count <= 160,
+              let text = value["text"] as? String, !text.isEmpty,
+              value["cancelled"] as? Bool != true, value["error"] == nil else { return }
+        let document = CallDocument(id: id, text: text)
+        if let index = documents.firstIndex(where: { $0.id == id }) {
+            guard documents[index] != document else { return }
+            documents[index] = document
+        } else { documents.append(document) }
+        if documents.count > 16 { documents.removeFirst() }
+        shownResults.remove(id)
+        conversation.receiveDocument(id: id)
+        resultID = id; resultText = document.text
+        tasks.removeAll { $0.id == id }
+        publish()
+    }
+    private func receiveTask(_ value: [String: Any]) {
+        guard let id = value["callId"] as? String else { return }
+        if let index = tasks.firstIndex(where: { $0.id == id }) {
+            if let stage = value["stage"] as? String { tasks[index].stage = CallDocument.plain(stage, limit: 28) }
+        } else {
+            tasks.append(.init(id: id, activity: value["activity"] as? String ?? "background", stage: value["stage"] as? String))
+            if tasks.count > 16 { tasks.removeFirst() }
+        }
+        publish()
+    }
+    private func scheduleCaptionUpdate() {
+        guard captionUpdate == nil else { return }
+        let id = presentationID
+        captionUpdate = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled, let self, self.presentationID == id else { return }
+            self.captionUpdate = nil; self.publish()
+        }
     }
     private func refreshPresentation(owner: UUID, id: String) async {
         guard appIsActive else { return }
-        guard let value = try? await api.call("presentation"), owned(owner), value["voiceSessionId"] as? String == id,
-              let documents = value["documents"] as? [[String: Any]], let latest = documents.last else { return }
-        receiveResult(latest)
+        guard let value = try? await api.call("presentation"), owned(owner), value["voiceSessionId"] as? String == id else { return }
+        if let pending = value["pending"] as? [[String: Any]] {
+            tasks.removeAll { task in !pending.contains { $0["callId"] as? String == task.id } }
+            for task in pending { receiveTask(task) }
+        }
+        for document in value["documents"] as? [[String: Any]] ?? [] { receiveResult(document) }
     }
     func resultWasShown(_ id: String) async {
-        guard appIsActive, active, resultID == id, !shownResults.contains(id), let voiceID else { return }
-        if (try? await api.call("content-shown", body: ["voiceSessionId": voiceID, "callId": id], refresh: false)) != nil { shownResults.insert(id) }
+        guard appIsActive, active, let document = documents.first(where: { $0.id == id }), !shownResults.contains(id), !acknowledgingResults.contains(id), let voiceID else { return }
+        acknowledgingResults.insert(id)
+        defer { acknowledgingResults.remove(id) }
+        let owner = state.generation
+        if (try? await api.call("content-shown", body: ["voiceSessionId": voiceID, "callId": id], refresh: false)) != nil, owned(owner), documents.first(where: { $0.id == id }) == document { shownResults.insert(id); publish() }
+    }
+    func sendSupplement(_ text: String) async throws {
+        guard active, let voiceID, ![.connecting,.reconnecting,.ending,.interrupted].contains(phase) else { throw VoiceError.connection }
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, value.count <= 2_000 else { return }
+        let owner = state.generation
+        _ = try await api.call("steer", body: ["voiceSessionId": voiceID, "text": value, "mode": "steer"], refresh: false)
+        guard owned(owner) else { return }
+        conversation.receive(role: "user", text: value, final: true)
+        detail = "补充内容已发送"; scheduleCaptionUpdate()
+    }
+    func cancelTasks() async throws {
+        guard active, let voiceID, !tasks.isEmpty else { return }
+        let owner = state.generation
+        _ = try await api.call("steer", body: ["voiceSessionId": voiceID, "text": "取消当前后台任务，不要继续执行。", "mode": "cancel"], refresh: false)
+        guard owned(owner) else { return }
+        detail = "已请求取消后台任务"
     }
     private func drained(owner: UUID) {
         guard owned(owner), audioReady else { return }; injectedSpeech = false
@@ -434,13 +518,15 @@ import VVoiceCore
             catch { /* Persisted ID is retried before the next dial. */ }
         }
         guard state.generation == owner else { return }
+        captionUpdate?.cancel(); captionUpdate = nil
+        conversation.reset(); documents.removeAll(); tasks.removeAll()
         state.finish(.ended); lastCaption = ""; resultText = ""; resultID = nil; detail = "通话已结束，麦克风已关闭"
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
     }
     private func beginActivity(required: Bool) throws {
         guard activitiesEnabled else { if required { throw VoiceError.liveActivity }; return }
         do {
-            let a = try Activity.request(attributes: CallAttributes(callID: state.generation.uuidString), content: ActivityContent(state: activityState, staleDate: Date().addingTimeInterval(25)), pushType: nil)
+            let a = try Activity.request(attributes: CallAttributes(callID: presentationID), content: ActivityContent(state: activityState, staleDate: Date().addingTimeInterval(25)), pushType: nil)
             activity = a
             activityWatch = Task { [weak self] in
                 for await s in a.activityStateUpdates {
@@ -450,7 +536,15 @@ import VVoiceCore
             }
         } catch { if required { throw VoiceError.liveActivity } }
     }
-    private var activityState: CallAttributes.ContentState { .init(phase: phase, muted: muted, startedAt: startedAt, detail: phase.title) }
+    var activityState: CallAttributes.ContentState {
+        let turn = conversation.turns.last(where: { !$0.text.isEmpty })
+        let unread = documents.last(where: { !shownResults.contains($0.id) })
+        return .init(phase: phase, muted: muted, startedAt: startedAt, detail: phase.title,
+                     caption: islandCaptions ? CallDocument.plain(turn?.text ?? "", limit: 84) : "",
+                     captionSpeaker: turn?.role == "user" ? "你" : "V",
+                     documentTitle: unread.map { islandCaptions ? $0.title : "完整方案已就绪" },
+                     documentID: unread?.id, taskLabel: tasks.last?.title)
+    }
     private func publish() {
         guard let a = activity else { return }
         let content = ActivityContent(state: activityState, staleDate: Date().addingTimeInterval(25))

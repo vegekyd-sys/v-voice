@@ -57,7 +57,7 @@ import VVoiceCore
     }
     private func enqueue(_ message: URLSessionWebSocketTask.Message, bytes: Int) {
         guard !closed, socket != nil else { return }
-        guard bufferedBytes + bytes <= 96_000 else { fail(VoiceError.bufferOverflow); return }
+        guard bufferedBytes + bytes <= 96_000 else { CallDiagnostics.record("audio.upload-overflow"); fail(VoiceError.bufferOverflow); return }
         queue.append((message, bytes)); bufferedBytes += bytes
         guard sender == nil else { return }
         sender = Task { [weak self] in

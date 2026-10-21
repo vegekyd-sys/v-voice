@@ -1,252 +1,347 @@
 import SwiftUI
 import AVFoundation
-import AppIntents
 import VVoiceCore
 
-private let ink = Color(red: 0.035, green: 0.047, blue: 0.065)
-private let accent = Color(red: 0.65, green: 0.91, blue: 0.79)
+private enum CallSheet: Identifiable {
+    case settings, guide, tasks, updates, reader(String), notice
+    var id: String {
+        switch self {
+        case .settings: "settings"
+        case .guide: "guide"
+        case .tasks: "tasks"
+        case .updates: "updates"
+        case .reader(let id): "reader-" + id
+        case .notice: "notice"
+        }
+    }
+}
 
 struct CallView: View {
     @Bindable var call: CallCoordinator
-    @State private var settings = false
-    @State private var guide = false
-    @State private var reading = false
+    @State private var sheet: CallSheet?
+    @State private var history = false
     @State private var acting = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var composing = false
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var inCall: Bool { call.active && call.phase != .connecting }
     var body: some View {
         GeometryReader { geometry in
-            ScrollView {
-                VStack(spacing: 0) {
-                    HStack {
-                        HStack(spacing: 8) {
-                            Text("V").font(.system(size: 27, weight: .medium, design: .rounded))
-                            Text("VOICE").font(.system(size: 11, weight: .semibold)).tracking(3)
-                        }.accessibilityElement(children: .combine).accessibilityLabel("V Voice")
-                        Spacer()
-                        Button { settings = true } label: { Image(systemName: "slider.horizontal.3").font(.system(size: 19)).frame(width: 48, height: 48).background(.white.opacity(0.05), in: Circle()) }
-                            .accessibilityLabel("通话设置")
-                    }.padding(.top, 12)
-                    Spacer(minLength: 34)
-                    HStack(spacing: 7) {
-                        Circle().fill(call.active ? accent : .white.opacity(0.35)).frame(width: 5, height: 5)
-                        Text(call.active ? "V · 你的语音伙伴" : "只需一个按键").font(.system(size: 12, weight: .medium)).tracking(2)
-                    }.foregroundStyle(.white.opacity(0.55))
-                    VoiceOrb(active: call.active, phase: call.phase, reduceMotion: reduceMotion)
-                        .frame(height: min(geometry.size.height * 0.32, 250)).padding(.vertical, 22)
-                        .accessibilityHidden(true)
-                    Text(call.phase.title).font(.system(size: 30, weight: .medium, design: .rounded)).multilineTextAlignment(.center)
-                        .contentTransition(.numericText()).accessibilityAddTraits(.updatesFrequently)
-                    Text(call.detail).font(.system(size: 14)).foregroundStyle(.white.opacity(0.5)).multilineTextAlignment(.center)
-                        .lineSpacing(5).frame(minHeight: 48).padding(.top, 12)
-                    if call.active {
-                        HStack(spacing: 8) {
-                            Text(call.startedAt, style: .timer).monospacedDigit()
-                            Text("·")
-                            Text(call.route)
-                            if call.muted { Image(systemName: "mic.slash.fill") }
-                        }.font(.system(size: 12)).foregroundStyle(accent.opacity(0.8)).padding(.top, 15)
-                        if !call.lastCaption.isEmpty {
-                            Text(call.lastCaption).font(.system(size: 16)).foregroundStyle(.white.opacity(0.78)).lineSpacing(6)
-                                .lineLimit(5).multilineTextAlignment(.center).padding(.horizontal, 10).frame(minHeight: 98).padding(.top, 20)
-                        } else {
-                            Text("自然地说就好。\n说完不用按任何按钮。").font(.system(size: 14)).foregroundStyle(.white.opacity(0.3)).multilineTextAlignment(.center).lineSpacing(6).frame(minHeight: 98).padding(.top, 20)
-                        }
+            let wide = geometry.size.width >= 701
+            let height = geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
+            ZStack(alignment: .top) {
+                VoiceStyle.background.ignoresSafeArea()
+                RadialGradient(colors: [.white.opacity(0.6), .clear], center: .topLeading, startRadius: 0, endRadius: 700).ignoresSafeArea()
+                if inCall {
+                    if wide {
+                        HStack(spacing: 48) {
+                            VStack(spacing: 0) {
+                                clock.frame(height: 40)
+                                Spacer()
+                                stage(size: min(geometry.size.width * 0.26, height * 0.48, 360))
+                                Spacer()
+                            }.frame(width: max(240, geometry.size.width * 0.30))
+                            conversation(wide: true)
+                                .background(.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 28))
+                                .overlay { RoundedRectangle(cornerRadius: 28).stroke(VoiceStyle.line.opacity(0.7)) }
+                        }.padding(.horizontal, 44).padding(.vertical, 24)
                     } else {
-                        HStack(spacing: 6) {
-                            Image(systemName: call.bound ? "lock.shield" : "link")
-                            Text(call.bound ? "个人入口已安全绑定" : "首次使用，只需简单设置")
-                        }.font(.system(size: 12)).foregroundStyle(.white.opacity(0.32)).padding(.top, 22)
+                        let compact = composing || call.conversation.current.reduce(0, { $0 + $1.text.count }) > 280 || height < 650
+                        VStack(spacing: 0) {
+                            clock.frame(height: 40)
+                            stage(size: history ? 52 : compact ? min(geometry.size.width * 0.38, height * 0.2, 150) : min(geometry.size.width * 0.62, height * 0.3, 250))
+                            conversation(wide: false).padding(.top, 10)
+                        }.frame(maxWidth: 560).frame(maxWidth: .infinity)
                     }
-                    Spacer(minLength: 32)
-                    if call.active, call.resultID != nil {
-                        Button { reading = true } label: {
-                            HStack { Image(systemName: "doc.text"); Text("V 发来的内容"); Spacer(); Image(systemName: "arrow.up.right") }
-                                .font(.system(size: 14)).padding(18).background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
-                        }.padding(.bottom, 18)
-                    }
-                    controls
-                    if !call.active, call.bound, !call.activitiesEnabled {
-                        Text("实时活动未开启，按键通话需先在设置中开启").font(.caption).foregroundStyle(.orange).padding(.top, 14)
-                    }
+                } else { home(width: geometry.size.width, height: height) }
+                HStack {
                     if !call.active {
-                        Button { guide = true } label: {
-                            HStack(spacing: 6) { Image(systemName: "button.programmable"); Text("设置 iPhone 操作按钮"); Image(systemName: "arrow.up.right").font(.system(size: 10)) }
-                                .font(.system(size: 13)).foregroundStyle(.white.opacity(0.5)).padding(.vertical, 20)
-                        }
-                    } else {
-                        Text("切换 App 或锁屏，也可继续通话").font(.system(size: 11)).foregroundStyle(.white.opacity(0.3)).padding(.vertical, 22)
+                        Button { sheet = .updates } label: { Label("更新日志", systemImage: "sparkle").font(VoiceStyle.font(12)) }
                     }
-                    Text("V  /  ALWAYS WITH YOU").font(.system(size: 9, weight: .medium)).tracking(2.5).foregroundStyle(.white.opacity(0.17)).padding(.bottom, 20)
-                }.padding(.horizontal, 28).frame(minHeight: geometry.size.height)
-            }.scrollIndicators(.hidden)
+                    Spacer()
+                    Button { sheet = .settings } label: { Image(systemName: "slider.horizontal.3").font(.system(size: 17)).frame(width: 40, height: 40) }
+                        .accessibilityLabel("通话设置")
+                }.foregroundStyle(VoiceStyle.faint).padding(.horizontal, 16)
+            }
+            .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: history)
         }
-        .background(ink)
-        .tint(accent)
-        .sheet(isPresented: $settings) { SettingsView(call: call) }
-        .sheet(isPresented: $guide) { ActionButtonGuide() }
-        .sheet(isPresented: $reading) {
-            NavigationStack {
-                ScrollView { Text((try? AttributedString(markdown: call.resultText, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(call.resultText))
-                    .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(24) }
-                    .background(ink).navigationTitle("V 发来的内容").navigationBarTitleDisplayMode(.inline)
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("返回通话") { reading = false } } }
-                    .task(id: call.resultID) { if let id = call.resultID { await call.resultWasShown(id) } }
-            }.tint(accent).preferredColorScheme(.dark)
+        .foregroundStyle(VoiceStyle.ink).tint(VoiceStyle.accent)
+        .sheet(item: $sheet) { destination in
+            switch destination {
+            case .settings: SettingsView(call: call)
+            case .guide: ActionButtonGuide()
+            case .reader(let id):
+                if let document = call.documents.first(where: { $0.id == id }) { CallDocumentReader(call: call, document: document) }
+                else { expiredContent }
+            case .notice: expiredContent
+            case .tasks: TaskSheet(call: call)
+            case .updates: updates
+            }
         }
+        .onOpenURL { url in
+            guard let destination = CallDestination.parse(url, callID: call.presentationID, documentIDs: Set(call.documents.map(\.id))) else { sheet = .notice; return }
+            switch destination { case .call: sheet = nil; case .document(let id): sheet = .reader(id) }
+        }
+        .onChange(of: call.active) { _, active in if !active { history = false; composing = false } }
         #if DEBUG
         .safeAreaInset(edge: .top) {
-            if CommandLine.arguments.contains("--local-voice-fixture") { Text("本地协议测试 · 无真实模型").font(.caption2).foregroundStyle(.orange).padding(6) }
+            if CommandLine.arguments.contains("--local-voice-fixture") { Text("本地协议测试 · 无真实模型").font(.caption2).foregroundStyle(VoiceStyle.muted).padding(4) }
         }
         #endif
     }
-    @ViewBuilder private var controls: some View {
-        if call.active {
-            HStack(spacing: 16) {
-                Button { call.toggleMute() } label: {
-                    VStack(spacing: 8) { Image(systemName: call.muted ? "mic.slash.fill" : "mic.fill").font(.system(size: 22)); Text(call.muted ? "恢复麦克风" : "静音").font(.system(size: 12)) }
-                        .frame(maxWidth: .infinity).frame(height: 82).background(call.muted ? accent.opacity(0.16) : .white.opacity(0.065), in: RoundedRectangle(cornerRadius: 25))
-                }.disabled([.connecting,.reconnecting,.interrupted,.ending].contains(call.phase))
-                if call.phase == .interrupted {
-                    Button { Task { await call.resume() } } label: { Label("继续", systemImage: "play.fill").frame(maxWidth: .infinity).frame(height: 82).background(accent.opacity(0.16), in: RoundedRectangle(cornerRadius: 25)) }
-                }
-                Button { Task { await call.end() } } label: {
-                    VStack(spacing: 8) { Image(systemName: "phone.down.fill").font(.system(size: 23)); Text("结束").font(.system(size: 12)) }
-                        .foregroundStyle(Color(red: 1, green: 0.55, blue: 0.51)).frame(maxWidth: .infinity).frame(height: 82)
-                        .background(Color(red: 0.27, green: 0.10, blue: 0.11), in: RoundedRectangle(cornerRadius: 25))
-                }.accessibilityLabel("结束通话并关闭麦克风").disabled(call.phase == .ending)
-            }
-        } else {
-            Button {
-                if !call.bound { settings = true; return }
-                if call.permission == .denied {
-                    if let u = URL(string: UIApplication.openSettingsURLString) { openURL(u) }; return
-                }
-                acting = true
-                Task {
-                    if call.permission == .undetermined { await call.requestMicrophone() }
-                    do { try await call.startOrContinue() } catch { call.report(error) }
-                    acting = false
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    if acting { ProgressView().tint(ink) } else { Image(systemName: call.bound ? "waveform" : "link").font(.system(size: 18, weight: .semibold)) }
-                    Text(call.bound ? (call.permission == .denied ? "在设置中允许麦克风" : [.failed,.ended].contains(call.phase) ? "重新和 V 通话" : "和 V 通话") : "连接我的 V").font(.system(size: 16, weight: .semibold))
-                }.foregroundStyle(ink).frame(maxWidth: .infinity).frame(height: 62).background(accent, in: Capsule())
-            }.disabled(acting).accessibilityIdentifier("primaryCallButton")
+    private var clock: some View {
+        Text(call.startedAt, style: .timer).font(VoiceStyle.font(12.5)).monospacedDigit().foregroundStyle(VoiceStyle.faint)
+            .frame(maxWidth: .infinity).accessibilityLabel("通话时长")
+    }
+    private func home(width: CGFloat, height: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: 40)
+            VStack(spacing: 0) {
+                VoicePortrait(phase: call.phase, image: "VHome", size: min(width * 0.72, height * 0.4, 300))
+                VStack(spacing: 0) {
+                    Text("V").font(VoiceStyle.font(25, weight: .semibold)).padding(.top, 24)
+                    Button { primaryAction() } label: {
+                        Image(systemName: call.phase == .connecting ? "phone.down" : call.bound ? "phone" : "link")
+                            .font(.system(size: 27, weight: .light)).foregroundStyle(.white)
+                            .frame(width: 72, height: 72).background(VoiceStyle.accent, in: Circle())
+                            .shadow(color: VoiceStyle.accent.opacity(0.25), radius: 13, y: 12)
+                            .overlay { if acting || call.phase == .connecting { Circle().stroke(VoiceStyle.accent.opacity(0.25), lineWidth: 2).padding(-8) } }
+                    }.accessibilityIdentifier("primaryCallButton").accessibilityLabel(call.phase == .connecting ? "取消拨号" : call.bound ? "和 V 通话" : "绑定个人入口")
+                        .padding(.top, 22).disabled(acting && call.phase != .connecting)
+                    if call.phase == .connecting {
+                        Text("正在连接 V…").font(VoiceStyle.font(13)).foregroundStyle(VoiceStyle.muted).padding(.top, 18)
+                    } else {
+                        Menu {
+                            Picker("对话声音", selection: $call.model) { ForEach(VoiceModel.allCases, id: \.self) { Text($0.title).tag($0) } }
+                        } label: {
+                            HStack(spacing: 6) { Text(call.model.title); Image(systemName: "chevron.down").font(.system(size: 9)) }
+                                .font(VoiceStyle.font(13)).foregroundStyle(VoiceStyle.soft).padding(.horizontal, 14).frame(height: 34)
+                                .background(.white.opacity(0.6), in: Capsule()).overlay { Capsule().stroke(.white) }
+                        }.padding(.top, 16).accessibilityLabel("选择语音模型")
+                        Text(call.bound ? "就绪" : "绑定后，拨号直接说话").font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.faint).padding(.top, 8)
+                        if [.failed,.interrupted].contains(call.phase) {
+                            Text(call.detail).font(VoiceStyle.font(13)).foregroundStyle(VoiceStyle.muted).multilineTextAlignment(.center).lineSpacing(5).padding(.top, 10).frame(maxWidth: 300)
+                        }
+                    }
+                }.frame(minHeight: 227, alignment: .top)
+            }.frame(maxHeight: .infinity).padding(.bottom, height * 0.06)
+        }.frame(maxWidth: 560).frame(maxWidth: .infinity)
+    }
+    private var portrait: String {
+        switch call.tasks.last?.activity {
+        case "memory": "VMemory"
+        case "web": "VWeb"
+        case "calendar": "VCalendar"
+        case .some: "VWorking"
+        case nil: call.activityState.documentID == nil ? "VListen" : "VComplete"
         }
+    }
+    private func stage(size: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            Button { if !call.tasks.isEmpty { sheet = .tasks } } label: { VoicePortrait(phase: call.phase, image: portrait, size: size) }
+                .buttonStyle(.plain).accessibilityLabel(call.tasks.isEmpty ? "V" : "查看后台任务")
+            Button {
+                if !call.tasks.isEmpty { sheet = .tasks }
+                else if call.phase == .interrupted { Task { await call.resume() } }
+            } label: {
+                HStack(spacing: 8) {
+                    if [.thinking,.reconnecting,.ending].contains(call.phase) || !call.tasks.isEmpty { ProgressView().controlSize(.mini).tint(VoiceStyle.purple) }
+                    Text(call.statusLine).lineLimit(1)
+                    if !call.tasks.isEmpty { Image(systemName: "chevron.right").font(.system(size: 10)) }
+                    if call.phase == .interrupted { Text("继续").foregroundStyle(VoiceStyle.accent) }
+                }.font(VoiceStyle.font(15)).foregroundStyle(VoiceStyle.soft).frame(height: 30)
+            }.buttonStyle(.plain).padding(.top, size * 0.09 + 8).padding(.horizontal, 16)
+        }.animation(reduceMotion ? nil : .smooth(duration: 0.5), value: size)
+    }
+    private func conversation(wide: Bool) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                if !wide, call.conversation.turns.count > call.conversation.current.count {
+                    Button(history ? "收起" : "全部") { history.toggle() }
+                        .font(VoiceStyle.font(11.5)).foregroundStyle(VoiceStyle.muted).padding(.horizontal, 11).padding(.vertical, 6)
+                        .background(.white.opacity(0.8), in: Capsule())
+                }
+            }.frame(height: 26).padding(.horizontal, 14)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        let rows = wide || history ? call.conversation.turns : call.conversation.current
+                        if !wide, !history, call.conversation.turns.count > rows.count {
+                            Text(call.conversation.turns.dropLast(rows.count).last?.text ?? "")
+                                .font(VoiceStyle.font(13)).foregroundStyle(VoiceStyle.faint.opacity(0.65)).lineLimit(2).padding(.bottom, 4)
+                        }
+                        ForEach(rows) { turn in
+                            if let id = turn.documentID, let document = call.documents.first(where: { $0.id == id }) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(document.preview).font(VoiceStyle.font(16)).foregroundStyle(VoiceStyle.soft).lineSpacing(6)
+                                    DocumentCard(document: document) { sheet = .reader(document.id) }
+                                }
+                            } else if !turn.text.isEmpty { ConversationRow(turn: turn) }
+                        }
+                        Color.clear.frame(height: 1).id("bottom")
+                    }.padding(.horizontal, wide ? 32 : 16).padding(.top, 4)
+                }.scrollDismissesKeyboard(.interactively)
+                    .onChange(of: call.conversation.turns) { _, _ in if !history { proxy.scrollTo("bottom", anchor: .bottom) } }
+            }
+            CallControlDock(call: call, composing: $composing).padding(.top, 6)
+        }
+    }
+    private func primaryAction() {
+        if call.phase == .connecting { Task { await call.end() }; return }
+        if !call.bound { sheet = .settings; return }
+        if call.permission == .denied { if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }; return }
+        acting = true
+        Task {
+            if call.permission == .undetermined { await call.requestMicrophone() }
+            do { try await call.startOrContinue() } catch { call.report(error) }
+            acting = false
+        }
+    }
+    private var expiredContent: some View {
+        ContentUnavailableView("内容已清除", systemImage: "doc.text", description: Text("这份内容已随通话结束清除。回到通话后，可请 V 再次提供。"))
+            .presentationDetents([.medium]).presentationDragIndicator(.visible)
+    }
+    private var updates: some View {
+        NavigationStack {
+            List {
+                Section("1.0 · 和 H5 一样的 V") { Text("同一个 V 头像，同样的浅紫色通话页。当前对话、文字补充与完整方案，在原生 App 中继续。"); Text("灵动岛展示最近一句对话、任务状态与方案入口。长按展开，点「查看方案」直达内容，通话继续。") }
+                Section { Button("设置操作按钮") { sheet = .guide } }
+            }.scrollContentBackground(.hidden).background(VoiceStyle.background).navigationTitle("更新日志")
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { sheet = nil } } }
+        }.tint(VoiceStyle.accent)
     }
 }
 
-private struct VoiceOrb: View {
-    var active: Bool
+struct VoicePortrait: View {
     var phase: VoicePhase
-    var reduceMotion: Bool
-    @State private var breathe = false
+    var image: String
+    var size: CGFloat
+    @State private var pulse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var glowing: Bool { [.thinking,.speaking,.connecting,.reconnecting].contains(phase) }
     var body: some View {
         ZStack {
-            Circle().fill(accent.opacity(active ? 0.08 : 0.035)).frame(width: 245, height: 245).blur(radius: 25)
-            Circle().stroke(.white.opacity(0.045), lineWidth: 1).frame(width: 232, height: 232)
-            Circle().stroke(.white.opacity(0.035), lineWidth: 1).frame(width: 264, height: 264)
-            Circle().fill(RadialGradient(colors: [.white.opacity(0.92), accent.opacity(0.9), Color(red: 0.19, green: 0.42, blue: 0.39), Color(red: 0.04, green: 0.15, blue: 0.16)], center: .init(x: 0.3, y: 0.22), startRadius: 3, endRadius: 175))
-                .overlay { Circle().stroke(LinearGradient(colors: [.white.opacity(0.6), .clear, accent.opacity(0.25)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1) }
-                .overlay {
-                    Text("V").font(.system(size: 59, weight: .ultraLight, design: .rounded)).foregroundStyle(.white.opacity(0.8)).blendMode(.softLight).offset(y: -2)
-                }.frame(width: 164, height: 164)
-                .shadow(color: accent.opacity(active ? 0.12 : 0.045), radius: 35, y: 18)
-                .scaleEffect(breathe && active && !reduceMotion ? 1.045 : 1)
-            if phase == .muted { Image(systemName: "mic.slash.fill").font(.system(size: 18)).foregroundStyle(accent).padding(13).background(ink, in: Circle()).offset(x: 61, y: 64) }
-        }
-        .onAppear { withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) { breathe = true } }
+            Circle().fill(RadialGradient(colors: [phase == .speaking ? Color(hex: 0xf2a3bd) : Color(hex: 0xd9c8ec), .clear], center: .center, startRadius: 0, endRadius: size * 0.68))
+                .frame(width: size * 1.28, height: size * 1.28).blur(radius: size * 0.07)
+                .opacity(glowing ? 0.85 : 0).scaleEffect(pulse && !reduceMotion ? 1.04 : 0.94)
+            Image(image).resizable().scaledToFill().frame(width: size * 0.944, height: size * 0.944).clipShape(Circle())
+                .padding(size * 0.028).background(.white, in: Circle())
+                .shadow(color: Color(hex: 0x705985).opacity(0.09), radius: 17, y: 10)
+        }.frame(width: size, height: size).accessibilityHidden(true)
+            .onAppear { if !reduceMotion { withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) { pulse = true } } }
     }
 }
 
-struct SettingsView: View {
+private struct ConversationRow: View {
+    let turn: ConversationTurn
+    var body: some View {
+        VStack(alignment: turn.role == "user" ? .trailing : .leading, spacing: 6) {
+            Text(turn.role == "user" ? "你" : "V").font(VoiceStyle.font(11, weight: .semibold))
+                .foregroundStyle(turn.role == "user" ? VoiceStyle.purple : VoiceStyle.accent)
+            if turn.role == "user" {
+                Text(turn.text).font(VoiceStyle.font(16)).lineSpacing(5).padding(.horizontal, 14).padding(.vertical, 9)
+                    .background(VoiceStyle.lavender, in: UnevenRoundedRectangle(topLeadingRadius: 18, bottomLeadingRadius: 18, bottomTrailingRadius: 5, topTrailingRadius: 18))
+            } else {
+                Text((try? AttributedString(markdown: turn.text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(turn.text))
+                    .font(VoiceStyle.font(17.5)).lineSpacing(7).textSelection(.enabled)
+                    .environment(\.openURL, OpenURLAction { url in
+                        guard ["https", "http", "mailto"].contains(url.scheme ?? ""), url.user == nil, url.password == nil else { return .discarded }
+                        return .systemAction(url)
+                    })
+            }
+        }.frame(maxWidth: .infinity, alignment: turn.role == "user" ? .trailing : .leading)
+    }
+}
+
+struct DocumentCard: View {
+    let document: CallDocument
+    var open: () -> Void
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 11) {
+                Image(systemName: "doc.text").font(.system(size: 22, weight: .light)).foregroundStyle(VoiceStyle.purple)
+                    .frame(width: 40, height: 44).background(VoiceStyle.lavender, in: RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(document.title).font(VoiceStyle.font(15, weight: .semibold)).foregroundStyle(VoiceStyle.ink)
+                    Text("完整方案 · 点击展开").font(VoiceStyle.font(11)).foregroundStyle(VoiceStyle.faint)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(VoiceStyle.faint)
+            }.padding(12).background(Color(hex: 0xf8f5fc), in: RoundedRectangle(cornerRadius: 16))
+                .overlay { RoundedRectangle(cornerRadius: 16).stroke(VoiceStyle.line) }
+        }.buttonStyle(.plain).accessibilityIdentifier("openResult-" + document.id)
+    }
+}
+
+struct CallControlDock: View {
+    @Bindable var call: CallCoordinator
+    @Binding var composing: Bool
+    @State private var text = ""
+    @State private var sending = false
+    @State private var feedback = ""
+    @FocusState private var focused: Bool
+    private var canControl: Bool { ![.connecting,.reconnecting,.ending,.interrupted].contains(call.phase) }
+    var body: some View {
+        VStack(spacing: 8) {
+            if composing {
+                HStack(spacing: 4) {
+                    TextField("补充给 V 的文字…", text: $text).font(VoiceStyle.font(16)).focused($focused).submitLabel(.send).onSubmit { send() }
+                        .onChange(of: text) { _, value in if value.count > 2_000 { text = String(value.prefix(2_000)) } }
+                    Button(action: send) { Image(systemName: "paperplane").frame(width: 38, height: 38) }.disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !canControl)
+                }.padding(.leading, 14).padding(.trailing, 6).frame(minHeight: 46).background(.regularMaterial, in: Capsule()).overlay { Capsule().stroke(.white) }
+            }
+            if !feedback.isEmpty { Text(feedback).font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted).accessibilityIdentifier("supplementFeedback") }
+            HStack(spacing: 10) {
+                control("keyboard", label: composing ? "收起文字输入" : "打开文字输入") { composing.toggle(); focused = composing }
+                    .background(composing ? VoiceStyle.lavender : .clear, in: Circle())
+                control(call.muted ? "mic.slash" : "mic", label: call.muted ? "恢复麦克风" : "静音麦克风") { call.toggleMute() }.disabled(!canControl)
+                Button { Task { await call.end() } } label: {
+                    Image(systemName: "phone.down").font(.system(size: 23, weight: .light)).foregroundStyle(.white).frame(width: 46, height: 46).background(VoiceStyle.accent, in: Circle())
+                }.accessibilityLabel("结束通话").accessibilityIdentifier("endCallButton").disabled(call.phase == .ending)
+            }.padding(7).background(.regularMaterial, in: Capsule()).overlay { Capsule().stroke(.white.opacity(0.85)) }
+                .shadow(color: Color(hex: 0x5d456f).opacity(0.08), radius: 12, y: 6)
+        }.tint(VoiceStyle.purple).padding(.horizontal, 16).padding(.bottom, 12)
+    }
+    private func control(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: symbol).font(.system(size: 21, weight: .light)).frame(width: 46, height: 46).foregroundStyle(VoiceStyle.soft) }.accessibilityLabel(label)
+    }
+    private func send() {
+        guard !sending, canControl else { return }; sending = true; feedback = ""
+        Task {
+            do { try await call.sendSupplement(text); text = ""; feedback = "已发送" }
+            catch { feedback = error.localizedDescription }
+            sending = false
+        }
+    }
+}
+
+struct TaskSheet: View {
     @Bindable var call: CallCoordinator
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openURL) private var openURL
-    @State private var link = ""
-    @State private var working = false
     @State private var feedback = ""
-    @State private var confirmForget = false
+    @State private var cancelling = false
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    HStack { Label("个人电话入口", systemImage: "lock.shield"); Spacer(); Text(call.bound ? "已绑定" : "未绑定").foregroundStyle(call.bound ? accent : .secondary) }
-                    if !call.active {
-                        SecureField("粘贴完整的本人入口链接", text: $link).textContentType(.none).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("bindingLink")
-                        HStack {
-                            Button("粘贴链接", systemImage: "doc.on.clipboard") { link = UIPasteboard.general.string ?? "" }
-                            Spacer()
-                            Button(working ? "正在验证…" : "验证并绑定") {
-                                working = true; feedback = ""
-                                Task {
-                                    do { try await call.bind(link); link = ""; feedback = "绑定完成，链接已保存在本机钥匙串。" }
-                                    catch { feedback = error.localizedDescription }
-                                    working = false
-                                }
-                            }.disabled(working || link.isEmpty)
+            List {
+                ForEach(call.tasks) { task in
+                    HStack(spacing: 16) {
+                        Image(systemName: task.activity == "web" ? "globe" : task.activity == "calendar" ? "calendar" : "sparkles").foregroundStyle(VoiceStyle.purple)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(task.title).font(VoiceStyle.font(16, weight: .semibold))
+                            Text(task.startedAt, style: .timer).font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.faint)
                         }
-                        if !feedback.isEmpty { Text(feedback).font(.footnote).foregroundStyle(.secondary).accessibilityIdentifier("bindingFeedback") }
-                    }
-                } footer: { Text("仅使用本人的电话入口。会话和工具权限由 V 服务端绑定，App 不存储工具密钥。个人链接不会显示在灵动岛。") }
-                Section {
-                    HStack { Label("麦克风", systemImage: "mic"); Spacer(); Text(call.permission == .granted ? "已允许" : "未允许").foregroundStyle(.secondary) }
-                    if call.permission == .undetermined { Button("允许麦克风") { Task { await call.requestMicrophone() } } }
-                    if call.permission == .denied { Button("到系统设置允许麦克风") { openSettings() } }
-                    HStack { Label("实时活动与灵动岛", systemImage: "capsule"); Spacer(); Text(call.activitiesEnabled ? "已允许" : "未允许").foregroundStyle(.secondary) }
-                    if !call.activitiesEnabled { Button("到设置开启实时活动") { openSettings() } }
-                } header: { Text("通话准备") }
-                Section {
-                    Picker("对话声音", selection: $call.model) { ForEach(VoiceModel.allCases, id: \.self) { Text($0.title).tag($0) } }.disabled(call.active)
-                } footer: { Text("使用 V 现有实时语音与工具能力。音频设备由 iOS 自动选择；接入耳机后使用耳机麦克风。") }
-                Section {
-                    NavigationLink("设置操作按钮") { ActionButtonInstructions() }
-                    Text("已有通话时再次长按：继续当前通话；静音时恢复麦克风。结束通话请点灵动岛或 App 的结束按钮。")
-                        .font(.footnote).foregroundStyle(.secondary)
+                    }.padding(.vertical, 6)
                 }
-                Section {
-                    Text("仅通话时使用麦克风。结束后停止收音。通话文字只在当前界面暂存，离开通话后清空；服务端沿用 V 已有通话记录策略。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    if call.bound { Button("解除本机入口绑定", role: .destructive) { confirmForget = true }.disabled(call.active || working) }
-                } footer: { Text("V Voice 1.0 · 专注于一按通话\n操作按钮请选择 V Voice 的「和 V 通话」。") }
-            }
-            .scrollContentBackground(.hidden).background(ink).tint(accent)
-            .navigationTitle("通话设置").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
-            .confirmationDialog("解除后需要重新粘贴个人入口链接。", isPresented: $confirmForget, titleVisibility: .visible) { Button("解除绑定", role: .destructive) { call.forget() } }
-        }.preferredColorScheme(.dark)
-    }
-    private func openSettings() { if let u = URL(string: UIApplication.openSettingsURLString) { openURL(u) } }
-}
-
-struct ActionButtonGuide: View {
-    @Environment(\.dismiss) private var dismiss
-    var body: some View {
-        NavigationStack { ActionButtonInstructions().toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } } }
-            .preferredColorScheme(.dark).tint(accent)
-    }
-}
-struct ActionButtonInstructions: View {
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                Image(systemName: "button.programmable").font(.system(size: 42, weight: .light)).foregroundStyle(accent).padding(.top, 25)
-                Text("让 V，\n在一个按键之内。").font(.system(size: 32, weight: .medium)).lineSpacing(6)
-                Text("完成一次设置，之后长按 iPhone 操作按钮，就能和 V 说话。").font(.system(size: 16)).foregroundStyle(.secondary).lineSpacing(6)
-                instruction("01", "先准备好通话", "在 V Voice 绑定本人入口，允许麦克风和实时活动。先从 App 完成一次通话。")
-                instruction("02", "打开系统设置 → 操作按钮", "选择「快捷指令」，轻点「选取快捷指令」，找到 V Voice 的「和 V 通话」。")
-                instruction("03", "长按，等接通后开口", "灵动岛出现「我在听」时即可说话。长按灵动岛可静音或结束，轻点可返回通话。")
-                ShortcutsLink().frame(maxWidth: .infinity).padding(.vertical, 8)
-                Text("操作按钮在后台开始通话，灵动岛显示通话状态并提供静音、结束按钮。首次使用请先在 App 完成入口绑定和授权。系统来电与 Siri 会暂停通话；结束后按提示恢复。").font(.footnote).foregroundStyle(.secondary).lineSpacing(5)
-            }.padding(28)
-        }.background(ink).navigationTitle("操作按钮").navigationBarTitleDisplayMode(.inline)
-    }
-    private func instruction(_ n: String, _ title: String, _ text: String) -> some View {
-        HStack(alignment: .top, spacing: 18) {
-            Text(n).font(.system(size: 12, weight: .semibold, design: .monospaced)).foregroundStyle(accent).padding(.top, 4)
-            VStack(alignment: .leading, spacing: 8) { Text(title).font(.system(size: 16, weight: .semibold)); Text(text).font(.system(size: 14)).foregroundStyle(.secondary).lineSpacing(5) }
-        }
+                if call.tasks.isEmpty { Text("当前没有进行中的任务").foregroundStyle(VoiceStyle.muted) }
+                else {
+                    Button(cancelling ? "正在请求…" : "取消后台任务", role: .destructive) {
+                        cancelling = true
+                        Task { do { try await call.cancelTasks(); feedback = "已请求取消，等待后台确认" } catch { feedback = error.localizedDescription }; cancelling = false }
+                    }.disabled(cancelling)
+                }
+                if !feedback.isEmpty { Text(feedback).font(.footnote) }
+            }.scrollContentBackground(.hidden).background(VoiceStyle.background).navigationTitle("后台任务").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
+        }.tint(VoiceStyle.accent).presentationDetents([.medium, .large])
     }
 }

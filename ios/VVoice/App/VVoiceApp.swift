@@ -8,7 +8,7 @@ import AppIntents
     var body: some Scene {
         WindowGroup {
             CallView(call: call)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(.light)
                 .onAppear { call.sceneChanged(scene) }
                 .onChange(of: scene) { _, value in call.sceneChanged(value) }
         }

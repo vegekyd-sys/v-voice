@@ -1,0 +1,14 @@
+{
+  "sources": {
+    "assets/v-operator-home-1024.webp": "5cf1ddc6b9b9abd06c1ac15be325f9b86cbaa4db8363daeec0da6040e128d319",
+    "assets/v-operator-square-listen-0-512.webp": "833c1a3a7eb362cdfd101e2b772a7e74bfcb4fc4343a1f4500119281f628c0c7",
+    "assets/v-operator-square-memory-0-512.webp": "2bd01eac382738f7c3b3b23890129e50094eb91f04545328d6ce7a8f90de29c2",
+    "assets/v-operator-square-web-0-512.webp": "82af55fec59f85d9c25308b7076b6ef301b043255bd02bad4a458cd620b373f9",
+    "assets/v-operator-square-calendar-0-512.webp": "483f4f0da341e45f07487518b05581428d48a3098027177750189007b48d2043",
+    "assets/v-operator-square-background-0-512.webp": "ac74d15d710b39808bba8130a4cb096ab82ca44ba9f293bcce75a04bd372d760",
+    "assets/v-operator-square-complete-0-512.webp": "12701905b1674041f2cffe439f896ad590e1bd7ec45a8d24b3aa15d62f0ff0bc",
+    "styles.css": "2dcf2ee4c40f06872ffaf55ba54bc1844fa1941deb6df2d28c4109421cf49dcf",
+    "markdown.mjs": "a556476a8a88b35aba790f993a8bde333150aebab9dc7fdce14aa2e3c586ace0",
+    "vendor/marked-18.0.5.mjs": "43e1fc0927b2d397bdc786c0a9efa8414ce18e7781d0b3490faceea35b7d0d15"
+  }
+}
