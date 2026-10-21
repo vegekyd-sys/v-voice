@@ -1,0 +1,12 @@
+{
+  "schema": "v-voice-release-registration-v1",
+  "release": "voice-mobile-turn-20261021",
+  "owner": "codex-voice-mobile-turn-20261021",
+  "sourceBranch": "codex/voice-mobile-audio-turn-20261021",
+  "candidateCommit": "d1f4630f83f806c523be6582eec0ce93e6a5c460",
+  "previousProductionCommit": "df25702ef703641ccc452e315745dc5a19e8b662",
+  "phase": "candidate-accepted-awaiting-main",
+  "gatewayRestartRequired": false,
+  "acceptance": "README.md",
+  "runtimeIdentity": "Deployment is built from merged main; exact commit and hashes are recorded in its packaged manifest and activation receipt."
+}
