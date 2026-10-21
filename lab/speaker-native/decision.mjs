@@ -63,7 +63,7 @@ export class SpeakerRouter{
     if(this.targetId===id)this.targetId=null;
     return this.participants.length<before;
   }
-  async accept(input,{signal}={}){
+  async accept(input,{signal,interrupting=false}={}){
     const id='speaker:'+input.speakerId;
     let speaker=this.participants.find(p=>p.id===id);
     if(!speaker){if(this.participants.length>=5)throw Error('会话 Speaker 数量已达上限');const n=this.labels=(this.labels??this.participants.length)+1;speaker={id,speakerId:String(input.speakerId),label:'Speaker '+(n<=26?String.fromCharCode(64+n):n),name:null,role:'unknown',certainty:'unknown'};this.participants.push(speaker);}
@@ -72,7 +72,7 @@ export class SpeakerRouter{
     if(this.mode==='exclusive'&&id!==this.targetId)return {turn,status:'withheld',modelCalled:false,shouldRespond:false,addresseeIds:[],...this.snapshot()};
     const generation=this.generation;
     const turns=[...this.history.filter(t=>t.role==='participant'),{...turn,role:'participant'}];
-    const state={purpose:'判断人物关系、是否接话、回应对象与当前电话是否结束，不生成回复文字。电话结束和后台工作结束彼此独立；人物关系不授予工具或账号权限。',surface:this.surface,participants:structuredClone(this.participants),activeTargetId:this.targetId,mode:this.mode,turn,history:this.history.slice(-12),activeConversation:this.history.filter(t=>t.role==='assistant'||t.addressedToV===true).slice(-8),nameCandidates:nameCandidates(turns)};
+    const state={purpose:'判断人物关系、是否接话、回应对象与当前电话是否结束，不生成回复文字。电话结束和后台工作结束彼此独立；人物关系不授予工具或账号权限。',surface:this.surface,interrupting,participants:structuredClone(this.participants),activeTargetId:this.targetId,mode:this.mode,turn,history:this.history.slice(-12),activeConversation:this.history.filter(t=>t.role==='assistant'||t.addressedToV===true).slice(-8),nameCandidates:nameCandidates(turns)};
     const questions=routingQuestions(state),started=performance.now();
     const raw=await this.evaluate(state,questions,signal);
     if(signal?.aborted||generation!==this.generation)throw Error('旧的分人判断已取消');
@@ -97,7 +97,14 @@ export class SpeakerRouter{
         endCall=confirmedEnding(confirmation.answers);extraUsage=confirmation.usage;endVerification=endCall?'confirmed':'withheld';
       }catch(error){if(signal?.aborted||generation!==this.generation)throw error;endVerification='unavailable';}
     }
-    const action=endCall||this.mode==='auto'&&rawAction==='quiet'&&(directlyAddressed||Number.isFinite(quietProbability)&&quietProbability<.8)?'respond':rawAction;
+    // A tentative invitation to chat is not enough to retire a real lookup or
+    // reply. Noisy fragments used to pass the uncertain-quiet fallback and
+    // repeatedly replace the accepted request before it could finish.
+    const addressProbability=address?.probabilities?.v;
+    const interruptionUncertain=interrupting&&!endCall&&!directlyAddressed&&(
+      Number.isFinite(quietProbability)&&quietProbability>.2&&quietProbability<=1||
+      address?.choice==='other'&&Number.isFinite(addressProbability)&&addressProbability>=0&&addressProbability<=.2);
+    const action=interruptionUncertain?'quiet':endCall||this.mode==='auto'&&rawAction==='quiet'&&(directlyAddressed||Number.isFinite(quietProbability)&&quietProbability<.8)?'respond':rawAction;
     let addresseeIds=[];
     if(action==='respond'&&state.participants.length===1)addresseeIds=[state.participants[0].id];
     if(action==='respond'&&state.participants.length>1){
@@ -105,7 +112,7 @@ export class SpeakerRouter{
       addresseeIds=state.participants.filter((_,i)=>mask&(1<<i)).map(p=>p.id);
     }
     const names=[...new Set(state.nameCandidates.map(c=>c.name))];
-    for(const [i,p] of this.participants.entries()){
+    for(const [i,p] of interruptionUncertain?[]:this.participants.entries()){
       const nameChoice=questions['name_'+i]?get('name_'+i):'keep',role=get('role_'+i);
       if(nameChoice!=='keep'){
         const name=names[Number(nameChoice.slice(2))];
@@ -117,9 +124,9 @@ export class SpeakerRouter{
       }
       if(role!=='unknown')p.role=role;
     }
-    if(focus!=='keep'&&this.mode!=='exclusive')this.targetId=focus;
-    if(constraint==='free'&&explicitFree(turn.text))this.mode='auto';
-    else if(constraint.startsWith('only_')&&explicitFocus(turn.text)){
+    if(!interruptionUncertain&&focus!=='keep'&&this.mode!=='exclusive')this.targetId=focus;
+    if(!interruptionUncertain&&constraint==='free'&&explicitFree(turn.text))this.mode='auto';
+    else if(!interruptionUncertain&&constraint.startsWith('only_')&&explicitFocus(turn.text)){
       this.mode='exclusive';this.targetId=constraint.slice(5);
       // A verified focus-setting request needs a short acknowledgement even
       // when the action model confuses 'do not answer others' with this turn.
@@ -131,7 +138,7 @@ export class SpeakerRouter{
     // not inherit a bystander's topic or an earlier silence decision.
     this.history.push({...turn,role:'participant',addressedToV:addresseeIds.length>0});this.history=this.history.slice(-16);
     const usage=extraUsage?Object.fromEntries([...new Set([...Object.keys(raw.usage??{}),...Object.keys(extraUsage)])].filter(k=>Number.isFinite(raw.usage?.[k]??0)&&Number.isFinite(extraUsage[k]??0)).map(k=>[k,(raw.usage?.[k]??0)+(extraUsage[k]??0)])):raw.usage;
-    const result={status:'decided',turn,endCall,...endVerification?{endVerification}:{},modelCalled:true,model:raw.model,usage,decisionMs:Math.round(performance.now()-started),shouldRespond:addresseeIds.length>0,addresseeIds,rawChoices:{action:rawAction,focus,constraint},admission:{action,quietProbability,directlyAddressed,reason:endCall?'end-call':rawAction!==action?(directlyAddressed?'direct-request':'uncertain-quiet'):'model-choice'},...this.snapshot()};
+    const result={status:'decided',turn,endCall,...endVerification?{endVerification}:{},modelCalled:true,model:raw.model,usage,decisionMs:Math.round(performance.now()-started),shouldRespond:addresseeIds.length>0,addresseeIds,rawChoices:{action:rawAction,focus,constraint},admission:{action,quietProbability,addressProbability,directlyAddressed,interrupting,reason:interruptionUncertain?'uncertain-interruption':endCall?'end-call':rawAction!==action?(directlyAddressed?'direct-request':'uncertain-quiet'):'model-choice'},...this.snapshot()};
     this.onTrace({state,questions,result,raw});return result;
   }
   assistant(text){if(text?.trim())this.history.push({role:'assistant',text:text.slice(-1200)});this.history=this.history.slice(-16);}

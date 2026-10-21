@@ -71,6 +71,34 @@ test('repeated quiet turns do not strand a later admitted task or lose the conve
  assert(f.profiles.at(-1)[2].some(t=>t.text==='查一下已经结束的比赛。'));
 });
 
+test('several low confidence final fragments cannot cancel a lookup; a clear new request can',async t=>{
+ let index=0;
+ const noise=[[.48,'respond'],[.58,'quiet'],[.62,'quiet']];
+ const f=await fixture(t,{evaluate:async(s,q)=>{
+  const n=index++-1,uncertain=noise[n],r=answers(q,{action:uncertain?.[1]??'respond'});
+  r.answers.action.probabilities={quiet:uncertain?.[0]??.01,respond:1-(uncertain?.[0]??.01)};
+  r.answers.addressed={type:'choice',choice:uncertain?'other':'v',probabilities:{v:uncertain ? .3 : .99,other:uncertain ? .7 : .01}};
+  return r;
+ }});
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit('查一下今天的比赛。');
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+ const cancelled=f.cancellations.length;
+ for(let i=0;i<3;i++){
+  f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());
+  f.emit('嘈杂中的不完整片段。',1800+i*1800,2800+i*1800);
+  await wait(()=>f.events.filter(e=>e.type==='speaker.decision').length===i+2);
+ }
+ assert.equal(f.cancellations.length,cancelled);
+ assert.equal(f.events.filter(e=>e.type==='speaker.admitted').length,1);
+ assert(f.events.filter(e=>e.type==='speaker.decision').slice(1).every(e=>e.admission.reason==='uncertain-interruption'));
+ const effects=[];f.service.dispatch('call','tool',{name:'web_search'},()=>effects.push('lookup'));
+ f.service.dispatch('call','audio',Buffer.alloc(960),()=>effects.push('reply'));
+ assert.deepEqual(effects,['lookup','reply']);
+ f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());f.emit('V，换成查天气。',7200,8200);
+ await wait(()=>f.events.filter(e=>e.type==='speaker.admitted').length===2);
+ assert(f.cancellations.length>cancelled);
+});
+
 test('an undecided segment cannot disarm the accepted-turn no-output deadline',async t=>{
   const f=await fixture(t,{limits:{responseMs:30}});
   await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();

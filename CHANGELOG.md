@@ -5,6 +5,7 @@
 - Wait for the ASR application initialization response before announcing readiness; an initial retry cannot expose an uninitialized listening call. Record bounded ASR response counters.
 - Retain only bounded audio lifecycle counters and states for physical-phone diagnosis. No raw audio or device identifiers are added.
 - Distinguish active telephone dialogue from far-field room speech. Topic reactions and elliptical task supplements can continue the admitted conversation; heard side speech remains separate from that context. No extra Decision request or tool authorization is introduced.
+- Keep uncertain new finals from replacing an accepted reply or lookup. The permissive idle-conversation fallback does not authorize interruption when both addressing and action evidence remain weak; clear requests and confirmed farewells can still interrupt. Retain the bounded addressing probability and interruption state in decision diagnostics.
 - Candidate only; the previous revision received physical iPhone dialogue/redial success feedback. The conversation-admission revision still needs physical acceptance; merge and production release remain pending. The candidate's homepage notes are registered in `docs/releases/voice-mobile-turn-candidate-20261021/candidate.json`; shipped homepage notes and the production version pointer remain unchanged.
 
 ## Candidate - Home entry guidance

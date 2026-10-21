@@ -130,7 +130,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
       send(s,{type:'speaker.echo-dropped',speakerId:turn.speakerId,textLength:turn.text.length});return;
     }
     send(s,{type:'speaker.utterance',turn});
-    let result;try{result=await s.router.accept(turn,{signal:s.abort.signal});}catch(error){
+    let result;try{result=await s.router.accept(turn,{signal:s.abort.signal,interrupting:protectAccepted(s)});}catch(error){
       if(s.closed)return;
       if(turn.endMs<(s.latestFinalEnd??0)-200){send(s,{type:'speaker.superseded',reason:'stale-decision-error',turn});return;}
       if(protectAccepted(s)){send(s,{type:'speaker.recovery-suppressed',reason:'decision-unavailable'});return;}
