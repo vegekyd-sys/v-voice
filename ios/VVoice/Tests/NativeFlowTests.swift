@@ -1,6 +1,7 @@
 import XCTest
 import Foundation
 import AVFoundation
+import ActivityKit
 import SwiftUI
 import VVoiceCore
 @testable import VVoice
@@ -76,6 +77,40 @@ import VVoiceCore
         await call.resultWasShown(document.id)
         let snapshot = try await stats()
         XCTAssertEqual((snapshot["acknowledgements"] as? [String])?.count, 0)
+        await call.end()
+    }
+    func testBackgroundConnectionAndLongReplyRequestAttentionWithoutAnotherCall() async throws {
+        let call = try await client()
+        let file = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("VVoiceCallLifecycle.json")
+        func attention() -> [String] {
+            let rows = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode([[String: String]].self, from: $0) } ?? []
+            return rows.filter { $0["event"] == "island.attention.requested" }.compactMap { $0["code"] }
+        }
+        // This is only the simulator fixture client's cache, never a real binding.
+        try? FileManager.default.removeItem(at: file)
+        call.sceneChanged(.background)
+        try await call.startOrContinue()
+        try await until { attention() == ["connected"] }
+        XCTAssertEqual(call.activityState.island.layout, .audio)
+        let text = "# 完整安排\n\n" + String(repeating: "这是一份本地方案。", count: 140)
+        try await fixture("event", ["event":["type":"transcript","role":"assistant","text":text,"final":true]])
+        try await until { attention() == ["connected", "document"] }
+        try await until { Activity<CallAttributes>.activities.first?.content.state.island.layout == .conversation }
+        XCTAssertEqual(call.activityState.island.layout, .conversation)
+        let document = try XCTUnwrap(call.documents.last)
+        call.selectIslandLayout(.audio, callID: call.presentationID)
+        try await call.startOrContinue()
+        call.publishIslandActivity()
+        try await until { Activity<CallAttributes>.activities.first?.content.state.island.layout == .audio }
+        try await until { try await self.stats()["inputBytes"] as? Int ?? 0 > 1920 }
+        XCTAssertEqual(attention(), ["connected", "document"])
+        XCTAssertEqual(call.activityState.island.layout, .audio)
+        let snapshot = try await stats()
+        XCTAssertEqual(snapshot["sessions"] as? Int, 1)
+        await call.resultWasShown(document.id)
+        let receipts = try await stats()
+        XCTAssertEqual((receipts["acknowledgements"] as? [String])?.count, 0)
         await call.end()
     }
     func testSampleComparisonCannotDeactivateAnActionButtonCall() async throws {

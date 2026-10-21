@@ -313,7 +313,7 @@ import VVoiceCore
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         if UIAccessibility.isVoiceOverRunning { UIAccessibility.post(notification: .announcement, argument: "已接通，可以开口") }
         if greeting { relay.send(["type": "greeting"]) }
-        publish()
+        publish(connected: greeting)
         heartbeat?.cancel()
         heartbeat = Task { [weak self] in
             var tick = 0
@@ -362,6 +362,7 @@ import VVoiceCore
                     let id = "reply-" + turn.id.uuidString
                     documents.append(CallDocument(id: id, text: text, serverOwned: false)); if documents.count > 16 { documents.removeFirst() }
                     conversation.attachDocument(id: id, to: turn.id)
+                    publish(resultID: id)
                 }
                 scheduleCaptionUpdate(); updateAvatar()
             }
@@ -702,17 +703,23 @@ import VVoiceCore
                      documentID: unread?.id, taskLabel: tasks.last?.title, island: islandSnapshot(documentID: unread?.id))
     }
     func publishIslandActivity() { publish() }
-    private func publish(resultID: String? = nil) {
+    private func publish(resultID: String? = nil, connected: Bool = false) {
         UIApplication.shared.isIdleTimerDisabled = appIsActive && active
         guard let a = activity else { return }
         let content = ActivityContent(state: activityState, staleDate: Date().addingTimeInterval(25))
+        let connectionAlert = connected && islandPresentation.announceConnection(owner: presentationID, foreground: appIsActive)
         let shouldAlert = resultID.map { id in !appIsActive && !islandResultAlerts.contains(id) && islandResultAlerts.count < 32 } ?? false
         if let resultID, shouldAlert { islandResultAlerts.insert(resultID) }
-        let alert = shouldAlert ? AlertConfiguration(title: "方案整理好了", body: "点击查看全文，通话继续", sound: .default) : nil
+        let alert: AlertConfiguration? = shouldAlert
+            ? AlertConfiguration(title: "方案整理好了", body: "点击查看全文，通话继续", sound: .default)
+            : connectionAlert ? AlertConfiguration(title: "V 已接通", body: "可以直接开口，长按灵动岛查看通话", sound: .default) : nil
+        let attention = shouldAlert ? "document" : connectionAlert ? "connected" : nil
         let previous = activityUpdates
         activityUpdates = Task { [weak self] in
             await previous?.value
-            guard let self, self.activity?.id == a.id else { return }; await a.update(content, alertConfiguration: alert)
+            guard let self, self.activity?.id == a.id else { return }
+            if let attention { CallDiagnostics.record("island.attention.requested", code: attention) }
+            await a.update(content, alertConfiguration: alert)
         }
     }
     private func finishActivity(phase: VoicePhase) {

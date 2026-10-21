@@ -52,7 +52,9 @@ struct SettingsView: View {
                     Toggle("灵动岛显示对话摘要", isOn: $call.islandCaptions)
                     Text("显示最近一句对话和方案标题；关闭后只显示通话状态与方案就绪。完整内容仅在 App 中打开。")
                         .font(.footnote).foregroundStyle(.secondary)
-                } header: { Text("灵动岛") }
+                } header: { Text("灵动岛") } footer: {
+                    Text("长按屏幕顶部的小岛，展开音频卡片；点波形查看文字和静音按钮，点折叠箭头返回音频。轻点小岛返回 App，有方案时进入全文。")
+                }
                 Section {
                     NavigationLink("设置操作按钮") { ActionButtonInstructions() }
                     Text("已有通话时再次长按：继续当前通话；静音时恢复麦克风。结束通话请点灵动岛或 App 的结束按钮。")
@@ -89,7 +91,7 @@ struct ActionButtonInstructions: View {
                 Text("完成一次设置，之后长按 iPhone 操作按钮，就能和 V 说话。").font(.system(size: 16)).foregroundStyle(.secondary).lineSpacing(6)
                 instruction("01", "先准备好通话", "在 V Voice 绑定本人入口，允许麦克风和实时活动。先从 App 完成一次通话。")
                 instruction("02", "打开系统设置 → 操作按钮", "选择「快捷指令」，轻点「选取快捷指令」，找到 V Voice 的「和 V 通话」。")
-                instruction("03", "长按，等接通后开口", "灵动岛出现「我在听」时即可说话。长按灵动岛可静音或结束，轻点可返回通话。")
+                instruction("03", "长按，等接通后开口", "听到接通提示后即可说话。长按屏幕顶部的灵动岛展开音频卡片，点波形查看文字和静音按钮；轻点小岛返回 App。")
                 ShortcutsLink().frame(maxWidth: .infinity).padding(.vertical, 8)
                 Text("操作按钮在后台开始通话，灵动岛显示通话状态并提供静音、结束按钮。首次使用请先在 App 完成入口绑定和授权。系统来电与 Siri 会暂停通话；结束后按提示恢复。").font(.footnote).foregroundStyle(.secondary).lineSpacing(5)
             }.padding(28)

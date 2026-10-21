@@ -168,3 +168,11 @@ UI 实操发现原 20 帧（400 ms）主线程交接阈值，在从后台切到�
 ![系统实际文字大卡与完整控件](evidence/build9-island-conversation-mirror.png)
 
 ![灵动岛进入原 H5 阅读器](evidence/build9-h5-reader-simulator.jpg)
+
+## 2026-10-22 灵动岛入口修复源码候选（未装机）
+
+- 基线 f0db33b；独立分支 `codex/voice-island-entry`。手机仍是 build 9。用户确认长按岛本体可以展开；不能把最初「只见小态」归因于系统展开损坏。
+- 补齐首次后台真正接通后的系统提醒请求；前台接通消费事件、重连不重复。普通长回复生成全文也走已有文档提醒路径。系统是否展示、停留多久仍由 iOS 控制。设置和操作按钮说明同步明确小→中→大入口。
+- Core 16 项通过。iOS Simulator Debug 编译通过。原生定向 5 项通过，xcodebuild 退出 0：后台接通／长回复两个 attention 请求、实际 Activity 内容 audio→conversation→手动 audio、同一 sessions=1 持续收音、无伪造服务端回执；兼容解码／资源白名单／4KB 预算与原长回复 reader 回归一并通过。
+- 首次新用例把两个完整 final transcript 当作同一文档，实际现有对话模型将其视为两轮，导致断言失败。用例改为验证同一通话重新继续／常规刷新不重复提醒，并等待 ActivityKit 回读布局；没有为测试修改对话轮次语义。
+- 无签名包／安装／发布、无真实拨号或模型调用、无生产改动。此记录仅属于源码候选，不能替代 build 9 真机接受或未来候选的实机自动展开验收。

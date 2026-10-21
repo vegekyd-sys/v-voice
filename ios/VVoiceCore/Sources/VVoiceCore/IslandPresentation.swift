@@ -24,6 +24,7 @@ public struct IslandPresentation: Sendable {
     private var utterance: String?
     private var newDocumentAt: Date?
     private var approvedReaction: (id: String, at: Date)?
+    private var connectionAnnounced = false
     private var input: [UInt8] = [], output: [UInt8] = []
     private var inputPeak: Double = 0, outputPeak: Double = 0
     private var lastSample: Date?, lastPublish: Date?
@@ -39,6 +40,13 @@ public struct IslandPresentation: Sendable {
     }
     @discardableResult public mutating func select(_ layout: IslandLayout, owner: String) -> Bool {
         guard self.owner == owner else { return false }; self.layout = layout; return true
+    }
+    /// Consume the first successful connection even in foreground, so later
+    /// backgrounding or recovery cannot replay a connection alert.
+    public mutating func announceConnection(owner: String, foreground: Bool) -> Bool {
+        guard self.owner == owner, !connectionAnnounced else { return false }
+        connectionAnnounced = true
+        return !foreground
     }
     @discardableResult public mutating func displayedReaction(_ id: String, owner: String, now: Date) -> Bool {
         guard self.owner == owner, IslandReactionCatalog.assets[id] != nil, id != "idle" else { return false }
