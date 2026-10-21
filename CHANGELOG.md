@@ -1,3 +1,9 @@
+## Unreleased — iOS island calling and waveform candidate
+
+- Show “呼叫中” in the compact island and “正在呼叫 V” with a cancel action in the connecting card. Keep the existing background Action Button intent and audio lifecycle.
+- Stretch the audio waveform across the card using 27 fine columns, real energy history interpolation, tapered edges and short update transitions. Silence, stale snapshots and Always-On stay calm; reduced motion disables transitions.
+- Include the prior connection/long-reply attention fixes from `b858899`. Local source candidate only; the physical iPhone still has build 9.
+
 ## 2026-10-22 — iOS build 9 local candidate: embedded H5 and Dynamic Island
 
 - Preserve native build 8 as tag `ios-native-build8-20261022`, with its signed archive and IPA retained for overwrite rollback.

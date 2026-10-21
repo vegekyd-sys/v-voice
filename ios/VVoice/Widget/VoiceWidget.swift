@@ -23,8 +23,7 @@ struct VoiceLiveActivity: Widget {
             } compactLeading: {
                 Text("V").font(.system(size: 16, weight: .semibold, design: .rounded)).foregroundStyle(lilac).accessibilityLabel("V 通话")
             } compactTrailing: {
-                Image(systemName: symbol(context)).font(.system(size: 12)).foregroundStyle(lilac)
-                    .accessibilityLabel(context.isStale ? "连接状态未知" : context.state.documentID != nil ? "方案已就绪，点击查看全文" : context.state.muted ? "麦克风已静音" : context.state.phase.title)
+                IslandCompactStatus(state: context.state, stale: context.isStale)
             } minimal: {
                 Image(systemName: symbol(context)).foregroundStyle(lilac).accessibilityLabel("V 通话")
             }.widgetURL(destination(context)).keylineTint(lilac)

@@ -176,3 +176,18 @@ UI 实操发现原 20 帧（400 ms）主线程交接阈值，在从后台切到�
 - Core 16 项通过。iOS Simulator Debug 编译通过。原生定向 5 项通过，xcodebuild 退出 0：后台接通／长回复两个 attention 请求、实际 Activity 内容 audio→conversation→手动 audio、同一 sessions=1 持续收音、无伪造服务端回执；兼容解码／资源白名单／4KB 预算与原长回复 reader 回归一并通过。
 - 首次新用例把两个完整 final transcript 当作同一文档，实际现有对话模型将其视为两轮，导致断言失败。用例改为验证同一通话重新继续／常规刷新不重复提醒，并等待 ActivityKit 回读布局；没有为测试修改对话轮次语义。
 - 无签名包／安装／发布、无真实拨号或模型调用、无生产改动。此记录仅属于源码候选，不能替代 build 9 真机接受或未来候选的实机自动展开验收。
+
+## 呼叫提示与宽波形补充候选
+
+- 接续 `b858899`。小岛连接时显示「呼叫中」与电话图标；中卡连接时显示「正在呼叫 V／接通后就能开口／取消连接」。长按中卡后的实际系统 AX 读取到以上文字。接通后仍是用户已确认的 V＋单图标小态，没有修改 TalkToVIntent 的后台身份或 VoiceAudio 生命周期。
+- 旧波形 9×3pt、间距3pt，实际51pt。新波形用 GeometryReader 填满可用宽度，27根细柱按真实9样本插值，渐变／边缘淡化／0.55秒过渡；没有增加发布频率，也没有改变 PCM 或播放时钟采样。系统动画依据 [Apple WidgetKit 文档](https://developer.apple.com/documentation/widgetkit/animating-data-updates-in-widgets-and-live-activities)，低亮度／减少动态效果按实际环境退化。
+- Core16通过；原生定向6项通过、xcodebuild退出0，包含旧快照／白名单／4KB预算、长回复reader、后台attention、慢连接时Activity已经是connecting且inputBytes=0，成功后才为listening。H5源包与52张Reaction资源散列检查通过。
+- iPhone17Pro iOS26.5实际系统卡片，用本地无模型fixture慢连接和6秒振幅变化PCM检查：小岛呼叫文案可见；展开后Reaction／全宽波形／44pt挂断完整可见，声音结束后回细线；点挂断后fixture active=false，closeRequests与sessions均为3（累计人工fixture，不能当正式通话数量）。
+- 实际 serve-sim3200 帧已在内置浏览器展示，证据为下面三图。中途首次页面连接停在旧帧，经刷新并与原生截图／系统AX对照恢复，未将旧帧作为当前状态证据。呼叫中展开截图恰逢已接通，因此仅按音频静态状态命名，不标为呼叫中证明。
+- 未重新签名或安装真机、未合入／发布，手机仍是build9。本轮在模拟器从同一H5入口启动本地通话，不能代替实机Action Button启动的完整过程；iOS在AppIntent启动前的系统黑色过渡仍需实机人工检查。首页发布日志保持已交付版本，源码候选不冒充网页已上线更新。
+
+![系统呼叫中小岛](evidence/island-calling-compact-system.png)
+
+![系统真实PCM宽波形](evidence/island-wave-polish-system.png)
+
+![系统无声细线](evidence/island-audio-idle-system.png)

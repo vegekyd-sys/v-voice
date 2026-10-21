@@ -5,7 +5,7 @@ public enum VoicePhase: String, Codable, Sendable, CaseIterable {
     public var title: String {
         switch self {
         case .idle: "随时，和 V 说话"
-        case .connecting: "正在连接 V"
+        case .connecting: "正在呼叫 V"
         case .listening: "我在听"
         case .thinking: "V 正在思考"
         case .speaking: "V 正在回答"
@@ -20,7 +20,8 @@ public enum VoicePhase: String, Codable, Sendable, CaseIterable {
     public var symbol: String {
         switch self {
         case .idle, .ended: "waveform"
-        case .connecting, .reconnecting: "antenna.radiowaves.left.and.right"
+        case .connecting: "phone.arrow.up.right"
+        case .reconnecting: "antenna.radiowaves.left.and.right"
         case .listening: "mic.fill"
         case .thinking: "ellipsis"
         case .speaking: "waveform"

@@ -42,6 +42,12 @@ struct IslandCallSurface: View {
                         }.frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).contentShape(Rectangle())
                     }.foregroundStyle(.white.opacity(0.92)).accessibilityLabel(state.documentID != nil && !stale ? "方案已就绪，查看全文" : "返回当前通话")
                     if !lockScreen, !stale { IslandFoldButton(callID: callID) }
+                } else if state.phase == .connecting {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("正在呼叫 V").font(.system(size: 16, weight: .medium)).foregroundStyle(.white)
+                        Text("接通后就能开口").font(.system(size: 12)).foregroundStyle(islandLilac.opacity(0.75))
+                    }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    endButton
                 } else {
                     Button(intent: IslandLayoutIntent(callID: callID, conversation: true)) {
                         IslandWaveform(levels: quiet || luminanceReduced ? [] : state.island.levels,
@@ -88,17 +94,58 @@ struct IslandFoldButton: View {
 struct IslandWaveform: View {
     let levels: [UInt8]
     let source: IslandAudioSource
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isLuminanceReduced) private var luminanceReduced
+    private let columns = 27
     var body: some View {
-        HStack(spacing: 3) {
-            ForEach(0..<9, id: \.self) { index in
-                Capsule().fill(islandLilac).frame(width: 3, height: height(index))
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                ForEach(0..<columns, id: \.self) { index in
+                    let position = Double(index) / Double(columns - 1)
+                    Capsule().fill(LinearGradient(colors: [Color(hex: 0xecdff6), islandLilac, Color(hex: 0xa989c6)], startPoint: .top, endPoint: .bottom))
+                        .frame(width: min(3.2, geometry.size.width / CGFloat(columns) * 0.55), height: height(index))
+                        .opacity(0.45 + 0.55 * sin(.pi * position))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
-        }.frame(height: 30).accessibilityElement(children: .ignore)
+            .animation(reduceMotion || luminanceReduced ? nil : .easeInOut(duration: 0.55), value: levels)
+            .animation(reduceMotion || luminanceReduced ? nil : .easeInOut(duration: 0.35), value: source)
+        }.frame(height: 38).accessibilityElement(children: .ignore)
             .accessibilityLabel(source == .input ? "近端声音能量快照" : source == .output ? "V 播放能量快照" : "暂无新鲜声音数据")
     }
     private func height(_ index: Int) -> CGFloat {
-        let values = Array(levels.suffix(9)); let offset = 9 - values.count
-        guard index >= offset, source != .none else { return 3 }
-        return 3 + CGFloat(min(values[index - offset], 100)) / 100 * 25
+        let position = Double(index) / Double(columns - 1)
+        let taper = 0.3 + 0.7 * pow(sin(.pi * position), 0.7)
+        guard source != .none, !luminanceReduced, !levels.isEmpty else { return 2.5 + taper * 1.5 }
+        // Interpolate the real 900 ms history across the available width. These
+        // are energy samples, not invented frequency bins or a looping animation.
+        let values = Array(repeating: UInt8(0), count: max(0, 9 - levels.count)) + Array(levels.suffix(9))
+        let sample = position * Double(values.count - 1)
+        let left = Int(sample), right = min(left + 1, values.count - 1)
+        let blend = sample - Double(left)
+        let level = Double(min(values[left], 100)) * (1 - blend) + Double(min(values[right], 100)) * blend
+        return 3.5 + CGFloat(pow(level / 100, 0.8) * taper * 32)
+    }
+}
+
+/// Connection text is an intentional exception to the compact V + one icon.
+/// The system's own Action Button launch overlay precedes our Live Activity.
+struct IslandCompactStatus: View {
+    let state: CallAttributes.ContentState
+    var stale = false
+    var body: some View {
+        HStack(spacing: 4) {
+            if !stale, state.phase == .connecting || state.phase == .reconnecting {
+                Text(state.phase == .connecting ? "呼叫中" : "重连中").font(.system(size: 10, weight: .medium))
+            }
+            Image(systemName: symbol).font(.system(size: 12))
+        }.foregroundStyle(islandLilac)
+            .accessibilityLabel(stale ? "连接状态未知" : state.documentID != nil ? "方案已就绪，点击查看全文" : state.muted ? "麦克风已静音" : state.phase.title)
+    }
+    private var symbol: String {
+        if stale { return "pause.fill" }
+        if [.connecting,.reconnecting,.interrupted,.ending,.failed].contains(state.phase) { return state.phase.symbol }
+        if state.documentID != nil { return "doc.text.fill" }
+        return state.muted ? "mic.slash.fill" : state.phase.symbol
     }
 }

@@ -6,6 +6,7 @@ import {WebSocketServer} from 'ws';
 import {normalizeAvatarEvent} from '../../lab/gpt-live-h5/avatar-telemetry.mjs';
 const port=Number(process.env.VVOICE_FIXTURE_PORT??29837);
 let active=null,client=null,sequence=0,sessions=0,inputBytes=0,zeroBytes=0,playbackDrained=0,playbackStarts=0,greetings=0,heartbeats=0,earlyAudio=false,slowSession=false;
+let slowSessionMS=300;
 let speakerMode=false,lastSessionRequest=null;
 let limitNextSession=false,slowClose=false,closeRequests=0;
 let documents=[],pending=[],acknowledgements=[],supplements=[];
@@ -37,12 +38,20 @@ const server=createServer(async(req,res)=>{
    if(body.command==='avatar-slow')slowAvatar=true;
    if(body.command==='avatar-reply'){avatarReply=body.picture;avatarContinuations=body.continuations??[];}
    if(body.command==='event'&&body.event)emit(body.event);
-   if(body.command==='slow-session')slowSession=true;
+   if(body.command==='slow-session'){slowSession=true;slowSessionMS=Math.max(100,Math.min(15000,Number(body.ms)||300));}
    if(body.command==='limit-next-session')limitNextSession=true;
    if(body.command==='slow-close')slowClose=true;
    if(body.command==='malformed-audio')emit({type:'audio',sequence:++sequence,audio:Buffer.from([1]).toString('base64'),sampleRate:24000});
    if(body.command==='early-audio')earlyAudio=true;
    if(body.command==='audio')audio(body.ms??240);
+   if(body.command==='wave-demo'){
+     const pcm=Buffer.alloc(6000*48);
+     for(let i=0;i<pcm.length/2;i++){
+       const t=i/24000, gain=0.02+0.34*Math.pow((1+Math.sin(t*7.8))/2,2)*(0.4+0.6*Math.pow(Math.sin(t*2.1),2));
+       pcm.writeInt16LE(Math.round(Math.sin(2*Math.PI*220*t)*32767*gain),i*2);
+     }
+     emit({type:'audio',sequence:++sequence,audio:pcm.toString('base64'),sampleRate:24000});emit({type:'audio.done'});
+   }
    if(body.command==='clear'){emit({type:'audio.clear'});}
    if(body.command==='provider-reconnecting')emit({type:'provider.reconnecting'});
    if(body.command==='provider-recovered')emit({type:'provider.recovered'});
@@ -91,7 +100,7 @@ const server=createServer(async(req,res)=>{
    if(active)return send(409,{error:'Existing owner'});
    active=randomUUID();sequence=0;sessions++;documents=[];pending=[];acknowledgements=[];
    const reservation={voiceSessionId:active,transport:'gateway-relay',provider:'seeduplex',relayTicket:'fixture-ticket',...(speakerMode?{speakerRouting:{policy:'speaker'}}:{})};
-   if(slowSession){slowSession=false;setTimeout(()=>send(200,reservation),300);return;}
+   if(slowSession){slowSession=false;setTimeout(()=>send(200,reservation),slowSessionMS);return;}
    return send(200,reservation);
  }
  if(path==='/voice/api/close'){

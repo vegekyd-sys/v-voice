@@ -79,6 +79,19 @@ import VVoiceCore
         XCTAssertEqual((snapshot["acknowledgements"] as? [String])?.count, 0)
         await call.end()
     }
+    func testPendingDialPublishesCallingBeforeAudioIsReady() async throws {
+        let call = try await client()
+        try await fixture("slow-session", ["ms":1200])
+        let connecting = Task { try await call.startOrContinue() }
+        try await until { Activity<CallAttributes>.activities.contains { $0.content.state.phase == .connecting } }
+        XCTAssertEqual(call.phase, .connecting)
+        XCTAssertEqual(call.activityState.phase.title, "正在呼叫 V")
+        let snapshot = try await stats()
+        XCTAssertEqual(snapshot["inputBytes"] as? Int, 0)
+        try await connecting.value
+        XCTAssertEqual(call.phase, .listening)
+        await call.end()
+    }
     func testBackgroundConnectionAndLongReplyRequestAttentionWithoutAnotherCall() async throws {
         let call = try await client()
         let file = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
