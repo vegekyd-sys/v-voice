@@ -65,8 +65,9 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
   // V is mid-answer, waiting on a lookup, or just finished: an unattributable
   // fragment then is far more likely V's own tail, a breath or a late echo
   // than a new question, and asking to repeat would cut the answer short.
+  const pickupPending=s=>Boolean(s.input?.greeting&&!s.input.cancelled&&!s.input.greetingDone);
   const admittedPending=s=>{const c=s.input;return Boolean(c?.decided&&!c.cancelled&&!c.responded&&!c.greeting&&!c.host&&!c.recovery&&!c.ending);};
-  const busy=s=>{const now=performance.now();return admittedPending(s)||s.nativeBusy||Boolean(s.busyProbe?.())||(s.lastToolAt??-Infinity)>(s.lastDoneAt??-Infinity)&&now-s.lastToolAt<30000||now-(s.lastDoneAt??-Infinity)<8000;};
+  const busy=s=>{const now=performance.now();return pickupPending(s)||admittedPending(s)||s.nativeBusy||Boolean(s.busyProbe?.())||(s.lastToolAt??-Infinity)>(s.lastDoneAt??-Infinity)&&now-s.lastToolAt<30000||now-(s.lastDoneAt??-Infinity)<8000;};
   const protectAccepted=s=>Boolean(s.input?.decided&&!s.input.cancelled&&!s.input.greeting&&!s.input.host&&!s.input.recovery&&!s.input.ending&&busy(s));
   // With one voice in the call there is no one else the words could belong to.
   const soleSpeaker=s=>s.tracker.prototypes.length===1?s.tracker.prototypes[0].id:null;
@@ -98,6 +99,11 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
       const line=reason==='mixed-speakers'?'刚才你们的声音重叠了，请轮流说，我在听。':'刚才那句我没听清，请再说一次，我在听。';heard(s,line);s.native.clarify?.(line);
     }catch(error){if(!s.closed&&s.input===c)send(s,{type:'speaker.error',reason:'recovery-unavailable',message:'这句没听清，请再说一次。'});}
   };
+  const cancelGreeting=(s,reason)=>{
+    const c=s.input;if(!pickupPending(s))return;
+    c.cancelled=true;clearTimeout(s.responseDeadline);s.gate.deny(c.token);s.native.cancel?.();s.nativeBusy=false;
+    send(s,{type:'speaker.greeting-cancelled',reason});
+  };
   const identified=(s,e)=>{
     const seg=e.segment;
     send(s,{type:'speaker.identity',speakerId:seg.speakerId,startMs:seg.startMs,afterStartMs:e.afterStartMs,inferenceMs:e.inferenceMs});
@@ -113,7 +119,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     // bystander's speech cannot prematurely clear the accepted reply.
     // Identity alone is not a new request. Keep the accepted input, output gate
     // and no-output deadline until a later final turn is actually admitted.
-    if(s.nativeBusy||protectAccepted(s)){
+    if(s.nativeBusy||protectAccepted(s)||!s.farField&&pickupPending(s)){
       if(env.VOICE_STREAM_LOOKAHEAD!=='1'||s.farField||!s.native.stage)return;
       const shadow=s.shadow;
       if(shadow&&!shadow.cancelled&&shadow.speakerId===seg.speakerId&&seg.startMs-(shadow.endMs??seg.startMs)<1000){shadow.segmentIds.add(seg.id);shadow.endMs=seg.endMs;return;}
@@ -166,6 +172,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     send(s,{type:'speaker.decision',...result,timings});
     if(turn.endMs<(s.latestFinalEnd??0)-200){send(s,{type:'speaker.superseded',reason:'newer-final-turn',turn});return;}
     if(result.endCall){
+      cancelGreeting(s,'admitted-speech');
       if((s.tracker.current?.lastVoiceMs??0)>turn.endMs+200){send(s,{type:'speaker.superseded',reason:'speech-after-farewell',turn});return;}
       discardShadow(s,'ending');
       if(s.input)s.input.cancelled=true;
@@ -185,6 +192,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     const c=s.input,matches=c&&!c.decided&&!c.cancelled&&c.speakerId===turn.speakerId&&c.startMs<turn.endMs&&(!c.endMs||c.endMs>=turn.startMs-200);
     const shadow=s.shadow,shadowMatches=shadow&&!shadow.cancelled&&shadow.speakerId===turn.speakerId&&shadow.startMs<turn.endMs&&(!shadow.endMs||shadow.endMs>=turn.startMs-200);
     if(!result.shouldRespond){if(shadowMatches)discardShadow(s,'quiet');if(matches){clearTimeout(s.responseDeadline);c.cancelled=true;s.gate.deny(c.token);s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;}return;}
+    cancelGreeting(s,'admitted-speech');
     send(s,{type:'speaker.admitted',turn:result.turn});s.tracker.pin(turn.speakerId);
     const profile=speakerProfile({speakerId:result.turn.speakerId,...result});
     s.acceptedHistory.push({role:'user',text:turn.text});s.acceptedHistory=s.acceptedHistory.slice(-8);
@@ -298,7 +306,10 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
       s.tracker=new OnlineSpeakerTracker({embed:pcm=>embedding.compute(pcm),recycle:s.farField,onEvent:e=>{
         if(s.closed)return;
         if(e.type==='evicted'){s.router.forget(personId(e.speakerId));send(s,{type:'speaker.evicted',speakerId:e.speakerId});}
-        if(e.type==='start'&&s.input?.greeting){s.input.cancelled=true;clearTimeout(s.responseDeadline);s.gate.deny();s.native.cancel?.();s.nativeBusy=false;send(s,{type:'speaker.greeting-cancelled',reason:'new-speech'});}
+        // Pickup noise is not yet an admitted caller turn. On a phone, keep
+        // the greeting while ASR/Decision checks it; confirmed speech cancels
+        // above. Household devices retain their existing acoustic policy.
+        if(e.type==='start'&&s.farField)cancelGreeting(s,'new-speech');
         if(e.type==='start'&&s.input?.ending&&!s.input.cancelled)s.input.heldBy=e.segment?.id;
         if(e.type==='identified')identified(s,e);
         if(e.type==='end'){s.speechEndedAt=performance.now();if(s.input&&!s.input.decided&&s.input.segmentIds.has(e.segment.id))s.input.endMs=e.segment.endMs;if(s.shadow?.segmentIds.has(e.segment.id))s.shadow.endMs=e.segment.endMs;}
@@ -367,7 +378,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     // Input is the session's own rate; budgets count 24 kHz-equivalent bytes.
     audio(id,input){const s=sessions.get(id);if(!s?.ready||s.closed)throw Error('流式识人尚未就绪');const bytes=s.inputRate===16000?input.length*1.5:input.length;inputBytes+=bytes;s.inputBytes+=bytes;if(s.inputBytes>48000*(limits.inputSeconds??1800))throw Error('本轮音频预算已用完');const pcm=s.inputRate===16000?Buffer.from(input):s.resampler.push(input),startMs=s.window.bytes/32;s.window.append(pcm);s.clock.push({startMs,endMs:s.window.bytes/32,at:performance.now()});if(s.clock.length>1200)s.clock.shift();if(s.asrReady)s.asr.append(pcm);s.tracker.push(pcm);
       if(s.latestAsr)for(const turn of normalizeFinals(s,s.latestAsr))enqueue(s,turn);return true;},
-    dispatch(id,kind,value,deliver){const s=sessions.get(id);if(!s)return false;if(s.gate.status!=='closed'){if(kind==='audio')s.nativeBusy=true;if(kind==='done'){s.nativeBusy=false;if(s.input?.host)s.input.hostDone=true;if(s.input&&!s.input.greeting&&!s.input.recovery&&!s.input.host)s.lastDoneAt=performance.now();}if(kind==='tool'&&value?.name!=='end_call')s.lastToolAt=performance.now();}try{const c=s.input;s.gate.dispatch(()=>{if(kind==='tool'&&c?.greeting)return;if(kind==='tool'&&value.name==='end_call'){s.native.rejectNativeEnd?.(value);send(s,{type:'speaker.end-withheld',reason:'native-end-unconfirmed'});return;}if(c&&s.input===c&&['audio','tool'].includes(kind)){c.responded=true;clearTimeout(s.responseDeadline);}deliver();},kind==='audio'?value.length:0);}catch(error){if(s.input)s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;send(s,{type:'speaker.error',message:error.message});}return true;},
+    dispatch(id,kind,value,deliver){const s=sessions.get(id);if(!s)return false;if(s.gate.status!=='closed'){if(kind==='audio')s.nativeBusy=true;if(kind==='done'){s.nativeBusy=false;if(s.input?.host)s.input.hostDone=true;if(s.input?.greeting)s.input.greetingDone=true;if(s.input&&!s.input.greeting&&!s.input.recovery&&!s.input.host)s.lastDoneAt=performance.now();}if(kind==='tool'&&value?.name!=='end_call')s.lastToolAt=performance.now();}try{const c=s.input;s.gate.dispatch(()=>{if(kind==='tool'&&c?.greeting)return;if(kind==='tool'&&value.name==='end_call'){s.native.rejectNativeEnd?.(value);send(s,{type:'speaker.end-withheld',reason:'native-end-unconfirmed'});return;}if(c&&s.input===c&&['audio','tool'].includes(kind)){c.responded=true;clearTimeout(s.responseDeadline);}deliver();},kind==='audio'?value.length:0);}catch(error){if(s.input)s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;send(s,{type:'speaker.error',message:error.message});}return true;},
     /** A line V speaks outside model replies (a cached tool-start clip): echo only, not Decision history. */
     spoken(id,text){const s=sessions.get(id);if(s)heard(s,text);},
     /** True while this call has background work V is waiting on. */

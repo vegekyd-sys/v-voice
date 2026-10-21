@@ -347,13 +347,38 @@ test('streaming pickup greets exactly once without a caller voiceprint, transcri
  const f=await fixture(t,{initialAudio:false});await f.service.greet('call');await f.service.greet('call');
  assert.equal(f.greetings.length,1);assert.equal(f.profiles.length,1);assert.equal(f.events.some(e=>e.type==='speaker.decision'),false);
  const delivered=[];f.service.dispatch('call','audio',Buffer.alloc(20),()=>delivered.push('audio'));f.service.dispatch('call','tool',{name:'web_search'},()=>delivered.push('tool'));assert.deepEqual(delivered,['audio']);
- f.service.audio('call',voice());await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'||e.type==='speaker.stream-fallback'));
- assert(f.events.some(e=>e.type==='speaker.greeting-cancelled'));assert.equal(f.service.has('call'),true);
+ f.service.audio('call',voice());await wait(()=>f.events.some(e=>e.type==='speaker.identity'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'||e.type==='speaker.stream-fallback'));
+ assert(f.events.some(e=>e.type==='speaker.greeting-cancelled'&&e.reason==='admitted-speech'));assert.equal(f.service.has('call'),true);
 });
-test('speech during pickup preparation prevents the late greeting from interrupting the caller',async t=>{
- let release;const f=await fixture(t,{initialAudio:false,prepare:async(_i,key)=>{if(key==='speaker-greeting')await new Promise(r=>release=r);}});
- const work=f.service.greet('call');await wait(()=>release);f.service.audio('call',voice());release();await work;
- await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));assert.equal(f.greetings.length,0);assert.equal(f.service.has('call'),true);
+test('pickup noise during native preparation cannot cancel the phone greeting',async t=>{
+ let release;const f=await fixture(t,{initialAudio:false,lookahead:true,prepare:async(_i,key)=>{if(key==='speaker-greeting')await new Promise(r=>release=r);}});
+ const work=f.service.greet('call');await wait(()=>release);f.service.audio('call',voice());
+ await wait(()=>f.events.some(e=>e.type==='speaker.lookahead-start'));
+ assert.equal(f.cancellations.length,0);assert(!f.events.some(e=>e.type==='speaker.greeting-cancelled'));
+ release();await work;assert.equal(f.greetings.length,1);assert(f.events.some(e=>e.type==='speaker.greeting-start'));
+ await f.service.greet('call');assert.equal(f.greetings.length,1);
+});
+test('confirmed caller speech supersedes a preparing greeting without a late welcome or replay',async t=>{
+ let release;const f=await fixture(t,{initialAudio:false,lookahead:true,prepare:async(_i,key)=>{if(key==='speaker-greeting')await new Promise(r=>release=r);}});
+ const work=f.service.greet('call');await wait(()=>release);f.service.audio('call',voice());
+ await wait(()=>f.events.some(e=>e.type==='speaker.lookahead-start'));f.emit();
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'&&e.lookahead));
+ release();await work;assert.equal(f.greetings.length,0);assert(f.stages[0].committed);
+ assert(f.events.some(e=>e.type==='speaker.greeting-cancelled'&&e.reason==='admitted-speech'));
+ assert(!f.events.some(e=>e.type==='speaker.stream-fallback'));
+});
+test('quiet television speech during pickup leaves the greeting and cannot execute a speculative tool',async t=>{
+ const f=await fixture(t,{initialAudio:false,lookahead:true,evaluate:async(_s,q)=>answers(q,{action:'quiet'})});
+ await f.service.greet('call');f.service.audio('call',voice());await wait(()=>f.stages.length===1);
+ f.emit('欢迎收看今天的新闻。');await wait(()=>f.stages[0].discarded);
+ assert(!f.events.some(e=>e.type==='speaker.greeting-cancelled'));assert.equal(f.cancellations.length,0);assert(!f.stages[0].committed);
+ const delivered=[];f.service.dispatch('call','audio',Buffer.alloc(20),()=>delivered.push('welcome'));
+ assert.deepEqual(delivered,['welcome']);
+});
+test('hanging up during greeting preparation prevents a late welcome',async t=>{
+ let release;const f=await fixture(t,{initialAudio:false,prepare:async()=>new Promise(r=>release=r)});
+ const work=f.service.greet('call');await wait(()=>release);f.service.close('call');release();await work;
+ assert.equal(f.greetings.length,0);assert.equal(f.service.has('call'),false);
 });
 
 
