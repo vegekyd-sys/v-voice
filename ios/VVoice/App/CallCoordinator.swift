@@ -33,6 +33,7 @@ import VVoiceCore
         didSet { UserDefaults.standard.set(grokVoice, forKey: "grokVoice") }
     }
     @ObservationIgnored private var loadingOptions = false
+    @ObservationIgnored private var h5AvatarRevision = 0
     func refreshOptions() async {
         guard bound, !active, !loadingOptions else { return }
         loadingOptions = true; defer { loadingOptions = false }
@@ -218,7 +219,7 @@ import VVoiceCore
         guard let owner = state.begin() else { return }
         CallDiagnostics.record("call.start")
         lastFailure = nil
-        conversation.reset(); autoOpenDocumentID = nil; documents.removeAll(); tasks.removeAll(); presentationID = owner.uuidString
+        conversation.reset(); h5AvatarRevision = 0; autoOpenDocumentID = nil; documents.removeAll(); tasks.removeAll(); presentationID = owner.uuidString
         startedAt = Date(); lastCaption = ""; resultID = nil; resultText = ""; shownResults.removeAll(); detail = "接通后会提示你开口"
         retiredResponses.removeAll(); publish()
         do {
@@ -668,6 +669,22 @@ import VVoiceCore
             }
         } catch { if required { throw VoiceError.liveActivity } }
     }
+    // Only cosmetic H5 calls use this narrow bridge. The native owner supplies
+    // the real voiceSessionId; JavaScript never receives a cookie or relay ticket.
+    func h5Cosmetic(_ route: String, body: [String: Any], owner: String) async throws -> [String: Any] {
+        guard active, presentationID == owner, let voiceID, ["avatar", "avatar-events"].contains(route) else { throw VoiceError.connection }
+        let generation = state.generation
+        var payload = body; payload["voiceSessionId"] = voiceID
+        if route == "avatar" {
+            guard let requested = body["revision"] as? Int, requested > 0, requested < 1_000_000 else { throw VoiceError.protocolMismatch }
+            // WebKit can reload during one native call; server revisions cannot restart at 1.
+            h5AvatarRevision = max(h5AvatarRevision + 1, requested); payload["revision"] = h5AvatarRevision
+        }
+        let result = try await api.call(route, body: payload, refresh: false)
+        guard owned(generation), presentationID == owner else { throw CancellationError() }
+        return result
+    }
+    var h5Outcome: String { tasks.isEmpty ? avatarOutcome : "pending" }
     var activityState: CallAttributes.ContentState {
         let turn = conversation.turns.last(where: { !$0.text.isEmpty })
         let unread = documents.last(where: { !shownResults.contains($0.id) })

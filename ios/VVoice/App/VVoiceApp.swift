@@ -7,7 +7,7 @@ import AppIntents
     init() { VoiceShortcuts.updateAppShortcutParameters() }
     var body: some Scene {
         WindowGroup {
-            CallView(call: call)
+            H5CallView(call: call)
                 .preferredColorScheme(.light)
                 .onAppear { call.sceneChanged(scene) }
                 .onChange(of: scene) { _, value in call.sceneChanged(value) }

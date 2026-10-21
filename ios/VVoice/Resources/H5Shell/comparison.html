@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; media-src 'self' https: blob:; connect-src 'self' blob:; font-src 'self' data:; frame-src 'none'; base-uri 'self'; form-action 'none'"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>听听 V 的不同表达</title><link rel="icon" href="./assets/v-voice-icon.svg"><link rel="stylesheet" href="./comparison.css"></head>
+<body>
+<main>
+  <header><a id="back" href="./">← 返回电话</a><span class="eyebrow">V VOICE · 候选试听</span><h1>哪一种，更像在和你说话？</h1><p>同一台词 · Iris 女声 · 1.06 倍语速</p><p class="muted">直接点播放，不用拨号或打开麦克风。一次只播放一个版本。</p></header>
+  <p id="status" role="status">正在载入试听…</p>
+  <section id="listening" hidden>
+    <nav id="scenes" aria-label="选择试听场景"></nav>
+    <section class="script"><span id="sceneContext"></span><p id="sceneText"></p></section>
+    <div class="toolbar"><button id="blind" type="button" aria-pressed="false">隐藏名称，先盲听</button><p id="choice" aria-live="polite">听完后，可以选一版你觉得更自然的。</p></div>
+    <section class="engine"><h2>实时模型朗读</h2><p class="muted">Grok Voice 3.0 的普通回复生成，固定台词；没有使用强制 TTS 播报。</p><div id="realtime" class="cards"></div></section>
+    <section class="engine"><h2>独立语音合成</h2><p class="muted">同一份标注脚本送入 xAI TTS。自主版本的标注由 Grok Voice 3.0 事先记录，再分别演绎。</p><div id="tts" class="cards"></div></section>
+    <footer><p>“优化版”是本次调整的候选，听感由你判断。不同生成仍有随机性。</p><p>台词和标注可在每个版本下展开核对；本页播放的都是已生成的样本。</p></footer>
+  </section>
+</main><script src="./comparison.mjs"></script>
+</body></html>
