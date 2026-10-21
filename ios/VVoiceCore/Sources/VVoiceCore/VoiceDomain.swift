@@ -133,4 +133,6 @@ public struct PlaybackLedger: Sendable {
         queuedFrames = max(0, queuedFrames - frames); return queuedFrames == 0
     }
     public mutating func clear() { epoch += 1; queuedFrames = 0 }
+    /// A new relay starts its own sequence; old playback completions stay retired.
+    public mutating func beginStream() { clear(); sequence = 0 }
 }

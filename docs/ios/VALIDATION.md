@@ -46,3 +46,13 @@
 签名安装后续：团队协议处理后，第一次归档遇到 Xcode 新 profile 文件尚未落盘的问题；重新生成归档后成功。最终脚本退出 0，archive 和 export 均 SUCCEEDED，verify-release 返回 signed=true、profilesPresent=true，devicectl 返回 App installed。签名产物保存在本机 `ios/build/VVoice.xcarchive` 和 `ios/build/export/VVoice.ipa`，均不提交 Git。
 
 导出的 IPA 已另行解包，再次通过签名、主 App／扩展 profiles、arm64、系统 intents 和 Release TLS／无 Debug fixture 校验。首次 devicectl 前台启动被系统 Locked 拒绝；已请用户解锁并本人打开 App、绑定入口及授权麦克风。不能将安装成功记为首次启动或真实通话通过。
+
+## 真机音频启动修复 · build 2
+
+用户已绑定入口，但首次拨号显示“音频暂不可用”。使用同一台 iPhone 17 Pro 单独运行无网络音频自检，旧实现可稳定复现：麦克风格式为 48 kHz、输出端为 44.1 kHz，引擎 start 返回后、第一帧 PCM 之前立即停止。只提前创建输入／输出节点而仍沿用 44.1 kHz 输出也失败，不能作为修复。
+
+最终将主混音器到输出节点的格式显式设为输入节点的协商格式；网络／播放器仍为 24 kHz，由混音器转换，真机保留 Voice Processing I/O。Apple SDK `AVAudioIONode.h` 也明确要求 voice-processing 的输入节点输出格式与输出节点输入格式相同。另修复每个新 relay 必须重置播放序号：跨通话保留旧 sequence 会丢掉重拨／恢复后的前几段音频，同时保持旧 epoch completion 无效。
+
+真机 `DeviceAudioTests.testAudioCapturesPlaysAndRestartsWithoutNetwork` 已通过：连续 3 次启动、收到实际 PCM、静音合成 PCM 播放完成、停止后输入不再增长；没有网络、模型调用或录音落盘。结果保存在本机 `ios/build/device-audio-fixed.xcresult`。这是硬件采集／播放管线验证，不能代替真实模型双向对话和真人听感验收。
+
+更新后的模拟器 12/12 原生测试通过，包含重拨欢迎语确实进入播放、socket 恢复后新音频确实播放。完整回归脚本退出 0：Core 4/4、模拟器原生 12/12、原有服务合同 79/79；其中 Core 新增新 relay 序号与旧回调隔离回归。签名安装结果在本轮完成后补充。

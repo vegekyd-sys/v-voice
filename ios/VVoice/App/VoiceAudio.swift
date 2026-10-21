@@ -1,4 +1,5 @@
 import AVFoundation
+import OSLog
 import VVoiceCore
 
 /// One converter per input tap; AVAudioEngine invokes this tap serially.
@@ -47,6 +48,8 @@ private final class CaptureHandoff: @unchecked Sendable {
 }
 
 @MainActor final class VoiceAudio {
+    private let logger = Logger(subsystem: "com.versa.vvoice", category: "audio")
+    private(set) var lastStartupFailure: String?
     private var generation = UUID()
     private var engine: AVAudioEngine?
     private var player: AVAudioPlayerNode?
@@ -66,19 +69,32 @@ private final class CaptureHandoff: @unchecked Sendable {
 
     func start() throws {
         stop()
+        lastStartupFailure = nil
         let session = AVAudioSession.sharedInstance()
+        var stage = "category"
         do {
             try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
+            stage = "preferences"
             try session.setPreferredSampleRate(48_000); try session.setPreferredIOBufferDuration(0.02)
+            stage = "activation"
             try session.setActive(true)
             let e = AVAudioEngine(); let p = AVAudioPlayerNode(); e.attach(p)
+            // Configure both I/O nodes while stopped. Voice Processing I/O requires
+            // matching input/output stream formats (unlike the simulator's HAL).
+            let input = e.inputNode
+            let output = e.outputNode
             #if !targetEnvironment(simulator)
             // Simulator HAL is not the device Voice Processing I/O unit.
-            try e.inputNode.setVoiceProcessingEnabled(true)
+            stage = "voice-processing"
+            try input.setVoiceProcessingEnabled(true)
             #endif
-            let inputFormat = e.inputNode.outputFormat(forBus: 0)
+            stage = "input-format"
+            let inputFormat = input.outputFormat(forBus: 0)
             guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else { throw VoiceError.audio }
             e.connect(p, to: e.mainMixerNode, format: format)
+            // Keep the 24 kHz network/player format upstream of the mixer; the
+            // duplex I/O stream must use the microphone's negotiated format.
+            e.connect(e.mainMixerNode, to: output, format: inputFormat)
             let captureOwner = generation
             let handoff = CaptureHandoff()
             let converter = try CaptureConverter(input: inputFormat) { [weak self] data, rms in
@@ -94,15 +110,22 @@ private final class CaptureHandoff: @unchecked Sendable {
                     guard let self, self.started, self.generation == captureOwner else { return }; self.capturedInput = true; self.lastCaptureAt = Date(); self.onInput?(data, rms)
                 }
             }
-            e.inputNode.installTap(onBus: 0, bufferSize: 960, format: inputFormat) { @Sendable buffer, _ in converter.consume(buffer) }
-            engine = e; player = p; e.prepare(); try e.start(); started = true
+            input.installTap(onBus: 0, bufferSize: 960, format: inputFormat) { @Sendable buffer, _ in converter.consume(buffer) }
+            engine = e; player = p; stage = "engine-start"; e.prepare(); try e.start(); started = true
         } catch {
+            let failure = "\(stage): \((error as NSError).domain) (\((error as NSError).code))"
+            lastStartupFailure = failure
+            logger.error("Audio startup failed: \(failure, privacy: .public)")
             stop(); throw VoiceError.audio
         }
     }
     func waitUntilCapturing() async throws {
         for _ in 0..<50 {
-            guard isRunning else { throw VoiceError.audio }
+            guard isRunning else {
+                lastStartupFailure = "engine stopped before first PCM frame (captured=\(capturedInput))"
+                logger.error("Audio engine stopped before first PCM frame")
+                throw VoiceError.audio
+            }
             if capturedInput, Date().timeIntervalSince(lastCaptureAt) < 0.3 { return }
             try await Task.sleep(for: .milliseconds(30))
         }
@@ -161,6 +184,9 @@ private final class CaptureHandoff: @unchecked Sendable {
     }
     func clear() {
         ledger.clear(); player?.stop(); startingOutput = false; outputFinished = false; onPlayback?(false)
+    }
+    func beginStream() {
+        clear(); ledger.beginStream()
     }
     func stop() {
         generation = UUID(); started = false; capturedInput = false; lastCaptureAt = .distantPast; clear()

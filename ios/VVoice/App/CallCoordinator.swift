@@ -165,6 +165,7 @@ import VVoiceCore
         }
         voiceID = id; try api.rememberCall(id)
         guard reservation["transport"] as? String == "gateway-relay", let ticket = reservation["relayTicket"] as? String else { throw VoiceError.protocolMismatch }
+        audio.beginStream()
         let relay = RelayTransport(id: id); transport = relay
         relay.onFailure = { [weak self] error in
             guard let self, self.owned(owner) else { return }

@@ -20,6 +20,7 @@
 		A091D643A8C19C5D2BDBA51C /* CallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FA57ABCE44F7870BD8DE61 /* CallView.swift */; };
 		BF1EC256D6D01B21B6B51AE8 /* CallActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C694805A7F537814758189E7 /* CallActivity.swift */; };
 		C1CDDF961E988F8F12C3E96B /* VoiceAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D75530190661A3CE19BAA28 /* VoiceAudio.swift */; };
+		C498FBC76120554268E17002 /* DeviceAudioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC5B54FF48C5CC112EF20F95 /* DeviceAudioTests.swift */; };
 		D2C479A0672AA07EBDF5E85F /* VVoiceActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 445925F85326700CF3C4BA73 /* VVoiceActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		D4433EE5EFBBAD5555BF40DC /* VoiceIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857F5E8922957A5BB87318B1 /* VoiceIntents.swift */; };
 		E27AC930DC52D66F4B79EDA1 /* VVoiceCore in Frameworks */ = {isa = PBXBuildFile; productRef = 58FAEAB9A45F529E1E7D32B2 /* VVoiceCore */; };
@@ -69,6 +70,7 @@
 		7D7BA1CED3B5C99A8E33694C /* VoiceWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWidget.swift; sourceTree = "<group>"; };
 		857F5E8922957A5BB87318B1 /* VoiceIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceIntents.swift; sourceTree = "<group>"; };
 		AA44C040A9E6D25236282244 /* VVoiceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VVoiceApp.swift; sourceTree = "<group>"; };
+		BC5B54FF48C5CC112EF20F95 /* DeviceAudioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceAudioTests.swift; sourceTree = "<group>"; };
 		C3FA57ABCE44F7870BD8DE61 /* CallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallView.swift; sourceTree = "<group>"; };
 		C694805A7F537814758189E7 /* CallActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallActivity.swift; sourceTree = "<group>"; };
 		E44018070C4751C833BA02F4 /* VVoice.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VVoice.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -151,6 +153,7 @@
 			isa = PBXGroup;
 			children = (
 				662A97C00F54C938F246DBE4 /* CallIntegrationTests.swift */,
+				BC5B54FF48C5CC112EF20F95 /* DeviceAudioTests.swift */,
 				E6DC401CBC28DC4E5E00D8B4 /* NativeFlowTests.swift */,
 			);
 			name = Tests;
@@ -315,6 +318,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				042F6955B30F1887FCBF5F83 /* CallIntegrationTests.swift in Sources */,
+				C498FBC76120554268E17002 /* DeviceAudioTests.swift in Sources */,
 				8E4C6BA1932EA200ADE9F440 /* NativeFlowTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -454,7 +458,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = E6YTL27QWA;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -540,7 +544,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = E6YTL27QWA;
 				ENABLE_NS_ASSERTIONS = NO;

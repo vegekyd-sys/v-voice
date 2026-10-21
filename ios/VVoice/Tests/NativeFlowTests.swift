@@ -58,6 +58,8 @@ import VVoiceCore
         try await call.startOrContinue()
         let snapshot4 = try await stats()
         XCTAssertEqual(snapshot4["sessions"] as? Int, 2)
+        // A new relay restarts audio sequence numbers; greeting must still play.
+        try await until { try await self.stats()["playbackStarts"] as? Int ?? 0 > (snapshot3["playbackStarts"] as? Int ?? 0) }
         await call.end()
     }
     func testNaturalHangupWaitsForOutputAndStopsCapture() async throws {
@@ -78,6 +80,9 @@ import VVoiceCore
         try await until { call.phase == .listening }
         let snapshot6 = try await stats()
         XCTAssertEqual(snapshot6["greetings"] as? Int, 1)
+        let starts = snapshot6["playbackStarts"] as? Int ?? 0
+        try await fixture("audio")
+        try await until { try await self.stats()["playbackStarts"] as? Int ?? 0 > starts }
         await call.end(); call.forget()
     }
     func testEndDuringConnectionDoesNotResurrectCall() async throws {

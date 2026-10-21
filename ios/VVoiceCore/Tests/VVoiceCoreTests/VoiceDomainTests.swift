@@ -31,3 +31,16 @@ import Foundation
     #expect(throws: VoiceError.bufferOverflow) { try p.accept(frames: 600, sequence: 3) }
     let drained = p.consumed(480, epoch: p.epoch); #expect(drained)
 }
+
+@Test func newRelayAcceptsRestartedSequenceWithoutRevivingOldPlayback() throws {
+    var p = PlaybackLedger()
+    #expect(try p.accept(frames: 480, sequence: 100))
+    let stale = p.epoch
+    p.beginStream()
+    #expect(try p.accept(frames: 480, sequence: 1))
+    let oldDrained = p.consumed(480, epoch: stale)
+    #expect(!oldDrained)
+    #expect(p.queuedFrames == 480)
+    let newDrained = p.consumed(480, epoch: p.epoch)
+    #expect(newDrained)
+}
