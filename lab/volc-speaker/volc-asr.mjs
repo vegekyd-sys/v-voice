@@ -27,16 +27,19 @@ export function decodeAsrFrame(data) {
 }
 
 export class VolcAsrStream {
-  constructor({apiKey,resource=ASR_RESOURCE,voiceprints,identifyOnly=false,onResult=()=>{},onError=()=>{},onClose=()=>{}}){
+  constructor({apiKey,resource=ASR_RESOURCE,voiceprints,identifyOnly=false,onResult=()=>{},onError=()=>{},onClose=()=>{},createWebSocket=(url,options)=>new WebSocket(url,options),setupTimeoutMs=10000}){
     this.apiKey=apiKey;this.resource=resource;this.voiceprints=voiceprints;this.identifyOnly=identifyOnly;
     this.pendingAudio=Buffer.alloc(0);this.onResult=onResult;this.onError=onError;this.onClose=onClose;this.requestId=randomUUID();
+    this.createWebSocket=createWebSocket;this.setupTimeoutMs=setupTimeoutMs;
   }
   connect(){return new Promise((resolve,reject)=>{
-    this.socket=new WebSocket(ASR_URL,{headers:{'X-Api-Key':this.apiKey,'X-Api-Resource-Id':this.resource,
+    let settled=false;const settle=error=>{if(settled)return;settled=true;clearTimeout(timer);if(error)reject(error);else resolve(this);};
+    const timer=setTimeout(()=>{settle(Error('ASR initialization timed out'));this.socket?.close();},this.setupTimeoutMs);timer.unref?.();
+    this.socket=this.createWebSocket(ASR_URL,{headers:{'X-Api-Key':this.apiKey,'X-Api-Resource-Id':this.resource,
       'X-Api-Request-Id':this.requestId,'X-Api-Connect-Id':this.requestId},handshakeTimeout:15000,maxPayload:4*1024*1024});
     this.socket.on('upgrade',r=>{this.logId=r.headers['x-tt-logid'];});
     this.socket.once('unexpected-response',(_req,response)=>{
-      response.resume();reject(Error(`ASR handshake rejected: HTTP ${response.statusCode}`));
+      response.resume();settle(Error(`ASR handshake rejected: HTTP ${response.statusCode}`));
     });
     this.socket.once('open',()=>{
       this.socket.send(encodeAsrFrame(1,{user:{uid:'v-speaker-lab'},
@@ -44,16 +47,17 @@ export class VolcAsrStream {
         request:{model_name:'bigmodel',enable_itn:true,enable_punc:true,show_utterances:true,
           enable_speaker_info:true,enable_nonstream:true,
           ...(this.identifyOnly?{ssd_mode:2}:{}),...(this.voiceprints?{voiceprints:this.voiceprints}:{})}},{json:true}));
-      resolve(this);
+      // A WebSocket open is not application readiness. Wait for the service's
+      // initialization response before the caller can start uploading speech.
     });
     this.socket.on('message',data=>{
       try{const event=decodeAsrFrame(data);if(event.type===15||event.body.code&&event.body.code!==20000000){
-        this.onError(Error(`ASR ${event.errorCode??event.body.code}: ${event.body.message??event.body.error??'rejected'}`));
-      }else this.onResult({...event,requestId:this.requestId,logId:this.logId});}
-      catch(error){this.onError(error);}
+        const error=Error(`ASR ${event.errorCode??event.body.code}: ${event.body.message??event.body.error??'rejected'}`);settle(error);this.onError(error);
+      }else {if(event.type===9)settle();this.onResult({...event,requestId:this.requestId,logId:this.logId});}}
+      catch(error){settle(error);this.onError(error);}
     });
-    this.socket.on('error',error=>{reject(error);this.onError(error);});
-    this.socket.on('close',()=>this.onClose());
+    this.socket.on('error',error=>{settle(error);this.onError(error);});
+    this.socket.on('close',()=>{settle(Error('ASR closed before initialization'));this.onClose();});
   });}
   append(pcm){
     if(this.socket?.readyState!==WebSocket.OPEN)return;

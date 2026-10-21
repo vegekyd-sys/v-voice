@@ -5,15 +5,166 @@ import {createStreamingSpeakerRoutingService,TurnOutputGate,speakerProfile,echoO
 const wait=async predicate=>{for(let i=0;i<600;i++){if(predicate())return;await new Promise(r=>setTimeout(r,5));}throw Error('Test deadline');};
 const answers=(questions,{action='respond',child=false}={})=>({answers:Object.fromEntries(Object.entries(questions).map(([id])=>[id,{type:'choice',choice:id==='action'?action:id.startsWith('role_')?(child?'child':'unknown'):id.startsWith('name_')&&child?'n_0':'keep'}]))});
 const voice=()=>{const pcm=Buffer.alloc(57600);for(let i=0;i<pcm.length;i+=2)pcm.writeInt16LE(6000,i);return pcm;};
-async function fixture(t,{evaluate,prepare=async()=>{},limits,reserve={},initialAudio=true}={}){
-  let asr;const events=[],forwarded=[],profiles=[],clarifications=[],endings=[],rejectedEnds=[],greetings=[];
-  const service=createStreamingSpeakerRoutingService({env:{},embedding:{ready:Promise.resolve(),compute:async()=>({embedding:[1,0],inferenceMs:1})},evaluate:evaluate??(async(_s,q)=>answers(q)),limits,createAsr:o=>{asr=o;return {connect:async()=>{},append(){},close(){}};}});
+async function fixture(t,{evaluate,prepare=async()=>{},limits,reserve={},initialAudio=true,lookahead=false,onStageCommit=()=>{}}={}){
+  let asr;const events=[],forwarded=[],profiles=[],clarifications=[],endings=[],rejectedEnds=[],greetings=[],cancellations=[],stages=[];
+  const service=createStreamingSpeakerRoutingService({env:lookahead?{VOICE_STREAM_LOOKAHEAD:'1'}:{},embedding:{ready:Promise.resolve(),compute:async()=>({embedding:[1,0],inferenceMs:1})},evaluate:evaluate??(async(_s,q)=>answers(q)),limits,createAsr:o=>{asr=o;return {connect:async()=>{},append(){},close(){}};}});
   service.reserve('call',{model:'seeduplex',...reserve});t.after(()=>service.dispose());
-  await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},forward:b=>forwarded.push(b),cancel(){},invalidate(){},greet:()=>greetings.push(true),clarify:text=>clarifications.push(text),end:value=>endings.push(value),cancelEnd:()=>endings.push({revoked:true}),rejectNativeEnd:call=>rejectedEnds.push(call)},e=>events.push(e));
+  await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},...lookahead?{stage(...args){const lane={args,ready:Promise.resolve(),available:true,forwarded:[],forward:b=>lane.forwarded.push(b),discard(){lane.available=false;lane.discarded=true;},commit(){if(!lane.available)return false;lane.available=false;lane.committed=true;onStageCommit();return true;}};stages.push(lane);return lane;}}:{},forward:b=>forwarded.push(b),cancel(){cancellations.push(true);},invalidate(){},greet:()=>greetings.push(true),clarify:text=>clarifications.push(text),end:value=>endings.push(value),cancelEnd:()=>endings.push({revoked:true}),rejectNativeEnd:call=>rejectedEnds.push(call)},e=>events.push(e));
   if(initialAudio)service.audio('call',reserve.inputSampleRate===16000?voice().subarray(0,38400):voice());
   const emit=(text='V，天空为什么是蓝色的？',start=0,end=1100)=>asr.onResult({body:{result:{utterances:[{definite:true,start_time:start,end_time:end,text,speaker_id:'wrong-cloud-id',...(start===null?{start_time:undefined}:{})}]}}});
-  return {service,events,forwarded,profiles,emit,clarifications,endings,rejectedEnds,greetings,disconnectAsr:()=>asr.onClose()};
+  return {service,events,forwarded,profiles,emit,clarifications,endings,rejectedEnds,greetings,cancellations,stages,disconnectAsr:()=>asr.onClose()};
 }
+
+test('lookahead streams new audio while preserving the admitted reply, then promotes without restarting its cursor',async t=>{
+ const effects=[];let f;
+ f=await fixture(t,{lookahead:true,onStageCommit:()=>f.service.dispatch('call','tool',{name:'web_search'},()=>effects.push('new-tool'))});
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+ const cancelled=f.cancellations.length;
+ f.service.audio('call',Buffer.alloc(600*48));for(let i=0;i<4;i++)f.service.audio('call',voice());
+ await wait(()=>f.stages.length===1);await wait(()=>f.stages[0].forwarded.length>=10);
+ assert.equal(f.cancellations.length,cancelled);assert.deepEqual(effects,[]);
+ f.service.dispatch('call','audio',Buffer.alloc(960),()=>effects.push('old-audio'));
+ f.emit('V，换成解释晚霞为什么是红的。',1800,6400);
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'&&e.lookahead));
+ assert(f.stages[0].committed);assert.equal(f.profiles.length,1);
+ assert.deepEqual(effects,['old-audio','new-tool']);
+ assert.equal(f.events.filter(e=>e.type==='speaker.stream-fallback').length,0);
+});
+
+test('quiet lookahead is discarded without retiring the real answer',async t=>{
+ let action='respond';const f=await fixture(t,{lookahead:true,evaluate:async(_s,q)=>answers(q,{action})});
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+ const cancelled=f.cancellations.length;f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());
+ await wait(()=>f.stages.length===1);action='quiet';f.emit('旁聊。',1800,2800);
+ await wait(()=>f.stages[0].discarded);assert.equal(f.cancellations.length,cancelled);assert(!f.stages[0].committed);
+ const effects=[];f.service.dispatch('call','audio',Buffer.alloc(960),()=>effects.push('original'));assert.deepEqual(effects,['original']);
+});
+
+test('lookahead never reuses an adult persona for a newly confirmed child',async t=>{
+ let child=false;const f=await fixture(t,{lookahead:true,evaluate:async(_s,q)=>answers(q,{child})});
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+ f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());await wait(()=>f.stages.length===1);
+ child=true;f.emit('我叫十二，是个孩子。',1800,2800);
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-fallback'));
+ assert(f.stages[0].discarded);assert(!f.stages[0].committed);await wait(()=>f.profiles.length===2);assert.match(f.profiles[1][0],/child/);
+});
+
+test('lookahead deadline and rate limit leave a later admitted turn on the ordinary fallback',async t=>{
+ const f=await fixture(t,{lookahead:true,limits:{lookaheadMs:30,lookaheadPerMinute:1}});
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+ const cancelled=f.cancellations.length;
+ f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());await wait(()=>f.stages[0]?.discarded);
+ assert.equal(f.cancellations.length,cancelled);assert(!f.stages[0].committed);
+ f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());f.emit('V，再解释一下晚霞。',3600,4600);
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-fallback'));
+ assert.equal(f.stages.length,1);assert.equal(f.events.filter(e=>e.type==='speaker.admitted').length,2);
+});
+
+test('an unconfirmed acoustic segment cannot retire an admitted question or withhold its tool',async t=>{
+  const f=await fixture(t);await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));
+  f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+  const accepted=f.events.find(e=>e.type==='speaker.stream-accepted').token,cancels=f.cancellations.length;
+  f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());
+  await wait(()=>f.events.filter(e=>e.type==='speaker.identity').length===2);
+  assert.equal(f.cancellations.length,cancels);
+  assert.equal(f.events.filter(e=>e.type==='speaker.stream-start').length,1);
+  const delivered=[];f.service.dispatch('call','tool',{name:'web_search'},()=>delivered.push('search'));
+  assert.deepEqual(delivered,['search']);
+  await wait(()=>f.events.some(e=>e.type==='speaker.native-input-complete'&&e.token===accepted));
+});
+
+test('quiet speech preserves the accepted reply; a confirmed new request can still interrupt it',async t=>{
+  let action='respond';const f=await fixture(t,{evaluate:async(_s,q)=>answers(q,{action})});
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+  f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());
+  await wait(()=>f.events.filter(e=>e.type==='speaker.identity').length===2);
+  const cancels=f.cancellations.length;action='quiet';f.emit('把杯子递给我。',1800,2800);
+  await wait(()=>f.events.filter(e=>e.type==='speaker.decision').length===2);
+  assert.equal(f.cancellations.length,cancels);
+  const delivered=[];f.service.dispatch('call','audio',Buffer.alloc(960),()=>delivered.push('original'));
+  assert.deepEqual(delivered,['original']);
+  f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());
+  action='respond';f.emit('V，改查天气。',3600,4600);
+  await wait(()=>f.events.filter(e=>e.type==='speaker.admitted').length===2);
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-fallback'));
+  assert(f.cancellations.length>cancels);
+  f.service.dispatch('call','audio',Buffer.alloc(960),()=>delivered.push('new'));
+  assert.deepEqual(delivered,['original','new']);
+});
+
+test('repeated quiet turns do not strand a later admitted task or lose the conversation context',async t=>{
+ let action='respond';const states=[];
+ const f=await fixture(t,{evaluate:async(s,q)=>{states.push(structuredClone(s));return answers(q,{action});}});
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit('查一下已经结束的比赛。');
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+ f.service.assistant('call','你想了解比分还是球员表现？');
+ f.service.dispatch('call','done',null,()=>{});
+ for(const [i,text]of ['把杯子递给我。','嗯。'].entries()){
+  action='quiet';f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());
+  f.emit(text,1800+i*1800,2800+i*1800);
+  await wait(()=>f.events.filter(e=>e.type==='speaker.decision').length===i+2);
+ }
+ action='respond';f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());
+ f.emit('那些球星的比赛数据。',5400,6400);
+ await wait(()=>f.events.filter(e=>e.type==='speaker.admitted').length===2);
+ await wait(()=>f.events.filter(e=>e.type==='speaker.stream-start').length>=2);
+ const delivered=[];f.service.dispatch('call','tool',{name:'web_search'},()=>delivered.push('lookup'));
+ assert.deepEqual(delivered,['lookup']);
+ assert.deepEqual(states.at(-1).activeConversation.map(t=>t.text),['查一下已经结束的比赛。','你想了解比分还是球员表现？']);
+ assert.equal(states.at(-1).surface,'phone');
+ assert(f.profiles.at(-1)[2].some(t=>t.text==='查一下已经结束的比赛。'));
+});
+
+test('several low confidence final fragments cannot cancel a lookup; a clear new request can',async t=>{
+ let index=0;
+ const noise=[[.48,'respond'],[.58,'quiet'],[.62,'quiet']];
+ const f=await fixture(t,{evaluate:async(s,q)=>{
+  const n=index++-1,uncertain=noise[n],r=answers(q,{action:uncertain?.[1]??'respond'});
+  r.answers.action.probabilities={quiet:uncertain?.[0]??.01,respond:1-(uncertain?.[0]??.01)};
+  r.answers.addressed={type:'choice',choice:uncertain?'other':'v',probabilities:{v:uncertain ? .3 : .99,other:uncertain ? .7 : .01}};
+  return r;
+ }});
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit('查一下今天的比赛。');
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+ const cancelled=f.cancellations.length;
+ for(let i=0;i<3;i++){
+  f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());
+  f.emit('嘈杂中的不完整片段。',1800+i*1800,2800+i*1800);
+  await wait(()=>f.events.filter(e=>e.type==='speaker.decision').length===i+2);
+ }
+ assert.equal(f.cancellations.length,cancelled);
+ assert.equal(f.events.filter(e=>e.type==='speaker.admitted').length,1);
+ assert(f.events.filter(e=>e.type==='speaker.decision').slice(1).every(e=>e.admission.reason==='uncertain-interruption'));
+ const effects=[];f.service.dispatch('call','tool',{name:'web_search'},()=>effects.push('lookup'));
+ f.service.dispatch('call','audio',Buffer.alloc(960),()=>effects.push('reply'));
+ assert.deepEqual(effects,['lookup','reply']);
+ f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());f.emit('V，换成查天气。',7200,8200);
+ await wait(()=>f.events.filter(e=>e.type==='speaker.admitted').length===2);
+ assert(f.cancellations.length>cancelled);
+});
+
+test('an undecided segment cannot disarm the accepted-turn no-output deadline',async t=>{
+  const f=await fixture(t,{limits:{responseMs:30}});
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+  const accepted=f.events.find(e=>e.type==='speaker.stream-accepted').token;
+  f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());
+  await wait(()=>f.events.some(e=>e.type==='speaker.native-input-complete'&&e.token===accepted));
+  await wait(()=>f.events.some(e=>e.type==='speaker.recovery'&&e.reason==='native-no-output'));
+  assert.equal(f.clarifications.length,1);
+});
+
+test('a failed decision about later speech does not cancel the accepted request',async t=>{
+  let calls=0;const f=await fixture(t,{evaluate:async(_s,q)=>{if(++calls===2)throw Error('offline decision failure');return answers(q);}});
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+  const cancels=f.cancellations.length;
+  f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());f.emit('旁人的话。',1800,2800);
+  await wait(()=>f.events.some(e=>e.type==='speaker.recovery-suppressed'&&e.reason==='decision-unavailable'));
+  assert.equal(f.cancellations.length,cancels);
+  const delivered=[];f.service.dispatch('call','tool',{name:'web_search'},()=>delivered.push('search'));assert.deepEqual(delivered,['search']);
+});
 
 test('pending native audio, captions and tools are discarded together; stale admission cannot reopen them',()=>{
   const gate=new TurnOutputGate(),effects=[];gate.begin('old');gate.dispatch(()=>effects.push('audio'),20);gate.dispatch(()=>effects.push('tool'));gate.begin('new');assert.equal(gate.allow('old'),false);gate.dispatch(()=>effects.push('caption'));gate.deny('new');assert.deepEqual(effects,[]);assert.equal(gate.allow('new'),false);
@@ -63,6 +214,7 @@ test('ordinary focus changes do not restart an unchanged recipient; child role c
   const p={id:'speaker:local0',name:'十二',role:'unknown',certainty:'stated'},base={speakerId:p.id,participants:[p],addresseeIds:[p.id],mode:'auto'};
   assert.equal(speakerProfile({...base,targetId:'a'}).key,speakerProfile({...base,targetId:'b'}).key);
   assert.notEqual(speakerProfile(base).key,speakerProfile({...base,participants:[{...p,role:'child'}]}).key);
+  assert.equal(speakerProfile(base).key,speakerProfile({...base,participants:[{...p,role:'adult'}]}).key);
 });
 
 test('decision arriving during the same persona connection reuses preparation without replay',async t=>{
@@ -88,6 +240,17 @@ test('a first utterance whose zero start_time is omitted still reaches speaker d
 
 test('ASR reconnect retains the live call and restores absolute timestamps instead of leaving an open dead uploader',async t=>{
  const f=await fixture(t);f.disconnectAsr();assert.equal(f.service.has('call'),true);await wait(()=>f.events.some(e=>e.type==='speaker.asr-recovered'));f.service.audio('call',Buffer.alloc(24000));f.service.audio('call',voice());f.emit('V，继续聊。',0,1100);await wait(()=>f.events.some(e=>e.type==='speaker.decision'));assert.equal(f.events.find(e=>e.type==='speaker.utterance').turn.startMs,800);assert.equal(f.events.some(e=>e.type==='error'),false);
+});
+
+test('an initial ASR failure cannot announce a listening call while its retry is pending',async t=>{
+ let attempts=0,initialize;const events=[];
+ const service=createStreamingSpeakerRoutingService({env:{},embedding:{ready:Promise.resolve()},evaluate:async()=>({}),createAsr:()=>({connect:async()=>{if(++attempts===1)throw Error('ASR initialization failed');await new Promise(resolve=>{initialize=resolve;});},close(){},append(){}})});
+ t.after(()=>service.dispose());service.reserve('call',{model:'seeduplex'});
+ const binding=service.bind('call',{forward(){}},e=>events.push(e));
+ await wait(()=>events.some(e=>e.type==='speaker.asr-reconnecting'));
+ assert(!events.some(e=>e.type==='speaker.ready'));
+ await wait(()=>initialize);initialize();await binding;
+ assert(events.some(e=>e.type==='speaker.asr-ready'));assert(events.some(e=>e.type==='speaker.ready'));
 });
 
 test('an accepted farewell speaks through native control without replaying the user audio; new speech revokes it',async t=>{
@@ -184,13 +347,38 @@ test('streaming pickup greets exactly once without a caller voiceprint, transcri
  const f=await fixture(t,{initialAudio:false});await f.service.greet('call');await f.service.greet('call');
  assert.equal(f.greetings.length,1);assert.equal(f.profiles.length,1);assert.equal(f.events.some(e=>e.type==='speaker.decision'),false);
  const delivered=[];f.service.dispatch('call','audio',Buffer.alloc(20),()=>delivered.push('audio'));f.service.dispatch('call','tool',{name:'web_search'},()=>delivered.push('tool'));assert.deepEqual(delivered,['audio']);
- f.service.audio('call',voice());await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'||e.type==='speaker.stream-fallback'));
- assert(f.events.some(e=>e.type==='speaker.greeting-cancelled'));assert.equal(f.service.has('call'),true);
+ f.service.audio('call',voice());await wait(()=>f.events.some(e=>e.type==='speaker.identity'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'||e.type==='speaker.stream-fallback'));
+ assert(f.events.some(e=>e.type==='speaker.greeting-cancelled'&&e.reason==='admitted-speech'));assert.equal(f.service.has('call'),true);
 });
-test('speech during pickup preparation prevents the late greeting from interrupting the caller',async t=>{
- let release;const f=await fixture(t,{initialAudio:false,prepare:async(_i,key)=>{if(key==='speaker-greeting')await new Promise(r=>release=r);}});
- const work=f.service.greet('call');await wait(()=>release);f.service.audio('call',voice());release();await work;
- await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));assert.equal(f.greetings.length,0);assert.equal(f.service.has('call'),true);
+test('pickup noise during native preparation cannot cancel the phone greeting',async t=>{
+ let release;const f=await fixture(t,{initialAudio:false,lookahead:true,prepare:async(_i,key)=>{if(key==='speaker-greeting')await new Promise(r=>release=r);}});
+ const work=f.service.greet('call');await wait(()=>release);f.service.audio('call',voice());
+ await wait(()=>f.events.some(e=>e.type==='speaker.lookahead-start'));
+ assert.equal(f.cancellations.length,0);assert(!f.events.some(e=>e.type==='speaker.greeting-cancelled'));
+ release();await work;assert.equal(f.greetings.length,1);assert(f.events.some(e=>e.type==='speaker.greeting-start'));
+ await f.service.greet('call');assert.equal(f.greetings.length,1);
+});
+test('confirmed caller speech supersedes a preparing greeting without a late welcome or replay',async t=>{
+ let release;const f=await fixture(t,{initialAudio:false,lookahead:true,prepare:async(_i,key)=>{if(key==='speaker-greeting')await new Promise(r=>release=r);}});
+ const work=f.service.greet('call');await wait(()=>release);f.service.audio('call',voice());
+ await wait(()=>f.events.some(e=>e.type==='speaker.lookahead-start'));f.emit();
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'&&e.lookahead));
+ release();await work;assert.equal(f.greetings.length,0);assert(f.stages[0].committed);
+ assert(f.events.some(e=>e.type==='speaker.greeting-cancelled'&&e.reason==='admitted-speech'));
+ assert(!f.events.some(e=>e.type==='speaker.stream-fallback'));
+});
+test('quiet television speech during pickup leaves the greeting and cannot execute a speculative tool',async t=>{
+ const f=await fixture(t,{initialAudio:false,lookahead:true,evaluate:async(_s,q)=>answers(q,{action:'quiet'})});
+ await f.service.greet('call');f.service.audio('call',voice());await wait(()=>f.stages.length===1);
+ f.emit('欢迎收看今天的新闻。');await wait(()=>f.stages[0].discarded);
+ assert(!f.events.some(e=>e.type==='speaker.greeting-cancelled'));assert.equal(f.cancellations.length,0);assert(!f.stages[0].committed);
+ const delivered=[];f.service.dispatch('call','audio',Buffer.alloc(20),()=>delivered.push('welcome'));
+ assert.deepEqual(delivered,['welcome']);
+});
+test('hanging up during greeting preparation prevents a late welcome',async t=>{
+ let release;const f=await fixture(t,{initialAudio:false,prepare:async()=>new Promise(r=>release=r)});
+ const work=f.service.greet('call');await wait(()=>release);f.service.close('call');release();await work;
+ assert.equal(f.greetings.length,0);assert.equal(f.service.has('call'),false);
 });
 
 

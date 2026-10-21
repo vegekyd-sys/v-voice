@@ -5,7 +5,7 @@ import {captureDuplexMicrophone} from './microphone-capture.mjs';
 // Navigation/reload or a device ending the track still obeys browser policy.
 export function createPageMicrophoneSession({capture=captureDuplexMicrophone}={}) {
  let resource,pending,lease,closed=false;const lifetime=new AbortController();
- const valid=()=>resource?.track?.readyState==='live';
+ const valid=()=>resource?.track?.readyState==='live'&&resource.track.muted!==true;
  const mute=()=>{for(const track of resource?.stream?.getAudioTracks?.()??[])track.enabled=false;};
  async function acquire({mediaDevices,signal,isCurrent=()=>true,onDiagnostics=()=>{}}={}){
   if(closed||signal?.aborted||!isCurrent())throw Object.assign(Error('麦克风采集已结束。'),{name:'AbortError'});

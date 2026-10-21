@@ -71,3 +71,50 @@ test('an exclusive focus target is never forgotten',async()=>{
   const c=new SpeakerRouter({evaluate:e});await say(c,'0','你好');await say(c,'1','我是十二');await say(c,'0','只跟十二聊');
   assert.equal(c.forget('speaker:1'),false);assert.equal(c.forget('speaker:0'),true);
 });
+
+test('admitted dialogue remains distinct from quiet side speech for later task completion',async()=>{
+ const states=[];
+ const c=new SpeakerRouter({surface:'phone',evaluate:async(s,q)=>{states.push(structuredClone(s));return evaluator(id=>id==='action'&&s.turn.text==='把杯子递给我。'?'quiet':undefined)(s,q);}});
+ await say(c,'0','查一下已经结束的比赛。');c.assistant('你想了解比分还是球员表现？');
+ await say(c,'1','把杯子递给我。');
+ const result=await say(c,'0','那些球星的比赛数据。');
+ assert.equal(result.shouldRespond,true);
+ assert.deepEqual(states.at(-1).activeConversation.map(t=>t.text),['查一下已经结束的比赛。','你想了解比分还是球员表现？']);
+ assert.equal(states.at(-1).history.at(-1).addressedToV,false);
+ assert.equal(states.at(-1).surface,'phone');
+ assert.equal(c.history.at(-1).addressedToV,true);
+ c.invalidate();assert.deepEqual(c.history,[]);
+});
+
+test('room speaker routing retains its far-field surface instead of inheriting phone defaults',async()=>{
+ let state;
+ const c=new SpeakerRouter({surface:'speaker',evaluate:async(s,q)=>{state=s;return evaluator(id=>id==='action'?'quiet':undefined)(s,q);}});
+ assert.equal((await say(c,'0','把杯子递给我。')).shouldRespond,false);
+ assert.equal(state.surface,'speaker');
+});
+
+test('uncertain new speech cannot replace an active answer or change its conversational focus',async()=>{
+ const evaluate=async(s,q)=>{
+  const r=await evaluator(id=>id==='action'?'quiet':id==='focus'&&s.participants.length>1?'speaker:1':undefined)(s,q);
+  r.answers.action.probabilities={quiet:.58,respond:.42};
+  r.answers.addressed={type:'choice',choice:'other',probabilities:{v:.3,other:.7}};
+  return r;
+ };
+ const c=new SpeakerRouter({evaluate});
+ c.participants=[{id:'speaker:0',label:'Speaker A'},{id:'speaker:1',label:'Speaker B'}];c.targetId='speaker:0';
+ const r=await c.accept({speakerId:'1',text:'嘈杂中的不完整片段。',startMs:0,endMs:1000},{interrupting:true});
+ assert.equal(r.shouldRespond,false);assert.equal(r.admission.reason,'uncertain-interruption');
+ assert.equal(r.targetId,'speaker:0');assert.equal(c.history.at(-1).addressedToV,false);
+ const idle=new SpeakerRouter({evaluate});
+ assert.equal((await say(idle,'0','这个结果挺让人意外的。')).shouldRespond,true);
+});
+
+test('a clear direct request may still interrupt even when the action choice says quiet',async()=>{
+ const c=new SpeakerRouter({evaluate:async(s,q)=>{
+  const r=await evaluator(id=>id==='action'?'quiet':undefined)(s,q);
+  r.answers.action.probabilities={quiet:.95,respond:.05};
+  r.answers.addressed={type:'choice',choice:'v',probabilities:{v:.99,other:.01}};return r;
+ }});
+ const r=await c.accept({speakerId:'0',text:'V，先别说了，改查天气。',startMs:0,endMs:2000},{interrupting:true});
+ assert.equal(r.shouldRespond,true);assert.equal(r.admission.reason,'direct-request');
+});

@@ -1,3 +1,16 @@
+## 2026-10-21 — Mobile pickup, latency and accepted-turn continuity
+
+- Recheck the current AudioContext before attaching capture/playback worklets, resume a foreground interruption, and replace a system-muted cached microphone on redial.
+- Preserve an admitted question, its output gate and recovery deadline until a later request is confirmed. Quiet or undecided acoustic segments cannot cancel its search or spoken reply.
+- Wait for the ASR application initialization response before announcing readiness; an initial retry cannot expose an uninitialized listening call. Record bounded ASR response counters.
+- Retain only bounded audio lifecycle counters and states for physical-phone diagnosis. No raw audio or device identifiers are added.
+- Distinguish active telephone dialogue from far-field room speech. Topic reactions and elliptical task supplements can continue the admitted conversation; heard side speech remains separate from that context. No extra Decision request or tool authorization is introduced.
+- Keep uncertain new finals from replacing an accepted reply or lookup. The permissive idle-conversation fallback does not authorize interruption when both addressing and action evidence remain weak; clear requests and confirmed farewells can still interrupt. Retain the bounded addressing probability and interruption state in decision diagnostics.
+- Bounded opt-in lookahead (`VOICE_STREAM_LOOKAHEAD=1`): one bounded speculative native lane can hear a new phone turn while the accepted reply continues. Only confirmed semantic admission promotes it and releases queued captions, audio and tools; quiet, stale, expired or overflowing lanes are discarded. Incompatible child/adult treatment retains the conservative fallback. No Gateway or tool identity change.
+- On phone pickup, acoustic onset and an unconfirmed identity no longer cancel the welcome. Confirmed caller speech (including farewell) supersedes it; a staged first request can be promoted without replay. Household-device onset behavior is unchanged.
+- Physical iPhone acceptance of the preceding candidate confirmed successful conversation, three delivered searches and zero whole-sentence fallback. One mixed-speaker notice corresponded to actual television/background voices, as confirmed by the caller. Fast stop-on-interruption remains a known limitation; this release does not claim it fixed.
+- Release scope and candidate/production evidence are tracked in `docs/releases/voice-mobile-turn-20261021/README.md`. Homepage updates are maintained in `lab/gpt-live-h5/changelog.mjs`.
+
 ## Candidate - Home entry guidance
 
 - Present missing/expired personal-link guidance under the home portrait, with concise copy and no unusable dial controls.

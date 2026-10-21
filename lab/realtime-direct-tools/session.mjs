@@ -181,7 +181,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       // Retire local tools/audio only; the admitted Agent retains its controller.
       const result=await cancel(s,{includeBackend:false});
       for(const id of s.pending.keys())if(id!==s.backgroundCallId)s.pending.delete(id);
-      clearInterval(s.progressTimer);speakerRouting?.close(id);s.bridge?.close();for(const old of s.retiredBridges??[])old.close();s.retiredBridges?.clear();s.client?.close();
+      clearInterval(s.progressTimer);speakerRouting?.close(id);for(const lane of s.stagedBridges??[])lane.discard();s.bridge?.close();for(const old of s.retiredBridges??[])old.close();s.retiredBridges?.clear();s.client?.close();
       s.cleanupFailed=result.processCleanupFailures>0;
       if(s.cleanupFailed){audit({type:'call.cleanup-unconfirmed',voiceSessionId:id,result});throw Error('电话已结束，后台任务退出尚未确认');}
       sessions.delete(id);audit({type:'call.closed',voiceSessionId:id});
@@ -395,10 +395,10 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     };
     if(!current(s))return;
     const createWebSocket=async(url,options)=>new wsModule.WebSocket(url,options);
-    const makeBridge=(instructions=request.instructions)=>{
-      const generation=s.providerGeneration=(s.providerGeneration??0)+1;
+    const makeBridge=(instructions=request.instructions,wrap)=>{
+      const generation=wrap?null:s.providerGeneration=(s.providerGeneration??0)+1;
       const owned={...request,instructions};
-      for(const [key,value]of Object.entries(owned))if(key.startsWith('on')&&typeof value==='function')owned[key]=(...args)=>{if(current(s)&&generation===s.providerGeneration)return value(...args);};
+      for(const [key,value]of Object.entries(owned))if(key.startsWith('on')&&typeof value==='function')owned[key]=wrap?wrap(key,value):(...args)=>{if(current(s)&&generation===s.providerGeneration)return value(...args);};
       return s.model==='seeduplex'?new SeeduplexRealtimeVoiceBridge(owned,{createWebSocket})
         :new GrokVoiceBridge(owned,{createWebSocket,apiKey:apiKeys.grok,model:grokModel,voice:s.voice,speed:grokSpeed,expressiveTags:grokExpressiveTags});
     };
@@ -421,7 +421,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){s.latestUserTurn=Object.freeze({text:e.text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(e.text);}
       else if(e.type==='playback.state'&&typeof e.speaking==='boolean'){s.playing=e.speaking;audit({type:'client.playback-state',voiceSessionId:s.id,speaking:e.speaking});}
       else if(e.type==='playback.stats'){
-        const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','inputBatches'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
+        const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','inputBatches','inputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
+        for(const key of ['trackMuted','trackEnabled','trackLive','pageHidden'])if(typeof e[key]==='boolean')stats[key]=e[key];
+        if(['running','suspended','interrupted','closed'].includes(e.contextState))stats.contextState=e.contextState;
         audit({type:'client.playback-stats',voiceSessionId:s.id,stats});
       }
       else if(e.type==='playback.drained'&&s.ending?.callId===e.callId&&s.ending.hasAudio&&s.ending.completed){audit({type:'speaker.end-played',voiceSessionId:s.id});void close(s.id).catch(()=>{});}
@@ -436,6 +438,39 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       end:({turnId})=>{if(!current(s)||!s.bridge.ready)return;s.ending={callId:'speaker-end-'+turnId,hasAudio:false,source:'speaker'};emit(s,{type:'end.accepted',callId:s.ending.callId});s.bridge.speakProgress('好，拜拜，下次聊。',{caption:true});},
       cancelEnd:()=>{if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}},
       rejectNativeEnd:call=>{if(current(s))s.bridge.submitToolResult(call.callId,{accepted:false,instruction:'主机未确认结束电话。不要说再见或再次请求挂断；继续回答最新的用户问题。'});},
+      // A bounded speculative lane hears new audio without replacing the live
+      // reply or executing a tool. Only semantic admission can promote it.
+      stage:(instructions,key,history=[])=>{
+        let state='pending',bridge,queued=[],bytes=0;
+        s.stagedBridges??=new Set();
+        const discard=()=>{if(state!=='pending')return;state='discarded';queued=[];s.stagedBridges.delete(lane);bridge?.close();};
+        const wrap=(name,deliver)=>(...args)=>{
+          if(!current(s))return;
+          if(state==='active'&&s.bridge===bridge)return deliver(...args);
+          if(state!=='pending')return;
+          if(name==='onError'||name==='onClose'){discard();return;}
+          // Raw protocol frames are not needed for delayed delivery.
+          if(name==='onProtocolEvent')return;
+          bytes+=name==='onAudio'?(args[0]?.length??0):Buffer.byteLength(JSON.stringify(args));
+          if(bytes>1024*1024||queued.length>=600){discard();return;}
+          queued.push(()=>deliver(...args));
+        };
+        const lane={discard,get available(){return state==='pending'&&bridge?.ready===true;},forward:audio=>{if(state==='pending')bridge.sendAudio(audio);},
+          commit(){
+            if(!current(s)||!lane.available)return false;
+            const old=s.bridge;s.providerGeneration=(s.providerGeneration??0)+1;s.bridge=bridge;s.personaKey=key;state='active';s.stagedBridges.delete(lane);
+            if([...s.toolOwners.values()].includes(old))s.retiredBridges.add(old);else old.close();
+            audienceKeys.set(bridge,key);contextHeld(s);
+            const pending=queued;queued=[];for(const deliver of pending){if(!current(s)||s.bridge!==bridge)break;deliver();}
+            return true;
+          },
+        };
+        s.stagedBridges.add(lane);
+        const historyContext=history.length?'\n近期已获准的对话，仅供衔接，不逐条朗读：'+JSON.stringify(history):'';
+        bridge=makeBridge(request.instructions+'\n\n'+instructions+historyContext,wrap);
+        lane.ready=bridge.connect().catch(error=>{discard();throw error;});lane.ready.catch(()=>{});
+        return lane;
+      },
       prepare:async(instructions,key,history=[])=>{
         if(!current(s))throw Error('通话已结束');
         if(s.personaKey===key&&s.bridge.ready){audienceKeys.set(s.bridge,key);contextHeld(s);return;}
