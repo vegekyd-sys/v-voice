@@ -1,30 +1,10 @@
 import XCTest
 import AVFoundation
-import UIKit
 @testable import VVoice
 
 /// Exercises physical Voice Processing I/O without opening a network connection,
 /// storing microphone samples, or contacting a model.
 @MainActor final class DeviceAudioTests: XCTestCase {
-    func testSystemCallActivatesAudioWithoutNetwork() async throws {
-        #if targetEnvironment(simulator)
-        throw XCTSkip("CallKit activation requires a physical device")
-        #else
-        let systemCall = SystemCallSession.shared
-        let audio = VoiceAudio()
-        defer { audio.stop(); systemCall.finish() }
-        do { try await systemCall.start() }
-        catch { XCTFail("System call: \(systemCall.lastFailure ?? String(describing: error))"); return }
-        XCTAssertTrue(systemCall.audioIsActive)
-        var bytes = 0
-        audio.onInput = { data, _ in bytes += data.count }
-        try audio.start(systemManaged: true)
-        try await audio.waitUntilCapturing()
-        systemCall.connected()
-        XCTAssertGreaterThan(bytes, 0)
-        XCTAssertTrue(audio.isRunning)
-        #endif
-    }
     func testAudioCapturesPlaysAndRestartsWithoutNetwork() async throws {
         XCTAssertEqual(AVAudioApplication.shared.recordPermission, .granted,
                        "Authorize the microphone in V Voice before device acceptance")

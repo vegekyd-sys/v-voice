@@ -38,28 +38,12 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
-		<string>voip</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-	</array>
-	<key>NSSiriUsageDescription</key>
-	<string>通过系统通话快捷指令，在灵动岛开始与 V 的语音对话。</string>
-	<key>NSUserActivityTypes</key>
-	<array>
-		<string>INStartCallIntent</string>
-	</array>
-	<key>UIApplicationSceneManifest</key>
-	<dict>
-		<key>UIApplicationSupportsMultipleScenes</key>
-		<true/>
-	</dict>
-	<key>INIntentsSupported</key>
-	<array>
-		<string>INStartCallIntent</string>
 	</array>
 </dict>
 </plist>

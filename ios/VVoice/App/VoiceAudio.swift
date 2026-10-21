@@ -74,15 +74,15 @@ private final class CaptureHandoff: @unchecked Sendable {
         try session.setPreferredSampleRate(48_000)
         try session.setPreferredIOBufferDuration(0.02)
     }
-    func start(systemManaged: Bool = false) throws {
+    func start() throws {
         stop()
         lastStartupFailure = nil
         let session = AVAudioSession.sharedInstance()
         var stage = "category"
         do {
-            if !systemManaged { try Self.configureSession() }
+            try Self.configureSession()
             stage = "activation"
-            if !systemManaged { try session.setActive(true); ownsSessionActivation = true }
+            try session.setActive(true); ownsSessionActivation = true
             let e = AVAudioEngine(); let p = AVAudioPlayerNode(); e.attach(p)
             // Configure both I/O nodes while stopped. Voice Processing I/O requires
             // matching input/output stream formats (unlike the simulator's HAL).

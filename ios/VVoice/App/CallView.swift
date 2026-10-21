@@ -202,7 +202,6 @@ struct SettingsView: View {
                     Picker("对话声音", selection: $call.model) { ForEach(VoiceModel.allCases, id: \.self) { Text($0.title).tag($0) } }.disabled(call.active)
                 } footer: { Text("使用 V 现有实时语音与工具能力。音频设备由 iOS 自动选择；接入耳机后使用耳机麦克风。") }
                 Section {
-                    AddIslandCallShortcut().frame(height: 48).disabled(call.needsSetup)
                     NavigationLink("设置操作按钮") { ActionButtonInstructions() }
                     Text("已有通话时再次长按：继续当前通话；静音时恢复麦克风。结束通话请点灵动岛或 App 的结束按钮。")
                         .font(.footnote).foregroundStyle(.secondary)
@@ -211,7 +210,7 @@ struct SettingsView: View {
                     Text("仅通话时使用麦克风。结束后停止收音。通话文字只在当前界面暂存，离开通话后清空；服务端沿用 V 已有通话记录策略。")
                         .font(.footnote).foregroundStyle(.secondary)
                     if call.bound { Button("解除本机入口绑定", role: .destructive) { confirmForget = true }.disabled(call.active || working) }
-                } footer: { Text("V Voice 1.0 · 专注于一按通话\n操作按钮请选择新添加的「灵动岛拨给 V」指令。") }
+                } footer: { Text("V Voice 1.0 · 专注于一按通话\n操作按钮请选择 V Voice 的「和 V 通话」。") }
             }
             .scrollContentBackground(.hidden).background(ink).tint(accent)
             .navigationTitle("通话设置").navigationBarTitleDisplayMode(.inline)
@@ -237,12 +236,10 @@ struct ActionButtonInstructions: View {
                 Text("让 V，\n在一个按键之内。").font(.system(size: 32, weight: .medium)).lineSpacing(6)
                 Text("完成一次设置，之后长按 iPhone 操作按钮，就能和 V 说话。").font(.system(size: 16)).foregroundStyle(.secondary).lineSpacing(6)
                 instruction("01", "先准备好通话", "在 V Voice 绑定本人入口，允许麦克风和实时活动。先从 App 完成一次通话。")
-                instruction("02", "添加灵动岛通话指令", "轻点下方按钮，保存「灵动岛拨给 V」快捷指令。")
-                AddIslandCallShortcut().frame(height: 48)
-                instruction("03", "绑定操作按钮", "系统设置 → 操作按钮 → 快捷指令，选择刚保存的「灵动岛拨给 V」。")
-                instruction("04", "长按，等接通后开口", "灵动岛出现「我在听」时即可说话。长按灵动岛可静音或结束，轻点可返回通话。")
+                instruction("02", "打开系统设置 → 操作按钮", "选择「快捷指令」，轻点「选取快捷指令」，找到 V Voice 的「和 V 通话」。")
+                instruction("03", "长按，等接通后开口", "灵动岛出现「我在听」时即可说话。长按灵动岛可静音或结束，轻点可返回通话。")
                 ShortcutsLink().frame(maxWidth: .infinity).padding(.vertical, 8)
-                Text("首次使用请完成系统提示的授权。通话接通后可以退出 App 或锁屏继续说话。系统来电与 Siri 会暂停通话；结束后按提示恢复。").font(.footnote).foregroundStyle(.secondary).lineSpacing(5)
+                Text("操作按钮在后台开始通话，灵动岛显示通话状态并提供静音、结束按钮。首次使用请先在 App 完成入口绑定和授权。系统来电与 Siri 会暂停通话；结束后按提示恢复。").font(.footnote).foregroundStyle(.secondary).lineSpacing(5)
             }.padding(28)
         }.background(ink).navigationTitle("操作按钮").navigationBarTitleDisplayMode(.inline)
     }

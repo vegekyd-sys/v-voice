@@ -67,7 +67,7 @@ public struct VoiceBinding: Codable, Equatable, Sendable {
 }
 
 public enum VoiceError: Error, LocalizedError, Equatable, Sendable {
-    case invalidBinding, unbound, secureStorage, microphone, liveActivity, unavailable, connection, audio, foregroundRequired, protocolMismatch, bufferOverflow, expired, busy, rateLimited, server(Int)
+    case invalidBinding, unbound, secureStorage, microphone, liveActivity, unavailable, connection, audio, protocolMismatch, bufferOverflow, expired, busy, rateLimited, server(Int)
     public var errorDescription: String? {
         switch self {
         case .invalidBinding: "请粘贴完整的本人 HTTPS 电话入口链接，包含 #access。"
@@ -77,8 +77,7 @@ public enum VoiceError: Error, LocalizedError, Equatable, Sendable {
         case .liveActivity: "请在系统设置中开启 V Voice 的实时活动，再使用按键通话。"
         case .unavailable: "V 尚未就绪，请稍后重试。"
         case .connection: "连接已中断。检查网络后可重新连接。"
-        case .audio: "音频暂不可用。请解锁并返回通话；若有系统来电，请先结束来电。"
-        case .foregroundRequired: "系统未允许后台通话。请确认操作按钮使用「灵动岛拨给 V」快捷指令。"
+        case .audio: "音频暂不可用，请稍后重试；若有系统来电，请先结束来电。"
         case .protocolMismatch: "当前服务的语音协议尚不支持，请更换语音或更新 App。"
         case .bufferOverflow: "音频传输积压，已停止收音。网络恢复后请重连。"
         case .expired: "个人入口已失效，请重新绑定。"
