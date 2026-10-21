@@ -108,3 +108,18 @@ UI 实操发现原 20 帧（400 ms）主线程交接阈值，在从后台切到�
 ![iPad 横屏双栏](evidence/build6-ipad-simulator.png)
 
 代码提交 `329bc3b`，Release 1.0.0 (6) development 签名归档及导出成功，独立 IPA 解包后通过主 App／扩展签名与 profiles、arm64、H5 源 CSS 一致性、iPhone／iPad family、后台 TalkToVIntent 元数据、正常 TLS 及无 Debug fixture 检查。安装前状态只读确认 activeCalls=0、creatingSessions=0、backgroundTasks=0；随后 devicectl 已安装到 Tianyi 的同一台 iPhone 17 Pro。原绑定保留，未自动发起真实通话；已请用户在原操作按钮入口复测。build 5 的签名回滚包保存在本机 `ios/build/VVoice.xcarchive.previous-20261022-005206`。没有调用正式模型，没有修改正式服务／Gateway、合并或推送；build 5 的真机基本按键通话已获用户接受，build 6 的视觉与真实工具方案路径仍需人类实测。
+
+
+## 完整 H5 Reaction 补齐 · build 7 · 2026-10-22
+
+用户追问后核对，build 6 确实只有 7 张基础状态图；此前“对齐 H5”未包含完整 Reaction，现明确纠正。build 7 从 AVATAR_CATALOG / AVATAR_SEQUENCES 导入全部 52 个图库条目及原 continuations；源图片和语义目录纳入同一 SHA256 同步检查，移除旧的重复基础图别名。
+
+新增原生 VoiceAvatar：使用既有 /api/avatar 与本通话 cookie／voiceSessionId，最多 6 段上下文、每段最多 600 UTF-16 单元；400 ms 去抖，完整助手短语触发且后续语义至少间隔 6 秒；新用户语义淘汰旧结果，助手动作保留至少 1.6 秒。Decision 仅控制展示，不能授权工具或影响录音。只在 App 前台、头像可见且未被方案／设置遮盖时请求；3.5 秒超时独立于语音，失败保持安全姿态。
+
+姿态只在当前 Decision 批准的主图／后续图内轮换，没有批准后续时使用倾听安全对；同一 anchor 不重置停留期限，约 4.3 秒换姿态（低于 H5 5 秒上限），280 ms 渐变、遵循减少动态效果。真实原生头像进入视图显示周期后才记录 displayed；沿用既有有界 avatar-events 协议，单批最多 20 个、20 KB，未写入 Git 日志或个人文本。
+
+原生回归 23/23：包括全 52 张资源可载入／15 张情绪图及全部后续引用有效、批准后续切换、遮盖不请求、晚到旧语义不能覆盖新语义，以及 build 6 的持续录音／方案等既有回归。H5 原 Reaction 测试 26/26。实际模拟器 mock 链路显示 reaction-0、reaction-1、listen-5；displayed 记录与实际照片切换一致，通话持续且结束后 active=null。没有调用正式分类器或真实模型，不以此声称手机真实语义效果已验收。
+
+![原生完整 Reaction 图库中的实际姿态](evidence/build7-reaction-simulator.jpg)
+
+代码 `3b4efbd`，Release 1.0.0 (7) 开发签名归档及导出成功，独立 IPA 解包检查签名／profiles、52 个完整目录及有效后续引用、H5 CSS、后台按键元数据和无 Debug fixture 均通过。安装前只读状态 activeCalls=0、creatingSessions=0、backgroundTasks=0；devicectl 已实际安装到同一台 iPhone 17 Pro，原绑定与按键配置保留。Voice 后端／Gateway／Worker 和按键后台入口均未改。

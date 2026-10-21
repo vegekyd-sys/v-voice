@@ -9,6 +9,7 @@
 - 本轮没有修改或部署 Voice 后端、Gateway、Worker、工具权限或个人会话映射；不需要共享 VLab。使用独立客户端和本地无付费协议 Candidate 验证。
 - 源码完成与真机接受分开。已开发签名并安装到本人 iPhone 17 Pro；build 2 基本真实双向通话由用户确认。用户补充 build 2 曾可在灵动岛对话；build 4 的 SiriKit 路径仍打开 App，未达标。build 5 恢复 build 2 的 AudioRecordingIntent 音频路径，移除动态解锁／前台继续和 SiriKit／CallKit 转交；build 5 从桌面长按操作按钮、全程留在灵动岛并双向对话，已获用户真机确认；锁屏冷启动等扩展场景仍待验。
 - build 6 将主 App 对齐当前 H5：原头像／配色、原生对话／文字补充／任务、方案阅读，支持 iPhone 与 iPad 双栏；灵动岛增加最近一句对话及直达方案的入口。本版真实服务及灵动岛到方案的手机接受另行登记，不沿用 build 5 的结论。
+- build 7 补齐 build 6 漏迁的完整 H5 Reaction：52 张原图（含 15 张情绪 Reaction），复用原 avatar 语义接口、400 ms 稳定语义触发、同语境批准的 continuations、最长 5 秒停留和 280 ms 渐变。后台／方案或设置遮盖头像时暂停判断；原生显示后沿用 avatar-events 观测协议。源码与本地协议验证通过，真实模型语义接受另记。
 - 正式后端、平台 main/dev、App Store/TestFlight 均未发布。代理未自动发起正式电话或付费模型测试；用户本人已进行真实对话验收。
 
 ## 日常用户路径
