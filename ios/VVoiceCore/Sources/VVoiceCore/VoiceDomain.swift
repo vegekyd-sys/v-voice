@@ -67,7 +67,7 @@ public struct VoiceBinding: Codable, Equatable, Sendable {
 }
 
 public enum VoiceError: Error, LocalizedError, Equatable, Sendable {
-    case invalidBinding, unbound, secureStorage, microphone, liveActivity, unavailable, connection, audio, protocolMismatch, bufferOverflow, expired, busy, server(Int)
+    case invalidBinding, unbound, secureStorage, microphone, liveActivity, unavailable, connection, audio, foregroundRequired, protocolMismatch, bufferOverflow, expired, busy, rateLimited, server(Int)
     public var errorDescription: String? {
         switch self {
         case .invalidBinding: "请粘贴完整的本人 HTTPS 电话入口链接，包含 #access。"
@@ -78,10 +78,12 @@ public enum VoiceError: Error, LocalizedError, Equatable, Sendable {
         case .unavailable: "V 尚未就绪，请稍后重试。"
         case .connection: "连接已中断。检查网络后可重新连接。"
         case .audio: "音频暂不可用。请解锁并返回通话；若有系统来电，请先结束来电。"
+        case .foregroundRequired: "系统未允许后台通话。请确认操作按钮使用「灵动岛拨给 V」快捷指令。"
         case .protocolMismatch: "当前服务的语音协议尚不支持，请更换语音或更新 App。"
         case .bufferOverflow: "音频传输积压，已停止收音。网络恢复后请重连。"
         case .expired: "个人入口已失效，请重新绑定。"
         case .busy: "当前已有通话或正在收尾，请稍后再拨。"
+        case .rateLimited: "拨号过于频繁，请稍后再试。"
         case .server: "服务暂不可用，请稍后重新连接。"
         }
     }
@@ -90,6 +92,19 @@ public enum VoiceError: Error, LocalizedError, Equatable, Sendable {
 public enum VoiceModel: String, Codable, Sendable, CaseIterable {
     case seeduplex, grok
     public var title: String { self == .seeduplex ? "小何" : "Grok" }
+}
+
+public enum VoiceHTTPFailure {
+    public static func error(status: Int, message: String? = nil) -> VoiceError? {
+        switch status {
+        case 200..<300: nil
+        case 401, 403: .expired
+        case 409: .busy
+        case 429: message == "这台设备已有通话，请先结束后再试" ? .busy : .rateLimited
+        case 503: .unavailable
+        default: .server(status)
+        }
+    }
 }
 
 /// A generation owns every async callback, including a reservation arriving after hangup.

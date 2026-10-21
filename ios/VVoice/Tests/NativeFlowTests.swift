@@ -140,4 +140,29 @@ import VVoiceCore
         XCTAssertTrue(call.active)
     }
 
+    func testRateLimitDoesNotClaimAnotherCallOrAutomaticallyRedial() async throws {
+        let call = try await client(); try await fixture("limit-next-session")
+        do { try await call.startOrContinue(); XCTFail("Expected rate limit") }
+        catch { XCTAssertEqual(error as? VoiceError, .rateLimited) }
+        XCTAssertEqual(call.phase, .failed)
+        XCTAssertTrue(call.detail.contains("频繁"))
+        try await Task.sleep(for: .milliseconds(350))
+        let limited = try await stats()
+        XCTAssertEqual(limited["sessions"] as? Int, 0)
+        XCTAssertNil(limited["active"] as? String)
+        try await call.startOrContinue()
+        XCTAssertTrue(call.active)
+    }
+
+    func testImmediateRetryWaitsForFailedCallsOwnedCleanup() async throws {
+        let call = try await client(); try await call.startOrContinue()
+        try await fixture("slow-close"); try await fixture("malformed-audio")
+        try await until { call.phase == .failed }
+        try await call.startOrContinue()
+        let snapshot = try await stats()
+        XCTAssertEqual(snapshot["sessions"] as? Int, 2)
+        XCTAssertEqual(snapshot["closeRequests"] as? Int, 1)
+        XCTAssertTrue(call.active)
+    }
+
 }

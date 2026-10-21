@@ -8,20 +8,15 @@ import AVFAudio
 struct TalkToVIntent: AudioRecordingIntent, LiveActivityIntent {
     static let title: LocalizedStringResource = "和 V 通话"
     static let description = IntentDescription("开始连续语音对话；已有通话时继续当前通话，静音时恢复麦克风。")
-    static var supportedModes: IntentModes { [.background, .foreground(.dynamic)] }
+    static var supportedModes: IntentModes { .background }
     static var authenticationPolicy: IntentAuthenticationPolicy { .alwaysAllowed }
     @MainActor func perform() async throws -> some IntentResult {
         #if !VOICE_WIDGET
         let call = CallCoordinator.shared
         if call.needsSetup {
-            try await continueInForeground("请先完成个人入口和麦克风设置", alwaysConfirm: false)
             if call.permission == .undetermined { await call.requestMicrophone() }
         }
-        do { try await call.startOrContinue(fromIntent: true) }
-        catch VoiceError.audio {
-            try await continueInForeground("解锁并继续和 V 通话", alwaysConfirm: false)
-            try await call.startOrContinue(fromIntent: true)
-        }
+        try await call.startOrContinue(fromIntent: true)
         #endif
         return .result()
     }

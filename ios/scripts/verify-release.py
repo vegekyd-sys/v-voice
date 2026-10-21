@@ -5,8 +5,11 @@ p=argparse.ArgumentParser();p.add_argument('app',type=pathlib.Path);p.add_argume
 info=plistlib.loads((a.app/'Info.plist').read_bytes())
 assert info['CFBundleIdentifier']=='com.versa.vvoice'
 assert info.get('NSSupportsLiveActivities') is True
-assert info.get('UIBackgroundModes')==['audio']
+assert info.get('UIBackgroundModes')==['audio', 'voip']
 assert info.get('NSMicrophoneUsageDescription')
+assert info.get('IntentsSupported') == ['INStartCallIntent']
+assert 'INStartCallIntent' in info.get('NSUserActivityTypes', [])
+assert info.get('NSSiriUsageDescription')
 assert 'NSAppTransportSecurity' not in info, 'Release must retain normal TLS enforcement'
 binary=a.app/info['CFBundleExecutable']; data=binary.read_bytes()
 for marker in [b'--local-voice-fixture',b'127.0.0.1:29837',b'fixture-cookie']:
@@ -16,10 +19,14 @@ assert architecture=='arm64',architecture
 extension=a.app/'PlugIns/VVoiceActivity.appex';assert extension.is_dir()
 metadata=json.loads((a.app/'Metadata.appintents/extract.actionsdata').read_text())
 actions=metadata['actions'];assert {'TalkToVIntent','MuteVIntent','EndVIntent','OpenVIntent'}<=actions.keys()
+assert actions['TalkToVIntent'].get('openAppWhenRun') is False
+assert actions['TalkToVIntent'].get('supportedModes') == 1, 'Do not replace island calling with foreground opening'
 protocols=actions['TalkToVIntent']['systemProtocols']
 assert any('AudioRecording' in x for x in protocols),protocols
 assert any('SessionStarting' in x for x in protocols),protocols
 signed=subprocess.run(['codesign','--verify','--deep','--strict',str(a.app)],capture_output=True).returncode==0
+entitlements=plistlib.loads(subprocess.check_output(['codesign','-d','--entitlements',':-',str(a.app)],stderr=subprocess.DEVNULL)) if signed else {}
+if signed: assert entitlements.get('com.apple.developer.siri') is True
 provisioned=(a.app/'embedded.mobileprovision').is_file() and (extension/'embedded.mobileprovision').is_file()
 assert (signed and provisioned) or a.allow_unsigned, 'Signing/profiles missing; do not report this bundle as installable'
 print(json.dumps({'version':info['CFBundleShortVersionString'],'build':info['CFBundleVersion'],'architecture':architecture,'intents':list(actions),'liveActivityExtension':True,'releaseTLS':True,'debugFixtureAbsent':True,'signed':signed,'profilesPresent':provisioned},ensure_ascii=False,indent=2))

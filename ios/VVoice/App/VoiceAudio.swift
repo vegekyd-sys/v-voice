@@ -60,6 +60,7 @@ private final class CaptureHandoff: @unchecked Sendable {
     private var started = false
     private var outputFinished = false
     private var startingOutput = false
+    private var ownsSessionActivation = false
     var onInput: ((Data, Double) -> Void)?
     var onPlayback: ((Bool) -> Void)?
     var onDrained: (() -> Void)?
@@ -67,17 +68,21 @@ private final class CaptureHandoff: @unchecked Sendable {
     var isRunning: Bool { engine?.isRunning == true }
     var queuedFrames: Int { ledger.queuedFrames }
 
-    func start() throws {
+    static func configureSession() throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        try session.setPreferredSampleRate(48_000)
+        try session.setPreferredIOBufferDuration(0.02)
+    }
+    func start(systemManaged: Bool = false) throws {
         stop()
         lastStartupFailure = nil
         let session = AVAudioSession.sharedInstance()
         var stage = "category"
         do {
-            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
-            stage = "preferences"
-            try session.setPreferredSampleRate(48_000); try session.setPreferredIOBufferDuration(0.02)
+            if !systemManaged { try Self.configureSession() }
             stage = "activation"
-            try session.setActive(true)
+            if !systemManaged { try session.setActive(true); ownsSessionActivation = true }
             let e = AVAudioEngine(); let p = AVAudioPlayerNode(); e.attach(p)
             // Configure both I/O nodes while stopped. Voice Processing I/O requires
             // matching input/output stream formats (unlike the simulator's HAL).
@@ -191,6 +196,9 @@ private final class CaptureHandoff: @unchecked Sendable {
     func stop() {
         generation = UUID(); started = false; capturedInput = false; lastCaptureAt = .distantPast; clear()
         engine?.inputNode.removeTap(onBus: 0); engine?.stop(); engine = nil; player = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        if ownsSessionActivation {
+            ownsSessionActivation = false
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 }

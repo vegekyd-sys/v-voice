@@ -44,3 +44,10 @@ import Foundation
     let newDrained = p.consumed(480, epoch: p.epoch)
     #expect(newDrained)
 }
+
+@Test func rateLimitIsNotReportedAsAnOccupiedConversation() {
+    #expect(VoiceHTTPFailure.error(status: 429, message: "通话开始得太频繁，请稍后再试") == .rateLimited)
+    #expect(VoiceHTTPFailure.error(status: 409) == .busy)
+    #expect(VoiceHTTPFailure.error(status: 429, message: "这台设备已有通话，请先结束后再试") == .busy)
+    #expect(VoiceHTTPFailure.error(status: 200) == nil)
+}

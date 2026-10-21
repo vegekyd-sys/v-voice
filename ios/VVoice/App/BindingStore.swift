@@ -60,9 +60,9 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
     private func authorize(_ binding: VoiceBinding) async throws -> StoredBinding {
         var req = request("access", binding: binding, cookie: "")
         req.httpMethod = "POST"; req.httpBody = try JSONSerialization.data(withJSONObject: ["access": binding.access])
-        let (_, response) = try await session.data(for: req)
+        let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw VoiceError.connection }
-        try validate(http.statusCode)
+        try validate(http.statusCode, data: data)
         guard let header = http.value(forHTTPHeaderField: "Set-Cookie"), let cookie = header.split(separator: ";").first,
               cookie.contains("="), cookie.count < 8192 else { throw VoiceError.expired }
         return StoredBinding(binding: binding, cookie: String(cookie))
@@ -75,21 +75,16 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
         if !cookie.isEmpty { r.setValue(cookie, forHTTPHeaderField: "Cookie") }
         return r
     }
-    private func validate(_ status: Int) throws {
-        switch status {
-        case 200..<300: return
-        case 401, 403: throw VoiceError.expired
-        case 409, 429: throw VoiceError.busy
-        case 503: throw VoiceError.unavailable
-        default: throw VoiceError.server(status)
-        }
+    private func validate(_ status: Int, data: Data) throws {
+        let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+        if let error = VoiceHTTPFailure.error(status: status, message: message) { throw error }
     }
     private func raw(_ route: String, record: StoredBinding, body: [String: Any]? = nil) async throws -> [String: Any] {
         var r = request(route, binding: record.binding, cookie: record.cookie)
         if let body { r.httpMethod = "POST"; r.httpBody = try JSONSerialization.data(withJSONObject: body) }
         let (data, response) = try await session.data(for: r)
         guard let http = response as? HTTPURLResponse else { throw VoiceError.connection }
-        try validate(http.statusCode)
+        try validate(http.statusCode, data: data)
         guard data.count < 2_000_000, let value = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw VoiceError.protocolMismatch }
         return value
     }

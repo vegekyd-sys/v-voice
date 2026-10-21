@@ -13,7 +13,7 @@ import VVoiceCore
             return CallCoordinator(api: VoiceAPI(store: store))
         }
         #endif
-        return CallCoordinator()
+        return CallCoordinator(systemCalls: .shared)
     }()
     private(set) var state = CallState()
     private(set) var detail = "长按操作按钮，即刻开始对话"
@@ -33,6 +33,9 @@ import VVoiceCore
 
     @ObservationIgnored let api: VoiceAPI
     @ObservationIgnored private let audio = VoiceAudio()
+    @ObservationIgnored private let systemCalls: SystemCallSession?
+    @ObservationIgnored private var closing: Task<Void, Never>?
+    @ObservationIgnored private var lastFailure: VoiceError?
     @ObservationIgnored private var transport: RelayTransport?
     @ObservationIgnored private var voiceID: String?
     @ObservationIgnored private var routeChangeTask: Task<Void, Never>?
@@ -67,10 +70,18 @@ import VVoiceCore
     @ObservationIgnored private var initialized = false
     @ObservationIgnored private var appIsActive = false
 
-    init(api: VoiceAPI? = nil) {
+    init(api: VoiceAPI? = nil, systemCalls: SystemCallSession? = nil) {
         self.api = api ?? VoiceAPI(store: BindingStore())
+        self.systemCalls = systemCalls
         model = VoiceModel(rawValue: UserDefaults.standard.string(forKey: "voiceModel") ?? "") ?? .seeduplex
         bound = self.api.isBound
+        systemCalls?.onEnd = { [weak self] in Task { await self?.end() } }
+        systemCalls?.onMute = { [weak self] value in self?.setMuted(value, updateSystem: false) }
+        systemCalls?.onAudioUnavailable = { [weak self] in self?.pause("系统音频已暂停，恢复后可继续通话") }
+        systemCalls?.onAudioAvailable = { [weak self] in
+            guard let self, self.phase == .interrupted else { return }
+            Task { await self.resume() }
+        }
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
             let kind = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue
@@ -117,6 +128,7 @@ import VVoiceCore
     }
     func bind(_ link: String) async throws {
         guard !active else { throw VoiceError.busy }
+        await closing?.value
         try await api.recoverPreviousCall()
         try await api.bind(link: link); bound = true
         detail = "入口已安全绑定，可以和 V 通话了"
@@ -128,7 +140,7 @@ import VVoiceCore
         permission = AVAudioApplication.shared.recordPermission
         guard bound else { throw VoiceError.unbound }
         if active {
-            if phase == .interrupted { await resume(); if [.interrupted,.failed].contains(phase) { throw VoiceError.audio } }
+            if phase == .interrupted { await resume(); if [.interrupted,.failed].contains(phase) { throw lastFailure ?? VoiceError.audio } }
             else if muted { toggleMute() }
             else { UIImpactFeedbackGenerator(style: .soft).impactOccurred() }
             return
@@ -137,6 +149,8 @@ import VVoiceCore
         if fromIntent, !activitiesEnabled { throw VoiceError.liveActivity }
         await reconcileActivities()
         guard let owner = state.begin() else { return }
+        CallDiagnostics.record("call.start")
+        lastFailure = nil
         startedAt = Date(); lastCaption = ""; resultID = nil; resultText = ""; shownResults.removeAll(); detail = "接通后会提示你开口"
         retiredResponses.removeAll(); publish()
         do {
@@ -144,16 +158,39 @@ import VVoiceCore
             try await dial(owner: owner, greeting: true)
         } catch {
             guard state.generation == owner else { throw CancellationError() }
+            if error is CancellationError { await end(); throw error }
             fail(error); throw normalized(error)
         }
     }
     private func normalized(_ error: Error) -> Error { error is VoiceError ? error : VoiceError.connection }
     private func owned(_ owner: UUID) -> Bool { state.generation == owner && active && phase != .ending }
+    private func prepareAudio(owner: UUID) async throws {
+        if !audio.isRunning {
+            if let systemCalls {
+                do { try await systemCalls.start() }
+                catch {
+                    if error is CancellationError || error as? VoiceError == .busy { throw error }
+                    guard owned(owner) else { throw CancellationError() }
+                    // Keep a foreground-only path on systems that reject CallKit.
+                    // Never create a remote call before microphone activation.
+                    guard appIsActive || UIApplication.shared.applicationState == .active else { throw VoiceError.foregroundRequired }
+                }
+            }
+            guard owned(owner) else { throw CancellationError() }
+            try audio.start(systemManaged: systemCalls?.audioIsActive == true)
+        }
+        try await audio.waitUntilCapturing()
+        CallDiagnostics.record("call.audio-ready")
+        guard owned(owner) else { throw CancellationError() }
+    }
     private func dial(owner: UUID, greeting: Bool) async throws {
         handshakingOwner = owner; providerReady = true
         defer { if handshakingOwner == owner { handshakingOwner = nil } }
+        await closing?.value
+        guard owned(owner) else { throw CancellationError() }
         try await api.recoverPreviousCall()
         guard owned(owner) else { throw CancellationError() }
+        try await prepareAudio(owner: owner)
         let status = try await api.call("status")
         guard owned(owner) else { throw CancellationError() }
         guard status["ready"] as? Bool == true, status["preview"] as? Bool != true else { throw VoiceError.unavailable }
@@ -200,11 +237,13 @@ import VVoiceCore
         }
         audio.onDrained = { [weak self] in self?.drained(owner: owner) }
         audio.onFailure = { [weak self] error in guard let self, self.owned(owner) else { return }; self.fail(error) }
-        do { if !audio.isRunning { try audio.start() }; try await audio.waitUntilCapturing() } catch { throw VoiceError.audio }
+        try await prepareAudio(owner: owner)
         guard audio.isRunning, relay.isConnected, owned(owner) else { throw VoiceError.audio }
         lastInput = Date(); updateRoute(); setPhase(.listening, owner: owner)
         detail = greeting ? "已接通，可以直接开口" : "已重新接通，请继续说"
         audioReady = true
+        CallDiagnostics.record("call.connected")
+        systemCalls?.connected()
         let hadEarlyAudio = !earlyAudio.isEmpty
         try flushEarlyAudio()
         if !hadEarlyAudio { audio.playReadyCue() }
@@ -301,8 +340,14 @@ import VVoiceCore
         if state.phase != previous { publish() }
     }
     func toggleMute() {
-        guard active, ![.connecting,.reconnecting,.ending,.interrupted].contains(phase) else { return }
-        state.setMuted(!muted)
+        setMuted(!muted)
+    }
+    private func setMuted(_ value: Bool, updateSystem: Bool = true) {
+        guard active, phase != .ending else { return }
+        if updateSystem, [.connecting,.reconnecting,.interrupted].contains(phase) { return }
+        guard value != muted else { return }
+        state.setMuted(value)
+        if updateSystem { systemCalls?.setMuted(value) }
         if !muted, audio.queuedFrames > 0 { state.transition(.speaking, owner: state.generation) }
         detail = muted ? "V 听不到你的声音；轻点恢复" : "可以继续说话"
         UIImpactFeedbackGenerator(style: .soft).impactOccurred(); publish()
@@ -361,7 +406,7 @@ import VVoiceCore
                 } catch {
                     guard self.owned(owner), !Task.isCancelled else { return }
                     self.stopMedia(keepAudio: self.audio.isRunning)
-                    if let reason = error as? VoiceError, [.expired,.unbound,.protocolMismatch,.busy].contains(reason) { self.fail(error); return }
+                    if let reason = error as? VoiceError, [.expired,.unbound,.protocolMismatch,.busy,.rateLimited,.foregroundRequired].contains(reason) { self.fail(error); return }
                     if error as? VoiceError == .audio || error as? VoiceError == .microphone { self.pause(error.localizedDescription); return }
                 }
             }
@@ -379,7 +424,7 @@ import VVoiceCore
                 guard let self else { return }
                 defer { self.routeChangeTask = nil }
                 do {
-                    try self.audio.start(); try await self.audio.waitUntilCapturing()
+                    try self.audio.start(systemManaged: self.systemCalls?.audioIsActive == true); try await self.audio.waitUntilCapturing()
                     guard self.owned(owner), !Task.isCancelled else { return }
                     self.audioReady = true; self.lastInput = Date(); self.updateRoute()
                     self.setPhase(.listening, owner: owner); try self.flushEarlyAudio()
@@ -395,23 +440,30 @@ import VVoiceCore
     func report(_ error: Error) { guard !(error is CancellationError) else { return }; detail = normalized(error).localizedDescription }
     private func fail(_ error: Error) {
         recoveryDeadline?.cancel(); recoveryDeadline = nil
+        lastFailure = normalized(error) as? VoiceError
+        CallDiagnostics.record("call.failed", code: String(describing: lastFailure))
         state.finish(.failed); stopMedia(); detail = normalized(error).localizedDescription
+        systemCalls?.finish(failed: true)
         UINotificationFeedbackGenerator().notificationOccurred(.error)
         finishActivity(phase: .failed)
         if let id = voiceID {
             voiceID = nil
-            Task { [weak self] in
-                guard let self else { return }
+            closing = Task {
+                let background = CallCleanupTime()
+                defer { background.end() }
                 if (try? await self.api.call("close", body: ["voiceSessionId": id], refresh: false)) != nil, self.api.record?.pendingVoiceID == id { try? self.api.rememberCall(nil) }
             }
         }
     }
     func end() async {
+        guard phase != .ending else { return }
         guard active || voiceID != nil else { return }
         recovery?.cancel(); recovery = nil; recoveryDeadline?.cancel(); recoveryDeadline = nil
         let background = CallCleanupTime()
         defer { background.end() }
         let owner = state.finish(.ending); stopMedia(); detail = "正在安全结束通话"; publish()
+        CallDiagnostics.record("call.end")
+        systemCalls?.finish()
         let id = voiceID; voiceID = nil
         finishActivity(phase: .ended)
         if let id {

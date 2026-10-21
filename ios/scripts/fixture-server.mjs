@@ -5,6 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {WebSocketServer} from 'ws';
 const port=Number(process.env.VVOICE_FIXTURE_PORT??29837);
 let active=null,client=null,sequence=0,sessions=0,inputBytes=0,zeroBytes=0,playbackDrained=0,playbackStarts=0,greetings=0,heartbeats=0,earlyAudio=false,slowSession=false;
+let limitNextSession=false,slowClose=false,closeRequests=0;
 const emit=v=>{if(client?.readyState===1)client.send(JSON.stringify({voiceSessionId:active,...v}));};
 const audio=(ms=240)=>{
  const pcm=Buffer.alloc(ms*48);
@@ -15,9 +16,12 @@ const server=createServer(async(req,res)=>{
  const path=new URL(req.url,'http://127.0.0.1').pathname;
  const body=await new Promise(resolve=>{const chunks=[];req.on('data',b=>chunks.push(b));req.on('end',()=>{try{resolve(JSON.parse(Buffer.concat(chunks).toString()||'{}'));}catch{resolve({});}});});
  const send=(status,value)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
- if(path==='/fixture/state')return send(200,{active,sessions,inputBytes,zeroBytes,playbackDrained,playbackStarts,greetings,heartbeats});
+ if(path==='/fixture/state')return send(200,{active,sessions,inputBytes,zeroBytes,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests});
  if(path==='/fixture/command'){
    if(body.command==='slow-session')slowSession=true;
+   if(body.command==='limit-next-session')limitNextSession=true;
+   if(body.command==='slow-close')slowClose=true;
+   if(body.command==='malformed-audio')emit({type:'audio',sequence:++sequence,audio:Buffer.from([1]).toString('base64'),sampleRate:24000});
    if(body.command==='early-audio')earlyAudio=true;
    if(body.command==='audio')audio(body.ms??240);
    if(body.command==='clear'){emit({type:'audio.clear'});}
@@ -27,12 +31,13 @@ const server=createServer(async(req,res)=>{
    if(body.command==='think')emit({type:'transcript',role:'user',text:'本地测试',final:true});
    if(body.command==='end'){audio();emit({type:'end.after-playback',callId:'fixture-end'});}
    if(body.command==='drop')client?.terminate();
-   if(body.command==='reset'){client?.close();client=null;active=null;sessions=0;inputBytes=0;zeroBytes=0;greetings=0;heartbeats=0;earlyAudio=false;playbackStarts=0;}
+   if(body.command==='reset'){client?.close();client=null;active=null;sessions=0;inputBytes=0;zeroBytes=0;greetings=0;heartbeats=0;earlyAudio=false;playbackStarts=0;limitNextSession=false;slowClose=false;closeRequests=0;}
    return send(200,{ok:true});
  }
  if(req.headers.cookie!=='v_voice_access=fixture-cookie')return send(401,{error:'Fixture cookie required'});
  if(path==='/voice/api/status')return send(200,{ready:true,preview:false,models:[{id:'seeduplex',available:true},{id:'grok',available:true}],activeCall:Boolean(active)});
  if(path==='/voice/api/session'){
+   if(limitNextSession){limitNextSession=false;return send(429,{error:'通话开始得太频繁，请稍后再试'});}
    if(active)return send(409,{error:'Existing owner'});
    active=randomUUID();sequence=0;sessions++;
    const reservation={voiceSessionId:active,transport:'gateway-relay',provider:'seeduplex',relayTicket:'fixture-ticket'};
@@ -41,6 +46,11 @@ const server=createServer(async(req,res)=>{
  }
  if(path==='/voice/api/close'){
    if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
+   closeRequests++;
+   if(slowClose){
+     slowClose=false;const old=active,ws=client;
+     setTimeout(()=>{if(active===old)active=null;ws?.close();if(client===ws)client=null;send(200,{ok:true});},250);return;
+   }
    active=null;client?.close();client=null;return send(200,{ok:true});
  }
  if(path==='/voice/api/heartbeat'){

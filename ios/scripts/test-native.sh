@@ -26,5 +26,5 @@ xcodebuild -project ios/VVoice.xcodeproj -scheme VVoice -configuration Debug \
 xcrun simctl install "$VVOICE_SIMULATOR_ID" ios/DerivedData/Build/Products/Debug-iphonesimulator/VVoice.app
 xcrun simctl privacy "$VVOICE_SIMULATOR_ID" grant microphone com.versa.vvoice
 xcodebuild -project ios/VVoice.xcodeproj -scheme VVoice -configuration Debug \
-  -destination "id=$VVOICE_SIMULATOR_ID" -derivedDataPath ios/DerivedData -parallel-testing-enabled NO test
+  -destination "id=$VVOICE_SIMULATOR_ID" -derivedDataPath ios/DerivedData -parallel-testing-enabled NO -collect-test-diagnostics never test
 node --test lab/gpt-live-h5/hosted.test.mjs lab/realtime-direct-tools/session.test.mjs
