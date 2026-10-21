@@ -75,3 +75,14 @@ Siri 通话快捷指令可创建，非法接收者／视频拒绝的两项集成
 发布包注册复核：最终候选使用 build 4，根 Info.plist 以 `INIntentsSupported` 注册 App 内 SiriKit handler（不是扩展的 IntentsSupported 键）；NSUserActivityTypes 注册通话 handoff，未列入锁屏受限列表。新增读取真实测试宿主 Bundle Info 的集成检查，SiriKit 三项测试 3/3。快捷指令专用操作不要求额外 Siri 语音授权；这不代表已完成锁屏实际拨号。
 
 build 4（代码 `cd9954f`，系统通话实现 `498e596`）开发签名、归档、IPA 导出和 USB 实机安装成功。导出 IPA 单独解包后验证主 App／扩展签名与 profiles、Siri entitlement、INIntentsSupported 与 UserActivity 注册、旧 App Intent 保持 background 模式、正常 TLS 和无 Debug fixture。已请用户仅在一次配置时使用设置中的系统按钮添加「灵动岛拨给 V」，替换旧的普通 App 动作；退出 App 后的实际操作按钮／仅灵动岛通话仍等待用户确认，不记为通过。
+
+
+## 恢复原后台灵动岛路径 · build 5 · 2026-10-22
+
+用户实测 build 4 仍会打开主 App，明确拒绝此交互，并补充此前 build 2 已能在灵动岛对话；“需要解锁”是音频错误后的错误判断。该反馈纠正了上节的路径选择，不能继续将 SiriKit 注册或前台 CallKit 自检当作用户目标的达成。
+
+代码 `ba258a6` 恢复 `f8da9e8` 的 AudioRecordingIntent + LiveActivityIntent、原生音频初始化顺序和 ActivityKit 控件；仅允许 background、alwaysAllowed，删除音频失败后 `continueInForeground("解锁并继续…")` 及动态 foreground 模式，撤回 SiriKit / CallKit 转交、VoIP 后台模式和 Siri entitlement。通用音频错误文案也不再推断必须解锁。保留真机输入／输出格式修复、新 relay 播放序号重置、429 与 busy 区分、等待本通话归属清理后再重拨，以及不含凭据／录音／文本的本机有界生命周期记录。
+
+本地无模型完整脚本退出 0：Core 5/5、原生 14/14、既有服务合同 79/79；恢复后的操作按钮配置说明在 Codex 内置浏览器的真实模拟器镜像中核对，系统“添加到 Siri”按钮已移除，明确选择 V Voice「和 V 通话」。最终只补充通用音频错误文案后重新 Release 编译签名，不将本地 PCM 测试记为真实服务或锁屏冷启动验收。
+
+Release 1.0.0 (5) 已成功 development 签名归档、导出并由 devicectl 安装到同一台 iPhone 17 Pro。最终 IPA 独立解包后再次通过 codesign deep/strict、主 App／活动扩展 profiles、arm64、后台 intent 元数据、无 Siri entitlement、正常 TLS 与无 Debug fixture 检查。build 5 的操作按钮／仅灵动岛双向对话等待用户在桌面手动验证；若曾选用「灵动岛拨给 V」，需在系统操作按钮设置改回「和 V 通话」。原 Keychain 绑定保留，未卸载、未发起真实付费电话、未修改或部署正式服务。
