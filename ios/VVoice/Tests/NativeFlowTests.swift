@@ -1,0 +1,138 @@
+import XCTest
+import Foundation
+import AVFoundation
+import VVoiceCore
+@testable import VVoice
+
+@MainActor final class NativeFlowTests: XCTestCase {
+    private let base = URL(string: "http://127.0.0.1:29837/")!
+    private func fixture(_ command: String) async throws {
+        var r = URLRequest(url: base.appendingPathComponent("fixture/command")); r.httpMethod = "POST"
+        r.httpBody = try JSONSerialization.data(withJSONObject: ["command": command]); r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        _ = try await URLSession.shared.data(for: r)
+    }
+    private func stats() async throws -> [String: Any] {
+        let (d, _) = try await URLSession.shared.data(from: base.appendingPathComponent("fixture/state"))
+        return try JSONSerialization.jsonObject(with: d) as! [String: Any]
+    }
+    private func client() async throws -> CallCoordinator {
+        try await fixture("reset")
+        let store = BindingStore(service: "com.versa.vvoice.tests.\(UUID().uuidString)")
+        try store.save(StoredBinding(binding: VoiceBinding(testingBaseURL: base.appendingPathComponent("voice/")), cookie: "v_voice_access=fixture-cookie"))
+        let call = CallCoordinator(api: VoiceAPI(store: store)); call.sceneChanged(.active)
+        addTeardownBlock { await call.end(); await MainActor.run { call.forget() } }
+        return call
+    }
+    private func until(_ predicate: @MainActor () async throws -> Bool, timeout: Double = 10) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if try await predicate() { return }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTFail("Timed out waiting for native client state")
+    }
+    func testRealCapturePlaybackMuteRepeatTriggerAndRedial() async throws {
+        let call = try await client()
+        defer { call.forget() }
+        try await call.startOrContinue()
+        try await until { try await self.stats()["inputBytes"] as? Int ?? 0 > 1920 }
+        try await call.startOrContinue()
+        let snapshot1 = try await stats()
+        XCTAssertEqual(snapshot1["sessions"] as? Int, 1)
+        call.toggleMute(); XCTAssertTrue(call.muted)
+        let zeroBefore = try await stats()["zeroBytes"] as? Int ?? 0
+        try await until { try await self.stats()["zeroBytes"] as? Int ?? 0 > zeroBefore + 1920 }
+        try await call.startOrContinue(); XCTAssertFalse(call.muted)
+        try await fixture("audio")
+        try await until { call.phase == .speaking }
+        try await until { call.phase == .listening }
+        // A later response must enter speaking again after the player drains.
+        try await fixture("audio"); try await until { call.phase == .speaking }
+        await call.end(); XCTAssertEqual(call.phase, .ended)
+        let snapshot2 = try await stats()
+        XCTAssertNil(snapshot2["active"] as? String)
+        let finalBytes = try await stats()["inputBytes"] as? Int
+        try await Task.sleep(for: .milliseconds(350))
+        let snapshot3 = try await stats()
+        XCTAssertEqual(snapshot3["inputBytes"] as? Int, finalBytes)
+        try await call.startOrContinue()
+        let snapshot4 = try await stats()
+        XCTAssertEqual(snapshot4["sessions"] as? Int, 2)
+        await call.end()
+    }
+    func testNaturalHangupWaitsForOutputAndStopsCapture() async throws {
+        let call = try await client()
+        try await call.startOrContinue()
+        try await fixture("end")
+        try await until { call.phase == .ended }
+        let snapshot5 = try await stats()
+        XCTAssertNil(snapshot5["active"] as? String)
+        call.forget()
+    }
+    func testSocketLossReconnectsWithoutRepeatingGreeting() async throws {
+        let call = try await client()
+        try await call.startOrContinue()
+        try await until { try await self.stats()["greetings"] as? Int == 1 }
+        try await fixture("drop")
+        try await until { try await self.stats()["sessions"] as? Int == 2 }
+        try await until { call.phase == .listening }
+        let snapshot6 = try await stats()
+        XCTAssertEqual(snapshot6["greetings"] as? Int, 1)
+        await call.end(); call.forget()
+    }
+    func testEndDuringConnectionDoesNotResurrectCall() async throws {
+        let call = try await client()
+        try await fixture("slow-session")
+        let opening = Task { try await call.startOrContinue() }
+        try await until { try await self.stats()["active"] as? String != nil }
+        await call.end()
+        do { try await opening.value } catch { call.report(error) }
+        XCTAssertTrue(call.detail.contains("通话已结束"))
+        XCTAssertFalse(call.active)
+        let snapshot7 = try await stats()
+        XCTAssertNil(snapshot7["active"] as? String)
+        call.forget()
+    }
+    func testMutedCallStaysMutedThroughTransportRecovery() async throws {
+        let call = try await client(); try await call.startOrContinue()
+        call.toggleMute(); XCTAssertTrue(call.muted)
+        try await fixture("drop")
+        try await until { try await self.stats()["sessions"] as? Int == 2 }
+        try await until { call.phase == .muted }
+        XCTAssertTrue(call.muted)
+        let zeros = try await stats()["zeroBytes"] as? Int ?? 0
+        try await until { try await self.stats()["zeroBytes"] as? Int ?? 0 > zeros + 1920 }
+    }
+    func testProviderRecoveryUsesRealStateAndDoesNotRedial() async throws {
+        let call = try await client(); try await call.startOrContinue()
+        try await fixture("provider-reconnecting")
+        try await until { call.phase == .reconnecting }
+        try await fixture("provider-recovered")
+        try await until { call.phase == .listening }
+        let current = try await stats(); XCTAssertEqual(current["sessions"] as? Int, 1)
+    }
+    func testSyntheticSystemInterruptionPreservesMuteAndResumes() async throws {
+        let call = try await client(); try await call.startOrContinue(); call.toggleMute()
+        NotificationCenter.default.post(name: AVAudioSession.interruptionNotification, object: nil, userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+        try await until { call.phase == .interrupted }; XCTAssertTrue(call.muted)
+        await call.resume()
+        try await until { call.phase == .muted }
+    }
+    func testReceivedResultsAreKeptInMemoryAndClearedOnHangup() async throws {
+        let call = try await client(); try await call.startOrContinue()
+        try await fixture("result")
+        try await until { call.resultID == "fixture-result" }
+        XCTAssertTrue(call.resultText.contains("完整内容"))
+        await call.end(); XCTAssertTrue(call.resultText.isEmpty); XCTAssertNil(call.resultID)
+    }
+
+    func testAudioArrivingBeforeMicrophoneReadyIsBufferedAndPlayed() async throws {
+        let call = try await client(); try await fixture("early-audio")
+        try await call.startOrContinue()
+        try await until { try await self.stats()["playbackStarts"] as? Int ?? 0 > 0 }
+        try await until { call.phase == .listening }
+        let current = try await stats(); XCTAssertEqual(current["sessions"] as? Int, 1)
+        XCTAssertTrue(call.active)
+    }
+
+}
