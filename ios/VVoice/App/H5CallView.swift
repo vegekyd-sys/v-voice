@@ -11,19 +11,20 @@ struct H5CallView: View {
     @State private var host: H5WebHost?
     @State private var error = ""
     @State private var pendingDestination: CallDestination?
+    @State private var reading = false
     @Environment(\.scenePhase) private var scene
     var body: some View {
-        let snapshot = H5Snapshot.make(call, visible: scene == .active && sheet == nil)
+        let snapshot = H5Snapshot.make(call, visible: scene == .active && sheet == nil && !reading)
         ZStack(alignment: .topTrailing) {
             H5WebSurface(call: call, snapshot: snapshot, foreground: scene == .active, onHost: { value in
                 host = value
                 if let pendingDestination { self.pendingDestination = nil; navigate(pendingDestination, host: value) }
-            }, onError: { error = $0 })
+            }, onError: { error = $0 }, onReading: { reading = $0 })
                 .ignoresSafeArea()
-            Button { sheet = .settings } label: {
+            if !reading { Button { sheet = .settings } label: {
                 Image(systemName: "slider.horizontal.3").font(.system(size: 17)).foregroundStyle(VoiceStyle.faint)
                     .frame(width: 40, height: 40)
-            }.accessibilityLabel("通话设置").padding(.trailing, 12)
+            }.accessibilityLabel("通话设置").padding(.trailing, 12) }
             if !error.isEmpty {
                 VStack(spacing: 12) {
                     Text(error).font(VoiceStyle.font(14)).multilineTextAlignment(.center)
@@ -50,7 +51,8 @@ struct H5WebSurface: UIViewRepresentable {
     let foreground: Bool
     var onHost: (H5WebHost) -> Void
     var onError: (String) -> Void
-    func makeCoordinator() -> H5WebHost { H5WebHost(call: call, onError: onError) }
+    var onReading: (Bool) -> Void
+    func makeCoordinator() -> H5WebHost { H5WebHost(call: call, onError: onError, onReading: onReading) }
     func makeUIView(context: Context) -> WKWebView {
         let host = context.coordinator
         host.latest = snapshot; host.foreground = foreground
@@ -76,7 +78,8 @@ struct H5WebSurface: UIViewRepresentable {
     private var documentID: String?
     private var returnToConversation = false
     private let onError: (String) -> Void
-    init(call: CallCoordinator, onError: @escaping (String) -> Void) { self.call = call; scheme = H5ResourceScheme(call: call); self.onError = onError }
+    private let onReading: (Bool) -> Void
+    init(call: CallCoordinator, onError: @escaping (String) -> Void, onReading: @escaping (Bool) -> Void = { _ in }) { self.call = call; scheme = H5ResourceScheme(call: call); self.onError = onError; self.onReading = onReading }
     func makeWebView() -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent(); config.allowsInlineMediaPlayback = true
@@ -153,6 +156,10 @@ struct H5WebSurface: UIViewRepresentable {
             guard owned, foreground, latest["visible"] as? Bool == true, call.active,
                   let id = payload["pictureID"] as? String, VoiceAvatar.pictures[id] != nil else { throw CancellationError() }
             call.islandDidDisplayReaction(id, owner: owner)
+            return [:]
+        case "reading":
+            guard owned, let reading = payload["reading"] as? Bool else { throw CancellationError() }
+            onReading(reading)
             return [:]
         case "avatar", "avatarEvents": return try await call.h5Cosmetic(action == "avatar" ? "avatar" : "avatar-events", body: payload, owner: owner)
         case "share":
