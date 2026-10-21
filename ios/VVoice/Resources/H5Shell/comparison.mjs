@@ -1,3 +1,4 @@
+(async () => {
 const $=id=>document.getElementById(id),query=new URLSearchParams(location.search);
 const entryQuery=query.has('phone')?new URLSearchParams({phone:query.get('phone')}):new URLSearchParams({entry:query.get('entry')??'tianyi'});
 const api=route=>`./api/comparison${route}?${entryQuery}`;
@@ -38,3 +39,5 @@ try{
  for(const scene of data.scenes){const button=document.createElement('button');button.type='button';button.dataset.id=scene.id;button.textContent=scene.title;button.setAttribute('aria-pressed',String(scene.id===selected));button.addEventListener('click',()=>{selected=scene.id;picked=null;$('choice').textContent='听完后，可以选一版你觉得更自然的。';render();});$('scenes').append(button);}
  render();$('status').hidden=true;$('listening').hidden=false;
 }catch(error){$('status').textContent=error.message;}
+
+})();

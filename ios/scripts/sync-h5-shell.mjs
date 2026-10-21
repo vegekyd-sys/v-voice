@@ -15,6 +15,8 @@ let html=(await readFile(resolve(h5,'index.html'),'utf8')).replace(/\s*<link rel
 const copies=['styles.css','comparison.css','comparison.mjs',...new Set(AVATAR_FILES.map(f=>'assets/'+f)),'assets/v-voice-icon.svg','assets/v-voice-icon-32.png','assets/v-voice-apple-touch.png'];
 const expected=new Map([['index.html',Buffer.from(html)],['native-h5.js',bundle.outputFiles[0].contents],['comparison.html',Buffer.from((await readFile(resolve(h5,'comparison.html'),'utf8')).replace('<meta charset="utf-8">','<meta charset="utf-8">'+csp).replace('<script type="module" src="./comparison.mjs">','<script src="./comparison.mjs">'))]]);
 for(const f of copies)expected.set(f,await readFile(resolve(h5,f)));
+// Original comparison uses top-level await. Keep its logic intact in a classic-script async wrapper.
+expected.set('comparison.mjs',Buffer.from('(async () => {\n'+await readFile(resolve(h5,'comparison.mjs'),'utf8')+'\n})();\n'));
 manifest.outputs=Object.fromEntries([...expected].map(([p,b])=>[p,createHash('sha256').update(b).digest('hex')]));
 expected.set('source-manifest.json',Buffer.from(JSON.stringify(manifest,null,2)+'\n'));
 if(process.argv.includes('--check')){for(const [f,bytes]of expected)if(!Buffer.from(bytes).equals(await readFile(resolve(dest,f))))throw Error('H5 shell stale: '+f);console.log('Exact H5 shell sources and generated bundle verified.');}

@@ -85,7 +85,7 @@ struct H5WebSurface: UIViewRepresentable {
         config.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "voice")
         let web = WKWebView(frame: .zero, configuration: config)
         web.isOpaque = false; web.backgroundColor = UIColor(VoiceStyle.background)
-        web.scrollView.contentInsetAdjustmentBehavior = .never; web.scrollView.isScrollEnabled = false
+        web.scrollView.contentInsetAdjustmentBehavior = .never; web.scrollView.isScrollEnabled = true; web.scrollView.bounces = false
         web.navigationDelegate = self; web.uiDelegate = self; web.isInspectable = false
         webView = web; reload(); return web
     }
@@ -157,6 +157,14 @@ struct H5WebSurface: UIViewRepresentable {
         default: throw VoiceError.protocolMismatch
         }
         return ["snapshot":H5Snapshot.make(call, visible: foreground)]
+    }
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        let comparison = ["/compare", "/comparison.html"].contains(webView.url?.path ?? "")
+        // The call H5 owns env(safe-area-inset-*); the separate comparison page
+        // expects a browser viewport below the system bar and scrolls its body.
+        let safe = webView.window?.safeAreaInsets ?? .zero
+        webView.scrollView.contentInset = comparison ? UIEdgeInsets(top: safe.top, left: 0, bottom: safe.bottom, right: 0) : .zero
+        webView.scrollView.setContentOffset(CGPoint(x: 0, y: -webView.scrollView.contentInset.top), animated: false)
     }
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { ready = false }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { if ["/compare", "/comparison.html"].contains(webView.url?.path ?? "") { ready = true; if call.active { reload() } } }

@@ -48,6 +48,27 @@ import VVoiceCore
         XCTAssertTrue(call.active)
         await call.end()
     }
+    func testOriginalComparisonPageLoadsSamplesThroughNativeReadOnlyRoute() async throws {
+        let call = try await client()
+        let host = H5WebHost(call: call, onError: { XCTFail($0) })
+        host.latest = H5Snapshot.make(call, visible: true)
+        let web = host.makeWebView()
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene); window.rootViewController = UIViewController(); window.makeKeyAndVisible()
+        window.rootViewController!.view.addSubview(web); web.frame = window.rootViewController!.view.bounds
+        defer { window.isHidden = true; previous?.makeKeyAndVisible(); host.dispose(); web.configuration.userContentController.removeScriptMessageHandler(forName: "voice", contentWorld: .page) }
+        try await until { host.ready }
+        web.load(URLRequest(url: URL(string: "vvoice-h5://app/compare")!))
+        try await until { try await web.evaluateJavaScript("document.querySelectorAll('#realtime .card').length") as? Int == 1 }
+        let title = try await web.evaluateJavaScript("document.querySelector('#realtime .card h3').textContent") as? String
+        XCTAssertEqual(title, "自然表达")
+        _ = try await web.evaluateJavaScript("document.getElementById('blind').click()")
+        let blind = try await web.evaluateJavaScript("document.querySelector('#realtime .card h3').textContent") as? String
+        XCTAssertEqual(blind, "试听 A")
+        XCTAssertFalse(call.active)
+        let snapshot = try await stats(); XCTAssertEqual(snapshot["sessions"] as? Int, 0)
+    }
     func testAvatarTransportRevisionContinuesAcrossWebPageReload() async throws {
         let call = try await client(); try await call.startOrContinue()
         let body: [String: Any] = ["revision":1,"turns":[["role":"user","text":"本地语义测试"]]]
