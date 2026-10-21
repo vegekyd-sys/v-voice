@@ -64,7 +64,9 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
   // V is mid-answer, waiting on a lookup, or just finished: an unattributable
   // fragment then is far more likely V's own tail, a breath or a late echo
   // than a new question, and asking to repeat would cut the answer short.
-  const busy=s=>{const now=performance.now();return s.nativeBusy||Boolean(s.busyProbe?.())||(s.lastToolAt??-Infinity)>(s.lastDoneAt??-Infinity)&&now-s.lastToolAt<30000||now-(s.lastDoneAt??-Infinity)<8000;};
+  const admittedPending=s=>{const c=s.input;return Boolean(c?.decided&&!c.cancelled&&!c.responded&&!c.greeting&&!c.host&&!c.recovery&&!c.ending);};
+  const busy=s=>{const now=performance.now();return admittedPending(s)||s.nativeBusy||Boolean(s.busyProbe?.())||(s.lastToolAt??-Infinity)>(s.lastDoneAt??-Infinity)&&now-s.lastToolAt<30000||now-(s.lastDoneAt??-Infinity)<8000;};
+  const protectAccepted=s=>Boolean(s.input?.decided&&!s.input.cancelled&&!s.input.greeting&&!s.input.host&&!s.input.recovery&&!s.input.ending&&busy(s));
   // With one voice in the call there is no one else the words could belong to.
   const soleSpeaker=s=>s.tracker.prototypes.length===1?s.tracker.prototypes[0].id:null;
   // Every line V says can come back through a phone speaker, not only model
@@ -107,7 +109,9 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     if(previous&&!previous.decided&&!previous.cancelled&&previous.speakerId===seg.speakerId&&seg.startMs-(previous.endMs??seg.startMs)<1000){previous.segmentIds.add(seg.id);previous.endMs=seg.endMs;return;}
     // While V is already talking, semantic admission stays conservative so a
     // bystander's speech cannot prematurely clear the accepted reply.
-    if(s.nativeBusy)return;
+    // Identity alone is not a new request. Keep the accepted input, output gate
+    // and no-output deadline until a later final turn is actually admitted.
+    if(s.nativeBusy||protectAccepted(s))return;
     const c={token:'stream'+(++s.serial),speakerId:seg.speakerId,startMs:seg.startMs,endMs:seg.endMs,segmentIds:new Set([seg.id])};
     void feed(s,c,earlyProfile(s,seg.speakerId));
   };
@@ -129,6 +133,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
     let result;try{result=await s.router.accept(turn,{signal:s.abort.signal});}catch(error){
       if(s.closed)return;
       if(turn.endMs<(s.latestFinalEnd??0)-200){send(s,{type:'speaker.superseded',reason:'stale-decision-error',turn});return;}
+      if(protectAccepted(s)){send(s,{type:'speaker.recovery-suppressed',reason:'decision-unavailable'});return;}
       if(s.input)s.input.cancelled=true;
       s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;
       send(s,{type:'speaker.error',message:'这一句人物判断未完成，请再说一次。',reason:error.name==='TimeoutError'?'decision-timeout':'decision-unavailable'});
@@ -154,7 +159,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
       s.responseDeadline=setTimeout(()=>{if(s.closed||s.input!==control||control.cancelled||control.responded)return;control.ending=false;s.native.cancelEnd?.();s.native.cancel?.();s.gate.deny();send(s,{type:'speaker.error',reason:'farewell-no-audio',message:'告别语音暂时没有播放，可以再说一次拜拜，或点挂断。'});},limits.farewellMs??15000);s.responseDeadline.unref?.();
       s.native.end?.({turnId:result.turn.id});return;
     }
-    const c=s.input,matches=c&&!c.cancelled&&c.speakerId===turn.speakerId&&c.startMs<turn.endMs&&(!c.endMs||c.endMs>=turn.startMs-200);
+    const c=s.input,matches=c&&!c.decided&&!c.cancelled&&c.speakerId===turn.speakerId&&c.startMs<turn.endMs&&(!c.endMs||c.endMs>=turn.startMs-200);
     if(!result.shouldRespond){if(matches){clearTimeout(s.responseDeadline);c.cancelled=true;s.gate.deny(c.token);s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;}return;}
     send(s,{type:'speaker.admitted',turn:result.turn});s.tracker.pin(turn.speakerId);
     const profile=speakerProfile({speakerId:result.turn.speakerId,...result});
@@ -198,6 +203,7 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
         }
       }
       if(ids.length>1){
+        if(!raw.words?.length&&protectAccepted(s)){s.seen.add(key);send(s,{type:'speaker.recovery-suppressed',reason:'mixed-speakers'});continue;}
         if(!raw.words?.length&&s.farField){s.seen.add(key);void recover(s,'mixed-speakers');continue;}
         if(!raw.words?.length){send(s,{type:'speaker.error',message:'这一句多人声音混在一起，请轮流说话。'});s.seen.add(key);s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;if(s.input)s.input.cancelled=true;void recover(s,'mixed-speakers');continue;}
         const groups=[];
@@ -252,8 +258,8 @@ export function createStreamingSpeakerRoutingService({env,embedding,evaluate=dec
         if(e.type==='start'&&s.input?.greeting){s.input.cancelled=true;clearTimeout(s.responseDeadline);s.gate.deny();s.native.cancel?.();s.nativeBusy=false;send(s,{type:'speaker.greeting-cancelled',reason:'new-speech'});}
         if(e.type==='start'&&s.input?.ending&&!s.input.cancelled)s.input.heldBy=e.segment?.id;
         if(e.type==='identified')identified(s,e);
-        if(e.type==='end'){s.speechEndedAt=performance.now();if(s.input?.segmentIds.has(e.segment.id))s.input.endMs=e.segment.endMs;}
-        if(e.type==='revision'){if(s.input?.segmentIds.has(e.segment.id)){s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;}send(s,{type:'speaker.stream-fallback',reason:'短片段声线需要复核'});}
+        if(e.type==='end'){s.speechEndedAt=performance.now();if(s.input&&!s.input.decided&&s.input.segmentIds.has(e.segment.id))s.input.endMs=e.segment.endMs;}
+        if(e.type==='revision'){if(s.input&&!s.input.decided&&s.input.segmentIds.has(e.segment.id)){s.input.cancelled=true;s.gate.deny();s.native.cancel?.();s.native.invalidate?.();s.nativeBusy=false;}send(s,{type:'speaker.stream-fallback',reason:'短片段声线需要复核'});}
         if(e.type==='error')fail(s,Error(e.message));
       }});
       sessions.set(id,s);s.expiry=setTimeout(()=>fail(s,Error('本次候选通话已达时长上限，请重拨')),limits.durationMs??1800000);s.expiry.unref?.();

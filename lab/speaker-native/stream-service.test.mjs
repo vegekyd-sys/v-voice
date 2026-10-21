@@ -6,14 +6,69 @@ const wait=async predicate=>{for(let i=0;i<600;i++){if(predicate())return;await 
 const answers=(questions,{action='respond',child=false}={})=>({answers:Object.fromEntries(Object.entries(questions).map(([id])=>[id,{type:'choice',choice:id==='action'?action:id.startsWith('role_')?(child?'child':'unknown'):id.startsWith('name_')&&child?'n_0':'keep'}]))});
 const voice=()=>{const pcm=Buffer.alloc(57600);for(let i=0;i<pcm.length;i+=2)pcm.writeInt16LE(6000,i);return pcm;};
 async function fixture(t,{evaluate,prepare=async()=>{},limits,reserve={},initialAudio=true}={}){
-  let asr;const events=[],forwarded=[],profiles=[],clarifications=[],endings=[],rejectedEnds=[],greetings=[];
+  let asr;const events=[],forwarded=[],profiles=[],clarifications=[],endings=[],rejectedEnds=[],greetings=[],cancellations=[];
   const service=createStreamingSpeakerRoutingService({env:{},embedding:{ready:Promise.resolve(),compute:async()=>({embedding:[1,0],inferenceMs:1})},evaluate:evaluate??(async(_s,q)=>answers(q)),limits,createAsr:o=>{asr=o;return {connect:async()=>{},append(){},close(){}};}});
   service.reserve('call',{model:'seeduplex',...reserve});t.after(()=>service.dispose());
-  await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},forward:b=>forwarded.push(b),cancel(){},invalidate(){},greet:()=>greetings.push(true),clarify:text=>clarifications.push(text),end:value=>endings.push(value),cancelEnd:()=>endings.push({revoked:true}),rejectNativeEnd:call=>rejectedEnds.push(call)},e=>events.push(e));
+  await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},forward:b=>forwarded.push(b),cancel(){cancellations.push(true);},invalidate(){},greet:()=>greetings.push(true),clarify:text=>clarifications.push(text),end:value=>endings.push(value),cancelEnd:()=>endings.push({revoked:true}),rejectNativeEnd:call=>rejectedEnds.push(call)},e=>events.push(e));
   if(initialAudio)service.audio('call',reserve.inputSampleRate===16000?voice().subarray(0,38400):voice());
   const emit=(text='V，天空为什么是蓝色的？',start=0,end=1100)=>asr.onResult({body:{result:{utterances:[{definite:true,start_time:start,end_time:end,text,speaker_id:'wrong-cloud-id',...(start===null?{start_time:undefined}:{})}]}}});
-  return {service,events,forwarded,profiles,emit,clarifications,endings,rejectedEnds,greetings,disconnectAsr:()=>asr.onClose()};
+  return {service,events,forwarded,profiles,emit,clarifications,endings,rejectedEnds,greetings,cancellations,disconnectAsr:()=>asr.onClose()};
 }
+
+test('an unconfirmed acoustic segment cannot retire an admitted question or withhold its tool',async t=>{
+  const f=await fixture(t);await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));
+  f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+  const accepted=f.events.find(e=>e.type==='speaker.stream-accepted').token,cancels=f.cancellations.length;
+  f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());
+  await wait(()=>f.events.filter(e=>e.type==='speaker.identity').length===2);
+  assert.equal(f.cancellations.length,cancels);
+  assert.equal(f.events.filter(e=>e.type==='speaker.stream-start').length,1);
+  const delivered=[];f.service.dispatch('call','tool',{name:'web_search'},()=>delivered.push('search'));
+  assert.deepEqual(delivered,['search']);
+  await wait(()=>f.events.some(e=>e.type==='speaker.native-input-complete'&&e.token===accepted));
+});
+
+test('quiet speech preserves the accepted reply; a confirmed new request can still interrupt it',async t=>{
+  let action='respond';const f=await fixture(t,{evaluate:async(_s,q)=>answers(q,{action})});
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+  f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());
+  await wait(()=>f.events.filter(e=>e.type==='speaker.identity').length===2);
+  const cancels=f.cancellations.length;action='quiet';f.emit('把杯子递给我。',1800,2800);
+  await wait(()=>f.events.filter(e=>e.type==='speaker.decision').length===2);
+  assert.equal(f.cancellations.length,cancels);
+  const delivered=[];f.service.dispatch('call','audio',Buffer.alloc(960),()=>delivered.push('original'));
+  assert.deepEqual(delivered,['original']);
+  f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());
+  action='respond';f.emit('V，改查天气。',3600,4600);
+  await wait(()=>f.events.filter(e=>e.type==='speaker.admitted').length===2);
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-fallback'));
+  assert(f.cancellations.length>cancels);
+  f.service.dispatch('call','audio',Buffer.alloc(960),()=>delivered.push('new'));
+  assert.deepEqual(delivered,['original','new']);
+});
+
+test('an undecided segment cannot disarm the accepted-turn no-output deadline',async t=>{
+  const f=await fixture(t,{limits:{responseMs:30}});
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+  const accepted=f.events.find(e=>e.type==='speaker.stream-accepted').token;
+  f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());
+  await wait(()=>f.events.some(e=>e.type==='speaker.native-input-complete'&&e.token===accepted));
+  await wait(()=>f.events.some(e=>e.type==='speaker.recovery'&&e.reason==='native-no-output'));
+  assert.equal(f.clarifications.length,1);
+});
+
+test('a failed decision about later speech does not cancel the accepted request',async t=>{
+  let calls=0;const f=await fixture(t,{evaluate:async(_s,q)=>{if(++calls===2)throw Error('offline decision failure');return answers(q);}});
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();
+  await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+  const cancels=f.cancellations.length;
+  f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());f.emit('旁人的话。',1800,2800);
+  await wait(()=>f.events.some(e=>e.type==='speaker.recovery-suppressed'&&e.reason==='decision-unavailable'));
+  assert.equal(f.cancellations.length,cancels);
+  const delivered=[];f.service.dispatch('call','tool',{name:'web_search'},()=>delivered.push('search'));assert.deepEqual(delivered,['search']);
+});
 
 test('pending native audio, captions and tools are discarded together; stale admission cannot reopen them',()=>{
   const gate=new TurnOutputGate(),effects=[];gate.begin('old');gate.dispatch(()=>effects.push('audio'),20);gate.dispatch(()=>effects.push('tool'));gate.begin('new');assert.equal(gate.allow('old'),false);gate.dispatch(()=>effects.push('caption'));gate.deny('new');assert.deepEqual(effects,[]);assert.equal(gate.allow('new'),false);

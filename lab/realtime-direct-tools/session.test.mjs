@@ -46,6 +46,16 @@ test('a speaker switch preserves an admitted tool but never sends its old result
  assert(f.client.sent.some(e=>e.type==='tool.result'&&e.callId==='old-search'));
 });
 
+test('browser audio lifecycle counters reach the audit through a fixed scalar whitelist',async t=>{
+ const f=await fixture();t.after(()=>f.service.dispose());
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.stats',inputBytes:960,contextState:'interrupted',contextTimeMs:2000,inputFrames:1,trackLive:true,trackMuted:false,pageHidden:false,audio:'SECRET',deviceId:'SECRET'})),false);
+ const row=f.audit.find(e=>e.type==='client.playback-stats');
+ assert.deepEqual(row.stats,{inputBytes:960,inputFrames:1,contextTimeMs:2000,trackMuted:false,trackLive:true,pageHidden:false,contextState:'interrupted'});
+ assert(!JSON.stringify(row).includes('SECRET'));
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.stats',inputFrames:-1,contextState:'SECRET',trackLive:'SECRET'})),false);
+ assert.deepEqual(f.audit.filter(e=>e.type==='client.playback-stats').at(-1).stats,{});
+});
+
 test('a background result after a speaker switch is shown without speaking to the new person',async t=>{
  let native;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,value)=>{native=value;},close(){},audio(){}};
  const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}),'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());

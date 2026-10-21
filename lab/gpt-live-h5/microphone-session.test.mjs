@@ -11,3 +11,10 @@ test('cancelled permission does not enable capture; a late old owner cannot mute
 test('closing the page during permission resolution disposes the late stream',async()=>{
  let finish,disposed=0;const lifetime=[];const page=createPageMicrophoneSession({capture:({signal})=>new Promise((resolve,reject)=>{signal.addEventListener('abort',()=>reject(Object.assign(Error('aborted'),{name:'AbortError'})));finish=()=>resolve({track:{readyState:'live'},stream:{getAudioTracks:()=>[]},snapshot:()=>({}),dispose(){disposed++}});})});const opening=page.acquire();page.close();await assert.rejects(opening,/aborted/);finish();assert.equal(page.snapshot().closed,true);
 });
+test('redial replaces a live but system-muted capture instead of re-enabling silent input',async()=>{
+ let grants=0;const tracks=[];
+ const page=createPageMicrophoneSession({capture:async()=>{grants++;const track={readyState:'live',enabled:true,muted:false};tracks.push(track);return {track,stream:{getAudioTracks:()=>[track]},snapshot:()=>({trackMuted:track.muted}),dispose(){track.readyState='ended';}};}});
+ const first=await page.acquire();first.dispose();tracks[0].muted=true;
+ const second=await page.acquire();assert.equal(grants,2);assert.equal(tracks[0].readyState,'ended');assert.notEqual(second.track,first.track);assert.equal(second.track.muted,false);
+ first.dispose();assert.equal(second.track.enabled,true);page.close();
+});

@@ -94,10 +94,11 @@ test('causal diagnostics distinguish ASR, tool wait, backend completion and outp
   {type:'response.done',status:'completed',responseId:'response'},
  ])assert(f.log.audit({...row,voiceSessionId:'v1',audio:'SECRET',text:'SECRET'}));
  assert.equal(f.log.audit({type:'provider.event',voiceSessionId:'v1',providerEventType:'response.output_audio.delta',audio:'SECRET'}),false);
- assert(f.log.audit({type:'client.playback-stats',voiceSessionId:'v1',stats:{inputBytes:48000,outputBytes:96000,raw:'SECRET',audio:'SECRET'}}));
+ assert(f.log.audit({type:'client.playback-stats',voiceSessionId:'v1',stats:{inputBytes:48000,outputBytes:96000,contextState:'interrupted',inputFrames:50,contextTimeMs:1000,trackMuted:false,pageHidden:false,raw:'SECRET',audio:'SECRET'}}));
  f.log.audit({type:'call.closed',voiceSessionId:'v1'});
  assert(f.log.audit({type:'backend.completed',voiceSessionId:'v1',runId:'owned-run',result:'SECRET'}));
  await f.log.close();const rows=await f.rows();assert(!JSON.stringify(rows).includes('SECRET'));
+ assert.deepEqual(rows.find(r=>r.type==='client.playback-stats').stats,{inputBytes:48000,outputBytes:96000,inputFrames:50,contextTimeMs:1000,trackMuted:false,pageHidden:false,contextState:'interrupted'});
  assert.equal(rows.find(r=>r.type==='backend.started').taskId,'owned-task');assert.equal(rows.at(-1).type,'backend.completed');
 });
 test('a barge-in records which speaker sent it, without any frame payload',async t=>{

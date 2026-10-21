@@ -539,6 +539,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         robotEvaluate:await robotEvaluatorFromEnv(process.env)});
     }
     bridge = createLiveH5Server({ gateway, deviceEndpoint,
+      candidateRelease:process.env.VOICE_CANDIDATE_RELEASE_FILE?JSON.parse(await readFile(process.env.VOICE_CANDIDATE_RELEASE_FILE,'utf8')):undefined,
       listening:process.env.VOICE_LISTENING_DIR ? await (await import('./listening.mjs')).loadVoiceListening(process.env.VOICE_LISTENING_DIR) : undefined,
       directVoice, speakerRouting, avatarLog,callControlAudit:transcriptLog.audit,
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",
