@@ -1,8 +1,11 @@
 {
   "schema": "v-voice-current-release-v1",
-  "entryCommit": "931c30e54a24d2bdae65a26443643767932ad9e0",
+  "entryCommit": "16932ca42f415c8b0e93c5886b61cb571de4a7d3",
   "gatewayPluginCommit": "a9ac516860a8856470262957ad6ea0cc2670cb0e",
-  "registration": "speaker-stream-20261019/manifest.json",
-  "runtimeDifference": "Voice-only streaming Speaker and host-owned farewell; browser 20ms and cloud ASR 100ms; Gateway plugin unchanged",
-  "gatewayRestartRequired": false
+  "registration": "voice-mobile-turn-20261021/release.json",
+  "runtimeDifference": "Merged main: mobile audio/ASR readiness, phone conversation and accepted-turn protection, bounded lookahead enabled, pickup greeting preserved until admitted speech; Gateway plugin unchanged",
+  "gatewayRestartRequired": false,
+  "release": "voice-mobile-turn-20261021",
+  "previousEntryCommit": "df25702ef703641ccc452e315745dc5a19e8b662",
+  "filesSha256": "639070f99d539574ebccbe68c8e931d5351115fa6805cac1bff4dd19741ddf14"
 }
