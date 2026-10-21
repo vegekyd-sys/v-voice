@@ -8,6 +8,7 @@
 - 本分支复用当前小何／Grok 的 `gateway-relay` PCM 协议；默认小何，可在无通话时切换 Grok。GPT Live 的 WebRTC 传输未接入，App 不会悄悄把它的会话当作 PCM 连接。模型不可用时明确失败。
 - 本轮没有修改或部署 Voice 后端、Gateway、Worker、工具权限或个人会话映射；不需要共享 VLab。使用独立客户端和本地无付费协议 Candidate 验证。
 - 源码完成与真机接受分开。已开发签名并安装到本人 iPhone 17 Pro；build 2 基本真实双向通话由用户确认。用户补充 build 2 曾可在灵动岛对话；build 4 的 SiriKit 路径仍打开 App，未达标。build 5 恢复 build 2 的 AudioRecordingIntent 音频路径，移除动态解锁／前台继续和 SiriKit／CallKit 转交；build 5 从桌面长按操作按钮、全程留在灵动岛并双向对话，已获用户真机确认；锁屏冷启动等扩展场景仍待验。
+- build 6 将主 App 对齐当前 H5：原头像／配色、原生对话／文字补充／任务、方案阅读，支持 iPhone 与 iPad 双栏；灵动岛增加最近一句对话及直达方案的入口。本版真实服务及灵动岛到方案的手机接受另行登记，不沿用 build 5 的结论。
 - 正式后端、平台 main/dev、App Store/TestFlight 均未发布。代理未自动发起正式电话或付费模型测试；用户本人已进行真实对话验收。
 
 ## 日常用户路径
@@ -26,13 +27,14 @@
 | 系统入口 | `AudioRecordingIntent` + `LiveActivityIntent`，仅 `.background`，`.alwaysAllowed`。先启动实时活动，使用本机已绑定入口拨号；没有 `continueInForeground`、SiriKit 通话 handoff 或 CallKit。活动静音／结束也在后台执行。 |
 | 原生音频 | 恢复 build 2 的录音引擎与启动顺序，保留输入／输出格式匹配及新 relay 播放序号重置。`AVAudioSession.playAndRecord` + `voiceChat` + HFP；真机启用 Voice Processing I/O，采集转换为单声道 PCM16LE / 24 kHz / 20 ms。模拟器 HAL 不代替真机 VPIO。 |
 | 收音就绪 | 实际输入帧到达后才能进入倾听；采集 5 秒无帧或引擎停止便暂停。提前到达的欢迎语音频有界缓存，等待原生音频就绪后播放。 |
-| 缓存与打断 | 主线程输入交接最多 20 帧，上传队列最多 96 KB，输出最多 180 秒；溢出明确停止，不继续假装接通。清空时递增播放 epoch，迟到完成回调不能消费新回答；按 sequence 去重。沿用服务端语义打断，固定后端播报增加 80 ms 声学起声清空。普通回答的实际插话听感仍需真机验收。 |
+| 缓存与打断 | 主线程输入交接最多 64 帧（1.28 秒，约 61 KB），上传队列最多 96 KB，输出最多 180 秒；溢出明确停止，不继续假装接通。清空时递增播放 epoch，迟到完成回调不能消费新回答；按 sequence 去重。沿用服务端语义打断，固定后端播报增加 80 ms 声学起声清空。普通回答的实际插话听感仍需真机验收。 |
 | 连续通话 | 切 App／锁屏依赖 App 已启动的合法后台录音，Live Activity 仅展示与控制。没有静音播放循环、假来电、后台轮询保活或 VoIP 推送伪装。 |
 | 网络恢复 | 旧连接失效后丢弃临时输入，保留真实录音引擎进行最长 30 秒的重连；新 voiceSessionId、原服务端聊天上下文，原静音状态保留。失败关闭麦克风并提示继续。 |
 | 模型恢复 | `provider.reconnecting/recovered` 驱动真实状态；恢复期间不继续发送输入，35 秒无恢复则进入客户端有界重连。 |
 | 身份与协议 | HTTPS Origin、cookie、phone 路由和 relayTicket 沿用既有接口；不提交 sessionKey/callerId/工具凭据，不信任客户端扩大权限。拒绝携带能力的跨站重定向。 |
 | 崩溃恢复 | 记录拥有的 voiceSessionId；下次拨号先有界清理旧归属，409 不能关闭新通话。旧活动在启动时结束；活动 stale 后显示连接状态未知，不把活动本身当作存活证据。 |
-| 内容 | 结果正文仅在内存中，用户打开结果阅读页后才发送 content-shown。后台不伪造屏幕已显示；挂断清空。 |
+| 内容 | 正文、最多 80 段对话及 16 份方案仅在内存中，挂断清空。完整方案使用 H5 同一个 GFM lexer，在非主线程解析，由 SwiftUI 原生绘制标题、列表、表格、代码、图片及媒体；不在收音时创建 WebView。只有内容实际进入阅读视图且 App 活跃才发送 content-shown；并发打开去重。 |
+| 灵动岛内容 | 状态仅含最多 84 字的短句、32 字方案标题、任务标签与本通话的不透明内容 ID；不包含原文、入口或 cookie。URL 从摘要移除，文本标记 privacySensitive，设置可关闭对话摘要。点方案深链仅允许本通话已有内容，不自动建连。 |
 
 ## Apple 官方约束
 
@@ -48,6 +50,7 @@ build 3／4 的 SiriKit 与 CallKit 尝试已撤回：用户实测仍会打开�
 
 ## 构建与验收
 
+- H5 视觉源：`node ios/scripts/sync-h5-design.mjs` 同步原头像、CSS 与 Markdown lexer；`--check` 验证 H5 来源没有漂移。原生视觉参数在 `VoiceStyle.swift`，宽屏断点沿用 701 pt。
 - 工程：`ios/VVoice.xcodeproj`，生成源：`ios/project.yml`（XcodeGen）。无需外部二进制包，核心逻辑为本地 Swift Package。
 - 自动测试：启动一个 iPhone 模拟器，运行 `ios/scripts/test-native.sh`；多个模拟器时显式传 `VVOICE_SIMULATOR_ID`。脚本仅授权该测试 App 的模拟器麦克风，使用本地无模型服务。
 - 签名／可安装导出：在 Xcode Accounts 登录有效开发者账号后运行 `VVOICE_TEAM_ID=<team> VVOICE_DEVICE_ID=<connected-device> ios/scripts/build-device.sh`。仅 development/debugging 签名导出；不上传 App Store。省略 device 参数只导出，不安装。

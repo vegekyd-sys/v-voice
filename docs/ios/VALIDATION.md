@@ -89,3 +89,22 @@ Release 1.0.0 (5) 已成功 development 签名归档、导出并由 devicectl �
 
 
 用户真机接受 · 2026-10-22：针对 build 5「改回和 V 通话、返回桌面、长按操作按钮说话」的复测，Tianyi 明确确认“留在灵动岛，双向对话正常”。据此将操作按钮从桌面启动、没有打开主 App、灵动岛内基本真实双向通话记为用户实测通过。锁屏冷启动、系统结束／手动强退后启动、长时间通话、系统来电及耳机／网络切换仍未包含在本次确认范围。
+
+
+## H5 原生界面与灵动岛方案 · build 6 · 2026-10-22
+
+当前 H5 源与已登记的 main 页面相同；未修改 H5／Voice 服务端。原头像、薰衣草背景、玫红拨号键、模型选择、通话控制胶囊、当前／全部对话与方案阅读转为原生 SwiftUI。宽屏沿用 H5 701 pt 断点与双栏，启用 iPhone／iPad family，iPad 支持横竖屏。同步脚本记录公开视觉源的 SHA256 并可 --check，避免两端素材和 GFM lexer 漂移。
+
+灵动岛新增有界最近一句话、任务阶段、未读方案卡；深链只打开当前通话内对应内容，不会因读取参数重新拨号。没有收到方案时不显示虚构按钮；后台收到不确认已看，原生正文进入视图后才确认，读后清除未读标记并恢复对话。最多 84 字短句，删除 URL；锁屏内容标记 privacySensitive，设置中可关闭摘要。Activity 内容 JSON 的实际测试值低于 4 KB。没有发送完整正文、入口、cookie 或工具身份到活动。
+
+UI 实操发现原 20 帧（400 ms）主线程交接阈值，在从后台切到阅读界面时会触发 capture overflow。初期 WebView 阅读器已撤回；最终 GFM lexer 通过 JavaScriptCore 在非主线程解析，界面全部原生绘制。交接上限设为 64 个 20 ms 帧（1.28 秒／约 61 KB），仍低于上传的 96 KB 上限；持续积压仍明确失败，未增加无界缓冲或修改录音启动权限／流程。新增 700 ms 主线程暂停的真实采集回归及录音期间实际创建阅读器的回归。实际失败类别只记录 capture/upload-overflow，不含音频／正文。
+
+最终原生回归 20/20，核心 8/8；既有服务合同 79/79。全部使用本地无模型 fixture。实际模拟器路径：从主 App 拨号 → 桌面 → 后台送达方案 → 长按灵动岛 → 点方案 → 原生表格／正文与底部通话控制 → 回桌面 → 灵动岛最近一句话 → 灵动岛结束。修复后读取期间原 voiceSession 保持、输入字节继续增长，仅原生显示后收到一次 content-shown，结束后无活动会话。iPad Pro 11 英寸 iOS 26.5 模拟器实际检查竖屏、横屏双栏及结束控件。
+
+![H5 风格原生首页](evidence/build6-home-simulator.jpg)
+![灵动岛展开的方案入口](evidence/build6-island-simulator.jpg)
+![打开方案时通话控制仍在](evidence/build6-reader-simulator.jpg)
+![读后灵动岛恢复最近一句话](evidence/build6-caption-simulator.jpg)
+![iPad 横屏双栏](evidence/build6-ipad-simulator.png)
+
+代码提交 `329bc3b`，Release 1.0.0 (6) development 签名归档及导出成功，独立 IPA 解包后通过主 App／扩展签名与 profiles、arm64、H5 源 CSS 一致性、iPhone／iPad family、后台 TalkToVIntent 元数据、正常 TLS 及无 Debug fixture 检查。安装前状态只读确认 activeCalls=0、creatingSessions=0、backgroundTasks=0；随后 devicectl 已安装到 Tianyi 的同一台 iPhone 17 Pro。原绑定保留，未自动发起真实通话；已请用户在原操作按钮入口复测。build 5 的签名回滚包保存在本机 `ios/build/VVoice.xcarchive.previous-20261022-005206`。没有调用正式模型，没有修改正式服务／Gateway、合并或推送；build 5 的真机基本按键通话已获用户接受，build 6 的视觉与真实工具方案路径仍需人类实测。
