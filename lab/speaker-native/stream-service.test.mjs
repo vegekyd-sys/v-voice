@@ -49,6 +49,17 @@ test('lookahead never reuses an adult persona for a newly confirmed child',async
  assert(f.stages[0].discarded);assert(!f.stages[0].committed);await wait(()=>f.profiles.length===2);assert.match(f.profiles[1][0],/child/);
 });
 
+test('lookahead deadline and rate limit leave a later admitted turn on the ordinary fallback',async t=>{
+ const f=await fixture(t,{lookahead:true,limits:{lookaheadMs:30,lookaheadPerMinute:1}});
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+ const cancelled=f.cancellations.length;
+ f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());await wait(()=>f.stages[0]?.discarded);
+ assert.equal(f.cancellations.length,cancelled);assert(!f.stages[0].committed);
+ f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());f.emit('V，再解释一下晚霞。',3600,4600);
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-fallback'));
+ assert.equal(f.stages.length,1);assert.equal(f.events.filter(e=>e.type==='speaker.admitted').length,2);
+});
+
 test('an unconfirmed acoustic segment cannot retire an admitted question or withhold its tool',async t=>{
   const f=await fixture(t);await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));
   f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
@@ -203,6 +214,7 @@ test('ordinary focus changes do not restart an unchanged recipient; child role c
   const p={id:'speaker:local0',name:'十二',role:'unknown',certainty:'stated'},base={speakerId:p.id,participants:[p],addresseeIds:[p.id],mode:'auto'};
   assert.equal(speakerProfile({...base,targetId:'a'}).key,speakerProfile({...base,targetId:'b'}).key);
   assert.notEqual(speakerProfile(base).key,speakerProfile({...base,participants:[{...p,role:'child'}]}).key);
+  assert.equal(speakerProfile(base).key,speakerProfile({...base,participants:[{...p,role:'adult'}]}).key);
 });
 
 test('decision arriving during the same persona connection reuses preparation without replay',async t=>{
