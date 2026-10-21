@@ -7,7 +7,7 @@ assert info['CFBundleIdentifier']=='com.versa.vvoice'
 assert info.get('NSSupportsLiveActivities') is True
 assert info.get('UIBackgroundModes')==['audio', 'voip']
 assert info.get('NSMicrophoneUsageDescription')
-assert info.get('IntentsSupported') == ['INStartCallIntent']
+assert info.get('INIntentsSupported') == ['INStartCallIntent']
 assert 'INStartCallIntent' in info.get('NSUserActivityTypes', [])
 assert info.get('NSSiriUsageDescription')
 assert 'NSAppTransportSecurity' not in info, 'Release must retain normal TLS enforcement'

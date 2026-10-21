@@ -46,10 +46,6 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
-	<key>IntentsSupported</key>
-	<array>
-		<string>INStartCallIntent</string>
-	</array>
 	<key>NSSiriUsageDescription</key>
 	<string>通过系统通话快捷指令，在灵动岛开始与 V 的语音对话。</string>
 	<key>NSUserActivityTypes</key>
@@ -61,5 +57,9 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<true/>
 	</dict>
+	<key>INIntentsSupported</key>
+	<array>
+		<string>INStartCallIntent</string>
+	</array>
 </dict>
 </plist>

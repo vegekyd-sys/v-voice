@@ -3,6 +3,11 @@ import Intents
 @testable import VVoice
 
 @MainActor final class SiriCallTests: XCTestCase {
+    func testAppRegistersTheSystemCallHandlerWithoutRequiringUnlock() {
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "INIntentsSupported") as? [String], ["INStartCallIntent"])
+        XCTAssertTrue((Bundle.main.object(forInfoDictionaryKey: "NSUserActivityTypes") as? [String] ?? []).contains("INStartCallIntent"))
+        XCTAssertFalse((Bundle.main.object(forInfoDictionaryKey: "INIntentsRestrictedWhileLocked") as? [String] ?? []).contains("INStartCallIntent"))
+    }
     func testSystemCallShortcutCanBeCreatedWithoutPersonalEntryData() throws {
         let shortcut = try XCTUnwrap(INShortcut(intent: VCallShortcut.intent))
         let intent = try XCTUnwrap(shortcut.intent as? INStartCallIntent)

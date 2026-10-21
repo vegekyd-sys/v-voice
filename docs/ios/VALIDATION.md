@@ -71,3 +71,5 @@ CallKit 配置 audio + voip 模式，等待系统 didActivate 再启用音频；
 Siri 通话快捷指令可创建，非法接收者／视频拒绝的两项集成测试通过；完整脚本 Core 5/5、原生 16 passed + 1 仅真机 CallKit 测试在模拟器 skipped、服务合同 79/79。系统通话 handoff、解锁／锁屏按键和仅灵动岛通话必须继续真机接受，不能以这些自动测试替代。运行时只在本机有界保存 80 条生命周期事件与错误类别，不保存入口、cookie、PCM、联系人资料或聊天文本。
 
 新增设置按钮已在 Codex 内置浏览器的真实模拟器镜像中检查，系统“添加到 Siri”控件实际显示。没有把模拟器的快捷指令可创建或 CallKit 前台测试当作锁屏／冷启动／仅灵动岛验收。
+
+发布包注册复核：最终候选使用 build 4，根 Info.plist 以 `INIntentsSupported` 注册 App 内 SiriKit handler（不是扩展的 IntentsSupported 键）；NSUserActivityTypes 注册通话 handoff，未列入锁屏受限列表。新增读取真实测试宿主 Bundle Info 的集成检查，SiriKit 三项测试 3/3。快捷指令专用操作不要求额外 Siri 语音授权；这不代表已完成锁屏实际拨号。
