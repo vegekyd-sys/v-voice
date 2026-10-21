@@ -48,6 +48,29 @@ test('quiet speech preserves the accepted reply; a confirmed new request can sti
   assert.deepEqual(delivered,['original','new']);
 });
 
+test('repeated quiet turns do not strand a later admitted task or lose the conversation context',async t=>{
+ let action='respond';const states=[];
+ const f=await fixture(t,{evaluate:async(s,q)=>{states.push(structuredClone(s));return answers(q,{action});}});
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit('查一下已经结束的比赛。');
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+ f.service.assistant('call','你想了解比分还是球员表现？');
+ f.service.dispatch('call','done',null,()=>{});
+ for(const [i,text]of ['把杯子递给我。','嗯。'].entries()){
+  action='quiet';f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());
+  f.emit(text,1800+i*1800,2800+i*1800);
+  await wait(()=>f.events.filter(e=>e.type==='speaker.decision').length===i+2);
+ }
+ action='respond';f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());
+ f.emit('那些球星的比赛数据。',5400,6400);
+ await wait(()=>f.events.filter(e=>e.type==='speaker.admitted').length===2);
+ await wait(()=>f.events.filter(e=>e.type==='speaker.stream-start').length>=2);
+ const delivered=[];f.service.dispatch('call','tool',{name:'web_search'},()=>delivered.push('lookup'));
+ assert.deepEqual(delivered,['lookup']);
+ assert.deepEqual(states.at(-1).activeConversation.map(t=>t.text),['查一下已经结束的比赛。','你想了解比分还是球员表现？']);
+ assert.equal(states.at(-1).surface,'phone');
+ assert(f.profiles.at(-1)[2].some(t=>t.text==='查一下已经结束的比赛。'));
+});
+
 test('an undecided segment cannot disarm the accepted-turn no-output deadline',async t=>{
   const f=await fixture(t,{limits:{responseMs:30}});
   await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();

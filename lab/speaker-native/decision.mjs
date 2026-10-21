@@ -20,7 +20,9 @@ export function nameCandidates(turns) {
 export function routingQuestions(state){
   const people=state.participants;
   if(people.length>5)throw Error('当前候选最多支持五位会话 Speaker');
-  const criteria={quiet:'V保持安静：人对人旁聊、生活中的实物协作指令、电视式内容、无需回应的附和，或没有足够理由插话。',respond:'当前是在向V提问、聊天、自我介绍、纠正称呼、交接对话对象、向V告别结束电话、明确要求V查询或执行、取消或修改当前后台任务、切换聊天话题或请求它能够提供的帮助，V应该自然接话、确认或回答。'};
+  const phone=state.surface!=='speaker';
+  const conversation=phone?'这是用户主动拨给V的电话，不是房间里的常驻音箱。普通对话默认是在和V交流；承接V上句话的感受、评论、惊讶、反问、纠正以及补充任务对象或条件，都应自然接话或执行，不必再叫V，不必是完整问句。省略主语或动词的补充要结合activeConversation还原，例如上一句请查比赛，下一句“那些球星的比赛数据”是在补充查询目标，不是引用或旁聊。只有明确证据表明是对身边人说、广播内容，或独立的无需接话附和，才能保持安静；不能把“没叫V”“不是问题”“我不知道怎么接话”作为旁聊证据。':'这是房间里的远场音箱，需要区分向V说话和身边人的旁聊；不能因为正在同一个话题就把旁聊当请求。';
+  const criteria={quiet:'有明确依据属于人对人旁聊、生活中的实物协作指令、电视广播，或独立的无需接话附和。不能仅因不是问题、没有唤醒词或省略表达就安静。',respond:'当前是在向V提问、聊天、分享对前文的感受或评论、纠正、补充查询执行的对象或条件、自我介绍、交接对话对象、告别结束电话、要求查询或执行、取消或修改后台任务、切换话题，V应该自然接话、确认或回答。'};
   const q={
     endIntent:{type:'choice',instructions:'只判断语音电话是否现在结束，不判断后台任务是否结束。这是两个独立生命周期：后台继续做、我们先挂电话，必须选end；等后台完成后再挂，选continue。自然的好那就这样吧拜拜是向V结束电话，即使没有说V名字。auto模式下任何当前说话人都可以明确结束电话，旧的主要对象或正在与孩子聊天不能覆盖当前告别。不按拜拜关键词判断。',criteria:{end:'现在结束与V的整通语音电话。可以允许后台任务在挂断后继续；后台进行中不影响挂断',continue:'现在保持语音电话。包括否定、引用、功能讨论、只取消任务、要求先执行或取消任务再挂、告别后继续提问、一个人离开但其他人继续和V聊天',other:'只向身边另一个人道别，未结束与V的通话'}},
     action:{type:'choice',instructions:'先判断这句是在对V还是对身边的人说，再选择V是否接话。电话已接通，普通问题、明确自我介绍、名字纠正、明确对话交接与自然接话不需要唤醒词，即使ASR没有识别出V也应该回应。自我介绍和交接不是无意义附和，不必带问号。不因多人开口或身份尚未确认就一律安静；能辨认出对V的请求，应回应或澄清。但默认对话关系不能覆盖明显的人际生活交流。ASR也可能漏掉被叫人的名字：拿递实物、替对方动手等生活协作，且没有明确向V请求信息、提醒或可用设备控制时，应视为身边人之间的话并保持安静，不要插话解释V没有手、不能递东西。有人明确向V问“你能拿东西吗”等能力问题仍可回答。电视式内容、旁聊和无需回应的附和可安静；共同话题的补充可以自然回应。auto模式的activeTargetId不是发言准入限制：即使刚刚主要和孩子说话，父亲接着向V提问也应该回应父亲。优先判断最新完整话语，历史安静和重心不得把当前清楚的问题变为旁聊。结合最新speaker、人物关系和历史语义，不按关键词机械决策。',criteria},
@@ -34,6 +36,13 @@ export function routingQuestions(state){
     if(candidates.length)q['name_'+i]={type:'choice',instructions:`仅为${p.id}关联名字，从state.nameCandidates原话候选和历史中选，不能按声线编号猜。尚未开口者的名字不能绑定到父亲。没有证据就keep。明确自我介绍只属于说出这句的Speaker。上下文判断允许不确定，不能覆盖已明确告知名字。`,criteria:{keep:'保持原姓名或未知',...Object.fromEntries(candidates.map((n,j)=>['n_'+j,`人物可能或明确叫${n}；原话候选索引${j}`]))}};
     q['role_'+i]={type:'choice',instructions:`结合称呼与对话内容判断${p.id}的角色。没有依据保持unknown，十二是姓名不是年龄。`,criteria:{unknown:'未知，或没有充分角色依据',adult:'上下文表明是成人／父亲／母亲',child:'上下文表明是孩子／儿子／女儿'}};
   }
+  q.action.instructions+='\n'+conversation;
+  q.addressed.instructions+='\n'+conversation;
+  if(phone){
+    const acknowledgement='默认接话不覆盖纯附和：单独的“嗯”“好”“知道了”如果只是确认听到，没有回答V的具体问题、没有提供任务所需信息、没有新要求或新的话题内容，应选安静。表达对话题的观点和感受有新内容，不能当作这种附和。';
+    q.action.instructions+='\n'+acknowledgement;
+    q.addressed.instructions+='\n'+acknowledgement;
+  }
   return q;
 }
 
@@ -44,7 +53,7 @@ export function decisionEvaluator(env){
 const explicitFocus=text=>!/(不要|不用|别).{0,3}只/.test(text)&&/(只(?:想)?(?:和|跟|与|对|回答)|仅(?:和|跟)|专注|单独(?:和|跟)|(?:别|不要)理(?:他|她|其他))/.test(text);
 const explicitFree=text=>/恢复|解除|取消专注|大家.*(?:聊|交流)|自由.*(?:聊|交流)|不用只|不要只|别只/.test(text);
 export class SpeakerRouter{
-  constructor({evaluate=decisionEvaluator(process.env),onTrace=()=>{}}={}){this.evaluate=evaluate;this.onTrace=onTrace;this.participants=[];this.history=[];this.targetId=null;this.mode='auto';this.count=0;this.generation=0;}
+  constructor({evaluate=decisionEvaluator(process.env),onTrace=()=>{},surface='phone'}={}){this.evaluate=evaluate;this.onTrace=onTrace;this.surface=surface==='speaker'?'speaker':'phone';this.participants=[];this.history=[];this.targetId=null;this.mode='auto';this.count=0;this.generation=0;}
   snapshot(){return structuredClone({participants:this.participants,targetId:this.targetId,mode:this.mode});}
   invalidate(){this.generation++;this.participants=[];this.labels=0;this.history=[];this.targetId=null;this.mode='auto';}
   /** Drop a voice the tracker recycled. An exclusive focus target is never dropped. */
@@ -63,7 +72,7 @@ export class SpeakerRouter{
     if(this.mode==='exclusive'&&id!==this.targetId)return {turn,status:'withheld',modelCalled:false,shouldRespond:false,addresseeIds:[],...this.snapshot()};
     const generation=this.generation;
     const turns=[...this.history.filter(t=>t.role==='participant'),{...turn,role:'participant'}];
-    const state={purpose:'判断人物关系、是否接话、回应对象与当前电话是否结束，不生成回复文字。电话结束和后台工作结束彼此独立；人物关系不授予工具或账号权限。',participants:structuredClone(this.participants),activeTargetId:this.targetId,mode:this.mode,turn,history:this.history.slice(-12),nameCandidates:nameCandidates(turns)};
+    const state={purpose:'判断人物关系、是否接话、回应对象与当前电话是否结束，不生成回复文字。电话结束和后台工作结束彼此独立；人物关系不授予工具或账号权限。',surface:this.surface,participants:structuredClone(this.participants),activeTargetId:this.targetId,mode:this.mode,turn,history:this.history.slice(-12),activeConversation:this.history.filter(t=>t.role==='assistant'||t.addressedToV===true).slice(-8),nameCandidates:nameCandidates(turns)};
     const questions=routingQuestions(state),started=performance.now();
     const raw=await this.evaluate(state,questions,signal);
     if(signal?.aborted||generation!==this.generation)throw Error('旧的分人判断已取消');
@@ -117,7 +126,10 @@ export class SpeakerRouter{
       if(!/(?:这句|本句|这次).*(?:不用|不必|别|不要)回|(?:不用|不必|无需)确认/.test(turn.text))addresseeIds=[this.targetId];
     }
     if(this.mode==='exclusive'&&action!=='quiet')addresseeIds=[this.targetId];
-    this.history.push({...turn,role:'participant'});this.history=this.history.slice(-16);
+    // Preserve the distinction between admitted conversation and heard side
+    // speech. A later elliptical request must refer to the actual conversation,
+    // not inherit a bystander's topic or an earlier silence decision.
+    this.history.push({...turn,role:'participant',addressedToV:addresseeIds.length>0});this.history=this.history.slice(-16);
     const usage=extraUsage?Object.fromEntries([...new Set([...Object.keys(raw.usage??{}),...Object.keys(extraUsage)])].filter(k=>Number.isFinite(raw.usage?.[k]??0)&&Number.isFinite(extraUsage[k]??0)).map(k=>[k,(raw.usage?.[k]??0)+(extraUsage[k]??0)])):raw.usage;
     const result={status:'decided',turn,endCall,...endVerification?{endVerification}:{},modelCalled:true,model:raw.model,usage,decisionMs:Math.round(performance.now()-started),shouldRespond:addresseeIds.length>0,addresseeIds,rawChoices:{action:rawAction,focus,constraint},admission:{action,quietProbability,directlyAddressed,reason:endCall?'end-call':rawAction!==action?(directlyAddressed?'direct-request':'uncertain-quiet'):'model-choice'},...this.snapshot()};
     this.onTrace({state,questions,result,raw});return result;
