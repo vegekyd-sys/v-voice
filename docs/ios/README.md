@@ -7,7 +7,7 @@
 - 客户端源码、Xcode 工程、图标、绑定／设置／恢复界面、按键快捷指令、灵动岛与锁屏活动均已实现。
 - 本分支复用当前小何／Grok 的 `gateway-relay` PCM 协议；默认小何，可在无通话时切换 Grok。GPT Live 的 WebRTC 传输未接入，App 不会悄悄把它的会话当作 PCM 连接。模型不可用时明确失败。
 - 本轮没有修改或部署 Voice 后端、Gateway、Worker、工具权限或个人会话映射；不需要共享 VLab。使用独立客户端和本地无付费协议 Candidate 验证。
-- 源码完成与真机接受分开。已开发签名并安装到本人 iPhone 17 Pro；build 2 基本真实双向通话由用户确认。用户补充 build 2 曾可在灵动岛对话；build 4 的 SiriKit 路径仍打开 App，未达标。build 5 恢复 build 2 的 AudioRecordingIntent 音频路径，移除动态解锁／前台继续和 SiriKit／CallKit 转交；本版按键／锁屏接受待实测登记。
+- 源码完成与真机接受分开。已开发签名并安装到本人 iPhone 17 Pro；build 2 基本真实双向通话由用户确认。用户补充 build 2 曾可在灵动岛对话；build 4 的 SiriKit 路径仍打开 App，未达标。build 5 恢复 build 2 的 AudioRecordingIntent 音频路径，移除动态解锁／前台继续和 SiriKit／CallKit 转交；build 5 从桌面长按操作按钮、全程留在灵动岛并双向对话，已获用户真机确认；锁屏冷启动等扩展场景仍待验。
 - 正式后端、平台 main/dev、App Store/TestFlight 均未发布。代理未自动发起正式电话或付费模型测试；用户本人已进行真实对话验收。
 
 ## 日常用户路径
