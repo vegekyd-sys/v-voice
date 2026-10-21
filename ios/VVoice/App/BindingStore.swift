@@ -99,6 +99,15 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
             return try await raw(route, record: renewed, body: body)
         }
     }
+    func comparisonAudio(_ id: String) async throws -> Data {
+        guard id.range(of: #"^[a-z0-9-]{1,100}$"#, options: .regularExpression) != nil, let saved = record else { throw VoiceError.protocolMismatch }
+        let req = request("comparison/audio/" + id, binding: saved.binding, cookie: saved.cookie)
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw VoiceError.connection }
+        try validate(http.statusCode, data: data)
+        guard data.count <= 8 * 1024 * 1024 else { throw VoiceError.protocolMismatch }
+        return data
+    }
     func rememberCall(_ id: String?) throws {
         guard var r = record else { throw VoiceError.unbound }
         r.pendingVoiceID = id; try store.save(r); record = r

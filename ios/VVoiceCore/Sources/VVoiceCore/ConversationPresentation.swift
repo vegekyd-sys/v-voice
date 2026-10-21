@@ -6,6 +6,12 @@ public struct ConversationTurn: Identifiable, Equatable, Sendable {
     public var text: String
     public var complete: Bool
     public var documentID: String? = nil
+    public var speakerID: String? = nil
+    public var speakerLabel = ""
+    public var speakerTone = 0
+    public var listenOnly = false
+    public var sourceKey: String? = nil
+    public var label: String { speakerLabel.isEmpty ? (role == "user" ? "你" : "V") : speakerLabel }
     public init(role: String, text: String, complete: Bool) {
         id = UUID(); self.role = role; self.text = text; self.complete = complete
     }
@@ -15,6 +21,10 @@ public struct ConversationTurn: Identifiable, Equatable, Sendable {
 /// segment; a completed segment never gets overwritten by the next one.
 public struct ConversationPresentation: Sendable {
     public private(set) var turns: [ConversationTurn] = []
+    public private(set) var people: [ConversationSpeaker] = []
+    public private(set) var lastSpeakerID: String?
+    public private(set) var listenOnly = false
+    private var speakerStream = UUID().uuidString
     public init() {}
     public mutating func receive(role: String, text: String, final: Bool) {
         guard ["user", "assistant"].contains(role), !text.isEmpty else { return }
@@ -22,7 +32,52 @@ public struct ConversationPresentation: Sendable {
         if let last = turns.indices.last, turns[last].role == role, !turns[last].complete {
             turns[last].text = text; turns[last].complete = final
         } else { turns.append(.init(role: role, text: text, complete: final)) }
+        trim()
+    }
+    /// ASR utterances, not provider captions, own human text in speaker calls.
+    /// Decisions may arrive late or be replayed; they update their exact row.
+    @discardableResult public mutating func receiveSpeaker(_ event: SpeakerTranscriptEvent) -> Bool {
+        for person in event.participants {
+            if let i = people.firstIndex(where: { $0.id == person.id }) { people[i] = person }
+            else if people.count < 32 { people.append(person) }
+        }
+        for i in turns.indices where turns[i].sourceKey?.hasPrefix(speakerStream + ":") == true {
+            if let person = people.first(where: { $0.id == turns[i].speakerID }) { turns[i].speakerLabel = person.displayLabel }
+        }
+        guard let input = event.turn, !input.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              input.startMs.isFinite, input.endMs.isFinite, input.startMs >= 0, input.endMs >= input.startMs else { return false }
+        if !people.contains(where: { $0.id == input.speakerID }), people.count < 32 {
+            people.append(.init(id: input.speakerID, label: "Speaker " + String(UnicodeScalar(65 + people.count)!)))
+        }
+        let key = "\(speakerStream):\(input.startMs):\(input.endMs)"
+        let existing = turns.firstIndex { $0.sourceKey == key }
+        let index: Int
+        if let existing { index = existing }
+        else {
+            var row = ConversationTurn(role: "user", text: "", complete: true); row.sourceKey = key
+            turns.append(row); index = turns.count - 1
+        }
+        turns[index].text = String(input.text.prefix(8_000)); turns[index].speakerID = input.speakerID
+        turns[index].speakerLabel = people.first(where: { $0.id == input.speakerID })?.displayLabel ?? "说话人"
+        turns[index].speakerTone = (people.firstIndex(where: { $0.id == input.speakerID }) ?? 0) % 5
+        if event.type == "speaker.decision" { turns[index].listenOnly = event.shouldRespond == false }
+        // An older decision must not change who owns the current status line.
+        if turns.last(where: { $0.role == "user" })?.id == turns[index].id {
+            lastSpeakerID = input.speakerID; listenOnly = turns[index].listenOnly
+        }
+        trim(); return true
+    }
+    public func isLatestSpeakerEvent(_ event: SpeakerTranscriptEvent) -> Bool {
+        guard let input = event.turn else { return false }
+        return turns.last(where: { $0.role == "user" })?.sourceKey == "\(speakerStream):\(input.startMs):\(input.endMs)"
+    }
+    public mutating func beginSpeakerStream() { people.removeAll(); lastSpeakerID = nil; listenOnly = false; speakerStream = UUID().uuidString }
+    public mutating func assistantSpeaking() { listenOnly = false }
+    private mutating func trim() {
         while turns.count > 80 || turns.reduce(0, { $0 + $1.text.count }) > 64_000 { turns.removeFirst() }
+    }
+    public mutating func attachDocument(id: String, to turnID: UUID) {
+        if let index = turns.firstIndex(where: { $0.id == turnID }) { turns[index].documentID = id }
     }
     public mutating func receiveDocument(id: String) {
         guard !turns.contains(where: { $0.documentID == id }) else { return }
@@ -30,9 +85,10 @@ public struct ConversationPresentation: Sendable {
         turn.documentID = id; turns.append(turn)
         if turns.count > 80 { turns.removeFirst() }
     }
-    public mutating func reset() { turns.removeAll() }
+    public mutating func reset() { turns.removeAll(); beginSpeakerStream() }
     public var current: [ConversationTurn] {
-        guard let start = turns.lastIndex(where: { $0.role == "user" }) else { return Array(turns.suffix(1)) }
+        guard var start = turns.lastIndex(where: { $0.role == "user" }) else { return Array(turns.suffix(1)) }
+        while start > 0, turns[start - 1].role == "user" { start -= 1 }
         return Array(turns[start...])
     }
 }
@@ -42,7 +98,16 @@ public struct CallDocument: Identifiable, Equatable, Sendable {
     public let text: String
     public let title: String
     public let preview: String
-    public init(id: String, text: String) {
+    public let serverOwned: Bool
+    public var shouldAutoOpen: Bool { text.count > 450 || text.range(of: #"(?m)^#{1,3}\s"#, options: .regularExpression) != nil || Self.hasMedia(text) }
+    public static func hasMedia(_ text: String) -> Bool {
+        text.range(of: #"!\[[^\]]*\]\([^)]*\)|https?://[^\s<>]+\.(?:mp4|webm|mov|png|jpe?g|webp|gif|avif)(?:[?#][^\s<>]*)?"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+    public static func isDeliverable(_ text: String) -> Bool {
+        hasMedia(text) || text.count > 1100 || (text.count > 450 && text.range(of: #"(?m)^#{1,3}\s"#, options: .regularExpression) != nil)
+    }
+    public init(id: String, text: String, serverOwned: Bool = true) {
+        self.serverOwned = serverOwned
         self.id = String(id.prefix(160)); self.text = String(text.prefix(60_000))
         let lines = text.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }
         let heading = lines.first(where: { $0.hasPrefix("#") }) ?? "完整方案"
@@ -64,6 +129,7 @@ public struct CallTask: Identifiable, Equatable, Sendable {
     public let id: String
     public var activity: String
     public var stage: String?
+    public var step: Int = 0
     public let startedAt: Date
     public var title: String {
         if let stage, !stage.isEmpty { return stage }

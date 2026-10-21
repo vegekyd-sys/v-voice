@@ -10,6 +10,10 @@ assert info.get('NSMicrophoneUsageDescription')
 assert info.get('UIDeviceFamily') == [1, 2], 'Native layout must support iPhone and iPad'
 assert (a.app/'H5Markdown.js').is_file()
 assert (a.app/'H5DesignSource.json').is_file()
+updates=json.loads((a.app/'H5Updates.json').read_text())
+source=(pathlib.Path(__file__).resolve().parents[2]/'lab/gpt-live-h5/changelog.mjs').as_uri()
+expected=json.loads(subprocess.check_output(['node','--input-type=module','-e',f'import {{VOICE_UPDATES}} from {json.dumps(source)}; process.stdout.write(JSON.stringify(VOICE_UPDATES))'],text=True))
+assert updates==expected, 'Native update history must match the owning H5 changelog'
 gallery=json.loads((a.app/'H5AvatarCatalog.json').read_text())
 assert len(gallery)==52 and len({p['id'] for p in gallery})==52, 'All reviewed H5 reactions must ship'
 assert all(set(p['continuations']) <= {x['id'] for x in gallery} for p in gallery)

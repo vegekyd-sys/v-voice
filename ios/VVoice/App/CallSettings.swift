@@ -44,7 +44,9 @@ struct SettingsView: View {
                     if !call.activitiesEnabled { Button("到设置开启实时活动") { openSettings() } }
                 } header: { Text("通话准备") }
                 Section {
-                    Picker("对话声音", selection: $call.model) { ForEach(VoiceModel.allCases, id: \.self) { Text($0.title).tag($0) } }.disabled(call.active)
+                    Menu("对话声音：" + call.modelTitle) { VoiceModelMenu(call: call) }.disabled(call.active)
+                    GrokVoicePicker(call: call)
+                    if call.modelOptions.contains(where: { $0.id == "gpt-live" }) { Text("GPT Live 的原生音频接入尚未完成，当前不可选。").font(.footnote).foregroundStyle(.secondary) }
                 } footer: { Text("使用 V 现有实时语音与工具能力。音频设备由 iOS 自动选择；接入耳机后使用耳机麦克风。") }
                 Section {
                     Toggle("灵动岛显示对话摘要", isOn: $call.islandCaptions)

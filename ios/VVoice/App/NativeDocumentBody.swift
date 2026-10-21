@@ -18,12 +18,13 @@ struct DocumentBlock: Identifiable, Sendable {
 /// Same GFM lexer as H5, running away from the audio/UI main actor. Only the
 /// bundled parser is evaluated; model content is passed as a plain argument.
 enum DocumentParser {
-    static func parse(_ text: String, script: String) -> [DocumentBlock] {
+    static func parse(_ text: String, script: String, baseURL: URL? = nil) -> [DocumentBlock] {
         guard let context = JSContext() else { return [] }
         context.evaluateScript(script)
         guard context.exception == nil,
               let tokens = context.objectForKeyedSubscript("VVoiceMarkdown")?.objectForKeyedSubscript("marked")?.objectForKeyedSubscript("lexer")?.call(withArguments: [text])?.toArray() as? [[String: Any]], context.exception == nil else { return [] }
         var result: [DocumentBlock] = []
+        var seenMedia: Set<URL> = []
         func append(_ kind: DocumentBlock.Kind, text: String = "", level: Int = 0, indent: Int, prefix: String = "", quote: Bool, rows: [[String]] = [], url: URL? = nil) {
             result.append(.init(id: result.count, kind: kind, text: text, level: level, indent: indent, prefix: prefix, quote: quote, rows: rows, url: url))
         }
@@ -31,11 +32,16 @@ enum DocumentParser {
             for token in items {
                 if let children = token["tokens"] as? [[String: Any]] { media(children, indent: indent, quote: quote) }
                 guard ["image", "link"].contains(token["type"] as? String ?? ""), let href = token["href"] as? String,
-                      let url = URL(string: href), url.scheme == "https", url.user == nil, url.password == nil else { continue }
+                      let url = URL(string: href, relativeTo: baseURL)?.absoluteURL,
+                      url.user == nil, url.password == nil,
+                      url.scheme == "https" || (url.scheme == "http" && url.host == baseURL?.host && url.port == baseURL?.port && baseURL?.scheme == "http") else { continue }
                 let ext = url.pathExtension.lowercased()
-                if token["type"] as? String == "image" || ["png","jpg","jpeg","webp","gif","avif","heic"].contains(ext) {
+                guard !seenMedia.contains(url) else { continue }
+                if ["mp4","mov","webm"].contains(ext) { seenMedia.insert(url); append(.video, indent: indent, quote: quote, url: url) }
+                else if token["type"] as? String == "image" || ["png","jpg","jpeg","webp","gif","avif","heic"].contains(ext) {
+                    seenMedia.insert(url)
                     append(.image, text: token["text"] as? String ?? "图片", indent: indent, quote: quote, url: url)
-                } else if ["mp4","mov","webm"].contains(ext) { append(.video, indent: indent, quote: quote, url: url) }
+                }
                 else if ["mp3","m4a","wav","ogg"].contains(ext) { append(.audio, indent: indent, quote: quote, url: url) }
             }
         }
@@ -74,6 +80,7 @@ enum DocumentParser {
 
 struct NativeDocumentBody: View {
     let text: String
+    var baseURL: URL? = nil
     var onReady: () -> Void
     @State private var blocks: [DocumentBlock] = []
     @State private var failed = false
@@ -102,8 +109,8 @@ struct NativeDocumentBody: View {
         .task(id: text) {
             rendered = false; blocks = []; failed = false
             guard let file = Bundle.main.url(forResource: "H5Markdown", withExtension: "js"), let script = try? String(contentsOf: file, encoding: .utf8) else { failed = true; return }
-            let value = text
-            let parsed = await Task.detached(priority: .userInitiated) { DocumentParser.parse(value, script: script) }.value
+            let value = text, base = baseURL
+            let parsed = await Task.detached(priority: .userInitiated) { DocumentParser.parse(value, script: script, baseURL: base) }.value
             guard !Task.isCancelled else { return }
             blocks = parsed; failed = parsed.isEmpty
         }
@@ -111,7 +118,7 @@ struct NativeDocumentBody: View {
     }
 }
 
-private struct DocumentBlockView: View {
+struct DocumentBlockView: View {
     let block: DocumentBlock
     let width: CGFloat
     var body: some View {
@@ -153,7 +160,7 @@ private struct DocumentBlockView: View {
             }.accessibilityLabel("方案表格")
         case .rule: Divider().padding(.vertical, 14)
         case .image:
-            if let url = block.url { AsyncImage(url: url) { image in image.resizable().scaledToFit() } placeholder: { ProgressView().frame(height: 80) }.clipShape(RoundedRectangle(cornerRadius: 14)).accessibilityLabel(block.text) }
+            if let url = block.url { DocumentImage(url: url, label: block.text) }
         case .video, .audio:
             if let url = block.url { DocumentMedia(url: url, audioOnly: block.kind == .audio) }
         }
@@ -170,5 +177,51 @@ private struct DocumentMedia: View {
     var body: some View {
         VideoPlayer(player: player).frame(height: audioOnly ? 90 : 240).clipShape(RoundedRectangle(cornerRadius: 14))
             .onAppear { player = AVPlayer(url: url) }.onDisappear { player?.pause(); player = nil }
+    }
+}
+
+
+/// Streaming replies use the same GFM blocks as reports; parsing stays off the
+/// capture actor and is debounced while the provider is still adding text.
+struct ConversationMarkdown: View {
+    let text: String
+    let complete: Bool
+    var baseURL: URL? = nil
+    @State private var blocks: [DocumentBlock] = []
+    @State private var parsedText = ""
+    @State private var width: CGFloat = 300
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if blocks.isEmpty || parsedText != text { Text((try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)).font(VoiceStyle.font(17.5)).lineSpacing(7).textSelection(.enabled) }
+            else { ForEach(blocks) { block in DocumentBlockView(block: block, width: width) } }
+        }.frame(maxWidth: .infinity, alignment: .leading)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+            .environment(\.openURL, OpenURLAction { url in
+                guard ["https", "http", "mailto"].contains(url.scheme ?? ""), url.user == nil, url.password == nil else { return .discarded }
+                return .systemAction(url)
+            })
+            .task(id: text) {
+                if !complete { try? await Task.sleep(for: .milliseconds(250)) }
+                guard !Task.isCancelled, let file = Bundle.main.url(forResource: "H5Markdown", withExtension: "js"), let script = try? String(contentsOf: file, encoding: .utf8) else { return }
+                let value = text, base = baseURL
+                let parsed = await Task.detached(priority: .userInitiated) { DocumentParser.parse(value, script: script, baseURL: base) }.value
+                guard !Task.isCancelled else { return }; blocks = parsed; parsedText = value
+            }
+    }
+}
+
+private struct DocumentImage: View {
+    let url: URL
+    let label: String
+    @State private var retry = 0
+    var body: some View {
+        AsyncImage(url: url) { phase in
+            switch phase {
+            case .success(let image): image.resizable().scaledToFit()
+            case .failure:
+                VStack(spacing: 10) { Text("内容暂时无法加载"); Button("重试") { retry += 1 } }.font(VoiceStyle.font(14)).padding(24)
+            default: ProgressView().frame(height: 80)
+            }
+        }.id(retry).clipShape(RoundedRectangle(cornerRadius: 14)).accessibilityLabel(label)
     }
 }

@@ -1,3 +1,11 @@
+## 2026-10-22 — iOS build 8 local candidate: H5 interaction parity audit
+
+- Restore human captions for speaker-routed calls by consuming speaker.utterance / speaker.decision on the existing relay. Keep consecutive speakers in the current round, stable per-utterance rows, participant names, uncertain-name labels, five colors and listen-only state.
+- Restore scroll pinning, compact-portrait latch, recognition recovery notices, bounded thinking hint, task steps and accurate queued-supplement feedback.
+- Share the H5 GFM lexer between conversation and report views; give ordinary long replies and media a reader card, retain their Reaction context, resolve relative media and deduplicate assets. Only actual backend documents receive content-shown receipts.
+- Add server-driven model availability, Grok voice selection and pre-generated sample comparison with blind listening. A live call takes audio ownership from sample playback. Bundle the owning H5 update history and verify source parity.
+- Preserve the existing background Action Button intent, capture engine and PCM relay. GPT Live native transport, the new Dynamic Island Reaction/waveform design and physical multi-speaker acceptance remain incomplete; see docs/ios/H5-PARITY.md. No web/server release, merge or deployment is included.
+
 ## 2026-10-21 — Mobile pickup, latency and accepted-turn continuity
 
 - Recheck the current AudioContext before attaching capture/playback worklets, resume a foreground interruption, and replace a system-muted cached microphone on redial.

@@ -82,7 +82,7 @@ struct AvatarPicture: Codable, Sendable {
         show(value == "curious" ? "listen-1" : "listen-5", source: "state")
     }
     func update(turns: [ConversationTurn], activity: String, outcome: String) {
-        let nextRows = turns.filter { !$0.text.isEmpty && $0.documentID == nil }
+        let nextRows = turns.filter { !$0.text.isEmpty }
         let user = nextRows.last(where: { $0.role == "user" })
         let epoch = user.map { $0.id.uuidString + ":" + $0.text } ?? ""
         if epoch != userEpoch {

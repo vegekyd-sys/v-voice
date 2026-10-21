@@ -19,7 +19,7 @@ struct CallDocumentReader: View {
                 ShareLink(item: document.text) { Text("保存").accessibilityLabel("分享或保存方案") }
             }.font(VoiceStyle.font(14)).foregroundStyle(VoiceStyle.purple).padding(.horizontal, 20).frame(height: 60)
             Divider().overlay(VoiceStyle.line)
-            NativeDocumentBody(text: document.text) {
+            NativeDocumentBody(text: document.text, baseURL: call.api.record?.binding.baseURL) {
                 ready = true
                 Task { await call.resultWasShown(document.id) }
             }.accessibilityIdentifier("documentBody")

@@ -123,3 +123,30 @@ UI 实操发现原 20 帧（400 ms）主线程交接阈值，在从后台切到�
 ![原生完整 Reaction 图库中的实际姿态](evidence/build7-reaction-simulator.jpg)
 
 代码 `3b4efbd`，Release 1.0.0 (7) 开发签名归档及导出成功，独立 IPA 解包检查签名／profiles、52 个完整目录及有效后续引用、H5 CSS、后台按键元数据和无 Debug fixture 均通过。安装前只读状态 activeCalls=0、creatingSessions=0、backgroundTasks=0；devicectl 已实际安装到同一台 iPhone 17 Pro，原绑定与按键配置保留。Voice 后端／Gateway／Worker 和按键后台入口均未改。
+
+## H5 全面迁移复查 · build 8 · 2026-10-22
+
+结论与逐项差异见 [H5-PARITY.md](H5-PARITY.md)。本轮明确纠正 build 6/7 “界面对齐”容易被误解为完整功能迁移的问题：人类／多人事件、连续发言、身份、富文本和声音试听此前确实有遗漏。GPT Live 原生传输、灵动岛新设计、真实多人质量仍没有验收通过。
+
+实际验证：
+
+- Core 10/10；原生 28/28（0 skipped），包含真实模拟器录音／播放／静音／重复触发／重拨、speaker relay 两人转写与决策更新、ASR 恢复时收音继续、无重复 provider 字幕、Grok voice session 请求、长回复卡片与正确回执归属、已有样本播放→正式通话音频接管。既有服务回归 79/79。本地 fixture 无模型、无工具执行，仅统计输入字节，不保存录音。
+- 原生首轮新增 speaker 用例把欢迎语尚在播放的短暂 listening 当作已播完，测试暴露了该竞态；改为等待第一次真实播放并回到 listening，再发送多人事件。也把每次输出开始时清除仅倾听状态明确放到播放回调。最终全套通过。
+- 长回复变为阅读卡片后，复查发现它可能被错误排除于 Reaction 上下文；保留原文行后修正该过滤。增加上下文必须含该长回复的断言，定向重跑 1/1 通过。最后 UI 文案／滚动微调与该修复也重新编译并用真实模拟器核对。
+- `sync-h5-design.mjs --check` 通过；52 图和 continuation 仍完整，新增 H5 更新日志同源 JSON。Release 验包再次比对拥有源。
+- 在右侧内置浏览器通过 serve-sim 看到真实 iPhone 17 Pro iOS 26.5：两个不同身份气泡、可能姓名、五色中的两色、仅倾听、同一轮 V 回复、头像收缩与全部入口；实际进入声音试听并切换盲听；后台方案到达前台时展开表格／列表方案且控制条保留。
+- iPad Pro 11 M5 iOS 26.5 横屏安装同一 Debug build 8，在相同镜像里实际看到头像／聊天双栏与两人文字。增加多轮示例，上翻后再发两次 assistant partial；视口仍停在早期发言，未跳回最新字幕。
+- 结束两台模拟器的 fixture 通话，确认 active=false；iPhone 方案的真实 content-shown 回执计数为 1。保留镜像供查看，不将运行日志、私人入口或设备标识提交。
+- Development-signed Release 1.0.0 (8) archive 与 IPA 导出成功，解压导出 IPA 后独立验包成功：arm64、主 App／扩展 profiles 齐全、deep/strict 签名通过、正常 TLS、Debug fixture 不在 Release。TalkToVIntent 的 openAppWhenRun=false、background、AudioRecording／SessionStarting traits 仍正确；`VoiceIntents.swift`、`VoiceAudio.swift`、`RelayTransport.swift`、`VoiceWidget.swift` 相对 build 7 无改动。
+- 安装前只读状态确认 activeCalls=0、creatingSessions=0、backgroundTasks=0；devicectl 成功覆盖安装 build 8 到用户指定 iPhone 17 Pro。保留本机绑定和权限，没有自动启动真实通话、调用模型、改后端或重启 Gateway。
+- 导出 IPA SHA-256：`a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab`。归档脚本保留前版签名 archive，仍可覆盖回滚；本机安装／解压产物在 ignored ios/build。
+
+真机状态只算**已安装**。build 5 的操作按钮后台双向通话是历史人工接受；不把它自动扩展为 build 8 的多人识别、实际媒体音频、真实声音试听、锁屏和长通话功耗接受。
+
+![两个人类发言与同轮 V 回复](evidence/build8-speakers-simulator.jpg)
+
+![原生声音盲听](evidence/build8-listening-simulator.jpg)
+
+![方案展开并保留通话控制](evidence/build8-reader-simulator.jpg)
+
+![iPad 横屏多人内容双栏](evidence/build8-ipad-simulator.png)

@@ -1,5 +1,7 @@
 # V Voice iOS · 一按通话
 
+完整功能清单与剩余差异见 [H5 → iOS 迁移核对](H5-PARITY.md)。build 8 补齐多人转写、身份条子、长回复内容卡片、富文本、Grok 声音与样本试听等遗漏；不能把局部视觉对齐写成全部迁移完成。
+
 目标是完整做好一件事：首次绑定个人电话入口、授权麦克风并配置操作按钮后，长按即可开始或继续与 V 的连续语音对话。原生 SwiftUI App + AudioRecordingIntent / LiveActivityIntent / ControlWidget + ActivityKit / WidgetKit，最低 iOS 26。
 
 ## 当前交付边界

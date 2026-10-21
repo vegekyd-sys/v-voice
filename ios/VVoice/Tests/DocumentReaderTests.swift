@@ -14,4 +14,13 @@ final class DocumentReaderTests: XCTestCase {
         XCTAssertTrue(blocks.last?.text.contains("untrusted HTML executed") == true)
         XCTAssertEqual(blocks.last?.kind, .literal)
     }
+    func testRelativeAndBareMediaKeepH5OrderAndDeduplicate() async throws {
+        let file = try XCTUnwrap(Bundle.main.url(forResource: "H5Markdown", withExtension: "js"))
+        let script = try String(contentsOf: file, encoding: .utf8)
+        let text = "![视频](../public/demo.mp4)\n\nhttps://example.invalid/a.png\n\n![重复](https://example.invalid/a.png)"
+        let blocks = await Task.detached { DocumentParser.parse(text, script: script, baseURL: URL(string: "https://example.invalid/voice/")) }.value
+        XCTAssertEqual(blocks.filter { $0.kind == .video }.map(\.url), [URL(string: "https://example.invalid/public/demo.mp4")])
+        XCTAssertEqual(blocks.filter { $0.kind == .image }.count, 1)
+    }
+
 }

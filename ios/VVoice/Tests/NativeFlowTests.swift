@@ -32,6 +32,81 @@ import VVoiceCore
         }
         XCTFail("Timed out waiting for native client state")
     }
+    func testSpeakerRelayShowsEveryHumanIdentityAndListenOnlyWithoutStoppingCapture() async throws {
+        let call = try await client()
+        try await fixture("speaker-mode")
+        try await call.startOrContinue()
+        try await until { try await self.stats()["playbackStarts"] as? Int ?? 0 >= 1 && call.phase == .listening }
+        let before = try await stats()["inputBytes"] as? Int ?? 0
+        try await fixture("speakers-demo")
+        try await until { call.conversation.turns.filter { $0.role == "user" }.count == 2 }
+        XCTAssertEqual(call.conversation.current.filter { $0.role == "user" }.count, 2)
+        XCTAssertEqual(call.conversation.current.first?.label, "天懿 · Speaker A")
+        XCTAssertEqual(call.conversation.current.last?.label, "可能是 小林 · Speaker B")
+        try await until { call.conversation.listenOnly }
+        XCTAssertEqual(call.statusLine, "只听不答")
+        XCTAssertTrue(call.conversation.current.last?.listenOnly == true)
+        XCTAssertEqual(call.activityState.captionSpeaker, "可能是 小林 · Speaker B")
+        try await fixture("event", ["event":["type":"transcript","role":"user","text":"Provider duplicate must stay hidden","final":true]])
+        try await fixture("event", ["event":["type":"speaker.asr-reconnecting"]])
+        try await until { call.statusLine == "识别恢复中" }
+        XCTAssertEqual(call.conversation.turns.filter { $0.role == "user" }.count, 2)
+        try await fixture("event", ["event":["type":"speaker.asr-recovered"]])
+        try await until { call.statusLine == "识别已恢复" }
+        try await until { try await self.stats()["inputBytes"] as? Int ?? 0 > before + 1920 }
+        XCTAssertTrue(call.active)
+        try await fixture("audio")
+        try await until { call.phase == .speaking }
+        XCTAssertFalse(call.conversation.listenOnly)
+        await call.end()
+    }
+    func testLongAssistantReplyGetsReaderWithoutSendingInventedBackendReceipt() async throws {
+        let call = try await client(); call.avatar.stage(true)
+        try await call.startOrContinue()
+        let text = "# 完整安排\n\n" + String(repeating: "这是一份本地方案。", count: 140)
+        try await fixture("event", ["event":["type":"transcript","role":"assistant","text":text,"final":true]])
+        try await until { call.documents.contains(where: { !$0.serverOwned }) }
+        let document = try XCTUnwrap(call.documents.first(where: { !$0.serverOwned }))
+        XCTAssertEqual(document.text, text)
+        XCTAssertEqual(call.conversation.turns.last?.documentID, document.id)
+        try await until {
+            let requests = try await self.stats()["avatarRequests"] as? [[String: Any]] ?? []
+            return requests.contains { request in (request["turns"] as? [[String: Any]] ?? []).contains { $0["role"] as? String == "assistant" && ($0["text"] as? String)?.count == 600 } }
+        }
+        await call.resultWasShown(document.id)
+        let snapshot = try await stats()
+        XCTAssertEqual((snapshot["acknowledgements"] as? [String])?.count, 0)
+        await call.end()
+    }
+    func testSampleComparisonCannotDeactivateAnActionButtonCall() async throws {
+        let call = try await client()
+        let playback = ComparisonPlayback()
+        let manifest = try await call.api.call("comparison")
+        XCTAssertEqual((manifest["scenes"] as? [[String: Any]])?.count, 1)
+        await playback.play("sample-a", call: call)
+        XCTAssertEqual(playback.playing, "sample-a")
+        try await call.startOrContinue()
+        playback.stop(callActive: call.active)
+        try await until { try await self.stats()["inputBytes"] as? Int ?? 0 > 1920 }
+        XCTAssertNil(playback.playing)
+        await playback.play("sample-a", call: call)
+        XCTAssertNil(playback.playing)
+        XCTAssertTrue(call.active)
+        await call.end()
+    }
+    func testGrokVoiceChoiceIsSentAndUnsupportedModelsStayExplicit() async throws {
+        let call = try await client()
+        await call.refreshOptions()
+        XCTAssertEqual(call.grokVoices.map(\.id), ["iris", "eve"])
+        XCTAssertNil(call.modelOptions.first(where: { $0.id == "gpt-live" })?.nativeModel)
+        call.model = .grok; call.grokVoice = "eve"
+        try await call.startOrContinue()
+        let request = try await stats()["lastSessionRequest"] as? [String: Any]
+        XCTAssertEqual(request?["voice"] as? String, "eve")
+        XCTAssertEqual(request?["model"] as? String, "grok")
+        XCTAssertNil(request?["inputPolicy"])
+        await call.end()
+    }
     func testRealCapturePlaybackMuteRepeatTriggerAndRedial() async throws {
         let call = try await client()
         defer { call.forget() }

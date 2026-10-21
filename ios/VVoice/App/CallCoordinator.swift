@@ -25,6 +25,38 @@ import VVoiceCore
     var model: VoiceModel {
         didSet { UserDefaults.standard.set(model.rawValue, forKey: "voiceModel") }
     }
+    private(set) var modelOptions: [VoiceModelOption] = []
+    private(set) var grokVoices: [VoiceChoice] = []
+    private(set) var grokHint = ""
+    private(set) var comparisonAvailable = false
+    var grokVoice = UserDefaults.standard.string(forKey: "grokVoice") ?? "iris" {
+        didSet { UserDefaults.standard.set(grokVoice, forKey: "grokVoice") }
+    }
+    @ObservationIgnored private var loadingOptions = false
+    func refreshOptions() async {
+        guard bound, !active, !loadingOptions else { return }
+        loadingOptions = true; defer { loadingOptions = false }
+        let binding = api.record?.binding
+        guard let status = try? await api.call("status"), !active, api.record?.binding == binding else { return }
+        applyOptions(status)
+    }
+    private func applyOptions(_ status: [String: Any]) {
+        if let options = status["models"] as? [[String: Any]] {
+            modelOptions = options.compactMap { item in
+                guard let id = item["id"] as? String else { return nil }
+                return .init(id: id, title: item["label"] as? String ?? VoiceModel(rawValue: id)?.title ?? id, available: item["available"] as? Bool != false)
+            }
+            let grok = options.first { $0["id"] as? String == "grok" }
+            grokVoices = (grok?["voices"] as? [[String: Any]] ?? []).compactMap { voice in
+                guard let id = voice["id"] as? String else { return nil }; return .init(id: id, title: voice["label"] as? String ?? id)
+            }
+            if !grokVoices.isEmpty, !grokVoices.contains(where: { $0.id == grokVoice }) { grokVoice = grokVoices.first(where: { $0.id == "iris" })?.id ?? grokVoices[0].id }
+            let speed = grok?["speed"] as? Double ?? 1
+            grokHint = [speed != 1 ? "\(speed)× 语速" : "", grok?["expressiveTags"] as? Bool == true ? "自主表达试用" : ""].filter { !$0.isEmpty }.joined(separator: " · ")
+        }
+        comparisonAvailable = status["comparisonAvailable"] as? Bool == true
+    }
+    var modelTitle: String { modelOptions.first(where: { $0.id == model.rawValue })?.title ?? model.title }
     var needsSetup: Bool { !bound || permission != .granted }
     var phase: VoicePhase { state.phase }
     var active: Bool { phase.isActive }
@@ -37,12 +69,27 @@ import VVoiceCore
     var islandCaptions = UserDefaults.standard.object(forKey: "islandCaptions") as? Bool ?? true {
         didSet { UserDefaults.standard.set(islandCaptions, forKey: "islandCaptions"); publish() }
     }
+    private(set) var speakerNotice = ""
+    private(set) var speakerAction = ""
+    @ObservationIgnored private var speakerNoticeTask: Task<Void, Never>?
+    @ObservationIgnored private var speakerRouted = false
+    @ObservationIgnored private var thinkingNoticeTask: Task<Void, Never>?
+    private(set) var thinkingVisible = false
+    var listeningSpeakerTone: Int? {
+        guard [.listening, .thinking].contains(phase), !thinkingVisible, !conversation.listenOnly, speakerNotice.isEmpty, tasks.isEmpty,
+              let index = conversation.people.firstIndex(where: { $0.id == conversation.lastSpeakerID }) else { return nil }
+        return index % 5
+    }
     var statusLine: String {
         if phase == .interrupted || phase == .reconnecting { return detail }
-        if let task = tasks.last { return task.title }
+        if !speakerNotice.isEmpty { return speakerNotice }
+        if let task = tasks.last { return tasks.count > 1 ? "\(tasks.count) 个任务" : task.title }
         switch phase {
-        case .listening: return "在听"
-        case .thinking: return "在想…"
+        case .listening, .thinking:
+            if phase == .thinking, thinkingVisible { return "在想…" }
+            if conversation.listenOnly { return "只听不答" }
+            if let person = conversation.people.first(where: { $0.id == conversation.lastSpeakerID }) { return "在听 " + (person.name ?? person.label) }
+            return "在听"
         case .speaking: return "在说"
         case .muted: return "麦克风已静音"
         default: return phase.title
@@ -85,6 +132,7 @@ import VVoiceCore
     @ObservationIgnored private var providerReady = true
     @ObservationIgnored private var providerDeadline: Task<Void, Never>?
     @ObservationIgnored private var handshakingOwner: UUID?
+    private(set) var autoOpenDocumentID: String?
     private(set) var resultID: String?
     private(set) var resultText = ""
     @ObservationIgnored private var shownResults: Set<String> = []
@@ -122,6 +170,7 @@ import VVoiceCore
     }
     func sceneChanged(_ scene: ScenePhase) {
         appIsActive = scene == .active
+        UIApplication.shared.isIdleTimerDisabled = appIsActive && active
         avatar.scene(appIsActive)
         guard appIsActive else { return }
         activitiesEnabled = ActivityAuthorizationInfo().areActivitiesEnabled
@@ -130,6 +179,7 @@ import VVoiceCore
         if active, permission != .granted { fail(VoiceError.microphone) }
         updateRoute()
         if !initialized { Task { await reconcileActivities() } }
+        if !active { Task { await refreshOptions() } }
     }
     private func reconcileActivities() async {
         guard !initialized else { return }; initialized = true
@@ -148,6 +198,7 @@ import VVoiceCore
         try await api.recoverPreviousCall()
         try await api.bind(link: link); bound = true
         detail = "入口已安全绑定，可以和 V 通话了"
+        await refreshOptions()
     }
     func forget() {
         guard !active else { return }; api.forget(); bound = false; lastCaption = ""; detail = "请绑定本人的电话入口"
@@ -167,7 +218,7 @@ import VVoiceCore
         guard let owner = state.begin() else { return }
         CallDiagnostics.record("call.start")
         lastFailure = nil
-        conversation.reset(); documents.removeAll(); tasks.removeAll(); presentationID = owner.uuidString
+        conversation.reset(); autoOpenDocumentID = nil; documents.removeAll(); tasks.removeAll(); presentationID = owner.uuidString
         startedAt = Date(); lastCaption = ""; resultID = nil; resultText = ""; shownResults.removeAll(); detail = "接通后会提示你开口"
         retiredResponses.removeAll(); publish()
         do {
@@ -192,12 +243,18 @@ import VVoiceCore
         guard owned(owner) else { throw CancellationError() }
         guard status["ready"] as? Bool == true, status["preview"] as? Bool != true else { throw VoiceError.unavailable }
         if let models = status["models"] as? [[String: Any]], !models.contains(where: { $0["id"] as? String == model.rawValue && $0["available"] as? Bool != false }) { throw VoiceError.unavailable }
-        let reservation = try await api.call("session", body: ["model": model.rawValue])
+        applyOptions(status)
+        var request: [String: Any] = ["model": model.rawValue]
+        if model == .grok, !grokVoices.isEmpty { request["voice"] = grokVoice }
+        // Keep the server's existing speaker policy and the proven PCM path.
+        let reservation = try await api.call("session", body: request)
         guard let id = reservation["voiceSessionId"] as? String else { throw VoiceError.protocolMismatch }
         guard owned(owner) else {
             _ = try? await api.call("close", body: ["voiceSessionId": id], refresh: false); throw CancellationError()
         }
         voiceID = id; try api.rememberCall(id)
+        speakerRouted = reservation["speakerRouting"] is [String: Any]
+        conversation.beginSpeakerStream(); speakerNotice = ""; speakerAction = ""; speakerNoticeTask?.cancel()
         avatarOutcome = "none"; avatar.begin(owner: id); updateAvatar()
         guard reservation["transport"] as? String == "gateway-relay", let ticket = reservation["relayTicket"] as? String else { throw VoiceError.protocolMismatch }
         audio.beginStream()
@@ -231,6 +288,7 @@ import VVoiceCore
         audio.onPlayback = { [weak self] playing in
             guard let self, self.owned(owner), self.phase != .interrupted, self.providerReady, self.audioReady else { return }
             relay.send(["type": "playback.state", "speaking": playing])
+            if playing { self.conversation.assistantSpeaking() }
             self.setPhase(playing ? .speaking : .listening, owner: owner)
         }
         audio.onDrained = { [weak self] in self?.drained(owner: owner) }
@@ -279,10 +337,25 @@ import VVoiceCore
             }
         case "audio.clear": earlyAudio.removeAll(); earlyAudioBytes = 0; earlyOutputDone = false; audio.clear(); injectedSpeech = false; pendingEndID = nil; naturalEnd?.cancel()
         case "audio.done": if audioReady { audio.markOutputDone() } else { earlyOutputDone = true }
+        case "speaker.utterance", "speaker.decision":
+            if let event = SpeakerTranscriptEvent(v), conversation.receiveSpeaker(event) {
+                lastCaption = String(conversation.turns.last(where: { $0.role == "user" })?.text.suffix(500) ?? "")
+                if conversation.isLatestSpeakerEvent(event), event.type == "speaker.decision", event.shouldRespond == true, !conversation.listenOnly, audio.queuedFrames == 0 { setPhase(.thinking, owner: owner) }
+                else if conversation.isLatestSpeakerEvent(event), conversation.listenOnly, audio.queuedFrames == 0 { setPhase(.listening, owner: owner) }
+                scheduleCaptionUpdate(); updateAvatar()
+            }
+        case "speaker.error", "speaker.recovery", "speaker.asr-reconnecting", "speaker.asr-recovered", "speaker.end-accepted", "speaker.end-revoked":
+            receiveSpeakerNotice(v)
         case "transcript":
+            if speakerRouted, v["role"] as? String == "user" { return }
             if let text = v["text"] as? String, let role = v["role"] as? String {
                 lastCaption = String(text.suffix(500))
                 conversation.receive(role: role, text: text, final: v["final"] as? Bool == true)
+                if role == "assistant", v["final"] as? Bool == true, CallDocument.isDeliverable(text), let turn = conversation.turns.last {
+                    let id = "reply-" + turn.id.uuidString
+                    documents.append(CallDocument(id: id, text: text, serverOwned: false)); if documents.count > 16 { documents.removeFirst() }
+                    conversation.attachDocument(id: id, to: turn.id)
+                }
                 scheduleCaptionUpdate(); updateAvatar()
             }
             if v["role"] as? String == "user", v["final"] as? Bool == true { setPhase(.thinking, owner: owner) }
@@ -309,6 +382,35 @@ import VVoiceCore
         default: break
         }
     }
+    private func receiveSpeakerNotice(_ value: [String: Any]) {
+        speakerNoticeTask?.cancel(); speakerAction = ""
+        var transient = false
+        switch value["type"] as? String {
+        case "speaker.error":
+            if value["reason"] as? String == "farewell-no-audio" { speakerNotice = "告别没播出"; speakerAction = "挂断" }
+            else if value["fatal"] as? Bool == true || ["重新拨号", "重拨", "已关闭", "断开"].contains(where: { (value["message"] as? String ?? "").contains($0) }) { speakerNotice = "识别断开"; speakerAction = "重拨" }
+            else { speakerNotice = "没听清，请再说一次"; transient = true }
+        case "speaker.recovery": speakerNotice = value["reason"] as? String == "mixed-speakers" ? "声音重叠，请轮流说" : "没听清，请再说一次"; transient = true
+        case "speaker.asr-reconnecting": speakerNotice = "识别恢复中"
+        case "speaker.asr-recovered": speakerNotice = "识别已恢复"; transient = true
+        case "speaker.end-accepted": speakerNotice = "正在道别"
+        default: speakerNotice = ""
+        }
+        publish()
+        if transient {
+            let owner = state.generation
+            speakerNoticeTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(4))
+                guard !Task.isCancelled, let self, self.owned(owner) else { return }
+                self.speakerNotice = ""; self.speakerAction = ""; self.publish()
+            }
+        }
+    }
+    func performSpeakerAction() async {
+        let redial = speakerAction == "重拨"
+        await end()
+        if redial { do { try await startOrContinue() } catch { report(error) } }
+    }
     private func flushEarlyAudio() throws {
         let buffered = earlyAudio; earlyAudio.removeAll(); earlyAudioBytes = 0
         for frame in buffered { try audio.play(frame.bytes, sequence: frame.sequence) }
@@ -328,6 +430,7 @@ import VVoiceCore
         avatarOutcome = "success"
         conversation.receiveDocument(id: id)
         resultID = id; resultText = document.text
+        if document.shouldAutoOpen { autoOpenDocumentID = id }
         tasks.removeAll { $0.id == id }; updateAvatar()
         publish()
     }
@@ -338,8 +441,10 @@ import VVoiceCore
         guard let id = value["callId"] as? String else { return }
         if let index = tasks.firstIndex(where: { $0.id == id }) {
             if let stage = value["stage"] as? String { tasks[index].stage = CallDocument.plain(stage, limit: 28) }
+            if let step = value["step"] as? Int { tasks[index].step = max(0, step) }
         } else {
             tasks.append(.init(id: id, activity: value["activity"] as? String ?? "background", stage: value["stage"] as? String))
+            tasks[tasks.count - 1].step = max(0, value["step"] as? Int ?? 0)
             if tasks.count > 16 { tasks.removeFirst() }
         }
         updateAvatar(); publish()
@@ -364,20 +469,22 @@ import VVoiceCore
     }
     func resultWasShown(_ id: String) async {
         guard appIsActive, active, let document = documents.first(where: { $0.id == id }), !shownResults.contains(id), !acknowledgingResults.contains(id), let voiceID else { return }
+        if !document.serverOwned { shownResults.insert(id); publish(); return }
         acknowledgingResults.insert(id)
         defer { acknowledgingResults.remove(id) }
         let owner = state.generation
         if (try? await api.call("content-shown", body: ["voiceSessionId": voiceID, "callId": id], refresh: false)) != nil, owned(owner), documents.first(where: { $0.id == id }) == document { shownResults.insert(id); publish() }
     }
-    func sendSupplement(_ text: String) async throws {
+    @discardableResult func sendSupplement(_ text: String) async throws -> String {
         guard active, let voiceID, ![.connecting,.reconnecting,.ending,.interrupted].contains(phase) else { throw VoiceError.connection }
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty, value.count <= 2_000 else { return }
+        guard !value.isEmpty, value.count <= 2_000 else { return "" }
         let owner = state.generation
-        _ = try await api.call("steer", body: ["voiceSessionId": voiceID, "text": value, "mode": "steer"], refresh: false)
-        guard owned(owner) else { return }
+        let receipt = try await api.call("steer", body: ["voiceSessionId": voiceID, "text": value, "mode": "steer"], refresh: false)
+        guard owned(owner) else { throw CancellationError() }
         conversation.receive(role: "user", text: value, final: true)
-        detail = "补充内容已发送"; scheduleCaptionUpdate(); updateAvatar()
+        detail = receipt["queued"] as? Bool == true ? "条件已交给原任务，等待后台应用" : "补充内容已发送"
+        scheduleCaptionUpdate(); updateAvatar(); return detail
     }
     func cancelTasks() async throws {
         guard active, let voiceID, !tasks.isEmpty else { return }
@@ -402,7 +509,18 @@ import VVoiceCore
     private func setPhase(_ phase: VoicePhase, owner: UUID) {
         let previous = state.phase
         state.transition(phase, owner: owner)
-        if state.phase != previous { publish() }
+        if state.phase != previous {
+            thinkingNoticeTask?.cancel(); thinkingVisible = state.phase == .thinking
+            if phase == .speaking { conversation.assistantSpeaking() }
+            if thinkingVisible {
+                thinkingNoticeTask = Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(12))
+                    guard !Task.isCancelled, let self, self.owned(owner) else { return }
+                    self.thinkingVisible = false; self.publish()
+                }
+            }
+            publish()
+        }
     }
     func toggleMute() {
         guard active, ![.connecting,.reconnecting,.ending,.interrupted].contains(phase) else { return }
@@ -412,6 +530,8 @@ import VVoiceCore
         UIImpactFeedbackGenerator(style: .soft).impactOccurred(); publish()
     }
     private func stopMedia(keepAudio: Bool = false) {
+        speakerNoticeTask?.cancel(); speakerNoticeTask = nil; speakerNotice = ""; speakerAction = ""
+        thinkingNoticeTask?.cancel(); thinkingNoticeTask = nil; thinkingVisible = false
         routeChangeTask?.cancel(); routeChangeTask = nil
         audioReady = false; earlyAudio.removeAll(); earlyAudioBytes = 0; earlyOutputDone = false
         providerDeadline?.cancel(); providerDeadline = nil
@@ -553,11 +673,12 @@ import VVoiceCore
         let unread = documents.last(where: { !shownResults.contains($0.id) })
         return .init(phase: phase, muted: muted, startedAt: startedAt, detail: phase.title,
                      caption: islandCaptions ? CallDocument.plain(turn?.text ?? "", limit: 84) : "",
-                     captionSpeaker: turn?.role == "user" ? "你" : "V",
+                     captionSpeaker: islandCaptions ? CallDocument.plain(turn?.label ?? "V", limit: 32) : "",
                      documentTitle: unread.map { islandCaptions ? $0.title : "完整方案已就绪" },
                      documentID: unread?.id, taskLabel: tasks.last?.title)
     }
     private func publish() {
+        UIApplication.shared.isIdleTimerDisabled = appIsActive && active
         guard let a = activity else { return }
         let content = ActivityContent(state: activityState, staleDate: Date().addingTimeInterval(25))
         let previous = activityUpdates
