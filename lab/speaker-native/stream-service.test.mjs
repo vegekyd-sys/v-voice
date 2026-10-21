@@ -5,15 +5,49 @@ import {createStreamingSpeakerRoutingService,TurnOutputGate,speakerProfile,echoO
 const wait=async predicate=>{for(let i=0;i<600;i++){if(predicate())return;await new Promise(r=>setTimeout(r,5));}throw Error('Test deadline');};
 const answers=(questions,{action='respond',child=false}={})=>({answers:Object.fromEntries(Object.entries(questions).map(([id])=>[id,{type:'choice',choice:id==='action'?action:id.startsWith('role_')?(child?'child':'unknown'):id.startsWith('name_')&&child?'n_0':'keep'}]))});
 const voice=()=>{const pcm=Buffer.alloc(57600);for(let i=0;i<pcm.length;i+=2)pcm.writeInt16LE(6000,i);return pcm;};
-async function fixture(t,{evaluate,prepare=async()=>{},limits,reserve={},initialAudio=true}={}){
-  let asr;const events=[],forwarded=[],profiles=[],clarifications=[],endings=[],rejectedEnds=[],greetings=[],cancellations=[];
-  const service=createStreamingSpeakerRoutingService({env:{},embedding:{ready:Promise.resolve(),compute:async()=>({embedding:[1,0],inferenceMs:1})},evaluate:evaluate??(async(_s,q)=>answers(q)),limits,createAsr:o=>{asr=o;return {connect:async()=>{},append(){},close(){}};}});
+async function fixture(t,{evaluate,prepare=async()=>{},limits,reserve={},initialAudio=true,lookahead=false,onStageCommit=()=>{}}={}){
+  let asr;const events=[],forwarded=[],profiles=[],clarifications=[],endings=[],rejectedEnds=[],greetings=[],cancellations=[],stages=[];
+  const service=createStreamingSpeakerRoutingService({env:lookahead?{VOICE_STREAM_LOOKAHEAD:'1'}:{},embedding:{ready:Promise.resolve(),compute:async()=>({embedding:[1,0],inferenceMs:1})},evaluate:evaluate??(async(_s,q)=>answers(q)),limits,createAsr:o=>{asr=o;return {connect:async()=>{},append(){},close(){}};}});
   service.reserve('call',{model:'seeduplex',...reserve});t.after(()=>service.dispose());
-  await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},forward:b=>forwarded.push(b),cancel(){cancellations.push(true);},invalidate(){},greet:()=>greetings.push(true),clarify:text=>clarifications.push(text),end:value=>endings.push(value),cancelEnd:()=>endings.push({revoked:true}),rejectNativeEnd:call=>rejectedEnds.push(call)},e=>events.push(e));
+  await service.bind('call',{prepare:async(...args)=>{profiles.push(args);await prepare(...args);},...lookahead?{stage(...args){const lane={args,ready:Promise.resolve(),available:true,forwarded:[],forward:b=>lane.forwarded.push(b),discard(){lane.available=false;lane.discarded=true;},commit(){if(!lane.available)return false;lane.available=false;lane.committed=true;onStageCommit();return true;}};stages.push(lane);return lane;}}:{},forward:b=>forwarded.push(b),cancel(){cancellations.push(true);},invalidate(){},greet:()=>greetings.push(true),clarify:text=>clarifications.push(text),end:value=>endings.push(value),cancelEnd:()=>endings.push({revoked:true}),rejectNativeEnd:call=>rejectedEnds.push(call)},e=>events.push(e));
   if(initialAudio)service.audio('call',reserve.inputSampleRate===16000?voice().subarray(0,38400):voice());
   const emit=(text='V，天空为什么是蓝色的？',start=0,end=1100)=>asr.onResult({body:{result:{utterances:[{definite:true,start_time:start,end_time:end,text,speaker_id:'wrong-cloud-id',...(start===null?{start_time:undefined}:{})}]}}});
-  return {service,events,forwarded,profiles,emit,clarifications,endings,rejectedEnds,greetings,cancellations,disconnectAsr:()=>asr.onClose()};
+  return {service,events,forwarded,profiles,emit,clarifications,endings,rejectedEnds,greetings,cancellations,stages,disconnectAsr:()=>asr.onClose()};
 }
+
+test('lookahead streams new audio while preserving the admitted reply, then promotes without restarting its cursor',async t=>{
+ const effects=[];let f;
+ f=await fixture(t,{lookahead:true,onStageCommit:()=>f.service.dispatch('call','tool',{name:'web_search'},()=>effects.push('new-tool'))});
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+ const cancelled=f.cancellations.length;
+ f.service.audio('call',Buffer.alloc(600*48));for(let i=0;i<4;i++)f.service.audio('call',voice());
+ await wait(()=>f.stages.length===1);await wait(()=>f.stages[0].forwarded.length>=10);
+ assert.equal(f.cancellations.length,cancelled);assert.deepEqual(effects,[]);
+ f.service.dispatch('call','audio',Buffer.alloc(960),()=>effects.push('old-audio'));
+ f.emit('V，换成解释晚霞为什么是红的。',1800,6400);
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'&&e.lookahead));
+ assert(f.stages[0].committed);assert.equal(f.profiles.length,1);
+ assert.deepEqual(effects,['old-audio','new-tool']);
+ assert.equal(f.events.filter(e=>e.type==='speaker.stream-fallback').length,0);
+});
+
+test('quiet lookahead is discarded without retiring the real answer',async t=>{
+ let action='respond';const f=await fixture(t,{lookahead:true,evaluate:async(_s,q)=>answers(q,{action})});
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+ const cancelled=f.cancellations.length;f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());
+ await wait(()=>f.stages.length===1);action='quiet';f.emit('旁聊。',1800,2800);
+ await wait(()=>f.stages[0].discarded);assert.equal(f.cancellations.length,cancelled);assert(!f.stages[0].committed);
+ const effects=[];f.service.dispatch('call','audio',Buffer.alloc(960),()=>effects.push('original'));assert.deepEqual(effects,['original']);
+});
+
+test('lookahead never reuses an adult persona for a newly confirmed child',async t=>{
+ let child=false;const f=await fixture(t,{lookahead:true,evaluate:async(_s,q)=>answers(q,{child})});
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));f.emit();await wait(()=>f.events.some(e=>e.type==='speaker.stream-accepted'));
+ f.service.audio('call',Buffer.alloc(600*48));f.service.audio('call',voice());await wait(()=>f.stages.length===1);
+ child=true;f.emit('我叫十二，是个孩子。',1800,2800);
+ await wait(()=>f.events.some(e=>e.type==='speaker.stream-fallback'));
+ assert(f.stages[0].discarded);assert(!f.stages[0].committed);await wait(()=>f.profiles.length===2);assert.match(f.profiles[1][0],/child/);
+});
 
 test('an unconfirmed acoustic segment cannot retire an admitted question or withhold its tool',async t=>{
   const f=await fixture(t);await wait(()=>f.events.some(e=>e.type==='speaker.stream-start'));

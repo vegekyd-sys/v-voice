@@ -46,6 +46,43 @@ test('a speaker switch preserves an admitted tool but never sends its old result
  assert(f.client.sent.some(e=>e.type==='tool.result'&&e.callId==='old-search'));
 });
 
+test('a staged native lane keeps the live reply working and hides captions and tools until commit',async t=>{
+ let native;
+ const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,n)=>{native=n;},close(){},audio(){},assistant(){}};
+ const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ const old=f.peers.at(-1),lane=native.stage('现在只向确认的新说话人回答。','next',[]);await lane.ready;
+ const next=f.peers.at(-1),emit=(peer,e)=>peer.emit('message',Buffer.from(JSON.stringify(e)),false);
+ emit(next,{type:'response.output_text.done',text:'待批准的回复'});
+ emit(next,{type:'response.function_call_arguments.done',items:[{call_id:'staged-query',name:'web_search',arguments:JSON.stringify({query:'候选查询'})}]});
+ await delay(10);assert.equal(f.invocations.length,0);assert(!JSON.stringify(f.client.sent).includes('待批准的回复'));
+ emit(old,{type:'response.output_text.done',text:'原回答继续'});
+ assert(JSON.stringify(f.client.sent).includes('原回答继续'));assert.equal(old.readyState,1);
+ assert.equal(lane.commit(),true);
+ for(let i=0;i<100&&!f.invocations.length;i++)await delay(5);
+ assert(f.invocations.length>0);assert(JSON.stringify(f.client.sent).includes('待批准的回复'));
+ assert.equal(f.client.readyState,1);
+});
+
+test('discard and call close retire staged native lanes without delivering their queued work',async t=>{
+ let native;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,n)=>{native=n;},close(){},audio(){}};
+ const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ const old=f.peers.at(-1),lane=native.stage('预听。','shadow',[]);await lane.ready;
+ const peer=f.peers.at(-1);peer.emit('message',Buffer.from(JSON.stringify({type:'response.output_text.done',text:'不能交付'})),false);
+ lane.discard();assert.equal(lane.commit(),false);assert.equal(old.readyState,1);
+ const second=native.stage('第二路。','shadow2',[]);await second.ready;
+ await f.service.close(f.reservation.voiceSessionId);assert.equal(second.available,false);assert.equal(second.commit(),false);
+ assert(!JSON.stringify(f.client.sent).includes('不能交付'));assert.equal(f.invocations.length,0);
+});
+
+test('a staged output overflow retires only that lane and leaves the live call usable',async t=>{
+ let native;const routing={reserve:()=>({policy:'streaming'}),has:()=>true,bind:async(_id,n)=>{native=n;},close(){},audio(){},assistant(){}};
+ const f=await fixture(undefined,'seeduplex',{speakerRouting:routing});t.after(()=>f.service.dispose());
+ const old=f.peers.at(-1),lane=native.stage('预听。','overflow',[]);await lane.ready;
+ f.peers.at(-1).emit('message',Buffer.from(JSON.stringify({type:'response.output_text.done',text:'x'.repeat(1100000)})),false);
+ assert.equal(lane.available,false);assert.equal(lane.commit(),false);assert.equal(old.readyState,1);assert.equal(f.client.readyState,1);
+ assert.equal(f.invocations.length,0);
+});
+
 test('browser audio lifecycle counters reach the audit through a fixed scalar whitelist',async t=>{
  const f=await fixture();t.after(()=>f.service.dispose());
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.stats',inputBytes:960,contextState:'interrupted',contextTimeMs:2000,inputFrames:1,trackLive:true,trackMuted:false,pageHidden:false,audio:'SECRET',deviceId:'SECRET'})),false);

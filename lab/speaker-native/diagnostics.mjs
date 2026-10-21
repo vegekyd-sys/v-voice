@@ -10,7 +10,7 @@ export function createSpeakerDiagnostics({directory,now=Date.now,maxBytes=4*1024
   return {audit(event){
     if(!event?.voiceSessionId)return;
     const row={at:now(),type:event.type,voiceSessionId:event.voiceSessionId};
-    const scalar=['reason','token','speakerId','startMs','endMs','afterStartMs','inferenceMs','prepareMs','bufferMs','fallback','avoidedReplayMs','shouldRespond','endCall','endVerification','status','decisionCalls','inputSeconds','stage','role','final','speaking','fatal','upstreamCode','packets','utterances','finals'];
+    const scalar=['reason','token','speakerId','startMs','endMs','afterStartMs','inferenceMs','prepareMs','bufferMs','fallback','lookahead','avoidedReplayMs','shouldRespond','endCall','endVerification','status','decisionCalls','inputSeconds','stage','role','final','speaking','fatal','upstreamCode','packets','utterances','finals'];
     for(const key of scalar)if(['string','number','boolean'].includes(typeof event[key]))row[key]=event[key];
     if(event.timings)row.timings=event.timings;
     if(event.rawChoices)row.choices=event.rawChoices;
