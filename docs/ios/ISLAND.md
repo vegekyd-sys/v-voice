@@ -6,7 +6,7 @@
 
 - 小：V＋一个明确状态图标。方案未读时为文档图标；点入本通话方案，长按由系统展开。
 - 中：Reaction、真实声音能量快照、挂断。点波形区切到大。
-- 大：Reaction 陪着两行正文；有方案时明确「查看全文」，正文是现有 CallDestination 深链。左静音、右结束；上方折叠箭头回中。
+- 大：Reaction 陪着两行正文；有方案时明确「查看全文」，正文是现有 CallDestination 深链。左静音、右结束；正文行右侧折叠箭头回中。
 - 小↔展开由 iOS 决定；中、大是 expanded 内的两个布局。没有强制常驻或三秒收起计时器。新方案将 expanded 内容切成大，后台首次到达请求一次系统提醒（标准系统提示音）；实际是否展开／响铃由 iOS 管理，不作必现承诺。
 - 锁屏仅通话状态／通用「有方案待查看」，不暴露原文或方案标题。stale 隐藏旧波形与语义表情。结束沿用现有 immediate 移除。
 
@@ -46,3 +46,7 @@ DEBUG 视觉检查可在主 App 的 root 添加仅 Debug 的 `--island-preview` 
 - 未拨真实电话、未调用付费模型、未改生产／Gateway。真机后台长通、ActivityKit 刷新、提醒时机、锁屏按钮认证、最终 H5 深链与双向对话仍需分别验收。
 
 官方依据：[HIG](https://developer.apple.com/design/human-interface-guidelines/live-activities)、[ActivityKit](https://developer.apple.com/documentation/activitykit/displaying-live-data-with-live-activities)、[活动交互](https://developer.apple.com/documentation/widgetkit/adding-interactivity-to-widgets-and-live-activities)。
+
+## H5 合成结果
+
+最终合成 App 源码 `36f380f`，build 9 签名并覆盖安装。H5实际displayed白名单桥已接通，旧owner／遮盖页拒绝测试通过。系统大卡裁切在合成测试发现并修正：取消独立trailing区，正文52pt，折叠放入正文行，底部44pt控件完整。Core15／native36／service79通过；实际系统中→大不打开App、静音、方案→同一H5全文已用无模型fixture验证。完整系统层证据在 `evidence/build9-island-conversation-mirror.png`，不能以原生漏层截图替代；手机人工接受仍待定。

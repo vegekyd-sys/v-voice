@@ -152,3 +152,19 @@ UI 实操发现原 20 帧（400 ms）主线程交接阈值，在从后台切到�
 ![iPad 横屏多人内容双栏](evidence/build8-ipad-simulator.png)
 
 本轮功能源码提交：`78c87ad`。版本／安装状态登记在 [versions.json](versions.json)；后续文档提交不改变已签名 App。
+
+
+## 实际 H5 内嵌＋新灵动岛 · build 9 · 2026-10-22
+
+- 原生 build 8 的标签、原分支、已签名 IPA／archive 保存完毕，见 [H5-SHELL.md](H5-SHELL.md)。本分支 `codex/voice-ios-h5-shell` 的最终 App 源码为 `36f380f`；独立灵动岛 `3e2ed32` 已集成为 `86193ea`。
+- 直接运行原 H5 DOM／CSS／React UI、多人气泡、原阅读器、Reaction／continuations 和样本比较。只接原生 transport、当前 owner、只读样本与共享操作。原声音对比 top-level await 加 async IIFE；全屏 WK 阅读器补刘海安全区，阅读时收起原生设置按钮避免挡住保存。
+- 最终全套 Core 15/15、原生 36/36、既有服务 79/79 通过；最后的设置按钮显示修正后 H5 5/5 定向用例全部通过，实际模拟器重新检查保存／返回／通话控件。定向运行的五项用例及Selected tests均已输出passed；其后xcodebuild停在SDK OS-build诊断／结果清理超过三分钟，已对该唯一PID发送INT结束，不把该命令退出码算成功；前述全套命令正常退出0。源同步检查全部通过，H5 未修改 CSS／52 图语义目录和小图扩展一致。
+- 实际系统活动中检查中→大留在桌面、完整静音／结束／折叠按钮；初版大卡底部被裁切，已把折叠按钮放入正文行并缩短正文行。点静音后本地 zeroBytes 增长。原生截图漏掉系统独立活动层，最终证据改用实际 serve-sim 镜像全帧，不以空白截图或组件 gallery 证明系统布局。
+- 后台方案通过灵动岛进入同一 H5 原 reader，表格可见、sessions 不变且 inputBytes 继续增长。自动测试覆盖单次 sessions=1、真实 WK重载／后台持续采集、reload前pending方案、两人姓名／仅倾听、原mute按钮、无敏感凭据注入、旧owner／未知图片／隐藏页Reaction拒绝。手动结束后 active=null，收到一次 fixture-plan 回执；没有保存录音或拨真实模型。
+- Release 1.0.0 (9) development签名归档、导出、独立IPA解包验包通过：主App和扩展profiles、arm64、deep/strict签名、H5所有产物hash、扩展Assets.car全部52图、无Debug fixture、正常TLS、TalkToVIntent后台AudioRecording/SessionStarting元数据均通过。最终IPA SHA-256：`b0a9773495e1d3f87332a05025d9da885af4a492cc8ae86b24914bf64171d935`。
+- 安装前只读 activeCalls=0、creatingSessions=0、backgroundTasks=0。devicectl已覆盖安装最终build9到指定iPhone17Pro；未卸载、未清空Keychain、未自动启动真实通话。正式服务／Gateway／Worker未改、未重启，无push／合并／上线。
+- 真机状态是**已安装、人工接受待定**。历史build5双向后台按键接受仍保留，不能替代build9真实语义、系统展开、锁屏、来电／网络切换和长通话验收。GPT Live原生传输仍明确不可选；iPad沿用原H5响应式CSS与family配置，本轮没有把build8的iPad实测当作build9验收。
+
+![系统实际文字大卡与完整控件](evidence/build9-island-conversation-mirror.png)
+
+![灵动岛进入原 H5 阅读器](evidence/build9-h5-reader-simulator.jpg)
