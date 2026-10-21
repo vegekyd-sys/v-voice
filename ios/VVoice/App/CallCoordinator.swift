@@ -15,6 +15,7 @@ import VVoiceCore
         #endif
         return CallCoordinator()
     }()
+    @ObservationIgnored var islandPresentation = IslandPresentation()
     private(set) var state = CallState()
     private(set) var detail = "长按操作按钮，即刻开始对话"
     private(set) var lastCaption = ""
@@ -136,6 +137,7 @@ import VVoiceCore
     private(set) var autoOpenDocumentID: String?
     private(set) var resultID: String?
     private(set) var resultText = ""
+    @ObservationIgnored private var islandResultAlerts: Set<String> = []
     @ObservationIgnored private var shownResults: Set<String> = []
     @ObservationIgnored private var acknowledgingResults: Set<String> = []
     @ObservationIgnored private var initialized = false
@@ -146,6 +148,9 @@ import VVoiceCore
         self.avatar = VoiceAvatar(api: self.api)
         model = VoiceModel(rawValue: UserDefaults.standard.string(forKey: "voiceModel") ?? "") ?? .seeduplex
         bound = self.api.isBound
+        avatar.onDisplayed = { [weak self] id in
+            guard let self else { return }; self.islandDidDisplayReaction(id, owner: self.presentationID)
+        }
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
             let kind = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue
@@ -276,6 +281,7 @@ import VVoiceCore
             guard let self, self.owned(owner), self.audio.isRunning, self.phase != .interrupted else { return }
             self.lastInput = Date()
             guard self.providerReady else { return }
+            self.observeIslandAudio(rms, outputRMS: self.audio.playbackRMS)
             if !self.muted, self.injectedSpeech, self.audio.queuedFrames > 0 {
                 self.onsetFrames = rms >= 0.025 ? self.onsetFrames + 1 : 0
                 if self.onsetFrames >= 4 {
@@ -433,7 +439,7 @@ import VVoiceCore
         resultID = id; resultText = document.text
         if document.shouldAutoOpen { autoOpenDocumentID = id }
         tasks.removeAll { $0.id == id }; updateAvatar()
-        publish()
+        publish(resultID: id)
     }
     private func updateAvatar() {
         avatar.update(turns: conversation.turns, activity: tasks.last?.activity ?? "listen", outcome: tasks.isEmpty ? avatarOutcome : "pending")
@@ -659,6 +665,7 @@ import VVoiceCore
     private func beginActivity(required: Bool) throws {
         guard activitiesEnabled else { if required { throw VoiceError.liveActivity }; return }
         do {
+            islandResultAlerts.removeAll()
             let a = try Activity.request(attributes: CallAttributes(callID: presentationID), content: ActivityContent(state: activityState, staleDate: Date().addingTimeInterval(25)), pushType: nil)
             activity = a
             activityWatch = Task { [weak self] in
@@ -692,16 +699,20 @@ import VVoiceCore
                      caption: islandCaptions ? CallDocument.plain(turn?.text ?? "", limit: 84) : "",
                      captionSpeaker: islandCaptions ? CallDocument.plain(turn?.label ?? "V", limit: 32) : "",
                      documentTitle: unread.map { islandCaptions ? $0.title : "完整方案已就绪" },
-                     documentID: unread?.id, taskLabel: tasks.last?.title)
+                     documentID: unread?.id, taskLabel: tasks.last?.title, island: islandSnapshot(documentID: unread?.id))
     }
-    private func publish() {
+    func publishIslandActivity() { publish() }
+    private func publish(resultID: String? = nil) {
         UIApplication.shared.isIdleTimerDisabled = appIsActive && active
         guard let a = activity else { return }
         let content = ActivityContent(state: activityState, staleDate: Date().addingTimeInterval(25))
+        let shouldAlert = resultID.map { id in !appIsActive && !islandResultAlerts.contains(id) && islandResultAlerts.count < 32 } ?? false
+        if let resultID, shouldAlert { islandResultAlerts.insert(resultID) }
+        let alert = shouldAlert ? AlertConfiguration(title: "方案整理好了", body: "点击查看全文，通话继续", sound: .default) : nil
         let previous = activityUpdates
         activityUpdates = Task { [weak self] in
             await previous?.value
-            guard let self, self.activity?.id == a.id else { return }; await a.update(content)
+            guard let self, self.activity?.id == a.id else { return }; await a.update(content, alertConfiguration: alert)
         }
     }
     private func finishActivity(phase: VoicePhase) {

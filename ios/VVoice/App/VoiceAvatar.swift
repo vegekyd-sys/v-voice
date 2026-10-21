@@ -16,6 +16,7 @@ struct AvatarPicture: Codable, Sendable {
         return (try? JSONDecoder().decode([AvatarPicture].self, from: data)) ?? []
     }()
     static let pictures = Dictionary(uniqueKeysWithValues: gallery.map { ($0.id, $0) })
+    var onDisplayed: ((String) -> Void)?
     private(set) var pictureID = "idle"
     private(set) var anchor: String?
     private(set) var displayEpoch = 0
@@ -196,6 +197,7 @@ struct AvatarPicture: Codable, Sendable {
     /// Called by the mounted portrait after a display cycle, not by selection.
     func displayed(_ id: String) {
         guard visible, id == pictureID, id != "idle" else { return }
+        onDisplayed?(id)
         var value: [String: Any] = ["type":"avatar.displayed","picture":id,"source":source,"visible":true]
         if let anchor { value["anchor"] = anchor }
         if let revision = selectedRevision { value["revision"] = revision }

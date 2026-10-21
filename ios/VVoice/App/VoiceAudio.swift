@@ -58,6 +58,13 @@ private final class CaptureHandoff: @unchecked Sendable {
     private var player: AVAudioPlayerNode?
     private let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24_000, channels: 1, interleaved: false)!
     private var ledger = PlaybackLedger()
+    private var outputEnvelope = PlaybackEnvelope()
+    /// Display-only. The sample clock, not packet arrival, selects energy.
+    var playbackRMS: Double? {
+        guard startingOutput, ledger.queuedFrames > 0, let player, player.isPlaying,
+              let rendered = player.lastRenderTime, let cursor = player.playerTime(forNodeTime: rendered) else { return nil }
+        return outputEnvelope.rms(at: cursor.sampleTime)
+    }
     private var lastCaptureAt = Date.distantPast
     private var capturedInput = false
     private var started = false
@@ -149,6 +156,7 @@ private final class CaptureHandoff: @unchecked Sendable {
             let samples = bytes.bindMemory(to: Int16.self)
             for i in 0..<count { dst[i] = Float(Int16(littleEndian: samples[i])) / 32768 }
         }
+        outputEnvelope.appendPCM16(data)
         outputFinished = false; buffer.frameLength = AVAudioFrameCount(count)
         let epoch = ledger.epoch
         player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { @Sendable [weak self] _ in
@@ -178,6 +186,7 @@ private final class CaptureHandoff: @unchecked Sendable {
             let envelope = pow(sin(Double.pi * Double(i) / 3360), 2) * 0.07
             dst[i] = Float((sin(2 * Double.pi * 660 * t) + sin(2 * Double.pi * 880 * t)) * envelope)
         }
+        outputEnvelope.skip(frames: 3360)
         let epoch = ledger.epoch
         player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { @Sendable [weak self] _ in
             Task { @MainActor [weak self] in
@@ -191,6 +200,7 @@ private final class CaptureHandoff: @unchecked Sendable {
         if ledger.queuedFrames > 0 { startPlayback() } else { onDrained?() }
     }
     func clear() {
+        outputEnvelope.reset()
         ledger.clear(); player?.stop(); startingOutput = false; outputFinished = false; onPlayback?(false)
     }
     func beginStream() {

@@ -60,3 +60,47 @@ struct VoiceShortcuts: AppShortcutsProvider {
 }
 
 #endif
+
+/// Presentation actions are bound to one current call; old activities can't control a new call.
+struct IslandLayoutIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "切换 V 通话展开内容"
+    static var supportedModes: IntentModes { .background }
+    @Parameter(title: "通话") var callID: String
+    @Parameter(title: "显示文字") var conversation: Bool
+    init() {}
+    init(callID: String, conversation: Bool) { self.callID = callID; self.conversation = conversation }
+    @MainActor func perform() async throws -> some IntentResult {
+        #if !VOICE_WIDGET
+        CallCoordinator.shared.selectIslandLayout(conversation ? .conversation : .audio, callID: callID)
+        #endif
+        return .result()
+    }
+}
+struct IslandMuteIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "静音或恢复本次 V 通话"
+    static var supportedModes: IntentModes { .background }
+    @Parameter(title: "通话") var callID: String
+    init() {}
+    init(callID: String) { self.callID = callID }
+    @MainActor func perform() async throws -> some IntentResult {
+        #if !VOICE_WIDGET
+        let call = CallCoordinator.shared
+        if call.active, call.presentationID == callID { call.toggleMute() }
+        #endif
+        return .result()
+    }
+}
+struct IslandEndIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "结束本次 V 通话"
+    static var supportedModes: IntentModes { .background }
+    @Parameter(title: "通话") var callID: String
+    init() {}
+    init(callID: String) { self.callID = callID }
+    @MainActor func perform() async throws -> some IntentResult {
+        #if !VOICE_WIDGET
+        let call = CallCoordinator.shared
+        if call.active, call.presentationID == callID { await call.end() }
+        #endif
+        return .result()
+    }
+}
