@@ -127,11 +127,11 @@
     "assets/v-voice-icon.svg": "2b578443cc70bc8eb78ff9877be5e70473d61ed6713ea6f538bd1fa665d27c66",
     "assets/v-voice-icon-32.png": "7bae67ea83c9c7cf81afd9786a18b94c73f9d3643372467e7d331532d1d5555b",
     "assets/v-voice-apple-touch.png": "643f67cd7d67bb2563f79ec2938d01e869cd2634bd9f78e7597f98afe525763c",
-    "ios/H5/native-h5.mjs": "fc6fb58db7ee8c6f8fa97feef8f2587cfc64b6d840d91d6e9f5456c5c15c052f"
+    "ios/H5/native-h5.mjs": "230b7c6792e25aa079ed2fa1edaad0d9a213f018f83befd2e42f74ec51e5300d"
   },
   "outputs": {
-    "index.html": "c32171ef70e1a309a8bfa4425582172fcaccf2d62f4d8ca2ae3e4d74b013505a",
-    "native-h5.js": "81ac4728bfb9c6e1a3f62891293566a921f5c35106bfe4ee36293e29ffc49877",
+    "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
+    "native-h5.js": "1ec4c9492ce04f708fc86f1ca9a8fe55d4d31d97404febd53c6de167db122b93",
     "comparison.html": "7beb6c5d3e5933b5c020ddf23e200679318faa98568904f927d0553ea3d33076",
     "styles.css": "2dcf2ee4c40f06872ffaf55ba54bc1844fa1941deb6df2d28c4109421cf49dcf",
     "comparison.css": "ae9fbcffb322e32737e2ce0ed830c1b86f9f27406b4ce8b686dc8cac9f36ba16",

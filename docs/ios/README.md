@@ -1,8 +1,10 @@
 # V Voice iOS · 一按通话
 
+当前 build 9 改为实际 H5 内嵌＋原生后台通话，并整合文字／Reaction／波形灵动岛；详见 [H5 容器与回退基线](H5-SHELL.md)。build 8 已保存为 `ios-native-build8-20261022`。以下 build 6–8 原生 UI 记录保留为历史。
+
 完整功能清单与剩余差异见 [H5 → iOS 迁移核对](H5-PARITY.md)。build 8 补齐多人转写、身份条子、长回复内容卡片、富文本、Grok 声音与样本试听等遗漏；不能把局部视觉对齐写成全部迁移完成。
 
-目标是完整做好一件事：首次绑定个人电话入口、授权麦克风并配置操作按钮后，长按即可开始或继续与 V 的连续语音对话。原生 SwiftUI App + AudioRecordingIntent / LiveActivityIntent / ControlWidget + ActivityKit / WidgetKit，最低 iOS 26。
+目标是完整做好一件事：首次绑定个人电话入口、授权麦克风并配置操作按钮后，长按即可开始或继续与 V 的连续语音对话。WKWebView H5 界面＋原生后台音频，使用 AudioRecordingIntent / LiveActivityIntent / ControlWidget + ActivityKit / WidgetKit，最低 iOS 26。
 
 ## 当前交付边界
 
@@ -36,7 +38,7 @@
 | 模型恢复 | `provider.reconnecting/recovered` 驱动真实状态；恢复期间不继续发送输入，35 秒无恢复则进入客户端有界重连。 |
 | 身份与协议 | HTTPS Origin、cookie、phone 路由和 relayTicket 沿用既有接口；不提交 sessionKey/callerId/工具凭据，不信任客户端扩大权限。拒绝携带能力的跨站重定向。 |
 | 崩溃恢复 | 记录拥有的 voiceSessionId；下次拨号先有界清理旧归属，409 不能关闭新通话。旧活动在启动时结束；活动 stale 后显示连接状态未知，不把活动本身当作存活证据。 |
-| 内容 | 正文、最多 80 段对话及 16 份方案仅在内存中，挂断清空。完整方案使用 H5 同一个 GFM lexer，在非主线程解析，由 SwiftUI 原生绘制标题、列表、表格、代码、图片及媒体；不在收音时创建 WebView。只有内容实际进入阅读视图且 App 活跃才发送 content-shown；并发打开去重。 |
+| 内容 | 正文、最多 80 段对话及 16 份方案仅在内存中，挂断清空。build 9 完整方案使用原 H5 阅读器；网页生命周期与原生录音分离，重载网页不会重拨。build 6–8 原生 GFM 阅读器源码保留作基线。只有内容实际进入阅读视图且 App 活跃才发送 content-shown；并发打开去重。 |
 | 灵动岛内容 | 状态仅含最多 84 字的短句、32 字方案标题、任务标签与本通话的不透明内容 ID；不包含原文、入口或 cookie。URL 从摘要移除，文本标记 privacySensitive，设置可关闭对话摘要。点方案深链仅允许本通话已有内容，不自动建连。 |
 
 ## Apple 官方约束

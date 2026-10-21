@@ -1,3 +1,10 @@
+## 2026-10-22 — iOS build 9 local candidate: embedded H5 and Dynamic Island
+
+- Preserve native build 8 as tag `ios-native-build8-20261022`, with its signed archive and IPA retained for overwrite rollback.
+- Run the actual bundled H5 DOM, CSS, conversation components, reader, Reaction and sample comparison inside WKWebView. Keep binding/settings and the existing native call/audio owner; page reloads and content navigation cannot dial another call.
+- Integrate the separate Dynamic Island candidate: compact status, audio card with measured energy snapshots, conversation/Reaction card, inline mute/end/fold, and a current-call link to the original H5 report reader. Respect lock-screen privacy and stale state.
+- Verify source hashes, all 52 compiled widget images, bounded payloads, trusted-frame/current-owner bridge checks and unchanged background recording intent metadata. GPT Live native transport and physical build 9 acceptance remain pending. No web/server release, merge or deployment.
+
 ## 2026-10-22 — iOS build 8 local candidate: H5 interaction parity audit
 
 - Restore human captions for speaker-routed calls by consuming speaker.utterance / speaker.decision on the existing relay. Keep consecutive speakers in the current round, stable per-utterance rows, participant names, uncertain-name labels, five colors and listen-only state.

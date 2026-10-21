@@ -24,7 +24,7 @@ struct IslandCallSurface: View {
                     Group {
                         if quiet { Image(systemName: stale ? "pause.fill" : state.phase.symbol).font(.system(size: 24)).foregroundStyle(islandLilac) }
                         else { Image(IslandReactionCatalog.assets[state.island.reactionID] ?? "VAvatar_listen_5").resizable().scaledToFill() }
-                    }.frame(width: conversation ? 60 : 56, height: 60).clipShape(Circle())
+                    }.frame(width: conversation ? 52 : 56, height: conversation ? 52 : 60).clipShape(Circle())
                         .accessibilityLabel(quiet ? status : "V 的 Reaction")
                 }
                 if conversation {
@@ -41,6 +41,7 @@ struct IslandCallSurface: View {
                             }
                         }.frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).contentShape(Rectangle())
                     }.foregroundStyle(.white.opacity(0.92)).accessibilityLabel(state.documentID != nil && !stale ? "方案已就绪，查看全文" : "返回当前通话")
+                    if !lockScreen, !stale { IslandFoldButton(callID: callID) }
                 } else {
                     Button(intent: IslandLayoutIntent(callID: callID, conversation: true)) {
                         IslandWaveform(levels: quiet || luminanceReduced ? [] : state.island.levels,
@@ -49,7 +50,7 @@ struct IslandCallSurface: View {
                     }.buttonStyle(.plain).accessibilityLabel("查看对话文字")
                     endButton
                 }
-            }.frame(minHeight: 60)
+            }.frame(minHeight: conversation ? 52 : 60)
             if conversation {
                 HStack {
                     if !quiet {

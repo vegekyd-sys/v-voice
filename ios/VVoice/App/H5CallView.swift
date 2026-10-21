@@ -149,6 +149,11 @@ struct H5WebSurface: UIViewRepresentable {
             guard !call.active, let id = payload["id"] as? String, let model = VoiceModel(rawValue: id), call.modelOptions.contains(where: { $0.id == id && $0.available }) else { throw VoiceError.unavailable }; call.model = model
         case "voice":
             guard !call.active, let id = payload["id"] as? String, call.grokVoices.contains(where: { $0.id == id }) else { throw VoiceError.unavailable }; call.grokVoice = id
+        case "avatarDisplayed":
+            guard owned, foreground, latest["visible"] as? Bool == true, call.active,
+                  let id = payload["pictureID"] as? String, VoiceAvatar.pictures[id] != nil else { throw CancellationError() }
+            call.islandDidDisplayReaction(id, owner: owner)
+            return [:]
         case "avatar", "avatarEvents": return try await call.h5Cosmetic(action == "avatar" ? "avatar" : "avatar-events", body: payload, owner: owner)
         case "share":
             guard owned, let text = payload["text"] as? String, text.utf8.count <= 200_000 else { throw VoiceError.protocolMismatch }
@@ -169,7 +174,7 @@ struct H5WebSurface: UIViewRepresentable {
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { ready = false }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { if ["/compare", "/comparison.html"].contains(webView.url?.path ?? "") { ready = true; if call.active { reload() } } }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { reload() }
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { onError("页面暂时无法载入，通话引擎保持独立运行。") }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { onError("界面暂时无法载入，请重新加载。") }
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
         let url = navigationAction.request.url
         if Self.trusted(url, mainFrame: true) { decisionHandler(.allow); return }

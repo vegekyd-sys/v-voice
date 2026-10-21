@@ -38,7 +38,7 @@ mountCallUi(document,view,{
   },
 });
 mountChangelog(document,window);
-const avatar=mountAvatar(document,window,{owner:()=>owner,onDisplayed:event=>{if(current?.visible)telemetry?.display(event);}});
+const avatar=mountAvatar(document,window,{owner:()=>owner,onDisplayed:event=>{if(current?.visible){telemetry?.display(event);void post('avatarDisplayed',{pictureID:event.picture}).catch(()=>{});}}});
 function stopVisuals(){reactions?.dispose();reactions=null;telemetry?.close();telemetry=null;}
 function startVisuals(id){
   stopVisuals();const callID=id;

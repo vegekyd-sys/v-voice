@@ -12,7 +12,7 @@ App 页面直接运行已有 H5：原 `index.html` 页面 DOM、`styles.css`、`
 
 `ios/H5/native-h5.mjs` 只连接 H5 actions/view state 与既有原生通话。麦克风、播放、接通、静音、重连、结束和 ActivityKit 仍由同一个 `CallCoordinator` / `VoiceAudio` 持有。后台网页暂停或重新加载不能重拨、重新收音或新建通话。正文、任务和多人 speaker 行投影进原 H5 组件，阅读器、键盘、滚动、当前／全部、动画和头像变化由原网页实现负责。
 
-生成文件位于 `VVoice/Resources/H5Shell`，是 Xcode 文件夹资源，目录结构保持原样。`sync-h5-shell.mjs --check` 对每个上游源文件、原图、未修改 CSS、生成 HTML／JS 的 SHA-256 做确定性核对；上游改动后需显式同步。脚本只替换网页音频引擎启动脚本为原生桥、去掉不使用的 modulepreload，并加入容器 CSP。已有声音对比页运行原代码，仅原生路由提供已有样本。
+生成文件位于 `VVoice/Resources/H5Shell`，是 Xcode 文件夹资源，目录结构保持原样。`sync-h5-shell.mjs --check` 对每个上游源文件、原图、未修改 CSS、生成 HTML／JS 的 SHA-256 做确定性核对；上游改动后需显式同步。脚本替换网页音频引擎启动脚本为原生桥、去掉不使用的 modulepreload，并加入容器 CSP。原 CSS 文件不变，仅为全屏 WK 的阅读器补充刘海安全区；声音对比页的原 top-level await 用 async IIFE 包裹，由原生路由只读提供已有样本。
 
 本地页面使用 Apple 公共 WKURLSchemeHandler 和 WKScriptMessageHandlerWithReply。资源 scheme 只读取清单内的包内文件及两个只读 comparison 路由；消息 handler 仅接受包内主框架。会话／工具的权限和实际 voiceSessionId 均由原生与服务器决定；不把个人入口、访问 cookie、relayTicket、工具密钥注入网页。网页不能申请麦克风，也不能调用任意 API。外部链接在系统浏览器打开，不带桥接权限。
 
@@ -33,3 +33,11 @@ App 页面直接运行已有 H5：原 `index.html` 页面 DOM、`styles.css`、`
 - 实际 WKWebView 使用本地协议服务：原 H5 多人气泡与“仅倾听”标签、原 reader 的表格 DOM、点击原 mute 按钮均通过；重载前后 inputBytes 增长、sessions=1，reload 前已缓存的方案目标能够打开。
 - 首轮无可见窗口的 WKWebView 测试让 requestAnimationFrame 暂停，方案自动展开用例未通过；将实际 WKWebView 加入模拟器真实窗口后重跑通过，没有放宽断言或用纯字符串替代渲染。
 - 在 serve-sim 的实际 iPhone 17 Pro 帧中看到 H5 首屏与原 Grok picker／试听入口；不是设计效果图。完整新灵动岛合并后另记最终签名、安装和真机验收状态。
+
+## 合成 build 9
+
+已合入独立灵动岛源码 `3e2ed32`（本分支提交 `86193ea`）。H5 原头像真正 displayed 后，当前前台 owner 的 reviewed pictureID 才可短暂发布到灵动岛；遮盖、晚到旧通话及未知图片均拒绝。后台不增加模型请求。原生音频继续独占收音与播放，波形使用真实输入和实际 playerTime 对齐的输出能量快照。
+
+真实系统展开复验发现大卡底部被裁切，现把折叠按钮移入正文行、正文头像缩为 52 pt，保留底部 44 pt 静音／结束控件。serve-sim 实际看到完整按钮；点静音后本地零帧字节增加。后台送达本地方案后，点击入口进入同一通话 H5 reader，sessions 保持 3、inputBytes 继续增长。该计数是手动 fixture 累计值，不代表正式通话验收。
+
+本版仍是本地候选；真机安装及实际按键通话接受在 versions.json / VALIDATION.md 分开登记。

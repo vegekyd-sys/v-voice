@@ -44,6 +44,13 @@ import VVoiceCore
         try await call.startOrContinue()
         do { _ = try await host.command("end", payload: [:], owner: "retired-call"); XCTFail("A stale page cannot end a new owner") } catch {}
         XCTAssertTrue(call.active)
+        host.latest = H5Snapshot.make(call, visible: true)
+        _ = try await host.command("avatarDisplayed", payload: ["pictureID":"reaction-2"], owner: call.presentationID)
+        XCTAssertEqual(call.activityState.island.reactionID, "reaction-2")
+        do { _ = try await host.command("avatarDisplayed", payload: ["pictureID":"../../secret"], owner: call.presentationID); XCTFail("Only known poses") } catch {}
+        host.latest = H5Snapshot.make(call, visible: false)
+        do { _ = try await host.command("avatarDisplayed", payload: ["pictureID":"reaction-6"], owner: call.presentationID); XCTFail("Covered page cannot publish Reaction") } catch {}
+        XCTAssertEqual(call.activityState.island.reactionID, "reaction-2")
         do { _ = try await host.command("session", payload: [:], owner: call.presentationID); XCTFail("No arbitrary API bridge") } catch {}
         XCTAssertTrue(call.active)
         await call.end()
@@ -106,6 +113,8 @@ import VVoiceCore
         try await until { !call.documents.isEmpty }
         host.update(H5Snapshot.make(call, visible: true), foreground: true)
         try await until { try await web.evaluateJavaScript("document.querySelector('#readerBody table') !== null") as? Bool == true }
+        let readerTop = try await web.evaluateJavaScript("document.getElementById('readerBack').getBoundingClientRect().top") as? Double ?? 0
+        XCTAssertGreaterThanOrEqual(readerTop, Double(web.safeAreaInsets.top) - 1, "Reader navigation must clear the system status bar")
         XCTAssertTrue(call.active)
         host.update(H5Snapshot.make(call, visible: false), foreground: false)
         try await Task.sleep(for: .milliseconds(800))

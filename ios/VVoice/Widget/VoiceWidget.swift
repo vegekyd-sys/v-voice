@@ -17,11 +17,6 @@ struct VoiceLiveActivity: Widget {
                 .widgetURL(destination(context))
         } dynamicIsland: { context in
             DynamicIsland {
-                DynamicIslandExpandedRegion(.trailing) {
-                    if context.state.island.layout == .conversation, !context.isStale {
-                        IslandFoldButton(callID: context.attributes.callID)
-                    }
-                }
                 DynamicIslandExpandedRegion(.bottom) {
                     IslandCallSurface(state: context.state, callID: context.attributes.callID, stale: context.isStale)
                 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Check a Release bundle; unsigned acceptance is explicit and never means installable."""
-import argparse,json,pathlib,plistlib,subprocess
+import argparse,json,pathlib,plistlib,subprocess,hashlib
 p=argparse.ArgumentParser();p.add_argument('app',type=pathlib.Path);p.add_argument('--allow-unsigned',action='store_true');a=p.parse_args()
 info=plistlib.loads((a.app/'Info.plist').read_bytes())
 assert info['CFBundleIdentifier']=='com.versa.vvoice'
@@ -8,6 +8,11 @@ assert info.get('NSSupportsLiveActivities') is True
 assert info.get('UIBackgroundModes')==['audio']
 assert info.get('NSMicrophoneUsageDescription')
 assert info.get('UIDeviceFamily') == [1, 2], 'Native layout must support iPhone and iPad'
+shell=a.app/'H5Shell'
+manifest=json.loads((shell/'source-manifest.json').read_text())
+for name,digest in manifest['outputs'].items():
+    assert hashlib.sha256((shell/name).read_bytes()).hexdigest()==digest, 'Embedded H5 artifact mismatch: '+name
+assert (shell/'styles.css').read_bytes()==(pathlib.Path(__file__).resolve().parents[2]/'lab/gpt-live-h5/styles.css').read_bytes(), 'Embedded UI must use original H5 CSS'
 assert (a.app/'H5Markdown.js').is_file()
 assert (a.app/'H5DesignSource.json').is_file()
 updates=json.loads((a.app/'H5Updates.json').read_text())
@@ -25,8 +30,14 @@ for marker in [b'--local-voice-fixture',b'127.0.0.1:29837',b'fixture-cookie']:
 architecture=subprocess.check_output(['lipo','-archs',str(binary)],text=True).strip()
 assert architecture=='arm64',architecture
 extension=a.app/'PlugIns/VVoiceActivity.appex';assert extension.is_dir()
+island=json.loads((extension/'IslandAssets.manifest.json').read_text())
+assert len(island['images'])==52, 'All reviewed island reactions must ship'
+assets=json.loads(subprocess.check_output(['assetutil','--info',str(extension/'Assets.car')],text=True))
+names={item.get('Name') for item in assets}
+assert {p['asset'] for p in gallery}<=names, 'Island assets missing from compiled extension catalog'
+
 metadata=json.loads((a.app/'Metadata.appintents/extract.actionsdata').read_text())
-actions=metadata['actions'];assert {'TalkToVIntent','MuteVIntent','EndVIntent','OpenVIntent'}<=actions.keys()
+actions=metadata['actions'];assert {'TalkToVIntent','MuteVIntent','EndVIntent','OpenVIntent','IslandLayoutIntent','IslandMuteIntent','IslandEndIntent'}<=actions.keys()
 assert actions['TalkToVIntent'].get('openAppWhenRun') is False
 assert actions['TalkToVIntent'].get('supportedModes') == 1, 'Do not replace island calling with foreground opening'
 protocols=actions['TalkToVIntent']['systemProtocols']
