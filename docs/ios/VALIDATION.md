@@ -73,3 +73,5 @@ Siri 通话快捷指令可创建，非法接收者／视频拒绝的两项集成
 新增设置按钮已在 Codex 内置浏览器的真实模拟器镜像中检查，系统“添加到 Siri”控件实际显示。没有把模拟器的快捷指令可创建或 CallKit 前台测试当作锁屏／冷启动／仅灵动岛验收。
 
 发布包注册复核：最终候选使用 build 4，根 Info.plist 以 `INIntentsSupported` 注册 App 内 SiriKit handler（不是扩展的 IntentsSupported 键）；NSUserActivityTypes 注册通话 handoff，未列入锁屏受限列表。新增读取真实测试宿主 Bundle Info 的集成检查，SiriKit 三项测试 3/3。快捷指令专用操作不要求额外 Siri 语音授权；这不代表已完成锁屏实际拨号。
+
+build 4（代码 `cd9954f`，系统通话实现 `498e596`）开发签名、归档、IPA 导出和 USB 实机安装成功。导出 IPA 单独解包后验证主 App／扩展签名与 profiles、Siri entitlement、INIntentsSupported 与 UserActivity 注册、旧 App Intent 保持 background 模式、正常 TLS 和无 Debug fixture。已请用户仅在一次配置时使用设置中的系统按钮添加「灵动岛拨给 V」，替换旧的普通 App 动作；退出 App 后的实际操作按钮／仅灵动岛通话仍等待用户确认，不记为通过。
