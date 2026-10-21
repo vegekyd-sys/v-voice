@@ -1,0 +1,467 @@
+[
+  {
+    "id": "reaction-0",
+    "label": "凑近认真听",
+    "asset": "VAvatar_reaction_0",
+    "continuations": [
+      "reaction-1",
+      "listen-5"
+    ]
+  },
+  {
+    "id": "reaction-1",
+    "label": "温和请再说一次",
+    "asset": "VAvatar_reaction_1",
+    "continuations": [
+      "reaction-0",
+      "listen-1"
+    ]
+  },
+  {
+    "id": "reaction-2",
+    "label": "认真回应等待",
+    "asset": "VAvatar_reaction_2",
+    "continuations": [
+      "reaction-3",
+      "listen-5"
+    ]
+  },
+  {
+    "id": "reaction-3",
+    "label": "仍在陪你一起等",
+    "asset": "VAvatar_reaction_3",
+    "continuations": [
+      "reaction-2",
+      "listen-3"
+    ]
+  },
+  {
+    "id": "reaction-4",
+    "label": "轻轻挥手说再见",
+    "asset": "VAvatar_reaction_4",
+    "continuations": [
+      "reaction-5",
+      "complete-5"
+    ]
+  },
+  {
+    "id": "reaction-5",
+    "label": "安心收尾",
+    "asset": "VAvatar_reaction_5",
+    "continuations": [
+      "reaction-4",
+      "listen-5"
+    ]
+  },
+  {
+    "id": "reaction-6",
+    "label": "听到画面开始有想法",
+    "asset": "VAvatar_reaction_6",
+    "continuations": [
+      "reaction-8",
+      "listen-1"
+    ]
+  },
+  {
+    "id": "reaction-7",
+    "label": "和你确认构图",
+    "asset": "VAvatar_reaction_7",
+    "continuations": [
+      "reaction-9",
+      "listen-2"
+    ]
+  },
+  {
+    "id": "reaction-8",
+    "label": "想象运动的节奏",
+    "asset": "VAvatar_reaction_8",
+    "continuations": [
+      "reaction-6",
+      "background-3"
+    ]
+  },
+  {
+    "id": "reaction-9",
+    "label": "把动作节奏讲给你听",
+    "asset": "VAvatar_reaction_9",
+    "continuations": [
+      "reaction-7",
+      "web-2"
+    ]
+  },
+  {
+    "id": "reaction-10",
+    "label": "你出题，我认真听",
+    "asset": "VAvatar_reaction_10",
+    "continuations": [
+      "reaction-14",
+      "listen-5"
+    ]
+  },
+  {
+    "id": "reaction-11",
+    "label": "轮到你啦",
+    "asset": "VAvatar_reaction_11",
+    "continuations": [
+      "listen-2",
+      "reaction-10"
+    ]
+  },
+  {
+    "id": "reaction-12",
+    "label": "你说得对，我先听清楚",
+    "asset": "VAvatar_reaction_12",
+    "continuations": [
+      "listen-5",
+      "reaction-2"
+    ]
+  },
+  {
+    "id": "reaction-13",
+    "label": "明白了，我换个说法",
+    "asset": "VAvatar_reaction_13",
+    "continuations": [
+      "listen-2",
+      "reaction-12"
+    ]
+  },
+  {
+    "id": "reaction-14",
+    "label": "你喜欢的，我想听你说",
+    "asset": "VAvatar_reaction_14",
+    "continuations": [
+      "reaction-10",
+      "listen-5"
+    ]
+  },
+  {
+    "id": "idle",
+    "label": "等待接听",
+    "asset": "VHome",
+    "continuations": []
+  },
+  {
+    "id": "listen-0",
+    "label": "倾耳招呼",
+    "asset": "VAvatar_listen_0",
+    "continuations": [
+      "listen-5",
+      "complete-5"
+    ]
+  },
+  {
+    "id": "listen-1",
+    "label": "好奇追问",
+    "asset": "VAvatar_listen_1",
+    "continuations": [
+      "memory-0",
+      "background-3"
+    ]
+  },
+  {
+    "id": "listen-2",
+    "label": "热情解释",
+    "asset": "VAvatar_listen_2",
+    "continuations": [
+      "web-2",
+      "memory-3"
+    ]
+  },
+  {
+    "id": "listen-3",
+    "label": "托腮陪伴",
+    "asset": "VAvatar_listen_3",
+    "continuations": [
+      "listen-5",
+      "complete-5"
+    ]
+  },
+  {
+    "id": "listen-4",
+    "label": "开心大笑",
+    "asset": "VAvatar_listen_4",
+    "continuations": [
+      "complete-1",
+      "complete-0"
+    ]
+  },
+  {
+    "id": "listen-5",
+    "label": "认真倾听",
+    "asset": "VAvatar_listen_5",
+    "continuations": [
+      "listen-3",
+      "complete-5"
+    ]
+  },
+  {
+    "id": "memory-0",
+    "label": "回想往事",
+    "asset": "VAvatar_memory_0",
+    "continuations": [
+      "background-3",
+      "memory-4"
+    ]
+  },
+  {
+    "id": "memory-1",
+    "label": "翻阅记录",
+    "asset": "VAvatar_memory_1",
+    "continuations": [
+      "background-1",
+      "background-5"
+    ]
+  },
+  {
+    "id": "memory-2",
+    "label": "想起线索",
+    "asset": "VAvatar_memory_2",
+    "continuations": [
+      "listen-1",
+      "memory-0"
+    ]
+  },
+  {
+    "id": "memory-3",
+    "label": "展示线索",
+    "asset": "VAvatar_memory_3",
+    "continuations": [
+      "web-2",
+      "listen-2"
+    ]
+  },
+  {
+    "id": "memory-4",
+    "label": "慎重推敲",
+    "asset": "VAvatar_memory_4",
+    "continuations": [
+      "background-0",
+      "calendar-1"
+    ]
+  },
+  {
+    "id": "memory-5",
+    "label": "串起回忆",
+    "asset": "VAvatar_memory_5",
+    "continuations": [
+      "web-2",
+      "memory-3"
+    ]
+  },
+  {
+    "id": "web-0",
+    "label": "仔细观察",
+    "asset": "VAvatar_web_0",
+    "continuations": [
+      "listen-1",
+      "memory-4"
+    ]
+  },
+  {
+    "id": "web-1",
+    "label": "探索世界",
+    "asset": "VAvatar_web_1",
+    "continuations": [
+      "listen-1",
+      "background-3"
+    ]
+  },
+  {
+    "id": "web-2",
+    "label": "解释发现",
+    "asset": "VAvatar_web_2",
+    "continuations": [
+      "listen-2",
+      "memory-3"
+    ]
+  },
+  {
+    "id": "web-3",
+    "label": "比较选择",
+    "asset": "VAvatar_web_3",
+    "continuations": [
+      "memory-4",
+      "background-0"
+    ]
+  },
+  {
+    "id": "web-4",
+    "label": "惊讶发现",
+    "asset": "VAvatar_web_4",
+    "continuations": [
+      "listen-1",
+      "memory-2"
+    ]
+  },
+  {
+    "id": "web-5",
+    "label": "满意发现",
+    "asset": "VAvatar_web_5",
+    "continuations": [
+      "complete-0",
+      "complete-1"
+    ]
+  },
+  {
+    "id": "calendar-0",
+    "label": "逐项安排",
+    "asset": "VAvatar_calendar_0",
+    "continuations": [
+      "calendar-3",
+      "background-1"
+    ]
+  },
+  {
+    "id": "calendar-1",
+    "label": "纠结日程",
+    "asset": "VAvatar_calendar_1",
+    "continuations": [
+      "memory-4",
+      "background-0"
+    ]
+  },
+  {
+    "id": "calendar-2",
+    "label": "关注时间",
+    "asset": "VAvatar_calendar_2",
+    "continuations": [
+      "calendar-3",
+      "listen-5"
+    ]
+  },
+  {
+    "id": "calendar-3",
+    "label": "整理计划",
+    "asset": "VAvatar_calendar_3",
+    "continuations": [
+      "calendar-0",
+      "background-1"
+    ]
+  },
+  {
+    "id": "calendar-4",
+    "label": "忙得惊讶",
+    "asset": "VAvatar_calendar_4",
+    "continuations": [
+      "calendar-1",
+      "listen-1"
+    ]
+  },
+  {
+    "id": "calendar-5",
+    "label": "选定日期",
+    "asset": "VAvatar_calendar_5",
+    "continuations": [
+      "calendar-3",
+      "complete-5"
+    ]
+  },
+  {
+    "id": "background-0",
+    "label": "耐心琢磨",
+    "asset": "VAvatar_background_0",
+    "continuations": [
+      "memory-4",
+      "background-3"
+    ]
+  },
+  {
+    "id": "background-1",
+    "label": "埋头整理",
+    "asset": "VAvatar_background_1",
+    "continuations": [
+      "memory-1",
+      "background-5"
+    ]
+  },
+  {
+    "id": "background-2",
+    "label": "找到拼法",
+    "asset": "VAvatar_background_2",
+    "continuations": [
+      "complete-0",
+      "memory-2"
+    ]
+  },
+  {
+    "id": "background-3",
+    "label": "抬头想想",
+    "asset": "VAvatar_background_3",
+    "continuations": [
+      "memory-0",
+      "listen-1"
+    ]
+  },
+  {
+    "id": "background-4",
+    "label": "专注拼合",
+    "asset": "VAvatar_background_4",
+    "continuations": [
+      "background-1",
+      "memory-4"
+    ]
+  },
+  {
+    "id": "background-5",
+    "label": "从容核对",
+    "asset": "VAvatar_background_5",
+    "continuations": [
+      "memory-1",
+      "background-1"
+    ]
+  },
+  {
+    "id": "complete-0",
+    "label": "给你点赞",
+    "asset": "VAvatar_complete_0",
+    "continuations": [
+      "complete-1",
+      "complete-5"
+    ]
+  },
+  {
+    "id": "complete-1",
+    "label": "分享收获",
+    "asset": "VAvatar_complete_1",
+    "continuations": [
+      "complete-0",
+      "complete-5"
+    ]
+  },
+  {
+    "id": "complete-2",
+    "label": "一起庆祝",
+    "asset": "VAvatar_complete_2",
+    "continuations": [
+      "listen-4",
+      "complete-1"
+    ]
+  },
+  {
+    "id": "complete-3",
+    "label": "礼貌致谢",
+    "asset": "VAvatar_complete_3",
+    "continuations": [
+      "complete-5",
+      "listen-5"
+    ]
+  },
+  {
+    "id": "complete-4",
+    "label": "介绍成果",
+    "asset": "VAvatar_complete_4",
+    "continuations": [
+      "memory-3",
+      "web-2"
+    ]
+  },
+  {
+    "id": "complete-5",
+    "label": "安心陪伴",
+    "asset": "VAvatar_complete_5",
+    "continuations": [
+      "listen-3",
+      "listen-5"
+    ]
+  }
+]

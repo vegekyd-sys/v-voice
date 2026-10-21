@@ -82,6 +82,7 @@ struct CallView: View {
             guard let destination = CallDestination.parse(url, callID: call.presentationID, documentIDs: Set(call.documents.map(\.id))) else { sheet = .notice; return }
             switch destination { case .call: sheet = nil; case .document(let id): sheet = .reader(id) }
         }
+        .onChange(of: sheet?.id) { _, value in call.avatar.cover(value != nil) }
         .onChange(of: call.active) { _, active in if !active { history = false; composing = false } }
         #if DEBUG
         .safeAreaInset(edge: .top) {
@@ -127,18 +128,15 @@ struct CallView: View {
             }.frame(maxHeight: .infinity).padding(.bottom, height * 0.06)
         }.frame(maxWidth: 560).frame(maxWidth: .infinity)
     }
-    private var portrait: String {
-        switch call.tasks.last?.activity {
-        case "memory": "VMemory"
-        case "web": "VWeb"
-        case "calendar": "VCalendar"
-        case .some: "VWorking"
-        case nil: call.activityState.documentID == nil ? "VListen" : "VComplete"
-        }
-    }
     private func stage(size: CGFloat) -> some View {
         VStack(spacing: 0) {
-            Button { if !call.tasks.isEmpty { sheet = .tasks } } label: { VoicePortrait(phase: call.phase, image: portrait, size: size) }
+            Button { if !call.tasks.isEmpty { sheet = .tasks } } label: { VoicePortrait(phase: call.phase, image: call.avatar.asset, size: size)
+                    .onAppear { call.avatar.stage(true) }.onDisappear { call.avatar.stage(false) }
+                    .task(id: call.avatar.pictureID + "-" + String(call.avatar.displayEpoch)) {
+                        let id = call.avatar.pictureID
+                        try? await Task.sleep(for: .milliseconds(50))
+                        if !Task.isCancelled { call.avatar.displayed(id) }
+                    } }
                 .buttonStyle(.plain).accessibilityLabel(call.tasks.isEmpty ? "V" : "查看后台任务")
             Button {
                 if !call.tasks.isEmpty { sheet = .tasks }
@@ -225,10 +223,11 @@ struct VoicePortrait: View {
             Circle().fill(RadialGradient(colors: [phase == .speaking ? Color(hex: 0xf2a3bd) : Color(hex: 0xd9c8ec), .clear], center: .center, startRadius: 0, endRadius: size * 0.68))
                 .frame(width: size * 1.28, height: size * 1.28).blur(radius: size * 0.07)
                 .opacity(glowing ? 0.85 : 0).scaleEffect(pulse && !reduceMotion ? 1.04 : 0.94)
-            Image(image).resizable().scaledToFill().frame(width: size * 0.944, height: size * 0.944).clipShape(Circle())
+            Image(image).resizable().scaledToFill().id(image).transition(.opacity).frame(width: size * 0.944, height: size * 0.944).clipShape(Circle())
                 .padding(size * 0.028).background(.white, in: Circle())
                 .shadow(color: Color(hex: 0x705985).opacity(0.09), radius: 17, y: 10)
         }.frame(width: size, height: size).accessibilityHidden(true)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.28), value: image)
             .onAppear { if !reduceMotion { withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) { pulse = true } } }
     }
 }

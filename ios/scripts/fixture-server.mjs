@@ -3,10 +3,12 @@
 import {createServer} from 'node:http';
 import {randomUUID} from 'node:crypto';
 import {WebSocketServer} from 'ws';
+import {normalizeAvatarEvent} from '../../lab/gpt-live-h5/avatar-telemetry.mjs';
 const port=Number(process.env.VVOICE_FIXTURE_PORT??29837);
 let active=null,client=null,sequence=0,sessions=0,inputBytes=0,zeroBytes=0,playbackDrained=0,playbackStarts=0,greetings=0,heartbeats=0,earlyAudio=false,slowSession=false;
 let limitNextSession=false,slowClose=false,closeRequests=0;
 let documents=[],pending=[],acknowledgements=[],supplements=[];
+let avatarRequests=[],avatarEvents=[],avatarReply="reaction-0",avatarContinuations=["reaction-1","listen-5"],slowAvatar=false;
 const emit=v=>{
  if(v.type==='backend.result'){documents=documents.filter(d=>d.callId!==v.callId);documents.push(v);pending=pending.filter(t=>t.callId!==v.callId);}
  if(['tool.call','tool.progress'].includes(v.type)){const old=pending.find(t=>t.callId===v.callId)??{};pending=pending.filter(t=>t.callId!==v.callId);pending.push({...old,...v});}
@@ -22,8 +24,10 @@ const server=createServer(async(req,res)=>{
  const path=new URL(req.url,'http://127.0.0.1').pathname;
  const body=await new Promise(resolve=>{const chunks=[];req.on('data',b=>chunks.push(b));req.on('end',()=>{try{resolve(JSON.parse(Buffer.concat(chunks).toString()||'{}'));}catch{resolve({});}});});
  const send=(status,value)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
- if(path==='/fixture/state')return send(200,{active,sessions,inputBytes,zeroBytes,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,acknowledgements,supplements});
+ if(path==='/fixture/state')return send(200,{active,sessions,inputBytes,zeroBytes,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,acknowledgements,supplements,avatarRequests,avatarEvents});
  if(path==='/fixture/command'){
+   if(body.command==='avatar-slow')slowAvatar=true;
+   if(body.command==='avatar-reply'){avatarReply=body.picture;avatarContinuations=body.continuations??[];}
    if(body.command==='event'&&body.event)emit(body.event);
    if(body.command==='slow-session')slowSession=true;
    if(body.command==='limit-next-session')limitNextSession=true;
@@ -43,10 +47,21 @@ const server=createServer(async(req,res)=>{
    if(body.command==='think')emit({type:'transcript',role:'user',text:'本地测试',final:true});
    if(body.command==='end'){audio();emit({type:'end.after-playback',callId:'fixture-end'});}
    if(body.command==='drop')client?.terminate();
-   if(body.command==='reset'){client?.close();client=null;active=null;sessions=0;inputBytes=0;zeroBytes=0;greetings=0;heartbeats=0;earlyAudio=false;playbackStarts=0;limitNextSession=false;slowClose=false;closeRequests=0;documents=[];pending=[];acknowledgements=[];supplements=[];}
+   if(body.command==='reset'){client?.close();client=null;active=null;sessions=0;inputBytes=0;zeroBytes=0;greetings=0;heartbeats=0;earlyAudio=false;playbackStarts=0;limitNextSession=false;slowClose=false;closeRequests=0;documents=[];pending=[];acknowledgements=[];supplements=[];avatarRequests=[];avatarEvents=[];avatarReply="reaction-0";avatarContinuations=["reaction-1","listen-5"];slowAvatar=false;}
    return send(200,{ok:true});
  }
  if(req.headers.cookie!=='v_voice_access=fixture-cookie')return send(401,{error:'Fixture cookie required'});
+ if(path==='/voice/api/avatar'){
+   if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
+   if(!Number.isSafeInteger(body.revision)||body.revision<1||!Array.isArray(body.turns)||body.turns.length>6||body.turns.some(t=>typeof t.text!=='string'||t.text.length>600))return send(400,{error:'Invalid context'});
+   avatarRequests.push(body);
+   const reply={picture:avatarReply,continuations:avatarContinuations,revision:body.revision};
+   if(slowAvatar){slowAvatar=false;setTimeout(()=>send(200,reply),1200);return;}
+   return send(200,reply);
+ }
+ if(path==='/voice/api/avatar-events'){
+   try{avatarEvents.push(...body.events.map(normalizeAvatarEvent));return send(200,{ok:true});}catch{return send(400,{error:'Invalid telemetry'});}
+ }
  if(path==='/voice/api/presentation')return send(200,{voiceSessionId:active,documents,pending});
  if(path==='/voice/api/content-shown'){
    if(body.voiceSessionId!==active||!documents.some(d=>d.callId===body.callId))return send(409,{error:'Stale document'});

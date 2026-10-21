@@ -51,6 +51,8 @@ import VVoiceCore
 
 
     @ObservationIgnored let api: VoiceAPI
+    @ObservationIgnored let avatar: VoiceAvatar
+    @ObservationIgnored private var avatarOutcome = "none"
     @ObservationIgnored private let audio = VoiceAudio()
     @ObservationIgnored private var captionUpdate: Task<Void, Never>?
     @ObservationIgnored private var closing: Task<Void, Never>?
@@ -92,6 +94,7 @@ import VVoiceCore
 
     init(api: VoiceAPI? = nil) {
         self.api = api ?? VoiceAPI(store: BindingStore())
+        self.avatar = VoiceAvatar(api: self.api)
         model = VoiceModel(rawValue: UserDefaults.standard.string(forKey: "voiceModel") ?? "") ?? .seeduplex
         bound = self.api.isBound
         let center = NotificationCenter.default
@@ -119,6 +122,7 @@ import VVoiceCore
     }
     func sceneChanged(_ scene: ScenePhase) {
         appIsActive = scene == .active
+        avatar.scene(appIsActive)
         guard appIsActive else { return }
         activitiesEnabled = ActivityAuthorizationInfo().areActivitiesEnabled
         api.reloadIfAvailable(); bound = api.isBound
@@ -194,6 +198,7 @@ import VVoiceCore
             _ = try? await api.call("close", body: ["voiceSessionId": id], refresh: false); throw CancellationError()
         }
         voiceID = id; try api.rememberCall(id)
+        avatarOutcome = "none"; avatar.begin(owner: id); updateAvatar()
         guard reservation["transport"] as? String == "gateway-relay", let ticket = reservation["relayTicket"] as? String else { throw VoiceError.protocolMismatch }
         audio.beginStream()
         let relay = RelayTransport(id: id); transport = relay
@@ -278,17 +283,18 @@ import VVoiceCore
             if let text = v["text"] as? String, let role = v["role"] as? String {
                 lastCaption = String(text.suffix(500))
                 conversation.receive(role: role, text: text, final: v["final"] as? Bool == true)
-                scheduleCaptionUpdate()
+                scheduleCaptionUpdate(); updateAvatar()
             }
             if v["role"] as? String == "user", v["final"] as? Bool == true { setPhase(.thinking, owner: owner) }
         case "tool.call", "tool.progress":
             receiveTask(v)
             if audio.queuedFrames == 0 { setPhase(.thinking, owner: owner) }
         case "tool.result", "tool.error":
-            tasks.removeAll { $0.id == v["callId"] as? String }; publish()
+            tasks.removeAll { $0.id == v["callId"] as? String }; avatarOutcome = v["type"] as? String == "tool.error" ? "error" : "success"; updateAvatar(); publish()
         case "end.after-playback": pendingEndID = v["callId"] as? String; if audio.queuedFrames == 0 { drained(owner: owner) }
         case "end.cancelled": pendingEndID = nil; naturalEnd?.cancel()
         case "backend.result": receiveResult(v)
+        case "avatar.expression": if let expression = v["expression"] as? String { avatar.expression(expression) }
         case "provider.reconnecting":
             providerReady = false; audio.clear(); detail = "语音模型正在恢复，请稍候再说"; setPhase(.reconnecting, owner: owner)
             providerDeadline?.cancel()
@@ -319,10 +325,14 @@ import VVoiceCore
         } else { documents.append(document) }
         if documents.count > 16 { documents.removeFirst() }
         shownResults.remove(id)
+        avatarOutcome = "success"
         conversation.receiveDocument(id: id)
         resultID = id; resultText = document.text
-        tasks.removeAll { $0.id == id }
+        tasks.removeAll { $0.id == id }; updateAvatar()
         publish()
+    }
+    private func updateAvatar() {
+        avatar.update(turns: conversation.turns, activity: tasks.last?.activity ?? "listen", outcome: tasks.isEmpty ? avatarOutcome : "pending")
     }
     private func receiveTask(_ value: [String: Any]) {
         guard let id = value["callId"] as? String else { return }
@@ -332,7 +342,7 @@ import VVoiceCore
             tasks.append(.init(id: id, activity: value["activity"] as? String ?? "background", stage: value["stage"] as? String))
             if tasks.count > 16 { tasks.removeFirst() }
         }
-        publish()
+        updateAvatar(); publish()
     }
     private func scheduleCaptionUpdate() {
         guard captionUpdate == nil else { return }
@@ -367,7 +377,7 @@ import VVoiceCore
         _ = try await api.call("steer", body: ["voiceSessionId": voiceID, "text": value, "mode": "steer"], refresh: false)
         guard owned(owner) else { return }
         conversation.receive(role: "user", text: value, final: true)
-        detail = "补充内容已发送"; scheduleCaptionUpdate()
+        detail = "补充内容已发送"; scheduleCaptionUpdate(); updateAvatar()
     }
     func cancelTasks() async throws {
         guard active, let voiceID, !tasks.isEmpty else { return }
@@ -491,6 +501,7 @@ import VVoiceCore
         recoveryDeadline?.cancel(); recoveryDeadline = nil
         lastFailure = normalized(error) as? VoiceError
         CallDiagnostics.record("call.failed", code: String(describing: lastFailure))
+        avatar.end()
         state.finish(.failed); stopMedia(); detail = normalized(error).localizedDescription
         UINotificationFeedbackGenerator().notificationOccurred(.error)
         finishActivity(phase: .failed)
@@ -509,6 +520,7 @@ import VVoiceCore
         recovery?.cancel(); recovery = nil; recoveryDeadline?.cancel(); recoveryDeadline = nil
         let background = CallCleanupTime()
         defer { background.end() }
+        avatar.end()
         let owner = state.finish(.ending); stopMedia(); detail = "正在安全结束通话"; publish()
         CallDiagnostics.record("call.end")
         let id = voiceID; voiceID = nil

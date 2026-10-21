@@ -7,9 +7,9 @@ import VVoiceCore
 
 @MainActor final class NativeFlowTests: XCTestCase {
     private let base = URL(string: "http://127.0.0.1:29837/")!
-    private func fixture(_ command: String) async throws {
+    private func fixture(_ command: String, _ values: [String: Any] = [:]) async throws {
         var r = URLRequest(url: base.appendingPathComponent("fixture/command")); r.httpMethod = "POST"
-        r.httpBody = try JSONSerialization.data(withJSONObject: ["command": command]); r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        r.httpBody = try JSONSerialization.data(withJSONObject: values.merging(["command":command]) { _, new in new }); r.setValue("application/json", forHTTPHeaderField: "Content-Type")
         _ = try await URLSession.shared.data(for: r)
     }
     private func stats() async throws -> [String: Any] {
@@ -193,6 +193,37 @@ import VVoiceCore
         let current = try await stats()
         XCTAssertEqual(current["sessions"] as? Int, 1)
         XCTAssertEqual((current["supplements"] as? [[String: Any]])?.last?["mode"] as? String, "steer")
+    }
+
+    func testSemanticReactionsUseApprovedContinuationsAndPauseWhenCovered() async throws {
+        let call = try await client(); try await call.startOrContinue(); call.avatar.stage(true)
+        try await fixture("demo")
+        try await until { call.avatar.anchor == "reaction-0" }
+        call.avatar.displayed(call.avatar.pictureID)
+        try await until({ call.avatar.pictureID == "reaction-1" }, timeout: 6)
+        let current = try await stats()
+        XCTAssertTrue((current["avatarEvents"] as? [[String: Any]])?.contains(where: { $0["type"] as? String == "avatar.displayed" }) == true)
+        call.avatar.cover(true)
+        let count = (try await stats()["avatarRequests"] as? [Any])?.count
+        try await fixture("think")
+        try await Task.sleep(for: .milliseconds(800))
+        let hidden = try await stats()
+        XCTAssertEqual((hidden["avatarRequests"] as? [Any])?.count, count)
+        XCTAssertTrue(call.active)
+        call.avatar.cover(false)
+        try await until { call.avatar.anchor == "reaction-0" }
+        await call.end(); XCTAssertEqual(call.avatar.pictureID, "idle")
+    }
+    func testNewUserMeaningRejectsLateOldReaction() async throws {
+        let call = try await client(); try await call.startOrContinue()
+        try await fixture("avatar-slow"); call.avatar.stage(true)
+        try await until { (try await self.stats()["avatarRequests"] as? [Any])?.count == 1 }
+        try await fixture("avatar-reply", ["picture":"reaction-10","continuations":["reaction-11"]])
+        try await fixture("think")
+        try await until { call.avatar.anchor == "reaction-10" }
+        try await Task.sleep(for: .milliseconds(1300))
+        XCTAssertEqual(call.avatar.anchor, "reaction-10")
+        XCTAssertTrue(call.active)
     }
 
     func testAudioArrivingBeforeMicrophoneReadyIsBufferedAndPlayed() async throws {

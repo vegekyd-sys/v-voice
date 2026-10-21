@@ -69,7 +69,7 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
     }
     private func request(_ route: String, binding: VoiceBinding, cookie: String) -> URLRequest {
         var r = URLRequest(url: binding.endpoint(route), cachePolicy: .reloadIgnoringLocalCacheData)
-        r.timeoutInterval = route == "session" ? 60 : 12
+        r.timeoutInterval = route == "session" ? 60 : route == "avatar" ? 3.5 : route == "avatar-events" ? 5 : 12
         r.setValue("application/json", forHTTPHeaderField: "Content-Type")
         r.setValue(binding.baseURL.scheme! + "://" + binding.baseURL.host!, forHTTPHeaderField: "Origin")
         if !cookie.isEmpty { r.setValue(cookie, forHTTPHeaderField: "Cookie") }
