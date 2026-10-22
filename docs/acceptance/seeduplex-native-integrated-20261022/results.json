@@ -1,0 +1,699 @@
+{
+  "schema": "voice-native-integrated-v1",
+  "runtimeCommit": "788d3073a59f977bfd8333fce6a1925982c79316",
+  "runtimeFilesSha256": "c94a9680da7db5b0900602b233355a8bea9221cf0c7152bb3c9da0d32c123f41",
+  "model": "1.2.6.1",
+  "mainTests": 701,
+  "speakerTests": 95,
+  "stimuli": "Volc seed-tts-2.0, normalized mono PCM24k, same adult/vv corpus",
+  "physicalDeviceAcceptance": false,
+  "preflightFailures": [
+    {
+      "phase": "names-swapped",
+      "reason": "dial button did not become enabled within 30s; no model call started"
+    },
+    {
+      "phase": "tv-short",
+      "reason": "dial button did not become enabled within 30s; no model call started"
+    }
+  ],
+  "productionDeployment": false,
+  "results": [
+    {
+      "phase": "background-suite",
+      "complete": true,
+      "failure": null,
+      "rawSha256": "2886839f02924ccfb9822ce9582a271310d8018cd3b7ff837b3dd137ca7cd649",
+      "errors": [],
+      "reservation": [
+        {
+          "provider": "seeduplex",
+          "model": "1.2.6.1",
+          "nativeDuplex": true,
+          "nativePlaybackPolicy": "assisted",
+          "speakerRouting": false
+        }
+      ],
+      "windows": [
+        {
+          "probe": "tv-news",
+          "inputMs": 4000,
+          "playingBefore": true,
+          "firstPauseMs": 1211,
+          "first100msSilenceMs": 1220,
+          "clearCount": 0,
+          "replacementAudio": false,
+          "firstReplacementMs": null,
+          "ignoredCount": 0,
+          "audibleSamplesBeforeReplacement": 0,
+          "monitorSamplesBeforeReplacement": 274,
+          "pauseResume": [
+            {
+              "paused": true,
+              "afterMs": 1211
+            }
+          ]
+        },
+        {
+          "probe": "tv-drama",
+          "inputMs": 5856,
+          "playingBefore": false,
+          "firstPauseMs": 3861,
+          "first100msSilenceMs": 3874,
+          "clearCount": 0,
+          "replacementAudio": true,
+          "firstReplacementMs": 491,
+          "ignoredCount": 0,
+          "audibleSamplesBeforeReplacement": 0,
+          "monitorSamplesBeforeReplacement": 0,
+          "pauseResume": [
+            {
+              "paused": true,
+              "afterMs": 3861
+            }
+          ]
+        },
+        {
+          "probe": "tv-news",
+          "inputMs": 4000,
+          "playingBefore": false,
+          "firstPauseMs": null,
+          "first100msSilenceMs": null,
+          "clearCount": 0,
+          "replacementAudio": true,
+          "firstReplacementMs": 7748,
+          "ignoredCount": 0,
+          "audibleSamplesBeforeReplacement": 0,
+          "monitorSamplesBeforeReplacement": 0,
+          "pauseResume": []
+        },
+        {
+          "probe": "vv-side",
+          "inputMs": 4679,
+          "playingBefore": true,
+          "firstPauseMs": 333,
+          "first100msSilenceMs": 346,
+          "clearCount": 0,
+          "replacementAudio": false,
+          "firstReplacementMs": null,
+          "ignoredCount": 1,
+          "audibleSamplesBeforeReplacement": 446,
+          "monitorSamplesBeforeReplacement": 1131,
+          "pauseResume": [
+            {
+              "paused": true,
+              "afterMs": 333
+            },
+            {
+              "paused": false,
+              "afterMs": 6548
+            }
+          ]
+        }
+      ],
+      "identityChecks": [],
+      "assistantFinalCount": 6
+    },
+    {
+      "phase": "interrupt",
+      "complete": true,
+      "failure": null,
+      "rawSha256": "b9d801351034d8df1517b56866b2c2221afbf22f3b2089febe4cd14706363cd2",
+      "errors": [],
+      "reservation": [
+        {
+          "provider": "seeduplex",
+          "model": "1.2.6.1",
+          "nativeDuplex": true,
+          "nativePlaybackPolicy": "assisted",
+          "speakerRouting": false
+        }
+      ],
+      "windows": [
+        {
+          "probe": "interrupt",
+          "inputMs": 5446,
+          "playingBefore": true,
+          "firstPauseMs": 214,
+          "first100msSilenceMs": 220,
+          "clearCount": 1,
+          "replacementAudio": true,
+          "firstReplacementMs": 7013,
+          "ignoredCount": 0,
+          "audibleSamplesBeforeReplacement": 0,
+          "monitorSamplesBeforeReplacement": 675,
+          "pauseResume": [
+            {
+              "paused": true,
+              "afterMs": 214
+            }
+          ]
+        }
+      ],
+      "identityChecks": [
+        {
+          "probe": "adult-identity",
+          "correct": true
+        },
+        {
+          "probe": "vv-identity",
+          "correct": true
+        },
+        {
+          "probe": "adult-preference",
+          "correct": true
+        },
+        {
+          "probe": "vv-preference",
+          "correct": true
+        }
+      ],
+      "assistantFinalCount": 9
+    },
+    {
+      "phase": "interruptB",
+      "complete": true,
+      "failure": null,
+      "rawSha256": "e187c2422804a7b6889f8528a7e588e2bec8d8ec39a15749d8badb21fcda539a",
+      "errors": [],
+      "reservation": [
+        {
+          "provider": "seeduplex",
+          "model": "1.2.6.1",
+          "nativeDuplex": true,
+          "nativePlaybackPolicy": "assisted",
+          "speakerRouting": false
+        }
+      ],
+      "windows": [
+        {
+          "probe": "interruptB",
+          "inputMs": 5451,
+          "playingBefore": true,
+          "firstPauseMs": 240,
+          "first100msSilenceMs": 247,
+          "clearCount": 1,
+          "replacementAudio": true,
+          "firstReplacementMs": 8381,
+          "ignoredCount": 0,
+          "audibleSamplesBeforeReplacement": 0,
+          "monitorSamplesBeforeReplacement": 809,
+          "pauseResume": [
+            {
+              "paused": true,
+              "afterMs": 240
+            }
+          ]
+        }
+      ],
+      "identityChecks": [
+        {
+          "probe": "adult-identity",
+          "correct": true
+        },
+        {
+          "probe": "vv-identity",
+          "correct": true
+        },
+        {
+          "probe": "adult-preference",
+          "correct": true
+        },
+        {
+          "probe": "vv-preference",
+          "correct": true
+        }
+      ],
+      "assistantFinalCount": 9
+    },
+    {
+      "phase": "quiet",
+      "complete": true,
+      "failure": null,
+      "rawSha256": "543d0e085006c842f9497e8ee80b3d5d3fce020557909be9daf6f8d273d20c8d",
+      "errors": [],
+      "reservation": [
+        {
+          "provider": "seeduplex",
+          "model": "1.2.6.1",
+          "nativeDuplex": true,
+          "nativePlaybackPolicy": "assisted",
+          "speakerRouting": false
+        }
+      ],
+      "windows": [
+        {
+          "probe": "interrupt",
+          "inputMs": 5446,
+          "playingBefore": true,
+          "firstPauseMs": 3281,
+          "first100msSilenceMs": 3297,
+          "clearCount": 1,
+          "replacementAudio": true,
+          "firstReplacementMs": 7526,
+          "ignoredCount": 0,
+          "audibleSamplesBeforeReplacement": 0,
+          "monitorSamplesBeforeReplacement": 420,
+          "pauseResume": [
+            {
+              "paused": true,
+              "afterMs": 3281
+            }
+          ]
+        }
+      ],
+      "identityChecks": [
+        {
+          "probe": "adult-identity",
+          "correct": true
+        },
+        {
+          "probe": "vv-identity",
+          "correct": true
+        },
+        {
+          "probe": "adult-preference",
+          "correct": true
+        },
+        {
+          "probe": "vv-preference",
+          "correct": true
+        }
+      ],
+      "assistantFinalCount": 9
+    },
+    {
+      "phase": "names-swapped",
+      "complete": true,
+      "failure": null,
+      "rawSha256": "ba9f6090b392ac003e51fa64ee0ac80d1dac4831e97a2a212ef3c7185b6bc0f9",
+      "errors": [],
+      "reservation": [
+        {
+          "provider": "seeduplex",
+          "model": "1.2.6.1",
+          "nativeDuplex": true,
+          "nativePlaybackPolicy": "assisted",
+          "speakerRouting": false
+        }
+      ],
+      "windows": [],
+      "identityChecks": [
+        {
+          "probe": "adult-identity",
+          "correct": true
+        },
+        {
+          "probe": "vv-identity",
+          "correct": false
+        },
+        {
+          "probe": "vv-preference",
+          "correct": false
+        },
+        {
+          "probe": "adult-preference",
+          "correct": true
+        },
+        {
+          "probe": "adult-identity",
+          "correct": true
+        },
+        {
+          "probe": "vv-identity",
+          "correct": true
+        }
+      ],
+      "assistantFinalCount": 9
+    },
+    {
+      "phase": "tv-short",
+      "complete": true,
+      "failure": null,
+      "rawSha256": "c780004e61405be43ec7030ecb6f8ef56833c0932335f9863c2eb444ed843e9e",
+      "errors": [],
+      "reservation": [
+        {
+          "provider": "seeduplex",
+          "model": "1.2.6.1",
+          "nativeDuplex": true,
+          "nativePlaybackPolicy": "assisted",
+          "speakerRouting": false
+        }
+      ],
+      "windows": [
+        {
+          "probe": "tv-short",
+          "inputMs": 1055,
+          "playingBefore": true,
+          "firstPauseMs": null,
+          "first100msSilenceMs": null,
+          "clearCount": 0,
+          "replacementAudio": false,
+          "firstReplacementMs": null,
+          "ignoredCount": 0,
+          "audibleSamplesBeforeReplacement": 0,
+          "monitorSamplesBeforeReplacement": 0,
+          "pauseResume": []
+        }
+      ],
+      "identityChecks": [],
+      "assistantFinalCount": 4
+    },
+    {
+      "phase": "short",
+      "complete": true,
+      "failure": null,
+      "rawSha256": "297dd9da71f457d85cdfc67cc0a1d2aedb97f12dfbca35032de5cfa812a3e3fa",
+      "errors": [],
+      "reservation": [
+        {
+          "provider": "seeduplex",
+          "model": "1.2.6.1",
+          "nativeDuplex": true,
+          "nativePlaybackPolicy": "assisted",
+          "speakerRouting": false
+        }
+      ],
+      "windows": [
+        {
+          "probe": "short",
+          "inputMs": 1051,
+          "playingBefore": true,
+          "firstPauseMs": 219,
+          "first100msSilenceMs": 225,
+          "clearCount": 0,
+          "replacementAudio": true,
+          "firstReplacementMs": 2530,
+          "ignoredCount": 0,
+          "audibleSamplesBeforeReplacement": 0,
+          "monitorSamplesBeforeReplacement": 226,
+          "pauseResume": [
+            {
+              "paused": true,
+              "afterMs": 219
+            }
+          ]
+        }
+      ],
+      "identityChecks": [],
+      "assistantFinalCount": 5
+    },
+    {
+      "phase": "side",
+      "complete": true,
+      "failure": null,
+      "rawSha256": "12385c52596d68422d31afd1c9b41c24e68526adb7b966a86803294ff978ae29",
+      "errors": [],
+      "reservation": [
+        {
+          "provider": "seeduplex",
+          "model": "1.2.6.1",
+          "nativeDuplex": true,
+          "nativePlaybackPolicy": "assisted",
+          "speakerRouting": false
+        }
+      ],
+      "windows": [
+        {
+          "probe": "vv-side",
+          "inputMs": 4679,
+          "playingBefore": true,
+          "firstPauseMs": 338,
+          "first100msSilenceMs": 347,
+          "clearCount": 0,
+          "replacementAudio": false,
+          "firstReplacementMs": null,
+          "ignoredCount": 1,
+          "audibleSamplesBeforeReplacement": 485,
+          "monitorSamplesBeforeReplacement": 1279,
+          "pauseResume": [
+            {
+              "paused": true,
+              "afterMs": 338
+            },
+            {
+              "paused": false,
+              "afterMs": 8082
+            }
+          ]
+        }
+      ],
+      "identityChecks": [],
+      "assistantFinalCount": 4
+    },
+    {
+      "phase": "tv",
+      "complete": true,
+      "failure": null,
+      "rawSha256": "ab00b0f99e7f5153b0f65bac6318106e435b063590d82c20460d0c832e791c53",
+      "errors": [],
+      "reservation": [
+        {
+          "provider": "seeduplex",
+          "model": "1.2.6.1",
+          "nativeDuplex": true,
+          "nativePlaybackPolicy": "assisted",
+          "speakerRouting": false
+        }
+      ],
+      "windows": [
+        {
+          "probe": "tv-drama",
+          "inputMs": 5853,
+          "playingBefore": true,
+          "firstPauseMs": 3987,
+          "first100msSilenceMs": 3997,
+          "clearCount": 0,
+          "replacementAudio": false,
+          "firstReplacementMs": null,
+          "ignoredCount": 1,
+          "audibleSamplesBeforeReplacement": 611,
+          "monitorSamplesBeforeReplacement": 1031,
+          "pauseResume": [
+            {
+              "paused": true,
+              "afterMs": 3987
+            },
+            {
+              "paused": false,
+              "afterMs": 8141
+            }
+          ]
+        }
+      ],
+      "identityChecks": [],
+      "assistantFinalCount": 4
+    }
+  ],
+  "continuousBackgroundScene": {
+    "playingBefore": true,
+    "firstReplacementMs": 4519,
+    "replacementClears": 2,
+    "passed": false,
+    "reason": "Unrequested spoken comments about background television replaced the story; later side talk did not cause a spoken reply."
+  },
+  "fixtures": [
+    {
+      "name": "adult-introA",
+      "sha256": "c3c2de7bc073814af18179e59ff8d46e1371d3ee3da8f5111f646ec8e86fd2cb",
+      "format": "pcm_s16le_mono_24000"
+    },
+    {
+      "name": "vv-introB",
+      "sha256": "ef25777845fc907820bde202ebb81f3f05064fd88d591eb8e9198031deb1f9fd",
+      "format": "pcm_s16le_mono_24000"
+    },
+    {
+      "name": "vv-introA",
+      "sha256": "a7a739a281b19ac04bf32e35b182d1c39aeafa2529ae0f1204de9aad8df76dce",
+      "format": "pcm_s16le_mono_24000"
+    },
+    {
+      "name": "adult-introB",
+      "sha256": "b3577765a778d73fc822d3e7f98d8412ba86c782a61bd6e07d681876d4bfd0db",
+      "format": "pcm_s16le_mono_24000"
+    },
+    {
+      "name": "story",
+      "sha256": "361a4d7eac5f05c6044a5f5817e071c9065a906bb03852a6ebb5d03c75d6c0eb",
+      "format": "pcm_s16le_mono_24000"
+    },
+    {
+      "name": "interrupt",
+      "sha256": "82da8ca92e95e69fd2ea91f02e3d348e989b39583fd042b1be340914a7cc428e",
+      "format": "pcm_s16le_mono_24000"
+    },
+    {
+      "name": "interruptB",
+      "sha256": "f85c16d11c1cf0009cf4af7546b35a504056177d65df1f5eb5608deeee708155",
+      "format": "pcm_s16le_mono_24000"
+    },
+    {
+      "name": "short",
+      "sha256": "6cec65a086f7b4c53de62287351023c1c85c3373f2da99f8be7b3bdd6292a022",
+      "format": "pcm_s16le_mono_24000"
+    },
+    {
+      "name": "tv-drama",
+      "sha256": "c5ffddecfd6288b0caea86ce18f665ba2ca0c03adbdaf2e7245ad41fd0ae390c",
+      "format": "pcm_s16le_mono_24000"
+    },
+    {
+      "name": "tv-short",
+      "sha256": "c34d4c3ad16efdda0c3bc103a4a3ac6a5069c837456e56d54973b942093e7918",
+      "format": "pcm_s16le_mono_24000"
+    },
+    {
+      "name": "tv-news",
+      "sha256": "dcf067125fa7f7600085e2c542c6a9d2a13f84dd4e1aeac89495aee42da81ac2",
+      "format": "pcm_s16le_mono_24000"
+    },
+    {
+      "name": "vv-side",
+      "sha256": "18959c0322b1c73cc2a7a22bb2d679b9b23689f12eef459f2214b225256c56a3",
+      "format": "pcm_s16le_mono_24000"
+    },
+    {
+      "name": "adult-identity",
+      "sha256": "170fc4fd65410182aabd241b30036632e2090b2d0d0168e8f33cf85897619d22",
+      "format": "pcm_s16le_mono_24000"
+    },
+    {
+      "name": "vv-identity",
+      "sha256": "1022b2b0a9689fbeb5f7dad410055005b5b52554f56f69b803a59d677b6a801c",
+      "format": "pcm_s16le_mono_24000"
+    },
+    {
+      "name": "adult-preference",
+      "sha256": "b8b5f2eeea8846af8b63f0f8e731e90d7f8261c3493dcdfb3872ebd49e43ed38",
+      "format": "pcm_s16le_mono_24000"
+    },
+    {
+      "name": "vv-preference",
+      "sha256": "f80213071e829c6405d46a3d7a638b750c706287e109c2347aafac5abcda83dc",
+      "format": "pcm_s16le_mono_24000"
+    }
+  ],
+  "scoringNotes": [
+    "Identity requires the complete introduced name. In counterbalance one abbreviated surname is not counted; the other failure is a wrong personal preference.",
+    "Stop measured as first 100ms continuous RMS below 0.001 after the playback pause, sampled about every 10ms.",
+    "No-old-resumption is checked after the actual pause plus 50ms until first replacement PCM arrival.",
+    "Background pauses remain failures even without server clear or new answer.",
+    "A low-volume TV short phrase produced no native transcript; absence of response is not proof of successful source recognition.",
+    "Some continuous-scene probes begin while playback is already paused; only the initial background onset and valid standalone tests establish preconditions."
+  ],
+  "serverAudit": {
+    "sessions": 9,
+    "closed": 9,
+    "toolCalls": 0,
+    "stopControls": 3,
+    "listeningAsides": 3,
+    "providerErrors": 0,
+    "byPhase": [
+      {
+        "phase": "side",
+        "closed": 1,
+        "toolCalls": 0,
+        "stopControls": 0,
+        "listeningAsides": 1,
+        "providerErrors": 0
+      },
+      {
+        "phase": "short",
+        "closed": 1,
+        "toolCalls": 0,
+        "stopControls": 0,
+        "listeningAsides": 0,
+        "providerErrors": 0
+      },
+      {
+        "phase": "tv",
+        "closed": 1,
+        "toolCalls": 0,
+        "stopControls": 0,
+        "listeningAsides": 1,
+        "providerErrors": 0
+      },
+      {
+        "phase": "quiet",
+        "closed": 1,
+        "toolCalls": 0,
+        "stopControls": 1,
+        "listeningAsides": 0,
+        "providerErrors": 0
+      },
+      {
+        "phase": "background-suite",
+        "closed": 1,
+        "toolCalls": 0,
+        "stopControls": 0,
+        "listeningAsides": 1,
+        "providerErrors": 0
+      },
+      {
+        "phase": "interruptB",
+        "closed": 1,
+        "toolCalls": 0,
+        "stopControls": 1,
+        "listeningAsides": 0,
+        "providerErrors": 0
+      },
+      {
+        "phase": "tv-short",
+        "closed": 1,
+        "toolCalls": 0,
+        "stopControls": 0,
+        "listeningAsides": 0,
+        "providerErrors": 0
+      },
+      {
+        "phase": "interrupt",
+        "closed": 1,
+        "toolCalls": 0,
+        "stopControls": 1,
+        "listeningAsides": 0,
+        "providerErrors": 0
+      },
+      {
+        "phase": "names-swapped",
+        "closed": 1,
+        "toolCalls": 0,
+        "stopControls": 0,
+        "listeningAsides": 0,
+        "providerErrors": 0
+      }
+    ]
+  },
+  "finalDisposition": "candidate-validation-incomplete; no merge or production release",
+  "reproductionScriptSha256": "87bc3ca2ddd01430006e4f2a00e466c059c651457142fee9df6b0eacefd47812",
+  "reproductionScriptNote": "Final reusable probe includes preflight diagnostics, cookie reuse and TV-short case added during the run. Individual raw result hashes and frozen runtime hashes identify actual evidence.",
+  "runtimeVerification": {
+    "readiness": {
+      "known": true,
+      "activeCalls": 0,
+      "creatingSessions": 0,
+      "backgroundTasks": 0
+    },
+    "runtimeCommit": "788d3073a59f977bfd8333fce6a1925982c79316",
+    "runtimeFiles": 204,
+    "badFiles": [],
+    "filesSha256": "c94a9680da7db5b0900602b233355a8bea9221cf0c7152bb3c9da0d32c123f41",
+    "candidate": {
+      "MainPID": "2111126",
+      "ActiveState": "active",
+      "InvocationID": "43974ac1749f4019a28028f38e0003c0"
+    },
+    "production": {
+      "MainPID": "1794220",
+      "ActiveState": "active",
+      "InvocationID": "8aae0becf201486d903f47a5988e8e93"
+    },
+    "candidateFlags": {
+      "VOICE_PHONE_INPUT_POLICY": "\"native\"",
+      "VOICE_NATIVE_INTERRUPT_ASR": "1",
+      "VOICE_NATIVE_PLAYBACK_POLICY": "assisted"
+    },
+    "rollbackPreserved": true
+  }
+}

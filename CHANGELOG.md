@@ -1,6 +1,8 @@
 ## Unreleased — SeedDuplex full-duplex phone candidate · 2026-10-22
 
-- Compare provider-owned playback and assisted native playback without local amplitude/ASR-onset muting. Keep a single continuous model session and retire superseded response audio without resetting speaker context. Pure provider playback remains a diagnostic option; measured interruption latency is not accepted yet.
+- 原生全双工 Candidate 完成 9 通合成音频整链复测：正常插话可快速停声，但背景误暂停、持续电视抢答、小声迟缓和姓名互换串信息仍未通过验收；未上线。
+
+- Compare provider-owned playback without local pauses against assisted native playback with reversible foreground yielding. Keep a single continuous model session and retire superseded response audio without resetting speaker context. Pure provider playback remains a diagnostic option; measured interruption latency is not accepted yet.
 - Tighten the existing opt-in control ASR: partial standalone stop words cannot cancel playback; explicit V-addressed or speech-targeted controls can act early. Final standalone controls settle briefly and are revoked by continuing dialogue, a changed response owner, disconnect or call closure. No new Speaker/Decision chain or account authority.
 - Clarify per-call voice/name/fact binding, corrections and other-person addressees in the native phone instructions. Real interference and binding acceptance is tracked separately; no blanket success claim.
 - Opt-in native continuous phone audio with `VOICE_PHONE_INPUT_POLICY=native`; keep the current multi-speaker path as the default configuration and explicit comparison mode. Gateway, Worker and tool/account permissions are unchanged.

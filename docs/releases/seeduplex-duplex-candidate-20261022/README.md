@@ -1,5 +1,7 @@
 # SeedDuplex 全双工电话候选
 
+最新原生多人整链开发与验收见 [NATIVE-INTEGRATED.md](NATIVE-INTEGRATED.md)。下文保留此前候选与三档模型对照的历史证据；不能替代最新整链结论。
+
 2026-10-22；独立分支 `codex/seeduplex-barge-in`。Candidate only，尚未合入或发布正式服。
 
 ## 行为与适用范围
