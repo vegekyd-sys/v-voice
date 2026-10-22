@@ -285,6 +285,19 @@ import VVoiceCore
         try await fixture("audio", ["ms":240,"responseId":"new"])
         try await until({ call.phase == .listening }, timeout: 2)
     }
+    func testOldScopedClearCannotStopNewNativeReply() async throws {
+        let call = try await client()
+        try await fixture("native-mode"); call.model = .seeduplex
+        try await call.startOrContinue()
+        try await until { call.phase == .listening }
+        try await fixture("audio", ["ms":5000,"responseId":"old"])
+        try await until { call.phase == .speaking }
+        try await fixture("audio", ["ms":800,"responseId":"new"])
+        try await fixture("event", ["event":["type":"audio.clear","retiredResponseId":"old"]])
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(call.phase, .speaking, "late old clear cannot clear the current new response")
+        try await until({ call.phase == .listening }, timeout: 2)
+    }
     func testGrokVoiceChoiceIsSentAndGPTNativeOptionIsAvailable() async throws {
         let call = try await client()
         await call.refreshOptions()

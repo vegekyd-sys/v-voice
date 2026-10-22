@@ -36,6 +36,7 @@
 		6FBB9211ABE5D18084F59203 /* CallOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FE71FA2DD0DD3956F7D2FA0 /* CallOptions.swift */; };
 		7DAE8DA919F336ACE7DAFEA6 /* VoiceIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857F5E8922957A5BB87318B1 /* VoiceIntents.swift */; };
 		7F29D74444DB07C50CB95609 /* VoiceComparison.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08A624E6F16469B2F4941AB0 /* VoiceComparison.swift */; };
+		8159E2473B07C08167B0FD98 /* SharedDuplexFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E2B7ECB25AEFE948D49544B /* SharedDuplexFlowTests.swift */; };
 		86E0D28CB20237D88346B3CE /* CallSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7793FA9355C2CE185FE89524 /* CallSettings.swift */; };
 		8B9B09CD2C03DF5A31F015B2 /* H5Shell in Resources */ = {isa = PBXBuildFile; fileRef = 1BD7A9E9F549C0BC8FEE308B /* H5Shell */; };
 		8E4C6BA1932EA200ADE9F440 /* NativeFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6DC401CBC28DC4E5E00D8B4 /* NativeFlowTests.swift */; };
@@ -109,6 +110,7 @@
 		2D75530190661A3CE19BAA28 /* VoiceAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAudio.swift; sourceTree = "<group>"; };
 		2DB9AB5DEB5EA43B085292F3 /* H5DesignSource.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = H5DesignSource.json; sourceTree = "<group>"; };
 		31B6D38F987CC05C91D9830F /* GPTLiveTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPTLiveTransport.swift; sourceTree = "<group>"; };
+		3E2B7ECB25AEFE948D49544B /* SharedDuplexFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedDuplexFlowTests.swift; sourceTree = "<group>"; };
 		3EDEAC67D66165AD0E275FD2 /* VVoiceTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VVoiceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		445925F85326700CF3C4BA73 /* VVoiceActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = VVoiceActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		45619E039B8DBD8B3AD20743 /* IslandAssets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = IslandAssets.xcassets; sourceTree = "<group>"; };
@@ -258,6 +260,7 @@
 				7BD6728F103FB047DC55A066 /* IslandActivityTests.swift */,
 				E6DC401CBC28DC4E5E00D8B4 /* NativeFlowTests.swift */,
 				AC68CB218040B5DF93D95B7D /* RelaySignalTests.swift */,
+				3E2B7ECB25AEFE948D49544B /* SharedDuplexFlowTests.swift */,
 				DBF1ACCF9EA74D03B4EC7B54 /* VoiceFixture.swift */,
 			);
 			name = Tests;
@@ -476,6 +479,7 @@
 				1688E5B67B7B6A8C109D5F95 /* IslandActivityTests.swift in Sources */,
 				8E4C6BA1932EA200ADE9F440 /* NativeFlowTests.swift in Sources */,
 				206A2D9E237C1639E053CB31 /* RelaySignalTests.swift in Sources */,
+				8159E2473B07C08167B0FD98 /* SharedDuplexFlowTests.swift in Sources */,
 				16F9BBAC1806652BF0570FF9 /* VoiceFixture.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -636,7 +640,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 21;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = E6YTL27QWA;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -722,7 +726,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 21;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = E6YTL27QWA;
 				ENABLE_NS_ASSERTIONS = NO;

@@ -537,7 +537,11 @@ import VVoiceCore
         case "audio.clear":
             // A confirmed interruption retires the response, not just its
             // currently queued buffers. Late packets must not restart it.
-            if let retired = v["retiredResponseId"] as? String { retireResponse(retired) }
+            if let retired = v["retiredResponseId"] as? String {
+                retireResponse(retired)
+                if nativeDuplex, let current = responseID, current != retired { return }
+                if nativeDuplex { responseID = nil }
+            }
             clearOutput()
         case "input.speech.started":
             if nativeAssisted, audio.queuedFrames > 0 { nativePause.nativeStarted(at: ProcessInfo.processInfo.systemUptime * 1000); audio.setPlaybackPaused(nativePause.held) }
@@ -546,6 +550,7 @@ import VVoiceCore
         case "input.speech.ignored":
             if nativeAssisted, let preserved = v["preservedResponseId"] as? String, preserved == responseID { nativePause.ignored(); audio.setPlaybackPaused(false) }
         case "audio.done":
+            if let completed = v["responseId"] as? String, retiredResponses.contains(completed) { return }
             if let completed = v["responseId"] as? String, let current = responseID, completed != current { return }
             nativeOutputDone = true; nativePause.generationDone(at: ProcessInfo.processInfo.systemUptime * 1000)
             if audioReady { audio.markOutputDone() } else { earlyOutputDone = true }
