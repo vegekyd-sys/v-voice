@@ -8,6 +8,7 @@
 - Release 1.0.0 (11) archive／export退出0；独立解包后的IPA再次通过 arm64、主 App／扩展签名与profiles、H5资源hash、52张编译后图、后台intent元数据、正常TLS和无Debug fixture检查。IPA SHA-256：`5539d89245dfd7e4a241d1d66957fd60fc45b6d8e2e6e8b02f30e62b25855f2a`。
 - 首次安装时物理设备离线，未成功；用户重新连接并解锁后复核 activeCalls=0／creatingSessions=0／backgroundTasks=0，覆盖安装成功，设备读回 version1.0.0／bundleVersion11。没有卸载、重置绑定或自动拨号。
 - 已接受的build10签名IPA／archive保存在本机ignored `ios/build/saved-h5-build10/`，散列再次核对为 `eca945a66ebcbfe6467c52338c26a90c171de4bc88fbd7f894ec0265cdc235c8`；原生build8和H5build9也保留。
+- 安装登记补充 PR 的 CI 两次发现既有 Speaker 精确字节断言使用真实时钟：循环中推进1ms即允许多发48字节。将该用例固定时钟，保留精确上限断言；不修改生产播放代码或已安装包，后续检查单独重跑。
 - **交付边界：**主仓库已合入、开发签名版已装机、首页日志源码和包内页已更新；在线 Voice 服务未部署、Gateway未重启、未上架。用户实际双向接受来自build10；build11未自动进行真实电话，新波形、提醒、锁屏冷启动、系统来电及长通话仍按原矩阵分别待验。远程H5同步是独立新任务，尚未交付。
 
 ![build11实际模拟器桌面图标](evidence/build11-icon-simulator.jpg)
