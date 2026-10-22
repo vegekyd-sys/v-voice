@@ -42,3 +42,8 @@ App 页面直接运行已有 H5：原 `index.html` 页面 DOM、`styles.css`、`
 真实系统展开复验发现大卡底部被裁切，现把折叠按钮移入正文行、正文头像缩为 52 pt，保留底部 44 pt 静音／结束控件。serve-sim 实际看到完整按钮；点静音后本地零帧字节增加。后台送达本地方案后，点击入口进入同一通话 H5 reader，sessions 保持 3、inputBytes 继续增长。该计数是手动 fixture 累计值，不代表正式通话验收。
 
 本版仍是本地候选；真机安装及实际按键通话接受在 versions.json / VALIDATION.md 分开登记。
+
+
+## 后续 build 10 安装
+
+已整合 `b858899`／`2d769eb` 的接通与长回复提醒、明确呼叫文案和宽波形，签名源码 `3ffeb94`。build10已覆盖同一iPhone，设备读回bundleVersion10；原H5包hash保持一致。build9签名IPA／archive在本机 `ios/build/saved-h5-build9/`，需要时覆盖回退，不卸载。详细验包与接受边界见VALIDATION末尾和versions.json。

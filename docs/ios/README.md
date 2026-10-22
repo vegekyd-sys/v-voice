@@ -1,6 +1,6 @@
 # V Voice iOS · 一按通话
 
-当前 build 9 改为实际 H5 内嵌＋原生后台通话，并整合文字／Reaction／波形灵动岛；详见 [H5 容器与回退基线](H5-SHELL.md)。build 8 已保存为 `ios-native-build8-20261022`。以下 build 6–8 原生 UI 记录保留为历史。
+当前 build 10 已在实际 H5 内嵌＋原生后台通话上整合接通／方案提醒、呼叫文案与宽波形灵动岛；详见 [H5 容器与回退基线](H5-SHELL.md)。build 8 已保存为 `ios-native-build8-20261022`。以下 build 6–8 原生 UI 记录保留为历史。
 
 完整功能清单与剩余差异见 [H5 → iOS 迁移核对](H5-PARITY.md)。build 8 补齐多人转写、身份条子、长回复内容卡片、富文本、Grok 声音与样本试听等遗漏；不能把局部视觉对齐写成全部迁移完成。
 

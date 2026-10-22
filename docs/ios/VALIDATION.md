@@ -191,3 +191,13 @@ UI 实操发现原 20 帧（400 ms）主线程交接阈值，在从后台切到�
 ![系统真实PCM宽波形](evidence/island-wave-polish-system.png)
 
 ![系统无声细线](evidence/island-audio-idle-system.png)
+
+
+## build 10 真机覆盖安装 · 2026-10-22
+
+- 用户明确要求真机安装。H5工作树本地fast-forward接入独立灵动岛候选 `b858899`／`2d769eb`，升级build10，签名源码提交 `3ffeb94`。未合入平台main/dev、未push、未改线上H5服务或Gateway。
+- 复用已完成的Core16、原生定向6与实际系统视觉验证；本轮只修改版本／打包登记，没有扩大为全套新验收。H5源包和52个扩展资产同步检查再次通过。`VoiceIntents.swift`、`VoiceAudio.swift`、`RelayTransport.swift`相对build9无改动。
+- build9签名IPA／archive留在本机ignored `ios/build/saved-h5-build9/`，IPA散列已再次核对为 `b0a9773495e1d3f87332a05025d9da885af4a492cc8ae86b24914bf64171d935`，覆盖回退无需卸载或清空绑定。原生build8回退也继续保留。
+- Release 1.0.0 (10) archive／export命令退出0；独立解包导出IPA后再次验包退出0。arm64、主App／扩展签名与profiles、正常TLS、无Debug fixture、包内H5产物hash、扩展编译后52图、后台AudioRecording／SessionStarting的TalkToVIntent元数据均通过。
+- 最终IPA SHA-256：`eca945a66ebcbfe6467c52338c26a90c171de4bc88fbd7f894ec0265cdc235c8`。安装前只读readiness known=true，activeCalls=0／creatingSessions=0／backgroundTasks=0。devicectl覆盖安装成功；随后从设备已安装App记录读回 `com.versa.vvoice`、version1.0.0、bundleVersion10。
+- 原绑定／权限和按键配置沿用，没有卸载／重置、自动启动真实电话、付费模型调用或真实设备UI操作。**build10状态为已安装，真机人工接受待定**；接通提醒、Calling首帧和宽波形不因签名／安装成功而视为听验通过。系统进入AppIntent前的黑色过渡仍不承诺已消除。
