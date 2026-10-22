@@ -1,0 +1,307 @@
+{
+  "schema": "v-voice-native-speaker-study-v1",
+  "date": "2026-10-22",
+  "model": "1.2.6.1",
+  "providerRuntimeCommit": "c2d0f5d9b772588deaa27e04648a12b7ef1d122e",
+  "syntheticOnly": true,
+  "physicalMicrophone": false,
+  "externalSpeakerIdentity": false,
+  "auxiliaryAsr": false,
+  "gatewayOrTools": false,
+  "controls": [
+    "identical-query-words",
+    "random-order-with-repeated-speaker",
+    "voice-label-counterbalance",
+    "lower-volume-probe",
+    "same-voice-control",
+    "numeric-label-replication",
+    "unseen-third-voice"
+  ],
+  "spokenLabelNormalization": {
+    "小琳/小霖": "小林",
+    "一号/一/1": "1号",
+    "二号/二/2": "2号"
+  },
+  "totalsExcludingSameVoiceControl": {
+    "identity": {
+      "correctSpokenLabel": 20,
+      "literalTextCorrect": 14,
+      "trials": 36
+    },
+    "preference": {
+      "correctSpokenLabel": 9,
+      "literalTextCorrect": 9,
+      "trials": 12
+    },
+    "unseen": {
+      "correctSpokenLabel": 1,
+      "literalTextCorrect": 1,
+      "trials": 6
+    }
+  },
+  "bothEnrollmentRepliesOnlyExcludingControl": {
+    "identity": {
+      "correctSpokenLabel": 19,
+      "literalTextCorrect": 14,
+      "trials": 30
+    },
+    "preference": {
+      "correctSpokenLabel": 8,
+      "literalTextCorrect": 8,
+      "trials": 10
+    },
+    "unseen": {
+      "correctSpokenLabel": 1,
+      "literalTextCorrect": 1,
+      "trials": 5
+    }
+  },
+  "groups": [
+    {
+      "batch": "native-speakers",
+      "id": "wide",
+      "control": false,
+      "voices": [
+        "ting",
+        "eddy"
+      ],
+      "turns": 11,
+      "bothEnrollmentRepliesObserved": true,
+      "metrics": {
+        "identity": {
+          "correctSpokenLabel": 5,
+          "literalTextCorrect": 5,
+          "trials": 6
+        },
+        "preference": {
+          "correctSpokenLabel": 2,
+          "literalTextCorrect": 2,
+          "trials": 2
+        },
+        "unseen": {
+          "correctSpokenLabel": 0,
+          "literalTextCorrect": 0,
+          "trials": 1
+        }
+      },
+      "asrObserved": 11,
+      "outputAudioObserved": 11,
+      "terminalOrAudioQuietTimeouts": 0,
+      "errors": 0,
+      "nativeIdentityFieldEvents": 0
+    },
+    {
+      "batch": "native-speakers",
+      "id": "wide-labels-reversed",
+      "control": false,
+      "voices": [
+        "eddy",
+        "ting"
+      ],
+      "turns": 11,
+      "bothEnrollmentRepliesObserved": true,
+      "metrics": {
+        "identity": {
+          "correctSpokenLabel": 4,
+          "literalTextCorrect": 4,
+          "trials": 6
+        },
+        "preference": {
+          "correctSpokenLabel": 1,
+          "literalTextCorrect": 1,
+          "trials": 2
+        },
+        "unseen": {
+          "correctSpokenLabel": 0,
+          "literalTextCorrect": 0,
+          "trials": 1
+        }
+      },
+      "asrObserved": 11,
+      "outputAudioObserved": 11,
+      "terminalOrAudioQuietTimeouts": 0,
+      "errors": 0,
+      "nativeIdentityFieldEvents": 0
+    },
+    {
+      "batch": "native-speakers",
+      "id": "same-gender",
+      "control": false,
+      "voices": [
+        "ting",
+        "sandy"
+      ],
+      "turns": 11,
+      "bothEnrollmentRepliesObserved": true,
+      "metrics": {
+        "identity": {
+          "correctSpokenLabel": 5,
+          "literalTextCorrect": 4,
+          "trials": 6
+        },
+        "preference": {
+          "correctSpokenLabel": 2,
+          "literalTextCorrect": 2,
+          "trials": 2
+        },
+        "unseen": {
+          "correctSpokenLabel": 0,
+          "literalTextCorrect": 0,
+          "trials": 1
+        }
+      },
+      "asrObserved": 11,
+      "outputAudioObserved": 11,
+      "terminalOrAudioQuietTimeouts": 0,
+      "errors": 0,
+      "nativeIdentityFieldEvents": 0
+    },
+    {
+      "batch": "native-speakers",
+      "id": "same-voice-text-control",
+      "control": true,
+      "voices": [
+        "ting",
+        "ting"
+      ],
+      "turns": 10,
+      "bothEnrollmentRepliesObserved": true,
+      "metrics": {
+        "identity": {
+          "correctSpokenLabel": 3,
+          "literalTextCorrect": 3,
+          "trials": 6
+        },
+        "preference": {
+          "correctSpokenLabel": 1,
+          "literalTextCorrect": 1,
+          "trials": 2
+        },
+        "unseen": {
+          "correctSpokenLabel": 0,
+          "literalTextCorrect": 0,
+          "trials": 0
+        }
+      },
+      "asrObserved": 10,
+      "outputAudioObserved": 10,
+      "terminalOrAudioQuietTimeouts": 0,
+      "errors": 0,
+      "nativeIdentityFieldEvents": 0
+    },
+    {
+      "batch": "native-speakers-numeric",
+      "id": "numeric-wide",
+      "control": false,
+      "voices": [
+        "eddy",
+        "ting"
+      ],
+      "turns": 11,
+      "bothEnrollmentRepliesObserved": true,
+      "metrics": {
+        "identity": {
+          "correctSpokenLabel": 5,
+          "literalTextCorrect": 1,
+          "trials": 6
+        },
+        "preference": {
+          "correctSpokenLabel": 2,
+          "literalTextCorrect": 2,
+          "trials": 2
+        },
+        "unseen": {
+          "correctSpokenLabel": 0,
+          "literalTextCorrect": 0,
+          "trials": 1
+        }
+      },
+      "asrObserved": 11,
+      "outputAudioObserved": 11,
+      "terminalOrAudioQuietTimeouts": 0,
+      "errors": 0,
+      "nativeIdentityFieldEvents": 0
+    },
+    {
+      "batch": "native-speakers-numeric",
+      "id": "numeric-same-gender",
+      "control": false,
+      "voices": [
+        "sandy",
+        "ting"
+      ],
+      "turns": 11,
+      "bothEnrollmentRepliesObserved": false,
+      "metrics": {
+        "identity": {
+          "correctSpokenLabel": 1,
+          "literalTextCorrect": 0,
+          "trials": 6
+        },
+        "preference": {
+          "correctSpokenLabel": 1,
+          "literalTextCorrect": 1,
+          "trials": 2
+        },
+        "unseen": {
+          "correctSpokenLabel": 0,
+          "literalTextCorrect": 0,
+          "trials": 1
+        }
+      },
+      "asrObserved": 11,
+      "outputAudioObserved": 11,
+      "terminalOrAudioQuietTimeouts": 1,
+      "errors": 0,
+      "nativeIdentityFieldEvents": 0
+    },
+    {
+      "batch": "native-speakers-female",
+      "id": "numeric-two-female-voices",
+      "control": false,
+      "voices": [
+        "mei",
+        "ting"
+      ],
+      "turns": 11,
+      "bothEnrollmentRepliesObserved": true,
+      "metrics": {
+        "identity": {
+          "correctSpokenLabel": 0,
+          "literalTextCorrect": 0,
+          "trials": 6
+        },
+        "preference": {
+          "correctSpokenLabel": 1,
+          "literalTextCorrect": 1,
+          "trials": 2
+        },
+        "unseen": {
+          "correctSpokenLabel": 1,
+          "literalTextCorrect": 1,
+          "trials": 1
+        }
+      },
+      "asrObserved": 11,
+      "outputAudioObserved": 11,
+      "terminalOrAudioQuietTimeouts": 0,
+      "errors": 0,
+      "nativeIdentityFieldEvents": 0
+    }
+  ],
+  "provenance": {
+    "sourceModuleSha256": "94b98eaf6fbba93f78a7eb1c16a802e151ede9ff8573743cdd56b9452282db87",
+    "runners": {
+      "native-speakers": "24176a68a741f2a85704e9f41fde65de85c7ce91ee627a7be80f7705a4d8bd84",
+      "native-speakers-numeric": "8ce2f0801acb9e19e1c19b1390653086ca7b295da7ac2ed05c6ccd05cc1a4c6b",
+      "native-speakers-female": "8ce2f0801acb9e19e1c19b1390653086ca7b295da7ac2ed05c6ccd05cc1a4c6b"
+    }
+  },
+  "limits": [
+    "Small correlated synthetic samples, not production accuracy",
+    "No physical microphone, room echo, TV mixing, or overlapping voices",
+    "Initial name study did not wait for output quiet; numeric studies did",
+    "Sandy gender is unspecified in local voice metadata; only Tingting/Meijia is the confirmed female-voice pair",
+    "No stable input speaker identity fields observed in these captured events; this is not proof of API absence"
+  ]
+}

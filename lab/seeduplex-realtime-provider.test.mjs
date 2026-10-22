@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 import {
   Pcm24To16Resampler,
+  nativeListeningAside,
   SeeduplexRealtimeVoiceBridge,
   SEEDUPLEX_MODEL,
   SEEDUPLEX_RESOURCE_ID,
@@ -514,11 +515,45 @@ test('Seeduplex greeting uses native SayHello rather than injecting unpaired his
   const socket = new FakeSocket();
   const bridge = buildSeeduplexRealtimeVoiceProvider({env:{VOLCENGINE_REALTIME_API_KEY:'test'},createWebSocket:async()=>socket}).createBridge({providerConfig:{voice:'xiaohe'},onAudio(){},onError:error=>assert.fail(error.message),onClose(){}});
   const connecting=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await connecting;
-  bridge.triggerGreeting('请向天意问候');
+  bridge.triggerGreeting('请向天懿问候');
   assert.equal(socket.sent.at(-1).type,'speech_text_buffer.commit');
-  assert.equal(socket.sent.at(-1).text,'天意，你好，我是 V，在呢。');
+  assert.equal(socket.sent.at(-1).text,'天懿，你好，我是 V，在呢。');
   assert(!socket.sent.some(event=>event.type==='conversation.item.create'));
   bridge.close();
+});
+
+test('greeting caption is the exact requested speech, emitted once at its first valid audio frame', async () => {
+ const socket = new FakeSocket(), events = [];
+ const bridge = new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture-key'},greetingText:'你好，天懿，我在呢。',
+  onTranscript:(...args)=>events.push(['text',...args]), onAudio:()=>events.push(['audio']),
+  onError:error=>assert.fail(error.message),onClose(){}},{createWebSocket:async()=>socket});
+ bridge.triggerGreeting();assert.equal(socket.sent.length,0);
+ const connecting=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await connecting;
+ bridge.triggerGreeting();bridge.triggerGreeting();
+ assert.equal(socket.sent.filter(e=>e.type==='speech_text_buffer.commit').length,1);
+ assert.equal(events.length,0,'Submitting speech does not manufacture an audible greeting');
+ socket.message({type:'response.output_audio.started',response_id:'hello',tts_type:'chat_tts_text'});
+ assert.equal(events.length,0,'Sentence-start without PCM does not display the greeting');
+ socket.message({type:'response.output_audio.delta',response_id:'hello',delta:floatAudio([.1,.2])});
+ socket.message({type:'response.output_audio.delta',response_id:'hello',delta:floatAudio([.3])});
+ socket.message({type:'response.output_audio.done',response_id:'hello'});
+ assert.deepEqual(events,[['text','assistant','你好，天懿，我在呢。',true,'greeting'],['audio'],['audio']]);
+ socket.message({type:'response.output_text.done',response_id:'next',text:'听得见，你说吧。'});
+ assert.deepEqual(events.at(-1),['text','assistant','听得见，你说吧。',true]);
+ bridge.close();
+});
+
+for (const ending of ['close','barge-in','no-audio','superseded']) test(`unplayed greeting is never shown after ${ending}`,async()=>{
+ const socket=new FakeSocket(),texts=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture-key'},onTranscript:(...args)=>texts.push(args),onAudio(){},onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const connecting=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await connecting;
+ bridge.triggerGreeting();socket.message({type:'response.output_audio.started',response_id:'hello',tts_type:'chat_tts_text'});
+ if(ending==='close')bridge.close();
+ if(ending==='barge-in')bridge.handleBargeIn();
+ if(ending==='no-audio')socket.message({type:'response.output_audio.done',response_id:'hello'});
+ if(ending==='superseded')socket.message({type:'response.output_audio.started',response_id:'next',tts_type:'default'});
+ socket.message({type:'response.output_audio.delta',response_id:ending==='superseded'?'next':'hello',delta:floatAudio([.1])});
+ assert.equal(texts.length,0);bridge.close();
 });
 
 test('async background tool releases the native call, accepts chat, and adds actual final paired context once',async()=>{
@@ -590,5 +625,127 @@ test('long backend document keeps full paired history but commits only short spe
  const text='## 全文\n'+'日期和限定。'.repeat(100),spokenText='结果在屏幕上，可以整理成文档发给你。';
  bridge.completeBackgroundTool('doc',{result:text},{spokenText,displayedFullResult:true});bridge.completeBackgroundTool('doc',{result:text},{spokenText,displayedFullResult:true});
  const history=socket.sent.find(x=>x.items?.length===2);assert.equal(history.items[1].content[0].text,text);
- assert.deepEqual(socket.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text),[spokenText]);assert(!texts.some(x=>x[1]===text));bridge.close();
+ assert.deepEqual(socket.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text),[spokenText]);assert(!texts.some(x=>x[1]===text));
+ assert.equal(texts.length,0,'Submitting the summary is not proof it played');
+ socket.message({type:'response.output_audio.started',response_id:'summary',tts_type:'chat_tts_text'});
+ assert.equal(texts.length,0);
+ socket.message({type:'response.output_audio.delta',response_id:'summary',delta:floatAudio([.1])});
+ socket.message({type:'response.output_audio.delta',response_id:'summary',delta:floatAudio([.2])});
+ assert.deepEqual(texts,[['assistant',spokenText,true,'V-backend-summary']]);bridge.close();
+});
+
+test('a confirmed device barge-in cancels a reply mid-generation and the next utterance is still heard',async()=>{
+ const socket=new FakeSocket(),audio=[],texts=[],events=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},onAudio:b=>audio.push(b),onTranscript:(role,text,final)=>final&&texts.push([role,text]),onEvent:e=>events.push(e.type),onClearAudio(){},onResponseDone(){},onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+ // A long story: Seeduplex sends no transcription while it is still generating.
+ socket.message({type:'response.output_audio.started',response_id:'story'});
+ socket.message({type:'response.output_audio.delta',response_id:'story',delta:floatAudio([.5])});
+ bridge.handleBargeIn({confirmed:true});
+ assert.equal(socket.sent.filter(e=>e.type==='response.cancel').length,1);
+ socket.message({type:'response.output_audio.started',response_id:'story'});
+ socket.message({type:'response.output_audio.delta',response_id:'story',delta:floatAudio([.5])});
+ assert.equal(audio.length,1,'the cancelled story does not resume');
+ socket.message({type:'conversation.item.input_audio_transcription.started'});
+ socket.message({type:'conversation.item.input_audio_transcription.completed',transcript:'停一下，换个故事'});
+ assert.deepEqual(texts.at(-1),['user','停一下，换个故事']);
+ socket.message({type:'response.output_audio.started',response_id:'answer'});
+ socket.message({type:'response.output_audio.delta',response_id:'answer',delta:floatAudio([.25])});
+ assert.equal(audio.length,2,'the reply to the interruption plays');
+ // Once generation has finished a confirmed barge-in only flushes locally:
+ // Seeduplex hears the talk-over itself, and a cancel then broke its ASR.
+ socket.message({type:'response.output_audio.done',response_id:'answer'});
+ bridge.handleBargeIn({confirmed:true});
+ assert.equal(socket.sent.filter(e=>e.type==='response.cancel').length,1);
+ assert.deepEqual(events.filter(e=>e==='client.response.cancel').length,1);
+ bridge.close();
+});
+
+test('after a cancel, the next turn keeps the reply text that precedes its first audio',async()=>{
+ const socket=new FakeSocket(),texts=[],audio=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},onAudio:b=>audio.push(b),onTranscript:(role,text,final)=>final&&texts.push([role,text]),onClearAudio(){},onResponseDone(){},onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+ socket.message({type:'response.output_audio.started',response_id:'story'});
+ bridge.handleBargeIn({confirmed:true});
+ // A refused cancel never ends the session.
+ const cancel=socket.sent.find(e=>e.type==='response.cancel');
+ socket.message({type:'error',error:{event_id:cancel.event_id,message:'unexpected'}});
+ socket.message({type:'response.output_text.done',response_id:'story',text:'旧故事的尾巴'});
+ socket.message({type:'conversation.item.input_audio_transcription.started'});
+ socket.message({type:'conversation.item.input_audio_transcription.completed',transcript:'今天星期几'});
+ socket.message({type:'response.output_text.done',text:'今天是星期日。'});
+ socket.message({type:'response.output_audio.started',response_id:'weekday'});
+ socket.message({type:'response.output_audio.delta',response_id:'weekday',delta:floatAudio([.25])});
+ assert.deepEqual(texts,[['user','今天星期几'],['assistant','今天是星期日。']]);
+ assert.equal(audio.length,1);
+ bridge.close();
+});
+
+test('host task narration is captioned with its own source, only once its audio actually plays',async()=>{
+ const socket=new FakeSocket(),texts=[];
+ const bridge=buildSeeduplexRealtimeVoiceProvider({env:{VOLCENGINE_REALTIME_API_KEY:'test'},createWebSocket:async()=>socket}).createBridge({providerConfig:{voice:'xiaohe'},tools:[],onAudio(){},onToolCall(){},onTranscript:(...args)=>texts.push(args),onError:e=>assert.fail(e.message),onClose(){}});
+ const connecting=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await connecting;
+ bridge.speakProgress('后台正在读网页。',{caption:true,source:'task-progress'});
+ assert.deepEqual(socket.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text),['后台正在读网页。']);assert.equal(texts.length,0);
+ socket.message({type:'response.output_audio.started',response_id:'stage',tts_type:'chat_tts_text'});
+ socket.message({type:'response.output_audio.delta',response_id:'stage',delta:floatAudio([.1])});
+ assert.deepEqual(texts,[['assistant','后台正在读网页。',true,'task-progress']]);bridge.close();
+});
+
+test('native full-duplex recognition can yield reversibly without cancelling an answer or backend work',async()=>{
+ const socket=new FakeSocket(),speech=[],clears=[],audio=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture-key'},nativeDuplex:true,
+  onInputSpeech:active=>speech.push(active),onClearAudio:reason=>clears.push(reason),onAudio:bytes=>audio.push(bytes),onError:error=>assert.fail(error.message)},
+  {createWebSocket:async()=>socket});
+ const ready=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await ready;
+ socket.message({type:'response.output_audio.started',response_id:'old',tts_type:'default'});
+ socket.message({type:'conversation.item.input_audio_transcription.started'});
+ assert.deepEqual(speech,[true]);assert.deepEqual(clears,[]);assert(!socket.sent.some(e=>e.type==='response.cancel'));
+ socket.message({type:'conversation.item.input_audio_transcription.completed',text:'嗯。'});
+ socket.message({type:'response.output_audio.delta',response_id:'old',delta:floatAudio([.5])});
+ assert.equal(audio.length,1,'the paused answer is retained when there is no replacement answer');assert.deepEqual(speech,[true,false]);
+ socket.message({type:'conversation.item.input_audio_transcription.started'});
+ socket.message({type:'conversation.item.input_audio_transcription.failed'});assert.deepEqual(speech,[true,false,true,false]);
+ socket.message({type:'response.canceled',response_id:'old'});assert.deepEqual(clears,['barge-in'],'a real upstream cancel still clears playback');
+ bridge.close();
+});
+
+async function listeningAsideFixture(nativeDuplex=true){
+ const socket=new FakeSocket(),audio=[],texts=[],events=[],clears=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},nativeDuplex,
+  onAudio:(b,m)=>audio.push({b,m}),onTranscript:(...t)=>texts.push(t),onClearAudio:()=>clears.push(true),onEvent:e=>events.push(e),onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+ return {socket,bridge,audio,texts,events,clears};
+}
+test('a native listening aside is not spoken and cannot displace the ongoing story or its response owner',async t=>{
+ const f=await listeningAsideFixture();t.after(()=>f.bridge.close());const e=x=>f.socket.message(x);
+ e({type:'response.output_audio.started',response_id:'story'});e({type:'response.output_audio.delta',response_id:'story',delta:floatAudio([.25])});
+ e({type:'response.output_text.delta',response_id:'aside',delta:'（安静等候，'});
+ e({type:'response.output_audio.started',response_id:'aside'});e({type:'response.output_audio.delta',response_id:'aside',delta:floatAudio([.9])});
+ assert.equal(f.audio.length,1,'uncertain parenthesized PCM waits for disposition');
+ e({type:'response.output_text.done',response_id:'aside',text:'（安静等候，不插话、不回应背景广播）'});
+ e({type:'response.output_audio.delta',response_id:'aside',delta:floatAudio([.9])});
+ e({type:'response.output_audio.delta',response_id:'story',delta:floatAudio([.2])});
+ assert.deepEqual(f.audio.map(a=>a.m.responseId),['story','story']);assert.equal(f.bridge.audioResponseId,'story');assert.equal(f.texts.length,0);assert.equal(f.clears.length,0);
+ assert(f.events.some(e=>e.type==='native.listening-aside'));
+ e({type:'conversation.item.input_audio_transcription.completed',text:'现在说话的是谁？'});
+ e({type:'response.output_text.done',response_id:'next',text:'小周'});e({type:'response.output_audio.started',response_id:'next'});e({type:'response.output_audio.delta',response_id:'next',delta:floatAudio([.4])});
+ assert.equal(f.audio.at(-1).m.responseId,'next');assert(f.texts.some(t=>t[1]==='小周'));assert.equal(f.socket.sent.filter(e=>e.type==='session.create').length,1);
+});
+for(const text of ['（2+3）等于5。','（轻声）答案是五。','（安静的森林里有一只小鸟。）'])test('ordinary parenthesized content remains audible: '+text,async t=>{
+ const f=await listeningAsideFixture();t.after(()=>f.bridge.close());f.socket.message({type:'response.output_text.delta',response_id:'normal',delta:text.slice(0,3)});
+ f.socket.message({type:'response.output_audio.started',response_id:'normal'});f.socket.message({type:'response.output_audio.delta',response_id:'normal',delta:floatAudio([.25])});
+ f.socket.message({type:'response.output_text.done',response_id:'normal',text});assert.equal(f.audio.length,1);assert(f.texts.some(t=>t[1]===text&&t[2]));
+});
+test('a requested verbatim aside and a non-native route are not treated as background decisions',async t=>{
+ for(const native of [true,false]){
+  const f=await listeningAsideFixture(native);t.after(()=>f.bridge.close());f.socket.message({type:'conversation.item.input_audio_transcription.completed',text:'请逐字朗读括号里的安静等候。'});
+  f.socket.message({type:'response.output_text.done',response_id:'read',text:'（安静等候，不插话）'});f.socket.message({type:'response.output_audio.started',response_id:'read'});f.socket.message({type:'response.output_audio.delta',response_id:'read',delta:floatAudio([.25])});
+  assert.equal(f.audio.length,1);assert(!f.events.some(e=>e.type==='native.listening-aside'));
+ }
+});
+
+test('listening aside variants are bounded to an entire quiet disposition',()=>{
+ for(const value of ['（安静等着，不插话，等需要回应时再开口）','（安静等待）'])assert.equal(nativeListeningAside(value),true);
+ for(const value of ['我先不说话','听起来像电视里的播报声呀','（安静等着）答案是五'])assert.equal(nativeListeningAside(value),false);
 });

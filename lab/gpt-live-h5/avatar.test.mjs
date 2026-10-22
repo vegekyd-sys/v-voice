@@ -62,14 +62,14 @@ test('failed assets keep last good portrait and allow a retry; reduced motion sk
   const previous={hidden:true,animate(){animations++;}};
   const renderer=createAvatarRenderer({image,previous,load:async file=>file,reducedMotion:()=>true});
   await renderer.show('memory');assert.equal(animations,0);assert.equal(previous.hidden,true);
-  assert.equal(AVATAR_FILES.length,74);
+  assert.equal(AVATAR_FILES.length,105);
 });
 
 
-function mountFixture({stall=false,reduced=false,onDisplayed,owner,paint=false}={}){
+function mountFixture({stall=false,reduced=false,small=false,onDisplayed,owner,paint=false}={}){
  const image={src:'idle',complete:true,naturalWidth:512,getBoundingClientRect:()=>({width:200,height:200,top:0,left:0,bottom:200,right:200}),getAttribute(){return this.src;}},previous={hidden:true},body={dataset:{callState:'connected'}};
  const events={};const document={body,hidden:false,getElementById:id=>id==='avatar'?image:previous,addEventListener(k,f){events[k]=f;},removeEventListener(){}};
- const window={navigator:{},Image:class{set src(value){if(stall&&!/listen-[35]-512/.test(value))return;queueMicrotask(()=>this.onload());}async decode(){}},matchMedia:q=>({matches:reduced&&q.includes('reduced-motion'),addEventListener(){},removeEventListener(){}}),MutationObserver:class{observe(){}disconnect(){}},addEventListener(){}};
+ const window={navigator:small?{connection:{saveData:true}}:{},Image:class{set src(value){if(stall&&!/listen-[35]-512/.test(value))return;queueMicrotask(()=>this.onload());}async decode(){}},matchMedia:q=>({matches:(reduced&&q.includes('reduced-motion'))||(small&&q.includes('max-width')),addEventListener(){},removeEventListener(){}}),MutationObserver:class{observe(){}disconnect(){}},addEventListener(){}};
  const frames=[];if(paint){window.requestAnimationFrame=f=>frames.push(f);window.innerWidth=1000;window.innerHeight=800;}
  return {avatar:mountAvatar(document,window,{onDisplayed,owner}),image,body,document,events,paint(){while(frames.length)frames.shift()();}};
 }
@@ -95,8 +95,8 @@ test('hidden page pauses variations and resumes promptly without overwriting a d
  t.mock.timers.enable({apis:['setTimeout','Date'],now:0});const f=mountFixture();await settle();f.avatar.select({picture:'memory-4',continuations:['memory-0','background-3']});await settle();const old=f.image.src;
  f.document.hidden=true;f.events.visibilitychange();t.mock.timers.tick(15000);await settle();assert.equal(f.image.src,old);
  f.document.hidden=false;f.events.visibilitychange();t.mock.timers.tick(0);await settle();assert.notEqual(f.image.src,old);
- f.body.dataset.callState='idle';f.events.visibilitychange();await settle();assert.match(f.image.src,/idle-512/);
- f.avatar.select('complete-2');t.mock.timers.tick(10000);await settle();assert.match(f.image.src,/idle-512/);f.avatar.dispose();
+ f.body.dataset.callState='idle';f.events.visibilitychange();await settle();assert.match(f.image.src,/home-1024/);
+ f.avatar.select('complete-2');t.mock.timers.tick(10000);await settle();assert.match(f.image.src,/home-1024/);f.avatar.dispose();
 });
 
 test('stalled variation uses a decoded neutral by five seconds; reduced motion still varies without animation',async t=>{
@@ -139,4 +139,13 @@ test('only decoded matching visible frames are reported, with owner and revision
  f.document.hidden=false;f.avatar.select('memory-1');await settle();f.image.currentSrc='/wrong.webp';f.paint();assert.equal(rows.length,count);delete f.image.currentSrc;
  f.avatar.select('memory-2');await settle();f.image.naturalWidth=0;f.paint();assert.equal(rows.length,count);f.image.naturalWidth=512;
  f.avatar.select('memory-3');await settle();f.image.getBoundingClientRect=()=>({width:200,height:200,top:900,left:0,bottom:1100,right:200});f.paint();assert.equal(rows.length,count);f.avatar.dispose();
+});
+
+// The phone stage is large enough for 512px frames; Data Saver opts out.
+test('Data Saver keeps 256px live reactions while the home hero stays high resolution',async t=>{
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:0});const f=mountFixture({small:true});await settle();
+ assert.match(f.image.src,/-256\.webp$/);
+ f.body.dataset.callState='idle';f.events.visibilitychange();await settle();assert.match(f.image.src,/home-1024\.webp$/);
+ f.body.dataset.callState='connected';f.events.visibilitychange();await settle();f.avatar.select('listen-1');await settle();
+ assert.match(f.image.src,/listen-1-256\.webp$/);f.avatar.dispose();
 });

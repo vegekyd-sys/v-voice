@@ -1,0 +1,126 @@
+{
+  "schema": "voice-native-farewell-v1",
+  "date": "2026-10-22",
+  "runtimeCommit": "09b533dee6ce11fcc8c0e7dfaab3dc6e52928fce",
+  "version": "voice-seeduplex-duplex.20261022.7",
+  "mainTests": 710,
+  "speakerTests": 95,
+  "incident": {
+    "endCallToolSucceeded": true,
+    "noSubsequentSpeechForObservedMs": 20000,
+    "callDidNotEndDuringThatWindow": true
+  },
+  "faultSimulation": "service regression with absent upstream farewell audio; not a new physical-device reproduction",
+  "cases": [
+    {
+      "phase": "bye-tools",
+      "rawSha256": "90d2305a2eace7f627eb3de1dfbf3fafcf7a52f0f6d8201149208f8bc9b588a1",
+      "toolNames": [
+        "current_time",
+        "current_time",
+        "current_time",
+        "current_time",
+        "end_call"
+      ],
+      "endingEvents": [
+        {
+          "type": "end.accepted",
+          "afterInputEndMs": 3218
+        },
+        {
+          "type": "end.after-playback",
+          "afterInputEndMs": 4561
+        },
+        {
+          "type": "playback.drained",
+          "afterInputEndMs": 7970
+        }
+      ],
+      "automaticDialScreenObserved": true,
+      "continuedCallObserved": false,
+      "serverClosed": true,
+      "fallbackStages": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 409 ()"
+      ]
+    },
+    {
+      "phase": "bye-continue",
+      "rawSha256": "d8d62e6c5eb9e30d18b12a9c5df3599011f84f0ef2a2639c6ce261f0bbdede94",
+      "toolNames": [
+        "current_time"
+      ],
+      "endingEvents": [],
+      "automaticDialScreenObserved": false,
+      "continuedCallObserved": true,
+      "serverClosed": true,
+      "fallbackStages": [],
+      "consoleErrors": []
+    },
+    {
+      "phase": "bye",
+      "rawSha256": "bf2c5288cd066349b89815a683369558ecaf403e076d624ef4ab7dd9a62856fd",
+      "toolNames": [
+        "end_call"
+      ],
+      "endingEvents": [
+        {
+          "type": "end.accepted",
+          "afterInputEndMs": 1417
+        },
+        {
+          "type": "end.after-playback",
+          "afterInputEndMs": 2833
+        },
+        {
+          "type": "playback.drained",
+          "afterInputEndMs": 6132
+        }
+      ],
+      "automaticDialScreenObserved": true,
+      "continuedCallObserved": false,
+      "serverClosed": true,
+      "fallbackStages": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 409 ()"
+      ]
+    }
+  ],
+  "runtimeVerification": {
+    "readiness": {
+      "known": true,
+      "activeCalls": 0,
+      "creatingSessions": 0,
+      "backgroundTasks": 0
+    },
+    "runtimeCommit": "09b533dee6ce11fcc8c0e7dfaab3dc6e52928fce",
+    "runtimeFiles": 204,
+    "badFiles": [],
+    "filesSha256": "12994a25ee6f9e74feb1dc8470d7dbe04dc6da98604ae8ec82d7ffab290188aa",
+    "candidate": {
+      "MainPID": "2412376",
+      "ActiveState": "active",
+      "InvocationID": "8c01ff7fcbee444790d2422e4b0e45ab"
+    },
+    "production": {
+      "MainPID": "1794220",
+      "ActiveState": "active",
+      "InvocationID": "8aae0becf201486d903f47a5988e8e93"
+    },
+    "candidateFlags": {
+      "VOICE_PHONE_INPUT_POLICY": "\"native\"",
+      "VOICE_NATIVE_INTERRUPT_ASR": "1",
+      "VOICE_NATIVE_PLAYBACK_POLICY": "assisted"
+    },
+    "rollbackPreserved": true
+  },
+  "productionDeployment": false,
+  "physicalMicrophoneAcceptance": false,
+  "limitations": [
+    "Real model/browser tests used synthetic input. The original long human call with backend delegations was not replayed in full.",
+    "Natural native farewells arrived in these real runs; missing-audio and failed-TTS recovery were exercised in service fault simulations.",
+    "The two successful hangups each logged a nonblocking HTTP 409; the next dial succeeded. Endpoint was not captured, so no specific request cause is claimed."
+  ],
+  "reproductionScriptSha256": "80bdce43726cb83289129e82cba5e7dd1ed258078d4634e05ab3018b0a8f2cf3",
+  "reproductionNote": "Final reusable probe parameterizes the private Candidate origin and entry; raw run hashes identify the actual recorded sessions."
+}

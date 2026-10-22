@@ -1,0 +1,13 @@
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.xcodebuildmcp/
+*.ipa
+*.xcarchive
+Signing.xcconfig
+
+.build/
+.swiftpm/
+
+__pycache__/

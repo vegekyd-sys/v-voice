@@ -8,17 +8,23 @@ export function formatTranscriptTime(at) {
 }
 
 /**
- * One row per real native turn. Provider caption item IDs identify fragments,
+ * One row per native turn, or source ASR utterance in speaker-gated calls.
+ * Provider caption item IDs identify fragments,
  * not conversational turns. Text stays unchanged here; the view renders safe Markdown DOM.
  * This state lives in the page; it performs no persistence or network actions.
  */
 export function createTranscriptPresentation() {
   let sequence = 0;
-  const rows = [], nativeTurns = new Map(), openByRole = new Map(), fragments = new Map(), seenEvents = new Set();
+  const rows = [], nativeTurns = new Map(), openByRole = new Map(), fragments = new Map(), seenEvents = new Set(), speakers = new Map();
   const view = row => ({
-    key: row.key, role: row.role, speaker: row.document ? 'V · 完整方案' : row.role === 'user' ? '你' : 'V',
-    text: row.text, at: row.at, time: formatTranscriptTime(row.at), complete: row.complete,
+    key: row.key, role: row.role, speaker: row.sourceSpeakerId ? speakerLabel(row.sourceSpeakerId) : row.document ? 'V · 完整方案' : row.role === 'user' ? '你' : 'V',
+    ...(row.sourceSpeakerId?{speakerId:row.sourceSpeakerId,speakerTone:[...speakers.keys()].indexOf(row.sourceSpeakerId)%5,listenOnly:row.listenOnly===true}:{}),
+    text: row.text, document: row.document === true, ...(row.document?{callId:row.callId}:{}), at: row.at, time: formatTranscriptTime(row.at), complete: row.complete,
   });
+  const speakerLabel = id => {
+    const person=speakers.get(id);if(!person)return '说话人';
+    return person.name ? `${person.certainty==='suggested'?'可能是 ':''}${person.name} · ${person.label}` : person.label;
+  };
   const snapshot = () => ({
     history: rows.filter(row => row.complete && row.text.trim()).map(view),
     current: rows.filter(row => !row.complete && row.text.trim()).map(view),
@@ -49,12 +55,26 @@ export function createTranscriptPresentation() {
     consume(event, at = Date.now()) {
       if (!Number.isFinite(at) || at < 0) throw new RangeError('Transcript time must be a nonnegative finite timestamp');
       if (!event || typeof event !== 'object') return snapshot();
+      if (['speaker.utterance','speaker.decision'].includes(event.type)) {
+        const turn=event.turn;
+        if(!turn||typeof turn.text!=='string'||!turn.text.trim()||turn.speakerId===undefined||!Number.isFinite(turn.startMs)||!Number.isFinite(turn.endMs))return snapshot();
+        for(const person of event.participants??[])if(person?.id)speakers.set(person.id,{...person});
+        const id=String(turn.speakerId).startsWith('speaker:')?String(turn.speakerId):'speaker:'+turn.speakerId;
+        if(!speakers.has(id))speakers.set(id,{id,label:'Speaker '+String.fromCharCode(65+speakers.size),name:null});
+        // ASR timestamps anchor this exact utterance. Native replay can merge or
+        // split captions, so never attach its latest speaker to unrelated rows.
+        const key=`speaker-input:${turn.startMs}:${turn.endMs}`;
+        const row=nativeTurns.get(turnKey('user',key))??newRow('user',at,key,false);
+        row.sourceSpeakerId=id;row.text=turn.text;row.complete=true;
+        if(event.type==='speaker.decision')row.listenOnly=!event.shouldRespond;
+        return snapshot();
+      }
       if (event.type === 'backend.result') {
         if (typeof event.callId !== 'string' || !event.callId || typeof event.text !== 'string' || !event.text.trim()) return snapshot();
         const id = `backend-document:${event.callId}`;
         if (nativeTurns.has(turnKey('assistant', id))) return snapshot();
         const row = newRow('assistant', at, id, false);
-        row.text = event.text; row.complete = true; row.document = true;
+        row.text = event.text; row.complete = true; row.document = true; row.callId=event.callId;
         return snapshot();
       }
       if (typeof event.event_id === 'string') {
@@ -105,7 +125,7 @@ export function createTranscriptPresentation() {
     },
     reset() {
       sequence = 0; rows.length = 0;
-      nativeTurns.clear(); openByRole.clear(); fragments.clear(); seenEvents.clear();
+      nativeTurns.clear(); openByRole.clear(); fragments.clear(); seenEvents.clear(); speakers.clear();
       return snapshot();
     },
   };

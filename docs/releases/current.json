@@ -1,0 +1,11 @@
+{
+  "schema": "v-voice-current-release-v1",
+  "entryCommit": "0d0b3d96c5391dde5362c5db270018958948584f",
+  "gatewayPluginCommit": "a9ac516860a8856470262957ad6ea0cc2670cb0e",
+  "registration": "voice-ios-web-delivery-20261022/release.json",
+  "runtimeDifference": "Main-sourced public iOS H5 resource delivery and homepage entry; private iOS build14 requested physical scopes accepted and main-sourced signed rebuild installed; Gateway plugin unchanged",
+  "gatewayRestartRequired": false,
+  "release": "voice-ios-web-delivery-20261022",
+  "previousEntryCommit": "16932ca42f415c8b0e93c5886b61cb571de4a7d3",
+  "filesSha256": "c6b7cf5e9cfa750126978141738d2a20dbb46e8d11fa0344c804858d6222858d"
+}

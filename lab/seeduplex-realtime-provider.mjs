@@ -15,6 +15,28 @@ const MAX_TOOL_CALLS = 100;
 const MAX_TOOL_RESULT_BYTES = 32_000;
 const MAX_CONSULT_RESULT_CHARS = 8_000;
 const MAX_UPSTREAM_MESSAGE_BYTES = 1_048_576;
+
+// The native model sometimes represents "do not join this side conversation"
+// as an aside. It is a listening disposition, not a new spoken answer. Keep
+// ordinary parenthesized answers and mixed speech intact.
+export function nativeListeningAside(text) {
+  const value=String(text??'').trim();
+  if(value.length>160||!/^[(（][^()（）]+[)）]$/u.test(value))return false;
+  return /^(?:继续安静|保持安静|安静(?:等候|等着|等待)|静静倾听|继续倾听|不(?:插话|接话|回应|介入))/u.test(value.slice(1,-1).trim());
+}
+
+// Provider messages can contain prompts or credentials. Persist only a code and
+// a fixed classification, never an arbitrary upstream message.
+export function classifySeeduplexError(event = {}) {
+  const detail = event.error ?? event;
+  const code = String(detail.code ?? event.code ?? "");
+  const upstreamCode = /^\d{3,8}$/.test(code) ? code : undefined;
+  const message = typeof detail.message === "string" ? detail.message : "";
+  const clientError = /InvalidSpeaker|ExceededConcurrentDurationLimit|invalid.parameter|api.key|unauthoriz/i.test(message);
+  const inputTimeout = /NoAudioInputTooLong|stream recv timeout|Abnormal silence audio/i.test(message);
+  const recoverable = !clientError && (inputTimeout || /^5\d{2}(?:\d{5})?$/.test(code));
+  return { upstreamCode, category: clientError ? "configuration" : inputTimeout ? "input-timeout" : recoverable ? "upstream-transient" : "upstream-rejected", recoverable };
+}
 // The runtime asks the voice agent for "at most one short natural backchannel
 // ... vary it". A single constant defeated that: every delegated turn spoke the
 // identical sentence, which is what made the assistant sound canned. Rotate
@@ -124,6 +146,20 @@ export class Pcm24To16Resampler {
   }
 }
 
+/** A 16 kHz hardware source already matches the upstream input rate. */
+class Pcm16Passthrough {
+  push(audio) {
+    if (!Buffer.isBuffer(audio) || audio.length % 2 !== 0) {
+      throw new Error("Seeduplex input must be PCM16LE");
+    }
+    return audio;
+  }
+}
+
+function inputResampler(request) {
+  return request.inputSampleRate === 16_000 ? new Pcm16Passthrough() : new Pcm24To16Resampler();
+}
+
 /** The pinned service labels output as PCM but sends float32 little-endian. */
 export function decodeSeeduplexFloat32Pcm(encoded) {
   if (typeof encoded !== "string") throw new Error("Invalid Seeduplex audio frame");
@@ -147,7 +183,7 @@ export function decodeSeeduplexFloat32Pcm(encoded) {
 async function createDefaultWebSocket(url, options) {
   // production-worker is a sibling of the pinned OpenClaw runtime. Keeping the
   // dependency inside that runtime avoids a second, independently drifting ws.
-  const { WebSocket } = await import("../openclaw/node_modules/ws/wrapper.mjs");
+  const { WebSocket } = await import("ws");
   return new WebSocket(url, options);
 }
 
@@ -238,10 +274,10 @@ export class SeeduplexRealtimeVoiceBridge {
     this.ready = false;
     this.terminal = false;
     this.closeNotified = false;
-    this.resampler = new Pcm24To16Resampler();
+    this.resampler = inputResampler(this.request);
     this.pendingInput = Buffer.alloc(0);
     this.toolBatches = [];
-    this.seenToolCalls = new Set();
+    this.seenToolCalls = new Map();
     this.seenEvents = new Map();
     this.pendingToolCalls = new Map();
     this.backgroundTools = new Map();
@@ -260,12 +296,29 @@ export class SeeduplexRealtimeVoiceBridge {
     this.pendingWorkingSpeech = undefined;
     this.responseActive = false;
     this.injectedSpeech = false;
+    this.greetingRequested = false;
+    this.pendingGreeting = null;
     this.retiredResponses = new Set();
     this.audioResponseId = null;
+    this.deliveredAudioResponseId = null;
+    this.nativeAsideCandidates = new Map();
+    this.nativeTextResponses = new Set();
     this.responseOwnerAnnounced = false;
     this.responseOwnerId = undefined;
     this.supportsToolResultContinuation = true;
     this.supportsToolResultSuppression = false;
+    this.sessionId = null;
+    this.reconnecting = false;
+    this.reconnectTimer = null;
+    this.reconnectAttempts = [];
+    this.outbox = [];
+    this.startedAt = Date.now();
+    this.lastInputAt = Date.now();
+    this.inputMuted = false;
+    this.inputTimer = null;
+    this.lastFrameAt = 0;
+    this.pacingTimer = null;
+    this.cancelEventId = null;
   }
 
   connect() {
@@ -304,22 +357,28 @@ export class SeeduplexRealtimeVoiceBridge {
       }
       this.socket = socket;
       this.connectTimer = setTimeout(
-        () => this.#fail(new Error("Seeduplex session setup timed out")),
+        () => this.#recover({category:"setup-timeout",recoverable:true}),
         this.options.connectTimeoutMs ?? 20_000,
       );
       socket.on("open", () => {
-        if (this.terminal) return;
+        if (this.terminal || socket !== this.socket) return;
         this.connected = true;
         try {
-          this.#send(buildSeeduplexSession(this.request.providerConfig, this.request));
+          const event = buildSeeduplexSession(this.request.providerConfig, this.request);
+          // The live endpoint requires session.create on a new connection;
+          // supplying its previous id retains history (verified on the endpoint).
+          if (this.sessionId) event.session.id = this.sessionId;
+          this.#send(event);
         } catch (error) {
           this.#fail(error instanceof Error ? error : new Error("Invalid Seeduplex session"));
         }
       });
-      socket.on("message", (data, binary) => this.#onMessage(data, binary));
+      socket.on("message", (data, binary) => { if (socket === this.socket) this.#onMessage(data, binary); });
       socket.on("unexpected-response", (_request, response) => {
+        if (socket !== this.socket || this.terminal) return;
         response.resume?.();
         const status = Number(response.statusCode);
+        if (status >= 500 && status <= 599) return this.#recover({category:"upstream-transient",upstreamCode:String(status),recoverable:true});
         this.#fail(
           new Error(
             status === 401 || status === 403
@@ -330,18 +389,23 @@ export class SeeduplexRealtimeVoiceBridge {
           ),
         );
       });
-      socket.on("error", () => this.#fail(new Error("Seeduplex upstream connection failed")));
+      socket.on("error", () => { if (socket === this.socket) this.#recover({category:"network",recoverable:true}); });
       socket.on("close", () => {
-        if (!this.terminal) this.#fail(new Error("Seeduplex upstream connection closed"));
+        if (socket !== this.socket) return;
+        if (!this.terminal) this.#recover({category:"network",recoverable:true});
         else this.#notifyClose("completed");
       });
     } catch {
-      this.#fail(new Error("Seeduplex upstream connection failed"));
+      this.#recover({category:"network",recoverable:true});
     }
   }
 
   sendAudio(audio) {
     if (this.terminal) return;
+    this.lastInputAt = Date.now();
+    // Audio received while reconnecting belongs to an unavailable input stream.
+    // Do not replay seconds of stale speech as a burst into the resumed session.
+    if (this.reconnecting) return;
     const converted = this.resampler.push(audio);
     if (!converted.length) return;
     this.pendingInput = Buffer.concat([this.pendingInput, converted]);
@@ -349,11 +413,78 @@ export class SeeduplexRealtimeVoiceBridge {
       this.#fail(new Error("Seeduplex pending input audio overflow"));
       return;
     }
-    while (this.ready && this.pendingInput.length >= INPUT_FRAME_BYTES) {
-      const frame = this.pendingInput.subarray(0, INPUT_FRAME_BYTES);
-      this.pendingInput = this.pendingInput.subarray(INPUT_FRAME_BYTES);
-      this.#send({ type: "input_audio_buffer.append", audio: frame.toString("base64") });
+    this.#pumpInput();
+  }
+
+  // Candidate routing may reject a speculative turn before any output or tool
+  // is released. Retire its input backlog and generation together.
+  cancelPendingResponse() {
+    this.pendingInput = Buffer.alloc(0);
+    this.#cancelUpstreamResponse();
+  }
+
+  #pumpInput() {
+    if (!this.ready || this.terminal || this.pendingInput.length < INPUT_FRAME_BYTES) return;
+    const wait = 20 - (Date.now() - this.lastFrameAt);
+    if (wait > 0) {
+      this.pacingTimer ??= setTimeout(() => {this.pacingTimer = null;this.#pumpInput();}, wait);
+      this.pacingTimer.unref?.();
+      return;
     }
+    if (this.inputMuted) {
+      this.inputMuted = false;
+      this.#send({type:"input_audio_unmute.commit"});
+      this.#diagnostic({stage:"input-resumed"});
+    }
+    const frame = this.pendingInput.subarray(0, INPUT_FRAME_BYTES);
+    this.pendingInput = this.pendingInput.subarray(INPUT_FRAME_BYTES);
+    this.#send({ type: "input_audio_buffer.append", audio: frame.toString("base64") });
+    const now = Date.now(), deadline = this.lastFrameAt + 20;
+    // Compensate small timer jitter instead of accumulating one millisecond of
+    // backlog per packet over hours. A large stall never emits a catch-up burst.
+    this.lastFrameAt = Math.abs(now-deadline) <= 5 ? deadline : now;
+    if (this.pendingInput.length >= INPUT_FRAME_BYTES) this.#pumpInput();
+  }
+
+  #watchInput() {
+    if (!this.ready || this.terminal || this.inputMuted || Date.now() - this.lastInputAt < (this.options.inputIdleMs ?? 2_000)) return;
+    this.inputMuted = true;
+    this.#send({type:"input_audio_mute.commit"});
+    this.#diagnostic({stage:"input-paused"});
+  }
+
+  #diagnostic(value) {
+    this.request.onDiagnostic?.({...value,sessionAgeMs:Date.now()-this.startedAt});
+  }
+
+  #recover(reason) {
+    if (this.terminal || this.reconnectTimer) return;
+    this.#diagnostic({stage:"upstream-error",...reason});
+    if (!reason.recoverable) return this.#fail(new Error("豆包语音连接未完成，请重新拨号。"));
+    const now = Date.now();
+    this.reconnectAttempts = this.reconnectAttempts.filter(at => now-at < 60_000);
+    if (this.reconnectAttempts.length >= (this.options.maxReconnectAttempts ?? 3)) return this.#fail(new Error("语音连接暂时无法恢复，请重新拨号。"));
+    this.reconnectAttempts.push(now);
+    this.reconnecting = true;
+    this.ready = false;
+    this.connected = false;
+    this.pendingInput = Buffer.alloc(0);
+    this.resampler = inputResampler(this.request);
+    clearTimeout(this.connectTimer);
+    clearTimeout(this.pacingTimer);this.pacingTimer = null;
+    const old = this.socket;this.socket = null;
+    old?.terminate?.();if (!old?.terminate) old?.close();
+    this.request.onClearAudio?.("reconnecting");
+    this.responseActive = false;
+    this.pendingGreeting = null;
+    this.pendingSpeechCaption = null;
+    this.nativeAsideCandidates.clear();
+    this.#diagnostic({stage:"reconnecting",attempt:this.reconnectAttempts.length});
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.#open();
+    }, this.options.reconnectDelayMs ?? Math.min(4_000, 250 * 2 ** (this.reconnectAttempts.length-1)));
+    this.reconnectTimer.unref?.();
   }
 
   setMediaTimestamp(_timestamp) {}
@@ -363,6 +494,11 @@ export class SeeduplexRealtimeVoiceBridge {
     // Keeping a native continuation open suppresses later conversational turns.
     this.backgroundTools.set(callId, question);
     this.submitToolResult(callId, {accepted:true,status:"working",message:"已交给 V 后台，我会继续做完。",instruction:"简短说明任务已开始，随后正常回应用户聊天。任务仍在后台继续，不要声称已完成。"}, {backgroundAck:true});
+  }
+
+  /** Take over a background task whose native session was replaced for the same audience. */
+  adoptBackgroundTool(callId, question) {
+    this.backgroundTools.set(callId, question);
   }
 
   completeBackgroundTool(callId, result, options = {}) {
@@ -378,12 +514,16 @@ export class SeeduplexRealtimeVoiceBridge {
       {role:"user",content:[{type:"input_text",text:question}]},
       {role:"assistant",content:[{type:"input_text",text}]},
     ]});
+    const spoken = options.spokenText ?? text;
+    // A host-provided speaker captions the line when its audio starts.
+    if (options.speak) return void options.speak(spoken);
     if (!options.displayedFullResult) this.request.onTranscript?.("assistant", text, true, "V-backend");
-    this.speakProgress(options.spokenText ?? text);
+    this.speakProgress(spoken, { caption: options.displayedFullResult === true });
   }
 
-  speakProgress(text) {
-    if (!this.ready || this.terminal) return;
+  speakProgress(text, { caption = false, source = "V-backend-summary" } = {}) {
+    if (this.terminal || (!this.ready && !this.reconnecting)) return;
+    this.pendingSpeechCaption = caption ? { text, source, started: false, responseId: null } : null;
     this.injectedSpeech = true;
     this.responseActive = true;
     this.outputClosed = false;
@@ -392,6 +532,7 @@ export class SeeduplexRealtimeVoiceBridge {
   }
 
   sendUserMessage(text) {
+    if(this.request.nativeDuplex)this.nativeLiteralRead=/朗读|复述|念出|读出|原样|逐字/u.test(text??'');
     const normalized = optionalString(text);
     if (!normalized || !this.ready) return;
     this.responseOwnerAnnounced = false;
@@ -404,14 +545,20 @@ export class SeeduplexRealtimeVoiceBridge {
   }
 
   triggerGreeting(instructions) {
+    if (!this.ready || this.terminal || this.greetingRequested) return;
     // Seeduplex conversation.item.create injects paired history; it does not
     // trigger an assistant turn. SayHello is the documented speech event.
+    const text = this.request.greetingText ?? "天懿，你好，我是 V，在呢。";
+    this.greetingRequested = true;
+    this.pendingGreeting = { text, started: false, responseId: null };
     this.#send({type: "speech_text_buffer.commit", event_id: `event_${randomUUID()}`,
-      text: this.request.greetingText ?? "天意，你好，我是 V，在呢。"});
+      text});
   }
 
-  handleBargeIn() {
+  handleBargeIn({ confirmed = false } = {}) {
     if (!this.ready) return;
+    const retiredResponseId=confirmed?(this.audioResponseId??this.responseOwnerId):undefined;
+    if(retiredResponseId){this.retiredResponses.add(retiredResponseId);if(this.retiredResponses.size>256)this.retiredResponses.delete(this.retiredResponses.values().next().value);}
     // Flushing local playback is the whole barge-in, matching the GPT Live One
     // bridge. A barge-in signal is only ever a guess by input VAD, and during a
     // 30-second Agent consult the provider raises that guess on silence. Making
@@ -419,11 +566,17 @@ export class SeeduplexRealtimeVoiceBridge {
     // the upstream generation keeps streaming and Gateway output ownership is
     // untouched. The upstream response is cancelled only once the user is
     // confirmed to have actually said something, in #cancelUpstreamResponse.
-    this.request.onClearAudio?.("barge-in");
+    this.request.onClearAudio?.("barge-in",retiredResponseId?{retiredResponseId}:undefined);
+    this.pendingGreeting = null;
     this.bargeInPending = true;
     // Host-injected backend speech may postpone native ASR until its TTS ends.
     // A client speech onset must retire that playback, not wait for ASREnded.
-    if (this.injectedSpeech) this.#cancelUpstreamResponse(true);
+    // A confirmed barge-in (a speaker whose own echo cancellation heard someone
+    // talk over V) is already the evidence: while a long answer is still being
+    // generated Seeduplex sends no transcription, so waiting would let it resume.
+    // Once generation has finished, leave it to Seeduplex: a cancel then left
+    // its ASR starting turns that never completed (device test 2026-10-18).
+    if (this.injectedSpeech || (confirmed && this.responseActive)) this.#cancelUpstreamResponse(true);
   }
 
   /**
@@ -432,13 +585,16 @@ export class SeeduplexRealtimeVoiceBridge {
    */
   #cancelUpstreamResponse(force = false) {
     this.bargeInPending = false;
+    this.pendingSpeechCaption = null;
     if (!this.ready || this.cancelledOutputPending || (!this.responseActive && !force)) return;
     this.cancelledOutputPending = true;
     const retiredId = this.audioResponseId ?? this.responseOwnerId;
     if (retiredId) this.retiredResponses.add(retiredId);
     if (this.retiredResponses.size > 256) this.retiredResponses.delete(this.retiredResponses.values().next().value);
     this.responseActive = false;
-    this.#send({ type: "response.cancel", event_id: `event_${randomUUID()}` });
+    this.cancelEventId = `event_${randomUUID()}`;
+    this.#send({ type: "response.cancel", event_id: this.cancelEventId });
+    this.request.onEvent?.({ direction: "client", type: "client.response.cancel" });
   }
 
   submitToolResult(callId, result, options = {}) {
@@ -514,11 +670,16 @@ export class SeeduplexRealtimeVoiceBridge {
   acknowledgeMark(_markName) {}
 
   close() {
+    this.nativeAsideCandidates.clear();
     if (this.terminal) return;
     this.terminal = true;
     this.ready = false;
     this.abortController.abort(new Error("Seeduplex session closed"));
     clearTimeout(this.connectTimer);
+    clearTimeout(this.reconnectTimer);
+    clearTimeout(this.pacingTimer);
+    clearInterval(this.inputTimer);
+    this.outbox.length = 0;
     if (this.socket?.readyState === 1) {
       this.#send({ type: "session.close" });
       setTimeout(() => this.socket?.close(), 1_000).unref?.();
@@ -534,6 +695,12 @@ export class SeeduplexRealtimeVoiceBridge {
   }
 
   #send(event) {
+    if (!event.event_id) event = {...event,event_id:`event_${randomUUID()}`};
+    if (!this.ready && (this.reconnecting || this.sessionId) && !["session.create","session.close"].includes(event.type)) {
+      if (event.type === "input_audio_buffer.append") return;
+      if (this.outbox.length >= 128) return this.#fail(new Error("语音恢复中的待处理内容过多，请重新拨号。"));
+      this.outbox.push(event);return;
+    }
     if (this.socket?.readyState === 1) this.socket.send(JSON.stringify(event));
   }
 
@@ -554,9 +721,45 @@ export class SeeduplexRealtimeVoiceBridge {
       if (this.seenEvents.size > 2048) this.seenEvents.delete(this.seenEvents.keys().next().value);
     }
     this.request.onProtocolEvent?.(event);
+    this.#handleEvent(event);
+  }
+
+  #handleEvent(event, replay=false) {
     const type = event?.type;
     const responseId = optionalString(event.response_id) ?? optionalString(event.response?.id);
     if (responseId && this.retiredResponses.has(responseId) && type?.startsWith("response.")) return;
+    if(this.request.nativeDuplex&&responseId&&!replay){
+      let candidate=this.nativeAsideCandidates.get(responseId);
+      if(type==='response.output_text.delta'&&typeof event.delta==='string'){
+        if(!this.nativeTextResponses.has(responseId)&&!event.delta.trim())return;
+        if(!this.nativeTextResponses.has(responseId)){
+          this.nativeTextResponses.add(responseId);
+          if(this.nativeTextResponses.size>256)this.nativeTextResponses.delete(this.nativeTextResponses.values().next().value);
+          if(/^\s*[(（]/u.test(event.delta)){
+            if(this.nativeAsideCandidates.size>=8)return this.#fail(new Error('语音说明积压，请重新拨号。'));
+            candidate={text:'',audio:[],bytes:0};this.nativeAsideCandidates.set(responseId,candidate);
+          }
+        }
+        if(candidate){candidate.text+=event.delta;if(candidate.text.length>8000)return this.#fail(new Error('语音说明过长，请重新拨号。'));return;}
+      }
+      if(type==='response.output_text.done'){
+        this.nativeAsideCandidates.delete(responseId);
+        if(!this.nativeLiteralRead&&nativeListeningAside(event.text)){
+          this.retiredResponses.add(responseId);if(this.retiredResponses.size>256)this.retiredResponses.delete(this.retiredResponses.values().next().value);
+          if(this.audioResponseId===responseId)this.audioResponseId=this.deliveredAudioResponseId;
+          this.request.onEvent?.({direction:'server',type:'native.listening-aside',responseId});return;
+        }
+        if(candidate){
+          // A normal parenthesized answer remains audible. Replaying bypasses
+          // this small output hold, never the event identity/dedup boundary.
+          for(const held of candidate.audio)this.#handleEvent(held,true);
+        }
+      }else if(candidate&&type?.startsWith('response.output_audio.')){
+        candidate.bytes+=typeof event.delta==='string'?event.delta.length:0;
+        if(candidate.bytes>2_000_000)return this.#fail(new Error('语音说明缓存过大，请重新拨号。'));
+        candidate.audio.push(event);return;
+      }
+    }
     // This service emits TTSSentenceStart, without response.created. Use its
     // actual response ID as the boundary; an old tail cannot reopen playback.
     if (type === "response.output_audio.started") {
@@ -564,25 +767,53 @@ export class SeeduplexRealtimeVoiceBridge {
       this.outputClosed = false;
       this.responseActive = true;
       this.audioResponseId = responseId;
+      const caption = this.pendingSpeechCaption;
+      if (caption) {
+        if (event.tts_type === "chat_tts_text" && !caption.started) {
+          caption.started = true; caption.responseId = responseId;
+        } else if (event.tts_type === "default" || responseId !== caption.responseId) {
+          this.pendingSpeechCaption = null;
+        }
+      }
+      if (this.pendingGreeting) {
+        if (event.tts_type === "chat_tts_text" && !this.pendingGreeting.started) {
+          this.pendingGreeting.started = true;
+          this.pendingGreeting.responseId = responseId;
+        } else if (event.tts_type === "default" || responseId !== this.pendingGreeting.responseId) {
+          this.pendingGreeting = null;
+        }
+      }
       if (event.tts_type === "default") this.injectedSpeech = false;
     }
 
-    if (type === "error" && this.cancelledOutputPending) {
+    if (type === "error" && this.cancelledOutputPending &&
+      (event.error?.event_id === this.cancelEventId || event.event_id === this.cancelEventId)) {
       // response.cancel is documented to return an error when its target ended
-      // in the race between local playback and the upstream command.
+      // in the race between local playback and the upstream command. A refused
+      // cancel never ends the session; record that it happened, not its text.
+      this.request.onEvent?.({ direction: "server", type: "client.response.cancel.rejected" });
       return;
     }
-    if (type === "error") return this.#fail(new Error("Seeduplex upstream session failed"));
+    if (type === "error") return this.#recover(classifySeeduplexError(event));
     if (type === "session.created") {
+      const resumed = Boolean(this.sessionId);
+      if (resumed && event.session?.id !== this.sessionId) return this.#fail(new Error("语音上下文未能恢复，请重新拨号。"));
+      this.sessionId = optionalString(event.session?.id) ?? this.sessionId;
       this.ready = true;
+      this.reconnecting = false;
+      this.inputMuted = false;
+      this.lastInputAt = Date.now();
+      this.cancelledOutputPending = false;
+      this.outputClosed = false;
+      this.seenEvents.clear();
       clearTimeout(this.connectTimer);
       this.connectResolve?.();
-      this.request.onReady?.();
-      while (this.pendingInput.length >= INPUT_FRAME_BYTES) {
-        const frame = this.pendingInput.subarray(0, INPUT_FRAME_BYTES);
-        this.pendingInput = this.pendingInput.subarray(INPUT_FRAME_BYTES);
-        this.#send({ type: "input_audio_buffer.append", audio: frame.toString("base64") });
-      }
+      if (resumed) this.#diagnostic({stage:"recovered"});
+      else this.request.onReady?.();
+      this.inputTimer ??= setInterval(() => this.#watchInput(), 250);
+      this.inputTimer.unref?.();
+      for (const queued of this.outbox.splice(0)) this.#send(queued);
+      this.#pumpInput();
       return;
     }
     if (
@@ -598,19 +829,27 @@ export class SeeduplexRealtimeVoiceBridge {
       this.outputClosed = false;
     }
     if (type === "conversation.item.input_audio_transcription.started") {
+      if(this.request.nativeDuplex)this.request.onInputSpeech?.(true);
       if (this.injectedSpeech && this.responseActive) this.#cancelUpstreamResponse(true);
       this.responseOwnerAnnounced = false;
       this.responseOwnerId = undefined;
     }
     if (type === "conversation.item.input_audio_transcription.completed") {
+      if(this.request.nativeDuplex)this.request.onInputSpeech?.(false);
       // A completed transcription carrying real text is the only evidence that
       // the user actually spoke. Only then does a pending barge-in earn the
       // right to tear the upstream generation down. This runs after the reset
       // above so the fresh suppression is not immediately cleared.
       const spoken = optionalString(event.transcript) ?? optionalString(event.text);
+      if(this.request.nativeDuplex)this.nativeLiteralRead=/朗读|复述|念出|读出|原样|逐字/u.test(spoken??'');
+      // A finished utterance after an earlier cancel opens the next turn, whose
+      // reply text arrives before its first audio. Retired response ids still
+      // filter the cancelled tail.
+      if (spoken && this.cancelledOutputPending) this.cancelledOutputPending = false;
       if (spoken && this.bargeInPending) this.#cancelUpstreamResponse();
       this.bargeInPending = false;
     }
+    if(type === "conversation.item.input_audio_transcription.failed" && this.request.nativeDuplex)this.request.onInputSpeech?.(false);
     const continuingBatch = this.toolBatches.find((batch) => batch.continuing);
     const internalContinuationResponse =
       type === "response.created" &&
@@ -657,12 +896,13 @@ export class SeeduplexRealtimeVoiceBridge {
     if (type === "session.closed") {
       this.terminal = true;
       this.ready = false;
+      clearInterval(this.inputTimer);clearTimeout(this.pacingTimer);
       this.socket?.close();
       this.#notifyClose("completed");
       return;
     }
     if (
-      type === "conversation.item.input_audio_transcription.started" ||
+      (type === "conversation.item.input_audio_transcription.started" && !this.request.nativeDuplex) ||
       type === "response.canceled"
     ) {
       this.request.onClearAudio?.("barge-in");
@@ -699,13 +939,33 @@ export class SeeduplexRealtimeVoiceBridge {
     ) {
       try {
         const audio = decodeSeeduplexFloat32Pcm(event.delta);
-        this.request.onAudio(audio, { ...(this.injectedSpeech ? {source:"injected-speech"} : {}), responseId: this.audioResponseId ?? responseId });
+        const caption = this.pendingSpeechCaption;
+        if (audio.length && caption?.started &&
+          (!responseId || responseId === caption.responseId) &&
+          (this.audioResponseId ?? responseId ?? null) === caption.responseId) {
+          this.pendingSpeechCaption = null;
+          this.request.onTranscript?.("assistant", caption.text, true, caption.source);
+        }
+        const greeting = this.pendingGreeting;
+        if (audio.length && greeting?.started &&
+          (!responseId || responseId === greeting.responseId) &&
+          (this.audioResponseId ?? responseId ?? null) === greeting.responseId) {
+          // SayHello returns PCM but no output_text events. Publish the exact
+          // submitted speech only when its first valid audio frame arrives.
+          this.pendingGreeting = null;
+          this.request.onTranscript?.("assistant", greeting.text, true, "greeting");
+        }
+        const deliveredId=this.audioResponseId??responseId;
+        if(audio.length)this.deliveredAudioResponseId=deliveredId;
+        this.request.onAudio(audio, { ...(this.injectedSpeech ? {source:"injected-speech"} : {}), responseId: deliveredId });
         this.request.onMark?.(`seeduplex-audio-${randomUUID()}`);
       } catch {
         return this.#fail(new Error("Invalid Seeduplex audio output"));
       }
     }
     if (type === "response.output_audio.done") {
+      this.pendingGreeting = null;
+      this.pendingSpeechCaption = null;
       this.request.onAudioSegmentDone?.();
       const continuing = this.toolBatches.find(
         (batch) =>
@@ -790,7 +1050,7 @@ export class SeeduplexRealtimeVoiceBridge {
     for (const item of items) {
       const callId = optionalString(item?.call_id);
       const name = optionalString(item?.name);
-      if (!callId || !name || !allowed.has(name) || this.seenToolCalls.has(callId)) {
+      if (!callId || !name || !allowed.has(name)) {
         return this.#fail(new Error("Invalid Seeduplex tool call"));
       }
       let args;
@@ -799,9 +1059,16 @@ export class SeeduplexRealtimeVoiceBridge {
       } catch {
         return this.#fail(new Error("Invalid Seeduplex tool call"));
       }
+      const signature = JSON.stringify([name,args]);
+      if (this.seenToolCalls.has(callId)) {
+        if (this.seenToolCalls.get(callId) !== signature) return this.#fail(new Error("Seeduplex tool identity conflict"));
+        continue; // Resumption can redeliver a known call; never execute it twice.
+      }
+      if (calls.some(call => call.callId === callId)) return this.#fail(new Error("Invalid Seeduplex tool call"));
       calls.push({ callId, name, args });
     }
-    if (this.seenToolCalls.size + calls.length > MAX_TOOL_CALLS) {
+    if (!calls.length) return;
+    if (this.pendingToolCalls.size + this.backgroundTools.size + calls.length > MAX_TOOL_CALLS) {
       return this.#fail(new Error("Seeduplex tool-call session limit exceeded"));
     }
     const batch = {
@@ -820,7 +1087,7 @@ export class SeeduplexRealtimeVoiceBridge {
       this.request.onToolStartNotice?.(notice, calls[0]);
     }
     for (const call of calls) {
-      this.seenToolCalls.add(call.callId);
+      this.seenToolCalls.set(call.callId, JSON.stringify([call.name,call.args]));
       this.pendingToolCalls.set(call.callId, batch);
       if (
         call.name === "openclaw_agent_consult" &&
@@ -852,6 +1119,11 @@ export class SeeduplexRealtimeVoiceBridge {
           args: call.args,
         });
       }
+    }
+    // Bound dedup memory without imposing a lifetime limit on healthy calls.
+    for (const id of this.seenToolCalls.keys()) {
+      if (this.seenToolCalls.size <= 2048) break;
+      if (!this.pendingToolCalls.has(id) && !this.backgroundTools.has(id)) this.seenToolCalls.delete(id);
     }
   }
 
@@ -894,6 +1166,8 @@ export class SeeduplexRealtimeVoiceBridge {
     this.ready = false;
     this.abortController.abort(error);
     clearTimeout(this.connectTimer);
+    clearTimeout(this.reconnectTimer);clearTimeout(this.pacingTimer);clearInterval(this.inputTimer);
+    this.outbox.length = 0;
     this.connectReject?.(error);
     try {
       this.request.onError?.(error);

@@ -16,7 +16,9 @@ async function fixture(t,options={}){
  const request=(id,path,cookie,body)=>new Promise((resolve,reject)=>{
  const req=httpRequest({hostname:'127.0.0.1',port:bridge.server.address().port,path:`/voice/api/${path}?phone=${id}`,method:body===undefined?'GET':'POST',headers:{host:new URL(origin).host,origin,...(cookie?{cookie}:{}),'content-type':'application/json'}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end(body===undefined?undefined:JSON.stringify(body));});
  const login=async entry=>{const r=await request(entry.id,'access','',{access:entry.accessToken});assert.equal(r.status,200);return r.headers.get('set-cookie').split(';')[0];};
- return {calls,request,login,bridge};
+ const html=(id,cookie)=>new Promise((resolve,reject)=>{
+  const req=httpRequest({hostname:'127.0.0.1',port:bridge.server.address().port,path:`/voice/?phone=${id}`,headers:{host:new URL(origin).host,...(cookie?{cookie}:{})}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end();});
+ return {calls,request,login,html,bridge};
 }
 test('separate phones run concurrently; same-session alias cannot replace an owner',async t=>{
  const f=await fixture(t),[a,b,c]=await Promise.all(entries.map(f.login));
@@ -88,4 +90,14 @@ test('relay authenticates the specific visitor even when another phone adds a co
  const secondVisitor=await f.login(entries[0]);
  await assert.rejects(connect(entries[0].id,secondVisitor+'; '+b));
  const aliasCookie=await f.login(entries[2]);await assert.rejects(connect(entries[2].id,aliasCookie));
+});
+
+test('inline readiness cannot cross phone-cookie ownership and reveals no session binding',async t=>{
+ const f=await fixture(t),cookie=await f.login(entries[0]);
+ const owner=await (await f.html(entries[0].id,cookie)).text();
+ assert.match(owner,/id="voiceEntryStatus"/u);
+ const foreign=await (await f.html(entries[1].id,cookie)).text();
+ assert.doesNotMatch(foreign,/id="voiceEntryStatus"/u);
+ for(const e of entries){assert(!owner.includes(e.sessionKey));assert(!owner.includes(e.accessToken));}
+ assert.equal(f.calls.length,0);
 });

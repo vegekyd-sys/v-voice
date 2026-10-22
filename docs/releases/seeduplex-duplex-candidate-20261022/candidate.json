@@ -1,0 +1,93 @@
+{
+  "schema": "v-voice-candidate-acceptance-v1",
+  "version": "voice-seeduplex-duplex.20261022.3",
+  "date": "2026-10-22",
+  "status": "awaiting-human-acceptance",
+  "runtimeCommit": "c2d0f5d9b772588deaa27e04648a12b7ef1d122e",
+  "baseCommit": "68ebcc9",
+  "providerModel": "1.2.6.1",
+  "voice": "xiaohe",
+  "files": 203,
+  "filesSha256": "a44fc04e1f1a3e8b4dd4f131cbbd9bfdb2ebd69c3c71fd357689e8af08fca40e",
+  "automaticTests": {
+    "mainPassed": 683,
+    "speakerNativePassed": 95
+  },
+  "input": {
+    "syntheticSpeech": true,
+    "humanRecording": false,
+    "physicalMicrophone": false,
+    "physicalIPhone": false,
+    "acousticEchoAcceptance": false
+  },
+  "observations": {
+    "chromiumLongInterruptionOutputSilenceMs": 172,
+    "webkitLongInterruptionOutputSilenceMs": 195,
+    "chromiumShortInterruptionPauseMs": 154,
+    "oldAudioResumed": false,
+    "originalSpeakerPathClearEventMs": 9587,
+    "originalNativePathClearEventMs": 3298,
+    "comparisonIsSingleSamplesNotPercentiles": true,
+    "backgroundSpeechMayTemporarilyPause": true,
+    "nativeMayGenerateUnplayedClarification": true,
+    "knownPresentationPoll409DuringHangup": true,
+    "shortStopRepeatedPauseMs": [
+      158,
+      154
+    ]
+  },
+  "verifiedFlows": [
+    "continuous-native-audio",
+    "actual-audio-yield",
+    "new-answer-without-old-tail",
+    "noise-retains-answer",
+    "acknowledgment-retains-answer",
+    "simulated-tv-retains-answer",
+    "side-speech-retains-answer",
+    "900ms-intrasentence-gap-with-continuation-no-audible-early-reply",
+    "real-current-time-tool",
+    "same-page-redial-new-voice-session",
+    "webkit-native-farewell-closes-call",
+    "explicit-streaming-stop-control-with-response-ownership",
+    "interrupted-caption-preserved-in-history"
+  ],
+  "isolation": {
+    "ownCandidateService": true,
+    "productionIdentityUnchanged": false,
+    "gatewayRestarted": false,
+    "merged": false,
+    "productionDeployed": false,
+    "productionIdentityChangedDuringValidation": true,
+    "productionModifiedByThisTask": false
+  },
+  "explicitStopLane": {
+    "enabledOnlyByFlag": "VOICE_NATIVE_INTERRUPT_ASR=1",
+    "continuousIndependentAsr": true,
+    "additionalAsrUsage": true,
+    "cancelsBackendTasks": false,
+    "admitsOrdinaryQuestions": false,
+    "delayedTranscriptResponseOwnership": true
+  },
+  "evidenceRuntimeVerification": {
+    "commit": "c2d0f5d9b772588deaa27e04648a12b7ef1d122e",
+    "files": 203,
+    "filesSha256": "a44fc04e1f1a3e8b4dd4f131cbbd9bfdb2ebd69c3c71fd357689e8af08fca40e",
+    "mismatches": [],
+    "runtimeOwnerVerified": true,
+    "productionIdentityUnchanged": false,
+    "productionIdentityChangedDuringValidation": true,
+    "productionBaseline": {
+      "MainPID": "761469",
+      "ExecMainStartTimestamp": "Thu 2026-10-22 02:13:06 CST",
+      "InvocationID": "4b5023d7ee9840c5a9a70051d81e0881"
+    },
+    "productionObserved": {
+      "MainPID": "1794220",
+      "ExecMainStartTimestamp": "Thu 2026-10-22 12:39:52 CST",
+      "InvocationID": "8aae0becf201486d903f47a5988e8e93"
+    },
+    "productionModifiedByThisTask": false,
+    "gatewayRestartedByThisTask": false,
+    "status": "candidate-only"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "schema": "v-voice-release-registration-v1",
+  "release": "voice-mobile-turn-20261021",
+  "owner": "codex-voice-mobile-turn-20261021",
+  "sourceBranch": "main",
+  "candidateCommit": "d1f4630f83f806c523be6582eec0ce93e6a5c460",
+  "previousProductionCommit": "df25702ef703641ccc452e315745dc5a19e8b662",
+  "phase": "production-accepted",
+  "gatewayRestartRequired": false,
+  "acceptance": "README.md",
+  "runtimeIdentity": "Exact merged main commit and hashes verified against installed files and public HTTPS assets.",
+  "entryCommit": "16932ca42f415c8b0e93c5886b61cb571de4a7d3",
+  "files": 202,
+  "filesSha256": "639070f99d539574ebccbe68c8e931d5351115fa6805cac1bff4dd19741ddf14",
+  "pullRequest": "https://github.com/vegekyd-sys/v-voice/pull/54"
+}

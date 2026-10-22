@@ -2,6 +2,12 @@
 
 V 的独立 Web/H5 电话产品。GPT Live、豆包·小何、Grok 共用界面、头像 Reaction、通话控制和日志，继续通过既有 Gateway 使用 OpenClaw Agent/工具。
 
+## iOS 客户端候选
+
+原生一按通话客户端在 `ios/`：个人入口绑定、操作按钮快捷指令、连续音频、灵动岛／锁屏控制与恢复。当前支持小何／Grok PCM relay，客户端与模拟器回归已完成；已完成开发签名和真机安装；真机音频管线通过，真实通话与操作按钮接受仍待完成。没有发布或修改正式 Voice 服务。
+
+构建、实际验证边界与真机验收见 [iOS 说明](docs/ios/README.md)。
+
 ## 独立开发
 
 Node.js 22+：
@@ -15,6 +21,8 @@ npm run preview
 预览在 `http://127.0.0.1:26244/`，不会创建语音连接。正式运行用 `npm start`，需要服务端 `OPENCLAW_CONFIG_PATH`；其 Gateway token 可引用服务环境变量。新的连接器只使用 Gateway protocol 4 和本仓库的 `ws`，不加载 Gateway 安装目录或 SDK。既有 `RTC_H5_*` 环境继续兼容。
 
 三个模型的实际凭据、头像 Decision 凭据、飞书 CLI 账号和日志目录继续放在服务器私有环境，不提交 Git。
+
+Grok 默认使用固定版本 `grok-voice-3.0`，凭据沿用服务端 `XAI_API_KEY`。对照或回退时由服务端设置 `XAI_VOICE_MODEL=grok-voice-2.0`；页面会显示实际配置版本。真实 API 隔离评测与验收边界见 [Grok 3.0 接入与对照](docs/grok-voice-3.md)。
 
 ## 会话电话
 

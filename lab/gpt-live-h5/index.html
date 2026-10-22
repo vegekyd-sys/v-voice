@@ -1,75 +1,90 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#f6f1f8">
-  <title>和 V 通话</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='28'%3EV%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./styles.css">
-</head>
-<body data-voice-state="idle" data-avatar-state="idle" data-call-state="idle">
-  <main class="app-shell">
-    <header class="topbar">
-      <div class="connection-options"><label class="sr-only" for="voiceModel">语音模型</label><select id="voiceModel" class="voice-model" aria-label="语音模型"><option value="gpt-live">GPT Live</option><option value="seeduplex" disabled>豆包 · 小何</option><option value="grok" disabled>Grok Voice</option></select><span id="badge" class="connection-badge" role="status">连接中</span></div>
-    </header>
-    <div class="voice-layout">
-      <section class="voice-stage" aria-labelledby="voiceTitle">
-        <div class="ambient ambient-one" aria-hidden="true"></div>
-        <div class="ambient ambient-two" aria-hidden="true"></div>
-        <div class="portrait-wrap">
-          <span class="sound-ring ring-one"></span><span class="sound-ring ring-two"></span>
-          <div class="avatar-stack" aria-hidden="true">
-            <img width="512" height="512" decoding="async" fetchpriority="high" id="avatar" src="./assets/v-operator-idle-256.webp" alt="">
-            <img id="avatarPrevious" alt="" hidden>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#f6f3f9" />
+    <title>和 V 通话</title>
+    <link rel="modulepreload" href="./app.js" />
+    <link rel="modulepreload" href="./ui-bundle.mjs" />
+    <link rel="modulepreload" href="./call-view.mjs" />
+    <link rel="modulepreload" href="./avatar-approved-reactions.mjs" />
+    <link rel="modulepreload" href="./avatar-catalog.mjs" />
+    <link rel="modulepreload" href="./avatar-reactions.mjs" />
+    <link rel="modulepreload" href="./avatar-state.mjs" />
+    <link rel="modulepreload" href="./avatar-telemetry.mjs" />
+    <link rel="modulepreload" href="./avatar.mjs" />
+    <link rel="modulepreload" href="./call-sounds.mjs" />
+    <link rel="modulepreload" href="./changelog.mjs" />
+    <link rel="modulepreload" href="./content-view.mjs" />
+    <link rel="modulepreload" href="./duplex-playback.mjs" />
+    <link rel="modulepreload" href="./entry-startup.mjs" />
+    <link rel="modulepreload" href="./events.mjs" />
+    <link rel="modulepreload" href="./markdown.mjs" />
+    <link rel="modulepreload" href="./media-references.mjs" />
+    <link rel="modulepreload" href="./microphone-capture.mjs" />
+    <link rel="modulepreload" href="./microphone-session.mjs" />
+    <link rel="modulepreload" href="./relay-audio.mjs" />
+    <link rel="modulepreload" href="./screen-wake-lock.mjs" />
+    <link rel="modulepreload" href="./transcript-presentation.mjs" />
+    <link rel="modulepreload" href="./vendor/marked-18.0.5.mjs" />
+    <script type="module" src="./entry-startup.mjs"></script>
+    <link rel="icon" type="image/svg+xml" sizes="any" href="./assets/v-voice-icon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./assets/v-voice-icon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./assets/v-voice-apple-touch.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body
+    data-voice-state="idle"
+    data-avatar-state="idle"
+    data-call-state="idle"
+    data-reading="false"
+  >
+    <!-- The React UI (ui-bundle.mjs) replaces this first frame on start. -->
+    <div id="app">
+      <main class="call-page" data-call="idle" style="--avatar-size: min(72vw, 40dvh, 300px)">
+        <header class="topbar"></header>
+        <section class="stage" aria-label="V">
+          <div class="avatar">
+            <div class="avatar-face"><div class="portrait"><img width="1024" height="1024" decoding="async" fetchpriority="high" src="./assets/v-operator-home-1024.webp" alt="V" /></div></div>
           </div>
-          <a class="avatar-name" href="./" aria-label="V 通话首页">V</a>
-          <span class="presence-dot"></span>
-        </div>
-        <div class="voice-copy">
-          <h1 id="voiceTitle">和 V 通话</h1>
-          <p id="status" class="status-text" role="status">拨号后，直接说话。</p>
-        </div>
-        <div class="call-actions">
-          <button id="start" class="call-button call-start talk-button" type="button">
-            <span class="call-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m8.5 3.5 2.1 4.4-2.3 2.3a15.5 15.5 0 0 0 5.5 5.5l2.3-2.3 4.4 2.1v3a2 2 0 0 1-2.2 2C10.4 20 4 13.6 3.5 5.7a2 2 0 0 1 2-2.2h3Z"/></svg></span>
-            <span id="startLabel" class="button-label">拨号</span>
-          </button>
-          <button id="stop" class="call-button call-stop stop-button" type="button" hidden>
-            <span class="call-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3 11.8c5.1-4.4 12.9-4.4 18 0v3.7l-4.5.5-.7-3.2a12.3 12.3 0 0 0-7.6 0l-.7 3.2-4.5-.5v-3.7Z"/></svg></span>
-            <span id="stopLabel" class="button-label">结束通话</span>
-          </button>
-        </div>
-      </section>
-      <aside class="conversation-panel" aria-labelledby="conversationTitle">
-        <div class="conversation-heading">
-          <div class="conversation-title">
-            <h2 id="conversationTitle">对话</h2>
-            <span id="taskStatus" class="task-status" role="status"></span>
-          </div>
-          <span class="wave-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
-        </div>
-        <div id="conversation" class="conversation" role="log" aria-label="通话内容" aria-live="polite" aria-relevant="additions text">
-          <div id="conversationEmpty" class="empty"><p>拨号后，对话会显示在这里。</p></div>
-          <div id="transcriptHistory" class="transcript-history"></div>
-          <section id="transcriptCurrent" class="transcript-current" aria-label="正在说的内容" hidden>
-            <h3 id="currentLabel" class="current-label">正在说</h3>
-            <div id="transcriptCurrentRows" class="transcript-current-rows"></div>
-          </section>
-        </div>
-        <div class="live-controls">
-          <form id="steerForm" class="steer-form">
-            <label class="sr-only" for="steerText">补充内容</label>
-            <input id="steerText" placeholder="输入补充内容" maxlength="2000" autocomplete="off" disabled>
-            <button id="steer" class="steer-button" type="submit" disabled>补充</button>
-          </form>
-          <button id="cancel" class="cancel-task" type="button" hidden disabled>取消后台任务</button>
-        </div>
-      </aside>
+          <div class="home"><span class="avatar-name">V</span></div>
+        </section>
+      </main>
     </div>
-    <audio id="remoteAudio" autoplay playsinline></audio>
-    <audio id="callSound" preload="none" playsinline></audio>
-  </main>
-  <script type="module" src="./app.js"></script>
-</body>
+    <audio id="remoteAudio" autoplay playsinline></audio
+    ><audio id="callSound" preload="none" playsinline></audio>
+    <section
+      id="contentReader"
+      class="reader-layer"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="readerTitle"
+      hidden
+    >
+      <div id="readerBackdrop" class="reader-backdrop"></div>
+      <div id="readerMorph" class="reader-morph" hidden></div>
+      <article id="readerSurface" class="reader-surface">
+        <header class="reader-header">
+          <button id="readerBack" type="button" aria-label="收起内容">
+            ← 收起</button
+          ><span id="readerTitle"></span
+          ><a id="readerDownload" download>↓ 保存</a>
+        </header>
+        <div id="readerBody" class="reader-body markdown-body"></div>
+      </article>
+      <div id="readerDock" class="reader-dock"></div>
+    </section>
+    <dialog id="changelogDialog" class="changelog-dialog" aria-labelledby="changelogTitle">
+      <header class="changelog-header">
+        <div><span class="changelog-eyebrow">V VOICE</span><h2 id="changelogTitle">更新日志</h2></div>
+        <button id="changelogClose" type="button" aria-label="关闭更新日志" autofocus><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+      </header>
+      <div id="changelogEntries" class="changelog-entries" tabindex="0" aria-label="已上线的更新"></div>
+    </dialog>
+    <script type="module" src="./app.js"></script>
+  </body>
 </html>

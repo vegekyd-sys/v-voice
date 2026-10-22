@@ -55,3 +55,80 @@ test('existing symlink cannot redirect private transcripts into another file',as
   const logger=createVoiceTranscriptLog({directory:f.directory,now:()=>Date.parse('2026-10-09T01:00:00Z')});logger.audit({type:'call.created',voiceSessionId:'x',provider:'grok',model:'grok-voice-agent',sessionKey:'personal'});
   assert.equal((await logger.close()).failed,1);assert.equal(await readFile(target,'utf8'),'preserved');
 });
+
+test('provider diagnostics persist only fixed classifications and numeric codes, never raw errors or audio',async t=>{
+  const f=await fixture(t);f.created();
+  f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'upstream-error',category:'input-timeout',upstreamCode:'55000000',sessionAgeMs:72000,attempt:1,message:'SECRET',audio:'SECRET',event:{apiKey:'SECRET'}});
+  f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'reconnecting',category:'SECRET',upstreamCode:'SECRET',attempt:-1});
+  await f.log.close();const rows=await f.rows();assert(!JSON.stringify(rows).includes('SECRET'));
+  assert.equal(rows[1].upstreamCode,'55000000');assert.equal(rows[1].sessionAgeMs,72000);assert.equal(rows[2].category,undefined);assert.equal(rows[2].attempt,undefined);
+});
+
+test('connection profiling persists only known stages for the reserved call owner',async t=>{
+  const f=await fixture(t);f.created();
+  assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'foreign',stage:'provider-ready'}),false);
+  assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'v1',stage:'arbitrary SECRET'}),false);
+  for(const stage of ['catalog-requested','catalog-ready','context-requested','context-ready','provider-connecting','provider-ready']){
+    f.tick(10);assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'v1',stage,token:'SECRET',text:'SECRET'}),true);
+  }
+  await f.log.close();const rows=await f.rows();
+  assert.equal(rows.filter(r=>r.type==='call.connection-stage').length,6);
+  assert(!JSON.stringify(rows).includes('SECRET'));
+  assert(rows.every(r=>r.sessionKey==='personal'));
+});
+
+test('post-hangup delivery receipt survives without accepting late transcript or protocol',async t=>{
+ const f=await fixture(t);f.created();f.log.audit({type:'call.closed',voiceSessionId:'v1'});
+ assert(f.log.audit({type:'task.delivery-confirmed',voiceSessionId:'v1',runId:'owned-run',kind:'final',receipt:{messageId:'om-real',token:'SECRET'},audio:'SECRET'}));
+ assert.equal(f.log.audit({type:'transcript',voiceSessionId:'v1',role:'assistant',text:'late',final:true}),false);
+ await f.log.close();const rows=await f.rows();assert.equal(rows.at(-1).messageId,'om-real');assert.equal(rows.at(-1).runId,'owned-run');assert(!JSON.stringify(rows).includes('SECRET'));
+});
+
+test('causal diagnostics distinguish ASR, tool wait, backend completion and output without retaining payloads',async t=>{
+ const f=await fixture(t);f.created();
+ for(const row of [
+  {type:'provider.event',providerEventType:'conversation.item.input_audio_transcription.started',responseId:'turn'},
+  {type:'tool.call',callId:'tool',name:'web_search',args:{query:'SECRET'}},
+  {type:'tool.delivered',callId:'tool',result:{text:'SECRET'}},
+  {type:'backend.started',callId:'job',ack:{taskId:'owned-task',runId:'owned-run',token:'SECRET'}},
+  {type:'response.done',status:'completed',responseId:'response'},
+ ])assert(f.log.audit({...row,voiceSessionId:'v1',audio:'SECRET',text:'SECRET'}));
+ assert.equal(f.log.audit({type:'provider.event',voiceSessionId:'v1',providerEventType:'response.output_audio.delta',audio:'SECRET'}),false);
+ assert(f.log.audit({type:'client.playback-stats',voiceSessionId:'v1',stats:{inputBytes:48000,outputBytes:96000,contextState:'interrupted',inputFrames:50,contextTimeMs:1000,trackMuted:false,pageHidden:false,raw:'SECRET',audio:'SECRET'}}));
+ f.log.audit({type:'call.closed',voiceSessionId:'v1'});
+ assert(f.log.audit({type:'backend.completed',voiceSessionId:'v1',runId:'owned-run',result:'SECRET'}));
+ await f.log.close();const rows=await f.rows();assert(!JSON.stringify(rows).includes('SECRET'));
+ assert.deepEqual(rows.find(r=>r.type==='client.playback-stats').stats,{inputBytes:48000,outputBytes:96000,inputFrames:50,contextTimeMs:1000,trackMuted:false,pageHidden:false,contextState:'interrupted'});
+ assert.equal(rows.find(r=>r.type==='backend.started').taskId,'owned-task');assert.equal(rows.at(-1).type,'backend.completed');
+});
+test('a barge-in records which speaker sent it, without any frame payload',async t=>{
+  const f=await fixture(t);f.created();
+  assert(f.log.audit({type:'client.barge-in',voiceSessionId:'v1',deviceId:'stackchan',confirmed:true,audio:'SECRET'}));
+  assert(f.log.audit({type:'client.barge-in',voiceSessionId:'v1',deviceId:'Bad Id!'}));
+  await f.log.close();const rows=(await f.rows()).filter(r=>r.type==='client.barge-in');
+  assert.deepEqual(rows.map(r=>[r.deviceId,r.confirmed]),[['stackchan',true],[undefined,undefined]]);
+  assert(!JSON.stringify(rows).includes('SECRET'));
+});
+test('upstream cancels and their refusals are kept as event types only',async t=>{
+  const f=await fixture(t);f.created();
+  for(const providerEventType of ['client.response.cancel','client.response.cancel.rejected','response.canceled','error'])f.log.audit({type:'provider.event',voiceSessionId:'v1',providerEventType,message:'SECRET'});
+  await f.log.close();const rows=(await f.rows()).filter(r=>r.type==='provider.event');
+  assert.deepEqual(rows.map(r=>r.providerEventType),['client.response.cancel','client.response.cancel.rejected','response.canceled']);
+  assert(!JSON.stringify(rows).includes('SECRET'));
+});
+
+test('where a background result went is recorded without its content',async t=>{
+  const f=await fixture(t);f.created();
+  for(const type of ['backend.read-retry','backend.result-held','backend.result-context','backend.result-notice','backend.result-spoken-late','backend.result-answered','backend.result-superseded','backend.result-unspoken'])
+    assert.notEqual(f.log.audit({type,voiceSessionId:'v1',callId:'task',error:'SECRET',result:'SECRET'}),false);
+  await f.log.close();const rows=await f.rows();
+  assert.deepEqual(rows.filter(r=>r.type.startsWith('backend.')).map(r=>r.type),['backend.read-retry','backend.result-held','backend.result-context','backend.result-notice','backend.result-spoken-late','backend.result-answered','backend.result-superseded','backend.result-unspoken']);
+  assert(!JSON.stringify(rows).includes('SECRET'));
+});
+
+test('ending diagnostics retain only fixed lifecycle stages',async t=>{
+ const f=await fixture(t);f.created();
+ for(const stage of ['farewell-requested','farewell-unavailable'])assert(f.log.audit({type:'call.ending',voiceSessionId:'v1',stage,text:'SECRET',apiKey:'SECRET'}));
+ assert.equal(f.log.audit({type:'call.ending',voiceSessionId:'v1',stage:'SECRET'}),false);
+ await f.log.close();const rows=await f.rows();assert.equal(rows.filter(r=>r.type==='call.ending').length,2);assert(!JSON.stringify(rows).includes('SECRET'));
+});

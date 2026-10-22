@@ -1,0 +1,66 @@
+{
+  "schema": "v-voice-production-registration-v1",
+  "status": "active",
+  "sourceRepository": "https://github.com/vegekyd-sys/v-voice",
+  "sourceCommit": "d37ac851487b8fd9023ad0c922bdb1cf485984ec",
+  "voicePR": 25,
+  "publicationControllerPR": 396,
+  "publicationControllerCommit": "babf3778792965e30a2caefc38ff27f4ec1bb922",
+  "filesSha256": "4755a19e2065760c28468c4327b74da7e5d7475ae8570921cc25ff1587c6be66",
+  "fileCount": 177,
+  "entryDirectory": "/opt/openclaw-voice-h5/releases/gpt-live-d37ac851487b8fd9023ad0c922bdb1cf485984ec",
+  "entryService": "openclaw-rtc-h5.service",
+  "gatewayPluginDirectory": "/opt/openclaw-voice-h5/releases/gpt-live-a9ac516860a8856470262957ad6ea0cc2670cb0e/plugins/v-voice-gpt-live",
+  "gatewayPluginCommit": "a9ac516860a8856470262957ad6ea0cc2670cb0e",
+  "gatewayPluginFilesByteIdentical": true,
+  "gatewayRuntimeReleaseUnchanged": "v2026.9.1-db91.6-voice-task-continuity-20261016-r3",
+  "gatewayRestarted": false,
+  "gatewayConfigChanged": false,
+  "changedFiles": [
+    "lab/gpt-live-h5/changelog.mjs",
+    "lab/gpt-live-h5/server.mjs",
+    "lab/realtime-direct-tools/session.mjs",
+    "lab/realtime-direct-tools/transcript-log.mjs"
+  ],
+  "acceptanceEnvironment": "isolated VLab Candidate; shared Gateway unchanged",
+  "candidateAcceptance": {
+    "voiceTests": 80,
+    "finalPublicationTests": 12,
+    "databaseBytesCopied": 0,
+    "sharedGatewayUnchanged": true
+  },
+  "productionAcceptance": {
+    "servedChangelogDate": "2026-10-16",
+    "homepageAndChangelogOpenedInIAB": true,
+    "browserConsoleErrors": 0,
+    "ready": true,
+    "releaseReadiness": {
+      "known": true,
+      "activeCalls": 0,
+      "creatingSessions": 0,
+      "backgroundTasks": 0
+    },
+    "allPackageFileHashesMatch": true,
+    "gatewayPluginHashesMatch": true,
+    "physicalIPhoneSafariRetested": false,
+    "scope": "homepage changelog, service readiness, exact artifact and Gateway identity; no new acceptance of late-result or busy-hangup fixes",
+    "verifiedAt": "2026-10-16T11:41:18.983738+08:00"
+  },
+  "artifactManifest": "artifact-manifest.json",
+  "driftSentinelCoversVoice": false,
+  "activation": {
+    "h5Pid": 1652507,
+    "gatewayPidUnchanged": 1462235,
+    "gatewayInvocationUnchanged": true,
+    "gatewayConfigUnchanged": true,
+    "legacyDrainedPid": 1568585,
+    "legacyCleanExit": true,
+    "forcedKillUsed": false,
+    "attempts": 1
+  },
+  "knownRemainingIssues": [
+    "late tool-result speech continuation",
+    "busy natural hangup"
+  ],
+  "at": "2026-10-16T11:38:11.668000+08:00"
+}

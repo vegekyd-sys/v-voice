@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>V · 多人语音实验</title>
+<style>
+:root{font:15px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#17362d;background:#f2f5ee}*{box-sizing:border-box}body{margin:0}main{max-width:1120px;margin:42px auto;padding:0 24px}header{display:flex;justify-content:space-between;gap:20px;align-items:center}h1{font-size:30px;letter-spacing:-1px;margin:4px 0}p{margin:7px 0}.eyebrow{font-size:12px;color:#627a6e;letter-spacing:2px}.badge{padding:6px 12px;background:#e4ecdb;border-radius:20px;font-size:12px;white-space:nowrap}.intro{color:#576c61;max-width:760px}.notice{background:#fff7df;border:1px solid #e6d8ab;padding:13px 17px;border-radius:12px;margin:22px 0}.layout{display:grid;grid-template-columns:310px 1fr;gap:22px;margin-top:22px}.panel{background:#fff;border:1px solid #dde5d7;border-radius:17px;padding:21px}label{display:block;font-weight:600;margin-bottom:6px}select,button{font:inherit;border-radius:9px;min-height:43px}select{width:100%;padding:9px;border:1px solid #ccd8c8;background:white;margin-bottom:15px}button{padding:9px 13px;border:1px solid #ccd8c8;background:#f7f9f4;color:#17362d;cursor:pointer}button:hover{background:#edf2e7}button.primary{background:#21543f;color:white;border-color:#21543f}button:disabled{opacity:.45;cursor:default}.row{display:flex;gap:8px;flex-wrap:wrap;margin:9px 0}.row button{flex:1}.small{font-size:12px;color:#6b796f}.state{padding:14px 0;border-bottom:1px solid #e6ecdf;margin-bottom:12px}.target{font-size:23px;font-weight:650}.status{font-size:13px;color:#456851;margin-top:8px}#interim{min-height:54px;color:#61736a;font-size:13px;word-break:break-word}#log{display:flex;flex-direction:column;gap:12px;max-height:650px;overflow:auto}.card{padding:15px;border:1px solid #e1e8da;border-radius:11px;background:#fafcf7}.card b{font-size:12px;color:#426851}.reply{background:#edf5ed;border-color:#cedfcf}.error{background:#fff0e9;border-color:#edcbbd;color:#813a28}.withheld{opacity:.7}.empty{text-align:center;padding:60px 10px;color:#78877b}audio{width:100%;height:35px;margin-top:12px}h2{font-size:16px;margin:0 0 12px}ol{padding-left:20px;font-size:13px;color:#5b6b61}code{font-size:11px}.mono{font-variant-numeric:tabular-nums}footer{margin:20px 0;color:#7b877b;font-size:12px}@media(max-width:720px){main{margin:22px auto;padding:0 15px}header{align-items:flex-start}h1{font-size:25px}.layout{grid-template-columns:1fr}.panel{padding:17px}.intro{font-size:14px}#log{max-height:550px}}
+</style>
+<main>
+<header><div><div class="eyebrow">VOICE V / EXPERIMENT</div><h1>听见谁，回应谁</h1></div><span class="badge">火山独立实验 · 非生产</span></header>
+<p class="intro">把说话人、话语和会话状态一起交给模型。观察 V 如何决定对话对象，并在天懿与十二之间调整表达方式。</p>
+<div class="notice"><strong>当前验证范围：轮流讲话。</strong> 声纹自动匹配尚未通过，真人测试先在本次通话中绑定声线。专注模式在对话模型前筛选转写内容；尚不具备重叠人声的音频分离能力。</div>
+<div class="layout"><aside class="panel">
+<label for="mode">对话模式</label><select id="mode"><option value="adaptive">多人自适应 · 模型决定跟谁聊</option><option value="exclusive">专注一人 · 只传指定人物的话</option><option value="group">共同对话 · 可以回应多人</option></select>
+<label for="target">当前主要对象 / 专注对象</label><select id="target"><option value="tianyi">天懿</option><option value="shier">十二</option></select>
+<p class="small">更改模式会清空模型上下文，避免专注模式带入此前旁人的话。自适应模式可通过说话交接对象。</p>
+<div class="row"><button class="primary" id="start">开始真人测试</button><button id="stop" disabled>结束</button></div>
+<div class="row"><button id="replay">回放三人合成测试</button></div>
+<div class="state"><div class="small">模型当前主要对话对象</div><div class="target" id="audience">天懿</div><div class="status" id="status" role="status">尚未开始，麦克风未开启</div></div>
+<h2>真人校准</h2><div class="row"><button id="bind-a" disabled>下一句是天懿</button><button id="bind-b" disabled>下一句是十二</button></div>
+<ol><li>开始后，点“下一句是天懿”，天懿单独说五秒。</li><li>点“下一句是十二”，十二单独说五秒。</li><li>看到绑定成功后，再轮流交流与交接。</li></ol>
+<p class="small" id="bindings">人物尚未绑定。未绑定声线会显示为未知人物。</p>
+<audio id="voice" controls hidden aria-label="V 的最新语音回复"></audio>
+<p class="small">输入只在通话中处理，不保存真人原始音频。回复由火山生成。单次最多三分钟；首版用于分人与交接测试，流畅度和抢话待测。</p>
+</aside><section class="panel"><h2>谁说了什么 → 模型回应谁</h2><div id="interim" aria-live="polite">实时转写将在这里显示。</div><div id="log"><div class="empty" id="empty">可先回放合成测试，查看人物标注和模型决定。<br>合成人物身份来自已知素材校准，不代表真人声纹识别通过。</div></div></section></div>
+<footer>Doubao Seed ASR 2.0 → 会话内人物绑定 → Doubao Seed 2.1 Lite → Seed TTS 2.0 / 小何</footer>
+</main><script type="module" src="/client.mjs"></script></html>

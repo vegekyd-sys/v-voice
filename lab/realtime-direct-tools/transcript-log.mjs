@@ -2,11 +2,12 @@ import {mkdir,open} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {STAGE_LABELS} from './task-progress.mjs';
 
-/** Existing public text callbacks only. No PCM, protocol, tools or credentials. */
+/** Text and whitelisted connection diagnostics. No PCM, protocol or credentials. */
 export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},maxPending=256}={}) {
   if(!directory||!path.isAbsolute(directory))throw Error('An absolute private transcript directory is required');
-  const captureId=randomUUID(),owners=new Map();
+  const captureId=randomUUID(),owners=new Map(),closedOwners=new Map();
   let tail=Promise.resolve(),sequence=0,pending=0,dropped=0,failed=0,closed=false;
   const notify=error=>{failed++;try{onError({code:error.code??'transcript_write_failed'});}catch{}};
   const write=async line=>{
@@ -33,11 +34,64 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     if(closed||!event||typeof event.voiceSessionId!=='string')return false;
     const id=event.voiceSessionId;
     if(event.type==='call.created'){
-      if(!['seeduplex','grok'].includes(event.provider)||typeof event.sessionKey!=='string'||typeof event.model!=='string')return false;
+      if(!['seeduplex','grok','openai'].includes(event.provider)||typeof event.sessionKey!=='string'||typeof event.model!=='string')return false;
       owners.set(id,{voiceSessionId:id,sessionKey:event.sessionKey,provider:event.provider,model:event.model,modelSource:'voice_reservation'});
       return enqueue({...owners.get(id),type:'call.created'});
     }
-    const owner=owners.get(id);if(!owner)return false;
+    const owner=owners.get(id)??(/^(?:task\.delivery-|backend\.)/.test(event.type)?closedOwners.get(id):null);if(!owner)return false;
+    if(event.type==='call.connection-stage'){
+      if(!['catalog-requested','catalog-ready','context-requested','context-ready','provider-connecting','provider-ready'].includes(event.stage))return false;
+      return enqueue({...owner,type:event.type,stage:event.stage});
+    }
+    if(event.type==='call.provider-status'){
+      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed'].includes(event.stage))return false;
+      const safe={stage:event.stage};
+      if(['configuration','input-timeout','upstream-transient','upstream-rejected','network','setup-timeout'].includes(event.category))safe.category=event.category;
+      if(typeof event.upstreamCode==='string'&&/^\d{3,8}$/.test(event.upstreamCode))safe.upstreamCode=event.upstreamCode;
+      for(const key of ['sessionAgeMs','attempt'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      return enqueue({...owner,type:event.type,...safe});
+    }
+    // Causal metadata only: never persist tool arguments, results, PCM or raw
+    // provider frames. A received utterance without a reply must be diagnosable.
+    if(['tool.call','tool.delivered','backend.start-requested','backend.started','backend.completed','backend.child-run','backend.control','backend.cancel-observed','backend.cancel-unconfirmed','backend.read-retry','backend.result-held','backend.result-context','backend.result-notice','backend.result-spoken-late','backend.result-answered','backend.result-superseded','backend.result-unspoken','response.done','provider.event','audio.clear'].includes(event.type)){
+      if(event.type==='provider.event'&&!['conversation.item.input_audio_transcription.started','response.created','response.output_audio.started','response.canceled','input_audio_buffer.speech_started','input_audio_buffer.speech_stopped','client.response.cancel','client.response.cancel.rejected','native.listening-aside','conversation.item.input_audio_transcription.completed'].includes(event.providerEventType))return false;
+      if(event.type==='tool.call'&&(typeof event.name!=='string'||typeof event.callId!=='string'))return false;
+      const safe={};
+      for(const key of ['callId','runId','taskId','responseId','providerEventType','name','mode','status','childRunId'])if(typeof event[key]==='string')safe[key]=event[key].slice(0,160);
+      if(event.type==='backend.started'&&typeof event.ack?.taskId==='string')safe.taskId=event.ack.taskId;
+      if(event.type==='backend.started'&&typeof event.ack?.runId==='string')safe.runId=event.ack.runId;
+      if(event.type==='tool.delivered')safe.status=event.result?.error?'error':event.result?.cancelled?'cancelled':'ok';
+      for(const key of ['ok','queued','applied'])if(typeof event[key]==='boolean')safe[key]=event[key];
+      return enqueue({...owner,type:event.type,...safe});
+    }
+    // Task narration: which kind of line and the verified counts behind it. The
+    // spoken words themselves are already the assistant transcript.
+    if(['backend.stage','backend.progress-spoken','backend.stages-observed'].includes(event.type)){
+      const safe={};
+      for(const key of ['callId','runId'])if(typeof event[key]==='string')safe[key]=event[key].slice(0,160);
+      if(event.type==='backend.progress-spoken'&&['fact','stage','heartbeat'].includes(event.kind))safe.kind=event.kind;
+      if(typeof event.label==='string'&&STAGE_LABELS.has(event.label))safe.label=event.label;
+      if(typeof event.running==='boolean')safe.running=event.running;
+      for(const key of ['elapsedMs','completed','failed','events','steps'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      if(event.type==='backend.stages-observed'&&event.streams&&typeof event.streams==='object')
+        safe.streams=Object.fromEntries(Object.entries(event.streams).filter(([k,v])=>/^[a-z_]{1,24}(?:\/[a-z_]{1,24}){0,2}$/.test(k)&&Number.isSafeInteger(v)).slice(0,24));
+      return enqueue({...owner,type:event.type,...safe});
+    }
+    if(event.type==='call.ending'){
+      if(!['farewell-requested','farewell-unavailable'].includes(event.stage))return false;
+      return enqueue({...owner,type:event.type,stage:event.stage});
+    }
+    if(event.type==='speech.control'){
+      if(!['ready','reconnecting','interrupted'].includes(event.stage))return false;
+      return enqueue({...owner,type:event.type,stage:event.stage});
+    }
+    if(event.type==='client.playback-stats'){
+      const stats={};
+      for(const key of ['inputBytes','outputBytes','queuedOutputBytes','clears','underflows','maxReceiveGapMs','contextSampleRate','inputBufferedBytes','peakInputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','nativePauses','nativeResumes'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0)stats[key]=event.stats[key];
+      for(const key of ['trackMuted','trackEnabled','trackLive','pageHidden'])if(typeof event.stats?.[key]==='boolean')stats[key]=event.stats[key];
+      if(['running','suspended','interrupted','closed'].includes(event.stats?.contextState))stats.contextState=event.stats.contextState;
+      return enqueue({...owner,type:event.type,stats});
+    }
     if(event.type==='transcript'){
       if(!['user','assistant'].includes(event.role)||typeof event.text!=='string'||!event.text.trim()||typeof event.final!=='boolean')return false;
       // A delta remains a delta; interrupted speech need not produce final.
@@ -45,7 +99,35 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
         ...(typeof event.source==='string'?{source:event.source}:{}),
         ...(typeof event.callId==='string'?{callId:event.callId}:{})});
     }
+    if(['task.delivery-confirmed','task.delivery-failed'].includes(event.type)){
+      const receipt=event.receipt??{};
+      return enqueue({...owner,type:event.type,...(typeof event.runId==='string'?{runId:event.runId}:{}),
+        ...(typeof event.kind==='string'?{kind:event.kind}:{}),
+        ...(typeof receipt.messageId==='string'?{messageId:receipt.messageId}:{}),
+        ...(typeof event.error==='string'?{error:event.error.slice(0,300)}:{})});
+    }
+    if(event.type==='robot.reaction'){
+      const safe={};
+      for(const key of ['id','beat','source','deviceId'])if(typeof event[key]==='string'&&/^[a-z0-9_-]{1,64}$/u.test(event[key]))safe[key]=event[key];
+      return enqueue({...owner,type:event.type,...safe});
+    }
+    if(event.type==='client.barge-in'){
+      // Who interrupted: a speaker's own abort carries its deviceId; a phone does not.
+      const safe={};
+      if(typeof event.deviceId==='string'&&/^[a-z0-9_-]{1,64}$/u.test(event.deviceId))safe.deviceId=event.deviceId;
+      if(typeof event.confirmed==='boolean')safe.confirmed=event.confirmed;
+      return enqueue({...owner,type:event.type,...safe});
+    }
+    if(event.type==='device.call'){
+      // Speaker lifecycle diagnostics: counters and stage names only, no audio.
+      if(!['start','ready','input-speech','closed'].includes(event.stage))return false;
+      const safe={stage:event.stage};
+      for(const key of ['deviceId','reason'])if(typeof event[key]==='string'&&/^[a-z0-9_-]{1,64}$/u.test(event[key]))safe[key]=event[key];
+      for(const key of ['latencyMs','durationMs','inputBytes','outputBytes','userTurns','gatedInputBytes','maxInputGapMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      return enqueue({...owner,type:event.type,...safe});
+    }
     if(event.type==='call.closed'){
+      closedOwners.set(id,owner);if(closedOwners.size>256)closedOwners.delete(closedOwners.keys().next().value);
       owners.delete(id);return enqueue({...owner,type:'call.closed'});
     }
     return false;

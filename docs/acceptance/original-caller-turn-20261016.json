@@ -1,0 +1,29 @@
+{
+  "sourceCommit": "a9ac516860a8856470262957ad6ea0cc2670cb0e",
+  "environment": "shared-vlab",
+  "scope": "Original caller turn survives direct-model paraphrase and subsequent chat",
+  "targetedTests": {"passed": 45, "failed": 0},
+  "ci": "passed",
+  "actualCall": {
+    "model": "seeduplex",
+    "input": "Synthetic natural Mandarin through the actual upstream voice ASR",
+    "hostOriginalTurnPersisted": true,
+    "actualNewChildSpawn": true,
+    "actualParentYield": true,
+    "actualChildSleepAndFreshTimeRead": true,
+    "actualNativeParentContinuation": true,
+    "mediaClosedBeforeFinal": true,
+    "groupMessageIndependentlyReadBack": true,
+    "afterHangupMs": 38312
+  },
+  "reusedEvidence": {
+    "gptLiveActualChildContinuationAndGroupReadbackAfterHangupMs": 44912,
+    "unchangedSdkPluginActualSteerAndFollowupFinalApplied": true,
+    "foreignTaskOwnerRejected": true
+  },
+  "gatewayPluginBytesUnchanged": true,
+  "sharedGatewayPidUnchangedDuringThisFix": true,
+  "productionTouched": false,
+  "rawUserAudioRecorded": false,
+  "limitations": ["Not subjective real-device audio acceptance", "Grok excluded by user", "Production not deployed"]
+}

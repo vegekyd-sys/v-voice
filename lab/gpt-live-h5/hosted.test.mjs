@@ -65,6 +65,17 @@ test("original /voice/ path serves assets without creating a call and protects a
   assert.equal(f.calls.length, 0);
 });
 
+test('iOS interface release is public static UI, uncached and does not authorize a call',async t=>{
+  const f=await fixture(t);
+  const response=await f.request('/voice/ios-shell-release.json');
+  assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
+  assert.equal(response.headers.get('set-cookie'),null);
+  const release=await response.json();assert.equal(release.schema,1);assert.ok(release.files.length>50);
+  assert.ok(release.files.every(file=>!file.path.startsWith('api/')));
+  assert.equal(f.calls.length,0);
+  assert.equal((await f.request('/voice/api/session','',{})).status,401);
+});
+
 test("redial keeps the group conversation but gets a new voice owner; another device cannot replace or close it", async t => {
   const f = await fixture(t);
   const payload = `${"a".repeat(32)}.${Date.now() + 60000}`;
@@ -112,4 +123,66 @@ test("SSE tool events only reach the cookie owning the voice session", async t =
   assert.match(textA, /only-a/u); assert.doesNotMatch(textA, /only-b/u);
   assert.equal(await Promise.race([readerB.read().then(() => "leaked"), new Promise(resolve => setTimeout(() => resolve("quiet"), 30))]), "quiet");
   await readerA.cancel(); await readerB.cancel();
+});
+
+test('first-frame styles are exact and only verified cookies receive an entry hint',async t=>{
+ const f=await fixture(t);
+ const anonymous=await f.request('/voice/');const publicHtml=await anonymous.text();
+ assert.equal(anonymous.headers.get('cache-control'),'no-store');
+ assert.match(publicHtml,/<style data-voice-entry>/u);
+ assert.doesNotMatch(publicHtml,/id="voiceEntryStatus"/u);
+ const css=await (await f.request('/voice/styles.css')).text();
+ assert.equal(publicHtml.split('<style data-voice-entry>')[1].split('</style>')[0],css);
+ const cookie=await f.visitor();
+ const html=await (await f.request('/voice/',cookie)).text();
+ const hint=JSON.parse(html.match(/id="voiceEntryStatus">([^<]+)<\/script>/u)[1]);
+ assert.deepEqual(hint,{ready:true,preview:false,defaultModel:'gpt-live'});
+ assert.doesNotMatch(html,new RegExp(token));
+ const denied=await (await f.request('/voice/',cookie+'broken')).text();
+ assert.doesNotMatch(denied,/id="voiceEntryStatus"/u);
+ assert.equal((await f.request('/voice/api/session',cookie+'broken',{})).status,401);
+ assert.equal(f.calls.length,0);
+});
+
+test('pre-generated listening samples require entry access and never create a voice session',async t=>{
+ const accesses=[];const f=await fixture(t,{listening:{manifest:{schema:'voice-listening-v1',clips:[{id:'clip'}]},audio:async(id,range)=>{accesses.push({id,range});return id==='clip'?{status:206,headers:{'content-type':'audio/wav','content-range':'bytes 0-3/10','content-length':'4'},body:Buffer.from('RIFF')}:null;}}});
+ assert.equal((await f.request('/voice/api/comparison')).status,401);assert.equal((await f.request('/voice/api/comparison/audio/clip')).status,401);assert.equal(accesses.length,0);
+ const cookie=await f.visitor();assert.equal((await f.request('/voice/api/comparison',cookie)).status,200);
+ const audio=await f.request('/voice/api/comparison/audio/clip',cookie,undefined,{range:'bytes=0-3'});assert.equal(audio.status,206);assert.equal(await audio.text(),'RIFF');assert.deepEqual(accesses,[{id:'clip',range:'bytes=0-3'}]);
+ assert.equal((await f.request('/voice/api/comparison/audio/unknown',cookie)).status,404);assert.equal(f.calls.length,0);
+});
+test('candidate release notes are opt-in, inert JSON and preserve hosted admission',async t=>{
+ const release={version:'linux-candidate',date:'2026-10-18',title:'Linux candidate',items:['A </script> tag stays text']};
+ const f=await fixture(t,{candidateRelease:release});const html=await(await f.request('/voice/')).text();
+ const raw=html.match(/id="voiceCandidateRelease">([^<]+)<\/script>/u)[1];
+ assert.deepEqual(JSON.parse(raw),release);assert.doesNotMatch(raw,/<\/script>/u);
+ assert.equal((await f.request('/voice/api/status')).status,401);
+ const normal=await fixture(t);assert.doesNotMatch(await(await normal.request('/voice/')).text(),/id="voiceCandidateRelease"/u);
+});
+
+test("a camera device's photo upload reaches the device endpoint outside the page path, only on the public host", async t => {
+  const uploads = [];
+  const deviceEndpoint = { path: "/device/voice", otaPath: null, visionPath: "/device/vision", activeCalls: () => 0, busy: () => false, dispose: async () => {},
+    handleVision: (req, res) => { uploads.push(req.headers.host); res.writeHead(200, { "content-type": "application/json" }); res.end('{"success":true,"result":"ok"}'); } };
+  const f = await fixture(t, { deviceEndpoint });
+  // Firmware sends no browser Origin and may omit the port from Host.
+  const upload = await f.request("/device/vision", "", {}, { origin: "", host: new URL(origin).hostname });
+  assert.equal(upload.status, 200);
+  assert.deepEqual(await upload.json(), { success: true, result: "ok" });
+  assert.equal((await f.request("/device/vision", "", {}, { host: "attacker.example" })).status, 403);
+  assert.equal(uploads.length, 1);
+});
+
+
+test('a retired direct transport releases its visitor lock before heartbeat expiry, without evicting a live or cleanup-pending call',async t=>{
+ const live=new Set();let id=0;const directVoice={models:()=>[{id:'seeduplex',available:true}],reserve:async()=>{const voiceSessionId='direct-'+(++id);live.add(voiceSessionId);return {voiceSessionId,transport:'gateway-relay'};},hasSession:id=>live.has(id),close:async id=>live.delete(id),dispose:async()=>{}};
+ const f=await fixture(t,{directVoice}),a=await f.visitor(),b=await f.visitor();
+ const old=await(await f.request('/voice/api/session?entry=tianyi',a,{model:'seeduplex'})).json();
+ assert.equal((await f.request('/voice/api/session?entry=tianyi',b,{model:'seeduplex'})).status,409);
+ // The transport has finished its own cleanup, while the dead phone cannot POST close.
+ live.delete(old.voiceSessionId);
+ const status=await(await f.request('/voice/api/status?entry=tianyi',a)).json();assert.equal(status.activeCall,false);assert.equal(status.releaseReadiness.activeCalls,0);
+ const next=await(await f.request('/voice/api/session?entry=tianyi',b,{model:'seeduplex'})).json();assert.notEqual(next.voiceSessionId,old.voiceSessionId);
+ assert.equal((await f.request('/voice/api/close?entry=tianyi',a,old)).status,409);
+ assert(live.has(next.voiceSessionId));
 });

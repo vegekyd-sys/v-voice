@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import {controlVoiceTask} from '../../lib/voice-task-control.mjs';
+import {createVoiceCallControl,callControlEvaluatorFromEnv} from './call-control.mjs';
 import { randomUUID, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -13,13 +15,20 @@ import { verifyPhoneSession } from "../../lib/phone-provisioning.mjs";
 import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure} from '../../lib/feishu-phone-login.mjs';
 import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
+import {createTaskDelivery} from '../realtime-direct-tools/task-delivery.mjs';
+import {createVoiceLarkReader} from '../realtime-direct-tools/lark-readonly.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
+import {voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
+import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, conversationEntries = [], feishuLogin }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], feishuLogin, defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null }) {
+  if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
+  if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
   const hosted = Boolean(publicOrigin || accessToken);
+  const backendReady = () => !preview && gateway?.ready !== false;
   const origin = hosted ? new URL(publicOrigin) : null;
   if (hosted && (origin.protocol !== "https:" || origin.origin !== publicOrigin || !basePath)) throw new Error("Hosted voice requires an HTTPS origin and base path");
   if (!Number.isInteger(maxActiveSessions) || maxActiveSessions < 1 || maxActiveSessions > 50 || !Number.isInteger(maxActiveSessionsPerIp) || maxActiveSessionsPerIp < 1 || maxActiveSessionsPerIp > maxActiveSessions) throw new Error("Invalid voice call limits");
@@ -33,7 +42,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
   };
   const access = entryAccess(entries.resolve(new URL("http://localhost")));
   const visual = createAvatarReactionSelector({evaluate:avatarEvaluate});
-  const contexts = new Map();
+  const contexts = new Map(),nativeTasks=new Map(),nativeTaskOwners=new Set();let stopping=false;
   const local = { active: null, creatingSession: false, listeners: new Set(), touchedAt: Date.now(), entry: "tianyi" };
   const attempts = new Map();
   const allow = key => {
@@ -52,15 +61,39 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
   };
   const close = async (context = local) => {
     const old = context.active;
+    old?.taskDelivery?.close();
+    old?.callControl?.close();
+    if(old)speakerRouting?.close(old.reservation.voiceSessionId);
     if (old) visual.forget(old.reservation.voiceSessionId);
     if (old?.direct) await directVoice.close(old.reservation.voiceSessionId);
     else if (old) await gateway.request("talk.client.close", { sessionKey: old.sessionKey, voiceSessionId: old.reservation.voiceSessionId });
+    if(old&&!old.direct)callControlAudit({type:'call.closed',voiceSessionId:old.reservation.voiceSessionId});
     if (context.active === old) {context.active = null;const owner=context.avatarOwners?.get(old?.reservation.voiceSessionId);if(owner)owner.endedAt=Date.now();}
+  };
+  const releaseClosedDirectCalls=()=>{
+    if(typeof directVoice?.hasSession!=='function')return;
+    for(const context of [local,...contexts.values()]){
+      const old=context.active;
+      // Reserved, live and cleanup-pending sessions remain owned. Only a
+      // fully retired native session can release another device's lock.
+      if(!old?.direct||directVoice.hasSession(old.reservation.voiceSessionId))continue;
+      visual.forget(old.reservation.voiceSessionId);
+      context.active=null;
+      const owner=context.avatarOwners?.get(old.reservation.voiceSessionId);if(owner)owner.endedAt=Date.now();
+    }
   };
   const server = createServer(async (req, res) => {
     res.setHeader("referrer-policy", "no-referrer"); res.setHeader("x-content-type-options", "nosniff");
     try {
+      if(stopping)return json(res,503,{error:"服务正在收尾，请稍后重新拨号"});
       const host = req.headers.host ?? "";
+      const devicePathname = deviceEndpoint && new URL(req.url, "http://device.invalid").pathname;
+      if (deviceEndpoint && (deviceEndpoint.otaPath && devicePathname === deviceEndpoint.otaPath || deviceEndpoint.visionPath && devicePathname === deviceEndpoint.visionPath)) {
+        // Device HTTP (OTA check, camera photo upload) authenticates itself; some firmware omits the port in Host.
+        const hostname = (() => {try {return new URL(`http://${host}`).hostname;} catch {return "";}})();
+        if (hosted ? hostname !== origin.hostname : !/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host)) return json(res, 403, { error: "请求入口不匹配" });
+        return devicePathname === deviceEndpoint.otaPath ? deviceEndpoint.handleOta(req, res) : deviceEndpoint.handleVision(req, res);
+      }
       if (hosted ? host !== origin.host : !/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host)) return json(res, 403, { error: "请求入口不匹配" });
       const requestOrigin = hosted ? publicOrigin : `http://${host}`;
       if (req.headers.origin && req.headers.origin !== requestOrigin || hosted && req.method === "POST" && req.headers.origin !== requestOrigin) return json(res, 403, { error: "请求来源不匹配" });
@@ -98,21 +131,49 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         return json(res, 401, {error:'请从飞书电话入口登录后拨号。'});
       }
       const staticFiles = new Map([
+        ["/ios-shell-release.json", [join(here, "ios-shell-release.json"), "application/json; charset=utf-8"]],
         ["/", [join(here, "index.html"), "text/html; charset=utf-8"]],
+        ["/compare", [join(here, "comparison.html"), "text/html; charset=utf-8"]],
+        ["/comparison.mjs", [join(here, "comparison.mjs"), "text/javascript; charset=utf-8"]],
+        ["/comparison.css", [join(here, "comparison.css"), "text/css; charset=utf-8"]],
         ["/markdown.mjs", [join(here, "markdown.mjs"), "text/javascript; charset=utf-8"]],
         ["/vendor/marked-18.0.5.mjs", [join(here, "vendor/marked-18.0.5.mjs"), "text/javascript; charset=utf-8"]],
+        ["/entry-startup.mjs", [join(here, "entry-startup.mjs"), "text/javascript; charset=utf-8"]],
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
-        ...["microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
+        ["/speaker-routing.mjs", [join(here, "../speaker-native/client.mjs"), "text/javascript; charset=utf-8"]],
+        ...["ui-bundle.mjs", "call-view.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
+        ["/changelog.mjs", [join(here, "changelog.mjs"), "text/javascript; charset=utf-8"]],
+        ["/assets/v-voice-icon.svg", [join(here, "assets/v-voice-icon.svg"), "image/svg+xml"]],
+        ...["v-voice-icon-32.png", "v-voice-apple-touch.png"].map(name => [`/assets/${name}`, [join(here, "assets", name), "image/png"]]),
         ...AVATAR_FILES.map(name => [`/assets/${name}`, [join(here, "assets", name), name.endsWith(".webp") ? "image/webp" : "image/png"]]),
         ...["v-idle-nohat-20260922.png", "v-tool-busy-20260922.png"].map((name) => [`/assets/${name}`, [join(here, "../rtc-h5/assets", name), "image/png"]]),
       ]);
       if (req.method === "GET" && staticFiles.has(pathname)) {
         if (pathname === "/" && !hosted) res.setHeader("set-cookie", `v_live_experiment=${cookie}; HttpOnly; SameSite=Strict; Path=/`);
         const [file, type] = staticFiles.get(pathname);
-        const contents = await readFile(file);
+        let contents = await readFile(file);
+        if (pathname === "/") {
+          // The first frame needs this CSS, so return the exact release bytes
+          // in the HTML instead of requiring another mobile-network round trip.
+          const css = await readFile(join(here, "styles.css"), "utf8");
+          let html = contents.toString("utf8").replace('<link rel="stylesheet" href="./styles.css" />', `<style data-voice-entry>${css}</style>`);
+          if(speakerRouting)html=html.replace('<body','<body data-speaker-routing="true"');
+          if(candidateRelease)html=html.replace('<script type="module" src="./app.js"></script>',`<script type="application/json" id="voiceCandidateRelease">${JSON.stringify(candidateRelease).replaceAll('<','\\u003c')}</script><script type="module" src="./app.js"></script>`);
+          // Only an authenticated request receives an entry snapshot. It is a
+          // presentation hint; every session/tool request still authorizes itself.
+          const visitor = hosted ? access.read(req) : null;
+          const canCheckEntry = visitor && (contexts.has(`${entry}:${visitor.id}`) || contexts.size < 512);
+          if (!hosted || canCheckEntry) {
+            const initial = JSON.stringify({ ready: backendReady(), preview, defaultModel, ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}), ...(listening?{comparisonAvailable:true}:{}),
+              ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
+            }).replaceAll("<", "\\u003c");
+            html = html.replace('<script type="module" src="./app.js"></script>', `<script type="application/json" id="voiceEntryStatus">${initial}</script><script type="module" src="./app.js"></script>`);
+          }
+          contents = Buffer.from(html);
+        }
         res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
       }
       const readBody = async () => {
@@ -140,21 +201,47 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
           contexts.set(contextId, context);
         }
       } else if (!String(req.headers.cookie ?? "").split(/;\s*/u).includes(`v_live_experiment=${cookie}`)) return json(res, 401, { error: "请先打开实验页面" });
+      releaseClosedDirectCalls();
       context.touchedAt = Date.now();
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
-        ready: !preview, model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
+        ready: backendReady(), preview, defaultModel, ...(speakerRouting?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
+        releaseReadiness: {
+          known: !directVoice || typeof directVoice.backgroundTaskCount === 'function',
+          activeCalls: [local, ...contexts.values()].filter(c=>c.active).length + (deviceEndpoint?.activeCalls() ?? 0),
+          creatingSessions: [local, ...contexts.values()].filter(c=>c.creatingSession).length,
+          backgroundTasks: [...nativeTaskOwners].filter(task=>task.pending).length + (directVoice?.backgroundTaskCount?.() ?? 0),
+        },
+        ...(listening?{comparisonAvailable:true}:{}), model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
         ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
       });
+      if(req.method==='GET'&&pathname==='/api/comparison')return listening?json(res,200,listening.manifest):json(res,404,{error:'当前没有试听样本'});
+      if(req.method==='GET'&&pathname==='/api/speaker-fixture'){
+        const fixture=await speakerFixture?.(url.searchParams.get('id'));
+        if(!fixture)return json(res,404,{error:'没有这个内部验证音频'});
+        res.writeHead(200,{'content-type':'audio/wav','cache-control':'no-store'});res.end(fixture);return;
+      }
+      if(['GET','HEAD'].includes(req.method)&&pathname.startsWith('/api/comparison/audio/')){
+        const id=pathname.slice('/api/comparison/audio/'.length),audio=await listening?.audio(id,req.headers.range);
+        if(!audio)return json(res,404,{error:'没有这个试听样本'});
+        res.writeHead(audio.status,audio.headers);res.end(req.method==='HEAD'?undefined:audio.body);return;
+      }
       if (preview) return json(res, 503, { error: "当前是页面预览，还未连接 VLab 候选服务。" });
       if (req.method === "GET" && pathname === "/api/presentation") {
         const active = context.active;
-        if (!active || active.direct) return json(res, 200, { voiceSessionId: null });
+        if (!active) return json(res, 200, { voiceSessionId: null });
+        if(active.direct)return json(res,200,directVoice.presentation(active.reservation.voiceSessionId,Number(url.searchParams.get("after")??0))??{voiceSessionId:null});
         const view = active.presentation;
         const after = Number(url.searchParams.get("after") ?? 0);
         return json(res, 200, { voiceSessionId: active.reservation.voiceSessionId,
           revision: view.revision, pending: [...view.pending.values()],
           documents: [...view.documents.values()].filter(item => item.revision > after),
           controls: view.controls.filter(item => item.revision > Number(url.searchParams.get('controlsAfter') ?? 0)) });
+      }
+      if(req.method==='POST' && pathname==='/api/content-shown'){
+        const body=await readBody();const active=context.active;
+        if(!active||body.voiceSessionId!==active.reservation.voiceSessionId||typeof body.callId!=='string'||!body.callId||body.callId.length>200)return json(res,409,{error:'展示归属不匹配'});
+        const shown=active.direct?directVoice.contentShown(body.voiceSessionId,body.callId):active.presentation.documents.has(body.callId);
+        return json(res,shown?200:409,{shown});
       }
       if (req.method === "GET" && pathname === "/api/events") {
         if (context.listeners.size >= 2) return json(res, 429, { error: "通话连接已打开" });
@@ -167,12 +254,17 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       if (req.method !== "POST") return json(res, 404, { error: "没有这个入口" });
       const params = await readBody();
       if (pathname === "/api/session") {
+        if (!backendReady()) return json(res,503,{error:"V 后端正在重新连接，请稍后重拨。"});
+        if(speakerRouting&&params.inputPolicy!==undefined&&!['native','speaker'].includes(params.inputPolicy))return json(res,400,{error:'没有这个输入策略'});
         if (params.model && !['gpt-live','seeduplex','grok'].includes(params.model)) return json(res,400,{error:'没有这个语音模型'});
+        if (params.model === 'grok') {
+          try { grokVoice(params.voice); } catch (error) { return json(res,400,{error:error.message}); }
+        }
         if (params.model && params.model !== 'gpt-live' && !directVoice) return json(res,503,{error:'这个语音模型尚未接入'});
         if (context.creatingSession) return json(res, 409, { error: "正在连接 V，请稍等。" });
         // All devices share the selected personal conversation. Do not let a
         // second device replace another device's voice owner or pending work.
-        if ([...contexts.values()].some(item => item !== context && item.sessionKey === binding.sessionKey && (item.active || item.creatingSession))) {
+        if ([...contexts.values()].some(item => item !== context && item.sessionKey === binding.sessionKey && (item.active || item.creatingSession)) || deviceEndpoint?.busy(binding.sessionKey)) {
           return json(res, 409, { error: "另一台设备正在和 V 通话，请先结束那边的通话。" });
         }
         if (hosted) {
@@ -190,19 +282,39 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
           await close(context);
           const sessionKey = binding.sessionKey;
           if (params.model && params.model !== 'gpt-live') {
-            const reservation = await directVoice.reserve({model:params.model,sessionKey});
+            // SeedDuplex needs the continuous microphone stream to own turn
+            // taking. Keep household/multi-speaker routing available explicitly;
+            // the deployment selects the phone default, not browser heuristics.
+            // Clients opt in only after implementing native response ownership and reversible pause.
+            const inputPolicy = params.inputPolicy ?? 'speaker';
+            const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...speakerRouting?{inputPolicy}:{}});
             context.active={sessionKey,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
             rememberAvatarCall(context,context.active,params.model);
             return json(res,200,reservation);
           }
-          const reservation = await gateway.request("talk.client.create", { sessionKey, provider: "openai", model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
-          context.active = { sessionKey, reservation, touchedAt: Date.now(), presentation: { revision: 0, pending: new Map(), documents: new Map(), controls: [] } };
+          const reservation = await gateway.request("talk.client.create", { sessionKey, provider: gptProvider, model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
+          const taskDelivery=createTaskDelivery({gateway,sessionKey,ownerId:reservation.voiceSessionId,
+            ...(gptProvider==='v-voice-gpt-live'?{readNativeResult:runId=>gateway.request('voice.product.task-result',{clientSecret:reservation.clientSecret,runId},{timeoutMs:10000})}:{}),
+            audit:callControlAudit,onIdle:()=>{nativeTaskOwners.delete(taskDelivery);if(nativeTasks.get(reservation.voiceSessionId)===taskDelivery)nativeTasks.delete(reservation.voiceSessionId);}});
+          nativeTaskOwners.add(taskDelivery);
+          // Task audit only. Native GPT captions remain Gateway-owned.
+          callControlAudit({type:'call.created',voiceSessionId:reservation.voiceSessionId,sessionKey,provider:'openai',model:reservation.model});
+          context.active = { sessionKey, reservation, cookie:req.headers.cookie, touchedAt: Date.now(), taskDelivery, presentation: { revision: 0, pending: new Map(), documents: new Map(), controls: [] } };
+          nativeTasks.set(reservation.voiceSessionId,context.active.taskDelivery);
           if (reservation.model !== "gpt-live-1-codex" || reservation.transport !== "webrtc" || reservation.offerUrl !== "/plugins/openai/realtime/calls") {
             await close(context);
             return json(res, 409, { error: "候选语音配置与 GPT Live 实验不匹配" });
           }
+          const owned=context.active;
+          owned.callControl=createVoiceCallControl({evaluate:callControlEvaluate,audit:event=>callControlAudit({...event,voiceSessionId:owned.reservation.voiceSessionId}),isCurrent:()=>context.active===owned,onAccepted:async value=>{
+            if(context.active!==owned)return;
+            const message={...value,voiceSessionId:owned.reservation.voiceSessionId,revision:++owned.presentation.revision};
+            owned.presentation.controls.push(message);if(owned.presentation.controls.length>64)owned.presentation.controls.shift();
+            for(const response of context.listeners)response.write(`data: ${JSON.stringify(message)}\n\n`);
+          }});
           rememberAvatarCall(context,context.active,'openai');
-          return json(res, 200, { voiceSessionId: reservation.voiceSessionId, model: reservation.model });
+          const speaker=speakerRouting?.reserve(reservation.voiceSessionId,{model:'gpt-live',policy:params.inputPolicy??'speaker'});
+          return json(res, 200, { voiceSessionId: reservation.voiceSessionId, model: reservation.model,...speaker?{speakerRouting:speaker}:{} });
         } finally {
           context.creatingSession = false;
         }
@@ -237,9 +349,26 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         if (pathname === '/api/heartbeat') return json(res,200,{ok:true});
         if (pathname === '/api/steer') {
           if(!['steer','cancel'].includes(params.mode)||typeof params.text!=='string'||!params.text.trim()||params.text.length>2000)return json(res,400,{error:'补充内容无效'});
-          return json(res,200,await directVoice.steer(params.voiceSessionId,params));
+          const result=await directVoice.steer(params.voiceSessionId,params);
+          return json(res,result?.ok===true?200:409,result);
         }
         return json(res,400,{error:'当前模型使用实时音频通道'});
+      }
+      if(pathname==='/api/call-control-input'){
+        const owned=context.active;
+        if(!Number.isSafeInteger(params.revision)||params.revision<1||typeof params.turnId!=='string'||!params.turnId||params.turnId.length>160||typeof params.text!=='string'||params.text.length>2400||typeof params.final!=='boolean')return json(res,400,{error:'通话字幕无效'});
+        if(params.revision<=(owned.callControlCaptionRevision??0))return json(res,409,{error:'通话字幕已更新'});
+        owned.callControlCaptionRevision=params.revision;
+        if(params.final&&owned.taskDelivery?.observeUser(params.text))void owned.taskDelivery.subscribe().catch(error=>callControlAudit({type:'task.delivery-failed',voiceSessionId:params.voiceSessionId,error:error.message}));
+        void owned.callControl?.observe({role:'user',turnId:params.turnId,text:params.text,final:params.final,snapshot:true});
+        return json(res,200,{ok:true});
+      }
+      if (pathname === '/api/call-control-confirm') {
+        const owned=context.active,value=params.control;
+        if(!owned.callControl?.matches(value))return json(res,409,{error:'挂断意图已更新'});
+        const proof=await gateway.request('voice.product.control',{clientSecret:owned.reservation.clientSecret,mode:'end'},{timeoutMs:3000});
+        if(proof?.ok!==true||context.active!==owned||!owned.callControl.matches(value))return json(res,409,{error:'挂断意图已更新'});
+        return json(res,200,{...value,type:'voice.end.accepted',voiceSessionId:owned.reservation.voiceSessionId});
       }
       if (pathname === "/api/offer") {
         if (typeof params.sdp !== "string" || !params.sdp.startsWith("v=0") || params.sdp.length > 65536) return json(res, 400, { error: "语音连接参数无效" });
@@ -258,7 +387,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       }
       if (pathname === "/api/steer") {
         if (!["steer", "cancel"].includes(params.mode) || typeof params.text !== "string" || !params.text.trim() || params.text.length > 2000) return json(res, 400, { error: "补充内容无效" });
-        const result = await gateway.request("talk.client.steer", { sessionKey: context.active.sessionKey, text: params.text, mode: params.mode });
+        const result = await controlVoiceTask({gateway,sessionKey:context.active.sessionKey,native:true},params);
         if (result?.ok !== true) return json(res, 409, { error: params.mode === "cancel" ? "后台任务暂时没有取消成功，请直接对 V 说明。" : "后台任务没有接受这次补充，请直接对 V 说明。" });
         return json(res, 200, result);
       }
@@ -271,6 +400,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     }
   });
   const timer = setInterval(() => {
+    releaseClosedDirectCalls();
     for (const [id, context] of [...contexts, [null, local]]) {
       if (context.active && Date.now() - context.active.touchedAt > 45000) void close(context).catch(() => {});
       if (id && id !== "local-tianyi" && !context.active && !context.creatingSession && !context.listeners.size && Date.now() - context.touchedAt > 1800000) contexts.delete(id);
@@ -279,15 +409,27 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
   }, 15000); timer.unref();
   const emit = (event) => {
     directVoice?.handleEvent(event);
+    for(const delivery of nativeTaskOwners)delivery.handleEvent(event);
+    const taskEvent=event.event==='talk.event'?event.payload?.talkEvent:null;
+    if(taskEvent?.type==='tool.progress'&&taskEvent.payload?.name==='openclaw_background_task'){
+      nativeTasks.get(event.payload.voiceSessionId)?.watch(taskEvent.payload.runId,taskEvent.callId);
+    }
+    if(event.event==='talk.event'&&event.payload?.talkEvent?.type==='tool.call'&&event.payload.talkEvent.payload?.name==='openclaw_agent_consult'){
+      nativeTasks.get(event.payload.voiceSessionId)?.watch(event.payload.talkEvent.callId);
+    }
     if (event.event !== "talk.event") return;
     const context = [local, ...contexts.values()].find(item => item.active?.reservation.voiceSessionId === event.payload?.voiceSessionId);
     if (!context) return;
     const item = event.payload.talkEvent;
+    // Native caption snapshots are the single USER source: they also arrive when
+    // a deployment filters Gateway transcript events. Mixing normalized and
+    // native turn IDs would incorrectly revoke the current decision.
+    if(item?.type==='output.text.done')void context.active.callControl?.observe({role:'assistant',text:item.payload?.text,final:true});
     const publish = message => {
       const view = context.active.presentation;
       if (view) {
         message.revision = ++view.revision;
-        if (message.name === 'openclaw_end_call') {
+        if (message.name === 'openclaw_end_call' || message.backendFinal === true) {
           view.controls.push(message);
           if(view.controls.length > 64)view.controls.shift();
         }
@@ -309,13 +451,14 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     if (!["tool.call", "tool.result", "tool.error"].includes(item?.type)) return;
     const message = { voiceSessionId: context.active.reservation.voiceSessionId, type: item.type, callId: item.callId };
     if (item.type === "tool.call") message.activity = taskActivity(item.payload?.name);
+    if (item.type === "tool.result" && item.payload?.name === "openclaw_agent_consult") message.backendFinal = true;
     if (item.payload?.name === "openclaw_end_call") {
       message.name = "openclaw_end_call";
       if (typeof item.payload.requestId === "string") message.requestId = item.payload.requestId;
       if (typeof item.payload.originUserTurnId === "string") message.originUserTurnId = item.payload.originUserTurnId;
       if (item.payload.source === "backend_model_client_tool") {
         message.source = item.payload.source;
-        for (const field of ["nativeDelegationId", "backendRunId", "backendToolCallId", "status"])
+        for (const field of ["nativeDelegationId", "backendRunId", "backendToolCallId", "status", "nativeAssistantTurnIdAtAcceptance"])
           if (typeof item.payload[field] === "string") message[field] = item.payload[field];
         if (Number.isSafeInteger(item.payload.delegationGeneration)) message.delegationGeneration = item.payload.delegationGeneration;
       }
@@ -329,11 +472,21 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
   };
   server.on('upgrade',(req,socket,head)=>{
     const host=req.headers.host??'';
+    // Hardware clients authenticate with their own device token, not a browser
+    // cookie or Origin. They still arrive only through the configured host.
+    const devicePath=deviceEndpoint&&new URL(req.url,'http://device.invalid').pathname;
+    if(deviceEndpoint&&(devicePath===deviceEndpoint.path||deviceEndpoint.xiaozhiPath&&devicePath===deviceEndpoint.xiaozhiPath)){
+      // Device clients authenticate by token; some firmware omits the port in Host.
+      const hostname=(()=>{try{return new URL(`http://${host}`).hostname;}catch{return '';}})();
+      if(hosted?hostname!==origin.hostname:!/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host)){socket.destroy();return;}
+      deviceEndpoint.handleUpgrade(req,socket,head,{dialect:devicePath===deviceEndpoint.path?'native':'xiaozhi'});return;
+    }
     const expectedOrigin=hosted?publicOrigin:`http://${host}`;
     if(!directVoice||(hosted?host!==origin.host:!/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host))||req.headers.origin!==expectedOrigin){socket.destroy();return;}
     const url=new URL(req.url,expectedOrigin);
-    if(url.pathname!==`${basePath}/api/relay`){socket.destroy();return;}
-    const context=[local,...contexts.values()].find(c=>c.active?.direct&&c.active.reservation.voiceSessionId===url.searchParams.get('voiceSessionId'));
+    const speakerPath=url.pathname===`${basePath}/api/speaker-stream`&&speakerRouting;
+    if(url.pathname!==`${basePath}/api/relay`&&!speakerPath){socket.destroy();return;}
+    const context=[local,...contexts.values()].find(c=>(speakerPath||c.active?.direct)&&c.active?.reservation.voiceSessionId===url.searchParams.get('voiceSessionId'));
     if(!context||!req.headers.cookie){socket.destroy();return;}
     // Re-check the live access cookie, not just a remembered session ticket.
     const binding=entries.resolve(url);
@@ -341,15 +494,20 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     if(phoneLogin?.protects(binding)&&!phoneLogin.permits(req,binding)){socket.destroy();return;}
     const visitor=hosted?entryAccess(binding).read(req):null;
     const originalVisitor=hosted?entryAccess(binding).read({headers:{cookie:context.active.cookie}}):null;
-    // Compare the entry's visitor identity, not the entire browser cookie jar:
-    // opening another phone may legitimately add its cookie during this call.
+    // Authenticate this entry's visitor even when another phone adds a cookie.
     if(hosted?(!visitor||visitor.id!==originalVisitor?.id):!String(req.headers.cookie).split(/;\s*/u).includes(`v_live_experiment=${cookie}`)){socket.destroy();return;}
-    directVoice.upgrade(req,socket,head,url.searchParams.get('voiceSessionId'),url.searchParams.get('ticket'));
+    if(speakerPath)speakerRouting.upgrade(req,socket,head,url.searchParams.get('voiceSessionId'),url.searchParams.get('ticket'));
+    else directVoice.upgrade(req,socket,head,url.searchParams.get('voiceSessionId'),url.searchParams.get('ticket'));
   });
-  return { server, emit, dispose: async () => {
-    clearInterval(timer);
+  const sessionBusy = sessionKey => [local, ...contexts.values()].some(item => item.sessionKey === sessionKey && (item.active || item.creatingSession));
+  return { server, emit, sessionBusy, dispose: async ({drain=false}={}) => {
+    stopping=true;clearInterval(timer);
+    await deviceEndpoint?.dispose();
     for (const context of [local, ...contexts.values()]) { for (const response of context.listeners) response.end(); await close(context).catch(() => {}); }
-    await directVoice?.dispose();
+    if(drain)while([...nativeTaskOwners].some(d=>d.pending))await new Promise(resolve=>setTimeout(resolve,50));
+    for(const delivery of nativeTaskOwners)delivery.dispose();nativeTaskOwners.clear();nativeTasks.clear();
+    await directVoice?.dispose({drain});
+    speakerRouting?.dispose();
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
   } };
 }
@@ -357,17 +515,20 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const preview = process.env.GPT_LIVE_H5_PREVIEW === "1";
   const port = Number(process.env.GPT_LIVE_H5_PORT ?? process.env.RTC_H5_PORT ?? 26244);
-  let gateway, bridge, transcriptLog, avatarLog;
+  let gateway, bridge, transcriptLog, avatarLog, productionSpeaker;
   if (!preview) {
     const configPath = process.env.OPENCLAW_CONFIG_PATH;
     if (!configPath) throw new Error("OPENCLAW_CONFIG_PATH is required");
     const config = JSON.parse(await readFile(configPath, "utf8"));
     const token = String(config.gateway.auth.token).replace(/\$\{([^}]+)\}/gu, (_, key) => process.env[key] ?? "");
-    const { GatewayClient } = await import("../../lib/gateway-client.mjs");
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("Candidate Gateway unavailable")), 15000);
-      gateway = new GatewayClient({ url: `ws://127.0.0.1:${config.gateway.port}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", scopes: ["operator.read", "operator.write", "operator.admin"], caps:["voice-direct-tools","tool-events"], onHelloOk: () => { clearTimeout(timeout); resolve(); }, onEvent: (event) => bridge?.emit(event), onConnectError: (error) => { clearTimeout(timeout); reject(error); } }); gateway.start();
-    });
+    const { connectGatewayClient } = await import("../../lib/gateway-client.mjs");
+    gateway = await connectGatewayClient({url:`ws://127.0.0.1:${config.gateway.port}`,token,
+      getToken:async()=>{
+        const latest=JSON.parse(await readFile(configPath,"utf8"));
+        return String(latest.gateway.auth.token).replace(/\$\{([^}]+)\}/gu,(_,key)=>process.env[key]??"");
+      },
+      scopes:["operator.read","operator.write","operator.admin"],caps:["voice-direct-tools","tool-events"],subscribeSessions:true,onEvent:event=>bridge?.emit(event),
+    },{onConnectError:error=>console.warn(JSON.stringify({type:"voice.gateway-connection-error",code:/^[A-Z0-9_]{1,80}$/.test(error.code??"")?error.code:"CONNECT_ERROR"}))});
     const {createDirectVoiceService}=await import('../realtime-direct-tools/session.mjs');
     const wsModule=await import('ws');
     transcriptLog=createVoiceTranscriptLog({
@@ -377,18 +538,58 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     avatarLog=createAvatarTelemetryLog({directory:process.env.RTC_H5_AVATAR_LOG_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-avatar-events'),
       onError:({code})=>console.warn(JSON.stringify({type:'voice.avatar-write-error',code})),
     });
-    const directVoice=createDirectVoiceService({gateway,wsModule,
-      audit:transcriptLog.audit,
+    productionSpeaker=await (await import('../speaker-native/production.mjs')).createProductionSpeaker({audit:transcriptLog.audit});
+    const speakerRouting=productionSpeaker?.service;
+    const lark=createVoiceLarkReader({environment:process.env});
+    if(!lark.available)console.warn(JSON.stringify({type:'voice.lark-unavailable'}));
+    const nativeInterruptModule=process.env.VOICE_NATIVE_INTERRUPT_ASR==='1'?await import('../realtime-direct-tools/native-interrupt.mjs'):null;
+    const nativeInterrupt=nativeInterruptModule
+      ? ({inputSampleRate,...callbacks})=>new nativeInterruptModule.NativeInterruptAsr({apiKey:process.env.VOLCENGINE_ASR_API_KEY,inputSampleRate,...callbacks}):undefined;
+    const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',// Experimental: V's own line before a tool. Off by default: on 2026-10-20 Seeduplex lost 3 of 5 results it had spoken before.
+      toolStartNotice:process.env.VOICE_TOOL_START_NOTICE==='model'?'model':'cached',calendar:lark.available?lark.calendar:null,larkRead:lark.available?lark.read:null,
+      grokModel:process.env.XAI_VOICE_MODEL,
+      grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),
+      grokExpressiveTags:process.env.XAI_VOICE_EXPRESSIVE_TAGS === '1',
+      audit:productionSpeaker?.audit??transcriptLog.audit,
       toolEnvironment:Object.fromEntries(["LARKSUITE_CLI_CONFIG_DIR","LARKSUITE_CLI_DATA_DIR"].filter(key=>process.env[key]).map(key=>[key,process.env[key]])),
       apiKeys:{
       seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY??process.env.DOUBAO_SPEECH_API_KEY,
       grok:process.env.XAI_API_KEY,
     },loadContext:async sessionKey=>{
       const history=await gateway.request('chat.history',{sessionKey,limit:6},{timeoutMs:10000});
-      return JSON.stringify((history.messages??[]).map(m=>({role:m.role,content:m.content}))).slice(-12000);
+      return voiceConversationContext(history.messages??[]);
     }});
-    bridge = createLiveH5Server({ gateway,
-      directVoice, avatarLog,
+    // Robot faces pick reactions with a fast classifier; without one they use
+    // conservative keyword rules. Cosmetic only, never on the speech path.
+    const robotEvaluatorFromEnv = async env => {
+      if (env.ROBOT_REACTION_PROVIDER === 'deepseek' && env.DEEPSEEK_API_KEY) return (await import('../robot/robot-reactions.mjs')).createDeepSeekChoiceEvaluator({apiKey:env.DEEPSEEK_API_KEY});
+      if (env.ROBOT_REACTION_PROVIDER === 'decisions') return avatarEvaluatorFromEnv(env);
+      return null;
+    };
+    let deviceEndpoint = null;
+    if (process.env.VOICE_DEVICES_FILE) {
+      const {createDeviceEndpoint,parseDeviceEntries} = await import('../realtime-direct-tools/device-endpoint.mjs');
+      const {createVolumeStore} = await import('../realtime-direct-tools/device-volume.mjs');
+      deviceEndpoint = createDeviceEndpoint({directVoice,wsModule,audit:transcriptLog.audit,
+        // Spoken volume changes; without a file they last until the service restarts.
+        volumeStore:createVolumeStore({file:process.env.VOICE_DEVICE_VOLUME_FILE ?? null}),
+        devices:parseDeviceEntries(JSON.parse(await readFile(process.env.VOICE_DEVICES_FILE,"utf8"))),
+        path:process.env.VOICE_DEVICE_PATH ?? "/device/voice",
+        xiaozhiPath:process.env.VOICE_XIAOZHI_PATH ?? null,
+        otaPath:process.env.VOICE_XIAOZHI_OTA_PATH ?? null,
+        xiaozhiPublicUrl:process.env.VOICE_XIAOZHI_PUBLIC_URL ?? null,
+        isSessionBusy:sessionKey=>bridge?.sessionBusy(sessionKey) ?? true,
+        // Camera devices (devices.json camera:true) look through DeepSeek's image model.
+        visionPath:process.env.VOICE_DEVICE_VISION_PATH ?? "/device/vision",
+        describeImage:process.env.DEEPSEEK_API_KEY ? (await import('../realtime-direct-tools/device-vision.mjs')).createDeepSeekVision({apiKey:process.env.DEEPSEEK_API_KEY,model:process.env.VOICE_DEVICE_VISION_MODEL ?? 'deepseek-flash'}) : null,
+        robotEvaluate:await robotEvaluatorFromEnv(process.env)});
+    }
+    bridge = createLiveH5Server({ gateway, deviceEndpoint,
+      candidateRelease:process.env.VOICE_CANDIDATE_RELEASE_FILE?JSON.parse(await readFile(process.env.VOICE_CANDIDATE_RELEASE_FILE,'utf8')):undefined,
+      listening:process.env.VOICE_LISTENING_DIR ? await (await import('./listening.mjs')).loadVoiceListening(process.env.VOICE_LISTENING_DIR) : undefined,
+      directVoice, speakerRouting, avatarLog,callControlAudit:transcriptLog.audit,
+      phoneInputPolicy:process.env.VOICE_PHONE_INPUT_POLICY ?? 'speaker',
+      defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",
       conversationEntries: process.env.VOICE_ENTRIES_FILE ? JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,"utf8")) : [],
       feishuLogin: process.env.VOICE_FEISHU_LOGIN_FILE ? await readFeishuPhoneLoginFile(process.env.VOICE_FEISHU_LOGIN_FILE) : undefined,
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",
@@ -403,5 +604,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     } });
   } else bridge = createLiveH5Server({ preview: true });
   bridge.server.listen(port, "127.0.0.1", () => console.log(JSON.stringify({ ready: true, host: "127.0.0.1", port, preview })));
-  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void bridge.dispose().finally(async () => { await transcriptLog?.close(); await avatarLog?.close(); gateway?.stop(); process.exit(0); }));
+  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void bridge.dispose({drain:true}).finally(async () => { await transcriptLog?.close(); await avatarLog?.close(); productionSpeaker?.close(); gateway?.stop(); process.exit(0); }));
 }

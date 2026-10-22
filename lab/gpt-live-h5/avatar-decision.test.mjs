@@ -6,14 +6,14 @@ import {AVATAR_SEQUENCES} from './avatar-state.mjs';
 const context={turns:[{role:'user',text:'找了半天还是不对，有点失落。'},{role:'assistant',text:'我听懂了，我们慢慢找。'}],activity:'memory'};
 const answer=choice=>({model:'test',answers:{picture:{type:'choice',choice,confidence:.9}}});
 test('each reviewed picture has unique contextual tags and an actual shipped frame',()=>{
- assert.equal(AVATAR_CATALOG.length,37);assert.equal(new Set(AVATAR_CATALOG.map(p=>p.id)).size,37);
+ assert.equal(AVATAR_CATALOG.length,52);assert.equal(new Set(AVATAR_CATALOG.map(p=>p.id)).size,52);
  for(const p of AVATAR_CATALOG){assert.ok(AVATAR_SEQUENCES[p.scene][p.frame]);for(const field of ['label','action','emotions','contexts','avoid'])assert.ok(p[field]);}
 });
 test('decision sees both speakers and exact picture choices; tool results and execution routes are absent',async()=>{
  let input;const s=createAvatarReactionSelector({evaluate:async(...args)=>{input=args;return answer('listen-3');}});
  assert.deepEqual(await s.select({owner:'a',context:{...context,query:'private-tool-query',result:'private-tool-result'}}),{picture:'listen-3',hold:false,continuations:['listen-5','complete-5']});
  assert.deepEqual(input[0].turns,context.turns);assert.equal(input[0].activity,'memory');
- assert.deepEqual(Object.keys(input[1]),['picture']);assert.equal(Object.keys(input[1].picture.criteria).length,36);
+ assert.deepEqual(Object.keys(input[1]),['picture']);assert.equal(Object.keys(input[1].picture.criteria).length,51);
  assert.equal(JSON.stringify(input).includes('private-tool'),false);
  assert.equal(input[1].picture.criteria['listen-3'].includes('安慰'),true);
 });
@@ -42,7 +42,7 @@ test('neutral fallback cannot become a HOLD shortcut; new meaning is selected in
  let input;const s=createAvatarReactionSelector({evaluate:async(...args)=>{input=args;return answer('complete-2');}});
  assert.deepEqual(await s.select({owner:'a',context:{...context,currentPicture:'listen-5',reactionPicture:'listen-5'}}),{picture:'complete-2',hold:false,continuations:avatarContinuationPlan('complete-2')});
  assert.equal(input[0].currentPicture,undefined);assert.ok(input[0].previousPose);assert.equal(input[0].reactionPicture,undefined);
- assert.equal(Object.keys(input[1].picture.criteria).length,36);assert.equal(input[1].picture.criteria.hold,undefined);
+ assert.equal(Object.keys(input[1].picture.criteria).length,51);assert.equal(input[1].picture.criteria.hold,undefined);
  const same=createAvatarReactionSelector({evaluate:async()=>answer('listen-3')});
  assert.deepEqual(await same.select({owner:'b',context:{...context,reactionPicture:'listen-3'}}),{picture:'listen-3',hold:true,continuations:avatarContinuationPlan('listen-3')});
  assert.equal(await createAvatarReactionSelector({evaluate:async()=>answer('hold')}).select({owner:'c',context}),null);
