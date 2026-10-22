@@ -33,7 +33,7 @@
     "build": 8,
     "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab"
   },
-  "deviceReportedBuild": "17",
+  "deviceReportedBuild": "18",
   "savedH5Baseline": {
     "build": 10,
     "sourceCommit": "3ffeb94",
@@ -65,7 +65,10 @@
     "source": "Tianyi supplied purple headset portrait",
     "opaque1024AssetVerified": true,
     "simulatorAppearanceVerified": true,
-    "physicalDeviceIconReadbackVerified": true
+    "physicalDeviceIconReadbackVerified": true,
+    "systemAlternateRegistrationConfirmedBuild": 18,
+    "smallSystemIconReadbackVerifiedBuild": 18,
+    "actionButtonLaunchOverlayAcceptance": "pending"
   },
   "webDeliveryRelease": {
     "sourceCommit": "0d0b3d96c5391dde5362c5db270018958948584f",
@@ -78,14 +81,14 @@
     "build14PhysicalAcceptance": "all_requested_scopes_passed"
   },
   "currentDeviceCandidate": {
-    "build": 17,
+    "build": 18,
     "candidateOnly": true,
-    "sourceCommit": "7ce6a4e",
+    "sourceCommit": "793203b85802eae390e72553dc3f74c55b4571f0",
     "installedOnRequestedIPhone": true,
-    "deviceReportedBuild": "17",
+    "deviceReportedBuild": "18",
     "overwriteInstalledWithoutUninstallOrKeychainReset": true,
-    "record": "waveform-build17.json",
-    "physicalAcceptance": "pending",
+    "record": "joint-build18.json",
+    "physicalAcceptance": "icon_registration_confirmed_action_overlay_and_reactions_pending",
     "lastAcceptedBuild": 14
   },
   "build10RollbackHistory": {
@@ -140,13 +143,13 @@
     "previouslyInstalled": true
   },
   "previousDeviceCandidate": {
-    "build": 16,
+    "build": 17,
     "candidateOnly": true,
-    "sourceCommit": "f9ec2715cd0ea0f4c1bdc8f25a0924dcaf0bcbed",
+    "sourceCommit": "7ce6a4e",
     "installedOnRequestedIPhone": false,
-    "deviceReportedBuild": "16",
+    "deviceReportedBuild": "17",
     "overwriteInstalledWithoutUninstallOrKeychainReset": true,
-    "record": "live-caption-build16.json",
+    "record": "waveform-build17.json",
     "physicalAcceptance": "pending",
     "lastAcceptedBuild": 14,
     "previouslyInstalledOnRequestedIPhone": true
@@ -173,7 +176,7 @@
   "pendingJointBuild18": {
     "build": 18,
     "candidateOnly": true,
-    "installed": false,
+    "installed": true,
     "record": "joint-build18.json",
     "contains": [
       "waveform build17",
@@ -181,6 +184,8 @@
       "native SeedDuplex duplex from main",
       "GPT Live One native WebRTC"
     ],
-    "lastAcceptedBuild": 14
+    "lastAcceptedBuild": 14,
+    "deviceReportedBuild": "18",
+    "humanAcceptance": "pending"
   }
 }

@@ -300,3 +300,7 @@ Core16、原生WK／音频／集成46、既有服务合同80全部通过。新�
 - 初轮旧原生头像回执被当成H5接管，导致批准的延续丢失；分开回执来源后原测试恢复。联合初轮GPT静音测试在已检测到输入音调时提前退出，RTP统计尚未更新；改为在原时限内等待两个原阈值同时成立。随后网页更新测试发现强制检查可能被旧下载吞掉，修复强制检查取消旧任务，并新增迟到旧包不得覆盖新包的回归，最终完整62项通过。失败轮次不计通过。
 - `evidence/build18-reaction-components.png` 是右侧真实模拟器中共用SwiftUI组件的渲染，证明默认头像与波纹组件可见，不能作为实际系统锁屏／Action Button缓存或真实Decision人类对话验收。
 - 18:55:16北京时间只读线上状态 known=true、activeCalls=creatingSessions=backgroundTasks=0，phoneInputPolicy=native；签名／安装前会重新检查。手机只读读回1.0.0(17)，已保存其签名IPA并校验原SHA。无卸载或Keychain重置，无Gateway／Voice服务重启、main合入或线上网页发布。
+
+- 联合包最终源码 `793203b`，主 App／扩展 build18，签名 archive、export 及导出 IPA 独立解包验包均通过，WebRTC／隐私清单／license／52张Reaction／通知等各尺寸图标／后台Intent／TLS／Release不含fixture及调试组件入口均验证。IPA SHA-256：`cae503ea9b572e7982b2ffe41935a25503f765744703d15cf6fd6c31e86bde85`。
+- 首次安装因开发连接 assertion4016 中断，未声称成功；Tianyi 回复重接并解锁后，19:40:58北京时间只读计数三项0，再覆盖安装并从设备读回1.0.0(18)，空闲打开成功。19:41:06系统公开图标切换API回调确认VVoiceSystemPortrait，随后重新登记AppShortcuts；设备生成20pt@3x小图标取回并实看为紫色新版。启动提示实际缓存、锁屏首次Reaction和聊天表情仍待用户按键验收。
+- 保存原已装波纹17签名IPA（原SHA不变）；GPT线程的另一个17未安装。没有卸载、清Keychain或自动真实拨号；候选源码／首页日志仍仅在本独立分支，未自动push／合入main或线上部署。

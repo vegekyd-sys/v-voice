@@ -3,8 +3,8 @@
   "build": 18,
   "version": "1.0.0",
   "candidateOnly": true,
-  "status": "joint_regression_passed_signing_pending",
-  "installedOnRequestedIPhone": false,
+  "status": "installed_human_acceptance_pending",
+  "installedOnRequestedIPhone": true,
   "realCallStartedByAgent": false,
   "integration": {
     "waveform": "7ce6a4e",
@@ -55,5 +55,45 @@
     "gatewayRestarted": false,
     "appStoreOrTestFlight": false
   },
-  "homepageChangelog": "Candidate source and bundled history updated; no public server deployment"
+  "homepageChangelog": "Candidate source and bundled history updated; no public server deployment",
+  "sourceCommit": "793203b85802eae390e72553dc3f74c55b4571f0",
+  "signedArchiveVerified": true,
+  "exportedIPAVerified": true,
+  "deviceReportedBuild": "18",
+  "installation": "overwrite_without_uninstall_or_keychain_reset",
+  "idleLaunchSucceeded": true,
+  "installedAt": "2026-10-22T11:43:12.110780+00:00",
+  "ipaSHA256": "cae503ea9b572e7982b2ffe41935a25503f765744703d15cf6fd6c31e86bde85",
+  "preinstallReadiness": {
+    "checkedAt": "2026-10-22T11:40:58.183Z",
+    "ready": true,
+    "phoneInputPolicy": "native",
+    "releaseReadiness": {
+      "known": true,
+      "activeCalls": 0,
+      "creatingSessions": 0,
+      "backgroundTasks": 0
+    }
+  },
+  "prelaunchReadiness": {
+    "checkedAt": "2026-10-22T11:41:03.199Z",
+    "ready": true,
+    "phoneInputPolicy": "native",
+    "releaseReadiness": {
+      "known": true,
+      "activeCalls": 0,
+      "creatingSessions": 0,
+      "backgroundTasks": 0
+    }
+  },
+  "iconRegistration": {
+    "deviceConfirmed": true,
+    "publicAPI": "UIApplication.setAlternateIconName",
+    "alternateName": "VVoiceSystemPortrait",
+    "confirmedAt": "2026-10-22T11:41:06Z",
+    "smallIconReadbackVerified": true,
+    "evidence": "evidence/build18-system-small-icon.png",
+    "actualActionButtonOverlayAcceptance": "pending"
+  },
+  "firstInstallAttempt": "Developer connectivity assertion 4016 failed before install; user reconnected USB/unlocked, then installation and version readback succeeded"
 }
