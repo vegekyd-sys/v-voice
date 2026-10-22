@@ -406,6 +406,7 @@ def main():
     parser.add_argument('--inventory', required=True)
     parser.add_argument('--artifact')
     parser.add_argument('--receipts', required=True)
+    parser.add_argument('--wait-seconds', type=int, default=900, help='Wait for busy targets without interrupting calls (default 900)')
     args = parser.parse_args()
     inventory = json.loads(Path(args.inventory).read_text())
     targets = inventory['targets']
@@ -445,20 +446,32 @@ def main():
             finally:
                 subprocess.run(['ssh',target['ssh'],'rm','--',remote_archive], capture_output=True)
         save(receipt_dir / 'staged.json', staged)
-    results = {}
-    for target in targets:
-        try:
-            results[target['id']] = remote(target,'switch',directory=staged[target['id']]['directory'], expected=before[target['id']]['identity'])
-        except Exception as error:
-            results[target['id']] = {'pending':True,'error':str(error)}
-        save(receipt_dir / (target['id'] + '.json'), results[target['id']])
-        print(json.dumps({'target':target['id'], 'pending':results[target['id']].get('pending',False),
-                          'error':results[target['id']].get('error')}), flush=True)
+    require(0 <= args.wait_seconds <= 86400, 'Invalid wait duration')
+    results, pending = {}, list(targets)
+    deadline = time.monotonic() + args.wait_seconds
+    attempt = 0
+    while pending:
+        attempt += 1
+        retry = []
+        for target in pending:
+            try:
+                results[target['id']] = remote(target,'switch',directory=staged[target['id']]['directory'], expected=before[target['id']]['identity'])
+            except Exception as error:
+                message = str(error)
+                results[target['id']] = {'pending':True,'error':message}
+                if ('busy' in message.lower() or 'clients remain connected' in message) and time.monotonic() < deadline:
+                    retry.append(target)
+            save(receipt_dir / (target['id'] + '-' + str(attempt) + '.json'), results[target['id']])
+            print(json.dumps({'target':target['id'], 'pending':results[target['id']].get('pending',False),
+                              'error':results[target['id']].get('error')}), flush=True)
+        pending = retry
+        if pending:
+            time.sleep(min(15, max(0, deadline-time.monotonic())))
     after = {t['id']:remote(t,'inspect') for t in targets}
     complete = all(v['status'].get('release',{} ) and v['status']['release'].get('commit') == manifest['commit']
                    and v['status']['release'].get('filesSha256') == manifest['filesSha256']
                    and v['status'].get('ready') is True and not v['status'].get('admission',{}).get('held',True) for v in after.values())
-    matrix = {'complete':bool(complete), 'commit':manifest['commit'], 'clients':manifest['clients'], 'nodes':after,
+    matrix = {'complete':bool(complete), 'completionScope':'both-server-artifacts-and-ios-ui-distribution', 'commit':manifest['commit'], 'clients':manifest['clients'], 'nodes':after,
               'nativeAndFirmwareAcceptance':'Separate receipts required; same server bytes do not prove physical client acceptance'}
     save(receipt_dir / 'matrix.json', matrix)
     print(json.dumps({'complete':bool(complete),'receipt':str(receipt_dir),'commit':manifest['commit']}))
