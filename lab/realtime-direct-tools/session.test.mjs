@@ -479,7 +479,7 @@ test('local read survives ordinary interruption; hangup aborts and waits for rea
  f.call('feishu_calendar',{},'local');await delay(5);
  f.event({type:'input_audio_buffer.speech_started'});assert.equal(signal.aborted,false);
  await f.service.steer(f.reservation.voiceSessionId,{mode:'append',text:'顺便问一下'});assert.equal(signal.aborted,false);
- const close=f.service.close(f.reservation.voiceSessionId);assert.equal(cleanupDone,false);await close;assert.equal(signal.aborted,true);assert.equal(cleanupDone,true);assert.equal(f.audit.filter(e=>e.type==='call.closed').length,1);assert.equal(f.invocations.length,0);await f.service.dispose();
+ const close=f.service.close(f.reservation.voiceSessionId);assert.equal(cleanupDone,false);assert.equal(f.service.backgroundTaskCount(),1,'release waits for disconnected-call cleanup');await close;assert.equal(f.service.backgroundTaskCount(),0);assert.equal(signal.aborted,true);assert.equal(cleanupDone,true);assert.equal(f.audit.filter(e=>e.type==='call.closed').length,1);assert.equal(f.invocations.length,0);await f.service.dispose();
 });
 
 test('show_content publishes exact Markdown locally and confirms actual UI receipt',async()=>{

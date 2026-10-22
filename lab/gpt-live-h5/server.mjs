@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {createReleaseGate, readRelease, listenReleaseControl} from '../../lib/release-control.mjs';
 import {controlVoiceTask} from '../../lib/voice-task-control.mjs';
 import {createVoiceCallControl,callControlEvaluatorFromEnv} from './call-control.mjs';
 import { randomUUID, randomBytes } from "node:crypto";
@@ -85,6 +86,15 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       const owner=context.avatarOwners?.get(old.reservation.voiceSessionId);if(owner)owner.endedAt=Date.now();
     }
   };
+  const releaseReadiness = () => ({
+    known: !directVoice || typeof directVoice.backgroundTaskCount === 'function',
+    activeCalls: [local, ...contexts.values()].filter(c=>c.active).length + (deviceEndpoint?.activeCalls() ?? 0),
+    creatingSessions: [local, ...contexts.values()].filter(c=>c.creatingSession).length,
+    backgroundTasks: [...nativeTaskOwners].filter(task=>task.pending).length + (directVoice?.backgroundTaskCount?.() ?? 0),
+    deviceOperations: deviceEndpoint?.pendingOperations?.() ?? 0,
+  });
+  const releaseGate = createReleaseGate({readiness: releaseReadiness});
+  deviceEndpoint?.setAdmissionGate?.(() => releaseGate.blocked());
   const server = createServer(async (req, res) => {
     res.setHeader("referrer-policy", "no-referrer"); res.setHeader("x-content-type-options", "nosniff");
     try {
@@ -208,12 +218,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       context.touchedAt = Date.now();
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
         ready: backendReady(), preview, defaultModel, ...(binding.id!=='tianyi'?{conversation:{name:binding.displayName,kind:binding.kind,replySync:binding.replySync}}:{}), ...(speakerRouting?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
-        releaseReadiness: {
-          known: !directVoice || typeof directVoice.backgroundTaskCount === 'function',
-          activeCalls: [local, ...contexts.values()].filter(c=>c.active).length + (deviceEndpoint?.activeCalls() ?? 0),
-          creatingSessions: [local, ...contexts.values()].filter(c=>c.creatingSession).length,
-          backgroundTasks: [...nativeTaskOwners].filter(task=>task.pending).length + (directVoice?.backgroundTaskCount?.() ?? 0),
-        },
+        releaseReadiness: releaseReadiness(),
         ...(listening?{comparisonAvailable:true}:{}), model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
         ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
       });
@@ -257,6 +262,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (req.method !== "POST") return json(res, 404, { error: "没有这个入口" });
       const params = await readBody();
       if (pathname === "/api/session") {
+        if (releaseGate.blocked()) return json(res,503,{error:"V 正在更新，请稍后重新拨号。"});
         if (!backendReady()) return json(res,503,{error:"V 后端正在重新连接，请稍后重拨。"});
         if(speakerRouting&&params.inputPolicy!==undefined&&!['native','speaker'].includes(params.inputPolicy))return json(res,400,{error:'没有这个输入策略'});
         if (params.model && !['gpt-live','seeduplex','grok'].includes(params.model)) return json(res,400,{error:'没有这个语音模型'});
@@ -490,6 +496,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       // Device clients authenticate by token; some firmware omits the port in Host.
       const hostname=(()=>{try{return new URL(`http://${host}`).hostname;}catch{return '';}})();
       if(hosted?hostname!==origin.hostname:!/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host)){socket.destroy();return;}
+      if(releaseGate.blocked()){socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');return;}
       deviceEndpoint.handleUpgrade(req,socket,head,{dialect:devicePath===deviceEndpoint.path?'native':'xiaozhi'});return;
     }
     const expectedOrigin=hosted?publicOrigin:`http://${host}`;
@@ -511,7 +518,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     else directVoice.upgrade(req,socket,head,url.searchParams.get('voiceSessionId'),url.searchParams.get('ticket'));
   });
   const sessionBusy = sessionKey => [local, ...contexts.values()].some(item => item.sessionKey === sessionKey && (item.active || item.creatingSession));
-  return { server, emit, sessionBusy, dispose: async ({drain=false}={}) => {
+  return { server, emit, sessionBusy, serviceReady: backendReady, releaseReadiness, releaseGate, deviceInventory: () => deviceEndpoint?.inventory?.() ?? [], dispose: async ({drain=false}={}) => {
     stopping=true;clearInterval(timer);
     await deviceEndpoint?.dispose();
     for (const context of [local, ...contexts.values()]) { for (const response of context.listeners) response.end(); await close(context).catch(() => {}); }
@@ -526,7 +533,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const preview = process.env.GPT_LIVE_H5_PREVIEW === "1";
   const port = Number(process.env.GPT_LIVE_H5_PORT ?? process.env.RTC_H5_PORT ?? 26244);
-  let gateway, bridge, transcriptLog, avatarLog, productionSpeaker;
+  let gateway, bridge, transcriptLog, avatarLog, productionSpeaker, releaseControl;
   if (!preview) {
     const configPath = process.env.OPENCLAW_CONFIG_PATH;
     if (!configPath) throw new Error("OPENCLAW_CONFIG_PATH is required");
@@ -616,6 +623,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       if (!response.ok) throw new Error("Native SDP exchange failed"); return response.text();
     } });
   } else bridge = createLiveH5Server({ preview: true });
+  if(Number(process.env.VOICE_RELEASE_BOOT_HOLD_UNTIL)>Date.now()) bridge.releaseGate.hold();
+  if(process.env.VOICE_RELEASE_SOCKET) releaseControl = await listenReleaseControl({socketPath:process.env.VOICE_RELEASE_SOCKET,bridge,
+    release:await readRelease(new URL('../../',import.meta.url))});
   bridge.server.listen(port, "127.0.0.1", () => console.log(JSON.stringify({ ready: true, host: "127.0.0.1", port, preview })));
-  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void bridge.dispose({drain:true}).finally(async () => { await transcriptLog?.close(); await avatarLog?.close(); productionSpeaker?.close(); gateway?.stop(); process.exit(0); }));
+  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void bridge.dispose({drain:true}).finally(async () => { await releaseControl?.close(); await transcriptLog?.close(); await avatarLog?.close(); productionSpeaker?.close(); gateway?.stop(); process.exit(0); }));
 }

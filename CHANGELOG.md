@@ -12,7 +12,7 @@
 - Keep GPT captions in one stable message when fragments arrive before their native turn identity; attach late fragment finals to their original turn.
 - Accumulate Xiaohe/Grok relay text deltas in iOS instead of replacing preceding words, then reconcile the full final caption.
 - Preserve original message order across completion in the shared web/iOS UI, Reaction context and display receipts.
-- Verified with synthetic native WebRTC, WKWebView and core/web regressions. Authorized for main integration, web release and a signed build 19 device update; delivery receipts follow separately. See `docs/ios/CAPTION-CONTINUITY.md`.
+- Verified with synthetic native WebRTC, WKWebView and core/web regressions. Merged through PR #68, deployed to the production web entry with asset hashes verified, and installed as signed build 19 on the requested iPhone. Physical real-call caption acceptance remains pending. See `docs/ios/CAPTION-CONTINUITY.md`.
 
 ## 2026-10-22 — Accepted iOS build 18 integration
 
@@ -150,6 +150,11 @@
 - Safari latency/redial diagnosis remains separate in PR #33; this change does not claim a fix for it.
 
 # Voice release log
+
+## 2026-10-22 — Unified four-client release
+
+One verified main artifact now targets both the web/iOS and domestic robot/speaker services. Private Unix release control atomically holds new call admission only when calls, creation, delivery and device operations are idle; expiring holds, exact service/configuration checks and guarded rollback protect ongoing work. Legacy bootstrap refuses any existing client connection. The fleet command stages both nodes, retains pending targets, and records runtime hashes plus the iOS UI/client compatibility matrix. Native apps and firmware still require separate installation evidence. See [deployment contract](docs/unified-release.md); production receipts are recorded separately after cutover.
+
 
 ## Voice · 20261020 phone stage UI, task progress and held results · source main
 
