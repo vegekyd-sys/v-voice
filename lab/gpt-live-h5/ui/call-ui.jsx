@@ -344,13 +344,14 @@ function CallPage({view, actions, options}) {
         data-alert={status && ['error', 'warn'].includes(status.key) ? status.key : undefined} data-history={String(!wide && history)} data-compact={String(compact)}
         style={{'--avatar-size': Math.round(size) + 'px', '--controls-height': Math.ceil(controlsHeight) + 'px'}}>
         <header className="topbar" aria-live="off">
+          {state.conversation ? <span className="conversation-name">{state.conversation.name}</span> : null}
           {state.call === 'connected' || state.call === 'ending' ? <time className="call-clock">{state.callStartedAt ? clock(now - state.callStartedAt) : ''}</time> : null}
         </header>
         <section className="stage" aria-label="V">
           <Avatar onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? '查看后台任务' : 'V'} />
           {!inCall && (
             <div className="home">
-              <a className="avatar-name" href="./" aria-label="V 通话首页">V</a>
+              <a className="avatar-name" href={`./${window.location.search}`} aria-label="V 通话首页">V</a>
               <h1 className="sr-only">和 V 通话</h1>
               {dialing ? (
                 <>

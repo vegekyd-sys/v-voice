@@ -2,7 +2,8 @@
 import {parseArgs} from 'node:util';
 import {writeFile} from 'node:fs/promises';
 import {addGroupPhoneMenu,phoneMenuUrl} from '../lib/feishu-group-menu.mjs';
-const {values} = parseArgs({options:Object.fromEntries(['chat','phone','origin','base-path','out','profile'].map(key=>[key,{type:'string'}]))});
+import {addPhoneTab} from '../lib/feishu-phone-tab.mjs';
+const {values} = parseArgs({options:Object.fromEntries(['chat','phone','origin','base-path','out','profile','surface'].map(key=>[key,{type:'string'}]))});
 try {
   if (!values.out) throw new Error('A new private --out receipt file is required');
   // Establish exclusive evidence ownership before any external mutation.
@@ -22,7 +23,8 @@ try {
     return output;
   };
   const url=phoneMenuUrl(values.origin,values['base-path']??'/voice',values.phone);
-  const result=await addGroupPhoneMenu({api,chatId:values.chat,url});
+  if(values.surface&&!['tab','menu'].includes(values.surface))throw Error('Unsupported surface');
+  const result=await (values.surface==='tab'?addPhoneTab:addGroupPhoneMenu)({api,chatId:values.chat,url});
   await writeFile(values.out,JSON.stringify({phase:'verified',at:new Date().toISOString(),chatId:values.chat,phoneId:values.phone,url,...result},null,2)+'\n',{mode:0o600});
   console.log(JSON.stringify({receipt:values.out,...result}));
 } catch {

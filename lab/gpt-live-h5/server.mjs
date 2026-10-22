@@ -167,7 +167,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           const visitor = hosted ? access.read(req) : null;
           const canCheckEntry = visitor && (contexts.has(`${entry}:${visitor.id}`) || contexts.size < 512);
           if (!hosted || canCheckEntry) {
-            const initial = JSON.stringify({ ready: backendReady(), preview, defaultModel, ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}), ...(listening?{comparisonAvailable:true}:{}),
+            const initial = JSON.stringify({ ready: backendReady(), preview, defaultModel, ...(binding.id!=='tianyi'?{conversation:{name:binding.displayName,kind:binding.kind}}:{}), ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}), ...(listening?{comparisonAvailable:true}:{}),
               ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
             }).replaceAll("<", "\\u003c");
             html = html.replace('<script type="module" src="./app.js"></script>', `<script type="application/json" id="voiceEntryStatus">${initial}</script><script type="module" src="./app.js"></script>`);
@@ -204,7 +204,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       releaseClosedDirectCalls();
       context.touchedAt = Date.now();
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
-        ready: backendReady(), preview, defaultModel, ...(speakerRouting?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
+        ready: backendReady(), preview, defaultModel, ...(binding.id!=='tianyi'?{conversation:{name:binding.displayName,kind:binding.kind}}:{}), ...(speakerRouting?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
         releaseReadiness: {
           known: !directVoice || typeof directVoice.backgroundTaskCount === 'function',
           activeCalls: [local, ...contexts.values()].filter(c=>c.active).length + (deviceEndpoint?.activeCalls() ?? 0),
@@ -287,7 +287,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
             // the deployment selects the phone default, not browser heuristics.
             // Clients opt in only after implementing native response ownership and reversible pause.
             const inputPolicy = params.inputPolicy ?? 'speaker';
-            const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...speakerRouting?{inputPolicy}:{}});
+            const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(binding.id!=='tianyi'?{sessionBound:true}:{}),...speakerRouting?{inputPolicy}:{}});
             context.active={sessionKey,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
             rememberAvatarCall(context,context.active,params.model);
             return json(res,200,reservation);

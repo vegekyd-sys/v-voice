@@ -1045,3 +1045,5 @@ body[data-reading="true"] .changelog-trigger { visibility: hidden; pointer-event
     scroll-behavior: auto !important;
   }
 }
+
+.conversation-name { font-size: 13px; color: var(--muted, #727881); max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -101,3 +101,14 @@ test('inline readiness cannot cross phone-cookie ownership and reveals no sessio
  for(const e of entries){assert(!owner.includes(e.sessionKey));assert(!owner.includes(e.accessToken));}
  assert.equal(f.calls.length,0);
 });
+
+
+test('authenticated entry returns safe conversation label and passes only server-owned session mode',async t=>{
+ const f=await fixture(t),cookie=await f.login(entries[0]);
+ const status=await (await f.request(entries[0].id,'status',cookie)).json();
+ assert.deepEqual(status.conversation,{name:'飞书群聊',kind:'group'});
+ assert(!JSON.stringify(status).includes(entries[0].sessionKey));
+ await f.request(entries[0].id,'session',cookie,{model:'seeduplex'});
+ const call=f.calls.find(x=>x.method==='direct.reserve');
+ assert.equal(call.args.sessionBound,true);assert.equal(call.args.sessionKey,entries[0].sessionKey);
+});
