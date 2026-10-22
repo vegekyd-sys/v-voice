@@ -2,8 +2,8 @@
   "schema": 1,
   "date": "2026-10-22",
   "build": 14,
-  "sourceCommit": "55f003b45662413057c36ad4138dddbae93371aa",
-  "status": "physical-candidate-accepted-formal-main-build-pending",
+  "sourceCommit": "2adca2a03e56d51f51a39f7e939dab27c0aaf2a5",
+  "status": "main-built-signed-installed-physical-requested-scopes-accepted",
   "tests": {
     "nativeWKAudioAndIntegration": {
       "passed": 46,
@@ -38,13 +38,6 @@
       "web-delivery-evidence/build14-web-b.png"
     ]
   },
-  "signedBuild": {
-    "sourceCommit": "55f003b45662413057c36ad4138dddbae93371aa",
-    "build": 14,
-    "signedArchiveAndIndependentIPAValid": true,
-    "bindingIdentityUnchanged": true,
-    "ipaSHA256": "63c9e5c95682df03918990f4563c57757d39814475c09a489043207b860b5100"
-  },
   "physicalDevice": {
     "authorizedByUserForTesting": true,
     "installedAndReadBack": true,
@@ -78,11 +71,54 @@
       "observedAssistantFinalsAtLeast": 10,
       "rawTextPersistedInEvidence": false
     },
-    "callEnded": true
+    "callEnded": true,
+    "formalMainBuildInstalled": true
   },
   "productionVoiceChangedDuringThisRound": false,
   "realCallsAutomaticallyStartedByAgent": false,
   "remainingAcceptance": [
     "Long-call endurance, system telephone/Siri interruptions and network handover are outside this short physical acceptance"
-  ]
+  ],
+  "formalBuild": {
+    "sourceCommit": "2adca2a03e56d51f51a39f7e939dab27c0aaf2a5",
+    "mainChecks": {
+      "run": 39728438243,
+      "conclusion": "success"
+    },
+    "version": "1.0.0",
+    "build": 14,
+    "ipaSHA256": "58dcb2a5b3a850f279a821965b92ce5dbaec820da0e4a6c52ed8a7f7207ee56b",
+    "archiveAndIndependentExportVerified": true,
+    "sameNativeReleaseInputsAsAcceptedCandidate": true,
+    "bindingIdentityUnchanged": true,
+    "mergePR": 59,
+    "overwriteInstalledAndReadBack": true,
+    "deviceReportedBuild": "14",
+    "nativeChangesAfterHumanAcceptance": false
+  },
+  "candidateSourceCommit": "55f003b45662413057c36ad4138dddbae93371aa",
+  "candidateSignedBuild": {
+    "sourceCommit": "55f003b45662413057c36ad4138dddbae93371aa",
+    "build": 14,
+    "signedArchiveAndIndependentIPAValid": true,
+    "bindingIdentityUnchanged": true,
+    "ipaSHA256": "63c9e5c95682df03918990f4563c57757d39814475c09a489043207b860b5100"
+  },
+  "signedBuild": {
+    "sourceCommit": "2adca2a03e56d51f51a39f7e939dab27c0aaf2a5",
+    "mainChecks": {
+      "run": 39728438243,
+      "conclusion": "success"
+    },
+    "version": "1.0.0",
+    "build": 14,
+    "ipaSHA256": "58dcb2a5b3a850f279a821965b92ce5dbaec820da0e4a6c52ed8a7f7207ee56b",
+    "archiveAndIndependentExportVerified": true,
+    "sameNativeReleaseInputsAsAcceptedCandidate": true,
+    "bindingIdentityUnchanged": true,
+    "mergePR": 59,
+    "overwriteInstalledAndReadBack": true,
+    "deviceReportedBuild": "14",
+    "nativeChangesAfterHumanAcceptance": false
+  }
 }

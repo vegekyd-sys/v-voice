@@ -1,6 +1,6 @@
 # V Voice iOS · 一按通话
 
-网页同步功能已由 PR #58 合入并发布。关闭真机屏幕共享后，build 14 的操作按钮、锁屏双向语音及灵动岛静音／恢复／结束已由用户确认正常；正式网页冷缓存下载与页面 ready 已实机核验，绑定保留。正在完成已验收候选的 main 正式签名流程。见 [发布／回退／接受登记](../releases/voice-ios-web-delivery-20261022/README.md) 与 [build14 验证](new-shell-build14-validation.json)。
+网页同步功能已由 PR #58 合入并发布。关闭真机屏幕共享后，build 14 的操作按钮、锁屏双向语音及灵动岛静音／恢复／结束已由用户确认正常；正式网页冷缓存下载与页面 ready 已实机核验，绑定保留。PR59合入main且检查通过后，已从发布输入相同的main源码重新签名并覆盖安装build14；设备版本已回读确认。见 [发布／回退／接受登记](../releases/voice-ios-web-delivery-20261022/README.md) 与 [build14 验证](new-shell-build14-validation.json)。
 
 此前 build 11 从正式合入 main 的 `68ebcc9` 签名、验包并覆盖安装到指定 iPhone；采用 Tianyi 提供的紫底耳麦头像图标，包内首页已显示本次里程碑更新日志。build 10 的真实接通／双向通话已获用户接受，build 11 没有自动拨号，新增版本的真机听验另记。当前 App 已在 H5 内嵌＋原生后台通话上整合接通／方案提醒、呼叫文案与宽波形灵动岛；详见 [H5 容器与回退基线](H5-SHELL.md)。build 8 已保存为 `ios-native-build8-20261022`。以下 build 6–8 原生 UI 记录保留为历史。
 
@@ -65,4 +65,4 @@ build 3／4 的 SiriKit 与 CallKit 尝试已撤回：用户实测仍会打开�
 - 模拟器展示：`npx serve-sim@latest <UDID>`，在 Codex 右侧打开其实际输出 URL，必须确认真实帧。Debug 的 `--local-voice-fixture` 使用隔离测试 Keychain 服务、明确标示无真实模型；Release 不包含该入口。
 - 真机接受：见 [ACCEPTANCE.md](ACCEPTANCE.md)。测试记录见 [VALIDATION.md](VALIDATION.md)。
 
-本次客户端已正式合入 v-voice/main（PR #56），合入提交检查通过后构建。首页 changelog 源码和包内页面已更新并实测可见；未部署在线 Voice 网页服务，也未改写其运行版本登记。App Store／TestFlight 未发布。网页更新自动同步已另开任务研究 Makaron iOS 架构；当前 build 11 仍是随包内嵌 H5，不能宣称已支持远程更新。
+历史build11由PR56合入main并交付图标和包内日志。后续PR58已发布网页资源同步，PR59补充信号诊断及build14真人验收。当前状态以页首和发布登记为准；App Store／TestFlight未发布。
