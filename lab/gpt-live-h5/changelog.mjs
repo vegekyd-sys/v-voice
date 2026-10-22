@@ -13,6 +13,13 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    date: '2026-10-22', title: '查询后接话，不再排在旧语音后面',
+    items: [
+      'iOS build 20 修复小何查询提示音之后，新回答可能排在旧语音后面播放的问题；新回答会替换旧回答剩余的音频。',
+      '已确认打断的回答不会因迟到的音频再次播放，保留 build 19 的连贯字幕。',
+    ],
+  },
+  {
     date: '2026-10-22', title: '电话、机器人与音响统一更新',
     items: [
       '网页、iOS 使用的电话服务与机器人、音响使用的服务纳入同一次更新，避免设备服务遗漏新版本。',

@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "version": "1.0.0",
-  "build": 19,
-  "sourceCommit": "06317a892639af16697cf67498b5962ec8a335f8",
+  "build": 20,
+  "sourceCommit": null,
   "candidateOnly": false,
-  "signedArchiveVerified": true,
-  "exportedIPAVerified": true,
-  "ipaSHA256": "8c62603268b1d7c01fa73f9cac24441041b8bdd2171c9569b07cd9da1de7039a",
-  "installedOnRequestedIPhone": true,
-  "realVoiceAcceptance": "pending_physical_caption_check",
+  "signedArchiveVerified": false,
+  "exportedIPAVerified": false,
+  "ipaSHA256": null,
+  "installedOnRequestedIPhone": false,
+  "realVoiceAcceptance": "pending_physical_interruption_check",
   "localTests": {
     "core": 29,
     "captionNativeH5": 7,
@@ -26,7 +26,7 @@
   "remainingParity": [
     "System black transition before AppIntent starts is not proven removed",
     "Long calls, system call/Siri interruptions and network handover beyond the accepted short test",
-    "Build 19 caption continuity requires a human real-call check after installation"
+    "Build 20 interruption behavior requires real microphone/device acceptance"
   ],
   "savedNativeBaseline": {
     "tag": "ios-native-build8-20261022",
@@ -46,9 +46,9 @@
     "scope": [],
     "status": "pending_human_real_call_caption_check"
   },
-  "mergedIntoMain": true,
-  "mergePR": 68,
-  "mergeChecksPassed": true,
+  "mergedIntoMain": false,
+  "mergePR": null,
+  "mergeChecksPassed": false,
   "releaseScope": {
     "distribution": "development_signed_private_device",
     "webServerDeployed": true,
@@ -73,17 +73,11 @@
     "record": "../releases/voice-caption-continuity-20261022/release.json"
   },
   "currentDeviceCandidate": {
-    "build": 19,
-    "sourceCommit": "06317a892639af16697cf67498b5962ec8a335f8",
-    "installedOnRequestedIPhone": true,
+    "build": 20,
+    "installedOnRequestedIPhone": false,
     "lastAcceptedBuild": 18,
-    "mergeStatus": "merged_main",
-    "distribution": "development_signed_private_device",
-    "deviceReportedBuild": "19",
-    "mergeCommit": "3fe9fcc25039c620e7745bf83a14b14c9d523f29",
-    "mergePR": 68,
-    "overwriteInstalledWithoutUninstallOrKeychainReset": true,
-    "physicalAcceptance": "pending_human_caption_check"
+    "physicalAcceptance": "pending",
+    "mergeStatus": "preparation"
   },
   "build10RollbackHistory": {
     "date": "2026-10-22",
@@ -120,7 +114,7 @@
     "signedIPACopiedAndVerified": true,
     "originalArchiveRetained": true
   },
-  "recordScope": "build19_installed_main_merged_physical_caption_acceptance_pending",
+  "recordScope": "build20_preparation",
   "previouslyInstalledOnRequestedIPhone": true,
   "savedBuild14Rollback": {
     "build": 14,
@@ -258,5 +252,17 @@
     "diagnosticBuild13": "installed_then_rolled_back_to10",
     "record": "../releases/voice-ios-web-delivery-20261022/release.json",
     "build14PhysicalAcceptance": "all_requested_scopes_passed"
+  },
+  "previousBuild19": {
+    "build": 19,
+    "sourceCommit": "06317a892639af16697cf67498b5962ec8a335f8",
+    "ipaSHA256": "8c62603268b1d7c01fa73f9cac24441041b8bdd2171c9569b07cd9da1de7039a",
+    "deviceReportedBuild": "19",
+    "mainChecks": {
+      "run": 39793698309,
+      "commit": "3fe9fcc25039c620e7745bf83a14b14c9d523f29",
+      "conclusion": "success"
+    },
+    "humanCaptionAcceptance": "Tianyi confirmed captions fixed; reported SeedDuplex interruption queue issue"
   }
 }

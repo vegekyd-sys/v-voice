@@ -1,3 +1,10 @@
+## 2026-10-22 — iOS build 20 playback ownership repair
+
+- Keep native response ownership across host tool notices without a provider response ID, so a new reply replaces the old queued tail.
+- Honor confirmed retiredResponseId on audio.clear so late frames cannot restart cancelled speech.
+- Both cases fail against build 19 source and pass with the fix; 10 native playback/H5 regressions and 29 core checks pass. Real microphone interruption timing remains a physical acceptance boundary.
+- Follow-up delivery to the authorized caption repair; preserve the signed build 19 rollback. See `docs/ios/INTERRUPTION-OWNERSHIP.md` for evidence and limits.
+
 ## 2026-10-22 — Caption continuity and iOS build 19
 
 - Keep GPT captions in one stable message when fragments arrive before their native turn identity; attach late fragment finals to their original turn.
