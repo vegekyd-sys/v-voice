@@ -8,7 +8,7 @@
   "exportedIPAVerified": true,
   "ipaSHA256": "feb69b3ed19df1ff3f21de38727b3799f2e949e5dd517ba114693299f846a91d",
   "installedOnRequestedIPhone": true,
-  "realVoiceAcceptance": "pending_human_real_call_wait_transition",
+  "realVoiceAcceptance": "Tianyi explicitly accepted iOS build 22 on 2026-10-23",
   "localTests": {
     "core": 31,
     "captionNativeH5": 7,
@@ -29,8 +29,7 @@
   },
   "remainingParity": [
     "System black transition before AppIntent starts is not proven removed",
-    "Long calls, system call/Siri interruptions and network handover beyond the accepted short test",
-    "Build 22 interruption behavior requires real microphone/device acceptance"
+    "Long calls, system call/Siri interruptions and network handover beyond the accepted short test"
   ],
   "savedNativeBaseline": {
     "tag": "ios-native-build8-20261022",
@@ -47,8 +46,10 @@
   },
   "realVoiceAcceptedScopes": {
     "build": 22,
-    "scope": [],
-    "status": "pending_human_real_call_wait_transition"
+    "scope": [
+      "User explicitly confirmed build 22 acceptance; no additional quantified scenario results inferred"
+    ],
+    "status": "accepted_by_Tianyi"
   },
   "mergedIntoMain": true,
   "mergePR": 75,
@@ -80,8 +81,8 @@
   "currentDeviceCandidate": {
     "build": 22,
     "installedOnRequestedIPhone": true,
-    "lastAcceptedBuild": 18,
-    "physicalAcceptance": "pending",
+    "lastAcceptedBuild": 22,
+    "physicalAcceptance": "accepted_by_Tianyi",
     "mergeStatus": "merged_pr75"
   },
   "build10RollbackHistory": {
@@ -291,5 +292,14 @@
     "build": 21,
     "ipaSHA256": "f5ebbe2b6b6d949ce543e6f697ef6e086caf82df1a53f0d732af93aae548761a",
     "signedIPACopiedAndVerified": true
+  },
+  "nextNativeDelivery": {
+    "build": 23,
+    "baseBuild": 22,
+    "waveformCommit": "2af1965",
+    "status": "preparing_signed_release",
+    "installedOnRequestedIPhone": false,
+    "scope": "Natural waveform-only medium and large cards; preserve build 22 behavior",
+    "connectionTimingChange": "withdrawn_user_confirmed_sleep_focus"
   }
 }

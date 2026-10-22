@@ -1,8 +1,9 @@
-## Unreleased — iOS natural speech waveform candidate
+## 2026-10-23 — iOS build 23 natural speech waveform
 
-- Render the same measured speech envelope in medium and large island cards, with 24 evenly spaced fine columns, fixed loudness mapping, fast attack and a short release. Preserve real playback timing and prioritize audible output over microphone leakage.
-- Keep the large card free of dialogue/plan text. Unread plans retain the existing full-report action without replacing the waveform. Preserve Reaction, mute, end, fold and report attention behavior.
-- Candidate based on the installed build 21 main line; system rendering cadence and physical-device acceptance remain distinct from local PCM/simulator verification. No new real-provider calls or production deployment.
+- Integrate the user-accepted build 22 baseline with waveform-only medium and large island cards. Keep the native interruption wait fix, Reaction, report entry, mute/end and background Action Button behavior.
+- Display 24 measured speech-energy windows with fixed loudness mapping, fast attack and short release; silence settles to a quiet line. No decorative waveform loop or conversation text in either card.
+- Tianyi confirmed build 22 acceptance. The missing initial medium card was traced by the user to Sleep Focus; the proposed connection timing change was withdrawn.
+- Native private-device release; server deployment and new physical waveform acceptance are recorded separately in docs/ios/versions.json.
 
 ## 2026-10-23 — Keep interrupted playback paused while awaiting a reply
 

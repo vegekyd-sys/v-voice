@@ -1,7 +1,7 @@
 {
   "schema": "v-voice-release-registration-v1",
   "release": "voice-duplex-wait-20261023",
-  "phase": "production_servers_verified_ios22_installed_and_launched_real_call_pending",
+  "phase": "production_servers_verified_ios22_accepted_by_Tianyi",
   "entryCommit": "8136b20af19ca6fc740260875bf243d79cf67fd3",
   "previousProductionCommit": "56cfc608beedc6568891c7f00f4bb617b4d21940",
   "pullRequests": [
@@ -133,7 +133,7 @@
     "installedOnRequestedIPhone": true,
     "deviceReportedBuild": "22",
     "normalLaunchVerified": true,
-    "realCallAcceptance": "pending_human_listening",
+    "realCallAcceptance": "Tianyi explicitly accepted build 22 on 2026-10-23",
     "preservedCapabilities": [
       "native background call",
       "captions",
@@ -152,5 +152,5 @@
     "physicalOrPaidModelCall": false
   },
   "acceptance": "../../acceptance/duplex-wait-20261023/README.md",
-  "nativeAndFirmwareAcceptance": "Physical conversational listening remains pending; no robot/speaker firmware flashed."
+  "nativeAndFirmwareAcceptance": "Tianyi accepted iOS build 22; no new robot/speaker firmware acceptance inferred."
 }
