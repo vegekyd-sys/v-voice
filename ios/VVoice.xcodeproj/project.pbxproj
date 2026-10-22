@@ -16,6 +16,7 @@
 		1688E5B67B7B6A8C109D5F95 /* IslandActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BD6728F103FB047DC55A066 /* IslandActivityTests.swift */; };
 		16F9BBAC1806652BF0570FF9 /* VoiceFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBF1ACCF9EA74D03B4EC7B54 /* VoiceFixture.swift */; };
 		1BC8BA8E4DCFF883FD007379 /* IslandPreviewGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E34791F59508FFC82578CBD /* IslandPreviewGallery.swift */; };
+		206A2D9E237C1639E053CB31 /* RelaySignalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC68CB218040B5DF93D95B7D /* RelaySignalTests.swift */; };
 		2A878C373EA3DEC48CADE370 /* BindingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 581754E3A730420284362EA3 /* BindingStore.swift */; };
 		2F42B2799C934DF23FE34978 /* CaptureConverterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0EA4F9C7B5FA6877BC49EB0 /* CaptureConverterTests.swift */; };
 		3F374EFF6EEC6D6C1BBCC449 /* CallDocumentReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13185E1590D05298912335D1 /* CallDocumentReader.swift */; };
@@ -120,6 +121,7 @@
 		85026CB025534C921B1BF37D /* H5Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = H5Snapshot.swift; sourceTree = "<group>"; };
 		857F5E8922957A5BB87318B1 /* VoiceIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceIntents.swift; sourceTree = "<group>"; };
 		AA44C040A9E6D25236282244 /* VVoiceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VVoiceApp.swift; sourceTree = "<group>"; };
+		AC68CB218040B5DF93D95B7D /* RelaySignalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelaySignalTests.swift; sourceTree = "<group>"; };
 		B8B9C9B99CE97D32679A3DDC /* marked-LICENSE */ = {isa = PBXFileReference; path = "marked-LICENSE"; sourceTree = "<group>"; };
 		BA02392D095FEF5043B9AC46 /* H5DeliveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = H5DeliveryTests.swift; sourceTree = "<group>"; };
 		BC5B54FF48C5CC112EF20F95 /* DeviceAudioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceAudioTests.swift; sourceTree = "<group>"; };
@@ -243,6 +245,7 @@
 				C967786B594C6900ED76BF8A /* H5ShellTests.swift */,
 				7BD6728F103FB047DC55A066 /* IslandActivityTests.swift */,
 				E6DC401CBC28DC4E5E00D8B4 /* NativeFlowTests.swift */,
+				AC68CB218040B5DF93D95B7D /* RelaySignalTests.swift */,
 				DBF1ACCF9EA74D03B4EC7B54 /* VoiceFixture.swift */,
 			);
 			name = Tests;
@@ -446,6 +449,7 @@
 				E2A581DF60A17B15C14A7FF7 /* H5ShellTests.swift in Sources */,
 				1688E5B67B7B6A8C109D5F95 /* IslandActivityTests.swift in Sources */,
 				8E4C6BA1932EA200ADE9F440 /* NativeFlowTests.swift in Sources */,
+				206A2D9E237C1639E053CB31 /* RelaySignalTests.swift in Sources */,
 				16F9BBAC1806652BF0570FF9 /* VoiceFixture.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -600,7 +604,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = E6YTL27QWA;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -686,7 +690,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = E6YTL27QWA;
 				ENABLE_NS_ASSERTIONS = NO;

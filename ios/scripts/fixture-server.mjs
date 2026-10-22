@@ -14,6 +14,7 @@ let limitNextSession=false,slowClose=false,closeRequests=0;
 let documents=[],pending=[],acknowledgements=[],supplements=[];
 let avatarRequests=[],avatarEvents=[],avatarReply="reaction-0",avatarContinuations=["reaction-1","listen-5"],slowAvatar=false;
 let shellVariant='none',shellRequests=[],shellRedirects=0;
+let inputFrames=0,inputActiveFrames=0,peakInputRMS=0;
 async function shellRelease(variant){
  const release=JSON.parse(await readFile(new URL('../../lab/gpt-live-h5/ios-shell-release.json',import.meta.url),'utf8'));
  for(const file of release.files){
@@ -43,7 +44,7 @@ const server=createServer(async(req,res)=>{
  const path=new URL(req.url,'http://127.0.0.1').pathname;
  const body=await new Promise(resolve=>{const chunks=[];req.on('data',b=>chunks.push(b));req.on('end',()=>{try{resolve(JSON.parse(Buffer.concat(chunks).toString()||'{}'));}catch{resolve({});}});});
  const send=(status,value)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
- if(path==='/fixture/state')return send(200,{active,sessions,inputBytes,zeroBytes,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects});
+ if(path==='/fixture/state')return send(200,{active,sessions,inputBytes,zeroBytes,inputFrames,inputActiveFrames,peakInputRMS,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects});
  if(path==='/fixture/redirect-target'){shellRedirects++;return send(200,{});}
  if(path==='/voice/ios-shell-release.json'){
    shellRequests.push({cookie:!!req.headers.cookie,authorization:!!req.headers.authorization});
@@ -53,7 +54,7 @@ const server=createServer(async(req,res)=>{
  }
  if(path==='/fixture/command'){
    if(body.command==='shell-release')shellVariant=body.variant??'none';
-   if(body.command==='reset'){shellVariant='none';shellRequests=[];shellRedirects=0;}
+   if(body.command==='reset'){shellVariant='none';shellRequests=[];shellRedirects=0;inputFrames=0;inputActiveFrames=0;peakInputRMS=0;}
    if(body.command==='speaker-mode')speakerMode=true;
    if(body.command==='speakers-demo'){
      const a={speakerId:'local0',text:'V，帮我们排一下今天的安排。',startMs:0,endMs:1200},b={speakerId:'local1',text:'我下午三点有空，可以一起讨论。',startMs:1500,endMs:2800};
@@ -151,7 +152,14 @@ server.on('upgrade',(req,socket,head)=>{
  wss.handleUpgrade(req,socket,head,ws=>{
    client=ws;emit({type:'ready'});if(earlyAudio){earlyAudio=false;audio();}
    ws.on('message',(bytes,binary)=>{
-     if(binary){inputBytes+=bytes.length;if(bytes.every(b=>b===0))zeroBytes+=bytes.length;return;}
+     if(binary){
+       inputBytes+=bytes.length;inputFrames++;
+       if(bytes.every(b=>b===0))zeroBytes+=bytes.length;
+       let energy=0;for(let i=0;i+1<bytes.length;i+=2)energy+=(bytes.readInt16LE(i)/32768)**2;
+       const rms=bytes.length>=2?Math.sqrt(energy/Math.floor(bytes.length/2)):0;
+       if(rms>=0.002)inputActiveFrames++;
+       peakInputRMS=Math.max(peakInputRMS,rms);return;
+     }
      const v=JSON.parse(bytes.toString());
      if(v.type==='greeting'){greetings++;emit({type:'transcript',role:'assistant',text:'本地音频测试，欢迎。',final:true});audio();}
      if(v.type==='playback.state'&&v.speaking===true)playbackStarts++;
