@@ -1,0 +1,55 @@
+{
+  "schema": "v-voice-candidate-acceptance-v1",
+  "version": "voice-seeduplex-duplex.20261022.1",
+  "date": "2026-10-22",
+  "status": "awaiting-human-acceptance",
+  "runtimeCommit": "6426891ecc537a28ff7163afbced453d5aa5196b",
+  "baseCommit": "68ebcc9",
+  "providerModel": "1.2.6.1",
+  "voice": "xiaohe",
+  "files": 202,
+  "filesSha256": "63d636bcde71161d9dcf68f295eac8d571038baa2a131eede024db3694301d5d",
+  "automaticTests": {
+    "mainPassed": 664,
+    "speakerNativePassed": 95
+  },
+  "input": {
+    "syntheticSpeech": true,
+    "humanRecording": false,
+    "physicalMicrophone": false,
+    "physicalIPhone": false,
+    "acousticEchoAcceptance": false
+  },
+  "observations": {
+    "chromiumLongInterruptionOutputSilenceMs": 172,
+    "webkitLongInterruptionOutputSilenceMs": 206,
+    "chromiumShortInterruptionPauseMs": 140,
+    "oldAudioResumed": false,
+    "originalSpeakerPathClearEventMs": 9587,
+    "originalNativePathClearEventMs": 3298,
+    "comparisonIsSingleSamplesNotPercentiles": true,
+    "backgroundSpeechMayTemporarilyPause": true,
+    "nativeMayGenerateUnplayedClarification": true,
+    "knownPresentationPoll409DuringHangup": true
+  },
+  "verifiedFlows": [
+    "continuous-native-audio",
+    "actual-audio-yield",
+    "new-answer-without-old-tail",
+    "noise-retains-answer",
+    "acknowledgment-retains-answer",
+    "simulated-tv-retains-answer",
+    "side-speech-retains-answer",
+    "900ms-intrasentence-gap-with-continuation-no-audible-early-reply",
+    "real-current-time-tool",
+    "same-page-redial-new-voice-session",
+    "webkit-native-farewell-closes-call"
+  ],
+  "isolation": {
+    "ownCandidateService": true,
+    "productionIdentityUnchanged": true,
+    "gatewayRestarted": false,
+    "merged": false,
+    "productionDeployed": false
+  }
+}
