@@ -33,7 +33,7 @@
     "build": 8,
     "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab"
   },
-  "deviceReportedBuild": "15",
+  "deviceReportedBuild": "16",
   "savedH5Baseline": {
     "build": 10,
     "sourceCommit": "3ffeb94",
@@ -78,14 +78,14 @@
     "build14PhysicalAcceptance": "all_requested_scopes_passed"
   },
   "currentDeviceCandidate": {
-    "build": 15,
+    "build": 16,
     "candidateOnly": true,
-    "sourceCommit": "da3b93a3e410d803ea1c2da0f796efd8f9d30745",
+    "sourceCommit": "f9ec2715cd0ea0f4c1bdc8f25a0924dcaf0bcbed",
     "installedOnRequestedIPhone": true,
-    "deviceReportedBuild": "15",
+    "deviceReportedBuild": "16",
     "overwriteInstalledWithoutUninstallOrKeychainReset": true,
-    "record": "report-island-build15.json",
-    "physicalReportAcceptance": "pending",
+    "record": "live-caption-build16.json",
+    "physicalAcceptance": "pending",
     "lastAcceptedBuild": 14
   },
   "build10RollbackHistory": {
@@ -133,15 +133,35 @@
     "build": 15,
     "record": "report-island-build15.json",
     "candidateOnly": true,
-    "installed": true,
+    "installed": false,
     "deviceReportedBuild": "15",
     "physicalReportAcceptance": "pending",
-    "sourceIntegrationAuthorized": true
+    "sourceIntegrationAuthorized": true,
+    "previouslyInstalled": true
   },
   "pendingLiveCaptionCandidate": {
     "build": 16,
     "candidateOnly": true,
     "record": "live-caption-build16.json",
-    "installed": false
+    "installed": true,
+    "deviceReportedBuild": "16"
+  },
+  "previousDeviceCandidate": {
+    "build": 15,
+    "candidateOnly": true,
+    "sourceCommit": "da3b93a3e410d803ea1c2da0f796efd8f9d30745",
+    "installedOnRequestedIPhone": false,
+    "deviceReportedBuild": "15",
+    "overwriteInstalledWithoutUninstallOrKeychainReset": true,
+    "record": "report-island-build15.json",
+    "physicalReportAcceptance": "pending",
+    "lastAcceptedBuild": 14,
+    "previouslyInstalledOnRequestedIPhone": true
+  },
+  "savedBuild15Rollback": {
+    "build": 15,
+    "ipaSHA256": "46df1206571b4b00525c51e3e3495c108e058662f54edcdcb73e2bd74d5efcda",
+    "signedIPACopiedAndVerified": true,
+    "signedArchiveRetained": true
   }
 }

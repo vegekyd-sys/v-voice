@@ -277,3 +277,6 @@ Core16、原生WK／音频／集成46、既有服务合同80全部通过。新�
 - 最初安装尝试因开发隧道不可用而失败；用户随后确认接好，设备配对与隧道重新可用。最终签名、安装与设备读回以live-caption-build16.json登记为准。当前未合入main／未发布网页，首页正式日志仍为已合入的build15记录。
 
 ![最终系统字幕大卡](evidence/build16-caption-expanded-system.png)
+
+- 最终签名源码f9ec271：Release1.0.0(16) archive／export及独立解包导出IPA验包通过，主App／扩展均16，CFBundlePrimaryIcon已指向VVoiceAppIcon／VVoiceAppIcon60x60。最终IPA SHA-256：`a14396d4545eddb7cf1b948872c2b4e32d4b641b14fae0d76c639a72e879ee5d`；较早8a36034签名的16包未安装，不作为最终产物。安装前最新只读快照三项活动计数均0，已覆盖安装成功并从指定设备App记录读回1.0.0(16)。保留原绑定／权限配置与签名build15回退；未卸载、未清Keychain、未自动真实拨号。
+- 安装后尝试空闲打开App以刷新AppShortcuts登记，被iPhone锁屏拒绝，launch outcome=failed；此前即时评论“已打开”已明确更正，不能记为已刷新。用户下次解锁并打开App后可触发登记刷新，系统启动提示和实际手机字幕仍待人类验收。源码未push／合入main，网页未部署；本机最终包与设备安装单独登记。

@@ -2,7 +2,7 @@
   "schema": 1,
   "build": 16,
   "candidateOnly": true,
-  "sourceCommit": null,
+  "sourceCommit": "f9ec2715cd0ea0f4c1bdc8f25a0924dcaf0bcbed",
   "baseMainCommit": "a91db05cca368c94fb60afcbaf6e32f948a25542",
   "tests": {
     "core": 19,
@@ -22,16 +22,38 @@
     "portraitSHA256": "30f5aa827f69f26d6845a417c0d6f01ce20bc771e5cf385394679fce292b6708",
     "appShortcutColor": "purple",
     "userUsesBuiltInShortcut": true,
-    "systemLaunchHintPhysicalVerification": "pending"
+    "systemLaunchHintPhysicalVerification": "pending",
+    "compiledPrimaryIconVerified": true,
+    "idleLaunchToRefreshRegistration": "blocked_by_device_lock",
+    "registrationRefreshConfirmed": false
   },
-  "signedArchiveVerified": false,
-  "exportedIPAVerified": false,
-  "installedOnRequestedIPhone": false,
+  "signedArchiveVerified": true,
+  "exportedIPAVerified": true,
+  "installedOnRequestedIPhone": true,
   "physicalAcceptance": "pending",
   "sourceMergedIntoMain": false,
   "webServerDeployed": false,
   "rollback": {
     "build": 15,
     "ipaSHA256": "46df1206571b4b00525c51e3e3495c108e058662f54edcdcb73e2bd74d5efcda"
+  },
+  "deviceReportedBuild": "16",
+  "ipaSHA256": "a14396d4545eddb7cf1b948872c2b4e32d4b641b14fae0d76c639a72e879ee5d",
+  "installedAt": "2026-10-22T09:31:35.419869+00:00",
+  "installation": "overwrite_without_uninstall_or_keychain_reset",
+  "realCallStartedByAgent": false,
+  "preinstallReadiness": {
+    "recordedAt": "2026-10-22T17:28:02+08:00",
+    "known": true,
+    "ready": true,
+    "activeCalls": 0,
+    "creatingSessions": 0,
+    "backgroundTasks": 0
+  },
+  "systemPresentation": {
+    "expandedThreeLinesAndCompleteControlsVerified": true,
+    "evidence": "evidence/build16-caption-expanded-system.png",
+    "lockScreenStyleObservedDuringIteration": true,
+    "physicalVerification": "pending"
   }
 }
