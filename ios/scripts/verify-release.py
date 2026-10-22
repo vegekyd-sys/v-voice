@@ -41,6 +41,11 @@ for marker in [b'--local-voice-fixture',b'127.0.0.1:29837',b'fixture-cookie']:
     assert marker not in data, f'Debug fixture marker in Release: {marker!r}'
 architecture=subprocess.check_output(['lipo','-archs',str(binary)],text=True).strip()
 assert architecture=='arm64',architecture
+rtc=a.app/'Frameworks/WebRTC.framework'
+assert rtc.is_dir(), 'Native GPT Live WebRTC runtime missing'
+assert subprocess.check_output(['lipo','-archs',str(rtc/'WebRTC')],text=True).strip()=='arm64'
+assert (rtc/'PrivacyInfo.xcprivacy').is_file(), 'WebRTC privacy manifest missing'
+assert (a.app/'WebRTC-LICENSE.md').is_file(), 'WebRTC license missing'
 extension=a.app/'PlugIns/VVoiceActivity.appex';assert extension.is_dir()
 island=json.loads((extension/'IslandAssets.manifest.json').read_text())
 assert len(island['images'])==52, 'All reviewed island reactions must ship'
@@ -60,4 +65,4 @@ entitlements=plistlib.loads(subprocess.check_output(['codesign','-d','--entitlem
 if signed: assert not entitlements.get('com.apple.developer.siri'), 'Island recording does not use the Siri call handoff'
 provisioned=(a.app/'embedded.mobileprovision').is_file() and (extension/'embedded.mobileprovision').is_file()
 assert (signed and provisioned) or a.allow_unsigned, 'Signing/profiles missing; do not report this bundle as installable'
-print(json.dumps({'version':info['CFBundleShortVersionString'],'build':info['CFBundleVersion'],'architecture':architecture,'intents':list(actions),'liveActivityExtension':True,'releaseTLS':True,'debugFixtureAbsent':True,'signed':signed,'profilesPresent':provisioned},ensure_ascii=False,indent=2))
+print(json.dumps({'version':info['CFBundleShortVersionString'],'build':info['CFBundleVersion'],'architecture':architecture,'intents':list(actions),'nativeGPTWebRTC':True,'liveActivityExtension':True,'releaseTLS':True,'debugFixtureAbsent':True,'signed':signed,'profilesPresent':provisioned},ensure_ascii=False,indent=2))

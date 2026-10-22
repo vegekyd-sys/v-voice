@@ -252,11 +252,11 @@ import VVoiceCore
         try await fixture("end")
         try await until { call.phase == .ended }
     }
-    func testGrokVoiceChoiceIsSentAndUnsupportedModelsStayExplicit() async throws {
+    func testGrokVoiceChoiceIsSentAndGPTNativeOptionIsAvailable() async throws {
         let call = try await client()
         await call.refreshOptions()
         XCTAssertEqual(call.grokVoices.map(\.id), ["iris", "eve"])
-        XCTAssertNil(call.modelOptions.first(where: { $0.id == "gpt-live" })?.nativeModel)
+        XCTAssertEqual(call.modelOptions.first(where: { $0.id == "gpt-live" })?.nativeModel, .gptLive)
         call.model = .grok; call.grokVoice = "eve"
         try await call.startOrContinue()
         let request = try await stats()["lastSessionRequest"] as? [String: Any]

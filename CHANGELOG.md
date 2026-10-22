@@ -5,6 +5,13 @@
 - Move App Shortcuts icon colors into the documented primary-icon metadata for both iPhone and iPad; request registration again on idle foreground entry. Physical launch-icon cache refresh remains pending, with no uninstall or binding reset.
 - Local candidate only; no automatic real calls, main integration or server deployment.
 
+## Unreleased — iOS build 17 GPT Live One candidate
+
+- Add GPT Live One to native/H5 model selection, using the existing authenticated GPT Live SDP and native input policy. One CallCoordinator owns the call; VoiceAudio selects mutually exclusive WebRTC or PCM audio engines. Action Button remembers the selected model.
+- Bring GPT caption fragments, native turn ownership, semantic Reaction, backend tasks/results and background report attention into the existing island/H5 presentation. Preserve mute, manual hangup, owned cleanup/reconnect and bounded host-authorized end guards.
+- Pin native WebRTC 154.0.0, retain its license/privacy manifest, and preserve the signed build 16 rollback. Local synthetic peer-to-peer audio, system audio backend switching and regression checks pass. Physical GPT/provider audio acceptance remains pending; no paid call, main merge, Gateway change or online web release.
+- Public homepage changelog remains at the accepted shipped baseline. The candidate is not advertised as a shipped or human-accepted capability; the prepared release note is in `docs/ios/GPT-LIVE.md` for the approved release.
+
 ## Unreleased — iOS build 16 live caption and launch branding candidate
 
 - Show the latest three wrapped lines of V’s current reply in the expanded and Lock Screen presentation while V speaks. Keep Reaction, mute/end and a stable report link; opening text continues the same native call.

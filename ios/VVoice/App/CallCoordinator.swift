@@ -47,7 +47,7 @@ import VVoiceCore
         if let options = status["models"] as? [[String: Any]] {
             modelOptions = options.compactMap { item in
                 guard let id = item["id"] as? String else { return nil }
-                return .init(id: id, title: item["label"] as? String ?? VoiceModel(rawValue: id)?.title ?? id, available: item["available"] as? Bool != false)
+                return .init(id: id, title: id == "gpt-live" ? VoiceModel.gptLive.title : (item["label"] as? String ?? VoiceModel(rawValue: id)?.title ?? id), available: item["available"] as? Bool != false)
             }
             let grok = options.first { $0["id"] as? String == "grok" }
             grokVoices = (grok?["voices"] as? [[String: Any]] ?? []).compactMap { voice in
@@ -109,6 +109,15 @@ import VVoiceCore
     @ObservationIgnored private var closing: Task<Void, Never>?
     @ObservationIgnored private var lastFailure: VoiceError?
     @ObservationIgnored private var transport: RelayTransport?
+    @ObservationIgnored private let makeGPT: () -> GPTLiveTransport
+    @ObservationIgnored private var gpt: GPTLiveTransport?
+    @ObservationIgnored private var gptEvents: Task<Void, Never>?
+    @ObservationIgnored private var gptGreeting: Task<Void, Never>?
+    @ObservationIgnored private var gptEnd = GPTLiveEndGuard()
+    @ObservationIgnored private var gptTranscript = GPTLiveTranscript()
+    @ObservationIgnored private var gptCallerStarted = false
+    @ObservationIgnored private var gptUserTurn = ""
+    @ObservationIgnored private var gptCaptionRevision = 0
     @ObservationIgnored private var voiceID: String?
     @ObservationIgnored private var routeChangeTask: Task<Void, Never>?
     @ObservationIgnored private var heartbeat: Task<Void, Never>?
@@ -153,7 +162,8 @@ import VVoiceCore
     @ObservationIgnored private(set) var appScenePhase: ScenePhase = .background
     private var appIsActive: Bool { appScenePhase == .active }
 
-    init(api: VoiceAPI? = nil) {
+    init(api: VoiceAPI? = nil, makeGPT: @escaping () -> GPTLiveTransport = { GPTLiveTransport() }) {
+        self.makeGPT = makeGPT
         self.api = api ?? VoiceAPI(store: BindingStore())
         self.avatar = VoiceAvatar(api: self.api)
         model = VoiceModel(rawValue: UserDefaults.standard.string(forKey: "voiceModel") ?? "") ?? .seeduplex
@@ -283,6 +293,9 @@ import VVoiceCore
         var request: [String: Any] = ["model": model.rawValue]
         if model == .grok, !grokVoices.isEmpty { request["voice"] = grokVoice }
         if model == .seeduplex, let policy = preferredPhoneInputPolicy, ["native", "speaker"].contains(policy) { request["inputPolicy"] = policy }
+        // GPT's existing native input policy sends live audio directly to the
+        // model. Speaker gating is a separate pipeline, never silently emulated.
+        if model == .gptLive { request["inputPolicy"] = "native" }
         let reservation = try await api.call("session", body: request)
         guard let id = reservation["voiceSessionId"] as? String else { throw VoiceError.protocolMismatch }
         guard owned(owner) else {
@@ -295,6 +308,10 @@ import VVoiceCore
         speakerRouted = reservation["speakerRouting"] is [String: Any]
         conversation.beginSpeakerStream(); speakerNotice = ""; speakerAction = ""; speakerNoticeTask?.cancel()
         avatarOutcome = "none"; avatar.begin(owner: id); refreshIslandAvatarSurface(); updateAvatar()
+        if model == .gptLive {
+            guard reservation["model"] as? String == "gpt-live-1-codex", reservation["speakerRouting"] == nil else { throw VoiceError.protocolMismatch }
+            try await dialGPT(owner: owner, id: id, greeting: greeting); return
+        }
         guard reservation["transport"] as? String == "gateway-relay", let ticket = reservation["relayTicket"] as? String else { throw VoiceError.protocolMismatch }
         audio.beginStream()
         let relay = RelayTransport(id: id); transport = relay
@@ -368,7 +385,135 @@ import VVoiceCore
             }
         }
     }
+    private func dialGPT(owner: UUID, id: String, greeting: Bool) async throws {
+        gptEnd = GPTLiveEndGuard(); gptTranscript = GPTLiveTranscript(); gptCallerStarted = false; gptUserTurn = ""; gptCaptionRevision = 0
+        let rtc = makeGPT(); gpt = rtc
+        rtc.onFailure = { [weak self] error in
+            guard let self, self.owned(owner), self.handshakingOwner != owner else { return }
+            if error as? VoiceError == .unavailable { self.fail(error) } else { self.reconnect() }
+        }
+        rtc.onEvent = { [weak self] event in
+            guard let self, self.owned(owner) else { return }; self.receiveGPT(event, owner: owner, id: id)
+        }
+        rtc.onLevels = { [weak self, weak rtc] input, output, progressed in
+            guard let self, let rtc, self.owned(owner) else { return }
+            self.observeIslandAudio(self.muted ? 0 : input, outputRMS: output)
+            if self.audioReady, self.audio.isRunning {
+                let now = ProcessInfo.processInfo.systemUptime
+                if self.gptEnd.levels(input: self.muted ? 0 : input, output: output, now: now, outputProgressed: progressed) {
+                    Task { [weak self] in guard let self, self.owned(owner) else { return }; await self.end() }
+                } else if let proposal = self.gptEnd.confirmation(now: now) {
+                    Task { [weak self] in
+                        guard let self, self.owned(owner) else { return }
+                        do {
+                            let result = try await self.api.call("call-control-confirm", body: ["voiceSessionId": id, "control": proposal], refresh: false)
+                            guard self.owned(owner), self.gptEnd.confirmed(result) else { return }
+                            rtc.send(["type": "session.context.append", "channel": "speakable", "content": [["type": "input_text", "text": "当前用户已经明确结束这次电话。停止旧结果播报，只说一句：再见，下次聊。然后安静等待主机关闭。"]]])
+                        } catch { if self.owned(owner) { self.gptEnd.confirmationFailed() } }
+                    }
+                }
+            }
+        }
+        rtc.onPlayback = { [weak self] playing in
+            guard let self, self.owned(owner), self.audioReady else { return }
+            self.setPhase(playing ? .speaking : .listening, owner: owner)
+        }
+        try audio.startWebRTC()
+        startGPTEvents(owner: owner, id: id)
+        try await rtc.connect(muted: muted) { [weak self] sdp in
+            guard let self, self.owned(owner) else { throw CancellationError() }
+            let result = try await self.api.call("offer", body: ["voiceSessionId": id, "sdp": sdp], refresh: false)
+            guard self.owned(owner), let answer = result["sdp"] as? String else { throw VoiceError.protocolMismatch }
+            return answer
+        }
+        guard owned(owner), rtc.isConnected else { rtc.close(); throw CancellationError() }
+        rtc.setMuted(muted); audioReady = true; lastInput = Date(); updateRoute()
+        setPhase(rtc.speaking ? .speaking : .listening, owner: owner)
+        detail = "GPT Live One 已接通，可以直接开口"
+        CallDiagnostics.record("call.connected", code: "gpt-live-webrtc")
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        if UIAccessibility.isVoiceOverRunning { UIAccessibility.post(notification: .announcement, argument: "已接通，可以开口") }
+        publish(connected: greeting)
+        if greeting {
+            gptGreeting = Task { [weak self] in
+                // The sideband may lag the connected peer. A user's first turn
+                // suppresses greeting retries so a delayed greeting never interrupts.
+                for _ in 0..<5 {
+                    guard let self, self.owned(owner), !self.gptCallerStarted, !Task.isCancelled else { return }
+                    if (try? await self.api.call("ready", body: ["voiceSessionId": id], refresh: false))?["ok"] as? Bool == true { return }
+                    do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+                }
+            }
+        }
+        heartbeat = Task { [weak self] in
+            var tick = 0
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                guard let self, self.owned(owner) else { return }
+                guard self.audio.isRunning, rtc.isConnected else { self.pause("音频已暂停，轻点继续通话"); return }
+                if !self.muted, Date().timeIntervalSince(rtc.lastCaptureAt) > 5 { self.pause("麦克风已暂停，轻点继续通话"); return }
+                tick += 1
+                if tick % 2 == 0 { await self.refreshPresentation(owner: owner, id: id) }
+                if tick % 5 == 0 {
+                    do { _ = try await self.api.call("heartbeat", body: ["voiceSessionId": id], refresh: false); self.publish() }
+                    catch { self.reconnect(); return }
+                }
+            }
+        }
+    }
+    private func startGPTEvents(owner: UUID, id: String) {
+        gptEvents?.cancel()
+        gptEvents = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, self.owned(owner) else { return }
+                do {
+                    let (bytes, response) = try await self.api.session.bytes(for: self.api.eventRequest())
+                    guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw VoiceError.connection }
+                    // Existing endpoint emits one bounded JSON object per data line.
+                    for try await line in bytes.lines {
+                        guard self.owned(owner), !Task.isCancelled else { return }
+                        guard line.hasPrefix("data: "), line.utf8.count <= 1_000_000,
+                              let value = try JSONSerialization.jsonObject(with: Data(line.dropFirst(6).utf8)) as? [String: Any], value["voiceSessionId"] as? String == id else { continue }
+                        try self.handle(value, owner: owner)
+                    }
+                } catch { if Task.isCancelled { return } }
+                // Presentation recovery runs independently while SSE reconnects.
+                do { try await Task.sleep(for: .seconds(1)) } catch { return }
+            }
+        }
+    }
+    private func receiveGPT(_ event: [String: Any], owner: UUID, id: String) {
+        gptEnd.provider(event, now: ProcessInfo.processInfo.systemUptime)
+        let type = event["type"] as? String
+        let turn = event["turn"] as? [String: Any] ?? [:]
+        if type == "turn.created", turn["role"] as? String == "user" {
+            gptUserTurn = turn["id"] as? String ?? ""; gptCallerStarted = true; gptGreeting?.cancel()
+        }
+        guard let update = gptTranscript.consume(event) else { return }
+        gptEnd.transcript(update, now: ProcessInfo.processInfo.systemUptime)
+        conversation.receiveNative(update); lastCaption = String(update.text.suffix(500))
+        if update.role == "user" {
+            gptCallerStarted = true; gptGreeting?.cancel()
+            if update.final, gpt?.speaking != true { setPhase(.thinking, owner: owner) }
+            if !gptUserTurn.isEmpty, update.id == "user:" + gptUserTurn, !update.text.isEmpty {
+                gptCaptionRevision += 1
+                let body: [String: Any] = ["voiceSessionId": id, "revision": gptCaptionRevision, "turnId": gptUserTurn, "text": String(update.text.suffix(2400)), "final": update.final]
+                Task { [weak self] in
+                    guard let self, self.owned(owner) else { return }
+                    _ = try? await self.api.call("call-control-input", body: body, refresh: false)
+                }
+            }
+        } else if update.final, CallDocument.isDeliverable(update.text), let row = conversation.turns.first(where: { $0.sourceKey == "gpt:" + update.id }) {
+            let documentID = "reply-" + row.id.uuidString
+            documents.append(CallDocument(id: documentID, text: update.text, serverOwned: false))
+            if documents.count > 16 { documents.removeFirst() }
+            conversation.attachDocument(id: documentID, to: row.id)
+            prepareIslandReport(documentID); publish(resultID: documentID)
+        }
+        scheduleCaptionUpdate(); updateAvatar()
+    }
     private func handle(_ v: [String: Any], owner: UUID) throws {
+        if gpt != nil { gptEnd.host(v) }
         switch v["type"] as? String {
         case "audio":
             guard providerReady else { return }
@@ -529,6 +674,7 @@ import VVoiceCore
             for task in pending { receiveTask(task) }
         }
         for document in value["documents"] as? [[String: Any]] ?? [] { receiveResult(document) }
+        if gpt != nil { for control in value["controls"] as? [[String: Any]] ?? [] { gptEnd.host(control) } }
     }
     func resultWasShown(_ id: String) async {
         guard appIsActive, active, let document = documents.first(where: { $0.id == id }), !shownResults.contains(id), !acknowledgingResults.contains(id), let voiceID else { return }
@@ -593,7 +739,8 @@ import VVoiceCore
     func toggleMute() {
         guard active, ![.connecting,.reconnecting,.ending,.interrupted].contains(phase) else { return }
         state.setMuted(!muted)
-        if !muted, audio.queuedFrames > 0 { state.transition(.speaking, owner: state.generation) }
+        gpt?.setMuted(muted)
+        if !muted, audio.queuedFrames > 0 || gpt?.speaking == true { state.transition(.speaking, owner: state.generation) }
         detail = muted ? "V 听不到你的声音；轻点恢复" : "可以继续说话"
         UIImpactFeedbackGenerator(style: .soft).impactOccurred(); publish(immediate: true)
     }
@@ -616,8 +763,10 @@ import VVoiceCore
         providerDeadline?.cancel(); providerDeadline = nil
         heartbeat?.cancel(); heartbeat = nil; naturalEnd?.cancel(); naturalEnd = nil
         pendingEndID = nil; transport?.close(); transport = nil
+        gptGreeting?.cancel(); gptGreeting = nil; gptEvents?.cancel(); gptEvents = nil
+        let hadGPT = gpt != nil; gpt?.close(); gpt = nil
         audio.onInput = nil; audio.onPlayback = nil; audio.onDrained = nil; audio.onFailure = nil
-        if keepAudio { audio.clear() } else { audio.stop() }
+        if keepAudio && !hadGPT { audio.clear() } else { audio.stop() }
     }
     private func pause(_ reason: String) {
         guard active, phase != .ending else { return }
@@ -675,6 +824,7 @@ import VVoiceCore
         updateRoute()
         guard active, audio.isRunning else { return }
         if reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { pause("耳机已断开。轻点继续后会使用当前音频设备") }
+        else if gpt != nil { return } // WebRTC renegotiates the active audio route.
         else if reason == AVAudioSession.RouteChangeReason.newDeviceAvailable.rawValue, routeChangeTask == nil {
             let owner = state.generation
             audioReady = false; setPhase(.reconnecting, owner: owner); detail = "正在切换音频设备"
