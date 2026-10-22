@@ -35,7 +35,6 @@ struct IslandCallSurface: View {
                     Link(destination: destination) {
                         VStack(alignment: .leading, spacing: 3) {
                             if speakingCaption {
-                                Text("V 正在说").font(.system(size: 10, weight: .medium)).foregroundStyle(islandLilac.opacity(0.8))
                                 GeometryReader { geometry in
                                     Text(IslandTranscriptWindow.tail(state.caption, width: geometry.size.width, lines: typeSize.isAccessibilitySize ? 2 : 3))
                                         .font(.system(size: 14.5, weight: .regular)).lineLimit(typeSize.isAccessibilitySize ? 2 : 3)
@@ -69,7 +68,7 @@ struct IslandCallSurface: View {
                     }.buttonStyle(.plain).accessibilityLabel("查看对话文字")
                     endButton
                 }
-            }.frame(minHeight: conversation ? 70 : 60)
+            }.frame(height: conversation ? 56 : 60)
             if conversation {
                 HStack {
                     if !quiet {
@@ -94,7 +93,7 @@ struct IslandCallSurface: View {
                     endButton
                 }
             }
-        }.padding(.horizontal, 8).padding(.bottom, 4)
+        }.padding(.horizontal, 8).padding(.bottom, conversation ? 12 : 4)
     }
     private var endButton: some View {
         Button(intent: IslandEndIntent(callID: callID)) {
