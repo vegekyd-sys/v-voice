@@ -1,5 +1,13 @@
 ## Unreleased — SeedDuplex full-duplex phone candidate · 2026-10-22
 
+## 2026-10-22 — Native duplex release and iOS build 16
+
+- Promote the human-reviewed native SeedDuplex candidate: reversible listening pause, response-owned playback replacement, per-call name-binding instructions and accepted-hangup fallback.
+- Advertise the preferred phone input policy; capable web/iOS clients explicitly opt in. Legacy clients retain Speaker routing until upgraded.
+- Add iOS native reversible AVAudioPlayerNode pause without stopping microphone capture, response retirement and matching ignored-speech recovery. Preserve build 15 report/Live Activity and web-delivered H5 behavior.
+- Continuous television and bystander audio can still cause long pauses or unwanted model replies; synthetic tests do not replace physical iPhone acoustic acceptance.
+
+
 - Native Candidate: after successful end_call, request a native TTS farewell if no audio follows; wait for matching real playback, cancel ending on a continued question, and bound an unavailable farewell instead of waiting forever.
 - 原生全双工 Candidate 完成 9 通合成音频整链复测：正常插话可快速停声，但背景误暂停、持续电视抢答、小声迟缓和姓名互换串信息仍未通过验收；未上线。
 

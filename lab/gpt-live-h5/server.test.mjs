@@ -42,16 +42,18 @@ test("preview never creates a paid session and returns an explicit preview error
   assert.equal((await f.request("session")).status, 503); assert.equal(f.calls.length, 0);
 });
 
-test('phone native-duplex default reaches SeedDuplex while explicit speaker mode and other models are preserved', async t => {
+test('native preference is advertised while legacy clients retain speaker and capable clients opt in', async t => {
   const reservations=[];
   const directVoice={models:()=>[],reserve:async params=>{reservations.push(params);return {voiceSessionId:'native-phone',provider:params.model};},close:async()=>{},dispose:async()=>{}};
   const speakerRouting={snapshot:()=>({}),close(){},dispose(){}};
   const f=await fixture(t,{directVoice,speakerRouting,phoneInputPolicy:'native'});
-  for(const params of [{model:'seeduplex'},{model:'seeduplex',inputPolicy:'speaker'},{model:'grok'}]){
+  const status=await (await fetch(`${f.url}/api/status`,{headers:{cookie:f.cookie}})).json();
+  assert.equal(status.phoneInputPolicy,'native');
+  for(const params of [{model:'seeduplex'},{model:'seeduplex',inputPolicy:'native'},{model:'seeduplex',inputPolicy:'speaker'},{model:'grok'}]){
     assert.equal((await f.request('session',params)).status,200);
     assert.equal((await f.request('close',{voiceSessionId:'native-phone'})).status,200);
   }
-  assert.deepEqual(reservations.map(p=>p.inputPolicy),['native','speaker','speaker']);
+  assert.deepEqual(reservations.map(p=>p.inputPolicy),['speaker','native','speaker','speaker']);
   assert(reservations.every(p=>p.sessionKey===GPT_LIVE_PERSONAL_SESSION_KEY));
   assert.equal((await f.request('session',{model:'seeduplex',inputPolicy:'untrusted'})).status,400);
 });

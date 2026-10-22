@@ -48,6 +48,7 @@ let avatarDiagnosticOwner = null;
 let liveReady = false;
 let entryError = null;
 let callerEntry = "tianyi";
+let preferredPhoneInputPolicy = null;
 const speakerCandidate=()=>document.body?.dataset?.speakerRouting==='true';
 function speakerEvent(value){
   if(!speakerCandidate())return;
@@ -626,8 +627,8 @@ async function startCall() {
     if(fixtureId)active.fixture=active.capture;
     if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
     const selectedModel = ['seeduplex','grok'].includes(chosenModel)?chosenModel:'gpt-live';
-    const inputPolicy = speakerCandidate() ? new URLSearchParams(location.search).get('inputPolicy') : null;
-    const reservation = await api("session", {model:selectedModel,...speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:{})}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
+    const inputPolicy = speakerCandidate() ? (new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy) : null;
+    const reservation = await api("session", {model:selectedModel,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:{})}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     const diagnosticOwner=avatarDiagnosticOwner=Symbol('avatar-call');
     document.body.dataset.avatarReactionRequests='0';
@@ -887,6 +888,7 @@ async function initializeEntry() {
     }));
     if (result.error) throw new Error(result.error);
     const { status } = result;
+    preferredPhoneInputPolicy = status.phoneInputPolicy;
     liveReady = status.ready === true;
     const models = MODEL_CHOICES.map(choice => {
       const model = status.models?.find(item => item.id === choice.id);
