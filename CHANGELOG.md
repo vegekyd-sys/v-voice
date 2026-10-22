@@ -1,3 +1,9 @@
+## 2026-10-22 — V Voice iOS milestone integration · build 11
+
+- Integrate the iOS app into main after user acceptance of real iPhone connection and two-way conversation. Preserve the background Action Button audio path, original embedded H5 UI and current-call Dynamic Island content links.
+- Replace the iOS AppIcon with Tianyi's supplied purple headset portrait, imported as an opaque 1024×1024 asset without re-generating the artwork.
+- Add the user-visible homepage milestone entry, retaining explicit acceptance limits for new island details and system scenarios. Native capabilities still require binary updates; remotely synchronized H5 delivery is a separate follow-up task.
+
 ## 2026-10-22 — iOS build 10 local device candidate
 
 - Package the existing H5 shell with background connection / long-reply attention requests, explicit calling state and wider measured waveform from the separate island candidate.
