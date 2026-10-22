@@ -280,3 +280,15 @@ Core16、原生WK／音频／集成46、既有服务合同80全部通过。新�
 
 - 最终签名源码f9ec271：Release1.0.0(16) archive／export及独立解包导出IPA验包通过，主App／扩展均16，CFBundlePrimaryIcon已指向VVoiceAppIcon／VVoiceAppIcon60x60。最终IPA SHA-256：`a14396d4545eddb7cf1b948872c2b4e32d4b641b14fae0d76c639a72e879ee5d`；较早8a36034签名的16包未安装，不作为最终产物。安装前最新只读快照三项活动计数均0，已覆盖安装成功并从指定设备App记录读回1.0.0(16)。保留原绑定／权限配置与签名build15回退；未卸载、未清Keychain、未自动真实拨号。
 - 安装后尝试空闲打开App以刷新AppShortcuts登记，被iPhone锁屏拒绝，launch outcome=failed；此前即时评论“已打开”已明确更正，不能记为已刷新。用户下次解锁并打开App后可触发登记刷新，系统启动提示和实际手机字幕仍待人类验收。源码未push／合入main，网页未部署；本机最终包与设备安装单独登记。
+
+
+## build 17 · 对话波纹与快捷指令图标元数据候选 · 2026-10-22
+
+- 用户要求撤回三行字幕，复用中卡声音波纹，并保留原报告点击引导。从已安装 build16 的源码和登记 `03ddfe1` 建立独立分支 `codex/voice-island-waveform`，产品源码 `7ce6a4e`。没有覆盖原灵动岛工作树。
+- 中／大卡与锁屏共用原 IslandWaveform，普通对话不渲染转写；有未读报告时标题与“点击查看完整方案”优先于说话波形，保留 Reaction、静音、挂断、折叠与报告提醒。修正原先仅 audio 布局发布音频快照的问题；保持原采样、节流和音频所有权。
+- Apple 官方主图标文档要求 App Shortcuts 颜色位于 CFBundleIcons/CFBundlePrimaryIcon（iPad 对应键同理），build16误写在顶层。现已修正，编译产物两端字段均验证，验包脚本同步校验正确位置。三份图标资产仍是同一紫底人物图，不重新生成。依据：https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundleicons/cfbundleprimaryicon/nsappiconactiontintcolorname 。
+- Core19／原生51／既有服务80通过；波形持续更新与说话期间报告优先用例，以及旧活动解码／4KB预算／资源白名单另外定向复验。完整回归退出0。无真实模型或自动拨号。
+- 为捕捉系统大卡，临时延长本地 fixture 的两次视觉探针未通过：第一次20秒单包超过 WebSocket 默认接收上限导致重连，第二次长驻留后通话不再 active。二者不计为通过或已获系统视觉接受；临时测试改动已移除，未进入签名源码。普通回归与真机听验状态分别记录。
+- Release 1.0.0(17) archive/export和独立解包验包通过；正常TLS、无Debugfixture、主App/扩展签名、H5资源与52图、后台AudioRecording/SessionStarting意图均通过。导出IPA SHA-256 `27d82452bffb2cc443b99177c54d8e097ac914b027d62db0600101723e1bacb8`。签名build16 IPA已校验复制为回退。
+- 安装前只读正式服务 ready/known=true，activeCalls/creatingSessions/backgroundTasks均0。覆盖安装成功，设备读回17，不卸载、不重绑。首次空闲启动被Locked拒绝；用户解锁后再次只读确认三项0，devicectl实际启动成功，App已有初始化及空闲前台注册刷新请求。请求执行不代表系统缓存图标已更新，需用户重新选择内置“和V通话”并检查。
+- 候选已装机；没有push、合入main、网页部署或Gateway重启。完整真机波纹／报告与旧启动图标接受仍待用户。音频路由、AEC、RelayTransport、后台VoiceIntents相对build16没有改动。

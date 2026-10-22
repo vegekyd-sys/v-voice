@@ -33,7 +33,7 @@
     "build": 8,
     "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab"
   },
-  "deviceReportedBuild": "16",
+  "deviceReportedBuild": "17",
   "savedH5Baseline": {
     "build": 10,
     "sourceCommit": "3ffeb94",
@@ -78,13 +78,13 @@
     "build14PhysicalAcceptance": "all_requested_scopes_passed"
   },
   "currentDeviceCandidate": {
-    "build": 16,
+    "build": 17,
     "candidateOnly": true,
-    "sourceCommit": "f9ec2715cd0ea0f4c1bdc8f25a0924dcaf0bcbed",
+    "sourceCommit": "7ce6a4e",
     "installedOnRequestedIPhone": true,
-    "deviceReportedBuild": "16",
+    "deviceReportedBuild": "17",
     "overwriteInstalledWithoutUninstallOrKeychainReset": true,
-    "record": "live-caption-build16.json",
+    "record": "waveform-build17.json",
     "physicalAcceptance": "pending",
     "lastAcceptedBuild": 14
   },
@@ -139,22 +139,15 @@
     "sourceIntegrationAuthorized": true,
     "previouslyInstalled": true
   },
-  "pendingLiveCaptionCandidate": {
+  "previousDeviceCandidate": {
     "build": 16,
     "candidateOnly": true,
-    "record": "live-caption-build16.json",
-    "installed": true,
-    "deviceReportedBuild": "16"
-  },
-  "previousDeviceCandidate": {
-    "build": 15,
-    "candidateOnly": true,
-    "sourceCommit": "da3b93a3e410d803ea1c2da0f796efd8f9d30745",
+    "sourceCommit": "f9ec2715cd0ea0f4c1bdc8f25a0924dcaf0bcbed",
     "installedOnRequestedIPhone": false,
-    "deviceReportedBuild": "15",
+    "deviceReportedBuild": "16",
     "overwriteInstalledWithoutUninstallOrKeychainReset": true,
-    "record": "report-island-build15.json",
-    "physicalReportAcceptance": "pending",
+    "record": "live-caption-build16.json",
+    "physicalAcceptance": "pending",
     "lastAcceptedBuild": 14,
     "previouslyInstalledOnRequestedIPhone": true
   },
@@ -163,5 +156,18 @@
     "ipaSHA256": "46df1206571b4b00525c51e3e3495c108e058662f54edcdcb73e2bd74d5efcda",
     "signedIPACopiedAndVerified": true,
     "signedArchiveRetained": true
+  },
+  "previousLiveCaptionCandidate": {
+    "build": 16,
+    "candidateOnly": true,
+    "record": "live-caption-build16.json",
+    "installed": false,
+    "deviceReportedBuild": "16",
+    "previouslyInstalled": true
+  },
+  "savedBuild16Rollback": {
+    "build": 16,
+    "ipaSHA256": "a14396d4545eddb7cf1b948872c2b4e32d4b641b14fae0d76c639a72e879ee5d",
+    "signedIPACopiedAndVerified": true
   }
 }
