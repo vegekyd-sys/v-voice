@@ -503,7 +503,7 @@ import VVoiceCore
                     _ = try? await self.api.call("call-control-input", body: body, refresh: false)
                 }
             }
-        } else if update.final, CallDocument.isDeliverable(update.text), let row = conversation.turns.first(where: { $0.sourceKey == "gpt:" + update.id }) {
+        } else if update.final, CallDocument.isDeliverable(update.text), let row = conversation.turns.first(where: { $0.sourceKey == "gpt:" + update.key }) {
             let documentID = "reply-" + row.id.uuidString
             documents.append(CallDocument(id: documentID, text: update.text, serverOwned: false))
             if documents.count > 16 { documents.removeFirst() }
@@ -554,7 +554,7 @@ import VVoiceCore
             if speakerRouted, v["role"] as? String == "user" { return }
             if let text = v["text"] as? String, let role = v["role"] as? String {
                 lastCaption = String(text.suffix(500))
-                conversation.receive(role: role, text: text, final: v["final"] as? Bool == true)
+                conversation.receive(role: role, text: text, final: v["final"] as? Bool == true, delta: role == "assistant")
                 if role == "assistant", v["final"] as? Bool == true, CallDocument.isDeliverable(text), let turn = conversation.turns.last {
                     let id = "reply-" + turn.id.uuidString
                     documents.append(CallDocument(id: id, text: text, serverOwned: false)); if documents.count > 16 { documents.removeFirst() }
