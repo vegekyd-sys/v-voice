@@ -34,6 +34,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   if (hosted && (origin.protocol !== "https:" || origin.origin !== publicOrigin || !basePath)) throw new Error("Hosted voice requires an HTTPS origin and base path");
   if (!Number.isInteger(maxActiveSessions) || maxActiveSessions < 1 || maxActiveSessions > 50 || !Number.isInteger(maxActiveSessionsPerIp) || maxActiveSessionsPerIp < 1 || maxActiveSessionsPerIp > maxActiveSessions) throw new Error("Invalid voice call limits");
   const entries = createConversationEntries(conversationEntries, accessToken);
+  const replyTargets=new Map(conversationEntries.filter(e=>e.replySync===true&&!e.disabled).map(e=>[e.id,conversationReplyTarget(e,feishuAccounts)]));
   const phoneLogin = feishuLogin ? createFeishuPhoneLogin({...feishuLogin, publicOrigin, basePath, entries}) : null;
   const accessors = new Map();
   const entryAccess = binding => {
@@ -283,7 +284,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           if (binding.id !== 'tianyi') await verifyPhoneSession(gateway, binding);
           await close(context);
           const sessionKey = binding.sessionKey;
-          const replyTarget=conversationReplyTarget(binding,feishuAccounts);
+          const replyTarget=replyTargets.get(binding.id)??null;
           if (params.model && params.model !== 'gpt-live') {
             // SeedDuplex needs the continuous microphone stream to own turn
             // taking. Keep household/multi-speaker routing available explicitly;
@@ -600,7 +601,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       directVoice, speakerRouting, avatarLog,callControlAudit:transcriptLog.audit,
       phoneInputPolicy:process.env.VOICE_PHONE_INPUT_POLICY ?? 'speaker',
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",
-      feishuAccounts:config.channels?.feishu??{},
+      feishuAccounts:process.env.VOICE_FEISHU_ACCOUNTS_FILE?JSON.parse(await readFile(process.env.VOICE_FEISHU_ACCOUNTS_FILE,'utf8')):config.channels?.feishu??{},
       conversationEntries: process.env.VOICE_ENTRIES_FILE ? JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,"utf8")) : [],
       feishuLogin: process.env.VOICE_FEISHU_LOGIN_FILE ? await readFeishuPhoneLoginFile(process.env.VOICE_FEISHU_LOGIN_FILE) : undefined,
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",
