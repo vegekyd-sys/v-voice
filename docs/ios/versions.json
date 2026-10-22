@@ -7,7 +7,7 @@
   "signedArchiveVerified": true,
   "exportedIPAVerified": true,
   "ipaSHA256": "58dcb2a5b3a850f279a821965b92ce5dbaec820da0e4a6c52ed8a7f7207ee56b",
-  "installedOnRequestedIPhone": true,
+  "installedOnRequestedIPhone": false,
   "realVoiceAcceptance": "build14_requested_physical_scopes_passed_main_sourced_rebuild_inputs_identical",
   "localTests": {
     "core": 16,
@@ -33,7 +33,7 @@
     "build": 8,
     "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab"
   },
-  "deviceReportedBuild": "14",
+  "deviceReportedBuild": "15",
   "savedH5Baseline": {
     "build": 10,
     "sourceCommit": "3ffeb94",
@@ -78,13 +78,15 @@
     "build14PhysicalAcceptance": "all_requested_scopes_passed"
   },
   "currentDeviceCandidate": {
-    "build": 14,
-    "userAuthorizedTesting": true,
-    "bindingPreserved": true,
-    "formalMainBuild": "signed_installed_and_read_back",
-    "validation": "new-shell-build14-validation.json",
-    "formalMainSourceCommit": "2adca2a03e56d51f51a39f7e939dab27c0aaf2a5",
-    "nativeInputsIdenticalToAcceptedCandidate": true
+    "build": 15,
+    "candidateOnly": true,
+    "sourceCommit": "da3b93a3e410d803ea1c2da0f796efd8f9d30745",
+    "installedOnRequestedIPhone": true,
+    "deviceReportedBuild": "15",
+    "overwriteInstalledWithoutUninstallOrKeychainReset": true,
+    "record": "report-island-build15.json",
+    "physicalReportAcceptance": "pending",
+    "lastAcceptedBuild": 14
   },
   "build10RollbackHistory": {
     "date": "2026-10-22",
@@ -118,5 +120,22 @@
     "build": 11,
     "ipaSHA256": "5539d89245dfd7e4a241d1d66957fd60fc45b6d8e2e6e8b02f30e62b25855f2a",
     "originalSignedArchiveAndIPAAvailable": true
+  },
+  "recordScope": "last_accepted_release_with_current_device_candidate",
+  "previouslyInstalledOnRequestedIPhone": true,
+  "savedBuild14Rollback": {
+    "build": 14,
+    "ipaSHA256": "58dcb2a5b3a850f279a821965b92ce5dbaec820da0e4a6c52ed8a7f7207ee56b",
+    "originalSignedArchiveRetained": true,
+    "signedIPACopiedAndVerified": true
+  },
+  "reportIslandBuild15": {
+    "build": 15,
+    "record": "report-island-build15.json",
+    "candidateOnly": true,
+    "installed": true,
+    "deviceReportedBuild": "15",
+    "physicalReportAcceptance": "pending",
+    "sourceIntegrationAuthorized": true
   }
 }

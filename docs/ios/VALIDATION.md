@@ -241,3 +241,28 @@ Core16、原生WK／音频／集成46、既有服务合同80全部通过。新�
 用户授权后，保留原绑定覆盖安装development签名build14；真机屏幕共享关闭。用户确认网页、操作按钮、锁屏双向语音和灵动岛静音／恢复／结束全部正常，随后已挂断。只读诊断显示本机麦克风6479帧、911个有效音量帧、峰值RMS约0.375；仅汇总计数入登记，不保存音频或正文。结束后空闲打开App，真实冷下载的正式UI archive完成ready，哈希与生产一致。原生代码没有改采集路由、AEC、Intent或通话owner。
 
 已合入PR59；正式main提交`2adca2a`的CI成功。逐项Git对象哈希确认其原生发布输入与用户接受候选`55f003b`相同，再从main重新签名构建。最终安装与IPA哈希见 [验收登记](new-shell-build14-validation.json)。本轮未改Voice服务或Gateway，原build11签名回退包保留。
+## 2026-10-22 build 15 后台报告大卡候选
+
+- 基线为当前真机build14：正式源码2adca2a、交付登记6282e32。首次以旧工作树的build11登记为导航，随后直接从指定设备App记录读回14并校正，未用旧代码构建覆盖真机；保留远程H5更新壳、收音／上传诊断和全部原有音频／Intent路径。
+- 只读复制了指定设备的有界生命周期文件（无正文），其中存在document提醒请求。此证据只能证明调用，不证明系统实际展开，也不能独自确诊所有真实漏展示原因。
+- 修复前新增原生用例实际失败（xcodebuild退出65）：inactive就已消耗提醒；手动折叠后同id的更新报告不重新提醒／切大。修复后该用例通过；背景presentation-only文档恢复和报告展示窗口期间字幕不盖掉、静音立即生效也通过。
+- Core18项、原生／H5定向34项均通过，命令退出0。包括NativeFlow26、IslandActivity3、H5Shell5。H5源包与52张Reaction资源校验通过；VoiceAudio、RelayTransport、VoiceIntents相对14基线无改动。没有付费模型、正式拨号或Gateway操作。
+- iPhone17Pro iOS26.5实际系统：本地fixture通话回桌面，触发报告后系统AX自动出现「V的Reaction／方案已就绪查看全文／收起文字返回音频／静音麦克风／结束通话」。整个验证没有长按小岛。
+- 为捕获短暂系统展示，先安排本地fixture延迟送报告，再同步等待并连续保存真实serve-sim帧；没有后台未等待的截屏任务。第三份报告发送1792649354164ms，自动大卡帧在1792649357582ms（+3.418秒）、1792649359807ms（+5.643秒）可见；+8.121秒帧已被系统收回。三张提交证据是原始帧复制，不是图像编辑。最初未等待的捕获未能保留会话，不用作证据；第一次单张捕获已赶不上大卡，未将其标为成功图片。
+- 用户内置浏览器镜像初始断开，确认3200无监听后仅对该模拟器重建serve-sim并恢复真实帧；其他模拟器、物理手机屏幕共享未动。截图clip接口没有按坐标裁剪，因此正式证据保存完整页面。结束fixture后active=false、sessions=closeRequests=2（本地累计计数），不能作为正式用户呼叫次数。
+- 源码提交 `da3b93a3e410d803ea1c2da0f796efd8f9d30745` 已构建 development 签名 Release 1.0.0 (15)，archive／export及独立解包导出IPA验包均通过；App与Activity扩展均为15。IPA SHA-256：`46df1206571b4b00525c51e3e3495c108e058662f54edcdcb73e2bd74d5efcda`。安装前2026-10-22 14:19:49北京时间只读readiness known=true、ready=true，activeCalls／creatingSessions／backgroundTasks均0。devicectl覆盖安装成功，设备App记录读回 `com.versa.vvoice`、1.0.0、build15。未卸载、未重置Keychain、未自动拨号；原签名build14 IPA已复制并验证，原archive保留。
+- **真机报告自动展示仍待人类实际使用验收**，不能以安装成功或模拟器自动展开代替。详细状态见report-island-build15.json。候选未合入main、未发布网页；首页正式发布日志不写入未验收候选，随包历史仍与现有网页源一致。
+- ActivityKit重要更新使用[官方alertConfiguration机制](https://developer.apple.com/documentation/activitykit/displaying-live-data-with-live-activities)。iOS仍决定是否显示及停留时长，候选不承诺强制常驻或绕过系统设置。
+
+![报告到达前的小岛](evidence/report-before-compact.png)
+
+![报告到达后自动展示的大卡](evidence/report-auto-expanded-system.png)
+
+![随后由系统收回的小岛](evidence/report-after-system-collapse.png)
+
+## 2026-10-22 build 15 合入准备
+
+- Tianyi 明确授权合入；本次范围为已安装build15的后台报告展示修复，先前讨论的四项后续建议尚未实施。
+- 更新首页用户可见changelog，并重新同步H5壳、远程UI包描述与原生更新历史。此变动只登记原生能力及系统边界，已安装IPA仍精确对应da3b93a；不将新生成的历史资源冒充已经安装。
+- 本次仅合入源码；网页部署、重新签名安装及真机报告自动展开接受另行登记。
+- 首页本地预览 `http://127.0.0.1:29838/` 在内置浏览器实际打开更新日志；首条显示「报告到达，灵动岛给你提示」及三项说明，页面无空白／错误遮罩，控制台error／warn为空；截图留在本机临时目录。
