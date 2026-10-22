@@ -1,0 +1,165 @@
+{
+  "schema": "v-voice-release-registration-v1",
+  "release": "voice-search-natural-ack-20261023",
+  "phase": "production_servers_verified_known_limits_accepted_for_release",
+  "entryCommit": "08eaecf1a92bc4aa748e1b6053e7924cf55241e1",
+  "previousProductionCommit": "8136b20af19ca6fc740260875bf243d79cf67fd3",
+  "pullRequests": [
+    "https://github.com/vegekyd-sys/v-voice/pull/80"
+  ],
+  "mainChecks": {
+    "run": 39829852095,
+    "conclusion": "success"
+  },
+  "files": 207,
+  "filesSha256": "c77e7fe8d724556cffb5d0e437d61f43e610fd309890237a1dc1b411c951119f",
+  "nodes": {
+    "web": {
+      "commit": "08eaecf1a92bc4aa748e1b6053e7924cf55241e1",
+      "filesSha256": "c77e7fe8d724556cffb5d0e437d61f43e610fd309890237a1dc1b411c951119f",
+      "ready": true,
+      "admissionHeld": false,
+      "beforeReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "afterReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "originalConfigurationFilesUnchanged": true,
+      "managedReleaseLauncherUpdated": true,
+      "previousReleaseRetained": true
+    },
+    "devices": {
+      "commit": "08eaecf1a92bc4aa748e1b6053e7924cf55241e1",
+      "filesSha256": "c77e7fe8d724556cffb5d0e437d61f43e610fd309890237a1dc1b411c951119f",
+      "ready": true,
+      "admissionHeld": false,
+      "beforeReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "afterReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "originalConfigurationFilesUnchanged": true,
+      "managedReleaseLauncherUpdated": true,
+      "previousReleaseRetained": true
+    }
+  },
+  "gatewayRestartRequired": false,
+  "gatewayUnchangedVerified": true,
+  "publicVerification": {
+    "checkedAt": "2026-10-22T18:17:58.502Z",
+    "commit": "08eaecf1a92bc4aa748e1b6053e7924cf55241e1",
+    "filesSha256": "c77e7fe8d724556cffb5d0e437d61f43e610fd309890237a1dc1b411c951119f",
+    "files": [
+      {
+        "name": "transcript-presentation.mjs",
+        "sha256": "15c38f9a668678bbdd747a424207c5e503dcba7752429c430d5d58f455495c39"
+      },
+      {
+        "name": "changelog.mjs",
+        "sha256": "b6a935caf2fdb37bf24440c63bc76613992bdc46243db5dd5b5c02a074f9d3b6"
+      },
+      {
+        "name": "relay-audio.mjs",
+        "sha256": "df60c0e09a3a3ba2f84fb4897b8fd350dc00fa9d2f0e4ea775c20f7215ed6fc2"
+      },
+      {
+        "name": "ui-bundle.mjs",
+        "sha256": "69ed8d18da047c2584a70ddd10faa48b0a1733bb6e1913bb947960a780899336"
+      },
+      {
+        "name": "app.js",
+        "sha256": "61ab312ae78e6042be6f22e661d9b7af9bc53eb181d5597f71537f7b267447d5"
+      },
+      {
+        "name": "ios-shell-release.json",
+        "sha256": "fbc1aae45bbf31cc56ba20bd1ef9327643365b61a734754935165ee335507747"
+      }
+    ],
+    "allMatched": true,
+    "automaticCallPerformed": false
+  },
+  "homepageBrowserVerified": true,
+  "homepageScreenshot": "homepage-updates.png",
+  "clients": {
+    "web": {
+      "node": "web"
+    },
+    "ios": {
+      "node": "web",
+      "shellRevision": "f57abb139f39359b213214840dc96dc465bd99c9b52f263e41e48f9cb9a929fa",
+      "minimumBridge": 1,
+      "maximumBridge": 1,
+      "acceptedBuild": 22,
+      "nativeSourceCommit": "2d8cd357b9aaaffee94c9e1076b0761115a2b01e"
+    },
+    "robot": {
+      "node": "devices",
+      "protocol": "xiaozhi-v1",
+      "firmwareUpdate": "separate-if-required"
+    },
+    "speaker": {
+      "node": "devices",
+      "protocol": "voice-device-v1",
+      "firmwareUpdate": "separate-if-required"
+    }
+  },
+  "runtimePhonePolicy": {
+    "searchAcknowledgment": "model",
+    "nativePlaybackPolicy": "assisted",
+    "nativeInterruptASR": true
+  },
+  "ios": {
+    "version": "1.0.0",
+    "existingInstalledBuild": 23,
+    "nativeSourceCommit": "2d8cd357b9aaaffee94c9e1076b0761115a2b01e",
+    "newInstallationPerformed": false,
+    "nativeFilesChangedByThisRelease": false,
+    "shellRevision": "f57abb139f39359b213214840dc96dc465bd99c9b52f263e41e48f9cb9a929fa",
+    "shellFilesVerified": 114,
+    "bridgeRange": [
+      1,
+      1
+    ],
+    "physicalCallAfterDeployment": "not_performed",
+    "installedBuildEvidence": "../../ios/versions.json"
+  },
+  "validation": {
+    "node": 736,
+    "speaker": 95,
+    "core": 34,
+    "fleet": 10,
+    "shellSourceParity": true,
+    "regression": "../../acceptance/search-natural-ack-20261023/release-regression.json"
+  },
+  "knownLimitations": [
+    "Synthetic paired identity checks: baseline 7/8, candidate 6/8; small samples do not establish statistical degradation or equivalence.",
+    "Candidate conversationally replied to TV in 1/2 trials versus baseline 0/2. Neither version completed the TV-interrupted fixture query.",
+    "Current-identity memory lookup still occurred in both versions.",
+    "Physical phone, acoustic AEC and production post-release calls were not revalidated."
+  ],
+  "releaseAuthorization": "Tianyi explicitly repeated 合入上线吧 after these limitations were disclosed.",
+  "rollback": {
+    "previousArtifactRetained": true,
+    "previousCommit": "8136b20af19ca6fc740260875bf243d79cf67fd3",
+    "phoneFeatureDisableEnvironment": "VOICE_SEARCH_ACK=off",
+    "procedure": "Use the same release-fleet controller with the retained prior artifact during idle admission hold; no Gateway restart."
+  }
+}
