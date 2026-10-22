@@ -1,7 +1,7 @@
 {
   "schema": "v-voice-search-release-gate-v1",
   "date": "2026-10-23",
-  "decision": "HOLD_NO_MERGE_NO_DEPLOY",
+  "decision": "USER_CONFIRMED_RELEASE_WITH_RECORDED_LIMITATIONS",
   "candidateSourceCommit": "9aad8c7712c103dd8ac46708bce55ee7cccc79ff",
   "productionBaselineCommit": "8136b20af19ca6fc740260875bf243d79cf67fd3",
   "protocol": {
@@ -224,5 +224,12 @@
     "fleet": 10,
     "iosShell": "passed"
   },
-  "billing": "Not measured; no further paid runs started after the fixed paired batch."
+  "billing": "Not measured; no further paid runs started after the fixed paired batch.",
+  "initialDecision": "HOLD_NO_MERGE_NO_DEPLOY",
+  "releaseAuthorization": {
+    "date": "2026-10-23",
+    "afterResultsDisclosed": true,
+    "instruction": "合入上线吧",
+    "testsUnchanged": true
+  }
 }
