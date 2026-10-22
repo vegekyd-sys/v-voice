@@ -1,4 +1,4 @@
-# H5 内嵌候选
+# H5 内嵌版
 
 ## 保存的原生版
 
@@ -47,3 +47,8 @@ App 页面直接运行已有 H5：原 `index.html` 页面 DOM、`styles.css`、`
 ## 后续 build 10 安装
 
 已整合 `b858899`／`2d769eb` 的接通与长回复提醒、明确呼叫文案和宽波形，签名源码 `3ffeb94`。build10已覆盖同一iPhone，设备读回bundleVersion10；原H5包hash保持一致。build9签名IPA／archive在本机 `ios/build/saved-h5-build9/`，需要时覆盖回退，不卸载。详细验包与接受边界见VALIDATION末尾和versions.json。
+
+
+## build 11 正式合入
+
+PR #56 已合入main，`68ebcc9` 检查通过后签名构建。build11新图标和首页里程碑日志已覆盖安装，原绑定保留；原生build8、H5build9和已获基本通话接受的build10签名包均保留。上文未合入／候选等描述属于当时记录，当前合入和安装事实以本段、versions.json及VALIDATION最新记录为准。在线网页服务未部署；网页更新自动同步另开独立任务，当前本地包仍需重新打包同步。
