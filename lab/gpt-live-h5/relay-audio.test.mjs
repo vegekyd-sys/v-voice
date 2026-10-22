@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {createRelayAudio,PcmPlaybackQueue,relayWorkletSource} from './relay-audio.mjs';
+import {createRelayAudio,PcmPlaybackQueue,relayWorkletSource,NativeSpeechPause} from './relay-audio.mjs';
 
 function queue(rate=48000,ms=120){return new PcmPlaybackQueue(rate,ms)}
 const pcm=(n,value=8192)=>new Int16Array(n).fill(value);
@@ -65,7 +65,7 @@ async function fixture(t,provider,deferReady=false,options={}){
  class Worklet{constructor(context,name,options){this.name=name;this.processor=new(classes.get(name))(options);this.port={postMessage:(e,transfer=[])=>this.processor.port.onmessage?.({data:structuredClone(e,{transfer})}),close(){}};this.processor.toHost=e=>this.port.onmessage?.({data:e});nodes.push(this)}connect(){}disconnect(){this.disconnected=true}}
  Object.assign(globalThis,{WebSocket:Socket,location:{href:'https://voice.test/voice/'},AudioWorkletNode:Worklet});
  const ctx={state:'running',resumeCalls:0,async resume(){this.resumeCalls++;if(options.resume)await options.resume(this);},currentTime:0,destination:{},audioWorklet:{addModule:async url=>vm.runInContext(await(await fetch(url)).text(),realm)},addEventListener:(name,cb)=>listeners.set(name,cb),removeEventListener:name=>listeners.delete(name),createMediaStreamSource:()=>({connect(){},disconnect(){}}),createGain:()=>({gain:{value:1},connect(){},disconnect(){}})};
- const relay=createRelayAudio({context:ctx,stream:{},reservation:{voiceSessionId:'fixture',relayTicket:'fixture',provider},onEvent:e=>events.push(e),onError:e=>errors.push(e.message),onClosed(){},...options});
+ const relay=createRelayAudio({context:ctx,stream:{},onEvent:e=>events.push(e),onError:e=>errors.push(e.message),onClosed(){},...options,reservation:{voiceSessionId:'fixture',relayTicket:'fixture',provider,...options.reservation}});
  const event=e=>socket.onmessage({data:JSON.stringify({voiceSessionId:'fixture',...e})});const started=relay.start();if(!deferReady){event({type:'ready'});await started;}
  t.after(()=>{relay.dispose();Object.assign(globalThis,old)});
  const speaker=nodes.find(n=>n.name==='v-direct-speaker');const pump=n=>{const output=[];for(let i=0;i<n;i+=128){realm.currentTime=ctx.currentTime;const block=new Float32Array(128);speaker.processor.process([],[[block]]);output.push(...block);ctx.currentTime+=128/48000;}return output;};
@@ -194,4 +194,114 @@ test('input diagnostics distinguish active frames, muted tracks and absent workl
  f.relay.dispose();const stats=f.sent.filter(x=>typeof x==='string').map(x=>JSON.parse(x)).find(x=>x.type==='playback.stats');
  assert.equal(stats.inputFrames,2);assert.equal(stats.inputActiveFrames,1);assert.equal(stats.inputBytes,1920);assert.equal(stats.contextState,'running');
  assert.equal('audio' in stats,false);assert.equal('samples' in stats,false);
+});
+
+const voiceFrame=()=>Int16Array.from({length:480},(_,i)=>Math.round(6000*Math.sin(2*Math.PI*220*i/24000))).buffer;
+test('native speech courtesy pauses within 140ms without deleting unconsumed samples',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true}});
+ f.event({type:'audio',responseId:'old',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(24000,8192).buffer).toString('base64')});
+ const mic=f.nodes.find(n=>n.name==='v-direct-mic');
+ for(let i=0;i<7;i++)mic.port.onmessage({data:voiceFrame()});
+ assert.equal(f.relay.stats.nativePauses,1);const before=f.speaker.processor.queue.frames;
+ assert(f.pump(4800).every(x=>x===0));assert.equal(f.speaker.processor.queue.frames,before);
+ assert.equal(f.relay.stats.clears,0);assert(!f.sent.some(x=>typeof x==='string'&&JSON.parse(x).type==='barge-in'));
+ f.event({type:'input.speech.started'});f.event({type:'input.speech.stopped'});
+ f.event({type:'audio',responseId:'next',sequence:2,sampleRate:24000,audio:Buffer.from(pcm(2400,-8192).buffer).toString('base64')});
+ f.event({type:'audio',responseId:'old',sequence:3,sampleRate:24000,audio:Buffer.from(pcm(2400,8192).buffer).toString('base64')});
+ f.event({type:'audio.done'});const played=f.pump(24000).filter(x=>x!==0);
+ assert(played.length>0);assert(played.every(x=>x===-.25),'only the new answer may play');assert.equal(f.relay.stats.clears,1);
+ assert.equal(f.relay.stats.queuedOutputBytes,0);assert.deepEqual(f.errors,[]);
+});
+test('short clicks and broadband noise never acquire a native speech pause',()=>{
+ const p=new NativeSpeechPause();
+ for(let i=0;i<5;i++)assert.equal(p.observe(voiceFrame(),true,i*20),false);
+ assert.equal(p.observe(new Int16Array(480).buffer,true,100),false);
+ let seed=1234567;const noise=()=>Int16Array.from({length:480},()=>{seed=(Math.imul(seed,1664525)+1013904223)|0;return (seed>>16)*.4}).buffer;
+ for(let i=0;i<100;i++)assert.equal(p.observe(noise(),true,120+i*20),false);
+});
+test('an unconfirmed pause is bounded and resumes the retained response; native endpoint owns its grace',()=>{
+ const p=new NativeSpeechPause();for(let i=0;i<7;i++)p.observe(voiceFrame(),true,i*20);
+ assert.equal(p.held,true);assert.equal(p.observe(new Int16Array(480).buffer,true,1920),false);
+ assert.equal(p.observe(voiceFrame(),true,1940),false,'an expired probe cannot immediately reacquire');
+ for(let i=0;i<20;i++)p.observe(new Int16Array(480).buffer,true,4160+i*20);
+ p.nativeStarted(4600);assert.equal(p.observe(new Int16Array(480).buffer,true,5000),true);
+ p.nativeStopped(5000);assert.equal(p.observe(new Int16Array(480).buffer,true,6799),true);
+ assert.equal(p.observe(new Int16Array(480).buffer,true,6800),false);
+ assert.equal(p.observe(voiceFrame(),false,7000),false);
+ p.reset();for(let i=0;i<607;i++)p.observe(voiceFrame(),true,i*20);
+ assert.equal(p.held,false,'a continuous unconfirmed signal cannot hold playback forever');
+});
+test('paused audio-thread output resumes at the exact sample rather than repeating or dropping a syllable',()=>{
+ const q=queue(24000,0);q.push(Int16Array.from([1,2,3,4,5]));q.end();
+ assert.equal(Math.round(render(q,1)[0]*32768),1);q.paused=true;
+ assert(render(q,5).every(x=>x===0));assert.equal(q.consumed,1);
+ q.paused=false;assert.deepEqual([...render(q,4)].map(x=>Math.round(x*32768)),[2,3,4,5]);assert.equal(q.underflows,0);
+});
+
+test('speech already underway before first output pauses before the jitter window can play an early reply',()=>{
+ const p=new NativeSpeechPause();for(let i=0;i<30;i++)assert.equal(p.observe(voiceFrame(),false,i*20),false);
+ assert.equal(p.observe(voiceFrame(),true,600),true,'ongoing speech is known on the first output frame');
+});
+
+test('an early reply arriving between syllables still yields before playing',()=>{
+ const p=new NativeSpeechPause();for(let i=0;i<20;i++)p.observe(voiceFrame(),false,i*20);
+ for(let i=0;i<9;i++)assert.equal(p.observe(new Int16Array(480).buffer,false,400+i*20),false);
+ assert.equal(p.observe(new Int16Array(480).buffer,true,580),true,'a 200ms syllable gap is not a completed caller turn');
+});
+
+test('unconfirmed speech gets a bounded handover; an ignored acknowledgment cannot wait for a whole generation',()=>{
+ const p=new NativeSpeechPause();for(let i=0;i<8;i++)p.observe(voiceFrame(),true,i*20,false);
+ assert.equal(p.observe(new Int16Array(480).buffer,true,2500,false),true);
+ assert.equal(p.observe(new Int16Array(480).buffer,true,2600,false),false);
+ p.generationDone(4000);assert.equal(p.observe(new Int16Array(480).buffer,true,4020,true),false,'a late terminal cannot revive a rejected pause');
+ p.nativeStarted(4050);p.nativeStopped(4800);assert.equal(p.observe(new Int16Array(480).buffer,true,6500,true),true);
+ assert.equal(p.observe(new Int16Array(480).buffer,true,6600,true),false);
+});
+
+test('a confirmed speech stop retires an already-generated response as well as its queued playback',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true}}),frame=value=>Buffer.from(pcm(2400,value).buffer).toString('base64');
+ f.event({type:'audio',responseId:'old',sequence:1,sampleRate:24000,audio:frame(8192)});f.event({type:'audio.done'});
+ f.event({type:'audio.clear',retiredResponseId:'old'});
+ f.event({type:'audio',responseId:'old',sequence:2,sampleRate:24000,audio:frame(8192)});
+ assert(f.pump(24000).every(x=>x===0),'a late old tail cannot reacquire playback');
+ f.event({type:'audio',responseId:'new',sequence:3,sampleRate:24000,audio:frame(-8192)});f.event({type:'audio.done'});
+ assert(f.pump(24000).filter(x=>x!==0).every(x=>x===-.25));
+});
+
+for(const nativePlaybackPolicy of ['provider'])test(nativePlaybackPolicy+' turns keep background speech onset from muting the live answer',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true,nativePlaybackPolicy}});
+ f.event({type:'audio',responseId:'story',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(24000,8192).buffer).toString('base64')});
+ const mic=f.nodes.find(n=>n.name==='v-direct-mic');for(let i=0;i<25;i++)mic.port.onmessage({data:voiceFrame()});
+ f.event({type:'input.speech.started'});f.event({type:'input.speech.stopped'});
+ assert.equal(f.relay.stats.nativePauses,0);assert.equal(f.relay.stats.clears,0);
+ assert(f.pump(9600).some(x=>x===.25));assert.equal(f.relay.stats.inputBytes,25*960);
+ assert(!f.sent.some(x=>typeof x==='string'&&JSON.parse(x).type==='barge-in'));
+});
+
+for(const nativePlaybackPolicy of ['provider','assisted'])test(nativePlaybackPolicy+' replacement retires the old tail even when local VAD never paused it',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true,nativePlaybackPolicy}}),frame=value=>Buffer.from(pcm(2400,value).buffer).toString('base64');
+ f.event({type:'audio',responseId:'old',sequence:1,sampleRate:24000,audio:frame(8192)});
+ f.event({type:'audio',responseId:'new',sequence:2,sampleRate:24000,audio:frame(-8192)});
+ f.event({type:'audio',responseId:'old',sequence:3,sampleRate:24000,audio:frame(8192)});f.event({type:'audio.done'});
+ const played=f.pump(24000).filter(x=>x!==0);assert(played.length>0);assert(played.every(x=>x===-.25));assert.equal(f.relay.stats.clears,1);
+});
+
+test('assisted pause rejects low TV bursts and native onset alone, but yields for sustained foreground speech',()=>{
+ const p=new NativeSpeechPause({minRms:.035,consecutiveOnset:true,trustNativeOnset:false});
+ const quiet=new Int16Array(480).buffer,background=()=>{const a=new Int16Array(voiceFrame());for(let i=0;i<a.length;i++)a[i]*=.2;return a.buffer;};
+ p.nativeStarted(0);assert.equal(p.held,false);
+ for(let i=0;i<100;i++)assert.equal(p.observe(i%6===5?quiet:background(),true,i*20),false);
+ for(let i=0;i<7;i++)p.observe(voiceFrame(),true,2000+i*20);assert.equal(p.held,true);
+ p.ignored();assert.equal(p.observe(voiceFrame(),true,2160),false);
+ for(let i=0;i<20;i++)p.observe(quiet,true,2200+i*20);
+ for(let i=0;i<7;i++)p.observe(voiceFrame(),true,2600+i*20);assert.equal(p.held,true);
+});
+test('assisted ignored-turn release is scoped to the preserved response',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true,nativePlaybackPolicy:'assisted'}});
+ f.event({type:'audio',responseId:'story',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(24000,8192).buffer).toString('base64')});
+ const mic=f.nodes.find(n=>n.name==='v-direct-mic');for(let i=0;i<8;i++)mic.port.onmessage({data:voiceFrame()});
+ assert.equal(f.relay.stats.nativePauses,1);
+ f.event({type:'input.speech.ignored',preservedResponseId:'stale'});assert.equal(f.relay.stats.nativeResumes,0);
+ f.event({type:'input.speech.ignored',preservedResponseId:'story'});assert.equal(f.relay.stats.nativeResumes,1);
+ assert(f.pump(9600).some(x=>x===.25));assert.equal(f.relay.stats.clears,0);
 });

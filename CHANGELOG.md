@@ -1,3 +1,22 @@
+## Unreleased — SeedDuplex full-duplex phone candidate · 2026-10-22
+
+## 2026-10-22 — Native duplex release and iOS build 16
+
+- Promote the human-reviewed native SeedDuplex candidate: reversible listening pause, response-owned playback replacement, per-call name-binding instructions and accepted-hangup fallback.
+- Advertise the preferred phone input policy; capable web/iOS clients explicitly opt in. Legacy clients retain Speaker routing until upgraded.
+- Add iOS native reversible AVAudioPlayerNode pause without stopping microphone capture, response retirement and matching ignored-speech recovery. Preserve build 15 report/Live Activity and web-delivered H5 behavior.
+- Continuous television and bystander audio can still cause long pauses or unwanted model replies; synthetic tests do not replace physical iPhone acoustic acceptance.
+
+
+- Native Candidate: after successful end_call, request a native TTS farewell if no audio follows; wait for matching real playback, cancel ending on a continued question, and bound an unavailable farewell instead of waiting forever.
+- 原生全双工 Candidate 完成 9 通合成音频整链复测：正常插话可快速停声，但背景误暂停、持续电视抢答、小声迟缓和姓名互换串信息仍未通过验收；未上线。
+
+- Compare provider-owned playback without local pauses against assisted native playback with reversible foreground yielding. Keep a single continuous model session and retire superseded response audio without resetting speaker context. Pure provider playback remains a diagnostic option; measured interruption latency is not accepted yet.
+- Tighten the existing opt-in control ASR: partial standalone stop words cannot cancel playback; explicit V-addressed or speech-targeted controls can act early. Final standalone controls settle briefly and are revoked by continuing dialogue, a changed response owner, disconnect or call closure. No new Speaker/Decision chain or account authority.
+- Clarify per-call voice/name/fact binding, corrections and other-person addressees in the native phone instructions. Real interference and binding acceptance is tracked separately; no blanket success claim.
+- Opt-in native continuous phone audio with `VOICE_PHONE_INPUT_POLICY=native`; keep the current multi-speaker path as the default configuration and explicit comparison mode. Gateway, Worker and tool/account permissions are unchanged.
+- Yield browser playback reversibly on sustained speech, retain the exact unplayed queue for noise/acknowledgments, and retire old response IDs when the native replacement arrives. Track speech before the first output and across syllable gaps; bound acknowledgment pauses and recognize explicit stop commands with an opt-in independent streaming ASR while native recognition is behind generation. Keep background work running and discard late audio from the stopped response.
+- Verify real SeedDuplex and actual Chromium/WebKit audio output with synthetic input; physical microphone/echo, real-room interference and human acceptance remain pending. Candidate homepage notes and version/evidence are registered under `docs/releases/seeduplex-duplex-candidate-20261022/`. No main merge or production release.
 ## 2026-10-22 — iOS build 15 background report island
 
 - Present new background reports as the conversation island with a full-text link. Wait for the actual background scene instead of consuming the alert during the inactive transition; treat changed report content as a new delivery after a manual fold.

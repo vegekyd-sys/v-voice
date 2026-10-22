@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 import {
   Pcm24To16Resampler,
+  nativeListeningAside,
   SeeduplexRealtimeVoiceBridge,
   SEEDUPLEX_MODEL,
   SEEDUPLEX_RESOURCE_ID,
@@ -689,4 +690,62 @@ test('host task narration is captioned with its own source, only once its audio 
  socket.message({type:'response.output_audio.started',response_id:'stage',tts_type:'chat_tts_text'});
  socket.message({type:'response.output_audio.delta',response_id:'stage',delta:floatAudio([.1])});
  assert.deepEqual(texts,[['assistant','后台正在读网页。',true,'task-progress']]);bridge.close();
+});
+
+test('native full-duplex recognition can yield reversibly without cancelling an answer or backend work',async()=>{
+ const socket=new FakeSocket(),speech=[],clears=[],audio=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture-key'},nativeDuplex:true,
+  onInputSpeech:active=>speech.push(active),onClearAudio:reason=>clears.push(reason),onAudio:bytes=>audio.push(bytes),onError:error=>assert.fail(error.message)},
+  {createWebSocket:async()=>socket});
+ const ready=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await ready;
+ socket.message({type:'response.output_audio.started',response_id:'old',tts_type:'default'});
+ socket.message({type:'conversation.item.input_audio_transcription.started'});
+ assert.deepEqual(speech,[true]);assert.deepEqual(clears,[]);assert(!socket.sent.some(e=>e.type==='response.cancel'));
+ socket.message({type:'conversation.item.input_audio_transcription.completed',text:'嗯。'});
+ socket.message({type:'response.output_audio.delta',response_id:'old',delta:floatAudio([.5])});
+ assert.equal(audio.length,1,'the paused answer is retained when there is no replacement answer');assert.deepEqual(speech,[true,false]);
+ socket.message({type:'conversation.item.input_audio_transcription.started'});
+ socket.message({type:'conversation.item.input_audio_transcription.failed'});assert.deepEqual(speech,[true,false,true,false]);
+ socket.message({type:'response.canceled',response_id:'old'});assert.deepEqual(clears,['barge-in'],'a real upstream cancel still clears playback');
+ bridge.close();
+});
+
+async function listeningAsideFixture(nativeDuplex=true){
+ const socket=new FakeSocket(),audio=[],texts=[],events=[],clears=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},nativeDuplex,
+  onAudio:(b,m)=>audio.push({b,m}),onTranscript:(...t)=>texts.push(t),onClearAudio:()=>clears.push(true),onEvent:e=>events.push(e),onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+ return {socket,bridge,audio,texts,events,clears};
+}
+test('a native listening aside is not spoken and cannot displace the ongoing story or its response owner',async t=>{
+ const f=await listeningAsideFixture();t.after(()=>f.bridge.close());const e=x=>f.socket.message(x);
+ e({type:'response.output_audio.started',response_id:'story'});e({type:'response.output_audio.delta',response_id:'story',delta:floatAudio([.25])});
+ e({type:'response.output_text.delta',response_id:'aside',delta:'（安静等候，'});
+ e({type:'response.output_audio.started',response_id:'aside'});e({type:'response.output_audio.delta',response_id:'aside',delta:floatAudio([.9])});
+ assert.equal(f.audio.length,1,'uncertain parenthesized PCM waits for disposition');
+ e({type:'response.output_text.done',response_id:'aside',text:'（安静等候，不插话、不回应背景广播）'});
+ e({type:'response.output_audio.delta',response_id:'aside',delta:floatAudio([.9])});
+ e({type:'response.output_audio.delta',response_id:'story',delta:floatAudio([.2])});
+ assert.deepEqual(f.audio.map(a=>a.m.responseId),['story','story']);assert.equal(f.bridge.audioResponseId,'story');assert.equal(f.texts.length,0);assert.equal(f.clears.length,0);
+ assert(f.events.some(e=>e.type==='native.listening-aside'));
+ e({type:'conversation.item.input_audio_transcription.completed',text:'现在说话的是谁？'});
+ e({type:'response.output_text.done',response_id:'next',text:'小周'});e({type:'response.output_audio.started',response_id:'next'});e({type:'response.output_audio.delta',response_id:'next',delta:floatAudio([.4])});
+ assert.equal(f.audio.at(-1).m.responseId,'next');assert(f.texts.some(t=>t[1]==='小周'));assert.equal(f.socket.sent.filter(e=>e.type==='session.create').length,1);
+});
+for(const text of ['（2+3）等于5。','（轻声）答案是五。','（安静的森林里有一只小鸟。）'])test('ordinary parenthesized content remains audible: '+text,async t=>{
+ const f=await listeningAsideFixture();t.after(()=>f.bridge.close());f.socket.message({type:'response.output_text.delta',response_id:'normal',delta:text.slice(0,3)});
+ f.socket.message({type:'response.output_audio.started',response_id:'normal'});f.socket.message({type:'response.output_audio.delta',response_id:'normal',delta:floatAudio([.25])});
+ f.socket.message({type:'response.output_text.done',response_id:'normal',text});assert.equal(f.audio.length,1);assert(f.texts.some(t=>t[1]===text&&t[2]));
+});
+test('a requested verbatim aside and a non-native route are not treated as background decisions',async t=>{
+ for(const native of [true,false]){
+  const f=await listeningAsideFixture(native);t.after(()=>f.bridge.close());f.socket.message({type:'conversation.item.input_audio_transcription.completed',text:'请逐字朗读括号里的安静等候。'});
+  f.socket.message({type:'response.output_text.done',response_id:'read',text:'（安静等候，不插话）'});f.socket.message({type:'response.output_audio.started',response_id:'read'});f.socket.message({type:'response.output_audio.delta',response_id:'read',delta:floatAudio([.25])});
+  assert.equal(f.audio.length,1);assert(!f.events.some(e=>e.type==='native.listening-aside'));
+ }
+});
+
+test('listening aside variants are bounded to an entire quiet disposition',()=>{
+ for(const value of ['（安静等着，不插话，等需要回应时再开口）','（安静等待）'])assert.equal(nativeListeningAside(value),true);
+ for(const value of ['我先不说话','听起来像电视里的播报声呀','（安静等着）答案是五'])assert.equal(nativeListeningAside(value),false);
 });

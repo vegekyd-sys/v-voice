@@ -15,7 +15,7 @@ async function fixture(t, overrides = {}) {
   } };
   if (overrides.gatewayReady !== undefined) gateway.ready = overrides.gatewayReady;
   const offers = [];
-  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice,callControlEvaluate:overrides.callControlEvaluate });
+  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate });
   await new Promise((resolve) => bridge.server.listen(0, "127.0.0.1", resolve));
   t.after(() => bridge.dispose());
   const url = `http://127.0.0.1:${bridge.server.address().port}`;
@@ -40,6 +40,22 @@ test("exact native model reservation and SDP proxy keep credentials off the brow
 test("preview never creates a paid session and returns an explicit preview error", async (t) => {
   const f = await fixture(t, { preview: true });
   assert.equal((await f.request("session")).status, 503); assert.equal(f.calls.length, 0);
+});
+
+test('native preference is advertised while legacy clients retain speaker and capable clients opt in', async t => {
+  const reservations=[];
+  const directVoice={models:()=>[],reserve:async params=>{reservations.push(params);return {voiceSessionId:'native-phone',provider:params.model};},close:async()=>{},dispose:async()=>{}};
+  const speakerRouting={snapshot:()=>({}),close(){},dispose(){}};
+  const f=await fixture(t,{directVoice,speakerRouting,phoneInputPolicy:'native'});
+  const status=await (await fetch(`${f.url}/api/status`,{headers:{cookie:f.cookie}})).json();
+  assert.equal(status.phoneInputPolicy,'native');
+  for(const params of [{model:'seeduplex'},{model:'seeduplex',inputPolicy:'native'},{model:'seeduplex',inputPolicy:'speaker'},{model:'grok'}]){
+    assert.equal((await f.request('session',params)).status,200);
+    assert.equal((await f.request('close',{voiceSessionId:'native-phone'})).status,200);
+  }
+  assert.deepEqual(reservations.map(p=>p.inputPolicy),['speaker','native','speaker','speaker']);
+  assert(reservations.every(p=>p.sessionKey===GPT_LIVE_PERSONAL_SESSION_KEY));
+  assert.equal((await f.request('session',{model:'seeduplex',inputPolicy:'untrusted'})).status,400);
 });
 
 test("page cookie, origin and voice ownership guard experiment requests", async (t) => {

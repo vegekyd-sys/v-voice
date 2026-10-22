@@ -73,6 +73,7 @@ private final class CaptureHandoff: @unchecked Sendable {
     private var started = false
     private var outputFinished = false
     private var startingOutput = false
+    private(set) var playbackPaused = false
     private var ownsSessionActivation = false
     var onInput: ((Data, Double) -> Void)?
     var onPlayback: ((Bool) -> Void)?
@@ -182,8 +183,15 @@ private final class CaptureHandoff: @unchecked Sendable {
         if ledger.queuedFrames >= 2880 { startPlayback() }
     }
     private func startPlayback() {
-        guard !startingOutput, ledger.queuedFrames > 0 else { return }
+        guard !playbackPaused, !startingOutput, ledger.queuedFrames > 0 else { return }
         startingOutput = true; player?.play(); onPlayback?(true)
+    }
+    /// Pause the render cursor without removing scheduled buffers or stopping capture.
+    func setPlaybackPaused(_ paused: Bool) {
+        guard playbackPaused != paused else { return }; playbackPaused = paused
+        if paused { player?.pause(); onPlayback?(false) }
+        else if startingOutput, ledger.queuedFrames > 0 { player?.play(); onPlayback?(true) }
+        else if ledger.queuedFrames >= 2880 || outputFinished { startPlayback() }
     }
     /// A finite, quiet connection cue after upstream and actual microphone I/O are ready.
     /// Capture remains live; this never substitutes for background execution.
@@ -210,7 +218,7 @@ private final class CaptureHandoff: @unchecked Sendable {
     }
     func clear() {
         outputEnvelope.reset()
-        ledger.clear(); player?.stop(); startingOutput = false; outputFinished = false; onPlayback?(false)
+        ledger.clear(); playbackPaused = false; player?.stop(); startingOutput = false; outputFinished = false; onPlayback?(false)
     }
     func beginStream() {
         clear(); ledger.beginStream()

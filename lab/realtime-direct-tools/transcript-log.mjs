@@ -54,7 +54,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     // Causal metadata only: never persist tool arguments, results, PCM or raw
     // provider frames. A received utterance without a reply must be diagnosable.
     if(['tool.call','tool.delivered','backend.start-requested','backend.started','backend.completed','backend.child-run','backend.control','backend.cancel-observed','backend.cancel-unconfirmed','backend.read-retry','backend.result-held','backend.result-context','backend.result-notice','backend.result-spoken-late','backend.result-answered','backend.result-superseded','backend.result-unspoken','response.done','provider.event','audio.clear'].includes(event.type)){
-      if(event.type==='provider.event'&&!['conversation.item.input_audio_transcription.started','response.created','response.output_audio.started','response.canceled','input_audio_buffer.speech_started','input_audio_buffer.speech_stopped','client.response.cancel','client.response.cancel.rejected','conversation.item.input_audio_transcription.completed'].includes(event.providerEventType))return false;
+      if(event.type==='provider.event'&&!['conversation.item.input_audio_transcription.started','response.created','response.output_audio.started','response.canceled','input_audio_buffer.speech_started','input_audio_buffer.speech_stopped','client.response.cancel','client.response.cancel.rejected','native.listening-aside','conversation.item.input_audio_transcription.completed'].includes(event.providerEventType))return false;
       if(event.type==='tool.call'&&(typeof event.name!=='string'||typeof event.callId!=='string'))return false;
       const safe={};
       for(const key of ['callId','runId','taskId','responseId','providerEventType','name','mode','status','childRunId'])if(typeof event[key]==='string')safe[key]=event[key].slice(0,160);
@@ -77,9 +77,17 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
         safe.streams=Object.fromEntries(Object.entries(event.streams).filter(([k,v])=>/^[a-z_]{1,24}(?:\/[a-z_]{1,24}){0,2}$/.test(k)&&Number.isSafeInteger(v)).slice(0,24));
       return enqueue({...owner,type:event.type,...safe});
     }
+    if(event.type==='call.ending'){
+      if(!['farewell-requested','farewell-unavailable'].includes(event.stage))return false;
+      return enqueue({...owner,type:event.type,stage:event.stage});
+    }
+    if(event.type==='speech.control'){
+      if(!['ready','reconnecting','interrupted'].includes(event.stage))return false;
+      return enqueue({...owner,type:event.type,stage:event.stage});
+    }
     if(event.type==='client.playback-stats'){
       const stats={};
-      for(const key of ['inputBytes','outputBytes','queuedOutputBytes','clears','underflows','maxReceiveGapMs','contextSampleRate','inputBufferedBytes','peakInputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0)stats[key]=event.stats[key];
+      for(const key of ['inputBytes','outputBytes','queuedOutputBytes','clears','underflows','maxReceiveGapMs','contextSampleRate','inputBufferedBytes','peakInputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','nativePauses','nativeResumes'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0)stats[key]=event.stats[key];
       for(const key of ['trackMuted','trackEnabled','trackLive','pageHidden'])if(typeof event.stats?.[key]==='boolean')stats[key]=event.stats[key];
       if(['running','suspended','interrupted','closed'].includes(event.stats?.contextState))stats.contextState=event.stats.contextState;
       return enqueue({...owner,type:event.type,stats});

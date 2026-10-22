@@ -21,7 +21,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice});
+ const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -803,4 +803,96 @@ test("the backend's own line also waits until the caller has been quiet a while"
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'顺便问一句'});f.progressBackend('第一条发现。');
  await delay(250);assert.equal(spoken().includes('第一条发现。'),false);
  assert(await until(()=>spoken().includes('第一条发现。')));
+});
+
+test('verified speech control stops the native generation while leaving its admitted backend task running',async t=>{
+ let control,closed=false,frames=0;
+ const f=await fixture(undefined,'seeduplex',{nativeInterrupt:callbacks=>{control=callbacks;return {connect:async()=>{},append:()=>frames++,close(){closed=true;}};}});t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'admitted-task',name:'delegate_to_v',arguments:JSON.stringify({question:'安全的候选任务'})}]});
+ for(let i=0;i<100&&f.service.backgroundTaskCount()!==1;i++)await delay(5);
+ assert.equal(f.service.backgroundTaskCount(),1);
+ f.event({type:'response.output_audio.started',response_id:'speaking-old',tts_type:'default'});
+ f.client.emit('message',Buffer.alloc(960),true);assert.equal(frames,1);assert(f.upstream.sent.some(e=>e.type==='input_audio_buffer.append'),'main audio remains continuous');
+ assert(control.isSpeaking());control.onInterrupt();
+ assert(f.upstream.sent.some(e=>e.type==='response.cancel'));assert(f.client.sent.some(e=>e.type==='audio.clear'));
+ assert.equal(f.service.backgroundTaskCount(),1);assert(!f.invocations.some(x=>x?.action==='kill'));
+ await f.service.close(f.reservation.voiceSessionId);assert(closed);
+});
+
+test('provider-owned playback never starts the auxiliary keyword ASR and keeps native microphone input continuous',async t=>{
+ let controls=0;
+ const f=await fixture(undefined,'seeduplex',{nativePlaybackPolicy:'provider',nativeInterrupt:()=>{controls++;throw Error('Auxiliary ASR must remain off');}});t.after(()=>f.service.dispose());
+ assert.equal(f.reservation.nativePlaybackPolicy,'provider');assert.equal(controls,0);
+ f.client.emit('message',Buffer.alloc(960),true);await delay(25);
+ assert(f.upstream.sent.some(e=>e.type==='input_audio_buffer.append'));
+ assert.equal(f.client.readyState,1);assert.equal(f.invocations.length,0);
+});
+
+test('assisted native playback reuses one existing control stream and does not gate native audio',async t=>{
+ let controls=0,frames=0,closed=0;
+ const f=await fixture(undefined,'seeduplex',{nativePlaybackPolicy:'assisted',nativeInterrupt:()=>{controls++;return {async connect(){},append(){frames++;},close(){closed++;}};}});
+ assert.equal(controls,1);assert.equal(f.reservation.nativePlaybackPolicy,'assisted');
+ f.client.emit('message',Buffer.alloc(960),true);assert.equal(frames,1);assert(f.upstream.sent.some(e=>e.type==='input_audio_buffer.append'));
+ await f.service.close(f.reservation.voiceSessionId);assert.equal(closed,1);await f.service.dispose();
+});
+
+const nativeEnd=async(f,id='native-end')=>{
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name:'end_call',arguments:'{}'}]});
+ assert(await until(()=>f.client.sent.some(e=>e.type==='end.accepted'&&e.callId===id)));
+};
+const nativeFarewellAudio=(f,id='native-farewell')=>{
+ f.event({type:'response.output_audio.started',response_id:id,tts_type:'chat_tts_text'});
+ f.event({type:'response.output_audio.delta',response_id:id,delta:Buffer.from(new Float32Array(240).fill(.2).buffer).toString('base64')});
+ f.event({type:'response.output_audio.done',response_id:id});
+};
+const fallbackCommits=f=>f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit'&&e.text==='好，拜拜，下次聊。');
+const farewellTiming={nativeFarewellDelayMs:40,nativeFarewellTimeoutMs:150};
+test('native end after repeated tools recovers missing farewell, rejects an old tail and waits for its actual playback',async t=>{
+ const f=await fixture(undefined,'seeduplex',farewellTiming);t.after(()=>f.service.dispose());
+ for(let i=0;i<6;i++){
+  f.event({type:'response.function_call_arguments.done',items:[{call_id:'time-'+i,name:'current_time',arguments:'{}'}]});
+  assert(await until(()=>f.client.sent.some(e=>e.type==='tool.result'&&e.callId==='time-'+i)));
+ }
+ nativeFarewellAudio(f,'old');await nativeEnd(f);
+ f.event({type:'response.output_audio.delta',response_id:'old',delta:Buffer.from(new Float32Array(240).buffer).toString('base64')});
+ f.event({type:'response.done',response_id:'old'});
+ assert(!f.client.sent.some(e=>e.type==='end.after-playback'));
+ assert(await until(()=>fallbackCommits(f).length===1));assert.equal(f.client.readyState,1);
+ assert(!f.client.sent.some(e=>e.type==='transcript'&&e.source==='call-farewell'),'no caption claiming unreceived speech');
+ nativeFarewellAudio(f);assert(f.client.sent.some(e=>e.type==='end.after-playback'));
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:'wrong'})),false);assert.equal(f.client.readyState,1);
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:'native-end'})),false);
+ assert(await until(()=>f.client.readyState===3));assert.equal(fallbackCommits(f).length,1);
+});
+test('native farewell arriving normally suppresses the fallback rather than speaking twice',async t=>{
+ const f=await fixture(undefined,'seeduplex',farewellTiming);t.after(()=>f.service.dispose());await nativeEnd(f);
+ nativeFarewellAudio(f);await delay(80);assert.equal(fallbackCommits(f).length,0);assert.equal(f.client.readyState,1);
+});
+for(const mode of ['user-final','text','closed'])test('native farewell timer cannot survive '+mode,async t=>{
+ const f=await fixture(undefined,'seeduplex',farewellTiming);t.after(()=>f.service.dispose());await nativeEnd(f);
+ if(mode==='user-final')f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'等等，我还有个问题。'});
+ else if(mode==='text')f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'我还要继续聊'})),false);
+ else await f.service.close(f.reservation.voiceSessionId);
+ await delay(90);assert.equal(fallbackCommits(f).length,0);if(mode!=='closed')assert.equal(f.client.readyState,1);
+});
+test('native ending yields to speech in progress and cancels when the new question finishes',async t=>{
+ const f=await fixture(undefined,'seeduplex',farewellTiming);t.after(()=>f.service.dispose());await nativeEnd(f);
+ f.event({type:'conversation.item.input_audio_transcription.started'});await delay(80);assert.equal(fallbackCommits(f).length,0);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'对了，我还没问完。'});await delay(300);
+ assert.equal(fallbackCommits(f).length,0);assert.equal(f.client.readyState,1);
+});
+test('an accepted native hangup cannot wait forever if even explicit farewell TTS returns no audio',async t=>{
+ const f=await fixture(undefined,'seeduplex',{nativeFarewellDelayMs:10,nativeFarewellTimeoutMs:30});t.after(()=>f.service.dispose());
+ await nativeEnd(f);assert(await until(()=>f.client.readyState===3));assert.equal(fallbackCommits(f).length,1);
+ assert(f.audit.some(e=>e.type==='call.ending'&&e.stage==='farewell-unavailable'));
+ assert(!f.client.sent.some(e=>e.type==='end.after-playback'),'never claim unplayed farewell audio was played');
+});
+
+test('fallback hangup leaves an already admitted backend task running',async t=>{
+ const f=await fixture(undefined,'seeduplex',farewellTiming);t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'admitted-work',name:'delegate_to_v',arguments:JSON.stringify({question:'后台整理这批测试资料'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ await nativeEnd(f);assert(await until(()=>fallbackCommits(f).length===1));nativeFarewellAudio(f);
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:'native-end'})),false);
+ assert(await until(()=>f.client.readyState===3));assert.equal(f.service.backgroundTaskCount(),1);
 });

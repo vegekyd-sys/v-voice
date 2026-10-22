@@ -1,0 +1,3057 @@
+{
+  "schema": "voice-three-tier-comparison-aggregate-v1",
+  "date": "2026-10-22",
+  "model": "1.2.6.1",
+  "syntheticOnly": true,
+  "physicalMicrophone": false,
+  "physicalPlayback": false,
+  "voices": {
+    "low": "zh_male_gaolengchenwen_uranus_bigtts",
+    "child": "zh_female_xiaoxue_uranus_bigtts",
+    "adult": "zh_male_dayi_uranus_bigtts",
+    "vv": "zh_female_vv_uranus_bigtts",
+    "clear": "zh_female_qingxinnvsheng_uranus_bigtts",
+    "tv": "zh_male_liufei_uranus_bigtts"
+  },
+  "pairs": {
+    "obvious": [
+      "low",
+      "child"
+    ],
+    "daily": [
+      "adult",
+      "vv"
+    ],
+    "near": [
+      "vv",
+      "clear"
+    ]
+  },
+  "calibration": {
+    "pairs": {
+      "obvious": {
+        "voices": [
+          "low",
+          "child"
+        ],
+        "cosineMean": 0.4197593731056859,
+        "cosineRange": [
+          0.4124238059134542,
+          0.4354232296005668
+        ]
+      },
+      "daily": {
+        "voices": [
+          "adult",
+          "vv"
+        ],
+        "cosineMean": 0.28144145010274585,
+        "cosineRange": [
+          0.2534144690823335,
+          0.3033735999406098
+        ]
+      },
+      "near": {
+        "voices": [
+          "vv",
+          "clear"
+        ],
+        "cosineMean": 0.7273973056164769,
+        "cosineRange": [
+          0.7155165352186755,
+          0.7406791032859872
+        ]
+      }
+    },
+    "withinVoice": {
+      "low": 0.9314970421666109,
+      "child": 0.8883805500022112,
+      "adult": 0.9217177039673168,
+      "vv": 0.7931340601669479,
+      "clear": 0.9258705701775147
+    }
+  },
+  "tts": {
+    "resource": "seed-tts-2.0",
+    "requests": 38,
+    "characters": 1176,
+    "reportedTextWords": 1176
+  },
+  "scoring": {
+    "probesPerCase": {
+      "identity": 4,
+      "preference": 2,
+      "natural": 2
+    },
+    "namesNormalized": [
+      "小琳/小霖 → 小林",
+      "小舟 → 小周"
+    ],
+    "ownership": "provider question id if present on ASR; otherwise latest completed ASR on same connection within 8 seconds",
+    "requiresDeliveredAudio": true,
+    "temporalFallbackCountsAsPass": false,
+    "errorsAndEnrollmentFailuresRetained": true
+  },
+  "cases": [
+    {
+      "id": "daily-clean-swapped",
+      "tier": "daily",
+      "environment": "clean",
+      "complete": true,
+      "identicalInputs": true,
+      "feed": {
+        "durationMs": 144392.88934300002,
+        "maxFrameGapMs": 29.832259000000704,
+        "bytes": 4584960
+      },
+      "provenance": {
+        "studySha256": "2ae7f1f863157a58325ceec334bd62d376358b1e505c57fa177ed7092d6af50f",
+        "runnerSha256": "c99a02f0be6b99ed84016365cbafbf411845f62ce18f5dfa59851bc110522e45",
+        "speakerModuleSha256": "2b8aa0c8c0e1fe9144124ef189a5fb165ffacb4dafa989dae0ace6f9c0477246",
+        "nativeBridgeSha256": "94b98eaf6fbba93f78a7eb1c16a802e151ede9ff8573743cdd56b9452282db87",
+        "speakerDecisionModel": "openai/gpt-6-luna-decisions",
+        "lookahead": true,
+        "nativeInterruptionAsr": false,
+        "gateway": "denying-stub"
+      },
+      "inputSha256": "620a2e4e315151d835ee343b799cae9e5e2520df8ccea8583e099ddba9de8fc8",
+      "snrDb": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "engines": {
+        "native": {
+          "metrics": {
+            "identity": {
+              "correct": 2,
+              "trials": 4,
+              "missing": 0
+            },
+            "preference": {
+              "correct": 2,
+              "trials": 2,
+              "missing": 0
+            },
+            "natural": {
+              "correct": 2,
+              "trials": 2,
+              "missing": 0
+            }
+          },
+          "correct": 6,
+          "trials": 8,
+          "late": 0,
+          "extraReplies": 0,
+          "recoveryReplies": 0,
+          "unboundReplies": 0,
+          "errorCount": 0,
+          "pipelineErrorCounts": {},
+          "unexpectedGatewayRequestCount": 0,
+          "deliveredPcmLatencyMs": {
+            "sampleCount": 6,
+            "median": 1340,
+            "max": 1420
+          },
+          "inputBytes": 4584960,
+          "inputSha256": "620a2e4e315151d835ee343b799cae9e5e2520df8ccea8583e099ddba9de8fc8",
+          "droppedInputBytes": 0,
+          "enrollment": [
+            {
+              "person": "A",
+              "voice": "vv",
+              "nameInAsr": false,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": true
+            },
+            {
+              "person": "B",
+              "voice": "adult",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": true
+            }
+          ],
+          "explicitSpeakerTracking": null,
+          "rows": [
+            {
+              "id": "3",
+              "person": "A",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1123
+            },
+            {
+              "id": "4",
+              "person": "B",
+              "kind": "identity",
+              "voice": "adult",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1014
+            },
+            {
+              "id": "5",
+              "person": "B",
+              "kind": "preference",
+              "voice": "adult",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1151
+            },
+            {
+              "id": "6",
+              "person": "A",
+              "kind": "preference",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1037
+            },
+            {
+              "id": "7",
+              "person": "B",
+              "kind": "natural",
+              "voice": "adult",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": true,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1358
+            },
+            {
+              "id": "8",
+              "person": "A",
+              "kind": "natural",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": true,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1420
+            },
+            {
+              "id": "9",
+              "person": "A",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1313
+            },
+            {
+              "id": "10",
+              "person": "B",
+              "kind": "identity",
+              "voice": "adult",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1340
+            }
+          ]
+        },
+        "speaker": {
+          "metrics": {
+            "identity": {
+              "correct": 1,
+              "trials": 4,
+              "missing": 0
+            },
+            "preference": {
+              "correct": 1,
+              "trials": 2,
+              "missing": 0
+            },
+            "natural": {
+              "correct": 0,
+              "trials": 2,
+              "missing": 0
+            }
+          },
+          "correct": 2,
+          "trials": 8,
+          "late": 0,
+          "extraReplies": 0,
+          "recoveryReplies": 0,
+          "unboundReplies": 0,
+          "errorCount": 0,
+          "pipelineErrorCounts": {},
+          "unexpectedGatewayRequestCount": 0,
+          "deliveredPcmLatencyMs": {
+            "sampleCount": 2,
+            "median": 2643,
+            "max": 2643
+          },
+          "inputBytes": 4584960,
+          "inputSha256": "620a2e4e315151d835ee343b799cae9e5e2520df8ccea8583e099ddba9de8fc8",
+          "droppedInputBytes": 0,
+          "enrollment": [
+            {
+              "person": "A",
+              "voice": "vv",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": true
+            },
+            {
+              "person": "B",
+              "voice": "adult",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": false,
+              "colorAcknowledged": false
+            }
+          ],
+          "explicitSpeakerTracking": {
+            "enrolled": {
+              "A": [
+                "local0"
+              ],
+              "B": [
+                "local1"
+              ]
+            },
+            "distinct": true,
+            "correct": 8,
+            "trials": 8,
+            "missing": 0,
+            "rows": [
+              {
+                "id": "3",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": true
+              },
+              {
+                "id": "4",
+                "person": "B",
+                "observed": [
+                  "local1"
+                ],
+                "correct": true
+              },
+              {
+                "id": "5",
+                "person": "B",
+                "observed": [
+                  "local1"
+                ],
+                "correct": true
+              },
+              {
+                "id": "6",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": true
+              },
+              {
+                "id": "7",
+                "person": "B",
+                "observed": [
+                  "local1"
+                ],
+                "correct": true
+              },
+              {
+                "id": "8",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": true
+              },
+              {
+                "id": "9",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": true
+              },
+              {
+                "id": "10",
+                "person": "B",
+                "observed": [
+                  "local1"
+                ],
+                "correct": true
+              }
+            ]
+          },
+          "rows": [
+            {
+              "id": "3",
+              "person": "A",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2431
+            },
+            {
+              "id": "4",
+              "person": "B",
+              "kind": "identity",
+              "voice": "adult",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2863
+            },
+            {
+              "id": "5",
+              "person": "B",
+              "kind": "preference",
+              "voice": "adult",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2700
+            },
+            {
+              "id": "6",
+              "person": "A",
+              "kind": "preference",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2643
+            },
+            {
+              "id": "7",
+              "person": "B",
+              "kind": "natural",
+              "voice": "adult",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2662
+            },
+            {
+              "id": "8",
+              "person": "A",
+              "kind": "natural",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 3155
+            },
+            {
+              "id": "9",
+              "person": "A",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2854
+            },
+            {
+              "id": "10",
+              "person": "B",
+              "kind": "identity",
+              "voice": "adult",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2643
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "daily-clean",
+      "tier": "daily",
+      "environment": "clean",
+      "complete": true,
+      "identicalInputs": true,
+      "feed": {
+        "durationMs": 146007.495873,
+        "maxFrameGapMs": 23.73459599999478,
+        "bytes": 4631040
+      },
+      "provenance": {
+        "studySha256": "2ae7f1f863157a58325ceec334bd62d376358b1e505c57fa177ed7092d6af50f",
+        "runnerSha256": "c99a02f0be6b99ed84016365cbafbf411845f62ce18f5dfa59851bc110522e45",
+        "speakerModuleSha256": "2b8aa0c8c0e1fe9144124ef189a5fb165ffacb4dafa989dae0ace6f9c0477246",
+        "nativeBridgeSha256": "94b98eaf6fbba93f78a7eb1c16a802e151ede9ff8573743cdd56b9452282db87",
+        "speakerDecisionModel": "openai/gpt-6-luna-decisions",
+        "lookahead": true,
+        "nativeInterruptionAsr": false,
+        "gateway": "denying-stub"
+      },
+      "inputSha256": "9bb55b754e6e1204a0f301ddb5667f3e74cca7f6aed6eae55bdc40671a639ee7",
+      "snrDb": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "engines": {
+        "native": {
+          "metrics": {
+            "identity": {
+              "correct": 4,
+              "trials": 4,
+              "missing": 0
+            },
+            "preference": {
+              "correct": 2,
+              "trials": 2,
+              "missing": 0
+            },
+            "natural": {
+              "correct": 2,
+              "trials": 2,
+              "missing": 0
+            }
+          },
+          "correct": 8,
+          "trials": 8,
+          "late": 0,
+          "extraReplies": 0,
+          "recoveryReplies": 0,
+          "unboundReplies": 0,
+          "errorCount": 0,
+          "pipelineErrorCounts": {},
+          "unexpectedGatewayRequestCount": 0,
+          "deliveredPcmLatencyMs": {
+            "sampleCount": 8,
+            "median": 1243,
+            "max": 1747
+          },
+          "inputBytes": 4631040,
+          "inputSha256": "9bb55b754e6e1204a0f301ddb5667f3e74cca7f6aed6eae55bdc40671a639ee7",
+          "droppedInputBytes": 0,
+          "enrollment": [
+            {
+              "person": "A",
+              "voice": "adult",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": true
+            },
+            {
+              "person": "B",
+              "voice": "vv",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": true
+            }
+          ],
+          "explicitSpeakerTracking": null,
+          "rows": [
+            {
+              "id": "3",
+              "person": "A",
+              "kind": "identity",
+              "voice": "adult",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1122
+            },
+            {
+              "id": "4",
+              "person": "B",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1202
+            },
+            {
+              "id": "5",
+              "person": "B",
+              "kind": "preference",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1224
+            },
+            {
+              "id": "6",
+              "person": "A",
+              "kind": "preference",
+              "voice": "adult",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1190
+            },
+            {
+              "id": "7",
+              "person": "B",
+              "kind": "natural",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": true,
+              "topicCorrect": true,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1747
+            },
+            {
+              "id": "8",
+              "person": "A",
+              "kind": "natural",
+              "voice": "adult",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": true,
+              "topicCorrect": true,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1382
+            },
+            {
+              "id": "9",
+              "person": "A",
+              "kind": "identity",
+              "voice": "adult",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1403
+            },
+            {
+              "id": "10",
+              "person": "B",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1243
+            }
+          ]
+        },
+        "speaker": {
+          "metrics": {
+            "identity": {
+              "correct": 4,
+              "trials": 4,
+              "missing": 0
+            },
+            "preference": {
+              "correct": 1,
+              "trials": 2,
+              "missing": 0
+            },
+            "natural": {
+              "correct": 0,
+              "trials": 2,
+              "missing": 0
+            }
+          },
+          "correct": 5,
+          "trials": 8,
+          "late": 0,
+          "extraReplies": 0,
+          "recoveryReplies": 0,
+          "unboundReplies": 0,
+          "errorCount": 0,
+          "pipelineErrorCounts": {},
+          "unexpectedGatewayRequestCount": 0,
+          "deliveredPcmLatencyMs": {
+            "sampleCount": 5,
+            "median": 2839,
+            "max": 2978
+          },
+          "inputBytes": 4631040,
+          "inputSha256": "9bb55b754e6e1204a0f301ddb5667f3e74cca7f6aed6eae55bdc40671a639ee7",
+          "droppedInputBytes": 0,
+          "enrollment": [
+            {
+              "person": "A",
+              "voice": "adult",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": true
+            },
+            {
+              "person": "B",
+              "voice": "vv",
+              "nameInAsr": false,
+              "colorInAsr": false,
+              "nameAcknowledged": false,
+              "colorAcknowledged": false
+            }
+          ],
+          "explicitSpeakerTracking": {
+            "enrolled": {
+              "A": [
+                "local0"
+              ],
+              "B": [
+                "local1"
+              ]
+            },
+            "distinct": true,
+            "correct": 8,
+            "trials": 8,
+            "missing": 0,
+            "rows": [
+              {
+                "id": "3",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": true
+              },
+              {
+                "id": "4",
+                "person": "B",
+                "observed": [
+                  "local1"
+                ],
+                "correct": true
+              },
+              {
+                "id": "5",
+                "person": "B",
+                "observed": [
+                  "local1"
+                ],
+                "correct": true
+              },
+              {
+                "id": "6",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": true
+              },
+              {
+                "id": "7",
+                "person": "B",
+                "observed": [
+                  "local1"
+                ],
+                "correct": true
+              },
+              {
+                "id": "8",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": true
+              },
+              {
+                "id": "9",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": true
+              },
+              {
+                "id": "10",
+                "person": "B",
+                "observed": [
+                  "local1"
+                ],
+                "correct": true
+              }
+            ]
+          },
+          "rows": [
+            {
+              "id": "3",
+              "person": "A",
+              "kind": "identity",
+              "voice": "adult",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2642
+            },
+            {
+              "id": "4",
+              "person": "B",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2597
+            },
+            {
+              "id": "5",
+              "person": "B",
+              "kind": "preference",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2839
+            },
+            {
+              "id": "6",
+              "person": "A",
+              "kind": "preference",
+              "voice": "adult",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2923
+            },
+            {
+              "id": "7",
+              "person": "B",
+              "kind": "natural",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 3257
+            },
+            {
+              "id": "8",
+              "person": "A",
+              "kind": "natural",
+              "voice": "adult",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2926
+            },
+            {
+              "id": "9",
+              "person": "A",
+              "kind": "identity",
+              "voice": "adult",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2914
+            },
+            {
+              "id": "10",
+              "person": "B",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2978
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "daily-noise-side",
+      "tier": "daily",
+      "environment": "noise-side",
+      "complete": true,
+      "identicalInputs": true,
+      "feed": {
+        "durationMs": 145889.90767600003,
+        "maxFrameGapMs": 21.786275999969803,
+        "bytes": 4631040
+      },
+      "provenance": {
+        "studySha256": "2ae7f1f863157a58325ceec334bd62d376358b1e505c57fa177ed7092d6af50f",
+        "runnerSha256": "c99a02f0be6b99ed84016365cbafbf411845f62ce18f5dfa59851bc110522e45",
+        "speakerModuleSha256": "2b8aa0c8c0e1fe9144124ef189a5fb165ffacb4dafa989dae0ace6f9c0477246",
+        "nativeBridgeSha256": "94b98eaf6fbba93f78a7eb1c16a802e151ede9ff8573743cdd56b9452282db87",
+        "speakerDecisionModel": "openai/gpt-6-luna-decisions",
+        "lookahead": true,
+        "nativeInterruptionAsr": false,
+        "gateway": "denying-stub"
+      },
+      "inputSha256": "a4ce486dca022f3d9353358295b0cd0103b363bcf1b89216105f4bc992173319",
+      "snrDb": [
+        null,
+        null,
+        9.893566443327142,
+        10.347979119619616,
+        10.106688178441898,
+        10.103747465244155,
+        3.001719353297446,
+        2.945097105626499,
+        3.083534958924794,
+        3.094253646365503
+      ],
+      "engines": {
+        "native": {
+          "metrics": {
+            "identity": {
+              "correct": 4,
+              "trials": 4,
+              "missing": 0
+            },
+            "preference": {
+              "correct": 2,
+              "trials": 2,
+              "missing": 0
+            },
+            "natural": {
+              "correct": 2,
+              "trials": 2,
+              "missing": 0
+            }
+          },
+          "correct": 8,
+          "trials": 8,
+          "late": 0,
+          "extraReplies": 0,
+          "recoveryReplies": 0,
+          "unboundReplies": 0,
+          "errorCount": 0,
+          "pipelineErrorCounts": {},
+          "unexpectedGatewayRequestCount": 0,
+          "deliveredPcmLatencyMs": {
+            "sampleCount": 8,
+            "median": 1259,
+            "max": 1732
+          },
+          "inputBytes": 4631040,
+          "inputSha256": "a4ce486dca022f3d9353358295b0cd0103b363bcf1b89216105f4bc992173319",
+          "droppedInputBytes": 0,
+          "enrollment": [
+            {
+              "person": "A",
+              "voice": "adult",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": true
+            },
+            {
+              "person": "B",
+              "voice": "vv",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": true
+            }
+          ],
+          "explicitSpeakerTracking": null,
+          "rows": [
+            {
+              "id": "3",
+              "person": "A",
+              "kind": "identity",
+              "voice": "adult",
+              "snrDb": 9.893566443327142,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1100
+            },
+            {
+              "id": "4",
+              "person": "B",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": 10.347979119619616,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1294
+            },
+            {
+              "id": "5",
+              "person": "B",
+              "kind": "preference",
+              "voice": "vv",
+              "snrDb": 10.106688178441898,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1138
+            },
+            {
+              "id": "6",
+              "person": "A",
+              "kind": "preference",
+              "voice": "adult",
+              "snrDb": 10.103747465244155,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1259
+            },
+            {
+              "id": "7",
+              "person": "B",
+              "kind": "natural",
+              "voice": "vv",
+              "snrDb": 3.001719353297446,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": true,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1732
+            },
+            {
+              "id": "8",
+              "person": "A",
+              "kind": "natural",
+              "voice": "adult",
+              "snrDb": 2.945097105626499,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": true,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1380
+            },
+            {
+              "id": "9",
+              "person": "A",
+              "kind": "identity",
+              "voice": "adult",
+              "snrDb": 3.083534958924794,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 989
+            },
+            {
+              "id": "10",
+              "person": "B",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": 3.094253646365503,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1165
+            }
+          ]
+        },
+        "speaker": {
+          "metrics": {
+            "identity": {
+              "correct": 2,
+              "trials": 4,
+              "missing": 2
+            },
+            "preference": {
+              "correct": 1,
+              "trials": 2,
+              "missing": 0
+            },
+            "natural": {
+              "correct": 1,
+              "trials": 2,
+              "missing": 0
+            }
+          },
+          "correct": 4,
+          "trials": 8,
+          "late": 0,
+          "extraReplies": 0,
+          "recoveryReplies": 1,
+          "unboundReplies": 0,
+          "errorCount": 0,
+          "pipelineErrorCounts": {},
+          "unexpectedGatewayRequestCount": 0,
+          "deliveredPcmLatencyMs": {
+            "sampleCount": 4,
+            "median": 3464,
+            "max": 8738
+          },
+          "inputBytes": 4631040,
+          "inputSha256": "a4ce486dca022f3d9353358295b0cd0103b363bcf1b89216105f4bc992173319",
+          "droppedInputBytes": 0,
+          "enrollment": [
+            {
+              "person": "A",
+              "voice": "adult",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": true
+            },
+            {
+              "person": "B",
+              "voice": "vv",
+              "nameInAsr": false,
+              "colorInAsr": false,
+              "nameAcknowledged": false,
+              "colorAcknowledged": false
+            }
+          ],
+          "explicitSpeakerTracking": {
+            "enrolled": {
+              "A": [
+                "local0"
+              ],
+              "B": [
+                "local1"
+              ]
+            },
+            "distinct": true,
+            "correct": 1,
+            "trials": 8,
+            "missing": 7,
+            "rows": [
+              {
+                "id": "3",
+                "person": "A",
+                "observed": [],
+                "correct": false
+              },
+              {
+                "id": "4",
+                "person": "B",
+                "observed": [],
+                "correct": false
+              },
+              {
+                "id": "5",
+                "person": "B",
+                "observed": [
+                  "local1"
+                ],
+                "correct": true
+              },
+              {
+                "id": "6",
+                "person": "A",
+                "observed": [],
+                "correct": false
+              },
+              {
+                "id": "7",
+                "person": "B",
+                "observed": [],
+                "correct": false
+              },
+              {
+                "id": "8",
+                "person": "A",
+                "observed": [],
+                "correct": false
+              },
+              {
+                "id": "9",
+                "person": "A",
+                "observed": [],
+                "correct": false
+              },
+              {
+                "id": "10",
+                "person": "B",
+                "observed": [],
+                "correct": false
+              }
+            ]
+          },
+          "rows": [
+            {
+              "id": "3",
+              "person": "A",
+              "kind": "identity",
+              "voice": "adult",
+              "snrDb": 9.893566443327142,
+              "answered": false,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": null
+            },
+            {
+              "id": "4",
+              "person": "B",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": 10.347979119619616,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 3106
+            },
+            {
+              "id": "5",
+              "person": "B",
+              "kind": "preference",
+              "voice": "vv",
+              "snrDb": 10.106688178441898,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2751
+            },
+            {
+              "id": "6",
+              "person": "A",
+              "kind": "preference",
+              "voice": "adult",
+              "snrDb": 10.103747465244155,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 5534
+            },
+            {
+              "id": "7",
+              "person": "B",
+              "kind": "natural",
+              "voice": "vv",
+              "snrDb": 3.001719353297446,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": true,
+              "topicCorrect": true,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 8738
+            },
+            {
+              "id": "8",
+              "person": "A",
+              "kind": "natural",
+              "voice": "adult",
+              "snrDb": 2.945097105626499,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": true,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 3109
+            },
+            {
+              "id": "9",
+              "person": "A",
+              "kind": "identity",
+              "voice": "adult",
+              "snrDb": 3.083534958924794,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 3464
+            },
+            {
+              "id": "10",
+              "person": "B",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": 3.094253646365503,
+              "answered": false,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "daily-tv",
+      "tier": "daily",
+      "environment": "tv",
+      "complete": true,
+      "identicalInputs": true,
+      "feed": {
+        "durationMs": 145602.854237,
+        "maxFrameGapMs": 21.99570600001607,
+        "bytes": 4631040
+      },
+      "provenance": {
+        "studySha256": "2ae7f1f863157a58325ceec334bd62d376358b1e505c57fa177ed7092d6af50f",
+        "runnerSha256": "c99a02f0be6b99ed84016365cbafbf411845f62ce18f5dfa59851bc110522e45",
+        "speakerModuleSha256": "2b8aa0c8c0e1fe9144124ef189a5fb165ffacb4dafa989dae0ace6f9c0477246",
+        "nativeBridgeSha256": "94b98eaf6fbba93f78a7eb1c16a802e151ede9ff8573743cdd56b9452282db87",
+        "speakerDecisionModel": "openai/gpt-6-luna-decisions",
+        "lookahead": true,
+        "nativeInterruptionAsr": false,
+        "gateway": "denying-stub"
+      },
+      "inputSha256": "974756e691ded354cbf4237991959951f2e71b6f548edc72cd19790190fdaae5",
+      "snrDb": [
+        null,
+        null,
+        10.491839726376789,
+        10.042024879569475,
+        9.422141368714032,
+        9.056857908176973,
+        10.478280808112164,
+        3.1154556244247895,
+        2.384951154504401,
+        2.464854030550635
+      ],
+      "engines": {
+        "native": {
+          "metrics": {
+            "identity": {
+              "correct": 4,
+              "trials": 4,
+              "missing": 0
+            },
+            "preference": {
+              "correct": 2,
+              "trials": 2,
+              "missing": 0
+            },
+            "natural": {
+              "correct": 2,
+              "trials": 2,
+              "missing": 0
+            }
+          },
+          "correct": 8,
+          "trials": 8,
+          "late": 0,
+          "extraReplies": 0,
+          "recoveryReplies": 0,
+          "unboundReplies": 0,
+          "errorCount": 0,
+          "pipelineErrorCounts": {},
+          "unexpectedGatewayRequestCount": 0,
+          "deliveredPcmLatencyMs": {
+            "sampleCount": 8,
+            "median": 1271,
+            "max": 1405
+          },
+          "inputBytes": 4631040,
+          "inputSha256": "974756e691ded354cbf4237991959951f2e71b6f548edc72cd19790190fdaae5",
+          "droppedInputBytes": 0,
+          "enrollment": [
+            {
+              "person": "A",
+              "voice": "adult",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": true
+            },
+            {
+              "person": "B",
+              "voice": "vv",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": true
+            }
+          ],
+          "explicitSpeakerTracking": null,
+          "rows": [
+            {
+              "id": "3",
+              "person": "A",
+              "kind": "identity",
+              "voice": "adult",
+              "snrDb": 10.491839726376789,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1055
+            },
+            {
+              "id": "4",
+              "person": "B",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": 10.042024879569475,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1405
+            },
+            {
+              "id": "5",
+              "person": "B",
+              "kind": "preference",
+              "voice": "vv",
+              "snrDb": 9.422141368714032,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1146
+            },
+            {
+              "id": "6",
+              "person": "A",
+              "kind": "preference",
+              "voice": "adult",
+              "snrDb": 9.056857908176973,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1271
+            },
+            {
+              "id": "7",
+              "person": "B",
+              "kind": "natural",
+              "voice": "vv",
+              "snrDb": 10.478280808112164,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": true,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1262
+            },
+            {
+              "id": "8",
+              "person": "A",
+              "kind": "natural",
+              "voice": "adult",
+              "snrDb": 3.1154556244247895,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": true,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1344
+            },
+            {
+              "id": "9",
+              "person": "A",
+              "kind": "identity",
+              "voice": "adult",
+              "snrDb": 2.384951154504401,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1294
+            },
+            {
+              "id": "10",
+              "person": "B",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": 2.464854030550635,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1182
+            }
+          ]
+        },
+        "speaker": {
+          "metrics": {
+            "identity": {
+              "correct": 0,
+              "trials": 4,
+              "missing": 4
+            },
+            "preference": {
+              "correct": 0,
+              "trials": 2,
+              "missing": 1
+            },
+            "natural": {
+              "correct": 0,
+              "trials": 2,
+              "missing": 2
+            }
+          },
+          "correct": 0,
+          "trials": 8,
+          "late": 0,
+          "extraReplies": 0,
+          "recoveryReplies": 3,
+          "unboundReplies": 0,
+          "errorCount": 0,
+          "pipelineErrorCounts": {},
+          "unexpectedGatewayRequestCount": 0,
+          "deliveredPcmLatencyMs": {
+            "sampleCount": 0,
+            "median": null,
+            "max": null
+          },
+          "inputBytes": 4631040,
+          "inputSha256": "974756e691ded354cbf4237991959951f2e71b6f548edc72cd19790190fdaae5",
+          "droppedInputBytes": 0,
+          "enrollment": [
+            {
+              "person": "A",
+              "voice": "adult",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": false,
+              "colorAcknowledged": false
+            },
+            {
+              "person": "B",
+              "voice": "vv",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": true
+            }
+          ],
+          "explicitSpeakerTracking": {
+            "enrolled": {
+              "A": [
+                "local0"
+              ],
+              "B": [
+                "local1"
+              ]
+            },
+            "distinct": true,
+            "correct": 2,
+            "trials": 8,
+            "missing": 5,
+            "rows": [
+              {
+                "id": "3",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": true
+              },
+              {
+                "id": "4",
+                "person": "B",
+                "observed": [],
+                "correct": false
+              },
+              {
+                "id": "5",
+                "person": "B",
+                "observed": [
+                  "local1"
+                ],
+                "correct": true
+              },
+              {
+                "id": "6",
+                "person": "A",
+                "observed": [],
+                "correct": false
+              },
+              {
+                "id": "7",
+                "person": "B",
+                "observed": [
+                  "local2"
+                ],
+                "correct": false
+              },
+              {
+                "id": "8",
+                "person": "A",
+                "observed": [],
+                "correct": false
+              },
+              {
+                "id": "9",
+                "person": "A",
+                "observed": [],
+                "correct": false
+              },
+              {
+                "id": "10",
+                "person": "B",
+                "observed": [],
+                "correct": false
+              }
+            ]
+          },
+          "rows": [
+            {
+              "id": "3",
+              "person": "A",
+              "kind": "identity",
+              "voice": "adult",
+              "snrDb": 10.491839726376789,
+              "answered": false,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": null
+            },
+            {
+              "id": "4",
+              "person": "B",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": 10.042024879569475,
+              "answered": false,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": null
+            },
+            {
+              "id": "5",
+              "person": "B",
+              "kind": "preference",
+              "voice": "vv",
+              "snrDb": 9.422141368714032,
+              "answered": false,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": null
+            },
+            {
+              "id": "6",
+              "person": "A",
+              "kind": "preference",
+              "voice": "adult",
+              "snrDb": 9.056857908176973,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2701
+            },
+            {
+              "id": "7",
+              "person": "B",
+              "kind": "natural",
+              "voice": "vv",
+              "snrDb": 10.478280808112164,
+              "answered": false,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": null
+            },
+            {
+              "id": "8",
+              "person": "A",
+              "kind": "natural",
+              "voice": "adult",
+              "snrDb": 3.1154556244247895,
+              "answered": false,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": null
+            },
+            {
+              "id": "9",
+              "person": "A",
+              "kind": "identity",
+              "voice": "adult",
+              "snrDb": 2.384951154504401,
+              "answered": false,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": null
+            },
+            {
+              "id": "10",
+              "person": "B",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": 2.464854030550635,
+              "answered": false,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "near-clean",
+      "tier": "near",
+      "environment": "clean",
+      "complete": true,
+      "identicalInputs": true,
+      "feed": {
+        "durationMs": 150803.609016,
+        "maxFrameGapMs": 27.660115999984555,
+        "bytes": 4778240
+      },
+      "provenance": {
+        "studySha256": "2ae7f1f863157a58325ceec334bd62d376358b1e505c57fa177ed7092d6af50f",
+        "runnerSha256": "c99a02f0be6b99ed84016365cbafbf411845f62ce18f5dfa59851bc110522e45",
+        "speakerModuleSha256": "2b8aa0c8c0e1fe9144124ef189a5fb165ffacb4dafa989dae0ace6f9c0477246",
+        "nativeBridgeSha256": "94b98eaf6fbba93f78a7eb1c16a802e151ede9ff8573743cdd56b9452282db87",
+        "speakerDecisionModel": "openai/gpt-6-luna-decisions",
+        "lookahead": true,
+        "nativeInterruptionAsr": false,
+        "gateway": "denying-stub"
+      },
+      "inputSha256": "d1946d410fcefa9fb864b5c8cf514bf17c743469dad7ad85ff4fc23f5b796971",
+      "snrDb": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "engines": {
+        "native": {
+          "metrics": {
+            "identity": {
+              "correct": 0,
+              "trials": 4,
+              "missing": 0
+            },
+            "preference": {
+              "correct": 0,
+              "trials": 2,
+              "missing": 0
+            },
+            "natural": {
+              "correct": 0,
+              "trials": 2,
+              "missing": 0
+            }
+          },
+          "correct": 0,
+          "trials": 8,
+          "late": 0,
+          "extraReplies": 0,
+          "recoveryReplies": 0,
+          "unboundReplies": 0,
+          "errorCount": 0,
+          "pipelineErrorCounts": {},
+          "unexpectedGatewayRequestCount": 0,
+          "deliveredPcmLatencyMs": {
+            "sampleCount": 0,
+            "median": null,
+            "max": null
+          },
+          "inputBytes": 4778240,
+          "inputSha256": "d1946d410fcefa9fb864b5c8cf514bf17c743469dad7ad85ff4fc23f5b796971",
+          "droppedInputBytes": 0,
+          "enrollment": [
+            {
+              "person": "A",
+              "voice": "vv",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": true
+            },
+            {
+              "person": "B",
+              "voice": "clear",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": true
+            }
+          ],
+          "explicitSpeakerTracking": null,
+          "rows": [
+            {
+              "id": "3",
+              "person": "A",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1199
+            },
+            {
+              "id": "4",
+              "person": "B",
+              "kind": "identity",
+              "voice": "clear",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1100
+            },
+            {
+              "id": "5",
+              "person": "B",
+              "kind": "preference",
+              "voice": "clear",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1251
+            },
+            {
+              "id": "6",
+              "person": "A",
+              "kind": "preference",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1123
+            },
+            {
+              "id": "7",
+              "person": "B",
+              "kind": "natural",
+              "voice": "clear",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1545
+            },
+            {
+              "id": "8",
+              "person": "A",
+              "kind": "natural",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1313
+            },
+            {
+              "id": "9",
+              "person": "A",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1385
+            },
+            {
+              "id": "10",
+              "person": "B",
+              "kind": "identity",
+              "voice": "clear",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1050
+            }
+          ]
+        },
+        "speaker": {
+          "metrics": {
+            "identity": {
+              "correct": 2,
+              "trials": 4,
+              "missing": 0
+            },
+            "preference": {
+              "correct": 1,
+              "trials": 2,
+              "missing": 0
+            },
+            "natural": {
+              "correct": 0,
+              "trials": 2,
+              "missing": 0
+            }
+          },
+          "correct": 3,
+          "trials": 8,
+          "late": 0,
+          "extraReplies": 0,
+          "recoveryReplies": 0,
+          "unboundReplies": 0,
+          "errorCount": 0,
+          "pipelineErrorCounts": {},
+          "unexpectedGatewayRequestCount": 0,
+          "deliveredPcmLatencyMs": {
+            "sampleCount": 3,
+            "median": 2474,
+            "max": 2572
+          },
+          "inputBytes": 4778240,
+          "inputSha256": "d1946d410fcefa9fb864b5c8cf514bf17c743469dad7ad85ff4fc23f5b796971",
+          "droppedInputBytes": 0,
+          "enrollment": [
+            {
+              "person": "A",
+              "voice": "vv",
+              "nameInAsr": false,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": true
+            },
+            {
+              "person": "B",
+              "voice": "clear",
+              "nameInAsr": false,
+              "colorInAsr": false,
+              "nameAcknowledged": false,
+              "colorAcknowledged": false
+            }
+          ],
+          "explicitSpeakerTracking": {
+            "enrolled": {
+              "A": [
+                "local0"
+              ],
+              "B": [
+                "local0"
+              ]
+            },
+            "distinct": false,
+            "correct": 0,
+            "trials": 8,
+            "missing": 0,
+            "rows": [
+              {
+                "id": "3",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": false
+              },
+              {
+                "id": "4",
+                "person": "B",
+                "observed": [
+                  "local0"
+                ],
+                "correct": false
+              },
+              {
+                "id": "5",
+                "person": "B",
+                "observed": [
+                  "local0"
+                ],
+                "correct": false
+              },
+              {
+                "id": "6",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": false
+              },
+              {
+                "id": "7",
+                "person": "B",
+                "observed": [
+                  "local0"
+                ],
+                "correct": false
+              },
+              {
+                "id": "8",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": false
+              },
+              {
+                "id": "9",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": false
+              },
+              {
+                "id": "10",
+                "person": "B",
+                "observed": [
+                  "local0"
+                ],
+                "correct": false
+              }
+            ]
+          },
+          "rows": [
+            {
+              "id": "3",
+              "person": "A",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2135
+            },
+            {
+              "id": "4",
+              "person": "B",
+              "kind": "identity",
+              "voice": "clear",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2351
+            },
+            {
+              "id": "5",
+              "person": "B",
+              "kind": "preference",
+              "voice": "clear",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2182
+            },
+            {
+              "id": "6",
+              "person": "A",
+              "kind": "preference",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2474
+            },
+            {
+              "id": "7",
+              "person": "B",
+              "kind": "natural",
+              "voice": "clear",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2387
+            },
+            {
+              "id": "8",
+              "person": "A",
+              "kind": "natural",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 3399
+            },
+            {
+              "id": "9",
+              "person": "A",
+              "kind": "identity",
+              "voice": "vv",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": true,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2985
+            },
+            {
+              "id": "10",
+              "person": "B",
+              "kind": "identity",
+              "voice": "clear",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2572
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "obvious-clean",
+      "tier": "obvious",
+      "environment": "clean",
+      "complete": true,
+      "identicalInputs": true,
+      "feed": {
+        "durationMs": 157548.064246,
+        "maxFrameGapMs": 22.522142000001622,
+        "bytes": 5006720
+      },
+      "provenance": {
+        "studySha256": "2ae7f1f863157a58325ceec334bd62d376358b1e505c57fa177ed7092d6af50f",
+        "runnerSha256": "c99a02f0be6b99ed84016365cbafbf411845f62ce18f5dfa59851bc110522e45",
+        "speakerModuleSha256": "2b8aa0c8c0e1fe9144124ef189a5fb165ffacb4dafa989dae0ace6f9c0477246",
+        "nativeBridgeSha256": "94b98eaf6fbba93f78a7eb1c16a802e151ede9ff8573743cdd56b9452282db87",
+        "speakerDecisionModel": "openai/gpt-6-luna-decisions",
+        "lookahead": true,
+        "nativeInterruptionAsr": false,
+        "gateway": "denying-stub"
+      },
+      "inputSha256": "c67e77783b546bc3b83d3f213f5b7b7a86720c0aa333e6389619aa478e44d9f5",
+      "snrDb": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "engines": {
+        "native": {
+          "metrics": {
+            "identity": {
+              "correct": 4,
+              "trials": 4,
+              "missing": 0
+            },
+            "preference": {
+              "correct": 2,
+              "trials": 2,
+              "missing": 0
+            },
+            "natural": {
+              "correct": 2,
+              "trials": 2,
+              "missing": 0
+            }
+          },
+          "correct": 8,
+          "trials": 8,
+          "late": 0,
+          "extraReplies": 0,
+          "recoveryReplies": 0,
+          "unboundReplies": 0,
+          "errorCount": 0,
+          "pipelineErrorCounts": {},
+          "unexpectedGatewayRequestCount": 0,
+          "deliveredPcmLatencyMs": {
+            "sampleCount": 8,
+            "median": 1285,
+            "max": 1627
+          },
+          "inputBytes": 5006720,
+          "inputSha256": "c67e77783b546bc3b83d3f213f5b7b7a86720c0aa333e6389619aa478e44d9f5",
+          "droppedInputBytes": 0,
+          "enrollment": [
+            {
+              "person": "A",
+              "voice": "low",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": false
+            },
+            {
+              "person": "B",
+              "voice": "child",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": false
+            }
+          ],
+          "explicitSpeakerTracking": null,
+          "rows": [
+            {
+              "id": "3",
+              "person": "A",
+              "kind": "identity",
+              "voice": "low",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1165
+            },
+            {
+              "id": "4",
+              "person": "B",
+              "kind": "identity",
+              "voice": "child",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1532
+            },
+            {
+              "id": "5",
+              "person": "B",
+              "kind": "preference",
+              "voice": "child",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1151
+            },
+            {
+              "id": "6",
+              "person": "A",
+              "kind": "preference",
+              "voice": "low",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1171
+            },
+            {
+              "id": "7",
+              "person": "B",
+              "kind": "natural",
+              "voice": "child",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": true,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1627
+            },
+            {
+              "id": "8",
+              "person": "A",
+              "kind": "natural",
+              "voice": "low",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": true,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1423
+            },
+            {
+              "id": "9",
+              "person": "A",
+              "kind": "identity",
+              "voice": "low",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1166
+            },
+            {
+              "id": "10",
+              "person": "B",
+              "kind": "identity",
+              "voice": "child",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 1285
+            }
+          ]
+        },
+        "speaker": {
+          "metrics": {
+            "identity": {
+              "correct": 2,
+              "trials": 4,
+              "missing": 0
+            },
+            "preference": {
+              "correct": 1,
+              "trials": 2,
+              "missing": 1
+            },
+            "natural": {
+              "correct": 0,
+              "trials": 2,
+              "missing": 0
+            }
+          },
+          "correct": 3,
+          "trials": 8,
+          "late": 0,
+          "extraReplies": 0,
+          "recoveryReplies": 0,
+          "unboundReplies": 0,
+          "errorCount": 0,
+          "pipelineErrorCounts": {},
+          "unexpectedGatewayRequestCount": 0,
+          "deliveredPcmLatencyMs": {
+            "sampleCount": 3,
+            "median": 2977,
+            "max": 3292
+          },
+          "inputBytes": 5006720,
+          "inputSha256": "c67e77783b546bc3b83d3f213f5b7b7a86720c0aa333e6389619aa478e44d9f5",
+          "droppedInputBytes": 0,
+          "enrollment": [
+            {
+              "person": "A",
+              "voice": "low",
+              "nameInAsr": true,
+              "colorInAsr": true,
+              "nameAcknowledged": true,
+              "colorAcknowledged": true
+            },
+            {
+              "person": "B",
+              "voice": "child",
+              "nameInAsr": false,
+              "colorInAsr": false,
+              "nameAcknowledged": false,
+              "colorAcknowledged": false
+            }
+          ],
+          "explicitSpeakerTracking": {
+            "enrolled": {
+              "A": [
+                "local0"
+              ],
+              "B": [
+                "local1"
+              ]
+            },
+            "distinct": true,
+            "correct": 8,
+            "trials": 8,
+            "missing": 0,
+            "rows": [
+              {
+                "id": "3",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": true
+              },
+              {
+                "id": "4",
+                "person": "B",
+                "observed": [
+                  "local1"
+                ],
+                "correct": true
+              },
+              {
+                "id": "5",
+                "person": "B",
+                "observed": [
+                  "local1"
+                ],
+                "correct": true
+              },
+              {
+                "id": "6",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": true
+              },
+              {
+                "id": "7",
+                "person": "B",
+                "observed": [
+                  "local1"
+                ],
+                "correct": true
+              },
+              {
+                "id": "8",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": true
+              },
+              {
+                "id": "9",
+                "person": "A",
+                "observed": [
+                  "local0"
+                ],
+                "correct": true
+              },
+              {
+                "id": "10",
+                "person": "B",
+                "observed": [
+                  "local1"
+                ],
+                "correct": true
+              }
+            ]
+          },
+          "rows": [
+            {
+              "id": "3",
+              "person": "A",
+              "kind": "identity",
+              "voice": "low",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 3292
+            },
+            {
+              "id": "4",
+              "person": "B",
+              "kind": "identity",
+              "voice": "child",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 3125
+            },
+            {
+              "id": "5",
+              "person": "B",
+              "kind": "preference",
+              "voice": "child",
+              "snrDb": null,
+              "answered": false,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": null
+            },
+            {
+              "id": "6",
+              "person": "A",
+              "kind": "preference",
+              "voice": "low",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": true,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2977
+            },
+            {
+              "id": "7",
+              "person": "B",
+              "kind": "natural",
+              "voice": "child",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 3351
+            },
+            {
+              "id": "8",
+              "person": "A",
+              "kind": "natural",
+              "voice": "low",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 3599
+            },
+            {
+              "id": "9",
+              "person": "A",
+              "kind": "identity",
+              "voice": "low",
+              "snrDb": null,
+              "answered": true,
+              "correct": true,
+              "oppositePersonAnswer": false,
+              "nameCorrect": true,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 2719
+            },
+            {
+              "id": "10",
+              "person": "B",
+              "kind": "identity",
+              "voice": "child",
+              "snrDb": null,
+              "answered": true,
+              "correct": false,
+              "oppositePersonAnswer": false,
+              "nameCorrect": false,
+              "colorCorrect": false,
+              "topicCorrect": false,
+              "late": false,
+              "firstDeliveredPcmAfterInputEndMs": 3355
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "runtime": {
+    "nativeCommit": "c2d0f5d9b772588deaa27e04648a12b7ef1d122e",
+    "speakerProductionCommit": "0d0b3d96c5391dde5362c5db270018958948584f",
+    "configurationMatchedProduction": true,
+    "nativeAuxiliaryAsr": false,
+    "runtimeChangedInThisExperiment": false,
+    "merged": false,
+    "productionDeployed": false
+  },
+  "executionEvidence": {
+    "units": {
+      "openclaw-rtc-h5.service": {
+        "MainPID": "1794220",
+        "Result": "success",
+        "ActiveState": "active",
+        "InvocationID": "8aae0becf201486d903f47a5988e8e93"
+      },
+      "voice-seeduplex-barge-in-20261022.service": {
+        "MainPID": "1802149",
+        "Result": "success",
+        "ActiveState": "active",
+        "InvocationID": "aa54a47e491b419892121f1d828bd3db"
+      },
+      "voice-three-tier-comparison-20261022.service": {
+        "MainPID": "0",
+        "Result": "success",
+        "ActiveState": "inactive",
+        "InvocationID": ""
+      },
+      "voice-three-tier-confirm-20261022.service": {
+        "MainPID": "0",
+        "Result": "success",
+        "ActiveState": "inactive",
+        "InvocationID": ""
+      }
+    },
+    "productionConfigurationMatches": {
+      "VOICE_STREAM_SPEAKER": true,
+      "VOICE_STREAM_LOOKAHEAD": true,
+      "VOICE_OPENAI_DECISIONS_MODEL": true,
+      "VOICE_SPEAKER_MODEL": true,
+      "VOICE_SPEAKER_PYTHON": true,
+      "VOLCENGINE_ASR_API_KEY": true,
+      "OPENROUTER_API_KEY": true
+    },
+    "experimentFileSha256": {
+      "compare.mjs": "c99a02f0be6b99ed84016365cbafbf411845f62ce18f5dfa59851bc110522e45",
+      "compare.mjs.pilot": "62696f6c44f281d03b46d9de9f3d6c2e95b1fe2c2d74876f836a9a07ec08ad09",
+      "prepare.mjs": "ce8d674b0203f4bd443d6043bc1654ccf38a5ed2528d200c475f14e45b6219cf",
+      "score.mjs": "768b25ef302d8df129b918554599acb4b81fa4f3de72de599bd24d82f9b16b48",
+      "study.json": "2ae7f1f863157a58325ceec334bd62d376358b1e505c57fa177ed7092d6af50f",
+      "tts-usage.json": "aa7b1f7677564bb5bd14ce77739cef3743243211b7c88c05eda214e79f0f5d49",
+      "scored.json": "cfa0894cd61261793379664174e2e4074b4edf5b217c4dcea2cebdc247b9acb1",
+      "aggregate.json": "eb3c1a643a704782491e70e8898fcb848bbcb3a892cca2174ed5a08e48635d66"
+    },
+    "verifiedAtUtc": "2026-10-22T06:29:09.524903+00:00",
+    "privateRawComparisonSha256": {
+      "comparison/daily-clean-swapped.json": "89bfb2a9c05990945480ded1c7327481ab616ff52dfa0af42632af071a4d1311",
+      "comparison/near-clean.json": "dd9d1243908ab9e5cedc6a7c87fdd831f9bc8d0a49f2423c671541f9af951e57",
+      "comparison/daily-noise-side.json": "c7625c9b08cf32e8a161484dac9a67596a1654105c07757112ad0c9a3299229a",
+      "comparison/daily-tv.json": "2dfb2692123a3c8dadbe2b696a1420255bfde1ed43462e1e9c0950382e6cf5ac",
+      "comparison/obvious-clean.json": "db2a8b501e5e48d39ec44c0a0ccbbfe14b00727a5c9d36948824715f1fc353d2",
+      "comparison/daily-clean.json": "e2995a90673980c0059462923045c267dedaed51a45c492f8173d817ba6794eb",
+      "pilot/daily-clean.json": "7d4f5a726aa464cb258145a9788add94cf184ec16ace14f0b5561d47c7d8bbd0"
+    },
+    "actualDecisionModels": [
+      "openai/gpt-6-luna-decisions-20261006"
+    ],
+    "evaluationInvocations": {
+      "main": "d99fa405cc254d458399e7e0bb243d28",
+      "confirmation": "178baccf2a934adcb8595f294aff819e"
+    }
+  },
+  "legacyPilot": {
+    "id": "daily-clean-pilot",
+    "includedInPrimaryTotals": false,
+    "reason": "Legacy observer hashes offered bytes; primary daily-clean repeats identical corpus using actual-open-socket byte accounting. Original result and audio retained.",
+    "runnerSha256": "62696f6c44f281d03b46d9de9f3d6c2e95b1fe2c2d74876f836a9a07ec08ad09",
+    "metrics": {
+      "native": {
+        "correct": 8,
+        "trials": 8,
+        "metrics": {
+          "identity": {
+            "correct": 4,
+            "trials": 4,
+            "missing": 0
+          },
+          "preference": {
+            "correct": 2,
+            "trials": 2,
+            "missing": 0
+          },
+          "natural": {
+            "correct": 2,
+            "trials": 2,
+            "missing": 0
+          }
+        }
+      },
+      "speaker": {
+        "correct": 4,
+        "trials": 8,
+        "metrics": {
+          "identity": {
+            "correct": 4,
+            "trials": 4,
+            "missing": 0
+          },
+          "preference": {
+            "correct": 0,
+            "trials": 2,
+            "missing": 1
+          },
+          "natural": {
+            "correct": 0,
+            "trials": 2,
+            "missing": 0
+          }
+        }
+      }
+    }
+  },
+  "totals": {
+    "primaryAllSix": {
+      "native": {
+        "correct": 38,
+        "trials": 48,
+        "identityCorrect": 18,
+        "identityTrials": 24
+      },
+      "speaker": {
+        "correct": 17,
+        "trials": 48,
+        "identityCorrect": 11,
+        "identityTrials": 24
+      }
+    },
+    "dailyFour": {
+      "native": {
+        "correct": 30,
+        "trials": 32,
+        "identityCorrect": 14,
+        "identityTrials": 16
+      },
+      "speaker": {
+        "correct": 11,
+        "trials": 32,
+        "identityCorrect": 7,
+        "identityTrials": 16
+      }
+    }
+  },
+  "limitations": [
+    "Synthetic Volcengine TTS and digital mono PCM mixing only; not human or physical microphone/AEC/playback acceptance.",
+    "Fixed corpus with repeated-speaker order and voice/name counterbalance; small number of independent sessions. No reliability percentile claimed.",
+    "Common synthetic context and denying Gateway stub. Speaker uses the pinned deployed code and matching configuration in an isolated instance, not a production customer call.",
+    "Speaker identity tracking and spoken identity answers are separate metrics. Native spoken-name binding is not an exposed stable speaker-ID or authorization signal.",
+    "Similar-voice native failure is a consistent name/preference binding reversal. Speaker merges both voices.",
+    "Embedding calibration uses the existing Speaker embedding model and is descriptive, not independent human perceptual verification. Daily pair is more separated than the obvious pair by this metric.",
+    "Current Candidate extra stop-ASR and real browser playback are not part of this native-only comparison. Passing background tests here does not establish the helper route passed.",
+    "Delivered-PCM latency is server output delivery for correct answers only; no physical speaker latency comparison.",
+    "Full recordings and transcripts remain private evidence, excluded from Git."
+  ]
+}
