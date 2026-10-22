@@ -1,3 +1,4 @@
+import {conversationReplyText} from '../lib/conversation-replies.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {conversationReplyTarget,createConversationReplyDelivery} from '../lib/conversation-replies.mjs';
@@ -22,7 +23,7 @@ test('completed response combines final segments once, excluding greeting, delta
  f.d.user('介绍方案');f.d.transcript('未完成内容',{final:false});f.d.transcript('正在查询',{final:true,source:'tool-progress'});
  f.d.transcript('第一点，沿用当前会话。',{final:true});f.d.transcript('第一点，沿用当前会话。',{final:true});f.d.transcript('第二点，主要回复同步飞书。',{final:true});
  assert.equal(f.calls.length,0);await f.d.finish({responseId:'r1'});await f.d.finish({responseId:'r1'});
- assert.equal(f.calls.length,1);assert.equal(f.calls[0].args.message,'语音提问：介绍方案\n\nV：第一点，沿用当前会话。\n第二点，主要回复同步飞书。');assert.equal(f.calls[0].args.sessionKey,binding.sessionKey);
+ assert.equal(f.calls.length,1);assert.equal(conversationReplyText(f.calls[0].args.message),'语音提问：介绍方案\n\nV：第一点，沿用当前会话。\n第二点，主要回复同步飞书。');assert.equal(f.calls[0].args.sessionKey,binding.sessionKey);
 });
 test('interruption, cancelled response and hangup never publish unfinished text',async()=>{
  const f=fixture();f.d.user('说一下');f.d.transcript('旧回答',{final:true});f.d.interrupt();await f.d.finish();
@@ -50,7 +51,7 @@ test('response owns its question even if a later caller turn arrives before comp
  f.d.transcript('明天下午',{responseId:'a1'});f.d.user('那后天呢？',{turnId:'q2'});
  f.d.transcript('明天下午有两场会议。',{final:true,responseId:'a1'});await f.d.finish({responseId:'a1'});
  f.d.transcript('后天下午没有会议。',{final:true,responseId:'a2'});await f.d.finish({responseId:'a2'});
- assert.deepEqual(f.calls.map(c=>c.args.message),['语音提问：明天下午有什么安排？\n\nV：明天下午有两场会议。','语音提问：那后天呢？\n\nV：后天下午没有会议。']);
+ assert.deepEqual(f.calls.map(c=>conversationReplyText(c.args.message)),['语音提问：明天下午有什么安排？\n\nV：明天下午有两场会议。','语音提问：那后天呢？\n\nV：后天下午没有会议。']);
 });
 test('partial, unadmitted and ignored asides cannot create a posted question',async()=>{
  const f=fixture();f.d.user('没有说完',{final:false});f.d.user('对旁边人说的话',{admitted:false});
@@ -64,7 +65,7 @@ test('task question is frozen at request, survives intervening turns and hangup'
  f.d.user('顺便讲个笑话',{turnId:'q2'});f.d.captureTask('run',{from:'request'});
  f.d.transcript('这是一个笑话。',{final:true,responseId:'joke'});await f.d.finish({responseId:'joke'});
  await f.d.close();await f.d.result('run:final','明天晴天。',{questionId:'run'});
- assert.equal(f.calls[1].args.message,'语音提问：请查明天的天气\n\nV：明天晴天。');
+ assert.equal(conversationReplyText(f.calls[1].args.message),'语音提问：请查明天的天气\n\nV：明天晴天。');
  await f.d.result('run:final','明天晴天。',{questionId:'run'});assert.equal(f.calls.length,2);
 });
 test('same final user turn and repeated assistant completion produce one pair',async()=>{
@@ -75,5 +76,17 @@ test('same final user turn and repeated assistant completion produce one pair',a
 test('response created before final ASR binds to the new speech, never the previous turn',async()=>{
  const f=fixture();f.d.user('前一个问题');f.d.inputStarted();f.d.begin('early');
  f.d.user('这次的新问题',{turnId:'late-asr'});f.d.transcript('新问题的答案。',{final:true,responseId:'early'});await f.d.finish({responseId:'early'});
- assert.equal(f.calls[0].args.message,'语音提问：这次的新问题\n\nV：新问题的答案。');
+ assert.equal(conversationReplyText(f.calls[0].args.message),'语音提问：这次的新问题\n\nV：新问题的答案。');
+});
+
+test('card keeps a literal question, one divider and unabridged formatted answer',async()=>{
+ const f=fixture(),q='如何显示 **星号** 和 <at id=all>？',a='**重点**\n\n- 一项\n- 另一项\n\n[资料](https://example.com)';
+ f.d.user(q);f.d.transcript(a,{final:true});await f.d.finish({responseId:'styled'});
+ const card=JSON.parse(f.calls[0].args.message);assert.equal(card.schema,'2.0');assert.equal(card.header.template,'purple');assert.equal(card.body.elements[1].text.tag,'plain_text');assert.equal(card.body.elements[1].text.content,q);assert.equal(card.body.elements.filter(e=>e.tag==='hr').length,1);assert.equal(card.body.elements[3].content,'**V 的回答**\n\n'+a);assert.equal(f.calls.length,1);
+});
+
+test('oversized background answers retain the full result via text delivery',async()=>{
+ const f=fixture(),answer='完整结果。'.repeat(3000);f.d.user('给我完整报告');f.d.captureTask('long');
+ await f.d.result('long',answer);assert.equal(f.calls.length,1);
+ assert.equal(f.calls[0].args.message,'语音提问：给我完整报告\n\n---\n\nV：'+answer);
 });

@@ -1,3 +1,4 @@
+import {conversationReplyText} from '../lib/conversation-replies.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import {request as httpRequest} from 'node:http';import {Readable} from 'node:stream';
 import {createLiveH5Server} from '../lab/gpt-live-h5/server.mjs';
 import WebSocket,{WebSocketServer} from 'ws';
@@ -122,7 +123,7 @@ test('reply sync is enabled by private entry only; native final goes to that exa
  f.bridge.emit(event);f.bridge.emit(event);
  await f.request(entries[0].id,'close',cookie,first);
  const sent=f.calls.filter(c=>c.method==='send');assert.equal(sent.length,1);
- assert.equal(sent[0].args.message,'语音提问：说明计划\n\nV：完整回答，只属于这通电话。');assert.equal(sent[0].args.to,'oc_room_a');assert.equal(sent[0].args.accountId,'lab');assert.equal(sent[0].args.sessionKey,entries[0].sessionKey);
+ assert.equal(conversationReplyText(sent[0].args.message),'语音提问：说明计划\n\nV：完整回答，只属于这通电话。');assert.equal(sent[0].args.to,'oc_room_a');assert.equal(sent[0].args.accountId,'lab');assert.equal(sent[0].args.sessionKey,entries[0].sessionKey);
  f.bridge.emit(event);assert.equal(f.calls.filter(c=>c.method==='send').length,1);
  const direct=await f.request(entries[0].id,'session',cookie,{model:'seeduplex',replySync:false,replyTarget:{to:'oc_foreign'}});assert.equal(direct.status,200);
  assert.equal(f.calls.find(c=>c.method==='direct.reserve').args.replyTarget.to,'oc_room_a');
@@ -140,6 +141,6 @@ for(const model of ['seeduplex','grok','gpt-live'])test(`legacy personal ${model
   await f.request('','call-control-input',cookie,{voiceSessionId:first.voiceSessionId,revision:1,turnId:'u1',text:'给我一个完整回答',final:true});
   f.bridge.emit({event:'talk.event',payload:{voiceSessionId:first.voiceSessionId,talkEvent:{type:'output.text.done',responseId:'r1',payload:{text:'这是个人入口的一条完整回答。'}}}});
   await f.request('','close',cookie,first);
-  const sent=f.calls.filter(c=>c.method==='send');assert.equal(sent.length,1);assert.equal(sent[0].args.message,'语音提问：给我一个完整回答\n\nV：这是个人入口的一条完整回答。');assert.equal(sent[0].args.sessionKey,GPT_LIVE_PERSONAL_SESSION_KEY);assert.equal(sent[0].args.accountId,'personal');assert.equal(sent[0].args.to,GPT_LIVE_PERSONAL_SESSION_KEY.split(':').at(-1));
+  const sent=f.calls.filter(c=>c.method==='send');assert.equal(sent.length,1);assert.equal(conversationReplyText(sent[0].args.message),'语音提问：给我一个完整回答\n\nV：这是个人入口的一条完整回答。');assert.equal(sent[0].args.sessionKey,GPT_LIVE_PERSONAL_SESSION_KEY);assert.equal(sent[0].args.accountId,'personal');assert.equal(sent[0].args.to,GPT_LIVE_PERSONAL_SESSION_KEY.split(':').at(-1));
  }
 });

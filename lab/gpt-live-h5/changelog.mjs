@@ -1,10 +1,11 @@
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
 export const SESSION_REPLY_CANDIDATE_UPDATE = {
-  version:'voice-session-qa.20261023.1',date:'2026-10-23',
-  title:'语音提问与回答合并同步（候选）',status:'candidate-validation',
+  version:'voice-session-card.20261023.1',date:'2026-10-23',
+  title:'更清晰的语音问答卡片（候选）',status:'candidate-validation',
   items:[
-    '把你的语音提问和 V 的完整主要回答合并成一条消息，发回对应飞书会话。',
+    '语音问答使用淡紫标题的独立卡片，提问与回答之间加入分割线，更方便回看。',
+    '保留完整回答、段落和列表；特别长的结果自动使用文字发送，避免丢失内容。',
     '单聊、群聊和个人入口共用问答配对；后台结果保留任务原问题，过滤开场、进展与未完成字幕。',
     '个人电话与单聊、群聊共用主要回复同步机制；去掉页面顶部的会话说明。',
     '候选播音配置对齐已验证的停声策略；真实设备断续体验仍需复测，正式 V 未上线。',

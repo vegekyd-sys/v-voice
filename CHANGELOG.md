@@ -1,3 +1,8 @@
+## Unreleased — Voice Q&A cards · 2026-10-23
+
+- Present paired Voice questions and answers as native Feishu cards with a soft purple header, literal question, divider and rich answer. Preserve the existing delivery queue, session routing and duplicate protection. Oversized answers use the existing text delivery path without truncation.
+- Decode mirrored cards into dialogue for subsequent Voice context. Candidate only.
+
 ## Unreleased — Paired voice questions and answers · 2026-10-23
 
 - Combine the admitted final user question and completed substantive answer in one Feishu message across session and personal entries. Bind responses and background results to the originating question, suppress duplicate completions and retain detached task pairing after hangup. Candidate only.
