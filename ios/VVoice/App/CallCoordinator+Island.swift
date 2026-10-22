@@ -13,15 +13,16 @@ import VVoiceCore
         synchronizeIsland(documentID: id)
         _ = islandPresentation.select(.conversation, owner: presentationID)
     }
-    func islandDidDisplayReaction(_ id: String, owner: String) {
+    func islandDidDisplayReaction(_ id: String, owner: String, fromH5: Bool = true) {
         guard active, presentationID == owner, UIApplication.shared.applicationState == .active else { return }
+        if fromH5 { avatar.adoptH5Display(id) }
         synchronizeIsland(documentID: activityState.documentID)
         if islandPresentation.displayedReaction(id, owner: owner, now: Date()) { publishIslandActivity() }
     }
     func observeIslandAudio(_ inputRMS: Double, outputRMS: Double?) {
         guard active, [.listening,.thinking,.speaking,.muted].contains(phase) else { return }
         islandPresentation.synchronize(owner: presentationID, documentID: nil)
-        if islandPresentation.observeAudio(inputRMS: inputRMS, outputRMS: outputRMS, muted: muted, now: Date()), islandPresentation.layout == .audio {
+        if islandPresentation.observeAudio(inputRMS: inputRMS, outputRMS: outputRMS, muted: muted, now: Date()) {
             publishIslandActivity()
         }
     }

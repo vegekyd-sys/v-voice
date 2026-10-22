@@ -18,6 +18,26 @@ final class IslandActivityTests: XCTestCase {
         let attributes = try JSONEncoder().encode(CallAttributes(callID: UUID().uuidString))
         XCTAssertLessThan(payload.count + attributes.count, 4096)
     }
+    @MainActor func testDialogueUsesWaveformAndUnreadReportWinsOverSpeaking() {
+        for phase: VoicePhase in [.listening, .thinking, .speaking, .muted] {
+            var state = CallAttributes.ContentState(phase: phase, muted: phase == .muted, startedAt: Date(), detail: phase.title,
+                caption: "这句转写不应再显示在灵动岛", island: .init(layout: .conversation))
+            XCTAssertTrue(IslandCallSurface(state: state, callID: "test").showsWaveform)
+            state.documentID = "report"; state.documentTitle = "方案整理好了"
+            XCTAssertTrue(IslandCallSurface(state: state, callID: "test").showsReport)
+            XCTAssertFalse(IslandCallSurface(state: state, callID: "test").showsWaveform)
+            XCTAssertFalse(IslandCallSurface(state: state, callID: "test", stale: true).showsReport)
+        }
+    }
+    @MainActor func testInitialAndStaleCardsAlwaysUseTheDefaultReactionPortrait() {
+        var state = CallAttributes.ContentState(phase: .connecting, muted: false, startedAt: Date(), detail: "正在呼叫 V", island: .init(reactionID: "reaction-10"))
+        XCTAssertEqual(IslandCallSurface(state: state, callID: "test", lockScreen: true).portraitAsset, "VAvatar_listen_5")
+        state.phase = .speaking
+        XCTAssertEqual(IslandCallSurface(state: state, callID: "test").portraitAsset, "VAvatar_reaction_10")
+        XCTAssertEqual(IslandCallSurface(state: state, callID: "test", stale: true).portraitAsset, "VAvatar_listen_5")
+        state.island.reactionID = "unknown"
+        XCTAssertEqual(IslandCallSurface(state: state, callID: "test").portraitAsset, "VAvatar_listen_5")
+    }
     func testSnapshotOnlyContainsReviewedCosmeticAssetIDs() {
         XCTAssertEqual(IslandReactionCatalog.assets.count, 52)
         XCTAssertEqual(IslandReactionCatalog.assets["listen-5"], "VAvatar_listen_5")

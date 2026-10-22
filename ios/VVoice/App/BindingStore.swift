@@ -69,7 +69,7 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
     }
     private func request(_ route: String, binding: VoiceBinding, cookie: String) -> URLRequest {
         var r = URLRequest(url: binding.endpoint(route), cachePolicy: .reloadIgnoringLocalCacheData)
-        r.timeoutInterval = route == "session" ? 60 : route == "avatar" ? 3.5 : route == "avatar-events" ? 5 : 12
+        r.timeoutInterval = ["session", "offer"].contains(route) ? 60 : route == "avatar" ? 3.5 : route == "avatar-events" ? 5 : 12
         r.setValue("application/json", forHTTPHeaderField: "Content-Type")
         r.setValue(binding.baseURL.scheme! + "://" + binding.baseURL.host!, forHTTPHeaderField: "Origin")
         if !cookie.isEmpty { r.setValue(cookie, forHTTPHeaderField: "Cookie") }
@@ -121,6 +121,13 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
             try rememberCall(nil); _ = try await call("status"); return
         }
         try rememberCall(nil)
+    }
+    func eventRequest() throws -> URLRequest {
+        guard let r = record else { throw VoiceError.unbound }
+        var req = request("events", binding: r.binding, cookie: r.cookie)
+        req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        req.timeoutInterval = 30
+        return req
     }
     func relayRequest(id: String, ticket: String) throws -> URLRequest {
         guard let r = record else { throw VoiceError.unbound }

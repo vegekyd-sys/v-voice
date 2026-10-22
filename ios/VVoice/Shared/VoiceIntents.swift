@@ -52,6 +52,7 @@ struct OpenVIntent: AppIntent {
 
 #if !VOICE_WIDGET
 struct VoiceShortcuts: AppShortcutsProvider {
+    static let shortcutTileColor: ShortcutTileColor = .purple
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent: TalkToVIntent(), phrases: ["和 \(.applicationName) 通话", "Talk to \(.applicationName)"], shortTitle: "和 V 通话", systemImageName: "waveform")
         AppShortcut(intent: EndVIntent(), phrases: ["结束 \(.applicationName) 通话"], shortTitle: "结束通话", systemImageName: "phone.down.fill")

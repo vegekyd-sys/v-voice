@@ -91,7 +91,8 @@ public enum VoiceError: Error, LocalizedError, Equatable, Sendable {
 
 public enum VoiceModel: String, Codable, Sendable, CaseIterable {
     case seeduplex, grok
-    public var title: String { self == .seeduplex ? "小何" : "Grok" }
+    case gptLive = "gpt-live"
+    public var title: String { switch self { case .seeduplex: "小何"; case .grok: "Grok"; case .gptLive: "GPT Live One" } }
 }
 
 public enum VoiceHTTPFailure {

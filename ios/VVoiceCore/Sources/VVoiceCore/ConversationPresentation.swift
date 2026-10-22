@@ -17,8 +17,8 @@ public struct ConversationTurn: Identifiable, Equatable, Sendable {
     }
 }
 
-/// Ephemeral, bounded captions. Provider partials replace their own unfinished
-/// segment; a completed segment never gets overwritten by the next one.
+/// Ephemeral, bounded captions. Relay assistant partials are deltas; finals
+/// replace the accumulated text. GPT uses explicit turn ownership below.
 public struct ConversationPresentation: Sendable {
     public private(set) var turns: [ConversationTurn] = []
     public private(set) var people: [ConversationSpeaker] = []
@@ -26,12 +26,24 @@ public struct ConversationPresentation: Sendable {
     public private(set) var listenOnly = false
     private var speakerStream = UUID().uuidString
     public init() {}
-    public mutating func receive(role: String, text: String, final: Bool) {
+    public mutating func receive(role: String, text: String, final: Bool, delta: Bool = false) {
         guard ["user", "assistant"].contains(role), !text.isEmpty else { return }
         let text = String(text.prefix(8_000))
         if let last = turns.indices.last, turns[last].role == role, !turns[last].complete {
-            turns[last].text = text; turns[last].complete = final
+            turns[last].text = delta && !final ? String((turns[last].text + text).prefix(8_000)) : text
+            turns[last].complete = final
         } else { turns.append(.init(role: role, text: text, complete: final)) }
+        trim()
+    }
+    /// Explicit provider turn ownership prevents a late terminal from replacing a newer turn.
+    public mutating func receiveNative(_ update: GPTLiveTranscript.Update) {
+        let key = "gpt:" + update.key
+        if let index = turns.firstIndex(where: { $0.sourceKey == key }) {
+            turns[index].text = update.text; turns[index].complete = update.final
+        } else if !update.text.isEmpty {
+            var row = ConversationTurn(role: update.role, text: update.text, complete: update.final)
+            row.sourceKey = key; turns.append(row)
+        }
         trim()
     }
     /// ASR utterances, not provider captions, own human text in speaker calls.

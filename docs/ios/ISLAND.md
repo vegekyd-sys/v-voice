@@ -66,3 +66,9 @@ DEBUG 视觉检查可在主 App 的 root 添加仅 Debug 的 `--island-preview` 
 - 系统自动展示大卡后仍可收回。代码不会强行常驻，也不反复发相同报告提醒；长按小岛仍能查看最新报告大卡。
 
 本地系统层已在没有长按操作的场景读到「查看全文／收起文字／静音／结束」，连续真实镜像帧捕获了自动大卡及随后系统收回，见 VALIDATION.md 与 report-island-build15.json。不是原生预览组件或设计图。
+
+## build 16 当前回答字幕与启动品牌候选
+
+- 大卡在V播放语音且存在当前轮assistant字幕时优先显示最后三行。使用CoreText按实际可用宽度取三行，随既有600ms字幕发布节流更新；Widget不提供原生ScrollView手势阅读，全文通过App继续阅读。接收的字幕可能先于播放，不宣称逐字音频同步。普通回答不主动改变用户已选中的音频／文字布局，也不增加自动展开提醒。
+- 有未读方案时入口固定在底部中间；切换说话／听取状态时保持文字区最小高度，避免按钮位置跳动。左侧Reaction、静音、结束仍保留。锁屏样式允许V字幕，标记privacySensitive并沿用关闭灵动岛预览设置，系统决定实际隐私遮盖。
+- AppIcon原图未重画，改以VVoiceAppIcon资源名声明，补充NSAppIconActionTintColorName／NSAppIconComplementingColorNames以及AppShortcutsProvider紫色tile。App自有connecting首帧用同一原图。用户确认使用V Voice自带「和V通话」入口；未改AudioRecordingIntent、权限、后台入口或perform逻辑。AppShortcuts公开接口的图标参数为SF Symbol，系统前置启动提示不能作为可任意绘制的App卡片；旧系统缓存是否刷新需真机验收，不能以包内图标正确代替。

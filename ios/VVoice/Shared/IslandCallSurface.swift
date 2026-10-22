@@ -13,6 +13,10 @@ struct IslandCallSurface: View {
     var lockScreen = false
     @Environment(\.isLuminanceReduced) private var luminanceReduced
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var portraitAsset: String { IslandReactionCatalog.assets[quiet ? "listen-5" : state.island.reactionID] ?? "VAvatar_listen_5" }
+    var showsReport: Bool { !stale && state.documentID != nil }
+    var showsWaveform: Bool { !showsReport && !quiet }
     var conversation: Bool { stale || lockScreen || [.reconnecting,.interrupted,.ending,.failed].contains(state.phase) || state.island.layout == .conversation }
     private var quiet: Bool { stale || ![.listening,.thinking,.speaking,.muted].contains(state.phase) }
     private var destination: URL { CallDestination.url(callID: callID, documentID: stale ? nil : state.documentID) }
@@ -21,26 +25,24 @@ struct IslandCallSurface: View {
         VStack(spacing: 4) {
             HStack(spacing: 13) {
                 if !typeSize.isAccessibilitySize {
-                    Group {
-                        if quiet { Image(systemName: stale ? "pause.fill" : state.phase.symbol).font(.system(size: 24)).foregroundStyle(islandLilac) }
-                        else { Image(IslandReactionCatalog.assets[state.island.reactionID] ?? "VAvatar_listen_5").resizable().scaledToFill() }
-                    }.frame(width: conversation ? 52 : 56, height: conversation ? 52 : 60).clipShape(Circle())
+                    Image(portraitAsset).resizable().scaledToFill().unredacted()
+                        .frame(width: conversation ? 52 : 56, height: conversation ? 52 : 60).clipShape(Circle())
                         .accessibilityLabel(quiet ? status : "V 的 Reaction")
                 }
                 if conversation {
-                    Link(destination: destination) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            if !stale, state.documentID != nil {
-                                Text(lockScreen ? "有方案待查看" : state.documentTitle ?? "方案整理好了")
-                                    .font(.system(size: 15, weight: .medium)).lineLimit(1).privacySensitive(!lockScreen)
-                                Label("查看全文", systemImage: "arrow.up.right").font(.system(size: 13, weight: .medium)).foregroundStyle(islandLilac)
-                            } else {
-                                Text(stale || quiet || lockScreen || state.caption.isEmpty ? status : state.caption)
-                                    .font(.system(size: 15, weight: .medium)).lineLimit(typeSize.isAccessibilitySize ? 1 : 2)
-                                    .privacySensitive(!lockScreen && !quiet)
-                            }
-                        }.frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).contentShape(Rectangle())
-                    }.foregroundStyle(.white.opacity(0.92)).accessibilityLabel(state.documentID != nil && !stale ? "方案已就绪，查看全文" : "返回当前通话")
+                    if showsWaveform {
+                        waveform
+                    } else {
+                        Link(destination: destination) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(showsReport ? (lockScreen ? "有方案待查看" : state.documentTitle ?? "方案整理好了") : status)
+                                    .font(.system(size: 15, weight: .medium)).lineLimit(1).privacySensitive(showsReport && !lockScreen)
+                                if showsReport {
+                                    Text("点击查看完整方案").font(.system(size: 12)).foregroundStyle(islandLilac.opacity(0.8))
+                                }
+                            }.frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).contentShape(Rectangle())
+                        }.foregroundStyle(.white.opacity(0.92)).accessibilityLabel(showsReport ? "方案已就绪，查看全文" : "返回当前通话")
+                    }
                     if !lockScreen, !stale { IslandFoldButton(callID: callID) }
                 } else if state.phase == .connecting {
                     VStack(alignment: .leading, spacing: 5) {
@@ -50,13 +52,11 @@ struct IslandCallSurface: View {
                     endButton
                 } else {
                     Button(intent: IslandLayoutIntent(callID: callID, conversation: true)) {
-                        IslandWaveform(levels: quiet || luminanceReduced ? [] : state.island.levels,
-                                       source: quiet || luminanceReduced ? .none : state.island.audioSource)
-                            .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
-                    }.buttonStyle(.plain).accessibilityLabel("查看对话文字")
+                        waveform
+                    }.buttonStyle(.plain).accessibilityLabel("展开通话控制")
                     endButton
                 }
-            }.frame(minHeight: conversation ? 52 : 60)
+            }.frame(height: conversation ? 56 : 60)
             if conversation {
                 HStack {
                     if !quiet {
@@ -70,11 +70,23 @@ struct IslandCallSurface: View {
                             Image(systemName: "arrow.up.forward.app").frame(width: 44, height: 44).background(.white.opacity(0.12), in: Circle())
                         }.foregroundStyle(islandLilac).accessibilityLabel("返回检查通话")
                     }
-                    Spacer(minLength: 20)
+                    Spacer(minLength: 12)
+                    if !stale, let documentID = state.documentID {
+                        Link(destination: CallDestination.url(callID: callID, documentID: documentID)) {
+                            Label("查看方案", systemImage: "arrow.up.right").font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(islandLilac).frame(minHeight: 44)
+                        }.accessibilityLabel("方案已就绪，查看全文")
+                        Spacer(minLength: 12)
+                    }
                     endButton
                 }
             }
-        }.padding(.horizontal, 8).padding(.bottom, 4)
+        }.padding(.horizontal, 8).padding(.bottom, conversation ? 12 : 4)
+    }
+    private var waveform: some View {
+        IslandWaveform(levels: quiet || luminanceReduced ? [] : state.island.levels,
+                       source: quiet || luminanceReduced ? .none : state.island.audioSource)
+            .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
     }
     private var endButton: some View {
         Button(intent: IslandEndIntent(callID: callID)) {
@@ -88,7 +100,7 @@ struct IslandFoldButton: View {
     var body: some View {
         Button(intent: IslandLayoutIntent(callID: callID, conversation: false)) {
             Image(systemName: "chevron.down").font(.system(size: 10, weight: .medium)).foregroundStyle(.white.opacity(0.45)).frame(width: 44, height: 44)
-        }.buttonStyle(.plain).accessibilityLabel("收起文字，返回音频")
+        }.buttonStyle(.plain).accessibilityLabel("收起通话控制")
     }
 }
 struct IslandWaveform: View {

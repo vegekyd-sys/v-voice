@@ -46,14 +46,13 @@ struct SettingsView: View {
                 Section {
                     Menu("对话声音：" + call.modelTitle) { VoiceModelMenu(call: call) }.disabled(call.active)
                     GrokVoicePicker(call: call)
-                    if call.modelOptions.contains(where: { $0.id == "gpt-live" }) { Text("GPT Live 的原生音频接入尚未完成，当前不可选。").font(.footnote).foregroundStyle(.secondary) }
                 } footer: { Text("使用 V 现有实时语音与工具能力。音频设备由 iOS 自动选择；接入耳机后使用耳机麦克风。") }
                 Section {
-                    Toggle("灵动岛显示对话摘要", isOn: $call.islandCaptions)
-                    Text("显示最近一句对话和方案标题；关闭后只显示通话状态与方案就绪。完整内容仅在 App 中打开。")
+                    Toggle("灵动岛显示方案标题", isOn: $call.islandCaptions)
+                    Text("通话时显示声音波纹；有报告时提示点击查看。关闭后隐藏方案标题，完整内容仍在 App 中打开。")
                         .font(.footnote).foregroundStyle(.secondary)
                 } header: { Text("灵动岛") } footer: {
-                    Text("长按屏幕顶部的小岛，展开音频卡片；点波形查看文字和静音按钮，点折叠箭头返回音频。轻点小岛返回 App，有方案时进入全文。")
+                    Text("长按屏幕顶部的小岛，展开音频卡片；点波形展开静音等通话控制，点折叠箭头返回音频。轻点小岛返回 App，有方案时进入全文。")
                 }
                 Section {
                     NavigationLink("设置操作按钮") { ActionButtonInstructions() }
@@ -91,7 +90,7 @@ struct ActionButtonInstructions: View {
                 Text("完成一次设置，之后长按 iPhone 操作按钮，就能和 V 说话。").font(.system(size: 16)).foregroundStyle(.secondary).lineSpacing(6)
                 instruction("01", "先准备好通话", "在 V Voice 绑定本人入口，允许麦克风和实时活动。先从 App 完成一次通话。")
                 instruction("02", "打开系统设置 → 操作按钮", "选择「快捷指令」，轻点「选取快捷指令」，找到 V Voice 的「和 V 通话」。")
-                instruction("03", "长按，等接通后开口", "听到接通提示后即可说话。长按屏幕顶部的灵动岛展开音频卡片，点波形查看文字和静音按钮；轻点小岛返回 App。")
+                instruction("03", "长按，等接通后开口", "听到接通提示后即可说话。长按屏幕顶部的灵动岛展开音频卡片，点波形展开静音等通话控制；轻点小岛返回 App。")
                 ShortcutsLink().frame(maxWidth: .infinity).padding(.vertical, 8)
                 Text("操作按钮在后台开始通话，灵动岛显示通话状态并提供静音、结束按钮。首次使用请先在 App 完成入口绑定和授权。系统来电与 Siri 会暂停通话；结束后按提示恢复。").font(.footnote).foregroundStyle(.secondary).lineSpacing(5)
             }.padding(28)

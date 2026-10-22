@@ -11,3 +11,5 @@ Signing.xcconfig
 .swiftpm/
 
 __pycache__/
+
+SourcePackages/

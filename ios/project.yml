@@ -11,10 +11,13 @@ settings:
     SWIFT_VERSION: '6.0'
     DEVELOPMENT_TEAM: E6YTL27QWA
     CODE_SIGN_STYLE: Automatic
-    CURRENT_PROJECT_VERSION: 16
+    CURRENT_PROJECT_VERSION: 19
     MARKETING_VERSION: '1.0.0'
     TARGETED_DEVICE_FAMILY: '1,2'
 packages:
+  WebRTC:
+    url: https://github.com/stasel/WebRTC.git
+    exactVersion: 154.0.0
   VVoiceCore:
     path: VVoiceCore
 schemes:
@@ -38,13 +41,16 @@ targets:
         buildPhase: resources
     dependencies:
       - package: VVoiceCore
+      - package: WebRTC
       - target: VVoiceActivity
         embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.versa.vvoice
         INFOPLIST_FILE: VVoice/Info.plist
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_APPICON_NAME: VVoiceAppIcon
+        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: VVoiceSystemPortrait
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
         SWIFT_EMIT_LOC_STRINGS: YES
       configs:
         Debug:
