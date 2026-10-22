@@ -302,7 +302,10 @@ def switch(target, directory, expected, receipt_dir, host_root=Path('/')):
                         'Environment=VOICE_RELEASE_BOOT_HOLD_UNTIL=' + str(boot_hold_until) + '\n'
                         'TimeoutStopSec=infinity\nSendSIGKILL=no\n')
             dropin.parent.mkdir(parents=True, exist_ok=True)
-            dropin.write_text(contents)
+            temporary = dropin.with_name(dropin.name + '.' + uuid.uuid4().hex)
+            temporary.write_text(contents)
+            temporary.chmod(0o600)
+            os.replace(temporary, dropin)
             run(['systemctl','daemon-reload'])
             # Guard remains acquired. We never reach this with live work.
             run(['systemctl','stop',unit], timeout=45)
@@ -337,6 +340,9 @@ def switch(target, directory, expected, receipt_dir, host_root=Path('/')):
             except Exception:
                 # A failed candidate can only be rolled back while still gated,
                 # idle, and owned by this controller. Never kill a newly active call.
+                require(dropin.read_text() == contents, 'Another publisher changed the launcher; do not overwrite it')
+                if pointer:
+                    require(os.readlink(pointer) == directory + '/lab/gpt-live-h5', 'Another publisher changed the pointer; do not overwrite it')
                 props = properties(unit)
                 if int(props['MainPID']) > 1:
                     failed = admin(control)
@@ -374,7 +380,10 @@ def remote_main(request):
         if action == 'inspect':
             result = inspect(target)
         elif action == 'stage':
-            result = install(target, request['archive'])
+            import fcntl
+            with open('/run/lock/voice-release-' + target['id'] + '.lock', 'w') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                result = install(target, request['archive'])
         elif action == 'switch':
             directory = request['directory']
             require(Path(directory).parent == Path(target['releaseRoot']), 'Invalid release destination')
