@@ -1,0 +1,80 @@
+{
+  "schema": "v-voice-release-registration-v1",
+  "release": "voice-caption-continuity-20261022",
+  "version": "voice-caption-continuity.20261022.19",
+  "entryCommit": "3fe9fcc25039c620e7745bf83a14b14c9d523f29",
+  "previousProductionCommit": "eaa920e64b7eb8b1b034b8a03d1bfff636d65e42",
+  "phase": "production_web_verified_ios19_installed_human_caption_check_pending",
+  "pullRequest": "https://github.com/vegekyd-sys/v-voice/pull/68",
+  "mainChecks": {
+    "run": 39793698309,
+    "conclusion": "success"
+  },
+  "files": 205,
+  "filesSha256": "f291a6608ec19eb7ab2e786119b3dff754dcda1c3fd05912bba2200edf7e54de",
+  "gatewayRestartRequired": false,
+  "gatewayUnchangedVerified": true,
+  "existingPrivateSettingsPreserved": true,
+  "beforeReadiness": {
+    "known": true,
+    "activeCalls": 0,
+    "creatingSessions": 0,
+    "backgroundTasks": 0
+  },
+  "beforeOpenVoices": 0,
+  "beforeRelayConnections": 0,
+  "publicVerification": {
+    "checkedAt": "2026-10-22T14:20:05.847Z",
+    "ready": true,
+    "phoneInputPolicy": "native",
+    "releaseReadiness": {
+      "known": true,
+      "activeCalls": 0,
+      "creatingSessions": 0,
+      "backgroundTasks": 0
+    },
+    "publicHTTPSAssetsVerified": [
+      "app.js",
+      "ui-bundle.mjs",
+      "transcript-presentation.mjs",
+      "avatar-telemetry.mjs",
+      "avatar-reactions.mjs",
+      "changelog.mjs",
+      "ios-shell-release.json"
+    ],
+    "sourceCommit": "3fe9fcc25039c620e7745bf83a14b14c9d523f29"
+  },
+  "homepageBrowserVerified": true,
+  "homepageScreenshot": "homepage-updates.png",
+  "tests": {
+    "swiftCore": 29,
+    "nativeCaptionWebRTCAndH5": 7,
+    "node": 715,
+    "speaker": 95,
+    "mergedSourceCleanCheckoutNode": 715,
+    "mergedSourceCleanCheckoutSpeaker": 95
+  },
+  "ios": {
+    "version": "1.0.0",
+    "build": 19,
+    "signedSourceCommit": "06317a892639af16697cf67498b5962ec8a335f8",
+    "sourceTreeMatchesMergeCommit": true,
+    "archiveVerified": true,
+    "exportedIPAVerified": true,
+    "ipaSHA256": "8c62603268b1d7c01fa73f9cac24441041b8bdd2171c9569b07cd9da1de7039a",
+    "requestedPhysicalIPhoneInstalledAndReadBack": true,
+    "ordinaryLaunchSucceeded": true,
+    "overwriteWithoutUninstallOrKeychainReset": true,
+    "realCallCaptionAcceptance": "pending",
+    "automaticPaidCallPerformed": false
+  },
+  "rollback": {
+    "previousWebReleaseRetained": true,
+    "originalLauncherAndPrivateConfigRetained": true,
+    "controllerAndReceiptsRetainedPrivately": true,
+    "build": 18,
+    "ipaSHA256": "cae503ea9b572e7982b2ffe41935a25503f765744703d15cf6fd6c31e86bde85",
+    "signedIPACopiedAndVerified": true,
+    "rollbackExecuted": false
+  }
+}

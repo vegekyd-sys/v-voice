@@ -1,11 +1,11 @@
 {
   "schema": "v-voice-current-release-v1",
-  "entryCommit": "eaa920e64b7eb8b1b034b8a03d1bfff636d65e42",
+  "entryCommit": "3fe9fcc25039c620e7745bf83a14b14c9d523f29",
   "gatewayPluginCommit": "a9ac516860a8856470262957ad6ea0cc2670cb0e",
-  "registration": "voice-native-duplex-20261022/release.json",
+  "registration": "voice-caption-continuity-20261022/release.json",
   "runtimeDifference": "Native SeedDuplex phone full duplex, response-owned playback and accepted-hangup fallback. Capable clients opt in; old iOS remains Speaker. Native iOS adaptation merged but current device candidate not replaced. Gateway plugin unchanged.",
   "gatewayRestartRequired": false,
-  "release": "voice-native-duplex-20261022",
-  "previousEntryCommit": "0d0b3d96c5391dde5362c5db270018958948584f",
-  "filesSha256": "b7b2c9fb763a3a0d0950afada2e2fd50cc038bf56d2455cd9c477a3d7004e0a6"
+  "release": "voice-caption-continuity-20261022",
+  "previousEntryCommit": "eaa920e64b7eb8b1b034b8a03d1bfff636d65e42",
+  "filesSha256": "f291a6608ec19eb7ab2e786119b3dff754dcda1c3fd05912bba2200edf7e54de"
 }
