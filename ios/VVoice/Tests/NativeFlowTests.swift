@@ -231,6 +231,27 @@ import VVoiceCore
         XCTAssertTrue(call.active)
         await call.end()
     }
+    func testNativeDuplexReplacesOnlyOldResponseAndKeepsCaptureAndHangup() async throws {
+        let call = try await client()
+        try await fixture("native-mode"); call.model = .seeduplex
+        try await call.startOrContinue()
+        try await until { call.phase == .listening }
+        let request = try await stats()["lastSessionRequest"] as? [String: Any]
+        XCTAssertEqual(request?["inputPolicy"] as? String, "native")
+        try await fixture("audio", ["ms":5000,"responseId":"old"])
+        try await until { call.phase == .speaking }
+        let inputBefore = try await stats()["inputBytes"] as? Int ?? 0
+        try await fixture("audio", ["ms":240,"responseId":"new"])
+        try await until({ call.phase == .listening }, timeout: 2)
+        // Late old audio and completion must not revive its five-second tail.
+        try await fixture("audio", ["ms":5000,"responseId":"old"])
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(call.phase, .listening)
+        let afterReplacement = try await stats()["inputBytes"] as? Int ?? 0
+        XCTAssertGreaterThan(afterReplacement, inputBefore)
+        try await fixture("end")
+        try await until { call.phase == .ended }
+    }
     func testGrokVoiceChoiceIsSentAndUnsupportedModelsStayExplicit() async throws {
         let call = try await client()
         await call.refreshOptions()

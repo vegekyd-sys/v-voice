@@ -20,7 +20,8 @@ import {voiceConversationContext} from '../realtime-direct-tools/conversation-co
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null }) {
+  if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
   if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
@@ -139,7 +140,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           const visitor = hosted ? access.read(req) : null;
           const canCheckEntry = visitor && (contexts.has(`${entry}:${visitor.id}`) || contexts.size < 512);
           if (!hosted || canCheckEntry) {
-            const initial = JSON.stringify({ ready: backendReady(), preview, defaultModel, ...(speakerRouting?{speakerRouting:true}:{}), ...(listening?{comparisonAvailable:true}:{}),
+            const initial = JSON.stringify({ ready: backendReady(), preview, defaultModel, ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}), ...(listening?{comparisonAvailable:true}:{}),
               ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
             }).replaceAll("<", "\\u003c");
             html = html.replace('<script type="module" src="./app.js"></script>', `<script type="application/json" id="voiceEntryStatus">${initial}</script><script type="module" src="./app.js"></script>`);
@@ -176,7 +177,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       releaseClosedDirectCalls();
       context.touchedAt = Date.now();
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
-        ready: backendReady(), preview, defaultModel, ...(speakerRouting?{speakerRouting:true,speakerStats:speakerRouting.snapshot()}:{}),
+        ready: backendReady(), preview, defaultModel, ...(speakerRouting?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
         releaseReadiness: {
           known: !directVoice || typeof directVoice.backgroundTaskCount === 'function',
           activeCalls: [local, ...contexts.values()].filter(c=>c.active).length + (deviceEndpoint?.activeCalls() ?? 0),
@@ -251,7 +252,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           await close(context);
           const sessionKey = binding.sessionKey;
           if (params.model && params.model !== 'gpt-live') {
-            const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...speakerRouting?{inputPolicy:params.inputPolicy??'speaker'}:{}});
+            // SeedDuplex needs the continuous microphone stream to own turn
+            // taking. Keep household/multi-speaker routing available explicitly;
+            // the deployment selects the phone default, not browser heuristics.
+            // Clients opt in only after implementing native response ownership and reversible pause.
+            const inputPolicy = params.inputPolicy ?? 'speaker';
+            const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...speakerRouting?{inputPolicy}:{}});
             context.active={sessionKey,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
             rememberAvatarCall(context,context.active,params.model);
             return json(res,200,reservation);
@@ -500,7 +506,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const speakerRouting=productionSpeaker?.service;
     const lark=createVoiceLarkReader({environment:process.env});
     if(!lark.available)console.warn(JSON.stringify({type:'voice.lark-unavailable'}));
-    const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,// Experimental: V's own line before a tool. Off by default: on 2026-10-20 Seeduplex lost 3 of 5 results it had spoken before.
+    const nativeInterruptModule=process.env.VOICE_NATIVE_INTERRUPT_ASR==='1'?await import('../realtime-direct-tools/native-interrupt.mjs'):null;
+    const nativeInterrupt=nativeInterruptModule
+      ? ({inputSampleRate,...callbacks})=>new nativeInterruptModule.NativeInterruptAsr({apiKey:process.env.VOLCENGINE_ASR_API_KEY,inputSampleRate,...callbacks}):undefined;
+    const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',// Experimental: V's own line before a tool. Off by default: on 2026-10-20 Seeduplex lost 3 of 5 results it had spoken before.
       toolStartNotice:process.env.VOICE_TOOL_START_NOTICE==='model'?'model':'cached',calendar:lark.available?lark.calendar:null,larkRead:lark.available?lark.read:null,
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),
@@ -543,6 +552,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       candidateRelease:process.env.VOICE_CANDIDATE_RELEASE_FILE?JSON.parse(await readFile(process.env.VOICE_CANDIDATE_RELEASE_FILE,'utf8')):undefined,
       listening:process.env.VOICE_LISTENING_DIR ? await (await import('./listening.mjs')).loadVoiceListening(process.env.VOICE_LISTENING_DIR) : undefined,
       directVoice, speakerRouting, avatarLog,callControlAudit:transcriptLog.audit,
+      phoneInputPolicy:process.env.VOICE_PHONE_INPUT_POLICY ?? 'speaker',
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",
       conversationEntries: process.env.VOICE_ENTRIES_FILE ? JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,"utf8")) : [],
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",

@@ -48,6 +48,7 @@ let avatarDiagnosticOwner = null;
 let liveReady = false;
 let entryError = null;
 let callerEntry = "tianyi";
+let preferredPhoneInputPolicy = null;
 const speakerCandidate=()=>document.body?.dataset?.speakerRouting==='true';
 function speakerEvent(value){
   if(!speakerCandidate())return;
@@ -626,7 +627,8 @@ async function startCall() {
     if(fixtureId)active.fixture=active.capture;
     if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
     const selectedModel = ['seeduplex','grok'].includes(chosenModel)?chosenModel:'gpt-live';
-    const reservation = await api("session", {model:selectedModel,...speakerCandidate()?{inputPolicy:new URLSearchParams(location.search).get('inputPolicy')==='native'?'native':'speaker'}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:{})}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
+    const inputPolicy = speakerCandidate() ? (new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy) : null;
+    const reservation = await api("session", {model:selectedModel,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:{})}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     const diagnosticOwner=avatarDiagnosticOwner=Symbol('avatar-call');
     document.body.dataset.avatarReactionRequests='0';
@@ -663,6 +665,14 @@ async function startCall() {
         onPlaybackActivity:speaking=>{if(call===active){setVoiceState(speaking?'speaking':'listening');if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
         onEvent:value=>{
           if(call!==active)return;
+          // An interrupted native reply may never send its final transcript.
+          // Its caption row must not be reused for the answer to the next turn.
+          if(value.type==='input.speech.started'&&active.relayTurns?.assistant){
+            // Close only the display row, preserving its received text in
+            // history. This is not provider completion or playback proof.
+            renderTranscript(presentation.consume({type:'turn.done',turn:{role:'assistant',id:active.relayTurns.assistant}}));
+            delete active.relayTurns.assistant;
+          }
           if(speakerCandidate()&&(value.type.startsWith('speaker.')||value.type.startsWith('end.')||value.type==='transcript'&&value.final||['audio.done','audio.clear','error','upload.backpressure'].includes(value.type)))speakerEvent(value);
           if (value.type === 'avatar.expression') { avatar?.expression(value.expression); return; }
       tasks.consume(value);
@@ -878,6 +888,7 @@ async function initializeEntry() {
     }));
     if (result.error) throw new Error(result.error);
     const { status } = result;
+    preferredPhoneInputPolicy = status.phoneInputPolicy;
     liveReady = status.ready === true;
     const models = MODEL_CHOICES.map(choice => {
       const model = status.models?.find(item => item.id === choice.id);

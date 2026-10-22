@@ -57,6 +57,7 @@ import VVoiceCore
             let speed = grok?["speed"] as? Double ?? 1
             grokHint = [speed != 1 ? "\(speed)× 语速" : "", grok?["expressiveTags"] as? Bool == true ? "自主表达试用" : ""].filter { !$0.isEmpty }.joined(separator: " · ")
         }
+        preferredPhoneInputPolicy = status["phoneInputPolicy"] as? String
         comparisonAvailable = status["comparisonAvailable"] as? Bool == true
     }
     var modelTitle: String { modelOptions.first(where: { $0.id == model.rawValue })?.title ?? model.title }
@@ -127,6 +128,12 @@ import VVoiceCore
     @ObservationIgnored private var injectedSpeech = false
     @ObservationIgnored private var onsetFrames = 0
     @ObservationIgnored private var retiredResponses: Set<String> = []
+    @ObservationIgnored private var preferredPhoneInputPolicy: String?
+    @ObservationIgnored private var nativeDuplex = false
+    @ObservationIgnored private var nativeAssisted = false
+    @ObservationIgnored private var nativePause = NativeSpeechPause()
+    @ObservationIgnored private var nativeOutputDone = false
+    @ObservationIgnored private var retiredResponseOrder: [String] = []
     @ObservationIgnored private var responseID: String?
     private struct EarlyAudio { let bytes: Data; let sequence: Int? }
     @ObservationIgnored private var earlyAudio: [EarlyAudio] = []
@@ -249,7 +256,7 @@ import VVoiceCore
         lastFailure = nil
         conversation.reset(); h5AvatarRevision = 0; autoOpenDocumentID = nil; documents.removeAll(); tasks.removeAll(); presentationID = owner.uuidString
         startedAt = Date(); lastCaption = ""; resultID = nil; resultText = ""; shownResults.removeAll(); detail = "接通后会提示你开口"
-        retiredResponses.removeAll(); publish()
+        retiredResponses.removeAll(); retiredResponseOrder.removeAll(); publish()
         do {
             try beginActivity(required: fromIntent)
             try await dial(owner: owner, greeting: true)
@@ -275,13 +282,16 @@ import VVoiceCore
         applyOptions(status)
         var request: [String: Any] = ["model": model.rawValue]
         if model == .grok, !grokVoices.isEmpty { request["voice"] = grokVoice }
-        // Keep the server's existing speaker policy and the proven PCM path.
+        if model == .seeduplex, let policy = preferredPhoneInputPolicy, ["native", "speaker"].contains(policy) { request["inputPolicy"] = policy }
         let reservation = try await api.call("session", body: request)
         guard let id = reservation["voiceSessionId"] as? String else { throw VoiceError.protocolMismatch }
         guard owned(owner) else {
             _ = try? await api.call("close", body: ["voiceSessionId": id], refresh: false); throw CancellationError()
         }
         voiceID = id; try api.rememberCall(id)
+        nativeDuplex = reservation["nativeDuplex"] as? Bool == true
+        nativeAssisted = nativeDuplex && reservation["nativePlaybackPolicy"] as? String == "assisted"
+        nativePause.reset(); nativeOutputDone = false
         speakerRouted = reservation["speakerRouting"] is [String: Any]
         conversation.beginSpeakerStream(); speakerNotice = ""; speakerAction = ""; speakerNoticeTask?.cancel()
         avatarOutcome = "none"; avatar.begin(owner: id); refreshIslandAvatarSurface(); updateAvatar()
@@ -305,10 +315,15 @@ import VVoiceCore
             self.lastInput = Date()
             guard self.providerReady else { return }
             self.observeIslandAudio(rms, outputRMS: self.audio.playbackRMS)
-            if !self.muted, self.injectedSpeech, self.audio.queuedFrames > 0 {
+            if self.nativeAssisted {
+                let pcm = self.muted ? Data(count: data.count) : data
+                let held = self.nativePause.observe(pcm, enabled: self.audio.queuedFrames > 0, at: ProcessInfo.processInfo.systemUptime * 1000, generationComplete: self.nativeOutputDone)
+                self.audio.setPlaybackPaused(held)
+            }
+            if !self.nativeDuplex, !self.muted, self.injectedSpeech, self.audio.queuedFrames > 0 {
                 self.onsetFrames = rms >= 0.025 ? self.onsetFrames + 1 : 0
                 if self.onsetFrames >= 4 {
-                    if let id = self.responseID { self.retiredResponses.insert(id) }
+                    if let id = self.responseID { self.retireResponse(id) }
                     self.audio.clear(); self.injectedSpeech = false; self.onsetFrames = 0
                     relay.send(["type": "barge-in"])
                 }
@@ -317,7 +332,7 @@ import VVoiceCore
         }
         audio.onPlayback = { [weak self] playing in
             guard let self, self.owned(owner), self.phase != .interrupted, self.providerReady, self.audioReady else { return }
-            relay.send(["type": "playback.state", "speaking": playing])
+            relay.send(["type": "playback.state", "speaking": playing || self.audio.queuedFrames > 0])
             if playing { self.conversation.assistantSpeaking() }
             self.setPhase(playing ? .speaking : .listening, owner: owner)
         }
@@ -359,14 +374,28 @@ import VVoiceCore
             guard providerReady else { return }
             if let response = v["responseId"] as? String, retiredResponses.contains(response) { return }
             guard v["sampleRate"] as? Int == 24_000, let encoded = v["audio"] as? String, let bytes = Data(base64Encoded: encoded) else { throw VoiceError.protocolMismatch }
+            if nativeDuplex, let next = v["responseId"] as? String, let previous = responseID, next != previous {
+                retireResponse(previous)
+                clearOutput()
+            }
+            nativeOutputDone = false
             injectedSpeech = v["source"] as? String == "injected-speech"; responseID = v["responseId"] as? String
             if audioReady { try audio.play(bytes, sequence: v["sequence"] as? Int) }
             else {
                 guard earlyAudioBytes + bytes.count <= 480_000 else { throw VoiceError.bufferOverflow }
                 earlyAudio.append(EarlyAudio(bytes: bytes, sequence: v["sequence"] as? Int)); earlyAudioBytes += bytes.count
             }
-        case "audio.clear": earlyAudio.removeAll(); earlyAudioBytes = 0; earlyOutputDone = false; audio.clear(); injectedSpeech = false; pendingEndID = nil; naturalEnd?.cancel()
-        case "audio.done": if audioReady { audio.markOutputDone() } else { earlyOutputDone = true }
+        case "audio.clear": clearOutput()
+        case "input.speech.started":
+            if nativeAssisted, audio.queuedFrames > 0 { nativePause.nativeStarted(at: ProcessInfo.processInfo.systemUptime * 1000); audio.setPlaybackPaused(nativePause.held) }
+        case "input.speech.stopped":
+            if nativeAssisted { nativePause.nativeStopped(at: ProcessInfo.processInfo.systemUptime * 1000) }
+        case "input.speech.ignored":
+            if nativeAssisted, let preserved = v["preservedResponseId"] as? String, preserved == responseID { nativePause.ignored(); audio.setPlaybackPaused(false) }
+        case "audio.done":
+            if let completed = v["responseId"] as? String, let current = responseID, completed != current { return }
+            nativeOutputDone = true; nativePause.generationDone(at: ProcessInfo.processInfo.systemUptime * 1000)
+            if audioReady { audio.markOutputDone() } else { earlyOutputDone = true }
         case "speaker.utterance", "speaker.decision":
             if let event = SpeakerTranscriptEvent(v), conversation.receiveSpeaker(event) {
                 lastCaption = String(conversation.turns.last(where: { $0.role == "user" })?.text.suffix(500) ?? "")
@@ -568,10 +597,21 @@ import VVoiceCore
         detail = muted ? "V 听不到你的声音；轻点恢复" : "可以继续说话"
         UIImpactFeedbackGenerator(style: .soft).impactOccurred(); publish(immediate: true)
     }
+    private func retireResponse(_ id: String) {
+        guard retiredResponses.insert(id).inserted else { return }
+        retiredResponseOrder.append(id)
+        if retiredResponseOrder.count > 256 { retiredResponses.remove(retiredResponseOrder.removeFirst()) }
+    }
+    private func clearOutput() {
+        earlyAudio.removeAll(); earlyAudioBytes = 0; earlyOutputDone = false
+        nativePause.reset(); nativeOutputDone = false
+        audio.clear(); injectedSpeech = false; pendingEndID = nil; naturalEnd?.cancel()
+    }
     private func stopMedia(keepAudio: Bool = false) {
         speakerNoticeTask?.cancel(); speakerNoticeTask = nil; speakerNotice = ""; speakerAction = ""
         thinkingNoticeTask?.cancel(); thinkingNoticeTask = nil; thinkingVisible = false
         routeChangeTask?.cancel(); routeChangeTask = nil
+        nativeDuplex = false; nativeAssisted = false; nativePause.reset(); nativeOutputDone = false; responseID = nil
         audioReady = false; earlyAudio.removeAll(); earlyAudioBytes = 0; earlyOutputDone = false
         providerDeadline?.cancel(); providerDeadline = nil
         heartbeat?.cancel(); heartbeat = nil; naturalEnd?.cancel(); naturalEnd = nil

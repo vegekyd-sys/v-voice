@@ -25,6 +25,23 @@ import AVFoundation
         XCTAssertTrue(audio.isRunning)
         XCTAssertGreaterThan(bytes, before + 960)
     }
+    func testReversiblePausePreservesScheduledAudioWhileMicrophoneContinues() async throws {
+        guard AVAudioApplication.shared.recordPermission == .granted else { throw XCTSkip("Microphone permission required") }
+        let audio = VoiceAudio(); defer { audio.stop() }
+        var input = 0, drained = false
+        audio.onInput = { data, _ in input += data.count }; audio.onDrained = { drained = true }
+        try audio.start(); try await audio.waitUntilCapturing()
+        audio.setPlaybackPaused(true)
+        try audio.play(Data(count: 48_000), sequence: 1); audio.markOutputDone()
+        let queued = audio.queuedFrames, before = input
+        try await Task.sleep(for: .milliseconds(350))
+        XCTAssertEqual(audio.queuedFrames, queued); XCTAssertFalse(drained)
+        XCTAssertGreaterThan(input, before); XCTAssertTrue(audio.isRunning)
+        audio.setPlaybackPaused(false)
+        let deadline = Date().addingTimeInterval(3)
+        while !drained, Date() < deadline { try await Task.sleep(for: .milliseconds(30)) }
+        XCTAssertTrue(drained); XCTAssertEqual(audio.queuedFrames, 0)
+    }
     func testAudioCapturesPlaysAndRestartsWithoutNetwork() async throws {
         XCTAssertEqual(AVAudioApplication.shared.recordPermission, .granted,
                        "Authorize the microphone in V Voice before device acceptance")

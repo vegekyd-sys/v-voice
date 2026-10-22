@@ -1,11 +1,31 @@
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
+// Used only by the isolated candidate's release file, never VOICE_UPDATES.
+export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
+  version:'voice-seeduplex-duplex.20261022.7',date:'2026-10-22',
+  title:'原生多人和停声验证候选',status:'candidate-validation',
+  items:[
+    '修复已接受挂断却没有后续告别语音时，电话一直不结束的问题。',
+    '收紧停声条件：未说完的“先停”不再直接取消正在播的回答。',
+    '补充本通话内两人各自确认姓名和个人信息的对话规则。',
+    '仅 Candidate；持续电视、人声干扰和真人设备验收仍在验证。',
+  ],
+};
 export const VOICE_UPDATES = [
   {
     date: '2026-10-22', title: '通话看声音，方案点开看',
     items: [
       'iOS App build 17 的灵动岛大卡与中卡共用声音波纹，通话时保留 Reaction 和通话控制，不再滚动显示对话文字。',
       '完整方案到达后显示点击查看入口，说话期间也可直接打开报告；原有后台提醒和静音、结束操作保留。',
+    ],
+  },
+  {
+    date: '2026-10-22', title: '边听边说，插话时更快让位',
+    items: [
+      '豆包通话使用原生全双工，讲话期间持续听取输入；确认新回答时丢弃旧语音，短暂起声可暂停后继续。',
+      '补充两人分别确认姓名与个人信息的对话规则；电视和旁聊仍可能影响判断，持续背景人声继续优化。',
+      '修复已接受挂断但没有后续告别语音时，电话一直不结束的问题。',
+      '网页刷新后生效；iOS 原生音频适配需更新 App，已有版本保持原有通话路径。',
     ],
   },
   {
