@@ -71,9 +71,10 @@ export class BackendSpeechOnset {
 // Native recognition and the next response identity decide whether old speech
 // is discarded. A rejected/noisy probe resumes the exact unconsumed samples.
 export class NativeSpeechPause {
-  constructor(){this.reset();this.floor=.004;}
+  constructor({minRms=.018,consecutiveOnset=false,trustNativeOnset=true}={}){this.minRms=minRms;this.consecutiveOnset=consecutiveOnset;this.trustNativeOnset=trustNativeOnset;this.reset();this.floor=.004;}
   reset(){this.voicedMs=0;this.quietMs=0;this.inUtterance=false;this.held=false;this.yielded=false;this.expires=0;this.hardExpires=0;this.locked=false;this.native=false;}
-  nativeStarted(at){this.held=true;this.yielded=true;this.native=true;this.expires=this.hardExpires=at+15000;}
+  nativeStarted(at){if(!this.trustNativeOnset&&!this.held&&!this.inUtterance)return;this.held=true;this.yielded=true;this.native=true;this.expires=this.hardExpires=at+15000;}
+  ignored(){this.held=false;this.native=false;this.locked=true;this.yielded=false;}
   nativeStopped(at){if(this.held){this.native=false;this.expires=at+1800;}}
   generationDone(at){if(this.held&&!this.native)this.expires=Math.max(this.expires,Math.min(this.hardExpires,at+250));}
   observe(frame,enabled,at,generationComplete=true){
@@ -82,9 +83,9 @@ export class NativeSpeechPause {
     const rms=Math.sqrt(sum/Math.max(1,pcm.length)),ms=pcm.length/24,zcr=crossings/Math.max(1,pcm.length);
     // Post-AEC/NS audio only: reject DC, high-frequency broadband noise and
     // isolated clicks. The adaptive floor is bounded so quiet speech recovers.
-    const voiced=rms>=Math.max(.018,this.floor*3)&&zcr>.004&&zcr<.32;
+    const voiced=rms>=Math.max(this.minRms,this.floor*3)&&zcr>.004&&zcr<.32;
     if(voiced){this.quietMs=0;this.voicedMs+=ms;if(this.voicedMs>=140)this.inUtterance=true;}
-    else{this.quietMs+=ms;if(this.quietMs>=400){this.voicedMs=0;this.inUtterance=false;this.locked=false;}}
+    else{this.quietMs+=ms;if(this.consecutiveOnset&&!this.inUtterance)this.voicedMs=0;if(this.quietMs>=400){this.voicedMs=0;this.inUtterance=false;this.locked=false;}}
     if(!enabled){
       // Track an ongoing utterance even before output arrives: otherwise an
       // early endpoint reply gets a fresh 140ms of playback over the caller.
@@ -111,7 +112,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   // network gap. Hold only that first response to its native completion;
   // later answers keep streaming with their normal lead, and the mic stays on.
   const backendOnset=new BackendSpeechOnset();let backendPlayback=false, backendResponseId=null;const retiredResponses=new Set();
-  const nativeDuplex=reservation.nativeDuplex===true,nativeCourtesy=nativeDuplex&&reservation.nativePlaybackPolicy!=='provider',nativePause=new NativeSpeechPause();let nativePaused=false,currentResponseId=null;
+  const nativeDuplex=reservation.nativeDuplex===true,assisted=reservation.nativePlaybackPolicy==='assisted',nativeCourtesy=nativeDuplex&&reservation.nativePlaybackPolicy!=='provider',nativePause=new NativeSpeechPause(assisted?{minRms:.045,consecutiveOnset:true,trustNativeOnset:false}:{});let nativePaused=false,currentResponseId=null;
   let greetingHeld=reservation.provider==='grok';
   const endpoint=new URL('./api/relay',location.href);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
@@ -164,7 +165,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     if(stats.queuedOutputBytes+bytes.length>maxQueuedOutputBytes)throw Error('语音缓存过大，请重新拨号');
     const receivedAt=performance.now();if(lastReceiveAt!==null&&stats.queuedOutputBytes>0)stats.maxReceiveGapMs=Math.max(stats.maxReceiveGapMs,receivedAt-lastReceiveAt);lastReceiveAt=receivedAt;
     if(e.responseId&&retiredResponses.has(e.responseId))return;
-    if(nativeDuplex&&e.responseId&&currentResponseId&&e.responseId!==currentResponseId&&(!nativeCourtesy||nativePause.yielded)){
+    if(nativeDuplex&&e.responseId&&currentResponseId&&e.responseId!==currentResponseId&&(reservation.nativePlaybackPolicy!=='courtesy'&&reservation.nativePlaybackPolicy!==undefined||nativePause.yielded)){
       retiredResponses.add(currentResponseId);if(retiredResponses.size>256)retiredResponses.delete(retiredResponses.values().next().value);
       flush();
     }
@@ -183,8 +184,9 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
         if(typeof value.retiredResponseId==='string'){retiredResponses.add(value.retiredResponseId);if(retiredResponses.size>256)retiredResponses.delete(retiredResponses.values().next().value);}
         flush();
       }
-      if(nativeCourtesy&&value.type==='input.speech.started'&&stats.queuedOutputBytes>0){nativePause.nativeStarted(performance.now());pause(true);}
+      if(nativeCourtesy&&value.type==='input.speech.started'&&stats.queuedOutputBytes>0){nativePause.nativeStarted(performance.now());pause(nativePause.held);}
       if(nativeCourtesy&&value.type==='input.speech.stopped')nativePause.nativeStopped(performance.now());
+      if(assisted&&value.type==='input.speech.ignored'&&value.preservedResponseId===currentResponseId){nativePause.ignored();pause(false);}
       if(value.type==='audio.done'){outputComplete=true;if(nativeCourtesy)nativePause.generationDone(performance.now());greetingHeld=false;speaker?.port.postMessage({type:'done',epoch});}
       if(value.type==='end.cancelled'){ending=null;clearTimeout(tailTimer);}
       if(value.type==='end.after-playback'){ending=value.callId;checkEnd();}

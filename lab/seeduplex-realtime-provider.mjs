@@ -16,6 +16,15 @@ const MAX_TOOL_RESULT_BYTES = 32_000;
 const MAX_CONSULT_RESULT_CHARS = 8_000;
 const MAX_UPSTREAM_MESSAGE_BYTES = 1_048_576;
 
+// The native model sometimes represents "do not join this side conversation"
+// as an aside. It is a listening disposition, not a new spoken answer. Keep
+// ordinary parenthesized answers and mixed speech intact.
+export function nativeListeningAside(text) {
+  const value=String(text??'').trim();
+  if(value.length>160||!/^[(（][^()（）]+[)）]$/u.test(value))return false;
+  return /^(?:继续安静|保持安静|安静等候|静静倾听|继续倾听|不(?:插话|接话|回应|介入))/u.test(value.slice(1,-1).trim());
+}
+
 // Provider messages can contain prompts or credentials. Persist only a code and
 // a fixed classification, never an arbitrary upstream message.
 export function classifySeeduplexError(event = {}) {
@@ -291,6 +300,9 @@ export class SeeduplexRealtimeVoiceBridge {
     this.pendingGreeting = null;
     this.retiredResponses = new Set();
     this.audioResponseId = null;
+    this.deliveredAudioResponseId = null;
+    this.nativeAsideCandidates = new Map();
+    this.nativeTextResponses = new Set();
     this.responseOwnerAnnounced = false;
     this.responseOwnerId = undefined;
     this.supportsToolResultContinuation = true;
@@ -466,6 +478,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.responseActive = false;
     this.pendingGreeting = null;
     this.pendingSpeechCaption = null;
+    this.nativeAsideCandidates.clear();
     this.#diagnostic({stage:"reconnecting",attempt:this.reconnectAttempts.length});
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -519,6 +532,7 @@ export class SeeduplexRealtimeVoiceBridge {
   }
 
   sendUserMessage(text) {
+    if(this.request.nativeDuplex)this.nativeLiteralRead=/朗读|复述|念出|读出|原样|逐字/u.test(text??'');
     const normalized = optionalString(text);
     if (!normalized || !this.ready) return;
     this.responseOwnerAnnounced = false;
@@ -656,6 +670,7 @@ export class SeeduplexRealtimeVoiceBridge {
   acknowledgeMark(_markName) {}
 
   close() {
+    this.nativeAsideCandidates.clear();
     if (this.terminal) return;
     this.terminal = true;
     this.ready = false;
@@ -706,9 +721,45 @@ export class SeeduplexRealtimeVoiceBridge {
       if (this.seenEvents.size > 2048) this.seenEvents.delete(this.seenEvents.keys().next().value);
     }
     this.request.onProtocolEvent?.(event);
+    this.#handleEvent(event);
+  }
+
+  #handleEvent(event, replay=false) {
     const type = event?.type;
     const responseId = optionalString(event.response_id) ?? optionalString(event.response?.id);
     if (responseId && this.retiredResponses.has(responseId) && type?.startsWith("response.")) return;
+    if(this.request.nativeDuplex&&responseId&&!replay){
+      let candidate=this.nativeAsideCandidates.get(responseId);
+      if(type==='response.output_text.delta'&&typeof event.delta==='string'){
+        if(!this.nativeTextResponses.has(responseId)&&!event.delta.trim())return;
+        if(!this.nativeTextResponses.has(responseId)){
+          this.nativeTextResponses.add(responseId);
+          if(this.nativeTextResponses.size>256)this.nativeTextResponses.delete(this.nativeTextResponses.values().next().value);
+          if(/^\s*[(（]/u.test(event.delta)){
+            if(this.nativeAsideCandidates.size>=8)return this.#fail(new Error('语音说明积压，请重新拨号。'));
+            candidate={text:'',audio:[],bytes:0};this.nativeAsideCandidates.set(responseId,candidate);
+          }
+        }
+        if(candidate){candidate.text+=event.delta;if(candidate.text.length>8000)return this.#fail(new Error('语音说明过长，请重新拨号。'));return;}
+      }
+      if(type==='response.output_text.done'){
+        this.nativeAsideCandidates.delete(responseId);
+        if(!this.nativeLiteralRead&&nativeListeningAside(event.text)){
+          this.retiredResponses.add(responseId);if(this.retiredResponses.size>256)this.retiredResponses.delete(this.retiredResponses.values().next().value);
+          if(this.audioResponseId===responseId)this.audioResponseId=this.deliveredAudioResponseId;
+          this.request.onEvent?.({direction:'server',type:'native.listening-aside',responseId});return;
+        }
+        if(candidate){
+          // A normal parenthesized answer remains audible. Replaying bypasses
+          // this small output hold, never the event identity/dedup boundary.
+          for(const held of candidate.audio)this.#handleEvent(held,true);
+        }
+      }else if(candidate&&type?.startsWith('response.output_audio.')){
+        candidate.bytes+=typeof event.delta==='string'?event.delta.length:0;
+        if(candidate.bytes>2_000_000)return this.#fail(new Error('语音说明缓存过大，请重新拨号。'));
+        candidate.audio.push(event);return;
+      }
+    }
     // This service emits TTSSentenceStart, without response.created. Use its
     // actual response ID as the boundary; an old tail cannot reopen playback.
     if (type === "response.output_audio.started") {
@@ -790,6 +841,7 @@ export class SeeduplexRealtimeVoiceBridge {
       // right to tear the upstream generation down. This runs after the reset
       // above so the fresh suppression is not immediately cleared.
       const spoken = optionalString(event.transcript) ?? optionalString(event.text);
+      if(this.request.nativeDuplex)this.nativeLiteralRead=/朗读|复述|念出|读出|原样|逐字/u.test(spoken??'');
       // A finished utterance after an earlier cancel opens the next turn, whose
       // reply text arrives before its first audio. Retired response ids still
       // filter the cancelled tail.
@@ -903,7 +955,9 @@ export class SeeduplexRealtimeVoiceBridge {
           this.pendingGreeting = null;
           this.request.onTranscript?.("assistant", greeting.text, true, "greeting");
         }
-        this.request.onAudio(audio, { ...(this.injectedSpeech ? {source:"injected-speech"} : {}), responseId: this.audioResponseId ?? responseId });
+        const deliveredId=this.audioResponseId??responseId;
+        if(audio.length)this.deliveredAudioResponseId=deliveredId;
+        this.request.onAudio(audio, { ...(this.injectedSpeech ? {source:"injected-speech"} : {}), responseId: deliveredId });
         this.request.onMark?.(`seeduplex-audio-${randomUUID()}`);
       } catch {
         return this.#fail(new Error("Invalid Seeduplex audio output"));

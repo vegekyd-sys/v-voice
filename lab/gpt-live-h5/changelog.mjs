@@ -1,5 +1,15 @@
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
+// Used only by the isolated candidate's release file, never VOICE_UPDATES.
+export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
+  version:'voice-seeduplex-duplex.20261022.6',date:'2026-10-22',
+  title:'原生多人和停声验证候选',status:'candidate-validation',
+  items:[
+    '收紧停声条件：未说完的“先停”不再直接取消正在播的回答。',
+    '补充本通话内两人各自确认姓名和个人信息的对话规则。',
+    '仅 Candidate；持续电视、人声干扰和真人设备验收仍在验证。',
+  ],
+};
 export const VOICE_UPDATES = [
   {
     date: '2026-10-22', title: 'V 来到 iPhone，迈出替代 Siri 的第一步',

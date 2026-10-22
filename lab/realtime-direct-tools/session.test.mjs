@@ -827,3 +827,11 @@ test('provider-owned playback never starts the auxiliary keyword ASR and keeps n
  assert(f.upstream.sent.some(e=>e.type==='input_audio_buffer.append'));
  assert.equal(f.client.readyState,1);assert.equal(f.invocations.length,0);
 });
+
+test('assisted native playback reuses one existing control stream and does not gate native audio',async t=>{
+ let controls=0,frames=0,closed=0;
+ const f=await fixture(undefined,'seeduplex',{nativePlaybackPolicy:'assisted',nativeInterrupt:()=>{controls++;return {async connect(){},append(){frames++;},close(){closed++;}};}});
+ assert.equal(controls,1);assert.equal(f.reservation.nativePlaybackPolicy,'assisted');
+ f.client.emit('message',Buffer.alloc(960),true);assert.equal(frames,1);assert(f.upstream.sent.some(e=>e.type==='input_audio_buffer.append'));
+ await f.service.close(f.reservation.voiceSessionId);assert.equal(closed,1);await f.service.dispose();
+});

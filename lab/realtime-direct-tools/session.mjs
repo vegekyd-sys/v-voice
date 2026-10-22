@@ -192,7 +192,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // The tools one call declares: no screen tool without a display, and device
   // controls only when the attached hardware provides them.
   // Local Feishu reads are declared only when this service has them configured.
-  if(!['courtesy','provider'].includes(nativePlaybackPolicy))throw Error('Unsupported native playback policy');
+  if(!['courtesy','provider','assisted'].includes(nativePlaybackPolicy))throw Error('Unsupported native playback policy');
   const localTools=TOOLS.filter(t=>(calendar||t.name!=='feishu_calendar')&&(larkRead||t.name!=='lark_read'));
   const sessionTools=s=>[...(s.display?localTools:localTools.filter(t=>t.name!=='show_content')),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[])];
   async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy}) {
@@ -388,6 +388,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       onAudioSegmentDone:()=>routeOutput('done',null,()=>{s.responseActive=false;}),
       onResponseDone:e=>routeOutput('done',e,()=>{s.responseActive=false;s.narrationBusyUntil=0;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}}),
       onEvent:e=>{if(['response.created'].includes(e.type))s.responseActive=true;
+        if(s.nativeDuplex&&e.type==='native.listening-aside')emit(s,{type:'input.speech.ignored',preservedResponseId:s.bridge?.audioResponseId??null});
         if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.userSpeaking=true;s.lastUserAt=Date.now();}
         if(e.type==='input_audio_buffer.speech_stopped'){s.userSpeaking=false;s.lastUserAt=Date.now();}
         audit({type:'provider.event',voiceSessionId:s.id,providerEventType:e.type,responseId:e.responseId});},

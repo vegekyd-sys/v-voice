@@ -708,3 +708,38 @@ test('native full-duplex recognition can yield reversibly without cancelling an 
  socket.message({type:'response.canceled',response_id:'old'});assert.deepEqual(clears,['barge-in'],'a real upstream cancel still clears playback');
  bridge.close();
 });
+
+async function listeningAsideFixture(nativeDuplex=true){
+ const socket=new FakeSocket(),audio=[],texts=[],events=[],clears=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},nativeDuplex,
+  onAudio:(b,m)=>audio.push({b,m}),onTranscript:(...t)=>texts.push(t),onClearAudio:()=>clears.push(true),onEvent:e=>events.push(e),onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+ return {socket,bridge,audio,texts,events,clears};
+}
+test('a native listening aside is not spoken and cannot displace the ongoing story or its response owner',async t=>{
+ const f=await listeningAsideFixture();t.after(()=>f.bridge.close());const e=x=>f.socket.message(x);
+ e({type:'response.output_audio.started',response_id:'story'});e({type:'response.output_audio.delta',response_id:'story',delta:floatAudio([.25])});
+ e({type:'response.output_text.delta',response_id:'aside',delta:'（安静等候，'});
+ e({type:'response.output_audio.started',response_id:'aside'});e({type:'response.output_audio.delta',response_id:'aside',delta:floatAudio([.9])});
+ assert.equal(f.audio.length,1,'uncertain parenthesized PCM waits for disposition');
+ e({type:'response.output_text.done',response_id:'aside',text:'（安静等候，不插话、不回应背景广播）'});
+ e({type:'response.output_audio.delta',response_id:'aside',delta:floatAudio([.9])});
+ e({type:'response.output_audio.delta',response_id:'story',delta:floatAudio([.2])});
+ assert.deepEqual(f.audio.map(a=>a.m.responseId),['story','story']);assert.equal(f.bridge.audioResponseId,'story');assert.equal(f.texts.length,0);assert.equal(f.clears.length,0);
+ assert(f.events.some(e=>e.type==='native.listening-aside'));
+ e({type:'conversation.item.input_audio_transcription.completed',text:'现在说话的是谁？'});
+ e({type:'response.output_text.done',response_id:'next',text:'小周'});e({type:'response.output_audio.started',response_id:'next'});e({type:'response.output_audio.delta',response_id:'next',delta:floatAudio([.4])});
+ assert.equal(f.audio.at(-1).m.responseId,'next');assert(f.texts.some(t=>t[1]==='小周'));assert.equal(f.socket.sent.filter(e=>e.type==='session.create').length,1);
+});
+for(const text of ['（2+3）等于5。','（轻声）答案是五。','（安静的森林里有一只小鸟。）'])test('ordinary parenthesized content remains audible: '+text,async t=>{
+ const f=await listeningAsideFixture();t.after(()=>f.bridge.close());f.socket.message({type:'response.output_text.delta',response_id:'normal',delta:text.slice(0,3)});
+ f.socket.message({type:'response.output_audio.started',response_id:'normal'});f.socket.message({type:'response.output_audio.delta',response_id:'normal',delta:floatAudio([.25])});
+ f.socket.message({type:'response.output_text.done',response_id:'normal',text});assert.equal(f.audio.length,1);assert(f.texts.some(t=>t[1]===text&&t[2]));
+});
+test('a requested verbatim aside and a non-native route are not treated as background decisions',async t=>{
+ for(const native of [true,false]){
+  const f=await listeningAsideFixture(native);t.after(()=>f.bridge.close());f.socket.message({type:'conversation.item.input_audio_transcription.completed',text:'请逐字朗读括号里的安静等候。'});
+  f.socket.message({type:'response.output_text.done',response_id:'read',text:'（安静等候，不插话）'});f.socket.message({type:'response.output_audio.started',response_id:'read'});f.socket.message({type:'response.output_audio.delta',response_id:'read',delta:floatAudio([.25])});
+  assert.equal(f.audio.length,1);assert(!f.events.some(e=>e.type==='native.listening-aside'));
+ }
+});

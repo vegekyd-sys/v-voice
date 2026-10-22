@@ -268,8 +268,8 @@ test('a confirmed speech stop retires an already-generated response as well as i
  assert(f.pump(24000).filter(x=>x!==0).every(x=>x===-.25));
 });
 
-test('provider-owned turns keep background speech onset from muting the live answer',async t=>{
- const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true,nativePlaybackPolicy:'provider'}});
+for(const nativePlaybackPolicy of ['provider'])test(nativePlaybackPolicy+' turns keep background speech onset from muting the live answer',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true,nativePlaybackPolicy}});
  f.event({type:'audio',responseId:'story',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(24000,8192).buffer).toString('base64')});
  const mic=f.nodes.find(n=>n.name==='v-direct-mic');for(let i=0;i<25;i++)mic.port.onmessage({data:voiceFrame()});
  f.event({type:'input.speech.started'});f.event({type:'input.speech.stopped'});
@@ -278,10 +278,30 @@ test('provider-owned turns keep background speech onset from muting the live ans
  assert(!f.sent.some(x=>typeof x==='string'&&JSON.parse(x).type==='barge-in'));
 });
 
-test('a native replacement retires the old tail even when local VAD never paused it',async t=>{
- const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true,nativePlaybackPolicy:'provider'}}),frame=value=>Buffer.from(pcm(2400,value).buffer).toString('base64');
+for(const nativePlaybackPolicy of ['provider','assisted'])test(nativePlaybackPolicy+' replacement retires the old tail even when local VAD never paused it',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true,nativePlaybackPolicy}}),frame=value=>Buffer.from(pcm(2400,value).buffer).toString('base64');
  f.event({type:'audio',responseId:'old',sequence:1,sampleRate:24000,audio:frame(8192)});
  f.event({type:'audio',responseId:'new',sequence:2,sampleRate:24000,audio:frame(-8192)});
  f.event({type:'audio',responseId:'old',sequence:3,sampleRate:24000,audio:frame(8192)});f.event({type:'audio.done'});
  const played=f.pump(24000).filter(x=>x!==0);assert(played.length>0);assert(played.every(x=>x===-.25));assert.equal(f.relay.stats.clears,1);
+});
+
+test('assisted pause rejects low TV bursts and native onset alone, but yields for sustained foreground speech',()=>{
+ const p=new NativeSpeechPause({minRms:.045,consecutiveOnset:true,trustNativeOnset:false});
+ const quiet=new Int16Array(480).buffer,background=()=>{const a=new Int16Array(voiceFrame());for(let i=0;i<a.length;i++)a[i]*=.2;return a.buffer;};
+ p.nativeStarted(0);assert.equal(p.held,false);
+ for(let i=0;i<100;i++)assert.equal(p.observe(i%6===5?quiet:background(),true,i*20),false);
+ for(let i=0;i<7;i++)p.observe(voiceFrame(),true,2000+i*20);assert.equal(p.held,true);
+ p.ignored();assert.equal(p.observe(voiceFrame(),true,2160),false);
+ for(let i=0;i<20;i++)p.observe(quiet,true,2200+i*20);
+ for(let i=0;i<7;i++)p.observe(voiceFrame(),true,2600+i*20);assert.equal(p.held,true);
+});
+test('assisted ignored-turn release is scoped to the preserved response',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true,nativePlaybackPolicy:'assisted'}});
+ f.event({type:'audio',responseId:'story',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(24000,8192).buffer).toString('base64')});
+ const mic=f.nodes.find(n=>n.name==='v-direct-mic');for(let i=0;i<8;i++)mic.port.onmessage({data:voiceFrame()});
+ assert.equal(f.relay.stats.nativePauses,1);
+ f.event({type:'input.speech.ignored',preservedResponseId:'stale'});assert.equal(f.relay.stats.nativeResumes,0);
+ f.event({type:'input.speech.ignored',preservedResponseId:'story'});assert.equal(f.relay.stats.nativeResumes,1);
+ assert(f.pump(9600).some(x=>x===.25));assert.equal(f.relay.stats.clears,0);
 });
