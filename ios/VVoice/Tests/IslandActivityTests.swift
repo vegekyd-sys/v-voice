@@ -13,19 +13,19 @@ final class IslandActivityTests: XCTestCase {
     func testWorstBoundedCaptionFitsAppleCombinedPayloadBudget() throws {
         let state = CallAttributes.ContentState(phase: .speaking, muted: false, startedAt: Date(), detail: "V 正在回答",
             caption: String(repeating: "🧑🏽‍💻", count: 84), captionSpeaker: String(repeating: "人", count: 32), documentTitle: String(repeating: "方", count: 32),
-            documentID: String(repeating: "i", count: 160), island: .init(layout: .conversation, reactionID: "reaction-10", levels: Array(repeating: 100, count: 9), audioSource: .output, sampledAt: Date()))
+            documentID: String(repeating: "i", count: 160), island: .init(layout: .conversation, reactionID: "reaction-10", levels: Array(repeating: 100, count: 24), audioSource: .output, sampledAt: Date()))
         let payload = try JSONEncoder().encode(state)
         let attributes = try JSONEncoder().encode(CallAttributes(callID: UUID().uuidString))
         XCTAssertLessThan(payload.count + attributes.count, 4096)
     }
-    @MainActor func testDialogueUsesWaveformAndUnreadReportWinsOverSpeaking() {
+    @MainActor func testDialogueAndUnreadReportKeepWaveformWithoutTranscript() {
         for phase: VoicePhase in [.listening, .thinking, .speaking, .muted] {
             var state = CallAttributes.ContentState(phase: phase, muted: phase == .muted, startedAt: Date(), detail: phase.title,
                 caption: "这句转写不应再显示在灵动岛", island: .init(layout: .conversation))
             XCTAssertTrue(IslandCallSurface(state: state, callID: "test").showsWaveform)
             state.documentID = "report"; state.documentTitle = "方案整理好了"
             XCTAssertTrue(IslandCallSurface(state: state, callID: "test").showsReport)
-            XCTAssertFalse(IslandCallSurface(state: state, callID: "test").showsWaveform)
+            XCTAssertTrue(IslandCallSurface(state: state, callID: "test").showsWaveform)
             XCTAssertFalse(IslandCallSurface(state: state, callID: "test", stale: true).showsReport)
         }
     }

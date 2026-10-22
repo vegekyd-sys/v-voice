@@ -11,7 +11,7 @@ public struct IslandSnapshot: Codable, Hashable, Sendable {
     public var sampledAt: Date?
     public init(layout: IslandLayout = .audio, reactionID: String = "listen-5", levels: [UInt8] = [], audioSource: IslandAudioSource = .none, sampledAt: Date? = nil) {
         self.layout = layout; self.reactionID = reactionID
-        self.levels = Array(levels.suffix(9)).map { min($0, 100) }
+        self.levels = Array(levels.suffix(24)).map { min($0, 100) }
         self.audioSource = audioSource; self.sampledAt = sampledAt
     }
 }
@@ -26,7 +26,9 @@ public struct IslandPresentation: Sendable {
     private var approvedReaction: (id: String, at: Date)?
     private var connectionAnnounced = false
     private var input: [UInt8] = [], output: [UInt8] = []
-    private var inputPeak: Double = 0, outputPeak: Double = 0
+    private var inputEnergy = 0.0, outputEnergy = 0.0
+    private var observations = 0
+    private var inputEnvelope = 0.0, outputEnvelope = 0.0
     private var lastSample: Date?, lastPublish: Date?
     private var lastSource: IslandAudioSource = .none
     private var lastLevels: [UInt8] = []
@@ -54,20 +56,33 @@ public struct IslandPresentation: Sendable {
         if approvedReaction?.id != id { approvedReaction = (id, now) }
         return true
     }
-    /// Accumulate real energy, keep nine 100 ms peaks, request at most one UI update/second.
+    /// RMS windows retain speech dynamics, rather than stretching nine peaks into
+    /// a decorative hill. Requests are capped at 4 Hz; iOS owns actual rendering.
     @discardableResult public mutating func observeAudio(inputRMS: Double, outputRMS: Double?, muted: Bool, now: Date) -> Bool {
-        inputPeak = max(inputPeak, muted ? 0 : Self.safe(inputRMS))
-        outputPeak = max(outputPeak, Self.safe(outputRMS ?? 0))
-        if let lastSample, now.timeIntervalSince(lastSample) < 0.1 { return false }
+        if let lastSample, now.timeIntervalSince(lastSample) > 0.35 || now < lastSample { clearAudio() }
+        let incoming = muted ? 0 : Self.safe(inputRMS), outgoing = Self.safe(outputRMS ?? 0)
+        inputEnergy += incoming * incoming; outputEnergy += outgoing * outgoing; observations += 1
+        if let lastSample, now.timeIntervalSince(lastSample) < 0.099 { return false }
         self.lastSample = now
-        input.append(Self.quantize(inputPeak)); output.append(Self.quantize(outputPeak))
-        input = Array(input.suffix(9)); output = Array(output.suffix(9)); inputPeak = 0; outputPeak = 0
-        if let lastPublish, now.timeIntervalSince(lastPublish) < 1 { return false }
+        // Fast attack, short release. Smoothing stays in the measured domain and
+        // returns to zero at silence; there is no oscillation or automatic gain.
+        inputEnvelope = Self.follow(sqrt(inputEnergy / Double(observations)), previous: inputEnvelope)
+        outputEnvelope = Self.follow(sqrt(outputEnergy / Double(observations)), previous: outputEnvelope)
+        input.append(Self.quantize(inputEnvelope)); output.append(Self.quantize(outputEnvelope))
+        input = Array(input.suffix(24)); output = Array(output.suffix(24))
+        inputEnergy = 0; outputEnergy = 0; observations = 0
+        if let lastPublish, now.timeIntervalSince(lastPublish) < 0.25 { return false }
         let next = envelope(muted: muted, now: now)
         guard next.source != lastSource || next.levels != lastLevels else { return false }
         lastPublish = now; lastSource = next.source; lastLevels = next.levels; return true
     }
-    public mutating func clearAudio() { input = []; output = []; inputPeak = 0; outputPeak = 0; lastSample = nil; lastSource = .none; lastLevels = [] }
+    public mutating func clearAudio() {
+        input = []; output = []; inputEnergy = 0; outputEnergy = 0; observations = 0
+        inputEnvelope = 0; outputEnvelope = 0; lastSample = nil; lastPublish = nil; lastSource = .none; lastLevels = []
+    }
+    private static func follow(_ rms: Double, previous: Double) -> Double {
+        rms >= previous ? rms : rms * 0.75 + previous * 0.25
+    }
     public func snapshot(phase: VoicePhase, muted: Bool, taskActivity: String? = nil, hasDocument: Bool = false, now: Date) -> IslandSnapshot {
         let quiet = ![VoicePhase.listening, .thinking, .speaking, .muted].contains(phase)
         var fallback = "listen-5"
@@ -80,17 +95,19 @@ public struct IslandPresentation: Sendable {
                               levels: audio.levels, audioSource: audio.source, sampledAt: audio.source == .none ? nil : lastSample)
     }
     private func envelope(muted: Bool, now: Date) -> (source: IslandAudioSource, levels: [UInt8]) {
-        guard let lastSample, (0...2).contains(now.timeIntervalSince(lastSample)) else { return (.none, []) }
-        // Near-end takes priority only when it actually has energy; never invent a speaker identity.
-        if !muted, input.suffix(2).contains(where: { $0 >= 34 }) { return (.input, input) }
+        guard let lastSample, (0...0.45).contains(now.timeIntervalSince(lastSample)) else { return (.none, []) }
+        // Audible V output takes priority over microphone leakage. A real interruption
+        // clears playback upstream, after which fresh near-end energy takes over.
+        if output.suffix(2).contains(where: { $0 > 0 }) { return (.output, output) }
+        if !muted, input.suffix(2).contains(where: { $0 > 0 }) { return (.input, input) }
         if output.contains(where: { $0 > 0 }) { return (.output, output) }
         if !muted, input.contains(where: { $0 > 0 }) { return (.input, input) }
         return (.none, [])
     }
     private static func safe(_ value: Double) -> Double { value.isFinite ? max(0, min(1, value)) : 0 }
     private static func quantize(_ rms: Double) -> UInt8 {
-        guard rms > 0.006 else { return 0 }
-        return UInt8(max(0, min(100, ((20 * log10(rms) + 54) / 42 * 100).rounded())))
+        guard rms > 0.003 else { return 0 }
+        return UInt8(max(0, min(100, (pow(rms / 0.24, 0.75) * 100).rounded())))
     }
 }
 

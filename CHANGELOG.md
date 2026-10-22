@@ -1,3 +1,9 @@
+## Unreleased — iOS natural speech waveform candidate
+
+- Render the same measured speech envelope in medium and large island cards, with 24 evenly spaced fine columns, fixed loudness mapping, fast attack and a short release. Preserve real playback timing and prioritize audible output over microphone leakage.
+- Keep the large card free of dialogue/plan text. Unread plans retain the existing full-report action without replacing the waveform. Preserve Reaction, mute, end, fold and report attention behavior.
+- Candidate based on the installed build 21 main line; system rendering cadence and physical-device acceptance remain distinct from local PCM/simulator verification. No new real-provider calls or production deployment.
+
 ## 2026-10-23 — Keep interrupted playback paused while awaiting a reply
 
 - Web and iOS build 22 keep a recognized utterance paused until native disposition or response replacement. The 1.8-second courtesy timer can no longer resume the old answer while a new one is pending.
