@@ -1,8 +1,8 @@
-## Unreleased candidate — iOS web delivery · build 12
+## 2026-10-22 — iOS web delivery · build 12 · release preparation
 
 - Add a complete, versioned H5 presentation package to web release artifacts. The new native shell validates, caches and loads compatible updates without recompiling Swift for everyday shared H5 UI changes.
 - Pin resources during calls/reading; retain native audio and call ownership across page reloads. Reject stale documents, incompatible/corrupt packages and redirects; fall back to the last ready cache or bundled UI.
-- Candidate only: no production deployment, real iPhone install, Gateway/Worker change, or new physical-device acceptance. Existing build 11 requires one shell upgrade before receiving web updates. See `docs/ios/WEB-DELIVERY.md`.
+- Tianyi authorized merge, production Voice release and a binding-preserving iPhone upgrade. Release preparation includes the homepage entry; deployment, installation and physical acceptance are recorded separately after they occur. Existing build 11 requires one shell upgrade. See `docs/ios/WEB-DELIVERY.md`.
 
 ## 2026-10-22 — V Voice iOS milestone integration · build 11
 
