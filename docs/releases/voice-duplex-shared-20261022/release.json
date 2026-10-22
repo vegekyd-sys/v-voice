@@ -1,0 +1,159 @@
+{
+  "schema": "v-voice-release-registration-v1",
+  "release": "voice-duplex-shared-20261022",
+  "phase": "production_servers_verified_ios21_installed_real_call_pending",
+  "entryCommit": "56cfc608beedc6568891c7f00f4bb617b4d21940",
+  "previousProductionCommit": "42ff6254e303c19897056a0ba8b1973ac6a25b20",
+  "pullRequests": [
+    "https://github.com/vegekyd-sys/v-voice/pull/72",
+    "https://github.com/vegekyd-sys/v-voice/pull/73"
+  ],
+  "mainChecks": {
+    "run": 39802699802,
+    "conclusion": "success"
+  },
+  "files": 206,
+  "filesSha256": "faa5c327daed67ffc6edd8d45d3359568e683e277268b0a683fdb02ea35692b8",
+  "nodes": {
+    "web": {
+      "commit": "56cfc608beedc6568891c7f00f4bb617b4d21940",
+      "filesSha256": "faa5c327daed67ffc6edd8d45d3359568e683e277268b0a683fdb02ea35692b8",
+      "ready": true,
+      "admissionHeld": false,
+      "beforeReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "afterReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "originalConfigurationFilesUnchanged": true,
+      "managedReleaseLauncherUpdated": true,
+      "previousReleaseRetained": true
+    },
+    "devices": {
+      "commit": "56cfc608beedc6568891c7f00f4bb617b4d21940",
+      "filesSha256": "faa5c327daed67ffc6edd8d45d3359568e683e277268b0a683fdb02ea35692b8",
+      "ready": true,
+      "admissionHeld": false,
+      "beforeReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "afterReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "originalConfigurationFilesUnchanged": true,
+      "managedReleaseLauncherUpdated": true,
+      "previousReleaseRetained": true
+    }
+  },
+  "gatewayRestartRequired": false,
+  "gatewayUnchangedVerified": true,
+  "publicVerification": {
+    "checkedAt": "2026-10-22T15:15:09.138Z",
+    "commit": "56cfc608beedc6568891c7f00f4bb617b4d21940",
+    "filesSha256": "faa5c327daed67ffc6edd8d45d3359568e683e277268b0a683fdb02ea35692b8",
+    "files": [
+      {
+        "name": "relay-audio.mjs",
+        "sha256": "984466d836c7f275cf0ed18174c35054a251aff2afe4db0ec7ebb9046ed43ec9"
+      },
+      {
+        "name": "changelog.mjs",
+        "sha256": "b5f83da8433e82efbc8df4de36c4c1ad9bf3b2367ef7267df9fedec6ceb37683"
+      },
+      {
+        "name": "app.js",
+        "sha256": "61ab312ae78e6042be6f22e661d9b7af9bc53eb181d5597f71537f7b267447d5"
+      },
+      {
+        "name": "ui-bundle.mjs",
+        "sha256": "69ed8d18da047c2584a70ddd10faa48b0a1733bb6e1913bb947960a780899336"
+      },
+      {
+        "name": "transcript-presentation.mjs",
+        "sha256": "15c38f9a668678bbdd747a424207c5e503dcba7752429c430d5d58f455495c39"
+      },
+      {
+        "name": "ios-shell-release.json",
+        "sha256": "d0ba80f5a3c859d19ddeae70afd2eddd45f1cbc8eeb207a0c06b1cb28cd24bf0"
+      }
+    ],
+    "allMatched": true,
+    "automaticCallPerformed": false
+  },
+  "homepageBrowserVerified": true,
+  "homepageScreenshot": "homepage-updates.png",
+  "clients": {
+    "web": {
+      "node": "web"
+    },
+    "ios": {
+      "node": "web",
+      "shellRevision": "5dceffd6005c901dce648a1cc5e45aaa69cb48db4c68f0d2c62cf569d6fad4dd",
+      "minimumBridge": 1,
+      "maximumBridge": 1,
+      "acceptedBuild": 18,
+      "nativeSourceCommit": null
+    },
+    "robot": {
+      "node": "devices",
+      "protocol": "xiaozhi-v1",
+      "firmwareUpdate": "separate-if-required"
+    },
+    "speaker": {
+      "node": "devices",
+      "protocol": "voice-device-v1",
+      "firmwareUpdate": "separate-if-required"
+    }
+  },
+  "tests": {
+    "node": 727,
+    "speaker": 95,
+    "swiftCore": 29,
+    "nativeAll": 67,
+    "releaseController": 10,
+    "sharedBrowserBeforeFailedAfterPassed": true,
+    "sharedNativeBeforeFailedAfterPassed": true,
+    "browserConfirmationToSilenceMs": 37
+  },
+  "ios": {
+    "version": "1.0.0",
+    "build": 21,
+    "signedSourceCommit": "544d04c472ac6136f214ac0663bb43baba4a3397",
+    "ipaSHA256": "f5ebbe2b6b6d949ce543e6f697ef6e086caf82df1a53f0d732af93aae548761a",
+    "sourceTreeMatchesMergeCommit": true,
+    "archiveVerified": true,
+    "exportedIPAVerified": true,
+    "requestedPhysicalIPhoneInstalledAndReadBack": true,
+    "ordinaryLaunchSucceeded": false,
+    "ordinaryLaunchFailure": "physical_device_locked",
+    "overwriteWithoutUninstallOrKeychainReset": true,
+    "realCallAcceptance": "pending",
+    "automaticPaidCallPerformed": false
+  },
+  "acceptanceBoundary": "Simulated upstream through actual service/adapter and both playback engines; not a physical microphone or real provider call. Noise/multi-person model judgment and human speech-onset timing remain separate.",
+  "rollback": {
+    "previousServersRetained": true,
+    "privateControllerReceiptsRetained": true,
+    "build": 19,
+    "ipaSHA256": "8c62603268b1d7c01fa73f9cac24441041b8bdd2171c9569b07cd9da1de7039a",
+    "signedIPACopiedAndVerified": true,
+    "rollbackExecuted": false
+  }
+}
