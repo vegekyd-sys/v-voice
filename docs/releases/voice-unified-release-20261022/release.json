@@ -1,0 +1,139 @@
+{
+  "schema": "v-voice-release-registration-v1",
+  "release": "voice-unified-release-20261022",
+  "phase": "both_server_artifacts_and_ios_ui_distribution_verified",
+  "entryCommit": "42ff6254e303c19897056a0ba8b1973ac6a25b20",
+  "pullRequest": "https://github.com/vegekyd-sys/v-voice/pull/67",
+  "mainChecks": {
+    "run": 39795657264,
+    "conclusion": "success"
+  },
+  "files": 206,
+  "filesSha256": "94dd329fe5ac677bb71c4149acbbe35bcf3eb25c6c56a564b8b42177577d305d",
+  "previousServers": {
+    "web": "3fe9fcc25039c620e7745bf83a14b14c9d523f29",
+    "devices": "0ed43617fbcdd15e93fd63085afe61dc5231a118"
+  },
+  "nodes": {
+    "web": {
+      "commit": "42ff6254e303c19897056a0ba8b1973ac6a25b20",
+      "filesSha256": "94dd329fe5ac677bb71c4149acbbe35bcf3eb25c6c56a564b8b42177577d305d",
+      "ready": true,
+      "admissionHeld": false,
+      "beforeReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0
+      },
+      "afterReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "originalConfigurationFilesUnchanged": true,
+      "previousReleaseRetained": true
+    },
+    "devices": {
+      "commit": "42ff6254e303c19897056a0ba8b1973ac6a25b20",
+      "filesSha256": "94dd329fe5ac677bb71c4149acbbe35bcf3eb25c6c56a564b8b42177577d305d",
+      "ready": true,
+      "admissionHeld": false,
+      "beforeReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0
+      },
+      "afterReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "originalConfigurationFilesUnchanged": true,
+      "previousReleaseRetained": true
+    }
+  },
+  "gatewayRestartRequired": false,
+  "gatewayUnchangedVerified": true,
+  "bootstrapGateAndWatchdogCleanedBothNodes": true,
+  "publicVerification": {
+    "checkedAt": "2026-10-22T14:40:52.256Z",
+    "ready": true,
+    "phoneInputPolicy": "native",
+    "releaseReadiness": {
+      "known": true,
+      "activeCalls": 1,
+      "creatingSessions": 0,
+      "backgroundTasks": 0,
+      "deviceOperations": 0
+    },
+    "publicHTTPSAssetsVerified": [
+      "app.js",
+      "ui-bundle.mjs",
+      "transcript-presentation.mjs",
+      "avatar-telemetry.mjs",
+      "avatar-reactions.mjs",
+      "changelog.mjs",
+      "ios-shell-release.json"
+    ],
+    "sourceCommit": "42ff6254e303c19897056a0ba8b1973ac6a25b20"
+  },
+  "homepageBrowserVerified": true,
+  "homepageScreenshot": "homepage-updates.png",
+  "clients": {
+    "web": {
+      "node": "web"
+    },
+    "ios": {
+      "node": "web",
+      "shellRevision": "2cdca050030c1e905b7bc46f764a8af5c03da23866f661f4073eb00ae52765b0",
+      "minimumBridge": 1,
+      "maximumBridge": 1,
+      "acceptedBuild": 18,
+      "nativeSourceCommit": "06317a892639af16697cf67498b5962ec8a335f8"
+    },
+    "robot": {
+      "node": "devices",
+      "protocol": "xiaozhi-v1",
+      "firmwareUpdate": "separate-if-required"
+    },
+    "speaker": {
+      "node": "devices",
+      "protocol": "voice-device-v1",
+      "firmwareUpdate": "separate-if-required"
+    }
+  },
+  "ios": {
+    "installedBuild": 19,
+    "installationEvidence": "../voice-caption-continuity-20261022/release.json",
+    "binaryChangedByThisRelease": false,
+    "humanCaptionAcceptance": "pending"
+  },
+  "devices": {
+    "firmware": "unknown_not_reported",
+    "physicalClientsConnectedAtVerification": false,
+    "nextConnectionUsesUpdatedServer": true,
+    "originalNativeAndSpeakerPoliciesPreserved": true,
+    "physicalAudioAcceptance": "not_performed"
+  },
+  "tests": {
+    "voice": 720,
+    "speaker": 95,
+    "controller": 10,
+    "iosShellFreshness": true,
+    "legacyLinuxGateFixture": true
+  },
+  "automaticModelCalls": 0,
+  "firmwareFlashes": 0,
+  "rollback": {
+    "originalReleaseDirectoriesRetained": true,
+    "launcherAndIdentityReceiptsRetainedPrivately": true,
+    "productionRollbackExecuted": false,
+    "activeOrUnknownWorkBlocksRollback": true
+  }
+}
