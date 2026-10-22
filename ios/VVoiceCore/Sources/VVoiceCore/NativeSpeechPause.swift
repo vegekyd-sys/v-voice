@@ -6,7 +6,7 @@ public struct NativeSpeechPause: Sendable {
     public private(set) var held = false
     public private(set) var yielded = false
     private var voicedMS = 0.0, quietMS = 0.0, floor = 0.004
-    private var inUtterance = false, locked = false, native = false
+    private var inUtterance = false, locked = false, native = false, awaitingDecision = false
     private var expires = 0.0, hardExpires = 0.0
     public init() {}
     public mutating func reset() { let noise = floor; self = Self(); floor = noise }
@@ -14,8 +14,10 @@ public struct NativeSpeechPause: Sendable {
         guard held || inUtterance else { return }
         held = true; yielded = true; native = true; expires = at + 15000; hardExpires = expires
     }
-    public mutating func nativeStopped(at: Double) { if held { native = false; expires = at + 1800 } }
-    public mutating func ignored() { held = false; native = false; locked = true; yielded = false }
+    public mutating func nativeStopped(at: Double, recognized: Bool = true) {
+        if held { native = false; awaitingDecision = awaitingDecision || recognized; expires = at + 1800 }
+    }
+    public mutating func ignored() { awaitingDecision = false; held = false; native = false; locked = true; yielded = false }
     public mutating func generationDone(at: Double) {
         if held && !native { expires = max(expires, min(hardExpires, at + 250)) }
     }
@@ -39,7 +41,7 @@ public struct NativeSpeechPause: Sendable {
             if quietMS >= 400 { voicedMS = 0; inUtterance = false; locked = false }
         }
         if !enabled {
-            held = false; yielded = false; expires = 0; hardExpires = 0; locked = false; native = false
+            held = false; yielded = false; expires = 0; hardExpires = 0; locked = false; native = false; awaitingDecision = false
             return false
         }
         if inUtterance && !held && !locked { held = true; yielded = true; hardExpires = at + 12000 }
@@ -47,7 +49,9 @@ public struct NativeSpeechPause: Sendable {
         if held && expires == 0 { expires = min(hardExpires, at + 1800 - quietMS) }
         if !voiced && !held { floor = min(0.012, floor * 0.98 + min(rms, 0.012) * 0.02) }
         let grace = !native && !generationComplete ? 600.0 : 0
-        if held && (at >= expires + grace || at >= hardExpires) { held = false; native = false; locked = true }
+        // A completed utterance waits for native disposition, never a timer.
+        // Ignored TV/bystander speech can still resume the retained samples.
+        if held && !awaitingDecision && (at >= expires + grace || at >= hardExpires) { held = false; native = false; locked = true }
         return held
     }
 }

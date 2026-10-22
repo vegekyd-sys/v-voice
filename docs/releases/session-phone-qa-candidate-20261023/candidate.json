@@ -8,5 +8,8 @@
   "pairedDeliveries": 6,
   "productionReleased": false,
   "gatewayRestarted": false,
-  "acceptance": "docs/acceptance/session-phone-qa-20261023.md"
+  "acceptance": "docs/acceptance/session-phone-qa-20261023.md",
+  "integrationMain": "2d8cd357b9aaaffee94c9e1076b0761115a2b01e",
+  "integrationTestsPassed": 771,
+  "integrationDeployed": false
 }

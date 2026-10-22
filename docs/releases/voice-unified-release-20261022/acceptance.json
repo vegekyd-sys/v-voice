@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "phase": "candidate_verified_pending_publication",
+  "phase": "both_server_artifacts_and_ios_ui_distribution_verified",
   "scope": "Voice-only release control; no Gateway, identity or wire-contract changes",
   "previousServers": {
     "web": "eaa920e64b7eb8b1b034b8a03d1bfff636d65e42",
@@ -11,10 +11,12 @@
   "ios": {
     "acceptedBuild": 18,
     "installedBuild18ReadBack": true,
-    "binaryChangedByThisRelease": false
+    "binaryChangedByThisRelease": false,
+    "installedBuild": 19,
+    "installedBuildEvidence": "../voice-caption-continuity-20261022/release.json"
   },
   "tests": {
-    "voice": 718,
+    "voice": 720,
     "speaker": 95,
     "controller": 10,
     "iosShellFreshness": true,
@@ -37,5 +39,6 @@
   ],
   "physicalDeviceVoiceRetested": false,
   "modelCalls": 0,
-  "firmwareFlashes": 0
+  "firmwareFlashes": 0,
+  "productionRegistration": "release.json"
 }

@@ -104,7 +104,7 @@ import VVoiceCore
     @ObservationIgnored let api: VoiceAPI
     @ObservationIgnored let avatar: VoiceAvatar
     @ObservationIgnored private var avatarOutcome = "none"
-    @ObservationIgnored private let audio = VoiceAudio()
+    @ObservationIgnored private let audio: VoiceAudio
     @ObservationIgnored private var captionUpdate: Task<Void, Never>?
     @ObservationIgnored private var closing: Task<Void, Never>?
     @ObservationIgnored private var lastFailure: VoiceError?
@@ -162,7 +162,8 @@ import VVoiceCore
     @ObservationIgnored private(set) var appScenePhase: ScenePhase = .background
     private var appIsActive: Bool { appScenePhase == .active }
 
-    init(api: VoiceAPI? = nil, makeGPT: @escaping () -> GPTLiveTransport = { GPTLiveTransport() }) {
+    init(api: VoiceAPI? = nil, audio: VoiceAudio = VoiceAudio(), makeGPT: @escaping () -> GPTLiveTransport = { GPTLiveTransport() }) {
+        self.audio = audio
         self.makeGPT = makeGPT
         self.api = api ?? VoiceAPI(store: BindingStore())
         self.avatar = VoiceAvatar(api: self.api)
@@ -524,20 +525,33 @@ import VVoiceCore
                 clearOutput()
             }
             nativeOutputDone = false
-            injectedSpeech = v["source"] as? String == "injected-speech"; responseID = v["responseId"] as? String
+            injectedSpeech = v["source"] as? String == "injected-speech"
+            // Host tool notices have no provider ID. Keep the previous owner so
+            // the next native response still replaces its queued audio tail.
+            if let next = v["responseId"] as? String { responseID = next }
+            else if !nativeDuplex { responseID = nil }
             if audioReady { try audio.play(bytes, sequence: v["sequence"] as? Int) }
             else {
                 guard earlyAudioBytes + bytes.count <= 480_000 else { throw VoiceError.bufferOverflow }
                 earlyAudio.append(EarlyAudio(bytes: bytes, sequence: v["sequence"] as? Int)); earlyAudioBytes += bytes.count
             }
-        case "audio.clear": clearOutput()
+        case "audio.clear":
+            // A confirmed interruption retires the response, not just its
+            // currently queued buffers. Late packets must not restart it.
+            if let retired = v["retiredResponseId"] as? String {
+                retireResponse(retired)
+                if nativeDuplex, let current = responseID, current != retired { return }
+                if nativeDuplex { responseID = nil }
+            }
+            clearOutput()
         case "input.speech.started":
             if nativeAssisted, audio.queuedFrames > 0 { nativePause.nativeStarted(at: ProcessInfo.processInfo.systemUptime * 1000); audio.setPlaybackPaused(nativePause.held) }
         case "input.speech.stopped":
-            if nativeAssisted { nativePause.nativeStopped(at: ProcessInfo.processInfo.systemUptime * 1000) }
+            if nativeAssisted { nativePause.nativeStopped(at: ProcessInfo.processInfo.systemUptime * 1000, recognized: v["recognized"] as? Bool != false) }
         case "input.speech.ignored":
             if nativeAssisted, let preserved = v["preservedResponseId"] as? String, preserved == responseID { nativePause.ignored(); audio.setPlaybackPaused(false) }
         case "audio.done":
+            if let completed = v["responseId"] as? String, retiredResponses.contains(completed) { return }
             if let completed = v["responseId"] as? String, let current = responseID, completed != current { return }
             nativeOutputDone = true; nativePause.generationDone(at: ProcessInfo.processInfo.systemUptime * 1000)
             if audioReady { audio.markOutputDone() } else { earlyOutputDone = true }

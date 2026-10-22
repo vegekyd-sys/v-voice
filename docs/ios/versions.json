@@ -1,20 +1,24 @@
 {
   "schema": 1,
   "version": "1.0.0",
-  "build": 19,
-  "sourceCommit": "06317a892639af16697cf67498b5962ec8a335f8",
+  "build": 22,
+  "sourceCommit": "8136b20af19ca6fc740260875bf243d79cf67fd3",
   "candidateOnly": false,
   "signedArchiveVerified": true,
   "exportedIPAVerified": true,
-  "ipaSHA256": "8c62603268b1d7c01fa73f9cac24441041b8bdd2171c9569b07cd9da1de7039a",
+  "ipaSHA256": "feb69b3ed19df1ff3f21de38727b3799f2e949e5dd517ba114693299f846a91d",
   "installedOnRequestedIPhone": true,
-  "realVoiceAcceptance": "pending_physical_caption_check",
+  "realVoiceAcceptance": "Tianyi explicitly accepted iOS build 22 on 2026-10-23",
   "localTests": {
-    "core": 29,
+    "core": 31,
     "captionNativeH5": 7,
     "captionWeb": 43,
-    "webAndService": 715,
-    "speaker": 95
+    "webAndService": 730,
+    "speaker": 95,
+    "nativeAll": 68,
+    "releaseFleet": 10,
+    "sharedPipelineBeforeFailed": true,
+    "sharedPipelineAfterPassed": true
   },
   "backgroundActionButton": {
     "intentMetadataVerified": true,
@@ -25,8 +29,7 @@
   },
   "remainingParity": [
     "System black transition before AppIntent starts is not proven removed",
-    "Long calls, system call/Siri interruptions and network handover beyond the accepted short test",
-    "Build 19 caption continuity requires a human real-call check after installation"
+    "Long calls, system call/Siri interruptions and network handover beyond the accepted short test"
   ],
   "savedNativeBaseline": {
     "tag": "ios-native-build8-20261022",
@@ -34,7 +37,7 @@
     "build": 8,
     "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab"
   },
-  "deviceReportedBuild": "19",
+  "deviceReportedBuild": "22",
   "savedH5Baseline": {
     "build": 10,
     "sourceCommit": "3ffeb94",
@@ -42,19 +45,21 @@
     "signedArchiveRetained": true
   },
   "realVoiceAcceptedScopes": {
-    "build": 19,
-    "scope": [],
-    "status": "pending_human_real_call_caption_check"
+    "build": 22,
+    "scope": [
+      "User explicitly confirmed build 22 acceptance; no additional quantified scenario results inferred"
+    ],
+    "status": "accepted_by_Tianyi"
   },
   "mergedIntoMain": true,
-  "mergePR": 68,
+  "mergePR": 75,
   "mergeChecksPassed": true,
   "releaseScope": {
     "distribution": "development_signed_private_device",
     "webServerDeployed": true,
     "gatewayRestarted": false,
     "appStoreOrTestFlightPublished": false,
-    "homepageChangelog": "build19_published_and_in_app_browser_verified"
+    "homepageChangelog": "build22_published_and_in_app_browser_verified"
   },
   "appIcon": {
     "source": "Tianyi supplied purple headset portrait",
@@ -66,24 +71,19 @@
     "actionButtonLaunchOverlayAcceptance": "Tianyi_confirmed_build18_passed"
   },
   "webDeliveryRelease": {
-    "sourceCommit": "3fe9fcc25039c620e7745bf83a14b14c9d523f29",
-    "mergePR": 68,
+    "sourceCommit": "8136b20af19ca6fc740260875bf243d79cf67fd3",
+    "mergePR": 75,
     "serverDeployed": true,
     "publicAssetHashesVerified": true,
-    "record": "../releases/voice-caption-continuity-20261022/release.json"
+    "bothNodesVerified": true,
+    "record": "../releases/voice-duplex-wait-20261023/release.json"
   },
   "currentDeviceCandidate": {
-    "build": 19,
-    "sourceCommit": "06317a892639af16697cf67498b5962ec8a335f8",
+    "build": 22,
     "installedOnRequestedIPhone": true,
-    "lastAcceptedBuild": 18,
-    "mergeStatus": "merged_main",
-    "distribution": "development_signed_private_device",
-    "deviceReportedBuild": "19",
-    "mergeCommit": "3fe9fcc25039c620e7745bf83a14b14c9d523f29",
-    "mergePR": 68,
-    "overwriteInstalledWithoutUninstallOrKeychainReset": true,
-    "physicalAcceptance": "pending_human_caption_check"
+    "lastAcceptedBuild": 22,
+    "physicalAcceptance": "accepted_by_Tianyi",
+    "mergeStatus": "merged_pr75"
   },
   "build10RollbackHistory": {
     "date": "2026-10-22",
@@ -110,8 +110,7 @@
     "build11NewPhysicalVoiceAcceptance": "not_run"
   },
   "mainChecks": {
-    "run": 39793698309,
-    "commit": "3fe9fcc25039c620e7745bf83a14b14c9d523f29",
+    "run": 39818922237,
     "conclusion": "success"
   },
   "savedRollback": {
@@ -120,7 +119,7 @@
     "signedIPACopiedAndVerified": true,
     "originalArchiveRetained": true
   },
-  "recordScope": "build19_installed_main_merged_physical_caption_acceptance_pending",
+  "recordScope": "build22_delivered_real_call_pending",
   "previouslyInstalledOnRequestedIPhone": true,
   "savedBuild14Rollback": {
     "build": 14,
@@ -190,7 +189,7 @@
       "conclusion": "success"
     }
   },
-  "mergeCommit": "59a9b99a08f22e7936a4d052df59d2270357281e",
+  "mergeCommit": "8136b20af19ca6fc740260875bf243d79cf67fd3",
   "acceptedJointBuild18": {
     "build": 18,
     "candidateOnly": false,
@@ -258,5 +257,49 @@
     "diagnosticBuild13": "installed_then_rolled_back_to10",
     "record": "../releases/voice-ios-web-delivery-20261022/release.json",
     "build14PhysicalAcceptance": "all_requested_scopes_passed"
+  },
+  "previousBuild19": {
+    "build": 19,
+    "sourceCommit": "06317a892639af16697cf67498b5962ec8a335f8",
+    "ipaSHA256": "8c62603268b1d7c01fa73f9cac24441041b8bdd2171c9569b07cd9da1de7039a",
+    "deviceReportedBuild": "19",
+    "mainChecks": {
+      "run": 39793698309,
+      "commit": "3fe9fcc25039c620e7745bf83a14b14c9d523f29",
+      "conclusion": "success"
+    },
+    "humanCaptionAcceptance": "Tianyi confirmed captions fixed; reported SeedDuplex interruption queue issue"
+  },
+  "savedBuild19Rollback": {
+    "build": 19,
+    "ipaSHA256": "8c62603268b1d7c01fa73f9cac24441041b8bdd2171c9569b07cd9da1de7039a",
+    "signedIPACopiedAndVerified": true
+  },
+  "deviceLaunchVerification": {
+    "build": 22,
+    "succeeded": true,
+    "automaticDialPerformed": false
+  },
+  "previousNativeDelivery": {
+    "build": 21,
+    "sourceCommit": "544d04c472ac6136f214ac0663bb43baba4a3397",
+    "ipaSHA256": "f5ebbe2b6b6d949ce543e6f697ef6e086caf82df1a53f0d732af93aae548761a",
+    "deviceReportedBuild": "21"
+  },
+  "normalLaunchVerified": true,
+  "waitTransitionRelease": "../releases/voice-duplex-wait-20261023/release.json",
+  "savedBuild21Rollback": {
+    "build": 21,
+    "ipaSHA256": "f5ebbe2b6b6d949ce543e6f697ef6e086caf82df1a53f0d732af93aae548761a",
+    "signedIPACopiedAndVerified": true
+  },
+  "nextNativeDelivery": {
+    "build": 23,
+    "baseBuild": 22,
+    "waveformCommit": "2af1965",
+    "status": "preparing_signed_release",
+    "installedOnRequestedIPhone": false,
+    "scope": "Natural waveform-only medium and large cards; preserve build 22 behavior",
+    "connectionTimingChange": "withdrawn_user_confirmed_sleep_focus"
   }
 }

@@ -1,0 +1,17 @@
+{
+  "checks": {
+    "silentWhileAwaiting0": false,
+    "ignoredResumesOld": true,
+    "silentWhileAwaiting1": false,
+    "stoppedBeforeNewPCM": true,
+    "noOldTail": true,
+    "newToneOnly": true,
+    "automaticHangup": true
+  },
+  "errors": [],
+  "waitingPeakRMS0": 0.10642015689400426,
+  "waitingPeakRMS1": 0.10642015689400426,
+  "gapPeakRMS": 0,
+  "oldTailSamples": 0,
+  "upstream": "local simulated provider; synthetic PCM; no paid call"
+}

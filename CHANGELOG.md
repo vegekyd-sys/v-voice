@@ -11,6 +11,39 @@
 
 - Opt-in private conversation entries mirror completed substantive Voice replies and full backend results into their bound Feishu session through the existing Gateway send API. Resolve the configured bot account explicitly and retain the original session key for transcript mirroring.
 - Keep audio independent of sends; deduplicate response segments and ambiguous retry keys, omit greetings/progress/interrupted text, and surface delivery failures. Only VLab pilot entries are enabled; production and arbitrary-caller permissions are unchanged.
+## 2026-10-23 — iOS build 23 natural speech waveform
+
+- Integrate the user-accepted build 22 baseline with waveform-only medium and large island cards. Keep the native interruption wait fix, Reaction, report entry, mute/end and background Action Button behavior.
+- Display 24 measured speech-energy windows with fixed loudness mapping, fast attack and short release; silence settles to a quiet line. No decorative waveform loop or conversation text in either card.
+- Tianyi confirmed build 22 acceptance. The missing initial medium card was traced by the user to Sleep Focus; the proposed connection timing change was withdrawn.
+- Native private-device release; server deployment and new physical waveform acceptance are recorded separately in docs/ios/versions.json.
+
+## 2026-10-23 — Keep interrupted playback paused while awaiting a reply
+
+- Web and iOS build 22 keep a recognized utterance paused until native disposition or response replacement. The 1.8-second courtesy timer can no longer resume the old answer while a new one is pending.
+- Distinguish nonempty completed recognition from empty/failed recognition without sending transcript content in control events. Acoustic-only probes remain bounded; explicit ignored speech resumes retained samples. A later failed probe cannot release an earlier pending recognized utterance.
+- Preserve native identity/name context, response ownership, microphone capture, captions, island and farewell drain. No extra model, speaker chain or Gateway changes.
+- Validation and release state are recorded in `docs/acceptance/duplex-wait-20261023/README.md`; synthetic fixtures do not establish physical speaker attribution or human listening acceptance.
+
+- Delivery: PR #75 merged and main CI passed. Both Voice nodes run 8136b20 with matching artifact hashes; signed iOS build 22 installed, read back and normally launched on the requested iPhone. Public assets and homepage verified; physical listening remains pending.
+
+## 2026-10-22 — Shared native duplex repair and iOS build 21
+
+- Retire the previous native response when accepted replacement text or TTS starts; send a scoped playback clear before replacement PCM. Preserve listening-aside decisions, ongoing microphone capture, names and background tasks.
+- Honor each PCM packet’s own response ID. Reject old/anonymous retired tails and late terminal events instead of relabeling them as the new response. Scope completion and clear events in both web and native playback.
+- Remove fixed lookup-start and waiting speech from phone calls, including legacy notice configurations. Existing task UI, real backend progress/results/errors and household-device notices remain.
+- Preserve build 20 ownership repair, build 19 captions and accepted island/Reaction behavior. An accepted farewell remains eligible to drain and hang up after response replacement.
+- Local simulated-upstream acceptance reproduces failure on the pre-fix shared pipeline in both Chromium and native iOS. The repaired browser becomes silent 37 ms after replacement confirmation, rejects the delayed five-second old tone and hangs up; native shared pipeline passes with capture continuing. No real provider request or recording. Full native 67, core 29, Node 727, Speaker 95 and fleet 10 pass; physical speech-onset sensitivity and model judgment remain separate acceptance.
+
+- Delivery: PR #72/#73 merged; main CI passed; both Voice nodes run 56cfc608 from one hash-verified artifact. Signed iOS build 21 installed and read back on the requested iPhone. Normal launch was blocked by the physical lock screen; human real-call acceptance remains pending. Gateway and original private settings unchanged. See `docs/releases/voice-duplex-shared-20261022/release.json`.
+
+## 2026-10-22 — iOS build 20 playback ownership repair
+
+- Keep native response ownership across host tool notices without a provider response ID, so a new reply replaces the old queued tail.
+- Honor confirmed retiredResponseId on audio.clear so late frames cannot restart cancelled speech.
+- Both cases fail against build 19 source and pass with the fix; 10 native playback/H5 regressions and 29 core checks pass. Real microphone interruption timing remains a physical acceptance boundary.
+- Follow-up delivery to the authorized caption repair; preserve the signed build 19 rollback. See `docs/ios/INTERRUPTION-OWNERSHIP.md` for evidence and limits.
+
 ## 2026-10-22 — Caption continuity and iOS build 19
 
 - Keep GPT captions in one stable message when fragments arrive before their native turn identity; attach late fragment finals to their original turn.
@@ -157,7 +190,7 @@
 
 ## 2026-10-22 — Unified four-client release
 
-One verified main artifact now targets both the web/iOS and domestic robot/speaker services. Private Unix release control atomically holds new call admission only when calls, creation, delivery and device operations are idle; expiring holds, exact service/configuration checks and guarded rollback protect ongoing work. Legacy bootstrap refuses any existing client connection. The fleet command stages both nodes, retains pending targets, and records runtime hashes plus the iOS UI/client compatibility matrix. Native apps and firmware still require separate installation evidence. See [deployment contract](docs/unified-release.md); production receipts are recorded separately after cutover.
+One verified main artifact now targets both the web/iOS and domestic robot/speaker services. Private Unix release control atomically holds new call admission only when calls, creation, delivery and device operations are idle; expiring holds, exact service/configuration checks and guarded rollback protect ongoing work. Legacy bootstrap refuses any existing client connection. The fleet command stages both nodes, retains pending targets, and records runtime hashes plus the iOS UI/client compatibility matrix. Native apps and firmware still require separate installation evidence. See [deployment contract](docs/unified-release.md); production delivery is verified on both nodes at `42ff625` and registered in `docs/releases/voice-unified-release-20261022/release.json`.
 
 
 ## Voice · 20261020 phone stage UI, task progress and held results · source main

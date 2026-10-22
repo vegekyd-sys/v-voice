@@ -40,7 +40,7 @@ import VVoiceCore
         let rows = (try? Data(contentsOf: lifecycleFile)).flatMap { try? JSONDecoder().decode([[String: String]].self, from: $0) } ?? []
         return rows.filter { $0["event"] == "island.attention.requested" && $0["code"] == "document" }.count
     }
-    func testExpandedCallWaveformKeepsUpdatingAndReportWinsDuringSpeech() async throws {
+    func testBothIslandLayoutsFollowPlaybackAndKeepReportEntry() async throws {
         let call = try await client()
         try await call.startOrContinue()
         try await until { call.conversation.turns.contains { $0.text.contains("本地音频测试") } && call.phase == .listening }
@@ -55,7 +55,14 @@ import VVoiceCore
         try await until { activity.content.state.documentID == "fixture-plan" }
         let surface = IslandCallSurface(state: activity.content.state, callID: call.presentationID)
         XCTAssertTrue(surface.showsReport)
-        XCTAssertFalse(surface.showsWaveform)
+        XCTAssertTrue(surface.showsWaveform)
+        let largeSample = try XCTUnwrap(activity.content.state.island.sampledAt)
+        try await until { (activity.content.state.island.sampledAt ?? .distantPast).timeIntervalSince(largeSample) > 0.25 }
+        call.selectIslandLayout(.audio, callID: call.presentationID)
+        try await until { activity.content.state.island.layout == .audio }
+        let mediumSample = try XCTUnwrap(activity.content.state.island.sampledAt)
+        try await until { (activity.content.state.island.sampledAt ?? .distantPast).timeIntervalSince(mediumSample) > 0.25 }
+        XCTAssertEqual(activity.content.state.documentID, "fixture-plan")
         let snapshot = try await stats()
         XCTAssertEqual(snapshot["sessions"] as? Int, 1)
         XCTAssertGreaterThan(snapshot["inputBytes"] as? Int ?? 0, 0)
@@ -251,6 +258,52 @@ import VVoiceCore
         XCTAssertGreaterThan(afterReplacement, inputBefore)
         try await fixture("end")
         try await until { call.phase == .ended }
+    }
+    func testNativeNoticeCannotEraseResponseOwnershipBeforeReplacement() async throws {
+        let call = try await client()
+        try await fixture("native-mode"); call.model = .seeduplex
+        try await call.startOrContinue()
+        try await until { call.phase == .listening }
+        try await fixture("audio", ["ms":5000,"responseId":"old"])
+        try await until { call.phase == .speaking }
+        let inputBefore = try await stats()["inputBytes"] as? Int ?? 0
+        // Cached tool-start/progress clips have no provider response ID.
+        try await fixture("audio", ["ms":240])
+        try await fixture("audio", ["ms":240,"responseId":"new"])
+        try await until({ call.phase == .listening }, timeout: 2)
+        try await fixture("audio", ["ms":5000,"responseId":"old"])
+        try await Task.sleep(for: .milliseconds(350))
+        XCTAssertEqual(call.phase, .listening)
+        let inputAfter = try await stats()["inputBytes"] as? Int ?? 0
+        XCTAssertGreaterThan(inputAfter, inputBefore)
+    }
+    func testConfirmedClearCannotReplayRetiredResponse() async throws {
+        let call = try await client()
+        try await fixture("native-mode"); call.model = .seeduplex
+        try await call.startOrContinue()
+        try await until { call.phase == .listening }
+        try await fixture("audio", ["ms":5000,"responseId":"old"])
+        try await until { call.phase == .speaking }
+        try await fixture("event", ["event":["type":"audio.clear","retiredResponseId":"old"]])
+        try await until({ call.phase == .listening }, timeout: 1)
+        try await fixture("audio", ["ms":5000,"responseId":"old"])
+        try await Task.sleep(for: .milliseconds(350))
+        XCTAssertEqual(call.phase, .listening)
+        try await fixture("audio", ["ms":240,"responseId":"new"])
+        try await until({ call.phase == .listening }, timeout: 2)
+    }
+    func testOldScopedClearCannotStopNewNativeReply() async throws {
+        let call = try await client()
+        try await fixture("native-mode"); call.model = .seeduplex
+        try await call.startOrContinue()
+        try await until { call.phase == .listening }
+        try await fixture("audio", ["ms":5000,"responseId":"old"])
+        try await until { call.phase == .speaking }
+        try await fixture("audio", ["ms":800,"responseId":"new"])
+        try await fixture("event", ["event":["type":"audio.clear","retiredResponseId":"old"]])
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(call.phase, .speaking, "late old clear cannot clear the current new response")
+        try await until({ call.phase == .listening }, timeout: 2)
     }
     func testGrokVoiceChoiceIsSentAndGPTNativeOptionIsAvailable() async throws {
         let call = try await client()

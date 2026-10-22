@@ -9,6 +9,9 @@ fi
 VVOICE_IOS_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VVOICE_TEAM_ID="${VVOICE_TEAM_ID:-E6YTL27QWA}"
 VVOICE_ARCHIVE="$VVOICE_IOS_ROOT/build/VVoice.xcarchive"
+# Fail before signing if either embedded H5 resource set is stale.
+node "$VVOICE_IOS_ROOT/scripts/sync-h5-design.mjs" --check
+node "$VVOICE_IOS_ROOT/scripts/sync-h5-shell.mjs" --check
 mkdir -p "$VVOICE_IOS_ROOT/build"
 if command -v xcodegen >/dev/null; then xcodegen generate --spec "$VVOICE_IOS_ROOT/project.yml"; fi
 if [[ -d "$VVOICE_ARCHIVE" ]]; then mv "$VVOICE_ARCHIVE" "$VVOICE_ARCHIVE.previous-$(date +%Y%m%d-%H%M%S)"; fi
