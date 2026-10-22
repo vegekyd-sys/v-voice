@@ -9,6 +9,13 @@ for key in ['CFBundleIcons','CFBundleIcons~ipad']:
     primary=info.get(key,{}).get('CFBundlePrimaryIcon',{})
     assert primary.get('NSAppIconActionTintColorName')=='VShortcutTint', 'App Shortcuts tint must be inside the primary icon metadata: '+key
     assert primary.get('NSAppIconComplementingColorNames')==['VShortcutBackground','VShortcutComplement']
+for key in ['CFBundleIcons', 'CFBundleIcons~ipad']:
+    alternate = info.get(key, {}).get('CFBundleAlternateIcons', {}).get('VVoiceSystemPortrait', {})
+    assert alternate.get('CFBundleIconName') == 'VVoiceSystemPortrait', 'Public icon refresh must resolve the shipped portrait'
+app_assets = json.loads(subprocess.check_output(['assetutil', '--info', str(a.app/'Assets.car')], text=True))
+for name in ['VVoiceAppIcon', 'VVoiceSystemPortrait']:
+    widths = {item.get('PixelWidth') for item in app_assets if item.get('Name') == name and item.get('Idiom') == 'phone'}
+    assert {60, 87, 120, 180} <= widths, 'Notification, settings, Spotlight and home icon renditions missing: ' + name
 assert info.get('NSSupportsLiveActivities') is True
 assert info.get('UIBackgroundModes')==['audio']
 assert info.get('NSMicrophoneUsageDescription')

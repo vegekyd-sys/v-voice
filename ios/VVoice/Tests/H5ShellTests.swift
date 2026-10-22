@@ -47,10 +47,13 @@ import VVoiceCore
         host.latest = H5Snapshot.make(call, visible: true)
         _ = try await host.command("avatarDisplayed", payload: ["pictureID":"reaction-2"], owner: call.presentationID)
         XCTAssertEqual(call.activityState.island.reactionID, "reaction-2")
+        _ = try await host.command("avatarDisplayed", payload: ["pictureID":"reaction-10"], owner: call.presentationID)
+        XCTAssertEqual(call.avatar.pictureID, "reaction-10")
+        XCTAssertEqual(call.activityState.island.reactionID, "reaction-10")
         do { _ = try await host.command("avatarDisplayed", payload: ["pictureID":"../../secret"], owner: call.presentationID); XCTFail("Only known poses") } catch {}
         host.latest = H5Snapshot.make(call, visible: false)
         do { _ = try await host.command("avatarDisplayed", payload: ["pictureID":"reaction-6"], owner: call.presentationID); XCTFail("Covered page cannot publish Reaction") } catch {}
-        XCTAssertEqual(call.activityState.island.reactionID, "reaction-2")
+        XCTAssertEqual(call.activityState.island.reactionID, "reaction-10")
         do { _ = try await host.command("session", payload: [:], owner: call.presentationID); XCTFail("No arbitrary API bridge") } catch {}
         XCTAssertTrue(call.active)
         await call.end()
@@ -79,8 +82,10 @@ import VVoiceCore
     func testAvatarTransportRevisionContinuesAcrossWebPageReload() async throws {
         let call = try await client(); try await call.startOrContinue()
         let body: [String: Any] = ["revision":1,"turns":[["role":"user","text":"本地语义测试"]]]
-        _ = try await call.h5Cosmetic("avatar", body: body, owner: call.presentationID)
-        _ = try await call.h5Cosmetic("avatar", body: body, owner: call.presentationID)
+        let first = try await call.h5Cosmetic("avatar", body: body, owner: call.presentationID)
+        let reloaded = try await call.h5Cosmetic("avatar", body: body, owner: call.presentationID)
+        XCTAssertEqual(first["revision"] as? Int, 1)
+        XCTAssertEqual(reloaded["revision"] as? Int, 1, "The H5 renderer must receive its requested revision after a reload")
         let requests = try await stats()["avatarRequests"] as? [[String: Any]] ?? []
         XCTAssertEqual(requests.compactMap { $0["revision"] as? Int }, [1,2])
         await call.end()

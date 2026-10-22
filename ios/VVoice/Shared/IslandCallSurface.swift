@@ -14,6 +14,7 @@ struct IslandCallSurface: View {
     @Environment(\.isLuminanceReduced) private var luminanceReduced
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var portraitAsset: String { IslandReactionCatalog.assets[quiet ? "listen-5" : state.island.reactionID] ?? "VAvatar_listen_5" }
     var showsReport: Bool { !stale && state.documentID != nil }
     var showsWaveform: Bool { !showsReport && !quiet }
     var conversation: Bool { stale || lockScreen || [.reconnecting,.interrupted,.ending,.failed].contains(state.phase) || state.island.layout == .conversation }
@@ -24,11 +25,8 @@ struct IslandCallSurface: View {
         VStack(spacing: 4) {
             HStack(spacing: 13) {
                 if !typeSize.isAccessibilitySize {
-                    Group {
-                        if !stale, state.phase == .connecting { Image("VAppIcon").resizable().scaledToFill() }
-                        else if quiet { Image(systemName: stale ? "pause.fill" : state.phase.symbol).font(.system(size: 24)).foregroundStyle(islandLilac) }
-                        else { Image(IslandReactionCatalog.assets[state.island.reactionID] ?? "VAvatar_listen_5").resizable().scaledToFill() }
-                    }.frame(width: conversation ? 52 : 56, height: conversation ? 52 : 60).clipShape(Circle())
+                    Image(portraitAsset).resizable().scaledToFill().unredacted()
+                        .frame(width: conversation ? 52 : 56, height: conversation ? 52 : 60).clipShape(Circle())
                         .accessibilityLabel(quiet ? status : "V 的 Reaction")
                 }
                 if conversation {

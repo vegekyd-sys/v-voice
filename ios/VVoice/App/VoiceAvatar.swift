@@ -17,6 +17,11 @@ struct AvatarPicture: Codable, Sendable {
     }()
     static let pictures = Dictionary(uniqueKeysWithValues: gallery.map { ($0.id, $0) })
     var onDisplayed: ((String) -> Void)?
+    var onIslandFrame: ((String, String) -> Void)?
+    var requestDecision: (@MainActor ([String: Any]) async throws -> [String: Any])?
+    private(set) var islandVisible = false
+    private var h5Approved: [String] = []
+    private var h5Anchor: String?
     private(set) var pictureID = "idle"
     private(set) var anchor: String?
     private(set) var displayEpoch = 0
@@ -29,7 +34,7 @@ struct AvatarPicture: Codable, Sendable {
     @ObservationIgnored private var covered = false
     @ObservationIgnored private var visible: Bool = false
     @ObservationIgnored private var rows: [ConversationTurn] = []
-    @ObservationIgnored private var activity = "listen"
+    @ObservationIgnored private var activity = "idle"
     @ObservationIgnored private var outcome = "none"
     @ObservationIgnored private var lastUser = ""
     @ObservationIgnored private var lastTask = ""
@@ -67,13 +72,35 @@ struct AvatarPicture: Codable, Sendable {
         record(["type":"avatar.capture_closed"]); flushEvents()
         owner = nil; requestID = UUID(); request?.cancel(); request = nil; debounce?.cancel(); debounce = nil
         transition?.cancel(); dwell?.cancel(); transition = nil; dwell = nil
-        approved = []; anchor = nil; rows = []; pictureID = "idle"; visible = false
+        approved = []; anchor = nil; rows = []; pictureID = "idle"; visible = false; islandVisible = false; h5Approved = []; h5Anchor = nil
+    }
+    func island(_ shown: Bool) { islandVisible = shown; visibilityChanged() }
+    /// Import only the actual foreground renderer's frame. This is not a second Decision.
+    func adoptH5Display(_ id: String) {
+        guard owner != nil, !islandVisible, Self.pictures[id] != nil, id != "idle" else { return }
+        approved = h5Approved.contains(id) ? h5Approved : []
+        anchor = approved.isEmpty ? nil : h5Anchor
+        show(id, source: "h5_display")
+    }
+    func rememberH5Decision(_ value: [String: Any], request: [String: Any]) {
+        guard !islandVisible, let id = value["picture"] as? String, id != "idle", Self.pictures[id] != nil else { return }
+        let requestedUser = (request["turns"] as? [[String: Any]])?.last(where: { $0["role"] as? String == "user" })?["text"] as? String
+        let user = rows.last(where: { $0.role == "user" })
+        guard requestedUser == user.map({ Self.clip($0.text) }) else { return }
+        h5Anchor = id
+        h5Approved = ([id] + (value["continuations"] as? [String] ?? [])).filter { $0 != "idle" && Self.pictures[$0] != nil }
+        // Resume from handled foreground meaning rather than re-requesting it on lock.
+        if let user { lastUser = user.id.uuidString + ":" + user.text }
+        lastTask = activity + ":" + outcome
+        if let assistant = rows.last, assistant.role == "assistant", assistant.complete {
+            lastAssistantKey = assistant.id; lastAssistantText = assistant.text; lastAssistantAt = Date()
+        }
     }
     func scene(_ active: Bool) { sceneActive = active; visibilityChanged() }
     func stage(_ shown: Bool) { portraitVisible = shown; visibilityChanged() }
     func cover(_ shown: Bool) { covered = shown; visibilityChanged() }
     private func visibilityChanged() {
-        let next = owner != nil && sceneActive && portraitVisible && !covered
+        let next = owner != nil && (islandVisible || sceneActive && portraitVisible && !covered)
         guard next != visible else { return }; visible = next
         if next { displayEpoch += 1; source = "visibility"; if pictureID == "idle" { show("listen-5", source: "state") }; scheduleDwell(); schedule() }
         else { debounce?.cancel(); debounce = nil; request?.cancel(); request = nil; requestID = UUID(); dwell?.cancel(); transition?.cancel() }
@@ -95,7 +122,7 @@ struct AvatarPicture: Codable, Sendable {
             userEpoch = epoch
         }
         let changed = nextRows != rows || self.activity != activity || self.outcome != outcome
-        rows = nextRows; self.activity = activity == "idle" ? "listen" : activity; self.outcome = outcome
+        rows = nextRows; self.activity = activity; self.outcome = outcome
         if lastTask.isEmpty { lastTask = self.activity + ":" + outcome }
         if anchor == nil, visible, changed {
             let fallback = ["memory","web","calendar","background"].contains(self.activity) ? self.activity + "-0" : "listen-5"
@@ -148,12 +175,14 @@ struct AvatarPicture: Codable, Sendable {
                                   "currentPicture":pictureID,"reactionPicture":anchor ?? pictureID,"speaker":rows.last?.role ?? "assistant","beat":["kind":beat.kind,"text":Self.clip(beat.text)]]
         request = Task { [weak self] in
             guard let self else { return }
-            let result = try? await self.api.call("avatar", body: body, refresh: false)
+            let result: [String: Any]?
+            if let requestDecision = self.requestDecision { result = try? await requestDecision(body) }
+            else { result = try? await self.api.call("avatar", body: body, refresh: false) }
             guard !Task.isCancelled, self.owner == owner, self.requestID == token else { return }
             self.request = nil
-            if self.visible, self.userEpoch == epoch, let result, result["revision"] as? Int == ownRevision,
+            if self.visible, self.userEpoch == epoch, let result, let actualRevision = result["revision"] as? Int,
                let id = result["picture"] as? String, id != "idle", Self.pictures[id] != nil {
-                self.select(id: id, continuations: result["continuations"] as? [String] ?? [], revision: ownRevision, assistantBeat: beat.kind.hasPrefix("assistant"))
+                self.select(id: id, continuations: result["continuations"] as? [String] ?? [], revision: actualRevision, assistantBeat: beat.kind.hasPrefix("assistant"))
             }
             if self.candidate() != nil { self.schedule() }
             else if let latest = self.rows.last, latest.role == "assistant", latest.id == self.lastAssistantKey, latest.text != self.lastAssistantText {
@@ -183,6 +212,7 @@ struct AvatarPicture: Codable, Sendable {
     private func show(_ id: String, source: String) {
         guard Self.pictures[id] != nil, id != pictureID else { return }
         pictureID = id; self.source = source; changedAt = Date(); recent.append(id); recent = Array(recent.suffix(4)); scheduleDwell()
+        if islandVisible, let owner { onIslandFrame?(id, owner) }
     }
     private func scheduleDwell() {
         dwell?.cancel(); guard visible, owner != nil else { return }

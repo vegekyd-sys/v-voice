@@ -22,6 +22,11 @@ struct IslandPreviewGallery: View {
                     HStack { Text("V").font(.system(size: 16, weight: .semibold)); Spacer(); Image(systemName: pose == 3 ? "doc.text.fill" : "waveform") }
                         .foregroundStyle(Color(hex: 0xd6c2ed)).padding(.horizontal, 15).frame(width: 184, height: 37).background(.black, in: Capsule())
                 }
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("首次呼叫 · 默认 Reaction").font(.system(size: 13))
+                    IslandCallSurface(state: .init(phase: .connecting, muted: false, startedAt: Date(), detail: "正在呼叫 V"), callID: previewOwner, lockScreen: true)
+                        .padding(8).background(.black, in: RoundedRectangle(cornerRadius: 30))
+                }
                 preview("中 · Reaction 与声音", layout: .audio)
                 preview("大 · 声音与通话控制", layout: .conversation)
                 Button("切换 Reaction 原图") { pose = (pose + 1) % poses.count }.buttonStyle(.bordered)

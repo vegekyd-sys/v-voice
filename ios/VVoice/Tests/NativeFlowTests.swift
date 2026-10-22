@@ -407,6 +407,50 @@ import VVoiceCore
         XCTAssertEqual((current["supplements"] as? [[String: Any]])?.last?["mode"] as? String, "steer")
     }
 
+    func testBackgroundReactionsPublishApprovedFramesAndReturnOwnershipToH5() async throws {
+        let call = try await client(); try await call.startOrContinue()
+        try await until { call.phase == .listening && !call.conversation.turns.isEmpty }
+        // Foreground uses real H5 receipts without starting a native Decision loop.
+        call.islandDidDisplayReaction("reaction-2", owner: call.presentationID)
+        XCTAssertEqual(call.avatar.pictureID, "reaction-2")
+        let initial = try await stats()
+        XCTAssertTrue((initial["avatarRequests"] as? [Any] ?? []).isEmpty)
+        call.sceneChanged(.background)
+        try await fixture("avatar-reply", ["picture":"reaction-10","continuations":["reaction-11"]])
+        try await fixture("think")
+        try await until { call.avatar.anchor == "reaction-10" && call.activityState.island.reactionID == "reaction-10" }
+        try await until({ call.avatar.pictureID == "reaction-11" && call.activityState.island.reactionID == "reaction-11" }, timeout: 6)
+        let background = try await stats()
+        XCTAssertEqual(background["sessions"] as? Int, 1)
+        XCTAssertGreaterThan(background["inputBytes"] as? Int ?? 0, 0)
+        XCTAssertFalse((background["avatarEvents"] as? [[String: Any]] ?? []).contains { $0["type"] as? String == "avatar.displayed" }, "Publishing a widget snapshot is not proof that iOS displayed it")
+        call.sceneChanged(.active)
+        let count = (try await stats()["avatarRequests"] as? [Any])?.count
+        try await fixture("demo")
+        try await Task.sleep(for: .milliseconds(850))
+        let foreground = try await stats()
+        XCTAssertEqual((foreground["avatarRequests"] as? [Any])?.count, count)
+        call.islandDidDisplayReaction("reaction-4", owner: call.presentationID)
+        XCTAssertEqual(call.activityState.island.reactionID, "reaction-4")
+        XCTAssertTrue(call.active)
+    }
+
+    func testBackgroundContinuesTheAlreadyDisplayedH5DecisionWithoutRequestingItTwice() async throws {
+        let call = try await client(); try await call.startOrContinue()
+        try await until { call.phase == .listening && !call.conversation.turns.isEmpty }
+        try await fixture("think")
+        try await until { call.conversation.turns.last?.text == "本地测试" }
+        let turns = call.conversation.turns.suffix(6).map { ["role":$0.role,"text":$0.text] }
+        let decision = try await call.h5Cosmetic("avatar", body: ["revision":1,"turns":turns], owner: call.presentationID)
+        call.islandDidDisplayReaction(try XCTUnwrap(decision["picture"] as? String), owner: call.presentationID)
+        call.sceneChanged(.background)
+        try await Task.sleep(for: .milliseconds(850))
+        let resumed = try await stats()
+        XCTAssertEqual((resumed["avatarRequests"] as? [Any])?.count, 1)
+        try await until({ call.avatar.pictureID == "reaction-1" && call.activityState.island.reactionID == "reaction-1" }, timeout: 6)
+        XCTAssertTrue(call.active)
+    }
+
     func testSemanticReactionsUseApprovedContinuationsAndPauseWhenCovered() async throws {
         let call = try await client(); try await call.startOrContinue(); call.avatar.stage(true)
         try await fixture("demo")

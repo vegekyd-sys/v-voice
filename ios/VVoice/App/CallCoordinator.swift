@@ -115,6 +115,7 @@ import VVoiceCore
     @ObservationIgnored private var recoveryOwner: UUID?
     @ObservationIgnored private var recoveryDeadline: Task<Void, Never>?
     @ObservationIgnored private var naturalEnd: Task<Void, Never>?
+    @ObservationIgnored private var h5AvatarInFlight = 0
     @ObservationIgnored private var activity: Activity<CallAttributes>?
     @ObservationIgnored private var activityUpdates: Task<Void, Never>?
     @ObservationIgnored private var activityWatch: Task<Void, Never>?
@@ -142,7 +143,7 @@ import VVoiceCore
     @ObservationIgnored private var shownResults: Set<String> = []
     @ObservationIgnored private var acknowledgingResults: Set<String> = []
     @ObservationIgnored private var initialized = false
-    @ObservationIgnored private var appScenePhase: ScenePhase = .background
+    @ObservationIgnored private(set) var appScenePhase: ScenePhase = .background
     private var appIsActive: Bool { appScenePhase == .active }
 
     init(api: VoiceAPI? = nil) {
@@ -151,7 +152,20 @@ import VVoiceCore
         model = VoiceModel(rawValue: UserDefaults.standard.string(forKey: "voiceModel") ?? "") ?? .seeduplex
         bound = self.api.isBound
         avatar.onDisplayed = { [weak self] id in
-            guard let self else { return }; self.islandDidDisplayReaction(id, owner: self.presentationID)
+            guard let self else { return }; self.islandDidDisplayReaction(id, owner: self.presentationID, fromH5: false)
+        }
+        avatar.onIslandFrame = { [weak self] id, voiceOwner in
+            guard let self, self.active, self.voiceID == voiceOwner, self.appScenePhase == .background else { return }
+            self.synchronizeIsland(documentID: self.activityState.documentID)
+            if self.islandPresentation.displayedReaction(id, owner: self.presentationID, now: Date()) { self.publishIslandActivity() }
+        }
+        avatar.requestDecision = { [weak self] body in
+            guard let self else { throw CancellationError() }
+            // Let an already-started H5 request finish before the background surface takes over.
+            while self.h5AvatarInFlight > 0 { try await Task.sleep(for: .milliseconds(50)) }
+            try Task.checkCancellation()
+            guard self.avatar.islandVisible || self.appIsActive else { throw CancellationError() }
+            return try await self.h5Cosmetic("avatar", body: body, owner: self.presentationID, fromH5: false)
         }
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
@@ -180,6 +194,7 @@ import VVoiceCore
         appScenePhase = scene
         UIApplication.shared.isIdleTimerDisabled = appIsActive && active
         avatar.scene(appIsActive)
+        refreshIslandAvatarSurface()
         guard appIsActive else {
             if scene == .background, active, let report = documents.last(where: { !shownResults.contains($0.id) }) {
                 publish(resultID: report.id)
@@ -269,7 +284,7 @@ import VVoiceCore
         voiceID = id; try api.rememberCall(id)
         speakerRouted = reservation["speakerRouting"] is [String: Any]
         conversation.beginSpeakerStream(); speakerNotice = ""; speakerAction = ""; speakerNoticeTask?.cancel()
-        avatarOutcome = "none"; avatar.begin(owner: id); updateAvatar()
+        avatarOutcome = "none"; avatar.begin(owner: id); refreshIslandAvatarSurface(); updateAvatar()
         guard reservation["transport"] as? String == "gateway-relay", let ticket = reservation["relayTicket"] as? String else { throw VoiceError.protocolMismatch }
         audio.beginStream()
         let relay = RelayTransport(id: id); transport = relay
@@ -453,7 +468,8 @@ import VVoiceCore
         publish(resultID: id)
     }
     private func updateAvatar() {
-        avatar.update(turns: conversation.turns, activity: tasks.last?.activity ?? "listen", outcome: tasks.isEmpty ? avatarOutcome : "pending")
+        let reportIDs = Set(documents.filter(\.serverOwned).map(\.id))
+        avatar.update(turns: conversation.turns.filter { $0.documentID.map { !reportIDs.contains($0) } ?? true }, activity: tasks.last?.activity ?? "idle", outcome: tasks.isEmpty ? avatarOutcome : "pending")
     }
     private func receiveTask(_ value: [String: Any]) {
         guard let id = value["callId"] as? String else { return }
@@ -525,6 +541,9 @@ import VVoiceCore
             await self.end()
         }
     }
+    private func refreshIslandAvatarSurface() {
+        avatar.island(active && activity != nil && appScenePhase == .background && [.listening,.thinking,.speaking,.muted].contains(phase))
+    }
     private func setPhase(_ phase: VoicePhase, owner: UUID) {
         let previous = state.phase
         state.transition(phase, owner: owner)
@@ -538,6 +557,7 @@ import VVoiceCore
                     self.thinkingVisible = false; self.publish()
                 }
             }
+            refreshIslandAvatarSurface()
             publish()
         }
     }
@@ -690,9 +710,13 @@ import VVoiceCore
     }
     // Only cosmetic H5 calls use this narrow bridge. The native owner supplies
     // the real voiceSessionId; JavaScript never receives a cookie or relay ticket.
-    func h5Cosmetic(_ route: String, body: [String: Any], owner: String) async throws -> [String: Any] {
+    func h5Cosmetic(_ route: String, body: [String: Any], owner: String, fromH5: Bool = true) async throws -> [String: Any] {
         guard active, presentationID == owner, let voiceID, ["avatar", "avatar-events"].contains(route) else { throw VoiceError.connection }
+        if route == "avatar", fromH5, !appIsActive { throw CancellationError() }
         let generation = state.generation
+        let tracksH5 = route == "avatar" && fromH5
+        if tracksH5 { h5AvatarInFlight += 1 }
+        defer { if tracksH5 { h5AvatarInFlight -= 1 } }
         var payload = body; payload["voiceSessionId"] = voiceID
         if route == "avatar" {
             guard let requested = body["revision"] as? Int, requested > 0, requested < 1_000_000 else { throw VoiceError.protocolMismatch }
@@ -701,7 +725,14 @@ import VVoiceCore
         }
         let result = try await api.call(route, body: payload, refresh: false)
         guard owned(generation), presentationID == owner else { throw CancellationError() }
-        return result
+        if route == "avatar" {
+            guard result["revision"] as? Int == payload["revision"] as? Int else { throw CancellationError() }
+            if fromH5, appIsActive { avatar.rememberH5Decision(result, request: body) }
+        }
+        var response = result
+        // The renderer checks its own revision; transport revisions survive renderer reloads.
+        if route == "avatar", fromH5 { response["revision"] = body["revision"] }
+        return response
     }
     var h5Outcome: String { tasks.isEmpty ? avatarOutcome : "pending" }
     var activityState: CallAttributes.ContentState {
