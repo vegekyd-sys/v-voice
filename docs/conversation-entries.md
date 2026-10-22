@@ -11,6 +11,7 @@
   "sessionKey": "agent:makaron:feishu:group:oc_example",
   "accountId": "existing-feishu-account",
   "kind": "group",
+  "displayName": "项目讨论群",
   "callerId": "tianyi",
   "permissionProfile": "personal-tianyi",
   "accessToken": "replace-with-a-unique-server-side-random-token-at-least-32-chars",
@@ -22,11 +23,11 @@
 
 下一阶段的 Gateway 接口必须把以下事实一起确认：真实 session 的 Feishu account/chat/thread、来电者可访问的会话、可使用的工具账号及 redline。不得用此库的 `permissionProfile` 字符串替代 Gateway 授权。不同飞书账号的工具环境与记忆可见范围也要隔离。
 
-验收顺序：本人原入口回归 → 同一人两个真实会话，三个模型路由/上下文/重拨/并发 → 独立他人账号与 DM/群隔离 → 飞书“打给 V”按钮。当前没有新增真实他人电话入口，也没有发送按钮/链接。
+验收顺序：本人原入口回归 → 同一人两个真实会话，三个模型路由/上下文/重拨/并发 → 独立他人账号与 DM/群隔离 → 飞书“打给 V”按钮。当前没有新增真实他人电话入口；VLab 两个已登记会话的实际入口与验证结果见本轮验收记录。
 
-## 飞书常驻菜单入口
+## 飞书会话入口
 
-单聊使用开发者后台的机器人悬浮菜单，跳转到 `https://HOST/voice/feishu`；群聊使用该群的会话菜单，跳转到 `https://HOST/voice/feishu?phone=PHONE_ID`。菜单 URL 不含 bearer、sessionKey 或 callerId。后端用飞书 OAuth v3 + S256 PKCE 确认实际点击者；服务端私有配置中列出的 phoneIds 才能被打开，默认 DM 也是显式登记的已有 session，不能从浏览器或 open_id 拼一个 session key。
+单聊使用会话顶部的「📞 打给 V」URL 标签页，群聊保留该群的会话菜单；两者均跳转到 `https://HOST/voice/feishu?phone=PHONE_ID`。单聊不再增加输入框上方的悬浮菜单。每个标签页单独绑定已有会话，当前没有部署面向所有人的自动注册流程。菜单 URL 不含 bearer、sessionKey 或 callerId。后端用飞书 OAuth v3 + S256 PKCE 确认实际点击者；服务端私有配置中列出的 phoneIds 才能被打开，默认 DM 也是显式登记的已有 session，不能从浏览器或 open_id 拼一个 session key。
 
 首次配置需在该飞书应用的安全设置中添加精确回调 `https://HOST/voice/feishu/callback`。登录不请求日历、通讯录、工具或 offline_access scopes；用户 token 仅用于获取应用内 open_id/tenant_key，不持久化、不发送给语音模型。OAuth state 绑定 HttpOnly 浏览器 cookie，五分钟过期且单次使用。成功后登录 cookie 保持八小时；服务重启使它失效，重新从飞书入口登录即可。打开菜单不会自动拨号。
 
@@ -55,7 +56,14 @@ node scripts/feishu-menu.mjs --chat oc_example --phone phone-room-a \
   --origin https://HOST --out /private/path/new-menu-receipt.json
 ```
 
-机器人单聊菜单需要发布飞书应用配置版本；这与 Voice 源码发布是两个操作。仅修改链接不需要 Gateway 重启。当前补丁只在 Voice 服务内处理 OAuth，使用既有 Gateway 会话接口；真实菜单点击、飞书登录、实际音频接通仍须分别记录，测试 fixture 不代表这些链路已验收。
+单聊顶部标签页可以在客户端添加，也可使用下面的幂等安装命令。调用方须已在会话内，并拥有 `im:chat` 或 `im:chat.tabs:write_only`；同名但链接不一致时拒绝覆盖。
+
+```sh
+node scripts/feishu-menu.mjs --surface tab --chat oc_example --phone phone-person-dm \
+  --origin https://HOST --out /private/path/new-tab-receipt.json
+```
+
+关闭旧机器人悬浮菜单需要发布对应飞书应用的配置版本；这与 Voice 源码发布是两个操作。仅修改链接不需要 Gateway 重启。当前补丁只在 Voice 服务内处理 OAuth，使用既有 Gateway 会话接口；真实菜单点击、飞书登录、实际音频接通仍须分别记录，测试 fixture 不代表这些链路已验收。
 
 ## 配置独立电话
 
@@ -83,6 +91,6 @@ npm run phone -- link \
 
 ## 独立工作区与验收
 
-本任务分支为 `codex/session-phone-binding`，只负责入口映射、配置工具及通话 owner 生命周期。头像和 UI 展示分别由其他任务维护，不修改图片、样式或头像选择策略。
+PR 分支为 `codex/session-phone-binding`。本轮在当前主线 UI 上增加安全的会话显示名，并保留首页跳转的 phone 参数；头像资源和选择策略沿用主线。会话电话的原生工具及后台任务使用已绑定 session；不声明或执行服务级个人飞书查询快捷工具，不把所有发声者默认为天懿本人。
 
 Candidate 需用两个真实、已授权的飞书群/DM 验证：背景上下文不同且不串话；三个模型承接相同服务端 key；两个不同会话可并行；同会话第二台设备不能夺取 owner；挂断重拨仍回到原历史 session；旧 SDP、旧后台结果不能进入新通话。HTTP/WebSocket fixture 通过与真实通话验收分别记录，不将配置工具的 read-only 验证当作真人验收。

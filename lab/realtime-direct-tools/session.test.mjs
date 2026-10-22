@@ -911,3 +911,11 @@ test('conversation calls use session tools and cannot invoke personal Feishu sho
  f.call('delegate_to_v',{question:'只计算1加1'},'bound-backend');await delay(10);
  const task=f.invocations.find(x=>x.voiceSessionId&&x.question);assert.match(task.question,/身份、工具和授权边界沿用该会话/);assert.doesNotMatch(task.question,/天懿本人在语音电话里交给/);f.completeBackend('2');await delay(20);
 });
+
+
+test('conversation native greeting never substitutes the personal caller name',async t=>{
+ const f=await fixture(undefined,'seeduplex',{sessionBound:true});t.after(()=>f.service.dispose());
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);await delay(5);
+ const spoken=f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit');
+ assert(spoken.some(e=>e.text==='你好，我是 V，在呢。'));assert(spoken.every(e=>!e.text.includes('天懿')));
+});
