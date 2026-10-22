@@ -20,7 +20,8 @@
     "intentMetadataVerified": true,
     "lastUserAcceptedBackgroundCallBuild": 14,
     "lastUserConfirmedManualExpansionBuild": 14,
-    "build10DeviceAcceptance": "basic_voice_passed_additional_scenarios_pending"
+    "build10DeviceAcceptance": "basic_voice_passed_additional_scenarios_pending",
+    "lastUserAcceptedIslandBrandingAndReactionBuild": 18
   },
   "remainingParity": [
     "GPT Live native transport",
@@ -33,7 +34,7 @@
     "build": 8,
     "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab"
   },
-  "deviceReportedBuild": "15",
+  "deviceReportedBuild": "18",
   "savedH5Baseline": {
     "build": 10,
     "sourceCommit": "3ffeb94",
@@ -65,7 +66,10 @@
     "source": "Tianyi supplied purple headset portrait",
     "opaque1024AssetVerified": true,
     "simulatorAppearanceVerified": true,
-    "physicalDeviceIconReadbackVerified": true
+    "physicalDeviceIconReadbackVerified": true,
+    "systemAlternateRegistrationConfirmedBuild": 18,
+    "smallSystemIconReadbackVerifiedBuild": 18,
+    "actionButtonLaunchOverlayAcceptance": "Tianyi_confirmed_build18_passed"
   },
   "webDeliveryRelease": {
     "sourceCommit": "0d0b3d96c5391dde5362c5db270018958948584f",
@@ -78,15 +82,17 @@
     "build14PhysicalAcceptance": "all_requested_scopes_passed"
   },
   "currentDeviceCandidate": {
-    "build": 15,
-    "candidateOnly": true,
-    "sourceCommit": "da3b93a3e410d803ea1c2da0f796efd8f9d30745",
+    "build": 18,
+    "candidateOnly": false,
+    "sourceCommit": "793203b85802eae390e72553dc3f74c55b4571f0",
     "installedOnRequestedIPhone": true,
-    "deviceReportedBuild": "15",
+    "deviceReportedBuild": "18",
     "overwriteInstalledWithoutUninstallOrKeychainReset": true,
-    "record": "report-island-build15.json",
-    "physicalReportAcceptance": "pending",
-    "lastAcceptedBuild": 14
+    "record": "joint-build18.json",
+    "physicalAcceptance": "Tianyi_accepted_joint_build18_and_authorized_main_merge",
+    "lastAcceptedBuild": 14,
+    "mergeStatus": "authorized_in_progress",
+    "distribution": "development_signed_private_device"
   },
   "build10RollbackHistory": {
     "date": "2026-10-22",
@@ -133,9 +139,56 @@
     "build": 15,
     "record": "report-island-build15.json",
     "candidateOnly": true,
-    "installed": true,
+    "installed": false,
     "deviceReportedBuild": "15",
     "physicalReportAcceptance": "pending",
-    "sourceIntegrationAuthorized": true
+    "sourceIntegrationAuthorized": true,
+    "previouslyInstalled": true
+  },
+  "previousDeviceCandidate": {
+    "build": 17,
+    "candidateOnly": true,
+    "sourceCommit": "7ce6a4e",
+    "installedOnRequestedIPhone": false,
+    "deviceReportedBuild": "17",
+    "overwriteInstalledWithoutUninstallOrKeychainReset": true,
+    "record": "waveform-build17.json",
+    "physicalAcceptance": "pending",
+    "lastAcceptedBuild": 14,
+    "previouslyInstalledOnRequestedIPhone": true
+  },
+  "savedBuild15Rollback": {
+    "build": 15,
+    "ipaSHA256": "46df1206571b4b00525c51e3e3495c108e058662f54edcdcb73e2bd74d5efcda",
+    "signedIPACopiedAndVerified": true,
+    "signedArchiveRetained": true
+  },
+  "previousLiveCaptionCandidate": {
+    "build": 16,
+    "candidateOnly": true,
+    "record": "live-caption-build16.json",
+    "installed": false,
+    "deviceReportedBuild": "16",
+    "previouslyInstalled": true
+  },
+  "savedBuild16Rollback": {
+    "build": 16,
+    "ipaSHA256": "a14396d4545eddb7cf1b948872c2b4e32d4b641b14fae0d76c639a72e879ee5d",
+    "signedIPACopiedAndVerified": true
+  },
+  "pendingJointBuild18": {
+    "build": 18,
+    "candidateOnly": false,
+    "installed": true,
+    "record": "joint-build18.json",
+    "contains": [
+      "waveform build17",
+      "system icon and default/background Reaction",
+      "native SeedDuplex duplex from main",
+      "GPT Live One native WebRTC"
+    ],
+    "lastAcceptedBuild": 14,
+    "deviceReportedBuild": "18",
+    "humanAcceptance": "version_accepted_for_merge_with_measured_scopes_preserved"
   }
 }

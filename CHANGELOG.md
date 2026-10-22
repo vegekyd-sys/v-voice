@@ -1,3 +1,39 @@
+## 2026-10-22 — Accepted iOS build 18 integration
+
+- Integrate the installed and human-accepted joint iPhone build: native background Action Button calls, medium/expanded measured waveform, report links, purple system portrait icons and default/live locked-screen Reaction, alongside native SeedDuplex duplex and GPT Live One WebRTC.
+- Tianyi confirmed the three physical island/icon/Reaction checks, then explicitly accepted the version and authorized main integration. Keep the tested/signature-verified build18 artifact and rollback baseline; this merge does not replace the installed binary or deploy the web service.
+- Update the owning homepage changelog and generated H5 history. GPT Live incremental-text presentation remains under diagnosis in the separate GPT session, with no fix commit included or claimed here.
+- Validation: Core25, native/H5/island62 and service91 passed for the installed code; integration checks and merge identities are recorded separately.
+
+## Unreleased — iOS build 18 joint candidate
+
+- Integrate native SeedDuplex reversible pause/response replacement from main, GPT Live One native WebRTC, and the latest waveform/report island without replacing existing call ownership.
+- Supply the exact purple portrait for all system icon roles and register it with the public alternate-icon API only while idle in foreground; refresh App Shortcuts after registration. No uninstall or binding reset.
+- Show a default Reaction while connecting, including the shared lock-screen component. Continue semantic Reaction decisions in background using the existing H5 endpoint/catalog, carry forward actual foreground frames and approved continuations, and return control to H5 on foreground entry.
+- Keep server Reaction revisions monotonic across H5 reloads while preserving each renderer's requested revision. Foreground and background loops do not run together; stale call/user responses remain rejected.
+- Joint simulation and physical delivery are recorded separately in `docs/ios/joint-build18.json`. Physical cache/lock-screen/acoustic acceptance is pending; no automatic real model calls or online release.
+
+## 2026-10-22 — iOS build 17 waveform candidate
+
+- Reuse the medium card's measured waveform in expanded and lock-screen call controls; remove scrolling conversation captions, while unread reports retain the existing title and open-full-report affordance during speech.
+- Publish bounded audio snapshots for both card layouts, preserving native capture, playback, Action Button ownership and background report attention.
+- Move App Shortcuts icon colors into the documented primary-icon metadata for both iPhone and iPad; request registration again on idle foreground entry. Physical launch-icon cache refresh remains pending, with no uninstall or binding reset.
+- Local candidate only; no automatic real calls, main integration or server deployment.
+
+## Unreleased — iOS build 17 GPT Live One candidate
+
+- Add GPT Live One to native/H5 model selection, using the existing authenticated GPT Live SDP and native input policy. One CallCoordinator owns the call; VoiceAudio selects mutually exclusive WebRTC or PCM audio engines. Action Button remembers the selected model.
+- Bring GPT caption fragments, native turn ownership, semantic Reaction, backend tasks/results and background report attention into the existing island/H5 presentation. Preserve mute, manual hangup, owned cleanup/reconnect and bounded host-authorized end guards.
+- Pin native WebRTC 154.0.0, retain its license/privacy manifest, and preserve the signed build 16 rollback. Local synthetic peer-to-peer audio, system audio backend switching and regression checks pass. Physical GPT/provider audio acceptance remains pending; no paid call, main merge, Gateway change or online web release.
+- Public homepage changelog remains at the accepted shipped baseline. The candidate is not advertised as a shipped or human-accepted capability; the prepared release note is in `docs/ios/GPT-LIVE.md` for the approved release.
+
+## Unreleased — iOS build 16 live caption and launch branding candidate
+
+- Show the latest three wrapped lines of V’s current reply in the expanded and Lock Screen presentation while V speaks. Keep Reaction, mute/end and a stable report link; opening text continues the same native call.
+- Sanitize URLs before taking the trailing caption window, keep speech captions scoped to the current exchange, and retain the caption privacy setting. This follows incoming transcript updates rather than claiming word-level audio alignment or a manually scrollable widget.
+- Register the existing purple portrait under the distinct VVoiceAppIcon resource, set App Shortcut brand colors and use the same artwork in the app-owned connecting card. The system-owned Action Button launch hint and its cache still require physical verification.
+- Local candidate only; retains the build 15 signed rollback and existing audio/Intent behavior. No production web deployment or automatic real call.
+
 ## Unreleased — SeedDuplex full-duplex phone candidate · 2026-10-22
 
 ## 2026-10-22 — Native duplex release and iOS build 16

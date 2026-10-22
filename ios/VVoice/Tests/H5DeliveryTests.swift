@@ -16,10 +16,10 @@ import VVoiceCore
         let (data, _) = try await URLSession.shared.data(from: base.appendingPathComponent("fixture/state"))
         return try JSONSerialization.jsonObject(with: data) as! [String: Any]
     }
-    private func until(_ predicate: @MainActor () async throws -> Bool) async throws {
+    private func until(_ predicate: @MainActor () async throws -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
         let deadline = Date().addingTimeInterval(20)
         while Date() < deadline { if try await predicate() { return }; try await Task.sleep(for: .milliseconds(100)) }
-        XCTFail("Web release condition timed out")
+        XCTFail("Web release condition timed out", file: file, line: line)
     }
     private func setup() async throws -> (CallCoordinator, URL, H5DeliveryStore) {
         try await command("reset")
@@ -64,6 +64,23 @@ import VVoiceCore
         XCTAssertEqual(call.api.record?.binding, binding); XCTAssertFalse(call.active)
         let state = try await stats(); XCTAssertEqual(state["sessions"] as? Int, 0)
         for request in state["shellRequests"] as? [[String: Bool]] ?? [] { XCTAssertEqual(request["cookie"], false); XCTAssertEqual(request["authorization"], false) }
+    }
+    func testForcedWebCheckSupersedesAnOlderInFlightRelease() async throws {
+        let (call, root, _) = try await setup()
+        let (host, web, _) = surface(call, root: root)
+        try await until { host.ready }
+        var delay = URLRequest(url: base.appendingPathComponent("fixture/command")); delay.httpMethod = "POST"
+        delay.httpBody = try JSONSerialization.data(withJSONObject: ["command":"shell-delay","ms":1200])
+        _ = try await URLSession.shared.data(for: delay)
+        let before = (try await stats()["shellRequests"] as? [Any])?.count ?? 0
+        try await command("shell-release", variant: "a"); host.checkForUpdates(force: true)
+        try await until { (try await self.stats()["shellRequests"] as? [Any])?.count ?? 0 > before }
+        try await command("shell-release", variant: "b"); host.checkForUpdates(force: true)
+        try await until { guard host.ready else { return false }; return try await self.marker(web) == "b" }
+        try await Task.sleep(for: .milliseconds(1400))
+        let marker = try await self.marker(web)
+        XCTAssertEqual(marker, "b", "The cancelled older release cannot replace the newer one")
+        XCTAssertFalse(call.active)
     }
     func testActiveNativeCallPinsPageAndCaptureAcrossStagingAndReload() async throws {
         let (call, root, delivery) = try await setup()

@@ -11,6 +11,8 @@ let active=null,client=null,sequence=0,sessions=0,inputBytes=0,zeroBytes=0,playb
 let slowSessionMS=300;
 let presentationRequests=0;
 let nativeMode=false,speakerMode=false,lastSessionRequest=null;
+let shellDelayMS=0;
+let lastOffer=null,offerReply=null;const eventClients=new Set();
 let limitNextSession=false,slowClose=false,closeRequests=0;
 let documents=[],pending=[],acknowledgements=[],supplements=[];
 let avatarRequests=[],avatarEvents=[],avatarReply="reaction-0",avatarContinuations=["reaction-1","listen-5"],slowAvatar=false;
@@ -34,6 +36,7 @@ const emit=v=>{
  if(v.type==='backend.result'){documents=documents.filter(d=>d.callId!==v.callId);documents.push(v);pending=pending.filter(t=>t.callId!==v.callId);}
  if(['tool.call','tool.progress'].includes(v.type)){const old=pending.find(t=>t.callId===v.callId)??{};pending=pending.filter(t=>t.callId!==v.callId);pending.push({...old,...v});}
  if(['tool.result','tool.error'].includes(v.type))pending=pending.filter(t=>t.callId!==v.callId);
+ for(const response of eventClients)response.write(`data: ${JSON.stringify({voiceSessionId:active,...v})}\n\n`);
  if(client?.readyState===1)client.send(JSON.stringify({voiceSessionId:active,...v}));
 };
 const audio=(ms=240,responseId)=>{
@@ -45,17 +48,23 @@ const server=createServer(async(req,res)=>{
  const path=new URL(req.url,'http://127.0.0.1').pathname;
  const body=await new Promise(resolve=>{const chunks=[];req.on('data',b=>chunks.push(b));req.on('end',()=>{try{resolve(JSON.parse(Buffer.concat(chunks).toString()||'{}'));}catch{resolve({});}});});
  const send=(status,value)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
- if(path==='/fixture/state')return send(200,{active,sessions,inputBytes,zeroBytes,inputFrames,inputActiveFrames,peakInputRMS,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,presentationRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects});
+ if(path==='/fixture/state')return send(200,{active,sessions,inputBytes,zeroBytes,inputFrames,inputActiveFrames,peakInputRMS,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,presentationRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects,lastOffer});
  if(path==='/fixture/redirect-target'){shellRedirects++;return send(200,{});}
  if(path==='/voice/ios-shell-release.json'){
    shellRequests.push({cookie:!!req.headers.cookie,authorization:!!req.headers.authorization});
    if(shellVariant==='none')return send(404,{});
    if(shellVariant==='redirect'){res.writeHead(302,{location:'/fixture/redirect-target'});res.end();return;}
-   return send(200,await shellRelease(shellVariant));
+   const variant=shellVariant,delay=shellDelayMS;shellDelayMS=0;
+   const release=await shellRelease(variant);
+   if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
+   return send(200,release);
  }
  if(path==='/fixture/command'){
+   if(body.command==='gpt-answer'&&offerReply){const reply=offerReply;offerReply=null;reply(200,{sdp:body.sdp});}
+   if(body.command==='reset'){lastOffer=null;offerReply?.(409,{error:'Reset'});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();}
+   if(body.command==='shell-delay')shellDelayMS=Math.max(0,Math.min(2000,Number(body.ms)||0));
    if(body.command==='shell-release')shellVariant=body.variant??'none';
-   if(body.command==='reset'){shellVariant='none';shellRequests=[];shellRedirects=0;inputFrames=0;inputActiveFrames=0;peakInputRMS=0;}
+   if(body.command==='reset'){shellDelayMS=0;shellVariant='none';shellRequests=[];shellRedirects=0;inputFrames=0;inputActiveFrames=0;peakInputRMS=0;}
    if(body.command==='native-mode')nativeMode=true;
    if(body.command==='speaker-mode')speakerMode=true;
    if(body.command==='speakers-demo'){
@@ -98,6 +107,19 @@ const server=createServer(async(req,res)=>{
    return send(200,{ok:true});
  }
  if(req.headers.cookie!=='v_voice_access=fixture-cookie')return send(401,{error:'Fixture cookie required'});
+ if(path==='/voice/api/events'){
+   res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-store'});res.flushHeaders();res.write(': fixture\n\n');
+   eventClients.add(res);res.on('close',()=>eventClients.delete(res));return;
+ }
+ if(path==='/voice/api/offer'){
+   if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
+   lastOffer=body.sdp;offerReply=send;return;
+ }
+ if(path==='/voice/api/ready'){
+   if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
+   greetings++;return send(200,{ok:true});
+ }
+ if(path==='/voice/api/call-control-input')return send(200,{ok:true});
  if(path==='/voice/api/avatar'){
    if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
    if(!Number.isSafeInteger(body.revision)||body.revision<1||!Array.isArray(body.turns)||body.turns.length>6||body.turns.some(t=>typeof t.text!=='string'||t.text.length>600))return send(400,{error:'Invalid context'});
@@ -129,13 +151,13 @@ const server=createServer(async(req,res)=>{
    if(limitNextSession){limitNextSession=false;return send(429,{error:'通话开始得太频繁，请稍后再试'});}
    if(active)return send(409,{error:'Existing owner'});
    active=randomUUID();sequence=0;sessions++;documents=[];pending=[];acknowledgements=[];
-   const reservation={voiceSessionId:active,transport:'gateway-relay',provider:'seeduplex',relayTicket:'fixture-ticket',...(nativeMode&&body.inputPolicy==='native'?{nativeDuplex:true,nativePlaybackPolicy:'assisted'}:speakerMode?{speakerRouting:{policy:'speaker'}}:{})};
+   const reservation=body.model==='gpt-live'?{voiceSessionId:active,model:'gpt-live-1-codex'}:{voiceSessionId:active,transport:'gateway-relay',provider:'seeduplex',relayTicket:'fixture-ticket',...(nativeMode&&body.inputPolicy==='native'?{nativeDuplex:true,nativePlaybackPolicy:'assisted'}:speakerMode?{speakerRouting:{policy:'speaker'}}:{})};
    if(slowSession){slowSession=false;setTimeout(()=>send(200,reservation),slowSessionMS);return;}
    return send(200,reservation);
  }
  if(path==='/voice/api/close'){
    if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
-   closeRequests++;
+   closeRequests++;lastOffer=null;offerReply?.(409,{error:"Closed"});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();
    if(slowClose){
      slowClose=false;const old=active,ws=client;
      setTimeout(()=>{if(active===old)active=null;ws?.close();if(client===ws)client=null;send(200,{ok:true});},250);return;

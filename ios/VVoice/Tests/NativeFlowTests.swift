@@ -25,13 +25,13 @@ import VVoiceCore
         addTeardownBlock { await call.end(); await MainActor.run { call.forget() } }
         return call
     }
-    private func until(_ predicate: @MainActor () async throws -> Bool, timeout: Double = 10) async throws {
+    private func until(_ predicate: @MainActor () async throws -> Bool, timeout: Double = 10, file: StaticString = #filePath, line: UInt = #line) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if try await predicate() { return }
             try await Task.sleep(for: .milliseconds(100))
         }
-        XCTFail("Timed out waiting for native client state")
+        XCTFail("Timed out waiting for native client state", file: file, line: line)
     }
     private var lifecycleFile: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("VVoiceCallLifecycle.json")
@@ -39,6 +39,28 @@ import VVoiceCore
     private func documentAlerts() -> Int {
         let rows = (try? Data(contentsOf: lifecycleFile)).flatMap { try? JSONDecoder().decode([[String: String]].self, from: $0) } ?? []
         return rows.filter { $0["event"] == "island.attention.requested" && $0["code"] == "document" }.count
+    }
+    func testExpandedCallWaveformKeepsUpdatingAndReportWinsDuringSpeech() async throws {
+        let call = try await client()
+        try await call.startOrContinue()
+        try await until { call.conversation.turns.contains { $0.text.contains("本地音频测试") } && call.phase == .listening }
+        call.selectIslandLayout(.conversation, callID: call.presentationID)
+        try await fixture("wave-demo")
+        let activity = try XCTUnwrap(Activity<CallAttributes>.activities.first)
+        try await until { activity.content.state.island.audioSource == .output }
+        let first = activity.content.state.island.levels
+        try await until { activity.content.state.island.levels != first && activity.content.state.island.audioSource == .output }
+        XCTAssertTrue(IslandCallSurface(state: activity.content.state, callID: call.presentationID).showsWaveform)
+        try await fixture("report")
+        try await until { activity.content.state.documentID == "fixture-plan" }
+        let surface = IslandCallSurface(state: activity.content.state, callID: call.presentationID)
+        XCTAssertTrue(surface.showsReport)
+        XCTAssertFalse(surface.showsWaveform)
+        let snapshot = try await stats()
+        XCTAssertEqual(snapshot["sessions"] as? Int, 1)
+        XCTAssertGreaterThan(snapshot["inputBytes"] as? Int ?? 0, 0)
+        XCTAssertTrue(call.active)
+        await call.end()
     }
     func testReportWaitsForBackgroundAndUpdatedReportReopensAfterManualFold() async throws {
         let call = try await client()
@@ -230,11 +252,11 @@ import VVoiceCore
         try await fixture("end")
         try await until { call.phase == .ended }
     }
-    func testGrokVoiceChoiceIsSentAndUnsupportedModelsStayExplicit() async throws {
+    func testGrokVoiceChoiceIsSentAndGPTNativeOptionIsAvailable() async throws {
         let call = try await client()
         await call.refreshOptions()
         XCTAssertEqual(call.grokVoices.map(\.id), ["iris", "eve"])
-        XCTAssertNil(call.modelOptions.first(where: { $0.id == "gpt-live" })?.nativeModel)
+        XCTAssertEqual(call.modelOptions.first(where: { $0.id == "gpt-live" })?.nativeModel, .gptLive)
         call.model = .grok; call.grokVoice = "eve"
         try await call.startOrContinue()
         let request = try await stats()["lastSessionRequest"] as? [String: Any]
@@ -404,6 +426,50 @@ import VVoiceCore
         let current = try await stats()
         XCTAssertEqual(current["sessions"] as? Int, 1)
         XCTAssertEqual((current["supplements"] as? [[String: Any]])?.last?["mode"] as? String, "steer")
+    }
+
+    func testBackgroundReactionsPublishApprovedFramesAndReturnOwnershipToH5() async throws {
+        let call = try await client(); try await call.startOrContinue()
+        try await until { call.phase == .listening && !call.conversation.turns.isEmpty }
+        // Foreground uses real H5 receipts without starting a native Decision loop.
+        call.islandDidDisplayReaction("reaction-2", owner: call.presentationID)
+        XCTAssertEqual(call.avatar.pictureID, "reaction-2")
+        let initial = try await stats()
+        XCTAssertTrue((initial["avatarRequests"] as? [Any] ?? []).isEmpty)
+        call.sceneChanged(.background)
+        try await fixture("avatar-reply", ["picture":"reaction-10","continuations":["reaction-11"]])
+        try await fixture("think")
+        try await until { call.avatar.anchor == "reaction-10" && call.activityState.island.reactionID == "reaction-10" }
+        try await until({ call.avatar.pictureID == "reaction-11" && call.activityState.island.reactionID == "reaction-11" }, timeout: 6)
+        let background = try await stats()
+        XCTAssertEqual(background["sessions"] as? Int, 1)
+        XCTAssertGreaterThan(background["inputBytes"] as? Int ?? 0, 0)
+        XCTAssertFalse((background["avatarEvents"] as? [[String: Any]] ?? []).contains { $0["type"] as? String == "avatar.displayed" }, "Publishing a widget snapshot is not proof that iOS displayed it")
+        call.sceneChanged(.active)
+        let count = (try await stats()["avatarRequests"] as? [Any])?.count
+        try await fixture("demo")
+        try await Task.sleep(for: .milliseconds(850))
+        let foreground = try await stats()
+        XCTAssertEqual((foreground["avatarRequests"] as? [Any])?.count, count)
+        call.islandDidDisplayReaction("reaction-4", owner: call.presentationID)
+        XCTAssertEqual(call.activityState.island.reactionID, "reaction-4")
+        XCTAssertTrue(call.active)
+    }
+
+    func testBackgroundContinuesTheAlreadyDisplayedH5DecisionWithoutRequestingItTwice() async throws {
+        let call = try await client(); try await call.startOrContinue()
+        try await until { call.phase == .listening && !call.conversation.turns.isEmpty }
+        try await fixture("think")
+        try await until { call.conversation.turns.last?.text == "本地测试" }
+        let turns = call.conversation.turns.suffix(6).map { ["role":$0.role,"text":$0.text] }
+        let decision = try await call.h5Cosmetic("avatar", body: ["revision":1,"turns":turns], owner: call.presentationID)
+        call.islandDidDisplayReaction(try XCTUnwrap(decision["picture"] as? String), owner: call.presentationID)
+        call.sceneChanged(.background)
+        try await Task.sleep(for: .milliseconds(850))
+        let resumed = try await stats()
+        XCTAssertEqual((resumed["avatarRequests"] as? [Any])?.count, 1)
+        try await until({ call.avatar.pictureID == "reaction-1" && call.activityState.island.reactionID == "reaction-1" }, timeout: 6)
+        XCTAssertTrue(call.active)
     }
 
     func testSemanticReactionsUseApprovedContinuationsAndPauseWhenCovered() async throws {

@@ -135,8 +135,14 @@ struct H5WebSurface: UIViewRepresentable {
         if scheme.release != nil { scheme.select(try? H5Release.bundled()); reload() }
     }
     func checkForUpdates(force: Bool = false) {
-        guard !disposed, foreground, !call.active, let delivery, fetching == nil,
+        guard !disposed, foreground, !call.active, let delivery,
               force || Date().timeIntervalSince(lastCheck) > 600 else { return }
+        if fetching != nil {
+            guard force else { return }
+            // A deliberate new check must not be swallowed by an earlier download.
+            // Cancelled tasks cannot stage a release or clear the replacement task.
+            fetching?.cancel(); fetching = nil
+        }
         lastCheck = Date()
         fetching = Task { [weak self] in
             do { try await delivery.fetch() } catch { /* Keep the current verified UI. */ }

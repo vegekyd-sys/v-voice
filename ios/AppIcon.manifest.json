@@ -1,0 +1,33 @@
+{
+  "sourceSHA256": "30f5aa827f69f26d6845a417c0d6f01ce20bc771e5cf385394679fce292b6708",
+  "files": {
+    "VVoiceAppIcon.appiconset/Contents.json": "43049d78905f563d302c3025a22d59717939f008c7486ae7c7439943e65ca5d8",
+    "VVoiceAppIcon.appiconset/AppIcon.png": "30f5aa827f69f26d6845a417c0d6f01ce20bc771e5cf385394679fce292b6708",
+    "VVoiceAppIcon.appiconset/Portrait-120.png": "d87819e323f99a03391d95673bebc1527b5cec4dca9c8e1702026bc7b35f5e07",
+    "VVoiceAppIcon.appiconset/Portrait-152.png": "3eb066c5fa9a304d3919225eb21af31e50d5ba4d06b08d0b286ed6e9f66e3126",
+    "VVoiceAppIcon.appiconset/Portrait-167.png": "2dfd5f4851c8ec51e8d54999953a903d4cb0a3ead810a801d26d7ec4d9c4e76a",
+    "VVoiceAppIcon.appiconset/Portrait-180.png": "3e329beae4d700b41531e2a95c5b9f24fcc75808555941cb87d2a6062e820b61",
+    "VVoiceAppIcon.appiconset/Portrait-20.png": "ce1a7e62129df4f3fdb84e732fbd9ecf66349df4beaa6320a2f2a369faec2b0d",
+    "VVoiceAppIcon.appiconset/Portrait-29.png": "3fe8f62dc3bcc15f1be37185b0bca367ef4b14c8aaca7868f8f1367d24899bed",
+    "VVoiceAppIcon.appiconset/Portrait-40.png": "be108514d2a2f9fffe1c213b6a9f5b7a57875d25f64740da763ddb9a930d851d",
+    "VVoiceAppIcon.appiconset/Portrait-58.png": "9038ffa4985e211f1de0d1273679cd3a1d1a1138642d4b6aa34a1a54349194db",
+    "VVoiceAppIcon.appiconset/Portrait-60.png": "fc9df65b607acfa4a977b170dde7f76cafcbc03cf5abed924f9782e48f674bea",
+    "VVoiceAppIcon.appiconset/Portrait-76.png": "a3d5080abebf5572786ffeb2463729be51312e00421e734f52d7bdccb03e3093",
+    "VVoiceAppIcon.appiconset/Portrait-80.png": "6017d9253ebb17988ef949cb5179ad8b104b489a6aae920d87caa8f328ea6e00",
+    "VVoiceAppIcon.appiconset/Portrait-87.png": "d32824c5afa158f63163508fa3609bfaf11262591a50cdda333f958a46c3cc60",
+    "VVoiceSystemPortrait.appiconset/Contents.json": "43049d78905f563d302c3025a22d59717939f008c7486ae7c7439943e65ca5d8",
+    "VVoiceSystemPortrait.appiconset/AppIcon.png": "30f5aa827f69f26d6845a417c0d6f01ce20bc771e5cf385394679fce292b6708",
+    "VVoiceSystemPortrait.appiconset/Portrait-120.png": "d87819e323f99a03391d95673bebc1527b5cec4dca9c8e1702026bc7b35f5e07",
+    "VVoiceSystemPortrait.appiconset/Portrait-152.png": "3eb066c5fa9a304d3919225eb21af31e50d5ba4d06b08d0b286ed6e9f66e3126",
+    "VVoiceSystemPortrait.appiconset/Portrait-167.png": "2dfd5f4851c8ec51e8d54999953a903d4cb0a3ead810a801d26d7ec4d9c4e76a",
+    "VVoiceSystemPortrait.appiconset/Portrait-180.png": "3e329beae4d700b41531e2a95c5b9f24fcc75808555941cb87d2a6062e820b61",
+    "VVoiceSystemPortrait.appiconset/Portrait-20.png": "ce1a7e62129df4f3fdb84e732fbd9ecf66349df4beaa6320a2f2a369faec2b0d",
+    "VVoiceSystemPortrait.appiconset/Portrait-29.png": "3fe8f62dc3bcc15f1be37185b0bca367ef4b14c8aaca7868f8f1367d24899bed",
+    "VVoiceSystemPortrait.appiconset/Portrait-40.png": "be108514d2a2f9fffe1c213b6a9f5b7a57875d25f64740da763ddb9a930d851d",
+    "VVoiceSystemPortrait.appiconset/Portrait-58.png": "9038ffa4985e211f1de0d1273679cd3a1d1a1138642d4b6aa34a1a54349194db",
+    "VVoiceSystemPortrait.appiconset/Portrait-60.png": "fc9df65b607acfa4a977b170dde7f76cafcbc03cf5abed924f9782e48f674bea",
+    "VVoiceSystemPortrait.appiconset/Portrait-76.png": "a3d5080abebf5572786ffeb2463729be51312e00421e734f52d7bdccb03e3093",
+    "VVoiceSystemPortrait.appiconset/Portrait-80.png": "6017d9253ebb17988ef949cb5179ad8b104b489a6aae920d87caa8f328ea6e00",
+    "VVoiceSystemPortrait.appiconset/Portrait-87.png": "d32824c5afa158f63163508fa3609bfaf11262591a50cdda333f958a46c3cc60"
+  }
+}

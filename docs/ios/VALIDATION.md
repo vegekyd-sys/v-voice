@@ -266,3 +266,47 @@ Core16、原生WK／音频／集成46、既有服务合同80全部通过。新�
 - 更新首页用户可见changelog，并重新同步H5壳、远程UI包描述与原生更新历史。此变动只登记原生能力及系统边界，已安装IPA仍精确对应da3b93a；不将新生成的历史资源冒充已经安装。
 - 本次仅合入源码；网页部署、重新签名安装及真机报告自动展开接受另行登记。
 - 首页本地预览 `http://127.0.0.1:29838/` 在内置浏览器实际打开更新日志；首条显示「报告到达，灵动岛给你提示」及三项说明，页面无空白／错误遮罩，控制台error／warn为空；截图留在本机临时目录。
+
+## 2026-10-22 build 16 当前回答字幕与启动品牌候选
+
+- 从已合入的a91db05独立开发；用户确认旧绿色图出现在Action Button系统启动提示，且选择V Voice内置「和V通话」，不是个人创建的快捷指令。当前AppIcon原图已是紫色耳麦头像，改用独立的VVoiceAppIcon资源声明并补充App Shortcuts的紫色tile与品牌颜色；App自有connecting首帧复用该原图。公开AppShortcut图标API使用SF Symbol，系统前置提示的实际图案／旧缓存刷新仍待真机人工观察，不能由包内声明推断已修复其全部显示。
+- V说话时从当前轮assistant字幕取安全的尾部窗口，先清理完整URL，再截最多85个字符；CoreText按实际宽度取最后三行，完整保留新句尾。正文点入仍回同一通话，底部方案入口固定，Reaction、静音和结束保留。沿用预览开关与系统privacySensitive；字幕是接收文本的更新，不承诺逐字音频同步或Widget内手动滚动。
+- Core19、NativeFlow27／IslandActivity4／H5Shell5共36项通过；末次布局调整后相关5项再次通过。新增原生用例最初因在欢迎语播放期间推进用户轮次而等不到speaking；改为明确收到本地欢迎并清掉该测试音频后测试新回答，不修改原生音频或状态机。测试等待失败现在给出调用行。
+- 系统验收使用同一模拟器与127.0.0.1本地fixture，不调用正式模型。初次三行压缩会在系统160pt上限裁到控件底部；改为56pt文字行与12pt底部留白，最终系统展开截图中三行、Reaction、底部方案入口及两个完整圆形按钮均可见。早期裁切帧／启动空白帧不作成功证据。系统快照会经过转场，采用完全await的短帧采样保留最终画面，不留后台采样任务。
+- 锁屏样式卡在先前同一字幕实现中实看了两次文本更新；最终按钮留白调整以桌面实际expanded截图核验。只有模拟器通知中心／系统卡证据，不替代真机锁屏、按键启动或实际语音对齐接受。
+- 最初安装尝试因开发隧道不可用而失败；用户随后确认接好，设备配对与隧道重新可用。最终签名、安装与设备读回以live-caption-build16.json登记为准。当前未合入main／未发布网页，首页正式日志仍为已合入的build15记录。
+
+![最终系统字幕大卡](evidence/build16-caption-expanded-system.png)
+
+- 最终签名源码f9ec271：Release1.0.0(16) archive／export及独立解包导出IPA验包通过，主App／扩展均16，CFBundlePrimaryIcon已指向VVoiceAppIcon／VVoiceAppIcon60x60。最终IPA SHA-256：`a14396d4545eddb7cf1b948872c2b4e32d4b641b14fae0d76c639a72e879ee5d`；较早8a36034签名的16包未安装，不作为最终产物。安装前最新只读快照三项活动计数均0，已覆盖安装成功并从指定设备App记录读回1.0.0(16)。保留原绑定／权限配置与签名build15回退；未卸载、未清Keychain、未自动真实拨号。
+- 安装后尝试空闲打开App以刷新AppShortcuts登记，被iPhone锁屏拒绝，launch outcome=failed；此前即时评论“已打开”已明确更正，不能记为已刷新。用户下次解锁并打开App后可触发登记刷新，系统启动提示和实际手机字幕仍待人类验收。源码未push／合入main，网页未部署；本机最终包与设备安装单独登记。
+
+
+## build 17 · 对话波纹与快捷指令图标元数据候选 · 2026-10-22
+
+- 用户要求撤回三行字幕，复用中卡声音波纹，并保留原报告点击引导。从已安装 build16 的源码和登记 `03ddfe1` 建立独立分支 `codex/voice-island-waveform`，产品源码 `7ce6a4e`。没有覆盖原灵动岛工作树。
+- 中／大卡与锁屏共用原 IslandWaveform，普通对话不渲染转写；有未读报告时标题与“点击查看完整方案”优先于说话波形，保留 Reaction、静音、挂断、折叠与报告提醒。修正原先仅 audio 布局发布音频快照的问题；保持原采样、节流和音频所有权。
+- Apple 官方主图标文档要求 App Shortcuts 颜色位于 CFBundleIcons/CFBundlePrimaryIcon（iPad 对应键同理），build16误写在顶层。现已修正，编译产物两端字段均验证，验包脚本同步校验正确位置。三份图标资产仍是同一紫底人物图，不重新生成。依据：https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundleicons/cfbundleprimaryicon/nsappiconactiontintcolorname 。
+- Core19／原生51／既有服务80通过；波形持续更新与说话期间报告优先用例，以及旧活动解码／4KB预算／资源白名单另外定向复验。完整回归退出0。无真实模型或自动拨号。
+- 为捕捉系统大卡，临时延长本地 fixture 的两次视觉探针未通过：第一次20秒单包超过 WebSocket 默认接收上限导致重连，第二次长驻留后通话不再 active。二者不计为通过或已获系统视觉接受；临时测试改动已移除，未进入签名源码。普通回归与真机听验状态分别记录。
+- Release 1.0.0(17) archive/export和独立解包验包通过；正常TLS、无Debugfixture、主App/扩展签名、H5资源与52图、后台AudioRecording/SessionStarting意图均通过。导出IPA SHA-256 `27d82452bffb2cc443b99177c54d8e097ac914b027d62db0600101723e1bacb8`。签名build16 IPA已校验复制为回退。
+- 安装前只读正式服务 ready/known=true，activeCalls/creatingSessions/backgroundTasks均0。覆盖安装成功，设备读回17，不卸载、不重绑。首次空闲启动被Locked拒绝；用户解锁后再次只读确认三项0，devicectl实际启动成功，App已有初始化及空闲前台注册刷新请求。请求执行不代表系统缓存图标已更新，需用户重新选择内置“和V通话”并检查。
+- 候选已装机；没有push、合入main、网页部署或Gateway重启。完整真机波纹／报告与旧启动图标接受仍待用户。音频路由、AEC、RelayTransport、后台VoiceIntents相对build16没有改动。
+
+## 2026-10-22 build 18 联合候选
+
+- 遵照 Tianyi 在「豆包多人能力」中核实的原始联合出包指令，整合 main 1a0063a 的原生全双工、GPT 8cd94d7、波纹 7ce6a4e、图标／Reaction 9ea1e33；独立分支按语义解决冲突，没有覆盖另一线程工作树。原 GPT build17 未安装，手机原17是本线程的波纹包。
+- 最终整合回归：Core25、原生/H5/灵动岛62、既有service91全部通过。保留原生收音、可逆停播／旧response尾包淘汰、Grok、两人Speaker上下文、静音／重连／播放drain／挂断重拨、真实WebRTC合成PCM和H5重载／报告测试。未自动真实付费拨号，模拟器不是手机声学验收。
+- 初轮旧原生头像回执被当成H5接管，导致批准的延续丢失；分开回执来源后原测试恢复。联合初轮GPT静音测试在已检测到输入音调时提前退出，RTP统计尚未更新；改为在原时限内等待两个原阈值同时成立。随后网页更新测试发现强制检查可能被旧下载吞掉，修复强制检查取消旧任务，并新增迟到旧包不得覆盖新包的回归，最终完整62项通过。失败轮次不计通过。
+- `evidence/build18-reaction-components.png` 是右侧真实模拟器中共用SwiftUI组件的渲染，证明默认头像与波纹组件可见，不能作为实际系统锁屏／Action Button缓存或真实Decision人类对话验收。
+- 18:55:16北京时间只读线上状态 known=true、activeCalls=creatingSessions=backgroundTasks=0，phoneInputPolicy=native；签名／安装前会重新检查。手机只读读回1.0.0(17)，已保存其签名IPA并校验原SHA。无卸载或Keychain重置，无Gateway／Voice服务重启、main合入或线上网页发布。
+
+- 联合包最终源码 `793203b`，主 App／扩展 build18，签名 archive、export 及导出 IPA 独立解包验包均通过，WebRTC／隐私清单／license／52张Reaction／通知等各尺寸图标／后台Intent／TLS／Release不含fixture及调试组件入口均验证。IPA SHA-256：`cae503ea9b572e7982b2ffe41935a25503f765744703d15cf6fd6c31e86bde85`。
+- 首次安装因开发连接 assertion4016 中断，未声称成功；Tianyi 回复重接并解锁后，19:40:58北京时间只读计数三项0，再覆盖安装并从设备读回1.0.0(18)，空闲打开成功。19:41:06系统公开图标切换API回调确认VVoiceSystemPortrait，随后重新登记AppShortcuts；设备生成20pt@3x小图标取回并实看为紫色新版。启动提示实际缓存、锁屏首次Reaction和聊天表情仍待用户按键验收。
+- 保存原已装波纹17签名IPA（原SHA不变）；GPT线程的另一个17未安装。没有卸载、清Keychain或自动真实拨号；候选源码／首页日志仍仅在本独立分支，未自动push／合入main或线上部署。
+
+- Tianyi 在 build18 安装后的三项清单明确回复「三项都正常」：锁屏长按操作按钮后的启动提示为紫色新图标、首次大卡有默认 Reaction、聊天后的 Reaction 跟随对话变化。以上三项已获真实手机人类验收；不外推为 GPT Live 线路声学、长通话、系统来电／网络切换或旁人干扰全部通过。项目版本登记已更新，二进制仍是原签名源码793203b及原SHA，不因验收记录而重新打包。
+
+## 2026-10-22 正式合入授权
+
+Tianyi 明确回复「合入吧……验收通过了，自己也记录下」，授权联合18正式合入并沉淀。保留此前三项具体手机验收和25/62/91测试证据；不凭总体通过补造GPT量化声学／长通话结果。已读取GPT会话并确认：最新文字分段／换行反馈还在诊断，没有修复commit，本次不声称交付该修复。更新首页用户日志和原生衍生历史，按PR完成合入；手机保留已验收18，线上服务部署状态独立记录。

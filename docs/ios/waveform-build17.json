@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "build": 17,
+  "candidateOnly": true,
+  "sourceCommit": "7ce6a4e",
+  "baseCandidateCommit": "03ddfe1",
+  "tests": {
+    "core": 19,
+    "native": 51,
+    "existingService": 80,
+    "targetedFinal": 5
+  },
+  "presentation": {
+    "ordinaryConversation": "same_measured_waveform_as_medium_card",
+    "scrollingCaptions": false,
+    "unreadReport": "title_and_open_full_report_link_even_during_speech",
+    "reactionAndControlsRetained": true,
+    "audioUpdatesForBothLayouts": true,
+    "physicalAcceptance": "pending",
+    "systemVisualCapture": "not_verified_in_this_run"
+  },
+  "startupBranding": {
+    "portraitAssetHashMatchesAllSurfaces": true,
+    "iconColorsNowUnderPrimaryIconMetadata": true,
+    "compiledIPhoneAndIPadMetadataVerified": true,
+    "idleForegroundRequestsShortcutRegistration": true,
+    "initialIdleLaunch": "blocked_by_device_lock",
+    "idleLaunchAfterUserUnlock": "succeeded",
+    "systemLaunchHintPhysicalVerification": "pending",
+    "uninstalled": false,
+    "bindingReset": false
+  },
+  "signedArchiveVerified": true,
+  "exportedIPAVerified": true,
+  "ipaSHA256": "27d82452bffb2cc443b99177c54d8e097ac914b027d62db0600101723e1bacb8",
+  "installedOnRequestedIPhone": true,
+  "deviceReportedBuild": "17",
+  "realCallStartedByAgent": false,
+  "sourceMergedIntoMain": false,
+  "webServerDeployed": false,
+  "rollback": {
+    "build": 16,
+    "ipaSHA256": "a14396d4545eddb7cf1b948872c2b4e32d4b641b14fae0d76c639a72e879ee5d",
+    "signedIPACopiedAndVerified": true
+  },
+  "validationLimits": [
+    "Temporary long visual-review fixture runs did not pass; they are not counted as regression or system visual acceptance. Oversized synthetic packet exceeded WebSocket receive limit in the first attempt; second long hold lost its active call. Temporary test changes were removed.",
+    "Normal native waveform/report regression and all tests are recorded separately; actual physical layout and launch-icon cache need user acceptance."
+  ]
+}

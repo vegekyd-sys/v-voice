@@ -1,5 +1,6 @@
 import AVFoundation
 import OSLog
+@preconcurrency import WebRTC
 import VVoiceCore
 
 /// One converter per input tap; AVAudioEngine invokes this tap serially.
@@ -79,7 +80,23 @@ private final class CaptureHandoff: @unchecked Sendable {
     var onPlayback: ((Bool) -> Void)?
     var onDrained: (() -> Void)?
     var onFailure: ((Error) -> Void)?
-    var isRunning: Bool { engine?.isRunning == true }
+    private var rtcActive = false
+    var isRunning: Bool { rtcActive || engine?.isRunning == true }
+    /// Mutually exclusive native backend. WebRTC owns its Voice Processing I/O;
+    /// the call's VoiceAudio still owns session activation and teardown.
+    func startWebRTC() throws {
+        stop()
+        let session = RTCAudioSession.sharedInstance()
+        session.useManualAudio = true
+        session.lockForConfiguration(); defer { session.unlockForConfiguration() }
+        let config = RTCAudioSessionConfiguration.webRTC()
+        config.category = AVAudioSession.Category.playAndRecord.rawValue
+        config.categoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
+        config.mode = AVAudioSession.Mode.voiceChat.rawValue
+        do { try session.setConfiguration(config, active: true) }
+        catch { throw VoiceError.audio }
+        rtcActive = true; session.isAudioEnabled = true
+    }
     var queuedFrames: Int { ledger.queuedFrames }
 
     static func configureSession() throws {
@@ -224,6 +241,11 @@ private final class CaptureHandoff: @unchecked Sendable {
         clear(); ledger.beginStream()
     }
     func stop() {
+        if rtcActive {
+            rtcActive = false
+            let session = RTCAudioSession.sharedInstance(); session.isAudioEnabled = false
+            session.lockForConfiguration(); try? session.setActive(false); session.unlockForConfiguration()
+        }
         if capturedInput { recordCapture() }
         generation = UUID(); started = false; capturedInput = false; lastCaptureAt = .distantPast; clear()
         captureFrames = 0; captureActiveFrames = 0; capturePeak = 0

@@ -34,6 +34,17 @@ public struct ConversationPresentation: Sendable {
         } else { turns.append(.init(role: role, text: text, complete: final)) }
         trim()
     }
+    /// Explicit provider turn ownership prevents a late terminal from replacing a newer turn.
+    public mutating func receiveNative(_ update: GPTLiveTranscript.Update) {
+        let key = "gpt:" + update.id
+        if let index = turns.firstIndex(where: { $0.sourceKey == key }) {
+            turns[index].text = update.text; turns[index].complete = update.final
+        } else if !update.text.isEmpty {
+            var row = ConversationTurn(role: update.role, text: update.text, complete: update.final)
+            row.sourceKey = key; turns.append(row)
+        }
+        trim()
+    }
     /// ASR utterances, not provider captions, own human text in speaker calls.
     /// Decisions may arrive late or be replayed; they update their exact row.
     @discardableResult public mutating func receiveSpeaker(_ event: SpeakerTranscriptEvent) -> Bool {
