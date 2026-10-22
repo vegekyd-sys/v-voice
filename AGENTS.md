@@ -4,6 +4,7 @@
 
 - 在独立分支或 worktree 开发；报告 commit 和实际验证范围，由 Tianyi 决定合入及上线。不要自动合入平台 dev。
 - 正式上线必须先通过 PR 合入 `v-voice/main`，确认合入提交的检查通过，再从已合入源码构建并发布；未合入分支不得上线。Candidate 验证不受此限制；发布与合入状态分别记录，保留实际运行提交和回滚基线。
+- iOS 产品改动先按 [原生能力桥边界](docs/ios/NATIVE-CAPABILITY-BRIDGE.md) 判断归属：页面在 H5，对话/插语内容、模型和说话人事件解释、任务/报告展示规则在共用 Voice 服务，iOS 保持有版本且有界的设备与系统能力执行器。新增既有传输上的模型或调整文案/策略不应再新增 Swift 的 provider/source/中文关键词分支；原生驱动、系统交互或执行器缺陷另行发版并做真机验收。
 - Gateway RPC、Agent/工具策略、飞书会话核心及 Worker 改动在 `v-openclaw-platform` 独立 PR，不在此复制或热改 runtime。
 - 生产只用 `ssh v`（Tailscale IPv6）。共享 VLab 写入/重启须遵循 `/Users/tianyicai/vlab-dev/lab/README.md` 和 integration lease，不能抢占他人业务。
 - 按实际影响选择验收环境，共享 VLab 不是所有改动的必经步骤。Voice 内部且使用既有 Gateway 接口/权限的 UI、头像、Markdown、音频播放、模型适配与入口映射可在 Candidate 验证；涉及 Gateway/Worker、工具或身份权限、会话核心、共享配置/数据迁移或跨服务协议变更时走共享 VLab。混合改动按集成范围验收，先说明选择理由；Candidate 通过不自动授权合入或上线。

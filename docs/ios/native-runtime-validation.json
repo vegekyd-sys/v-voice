@@ -34,7 +34,11 @@
       "reason": "Added after full suite to verify the new protocol drives actual shared H5 speaker labels, Markdown report, background capture and page reload"
     },
     "embeddedH5Parity": true,
-    "simulatorCompile": true
+    "simulatorCompile": true,
+    "fleet": {
+      "passed": 10,
+      "failed": 0
+    }
   },
   "demonstrated": [
     "Same installed test binary and CallCoordinator uses changed service connected copy and 140ms/220ms onset behavior on subsequent calls without a WK page",
@@ -67,5 +71,13 @@
     "Assign next native build, retain current signed rollback and binding identity",
     "Record actual phone install and human foreground/background/Action Button/Island acceptance",
     "Update homepage changelog and release registry; publish both Voice nodes through release-fleet"
-  ]
+  ],
+  "integratedMain": "43832d33ac275d5fb01fe276656adac8eb0ee101",
+  "artifact": {
+    "commit": "be016822c052073112f6289bd629269046d8f90f",
+    "files": 208,
+    "filesSha256": "c2f31300488f7fb33058031125e436335a478683ee85d39333ceae1bf464f261",
+    "manifestVerified": true,
+    "packagedSessionDependencyGraphLoaded": true
+  }
 }
