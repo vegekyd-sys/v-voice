@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "date": "2026-10-22",
+  "status": "reviewable_candidate",
+  "baseMainCommit": "68ebcc9",
+  "branch": "codex/voice-ios-web-updates",
+  "version": "1.0.0",
+  "build": 12,
+  "bridgeVersion": 1,
+  "webRevision": "d87b355003e7e9bd8cdc64be269c14d70d5819979e6221fc5b4989e070a1c9dd",
+  "webArchiveBytes": 2526753,
+  "webArchiveSHA256": "e6e053295d4b60c8ac6aa7a9152ddec15448444cb00c450fd7b752f69b6a8f67",
+  "validation": {
+    "webAndService": {
+      "passed": 657,
+      "failed": 0
+    },
+    "speakerNative": {
+      "passed": 95,
+      "failed": 0
+    },
+    "swiftCore": {
+      "passed": 16,
+      "failed": 0
+    },
+    "nativeWKAndIntegration": {
+      "passed": 43,
+      "failed": 0,
+      "resultBundle": "test_sim_2026-10-22T03-49-24-652Z_pid79064_200a6416.xcresult"
+    },
+    "releaseArm64": {
+      "compiled": true,
+      "structureVerified": true,
+      "signed": false,
+      "debugFixtureAbsent": true
+    },
+    "browserMirror": {
+      "verifiedRealSimulatorFrames": true,
+      "sameInstalledBinaryVisibleReleases": [
+        "a",
+        "b"
+      ],
+      "screenshots": [
+        "web-delivery-evidence/release-a.png",
+        "web-delivery-evidence/release-b.png"
+      ]
+    }
+  },
+  "boundaries": {
+    "productionDeployed": false,
+    "merged": false,
+    "installedOnPhysicalIPhone": false,
+    "physicalVoiceAcceptance": false,
+    "automaticPaidOrRealCalls": false,
+    "gatewayWorkerOrCredentialsChanged": false,
+    "sharedSimulatorOr29837FixtureUsed": false
+  },
+  "remainingAcceptance": [
+    "Authorized one-time native shell upgrade on physical iPhone",
+    "Production HTTPS artifact fetch after approved Voice deployment",
+    "Action Button / lock screen / Dynamic Island and real audio regression on upgraded physical device"
+  ]
+}

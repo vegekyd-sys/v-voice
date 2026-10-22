@@ -2,6 +2,8 @@
 // Local protocol fixture only. No providers, tool execution, personal data or costs.
 import {createServer} from 'node:http';
 import {randomUUID} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
+import {hash,releaseRevision} from './h5-release.mjs';
 import {WebSocketServer} from 'ws';
 import {normalizeAvatarEvent} from '../../lab/gpt-live-h5/avatar-telemetry.mjs';
 const port=Number(process.env.VVOICE_FIXTURE_PORT??29837);
@@ -11,6 +13,21 @@ let speakerMode=false,lastSessionRequest=null;
 let limitNextSession=false,slowClose=false,closeRequests=0;
 let documents=[],pending=[],acknowledgements=[],supplements=[];
 let avatarRequests=[],avatarEvents=[],avatarReply="reaction-0",avatarContinuations=["reaction-1","listen-5"],slowAvatar=false;
+let shellVariant='none',shellRequests=[],shellRedirects=0;
+async function shellRelease(variant){
+ const release=JSON.parse(await readFile(new URL('../../lab/gpt-live-h5/ios-shell-release.json',import.meta.url),'utf8'));
+ for(const file of release.files){
+   let bytes=Buffer.from(file.data,'base64');
+   if(file.path==='index.html')bytes=Buffer.from(bytes.toString().replace('</head>',`<meta name="fixture-ui-release" content="${variant}"></head>`).replace('</body>',`<div id="fixtureReleaseBadge">本地网页发布 ${variant.toUpperCase()}</div></body>`));
+   if(file.path==='styles.css')bytes=Buffer.concat([bytes,Buffer.from(`\nbody{--fixture-ui-release:${variant}}#fixtureReleaseBadge{position:fixed;top:60px;left:20px;z-index:9999;padding:7px 12px;border-radius:12px;background:${variant==='a'?'#e5dcff':'#d5f3e7'};color:#463660;font:13px -apple-system}`)]);
+   if(file.path==='native-h5.js'&&variant==='broken')bytes=Buffer.from('throw new Error("local broken release")');
+   file.data=bytes.toString('base64');file.sha256=hash(bytes);file.bytes=bytes.length;
+ }
+ if(variant==='incompatible')release.minimumBridge=2;
+ release.revision=releaseRevision(release);
+ if(variant==='corrupt')release.files[0].data=Buffer.from('corrupt').toString('base64');
+ return release;
+}
 const emit=v=>{
  if(v.type==='backend.result'){documents=documents.filter(d=>d.callId!==v.callId);documents.push(v);pending=pending.filter(t=>t.callId!==v.callId);}
  if(['tool.call','tool.progress'].includes(v.type)){const old=pending.find(t=>t.callId===v.callId)??{};pending=pending.filter(t=>t.callId!==v.callId);pending.push({...old,...v});}
@@ -26,8 +43,17 @@ const server=createServer(async(req,res)=>{
  const path=new URL(req.url,'http://127.0.0.1').pathname;
  const body=await new Promise(resolve=>{const chunks=[];req.on('data',b=>chunks.push(b));req.on('end',()=>{try{resolve(JSON.parse(Buffer.concat(chunks).toString()||'{}'));}catch{resolve({});}});});
  const send=(status,value)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
- if(path==='/fixture/state')return send(200,{active,sessions,inputBytes,zeroBytes,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest});
+ if(path==='/fixture/state')return send(200,{active,sessions,inputBytes,zeroBytes,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects});
+ if(path==='/fixture/redirect-target'){shellRedirects++;return send(200,{});}
+ if(path==='/voice/ios-shell-release.json'){
+   shellRequests.push({cookie:!!req.headers.cookie,authorization:!!req.headers.authorization});
+   if(shellVariant==='none')return send(404,{});
+   if(shellVariant==='redirect'){res.writeHead(302,{location:'/fixture/redirect-target'});res.end();return;}
+   return send(200,await shellRelease(shellVariant));
+ }
  if(path==='/fixture/command'){
+   if(body.command==='shell-release')shellVariant=body.variant??'none';
+   if(body.command==='reset'){shellVariant='none';shellRequests=[];shellRedirects=0;}
    if(body.command==='speaker-mode')speakerMode=true;
    if(body.command==='speakers-demo'){
      const a={speakerId:'local0',text:'V，帮我们排一下今天的安排。',startMs:0,endMs:1200},b={speakerId:'local1',text:'我下午三点有空，可以一起讨论。',startMs:1500,endMs:2800};

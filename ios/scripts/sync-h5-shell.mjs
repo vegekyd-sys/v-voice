@@ -4,6 +4,7 @@ import {resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 import {build} from 'esbuild';
 import {AVATAR_FILES} from '../../lab/gpt-live-h5/avatar-state.mjs';
+import {createH5Release} from './h5-release.mjs';
 const root=resolve(import.meta.dirname,'../..'),h5=resolve(root,'lab/gpt-live-h5'),dest=resolve(root,'ios/VVoice/Resources/H5Shell');
 const sources=['index.html','styles.css','ui/call-ui.jsx','ui-bundle.mjs','call-view.mjs','content-view.mjs','markdown.mjs','media-references.mjs','changelog.mjs','avatar.mjs','avatar-reactions.mjs','avatar-telemetry.mjs','avatar-catalog.mjs','avatar-state.mjs','avatar-approved-reactions.mjs','vendor/marked-18.0.5.mjs','comparison.html','comparison.css','comparison.mjs',...new Set(AVATAR_FILES.map(f=>'assets/'+f)),'assets/v-voice-icon.svg','assets/v-voice-icon-32.png','assets/v-voice-apple-touch.png'];
 const manifest={sources:{}};for(const name of sources)manifest.sources[name]=createHash('sha256').update(await readFile(resolve(h5,name))).digest('hex');
@@ -23,3 +24,9 @@ manifest.outputs=Object.fromEntries([...expected].map(([p,b])=>[p,createHash('sh
 expected.set('source-manifest.json',Buffer.from(JSON.stringify(manifest,null,2)+'\n'));
 if(process.argv.includes('--check')){for(const [f,bytes]of expected)if(!Buffer.from(bytes).equals(await readFile(resolve(dest,f))))throw Error('H5 shell stale: '+f);console.log('Exact H5 shell sources and generated bundle verified.');}
 else {for(const [f,bytes]of expected){await mkdir(resolve(dest,f,'..'),{recursive:true});await writeFile(resolve(dest,f),bytes);}console.log('Bundled original H5 page, styles, UI, reader, all Reaction assets and comparison.');}
+// The exact same UI ships with the web release. Production serves prebuilt bytes;
+// it never compiles an iOS project or invokes the browser's calling transport.
+const releaseBytes=JSON.stringify(await createH5Release(dest,manifest.outputs))+'\n';
+const remote=resolve(h5,'ios-shell-release.json');
+if(process.argv.includes('--check')) { if(await readFile(remote,'utf8')!==releaseBytes)throw Error('iOS web release stale: run npm run build:ios-shell'); }
+else await writeFile(remote,releaseBytes);

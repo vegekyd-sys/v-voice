@@ -18,7 +18,9 @@
     "start:speaker-native": "node --dns-result-order=ipv4first lab/speaker-native/server.mjs",
     "start:speaker-stream": "node --dns-result-order=ipv4first lab/speaker-native/stream-server.mjs",
     "test:speaker-native": "node --test lab/speaker-native/*.test.mjs",
-    "build:ui": "node scripts/build-ui.mjs"
+    "build:ui": "node scripts/build-ui.mjs && node ios/scripts/sync-h5-shell.mjs",
+    "build:ios-shell": "node ios/scripts/sync-h5-shell.mjs",
+    "check:ios-shell": "node ios/scripts/sync-h5-shell.mjs --check"
   },
   "dependencies": {
     "opusscript": "0.1.1",

@@ -77,9 +77,17 @@ struct H5WebSurface: UIViewRepresentable {
     private var pending: Task<Void, Never>?
     private var documentID: String?
     private var returnToConversation = false
+    private var delivery: H5DeliveryStore?
+    private var fetching: Task<Void, Never>?
+    private var watchdog: Task<Void, Never>?
+    private var lastCheck = Date.distantPast
+    private var reading = false
+    private var disposed = false
+    private var pageID = UUID().uuidString
+    private let cacheRoot: URL?
     private let onError: (String) -> Void
     private let onReading: (Bool) -> Void
-    init(call: CallCoordinator, onError: @escaping (String) -> Void, onReading: @escaping (Bool) -> Void = { _ in }) { self.call = call; scheme = H5ResourceScheme(call: call); self.onError = onError; self.onReading = onReading }
+    init(call: CallCoordinator, cacheRoot: URL? = nil, deliveryStore: H5DeliveryStore? = nil, onError: @escaping (String) -> Void, onReading: @escaping (Bool) -> Void = { _ in }) { self.call = call; scheme = H5ResourceScheme(call: call); self.cacheRoot = cacheRoot; delivery = deliveryStore; self.onError = onError; self.onReading = onReading }
     func makeWebView() -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent(); config.allowsInlineMediaPlayback = true
@@ -90,12 +98,19 @@ struct H5WebSurface: UIViewRepresentable {
         web.isOpaque = false; web.backgroundColor = UIColor(VoiceStyle.background)
         web.scrollView.contentInsetAdjustmentBehavior = .never; web.scrollView.isScrollEnabled = true; web.scrollView.bounces = false
         web.navigationDelegate = self; web.uiDelegate = self; web.isInspectable = false
-        webView = web; reload(); return web
+        webView = web
+        configureDelivery()
+        scheme.select(delivery?.preferred() ?? (try? H5Release.bundled()))
+        reload(); return web
     }
     static func trusted(_ url: URL?, mainFrame: Bool) -> Bool { mainFrame && url?.user == nil && url?.password == nil && url?.port == nil && url?.scheme == "vvoice-h5" && url?.host == "app" && ["/index.html","/","/compare","/comparison.html"].contains(url?.path ?? "") }
     func update(_ value: [String: Any], foreground: Bool) {
         latest = value; self.foreground = foreground
+        configureDelivery()
+        if call.active { fetching?.cancel(); fetching = nil }
         if !foreground { pending?.cancel(); pending = nil; webView?.pauseAllMediaPlayback(completionHandler: nil); return }
+        applyStagedIfSafe()
+        checkForUpdates()
         guard ready, pending == nil else { return }
         pending = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(180))
@@ -111,15 +126,68 @@ struct H5WebSurface: UIViewRepresentable {
     }
     func showConversation() { returnToConversation = true; push() }
     func openDocument(_ id: String) { documentID = id; push() }
-    func reload() { ready = false; webView?.load(URLRequest(url: URL(string: "vvoice-h5://app/index.html")!)) }
-    func dispose() { pending?.cancel(); pending = nil; ready = false }
+    private func configureDelivery() {
+        let base = call.api.record?.binding.baseURL
+        guard base != delivery?.baseURL else { return }
+        fetching?.cancel(); fetching = nil; lastCheck = .distantPast
+        delivery = base.map { H5DeliveryStore(baseURL: $0, cacheRoot: cacheRoot) }
+        // Losing/changing a binding cannot reuse a different origin's remote page.
+        if scheme.release != nil { scheme.select(try? H5Release.bundled()); reload() }
+    }
+    func checkForUpdates(force: Bool = false) {
+        guard !disposed, foreground, !call.active, let delivery, fetching == nil,
+              force || Date().timeIntervalSince(lastCheck) > 600 else { return }
+        lastCheck = Date()
+        fetching = Task { [weak self] in
+            do { try await delivery.fetch() } catch { /* Keep the current verified UI. */ }
+            guard !Task.isCancelled, let self, self.delivery === delivery, !self.disposed else { return }
+            self.fetching = nil; self.applyStagedIfSafe()
+        }
+    }
+    func applyStagedIfSafe() {
+        guard ready, foreground, latest["visible"] as? Bool == true, !reading, !call.active,
+              let release = delivery?.preferred(), release.revision != scheme.release?.revision,
+              !["/compare", "/comparison.html"].contains(webView?.url?.path ?? "") else { return }
+        scheme.select(release); reload()
+    }
+    func reload() {
+        guard !disposed else { return }
+        ready = false
+        if reading { reading = false; onReading(false) }
+        if let release = scheme.release { delivery?.attempting(release) }
+        pageID = UUID().uuidString
+        webView?.configuration.userContentController.removeAllUserScripts()
+        webView?.configuration.userContentController.addUserScript(WKUserScript(source: "window.__VVoicePageID = '\(pageID)';", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        webView?.load(URLRequest(url: URL(string: "vvoice-h5://app/index.html")!))
+        armWatchdog()
+    }
+    private func armWatchdog() {
+        watchdog?.cancel()
+        watchdog = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            guard !Task.isCancelled, let self, !self.ready, !self.disposed else { return }
+            self.failedPage()
+        }
+    }
+    private func failedPage() {
+        watchdog?.cancel(); watchdog = nil
+        if let release = scheme.release, release.revision != "bundled" {
+            delivery?.reject(release)
+            scheme.select(delivery?.preferred() ?? (try? H5Release.bundled()))
+            reload()
+        } else { onError("界面暂时无法载入，请重新加载。") }
+    }
+    func dispose() { disposed = true; pending?.cancel(); fetching?.cancel(); watchdog?.cancel(); pending = nil; fetching = nil; watchdog = nil; ready = false }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage, replyHandler: @escaping @MainActor (Any?, String?) -> Void) {
         guard Self.trusted(message.frameInfo.request.url, mainFrame: message.frameInfo.isMainFrame),
-              let value = message.body as? [String: Any], let action = value["action"] as? String,
+              let value = message.body as? [String: Any], value["pageID"] as? String == pageID, let action = value["action"] as? String,
               let bytes = try? JSONSerialization.data(withJSONObject: value), bytes.count <= (action == "share" ? 220_000 : 32_000) else { replyHandler(nil, "不受支持的页面请求"); return }
         let payload = value["payload"] as? [String: Any] ?? [:], owner = value["callID"] as? String ?? ""
+        guard action == "ready" || ready else { replyHandler(nil, "界面正在更新，请稍后重试。"); return }
+        let receivedPageID = pageID
         Task { @MainActor in
             do {
+                guard !self.disposed, self.pageID == receivedPageID else { throw CancellationError() }
                 let response = try await self.command(action, payload: payload, owner: owner)
                 replyHandler(response, nil)
             } catch { replyHandler(nil, error is CancellationError ? "通话已更新，请重试。" : error.localizedDescription) }
@@ -128,7 +196,12 @@ struct H5WebSurface: UIViewRepresentable {
     func command(_ action: String, payload: [String: Any], owner: String) async throws -> [String: Any] {
         let owned = owner == call.presentationID
         switch action {
-        case "ready": ready = true; await call.refreshOptions(); latest = H5Snapshot.make(call, visible: foreground); push()
+        case "ready":
+            guard payload["bridgeVersion"] as? Int == H5Release.bridgeVersion else { failedPage(); throw VoiceError.protocolMismatch }
+            ready = true; watchdog?.cancel(); watchdog = nil
+            if let release = scheme.release { delivery?.confirm(release) }
+            await call.refreshOptions(); latest = H5Snapshot.make(call, visible: foreground); push()
+            checkForUpdates()
         case "dial":
             await webView?.pauseAllMediaPlayback()
             if call.permission == .undetermined { await call.requestMicrophone() }
@@ -159,6 +232,7 @@ struct H5WebSurface: UIViewRepresentable {
             return [:]
         case "reading":
             guard owned, let reading = payload["reading"] as? Bool else { throw CancellationError() }
+            self.reading = reading
             onReading(reading)
             return [:]
         case "avatar", "avatarEvents": return try await call.h5Cosmetic(action == "avatar" ? "avatar" : "avatar-events", body: payload, owner: owner)
@@ -178,10 +252,11 @@ struct H5WebSurface: UIViewRepresentable {
         webView.scrollView.contentInset = comparison ? UIEdgeInsets(top: safe.top, left: 0, bottom: safe.bottom, right: 0) : .zero
         webView.scrollView.setContentOffset(CGPoint(x: 0, y: -webView.scrollView.contentInset.top), animated: false)
     }
-    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { ready = false }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { if ["/compare", "/comparison.html"].contains(webView.url?.path ?? "") { ready = true; if call.active { reload() } } }
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { reload() }
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { onError("界面暂时无法载入，请重新加载。") }
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { ready = false; armWatchdog() }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { if ["/compare", "/comparison.html"].contains(webView.url?.path ?? "") { ready = true; watchdog?.cancel(); if call.active { reload() } } }
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { if scheme.release?.revision == "bundled" { reload() } else { failedPage() } }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { if (error as NSError).code != NSURLErrorCancelled { failedPage() } }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { if (error as NSError).code != NSURLErrorCancelled { failedPage() } }
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
         let url = navigationAction.request.url
         if Self.trusted(url, mainFrame: true) { decisionHandler(.allow); return }

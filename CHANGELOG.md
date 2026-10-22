@@ -1,3 +1,9 @@
+## Unreleased candidate — iOS web delivery · build 12
+
+- Add a complete, versioned H5 presentation package to web release artifacts. The new native shell validates, caches and loads compatible updates without recompiling Swift for everyday shared H5 UI changes.
+- Pin resources during calls/reading; retain native audio and call ownership across page reloads. Reject stale documents, incompatible/corrupt packages and redirects; fall back to the last ready cache or bundled UI.
+- Candidate only: no production deployment, real iPhone install, Gateway/Worker change, or new physical-device acceptance. Existing build 11 requires one shell upgrade before receiving web updates. See `docs/ios/WEB-DELIVERY.md`.
+
 ## 2026-10-22 — V Voice iOS milestone integration · build 11
 
 - Integrate the iOS app into main after user acceptance of real iPhone connection and two-way conversation. Preserve the background Action Button audio path, original embedded H5 UI and current-call Dynamic Island content links.

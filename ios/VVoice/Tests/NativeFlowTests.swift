@@ -7,7 +7,7 @@ import VVoiceCore
 @testable import VVoice
 
 @MainActor final class NativeFlowTests: XCTestCase {
-    private let base = URL(string: "http://127.0.0.1:29837/")!
+    private let base = VoiceFixture.base
     private func fixture(_ command: String, _ values: [String: Any] = [:]) async throws {
         var r = URLRequest(url: base.appendingPathComponent("fixture/command")); r.httpMethod = "POST"
         r.httpBody = try JSONSerialization.data(withJSONObject: values.merging(["command":command]) { _, new in new }); r.setValue("application/json", forHTTPHeaderField: "Content-Type")

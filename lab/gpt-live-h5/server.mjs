@@ -103,6 +103,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       const entry = binding.id;
       const access = entryAccess(binding);
       const staticFiles = new Map([
+        ["/ios-shell-release.json", [join(here, "ios-shell-release.json"), "application/json; charset=utf-8"]],
         ["/", [join(here, "index.html"), "text/html; charset=utf-8"]],
         ["/compare", [join(here, "comparison.html"), "text/html; charset=utf-8"]],
         ["/comparison.mjs", [join(here, "comparison.mjs"), "text/javascript; charset=utf-8"]],
