@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "build": 18,
+  "version": "1.0.0",
+  "candidateOnly": true,
+  "status": "joint_regression_passed_signing_pending",
+  "installedOnRequestedIPhone": false,
+  "realCallStartedByAgent": false,
+  "integration": {
+    "waveform": "7ce6a4e",
+    "reactionAndIcon": "9ea1e33",
+    "nativeDuplexMain": "1a0063abeeb407508f7f17d4464f47e02bf13de7",
+    "gptSource": "8cd94d737f7fa29b25f82ea27526189536a8f739"
+  },
+  "deviceBaseline": {
+    "build": 17,
+    "sourceCommit": "7ce6a4e",
+    "ipaSHA256": "27d82452bffb2cc443b99177c54d8e097ac914b027d62db0600101723e1bacb8",
+    "signedRollbackRetained": true
+  },
+  "changes": [
+    "All iPhone/iPad notification, settings, Spotlight and home icon roles use the supplied purple portrait; public alternate-icon registration on idle foreground only, then refresh App Shortcuts",
+    "Default listen-5 Reaction in connecting, stale and lock-screen component; no gray SF-symbol substitute",
+    "Background native Reaction Decision reuses the H5 endpoint, reviewed catalog and approved continuations; foreground actual H5 render receipts take ownership",
+    "Transport revisions remain monotonic across renderer reloads while the renderer receives its own revision",
+    "Preserve medium/expanded waveform, report priority and controls",
+    "Include main native SeedDuplex reversible pause/replacement plus native GPT Live One WebRTC"
+  ],
+  "verification": {
+    "beforeIntegration": {
+      "core": 19,
+      "native": 54,
+      "service": 80
+    },
+    "joint": {
+      "core": 25,
+      "native": 62,
+      "service": 91
+    },
+    "componentEvidence": "evidence/build18-reaction-components.png",
+    "componentEvidenceScope": "Actual simulator rendering of shared SwiftUI component, not the system lock-screen or physical icon overlay",
+    "initialJointFailures": [
+      "GPT unmute assertion read stale RTP stats before the already-detected input tone; now waits for both existing thresholds within the same bound",
+      "A forced H5 update could be lost behind an in-flight older download; cancellation/supersession fixed and delayed-release regression added"
+    ]
+  },
+  "pending": [
+    "Physical Action Button launch icon cache refresh",
+    "Physical first locked launch Reaction rendering",
+    "Human two-way native duplex/GPT, interruption and acoustic acceptance"
+  ],
+  "releaseScope": {
+    "mainMerged": false,
+    "webServerDeployedByThisTask": false,
+    "gatewayRestarted": false,
+    "appStoreOrTestFlight": false
+  },
+  "homepageChangelog": "Candidate source and bundled history updated; no public server deployment"
+}

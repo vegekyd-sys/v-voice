@@ -292,3 +292,11 @@ Core16、原生WK／音频／集成46、既有服务合同80全部通过。新�
 - Release 1.0.0(17) archive/export和独立解包验包通过；正常TLS、无Debugfixture、主App/扩展签名、H5资源与52图、后台AudioRecording/SessionStarting意图均通过。导出IPA SHA-256 `27d82452bffb2cc443b99177c54d8e097ac914b027d62db0600101723e1bacb8`。签名build16 IPA已校验复制为回退。
 - 安装前只读正式服务 ready/known=true，activeCalls/creatingSessions/backgroundTasks均0。覆盖安装成功，设备读回17，不卸载、不重绑。首次空闲启动被Locked拒绝；用户解锁后再次只读确认三项0，devicectl实际启动成功，App已有初始化及空闲前台注册刷新请求。请求执行不代表系统缓存图标已更新，需用户重新选择内置“和V通话”并检查。
 - 候选已装机；没有push、合入main、网页部署或Gateway重启。完整真机波纹／报告与旧启动图标接受仍待用户。音频路由、AEC、RelayTransport、后台VoiceIntents相对build16没有改动。
+
+## 2026-10-22 build 18 联合候选
+
+- 遵照 Tianyi 在「豆包多人能力」中核实的原始联合出包指令，整合 main 1a0063a 的原生全双工、GPT 8cd94d7、波纹 7ce6a4e、图标／Reaction 9ea1e33；独立分支按语义解决冲突，没有覆盖另一线程工作树。原 GPT build17 未安装，手机原17是本线程的波纹包。
+- 最终整合回归：Core25、原生/H5/灵动岛62、既有service91全部通过。保留原生收音、可逆停播／旧response尾包淘汰、Grok、两人Speaker上下文、静音／重连／播放drain／挂断重拨、真实WebRTC合成PCM和H5重载／报告测试。未自动真实付费拨号，模拟器不是手机声学验收。
+- 初轮旧原生头像回执被当成H5接管，导致批准的延续丢失；分开回执来源后原测试恢复。联合初轮GPT静音测试在已检测到输入音调时提前退出，RTP统计尚未更新；改为在原时限内等待两个原阈值同时成立。随后网页更新测试发现强制检查可能被旧下载吞掉，修复强制检查取消旧任务，并新增迟到旧包不得覆盖新包的回归，最终完整62项通过。失败轮次不计通过。
+- `evidence/build18-reaction-components.png` 是右侧真实模拟器中共用SwiftUI组件的渲染，证明默认头像与波纹组件可见，不能作为实际系统锁屏／Action Button缓存或真实Decision人类对话验收。
+- 18:55:16北京时间只读线上状态 known=true、activeCalls=creatingSessions=backgroundTasks=0，phoneInputPolicy=native；签名／安装前会重新检查。手机只读读回1.0.0(17)，已保存其签名IPA并校验原SHA。无卸载或Keychain重置，无Gateway／Voice服务重启、main合入或线上网页发布。

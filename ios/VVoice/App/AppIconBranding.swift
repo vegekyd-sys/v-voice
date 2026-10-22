@@ -1,4 +1,5 @@
 import UIKit
+import AppIntents
 
 /// Public UIKit icon selection refreshes the system registration without uninstalling.
 /// Never activate it from a background intent or while a call is active.
@@ -20,6 +21,7 @@ import UIKit
             do {
                 try await app.setAlternateIconName(portraitName)
                 CallDiagnostics.record("icon.activation.confirmed", code: app.alternateIconName)
+                VoiceShortcuts.updateAppShortcutParameters()
             } catch {
                 CallDiagnostics.record("icon.activation.failed", code: (error as NSError).domain)
             }

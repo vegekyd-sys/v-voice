@@ -169,5 +169,18 @@
     "build": 16,
     "ipaSHA256": "a14396d4545eddb7cf1b948872c2b4e32d4b641b14fae0d76c639a72e879ee5d",
     "signedIPACopiedAndVerified": true
+  },
+  "pendingJointBuild18": {
+    "build": 18,
+    "candidateOnly": true,
+    "installed": false,
+    "record": "joint-build18.json",
+    "contains": [
+      "waveform build17",
+      "system icon and default/background Reaction",
+      "native SeedDuplex duplex from main",
+      "GPT Live One native WebRTC"
+    ],
+    "lastAcceptedBuild": 14
   }
 }

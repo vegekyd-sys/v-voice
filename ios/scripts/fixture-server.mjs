@@ -11,6 +11,7 @@ let active=null,client=null,sequence=0,sessions=0,inputBytes=0,zeroBytes=0,playb
 let slowSessionMS=300;
 let presentationRequests=0;
 let nativeMode=false,speakerMode=false,lastSessionRequest=null;
+let shellDelayMS=0;
 let lastOffer=null,offerReply=null;const eventClients=new Set();
 let limitNextSession=false,slowClose=false,closeRequests=0;
 let documents=[],pending=[],acknowledgements=[],supplements=[];
@@ -53,13 +54,17 @@ const server=createServer(async(req,res)=>{
    shellRequests.push({cookie:!!req.headers.cookie,authorization:!!req.headers.authorization});
    if(shellVariant==='none')return send(404,{});
    if(shellVariant==='redirect'){res.writeHead(302,{location:'/fixture/redirect-target'});res.end();return;}
-   return send(200,await shellRelease(shellVariant));
+   const variant=shellVariant,delay=shellDelayMS;shellDelayMS=0;
+   const release=await shellRelease(variant);
+   if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
+   return send(200,release);
  }
  if(path==='/fixture/command'){
    if(body.command==='gpt-answer'&&offerReply){const reply=offerReply;offerReply=null;reply(200,{sdp:body.sdp});}
    if(body.command==='reset'){lastOffer=null;offerReply?.(409,{error:'Reset'});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();}
+   if(body.command==='shell-delay')shellDelayMS=Math.max(0,Math.min(2000,Number(body.ms)||0));
    if(body.command==='shell-release')shellVariant=body.variant??'none';
-   if(body.command==='reset'){shellVariant='none';shellRequests=[];shellRedirects=0;inputFrames=0;inputActiveFrames=0;peakInputRMS=0;}
+   if(body.command==='reset'){shellDelayMS=0;shellVariant='none';shellRequests=[];shellRedirects=0;inputFrames=0;inputActiveFrames=0;peakInputRMS=0;}
    if(body.command==='native-mode')nativeMode=true;
    if(body.command==='speaker-mode')speakerMode=true;
    if(body.command==='speakers-demo'){

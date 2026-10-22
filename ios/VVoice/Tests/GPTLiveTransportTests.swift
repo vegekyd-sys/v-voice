@@ -120,7 +120,7 @@ import VVoiceCore
         XCTAssertLessThan(remote.inputTone, 0.001)
         transport.setMuted(false)
         var level = 0.0
-        for _ in 0..<30 { level = await remote.inputLevel(); if remote.inputTone > 0.01 { break }; try await Task.sleep(for: .milliseconds(100)) }
+        for _ in 0..<30 { level = await remote.inputLevel(); if level > 0.003 && remote.inputTone > 0.01 { break }; try await Task.sleep(for: .milliseconds(100)) }
         XCTAssertGreaterThan(level, 0.003)
         XCTAssertGreaterThan(remote.inputTone, 0.01)
     }

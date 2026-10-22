@@ -1,3 +1,11 @@
+## Unreleased — iOS build 18 joint candidate
+
+- Integrate native SeedDuplex reversible pause/response replacement from main, GPT Live One native WebRTC, and the latest waveform/report island without replacing existing call ownership.
+- Supply the exact purple portrait for all system icon roles and register it with the public alternate-icon API only while idle in foreground; refresh App Shortcuts after registration. No uninstall or binding reset.
+- Show a default Reaction while connecting, including the shared lock-screen component. Continue semantic Reaction decisions in background using the existing H5 endpoint/catalog, carry forward actual foreground frames and approved continuations, and return control to H5 on foreground entry.
+- Keep server Reaction revisions monotonic across H5 reloads while preserving each renderer's requested revision. Foreground and background loops do not run together; stale call/user responses remain rejected.
+- Joint simulation and physical delivery are recorded separately in `docs/ios/joint-build18.json`. Physical cache/lock-screen/acoustic acceptance is pending; no automatic real model calls or online release.
+
 ## 2026-10-22 — iOS build 17 waveform candidate
 
 - Reuse the medium card's measured waveform in expanded and lock-screen call controls; remove scrolling conversation captions, while unread reports retain the existing title and open-full-report affordance during speech.
