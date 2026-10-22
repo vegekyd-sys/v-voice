@@ -923,8 +923,10 @@ test('conversation native greeting never substitutes the personal caller name',a
 for(const model of ['grok','seeduplex'])test(`${model} completed voice reply uses the server-owned Feishu route once`,async t=>{
  const sends=[],replyTarget={channel:'feishu',agentId:'makaron',sessionKey:'agent:makaron:feishu:direct:ou_trial',accountId:'lab',to:'ou_trial'};
  const f=await fixture(async(args,method)=>{if(method==='send'){sends.push(args);return {messageId:'om_actual_fixture'};}return {ok:true};},model,{sessionBound:true,sessionKey:replyTarget.sessionKey,replyTarget});t.after(()=>f.service.dispose());
+ f.event({type:'input_audio_buffer.speech_started'});
+ if(model==='grok')f.event({type:'response.created',response:{id:'reply-1'}});
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'说明这个方案'});
- f.event({type:'response.created',response:{id:'reply-1'}});
+ if(model!=='grok')f.event({type:'response.created',response:{id:'reply-1'}});
  f.event(model==='grok'?{type:'response.output_audio_transcript.done',transcript:'方案是沿用当前会话，并把主要回复显示在飞书。'}:{type:'response.output_text.done',text:'方案是沿用当前会话，并把主要回复显示在飞书。'});
  assert.equal(sends.length,0);
  f.event({type:'response.done',response:{id:'reply-1',status:'completed'},response_id:'reply-1'});

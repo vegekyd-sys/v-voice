@@ -71,3 +71,9 @@ test('same final user turn and repeated assistant completion produce one pair',a
  const f=fixture();f.d.user('解释方案',{turnId:'q1'});f.d.transcript('方案正文。',{final:true,responseId:'r1'});await f.d.finish({responseId:'r1'});
  f.d.user('解释方案',{turnId:'q1'});f.d.transcript('重复正文。',{final:true,responseId:'r2'});await f.d.finish({responseId:'r2'});assert.equal(f.calls.length,1);
 });
+
+test('response created before final ASR binds to the new speech, never the previous turn',async()=>{
+ const f=fixture();f.d.user('前一个问题');f.d.inputStarted();f.d.begin('early');
+ f.d.user('这次的新问题',{turnId:'late-asr'});f.d.transcript('新问题的答案。',{final:true,responseId:'early'});await f.d.finish({responseId:'early'});
+ assert.equal(f.calls[0].args.message,'语音提问：这次的新问题\n\nV：新问题的答案。');
+});

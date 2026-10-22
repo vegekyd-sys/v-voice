@@ -420,7 +420,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       onEvent:e=>{if(e.type==='response.created'){s.responseActive=true;s.replyDelivery?.begin(e.responseId);}
         if(e.type==='native.listening-aside')s.replyDelivery?.ignore(e.responseId);
         if(s.nativeDuplex&&e.type==='native.listening-aside')emit(s,{type:'input.speech.ignored',preservedResponseId:s.bridge?.audioResponseId??null});
-        if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.userSpeaking=true;s.lastUserAt=Date.now();}
+        if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.replyDelivery?.inputStarted();s.userSpeaking=true;s.lastUserAt=Date.now();}
         if(e.type==='input_audio_buffer.speech_stopped'){s.userSpeaking=false;s.lastUserAt=Date.now();}
         audit({type:'provider.event',voiceSessionId:s.id,providerEventType:e.type,responseId:e.responseId});},
       onProtocolEvent:e=>{if(['response.created','response.output_text.delta','response.output_audio.started'].includes(e.type))s.replyDelivery?.begin(e.response_id??e.response?.id);audit({type:'provider.protocol',voiceSessionId:s.id,event:{...e,...(e.delta&&e.type?.includes('audio')?{delta:'[audio retained separately]'}:{})}});},
