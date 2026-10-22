@@ -680,6 +680,7 @@ async function startCall() {
           if(value.type.startsWith('tool.'))taskState();
           if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
           if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
+          if(value.type==='reply.sync'&&value.status==='failed')setStatus(value.message,{tone:'problem'});
           if(value.type==='provider.reconnecting')setStatus('正在恢复语音连接…');
           if(value.type==='provider.recovered')setStatus('V 正在听，直接说话就好');
           if(value.type==='transcript'&&!(reservation.speakerRouting&&value.role==='user')) {
@@ -705,6 +706,7 @@ async function startCall() {
     active.channel = active.pc.createDataChannel("oai-events"); active.channel.onmessage = (event) => { if (call === active) providerMessage(event); };
     active.events = new EventSource(apiUrl("events"));
     const applyNativeControl = value => {
+      if(value.type==='reply.sync'&&value.status==='failed')setStatus(value.message,{tone:'problem'});
       if(value.type==='tool.call')active.backendFinalReady=false;
       if(value.type==='tool.result'&&value.backendFinal===true)active.backendFinalReady=true;
       if(['voice.end.proposed','voice.end.accepted'].includes(value.type))requestVoiceHostEnd(active,value);

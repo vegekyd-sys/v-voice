@@ -9,8 +9,8 @@ const entries=['a','b','alias'].map((suffix,i)=>({
  callerId:'tianyi',permissionProfile:'personal-tianyi',accessToken:String(i+1).repeat(40)}));
 async function fixture(t,options={}){
  const calls=[];let serial=0;
- const bridge=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:entries,
- gateway:{request:async(method,args)=>{calls.push({method,args});if(method==='sessions.resolve')return options.resolve?options.resolve(args):{key:args.key,agentId:args.agentId};return method==='talk.client.create'?{voiceSessionId:'native-'+(++serial),model:'gpt-live-1-codex',transport:'webrtc',offerUrl:'/plugins/openai/realtime/calls'}:{ok:true};}},
+ const bridge=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:options.entries??entries,feishuAccounts:options.feishuAccounts??{},
+ gateway:{request:async(method,args)=>{calls.push({method,args});if(method==='sessions.resolve')return options.resolve?options.resolve(args):{key:args.key,agentId:args.agentId};if(method==='send')return {messageId:'om_fixture'};return method==='talk.client.create'?{voiceSessionId:'native-'+(++serial),model:'gpt-live-1-codex',transport:'webrtc',offerUrl:'/plugins/openai/realtime/calls'}:{ok:true};}},
  directVoice:{models:()=>[],reserve:async args=>{calls.push({method:'direct.reserve',args});return {voiceSessionId:'direct-'+(++serial),provider:args.model};},close:async()=>{},handleEvent:()=>{},dispose:async()=>{},...options.directVoice},offer:options.offer??(async()=> '')});
  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
  const request=(id,path,cookie,body)=>new Promise((resolve,reject)=>{
@@ -106,9 +106,24 @@ test('inline readiness cannot cross phone-cookie ownership and reveals no sessio
 test('authenticated entry returns safe conversation label and passes only server-owned session mode',async t=>{
  const f=await fixture(t),cookie=await f.login(entries[0]);
  const status=await (await f.request(entries[0].id,'status',cookie)).json();
- assert.deepEqual(status.conversation,{name:'飞书群聊',kind:'group'});
+ assert.deepEqual(status.conversation,{name:'飞书群聊',kind:'group',replySync:false});
  assert(!JSON.stringify(status).includes(entries[0].sessionKey));
  await f.request(entries[0].id,'session',cookie,{model:'seeduplex'});
  const call=f.calls.find(x=>x.method==='direct.reserve');
  assert.equal(call.args.sessionBound,true);assert.equal(call.args.sessionKey,entries[0].sessionKey);
+});
+
+test('reply sync is enabled by private entry only; native final goes to that exact bot and session',async t=>{
+ const enabled=entries.map(e=>({...e,replySync:true}));
+ const f=await fixture(t,{entries:enabled,feishuAccounts:{accounts:{lab:{appId:'existing-account'}}}}),cookie=await f.login(entries[0]);
+ const first=await(await f.request(entries[0].id,'session',cookie,{replyTarget:{to:'oc_foreign',accountId:'other'}})).json();
+ await f.request(entries[0].id,'call-control-input',cookie,{voiceSessionId:first.voiceSessionId,revision:1,turnId:'u1',text:'说明计划',final:true});
+ const event={event:'talk.event',payload:{voiceSessionId:first.voiceSessionId,talkEvent:{type:'output.text.done',responseId:'r1',payload:{text:'完整回答，只属于这通电话。'}}}};
+ f.bridge.emit(event);f.bridge.emit(event);
+ await f.request(entries[0].id,'close',cookie,first);
+ const sent=f.calls.filter(c=>c.method==='send');assert.equal(sent.length,1);
+ assert.equal(sent[0].args.to,'oc_room_a');assert.equal(sent[0].args.accountId,'lab');assert.equal(sent[0].args.sessionKey,entries[0].sessionKey);
+ f.bridge.emit(event);assert.equal(f.calls.filter(c=>c.method==='send').length,1);
+ const direct=await f.request(entries[0].id,'session',cookie,{model:'seeduplex',replySync:false,replyTarget:{to:'oc_foreign'}});assert.equal(direct.status,200);
+ assert.equal(f.calls.find(c=>c.method==='direct.reserve').args.replyTarget.to,'oc_room_a');
 });

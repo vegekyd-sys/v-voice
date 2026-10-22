@@ -1,5 +1,14 @@
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
+export const SESSION_REPLY_CANDIDATE_UPDATE = {
+  version:'voice-session-replies.20261022.1',date:'2026-10-22',
+  title:'会话电话：主要回复同步飞书（候选）',status:'candidate-validation',
+  items:[
+    '语音中的完整主要回复和后台结果同步到当前绑定的飞书会话。',
+    '合并完整回答，过滤开场、工具进展和未完成字幕；发送失败会在电话页面提示。',
+    '仅在 VLab 两个试点会话启用，正式 V 未上线。',
+  ],
+};
 // Used only by the isolated candidate's release file, never VOICE_UPDATES.
 export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
   version:'voice-seeduplex-duplex.20261022.7',date:'2026-10-22',

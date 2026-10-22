@@ -5,6 +5,7 @@ import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
 import {TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,createToolExecutor,validateTool,processExited} from './tools.mjs';
 import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICES,grokVoice,grokVoiceModel,grokVoiceLabel,grokVoiceSpeed} from './grok-provider.mjs';
 import {createTaskDelivery} from './task-delivery.mjs';
+import {createConversationReplyDelivery} from '../../lib/conversation-replies.mjs';
 import {createBackendDelegation} from './backend.mjs';
 import {loadToolStartClips,loadToolProgressClips,toolStartClip} from './tool-start-audio.mjs';
 import {stageLine,stageKey} from './task-progress.mjs';
@@ -178,6 +179,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(s.closed&&!s.cleanupFailed)return;
     s.closePromise=(async()=>{
       s.closed=true;
+      await s.replyDelivery?.close();
       for(const finish of [...s.contentWaiters.values()])finish(false);
       s.delivery?.close();
       if(s.backend?.snapshot())detached.add(s);
@@ -219,7 +221,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     };
     ending.fallbackTimer=setTimeout(fallback,nativeFarewellDelayMs);ending.fallbackTimer.unref?.();
   };
-  async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false}) {
+  async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false,replyTarget=null}) {
     if(!['phone','speaker'].includes(surface))throw Error('不支持的语音终端');
     if(![16000,24000].includes(inputSampleRate))throw Error('不支持的输入采样率');
     if([...sessions.values()].some(s=>s.cleanupFailed))throw Error('上一通电话的后台任务正在确认退出，请稍后重试');
@@ -230,7 +232,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,narrationBusyUntil:0,narrations:0,progress:null,toolOwners:new Map(),retiredBridges:new Set()});
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
-    s.delivery=createTaskDelivery({gateway,sessionKey,ownerId:s.id,audit});
+    s.replyDelivery=createConversationReplyDelivery({gateway,target:replyTarget,ownerId:s.id,audit,onStatus:value=>emit(s,{type:'reply.sync',...value})});
+    s.delivery=createTaskDelivery({gateway,sessionKey,ownerId:s.id,replyDelivery:s.replyDelivery,audit});
     s.backend=createBackendDelegation({gateway,sessionKey,sessionBound,ownerId:s.id,audit,taskDelivery:s.delivery,pollMs:backendPollMs,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}},
       onStage:stage=>{if(current(s)){audit({type:'backend.stage',voiceSessionId:s.id,callId:stage.callId,label:stage.latest,running:stage.latestRunning,completed:stage.completed,failed:stage.failed});emit(s,{type:'tool.progress',callId:stage.callId,name:'delegate_to_v',...(stage.latest?{stage:stage.latest}:{})});}}});
     sessions.set(s.id,s);
@@ -403,16 +406,16 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(!current(s))return;
         if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
         const deliver=()=>{
-        if(role==='assistant'&&final){speakerRouting?.assistant(s.id,text);if(!source){s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
-        if(role==='user'){if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
+        if(role==='assistant'&&final){s.replyDelivery?.transcript(text,{final,source});speakerRouting?.assistant(s.id,text);if(!source){s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
+        if(role==='user'){if(final)s.replyDelivery?.user(text);if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
         if(role==='user'&&final&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{})});
         };
         if(role==='assistant')routeOutput('transcript',{role,text,final,source},deliver);else deliver();
       },
-      onClearAudio:(_reason,metadata)=>routeOutput('clear',null,()=>{audit({type:'audio.clear',voiceSessionId:s.id});s.responseActive=false;if(s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear',...(typeof metadata?.retiredResponseId==='string'?{retiredResponseId:metadata.retiredResponseId}:{})});}),
+      onClearAudio:(_reason,metadata)=>routeOutput('clear',null,()=>{s.replyDelivery?.interrupt();audit({type:'audio.clear',voiceSessionId:s.id});s.responseActive=false;if(s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear',...(typeof metadata?.retiredResponseId==='string'?{retiredResponseId:metadata.retiredResponseId}:{})});}),
       onAudioSegmentDone:()=>routeOutput('done',null,()=>{s.responseActive=false;}),
-      onResponseDone:e=>routeOutput('done',e,()=>{s.responseActive=false;s.narrationBusyUntil=0;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'&&(!s.ending.responseId||!e.responseId||e.responseId===s.ending.responseId)){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}}),
+      onResponseDone:e=>routeOutput('done',e,()=>{void s.replyDelivery?.finish(e);s.responseActive=false;s.narrationBusyUntil=0;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'&&(!s.ending.responseId||!e.responseId||e.responseId===s.ending.responseId)){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}}),
       onEvent:e=>{if(['response.created'].includes(e.type))s.responseActive=true;
         if(s.nativeDuplex&&e.type==='native.listening-aside')emit(s,{type:'input.speech.ignored',preservedResponseId:s.bridge?.audioResponseId??null});
         if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.userSpeaking=true;s.lastUserAt=Date.now();}
@@ -522,6 +525,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       },
     },value=>{if(value.type==='speaker.admitted'&&value.turn?.text?.trim()){
       const text=value.turn.text;s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=false;
+      s.replyDelivery?.user(text);
       audit({type:'transcript',voiceSessionId:s.id,role:'user',text,final:true,source:'speaker-asr'});
       if(s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));
     }emit(s,value);if(value.type==='error')void close(s.id).catch(()=>{});});
@@ -530,7 +534,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   return {
     models,reserve,close,
     hasSession:id=>sessions.has(id),
-    backgroundTaskCount:()=>[...new Set([...sessions.values(),...detached])].filter(s=>s.backend.snapshot()).length,
+    backgroundTaskCount:()=>[...new Set([...sessions.values(),...detached])].filter(s=>s.backend.snapshot()||s.replyDelivery?.pending).length,
     presentation(id,after=0){const s=sessions.get(id);if(!current(s))return null;return {voiceSessionId:s.id,revision:s.presentation.revision,pending:[...s.presentation.pending.values()],documents:[...s.presentation.documents.values()].filter(x=>x.revision>after),controls:[]};},
     contentShown(id,callId){const s=sessions.get(id);if(!current(s)||!s.presentation.documents.has(callId))return false;s.contentWaiters.get(callId)?.(true);return true;},
     handleEvent(event){for(const s of new Set([...sessions.values(),...detached])){s.backend.handleEvent(event);if(s.closed&&!s.backend.snapshot())detached.delete(s);}},

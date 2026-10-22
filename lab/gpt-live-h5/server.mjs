@@ -12,6 +12,7 @@ import { AVATAR_FILES, taskActivity } from "./avatar-state.mjs";
 import { createVoiceAccess } from "./access.mjs";
 import { createConversationEntries } from "../../lib/conversation-entries.mjs";
 import { verifyPhoneSession } from "../../lib/phone-provisioning.mjs";
+import {conversationReplyTarget,createConversationReplyDelivery} from '../../lib/conversation-replies.mjs';
 import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure} from '../../lib/feishu-phone-login.mjs';
 import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
@@ -22,7 +23,7 @@ import {voiceConversationContext} from '../realtime-direct-tools/conversation-co
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], feishuLogin, defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], feishuAccounts = {}, feishuLogin, defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null }) {
   if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
   if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
   basePath = basePath.replace(/\/$/u, "");
@@ -62,6 +63,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   const close = async (context = local) => {
     const old = context.active;
     old?.taskDelivery?.close();
+    await old?.replyDelivery?.close();
     old?.callControl?.close();
     if(old)speakerRouting?.close(old.reservation.voiceSessionId);
     if (old) visual.forget(old.reservation.voiceSessionId);
@@ -167,7 +169,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           const visitor = hosted ? access.read(req) : null;
           const canCheckEntry = visitor && (contexts.has(`${entry}:${visitor.id}`) || contexts.size < 512);
           if (!hosted || canCheckEntry) {
-            const initial = JSON.stringify({ ready: backendReady(), preview, defaultModel, ...(binding.id!=='tianyi'?{conversation:{name:binding.displayName,kind:binding.kind}}:{}), ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}), ...(listening?{comparisonAvailable:true}:{}),
+            const initial = JSON.stringify({ ready: backendReady(), preview, defaultModel, ...(binding.id!=='tianyi'?{conversation:{name:binding.displayName,kind:binding.kind,replySync:binding.replySync}}:{}), ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}), ...(listening?{comparisonAvailable:true}:{}),
               ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
             }).replaceAll("<", "\\u003c");
             html = html.replace('<script type="module" src="./app.js"></script>', `<script type="application/json" id="voiceEntryStatus">${initial}</script><script type="module" src="./app.js"></script>`);
@@ -204,7 +206,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       releaseClosedDirectCalls();
       context.touchedAt = Date.now();
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
-        ready: backendReady(), preview, defaultModel, ...(binding.id!=='tianyi'?{conversation:{name:binding.displayName,kind:binding.kind}}:{}), ...(speakerRouting?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
+        ready: backendReady(), preview, defaultModel, ...(binding.id!=='tianyi'?{conversation:{name:binding.displayName,kind:binding.kind,replySync:binding.replySync}}:{}), ...(speakerRouting?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
         releaseReadiness: {
           known: !directVoice || typeof directVoice.backgroundTaskCount === 'function',
           activeCalls: [local, ...contexts.values()].filter(c=>c.active).length + (deviceEndpoint?.activeCalls() ?? 0),
@@ -281,25 +283,27 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           if (binding.id !== 'tianyi') await verifyPhoneSession(gateway, binding);
           await close(context);
           const sessionKey = binding.sessionKey;
+          const replyTarget=conversationReplyTarget(binding,feishuAccounts);
           if (params.model && params.model !== 'gpt-live') {
             // SeedDuplex needs the continuous microphone stream to own turn
             // taking. Keep household/multi-speaker routing available explicitly;
             // the deployment selects the phone default, not browser heuristics.
             // Clients opt in only after implementing native response ownership and reversible pause.
             const inputPolicy = params.inputPolicy ?? 'speaker';
-            const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(binding.id!=='tianyi'?{sessionBound:true}:{}),...speakerRouting?{inputPolicy}:{}});
+            const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(binding.id!=='tianyi'?{sessionBound:true,replyTarget}:{}),...speakerRouting?{inputPolicy}:{}});
             context.active={sessionKey,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
             rememberAvatarCall(context,context.active,params.model);
             return json(res,200,reservation);
           }
           const reservation = await gateway.request("talk.client.create", { sessionKey, provider: gptProvider, model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
-          const taskDelivery=createTaskDelivery({gateway,sessionKey,ownerId:reservation.voiceSessionId,
+          const replyDelivery=createConversationReplyDelivery({gateway,target:replyTarget,ownerId:reservation.voiceSessionId,audit:callControlAudit,onStatus:value=>{for(const response of context.listeners)response.write(`data: ${JSON.stringify({type:'reply.sync',voiceSessionId:reservation.voiceSessionId,...value})}\n\n`);}});
+          const taskDelivery=createTaskDelivery({gateway,sessionKey,ownerId:reservation.voiceSessionId,replyDelivery,
             ...(gptProvider==='v-voice-gpt-live'?{readNativeResult:runId=>gateway.request('voice.product.task-result',{clientSecret:reservation.clientSecret,runId},{timeoutMs:10000})}:{}),
             audit:callControlAudit,onIdle:()=>{nativeTaskOwners.delete(taskDelivery);if(nativeTasks.get(reservation.voiceSessionId)===taskDelivery)nativeTasks.delete(reservation.voiceSessionId);}});
           nativeTaskOwners.add(taskDelivery);
           // Task audit only. Native GPT captions remain Gateway-owned.
           callControlAudit({type:'call.created',voiceSessionId:reservation.voiceSessionId,sessionKey,provider:'openai',model:reservation.model});
-          context.active = { sessionKey, reservation, cookie:req.headers.cookie, touchedAt: Date.now(), taskDelivery, presentation: { revision: 0, pending: new Map(), documents: new Map(), controls: [] } };
+          context.active = { sessionKey, reservation, cookie:req.headers.cookie, touchedAt: Date.now(), taskDelivery, replyDelivery, presentation: { revision: 0, pending: new Map(), documents: new Map(), controls: [] } };
           nativeTasks.set(reservation.voiceSessionId,context.active.taskDelivery);
           if (reservation.model !== "gpt-live-1-codex" || reservation.transport !== "webrtc" || reservation.offerUrl !== "/plugins/openai/realtime/calls") {
             await close(context);
@@ -359,6 +363,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if(!Number.isSafeInteger(params.revision)||params.revision<1||typeof params.turnId!=='string'||!params.turnId||params.turnId.length>160||typeof params.text!=='string'||params.text.length>2400||typeof params.final!=='boolean')return json(res,400,{error:'通话字幕无效'});
         if(params.revision<=(owned.callControlCaptionRevision??0))return json(res,409,{error:'通话字幕已更新'});
         owned.callControlCaptionRevision=params.revision;
+        if(params.final)owned.replyDelivery?.user(params.text);
         if(params.final&&owned.taskDelivery?.observeUser(params.text))void owned.taskDelivery.subscribe().catch(error=>callControlAudit({type:'task.delivery-failed',voiceSessionId:params.voiceSessionId,error:error.message}));
         void owned.callControl?.observe({role:'user',turnId:params.turnId,text:params.text,final:params.final,snapshot:true});
         return json(res,200,{ok:true});
@@ -424,7 +429,11 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     // Native caption snapshots are the single USER source: they also arrive when
     // a deployment filters Gateway transcript events. Mixing normalized and
     // native turn IDs would incorrectly revoke the current decision.
-    if(item?.type==='output.text.done')void context.active.callControl?.observe({role:'assistant',text:item.payload?.text,final:true});
+    if(item?.type==='output.text.done'){
+      void context.active.callControl?.observe({role:'assistant',text:item.payload?.text,final:true});
+      context.active.replyDelivery?.transcript(item.payload?.text,{final:true});
+      void context.active.replyDelivery?.finish({responseId:item.responseId??item.turnId});
+    }
     const publish = message => {
       const view = context.active.presentation;
       if (view) {
@@ -445,6 +454,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     if(item?.type==='tool.result' && item.payload?.name==='openclaw_backend_result' &&
       typeof item.callId==='string' && item.callId && typeof item.payload.text==='string' && item.payload.text.trim()) {
       const message={voiceSessionId:context.active.reservation.voiceSessionId,type:'backend.result',callId:item.callId,text:item.payload.text};
+      void context.active.replyDelivery?.result(item.callId,item.payload.text);
       publish(message);
       return;
     }
@@ -590,6 +600,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       directVoice, speakerRouting, avatarLog,callControlAudit:transcriptLog.audit,
       phoneInputPolicy:process.env.VOICE_PHONE_INPUT_POLICY ?? 'speaker',
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",
+      feishuAccounts:config.channels?.feishu??{},
       conversationEntries: process.env.VOICE_ENTRIES_FILE ? JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,"utf8")) : [],
       feishuLogin: process.env.VOICE_FEISHU_LOGIN_FILE ? await readFeishuPhoneLoginFile(process.env.VOICE_FEISHU_LOGIN_FILE) : undefined,
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",

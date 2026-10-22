@@ -1,3 +1,8 @@
+## Unreleased — Session replies in Feishu candidate · 2026-10-22
+
+- Opt-in private conversation entries mirror completed substantive Voice replies and full backend results into their bound Feishu session through the existing Gateway send API. Resolve the configured bot account explicitly and retain the original session key for transcript mirroring.
+- Keep audio independent of sends; deduplicate response segments and ambiguous retry keys, omit greetings/progress/interrupted text, and surface delivery failures. Only VLab pilot entries are enabled; production and arbitrary-caller permissions are unchanged.
+
 ## Unreleased — SeedDuplex full-duplex phone candidate · 2026-10-22
 
 ## 2026-10-22 — Native duplex release and iOS build 16

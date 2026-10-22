@@ -21,7 +21,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy,sessionBound:options.sessionBound});
+ const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy,sessionBound:options.sessionBound,replyTarget:options.replyTarget});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -918,4 +918,17 @@ test('conversation native greeting never substitutes the personal caller name',a
  f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);await delay(5);
  const spoken=f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit');
  assert(spoken.some(e=>e.text==='你好，我是 V，在呢。'));assert(spoken.every(e=>!e.text.includes('天懿')));
+});
+
+for(const model of ['grok','seeduplex'])test(`${model} completed voice reply uses the server-owned Feishu route once`,async t=>{
+ const sends=[],replyTarget={channel:'feishu',agentId:'makaron',sessionKey:'agent:makaron:feishu:direct:ou_trial',accountId:'lab',to:'ou_trial'};
+ const f=await fixture(async(args,method)=>{if(method==='send'){sends.push(args);return {messageId:'om_actual_fixture'};}return {ok:true};},model,{sessionBound:true,sessionKey:replyTarget.sessionKey,replyTarget});t.after(()=>f.service.dispose());
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'说明这个方案'});
+ f.event({type:'response.created',response:{id:'reply-1'}});
+ f.event(model==='grok'?{type:'response.output_audio_transcript.done',transcript:'方案是沿用当前会话，并把主要回复显示在飞书。'}:{type:'response.output_text.done',text:'方案是沿用当前会话，并把主要回复显示在飞书。'});
+ assert.equal(sends.length,0);
+ f.event({type:'response.done',response:{id:'reply-1',status:'completed'},response_id:'reply-1'});
+ for(let i=0;i<100&&!sends.length;i++)await delay(5);
+ assert.equal(sends.length,1);assert.equal(sends[0].to,'ou_trial');assert.equal(sends[0].sessionKey,replyTarget.sessionKey);
+ assert(f.audit.some(e=>e.type==='reply.delivery-confirmed'));
 });

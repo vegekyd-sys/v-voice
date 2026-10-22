@@ -42,12 +42,13 @@ export function requestsTaskDelivery(text) {
 }
 
 /** One delivery subscription per exact task. Hangup does not own its lifetime. */
-export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,audit=()=>{},onIdle=()=>{}}) {
+export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,replyDelivery,audit=()=>{},onIdle=()=>{}}) {
   let authorized=false,closed=false,activeRun,lastResult;
   const watched=new Set(),observers=new Map(),currentByDelegation=new Map();let disposed=false;
   const outcomes=new Map();let tail=Promise.resolve();
   const target=voiceFeishuTarget(sessionKey);
   const send=(runId,kind,text)=>{
+    if(replyDelivery&&runId&&['final','failure','cancelled'].includes(kind))return replyDelivery.result(`${runId}:${kind}`,text);
     if(!authorized||!target||!runId||!text?.trim())return Promise.resolve({sent:false});
     const digest=createHash('sha256').update(text).digest('hex').slice(0,20);
     const key=`voice:${runId}:${kind}:${digest}`;
@@ -78,7 +79,7 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,
     async cancelled(runId){await send(runId,'cancelled','已按你的明确要求取消这通电话的后台任务。');if(activeRun===runId)activeRun=undefined;},
     close(){closed=true;if(!activeRun&&!watched.size)onIdle();if(authorized&&activeRun)void send(activeRun,'accepted','已接续这通电话的后台任务，后续进展和结果会发在这里。').catch(()=>{});},
     get detached(){return closed;},
-    get pending(){return Boolean(activeRun||watched.size);},
+    get pending(){return Boolean(activeRun||watched.size||replyDelivery?.pending);},
     handleEvent(event){
       const native=event.event==='talk.event'&&event.payload?.voiceSessionId===ownerId?event.payload.talkEvent:null;
       const completed=native&&observers.get(native.callId);

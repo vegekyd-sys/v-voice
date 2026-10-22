@@ -94,3 +94,11 @@ npm run phone -- link \
 PR 分支为 `codex/session-phone-binding`。本轮在当前主线 UI 上增加安全的会话显示名，并保留首页跳转的 phone 参数；头像资源和选择策略沿用主线。会话电话的原生工具及后台任务使用已绑定 session；不声明或执行服务级个人飞书查询快捷工具，不把所有发声者默认为天懿本人。
 
 Candidate 需用两个真实、已授权的飞书群/DM 验证：背景上下文不同且不串话；三个模型承接相同服务端 key；两个不同会话可并行；同会话第二台设备不能夺取 owner；挂断重拨仍回到原历史 session；旧 SDP、旧后台结果不能进入新通话。HTTP/WebSocket fixture 通过与真实通话验收分别记录，不将配置工具的 read-only 验证当作真人验收。
+
+## Candidate: main replies in Feishu
+
+Private entries can enable `replySync: true`. The host resolves the entry's configured Feishu app/account against Gateway configuration and sends completed substantive replies with the exact `sessionKey`, account and target through existing `send` RPC. Gateway handles normal channel delivery and transcript mirroring; browser fields cannot choose or change the destination. Legacy personal entry remains unchanged.
+
+Only final response segments are merged and sent. Greeting, progress, partial and interrupted output are omitted. Full backend results are sent once, including completion after hangup; their spoken summary is suppressed from duplicate delivery. An ambiguous timeout retries with the same idempotency key. Unconfirmed sends remain failures and show a nonfatal phone-page notice. This is call-scoped deduplication plus Gateway idempotency, not a promise of restart-proof exactly-once delivery.
+
+VLab pilot enablement and real delivery evidence are recorded in `docs/acceptance/session-phone-candidate-20261022.md`. No production or all-user rollout is implied.
