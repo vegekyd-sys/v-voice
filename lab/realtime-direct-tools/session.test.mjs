@@ -818,3 +818,12 @@ test('verified speech control stops the native generation while leaving its admi
  assert.equal(f.service.backgroundTaskCount(),1);assert(!f.invocations.some(x=>x?.action==='kill'));
  await f.service.close(f.reservation.voiceSessionId);assert(closed);
 });
+
+test('provider-owned playback never starts the auxiliary keyword ASR and keeps native microphone input continuous',async t=>{
+ let controls=0;
+ const f=await fixture(undefined,'seeduplex',{nativePlaybackPolicy:'provider',nativeInterrupt:()=>{controls++;throw Error('Auxiliary ASR must remain off');}});t.after(()=>f.service.dispose());
+ assert.equal(f.reservation.nativePlaybackPolicy,'provider');assert.equal(controls,0);
+ f.client.emit('message',Buffer.alloc(960),true);await delay(25);
+ assert(f.upstream.sent.some(e=>e.type==='input_audio_buffer.append'));
+ assert.equal(f.client.readyState,1);assert.equal(f.invocations.length,0);
+});

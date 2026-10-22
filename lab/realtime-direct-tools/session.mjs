@@ -45,7 +45,7 @@ export function directInstructions(catalog,context='',model='',options={}) {
 // announced, so a burst of quick tool calls becomes one line.
 export const NARRATION_DEFAULTS=Object.freeze({firstMs:6000,firstHeartbeatMs:15000,settleMs:2000,stageGapMs:12000,factGapMs:6000,heartbeatMs:30000,quietAfterUserMs:4000,startMs:2500,max:12});
 
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,toolProgressClips=null,narration,toolStartNotice='cached'}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',toolProgressClips=null,narration,toolStartNotice='cached'}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -192,6 +192,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // The tools one call declares: no screen tool without a display, and device
   // controls only when the attached hardware provides them.
   // Local Feishu reads are declared only when this service has them configured.
+  if(!['courtesy','provider'].includes(nativePlaybackPolicy))throw Error('Unsupported native playback policy');
   const localTools=TOOLS.filter(t=>(calendar||t.name!=='feishu_calendar')&&(larkRead||t.name!=='lark_read'));
   const sessionTools=s=>[...(s.display?localTools:localTools.filter(t=>t.name!=='show_content')),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[])];
   async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy}) {
@@ -217,7 +218,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(route)speakerRouting.setBusyProbe?.(s.id,()=>Boolean(s.backend?.snapshot?.()));
     s.speakerRouting=Boolean(route);
     s.nativeDuplex=model==='seeduplex'&&surface==='phone'&&!route;
-    return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket,...(s.nativeDuplex?{nativeDuplex:true}:{}),...route?{speakerRouting:route}:{}};
+    return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket,...(s.nativeDuplex?{nativeDuplex:true,nativePlaybackPolicy}:{}),...route?{speakerRouting:route}:{}};
   }
   function attachClient(s,client){
     client.on('error',()=>void close(s.id).catch(()=>{}));
@@ -434,7 +435,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     });
     connectionStage('provider-connecting');
     if(!speakerRouting?.lazyNative?.(s.id))await s.bridge.connect();
-    if(s.nativeDuplex&&nativeInterrupt&&current(s)){
+    if(s.nativeDuplex&&nativePlaybackPolicy!=='provider'&&nativeInterrupt&&current(s)){
       s.interruptDetector=nativeInterrupt({inputSampleRate:s.inputSampleRate,
         isSpeaking:()=>current(s)&&Boolean(s.playing||s.bridge.responseActive),
         getResponseId:()=>current(s)?s.bridge.audioResponseId:null,

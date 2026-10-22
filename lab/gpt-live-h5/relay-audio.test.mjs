@@ -267,3 +267,21 @@ test('a confirmed speech stop retires an already-generated response as well as i
  f.event({type:'audio',responseId:'new',sequence:3,sampleRate:24000,audio:frame(-8192)});f.event({type:'audio.done'});
  assert(f.pump(24000).filter(x=>x!==0).every(x=>x===-.25));
 });
+
+test('provider-owned turns keep background speech onset from muting the live answer',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true,nativePlaybackPolicy:'provider'}});
+ f.event({type:'audio',responseId:'story',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(24000,8192).buffer).toString('base64')});
+ const mic=f.nodes.find(n=>n.name==='v-direct-mic');for(let i=0;i<25;i++)mic.port.onmessage({data:voiceFrame()});
+ f.event({type:'input.speech.started'});f.event({type:'input.speech.stopped'});
+ assert.equal(f.relay.stats.nativePauses,0);assert.equal(f.relay.stats.clears,0);
+ assert(f.pump(9600).some(x=>x===.25));assert.equal(f.relay.stats.inputBytes,25*960);
+ assert(!f.sent.some(x=>typeof x==='string'&&JSON.parse(x).type==='barge-in'));
+});
+
+test('a native replacement retires the old tail even when local VAD never paused it',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true,nativePlaybackPolicy:'provider'}}),frame=value=>Buffer.from(pcm(2400,value).buffer).toString('base64');
+ f.event({type:'audio',responseId:'old',sequence:1,sampleRate:24000,audio:frame(8192)});
+ f.event({type:'audio',responseId:'new',sequence:2,sampleRate:24000,audio:frame(-8192)});
+ f.event({type:'audio',responseId:'old',sequence:3,sampleRate:24000,audio:frame(8192)});f.event({type:'audio.done'});
+ const played=f.pump(24000).filter(x=>x!==0);assert(played.length>0);assert(played.every(x=>x===-.25));assert.equal(f.relay.stats.clears,1);
+});

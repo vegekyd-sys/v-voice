@@ -111,7 +111,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   // network gap. Hold only that first response to its native completion;
   // later answers keep streaming with their normal lead, and the mic stays on.
   const backendOnset=new BackendSpeechOnset();let backendPlayback=false, backendResponseId=null;const retiredResponses=new Set();
-  const nativeDuplex=reservation.nativeDuplex===true,nativePause=new NativeSpeechPause();let nativePaused=false,currentResponseId=null;
+  const nativeDuplex=reservation.nativeDuplex===true,nativeCourtesy=nativeDuplex&&reservation.nativePlaybackPolicy!=='provider',nativePause=new NativeSpeechPause();let nativePaused=false,currentResponseId=null;
   let greetingHeld=reservation.provider==='grok';
   const endpoint=new URL('./api/relay',location.href);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
@@ -164,7 +164,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     if(stats.queuedOutputBytes+bytes.length>maxQueuedOutputBytes)throw Error('语音缓存过大，请重新拨号');
     const receivedAt=performance.now();if(lastReceiveAt!==null&&stats.queuedOutputBytes>0)stats.maxReceiveGapMs=Math.max(stats.maxReceiveGapMs,receivedAt-lastReceiveAt);lastReceiveAt=receivedAt;
     if(e.responseId&&retiredResponses.has(e.responseId))return;
-    if(nativeDuplex&&e.responseId&&currentResponseId&&e.responseId!==currentResponseId&&nativePause.yielded){
+    if(nativeDuplex&&e.responseId&&currentResponseId&&e.responseId!==currentResponseId&&(!nativeCourtesy||nativePause.yielded)){
       retiredResponses.add(currentResponseId);if(retiredResponses.size>256)retiredResponses.delete(retiredResponses.values().next().value);
       flush();
     }
@@ -183,9 +183,9 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
         if(typeof value.retiredResponseId==='string'){retiredResponses.add(value.retiredResponseId);if(retiredResponses.size>256)retiredResponses.delete(retiredResponses.values().next().value);}
         flush();
       }
-      if(nativeDuplex&&value.type==='input.speech.started'&&stats.queuedOutputBytes>0){nativePause.nativeStarted(performance.now());pause(true);}
-      if(nativeDuplex&&value.type==='input.speech.stopped')nativePause.nativeStopped(performance.now());
-      if(value.type==='audio.done'){outputComplete=true;if(nativeDuplex)nativePause.generationDone(performance.now());greetingHeld=false;speaker?.port.postMessage({type:'done',epoch});}
+      if(nativeCourtesy&&value.type==='input.speech.started'&&stats.queuedOutputBytes>0){nativePause.nativeStarted(performance.now());pause(true);}
+      if(nativeCourtesy&&value.type==='input.speech.stopped')nativePause.nativeStopped(performance.now());
+      if(value.type==='audio.done'){outputComplete=true;if(nativeCourtesy)nativePause.generationDone(performance.now());greetingHeld=false;speaker?.port.postMessage({type:'done',epoch});}
       if(value.type==='end.cancelled'){ending=null;clearTimeout(tailTimer);}
       if(value.type==='end.after-playback'){ending=value.callId;checkEnd();}
       if(value.type==='error'){reject(Error(value.message));onError(Error(value.message));}
@@ -222,7 +222,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
       const samples=new Int16Array(frame);let energy=0;for(const sample of samples)energy+=(sample/32768)**2;
       if(Math.sqrt(energy/Math.max(1,samples.length))>=.02)stats.inputActiveFrames++;
       if(ready&&socket.readyState===WebSocket.OPEN){
-        if(nativeDuplex)pause(nativePause.observe(frame,stats.queuedOutputBytes>0,at,outputComplete));
+        if(nativeCourtesy)pause(nativePause.observe(frame,stats.queuedOutputBytes>0,at,outputComplete));
         if(!nativeDuplex&&!inputGated&&backendOnset.observe(frame,backendPlayback&&stats.queuedOutputBytes>0)){
           if(backendResponseId){retiredResponses.add(backendResponseId);if(retiredResponses.size>256)retiredResponses.delete(retiredResponses.values().next().value);}
           flush();send({type:'barge-in'});}
