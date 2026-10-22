@@ -83,14 +83,16 @@
   },
   "currentDeviceCandidate": {
     "build": 18,
-    "candidateOnly": true,
+    "candidateOnly": false,
     "sourceCommit": "793203b85802eae390e72553dc3f74c55b4571f0",
     "installedOnRequestedIPhone": true,
     "deviceReportedBuild": "18",
     "overwriteInstalledWithoutUninstallOrKeychainReset": true,
     "record": "joint-build18.json",
-    "physicalAcceptance": "Tianyi_confirmed_action_button_icon_locked_default_reaction_and_live_reaction_all_passed",
-    "lastAcceptedBuild": 14
+    "physicalAcceptance": "Tianyi_accepted_joint_build18_and_authorized_main_merge",
+    "lastAcceptedBuild": 14,
+    "mergeStatus": "authorized_in_progress",
+    "distribution": "development_signed_private_device"
   },
   "build10RollbackHistory": {
     "date": "2026-10-22",
@@ -176,7 +178,7 @@
   },
   "pendingJointBuild18": {
     "build": 18,
-    "candidateOnly": true,
+    "candidateOnly": false,
     "installed": true,
     "record": "joint-build18.json",
     "contains": [
@@ -187,6 +189,6 @@
     ],
     "lastAcceptedBuild": 14,
     "deviceReportedBuild": "18",
-    "humanAcceptance": "island_icon_and_reaction_scopes_passed_other_acoustics_pending"
+    "humanAcceptance": "version_accepted_for_merge_with_measured_scopes_preserved"
   }
 }

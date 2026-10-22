@@ -1,3 +1,10 @@
+## 2026-10-22 — Accepted iOS build 18 integration
+
+- Integrate the installed and human-accepted joint iPhone build: native background Action Button calls, medium/expanded measured waveform, report links, purple system portrait icons and default/live locked-screen Reaction, alongside native SeedDuplex duplex and GPT Live One WebRTC.
+- Tianyi confirmed the three physical island/icon/Reaction checks, then explicitly accepted the version and authorized main integration. Keep the tested/signature-verified build18 artifact and rollback baseline; this merge does not replace the installed binary or deploy the web service.
+- Update the owning homepage changelog and generated H5 history. GPT Live incremental-text presentation remains under diagnosis in the separate GPT session, with no fix commit included or claimed here.
+- Validation: Core25, native/H5/island62 and service91 passed for the installed code; integration checks and merge identities are recorded separately.
+
 ## Unreleased — iOS build 18 joint candidate
 
 - Integrate native SeedDuplex reversible pause/response replacement from main, GPT Live One native WebRTC, and the latest waveform/report island without replacing existing call ownership.

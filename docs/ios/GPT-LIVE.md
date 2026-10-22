@@ -1,6 +1,6 @@
-# GPT Live One — iOS build 17 candidate
+# GPT Live One — integration in accepted joint build 18
 
-This candidate builds on the unmerged build 16 island caption/branding candidate.
+The original GPT-only build17 candidate was not installed. Its transport was semantically integrated into joint build18, preserving the accepted waveform/icon/Reaction work and the main native-duplex adaptation.
 It adds the existing GPT Live One (`gpt-live-1-codex`, `sol`) route to the native
 app. No Gateway, Worker, server protocol, production runtime or H5 calling path
 is changed.
@@ -82,3 +82,7 @@ Title: iPhone 接入 GPT Live One
 Do not publish this note as shipped until the candidate is accepted and the
 corresponding source is merged and released. No public homepage change in this
 private candidate delivery.
+
+## Joint build18 acceptance and follow-up
+
+Tianyi accepted the installed joint build18 and authorized main integration on 2026-10-22. See `joint-build18.json` for exact artifact and physical scopes. The later incremental-text/line-break feedback remains under diagnosis in the GPT session; there is no additional text fix included in this merge. No new physical acoustic measurements are inferred from the merge approval.

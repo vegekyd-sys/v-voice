@@ -2,8 +2,8 @@
   "schema": 1,
   "build": 18,
   "version": "1.0.0",
-  "candidateOnly": true,
-  "status": "installed_island_icon_reaction_human_accepted",
+  "candidateOnly": false,
+  "status": "human_accepted_main_integration_authorized",
   "installedOnRequestedIPhone": true,
   "realCallStartedByAgent": false,
   "integration": {
@@ -51,9 +51,10 @@
     "mainMerged": false,
     "webServerDeployedByThisTask": false,
     "gatewayRestarted": false,
-    "appStoreOrTestFlight": false
+    "appStoreOrTestFlight": false,
+    "mergeAuthorizationReceived": true
   },
-  "homepageChangelog": "Candidate source and bundled history updated; no public server deployment",
+  "homepageChangelog": "Accepted build18 notes updated in source; web deployment is separate",
   "sourceCommit": "793203b85802eae390e72553dc3f74c55b4571f0",
   "signedArchiveVerified": true,
   "exportedIPAVerified": true,
@@ -107,5 +108,18 @@
       "Long calls/network handover/system-call interruptions",
       "Quantified interruption latency or bystander robustness"
     ]
+  },
+  "acceptanceUpdate": {
+    "date": "2026-10-22",
+    "evidence": "Tianyi explicitly said 验收通过了 and authorized merge and recording",
+    "versionAccepted": true,
+    "mergeAuthorized": true,
+    "additionalQuantifiedAcousticMeasurementsClaimed": false
+  },
+  "separateFollowUp": {
+    "threadTitle": "V Voice 接入gpt live one",
+    "scope": "GPT Live incremental text layout/presentation",
+    "status": "diagnosing_no_fix_commit",
+    "includedInThisMerge": false
   }
 }

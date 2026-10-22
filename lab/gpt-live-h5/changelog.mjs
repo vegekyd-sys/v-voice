@@ -13,11 +13,11 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
-    date: '2026-10-22', title: 'iPhone 通话与表情更新（build 18 候选）',
+    date: '2026-10-22', title: 'iPhone 灵动岛通话升级',
     items: [
-      '小何原生全双工适配与 GPT Live One 接入同一个 iOS 候选版本，继续保留操作按钮、后台通话、声音波纹和方案入口；手机声学体验待验收。',
-      '首次呼叫显示默认 Reaction，后台继续根据对话更新表情，回到 App 后由 H5 接管；完整方案仍可点击进入 App 阅读。',
-      '补齐系统各尺寸的紫色耳麦图标，并在空闲打开 App 时重新登记；系统启动提示的旧缓存是否消除待本机验收。',
+      'iOS build 18 整合小何原生全双工适配与 GPT Live One，保留操作按钮、后台通话、声音波纹和方案入口。',
+      '锁屏首次呼叫显示默认 Reaction，后台表情随真实对话变化，回到 App 后由 H5 接管；完整方案仍可点击进入 App 阅读。',
+      '修复操作按钮启动提示的旧图标；紫色新图标、锁屏默认头像与对话 Reaction 已通过本人手机验收。',
     ],
   },
   {
