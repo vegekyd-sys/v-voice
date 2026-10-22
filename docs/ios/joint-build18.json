@@ -3,7 +3,7 @@
   "build": 18,
   "version": "1.0.0",
   "candidateOnly": false,
-  "status": "human_accepted_main_integration_authorized",
+  "status": "human_accepted_merged_main_ci_passed",
   "installedOnRequestedIPhone": true,
   "realCallStartedByAgent": false,
   "integration": {
@@ -42,13 +42,30 @@
     "initialJointFailures": [
       "GPT unmute assertion read stale RTP stats before the already-detected input tone; now waits for both existing thresholds within the same bound",
       "A forced H5 update could be lost behind an in-flight older download; cancellation/supersession fixed and delayed-release regression added"
-    ]
+    ],
+    "integration": {
+      "node": 713,
+      "speaker": 95,
+      "h5SourceAndShellCheck": true,
+      "iconAssetsCheck": true,
+      "homepageBrowserCheck": {
+        "url": "http://localhost:18928/",
+        "viewport": [
+          1466,
+          1232
+        ],
+        "flow": "home -> 更新日志 -> iPhone 灵动岛通话升级",
+        "consoleErrorsAndWarnings": 0,
+        "passed": true,
+        "evidence": "local browser screenshot retained outside repository"
+      }
+    }
   },
   "pending": [
     "GPT Live provider and native-duplex acoustic/interruption scenarios beyond the three accepted island scopes"
   ],
   "releaseScope": {
-    "mainMerged": false,
+    "mainMerged": true,
     "webServerDeployedByThisTask": false,
     "gatewayRestarted": false,
     "appStoreOrTestFlight": false,
@@ -121,5 +138,15 @@
     "scope": "GPT Live incremental text layout/presentation",
     "status": "diagnosing_no_fix_commit",
     "includedInThisMerge": false
+  },
+  "merge": {
+    "pullRequest": 65,
+    "url": "https://github.com/vegekyd-sys/v-voice/pull/65",
+    "commit": "59a9b99a08f22e7936a4d052df59d2270357281e",
+    "mainCIRun": 39786445250,
+    "mainCIPassed": true,
+    "mainCIURL": "https://github.com/vegekyd-sys/v-voice/actions/runs/39786445250",
+    "installedNativeSourceIdenticalToMergedNativeInputs": true,
+    "installedBinaryRebuilt": false
   }
 }
