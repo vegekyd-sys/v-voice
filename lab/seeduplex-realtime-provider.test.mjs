@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 import {
   Pcm24To16Resampler,
+  nativeListeningAside,
   SeeduplexRealtimeVoiceBridge,
   SEEDUPLEX_MODEL,
   SEEDUPLEX_RESOURCE_ID,
@@ -742,4 +743,9 @@ test('a requested verbatim aside and a non-native route are not treated as backg
   f.socket.message({type:'response.output_text.done',response_id:'read',text:'（安静等候，不插话）'});f.socket.message({type:'response.output_audio.started',response_id:'read'});f.socket.message({type:'response.output_audio.delta',response_id:'read',delta:floatAudio([.25])});
   assert.equal(f.audio.length,1);assert(!f.events.some(e=>e.type==='native.listening-aside'));
  }
+});
+
+test('listening aside variants are bounded to an entire quiet disposition',()=>{
+ for(const value of ['（安静等着，不插话，等需要回应时再开口）','（安静等待）'])assert.equal(nativeListeningAside(value),true);
+ for(const value of ['我先不说话','听起来像电视里的播报声呀','（安静等着）答案是五'])assert.equal(nativeListeningAside(value),false);
 });

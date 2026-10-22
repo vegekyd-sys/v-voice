@@ -22,7 +22,7 @@ const MAX_UPSTREAM_MESSAGE_BYTES = 1_048_576;
 export function nativeListeningAside(text) {
   const value=String(text??'').trim();
   if(value.length>160||!/^[(（][^()（）]+[)）]$/u.test(value))return false;
-  return /^(?:继续安静|保持安静|安静等候|静静倾听|继续倾听|不(?:插话|接话|回应|介入))/u.test(value.slice(1,-1).trim());
+  return /^(?:继续安静|保持安静|安静(?:等候|等着|等待)|静静倾听|继续倾听|不(?:插话|接话|回应|介入))/u.test(value.slice(1,-1).trim());
 }
 
 // Provider messages can contain prompts or credentials. Persist only a code and
