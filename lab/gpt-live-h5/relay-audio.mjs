@@ -75,7 +75,7 @@ export class NativeSpeechPause {
   reset(){this.voicedMs=0;this.quietMs=0;this.inUtterance=false;this.held=false;this.yielded=false;this.expires=0;this.hardExpires=0;this.locked=false;this.native=false;}
   nativeStarted(at){this.held=true;this.yielded=true;this.native=true;this.expires=this.hardExpires=at+15000;}
   nativeStopped(at){if(this.held){this.native=false;this.expires=at+1800;}}
-  generationDone(at){if(this.held&&!this.native)this.expires=Math.max(this.expires,Math.min(this.hardExpires,at+1800));}
+  generationDone(at){if(this.held&&!this.native)this.expires=Math.max(this.expires,Math.min(this.hardExpires,at+250));}
   observe(frame,enabled,at,generationComplete=true){
     const pcm=new Int16Array(frame);let sum=0,crossings=0;
     for(let i=0;i<pcm.length;i++){sum+=(pcm[i]/32768)**2;if(i&&((pcm[i]<0)!==(pcm[i-1]<0)))crossings++;}
@@ -95,10 +95,11 @@ export class NativeSpeechPause {
     // Output can begin in a gap between syllables of an already known turn.
     if(this.held&&!this.expires)this.expires=Math.min(this.hardExpires,at+1800-this.quietMs);
     if(!voiced&&!this.held)this.floor=Math.min(.012,this.floor*.98+Math.min(rms,.012)*.02);
-    // Native ASR may be delayed behind an in-flight speech generation. A short
-    // "stop" must not release its old queue merely because the caller is done.
-    // Wait for that generation/recognition boundary, within the same hard cap.
-    if(this.held&&at>=this.expires&&(this.native||generationComplete||at>=this.hardExpires)){this.held=false;this.native=false;this.locked=true;}
+    // Allow a small recognition handover while generation is still running.
+    // Waiting for the entire generation made an ignored "mm-hm" mute a long
+    // answer for seconds. Only native-confirmed speech earns the longer hold.
+    const grace=!this.native&&!generationComplete?600:0;
+    if(this.held&&(at>=this.expires+grace||at>=this.hardExpires)){this.held=false;this.native=false;this.locked=true;}
     return this.held;
   }
 }

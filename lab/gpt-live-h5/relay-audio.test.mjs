@@ -249,10 +249,11 @@ test('an early reply arriving between syllables still yields before playing',()=
  assert.equal(p.observe(new Int16Array(480).buffer,true,580),true,'a 200ms syllable gap is not a completed caller turn');
 });
 
-test('a short interruption does not resume old speech while native ASR is still behind generation',()=>{
+test('unconfirmed speech gets a bounded handover; an ignored acknowledgment cannot wait for a whole generation',()=>{
  const p=new NativeSpeechPause();for(let i=0;i<8;i++)p.observe(voiceFrame(),true,i*20,false);
  assert.equal(p.observe(new Int16Array(480).buffer,true,2500,false),true);
- p.generationDone(4000);assert.equal(p.observe(new Int16Array(480).buffer,true,4020,true),true);
+ assert.equal(p.observe(new Int16Array(480).buffer,true,2600,false),false);
+ p.generationDone(4000);assert.equal(p.observe(new Int16Array(480).buffer,true,4020,true),false,'a late terminal cannot revive a rejected pause');
  p.nativeStarted(4050);p.nativeStopped(4800);assert.equal(p.observe(new Int16Array(480).buffer,true,6500,true),true);
  assert.equal(p.observe(new Int16Array(480).buffer,true,6600,true),false);
 });
