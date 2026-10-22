@@ -12,6 +12,8 @@
 - Remove strictly duplicate text/details search wrappers without dropping citations or other content; persist bounded numeric timing diagnostics only. Include the new module in release artifacts.
 - Candidate evidence, failed iterations and timing limits: docs/acceptance/search-natural-ack-20261023/README.md. Production deployment is recorded separately in docs/releases.
 
+- Delivery: PR #80 merged; main CI passed. Both server nodes run 08eaecf with matching artifacts, public assets and iOS UI distribution verified. Existing native build 23 retained; no reinstallation or post-release physical call. Release approved after the documented identity/TV limitations were disclosed. See docs/releases/voice-search-natural-ack-20261023/release.json.
+
 ## 2026-10-23 — iOS build 23 natural speech waveform
 
 - Integrate the user-accepted build 22 baseline with waveform-only medium and large island cards. Keep the native interruption wait fix, Reaction, report entry, mute/end and background Action Button behavior.
