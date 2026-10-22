@@ -65,6 +65,17 @@ test("original /voice/ path serves assets without creating a call and protects a
   assert.equal(f.calls.length, 0);
 });
 
+test('iOS interface release is public static UI, uncached and does not authorize a call',async t=>{
+  const f=await fixture(t);
+  const response=await f.request('/voice/ios-shell-release.json');
+  assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
+  assert.equal(response.headers.get('set-cookie'),null);
+  const release=await response.json();assert.equal(release.schema,1);assert.ok(release.files.length>50);
+  assert.ok(release.files.every(file=>!file.path.startsWith('api/')));
+  assert.equal(f.calls.length,0);
+  assert.equal((await f.request('/voice/api/session','',{})).status,401);
+});
+
 test("redial keeps the group conversation but gets a new voice owner; another device cannot replace or close it", async t => {
   const f = await fixture(t);
   const payload = `${"a".repeat(32)}.${Date.now() + 60000}`;

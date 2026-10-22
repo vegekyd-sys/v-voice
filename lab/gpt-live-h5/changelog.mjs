@@ -2,6 +2,14 @@
 // experiments and unaccepted capabilities do not belong in this list.
 export const VOICE_UPDATES = [
   {
+    date: '2026-10-22', title: 'App 界面跟随网页更新',
+    items: [
+      '升级新版 App 后，共享的界面、文字、Reaction 与全文阅读可随网页发布更新，日常界面修正不用每次重新安装 App。',
+      '通话和全文阅读期间保留当前界面；更新不可用时继续使用已验证的缓存或包内版本。',
+      '操作按钮、后台录音与灵动岛继续由原生通话负责；系统能力升级仍通过新版 App 交付。',
+    ],
+  },
+  {
     date: '2026-10-22', title: 'V 来到 iPhone，迈出替代 Siri 的第一步',
     items: [
       'V Voice iOS App 已在本人 iPhone 验证接通和双向对话；配置操作按钮后，可从桌面长按开始与 V 通话。',

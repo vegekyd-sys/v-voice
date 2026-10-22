@@ -4,8 +4,10 @@ import WebKit
 @MainActor final class H5ResourceScheme: NSObject, WKURLSchemeHandler {
     private let call: CallCoordinator
     private var tasks: [ObjectIdentifier: Task<Void, Never>] = [:]
-    private let root = Bundle.main.url(forResource: "H5Shell", withExtension: nil)
+    // A whole page pins one validated release, including subresources and comparison.
+    private(set) var release: H5Release?
     init(call: CallCoordinator) { self.call = call }
+    func select(_ release: H5Release?) { self.release = release }
     static func resourcePath(_ url: URL) -> String? {
         guard url.scheme == "vvoice-h5", url.host == "app", url.user == nil, url.password == nil, url.port == nil else { return nil }
         let path = url.path == "/" ? "index.html" : url.path == "/compare" ? "comparison.html" : String(url.path.dropFirst())
@@ -15,6 +17,7 @@ import WebKit
     func webView(_ webView: WKWebView, start urlSchemeTask: any WKURLSchemeTask) {
         guard let url = urlSchemeTask.request.url, let path = Self.resourcePath(url) else { urlSchemeTask.didFailWithError(CocoaError(.fileReadNoPermission)); return }
         let id = ObjectIdentifier(urlSchemeTask)
+        let release = self.release
         tasks[id] = Task { [weak self] in
             guard let self else { return }
             do {
@@ -26,9 +29,8 @@ import WebKit
                     let clip = String(path.dropFirst("api/comparison/audio/".count))
                     data = try await self.call.api.comparisonAudio(clip); mime = "audio/wav"
                 } else {
-                    guard let root, let manifestData = try? Data(contentsOf: root.appendingPathComponent("source-manifest.json")),
-                          let manifest = try? JSONSerialization.jsonObject(with: manifestData) as? [String: Any], let outputs = manifest["outputs"] as? [String: String], outputs[path] != nil else { throw CocoaError(.fileReadNoPermission) }
-                    data = try Data(contentsOf: root.appendingPathComponent(path))
+                    guard let bytes = release?.files[path] else { throw CocoaError(.fileReadNoPermission) }
+                    data = bytes
                     mime = ["html":"text/html","js":"text/javascript","mjs":"text/javascript","css":"text/css","webp":"image/webp","png":"image/png","svg":"image/svg+xml"][URL(fileURLWithPath: path).pathExtension] ?? "application/octet-stream"
                 }
                 guard !Task.isCancelled, self.tasks[id] != nil else { return }

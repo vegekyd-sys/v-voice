@@ -12,7 +12,7 @@ import {createAvatarTelemetry} from '../../lab/gpt-live-h5/avatar-telemetry.mjs'
 let current, owner, reactions, telemetry, opened = new Set(), pendingDocument, openingDocument=false;
 const hiddenDocument=document.createElement('div');hiddenDocument.hidden=true;document.body.append(hiddenDocument);
 const view = createCallView();
-const post = (action, payload = {}, callID = current?.callID ?? '') => window.webkit.messageHandlers.voice.postMessage({action,payload,callID});
+const post = (action, payload = {}, callID = current?.callID ?? '') => window.webkit.messageHandlers.voice.postMessage({action,payload,callID,pageID:window.__VVoicePageID});
 const send = async (action,payload) => {
   try { const result=await post(action,payload);if(result?.snapshot)receive(result.snapshot);return result; }
   catch(error){view.message(String(error.message??error),'problem');throw error;}
@@ -99,4 +99,4 @@ document.getElementById('readerDownload').addEventListener('click',event=>{
   const href=event.currentTarget.href;if(!href.startsWith('blob:'))return;
   event.preventDefault();void fetch(href).then(r=>r.text()).then(text=>send('share',{text,title:document.getElementById('readerTitle').textContent})).catch(()=>{});
 });
-void send('ready').catch(()=>{});
+void send('ready',{bridgeVersion:1}).catch(()=>{});

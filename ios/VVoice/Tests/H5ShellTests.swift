@@ -5,7 +5,7 @@ import VVoiceCore
 @testable import VVoice
 
 @MainActor final class H5ShellTests: XCTestCase {
-    private let base = URL(string: "http://127.0.0.1:29837/")!
+    private let base = VoiceFixture.base
     private func command(_ name: String, event: [String: Any]? = nil) async throws {
         var r = URLRequest(url: base.appendingPathComponent("fixture/command")); r.httpMethod = "POST"
         r.setValue("application/json", forHTTPHeaderField: "Content-Type")
