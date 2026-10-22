@@ -908,4 +908,6 @@ test('conversation calls use session tools and cannot invoke personal Feishu sho
  f.call('feishu_calendar',{},'bypass');await delay(10);assert.equal(reads,0);
  f.call('web_search',{query:'公开天气'},'scoped');await delay(10);
  assert(f.invocations.some(x=>x.sessionKey==='agent:makaron:feishu:group:oc_trial'));
+ f.call('delegate_to_v',{question:'只计算1加1'},'bound-backend');await delay(10);
+ const task=f.invocations.find(x=>x.voiceSessionId&&x.question);assert.match(task.question,/身份、工具和授权边界沿用该会话/);assert.doesNotMatch(task.question,/天懿本人在语音电话里交给/);f.completeBackend('2');await delay(20);
 });

@@ -1,6 +1,6 @@
 # Feishu session phone candidate — 2026-10-22
 
-Candidate only; no production release or Gateway restart. Integrates main through 4fee7bc (native duplex and current H5 UI) into the former PR #2 implementation.
+Candidate only; no production release or Gateway restart. Integrates main through 1a0063a (native duplex and current H5 UI) into the former PR #2 implementation.
 
 A phone maps to an existing server-owned Feishu session. Browser input cannot select another session. History, direct Gateway tool calls, and backend delegation use that session key. Conversation calls omit the Voice service's personal Feishu shortcuts and personal-caller assumption. The page shows a safe conversation label and preserves its binding when returning home.
 
