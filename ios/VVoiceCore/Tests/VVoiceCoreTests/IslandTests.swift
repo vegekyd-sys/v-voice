@@ -60,10 +60,10 @@ import Testing
     for i in 0..<100 {
         if display.observeAudio(inputRMS: 0.8, outputRMS: i % 2 == 0 ? 0.1 : 0.2, muted: true, now: now.addingTimeInterval(Double(i) * 0.02)) { updates += 1 }
     }
-    #expect(updates <= 2)
+    #expect(updates <= 8)
     let snapshot = display.snapshot(phase: .muted, muted: true, now: now.addingTimeInterval(1.99))
     #expect(snapshot.audioSource == .output)
-    #expect(snapshot.levels.count <= 9)
+    #expect(snapshot.levels.count <= 24)
     #expect(snapshot.levels.allSatisfy { $0 <= 100 })
 }
 @Test func outputEnergyUsesPlaybackPositionAndHonorsCueAndClearing() {
@@ -105,4 +105,50 @@ import Testing
     display.synchronize(owner: "c", documentID: nil)
     let nextCall = display.announceConnection(owner: "c", foreground: false)
     #expect(nextCall)
+}
+
+@Test func speechWindowsPreserveDynamicsAndSettleToSilence() {
+    var display = IslandPresentation()
+    let now = Date(timeIntervalSince1970: 100)
+    display.synchronize(owner: "a", documentID: nil)
+    let levels = [0.0, 0.0, 0.012, 0.05, 0.18, 0.03, 0.0, 0.0, 0.0, 0.0, 0.0]
+    for (i, rms) in levels.enumerated() {
+        _ = display.observeAudio(inputRMS: 0, outputRMS: rms, muted: false, now: now.addingTimeInterval(Double(i) * 0.1))
+    }
+    let snapshot = display.snapshot(phase: .speaking, muted: false, now: now.addingTimeInterval(1))
+    #expect(snapshot.levels.count == levels.count)
+    #expect(snapshot.levels[2] < snapshot.levels[3])
+    #expect(snapshot.levels[3] < snapshot.levels[4])
+    #expect(snapshot.levels[5] < snapshot.levels[4])
+    #expect(snapshot.levels.suffix(3).allSatisfy { $0 == 0 })
+    for i in 11...40 {
+        _ = display.observeAudio(inputRMS: 0, outputRMS: 0, muted: false, now: now.addingTimeInterval(Double(i) * 0.1))
+    }
+    #expect(display.snapshot(phase: .listening, muted: false, now: now.addingTimeInterval(4)).audioSource == .none)
+}
+@Test func outputWaveformDoesNotSwitchToMicrophoneLeakageAndGapsDoNotReplayOldSpeech() {
+    var display = IslandPresentation()
+    let now = Date(timeIntervalSince1970: 100)
+    display.synchronize(owner: "a", documentID: nil)
+    _ = display.observeAudio(inputRMS: 0.15, outputRMS: 0.1, muted: false, now: now)
+    #expect(display.snapshot(phase: .speaking, muted: false, now: now).audioSource == .output)
+    // A missing meter is not ongoing speech, even if the last sample was loud.
+    #expect(display.snapshot(phase: .speaking, muted: false, now: now.addingTimeInterval(0.5)).audioSource == .none)
+    _ = display.observeAudio(inputRMS: 0, outputRMS: nil, muted: false, now: now.addingTimeInterval(1))
+    #expect(display.snapshot(phase: .listening, muted: false, now: now.addingTimeInterval(1)).levels.isEmpty)
+    _ = display.observeAudio(inputRMS: 0.03, outputRMS: nil, muted: false, now: now.addingTimeInterval(1.1))
+    #expect(display.snapshot(phase: .listening, muted: false, now: now.addingTimeInterval(1.1)).audioSource == .input)
+}
+
+@Test func normalSpeechKeepsVisibleContrastRatherThanClusteringNearFullHeight() {
+    func level(_ rms: Double) -> UInt8 {
+        var display = IslandPresentation()
+        let now = Date(timeIntervalSince1970: 100)
+        _ = display.observeAudio(inputRMS: 0, outputRMS: rms, muted: false, now: now)
+        return display.snapshot(phase: .speaking, muted: true, now: now).levels.last ?? 0
+    }
+    #expect(level(0.18) > level(0.07) + 30)
+    #expect(level(0.01) > 0)
+    #expect(level(0.001) == 0)
+    #expect(level(0.18) < 90)
 }
