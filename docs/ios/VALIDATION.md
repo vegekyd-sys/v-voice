@@ -250,7 +250,8 @@ Core16、原生WK／音频／集成46、既有服务合同80全部通过。新�
 - iPhone17Pro iOS26.5实际系统：本地fixture通话回桌面，触发报告后系统AX自动出现「V的Reaction／方案已就绪查看全文／收起文字返回音频／静音麦克风／结束通话」。整个验证没有长按小岛。
 - 为捕获短暂系统展示，先安排本地fixture延迟送报告，再同步等待并连续保存真实serve-sim帧；没有后台未等待的截屏任务。第三份报告发送1792649354164ms，自动大卡帧在1792649357582ms（+3.418秒）、1792649359807ms（+5.643秒）可见；+8.121秒帧已被系统收回。三张提交证据是原始帧复制，不是图像编辑。最初未等待的捕获未能保留会话，不用作证据；第一次单张捕获已赶不上大卡，未将其标为成功图片。
 - 用户内置浏览器镜像初始断开，确认3200无监听后仅对该模拟器重建serve-sim并恢复真实帧；其他模拟器、物理手机屏幕共享未动。截图clip接口没有按坐标裁剪，因此正式证据保存完整页面。结束fixture后active=false、sessions=closeRequests=2（本地累计计数），不能作为正式用户呼叫次数。
-- 签名／验包／安装与实机自动报告展示尚未在本条记录阶段完成，状态以report-island-build15.json后续登记为准。候选未合入main、未发布网页；首页正式发布日志不写入未验收候选，随包历史仍与现有网页源一致。
+- 源码提交 `da3b93a3e410d803ea1c2da0f796efd8f9d30745` 已构建 development 签名 Release 1.0.0 (15)，archive／export及独立解包导出IPA验包均通过；App与Activity扩展均为15。IPA SHA-256：`46df1206571b4b00525c51e3e3495c108e058662f54edcdcb73e2bd74d5efcda`。安装前2026-10-22 14:19:49北京时间只读readiness known=true、ready=true，activeCalls／creatingSessions／backgroundTasks均0。devicectl覆盖安装成功，设备App记录读回 `com.versa.vvoice`、1.0.0、build15。未卸载、未重置Keychain、未自动拨号；原签名build14 IPA已复制并验证，原archive保留。
+- **真机报告自动展示仍待人类实际使用验收**，不能以安装成功或模拟器自动展开代替。详细状态见report-island-build15.json。候选未合入main、未发布网页；首页正式发布日志不写入未验收候选，随包历史仍与现有网页源一致。
 - ActivityKit重要更新使用[官方alertConfiguration机制](https://developer.apple.com/documentation/activitykit/displaying-live-data-with-live-activities)。iOS仍决定是否显示及停留时长，候选不承诺强制常驻或绕过系统设置。
 
 ![报告到达前的小岛](evidence/report-before-compact.png)
