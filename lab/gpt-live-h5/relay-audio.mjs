@@ -112,7 +112,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   // network gap. Hold only that first response to its native completion;
   // later answers keep streaming with their normal lead, and the mic stays on.
   const backendOnset=new BackendSpeechOnset();let backendPlayback=false, backendResponseId=null;const retiredResponses=new Set();
-  const nativeDuplex=reservation.nativeDuplex===true,assisted=reservation.nativePlaybackPolicy==='assisted',nativeCourtesy=nativeDuplex&&reservation.nativePlaybackPolicy!=='provider',nativePause=new NativeSpeechPause(assisted?{minRms:.045,consecutiveOnset:true,trustNativeOnset:false}:{});let nativePaused=false,currentResponseId=null;
+  const nativeDuplex=reservation.nativeDuplex===true,assisted=reservation.nativePlaybackPolicy==='assisted',nativeCourtesy=nativeDuplex&&reservation.nativePlaybackPolicy!=='provider',nativePause=new NativeSpeechPause(assisted?{minRms:.035,consecutiveOnset:true,trustNativeOnset:false}:{});let nativePaused=false,currentResponseId=null;
   let greetingHeld=reservation.provider==='grok';
   const endpoint=new URL('./api/relay',location.href);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});

@@ -287,7 +287,7 @@ for(const nativePlaybackPolicy of ['provider','assisted'])test(nativePlaybackPol
 });
 
 test('assisted pause rejects low TV bursts and native onset alone, but yields for sustained foreground speech',()=>{
- const p=new NativeSpeechPause({minRms:.045,consecutiveOnset:true,trustNativeOnset:false});
+ const p=new NativeSpeechPause({minRms:.035,consecutiveOnset:true,trustNativeOnset:false});
  const quiet=new Int16Array(480).buffer,background=()=>{const a=new Int16Array(voiceFrame());for(let i=0;i<a.length;i++)a[i]*=.2;return a.buffer;};
  p.nativeStarted(0);assert.equal(p.held,false);
  for(let i=0;i<100;i++)assert.equal(p.observe(i%6===5?quiet:background(),true,i*20),false);
