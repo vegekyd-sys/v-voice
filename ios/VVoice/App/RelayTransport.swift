@@ -11,6 +11,8 @@ import VVoiceCore
     private var closed = false
     private var queue: [(URLSessionWebSocketTask.Message, Int)] = []
     private var bufferedBytes = 0
+    private var uploadedFrames = 0
+    private var uploadedBytes = 0
     var onEvent: (([String: Any]) throws -> Void)?
     var onFailure: ((Error) -> Void)?
     var onClose: (() -> Void)?
@@ -68,6 +70,12 @@ import VVoiceCore
                     let (m, count) = self.queue.removeFirst()
                     try await self.socket?.send(m)
                     self.bufferedBytes = max(0, self.bufferedBytes - count)
+                    if case .data = m {
+                        self.uploadedFrames += 1; self.uploadedBytes += count
+                        if self.uploadedFrames == 1 || self.uploadedFrames % 250 == 0 {
+                            CallDiagnostics.record("audio.upload", code: "frames=\(self.uploadedFrames) bytes=\(self.uploadedBytes) queued=\(self.bufferedBytes)")
+                        }
+                    }
                 }
             } catch { self.fail(error) }
         }

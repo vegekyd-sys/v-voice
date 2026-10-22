@@ -67,6 +67,9 @@ private final class CaptureHandoff: @unchecked Sendable {
     }
     private var lastCaptureAt = Date.distantPast
     private var capturedInput = false
+    private var captureFrames = 0
+    private var captureActiveFrames = 0
+    private var capturePeak = 0.0
     private var started = false
     private var outputFinished = false
     private var startingOutput = false
@@ -122,7 +125,13 @@ private final class CaptureHandoff: @unchecked Sendable {
                 }
                 Task { @MainActor [weak self] in
                     handoff.release()
-                    guard let self, self.started, self.generation == captureOwner else { return }; self.capturedInput = true; self.lastCaptureAt = Date(); self.onInput?(data, rms)
+                    guard let self, self.started, self.generation == captureOwner else { return }
+                    self.capturedInput = true; self.lastCaptureAt = Date()
+                    self.captureFrames += 1
+                    if rms >= 0.002 { self.captureActiveFrames += 1 }
+                    self.capturePeak = max(self.capturePeak, rms)
+                    if self.captureFrames == 1 || self.captureFrames % 250 == 0 { self.recordCapture() }
+                    self.onInput?(data, rms)
                 }
             }
             input.installTap(onBus: 0, bufferSize: 960, format: inputFormat) { @Sendable buffer, _ in converter.consume(buffer) }
@@ -207,11 +216,21 @@ private final class CaptureHandoff: @unchecked Sendable {
         clear(); ledger.beginStream()
     }
     func stop() {
+        if capturedInput { recordCapture() }
         generation = UUID(); started = false; capturedInput = false; lastCaptureAt = .distantPast; clear()
+        captureFrames = 0; captureActiveFrames = 0; capturePeak = 0
         engine?.inputNode.removeTap(onBus: 0); engine?.stop(); engine = nil; player = nil
         if ownsSessionActivation {
             ownsSessionActivation = false
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
+    }
+    /// Only aggregate signal levels and system flags; never samples or device names.
+    private func recordCapture() {
+        let session = AVAudioSession.sharedInstance()
+        let route = session.currentRoute.inputs.first?.portType.rawValue ?? "none"
+        let systemMuted = AVAudioApplication.shared.isInputMuted
+        let processingMuted = engine?.inputNode.isVoiceProcessingInputMuted ?? false
+        CallDiagnostics.record("audio.capture", code: "frames=\(captureFrames) active=\(captureActiveFrames) peakMilli=\(Int(capturePeak * 1000)) appMuted=\(systemMuted) vpMuted=\(processingMuted) route=\(route)")
     }
 }
