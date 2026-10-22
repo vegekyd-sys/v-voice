@@ -20,8 +20,9 @@ import VVoiceCore
         try await command("reset")
         let store = BindingStore(service: "com.versa.vvoice.h5-tests.\(UUID().uuidString)")
         try store.save(StoredBinding(binding: VoiceBinding(testingBaseURL: base.appendingPathComponent("voice/")), cookie: "v_voice_access=fixture-cookie"))
-        let call = CallCoordinator(api: VoiceAPI(store: store)); call.sceneChanged(.active)
-        addTeardownBlock { await call.end(); await MainActor.run { call.forget() } }; return call
+        let previousModel = UserDefaults.standard.string(forKey: "voiceModel")
+        let call = CallCoordinator(api: VoiceAPI(store: store)); call.model = .seeduplex; call.sceneChanged(.active)
+        addTeardownBlock { await call.end(); await MainActor.run { call.forget(); UserDefaults.standard.set(previousModel, forKey: "voiceModel") } }; return call
     }
     private func until(_ predicate: @MainActor () async throws -> Bool) async throws {
         let deadline = Date().addingTimeInterval(15)
@@ -135,4 +136,40 @@ import VVoiceCore
         XCTAssertGreaterThan(reloaded, background)
         await call.end()
     }
+    func testStreamingRelayKeepsOneParagraphAndCompletionKeepsChronology() async throws {
+        let call = try await client(); try await call.startOrContinue()
+        let host = H5WebHost(call: call, onError: { XCTFail($0) })
+        host.latest = H5Snapshot.make(call, visible: true)
+        let web = host.makeWebView()
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene); window.rootViewController = UIViewController(); window.makeKeyAndVisible()
+        window.rootViewController!.view.addSubview(web); web.frame = window.rootViewController!.view.bounds
+        defer { window.isHidden = true; previous?.makeKeyAndVisible(); host.dispose(); web.configuration.userContentController.removeScriptMessageHandler(forName: "voice", contentWorld: .page) }
+        try await until { host.ready && call.phase == .listening }
+        try await command("event", event: ["type":"transcript", "role":"user", "text":"请连续说一段话", "final":true])
+        try await until { call.conversation.turns.last?.text == "请连续说一段话" }
+        var expected = ""
+        for (index, piece) in ["你好", "，我们", "可以", "从这里", "继续聊。"].enumerated() {
+            expected += piece
+            try await command("event", event: ["type":"transcript", "role":"assistant", "text":piece, "final":false])
+            try await until { call.conversation.turns.last?.text == expected }
+            host.update(H5Snapshot.make(call, visible: true), foreground: true)
+            try await until { try await web.evaluateJavaScript("document.querySelector('.turns.now .assistant .turn-text')?.textContent") as? String == expected }
+            if index == 0 { _ = try await web.evaluateJavaScript("void (window.captionNode = document.querySelector('.turns.now .assistant'))") }
+            let count = try await web.evaluateJavaScript("document.querySelectorAll('.turns.now .assistant').length") as? Int
+            let retained = try await web.evaluateJavaScript("window.captionNode === document.querySelector('.turns.now .assistant')") as? Bool
+            XCTAssertEqual(count, 1); XCTAssertEqual(retained, true)
+        }
+        try await command("event", event: ["type":"transcript", "role":"assistant", "text":expected, "final":true])
+        try await until { call.conversation.turns.last?.complete == true }
+        host.update(H5Snapshot.make(call, visible: true), foreground: true)
+        try await until { try await web.evaluateJavaScript("document.querySelector('.turns.now .assistant')?.dataset.streaming") as? String == "false" }
+        var snapshot = H5Snapshot.make(call, visible: true)
+        snapshot["transcript"] = ["history":[["key":"answer", "role":"assistant", "speaker":"V", "text":"答案保持在问题后面。", "complete":true, "at":2]], "current":[["key":"question", "role":"user", "speaker":"你", "text":"问题还在转写", "complete":false, "at":1]]]
+        host.update(snapshot, foreground: true)
+        try await until { try await web.evaluateJavaScript("[...document.querySelectorAll('.turns.now .turn')].map(e=>e.dataset.key).join(',')") as? String == "question,answer" }
+        await call.end()
+    }
+
 }

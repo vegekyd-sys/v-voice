@@ -1,5 +1,12 @@
 import {transcriptEvent} from './events.mjs';
 
+// Completion is a state, not chronology. Keep overlapping speech and late
+// finals in their original positions in UI, Reaction input and display receipts.
+export function orderedTranscriptRows(snapshot) {
+  const rows = [...(snapshot?.history ?? []), ...(snapshot?.current ?? [])];
+  return rows.every(row => Number.isFinite(row.at)) ? rows.sort((a, b) => a.at - b.at) : rows;
+}
+
 export function formatTranscriptTime(at) {
   if (!Number.isFinite(at) || at < 0) return '';
   const date = new Date(at);

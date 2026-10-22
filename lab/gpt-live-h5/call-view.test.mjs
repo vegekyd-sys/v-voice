@@ -105,3 +105,10 @@ test('view notifies only on real changes', () => {
   view.voice('idle');
   assert.equal(calls, 1);
 });
+
+test('completion must not reorder overlapping captions or hide the newest answer', () => {
+  const user = {key:'u', role:'user', text:'问题', at:1, complete:false};
+  const answer = {key:'a', role:'assistant', text:'答案', at:2, complete:true};
+  assert.deepEqual(splitTurns({history:[answer],current:[user]}).now.map(r=>r.key), ['u','a']);
+  assert.deepEqual(splitTurns({history:[{...user,complete:true},answer],current:[]}).now.map(r=>r.key), ['u','a']);
+});

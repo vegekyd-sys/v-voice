@@ -1,3 +1,4 @@
+import {orderedTranscriptRows} from './transcript-presentation.mjs';
 // Cosmetic transport deadline; never awaited by speech or tool execution.
 export const AVATAR_REQUEST_TIMEOUT_MS = 3500;
 export const ASSISTANT_BEAT_INTERVAL_MS = 6000;
@@ -53,7 +54,7 @@ export function createAvatarReactions({request,apply,attend=()=>{},current=()=>(
  return {
   update({snapshot,activity='idle',taskOutcome='none'}){
    if(closed)return;
-   const rows=[...(snapshot?.history??[]).map(r=>({...r,complete:r.complete??true})),...(snapshot?.current??[])].filter(r=>['user','assistant'].includes(r.role)&&r.speaker!=='V · 完整方案'&&typeof r.text==='string'&&r.text.trim());
+   const rows=orderedTranscriptRows({history:(snapshot?.history??[]).map(r=>({...r,complete:r.complete??true})),current:snapshot?.current??[]}).filter(r=>['user','assistant'].includes(r.role)&&r.speaker!=='V · 完整方案'&&typeof r.text==='string'&&r.text.trim());
    rows.sort((a,b)=>{const na=/^turn-(\d+)$/.exec(a.key),nb=/^turn-(\d+)$/.exec(b.key);return na&&nb?Number(na[1])-Number(nb[1]):Number.isFinite(a.at)&&Number.isFinite(b.at)?a.at-b.at:0;});
    const user=rows.filter(r=>r.role==='user').at(-1),nextEpoch=user?.key??'';
    const previousUser=latest?.user;
