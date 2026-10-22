@@ -252,6 +252,39 @@ import VVoiceCore
         try await fixture("end")
         try await until { call.phase == .ended }
     }
+    func testNativeNoticeCannotEraseResponseOwnershipBeforeReplacement() async throws {
+        let call = try await client()
+        try await fixture("native-mode"); call.model = .seeduplex
+        try await call.startOrContinue()
+        try await until { call.phase == .listening }
+        try await fixture("audio", ["ms":5000,"responseId":"old"])
+        try await until { call.phase == .speaking }
+        let inputBefore = try await stats()["inputBytes"] as? Int ?? 0
+        // Cached tool-start/progress clips have no provider response ID.
+        try await fixture("audio", ["ms":240])
+        try await fixture("audio", ["ms":240,"responseId":"new"])
+        try await until({ call.phase == .listening }, timeout: 2)
+        try await fixture("audio", ["ms":5000,"responseId":"old"])
+        try await Task.sleep(for: .milliseconds(350))
+        XCTAssertEqual(call.phase, .listening)
+        let inputAfter = try await stats()["inputBytes"] as? Int ?? 0
+        XCTAssertGreaterThan(inputAfter, inputBefore)
+    }
+    func testConfirmedClearCannotReplayRetiredResponse() async throws {
+        let call = try await client()
+        try await fixture("native-mode"); call.model = .seeduplex
+        try await call.startOrContinue()
+        try await until { call.phase == .listening }
+        try await fixture("audio", ["ms":5000,"responseId":"old"])
+        try await until { call.phase == .speaking }
+        try await fixture("event", ["event":["type":"audio.clear","retiredResponseId":"old"]])
+        try await until({ call.phase == .listening }, timeout: 1)
+        try await fixture("audio", ["ms":5000,"responseId":"old"])
+        try await Task.sleep(for: .milliseconds(350))
+        XCTAssertEqual(call.phase, .listening)
+        try await fixture("audio", ["ms":240,"responseId":"new"])
+        try await until({ call.phase == .listening }, timeout: 2)
+    }
     func testGrokVoiceChoiceIsSentAndGPTNativeOptionIsAvailable() async throws {
         let call = try await client()
         await call.refreshOptions()

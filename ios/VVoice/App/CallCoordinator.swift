@@ -524,13 +524,21 @@ import VVoiceCore
                 clearOutput()
             }
             nativeOutputDone = false
-            injectedSpeech = v["source"] as? String == "injected-speech"; responseID = v["responseId"] as? String
+            injectedSpeech = v["source"] as? String == "injected-speech"
+            // Host tool notices have no provider ID. Keep the previous owner so
+            // the next native response still replaces its queued audio tail.
+            if let next = v["responseId"] as? String { responseID = next }
+            else if !nativeDuplex { responseID = nil }
             if audioReady { try audio.play(bytes, sequence: v["sequence"] as? Int) }
             else {
                 guard earlyAudioBytes + bytes.count <= 480_000 else { throw VoiceError.bufferOverflow }
                 earlyAudio.append(EarlyAudio(bytes: bytes, sequence: v["sequence"] as? Int)); earlyAudioBytes += bytes.count
             }
-        case "audio.clear": clearOutput()
+        case "audio.clear":
+            // A confirmed interruption retires the response, not just its
+            // currently queued buffers. Late packets must not restart it.
+            if let retired = v["retiredResponseId"] as? String { retireResponse(retired) }
+            clearOutput()
         case "input.speech.started":
             if nativeAssisted, audio.queuedFrames > 0 { nativePause.nativeStarted(at: ProcessInfo.processInfo.systemUptime * 1000); audio.setPlaybackPaused(nativePause.held) }
         case "input.speech.stopped":
