@@ -1225,3 +1225,17 @@ test('a same native turn continuation invalidates an in-flight hangup confirmati
  for(let at=50;at<=1300;at+=50)f.meter(at,0,0);await tick();assert.equal(f.requests.filter(x=>x.route==='call-control-confirm').length,1);
  send({type:'turn.delta',turn_id:'continue-stream',delta:'之前先查一下明天日程'});result.resolve({...value,type:'voice.end.accepted'});await tick();assert.equal(f.body.dataset.callState,'connected');assert.equal(sends,0);assert.equal(peer.closed,false);
 });
+
+test('native interruption gives the next answer a fresh caption row after the new user turn',async t=>{
+ let relay;
+ const f=await fixture(t,{api:(route,payload,result)=>route==='session'?{...result,transport:'gateway-relay',provider:'seeduplex'}:result,
+  relayFactory:values=>{relay=values;return {start:async()=>{},dispose(){}};}});
+ await f.context.startCall();
+ relay.onEvent({type:'transcript',role:'assistant',text:'还未说完的旧故事',final:false});
+ relay.onEvent({type:'input.speech.started'});
+ relay.onEvent({type:'transcript',role:'user',text:'先停，二加三等于几？',final:true});
+ relay.onEvent({type:'transcript',role:'assistant',text:'五。',final:true});
+ const rows=f.view.get().transcript.history;
+ assert.deepEqual(Array.from(rows,r=>r.text),['先停，二加三等于几？','五。']);
+ assert.deepEqual(Array.from(rows,r=>r.role),['user','assistant']);
+});

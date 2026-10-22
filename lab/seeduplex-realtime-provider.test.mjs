@@ -690,3 +690,21 @@ test('host task narration is captioned with its own source, only once its audio 
  socket.message({type:'response.output_audio.delta',response_id:'stage',delta:floatAudio([.1])});
  assert.deepEqual(texts,[['assistant','后台正在读网页。',true,'task-progress']]);bridge.close();
 });
+
+test('native full-duplex recognition can yield reversibly without cancelling an answer or backend work',async()=>{
+ const socket=new FakeSocket(),speech=[],clears=[],audio=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture-key'},nativeDuplex:true,
+  onInputSpeech:active=>speech.push(active),onClearAudio:reason=>clears.push(reason),onAudio:bytes=>audio.push(bytes),onError:error=>assert.fail(error.message)},
+  {createWebSocket:async()=>socket});
+ const ready=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await ready;
+ socket.message({type:'response.output_audio.started',response_id:'old',tts_type:'default'});
+ socket.message({type:'conversation.item.input_audio_transcription.started'});
+ assert.deepEqual(speech,[true]);assert.deepEqual(clears,[]);assert(!socket.sent.some(e=>e.type==='response.cancel'));
+ socket.message({type:'conversation.item.input_audio_transcription.completed',text:'嗯。'});
+ socket.message({type:'response.output_audio.delta',response_id:'old',delta:floatAudio([.5])});
+ assert.equal(audio.length,1,'the paused answer is retained when there is no replacement answer');assert.deepEqual(speech,[true,false]);
+ socket.message({type:'conversation.item.input_audio_transcription.started'});
+ socket.message({type:'conversation.item.input_audio_transcription.failed'});assert.deepEqual(speech,[true,false,true,false]);
+ socket.message({type:'response.canceled',response_id:'old'});assert.deepEqual(clears,['barge-in'],'a real upstream cancel still clears playback');
+ bridge.close();
+});

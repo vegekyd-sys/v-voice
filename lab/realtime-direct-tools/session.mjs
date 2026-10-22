@@ -215,7 +215,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     // A running background task counts as V being busy for repeat prompts.
     if(route)speakerRouting.setBusyProbe?.(s.id,()=>Boolean(s.backend?.snapshot?.()));
     s.speakerRouting=Boolean(route);
-    return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket,...route?{speakerRouting:route}:{}};
+    s.nativeDuplex=model==='seeduplex'&&surface==='phone'&&!route;
+    return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket,...(s.nativeDuplex?{nativeDuplex:true}:{}),...route?{speakerRouting:route}:{}};
   }
   function attachClient(s,client){
     client.on('error',()=>void close(s.id).catch(()=>{}));
@@ -355,7 +356,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const voiceTools=hostCallControl?tools.filter(t=>t.name!=='end_call'):tools;
     const baseInstructions=directInstructions(entries,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:selfNotice?'model':'cached'});
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
-      instructions:speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions,tools:voiceTools,inputSampleRate:s.inputSampleRate,
+      instructions:(speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions)+(s.nativeDuplex?'\n通话节奏：持续听用户说话。用户犹豫、思考或句子未说完时耐心等候；普通“嗯、对”是附和，不必重新作答。忽略电视播报、背景噪声和明确对旁人的话。用户真正插话或纠正时，让用户说完，再只回应最新要求，不继续朗读旧回答。普通回答先简短说清重点，用户追问再展开。':''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
+      onInputSpeech:active=>emit(s,{type:active?'input.speech.started':'input.speech.stopped'}),
       onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),
       toolStartNotice:call=>{
         return noticeClips?toolStartClip(call,noticeClips)?.text:null;
@@ -421,7 +423,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){s.latestUserTurn=Object.freeze({text:e.text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(e.text);}
       else if(e.type==='playback.state'&&typeof e.speaking==='boolean'){s.playing=e.speaking;audit({type:'client.playback-state',voiceSessionId:s.id,speaking:e.speaking});}
       else if(e.type==='playback.stats'){
-        const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','inputBatches','inputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
+        const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','inputBatches','inputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','nativePauses','nativeResumes'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
         for(const key of ['trackMuted','trackEnabled','trackLive','pageHidden'])if(typeof e[key]==='boolean')stats[key]=e[key];
         if(['running','suspended','interrupted','closed'].includes(e.contextState))stats.contextState=e.contextState;
         audit({type:'client.playback-stats',voiceSessionId:s.id,stats});

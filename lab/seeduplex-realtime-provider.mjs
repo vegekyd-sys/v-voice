@@ -776,11 +776,13 @@ export class SeeduplexRealtimeVoiceBridge {
       this.outputClosed = false;
     }
     if (type === "conversation.item.input_audio_transcription.started") {
+      if(this.request.nativeDuplex)this.request.onInputSpeech?.(true);
       if (this.injectedSpeech && this.responseActive) this.#cancelUpstreamResponse(true);
       this.responseOwnerAnnounced = false;
       this.responseOwnerId = undefined;
     }
     if (type === "conversation.item.input_audio_transcription.completed") {
+      if(this.request.nativeDuplex)this.request.onInputSpeech?.(false);
       // A completed transcription carrying real text is the only evidence that
       // the user actually spoke. Only then does a pending barge-in earn the
       // right to tear the upstream generation down. This runs after the reset
@@ -793,6 +795,7 @@ export class SeeduplexRealtimeVoiceBridge {
       if (spoken && this.bargeInPending) this.#cancelUpstreamResponse();
       this.bargeInPending = false;
     }
+    if(type === "conversation.item.input_audio_transcription.failed" && this.request.nativeDuplex)this.request.onInputSpeech?.(false);
     const continuingBatch = this.toolBatches.find((batch) => batch.continuing);
     const internalContinuationResponse =
       type === "response.created" &&
@@ -845,7 +848,7 @@ export class SeeduplexRealtimeVoiceBridge {
       return;
     }
     if (
-      type === "conversation.item.input_audio_transcription.started" ||
+      (type === "conversation.item.input_audio_transcription.started" && !this.request.nativeDuplex) ||
       type === "response.canceled"
     ) {
       this.request.onClearAudio?.("barge-in");
