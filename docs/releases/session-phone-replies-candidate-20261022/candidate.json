@@ -1,0 +1,11 @@
+{
+  "version": "voice-session-replies.20261022.1",
+  "status": "candidate-only",
+  "runtimeCommit": "d396b325817adc50460f23f19f58fe877e229577",
+  "base": "1a0063a",
+  "verifiedFiles": 213,
+  "liveReplyCalls": 4,
+  "productionReleased": false,
+  "gatewayRestarted": false,
+  "remaining": ["DM backend child-result failure", "GPT real media", "physical-phone acceptance", "arbitrary-caller permissions"]
+}

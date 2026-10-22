@@ -29,3 +29,15 @@ Live synthetic-audio checks used the deployed modules through loopback HTTP/WebS
 The DM failure followed a backend child run. Gateway logs show a completed child and announcement; `voice.product.task.read` on the retry returned an error. This narrows the unresolved problem to the existing backend task/child-result path, but does not establish a root cause or a fix. Do not label the candidate fully accepted or promote it based on passing unit tests. No shared Gateway patch/restart was made to mask this failure.
 
 Human Feishu/mobile audio acceptance, GPT media acceptance, arbitrary-caller permission parity and automatic installation for every DM remain unverified or unenabled. This candidate is available for scoped user trial and remains a draft PR.
+
+## Main replies synced to Feishu — follow-up
+
+Runtime `d396b325817adc50460f23f19f58fe877e229577`, version `voice-session-replies.20261022.1`. Both existing VLab entries enable private `replySync`. The slim Voice connection config has no channels section, so the candidate uses a separate credential-free Feishu account mapping extracted from the actual Gateway config and supplied through `VOICE_FEISHU_ACCOUNTS_FILE`. Unknown/ambiguous account routes fail at startup rather than falling back to another bot.
+
+Local: 746 main tests and 95 Speaker tests passed; iOS resource check passed. After the slim-config fix, 17 focused route/server tests passed.
+
+Real synthetic audio connected the deployed modules to the existing Gateway and providers. SeedDuplex and Grok each ran one DM and one group call: all four recognized speech, returned audio, received exactly one confirmed Feishu send receipt, and found the reply in the bound session history. Native Feishu UI visibly showed two test messages in each conversation (one per model). No real microphone was recorded. Test calls ended with active/creating/background counts zero.
+
+Main replies are merged on completed responses. Greeting/progress/partial/interrupted output is excluded. Full backend result delivery and hangup retention are covered by local tests; this round did not repeat the known failing DM backend-child acceptance. GPT output-event handling is covered by server fixtures, not real WebRTC media. The earlier backend failure and physical-device/GPT acceptance gaps remain.
+
+The isolated Voice candidate was switched after idle verification with 213-file integrity checks and source/config rollback copies. Gateway invocation remained unchanged; no production merge or deployment.

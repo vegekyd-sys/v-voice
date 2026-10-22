@@ -97,7 +97,7 @@ Candidate 需用两个真实、已授权的飞书群/DM 验证：背景上下文
 
 ## Candidate: main replies in Feishu
 
-Private entries can enable `replySync: true`. The host resolves the entry's configured Feishu app/account against Gateway configuration and sends completed substantive replies with the exact `sessionKey`, account and target through existing `send` RPC. Gateway handles normal channel delivery and transcript mirroring; browser fields cannot choose or change the destination. Legacy personal entry remains unchanged.
+Private entries can enable `replySync: true`. The host resolves the entry's configured Feishu app/account against Gateway configuration (or a credential-free `VOICE_FEISHU_ACCOUNTS_FILE` mapping extracted from it when Voice uses a slim connection config) and sends completed substantive replies with the exact `sessionKey`, account and target through existing `send` RPC. Gateway handles normal channel delivery and transcript mirroring; browser fields cannot choose or change the destination. Legacy personal entry remains unchanged.
 
 Only final response segments are merged and sent. Greeting, progress, partial and interrupted output are omitted. Full backend results are sent once, including completion after hangup; their spoken summary is suppressed from duplicate delivery. An ambiguous timeout retries with the same idempotency key. Unconfirmed sends remain failures and show a nonfatal phone-page notice. This is call-scoped deduplication plus Gateway idempotency, not a promise of restart-proof exactly-once delivery.
 
