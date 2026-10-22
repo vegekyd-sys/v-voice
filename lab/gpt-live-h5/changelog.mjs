@@ -2,9 +2,10 @@
 // experiments and unaccepted capabilities do not belong in this list.
 // Used only by the isolated candidate's release file, never VOICE_UPDATES.
 export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
-  version:'voice-seeduplex-duplex.20261022.6',date:'2026-10-22',
+  version:'voice-seeduplex-duplex.20261022.7',date:'2026-10-22',
   title:'原生多人和停声验证候选',status:'candidate-validation',
   items:[
+    '修复已接受挂断却没有后续告别语音时，电话一直不结束的问题。',
     '收紧停声条件：未说完的“先停”不再直接取消正在播的回答。',
     '补充本通话内两人各自确认姓名和个人信息的对话规则。',
     '仅 Candidate；持续电视、人声干扰和真人设备验收仍在验证。',

@@ -77,6 +77,10 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
         safe.streams=Object.fromEntries(Object.entries(event.streams).filter(([k,v])=>/^[a-z_]{1,24}(?:\/[a-z_]{1,24}){0,2}$/.test(k)&&Number.isSafeInteger(v)).slice(0,24));
       return enqueue({...owner,type:event.type,...safe});
     }
+    if(event.type==='call.ending'){
+      if(!['farewell-requested','farewell-unavailable'].includes(event.stage))return false;
+      return enqueue({...owner,type:event.type,stage:event.stage});
+    }
     if(event.type==='speech.control'){
       if(!['ready','reconnecting','interrupted'].includes(event.stage))return false;
       return enqueue({...owner,type:event.type,stage:event.stage});

@@ -45,7 +45,7 @@ export function directInstructions(catalog,context='',model='',options={}) {
 // announced, so a burst of quick tool calls becomes one line.
 export const NARRATION_DEFAULTS=Object.freeze({firstMs:6000,firstHeartbeatMs:15000,settleMs:2000,stageGapMs:12000,factGapMs:6000,heartbeatMs:30000,quietAfterUserMs:4000,startMs:2500,max:12});
 
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',toolProgressClips=null,narration,toolStartNotice='cached'}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,toolProgressClips=null,narration,toolStartNotice='cached'}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -162,7 +162,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(terminal.ok===true&&processExited(terminal.output))s.processes.delete(id);
     else throw Error('执行会话退出尚未确认');
   };
-  const cancel=async(s,{includeBackend=true}={})=>{s.epoch++;for(const [id,c] of s.pending)if(includeBackend||id!==s.backgroundCallId)c.abort();s.ending=null;emit(s,{type:'end.cancelled'});
+  const clearEnding=s=>{clearTimeout(s.ending?.fallbackTimer);clearTimeout(s.ending?.noAudioTimer);s.ending=null;};
+  const cancel=async(s,{includeBackend=true}={})=>{s.epoch++;for(const [id,c] of s.pending)if(includeBackend||id!==s.backgroundCallId)c.abort();clearEnding(s);emit(s,{type:'end.cancelled'});
     s.progress=null;s.backendResult?.resolve();s.backendResult=null;
     const backend=await Promise.allSettled([includeBackend?s.backend?.cancel():undefined]);
     const local=await Promise.allSettled([...s.localCleanups]);
@@ -195,6 +196,28 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   if(!['courtesy','provider','assisted'].includes(nativePlaybackPolicy))throw Error('Unsupported native playback policy');
   const localTools=TOOLS.filter(t=>(calendar||t.name!=='feishu_calendar')&&(larkRead||t.name!=='lark_read'));
   const sessionTools=s=>[...(s.display?localTools:localTools.filter(t=>t.name!=='show_content')),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[])];
+  // A successful native end_call can return no further speech at all. It is
+  // already the model's semantic decision; never infer ending from keywords.
+  const acceptEnding=(s,callId)=>{
+    clearEnding(s);const ending=s.ending={callId,hasAudio:false,priorResponseId:s.bridge.audioResponseId??null};
+    emit(s,{type:'end.accepted',callId});
+    if(!s.nativeDuplex||s.model!=='seeduplex')return;
+    const valid=()=>current(s)&&s.ending===ending;
+    const finishSilent=()=>{
+      if(!valid()||ending.hasAudio)return;
+      if(s.userSpeaking){ending.noAudioTimer=setTimeout(finishSilent,250);ending.noAudioTimer.unref?.();return;}
+      audit({type:'call.ending',voiceSessionId:s.id,stage:'farewell-unavailable'});
+      void close(s.id).catch(()=>{});
+    };
+    const fallback=()=>{
+      if(!valid()||ending.hasAudio)return;
+      if(s.userSpeaking){ending.fallbackTimer=setTimeout(fallback,250);ending.fallbackTimer.unref?.();return;}
+      audit({type:'call.ending',voiceSessionId:s.id,stage:'farewell-requested'});
+      s.bridge.speakProgress('好，拜拜，下次聊。',{caption:true,source:'call-farewell'});
+      ending.noAudioTimer=setTimeout(finishSilent,nativeFarewellTimeoutMs);ending.noAudioTimer.unref?.();
+    };
+    ending.fallbackTimer=setTimeout(fallback,nativeFarewellDelayMs);ending.fallbackTimer.unref?.();
+  };
   async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy}) {
     if(!['phone','speaker'].includes(surface))throw Error('不支持的语音终端');
     if(![16000,24000].includes(inputSampleRate))throw Error('不支持的输入采样率');
@@ -312,7 +335,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           s.progress=null;await new Promise(resolve=>{s.backendResult={resolve};deferred(s);});
         }
         if(call.name==='cancel_task')result=await cancel(s);
-        if(call.name==='end_call'&&current(s)&&s.epoch===epoch){s.ending={callId:call.callId,hasAudio:false};emit(s,{type:'end.accepted',callId:call.callId});}
+        if(call.name==='end_call'&&current(s)&&s.epoch===epoch)acceptEnding(s,call.callId);
       } catch(error){result={error:controller.signal.aborted?'任务已取消。不要继续旧任务。':error.message};}
       finally{admittedUserTurns.delete(call.callId);s.pending.delete(call.callId);s.toolOwners.delete(call.callId);if(s.retiredBridges.has(ownerBridge)&&![...s.toolOwners.values()].includes(ownerBridge)){ownerBridge.close();s.retiredBridges.delete(ownerBridge);}if(call.callId===s.backgroundCallId){s.backgroundCallId=null;s.backgroundBridge=null;if(!s.backend.snapshot())detached.delete(s);}}
       if(!current(s))return;
@@ -372,21 +395,21 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         deliverAudio(clip.pcm,{source:clip.source,sha256:clip.sha256,callId:call.callId});emit(s,{type:'audio.done'});
         });
       },
-      onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.responseActive=true;s.narrationBusyUntil=0;if(s.ending)s.ending.hasAudio=true;deliverAudio(audio,metadata);}),
+      onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.responseActive=true;s.narrationBusyUntil=0;if(s.ending&&(!s.nativeDuplex||metadata?.responseId&&metadata.responseId!==s.ending.priorResponseId)){s.ending.hasAudio=true;s.ending.responseId=metadata?.responseId;clearTimeout(s.ending.fallbackTimer);clearTimeout(s.ending.noAudioTimer);}deliverAudio(audio,metadata);}),
       onTranscript:(role,text,final,source)=>{
         if(!current(s))return;
         if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
         const deliver=()=>{
         if(role==='assistant'&&final){speakerRouting?.assistant(s.id,text);if(!source){s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
         if(role==='user'){if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
-        if(role==='user'&&final&&s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}
+        if(role==='user'&&final&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{})});
         };
         if(role==='assistant')routeOutput('transcript',{role,text,final,source},deliver);else deliver();
       },
-      onClearAudio:(_reason,metadata)=>routeOutput('clear',null,()=>{audit({type:'audio.clear',voiceSessionId:s.id});s.responseActive=false;if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear',...(typeof metadata?.retiredResponseId==='string'?{retiredResponseId:metadata.retiredResponseId}:{})});}),
+      onClearAudio:(_reason,metadata)=>routeOutput('clear',null,()=>{audit({type:'audio.clear',voiceSessionId:s.id});s.responseActive=false;if(s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear',...(typeof metadata?.retiredResponseId==='string'?{retiredResponseId:metadata.retiredResponseId}:{})});}),
       onAudioSegmentDone:()=>routeOutput('done',null,()=>{s.responseActive=false;}),
-      onResponseDone:e=>routeOutput('done',e,()=>{s.responseActive=false;s.narrationBusyUntil=0;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}}),
+      onResponseDone:e=>routeOutput('done',e,()=>{s.responseActive=false;s.narrationBusyUntil=0;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'&&(!s.ending.responseId||!e.responseId||e.responseId===s.ending.responseId)){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}}),
       onEvent:e=>{if(['response.created'].includes(e.type))s.responseActive=true;
         if(s.nativeDuplex&&e.type==='native.listening-aside')emit(s,{type:'input.speech.ignored',preservedResponseId:s.bridge?.audioResponseId??null});
         if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.userSpeaking=true;s.lastUserAt=Date.now();}
@@ -423,7 +446,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         // Only a speaker endpoint can mark a barge-in as confirmed speech (device echo cancellation).
         const device=s.surface==='speaker'&&typeof e.deviceId==='string'?e.deviceId:null,confirmed=Boolean(device&&e.confirmed===true);
         s.bridge.handleBargeIn({confirmed});audit({type:'client.barge-in',voiceSessionId:s.id,...(device?{deviceId:device,confirmed}:{})});}
-      else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){s.latestUserTurn=Object.freeze({text:e.text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(e.text);}
+      else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){if(s.nativeDuplex&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}s.latestUserTurn=Object.freeze({text:e.text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(e.text);}
       else if(e.type==='playback.state'&&typeof e.speaking==='boolean'){s.playing=e.speaking;audit({type:'client.playback-state',voiceSessionId:s.id,speaking:e.speaking});}
       else if(e.type==='playback.stats'){
         const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','inputBatches','inputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','nativePauses','nativeResumes'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
@@ -450,7 +473,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       forward:audio=>s.bridge.sendAudio(audio),context:text=>s.bridge.sendUserMessage(text),clarify:(text,options)=>s.bridge.speakProgress(text,{caption:true,...options}),interrupt:()=>s.bridge.handleBargeIn(),
       cancel:()=>s.bridge.cancelPendingResponse(),invalidate:()=>{s.personaKey=null;},
       end:({turnId})=>{if(!current(s)||!s.bridge.ready)return;s.ending={callId:'speaker-end-'+turnId,hasAudio:false,source:'speaker'};emit(s,{type:'end.accepted',callId:s.ending.callId});s.bridge.speakProgress('好，拜拜，下次聊。',{caption:true});},
-      cancelEnd:()=>{if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}},
+      cancelEnd:()=>{if(s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}},
       rejectNativeEnd:call=>{if(current(s))s.bridge.submitToolResult(call.callId,{accepted:false,instruction:'主机未确认结束电话。不要说再见或再次请求挂断；继续回答最新的用户问题。'});},
       // A bounded speculative lane hears new audio without replacing the live
       // reply or executing a tool. Only semantic admission can promote it.

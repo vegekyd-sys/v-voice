@@ -125,3 +125,10 @@ test('where a background result went is recorded without its content',async t=>{
   assert.deepEqual(rows.filter(r=>r.type.startsWith('backend.')).map(r=>r.type),['backend.read-retry','backend.result-held','backend.result-context','backend.result-notice','backend.result-spoken-late','backend.result-answered','backend.result-superseded','backend.result-unspoken']);
   assert(!JSON.stringify(rows).includes('SECRET'));
 });
+
+test('ending diagnostics retain only fixed lifecycle stages',async t=>{
+ const f=await fixture(t);f.created();
+ for(const stage of ['farewell-requested','farewell-unavailable'])assert(f.log.audit({type:'call.ending',voiceSessionId:'v1',stage,text:'SECRET',apiKey:'SECRET'}));
+ assert.equal(f.log.audit({type:'call.ending',voiceSessionId:'v1',stage:'SECRET'}),false);
+ await f.log.close();const rows=await f.rows();assert.equal(rows.filter(r=>r.type==='call.ending').length,2);assert(!JSON.stringify(rows).includes('SECRET'));
+});
