@@ -1,0 +1,84 @@
+{
+  "schema": "v-voice-release-registration-v1",
+  "release": "voice-native-duplex-20261022",
+  "version": "voice-native-duplex.20261022.8",
+  "sourceBranch": "main",
+  "entryCommit": "eaa920e64b7eb8b1b034b8a03d1bfff636d65e42",
+  "featureMergeCommit": "4fee7bc0f4ef566edf7266c152746a049b5ff8bb",
+  "previousProductionCommit": "0d0b3d96c5391dde5362c5db270018958948584f",
+  "phase": "production-web-accepted-ios-native-code-merged-device-update-pending",
+  "gatewayRestartRequired": false,
+  "gatewayUnchangedVerified": true,
+  "existingPrivateSettingsPreserved": true,
+  "nativeSettingsAdded": {
+    "VOICE_PHONE_INPUT_POLICY": "native",
+    "VOICE_NATIVE_PLAYBACK_POLICY": "assisted",
+    "VOICE_NATIVE_INTERRUPT_ASR": "1"
+  },
+  "files": 205,
+  "filesSha256": "b7b2c9fb763a3a0d0950afada2e2fd50cc038bf56d2455cd9c477a3d7004e0a6",
+  "pullRequest": "https://github.com/vegekyd-sys/v-voice/pull/62",
+  "notesPullRequest": "https://github.com/vegekyd-sys/v-voice/pull/63",
+  "mainChecks": {
+    "run": 39763731608,
+    "conclusion": "success"
+  },
+  "tests": {
+    "node": 713,
+    "speaker": 95,
+    "swiftCore": 20,
+    "iosNativeSimulator": 51
+  },
+  "acceptance": {
+    "candidate": {
+      "nativeAssistedReservation": true,
+      "actualOutputSilenceMs": 171,
+      "oldAudioResumed": false,
+      "automaticHangup": true
+    },
+    "production": {
+      "automaticHangup": true,
+      "oldAudioResumed": false,
+      "leakedSamples": 0,
+      "stopAfterInputMs": 163,
+      "pauseControlMs": 151,
+      "reservations": [
+        {
+          "nativeDuplex": true,
+          "nativePlaybackPolicy": "assisted",
+          "speakerRouting": false
+        }
+      ]
+    },
+    "syntheticInput": true,
+    "realProvider": true,
+    "browserAudioWorkletOutputMeasured": true,
+    "newPhysicalIPhoneAcousticAcceptance": false,
+    "singleSamplesNotPercentiles": true,
+    "observedHangupHTTP409": true,
+    "publicAssetHashesVerified": true
+  },
+  "ios": {
+    "nativeDuplexAdaptationMerged": true,
+    "signedDevelopmentBuild": 16,
+    "signedSourceCommit": "f0528f7ba95c59b6c55f2678f52be38e63b1386e",
+    "ipaSHA256": "cca45478b9d5804b2a5d90153aa71c4028677d3b4fb6d2bd07e1098370f83152",
+    "deviceObservedBuild": 17,
+    "deviceAppReplaced": false,
+    "reason": "Separate active iOS/Live Activity candidate owns installed build 17. Do not overwrite with this task build 16; combined native app update is pending. Existing app retains Speaker compatibility."
+  },
+  "limits": [
+    "Continuous TV/bystander speech can cause long reversible pauses or unwanted replies.",
+    "Quiet interruptions and near-similar voices are not fully accepted.",
+    "Missing-upstream-farewell recovery has service fault simulation; live smoke used normal provider farewell.",
+    "Build 16 simulator/signing checks do not establish physical iPhone acoustic acceptance."
+  ],
+  "rollback": {
+    "previousReleaseRetained": true,
+    "beforePointerAndLauncherRetained": true,
+    "privatePlanAndInstallReceiptsRetained": true,
+    "requiresKnownIdleCallsAndTasks": true,
+    "onlyVoiceUnitRestarts": true,
+    "actualRollbackDrill": false
+  }
+}
