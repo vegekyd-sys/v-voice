@@ -4,7 +4,7 @@
   "sourceBranch": "main",
   "entryCommit": "0d0b3d96c5391dde5362c5db270018958948584f",
   "previousProductionCommit": "16932ca42f415c8b0e93c5886b61cb571de4a7d3",
-  "phase": "web-deployed-build14-physical-candidate-accepted",
+  "phase": "production-web-and-private-ios-requested-scopes-accepted",
   "gatewayRestartRequired": false,
   "gatewayUnchangedVerified": true,
   "privateEnvironmentUnchangedVerified": true,
@@ -81,10 +81,11 @@
     "currentVoiceRecheck": "build14 web/Action Button/lock-screen two-way voice/island controls all confirmed normal by user",
     "priorAcceptance": "physical connection and two-way voice accepted by user",
     "restoredAtUserRequest": true,
-    "originalSignedIPAHash": "63c9e5c95682df03918990f4563c57757d39814475c09a489043207b860b5100",
+    "originalSignedIPAHash": "58dcb2a5b3a850f279a821965b92ce5dbaec820da0e4a6c52ed8a7f7207ee56b",
     "iconReadbackVerified": true,
     "candidateSourceCommit": "55f003b45662413057c36ad4138dddbae93371aa",
-    "formalMainRebuild": "pending"
+    "formalMainRebuild": "signed_installed_and_read_back",
+    "formalMainSourceCommit": "2adca2a03e56d51f51a39f7e939dab27c0aaf2a5"
   },
   "environmentInvestigation": {
     "deviceHubScreenSharingStopped": true,
@@ -111,5 +112,20 @@
     "build10TwoWayVoiceRecoveredAfterScreenSharingStopped": true,
     "newShellVoiceWithoutScreenSharing": "build14 actual nonzero microphone signal, multiple recognized human turns and replies, requested controls accepted"
   },
-  "homepageChangelog": "Production PR58 entry reviewed and still accurately covers this same web-delivery release; no additional Voice service restart for diagnostic-only native changes"
+  "homepageChangelog": "Production PR58 entry reviewed and still accurately covers this same web-delivery release; no additional Voice service restart for diagnostic-only native changes",
+  "nativeFormalBuild": {
+    "sourceCommit": "2adca2a03e56d51f51a39f7e939dab27c0aaf2a5",
+    "mainChecks": {
+      "run": 39728438243,
+      "conclusion": "success"
+    },
+    "version": "1.0.0",
+    "build": 14,
+    "ipaSHA256": "58dcb2a5b3a850f279a821965b92ce5dbaec820da0e4a6c52ed8a7f7207ee56b",
+    "archiveAndIndependentExportVerified": true,
+    "sameNativeReleaseInputsAsAcceptedCandidate": true,
+    "bindingIdentityUnchanged": true,
+    "mergePR": 59,
+    "overwriteInstalledAndReadBack": true
+  }
 }

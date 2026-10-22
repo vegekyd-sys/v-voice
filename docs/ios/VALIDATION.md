@@ -232,3 +232,12 @@ UI 实操发现原 20 帧（400 ms）主线程交接阈值，在从后台切到�
 [Apple 文档](https://developer.apple.com/documentation/xcode/interacting-with-your-app-in-device-hub) 说明物理设备 View Screen 会令普通 App 不能使用麦克风并可能录到静音。语音验收前必须停止真机 Screen Sharing，不能只确认设备解锁。视觉镜像、模拟器 PCM 计数、真机帧数增长都不等于真人声音进入模型。只读信号统计不包含录音或聊天正文。
 
 本次网页同步发布及 build 12／13 的零信号复现、build 10 覆盖回退和当前未接受范围详见 [正式发布／回退登记](../releases/voice-ios-web-delivery-20261022/README.md)。两项新增转换测试在隔离模拟器通过：8/16/24/48 kHz 非零信号可转为真实非零 PCM16，零输入仍会产生足量帧但 RMS=0。它们没有验证物理麦克风，不据此给新壳恢复结论。
+
+
+## build 14 · 重新验证与真人通过 · 2026-10-22
+
+Core16、原生WK／音频／集成46、既有服务合同80全部通过。新增非零信号实际经过转换和RelayTransport到本地接收端的测试，不再将PCM计数增长视为声音有效；模拟器同一个安装包实际显示A/B两次网页版本。
+
+用户授权后，保留原绑定覆盖安装development签名build14；真机屏幕共享关闭。用户确认网页、操作按钮、锁屏双向语音和灵动岛静音／恢复／结束全部正常，随后已挂断。只读诊断显示本机麦克风6479帧、911个有效音量帧、峰值RMS约0.375；仅汇总计数入登记，不保存音频或正文。结束后空闲打开App，真实冷下载的正式UI archive完成ready，哈希与生产一致。原生代码没有改采集路由、AEC、Intent或通话owner。
+
+已合入PR59；正式main提交`2adca2a`的CI成功。逐项Git对象哈希确认其原生发布输入与用户接受候选`55f003b`相同，再从main重新签名构建。最终安装与IPA哈希见 [验收登记](new-shell-build14-validation.json)。本轮未改Voice服务或Gateway，原build11签名回退包保留。

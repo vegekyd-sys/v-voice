@@ -2,13 +2,13 @@
   "schema": 1,
   "version": "1.0.0",
   "build": 14,
-  "sourceCommit": "55f003b45662413057c36ad4138dddbae93371aa",
-  "candidateOnly": true,
+  "sourceCommit": "2adca2a03e56d51f51a39f7e939dab27c0aaf2a5",
+  "candidateOnly": false,
   "signedArchiveVerified": true,
   "exportedIPAVerified": true,
-  "ipaSHA256": "63c9e5c95682df03918990f4563c57757d39814475c09a489043207b860b5100",
+  "ipaSHA256": "58dcb2a5b3a850f279a821965b92ce5dbaec820da0e4a6c52ed8a7f7207ee56b",
   "installedOnRequestedIPhone": true,
-  "realVoiceAcceptance": "build14_physical_requested_scopes_user_accepted_formal_main_rebuild_pending",
+  "realVoiceAcceptance": "build14_requested_physical_scopes_passed_main_sourced_rebuild_inputs_identical",
   "localTests": {
     "core": 16,
     "native": 46,
@@ -52,7 +52,7 @@
     ]
   },
   "mergedIntoMain": true,
-  "mergePR": 56,
+  "mergePR": 59,
   "mergeChecksPassed": true,
   "releaseScope": {
     "distribution": "development_signed_private_device",
@@ -67,17 +67,6 @@
     "simulatorAppearanceVerified": true,
     "physicalDeviceIconReadbackVerified": true
   },
-  "currentDeviceRollback": {
-    "date": "2026-10-22",
-    "fromBuild": 13,
-    "toBuild": 10,
-    "overwriteInstalledAndReadBack": true,
-    "bindingGroupsUnchanged": true,
-    "bindingDataPreserved": true,
-    "reason": "Build12/13 greeting audible but microphone dialogue failed; user requested usable baseline before continued repair",
-    "newCandidateWillNotReplaceBaselineDuringInvestigation": true,
-    "currentRecheck": "Tianyi confirmed build10 normal calls after rollback and Device Hub screen sharing stopped"
-  },
   "webDeliveryRelease": {
     "sourceCommit": "0d0b3d96c5391dde5362c5db270018958948584f",
     "mergePR": 58,
@@ -88,7 +77,27 @@
     "record": "../releases/voice-ios-web-delivery-20261022/release.json",
     "build14PhysicalAcceptance": "all_requested_scopes_passed"
   },
-  "currentDeviceRestore": {
+  "currentDeviceCandidate": {
+    "build": 14,
+    "userAuthorizedTesting": true,
+    "bindingPreserved": true,
+    "formalMainBuild": "signed_installed_and_read_back",
+    "validation": "new-shell-build14-validation.json",
+    "formalMainSourceCommit": "2adca2a03e56d51f51a39f7e939dab27c0aaf2a5",
+    "nativeInputsIdenticalToAcceptedCandidate": true
+  },
+  "build10RollbackHistory": {
+    "date": "2026-10-22",
+    "fromBuild": 13,
+    "toBuild": 10,
+    "overwriteInstalledAndReadBack": true,
+    "bindingGroupsUnchanged": true,
+    "bindingDataPreserved": true,
+    "reason": "Build12/13 greeting audible but microphone dialogue failed; user requested usable baseline before continued repair",
+    "newCandidateWillNotReplaceBaselineDuringInvestigation": true,
+    "currentRecheck": "Tianyi confirmed build10 normal calls after rollback and Device Hub screen sharing stopped"
+  },
+  "build11RestoreHistory": {
     "date": "2026-10-22",
     "fromBuild": 10,
     "toBuild": 11,
@@ -101,11 +110,13 @@
     "deviceHubScreenSharingActive": false,
     "build11NewPhysicalVoiceAcceptance": "not_run"
   },
-  "currentDeviceCandidate": {
-    "build": 14,
-    "userAuthorizedTesting": true,
-    "bindingPreserved": true,
-    "formalMainBuild": "pending",
-    "validation": "new-shell-build14-validation.json"
+  "mainChecks": {
+    "run": 39728438243,
+    "conclusion": "success"
+  },
+  "savedRollback": {
+    "build": 11,
+    "ipaSHA256": "5539d89245dfd7e4a241d1d66957fd60fc45b6d8e2e6e8b02f30e62b25855f2a",
+    "originalSignedArchiveAndIPAAvailable": true
   }
 }
