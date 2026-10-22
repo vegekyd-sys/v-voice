@@ -16,7 +16,7 @@ import {compactSearchResult,isSearchTool,searchMetrics} from './search-result.mj
 
 export const VOICE_TASK_ROUTING = '图片、视频生成也用 delegate_to_v，把画面、时长和要求完整交给后台；语音模型自身不生成媒体不代表后台不能生成。工具拒绝或报错意味着未启动，不能说正在做、已经排队或马上完成。用户明确取消仍在执行的当前后台任务并改做新任务时，先实际 cancel_task，确认取消后再实际 delegate_to_v 新目标。已完成的旧任务不能通过取消另一个无关任务来代替。任务分工：简单查询、日历和一两步明确操作直接调用原生工具。多步比较、跨资料调研、复杂规划或需要持续等待/反复轮询的任务，用 delegate_to_v 将完整目标及用户条件一次交给个人 V 后端语言模型。用户要求交给后端模型、交给 V 或交给后台处理时必须调用 delegate_to_v，即使已经给出完整命令，也不能自行用 exec/process/openclaw_tool 代做。这里的后端指另一个语言模型；exec/process 只是执行工具，命令的 background 参数也不是模型委派。只说‘交给后端’却自己执行不算委派。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，等待时正常聊天。只有真实的新事实才简短汇报，不反复播报等待、倒计时或轮询状态。只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
 
-export const SELF_START_NOTICE='\n语音查询接话规则：当本轮需要调用 web_search 或 memory_search 时，先用一句极短的自然口语回应用户当前要查的具体事情，随后在当前同一轮立即发出工具调用。第一句话由你根据上下文自己组织，避免固定口头禅，不能复述整段问题，也不能提前编造答案或声称已经查到。不要只发函数调用而全程沉默，也不能说完接话就结束本轮、等用户再次催促。工具一旦确定就立即调用，不等待接话音频播放结束。拿到结果直接接着回答；同一请求的后续查询不重复接话。普通聊天、取消、挂断不加查询接话。';
+export const SELF_START_NOTICE='\n语音查询接话规则：仅对明确向 V 发起、需要 web_search 或 memory_search 的请求，用自己组织的一句极短口语回应查找目标，同一轮立即调用工具，不等待接话音频播放结束。先查记录约束的是事实回答，不禁止简短接话；结果回来前不能编造答案或声称查到。同一请求后续查询不重复接话。旁聊、电视、未说完的话、姓名介绍和普通聊天不触发本规则。';
 const CALL_ENDING = '通话控制：用户对你说“好了，那我们就聊到这里”“今天先这样，下次再聊”“拜拜啦”等结束这通电话的告别，是 end_call 工具请求，不是普通闲聊。必须在当前这一轮调用 end_call({})，收到成功结果后简短告别，系统等真实告别音频播放完再关闭。只说“拜拜”“随时叫我”而不调用工具不算完成；不要等待用户再说一句“挂断”。“你能挂断吗”的功能讨论、转述别人说拜拜、结束一个话题但继续问问题、仅取消后台任务，都不表示结束电话。';
 const HOST_CALL_ENDING='通话控制由主机负责：主机独立判断多人发言是否结束电话，并播放告别后关闭。你不能自行调用end_call，也不要另行发起挂断。“拜拜，对了……”后还有问题时继续回答最新问题；对旁人道别、引用、否定挂断时正常继续。后台任务与电话生命周期独立，明确取消后台任务仍实际调用既有取消工具，不因挂断而取消任务。';
 
@@ -384,10 +384,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const hostCallControl=Boolean(speakerRouting?.controlsEnding?.(s.id));
     const tools=sessionTools(s);
     const searchAck=s.model==='seeduplex'&&s.surface==='phone'&&searchAcknowledgment==='model';
-    const voiceTools=(hostCallControl?tools.filter(t=>t.name!=='end_call'):tools).map(tool=>searchAck&&isSearchTool(tool.name)?{...tool,description:tool.description+' 上述先查记录是指先查再回答事实，不限制在查询前简短接话。调用本工具之前，必须先用语音简短自然地回应当前用户问题，再在同一轮立刻调用本工具。不能只调用工具而保持沉默。'}:tool);
-    const baseInstructions=directInstructions(entries,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:s.surface==='phone'?(searchAck?'model':'off'):'cached',nativeDuplex:s.nativeDuplex});
+    const voiceTools=(hostCallControl?tools.filter(t=>t.name!=='end_call'):tools).map(tool=>searchAck&&isSearchTool(tool.name)?{...tool,description:tool.description+' 只为按通话规则确认的向 V 提问执行，电视和旁聊不能触发。上述先查记录是指先查再回答事实，不限制在查询前简短接话。调用本工具之前，必须先用语音简短自然地回应当前用户问题，再在同一轮立刻调用本工具。不能只调用工具而保持沉默。'}:tool);
+    const instructionCatalog=entries.map(entry=>searchAck&&isSearchTool(entry.id)?{...entry,description:voiceTools.find(tool=>tool.name===entry.id)?.description??entry.description}:entry);
+    const baseInstructions=directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:s.surface==='phone'?(searchAck?'model':'off'):'cached',nativeDuplex:s.nativeDuplex});
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
-      instructions:(speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(searchAck?SELF_START_NOTICE:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
+      instructions:(speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
       onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),
       toolStartNotice:call=>{
