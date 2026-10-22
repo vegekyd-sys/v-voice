@@ -123,14 +123,14 @@ export class GrokVoiceBridge {
       if(previous){if(previous!==signature)this.fail('Grok Voice 事件身份冲突');return;}
       this.seenEvents.set(e.event_id,signature);if(this.seenEvents.size>2048)this.seenEvents.delete(this.seenEvents.keys().next().value);
     }
-    this.request.onEvent?.({direction:'server',type:e.type,responseId:e.response_id});
+    this.request.onEvent?.({direction:'server',type:e.type,responseId:e.response_id??e.response?.id});
     if(e.type==='session.updated'&&!this.ready){this.ready=true;clearTimeout(this.timer);this.resolve();this.request.onReady?.();}
     if(e.type==='error'){
       if(['response_cancel_not_active','response_already_cancelled'].includes(e.error?.code))return;
       return this.fail(`Grok Voice 服务错误（${String(e.error?.code??'unknown').replace(/[^a-zA-Z0-9_]/g,'').slice(0,80)}）`);
     }
     if(e.type==='input_audio_buffer.speech_started')this.request.onClearAudio?.('barge-in');
-    if(e.type==='conversation.item.input_audio_transcription.completed'&&e.transcript)this.request.onTranscript?.('user',e.transcript,true);
+    if(e.type==='conversation.item.input_audio_transcription.completed'&&e.transcript)this.request.onTranscript?.('user',e.transcript,true,undefined,{turnId:e.item_id});
     if(['response.output_audio_transcript.delta','response.audio_transcript.delta'].includes(e.type))this.caption(e,false);
     if(['response.output_audio_transcript.done','response.audio_transcript.done'].includes(e.type))this.caption(e,true);
     if(['response.output_audio.delta','response.audio.delta'].includes(e.type)&&e.delta)this.request.onAudio?.(Buffer.from(e.delta,'base64'));
@@ -154,12 +154,12 @@ export class GrokVoiceBridge {
   }
   caption(event, final) {
     const text=final?event.transcript:event.delta;
-    if(!this.expressiveTags){this.request.onTranscript?.('assistant',text,final);return;}
+    if(!this.expressiveTags){this.request.onTranscript?.('assistant',text,final,undefined,{responseId:event.response_id??this.activeResponse});return;}
     const key=event.item_id??event.response_id??this.activeResponse??'current';
     const previous=this.captions.get(key)??{raw:'',visible:''};
     const raw=final?text:previous.raw+text,visible=cleanGrokSpeechCaption(raw,!final);
-    if(final){this.captions.delete(key);this.request.onTranscript?.('assistant',visible,true);}
-    else {this.captions.set(key,{raw,visible});const delta=visible.slice(previous.visible.length);if(delta)this.request.onTranscript?.('assistant',delta,false);}
+    if(final){this.captions.delete(key);this.request.onTranscript?.('assistant',visible,true,undefined,{responseId:event.response_id??this.activeResponse});}
+    else {this.captions.set(key,{raw,visible});const delta=visible.slice(previous.visible.length);if(delta)this.request.onTranscript?.('assistant',delta,false,undefined,{responseId:event.response_id??this.activeResponse});}
   }
   submitToolResult(id,result){
     const call=this.calls.get(id);if(!call||this.closed)return;

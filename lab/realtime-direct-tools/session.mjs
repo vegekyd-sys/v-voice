@@ -402,26 +402,28 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         });
       },
       onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.responseActive=true;s.narrationBusyUntil=0;if(s.ending&&(!s.nativeDuplex||metadata?.responseId&&metadata.responseId!==s.ending.priorResponseId)){s.ending.hasAudio=true;s.ending.responseId=metadata?.responseId;clearTimeout(s.ending.fallbackTimer);clearTimeout(s.ending.noAudioTimer);}deliverAudio(audio,metadata);}),
-      onTranscript:(role,text,final,source)=>{
+      onTranscript:(role,text,final,source,metadata={})=>{
         if(!current(s))return;
         if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
         const deliver=()=>{
-        if(role==='assistant'&&final){s.replyDelivery?.transcript(text,{final,source});speakerRouting?.assistant(s.id,text);if(!source){s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
-        if(role==='user'){if(final)s.replyDelivery?.user(text);if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
+        if(role==='assistant')s.replyDelivery?.transcript(text,{final,source,responseId:metadata.responseId});
+        if(role==='assistant'&&final){speakerRouting?.assistant(s.id,text);if(!source){s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
+        if(role==='user'){if(final)s.replyDelivery?.user(text,{turnId:metadata.turnId});if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
         if(role==='user'&&final&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{})});
         };
         if(role==='assistant')routeOutput('transcript',{role,text,final,source},deliver);else deliver();
       },
-      onClearAudio:(_reason,metadata)=>routeOutput('clear',null,()=>{s.replyDelivery?.interrupt();audit({type:'audio.clear',voiceSessionId:s.id});s.responseActive=false;if(s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear',...(typeof metadata?.retiredResponseId==='string'?{retiredResponseId:metadata.retiredResponseId}:{})});}),
+      onClearAudio:(_reason,metadata)=>routeOutput('clear',null,()=>{s.replyDelivery?.interrupt(metadata?.retiredResponseId);audit({type:'audio.clear',voiceSessionId:s.id});s.responseActive=false;if(s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear',...(typeof metadata?.retiredResponseId==='string'?{retiredResponseId:metadata.retiredResponseId}:{})});}),
       onAudioSegmentDone:()=>routeOutput('done',null,()=>{s.responseActive=false;}),
       onResponseDone:e=>routeOutput('done',e,()=>{void s.replyDelivery?.finish(e);s.responseActive=false;s.narrationBusyUntil=0;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'&&(!s.ending.responseId||!e.responseId||e.responseId===s.ending.responseId)){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}}),
-      onEvent:e=>{if(['response.created'].includes(e.type))s.responseActive=true;
+      onEvent:e=>{if(e.type==='response.created'){s.responseActive=true;s.replyDelivery?.begin(e.responseId);}
+        if(e.type==='native.listening-aside')s.replyDelivery?.ignore(e.responseId);
         if(s.nativeDuplex&&e.type==='native.listening-aside')emit(s,{type:'input.speech.ignored',preservedResponseId:s.bridge?.audioResponseId??null});
         if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.userSpeaking=true;s.lastUserAt=Date.now();}
         if(e.type==='input_audio_buffer.speech_stopped'){s.userSpeaking=false;s.lastUserAt=Date.now();}
         audit({type:'provider.event',voiceSessionId:s.id,providerEventType:e.type,responseId:e.responseId});},
-      onProtocolEvent:e=>audit({type:'provider.protocol',voiceSessionId:s.id,event:{...e,...(e.delta&&e.type?.includes('audio')?{delta:'[audio retained separately]'}:{})}}),
+      onProtocolEvent:e=>{if(['response.created','response.output_text.delta','response.output_audio.started'].includes(e.type))s.replyDelivery?.begin(e.response_id??e.response?.id);audit({type:'provider.protocol',voiceSessionId:s.id,event:{...e,...(e.delta&&e.type?.includes('audio')?{delta:'[audio retained separately]'}:{})}});},
       onDiagnostic:e=>{if(!current(s))return;audit({type:'call.provider-status',voiceSessionId:s.id,...e});
         if(['reconnecting','recovered'].includes(e.stage))emit(s,{type:`provider.${e.stage}`});},
       onError:e=>{audit({type:'call.connection-error',voiceSessionId:s.id,model:s.model,message:e.message});emit(s,{type:'error',message:e.message});void close(s.id).catch(()=>{});},

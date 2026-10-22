@@ -929,6 +929,6 @@ for(const model of ['grok','seeduplex'])test(`${model} completed voice reply use
  assert.equal(sends.length,0);
  f.event({type:'response.done',response:{id:'reply-1',status:'completed'},response_id:'reply-1'});
  for(let i=0;i<100&&!sends.length;i++)await delay(5);
- assert.equal(sends.length,1);assert.equal(sends[0].to,'ou_trial');assert.equal(sends[0].sessionKey,replyTarget.sessionKey);
+ assert.equal(sends.length,1);assert.equal(sends[0].message,'语音提问：说明这个方案\n\nV：方案是沿用当前会话，并把主要回复显示在飞书。');assert.equal(sends[0].to,'ou_trial');assert.equal(sends[0].sessionKey,replyTarget.sessionKey);
  assert(f.audit.some(e=>e.type==='reply.delivery-confirmed'));
 });

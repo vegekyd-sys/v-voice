@@ -43,6 +43,7 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,sessionBound
     const abort=()=>{void cancelRow(row).catch(error=>row.reject(error));};signal?.addEventListener('abort',abort,{once:true});
     let timer;
     try{
+      taskDelivery?.requested?.(callId,callerTurn?.text);
       log(row,'backend.start-requested');
       let ack;
       try{ack=await gateway.request('voice.product.task.start',{sessionKey,voiceSessionId:ownerId,callId,question:backendQuestion(question,context,{voiceSessionId:ownerId,callId,receivedAt:new Date().toISOString(),...(callerTurn?{callerTurn}:{})},{sessionBound})},{timeoutMs:30000});}
@@ -58,7 +59,7 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,sessionBound
       row.taskId=ack.taskId;row.runId=ack.runId;row.runs.add(ack.runId);row.admittedAt=Date.now();
       log(row,'backend.started',{ack});
       if(row.retired||signal?.aborted){await cancelRow(row);throw Error('任务已取消');}
-      taskDelivery?.started(row.runId);
+      taskDelivery?.started(row.runId,{requestId:callId});
       const complete=(async()=>{
         let lastReadAt=Date.now();
         while(!row.retired){

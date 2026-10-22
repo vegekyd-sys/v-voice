@@ -370,7 +370,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if(!Number.isSafeInteger(params.revision)||params.revision<1||typeof params.turnId!=='string'||!params.turnId||params.turnId.length>160||typeof params.text!=='string'||params.text.length>2400||typeof params.final!=='boolean')return json(res,400,{error:'通话字幕无效'});
         if(params.revision<=(owned.callControlCaptionRevision??0))return json(res,409,{error:'通话字幕已更新'});
         owned.callControlCaptionRevision=params.revision;
-        if(params.final)owned.replyDelivery?.user(params.text);
+        if(params.final)owned.replyDelivery?.user(params.text,{turnId:params.turnId});
         if(params.final&&owned.taskDelivery?.observeUser(params.text))void owned.taskDelivery.subscribe().catch(error=>callControlAudit({type:'task.delivery-failed',voiceSessionId:params.voiceSessionId,error:error.message}));
         void owned.callControl?.observe({role:'user',turnId:params.turnId,text:params.text,final:params.final,snapshot:true});
         return json(res,200,{ok:true});
@@ -436,9 +436,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     // Native caption snapshots are the single USER source: they also arrive when
     // a deployment filters Gateway transcript events. Mixing normalized and
     // native turn IDs would incorrectly revoke the current decision.
+    if(item?.type==='output.text.delta')context.active.replyDelivery?.transcript(item.payload?.text??item.payload?.delta,{responseId:item.responseId??item.turnId});
     if(item?.type==='output.text.done'){
       void context.active.callControl?.observe({role:'assistant',text:item.payload?.text,final:true});
-      context.active.replyDelivery?.transcript(item.payload?.text,{final:true});
+      context.active.replyDelivery?.transcript(item.payload?.text,{final:true,responseId:item.responseId??item.turnId});
       void context.active.replyDelivery?.finish({responseId:item.responseId??item.turnId});
     }
     const publish = message => {

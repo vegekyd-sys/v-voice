@@ -1,3 +1,7 @@
+## Unreleased — Paired voice questions and answers · 2026-10-23
+
+- Combine the admitted final user question and completed substantive answer in one Feishu message across session and personal entries. Bind responses and background results to the originating question, suppress duplicate completions and retain detached task pairing after hangup. Candidate only.
+
 ## Unreleased — Unified personal/session replies · 2026-10-22
 
 - Route the legacy personal entry through the same server-owned reply target and delivery queue as session phones, with an explicit bot-account opt-in. Preserve its fixed session, personal tools, authentication and default disabled setting.

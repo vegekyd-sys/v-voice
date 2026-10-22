@@ -22,7 +22,7 @@ test('completed response combines final segments once, excluding greeting, delta
  f.d.user('介绍方案');f.d.transcript('未完成内容',{final:false});f.d.transcript('正在查询',{final:true,source:'tool-progress'});
  f.d.transcript('第一点，沿用当前会话。',{final:true});f.d.transcript('第一点，沿用当前会话。',{final:true});f.d.transcript('第二点，主要回复同步飞书。',{final:true});
  assert.equal(f.calls.length,0);await f.d.finish({responseId:'r1'});await f.d.finish({responseId:'r1'});
- assert.equal(f.calls.length,1);assert.equal(f.calls[0].args.message,'第一点，沿用当前会话。\n第二点，主要回复同步飞书。');assert.equal(f.calls[0].args.sessionKey,binding.sessionKey);
+ assert.equal(f.calls.length,1);assert.equal(f.calls[0].args.message,'语音提问：介绍方案\n\nV：第一点，沿用当前会话。\n第二点，主要回复同步飞书。');assert.equal(f.calls[0].args.sessionKey,binding.sessionKey);
 });
 test('interruption, cancelled response and hangup never publish unfinished text',async()=>{
  const f=fixture();f.d.user('说一下');f.d.transcript('旧回答',{final:true});f.d.interrupt();await f.d.finish();
@@ -30,17 +30,44 @@ test('interruption, cancelled response and hangup never publish unfinished text'
  f.d.transcript('没有说完',{final:true});await f.d.close();await f.d.finish();assert.equal(f.calls.length,0);
 });
 test('background full result survives hangup and is not duplicated by spoken summary',async()=>{
- const f=fixture();f.d.user('给我报告');await f.d.result('task-1','报告的完整正文');f.d.transcript('报告的摘要',{final:true});await f.d.finish();
+ const f=fixture();f.d.user('给我报告');f.d.captureTask('task-1');await f.d.result('task-1','报告的完整正文');f.d.transcript('报告的摘要',{final:true});await f.d.finish();
  await f.d.result('task-1','报告的完整正文');assert.equal(f.calls.length,1);
- await f.d.close();await f.d.result('task-2','挂断后完成的正文');assert.equal(f.calls.length,2);
+ f.d.user('再给我另一个报告');f.d.captureTask('task-2');await f.d.close();await f.d.result('task-2','挂断后完成的正文');assert.equal(f.calls.length,2);
 });
 test('ambiguous send retry keeps exact idempotency key and route; failure never claims sent',async()=>{
  const f=fixture(async(_args,n)=>{if(n===1)throw Error('TIMEOUT');return {messageId:'om_receipt'};});f.d.user('回答');f.d.transcript('真实回答',{final:true});await f.d.finish();
  assert.equal(f.calls.length,2);assert.deepEqual(f.calls[0],f.calls[1]);assert.equal(f.audit.filter(e=>e.type==='reply.delivery-confirmed').length,1);
- const g=fixture(async()=>({ok:true}));await g.d.result('run','真实内容');assert.equal(g.statuses.at(-1).status,'failed');assert(!g.audit.some(e=>e.type==='reply.delivery-confirmed'));
+ const g=fixture(async()=>({ok:true}));g.d.user('完成任务');g.d.captureTask('run');await g.d.result('run','真实内容');assert.equal(g.statuses.at(-1).status,'failed');assert(!g.audit.some(e=>e.type==='reply.delivery-confirmed'));
 });
 test('send queue is ordered and belongs to one fixed session across new user turns',async()=>{
  const f=fixture();f.d.user('第一问');f.d.transcript('同一个答案',{final:true});const a=f.d.finish({responseId:'r1'});
  f.d.user('再说一遍');f.d.transcript('同一个答案',{final:true});const b=f.d.finish({responseId:'r2'});await Promise.all([a,b]);
  assert.equal(f.calls.length,2);assert.notEqual(f.calls[0].args.idempotencyKey,f.calls[1].args.idempotencyKey);assert(f.calls.every(c=>c.args.to==='oc_room'&&c.args.accountId==='default'));assert.equal(f.d.pending,false);
+});
+
+test('response owns its question even if a later caller turn arrives before completion',async()=>{
+ const f=fixture();f.d.user('明天下午有什么安排？',{turnId:'q1'});f.d.begin('a1');
+ f.d.transcript('明天下午',{responseId:'a1'});f.d.user('那后天呢？',{turnId:'q2'});
+ f.d.transcript('明天下午有两场会议。',{final:true,responseId:'a1'});await f.d.finish({responseId:'a1'});
+ f.d.transcript('后天下午没有会议。',{final:true,responseId:'a2'});await f.d.finish({responseId:'a2'});
+ assert.deepEqual(f.calls.map(c=>c.args.message),['语音提问：明天下午有什么安排？\n\nV：明天下午有两场会议。','语音提问：那后天呢？\n\nV：后天下午没有会议。']);
+});
+test('partial, unadmitted and ignored asides cannot create a posted question',async()=>{
+ const f=fixture();f.d.user('没有说完',{final:false});f.d.user('对旁边人说的话',{admitted:false});
+ f.d.transcript('不应该发送。',{final:true,responseId:'none'});await f.d.finish({responseId:'none'});
+ f.d.user('旁聊的完整识别');f.d.begin('aside');f.d.ignore('aside');
+ f.d.transcript('模型自言自语。',{final:true,responseId:'aside'});await f.d.finish({responseId:'aside'});
+ f.d.user('嗯');f.d.transcript('继续说。',{final:true,responseId:'ack'});await f.d.finish({responseId:'ack'});assert.equal(f.calls.length,0);
+});
+test('task question is frozen at request, survives intervening turns and hangup',async()=>{
+ const f=fixture();f.d.user('请查明天的天气',{turnId:'q1'});f.d.captureTask('request');
+ f.d.user('顺便讲个笑话',{turnId:'q2'});f.d.captureTask('run',{from:'request'});
+ f.d.transcript('这是一个笑话。',{final:true,responseId:'joke'});await f.d.finish({responseId:'joke'});
+ await f.d.close();await f.d.result('run:final','明天晴天。',{questionId:'run'});
+ assert.equal(f.calls[1].args.message,'语音提问：请查明天的天气\n\nV：明天晴天。');
+ await f.d.result('run:final','明天晴天。',{questionId:'run'});assert.equal(f.calls.length,2);
+});
+test('same final user turn and repeated assistant completion produce one pair',async()=>{
+ const f=fixture();f.d.user('解释方案',{turnId:'q1'});f.d.transcript('方案正文。',{final:true,responseId:'r1'});await f.d.finish({responseId:'r1'});
+ f.d.user('解释方案',{turnId:'q1'});f.d.transcript('重复正文。',{final:true,responseId:'r2'});await f.d.finish({responseId:'r2'});assert.equal(f.calls.length,1);
 });
