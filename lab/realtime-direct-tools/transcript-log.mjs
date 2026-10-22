@@ -51,6 +51,13 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       for(const key of ['sessionAgeMs','attempt'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
     }
+    if(event.type==='tool.search-metrics'){
+      if(!['web_search','memory_search'].includes(event.name)||typeof event.callId!=='string')return false;
+      const safe={name:event.name,callId:event.callId.slice(0,160)};
+      for(const key of ['gatewayMs','originalBytes','deliveredBytes','managerMs','searchMs','toolMs','outsideSearchMs','hits','candidateHits','withheldHits'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      if(typeof event.compacted==='boolean')safe.compacted=event.compacted;
+      return enqueue({...owner,type:event.type,...safe});
+    }
     // Causal metadata only: never persist tool arguments, results, PCM or raw
     // provider frames. A received utterance without a reply must be diagnosable.
     if(['tool.call','tool.delivered','backend.start-requested','backend.started','backend.completed','backend.child-run','backend.control','backend.cancel-observed','backend.cancel-unconfirmed','backend.read-retry','backend.result-held','backend.result-context','backend.result-notice','backend.result-spoken-late','backend.result-answered','backend.result-superseded','backend.result-unspoken','response.done','provider.event','audio.clear'].includes(event.type)){

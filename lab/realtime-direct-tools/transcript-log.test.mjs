@@ -132,3 +132,12 @@ test('ending diagnostics retain only fixed lifecycle stages',async t=>{
  assert.equal(f.log.audit({type:'call.ending',voiceSessionId:'v1',stage:'SECRET'}),false);
  await f.log.close();const rows=await f.rows();assert.equal(rows.filter(r=>r.type==='call.ending').length,2);assert(!JSON.stringify(rows).includes('SECRET'));
 });
+
+test('search timing keeps bounded scalar metadata without results or arbitrary debug fields',async t=>{
+ const f=await fixture(t);f.created();
+ assert(f.log.audit({type:'tool.search-metrics',voiceSessionId:'v1',callId:'search',name:'memory_search',gatewayMs:2100,searchMs:1975,originalBytes:729,deliveredBytes:269,compacted:true,hits:0,toolMs:-1,managerMs:'SECRET',query:'SECRET',result:{secret:'SECRET'},debug:{text:'SECRET'}}));
+ assert.equal(f.log.audit({type:'tool.search-metrics',voiceSessionId:'v1',callId:'wrong',name:'exec'}),false);
+ await f.log.close();const rows=await f.rows(),row=rows.at(-1);
+ assert.equal(row.searchMs,1975);assert.equal(row.hits,0);assert.equal(row.compacted,true);
+ assert.equal(row.toolMs,undefined);assert.equal(row.managerMs,undefined);assert(!JSON.stringify(rows).includes('SECRET'));
+});

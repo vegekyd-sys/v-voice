@@ -12,10 +12,11 @@ import {presentBackendResult,LONG_RESULT_NOTICE} from '../gpt-live-h5/result-pre
 import {voiceCapabilityInstructions} from '../gpt-live-h5/capability-policy.mjs';
 import {VOICE_TASK_CONTROL_POLICY} from '../../lib/voice-task-control.mjs';
 import {NATIVE_DUPLEX_POLICY} from './native-duplex-policy.mjs';
+import {compactSearchResult,isSearchTool,searchMetrics} from './search-result.mjs';
 
 export const VOICE_TASK_ROUTING = '图片、视频生成也用 delegate_to_v，把画面、时长和要求完整交给后台；语音模型自身不生成媒体不代表后台不能生成。工具拒绝或报错意味着未启动，不能说正在做、已经排队或马上完成。用户明确取消仍在执行的当前后台任务并改做新任务时，先实际 cancel_task，确认取消后再实际 delegate_to_v 新目标。已完成的旧任务不能通过取消另一个无关任务来代替。任务分工：简单查询、日历和一两步明确操作直接调用原生工具。多步比较、跨资料调研、复杂规划或需要持续等待/反复轮询的任务，用 delegate_to_v 将完整目标及用户条件一次交给个人 V 后端语言模型。用户要求交给后端模型、交给 V 或交给后台处理时必须调用 delegate_to_v，即使已经给出完整命令，也不能自行用 exec/process/openclaw_tool 代做。这里的后端指另一个语言模型；exec/process 只是执行工具，命令的 background 参数也不是模型委派。只说‘交给后端’却自己执行不算委派。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，等待时正常聊天。只有真实的新事实才简短汇报，不反复播报等待、倒计时或轮询状态。只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
 
-export const SELF_START_NOTICE='\n需要查询或执行任务时，在当前这一轮就调用工具。调用之前可以先用你自己的话自然地说一句很短的话，比如“我帮你查一下哦”“稍等，我看看”，每次说法可以不同；说完在同一轮立刻调用工具，不能只说不调，也不要等用户再开口。工具一般很快返回，拿到结果直接回答。后续步骤继续执行，不逐个播报。普通聊天直接回答，不加这句话。';
+export const SELF_START_NOTICE='\n语音查询接话规则：当本轮需要调用 web_search 或 memory_search 时，先用一句极短的自然口语回应用户当前要查的具体事情，随后在当前同一轮立即发出工具调用。第一句话由你根据上下文自己组织，避免固定口头禅，不能复述整段问题，也不能提前编造答案或声称已经查到。不要只发函数调用而全程沉默，也不能说完接话就结束本轮、等用户再次催促。工具一旦确定就立即调用，不等待接话音频播放结束。拿到结果直接接着回答；同一请求的后续查询不重复接话。普通聊天、取消、挂断不加查询接话。';
 const CALL_ENDING = '通话控制：用户对你说“好了，那我们就聊到这里”“今天先这样，下次再聊”“拜拜啦”等结束这通电话的告别，是 end_call 工具请求，不是普通闲聊。必须在当前这一轮调用 end_call({})，收到成功结果后简短告别，系统等真实告别音频播放完再关闭。只说“拜拜”“随时叫我”而不调用工具不算完成；不要等待用户再说一句“挂断”。“你能挂断吗”的功能讨论、转述别人说拜拜、结束一个话题但继续问问题、仅取消后台任务，都不表示结束电话。';
 const HOST_CALL_ENDING='通话控制由主机负责：主机独立判断多人发言是否结束电话，并播放告别后关闭。你不能自行调用end_call，也不要另行发起挂断。“拜拜，对了……”后还有问题时继续回答最新问题；对旁人道别、引用、否定挂断时正常继续。后台任务与电话生命周期独立，明确取消后台任务仍实际调用既有取消工具，不因挂断而取消任务。';
 
@@ -45,7 +46,7 @@ export function directInstructions(catalog,context='',model='',options={}) {
 // announced, so a burst of quick tool calls becomes one line.
 export const NARRATION_DEFAULTS=Object.freeze({firstMs:6000,firstHeartbeatMs:15000,settleMs:2000,stageGapMs:12000,factGapMs:6000,heartbeatMs:30000,quietAfterUserMs:4000,startMs:2500,max:12});
 
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,toolProgressClips=null,narration,toolStartNotice='cached'}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,toolProgressClips=null,narration,toolStartNotice='cached',searchAcknowledgment='off'}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -276,7 +277,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if(name==='process'&&args.action!=='list'&&!s.processes.has(args.sessionId))throw Error('只能管理本次电话发起的执行会话');
       if(name==='exec')args={...args,yieldMs:1000,...(Object.keys(toolEnvironment).length?{env:{...args.env,...toolEnvironment}}:{})};
       audit({type:'tool.invoke',voiceSessionId:s.id,callId,name,args});
+      const invokedAt=performance.now();
       const result=await gateway.request('tools.invoke',{agentId:'makaron',sessionKey:s.sessionKey,name,args},{timeoutMs:180000});
+      const gatewayMs=performance.now()-invokedAt;
       audit({type:'tool.native-result',voiceSessionId:s.id,callId,name,result});
       const details=result.output?.details;
       if(name==='exec'&&details?.sessionId&&details.status==='running')s.processes.add(details.sessionId);
@@ -284,7 +287,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if((signal.aborted||!current(s))&&name==='exec'&&details?.sessionId)await killOwned(s,details.sessionId);
       if(signal.aborted||!current(s))throw Error('本次任务已取消');
       if(result.ok!==true)throw Error(`${result.error?.code??'tool_error'}: ${result.error?.message??'OpenClaw 没有完成这个工具调用'}`);
-      return result.output;
+      const output=s.model==='seeduplex'?compactSearchResult(name,result.output):result.output;
+      if(isSearchTool(name))audit({type:'tool.search-metrics',voiceSessionId:s.id,callId,name,...searchMetrics(result.output,output,gatewayMs)});
+      return output;
     };
     const localRead=(name,fn)=>fn&&((args,callId,signal)=>{
       audit({type:'tool.local-start',voiceSessionId:s.id,callId,name});
@@ -378,10 +383,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const routeOutput=(kind,value,deliver)=>{if(!current(s))return;if(!speakerRouting?.dispatch?.(s.id,kind,value,deliver))deliver();};
     const hostCallControl=Boolean(speakerRouting?.controlsEnding?.(s.id));
     const tools=sessionTools(s);
-    const voiceTools=hostCallControl?tools.filter(t=>t.name!=='end_call'):tools;
-    const baseInstructions=directInstructions(entries,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:s.surface==='phone'?'off':'cached',nativeDuplex:s.nativeDuplex});
+    const searchAck=s.model==='seeduplex'&&s.surface==='phone'&&searchAcknowledgment==='model';
+    const voiceTools=(hostCallControl?tools.filter(t=>t.name!=='end_call'):tools).map(tool=>searchAck&&isSearchTool(tool.name)?{...tool,description:tool.description+' 上述先查记录是指先查再回答事实，不限制在查询前简短接话。调用本工具之前，必须先用语音简短自然地回应当前用户问题，再在同一轮立刻调用本工具。不能只调用工具而保持沉默。'}:tool);
+    const baseInstructions=directInstructions(entries,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:s.surface==='phone'?(searchAck?'model':'off'):'cached',nativeDuplex:s.nativeDuplex});
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
-      instructions:(speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
+      instructions:(speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(searchAck?SELF_START_NOTICE:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
       onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),
       toolStartNotice:call=>{

@@ -918,3 +918,28 @@ test('native replacement propagates a scoped clear before first new PCM, drops o
  assert.deepEqual(f.client.sent.filter(e=>e.type==='audio').map(e=>e.responseId),['old','next']);
  assert(f.audit.some(e=>e.type==='audio.clear'&&e.reason==='response-replaced'&&e.retiredResponseId==='old'));
 });
+
+test('native search delivers one complete result copy and records only timing metadata',async t=>{
+ const details={results:[{title:'fixture',url:'https://example.com',snippet:'完整信息'}],debug:{searchMs:30,hits:1}};
+ const original={content:[{type:'text',text:JSON.stringify(details,null,2)}],details};
+ const f=await fixture(async()=>({ok:true,output:original}),'seeduplex');t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'search',name:'web_search',arguments:JSON.stringify({query:'fixture'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered')));
+ const item=f.upstream.sent.find(e=>e.items?.some(i=>i.call_id==='search'&&i.role==='tool')).items[0];
+ assert.deepEqual(JSON.parse(item.content[0].text),details);
+ const metrics=f.audit.find(e=>e.type==='tool.search-metrics');assert(metrics.compacted);assert.equal(metrics.hits,1);assert(metrics.deliveredBytes<metrics.originalBytes);assert.equal(metrics.result,undefined);
+});
+
+
+test('candidate model acknowledgment uses native instructions without host PCM or TTS injection',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{answer:'查到了'}}),'seeduplex',{searchAcknowledgment:'model'});t.after(()=>f.service.dispose());
+ const create=f.upstream.sent.find(x=>x.type==='session.create');
+ for(const tool of create.session.tools.filter(t=>['web_search','memory_search'].includes(t.name)))assert.match(tool.description,/不能只调用工具而保持沉默/);
+ assert.match(JSON.stringify(create),/语音查询接话规则/);assert.match(JSON.stringify(create),/不等待接话音频播放结束/);
+ assert.doesNotMatch(JSON.stringify(create),/查询状态由界面展示/);
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'look',name:'memory_search',arguments:JSON.stringify({query:'fixture'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered')));
+ assert.equal(f.client.sent.some(e=>e.type==='audio'&&e.source==='cached-native-tool-start'),false);
+ assert.equal(f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'),false);
+ assert.equal(f.service.progressNotice(f.reservation.voiceSessionId,0),false);
+});
