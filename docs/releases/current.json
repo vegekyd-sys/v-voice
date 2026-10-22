@@ -1,12 +1,12 @@
 {
   "schema": "v-voice-current-release-v1",
-  "entryCommit": "42ff6254e303c19897056a0ba8b1973ac6a25b20",
+  "entryCommit": "56cfc608beedc6568891c7f00f4bb617b4d21940",
   "gatewayPluginCommit": "a9ac516860a8856470262957ad6ea0cc2670cb0e",
-  "registration": "voice-unified-release-20261022/release.json",
-  "runtimeDifference": "Web/iOS and domestic robot/speaker services share one verified artifact. Idle admission protects calls, creation, delivery and device work; authorized releases cover both nodes. iOS build 19 was installed separately; native and firmware acceptance remain distinct. Gateway unchanged.",
+  "registration": "voice-duplex-shared-20261022/release.json",
+  "runtimeDifference": "Web/iOS and robot/speaker servers share the verified native playback repair. Fixed lookup/wait clips are off for phone calls. Signed iOS build 21 is installed; phone was locked at normal-launch verification and real-call acceptance is pending. Gateway unchanged.",
   "gatewayRestartRequired": false,
-  "release": "voice-unified-release-20261022",
-  "previousEntryCommit": "3fe9fcc25039c620e7745bf83a14b14c9d523f29",
-  "filesSha256": "94dd329fe5ac677bb71c4149acbbe35bcf3eb25c6c56a564b8b42177577d305d",
-  "deviceEntryCommit": "42ff6254e303c19897056a0ba8b1973ac6a25b20"
+  "release": "voice-duplex-shared-20261022",
+  "previousEntryCommit": "42ff6254e303c19897056a0ba8b1973ac6a25b20",
+  "filesSha256": "faa5c327daed67ffc6edd8d45d3359568e683e277268b0a683fdb02ea35692b8",
+  "deviceEntryCommit": "56cfc608beedc6568891c7f00f4bb617b4d21940"
 }

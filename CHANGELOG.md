@@ -1,10 +1,12 @@
-## Unreleased — Shared native duplex repair and iOS build 21
+## 2026-10-22 — Shared native duplex repair and iOS build 21
 
 - Retire the previous native response when accepted replacement text or TTS starts; send a scoped playback clear before replacement PCM. Preserve listening-aside decisions, ongoing microphone capture, names and background tasks.
 - Honor each PCM packet’s own response ID. Reject old/anonymous retired tails and late terminal events instead of relabeling them as the new response. Scope completion and clear events in both web and native playback.
 - Remove fixed lookup-start and waiting speech from phone calls, including legacy notice configurations. Existing task UI, real backend progress/results/errors and household-device notices remain.
 - Preserve build 20 ownership repair, build 19 captions and accepted island/Reaction behavior. An accepted farewell remains eligible to drain and hang up after response replacement.
 - Local simulated-upstream acceptance reproduces failure on the pre-fix shared pipeline in both Chromium and native iOS. The repaired browser becomes silent 37 ms after replacement confirmation, rejects the delayed five-second old tone and hangs up; native shared pipeline passes with capture continuing. No real provider request or recording. Full native 67, core 29, Node 727, Speaker 95 and fleet 10 pass; physical speech-onset sensitivity and model judgment remain separate acceptance.
+
+- Delivery: PR #72/#73 merged; main CI passed; both Voice nodes run 56cfc608 from one hash-verified artifact. Signed iOS build 21 installed and read back on the requested iPhone. Normal launch was blocked by the physical lock screen; human real-call acceptance remains pending. Gateway and original private settings unchanged. See `docs/releases/voice-duplex-shared-20261022/release.json`.
 
 ## 2026-10-22 — iOS build 20 playback ownership repair
 

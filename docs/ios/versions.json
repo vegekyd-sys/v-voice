@@ -2,12 +2,12 @@
   "schema": 1,
   "version": "1.0.0",
   "build": 21,
-  "sourceCommit": null,
+  "sourceCommit": "544d04c472ac6136f214ac0663bb43baba4a3397",
   "candidateOnly": false,
-  "signedArchiveVerified": false,
-  "exportedIPAVerified": false,
-  "ipaSHA256": null,
-  "installedOnRequestedIPhone": false,
+  "signedArchiveVerified": true,
+  "exportedIPAVerified": true,
+  "ipaSHA256": "f5ebbe2b6b6d949ce543e6f697ef6e086caf82df1a53f0d732af93aae548761a",
+  "installedOnRequestedIPhone": true,
   "realVoiceAcceptance": "pending_physical_interruption_check",
   "localTests": {
     "core": 29,
@@ -38,7 +38,7 @@
     "build": 8,
     "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab"
   },
-  "deviceReportedBuild": "19",
+  "deviceReportedBuild": "21",
   "savedH5Baseline": {
     "build": 10,
     "sourceCommit": "3ffeb94",
@@ -46,19 +46,19 @@
     "signedArchiveRetained": true
   },
   "realVoiceAcceptedScopes": {
-    "build": 19,
+    "build": 21,
     "scope": [],
-    "status": "pending_human_real_call_caption_check"
+    "status": "pending_human_real_call_interruption_check"
   },
-  "mergedIntoMain": false,
-  "mergePR": null,
-  "mergeChecksPassed": false,
+  "mergedIntoMain": true,
+  "mergePR": 72,
+  "mergeChecksPassed": true,
   "releaseScope": {
     "distribution": "development_signed_private_device",
-    "webServerDeployed": false,
+    "webServerDeployed": true,
     "gatewayRestarted": false,
     "appStoreOrTestFlightPublished": false,
-    "homepageChangelog": "build21_prepared_pending_release"
+    "homepageChangelog": "build21_published_and_in_app_browser_verified"
   },
   "appIcon": {
     "source": "Tianyi supplied purple headset portrait",
@@ -70,18 +70,19 @@
     "actionButtonLaunchOverlayAcceptance": "Tianyi_confirmed_build18_passed"
   },
   "webDeliveryRelease": {
-    "sourceCommit": "3fe9fcc25039c620e7745bf83a14b14c9d523f29",
-    "mergePR": 68,
+    "sourceCommit": "56cfc608beedc6568891c7f00f4bb617b4d21940",
+    "mergePR": 72,
     "serverDeployed": true,
     "publicAssetHashesVerified": true,
-    "record": "../releases/voice-caption-continuity-20261022/release.json"
+    "bothNodesVerified": true,
+    "record": "../releases/voice-duplex-shared-20261022/release.json"
   },
   "currentDeviceCandidate": {
     "build": 21,
-    "installedOnRequestedIPhone": false,
+    "installedOnRequestedIPhone": true,
     "lastAcceptedBuild": 18,
     "physicalAcceptance": "pending",
-    "mergeStatus": "preparation"
+    "mergeStatus": "merged_pr72_pr73"
   },
   "build10RollbackHistory": {
     "date": "2026-10-22",
@@ -108,8 +109,7 @@
     "build11NewPhysicalVoiceAcceptance": "not_run"
   },
   "mainChecks": {
-    "run": 39793698309,
-    "commit": "3fe9fcc25039c620e7745bf83a14b14c9d523f29",
+    "run": 39802699802,
     "conclusion": "success"
   },
   "savedRollback": {
@@ -268,5 +268,16 @@
       "conclusion": "success"
     },
     "humanCaptionAcceptance": "Tianyi confirmed captions fixed; reported SeedDuplex interruption queue issue"
+  },
+  "savedBuild19Rollback": {
+    "build": 19,
+    "ipaSHA256": "8c62603268b1d7c01fa73f9cac24441041b8bdd2171c9569b07cd9da1de7039a",
+    "signedIPACopiedAndVerified": true
+  },
+  "deviceLaunchVerification": {
+    "build": 21,
+    "succeeded": false,
+    "reason": "device_locked",
+    "automaticDialPerformed": false
   }
 }
