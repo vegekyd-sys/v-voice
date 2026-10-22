@@ -517,8 +517,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const nativeInterrupt=nativeInterruptModule
       ? ({inputSampleRate,...callbacks})=>new nativeInterruptModule.NativeInterruptAsr({apiKey:process.env.VOLCENGINE_ASR_API_KEY,inputSampleRate,...callbacks}):undefined;
     const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
-      // Candidate opt-in: contextual native speech and search in the same turn.
-      searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='model'?'model':'off',
+      // Shared phone policy; explicit off remains available for rollback.
+      searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
       toolStartNotice:process.env.VOICE_TOOL_START_NOTICE==='model'?'model':'cached',calendar:lark.available?lark.calendar:null,larkRead:lark.available?lark.read:null,
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),

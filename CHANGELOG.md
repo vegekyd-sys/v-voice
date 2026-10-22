@@ -1,3 +1,10 @@
+## 2026-10-23 — Native search acknowledgment shared by web and iOS
+
+- Enable contextual SeedDuplex acknowledgment for phone web_search and memory_search, followed by tool execution in the same turn. No cached start audio, injected TTS or additional model. Explicit VOICE_SEARCH_ACK=off retains the silent lookup rollback.
+- Clarify that factual answers require records while a short acknowledgment can precede them. Keep native duplex/multi-person instructions, response ownership, native iOS audio and build 23 island changes.
+- Remove strictly duplicate text/details search wrappers without dropping citations or other content; persist bounded numeric timing diagnostics only. Include the new module in release artifacts.
+- Candidate evidence, failed iterations and timing limits: docs/acceptance/search-natural-ack-20261023/README.md. Production deployment is recorded separately in docs/releases.
+
 ## 2026-10-23 — iOS build 23 natural speech waveform
 
 - Integrate the user-accepted build 22 baseline with waveform-only medium and large island cards. Keep the native interruption wait fix, Reaction, report entry, mute/end and background Action Button behavior.

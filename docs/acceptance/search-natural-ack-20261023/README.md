@@ -43,3 +43,9 @@
 - `scripts/eval-search-ack.mjs` 需显式 `VOICE_SEARCH_EVAL_ALLOW_PAID=1`、已有服务端凭据、私有 synthetic `study.json`，默认测试不会触发付费。每批最多 8 条，每条通话上限 30 秒；工具执行严格由 fixture 接管，非 fixture Gateway 请求拒绝。
 - 没有改线上服务，没有发版，没有安装手机，没有恢复固定口头语。
 - 尚待真实 Candidate 用户路径/设备体验；不同问题、连续追问、多人/电视背景在本次自然接话变更下尚未重测。不能把小规模合成验收等同完整生产验收。
+
+## 发布准备（用户已授权）
+
+2026-10-23 用户批准合入上线，网页和 iOS 共用策略。候选分支合并最新 main 4e92c63，保留已安装 iOS build 23 的波形与 build 22 打断修复。服务端默认启用自然接话，显式 `VOICE_SEARCH_ACK=off` 可关闭；家庭设备原有提示策略保持不变。打包清单纳入 search-result.mjs。更新首页日志、共享 H5 壳及包内 Reader 资源；没有 Swift 或音频播放代码变更。本次不要求重新安装原生包。
+
+发布前 Node 736、Speaker 95、Core 34、fleet 10 通过；最终合入和生产状态以新的 release registration 为准。

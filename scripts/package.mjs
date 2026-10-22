@@ -16,7 +16,7 @@ names.push('lib/release-control.mjs','plugins/v-voice-gpt-live/tasks.mjs',
 names.push('lab/realtime-direct-tools/device-endpoint.mjs','lab/realtime-direct-tools/device-playout.mjs','lab/realtime-direct-tools/device-volume.mjs','lab/realtime-direct-tools/near-field-gate.mjs');
 // Generated progress clips ship once scripts/generate-notice-clips.mjs has made them.
 if(existsSync(join(root,'lab/realtime-direct-tools/assets/tool-progress-provenance.json')))names.push(...['tool-progress-provenance.json','tool-progress-1.pcm','tool-progress-2.pcm','tool-progress-3.pcm'].map(n=>'lab/realtime-direct-tools/assets/'+n));
-names.push('lab/realtime-direct-tools/task-progress.mjs');
+names.push('lab/realtime-direct-tools/task-progress.mjs','lab/realtime-direct-tools/search-result.mjs');
 names.push('lab/realtime-direct-tools/native-interrupt.mjs','lab/realtime-direct-tools/native-duplex-policy.mjs');
 names.push('lab/gpt-live-h5/ios-shell-release.json');
 names.push('lab/realtime-direct-tools/xiaozhi-wire.mjs','lab/realtime-direct-tools/device-vision.mjs','lab/robot/robot-catalog.mjs','lab/robot/robot-reactions.mjs');
