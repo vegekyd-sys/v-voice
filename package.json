@@ -20,7 +20,8 @@
     "test:speaker-native": "node --test lab/speaker-native/*.test.mjs",
     "build:ui": "node scripts/build-ui.mjs && node ios/scripts/sync-h5-shell.mjs",
     "build:ios-shell": "node ios/scripts/sync-h5-shell.mjs",
-    "check:ios-shell": "node ios/scripts/sync-h5-shell.mjs --check"
+    "check:ios-shell": "node ios/scripts/sync-h5-shell.mjs --check",
+    "release:fleet": "python3 scripts/release-fleet.py"
   },
   "dependencies": {
     "opusscript": "0.1.1",

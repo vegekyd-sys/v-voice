@@ -376,7 +376,7 @@ test('release readiness stays busy after direct hangup until backend execution a
  const f=await fixture(t,{directVoice:{models:()=>[],backgroundTaskCount:()=>pending,reserve:async()=>({voiceSessionId:'detached',transport:'gateway-relay'}),close:async()=>{},dispose:async()=>{}}});
  const status=async()=> (await (await fetch(f.url+'/api/status',{headers:{cookie:f.cookie}})).json());
  await f.request('session',{model:'seeduplex'});await f.request('close',{voiceSessionId:'detached'});
- const after=await status();assert.equal(after.activeCall,false);assert.deepEqual(after.releaseReadiness,{known:true,activeCalls:0,creatingSessions:0,backgroundTasks:1});
+ const after=await status();assert.equal(after.activeCall,false);assert.deepEqual(after.releaseReadiness,{known:true,activeCalls:0,creatingSessions:0,backgroundTasks:1,deviceOperations:0});
  pending=0;assert.equal((await status()).releaseReadiness.backgroundTasks,0);
  assert.equal((await fetch(f.url+'/api/status')).status,401);
 });

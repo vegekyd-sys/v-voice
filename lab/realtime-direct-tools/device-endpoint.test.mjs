@@ -873,3 +873,30 @@ test('nearFieldGateDb 0 turns the server gate off even with multiSpeaker (firmwa
   const closed = f.audit.find(e => e.type === 'device.call' && e.stage === 'closed');
   assert.equal(closed.nearField, undefined);assert.equal(closed.gatedInputBytes, 0);
 });
+
+
+test('release admission blocks call.start on an already connected device without disconnecting it',async t=>{
+  const f=await fixture();t.after(()=>f.close());
+  const client=await f.connect();
+  f.endpoint.setAdmissionGate(()=>true);
+  client.send(JSON.stringify({type:'call.start'}));
+  await f.until(()=>client.events.some(e=>e.reason==='updating'),'update rejection');
+  assert.equal(client.readyState,1);assert.equal(f.peers.length,0);assert.equal(f.endpoint.activeCalls(),0);
+  f.endpoint.setAdmissionGate(()=>false);
+  client.send(JSON.stringify({type:'call.start'}));
+  await f.until(()=>f.endpoint.activeCalls()===1,'new call admitted after resume');
+  client.close();
+});
+
+
+test('a device disconnected during reservation remains pending until its late session is retired',async t=>{
+  const f=await fixture();t.after(()=>f.close());let complete,retired=0;
+  f.directVoice.reserve=()=>new Promise(resolve=>{complete=resolve;});
+  f.directVoice.close=async()=>{retired++;};
+  const client=await f.connect();client.send(JSON.stringify({type:'call.start'}));
+  await f.until(()=>Boolean(complete),'reservation started');
+  client.close();await f.until(()=>f.endpoint.connected().length===0,'device disconnected');
+  assert.equal(f.endpoint.activeCalls(),0);assert.equal(f.endpoint.pendingOperations(),1);
+  complete({voiceSessionId:'late'});
+  await f.until(()=>f.endpoint.pendingOperations()===0,'late creation drained');assert.equal(retired,1);
+});

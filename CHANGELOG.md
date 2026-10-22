@@ -135,6 +135,11 @@
 
 # Voice release log
 
+## 2026-10-22 — Unified four-client release
+
+One verified main artifact now targets both the web/iOS and domestic robot/speaker services. Private Unix release control atomically holds new call admission only when calls, creation, delivery and device operations are idle; expiring holds, exact service/configuration checks and guarded rollback protect ongoing work. Legacy bootstrap refuses any existing client connection. The fleet command stages both nodes, retains pending targets, and records runtime hashes plus the iOS UI/client compatibility matrix. Native apps and firmware still require separate installation evidence. See [deployment contract](docs/unified-release.md); production receipts are recorded separately after cutover.
+
+
 ## Voice · 20261020 phone stage UI, task progress and held results · source main
 
 - 手机通话界面用 React 重做，V 为主体，一行状态，当轮对话跟在状态下；桌面保持左头像右聊天两栏（#49）。

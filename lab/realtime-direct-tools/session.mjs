@@ -527,7 +527,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   return {
     models,reserve,close,
     hasSession:id=>sessions.has(id),
-    backgroundTaskCount:()=>[...new Set([...sessions.values(),...detached])].filter(s=>s.backend.snapshot()).length,
+    // A disconnected client is not proof its tool cleanup or final delivery finished.
+    backgroundTaskCount:()=>[...new Set([...sessions.values(),...detached])].filter(s=>s.backend.snapshot() || s.delivery?.pending || s.closePromise || s.cleanupFailed || (s.closed && s.localCleanups.size)).length,
     presentation(id,after=0){const s=sessions.get(id);if(!current(s))return null;return {voiceSessionId:s.id,revision:s.presentation.revision,pending:[...s.presentation.pending.values()],documents:[...s.presentation.documents.values()].filter(x=>x.revision>after),controls:[]};},
     contentShown(id,callId){const s=sessions.get(id);if(!current(s)||!s.presentation.documents.has(callId))return false;s.contentWaiters.get(callId)?.(true);return true;},
     handleEvent(event){for(const s of new Set([...sessions.values(),...detached])){s.backend.handleEvent(event);if(s.closed&&!s.backend.snapshot())detached.delete(s);}},

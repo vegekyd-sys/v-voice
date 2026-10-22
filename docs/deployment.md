@@ -1,5 +1,7 @@
 # 独立发布边界
 
+日常正式发布统一使用[四端发布流程](unified-release.md)与 `npm run release:fleet`，同时覆盖两个 Voice 节点。下文的原单节点 controller 保留为历史迁移/回滚依据，不能再单独用于新版本发布。
+
 当前入口与 Gateway 插件版本分别登记在 [current.json](releases/current.json)。仅前端变更时两者提交可以不同；必须证明插件、lib 与 server 字节相同，不能只看目录名，也不要为改目录名重启 Gateway。历史完整平台发版记录仍在平台 CHANGELOG。
 
 ## 运行接口
