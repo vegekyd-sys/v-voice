@@ -47,3 +47,11 @@ build 12 development 签名归档与独立解包 IPA 均已验包，覆盖安装
 build 10 到 build 11 的原生 App／Shared／Widget 通话源码无差异，仍使用旧的包内 H5 而非 build 12 的远程更新壳。未自动发起电话，build 11 本次安装后的真人语音不沿用 build 10 回执。手机留在用户选择的 build 11，诊断候选仍保留草稿。
 
 停止镜像后的恢复与 Apple 限制一致，但这次同时回退了 binary，尚未分别隔离两个变量；不宣称 build 12 的语音已通过停止镜像修复。
+
+## build 14 重新验证 · 候选
+
+用户随后明确同意使用本人手机进行新壳测试。候选源码 `55f003b` 已完成 Core16、原生 WK／音频／集成46和既有服务合同80项检查，均无失败。新增已知非零音频经过实际 CaptureConverter／RelayTransport 到本地接收端的检查，接收端计算信号能量；数字静音与非零帧可区分。这仍不代表物理麦克风通过。
+
+浏览器镜像中，同一个已安装的模拟器 binary 实际显示网页 A/B 两版标签与配色，没有在两版之间重装；截图及登记见 [build14 验证](../../ios/new-shell-build14-validation.json)。真实通话过程中不启用物理设备镜像。
+
+build 14 Release archive 及独立解包 IPA 的签名、profiles、后台 AudioRecording／SessionStarting 意图、52张扩展资源、正常 TLS 与无 Debug fixture均通过，Keychain 身份与 build11 一致。安装前再次确认正式服务无活动通话；覆盖安装并回读为1.0.0 (14)。为检验真实首次网页下载，备份后仅重置公开 UI 缓存的选择状态，不触碰绑定、权限或会话数据。正在等待用户操作按钮、锁屏双向语音和灵动岛静音／恢复／结束的完整回执；失败时保留原build11签名包供回退。候选未正式发布为已接受版本，Voice服务器和Gateway在本轮未改动。

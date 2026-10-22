@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "date": "2026-10-22",
+  "build": 14,
+  "sourceCommit": "55f003b45662413057c36ad4138dddbae93371aa",
+  "status": "candidate-installed-physical-acceptance-pending",
+  "tests": {
+    "nativeWKAudioAndIntegration": {
+      "passed": 46,
+      "failed": 0,
+      "skipped": 0
+    },
+    "core": {
+      "passed": 16,
+      "failed": 0
+    },
+    "serviceContracts": {
+      "passed": 80,
+      "failed": 0
+    }
+  },
+  "signalValidation": {
+    "ratesHz": [
+      8000,
+      16000,
+      24000,
+      48000
+    ],
+    "knownNonzeroPCMTraversesNativeConverterAndRelay": true,
+    "digitalSilenceRemainsDistinct": true,
+    "physicalMicrophoneProvenByTheseTests": false
+  },
+  "sameBinaryWebAB": {
+    "visibleInSimulatorBrowser": true,
+    "reinstalledBetweenReleases": false,
+    "evidence": [
+      "web-delivery-evidence/build14-web-a.png",
+      "web-delivery-evidence/build14-web-b.png"
+    ]
+  },
+  "signedBuild": {
+    "sourceCommit": "55f003b45662413057c36ad4138dddbae93371aa",
+    "build": 14,
+    "signedArchiveAndIndependentIPAValid": true,
+    "bindingIdentityUnchanged": true,
+    "ipaSHA256": "63c9e5c95682df03918990f4563c57757d39814475c09a489043207b860b5100"
+  },
+  "physicalDevice": {
+    "authorizedByUserForTesting": true,
+    "installedAndReadBack": true,
+    "bindingIdentityUnchanged": true,
+    "deviceHubPhysicalScreenSharingActive": false,
+    "publicUICacheSelectionResetForColdFetch": true,
+    "priorPublicCacheBackedUp": true,
+    "realVoiceAndControlsAcceptance": "pending",
+    "rollbackBuild": 11
+  },
+  "productionVoiceChangedDuringThisRound": false,
+  "realCallsAutomaticallyStartedByAgent": false
+}
