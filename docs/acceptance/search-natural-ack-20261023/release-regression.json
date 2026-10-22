@@ -1,0 +1,228 @@
+{
+  "schema": "v-voice-search-release-gate-v1",
+  "date": "2026-10-23",
+  "decision": "HOLD_NO_MERGE_NO_DEPLOY",
+  "candidateSourceCommit": "9aad8c7712c103dd8ac46708bce55ee7cccc79ff",
+  "productionBaselineCommit": "8136b20af19ca6fc740260875bf243d79cf67fd3",
+  "protocol": {
+    "model": "SeedDuplex 1.2.6.1",
+    "syntheticVolcTTS": true,
+    "sampleRate": 16000,
+    "framesMs": 20,
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ],
+    "sameAudio": true,
+    "searchResults": "controlled fixtures",
+    "realPhone": false,
+    "productionAssistedASRExercised": false,
+    "speakerNativeOutputPlaybackAudition": false
+  },
+  "pairedRuns": [
+    {
+      "trial": 1,
+      "variant": "baseline",
+      "identityChecks": [
+        {
+          "speaker": "adult-identity",
+          "expected": "小林",
+          "correct": true
+        },
+        {
+          "speaker": "vv-identity",
+          "expected": "小周",
+          "correct": false
+        },
+        {
+          "speaker": "adult-identity",
+          "expected": "小林",
+          "correct": true
+        },
+        {
+          "speaker": "vv-identity",
+          "expected": "小周",
+          "correct": true
+        }
+      ],
+      "identityCorrect": 3,
+      "identityTotal": 4,
+      "unexpectedIdentityMemoryCalls": 1,
+      "tvFinalText": [
+        "（安静倾听，不插话）"
+      ],
+      "tvUnwantedConversationalAnswer": false,
+      "tvQueryResultDelivered": false,
+      "sideTalkFinalAnswers": 0,
+      "sideTalkToolCalls": 0,
+      "interruptionFinalAnswers": [
+        "1+1等于2。"
+      ],
+      "interruptionClearObserved": true,
+      "staleSearchFinalAnswerAfterInterrupt": false,
+      "errors": 0
+    },
+    {
+      "trial": 2,
+      "variant": "candidate",
+      "identityChecks": [
+        {
+          "speaker": "adult-identity",
+          "expected": "小林",
+          "correct": true
+        },
+        {
+          "speaker": "vv-identity",
+          "expected": "小周",
+          "correct": false
+        },
+        {
+          "speaker": "adult-identity",
+          "expected": "小林",
+          "correct": true
+        },
+        {
+          "speaker": "vv-identity",
+          "expected": "小周",
+          "correct": true
+        }
+      ],
+      "identityCorrect": 3,
+      "identityTotal": 4,
+      "unexpectedIdentityMemoryCalls": 1,
+      "tvFinalText": [
+        "好，我等着，你慢慢说。"
+      ],
+      "tvUnwantedConversationalAnswer": true,
+      "tvQueryResultDelivered": false,
+      "sideTalkFinalAnswers": 0,
+      "sideTalkToolCalls": 0,
+      "interruptionFinalAnswers": [
+        "1+1等于2。"
+      ],
+      "interruptionClearObserved": true,
+      "staleSearchFinalAnswerAfterInterrupt": false,
+      "errors": 0
+    },
+    {
+      "trial": 3,
+      "variant": "candidate",
+      "identityChecks": [
+        {
+          "speaker": "adult-identity",
+          "expected": "小林",
+          "correct": true
+        },
+        {
+          "speaker": "vv-identity",
+          "expected": "小周",
+          "correct": false
+        },
+        {
+          "speaker": "adult-identity",
+          "expected": "小林",
+          "correct": true
+        },
+        {
+          "speaker": "vv-identity",
+          "expected": "小周",
+          "correct": true
+        }
+      ],
+      "identityCorrect": 3,
+      "identityTotal": 4,
+      "unexpectedIdentityMemoryCalls": 1,
+      "tvFinalText": [
+        "（安静倾听，不插话）"
+      ],
+      "tvUnwantedConversationalAnswer": false,
+      "tvQueryResultDelivered": false,
+      "sideTalkFinalAnswers": 0,
+      "sideTalkToolCalls": 0,
+      "interruptionFinalAnswers": [
+        "1+1等于2。"
+      ],
+      "interruptionClearObserved": true,
+      "staleSearchFinalAnswerAfterInterrupt": false,
+      "errors": 0
+    },
+    {
+      "trial": 4,
+      "variant": "baseline",
+      "identityChecks": [
+        {
+          "speaker": "adult-identity",
+          "expected": "小林",
+          "correct": true
+        },
+        {
+          "speaker": "vv-identity",
+          "expected": "小周",
+          "correct": true
+        },
+        {
+          "speaker": "adult-identity",
+          "expected": "小林",
+          "correct": true
+        },
+        {
+          "speaker": "vv-identity",
+          "expected": "小周",
+          "correct": true
+        }
+      ],
+      "identityCorrect": 4,
+      "identityTotal": 4,
+      "unexpectedIdentityMemoryCalls": 1,
+      "tvFinalText": [],
+      "tvUnwantedConversationalAnswer": false,
+      "tvQueryResultDelivered": false,
+      "sideTalkFinalAnswers": 0,
+      "sideTalkToolCalls": 0,
+      "interruptionFinalAnswers": [
+        "1加1等于2。"
+      ],
+      "interruptionClearObserved": true,
+      "staleSearchFinalAnswerAfterInterrupt": false,
+      "errors": 0
+    }
+  ],
+  "queryRuns": [
+    {
+      "id": "release-scoped-memory-1",
+      "tool": "memory_search",
+      "firstAudioMs": 1179,
+      "toolStartMs": 1537,
+      "preamble": true,
+      "toolCalls": 1,
+      "errors": []
+    },
+    {
+      "id": "release-scoped-web-1",
+      "tool": "web_search",
+      "firstAudioMs": 1363,
+      "toolStartMs": 1855,
+      "preamble": true,
+      "toolCalls": 1,
+      "errors": []
+    }
+  ],
+  "limitations": [
+    "Two runs per variant cannot establish statistical equivalence or robust diarization accuracy.",
+    "TV queries did not finish correctly in either variant; baseline is not a passing background-noise reference.",
+    "Candidate gave an unwanted conversational reply to TV once; baseline did not in these paired runs.",
+    "Identity misrecognition and unnecessary memory lookup also occurred on baseline; they are not proven to be introduced by this change.",
+    "Transport received PCM, not measured phone-speaker latency.",
+    "All earlier invalid 24kHz-as-16kHz runs were excluded."
+  ],
+  "tests": {
+    "node": 736,
+    "speaker": 95,
+    "core": 34,
+    "fleet": 10,
+    "iosShell": "passed"
+  },
+  "billing": "Not measured; no further paid runs started after the fixed paired batch."
+}
