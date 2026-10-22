@@ -1,3 +1,10 @@
+## 2026-10-23 — Keep interrupted playback paused while awaiting a reply
+
+- Web and iOS build 22 keep a recognized utterance paused until native disposition or response replacement. The 1.8-second courtesy timer can no longer resume the old answer while a new one is pending.
+- Distinguish nonempty completed recognition from empty/failed recognition without sending transcript content in control events. Acoustic-only probes remain bounded; explicit ignored speech resumes retained samples. A later failed probe cannot release an earlier pending recognized utterance.
+- Preserve native identity/name context, response ownership, microphone capture, captions, island and farewell drain. No extra model, speaker chain or Gateway changes.
+- Validation and release state are recorded in `docs/acceptance/duplex-wait-20261023/README.md`; synthetic fixtures do not establish physical speaker attribution or human listening acceptance.
+
 ## 2026-10-22 — Shared native duplex repair and iOS build 21
 
 - Retire the previous native response when accepted replacement text or TTS starts; send a scoped playback clear before replacement PCM. Preserve listening-aside decisions, ongoing microphone capture, names and background tasks.

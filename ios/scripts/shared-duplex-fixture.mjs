@@ -41,6 +41,10 @@ bridge.server.on('request',async(req,res)=>{
   let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>4096)throw Error('Fixture command too large');}
   const {command}=JSON.parse(raw);
   if(command==='old'){start('old');audio('old',oldTone);done('old');}
+  else if(command==='speech-start'){emit({type:'conversation.item.input_audio_transcription.started'});}
+  else if(command==='speech-complete'){emit({type:'conversation.item.input_audio_transcription.completed',text:'请换个话题'});}
+  else if(command==='speech-failed'){emit({type:'conversation.item.input_audio_transcription.failed'});}
+  else if(command==='ignored'){emit({type:'response.output_text.done',response_id:'aside-'+Date.now(),text:'（安静等候，不插话、不回应背景广播）'});}
   else if(command==='lookup'){emit({type:'response.function_call_arguments.done',items:[{call_id:'local-search',name:'web_search',arguments:'{"query":"local fixture only"}'}]});}
   else if(command==='replace'){emit({type:'response.output_text.delta',response_id:'next',delta:'本地新回答'});audio('old',oldTone);emit({type:'response.done'});}
   else if(command==='next'){start('next');audio('next',newTone);audio('old',oldTone);done('old');done('next');}

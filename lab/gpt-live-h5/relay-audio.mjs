@@ -72,10 +72,10 @@ export class BackendSpeechOnset {
 // is discarded. A rejected/noisy probe resumes the exact unconsumed samples.
 export class NativeSpeechPause {
   constructor({minRms=.018,consecutiveOnset=false,trustNativeOnset=true}={}){this.minRms=minRms;this.consecutiveOnset=consecutiveOnset;this.trustNativeOnset=trustNativeOnset;this.reset();this.floor=.004;}
-  reset(){this.voicedMs=0;this.quietMs=0;this.inUtterance=false;this.held=false;this.yielded=false;this.expires=0;this.hardExpires=0;this.locked=false;this.native=false;}
+  reset(){this.voicedMs=0;this.quietMs=0;this.inUtterance=false;this.held=false;this.yielded=false;this.expires=0;this.hardExpires=0;this.locked=false;this.native=false;this.awaitingDecision=false;}
   nativeStarted(at){if(!this.trustNativeOnset&&!this.held&&!this.inUtterance)return;this.held=true;this.yielded=true;this.native=true;this.expires=this.hardExpires=at+15000;}
-  ignored(){this.held=false;this.native=false;this.locked=true;this.yielded=false;}
-  nativeStopped(at){if(this.held){this.native=false;this.expires=at+1800;}}
+  ignored(){this.awaitingDecision=false;this.held=false;this.native=false;this.locked=true;this.yielded=false;}
+  nativeStopped(at,recognized=true){if(this.held){this.native=false;this.awaitingDecision||=recognized;this.expires=at+1800;}}
   generationDone(at){if(this.held&&!this.native)this.expires=Math.max(this.expires,Math.min(this.hardExpires,at+250));}
   observe(frame,enabled,at,generationComplete=true){
     const pcm=new Int16Array(frame);let sum=0,crossings=0;
@@ -89,7 +89,7 @@ export class NativeSpeechPause {
     if(!enabled){
       // Track an ongoing utterance even before output arrives: otherwise an
       // early endpoint reply gets a fresh 140ms of playback over the caller.
-      this.held=false;this.yielded=false;this.expires=0;this.hardExpires=0;this.locked=false;this.native=false;return false;
+      this.held=false;this.yielded=false;this.expires=0;this.hardExpires=0;this.locked=false;this.native=false;this.awaitingDecision=false;return false;
     }
     if(this.inUtterance&&!this.held&&!this.locked){this.held=true;this.yielded=true;this.hardExpires=at+12000;}
     if(this.held&&!this.native&&voiced)this.expires=Math.min(this.hardExpires,at+1800);
@@ -100,7 +100,10 @@ export class NativeSpeechPause {
     // Waiting for the entire generation made an ignored "mm-hm" mute a long
     // answer for seconds. Only native-confirmed speech earns the longer hold.
     const grace=!this.native&&!generationComplete?600:0;
-    if(this.held&&(at>=this.expires+grace||at>=this.hardExpires)){this.held=false;this.native=false;this.locked=true;}
+    // Recognized speech is awaiting the model's decision, not a silence
+    // timeout. Keep samples reversible for an ignored TV/bystander turn;
+    // only explicit ignore, replacement or teardown releases this hold.
+    if(this.held&&!this.awaitingDecision&&(at>=this.expires+grace||at>=this.hardExpires)){this.held=false;this.native=false;this.locked=true;}
     return this.held;
   }
 }
@@ -185,8 +188,8 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
         flush();
       }
       if(nativeCourtesy&&value.type==='input.speech.started'&&stats.queuedOutputBytes>0){nativePause.nativeStarted(performance.now());pause(nativePause.held);}
-      if(nativeCourtesy&&value.type==='input.speech.stopped')nativePause.nativeStopped(performance.now());
-      if(assisted&&value.type==='input.speech.ignored'&&value.preservedResponseId===currentResponseId){nativePause.ignored();pause(false);}
+      if(nativeCourtesy&&value.type==='input.speech.stopped')nativePause.nativeStopped(performance.now(),value.recognized!==false);
+      if(nativeCourtesy&&value.type==='input.speech.ignored'&&value.preservedResponseId===currentResponseId){nativePause.ignored();pause(false);}
       if(value.type==='audio.done'&&(!value.responseId||value.responseId===currentResponseId)){outputComplete=true;if(nativeCourtesy)nativePause.generationDone(performance.now());greetingHeld=false;speaker?.port.postMessage({type:'done',epoch});}
       if(value.type==='end.cancelled'){ending=null;clearTimeout(tailTimer);}
       if(value.type==='end.after-playback'){ending=value.callId;checkEnd();}

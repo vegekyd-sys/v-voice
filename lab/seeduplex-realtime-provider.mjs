@@ -852,12 +852,12 @@ export class SeeduplexRealtimeVoiceBridge {
       this.responseOwnerId = undefined;
     }
     if (type === "conversation.item.input_audio_transcription.completed") {
-      if(this.request.nativeDuplex)this.request.onInputSpeech?.(false);
       // A completed transcription carrying real text is the only evidence that
       // the user actually spoke. Only then does a pending barge-in earn the
       // right to tear the upstream generation down. This runs after the reset
       // above so the fresh suppression is not immediately cleared.
       const spoken = optionalString(event.transcript) ?? optionalString(event.text);
+      if(this.request.nativeDuplex)this.request.onInputSpeech?.(false,{recognized:Boolean(spoken?.trim())});
       if(this.request.nativeDuplex)this.nativeLiteralRead=/朗读|复述|念出|读出|原样|逐字/u.test(spoken??'');
       // A finished utterance after an earlier cancel opens the next turn, whose
       // reply text arrives before its first audio. Retired response ids still
@@ -866,7 +866,7 @@ export class SeeduplexRealtimeVoiceBridge {
       if (spoken && this.bargeInPending) this.#cancelUpstreamResponse();
       this.bargeInPending = false;
     }
-    if(type === "conversation.item.input_audio_transcription.failed" && this.request.nativeDuplex)this.request.onInputSpeech?.(false);
+    if(type === "conversation.item.input_audio_transcription.failed" && this.request.nativeDuplex)this.request.onInputSpeech?.(false,{recognized:false});
     const continuingBatch = this.toolBatches.find((batch) => batch.continuing);
     const internalContinuationResponse =
       type === "response.created" &&
