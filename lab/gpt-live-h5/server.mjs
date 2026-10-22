@@ -23,7 +23,7 @@ import {voiceConversationContext} from '../realtime-direct-tools/conversation-co
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], feishuAccounts = {}, feishuLogin, defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null }) {
   if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
   if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
   basePath = basePath.replace(/\/$/u, "");
@@ -33,8 +33,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   const origin = hosted ? new URL(publicOrigin) : null;
   if (hosted && (origin.protocol !== "https:" || origin.origin !== publicOrigin || !basePath)) throw new Error("Hosted voice requires an HTTPS origin and base path");
   if (!Number.isInteger(maxActiveSessions) || maxActiveSessions < 1 || maxActiveSessions > 50 || !Number.isInteger(maxActiveSessionsPerIp) || maxActiveSessionsPerIp < 1 || maxActiveSessionsPerIp > maxActiveSessions) throw new Error("Invalid voice call limits");
-  const entries = createConversationEntries(conversationEntries, accessToken);
-  const replyTargets=new Map(conversationEntries.filter(e=>e.replySync===true&&!e.disabled).map(e=>[e.id,conversationReplyTarget(e,feishuAccounts)]));
+  const entries = createConversationEntries(conversationEntries, accessToken, personalReply);
+  const replyTargets=new Map(entries.replyBindings().map(e=>[e.id,conversationReplyTarget(e,feishuAccounts)]));
   const phoneLogin = feishuLogin ? createFeishuPhoneLogin({...feishuLogin, publicOrigin, basePath, entries}) : null;
   const accessors = new Map();
   const entryAccess = binding => {
@@ -291,7 +291,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
             // the deployment selects the phone default, not browser heuristics.
             // Clients opt in only after implementing native response ownership and reversible pause.
             const inputPolicy = params.inputPolicy ?? 'speaker';
-            const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(binding.id!=='tianyi'?{sessionBound:true,replyTarget}:{}),...speakerRouting?{inputPolicy}:{}});
+            const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(replyTarget?{replyTarget}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...speakerRouting?{inputPolicy}:{}});
             context.active={sessionKey,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
             rememberAvatarCall(context,context.active,params.model);
             return json(res,200,reservation);
@@ -602,6 +602,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       phoneInputPolicy:process.env.VOICE_PHONE_INPUT_POLICY ?? 'speaker',
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",
       feishuAccounts:process.env.VOICE_FEISHU_ACCOUNTS_FILE?JSON.parse(await readFile(process.env.VOICE_FEISHU_ACCOUNTS_FILE,'utf8')):config.channels?.feishu??{},
+      personalReply: {replySync:!!process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID,accountId:process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID},
       conversationEntries: process.env.VOICE_ENTRIES_FILE ? JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,"utf8")) : [],
       feishuLogin: process.env.VOICE_FEISHU_LOGIN_FILE ? await readFeishuPhoneLoginFile(process.env.VOICE_FEISHU_LOGIN_FILE) : undefined,
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",

@@ -344,7 +344,6 @@ function CallPage({view, actions, options}) {
         data-alert={status && ['error', 'warn'].includes(status.key) ? status.key : undefined} data-history={String(!wide && history)} data-compact={String(compact)}
         style={{'--avatar-size': Math.round(size) + 'px', '--controls-height': Math.ceil(controlsHeight) + 'px'}}>
         <header className="topbar" aria-live="off">
-          {state.conversation ? <span className="conversation-name">{state.conversation.name}{state.conversation.replySync ? ' · 主要回复同步飞书' : ''}</span> : null}
           {state.call === 'connected' || state.call === 'ending' ? <time className="call-clock">{state.callStartedAt ? clock(now - state.callStartedAt) : ''}</time> : null}
         </header>
         <section className="stage" aria-label="V">

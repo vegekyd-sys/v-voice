@@ -9,15 +9,15 @@ const entries=['a','b','alias'].map((suffix,i)=>({
  callerId:'tianyi',permissionProfile:'personal-tianyi',accessToken:String(i+1).repeat(40)}));
 async function fixture(t,options={}){
  const calls=[];let serial=0;
- const bridge=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:options.entries??entries,feishuAccounts:options.feishuAccounts??{},
+ const bridge=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:options.entries??entries,personalReply:options.personalReply,feishuAccounts:options.feishuAccounts??{},
  gateway:{request:async(method,args)=>{calls.push({method,args});if(method==='sessions.resolve')return options.resolve?options.resolve(args):{key:args.key,agentId:args.agentId};if(method==='send')return {messageId:'om_fixture'};return method==='talk.client.create'?{voiceSessionId:'native-'+(++serial),model:'gpt-live-1-codex',transport:'webrtc',offerUrl:'/plugins/openai/realtime/calls'}:{ok:true};}},
  directVoice:{models:()=>[],reserve:async args=>{calls.push({method:'direct.reserve',args});return {voiceSessionId:'direct-'+(++serial),provider:args.model};},close:async()=>{},handleEvent:()=>{},dispose:async()=>{},...options.directVoice},offer:options.offer??(async()=> '')});
  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
  const request=(id,path,cookie,body)=>new Promise((resolve,reject)=>{
- const req=httpRequest({hostname:'127.0.0.1',port:bridge.server.address().port,path:`/voice/api/${path}?phone=${id}`,method:body===undefined?'GET':'POST',headers:{host:new URL(origin).host,origin,...(cookie?{cookie}:{}),'content-type':'application/json'}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end(body===undefined?undefined:JSON.stringify(body));});
+ const req=httpRequest({hostname:'127.0.0.1',port:bridge.server.address().port,path:`/voice/api/${path}${id?'?phone='+id:''}`,method:body===undefined?'GET':'POST',headers:{host:new URL(origin).host,origin,...(cookie?{cookie}:{}),'content-type':'application/json'}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end(body===undefined?undefined:JSON.stringify(body));});
  const login=async entry=>{const r=await request(entry.id,'access','',{access:entry.accessToken});assert.equal(r.status,200);return r.headers.get('set-cookie').split(';')[0];};
  const html=(id,cookie)=>new Promise((resolve,reject)=>{
-  const req=httpRequest({hostname:'127.0.0.1',port:bridge.server.address().port,path:`/voice/?phone=${id}`,headers:{host:new URL(origin).host,...(cookie?{cookie}:{})}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end();});
+  const req=httpRequest({hostname:'127.0.0.1',port:bridge.server.address().port,path:`/voice/${id?'?phone='+id:''}`,headers:{host:new URL(origin).host,...(cookie?{cookie}:{})}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end();});
  return {calls,request,login,html,bridge};
 }
 test('separate phones run concurrently; same-session alias cannot replace an owner',async t=>{
@@ -126,4 +126,20 @@ test('reply sync is enabled by private entry only; native final goes to that exa
  f.bridge.emit(event);assert.equal(f.calls.filter(c=>c.method==='send').length,1);
  const direct=await f.request(entries[0].id,'session',cookie,{model:'seeduplex',replySync:false,replyTarget:{to:'oc_foreign'}});assert.equal(direct.status,200);
  assert.equal(f.calls.find(c=>c.method==='direct.reserve').args.replyTarget.to,'oc_room_a');
+});
+
+for(const model of ['seeduplex','grok','gpt-live'])test(`legacy personal ${model} shares reply routing without changing its session or tool identity`,async t=>{
+ const {GPT_LIVE_PERSONAL_SESSION_KEY}=await import('../lab/gpt-live-h5/personal-session.mjs');
+ const f=await fixture(t,{personalReply:{replySync:true,accountId:'personal-bot'},feishuAccounts:{accounts:{personal:{appId:'personal-bot'}}}});
+ const cookie=await f.login({id:'',accessToken:'legacy'.repeat(8)});
+ const response=await f.request('','session',cookie,{model,replyTarget:{to:'oc_foreign'},sessionKey:entries[0].sessionKey});
+ assert.equal(response.status,200);const first=await response.json();
+ if(model!=='gpt-live'){
+  const call=f.calls.find(c=>c.method==='direct.reserve');assert.equal(call.args.sessionKey,GPT_LIVE_PERSONAL_SESSION_KEY);assert.equal(call.args.sessionBound,undefined);assert.equal(call.args.replyTarget.sessionKey,GPT_LIVE_PERSONAL_SESSION_KEY);assert.equal(call.args.replyTarget.accountId,'personal');
+ }else{
+  await f.request('','call-control-input',cookie,{voiceSessionId:first.voiceSessionId,revision:1,turnId:'u1',text:'给我一个完整回答',final:true});
+  f.bridge.emit({event:'talk.event',payload:{voiceSessionId:first.voiceSessionId,talkEvent:{type:'output.text.done',responseId:'r1',payload:{text:'这是个人入口的一条完整回答。'}}}});
+  await f.request('','close',cookie,first);
+  const sent=f.calls.filter(c=>c.method==='send');assert.equal(sent.length,1);assert.equal(sent[0].args.sessionKey,GPT_LIVE_PERSONAL_SESSION_KEY);assert.equal(sent[0].args.accountId,'personal');assert.equal(sent[0].args.to,GPT_LIVE_PERSONAL_SESSION_KEY.split(':').at(-1));
+ }
 });

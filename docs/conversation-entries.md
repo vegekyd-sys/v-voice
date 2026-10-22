@@ -102,3 +102,9 @@ Private entries can enable `replySync: true`. The host resolves the entry's conf
 Only final response segments are merged and sent. Greeting, progress, partial and interrupted output are omitted. Full backend results are sent once, including completion after hangup; their spoken summary is suppressed from duplicate delivery. An ambiguous timeout retries with the same idempotency key. Unconfirmed sends remain failures and show a nonfatal phone-page notice. This is call-scoped deduplication plus Gateway idempotency, not a promise of restart-proof exactly-once delivery.
 
 VLab pilot enablement and real delivery evidence are recorded in `docs/acceptance/session-phone-candidate-20261022.md`. No production or all-user rollout is implied.
+
+## 原个人入口共用回复同步
+
+设置 `VOICE_PERSONAL_REPLY_ACCOUNT_ID` 为已核验的飞书账号键或 appId，可让默认个人入口也使用同一个 `conversationReplyTarget` / `createConversationReplyDelivery`。发送到其既有个人 session 对应的飞书会话；不改变 session、访问凭据或个人工具路径。未设置则保持原行为。账号来自 `VOICE_FEISHU_ACCOUNTS_FILE` 或 Gateway 配置，错误/不明确的映射在启动时拒绝。三个入口共用最终回答合并、去重、重试和失败提示。
+
+顶部会话文字已按产品要求移除，服务端绑定继续生效。Candidate 对齐正式 native 发布配置：`VOICE_NATIVE_PLAYBACK_POLICY=assisted`；仅当已配置 ASR 凭据时启用 `VOICE_NATIVE_INTERRUPT_ASR=1`，避免无凭据的控制识别连接。

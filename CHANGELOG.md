@@ -1,3 +1,8 @@
+## Unreleased — Unified personal/session replies · 2026-10-22
+
+- Route the legacy personal entry through the same server-owned reply target and delivery queue as session phones, with an explicit bot-account opt-in. Preserve its fixed session, personal tools, authentication and default disabled setting.
+- Remove the visible conversation/reply-sync banner. Candidate playback uses the release's assisted pause setting; the observed call had 23 pauses and zero recorded buffer underflows, so device listening acceptance is still required.
+
 ## Unreleased — Session replies in Feishu candidate · 2026-10-22
 
 - Opt-in private conversation entries mirror completed substantive Voice replies and full backend results into their bound Feishu session through the existing Gateway send API. Resolve the configured bot account explicitly and retain the original session key for transcript mirroring.
