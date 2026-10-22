@@ -3,12 +3,12 @@
   "version": "voice-seeduplex-duplex.20261022.3",
   "date": "2026-10-22",
   "status": "awaiting-human-acceptance",
-  "runtimeCommit": "1284672253de44d48e46d1ebea62549bb3e5a9ce",
+  "runtimeCommit": "c2d0f5d9b772588deaa27e04648a12b7ef1d122e",
   "baseCommit": "68ebcc9",
   "providerModel": "1.2.6.1",
   "voice": "xiaohe",
   "files": 203,
-  "filesSha256": "3e22d43c2e018c77b29ffad7b2cf9700f5bcd749432a438811f0e183c0c92af4",
+  "filesSha256": "a44fc04e1f1a3e8b4dd4f131cbbd9bfdb2ebd69c3c71fd357689e8af08fca40e",
   "automaticTests": {
     "mainPassed": 683,
     "speakerNativePassed": 95
@@ -22,7 +22,7 @@
   },
   "observations": {
     "chromiumLongInterruptionOutputSilenceMs": 172,
-    "webkitLongInterruptionOutputSilenceMs": 200,
+    "webkitLongInterruptionOutputSilenceMs": 195,
     "chromiumShortInterruptionPauseMs": 154,
     "oldAudioResumed": false,
     "originalSpeakerPathClearEventMs": 9587,
@@ -67,5 +67,27 @@
     "cancelsBackendTasks": false,
     "admitsOrdinaryQuestions": false,
     "delayedTranscriptResponseOwnership": true
+  },
+  "evidenceRuntimeVerification": {
+    "commit": "c2d0f5d9b772588deaa27e04648a12b7ef1d122e",
+    "files": 203,
+    "filesSha256": "a44fc04e1f1a3e8b4dd4f131cbbd9bfdb2ebd69c3c71fd357689e8af08fca40e",
+    "mismatches": [],
+    "runtimeOwnerVerified": true,
+    "productionIdentityUnchanged": false,
+    "productionIdentityChangedDuringValidation": true,
+    "productionBaseline": {
+      "MainPID": "761469",
+      "ExecMainStartTimestamp": "Thu 2026-10-22 02:13:06 CST",
+      "InvocationID": "4b5023d7ee9840c5a9a70051d81e0881"
+    },
+    "productionObserved": {
+      "MainPID": "1794220",
+      "ExecMainStartTimestamp": "Thu 2026-10-22 12:39:52 CST",
+      "InvocationID": "8aae0becf201486d903f47a5988e8e93"
+    },
+    "productionModifiedByThisTask": false,
+    "gatewayRestartedByThisTask": false,
+    "status": "candidate-only"
   }
 }
