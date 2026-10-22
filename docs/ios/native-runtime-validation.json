@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "date": "2026-10-23",
+  "status": "candidate_local_verified_not_released",
+  "developmentBase": "08eaecf1a92bc4aa748e1b6053e7924cf55241e1",
+  "branch": "codex/voice-native-capability-bridge",
+  "protocolVersion": 1,
+  "requiresFirstNativeUpgrade": true,
+  "nativeBuildAssigned": false,
+  "phoneInstalled": false,
+  "productionDeployed": false,
+  "gatewayChanged": false,
+  "validationEnvironment": "isolated local fixture, existing chat-owned iOS 26.5 simulator, ports 29937 and 29947",
+  "tests": {
+    "voiceNode": {
+      "passed": 742,
+      "failed": 0
+    },
+    "speakerNode": {
+      "passed": 95,
+      "failed": 0
+    },
+    "coreSwift": {
+      "passed": 37,
+      "failed": 0
+    },
+    "completeNativeSuite": {
+      "passed": 70,
+      "failed": 0
+    },
+    "additionalProjectedWKFlow": {
+      "passed": 1,
+      "failed": 0,
+      "reason": "Added after full suite to verify the new protocol drives actual shared H5 speaker labels, Markdown report, background capture and page reload"
+    },
+    "embeddedH5Parity": true,
+    "simulatorCompile": true
+  },
+  "demonstrated": [
+    "Same installed test binary and CallCoordinator uses changed service connected copy and 140ms/220ms onset behavior on subsequent calls without a WK page",
+    "Service-advertised future relay model selected through H5 bridge; unsupported transport rejected",
+    "Production HTTP/relay/provider adapter clears old reply before new PCM, rejects old tail, preserves capture, drains farewell",
+    "Recognized interruption stays paused beyond old timeout; ignored speech resumes retained samples",
+    "Normalized speaker rows and report render in actual WK H5, microphone upload continues when hidden and when page reloads, only one session created",
+    "Cross-language wire fixture exercises every operation; foreign/replayed/unknown or partially invalid batch rejected",
+    "Legacy fixtures and native GPT WebRTC loopback remain functional"
+  ],
+  "iterations": [
+    {
+      "issue": "GPT test fixture omitted transport field that actual production reservations provide",
+      "resolution": "Fixture now declares webrtc, transport-owned production selection preserved"
+    },
+    {
+      "issue": "New full service caption scenario reached missing assistant() method on local routing stub",
+      "resolution": "Completed the no-op stub interface; same-binary policy and caption scenario passed"
+    }
+  ],
+  "notEstablished": [
+    "Physical microphone/AEC/listening on this candidate",
+    "Action Button and locked-device/Island controls on this candidate",
+    "New physical waveform acceptance beyond existing build22 user acceptance",
+    "Provider judgment accuracy or TV/name recognition improvements",
+    "Production deployment or phone version live readback"
+  ],
+  "releaseRequirements": [
+    "Review and merge main plus main CI",
+    "Assign next native build, retain current signed rollback and binding identity",
+    "Record actual phone install and human foreground/background/Action Button/Island acceptance",
+    "Update homepage changelog and release registry; publish both Voice nodes through release-fleet"
+  ]
+}

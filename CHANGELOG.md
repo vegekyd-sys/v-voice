@@ -1,3 +1,10 @@
+
+## Unreleased — Native capability bridge candidate
+
+- Move relay caption/speaker interpretation, notices, task/report presentation and bounded playback policy into the shared Voice service. Negotiate a versioned data-only runtime; native executes existing media and system primitives even without a WK page.
+- Discover relay models by declared transport instead of adding a Swift enum case for each service model. Preserve old clients and the separate GPT WebRTC transport.
+- Synthetic same-binary acceptance changes service policy between calls; physical installation/background/Action Button/Island acceptance remains separate. See `docs/ios/NATIVE-CAPABILITY-BRIDGE.md`.
+
 ## 2026-10-23 — Native search acknowledgment shared by web and iOS
 
 - Enable contextual SeedDuplex acknowledgment for phone web_search and memory_search, followed by tool execution in the same turn. No cached start audio, injected TTS or additional model. Explicit VOICE_SEARCH_ACK=off retains the silent lookup rollback.

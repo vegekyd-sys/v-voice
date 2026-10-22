@@ -1,0 +1,383 @@
+{
+  "policy": {
+    "version": 1,
+    "timing": {
+      "thinkingMS": 12000,
+      "providerRecoveryMS": 35000,
+      "endDrainMS": 750
+    },
+    "copy": {
+      "connected": "已接通，可以直接开口",
+      "reconnected": "已重新接通，请继续说",
+      "recovering": "语音模型正在恢复，请稍候再说",
+      "recovered": "语音已恢复，可以继续说"
+    },
+    "pause": {
+      "rms": 0.035,
+      "noiseMultiplier": 3,
+      "zcrMin": 0.004,
+      "zcrMax": 0.32,
+      "onsetMS": 140,
+      "quietMS": 400,
+      "holdMS": 1800,
+      "maxHoldMS": 12000,
+      "nativeHoldMS": 15000,
+      "generationGraceMS": 600,
+      "doneGraceMS": 250
+    },
+    "bargeIn": {
+      "rms": 0.025,
+      "frames": 4
+    },
+    "playback": {
+      "replaceResponse": true,
+      "localPause": true
+    }
+  },
+  "frames": [
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 1,
+      "effects": [
+        {
+          "op": "conversation.row",
+          "row": {
+            "id": "68ff107f-5f2a-497d-88fe-85d932db96ac",
+            "role": "assistant",
+            "text": "先自然接话",
+            "complete": false
+          }
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 2,
+      "effects": [
+        {
+          "op": "conversation.row",
+          "row": {
+            "id": "68ff107f-5f2a-497d-88fe-85d932db96ac",
+            "role": "assistant",
+            "text": "先自然接话，再查询。",
+            "complete": true
+          }
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 3,
+      "effects": [
+        {
+          "op": "conversation.speakers",
+          "people": [
+            {
+              "id": "speaker:1",
+              "label": "Speaker A",
+              "name": "甲",
+              "displayLabel": "甲 · Speaker A"
+            }
+          ]
+        },
+        {
+          "op": "conversation.row",
+          "row": {
+            "id": "d2f35d85-b261-4749-9227-2dce87052888",
+            "key": "speaker:0:300",
+            "role": "user",
+            "text": "我叫甲",
+            "complete": true,
+            "speakerId": "speaker:1",
+            "speakerLabel": "甲 · Speaker A",
+            "speakerTone": 0
+          }
+        },
+        {
+          "op": "conversation.mode",
+          "lastSpeakerId": "speaker:1",
+          "listenOnly": false
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 4,
+      "effects": [
+        {
+          "op": "conversation.speakers",
+          "people": [
+            {
+              "id": "speaker:1",
+              "label": "Speaker A",
+              "name": "甲",
+              "displayLabel": "甲 · Speaker A"
+            }
+          ]
+        },
+        {
+          "op": "conversation.row",
+          "row": {
+            "id": "d2f35d85-b261-4749-9227-2dce87052888",
+            "key": "speaker:0:300",
+            "role": "user",
+            "text": "我叫甲",
+            "complete": true,
+            "speakerId": "speaker:1",
+            "speakerLabel": "甲 · Speaker A",
+            "speakerTone": 0,
+            "listenOnly": false
+          }
+        },
+        {
+          "op": "conversation.mode",
+          "lastSpeakerId": "speaker:1",
+          "listenOnly": false
+        },
+        {
+          "op": "surface.phase",
+          "phase": "thinking"
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 5,
+      "effects": [
+        {
+          "op": "surface.notice",
+          "text": "声音重叠，请轮流说",
+          "kind": "notice",
+          "action": "",
+          "actionLabel": "",
+          "ttlMS": 4000
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 6,
+      "effects": [
+        {
+          "op": "task.upsert",
+          "id": "search",
+          "activity": "web",
+          "stage": "查资料中"
+        },
+        {
+          "op": "surface.phase",
+          "phase": "thinking"
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 7,
+      "effects": [
+        {
+          "op": "task.upsert",
+          "id": "search",
+          "activity": "background",
+          "stage": "比较第二组资料",
+          "step": 2
+        },
+        {
+          "op": "surface.phase",
+          "phase": "thinking"
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 8,
+      "effects": [
+        {
+          "op": "task.remove",
+          "id": "search",
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 9,
+      "effects": [
+        {
+          "op": "audio.append",
+          "audio": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "sampleRate": 24000,
+          "sequence": 1,
+          "responseId": "reply",
+          "localBargeIn": false
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 10,
+      "effects": [
+        {
+          "op": "playback.hold"
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 11,
+      "effects": [
+        {
+          "op": "playback.hold",
+          "complete": true,
+          "recognized": true
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 12,
+      "effects": [
+        {
+          "op": "playback.release",
+          "responseId": "reply"
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 13,
+      "effects": [
+        {
+          "op": "audio.clear",
+          "retiredResponseId": "reply"
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 14,
+      "effects": [
+        {
+          "op": "audio.complete",
+          "responseId": "next"
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 15,
+      "effects": [
+        {
+          "op": "conversation.row",
+          "row": {
+            "id": "0a85ec4b-8d9f-4331-9e9f-a84e14dc663b",
+            "key": "document:report",
+            "role": "assistant",
+            "text": "",
+            "complete": true,
+            "documentId": "report"
+          }
+        },
+        {
+          "op": "document.present",
+          "document": {
+            "id": "report",
+            "text": "# 候选报告\n没有调用模型或工具。",
+            "serverOwned": true,
+            "title": "候选报告",
+            "preview": "没有调用模型或工具。",
+            "autoOpen": true
+          }
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 16,
+      "effects": [
+        {
+          "op": "connection.wait",
+          "text": "语音模型正在恢复，请稍候再说"
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 17,
+      "effects": [
+        {
+          "op": "connection.ready",
+          "text": "语音已恢复，可以继续说"
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 18,
+      "effects": [
+        {
+          "op": "avatar.expression",
+          "expression": "happy"
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 19,
+      "effects": [
+        {
+          "op": "call.endWhenDrained",
+          "id": "end"
+        }
+      ]
+    },
+    {
+      "type": "native.runtime",
+      "version": 1,
+      "voiceSessionId": "native-contract-fixture",
+      "revision": 20,
+      "effects": [
+        {
+          "op": "call.cancelEnd"
+        }
+      ]
+    }
+  ]
+}

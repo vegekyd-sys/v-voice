@@ -5,7 +5,11 @@ struct VoiceModelOption: Identifiable {
     let id: String
     let title: String
     let available: Bool
-    var nativeModel: VoiceModel? { VoiceModel(rawValue: id) }
+    var nativeTransport: String? = nil
+    var nativeModel: VoiceModel? {
+        guard ["gateway-relay","webrtc"].contains(nativeTransport ?? "") || nativeTransport == nil && VoiceModel.allCases.contains(where: { $0.rawValue == id }) else { return nil }
+        return VoiceModel(rawValue: id)
+    }
 }
 struct VoiceChoice: Identifiable { let id: String; let title: String }
 

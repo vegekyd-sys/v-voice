@@ -21,7 +21,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy,surface:options.surface??'phone'});
+ const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -31,6 +31,21 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
  const call=(name,args,id='call-1')=>{event({type:'response.created',response:{id:'response-'+id}});event({type:'response.function_call_arguments.done',response_id:'response-'+id,call_id:id,name,arguments:JSON.stringify(args)});event({type:'response.done',response:{id:'response-'+id,status:'completed'}});};
  return {service,reservation,client,upstream,event,call,audit,invocations,peers,completeBackend:text=>{sdkTask.status='ok';sdkTask.text=text;},progressBackend:text=>sdkTask.progress.push({text,kind:'commentary',provenance:{runId:sdkTask.runId,sequence:sdkTask.progress.length+1}})};
 }
+
+test('native runtime is explicit opt-in and preserves legacy web/installed clients',async t=>{
+ const old=await fixture();t.after(()=>old.service.dispose());
+ assert.equal(old.reservation.nativeRuntime,undefined);
+ old.event({type:'response.output_audio_transcript.delta',delta:'旧协议仍然可用'});
+ assert(old.client.sent.some(v=>v.type==='transcript'));
+ const f=await fixture(undefined,'grok',{nativeRuntimeVersion:1});t.after(()=>f.service.dispose());
+ assert.equal(f.reservation.nativeRuntime.version,1);
+ f.event({type:'response.output_audio_transcript.delta',delta:'新协议通用字幕'});
+ const frames=f.client.sent.filter(v=>v.type==='native.runtime');
+ assert(frames.some(v=>v.effects.some(e=>e.op==='conversation.row'&&e.row.text==='新协议通用字幕')));
+ assert(!f.client.sent.some(v=>v.type==='transcript'));
+ assert(frames.every((v,i)=>v.revision===i+1&&v.voiceSessionId===f.reservation.voiceSessionId));
+ await assert.rejects(f.service.reserve({model:'grok',sessionKey:'fixture',nativeRuntimeVersion:99}),/Unsupported native runtime/u);
+});
 
 test('a speaker switch preserves an admitted tool but never sends its old result to the new native persona',async t=>{
  let native,finish;

@@ -36,6 +36,25 @@ import VVoiceCore
         XCTAssertNil(H5ResourceScheme.resourcePath(URL(string: "vvoice-h5://app/%2e%2e/secrets")!))
         XCTAssertNil(H5ResourceScheme.resourcePath(URL(string: "vvoice-h5://outside/index.html")!))
     }
+    func testWebCanSelectANewServiceModelUsingExistingTransportAndRejectsUnknownTransport() async throws {
+        let call = try await client()
+        await call.refreshOptions()
+        let host = H5WebHost(call: call, onError: { XCTFail($0) })
+        _ = try await host.command("model", payload: ["id":"future-relay-model"], owner: call.presentationID)
+        XCTAssertEqual(call.model.rawValue, "future-relay-model")
+        XCTAssertEqual(call.modelTitle, "服务新模型")
+        do {
+            _ = try await host.command("model", payload: ["id":"unsupported-transport"], owner: call.presentationID)
+            XCTFail("A new transport requires a native implementation")
+        } catch { }
+        let capabilities = H5Snapshot.make(call, visible: true)["capabilities"] as? [String: Any]
+        XCTAssertEqual(capabilities?["runtimeVersion"] as? Int, 1)
+        try await call.startOrContinue()
+        let request = try await stats()["lastSessionRequest"] as? [String: Any]
+        XCTAssertEqual(request?["model"] as? String, "future-relay-model")
+        XCTAssertEqual(request?["nativeRuntimeVersion"] as? Int, 1)
+        await call.end()
+    }
     func testSnapshotNeverExposesCredentialsAndStaleControlsCannotEndNewCall() async throws {
         let call = try await client()
         let json = try JSONSerialization.data(withJSONObject: H5Snapshot.make(call, visible: true))
@@ -92,8 +111,16 @@ import VVoiceCore
         await call.end()
     }
     func testOriginalH5RendersSpeakersAndReportWhileNativeCaptureSurvivesReload() async throws {
+        try await verifySpeakersReportAndReload(runtime: false)
+    }
+    func testServiceProjectedH5RendersSpeakersAndReportWhileCaptureSurvivesReload() async throws {
+        try await verifySpeakersReportAndReload(runtime: true)
+    }
+    private func verifySpeakersReportAndReload(runtime: Bool) async throws {
         let call = try await client(); try await command("speaker-mode")
+        if runtime { try await command("runtime-mode") }
         try await call.startOrContinue()
+        XCTAssertEqual(call.nativeRuntimeVersion, runtime ? 1 : nil)
         let before = try await stats()["inputBytes"] as? Int ?? 0
         let host = H5WebHost(call: call, onError: { XCTFail($0) })
         host.latest = H5Snapshot.make(call, visible: true)

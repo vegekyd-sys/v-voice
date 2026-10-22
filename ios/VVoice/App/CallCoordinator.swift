@@ -47,7 +47,7 @@ import VVoiceCore
         if let options = status["models"] as? [[String: Any]] {
             modelOptions = options.compactMap { item in
                 guard let id = item["id"] as? String else { return nil }
-                return .init(id: id, title: id == "gpt-live" ? VoiceModel.gptLive.title : (item["label"] as? String ?? VoiceModel(rawValue: id)?.title ?? id), available: item["available"] as? Bool != false)
+                return .init(id: id, title: id == "gpt-live" ? VoiceModel.gptLive.title : (item["label"] as? String ?? VoiceModel(rawValue: id)?.title ?? id), available: item["available"] as? Bool != false, nativeTransport: item["nativeTransport"] as? String)
             }
             let grok = options.first { $0["id"] as? String == "grok" }
             grokVoices = (grok?["voices"] as? [[String: Any]] ?? []).compactMap { voice in
@@ -75,6 +75,11 @@ import VVoiceCore
     }
     private(set) var speakerNotice = ""
     private(set) var speakerAction = ""
+    private(set) var speakerActionID = ""
+    private(set) var speakerNoticeKind = "notice"
+    @ObservationIgnored private var nativeRuntime: NativeRuntimePolicy?
+    @ObservationIgnored private var nativeRuntimeRevision = 0
+    var nativeRuntimeVersion: Int? { nativeRuntime?.version }
     @ObservationIgnored private var speakerNoticeTask: Task<Void, Never>?
     @ObservationIgnored private var speakerRouted = false
     @ObservationIgnored private var thinkingNoticeTask: Task<Void, Never>?
@@ -134,7 +139,7 @@ import VVoiceCore
     @ObservationIgnored private var networkAvailable = true
     @ObservationIgnored private var pendingEndID: String?
     @ObservationIgnored private var lastInput = Date()
-    @ObservationIgnored private var injectedSpeech = false
+    @ObservationIgnored private var localBargeInEnabled = false
     @ObservationIgnored private var onsetFrames = 0
     @ObservationIgnored private var retiredResponses: Set<String> = []
     @ObservationIgnored private var preferredPhoneInputPolicy: String?
@@ -291,7 +296,7 @@ import VVoiceCore
         guard status["ready"] as? Bool == true, status["preview"] as? Bool != true else { throw VoiceError.unavailable }
         if let models = status["models"] as? [[String: Any]], !models.contains(where: { $0["id"] as? String == model.rawValue && $0["available"] as? Bool != false }) { throw VoiceError.unavailable }
         applyOptions(status)
-        var request: [String: Any] = ["model": model.rawValue]
+        var request: [String: Any] = ["model": model.rawValue, "nativeRuntimeVersion": 1]
         if model == .grok, !grokVoices.isEmpty { request["voice"] = grokVoice }
         if model == .seeduplex, let policy = preferredPhoneInputPolicy, ["native", "speaker"].contains(policy) { request["inputPolicy"] = policy }
         // GPT's existing native input policy sends live audio directly to the
@@ -303,13 +308,21 @@ import VVoiceCore
             _ = try? await api.call("close", body: ["voiceSessionId": id], refresh: false); throw CancellationError()
         }
         voiceID = id; try api.rememberCall(id)
+        if let raw = reservation["nativeRuntime"] {
+            guard let value = raw as? [String: Any] else { throw VoiceError.protocolMismatch }
+            nativeRuntime = try NativeRuntimePolicy.decode(value)
+        } else { nativeRuntime = nil }
+        nativeRuntimeRevision = 0
         nativeDuplex = reservation["nativeDuplex"] as? Bool == true
         nativeAssisted = nativeDuplex && reservation["nativePlaybackPolicy"] as? String == "assisted"
-        nativePause.reset(); nativeOutputDone = false
+        if let runtime = nativeRuntime {
+            nativeDuplex = runtime.playback.replaceResponse; nativeAssisted = runtime.playback.localPause
+        }
+        nativePause = NativeSpeechPause(policy: nativeRuntime?.pause); nativeOutputDone = false
         speakerRouted = reservation["speakerRouting"] is [String: Any]
         conversation.beginSpeakerStream(); speakerNotice = ""; speakerAction = ""; speakerNoticeTask?.cancel()
         avatarOutcome = "none"; avatar.begin(owner: id); refreshIslandAvatarSurface(); updateAvatar()
-        if model == .gptLive {
+        if reservation["transport"] as? String == "webrtc" {
             guard reservation["model"] as? String == "gpt-live-1-codex", reservation["speakerRouting"] == nil else { throw VoiceError.protocolMismatch }
             try await dialGPT(owner: owner, id: id, greeting: greeting); return
         }
@@ -338,11 +351,11 @@ import VVoiceCore
                 let held = self.nativePause.observe(pcm, enabled: self.audio.queuedFrames > 0, at: ProcessInfo.processInfo.systemUptime * 1000, generationComplete: self.nativeOutputDone)
                 self.audio.setPlaybackPaused(held)
             }
-            if !self.nativeDuplex, !self.muted, self.injectedSpeech, self.audio.queuedFrames > 0 {
-                self.onsetFrames = rms >= 0.025 ? self.onsetFrames + 1 : 0
-                if self.onsetFrames >= 4 {
+            if !self.nativeDuplex, !self.muted, self.localBargeInEnabled, self.audio.queuedFrames > 0 {
+                self.onsetFrames = rms >= (self.nativeRuntime?.bargeIn.rms ?? 0.025) ? self.onsetFrames + 1 : 0
+                if self.onsetFrames >= (self.nativeRuntime?.bargeIn.frames ?? 4) {
                     if let id = self.responseID { self.retireResponse(id) }
-                    self.audio.clear(); self.injectedSpeech = false; self.onsetFrames = 0
+                    self.audio.clear(); self.localBargeInEnabled = false; self.onsetFrames = 0
                     relay.send(["type": "barge-in"])
                 }
             }
@@ -360,7 +373,7 @@ import VVoiceCore
         CallDiagnostics.record("call.audio-ready")
         guard audio.isRunning, relay.isConnected, owned(owner) else { throw VoiceError.audio }
         lastInput = Date(); updateRoute(); setPhase(.listening, owner: owner)
-        detail = greeting ? "已接通，可以直接开口" : "已重新接通，请继续说"
+        detail = greeting ? (nativeRuntime?.copy.connected ?? "已接通，可以直接开口") : (nativeRuntime?.copy.reconnected ?? "已重新接通，请继续说")
         audioReady = true
         CallDiagnostics.record("call.connected")
         let hadEarlyAudio = !earlyAudio.isEmpty
@@ -514,27 +527,20 @@ import VVoiceCore
         scheduleCaptionUpdate(); updateAvatar()
     }
     private func handle(_ v: [String: Any], owner: UUID) throws {
+        if nativeRuntime != nil {
+            if v["type"] as? String == "ready" { return }
+            guard let voiceID else { throw VoiceError.protocolMismatch }
+            let frame = try NativeRuntimeFrame.decode(v, owner: voiceID, after: nativeRuntimeRevision)
+            nativeRuntimeRevision = frame.revision
+            for effect in frame.effects { try applyNativeEffect(effect, owner: owner) }
+            return
+        }
+        // Compatibility adapter only: pre-runtime servers and the separate GPT
+        // WebRTC transport. New relay product behavior belongs to native-runtime.mjs.
         if gpt != nil { gptEnd.host(v) }
         switch v["type"] as? String {
         case "audio":
-            guard providerReady else { return }
-            if let response = v["responseId"] as? String, retiredResponses.contains(response) { return }
-            guard v["sampleRate"] as? Int == 24_000, let encoded = v["audio"] as? String, let bytes = Data(base64Encoded: encoded) else { throw VoiceError.protocolMismatch }
-            if nativeDuplex, let next = v["responseId"] as? String, let previous = responseID, next != previous {
-                retireResponse(previous)
-                clearOutput()
-            }
-            nativeOutputDone = false
-            injectedSpeech = v["source"] as? String == "injected-speech"
-            // Host tool notices have no provider ID. Keep the previous owner so
-            // the next native response still replaces its queued audio tail.
-            if let next = v["responseId"] as? String { responseID = next }
-            else if !nativeDuplex { responseID = nil }
-            if audioReady { try audio.play(bytes, sequence: v["sequence"] as? Int) }
-            else {
-                guard earlyAudioBytes + bytes.count <= 480_000 else { throw VoiceError.bufferOverflow }
-                earlyAudio.append(EarlyAudio(bytes: bytes, sequence: v["sequence"] as? Int)); earlyAudioBytes += bytes.count
-            }
+            try appendPCM(v, localBargeIn: v["source"] as? String == "injected-speech")
         case "audio.clear":
             // A confirmed interruption retires the response, not just its
             // currently queued buffers. Late packets must not restart it.
@@ -602,8 +608,97 @@ import VVoiceCore
         default: break
         }
     }
+    private func applyNativeEffect(_ e: NativeRuntimeEffect, owner: UUID) throws {
+        switch e.op {
+        case "audio.append":
+            var value: [String: Any] = ["sampleRate":e.sampleRate!,"audio":e.audio!]
+            value["sequence"] = e.sequence; value["responseId"] = e.responseId
+            try appendPCM(value, localBargeIn: e.localBargeIn == true)
+        case "audio.clear":
+            if let retired = e.retiredResponseId {
+                retireResponse(retired)
+                if nativeDuplex, let current = responseID, current != retired { return }
+                if nativeDuplex { responseID = nil }
+            }
+            clearOutput()
+        case "audio.complete":
+            if let completed = e.responseId, retiredResponses.contains(completed) { return }
+            if let completed = e.responseId, let current = responseID, completed != current { return }
+            nativeOutputDone = true; nativePause.generationDone(at: ProcessInfo.processInfo.systemUptime * 1000)
+            if audioReady { audio.markOutputDone() } else { earlyOutputDone = true }
+        case "playback.hold":
+            if e.complete == true { nativePause.nativeStopped(at: ProcessInfo.processInfo.systemUptime * 1000, recognized: e.recognized != false) }
+            else if audio.queuedFrames > 0 { nativePause.nativeStarted(at: ProcessInfo.processInfo.systemUptime * 1000); audio.setPlaybackPaused(nativePause.held) }
+        case "playback.release":
+            if let preserved = e.responseId, preserved == responseID { nativePause.ignored(); audio.setPlaybackPaused(false) }
+        case "conversation.row":
+            conversation.project(e.row!); lastCaption = String(e.row!.text.suffix(500)); scheduleCaptionUpdate(); updateAvatar()
+        case "conversation.speakers": conversation.projectPeople(e.people!); scheduleCaptionUpdate()
+        case "conversation.mode": conversation.projectMode(lastSpeakerID: e.lastSpeakerId, listenOnly: e.listenOnly!); scheduleCaptionUpdate()
+        case "surface.notice":
+            speakerNoticeTask?.cancel(); speakerNotice = e.text!; speakerAction = e.actionLabel ?? ""; speakerActionID = e.action ?? ""; speakerNoticeKind = e.kind ?? "notice"
+            publish()
+            if let ttl = e.ttlMS, ttl > 0 {
+                speakerNoticeTask = Task { [weak self] in
+                    try? await Task.sleep(for: .milliseconds(ttl))
+                    guard !Task.isCancelled, let self, self.owned(owner) else { return }
+                    self.speakerNotice = ""; self.speakerAction = ""; self.speakerActionID = ""; self.publish()
+                }
+            }
+        case "surface.phase": if audio.queuedFrames == 0 { setPhase(e.phase == "thinking" ? .thinking : .listening, owner: owner) }
+        case "task.upsert":
+            if let i = tasks.firstIndex(where: { $0.id == e.id }) {
+                if let stage = e.stage { tasks[i].stage = stage }; if let step = e.step { tasks[i].step = step }
+            } else {
+                tasks.append(.init(id: e.id!, activity: e.activity ?? "background", stage: e.stage))
+                if tasks.count > 16 { tasks.removeFirst() }
+            }
+            updateAvatar(); publish()
+        case "task.remove": tasks.removeAll { $0.id == e.id }; avatarOutcome = e.outcome ?? "success"; updateAvatar(); publish()
+        case "document.present":
+            let d = CallDocument(projection: e.document!)
+            if let i = documents.firstIndex(where: { $0.id == d.id }) { guard documents[i] != d else { return }; documents[i] = d }
+            else { documents.append(d) }
+            if documents.count > 16 { documents.removeFirst() }
+            shownResults.remove(d.id); resultID = d.id; resultText = d.text; avatarOutcome = "success"
+            if d.serverOwned { tasks.removeAll { $0.id == d.id }; if d.shouldAutoOpen { autoOpenDocumentID = d.id } }
+            prepareIslandReport(d.id); updateAvatar(); publish(resultID: d.id)
+        case "call.endWhenDrained": pendingEndID = e.id; if audio.queuedFrames == 0 { drained(owner: owner) }
+        case "call.cancelEnd": pendingEndID = nil; naturalEnd?.cancel()
+        case "connection.wait":
+            providerReady = false; clearOutput(); detail = e.text!; setPhase(.reconnecting, owner: owner)
+            providerDeadline?.cancel()
+            providerDeadline = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(self?.nativeRuntime?.timing.providerRecoveryMS ?? 35_000))
+                guard !Task.isCancelled, let self, self.owned(owner), !self.providerReady else { return }; self.reconnect()
+            }
+        case "connection.ready": providerDeadline?.cancel(); providerReady = true; detail = e.text!; setPhase(.listening, owner: owner); UINotificationFeedbackGenerator().notificationOccurred(.success)
+        case "avatar.expression": if let expression = e.expression { avatar.expression(expression) }
+        default: throw VoiceError.protocolMismatch
+        }
+    }
+    private func appendPCM(_ v: [String: Any], localBargeIn: Bool) throws {
+            guard providerReady else { return }
+            if let response = v["responseId"] as? String, retiredResponses.contains(response) { return }
+            guard v["sampleRate"] as? Int == 24_000, let encoded = v["audio"] as? String, let bytes = Data(base64Encoded: encoded) else { throw VoiceError.protocolMismatch }
+            if nativeDuplex, let next = v["responseId"] as? String, let previous = responseID, next != previous {
+                retireResponse(previous)
+                clearOutput()
+            }
+            nativeOutputDone = false
+            localBargeInEnabled = localBargeIn
+            // Host tool notices have no provider ID. Keep the previous owner so
+            // the next native response still replaces its queued audio tail.
+            if let next = v["responseId"] as? String { responseID = next }
+            else if !nativeDuplex { responseID = nil }
+            if audioReady { try audio.play(bytes, sequence: v["sequence"] as? Int) }
+            else {
+                guard earlyAudioBytes + bytes.count <= 480_000 else { throw VoiceError.bufferOverflow }
+                earlyAudio.append(EarlyAudio(bytes: bytes, sequence: v["sequence"] as? Int)); earlyAudioBytes += bytes.count
+            }
+    }
     private func receiveSpeakerNotice(_ value: [String: Any]) {
-        speakerNoticeTask?.cancel(); speakerAction = ""
+        speakerNoticeTask?.cancel(); speakerAction = ""; speakerActionID = ""
         var transient = false
         switch value["type"] as? String {
         case "speaker.error":
@@ -627,7 +722,7 @@ import VVoiceCore
         }
     }
     func performSpeakerAction() async {
-        let redial = speakerAction == "重拨"
+        let redial = speakerActionID == "redial" || (nativeRuntime == nil && speakerAction == "重拨")
         await end()
         if redial { do { try await startOrContinue() } catch { report(error) } }
     }
@@ -681,7 +776,7 @@ import VVoiceCore
         }
     }
     private func refreshPresentation(owner: UUID, id: String) async {
-        guard owned(owner), voiceID == id else { return }
+        guard owned(owner), voiceID == id, nativeRuntime == nil else { return }
         guard let value = try? await api.call("presentation"), owned(owner), value["voiceSessionId"] as? String == id else { return }
         if let pending = value["pending"] as? [[String: Any]] {
             tasks.removeAll { task in !pending.contains { $0["callId"] as? String == task.id } }
@@ -718,11 +813,11 @@ import VVoiceCore
         detail = "已请求取消后台任务"
     }
     private func drained(owner: UUID) {
-        guard owned(owner), audioReady else { return }; injectedSpeech = false
+        guard owned(owner), audioReady else { return }; localBargeInEnabled = false
         guard let endID = pendingEndID else { setPhase(.listening, owner: owner); return }
         naturalEnd?.cancel()
         naturalEnd = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(750))
+            try? await Task.sleep(for: .milliseconds(self?.nativeRuntime?.timing.endDrainMS ?? 750))
             guard let self, !Task.isCancelled, self.owned(owner), self.pendingEndID == endID, self.audio.queuedFrames == 0 else { return }
             self.transport?.send(["type": "playback.drained", "callId": endID])
             // Close also uses the guarded HTTP endpoint; loss of the final socket frame cannot strand a call.
@@ -741,7 +836,7 @@ import VVoiceCore
             if phase == .speaking { conversation.assistantSpeaking() }
             if thinkingVisible {
                 thinkingNoticeTask = Task { [weak self] in
-                    try? await Task.sleep(for: .seconds(12))
+                    try? await Task.sleep(for: .milliseconds(self?.nativeRuntime?.timing.thinkingMS ?? 12_000))
                     guard !Task.isCancelled, let self, self.owned(owner) else { return }
                     self.thinkingVisible = false; self.publish()
                 }
@@ -766,12 +861,13 @@ import VVoiceCore
     private func clearOutput() {
         earlyAudio.removeAll(); earlyAudioBytes = 0; earlyOutputDone = false
         nativePause.reset(); nativeOutputDone = false
-        audio.clear(); injectedSpeech = false; pendingEndID = nil; naturalEnd?.cancel()
+        audio.clear(); localBargeInEnabled = false; pendingEndID = nil; naturalEnd?.cancel()
     }
     private func stopMedia(keepAudio: Bool = false) {
         speakerNoticeTask?.cancel(); speakerNoticeTask = nil; speakerNotice = ""; speakerAction = ""
         thinkingNoticeTask?.cancel(); thinkingNoticeTask = nil; thinkingVisible = false
         routeChangeTask?.cancel(); routeChangeTask = nil
+        nativeRuntime = nil; nativeRuntimeRevision = 0; speakerActionID = ""; speakerNoticeKind = "notice"
         nativeDuplex = false; nativeAssisted = false; nativePause.reset(); nativeOutputDone = false; responseID = nil
         audioReady = false; earlyAudio.removeAll(); earlyAudioBytes = 0; earlyOutputDone = false
         providerDeadline?.cancel(); providerDeadline = nil
