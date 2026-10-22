@@ -384,7 +384,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const hostCallControl=Boolean(speakerRouting?.controlsEnding?.(s.id));
     const tools=sessionTools(s);
     const searchAck=s.model==='seeduplex'&&s.surface==='phone'&&searchAcknowledgment==='model';
-    const voiceTools=(hostCallControl?tools.filter(t=>t.name!=='end_call'):tools).map(tool=>searchAck&&isSearchTool(tool.name)?{...tool,description:tool.description+(tool.name==='memory_search'?' 本通话刚介绍的姓名、喜好以及谁正在说话，应从当前声音和本通话上下文判断，不用长期记忆搜索确认；本工具用于需要检索的跨通话历史记录。':'')+' 只为按通话规则确认的向 V 提问执行，电视和旁聊不能触发。上述先查记录是指先查再回答事实，不限制在查询前简短接话。调用本工具之前，必须先用语音简短自然地回应当前用户问题，再在同一轮立刻调用本工具。不能只调用工具而保持沉默。'}:tool);
+    const voiceTools=(hostCallControl?tools.filter(t=>t.name!=='end_call'):tools).map(tool=>searchAck&&isSearchTool(tool.name)?{...tool,description:(tool.name==='memory_search'?'检索天懿的 V/OpenClaw 跨通话个人记录，用于历史约定、家庭资料、长期偏好和项目历史。只在答案需要当前通话之外的记录时调用。本通话已经介绍的姓名、喜好、计划，以及现在是谁在说话，由当前声音与本通话上下文回答，不调用本工具。':tool.description)+' 只为按通话规则确认的向 V 提问执行，电视和旁聊不能触发。上述先查记录是指先查再回答事实，不限制在查询前简短接话。调用本工具之前，必须先用语音简短自然地回应当前用户问题，再在同一轮立刻调用本工具。不能只调用工具而保持沉默。'}:tool);
     const instructionCatalog=entries.map(entry=>searchAck&&isSearchTool(entry.id)?{...entry,description:voiceTools.find(tool=>tool.name===entry.id)?.description??entry.description}:entry);
     const baseInstructions=directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:s.surface==='phone'?(searchAck?'model':'off'):'cached',nativeDuplex:s.nativeDuplex});
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',

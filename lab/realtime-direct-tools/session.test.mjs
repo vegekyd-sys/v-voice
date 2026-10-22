@@ -935,9 +935,9 @@ test('candidate model acknowledgment uses native instructions without host PCM o
  const f=await fixture(async()=>({ok:true,output:{answer:'查到了'}}),'seeduplex',{searchAcknowledgment:'model'});t.after(()=>f.service.dispose());
  const create=f.upstream.sent.find(x=>x.type==='session.create');
  for(const tool of create.session.tools.filter(t=>['web_search','memory_search'].includes(t.name)))assert.match(tool.description,/不能只调用工具而保持沉默/);
- assert.match(JSON.stringify(create),/语音查询接话规则/);assert.match(JSON.stringify(create),/不等待接话音频播放结束/);
+ assert.match(create.session.tools.find(t=>t.name==='memory_search').description,/只在答案需要当前通话之外的记录时调用/);assert.match(JSON.stringify(create),/语音查询接话规则/);assert.match(JSON.stringify(create),/不等待接话音频播放结束/);
  assert.doesNotMatch(JSON.stringify(create),/查询状态由界面展示/);
- assert.match(create.session.tools.find(t=>t.name==='memory_search').description,/不用长期记忆搜索确认/);
+ assert.match(create.session.tools.find(t=>t.name==='memory_search').description,/由当前声音与本通话上下文回答，不调用本工具/);
  const instructions=create.session.instructions;assert.equal(instructions.split('语音查询接话规则').length,2);for(const tool of create.session.tools.filter(t=>['web_search','memory_search'].includes(t.name)))assert(instructions.includes(tool.description));assert(instructions.lastIndexOf('真正插话：')>instructions.lastIndexOf('语音查询接话规则'));assert.match(instructions,/旁聊、电视、未说完的话、姓名介绍和普通聊天不触发本规则/);
  f.event({type:'response.function_call_arguments.done',items:[{call_id:'look',name:'memory_search',arguments:JSON.stringify({query:'fixture'})}]});
  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered')));
