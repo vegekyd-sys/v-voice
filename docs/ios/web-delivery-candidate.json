@@ -44,6 +44,14 @@
         "web-delivery-evidence/release-a.png",
         "web-delivery-evidence/release-b.png"
       ]
+    },
+    "packagedStaticHTTP": {
+      "sourceCommit": "cfdacb18444fbf9bfdee14ac6aa1b1d0896ac7fd",
+      "files": 203,
+      "filesSHA256": "a25bd8e5922afa387d31629645c59906edb04511d934c8a4f731fade5d01c971",
+      "status": 200,
+      "cacheControl": "no-store",
+      "matchesSourceArchive": true
     }
   },
   "boundaries": {
@@ -59,5 +67,7 @@
     "Authorized one-time native shell upgrade on physical iPhone",
     "Production HTTPS artifact fetch after approved Voice deployment",
     "Action Button / lock screen / Dynamic Island and real audio regression on upgraded physical device"
-  ]
+  ],
+  "rebasedOntoMain": "f1f76a3",
+  "implementationCommit": "cfdacb18444fbf9bfdee14ac6aa1b1d0896ac7fd"
 }

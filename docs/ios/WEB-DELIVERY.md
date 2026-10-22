@@ -1,6 +1,6 @@
 # 网页发布同步到 iOS · Candidate
 
-2026-10-22，从已合入 main 的 `68ebcc9` 开始开发。此候选需要一次原生壳升级；现有 build 11 仍只读包内快照。未合入、未部署、未安装真机；本文不是上线登记。
+2026-10-22，从已合入 main 的 `68ebcc9` 开始开发，随后重放到包含 build 11 交付登记的 `f1f76a3`。此候选需要一次原生壳升级；现有 build 11 仍只读包内快照。未合入、未部署、未安装真机；本文不是上线登记。
 
 ## 方案与实际代码依据
 
@@ -41,7 +41,7 @@ Reaction 新图片可以进入网页，但原生灵动岛自己的图片目录�
 
 ## 验证与边界
 
-隔离模拟器 `V Voice Web Updates Candidate` 与 fixture 端口 29847。[候选登记](web-delivery-candidate.json)：43/43 原生 WK/集成、16/16 Core、657/657 网页/服务、95/95 Speaker 通过；build 12 arm64 Release 编译和结构检查通过，未签名。未接正式模型、未操作手机、未改共享模拟器或 29837 fixture。
+隔离模拟器 `V Voice Web Updates Candidate` 与 fixture 端口 29847。[候选登记](web-delivery-candidate.json)：43/43 原生 WK/集成、16/16 Core、657/657 网页/服务、95/95 Speaker 通过；build 12 arm64 Release 编译和结构检查通过，未签名。已从提交 `cfdacb1` 实际生成 203 文件的发布 artifact，启动该 artifact 的本地静态服务，确认资源包 HTTP 200、`no-store`，响应与源码中的完整资源包逐字节一致。未接正式模型、未操作手机、未改共享模拟器或 29837 fixture。
 
 右侧浏览器已实际显示专用 iPhone 模拟器。同一个安装包在两次本地网页发布后显示 A/B 标签及不同配色；两次之间只重新启动 App，没有重建或安装 binary。通话中不重载、同 owner 采集连续的证据来自独立自动集成测试，不能从主页截图推断。
 
