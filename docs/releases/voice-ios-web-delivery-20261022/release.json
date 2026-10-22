@@ -1,0 +1,115 @@
+{
+  "schema": "v-voice-release-registration-v1",
+  "release": "voice-ios-web-delivery-20261022",
+  "sourceBranch": "main",
+  "entryCommit": "0d0b3d96c5391dde5362c5db270018958948584f",
+  "previousProductionCommit": "16932ca42f415c8b0e93c5886b61cb571de4a7d3",
+  "phase": "web-deployed-build14-physical-candidate-accepted",
+  "gatewayRestartRequired": false,
+  "gatewayUnchangedVerified": true,
+  "privateEnvironmentUnchangedVerified": true,
+  "files": 203,
+  "filesSha256": "c6b7cf5e9cfa750126978141738d2a20dbb46e8d11fa0344c804858d6222858d",
+  "pullRequest": "https://github.com/vegekyd-sys/v-voice/pull/58",
+  "mainChecks": {
+    "run": 39722685142,
+    "conclusion": "success"
+  },
+  "web": {
+    "httpsAssetsVerified": true,
+    "revision": "99316da00796f0d60c62a23ea245d22910e6ca3c48814102ccbb5b227b1b9b17",
+    "archiveSHA256": "6c398d1be1149fa74e4cfa28b04b51280fcafbbebf3ad75252840769df5b3169",
+    "resources": 114,
+    "physicalIPhoneReadyHandshakeVerified": true,
+    "physicalABReleases": false
+  },
+  "iosBuild12": {
+    "version": "1.0.0",
+    "build": 12,
+    "sourceCommit": "0d0b3d96c5391dde5362c5db270018958948584f",
+    "ipaSHA256": "73c220bd7cd4b567ecfc4dafa78dd31260cdca6f17ad29a4651df933c33d1f06",
+    "signedArchiveAndExportVerified": true,
+    "overwriteInstalledAndReadBack": true,
+    "bindingRetained": true,
+    "humanAcceptance": "greeting_audible_but_no_response_to_microphone",
+    "metadata": "Native capture readiness and relay connected; server accepted 54.5 seconds PCM, no recognized human turn. PCM count alone is not usable microphone acceptance."
+  },
+  "diagnosticCandidate": {
+    "build": 13,
+    "sourceCommit": "0d41ef3",
+    "installed": true,
+    "productionMerged": false,
+    "ipaSHA256": "7d4d9c7852f4dac2959a59e7b21a43deee27ce7e5d25254317a36e3f35766195",
+    "scope": "Aggregate PCM signal level, application/voice-processing mute flags, input port type and successful upload counts only; no recording or transcript.",
+    "humanAcceptance": "greeting_audible_but_no_response_to_microphone",
+    "observed": {
+      "captureFrames": 1300,
+      "activeCaptureFrames": 0,
+      "peakRMSMilli": 0,
+      "applicationMuted": false,
+      "voiceProcessingMuted": false,
+      "inputPortType": "BluetoothHFP",
+      "uploadedPCMBytesAt25Seconds": 1200000,
+      "uploadQueuedBytesAt25Seconds": 0
+    },
+    "currentlyInstalled": false,
+    "builtInControl": {
+      "userReportedNoResponse": true,
+      "captureFrames": 849,
+      "activeCaptureFrames": 0,
+      "peakRMSMilli": 0,
+      "applicationMuted": false,
+      "voiceProcessingMuted": false,
+      "inputPortType": "MicrophoneBuiltIn"
+    }
+  },
+  "rollback": {
+    "previousVoiceArtifactRetained": true,
+    "privateLaunchAndEnvironmentRetained": true,
+    "guardedDryRunPassed": true,
+    "gatewayRestart": false,
+    "signedBuild11Retained": true
+  },
+  "acceptance": "README.md",
+  "currentDevice": {
+    "build": 14,
+    "version": "1.0.0",
+    "rollbackRequestedByUser": true,
+    "signedIPAHashVerified": true,
+    "overwriteInstalledAndReadBack": true,
+    "bindingRetained": true,
+    "currentVoiceRecheck": "build14 web/Action Button/lock-screen two-way voice/island controls all confirmed normal by user",
+    "priorAcceptance": "physical connection and two-way voice accepted by user",
+    "restoredAtUserRequest": true,
+    "originalSignedIPAHash": "63c9e5c95682df03918990f4563c57757d39814475c09a489043207b860b5100",
+    "iconReadbackVerified": true,
+    "candidateSourceCommit": "55f003b45662413057c36ad4138dddbae93371aa",
+    "formalMainRebuild": "pending"
+  },
+  "environmentInvestigation": {
+    "deviceHubScreenSharingStopped": true,
+    "causeNotConfirmed": true,
+    "build10And12CaptureAndRelaySourcesIdentical": true,
+    "syntheticConverterProbe": "16-bit 24kHz output is nonzero for known 48kHz float input; no physical mic used",
+    "converterSignalTests": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "inputRatesHz": [
+        8000,
+        16000,
+        24000,
+        48000
+      ],
+      "verifies": "Known nonzero signal survives conversion; digital silence still produces full PCM frames with zero RMS",
+      "environment": "isolated iOS simulator; no physical microphone or model call"
+    },
+    "appleDeviceHubMicrophoneConflictDocumented": true,
+    "appleDocumentation": "https://developer.apple.com/documentation/xcode/interacting-with-your-app-in-device-hub",
+    "mostLikelyCause": "Physical Device Hub screen sharing excludes normal app microphone capture; reproductions occurred with screen sharing active",
+    "confirmationPending": "Long-duration and unrelated system scenarios remain untested; no deliberate re-enabling of conflicting physical mirroring during calls",
+    "build10TwoWayVoiceRecoveredAfterScreenSharingStopped": true,
+    "newShellVoiceWithoutScreenSharing": "build14 actual nonzero microphone signal, multiple recognized human turns and replies, requested controls accepted"
+  },
+  "homepageChangelog": "Production PR58 entry reviewed and still accurately covers this same web-delivery release; no additional Voice service restart for diagnostic-only native changes"
+}

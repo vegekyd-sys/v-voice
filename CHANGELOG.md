@@ -1,8 +1,10 @@
-## 2026-10-22 — iOS web delivery · build 12 · release preparation
+## 2026-10-22 — iOS web delivery · build 14 physical acceptance
 
 - Add a complete, versioned H5 presentation package to web release artifacts. The new native shell validates, caches and loads compatible updates without recompiling Swift for everyday shared H5 UI changes.
 - Pin resources during calls/reading; retain native audio and call ownership across page reloads. Reject stale documents, incompatible/corrupt packages and redirects; fall back to the last ready cache or bundled UI.
-- Tianyi authorized merge, production Voice release and a binding-preserving iPhone upgrade. Release preparation includes the homepage entry; deployment, installation and physical acceptance are recorded separately after they occur. Existing build 11 requires one shell upgrade. See `docs/ios/WEB-DELIVERY.md`.
+- Tianyi authorized merge, production Voice release and a binding-preserving iPhone upgrade. PR #58 and main checks passed; the homepage entry and public UI package are deployed. Build 12 overwrite installation preserved binding and confirmed the published resource handshake. Physical voice acceptance failed (greeting audible, no microphone response); build 13 signal diagnostics reproduced zero input on Bluetooth and built-in routes. At the user’s request the phone was restored to the previously accepted signed build 10, with further repair isolated from that device baseline. See `docs/ios/WEB-DELIVERY.md`.
+- With physical Device Hub sharing stopped, build 14 passed user acceptance of Action Button start, lock-screen two-way voice and Dynamic Island mute/resume/end. A cold public UI download reached ready with the published revision. Added bounded signal/upload diagnostics and nonzero conversion/relay tests; core 16, native 46 and service 80 checks passed. The main-sourced signed delivery is recorded separately.
+
 
 ## 2026-10-22 — V Voice iOS milestone integration · build 11
 

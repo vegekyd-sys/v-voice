@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "date": "2026-10-22",
+  "build": 14,
+  "sourceCommit": "55f003b45662413057c36ad4138dddbae93371aa",
+  "status": "physical-candidate-accepted-formal-main-build-pending",
+  "tests": {
+    "nativeWKAudioAndIntegration": {
+      "passed": 46,
+      "failed": 0,
+      "skipped": 0
+    },
+    "core": {
+      "passed": 16,
+      "failed": 0
+    },
+    "serviceContracts": {
+      "passed": 80,
+      "failed": 0
+    }
+  },
+  "signalValidation": {
+    "ratesHz": [
+      8000,
+      16000,
+      24000,
+      48000
+    ],
+    "knownNonzeroPCMTraversesNativeConverterAndRelay": true,
+    "digitalSilenceRemainsDistinct": true,
+    "physicalMicrophoneProvenByTheseTests": false
+  },
+  "sameBinaryWebAB": {
+    "visibleInSimulatorBrowser": true,
+    "reinstalledBetweenReleases": false,
+    "evidence": [
+      "web-delivery-evidence/build14-web-a.png",
+      "web-delivery-evidence/build14-web-b.png"
+    ]
+  },
+  "signedBuild": {
+    "sourceCommit": "55f003b45662413057c36ad4138dddbae93371aa",
+    "build": 14,
+    "signedArchiveAndIndependentIPAValid": true,
+    "bindingIdentityUnchanged": true,
+    "ipaSHA256": "63c9e5c95682df03918990f4563c57757d39814475c09a489043207b860b5100"
+  },
+  "physicalDevice": {
+    "authorizedByUserForTesting": true,
+    "installedAndReadBack": true,
+    "bindingIdentityUnchanged": true,
+    "deviceHubPhysicalScreenSharingActive": false,
+    "publicUICacheSelectionResetForColdFetch": true,
+    "priorPublicCacheBackedUp": true,
+    "realVoiceAndControlsAcceptance": "Tianyi confirmed web, Action Button, lock-screen two-way voice, island mute/resume/end all normal and hung up",
+    "rollbackBuild": 11,
+    "acceptedScopes": [
+      "web presentation",
+      "Action Button start",
+      "lock-screen two-way voice",
+      "Dynamic Island mute",
+      "Dynamic Island resume",
+      "Dynamic Island end"
+    ],
+    "signal": {
+      "captureFrames": 6479,
+      "activeCaptureFrames": 911,
+      "peakRMSMilli": 375,
+      "inputPort": "MicrophoneBuiltIn"
+    },
+    "coldPublicUIFetch": {
+      "selectionInitiallyEmpty": true,
+      "readyConfirmedRevision": "99316da00796f0d60c62a23ea245d22910e6ca3c48814102ccbb5b227b1b9b17",
+      "archiveSHA256": "6c398d1be1149fa74e4cfa28b04b51280fcafbbebf3ad75252840769df5b3169"
+    },
+    "serverConversation": {
+      "observedHumanFinalsAtLeast": 5,
+      "observedAssistantFinalsAtLeast": 10,
+      "rawTextPersistedInEvidence": false
+    },
+    "callEnded": true
+  },
+  "productionVoiceChangedDuringThisRound": false,
+  "realCallsAutomaticallyStartedByAgent": false,
+  "remainingAcceptance": [
+    "Long-call endurance, system telephone/Siri interruptions and network handover are outside this short physical acceptance"
+  ]
+}

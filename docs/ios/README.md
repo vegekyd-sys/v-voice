@@ -1,8 +1,8 @@
 # V Voice iOS · 一按通话
 
-网页更新同步的 build 12 候选与日常发布流程见 [WEB-DELIVERY.md](WEB-DELIVERY.md)。一次升级后，兼容现有窄桥接的 H5 资源随网页发布进入 App；原生后台录音和灵动岛仍由原有 Swift 路径持有。该候选尚未上线或安装到真机。
+网页同步功能已由 PR #58 合入并发布。关闭真机屏幕共享后，build 14 的操作按钮、锁屏双向语音及灵动岛静音／恢复／结束已由用户确认正常；正式网页冷缓存下载与页面 ready 已实机核验，绑定保留。正在完成已验收候选的 main 正式签名流程。见 [发布／回退／接受登记](../releases/voice-ios-web-delivery-20261022/README.md) 与 [build14 验证](new-shell-build14-validation.json)。
 
-当前 build 11 已从正式合入 main 的 `68ebcc9` 签名、验包并覆盖安装到指定 iPhone；采用 Tianyi 提供的紫底耳麦头像图标，包内首页已显示本次里程碑更新日志。build 10 的真实接通／双向通话已获用户接受，build 11 没有自动拨号，新增版本的真机听验另记。当前 App 已在 H5 内嵌＋原生后台通话上整合接通／方案提醒、呼叫文案与宽波形灵动岛；详见 [H5 容器与回退基线](H5-SHELL.md)。build 8 已保存为 `ios-native-build8-20261022`。以下 build 6–8 原生 UI 记录保留为历史。
+此前 build 11 从正式合入 main 的 `68ebcc9` 签名、验包并覆盖安装到指定 iPhone；采用 Tianyi 提供的紫底耳麦头像图标，包内首页已显示本次里程碑更新日志。build 10 的真实接通／双向通话已获用户接受，build 11 没有自动拨号，新增版本的真机听验另记。当前 App 已在 H5 内嵌＋原生后台通话上整合接通／方案提醒、呼叫文案与宽波形灵动岛；详见 [H5 容器与回退基线](H5-SHELL.md)。build 8 已保存为 `ios-native-build8-20261022`。以下 build 6–8 原生 UI 记录保留为历史。
 
 完整功能清单与剩余差异见 [H5 → iOS 迁移核对](H5-PARITY.md)。build 8 补齐多人转写、身份条子、长回复内容卡片、富文本、Grok 声音与样本试听等遗漏；不能把局部视觉对齐写成全部迁移完成。
 
@@ -12,11 +12,11 @@
 
 - 客户端源码、Xcode 工程、图标、绑定／设置／恢复界面、按键快捷指令、灵动岛与锁屏活动均已实现。
 - 本分支复用当前小何／Grok 的 `gateway-relay` PCM 协议；默认小何，可在无通话时切换 Grok。GPT Live 的 WebRTC 传输未接入，App 不会悄悄把它的会话当作 PCM 连接。模型不可用时明确失败。
-- 本轮没有修改或部署 Voice 后端、Gateway、Worker、工具权限或个人会话映射；不需要共享 VLab。使用独立客户端和本地无付费协议 Candidate 验证。
+- 网页同步发布仅改变独立 Voice 的公开静态资源分发。Gateway／Worker、工具权限和个人会话映射保持；不占共享 VLab。历史候选以本地无付费协议验证。
 - 源码完成与真机接受分开。已开发签名并安装到本人 iPhone 17 Pro；build 2 基本真实双向通话由用户确认。用户补充 build 2 曾可在灵动岛对话；build 4 的 SiriKit 路径仍打开 App，未达标。build 5 恢复 build 2 的 AudioRecordingIntent 音频路径，移除动态解锁／前台继续和 SiriKit／CallKit 转交；build 5 从桌面长按操作按钮、全程留在灵动岛并双向对话，已获用户真机确认；锁屏冷启动等扩展场景仍待验。
 - build 6 将主 App 对齐当前 H5：原头像／配色、原生对话／文字补充／任务、方案阅读，支持 iPhone 与 iPad 双栏；灵动岛增加最近一句对话及直达方案的入口。本版真实服务及灵动岛到方案的手机接受另行登记，不沿用 build 5 的结论。
 - build 7 补齐 build 6 漏迁的完整 H5 Reaction：52 张原图（含 15 张情绪 Reaction），复用原 avatar 语义接口、400 ms 稳定语义触发、同语境批准的 continuations、最长 5 秒停留和 280 ms 渐变。后台／方案或设置遮盖头像时暂停判断；原生显示后沿用 avatar-events 观测协议。源码与本地协议验证通过，真实模型语义接受另记。
-- 正式后端、平台 main/dev、App Store/TestFlight 均未发布。代理未自动发起正式电话或付费模型测试；用户本人已进行真实对话验收。
+- 本轮 Voice 静态分发服务已经过 main 合入和正式发布；App Store/TestFlight 未发布。代理未自动拨真实电话；用户本人进行的真实验收结果与回退状态单独登记。
 
 ## 日常用户路径
 
