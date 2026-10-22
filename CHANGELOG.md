@@ -1,3 +1,9 @@
+## 2026-10-22 — iOS build 10 local device candidate
+
+- Package the existing H5 shell with background connection / long-reply attention requests, explicit calling state and wider measured waveform from the separate island candidate.
+- Preserve build 9 signed rollback; keep native audio and background Action Button lifecycle unchanged. Device installation and human acceptance are tracked separately in docs/ios/versions.json.
+- No web/server production release is included; the bundled H5 update history remains the owning web version.
+
 ## Unreleased — iOS island calling and waveform candidate
 
 - Show “呼叫中” in the compact island and “正在呼叫 V” with a cancel action in the connecting card. Keep the existing background Action Button intent and audio lifecycle.
