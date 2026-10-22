@@ -8,7 +8,7 @@
   "exportedIPAVerified": true,
   "ipaSHA256": "eca945a66ebcbfe6467c52338c26a90c171de4bc88fbd7f894ec0265cdc235c8",
   "installedOnRequestedIPhone": true,
-  "realVoiceAcceptance": "pending",
+  "realVoiceAcceptance": "basic_two_way_passed",
   "localTests": {
     "core": 16,
     "nativeTargeted": 6,
@@ -22,7 +22,7 @@
     "intentMetadataVerified": true,
     "lastUserAcceptedBackgroundCallBuild": 5,
     "lastUserConfirmedManualExpansionBuild": 9,
-    "build10DeviceAcceptance": "pending"
+    "build10DeviceAcceptance": "basic_voice_passed_additional_scenarios_pending"
   },
   "remainingParity": [
     "GPT Live native transport",
@@ -41,5 +41,13 @@
     "sourceCommit": "36f380f",
     "ipaSHA256": "b0a9773495e1d3f87332a05025d9da885af4a492cc8ae86b24914bf64171d935",
     "signedArchiveRetained": true
+  },
+  "realVoiceAcceptedScopes": {
+    "date": "2026-10-22",
+    "evidence": "Tianyi confirmed connection and normal two-way conversation after upstream authentication recovered",
+    "scope": [
+      "physical iPhone connection",
+      "two-way voice conversation"
+    ]
   }
 }

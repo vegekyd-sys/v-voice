@@ -201,3 +201,10 @@ UI 实操发现原 20 帧（400 ms）主线程交接阈值，在从后台切到�
 - Release 1.0.0 (10) archive／export命令退出0；独立解包导出IPA后再次验包退出0。arm64、主App／扩展签名与profiles、正常TLS、无Debug fixture、包内H5产物hash、扩展编译后52图、后台AudioRecording／SessionStarting的TalkToVIntent元数据均通过。
 - 最终IPA SHA-256：`eca945a66ebcbfe6467c52338c26a90c171de4bc88fbd7f894ec0265cdc235c8`。安装前只读readiness known=true，activeCalls=0／creatingSessions=0／backgroundTasks=0。devicectl覆盖安装成功；随后从设备已安装App记录读回 `com.versa.vvoice`、version1.0.0、bundleVersion10。
 - 原绑定／权限和按键配置沿用，没有卸载／重置、自动启动真实电话、付费模型调用或真实设备UI操作。**build10状态为已安装，真机人工接受待定**；接通提醒、Calling首帧和宽波形不因签名／安装成功而视为听验通过。系统进入AppIntent前的黑色过渡仍不承诺已消除。
+
+
+## build 10 上游恢复与用户双向接受 · 2026-10-22
+
+- 设备本地生命周期与正式服务连接阶段元数据共同确认，三次失败发生在provider-connecting阶段，工具目录和上下文均成功；没有把status ready=true当作语音接通证据。
+- 在用凭据的仅鉴权WebSocket upgrade曾返回HTTP403／45000030。用户报告充值后，后续同样的无session.create／无文本音频检查返回101；浏览器确认实时语音服务已开通。没有改Key／权限、重启或发起自动模型通话；没有仅凭错误码断定全部账务根因。
+- 此后用户明确反馈「现在可以接通了，双向对话正常。」将build10实际iPhone接通与双向语音记为用户接受；新岛视觉、锁屏冷启动、系统来电和长通话仍没有由本反馈覆盖。未为记录结果额外操作手机或结束用户通话。
