@@ -1,3 +1,10 @@
+## 2026-10-23 — iOS build 23 natural speech waveform
+
+- Integrate the user-accepted build 22 baseline with waveform-only medium and large island cards. Keep the native interruption wait fix, Reaction, report entry, mute/end and background Action Button behavior.
+- Display 24 measured speech-energy windows with fixed loudness mapping, fast attack and short release; silence settles to a quiet line. No decorative waveform loop or conversation text in either card.
+- Tianyi confirmed build 22 acceptance. The missing initial medium card was traced by the user to Sleep Focus; the proposed connection timing change was withdrawn.
+- Native private-device release; server deployment and new physical waveform acceptance are recorded separately in docs/ios/versions.json.
+
 ## 2026-10-23 — Keep interrupted playback paused while awaiting a reply
 
 - Web and iOS build 22 keep a recognized utterance paused until native disposition or response replacement. The 1.8-second courtesy timer can no longer resume the old answer while a new one is pending.
