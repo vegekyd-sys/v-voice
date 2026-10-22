@@ -1,6 +1,6 @@
-# 网页发布同步到 iOS · Candidate
+# 网页发布同步到 iOS
 
-2026-10-22，从已合入 main 的 `68ebcc9` 开始开发，随后重放到包含 build 11 交付登记的 `f1f76a3`。此候选需要一次原生壳升级；现有 build 11 仍只读包内快照。用户已授权合入、发布和保留绑定的真机升级；当前进入发布准备，实际部署、安装及真机接受将分别登记。
+2026-10-22，从已合入 main 的 `68ebcc9` 开始开发，随后重放到包含 build 11 交付登记的 `f1f76a3`。此候选需要一次原生壳升级；现有 build 11 仍只读包内快照。用户已授权合入、发布和保留绑定的真机升级。PR #58 已合入，正式服务与 build 12 已交付，真机网页资源 ready 握手通过；麦克风双向对话验收失败，build 13 诊断候选排查中。当前状态以 [发布登记](../releases/voice-ios-web-delivery-20261022/README.md) 为准。以下保留方案及候选验证范围。
 
 ## 方案与实际代码依据
 
@@ -26,7 +26,7 @@ V Voice 当前的 `CallCoordinator` / `VoiceAudio` 和 AudioRecordingIntent / Li
 1. 修改拥有源 `lab/gpt-live-h5`（DOM/CSS、React UI、阅读器、Markdown、Reaction）；如果交互编排位于 web 专用 `app.js`，同时在 `ios/H5/native-h5.mjs` 使用现有 bridge 动作适配，不能假设浏览器音频逻辑也能直接进入原生。
 2. `npm run build:ui` 会生成 React bundle，并同步包内 fallback 与 `lab/gpt-live-h5/ios-shell-release.json`。只改非 React H5 资源可运行 `npm run build:ios-shell`。这两步不编译 Swift、不生成/安装 binary。
 3. 运行 `npm run check:ios-shell`、相关网页测试与隔离 WK 验证；CI 的 freshness test 会阻止网页与 iOS 界面包漂移。提交生成物和变更，经 PR 合入 main。
-4. 实际发布前按仓库规则更新首页 `changelog.mjs`、CHANGELOG 和版本登记，再重新生成资源包。只记录当次真实交付内容。本候选没有改首页宣称已上线。
+4. 实际发布前按仓库规则更新首页 `changelog.mjs`、CHANGELOG 和版本登记，再重新生成资源包。只记录当次真实交付内容。本次正式发布已包含首页更新条目，真人语音异常单独记录。
 5. 从通过检查的 main 运行 `npm run package -- <artifact-directory>`。发布 artifact 明确携带 `ios-shell-release.json`，由现有 Voice 静态服务使用 `no-store` 返回；生产不需要 Xcode 或编译器。沿用现有 Voice 发布、等通话结束、校验原服务、保留回滚产物的流程，不重启 Gateway。
 6. App 先显示缓存，空闲检查完成后自动使用新资源。验证 App 内真实可见变化、全文阅读与同一原生会话；日志/health 200 不能代替此验收。遇到异常，回滚网页发布 artifact；下次检查会取得对应旧版资源。已被客户端判定启动失败的相同 revision 不会再次尝试，需修复生成新 revision 或通过后续原生版本处理。
 
@@ -51,4 +51,4 @@ Reaction 新图片可以进入网页，但原生灵动岛自己的图片目录�
 
 自动验证覆盖：同一安装包取得 A/B 两次发布并显示匹配的 HTML/CSS；绑定保持、零自动拨号；通话中暂存 B 而继续 A、重载保持 owner/voiceSessionId/采集；退休页面命令被拒；损坏/不兼容/重定向/不可达端点保留好缓存；坏 JS 超时回退；离线重新创建 WK 容器读取缓存；握手前进程退出的候选被隔离。
 
-真实 iPhone 升级、正式 HTTPS 资源获取、锁屏/操作按钮/灵动岛和真实语音仍需在批准发布/安装后验收。本地合成音频与 WK 测试不扩大为这些场景已接受。
+真实 iPhone 升级、绑定保留、正式 HTTPS 资源获取及远程页面握手已通过。用户实测开场白可听见，但麦克风说话无回应，正在排查；锁屏/操作按钮/灵动岛的本版接受尚未完成。本地合成音频与 WK 测试不扩大为真人语音已接受。

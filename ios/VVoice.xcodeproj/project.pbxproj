@@ -17,6 +17,7 @@
 		16F9BBAC1806652BF0570FF9 /* VoiceFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBF1ACCF9EA74D03B4EC7B54 /* VoiceFixture.swift */; };
 		1BC8BA8E4DCFF883FD007379 /* IslandPreviewGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E34791F59508FFC82578CBD /* IslandPreviewGallery.swift */; };
 		2A878C373EA3DEC48CADE370 /* BindingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 581754E3A730420284362EA3 /* BindingStore.swift */; };
+		2F42B2799C934DF23FE34978 /* CaptureConverterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0EA4F9C7B5FA6877BC49EB0 /* CaptureConverterTests.swift */; };
 		3F374EFF6EEC6D6C1BBCC449 /* CallDocumentReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13185E1590D05298912335D1 /* CallDocumentReader.swift */; };
 		3FF8DC5928B4943F06BA1472 /* H5Reader.css in Resources */ = {isa = PBXBuildFile; fileRef = 5F39DA2631814E6EE198F3EB /* H5Reader.css */; };
 		40DE5A3CDF8284543835C80A /* NativeDocumentBody.swift in Sources */ = {isa = PBXBuildFile; fileRef = 022BFA08A2C95FBF90410F34 /* NativeDocumentBody.swift */; };
@@ -130,6 +131,7 @@
 		D37141DC53B720B7B96CC90F /* IslandCallSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IslandCallSurface.swift; sourceTree = "<group>"; };
 		D7D2EE17BE9D48F5FA66CA14 /* IslandAssets.manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = IslandAssets.manifest.json; sourceTree = "<group>"; };
 		DBF1ACCF9EA74D03B4EC7B54 /* VoiceFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceFixture.swift; sourceTree = "<group>"; };
+		E0EA4F9C7B5FA6877BC49EB0 /* CaptureConverterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureConverterTests.swift; sourceTree = "<group>"; };
 		E292A32BB617F45942500127 /* H5AvatarCatalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = H5AvatarCatalog.json; sourceTree = "<group>"; };
 		E3761BB469B52E8F4F2631C2 /* CallDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallDiagnostics.swift; sourceTree = "<group>"; };
 		E3D3F29E57D937B4843EFBA7 /* H5CallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = H5CallView.swift; sourceTree = "<group>"; };
@@ -234,6 +236,7 @@
 			children = (
 				CBB7DC0E277A785098CD0EB2 /* AvatarCatalogTests.swift */,
 				662A97C00F54C938F246DBE4 /* CallIntegrationTests.swift */,
+				E0EA4F9C7B5FA6877BC49EB0 /* CaptureConverterTests.swift */,
 				BC5B54FF48C5CC112EF20F95 /* DeviceAudioTests.swift */,
 				0FDD9298C38842CD63B747AF /* DocumentReaderTests.swift */,
 				BA02392D095FEF5043B9AC46 /* H5DeliveryTests.swift */,
@@ -436,6 +439,7 @@
 			files = (
 				5D82361E565AEEDA584509D4 /* AvatarCatalogTests.swift in Sources */,
 				042F6955B30F1887FCBF5F83 /* CallIntegrationTests.swift in Sources */,
+				2F42B2799C934DF23FE34978 /* CaptureConverterTests.swift in Sources */,
 				C498FBC76120554268E17002 /* DeviceAudioTests.swift in Sources */,
 				E8256742D25677B4DA5835EE /* DocumentReaderTests.swift in Sources */,
 				F5BE616F7245C22272C02F34 /* H5DeliveryTests.swift in Sources */,

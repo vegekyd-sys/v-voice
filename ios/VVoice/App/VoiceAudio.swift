@@ -3,7 +3,7 @@ import OSLog
 import VVoiceCore
 
 /// One converter per input tap; AVAudioEngine invokes this tap serially.
-private final class CaptureConverter: @unchecked Sendable {
+final class CaptureConverter: @unchecked Sendable {
     let converter: AVAudioConverter
     let target: AVAudioFormat
     let onFrame: @Sendable (Data, Double) -> Void
