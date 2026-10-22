@@ -1,3 +1,10 @@
+## Unreleased — iOS build 16 live caption and launch branding candidate
+
+- Show the latest three wrapped lines of V’s current reply in the expanded and Lock Screen presentation while V speaks. Keep Reaction, mute/end and a stable report link; opening text continues the same native call.
+- Sanitize URLs before taking the trailing caption window, keep speech captions scoped to the current exchange, and retain the caption privacy setting. This follows incoming transcript updates rather than claiming word-level audio alignment or a manually scrollable widget.
+- Register the existing purple portrait under the distinct VVoiceAppIcon resource, set App Shortcut brand colors and use the same artwork in the app-owned connecting card. The system-owned Action Button launch hint and its cache still require physical verification.
+- Local candidate only; retains the build 15 signed rollback and existing audio/Intent behavior. No production web deployment or automatic real call.
+
 ## 2026-10-22 — iOS build 15 background report island
 
 - Present new background reports as the conversation island with a full-text link. Wait for the actual background scene instead of consuming the alert during the inactive transition; treat changed report content as a new delivery after a manual fold.

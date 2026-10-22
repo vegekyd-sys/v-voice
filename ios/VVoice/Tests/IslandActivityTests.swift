@@ -18,6 +18,15 @@ final class IslandActivityTests: XCTestCase {
         let attributes = try JSONEncoder().encode(CallAttributes(callID: UUID().uuidString))
         XCTAssertLessThan(payload.count + attributes.count, 4096)
     }
+    func testTranscriptWindowKeepsLatestWrappedLinesAndUnicode() {
+        let text = String(repeating: "早期的内容不应停在卡片上。", count: 8) + "先完成产品评审，再留出专注时间。最后一起确认下一步。"
+        let tail = IslandTranscriptWindow.tail(text, width: 210)
+        XCTAssertTrue(tail.hasSuffix("最后一起确认下一步。"))
+        XCTAssertLessThan(tail.count, text.count)
+        XCTAssertFalse(tail.contains("早期的内容"))
+        XCTAssertEqual(IslandTranscriptWindow.tail("你好 🧑🏽‍💻", width: 210), "你好 🧑🏽‍💻")
+        XCTAssertTrue(IslandTranscriptWindow.tail(text, width: .nan).isEmpty)
+    }
     func testSnapshotOnlyContainsReviewedCosmeticAssetIDs() {
         XCTAssertEqual(IslandReactionCatalog.assets.count, 52)
         XCTAssertEqual(IslandReactionCatalog.assets["listen-5"], "VAvatar_listen_5")

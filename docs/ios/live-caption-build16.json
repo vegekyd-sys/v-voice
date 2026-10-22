@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "build": 16,
+  "candidateOnly": true,
+  "sourceCommit": null,
+  "baseMainCommit": "a91db05cca368c94fb60afcbaf6e32f948a25542",
+  "tests": {
+    "core": 19,
+    "nativeAndH5": 36,
+    "latestTargeted": 5
+  },
+  "caption": {
+    "visibleLines": 3,
+    "tailCharacterBudget": 85,
+    "actualWidthMeasured": true,
+    "manualScrollSupported": false,
+    "wordLevelAudioAlignmentVerified": false,
+    "reactionAndReportLinkRetained": true
+  },
+  "startupBranding": {
+    "appIconName": "VVoiceAppIcon",
+    "portraitSHA256": "30f5aa827f69f26d6845a417c0d6f01ce20bc771e5cf385394679fce292b6708",
+    "appShortcutColor": "purple",
+    "userUsesBuiltInShortcut": true,
+    "systemLaunchHintPhysicalVerification": "pending"
+  },
+  "signedArchiveVerified": false,
+  "exportedIPAVerified": false,
+  "installedOnRequestedIPhone": false,
+  "physicalAcceptance": "pending",
+  "sourceMergedIntoMain": false,
+  "webServerDeployed": false,
+  "rollback": {
+    "build": 15,
+    "ipaSHA256": "46df1206571b4b00525c51e3e3495c108e058662f54edcdcb73e2bd74d5efcda"
+  }
+}

@@ -137,5 +137,11 @@
     "deviceReportedBuild": "15",
     "physicalReportAcceptance": "pending",
     "sourceIntegrationAuthorized": true
+  },
+  "pendingLiveCaptionCandidate": {
+    "build": 16,
+    "candidateOnly": true,
+    "record": "live-caption-build16.json",
+    "installed": false
   }
 }

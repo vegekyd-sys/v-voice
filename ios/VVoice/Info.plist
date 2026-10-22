@@ -52,5 +52,12 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
+	<key>NSAppIconActionTintColorName</key>
+	<string>VShortcutTint</string>
+	<key>NSAppIconComplementingColorNames</key>
+	<array>
+		<string>VShortcutBackground</string>
+		<string>VShortcutComplement</string>
+	</array>
 </dict>
 </plist>

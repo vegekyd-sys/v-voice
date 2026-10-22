@@ -4,6 +4,9 @@ import argparse,json,pathlib,plistlib,subprocess,hashlib
 p=argparse.ArgumentParser();p.add_argument('app',type=pathlib.Path);p.add_argument('--allow-unsigned',action='store_true');a=p.parse_args()
 info=plistlib.loads((a.app/'Info.plist').read_bytes())
 assert info['CFBundleIdentifier']=='com.versa.vvoice'
+assert info.get('CFBundleIcons',{}).get('CFBundlePrimaryIcon',{}).get('CFBundleIconName')=='VVoiceAppIcon', 'System surfaces must resolve the current branded app icon'
+assert info.get('NSAppIconActionTintColorName')=='VShortcutTint'
+assert info.get('NSAppIconComplementingColorNames')==['VShortcutBackground','VShortcutComplement']
 assert info.get('NSSupportsLiveActivities') is True
 assert info.get('UIBackgroundModes')==['audio']
 assert info.get('NSMicrophoneUsageDescription')

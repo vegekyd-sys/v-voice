@@ -705,11 +705,11 @@ import VVoiceCore
     }
     var h5Outcome: String { tasks.isEmpty ? avatarOutcome : "pending" }
     var activityState: CallAttributes.ContentState {
-        let turn = conversation.turns.last(where: { !$0.text.isEmpty })
+        let caption = IslandCaption.current(conversation, phase: phase)
         let unread = documents.last(where: { !shownResults.contains($0.id) })
         return .init(phase: phase, muted: muted, startedAt: startedAt, detail: phase.title,
-                     caption: islandCaptions ? CallDocument.plain(turn?.text ?? "", limit: 84) : "",
-                     captionSpeaker: islandCaptions ? CallDocument.plain(turn?.label ?? "V", limit: 32) : "",
+                     caption: islandCaptions ? caption.text : "",
+                     captionSpeaker: islandCaptions ? caption.speaker : "",
                      documentTitle: unread.map { islandCaptions ? $0.title : "完整方案已就绪" },
                      documentID: unread?.id, taskLabel: tasks.last?.title, island: islandSnapshot(documentID: unread?.id))
     }
