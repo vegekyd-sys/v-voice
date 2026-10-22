@@ -1,19 +1,19 @@
 {
   "schema": 1,
   "version": "1.0.0",
-  "build": 14,
-  "sourceCommit": "2adca2a03e56d51f51a39f7e939dab27c0aaf2a5",
+  "build": 18,
+  "sourceCommit": "793203b85802eae390e72553dc3f74c55b4571f0",
   "candidateOnly": false,
   "signedArchiveVerified": true,
   "exportedIPAVerified": true,
-  "ipaSHA256": "58dcb2a5b3a850f279a821965b92ce5dbaec820da0e4a6c52ed8a7f7207ee56b",
-  "installedOnRequestedIPhone": false,
-  "realVoiceAcceptance": "build14_requested_physical_scopes_passed_main_sourced_rebuild_inputs_identical",
+  "ipaSHA256": "cae503ea9b572e7982b2ffe41935a25503f765744703d15cf6fd6c31e86bde85",
+  "installedOnRequestedIPhone": true,
+  "realVoiceAcceptance": "Tianyi_accepted_joint18_for_main_integration_exact_physical_scopes_recorded",
   "localTests": {
-    "core": 16,
-    "native": 46,
-    "existingService": 80,
-    "webAndService": 654,
+    "core": 25,
+    "native": 62,
+    "existingService": 91,
+    "webAndService": 713,
     "speaker": 95
   },
   "backgroundActionButton": {
@@ -24,9 +24,9 @@
     "lastUserAcceptedIslandBrandingAndReactionBuild": 18
   },
   "remainingParity": [
-    "GPT Live native transport",
     "System black transition before AppIntent starts is not proven removed",
-    "Long calls, system call/Siri interruptions and network handover beyond the accepted short test"
+    "Long calls, system call/Siri interruptions and network handover beyond the accepted short test",
+    "GPT Live incremental text layout follow-up remains under diagnosis in the GPT session"
   ],
   "savedNativeBaseline": {
     "tag": "ios-native-build8-20261022",
@@ -43,24 +43,25 @@
   },
   "realVoiceAcceptedScopes": {
     "date": "2026-10-22",
-    "build": 14,
-    "evidence": "Tianyi confirmed all requested scopes normal and ended the call; Device Hub physical screen sharing stayed off",
+    "build": 18,
+    "evidence": "Tianyi confirmed 三项都正常, then 验收通过了 and authorized main merge",
     "scope": [
-      "web sync",
-      "Action Button start",
-      "lock-screen two-way voice",
-      "Dynamic Island mute/resume/end"
-    ]
+      "Action Button launch uses purple new icon",
+      "First locked expanded island has default Reaction",
+      "Live Reaction changes with real dialogue",
+      "Overall installed joint version accepted for main integration"
+    ],
+    "quantifiedNewAcousticClaims": false
   },
   "mergedIntoMain": true,
-  "mergePR": 59,
+  "mergePR": 65,
   "mergeChecksPassed": true,
   "releaseScope": {
     "distribution": "development_signed_private_device",
-    "webServerDeployed": true,
+    "webServerDeployed": false,
     "gatewayRestarted": false,
     "appStoreOrTestFlightPublished": false,
-    "homepageChangelog": "source_merged_and_deployed_for_web_delivery"
+    "homepageChangelog": "accepted_build18_source_merged_and_browser_verified_not_online_deployed"
   },
   "appIcon": {
     "source": "Tianyi supplied purple headset portrait",
@@ -90,9 +91,11 @@
     "overwriteInstalledWithoutUninstallOrKeychainReset": true,
     "record": "joint-build18.json",
     "physicalAcceptance": "Tianyi_accepted_joint_build18_and_authorized_main_merge",
-    "lastAcceptedBuild": 14,
-    "mergeStatus": "authorized_in_progress",
-    "distribution": "development_signed_private_device"
+    "lastAcceptedBuild": 18,
+    "mergeStatus": "merged_main_ci_passed",
+    "distribution": "development_signed_private_device",
+    "mergePR": 65,
+    "mergeCommit": "59a9b99a08f22e7936a4d052df59d2270357281e"
   },
   "build10RollbackHistory": {
     "date": "2026-10-22",
@@ -119,15 +122,16 @@
     "build11NewPhysicalVoiceAcceptance": "not_run"
   },
   "mainChecks": {
-    "run": 39728438243,
-    "conclusion": "success"
+    "run": 39786445250,
+    "conclusion": "success",
+    "commit": "59a9b99a08f22e7936a4d052df59d2270357281e"
   },
   "savedRollback": {
     "build": 11,
     "ipaSHA256": "5539d89245dfd7e4a241d1d66957fd60fc45b6d8e2e6e8b02f30e62b25855f2a",
     "originalSignedArchiveAndIPAAvailable": true
   },
-  "recordScope": "last_accepted_release_with_current_device_candidate",
+  "recordScope": "accepted_merged_joint18_with_exact_installed_artifact_and_scope_history",
   "previouslyInstalledOnRequestedIPhone": true,
   "savedBuild14Rollback": {
     "build": 14,
@@ -176,7 +180,29 @@
     "ipaSHA256": "a14396d4545eddb7cf1b948872c2b4e32d4b641b14fae0d76c639a72e879ee5d",
     "signedIPACopiedAndVerified": true
   },
-  "pendingJointBuild18": {
+  "previousAcceptedMainBuild14": {
+    "build": 14,
+    "sourceCommit": "2adca2a03e56d51f51a39f7e939dab27c0aaf2a5",
+    "ipaSHA256": "58dcb2a5b3a850f279a821965b92ce5dbaec820da0e4a6c52ed8a7f7207ee56b",
+    "realVoiceAcceptedScopes": {
+      "date": "2026-10-22",
+      "build": 14,
+      "evidence": "Tianyi confirmed all requested scopes normal and ended the call; Device Hub physical screen sharing stayed off",
+      "scope": [
+        "web sync",
+        "Action Button start",
+        "lock-screen two-way voice",
+        "Dynamic Island mute/resume/end"
+      ]
+    },
+    "mergePR": 59,
+    "mainChecks": {
+      "run": 39728438243,
+      "conclusion": "success"
+    }
+  },
+  "mergeCommit": "59a9b99a08f22e7936a4d052df59d2270357281e",
+  "acceptedJointBuild18": {
     "build": 18,
     "candidateOnly": false,
     "installed": true,
@@ -187,8 +213,16 @@
       "native SeedDuplex duplex from main",
       "GPT Live One native WebRTC"
     ],
-    "lastAcceptedBuild": 14,
+    "lastAcceptedBuild": 18,
     "deviceReportedBuild": "18",
-    "humanAcceptance": "version_accepted_for_merge_with_measured_scopes_preserved"
+    "humanAcceptance": "version_accepted_for_merge_with_measured_scopes_preserved",
+    "mergePR": 65,
+    "mainCIPassed": true
+  },
+  "savedBuild17Rollback": {
+    "build": 17,
+    "sourceCommit": "7ce6a4e",
+    "ipaSHA256": "27d82452bffb2cc443b99177c54d8e097ac914b027d62db0600101723e1bacb8",
+    "signedIPACopiedAndVerified": true
   }
 }
