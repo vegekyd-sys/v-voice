@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "version": "1.0.0",
+  "build": 10,
+  "sourceCommit": "3ffeb94",
+  "candidateOnly": true,
+  "signedArchiveVerified": true,
+  "exportedIPAVerified": true,
+  "ipaSHA256": "eca945a66ebcbfe6467c52338c26a90c171de4bc88fbd7f894ec0265cdc235c8",
+  "installedOnRequestedIPhone": true,
+  "realVoiceAcceptance": "basic_two_way_passed",
+  "localTests": {
+    "core": 16,
+    "nativeTargeted": 6,
+    "nativeAndServiceBaseline": {
+      "build": 9,
+      "native": 36,
+      "existingService": 79
+    }
+  },
+  "backgroundActionButton": {
+    "intentMetadataVerified": true,
+    "lastUserAcceptedBackgroundCallBuild": 5,
+    "lastUserConfirmedManualExpansionBuild": 9,
+    "build10DeviceAcceptance": "basic_voice_passed_additional_scenarios_pending"
+  },
+  "remainingParity": [
+    "GPT Live native transport",
+    "Physical build 10 connection attention, calling presentation and waveform acceptance",
+    "System black transition before AppIntent starts is not proven removed"
+  ],
+  "savedNativeBaseline": {
+    "tag": "ios-native-build8-20261022",
+    "sourceCommit": "f1f0600",
+    "build": 8,
+    "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab"
+  },
+  "deviceReportedBuild": "10",
+  "savedH5Baseline": {
+    "build": 9,
+    "sourceCommit": "36f380f",
+    "ipaSHA256": "b0a9773495e1d3f87332a05025d9da885af4a492cc8ae86b24914bf64171d935",
+    "signedArchiveRetained": true
+  },
+  "realVoiceAcceptedScopes": {
+    "date": "2026-10-22",
+    "evidence": "Tianyi confirmed connection and normal two-way conversation after upstream authentication recovered",
+    "scope": [
+      "physical iPhone connection",
+      "two-way voice conversation"
+    ]
+  }
+}

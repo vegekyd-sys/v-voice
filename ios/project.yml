@@ -1,0 +1,73 @@
+name: VVoice
+options:
+  bundleIdPrefix: com.versa
+  deploymentTarget:
+    iOS: '26.0'
+  developmentLanguage: zh-Hans
+  knownRegions: [zh-Hans, en, Base]
+  xcodeVersion: '27.1'
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    DEVELOPMENT_TEAM: E6YTL27QWA
+    CODE_SIGN_STYLE: Automatic
+    CURRENT_PROJECT_VERSION: 11
+    MARKETING_VERSION: '1.0.0'
+    TARGETED_DEVICE_FAMILY: '1,2'
+packages:
+  VVoiceCore:
+    path: VVoiceCore
+schemes:
+  VVoice:
+    build:
+      targets:
+        VVoice: all
+    test:
+      targets: [VVoiceTests]
+targets:
+  VVoice:
+    type: application
+    platform: iOS
+    sources:
+      - path: VVoice/App
+      - path: VVoice/Shared
+      - path: VVoice/Resources
+        excludes: [H5Shell]
+      - path: VVoice/Resources/H5Shell
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: VVoiceCore
+      - target: VVoiceActivity
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.versa.vvoice
+        INFOPLIST_FILE: VVoice/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_EMIT_LOC_STRINGS: YES
+      configs:
+        Debug:
+          INFOPLIST_FILE: VVoice/DebugInfo.plist
+  VVoiceActivity:
+    type: app-extension
+    platform: iOS
+    sources: [VVoice/Widget, VVoice/Shared]
+    dependencies:
+      - package: VVoiceCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.versa.vvoice.activity
+        INFOPLIST_FILE: VVoice/WidgetInfo.plist
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: '$(inherited) VOICE_WIDGET'
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+  VVoiceTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [VVoice/Tests]
+    dependencies:
+      - target: VVoice
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES

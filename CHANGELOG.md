@@ -1,3 +1,36 @@
+## 2026-10-22 — V Voice iOS milestone integration · build 11
+
+- Integrate the iOS app into main after user acceptance of real iPhone connection and two-way conversation. Preserve the background Action Button audio path, original embedded H5 UI and current-call Dynamic Island content links.
+- Replace the iOS AppIcon with Tianyi's supplied purple headset portrait, imported as an opaque 1024×1024 asset without re-generating the artwork.
+- Add the user-visible homepage milestone entry, retaining explicit acceptance limits for new island details and system scenarios. Native capabilities still require binary updates; remotely synchronized H5 delivery is a separate follow-up task.
+
+## 2026-10-22 — iOS build 10 local device candidate
+
+- Package the existing H5 shell with background connection / long-reply attention requests, explicit calling state and wider measured waveform from the separate island candidate.
+- Preserve build 9 signed rollback; keep native audio and background Action Button lifecycle unchanged. Device installation and human acceptance are tracked separately in docs/ios/versions.json.
+- No web/server production release is included; the bundled H5 update history remains the owning web version.
+
+## Unreleased — iOS island calling and waveform candidate
+
+- Show “呼叫中” in the compact island and “正在呼叫 V” with a cancel action in the connecting card. Keep the existing background Action Button intent and audio lifecycle.
+- Stretch the audio waveform across the card using 27 fine columns, real energy history interpolation, tapered edges and short update transitions. Silence, stale snapshots and Always-On stay calm; reduced motion disables transitions.
+- Include the prior connection/long-reply attention fixes from `b858899`. Local source candidate only; the physical iPhone still has build 9.
+
+## 2026-10-22 — iOS build 9 local candidate: embedded H5 and Dynamic Island
+
+- Preserve native build 8 as tag `ios-native-build8-20261022`, with its signed archive and IPA retained for overwrite rollback.
+- Run the actual bundled H5 DOM, CSS, conversation components, reader, Reaction and sample comparison inside WKWebView. Keep binding/settings and the existing native call/audio owner; page reloads and content navigation cannot dial another call.
+- Integrate the separate Dynamic Island candidate: compact status, audio card with measured energy snapshots, conversation/Reaction card, inline mute/end/fold, and a current-call link to the original H5 report reader. Respect lock-screen privacy and stale state.
+- Verify source hashes, all 52 compiled widget images, bounded payloads, trusted-frame/current-owner bridge checks and unchanged background recording intent metadata. GPT Live native transport and physical build 9 acceptance remain pending. No web/server release, merge or deployment.
+
+## 2026-10-22 — iOS build 8 local candidate: H5 interaction parity audit
+
+- Restore human captions for speaker-routed calls by consuming speaker.utterance / speaker.decision on the existing relay. Keep consecutive speakers in the current round, stable per-utterance rows, participant names, uncertain-name labels, five colors and listen-only state.
+- Restore scroll pinning, compact-portrait latch, recognition recovery notices, bounded thinking hint, task steps and accurate queued-supplement feedback.
+- Share the H5 GFM lexer between conversation and report views; give ordinary long replies and media a reader card, retain their Reaction context, resolve relative media and deduplicate assets. Only actual backend documents receive content-shown receipts.
+- Add server-driven model availability, Grok voice selection and pre-generated sample comparison with blind listening. A live call takes audio ownership from sample playback. Bundle the owning H5 update history and verify source parity.
+- Preserve the existing background Action Button intent, capture engine and PCM relay. GPT Live native transport, the new Dynamic Island Reaction/waveform design and physical multi-speaker acceptance remain incomplete; see docs/ios/H5-PARITY.md. No web/server release, merge or deployment is included.
+
 ## 2026-10-21 — Mobile pickup, latency and accepted-turn continuity
 
 - Recheck the current AudioContext before attaching capture/playback worklets, resume a foreground interruption, and replace a system-muted cached microphone on redial.

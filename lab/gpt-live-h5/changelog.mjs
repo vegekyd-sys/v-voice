@@ -2,6 +2,15 @@
 // experiments and unaccepted capabilities do not belong in this list.
 export const VOICE_UPDATES = [
   {
+    date: '2026-10-22', title: 'V 来到 iPhone，迈出替代 Siri 的第一步',
+    items: [
+      'V Voice iOS App 已在本人 iPhone 验证接通和双向对话；配置操作按钮后，可从桌面长按开始与 V 通话。',
+      'App 内直接使用熟悉的 H5 界面，保留人类发言、多人 Speaker、Reaction 和完整方案阅读。',
+      '新增灵动岛的呼叫提示、音频与文字卡片、真实声音能量波形，以及静音、结束和方案全文入口；接通提醒与新波形的真机体验继续收集反馈。',
+      'App 图标换为 V 的紫色背景耳麦形象。',
+    ],
+  },
+  {
     date: '2026-10-21', title: '手机接通更稳，长句接话更快',
     items: [
       '修复手机接通时欢迎语被短暂起声或背景声音过早取消；确认你在提问时，欢迎语仍会让位。',
