@@ -443,7 +443,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         }catch(error){emit(s,{type:'error',message:error.message});void close(s.id).catch(()=>{});}
         return;
       }
-      try{const e=JSON.parse(data.toString());if(e.type==='greeting'&&!s.greeted){s.greeted=true;if(s.speakerRouting&&speakerRouting.greet)void speakerRouting.greet(s.id);else s.bridge.triggerGreeting('电话已接通。请用中文向天懿简短打个招呼，然后听他说话。');}
+      try{const e=JSON.parse(data.toString());if(e.type==='greeting'&&!s.greeted){s.greeted=true;if(s.speakerRouting&&speakerRouting.greet)void speakerRouting.greet(s.id);else s.bridge.triggerGreeting(s.sessionBound?'电话已接通。请用中文向当前会话的通话者简短打个招呼，然后听对方说话。':'电话已接通。请用中文向天懿简短打个招呼，然后听他说话。');}
       else if(e.type==='barge-in') {
         // Only a speaker endpoint can mark a barge-in as confirmed speech (device echo cancellation).
         const device=s.surface==='speaker'&&typeof e.deviceId==='string'?e.deviceId:null,confirmed=Boolean(device&&e.confirmed===true);
