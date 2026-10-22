@@ -1,33 +1,31 @@
 {
   "schema": 1,
   "version": "1.0.0",
-  "build": 10,
-  "sourceCommit": "3ffeb94",
-  "candidateOnly": true,
+  "build": 14,
+  "sourceCommit": "2adca2a03e56d51f51a39f7e939dab27c0aaf2a5",
+  "candidateOnly": false,
   "signedArchiveVerified": true,
   "exportedIPAVerified": true,
-  "ipaSHA256": "eca945a66ebcbfe6467c52338c26a90c171de4bc88fbd7f894ec0265cdc235c8",
-  "installedOnRequestedIPhone": true,
-  "realVoiceAcceptance": "basic_two_way_passed",
+  "ipaSHA256": "58dcb2a5b3a850f279a821965b92ce5dbaec820da0e4a6c52ed8a7f7207ee56b",
+  "installedOnRequestedIPhone": false,
+  "realVoiceAcceptance": "build14_requested_physical_scopes_passed_main_sourced_rebuild_inputs_identical",
   "localTests": {
     "core": 16,
-    "nativeTargeted": 6,
-    "nativeAndServiceBaseline": {
-      "build": 9,
-      "native": 36,
-      "existingService": 79
-    }
+    "native": 46,
+    "existingService": 80,
+    "webAndService": 654,
+    "speaker": 95
   },
   "backgroundActionButton": {
     "intentMetadataVerified": true,
-    "lastUserAcceptedBackgroundCallBuild": 5,
-    "lastUserConfirmedManualExpansionBuild": 9,
+    "lastUserAcceptedBackgroundCallBuild": 14,
+    "lastUserConfirmedManualExpansionBuild": 14,
     "build10DeviceAcceptance": "basic_voice_passed_additional_scenarios_pending"
   },
   "remainingParity": [
     "GPT Live native transport",
-    "Physical build 10 connection attention, calling presentation and waveform acceptance",
-    "System black transition before AppIntent starts is not proven removed"
+    "System black transition before AppIntent starts is not proven removed",
+    "Long calls, system call/Siri interruptions and network handover beyond the accepted short test"
   ],
   "savedNativeBaseline": {
     "tag": "ios-native-build8-20261022",
@@ -35,19 +33,109 @@
     "build": 8,
     "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab"
   },
-  "deviceReportedBuild": "10",
+  "deviceReportedBuild": "15",
   "savedH5Baseline": {
-    "build": 9,
-    "sourceCommit": "36f380f",
-    "ipaSHA256": "b0a9773495e1d3f87332a05025d9da885af4a492cc8ae86b24914bf64171d935",
+    "build": 10,
+    "sourceCommit": "3ffeb94",
+    "ipaSHA256": "eca945a66ebcbfe6467c52338c26a90c171de4bc88fbd7f894ec0265cdc235c8",
     "signedArchiveRetained": true
   },
   "realVoiceAcceptedScopes": {
     "date": "2026-10-22",
-    "evidence": "Tianyi confirmed connection and normal two-way conversation after upstream authentication recovered",
+    "build": 14,
+    "evidence": "Tianyi confirmed all requested scopes normal and ended the call; Device Hub physical screen sharing stayed off",
     "scope": [
-      "physical iPhone connection",
-      "two-way voice conversation"
+      "web sync",
+      "Action Button start",
+      "lock-screen two-way voice",
+      "Dynamic Island mute/resume/end"
     ]
+  },
+  "mergedIntoMain": true,
+  "mergePR": 59,
+  "mergeChecksPassed": true,
+  "releaseScope": {
+    "distribution": "development_signed_private_device",
+    "webServerDeployed": true,
+    "gatewayRestarted": false,
+    "appStoreOrTestFlightPublished": false,
+    "homepageChangelog": "source_merged_and_deployed_for_web_delivery"
+  },
+  "appIcon": {
+    "source": "Tianyi supplied purple headset portrait",
+    "opaque1024AssetVerified": true,
+    "simulatorAppearanceVerified": true,
+    "physicalDeviceIconReadbackVerified": true
+  },
+  "webDeliveryRelease": {
+    "sourceCommit": "0d0b3d96c5391dde5362c5db270018958948584f",
+    "mergePR": 58,
+    "serverDeployed": true,
+    "build12PhysicalResourceHandshake": true,
+    "build12VoiceAcceptance": "failed_no_response_to_microphone",
+    "diagnosticBuild13": "installed_then_rolled_back_to10",
+    "record": "../releases/voice-ios-web-delivery-20261022/release.json",
+    "build14PhysicalAcceptance": "all_requested_scopes_passed"
+  },
+  "currentDeviceCandidate": {
+    "build": 15,
+    "candidateOnly": true,
+    "sourceCommit": "da3b93a3e410d803ea1c2da0f796efd8f9d30745",
+    "installedOnRequestedIPhone": true,
+    "deviceReportedBuild": "15",
+    "overwriteInstalledWithoutUninstallOrKeychainReset": true,
+    "record": "report-island-build15.json",
+    "physicalReportAcceptance": "pending",
+    "lastAcceptedBuild": 14
+  },
+  "build10RollbackHistory": {
+    "date": "2026-10-22",
+    "fromBuild": 13,
+    "toBuild": 10,
+    "overwriteInstalledAndReadBack": true,
+    "bindingGroupsUnchanged": true,
+    "bindingDataPreserved": true,
+    "reason": "Build12/13 greeting audible but microphone dialogue failed; user requested usable baseline before continued repair",
+    "newCandidateWillNotReplaceBaselineDuringInvestigation": true,
+    "currentRecheck": "Tianyi confirmed build10 normal calls after rollback and Device Hub screen sharing stopped"
+  },
+  "build11RestoreHistory": {
+    "date": "2026-10-22",
+    "fromBuild": 10,
+    "toBuild": 11,
+    "explicitUserRequest": "install build 11",
+    "originalSignedIPASHA256Verified": true,
+    "overwriteInstalledAndReadBack": true,
+    "bindingIdentityUnchanged": true,
+    "deviceIconReadback": "purple headset portrait; actual icon, not placeholder",
+    "nativeCallCaptureRelayIntentSourcesIdenticalToBuild10": true,
+    "deviceHubScreenSharingActive": false,
+    "build11NewPhysicalVoiceAcceptance": "not_run"
+  },
+  "mainChecks": {
+    "run": 39728438243,
+    "conclusion": "success"
+  },
+  "savedRollback": {
+    "build": 11,
+    "ipaSHA256": "5539d89245dfd7e4a241d1d66957fd60fc45b6d8e2e6e8b02f30e62b25855f2a",
+    "originalSignedArchiveAndIPAAvailable": true
+  },
+  "recordScope": "last_accepted_release_with_current_device_candidate",
+  "previouslyInstalledOnRequestedIPhone": true,
+  "savedBuild14Rollback": {
+    "build": 14,
+    "ipaSHA256": "58dcb2a5b3a850f279a821965b92ce5dbaec820da0e4a6c52ed8a7f7207ee56b",
+    "originalSignedArchiveRetained": true,
+    "signedIPACopiedAndVerified": true
+  },
+  "reportIslandBuild15": {
+    "build": 15,
+    "record": "report-island-build15.json",
+    "candidateOnly": true,
+    "installed": true,
+    "deviceReportedBuild": "15",
+    "physicalReportAcceptance": "pending",
+    "sourceIntegrationAuthorized": true
   }
 }

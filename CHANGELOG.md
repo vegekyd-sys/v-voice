@@ -9,6 +9,19 @@
 - Opt-in native continuous phone audio with `VOICE_PHONE_INPUT_POLICY=native`; keep the current multi-speaker path as the default configuration and explicit comparison mode. Gateway, Worker and tool/account permissions are unchanged.
 - Yield browser playback reversibly on sustained speech, retain the exact unplayed queue for noise/acknowledgments, and retire old response IDs when the native replacement arrives. Track speech before the first output and across syllable gaps; bound acknowledgment pauses and recognize explicit stop commands with an opt-in independent streaming ASR while native recognition is behind generation. Keep background work running and discard late audio from the stopped response.
 - Verify real SeedDuplex and actual Chromium/WebKit audio output with synthetic input; physical microphone/echo, real-room interference and human acceptance remain pending. Candidate homepage notes and version/evidence are registered under `docs/releases/seeduplex-duplex-candidate-20261022/`. No main merge or production release.
+## 2026-10-22 — iOS build 15 background report island
+
+- Present new background reports as the conversation island with a full-text link. Wait for the actual background scene instead of consuming the alert during the inactive transition; treat changed report content as a new delivery after a manual fold.
+- Protect the report alert briefly from cosmetic caption/waveform refreshes; explicit mute, fold, end and safety states remain immediate. Recover missed relay deliveries through the existing presentation endpoint while the call runs in background.
+- Preserve the build 14 native capture path, remote H5 update shell and original call owner. The system still controls the expanded island's duration; build 15 is installed on the requested iPhone, with physical report acceptance recorded separately.
+
+## 2026-10-22 — iOS web delivery · build 14 physical acceptance
+
+- Add a complete, versioned H5 presentation package to web release artifacts. The new native shell validates, caches and loads compatible updates without recompiling Swift for everyday shared H5 UI changes.
+- Pin resources during calls/reading; retain native audio and call ownership across page reloads. Reject stale documents, incompatible/corrupt packages and redirects; fall back to the last ready cache or bundled UI.
+- Tianyi authorized merge, production Voice release and a binding-preserving iPhone upgrade. PR #58 and main checks passed; the homepage entry and public UI package are deployed. Build 12 overwrite installation preserved binding and confirmed the published resource handshake. Physical voice acceptance failed (greeting audible, no microphone response); build 13 signal diagnostics reproduced zero input on Bluetooth and built-in routes. At the user’s request the phone was restored to the previously accepted signed build 10, with further repair isolated from that device baseline. See `docs/ios/WEB-DELIVERY.md`.
+- With physical Device Hub sharing stopped, build 14 passed user acceptance of Action Button start, lock-screen two-way voice and Dynamic Island mute/resume/end. A cold public UI download reached ready with the published revision. Added bounded signal/upload diagnostics and nonzero conversion/relay tests; core 16, native 46 and service 80 checks passed. PR #59 main checks passed; the main-sourced signed build 14 was overwrite-installed with identical accepted native inputs and binding retained. Delivery hashes are recorded separately.
+
 
 ## 2026-10-22 — V Voice iOS milestone integration · build 11
 

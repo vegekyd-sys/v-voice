@@ -7,7 +7,7 @@ import VVoiceCore
 @testable import VVoice
 
 @MainActor final class NativeFlowTests: XCTestCase {
-    private let base = URL(string: "http://127.0.0.1:29837/")!
+    private let base = VoiceFixture.base
     private func fixture(_ command: String, _ values: [String: Any] = [:]) async throws {
         var r = URLRequest(url: base.appendingPathComponent("fixture/command")); r.httpMethod = "POST"
         r.httpBody = try JSONSerialization.data(withJSONObject: values.merging(["command":command]) { _, new in new }); r.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -32,6 +32,73 @@ import VVoiceCore
             try await Task.sleep(for: .milliseconds(100))
         }
         XCTFail("Timed out waiting for native client state")
+    }
+    private var lifecycleFile: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("VVoiceCallLifecycle.json")
+    }
+    private func documentAlerts() -> Int {
+        let rows = (try? Data(contentsOf: lifecycleFile)).flatMap { try? JSONDecoder().decode([[String: String]].self, from: $0) } ?? []
+        return rows.filter { $0["event"] == "island.attention.requested" && $0["code"] == "document" }.count
+    }
+    func testReportWaitsForBackgroundAndUpdatedReportReopensAfterManualFold() async throws {
+        let call = try await client()
+        try? FileManager.default.removeItem(at: lifecycleFile)
+        try await call.startOrContinue()
+        call.sceneChanged(.inactive)
+        try await fixture("report")
+        try await until { call.documents.contains { $0.id == "fixture-plan" } }
+        try await until { Activity<CallAttributes>.activities.first?.content.state.documentID == "fixture-plan" }
+        XCTAssertEqual(documentAlerts(), 0, "An inactive transition must not consume the background alert")
+        call.sceneChanged(.background)
+        try await until { self.documentAlerts() == 1 }
+        try await until { Activity<CallAttributes>.activities.first?.content.state.island.layout == .conversation }
+        call.selectIslandLayout(.audio, callID: call.presentationID)
+        try await until { Activity<CallAttributes>.activities.first?.content.state.island.layout == .audio }
+        let updated = "# 更新后的方案\n\n这是同一任务交付的第二版完整报告。"
+        try await fixture("event", ["event":["type":"backend.result","callId":"fixture-plan","text":updated]])
+        try await until { call.documents.last?.text == updated }
+        try await until { self.documentAlerts() == 2 }
+        try await until { Activity<CallAttributes>.activities.first?.content.state.island.layout == .conversation }
+        let snapshot = try await stats()
+        XCTAssertEqual(snapshot["sessions"] as? Int, 1)
+        XCTAssertEqual((snapshot["acknowledgements"] as? [String])?.count, 0)
+        await call.end()
+    }
+    func testBackgroundReportCanBeRecoveredFromPresentationWithoutRelayDelivery() async throws {
+        let call = try await client()
+        try? FileManager.default.removeItem(at: lifecycleFile)
+        call.sceneChanged(.background)
+        try await call.startOrContinue()
+        try await fixture("report-poll-only")
+        try await until { self.documentAlerts() == 1 }
+        let activity = try XCTUnwrap(Activity<CallAttributes>.activities.first)
+        try await until { activity.content.state.documentID == "fixture-poll-report" }
+        XCTAssertEqual(activity.content.state.island.layout, .conversation)
+        let snapshot = try await stats()
+        XCTAssertEqual(snapshot["sessions"] as? Int, 1)
+        XCTAssertGreaterThan(snapshot["presentationRequests"] as? Int ?? 0, 0)
+        XCTAssertEqual((snapshot["acknowledgements"] as? [String])?.count, 0)
+        XCTAssertTrue(call.active)
+        await call.end()
+    }
+    func testReportPresentationRejectsCosmeticRefreshButMuteTakesEffectImmediately() async throws {
+        let call = try await client()
+        call.sceneChanged(.background)
+        try await call.startOrContinue()
+        try await fixture("report")
+        let activity = try XCTUnwrap(Activity<CallAttributes>.activities.first)
+        try await until { activity.content.state.documentID == "fixture-plan" }
+        let caption = activity.content.state.caption
+        try await fixture("event", ["event":["type":"transcript","role":"user","text":"报告已到达之后的新一句话","final":true]])
+        try await until { call.conversation.turns.last?.text == "报告已到达之后的新一句话" }
+        call.publishIslandActivity()
+        XCTAssertNotEqual(call.activityState.caption, caption)
+        XCTAssertEqual(activity.content.state.caption, caption)
+        XCTAssertEqual(activity.content.state.island.layout, .conversation)
+        call.toggleMute()
+        try await until { activity.content.state.muted }
+        XCTAssertTrue(call.muted)
+        await call.end()
     }
     func testSpeakerRelayShowsEveryHumanIdentityAndListenOnlyWithoutStoppingCapture() async throws {
         let call = try await client()

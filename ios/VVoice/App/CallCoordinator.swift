@@ -9,7 +9,8 @@ import VVoiceCore
         #if DEBUG
         if CommandLine.arguments.contains("--local-voice-fixture") {
             let store = BindingStore(service: "com.versa.vvoice.local-fixture")
-            try? store.save(StoredBinding(binding: VoiceBinding(testingBaseURL: URL(string: "http://127.0.0.1:29837/voice/")!), cookie: "v_voice_access=fixture-cookie"))
+            let fixturePort = ProcessInfo.processInfo.environment["VVOICE_FIXTURE_PORT"] ?? "29837"
+            try? store.save(StoredBinding(binding: VoiceBinding(testingBaseURL: URL(string: "http://127.0.0.1:\(fixturePort)/voice/")!), cookie: "v_voice_access=fixture-cookie"))
             return CallCoordinator(api: VoiceAPI(store: store))
         }
         #endif
@@ -137,11 +138,12 @@ import VVoiceCore
     private(set) var autoOpenDocumentID: String?
     private(set) var resultID: String?
     private(set) var resultText = ""
-    @ObservationIgnored private var islandResultAlerts: Set<String> = []
+    @ObservationIgnored private var islandReportAttention = IslandReportAttention(owner: "")
     @ObservationIgnored private var shownResults: Set<String> = []
     @ObservationIgnored private var acknowledgingResults: Set<String> = []
     @ObservationIgnored private var initialized = false
-    @ObservationIgnored private var appIsActive = false
+    @ObservationIgnored private var appScenePhase: ScenePhase = .background
+    private var appIsActive: Bool { appScenePhase == .active }
 
     init(api: VoiceAPI? = nil) {
         self.api = api ?? VoiceAPI(store: BindingStore())
@@ -175,10 +177,16 @@ import VVoiceCore
         path.start(queue: DispatchQueue(label: "com.versa.vvoice.network"))
     }
     func sceneChanged(_ scene: ScenePhase) {
-        appIsActive = scene == .active
+        appScenePhase = scene
         UIApplication.shared.isIdleTimerDisabled = appIsActive && active
         avatar.scene(appIsActive)
-        guard appIsActive else { return }
+        guard appIsActive else {
+            if scene == .background, active, let report = documents.last(where: { !shownResults.contains($0.id) }) {
+                publish(resultID: report.id)
+            }
+            return
+        }
+        islandReportAttention.releasePresentation()
         activitiesEnabled = ActivityAuthorizationInfo().areActivitiesEnabled
         api.reloadIfAvailable(); bound = api.isBound
         permission = AVAudioApplication.shared.recordPermission
@@ -362,6 +370,7 @@ import VVoiceCore
                     let id = "reply-" + turn.id.uuidString
                     documents.append(CallDocument(id: id, text: text, serverOwned: false)); if documents.count > 16 { documents.removeFirst() }
                     conversation.attachDocument(id: id, to: turn.id)
+                    prepareIslandReport(id)
                     publish(resultID: id)
                 }
                 scheduleCaptionUpdate(); updateAvatar()
@@ -440,6 +449,7 @@ import VVoiceCore
         resultID = id; resultText = document.text
         if document.shouldAutoOpen { autoOpenDocumentID = id }
         tasks.removeAll { $0.id == id }; updateAvatar()
+        prepareIslandReport(id)
         publish(resultID: id)
     }
     private func updateAvatar() {
@@ -467,7 +477,7 @@ import VVoiceCore
         }
     }
     private func refreshPresentation(owner: UUID, id: String) async {
-        guard appIsActive else { return }
+        guard owned(owner), voiceID == id else { return }
         guard let value = try? await api.call("presentation"), owned(owner), value["voiceSessionId"] as? String == id else { return }
         if let pending = value["pending"] as? [[String: Any]] {
             tasks.removeAll { task in !pending.contains { $0["callId"] as? String == task.id } }
@@ -477,6 +487,7 @@ import VVoiceCore
     }
     func resultWasShown(_ id: String) async {
         guard appIsActive, active, let document = documents.first(where: { $0.id == id }), !shownResults.contains(id), !acknowledgingResults.contains(id), let voiceID else { return }
+        islandReportAttention.releasePresentation()
         if !document.serverOwned { shownResults.insert(id); publish(); return }
         acknowledgingResults.insert(id)
         defer { acknowledgingResults.remove(id) }
@@ -535,7 +546,7 @@ import VVoiceCore
         state.setMuted(!muted)
         if !muted, audio.queuedFrames > 0 { state.transition(.speaking, owner: state.generation) }
         detail = muted ? "V 听不到你的声音；轻点恢复" : "可以继续说话"
-        UIImpactFeedbackGenerator(style: .soft).impactOccurred(); publish()
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred(); publish(immediate: true)
     }
     private func stopMedia(keepAudio: Bool = false) {
         speakerNoticeTask?.cancel(); speakerNoticeTask = nil; speakerNotice = ""; speakerAction = ""
@@ -666,7 +677,7 @@ import VVoiceCore
     private func beginActivity(required: Bool) throws {
         guard activitiesEnabled else { if required { throw VoiceError.liveActivity }; return }
         do {
-            islandResultAlerts.removeAll()
+            islandReportAttention = IslandReportAttention(owner: presentationID)
             let a = try Activity.request(attributes: CallAttributes(callID: presentationID), content: ActivityContent(state: activityState, staleDate: Date().addingTimeInterval(25)), pushType: nil)
             activity = a
             activityWatch = Task { [weak self] in
@@ -702,14 +713,23 @@ import VVoiceCore
                      documentTitle: unread.map { islandCaptions ? $0.title : "完整方案已就绪" },
                      documentID: unread?.id, taskLabel: tasks.last?.title, island: islandSnapshot(documentID: unread?.id))
     }
-    func publishIslandActivity() { publish() }
-    private func publish(resultID: String? = nil, connected: Bool = false) {
+    func publishIslandActivity(immediate: Bool = false) { publish(immediate: immediate) }
+    private func publish(resultID: String? = nil, connected: Bool = false, immediate: Bool = false) {
         UIApplication.shared.isIdleTimerDisabled = appIsActive && active
         guard let a = activity else { return }
-        let content = ActivityContent(state: activityState, staleDate: Date().addingTimeInterval(25))
-        let connectionAlert = connected && islandPresentation.announceConnection(owner: presentationID, foreground: appIsActive)
-        let shouldAlert = resultID.map { id in !appIsActive && !islandResultAlerts.contains(id) && islandResultAlerts.count < 32 } ?? false
-        if let resultID, shouldAlert { islandResultAlerts.insert(resultID) }
+        let now = Date()
+        if immediate { islandReportAttention.releasePresentation() }
+        let report = resultID.flatMap { id in documents.first(where: { $0.id == id }) }
+        let shouldAlert = report.map { islandReportAttention.request($0, owner: presentationID, inBackground: appScenePhase == .background, now: now) } ?? false
+        if shouldAlert, let report { prepareIslandReport(report.id) }
+        let reportProtected = islandReportAttention.protectsPresentation(at: now)
+        let connectionRequested = connected && islandPresentation.announceConnection(owner: presentationID, foreground: appIsActive)
+        let connectionAlert = connectionRequested && !reportProtected
+        // A report alert must not immediately be followed by cosmetic updates.
+        // Safety states and explicit controls bypass this brief window.
+        if reportProtected, !shouldAlert, !immediate, [.listening,.thinking,.speaking,.muted].contains(phase) { return }
+        let snapshot = activityState
+        let content = ActivityContent(state: snapshot, staleDate: now.addingTimeInterval(25), relevanceScore: snapshot.documentID == nil ? 50 : 100)
         let alert: AlertConfiguration? = shouldAlert
             ? AlertConfiguration(title: "方案整理好了", body: "点击查看全文，通话继续", sound: .default)
             : connectionAlert ? AlertConfiguration(title: "V 已接通", body: "可以直接开口，长按灵动岛查看通话", sound: .default) : nil

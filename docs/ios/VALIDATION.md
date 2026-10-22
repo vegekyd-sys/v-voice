@@ -1,4 +1,21 @@
-# 当前验证记录 · 2026-10-21
+# 当前交付 · 2026-10-22
+
+## build 11 正式合入与图标交付 · 2026-10-22
+
+- PR [#56](https://github.com/vegekyd-sys/v-voice/pull/56) 正式合入 `v-voice/main`，合入源码 `68ebcc9c94c6cef3fc8b6fb42497a899a80e09a5`，其 main CI run `39717215318` 成功后从该源码构建。没有合入平台 dev。
+- Tianyi 提供的紫底耳麦头像按原图缩放成不透明 1024×1024 AppIcon；iPhone 17 Pro 实际模拟器桌面已显示新版图标。首页“V 来到 iPhone，迈出替代 Siri 的第一步”在 App 原 H5 更新日志实际可见。截图见下方。
+- Core16／原生38／既有服务79通过；网页与服务654／Speaker95通过。H5 源、设计源和52张扩展资源的同步检查通过。测试使用本地无模型 fixture，不代表真实通话接受。
+- Release 1.0.0 (11) archive／export退出0；独立解包后的IPA再次通过 arm64、主 App／扩展签名与profiles、H5资源hash、52张编译后图、后台intent元数据、正常TLS和无Debug fixture检查。IPA SHA-256：`5539d89245dfd7e4a241d1d66957fd60fc45b6d8e2e6e8b02f30e62b25855f2a`。
+- 首次安装时物理设备离线，未成功；用户重新连接并解锁后复核 activeCalls=0／creatingSessions=0／backgroundTasks=0，覆盖安装成功，设备读回 version1.0.0／bundleVersion11。没有卸载、重置绑定或自动拨号。
+- 已接受的build10签名IPA／archive保存在本机ignored `ios/build/saved-h5-build10/`，散列再次核对为 `eca945a66ebcbfe6467c52338c26a90c171de4bc88fbd7f894ec0265cdc235c8`；原生build8和H5build9也保留。
+- 安装登记补充 PR 的 CI 两次发现既有 Speaker 精确字节断言使用真实时钟：循环中推进1ms即允许多发48字节。将该用例固定时钟，保留精确上限断言；不修改生产播放代码或已安装包，后续检查单独重跑。
+- **交付边界：**主仓库已合入、开发签名版已装机、首页日志源码和包内页已更新；在线 Voice 服务未部署、Gateway未重启、未上架。用户实际双向接受来自build10；build11未自动进行真实电话，新波形、提醒、锁屏冷启动、系统来电及长通话仍按原矩阵分别待验。远程H5同步是独立新任务，尚未交付。
+
+![build11实际模拟器桌面图标](evidence/build11-icon-simulator.jpg)
+
+![App首页实际更新日志](evidence/build11-homepage-changelog-browser.png)
+
+# 历史验证记录 · 2026-10-21 起
 
 源基线：`origin/main 77fb188ccdc976126a6098b8d218957cc28bad82`，其中正式 Voice 运行登记为 `16932ca42f415c8b0e93c5886b61cb571de4a7d3`。本分支没有改动后端。原生代码提交：`5030248ad33c44c1bea24d95e4dd82f06ca6696e`。
 
@@ -208,3 +225,44 @@ UI 实操发现原 20 帧（400 ms）主线程交接阈值，在从后台切到�
 - 设备本地生命周期与正式服务连接阶段元数据共同确认，三次失败发生在provider-connecting阶段，工具目录和上下文均成功；没有把status ready=true当作语音接通证据。
 - 在用凭据的仅鉴权WebSocket upgrade曾返回HTTP403／45000030。用户报告充值后，后续同样的无session.create／无文本音频检查返回101；浏览器确认实时语音服务已开通。没有改Key／权限、重启或发起自动模型通话；没有仅凭错误码断定全部账务根因。
 - 此后用户明确反馈「现在可以接通了，双向对话正常。」将build10实际iPhone接通与双向语音记为用户接受；新岛视觉、锁屏冷启动、系统来电和长通话仍没有由本反馈覆盖。未为记录结果额外操作手机或结束用户通话。
+
+
+## 真机语音验收的 Device Hub 限制 · 2026-10-22
+
+[Apple 文档](https://developer.apple.com/documentation/xcode/interacting-with-your-app-in-device-hub) 说明物理设备 View Screen 会令普通 App 不能使用麦克风并可能录到静音。语音验收前必须停止真机 Screen Sharing，不能只确认设备解锁。视觉镜像、模拟器 PCM 计数、真机帧数增长都不等于真人声音进入模型。只读信号统计不包含录音或聊天正文。
+
+本次网页同步发布及 build 12／13 的零信号复现、build 10 覆盖回退和当前未接受范围详见 [正式发布／回退登记](../releases/voice-ios-web-delivery-20261022/README.md)。两项新增转换测试在隔离模拟器通过：8/16/24/48 kHz 非零信号可转为真实非零 PCM16，零输入仍会产生足量帧但 RMS=0。它们没有验证物理麦克风，不据此给新壳恢复结论。
+
+
+## build 14 · 重新验证与真人通过 · 2026-10-22
+
+Core16、原生WK／音频／集成46、既有服务合同80全部通过。新增非零信号实际经过转换和RelayTransport到本地接收端的测试，不再将PCM计数增长视为声音有效；模拟器同一个安装包实际显示A/B两次网页版本。
+
+用户授权后，保留原绑定覆盖安装development签名build14；真机屏幕共享关闭。用户确认网页、操作按钮、锁屏双向语音和灵动岛静音／恢复／结束全部正常，随后已挂断。只读诊断显示本机麦克风6479帧、911个有效音量帧、峰值RMS约0.375；仅汇总计数入登记，不保存音频或正文。结束后空闲打开App，真实冷下载的正式UI archive完成ready，哈希与生产一致。原生代码没有改采集路由、AEC、Intent或通话owner。
+
+已合入PR59；正式main提交`2adca2a`的CI成功。逐项Git对象哈希确认其原生发布输入与用户接受候选`55f003b`相同，再从main重新签名构建。最终安装与IPA哈希见 [验收登记](new-shell-build14-validation.json)。本轮未改Voice服务或Gateway，原build11签名回退包保留。
+## 2026-10-22 build 15 后台报告大卡候选
+
+- 基线为当前真机build14：正式源码2adca2a、交付登记6282e32。首次以旧工作树的build11登记为导航，随后直接从指定设备App记录读回14并校正，未用旧代码构建覆盖真机；保留远程H5更新壳、收音／上传诊断和全部原有音频／Intent路径。
+- 只读复制了指定设备的有界生命周期文件（无正文），其中存在document提醒请求。此证据只能证明调用，不证明系统实际展开，也不能独自确诊所有真实漏展示原因。
+- 修复前新增原生用例实际失败（xcodebuild退出65）：inactive就已消耗提醒；手动折叠后同id的更新报告不重新提醒／切大。修复后该用例通过；背景presentation-only文档恢复和报告展示窗口期间字幕不盖掉、静音立即生效也通过。
+- Core18项、原生／H5定向34项均通过，命令退出0。包括NativeFlow26、IslandActivity3、H5Shell5。H5源包与52张Reaction资源校验通过；VoiceAudio、RelayTransport、VoiceIntents相对14基线无改动。没有付费模型、正式拨号或Gateway操作。
+- iPhone17Pro iOS26.5实际系统：本地fixture通话回桌面，触发报告后系统AX自动出现「V的Reaction／方案已就绪查看全文／收起文字返回音频／静音麦克风／结束通话」。整个验证没有长按小岛。
+- 为捕获短暂系统展示，先安排本地fixture延迟送报告，再同步等待并连续保存真实serve-sim帧；没有后台未等待的截屏任务。第三份报告发送1792649354164ms，自动大卡帧在1792649357582ms（+3.418秒）、1792649359807ms（+5.643秒）可见；+8.121秒帧已被系统收回。三张提交证据是原始帧复制，不是图像编辑。最初未等待的捕获未能保留会话，不用作证据；第一次单张捕获已赶不上大卡，未将其标为成功图片。
+- 用户内置浏览器镜像初始断开，确认3200无监听后仅对该模拟器重建serve-sim并恢复真实帧；其他模拟器、物理手机屏幕共享未动。截图clip接口没有按坐标裁剪，因此正式证据保存完整页面。结束fixture后active=false、sessions=closeRequests=2（本地累计计数），不能作为正式用户呼叫次数。
+- 源码提交 `da3b93a3e410d803ea1c2da0f796efd8f9d30745` 已构建 development 签名 Release 1.0.0 (15)，archive／export及独立解包导出IPA验包均通过；App与Activity扩展均为15。IPA SHA-256：`46df1206571b4b00525c51e3e3495c108e058662f54edcdcb73e2bd74d5efcda`。安装前2026-10-22 14:19:49北京时间只读readiness known=true、ready=true，activeCalls／creatingSessions／backgroundTasks均0。devicectl覆盖安装成功，设备App记录读回 `com.versa.vvoice`、1.0.0、build15。未卸载、未重置Keychain、未自动拨号；原签名build14 IPA已复制并验证，原archive保留。
+- **真机报告自动展示仍待人类实际使用验收**，不能以安装成功或模拟器自动展开代替。详细状态见report-island-build15.json。候选未合入main、未发布网页；首页正式发布日志不写入未验收候选，随包历史仍与现有网页源一致。
+- ActivityKit重要更新使用[官方alertConfiguration机制](https://developer.apple.com/documentation/activitykit/displaying-live-data-with-live-activities)。iOS仍决定是否显示及停留时长，候选不承诺强制常驻或绕过系统设置。
+
+![报告到达前的小岛](evidence/report-before-compact.png)
+
+![报告到达后自动展示的大卡](evidence/report-auto-expanded-system.png)
+
+![随后由系统收回的小岛](evidence/report-after-system-collapse.png)
+
+## 2026-10-22 build 15 合入准备
+
+- Tianyi 明确授权合入；本次范围为已安装build15的后台报告展示修复，先前讨论的四项后续建议尚未实施。
+- 更新首页用户可见changelog，并重新同步H5壳、远程UI包描述与原生更新历史。此变动只登记原生能力及系统边界，已安装IPA仍精确对应da3b93a；不将新生成的历史资源冒充已经安装。
+- 本次仅合入源码；网页部署、重新签名安装及真机报告自动展开接受另行登记。
+- 首页本地预览 `http://127.0.0.1:29838/` 在内置浏览器实际打开更新日志；首条显示「报告到达，灵动岛给你提示」及三项说明，页面无空白／错误遮罩，控制台error／warn为空；截图留在本机临时目录。
