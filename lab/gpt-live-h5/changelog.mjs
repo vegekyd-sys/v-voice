@@ -13,6 +13,14 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    date: '2026-10-22', title: '通话文字连贯显示',
+    items: [
+      '修复 GPT Live One 在 iPhone 中把一句话拆成多个短条目的问题，增量文字持续更新在同一条消息里。',
+      '小何与 Grok 的 iPhone 字幕会保留前文，完整回答到达后统一校正；网页与 App 的消息顺序在回答完成时保持稳定。',
+      '共享网页显示随本次发布更新；原生字幕修复随 iOS build 19 交付。',
+    ],
+  },
+  {
     date: '2026-10-22', title: 'iPhone 灵动岛通话升级',
     items: [
       'iOS build 18 整合小何原生全双工适配与 GPT Live One，保留操作按钮、后台通话、声音波纹和方案入口。',

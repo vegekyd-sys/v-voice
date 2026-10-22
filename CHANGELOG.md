@@ -1,9 +1,9 @@
-## Unreleased — iOS caption continuity candidate
+## 2026-10-22 — Caption continuity and iOS build 19
 
 - Keep GPT captions in one stable message when fragments arrive before their native turn identity; attach late fragment finals to their original turn.
 - Accumulate Xiaohe/Grok relay text deltas in iOS instead of replacing preceding words, then reconcile the full final caption.
 - Preserve original message order across completion in the shared web/iOS UI, Reaction context and display receipts.
-- Local candidate verified with synthetic native WebRTC, WKWebView and core/web regressions; no physical installation or server release. See `docs/ios/CAPTION-CONTINUITY.md`.
+- Verified with synthetic native WebRTC, WKWebView and core/web regressions. Authorized for main integration, web release and a signed build 19 device update; delivery receipts follow separately. See `docs/ios/CAPTION-CONTINUITY.md`.
 
 ## 2026-10-22 — Accepted iOS build 18 integration
 

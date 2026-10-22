@@ -1,20 +1,20 @@
 {
   "schema": 1,
   "version": "1.0.0",
-  "build": 18,
-  "sourceCommit": "793203b85802eae390e72553dc3f74c55b4571f0",
+  "build": 19,
+  "sourceCommit": null,
   "candidateOnly": false,
-  "signedArchiveVerified": true,
-  "exportedIPAVerified": true,
-  "ipaSHA256": "cae503ea9b572e7982b2ffe41935a25503f765744703d15cf6fd6c31e86bde85",
-  "installedOnRequestedIPhone": true,
-  "realVoiceAcceptance": "Tianyi_accepted_joint18_for_main_integration_exact_physical_scopes_recorded",
+  "signedArchiveVerified": false,
+  "exportedIPAVerified": false,
+  "ipaSHA256": null,
+  "installedOnRequestedIPhone": false,
+  "realVoiceAcceptance": "pending_physical_caption_check",
   "localTests": {
-    "core": 25,
-    "native": 62,
-    "existingService": 91,
-    "webAndService": 713,
-    "speaker": 95
+    "core": 29,
+    "captionNativeH5": 7,
+    "captionWeb": 43,
+    "webAndService": "release_check_pending",
+    "speaker": "release_check_pending"
   },
   "backgroundActionButton": {
     "intentMetadataVerified": true,
@@ -26,7 +26,7 @@
   "remainingParity": [
     "System black transition before AppIntent starts is not proven removed",
     "Long calls, system call/Siri interruptions and network handover beyond the accepted short test",
-    "GPT Live incremental text layout follow-up remains under diagnosis in the GPT session"
+    "Build 19 caption continuity requires a human real-call check after installation"
   ],
   "savedNativeBaseline": {
     "tag": "ios-native-build8-20261022",
@@ -53,15 +53,15 @@
     ],
     "quantifiedNewAcousticClaims": false
   },
-  "mergedIntoMain": true,
-  "mergePR": 65,
-  "mergeChecksPassed": true,
+  "mergedIntoMain": false,
+  "mergePR": null,
+  "mergeChecksPassed": false,
   "releaseScope": {
     "distribution": "development_signed_private_device",
     "webServerDeployed": false,
     "gatewayRestarted": false,
     "appStoreOrTestFlightPublished": false,
-    "homepageChangelog": "accepted_build18_source_merged_and_browser_verified_not_online_deployed"
+    "homepageChangelog": "build19_prepared_for_authorized_release"
   },
   "appIcon": {
     "source": "Tianyi supplied purple headset portrait",
@@ -83,19 +83,12 @@
     "build14PhysicalAcceptance": "all_requested_scopes_passed"
   },
   "currentDeviceCandidate": {
-    "build": 18,
-    "candidateOnly": false,
-    "sourceCommit": "793203b85802eae390e72553dc3f74c55b4571f0",
-    "installedOnRequestedIPhone": true,
-    "deviceReportedBuild": "18",
-    "overwriteInstalledWithoutUninstallOrKeychainReset": true,
-    "record": "joint-build18.json",
-    "physicalAcceptance": "Tianyi_accepted_joint_build18_and_authorized_main_merge",
+    "build": 19,
+    "sourceCommit": null,
+    "installedOnRequestedIPhone": false,
     "lastAcceptedBuild": 18,
-    "mergeStatus": "merged_main_ci_passed",
-    "distribution": "development_signed_private_device",
-    "mergePR": 65,
-    "mergeCommit": "59a9b99a08f22e7936a4d052df59d2270357281e"
+    "mergeStatus": "release_preparation",
+    "distribution": "development_signed_private_device"
   },
   "build10RollbackHistory": {
     "date": "2026-10-22",
@@ -131,7 +124,7 @@
     "ipaSHA256": "5539d89245dfd7e4a241d1d66957fd60fc45b6d8e2e6e8b02f30e62b25855f2a",
     "originalSignedArchiveAndIPAAvailable": true
   },
-  "recordScope": "accepted_merged_joint18_with_exact_installed_artifact_and_scope_history",
+  "recordScope": "build19_authorized_release_preparation",
   "previouslyInstalledOnRequestedIPhone": true,
   "savedBuild14Rollback": {
     "build": 14,
@@ -224,5 +217,29 @@
     "sourceCommit": "7ce6a4e",
     "ipaSHA256": "27d82452bffb2cc443b99177c54d8e097ac914b027d62db0600101723e1bacb8",
     "signedIPACopiedAndVerified": true
+  },
+  "acceptedBuild18": {
+    "build": 18,
+    "sourceCommit": "793203b85802eae390e72553dc3f74c55b4571f0",
+    "ipaSHA256": "cae503ea9b572e7982b2ffe41935a25503f765744703d15cf6fd6c31e86bde85",
+    "realVoiceAcceptance": "Tianyi_accepted_joint18_for_main_integration_exact_physical_scopes_recorded",
+    "realVoiceAcceptedScopes": {
+      "date": "2026-10-22",
+      "build": 18,
+      "evidence": "Tianyi confirmed 三项都正常, then 验收通过了 and authorized main merge",
+      "scope": [
+        "Action Button launch uses purple new icon",
+        "First locked expanded island has default Reaction",
+        "Live Reaction changes with real dialogue",
+        "Overall installed joint version accepted for main integration"
+      ],
+      "quantifiedNewAcousticClaims": false
+    },
+    "mergePR": 65,
+    "mainChecks": {
+      "run": 39786445250,
+      "conclusion": "success",
+      "commit": "59a9b99a08f22e7936a4d052df59d2270357281e"
+    }
   }
 }
