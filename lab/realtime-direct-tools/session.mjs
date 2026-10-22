@@ -382,7 +382,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const baseInstructions=directInstructions(entries,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:s.surface==='phone'?'off':'cached',nativeDuplex:s.nativeDuplex});
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       instructions:(speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
-      onInputSpeech:active=>emit(s,{type:active?'input.speech.started':'input.speech.stopped'}),
+      onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
       onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),
       toolStartNotice:call=>{
         return noticeClips?toolStartClip(call,noticeClips)?.text:null;

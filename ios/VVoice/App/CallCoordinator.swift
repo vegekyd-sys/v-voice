@@ -104,7 +104,7 @@ import VVoiceCore
     @ObservationIgnored let api: VoiceAPI
     @ObservationIgnored let avatar: VoiceAvatar
     @ObservationIgnored private var avatarOutcome = "none"
-    @ObservationIgnored private let audio = VoiceAudio()
+    @ObservationIgnored private let audio: VoiceAudio
     @ObservationIgnored private var captionUpdate: Task<Void, Never>?
     @ObservationIgnored private var closing: Task<Void, Never>?
     @ObservationIgnored private var lastFailure: VoiceError?
@@ -162,7 +162,8 @@ import VVoiceCore
     @ObservationIgnored private(set) var appScenePhase: ScenePhase = .background
     private var appIsActive: Bool { appScenePhase == .active }
 
-    init(api: VoiceAPI? = nil, makeGPT: @escaping () -> GPTLiveTransport = { GPTLiveTransport() }) {
+    init(api: VoiceAPI? = nil, audio: VoiceAudio = VoiceAudio(), makeGPT: @escaping () -> GPTLiveTransport = { GPTLiveTransport() }) {
+        self.audio = audio
         self.makeGPT = makeGPT
         self.api = api ?? VoiceAPI(store: BindingStore())
         self.avatar = VoiceAvatar(api: self.api)
@@ -546,7 +547,7 @@ import VVoiceCore
         case "input.speech.started":
             if nativeAssisted, audio.queuedFrames > 0 { nativePause.nativeStarted(at: ProcessInfo.processInfo.systemUptime * 1000); audio.setPlaybackPaused(nativePause.held) }
         case "input.speech.stopped":
-            if nativeAssisted { nativePause.nativeStopped(at: ProcessInfo.processInfo.systemUptime * 1000) }
+            if nativeAssisted { nativePause.nativeStopped(at: ProcessInfo.processInfo.systemUptime * 1000, recognized: v["recognized"] as? Bool != false) }
         case "input.speech.ignored":
             if nativeAssisted, let preserved = v["preservedResponseId"] as? String, preserved == responseID { nativePause.ignored(); audio.setPlaybackPaused(false) }
         case "audio.done":
