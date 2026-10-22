@@ -1,12 +1,12 @@
 {
   "schema": "v-voice-current-release-v1",
-  "entryCommit": "56cfc608beedc6568891c7f00f4bb617b4d21940",
+  "entryCommit": "8136b20af19ca6fc740260875bf243d79cf67fd3",
   "gatewayPluginCommit": "a9ac516860a8856470262957ad6ea0cc2670cb0e",
-  "registration": "voice-duplex-shared-20261022/release.json",
-  "runtimeDifference": "Web/iOS and robot/speaker servers share the verified native playback repair. Fixed lookup/wait clips are off for phone calls. Signed iOS build 21 is installed; phone was locked at normal-launch verification and real-call acceptance is pending. Gateway unchanged.",
+  "registration": "voice-duplex-wait-20261023/release.json",
+  "runtimeDifference": "Web/iOS and device servers share the recognized-interruption wait repair. iOS build 22 is signed, installed and normally launched on the requested phone. Human real-call listening remains pending. Gateway unchanged.",
   "gatewayRestartRequired": false,
-  "release": "voice-duplex-shared-20261022",
-  "previousEntryCommit": "42ff6254e303c19897056a0ba8b1973ac6a25b20",
-  "filesSha256": "faa5c327daed67ffc6edd8d45d3359568e683e277268b0a683fdb02ea35692b8",
-  "deviceEntryCommit": "56cfc608beedc6568891c7f00f4bb617b4d21940"
+  "release": "voice-duplex-wait-20261023",
+  "previousEntryCommit": "56cfc608beedc6568891c7f00f4bb617b4d21940",
+  "filesSha256": "ab32f8e78343bffc39ba9fa8c0b6289fbf242fd0f7950b3252222b43f8231c04",
+  "deviceEntryCommit": "8136b20af19ca6fc740260875bf243d79cf67fd3"
 }
