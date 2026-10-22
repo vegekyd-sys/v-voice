@@ -5,6 +5,8 @@
 - Preserve native identity/name context, response ownership, microphone capture, captions, island and farewell drain. No extra model, speaker chain or Gateway changes.
 - Validation and release state are recorded in `docs/acceptance/duplex-wait-20261023/README.md`; synthetic fixtures do not establish physical speaker attribution or human listening acceptance.
 
+- Delivery: PR #75 merged and main CI passed. Both Voice nodes run 8136b20 with matching artifact hashes; signed iOS build 22 installed, read back and normally launched on the requested iPhone. Public assets and homepage verified; physical listening remains pending.
+
 ## 2026-10-22 — Shared native duplex repair and iOS build 21
 
 - Retire the previous native response when accepted replacement text or TTS starts; send a scoped playback clear before replacement PCM. Preserve listening-aside decisions, ongoing microphone capture, names and background tasks.
