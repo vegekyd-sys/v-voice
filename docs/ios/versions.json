@@ -20,7 +20,8 @@
     "intentMetadataVerified": true,
     "lastUserAcceptedBackgroundCallBuild": 14,
     "lastUserConfirmedManualExpansionBuild": 14,
-    "build10DeviceAcceptance": "basic_voice_passed_additional_scenarios_pending"
+    "build10DeviceAcceptance": "basic_voice_passed_additional_scenarios_pending",
+    "lastUserAcceptedIslandBrandingAndReactionBuild": 18
   },
   "remainingParity": [
     "GPT Live native transport",
@@ -68,7 +69,7 @@
     "physicalDeviceIconReadbackVerified": true,
     "systemAlternateRegistrationConfirmedBuild": 18,
     "smallSystemIconReadbackVerifiedBuild": 18,
-    "actionButtonLaunchOverlayAcceptance": "pending"
+    "actionButtonLaunchOverlayAcceptance": "Tianyi_confirmed_build18_passed"
   },
   "webDeliveryRelease": {
     "sourceCommit": "0d0b3d96c5391dde5362c5db270018958948584f",
@@ -88,7 +89,7 @@
     "deviceReportedBuild": "18",
     "overwriteInstalledWithoutUninstallOrKeychainReset": true,
     "record": "joint-build18.json",
-    "physicalAcceptance": "icon_registration_confirmed_action_overlay_and_reactions_pending",
+    "physicalAcceptance": "Tianyi_confirmed_action_button_icon_locked_default_reaction_and_live_reaction_all_passed",
     "lastAcceptedBuild": 14
   },
   "build10RollbackHistory": {
@@ -186,6 +187,6 @@
     ],
     "lastAcceptedBuild": 14,
     "deviceReportedBuild": "18",
-    "humanAcceptance": "pending"
+    "humanAcceptance": "island_icon_and_reaction_scopes_passed_other_acoustics_pending"
   }
 }

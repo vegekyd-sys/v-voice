@@ -3,7 +3,7 @@
   "build": 18,
   "version": "1.0.0",
   "candidateOnly": true,
-  "status": "installed_human_acceptance_pending",
+  "status": "installed_island_icon_reaction_human_accepted",
   "installedOnRequestedIPhone": true,
   "realCallStartedByAgent": false,
   "integration": {
@@ -45,9 +45,7 @@
     ]
   },
   "pending": [
-    "Physical Action Button launch icon cache refresh",
-    "Physical first locked launch Reaction rendering",
-    "Human two-way native duplex/GPT, interruption and acoustic acceptance"
+    "GPT Live provider and native-duplex acoustic/interruption scenarios beyond the three accepted island scopes"
   ],
   "releaseScope": {
     "mainMerged": false,
@@ -93,7 +91,21 @@
     "confirmedAt": "2026-10-22T11:41:06Z",
     "smallIconReadbackVerified": true,
     "evidence": "evidence/build18-system-small-icon.png",
-    "actualActionButtonOverlayAcceptance": "pending"
+    "actualActionButtonOverlayAcceptance": "Tianyi_confirmed_passed"
   },
-  "firstInstallAttempt": "Developer connectivity assertion 4016 failed before install; user reconnected USB/unlocked, then installation and version readback succeeded"
+  "firstInstallAttempt": "Developer connectivity assertion 4016 failed before install; user reconnected USB/unlocked, then installation and version readback succeeded",
+  "humanAcceptance": {
+    "recordedAt": "2026-10-22T12:12:34.713800+00:00",
+    "evidence": "Tianyi answered 三项都正常 to the installed-build18 checklist",
+    "scopes": [
+      "Action Button launch overlay shows the new purple icon",
+      "First expanded card on the locked iPhone shows the default Reaction",
+      "Reaction changes with the real conversation"
+    ],
+    "notInferred": [
+      "GPT Live provider two-way acoustic acceptance",
+      "Long calls/network handover/system-call interruptions",
+      "Quantified interruption latency or bystander robustness"
+    ]
+  }
 }
