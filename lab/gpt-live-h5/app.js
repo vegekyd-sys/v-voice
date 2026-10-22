@@ -666,7 +666,12 @@ async function startCall() {
           if(call!==active)return;
           // An interrupted native reply may never send its final transcript.
           // Its caption row must not be reused for the answer to the next turn.
-          if(value.type==='input.speech.started'&&active.relayTurns)delete active.relayTurns.assistant;
+          if(value.type==='input.speech.started'&&active.relayTurns?.assistant){
+            // Close only the display row, preserving its received text in
+            // history. This is not provider completion or playback proof.
+            renderTranscript(presentation.consume({type:'turn.done',turn:{role:'assistant',id:active.relayTurns.assistant}}));
+            delete active.relayTurns.assistant;
+          }
           if(speakerCandidate()&&(value.type.startsWith('speaker.')||value.type.startsWith('end.')||value.type==='transcript'&&value.final||['audio.done','audio.clear','error','upload.backpressure'].includes(value.type)))speakerEvent(value);
           if (value.type === 'avatar.expression') { avatar?.expression(value.expression); return; }
       tasks.consume(value);

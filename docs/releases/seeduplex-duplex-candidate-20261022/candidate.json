@@ -1,16 +1,16 @@
 {
   "schema": "v-voice-candidate-acceptance-v1",
-  "version": "voice-seeduplex-duplex.20261022.1",
+  "version": "voice-seeduplex-duplex.20261022.3",
   "date": "2026-10-22",
   "status": "awaiting-human-acceptance",
-  "runtimeCommit": "6426891ecc537a28ff7163afbced453d5aa5196b",
+  "runtimeCommit": "1284672253de44d48e46d1ebea62549bb3e5a9ce",
   "baseCommit": "68ebcc9",
   "providerModel": "1.2.6.1",
   "voice": "xiaohe",
-  "files": 202,
-  "filesSha256": "63d636bcde71161d9dcf68f295eac8d571038baa2a131eede024db3694301d5d",
+  "files": 203,
+  "filesSha256": "3e22d43c2e018c77b29ffad7b2cf9700f5bcd749432a438811f0e183c0c92af4",
   "automaticTests": {
-    "mainPassed": 664,
+    "mainPassed": 683,
     "speakerNativePassed": 95
   },
   "input": {
@@ -22,15 +22,19 @@
   },
   "observations": {
     "chromiumLongInterruptionOutputSilenceMs": 172,
-    "webkitLongInterruptionOutputSilenceMs": 206,
-    "chromiumShortInterruptionPauseMs": 140,
+    "webkitLongInterruptionOutputSilenceMs": 200,
+    "chromiumShortInterruptionPauseMs": 154,
     "oldAudioResumed": false,
     "originalSpeakerPathClearEventMs": 9587,
     "originalNativePathClearEventMs": 3298,
     "comparisonIsSingleSamplesNotPercentiles": true,
     "backgroundSpeechMayTemporarilyPause": true,
     "nativeMayGenerateUnplayedClarification": true,
-    "knownPresentationPoll409DuringHangup": true
+    "knownPresentationPoll409DuringHangup": true,
+    "shortStopRepeatedPauseMs": [
+      158,
+      154
+    ]
   },
   "verifiedFlows": [
     "continuous-native-audio",
@@ -43,13 +47,25 @@
     "900ms-intrasentence-gap-with-continuation-no-audible-early-reply",
     "real-current-time-tool",
     "same-page-redial-new-voice-session",
-    "webkit-native-farewell-closes-call"
+    "webkit-native-farewell-closes-call",
+    "explicit-streaming-stop-control-with-response-ownership",
+    "interrupted-caption-preserved-in-history"
   ],
   "isolation": {
     "ownCandidateService": true,
-    "productionIdentityUnchanged": true,
+    "productionIdentityUnchanged": false,
     "gatewayRestarted": false,
     "merged": false,
-    "productionDeployed": false
+    "productionDeployed": false,
+    "productionIdentityChangedDuringValidation": true,
+    "productionModifiedByThisTask": false
+  },
+  "explicitStopLane": {
+    "enabledOnlyByFlag": "VOICE_NATIVE_INTERRUPT_ASR=1",
+    "continuousIndependentAsr": true,
+    "additionalAsrUsage": true,
+    "cancelsBackendTasks": false,
+    "admitsOrdinaryQuestions": false,
+    "delayedTranscriptResponseOwnership": true
   }
 }

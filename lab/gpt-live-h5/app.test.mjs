@@ -1236,6 +1236,7 @@ test('native interruption gives the next answer a fresh caption row after the ne
  relay.onEvent({type:'transcript',role:'user',text:'先停，二加三等于几？',final:true});
  relay.onEvent({type:'transcript',role:'assistant',text:'五。',final:true});
  const rows=f.view.get().transcript.history;
- assert.deepEqual(Array.from(rows,r=>r.text),['先停，二加三等于几？','五。']);
- assert.deepEqual(Array.from(rows,r=>r.role),['user','assistant']);
+ assert.deepEqual(Array.from(rows,r=>r.text),['还未说完的旧故事','先停，二加三等于几？','五。']);
+ assert.deepEqual(Array.from(rows,r=>r.role),['assistant','user','assistant']);
+ assert.equal(f.view.get().transcript.current.length,0,'the old unfinished caption cannot remain current after the new answer');
 });
