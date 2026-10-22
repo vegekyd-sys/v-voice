@@ -1,6 +1,6 @@
 # V Voice iOS · 一按通话
 
-网页同步功能已由 PR #58 合入并发布，build 12 的真实 iPhone 远程界面握手通过；但 build 12／13 均出现开场白正常、麦克风无回应。手机已按用户要求覆盖回退到此前接受双向通话的 build 10，保留现有绑定；后续修复在候选进行。见 [当前发布／回退登记](../releases/voice-ios-web-delivery-20261022/README.md) 与 [WEB-DELIVERY.md](WEB-DELIVERY.md)。
+网页同步功能已由 PR #58 合入并发布，build 12 的真实 iPhone 远程界面握手通过；但 build 12／13 均出现开场白正常、麦克风无回应。停止真机镜像并回退 build 10 后用户确认正常通话恢复；随后按用户要求安装带新版图标的 build 11，设备版本和非占位图标均回读确认，现有绑定保留。手机当前为 build 11，后续新壳验证在候选进行。见 [当前发布／回退登记](../releases/voice-ios-web-delivery-20261022/README.md) 与 [WEB-DELIVERY.md](WEB-DELIVERY.md)。
 
 此前 build 11 从正式合入 main 的 `68ebcc9` 签名、验包并覆盖安装到指定 iPhone；采用 Tianyi 提供的紫底耳麦头像图标，包内首页已显示本次里程碑更新日志。build 10 的真实接通／双向通话已获用户接受，build 11 没有自动拨号，新增版本的真机听验另记。当前 App 已在 H5 内嵌＋原生后台通话上整合接通／方案提醒、呼叫文案与宽波形灵动岛；详见 [H5 容器与回退基线](H5-SHELL.md)。build 8 已保存为 `ios-native-build8-20261022`。以下 build 6–8 原生 UI 记录保留为历史。
 

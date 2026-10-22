@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "version": "1.0.0",
-  "build": 10,
-  "sourceCommit": "3ffeb94",
+  "build": 11,
+  "sourceCommit": "68ebcc9c94c6cef3fc8b6fb42497a899a80e09a5",
   "candidateOnly": false,
   "signedArchiveVerified": true,
   "exportedIPAVerified": true,
-  "ipaSHA256": "eca945a66ebcbfe6467c52338c26a90c171de4bc88fbd7f894ec0265cdc235c8",
+  "ipaSHA256": "5539d89245dfd7e4a241d1d66957fd60fc45b6d8e2e6e8b02f30e62b25855f2a",
   "installedOnRequestedIPhone": true,
-  "realVoiceAcceptance": "build10_previously_user_accepted_rollback_installed_current_recheck_pending",
+  "realVoiceAcceptance": "build10_rollback_two_way_user_confirmed_build11_restored_at_user_request_no_new_call",
   "localTests": {
     "core": 16,
     "native": 38,
@@ -33,7 +33,7 @@
     "build": 8,
     "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab"
   },
-  "deviceReportedBuild": "10",
+  "deviceReportedBuild": "11",
   "savedH5Baseline": {
     "build": 10,
     "sourceCommit": "3ffeb94",
@@ -62,7 +62,8 @@
   "appIcon": {
     "source": "Tianyi supplied purple headset portrait",
     "opaque1024AssetVerified": true,
-    "simulatorAppearanceVerified": true
+    "simulatorAppearanceVerified": true,
+    "physicalDeviceIconReadbackVerified": true
   },
   "currentDeviceRollback": {
     "date": "2026-10-22",
@@ -72,7 +73,8 @@
     "bindingGroupsUnchanged": true,
     "bindingDataPreserved": true,
     "reason": "Build12/13 greeting audible but microphone dialogue failed; user requested usable baseline before continued repair",
-    "newCandidateWillNotReplaceBaselineDuringInvestigation": true
+    "newCandidateWillNotReplaceBaselineDuringInvestigation": true,
+    "currentRecheck": "Tianyi confirmed build10 normal calls after rollback and Device Hub screen sharing stopped"
   },
   "webDeliveryRelease": {
     "sourceCommit": "0d0b3d96c5391dde5362c5db270018958948584f",
@@ -82,5 +84,18 @@
     "build12VoiceAcceptance": "failed_no_response_to_microphone",
     "diagnosticBuild13": "installed_then_rolled_back_to10",
     "record": "../releases/voice-ios-web-delivery-20261022/release.json"
+  },
+  "currentDeviceRestore": {
+    "date": "2026-10-22",
+    "fromBuild": 10,
+    "toBuild": 11,
+    "explicitUserRequest": "install build 11",
+    "originalSignedIPASHA256Verified": true,
+    "overwriteInstalledAndReadBack": true,
+    "bindingIdentityUnchanged": true,
+    "deviceIconReadback": "purple headset portrait; actual icon, not placeholder",
+    "nativeCallCaptureRelayIntentSourcesIdenticalToBuild10": true,
+    "deviceHubScreenSharingActive": false,
+    "build11NewPhysicalVoiceAcceptance": "not_run"
   }
 }
