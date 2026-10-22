@@ -22,8 +22,16 @@ Native result: `test_sim_2026-10-22T13-28-41-237Z_pid57447_cb2d0d21.xcresult` in
 
 Actual simulator/H5 streaming screenshot: `evidence/caption-continuity-streaming.png`. The synthetic sentence remains one message while streaming and stays in place after finalization. Actual WKWebView checks exercise one growing paragraph, stable message DOM identity and correct overlapping speech order; native WebRTC loopback checks late identity binding, final text and existing report/reload behavior. All inputs are local fixtures/synthetic PCM, with no paid or real model call.
 
-No push, merge, web deployment, service restart, signing or physical-phone installation by this task. The native parser/relay changes require a new app build; a remote H5 update alone cannot deliver the complete fix.
+The initial candidate evidence above preceded push, merge, deployment and physical installation. See the delivery record below for the subsequent authorized release. The native parser/relay changes require a new app build; a remote H5 update alone cannot deliver the complete fix.
 
 ## Prepared user-facing release note
 
 “通话文字更连贯：GPT Live One 不再因话轮标识晚到而拆成短消息；小何/Grok 的字幕会持续累加，交替说话时消息顺序保持稳定。” Apply this to the homepage changelog when this candidate is actually accepted for release, together with the next app build registration.
+
+## Build 19 delivery
+
+Tianyi explicitly authorized merge, web release and a new signed package on the requested iPhone. PR #68 merged as `3fe9fcc25039c620e7745bf83a14b14c9d523f29`; the installed build was archived from its head `06317a892639af16697cf67498b5962ec8a335f8`. Git confirms identical complete source trees. Full Node 715/715, Speaker 95/95 and the branch GitHub run 39792915462 passed.
+
+Both the signed archive and the independently extracted exported IPA passed Release verification. IPA SHA-256: `8c62603268b1d7c01fa73f9cac24441041b8bdd2171c9569b07cd9da1de7039a`. The requested connected iPhone reported 1.0.0 (19) after overwrite installation, and ordinary app launch succeeded. No uninstall, Keychain reset or automatic call. Build 18 IPA was separately retained and its original SHA verified. Physical real-call caption acceptance remains pending.
+
+Production delivery is registered under `../releases/voice-caption-continuity-20261022/release.json`.
