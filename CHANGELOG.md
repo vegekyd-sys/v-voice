@@ -1,8 +1,8 @@
-## Unreleased — iOS build 15 report island candidate
+## 2026-10-22 — iOS build 15 background report island
 
 - Present new background reports as the conversation island with a full-text link. Wait for the actual background scene instead of consuming the alert during the inactive transition; treat changed report content as a new delivery after a manual fold.
 - Protect the report alert briefly from cosmetic caption/waveform refreshes; explicit mute, fold, end and safety states remain immediate. Recover missed relay deliveries through the existing presentation endpoint while the call runs in background.
-- Preserve the build 14 native capture path, remote H5 update shell and original call owner. The system still controls the expanded island's duration; this is a private candidate, with physical report acceptance recorded separately.
+- Preserve the build 14 native capture path, remote H5 update shell and original call owner. The system still controls the expanded island's duration; build 15 is installed on the requested iPhone, with physical report acceptance recorded separately.
 
 ## 2026-10-22 — iOS web delivery · build 14 physical acceptance
 

@@ -121,14 +121,6 @@
     "ipaSHA256": "5539d89245dfd7e4a241d1d66957fd60fc45b6d8e2e6e8b02f30e62b25855f2a",
     "originalSignedArchiveAndIPAAvailable": true
   },
-  "pendingReportIslandCandidate": {
-    "build": 15,
-    "record": "report-island-build15.json",
-    "candidateOnly": true,
-    "installed": true,
-    "deviceReportedBuild": "15",
-    "physicalReportAcceptance": "pending"
-  },
   "recordScope": "last_accepted_release_with_current_device_candidate",
   "previouslyInstalledOnRequestedIPhone": true,
   "savedBuild14Rollback": {
@@ -136,5 +128,14 @@
     "ipaSHA256": "58dcb2a5b3a850f279a821965b92ce5dbaec820da0e4a6c52ed8a7f7207ee56b",
     "originalSignedArchiveRetained": true,
     "signedIPACopiedAndVerified": true
+  },
+  "reportIslandBuild15": {
+    "build": 15,
+    "record": "report-island-build15.json",
+    "candidateOnly": true,
+    "installed": true,
+    "deviceReportedBuild": "15",
+    "physicalReportAcceptance": "pending",
+    "sourceIntegrationAuthorized": true
   }
 }
