@@ -118,5 +118,11 @@
     "build": 11,
     "ipaSHA256": "5539d89245dfd7e4a241d1d66957fd60fc45b6d8e2e6e8b02f30e62b25855f2a",
     "originalSignedArchiveAndIPAAvailable": true
+  },
+  "pendingReportIslandCandidate": {
+    "build": 15,
+    "record": "report-island-build15.json",
+    "candidateOnly": true,
+    "installed": false
   }
 }

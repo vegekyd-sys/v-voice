@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "build": 15,
+  "candidateOnly": true,
+  "sourceCommit": null,
+  "baseline": {
+    "build": 14,
+    "sourceCommit": "2adca2a03e56d51f51a39f7e939dab27c0aaf2a5",
+    "deliveryCommit": "6282e32"
+  },
+  "tests": {
+    "core": 18,
+    "nativeAndH5": 34,
+    "baselineRegressionFailedAsExpected": true,
+    "fixedRegressionPassed": true
+  },
+  "systemPresentation": {
+    "automaticExpansionVerified": true,
+    "manualLongPressUsed": false,
+    "stayDuration": "system_owned",
+    "evidence": "evidence/report-auto-expanded-system.png"
+  },
+  "signedArchiveVerified": false,
+  "exportedIPAVerified": false,
+  "installedOnRequestedIPhone": false,
+  "physicalReportAcceptance": "pending",
+  "mergedIntoMain": false,
+  "webServerDeployed": false
+}

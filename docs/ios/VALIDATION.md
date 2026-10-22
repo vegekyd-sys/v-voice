@@ -241,3 +241,20 @@ Core16、原生WK／音频／集成46、既有服务合同80全部通过。新�
 用户授权后，保留原绑定覆盖安装development签名build14；真机屏幕共享关闭。用户确认网页、操作按钮、锁屏双向语音和灵动岛静音／恢复／结束全部正常，随后已挂断。只读诊断显示本机麦克风6479帧、911个有效音量帧、峰值RMS约0.375；仅汇总计数入登记，不保存音频或正文。结束后空闲打开App，真实冷下载的正式UI archive完成ready，哈希与生产一致。原生代码没有改采集路由、AEC、Intent或通话owner。
 
 已合入PR59；正式main提交`2adca2a`的CI成功。逐项Git对象哈希确认其原生发布输入与用户接受候选`55f003b`相同，再从main重新签名构建。最终安装与IPA哈希见 [验收登记](new-shell-build14-validation.json)。本轮未改Voice服务或Gateway，原build11签名回退包保留。
+## 2026-10-22 build 15 后台报告大卡候选
+
+- 基线为当前真机build14：正式源码2adca2a、交付登记6282e32。首次以旧工作树的build11登记为导航，随后直接从指定设备App记录读回14并校正，未用旧代码构建覆盖真机；保留远程H5更新壳、收音／上传诊断和全部原有音频／Intent路径。
+- 只读复制了指定设备的有界生命周期文件（无正文），其中存在document提醒请求。此证据只能证明调用，不证明系统实际展开，也不能独自确诊所有真实漏展示原因。
+- 修复前新增原生用例实际失败（xcodebuild退出65）：inactive就已消耗提醒；手动折叠后同id的更新报告不重新提醒／切大。修复后该用例通过；背景presentation-only文档恢复和报告展示窗口期间字幕不盖掉、静音立即生效也通过。
+- Core18项、原生／H5定向34项均通过，命令退出0。包括NativeFlow26、IslandActivity3、H5Shell5。H5源包与52张Reaction资源校验通过；VoiceAudio、RelayTransport、VoiceIntents相对14基线无改动。没有付费模型、正式拨号或Gateway操作。
+- iPhone17Pro iOS26.5实际系统：本地fixture通话回桌面，触发报告后系统AX自动出现「V的Reaction／方案已就绪查看全文／收起文字返回音频／静音麦克风／结束通话」。整个验证没有长按小岛。
+- 为捕获短暂系统展示，先安排本地fixture延迟送报告，再同步等待并连续保存真实serve-sim帧；没有后台未等待的截屏任务。第三份报告发送1792649354164ms，自动大卡帧在1792649357582ms（+3.418秒）、1792649359807ms（+5.643秒）可见；+8.121秒帧已被系统收回。三张提交证据是原始帧复制，不是图像编辑。最初未等待的捕获未能保留会话，不用作证据；第一次单张捕获已赶不上大卡，未将其标为成功图片。
+- 用户内置浏览器镜像初始断开，确认3200无监听后仅对该模拟器重建serve-sim并恢复真实帧；其他模拟器、物理手机屏幕共享未动。截图clip接口没有按坐标裁剪，因此正式证据保存完整页面。结束fixture后active=false、sessions=closeRequests=2（本地累计计数），不能作为正式用户呼叫次数。
+- 签名／验包／安装与实机自动报告展示尚未在本条记录阶段完成，状态以report-island-build15.json后续登记为准。候选未合入main、未发布网页；首页正式发布日志不写入未验收候选，随包历史仍与现有网页源一致。
+- ActivityKit重要更新使用[官方alertConfiguration机制](https://developer.apple.com/documentation/activitykit/displaying-live-data-with-live-activities)。iOS仍决定是否显示及停留时长，候选不承诺强制常驻或绕过系统设置。
+
+![报告到达前的小岛](evidence/report-before-compact.png)
+
+![报告到达后自动展示的大卡](evidence/report-auto-expanded-system.png)
+
+![随后由系统收回的小岛](evidence/report-after-system-collapse.png)
