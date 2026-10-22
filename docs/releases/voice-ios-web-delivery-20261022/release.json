@@ -4,7 +4,7 @@
   "sourceBranch": "main",
   "entryCommit": "0d0b3d96c5391dde5362c5db270018958948584f",
   "previousProductionCommit": "16932ca42f415c8b0e93c5886b61cb571de4a7d3",
-  "phase": "web-deployed-build11-restored-new-shell-voice-acceptance-pending",
+  "phase": "web-deployed-build14-physical-candidate-accepted",
   "gatewayRestartRequired": false,
   "gatewayUnchangedVerified": true,
   "privateEnvironmentUnchangedVerified": true,
@@ -72,17 +72,19 @@
   },
   "acceptance": "README.md",
   "currentDevice": {
-    "build": 11,
+    "build": 14,
     "version": "1.0.0",
     "rollbackRequestedByUser": true,
     "signedIPAHashVerified": true,
     "overwriteInstalledAndReadBack": true,
     "bindingRetained": true,
-    "currentVoiceRecheck": "build10 restored normal calls confirmed by user; build11 restored without another automatic call",
+    "currentVoiceRecheck": "build14 web/Action Button/lock-screen two-way voice/island controls all confirmed normal by user",
     "priorAcceptance": "physical connection and two-way voice accepted by user",
     "restoredAtUserRequest": true,
-    "originalSignedIPAHash": "5539d89245dfd7e4a241d1d66957fd60fc45b6d8e2e6e8b02f30e62b25855f2a",
-    "iconReadbackVerified": true
+    "originalSignedIPAHash": "63c9e5c95682df03918990f4563c57757d39814475c09a489043207b860b5100",
+    "iconReadbackVerified": true,
+    "candidateSourceCommit": "55f003b45662413057c36ad4138dddbae93371aa",
+    "formalMainRebuild": "pending"
   },
   "environmentInvestigation": {
     "deviceHubScreenSharingStopped": true,
@@ -105,7 +107,9 @@
     "appleDeviceHubMicrophoneConflictDocumented": true,
     "appleDocumentation": "https://developer.apple.com/documentation/xcode/interacting-with-your-app-in-device-hub",
     "mostLikelyCause": "Physical Device Hub screen sharing excludes normal app microphone capture; reproductions occurred with screen sharing active",
-    "confirmationPending": "New shell was not reinstalled after screen sharing stopped; rollback and mirroring stop were both changes, so their separate causal effects are not isolated",
-    "build10TwoWayVoiceRecoveredAfterScreenSharingStopped": true
-  }
+    "confirmationPending": "Long-duration and unrelated system scenarios remain untested; no deliberate re-enabling of conflicting physical mirroring during calls",
+    "build10TwoWayVoiceRecoveredAfterScreenSharingStopped": true,
+    "newShellVoiceWithoutScreenSharing": "build14 actual nonzero microphone signal, multiple recognized human turns and replies, requested controls accepted"
+  },
+  "homepageChangelog": "Production PR58 entry reviewed and still accurately covers this same web-delivery release; no additional Voice service restart for diagnostic-only native changes"
 }
