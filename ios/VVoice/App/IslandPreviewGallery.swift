@@ -23,7 +23,7 @@ struct IslandPreviewGallery: View {
                         .foregroundStyle(Color(hex: 0xd6c2ed)).padding(.horizontal, 15).frame(width: 184, height: 37).background(.black, in: Capsule())
                 }
                 preview("中 · Reaction 与声音", layout: .audio)
-                preview("大 · Reaction 与文字", layout: .conversation)
+                preview("大 · 声音与通话控制", layout: .conversation)
                 Button("切换 Reaction 原图") { pose = (pose + 1) % poses.count }.buttonStyle(.bordered)
                 Text("复用真实活动的 SwiftUI 组件与资源；不是系统展开时机或音频验收。").font(.system(size: 12)).foregroundStyle(.secondary)
             }.frame(maxWidth: 390).padding(24).frame(maxWidth: .infinity)

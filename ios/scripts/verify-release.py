@@ -5,8 +5,10 @@ p=argparse.ArgumentParser();p.add_argument('app',type=pathlib.Path);p.add_argume
 info=plistlib.loads((a.app/'Info.plist').read_bytes())
 assert info['CFBundleIdentifier']=='com.versa.vvoice'
 assert info.get('CFBundleIcons',{}).get('CFBundlePrimaryIcon',{}).get('CFBundleIconName')=='VVoiceAppIcon', 'System surfaces must resolve the current branded app icon'
-assert info.get('NSAppIconActionTintColorName')=='VShortcutTint'
-assert info.get('NSAppIconComplementingColorNames')==['VShortcutBackground','VShortcutComplement']
+for key in ['CFBundleIcons','CFBundleIcons~ipad']:
+    primary=info.get(key,{}).get('CFBundlePrimaryIcon',{})
+    assert primary.get('NSAppIconActionTintColorName')=='VShortcutTint', 'App Shortcuts tint must be inside the primary icon metadata: '+key
+    assert primary.get('NSAppIconComplementingColorNames')==['VShortcutBackground','VShortcutComplement']
 assert info.get('NSSupportsLiveActivities') is True
 assert info.get('UIBackgroundModes')==['audio']
 assert info.get('NSMicrophoneUsageDescription')

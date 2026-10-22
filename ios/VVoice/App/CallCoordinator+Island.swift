@@ -21,7 +21,7 @@ import VVoiceCore
     func observeIslandAudio(_ inputRMS: Double, outputRMS: Double?) {
         guard active, [.listening,.thinking,.speaking,.muted].contains(phase) else { return }
         islandPresentation.synchronize(owner: presentationID, documentID: nil)
-        if islandPresentation.observeAudio(inputRMS: inputRMS, outputRMS: outputRMS, muted: muted, now: Date()), islandPresentation.layout == .audio {
+        if islandPresentation.observeAudio(inputRMS: inputRMS, outputRMS: outputRMS, muted: muted, now: Date()) {
             publishIslandActivity()
         }
     }

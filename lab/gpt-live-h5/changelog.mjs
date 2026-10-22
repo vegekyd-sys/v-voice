@@ -2,6 +2,13 @@
 // experiments and unaccepted capabilities do not belong in this list.
 export const VOICE_UPDATES = [
   {
+    date: '2026-10-22', title: '通话看声音，方案点开看',
+    items: [
+      'iOS App build 17 的灵动岛大卡与中卡共用声音波纹，通话时保留 Reaction 和通话控制，不再滚动显示对话文字。',
+      '完整方案到达后显示点击查看入口，说话期间也可直接打开报告；原有后台提醒和静音、结束操作保留。',
+    ],
+  },
+  {
     date: '2026-10-22', title: '报告到达，灵动岛给你提示',
     items: [
       'iOS App build 15 改善后台报告到达时的文字卡展示，保留 Reaction、查看全文、静音与结束通话入口。',

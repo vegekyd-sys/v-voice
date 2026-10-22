@@ -40,28 +40,25 @@ import VVoiceCore
         let rows = (try? Data(contentsOf: lifecycleFile)).flatMap { try? JSONDecoder().decode([[String: String]].self, from: $0) } ?? []
         return rows.filter { $0["event"] == "island.attention.requested" && $0["code"] == "document" }.count
     }
-    func testSpeakingIslandTracksLatestCaptionAndKeepsUnreadReport() async throws {
+    func testExpandedCallWaveformKeepsUpdatingAndReportWinsDuringSpeech() async throws {
         let call = try await client()
         try await call.startOrContinue()
-        try await until { call.conversation.turns.contains { $0.text.contains("本地音频测试") } }
-        try await fixture("clear")
-        try await until { call.phase == .listening }
-        try await fixture("report")
-        try await until { call.activityState.documentID == "fixture-plan" }
+        try await until { call.conversation.turns.contains { $0.text.contains("本地音频测试") } && call.phase == .listening }
         call.selectIslandLayout(.conversation, callID: call.presentationID)
-        try await fixture("event", ["event":["type":"transcript","role":"user","text":"请说出当前方案", "final":true]])
-        let first = String(repeating: "回答的前半部分", count: 25) + "现在正在说的重点"
-        try await fixture("event", ["event":["type":"transcript","role":"assistant","text":first,"final":false]])
-        try await fixture("audio", ["ms":6000])
-        try await until { call.phase == .speaking }
+        try await fixture("wave-demo")
         let activity = try XCTUnwrap(Activity<CallAttributes>.activities.first)
-        try await until { activity.content.state.caption.hasSuffix("现在正在说的重点") }
-        XCTAssertEqual(activity.content.state.captionSpeaker, "V")
-        XCTAssertEqual(activity.content.state.documentID, "fixture-plan")
-        XCTAssertLessThanOrEqual(activity.content.state.caption.count, 85)
-        try await fixture("event", ["event":["type":"transcript","role":"assistant","text":first + "，然后进入下一步", "final":false]])
-        try await until { activity.content.state.caption.hasSuffix("然后进入下一步") }
-        XCTAssertEqual(activity.content.state.island.layout, .conversation)
+        try await until { activity.content.state.island.audioSource == .output }
+        let first = activity.content.state.island.levels
+        try await until { activity.content.state.island.levels != first && activity.content.state.island.audioSource == .output }
+        XCTAssertTrue(IslandCallSurface(state: activity.content.state, callID: call.presentationID).showsWaveform)
+        try await fixture("report")
+        try await until { activity.content.state.documentID == "fixture-plan" }
+        let surface = IslandCallSurface(state: activity.content.state, callID: call.presentationID)
+        XCTAssertTrue(surface.showsReport)
+        XCTAssertFalse(surface.showsWaveform)
+        let snapshot = try await stats()
+        XCTAssertEqual(snapshot["sessions"] as? Int, 1)
+        XCTAssertGreaterThan(snapshot["inputBytes"] as? Int ?? 0, 0)
         XCTAssertTrue(call.active)
         await call.end()
     }

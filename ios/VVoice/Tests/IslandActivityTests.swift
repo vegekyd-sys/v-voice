@@ -18,14 +18,16 @@ final class IslandActivityTests: XCTestCase {
         let attributes = try JSONEncoder().encode(CallAttributes(callID: UUID().uuidString))
         XCTAssertLessThan(payload.count + attributes.count, 4096)
     }
-    func testTranscriptWindowKeepsLatestWrappedLinesAndUnicode() {
-        let text = String(repeating: "早期的内容不应停在卡片上。", count: 8) + "先完成产品评审，再留出专注时间。最后一起确认下一步。"
-        let tail = IslandTranscriptWindow.tail(text, width: 210)
-        XCTAssertTrue(tail.hasSuffix("最后一起确认下一步。"))
-        XCTAssertLessThan(tail.count, text.count)
-        XCTAssertFalse(tail.contains("早期的内容"))
-        XCTAssertEqual(IslandTranscriptWindow.tail("你好 🧑🏽‍💻", width: 210), "你好 🧑🏽‍💻")
-        XCTAssertTrue(IslandTranscriptWindow.tail(text, width: .nan).isEmpty)
+    @MainActor func testDialogueUsesWaveformAndUnreadReportWinsOverSpeaking() {
+        for phase: VoicePhase in [.listening, .thinking, .speaking, .muted] {
+            var state = CallAttributes.ContentState(phase: phase, muted: phase == .muted, startedAt: Date(), detail: phase.title,
+                caption: "这句转写不应再显示在灵动岛", island: .init(layout: .conversation))
+            XCTAssertTrue(IslandCallSurface(state: state, callID: "test").showsWaveform)
+            state.documentID = "report"; state.documentTitle = "方案整理好了"
+            XCTAssertTrue(IslandCallSurface(state: state, callID: "test").showsReport)
+            XCTAssertFalse(IslandCallSurface(state: state, callID: "test").showsWaveform)
+            XCTAssertFalse(IslandCallSurface(state: state, callID: "test", stale: true).showsReport)
+        }
     }
     func testSnapshotOnlyContainsReviewedCosmeticAssetIDs() {
         XCTAssertEqual(IslandReactionCatalog.assets.count, 52)

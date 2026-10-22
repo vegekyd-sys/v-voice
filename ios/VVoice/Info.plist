@@ -52,12 +52,31 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
-	<key>NSAppIconActionTintColorName</key>
-	<string>VShortcutTint</string>
-	<key>NSAppIconComplementingColorNames</key>
-	<array>
-		<string>VShortcutBackground</string>
-		<string>VShortcutComplement</string>
-	</array>
+	<key>CFBundleIcons</key>
+	<dict>
+		<key>CFBundlePrimaryIcon</key>
+		<dict>
+			<key>NSAppIconActionTintColorName</key>
+			<string>VShortcutTint</string>
+			<key>NSAppIconComplementingColorNames</key>
+			<array>
+				<string>VShortcutBackground</string>
+				<string>VShortcutComplement</string>
+			</array>
+		</dict>
+	</dict>
+	<key>CFBundleIcons~ipad</key>
+	<dict>
+		<key>CFBundlePrimaryIcon</key>
+		<dict>
+			<key>NSAppIconActionTintColorName</key>
+			<string>VShortcutTint</string>
+			<key>NSAppIconComplementingColorNames</key>
+			<array>
+				<string>VShortcutBackground</string>
+				<string>VShortcutComplement</string>
+			</array>
+		</dict>
+	</dict>
 </dict>
 </plist>

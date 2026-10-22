@@ -1,3 +1,10 @@
+## 2026-10-22 — iOS build 17 waveform candidate
+
+- Reuse the medium card's measured waveform in expanded and lock-screen call controls; remove scrolling conversation captions, while unread reports retain the existing title and open-full-report affordance during speech.
+- Publish bounded audio snapshots for both card layouts, preserving native capture, playback, Action Button ownership and background report attention.
+- Move App Shortcuts icon colors into the documented primary-icon metadata for both iPhone and iPad; request registration again on idle foreground entry. Physical launch-icon cache refresh remains pending, with no uninstall or binding reset.
+- Local candidate only; no automatic real calls, main integration or server deployment.
+
 ## Unreleased — iOS build 16 live caption and launch branding candidate
 
 - Show the latest three wrapped lines of V’s current reply in the expanded and Lock Screen presentation while V speaks. Keep Reaction, mute/end and a stable report link; opening text continues the same native call.

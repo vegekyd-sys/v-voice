@@ -1,6 +1,5 @@
 import SwiftUI
 import AppIntents
-import CoreText
 import VVoiceCore
 
 private let islandLilac = Color(hex: 0xd6c2ed)
@@ -15,10 +14,11 @@ struct IslandCallSurface: View {
     @Environment(\.isLuminanceReduced) private var luminanceReduced
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private var speakingCaption: Bool { !stale && state.phase == .speaking && !state.caption.isEmpty }
+    var showsReport: Bool { !stale && state.documentID != nil }
+    var showsWaveform: Bool { !showsReport && !quiet }
     var conversation: Bool { stale || lockScreen || [.reconnecting,.interrupted,.ending,.failed].contains(state.phase) || state.island.layout == .conversation }
     private var quiet: Bool { stale || ![.listening,.thinking,.speaking,.muted].contains(state.phase) }
-    private var destination: URL { CallDestination.url(callID: callID, documentID: stale || speakingCaption ? nil : state.documentID) }
+    private var destination: URL { CallDestination.url(callID: callID, documentID: stale ? nil : state.documentID) }
     private var status: String { stale ? "连接状态未知，请返回检查" : state.phase == .interrupted ? "声音暂停，返回通话恢复" : state.phase.title }
     var body: some View {
         VStack(spacing: 4) {
@@ -32,27 +32,19 @@ struct IslandCallSurface: View {
                         .accessibilityLabel(quiet ? status : "V 的 Reaction")
                 }
                 if conversation {
-                    Link(destination: destination) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            if speakingCaption {
-                                GeometryReader { geometry in
-                                    Text(IslandTranscriptWindow.tail(state.caption, width: geometry.size.width, lines: typeSize.isAccessibilitySize ? 2 : 3))
-                                        .font(.system(size: 14.5, weight: .regular)).lineLimit(typeSize.isAccessibilitySize ? 2 : 3)
-                                        .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
-                                        .id(state.caption)
-                                        .transition(reduceMotion || luminanceReduced ? .opacity : .push(from: .bottom))
-                                }.frame(height: typeSize.isAccessibilitySize ? 36 : 54)
-                                    .privacySensitive()
-                            } else if !stale, state.documentID != nil {
-                                Text(lockScreen ? "有方案待查看" : state.documentTitle ?? "方案整理好了")
-                                    .font(.system(size: 15, weight: .medium)).lineLimit(1).privacySensitive(!lockScreen)
-                            } else {
-                                Text(stale || quiet || lockScreen || state.caption.isEmpty ? status : state.caption)
-                                    .font(.system(size: 15, weight: .medium)).lineLimit(typeSize.isAccessibilitySize ? 1 : 3).truncationMode(.head)
-                                    .privacySensitive(!lockScreen && !quiet)
-                            }
-                        }.frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).contentShape(Rectangle())
-                    }.foregroundStyle(.white.opacity(0.92)).accessibilityLabel(speakingCaption ? "V 正在说：" + state.caption : state.documentID != nil && !stale ? "方案已就绪，查看全文" : "返回当前通话")
+                    if showsWaveform {
+                        waveform
+                    } else {
+                        Link(destination: destination) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(showsReport ? (lockScreen ? "有方案待查看" : state.documentTitle ?? "方案整理好了") : status)
+                                    .font(.system(size: 15, weight: .medium)).lineLimit(1).privacySensitive(showsReport && !lockScreen)
+                                if showsReport {
+                                    Text("点击查看完整方案").font(.system(size: 12)).foregroundStyle(islandLilac.opacity(0.8))
+                                }
+                            }.frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).contentShape(Rectangle())
+                        }.foregroundStyle(.white.opacity(0.92)).accessibilityLabel(showsReport ? "方案已就绪，查看全文" : "返回当前通话")
+                    }
                     if !lockScreen, !stale { IslandFoldButton(callID: callID) }
                 } else if state.phase == .connecting {
                     VStack(alignment: .leading, spacing: 5) {
@@ -62,10 +54,8 @@ struct IslandCallSurface: View {
                     endButton
                 } else {
                     Button(intent: IslandLayoutIntent(callID: callID, conversation: true)) {
-                        IslandWaveform(levels: quiet || luminanceReduced ? [] : state.island.levels,
-                                       source: quiet || luminanceReduced ? .none : state.island.audioSource)
-                            .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
-                    }.buttonStyle(.plain).accessibilityLabel("查看对话文字")
+                        waveform
+                    }.buttonStyle(.plain).accessibilityLabel("展开通话控制")
                     endButton
                 }
             }.frame(height: conversation ? 56 : 60)
@@ -95,6 +85,11 @@ struct IslandCallSurface: View {
             }
         }.padding(.horizontal, 8).padding(.bottom, conversation ? 12 : 4)
     }
+    private var waveform: some View {
+        IslandWaveform(levels: quiet || luminanceReduced ? [] : state.island.levels,
+                       source: quiet || luminanceReduced ? .none : state.island.audioSource)
+            .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+    }
     private var endButton: some View {
         Button(intent: IslandEndIntent(callID: callID)) {
             Image(systemName: "phone.down.fill").font(.system(size: 18, weight: .medium)).foregroundStyle(.white)
@@ -107,7 +102,7 @@ struct IslandFoldButton: View {
     var body: some View {
         Button(intent: IslandLayoutIntent(callID: callID, conversation: false)) {
             Image(systemName: "chevron.down").font(.system(size: 10, weight: .medium)).foregroundStyle(.white.opacity(0.45)).frame(width: 44, height: 44)
-        }.buttonStyle(.plain).accessibilityLabel("收起文字，返回音频")
+        }.buttonStyle(.plain).accessibilityLabel("收起通话控制")
     }
 }
 struct IslandWaveform: View {
@@ -166,25 +161,5 @@ struct IslandCompactStatus: View {
         if [.connecting,.reconnecting,.interrupted,.ending,.failed].contains(state.phase) { return state.phase.symbol }
         if state.documentID != nil { return "doc.text.fill" }
         return state.muted ? "mic.slash.fill" : state.phase.symbol
-    }
-}
-
-/// Widget views are archived by the system, so use a small text window rather
-/// than a ScrollView or an animation loop. Measure the actual available width.
-enum IslandTranscriptWindow {
-    static func tail(_ text: String, width: Double, lines: Int = 3) -> String {
-        guard width.isFinite, width > 1, lines > 0 else { return "" }
-        let font = CTFontCreateUIFontForLanguage(.system, 14.5, nil)!
-        let string = text as NSString
-        let attributed = NSAttributedString(string: text, attributes: [NSAttributedString.Key(kCTFontAttributeName as String): font])
-        let typesetter = CTTypesetterCreateWithAttributedString(attributed)
-        var starts = [0], offset = 0
-        while offset < string.length {
-            let length = CTTypesetterSuggestLineBreak(typesetter, offset, width)
-            guard length > 0 else { break }
-            offset += length
-            if offset < string.length { starts.append(offset) }
-        }
-        return string.substring(from: starts[max(0, starts.count - lines)]).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
