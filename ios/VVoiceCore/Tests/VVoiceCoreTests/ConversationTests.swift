@@ -74,3 +74,15 @@ private func speaker(_ type: String = "speaker.utterance", id: String = "local0"
     #expect(view.turns.reduce(0) { $0 + $1.text.count } <= 64000)
     view.reset(); #expect(view.people.isEmpty); #expect(view.turns.isEmpty)
 }
+
+@Test func relayAssistantChunksAccumulateUntilFinalSnapshot() {
+    var view = ConversationPresentation()
+    view.receive(role: "assistant", text: "你好", final: false, delta: true)
+    view.receive(role: "assistant", text: "，今天", final: false, delta: true)
+    view.receive(role: "assistant", text: "怎么样？", final: false, delta: true)
+    #expect(view.turns.count == 1)
+    #expect(view.turns[0].text == "你好，今天怎么样？")
+    view.receive(role: "assistant", text: "你好，今天怎么样？", final: true)
+    #expect(view.turns.count == 1)
+    #expect(view.turns[0].text == "你好，今天怎么样？")
+}

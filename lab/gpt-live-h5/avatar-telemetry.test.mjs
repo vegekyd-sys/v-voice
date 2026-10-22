@@ -33,3 +33,10 @@ test('multibyte dialogue batches stay within keepalive byte budget without dropp
  client.close();for(let i=0;i<30&&client.pending;i++)await client.flush();
  assert.equal(client.pending,0);assert(sent.every(b=>new TextEncoder().encode(JSON.stringify(b)).byteLength<=20000));assert.equal(sent.flatMap(b=>b.events).filter(e=>e.type==='avatar.displayed').length,25);
 });
+test('new completed speech stays newer than an older unfinished caption',async t=>{
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:1791547000000});
+ const sent=[];const client=createAvatarTelemetry({id:()=>id,elapsed:()=>0,snapshot:()=>({history:[{key:'new',role:'assistant',text:'新的完整回复',complete:true,at:2}],current:[{key:'old',role:'assistant',text:'旧的未完片段',complete:false,at:1}]}),send:async b=>sent.push(structuredClone(b))});
+ client.display({picture:'listen-3',source:'state'});await client.flush();
+ assert.equal(sent[0].events.find(e=>e.type==='avatar.displayed').turns[0].key,'new');
+ client.close();await client.flush();
+});

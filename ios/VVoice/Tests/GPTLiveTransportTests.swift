@@ -72,6 +72,18 @@ import VVoiceCore
         XCTAssertEqual(request?["inputPolicy"] as? String, "native")
         XCTAssertTrue(call.active)
         XCTAssertTrue(call.conversation.turns.contains { $0.text == "本地 GPT 音频回环" })
+        let initialCaption = try XCTUnwrap(call.conversation.turns.first { $0.text == "本地 GPT 音频回环" })
+        remote.send(["type":"turn.created", "turn":["role":"assistant", "id":"late-native-id"]])
+        remote.send(["type":"output_transcript.added", "item":["id":"second-fragment", "text":"，字幕继续在同一段里。"]])
+        remote.send(["type":"turn.done", "turn":["role":"assistant", "id":"late-native-id", "transcript":"本地 GPT 音频回环，字幕继续在同一段里。"]])
+        for _ in 0..<50 {
+            if call.conversation.turns.contains(where: { $0.id == initialCaption.id && $0.complete }) { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertEqual(call.conversation.turns.count, 1)
+        XCTAssertEqual(call.conversation.turns[0].id, initialCaption.id)
+        XCTAssertEqual(call.conversation.turns[0].text, "本地 GPT 音频回环，字幕继续在同一段里。")
+        XCTAssertTrue(call.conversation.turns[0].complete)
         let owner = call.presentationID
         call.sceneChanged(.background)
         try await command("report")
@@ -231,6 +243,9 @@ private final class GPTSyntheticAudio: NSObject, RTCAudioDevice, @unchecked Send
         return report.statistics.values.filter { $0.type == "inbound-rtp" }.compactMap { ($0.values["audioLevel"] as? NSNumber)?.doubleValue }.max() ?? 0
     }
     func close() { channel?.delegate = nil; channel?.close(); peer.delegate = nil; peer.close(); device.shutdown() }
+    func send(_ value: [String: Any]) {
+        channel?.sendData(RTCDataBuffer(data: try! JSONSerialization.data(withJSONObject: value), isBinary: false))
+    }
     private func welcome(_ channel: RTCDataChannel) {
         guard channel.readyState == .open else { return }
         for value: [String: Any] in [["type":"session.started"], ["type":"output_transcript.added","item":["id":"fixture","text":"本地 GPT 音频回环"]]] {

@@ -72,3 +72,38 @@ private func preparedEnd() throws -> GPTLiveEndGuard {
     guardState.provider(["type":"turn.created","turn":["role":"user","id":"new"]], now: 4)
     #expect({ !guardState.confirmed(["type":"voice.end.accepted","source":"voice_host_control","closeAfterPlayback":true,"requestId":"req","userText":"再见"]) }())
 }
+
+@Test func gptCaptionBeforeTurnCreatedKeepsOneStableRow() throws {
+    for role in ["user", "assistant"] {
+        var state = GPTLiveTranscript(), view = ConversationPresentation()
+        let prefix = role == "user" ? "input" : "output"
+        view.receiveNative(try #require({ state.consume(["type":prefix + "_transcript.added", "item":["id":"first", "text":"你好"]]) }()))
+        let key = view.turns[0].id
+        _ = state.consume(["type":"turn.created", "turn":["role":role,"id":"native"]])
+        view.receiveNative(try #require({ state.consume(["type":prefix + "_transcript.added", "item":["id":"rest", "text":"，今天怎么样？"]]) }()))
+        #expect(view.turns.count == 1)
+        #expect(view.turns[0].id == key)
+        #expect(view.turns[0].text == "你好，今天怎么样？")
+        view.receiveNative(try #require({ state.consume(["type":"turn.done", "turn":["role":role,"id":"native","transcript":"你好，今天怎么样？"]]) }()))
+        #expect(view.turns.count == 1)
+        #expect(view.turns[0].complete)
+    }
+}
+
+@Test func gptTerminalBindsAnonymousCaptionWithoutCreatingDuplicate() throws {
+    var state = GPTLiveTranscript(), view = ConversationPresentation()
+    view.receiveNative(try #require({ state.consume(["type":"output_transcript.added", "item":["id":"p", "text":"已经完成。"]]) }()))
+    view.receiveNative(try #require({ state.consume(["type":"turn.done", "turn":["role":"assistant","id":"a","transcript":"已经完成。"]]) }()))
+    #expect(view.turns.count == 1)
+    #expect({ view.turns.allSatisfy(\.complete) }())
+}
+
+@Test func gptLateFragmentFinalUpdatesOriginalTurnNotNewTurn() throws {
+    var state = GPTLiveTranscript(), view = ConversationPresentation()
+    _ = state.consume(["type":"turn.created", "turn":["role":"assistant","id":"old"]])
+    view.receiveNative(try #require({ state.consume(["type":"output_transcript.added", "item":["id":"old-piece", "text":"旧答"]]) }()))
+    _ = state.consume(["type":"turn.created", "turn":["role":"assistant","id":"new"]])
+    view.receiveNative(try #require({ state.consume(["type":"output_transcript.added", "item":["id":"new-piece", "text":"新答"]]) }()))
+    view.receiveNative(try #require({ state.consume(["type":"output_transcript.done", "item":["id":"old-piece", "text":"旧答案。"]]) }()))
+    #expect(view.turns.map(\.text) == ["旧答案。", "新答"])
+}

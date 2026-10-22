@@ -1,3 +1,4 @@
+import {orderedTranscriptRows} from './transcript-presentation.mjs';
 import {avatarPicture} from './avatar-catalog.mjs';
 const sources=new Set(['state','decision','continuation','neutral_fallback','asset_fallback','attention','visibility']);
 const integer=(n,min=0)=>Number.isSafeInteger(n)&&n>=min;
@@ -21,7 +22,7 @@ export function normalizeAvatarEvent(e) {
 export function createAvatarTelemetry({send,snapshot,now=Date.now,elapsed=()=>performance.now(),id=()=>crypto.randomUUID(),maxQueued=160,retryMs=2000}) {
  const captureId=id(),started=elapsed();let sequence=0,queue=[],dropped=0,busy=false,timer=null,closed=false,retiredAt=Infinity;
  const turns=()=>{
-  const s=snapshot(),rows=[...(s?.history??[]),...(s?.current??[])].filter(r=>['user','assistant'].includes(r.role)&&r.speaker!=='V · 完整方案'&&typeof r.text==='string'&&r.text.trim());
+  const s=snapshot(),rows=orderedTranscriptRows(s).filter(r=>['user','assistant'].includes(r.role)&&r.speaker!=='V · 完整方案'&&typeof r.text==='string'&&r.text.trim());
   return ['user','assistant'].map(role=>rows.filter(r=>r.role===role).at(-1)).filter(Boolean).map(r=>({key:String(r.key),role:r.role,text:r.text.slice(-600),truncated:r.text.length>600,complete:r.complete??true,...(Number.isSafeInteger(r.at)?{at:r.at}:{})}));
  };
  const clock=()=>({sequence:++sequence,clientAt:now(),elapsedMs:Math.max(0,elapsed()-started)});

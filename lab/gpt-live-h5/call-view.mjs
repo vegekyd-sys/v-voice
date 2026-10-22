@@ -1,3 +1,4 @@
+import {orderedTranscriptRows} from './transcript-presentation.mjs';
 // The page's single view state. app.js (the call engine) writes it; the React
 // UI (ui-bundle.mjs) reads it. Pure data: no DOM, no network, no timers.
 
@@ -98,7 +99,7 @@ function voiceStatus(state, now) {
 
 /** Earlier turns stay quiet; the current turn starts at the latest caller words. */
 export function splitTurns(snapshot) {
-  const rows = [...snapshot.history, ...snapshot.current];
+  const rows = orderedTranscriptRows(snapshot);
   let start = rows.findLastIndex(row => row.role === 'user');
   if (start < 0) start = Math.max(0, rows.length - 1);
   while (start > 0 && rows[start - 1].role === 'user') start--;

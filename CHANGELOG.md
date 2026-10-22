@@ -1,3 +1,10 @@
+## Unreleased — iOS caption continuity candidate
+
+- Keep GPT captions in one stable message when fragments arrive before their native turn identity; attach late fragment finals to their original turn.
+- Accumulate Xiaohe/Grok relay text deltas in iOS instead of replacing preceding words, then reconcile the full final caption.
+- Preserve original message order across completion in the shared web/iOS UI, Reaction context and display receipts.
+- Local candidate verified with synthetic native WebRTC, WKWebView and core/web regressions; no physical installation or server release. See `docs/ios/CAPTION-CONTINUITY.md`.
+
 ## 2026-10-22 — Accepted iOS build 18 integration
 
 - Integrate the installed and human-accepted joint iPhone build: native background Action Button calls, medium/expanded measured waveform, report links, purple system portrait icons and default/live locked-screen Reaction, alongside native SeedDuplex duplex and GPT Live One WebRTC.
