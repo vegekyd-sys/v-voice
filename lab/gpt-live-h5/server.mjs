@@ -423,6 +423,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     directVoice?.handleEvent(event);
     for(const delivery of nativeTaskOwners)delivery.handleEvent(event);
     const taskEvent=event.event==='talk.event'?event.payload?.talkEvent:null;
+    if(taskEvent?.type==='tool.call'&&taskEvent.payload?.name==='openclaw_background_task')nativeTasks.get(event.payload.voiceSessionId)?.requested(taskEvent.callId);
     if(taskEvent?.type==='tool.progress'&&taskEvent.payload?.name==='openclaw_background_task'){
       nativeTasks.get(event.payload.voiceSessionId)?.watch(taskEvent.payload.runId,taskEvent.callId);
     }
