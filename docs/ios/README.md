@@ -1,6 +1,6 @@
 # V Voice iOS · 一按通话
 
-当前 build 10 已在实际 H5 内嵌＋原生后台通话上整合接通／方案提醒、呼叫文案与宽波形灵动岛；详见 [H5 容器与回退基线](H5-SHELL.md)。build 8 已保存为 `ios-native-build8-20261022`。以下 build 6–8 原生 UI 记录保留为历史。
+当前 build 11 已从正式合入 main 的 `68ebcc9` 签名、验包并覆盖安装到指定 iPhone；采用 Tianyi 提供的紫底耳麦头像图标，包内首页已显示本次里程碑更新日志。build 10 的真实接通／双向通话已获用户接受，build 11 没有自动拨号，新增版本的真机听验另记。当前 App 已在 H5 内嵌＋原生后台通话上整合接通／方案提醒、呼叫文案与宽波形灵动岛；详见 [H5 容器与回退基线](H5-SHELL.md)。build 8 已保存为 `ios-native-build8-20261022`。以下 build 6–8 原生 UI 记录保留为历史。
 
 完整功能清单与剩余差异见 [H5 → iOS 迁移核对](H5-PARITY.md)。build 8 补齐多人转写、身份条子、长回复内容卡片、富文本、Grok 声音与样本试听等遗漏；不能把局部视觉对齐写成全部迁移完成。
 
@@ -63,4 +63,4 @@ build 3／4 的 SiriKit 与 CallKit 尝试已撤回：用户实测仍会打开�
 - 模拟器展示：`npx serve-sim@latest <UDID>`，在 Codex 右侧打开其实际输出 URL，必须确认真实帧。Debug 的 `--local-voice-fixture` 使用隔离测试 Keychain 服务、明确标示无真实模型；Release 不包含该入口。
 - 真机接受：见 [ACCEPTANCE.md](ACCEPTANCE.md)。测试记录见 [VALIDATION.md](VALIDATION.md)。
 
-没有公开发布本 App，因此未把未交付的原生能力加入网页首页 changelog，也未改写正式网页版本登记。未来任何 Voice 服务端适配发布仍须遵守仓库首页 changelog、CHANGELOG 和发布登记要求。
+本次客户端已正式合入 v-voice/main（PR #56），合入提交检查通过后构建。首页 changelog 源码和包内页面已更新并实测可见；未部署在线 Voice 网页服务，也未改写其运行版本登记。App Store／TestFlight 未发布。网页更新自动同步已另开任务研究 Makaron iOS 架构；当前 build 11 仍是随包内嵌 H5，不能宣称已支持远程更新。
