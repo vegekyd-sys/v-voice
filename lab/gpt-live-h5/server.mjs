@@ -504,7 +504,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const speakerRouting=productionSpeaker?.service;
     const lark=createVoiceLarkReader({environment:process.env});
     if(!lark.available)console.warn(JSON.stringify({type:'voice.lark-unavailable'}));
-    const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,// Experimental: V's own line before a tool. Off by default: on 2026-10-20 Seeduplex lost 3 of 5 results it had spoken before.
+    const nativeInterruptModule=process.env.VOICE_NATIVE_INTERRUPT_ASR==='1'?await import('../realtime-direct-tools/native-interrupt.mjs'):null;
+    const nativeInterrupt=nativeInterruptModule
+      ? ({inputSampleRate,...callbacks})=>new nativeInterruptModule.NativeInterruptAsr({apiKey:process.env.VOLCENGINE_ASR_API_KEY,inputSampleRate,...callbacks}):undefined;
+    const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,nativeInterrupt,// Experimental: V's own line before a tool. Off by default: on 2026-10-20 Seeduplex lost 3 of 5 results it had spoken before.
       toolStartNotice:process.env.VOICE_TOOL_START_NOTICE==='model'?'model':'cached',calendar:lark.available?lark.calendar:null,larkRead:lark.available?lark.read:null,
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),

@@ -257,3 +257,13 @@ test('unconfirmed speech gets a bounded handover; an ignored acknowledgment cann
  p.nativeStarted(4050);p.nativeStopped(4800);assert.equal(p.observe(new Int16Array(480).buffer,true,6500,true),true);
  assert.equal(p.observe(new Int16Array(480).buffer,true,6600,true),false);
 });
+
+test('a confirmed speech stop retires an already-generated response as well as its queued playback',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true}}),frame=value=>Buffer.from(pcm(2400,value).buffer).toString('base64');
+ f.event({type:'audio',responseId:'old',sequence:1,sampleRate:24000,audio:frame(8192)});f.event({type:'audio.done'});
+ f.event({type:'audio.clear',retiredResponseId:'old'});
+ f.event({type:'audio',responseId:'old',sequence:2,sampleRate:24000,audio:frame(8192)});
+ assert(f.pump(24000).every(x=>x===0),'a late old tail cannot reacquire playback');
+ f.event({type:'audio',responseId:'new',sequence:3,sampleRate:24000,audio:frame(-8192)});f.event({type:'audio.done'});
+ assert(f.pump(24000).filter(x=>x!==0).every(x=>x===-.25));
+});

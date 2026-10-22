@@ -804,3 +804,17 @@ test("the backend's own line also waits until the caller has been quiet a while"
  await delay(250);assert.equal(spoken().includes('第一条发现。'),false);
  assert(await until(()=>spoken().includes('第一条发现。')));
 });
+
+test('verified speech control stops the native generation while leaving its admitted backend task running',async t=>{
+ let control,closed=false,frames=0;
+ const f=await fixture(undefined,'seeduplex',{nativeInterrupt:callbacks=>{control=callbacks;return {connect:async()=>{},append:()=>frames++,close(){closed=true;}};}});t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'admitted-task',name:'delegate_to_v',arguments:JSON.stringify({question:'安全的候选任务'})}]});
+ for(let i=0;i<100&&f.service.backgroundTaskCount()!==1;i++)await delay(5);
+ assert.equal(f.service.backgroundTaskCount(),1);
+ f.event({type:'response.output_audio.started',response_id:'speaking-old',tts_type:'default'});
+ f.client.emit('message',Buffer.alloc(960),true);assert.equal(frames,1);assert(f.upstream.sent.some(e=>e.type==='input_audio_buffer.append'),'main audio remains continuous');
+ assert(control.isSpeaking());control.onInterrupt();
+ assert(f.upstream.sent.some(e=>e.type==='response.cancel'));assert(f.client.sent.some(e=>e.type==='audio.clear'));
+ assert.equal(f.service.backgroundTaskCount(),1);assert(!f.invocations.some(x=>x?.action==='kill'));
+ await f.service.close(f.reservation.voiceSessionId);assert(closed);
+});

@@ -27,10 +27,11 @@ export function decodeAsrFrame(data) {
 }
 
 export class VolcAsrStream {
-  constructor({apiKey,resource=ASR_RESOURCE,voiceprints,identifyOnly=false,onResult=()=>{},onError=()=>{},onClose=()=>{},createWebSocket=(url,options)=>new WebSocket(url,options),setupTimeoutMs=10000}){
+  constructor({apiKey,resource=ASR_RESOURCE,voiceprints,identifyOnly=false,speakerInfo=true,nonstream=true,onResult=()=>{},onError=()=>{},onClose=()=>{},createWebSocket=(url,options)=>new WebSocket(url,options),setupTimeoutMs=10000}){
     this.apiKey=apiKey;this.resource=resource;this.voiceprints=voiceprints;this.identifyOnly=identifyOnly;
     this.pendingAudio=Buffer.alloc(0);this.onResult=onResult;this.onError=onError;this.onClose=onClose;this.requestId=randomUUID();
     this.createWebSocket=createWebSocket;this.setupTimeoutMs=setupTimeoutMs;
+    this.speakerInfo=speakerInfo;this.nonstream=nonstream;
   }
   connect(){return new Promise((resolve,reject)=>{
     let settled=false;const settle=error=>{if(settled)return;settled=true;clearTimeout(timer);if(error)reject(error);else resolve(this);};
@@ -45,7 +46,7 @@ export class VolcAsrStream {
       this.socket.send(encodeAsrFrame(1,{user:{uid:'v-speaker-lab'},
         audio:{format:'pcm',codec:'raw',rate:16000,bits:16,channel:1},
         request:{model_name:'bigmodel',enable_itn:true,enable_punc:true,show_utterances:true,
-          enable_speaker_info:true,enable_nonstream:true,
+          enable_speaker_info:this.speakerInfo,enable_nonstream:this.nonstream,
           ...(this.identifyOnly?{ssd_mode:2}:{}),...(this.voiceprints?{voiceprints:this.voiceprints}:{})}},{json:true}));
       // A WebSocket open is not application readiness. Wait for the service's
       // initialization response before the caller can start uploading speech.

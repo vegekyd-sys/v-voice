@@ -543,6 +543,8 @@ export class SeeduplexRealtimeVoiceBridge {
 
   handleBargeIn({ confirmed = false } = {}) {
     if (!this.ready) return;
+    const retiredResponseId=confirmed?(this.audioResponseId??this.responseOwnerId):undefined;
+    if(retiredResponseId){this.retiredResponses.add(retiredResponseId);if(this.retiredResponses.size>256)this.retiredResponses.delete(this.retiredResponses.values().next().value);}
     // Flushing local playback is the whole barge-in, matching the GPT Live One
     // bridge. A barge-in signal is only ever a guess by input VAD, and during a
     // 30-second Agent consult the provider raises that guess on silence. Making
@@ -550,7 +552,7 @@ export class SeeduplexRealtimeVoiceBridge {
     // the upstream generation keeps streaming and Gateway output ownership is
     // untouched. The upstream response is cancelled only once the user is
     // confirmed to have actually said something, in #cancelUpstreamResponse.
-    this.request.onClearAudio?.("barge-in");
+    this.request.onClearAudio?.("barge-in",retiredResponseId?{retiredResponseId}:undefined);
     this.pendingGreeting = null;
     this.bargeInPending = true;
     // Host-injected backend speech may postpone native ASR until its TTS ends.

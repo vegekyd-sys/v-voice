@@ -179,7 +179,10 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
       const value=JSON.parse(e.data);if(value.voiceSessionId!==reservation.voiceSessionId)return;
       if(value.type==='ready'&&!ready){ready=true;resolve();if(greeting)send({type:'greeting'});reportBusy();statsTimer=setInterval(reportStats,2000);}
       if(value.type==='audio')play(value);
-      if(value.type==='audio.clear')flush();
+      if(value.type==='audio.clear'){
+        if(typeof value.retiredResponseId==='string'){retiredResponses.add(value.retiredResponseId);if(retiredResponses.size>256)retiredResponses.delete(retiredResponses.values().next().value);}
+        flush();
+      }
       if(nativeDuplex&&value.type==='input.speech.started'&&stats.queuedOutputBytes>0){nativePause.nativeStarted(performance.now());pause(true);}
       if(nativeDuplex&&value.type==='input.speech.stopped')nativePause.nativeStopped(performance.now());
       if(value.type==='audio.done'){outputComplete=true;if(nativeDuplex)nativePause.generationDone(performance.now());greetingHeld=false;speaker?.port.postMessage({type:'done',epoch});}

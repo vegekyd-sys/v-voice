@@ -44,7 +44,7 @@ export function directInstructions(catalog,context='',model='',options={}) {
 // announced, so a burst of quick tool calls becomes one line.
 export const NARRATION_DEFAULTS=Object.freeze({firstMs:6000,firstHeartbeatMs:15000,settleMs:2000,stageGapMs:12000,factGapMs:6000,heartbeatMs:30000,quietAfterUserMs:4000,startMs:2500,max:12});
 
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,toolProgressClips=null,narration,toolStartNotice='cached'}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,toolProgressClips=null,narration,toolStartNotice='cached'}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -181,7 +181,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       // Retire local tools/audio only; the admitted Agent retains its controller.
       const result=await cancel(s,{includeBackend:false});
       for(const id of s.pending.keys())if(id!==s.backgroundCallId)s.pending.delete(id);
-      clearInterval(s.progressTimer);speakerRouting?.close(id);for(const lane of s.stagedBridges??[])lane.discard();s.bridge?.close();for(const old of s.retiredBridges??[])old.close();s.retiredBridges?.clear();s.client?.close();
+      clearInterval(s.progressTimer);s.interruptDetector?.close();speakerRouting?.close(id);for(const lane of s.stagedBridges??[])lane.discard();s.bridge?.close();for(const old of s.retiredBridges??[])old.close();s.retiredBridges?.clear();s.client?.close();
       s.cleanupFailed=result.processCleanupFailures>0;
       if(s.cleanupFailed){audit({type:'call.cleanup-unconfirmed',voiceSessionId:id,result});throw Error('电话已结束，后台任务退出尚未确认');}
       sessions.delete(id);audit({type:'call.closed',voiceSessionId:id});
@@ -382,7 +382,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         };
         if(role==='assistant')routeOutput('transcript',{role,text,final,source},deliver);else deliver();
       },
-      onClearAudio:()=>routeOutput('clear',null,()=>{audit({type:'audio.clear',voiceSessionId:s.id});s.responseActive=false;if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});}),
+      onClearAudio:(_reason,metadata)=>routeOutput('clear',null,()=>{audit({type:'audio.clear',voiceSessionId:s.id});s.responseActive=false;if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear',...(typeof metadata?.retiredResponseId==='string'?{retiredResponseId:metadata.retiredResponseId}:{})});}),
       onAudioSegmentDone:()=>routeOutput('done',null,()=>{s.responseActive=false;}),
       onResponseDone:e=>routeOutput('done',e,()=>{s.responseActive=false;s.narrationBusyUntil=0;if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}}),
       onEvent:e=>{if(['response.created'].includes(e.type))s.responseActive=true;
@@ -411,7 +411,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         try{
           if(data.length%2||data.length>24000){client.close(1008);return;}
           if(s.speakerRouting){if(!speakerRouting.has(s.id))throw Error('说话人识别已中断，请结束后重拨');speakerRouting.audio(s.id,Buffer.from(data));}
-          else s.bridge.sendAudio(data);
+          else {s.bridge.sendAudio(data);s.interruptDetector?.append(data);}
         }catch(error){emit(s,{type:'error',message:error.message});void close(s.id).catch(()=>{});}
         return;
       }
@@ -433,6 +433,15 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     });
     connectionStage('provider-connecting');
     if(!speakerRouting?.lazyNative?.(s.id))await s.bridge.connect();
+    if(s.nativeDuplex&&nativeInterrupt&&current(s)){
+      s.interruptDetector=nativeInterrupt({inputSampleRate:s.inputSampleRate,
+        isSpeaking:()=>current(s)&&Boolean(s.playing||s.bridge.responseActive),
+        getResponseId:()=>current(s)?s.bridge.audioResponseId:null,
+        onInterrupt:()=>{if(!current(s))return;s.lastUserAt=Date.now();s.bridge.handleBargeIn({confirmed:true});audit({type:'speech.control',voiceSessionId:s.id,stage:'interrupted'});},
+        onStatus:stage=>audit({type:'speech.control',voiceSessionId:s.id,stage})});
+      await s.interruptDetector.connect();
+      if(!current(s)){s.interruptDetector.close();return;}
+    }
     if(current(s)&&speakerRouting?.has(s.id))await speakerRouting.bind(s.id,{
       greet:()=>s.bridge.triggerGreeting(),
       forward:audio=>s.bridge.sendAudio(audio),context:text=>s.bridge.sendUserMessage(text),clarify:(text,options)=>s.bridge.speakProgress(text,{caption:true,...options}),interrupt:()=>s.bridge.handleBargeIn(),
