@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "phase": "candidate_verified_pending_publication",
+  "scope": "Voice-only release control; no Gateway, identity or wire-contract changes",
+  "previousServers": {
+    "web": "eaa920e64b7eb8b1b034b8a03d1bfff636d65e42",
+    "devices": "0ed43617fbcdd15e93fd63085afe61dc5231a118",
+    "deviceRuntimeFilesCompared": 253,
+    "deviceRuntimeMismatches": 0
+  },
+  "ios": {
+    "acceptedBuild": 18,
+    "installedBuild18ReadBack": true,
+    "binaryChangedByThisRelease": false
+  },
+  "tests": {
+    "voice": 718,
+    "speaker": 95,
+    "controller": 10,
+    "iosShellFreshness": true,
+    "homepageChangelogBrowserVerified": true
+  },
+  "faultCoverage": [
+    "active call and in-flight creation veto hold",
+    "background delivery and disconnected child cleanup block publication",
+    "device reconnect/start admission during hold",
+    "disconnected device reservation remains pending",
+    "expired publisher hold resumes admission",
+    "service identity compare-and-swap",
+    "unknown legacy source refused",
+    "legacy connected client defers without disconnect",
+    "bootstrap watchdog retained if rule cleanup fails",
+    "healthy cutover resumes admission",
+    "unhealthy idle release restores original launcher",
+    "new work prevents forced rollback",
+    "current release dependencies never reinstalled"
+  ],
+  "physicalDeviceVoiceRetested": false,
+  "modelCalls": 0,
+  "firmwareFlashes": 0
+}

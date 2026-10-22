@@ -97,7 +97,9 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
   resultSilenceMs = 8000,unheardTurnMs = 5000,inputSilentMs = 3000,inputLoudRms = 300,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = DEVICE_PLAYOUT_MAX_BYTES,stallMs = 20000,uplinkGapMs = 300,uplinkFillMs = 100,robotEvaluate = null,volumeStore = createVolumeStore(),visionPath = null,describeImage = null}) {
   if (!/^\/[a-zA-Z0-9/_-]+$/u.test(path) || visionPath !== null && !/^\/[a-zA-Z0-9/_-]+$/u.test(visionPath)) throw Error('Invalid device path');
   const server = new wsModule.WebSocketServer({noServer:true,maxPayload:65536,perMessageDeflate:false});
-  const connections = new Map();
+  const connections = new Map(), firmwareReports = new Map(), creatingCalls = new Set(), closingCalls = new Set();
+  let visionOperations = 0;
+  let admissionBlocked = () => false;
   const authenticate = req => {
     const match = /^Bearer ([A-Za-z0-9._~+/=-]{32,256})$/u.exec(String(req.headers.authorization ?? ''));
     if (!match) return null;
@@ -118,6 +120,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
 
   function startCall(connection, request = {}) {
     const {device, ws} = connection;
+    if (admissionBlocked()) return sendJson(ws, {type:'call.error',reason:'updating',message:'V 正在更新，请稍后再试'});
     if (connection.call) return sendJson(ws, {type:'call.error',reason:'busy',message:'上一次对话还没有结束'});
     if (isSessionBusy(device.sessionKey) || [...connections.values()].some(c => c !== connection && c.call && c.device.sessionKey === device.sessionKey)) return sendJson(ws, {type:'call.error',reason:'session-busy',message:'这个会话正在另一台设备上通话'});
     const model = request.model === undefined ? device.model : request.model;
@@ -217,7 +220,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     call.end = reason => {
       if (call.ended) return;
       call.reason ??= reason;
-      if (call.client) {call.client.close();void directVoice.close(call.id).catch(() => {});}
+      if (call.client) {call.client.close();closingCalls.add(call);void directVoice.close(call.id).catch(() => {}).finally(()=>closingCalls.delete(call));}
       else call.closed(reason);
     };
     call.tick = () => {
@@ -336,6 +339,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       }
     } : null;
     const deviceTools = speaker || look ? {...speaker,...(look ? {look} : {})} : null;
+    creatingCalls.add(call);
     void (async () => {
       try {
         const reservation = await directVoice.reserve({model,sessionKey:device.sessionKey,voice:device.voice,surface:'speaker',inputSampleRate:DEVICE_INPUT_SAMPLE_RATE,speaker:deviceTools,...(device.multiSpeaker ? {inputPolicy:'speaker'} : {})});
@@ -359,7 +363,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
         call.reason = 'start-failed';
         if (call.id) await directVoice.close(call.id).catch(() => {});
         call.closed('start-failed');
-      }
+      } finally {creatingCalls.delete(call);}
     })();
   }
 
@@ -411,7 +415,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     }
     let event;try {event = JSON.parse(data.toString());} catch {return connection.ws.close(1008, 'invalid event');}
     if (event.type === 'ping') return sendJson(connection.ws, {type:'pong',at:now()});
-    if (event.type === 'hello') {connection.firmware = String(event.firmware ?? '').slice(0,80);return sendJson(connection.ws, {type:'hello',deviceId:connection.device.id,model:connection.device.model,models:connection.device.models});}
+    if (event.type === 'hello') {connection.firmware = String(event.firmware ?? '').replace(/[^a-zA-Z0-9._+-]/g,'').slice(0,80) || null;if(connection.firmware)firmwareReports.set(connection.device.id,{version:connection.firmware,reportedAt:now()});return sendJson(connection.ws, {type:'hello',deviceId:connection.device.id,model:connection.device.model,models:connection.device.models});}
     if (event.type === 'call.start') return startCall(connection, event);
     if (!call) return;
     if (event.type === 'call.end') return call.end('device');
@@ -446,6 +450,8 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       // The token is per channel, and only valid while V is waiting for this photo.
       const call = connection?.looking;
       if (!call || call.ended || connection.call !== call) return reply(401, {success:false, message:'unauthorized'});
+      visionOperations++;
+      try {
       let upload;
       try {upload = photoUpload(await readLimitedBody(req), req.headers['content-type']);}
       catch (error) {return reply(error?.status ?? 400, {success:false, message:error?.status === 413 ? '照片太大' : '照片格式不对'});}
@@ -458,6 +464,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
         audit({type:'device.vision',voiceSessionId:call.id,deviceId:connection.device.id,ok:false,photoBytes:upload.image.length,latencyMs:now() - started,error:String(error?.message ?? error).slice(0,200)});
         reply(200, {success:false, message:'看图服务暂时没有结果'});
       }
+      } finally {visionOperations--;}
     },
     /** xiaozhi OTA check: hand the registered device its V WebSocket. */
     async handleOta(req, res) {
@@ -469,17 +476,25 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       const device = mac ? devices.find(d => d.mac === mac && !d.disabled) : null;
       audit({type:'device.ota', voiceSessionId:'ota', deviceId:device?.id ?? 'unknown', known:Boolean(device)});
       if (!device) return reply(403, {error:'device not registered'});
-      let version = '0.0.0';
-      try {const body = raw ? JSON.parse(raw) : {};if (typeof body?.application?.version === 'string') version = body.application.version.slice(0, 40);} catch {}
+      let version = '0.0.0', reported = null;
+      try {const body = raw ? JSON.parse(raw) : {};if (typeof body?.application?.version === 'string') {version = body.application.version.slice(0, 40);reported=version.replace(/[^a-zA-Z0-9._+-]/g,'');}} catch {}
+      if(reported)firmwareReports.set(device.id,{version:reported,reportedAt:now()});
       // Echo the running version so the firmware never self-upgrades from here,
       // and omit activation/mqtt so it goes straight to this WebSocket.
       reply(200, {server_time:{timestamp:now(), timezone_offset:480}, firmware:{version, url:''},
         websocket:{url:xiaozhiPublicUrl, token:device.otaToken, version:1}});
     },
+    setAdmissionGate: gate => {admissionBlocked = gate;},
+    pendingOperations: () => creatingCalls.size + closingCalls.size + visionOperations + [...connections.values()].filter(c => c.looking).length,
+    inventory: () => devices.filter(d=>!d.disabled).map(d => ({id:d.id,kind:d.robot?'robot':'speaker',
+      connected:connections.has(d.id),inCall:Boolean(connections.get(d.id)?.call),
+      model:d.model,inputPolicy:d.multiSpeaker?'speaker':'native',
+      firmware:firmwareReports.get(d.id) ?? null})),
     activeCalls: () => [...connections.values()].filter(c => c.call).length,
     busy: sessionKey => [...connections.values()].some(c => c.call && c.device.sessionKey === sessionKey),
     connected: () => [...connections.values()].map(c => ({deviceId:c.device.id,inCall:Boolean(c.call),connectedAt:c.connectedAt})),
     handleUpgrade(req, socket, head, {dialect = 'native'} = {}) {
+      if (admissionBlocked()) {socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');return;}
       const device = authenticate(req);
       if (!device) {socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');socket.destroy();return;}
       server.handleUpgrade(req, socket, head, raw => {

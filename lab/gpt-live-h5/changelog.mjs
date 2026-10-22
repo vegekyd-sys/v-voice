@@ -13,6 +13,14 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    date: '2026-10-22', title: '电话、机器人与音响统一更新',
+    items: [
+      '网页、iOS 使用的电话服务与机器人、音响使用的服务纳入同一次更新，避免设备服务遗漏新版本。',
+      '更新等待通话、连接准备和后台任务结束；切换期间新拨号稍后重试，不中断正在进行的对话。',
+      'iOS 网页界面在空闲时同步；原生 App 和设备固件能力仍按各自版本升级。',
+    ],
+  },
+  {
     date: '2026-10-22', title: '通话文字连贯显示',
     items: [
       '修复 GPT Live One 在 iPhone 中把一句话拆成多个短条目的问题，增量文字持续更新在同一条消息里。',

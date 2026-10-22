@@ -1,0 +1,19 @@
+{
+  "targets": [
+    {
+      "id": "web",
+      "ssh": "v",
+      "unit": "openclaw-rtc-h5.service",
+      "releaseRoot": "/opt/openclaw-voice-h5/releases",
+      "prefix": "gpt-live-",
+      "pointer": "/opt/openclaw-voice-h5/current"
+    },
+    {
+      "id": "devices",
+      "ssh": "voice-devices",
+      "unit": "v-voice-speaker.service",
+      "releaseRoot": "/opt/v-voice-speaker/releases",
+      "prefix": ""
+    }
+  ]
+}
