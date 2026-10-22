@@ -1,0 +1,27 @@
+{
+  "before": {
+    "checks": {
+      "stoppedBeforeNewPCM": false,
+      "noOldTail": false,
+      "newToneOnly": true,
+      "automaticHangup": true
+    },
+    "errors": [],
+    "stopLatencyMs": null,
+    "gapPeakRMS": 0.10641745355313893,
+    "oldTailSamples": 40
+  },
+  "after": {
+    "checks": {
+      "stoppedBeforeNewPCM": true,
+      "noOldTail": true,
+      "newToneOnly": true,
+      "automaticHangup": true
+    },
+    "errors": [],
+    "stopLatencyMs": 37,
+    "gapPeakRMS": 0,
+    "oldTailSamples": 0
+  },
+  "scope": "Local simulated upstream, actual HTTP/WebSocket service and SeedDuplex adapter, Chromium AudioWorklet. No live provider/microphone recording. Stop latency starts at replacement confirmation, not user speech onset."
+}

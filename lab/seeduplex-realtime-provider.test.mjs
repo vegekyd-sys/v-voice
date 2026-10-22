@@ -749,3 +749,69 @@ test('listening aside variants are bounded to an entire quiet disposition',()=>{
  for(const value of ['（安静等着，不插话，等需要回应时再开口）','（安静等待）'])assert.equal(nativeListeningAside(value),true);
  for(const value of ['我先不说话','听起来像电视里的播报声呀','（安静等着）答案是五'])assert.equal(nativeListeningAside(value),false);
 });
+
+test('native replacement text retires playback before new PCM and cannot relabel an old tail',async()=>{
+ const socket=new FakeSocket(),audio=[],clears=[],done=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},nativeDuplex:true,
+  onAudio:(bytes,metadata)=>audio.push({bytes,metadata}),onClearAudio:(reason,metadata)=>clears.push({reason,...metadata}),onResponseDone:e=>done.push(e),onError:e=>assert.fail(e.message)},
+  {createWebSocket:async()=>socket});
+ const ready=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await ready;
+ socket.message({type:'response.output_audio.started',response_id:'old',tts_type:'default'});
+ socket.message({type:'response.output_audio.delta',response_id:'old',delta:floatAudio([.5])});
+ socket.message({type:'response.output_audio.done',response_id:'old'});
+ socket.message({type:'conversation.item.input_audio_transcription.started'});
+ socket.message({type:'conversation.item.input_audio_transcription.completed',text:'换个问题。'});
+ socket.message({type:'response.output_text.delta',response_id:'next',delta:'新问题的回答。'});
+ assert.deepEqual(clears,[{reason:'response-replaced',retiredResponseId:'old'}],'accepted new response must clear the generated old queue before its PCM');
+ socket.message({type:'response.output_audio.delta',response_id:'old',delta:floatAudio([.5])});
+ socket.message({type:'response.output_audio.delta',delta:floatAudio([.5])});
+ assert.equal(audio.length,1,'identified and anonymous tails of the retired TTS may not leak');
+ socket.message({type:'response.output_audio.delta',response_id:'next',delta:floatAudio([-.5])});
+ assert.equal(audio.at(-1).metadata.responseId,'next','a packet identity must not inherit the previous TTS start');
+ socket.message({type:'response.output_audio.started',response_id:'next',tts_type:'default'});
+ socket.message({type:'response.output_audio.started',response_id:'old',tts_type:'default'});
+ socket.message({type:'response.output_audio.done',response_id:'old'});
+ assert.equal(bridge.audioResponseId,'next');assert.equal(bridge.responseActive,true);assert.equal(done.length,1);
+ socket.message({type:'response.output_audio.delta',delta:floatAudio([-.25])});
+ assert.equal(audio.at(-1).metadata.responseId,'next');assert.equal(clears.length,1);
+ assert(!socket.sent.some(e=>e.type==='response.cancel'),'replacement never cancels a background task or the new model reply');
+ bridge.close();
+});
+
+test('native TTS start without response.created replaces a queue before its first PCM',async()=>{
+ const socket=new FakeSocket(),clears=[],audio=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},nativeDuplex:true,onClearAudio:(reason,metadata)=>clears.push({reason,...metadata}),onAudio:(_b,m)=>audio.push(m),onError:e=>assert.fail(e.message)}, {createWebSocket:async()=>socket});
+ const ready=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await ready;
+ socket.message({type:'response.output_audio.started',response_id:'old',tts_type:'default'});
+ socket.message({type:'response.output_audio.delta',response_id:'old',delta:floatAudio([.5])});
+ socket.message({type:'response.output_audio.started',response_id:'next',tts_type:'default'});
+ assert.deepEqual(clears,[{reason:'response-replaced',retiredResponseId:'old'}]);
+ socket.message({type:'response.output_audio.delta',response_id:'old',delta:floatAudio([.5])});
+ socket.message({type:'response.output_audio.delta',response_id:'next',delta:floatAudio([-.5])});
+ assert.deepEqual(audio.map(x=>x.responseId),['old','next']);bridge.close();
+});
+
+test('an explicit old PCM packet can never acquire the newer TTS identity',async()=>{
+ const socket=new FakeSocket(),audio=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},nativeDuplex:true,onAudio:(_b,m)=>audio.push(m),onError:e=>assert.fail(e.message)}, {createWebSocket:async()=>socket});
+ const ready=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await ready;
+ for(const id of ['old','next']){socket.message({type:'response.output_audio.started',response_id:id,tts_type:'default'});socket.message({type:'response.output_audio.delta',response_id:id,delta:floatAudio([.25])});}
+ socket.message({type:'response.output_audio.delta',response_id:'old',delta:floatAudio([.5])});
+ assert.deepEqual(audio.map(x=>x.responseId),['old','next'],'the late old PCM must be dropped, never relabelled next');bridge.close();
+});
+
+test('native old anonymous usage or cancel receipt cannot finish or clear a newer reply',async()=>{
+ const socket=new FakeSocket(),clears=[],done=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},nativeDuplex:true,onClearAudio:(reason,metadata)=>clears.push({reason,...metadata}),onResponseDone:e=>done.push(e),onError:e=>assert.fail(e.message)}, {createWebSocket:async()=>socket});
+ const ready=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await ready;
+ socket.message({type:'response.output_audio.started',response_id:'old',tts_type:'default'});
+ socket.message({type:'response.output_audio.done',response_id:'old'});
+ socket.message({type:'response.output_text.delta',response_id:'next',delta:'新的回答'});
+ socket.message({type:'response.done'});socket.message({type:'response.canceled'});socket.message({type:'response.output_audio.done'});
+ assert.equal(done.length,1);assert.equal(clears.length,1);
+ socket.message({type:'response.output_audio.started',response_id:'next',tts_type:'default'});
+ socket.message({type:'response.done'});socket.message({type:'response.canceled'});
+ assert.equal(bridge.responseActive,true);
+ socket.message({type:'response.output_audio.done'});
+ assert.equal(done.at(-1).responseId,'next');assert.equal(clears.length,1);bridge.close();
+});

@@ -479,6 +479,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.pendingGreeting = null;
     this.pendingSpeechCaption = null;
     this.nativeAsideCandidates.clear();
+    if(this.request.nativeDuplex){this.nativeResponseId=undefined;this.nativeTtsResponseId=undefined;this.audioResponseId=undefined;this.deliveredAudioResponseId=undefined;}
     this.#diagnostic({stage:"reconnecting",attempt:this.reconnectAttempts.length});
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -728,6 +729,16 @@ export class SeeduplexRealtimeVoiceBridge {
     const type = event?.type;
     const responseId = optionalString(event.response_id) ?? optionalString(event.response?.id);
     if (responseId && this.retiredResponses.has(responseId) && type?.startsWith("response.")) return;
+    if(this.request.nativeDuplex){
+      // response.done carries usage and can arrive after the next turn starts.
+      // An anonymous terminal cannot finish an identified new playback queue.
+      if(type==='response.done'&&!responseId)return;
+      if(type==='response.canceled'&&!responseId&&!this.cancelledOutputPending)return;
+      if(type?.startsWith('response.output_audio.')&&type!=='response.output_audio.started'){
+        const owner=responseId??this.nativeTtsResponseId;
+        if(!owner||this.retiredResponses.has(owner))return;
+      }
+    }
     if(this.request.nativeDuplex&&responseId&&!replay){
       let candidate=this.nativeAsideCandidates.get(responseId);
       if(type==='response.output_text.delta'&&typeof event.delta==='string'){
@@ -760,6 +771,11 @@ export class SeeduplexRealtimeVoiceBridge {
         candidate.audio.push(event);return;
       }
     }
+    if (this.request.nativeDuplex && responseId && (
+      type === "response.output_audio.started" ||
+      type === "response.output_text.delta" && typeof event.delta === "string" && event.delta.trim() ||
+      type === "response.output_text.done" && typeof event.text === "string" && event.text.trim()
+    )) this.#acceptNativeResponse(responseId);
     // This service emits TTSSentenceStart, without response.created. Use its
     // actual response ID as the boundary; an old tail cannot reopen playback.
     if (type === "response.output_audio.started") {
@@ -767,6 +783,7 @@ export class SeeduplexRealtimeVoiceBridge {
       this.outputClosed = false;
       this.responseActive = true;
       this.audioResponseId = responseId;
+      if (this.request.nativeDuplex) this.nativeTtsResponseId = responseId;
       const caption = this.pendingSpeechCaption;
       if (caption) {
         if (event.tts_type === "chat_tts_text" && !caption.started) {
@@ -955,7 +972,11 @@ export class SeeduplexRealtimeVoiceBridge {
           this.pendingGreeting = null;
           this.request.onTranscript?.("assistant", greeting.text, true, "greeting");
         }
-        const deliveredId=this.audioResponseId??responseId;
+        // A packet's own identity is authoritative. Never stamp a late old
+        // chunk with the current TTS ID. Anonymous chunks remain owned by the
+        // most recent TTS start, not a new answer's earlier text event.
+        const deliveredId=responseId??(this.request.nativeDuplex?this.nativeTtsResponseId:this.audioResponseId);
+        if(this.request.nativeDuplex&&(!deliveredId||this.retiredResponses.has(deliveredId)))return;
         if(audio.length)this.deliveredAudioResponseId=deliveredId;
         this.request.onAudio(audio, { ...(this.injectedSpeech ? {source:"injected-speech"} : {}), responseId: deliveredId });
         this.request.onMark?.(`seeduplex-audio-${randomUUID()}`);
@@ -1000,7 +1021,7 @@ export class SeeduplexRealtimeVoiceBridge {
         });
         this.outputClosed = true;
       } else {
-        this.#onResponseDone({ status: "completed", responseId: event.response_id });
+        this.#onResponseDone({ status: "completed", responseId: responseId??(this.request.nativeDuplex?this.nativeTtsResponseId:undefined) });
       }
       this.responseActive = false;
     } else if (type === "response.done") {
@@ -1147,6 +1168,21 @@ export class SeeduplexRealtimeVoiceBridge {
       this.submitToolResult(call.callId, {
         error: "The OpenClaw agent consult failed. Tell the user it did not complete.",
       });
+    }
+  }
+
+  #acceptNativeResponse(responseId) {
+    const previous=this.nativeResponseId??this.deliveredAudioResponseId;
+    if(previous===responseId)return;
+    this.nativeResponseId=responseId;
+    // Keep speech-control ownership aligned with the accepted response while
+    // its first audio is still pending. The old stream is retired locally;
+    // no upstream cancellation or background-task cancellation is issued.
+    this.audioResponseId=responseId;
+    if(previous){
+      this.retiredResponses.add(previous);
+      if(this.retiredResponses.size>256)this.retiredResponses.delete(this.retiredResponses.values().next().value);
+      this.request.onClearAudio?.("response-replaced",{retiredResponseId:previous});
     }
   }
 

@@ -21,7 +21,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy});
+ const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy,surface:options.surface??'phone'});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -390,8 +390,8 @@ test('relay audio gets call-owned monotonically increasing sequence and a real r
  assert.deepEqual(f.client.sent.filter(e=>e.type==='audio').map(e=>e.sequence),[1,2]);assert.equal(f.client.sent.filter(e=>e.type==='audio.done').length,1);await f.service.dispose();
 });
 
-test('Xiaohe cached native notice uses the same sequenced FIFO and leaves the pending function untouched',async()=>{
- const f=await fixture(undefined,'seeduplex');
+test('device cached native notice uses the same sequenced FIFO and leaves the pending function untouched',async()=>{
+ const f=await fixture(undefined,'seeduplex',{surface:'speaker'});
  f.event({type:'response.function_call_arguments.done',items:[{call_id:'memory-first',name:'memory_search',arguments:JSON.stringify({query:'十二'})}]});await delay(10);
  const pcm=f.client.sent.filter(e=>e.type==='audio');assert.equal(pcm.length,1);assert.equal(pcm[0].sequence,1);assert.equal(pcm[0].source,'cached-native-tool-start');assert.equal(Buffer.from(pcm[0].audio,'base64').length,94822);
  assert.equal(f.audit.filter(e=>e.type==='tool.delivered').length,1);assert(f.upstream.sent.some(e=>e.items?.[0]?.call_id==='memory-first'));assert(!f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'));
@@ -660,7 +660,7 @@ test('a slow native lookup gets a cached progress line, never upstream TTS, and 
  const {TOOL_PROGRESS_LINES}=await import('./tool-start-audio.mjs');
  const PROGRESS=TOOL_PROGRESS_LINES.map((text,i)=>({text,pcm:Buffer.alloc(240,i+1),source:'cached-native-tool-progress',sha256:'fixture-'+i}));
  let finish;
- const f=await fixture((args)=>args.name==='web_search'?{ok:false,error:{code:'unavailable',message:'搜索不可用'}}:new Promise(resolve=>{finish=resolve;}),'seeduplex',{toolProgressClips:PROGRESS});
+ const f=await fixture((args)=>args.name==='web_search'?{ok:false,error:{code:'unavailable',message:'搜索不可用'}}:new Promise(resolve=>{finish=resolve;}),'seeduplex',{toolProgressClips:PROGRESS,surface:'speaker'});
  t.after(()=>f.service.dispose());
  const id=f.reservation.voiceSessionId,native=(callId,name,args)=>f.event({type:'response.function_call_arguments.done',items:[{call_id:callId,name,arguments:JSON.stringify(args)}]});
  assert.equal(f.service.progressNotice(id,0),false,'nothing is running');
@@ -755,18 +755,18 @@ test('quick tool calls with long model thinking between them are still narrated 
  quick('exec','e2',{command:'python3 parse.py'});quick('web_search','s1',{query:'勇士 直播 平台'});
  assert(await until(()=>spoken().includes('后台在搜“勇士 直播 平台”。')),'the latest describable step');
 });
-test('in self-notice mode a phone plays no cached line before a tool, and V is told to say its own',async t=>{
+test('phone lookups have no cached speech, even with a legacy notice setting',async t=>{
  const f=await fixture(async()=>({ok:true,output:{answer:'查到了'}}),'seeduplex',{toolStartNotice:'model'});t.after(()=>f.service.dispose());
  const create=f.upstream.sent.find(x=>x.type==='session.create'||x.type==='session.update');
- assert.match(JSON.stringify(create),/用你自己的话自然地说一句很短的话/);assert.doesNotMatch(JSON.stringify(create),/系统会用你的声音说明正在做什么/);
+ assert.match(JSON.stringify(create),/不套用固定开始或等待话术/);assert.doesNotMatch(JSON.stringify(create),/用你自己的话自然地说一句很短的话/);assert.doesNotMatch(JSON.stringify(create),/系统会用你的声音说明正在做什么/);
  f.event({type:'response.function_call_arguments.done',items:[{call_id:'look',name:'memory_search',arguments:JSON.stringify({query:'StackChan'})}]});
  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered')));
  assert.equal(f.client.sent.some(e=>e.type==='audio'&&e.source==='cached-native-tool-start'),false);
  assert.equal(f.client.sent.some(e=>e.type==='transcript'&&e.source==='tool-start'),false);
  assert.equal(f.service.progressNotice(f.reservation.voiceSessionId,0),false,'no cached waiting line either');
 });
-test('the cached tool-start line remains the default for a direct service and for devices',async t=>{
- const f=await fixture(async()=>({ok:true,output:{answer:'查到了'}}),'seeduplex');t.after(()=>f.service.dispose());
+test('household devices retain cached start notices',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{answer:'查到了'}}),'seeduplex',{surface:'speaker'});t.after(()=>f.service.dispose());
  f.event({type:'response.function_call_arguments.done',items:[{call_id:'look',name:'memory_search',arguments:JSON.stringify({query:'StackChan'})}]});
  assert(await until(()=>f.client.sent.some(e=>e.type==='transcript'&&e.source==='tool-start')));
 });
@@ -895,4 +895,26 @@ test('fallback hangup leaves an already admitted backend task running',async t=>
  await nativeEnd(f);assert(await until(()=>fallbackCommits(f).length===1));nativeFarewellAudio(f);
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:'native-end'})),false);
  assert(await until(()=>f.client.readyState===3));assert.equal(f.service.backgroundTaskCount(),1);
+});
+
+test('native replacement propagates a scoped clear before first new PCM, drops old packets and has no phone notice speech',async t=>{
+ const f=await fixture(undefined,'seeduplex',{toolStartNotice:'cached'});t.after(()=>f.service.dispose());
+ const audio=(id,value)=>f.event({type:'response.output_audio.delta',response_id:id,delta:Buffer.from(new Float32Array([value]).buffer).toString('base64')});
+ f.event({type:'response.output_audio.started',response_id:'old',tts_type:'default'});audio('old',.25);
+ f.event({type:'response.output_audio.done',response_id:'old'});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'lookup',name:'web_search',arguments:JSON.stringify({query:'synthetic fixture'})}]});
+ assert(await until(()=>f.client.sent.some(e=>e.type==='tool.result'&&e.callId==='lookup')));
+ assert(!f.client.sent.some(e=>e.type==='audio'&&e.source?.startsWith('cached-native')));
+ assert.equal(f.service.progressNotice(f.reservation.voiceSessionId,0),false);
+ const boundary=f.client.sent.length;
+ f.event({type:'response.output_text.delta',response_id:'next',delta:'下一轮回答'});
+ assert.deepEqual(f.client.sent.slice(boundary).filter(e=>e.type==='audio.clear').map(({type,reason,retiredResponseId})=>({type,reason,retiredResponseId})),[{type:'audio.clear',reason:'response-replaced',retiredResponseId:'old'}]);
+ audio('old',.5);assert.equal(f.client.sent.filter(e=>e.type==='audio').length,1);
+ f.event({type:'response.output_audio.started',response_id:'next',tts_type:'default'});audio('next',-.25);
+ f.event({type:'response.output_audio.done',response_id:'old'});
+ assert.equal(f.client.sent.filter(e=>e.type==='audio.done').length,1,'late old completion cannot finish the new playback');
+ f.event({type:'response.output_audio.done',response_id:'next'});
+ assert.equal(f.client.sent.filter(e=>e.type==='audio.done').at(-1).responseId,'next');
+ assert.deepEqual(f.client.sent.filter(e=>e.type==='audio').map(e=>e.responseId),['old','next']);
+ assert(f.audit.some(e=>e.type==='audio.clear'&&e.reason==='response-replaced'&&e.retiredResponseId==='old'));
 });

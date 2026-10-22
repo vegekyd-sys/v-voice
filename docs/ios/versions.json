@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "version": "1.0.0",
-  "build": 20,
+  "build": 21,
   "sourceCommit": null,
   "candidateOnly": false,
   "signedArchiveVerified": false,
@@ -13,8 +13,12 @@
     "core": 29,
     "captionNativeH5": 7,
     "captionWeb": 43,
-    "webAndService": 715,
-    "speaker": 95
+    "webAndService": 727,
+    "speaker": 95,
+    "nativeAll": 67,
+    "releaseFleet": 10,
+    "sharedPipelineBeforeFailed": true,
+    "sharedPipelineAfterPassed": true
   },
   "backgroundActionButton": {
     "intentMetadataVerified": true,
@@ -26,7 +30,7 @@
   "remainingParity": [
     "System black transition before AppIntent starts is not proven removed",
     "Long calls, system call/Siri interruptions and network handover beyond the accepted short test",
-    "Build 20 interruption behavior requires real microphone/device acceptance"
+    "Build 21 interruption behavior requires real microphone/device acceptance"
   ],
   "savedNativeBaseline": {
     "tag": "ios-native-build8-20261022",
@@ -51,10 +55,10 @@
   "mergeChecksPassed": false,
   "releaseScope": {
     "distribution": "development_signed_private_device",
-    "webServerDeployed": true,
+    "webServerDeployed": false,
     "gatewayRestarted": false,
     "appStoreOrTestFlightPublished": false,
-    "homepageChangelog": "build19_published_and_in_app_browser_verified"
+    "homepageChangelog": "build21_prepared_pending_release"
   },
   "appIcon": {
     "source": "Tianyi supplied purple headset portrait",
@@ -73,7 +77,7 @@
     "record": "../releases/voice-caption-continuity-20261022/release.json"
   },
   "currentDeviceCandidate": {
-    "build": 20,
+    "build": 21,
     "installedOnRequestedIPhone": false,
     "lastAcceptedBuild": 18,
     "physicalAcceptance": "pending",

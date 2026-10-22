@@ -305,3 +305,26 @@ test('assisted ignored-turn release is scoped to the preserved response',async t
  f.event({type:'input.speech.ignored',preservedResponseId:'story'});assert.equal(f.relay.stats.nativeResumes,1);
  assert(f.pump(9600).some(x=>x===.25));assert.equal(f.relay.stats.clears,0);
 });
+
+test('scoped server replacement clears a generated old queue before new PCM and ignores its late completion',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true,nativePlaybackPolicy:'assisted'}}),frame=(count,value)=>Buffer.from(pcm(count,value).buffer).toString('base64');
+ f.event({type:'audio',responseId:'old',sequence:1,sampleRate:24000,audio:frame(120000,8192)});f.event({type:'audio.done',responseId:'old'});
+ assert(f.pump(9600).some(x=>x===.25));
+ // Legacy cached notice may still arrive from an older server.
+ f.event({type:'audio',source:'cached-native-tool-start',sequence:2,sampleRate:24000,audio:frame(24000,8192)});
+ f.event({type:'audio.clear',reason:'response-replaced',retiredResponseId:'old'});
+ assert(f.pump(24000).every(x=>x===0),'old audio stops while the next answer has no PCM yet');
+ f.event({type:'audio',responseId:'next',sequence:3,sampleRate:24000,audio:frame(2400,-8192)});
+ f.event({type:'audio.done',responseId:'old'});assert.equal(f.speaker.processor.queue.complete,false);
+ f.event({type:'audio',responseId:'old',sequence:4,sampleRate:24000,audio:frame(2400,8192)});
+ f.event({type:'audio.done',responseId:'next'});
+ const heard=f.pump(24000).filter(x=>x!==0);assert(heard.length>0);assert(heard.every(x=>x===-.25));assert.deepEqual(f.errors,[]);
+});
+
+test('a delayed scoped clear for a retired response leaves the current browser queue intact',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true,nativePlaybackPolicy:'assisted'}}),frame=value=>Buffer.from(pcm(24000,value).buffer).toString('base64');
+ f.event({type:'audio',responseId:'old',sequence:1,sampleRate:24000,audio:frame(8192)});
+ f.event({type:'audio',responseId:'next',sequence:2,sampleRate:24000,audio:frame(-8192)});
+ f.event({type:'audio.clear',retiredResponseId:'old'});f.event({type:'audio.done',responseId:'next'});
+ const heard=f.pump(48000).filter(x=>x!==0);assert(heard.length>0);assert(heard.every(x=>x===-.25));
+});
