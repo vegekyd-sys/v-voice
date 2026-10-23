@@ -8,17 +8,35 @@ public struct NativeSpeechPause: Sendable {
     private var voicedMS = 0.0, quietMS = 0.0, floor = 0.004
     private var inUtterance = false, locked = false, native = false, awaitingDecision = false
     private var expires = 0.0, hardExpires = 0.0
+    private var lastVoicedAt: Double?
+    private var pendingNativeStartAt: Double?
     private var policy: NativeRuntimePolicy.Pause?
     public init(policy: NativeRuntimePolicy.Pause? = nil) { self.policy = policy }
     public mutating func reset() { let noise = floor; self = Self(policy: policy); floor = noise }
     public mutating func nativeStarted(at: Double) {
-        guard held || inUtterance else { return }
+        // Local energy is only corroboration, never a playback command. A short
+        // utterance may have ended before the service onset reaches the phone.
+        guard held || !locked else { return }
+        guard held || lastVoicedAt.map({ at >= $0 && at - $0 <= (policy?.confirmationMS ?? 2000) }) == true else {
+            pendingNativeStartAt = at; return
+        }
+        pendingNativeStartAt = nil
         held = true; yielded = true; native = true; expires = at + (policy?.nativeHoldMS ?? 15000); hardExpires = expires
     }
+    /// A high-confidence acoustic speech result can yield before network onset.
+    /// It still requires fresh local onset evidence and remains reversible.
+    public mutating func localSpeech(confidence: Double, at: Double) {
+        guard !held, !locked, confidence >= (policy?.speechConfidence ?? 0.9),
+              lastVoicedAt.map({ at >= $0 && at - $0 <= (policy?.quietMS ?? 400) }) == true else { return }
+        held = true; yielded = true; native = false
+        hardExpires = at + (policy?.maxHoldMS ?? 12000)
+        expires = at + (policy?.holdMS ?? 1800)
+    }
     public mutating func nativeStopped(at: Double, recognized: Bool = true) {
+        pendingNativeStartAt = nil
         if held { native = false; awaitingDecision = awaitingDecision || recognized; expires = at + (policy?.holdMS ?? 1800) }
     }
-    public mutating func ignored() { awaitingDecision = false; held = false; native = false; locked = true; yielded = false }
+    public mutating func ignored() { pendingNativeStartAt = nil; awaitingDecision = false; held = false; native = false; locked = true; yielded = false }
     public mutating func generationDone(at: Double) {
         if held && !native { expires = max(expires, min(hardExpires, at + (policy?.doneGraceMS ?? 250))) }
     }
@@ -42,10 +60,16 @@ public struct NativeSpeechPause: Sendable {
             if quietMS >= (policy?.quietMS ?? 400) { voicedMS = 0; inUtterance = false; locked = false }
         }
         if !enabled {
-            held = false; yielded = false; expires = 0; hardExpires = 0; locked = false; native = false; awaitingDecision = false
+            pendingNativeStartAt = nil; held = false; yielded = false; expires = 0; hardExpires = 0; locked = false; native = false; awaitingDecision = false
             return false
         }
-        if inUtterance && !held && !locked { held = true; yielded = true; hardExpires = at + (policy?.maxHoldMS ?? 12000) }
+        if inUtterance && voiced { lastVoicedAt = at }
+        if let start = pendingNativeStartAt {
+            if at - start > (policy?.confirmationMS ?? 2000) { pendingNativeStartAt = nil }
+            else if at >= start && inUtterance && voiced { nativeStarted(at: at) }
+        }
+        // RMS/ZCR alone never acquires a pause. A service hold or a trusted
+        // acoustic speech classification must corroborate the local candidate.
         if held && !native && voiced { expires = min(hardExpires, at + (policy?.holdMS ?? 1800)) }
         if held && expires == 0 { expires = min(hardExpires, at + (policy?.holdMS ?? 1800) - quietMS) }
         if !voiced && !held { floor = min(0.012, floor * 0.98 + min(rms, 0.012) * 0.02) }

@@ -1,5 +1,14 @@
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
+export const CONFIRMED_INTERRUPTION_CANDIDATE_UPDATE = {
+  version:'voice-confirmed-interruption.20261024.1',date:'2026-10-24',
+  title:'插话误停播修复（iOS 31 候选）',status:'candidate-validation',
+  items:[
+    '播放时的疑似声音不再单独触发短暂停顿，本地确认人声后仍可及时插话。',
+    '保留旁聊被忽略后接着播放，以及新回答替换旧尾音。',
+    '修复测试中发现的通话结束时偶发退出；当前为真机验证候选。',
+  ],
+};
 export const FEISHU_MULTIUSER_CANDIDATE_UPDATE = {
   version:'voice-feishu-multiuser.20261023.1',date:'2026-10-23',
   title:'飞书多账号会话电话（VLab 验证）',status:'candidate-validation',

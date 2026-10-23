@@ -1,3 +1,9 @@
+## 2026-10-24 — Confirmed assisted interruption · iOS build 31 candidate
+
+- Require local speech evidence plus on-device acoustic confirmation or a service onset before pausing assisted playback. Unconfirmed room sound no longer causes repeated 1.8–2.6 second pauses. Preserve recognized interruption, ignored-turn resume and old-tail replacement; handle either signal ordering with a bounded confirmation window.
+- Guard duplicate WebSocket ping callbacks during teardown. Keep build 30 rollback material and record physical-device validation separately in `docs/ios/confirmed-interruption-build31.md`.
+- Candidate only; server deployment and user acceptance remain separate.
+
 ## 2026-10-23 — Feishu multiuser phone, shared VLab validation
 
 - Add OAuth-authenticated dynamic conversation entries and signed actor-scoped Gateway requests, preserving current Feishu text routing and tool policies. Disable personal host shortcuts for these callers.

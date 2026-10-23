@@ -1,6 +1,18 @@
 import Foundation
 import VVoiceCore
 
+/// URLSession can report a pending ping again when a successful socket closes.
+/// Completion callbacks may run off the main actor; consume the continuation once.
+final class RelayPingCompletion: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Error>?
+    init(_ continuation: CheckedContinuation<Void, Error>) { self.continuation = continuation }
+    func finish(_ error: Error?) {
+        let pending = lock.withLock { let value = continuation; continuation = nil; return value }
+        if let error { pending?.resume(throwing: error) } else { pending?.resume() }
+    }
+}
+
 @MainActor final class RelayTransport {
     private var socket: URLSessionWebSocketTask?
     private var receiver: Task<Void, Never>?
@@ -63,7 +75,10 @@ import VVoiceCore
                         do {
                             try await Task.sleep(for: .seconds(2))
                             let started = ProcessInfo.processInfo.systemUptime
-                            try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in s.sendPing { error in if let error { c.resume(throwing: error) } else { c.resume() } } }
+                            try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
+                                let completion = RelayPingCompletion(c)
+                                s.sendPing { error in completion.finish(error) }
+                            }
                             CallDiagnostics.record("relay.ping", code: "rttMS=\(Int((ProcessInfo.processInfo.systemUptime - started) * 1000))")
                         } catch { if !Task.isCancelled { self?.fail(error) }; return }
                     }

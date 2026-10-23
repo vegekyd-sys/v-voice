@@ -18,7 +18,7 @@ export const DEFAULT_NATIVE_RUNTIME_POLICY = Object.freeze({
     recovering:'语音模型正在恢复，请稍候再说', recovered:'语音已恢复，可以继续说'},
   pause:{rms:0.035, noiseMultiplier:3, zcrMin:0.004, zcrMax:0.32,
     onsetMS:140, quietMS:400, holdMS:1800, maxHoldMS:12000,
-    nativeHoldMS:15000, generationGraceMS:600, doneGraceMS:250},
+    confirmationMS:2000, speechConfidence:0.9, nativeHoldMS:15000, generationGraceMS:600, doneGraceMS:250},
   bargeIn:{rms:0.025, frames:4},
 });
 const text=(value,limit=8000)=>typeof value==='string'?Array.from(value).slice(0,limit).join(''):'';

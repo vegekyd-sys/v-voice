@@ -1,5 +1,6 @@
 import AVFoundation
 import OSLog
+import SoundAnalysis
 @preconcurrency import WebRTC
 import VVoiceCore
 
@@ -104,6 +105,11 @@ private final class CaptureHandoff: @unchecked Sendable {
         rtcActive = true; session.isAudioEnabled = true
     }
     var queuedFrames: Int { ledger.queuedFrames }
+    /// Hardware render position, used to verify continuity without recording audio.
+    var playbackSampleTime: Int64? {
+        guard let player, player.isPlaying, let rendered = player.lastRenderTime else { return nil }
+        return player.playerTime(forNodeTime: rendered)?.sampleTime
+    }
 
     static func configureSession() throws {
         let session = AVAudioSession.sharedInstance()
@@ -297,4 +303,62 @@ private final class CaptureHandoff: @unchecked Sendable {
         CallDiagnostics.record("audio.capture", code: "frames=\(captureFrames) active=\(captureActiveFrames) peakMilli=\(Int(capturePeak * 1000)) appMuted=\(systemMuted) vpMuted=\(processingMuted) route=\(route)")
         CallDiagnostics.record("audio.capture-timing", code: "frames=\(captureFrames) gapMS=\(Int(captureMaxGapMS)) mainMS=\(Int(captureMaxDeliveryMS))")
     }
+}
+
+/// On-device acoustic classification of post-AEC PCM. No transcription, storage
+/// or network request; stale/overloaded analysis simply leaves service onset in charge.
+final class VoiceSpeechClassifier: NSObject, SNResultsObserving, @unchecked Sendable {
+    private let worker = DispatchQueue(label: "com.versa.vvoice.speech-classifier", qos: .userInitiated)
+    private let lock = NSLock()
+    private var pending = 0, stopped = false
+    private var position: Int64 = 0
+    private var analyzer: SNAudioStreamAnalyzer?
+    private var latestEnd: Int64 = 0, latestAt = 0.0
+    private let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24000, channels: 1, interleaved: false)!
+    private let result: @Sendable (Double, Double) -> Void
+    init(result: @escaping @Sendable (Double, Double) -> Void) {
+        self.result = result; super.init()
+        worker.async { [self] in
+            do {
+                let request = try SNClassifySoundRequest(classifierIdentifier: .version1)
+                request.windowDuration = CMTime(seconds: 0.5, preferredTimescale: 24000)
+                request.overlapFactor = 0.5
+                let analyzer = SNAudioStreamAnalyzer(format: format)
+                try analyzer.add(request, withObserver: self); self.analyzer = analyzer
+            } catch { result(0, 0) }
+        }
+    }
+    func submit(_ pcm: Data, at: Double) {
+        let count = pcm.count / 2
+        let start: Int64? = lock.withLock {
+            let start = position; position += Int64(count)
+            guard !stopped, pending < 6 else { return nil }
+            pending += 1; return start
+        }
+        guard let start else { return }
+        worker.async { [self] in
+            defer { lock.withLock { pending -= 1 } }
+            guard !lock.withLock({ stopped }), let analyzer,
+                  let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count)) else { return }
+            buffer.frameLength = AVAudioFrameCount(count)
+            pcm.withUnsafeBytes { bytes in
+                let samples = bytes.bindMemory(to: Int16.self)
+                for i in 0..<count { buffer.floatChannelData![0][i] = Float(Int16(littleEndian: samples[i])) / 32768 }
+            }
+            lock.withLock { latestEnd = start + Int64(count); latestAt = at }
+            analyzer.analyze(buffer, atAudioFramePosition: start)
+        }
+    }
+    func stop() {
+        lock.withLock { stopped = true }
+        worker.async { [self] in analyzer?.removeAllRequests(); analyzer = nil }
+    }
+    func request(_ request: any SNRequest, didProduce result: any SNResult) {
+        guard let classification = result as? SNClassificationResult else { return }
+        let end = CMTimeGetSeconds(CMTimeRangeGetEnd(classification.timeRange)) * 24000
+        let at = lock.withLock { stopped ? 0 : latestAt - (Double(latestEnd) - end) / 24 }
+        self.result(classification.classification(forIdentifier: "speech")?.confidence ?? 0, at)
+    }
+    func request(_ request: any SNRequest, didFailWithError error: any Error) { result(0, 0) }
+    func requestDidComplete(_ request: any SNRequest) {}
 }

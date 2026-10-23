@@ -158,6 +158,145 @@ import VVoiceCore
         CallDiagnostics.record("latency.webkit-done", code: "received=\(value["received"] ?? 0) error=\(value["error"] ?? "none")")
         XCTAssertTrue(value["error"] is NSNull); XCTAssertGreaterThan(value["received"] as? Int ?? 0, 0)
     }
+    /// Authorized live acceptance through the actual CallCoordinator on iPhone.
+    /// Synthetic speech enters the production capture callback at hardware cadence;
+    /// no physical microphone samples are stored or sent by this test.
+    func testLiveConfirmedInterruptionAndContinuousPhysicalPlayback() async throws {
+        guard ProcessInfo.processInfo.environment["VVOICE_RUN_LIVE_BARGE_IN"] == "1" else { throw XCTSkip("Explicit live barge-in authorization required") }
+        let api = VoiceAPI(store: BindingStore())
+        guard api.isBound else { throw XCTSkip("Existing personal binding required") }
+        let status = try await api.call("status")
+        guard status["activeCall"] as? Bool == false else { throw XCTSkip("A call is active") }
+        let previousIdle = UIApplication.shared.isIdleTimerDisabled
+        UIApplication.shared.isIdleTimerDisabled = true
+        let audio = VoiceAudio()
+        let owner = CallCoordinator(api: api, audio: audio)
+        owner.sceneChanged(.active); owner.model = .seeduplex
+        addTeardownBlock {
+            await owner.end()
+            await MainActor.run { UIApplication.shared.isIdleTimerDisabled = previousIdle }
+        }
+        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        let story = try Data(contentsOf: directory.appendingPathComponent("VoiceBargeStory.pcm"))
+        let interruption = try Data(contentsOf: directory.appendingPathComponent("VoiceBargeInterrupt.pcm"))
+        CallDiagnostics.record("barge.live-start")
+        try await owner.startOrContinue()
+        let input = try XCTUnwrap(audio.onInput)
+        var source = Data(), offset = 0, captureFrames = 0, testNoise = false
+        let noiseSamples = (0..<480).map { Int16(0.15 * sin(Double($0) * 2 * .pi * 440 / 24000) * 32767).littleEndian }
+        let noise = noiseSamples.withUnsafeBytes { Data($0) }
+        audio.onInput = { bytes, _ in
+            captureFrames += 1
+            var pcm = Data(count: bytes.count)
+            if offset < source.count {
+                let count = min(bytes.count, source.count - offset)
+                pcm.replaceSubrange(0..<count, with: source[offset..<(offset + count)]); offset += count
+            } else if testNoise && captureFrames % 150 < 20 { pcm = noise }
+            input(pcm, 0.1)
+        }
+        func wait(_ seconds: Double, _ predicate: () -> Bool) async throws -> Bool {
+            let end = Date().addingTimeInterval(seconds)
+            while Date() < end { if predicate() { return true }; try await Task.sleep(for: .milliseconds(40)) }
+            return predicate()
+        }
+        try await Task.sleep(for: .seconds(5))
+        source = story; offset = 0
+        CallDiagnostics.record("barge.story-input")
+        let sentStory = try await wait(20) { offset == story.count }
+        XCTAssertTrue(sentStory)
+        let playing = try await wait(30) { audio.queuedFrames > 24000 && !audio.playbackPaused }
+        XCTAssertTrue(playing); guard playing else { return }
+        testNoise = true
+        CallDiagnostics.record("barge.continuity-start")
+        var pausedSamples = 0, stationary = 0, maxStationary = 0, progressed: Int64 = 0
+        var previous = audio.playbackSampleTime
+        let until = Date().addingTimeInterval(16)
+        while Date() < until {
+            try await Task.sleep(for: .milliseconds(50))
+            if audio.playbackPaused { pausedSamples += 1 }
+            let current = audio.playbackSampleTime
+            if let current, let previous, current > previous { progressed += current - previous; stationary = 0 }
+            else if audio.queuedFrames > 0 && !audio.playbackPaused { stationary += 1; maxStationary = max(maxStationary, stationary) }
+            else { stationary = 0 }
+            previous = current
+        }
+        testNoise = false
+        CallDiagnostics.record("barge.continuity-done", code: "paused=\(pausedSamples) renderMS=\(progressed / 24) maxStallMS=\(maxStationary * 50) capture=\(captureFrames)")
+        XCTAssertEqual(pausedSamples, 0, "Unconfirmed local sound must never pause the answer")
+        XCTAssertGreaterThan(progressed, 24000 * 12, "Require sustained real hardware playback")
+        XCTAssertLessThan(maxStationary, 4, "Queued audio must keep rendering")
+        XCTAssertGreaterThan(audio.queuedFrames, 24000, "Interrupt while the story still has queued audio")
+        let priorReplies = Set(owner.conversation.turns.filter { $0.role == "assistant" }.map(\.id))
+        source = interruption; offset = 0
+        let interruptAt = Date()
+        CallDiagnostics.record("barge.interrupt-input")
+        let paused = try await wait(4) { audio.playbackPaused }
+        let latency = Int(Date().timeIntervalSince(interruptAt) * 1000)
+        CallDiagnostics.record("barge.interrupt-hold", code: "held=\(paused) latencyMS=\(latency)")
+        XCTAssertTrue(paused, "Real service onset must still pause the retained audio")
+        XCTAssertLessThan(latency, 2000)
+        let answered = try await wait(30) {
+            owner.conversation.turns.contains { $0.role == "assistant" && !priorReplies.contains($0.id) && ($0.text.contains("七") || $0.text.contains("7")) && $0.text.count < 80 }
+        }
+        CallDiagnostics.record("barge.live-done", code: "answered=\(answered) phase=\(owner.phase.rawValue) capture=\(captureFrames)")
+        XCTAssertTrue(answered, "The new reply must answer the interruption")
+        XCTAssertTrue(audio.isRunning)
+    }
+    func testPhysicalSpeakerPlaybackDoesNotSelfInterrupt() async throws {
+        guard ProcessInfo.processInfo.environment["VVOICE_RUN_LIVE_BARGE_IN"] == "1" else { throw XCTSkip("Explicit physical playback authorization required") }
+        let file = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("VoiceBargeStory.pcm")
+        let speech = try Data(contentsOf: file), audio = VoiceAudio()
+        @MainActor final class Probe { var pause = NativeSpeechPause(); var acquired = 0, captured = 0; var peakConfidence = 0.0, peakRMS = 0.0 }
+        let probe = Probe()
+        let classifier = VoiceSpeechClassifier { confidence, at in
+            Task { @MainActor in
+                let now = ProcessInfo.processInfo.systemUptime * 1000
+                guard now >= at, now - at <= 350, audio.queuedFrames > 0 else { return }
+                probe.peakConfidence = max(probe.peakConfidence, confidence)
+                let before = probe.pause.held
+                probe.pause.localSpeech(confidence: confidence, at: now)
+                if !before && probe.pause.held { probe.acquired += 1 }
+                audio.setPlaybackPaused(probe.pause.held)
+            }
+        }
+        defer { classifier.stop(); audio.stop() }
+        audio.onInput = { pcm, rms in
+            probe.captured += 1; probe.peakRMS = max(probe.peakRMS, rms)
+            let now = ProcessInfo.processInfo.systemUptime * 1000
+            audio.setPlaybackPaused(probe.pause.observe(pcm, enabled: audio.queuedFrames > 0, at: now, generationComplete: true))
+            classifier.submit(pcm, at: now)
+        }
+        try audio.start(); try await audio.waitUntilCapturing()
+        var sequence = 0
+        for _ in 0..<2 {
+            for offset in stride(from: 0, to: speech.count, by: 48000) {
+                sequence += 1
+                try audio.play(speech.subdata(in: offset..<min(offset + 48000, speech.count)), sequence: sequence)
+            }
+        }
+        audio.markOutputDone()
+        CallDiagnostics.record("barge.acoustic-start")
+        try await Task.sleep(for: .seconds(16))
+        CallDiagnostics.record("barge.acoustic-done", code: "holds=\(probe.acquired) confidenceMilli=\(Int(probe.peakConfidence * 1000)) rmsMilli=\(Int(probe.peakRMS * 1000)) capture=\(probe.captured)")
+        XCTAssertGreaterThan(probe.captured, 700)
+        XCTAssertEqual(probe.acquired, 0, "The actual speaker-to-microphone path must not self-interrupt")
+    }
+    func testPingCompletionIgnoresDuplicateCloseCallback() async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let completion = RelayPingCompletion(continuation)
+            completion.finish(nil)
+            completion.finish(URLError(.networkConnectionLost))
+            completion.finish(nil)
+        }
+        do {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                let completion = RelayPingCompletion(continuation)
+                completion.finish(URLError(.networkConnectionLost))
+                completion.finish(nil)
+            }
+            XCTFail("The first completion must determine the result")
+        } catch { XCTAssertEqual((error as? URLError)?.code, .networkConnectionLost) }
+    }
     private func simulateShortSceneTransition() {
         // A bounded UI pause, not a network stall or an unbounded audio buffer.
         Thread.sleep(forTimeInterval: 0.7)

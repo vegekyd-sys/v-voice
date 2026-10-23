@@ -17,6 +17,8 @@ public struct NativeRuntimePolicy: Codable, Sendable {
         public let rms: Double, noiseMultiplier: Double, zcrMin: Double, zcrMax: Double
         public let onsetMS: Double, quietMS: Double, holdMS: Double, maxHoldMS: Double
         public let nativeHoldMS: Double, generationGraceMS: Double, doneGraceMS: Double
+        public let confirmationMS: Double?
+        public let speechConfidence: Double?
     }
     public static func decode(_ value: [String: Any]) throws -> Self {
         let p = try JSONDecoder().decode(Self.self, from: JSONSerialization.data(withJSONObject: value))
@@ -28,6 +30,8 @@ public struct NativeRuntimePolicy: Codable, Sendable {
               (0...1).contains(p.pause.zcrMin), (p.pause.zcrMin...1).contains(p.pause.zcrMax),
               (20...2000).contains(p.pause.onsetMS), (20...3000).contains(p.pause.quietMS),
               (100...5000).contains(p.pause.holdMS), (p.pause.holdMS...30_000).contains(p.pause.maxHoldMS),
+              (100...5000).contains(p.pause.confirmationMS ?? 2000),
+              (0.8...1).contains(p.pause.speechConfidence ?? 0.9),
               (100...30_000).contains(p.pause.nativeHoldMS), (0...2000).contains(p.pause.generationGraceMS), (0...2000).contains(p.pause.doneGraceMS)
         else { throw VoiceError.protocolMismatch }
         return p

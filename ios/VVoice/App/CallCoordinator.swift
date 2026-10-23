@@ -152,6 +152,7 @@ import VVoiceCore
     @ObservationIgnored private var nativeDuplex = false
     @ObservationIgnored private var nativeAssisted = false
     @ObservationIgnored private var nativePause = NativeSpeechPause()
+    @ObservationIgnored private var speechClassifier: VoiceSpeechClassifier?
     @ObservationIgnored private var nativeOutputDone = false
     @ObservationIgnored private var retiredResponseOrder: [String] = []
     @ObservationIgnored private var responseID: String?
@@ -345,6 +346,22 @@ import VVoiceCore
             nativeDuplex = runtime.playback.replaceResponse; nativeAssisted = runtime.playback.localPause
         }
         nativePause = NativeSpeechPause(policy: nativeRuntime?.pause); nativeOutputDone = false
+        speechClassifier?.stop(); speechClassifier = nil
+        if nativeAssisted {
+            speechClassifier = VoiceSpeechClassifier { [weak self] confidence, sampleAt in
+                Task { @MainActor [weak self] in
+                    guard let self, self.owned(owner), !self.muted, self.audio.queuedFrames > 0 else { return }
+                    let now = ProcessInfo.processInfo.systemUptime * 1000
+                    guard sampleAt > 0, now >= sampleAt, now - sampleAt <= 350 else { return }
+                    let wasHeld = self.nativePause.held
+                    self.nativePause.localSpeech(confidence: confidence, at: now)
+                    if !wasHeld && self.nativePause.held {
+                        CallDiagnostics.record("audio.local-speech-hold", code: "confidenceMilli=\(Int(confidence * 1000)) ageMS=\(Int(now - sampleAt))")
+                        self.audio.setPlaybackPaused(true)
+                    }
+                }
+            }
+        }
         speakerRouted = reservation["speakerRouting"] is [String: Any]
         conversation.beginSpeakerStream(); speakerNotice = ""; speakerAction = ""; speakerNoticeTask?.cancel()
         avatarOutcome = "none"; avatar.begin(owner: id); refreshIslandAvatarSurface(); updateAvatar()
@@ -435,6 +452,7 @@ import VVoiceCore
                 let pcm = self.muted ? Data(count: data.count) : data
                 let held = self.nativePause.observe(pcm, enabled: self.audio.queuedFrames > 0, at: ProcessInfo.processInfo.systemUptime * 1000, generationComplete: self.nativeOutputDone)
                 self.audio.setPlaybackPaused(held)
+                self.speechClassifier?.submit(pcm, at: ProcessInfo.processInfo.systemUptime * 1000)
             }
             if !self.nativeDuplex, !self.muted, self.localBargeInEnabled, self.audio.queuedFrames > 0 {
                 self.onsetFrames = rms >= (self.nativeRuntime?.bargeIn.rms ?? 0.025) ? self.onsetFrames + 1 : 0
@@ -953,6 +971,7 @@ import VVoiceCore
         thinkingNoticeTask?.cancel(); thinkingNoticeTask = nil; thinkingVisible = false
         routeChangeTask?.cancel(); routeChangeTask = nil
         nativeRuntime = nil; nativeRuntimeRevision = 0; speakerActionID = ""; speakerNoticeKind = "notice"
+        speechClassifier?.stop(); speechClassifier = nil
         nativeDuplex = false; nativeAssisted = false; nativePause.reset(); nativeOutputDone = false; responseID = nil
         audioReady = false; earlyAudio.removeAll(); earlyAudioBytes = 0; earlyOutputDone = false
         providerDeadline?.cancel(); providerDeadline = nil
