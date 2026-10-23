@@ -163,6 +163,104 @@ private final class BindingMockProtocol: URLProtocol, @unchecked Sendable {
             XCTAssertEqual(api.record?.binding, original); XCTAssertEqual(store.load()?.cookie, "v_voice_access=old")
         }
     }
+    func testMultipleSavedConversationsSwitchWithoutRedeemingAgainAndSurviveReopen() async throws {
+        let (api, store, base) = setup { request in
+            let phone = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first?.value ?? "tianyi"
+            XCTAssertNotEqual(request.url!.lastPathComponent, "redeem", "A saved destination must reuse its grant")
+            return .init(body: "{\"ready\":true,\"conversation\":{\"name\":\"\(phone)\",\"kind\":\"group\"}}", cookie: "v_voice_\(phone)=fixture; Secure")
+        }
+        try await api.bind(link: base + "?phone=group-one#access=" + secret)
+        let one = try XCTUnwrap(api.record)
+        try await api.bind(link: base + "?phone=group-two#access=" + secret)
+        XCTAssertEqual(api.savedConversations.count, 2)
+        try await api.selectConversation(id: one.id)
+        XCTAssertEqual(api.record?.binding.phone, "group-one")
+        XCTAssertEqual(store.savedBindings().count, 2)
+        let reused = try await api.bind(link: base + "?phone=group-two#bind=" + secret)
+        XCTAssertTrue(reused)
+        XCTAssertEqual(api.savedConversations.count, 2)
+        XCTAssertEqual(api.savedConversations.filter(\.isCurrent).map(\.name), ["group-two"])
+        XCTAssertEqual(VoiceAPI(store: store).record?.binding.phone, "group-two")
+    }
+    func testRejectedSavedConversationDoesNotChangeCurrentBindingOrLoseOtherSessions() async throws {
+        let (api, store, base) = setup { request in
+            .init(status: 403, body: "{}")
+        }
+        let rejected = StoredBinding(binding: try VoiceBinding(link: base + "?phone=group-revoked#access=" + secret), cookie: "v_voice_group-revoked=old")
+        let current = StoredBinding(binding: try VoiceBinding(link: base + "?phone=group-current#access=" + secret), cookie: "v_voice_group-current=working")
+        try store.save(rejected); try store.save(current); api.reloadIfAvailable()
+        do { try await api.selectConversation(id: rejected.id); XCTFail("Revoked grant must be rejected") }
+        catch { XCTAssertEqual(error as? VoiceError, .expired) }
+        XCTAssertEqual(api.record?.binding, current.binding)
+        XCTAssertEqual(store.load()?.cookie, current.cookie)
+        XCTAssertEqual(store.savedBindings().count, 2)
+    }
+    func testSwitchAndReusedHandoffRefreshFastDialCapabilityForSelectedConversation() async throws {
+        let (api, store, base) = setup { request in
+            XCTAssertEqual(request.url!.lastPathComponent, "status")
+            let phone = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first?.value
+            return .init(body: phone == "group-fast" ? "{\"ready\":true,\"nativeDialVersion\":1}" : "{\"ready\":true}")
+        }
+        let fast = StoredBinding(binding: try VoiceBinding(link: base + "?phone=group-fast#access=" + secret), cookie: "fast")
+        let legacy = StoredBinding(binding: try VoiceBinding(link: base + "?phone=group-legacy#access=" + secret), cookie: "legacy", nativeDialVersion: 1)
+        try store.save(fast); try store.save(legacy); api.reloadIfAvailable()
+        try await api.selectConversation(id: fast.id)
+        XCTAssertTrue(api.supportsFastDial)
+        XCTAssertTrue(VoiceAPI(store: store).supportsFastDial, "Switching must persist the newly verified capability")
+        let reused = try await api.bind(link: base + "?phone=group-legacy#bind=" + secret)
+        XCTAssertTrue(reused)
+        XCTAssertFalse(api.supportsFastDial, "A stale advertised capability must not leak across destinations")
+        XCTAssertNil(store.load()?.nativeDialVersion)
+        XCTAssertEqual(store.savedBindings().first { $0.id == fast.id }?.nativeDialVersion, 1)
+    }
+    func testPendingCallBlocksSwitchAndRemovalWithoutNetworkOrCredentialChanges() async throws {
+        let (api, store, base) = setup { _ in XCTFail("Pending call must block before any request"); return .init(body: "{}") }
+        let first = StoredBinding(binding: try VoiceBinding(link: base + "?phone=group-one#access=" + secret), cookie: "one")
+        let active = StoredBinding(binding: try VoiceBinding(link: base + "?phone=group-two#access=" + secret), cookie: "two", pendingVoiceID: "live-call")
+        try store.save(first); try store.save(active); api.reloadIfAvailable()
+        do { try await api.selectConversation(id: first.id); XCTFail("Must preserve a live owner") }
+        catch { XCTAssertEqual(error as? VoiceError, .busy) }
+        XCTAssertThrowsError(try api.removeConversation(id: active.id))
+        XCTAssertEqual(store.load()?.pendingVoiceID, "live-call")
+        XCTAssertEqual(store.savedBindings().count, 2)
+    }
+    func testRemovingOneSavedBindingPreservesOthersAndDoesNotSilentlySelectThem() throws {
+        let (_, store, base) = setup { _ in .init(body: "{}") }
+        let first = StoredBinding(binding: try VoiceBinding(link: base + "?phone=group-one#access=" + secret), cookie: "one")
+        let second = StoredBinding(binding: try VoiceBinding(link: base + "?phone=group-two#access=" + secret), cookie: "two")
+        try store.save(first); try store.save(second)
+        try store.removeBinding(id: second.id)
+        XCTAssertNil(store.load())
+        XCTAssertEqual(store.savedBindings().map(\.id), [first.id])
+        try store.save(first)
+        XCTAssertEqual(store.load()?.binding, first.binding)
+        try store.removeBinding(id: first.id)
+        XCTAssertTrue(store.savedBindings().isEmpty)
+    }
+    func testLegacyKeychainRecordMigratesOnSaveWithoutLosingItsCredentialOrInterruptedOwner() throws {
+        let service = "com.versa.vvoice.legacy-library-test.\(UUID().uuidString)"
+        let store = BindingStore(service: service); defer { store.remove() }
+        let legacy = StoredBinding(binding: try VoiceBinding(link: "https://voice.example/voice/#access=" + secret), cookie: "original-cookie", pendingVoiceID: "interrupted")
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+            kSecAttrAccount as String: "binding", kSecValueData as String: try JSONEncoder().encode(legacy),
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
+        XCTAssertEqual(SecItemAdd(query as CFDictionary, nil), errSecSuccess)
+        XCTAssertEqual(store.load()?.cookie, legacy.cookie)
+        let another = StoredBinding(binding: try VoiceBinding(link: "https://voice.example/voice/?phone=group-two#access=" + secret), cookie: "another-cookie", nativeDialVersion: 1)
+        try store.save(another)
+        XCTAssertEqual(store.savedBindings().count, 2)
+        XCTAssertEqual(store.savedBindings().first?.pendingVoiceID, "interrupted")
+        XCTAssertEqual(store.savedBindings().first?.binding, legacy.binding)
+        XCTAssertEqual(store.load()?.cookie, another.cookie)
+        var readQuery = query; readQuery.removeValue(forKey: kSecValueData as String); readQuery.removeValue(forKey: kSecAttrAccessible as String)
+        readQuery[kSecReturnData as String] = true
+        var item: CFTypeRef?
+        XCTAssertEqual(SecItemCopyMatching(readQuery as CFDictionary, &item), errSecSuccess)
+        let legacyReader = try JSONDecoder().decode(StoredBinding.self, from: XCTUnwrap(item as? Data))
+        XCTAssertEqual(legacyReader.cookie, another.cookie, "A rollback build must still read the selected grant")
+        XCTAssertEqual(legacyReader.nativeDialVersion, 1, "Build 28 rollback must retain fast dialing for the selected conversation")
+
+    }
     func testLegacyLinkStillUsesAccessAndKeepsPersonalKeychainShape() async throws {
         let (api, store, base) = setup { request in
             XCTAssertFalse(request.url!.path.contains("ios-binding"))

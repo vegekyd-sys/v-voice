@@ -525,5 +525,24 @@
       "firstRecoveryCallMs": 4249,
       "firstRecoveryCleanupMs": 668
     }
+  },
+  "bindingJourneyCandidate": {
+    "build": 29,
+    "baseCommit": "694c18f3e5c75fea8b606158b9b3cb5dfcc7d8fa",
+    "status": "integrated_with_fast_dial_validation_pending",
+    "record": "binding-journey/README.md",
+    "threeStepSetup": true,
+    "multipleSavedConversations": true,
+    "existingKeychainImported": true,
+    "actionButtonUsesSelectedConversation": true,
+    "bindingTests": {
+      "passed": 11,
+      "failed": 0,
+      "skipped": 1
+    },
+    "installedOnPhysicalPhone": false,
+    "testflightPublished": false,
+    "serverDeploymentRequired": false,
+    "originalCandidateBuild": 26
   }
 }

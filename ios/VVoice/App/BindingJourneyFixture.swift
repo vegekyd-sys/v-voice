@@ -1,0 +1,39 @@
+#if DEBUG
+import Foundation
+import VVoiceCore
+
+/// Opt-in, local-only UI fixture. Uses a separate Keychain service, never the
+/// user's saved conversations. Unknown/media requests are rejected.
+@MainActor enum BindingJourneyFixture {
+    static func coordinator() -> CallCoordinator {
+        let store = BindingStore(service: "com.versa.vvoice.binding-journey-fixture")
+        if CommandLine.arguments.contains("--binding-journey-reset") { store.remove() }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [BindingJourneyProtocol.self]
+        return CallCoordinator(api: VoiceAPI(store: store, configuration: config))
+    }
+}
+private final class BindingJourneyProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        guard request.url?.host == "binding-preview.invalid" else { fail(); return }
+        let route = request.url!.lastPathComponent
+        let phone = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "phone" })?.value ?? "preview-work"
+        let name = phone == "preview-work" ? "工作与灵感" : "产品讨论室"
+        var body: [String: Any] = ["conversation": ["name": name, "kind": "group"], "ready": true]
+        var headers = ["Content-Type": "application/json"]
+        switch route {
+        case "redeem": body["deviceAccess"] = String(repeating: "preview", count: 8)
+        case "access": headers["Set-Cookie"] = "v_voice_\(phone)=fixture-only; Secure; HttpOnly"
+        case "status": body["models"] = []
+        default: fail(); return
+        }
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: headers)!, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: (try? JSONSerialization.data(withJSONObject: body)) ?? Data())
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    private func fail() { client?.urlProtocol(self, didFailWithError: URLError(.unsupportedURL)) }
+    override func stopLoading() {}
+}
+#endif

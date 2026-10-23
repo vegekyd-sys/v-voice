@@ -35,6 +35,7 @@ struct H5CallView: View {
             }
         }.background(VoiceStyle.background).tint(VoiceStyle.accent)
             .sheet(item: $sheet, onDismiss: { bindingLink = "" }) { _ in SettingsView(call: call, initialLink: bindingLink) }
+            .task { if !call.bound, !call.active, sheet == nil { sheet = .settings } }
             .onOpenURL { url in
                 if let link = VoiceBinding.link(fromDeepLink: url) {
                     bindingLink = link; error = ""; sheet = .settings; return

@@ -1,3 +1,10 @@
+## 2026-10-23 — iOS guided binding and saved conversations · 2026-10-23
+
+- Replace the binding form with a three-step native journey: connect a conversation, configure the Action button, then “替代 Siri 的第一步：enjoy”. Show the journey on first launch without a binding; existing users enter the phone directly. Prefilled handoffs use a focused confirmation state and fixed primary actions.
+- Save multiple verified destinations in the device-only Keychain. Validate before switching, reuse saved grants without replaying a handoff, preserve other destinations on refresh/removal, and block changes during a live call. Existing single records import automatically; the selected record remains readable by build 25 for rollback.
+- Keep conversation management in the top-right settings. The existing “和 V 通话” intent follows the selected conversation; Action button assignment remains the user's system setting. No automatic dialing during onboarding.
+- Native build 29 combines this setup with build 28 fast dialing. Simulator validation, installation and physical acceptance are recorded separately.
+
 ## 2026-10-23 — One-connection native phone dial
 
 - Add an authenticated, versioned WebSocket dial path that shares the existing exact-session check, admission lock, rate limits and per-conversation ownership with HTTP dialing. Reserve and attach on the same connection; cancellation releases only its own reservation.

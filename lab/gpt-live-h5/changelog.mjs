@@ -29,6 +29,14 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    date: '2026-10-23', title: '把 V 放到操作按钮上',
+    items: [
+      'iOS build 29 带来三步引导：获取会话链接、设置操作按钮，最后来到“替代 Siri 的第一步：enjoy”。',
+      '右上角设置可保存、切换多个会话；操作按钮跟随当前选择，已有绑定自动保留。',
+      '包含 build 28 的单连接拨号加速；切换先验证目标会话，通话中保留当前会话。',
+    ],
+  },
+  {
     date: '2026-10-23', title: 'iPhone 拨号减少等待',
     items: [
       'iOS build 28 在支持的服务上通过一次连接完成豆包和 Grok 拨号，减少查询状态、创建通话与语音连接之间的等待。',
