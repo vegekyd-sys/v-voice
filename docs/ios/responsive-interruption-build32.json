@@ -51,7 +51,8 @@
   ],
   "productionServiceChanged": false,
   "productionServiceCommit": "9790353",
-  "userAcceptance": "pending; build 31 user feedback superseded its prior controlled test result",
+  "userAcceptance": "accepted_by_Tianyi_2026-10-24: 现在很不错，现在这样。部署上线吧",
   "humanFarFieldOrOverlappingSpeechAccepted": false,
-  "allNetworkStutterResolved": false
+  "allNetworkStutterResolved": false,
+  "productionReleaseAuthorized": true
 }

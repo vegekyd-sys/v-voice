@@ -1,0 +1,89 @@
+{
+  "version": "voice-dm-card-status.20261023.1",
+  "baseline": "594e3c50d3d76a5084cf52b1860b881f540db3bd",
+  "status": "released-server-and-card-lifecycle-verified",
+  "scope": "Private-call timer and hangup message edits",
+  "realGatewayValidation": {
+    "originalFailure": "Feishu message target is not allowed",
+    "receiptChatIdPresent": false,
+    "nativeChatResolvedFromExactSession": true,
+    "sameMessageTicksSeconds": [
+      0,
+      1,
+      3
+    ],
+    "sameMessageEndedSeconds": 6,
+    "readbackVerified": true,
+    "microphoneUsed": false,
+    "additionalSummaryModelCalls": 0
+  },
+  "historicalRepair": {
+    "originalCardsUpdated": 4,
+    "durationsMs": [
+      236669,
+      55006,
+      47977,
+      53937
+    ],
+    "exactStartTimeMatched": true,
+    "originalsBackedUp": true,
+    "readbackVerified": true
+  },
+  "nativeAudioCandidate": "Separate PR106; physical validation pending phone audio availability",
+  "unrelatedMultiuserCandidateIncluded": false,
+  "deployment": {
+    "completedAt": "2026-10-23T23:38:17+08:00",
+    "fleetReceipt": "20261023-233749-86e4c1f3",
+    "matrixSha256": "71021dceb8b9a99e0a60dc3be5b7c1dcbc144028574454cf1d80ae5322dfd784",
+    "filesSha256": "c55d2cc9cca64be996f2dad28870a33dc8f97960a0a4bfc4d773b76c1e187aa0",
+    "nodes": {
+      "web": {
+        "commit": "2002e249d5566315b6826a738d00015c719a1608",
+        "ready": true
+      },
+      "devices": {
+        "commit": "2002e249d5566315b6826a738d00015c719a1608",
+        "ready": true
+      }
+    },
+    "gatewayIdentityUnchanged": true,
+    "rollbackCommit": "594e3c50d3d76a5084cf52b1860b881f540db3bd",
+    "nativeAudioAcceptance": "Not included; physical phone audio test remains pending"
+  },
+  "tests": {
+    "main": 829,
+    "speaker": 95,
+    "release": 11,
+    "integratedMain": 837
+  },
+  "sourceCommit": "2002e249d5566315b6826a738d00015c719a1608",
+  "mergedVia": "https://github.com/vegekyd-sys/v-voice/pull/107",
+  "mergeCommit": "85b29e233d65e052a246a7e43eed30020e46e212",
+  "postDeploymentValidation": {
+    "sourceCommit": "2002e249d5566315b6826a738d00015c719a1608",
+    "sameMessageTicksSeconds": [
+      0,
+      1,
+      3,
+      4,
+      6
+    ],
+    "sameMessageEndedSeconds": 6,
+    "successfulEdits": 6,
+    "errors": 0,
+    "method": "Deployed module lifecycle replay through the real Gateway using the existing owned test message; no new human phone call",
+    "microphoneUsed": false,
+    "additionalSummaryModelCalls": 0,
+    "homepageChangelogVerifiedInBrowser": true,
+    "feishuCardVerifiedInNativeApp": true
+  },
+  "ci": {
+    "isolatedSource": 39979199645,
+    "integratedBranch": [
+      39979560144,
+      39979568419
+    ],
+    "mainMerge": 39979762925,
+    "conclusion": "success"
+  }
+}

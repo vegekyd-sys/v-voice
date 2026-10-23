@@ -152,20 +152,23 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       const sessionKey = binding.sessionKey;
       const callGateway=binding.gateway??gateway;
       const replyTarget=binding.replyTarget??replyTargets.get(binding.id)??null;
+      // Use the verified App grant, not user agent or caller-supplied flags.
+      // Shared by HTTP dialing (including GPT) and the native fast socket.
+      const reportOptions={statusCard:!iosBindings?.read(req,binding)};
       if (params.model && params.model !== 'gpt-live') {
         // SeedDuplex needs the continuous microphone stream to own turn
         // taking. Keep household/multi-speaker routing available explicitly;
         // the deployment selects the phone default, not browser heuristics.
         // Clients opt in only after implementing native response ownership and reversible pause.
         const inputPolicy = params.inputPolicy ?? 'speaker';
-        const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...speakerRouting?{inputPolicy}:{}});
+        const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId,reportOptions)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...speakerRouting?{inputPolicy}:{}});
         context.active={sessionKey,gateway:callGateway,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
         if(cancelled()){await close(context);return reply(499,{error:"拨号已取消"});}
         rememberAvatarCall(context,context.active,params.model);
         return reply(200,reservation);
       }
       const reservation = await callGateway.request("talk.client.create", { sessionKey, provider: gptProvider, model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
-      const replyDelivery=createConversationReplyDelivery({gateway:callGateway,target:replyTarget,ownerId:reservation.voiceSessionId,audit:callControlAudit,callReport:callReports.begin(binding,replyTarget,reservation.voiceSessionId),onStatus:value=>{for(const response of context.listeners)response.write(`data: ${JSON.stringify({type:'reply.sync',voiceSessionId:reservation.voiceSessionId,...value})}\n\n`);}});
+      const replyDelivery=createConversationReplyDelivery({gateway:callGateway,target:replyTarget,ownerId:reservation.voiceSessionId,audit:callControlAudit,callReport:callReports.begin(binding,replyTarget,reservation.voiceSessionId,reportOptions),onStatus:value=>{for(const response of context.listeners)response.write(`data: ${JSON.stringify({type:'reply.sync',voiceSessionId:reservation.voiceSessionId,...value})}\n\n`);}});
       const taskDelivery=createTaskDelivery({gateway:callGateway,sessionKey,ownerId:reservation.voiceSessionId,replyDelivery,
         ...(gptProvider==='v-voice-gpt-live'?{readNativeResult:runId=>callGateway.request('voice.product.task-result',{clientSecret:reservation.clientSecret,runId},{timeoutMs:10000})}:{}),
         audit:callControlAudit,onIdle:()=>{nativeTaskOwners.delete(taskDelivery);if(nativeTasks.get(reservation.voiceSessionId)===taskDelivery)nativeTasks.delete(reservation.voiceSessionId);}});
@@ -695,7 +698,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
-      toolStartNotice:process.env.VOICE_TOOL_START_NOTICE==='model'?'model':'cached',calendar:lark.available?lark.calendar:null,larkRead:lark.available?lark.read:null,
+      calendar:lark.available?lark.calendar:null,larkRead:lark.available?lark.read:null,
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),
       grokExpressiveTags:process.env.XAI_VOICE_EXPRESSIVE_TAGS === '1',

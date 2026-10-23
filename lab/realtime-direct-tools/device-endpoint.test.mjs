@@ -7,8 +7,9 @@ import {setTimeout as delay} from 'node:timers/promises';
 import * as ws from 'ws';
 import OpusScript from 'opusscript';
 import {createDirectVoiceService} from './session.mjs';
+import {TOOL_FAILURE_LINE,TOOL_RESULT_PROMPT_LINE} from './lookup-recovery.mjs';
 import {TOOL_PROGRESS_LINES} from './tool-start-audio.mjs';
-import {createDeviceEndpoint,parseDeviceEntries,BACKGROUND_LEAVE_LINE,TOOL_FAILURE_LINE,TOOL_RESULT_PROMPT_LINE,UNHEARD_TURN_LINE} from './device-endpoint.mjs';
+import {createDeviceEndpoint,parseDeviceEntries,BACKGROUND_LEAVE_LINE,UNHEARD_TURN_LINE} from './device-endpoint.mjs';
 import {createStreamingSpeakerRoutingService} from '../speaker-native/stream-service.mjs';
 
 const TOKEN = 'device-fixture-token-0123456789abcdef';
@@ -26,7 +27,7 @@ async function fixture(options = {}) {
     close() {this.readyState = 3;this.emit('close');}
   }
   const gateway = options.gateway ?? {request:async method => method === 'tools.catalog' ? {groups:[{tools:[{id:'web_search'}]}]} : {ok:true}};
-  const directVoice = createDirectVoiceService({gateway,wsModule:{WebSocket:ProviderSocket,WebSocketServer:class {close() {}}},apiKeys:{seeduplex:'k',grok:'k'},speakerRouting:options.speakerRouting,toolProgressClips:options.toolProgressClips,audit:v => audit.push(v)});
+  const directVoice = createDirectVoiceService({gateway,wsModule:{WebSocket:ProviderSocket,WebSocketServer:class {close() {}}},apiKeys:{seeduplex:'k',grok:'k'},speakerRouting:options.speakerRouting,toolProgressClips:options.toolProgressClips,lookupRecovery:{toolProgressMs:options.toolProgressMs??5000,toolProgressRepeatMs:options.toolProgressRepeatMs??5000,toolProgressMax:options.toolProgressMax??3,toolFailureMs:options.toolFailureMs??5000,resultSilenceMs:options.resultSilenceMs??5000,staleSpeechMs:options.staleSpeechMs??150},audit:v => audit.push(v)});
   let busy = false;
   const endpoint = createDeviceEndpoint({directVoice,wsModule:ws,devices:parseDeviceEntries([record(options.record),...(options.extraDevices ?? [])]),audit:v => audit.push(v),
     maxBufferedBytes:options.maxBufferedBytes,robotEvaluate:options.robotEvaluate,visionPath:options.visionPath,describeImage:options.describeImage,isSessionBusy:() => busy,tickMs:10,idleMs:options.idleMs ?? 5000,initialIdleMs:options.initialIdleMs ?? 5000,followUpMs:options.followUpMs ?? 5000,chatterMs:options.chatterMs ?? 5000,
@@ -78,7 +79,7 @@ test('a speaker call keeps native 16 kHz input and no screen when phone Speaker 
   const ready = device.events.find(e => e.type === 'call.ready');
   assert.equal(ready.inputSampleRate, 16000);assert.equal(ready.outputSampleRate, 24000);assert.equal(ready.model, 'seeduplex');
   const setup = f.peers[0].sent.find(e => e.type === 'session.create');
-  assert.match(setup.session.instructions, /智能音箱/);
+  assert.match(setup.session.instructions, /当前终端没有内容展示屏幕/);
   assert.doesNotMatch(setup.session.instructions, /现在正在电话中和 Tianyi/);
   assert(!setup.session.tools.some(tool => tool.name === 'show_content'), 'a speaker has no display tool');
   assert(f.audit.some(e => e.type === 'call.created' && e.surface === 'speaker' && e.sessionKey === SESSION));
@@ -244,10 +245,10 @@ test('a slow lookup while the room talks is answered, not taken for background t
   // Someone in the room talks over the wait; ASR starts a turn it never finishes.
   provide(f, {type:'conversation.item.input_audio_transcription.started'});
   // Well past the chatter window and its grace: the old rule left here.
-  await waitFor(() => f.audit.filter(e => e.type === 'device.tool-progress').length === 2, 'two progress lines, then no more');
+  await waitFor(() => f.audit.filter(e => e.type === 'lookup.progress').length === 2, 'two progress lines, then no more');
   await delay(400);
   assert(!device.events.some(e => e.type === 'call.closed'), 'a running lookup holds the call');
-  const progress = f.audit.filter(e => e.type === 'device.tool-progress');
+  const progress = f.audit.filter(e => e.type === 'lookup.progress');
   assert.deepEqual(progress.map(e => e.played), [true,true]);
   assert(progress[1].waitedMs - progress[0].waitedMs >= 250, 'progress lines are spaced');
   assert.deepEqual(f.audit.filter(e => e.type === 'transcript' && e.source === 'tool-progress').map(e => e.text), PROGRESS.slice(0, 2).map(c => c.text));
@@ -281,7 +282,7 @@ test('a lookup that fails at once and gets no reply makes V say so instead of ha
   await f.until(() => f.audit.some(e => e.type === 'tool.delivered' && e.callId === 'cal' && e.result.error), 'tool failed');
   await waitFor(() => commits(f).includes(TOOL_FAILURE_LINE), 'V says the lookup failed');
   assert(!device.events.some(e => e.type === 'call.closed'), 'not hung up in silence');
-  assert(f.audit.some(e => e.type === 'device.tool-failure-notice' && e.tool === 'web_search' && e.spoken));
+  assert(f.audit.some(e => e.type === 'lookup.failure-notice' && e.tool === 'web_search' && e.spoken));
   // The room then has the normal follow-up window to answer the question.
   provide(f, {type:'response.created',response_id:'line'});
   provide(f, {type:'response.done',response_id:'line',response:{id:'line',status:'completed'}});
@@ -326,7 +327,7 @@ test('a result swallowed by an ASR turn that opens right after it is offered, no
   assert(!device.events.some(e => e.type === 'call.closed'), 'an unspoken result holds the follow-up window');
   await waitFor(() => commits(f).includes(TOOL_RESULT_PROMPT_LINE), 'V offers the result');
   assert(!device.events.some(e => e.type === 'call.closed'));
-  assert(f.audit.some(e => e.type === 'device.tool-result-prompt' && e.tool === 'web_search' && e.spoken));
+  assert(f.audit.some(e => e.type === 'lookup.result-prompt' && e.tool === 'web_search' && e.spoken));
 });
 
 test('a result V starts answering gets no prompt', async t => {
@@ -550,7 +551,7 @@ test('a xiaozhi-firmware robot talks to the same Voice session through the wire 
   assert(!client.events.some(e => e.type === 'call.ready'), 'native frames never reach xiaozhi firmware');
   await f.until(() => f.peers[0]?.sent.some(e => e.type === 'session.create'), 'provider session');
   const setup = f.peers[0].sent.find(e => e.type === 'session.create');
-  assert.match(setup.session.instructions, /智能音箱/);
+  assert.match(setup.session.instructions, /当前终端没有内容展示屏幕/);
 
   // Uplink: 60 ms Opus frames at 16 kHz arrive at the provider as PCM.
   const enc = new OpusScript(16000, 1, OpusScript.Application.VOIP);t.after(() => enc.delete());
@@ -688,6 +689,7 @@ test('a camera robot looks: V asks for a photo, the firmware uploads it, the des
     describeImage:async ({question, image}) => {seen.push({question, image});return '用户手里拿着一个红苹果。';}});
   t.after(f.close);
   const client = await openXiaozhi(f);t.after(() => client.close());
+  await f.until(() => mcpOut(client).some(p => p.method === 'initialize'), 'camera MCP initialized');
   const init = mcpOut(client).find(p => p.method === 'initialize');
   assert(init, 'MCP initialize after hello');
   const {url, token} = init.params.capabilities.vision;
@@ -725,6 +727,7 @@ test('an oversized photo is refused and a failed look reaches the model as a too
   const f = await fixture({record:{robot:true, camera:true}, visionPath:'/device/vision', describeImage:async () => {throw Error('model down');}});
   t.after(f.close);
   const client = await openXiaozhi(f);t.after(() => client.close());
+  await f.until(() => mcpOut(client).some(p => p.method === 'initialize'), 'camera MCP initialized');
   const {url, token} = mcpOut(client).find(p => p.method === 'initialize').params.capabilities.vision;
   f.peers[0].emit('message', Buffer.from(JSON.stringify({type:'response.function_call_arguments.done', items:[{call_id:'look-2', name:'look', arguments:JSON.stringify({question:'这是什么'})}]})), false);
   await f.until(() => mcpOut(client).some(p => p.params?.name === 'self.camera.take_photo'), 'take_photo');

@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "version": "1.0.0",
-  "build": 25,
-  "sourceCommit": "d7edf61f1e7dd44192a85ac75b1980787c79e9c4",
+  "build": 32,
+  "sourceCommit": "f81ab420123176a5190ca1a2153ecdba4993148a",
   "candidateOnly": false,
   "signedArchiveVerified": true,
   "exportedIPAVerified": true,
-  "ipaSHA256": "e3f44f4dc7c546ce79d7001d1eba1edf93655abf8a030385cc499ef8e735d058",
+  "ipaSHA256": "1780a56f336e3feb9175ce3dda8e082600f0266699c83c3af41e2823657681c4",
   "installedOnRequestedIPhone": true,
-  "realVoiceAcceptance": "pending_user_test",
+  "realVoiceAcceptance": "accepted_by_Tianyi_2026-10-24",
   "localTests": {
     "core": 37,
     "nativeAll": 71,
@@ -38,7 +38,7 @@
     "build": 8,
     "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab"
   },
-  "deviceReportedBuild": "25",
+  "deviceReportedBuild": "32",
   "savedH5Baseline": {
     "build": 10,
     "sourceCommit": "3ffeb94",
@@ -60,9 +60,9 @@
     "policyFingerprint": "cb418111e71a187b",
     "validMicrophoneInputObserved": true
   },
-  "mergedIntoMain": true,
-  "mergePR": 87,
-  "mergeChecksPassed": true,
+  "mergedIntoMain": false,
+  "mergePR": 106,
+  "mergeChecksPassed": false,
   "releaseScope": {
     "distribution": "development_signed_private_device",
     "webServerDeployed": true,
@@ -88,14 +88,13 @@
     "physicalNewReleaseAcceptance": "not claimed; build 25 retained; production binding and relaunch verified in dedicated simulator"
   },
   "currentDeviceCandidate": {
-    "build": 29,
+    "build": 32,
     "installedOnRequestedIPhone": true,
-    "lastAcceptedBuild": 24,
-    "physicalAcceptance": "binding_switch_and_action_button_following_confirmed; latency_issue_under_investigation",
-    "sourceCommit": "594e3c50d3d76a5084cf52b1860b881f540db3bd",
-    "ipaSHA256": "f40d1222958eb2607a2e1e81a853ffc71b5484624215f11c949b4d58c457d5ca",
-    "mergeStatus": "merged_via_PR100",
-    "serverCommit": "594e3c50d3d76a5084cf52b1860b881f540db3bd"
+    "lastAcceptedBuild": 32,
+    "physicalAcceptance": "Tianyi: 现在很不错，现在这样。部署上线吧",
+    "sourceCommit": "f81ab420123176a5190ca1a2153ecdba4993148a",
+    "ipaSHA256": "1780a56f336e3feb9175ce3dda8e082600f0266699c83c3af41e2823657681c4",
+    "mergeStatus": "PR106_release_in_progress"
   },
   "build10RollbackHistory": {
     "date": "2026-10-22",
@@ -132,7 +131,7 @@
     "signedIPACopiedAndVerified": true,
     "originalArchiveRetained": true
   },
-  "recordScope": "build25_signed_installed_phone_acceptance_pending",
+  "recordScope": "build32_user_accepted_production_release_authorized",
   "previouslyInstalledOnRequestedIPhone": true,
   "savedBuild14Rollback": {
     "build": 14,
@@ -334,7 +333,7 @@
     "sourceIntegration": "PR2 merged as 6860ae59f01ce6712027e2c3267424ec786f0ca1",
     "testFlight": "after phone acceptance"
   },
-  "lastAcceptedBuild": 24,
+  "lastAcceptedBuild": 32,
   "nativeRuntime": {
     "protocolVersion": 1,
     "policyReadback": "cb418111e71a187b",
@@ -601,5 +600,38 @@
     "appTestsSkipped": 2,
     "installedLowLatencyCandidate": false,
     "overallLatencyResolved": false
+  },
+  "previousFormalRecordBeforeBuild32": {
+    "build": 25,
+    "sourceCommit": "d7edf61f1e7dd44192a85ac75b1980787c79e9c4",
+    "ipaSHA256": "e3f44f4dc7c546ce79d7001d1eba1edf93655abf8a030385cc499ef8e735d058",
+    "recordScope": "build25_signed_installed_phone_acceptance_pending",
+    "realVoiceAcceptance": "pending_user_test"
+  },
+  "releaseStatus": "accepted_pending_main_release",
+  "responsiveInterruptionBuild32": {
+    "record": "responsive-interruption-build32.json",
+    "acceptedBy": "Tianyi",
+    "acceptedAt": "2026-10-24",
+    "scope": [
+      "continuous_playback",
+      "responsive_interruption"
+    ],
+    "productionReleaseAuthorized": true,
+    "priorControlledTests": {
+      "result": "PASS",
+      "productionCallCoordinator": true,
+      "input": "fixed synthetic speech at physical capture cadence; interruption amplitude scale 0.15",
+      "continuousRenderMS": 16020,
+      "falsePauses": 0,
+      "queuedRenderStallMS": 0,
+      "localInterruptionMS": 817,
+      "observedInterruptionMS": 837,
+      "speechConfidence": 0.922,
+      "classificationAgeMS": 7,
+      "newAnswerVerified": true,
+      "hangupWithoutCrash": true
+    },
+    "independentNetworkStutterResolved": false
   }
 }

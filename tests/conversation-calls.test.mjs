@@ -2,10 +2,10 @@ import test from 'node:test';import assert from 'node:assert/strict';import {mkd
 import {createConversationCalls,callSummarizerFromEnv} from '../lib/conversation-calls.mjs';
 import {createConversationReplyDelivery} from '../lib/conversation-replies.mjs';
 const binding={id:'test-group',kind:'group',sessionKey:'agent:makaron:feishu:group:oc_a',callerId:'tianyi',accountId:'bot',displayName:'测试群'},target={sessionKey:binding.sessionKey,to:'oc_a'};
-test('group call: real readiness, one summary, admitted complete transcript and late results survive',async()=>{
- const directory=await mkdtemp(join(tmpdir(),'voice-call-'));let at=1000,release;const sent=[];
+test('group call: real readiness, one summary, admitted complete transcript and late results survive',{timeout:10000},async()=>{
+ const directory=await mkdtemp(join(tmpdir(),'voice-call-'));let at=1000,release,summaryStarted;const started=new Promise(resolve=>summaryStarted=resolve);const sent=[];
  const edits=[];const gateway={request:async(method,args)=>{if(method==='tools.invoke'){edits.push(args);return {ok:true,output:{details:{ok:true,messageId:args.args.messageId}}};}sent.push(args);return {messageId:'om_'+sent.length};}};
- const calls=createConversationCalls({gateway,directory,publicOrigin:'https://phone.example',basePath:'/voice',now:()=>at,summarize:async()=>new Promise(r=>release=r)});
+ const calls=createConversationCalls({gateway,directory,publicOrigin:'https://phone.example',basePath:'/voice',now:()=>at,summarize:async()=>new Promise(r=>{release=r;summaryStarted();})});
  try{
   const report=calls.begin(binding,target,'call');const delivery=createConversationReplyDelivery({gateway,target,ownerId:'call',callReport:report});
   assert.equal(sent.length,0);delivery.ready();delivery.ready();
@@ -15,7 +15,7 @@ test('group call: real readiness, one summary, admitted complete transcript and 
   delivery.user('请生成方案',{turnId:'u2'});delivery.captureTask('request');delivery.captureTask('run',{from:'request'});
   at=66000;await delivery.close();
   // close releases audio without waiting for the summarizer.
-  for(let i=0;!release&&i<100;i++)await new Promise(r=>setTimeout(r,5));assert.ok(release);assert.ok(calls.pending);
+  await started;assert.ok(release);assert.ok(calls.pending);
   assert.equal(sent.length,1);assert.equal(JSON.parse(sent[0].message).body.elements[0].content,'V正在电话通话 · 00:00');assert.equal(edits.at(-1).args.messageId,'om_1');assert.match(edits.at(-1).args.card.body.elements[0].content,/V电话通话已结束/);
   await delivery.result('run:final','方案已生成',{questionId:'run'});assert.equal(sent.length,2);
   release('讨论了今天的安排，并请求生成方案，结果待后台返回。');await calls.flush();
@@ -81,4 +81,61 @@ test('summary failures are bounded and permanent errors are not retried',async()
   await assert.rejects(summarize({turns:[{role:'user',text:'测试'}]}),e=>e.message==='summary-http-'+status&&e.attempts===(status===401?1:2));
   assert.equal(requests,status===401?1:2);
  }
+});
+
+test('DM edits follow the native chat ID from its exact send receipt, through ticks and close',async()=>{
+ for(const nested of [false,true]){
+  const dm={...binding,kind:'dm',sessionKey:'agent:makaron:feishu:direct:ou_alice'},to={...target,sessionKey:dm.sessionKey,to:'ou_alice',accountId:'bot'};
+  const edits=[],sends=[],timers=[];let at=1000;
+  const gateway={request:async(method,args)=>{
+   if(method==='send'){sends.push(args);return nested?{results:[{messageId:'unrelated',chatId:'oc_wrong'},{messageId:'owned',chatId:'oc_alice'}],messageId:'owned'}:{messageId:'owned',chatId:'oc_alice'};}
+   assert.equal(args.args.target,'oc_alice','Feishu compares the actual message chat ID');assert.equal(args.args.messageId,'owned');assert.equal(args.sessionKey,dm.sessionKey);assert.equal(args.args.accountId,'bot');edits.push(args.args.card.body.elements[0].content);
+   return {ok:true,output:{details:{ok:true,messageId:'owned'}}};
+  }};
+  const calls=createConversationCalls({gateway,publicOrigin:'https://phone.example',now:()=>at,setTimer:fn=>{timers.push(fn);return 1;},clearTimer:()=>{}}),call=calls.begin(dm,to,'dm');
+  call.ready();await calls.flush();at=6000;await timers.pop()();call.close();await calls.flush();
+  assert.match(edits[1],/00:05/);assert.match(edits.at(-1),/已结束 · 5 秒/);assert.equal(sends.length,2);assert.ok(sends.every(s=>s.to==='ou_alice'));
+ }
+});
+test('missing or mismatched DM receipt chat cannot redirect an edit to the user ID or another receipt',async()=>{
+ for(const receipt of [{messageId:'owned'},{messageId:'owned',chatId:'ou_alice'},{messageId:'owned',results:[{messageId:'other',chatId:'oc_wrong'}]}]){
+  const audit=[],sent=[];let edits=0;const calls=createConversationCalls({publicOrigin:'https://phone.example',audit:e=>audit.push(e),gateway:{request:async(m,a)=>{if(m==='send'){sent.push(a);return receipt;}if(m==='sessions.describe')return {session:null};edits++;throw Error('must not edit');}}});
+  const call=calls.begin({...binding,kind:'dm'}, {...target,to:'ou_alice'},'missing-chat');call.ready();call.user('内容保留');call.close();await calls.flush();
+  assert.equal(edits,0);assert.equal(sent.length,2);assert.ok(audit.some(e=>e.stage==='status-start'));assert.equal((await calls.read({...binding,kind:'dm'},call.id)).turns.length,1);
+ }
+});
+
+for(const mismatch of [null,'key','agentId','accountId','nativeDirectUserId','provider','chatType','nativeChannelId'])test(`DM falls back to exact trusted session metadata; mismatch=${mismatch}`,async()=>{
+ const dm={...binding,agentId:'makaron',kind:'dm',sessionKey:'agent:makaron:feishu:direct:ou_alice'},to={...target,agentId:'makaron',sessionKey:dm.sessionKey,to:'ou_alice',accountId:'bot'};
+ const session={key:dm.sessionKey,agentId:'makaron',origin:{provider:'feishu',accountId:'bot',nativeDirectUserId:'ou_alice',chatType:'direct',nativeChannelId:'oc_alice'}};
+ if(mismatch){if(['key','agentId'].includes(mismatch))session[mismatch]='wrong';else session.origin[mismatch]='wrong';}
+ let edits=0,lookups=0;const errors=[];
+ const calls=createConversationCalls({publicOrigin:'https://phone.example',audit:e=>errors.push(e),gateway:{request:async(m,a)=>{
+  if(m==='send')return {messageId:'owned'};
+  if(m==='sessions.describe'){lookups++;assert.deepEqual(a,{key:dm.sessionKey,includeDerivedTitles:false,includeLastMessage:false});return {session};}
+  edits++;assert.equal(a.args.target,'oc_alice');return {ok:true,output:{details:{ok:true,messageId:'owned'}}};
+ }}});
+ const call=calls.begin(dm,to,'fallback');call.ready();call.close();await calls.flush();assert.equal(lookups,1);assert.equal(edits,mismatch?0:1);assert.equal(errors.some(e=>e.stage==='status-start'),!!mismatch);
+});
+
+test('DM metadata lookup and lifecycle edits retain the binding gateway during main integration',async()=>{
+ const methods=[];const dm={...binding,agentId:'makaron',kind:'dm',sessionKey:'agent:makaron:feishu:direct:ou_alice',gateway:{request:async(m,a)=>{
+  methods.push(m);if(m==='send')return {messageId:'owned'};
+  if(m==='sessions.describe')return {session:{key:a.key,agentId:'makaron',origin:{provider:'feishu',accountId:'bot',nativeDirectUserId:'ou_alice',chatType:'direct',nativeChannelId:'oc_alice'}}};
+  assert.equal(a.args.target,'oc_alice');return {ok:true,output:{details:{ok:true,messageId:'owned'}}};
+ }}};
+ const calls=createConversationCalls({gateway:{request:()=>{throw Error('Must retain the scoped gateway');}},publicOrigin:'https://phone.example'});
+ const call=calls.begin(dm,{...target,agentId:'makaron',sessionKey:dm.sessionKey,to:'ou_alice',accountId:'bot'},'scoped');call.ready();call.close();await calls.flush();
+ assert.deepEqual(methods,['send','sessions.describe','tools.invoke','send']);
+});
+
+test('quiet call retains persistence and fallback summary without creating timers or edits',async()=>{
+ const sent=[],audit=[];let timers=0;
+ const calls=createConversationCalls({gateway:{request:async(method,args)=>{assert.equal(method,'send');sent.push(args);return {messageId:'summary'};}},publicOrigin:'https://phone.example',audit:e=>audit.push(e),setTimer:()=>{timers++;}});
+ const call=calls.begin(binding,target,'quiet',{statusCard:false});call.ready();call.ready();call.user('保留完整记录');await calls.flush();
+ assert.equal(sent.length,0);assert.equal(timers,0);assert.equal(audit.filter(e=>e.type==='call.status-suppressed').length,1);
+ call.close();call.close();await calls.flush();assert.equal(sent.length,1);
+ assert.equal(JSON.parse(sent[0].message).header.title.content,'通话总结');
+ const report=await calls.read(binding,call.id);assert.equal(report.turns[0].text,'保留完整记录');assert.equal(report.summaryState,'unavailable');
+ const cancelled=calls.begin(binding,target,'cancelled',{statusCard:false});cancelled.close();await calls.flush();assert.equal(sent.length,1);
 });
