@@ -62,7 +62,8 @@ def verify_artifact(directory):
     names = set()
     for item in manifest['files']:
         name = item['path']
-        require(re.fullmatch(r'(lab|lib|plugins)/[A-Za-z0-9_@./-]+|package(?:-lock)?\.json', name)
+        require((re.fullmatch(r'(lab|lib|plugins)/[A-Za-z0-9_@./-]+|package(?:-lock)?\.json', name)
+                 or name in {'scripts/phone.mjs', 'scripts/feishu-menu.mjs'})
                 and '..' not in Path(name).parts and name not in names, 'Unsafe artifact path')
         names.add(name)
         file = directory / name

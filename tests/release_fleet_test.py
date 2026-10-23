@@ -14,6 +14,39 @@ IDLE = dict(known=True, activeCalls=0, creatingSessions=0, backgroundTasks=0, de
 
 
 class FleetSafety(unittest.TestCase):
+    def test_phone_management_artifact_is_verified_without_allowing_arbitrary_scripts(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            sources = {'lib/release-control.mjs':'export {};',
+                       'lab/gpt-live-h5/server.mjs':'export {};',
+                       'lab/gpt-live-h5/ios-shell-release.json':'{"revision":"fixture"}',
+                       'package-lock.json':'{}', 'scripts/phone.mjs':'export {};',
+                       'scripts/feishu-menu.mjs':'export {};'}
+            files = []
+            for name, content in sources.items():
+                path = root/name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content)
+                files.append(dict(path=name, bytes=len(content.encode()), sha256=fleet.digest(content.encode())))
+            manifest = dict(schema='v-voice-release-v1', gatewayProtocol=4, gatewayRestartRequired=False,
+                            commit='a'*40, clients=dict(web={}, ios={'shellRevision':'fixture'}, robot={}, speaker={}), files=files)
+            def save():
+                manifest['filesSha256'] = fleet.digest(json.dumps(files, separators=(',', ':')).encode())
+                (root/'manifest.json').write_text(json.dumps(manifest))
+            save()
+            self.assertEqual(fleet.verify_artifact(root), manifest)
+            for denied in ['scripts/extra.mjs', 'scripts/../phone.mjs', '/scripts/phone.mjs']:
+                with self.subTest(path=denied):
+                    files[-1]['path'] = denied
+                    save()
+                    with self.assertRaisesRegex(RuntimeError, 'Unsafe artifact path'):
+                        fleet.verify_artifact(root)
+            files[-1]['path'] = 'scripts/feishu-menu.mjs'
+            save()
+            (root/'scripts/phone.mjs').write_text('changed')
+            with self.assertRaisesRegex(RuntimeError, 'Artifact byte mismatch'):
+                fleet.verify_artifact(root)
+
     def simulate_switch(self, *, healthy=True, new_work=False):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
