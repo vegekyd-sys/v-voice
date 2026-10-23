@@ -150,3 +150,11 @@ test('post-call summary failure diagnostics survive call closure without persist
  f.log.audit({type:'call.report-error',voiceSessionId:'v1',reportId:'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',stage:'summary',error:'Bearer SECRET'});
  await f.log.close();const rows=await f.rows();assert.equal(rows.at(-3).error,'summary-timeout');assert.equal(rows.at(-2).error,'call-status-target-unconfirmed');assert.equal(rows.at(-1).error,'call-report-operation-failed');assert(!JSON.stringify(rows).includes('SECRET'));
 });
+
+test('summary styling diagnostics survive closure and do not retain card content or raw receipts',async t=>{
+ const f=await fixture(t);f.created();f.log.audit({type:'call.closed',voiceSessionId:'v1'});
+ const fields={voiceSessionId:'v1',reportId:'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'};
+ assert(f.log.audit({...fields,type:'call.report-error',stage:'summary-style',error:'call-card-target-unconfirmed',card:'SECRET'}));
+ assert(f.log.audit({...fields,type:'call.summary-styled',messageId:'om_owned',receipt:'SECRET'}));
+ await f.log.close();const rows=await f.rows();assert.equal(rows.at(-2).error,'call-card-target-unconfirmed');assert.equal(rows.at(-1).messageId,'om_owned');assert(!JSON.stringify(rows).includes('SECRET'));
+});

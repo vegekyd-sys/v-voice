@@ -10,8 +10,8 @@ const entries=['a','b','alias'].map((suffix,i)=>({
  callerId:'tianyi',permissionProfile:'personal-tianyi',accessToken:String(i+1).repeat(40)}));
 async function fixture(t,options={}){
  const calls=[];let serial=0;
- const bridge=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:options.entries??entries,callSummarize:async()=>'讨论了计划。',personalReply:options.personalReply,feishuAccounts:options.feishuAccounts??{},
- gateway:{request:async(method,args)=>{calls.push({method,args});if(method==='sessions.describe')return {session:options.resolve?options.resolve(args):{key:args.key,agentId:'makaron'}};if(method==='send')return {messageId:'om_fixture',chatId:args.to.startsWith('ou_')?'oc_dm_fixture':args.to};if(method==='tools.invoke')return {ok:true,output:{details:{ok:true,messageId:args.args.messageId}}};return method==='talk.client.create'?{voiceSessionId:'native-'+(++serial),model:'gpt-live-1-codex',transport:'webrtc',offerUrl:'/plugins/openai/realtime/calls'}:{ok:true};}},
+ const bridge=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:options.entries??entries,callSummarize:options.summarize??(async()=>'讨论了计划。'),personalReply:options.personalReply,feishuAccounts:options.feishuAccounts??{},
+ gateway:{request:async(method,args)=>{calls.push({method,args});if(method==='sessions.describe')return {session:options.resolve?options.resolve(args):{key:args.key,agentId:'makaron'}};if(method==='send'&&options.omitReceiptChat)return {messageId:'om_fixture'};if(method==='send')return {messageId:'om_fixture',chatId:args.to.startsWith('ou_')?'oc_dm_fixture':args.to};if(method==='tools.invoke')return {ok:true,output:{details:{ok:true,messageId:args.args.messageId}}};return method==='talk.client.create'?{voiceSessionId:'native-'+(++serial),model:'gpt-live-1-codex',transport:'webrtc',offerUrl:'/plugins/openai/realtime/calls'}:{ok:true};}},
  directVoice:{models:()=>[],reserve:async args=>{calls.push({method:'direct.reserve',args});return {voiceSessionId:'direct-'+(++serial),provider:args.model};},close:async()=>{},handleEvent:()=>{},dispose:async()=>{},...options.directVoice},offer:options.offer??(async()=> '')});
  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
  const request=(id,path,cookie,body)=>new Promise((resolve,reject)=>{
@@ -156,9 +156,9 @@ for(const model of ['seeduplex','grok','gpt-live'])test(`legacy personal ${model
 // Exercise real binding issue/redeem/access and both server dialing paths.
 for(const kind of ['group','dm'])for(const transport of ['gpt-live','seeduplex','grok','fast-socket'])
 test(`iOS ${kind} ${transport}: no live status, one end summary with readable transcript`,async t=>{
- const entry={...entries[0],kind,replySync:true,...(kind==='dm'?{sessionKey:'agent:makaron:feishu:direct:ou_alice'}:{})};
+ const entry={...entries[0],kind,replySync:true,...(kind==='dm'?{sessionKey:'agent:makaron:feishu:direct:ou_alice',nativeChatId:'oc_bound_dm'}:{})};
  const sockets=new Set();
- const f=await fixture(t,{entries:[entry],feishuAccounts:{accounts:{lab:{appId:'existing-account'}}},directVoice:{
+ const f=await fixture(t,{entries:[entry],omitReceiptChat:true,summarize:async()=>({kind:'brief',title:'计划讨论',lead:'讨论了计划。',sections:[]}),feishuAccounts:{accounts:{lab:{appId:'existing-account'}}},directVoice:{
   attach:(_id,_ticket,ws)=>{sockets.add(ws);ws.on('close',()=>sockets.delete(ws));return true;},
   dispose:async()=>{for(const ws of sockets)ws.terminate();},
  }});
@@ -190,11 +190,11 @@ test(`iOS ${kind} ${transport}: no live status, one end summary with readable tr
  assert.equal((await f.request(entry.id,'close',device,{voiceSessionId:call.voiceSessionId})).status,200);
  for(let i=0;f.bridge.releaseReadiness().backgroundTasks&&i<100;i++)await new Promise(r=>setTimeout(r,2));
  const sent=f.calls.filter(c=>c.method==='send');assert.equal(sent.length,1);
- assert.equal(f.calls.filter(c=>c.method==='tools.invoke').length,0,'no timer or hangup status edits');
+ const edits=f.calls.filter(c=>c.method==='tools.invoke');assert.equal(edits.length,1,'only the end summary is styled');assert.equal(edits[0].args.args.target,kind==='dm'?'oc_bound_dm':entry.sessionKey.split(':').at(-1));assert.equal(edits[0].args.args.card.body.elements[0].columns[0].background_style,'purple-50');
  const card=JSON.parse(sent[0].args.message);assert.match(JSON.stringify(card),/电话纪要/);
  assert.match(JSON.stringify(card),/讨论了计划。/);
  assert.equal(sent[0].args.sessionKey,entry.sessionKey);assert.equal(sent[0].args.to,entry.sessionKey.split(':').at(-1));
  const id=new URL(card.body.elements.at(-1).behaviors[0].default_url).searchParams.get('call');
  const saved=await(await f.request(entry.id,'calls/'+id,device)).json();
- assert.deepEqual(saved.turns.map(row=>row.text),['说明计划']);assert.equal(saved.summaryState,'generated');
+ assert.deepEqual(saved.turns.map(row=>row.text),['说明计划']);assert.equal(saved.summaryState,'generated');assert.equal(saved.summaryDelivery.state,'styled');
 });

@@ -1,3 +1,9 @@
+## 2026-10-24 — Durable private-call card targets
+
+- Bind native DM chat IDs in private phone entries and Gateway-authorized OAuth admissions, so status/minutes edits survive mutable session-origin metadata being replaced during real calls. Conflicting receipt chat IDs fail closed; provider message ownership checks remain in place.
+- Persist summary delivery state and retain safe post-call styling diagnostics. Cover the real iOS binding/dial/close paths with missing receipt and session chat IDs.
+- Operators must verify each legacy DM nativeChatId against an owned message and the exact bot/user before adding it to private configuration. No private IDs or credentials are shipped in source.
+
 ## 2026-10-24 — Concise call minutes
 
 - Use the accepted pale-purple 电话纪要 card with topic sections and a lightweight transcript link.
