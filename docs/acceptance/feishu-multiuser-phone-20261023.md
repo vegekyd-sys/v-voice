@@ -25,7 +25,8 @@ Gateway 改动在 `v-openclaw-platform` 的同名独立分支，不在本仓复�
 - 本地 HTTP fixture 覆盖两个 OAuth subject、两个群，检查签名 RPC、浏览器传入身份/会话无效、跨账号/跨群 cookie 拒绝。OAuth provider 使用 fixture，不是第二个真人。
 - 目录测试覆盖四个 actor×group 组合的 caller/访问密钥隔离、重启后的加密 cookie 与权限撤销。
 - 原生后台任务测试确认可信 senderId、senderIsOwner 和飞书账号上下文传给现有 consult SDK，另一个 actor 无权读取任务。
-- 接入事故修复 PR97 后，Voice 全部 Node 测试通过 816 项；最后的 canonical 首拨检查另跑相关 9 项通过。平台 Candidate receipt 在配套平台仓登记。
+- 接入事故修复 PR97/98 后，最终 Voice 全部 Node 测试通过 **818 项**（18.15 秒）；代码提交 `abdb43d765c11ecfd3a822cfa7ec03732a4ed081`。本次仅追加本文的最终验收记录。
+- 平台提交 `50e31d6861275604c869a07119a76daf263f0193` 的 10 个产物 hash 与最终 Candidate receipt 完全一致。`candidate-347d99c1-c0b2-47cf-a53a-726ab34b8da7`：**23/23**，实际测试 12.56 秒、服务器总耗时含独立快照约 54 秒；共享 PID 前后均为 `1958174`，`sharedUnchanged:true`。
 
 ## 尚未验收
 
@@ -33,6 +34,6 @@ Gateway 改动在 `v-openclaw-platform` 的同名独立分支，不在本仓复�
 
 涉及 Gateway 身份/工具协议，因此最终需要共享 VLab 集成验收。当前仅使用可丢弃 Candidate，不占共享 lease、不重启共享 Gateway。合并由 Tianyi 决定；共享集成结束后按 VLab 规则回滚或经另行授权推广，不能将未完成候选留作新基线。
 
-原聊天正在独立处理电话连接事故。后续接入 main 时保留 PR97 的显式已登录入口直接渲染与原生麦克风提前准备；同时支持原聊天正在采用的 `sessions.describe({key,...})` 快速严格检查。不得恢复每次拨号全表 `sessions.resolve`。
+已 rebase 到包含 PR97/98 的 main，保留显式已登录入口直接渲染、原生麦克风提前准备及静态电话的 `sessions.describe({key,...})` 快速严格检查。没有恢复每次拨号全表 `sessions.resolve`。
 
 本候选尚未发布，因此未将能力写入首页已发布 changelog。正式发布前必须同时更新首页 `changelog.mjs`、`CHANGELOG.md` 与版本登记。
