@@ -8,7 +8,7 @@
     "content-view.mjs": "c754e537248cf95efbff9d810d61f82da13fc3c8cbec42bca02e7928906de743",
     "markdown.mjs": "a556476a8a88b35aba790f993a8bde333150aebab9dc7fdce14aa2e3c586ace0",
     "media-references.mjs": "ca8509fad6ef83f83f9365432652058e1a364b5adb1a199508d3239521d581f8",
-    "changelog.mjs": "907fa1f360660deda212fb0528f83f447e2223867193e422e56e4fdbc94098d6",
+    "changelog.mjs": "78ded06c944c7a8098e50e28798e45c515b160789776c9bfe1dd13abe4b2de78",
     "avatar.mjs": "964058d6700363a8c11b700304fa6662cce90caba7bbdb8605e4c270ad9a33dc",
     "avatar-reactions.mjs": "69880767130ffc0ff6adcecd6e4ea13b65073def959ce9a5189ab8806f9f1b1e",
     "avatar-telemetry.mjs": "236b9d6e5ad67009d83347f72002b69b01f3c5e7eb71bdde7d4166d59c9b254c",
@@ -131,7 +131,7 @@
   },
   "outputs": {
     "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
-    "native-h5.js": "5be277f24053498ee162ed8674942bef9ca9c8f88272a034b60fc2f7f8778fe3",
+    "native-h5.js": "493a327a1bf962b03673bb2b1959601bf86c930733b4a9377dbf5b0a5c15d29d",
     "comparison.html": "7beb6c5d3e5933b5c020ddf23e200679318faa98568904f927d0553ea3d33076",
     "styles.css": "0be2f420d1ac08e2d1442d9b3250f8e3633b47ea6d73c93b3f4274809665441c",
     "comparison.css": "ae9fbcffb322e32737e2ce0ed830c1b86f9f27406b4ce8b686dc8cac9f36ba16",

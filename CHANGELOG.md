@@ -1,4 +1,10 @@
-## Candidate — DM call lifecycle and summary reliability · 2026-10-23
+## 2026-10-23 — Session phone production release
+
+- Publish the accepted PR #2 session phone path and PR #90 DM/status/summary fixes together. Each registered group has its own server-owned session and public login URL; V Backup is the acceptance group, never a shared fallback for other groups.
+- Update the actual homepage release notes for session context, one live status card, first-person call summaries, durable Feishu login and build 25 binding. Existing native build 25 needs no reinstall; a candidate-bound device must bind the production entry separately.
+- Roll out one verified artifact through the dual-node Voice release controller. The separate platform phone-tab event handler requires its own Gateway integration/restart; the Voice service switch itself does not.
+
+## Candidate history — DM call lifecycle and summary reliability · 2026-10-23
 
 - Apply the existing compact status/summary flow to explicit DM phone entries. Keep same-message elapsed/ended updates and suppress per-turn Q&A cards during calls.
 - Use “V正在电话通话” and “V电话通话已结束” consistently.
