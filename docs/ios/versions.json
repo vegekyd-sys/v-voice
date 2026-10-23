@@ -91,7 +91,7 @@
     "build": 29,
     "installedOnRequestedIPhone": true,
     "lastAcceptedBuild": 24,
-    "physicalAcceptance": "installed_and_launched; binding_journey_user_experience_pending",
+    "physicalAcceptance": "binding_switch_and_action_button_following_confirmed; latency_issue_under_investigation",
     "sourceCommit": "594e3c50d3d76a5084cf52b1860b881f540db3bd",
     "ipaSHA256": "f40d1222958eb2607a2e1e81a853ffc71b5484624215f11c949b4d58c457d5ca",
     "mergeStatus": "merged_via_PR100",
@@ -529,7 +529,7 @@
   "bindingJourneyCandidate": {
     "build": 29,
     "baseCommit": "694c18f3e5c75fea8b606158b9b3cb5dfcc7d8fa",
-    "status": "merged_and_installed_build29_user_experience_pending",
+    "status": "merged_installed_and_user_accepted_binding_switch_and_action_button",
     "record": "binding-journey/README.md",
     "threeStepSetup": true,
     "multipleSavedConversations": true,
@@ -543,7 +543,8 @@
     "installedOnPhysicalPhone": true,
     "testflightPublished": false,
     "serverDeploymentRequired": true,
-    "originalCandidateBuild": 26
+    "originalCandidateBuild": 26,
+    "userAcceptance": "2026-10-23: binding and switching work; Action Button follows selected conversation; latency investigation remains separate"
   },
   "previousDeviceCandidateBeforeBindingJourney": {
     "build": 28,
@@ -589,5 +590,16 @@
     },
     "normalLaunchVerified": true,
     "physicalBindingJourneyAcceptance": "pending_user_experience"
+  },
+  "latencyBuild30Candidate": {
+    "build": 30,
+    "status": "candidate_simulator_passed_physical_vpio_pending",
+    "record": "latency-build30.md",
+    "coreTestsPassed": 40,
+    "appTestsPassed": 87,
+    "appTestsFailed": 0,
+    "appTestsSkipped": 2,
+    "installedLowLatencyCandidate": false,
+    "overallLatencyResolved": false
   }
 }

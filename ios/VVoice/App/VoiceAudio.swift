@@ -3,7 +3,7 @@ import OSLog
 @preconcurrency import WebRTC
 import VVoiceCore
 
-/// One converter per input tap; AVAudioEngine invokes this tap serially.
+/// One converter per input stream, invoked serially by the capture worker.
 final class CaptureConverter: @unchecked Sendable {
     let converter: AVAudioConverter
     let target: AVAudioFormat
@@ -56,6 +56,7 @@ private final class CaptureHandoff: @unchecked Sendable {
     private(set) var lastStartupFailure: String?
     private var generation = UUID()
     private var engine: AVAudioEngine?
+    private var captureSink: VVCaptureSink?
     private var player: AVAudioPlayerNode?
     private let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24_000, channels: 1, interleaved: false)!
     private var ledger = PlaybackLedger()
@@ -71,6 +72,11 @@ private final class CaptureHandoff: @unchecked Sendable {
     private var captureFrames = 0
     private var captureActiveFrames = 0
     private var capturePeak = 0.0
+    private var captureMaxGapMS = 0.0
+    private var captureMaxDeliveryMS = 0.0
+    private var previousCaptureTime: Double?
+    private var outputFirstAt: Double?
+    private var outputStartedOnce = false
     private var started = false
     private var outputFinished = false
     private var startingOutput = false
@@ -134,6 +140,7 @@ private final class CaptureHandoff: @unchecked Sendable {
             let captureOwner = generation
             let handoff = CaptureHandoff()
             let converter = try CaptureConverter(input: inputFormat) { [weak self] data, rms in
+                let capturedAt = ProcessInfo.processInfo.systemUptime
                 let slot = handoff.reserve()
                 guard slot.accepted else {
                     if slot.report { Task { @MainActor [weak self] in
@@ -145,6 +152,10 @@ private final class CaptureHandoff: @unchecked Sendable {
                     handoff.release()
                     guard let self, self.started, self.generation == captureOwner else { return }
                     self.capturedInput = true; self.lastCaptureAt = Date()
+                    let deliveredAt = ProcessInfo.processInfo.systemUptime
+                    if let previous = self.previousCaptureTime { self.captureMaxGapMS = max(self.captureMaxGapMS, (capturedAt - previous) * 1000) }
+                    self.previousCaptureTime = capturedAt
+                    self.captureMaxDeliveryMS = max(self.captureMaxDeliveryMS, (deliveredAt - capturedAt) * 1000)
                     self.captureFrames += 1
                     if rms >= 0.002 { self.captureActiveFrames += 1 }
                     self.capturePeak = max(self.capturePeak, rms)
@@ -152,8 +163,16 @@ private final class CaptureHandoff: @unchecked Sendable {
                     self.onInput?(data, rms)
                 }
             }
-            input.installTap(onBus: 0, bufferSize: 960, format: inputFormat) { @Sendable buffer, _ in converter.consume(buffer) }
+            guard let sink = VVCaptureSink(format: inputFormat, handler: { @Sendable buffer in converter.consume(buffer) }, overflow: { @Sendable [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self, self.generation == captureOwner else { return }
+                    CallDiagnostics.record("audio.capture-overflow"); self.onFailure?(VoiceError.bufferOverflow)
+                }
+            }) else { throw VoiceError.audio }
+            e.attach(sink.node); e.connect(input, to: sink.node, format: inputFormat)
+            captureSink = sink
             engine = e; player = p; stage = "engine-start"; e.prepare(); try e.start(); started = true
+            CallDiagnostics.record("audio.hardware", code: "rate=\(Int(session.sampleRate)) ioMS=\(Int(session.ioBufferDuration * 1000)) inMS=\(Int(session.inputLatency * 1000)) outMS=\(Int(session.outputLatency * 1000))")
         } catch {
             let failure = "\(stage): \((error as NSError).domain) (\((error as NSError).code))"
             lastStartupFailure = failure
@@ -180,6 +199,10 @@ private final class CaptureHandoff: @unchecked Sendable {
         guard !data.isEmpty, data.count % 2 == 0, data.count <= 480_000 else { throw VoiceError.protocolMismatch }
         let count = data.count / 2
         guard try ledger.accept(frames: count, sequence: sequence) else { return }
+        if outputFirstAt == nil {
+            outputFirstAt = ProcessInfo.processInfo.systemUptime
+            CallDiagnostics.record("audio.output-first", code: "ms=\(count / 24) paused=\(playbackPaused)")
+        }
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count)), let dst = buffer.floatChannelData?[0] else { throw VoiceError.audio }
         data.withUnsafeBytes { bytes in
             let samples = bytes.bindMemory(to: Int16.self)
@@ -204,10 +227,15 @@ private final class CaptureHandoff: @unchecked Sendable {
     private func startPlayback() {
         guard !playbackPaused, !startingOutput, ledger.queuedFrames > 0 else { return }
         startingOutput = true; player?.play(); onPlayback?(true)
+        if !outputStartedOnce {
+            outputStartedOnce = true
+            CallDiagnostics.record("audio.output-start", code: "waitMS=\(Int((ProcessInfo.processInfo.systemUptime - (outputFirstAt ?? ProcessInfo.processInfo.systemUptime)) * 1000)) queuedMS=\(ledger.queuedFrames / 24)")
+        }
     }
     /// Pause the render cursor without removing scheduled buffers or stopping capture.
     func setPlaybackPaused(_ paused: Bool) {
         guard playbackPaused != paused else { return }; playbackPaused = paused
+        CallDiagnostics.record(paused ? "audio.output-pause" : "audio.output-resume", code: "queuedMS=\(ledger.queuedFrames / 24)")
         if paused { player?.pause(); onPlayback?(false) }
         else if startingOutput, ledger.queuedFrames > 0 { player?.play(); onPlayback?(true) }
         else if ledger.queuedFrames >= 2880 || outputFinished { startPlayback() }
@@ -232,10 +260,12 @@ private final class CaptureHandoff: @unchecked Sendable {
         player.play()
     }
     func markOutputDone() {
+        CallDiagnostics.record("audio.output-done", code: "queuedMS=\(ledger.queuedFrames / 24) paused=\(playbackPaused)")
         outputFinished = true
         if ledger.queuedFrames > 0 { startPlayback() } else { onDrained?() }
     }
     func clear() {
+        outputFirstAt = nil; outputStartedOnce = false
         outputEnvelope.reset()
         ledger.clear(); playbackPaused = false; player?.stop(); startingOutput = false; outputFinished = false; onPlayback?(false)
     }
@@ -251,7 +281,8 @@ private final class CaptureHandoff: @unchecked Sendable {
         if capturedInput { recordCapture() }
         generation = UUID(); started = false; capturedInput = false; lastCaptureAt = .distantPast; clear()
         captureFrames = 0; captureActiveFrames = 0; capturePeak = 0
-        engine?.inputNode.removeTap(onBus: 0); engine?.stop(); engine = nil; player = nil
+        captureMaxGapMS = 0; captureMaxDeliveryMS = 0; previousCaptureTime = nil
+        engine?.stop(); captureSink?.invalidate(); engine = nil; captureSink = nil; player = nil
         if ownsSessionActivation {
             ownsSessionActivation = false
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -264,5 +295,6 @@ private final class CaptureHandoff: @unchecked Sendable {
         let systemMuted = AVAudioApplication.shared.isInputMuted
         let processingMuted = engine?.inputNode.isVoiceProcessingInputMuted ?? false
         CallDiagnostics.record("audio.capture", code: "frames=\(captureFrames) active=\(captureActiveFrames) peakMilli=\(Int(capturePeak * 1000)) appMuted=\(systemMuted) vpMuted=\(processingMuted) route=\(route)")
+        CallDiagnostics.record("audio.capture-timing", code: "frames=\(captureFrames) gapMS=\(Int(captureMaxGapMS)) mainMS=\(Int(captureMaxDeliveryMS))")
     }
 }

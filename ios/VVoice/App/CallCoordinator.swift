@@ -312,8 +312,10 @@ import VVoiceCore
             // No input callback is installed yet: pre-connect PCM is discarded.
             if model != .gptLive {
                 try audio.start()
-                try await audio.waitUntilCapturing()
-                CallDiagnostics.record("call.capture-prepared")
+                // Keep the Action Button activation window, but let the first
+                // capture arrive while the network handshake is in flight.
+                // dial still verifies actual capture before showing connected.
+                CallDiagnostics.record("call.capture-started")
                 guard owned(owner) else { throw CancellationError() }
             }
             try await dial(owner: owner, greeting: true)

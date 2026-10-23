@@ -13,6 +13,8 @@ import VVoiceCore
     private var bufferedBytes = 0
     private var uploadedFrames = 0
     private var uploadedBytes = 0
+    private var maxSendMS = 0.0
+    private var maxBufferedBytes = 0
     var onEvent: (([String: Any]) throws -> Void)?
     var onFailure: ((Error) -> Void)?
     var onClose: (() -> Void)?
@@ -59,8 +61,10 @@ import VVoiceCore
                 pinger = Task { [weak self] in
                     while !Task.isCancelled {
                         do {
-                            try await Task.sleep(for: .seconds(10))
+                            try await Task.sleep(for: .seconds(2))
+                            let started = ProcessInfo.processInfo.systemUptime
                             try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in s.sendPing { error in if let error { c.resume(throwing: error) } else { c.resume() } } }
+                            CallDiagnostics.record("relay.ping", code: "rttMS=\(Int((ProcessInfo.processInfo.systemUptime - started) * 1000))")
                         } catch { if !Task.isCancelled { self?.fail(error) }; return }
                     }
                 }
@@ -76,6 +80,7 @@ import VVoiceCore
         guard !closed, socket != nil else { return }
         guard bufferedBytes + bytes <= 96_000 else { CallDiagnostics.record("audio.upload-overflow"); fail(VoiceError.bufferOverflow); return }
         queue.append((message, bytes)); bufferedBytes += bytes
+        maxBufferedBytes = max(maxBufferedBytes, bufferedBytes)
         guard sender == nil else { return }
         sender = Task { [weak self] in
             guard let self else { return }
@@ -83,12 +88,14 @@ import VVoiceCore
             do {
                 while !self.closed, !self.queue.isEmpty {
                     let (m, count) = self.queue.removeFirst()
+                    let started = ProcessInfo.processInfo.systemUptime
                     try await self.socket?.send(m)
+                    self.maxSendMS = max(self.maxSendMS, (ProcessInfo.processInfo.systemUptime - started) * 1000)
                     self.bufferedBytes = max(0, self.bufferedBytes - count)
                     if case .data = m {
                         self.uploadedFrames += 1; self.uploadedBytes += count
                         if self.uploadedFrames == 1 || self.uploadedFrames % 250 == 0 {
-                            CallDiagnostics.record("audio.upload", code: "frames=\(self.uploadedFrames) bytes=\(self.uploadedBytes) queued=\(self.bufferedBytes)")
+                            CallDiagnostics.record("audio.upload", code: "frames=\(self.uploadedFrames) bytes=\(self.uploadedBytes) queued=\(self.bufferedBytes) peak=\(self.maxBufferedBytes) sendMS=\(Int(self.maxSendMS))")
                         }
                     }
                 }
