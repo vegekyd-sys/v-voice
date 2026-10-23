@@ -157,11 +157,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   };
   const killOwned=async(s,id)=>{
     if(!s.processes.has(id))return;
-    const result=await gateway.request('tools.invoke',{agentId:'makaron',sessionKey:s.sessionKey,name:'process',args:{action:'kill',sessionId:id}},{timeoutMs:10000});
+    const result=await s.gateway.request('tools.invoke',{agentId:s.agentId,sessionKey:s.sessionKey,name:'process',args:{action:'kill',sessionId:id}},{timeoutMs:10000});
     audit({type:'process.cancel',voiceSessionId:s.id,sessionId:id,result});
     // Keep the ID until a poll proves terminal; a kill acknowledgement alone
     // is not evidence that the underlying command has exited.
-    const terminal=await gateway.request('tools.invoke',{agentId:'makaron',sessionKey:s.sessionKey,name:'process',args:{action:'poll',sessionId:id,timeout:2000}},{timeoutMs:10000});
+    const terminal=await s.gateway.request('tools.invoke',{agentId:s.agentId,sessionKey:s.sessionKey,name:'process',args:{action:'poll',sessionId:id,timeout:2000}},{timeoutMs:10000});
     audit({type:'process.cancel-observed',voiceSessionId:s.id,sessionId:id,result:terminal});
     if(terminal.ok===true&&processExited(terminal.output))s.processes.delete(id);
     else throw Error('执行会话退出尚未确认');
@@ -223,7 +223,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     };
     ending.fallbackTimer=setTimeout(fallback,nativeFarewellDelayMs);ending.fallbackTimer.unref?.();
   };
-  async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false,replyTarget=null,callReportFactory=null,nativeRuntimeVersion}) {
+  async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false,replyTarget=null,callReportFactory=null,nativeRuntimeVersion,gateway:callGateway=gateway,actorScoped=false,agentId='makaron'}) {
     if(nativeRuntimeVersion!==undefined&&(nativeRuntimeVersion!==1||surface!=='phone'))throw Error('Unsupported native runtime');
     if(!['phone','speaker'].includes(surface))throw Error('不支持的语音终端');
     if(![16000,24000].includes(inputSampleRate))throw Error('不支持的输入采样率');
@@ -231,13 +231,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const spec=models().find(m=>m.id===model);if(!spec)throw Error('没有这个语音模型');
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
     const selectedVoice=model==='grok'?grokVoice(voice):spec.voice;
-    const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,sessionBound,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map(),surface,display:surface!=='speaker',inputSampleRate,speaker:surface==='speaker'?speaker:null};
+    const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,sessionBound,gateway:callGateway,actorScoped,agentId,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map(),surface,display:surface!=='speaker',inputSampleRate,speaker:surface==='speaker'?speaker:null};
     Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,narrationBusyUntil:0,narrations:0,progress:null,toolOwners:new Map(),retiredBridges:new Set()});
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
-    s.replyDelivery=createConversationReplyDelivery({gateway,target:replyTarget,ownerId:s.id,audit,callReport:callReportFactory?.(s.id),onStatus:value=>emit(s,{type:'reply.sync',...value})});
-    s.delivery=createTaskDelivery({gateway,sessionKey,ownerId:s.id,replyDelivery:s.replyDelivery,audit});
-    s.backend=createBackendDelegation({gateway,sessionKey,sessionBound,ownerId:s.id,audit,taskDelivery:s.delivery,pollMs:backendPollMs,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}},
+    s.replyDelivery=createConversationReplyDelivery({gateway:callGateway,target:replyTarget,ownerId:s.id,audit,callReport:callReportFactory?.(s.id),onStatus:value=>emit(s,{type:'reply.sync',...value})});
+    s.delivery=createTaskDelivery({gateway:callGateway,sessionKey,ownerId:s.id,replyDelivery:s.replyDelivery,audit});
+    s.backend=createBackendDelegation({gateway:callGateway,sessionKey,sessionBound,ownerId:s.id,audit,taskDelivery:s.delivery,pollMs:backendPollMs,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}},
       onStage:stage=>{if(current(s)){audit({type:'backend.stage',voiceSessionId:s.id,callId:stage.callId,label:stage.latest,running:stage.latestRunning,completed:stage.completed,failed:stage.failed});emit(s,{type:'tool.progress',callId:stage.callId,name:'delegate_to_v',...(stage.latest?{stage:stage.latest}:{})});}}});
     sessions.set(s.id,s);
     audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model,voice:s.voice,surface,...(model==='grok'?{speed:grokSpeed,expressiveTags:grokExpressiveTags}:{})});
@@ -261,8 +261,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const connectionStage=stage=>audit({type:'call.connection-stage',voiceSessionId:s.id,model:s.model,stage});
     connectionStage('catalog-requested');connectionStage('context-requested');
     const [catalog,context]=await Promise.all([
-      gateway.request('tools.catalog',{agentId:'makaron',includePlugins:true},{timeoutMs:20000}).then(value=>{if(current(s))connectionStage('catalog-ready');return value;}),
-      Promise.resolve().then(()=>loadContext(s.sessionKey)).then(value=>{if(current(s))connectionStage('context-ready');return value;}),
+      s.gateway.request('tools.catalog',{agentId:s.agentId,includePlugins:true},{timeoutMs:20000}).then(value=>{if(current(s))connectionStage('catalog-ready');return value;}),
+      Promise.resolve().then(()=>loadContext(s.sessionKey,{gateway:s.gateway})).then(value=>{if(current(s))connectionStage('context-ready');return value;}),
     ]);
     if(!current(s))return;
     const entries=(catalog.groups??[]).flatMap(g=>g.tools??[]),allowedTools=new Set(entries.map(t=>t.id));
@@ -284,10 +284,10 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if(signal.aborted||!current(s))throw Error('本次任务已取消');
       if(!allowedTools.has(name))throw Error('OpenClaw 未开放这个工具');
       if(name==='process'&&args.action!=='list'&&!s.processes.has(args.sessionId))throw Error('只能管理本次电话发起的执行会话');
-      if(name==='exec')args={...args,yieldMs:1000,...(Object.keys(toolEnvironment).length?{env:{...args.env,...toolEnvironment}}:{})};
+      if(name==='exec')args={...args,yieldMs:1000,...(!s.actorScoped&&Object.keys(toolEnvironment).length?{env:{...args.env,...toolEnvironment}}:{})};
       audit({type:'tool.invoke',voiceSessionId:s.id,callId,name,args});
       const invokedAt=performance.now();
-      const result=await gateway.request('tools.invoke',{agentId:'makaron',sessionKey:s.sessionKey,name,args},{timeoutMs:180000});
+      const result=await s.gateway.request('tools.invoke',{agentId:s.agentId,sessionKey:s.sessionKey,name,args},{timeoutMs:180000});
       const gatewayMs=performance.now()-invokedAt;
       audit({type:'tool.native-result',voiceSessionId:s.id,callId,name,result});
       const details=result.output?.details;

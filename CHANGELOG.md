@@ -1,3 +1,9 @@
+## 2026-10-23 — Feishu multiuser phone, shared VLab validation
+
+- Add OAuth-authenticated dynamic conversation entries and signed actor-scoped Gateway requests, preserving current Feishu text routing and tool policies. Disable personal host shortcuts for these callers.
+- Apply the same server-owned identity checks to HTTP and one-connection native dialing. Preserve PR97/98/101 startup improvements.
+- This version is authorized for shared VLab validation only. Production and real multiuser audio acceptance remain unchanged/pending.
+
 ## 2026-10-23 — iOS guided binding and saved conversations · 2026-10-23
 
 - Replace the binding form with a three-step native journey: connect a conversation, configure the Action button, then “替代 Siri 的第一步：enjoy”. Show the journey on first launch without a binding; existing users enter the phone directly. Prefilled handoffs use a focused confirmation state and fixed primary actions.
