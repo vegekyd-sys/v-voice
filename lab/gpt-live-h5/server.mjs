@@ -12,7 +12,7 @@ import { createAvatarReactionSelector, avatarEvaluatorFromEnv } from "./avatar-d
 import { AVATAR_FILES, taskActivity } from "./avatar-state.mjs";
 import { createVoiceAccess } from "./access.mjs";
 import {createConversationCalls,callIdValid,callSummarizerFromEnv} from '../../lib/conversation-calls.mjs';
-import {createIosBindings} from '../../lib/ios-bindings.mjs';
+import {createIosBindings,iosAppDownload} from '../../lib/ios-bindings.mjs';
 import { createConversationEntries } from "../../lib/conversation-entries.mjs";
 import { verifyPhoneSession } from "../../lib/phone-provisioning.mjs";
 import {conversationReplyTarget,createConversationReplyDelivery} from '../../lib/conversation-replies.mjs';
@@ -26,7 +26,7 @@ import {voiceConversationContext} from '../realtime-direct-tools/conversation-co
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosAppDownloadUrl, callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null }) {
   if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
   if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
   basePath = basePath.replace(/\/$/u, "");
@@ -38,6 +38,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   if (!Number.isInteger(maxActiveSessions) || maxActiveSessions < 1 || maxActiveSessions > 50 || !Number.isInteger(maxActiveSessionsPerIp) || maxActiveSessionsPerIp < 1 || maxActiveSessionsPerIp > maxActiveSessions) throw new Error("Invalid voice call limits");
   const entries = createConversationEntries(conversationEntries, accessToken, personalReply);
   const replyTargets=new Map(entries.replyBindings().map(e=>[e.id,conversationReplyTarget(e,feishuAccounts)]));
+  const appDownload=iosAppDownload(iosAppDownloadUrl);
   const phoneLogin = feishuLogin ? createFeishuPhoneLogin({...feishuLogin, publicOrigin, basePath, entries}) : null;
   const callReports=createConversationCalls({gateway,directory:callReportsDirectory,publicOrigin,basePath,summarize:callSummarize,audit:callControlAudit});
   const accessors = new Map();
@@ -248,7 +249,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if(hosted&&pathname==='/api/ios-binding'){
         const principal=bindingPrincipal(req,binding);
         if(!principal)return json(res,403,{error:'请从飞书或已授权网页入口生成新的 App 绑定。'});
-        if(req.method==='GET')return json(res,200,{devices:iosBindings.list(binding,principal)});
+        if(req.method==='GET')return json(res,200,{devices:iosBindings.list(binding,principal),appDownload});
         if(req.method==='POST'){
           if(!allow(`ios-binding-create:${entry}:${ip}`))return json(res,429,{error:'生成次数较多，请稍后再试。'});
           return json(res,200,iosBindings.issue(binding,principal));
@@ -662,6 +663,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       personalReply: {replySync:!!process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID,accountId:process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID},
       conversationEntries: process.env.VOICE_ENTRIES_FILE ? JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,"utf8")) : [],
       callReportsDirectory:process.env.VOICE_CALL_REPORTS_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-call-reports'),
+      iosAppDownloadUrl:process.env.VOICE_IOS_APP_DOWNLOAD_URL,
       iosBindingsFile:process.env.VOICE_IOS_BINDINGS_FILE??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-ios-bindings.private.json'),
       feishuLogin: process.env.VOICE_FEISHU_LOGIN_FILE ? await readFeishuPhoneLoginFile(process.env.VOICE_FEISHU_LOGIN_FILE) : undefined,
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",

@@ -12,6 +12,7 @@ struct H5CallView: View {
     @State private var error = ""
     @State private var pendingDestination: CallDestination?
     @State private var reading = false
+    @State private var bindingLink = ""
     @Environment(\.scenePhase) private var scene
     var body: some View {
         let snapshot = H5Snapshot.make(call, visible: scene == .active && sheet == nil && !reading)
@@ -33,8 +34,11 @@ struct H5CallView: View {
                 }.padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18)).frame(maxWidth: 320).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }.background(VoiceStyle.background).tint(VoiceStyle.accent)
-            .sheet(item: $sheet) { _ in SettingsView(call: call) }
+            .sheet(item: $sheet, onDismiss: { bindingLink = "" }) { _ in SettingsView(call: call, initialLink: bindingLink) }
             .onOpenURL { url in
+                if let link = VoiceBinding.link(fromDeepLink: url) {
+                    bindingLink = link; error = ""; sheet = .settings; return
+                }
                 guard let destination = CallDestination.parse(url, callID: call.presentationID, documentIDs: Set(call.documents.map(\.id))) else { error = "这份内容已清除。"; return }
                 sheet = nil
                 if let host { navigate(destination, host: host) } else { pendingDestination = destination }

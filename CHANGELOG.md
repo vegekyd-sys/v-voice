@@ -1,5 +1,12 @@
 ## Unreleased — Refined call status and summaries · 2026-10-23
 
+## Unreleased — Session phone access and iOS handoff · 2026-10-23
+
+- Keep Feishu browser identity in an authenticated encrypted 30-day cookie across service restarts; revalidate current allowed actors and entries on each request. Provider tokens remain transient.
+- Align the iOS App link with the changelog; open native Settings with a validated Deep Link and prefilled handoff. Verify and reuse an existing same-session grant instead of replaying a consumed link.
+- Configure real TestFlight/App Store download destinations when available; TestFlight distribution remains pending user acceptance.
+
+
 - Update one compact Feishu status card in place from 正在通话 to 通话已结束, using small grey annotation text and the original message receipt. Show an elapsed clock while connected and retain the final duration after hangup; serialize updates and stop the timer before closing. Use the existing authenticated Gateway operator edit contract; no platform runtime or permission changes.
 - Remove summary-card call statistics. Have V introduce and synthesize the conversation as a first-person assistant recap, preserving the distinction between suggestions, agreed decisions and completed work. Keep the full transcript link. Candidate only.
 

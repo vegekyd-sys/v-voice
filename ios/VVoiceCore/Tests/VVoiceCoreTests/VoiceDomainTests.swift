@@ -78,3 +78,14 @@ import Foundation
     #expect(saved.phone == nil)
     #expect(saved.endpoint("access").absoluteString == "https://voice.example/voice/api/access")
 }
+
+@Test func bindingDeepLinkOnlyAcceptsSettingsHandoffAndKeepsTheInnerCredential() throws {
+    let link = "https://voice.example/voice/?phone=group-123#bind=" + String(repeating: "x", count: 43)
+    var fragment = URLComponents(); fragment.queryItems = [URLQueryItem(name: "url", value: link)]
+    let url = URL(string: "vvoice://settings/bind#" + fragment.percentEncodedQuery!)!
+    #expect(VoiceBinding.link(fromDeepLink: url) == link)
+    for invalid in ["vvoice://call/bind#", "vvoice://settings/other#", "https://settings/bind#", "vvoice://settings/bind?auto=true#"] {
+        #expect(VoiceBinding.link(fromDeepLink: URL(string: invalid + fragment.percentEncodedQuery!)!) == nil)
+    }
+    #expect(VoiceBinding.link(fromDeepLink: URL(string: url.absoluteString + "&url=duplicate")!) == nil)
+}

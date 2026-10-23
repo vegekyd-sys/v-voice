@@ -36,6 +36,17 @@ public enum VoicePhase: String, Codable, Sendable, CaseIterable {
 
 /// A binding URL is a capability, never an authority to choose a session or actor.
 public struct VoiceBinding: Codable, Equatable, Sendable {
+    /// System URL handoff only prefills Settings; it never binds or dials.
+    public static func link(fromDeepLink url: URL) -> String? {
+        guard let c = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              c.scheme == "vvoice", c.host == "settings", c.path == "/bind",
+              c.user == nil, c.password == nil, c.port == nil, c.query == nil,
+              let fragment = c.percentEncodedFragment, fragment.count < 12_000,
+              let items = URLComponents(string: "https://binding.invalid/?" + fragment)?.queryItems,
+              items.count == 1, items[0].name == "url", let link = items[0].value,
+              (try? VoiceBinding(link: link)) != nil else { return nil }
+        return link
+    }
     public let baseURL: URL
     public let phone: String?
     public let access: String

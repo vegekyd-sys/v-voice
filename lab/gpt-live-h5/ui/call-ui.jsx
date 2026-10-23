@@ -305,16 +305,20 @@ function SessionSheet({state,actions}) {
  if(!value)return null;
  const report=value.report;
  return createPortal(<dialog ref={dialog} className="session-dialog" onCancel={actions.closeSessionSheet}>
-  <header><div><span className="session-eyebrow">{value.kind==='binding'?'在 iPhone 上继续':'通话记录'}</span><h2>{value.kind==='binding'?'绑定 iOS App':report?.name??'完整对话'}</h2></div><button type="button" aria-label="关闭" onClick={actions.closeSessionSheet}>×</button></header>
+  <header><div><span className="session-eyebrow">{value.kind==='binding'?'在 iPhone 上继续':'通话记录'}</span><h2>{value.kind==='binding'?'V Voice for iPhone':report?.name??'完整对话'}</h2></div><button type="button" aria-label="关闭" onClick={actions.closeSessionSheet}>×</button></header>
   <div className="session-dialog-body">
    {value.error&&<p role="alert" className="session-error">{value.error}</p>}
    {value.kind==='binding'?<>
-    <p>将 App 绑定到<strong>{state.conversation?.name??'当前会话'}</strong>。之后从 App 拨号，继续使用这个会话的上下文和权限。</p>
-    <ol className="binding-steps"><li>点击下方按钮，生成并复制绑定链接。</li><li>打开 V iOS App，进入右上角「设置」。</li><li>粘贴链接并绑定，确认会话名称后开始通话。</li></ol>
-    <p className="session-muted">链接 5 分钟内有效，仅可绑定一次。请只粘贴到自己的 App。</p>
-    <button type="button" className="session-primary" disabled={value.busy} onClick={actions.createBinding}>{value.busy?'请稍候…':value.bindingUrl?'重新生成链接':'生成绑定链接'}</button>
-    {value.bindingUrl&&<div className="binding-link"><textarea aria-label="iOS 绑定链接" readOnly value={value.bindingUrl}/><button type="button" onClick={actions.copyBinding}>{value.copied?'已复制':'复制链接'}</button></div>}
-    {value.devices?.length>0&&<section className="binding-devices"><h3>已绑定的 App</h3>{value.devices.map(device=><div key={device.id}><span>{new Date(device.createdAt).toLocaleString('zh-CN')} 绑定</span><button disabled={value.busy} onClick={()=>actions.revokeBinding(device.id)}>解除绑定</button></div>)}</section>}
+    <p>在 App 中继续<strong>{state.conversation?.name??'当前会话'}</strong>，沿用这里的上下文。</p>
+    <section className="binding-choice"><h3>已经安装 V Voice</h3><p className="session-muted">打开后，绑定链接会自动填入设置。确认绑定即可；已经绑定这个会话可以继续使用。</p>
+     {value.appUrl?<a className="session-primary" href={value.appUrl}>打开 V Voice 绑定</a>:<button type="button" className="session-primary" disabled={value.busy} onClick={actions.createBinding}>{value.busy?'正在准备…':'准备绑定'}</button>}
+    </section>
+    <section className="binding-choice"><h3>还没有安装</h3>
+     {value.appDownload?<a className="binding-download" href={value.appDownload.url} target="_blank" rel="noopener noreferrer">{value.appDownload.label} ↗</a>:<p className="session-muted">TestFlight 下载即将开放。你可以先继续使用网页电话。</p>}
+     {value.appDownload&&<p className="session-muted">安装后回到这里，点击上方按钮完成绑定。</p>}
+    </section>
+    {value.bindingUrl&&<details className="binding-fallback"><summary>没有跳转？手动复制链接</summary><p className="session-muted">链接 5 分钟内有效。旧版 App 可在设置中粘贴；过期后重新生成。</p><div className="binding-link"><textarea aria-label="iOS 绑定链接" readOnly value={value.bindingUrl}/><button type="button" onClick={actions.copyBinding}>{value.copied?'已复制':'复制链接'}</button><button type="button" disabled={value.busy} onClick={actions.createBinding}>重新生成</button></div></details>}
+    {value.devices?.length>0&&<details className="binding-devices"><summary>管理已绑定的 App（{value.devices.length}）</summary>{value.devices.map(device=><div key={device.id}><span>{new Date(device.createdAt).toLocaleString('zh-CN')} 绑定</span><button disabled={value.busy} onClick={()=>actions.revokeBinding(device.id)}>解除绑定</button></div>)}</details>}
    </>:<>
     {value.busy&&<p role="status">正在读取通话…</p>}
     {report&&<><p className="session-muted">{new Date(report.startedAt).toLocaleString('zh-CN')} · {clock(report.durationMs)} · {report.endedAt?'通话已结束':'通话进行中'}</p>
@@ -365,7 +369,7 @@ function CallPage({view, actions, options}) {
   return (
     <>
       <SessionSheet state={state} actions={actions}/>
-      {state.iosBindingAvailable&&!active&&<button className="ios-binding-trigger" type="button" onClick={actions.openBinding}>绑定 iOS App</button>}
+      {state.iosBindingAvailable&&!active&&<button className="ios-binding-trigger" type="button" onClick={actions.openBinding}>iOS App</button>}
       <button id="changelogOpen" className="changelog-trigger" type="button" aria-haspopup="dialog" aria-controls="changelogDialog" aria-expanded="false" hidden={active}>
         <Icon d={SPARK} />更新日志
       </button>

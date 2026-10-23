@@ -8,6 +8,7 @@ private let accent = VoiceStyle.accent
 
 struct SettingsView: View {
     @Bindable var call: CallCoordinator
+    var initialLink = ""
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var link = ""
@@ -26,6 +27,10 @@ struct SettingsView: View {
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                     if !call.active {
+                        if !link.isEmpty, let binding = try? VoiceBinding(link: link) {
+                            Text("来自 " + (binding.baseURL.host ?? "网页电话") + "，确认后绑定到此设备。")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
                         SecureField("粘贴 iOS 绑定链接", text: $link).textContentType(.none).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("bindingLink")
                         HStack {
                             Button("粘贴链接", systemImage: "doc.on.clipboard") { link = UIPasteboard.general.string ?? "" }
@@ -33,21 +38,24 @@ struct SettingsView: View {
                             Button(working ? "正在验证…" : "验证并绑定") {
                                 working = true; feedback = ""
                                 Task {
-                                    do { try await call.bind(link); link = ""; feedback = "绑定完成。之后可从 App 或操作按钮继续这个会话。" }
+                                    do { let existing = try await call.bind(link); link = ""; feedback = existing ? "已绑定这个会话，可以直接开始通话。" : "绑定完成。之后可从 App 或操作按钮继续这个会话。" }
                                     catch { feedback = error.localizedDescription }
                                     working = false
                                 }
                             }.disabled(working || link.isEmpty)
                         }.buttonStyle(.borderless)
                         if !feedback.isEmpty { Text(feedback).font(.footnote).foregroundStyle(.secondary).accessibilityIdentifier("bindingFeedback") }
+                    } else if !link.isEmpty {
+                        Text("绑定链接已填好，结束当前通话后即可确认。现有通话会继续。")
+                            .font(.footnote).foregroundStyle(.secondary)
                     }
                 } header: { Text(call.bound ? "当前会话" : "绑定一个会话") } footer: {
                     Text("绑定链接仅供本人使用，5 分钟内有效且只能绑定一次。已有的个人入口链接仍可使用。验证失败会保留当前绑定。")
                 }
                 Section {
                     Label("在飞书打开要继续的群聊或私聊电话入口，也可以打开网页电话。", systemImage: "1.circle")
-                    Label("在电话页面选择「绑定 iOS App」，复制绑定链接。", systemImage: "2.circle")
-                    Label("回到这里粘贴，点「验证并绑定」。之后用 App 或操作按钮继续这个会话。", systemImage: "3.circle")
+                    Label("在电话页面选择「iOS App」，再点「打开 V Voice 绑定」。", systemImage: "2.circle")
+                    Label("链接会自动填到这里，点「验证并绑定」。也可以手动粘贴链接。", systemImage: "3.circle")
                 } header: { Text("绑定链接在哪里？") } footer: {
                     Text("更换会话时，从另一个电话入口复制新链接再绑定。会话和工具权限由服务端确认；App 只把设备授权保存在本机钥匙串。")
                 }
@@ -85,6 +93,8 @@ struct SettingsView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
             .confirmationDialog("解除后需要从飞书或网页电话重新获取绑定链接。", isPresented: $confirmForget, titleVisibility: .visible) { Button("解除绑定", role: .destructive) { call.forget() } }
         }.preferredColorScheme(.light)
+            .onAppear { if !initialLink.isEmpty { link = initialLink } }
+            .onChange(of: initialLink) { _, value in if !value.isEmpty { link = value; feedback = "" } }
     }
     private func openSettings() { if let u = URL(string: UIApplication.openSettingsURLString) { openURL(u) } }
 }

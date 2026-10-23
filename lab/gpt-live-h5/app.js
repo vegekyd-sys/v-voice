@@ -938,11 +938,11 @@ function updateSessionSheet(patch,key){view.set(state=>state.sessionSheet?.key==
 let sessionSheetRevision=0;
 async function openIosBinding(){
  const key=++sessionSheetRevision;view.set({sessionSheet:{kind:'binding',key,busy:true,devices:[]}});
- try{const data=await sessionRequest('ios-binding');updateSessionSheet({busy:false,devices:data.devices},key);}catch(e){updateSessionSheet({busy:false,error:e.message},key);}
+ try{const data=await sessionRequest('ios-binding');updateSessionSheet({busy:false,devices:data.devices,appDownload:data.appDownload},key);if(view.get().sessionSheet?.key===key)await createIosBinding();}catch(e){updateSessionSheet({busy:false,error:e.message},key);}
 }
 async function createIosBinding(){
  const key=view.get().sessionSheet?.key;
- updateSessionSheet({busy:true,error:null,copied:false,bindingUrl:null},key);
+ updateSessionSheet({busy:true,error:null,copied:false,bindingUrl:null,appUrl:null},key);
  try{const data=await sessionRequest('ios-binding',{});updateSessionSheet({...data,busy:false},key);}catch(e){updateSessionSheet({busy:false,error:e.message},key);}
 }
 async function copyIosBinding(){

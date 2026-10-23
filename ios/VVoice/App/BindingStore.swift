@@ -62,8 +62,15 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
     var isBound: Bool { record != nil }
     func reloadIfAvailable() { if record == nil { record = store.load() } }
 
-    func bind(link: String) async throws {
+    @discardableResult func bind(link: String) async throws -> Bool {
         var b = try VoiceBinding(link: link)
+        if let saved = record, saved.binding.baseURL == b.baseURL, saved.binding.phone == b.phone,
+           b.credentialKind == .exchange || b == saved.binding {
+            do {
+                _ = try await call("status")
+                return true // Existing authorization works; do not replay a one-use handoff.
+            } catch VoiceError.expired { /* A fresh link can replace a revoked grant. */ }
+        }
         var conversation: BoundConversation?
         if b.credentialKind == .exchange {
             let (value, _) = try await authorization("ios-binding/redeem", binding: b, body: ["token": b.access])
@@ -77,6 +84,7 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
         r.conversation = BoundConversation.read(status["conversation"]) ?? r.conversation
         // Commit only after the new session is fully authenticated; any failure preserves the old binding.
         try store.save(r); record = r
+        return false
     }
     func forget() { record = nil; store.remove() }
     private func authorization(_ route: String, binding: VoiceBinding, body: [String: String]) async throws -> ([String: Any], HTTPURLResponse) {

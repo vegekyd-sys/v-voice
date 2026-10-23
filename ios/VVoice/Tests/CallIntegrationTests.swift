@@ -87,6 +87,19 @@ private final class BindingMockProtocol: URLProtocol, @unchecked Sendable {
         XCTAssertEqual(api.record?.cookie, "v_voice_group-123=cookie2")
         XCTAssertEqual(store.load()?.conversation?.name, "产品讨论")
     }
+    func testAlreadyBoundSameSessionReusesWorkingGrantWithoutRedeemingAgain() async throws {
+        let (api, store, base) = setup { request in
+            XCTAssertEqual(request.url!.lastPathComponent, "status")
+            return .init(body: "{\"ready\":true}")
+        }
+        let saved = try VoiceBinding(link: base + "?phone=group-123#bind=" + secret).redeemed(deviceAccess: String(repeating: "device", count: 8))
+        try store.save(StoredBinding(binding: saved, cookie: "v_voice_group-123=existing", conversation: .init(name: "原会话", kind: "group")))
+        api.reloadIfAvailable()
+        let existing = try await api.bind(link: base + "?phone=group-123#bind=" + secret)
+        XCTAssertTrue(existing)
+        XCTAssertEqual(api.record?.binding, saved)
+        XCTAssertEqual(store.load()?.conversation?.name, "原会话")
+    }
     func testExpiredExchangeOrWrongCookiePreservesPreviousBinding() async throws {
         for wrongCookie in [false, true] {
             let device = String(repeating: "device", count: 8)

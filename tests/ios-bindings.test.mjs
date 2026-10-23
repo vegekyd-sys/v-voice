@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,readFile,chmod,rm,symlink} from 'node:fs/promises';import {tmpdir} from 'node:os';
-import {createIosBindings,IOS_BINDING_TTL_MS,IOS_DEVICE_TTL_MS} from '../lib/ios-bindings.mjs';
+import {createIosBindings,iosAppDownload,IOS_BINDING_TTL_MS,IOS_DEVICE_TTL_MS} from '../lib/ios-bindings.mjs';
 const binding={id:'phone-session-a',sessionKey:'agent:makaron:feishu:group:oc_a',callerId:'tianyi',accountId:'lab',accessToken:'a'.repeat(40),displayName:'设计讨论',kind:'group'};
 const principal={type:'feishu',tenantKey:'tenant',openId:'ou_tianyi',callerId:'tianyi'};
 const response=()=>({headers:{},setHeader(k,v){this.headers[k]=v;}}),cookie=res=>res.headers['set-cookie'].split(';')[0];
@@ -34,4 +34,14 @@ test('restart retains only hashed grants; private-file boundary is enforced',asy
  const b=createIosBindings({...options,file});assert(b.read({headers:{cookie:cookie(res)}},binding));await assert.rejects(b.redeem(binding,token(link)));
  await chmod(file,0o644);assert.throws(()=>createIosBindings({...options,file}),/private/);
  await chmod(file,0o600);await symlink(file,dir+'/alias.json');assert.throws(()=>createIosBindings({...options,file:dir+'/alias.json'}),/private/);
+});
+
+test('app handoff preserves exact binding in a fragment and download links are real Apple destinations',()=>{
+ const link=createIosBindings(options).issue(binding,principal),app=new URL(link.appUrl);
+ assert.equal(app.protocol,'vvoice:');assert.equal(app.host,'settings');assert.equal(app.pathname,'/bind');assert.equal(app.search,'');
+ assert.equal(new URLSearchParams(app.hash.slice(1)).get('url'),link.bindingUrl);
+ assert.equal(iosAppDownload(undefined),null);
+ assert.equal(iosAppDownload('https://testflight.apple.com/join/Ab12Cd34').label,'通过 TestFlight 下载');
+ assert.equal(iosAppDownload('https://apps.apple.com/cn/app/v-voice/id123456789').label,'从 App Store 下载');
+ for(const url of ['https://testflight.apple.com/','https://evil.example/join/123','http://testflight.apple.com/join/123','https://testflight.apple.com/join/123?redirect=evil'])assert.throws(()=>iosAppDownload(url));
 });

@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {request} from 'node:http';
 import {Readable} from 'node:stream';
 import {createConversationEntries} from '../lib/conversation-entries.mjs';
-import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure} from '../lib/feishu-phone-login.mjs';
+import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure,PHONE_LOGIN_TTL_MS} from '../lib/feishu-phone-login.mjs';
 import {mkdtemp,writeFile,chmod,symlink,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {createLiveH5Server} from '../lab/gpt-live-h5/server.mjs';
@@ -79,8 +79,22 @@ test('forged identity, foreign tenant, browser state theft, denial and expiry ne
 test('login cookies expire and actor configuration cannot grant another caller or an unknown entry',async()=>{
   let at=0;const f=fixture({now:()=>at}),flow=f.begin(),res=response();
   await f.login.complete(flow.req,res,flow.callback);const req={headers:{cookie:cookie(res)}};
-  assert.ok(f.login.read(req));at=28800001;assert.equal(f.login.read(req),null);
+  assert.ok(f.login.read(req));at=PHONE_LOGIN_TTL_MS+1;assert.equal(f.login.read(req),null);
   for(const change of [{callerId:'other'},{defaultPhoneId:records[1].id},{phoneIds:['missing-phone']}])assert.throws(()=>fixture({actors:[{...actor,...change}]}));
+});
+test('browser login survives restart but never forgery, a new host/key, or revoked actor access',async()=>{
+  const f=fixture(),flow=f.begin(),res=response();await f.login.complete(flow.req,res,flow.callback);
+  const req={headers:{cookie:cookie(res)}};
+  assert.equal(fixture().login.select(req).id,actor.defaultPhoneId);
+  assert.equal(fixture({appSecret:'rotated-secret'}).login.read(req),null);
+  assert.equal(fixture({actors:[{...actor,openId:'ou_replacement'}]}).login.read(req),null);
+  const restricted=fixture({actors:[{...actor,phoneIds:[actor.defaultPhoneId]}]});
+  assert.throws(()=>restricted.login.select(req,records[1].id));
+  const value=cookie(res).split('=')[1],bytes=Buffer.from(value,'base64url');bytes[15]^=1;
+  assert.equal(f.login.read({headers:{cookie:'v_feishu_phone='+bytes.toString('base64url')}}),null);
+  const host=createFeishuPhoneLogin({...f.options,publicOrigin:'https://other.example',basePath:'/voice',entries:createConversationEntries(records)});
+  assert.equal(host.read(req),null);
+  assert.equal(Buffer.from(value,'base64url').includes(Buffer.from(actor.openId)),false);
 });
 test('real HTTP login gates protected phone APIs, preserves legacy entry and never automatically creates media',async t=>{
   const f=fixture(),calls=[];

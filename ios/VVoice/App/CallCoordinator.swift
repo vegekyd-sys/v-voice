@@ -249,14 +249,15 @@ import VVoiceCore
         _ = await AVAudioApplication.requestRecordPermission()
         permission = AVAudioApplication.shared.recordPermission
     }
-    func bind(_ link: String) async throws {
+    @discardableResult func bind(_ link: String) async throws -> Bool {
         guard !active, !bindingInProgress else { throw VoiceError.busy }
         bindingInProgress = true; defer { bindingInProgress = false }
         await closing?.value
         try await api.recoverPreviousCall()
-        try await api.bind(link: link); bound = true; boundConversation = api.record?.conversation
+        let existing = try await api.bind(link: link); bound = true; boundConversation = api.record?.conversation
         detail = "会话已绑定，可以和 V 通话了"
         await refreshOptions()
+        return existing
     }
     func forget() {
         guard !active, !bindingInProgress else { return }; api.forget(); bound = false; boundConversation = nil; lastCaption = ""; detail = "请从飞书或网页电话获取链接并绑定会话"
