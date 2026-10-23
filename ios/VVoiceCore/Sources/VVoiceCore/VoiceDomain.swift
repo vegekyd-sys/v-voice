@@ -34,30 +34,55 @@ public enum VoicePhase: String, Codable, Sendable, CaseIterable {
     public var isActive: Bool { ![.idle, .ended, .failed].contains(self) }
 }
 
-/// A personal URL is an access capability, never an authority to choose a session or actor.
+/// A binding URL is a capability, never an authority to choose a session or actor.
 public struct VoiceBinding: Codable, Equatable, Sendable {
+    /// System URL handoff only prefills Settings; it never binds or dials.
+    public static func link(fromDeepLink url: URL) -> String? {
+        guard let c = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              c.scheme == "vvoice", c.host == "settings", c.path == "/bind",
+              c.user == nil, c.password == nil, c.port == nil, c.query == nil,
+              let fragment = c.percentEncodedFragment, fragment.count < 12_000,
+              let items = URLComponents(string: "https://binding.invalid/?" + fragment)?.queryItems,
+              items.count == 1, items[0].name == "url", let link = items[0].value,
+              (try? VoiceBinding(link: link)) != nil else { return nil }
+        return link
+    }
     public let baseURL: URL
     public let phone: String?
     public let access: String
+    public enum CredentialKind: String, Codable, Sendable { case exchange, device }
+    /// Missing on existing Keychain records: preserve their legacy access authorization.
+    public let credentialKind: CredentialKind?
     public init(link: String) throws {
         guard let c = URLComponents(string: link.trimmingCharacters(in: .whitespacesAndNewlines)),
               c.scheme == "https", let host = c.host, !host.isEmpty,
               c.user == nil, c.password == nil, c.port == nil,
               c.path.range(of: #"^/[A-Za-z0-9_-]+/?$"#, options: .regularExpression) != nil,
-              let secret = URLComponents(string: "https://binding.invalid/?" + (c.fragment ?? ""))?.queryItems?.first(where: {$0.name == "access"})?.value,
-              secret.count >= 32, secret.count <= 4096 else { throw VoiceError.invalidBinding }
+              let fragment = URLComponents(string: "https://binding.invalid/?" + (c.fragment ?? "")) else { throw VoiceError.invalidBinding }
+        let credentials = (fragment.queryItems ?? []).filter { ["access", "bind"].contains($0.name) }
+        guard credentials.count == 1, let secret = credentials[0].value, secret.count >= 32, secret.count <= 4096 else { throw VoiceError.invalidBinding }
+        guard (c.queryItems ?? []).filter({ $0.name == "phone" }).count <= 1 else { throw VoiceError.invalidBinding }
         let phone = c.queryItems?.first(where: {$0.name == "phone"})?.value
         if let phone, phone.range(of: #"^[a-z0-9][a-z0-9_-]{7,63}$"#, options: .regularExpression) == nil { throw VoiceError.invalidBinding }
         var base = URLComponents(); base.scheme = "https"; base.host = host
         base.path = c.path.hasSuffix("/") ? c.path : c.path + "/"
         guard let url = base.url else { throw VoiceError.invalidBinding }
         self.baseURL = url; self.phone = phone; self.access = secret
+        self.credentialKind = credentials[0].name == "bind" ? .exchange : nil
+    }
+    private init(baseURL: URL, phone: String?, deviceAccess: String) {
+        self.baseURL = baseURL; self.phone = phone; self.access = deviceAccess; self.credentialKind = .device
+    }
+    public func redeemed(deviceAccess: String) throws -> VoiceBinding {
+        guard credentialKind == .exchange, deviceAccess.count >= 32, deviceAccess.count <= 4096,
+              !deviceAccess.contains(where: { $0.isWhitespace || $0.isNewline }) else { throw VoiceError.protocolMismatch }
+        return VoiceBinding(baseURL: baseURL, phone: phone, deviceAccess: deviceAccess)
     }
     #if DEBUG
     /// Local, no-provider fixture. Never reachable from the binding UI or release builds.
     public init(testingBaseURL: URL) {
         precondition(testingBaseURL.scheme == "http" && testingBaseURL.host == "127.0.0.1")
-        self.baseURL = testingBaseURL; self.phone = nil; self.access = String(repeating: "fixture", count: 8)
+        self.baseURL = testingBaseURL; self.phone = nil; self.access = String(repeating: "fixture", count: 8); self.credentialKind = nil
     }
     #endif
     public func endpoint(_ route: String) -> URL {
@@ -71,9 +96,9 @@ public enum VoiceError: Error, LocalizedError, Equatable, Sendable {
     case invalidBinding, unbound, secureStorage, microphone, liveActivity, unavailable, connection, audio, protocolMismatch, bufferOverflow, expired, busy, rateLimited, server(Int)
     public var errorDescription: String? {
         switch self {
-        case .invalidBinding: "请粘贴完整的本人 HTTPS 电话入口链接，包含 #access。"
+        case .invalidBinding: "请从飞书或网页电话复制完整的 iOS 绑定链接；也支持已有的个人入口链接。"
         case .secureStorage: "暂时无法安全保存入口，请解锁手机后重试。"
-        case .unbound: "请先打开 V Voice，绑定本人的电话入口。"
+        case .unbound: "请先打开 V Voice，从飞书或网页电话获取链接并绑定会话。"
         case .microphone: "麦克风未授权。请在系统设置中允许 V Voice 使用麦克风。"
         case .liveActivity: "请在系统设置中开启 V Voice 的实时活动，再使用按键通话。"
         case .unavailable: "V 尚未就绪，请稍后重试。"
@@ -81,7 +106,7 @@ public enum VoiceError: Error, LocalizedError, Equatable, Sendable {
         case .audio: "音频暂不可用，请稍后重试；若有系统来电，请先结束来电。"
         case .protocolMismatch: "当前服务的语音协议尚不支持，请更换语音或更新 App。"
         case .bufferOverflow: "音频传输积压，已停止收音。网络恢复后请重连。"
-        case .expired: "个人入口已失效，请重新绑定。"
+        case .expired: "绑定链接或会话授权已失效，请从飞书或网页电话重新获取绑定链接。"
         case .busy: "当前已有通话或正在收尾，请稍后再拨。"
         case .rateLimited: "拨号过于频繁，请稍后再试。"
         case .server: "服务暂不可用，请稍后重新连接。"

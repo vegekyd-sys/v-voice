@@ -23,8 +23,9 @@ export function createVoiceAccess(token, basePath, now = Date.now, { entry = "ti
         return equal(sign(id, expiresAt), signed) ? { id, expiresAt } : null;
       } catch { return null; }
     },
-    issue(res) {
-      const visitor = { id: randomBytes(16).toString("hex"), expiresAt: now() + 604800000 };
+    issue(res, {id = randomBytes(16).toString("hex")} = {}) {
+      if (!/^[a-f0-9]{32}$/u.test(id)) throw new Error("Invalid visitor ID");
+      const visitor = { id, expiresAt: now() + 604800000 };
       res.setHeader("set-cookie", `${cookieName}=${encodeURIComponent(sign(visitor.id, visitor.expiresAt))}; Path=${basePath}/; HttpOnly; SameSite=Strict; Max-Age=604800; Secure`);
       return visitor;
     },

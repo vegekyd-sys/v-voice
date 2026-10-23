@@ -22,6 +22,7 @@ import VVoiceCore
     private(set) var detail = "长按操作按钮，即刻开始对话"
     private(set) var lastCaption = ""
     private(set) var bound = false
+    private(set) var boundConversation: BoundConversation?
     private(set) var permission = AVAudioApplication.shared.recordPermission
     private(set) var route = "iPhone"
     private(set) var startedAt = Date()
@@ -36,12 +37,14 @@ import VVoiceCore
         didSet { UserDefaults.standard.set(grokVoice, forKey: "grokVoice") }
     }
     @ObservationIgnored private var loadingOptions = false
+    @ObservationIgnored private var bindingInProgress = false
     @ObservationIgnored private var h5AvatarRevision = 0
     func refreshOptions() async {
         guard bound, !active, !loadingOptions else { return }
         loadingOptions = true; defer { loadingOptions = false }
         let binding = api.record?.binding
         guard let status = try? await api.call("status"), !active, api.record?.binding == binding else { return }
+        boundConversation = BoundConversation.read(status["conversation"]) ?? api.record?.conversation
         applyOptions(status)
     }
     private func applyOptions(_ status: [String: Any]) {
@@ -175,6 +178,7 @@ import VVoiceCore
         self.avatar = VoiceAvatar(api: self.api)
         model = VoiceModel(rawValue: UserDefaults.standard.string(forKey: "voiceModel") ?? "") ?? .seeduplex
         bound = self.api.isBound
+        boundConversation = self.api.record?.conversation
         avatar.onDisplayed = { [weak self] id in
             guard let self else { return }; self.islandDidDisplayReaction(id, owner: self.presentationID, fromH5: false)
         }
@@ -245,18 +249,21 @@ import VVoiceCore
         _ = await AVAudioApplication.requestRecordPermission()
         permission = AVAudioApplication.shared.recordPermission
     }
-    func bind(_ link: String) async throws {
-        guard !active else { throw VoiceError.busy }
+    @discardableResult func bind(_ link: String) async throws -> Bool {
+        guard !active, !bindingInProgress else { throw VoiceError.busy }
+        bindingInProgress = true; defer { bindingInProgress = false }
         await closing?.value
         try await api.recoverPreviousCall()
-        try await api.bind(link: link); bound = true
-        detail = "入口已安全绑定，可以和 V 通话了"
+        let existing = try await api.bind(link: link); bound = true; boundConversation = api.record?.conversation
+        detail = "会话已绑定，可以和 V 通话了"
         await refreshOptions()
+        return existing
     }
     func forget() {
-        guard !active else { return }; api.forget(); bound = false; lastCaption = ""; detail = "请绑定本人的电话入口"
+        guard !active, !bindingInProgress else { return }; api.forget(); bound = false; boundConversation = nil; lastCaption = ""; detail = "请从飞书或网页电话获取链接并绑定会话"
     }
     func startOrContinue(fromIntent: Bool = false) async throws {
+        guard !bindingInProgress else { throw VoiceError.busy }
         permission = AVAudioApplication.shared.recordPermission
         guard bound else { throw VoiceError.unbound }
         if active {

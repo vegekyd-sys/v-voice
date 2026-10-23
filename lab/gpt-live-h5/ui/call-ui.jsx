@@ -299,6 +299,37 @@ function TaskSheet({state, now, actions, onClose}) {
   );
 }
 
+function SessionSheet({state,actions}) {
+ const value=state.sessionSheet,dialog=useRef(null);
+ useEffect(()=>{if(!value)return;dialog.current?.showModal();return()=>dialog.current?.close();},[Boolean(value)]);
+ if(!value)return null;
+ const report=value.report;
+ return createPortal(<dialog ref={dialog} className="session-dialog" onCancel={actions.closeSessionSheet}>
+  <header><div><span className="session-eyebrow">{value.kind==='binding'?'在 iPhone 上继续':'通话记录'}</span><h2>{value.kind==='binding'?'V Voice for iPhone':report?.name??'完整对话'}</h2></div><button type="button" aria-label="关闭" onClick={actions.closeSessionSheet}>×</button></header>
+  <div className="session-dialog-body">
+   {value.error&&<p role="alert" className="session-error">{value.error}</p>}
+   {value.kind==='binding'?<>
+    <p>在 App 中继续<strong>{state.conversation?.name??'当前会话'}</strong>，沿用这里的上下文。</p>
+    <section className="binding-choice"><h3>已经安装 V Voice</h3><p className="session-muted">打开后，绑定链接会自动填入设置。确认绑定即可；已经绑定这个会话可以继续使用。</p>
+     {value.appUrl?<a className="session-primary" href={value.appUrl}>打开 V Voice 绑定</a>:<button type="button" className="session-primary" disabled={value.busy} onClick={actions.createBinding}>{value.busy?'正在准备…':'准备绑定'}</button>}
+    </section>
+    <section className="binding-choice"><h3>还没有安装</h3>
+     {value.appDownload?<a className="binding-download" href={value.appDownload.url} target="_blank" rel="noopener noreferrer">{value.appDownload.label} ↗</a>:<p className="session-muted">TestFlight 下载即将开放。你可以先继续使用网页电话。</p>}
+     {value.appDownload&&<p className="session-muted">安装后回到这里，点击上方按钮完成绑定。</p>}
+    </section>
+    {value.bindingUrl&&<details className="binding-fallback"><summary>没有跳转？手动复制链接</summary><p className="session-muted">链接 5 分钟内有效。旧版 App 可在设置中粘贴；过期后重新生成。</p><div className="binding-link"><textarea aria-label="iOS 绑定链接" readOnly value={value.bindingUrl}/><button type="button" onClick={actions.copyBinding}>{value.copied?'已复制':'复制链接'}</button><button type="button" disabled={value.busy} onClick={actions.createBinding}>重新生成</button></div></details>}
+    {value.devices?.length>0&&<details className="binding-devices"><summary>管理已绑定的 App（{value.devices.length}）</summary>{value.devices.map(device=><div key={device.id}><span>{new Date(device.createdAt).toLocaleString('zh-CN')} 绑定</span><button disabled={value.busy} onClick={()=>actions.revokeBinding(device.id)}>解除绑定</button></div>)}</details>}
+   </>:<>
+    {value.busy&&<p role="status">正在读取通话…</p>}
+    {report&&<><p className="session-muted">{new Date(report.startedAt).toLocaleString('zh-CN')} · {clock(report.durationMs)} · {report.endedAt?'通话已结束':'通话进行中'}</p>
+     <section className="call-report-summary"><h3>这通电话聊了什么</h3><p>{report.summary}</p>{report.pendingTasks&&<p className="session-muted">部分任务仍在后台处理，请以会话后续结果为准。</p>}</section>
+     <h3 className="report-transcript-heading">完整对话</h3><div className="report-transcript">{report.turns.map(row=><article key={row.id} data-role={row.role}><span>{row.role==='user'?'你':'V'}{row.interrupted?' · 被打断':''}</span><p>{row.text}</p></article>)}{!report.turns.length&&<p className="session-muted">没有可保存的对话。</p>}</div>
+    </>}
+   </>}
+  </div>
+ </dialog>,document.body);
+}
+
 function CallPage({view, actions, options}) {
   const state = useView(view);
   const active = state.call !== 'idle';
@@ -337,6 +368,8 @@ function CallPage({view, actions, options}) {
   );
   return (
     <>
+      <SessionSheet state={state} actions={actions}/>
+      {state.iosBindingAvailable&&!active&&<button className="ios-binding-trigger" type="button" onClick={actions.openBinding}>iOS App</button>}
       <button id="changelogOpen" className="changelog-trigger" type="button" aria-haspopup="dialog" aria-controls="changelogDialog" aria-expanded="false" hidden={active}>
         <Icon d={SPARK} />更新日志
       </button>
@@ -350,7 +383,7 @@ function CallPage({view, actions, options}) {
           <Avatar onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? '查看后台任务' : 'V'} />
           {!inCall && (
             <div className="home">
-              <a className="avatar-name" href="./" aria-label="V 通话首页">V</a>
+              <a className="avatar-name" href={`./${window.location.search}`} aria-label="V 通话首页">V</a>
               <h1 className="sr-only">和 V 通话</h1>
               {dialing ? (
                 <>

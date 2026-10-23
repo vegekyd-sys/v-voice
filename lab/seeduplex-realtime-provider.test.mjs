@@ -304,6 +304,7 @@ test("bridge owns auth, audio conversion, transcripts and exactly-once tool resu
     "user",
     "帮我看看项目",
     true,
+    undefined, {turnId: undefined},
   ]);
   assert.deepEqual([audio[0].readInt16LE(0), audio[0].readInt16LE(2)], [8192, -8192]);
   socket.message({ type: "response.output_audio.done", response_id: "response-1" });
@@ -539,7 +540,7 @@ test('greeting caption is the exact requested speech, emitted once at its first 
  socket.message({type:'response.output_audio.done',response_id:'hello'});
  assert.deepEqual(events,[['text','assistant','你好，天懿，我在呢。',true,'greeting'],['audio'],['audio']]);
  socket.message({type:'response.output_text.done',response_id:'next',text:'听得见，你说吧。'});
- assert.deepEqual(events.at(-1),['text','assistant','听得见，你说吧。',true]);
+ assert.deepEqual(events.at(-1),['text','assistant','听得见，你说吧。',true,undefined,{responseId:'next'}]);
  bridge.close();
 });
 

@@ -1,3 +1,4 @@
+import {conversationReplyText} from '../../lib/conversation-replies.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
@@ -21,7 +22,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
+ const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy,sessionBound:options.sessionBound,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -910,6 +911,44 @@ test('fallback hangup leaves an already admitted backend task running',async t=>
  await nativeEnd(f);assert(await until(()=>fallbackCommits(f).length===1));nativeFarewellAudio(f);
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:'native-end'})),false);
  assert(await until(()=>f.client.readyState===3));assert.equal(f.service.backgroundTaskCount(),1);
+});
+
+
+test('conversation calls use session tools and cannot invoke personal Feishu shortcuts',async t=>{
+ let reads=0;
+ const f=await fixture(undefined,'grok',{sessionBound:true,sessionKey:'agent:makaron:feishu:group:oc_trial',calendar:async()=>{reads++;},larkRead:async()=>{reads++;}});t.after(()=>f.service.dispose());
+ const config=f.upstream.sent.find(x=>x.type==='session.update').session;
+ assert(!config.tools.some(x=>['feishu_calendar','lark_read'].includes(x.name)));
+ assert.match(config.instructions,/权限、工具和授权边界沿用该会话/);
+ assert.doesNotMatch(config.instructions,/查日历是天懿本人的/);
+ f.call('feishu_calendar',{},'bypass');await delay(10);assert.equal(reads,0);
+ f.call('web_search',{query:'公开天气'},'scoped');await delay(10);
+ assert(f.invocations.some(x=>x.sessionKey==='agent:makaron:feishu:group:oc_trial'));
+ f.call('delegate_to_v',{question:'只计算1加1'},'bound-backend');await delay(10);
+ const task=f.invocations.find(x=>x.voiceSessionId&&x.question);assert.match(task.question,/身份、工具和授权边界沿用该会话/);assert.doesNotMatch(task.question,/天懿本人在语音电话里交给/);f.completeBackend('2');await delay(20);
+});
+
+
+test('conversation native greeting never substitutes the personal caller name',async t=>{
+ const f=await fixture(undefined,'seeduplex',{sessionBound:true});t.after(()=>f.service.dispose());
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);await delay(5);
+ const spoken=f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit');
+ assert(spoken.some(e=>e.text==='你好，我是 V，在呢。'));assert(spoken.every(e=>!e.text.includes('天懿')));
+});
+
+for(const model of ['grok','seeduplex'])test(`${model} completed voice reply uses the server-owned Feishu route once`,async t=>{
+ const sends=[],replyTarget={channel:'feishu',agentId:'makaron',sessionKey:'agent:makaron:feishu:direct:ou_trial',accountId:'lab',to:'ou_trial'};
+ const f=await fixture(async(args,method)=>{if(method==='send'){sends.push(args);return {messageId:'om_actual_fixture'};}return {ok:true};},model,{sessionBound:true,sessionKey:replyTarget.sessionKey,replyTarget});t.after(()=>f.service.dispose());
+ f.event({type:'input_audio_buffer.speech_started'});
+ if(model==='grok')f.event({type:'response.created',response:{id:'reply-1'}});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'说明这个方案'});
+ if(model!=='grok')f.event({type:'response.created',response:{id:'reply-1'}});
+ f.event(model==='grok'?{type:'response.output_audio_transcript.done',transcript:'方案是沿用当前会话，并把主要回复显示在飞书。'}:{type:'response.output_text.done',text:'方案是沿用当前会话，并把主要回复显示在飞书。'});
+ assert.equal(sends.length,0);
+ f.event({type:'response.done',response:{id:'reply-1',status:'completed'},response_id:'reply-1'});
+ for(let i=0;i<100&&!sends.length;i++)await delay(5);
+ assert.equal(sends.length,1);assert.equal(conversationReplyText(sends[0].message),'语音提问：说明这个方案\n\nV：方案是沿用当前会话，并把主要回复显示在飞书。');assert.equal(sends[0].to,'ou_trial');assert.equal(sends[0].sessionKey,replyTarget.sessionKey);
+ assert(f.audit.some(e=>e.type==='reply.delivery-confirmed'));
 });
 
 test('native replacement propagates a scoped clear before first new PCM, drops old packets and has no phone notice speech',async t=>{

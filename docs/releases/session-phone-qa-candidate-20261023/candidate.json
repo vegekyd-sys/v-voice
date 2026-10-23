@@ -1,0 +1,15 @@
+{
+  "version": "voice-session-qa.20261023.1",
+  "status": "candidate-validated-not-released",
+  "runtimeCommit": "b53e7fe29edc0cfbd2d2a21a4fd2c098f9489684",
+  "files": 214,
+  "filesSha256": "ec9a3c31416f2cd4211cb38f20e728acf7fd2c19b7f67634eeb61420d6bb291c",
+  "realAudioCalls": 6,
+  "pairedDeliveries": 6,
+  "productionReleased": false,
+  "gatewayRestarted": false,
+  "acceptance": "docs/acceptance/session-phone-qa-20261023.md",
+  "integrationMain": "2d8cd357b9aaaffee94c9e1076b0761115a2b01e",
+  "integrationTestsPassed": 771,
+  "integrationDeployed": false
+}

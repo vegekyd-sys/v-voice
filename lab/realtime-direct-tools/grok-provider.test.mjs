@@ -71,7 +71,7 @@ test('split speech tags are hidden in captions while spoken text, user text and 
  for(const delta of ['好！[ch','uckle] 这个<em','phasis>点子</emphasis>很棒。[pa','use] 我们试试？'])f.bridge.receive({type:'response.output_audio_transcript.delta',response_id:'tagged',delta});
  assert.equal(f.text.map(t=>t[1]).join(''),'好！ 这个点子很棒。 我们试试？');
  f.bridge.receive({type:'response.output_audio_transcript.done',response_id:'tagged',transcript:'好！[chuckle] 这个<emphasis>点子</emphasis>很棒。[pause] 我们试试？'});
- assert.deepEqual(f.text.at(-1),['assistant','好！ 这个点子很棒。 我们试试？',true]);
+ assert.deepEqual(f.text.at(-1),['assistant','好！ 这个点子很棒。 我们试试？',true,undefined,{responseId:'tagged'}]);
  f.bridge.receive({type:'conversation.item.input_audio_transcription.completed',transcript:'标签 [pause] 是什么？'});assert.equal(f.text.at(-1)[1],'标签 [pause] 是什么？');
  f.bridge.receive({type:'response.output_audio_transcript.done',response_id:'literal',transcript:'保留[unknown]和<code>原文</code>'});assert.equal(f.text.at(-1)[1],'保留[unknown]和<code>原文</code>');
  f.bridge.speakProgress('实际结果 <code>不改</code>');assert.equal(f.ws.sent.at(-1).item.content[0].text,'实际结果 <code>不改</code>');f.bridge.close();

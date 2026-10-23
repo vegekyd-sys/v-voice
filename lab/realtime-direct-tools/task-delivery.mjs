@@ -42,12 +42,13 @@ export function requestsTaskDelivery(text) {
 }
 
 /** One delivery subscription per exact task. Hangup does not own its lifetime. */
-export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,audit=()=>{},onIdle=()=>{}}) {
+export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,replyDelivery,audit=()=>{},onIdle=()=>{}}) {
   let authorized=false,closed=false,activeRun,lastResult;
   const watched=new Set(),observers=new Map(),currentByDelegation=new Map();let disposed=false;
   const outcomes=new Map();let tail=Promise.resolve();
   const target=voiceFeishuTarget(sessionKey);
   const send=(runId,kind,text)=>{
+    if(replyDelivery&&runId&&['final','failure','cancelled'].includes(kind))return replyDelivery.result(`${runId}:${kind}`,text,{questionId:runId});
     if(!authorized||!target||!runId||!text?.trim())return Promise.resolve({sent:false});
     const digest=createHash('sha256').update(text).digest('hex').slice(0,20);
     const key=`voice:${runId}:${kind}:${digest}`;
@@ -71,14 +72,15 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,
       else if(lastResult)await send(lastResult.runId,'final',lastResult.text);
       return {accepted:true,channel:'feishu',continuedAfterHangup:true};
     },
-    started(runId){activeRun=runId;if(authorized)void send(runId,'accepted','已接续这通电话的后台任务，后续进展和结果会发在这里。').catch(()=>{});},
+    requested(id,text){replyDelivery?.captureTask(id,{text});},
+    started(runId,{requestId}={}){replyDelivery?.captureTask(runId,{from:requestId});activeRun=runId;if(authorized)void send(runId,'accepted','已接续这通电话的后台任务，后续进展和结果会发在这里。').catch(()=>{});},
     progress(runId,text){if(authorized)void send(runId,'progress',text).catch(()=>{});},
     async completed(runId,text){lastResult={runId,text};await send(runId,'final',text);if(activeRun===runId)activeRun=undefined;},
     async failed(runId,error){await send(runId,'failure',`电话中的后台任务未完成：${error.message??error}。没有确认完成的操作，请勿当作已成功。`);if(activeRun===runId)activeRun=undefined;},
     async cancelled(runId){await send(runId,'cancelled','已按你的明确要求取消这通电话的后台任务。');if(activeRun===runId)activeRun=undefined;},
     close(){closed=true;if(!activeRun&&!watched.size)onIdle();if(authorized&&activeRun)void send(activeRun,'accepted','已接续这通电话的后台任务，后续进展和结果会发在这里。').catch(()=>{});},
     get detached(){return closed;},
-    get pending(){return Boolean(activeRun||watched.size);},
+    get pending(){return Boolean(activeRun||watched.size||replyDelivery?.pending);},
     handleEvent(event){
       const native=event.event==='talk.event'&&event.payload?.voiceSessionId===ownerId?event.payload.talkEvent:null;
       const completed=native&&observers.get(native.callId);
@@ -90,7 +92,7 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,
     },
     watch(runId,delegationId=runId){
       if(typeof runId!=='string'||!runId)return;
-      if(watched.has(runId))return;currentByDelegation.set(delegationId,runId);watched.add(runId);activeRun=runId;
+      if(watched.has(runId))return;replyDelivery?.captureTask(delegationId);replyDelivery?.captureTask(runId,{from:delegationId});currentByDelegation.set(delegationId,runId);watched.add(runId);activeRun=runId;
       const terminal=Promise.withResolvers();
       observers.set(runId,{terminal,hasToolResult:false,observer:createGptLiveConsultProgressObserver({runId,onProgress:p=>{if(authorized&&p.text?.length<=220)void send(runId,'progress',p.text).catch(()=>{});}})});
       if(authorized)void send(runId,'accepted','已接续这通电话的后台任务，后续进展和结果会发在这里。').catch(()=>{});

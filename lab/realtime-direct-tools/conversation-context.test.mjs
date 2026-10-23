@@ -17,3 +17,11 @@ test('keeps text verbatim without JSON quoting and bounds the retained context',
   assert.equal(voiceConversationContext([{role:'user',content:text}]),`人：${text}`);
   assert.equal(voiceConversationContext([{role:'user',content:'1234567890'}],5),'67890');
 });
+
+test('mirrored Voice cards carry dialogue without presentation JSON into the next call',async()=>{
+ const {conversationReplyCard}=await import('../../lib/conversation-replies.mjs');
+ const q='保留 * 原文与 <at id=all>，不要变成格式',a='**结论**\n\n- 第一项\n- 第二项';
+ const card=JSON.stringify(conversationReplyCard(q,a));
+ assert.equal(voiceConversationContext([{role:'assistant',content:card}]),`V：语音提问：${q}\n\nV：${a}`);
+ assert.equal(voiceConversationContext([{role:'user',content:'{"unrelated":true}'}]),'人：{"unrelated":true}');
+});

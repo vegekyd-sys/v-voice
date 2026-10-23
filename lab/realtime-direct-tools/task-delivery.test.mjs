@@ -1,5 +1,17 @@
+import {conversationReplyText} from '../../lib/conversation-replies.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';
 import {createTaskDelivery,requestsTaskDelivery,voiceFeishuTarget} from './task-delivery.mjs';
+import {createConversationReplyDelivery} from '../../lib/conversation-replies.mjs';
+test('automatic reply sync sends the full backend result once even with explicit delivery subscribed',async()=>{
+ const calls=[],gateway={request:async(method,args)=>{calls.push({method,args});return {messageId:'om_sent'};}};
+ const target={channel:'feishu',agentId:'makaron',sessionKey:'agent:makaron:feishu:group:oc_room',accountId:'lab',to:'oc_room'};
+ const replies=createConversationReplyDelivery({gateway,target,ownerId:'call'});
+ const d=createTaskDelivery({gateway,sessionKey:target.sessionKey,ownerId:'call',replyDelivery:replies});
+ replies.user('完成后把结果发到飞书群里');d.observeUser('完成后把结果发到飞书群里');d.started('run');await d.subscribe();
+ d.close();await replies.close();await d.completed('run','后台完整结果');await d.completed('run','后台完整结果');await d.flush();
+ assert.equal(calls.filter(c=>conversationReplyText(c.args.message)==='语音提问：完成后把结果发到飞书群里\n\nV：后台完整结果').length,1);
+ assert.equal(calls.find(c=>conversationReplyText(c.args.message)==='语音提问：完成后把结果发到飞书群里\n\nV：后台完整结果').args.sessionKey,target.sessionKey);
+});
 test('native spaced captions authorize this group but preserve denial and other-group boundaries',()=>{
  assert(requestsTaskDelivery('这是 语 音 验 收 测试，请 交 给 后台 运行 一个 等待 二 十 秒 再 输出 验 收 成功 的 命 令，完成 后 把 结果 发到 这个 群，不要 做 其他 操作'));
  assert(requestsTaskDelivery('完成 后 把 结 果 发 到 飞 书 群 里'));

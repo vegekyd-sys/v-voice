@@ -928,7 +928,7 @@ export class SeeduplexRealtimeVoiceBridge {
       const text = optionalString(event.transcript) ?? optionalString(event.text);
       if (text) {
         this.toolNoticeUsed = false;
-        this.request.onTranscript?.("user", text, true);
+        this.request.onTranscript?.("user", text, true, undefined, {turnId: event.item_id ?? event.turn_id});
       }
     }
     const workingBatch = continuingBatch;
@@ -940,14 +940,14 @@ export class SeeduplexRealtimeVoiceBridge {
       typeof event.delta === "string" &&
       !suppressWorkingTranscript
     ) {
-      this.request.onTranscript?.("assistant", event.delta, false);
+      this.request.onTranscript?.("assistant", event.delta, false, undefined, {responseId});
     }
     if (
       type === "response.output_text.done" &&
       typeof event.text === "string" &&
       !suppressWorkingTranscript
     ) {
-      this.request.onTranscript?.("assistant", event.text, true);
+      this.request.onTranscript?.("assistant", event.text, true, undefined, {responseId});
     }
     if (
       type === "response.output_audio.delta" &&

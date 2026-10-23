@@ -1,0 +1,11 @@
+{
+  "version": "voice-session-card.20261023.1",
+  "commit": "930842d6897acb2c16c8cd31583715e99f9de14e",
+  "candidate": true,
+  "files": 214,
+  "filesSha256": "1dcc6dfaf895a2dbe3c94604f4974c95ae8ec1fa5fef5bc578298e9cd60b5744",
+  "fullTests": 774,
+  "realGatewayCards": 3,
+  "acceptance": "docs/acceptance/session-phone-card-20261023.md",
+  "productionReleased": false
+}

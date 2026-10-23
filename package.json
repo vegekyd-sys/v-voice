@@ -21,6 +21,7 @@
     "build:ui": "node scripts/build-ui.mjs && node ios/scripts/sync-h5-shell.mjs",
     "build:ios-shell": "node ios/scripts/sync-h5-shell.mjs",
     "check:ios-shell": "node ios/scripts/sync-h5-shell.mjs --check",
+    "phone": "node scripts/phone.mjs",
     "release:fleet": "python3 scripts/release-fleet.py"
   },
   "dependencies": {

@@ -1,3 +1,33 @@
+## Unreleased — Refined call status and summaries · 2026-10-23
+
+## Unreleased — Session phone access and iOS handoff · 2026-10-23
+
+- Keep Feishu browser identity in an authenticated encrypted 30-day cookie across service restarts; revalidate current allowed actors and entries on each request. Provider tokens remain transient.
+- Align the iOS App link with the changelog; open native Settings with a validated Deep Link and prefilled handoff. Verify and reuse an existing same-session grant instead of replaying a consumed link.
+- Configure real TestFlight/App Store download destinations when available; TestFlight distribution remains pending user acceptance.
+
+
+- Update one compact Feishu status card in place from 正在通话 to 通话已结束, using small grey annotation text and the original message receipt. Show an elapsed clock while connected and retain the final duration after hangup; serialize updates and stop the timer before closing. Use the existing authenticated Gateway operator edit contract; no platform runtime or permission changes.
+- Remove summary-card call statistics. Have V introduce and synthesize the conversation as a first-person assistant recap, preserving the distinction between suggestions, agreed decisions and completed work. Keep the full transcript link. Candidate only.
+
+## Unreleased — Voice Q&A cards · 2026-10-23
+
+- Present paired Voice questions and answers as native Feishu cards with a soft purple header, literal question, divider and rich answer. Preserve the existing delivery queue, session routing and duplicate protection. Oversized answers use the existing text delivery path without truncation.
+- Decode mirrored cards into dialogue for subsequent Voice context. Candidate only.
+
+## Unreleased — Paired voice questions and answers · 2026-10-23
+
+- Combine the admitted final user question and completed substantive answer in one Feishu message across session and personal entries. Bind responses and background results to the originating question, suppress duplicate completions and retain detached task pairing after hangup. Candidate only.
+
+## Unreleased — Unified personal/session replies · 2026-10-22
+
+- Route the legacy personal entry through the same server-owned reply target and delivery queue as session phones, with an explicit bot-account opt-in. Preserve its fixed session, personal tools, authentication and default disabled setting.
+- Remove the visible conversation/reply-sync banner. Candidate playback uses the release's assisted pause setting; the observed call had 23 pauses and zero recorded buffer underflows, so device listening acceptance is still required.
+
+## Unreleased — Session replies in Feishu candidate · 2026-10-22
+
+- Opt-in private conversation entries mirror completed substantive Voice replies and full backend results into their bound Feishu session through the existing Gateway send API. Resolve the configured bot account explicitly and retain the original session key for transcript mirroring.
+- Keep audio independent of sends; deduplicate response segments and ambiguous retry keys, omit greetings/progress/interrupted text, and surface delivery failures. Only VLab pilot entries are enabled; production and arbitrary-caller permissions are unchanged.
 
 ## 2026-10-23 — Service-only query status update for installed build 24
 

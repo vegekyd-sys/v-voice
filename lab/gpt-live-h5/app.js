@@ -28,6 +28,11 @@ const renderAssistant = (target, item) => {
 if (document.querySelector) mountCallUi(document, view, {
   renderAssistant, onDocumentShown: callId => documentShown(callId),
   actions: {
+    openBinding: () => void openIosBinding(),
+    createBinding: () => void createIosBinding(),
+    copyBinding: () => void copyIosBinding(),
+    revokeBinding: id => void revokeIosBinding(id),
+    closeSessionSheet: () => { view.set({ sessionSheet:null }); const url=new URL(window.location.href);url.searchParams.delete('call');window.history.replaceState(null,'',url); },
     dial: () => void startCall(), hangup: () => void stopCall(),
     redial: () => void stopCall().then(() => startCall()),
     resume: () => void recoverPlaybackGesture(),
@@ -680,6 +685,7 @@ async function startCall() {
           if(value.type.startsWith('tool.'))taskState();
           if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
           if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
+          if(value.type==='reply.sync'&&value.status==='failed')setStatus(value.message,{tone:'problem'});
           if(value.type==='provider.reconnecting')setStatus('正在恢复语音连接…');
           if(value.type==='provider.recovered')setStatus('V 正在听，直接说话就好');
           if(value.type==='transcript'&&!(reservation.speakerRouting&&value.role==='user')) {
@@ -705,6 +711,7 @@ async function startCall() {
     active.channel = active.pc.createDataChannel("oai-events"); active.channel.onmessage = (event) => { if (call === active) providerMessage(event); };
     active.events = new EventSource(apiUrl("events"));
     const applyNativeControl = value => {
+      if(value.type==='reply.sync'&&value.status==='failed')setStatus(value.message,{tone:'problem'});
       if(value.type==='tool.call')active.backendFinalReady=false;
       if(value.type==='tool.result'&&value.backendFinal===true)active.backendFinalReady=true;
       if(['voice.end.proposed','voice.end.accepted'].includes(value.type))requestVoiceHostEnd(active,value);
@@ -899,13 +906,15 @@ async function initializeEntry() {
     if (!usable(model)) model = ["seeduplex", "gpt-live", "grok"].find(usable) ?? model;
     const grok = status.models?.find(item => item.id === "grok");
     const grokVoices = grok?.voices ?? [];
-    view.set({ models, model, grok: {
+    view.set({ models, model, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, grok: {
       voices: grokVoices.map(voice => ({ id: voice.id, label: voice.label })),
       voice: grokVoices.some(voice => voice.id === "iris") ? "iris" : grokVoices[0]?.id ?? null,
       hint: [grok?.speed && grok.speed !== 1 ? `${grok.speed}× 语速` : "", grok?.expressiveTags ? "自主表达试用" : ""].filter(Boolean).join(" · "),
       listenHref: `./compare${window.location.search}`, listenAvailable: status.comparisonAvailable === true,
     } });
     view.set(state => ({ badge: liveReady ? "可以拨号" : status.preview === false ? "后端重连中" : "页面预览", dial: { ...state.dial, disabled: !liveReady } }));
+    const reportId=new URLSearchParams(window.location.search).get('call');
+    if(reportId)void openCallReport(reportId);
     if (liveReady) {
       view.set({ entry: null });
       delete document.body.dataset.entryState;
@@ -920,3 +929,32 @@ async function initializeEntry() {
   }
 }
 void initializeEntry();
+
+async function sessionRequest(route,body){
+ const response=await fetch(apiUrl(route),{credentials:'same-origin',...(body===undefined?{}:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})});
+ const data=await response.json();if(!response.ok)throw Error(data.error??'暂时无法完成，请稍后重试。');return data;
+}
+function updateSessionSheet(patch,key){view.set(state=>state.sessionSheet?.key===key?{sessionSheet:{...state.sessionSheet,...patch}}:{});}
+let sessionSheetRevision=0;
+async function openIosBinding(){
+ const key=++sessionSheetRevision;view.set({sessionSheet:{kind:'binding',key,busy:true,devices:[]}});
+ try{const data=await sessionRequest('ios-binding');updateSessionSheet({busy:false,devices:data.devices,appDownload:data.appDownload},key);if(view.get().sessionSheet?.key===key)await createIosBinding();}catch(e){updateSessionSheet({busy:false,error:e.message},key);}
+}
+async function createIosBinding(){
+ const key=view.get().sessionSheet?.key;
+ updateSessionSheet({busy:true,error:null,copied:false,bindingUrl:null,appUrl:null},key);
+ try{const data=await sessionRequest('ios-binding',{});updateSessionSheet({...data,busy:false},key);}catch(e){updateSessionSheet({busy:false,error:e.message},key);}
+}
+async function copyIosBinding(){
+ const key=view.get().sessionSheet?.key;
+ try{await navigator.clipboard.writeText(view.get().sessionSheet.bindingUrl);updateSessionSheet({copied:true,error:null},key);}catch{updateSessionSheet({error:'请长按下方链接并复制。'},key);}
+}
+async function revokeIosBinding(id){
+ const key=view.get().sessionSheet?.key;
+ updateSessionSheet({busy:true,error:null},key);
+ try{await sessionRequest('ios-binding/revoke',{deviceId:id});const data=await sessionRequest('ios-binding');updateSessionSheet({busy:false,devices:data.devices},key);}catch(e){updateSessionSheet({busy:false,error:e.message},key);}
+}
+async function openCallReport(id){
+ const key=++sessionSheetRevision;view.set({sessionSheet:{kind:'report',key,busy:true}});
+ try{const report=await sessionRequest('calls/'+encodeURIComponent(id));updateSessionSheet({busy:false,report},key);}catch(e){updateSessionSheet({busy:false,error:e.message},key);}
+}

@@ -2,10 +2,21 @@ import Foundation
 import Security
 import VVoiceCore
 
+struct BoundConversation: Codable, Equatable {
+    let name: String
+    let kind: String
+    static func read(_ value: Any?) -> BoundConversation? {
+        guard let value = value as? [String: Any], let name = value["name"] as? String,
+              !name.isEmpty, name.count <= 200, let kind = value["kind"] as? String,
+              ["dm", "group", "personal"].contains(kind) else { return nil }
+        return .init(name: name, kind: kind)
+    }
+}
 struct StoredBinding: Codable {
     var binding: VoiceBinding
     var cookie: String
     var pendingVoiceID: String?
+    var conversation: BoundConversation?
 }
 
 @MainActor final class BindingStore {
@@ -39,33 +50,64 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
 @MainActor final class VoiceAPI {
     private let delegate = NoRedirectDelegate()
     private(set) lazy var session: URLSession = {
-        let c = URLSessionConfiguration.ephemeral
+        let c = configuration ?? URLSessionConfiguration.ephemeral
         c.httpCookieStorage = nil; c.httpShouldSetCookies = false; c.urlCache = nil
         c.timeoutIntervalForRequest = 60; c.timeoutIntervalForResource = 65
         return URLSession(configuration: c, delegate: delegate, delegateQueue: nil)
     }()
+    private let configuration: URLSessionConfiguration?
     private let store: BindingStore
     private(set) var record: StoredBinding?
-    init(store: BindingStore) { self.store = store; record = store.load() }
+    init(store: BindingStore, configuration: URLSessionConfiguration? = nil) { self.store = store; self.configuration = configuration; record = store.load() }
     var isBound: Bool { record != nil }
     func reloadIfAvailable() { if record == nil { record = store.load() } }
 
-    func bind(link: String) async throws {
-        let b = try VoiceBinding(link: link)
-        let r = try await authorize(b)
-        _ = try await raw("status", record: r)
+    @discardableResult func bind(link: String) async throws -> Bool {
+        var b = try VoiceBinding(link: link)
+        if let saved = record, saved.binding.baseURL == b.baseURL, saved.binding.phone == b.phone,
+           b.credentialKind == .exchange || b == saved.binding {
+            do {
+                _ = try await call("status")
+                return true // Existing authorization works; do not replay a one-use handoff.
+            } catch VoiceError.expired { /* A fresh link can replace a revoked grant. */ }
+        }
+        var conversation: BoundConversation?
+        if b.credentialKind == .exchange {
+            let (value, _) = try await authorization("ios-binding/redeem", binding: b, body: ["token": b.access])
+            guard let deviceAccess = value["deviceAccess"] as? String,
+                  let confirmed = BoundConversation.read(value["conversation"]) else { throw VoiceError.protocolMismatch }
+            b = try b.redeemed(deviceAccess: deviceAccess); conversation = confirmed
+        }
+        var r = try await authorize(b)
+        r.conversation = r.conversation ?? conversation
+        let status = try await raw("status", record: r)
+        r.conversation = BoundConversation.read(status["conversation"]) ?? r.conversation
+        // Commit only after the new session is fully authenticated; any failure preserves the old binding.
         try store.save(r); record = r
+        return false
     }
     func forget() { record = nil; store.remove() }
-    private func authorize(_ binding: VoiceBinding) async throws -> StoredBinding {
-        var req = request("access", binding: binding, cookie: "")
-        req.httpMethod = "POST"; req.httpBody = try JSONSerialization.data(withJSONObject: ["access": binding.access])
+    private func authorization(_ route: String, binding: VoiceBinding, body: [String: String]) async throws -> ([String: Any], HTTPURLResponse) {
+        var req = request(route, binding: binding, cookie: "")
+        req.httpMethod = "POST"; req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw VoiceError.connection }
         try validate(http.statusCode, data: data)
+        guard data.count < 32_000, let value = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw VoiceError.protocolMismatch }
+        return (value, http)
+    }
+    private func authorize(_ binding: VoiceBinding) async throws -> StoredBinding {
+        guard binding.credentialKind != .exchange else { throw VoiceError.expired }
+        let device = binding.credentialKind == .device
+        let (value, http) = try await authorization(device ? "ios-binding/access" : "access", binding: binding,
+            body: [device ? "deviceAccess" : "access": binding.access])
+        let cookieName = binding.phone.map { $0 == "tianyi" ? "v_voice_access" : "v_voice_" + $0 } ?? "v_voice_access"
         guard let header = http.value(forHTTPHeaderField: "Set-Cookie"), let cookie = header.split(separator: ";").first,
-              cookie.contains("="), cookie.count < 8192 else { throw VoiceError.expired }
-        return StoredBinding(binding: binding, cookie: String(cookie))
+              cookie.hasPrefix(cookieName + "="), cookie.count > cookieName.count + 1, cookie.count < 8192,
+              !cookie.contains(where: { $0.isWhitespace || $0 == "," }) else { throw VoiceError.expired }
+        let conversation = BoundConversation.read(value["conversation"])
+        if device && conversation == nil { throw VoiceError.protocolMismatch }
+        return StoredBinding(binding: binding, cookie: String(cookie), conversation: conversation)
     }
     private func request(_ route: String, binding: VoiceBinding, cookie: String) -> URLRequest {
         var r = URLRequest(url: binding.endpoint(route), cachePolicy: .reloadIgnoringLocalCacheData)
@@ -94,7 +136,10 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
         catch VoiceError.expired where refresh {
             // Refresh only without an active owner. A new cookie must not steal a live call.
             guard saved.pendingVoiceID == nil else { throw VoiceError.expired }
-            let renewed = try await authorize(saved.binding)
+            var renewed = try await authorize(saved.binding)
+            renewed.conversation = renewed.conversation ?? saved.conversation
+            // An older refresh must never overwrite a newly selected session or a local sign-out.
+            guard record?.binding == saved.binding else { throw VoiceError.expired }
             try store.save(renewed); record = renewed
             return try await raw(route, record: renewed, body: body)
         }

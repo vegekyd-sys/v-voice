@@ -136,7 +136,7 @@ test('first-frame styles are exact and only verified cookies receive an entry hi
  const cookie=await f.visitor();
  const html=await (await f.request('/voice/',cookie)).text();
  const hint=JSON.parse(html.match(/id="voiceEntryStatus">([^<]+)<\/script>/u)[1]);
- assert.deepEqual(hint,{ready:true,preview:false,defaultModel:'gpt-live'});
+ assert.deepEqual(hint,{ready:true,preview:false,defaultModel:'gpt-live',conversation:{name:'我的 V',kind:'group',replySync:false},iosBindingAvailable:true});
  assert.doesNotMatch(html,new RegExp(token));
  const denied=await (await f.request('/voice/',cookie+'broken')).text();
  assert.doesNotMatch(denied,/id="voiceEntryStatus"/u);

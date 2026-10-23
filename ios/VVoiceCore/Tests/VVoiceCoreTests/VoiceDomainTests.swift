@@ -51,3 +51,41 @@ import Foundation
     #expect(VoiceHTTPFailure.error(status: 429, message: "这台设备已有通话，请先结束后再试") == .busy)
     #expect(VoiceHTTPFailure.error(status: 200) == nil)
 }
+
+@Test func oneTimeBindingExchangesWithoutRetainingTokenOrAddingCredentialsToURLs() throws {
+    let token = String(repeating: "one-time-", count: 5)
+    let device = String(repeating: "device-", count: 8)
+    let incoming = try VoiceBinding(link: "https://voice.example/voice/?phone=group-123&sessionKey=ignored#bind=\(token)")
+    #expect(incoming.credentialKind == .exchange)
+    let saved = try incoming.redeemed(deviceAccess: device)
+    #expect(saved.credentialKind == .device)
+    #expect(saved.access == device)
+    #expect(saved.endpoint("ios-binding/access").absoluteString == "https://voice.example/voice/api/ios-binding/access?phone=group-123")
+    let encoded = try JSONEncoder().encode(saved)
+    #expect(!String(decoding: encoded, as: UTF8.self).contains(token))
+    #expect(try JSONDecoder().decode(VoiceBinding.self, from: encoded) == saved)
+    for suffix in ["bind=\(token)&access=\(device)", "bind=\(token)&bind=\(token)"] {
+        #expect(throws: VoiceError.invalidBinding) { try VoiceBinding(link: "https://voice.example/voice/#\(suffix)") }
+    }
+}
+
+@Test func existingKeychainBindingDecodesWithoutNewFields() throws {
+    let legacy = Data("""
+    {"baseURL":"https://voice.example/voice/","access":"\(String(repeating: "legacy", count: 8))"}
+    """.utf8)
+    let saved = try JSONDecoder().decode(VoiceBinding.self, from: legacy)
+    #expect(saved.credentialKind == nil)
+    #expect(saved.phone == nil)
+    #expect(saved.endpoint("access").absoluteString == "https://voice.example/voice/api/access")
+}
+
+@Test func bindingDeepLinkOnlyAcceptsSettingsHandoffAndKeepsTheInnerCredential() throws {
+    let link = "https://voice.example/voice/?phone=group-123#bind=" + String(repeating: "x", count: 43)
+    var fragment = URLComponents(); fragment.queryItems = [URLQueryItem(name: "url", value: link)]
+    let url = URL(string: "vvoice://settings/bind#" + fragment.percentEncodedQuery!)!
+    #expect(VoiceBinding.link(fromDeepLink: url) == link)
+    for invalid in ["vvoice://call/bind#", "vvoice://settings/other#", "https://settings/bind#", "vvoice://settings/bind?auto=true#"] {
+        #expect(VoiceBinding.link(fromDeepLink: URL(string: invalid + fragment.percentEncodedQuery!)!) == nil)
+    }
+    #expect(VoiceBinding.link(fromDeepLink: URL(string: url.absoluteString + "&url=duplicate")!) == nil)
+}
