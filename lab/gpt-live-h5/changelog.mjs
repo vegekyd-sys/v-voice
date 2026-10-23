@@ -38,6 +38,15 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version: 'voice-shared-terminal-behavior.20261024.1', date: '2026-10-24', title: '各终端共用对话与任务逻辑',
+    items: [
+      '网页、iPhone、小机器人和音响共用搜索接话、任务进度与结果交付逻辑。',
+      '后台任务的阶段进展和结果不再只对电话端启用，普通插话不会取消后台任务。',
+      '屏幕展示、麦克风处理、摄像头和舵机继续按设备能力适配。',
+    ],
+  },
+
+  {
     version: 'voice-ios-quiet-start.20261024.1', date: '2026-10-24', title: 'iPhone 拨号更安静',
     items: [
       '从 iPhone App 或 Action Button 发起通话时，不再发送「V正在电话通话」飞书卡片，避免拨号时弹出通知。',
