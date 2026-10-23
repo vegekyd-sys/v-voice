@@ -1,0 +1,89 @@
+{
+  "version": "voice-shared-terminal-behavior.20261024.1",
+  "status": "deployed",
+  "baseline": "681a349ffcef117ddd049faf45a41702cf1c14d3",
+  "scope": "Shared Voice terminal behavior",
+  "unrelatedMultiuserCandidateIncluded": false,
+  "gatewayRestartRequired": false,
+  "acceptanceMode": "Candidate explicitly authorized instead of shared VLab",
+  "physicalDeviceAudioAcceptance": "not claimed",
+  "deployedAt": "2026-10-23T17:41:50.760Z",
+  "sourceCommit": "bf1bdcde33583520668b10054968fc8c2ae91cb0",
+  "mergeCommit": "2e799e55ddfec24b79dd0a7906a17edb7b5ef49d",
+  "pullRequest": "https://github.com/vegekyd-sys/v-voice/pull/113",
+  "filesSha256": "7b79d93aba72f2692c8fb7154746fb31bb2c1ec4d9ee07f4fdbbff22146e2d30",
+  "verifiedFiles": 219,
+  "iosShellRevision": "b43f522aa236fef1dc281de760f095b371a499b1840e8ec84dd04c1552d43de5",
+  "completionScope": "both-server-artifacts-and-ios-ui-distribution",
+  "validation": {
+    "voice": 853,
+    "speaker": 95,
+    "fleetProtection": 11,
+    "candidateIntegration": 148,
+    "sourceCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/39996782251",
+    "mergedMainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/39996919421",
+    "publicHTTPSAssetsVerified": [
+      "app.js",
+      "ui-bundle.mjs",
+      "transcript-presentation.mjs",
+      "avatar-telemetry.mjs",
+      "avatar-reactions.mjs",
+      "changelog.mjs",
+      "ios-shell-release.json"
+    ],
+    "embeddedIosFilesHashVerified": true,
+    "homepageChangelogVisuallyVerified": true
+  },
+  "nodes": {
+    "web": {
+      "ready": true,
+      "admissionHeld": false,
+      "commit": "bf1bdcde33583520668b10054968fc8c2ae91cb0",
+      "filesSha256": "7b79d93aba72f2692c8fb7154746fb31bb2c1ec4d9ee07f4fdbbff22146e2d30",
+      "verifiedFiles": 219,
+      "gatewayUnchanged": true,
+      "privateConfigUnchanged": true,
+      "readiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "connectedDevices": 0
+    },
+    "devices": {
+      "ready": true,
+      "admissionHeld": false,
+      "commit": "bf1bdcde33583520668b10054968fc8c2ae91cb0",
+      "filesSha256": "7b79d93aba72f2692c8fb7154746fb31bb2c1ec4d9ee07f4fdbbff22146e2d30",
+      "verifiedFiles": 219,
+      "gatewayUnchanged": true,
+      "privateConfigUnchanged": true,
+      "readiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "connectedDevices": 0
+    }
+  },
+  "callProtection": {
+    "atomicIdleHold": true,
+    "switchOnlyWithoutCallsOrBackgroundWork": true,
+    "gatewayUnchanged": true,
+    "privateConfigurationUnchanged": true,
+    "admissionResumedBothNodes": true
+  },
+  "rollback": {
+    "commit": "681a349ffcef117ddd049faf45a41702cf1c14d3",
+    "filesSha256": "3ac8a3895b05a0310f58a467e9dc6e0581de8b277517c9dbda01d007d79429a9",
+    "previousArtifactsAndPrivateLauncherReceiptsRetained": true
+  },
+  "limitations": [
+    "Devices were offline at post-release inspection; physical audio/interruption acceptance is not claimed.",
+    "No native App install or firmware change; existing compatible clients use the shared service, and iOS UI updates while idle."
+  ]
+}

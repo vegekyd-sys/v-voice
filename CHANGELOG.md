@@ -1,3 +1,19 @@
+## 2026-10-24 — Responsive confirmed interruption · iOS build 32
+
+- Separate confirmed-speech corroboration from the old loudness/onset gate. Quiet syllables can acquire a reversible hold after local acoustic or provider confirmation; energy alone still cannot pause playback.
+- Add bounded service policy for corroboration RMS and duration, with backward-compatible defaults, and numeric speech-classifier diagnostics. Retain ignored-turn resume, old-tail replacement and stale-result protection.
+- Supersedes build 31 after user feedback that interruption was difficult. Physical short/quiet speech and echo validation is recorded in `docs/ios/responsive-interruption-build32.md`; Tianyi accepted build 32 and authorized production release.
+
+## 2026-10-24 — Confirmed assisted interruption · iOS build 31 candidate
+
+- Require local speech evidence plus on-device acoustic confirmation or a service onset before pausing assisted playback. Unconfirmed room sound no longer causes repeated 1.8–2.6 second pauses. Preserve recognized interruption, ignored-turn resume and old-tail replacement; handle either signal ordering with a bounded confirmation window.
+- Guard duplicate WebSocket ping callbacks during teardown. Keep build 30 rollback material and record physical-device validation separately in `docs/ios/confirmed-interruption-build31.md`.
+- Candidate only; server deployment and user acceptance remain separate.
+## 2026-10-24 — Shared terminal behavior
+
+- Share natural search acknowledgments, native dialogue policy, background progress and result recovery across Web, iOS, StackChan and speakers. Keep microphone routing, playback, display and physical-device capabilities in adapters.
+- Add receiver-matrix regression coverage and include shared lookup recovery in the fleet artifact. Candidate regression verified; physical-device audio acceptance is separate.
+
 ## 2026-10-24 — Quiet iPhone call start
 
 - Recognize verified iOS device grants on HTTP and fast-socket dialing. Skip the live Feishu status card for App calls, including Action Button, while preserving transcript storage and the hangup summary.
