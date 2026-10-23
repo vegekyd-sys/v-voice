@@ -1,14 +1,14 @@
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
 export const SESSION_REPLY_CANDIDATE_UPDATE = {
-  version:'voice-session-card.20261023.1',date:'2026-10-23',
-  title:'更清晰的语音问答卡片（候选）',status:'candidate-validation',
+  version:'voice-session-call.20261023.1',date:'2026-10-23',
+  title:'通话总结与 iOS 会话绑定（候选）',status:'candidate-validation',
   items:[
-    '语音问答使用淡紫标题的独立卡片，提问与回答之间加入分割线，更方便回看。',
-    '保留完整回答、段落和列表；特别长的结果自动使用文字发送，避免丢失内容。',
-    '单聊、群聊和个人入口共用问答配对；后台结果保留任务原问题，过滤开场、进展与未完成字幕。',
-    '个人电话与单聊、群聊共用主要回复同步机制；去掉页面顶部的会话说明。',
-    '候选播音配置对齐已验证的停声策略；真实设备断续体验仍需复测，正式 V 未上线。',
+    '群电话接通时轻提示，结束后显示时长和简短总结，点击即可回看完整对话。',
+    '网页电话可生成一次性绑定链接；在 iOS App 设置中粘贴，即可继续使用同一个会话。',
+    '支持查看和解除已绑定 App；旧个人电话入口继续兼容。',
+    '同步主干 iOS build 24 的统一电话能力桥和查询接话更新。',
+    '本轮仅候选环境验证，尚未发布 TestFlight 或正式上线。',
   ],
 };
 // Used only by the isolated candidate's release file, never VOICE_UPDATES.

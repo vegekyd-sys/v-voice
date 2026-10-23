@@ -28,6 +28,11 @@ const renderAssistant = (target, item) => {
 if (document.querySelector) mountCallUi(document, view, {
   renderAssistant, onDocumentShown: callId => documentShown(callId),
   actions: {
+    openBinding: () => void openIosBinding(),
+    createBinding: () => void createIosBinding(),
+    copyBinding: () => void copyIosBinding(),
+    revokeBinding: id => void revokeIosBinding(id),
+    closeSessionSheet: () => { view.set({ sessionSheet:null }); const url=new URL(window.location.href);url.searchParams.delete('call');window.history.replaceState(null,'',url); },
     dial: () => void startCall(), hangup: () => void stopCall(),
     redial: () => void stopCall().then(() => startCall()),
     resume: () => void recoverPlaybackGesture(),
@@ -901,13 +906,15 @@ async function initializeEntry() {
     if (!usable(model)) model = ["seeduplex", "gpt-live", "grok"].find(usable) ?? model;
     const grok = status.models?.find(item => item.id === "grok");
     const grokVoices = grok?.voices ?? [];
-    view.set({ models, model, conversation: status.conversation ?? null, grok: {
+    view.set({ models, model, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, grok: {
       voices: grokVoices.map(voice => ({ id: voice.id, label: voice.label })),
       voice: grokVoices.some(voice => voice.id === "iris") ? "iris" : grokVoices[0]?.id ?? null,
       hint: [grok?.speed && grok.speed !== 1 ? `${grok.speed}× 语速` : "", grok?.expressiveTags ? "自主表达试用" : ""].filter(Boolean).join(" · "),
       listenHref: `./compare${window.location.search}`, listenAvailable: status.comparisonAvailable === true,
     } });
     view.set(state => ({ badge: liveReady ? "可以拨号" : status.preview === false ? "后端重连中" : "页面预览", dial: { ...state.dial, disabled: !liveReady } }));
+    const reportId=new URLSearchParams(window.location.search).get('call');
+    if(reportId)void openCallReport(reportId);
     if (liveReady) {
       view.set({ entry: null });
       delete document.body.dataset.entryState;
@@ -922,3 +929,28 @@ async function initializeEntry() {
   }
 }
 void initializeEntry();
+
+async function sessionRequest(route,body){
+ const response=await fetch(apiUrl(route),{credentials:'same-origin',...(body===undefined?{}:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})});
+ const data=await response.json();if(!response.ok)throw Error(data.error??'暂时无法完成，请稍后重试。');return data;
+}
+function updateSessionSheet(patch){view.set(state=>({sessionSheet:{...state.sessionSheet,...patch}}));}
+async function openIosBinding(){
+ view.set({sessionSheet:{kind:'binding',busy:true,devices:[]}});
+ try{const data=await sessionRequest('ios-binding');updateSessionSheet({busy:false,devices:data.devices});}catch(e){updateSessionSheet({busy:false,error:e.message});}
+}
+async function createIosBinding(){
+ updateSessionSheet({busy:true,error:null,copied:false,bindingUrl:null});
+ try{const data=await sessionRequest('ios-binding',{});updateSessionSheet({...data,busy:false});}catch(e){updateSessionSheet({busy:false,error:e.message});}
+}
+async function copyIosBinding(){
+ try{await navigator.clipboard.writeText(view.get().sessionSheet.bindingUrl);updateSessionSheet({copied:true,error:null});}catch{updateSessionSheet({error:'请长按下方链接并复制。'});}
+}
+async function revokeIosBinding(id){
+ updateSessionSheet({busy:true,error:null});
+ try{await sessionRequest('ios-binding/revoke',{deviceId:id});const data=await sessionRequest('ios-binding');updateSessionSheet({busy:false,devices:data.devices});}catch(e){updateSessionSheet({busy:false,error:e.message});}
+}
+async function openCallReport(id){
+ view.set({sessionSheet:{kind:'report',busy:true}});
+ try{const report=await sessionRequest('calls/'+encodeURIComponent(id));updateSessionSheet({busy:false,report});}catch(e){updateSessionSheet({busy:false,error:e.message});}
+}

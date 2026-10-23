@@ -59,7 +59,7 @@ function receive(snapshot){
   document.body.dataset.microphoneMuted=String(snapshot.muted);
   document.body.dataset.avatarState=snapshot.tasks.length>1?'very-busy':snapshot.tasks.length?'busy':'idle';
   let entry=null;
-  if(!snapshot.bound)entry={kind:'link',title:'绑定本人的电话入口',description:'请在右上角设置中完成绑定与麦克风授权。'};
+  if(!snapshot.bound)entry={kind:'link',title:'绑定一个会话',description:'从飞书或网页电话获取绑定链接，再到右上角设置绑定。'};
   const people=snapshot.people;
   const notice=snapshot.notice?{...snapshot.notice,at:Date.now()}:null;
   view.set({call,voice:snapshot.voice,thinkingAt:snapshot.thinking?Date.now():null,callStartedAt:snapshot.startedAt,

@@ -223,7 +223,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     };
     ending.fallbackTimer=setTimeout(fallback,nativeFarewellDelayMs);ending.fallbackTimer.unref?.();
   };
-  async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false,replyTarget=null,nativeRuntimeVersion}) {
+  async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false,replyTarget=null,callReportFactory=null,nativeRuntimeVersion}) {
     if(nativeRuntimeVersion!==undefined&&(nativeRuntimeVersion!==1||surface!=='phone'))throw Error('Unsupported native runtime');
     if(!['phone','speaker'].includes(surface))throw Error('不支持的语音终端');
     if(![16000,24000].includes(inputSampleRate))throw Error('不支持的输入采样率');
@@ -235,7 +235,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,narrationBusyUntil:0,narrations:0,progress:null,toolOwners:new Map(),retiredBridges:new Set()});
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
-    s.replyDelivery=createConversationReplyDelivery({gateway,target:replyTarget,ownerId:s.id,audit,onStatus:value=>emit(s,{type:'reply.sync',...value})});
+    s.replyDelivery=createConversationReplyDelivery({gateway,target:replyTarget,ownerId:s.id,audit,callReport:callReportFactory?.(s.id),onStatus:value=>emit(s,{type:'reply.sync',...value})});
     s.delivery=createTaskDelivery({gateway,sessionKey,ownerId:s.id,replyDelivery:s.replyDelivery,audit});
     s.backend=createBackendDelegation({gateway,sessionKey,sessionBound,ownerId:s.id,audit,taskDelivery:s.delivery,pollMs:backendPollMs,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}},
       onStage:stage=>{if(current(s)){audit({type:'backend.stage',voiceSessionId:s.id,callId:stage.callId,label:stage.latest,running:stage.latestRunning,completed:stage.completed,failed:stage.failed});emit(s,{type:'tool.progress',callId:stage.callId,name:'delegate_to_v',...(stage.latest?{stage:stage.latest}:{})});}}});
@@ -541,7 +541,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       audit({type:'transcript',voiceSessionId:s.id,role:'user',text,final:true,source:'speaker-asr'});
       if(s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));
     }emit(s,value);if(value.type==='error')void close(s.id).catch(()=>{});});
-    if(current(s)){connectionStage('provider-ready');emit(s,{type:'ready',model:s.model,tools:voiceTools.map(t=>t.name)});}
+    if(current(s)){connectionStage('provider-ready');s.replyDelivery?.ready();emit(s,{type:'ready',model:s.model,tools:voiceTools.map(t=>t.name)});}
   }
   return {
     models,reserve,close,

@@ -299,6 +299,33 @@ function TaskSheet({state, now, actions, onClose}) {
   );
 }
 
+function SessionSheet({state,actions}) {
+ const value=state.sessionSheet,dialog=useRef(null);
+ useEffect(()=>{if(!value)return;dialog.current?.showModal();return()=>dialog.current?.close();},[Boolean(value)]);
+ if(!value)return null;
+ const report=value.report;
+ return createPortal(<dialog ref={dialog} className="session-dialog" onCancel={actions.closeSessionSheet}>
+  <header><div><span className="session-eyebrow">{value.kind==='binding'?'在 iPhone 上继续':'通话记录'}</span><h2>{value.kind==='binding'?'绑定 iOS App':report?.name??'完整对话'}</h2></div><button type="button" aria-label="关闭" onClick={actions.closeSessionSheet}>×</button></header>
+  <div className="session-dialog-body">
+   {value.error&&<p role="alert" className="session-error">{value.error}</p>}
+   {value.kind==='binding'?<>
+    <p>将 App 绑定到<strong>{state.conversation?.name??'当前会话'}</strong>。之后从 App 拨号，继续使用这个会话的上下文和权限。</p>
+    <ol className="binding-steps"><li>点击下方按钮，生成并复制绑定链接。</li><li>打开 V iOS App，进入右上角「设置」。</li><li>粘贴链接并绑定，确认会话名称后开始通话。</li></ol>
+    <p className="session-muted">链接 5 分钟内有效，仅可绑定一次。请只粘贴到自己的 App。</p>
+    <button type="button" className="session-primary" disabled={value.busy} onClick={actions.createBinding}>{value.busy?'请稍候…':value.bindingUrl?'重新生成链接':'生成绑定链接'}</button>
+    {value.bindingUrl&&<div className="binding-link"><textarea aria-label="iOS 绑定链接" readOnly value={value.bindingUrl}/><button type="button" onClick={actions.copyBinding}>{value.copied?'已复制':'复制链接'}</button></div>}
+    {value.devices?.length>0&&<section className="binding-devices"><h3>已绑定的 App</h3>{value.devices.map(device=><div key={device.id}><span>{new Date(device.createdAt).toLocaleString('zh-CN')} 绑定</span><button disabled={value.busy} onClick={()=>actions.revokeBinding(device.id)}>解除绑定</button></div>)}</section>}
+   </>:<>
+    {value.busy&&<p role="status">正在读取通话…</p>}
+    {report&&<><p className="session-muted">{new Date(report.startedAt).toLocaleString('zh-CN')} · {clock(report.durationMs)} · {report.endedAt?'通话已结束':'通话进行中'}</p>
+     <section className="call-report-summary"><h3>这通电话聊了什么</h3><p>{report.summary}</p>{report.pendingTasks&&<p className="session-muted">部分任务仍在后台处理，请以会话后续结果为准。</p>}</section>
+     <h3 className="report-transcript-heading">完整对话</h3><div className="report-transcript">{report.turns.map(row=><article key={row.id} data-role={row.role}><span>{row.role==='user'?'你':'V'}{row.interrupted?' · 被打断':''}</span><p>{row.text}</p></article>)}{!report.turns.length&&<p className="session-muted">没有可保存的对话。</p>}</div>
+    </>}
+   </>}
+  </div>
+ </dialog>,document.body);
+}
+
 function CallPage({view, actions, options}) {
   const state = useView(view);
   const active = state.call !== 'idle';
@@ -337,6 +364,8 @@ function CallPage({view, actions, options}) {
   );
   return (
     <>
+      <SessionSheet state={state} actions={actions}/>
+      {state.iosBindingAvailable&&!active&&<button className="ios-binding-trigger" type="button" onClick={actions.openBinding}>绑定 iOS App</button>}
       <button id="changelogOpen" className="changelog-trigger" type="button" aria-haspopup="dialog" aria-controls="changelogDialog" aria-expanded="false" hidden={active}>
         <Icon d={SPARK} />更新日志
       </button>

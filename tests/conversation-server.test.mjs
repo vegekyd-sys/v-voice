@@ -10,7 +10,7 @@ const entries=['a','b','alias'].map((suffix,i)=>({
  callerId:'tianyi',permissionProfile:'personal-tianyi',accessToken:String(i+1).repeat(40)}));
 async function fixture(t,options={}){
  const calls=[];let serial=0;
- const bridge=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:options.entries??entries,personalReply:options.personalReply,feishuAccounts:options.feishuAccounts??{},
+ const bridge=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:options.entries??entries,callSummarize:async()=>'讨论了计划。',personalReply:options.personalReply,feishuAccounts:options.feishuAccounts??{},
  gateway:{request:async(method,args)=>{calls.push({method,args});if(method==='sessions.resolve')return options.resolve?options.resolve(args):{key:args.key,agentId:args.agentId};if(method==='send')return {messageId:'om_fixture'};return method==='talk.client.create'?{voiceSessionId:'native-'+(++serial),model:'gpt-live-1-codex',transport:'webrtc',offerUrl:'/plugins/openai/realtime/calls'}:{ok:true};}},
  directVoice:{models:()=>[],reserve:async args=>{calls.push({method:'direct.reserve',args});return {voiceSessionId:'direct-'+(++serial),provider:args.model};},close:async()=>{},handleEvent:()=>{},dispose:async()=>{},...options.directVoice},offer:options.offer??(async()=> '')});
  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
@@ -118,13 +118,19 @@ test('reply sync is enabled by private entry only; native final goes to that exa
  const enabled=entries.map(e=>({...e,replySync:true}));
  const f=await fixture(t,{entries:enabled,feishuAccounts:{accounts:{lab:{appId:'existing-account'}}}}),cookie=await f.login(entries[0]);
  const first=await(await f.request(entries[0].id,'session',cookie,{replyTarget:{to:'oc_foreign',accountId:'other'}})).json();
+ await f.request(entries[0].id,'offer',cookie,{voiceSessionId:first.voiceSessionId,sdp:'v=0\r\n'});
  await f.request(entries[0].id,'call-control-input',cookie,{voiceSessionId:first.voiceSessionId,revision:1,turnId:'u1',text:'说明计划',final:true});
  const event={event:'talk.event',payload:{voiceSessionId:first.voiceSessionId,talkEvent:{type:'output.text.done',responseId:'r1',payload:{text:'完整回答，只属于这通电话。'}}}};
  f.bridge.emit(event);f.bridge.emit(event);
  await f.request(entries[0].id,'close',cookie,first);
- const sent=f.calls.filter(c=>c.method==='send');assert.equal(sent.length,1);
- assert.equal(conversationReplyText(sent[0].args.message),'语音提问：说明计划\n\nV：完整回答，只属于这通电话。');assert.equal(sent[0].args.to,'oc_room_a');assert.equal(sent[0].args.accountId,'lab');assert.equal(sent[0].args.sessionKey,entries[0].sessionKey);
- f.bridge.emit(event);assert.equal(f.calls.filter(c=>c.method==='send').length,1);
+ for(let i=0;f.bridge.releaseReadiness().backgroundTasks&&i<100;i++)await new Promise(r=>setTimeout(r,2));
+ const sent=f.calls.filter(c=>c.method==='send');assert.equal(sent.length,2);
+ assert.equal(sent[0].args.message,'📞 开始打电话');const card=JSON.parse(sent[1].args.message);assert.equal(card.header.title.content,'📞 通话结束');
+ for(const row of sent){assert.equal(row.args.to,'oc_room_a');assert.equal(row.args.accountId,'lab');assert.equal(row.args.sessionKey,entries[0].sessionKey);}
+ const id=new URL(card.body.elements.at(-1).behaviors[0].default_url).searchParams.get('call');
+ const report=await(await f.request(entries[0].id,'calls/'+id,cookie)).json();assert.deepEqual(report.turns.map(t=>t.text),['说明计划','完整回答，只属于这通电话。']);
+ const foreignCookie=await f.login(entries[1]);assert.equal((await f.request(entries[1].id,'calls/'+id,foreignCookie)).status,404);
+ f.bridge.emit(event);assert.equal(f.calls.filter(c=>c.method==='send').length,2);
  const direct=await f.request(entries[0].id,'session',cookie,{model:'seeduplex',replySync:false,replyTarget:{to:'oc_foreign'}});assert.equal(direct.status,200);
  assert.equal(f.calls.find(c=>c.method==='direct.reserve').args.replyTarget.to,'oc_room_a');
 });
