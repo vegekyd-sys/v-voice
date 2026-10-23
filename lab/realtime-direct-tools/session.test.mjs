@@ -22,7 +22,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
+ const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -1143,4 +1143,44 @@ test('actor reads require verified binding, valid actor credentials and current 
   assert(!config.tools.some(x=>x.name==='feishu_calendar'));
   f.call('feishu_calendar',{},'denied');await delay(10);assert.equal(reads,0);
  }
+test('phone fix reaches only its current tool and explicit V backend task without a raw audit record',async t=>{
+ const f=await fixture(undefined,'grok',{nativeRuntimeVersion:1,nativeLocationVersion:1});t.after(()=>f.service.dispose());
+ assert.equal(f.reservation.nativeLocationVersion,1);
+ f.call('get_current_location',{},'location-one');
+ const req=f.client.sent.find(e=>e.type==='device.location.request');assert(req);
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'device.location.result',version:1,voiceSessionId:f.reservation.voiceSessionId,requestId:req.requestId,ok:true,latitude:31.2,longitude:121.4,horizontalAccuracyM:20,capturedAt:Date.now(),coordinateSystem:'WGS84',accuracyAuthorization:'full'})),false);
+ for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='location-one');i++)await delay(2);
+ const delivered=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='location-one');assert.equal(delivered.ok,true);assert.equal(delivered.result,undefined);
+ f.call('delegate_to_v',{question:'请用手机位置确认附近上车点，只查询不下单',use_current_location:true},'ride-task');
+ for(let i=0;i<100&&!f.invocations.some(v=>v.question?.includes('WGS84'));i++)await delay(2);
+ const task=f.invocations.find(v=>v.question?.includes('WGS84'));assert(task);assert.match(task.question,/31.2/);assert.match(task.question,/不默认存入长期记忆/);
+ f.completeBackend('本地后台任务回执：已收到当前通话位置，未下单');
+ for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='ride-task');i++)await delay(5);
+ assert(f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='ride-task'));
+});
+
+test('old phones do not declare location, and a task cannot use missing device data',async t=>{
+ const old=await fixture();t.after(()=>old.service.dispose());
+ assert(!old.upstream.sent.find(e=>e.type==='session.update').session.tools.some(t=>t.name==='get_current_location'));
+ const f=await fixture(undefined,'grok',{nativeRuntimeVersion:1,nativeLocationVersion:1});t.after(()=>f.service.dispose());
+ f.call('delegate_to_v',{question:'从这里打车',use_current_location:true},'no-fix');
+ for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='no-fix');i++)await delay(2);
+ assert(!f.invocations.some(v=>v.question?.includes('从这里打车')));assert.match(f.audit.find(e=>e.callId==='no-fix'&&e.type==='tool.delivered').result.error,/缺失|过期/);
+});
+
+
+test('a fresh device fix can supplement the same running V task with its control receipt',async t=>{
+ const f=await fixture(async(args,method)=>method==='voice.product.task.control'?{taskId:args.taskId,ok:true,queued:true}:{ok:true,output:{}},'grok',{nativeRuntimeVersion:1,nativeLocationVersion:1});t.after(()=>f.service.dispose());
+ f.call('delegate_to_v',{question:'查一个打车上车点，只查询'},'running-ride');
+ for(let i=0;i<100&&!f.invocations.some(v=>v.question);i++)await delay(2);
+ f.call('get_current_location',{},'followup-fix');
+ const req=f.client.sent.find(e=>e.type==='device.location.request');assert(req);
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'device.location.result',version:1,voiceSessionId:f.reservation.voiceSessionId,requestId:req.requestId,ok:true,latitude:31.2,longitude:121.4,horizontalAccuracyM:15,capturedAt:Date.now(),coordinateSystem:'WGS84',accuracyAuthorization:'full'})),false);
+ for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='followup-fix');i++)await delay(2);
+ f.call('openclaw_agent_control',{mode:'steer',text:'用手机刚刚提供的位置确认上车点，不下单',use_current_location:true},'location-followup');
+ for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='location-followup');i++)await delay(2);
+ const control=f.invocations.find(v=>v.text?.includes('WGS84'));assert(control);assert.equal(control.taskId,'sdk-fixture-task');
+ const receipt=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='location-followup').result;
+ assert.equal(receipt.queued,true);assert.equal(receipt.applied,false);assert.equal(f.invocations.filter(v=>v.question).length,1);
+ f.completeBackend('收到位置补充，未下单');
 });

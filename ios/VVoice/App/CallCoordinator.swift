@@ -85,6 +85,10 @@ import VVoiceCore
     private(set) var speakerNoticeKind = "notice"
     @ObservationIgnored private var nativeRuntime: NativeRuntimePolicy?
     @ObservationIgnored private var nativeRuntimeRevision = 0
+    @ObservationIgnored private let location: any DeviceLocationProviding
+    @ObservationIgnored private var locationTask: Task<Void, Never>?
+    @ObservationIgnored private var locationRequests = Set<String>()
+    @ObservationIgnored private var nativeLocationEnabled = false
     var nativeRuntimeVersion: Int? { nativeRuntime?.version }
     @ObservationIgnored private var speakerNoticeTask: Task<Void, Never>?
     @ObservationIgnored private var speakerRouted = false
@@ -176,7 +180,8 @@ import VVoiceCore
     @ObservationIgnored private(set) var appScenePhase: ScenePhase = .background
     private var appIsActive: Bool { appScenePhase == .active }
 
-    init(api: VoiceAPI? = nil, audio: VoiceAudio = VoiceAudio(), makeGPT: @escaping () -> GPTLiveTransport = { GPTLiveTransport() }) {
+    init(api: VoiceAPI? = nil, audio: VoiceAudio = VoiceAudio(), location: any DeviceLocationProviding = DeviceLocation(), makeGPT: @escaping () -> GPTLiveTransport = { GPTLiveTransport() }) {
+        self.location = location
         self.audio = audio
         self.makeGPT = makeGPT
         self.api = api ?? VoiceAPI(store: BindingStore())
@@ -342,6 +347,8 @@ import VVoiceCore
             CallDiagnostics.record("call.runtime", code: "v=1 policy=\(fingerprint) onsetMS=\(nativeRuntime!.pause.onsetMS) thinkingMS=\(nativeRuntime!.timing.thinkingMS)")
         } else { nativeRuntime = nil }
         nativeRuntimeRevision = 0
+        nativeLocationEnabled = reservation["nativeLocationVersion"] as? Int == 1
+        locationRequests.removeAll()
         nativeDuplex = reservation["nativeDuplex"] as? Bool == true
         nativeAssisted = nativeDuplex && reservation["nativePlaybackPolicy"] as? String == "assisted"
         if let runtime = nativeRuntime {
@@ -638,6 +645,32 @@ import VVoiceCore
         scheduleCaptionUpdate(); updateAvatar()
     }
     private func handle(_ v: [String: Any], owner: UUID) throws {
+        if v["type"] as? String == "device.location.request" {
+            guard nativeLocationEnabled, owned(owner), v["version"] as? Int == 1,
+                  let id = v["requestId"] as? String, UUID(uuidString: id) != nil,
+                  v["voiceSessionId"] as? String == voiceID,
+                  let expiresAt = v["expiresAt"] as? Double, expiresAt.isFinite,
+                  expiresAt > Date().timeIntervalSince1970 * 1000,
+                  expiresAt <= Date().timeIntervalSince1970 * 1000 + 30_000,
+                  !locationRequests.contains(id), locationRequests.count < 100 else { return }
+            locationRequests.insert(id)
+            let transport = self.transport, voiceID = self.voiceID
+            if locationTask != nil {
+                transport?.send(["type": "device.location.result", "version": 1, "voiceSessionId": voiceID ?? "", "requestId": id, "ok": false, "reason": "unavailable"])
+                return
+            }
+            locationTask = Task { [weak self] in
+                guard let self else { return }
+                let result = await self.location.locate(foreground: self.appIsActive, liveActivity: self.activity?.activityState == .active)
+                guard self.owned(owner), self.voiceID == voiceID, !Task.isCancelled else { return }
+                self.locationTask = nil
+                var payload = result.wire
+                if Date().timeIntervalSince1970 * 1000 > expiresAt { payload = ["ok": false, "reason": "timeout"] }
+                payload.merge(["type": "device.location.result", "version": 1, "voiceSessionId": voiceID ?? "", "requestId": id]) { _, new in new }
+                transport?.send(payload)
+            }
+            return
+        }
         if nativeRuntime != nil {
             if v["type"] as? String == "ready" { return }
             guard let voiceID else { throw VoiceError.protocolMismatch }
@@ -975,6 +1008,7 @@ import VVoiceCore
         audio.clear(); localBargeInEnabled = false; pendingEndID = nil; naturalEnd?.cancel()
     }
     private func stopMedia(keepAudio: Bool = false) {
+        nativeLocationEnabled = false; locationTask?.cancel(); locationTask = nil; location.cancel(); locationRequests.removeAll()
         speakerNoticeTask?.cancel(); speakerNoticeTask = nil; speakerNotice = ""; speakerAction = ""
         thinkingNoticeTask?.cancel(); thinkingNoticeTask = nil; thinkingVisible = false
         routeChangeTask?.cancel(); routeChangeTask = nil

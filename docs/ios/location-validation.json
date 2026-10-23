@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-23",
+  "status": "local_candidate",
+  "baseCommit": "5aa8708",
+  "branch": "codex/voice-ios-location",
+  "nativeBinaryBuildMetadata": 24,
+  "newReleaseNumberAssigned": false,
+  "productionDeployed": false,
+  "physicalPhoneInstalled": false,
+  "realVTaskTested": false,
+  "realRideOrderCreated": false,
+  "tests": {
+    "node": {
+      "passed": 749,
+      "failed": 0
+    },
+    "swiftCore": {
+      "passed": 37,
+      "failed": 0
+    },
+    "nativeFull": {
+      "passed": 77,
+      "failed": 0,
+      "skipped": 1
+    },
+    "nativeLocationFinal": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 1
+    },
+    "serviceFinalTargeted": {
+      "passed": 91,
+      "failed": 0
+    }
+  },
+  "systemLocation": {
+    "environment": "isolated iOS 26.5 simulator",
+    "permission": "pregranted When In Use on test simulator",
+    "input": "simctl-injected non-personal coordinates",
+    "coreLocationReadAndRelayReceipt": true,
+    "sharedH5ReceiptVisible": true,
+    "evidence": "location-evidence/foreground-receipt.png",
+    "physicalGPSAcceptance": false
+  },
+  "actualBackgroundAttempt": {
+    "result": "inconclusive_platform_state_assertion_failed",
+    "observedUIKitState": "inactive",
+    "requiredUIKitState": "background",
+    "locationResultWasOk": true,
+    "countedAsBackgroundPass": false,
+    "defaultTest": "skip_without_explicit_external_harness",
+    "physicalLockScreenAcceptance": false
+  },
+  "existingVContract": {
+    "taskStartWithDeviceContext": "passed_mock_gateway",
+    "runningTaskSteerWithDeviceContext": "passed_mock_gateway",
+    "queuedIsNotApplied": true,
+    "newGatewayOrWorkerProtocol": false
+  },
+  "limits": [
+    "Only negotiated native PCM relay clients; GPT WebRTC not extended",
+    "Initial permission dialog and physical reduced-accuracy switch not tested",
+    "No always permission or continuous location tracking",
+    "Device-reported location is not hardware attestation or tool identity",
+    "Position is not confirmed pickup point",
+    "No new long-term memory writes; existing model/task storage policies still apply"
+  ]
+}

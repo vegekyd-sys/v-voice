@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {createDeviceLocation} from '../../lab/realtime-direct-tools/device-location.mjs';
 // Local protocol fixture only. No providers, tool execution, personal data or costs.
 import {createServer} from 'node:http';
 import {randomUUID} from 'node:crypto';
@@ -11,6 +12,7 @@ const port=Number(process.env.VVOICE_FIXTURE_PORT??29837);
 let active=null,client=null,sequence=0,sessions=0,inputBytes=0,zeroBytes=0,playbackDrained=0,playbackStarts=0,greetings=0,heartbeats=0,earlyAudio=false,slowSession=false;
 let slowSessionMS=300;
 let fastMode=false,fastReject=false,fastWrongOwner=false,fastDials=0,statusRequests=0,sessionRequests=0;
+let deviceLocation=null,locationResults=[],systemBackgroundReady=false;
 let presentationRequests=0;
 let nativeMode=false,speakerMode=false,runtimeMode=false,nativeRuntime=null,lastSessionRequest=null;
 let shellDelayMS=0;
@@ -50,7 +52,7 @@ const server=createServer(async(req,res)=>{
  const path=new URL(req.url,'http://127.0.0.1').pathname;
  const body=await new Promise(resolve=>{const chunks=[];req.on('data',b=>chunks.push(b));req.on('end',()=>{try{resolve(JSON.parse(Buffer.concat(chunks).toString()||'{}'));}catch{resolve({});}});});
  const send=(status,value)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
- if(path==='/fixture/state')return send(200,{fastDials,statusRequests,sessionRequests,active,sessions,inputBytes,zeroBytes,inputFrames,inputActiveFrames,peakInputRMS,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,presentationRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects,lastOffer});
+ if(path==='/fixture/state')return send(200,{fastDials,statusRequests,sessionRequests,active,sessions,inputBytes,zeroBytes,inputFrames,inputActiveFrames,peakInputRMS,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,presentationRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects,lastOffer,locationResults,systemBackgroundReady});
  if(path==='/fixture/redirect-target'){shellRedirects++;return send(200,{});}
  if(path==='/voice/ios-shell-release.json'){
    shellRequests.push({cookie:!!req.headers.cookie,authorization:!!req.headers.authorization});
@@ -62,6 +64,14 @@ const server=createServer(async(req,res)=>{
    return send(200,release);
  }
  if(path==='/fixture/command'){
+   if(body.command==='system-background-ready'){systemBackgroundReady=true;return send(200,{});}
+   if(body.command==='location'){
+     if(!deviceLocation)return send(409,{error:'No location capability'});
+     const result=await deviceLocation.request();locationResults.push(result);
+     emit({type:'transcript',role:'assistant',text:result.ok?`本地定位回执：当前通话已收到手机位置，精度 ${Math.round(result.location.horizontalAccuracyM)} 米，坐标系 WGS84。仅测试数据，未连接真实 V 或滴滴。`:`本地定位回执：${result.reason}，没有提供位置。`,final:true});
+     return send(200,result);
+   }
+   if(body.command==='location-frame'){client?.send(JSON.stringify({...body.frame,voiceSessionId:body.frame?.voiceSessionId??active}));return send(200,{});}
    if(body.command==='gpt-answer'&&offerReply){const reply=offerReply;offerReply=null;reply(200,{sdp:body.sdp});}
    if(body.command==='reset'){lastOffer=null;offerReply?.(409,{error:'Reset'});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();}
    if(body.command==='shell-delay')shellDelayMS=Math.max(0,Math.min(2000,Number(body.ms)||0));
@@ -110,7 +120,7 @@ const server=createServer(async(req,res)=>{
    if(body.command==='think')emit({type:'transcript',role:'user',text:'本地测试',final:true});
    if(body.command==='end'){audio();emit({type:'end.after-playback',callId:'fixture-end'});}
    if(body.command==='drop')client?.terminate();
-   if(body.command==='reset'){nativeMode=false;speakerMode=false;runtimeMode=false;nativeRuntime=null;lastSessionRequest=null;client?.close();client=null;active=null;sessions=0;inputBytes=0;zeroBytes=0;greetings=0;heartbeats=0;earlyAudio=false;playbackStarts=0;limitNextSession=false;slowClose=false;closeRequests=0;documents=[];pending=[];acknowledgements=[];supplements=[];avatarRequests=[];avatarEvents=[];avatarReply="reaction-0";avatarContinuations=["reaction-1","listen-5"];slowAvatar=false;}
+   if(body.command==='reset'){deviceLocation?.close();deviceLocation=null;locationResults=[];systemBackgroundReady=false;nativeMode=false;speakerMode=false;runtimeMode=false;nativeRuntime=null;lastSessionRequest=null;client?.close();client=null;active=null;sessions=0;inputBytes=0;zeroBytes=0;greetings=0;heartbeats=0;earlyAudio=false;playbackStarts=0;limitNextSession=false;slowClose=false;closeRequests=0;documents=[];pending=[];acknowledgements=[];supplements=[];avatarRequests=[];avatarEvents=[];avatarReply="reaction-0";avatarContinuations=["reaction-1","listen-5"];slowAvatar=false;}
    return send(200,{ok:true});
  }
  if(req.headers.cookie!=='v_voice_access=fixture-cookie')return send(401,{error:'Fixture cookie required'});
@@ -163,6 +173,7 @@ const server=createServer(async(req,res)=>{
    const reservation=body.model==='gpt-live'?{voiceSessionId:active,model:'gpt-live-1-codex',transport:'webrtc'}:{voiceSessionId:active,transport:'gateway-relay',provider:'seeduplex',relayTicket:'fixture-ticket',...(nativeMode&&body.inputPolicy==='native'?{nativeDuplex:true,nativePlaybackPolicy:'assisted'}:speakerMode?{speakerRouting:{policy:'speaker'}}:{})};
    nativeRuntime=runtimeMode&&body.nativeRuntimeVersion===1?createNativeRuntime({voiceSessionId:active,duplex:nativeMode,assisted:nativeMode,speakerRouted:speakerMode}):null;
    if(nativeRuntime)reservation.nativeRuntime=nativeRuntime.descriptor;
+   if(body.nativeLocationVersion===1&&body.model!=='gpt-live'){reservation.nativeLocationVersion=1;deviceLocation=createDeviceLocation({voiceSessionId:active,send:e=>client?.send(JSON.stringify(e))});}
    if(slowSession){slowSession=false;setTimeout(()=>send(200,reservation),slowSessionMS);return;}
    return send(200,reservation);
  }
@@ -192,6 +203,7 @@ function observeClient(ws){
        peakInputRMS=Math.max(peakInputRMS,rms);return;
      }
      const v=JSON.parse(bytes.toString());
+     if(v.type==='device.location.result')deviceLocation?.receive(v);
      if(v.type==='greeting'){greetings++;emit({type:'transcript',role:'assistant',text:'本地音频测试，欢迎。',final:true});audio();}
      if(v.type==='playback.state'&&v.speaking===true)playbackStarts++;
      if(v.type==='playback.drained')playbackDrained++;

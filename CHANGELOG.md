@@ -1,3 +1,8 @@
+## Unreleased — iOS on-demand location candidate
+
+- Add call-scoped, one-shot Core Location over the authenticated native relay. Attach fresh WGS84 / accuracy / timestamp metadata to the existing V task start or steer/followup context only when requested. Preserve native audio, Intents, H5 delivery and existing tool identity.
+- Candidate only; no production/Gateway change, phone install or ride order. Physical background/lock-screen acceptance remains pending. See `docs/ios/LOCATION-PROTOTYPE.md`.
+
 ## 2026-10-24 — iOS caller identity, direct calendar and stale content notice
 
 - Persist verified Feishu profile fields into matching, active device grants when the browser prepares a binding. Existing device credentials, expiry and actor permissions remain unchanged.
