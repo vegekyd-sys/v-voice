@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "date": "2026-10-23",
-  "status": "release_authorized_preparing_build24",
+  "status": "merged_deployed_build24_installed_physical_acceptance_pending",
   "developmentBase": "08eaecf1a92bc4aa748e1b6053e7924cf55241e1",
   "branch": "codex/voice-native-capability-bridge",
   "protocolVersion": 1,
   "requiresFirstNativeUpgrade": true,
   "nativeBuildAssigned": true,
-  "phoneInstalled": false,
-  "productionDeployed": false,
+  "phoneInstalled": true,
+  "productionDeployed": true,
   "gatewayChanged": false,
   "validationEnvironment": "isolated local fixture, existing chat-owned iOS 26.5 simulator, ports 29937 and 29947",
   "tests": {
@@ -97,5 +97,22 @@
       "copiedAndVerified": true
     }
   },
-  "diagnostics": "Bounded local protocol version, policy fingerprint and numeric timing fields only; no entry, credentials, audio or transcript"
+  "diagnostics": "Bounded local protocol version, policy fingerprint and numeric timing fields only; no entry, credentials, audio or transcript",
+  "mainSourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+  "mainCI": {
+    "run": 39893373949,
+    "conclusion": "success"
+  },
+  "signedBundle": {
+    "build": 24,
+    "version": "1.0.0",
+    "ipaSHA256": "cb96341de75cbd598a1806caaaff0e0e1fdd1dcc614a3dafed753cac3cf08ee8",
+    "appSHA256": "59f9dcbbead0ff72bf8e6786bcb997e33f90d4ea365bb38d2944490377b8cd71",
+    "bindingIdentityUnchanged": true,
+    "signed": true,
+    "exportedIPAVerified": true,
+    "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46"
+  },
+  "physicalAcceptance": "pending_human",
+  "serviceOnlyPhoneProof": "pending_second_service_release_and_phone_call"
 }

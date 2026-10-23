@@ -1,21 +1,21 @@
 {
   "schema": 1,
   "version": "1.0.0",
-  "build": 23,
-  "sourceCommit": "2d8cd357b9aaaffee94c9e1076b0761115a2b01e",
+  "build": 24,
+  "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
   "candidateOnly": false,
   "signedArchiveVerified": true,
   "exportedIPAVerified": true,
-  "ipaSHA256": "8f792d361374289cf72db5a86414ada9885e12494d7f575f635ba915c435e62c",
+  "ipaSHA256": "cb96341de75cbd598a1806caaaff0e0e1fdd1dcc614a3dafed753cac3cf08ee8",
   "installedOnRequestedIPhone": true,
-  "realVoiceAcceptance": "build22_accepted_build23_waveform_physical_feedback_pending",
+  "realVoiceAcceptance": "build24_physical_acceptance_pending",
   "localTests": {
-    "core": 34,
-    "nativeAll": 68,
+    "core": 37,
+    "nativeAll": 71,
     "relatedServiceContracts": 92,
     "mainCI": {
-      "run": 39823447278,
-      "commit": "2d8cd357b9aaaffee94c9e1076b0761115a2b01e",
+      "run": 39893373949,
+      "commit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
       "conclusion": "success"
     },
     "embeddedH5Parity": true,
@@ -38,7 +38,7 @@
     "build": 8,
     "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab"
   },
-  "deviceReportedBuild": "23",
+  "deviceReportedBuild": "24",
   "savedH5Baseline": {
     "build": 10,
     "sourceCommit": "3ffeb94",
@@ -53,14 +53,14 @@
     "status": "accepted_by_Tianyi"
   },
   "mergedIntoMain": true,
-  "mergePR": 78,
+  "mergePR": 82,
   "mergeChecksPassed": true,
   "releaseScope": {
     "distribution": "development_signed_private_device",
-    "webServerDeployed": false,
+    "webServerDeployed": true,
     "gatewayRestarted": false,
     "appStoreOrTestFlightPublished": false,
-    "homepageChangelog": "merged_and_bundled_browser_verified_server_remains_build22_release"
+    "homepageChangelog": "both_nodes_public_assets_and_browser_verified"
   },
   "appIcon": {
     "source": "Tianyi supplied purple headset portrait",
@@ -72,19 +72,19 @@
     "actionButtonLaunchOverlayAcceptance": "Tianyi_confirmed_build18_passed"
   },
   "webDeliveryRelease": {
-    "sourceCommit": "8136b20af19ca6fc740260875bf243d79cf67fd3",
-    "mergePR": 75,
+    "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+    "mergePR": 82,
     "serverDeployed": true,
     "publicAssetHashesVerified": true,
     "bothNodesVerified": true,
-    "record": "../releases/voice-duplex-wait-20261023/release.json"
+    "record": "../releases/voice-native-runtime-20261023/release.json"
   },
   "currentDeviceCandidate": {
-    "build": 23,
+    "build": 24,
     "installedOnRequestedIPhone": true,
     "lastAcceptedBuild": 22,
-    "physicalAcceptance": "new_waveform_feedback_pending",
-    "mergeStatus": "merged_pr77_pr78"
+    "physicalAcceptance": "pending_user_test",
+    "mergeStatus": "merged_pr82"
   },
   "build10RollbackHistory": {
     "date": "2026-10-22",
@@ -120,7 +120,7 @@
     "signedIPACopiedAndVerified": true,
     "originalArchiveRetained": true
   },
-  "recordScope": "build22_delivered_real_call_pending",
+  "recordScope": "build24_signed_installed_waiting_for_human_validation",
   "previouslyInstalledOnRequestedIPhone": true,
   "savedBuild14Rollback": {
     "build": 14,
@@ -313,13 +313,21 @@
   "nativeWaveformRelease": "build23-waveform.json",
   "pendingNativeRelease": {
     "build": 24,
-    "status": "authorized_merge_build_and_install_preparation",
+    "status": "installed_waiting_for_user_unlock_and_acceptance",
     "protocolVersion": 1,
-    "installed": false,
+    "installed": true,
     "physicalAcceptance": "pending",
     "rollbackBuildsVerified": [
       22,
       23
     ]
+  },
+  "lastAcceptedBuild": 22,
+  "nativeRuntime": {
+    "protocolVersion": 1,
+    "policyReadback": "pending_first_phone_call",
+    "bindingIdentityUnchanged": true,
+    "uninstalled": false,
+    "normalLaunch": "initial_request_blocked_by_lock_screen"
   }
 }
