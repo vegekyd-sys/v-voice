@@ -1,13 +1,20 @@
 {
   "version": "voice-shared-terminal-behavior.20261024.1",
-  "status": "candidate-not-deployed",
+  "status": "superseded-by-production-release",
   "baseCommit": "0381839",
   "scope": "Shared direct-voice conversation, natural search acknowledgment, task narration and result recovery across Web, iOS, StackChan and speakers",
   "gatewayProtocolChanged": false,
   "firmwareChanged": false,
-  "remainingAcceptance": ["shared VLab integration before release", "physical iPhone, StackChan and speaker audio/interruption acceptance"],
+  "remainingAcceptance": [
+    "physical iPhone, StackChan and speaker audio/interruption acceptance"
+  ],
   "homepageReleaseNote": {
     "title": "各终端共用对话与任务逻辑",
-    "items": ["网页、iPhone、小机器人和音响共用搜索接话、任务进度和结果交付逻辑。", "屏幕展示、麦克风处理、摄像头和舵机按设备能力适配。"]
-  }
+    "items": [
+      "网页、iPhone、小机器人和音响共用搜索接话、任务进度和结果交付逻辑。",
+      "屏幕展示、麦克风处理、摄像头和舵机按设备能力适配。"
+    ]
+  },
+  "releaseRecord": "../shared-terminal-behavior-20261024/release.json",
+  "acceptanceDecision": "User explicitly authorized Candidate instead of shared VLab, then merge and release."
 }
