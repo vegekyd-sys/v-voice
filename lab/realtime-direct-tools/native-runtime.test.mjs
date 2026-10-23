@@ -35,18 +35,18 @@ test('notice wording, action and task titles come from the web-owned display pol
   const n=r.project({type:'speaker.error',fatal:true,message:'连接断开'}).effects[0];
   assert.equal(n.action,'redial');assert.equal(n.actionLabel,'重拨');
   assert.equal(r.project({type:'speaker.end-revoked'}).effects[0].text,'');
-  assert.equal(r.project({type:'tool.call',callId:'search',activity:'web'}).effects[0].stage,'查资料');
+  assert.equal(r.project({type:'tool.call',callId:'search',activity:'web'}).effects[0].stage,'查询网页');
   assert.equal(r.project({type:'tool.progress',callId:'search'}).effects[0].stage,null,'missing progress preserves the current label');
 });
 test('service policy is snapshotted per call; changes need no binary and cannot mutate an active call',()=>{
   const policy=structuredClone(DEFAULT_NATIVE_RUNTIME_POLICY);
   const a=createNativeRuntime({voiceSessionId:'a',policy});
-  policy.copy.connected='新一轮已就绪';policy.pause.onsetMS=220;policy.taskLabels.web='查询网页';
+  policy.copy.connected='新一轮已就绪';policy.pause.onsetMS=220;policy.taskLabels.web='搜索新资料';
   const b=createNativeRuntime({voiceSessionId:'b',policy});
   assert.equal(a.descriptor.pause.onsetMS,140);assert.equal(b.descriptor.pause.onsetMS,220);
   assert.equal(b.descriptor.copy.connected,'新一轮已就绪');
-  assert.equal(a.project({type:'tool.call',callId:'a',activity:'web'}).effects[0].stage,'查资料');
-  assert.equal(b.project({type:'tool.call',callId:'b',activity:'web'}).effects[0].stage,'查询网页');
+  assert.equal(a.project({type:'tool.call',callId:'a',activity:'web'}).effects[0].stage,'查询网页');
+  assert.equal(b.project({type:'tool.call',callId:'b',activity:'web'}).effects[0].stage,'搜索新资料');
   assert.equal(a.project({type:'provider.reconnecting'}).effects[0].text,DEFAULT_NATIVE_RUNTIME_POLICY.copy.recovering);
 });
 test('document metadata, auto-open, limits and duplicate results stay on the service',()=>{

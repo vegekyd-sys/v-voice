@@ -1,4 +1,8 @@
 
+## 2026-10-23 — Service-only query status update for installed build 24
+
+- Use the shared Web task label 查询网页, so the call status reads 查询网页中. The runtime projects that service-owned label to installed build 24; existing native source and signing inputs remain unchanged. Physical same-binary policy readback is recorded separately after release.
+
 ## 2026-10-23 — iOS build 24 native capability bridge
 
 - Delivery: PR #82 / main `b8b71ac` passed CI; both Voice nodes run the same verified 208-file artifact. Signed build 24 was cover-installed and read back, preserving signing/Keychain identity and original build 22/23 rollback packages. Tianyi accepted voice, interruption, Action Button, locked-screen voice and Island controls; phone readback confirms policy cb418111e71a187b and valid microphone input. Follow-up service-only phone proof remains pending.
