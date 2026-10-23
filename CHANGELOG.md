@@ -1,3 +1,9 @@
+## 2026-10-24 — Responsive confirmed interruption · iOS build 32 candidate
+
+- Separate confirmed-speech corroboration from the old loudness/onset gate. Quiet syllables can acquire a reversible hold after local acoustic or provider confirmation; energy alone still cannot pause playback.
+- Add bounded service policy for corroboration RMS and duration, with backward-compatible defaults, and numeric speech-classifier diagnostics. Retain ignored-turn resume, old-tail replacement and stale-result protection.
+- Supersedes build 31 after user feedback that interruption was difficult. Physical short/quiet speech and echo validation is recorded in `docs/ios/responsive-interruption-build32.md`; production release and user acceptance remain separate.
+
 ## 2026-10-24 — Confirmed assisted interruption · iOS build 31 candidate
 
 - Require local speech evidence plus on-device acoustic confirmation or a service onset before pausing assisted playback. Unconfirmed room sound no longer causes repeated 1.8–2.6 second pauses. Preserve recognized interruption, ignored-turn resume and old-tail replacement; handle either signal ordering with a bounded confirmation window.

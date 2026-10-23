@@ -153,6 +153,8 @@ import VVoiceCore
     @ObservationIgnored private var nativeAssisted = false
     @ObservationIgnored private var nativePause = NativeSpeechPause()
     @ObservationIgnored private var speechClassifier: VoiceSpeechClassifier?
+    @ObservationIgnored private var speechProbePeak = 0.0
+    @ObservationIgnored private var speechProbeAt = 0.0
     @ObservationIgnored private var nativeOutputDone = false
     @ObservationIgnored private var retiredResponseOrder: [String] = []
     @ObservationIgnored private var responseID: String?
@@ -346,6 +348,7 @@ import VVoiceCore
             nativeDuplex = runtime.playback.replaceResponse; nativeAssisted = runtime.playback.localPause
         }
         nativePause = NativeSpeechPause(policy: nativeRuntime?.pause); nativeOutputDone = false
+        speechProbePeak = 0; speechProbeAt = 0
         speechClassifier?.stop(); speechClassifier = nil
         if nativeAssisted {
             speechClassifier = VoiceSpeechClassifier { [weak self] confidence, sampleAt in
@@ -353,6 +356,11 @@ import VVoiceCore
                     guard let self, self.owned(owner), !self.muted, self.audio.queuedFrames > 0 else { return }
                     let now = ProcessInfo.processInfo.systemUptime * 1000
                     guard sampleAt > 0, now >= sampleAt, now - sampleAt <= 350 else { return }
+                    self.speechProbePeak = max(self.speechProbePeak, confidence)
+                    if now - self.speechProbeAt >= 5000 {
+                        CallDiagnostics.record("audio.speech-probe", code: "peakConfidenceMilli=\(Int(self.speechProbePeak * 1000)) held=\(self.nativePause.held)")
+                        self.speechProbeAt = now; self.speechProbePeak = 0
+                    }
                     let wasHeld = self.nativePause.held
                     self.nativePause.localSpeech(confidence: confidence, at: now)
                     if !wasHeld && self.nativePause.held {

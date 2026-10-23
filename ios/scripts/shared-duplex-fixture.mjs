@@ -43,8 +43,8 @@ bridge.server.on('request',async(req,res)=>{
  try{
   let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>4096)throw Error('Fixture command too large');}
   const {command}=JSON.parse(raw);
-  if(command==='policy-v1'){runtimePolicy.copy.connected='候选策略一已接通';runtimePolicy.pause.onsetMS=140;}
-  else if(command==='policy-v2'){runtimePolicy.copy.connected='候选策略二已接通';runtimePolicy.pause.onsetMS=220;}
+  if(command==='policy-v1'){runtimePolicy.copy.connected='候选策略一已接通';runtimePolicy.pause.speechOnsetMS=140;}
+  else if(command==='policy-v2'){runtimePolicy.copy.connected='候选策略二已接通';runtimePolicy.pause.speechOnsetMS=220;}
   else if(command==='caption'){emit({type:'response.output_text.done',response_id:'caption',text:'新服务端策略的字幕，无需修改安装包。'});}
   else if(command==='old'){start('old');audio('old',oldTone);done('old');}
   else if(command==='speech-start'){emit({type:'conversation.item.input_audio_transcription.started'});}

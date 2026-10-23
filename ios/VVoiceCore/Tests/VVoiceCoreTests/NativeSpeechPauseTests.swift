@@ -47,8 +47,8 @@ private func frame(amplitude: Double = 0.15, hz: Double = 440) -> Data {
         p.nativeStarted(at: 2000); verify(!p.held)
     }
     var p = NativeSpeechPause()
-    for i in 0..<6 { _ = p.observe(frame(), enabled: true, at: Double(i * 20), generationComplete: true) }
-    p.nativeStarted(at: 120); verify(!p.held)
+    for i in 0..<2 { _ = p.observe(frame(), enabled: true, at: Double(i * 20), generationComplete: true) }
+    p.nativeStarted(at: 40); verify(!p.held)
 }
 @Test func recognizedInterruptionWaitsForDispositionBeyondBothOldTimeouts() {
     for generationComplete in [true, false] {
@@ -96,4 +96,23 @@ private func frame(amplitude: Double = 0.15, hz: Double = 440) -> Data {
     p.nativeStarted(at: 1500); p.nativeStopped(at: 2000)
     verify(p.observe(Data(count: 960), enabled: true, at: 6000, generationComplete: true))
     p.ignored(); p.localSpeech(confidence: 1, at: 6020); verify(!p.held)
+}
+
+@Test func quietShortSpeechCanCorroborateBothLocalAndServiceConfirmation() {
+    for service in [false, true] {
+        var p = NativeSpeechPause()
+        // RMS 0.0106, approximately 10 dB below the previous loudness gate.
+        for i in 0..<5 { verify(!p.observe(frame(amplitude: 0.015), enabled: true, at: Double(i * 20), generationComplete: true)) }
+        if service { p.nativeStarted(at: 100) }
+        else { p.localSpeech(confidence: 0.95, at: 100) }
+        verify(p.held)
+    }
+    var p = NativeSpeechPause()
+    for i in 0..<10 { _ = p.observe(frame(amplitude: 0.001), enabled: true, at: Double(i * 20), generationComplete: true) }
+    p.localSpeech(confidence: 0.99, at: 200); verify(!p.held)
+    p.nativeStarted(at: 200); verify(!p.held)
+    p.reset()
+    for i in 0..<5 { _ = p.observe(frame(amplitude: 0.015), enabled: true, at: Double(i * 20), generationComplete: true) }
+    _ = p.observe(Data(count: 960), enabled: false, at: 100, generationComplete: true)
+    p.localSpeech(confidence: 0.99, at: 120); verify(!p.held)
 }

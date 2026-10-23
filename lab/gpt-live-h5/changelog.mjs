@@ -1,5 +1,13 @@
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
+export const RESPONSIVE_INTERRUPTION_CANDIDATE_UPDATE = {
+  version:'voice-responsive-interruption.20261024.1',date:'2026-10-24',
+  title:'轻声插话响应修复（iOS 32 候选）',status:'candidate-validation',
+  items:[
+    '修复上一候选中已确认的人声仍被音量和持续时间门槛挡住的问题，轻声、短句更容易打断。',
+    '保留人声确认、忽略旁聊后续播和新回答替换旧尾音。',
+  ],
+};
 export const CONFIRMED_INTERRUPTION_CANDIDATE_UPDATE = {
   version:'voice-confirmed-interruption.20261024.1',date:'2026-10-24',
   title:'插话误停播修复（iOS 31 候选）',status:'candidate-validation',

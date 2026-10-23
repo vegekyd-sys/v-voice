@@ -178,8 +178,12 @@ import VVoiceCore
         }
         let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         let story = try Data(contentsOf: directory.appendingPathComponent("VoiceBargeStory.pcm"))
-        let interruption = try Data(contentsOf: directory.appendingPathComponent("VoiceBargeInterrupt.pcm"))
-        CallDiagnostics.record("barge.live-start")
+        let originalInterruption = try Data(contentsOf: directory.appendingPathComponent("VoiceBargeInterrupt.pcm"))
+        let quiet = ProcessInfo.processInfo.environment["VVOICE_BARGE_QUIET"] == "1"
+        let interruption = quiet ? originalInterruption.withUnsafeBytes { bytes in
+            bytes.bindMemory(to: Int16.self).map { Int16(Double(Int16(littleEndian: $0)) * 0.15).littleEndian }.withUnsafeBytes { Data($0) }
+        } : originalInterruption
+        CallDiagnostics.record("barge.live-start", code: "quiet=\(quiet)")
         try await owner.startOrContinue()
         let input = try XCTUnwrap(audio.onInput)
         var source = Data(), offset = 0, captureFrames = 0, testNoise = false
@@ -241,6 +245,39 @@ import VVoiceCore
         CallDiagnostics.record("barge.live-done", code: "answered=\(answered) phase=\(owner.phase.rawValue) capture=\(captureFrames)")
         XCTAssertTrue(answered, "The new reply must answer the interruption")
         XCTAssertTrue(audio.isRunning)
+    }
+    func testQuietShortSpeechClassifierOnPhysicalDevice() async throws {
+        guard ProcessInfo.processInfo.environment["VVOICE_RUN_LIVE_BARGE_IN"] == "1" else { throw XCTSkip("Explicit physical test authorization required") }
+        let file = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("VoiceBargeInterrupt.pcm")
+        let source = try Data(contentsOf: file)
+        let quiet = source.withUnsafeBytes { bytes in
+            bytes.bindMemory(to: Int16.self).map { Int16(Double(Int16(littleEndian: $0)) * 0.15).littleEndian }.withUnsafeBytes { Data($0) }
+        }
+        @MainActor final class Probe { var pause = NativeSpeechPause(); var heldAt: Double?; var peak = 0.0 }
+        let probe = Probe()
+        let start = ProcessInfo.processInfo.systemUptime * 1000
+        let classifier = VoiceSpeechClassifier { confidence, at in
+            Task { @MainActor in
+                let now = ProcessInfo.processInfo.systemUptime * 1000
+                guard now >= at, now - at <= 350 else { return }
+                probe.peak = max(probe.peak, confidence)
+                probe.pause.localSpeech(confidence: confidence, at: now)
+                if probe.pause.held && probe.heldAt == nil { probe.heldAt = now - start }
+            }
+        }
+        defer { classifier.stop() }
+        // Only the first second of quiet speech, then silence. Peak RMS stays
+        // below 0.035 for every frame, so build 31 cannot acquire a local hold.
+        for offset in stride(from: 0, to: 72000, by: 480) {
+            let pcm = offset < 24000 ? quiet.subdata(in: (offset * 2)..<((offset + 480) * 2)) : Data(count: 960)
+            let now = ProcessInfo.processInfo.systemUptime * 1000
+            _ = probe.pause.observe(pcm, enabled: true, at: now, generationComplete: true)
+            classifier.submit(pcm, at: now)
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        CallDiagnostics.record("barge.quiet-short", code: "heldMS=\(Int(probe.heldAt ?? -1)) confidenceMilli=\(Int(probe.peak * 1000))")
+        XCTAssertNotNil(probe.heldAt)
+        XCTAssertLessThan(probe.heldAt ?? .infinity, 1600)
     }
     func testPhysicalSpeakerPlaybackDoesNotSelfInterrupt() async throws {
         guard ProcessInfo.processInfo.environment["VVOICE_RUN_LIVE_BARGE_IN"] == "1" else { throw XCTSkip("Explicit physical playback authorization required") }

@@ -5,14 +5,14 @@ import Foundation
 public struct NativeSpeechPause: Sendable {
     public private(set) var held = false
     public private(set) var yielded = false
-    private var voicedMS = 0.0, quietMS = 0.0, floor = 0.004
+    private var voicedMS = 0.0, quietMS = 0.0
     private var inUtterance = false, locked = false, native = false, awaitingDecision = false
     private var expires = 0.0, hardExpires = 0.0
     private var lastVoicedAt: Double?
     private var pendingNativeStartAt: Double?
     private var policy: NativeRuntimePolicy.Pause?
     public init(policy: NativeRuntimePolicy.Pause? = nil) { self.policy = policy }
-    public mutating func reset() { let noise = floor; self = Self(policy: policy); floor = noise }
+    public mutating func reset() { self = Self(policy: policy) }
     public mutating func nativeStarted(at: Double) {
         // Local energy is only corroboration, never a playback command. A short
         // utterance may have ended before the service onset reaches the phone.
@@ -52,15 +52,17 @@ public struct NativeSpeechPause: Sendable {
             return (sqrt(energy / Double(max(1, samples.count))), Double(crossings) / Double(max(1, samples.count)), Double(samples.count) / 24)
         }
         let (rms, zcr, ms) = signal
-        let voiced = rms >= max(policy?.rms ?? 0.035, floor * (policy?.noiseMultiplier ?? 3)) && zcr > (policy?.zcrMin ?? 0.004) && zcr < (policy?.zcrMax ?? 0.32)
-        if voiced { quietMS = 0; voicedMS += ms; if voicedMS >= (policy?.onsetMS ?? 140) { inUtterance = true } }
+        // This is corroboration for confirmed speech, not an energy-only VAD.
+        // Quiet syllables must not also pass the former 0.035 / 140 ms gate.
+        let voiced = rms >= (policy?.speechRMS ?? 0.006) && zcr > (policy?.zcrMin ?? 0.004) && zcr < (policy?.zcrMax ?? 0.32)
+        if voiced { quietMS = 0; voicedMS = min(policy?.speechOnsetMS ?? 60, voicedMS + ms); if voicedMS >= (policy?.speechOnsetMS ?? 60) { inUtterance = true } }
         else {
             quietMS += ms
-            if !inUtterance { voicedMS = 0 }
+            if !inUtterance { voicedMS = max(0, voicedMS - ms) }
             if quietMS >= (policy?.quietMS ?? 400) { voicedMS = 0; inUtterance = false; locked = false }
         }
         if !enabled {
-            pendingNativeStartAt = nil; held = false; yielded = false; expires = 0; hardExpires = 0; locked = false; native = false; awaitingDecision = false
+            pendingNativeStartAt = nil; lastVoicedAt = nil; voicedMS = 0; inUtterance = false; held = false; yielded = false; expires = 0; hardExpires = 0; locked = false; native = false; awaitingDecision = false
             return false
         }
         if inUtterance && voiced { lastVoicedAt = at }
@@ -72,7 +74,6 @@ public struct NativeSpeechPause: Sendable {
         // acoustic speech classification must corroborate the local candidate.
         if held && !native && voiced { expires = min(hardExpires, at + (policy?.holdMS ?? 1800)) }
         if held && expires == 0 { expires = min(hardExpires, at + (policy?.holdMS ?? 1800) - quietMS) }
-        if !voiced && !held { floor = min(0.012, floor * 0.98 + min(rms, 0.012) * 0.02) }
         let grace = !native && !generationComplete ? (policy?.generationGraceMS ?? 600) : 0
         // A completed utterance waits for native disposition, never a timer.
         // Ignored TV/bystander speech can still resume the retained samples.
