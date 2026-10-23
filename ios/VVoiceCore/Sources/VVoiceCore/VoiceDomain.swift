@@ -89,10 +89,27 @@ public enum VoiceError: Error, LocalizedError, Equatable, Sendable {
     }
 }
 
-public enum VoiceModel: String, Codable, Sendable, CaseIterable {
-    case seeduplex, grok
-    case gptLive = "gpt-live"
-    public var title: String { switch self { case .seeduplex: "小何"; case .grok: "Grok"; case .gptLive: "GPT Live One" } }
+/// A service catalog ID, independent of the native transport implementation.
+public struct VoiceModel: RawRepresentable, Codable, Sendable, Hashable, CaseIterable {
+    public let rawValue: String
+    public init?(rawValue: String) {
+        guard !rawValue.isEmpty, rawValue.count <= 80,
+              rawValue.range(of: #"^[a-z0-9][a-z0-9._-]*$"#, options: .regularExpression) != nil else { return nil }
+        self.rawValue = rawValue
+    }
+    public static let seeduplex = Self(rawValue: "seeduplex")!
+    public static let grok = Self(rawValue: "grok")!
+    public static let gptLive = Self(rawValue: "gpt-live")!
+    public static let allCases = [seeduplex, grok, gptLive]
+    public var title: String { ["seeduplex":"小何","grok":"Grok","gpt-live":"GPT Live One"][rawValue] ?? rawValue }
+    public init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        guard let model = Self(rawValue: value) else { throw VoiceError.protocolMismatch }
+        self = model
+    }
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer(); try container.encode(rawValue)
+    }
 }
 
 public enum VoiceHTTPFailure {

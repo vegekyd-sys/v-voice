@@ -6,7 +6,7 @@ export const TRANSIENT_MS = 4000;
 export const THINKING_MS = 12000;
 
 const NORMAL = new Set(['拨号后，直接说话。', 'V 正在听，直接说话就好', '正在连接 V…']);
-const TASK_LABELS = Object.freeze({memory: '查记忆', web: '查资料', calendar: '查日程', background: '后台处理'});
+export const TASK_LABELS = Object.freeze({memory: '查记忆', web: '查资料', calendar: '查日程', background: '后台处理'});
 
 /** A page status sentence, reduced to a few words for the one status line. */
 export function messageDisplay(text, tone = 'info') {

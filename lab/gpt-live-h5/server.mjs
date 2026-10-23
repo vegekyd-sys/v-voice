@@ -151,7 +151,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           const canCheckEntry = visitor && (contexts.has(`${entry}:${visitor.id}`) || contexts.size < 512);
           if (!hosted || canCheckEntry) {
             const initial = JSON.stringify({ ready: backendReady(), preview, defaultModel, ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}), ...(listening?{comparisonAvailable:true}:{}),
-              ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
+              ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'},...directVoice.models()]} : {}),
             }).replaceAll("<", "\\u003c");
             html = html.replace('<script type="module" src="./app.js"></script>', `<script type="application/json" id="voiceEntryStatus">${initial}</script><script type="module" src="./app.js"></script>`);
           }
@@ -190,7 +190,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ready: backendReady(), preview, defaultModel, ...(speakerRouting?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
         releaseReadiness: releaseReadiness(),
         ...(listening?{comparisonAvailable:true}:{}), model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
-        ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
+        ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'},...directVoice.models()]} : {}),
       });
       if(req.method==='GET'&&pathname==='/api/comparison')return listening?json(res,200,listening.manifest):json(res,404,{error:'当前没有试听样本'});
       if(req.method==='GET'&&pathname==='/api/speaker-fixture'){
@@ -235,6 +235,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if (releaseGate.blocked()) return json(res,503,{error:"V 正在更新，请稍后重新拨号。"});
         if (!backendReady()) return json(res,503,{error:"V 后端正在重新连接，请稍后重拨。"});
         if(speakerRouting&&params.inputPolicy!==undefined&&!['native','speaker'].includes(params.inputPolicy))return json(res,400,{error:'没有这个输入策略'});
+        if(params.nativeRuntimeVersion!==undefined&&params.nativeRuntimeVersion!==1)return json(res,400,{error:'不支持的原生能力协议'});
         if (params.model && !['gpt-live','seeduplex','grok'].includes(params.model)) return json(res,400,{error:'没有这个语音模型'});
         if (params.model === 'grok') {
           try { grokVoice(params.voice); } catch (error) { return json(res,400,{error:error.message}); }
@@ -263,7 +264,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
             // the deployment selects the phone default, not browser heuristics.
             // Clients opt in only after implementing native response ownership and reversible pause.
             const inputPolicy = params.inputPolicy ?? 'speaker';
-            const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...speakerRouting?{inputPolicy}:{}});
+            const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...speakerRouting?{inputPolicy}:{}});
             context.active={sessionKey,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
             rememberAvatarCall(context,context.active,params.model);
             return json(res,200,reservation);

@@ -1,3 +1,4 @@
+import {createNativeRuntime,DEFAULT_NATIVE_RUNTIME_POLICY} from './native-runtime.mjs';
 import { taskActivity } from '../gpt-live-h5/avatar-state.mjs';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {SeeduplexRealtimeVoiceBridge} from '../seeduplex-realtime-provider.mjs';
@@ -46,7 +47,7 @@ export function directInstructions(catalog,context='',model='',options={}) {
 // announced, so a burst of quick tool calls becomes one line.
 export const NARRATION_DEFAULTS=Object.freeze({firstMs:6000,firstHeartbeatMs:15000,settleMs:2000,stageGapMs:12000,factGapMs:6000,heartbeatMs:30000,quietAfterUserMs:4000,startMs:2500,max:12});
 
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,toolProgressClips=null,narration,toolStartNotice='cached',searchAcknowledgment='off'}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,toolProgressClips=null,narration,toolStartNotice='cached',searchAcknowledgment='off',nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -128,7 +129,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   };
   const websocketServer=new wsModule.WebSocketServer({noServer:true,maxPayload:65536});
   const configured=id=>id==='seeduplex'?Boolean(apiKeys.seeduplex):id==='grok'&&Boolean(apiKeys.grok);
-  const models=()=>DIRECT_MODELS.map(m=>({...m,...(m.id==='grok'?{model:grokModel,label:grokVoiceLabel(grokModel),voices:GROK_VOICES,speed:grokSpeed,expressiveTags:grokExpressiveTags}:{}),available:configured(m.id),billing:'api'}));
+  const models=()=>DIRECT_MODELS.map(m=>({...m,...(m.id==='grok'?{model:grokModel,label:grokVoiceLabel(grokModel),voices:GROK_VOICES,speed:grokSpeed,expressiveTags:grokExpressiveTags}:{}),available:configured(m.id),billing:'api',nativeTransport:'gateway-relay'}));
   const current=s=>Boolean(s)&&!s.closed&&sessions.get(s.id)===s;
   const emit=(s,value)=>{
     if(!current(s))return;
@@ -141,7 +142,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       }else if(value.type==='tool.call')s.presentation.pending.set(value.callId,message);
       else if(['tool.result','tool.error'].includes(value.type))s.presentation.pending.delete(value.callId);
     }
-    if(s.client?.readyState===1)s.client.send(JSON.stringify(message));
+    if(s.client?.readyState===1)s.client.send(JSON.stringify(s.nativeRuntime&&!['ready','error'].includes(value.type)?s.nativeRuntime.project(message):message));
   };
   const publishContent=async(s,callId,text)=>{
     if(!s.display)return {published:false,shown:false,callId,display:'unavailable'};
@@ -219,7 +220,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     };
     ending.fallbackTimer=setTimeout(fallback,nativeFarewellDelayMs);ending.fallbackTimer.unref?.();
   };
-  async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy}) {
+  async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,nativeRuntimeVersion}) {
+    if(nativeRuntimeVersion!==undefined&&(nativeRuntimeVersion!==1||surface!=='phone'))throw Error('Unsupported native runtime');
     if(!['phone','speaker'].includes(surface))throw Error('不支持的语音终端');
     if(![16000,24000].includes(inputSampleRate))throw Error('不支持的输入采样率');
     if([...sessions.values()].some(s=>s.cleanupFailed))throw Error('上一通电话的后台任务正在确认退出，请稍后重试');
@@ -242,7 +244,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(route)speakerRouting.setBusyProbe?.(s.id,()=>Boolean(s.backend?.snapshot?.()));
     s.speakerRouting=Boolean(route);
     s.nativeDuplex=model==='seeduplex'&&surface==='phone'&&!route;
-    return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket,...(s.nativeDuplex?{nativeDuplex:true,nativePlaybackPolicy}:{}),...route?{speakerRouting:route}:{}};
+    if(nativeRuntimeVersion===1)s.nativeRuntime=createNativeRuntime({voiceSessionId:s.id,duplex:s.nativeDuplex,assisted:s.nativeDuplex&&nativePlaybackPolicy==='assisted',speakerRouted:Boolean(route),policy:nativeRuntimePolicy});
+    return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket,...(s.nativeRuntime?{nativeRuntime:s.nativeRuntime.descriptor}:{}),...(s.nativeDuplex?{nativeDuplex:true,nativePlaybackPolicy}:{}),...route?{speakerRouting:route}:{}};
   }
   function attachClient(s,client){
     client.on('error',()=>void close(s.id).catch(()=>{}));

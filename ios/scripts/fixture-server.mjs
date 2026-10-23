@@ -5,12 +5,13 @@ import {randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {hash,releaseRevision} from './h5-release.mjs';
 import {WebSocketServer} from 'ws';
+import {createNativeRuntime} from '../../lab/realtime-direct-tools/native-runtime.mjs';
 import {normalizeAvatarEvent} from '../../lab/gpt-live-h5/avatar-telemetry.mjs';
 const port=Number(process.env.VVOICE_FIXTURE_PORT??29837);
 let active=null,client=null,sequence=0,sessions=0,inputBytes=0,zeroBytes=0,playbackDrained=0,playbackStarts=0,greetings=0,heartbeats=0,earlyAudio=false,slowSession=false;
 let slowSessionMS=300;
 let presentationRequests=0;
-let nativeMode=false,speakerMode=false,lastSessionRequest=null;
+let nativeMode=false,speakerMode=false,runtimeMode=false,nativeRuntime=null,lastSessionRequest=null;
 let shellDelayMS=0;
 let lastOffer=null,offerReply=null;const eventClients=new Set();
 let limitNextSession=false,slowClose=false,closeRequests=0;
@@ -37,7 +38,7 @@ const emit=v=>{
  if(['tool.call','tool.progress'].includes(v.type)){const old=pending.find(t=>t.callId===v.callId)??{};pending=pending.filter(t=>t.callId!==v.callId);pending.push({...old,...v});}
  if(['tool.result','tool.error'].includes(v.type))pending=pending.filter(t=>t.callId!==v.callId);
  for(const response of eventClients)response.write(`data: ${JSON.stringify({voiceSessionId:active,...v})}\n\n`);
- if(client?.readyState===1)client.send(JSON.stringify({voiceSessionId:active,...v}));
+ if(client?.readyState===1)client.send(JSON.stringify(nativeRuntime&&!['ready','error'].includes(v.type)?nativeRuntime.project(v):{voiceSessionId:active,...v}));
 };
 const audio=(ms=240,responseId)=>{
  const pcm=Buffer.alloc(ms*48);
@@ -67,6 +68,7 @@ const server=createServer(async(req,res)=>{
    if(body.command==='reset'){shellDelayMS=0;shellVariant='none';shellRequests=[];shellRedirects=0;inputFrames=0;inputActiveFrames=0;peakInputRMS=0;}
    if(body.command==='native-mode')nativeMode=true;
    if(body.command==='speaker-mode')speakerMode=true;
+   if(body.command==='runtime-mode')runtimeMode=true;
    if(body.command==='speakers-demo'){
      const a={speakerId:'local0',text:'V，帮我们排一下今天的安排。',startMs:0,endMs:1200},b={speakerId:'local1',text:'我下午三点有空，可以一起讨论。',startMs:1500,endMs:2800};
      const participants=[{id:'speaker:local0',label:'Speaker A',name:'天懿',certainty:'confirmed'},{id:'speaker:local1',label:'Speaker B',name:'小林',certainty:'suggested'}];
@@ -103,7 +105,7 @@ const server=createServer(async(req,res)=>{
    if(body.command==='think')emit({type:'transcript',role:'user',text:'本地测试',final:true});
    if(body.command==='end'){audio();emit({type:'end.after-playback',callId:'fixture-end'});}
    if(body.command==='drop')client?.terminate();
-   if(body.command==='reset'){nativeMode=false;speakerMode=false;lastSessionRequest=null;client?.close();client=null;active=null;sessions=0;inputBytes=0;zeroBytes=0;greetings=0;heartbeats=0;earlyAudio=false;playbackStarts=0;limitNextSession=false;slowClose=false;closeRequests=0;documents=[];pending=[];acknowledgements=[];supplements=[];avatarRequests=[];avatarEvents=[];avatarReply="reaction-0";avatarContinuations=["reaction-1","listen-5"];slowAvatar=false;}
+   if(body.command==='reset'){nativeMode=false;speakerMode=false;runtimeMode=false;nativeRuntime=null;lastSessionRequest=null;client?.close();client=null;active=null;sessions=0;inputBytes=0;zeroBytes=0;greetings=0;heartbeats=0;earlyAudio=false;playbackStarts=0;limitNextSession=false;slowClose=false;closeRequests=0;documents=[];pending=[];acknowledgements=[];supplements=[];avatarRequests=[];avatarEvents=[];avatarReply="reaction-0";avatarContinuations=["reaction-1","listen-5"];slowAvatar=false;}
    return send(200,{ok:true});
  }
  if(req.headers.cookie!=='v_voice_access=fixture-cookie')return send(401,{error:'Fixture cookie required'});
@@ -145,13 +147,15 @@ const server=createServer(async(req,res)=>{
    if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
    supplements.push({text:body.text,mode:body.mode});return send(200,{ok:true,forwardedToVoice:true,queued:false});
  }
- if(path==='/voice/api/status')return send(200,{...(nativeMode?{phoneInputPolicy:'native'}:{}),ready:true,preview:false,comparisonAvailable:true,models:[{id:'gpt-live',label:'GPT Live',available:true},{id:'seeduplex',label:'豆包 SeedDuplex',available:true},{id:'grok',label:'Grok Voice 3.0',available:true,voices:[{id:'iris',label:'Iris'},{id:'eve',label:'Eve'}],speed:1.2,expressiveTags:true}],activeCall:Boolean(active)});
+ if(path==='/voice/api/status')return send(200,{...(nativeMode?{phoneInputPolicy:'native'}:{}),ready:true,preview:false,comparisonAvailable:true,models:[{id:'future-relay-model',label:'服务新模型',available:true,nativeTransport:'gateway-relay'},{id:'unsupported-transport',label:'尚未支持的传输',available:true,nativeTransport:'future-transport'},{id:'gpt-live',label:'GPT Live',available:true},{id:'seeduplex',label:'豆包 SeedDuplex',available:true},{id:'grok',label:'Grok Voice 3.0',available:true,voices:[{id:'iris',label:'Iris'},{id:'eve',label:'Eve'}],speed:1.2,expressiveTags:true}],activeCall:Boolean(active)});
  if(path==='/voice/api/session'){
    lastSessionRequest=body;
    if(limitNextSession){limitNextSession=false;return send(429,{error:'通话开始得太频繁，请稍后再试'});}
    if(active)return send(409,{error:'Existing owner'});
    active=randomUUID();sequence=0;sessions++;documents=[];pending=[];acknowledgements=[];
-   const reservation=body.model==='gpt-live'?{voiceSessionId:active,model:'gpt-live-1-codex'}:{voiceSessionId:active,transport:'gateway-relay',provider:'seeduplex',relayTicket:'fixture-ticket',...(nativeMode&&body.inputPolicy==='native'?{nativeDuplex:true,nativePlaybackPolicy:'assisted'}:speakerMode?{speakerRouting:{policy:'speaker'}}:{})};
+   const reservation=body.model==='gpt-live'?{voiceSessionId:active,model:'gpt-live-1-codex',transport:'webrtc'}:{voiceSessionId:active,transport:'gateway-relay',provider:'seeduplex',relayTicket:'fixture-ticket',...(nativeMode&&body.inputPolicy==='native'?{nativeDuplex:true,nativePlaybackPolicy:'assisted'}:speakerMode?{speakerRouting:{policy:'speaker'}}:{})};
+   nativeRuntime=runtimeMode&&body.nativeRuntimeVersion===1?createNativeRuntime({voiceSessionId:active,duplex:nativeMode,assisted:nativeMode,speakerRouted:speakerMode}):null;
+   if(nativeRuntime)reservation.nativeRuntime=nativeRuntime.descriptor;
    if(slowSession){slowSession=false;setTimeout(()=>send(200,reservation),slowSessionMS);return;}
    return send(200,reservation);
  }
