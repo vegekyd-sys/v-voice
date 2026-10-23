@@ -1,21 +1,21 @@
 {
   "schema": 1,
   "version": "1.0.0",
-  "build": 24,
-  "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+  "build": 25,
+  "sourceCommit": "d7edf61f1e7dd44192a85ac75b1980787c79e9c4",
   "candidateOnly": false,
   "signedArchiveVerified": true,
   "exportedIPAVerified": true,
-  "ipaSHA256": "cb96341de75cbd598a1806caaaff0e0e1fdd1dcc614a3dafed753cac3cf08ee8",
+  "ipaSHA256": "e3f44f4dc7c546ce79d7001d1eba1edf93655abf8a030385cc499ef8e735d058",
   "installedOnRequestedIPhone": true,
-  "realVoiceAcceptance": "build24_five_requested_scopes_passed",
+  "realVoiceAcceptance": "pending_user_test",
   "localTests": {
     "core": 37,
     "nativeAll": 71,
     "relatedServiceContracts": 92,
     "mainCI": {
-      "run": 39893373949,
-      "commit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+      "run": 39927984033,
+      "commit": "d7edf61f1e7dd44192a85ac75b1980787c79e9c4",
       "conclusion": "success"
     },
     "embeddedH5Parity": true,
@@ -38,7 +38,7 @@
     "build": 8,
     "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab"
   },
-  "deviceReportedBuild": "24",
+  "deviceReportedBuild": "25",
   "savedH5Baseline": {
     "build": 10,
     "sourceCommit": "3ffeb94",
@@ -61,14 +61,14 @@
     "validMicrophoneInputObserved": true
   },
   "mergedIntoMain": true,
-  "mergePR": 82,
+  "mergePR": 87,
   "mergeChecksPassed": true,
   "releaseScope": {
     "distribution": "development_signed_private_device",
-    "webServerDeployed": true,
+    "webServerDeployed": false,
     "gatewayRestarted": false,
     "appStoreOrTestFlightPublished": false,
-    "homepageChangelog": "both_nodes_public_assets_and_browser_verified"
+    "homepageChangelog": "candidate_phone_page_verified_previous_turn"
   },
   "appIcon": {
     "source": "Tianyi supplied purple headset portrait",
@@ -88,11 +88,11 @@
     "record": "../releases/voice-native-runtime-20261023/release.json"
   },
   "currentDeviceCandidate": {
-    "build": 24,
+    "build": 25,
     "installedOnRequestedIPhone": true,
     "lastAcceptedBuild": 24,
-    "physicalAcceptance": "accepted_by_Tianyi",
-    "mergeStatus": "merged_pr82"
+    "physicalAcceptance": "pending",
+    "mergeStatus": "merged_pr87"
   },
   "build10RollbackHistory": {
     "date": "2026-10-22",
@@ -119,8 +119,8 @@
     "build11NewPhysicalVoiceAcceptance": "not_run"
   },
   "mainChecks": {
-    "run": 39893373949,
-    "commit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+    "run": 39927984033,
+    "commit": "d7edf61f1e7dd44192a85ac75b1980787c79e9c4",
     "conclusion": "success"
   },
   "savedRollback": {
@@ -129,7 +129,7 @@
     "signedIPACopiedAndVerified": true,
     "originalArchiveRetained": true
   },
-  "recordScope": "build24_signed_installed_physically_accepted",
+  "recordScope": "build25_signed_installed_phone_acceptance_pending",
   "previouslyInstalledOnRequestedIPhone": true,
   "savedBuild14Rollback": {
     "build": 14,
@@ -199,7 +199,7 @@
       "conclusion": "success"
     }
   },
-  "mergeCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+  "mergeCommit": "d7edf61f1e7dd44192a85ac75b1980787c79e9c4",
   "acceptedJointBuild18": {
     "build": 18,
     "candidateOnly": false,
@@ -286,9 +286,9 @@
     "signedIPACopiedAndVerified": true
   },
   "deviceLaunchVerification": {
-    "build": 24,
+    "build": 25,
     "succeeded": true,
-    "evidence": "User opened V Voice and completed the five accepted scenarios",
+    "evidence": "devicectl ordinary foreground launch succeeded after install",
     "automaticDialPerformed": false
   },
   "previousNativeDelivery": {
@@ -323,9 +323,9 @@
   "nativeWaveformRelease": "build23-waveform.json",
   "pendingNativeRelease": {
     "build": 25,
-    "status": "prepared_for_signed_device_install",
+    "status": "signed_verified_installed",
     "baseBuild": 24,
-    "installed": false,
+    "installed": true,
     "physicalAcceptance": "pending",
     "scope": "Feishu session binding, Settings Deep Link and existing binding reuse",
     "sourceIntegration": "PR2 merged as 6860ae59f01ce6712027e2c3267424ec786f0ca1",
@@ -356,5 +356,62 @@
       "webActivation": "Idle app relaunch triggered the download; phone cache good list confirms page handshake. No reinstall or cache injection.",
       "updateTiming": "An active call cancels in-flight UI download. Current build retries at the next eligible idle check (600-second interval) or a fresh app launch; calls retain the current page."
     }
+  },
+  "previousAcceptedNativeBuild24": {
+    "build": 24,
+    "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+    "ipaSHA256": "cb96341de75cbd598a1806caaaff0e0e1fdd1dcc614a3dafed753cac3cf08ee8",
+    "realVoiceAcceptance": "build24_five_requested_scopes_passed",
+    "realVoiceAcceptedScopes": {
+      "status": "accepted_by_Tianyi",
+      "date": "2026-10-23",
+      "build": 24,
+      "scope": [
+        "two-way voice",
+        "barge-in interruption",
+        "Action Button start",
+        "locked-screen two-way voice",
+        "Dynamic Island mute/resume/end"
+      ],
+      "evidence": "Tianyi confirmed all five normal and hung up; physical screen sharing remained off",
+      "policyFingerprint": "cb418111e71a187b",
+      "validMicrophoneInputObserved": true
+    },
+    "nativeRuntime": {
+      "protocolVersion": 1,
+      "policyReadback": "cb418111e71a187b",
+      "bindingIdentityUnchanged": true,
+      "uninstalled": false,
+      "normalLaunch": "user_opened_and_completed_calls",
+      "serviceOnlyPhoneProof": {
+        "status": "accepted_same_installed_binary",
+        "date": "2026-10-23",
+        "nativeBuild": 24,
+        "nativeReinstalled": false,
+        "installedBundleIdentityUnchanged": true,
+        "signedIPAUnchanged": true,
+        "beforePolicyFingerprint": "cb418111e71a187b",
+        "afterPolicyFingerprint": "08688b02805ac448",
+        "taskText": "查询网页中",
+        "humanAcceptance": "Tianyi confirmed the requested webpage-query test good",
+        "shellRevision": "b933919c83d8cdb276637eefb3c8e8747de44afba36bdc39f08ba44b6ddf2bea",
+        "phoneConfirmedWebCacheMatchesPublishedArchive": true,
+        "verifiedCachedFiles": 114,
+        "bindingPreserved": true,
+        "webActivation": "Idle app relaunch triggered the download; phone cache good list confirms page handshake. No reinstall or cache injection.",
+        "updateTiming": "An active call cancels in-flight UI download. Current build retries at the next eligible idle check (600-second interval) or a fresh app launch; calls retain the current page."
+      }
+    },
+    "mainChecks": {
+      "run": 39893373949,
+      "commit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+      "conclusion": "success"
+    }
+  },
+  "savedBuild24Rollback": {
+    "build": 24,
+    "ipaSHA256": "cb96341de75cbd598a1806caaaff0e0e1fdd1dcc614a3dafed753cac3cf08ee8",
+    "signedIPACopiedAndVerified": true,
+    "acceptedByTianyi": true
   }
 }
