@@ -16,7 +16,7 @@ test('group call: real readiness, one summary, admitted complete transcript and 
   at=66000;await delivery.close();
   // close releases audio without waiting for the summarizer.
   for(let i=0;!release&&i<100;i++)await new Promise(r=>setTimeout(r,5));assert.ok(release);assert.ok(calls.pending);
-  assert.equal(sent.length,1);assert.equal(JSON.parse(sent[0].message).body.elements[0].content,'正在通话');assert.equal(edits.at(-1).args.messageId,'om_1');assert.match(edits.at(-1).args.card.body.elements[0].content,/通话已结束/);
+  assert.equal(sent.length,1);assert.equal(JSON.parse(sent[0].message).body.elements[0].content,'正在通话 · 00:00');assert.equal(edits.at(-1).args.messageId,'om_1');assert.match(edits.at(-1).args.card.body.elements[0].content,/通话已结束/);
   await delivery.result('run:final','方案已生成',{questionId:'run'});assert.equal(sent.length,2);
   release('讨论了今天的安排，并请求生成方案，结果待后台返回。');await calls.flush();
   assert.equal(sent.length,3);const card=JSON.parse(sent[2].message);assert.equal(card.body.elements[0].text.content,'讨论了今天的安排，并请求生成方案，结果待后台返回。');assert.doesNotMatch(JSON.stringify(card),/次提问|1 分 5 秒|电话已结束/);
@@ -52,4 +52,14 @@ test('connected status uses the same receipt for styling and hangup, including a
  const calls=createConversationCalls({gateway,publicOrigin:'https://phone.example'}),call=calls.begin(binding,target,'connected');call.ready();await calls.flush();
  assert.equal(edits.length,2);assert.deepEqual(edits[0],edits[1]);assert.match(edits[1].args.card.body.elements[0].content,/正在通话/);assert.equal(edits[1].args.card.body.elements[0].text_size,'notation');
  call.close();await calls.flush();assert.equal(sent.length,2);assert.equal(edits.length,3);assert.ok(edits.every(a=>a.args.messageId==='owned-card'));assert.match(edits[2].args.card.body.elements[0].content,/通话已结束/);
+});
+test('live counter uses elapsed time; a slow tick cannot overwrite ended duration or leave a timer',async()=>{
+ let at=1000,slow=false,release;const edits=[],scheduled=new Map();let timerId=0;
+ const gateway={request:async(method,a)=>{if(method==='send')return {messageId:'timer-card'};edits.push(a.args.card.body.elements[0].content);if(slow&&!a.args.card.body.elements[0].content.includes('已结束'))await new Promise(r=>release=r);return {ok:true,output:{details:{ok:true,messageId:'timer-card'}}};}};
+ const calls=createConversationCalls({gateway,publicOrigin:'https://phone.example',now:()=>at,setTimer:(fn,ms)=>{const id=++timerId;scheduled.set(id,{fn,ms});return id;},clearTimer:id=>scheduled.delete(id)});
+ const call=calls.begin(binding,target,'timer');call.ready();await calls.flush();assert.match(edits[0],/00:00/);assert.equal(scheduled.size,1);
+ const [id,tick]=[...scheduled][0];scheduled.delete(id);at=3500;await tick.fn();assert.match(edits.at(-1),/00:02/);assert.equal(scheduled.size,1);
+ const [nextId,next]=[...scheduled][0];scheduled.delete(nextId);at=6000;slow=true;const inFlight=next.fn();assert.ok(release);at=62000;call.close();assert.doesNotMatch(edits.at(-1),/已结束/);
+ release();await inFlight;await calls.flush();assert.match(edits.at(-1),/通话已结束 · 1 分 1 秒/);assert.equal(scheduled.size,0);
+ const count=edits.length;await next.fn();assert.equal(edits.length,count);
 });

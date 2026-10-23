@@ -1,7 +1,7 @@
 ## Unreleased — Refined call status and summaries · 2026-10-23
 
-- Update one compact Feishu status card in place from 正在通话 to 通话已结束, using small grey annotation text and the original message receipt. Use the existing authenticated Gateway operator edit contract; no platform runtime or permission changes.
-- Remove summary-card call statistics. Have V synthesize the conversation in first person, preserving the distinction between suggestions, agreed decisions and completed work. Keep the full transcript link. Candidate only.
+- Update one compact Feishu status card in place from 正在通话 to 通话已结束, using small grey annotation text and the original message receipt. Show an elapsed clock while connected and retain the final duration after hangup; serialize updates and stop the timer before closing. Use the existing authenticated Gateway operator edit contract; no platform runtime or permission changes.
+- Remove summary-card call statistics. Have V introduce and synthesize the conversation as a first-person assistant recap, preserving the distinction between suggestions, agreed decisions and completed work. Keep the full transcript link. Candidate only.
 
 ## Unreleased — Voice Q&A cards · 2026-10-23
 

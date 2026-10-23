@@ -125,7 +125,7 @@ test('reply sync is enabled by private entry only; native final goes to that exa
  await f.request(entries[0].id,'close',cookie,first);
  for(let i=0;f.bridge.releaseReadiness().backgroundTasks&&i<100;i++)await new Promise(r=>setTimeout(r,2));
  const sent=f.calls.filter(c=>c.method==='send');assert.equal(sent.length,2);
- assert.equal(JSON.parse(sent[0].args.message).body.elements[0].content,'正在通话');const card=JSON.parse(sent[1].args.message);assert.equal(card.header.title.content,'通话总结');
+ assert.equal(JSON.parse(sent[0].args.message).body.elements[0].content,'正在通话 · 00:00');const card=JSON.parse(sent[1].args.message);assert.equal(card.header.title.content,'通话总结');
  for(const row of sent){assert.equal(row.args.to,'oc_room_a');assert.equal(row.args.accountId,'lab');assert.equal(row.args.sessionKey,entries[0].sessionKey);}
  const edited=f.calls.filter(c=>c.method==='tools.invoke');assert.ok(edited.length);for(const row of edited){assert.equal(row.args.args.messageId,'om_fixture');assert.equal(row.args.args.target,'oc_room_a');assert.equal(row.args.args.accountId,'lab');}assert.match(edited.at(-1).args.args.card.body.elements[0].content,/通话已结束/);
  const id=new URL(card.body.elements.at(-1).behaviors[0].default_url).searchParams.get('call');
