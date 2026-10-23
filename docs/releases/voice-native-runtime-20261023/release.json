@@ -1,18 +1,18 @@
 {
   "schema": "v-voice-native-runtime-release-v1",
-  "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
-  "mergePR": 82,
+  "sourceCommit": "c009c5bc2c73981d3ae2effe346553626d9c5d68",
+  "mergePR": 83,
   "mainCI": {
-    "run": 39893373949,
+    "run": 39895278487,
     "conclusion": "success"
   },
-  "filesSha256": "e9c66090ac402c1c65b49298a2d75b43cf33fab697b841ff457e9489d57840ec",
+  "filesSha256": "76706d88f59d61ea9cf549ae7588786611f39432831d2ca9fb5c685e14f878ea",
   "artifactFiles": 208,
   "serverSyncComplete": true,
   "nodes": {
     "web": {
-      "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
-      "filesSha256": "e9c66090ac402c1c65b49298a2d75b43cf33fab697b841ff457e9489d57840ec",
+      "sourceCommit": "c009c5bc2c73981d3ae2effe346553626d9c5d68",
+      "filesSha256": "76706d88f59d61ea9cf549ae7588786611f39432831d2ca9fb5c685e14f878ea",
       "gatewayUnchanged": true,
       "ready": true,
       "admissionResumed": true,
@@ -25,8 +25,8 @@
       }
     },
     "devices": {
-      "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
-      "filesSha256": "e9c66090ac402c1c65b49298a2d75b43cf33fab697b841ff457e9489d57840ec",
+      "sourceCommit": "c009c5bc2c73981d3ae2effe346553626d9c5d68",
+      "filesSha256": "76706d88f59d61ea9cf549ae7588786611f39432831d2ca9fb5c685e14f878ea",
       "gatewayUnchanged": true,
       "ready": true,
       "admissionResumed": true,
@@ -75,5 +75,52 @@
     },
     "appStoreOrTestFlight": false
   },
-  "serviceOnlyPhoneProof": "pending"
+  "serviceOnlyPhoneProof": {
+    "status": "server_web_deployed_phone_readback_pending",
+    "nativeBuild": 24,
+    "nativeReinstalled": false,
+    "beforePolicyFingerprint": "cb418111e71a187b",
+    "expectedNewTaskText": "查询网页中",
+    "shellRevision": "b933919c83d8cdb276637eefb3c8e8747de44afba36bdc39f08ba44b6ddf2bea"
+  },
+  "initialBridgeRelease": {
+    "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+    "mergePR": 82,
+    "mainCI": {
+      "run": 39893373949,
+      "conclusion": "success"
+    },
+    "filesSha256": "e9c66090ac402c1c65b49298a2d75b43cf33fab697b841ff457e9489d57840ec",
+    "artifactFiles": 208,
+    "nodes": {
+      "web": {
+        "sourceCommit": "c009c5bc2c73981d3ae2effe346553626d9c5d68",
+        "filesSha256": "76706d88f59d61ea9cf549ae7588786611f39432831d2ca9fb5c685e14f878ea",
+        "gatewayUnchanged": true,
+        "ready": true,
+        "admissionResumed": true,
+        "cutoverReadiness": {
+          "known": true,
+          "activeCalls": 0,
+          "creatingSessions": 0,
+          "backgroundTasks": 0,
+          "deviceOperations": 0
+        }
+      },
+      "devices": {
+        "sourceCommit": "c009c5bc2c73981d3ae2effe346553626d9c5d68",
+        "filesSha256": "76706d88f59d61ea9cf549ae7588786611f39432831d2ca9fb5c685e14f878ea",
+        "gatewayUnchanged": true,
+        "ready": true,
+        "admissionResumed": true,
+        "cutoverReadiness": {
+          "known": true,
+          "activeCalls": 0,
+          "creatingSessions": 0,
+          "backgroundTasks": 0,
+          "deviceOperations": 0
+        }
+      }
+    }
+  }
 }

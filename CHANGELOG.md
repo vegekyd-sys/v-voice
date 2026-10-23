@@ -1,7 +1,7 @@
 
 ## 2026-10-23 — Service-only query status update for installed build 24
 
-- Use the shared Web task label 查询网页, so the call status reads 查询网页中. The runtime projects that service-owned label to installed build 24; existing native source and signing inputs remain unchanged. Physical same-binary policy readback is recorded separately after release.
+- Use the shared Web task label 查询网页, so the call status reads 查询网页中. The runtime projects that service-owned label to installed build 24; existing native source and signing inputs remain unchanged. PR #83 / main c009c5b passed CI and was deployed to both nodes with public resource hashes verified. No second native install; physical same-binary policy readback remains pending.
 
 ## 2026-10-23 — iOS build 24 native capability bridge
 
