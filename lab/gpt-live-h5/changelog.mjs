@@ -1,12 +1,12 @@
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
 export const FEISHU_MULTIUSER_CANDIDATE_UPDATE = {
-  version:'voice-feishu-multiuser.20261023.1',date:'2026-10-23',
-  title:'飞书多账号会话电话（VLab 验证）',status:'candidate-validation',
+  version:'voice-feishu-parity.20261024.1',date:'2026-10-24',
+  title:'电话与文字共用能力（独立 Candidate）',status:'candidate-validation',
   items:[
     '新群和机器人私聊可自动出现电话入口，打开后由飞书确认来电者身份。',
     '电话沿用对应文字聊天的会话与工具权限，不同人的任务和通话记录分别校验。',
-    '当前仅供共享 VLab 验证；第二个真人账号与真实音频验收尚未完成，生产未开放。',
+    '当前在独立 Candidate 使用 VLab 飞书验证；新群和首次私聊真实入口验收进行中，生产未开放。',
   ],
 };
 export const SESSION_REPLY_CANDIDATE_UPDATE = {

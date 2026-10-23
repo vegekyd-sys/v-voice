@@ -1,3 +1,8 @@
+## 2026-10-24 — Feishu phone/text capability parity (independent Candidate)
+
+- Use the authenticated caller's effective Gateway tool catalog for phone shortcuts. Keep original Agent skills and CLI access through native tools or backend delegation; no telephone-specific reduced capability profile.
+- Verify native tool parity separately in the platform Candidate. New-group and first-ever DM entry acceptance is pending; shared VLab and production are unchanged.
+
 ## 2026-10-23 — Private-call status card repair
 
 - Use the native Feishu chat ID for timer and hangup edits: take it from the exact send receipt, or resolve the canonical session and verify its agent, bot and direct-user identity when older adapters omit it. DM delivery still uses its original user ID, bot and canonical session. Missing or mismatched receipt targets fail closed; the transcript and summary remain available.

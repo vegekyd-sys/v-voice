@@ -14,7 +14,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   close(){this.readyState=3;this.emit('close');}}
  class Server {handleUpgrade(req,socket,head,done){done(socket);}close(){}}
  const gateway={request:async(method,args)=>{
-  if(method==='tools.catalog')return {groups:[{tools:['memory_search','web_search','web_fetch','exec','process'].map(id=>({id}))}]};
+  if(method==='tools.catalog')return {groups:[{tools:(options.catalog??['memory_search','web_search','web_fetch','exec','process']).map(id=>({id}))}]};
   invocations.push(args);
   if(method==='voice.product.task.start'){sdkTask={taskId:'sdk-fixture-task',runId:'sdk-fixture-run',runs:['sdk-fixture-run'],status:'running',progress:[]};return {taskId:sdkTask.taskId,runId:sdkTask.runId};}
   if(method==='voice.product.task.read'){await delay(1);return {...sdkTask,progress:[...sdkTask.progress]};}
@@ -22,7 +22,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy,sessionBound:options.sessionBound,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
+ const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy,sessionBound:options.sessionBound,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -1011,4 +1011,17 @@ test('dial loads exact conversation context concurrently with the tool catalog',
  assert(f.client.sent.some(event=>event.type==='ready'));
  const stages=f.audit.filter(event=>event.type==='call.connection-stage').map(event=>event.stage);
  assert(stages.indexOf('context-requested')<stages.indexOf('catalog-ready'));
+});
+
+
+test('actor calls advertise exactly the available native shortcuts and keep delegation for original skills',async t=>{
+ const f=await fixture(undefined,'grok',{sessionBound:true,actorScoped:true,catalog:['exec','process','web_fetch']});t.after(()=>f.service.dispose());
+ const config=f.upstream.sent.find(x=>x.type==='session.update').session;
+ const names=config.tools.map(t=>t.name);
+ assert(names.includes('exec'));assert(names.includes('delegate_to_v'));assert(names.includes('openclaw_tool'));
+ assert(!names.includes('read'));assert(!names.includes('memory_search'));assert(!names.includes('web_search'));
+ assert.match(config.instructions,/电话与文字聊天使用同一个 V 的能力/);
+ assert.match(config.instructions,/没有专用飞书工具不代表不能办理/);
+ f.call('exec',{command:'printf parity'},'native-exec');await delay(10);
+ assert(f.invocations.some(x=>x.name==='exec'));
 });
