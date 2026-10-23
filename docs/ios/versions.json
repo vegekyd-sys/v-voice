@@ -2,24 +2,21 @@
   "schema": 1,
   "version": "1.0.0",
   "build": 32,
-  "sourceCommit": "f81ab420123176a5190ca1a2153ecdba4993148a",
+  "sourceCommit": "af6c0da95fd21eacfba1a5a842cc5f7b7f492b4d",
   "candidateOnly": false,
   "signedArchiveVerified": true,
   "exportedIPAVerified": true,
-  "ipaSHA256": "1780a56f336e3feb9175ce3dda8e082600f0266699c83c3af41e2823657681c4",
+  "ipaSHA256": "ee494eb0b728ad31f1643288639459e4739407eb385fb798ff51a57fa1152511",
   "installedOnRequestedIPhone": true,
   "realVoiceAcceptance": "accepted_by_Tianyi_2026-10-24",
   "localTests": {
-    "core": 37,
-    "nativeAll": 71,
-    "relatedServiceContracts": 92,
-    "mainCI": {
-      "run": 39927984033,
-      "commit": "d7edf61f1e7dd44192a85ac75b1980787c79e9c4",
-      "conclusion": "success"
-    },
+    "core": 45,
+    "service": 863,
+    "speakerNative": 95,
+    "fleetProtection": 11,
+    "finalNativeIntegration": 4,
     "embeddedH5Parity": true,
-    "homepageCandidateBrowserVerified": true
+    "homepageProductionBrowserVerified": true
   },
   "backgroundActionButton": {
     "intentMetadataVerified": true,
@@ -47,28 +44,26 @@
   },
   "realVoiceAcceptedScopes": {
     "status": "accepted_by_Tianyi",
-    "date": "2026-10-23",
-    "build": 24,
+    "date": "2026-10-24",
+    "build": 32,
     "scope": [
-      "two-way voice",
-      "barge-in interruption",
-      "Action Button start",
-      "locked-screen two-way voice",
-      "Dynamic Island mute/resume/end"
+      "continuous_playback",
+      "normal_interruption"
     ],
-    "evidence": "Tianyi confirmed all five normal and hung up; physical screen sharing remained off",
-    "policyFingerprint": "cb418111e71a187b",
-    "validMicrophoneInputObserved": true
+    "evidence": "现在很不错，现在这样。部署上线吧",
+    "releaseNativeSourcesIdentical": true,
+    "physicalScreenSharingUsed": false
   },
-  "mergedIntoMain": false,
+  "mergedIntoMain": true,
   "mergePR": 106,
-  "mergeChecksPassed": false,
+  "mergeChecksPassed": true,
   "releaseScope": {
     "distribution": "development_signed_private_device",
     "webServerDeployed": true,
     "gatewayRestarted": false,
     "appStoreOrTestFlightPublished": false,
-    "homepageChangelog": "production_browser_verified"
+    "homepageChangelog": "production_browser_verified",
+    "bothVoiceNodesDeployed": true
   },
   "appIcon": {
     "source": "Tianyi supplied purple headset portrait",
@@ -87,15 +82,7 @@
     "record": "../releases/session-phone-storage-fix-20261023/release.json",
     "physicalNewReleaseAcceptance": "not claimed; build 25 retained; production binding and relaunch verified in dedicated simulator"
   },
-  "currentDeviceCandidate": {
-    "build": 32,
-    "installedOnRequestedIPhone": true,
-    "lastAcceptedBuild": 32,
-    "physicalAcceptance": "Tianyi: 现在很不错，现在这样。部署上线吧",
-    "sourceCommit": "f81ab420123176a5190ca1a2153ecdba4993148a",
-    "ipaSHA256": "1780a56f336e3feb9175ce3dda8e082600f0266699c83c3af41e2823657681c4",
-    "mergeStatus": "PR106_release_in_progress"
-  },
+  "currentDeviceCandidate": null,
   "build10RollbackHistory": {
     "date": "2026-10-22",
     "fromBuild": 13,
@@ -121,9 +108,9 @@
     "build11NewPhysicalVoiceAcceptance": "not_run"
   },
   "mainChecks": {
-    "run": 39927984033,
-    "commit": "d7edf61f1e7dd44192a85ac75b1980787c79e9c4",
-    "conclusion": "success"
+    "run": 39998287471,
+    "conclusion": "success",
+    "commit": "af6c0da95fd21eacfba1a5a842cc5f7b7f492b4d"
   },
   "savedRollback": {
     "build": 18,
@@ -131,7 +118,7 @@
     "signedIPACopiedAndVerified": true,
     "originalArchiveRetained": true
   },
-  "recordScope": "build32_user_accepted_production_release_authorized",
+  "recordScope": "build32_main_signed_installed_with_user_accepted_native_sources",
   "previouslyInstalledOnRequestedIPhone": true,
   "savedBuild14Rollback": {
     "build": 14,
@@ -608,9 +595,9 @@
     "recordScope": "build25_signed_installed_phone_acceptance_pending",
     "realVoiceAcceptance": "pending_user_test"
   },
-  "releaseStatus": "accepted_pending_main_release",
+  "releaseStatus": "deployed_both_nodes_native_build32_installed_and_accepted",
   "responsiveInterruptionBuild32": {
-    "record": "responsive-interruption-build32.json",
+    "record": "../releases/ios-responsive-interruption-20261024/release.json",
     "acceptedBy": "Tianyi",
     "acceptedAt": "2026-10-24",
     "scope": [
@@ -632,6 +619,28 @@
       "newAnswerVerified": true,
       "hangupWithoutCrash": true
     },
-    "independentNetworkStutterResolved": false
+    "independentNetworkStutterResolved": false,
+    "sourceCommit": "af6c0da95fd21eacfba1a5a842cc5f7b7f492b4d",
+    "candidateEvidenceRecord": "responsive-interruption-build32.json",
+    "signedMainIPA": "ee494eb0b728ad31f1643288639459e4739407eb385fb798ff51a57fa1152511",
+    "nativeSourceIdenticalToAcceptedCandidate": true,
+    "installedOnRequestedIPhone": true,
+    "authenticatedLaunchVerified": true,
+    "iosUiRevisionVerified": "a89662ddd8fa274af7ed60cdece1cf04d61f22b1077c8ceccc676fb530c76e93"
+  },
+  "realVoiceAcceptedScopesBeforeBuild32": {
+    "status": "accepted_by_Tianyi",
+    "date": "2026-10-23",
+    "build": 24,
+    "scope": [
+      "two-way voice",
+      "barge-in interruption",
+      "Action Button start",
+      "locked-screen two-way voice",
+      "Dynamic Island mute/resume/end"
+    ],
+    "evidence": "Tianyi confirmed all five normal and hung up; physical screen sharing remained off",
+    "policyFingerprint": "cb418111e71a187b",
+    "validMicrophoneInputObserved": true
   }
 }
