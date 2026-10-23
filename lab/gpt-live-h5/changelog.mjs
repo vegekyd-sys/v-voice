@@ -18,12 +18,12 @@ export const CONFIRMED_INTERRUPTION_CANDIDATE_UPDATE = {
   ],
 };
 export const FEISHU_MULTIUSER_CANDIDATE_UPDATE = {
-  version:'voice-feishu-multiuser.20261023.1',date:'2026-10-23',
-  title:'飞书多账号会话电话（VLab 验证）',status:'candidate-validation',
+  version:'voice-feishu-parity.20261024.1',date:'2026-10-24',
+  title:'电话与文字共用能力（独立 Candidate）',status:'candidate-validation',
   items:[
     '新群和机器人私聊可自动出现电话入口，打开后由飞书确认来电者身份。',
     '电话沿用对应文字聊天的会话与工具权限，不同人的任务和通话记录分别校验。',
-    '当前仅供共享 VLab 验证；第二个真人账号与真实音频验收尚未完成，生产未开放。',
+    '当前在独立 Candidate 使用 VLab 飞书验证；新群和首次私聊真实入口验收进行中，生产未开放。',
   ],
 };
 export const SESSION_REPLY_CANDIDATE_UPDATE = {
@@ -54,6 +54,16 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
   ],
 };
 export const VOICE_UPDATES = [
+  {
+    version:'voice-feishu-conversations.20261024.1',date:'2026-10-24',
+    title:'飞书电话入口与外部联系人通话',
+    items:[
+      '新群可自动添加输入框下方的「打给 V」菜单，私聊保留顶部电话入口。',
+      '连接飞书账号后，电话沿用对应会话及原有权限；未确认身份也可直接开始临时语音聊天。',
+      '临时聊天不读取飞书历史或使用个人账号工具，自报姓名只用于本通话称呼。',
+      '移除私聊验证码登录；旧版网页登录需重新连接飞书账号，原个人电话和已绑定 App 继续保留。',
+    ],
+  },
   {version:'voice-call-minutes.20261024.2',date:'2026-10-24',title:'修复私信电话纪要样式',items:[
     '修复真实通话后私信纪要偶尔停留在基础卡片的问题，正确显示淡紫重点版式。',
     '保留按主题整理的摘要、完整对话和 iPhone 安静拨号。',

@@ -1,3 +1,15 @@
+## 2026-10-24 — Conversation phone entries without chat-code login
+
+- Remove private-chat verification pages, issuance/status APIs and Gateway challenge handling. Rotate the untagged browser identity format so removed-flow cookies cannot retain account access; fresh OAuth and legacy personal/device bindings remain supported.
+- Keep direct temporary voice for unidentified callers, with an optional Feishu account connection. Enforce isolated temporary context and no account tools in the service; naming the caller does not grant identity.
+- Use bottom chat menus for new groups and top tabs for DMs. Preserve authenticated native conversation capabilities, signed actor checks and current main's call minutes and shared terminal behavior.
+- Version: `voice-feishu-conversations.20261024.1`. Deployment evidence is recorded separately after shared platform integration and the unified fleet release.
+
+## 2026-10-24 — Feishu phone/text capability parity (independent Candidate)
+
+- Use the authenticated caller's effective Gateway tool catalog for phone shortcuts. Keep original Agent skills and CLI access through native tools or backend delegation; no telephone-specific reduced capability profile.
+- Verify native tool parity separately in the platform Candidate. New-group and first-ever DM entry acceptance is pending; shared VLab and production are unchanged.
+
 ## 2026-10-24 — Durable private-call card targets
 
 - Bind native DM chat IDs in private phone entries and Gateway-authorized OAuth admissions, so status/minutes edits survive mutable session-origin metadata being replaced during real calls. Conflicting receipt chat IDs fail closed; provider message ownership checks remain in place.

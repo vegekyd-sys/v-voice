@@ -897,7 +897,7 @@ async function initializeEntry() {
     const { status } = result;
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     liveReady = status.ready === true;
-    const models = MODEL_CHOICES.map(choice => {
+    const models = MODEL_CHOICES.filter(choice=>!status.unidentified||choice.id!=='gpt-live').map(choice => {
       const model = status.models?.find(item => item.id === choice.id);
       return model ? { ...choice, available: Boolean(model.available), ...(model.label ? { label: model.label } : {}) } : choice;
     });
@@ -906,7 +906,7 @@ async function initializeEntry() {
     if (!usable(model)) model = ["seeduplex", "gpt-live", "grok"].find(usable) ?? model;
     const grok = status.models?.find(item => item.id === "grok");
     const grokVoices = grok?.voices ?? [];
-    view.set({ models, model, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, grok: {
+    view.set({ models, model, accountLoginHref: status.unidentified ? status.accountLoginHref : null, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, grok: {
       voices: grokVoices.map(voice => ({ id: voice.id, label: voice.label })),
       voice: grokVoices.some(voice => voice.id === "iris") ? "iris" : grokVoices[0]?.id ?? null,
       hint: [grok?.speed && grok.speed !== 1 ? `${grok.speed}× 语速` : "", grok?.expressiveTags ? "自主表达试用" : ""].filter(Boolean).join(" · "),

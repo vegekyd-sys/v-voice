@@ -1,0 +1,9 @@
+{
+  "version": "voice-feishu-conversations.20261024.1",
+  "status": "prepared",
+  "platformIntegrationRequired": true,
+  "chatCodeLoginRemoved": true,
+  "oldBrowserLoginsRetired": true,
+  "nativeAppInstallRequired": false,
+  "physicalAudioAcceptance": "not claimed"
+}

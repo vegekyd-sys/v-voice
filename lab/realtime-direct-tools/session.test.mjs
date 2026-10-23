@@ -14,7 +14,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   close(){this.readyState=3;this.emit('close');}}
  class Server {handleUpgrade(req,socket,head,done){done(socket);}close(){}}
  const gateway={request:async(method,args)=>{
-  if(method==='tools.catalog')return {groups:[{tools:['memory_search','web_search','web_fetch','exec','process'].map(id=>({id}))}]};
+  if(method==='tools.catalog')return {groups:[{tools:(options.catalog??['memory_search','web_search','web_fetch','exec','process']).map(id=>({id}))}]};
   invocations.push(args);
   if(method==='voice.product.task.start'){sdkTask={taskId:'sdk-fixture-task',runId:'sdk-fixture-run',runs:['sdk-fixture-run'],status:'running',progress:[]};return {taskId:sdkTask.taskId,runId:sdkTask.runId};}
   if(method==='voice.product.task.read'){await delay(1);return {...sdkTask,progress:[...sdkTask.progress]};}
@@ -22,7 +22,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
+ const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -1011,6 +1011,44 @@ test('dial loads exact conversation context concurrently with the tool catalog',
  assert(f.client.sent.some(event=>event.type==='ready'));
  const stages=f.audit.filter(event=>event.type==='call.connection-stage').map(event=>event.stage);
  assert(stages.indexOf('context-requested')<stages.indexOf('catalog-ready'));
+});
+
+
+test('actor calls advertise exactly the available native shortcuts and keep delegation for original skills',async t=>{
+ const f=await fixture(undefined,'grok',{sessionBound:true,actorScoped:true,catalog:['exec','process','web_fetch']});t.after(()=>f.service.dispose());
+ const config=f.upstream.sent.find(x=>x.type==='session.update').session;
+ const names=config.tools.map(t=>t.name);
+ assert(names.includes('exec'));assert(names.includes('delegate_to_v'));assert(names.includes('openclaw_tool'));
+ assert(!names.includes('read'));assert(!names.includes('memory_search'));assert(!names.includes('web_search'));
+ assert.match(config.instructions,/电话与文字聊天使用同一个 V 的能力/);
+ assert.match(config.instructions,/没有专用飞书工具不代表不能办理/);
+ f.call('exec',{command:'printf parity'},'native-exec');await delay(10);
+ assert(f.invocations.some(x=>x.name==='exec'));
+});
+
+test('unidentified caller uses only this call and cannot reach account tools even by forged tool call',async t=>{
+ let contextReads=0,localReads=0;
+ const f=await fixture(undefined,'grok',{unidentified:true,sessionKey:'voice:guest:fixture',loadContext:async()=>{contextReads++;return 'private context';},calendar:async()=>{localReads++;},larkRead:async()=>{localReads++;}});
+ t.after(()=>f.service.dispose());
+ const update=f.upstream.sent.find(x=>x.type==='session.update');
+ assert.match(update.session.instructions,/外部联系人，账号身份尚未确认/);
+ assert(!update.session.instructions.includes('private context'));
+ assert.deepEqual(update.session.tools.map(x=>x.name).sort(),['end_call','show_content']);
+ for(const name of ['exec','delegate_to_v','feishu_calendar','lark_read','openclaw_tool'])f.call(name,{command:'id',question:'private',name:'exec',arguments:'{}'},'guest-'+name);
+ await delay(25);
+ assert.equal(contextReads,0);assert.equal(localReads,0);assert.deepEqual(f.invocations,[]);
+ assert(f.audit.filter(x=>x.type==='tool.delivered').every(x=>x.result?.error==='当前通话没有账号工具权限'));
+});
+
+test('unidentified Xiaohe caller connects natively without speaker identity or private context',async t=>{
+ let contextReads=0;
+ const unavailable=()=>{throw Error('Anonymous call must not load a speaker profile');};
+ const f=await fixture(undefined,'seeduplex',{unidentified:true,sessionKey:'voice:guest:fixture',loadContext:async()=>{contextReads++;return 'private';},speakerRouting:{reserve:unavailable,initialInstructions:unavailable,has:()=>false}});
+ t.after(()=>f.service.dispose());
+ const create=f.upstream.sent.find(x=>x.type==='session.create');
+ assert.match(create.session.instructions,/账号身份尚未确认/);
+ assert.deepEqual(create.session.tools.map(x=>x.name).sort(),['end_call','show_content']);
+ assert.equal(contextReads,0);assert.equal(f.reservation.nativeDuplex,true);
 });
 
 // Every supported receiver enters the same conversation engine. Test native UI
