@@ -1,0 +1,14 @@
+{
+  "version": "voice-caller-identity.20261024.1",
+  "status": "release-prepared",
+  "platformIntegrationRequired": false,
+  "gatewayRestartRequired": false,
+  "targets": [
+    "web",
+    "devices"
+  ],
+  "candidateTestedCommit": "c2c2df5381cfa6c05325c2385c9ebb1ede4d2b61",
+  "threeModelSyntheticSpeechAcceptance": true,
+  "nativeAppInstallRequired": false,
+  "physicalAudioAcceptance": "not claimed"
+}

@@ -1,3 +1,10 @@
+## 2026-10-24 — Verified group caller identity within Voice
+
+- Unify old group aliases with dynamic group entries; use the current Feishu client identity or verified browser OAuth. Failed identity falls back to isolated temporary voice without retaining a previous account.
+- Supply verified display context to all three models. GPT uses its existing WebRTC developer context channel and waits for acknowledgement before greeting/input; Gateway code and authorization remain unchanged.
+- Remove the top-right account name/switch link, preserve the iOS App entry and move optional account connection below the dial area.
+- Version: `voice-caller-identity.20261024.1`. Three-model synthetic-speech Candidate acceptance passed; no native App/firmware release or physical-client acceptance is claimed.
+
 ## 2026-10-24 — Conversation phone entries without chat-code login
 
 - Remove private-chat verification pages, issuance/status APIs and Gateway challenge handling. Rotate the untagged browser identity format so removed-flow cookies cannot retain account access; fresh OAuth and legacy personal/device bindings remain supported.
