@@ -1,0 +1,78 @@
+{
+  "schema": "v-voice-session-phone-release-v1",
+  "sourceCommit": "87632bc063c326c7f33d5cc268d9be94c3a8fb8a",
+  "mergePRs": [
+    90,
+    91,
+    92
+  ],
+  "mainCI": {
+    "run": 39938483106,
+    "conclusion": "success"
+  },
+  "filesSha256": "39324a7ee1a0170fc307023dd43221bfb81b24a97121316ee3f04be9729f54d6",
+  "artifactFiles": 218,
+  "serverSyncComplete": true,
+  "nodes": {
+    "web": {
+      "sourceCommit": "87632bc063c326c7f33d5cc268d9be94c3a8fb8a",
+      "filesSha256": "39324a7ee1a0170fc307023dd43221bfb81b24a97121316ee3f04be9729f54d6",
+      "ready": true,
+      "admissionResumed": true,
+      "cutoverReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "gatewayUnchangedDuringVoiceCutover": true
+    },
+    "devices": {
+      "sourceCommit": "87632bc063c326c7f33d5cc268d9be94c3a8fb8a",
+      "filesSha256": "39324a7ee1a0170fc307023dd43221bfb81b24a97121316ee3f04be9729f54d6",
+      "ready": true,
+      "admissionResumed": true,
+      "cutoverReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "gatewayUnchangedDuringVoiceCutover": true
+    }
+  },
+  "feishu": {
+    "appVersion": "1.0.24",
+    "published": true,
+    "oauthCallbackVerifiedInBrowser": true,
+    "privateChatEntry": "event configured and production files promoted; activation pending idle Gateway restart",
+    "groupMenu": "V Backup menu created and verified; per-group phone identifier and session context",
+    "bulkInstall": "not performed; installation scope awaiting user choice"
+  },
+  "summary": {
+    "model": "grok-4.7",
+    "reasoningEffort": "low",
+    "state": "generated",
+    "productionProviderAndDeliveryVerified": true,
+    "statusEditedInPlace": true,
+    "cardReceipts": 2,
+    "errors": [],
+    "acceptance": "synthetic text fixture in designated acceptance group; no microphone or live media call",
+    "nativeFeishuVisualReadback": "pending Mac unlock; message API confirms both cards but returns v2-card fallback text"
+  },
+  "homepageBrowserVerified": true,
+  "native": {
+    "installedBuild": 25,
+    "reinstallRequired": false,
+    "reinstalledThisRelease": false,
+    "productionRebinding": "Previously bound VLab clients must bind the production entry",
+    "newPhysicalAcceptance": "not claimed"
+  },
+  "rollback": {
+    "previousEntryCommit": "c009c5bc2c73981d3ae2effe346553626d9c5d68",
+    "serviceReceiptsRetained": true,
+    "privateConfiguration": "Remove only task-owned session-phone drop-ins if rolling back this feature; preserve private phone records and other release configuration."
+  }
+}
