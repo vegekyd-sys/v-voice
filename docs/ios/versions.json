@@ -322,15 +322,14 @@
   },
   "nativeWaveformRelease": "build23-waveform.json",
   "pendingNativeRelease": {
-    "build": 24,
-    "status": "installed_and_physically_accepted",
-    "protocolVersion": 1,
-    "installed": true,
-    "physicalAcceptance": "accepted_by_Tianyi",
-    "rollbackBuildsVerified": [
-      22,
-      23
-    ]
+    "build": 25,
+    "status": "prepared_for_signed_device_install",
+    "baseBuild": 24,
+    "installed": false,
+    "physicalAcceptance": "pending",
+    "scope": "Feishu session binding, Settings Deep Link and existing binding reuse",
+    "sourceIntegration": "PR2 merged as 6860ae59f01ce6712027e2c3267424ec786f0ca1",
+    "testFlight": "after phone acceptance"
   },
   "lastAcceptedBuild": 24,
   "nativeRuntime": {
