@@ -1,0 +1,79 @@
+{
+  "schema": "v-voice-native-runtime-release-v1",
+  "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+  "mergePR": 82,
+  "mainCI": {
+    "run": 39893373949,
+    "conclusion": "success"
+  },
+  "filesSha256": "e9c66090ac402c1c65b49298a2d75b43cf33fab697b841ff457e9489d57840ec",
+  "artifactFiles": 208,
+  "serverSyncComplete": true,
+  "nodes": {
+    "web": {
+      "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+      "filesSha256": "e9c66090ac402c1c65b49298a2d75b43cf33fab697b841ff457e9489d57840ec",
+      "gatewayUnchanged": true,
+      "ready": true,
+      "admissionResumed": true,
+      "cutoverReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      }
+    },
+    "devices": {
+      "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+      "filesSha256": "e9c66090ac402c1c65b49298a2d75b43cf33fab697b841ff457e9489d57840ec",
+      "gatewayUnchanged": true,
+      "ready": true,
+      "admissionResumed": true,
+      "cutoverReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      }
+    }
+  },
+  "publicAssetHashesVerified": true,
+  "homepageBrowserVerified": true,
+  "native": {
+    "build": 24,
+    "version": "1.0.0",
+    "ipaSHA256": "cb96341de75cbd598a1806caaaff0e0e1fdd1dcc614a3dafed753cac3cf08ee8",
+    "appSHA256": "59f9dcbbead0ff72bf8e6786bcb997e33f90d4ea365bb38d2944490377b8cd71",
+    "bindingIdentityUnchanged": true,
+    "signed": true,
+    "exportedIPAVerified": true,
+    "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+    "installedBuildReadBack": "24",
+    "coverInstalled": true,
+    "uninstalled": false,
+    "rollbackBuilds": [
+      22,
+      23
+    ],
+    "normalLaunch": "user_opened_and_completed_calls",
+    "physicalAcceptance": {
+      "status": "accepted_by_Tianyi",
+      "date": "2026-10-23",
+      "build": 24,
+      "scope": [
+        "two-way voice",
+        "barge-in interruption",
+        "Action Button start",
+        "locked-screen two-way voice",
+        "Dynamic Island mute/resume/end"
+      ],
+      "evidence": "Tianyi confirmed all five normal and hung up; physical screen sharing remained off",
+      "policyFingerprint": "cb418111e71a187b",
+      "validMicrophoneInputObserved": true
+    },
+    "appStoreOrTestFlight": false
+  },
+  "serviceOnlyPhoneProof": "pending"
+}

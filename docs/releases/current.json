@@ -1,12 +1,12 @@
 {
   "schema": "v-voice-current-release-v1",
-  "entryCommit": "8136b20af19ca6fc740260875bf243d79cf67fd3",
+  "entryCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
   "gatewayPluginCommit": "a9ac516860a8856470262957ad6ea0cc2670cb0e",
-  "registration": "voice-duplex-wait-20261023/release.json",
-  "runtimeDifference": "Web/iOS and device servers share the recognized-interruption wait repair. iOS build 22 is signed, installed and normally launched on the requested phone. Human real-call listening remains pending. Gateway unchanged.",
+  "registration": "voice-native-runtime-20261023/release.json",
+  "runtimeDifference": "Both Voice nodes run the native capability bridge. Build 24 is signed, cover-installed and physically accepted for voice, interruption, Action Button, locked-screen voice and Island controls. Same-binary service update proof follows separately. Gateway unchanged.",
   "gatewayRestartRequired": false,
-  "release": "voice-duplex-wait-20261023",
-  "previousEntryCommit": "56cfc608beedc6568891c7f00f4bb617b4d21940",
-  "filesSha256": "ab32f8e78343bffc39ba9fa8c0b6289fbf242fd0f7950b3252222b43f8231c04",
-  "deviceEntryCommit": "8136b20af19ca6fc740260875bf243d79cf67fd3"
+  "release": "voice-native-runtime-20261023",
+  "previousEntryCommit": "8136b20af19ca6fc740260875bf243d79cf67fd3",
+  "filesSha256": "e9c66090ac402c1c65b49298a2d75b43cf33fab697b841ff457e9489d57840ec",
+  "deviceEntryCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46"
 }
