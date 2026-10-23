@@ -4,6 +4,7 @@ import {request} from 'node:http';
 import {createLiveH5Server} from '../lab/gpt-live-h5/server.mjs';
 import {feishuConversationPhone} from '../lib/feishu-conversation-directory.mjs';
 import {connectFeishuClient} from '../lab/gpt-live-h5/feishu-client-login.mjs';
+import WebSocket from 'ws';
 
 const phone=feishuConversationPhone('lab','oc_groupa');
 const group={id:'feishu-group-fixture',agentId:'makaron',sessionKey:'agent:makaron:feishu:group:oc_groupa',accountId:'lab',kind:'group',callerId:'tianyi',permissionProfile:'personal-tianyi',accessToken:'group-only-token'.repeat(4)};
@@ -21,7 +22,7 @@ async function fixture(t) {
   return {ok:true};
  }};
  const server=createLiveH5Server({gateway,publicOrigin:'https://voice.example',basePath:'/voice',accessToken:'private-fixture-token'.repeat(4),conversationEntries:[group,dm],
-  directVoice:{models:()=>[{id:'seeduplex',available:true},{id:'grok',available:true}],reserve:async p=>{reservations.push(p);return {voiceSessionId:'fixture-call-'+(++n),relayTicket:'fixture',provider:p.model};},close:async()=>{},dispose:async()=>{}},
+  directVoice:{models:()=>[{id:'seeduplex',available:true},{id:'grok',available:true}],reserve:async p=>{reservations.push(p);return {voiceSessionId:'fixture-call-'+(++n),relayTicket:'fixture',provider:p.model};},attach:()=>true,close:async()=>{},dispose:async()=>{}},
   feishuLogin:{appId:'cli_fixture',appSecret:'fixture-private-secret',accountId:'lab',conversations:true,allowUnidentified:true,
    actors:[{openId:'ou_alice',tenantKey:'fixture',callerId:'tianyi',defaultPhoneId:dm.id,phoneIds:[group.id,dm.id]}],
    fetchImpl:async(url,init)=>{
@@ -45,7 +46,7 @@ async function fixture(t) {
   const finish=await send('/voice/feishu/client-login',{body:{state,code:'valid-code',name:'Forged Tianyi',callerId:'tianyi'}});
   assert.equal(finish.status,200);return {state,location:finish.json().location};
  };
- return {send,jar,calls,reservations,providerCalls,clientLogin,setSubject:s=>subject=s,setDenied:v=>reject=v};
+ return {send,jar,calls,reservations,providerCalls,clientLogin,port:server.server.address().port,setSubject:s=>subject=s,setDenied:v=>reject=v};
 }
 
 test('old group aliases and new group URLs use current account identity, including switching accounts in one browser',async t=>{
@@ -129,6 +130,13 @@ test('dynamic group iOS handoff retains verified actor without OAuth cookie and 
  await f.reservations.at(-1).gateway.request('tools.catalog',{});
  assert.equal(f.calls.at(-1).p.voiceActor.actor.openId,'ou_alice');
  await f.send(path+'close?phone='+devicePhone,{cookies:cookie,body:call.json()});
+ const fast=await new Promise((resolve,reject)=>{
+  const ws=new WebSocket(`ws://127.0.0.1:${f.port}/voice/api/dial?phone=${devicePhone}&model=grok&nativeRuntimeVersion=1&dialVersion=1`,{headers:{host:'voice.example',origin:'https://voice.example',cookie}});
+  const timer=setTimeout(()=>{ws.terminate();reject(Error('device dial fixture timed out'));},2000);
+  ws.on('error',reject);ws.on('message',raw=>{clearTimeout(timer);ws.close();resolve(JSON.parse(raw));});
+ });
+ assert.equal(fast.type,'reservation');
+ await f.send(path+'close?phone='+devicePhone,{cookies:cookie,body:{voiceSessionId:fast.voiceSessionId}});
  assert.equal((await f.send(path+'ios-binding?phone='+phone,{cookies:cookie,body:{}})).status,403);
  f.setSubject({open_id:'ou_bob',tenant_key:'fixture',name:'Bob Fixture'});const switched=await f.clientLogin();await f.send(switched.location,{ua:'Lark'});
  const mixedCookies=[...f.jar].map(([k,v])=>k+'='+v).join('; ');
