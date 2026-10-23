@@ -48,3 +48,17 @@ for(const mismatch of [false,true])test(`summary style uses the exact DM receipt
  assert.equal(audits.some(e=>e.type==='call.summary-styled'),!mismatch);assert.equal(audits.some(e=>e.stage==='summary-style'),mismatch);
  assert.equal((await calls.read(binding,call.id)).summaryState,'generated');
 });
+
+for(const conflict of [false,true])test(`durable DM binding survives missing session origin; conflicting receipt=${conflict}`,async()=>{
+ const binding={id:'fixture',kind:'dm',nativeChatId:'oc_bound'},edits=[],audit=[];
+ const calls=createConversationCalls({publicOrigin:'https://example.com',summarize:async()=>brief,audit:e=>audit.push(e),gateway:{request:async(method,args)=>{
+  if(method==='send')return {messageId:'om_owned',...(conflict?{chatId:'oc_other'}:{})};
+  assert.notEqual(method,'sessions.describe','mutable origin is not required');
+  edits.push(args);return {ok:true,output:{details:{ok:true,messageId:'om_owned'}}};
+ }}});
+ const call=calls.begin(binding,{to:'ou_fixture'},'owner',{statusCard:false});call.ready();call.user('试音');call.close();await calls.flush();
+ const report=await calls.read(binding,call.id);assert.equal(report.summaryDelivery.state,conflict?'style-failed':'styled');
+ assert.equal(edits.length,conflict?0:1);
+ if(conflict){assert.equal(report.summaryDelivery.error,'call-card-target-unconfirmed');assert.equal(audit.find(e=>e.stage==='summary-style').error,'call-card-target-unconfirmed');}
+ else{assert.equal(edits[0].args.target,'oc_bound');assert.equal(audit.find(e=>e.type==='call.summary-styled').voiceSessionId,'owner');}
+});

@@ -1,0 +1,19 @@
+{
+  "version": "voice-call-minutes.20261024.2",
+  "status": "validated-candidate",
+  "baseline": "6e60bb4298cd59bada0936e5a182d3a29a509d37",
+  "failure": "A real DM call replaced session origin metadata without its native channel ID. Gateway send receipts also omitted chatId, so the delivered card could not be styled. The earlier synthetic probe had retained origin metadata and missed this case.",
+  "fix": "Use a verified private phone nativeChatId or Gateway-authorized OAuth admission as the durable edit target; reject conflicting receipts and retain provider ownership checks. Persist delivery state and whitelist post-call styling diagnostics.",
+  "validation": {
+    "serviceTests": 872,
+    "speakerTests": 95,
+    "fleetTests": 11,
+    "iosBindingDialCloseTransports": ["GPT Live", "SeedDuplex", "Grok", "fast socket"],
+    "missingReceiptAndSessionChatIdCovered": true,
+    "vlabActualSendAndAutomaticStyle": true,
+    "affectedProductionCardRepairedAndNativeFeishuVisuallyVerified": true,
+    "physicalAudioCall": false
+  },
+  "operatorConfiguration": "Verify the legacy DM binding against the exact bot, canonical user session and an owned message before setting nativeChatId. Keep private identifiers and rollback copies outside Git.",
+  "nativeInstallRequired": false
+}

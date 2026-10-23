@@ -28,7 +28,7 @@ test('two OAuth identities in two groups obtain distinct caller and access scope
   for(const openId of ['ou_alice','ou_bob'])for(const chatId of ['oc_groupA','oc_groupB']){
     const entry=await resolve({...identity,openId},feishuConversationPhone('lab',chatId));records.push(entry);
     assert.equal(entry.sessionKey,'agent:makaron:feishu:group:'+chatId);
-    assert.equal(entry.replyTarget.to,chatId);assert.equal(entry.actorPrincipal.openId,openId);
+    assert.equal(entry.nativeChatId,chatId);assert.equal(entry.replyTarget.to,chatId);assert.equal(entry.actorPrincipal.openId,openId);
     await entry.gateway.request('tools.invoke',{name:'memory_search',args:{query:'fixture'}});
     const last=requests.at(-1);assert.equal(last.params.voiceActor.actor.openId,openId);assert.equal(last.params.sessionKey,entry.sessionKey);
     await assert.rejects(entry.gateway.request('chat.history',{sessionKey:'agent:makaron:feishu:group:oc_foreign'}),/cannot change/);
