@@ -117,3 +117,14 @@ for(const mismatch of [null,'key','agentId','accountId','nativeDirectUserId','pr
  }}});
  const call=calls.begin(dm,to,'fallback');call.ready();call.close();await calls.flush();assert.equal(lookups,1);assert.equal(edits,mismatch?0:1);assert.equal(errors.some(e=>e.stage==='status-start'),!!mismatch);
 });
+
+test('DM metadata lookup and lifecycle edits retain the binding gateway during main integration',async()=>{
+ const methods=[];const dm={...binding,agentId:'makaron',kind:'dm',sessionKey:'agent:makaron:feishu:direct:ou_alice',gateway:{request:async(m,a)=>{
+  methods.push(m);if(m==='send')return {messageId:'owned'};
+  if(m==='sessions.describe')return {session:{key:a.key,agentId:'makaron',origin:{provider:'feishu',accountId:'bot',nativeDirectUserId:'ou_alice',chatType:'direct',nativeChannelId:'oc_alice'}}};
+  assert.equal(a.args.target,'oc_alice');return {ok:true,output:{details:{ok:true,messageId:'owned'}}};
+ }}};
+ const calls=createConversationCalls({gateway:{request:()=>{throw Error('Must retain the scoped gateway');}},publicOrigin:'https://phone.example'});
+ const call=calls.begin(dm,{...target,agentId:'makaron',sessionKey:dm.sessionKey,to:'ou_alice',accountId:'bot'},'scoped');call.ready();call.close();await calls.flush();
+ assert.deepEqual(methods,['send','sessions.describe','tools.invoke','send']);
+});
