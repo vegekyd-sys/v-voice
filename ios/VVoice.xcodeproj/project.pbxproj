@@ -34,6 +34,7 @@
 		66ED269A523F7BFADCC1CB9B /* IslandCallSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = D37141DC53B720B7B96CC90F /* IslandCallSurface.swift */; };
 		6929FBF811598A33FD0A2771 /* IslandCallSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = D37141DC53B720B7B96CC90F /* IslandCallSurface.swift */; };
 		6A7D720DDB0160767FDD95D6 /* H5DesignSource.json in Resources */ = {isa = PBXBuildFile; fileRef = 2DB9AB5DEB5EA43B085292F3 /* H5DesignSource.json */; };
+		6AC6D19510D81D205BDEB867 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 2ECB48467FD3F45A94D790DE /* PrivacyInfo.xcprivacy */; };
 		6EEBC96CFC3CABCA850D0140 /* IslandAssets.manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = D7D2EE17BE9D48F5FA66CA14 /* IslandAssets.manifest.json */; };
 		6FBB9211ABE5D18084F59203 /* CallOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FE71FA2DD0DD3956F7D2FA0 /* CallOptions.swift */; };
 		7DAE8DA919F336ACE7DAFEA6 /* VoiceIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857F5E8922957A5BB87318B1 /* VoiceIntents.swift */; };
@@ -114,6 +115,7 @@
 		1D650C3BEF748AF2B061E3A8 /* CallCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallCoordinator.swift; sourceTree = "<group>"; };
 		2D75530190661A3CE19BAA28 /* VoiceAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAudio.swift; sourceTree = "<group>"; };
 		2DB9AB5DEB5EA43B085292F3 /* H5DesignSource.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = H5DesignSource.json; sourceTree = "<group>"; };
+		2ECB48467FD3F45A94D790DE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		31B6D38F987CC05C91D9830F /* GPTLiveTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPTLiveTransport.swift; sourceTree = "<group>"; };
 		36869D72B5F5936A62B789D2 /* VVCaptureSink.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VVCaptureSink.h; sourceTree = "<group>"; };
 		3E2B7ECB25AEFE948D49544B /* SharedDuplexFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedDuplexFlowTests.swift; sourceTree = "<group>"; };
@@ -235,6 +237,7 @@
 			isa = PBXGroup;
 			children = (
 				0582410618A5CE2BB9858BD2 /* Assets.xcassets */,
+				2ECB48467FD3F45A94D790DE /* PrivacyInfo.xcprivacy */,
 				3DB4765FBB6B1A7534A12002 /* Reader */,
 				E2F4D823F717409E57D126CC /* ThirdParty */,
 			);
@@ -449,6 +452,7 @@
 				3FF8DC5928B4943F06BA1472 /* H5Reader.css in Resources */,
 				8B9B09CD2C03DF5A31F015B2 /* H5Shell in Resources */,
 				AE1747E1C86A804A73A542C2 /* H5Updates.json in Resources */,
+				6AC6D19510D81D205BDEB867 /* PrivacyInfo.xcprivacy in Resources */,
 				CA88A73C515B16D61F29E267 /* WebRTC-LICENSE.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -658,7 +662,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 32;
+				CURRENT_PROJECT_VERSION = 33;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = E6YTL27QWA;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -744,7 +748,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 32;
+				CURRENT_PROJECT_VERSION = 33;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = E6YTL27QWA;
 				ENABLE_NS_ASSERTIONS = NO;
