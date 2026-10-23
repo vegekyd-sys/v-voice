@@ -1,0 +1,10 @@
+{
+  "version": "voice-feishu-multiuser.20261023.1",
+  "date": "2026-10-23",
+  "target": "shared-vlab-only",
+  "status": "preparing",
+  "productionDeployment": false,
+  "humanOAuthAcceptance": "pending second real account",
+  "audioAcceptance": "pending; no automatic paid calls",
+  "rollback": "preserve previous Voice artifact and private configuration; shared Gateway uses vlab.mjs rollback"
+}
