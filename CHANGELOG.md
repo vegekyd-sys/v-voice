@@ -1,3 +1,8 @@
+## 2026-10-23 — Production binding and all-group rollout verified
+
+- Release PR #95 to both Voice nodes at `8e8dc76`; verify writable private state in each running service namespace and preserve the prior call report. The same App now binds the designated production group successfully and retains it after relaunch. Physical-phone retry remains separate.
+- Install and read back all 417 current group menus with unique URLs and exact canonical sessions; install the current-user DM tab and verify native Feishu UI. Future first-entry auto-tab handler activation still awaits an idle Gateway restart.
+
 ## 2026-10-23 — Repair production App binding persistence
 
 - Return a storage-unavailable error when the device grant cannot be saved, instead of reporting an expired handoff. Failed persistence leaves the previous App session unchanged; retry after storage recovery is covered by the HTTP regression test.
