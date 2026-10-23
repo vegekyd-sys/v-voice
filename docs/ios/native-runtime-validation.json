@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-23",
-  "status": "merged_deployed_build24_physically_accepted",
+  "status": "merged_deployed_build24_physically_accepted_same_binary_service_and_web_update_verified",
   "developmentBase": "08eaecf1a92bc4aa748e1b6053e7924cf55241e1",
   "branch": "codex/voice-native-capability-bridge",
   "protocolVersion": 1,
@@ -65,8 +65,7 @@
   ],
   "notEstablished": [
     "Long calls, system call/Siri interruptions and network handover beyond the accepted short test",
-    "Provider judgment accuracy or TV/name recognition improvements",
-    "Same-binary second service release on this phone; pending separately"
+    "Provider judgment accuracy or TV/name recognition improvements"
   ],
   "releaseRequirements": [
     "Review and merge main plus main CI",
@@ -127,12 +126,22 @@
     "validMicrophoneInputObserved": true
   },
   "serviceOnlyPhoneProof": {
-    "status": "server_web_deployed_phone_readback_pending",
+    "status": "accepted_same_installed_binary",
+    "date": "2026-10-23",
     "nativeBuild": 24,
     "nativeReinstalled": false,
+    "installedBundleIdentityUnchanged": true,
+    "signedIPAUnchanged": true,
     "beforePolicyFingerprint": "cb418111e71a187b",
-    "expectedNewTaskText": "查询网页中",
-    "shellRevision": "b933919c83d8cdb276637eefb3c8e8747de44afba36bdc39f08ba44b6ddf2bea"
+    "afterPolicyFingerprint": "08688b02805ac448",
+    "taskText": "查询网页中",
+    "humanAcceptance": "Tianyi confirmed the requested webpage-query test good",
+    "shellRevision": "b933919c83d8cdb276637eefb3c8e8747de44afba36bdc39f08ba44b6ddf2bea",
+    "phoneConfirmedWebCacheMatchesPublishedArchive": true,
+    "verifiedCachedFiles": 114,
+    "bindingPreserved": true,
+    "webActivation": "Idle app relaunch triggered the download; phone cache good list confirms page handshake. No reinstall or cache injection.",
+    "updateTiming": "An active call cancels in-flight UI download. Current build retries at the next eligible idle check (600-second interval) or a fresh app launch; calls retain the current page."
   },
   "serviceReleaseCommit": "c009c5bc2c73981d3ae2effe346553626d9c5d68"
 }

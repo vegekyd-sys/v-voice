@@ -1,11 +1,11 @@
 
 ## 2026-10-23 — Service-only query status update for installed build 24
 
-- Use the shared Web task label 查询网页, so the call status reads 查询网页中. The runtime projects that service-owned label to installed build 24; existing native source and signing inputs remain unchanged. PR #83 / main c009c5b passed CI and was deployed to both nodes with public resource hashes verified. No second native install; physical same-binary policy readback remains pending.
+- Use the shared Web task label 查询网页, so the call status reads 查询网页中. The runtime projects that service-owned label to installed build 24; existing native source and signing inputs remain unchanged. PR #83 / main c009c5b passed CI and was deployed to both nodes with public resource hashes verified. No second native install. Tianyi accepted the query test; phone readback confirms changed policy fingerprint, unchanged installed bundle identity, and the exact published 114-file Web archive confirmed good after an idle app relaunch.
 
 ## 2026-10-23 — iOS build 24 native capability bridge
 
-- Delivery: PR #82 / main `b8b71ac` passed CI; both Voice nodes run the same verified 208-file artifact. Signed build 24 was cover-installed and read back, preserving signing/Keychain identity and original build 22/23 rollback packages. Tianyi accepted voice, interruption, Action Button, locked-screen voice and Island controls; phone readback confirms policy cb418111e71a187b and valid microphone input. Follow-up service-only phone proof remains pending.
+- Delivery: PR #82 / main `b8b71ac` passed CI; both Voice nodes run the same verified 208-file artifact. Signed build 24 was cover-installed and read back, preserving signing/Keychain identity and original build 22/23 rollback packages. Tianyi accepted voice, interruption, Action Button, locked-screen voice and Island controls; phone readback confirms policy cb418111e71a187b and valid microphone input. Follow-up service-only phone proof also passed on the same installed bundle; see the release record for idle update timing.
 
 - Move relay caption/speaker interpretation, notices, task/report presentation and bounded playback policy into the shared Voice service. Negotiate a versioned data-only runtime; native executes existing media and system primitives even without a WK page.
 - Discover relay models by declared transport instead of adding a Swift enum case for each service model. Preserve old clients and the separate GPT WebRTC transport.
