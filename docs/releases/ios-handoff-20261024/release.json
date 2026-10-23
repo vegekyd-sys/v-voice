@@ -1,0 +1,9 @@
+{
+  "version": "voice-ios-handoff.20261024.1",
+  "sourcePR": 105,
+  "baseline": "2002e249d5566315b6826a738d00015c719a1608",
+  "scope": "Shared H5 iPhone handoff dialog and release notes",
+  "unrelatedMultiuserCandidateIncluded": false,
+  "nativeAudioCandidateIncluded": false,
+  "deployment": "pending"
+}
