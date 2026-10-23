@@ -1,15 +1,17 @@
 {
-  "version": "voice-session-call.20261023.3",
-  "runtimeCommit": "0ae9ac9bf49ebdf275844456a16dc8820b539bd7",
+  "version": "voice-session-call.20261023.4",
+  "runtimeCommit": "accc8de551182165e62cd1dff931af1ef17990bf",
   "mainBase": "5aa87088339f3c8604e666d4c2de3c204c28830f",
   "files": 218,
-  "filesSha256": "430c7a86442c7929b027b4623cd0af94299afe01bd8d20807345d652ff9f680b",
+  "filesSha256": "840ecb0ce9ff10490e30cedfe5ef9a2660bde7c37efdf50403be1115f7916967",
   "environment": "isolated VLab session phone candidate",
   "summaryModel": "grok-4.7",
-  "testCount": 797,
+  "testCount": 801,
   "testFlightPublished": false,
   "mainMerged": false,
   "productionReleased": false,
-  "fullTestCommit": "c99618994bdc8251e5fae9639615569ec368a0c8",
-  "finalUiTests": 89
+  "fullTestCommit": "working tree before final summary prompt tightening; final lifecycle and HTTP tests rerun",
+  "finalFocusedTests": 34,
+  "statusCardUpdateVerified": true,
+  "refinementReportId": "1df432f1-7759-47b1-9ccd-78a5d5685660"
 }
