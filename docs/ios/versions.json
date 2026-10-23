@@ -642,5 +642,18 @@
     "evidence": "Tianyi confirmed all five normal and hung up; physical screen sharing remained off",
     "policyFingerprint": "cb418111e71a187b",
     "validMicrophoneInputObserved": true
+  },
+  "stableBaseline": {
+    "build": 32,
+    "sourceCommit": "af6c0da95fd21eacfba1a5a842cc5f7b7f492b4d",
+    "tag": "ios-stable-build32-20261024",
+    "record": "stable-baseline-build32.md",
+    "rollbackVerifiedFiles": 378
+  },
+  "testFlightCandidate": {
+    "build": 33,
+    "status": "packaging",
+    "nativeBehaviorChanges": false,
+    "stableBaselineBuild": 32
   }
 }
