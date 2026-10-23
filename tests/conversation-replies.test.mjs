@@ -90,3 +90,9 @@ test('oversized background answers retain the full result via text delivery',asy
  await f.d.result('long',answer);assert.equal(f.calls.length,1);
  assert.equal(f.calls[0].args.message,'语音提问：给我完整报告\n\n---\n\nV：'+answer);
 });
+test('new and already-stored call summaries decode to dialogue rather than JSON layout',()=>{
+ for(const prefix of [[],[{tag:'markdown',content:'电话已结束 · 44 秒'},{tag:'hr'}]]){
+ const card={schema:'2.0',header:{title:{content:'通话总结'}},body:{elements:[...prefix,{tag:'div',text:{tag:'plain_text',content:'我建议先跑通绑定体验，再补测失效链接。'}},{tag:'button'}]}};
+ assert.equal(conversationReplyText(JSON.stringify(card)),'语音通话总结：我建议先跑通绑定体验，再补测失效链接。');
+ }
+});

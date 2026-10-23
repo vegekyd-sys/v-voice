@@ -1,3 +1,8 @@
+## Unreleased — Refined call status and summaries · 2026-10-23
+
+- Update one compact Feishu status card in place from 正在通话 to 通话已结束, using small grey annotation text and the original message receipt. Use the existing authenticated Gateway operator edit contract; no platform runtime or permission changes.
+- Remove summary-card call statistics. Have V synthesize the conversation in first person, preserving the distinction between suggestions, agreed decisions and completed work. Keep the full transcript link. Candidate only.
+
 ## Unreleased — Voice Q&A cards · 2026-10-23
 
 - Present paired Voice questions and answers as native Feishu cards with a soft purple header, literal question, divider and rich answer. Preserve the existing delivery queue, session routing and duplicate protection. Oversized answers use the existing text delivery path without truncation.

@@ -4,7 +4,7 @@ import {createConversationReplyDelivery} from '../lib/conversation-replies.mjs';
 const binding={id:'test-group',kind:'group',sessionKey:'agent:makaron:feishu:group:oc_a',callerId:'tianyi',accountId:'bot',displayName:'测试群'},target={sessionKey:binding.sessionKey,to:'oc_a'};
 test('group call: real readiness, one summary, admitted complete transcript and late results survive',async()=>{
  const directory=await mkdtemp(join(tmpdir(),'voice-call-'));let at=1000,release;const sent=[];
- const gateway={request:async(method,args)=>{sent.push(args);return {messageId:'om_'+sent.length};}};
+ const edits=[];const gateway={request:async(method,args)=>{if(method==='tools.invoke'){edits.push(args);return {ok:true,output:{details:{ok:true,messageId:args.args.messageId}}};}sent.push(args);return {messageId:'om_'+sent.length};}};
  const calls=createConversationCalls({gateway,directory,publicOrigin:'https://phone.example',basePath:'/voice',now:()=>at,summarize:async()=>new Promise(r=>release=r)});
  try{
   const report=calls.begin(binding,target,'call');const delivery=createConversationReplyDelivery({gateway,target,ownerId:'call',callReport:report});
@@ -16,10 +16,10 @@ test('group call: real readiness, one summary, admitted complete transcript and 
   at=66000;await delivery.close();
   // close releases audio without waiting for the summarizer.
   for(let i=0;!release&&i<100;i++)await new Promise(r=>setTimeout(r,5));assert.ok(release);assert.ok(calls.pending);
-  assert.equal(sent.length,2);assert.equal(sent[0].message,'📞 开始打电话');
-  await delivery.result('run:final','方案已生成',{questionId:'run'});assert.equal(sent.length,3);
+  assert.equal(sent.length,1);assert.equal(JSON.parse(sent[0].message).body.elements[0].content,'正在通话');assert.equal(edits.at(-1).args.messageId,'om_1');assert.match(edits.at(-1).args.card.body.elements[0].content,/通话已结束/);
+  await delivery.result('run:final','方案已生成',{questionId:'run'});assert.equal(sent.length,2);
   release('讨论了今天的安排，并请求生成方案，结果待后台返回。');await calls.flush();
-  assert.equal(sent.length,4);const card=JSON.parse(sent[3].message);assert.match(card.body.elements[0].content,/1 分 5 秒/);
+  assert.equal(sent.length,3);const card=JSON.parse(sent[2].message);assert.equal(card.body.elements[0].text.content,'讨论了今天的安排，并请求生成方案，结果待后台返回。');assert.doesNotMatch(JSON.stringify(card),/次提问|1 分 5 秒|电话已结束/);
   const url=new URL(card.body.elements.at(-1).behaviors[0].default_url);assert.equal(url.searchParams.get('phone'),binding.id);
   const saved=await calls.read(binding,report.id);assert.equal(saved.summaryState,'generated');assert.equal(saved.pendingTasks,true);assert.equal(saved.turns.length,5);assert.equal(saved.turns.find(r=>r.text==='我来查一下').interrupted,true);assert.ok(!saved.turns.some(t=>t.text==='方案已生成'||t.text==='旁聊'));
   assert.equal((await stat(join(directory,report.id+'.json'))).mode&0o777,0o600);
@@ -29,9 +29,27 @@ test('group call: real readiness, one summary, admitted complete transcript and 
 test('reservation cancellation stays silent; unavailable summary retains full dialogue honestly',async()=>{
  const sent=[],calls=createConversationCalls({gateway:{request:async(_,a)=>{sent.push(a);return{messageId:'ok'};}},publicOrigin:'https://phone.example',basePath:'/voice',summarize:async()=>{throw Error('timeout');}});
  const cancelled=calls.begin(binding,target,'cancelled');cancelled.close();await calls.flush();assert.equal(sent.length,0);
- const live=calls.begin(binding,target,'live');live.ready();live.user('我要安排一场会议');live.close();live.close();await calls.flush();assert.equal(sent.length,3);const report=await calls.read(binding,live.id);assert.equal(report.turns[0].text,'我要安排一场会议');assert.equal(report.summaryState,'unavailable');assert.match(report.summary,/暂时未生成摘要/);
+ const live=calls.begin(binding,target,'live');live.ready();live.user('我要安排一场会议');live.close();live.close();await calls.flush();assert.equal(sent.filter(a=>a.message).length,2);const report=await calls.read(binding,live.id);assert.equal(report.turns[0].text,'我要安排一场会议');assert.equal(report.summaryState,'unavailable');assert.match(report.summary,/暂时未生成摘要/);
 });
 test('summary request is bounded, has no tools and rejects truncated completion',async()=>{
  let payload;const summarize=callSummarizerFromEnv({XAI_API_KEY:'test',VOICE_CALL_SUMMARY_MODEL:'test-model'},{fetchImpl:async(_,options)=>{payload=JSON.parse(options.body);return{ok:true,json:async()=>({choices:[{finish_reason:'length',message:{content:'half'}}]})};}});
  await assert.rejects(summarize({turns:[{role:'user',text:'测试'}]}),/summary-invalid/);assert.equal(payload.tools,undefined);assert.equal(payload.max_tokens,500);
+});
+
+test('same status receipt updates after a delayed start; close never posts a second status',async()=>{
+ let finishSend;const edits=[],sent=[],errors=[];
+ const gateway={request:async(method,a)=>{if(method==='send'){sent.push(a);if(sent.length===1)return new Promise(r=>finishSend=r);return {messageId:'summary'};}edits.push(a);return {ok:true,output:{details:{ok:true,messageId:a.args.messageId}}};}};
+ const calls=createConversationCalls({gateway,publicOrigin:'https://phone.example',audit:e=>errors.push(e)}),call=calls.begin(binding,target,'fast');call.ready();call.close();finishSend({messageId:'original'});await calls.flush();
+ assert.equal(sent.length,2);assert.equal(edits.length,1);assert.equal(edits[0].args.messageId,'original');assert.match(edits[0].args.card.body.elements[0].content,/通话已结束/);assert.equal(errors.filter(e=>e.type==='call.report-error'&&e.stage.startsWith('status')).length,0);
+});
+test('failed status edit is recorded without duplicate notification or losing the summary',async()=>{
+ const sent=[],audit=[];const calls=createConversationCalls({gateway:{request:async(m,a)=>{if(m==='send'){sent.push(a);return {messageId:'owned'};}return {ok:false,error:{message:'denied'}};}},publicOrigin:'https://phone.example',audit:e=>audit.push(e)});
+ const call=calls.begin(binding,target,'failure');call.ready();call.user('你好');call.close();await calls.flush();assert.equal(sent.length,2);assert.ok(audit.some(e=>e.stage==='status-ended'));assert.equal((await calls.read(binding,call.id)).turns.length,1);
+});
+test('connected status uses the same receipt for styling and hangup, including an ambiguous edit retry',async()=>{
+ const sent=[],edits=[];let first=true;
+ const gateway={request:async(method,a)=>{if(method==='send'){sent.push(a);return {messageId:'owned-card'};}edits.push(a);if(first){first=false;throw Object.assign(Error('request timed out'),{code:'TIMEOUT'});}return {ok:true,output:{details:{ok:true,messageId:a.args.messageId}}};}};
+ const calls=createConversationCalls({gateway,publicOrigin:'https://phone.example'}),call=calls.begin(binding,target,'connected');call.ready();await calls.flush();
+ assert.equal(edits.length,2);assert.deepEqual(edits[0],edits[1]);assert.match(edits[1].args.card.body.elements[0].content,/正在通话/);assert.equal(edits[1].args.card.body.elements[0].text_size,'notation');
+ call.close();await calls.flush();assert.equal(sent.length,2);assert.equal(edits.length,3);assert.ok(edits.every(a=>a.args.messageId==='owned-card'));assert.match(edits[2].args.card.body.elements[0].content,/通话已结束/);
 });

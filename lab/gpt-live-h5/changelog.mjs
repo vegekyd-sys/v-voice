@@ -1,10 +1,11 @@
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
 export const SESSION_REPLY_CANDIDATE_UPDATE = {
-  version:'voice-session-call.20261023.3',date:'2026-10-23',
+  version:'voice-session-call.20261023.4',date:'2026-10-23',
   title:'通话总结与 iOS 会话绑定（候选）',status:'candidate-validation',
   items:[
-    '群电话接通时轻提示，结束后显示时长和简短总结，点击即可回看完整对话。',
+    '群电话用一张小字灰色状态卡记录，挂断后原地更新为通话已结束。',
+    '通话总结由 V 用第一人称提炼重点和结论，去掉时长与提问次数，仍可查看完整对话。',
     '网页电话可生成一次性绑定链接；在 iOS App 设置中粘贴，即可继续使用同一个会话。',
     '支持查看和解除已绑定 App；旧个人电话入口继续兼容。',
     '同步主干 iOS build 24 的统一电话能力桥和查询接话更新。',

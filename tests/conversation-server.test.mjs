@@ -11,7 +11,7 @@ const entries=['a','b','alias'].map((suffix,i)=>({
 async function fixture(t,options={}){
  const calls=[];let serial=0;
  const bridge=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:options.entries??entries,callSummarize:async()=>'讨论了计划。',personalReply:options.personalReply,feishuAccounts:options.feishuAccounts??{},
- gateway:{request:async(method,args)=>{calls.push({method,args});if(method==='sessions.resolve')return options.resolve?options.resolve(args):{key:args.key,agentId:args.agentId};if(method==='send')return {messageId:'om_fixture'};return method==='talk.client.create'?{voiceSessionId:'native-'+(++serial),model:'gpt-live-1-codex',transport:'webrtc',offerUrl:'/plugins/openai/realtime/calls'}:{ok:true};}},
+ gateway:{request:async(method,args)=>{calls.push({method,args});if(method==='sessions.resolve')return options.resolve?options.resolve(args):{key:args.key,agentId:args.agentId};if(method==='send')return {messageId:'om_fixture'};if(method==='tools.invoke')return {ok:true,output:{details:{ok:true,messageId:args.args.messageId}}};return method==='talk.client.create'?{voiceSessionId:'native-'+(++serial),model:'gpt-live-1-codex',transport:'webrtc',offerUrl:'/plugins/openai/realtime/calls'}:{ok:true};}},
  directVoice:{models:()=>[],reserve:async args=>{calls.push({method:'direct.reserve',args});return {voiceSessionId:'direct-'+(++serial),provider:args.model};},close:async()=>{},handleEvent:()=>{},dispose:async()=>{},...options.directVoice},offer:options.offer??(async()=> '')});
  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
  const request=(id,path,cookie,body)=>new Promise((resolve,reject)=>{
@@ -124,13 +124,14 @@ test('reply sync is enabled by private entry only; native final goes to that exa
  f.bridge.emit(event);f.bridge.emit(event);
  await f.request(entries[0].id,'close',cookie,first);
  for(let i=0;f.bridge.releaseReadiness().backgroundTasks&&i<100;i++)await new Promise(r=>setTimeout(r,2));
- const sent=f.calls.filter(c=>c.method==='send');assert.equal(sent.length,3);
- assert.equal(sent[0].args.message,'📞 开始打电话');const card=JSON.parse(sent[2].args.message);assert.equal(card.header.title.content,'通话总结');
+ const sent=f.calls.filter(c=>c.method==='send');assert.equal(sent.length,2);
+ assert.equal(JSON.parse(sent[0].args.message).body.elements[0].content,'正在通话');const card=JSON.parse(sent[1].args.message);assert.equal(card.header.title.content,'通话总结');
  for(const row of sent){assert.equal(row.args.to,'oc_room_a');assert.equal(row.args.accountId,'lab');assert.equal(row.args.sessionKey,entries[0].sessionKey);}
+ const edited=f.calls.filter(c=>c.method==='tools.invoke');assert.ok(edited.length);for(const row of edited){assert.equal(row.args.args.messageId,'om_fixture');assert.equal(row.args.args.target,'oc_room_a');assert.equal(row.args.args.accountId,'lab');}assert.match(edited.at(-1).args.args.card.body.elements[0].content,/通话已结束/);
  const id=new URL(card.body.elements.at(-1).behaviors[0].default_url).searchParams.get('call');
  const report=await(await f.request(entries[0].id,'calls/'+id,cookie)).json();assert.deepEqual(report.turns.map(t=>t.text),['说明计划','完整回答，只属于这通电话。']);
  const foreignCookie=await f.login(entries[1]);assert.equal((await f.request(entries[1].id,'calls/'+id,foreignCookie)).status,404);
- f.bridge.emit(event);assert.equal(f.calls.filter(c=>c.method==='send').length,3);
+ f.bridge.emit(event);assert.equal(f.calls.filter(c=>c.method==='send').length,2);
  const direct=await f.request(entries[0].id,'session',cookie,{model:'seeduplex',replySync:false,replyTarget:{to:'oc_foreign'}});assert.equal(direct.status,200);
  assert.equal(f.calls.find(c=>c.method==='direct.reserve').args.replyTarget.to,'oc_room_a');
 });
