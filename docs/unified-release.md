@@ -55,3 +55,7 @@ artifact 的 clients 字段列出四端归属、iOS UI revision/bridge 范围/�
 ## 本次验收范围
 
 本次是独立 Voice 发布控制与观测，不变更 Gateway RPC、Worker、身份或会话协议；本地 Candidate 的真实 HTTP/WebSocket 测试和模拟 systemd/网络失败测试覆盖发布边界，无需占用共享 VLab。无自动拨号、付费模型测试或设备刷机。上线回执另行登记实际双节点版本、Gateway 未变和页面/iOS UI 包 hash；真实音响/机器人听感仍以本人使用验收为准。
+
+## 行为一致性回归
+
+同一产物只能证明代码版本一致。共享对话能力不得按 phone/speaker 关闭；新增能力需同时通过 `session.test.mjs` 中四端的搜索、任务进度、插话与结果矩阵，设备协议继续通过 `device-endpoint.test.mjs`。硬件适配边界及当前候选验收范围见 [共享终端行为](shared-terminal-behavior.md)。

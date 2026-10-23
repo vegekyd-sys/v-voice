@@ -1,5 +1,22 @@
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
+export const RESPONSIVE_INTERRUPTION_CANDIDATE_UPDATE = {
+  version:'voice-responsive-interruption.20261024.1',date:'2026-10-24',
+  title:'轻声插话响应修复（iOS 32 候选）',status:'candidate-validation',
+  items:[
+    '修复上一候选中已确认的人声仍被音量和持续时间门槛挡住的问题，轻声、短句更容易打断。',
+    '保留人声确认、忽略旁聊后续播和新回答替换旧尾音。',
+  ],
+};
+export const CONFIRMED_INTERRUPTION_CANDIDATE_UPDATE = {
+  version:'voice-confirmed-interruption.20261024.1',date:'2026-10-24',
+  title:'插话误停播修复（iOS 31 候选）',status:'candidate-validation',
+  items:[
+    '播放时的疑似声音不再单独触发短暂停顿，本地确认人声后仍可及时插话。',
+    '保留旁聊被忽略后接着播放，以及新回答替换旧尾音。',
+    '修复测试中发现的通话结束时偶发退出；当前为真机验证候选。',
+  ],
+};
 export const FEISHU_MULTIUSER_CANDIDATE_UPDATE = {
   version:'voice-feishu-parity.20261024.1',date:'2026-10-24',
   title:'电话与文字共用能力（独立 Candidate）',status:'candidate-validation',
@@ -37,6 +54,49 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
   ],
 };
 export const VOICE_UPDATES = [
+  {version:'voice-call-minutes.20261024.2',date:'2026-10-24',title:'修复私信电话纪要样式',items:[
+    '修复真实通话后私信纪要偶尔停留在基础卡片的问题，正确显示淡紫重点版式。',
+    '保留按主题整理的摘要、完整对话和 iPhone 安静拨号。',
+  ]},
+  {version:'voice-call-minutes.20261024.1',date:'2026-10-24',title:'更清爽的电话纪要',items:[
+    '挂断后的纪要采用淡紫标题区，按主题分段，完整对话入口更轻巧。',
+    '摘要直接提炼值得保留的内容，去掉固定开场和逐项复述；试音只留一句确认。',
+    '区分建议与决定，被质疑且未核实的信息不再作为事实复述。',
+  ]},
+  {
+    version:'voice-responsive-interruption.20261024.1',date:'2026-10-24',
+    title:'说话更连贯，轻声也能打断',
+    items:[
+      '改善 iPhone 收音传输，减少播放中被未确认声音触发的短暂停顿。',
+      '本地确认人声后，轻声和短句也能及时打断；新回答接着回应你的插话。',
+      '保留忽略旁聊后继续播放，并修复挂断时偶发退出。',
+    ],
+  },
+  {
+    version: 'voice-shared-terminal-behavior.20261024.1', date: '2026-10-24', title: '各终端共用对话与任务逻辑',
+    items: [
+      '网页、iPhone、小机器人和音响共用搜索接话、任务进度与结果交付逻辑。',
+      '后台任务的阶段进展和结果不再只对电话端启用，普通插话不会取消后台任务。',
+      '屏幕展示、麦克风处理、摄像头和舵机继续按设备能力适配。',
+    ],
+  },
+
+  {
+    version: 'voice-ios-quiet-start.20261024.1', date: '2026-10-24', title: 'iPhone 拨号更安静',
+    items: [
+      '从 iPhone App 或 Action Button 发起通话时，不再发送「V正在电话通话」飞书卡片，避免拨号时弹出通知。',
+      '通话状态继续由灵动岛显示，挂断后的通话总结和完整对话照常保留。',
+      '网页发起通话仍保留原来的实时计时卡片。',
+    ],
+  },
+  {
+    version: 'voice-ios-handoff.20261024.1', date: '2026-10-24', title: '在 iPhone 上接着聊',
+    items: [
+      'iOS App 弹窗突出即将连接的会话，点击「在 iPhone 上继续」进入 App。',
+      '安装说明、复制或重新生成链接、已绑定设备管理收进折叠入口。',
+      '仍需在 App 中验证并绑定；完成前保留原来的会话。',
+    ],
+  },
   {
     date: '2026-10-23', title: '私聊通话计时与挂断状态修复',
     items: [

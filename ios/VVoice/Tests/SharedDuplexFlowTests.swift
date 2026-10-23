@@ -94,7 +94,10 @@ import VVoiceCore
             let samples = (0..<480).map { Int16(0.15 * sin(Double($0) * 2 * .pi * 440 / 24000) * 32767).littleEndian }
             let voice = samples.withUnsafeBytes { Data($0) }
             for _ in 0..<8 { input(voice, 0.1) }
-            XCTAssertEqual(audio.playbackPaused, version == 1, "The same binary executes the changed onset policy")
+            XCTAssertFalse(audio.playbackPaused, "Local sound alone is not a hold command")
+            try await command("speech-start")
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertEqual(audio.playbackPaused, version == 1, "The same binary executes the changed corroboration policy")
             try await command("caption")
             try await until { call.conversation.turns.contains { $0.text == "新服务端策略的字幕，无需修改安装包。" } }
             let requests = try await state()["sessionRequests"] as? [[String: Any]]
@@ -124,8 +127,10 @@ import VVoiceCore
         try await until { audio.queuedFrames > 0 }
         for attempt in 0..<2 {
             for _ in 0..<8 { input(voice, 0.1) }
-            XCTAssertTrue(audio.playbackPaused)
-            try await command("speech-start"); try await command("speech-complete")
+            XCTAssertFalse(audio.playbackPaused)
+            try await command("speech-start")
+            try await until { audio.playbackPaused }
+            try await command("speech-complete")
             let retained = audio.queuedFrames
             for _ in 0..<32 {
                 try await Task.sleep(for: .milliseconds(100))

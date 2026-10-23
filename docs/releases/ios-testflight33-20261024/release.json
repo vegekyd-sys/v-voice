@@ -1,0 +1,54 @@
+{
+  "version": "1.0.0",
+  "build": 33,
+  "sourceCommit": "f2a495dd4e71c22dfe9977c94ce132676b7ab1f1",
+  "mainCI": {
+    "run": 40001732925,
+    "conclusion": "success"
+  },
+  "PR": 118,
+  "appStoreConnectAppID": "6826350407",
+  "bundleID": "com.versa.vvoice",
+  "stableBaselineBuild": 32,
+  "nativeBehaviorIdenticalToStableBaseline": true,
+  "sourceComparisonScope": [
+    "ios/VVoice/App",
+    "ios/VVoiceCore",
+    "ios/VVoice/Shared",
+    "ios/VVoice/Widget"
+  ],
+  "archiveVerified": true,
+  "appStoreExportSignatureVerified": true,
+  "exportedIPASHA256": "68d1ead30d38d9b01ec0d944dbd744d23693d71c9f8b55d2d5121b2226e23e51",
+  "status": "internal_testflight_available",
+  "betaGroupID": "606dfc04-5c20-49dd-960c-3b6844b7957e",
+  "internalTesterCount": 1,
+  "warning": "Prebuilt WebRTC framework dSYM absent; upload succeeded but WebRTC crash symbolication is limited.",
+  "newPhysicalVoiceAcceptance": false,
+  "installedOnPhysicalPhoneViaTestFlight": false,
+  "nativeSourceParityFiles": 150,
+  "cameraPurposePresent": true,
+  "previousFailedUpload": {
+    "id": "9f7fdaa2-b1bb-4e2f-a4b0-a06f97c76256",
+    "code": "90683",
+    "fixed": true
+  },
+  "serverDeploymentPerformedByThisDistributionTask": false,
+  "uploadID": "df8e243b-617b-43f8-ae33-fa1116b6e33e",
+  "uploadSucceededAt": "2026-10-24T02:19:06+08:00",
+  "processingState": "VALID",
+  "uploadProcessingState": "COMPLETE",
+  "internalBuildState": "IN_BETA_TESTING",
+  "externalBuildState": "READY_FOR_BETA_SUBMISSION",
+  "internalTesterState": "INVITED",
+  "publicLinkEnabled": false,
+  "verifiedAt": "2026-10-24T02:24:53.581489+08:00",
+  "exportCompliance": {
+    "standardEncryptionOutsideAppleOS": true,
+    "distributedInFrance": false,
+    "scope": "Current private internal TestFlight release only; revisit before France distribution",
+    "usesNonExemptEncryption": false
+  },
+  "testFlightURL": "https://appstoreconnect.apple.com/apps/6826350407/testflight",
+  "physicalInstallState": "User invitation sent; installation through TestFlight not yet observed. Existing accepted build 32 remains the stable baseline."
+}

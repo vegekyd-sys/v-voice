@@ -2,10 +2,10 @@ import test from 'node:test';import assert from 'node:assert/strict';import {mkd
 import {createConversationCalls,callSummarizerFromEnv} from '../lib/conversation-calls.mjs';
 import {createConversationReplyDelivery} from '../lib/conversation-replies.mjs';
 const binding={id:'test-group',kind:'group',sessionKey:'agent:makaron:feishu:group:oc_a',callerId:'tianyi',accountId:'bot',displayName:'测试群'},target={sessionKey:binding.sessionKey,to:'oc_a'};
-test('group call: real readiness, one summary, admitted complete transcript and late results survive',async()=>{
- const directory=await mkdtemp(join(tmpdir(),'voice-call-'));let at=1000,release;const sent=[];
+test('group call: real readiness, one summary, admitted complete transcript and late results survive',{timeout:10000},async()=>{
+ const directory=await mkdtemp(join(tmpdir(),'voice-call-'));let at=1000,release,summaryStarted;const started=new Promise(resolve=>summaryStarted=resolve);const sent=[];
  const edits=[];const gateway={request:async(method,args)=>{if(method==='tools.invoke'){edits.push(args);return {ok:true,output:{details:{ok:true,messageId:args.args.messageId}}};}sent.push(args);return {messageId:'om_'+sent.length};}};
- const calls=createConversationCalls({gateway,directory,publicOrigin:'https://phone.example',basePath:'/voice',now:()=>at,summarize:async()=>new Promise(r=>release=r)});
+ const calls=createConversationCalls({gateway,directory,publicOrigin:'https://phone.example',basePath:'/voice',now:()=>at,summarize:async()=>new Promise(r=>{release=r;summaryStarted();})});
  try{
   const report=calls.begin(binding,target,'call');const delivery=createConversationReplyDelivery({gateway,target,ownerId:'call',callReport:report});
   assert.equal(sent.length,0);delivery.ready();delivery.ready();
@@ -15,11 +15,11 @@ test('group call: real readiness, one summary, admitted complete transcript and 
   delivery.user('请生成方案',{turnId:'u2'});delivery.captureTask('request');delivery.captureTask('run',{from:'request'});
   at=66000;await delivery.close();
   // close releases audio without waiting for the summarizer.
-  for(let i=0;!release&&i<100;i++)await new Promise(r=>setTimeout(r,5));assert.ok(release);assert.ok(calls.pending);
+  await started;assert.ok(release);assert.ok(calls.pending);
   assert.equal(sent.length,1);assert.equal(JSON.parse(sent[0].message).body.elements[0].content,'V正在电话通话 · 00:00');assert.equal(edits.at(-1).args.messageId,'om_1');assert.match(edits.at(-1).args.card.body.elements[0].content,/V电话通话已结束/);
   await delivery.result('run:final','方案已生成',{questionId:'run'});assert.equal(sent.length,2);
   release('讨论了今天的安排，并请求生成方案，结果待后台返回。');await calls.flush();
-  assert.equal(sent.length,3);const card=JSON.parse(sent[2].message);assert.equal(card.body.elements[0].text.content,'讨论了今天的安排，并请求生成方案，结果待后台返回。');assert.doesNotMatch(JSON.stringify(card),/次提问|1 分 5 秒|电话已结束/);
+  assert.equal(sent.length,3);const card=JSON.parse(sent[2].message);assert.match(JSON.stringify(card),/讨论了今天的安排，并请求生成方案，结果待后台返回。/);assert.doesNotMatch(JSON.stringify(card),/次提问|1 分 5 秒|电话已结束/);
   const url=new URL(card.body.elements.at(-1).behaviors[0].default_url);assert.equal(url.searchParams.get('phone'),binding.id);
   const saved=await calls.read(binding,report.id);assert.equal(saved.summaryState,'generated');assert.equal(saved.pendingTasks,true);assert.equal(saved.turns.length,5);assert.equal(saved.turns.find(r=>r.text==='我来查一下').interrupted,true);assert.ok(!saved.turns.some(t=>t.text==='方案已生成'||t.text==='旁聊'));
   assert.equal((await stat(join(directory,report.id+'.json'))).mode&0o777,0o600);
@@ -33,7 +33,7 @@ test('reservation cancellation stays silent; unavailable summary retains full di
 });
 test('summary request is bounded, has no tools and rejects truncated completion',async()=>{
  let payload;const summarize=callSummarizerFromEnv({XAI_API_KEY:'test',VOICE_CALL_SUMMARY_MODEL:'test-model'},{fetchImpl:async(_,options)=>{payload=JSON.parse(options.body);return{ok:true,json:async()=>({choices:[{finish_reason:'length',message:{content:'half'}}]})};}});
- await assert.rejects(summarize({turns:[{role:'user',text:'测试'}]}),/summary-invalid/);assert.equal(payload.tools,undefined);assert.equal(payload.max_tokens,1000);
+ await assert.rejects(summarize({turns:[{role:'user',text:'测试'}]}),/summary-invalid/);assert.equal(payload.tools,undefined);assert.equal(payload.max_tokens,1600);
 });
 
 test('same status receipt updates after a delayed start; close never posts a second status',async()=>{
@@ -69,9 +69,9 @@ test('short summaries request low reasoning and retry a timeout once without los
  const requests=[];let waits=0;
  const summarize=callSummarizerFromEnv({XAI_API_KEY:'fixture',VOICE_CALL_SUMMARY_MODEL:'grok-4.7'},{wait:async()=>{waits++;},fetchImpl:async(_,options)=>{
   requests.push(JSON.parse(options.body));if(requests.length===1)throw Object.assign(Error('provider timeout'),{name:'TimeoutError'});
-  return {ok:true,json:async()=>({choices:[{finish_reason:'stop',message:{content:'我把刚才电话的重点整理好了。'}}]})};
+  return {ok:true,json:async()=>({choices:[{finish_reason:'stop',message:{content:JSON.stringify({kind:'brief',title:'通话已接通',lead:'能听到，声音清楚。',sections:[]})}}]})};
  }});
- assert.equal(await summarize({turns:[{role:'user',text:'请整理通话要点'}]}),'我把刚才电话的重点整理好了。');
+ assert.deepEqual(await summarize({turns:[{role:'user',text:'请整理通话要点'}]}),{kind:'brief',title:'通话已接通',lead:'能听到，声音清楚。',sections:[]});
  assert.equal(requests.length,2);assert.equal(waits,1);assert.equal(requests[0].reasoning_effort,'low');
  assert.deepEqual(requests[0].messages,requests[1].messages);assert.equal(requests[1].tools,undefined);
 });
@@ -127,4 +127,15 @@ test('DM metadata lookup and lifecycle edits retain the binding gateway during m
  const calls=createConversationCalls({gateway:{request:()=>{throw Error('Must retain the scoped gateway');}},publicOrigin:'https://phone.example'});
  const call=calls.begin(dm,{...target,agentId:'makaron',sessionKey:dm.sessionKey,to:'ou_alice',accountId:'bot'},'scoped');call.ready();call.close();await calls.flush();
  assert.deepEqual(methods,['send','sessions.describe','tools.invoke','send']);
+});
+
+test('quiet call retains persistence and fallback summary without creating timers or edits',async()=>{
+ const sent=[],audit=[];let timers=0;
+ const calls=createConversationCalls({gateway:{request:async(method,args)=>{assert.equal(method,'send');sent.push(args);return {messageId:'summary'};}},publicOrigin:'https://phone.example',audit:e=>audit.push(e),setTimer:()=>{timers++;}});
+ const call=calls.begin(binding,target,'quiet',{statusCard:false});call.ready();call.ready();call.user('保留完整记录');await calls.flush();
+ assert.equal(sent.length,0);assert.equal(timers,0);assert.equal(audit.filter(e=>e.type==='call.status-suppressed').length,1);
+ call.close();call.close();await calls.flush();assert.equal(sent.length,1);
+ assert.match(JSON.stringify(JSON.parse(sent[0].message)),/电话纪要/);
+ const report=await calls.read(binding,call.id);assert.equal(report.turns[0].text,'保留完整记录');assert.equal(report.summaryState,'unavailable');
+ const cancelled=calls.begin(binding,target,'cancelled',{statusCard:false});cancelled.close();await calls.flush();assert.equal(sent.length,1);
 });

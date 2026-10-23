@@ -11,7 +11,7 @@ import Foundation
         var row = ["event": event, "at": clock.string(from: Date())]
         if let code { row["code"] = String(code.prefix(160)) }
         rows.append(row)
-        guard let data = try? JSONEncoder().encode(Array(rows.suffix(80))) else { return }
+        guard let data = try? JSONEncoder().encode(Array(rows.suffix(512))) else { return }
         try? data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 }

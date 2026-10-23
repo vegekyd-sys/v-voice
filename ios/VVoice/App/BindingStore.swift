@@ -110,7 +110,8 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
         func ms(_ start: Date?, _ end: Date?) -> Int { guard let start, let end else { return -1 }; return Int(end.timeIntervalSince(start) * 1000) }
         guard let m = metrics.transactionMetrics.last else { return }
         let value = "route=\(route) total=\(Int(metrics.taskInterval.duration * 1000)) dns=\(ms(m.domainLookupStartDate,m.domainLookupEndDate)) tcp=\(ms(m.connectStartDate,m.connectEndDate)) tls=\(ms(m.secureConnectionStartDate,m.secureConnectionEndDate)) wait=\(ms(m.requestEndDate,m.responseStartDate)) body=\(ms(m.responseStartDate,m.responseEndDate)) reused=\(m.isReusedConnection)"
-        Task { @MainActor in CallDiagnostics.record("http.metrics", code: value) }
+        let path = "route=\(route) protocol=\(m.networkProtocolName ?? "unknown") proxy=\(m.isProxyConnection) cellular=\(m.isCellular) expensive=\(m.isExpensive)"
+        Task { @MainActor in CallDiagnostics.record("http.metrics", code: value); CallDiagnostics.record("http.path", code: path) }
     }
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
         Task { @MainActor in CallDiagnostics.record("relay.open") }
@@ -304,7 +305,7 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
         c.scheme = r.binding.baseURL.scheme == "https" ? "wss" : "ws"
         c.queryItems = (c.queryItems ?? []) + [URLQueryItem(name: "model", value: model), URLQueryItem(name: "dialVersion", value: "1"), URLQueryItem(name: "nativeRuntimeVersion", value: "1")]
         if let voice { c.queryItems?.append(URLQueryItem(name: "voice", value: voice)) }
-        req.url = c.url; req.timeoutInterval = 60
+        req.url = c.url; req.timeoutInterval = 60; req.networkServiceType = .responsiveAV
         return req
     }
     func relayRequest(id: String, ticket: String) throws -> URLRequest {
@@ -312,6 +313,6 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
         var req = request("relay", binding: r.binding, cookie: r.cookie)
         var c = URLComponents(url: req.url!, resolvingAgainstBaseURL: false)!
         c.scheme = r.binding.baseURL.scheme == "https" ? "wss" : "ws"; c.queryItems = (c.queryItems ?? []) + [URLQueryItem(name: "voiceSessionId", value: id), URLQueryItem(name: "ticket", value: ticket)]
-        req.url = c.url; return req
+        req.url = c.url; req.networkServiceType = .responsiveAV; return req
     }
 }

@@ -29,7 +29,7 @@ test('two OAuth identities in two groups obtain distinct caller and access scope
   for(const openId of ['ou_alice','ou_bob'])for(const chatId of ['oc_groupA','oc_groupB']){
     const entry=await resolve({...identity,openId},feishuConversationPhone('lab',chatId));records.push(entry);
     assert.equal(entry.sessionKey,'agent:makaron:feishu:group:'+chatId);
-    assert.equal(entry.replyTarget.to,chatId);assert.equal(entry.actorPrincipal.openId,openId);
+    assert.equal(entry.nativeChatId,chatId);assert.equal(entry.replyTarget.to,chatId);assert.equal(entry.actorPrincipal.openId,openId);
     await entry.gateway.request('tools.invoke',{name:'memory_search',args:{query:'fixture'}});
     const last=requests.at(-1);assert.equal(last.params.voiceActor.actor.openId,openId);assert.equal(last.params.sessionKey,entry.sessionKey);
     await assert.rejects(entry.gateway.request('chat.history',{sessionKey:'agent:makaron:feishu:group:oc_foreign'}),/cannot change/);
@@ -186,7 +186,7 @@ test('unidentified phone opens without login and isolates browser, conversation 
   assert.equal(first.status,200);assert.match(html,/voiceEntryStatus/);assert(!html.includes('生成验证码'));
   const jar=first.headers.get('set-cookie').split(';')[0];
   const state=await(await get('/voice/api/status'+query,jar)).json();
-  assert.equal(state.unidentified,true);assert.equal(state.defaultModel,'seeduplex');assert.equal(state.iosBindingAvailable,false);
+  assert.equal(state.unidentified,true);assert.equal(state.accountLoginHref,'/voice/feishu?phone='+phone+'&oauth=1');assert.equal(state.defaultModel,'seeduplex');assert.equal(state.iosBindingAvailable,false);
   assert.equal(state.conversation.replySync,false);assert.equal(state.models.find(m=>m.id==='gpt-live').available,false);
   for(const path of ['/api/calls/private','/api/ios-binding','/api/speaker-fixture','/api/comparison','/api/access'])assert.equal((await get('/voice'+path+query,jar)).status,403);
   assert.equal((await get('/voice/api/status'+query,jar.slice(0,-4)+'fake')).status,401);

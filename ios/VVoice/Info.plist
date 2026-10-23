@@ -31,6 +31,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>V Voice 当前仅提供语音通话，不使用相机，也不会主动请求相机权限。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>与 V 实时对话时收取你的声音。结束通话后立即停止收音。</string>
 	<key>NSSupportsLiveActivities</key>
