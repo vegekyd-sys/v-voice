@@ -65,10 +65,10 @@
   "mergeChecksPassed": true,
   "releaseScope": {
     "distribution": "development_signed_private_device",
-    "webServerDeployed": false,
+    "webServerDeployed": true,
     "gatewayRestarted": false,
     "appStoreOrTestFlightPublished": false,
-    "homepageChangelog": "candidate_phone_page_verified_previous_turn"
+    "homepageChangelog": "production_browser_verified"
   },
   "appIcon": {
     "source": "Tianyi supplied purple headset portrait",
@@ -80,12 +80,12 @@
     "actionButtonLaunchOverlayAcceptance": "Tianyi_confirmed_build18_passed"
   },
   "webDeliveryRelease": {
-    "sourceCommit": "c009c5bc2c73981d3ae2effe346553626d9c5d68",
-    "mergePR": 83,
+    "sourceCommit": "87632bc063c326c7f33d5cc268d9be94c3a8fb8a",
+    "mergePR": 92,
     "serverDeployed": true,
-    "publicAssetHashesVerified": true,
     "bothNodesVerified": true,
-    "record": "../releases/voice-native-runtime-20261023/release.json"
+    "record": "../releases/session-phone-production-20261023/release.json",
+    "physicalNewReleaseAcceptance": "not claimed; existing build 25 retained"
   },
   "currentDeviceCandidate": {
     "build": 25,
