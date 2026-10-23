@@ -2,6 +2,7 @@ import SwiftUI
 import AVFoundation
 @preconcurrency import ActivityKit
 import Network
+import CryptoKit
 import VVoiceCore
 
 @MainActor @Observable final class CallCoordinator {
@@ -311,6 +312,9 @@ import VVoiceCore
         if let raw = reservation["nativeRuntime"] {
             guard let value = raw as? [String: Any] else { throw VoiceError.protocolMismatch }
             nativeRuntime = try NativeRuntimePolicy.decode(value)
+            let canonical = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
+            let fingerprint = SHA256.hash(data: canonical).prefix(8).map { String(format: "%02x", $0) }.joined()
+            CallDiagnostics.record("call.runtime", code: "v=1 policy=\(fingerprint) onsetMS=\(nativeRuntime!.pause.onsetMS) thinkingMS=\(nativeRuntime!.timing.thinkingMS)")
         } else { nativeRuntime = nil }
         nativeRuntimeRevision = 0
         nativeDuplex = reservation["nativeDuplex"] as? Bool == true

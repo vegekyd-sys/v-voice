@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {speakerDisplay, TRANSIENT_MS, THINKING_MS} from '../gpt-live-h5/call-view.mjs';
+import {speakerDisplay, TRANSIENT_MS, THINKING_MS, TASK_LABELS} from '../gpt-live-h5/call-view.mjs';
 
 // Product policy belongs to the service, including calls whose WK page is asleep.
 // No tool execution, identity, URLs, JavaScript or credentials cross this contract.
@@ -12,6 +12,7 @@ export const NATIVE_RUNTIME_OPERATIONS = Object.freeze([
 ]);
 export const DEFAULT_NATIVE_RUNTIME_POLICY = Object.freeze({
   version:1,
+  taskLabels:TASK_LABELS,
   timing:{thinkingMS:THINKING_MS, providerRecoveryMS:35000, endDrainMS:750},
   copy:{connected:'已接通，可以直接开口', reconnected:'已重新接通，请继续说',
     recovering:'语音模型正在恢复，请稍候再说', recovered:'语音已恢复，可以继续说'},
@@ -90,7 +91,7 @@ export function createNativeRuntime({voiceSessionId,duplex=false,assisted=false,
         break;
       }
       case 'tool.call':case 'tool.progress':
-        push('task.upsert',{id:text(value.callId,160),activity:text(value.activity??'background',80),stage:value.stage?plain(value.stage,28):value.type==='tool.call'?({web:'查资料中',memory:'查记忆中',calendar:'查日程中'}[value.activity]??'后台处理中'):null,step:value.step});
+        push('task.upsert',{id:text(value.callId,160),activity:text(value.activity??'background',80),stage:value.stage?plain(value.stage,28):value.type==='tool.call'?(descriptor.taskLabels?.[value.activity]??descriptor.taskLabels?.background??TASK_LABELS.background):null,step:value.step});
         push('surface.phase',{phase:'thinking'});break;
       case 'tool.result':case 'tool.error':push('task.remove',{id:text(value.callId,160),outcome:value.type==='tool.error'?'error':'success'});break;
       case 'backend.result':{

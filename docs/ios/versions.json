@@ -310,5 +310,16 @@
     "signedIPACopiedAndVerified": true,
     "acceptedByTianyi": true
   },
-  "nativeWaveformRelease": "build23-waveform.json"
+  "nativeWaveformRelease": "build23-waveform.json",
+  "pendingNativeRelease": {
+    "build": 24,
+    "status": "authorized_merge_build_and_install_preparation",
+    "protocolVersion": 1,
+    "installed": false,
+    "physicalAcceptance": "pending",
+    "rollbackBuildsVerified": [
+      22,
+      23
+    ]
+  }
 }

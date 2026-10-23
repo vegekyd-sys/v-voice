@@ -1,6 +1,6 @@
 # Voice 原生能力桥 · 候选实现与会话汇总
 
-2026-10-23，独立 worktree `voice-native-capability-bridge`，基于 main `08eaecf`。本页描述候选代码；未合入、未部署、未给用户手机安装新包。正式安装记录继续由 `versions.json` 所有，不把候选登记成已安装版本。
+2026-10-23，独立 worktree `voice-native-capability-bridge`，基于 main `08eaecf`。本页记录能力桥实现。用户已授权合入、双节点发布和 build 24 覆盖安装；实际交付与物理验收以验证登记为准，不把授权或构建完成写成安装验收完成。正式安装记录继续由 `versions.json` 所有，不把候选登记成已安装版本。
 
 ## 几个会话合起来看
 

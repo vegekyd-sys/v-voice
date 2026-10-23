@@ -1,12 +1,12 @@
 {
   "schema": 1,
   "date": "2026-10-23",
-  "status": "candidate_local_verified_not_released",
+  "status": "release_authorized_preparing_build24",
   "developmentBase": "08eaecf1a92bc4aa748e1b6053e7924cf55241e1",
   "branch": "codex/voice-native-capability-bridge",
   "protocolVersion": 1,
   "requiresFirstNativeUpgrade": true,
-  "nativeBuildAssigned": false,
+  "nativeBuildAssigned": true,
   "phoneInstalled": false,
   "productionDeployed": false,
   "gatewayChanged": false,
@@ -25,7 +25,7 @@
       "failed": 0
     },
     "completeNativeSuite": {
-      "passed": 70,
+      "passed": 71,
       "failed": 0
     },
     "additionalProjectedWKFlow": {
@@ -37,6 +37,10 @@
     "simulatorCompile": true,
     "fleet": {
       "passed": 10,
+      "failed": 0
+    },
+    "releaseContracts": {
+      "passed": 98,
       "failed": 0
     }
   },
@@ -79,5 +83,19 @@
     "filesSha256": "c2f31300488f7fb33058031125e436335a478683ee85d39333ceae1bf464f261",
     "manifestVerified": true,
     "packagedSessionDependencyGraphLoaded": true
-  }
+  },
+  "nativeBuild": 24,
+  "releaseAuthorized": true,
+  "rollback": {
+    "build22": {
+      "sha256": "feb69b3ed19df1ff3f21de38727b3799f2e949e5dd517ba114693299f846a91d",
+      "copiedAndVerified": true,
+      "accepted": true
+    },
+    "build23": {
+      "sha256": "8f792d361374289cf72db5a86414ada9885e12494d7f575f635ba915c435e62c",
+      "copiedAndVerified": true
+    }
+  },
+  "diagnostics": "Bounded local protocol version, policy fingerprint and numeric timing fields only; no entry, credentials, audio or transcript"
 }

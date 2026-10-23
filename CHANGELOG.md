@@ -1,9 +1,10 @@
 
-## Unreleased — Native capability bridge candidate
+## 2026-10-23 — iOS build 24 native capability bridge
 
 - Move relay caption/speaker interpretation, notices, task/report presentation and bounded playback policy into the shared Voice service. Negotiate a versioned data-only runtime; native executes existing media and system primitives even without a WK page.
 - Discover relay models by declared transport instead of adding a Swift enum case for each service model. Preserve old clients and the separate GPT WebRTC transport.
-- Synthetic same-binary acceptance changes service policy between calls; physical installation/background/Action Button/Island acceptance remains separate. See `docs/ios/NATIVE-CAPABILITY-BRIDGE.md`.
+- Prepare build 24 for the authorized merge, dual-node release and private-device installation. Preserve signed build 22/23 rollback packages and Keychain identity. Bounded local diagnostics record only runtime policy fingerprints and numeric parameters so a later service-only update can be verified without reinstalling.
+- Synthetic same-binary acceptance changes service policy between calls; physical installation/background/Action Button/Island acceptance is recorded separately. See `docs/ios/NATIVE-CAPABILITY-BRIDGE.md`.
 
 ## 2026-10-23 — Native search acknowledgment shared by web and iOS
 

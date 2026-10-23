@@ -174,7 +174,7 @@
           "op": "task.upsert",
           "id": "search",
           "activity": "web",
-          "stage": "查资料中"
+          "stage": "查资料"
         },
         {
           "op": "surface.phase",
