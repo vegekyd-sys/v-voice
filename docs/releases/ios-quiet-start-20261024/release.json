@@ -3,5 +3,36 @@
   "baseline": "979035347ebc1f29db12ae0f92c416a1f96be3bd",
   "scope": "Suppress the live Feishu status card for verified iOS App calls; preserve the end summary and transcript",
   "nativeInstallRequired": false,
-  "deployment": {"status": "pending"}
+  "deployment": {
+    "status": "verified",
+    "sourceCommit": "681a349ffcef117ddd049faf45a41702cf1c14d3",
+    "filesSha256": "3ac8a3895b05a0310f58a467e9dc6e0581de8b277517c9dbda01d007d79429a9",
+    "fleetReceipt": "20261024-013215-1be9615f",
+    "matrixSha256": "20252a73b1a47570af3853267e89e6843b638e1275a6ae341c4995e0f25696b3",
+    "bothNodesReady": true,
+    "gatewayIdentityUnchanged": true,
+    "rollbackCommit": "979035347ebc1f29db12ae0f92c416a1f96be3bd"
+  },
+  "validation": {
+    "sourcePR": 111,
+    "isolatedTests": 838,
+    "integratedTests": 846,
+    "speakerTests": 95,
+    "releaseControllerTests": 11,
+    "isolatedCI": 39995443113,
+    "integratedCI": [
+      39995552288,
+      39995559973
+    ],
+    "mainCI": 39995705127,
+    "conclusion": "success",
+    "coverage": [
+      "verified iOS grant on HTTP GPT/SeedDuplex/Grok and fast socket",
+      "group and DM: no initial status send or edits; one end summary; readable transcript",
+      "summary failure fallback and duplicate close",
+      "browser lifecycle card regression",
+      "production HTTPS page and visible homepage changelog"
+    ],
+    "physicalActionButtonPushAcceptance": "pending user call; no native install required"
+  }
 }
