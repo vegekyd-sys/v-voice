@@ -29,6 +29,14 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version: 'voice-ios-handoff.20261024.1', date: '2026-10-24', title: '在 iPhone 上接着聊',
+    items: [
+      'iOS App 弹窗突出即将连接的会话，点击「在 iPhone 上继续」进入 App。',
+      '安装说明、复制或重新生成链接、已绑定设备管理收进折叠入口。',
+      '仍需在 App 中验证并绑定；完成前保留原来的会话。',
+    ],
+  },
+  {
     date: '2026-10-23', title: '私聊通话计时与挂断状态修复',
     items: [
       '修复私聊通话状态停在 00:00 的问题；计时会随通话更新。',

@@ -1,3 +1,9 @@
+## 2026-10-24 — iPhone handoff dialog production release
+
+- Ship PR #105 on the existing production baseline: a compact phone illustration, explicit destination conversation, and one primary “在 iPhone 上继续” action.
+- Fold installation, manual link copy/regeneration and bound-device management into secondary disclosures. Keep explicit App verification and existing bindings unchanged.
+- Native audio candidate PR #106 and the separate multiuser candidate are outside this server release.
+
 ## 2026-10-23 — Private-call status card repair
 
 - Use the native Feishu chat ID for timer and hangup edits: take it from the exact send receipt, or resolve the canonical session and verify its agent, bot and direct-user identity when older adapters omit it. DM delivery still uses its original user ID, bot and canonical session. Missing or mismatched receipt targets fail closed; the transcript and summary remain available.
