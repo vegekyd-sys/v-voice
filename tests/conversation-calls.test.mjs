@@ -2,10 +2,10 @@ import test from 'node:test';import assert from 'node:assert/strict';import {mkd
 import {createConversationCalls,callSummarizerFromEnv} from '../lib/conversation-calls.mjs';
 import {createConversationReplyDelivery} from '../lib/conversation-replies.mjs';
 const binding={id:'test-group',kind:'group',sessionKey:'agent:makaron:feishu:group:oc_a',callerId:'tianyi',accountId:'bot',displayName:'测试群'},target={sessionKey:binding.sessionKey,to:'oc_a'};
-test('group call: real readiness, one summary, admitted complete transcript and late results survive',async()=>{
- const directory=await mkdtemp(join(tmpdir(),'voice-call-'));let at=1000,release;const sent=[];
+test('group call: real readiness, one summary, admitted complete transcript and late results survive',{timeout:10000},async()=>{
+ const directory=await mkdtemp(join(tmpdir(),'voice-call-'));let at=1000,release,summaryStarted;const started=new Promise(resolve=>summaryStarted=resolve);const sent=[];
  const edits=[];const gateway={request:async(method,args)=>{if(method==='tools.invoke'){edits.push(args);return {ok:true,output:{details:{ok:true,messageId:args.args.messageId}}};}sent.push(args);return {messageId:'om_'+sent.length};}};
- const calls=createConversationCalls({gateway,directory,publicOrigin:'https://phone.example',basePath:'/voice',now:()=>at,summarize:async()=>new Promise(r=>release=r)});
+ const calls=createConversationCalls({gateway,directory,publicOrigin:'https://phone.example',basePath:'/voice',now:()=>at,summarize:async()=>new Promise(r=>{release=r;summaryStarted();})});
  try{
   const report=calls.begin(binding,target,'call');const delivery=createConversationReplyDelivery({gateway,target,ownerId:'call',callReport:report});
   assert.equal(sent.length,0);delivery.ready();delivery.ready();
@@ -15,7 +15,7 @@ test('group call: real readiness, one summary, admitted complete transcript and 
   delivery.user('请生成方案',{turnId:'u2'});delivery.captureTask('request');delivery.captureTask('run',{from:'request'});
   at=66000;await delivery.close();
   // close releases audio without waiting for the summarizer.
-  for(let i=0;!release&&i<100;i++)await new Promise(r=>setTimeout(r,5));assert.ok(release);assert.ok(calls.pending);
+  await started;assert.ok(release);assert.ok(calls.pending);
   assert.equal(sent.length,1);assert.equal(JSON.parse(sent[0].message).body.elements[0].content,'V正在电话通话 · 00:00');assert.equal(edits.at(-1).args.messageId,'om_1');assert.match(edits.at(-1).args.card.body.elements[0].content,/V电话通话已结束/);
   await delivery.result('run:final','方案已生成',{questionId:'run'});assert.equal(sent.length,2);
   release('讨论了今天的安排，并请求生成方案，结果待后台返回。');await calls.flush();
