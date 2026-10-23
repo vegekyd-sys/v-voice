@@ -3,7 +3,7 @@
   "entryCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
   "gatewayPluginCommit": "a9ac516860a8856470262957ad6ea0cc2670cb0e",
   "registration": "voice-native-runtime-20261023/release.json",
-  "runtimeDifference": "Both Voice nodes run the opt-in native capability bridge. Signed build 24 is cover-installed and read back; physical acceptance and same-binary service-only update proof are pending. Gateway unchanged.",
+  "runtimeDifference": "Both Voice nodes run the native capability bridge. Build 24 is signed, cover-installed and physically accepted for voice, interruption, Action Button, locked-screen voice and Island controls. Same-binary service update proof follows separately. Gateway unchanged.",
   "gatewayRestartRequired": false,
   "release": "voice-native-runtime-20261023",
   "previousEntryCommit": "8136b20af19ca6fc740260875bf243d79cf67fd3",
