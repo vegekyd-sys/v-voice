@@ -14,6 +14,19 @@
 - Use the native Feishu chat ID for timer and hangup edits: take it from the exact send receipt, or resolve the canonical session and verify its agent, bot and direct-user identity when older adapters omit it. DM delivery still uses its original user ID, bot and canonical session. Missing or mismatched receipt targets fail closed; the transcript and summary remain available.
 - Verify the actual DM send/edit contract, elapsed updates and final duration, and retain group behavior. This hotfix is based on production `594e3c5`; unrelated multiuser candidates and native audio changes are separate releases.
 
+## 2026-10-23 — Feishu multiuser phone, shared VLab validation
+
+## Candidate — 2026-10-23 · iPhone handoff polish
+
+- Redesign the web iOS App dialog to match the native binding journey: a compact phone illustration, explicit destination conversation, and one primary “在 iPhone 上继续” action.
+- Collapse installation, manual link copy/regeneration, and bound-device management into secondary disclosures. Keep explicit App verification, existing-session retention, and all binding authorization unchanged.
+- Candidate only (`voice-ios-handoff.20261023.1`); no production deployment or native installation in this change.
+
+
+- Add OAuth-authenticated dynamic conversation entries and signed actor-scoped Gateway requests, preserving current Feishu text routing and tool policies. Disable personal host shortcuts for these callers.
+- Apply the same server-owned identity checks to HTTP and one-connection native dialing. Preserve PR97/98/101 startup improvements.
+- This version is authorized for shared VLab validation only. Production and real multiuser audio acceptance remain unchanged/pending.
+
 ## 2026-10-23 — iOS guided binding and saved conversations · 2026-10-23
 
 - Replace the binding form with a three-step native journey: connect a conversation, configure the Action button, then “替代 Siri 的第一步：enjoy”. Show the journey on first launch without a binding; existing users enter the phone directly. Prefilled handoffs use a focused confirmation state and fixed primary actions.

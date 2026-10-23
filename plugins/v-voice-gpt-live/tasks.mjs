@@ -14,7 +14,7 @@ export function createVoiceTasks({consult,control,agentRuntime,getConfig,logger,
  const snapshot=r=>({taskId:r.taskId,runId:r.runId,runs:[...r.runs],status:r.status,text:r.text,error:r.error,progress:[...r.progress]});
  const clean=()=>{for(const [id,r] of tasks)if(r.expiresAt<Date.now()){tasks.delete(id);requests.delete(r.requestKey);}};
  return {
-  async start(params,connId,onStarted){
+  async start(params,connId,onStarted,voiceActor){
    clean();
    if(!connId||typeof params?.voiceSessionId!=='string'||!params.voiceSessionId||typeof params.callId!=='string'||!params.callId||typeof params.question!=='string'||!params.question.trim()||params.question.length>32768)throw Error('Invalid Voice task');
    const match=/^agent:([^:]+):feishu:(?:group|direct|dm):(?:oc_|ou_)[A-Za-z0-9]+$/.exec(params.sessionKey??'');
@@ -46,6 +46,7 @@ export function createVoiceTasks({consult,control,agentRuntime,getConfig,logger,
    };
    try{
     const result=await consult({cfg,agentRuntime:ownedRuntime,logger,agentId:match[1],sessionKey:params.sessionKey,
+     ...(voiceActor?{senderId:voiceActor.openId,senderIsOwner:voiceActor.senderIsOwner,messageProvider:'feishu',voiceActor}:{}),
      args:{question:params.question},transcript:[],surface:'a V Voice telephone',userLabel:'User',questionSourceLabel:'user',
      runIdPrefix:'voice-product-task',lane:'talk',thinkLevel:cfg.talk?.consultThinkingLevel??cfg.agents?.defaults?.thinkingDefault,
      abortSignal:controller.signal,onRunStarted:started,onResumeRunStarted:started,

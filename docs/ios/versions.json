@@ -88,14 +88,14 @@
     "physicalNewReleaseAcceptance": "not claimed; build 25 retained; production binding and relaunch verified in dedicated simulator"
   },
   "currentDeviceCandidate": {
-    "build": 28,
+    "build": 29,
     "installedOnRequestedIPhone": true,
     "lastAcceptedBuild": 24,
-    "physicalAcceptance": "action_button_speed_confirmed_by_user; latest_measured_3118ms; stable_2s_and_broader_regression_not_claimed",
-    "sourceCommit": "c89a002ac80dc693b8920271caffb5c27f1f0552",
-    "ipaSHA256": "607f4e36f70d9ebbff586811acd87dd7005ca652dea07d8c5ce5aa1655cb9a86",
-    "mergeStatus": "merged_via_PR101",
-    "serverCommit": "ffccc8fb6b38cd9662bd108f455a5e41aaba6a70"
+    "physicalAcceptance": "installed_and_launched; binding_journey_user_experience_pending",
+    "sourceCommit": "594e3c50d3d76a5084cf52b1860b881f540db3bd",
+    "ipaSHA256": "f40d1222958eb2607a2e1e81a853ffc71b5484624215f11c949b4d58c457d5ca",
+    "mergeStatus": "merged_via_PR100",
+    "serverCommit": "594e3c50d3d76a5084cf52b1860b881f540db3bd"
   },
   "build10RollbackHistory": {
     "date": "2026-10-22",
@@ -529,7 +529,7 @@
   "bindingJourneyCandidate": {
     "build": 29,
     "baseCommit": "694c18f3e5c75fea8b606158b9b3cb5dfcc7d8fa",
-    "status": "integrated_with_fast_dial_validation_pending",
+    "status": "merged_and_installed_build29_user_experience_pending",
     "record": "binding-journey/README.md",
     "threeStepSetup": true,
     "multipleSavedConversations": true,
@@ -540,9 +540,54 @@
       "failed": 0,
       "skipped": 1
     },
-    "installedOnPhysicalPhone": false,
+    "installedOnPhysicalPhone": true,
     "testflightPublished": false,
-    "serverDeploymentRequired": false,
+    "serverDeploymentRequired": true,
     "originalCandidateBuild": 26
+  },
+  "previousDeviceCandidateBeforeBindingJourney": {
+    "build": 28,
+    "installedOnRequestedIPhone": true,
+    "lastAcceptedBuild": 24,
+    "physicalAcceptance": "action_button_speed_confirmed_by_user; latest_measured_3118ms; stable_2s_and_broader_regression_not_claimed",
+    "sourceCommit": "c89a002ac80dc693b8920271caffb5c27f1f0552",
+    "ipaSHA256": "607f4e36f70d9ebbff586811acd87dd7005ca652dea07d8c5ce5aa1655cb9a86",
+    "mergeStatus": "merged_via_PR101",
+    "serverCommit": "ffccc8fb6b38cd9662bd108f455a5e41aaba6a70"
+  },
+  "bindingJourneyBuild29Delivery": {
+    "sourceCommit": "594e3c50d3d76a5084cf52b1860b881f540db3bd",
+    "serverCommit": "594e3c50d3d76a5084cf52b1860b881f540db3bd",
+    "version": "1.0.0",
+    "build": "29",
+    "ipaSHA256": "f40d1222958eb2607a2e1e81a853ffc71b5484624215f11c949b4d58c457d5ca",
+    "exportedReleaseVerified": true,
+    "sameBindingEntitlements": true,
+    "deviceReportedVersion": "1.0.0",
+    "deviceReportedBuild": "29",
+    "installed": true,
+    "testFlightPublished": false,
+    "productionVoiceChanged": true,
+    "realVoiceAcceptance": "pending_user_test",
+    "serverRelease": {
+      "complete": true,
+      "commit": "594e3c50d3d76a5084cf52b1860b881f540db3bd",
+      "bothNodesReady": true,
+      "filesSha256": "b5e69801e48742a437b760a2afdd0824035501b97f86bb29f4d130353818bee6",
+      "gatewayUnchanged": true,
+      "webPID": "2557204",
+      "devicesPID": "2278958"
+    },
+    "homepageChangelogVerified": true,
+    "previousBuildRetained": 28,
+    "tests": {
+      "servicePassed": 819,
+      "nativePassed": 87,
+      "nativeFailed": 0,
+      "nativeSkipped": 1,
+      "nativeSkipReason": "Preserve existing real binding"
+    },
+    "normalLaunchVerified": true,
+    "physicalBindingJourneyAcceptance": "pending_user_experience"
   }
 }
