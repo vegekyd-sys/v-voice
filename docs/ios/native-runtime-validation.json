@@ -74,7 +74,7 @@
     "Record actual phone install and human foreground/background/Action Button/Island acceptance",
     "Update homepage changelog and release registry; publish both Voice nodes through release-fleet"
   ],
-  "integratedMain": "43832d33ac275d5fb01fe276656adac8eb0ee101",
+  "integratedMain": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
   "artifact": {
     "commit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
     "files": 208,

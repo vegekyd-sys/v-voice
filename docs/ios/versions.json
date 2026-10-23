@@ -119,7 +119,8 @@
     "build11NewPhysicalVoiceAcceptance": "not_run"
   },
   "mainChecks": {
-    "run": 39818922237,
+    "run": 39893373949,
+    "commit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
     "conclusion": "success"
   },
   "savedRollback": {
@@ -198,7 +199,7 @@
       "conclusion": "success"
     }
   },
-  "mergeCommit": "8136b20af19ca6fc740260875bf243d79cf67fd3",
+  "mergeCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
   "acceptedJointBuild18": {
     "build": 18,
     "candidateOnly": false,
@@ -285,8 +286,9 @@
     "signedIPACopiedAndVerified": true
   },
   "deviceLaunchVerification": {
-    "build": 23,
+    "build": 24,
     "succeeded": true,
+    "evidence": "User opened V Voice and completed the five accepted scenarios",
     "automaticDialPerformed": false
   },
   "previousNativeDelivery": {
