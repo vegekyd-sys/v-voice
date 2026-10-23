@@ -128,7 +128,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       const url = new URL(req.url, requestOrigin);
       if (basePath && url.pathname === basePath && req.method === "GET") { res.writeHead(308, { location: `${basePath}/${url.search}`, "cache-control": "no-store" }); res.end(); return; }
       if (basePath && !url.pathname.startsWith(`${basePath}/`)) return json(res, 404, { error: "没有这个入口" });
-      const pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
+      let pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
+      let entryVisitor = null;
       if (phoneLogin && req.method === 'GET' && (pathname === '/feishu' || pathname === '/feishu/callback')) {
         try {
           let location;
@@ -136,11 +137,14 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           else {
             const selected = phoneLogin.select(req, url.searchParams.get('phone'));
             if (selected) {
-              entryAccess(selected).issue(res);
-              location = `${basePath}/?phone=${encodeURIComponent(selected.id)}${callIdValid(url.searchParams.get('call'))?'&call='+url.searchParams.get('call'):''}`;
+              entryVisitor = entryAccess(selected).issue(res);
+              // An explicit, authenticated phone entry can serve its first
+              // frame here. Relative assets/API URLs keep the same base path.
+              if (url.searchParams.get('phone') === selected.id) pathname = '/';
+              else location = `${basePath}/?phone=${encodeURIComponent(selected.id)}${callIdValid(url.searchParams.get('call'))?'&call='+url.searchParams.get('call'):''}`;
             } else location = phoneLogin.begin(req, res, url.searchParams.get('phone'),url.searchParams.get('call'));
           }
-          res.writeHead(302, {location, 'cache-control': 'no-store'}); res.end(); return;
+          if (location) { res.writeHead(302, {location, 'cache-control': 'no-store'}); res.end(); return; }
         } catch (error) {
           console.warn(JSON.stringify({type:'voice.feishu-login-error', ...feishuPhoneLoginFailure(error)}));
           return json(res, 403, {error:'暂时无法确认这个电话入口。请使用已开通的飞书账号重新打开。'});
@@ -193,7 +197,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           if(candidateRelease)html=html.replace('<script type="module" src="./app.js"></script>',`<script type="application/json" id="voiceCandidateRelease">${JSON.stringify(candidateRelease).replaceAll('<','\\u003c')}</script><script type="module" src="./app.js"></script>`);
           // Only an authenticated request receives an entry snapshot. It is a
           // presentation hint; every session/tool request still authorizes itself.
-          const visitor = hosted ? readVisitor(req,binding) : null;
+          const visitor = hosted ? entryVisitor ?? readVisitor(req,binding) : null;
           const canCheckEntry = visitor && (contexts.has(`${entry}:${visitor.id}`) || contexts.size < 512);
           if (!hosted || canCheckEntry) {
             const initial = JSON.stringify({ ready: backendReady(), preview, defaultModel, conversation:{name:binding.displayName??'我的 V',kind:binding.kind,replySync:binding.replySync},iosBindingAvailable:hosted, ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}), ...(listening?{comparisonAvailable:true}:{}),
