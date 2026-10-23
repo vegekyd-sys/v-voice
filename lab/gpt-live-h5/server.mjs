@@ -18,7 +18,7 @@ import { createConversationEntries } from "../../lib/conversation-entries.mjs";
 import { verifyPhoneSession } from "../../lib/phone-provisioning.mjs";
 import {conversationReplyTarget,createConversationReplyDelivery} from '../../lib/conversation-replies.mjs';
 import {createFeishuConversationDirectory,parseFeishuConversationPhone} from '../../lib/feishu-conversation-directory.mjs';
-import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure,feishuPhoneLoginErrorPage} from '../../lib/feishu-phone-login.mjs';
+import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure,feishuPhoneLoginErrorPage,feishuPhoneLoginChoices,feishuConversationLoginPage} from '../../lib/feishu-phone-login.mjs';
 import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
 import {createTaskDelivery} from '../realtime-direct-tools/task-delivery.mjs';
@@ -42,7 +42,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   const replyTargets=new Map(entries.replyBindings().map(e=>[e.id,conversationReplyTarget(e,feishuAccounts)]));
   const appDownload=iosAppDownload(iosAppDownloadUrl);
   const phoneLogin = feishuLogin ? createFeishuPhoneLogin({...feishuLogin, publicOrigin, basePath, entries,
-    ...(feishuLogin.conversations===true?{resolveConversation:createFeishuConversationDirectory({gateway,...feishuLogin})}:{})}) : null;
+    ...(feishuLogin.conversations===true?{resolveConversation:createFeishuConversationDirectory({gateway,...feishuLogin}),conversationLogin:{
+      begin:phone=>{const target=parseFeishuConversationPhone(phone);if(target?.accountId!==feishuLogin.accountId)throw Error('Unknown conversation');return gateway.request('voice.feishu.login.begin',target);},
+      status:ticket=>gateway.request('voice.feishu.login.status',{ticket}),
+    }}:{})}) : null;
   const callReports=createConversationCalls({gateway,directory:callReportsDirectory,publicOrigin,basePath,summarize:callSummarize,audit:callControlAudit});
   const accessors = new Map();
   const entryAccess = binding => {
@@ -213,6 +216,20 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (basePath && !url.pathname.startsWith(`${basePath}/`)) return json(res, 404, { error: "没有这个入口" });
       let pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
       let entryVisitor = null, entryBinding = null;
+      if(phoneLogin&&feishuLogin?.conversations===true&&['/feishu/connect','/feishu/connect/status'].includes(pathname)) {
+        try {
+          if(req.method==='GET'&&pathname==='/feishu/connect') {
+            const html=feishuConversationLoginPage({phone:url.searchParams.get('phone'),basePath,appId:feishuLogin.appId});
+            res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','referrer-policy':'no-referrer'});res.end(html);return;
+          }
+          if(req.method==='POST'&&pathname==='/feishu/connect') {
+            let raw='',size=0;for await(const chunk of req){size+=chunk.length;if(size>4096)throw Error('Request too large');raw+=chunk;}
+            const body=JSON.parse(raw);return json(res,200,await phoneLogin.beginConversation(req,res,body.phone));
+          }
+          if(req.method==='GET'&&pathname==='/feishu/connect/status')return json(res,200,await phoneLogin.completeConversation(req,res));
+          return json(res,405,{error:'不支持这个操作'});
+        }catch(error){console.warn(JSON.stringify({type:'voice.feishu-login-error',...feishuPhoneLoginFailure(error)}));return json(res,400,{error:'确认已失效，请重新生成验证码。'});}
+      }
       if (phoneLogin && req.method === 'GET' && (pathname === '/feishu' || pathname === '/feishu/callback')) {
         try {
           let location;
@@ -226,6 +243,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
               // frame here. Relative assets/API URLs keep the same base path.
               if (url.searchParams.get('phone') === selected.id) pathname = '/';
               else location = `${basePath}/?phone=${encodeURIComponent(selected.id)}${callIdValid(url.searchParams.get('call'))?'&call='+url.searchParams.get('call'):''}`;
+            } else if(parseFeishuConversationPhone(url.searchParams.get('phone'))&&url.searchParams.get('oauth')!=='1'&&url.searchParams.get('retry')!=='1') {
+              res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});res.end(feishuPhoneLoginChoices({phone:url.searchParams.get('phone'),basePath}));return;
             } else location = phoneLogin.begin(req, res, url.searchParams.get('phone'),url.searchParams.get('call'),{promptConsent:url.searchParams.get('retry')==='1'});
           }
           if (location) { res.writeHead(302, {location, 'cache-control': 'no-store'}); res.end(); return; }
