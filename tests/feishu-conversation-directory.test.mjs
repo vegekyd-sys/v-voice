@@ -44,6 +44,13 @@ test('browser cannot supply a signed identity or change a scoped request',async(
   await assert.rejects(scoped.request('tools.invoke',{voiceActor:{openId:'ou_other'}}),/cannot be supplied/);
 });
 
+test('proof canonicalization matches JSON RPC wire semantics for optional undefined fields',async()=>{
+  let actual;
+  const scoped=createFeishuActorGateway({...config,identity,chatId:'oc_groupA',sessionKey:'canonical',gateway:{request:async(_,p)=>{actual=JSON.parse(JSON.stringify(p));}}});
+  await scoped.request('tools.invoke',{name:'fixture',unused:undefined,args:{value:'fixture',unused:undefined}});
+  assert.deepEqual(JSON.parse(actual.voiceActor.params),{sessionKey:'canonical',name:'fixture',args:{value:'fixture'}});
+});
+
 test('dynamic OAuth admits the verified provider fixture subject through Gateway and rechecks current permissions after restart',async()=>{
   let subject='ou_alice',admitted=true;const seen=[];
   const resolveConversation=async(a,p)=>{
