@@ -132,3 +132,37 @@ test('HTTP OAuth and dialing preserve both fixture subjects, groups, and server-
   assert.equal((await get('/voice/api/status?phone='+logins[1].phone,logins[0].jar)).status,401);
   assert(!JSON.stringify(calls).includes(config.appSecret));
 });
+
+test('wrong browser identity gets a safe recovery page and explicit retry can replace an existing login',async t=>{
+  let subject='ou_alice',member='ou_alice';const methods=[];
+  const origin='https://voice.example';
+  const bridge=createLiveH5Server({gateway:{request:async(method,p)=>{
+    methods.push(method);
+    if(p.voiceActor.actor.openId!==member)throw Object.assign(Error('private gateway detail'),{details:{reason:'conversation_membership_required'}});
+    return {sessionKey:'agent:makaron:feishu:direct:'+member,agentId:'makaron',accountId:'lab',kind:'dm'};
+  }},publicOrigin:origin,basePath:'/voice',accessToken:'fixture-legacy-token'.repeat(3),
+    feishuLogin:{...config,conversations:true,fetchImpl:async url=>Response.json(url.endsWith('/token')?
+      {code:0,access_token:'private-provider-token',token_type:'Bearer'}:{code:0,data:{open_id:subject,tenant_key:'tenant_fixture'}})}});
+  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
+  const get=(path,cookie='')=>new Promise((resolve,reject)=>{
+    const req=request({host:'127.0.0.1',port:bridge.server.address().port,path,headers:{host:'voice.example',origin,cookie}},
+      res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end();
+  });
+  const cookie=res=>res.headers.get('set-cookie').split(';')[0];
+  const finish=async start=>get('/voice/feishu/callback?code=private-code&state='+new URL(start.headers.get('location')).searchParams.get('state'),cookie(start));
+  const signedIn=await finish(await get('/voice/feishu?phone='+phone)),oldCookie=cookie(signedIn);
+  member='ou_bob';
+  const denied=await get('/voice/feishu?phone='+phone,oldCookie),html=await denied.text();
+  assert.equal(denied.status,403);assert.match(html,/请切换到这个会话的飞书身份/);
+  assert.match(html,/外部联系人/);assert.match(html,/retry=1/);
+  for(const value of ['ou_alice','ou_bob','private-provider-token','private-code','private gateway detail'])assert(!html.includes(value));
+  const retry=await get('/voice/feishu?phone='+phone+'&retry=1',oldCookie);
+  assert.equal(new URL(retry.headers.get('location')).searchParams.get('prompt'),'consent');
+  const wrongCallback=await finish(retry),callbackHtml=await wrongCallback.text();
+  assert.equal(wrongCallback.status,403);assert.match(callbackHtml,/retry=1/);
+  assert(!callbackHtml.includes('private-code'));
+  subject='ou_bob';const corrected=await finish(await get('/voice/feishu?phone='+phone+'&retry=1',oldCookie));
+  assert.equal(corrected.status,302);
+  assert.equal((await get(corrected.headers.get('location'),cookie(corrected))).status,200);
+  assert(methods.every(m=>m==='voice.feishu.resolve'));
+});

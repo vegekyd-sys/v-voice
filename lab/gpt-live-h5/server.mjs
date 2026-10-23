@@ -18,7 +18,7 @@ import { createConversationEntries } from "../../lib/conversation-entries.mjs";
 import { verifyPhoneSession } from "../../lib/phone-provisioning.mjs";
 import {conversationReplyTarget,createConversationReplyDelivery} from '../../lib/conversation-replies.mjs';
 import {createFeishuConversationDirectory,parseFeishuConversationPhone} from '../../lib/feishu-conversation-directory.mjs';
-import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure} from '../../lib/feishu-phone-login.mjs';
+import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure,feishuPhoneLoginErrorPage} from '../../lib/feishu-phone-login.mjs';
 import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
 import {createTaskDelivery} from '../realtime-direct-tools/task-delivery.mjs';
@@ -218,7 +218,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           let location;
           if (pathname === '/feishu/callback') location = await phoneLogin.complete(req, res, url);
           else {
-            const selected = await phoneLogin.select(req, url.searchParams.get('phone'));
+            const selected = url.searchParams.get('retry')==='1'?null:await phoneLogin.select(req, url.searchParams.get('phone'));
             if (selected) {
               entryBinding = selected;
               entryVisitor = entryAccess(selected).issue(res);
@@ -226,12 +226,15 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
               // frame here. Relative assets/API URLs keep the same base path.
               if (url.searchParams.get('phone') === selected.id) pathname = '/';
               else location = `${basePath}/?phone=${encodeURIComponent(selected.id)}${callIdValid(url.searchParams.get('call'))?'&call='+url.searchParams.get('call'):''}`;
-            } else location = phoneLogin.begin(req, res, url.searchParams.get('phone'),url.searchParams.get('call'));
+            } else location = phoneLogin.begin(req, res, url.searchParams.get('phone'),url.searchParams.get('call'),{promptConsent:url.searchParams.get('retry')==='1'});
           }
           if (location) { res.writeHead(302, {location, 'cache-control': 'no-store'}); res.end(); return; }
         } catch (error) {
-          console.warn(JSON.stringify({type:'voice.feishu-login-error', ...feishuPhoneLoginFailure(error)}));
-          return json(res, 403, {error:'暂时无法确认这个电话入口。请使用已开通的飞书账号重新打开。'});
+          const failure=feishuPhoneLoginFailure(error);
+          console.warn(JSON.stringify({type:'voice.feishu-login-error', ...failure}));
+          res.writeHead(403,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','referrer-policy':'no-referrer'});
+          res.end(feishuPhoneLoginErrorPage({reason:failure.reason,phone:error.recoveryPhone??url.searchParams.get('phone'),basePath}));
+          return;
         }
       }
       if (url.searchParams.get("entry") === "visitor") return json(res, 404, { error: "普通人电话入口尚未开放。" });
