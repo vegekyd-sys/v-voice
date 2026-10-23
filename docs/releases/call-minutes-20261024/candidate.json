@@ -1,0 +1,21 @@
+{
+  "version": "voice-call-minutes.20261024.1",
+  "status": "validated-candidate",
+  "baseline": "af6c0da95fd21eacfba1a5a842cc5f7b7f492b4d",
+  "scope": [
+    "accepted pale-purple 电话纪要 card",
+    "structured topic summaries without fixed opening",
+    "brief-call compression and unverified fact handling",
+    "readable report and history compatibility"
+  ],
+  "validation": {
+    "serviceTests": 868,
+    "speakerTests": 95,
+    "releaseControllerTests": 11,
+    "realSummaryModel": "grok-4.7",
+    "realSummaryCases": 3,
+    "physicalAudioCall": false
+  },
+  "nativeInstallRequired": false,
+  "delivery": "Send adapter-compatible readable minutes, then edit the exact owned receipt to the accepted layout. Styling failure retains readable minutes and transcript link."
+}
