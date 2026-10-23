@@ -7,6 +7,7 @@ import {createLiveH5Server} from '../lab/gpt-live-h5/server.mjs';
 import {request} from 'node:http';
 import {Readable} from 'node:stream';
 import {verifyPhoneSession} from '../lib/phone-provisioning.mjs';
+import WebSocket from 'ws';
 
 const config={appId:'cli_fixture',appSecret:'fixture-app-secret',accountId:'lab'};
 const identity={openId:'ou_alice',tenantKey:'tenant_fixture'};
@@ -86,7 +87,11 @@ test('HTTP OAuth and dialing preserve both fixture subjects, groups, and server-
     return {ok:true};
   }};
   const origin='https://voice.example';
-  const bridge=createLiveH5Server({gateway,publicOrigin:origin,basePath:'/voice',accessToken:'fixture-legacy-token'.repeat(3),
+  const directVoice={models:()=>[],reserve:async p=>{
+    await p.gateway.request('tools.catalog',{agentId:p.agentId,includePlugins:true});
+    return {voiceSessionId:'direct-'+(++sequence),relayTicket:'fixture-ticket',provider:p.model};
+  },attach:()=>true,close:async()=>{},dispose:async()=>{}};
+  const bridge=createLiveH5Server({gateway,directVoice,publicOrigin:origin,basePath:'/voice',accessToken:'fixture-legacy-token'.repeat(3),
     feishuLogin:{...config,conversations:true,fetchImpl:async url=>Response.json(url.endsWith('/token')?
       {code:0,access_token:'fixture-token',token_type:'Bearer'}:{code:0,data:{open_id:subject,tenant_key:'tenant_fixture'}})}});
   await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
@@ -111,6 +116,17 @@ test('HTTP OAuth and dialing preserve both fixture subjects, groups, and server-
     const actual=calls.filter(c=>c.method==='talk.client.create').at(-1);
     assert.equal(actual.p.sessionKey,'agent:makaron:feishu:group:'+chat);
     assert.equal(actual.p.voiceActor.actor.openId,user);
+    await get('/voice/api/close'+query,jar,await connected.json());
+    const reservation=await new Promise((resolve,reject)=>{
+      const ws=new WebSocket(`ws://127.0.0.1:${bridge.server.address().port}/voice/api/dial${query}&model=grok&nativeRuntimeVersion=1&dialVersion=1`,
+        {headers:{host:'voice.example',origin,cookie:jar}});
+      const timer=setTimeout(()=>{ws.terminate();reject(Error('fixture dial timed out'));},2000);
+      ws.on('error',reject);ws.on('message',raw=>{const value=JSON.parse(raw);clearTimeout(timer);ws.close();resolve(value);});
+    });
+    assert.equal(reservation.type,'reservation');
+    const catalog=calls.filter(c=>c.method==='tools.catalog').at(-1);
+    assert.equal(catalog.p.voiceActor.actor.openId,user);assert.equal(catalog.p.sessionKey,'agent:makaron:feishu:group:'+chat);
+    await get('/voice/api/close'+query,jar,reservation);
   }
   assert.equal((await get('/voice/api/status?phone='+logins[0].phone,logins[1].jar)).status,401);
   assert.equal((await get('/voice/api/status?phone='+logins[1].phone,logins[0].jar)).status,401);
