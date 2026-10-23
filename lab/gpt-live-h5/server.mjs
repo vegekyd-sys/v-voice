@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {feishuCallerIdentityInstructions} from '../../lib/feishu-caller-identity.mjs';
 import {createReleaseGate, readRelease, listenReleaseControl} from '../../lib/release-control.mjs';
 import {controlVoiceTask} from '../../lib/voice-task-control.mjs';
 import {createVoiceCallControl,callControlEvaluatorFromEnv} from './call-control.mjs';
@@ -208,7 +209,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       }});
       rememberAvatarCall(context,context.active,'openai');
       const speaker=speakerRouting?.reserve(reservation.voiceSessionId,{model:'gpt-live',policy:params.inputPolicy??'speaker'});
-      return reply( 200, { voiceSessionId: reservation.voiceSessionId, model: reservation.model,...speaker?{speakerRouting:speaker}:{} });
+      return reply( 200, { voiceSessionId: reservation.voiceSessionId, model: reservation.model,...(binding.callerIdentity?{callerContext:{voiceSessionId:reservation.voiceSessionId,text:feishuCallerIdentityInstructions(binding.callerIdentity)}}:{}),...speaker?{speakerRouting:speaker}:{} });
     } finally {
       context.creatingSession = false;
     }
@@ -342,7 +343,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
         ["/speaker-routing.mjs", [join(here, "../speaker-native/client.mjs"), "text/javascript; charset=utf-8"]],
-        ...["ui-bundle.mjs", "call-view.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
+        ...["caller-context.mjs", "ui-bundle.mjs", "call-view.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
         ["/changelog.mjs", [join(here, "changelog.mjs"), "text/javascript; charset=utf-8"]],
         ["/assets/v-voice-icon.svg", [join(here, "assets/v-voice-icon.svg"), "image/svg+xml"]],

@@ -17,6 +17,7 @@ async function fixture(t) {
    if(reject)throw Object.assign(Error('denied'),{details:{reason:'conversation_membership_required'}});
    return {sessionKey:group.sessionKey,agentId:'makaron',accountId:'lab',kind:'group'};
   }
+  if(method==='talk.client.create')return {voiceSessionId:'gpt-'+(++n),model:'gpt-live-1-codex',transport:'webrtc',offerUrl:'/plugins/openai/realtime/calls',clientSecret:'private-fixture'};
   return {ok:true};
  }};
  const server=createLiveH5Server({gateway,publicOrigin:'https://voice.example',basePath:'/voice',accessToken:'private-fixture-token'.repeat(4),conversationEntries:[group,dm],
@@ -62,9 +63,13 @@ test('old group aliases and new group URLs use current account identity, includi
   const call=await f.send('/voice/api/session?phone='+phone,{body:{model:'grok',callerIdentity:{source:'feishu',displayName:'Fake Owner'}}});assert.equal(call.status,200,call.text);
   const actual=f.reservations.at(-1);assert.equal(actual.callerIdentity.displayName,name);assert.equal(actual.sessionKey,group.sessionKey);assert.equal(actual.actorScoped,true);
   await actual.gateway.request('tools.invoke',{name:'read',args:{path:'fixture'}});
-  const a=f.calls.at(-1).p.voiceActor.actor;assert.equal(a.openId,open_id);assert.equal(a.callerDisplayName,name);
+  const a=f.calls.at(-1).p.voiceActor.actor;assert.equal(a.openId,open_id);assert.equal(a.callerDisplayName,undefined);
   assert.equal(a.senderIsOwner,undefined);assert.equal(actual.unidentified,undefined);
   await f.send('/voice/api/close?phone='+phone,{body:call.json()});
+  const gpt=await f.send('/voice/api/session?phone='+phone,{body:{model:'gpt-live',callerContext:{text:'Fake Owner'},callerIdentity:{source:'feishu',displayName:'Fake Owner'}}});assert.equal(gpt.status,200,gpt.text);
+  assert.equal(gpt.json().callerContext.voiceSessionId,gpt.json().voiceSessionId);assert.match(gpt.json().callerContext.text,new RegExp(name));assert(!gpt.text.includes('Fake Owner'));
+  const rpc=f.calls.findLast(c=>c.method==='talk.client.create');assert(!JSON.stringify(rpc.p).includes(name));assert.equal(rpc.p.voiceActor.actor.callerDisplayName,undefined);
+  await f.send('/voice/api/close?phone='+phone,{body:{voiceSessionId:gpt.json().voiceSessionId}});
   assert.equal((await f.send('/voice/feishu/client-login',{body:{state,code:'replay'}})).status,401);
  }
  assert(!JSON.stringify(f.calls).includes('never-retain'));assert(!JSON.stringify(f.calls).includes('private-user-token'));

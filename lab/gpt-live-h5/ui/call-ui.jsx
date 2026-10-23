@@ -378,7 +378,6 @@ function CallPage({view, actions, options}) {
     <>
       <SessionSheet state={state} actions={actions}/>
       {state.iosBindingAvailable&&!active&&<button className="ios-binding-trigger" type="button" onClick={actions.openBinding}>iOS App</button>}
-      {state.accountLoginHref&&!active&&<a className="ios-binding-trigger" href={state.accountLoginHref}>{state.accountLabel?`${state.accountLabel} · 切换账号`:'连接飞书账号'}</a>}
       <button id="changelogOpen" className="changelog-trigger" type="button" aria-haspopup="dialog" aria-controls="changelogDialog" aria-expanded="false" hidden={active}>
         <Icon d={SPARK} />更新日志
       </button>
@@ -405,6 +404,7 @@ function CallPage({view, actions, options}) {
                   <button id="start" className="dial" type="button" disabled={state.dial.disabled} aria-label={state.dial.label} title={state.dial.label} onClick={actions.dial}><Icon d={PHONE} /></button>
                   <ModelPicker state={state} actions={actions} />
                   <span id="badge" className="home-badge" role="status">{state.badge}</span>
+                  {state.accountLoginHref&&!state.accountLabel&&<a className="home-note" href={state.accountLoginHref}>连接飞书账号</a>}
                   {state.homeNote && <p className="home-note" data-tone={state.homeNoteTone} role="status">{state.homeNote}</p>}
                 </>
               )}
