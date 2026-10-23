@@ -82,3 +82,38 @@ test('summary failures are bounded and permanent errors are not retried',async()
   assert.equal(requests,status===401?1:2);
  }
 });
+
+test('DM edits follow the native chat ID from its exact send receipt, through ticks and close',async()=>{
+ for(const nested of [false,true]){
+  const dm={...binding,kind:'dm',sessionKey:'agent:makaron:feishu:direct:ou_alice'},to={...target,sessionKey:dm.sessionKey,to:'ou_alice',accountId:'bot'};
+  const edits=[],sends=[],timers=[];let at=1000;
+  const gateway={request:async(method,args)=>{
+   if(method==='send'){sends.push(args);return nested?{results:[{messageId:'unrelated',chatId:'oc_wrong'},{messageId:'owned',chatId:'oc_alice'}],messageId:'owned'}:{messageId:'owned',chatId:'oc_alice'};}
+   assert.equal(args.args.target,'oc_alice','Feishu compares the actual message chat ID');assert.equal(args.args.messageId,'owned');assert.equal(args.sessionKey,dm.sessionKey);assert.equal(args.args.accountId,'bot');edits.push(args.args.card.body.elements[0].content);
+   return {ok:true,output:{details:{ok:true,messageId:'owned'}}};
+  }};
+  const calls=createConversationCalls({gateway,publicOrigin:'https://phone.example',now:()=>at,setTimer:fn=>{timers.push(fn);return 1;},clearTimer:()=>{}}),call=calls.begin(dm,to,'dm');
+  call.ready();await calls.flush();at=6000;await timers.pop()();call.close();await calls.flush();
+  assert.match(edits[1],/00:05/);assert.match(edits.at(-1),/已结束 · 5 秒/);assert.equal(sends.length,2);assert.ok(sends.every(s=>s.to==='ou_alice'));
+ }
+});
+test('missing or mismatched DM receipt chat cannot redirect an edit to the user ID or another receipt',async()=>{
+ for(const receipt of [{messageId:'owned'},{messageId:'owned',chatId:'ou_alice'},{messageId:'owned',results:[{messageId:'other',chatId:'oc_wrong'}]}]){
+  const audit=[],sent=[];let edits=0;const calls=createConversationCalls({publicOrigin:'https://phone.example',audit:e=>audit.push(e),gateway:{request:async(m,a)=>{if(m==='send'){sent.push(a);return receipt;}if(m==='sessions.describe')return {session:null};edits++;throw Error('must not edit');}}});
+  const call=calls.begin({...binding,kind:'dm'}, {...target,to:'ou_alice'},'missing-chat');call.ready();call.user('内容保留');call.close();await calls.flush();
+  assert.equal(edits,0);assert.equal(sent.length,2);assert.ok(audit.some(e=>e.stage==='status-start'));assert.equal((await calls.read({...binding,kind:'dm'},call.id)).turns.length,1);
+ }
+});
+
+for(const mismatch of [null,'key','agentId','accountId','nativeDirectUserId','provider','chatType','nativeChannelId'])test(`DM falls back to exact trusted session metadata; mismatch=${mismatch}`,async()=>{
+ const dm={...binding,agentId:'makaron',kind:'dm',sessionKey:'agent:makaron:feishu:direct:ou_alice'},to={...target,agentId:'makaron',sessionKey:dm.sessionKey,to:'ou_alice',accountId:'bot'};
+ const session={key:dm.sessionKey,agentId:'makaron',origin:{provider:'feishu',accountId:'bot',nativeDirectUserId:'ou_alice',chatType:'direct',nativeChannelId:'oc_alice'}};
+ if(mismatch){if(['key','agentId'].includes(mismatch))session[mismatch]='wrong';else session.origin[mismatch]='wrong';}
+ let edits=0,lookups=0;const errors=[];
+ const calls=createConversationCalls({publicOrigin:'https://phone.example',audit:e=>errors.push(e),gateway:{request:async(m,a)=>{
+  if(m==='send')return {messageId:'owned'};
+  if(m==='sessions.describe'){lookups++;assert.deepEqual(a,{key:dm.sessionKey,includeDerivedTitles:false,includeLastMessage:false});return {session};}
+  edits++;assert.equal(a.args.target,'oc_alice');return {ok:true,output:{details:{ok:true,messageId:'owned'}}};
+ }}});
+ const call=calls.begin(dm,to,'fallback');call.ready();call.close();await calls.flush();assert.equal(lookups,1);assert.equal(edits,mismatch?0:1);assert.equal(errors.some(e=>e.stage==='status-start'),!!mismatch);
+});
