@@ -1,0 +1,87 @@
+{
+  "schema": "v-voice-session-phone-release-v1",
+  "sourceCommit": "8e8dc76e0b5d1eeecf7c6f32c6a6e27afd4c888e",
+  "mergePRs": [
+    94,
+    95
+  ],
+  "mainCI": {
+    "run": 39946189119,
+    "conclusion": "success"
+  },
+  "filesSha256": "c00da49a9d9cea8aae0aa2c6b41803920d651411e7eb5f15acbb1c68cd3a45b1",
+  "artifactFiles": 218,
+  "serverSyncComplete": true,
+  "nodes": {
+    "web": {
+      "sourceCommit": "8e8dc76e0b5d1eeecf7c6f32c6a6e27afd4c888e",
+      "filesSha256": "c00da49a9d9cea8aae0aa2c6b41803920d651411e7eb5f15acbb1c68cd3a45b1",
+      "ready": true,
+      "admissionResumed": true,
+      "cutoverReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "gatewayUnchangedDuringVoiceCutover": true,
+      "privateStateWritableInServiceMountNamespace": true
+    },
+    "devices": {
+      "sourceCommit": "8e8dc76e0b5d1eeecf7c6f32c6a6e27afd4c888e",
+      "filesSha256": "c00da49a9d9cea8aae0aa2c6b41803920d651411e7eb5f15acbb1c68cd3a45b1",
+      "ready": true,
+      "admissionResumed": true,
+      "cutoverReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "gatewayUnchangedDuringVoiceCutover": true,
+      "privateStateWritableInServiceMountNamespace": true
+    }
+  },
+  "feishu": {
+    "appVersion": "1.0.24",
+    "published": true,
+    "installedGroupMenus": 417,
+    "uniqueGroupPhoneUrls": 417,
+    "existingMenusPreserved": true,
+    "existingSessionMappings": 376,
+    "newCanonicalSessionsInitialized": 41,
+    "registeredProtectedPhoneEntries": 418,
+    "currentUserPrivateChatTabInstalledAndReadBack": true,
+    "nativeVisualVerification": [
+      "designated acceptance group menu and status/summary cards",
+      "current-user formal bot private-chat tab",
+      "second group menu opens its own named phone page"
+    ],
+    "privateChatAutoTabHandler": "production files promoted; future first-entry event activation remains pending idle Gateway restart",
+    "otherCallersOpened": false
+  },
+  "binding": {
+    "rootCause": "App grant and call-report defaults were under a read-only production service mount. Grant save failure was incorrectly returned as expired authorization.",
+    "storage": "dedicated private writable service directories; prior report copied and hash verified; application/OpenClaw directories remain read-only",
+    "failureResponse": 503,
+    "simulatorProductionHandoff": "same App build binds designated production acceptance group successfully; persisted grant mode 0600 and only hashed credential stored",
+    "appRelaunchPreservedTarget": true,
+    "nativeReinstallRequired": false,
+    "physicalPhoneAcceptance": "user retry pending; not claimed"
+  },
+  "summary": {
+    "model": "grok-4.7",
+    "reasoningEffort": "low",
+    "previousSyntheticFixturePreserved": true,
+    "nativeCardVisualReadbackVerified": true,
+    "newLiveAudioCall": "not performed during persistence fix"
+  },
+  "homepageBrowserVerified": true,
+  "rollback": {
+    "previousEntryCommit": "87632bc063c326c7f33d5cc268d9be94c3a8fb8a",
+    "serviceReceiptsRetained": true,
+    "privateConfiguration": "Backups retained for task-owned drop-ins, prior two-entry phone/login config and migrated report. Preserve new device grants and reports when rolling back code. Per-group API receipts permit removal of only this release menu if explicitly required."
+  }
+}

@@ -80,12 +80,12 @@
     "actionButtonLaunchOverlayAcceptance": "Tianyi_confirmed_build18_passed"
   },
   "webDeliveryRelease": {
-    "sourceCommit": "87632bc063c326c7f33d5cc268d9be94c3a8fb8a",
-    "mergePR": 92,
+    "sourceCommit": "8e8dc76e0b5d1eeecf7c6f32c6a6e27afd4c888e",
+    "mergePR": 95,
     "serverDeployed": true,
     "bothNodesVerified": true,
-    "record": "../releases/session-phone-production-20261023/release.json",
-    "physicalNewReleaseAcceptance": "not claimed; existing build 25 retained"
+    "record": "../releases/session-phone-storage-fix-20261023/release.json",
+    "physicalNewReleaseAcceptance": "not claimed; build 25 retained; production binding and relaunch verified in dedicated simulator"
   },
   "currentDeviceCandidate": {
     "build": 25,
