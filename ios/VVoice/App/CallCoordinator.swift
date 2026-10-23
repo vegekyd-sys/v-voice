@@ -283,6 +283,15 @@ import VVoiceCore
         retiredResponses.removeAll(); retiredResponseOrder.removeAll(); publish()
         do {
             try beginActivity(required: fromIntent)
+            // AudioRecordingIntent grants the user-triggered background start
+            // at invocation. Do not spend that window on HTTP/session setup.
+            // No input callback is installed yet: pre-connect PCM is discarded.
+            if model != .gptLive {
+                try audio.start()
+                try await audio.waitUntilCapturing()
+                CallDiagnostics.record("call.capture-prepared")
+                guard owned(owner) else { throw CancellationError() }
+            }
             try await dial(owner: owner, greeting: true)
         } catch {
             guard state.generation == owner else { throw CancellationError() }

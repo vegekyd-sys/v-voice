@@ -62,8 +62,9 @@ async function fixture(t) {
     const finish = await request('/voice/feishu/callback?code=fixture-code&state=' + authorization.searchParams.get('state'), cookie(start));
     assert.equal(finish.status, 302);
     const actorCookie = cookie(finish), selected = await request(finish.headers.get('location'), actorCookie);
-    assert.equal(selected.status, 302);
-    assert.equal(selected.headers.get('location'), '/voice/?phone=' + entry.id);
+    assert.equal(selected.status, 200);
+    assert.equal(selected.headers.get('location'), null);
+    await selected.text();
     return actorCookie + '; ' + cookie(selected);
   };
   const issue = async (entry, jar) => {
