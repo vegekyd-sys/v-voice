@@ -29,6 +29,13 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    date: '2026-10-23', title: '修复 App 绑定与通话记录保存',
+    items: [
+      '修复正式环境无法保存 App 会话绑定、却提示链接失效的问题；重新生成链接并验证绑定后即可切换到目标会话。',
+      '修复通话记录的保存目录；若绑定暂时无法保存，会显示服务错误并保留原会话。',
+    ],
+  },
+  {
     date: '2026-10-23', title: '群电话入口与 App 会话切换',
     items: [
       '群电话入口按各群独立配置，通话上下文和纪要返回对应群聊。',

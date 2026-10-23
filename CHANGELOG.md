@@ -1,3 +1,8 @@
+## 2026-10-23 — Repair production App binding persistence
+
+- Return a storage-unavailable error when the device grant cannot be saved, instead of reporting an expired handoff. Failed persistence leaves the previous App session unchanged; retry after storage recovery is covered by the HTTP regression test.
+- Store production App bindings and call reports in the service's private writable StateDirectory, preserving the read-only application and OpenClaw directories.
+
 ## 2026-10-23 — Make App session switching explicit
 
 - Name the target conversation and the exact native “验证并绑定” action in the browser handoff. Opening the App alone keeps its previous binding; the page now makes that state visible before the user dials.
