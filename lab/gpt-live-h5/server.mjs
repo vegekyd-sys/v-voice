@@ -212,7 +212,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (basePath && url.pathname === basePath && req.method === "GET") { res.writeHead(308, { location: `${basePath}/${url.search}`, "cache-control": "no-store" }); res.end(); return; }
       if (basePath && !url.pathname.startsWith(`${basePath}/`)) return json(res, 404, { error: "没有这个入口" });
       let pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
-      let entryVisitor = null;
+      let entryVisitor = null, entryBinding = null;
       if (phoneLogin && req.method === 'GET' && (pathname === '/feishu' || pathname === '/feishu/callback')) {
         try {
           let location;
@@ -220,6 +220,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           else {
             const selected = await phoneLogin.select(req, url.searchParams.get('phone'));
             if (selected) {
+              entryBinding = selected;
               entryVisitor = entryAccess(selected).issue(res);
               // An explicit, authenticated phone entry can serve its first
               // frame here. Relative assets/API URLs keep the same base path.
@@ -238,7 +239,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if(req.method==='GET'&&pathname==='/'){res.writeHead(302,{location:`${basePath}/feishu?phone=${encodeURIComponent(url.searchParams.get('phone'))}`,'cache-control':'no-store'});res.end();return;}
         return json(res,401,{error:'请从飞书会话电话入口登录。'});
       }
-      const binding = phoneLogin ? await phoneLogin.resolve(req,url) : entries.resolve(url);
+      const binding = entryBinding ?? (phoneLogin ? await phoneLogin.resolve(req,url) : entries.resolve(url));
       if (!binding) return json(res,404,{error:"这个电话入口不存在或已关闭。"});
       const entry = binding.id;
       const access = entryAccess(binding);

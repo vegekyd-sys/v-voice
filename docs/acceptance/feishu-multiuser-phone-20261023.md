@@ -12,6 +12,8 @@
 
 Gateway 改动在 `v-openclaw-platform` 的同名独立分支，不在本仓复制 runtime。必须同时具备 actor 协议 v1 的平台候选才能启用；旧 Gateway 拒绝未知请求时不会回落到个人连接。
 
+全新会话尚无 transcript 时，以 Gateway 原生飞书路由再次确认精确 session/account/agent，允许现有原生通话处理器创建该会话；不接受浏览器 key，也不使用任意 `allowMissing`。如果文字配置仍将不同人的 DM 路由到共享 main/其他 peer alias，则拒绝开放动态电话，避免扩散个人上下文。
+
 ## 配置契约
 
 现有私有 `VOICE_FEISHU_LOGIN_FILE` 增加 `conversations:true` 和精确 `accountId`。`appId/appSecret` 必须对应这一个飞书账号及 OAuth 应用；可继续保留旧 `actors`。实际值只保留在私有配置中，本文不提供真实标识或凭据。
@@ -23,7 +25,7 @@ Gateway 改动在 `v-openclaw-platform` 的同名独立分支，不在本仓复�
 - 本地 HTTP fixture 覆盖两个 OAuth subject、两个群，检查签名 RPC、浏览器传入身份/会话无效、跨账号/跨群 cookie 拒绝。OAuth provider 使用 fixture，不是第二个真人。
 - 目录测试覆盖四个 actor×group 组合的 caller/访问密钥隔离、重启后的加密 cookie 与权限撤销。
 - 原生后台任务测试确认可信 senderId、senderIsOwner 和飞书账号上下文传给现有 consult SDK，另一个 actor 无权读取任务。
-- Voice 全部 Node 测试曾通过 815 项；最终提交的回归与平台 Candidate receipt 见后续验证记录。
+- 接入事故修复 PR97 后，Voice 全部 Node 测试通过 816 项；最后的 canonical 首拨检查另跑相关 9 项通过。平台 Candidate receipt 在配套平台仓登记。
 
 ## 尚未验收
 

@@ -6,6 +6,7 @@ import {createFeishuPhoneLogin} from '../lib/feishu-phone-login.mjs';
 import {createLiveH5Server} from '../lab/gpt-live-h5/server.mjs';
 import {request} from 'node:http';
 import {Readable} from 'node:stream';
+import {verifyPhoneSession} from '../lib/phone-provisioning.mjs';
 
 const config={appId:'cli_fixture',appSecret:'fixture-app-secret',accountId:'lab'};
 const identity={openId:'ou_alice',tenantKey:'tenant_fixture'};
@@ -30,6 +31,7 @@ test('two OAuth identities in two groups obtain distinct caller and access scope
     await entry.gateway.request('tools.invoke',{name:'memory_search',args:{query:'fixture'}});
     const last=requests.at(-1);assert.equal(last.params.voiceActor.actor.openId,openId);assert.equal(last.params.sessionKey,entry.sessionKey);
     await assert.rejects(entry.gateway.request('chat.history',{sessionKey:'agent:makaron:feishu:group:oc_foreign'}),/cannot change/);
+    await verifyPhoneSession(entry.gateway,entry);
   }
   assert.equal(new Set(records.map(r=>r.accessToken)).size,4);
   assert.equal(records[0].callerId,records[1].callerId);assert.notEqual(records[0].callerId,records[2].callerId);
@@ -94,7 +96,8 @@ test('HTTP OAuth and dialing preserve both fixture subjects, groups, and server-
     const start=await get('/voice/feishu'+query),auth=new URL(start.headers.get('location'));
     const finish=await get('/voice/feishu/callback?code=valid&state='+auth.searchParams.get('state'),cookie(start));
     assert.equal(finish.status,302);const actorCookie=cookie(finish);
-    const selected=await get(finish.headers.get('location'),actorCookie);assert.equal(selected.status,302);
+    const selected=await get(finish.headers.get('location'),actorCookie);assert.equal(selected.status,200);
+    assert.match(await selected.text(),/voiceEntryStatus/u);
     const jar=actorCookie+'; '+cookie(selected);logins.push({jar,phone});
     const connected=await get('/voice/api/session'+query,jar,{sessionKey:'agent:makaron:main',callerId:'tianyi'});
     assert.equal(connected.status,200,connected.status===200?undefined:await connected.text());
