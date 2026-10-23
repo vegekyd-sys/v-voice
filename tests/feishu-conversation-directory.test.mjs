@@ -8,6 +8,7 @@ import {request} from 'node:http';
 import {Readable} from 'node:stream';
 import {verifyPhoneSession} from '../lib/phone-provisioning.mjs';
 import WebSocket from 'ws';
+import {createHash,createCipheriv,randomBytes} from 'node:crypto';
 
 const config={appId:'cli_fixture',appSecret:'fixture-app-secret',accountId:'lab'};
 const identity={openId:'ou_alice',tenantKey:'tenant_fixture'};
@@ -167,39 +168,6 @@ test('wrong browser identity gets a safe recovery page and explicit retry can re
   assert(methods.every(m=>m==='voice.feishu.resolve'));
 });
 
-test('private-chat confirmation binds only the proven subject to this browser and rechecks conversation admission',async t=>{
-  let confirmed=false,admitted=true;const calls=[];
-  const bridge=createLiveH5Server({gateway:{request:async(method,p)=>{
-    calls.push({method,p});
-    if(method==='voice.feishu.login.begin')return {ticket:'server-only-ticket',code:'A123-B456-C789',expiresAt:Date.now()+300000};
-    if(method==='voice.feishu.login.status'){assert.equal(p.ticket,'server-only-ticket');return confirmed?{status:'verified',identity:{openId:'ou_external',tenantKey:'external_tenant'}}:{status:'pending'};}
-    assert.equal(method,'voice.feishu.resolve');assert.equal(p.voiceActor.actor.openId,'ou_external');
-    if(!admitted)throw Error('revoked');
-    return {sessionKey:'agent:makaron:feishu:direct:ou_external',agentId:'makaron',accountId:'lab',kind:'dm'};
-  }},publicOrigin:'https://voice.example',basePath:'/voice',accessToken:'fixture-legacy-token'.repeat(3),feishuLogin:{...config,conversations:true}});
-  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
-  const get=(path,cookie='',body,origin='https://voice.example')=>new Promise((resolve,reject)=>{
-    const req=request({host:'127.0.0.1',port:bridge.server.address().port,path,method:body?'POST':'GET',headers:{host:'voice.example',origin,cookie,'content-type':'application/json'}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end(body?JSON.stringify(body):undefined);
-  });
-  const choice=await get('/voice/feishu?phone='+phone);assert.match(await choice.text(),/外部联系人：通过私聊确认/);assert.equal(calls.length,0);
-  assert.match(await(await get('/voice/feishu/connect?phone='+phone)).text(),/生成验证码/);assert.equal(calls.length,0);
-  assert.equal((await get('/voice/feishu/connect','',{phone},'https://other.example')).status,403);
-  const start=await get('/voice/feishu/connect','',{phone,callerId:'tianyi',identity:{openId:'ou_alice'}}),publicBody=await start.json();
-  assert.equal(publicBody.code,'A123-B456-C789');assert(!JSON.stringify(publicBody).includes('server-only-ticket'));
-  const pendingCookie=start.headers.get('set-cookie').split(';')[0];
-  assert.equal((await get('/voice/feishu/connect/status')).status,400);
-  assert.equal((await get('/voice/api/status?phone='+phone,pendingCookie)).status,401);
-  assert.equal((await(await get('/voice/feishu/connect/status',pendingCookie)).json()).status,'pending');
-  confirmed=true;const finish=await get('/voice/feishu/connect/status',pendingCookie),result=await finish.json();
-  assert.equal(result.status,'verified');assert(!JSON.stringify(result).includes('ou_external'));
-  const actorCookie=finish.headers.get('set-cookie').split(';')[0];assert.equal((await get(result.location,actorCookie)).status,200);
-  assert.equal((await get('/voice/feishu/connect/status',pendingCookie)).status,400);
-  const again=await get('/voice/feishu/connect','',{phone});admitted=false;
-  const denied=await get('/voice/feishu/connect/status',again.headers.get('set-cookie').split(';')[0]);
-  assert.equal(denied.status,400);assert.equal(denied.headers.get('set-cookie'),null);
-  assert(calls.every(x=>['voice.feishu.login.begin','voice.feishu.login.status','voice.feishu.resolve'].includes(x.method)));
-});
-
 test('unidentified phone opens without login and isolates browser, conversation and account capabilities',async t=>{
   const calls=[],reservations=[];let n=0;
   const directVoice={models:()=>[{id:'seeduplex',available:true},{id:'grok',available:true}],reserve:async args=>{
@@ -245,4 +213,27 @@ test('unidentified phone opens without login and isolates browser, conversation 
   assert.equal((await get('/voice/api/status'+foreign,jar)).status,401);
   assert.equal((await get('/voice/feishu/connect'+query,jar)).headers.get('location'),'/voice/feishu'+query);
   assert.deepEqual(calls,[]);
+});
+
+
+test('removed chat-code endpoints cannot mint identities and all old untagged logins are rejected',async t=>{
+  const origin='https://voice.example',basePath='/voice';let requests=0;
+  const opts={...config,publicOrigin:origin,basePath,entries:{resolve:()=>null},resolveConversation:async()=>{requests++;throw Error('must not be reached');}};
+  const key=createHash('sha256').update(JSON.stringify(['voice-browser-login-v1',config.appId,config.appSecret,origin,basePath])).digest();
+  const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);
+  const payload=JSON.stringify({actor:'external:ou_external',identity:{tenantKey:'external',openId:'ou_external',dynamic:true},expiresAt:Date.now()+86400000});
+  const old=Buffer.concat([iv,cipher.update(payload),cipher.final(),cipher.getAuthTag()]).toString('base64url');
+  const login=createFeishuPhoneLogin(opts),cookie='v_feishu_phone='+old;
+  assert.equal(login.read({headers:{cookie}}),null);assert.equal(await login.select({headers:{cookie}},phone),null);
+  assert.equal(login.beginConversation,undefined);assert.equal(login.completeConversation,undefined);
+  const bridge=createLiveH5Server({gateway:{request:async()=>{requests++;throw Error('must not be reached');}},publicOrigin:origin,basePath,accessToken:'fixture-legacy-token'.repeat(3),feishuLogin:{...config,conversations:true,allowUnidentified:true}});
+  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
+  const get=(path,method='GET')=>new Promise((resolve,reject)=>{
+    const req=request({host:'127.0.0.1',port:bridge.server.address().port,path,method,headers:{host:'voice.example',origin,cookie,'content-type':'application/json'}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end(method==='POST'?JSON.stringify({phone}):undefined);
+  });
+  assert.equal((await get('/voice/feishu/connect','POST')).status,410);
+  assert.equal((await get('/voice/feishu/connect/status')).status,410);
+  assert.equal((await get('/voice/api/status?phone='+phone)).status,401);
+  const opened=await get('/voice/feishu?phone='+phone);assert.equal(opened.status,200);assert.match(await opened.text(),/voiceEntryStatus/);
+  assert.equal(requests,0);
 });
