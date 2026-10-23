@@ -16,7 +16,6 @@
 		1688E5B67B7B6A8C109D5F95 /* IslandActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BD6728F103FB047DC55A066 /* IslandActivityTests.swift */; };
 		16F9BBAC1806652BF0570FF9 /* VoiceFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBF1ACCF9EA74D03B4EC7B54 /* VoiceFixture.swift */; };
 		1BC8BA8E4DCFF883FD007379 /* IslandPreviewGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E34791F59508FFC82578CBD /* IslandPreviewGallery.swift */; };
-		1F6AA964A6E78F0EC47F5C6C /* AppIconBranding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14B4ECE5A0223B8A3F2182C0 /* AppIconBranding.swift */; };
 		206A2D9E237C1639E053CB31 /* RelaySignalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC68CB218040B5DF93D95B7D /* RelaySignalTests.swift */; };
 		23EBB12D206A5170CB9689D9 /* GPTLiveTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13760D7F18C1D0CA48444844 /* GPTLiveTransportTests.swift */; };
 		2A878C373EA3DEC48CADE370 /* BindingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 581754E3A730420284362EA3 /* BindingStore.swift */; };
@@ -104,7 +103,6 @@
 		0FDD9298C38842CD63B747AF /* DocumentReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentReaderTests.swift; sourceTree = "<group>"; };
 		13185E1590D05298912335D1 /* CallDocumentReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallDocumentReader.swift; sourceTree = "<group>"; };
 		13760D7F18C1D0CA48444844 /* GPTLiveTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPTLiveTransportTests.swift; sourceTree = "<group>"; };
-		14B4ECE5A0223B8A3F2182C0 /* AppIconBranding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconBranding.swift; sourceTree = "<group>"; };
 		1BD7A9E9F549C0BC8FEE308B /* H5Shell */ = {isa = PBXFileReference; lastKnownFileType = folder; name = H5Shell; path = VVoice/Resources/H5Shell; sourceTree = SOURCE_ROOT; };
 		1D650C3BEF748AF2B061E3A8 /* CallCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallCoordinator.swift; sourceTree = "<group>"; };
 		2D75530190661A3CE19BAA28 /* VoiceAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAudio.swift; sourceTree = "<group>"; };
@@ -270,7 +268,6 @@
 		AE644BA995FFCBAFB08F44B5 /* App */ = {
 			isa = PBXGroup;
 			children = (
-				14B4ECE5A0223B8A3F2182C0 /* AppIconBranding.swift */,
 				581754E3A730420284362EA3 /* BindingStore.swift */,
 				1D650C3BEF748AF2B061E3A8 /* CallCoordinator.swift */,
 				7BB624F5257938208812D634 /* CallCoordinator+Island.swift */,
@@ -488,7 +485,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1F6AA964A6E78F0EC47F5C6C /* AppIconBranding.swift in Sources */,
 				2A878C373EA3DEC48CADE370 /* BindingStore.swift in Sources */,
 				47F424CF0720D006C216514F /* CallActivity.swift in Sources */,
 				031119373153DAA2F114D007 /* CallCoordinator+Island.swift in Sources */,
