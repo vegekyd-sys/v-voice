@@ -96,3 +96,10 @@ test('new and already-stored call summaries decode to dialogue rather than JSON 
  assert.equal(conversationReplyText(JSON.stringify(card)),'语音通话总结：我建议先跑通绑定体验，再补测失效链接。');
  }
 });
+
+
+test('new and previous lifecycle cards become concise context rather than raw JSON',async()=>{
+ const {callStatusCard}=await import('../lib/conversation-calls.mjs');
+ for(const ended of [false,true])assert.equal(conversationReplyText(JSON.stringify(callStatusCard(ended,61000))),'语音通话记录');
+ assert.equal(conversationReplyText(JSON.stringify({schema:'2.0',body:{elements:[{content:'正在通话 · 00:00'}]}})),'语音通话记录');
+});
