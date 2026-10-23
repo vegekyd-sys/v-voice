@@ -7,6 +7,7 @@
 ## 2026-10-24 — Stable build 32 and TestFlight packaging
 
 - Pin the accepted continuous-playback/interruption baseline and retain verified rollback artifacts with explicit regression requirements.
+- Include an accurate camera-purpose declaration required by the bundled WebRTC SDK; this audio-only app does not request camera access.
 - Prepare build 33 with unchanged native behavior and required-reason privacy metadata for local preferences and elapsed-time measurement. TestFlight availability is tracked separately from packaging. The existing homepage release note still describes the delivered build 32 behavior; distribution preparation adds no user-facing capability.
 
 ## 2026-10-24 — Responsive confirmed interruption · iOS build 32
