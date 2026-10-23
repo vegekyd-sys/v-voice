@@ -20,7 +20,7 @@ test('group call: real readiness, one summary, admitted complete transcript and 
   await delivery.result('run:final','方案已生成',{questionId:'run'});assert.equal(sent.length,2);
   release('讨论了今天的安排，并请求生成方案，结果待后台返回。');await calls.flush();
   assert.equal(sent.length,3);const card=JSON.parse(sent[2].message);assert.match(JSON.stringify(card),/讨论了今天的安排，并请求生成方案，结果待后台返回。/);assert.doesNotMatch(JSON.stringify(card),/次提问|1 分 5 秒|电话已结束/);
-  const url=new URL(card.body.elements.at(-1).columns[0].elements.at(-1).content.match(/\]\((.*)\)$/u)[1]);assert.equal(url.searchParams.get('phone'),binding.id);
+  const url=new URL(card.body.elements.at(-1).behaviors[0].default_url);assert.equal(url.searchParams.get('phone'),binding.id);
   const saved=await calls.read(binding,report.id);assert.equal(saved.summaryState,'generated');assert.equal(saved.pendingTasks,true);assert.equal(saved.turns.length,5);assert.equal(saved.turns.find(r=>r.text==='我来查一下').interrupted,true);assert.ok(!saved.turns.some(t=>t.text==='方案已生成'||t.text==='旁聊'));
   assert.equal((await stat(join(directory,report.id+'.json'))).mode&0o777,0o600);
   const reopened=createConversationCalls({directory});assert.deepEqual(await reopened.read(binding,report.id),saved);assert.equal(await reopened.read({...binding,sessionKey:'different'},report.id),null);assert.equal(await reopened.read(binding,'../../secret'),null);

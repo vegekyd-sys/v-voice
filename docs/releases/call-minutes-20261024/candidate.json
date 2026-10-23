@@ -9,12 +9,13 @@
     "readable report and history compatibility"
   ],
   "validation": {
-    "serviceTests": 866,
+    "serviceTests": 868,
     "speakerTests": 95,
     "releaseControllerTests": 11,
     "realSummaryModel": "grok-4.7",
     "realSummaryCases": 3,
     "physicalAudioCall": false
   },
-  "nativeInstallRequired": false
+  "nativeInstallRequired": false,
+  "delivery": "Send adapter-compatible readable minutes, then edit the exact owned receipt to the accepted layout. Styling failure retains readable minutes and transcript link."
 }
