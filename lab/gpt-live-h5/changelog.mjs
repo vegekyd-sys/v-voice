@@ -54,6 +54,11 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
   ],
 };
 export const VOICE_UPDATES = [
+  {version:'voice-call-minutes.20261024.1',date:'2026-10-24',title:'更清爽的电话纪要',items:[
+    '挂断后的纪要采用淡紫标题区，按主题分段，完整对话入口更轻巧。',
+    '摘要直接提炼值得保留的内容，去掉固定开场和逐项复述；试音只留一句确认。',
+    '区分建议与决定，被质疑且未核实的信息不再作为事实复述。',
+  ]},
   {
     version:'voice-responsive-interruption.20261024.1',date:'2026-10-24',
     title:'说话更连贯，轻声也能打断',

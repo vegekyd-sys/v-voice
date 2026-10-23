@@ -1,3 +1,9 @@
+## 2026-10-24 — Concise call minutes
+
+- Use the accepted pale-purple 电话纪要 card with topic sections and a lightweight transcript link.
+- Generate validated structured summaries without a fixed opening; keep brief checks short, distinguish suggestions from decisions, and preserve disputed facts as unverified.
+- Preserve readable report text, historical cards, pending-task notices, failure fallback and quiet iPhone call starts. Recover minutes text from cards for subsequent conversation context.
+
 ## 2026-10-24 — Stable build 32 and TestFlight packaging
 
 - Pin the accepted continuous-playback/interruption baseline and retain verified rollback artifacts with explicit regression requirements.

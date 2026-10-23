@@ -126,7 +126,7 @@ for(const kind of ['group','dm'])test(`${kind} call uses lifecycle cards and sum
  await f.request(scopedEntries[0].id,'close',cookie,first);
  for(let i=0;f.bridge.releaseReadiness().backgroundTasks&&i<100;i++)await new Promise(r=>setTimeout(r,2));
  const sent=f.calls.filter(c=>c.method==='send');assert.equal(sent.length,2);
- assert.equal(JSON.parse(sent[0].args.message).body.elements[0].content,'V正在电话通话 · 00:00');const card=JSON.parse(sent[1].args.message);assert.equal(card.header.title.content,'通话总结');
+ assert.equal(JSON.parse(sent[0].args.message).body.elements[0].content,'V正在电话通话 · 00:00');const card=JSON.parse(sent[1].args.message);assert.match(JSON.stringify(card),/电话纪要/);
  for(const row of sent){assert.equal(row.args.to,scopedEntries[0].sessionKey.split(':').at(-1));assert.equal(row.args.accountId,'lab');assert.equal(row.args.sessionKey,scopedEntries[0].sessionKey);}
  const edited=f.calls.filter(c=>c.method==='tools.invoke');assert.ok(edited.length);for(const row of edited){assert.equal(row.args.args.messageId,'om_fixture');assert.equal(row.args.args.target,kind==='dm'?'oc_dm_fixture':scopedEntries[0].sessionKey.split(':').at(-1));assert.equal(row.args.args.accountId,'lab');}assert.match(edited.at(-1).args.args.card.body.elements[0].content,/V电话通话已结束/);
  const id=new URL(card.body.elements.at(-1).behaviors[0].default_url).searchParams.get('call');
@@ -191,8 +191,8 @@ test(`iOS ${kind} ${transport}: no live status, one end summary with readable tr
  for(let i=0;f.bridge.releaseReadiness().backgroundTasks&&i<100;i++)await new Promise(r=>setTimeout(r,2));
  const sent=f.calls.filter(c=>c.method==='send');assert.equal(sent.length,1);
  assert.equal(f.calls.filter(c=>c.method==='tools.invoke').length,0,'no timer or hangup status edits');
- const card=JSON.parse(sent[0].args.message);assert.equal(card.header.title.content,'通话总结');
- assert.equal(card.body.elements[0].text.content,'讨论了计划。');
+ const card=JSON.parse(sent[0].args.message);assert.match(JSON.stringify(card),/电话纪要/);
+ assert.match(JSON.stringify(card),/讨论了计划。/);
  assert.equal(sent[0].args.sessionKey,entry.sessionKey);assert.equal(sent[0].args.to,entry.sessionKey.split(':').at(-1));
  const id=new URL(card.body.elements.at(-1).behaviors[0].default_url).searchParams.get('call');
  const saved=await(await f.request(entry.id,'calls/'+id,device)).json();
