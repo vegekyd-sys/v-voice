@@ -1,3 +1,8 @@
+## 2026-10-23 — Make App session switching explicit
+
+- Name the target conversation and the exact native “验证并绑定” action in the browser handoff. Opening the App alone keeps its previous binding; the page now makes that state visible before the user dials.
+- Prepare per-group production entry expansion without changing native credentials, session authorization or existing bindings. Group installation and actual device acceptance are tracked separately from this UI change.
+
 ## 2026-10-23 — Session phone production release
 
 - Publish the accepted PR #2 session phone path and PR #90 DM/status/summary fixes together. Each registered group has its own server-owned session and public login URL; V Backup is the acceptance group, never a shared fallback for other groups.
