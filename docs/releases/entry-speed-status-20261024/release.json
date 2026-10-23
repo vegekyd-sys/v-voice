@@ -1,6 +1,6 @@
 {
   "version": "voice-entry-speed-status.20261024.1",
-  "status": "candidate-validation",
+  "status": "deployed",
   "date": "2026-10-24",
   "scope": "Voice entry, installed iOS binding compatibility and owned lifecycle cards",
   "gatewayRestartRequired": false,
@@ -9,6 +9,29 @@
     "unitTests": 889,
     "speakerTests": 95,
     "releaseFleetTests": 11,
-    "realFeishuClientTiming": "pending"
-  }
+    "realFeishuClientTiming": "pending",
+    "productionNodes": [
+      "web",
+      "devices"
+    ],
+    "gatewayIdentityUnchanged": true,
+    "publicArtifactFilesVerified": 7,
+    "productionIosBinding": {
+      "redeemed": true,
+      "authorizedWithoutOAuthCookie": true,
+      "verifiedAccount": true,
+      "revokedStatus": 401
+    },
+    "desktopOAuthCallbackToDialReadyMs": {
+      "before": 2471,
+      "after": 1718.7,
+      "samplesPerVersion": 1
+    },
+    "desktopAuthenticatedDialReadyMs": 1534.1,
+    "paidCallsStarted": 0
+  },
+  "commit": "78fd43e035b82754f16cc49016d8e4648781606f",
+  "filesSha256": "91d7344affc6530af3296ff86cb0ed4ddc32a338a30cb730c26ddfc824001eb6",
+  "deployedAt": "2026-10-24T05:24:18+08:00",
+  "rollbackCommit": "04d1022370ff2caff99a65c81e5051b8bad59425"
 }
