@@ -1,0 +1,10 @@
+{
+  "version": "voice-shared-terminal-behavior.20261024.1",
+  "status": "preparing",
+  "baseline": "681a349ffcef117ddd049faf45a41702cf1c14d3",
+  "scope": "Shared Voice terminal behavior",
+  "unrelatedMultiuserCandidateIncluded": false,
+  "gatewayRestartRequired": false,
+  "acceptanceMode": "Candidate explicitly authorized instead of shared VLab",
+  "physicalDeviceAudioAcceptance": "not claimed"
+}
