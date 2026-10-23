@@ -1,17 +1,17 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,readFile,writeFile,lstat,rm,symlink,chmod} from 'node:fs/promises';
 import {tmpdir} from 'node:os';import {join} from 'node:path';
-import {provisionPhone,phoneLink} from '../lib/phone-provisioning.mjs';
+import {provisionPhone,phoneLink,verifyPhoneSession} from '../lib/phone-provisioning.mjs';
 import {readPhoneFile,updatePhoneFile} from '../lib/private-phone-file.mjs';
 import {runPhoneCommand} from '../scripts/phone.mjs';
 import {WebSocketServer} from 'ws';
 const params={id:'phone-room-a',sessionKey:'agent:makaron:feishu:group:oc_room_a',accountId:'configured-account',kind:'group'};
-const gateway={request:async(method,args)=>{assert.equal(method,'sessions.resolve');assert.equal(args.allowMissing,undefined);return {key:args.key,agentId:'makaron'};}};
+const gateway={request:async(method,args)=>{assert.equal(method,'sessions.describe');assert.equal(args.allowMissing,undefined);return {session:{key:args.key,agentId:'makaron'}};}};
 async function temporary(t){const dir=await mkdtemp(join(tmpdir(),'voice-phones-'));t.after(()=>rm(dir,{recursive:true,force:true}));return dir;}
 test('provisioning verifies the exact existing key before returning a unique private phone',async()=>{
  const a=await provisionPhone({gateway,records:[],...params});const b=await provisionPhone({gateway,records:[a],...params,id:'phone-room-b'});
  assert.notEqual(a.accessToken,b.accessToken);assert.equal(a.callerId,'tianyi');assert.equal(a.permissionProfile,'personal-tianyi');
- await assert.rejects(provisionPhone({gateway:{request:async()=>({key:'agent:makaron:main'})},records:[],...params}),/exact phone session/);
+ await assert.rejects(provisionPhone({gateway:{request:async()=>({session:{key:'agent:makaron:main',agentId:'makaron'}})},records:[],...params}),/exact phone session/);
  await assert.rejects(provisionPhone({gateway,records:[a],...params}),/duplicate/);
 });
 test('private atomic registry updates reject failed probes, competing writers and symlinks',async t=>{
@@ -47,12 +47,23 @@ test('real admin CLI transport creates only private configuration using read-onl
   socket.send(JSON.stringify({type:'event',event:'connect.challenge',payload:{nonce:'challenge'}}));
   socket.on('message',raw=>{const request=JSON.parse(raw);methods.push(request.method);
    if(request.method==='connect'){assert.deepEqual(request.params.scopes,['operator.read']);assert.deepEqual(request.params.caps,[]);}
-   socket.send(JSON.stringify({type:'res',id:request.id,ok:true,payload:request.method==='connect'?{protocol:4}:{key:request.params.key,agentId:'makaron'}}));
+   socket.send(JSON.stringify({type:'res',id:request.id,ok:true,payload:request.method==='connect'?{protocol:4}:{session:{key:request.params.key,agentId:'makaron'}}}));
   });
  });
  await writeFile(config,JSON.stringify({gateway:{port:wss.address().port,auth:{token:'${TEST_VOICE_TOKEN}'}}}),{mode:0o600});
  const result=await runPhoneCommand(['add','--entries',file,'--id',params.id,'--session',params.sessionKey,'--account',params.accountId,'--kind',params.kind,'--gateway-config',config],{TEST_VOICE_TOKEN:'only-a-fixture-token'});
  assert.equal(result.callsCreated,0);assert.equal(result.existingSessionVerified,true);
- assert.deepEqual(methods,['connect','sessions.resolve']);const records=await readPhoneFile(file);
+ assert.deepEqual(methods,['connect','sessions.describe']);const records=await readPhoneFile(file);
  assert.equal(records[0].sessionKey,params.sessionKey);assert(!JSON.stringify(result).includes(records[0].accessToken));
+});
+
+test('every dial checks current exact session, rejects missing/aliased/foreign identity, never reads the whole agent store',async()=>{
+ let value={session:{key:params.sessionKey,agentId:'makaron'}},reads=0;
+ const g={request:async(method,args)=>{reads++;assert.equal(method,'sessions.describe');assert.deepEqual(args,{key:params.sessionKey,includeDerivedTitles:false,includeLastMessage:false});return value;}};
+ const binding={...params,agentId:'makaron'};
+ await verifyPhoneSession(g,binding);
+ for(const session of [null,{key:'agent:makaron:main',agentId:'makaron'},{key:params.sessionKey,agentId:'other'},{key:params.sessionKey}]) {
+  value={session};await assert.rejects(verifyPhoneSession(g,binding),/exact phone session/);
+ }
+ assert.equal(reads,5);
 });
