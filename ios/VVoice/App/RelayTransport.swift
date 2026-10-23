@@ -17,8 +17,9 @@ import VVoiceCore
     var onFailure: ((Error) -> Void)?
     var onClose: (() -> Void)?
     private(set) var isConnected = false
-    let id: String
-    init(id: String) { self.id = id }
+    private(set) var id: String?
+    var onReservation: (([String: Any]) throws -> Void)?
+    init(id: String? = nil) { self.id = id }
     func connect(session: URLSession, request: URLRequest) async throws {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -31,12 +32,26 @@ import VVoiceCore
                             guard let self, !self.closed else { return }
                             let data: Data
                             switch message { case .string(let text): data = Data(text.utf8); case .data(let bytes): data = bytes; @unknown default: throw VoiceError.protocolMismatch }
-                            guard let v = try JSONSerialization.jsonObject(with: data) as? [String: Any], v["voiceSessionId"] as? String == self.id else { throw VoiceError.protocolMismatch }
+                            guard let v = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw VoiceError.protocolMismatch }
+                            if self.id == nil {
+                                if v["type"] as? String == "dial.error", let status = v["status"] as? Int {
+                                    throw VoiceHTTPFailure.error(status: status) ?? VoiceError.protocolMismatch
+                                }
+                                guard v["type"] as? String == "reservation", v["dialVersion"] as? Int == 1,
+                                      let id = v["voiceSessionId"] as? String, UUID(uuidString: id) != nil,
+                                      v["transport"] as? String == "gateway-relay", let accept = self.onReservation else { throw VoiceError.protocolMismatch }
+                                try accept(v); self.id = id; self.onReservation = nil
+                                continue
+                            }
+                            guard v["type"] as? String != "reservation", v["voiceSessionId"] as? String == self.id else { throw VoiceError.protocolMismatch }
                             if v["type"] as? String == "ready" { self.isConnected = true; self.deadline?.cancel(); self.ready?.resume(); self.ready = nil }
                             if v["type"] as? String == "error" { throw VoiceError.unavailable }
                             try self.onEvent?(v)
                         }
-                    } catch { self?.fail(error) }
+                    } catch {
+                        let status = (s.response as? HTTPURLResponse)?.statusCode ?? 101
+                        self?.fail(status == 101 ? error : VoiceHTTPFailure.error(status: status) ?? error)
+                    }
                 }
                 deadline = Task { [weak self] in
                     try? await Task.sleep(for: .seconds(60)); guard !Task.isCancelled else { return }; self?.fail(VoiceError.connection)

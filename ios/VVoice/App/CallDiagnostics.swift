@@ -7,7 +7,8 @@ import Foundation
         guard let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
         let file = directory.appendingPathComponent("VVoiceCallLifecycle.json")
         var rows = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode([[String: String]].self, from: $0) } ?? []
-        var row = ["event": event, "at": ISO8601DateFormatter().string(from: Date())]
+        let clock = ISO8601DateFormatter(); clock.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var row = ["event": event, "at": clock.string(from: Date())]
         if let code { row["code"] = String(code.prefix(160)) }
         rows.append(row)
         guard let data = try? JSONEncoder().encode(Array(rows.suffix(80))) else { return }
