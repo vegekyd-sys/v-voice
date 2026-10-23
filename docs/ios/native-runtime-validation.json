@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-23",
-  "status": "merged_deployed_build24_installed_physical_acceptance_pending",
+  "status": "merged_deployed_build24_physically_accepted",
   "developmentBase": "08eaecf1a92bc4aa748e1b6053e7924cf55241e1",
   "branch": "codex/voice-native-capability-bridge",
   "protocolVersion": 1,
@@ -64,11 +64,9 @@
     }
   ],
   "notEstablished": [
-    "Physical microphone/AEC/listening on this candidate",
-    "Action Button and locked-device/Island controls on this candidate",
-    "New physical waveform acceptance beyond existing build22 user acceptance",
+    "Long calls, system call/Siri interruptions and network handover beyond the accepted short test",
     "Provider judgment accuracy or TV/name recognition improvements",
-    "Production deployment or phone version live readback"
+    "Same-binary second service release on this phone; pending separately"
   ],
   "releaseRequirements": [
     "Review and merge main plus main CI",
@@ -78,9 +76,9 @@
   ],
   "integratedMain": "43832d33ac275d5fb01fe276656adac8eb0ee101",
   "artifact": {
-    "commit": "be016822c052073112f6289bd629269046d8f90f",
+    "commit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
     "files": 208,
-    "filesSha256": "c2f31300488f7fb33058031125e436335a478683ee85d39333ceae1bf464f261",
+    "filesSha256": "e9c66090ac402c1c65b49298a2d75b43cf33fab697b841ff457e9489d57840ec",
     "manifestVerified": true,
     "packagedSessionDependencyGraphLoaded": true
   },
@@ -113,6 +111,20 @@
     "exportedIPAVerified": true,
     "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46"
   },
-  "physicalAcceptance": "pending_human",
+  "physicalAcceptance": {
+    "status": "accepted_by_Tianyi",
+    "date": "2026-10-23",
+    "build": 24,
+    "scope": [
+      "two-way voice",
+      "barge-in interruption",
+      "Action Button start",
+      "locked-screen two-way voice",
+      "Dynamic Island mute/resume/end"
+    ],
+    "evidence": "Tianyi confirmed all five normal and hung up; physical screen sharing remained off",
+    "policyFingerprint": "cb418111e71a187b",
+    "validMicrophoneInputObserved": true
+  },
   "serviceOnlyPhoneProof": "pending_second_service_release_and_phone_call"
 }
