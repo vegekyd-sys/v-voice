@@ -1,0 +1,109 @@
+{
+  "version": "voice-responsive-interruption.20261024.1",
+  "status": "deployed",
+  "build": 32,
+  "mergePR": 106,
+  "sourceCommit": "af6c0da95fd21eacfba1a5a842cc5f7b7f492b4d",
+  "mainCI": {
+    "run": 39998287471,
+    "conclusion": "success"
+  },
+  "releasedAt": "2026-10-24T01:56:09.156145+08:00",
+  "filesSha256": "4dd30ee38d2b92d97b47054b78bf94d4545040156c2abc84a04bff3d9e2b9963",
+  "verifiedFiles": 221,
+  "iosShellRevision": "a89662ddd8fa274af7ed60cdece1cf04d61f22b1077c8ceccc676fb530c76e93",
+  "fleetReceipt": "20261024-015055-12546027",
+  "completionScope": "both-server-artifacts-and-ios-ui-distribution",
+  "nodes": {
+    "web": {
+      "commit": "af6c0da95fd21eacfba1a5a842cc5f7b7f492b4d",
+      "filesSha256": "4dd30ee38d2b92d97b47054b78bf94d4545040156c2abc84a04bff3d9e2b9963",
+      "ready": true,
+      "admissionHeld": false,
+      "readiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "privateConfigurationUnchanged": true,
+      "expectedDeploymentPointerUpdated": "95-unified-release.conf"
+    },
+    "devices": {
+      "commit": "af6c0da95fd21eacfba1a5a842cc5f7b7f492b4d",
+      "filesSha256": "4dd30ee38d2b92d97b47054b78bf94d4545040156c2abc84a04bff3d9e2b9963",
+      "ready": true,
+      "admissionHeld": false,
+      "readiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "privateConfigurationUnchanged": true,
+      "expectedDeploymentPointerUpdated": "95-unified-release.conf"
+    }
+  },
+  "gatewayUnchanged": true,
+  "publicAssets": {
+    "changelog.mjs": {
+      "matchesArtifact": true,
+      "sha256": "39aa9948c2251a0f47161186a0bdb1882a6f5849a04c3eccee5067c4d350ff1f"
+    },
+    "relay-audio.mjs": {
+      "matchesArtifact": true,
+      "sha256": "2afc45c40f71610470e6d59135269f7d2a9c521c4e80c9b024558356c72ce89b"
+    },
+    "ui-bundle.mjs": {
+      "matchesArtifact": true,
+      "sha256": "8a4a21ffff74bd77c2103837eb8a2620bf3c204bc0f785ba1c74335011b5a6b0"
+    },
+    "ios-shell-release.json": {
+      "matchesArtifact": true,
+      "sha256": "fc3e3a7dba12e02397f52b6fe721f7732dcb5ae32ddd64677b1b69ab97a99d4c",
+      "revision": "a89662ddd8fa274af7ed60cdece1cf04d61f22b1077c8ceccc676fb530c76e93",
+      "embeddedFilesVerified": true
+    }
+  },
+  "homepageChangelogVisuallyVerified": true,
+  "native": {
+    "version": "1.0.0",
+    "build": "32",
+    "sourceCommit": "af6c0da95fd21eacfba1a5a842cc5f7b7f492b4d",
+    "signedReleaseVerified": true,
+    "ipaSHA256": "ee494eb0b728ad31f1643288639459e4739407eb385fb798ff51a57fa1152511",
+    "installedOnRequestedIPhone": true,
+    "normalLaunchVerified": true,
+    "authenticatedStatusHTTP": 200,
+    "uiRevisionLoadedAndAccepted": "a89662ddd8fa274af7ed60cdece1cf04d61f22b1077c8ceccc676fb530c76e93",
+    "acceptedCandidateSource": "f81ab420123176a5190ca1a2153ecdba4993148a",
+    "sameAcceptedNativeSources": true,
+    "nativeSourceComparisonScope": [
+      "ios/VVoice/App",
+      "ios/VVoiceCore",
+      "ios/project.yml"
+    ],
+    "userAcceptance": "Tianyi confirmed build 32 continuous playback and normal interruption, then authorized release",
+    "candidateTestRecord": "../../ios/responsive-interruption-build32.json",
+    "testFlightPublished": false
+  },
+  "validation": {
+    "core": 45,
+    "service": 863,
+    "speakerNative": 95,
+    "fleetProtection": 11,
+    "finalNativeIntegration": 4
+  },
+  "rollback": {
+    "serviceCommit": "bf1bdcde33583520668b10054968fc8c2ae91cb0",
+    "signedNativeBuildsPreserved": [
+      32,
+      31,
+      30
+    ]
+  },
+  "independentNetworkStutterResolved": false,
+  "deviceFirmwareChanged": false
+}
