@@ -897,7 +897,7 @@ async function initializeEntry() {
     const { status } = result;
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     liveReady = status.ready === true;
-    const models = MODEL_CHOICES.map(choice => {
+    const models = MODEL_CHOICES.filter(choice=>!status.unidentified||choice.id!=='gpt-live').map(choice => {
       const model = status.models?.find(item => item.id === choice.id);
       return model ? { ...choice, available: Boolean(model.available), ...(model.label ? { label: model.label } : {}) } : choice;
     });

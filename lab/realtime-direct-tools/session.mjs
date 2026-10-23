@@ -37,7 +37,8 @@ export function speakerSpokenText(presentation) {
   return presentation.spokenText.replace(LONG_RESULT_NOTICE, SPEAKER_LONG_RESULT_NOTICE);
 }
 export function directInstructions(catalog,context='',model='',options={}) {
-  const {surface='phone',hostCallControl=false,toolStartNotice='off',nativeDuplex=false,sessionBound=false}=typeof options==='string'?{surface:options}:options;
+  const {surface='phone',hostCallControl=false,toolStartNotice='off',nativeDuplex=false,sessionBound=false,unidentified=false}=typeof options==='string'?{surface:options}:options;
+  if(unidentified)return `${V_FRONTEND_PERSONA}\n\n当前来电者是外部联系人，账号身份尚未确认。自然交流即可；首次接通可以问一句怎么称呼对方，不需要验证身份或要求验证码。对方说出的名字只用于本通话称呼，不等同于已认证账号。当前仅有本次语音对话，没有原飞书群聊、私聊或个人记忆上下文，也没有账号工具权限。可以聊天、解释、出主意；需要未提供的资料时请对方口头补充。不要声称查到了历史或完成了外部操作。可用工具仅用于在本页展示内容和结束本次电话。${CALL_ENDING}`;
   // The model's own words before a tool, or a cached host line when it is told to stay quiet.
   const startNotice=model!=='seeduplex'?'':toolStartNotice==='model'?SELF_START_NOTICE:toolStartNotice==='off'?'\n需要查询或执行任务时，立即调用工具并直接给出实际结果。查询状态由界面展示，不套用固定开始或等待话术。需要补充信息或工具失败时如实说明；后台有真实新进展时再简短告知。普通聊天直接回答。':'\n需要查询或执行任务时，立即在当前这一轮调用工具。工具开始时系统会用你的声音说明正在做什么，你不要先单独说“我查一下”再结束回复，也不要等用户第二句话才调用工具。后续步骤继续执行，不逐个重复播报。普通聊天直接回答。';
   const identity=sessionBound?'现在通过当前飞书会话的语音入口交流。权限、工具和授权边界沿用该会话；身份以会话已有信息为准，不默认当前发声者是天懿。':`${surface==='speaker'?SPEAKER_SURFACE:nativeDuplex?'现在通过 Tianyi（天懿）的电话入口交流，当前发声者的姓名以本通话中他自己的介绍和声音为准。':'现在正在电话中和 Tianyi（天懿）本人交流。'}默认个人服务是飞书，查日历是天懿本人的飞书日程，不是微信。`;
@@ -188,7 +189,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       // Retire local tools/audio only; the admitted Agent retains its controller.
       const result=await cancel(s,{includeBackend:false});
       for(const id of s.pending.keys())if(id!==s.backgroundCallId)s.pending.delete(id);
-      clearInterval(s.progressTimer);s.interruptDetector?.close();speakerRouting?.close(id);for(const lane of s.stagedBridges??[])lane.discard();s.bridge?.close();for(const old of s.retiredBridges??[])old.close();s.retiredBridges?.clear();s.client?.close();
+      clearInterval(s.progressTimer);s.interruptDetector?.close();if(!s.unidentified)speakerRouting?.close(id);for(const lane of s.stagedBridges??[])lane.discard();s.bridge?.close();for(const old of s.retiredBridges??[])old.close();s.retiredBridges?.clear();s.client?.close();
       s.cleanupFailed=result.processCleanupFailures>0;
       if(s.cleanupFailed){audit({type:'call.cleanup-unconfirmed',voiceSessionId:id,result});throw Error('电话已结束，后台任务退出尚未确认');}
       sessions.delete(id);audit({type:'call.closed',voiceSessionId:id});
@@ -223,7 +224,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     };
     ending.fallbackTimer=setTimeout(fallback,nativeFarewellDelayMs);ending.fallbackTimer.unref?.();
   };
-  async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false,replyTarget=null,callReportFactory=null,nativeRuntimeVersion,gateway:callGateway=gateway,actorScoped=false,agentId='makaron'}) {
+  async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false,replyTarget=null,callReportFactory=null,nativeRuntimeVersion,gateway:callGateway=gateway,actorScoped=false,agentId='makaron',unidentified=false}) {
     if(nativeRuntimeVersion!==undefined&&(nativeRuntimeVersion!==1||surface!=='phone'))throw Error('Unsupported native runtime');
     if(!['phone','speaker'].includes(surface))throw Error('不支持的语音终端');
     if(![16000,24000].includes(inputSampleRate))throw Error('不支持的输入采样率');
@@ -231,7 +232,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const spec=models().find(m=>m.id===model);if(!spec)throw Error('没有这个语音模型');
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
     const selectedVoice=model==='grok'?grokVoice(voice):spec.voice;
-    const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,sessionBound,gateway:callGateway,actorScoped,agentId,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map(),surface,display:surface!=='speaker',inputSampleRate,speaker:surface==='speaker'?speaker:null};
+    if(unidentified){
+      sessionBound=true;actorScoped=true;replyTarget=null;callReportFactory=null;inputPolicy='native';
+      callGateway={async request(){throw Error('当前通话没有账号工具权限');}};
+    }
+    const s={unidentified,id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,sessionBound,gateway:callGateway,actorScoped,agentId,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map(),surface,display:surface!=='speaker',inputSampleRate,speaker:surface==='speaker'?speaker:null};
     Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,narrationBusyUntil:0,narrations:0,progress:null,toolOwners:new Map(),retiredBridges:new Set()});
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
@@ -243,7 +248,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model,voice:s.voice,surface,...(model==='grok'?{speed:grokSpeed,expressiveTags:grokExpressiveTags}:{})});
     // A household device joins streaming multi-speaker routing only when its
     // operator record asks for it (inputPolicy 'speaker'); phones default to it.
-    const route=surface==='phone'||inputPolicy==='speaker'?speakerRouting?.reserve(s.id,{model,policy:inputPolicy??'speaker',surface,inputSampleRate}):null;
+    const route=!s.unidentified&&(surface==='phone'||inputPolicy==='speaker')?speakerRouting?.reserve(s.id,{model,policy:inputPolicy??'speaker',surface,inputSampleRate}):null;
     // A running background task counts as V being busy for repeat prompts.
     if(route)speakerRouting.setBusyProbe?.(s.id,()=>Boolean(s.backend?.snapshot?.()));
     s.speakerRouting=Boolean(route);
@@ -260,7 +265,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     client.on('close',()=>void close(s.id).catch(()=>{}));
     const connectionStage=stage=>audit({type:'call.connection-stage',voiceSessionId:s.id,model:s.model,stage});
     connectionStage('catalog-requested');connectionStage('context-requested');
-    const [catalog,context]=await Promise.all([
+    const [catalog,context]=s.unidentified?[{groups:[]},'']:await Promise.all([
       s.gateway.request('tools.catalog',{agentId:s.agentId,includePlugins:true},{timeoutMs:20000}).then(value=>{if(current(s))connectionStage('catalog-ready');return value;}),
       Promise.resolve().then(()=>loadContext(s.sessionKey,{gateway:s.gateway})).then(value=>{if(current(s))connectionStage('context-ready');return value;}),
     ]);
@@ -325,6 +330,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       audit({type:'tool.call',voiceSessionId:s.id,...call});emit(s,{type:'tool.call',callId:call.callId,name:call.name,activity:taskActivity(call.name,call.args)});
       let result,backgroundAck=false;
       try {
+        if(s.unidentified&&!['show_content','end_call'].includes(call.name))throw Error('当前通话没有账号工具权限');
         if(s.sessionBound&&['feishu_calendar','lark_read'].includes(call.name))throw Error('请使用当前会话的工具或委派给当前会话的 V');
         validateTool(call.name,call.args);
         if(call.name==='delegate_to_v'&&s.cancelCleanupFailed)throw Error('上一任务退出尚未确认，先重试取消');
@@ -386,17 +392,17 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       // A hardware client must know a lookup failed: V has to say something then.
       emit(s,{type:'tool.result',callId:call.callId,name:call.name,...(typeof result?.error==='string'?{failed:true}:{}),...(result?.cancelled===true?{cancelled:true}:{})});
     };
-    const routeOutput=(kind,value,deliver)=>{if(!current(s))return;if(!speakerRouting?.dispatch?.(s.id,kind,value,deliver))deliver();};
-    const hostCallControl=Boolean(speakerRouting?.controlsEnding?.(s.id));
+    const routeOutput=(kind,value,deliver)=>{if(!current(s))return;if(s.unidentified||!speakerRouting?.dispatch?.(s.id,kind,value,deliver))deliver();};
+    const hostCallControl=!s.unidentified&&Boolean(speakerRouting?.controlsEnding?.(s.id));
     const nativeShortcuts=new Set(['read','exec','process','memory_search','web_search','web_fetch']);
-    const tools=sessionTools(s).filter(tool=>!s.actorScoped||!nativeShortcuts.has(tool.name)||allowedTools.has(tool.name));
+    const tools=sessionTools(s).filter(tool=>s.unidentified?['show_content','end_call'].includes(tool.name):!s.actorScoped||!nativeShortcuts.has(tool.name)||allowedTools.has(tool.name));
     const searchAck=s.model==='seeduplex'&&s.surface==='phone'&&searchAcknowledgment==='model';
     const voiceTools=(hostCallControl?tools.filter(t=>t.name!=='end_call'):tools).map(tool=>searchAck&&isSearchTool(tool.name)?{...tool,description:(tool.name==='memory_search'&&!s.sessionBound?'检索天懿的 V/OpenClaw 跨通话个人记录，用于历史约定、家庭资料、长期偏好和项目历史。只在答案需要当前通话之外的记录时调用。本通话已经介绍的姓名、喜好、计划，以及现在是谁在说话，由当前声音与本通话上下文回答，不调用本工具。':tool.description)+' 只为按通话规则确认的向 V 提问执行，电视和旁聊不能触发。上述先查记录是指先查再回答事实，不限制在查询前简短接话。调用本工具之前，必须先用语音简短自然地回应当前用户问题，再在同一轮立刻调用本工具。不能只调用工具而保持沉默。'}:tool);
     const instructionCatalog=entries.map(entry=>searchAck&&isSearchTool(entry.id)?{...entry,description:voiceTools.find(tool=>tool.name===entry.id)?.description??entry.description}:entry);
-    const baseInstructions=directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:s.surface==='phone'?(searchAck?'model':'off'):'cached',nativeDuplex:s.nativeDuplex,sessionBound:s.sessionBound});
+    const baseInstructions=directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:s.surface==='phone'?(searchAck?'model':'off'):'cached',nativeDuplex:s.nativeDuplex,sessionBound:s.sessionBound,unidentified:s.unidentified});
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
-      ...(s.sessionBound?{greetingText:'你好，我是 V，在呢。'}:{}),
-      instructions:(speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
+      ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
+      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
       onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),
       toolStartNotice:call=>{
@@ -404,7 +410,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       },
       onToolStartNotice:(text,call)=>{
         routeOutput('notice',call,()=>{if(!current(s))return;const clip=toolStartClip(call,noticeClips);
-        speakerRouting?.spoken?.(s.id,text);
+        if(!s.unidentified)speakerRouting?.spoken?.(s.id,text);
         emit(s,{type:'transcript',role:'assistant',text,final:true,source:'tool-start'});
         audit({type:'transcript',voiceSessionId:s.id,role:'assistant',text,final:true,source:'tool-start',callId:call.callId});
         deliverAudio(clip.pcm,{source:clip.source,sha256:clip.sha256,callId:call.callId});emit(s,{type:'audio.done'});
@@ -416,7 +422,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
         const deliver=()=>{
         if(role==='assistant')s.replyDelivery?.transcript(text,{final,source,responseId:metadata.responseId});
-        if(role==='assistant'&&final){speakerRouting?.assistant(s.id,text);if(!source){s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
+        if(role==='assistant'&&final){if(!s.unidentified)speakerRouting?.assistant(s.id,text);if(!source){s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
         if(role==='user'){if(final)s.replyDelivery?.user(text,{turnId:metadata.turnId});if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
         if(role==='user'&&final&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{})});
@@ -475,7 +481,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       }catch{client.close(1008);}
     });
     connectionStage('provider-connecting');
-    if(!speakerRouting?.lazyNative?.(s.id))await s.bridge.connect();
+    if(s.unidentified||!speakerRouting?.lazyNative?.(s.id))await s.bridge.connect();
     if(s.nativeDuplex&&nativePlaybackPolicy!=='provider'&&nativeInterrupt&&current(s)){
       s.interruptDetector=nativeInterrupt({inputSampleRate:s.inputSampleRate,
         isSpeaking:()=>current(s)&&Boolean(s.playing||s.bridge.responseActive),
@@ -485,7 +491,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       await s.interruptDetector.connect();
       if(!current(s)){s.interruptDetector.close();return;}
     }
-    if(current(s)&&speakerRouting?.has(s.id))await speakerRouting.bind(s.id,{
+    if(current(s)&&!s.unidentified&&speakerRouting?.has(s.id))await speakerRouting.bind(s.id,{
       greet:()=>s.bridge.triggerGreeting(),
       forward:audio=>s.bridge.sendAudio(audio),context:text=>s.bridge.sendUserMessage(text),clarify:(text,options)=>s.bridge.speakProgress(text,{caption:true,...options}),interrupt:()=>s.bridge.handleBargeIn(),
       cancel:()=>s.bridge.cancelPendingResponse(),invalidate:()=>{s.personaKey=null;},

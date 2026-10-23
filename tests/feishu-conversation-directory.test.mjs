@@ -92,7 +92,7 @@ test('HTTP OAuth and dialing preserve both fixture subjects, groups, and server-
     return {voiceSessionId:'direct-'+(++sequence),relayTicket:'fixture-ticket',provider:p.model};
   },attach:()=>true,close:async()=>{},dispose:async()=>{}};
   const bridge=createLiveH5Server({gateway,directVoice,publicOrigin:origin,basePath:'/voice',accessToken:'fixture-legacy-token'.repeat(3),
-    feishuLogin:{...config,conversations:true,fetchImpl:async url=>Response.json(url.endsWith('/token')?
+    feishuLogin:{...config,conversations:true,allowUnidentified:true,fetchImpl:async url=>Response.json(url.endsWith('/token')?
       {code:0,access_token:'fixture-token',token_type:'Bearer'}:{code:0,data:{open_id:subject,tenant_key:'tenant_fixture'}})}});
   await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
   const get=(path,cookie='',body)=>new Promise((resolve,reject)=>{
@@ -198,4 +198,51 @@ test('private-chat confirmation binds only the proven subject to this browser an
   const denied=await get('/voice/feishu/connect/status',again.headers.get('set-cookie').split(';')[0]);
   assert.equal(denied.status,400);assert.equal(denied.headers.get('set-cookie'),null);
   assert(calls.every(x=>['voice.feishu.login.begin','voice.feishu.login.status','voice.feishu.resolve'].includes(x.method)));
+});
+
+test('unidentified phone opens without login and isolates browser, conversation and account capabilities',async t=>{
+  const calls=[],reservations=[];let n=0;
+  const directVoice={models:()=>[{id:'seeduplex',available:true},{id:'grok',available:true}],reserve:async args=>{
+    reservations.push(args);return {voiceSessionId:'guest-call-'+(++n),relayTicket:'fixture',provider:args.model};
+  },close:async()=>{},dispose:async()=>{},attach:()=>true};
+  const bridge=createLiveH5Server({gateway:{request:async(method)=>{calls.push(method);throw Error('Personal gateway must not be used');}},directVoice,
+    publicOrigin:'https://voice.example',basePath:'/voice',accessToken:'fixture-legacy-token'.repeat(3),
+    feishuLogin:{...config,conversations:true,allowUnidentified:true}});
+  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
+  const get=(path,cookie='',body)=>new Promise((resolve,reject)=>{
+    const req=request({host:'127.0.0.1',port:bridge.server.address().port,path,method:body?'POST':'GET',headers:{host:'voice.example',origin:'https://voice.example',cookie,'content-type':'application/json'}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end(body?JSON.stringify(body):undefined);
+  });
+  const query='?phone='+phone;
+  assert.equal((await get('/voice/api/status'+query)).status,401);
+  const first=await get('/voice/feishu'+query),html=await first.text();
+  assert.equal(first.status,200);assert.match(html,/voiceEntryStatus/);assert(!html.includes('生成验证码'));
+  const jar=first.headers.get('set-cookie').split(';')[0];
+  const state=await(await get('/voice/api/status'+query,jar)).json();
+  assert.equal(state.unidentified,true);assert.equal(state.defaultModel,'seeduplex');assert.equal(state.iosBindingAvailable,false);
+  assert.equal(state.conversation.replySync,false);assert.equal(state.models.find(m=>m.id==='gpt-live').available,false);
+  for(const path of ['/api/calls/private','/api/ios-binding','/api/speaker-fixture','/api/comparison','/api/access'])assert.equal((await get('/voice'+path+query,jar)).status,403);
+  assert.equal((await get('/voice/api/status'+query,jar.slice(0,-4)+'fake')).status,401);
+  assert.equal((await get('/voice/api/session'+query,jar,{model:'gpt-live'})).status,400);
+  const call=await(await get('/voice/api/session'+query,jar,{model:'grok',callerId:'tianyi',sessionKey:'agent:makaron:main',unidentified:false})).json();
+  const actual=reservations.at(-1);assert.equal(actual.unidentified,true);assert.equal(actual.inputPolicy,'native');
+  assert.match(actual.sessionKey,/^voice:guest:/);assert.equal(actual.replyTarget,undefined);assert.equal(actual.callReportFactory,undefined);
+  await assert.rejects(actual.gateway.request('tools.catalog',{}),/账号工具权限/);
+  const second=await get('/voice/feishu'+query),other=second.headers.get('set-cookie').split(';')[0];
+  assert.equal((await get('/voice/api/close'+query,other,call)).status,409);
+  const otherCall=await(await get('/voice/api/session'+query,other,{model:'grok'})).json();
+  assert.notEqual(reservations.at(-1).sessionKey,actual.sessionKey);
+  assert.equal((await get('/voice/api/close'+query,jar,call)).status,200);
+  assert.equal((await get('/voice/api/close'+query,other,otherCall)).status,200);
+  const native=await new Promise((resolve,reject)=>{
+    const ws=new WebSocket(`ws://127.0.0.1:${bridge.server.address().port}/voice/api/dial${query}&model=seeduplex&nativeRuntimeVersion=1&dialVersion=1`,{headers:{host:'voice.example',origin:'https://voice.example',cookie:jar}});
+    const timer=setTimeout(()=>{ws.terminate();reject(Error('guest dial timed out'));},2000);
+    ws.on('error',reject);ws.on('message',raw=>{clearTimeout(timer);ws.close();resolve(JSON.parse(raw));});
+  });
+  assert.equal(native.type,'reservation');assert.equal(reservations.at(-1).unidentified,true);
+  assert.equal(reservations.at(-1).sessionKey,actual.sessionKey);
+  assert.equal((await get('/voice/api/close'+query,jar,native)).status,200);
+  const foreign='?phone='+feishuConversationPhone('other','oc_groupA');
+  assert.equal((await get('/voice/api/status'+foreign,jar)).status,401);
+  assert.equal((await get('/voice/feishu/connect'+query,jar)).headers.get('location'),'/voice/feishu'+query);
+  assert.deepEqual(calls,[]);
 });
