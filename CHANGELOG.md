@@ -1,3 +1,8 @@
+## 2026-10-24 — Stable build 32 and TestFlight packaging
+
+- Pin the accepted continuous-playback/interruption baseline and retain verified rollback artifacts with explicit regression requirements.
+- Prepare build 33 with unchanged native behavior and required-reason privacy metadata for local preferences and elapsed-time measurement. TestFlight availability is tracked separately from packaging. The existing homepage release note still describes the delivered build 32 behavior; distribution preparation adds no user-facing capability.
+
 ## 2026-10-24 — Responsive confirmed interruption · iOS build 32
 
 - Separate confirmed-speech corroboration from the old loudness/onset gate. Quiet syllables can acquire a reversible hold after local acoustic or provider confirmation; energy alone still cannot pause playback.
