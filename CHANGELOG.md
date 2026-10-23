@@ -5,6 +5,13 @@
 
 ## 2026-10-23 — Feishu multiuser phone, shared VLab validation
 
+## Candidate — 2026-10-23 · iPhone handoff polish
+
+- Redesign the web iOS App dialog to match the native binding journey: a compact phone illustration, explicit destination conversation, and one primary “在 iPhone 上继续” action.
+- Collapse installation, manual link copy/regeneration, and bound-device management into secondary disclosures. Keep explicit App verification, existing-session retention, and all binding authorization unchanged.
+- Candidate only (`voice-ios-handoff.20261023.1`); no production deployment or native installation in this change.
+
+
 - Add OAuth-authenticated dynamic conversation entries and signed actor-scoped Gateway requests, preserving current Feishu text routing and tool policies. Disable personal host shortcuts for these callers.
 - Apply the same server-owned identity checks to HTTP and one-connection native dialing. Preserve PR97/98/101 startup improvements.
 - This version is authorized for shared VLab validation only. Production and real multiuser audio acceptance remain unchanged/pending.
