@@ -32,7 +32,7 @@ export function publishVoiceTiming() {
         }
         // Aggregate timing only. Never send codes, identities, URLs or content.
         void fetch('./api/entry-timing',{method:'POST',headers:{'content-type':'application/json'},keepalive:true,
-          body:JSON.stringify({totalToDialMs:Math.round(performance.timeOrigin+ready.ms-profile.startedAt),stages,server})}).catch(()=>{});
+          body:JSON.stringify({outcome:profile.outcome,totalToDialMs:Math.round(performance.timeOrigin+ready.ms-profile.startedAt),stages,server})}).catch(()=>{});
       }
     }
   } catch {}

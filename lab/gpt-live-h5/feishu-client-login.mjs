@@ -10,7 +10,7 @@ export function connectFeishuClient({config,window,document,fetch=globalThis.fet
   };
   record('login.start');
   const guest=document.getElementById('guest');
-  const fallback=()=>{if(finished||exchanging)return;finished=true;clearTimer(timer);window.location.replace(config.guest);};
+  const fallback=()=>{if(finished||exchanging)return;finished=true;clearTimer(timer);profile.outcome='guest';record('login.complete');window.location.replace(config.guest);};
   guest.href=config.guest;guest.addEventListener('click',event=>{event.preventDefault();fallback();});
   const timer=setTimer(fallback,8000);
   const success=async result=>{
@@ -26,6 +26,7 @@ export function connectFeishuClient({config,window,document,fetch=globalThis.fet
       record('identity.confirmed',{serverTiming:response.headers?.get?.('server-timing')??null});
       if(response.ok&&typeof body.location==='string'&&body.location.startsWith('/'))location=body.location;
     } catch {}
+    profile.outcome=location.includes('identified=')?'identified':'guest';record('login.complete');
     finished=true;window.location.replace(location);
   };
   const legacy=()=>window.tt?.requestAuthCode?window.tt.requestAuthCode({appId:config.appId,success,fail:fallback}):fallback();

@@ -130,6 +130,9 @@ test('dynamic group iOS handoff retains verified actor without OAuth cookie and 
  assert.equal(f.calls.at(-1).p.voiceActor.actor.openId,'ou_alice');
  await f.send(path+'close?phone='+devicePhone,{cookies:cookie,body:call.json()});
  assert.equal((await f.send(path+'ios-binding?phone='+phone,{cookies:cookie,body:{}})).status,403);
+ f.setSubject({open_id:'ou_bob',tenant_key:'fixture',name:'Bob Fixture'});const switched=await f.clientLogin();await f.send(switched.location,{ua:'Lark'});
+ const mixedCookies=[...f.jar].map(([k,v])=>k+'='+v).join('; ');
+ const switchedStatus=await f.send(path+'status?phone='+phone,{cookies:mixedCookies});assert.equal(switchedStatus.json().accountLabel,'Bob Fixture','old device cookie cannot override fresh browser identity');
  assert.equal((await f.send(path+'ios-binding/access?phone='+feishuConversationPhone('lab','oc_other'),{cookies:'',body:{deviceAccess}})).status,401);
  const list=await f.send(path+'ios-binding?phone='+phone,{cookies:browser});assert.equal(list.json().devices.length,1);
  const revoked=await f.send(path+'ios-binding/revoke?phone='+phone,{cookies:browser,body:{deviceId:list.json().devices[0].id}});assert.equal(revoked.status,200);

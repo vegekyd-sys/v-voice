@@ -53,7 +53,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     if(phone&&phone!==url.searchParams.get('phone')){url=new URL(url);url.searchParams.set('phone',phone);}
     try {
       const device=parseFeishuConversationPhone(url.searchParams.get('phone'))&&iosBindings?.principalFor(req,url.searchParams.get('phone'),req.iosExchangeBody);
-      const binding=device?await phoneLogin?.resolveDevice(device,url.searchParams.get('phone')):phoneLogin?await phoneLogin.resolve(req,url):entries.resolve(url);
+      const binding=phoneLogin?.read(req)?await phoneLogin.resolve(req,url):device?await phoneLogin?.resolveDevice(device,url.searchParams.get('phone')):phoneLogin?await phoneLogin.resolve(req,url):entries.resolve(url);
       if(binding)return binding;
     }
     catch(error){if(!guestAccess||!parseFeishuConversationPhone(url.searchParams.get('phone')))throw error;}
@@ -247,10 +247,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         let value;try{value=JSON.parse(Buffer.concat(chunks).toString());}catch{return json(res,400,{ok:false});}
         const duration=n=>Number.isFinite(n)&&n>=0&&n<=120000;
         if(!duration(value?.totalToDialMs)||!Array.isArray(value.stages))return json(res,400,{ok:false});
-        const names=new Set(['login.start','sdk.loaded','sdk.ready','client.code','identity.confirmed']);
+        const names=new Set(['login.start','sdk.loaded','sdk.ready','client.code','identity.confirmed','login.complete']);
         const stages=value.stages.slice(0,8).filter(s=>names.has(s?.name)&&duration(s.ms)).map(s=>({name:s.name,ms:Math.round(s.ms)}));
         const server=Object.fromEntries(['app_token','code_exchange','user_info','conversation'].filter(k=>duration(value.server?.[k])).map(k=>[k,Math.round(value.server[k])]));
-        console.info(JSON.stringify({type:'voice.entry-timing',totalToDialMs:Math.round(value.totalToDialMs),stages,server}));
+        console.info(JSON.stringify({type:'voice.entry-timing',outcome:['identified','guest'].includes(value.outcome)?value.outcome:'unknown',totalToDialMs:Math.round(value.totalToDialMs),stages,server}));
         return json(res,200,{ok:true});
       }
       const iosExchange=pathname==='/api/ios-binding/redeem'||pathname==='/api/ios-binding/access';
