@@ -1,4 +1,8 @@
 
+## 2026-10-23 — Service-only query status update for installed build 24
+
+- Use the shared Web task label 查询网页, so the call status reads 查询网页中. The runtime projects that service-owned label to installed build 24; existing native source and signing inputs remain unchanged. Physical same-binary policy readback is recorded separately after release.
+
 ## 2026-10-23 — iOS build 24 native capability bridge
 
 - Move relay caption/speaker interpretation, notices, task/report presentation and bounded playback policy into the shared Voice service. Negotiate a versioned data-only runtime; native executes existing media and system primitives even without a WK page.
