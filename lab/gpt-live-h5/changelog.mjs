@@ -38,6 +38,13 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    date: '2026-10-23', title: '私聊通话计时与挂断状态修复',
+    items: [
+      '修复私聊通话状态停在 00:00 的问题；计时会随通话更新。',
+      '挂断后原状态卡显示已结束及总时长，完整对话和总结继续保留。',
+    ],
+  },
+  {
     date: '2026-10-23', title: '把 V 放到操作按钮上',
     items: [
       'iOS build 29 带来三步引导：获取会话链接、设置操作按钮，最后来到“替代 Siri 的第一步：enjoy”。',

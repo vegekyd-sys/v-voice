@@ -1,3 +1,8 @@
+## 2026-10-23 — Private-call status card repair
+
+- Use the native Feishu chat ID for timer and hangup edits: take it from the exact send receipt, or resolve the canonical session and verify its agent, bot and direct-user identity when older adapters omit it. DM delivery still uses its original user ID, bot and canonical session. Missing or mismatched receipt targets fail closed; the transcript and summary remain available.
+- Verify the actual DM send/edit contract, elapsed updates and final duration, and retain group behavior. This hotfix is based on production `594e3c5`; unrelated multiuser candidates and native audio changes are separate releases.
+
 ## 2026-10-23 — Feishu multiuser phone, shared VLab validation
 
 - Add OAuth-authenticated dynamic conversation entries and signed actor-scoped Gateway requests, preserving current Feishu text routing and tool policies. Disable personal host shortcuts for these callers.

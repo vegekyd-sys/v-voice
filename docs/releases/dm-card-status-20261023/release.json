@@ -1,0 +1,40 @@
+{
+  "version": "voice-dm-card-status.20261023.1",
+  "baseline": "594e3c50d3d76a5084cf52b1860b881f540db3bd",
+  "status": "candidate-verified",
+  "scope": "Private-call timer and hangup message edits",
+  "realGatewayValidation": {
+    "originalFailure": "Feishu message target is not allowed",
+    "receiptChatIdPresent": false,
+    "nativeChatResolvedFromExactSession": true,
+    "sameMessageTicksSeconds": [
+      0,
+      1,
+      3
+    ],
+    "sameMessageEndedSeconds": 6,
+    "readbackVerified": true,
+    "microphoneUsed": false,
+    "additionalSummaryModelCalls": 0
+  },
+  "historicalRepair": {
+    "originalCardsUpdated": 4,
+    "durationsMs": [
+      236669,
+      55006,
+      47977,
+      53937
+    ],
+    "exactStartTimeMatched": true,
+    "originalsBackedUp": true,
+    "readbackVerified": true
+  },
+  "nativeAudioCandidate": "Separate PR106; physical validation pending phone audio availability",
+  "unrelatedMultiuserCandidateIncluded": false,
+  "deployment": "pending",
+  "tests": {
+    "main": 829,
+    "speaker": 95,
+    "release": 11
+  }
+}

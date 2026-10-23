@@ -146,6 +146,7 @@ test('search timing keeps bounded scalar metadata without results or arbitrary d
 test('post-call summary failure diagnostics survive call closure without persisting provider secrets',async t=>{
  const f=await fixture(t);f.created();f.log.audit({type:'call.closed',voiceSessionId:'v1'});
  assert.equal(f.log.audit({type:'call.report-error',voiceSessionId:'v1',reportId:'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',stage:'summary',error:'summary-timeout',providerResponse:'SECRET'}),true);
+ f.log.audit({type:'call.report-error',voiceSessionId:'v1',reportId:'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',stage:'status-start',error:'call-status-target-unconfirmed'});
  f.log.audit({type:'call.report-error',voiceSessionId:'v1',reportId:'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',stage:'summary',error:'Bearer SECRET'});
- await f.log.close();const rows=await f.rows();assert.equal(rows.at(-2).error,'summary-timeout');assert.equal(rows.at(-1).error,'call-report-operation-failed');assert(!JSON.stringify(rows).includes('SECRET'));
+ await f.log.close();const rows=await f.rows();assert.equal(rows.at(-3).error,'summary-timeout');assert.equal(rows.at(-2).error,'call-status-target-unconfirmed');assert.equal(rows.at(-1).error,'call-report-operation-failed');assert(!JSON.stringify(rows).includes('SECRET'));
 });
