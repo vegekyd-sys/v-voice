@@ -1,5 +1,6 @@
 import XCTest
 import Security
+import AVFoundation
 import VVoiceCore
 @testable import VVoice
 
@@ -28,7 +29,7 @@ import VVoiceCore
 }
 
 private final class BindingMockProtocol: URLProtocol, @unchecked Sendable {
-    struct Response: Sendable { var status = 200; var body: String; var cookie: String?; var disconnect = false }
+    struct Response: Sendable { var status = 200; var body: String; var cookie: String?; var disconnect = false; var delay: TimeInterval = 0 }
     final class Registry: @unchecked Sendable {
         let lock = NSLock()
         var handlers: [String: @Sendable (URLRequest) -> Response] = [:]
@@ -40,6 +41,7 @@ private final class BindingMockProtocol: URLProtocol, @unchecked Sendable {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         let value = Self.registry.response(request)
+        if value.delay > 0 { Thread.sleep(forTimeInterval: value.delay) }
         if value.disconnect { client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost)); return }
         var headers = ["Content-Type": "application/json"]
         headers["Set-Cookie"] = value.cookie
@@ -51,6 +53,33 @@ private final class BindingMockProtocol: URLProtocol, @unchecked Sendable {
 
 @MainActor final class SessionBindingTests: XCTestCase {
     private let secret = String(repeating: "fixture", count: 8)
+    func testCapturePrecedesSlowNetworkAndStopsWhenSetupFails() async throws {
+        guard AVAudioApplication.shared.recordPermission == .granted else { throw XCTSkip("Microphone permission required") }
+        final class Requested: @unchecked Sendable {
+            let lock = NSLock(); private var value = false
+            func mark() { lock.lock(); value = true; lock.unlock() }
+            func read() -> Bool { lock.lock(); defer { lock.unlock() }; return value }
+        }
+        let requested = Requested()
+        let (api, store, base) = setup { _ in
+            requested.mark()
+            return .init(body: "{\"ready\":false}", delay: 2)
+        }
+        try store.save(StoredBinding(binding: VoiceBinding(link: base + "#access=" + secret), cookie: "v_voice_access=fixture"))
+        api.reloadIfAvailable()
+        let audio = VoiceAudio(), call = CallCoordinator(api: api, audio: audio), previousModel = call.model
+        call.model = .seeduplex
+        defer { audio.stop(); call.model = previousModel }
+        let attempt = Task { try await call.startOrContinue() }
+        let deadline = Date().addingTimeInterval(4)
+        while !requested.read(), Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertTrue(requested.read())
+        XCTAssertTrue(audio.isRunning, "Capture must already be running while the network response is pending")
+        do { try await attempt.value; XCTFail("Unavailable backend must fail the call") }
+        catch { XCTAssertEqual(error as? VoiceError, .unavailable) }
+        XCTAssertFalse(audio.isRunning, "A failed setup must release the microphone")
+        XCTAssertFalse(call.active)
+    }
     private func setup(_ handler: @escaping @Sendable (URLRequest) -> BindingMockProtocol.Response) -> (VoiceAPI, BindingStore, String) {
         let host = UUID().uuidString.lowercased() + ".binding.test"
         BindingMockProtocol.registry.set(host, handler)
@@ -166,6 +195,24 @@ private final class BindingMockProtocol: URLProtocol, @unchecked Sendable {
         XCTAssertEqual(store.load()?.cookie, current.cookie)
         XCTAssertEqual(store.savedBindings().count, 2)
     }
+    func testSwitchAndReusedHandoffRefreshFastDialCapabilityForSelectedConversation() async throws {
+        let (api, store, base) = setup { request in
+            XCTAssertEqual(request.url!.lastPathComponent, "status")
+            let phone = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first?.value
+            return .init(body: phone == "group-fast" ? "{\"ready\":true,\"nativeDialVersion\":1}" : "{\"ready\":true}")
+        }
+        let fast = StoredBinding(binding: try VoiceBinding(link: base + "?phone=group-fast#access=" + secret), cookie: "fast")
+        let legacy = StoredBinding(binding: try VoiceBinding(link: base + "?phone=group-legacy#access=" + secret), cookie: "legacy", nativeDialVersion: 1)
+        try store.save(fast); try store.save(legacy); api.reloadIfAvailable()
+        try await api.selectConversation(id: fast.id)
+        XCTAssertTrue(api.supportsFastDial)
+        XCTAssertTrue(VoiceAPI(store: store).supportsFastDial, "Switching must persist the newly verified capability")
+        let reused = try await api.bind(link: base + "?phone=group-legacy#bind=" + secret)
+        XCTAssertTrue(reused)
+        XCTAssertFalse(api.supportsFastDial, "A stale advertised capability must not leak across destinations")
+        XCTAssertNil(store.load()?.nativeDialVersion)
+        XCTAssertEqual(store.savedBindings().first { $0.id == fast.id }?.nativeDialVersion, 1)
+    }
     func testPendingCallBlocksSwitchAndRemovalWithoutNetworkOrCredentialChanges() async throws {
         let (api, store, base) = setup { _ in XCTFail("Pending call must block before any request"); return .init(body: "{}") }
         let first = StoredBinding(binding: try VoiceBinding(link: base + "?phone=group-one#access=" + secret), cookie: "one")
@@ -199,7 +246,7 @@ private final class BindingMockProtocol: URLProtocol, @unchecked Sendable {
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
         XCTAssertEqual(SecItemAdd(query as CFDictionary, nil), errSecSuccess)
         XCTAssertEqual(store.load()?.cookie, legacy.cookie)
-        let another = StoredBinding(binding: try VoiceBinding(link: "https://voice.example/voice/?phone=group-two#access=" + secret), cookie: "another-cookie")
+        let another = StoredBinding(binding: try VoiceBinding(link: "https://voice.example/voice/?phone=group-two#access=" + secret), cookie: "another-cookie", nativeDialVersion: 1)
         try store.save(another)
         XCTAssertEqual(store.savedBindings().count, 2)
         XCTAssertEqual(store.savedBindings().first?.pendingVoiceID, "interrupted")
@@ -211,6 +258,7 @@ private final class BindingMockProtocol: URLProtocol, @unchecked Sendable {
         XCTAssertEqual(SecItemCopyMatching(readQuery as CFDictionary, &item), errSecSuccess)
         let legacyReader = try JSONDecoder().decode(StoredBinding.self, from: XCTUnwrap(item as? Data))
         XCTAssertEqual(legacyReader.cookie, another.cookie, "A rollback build must still read the selected grant")
+        XCTAssertEqual(legacyReader.nativeDialVersion, 1, "Build 28 rollback must retain fast dialing for the selected conversation")
 
     }
     func testLegacyLinkStillUsesAccessAndKeepsPersonalKeychainShape() async throws {

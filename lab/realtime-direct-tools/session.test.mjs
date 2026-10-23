@@ -999,3 +999,16 @@ test('candidate model acknowledgment uses native instructions without host PCM o
  assert.equal(f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'),false);
  assert.equal(f.service.progressNotice(f.reservation.voiceSessionId,0),false);
 });
+
+
+test('dial loads exact conversation context concurrently with the tool catalog',async t=>{
+ let release;const contextStarted=new Promise(resolve=>release=resolve);
+ const f=await fixture(async()=>({ok:true}),'grok',{
+  gateway:{request:async method=>{assert.equal(method,'tools.catalog');await contextStarted;return {groups:[]};}},
+  loadContext:async()=>{release();return 'Current conversation context';},
+ });
+ t.after(()=>f.service.dispose());
+ assert(f.client.sent.some(event=>event.type==='ready'));
+ const stages=f.audit.filter(event=>event.type==='call.connection-stage').map(event=>event.stage);
+ assert(stages.indexOf('context-requested')<stages.indexOf('catalog-ready'));
+});

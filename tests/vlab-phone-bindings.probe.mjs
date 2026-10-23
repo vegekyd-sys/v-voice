@@ -24,7 +24,7 @@ test('Candidate resolves real VLab DM/group and keeps their existing histories s
   await new Promise((accept,reject)=>{client=new GatewayClient({url:`ws://127.0.0.1:${config.gateway.port}`,token,
    scopes:['operator.read'],caps:[],onHelloOk:accept,onConnectError:reject});client.start();});
   const gateway={request:(method,args,options)=>{
-   assert(['sessions.resolve','chat.history'].includes(method),'The real probe permits read-only RPC only');
+   assert(['sessions.describe','chat.history'].includes(method),'The real probe permits read-only RPC only');
    requests.push(method);return client.request(method,args,options);
   }};
   const file=join(process.env.VLAB_CANDIDATE_DATA,'phone-entries.json');

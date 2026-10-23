@@ -158,6 +158,7 @@ private final class CaptureHandoff: @unchecked Sendable {
             let failure = "\(stage): \((error as NSError).domain) (\((error as NSError).code))"
             lastStartupFailure = failure
             logger.error("Audio startup failed: \(failure, privacy: .public)")
+            CallDiagnostics.record("audio.start-failed", code: failure)
             stop(); throw VoiceError.audio
         }
     }
@@ -171,6 +172,7 @@ private final class CaptureHandoff: @unchecked Sendable {
             if capturedInput, Date().timeIntervalSince(lastCaptureAt) < 0.3 { return }
             try await Task.sleep(for: .milliseconds(30))
         }
+        CallDiagnostics.record("audio.capture-timeout")
         throw VoiceError.audio
     }
     func play(_ data: Data, sequence: Int?) throws {

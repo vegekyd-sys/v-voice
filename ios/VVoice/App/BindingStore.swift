@@ -19,6 +19,7 @@ struct StoredBinding: Codable, Identifiable {
     var cookie: String
     var pendingVoiceID: String?
     var conversation: BoundConversation?
+    var nativeDialVersion: Int?
 }
 
 struct SavedConversation: Identifiable, Equatable {
@@ -34,7 +35,7 @@ private struct BindingLibrary: Codable {
     var activeID: String?
     var bindings: [StoredBinding]
     init(activeID: String? = nil, bindings: [StoredBinding]) { self.activeID = activeID; self.bindings = bindings }
-    private enum CodingKeys: String, CodingKey { case version, activeID, bindings, binding, cookie, pendingVoiceID, conversation }
+    private enum CodingKeys: String, CodingKey { case version, activeID, bindings, binding, cookie, pendingVoiceID, conversation, nativeDialVersion }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         version = try c.decode(Int.self, forKey: .version)
@@ -49,6 +50,7 @@ private struct BindingLibrary: Codable {
             try c.encode(active.binding, forKey: .binding); try c.encode(active.cookie, forKey: .cookie)
             try c.encodeIfPresent(active.pendingVoiceID, forKey: .pendingVoiceID)
             try c.encodeIfPresent(active.conversation, forKey: .conversation)
+            try c.encodeIfPresent(active.nativeDialVersion, forKey: .nativeDialVersion)
         }
     }
     var active: StoredBinding? { bindings.first { $0.id == activeID } }
@@ -100,8 +102,19 @@ private struct BindingLibrary: Codable {
 }
 
 /// Never follow a redirect while carrying a personal entry or authenticated cookie.
-final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebSocketDelegate, @unchecked Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) { completionHandler(nil) }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didFinishCollecting metrics: URLSessionTaskMetrics) {
+        let route = task.originalRequest?.url?.lastPathComponent ?? ""
+        guard ["status", "session", "close", "relay", "dial"].contains(route) else { return }
+        func ms(_ start: Date?, _ end: Date?) -> Int { guard let start, let end else { return -1 }; return Int(end.timeIntervalSince(start) * 1000) }
+        guard let m = metrics.transactionMetrics.last else { return }
+        let value = "route=\(route) total=\(Int(metrics.taskInterval.duration * 1000)) dns=\(ms(m.domainLookupStartDate,m.domainLookupEndDate)) tcp=\(ms(m.connectStartDate,m.connectEndDate)) tls=\(ms(m.secureConnectionStartDate,m.secureConnectionEndDate)) wait=\(ms(m.requestEndDate,m.responseStartDate)) body=\(ms(m.responseStartDate,m.responseEndDate)) reused=\(m.isReusedConnection)"
+        Task { @MainActor in CallDiagnostics.record("http.metrics", code: value) }
+    }
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+        Task { @MainActor in CallDiagnostics.record("relay.open") }
+    }
 }
 
 @MainActor final class VoiceAPI {
@@ -117,6 +130,8 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
     private(set) var record: StoredBinding?
     init(store: BindingStore, configuration: URLSessionConfiguration? = nil) { self.store = store; self.configuration = configuration; record = store.load() }
     var isBound: Bool { record != nil }
+    var supportsFastDial: Bool { record?.nativeDialVersion == 1 }
+    func disableFastDial() { guard var r = record else { return }; r.nativeDialVersion = nil; record = r; try? store.save(r) }
     func reloadIfAvailable() { if record == nil { record = store.load() } }
 
     var savedConversations: [SavedConversation] {
@@ -137,6 +152,7 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
             status = try await raw("status", record: candidate)
         }
         candidate.conversation = BoundConversation.read(status["conversation"]) ?? candidate.conversation
+        candidate.nativeDialVersion = status["nativeDialVersion"] as? Int
         return candidate
     }
     func selectConversation(id: String) async throws {
@@ -171,6 +187,7 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
         r.conversation = r.conversation ?? conversation
         let status = try await raw("status", record: r)
         r.conversation = BoundConversation.read(status["conversation"]) ?? r.conversation
+        r.nativeDialVersion = status["nativeDialVersion"] as? Int
         guard bindingRevision == revision else { throw CancellationError() }
         // One atomic Keychain write preserves every other saved destination.
         try store.save(r); record = r
@@ -218,10 +235,22 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
     private func raw(_ route: String, record: StoredBinding, body: [String: Any]? = nil) async throws -> [String: Any] {
         var r = request(route, binding: record.binding, cookie: record.cookie)
         if let body { r.httpMethod = "POST"; r.httpBody = try JSONSerialization.data(withJSONObject: body) }
-        let (data, response) = try await session.data(for: r)
+        let timed = ["status", "session", "close"].contains(route), start = Date()
+        if timed { CallDiagnostics.record("http.start", code: route) }
+        let data: Data, response: URLResponse
+        do { (data, response) = try await session.data(for: r) }
+        catch {
+            if timed { CallDiagnostics.record("http.failed", code: "route=\(route) ms=\(Int(Date().timeIntervalSince(start)*1000)) code=\((error as NSError).code)") }
+            throw error
+        }
         guard let http = response as? HTTPURLResponse else { throw VoiceError.connection }
+        if timed { CallDiagnostics.record("http.response", code: "route=\(route) ms=\(Int(Date().timeIntervalSince(start)*1000)) status=\(http.statusCode)") }
         try validate(http.statusCode, data: data)
         guard data.count < 2_000_000, let value = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw VoiceError.protocolMismatch }
+        if route == "status", var current = self.record, current.binding == record.binding, current.cookie == record.cookie {
+            current.nativeDialVersion = value["nativeDialVersion"] as? Int
+            if current.nativeDialVersion != self.record?.nativeDialVersion { self.record = current; try? store.save(current) }
+        }
         return value
     }
     func call(_ route: String, body: [String: Any]? = nil, refresh: Bool = true) async throws -> [String: Any] {
@@ -266,6 +295,16 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
         var req = request("events", binding: r.binding, cookie: r.cookie)
         req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         req.timeoutInterval = 30
+        return req
+    }
+    func fastDialRequest(model: String, voice: String?) throws -> URLRequest {
+        guard let r = record else { throw VoiceError.unbound }
+        var req = request("dial", binding: r.binding, cookie: r.cookie)
+        var c = URLComponents(url: req.url!, resolvingAgainstBaseURL: false)!
+        c.scheme = r.binding.baseURL.scheme == "https" ? "wss" : "ws"
+        c.queryItems = (c.queryItems ?? []) + [URLQueryItem(name: "model", value: model), URLQueryItem(name: "dialVersion", value: "1"), URLQueryItem(name: "nativeRuntimeVersion", value: "1")]
+        if let voice { c.queryItems?.append(URLQueryItem(name: "voice", value: voice)) }
+        req.url = c.url; req.timeoutInterval = 60
         return req
     }
     func relayRequest(id: String, ticket: String) throws -> URLRequest {

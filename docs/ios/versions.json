@@ -88,11 +88,14 @@
     "physicalNewReleaseAcceptance": "not claimed; build 25 retained; production binding and relaunch verified in dedicated simulator"
   },
   "currentDeviceCandidate": {
-    "build": 25,
+    "build": 28,
     "installedOnRequestedIPhone": true,
     "lastAcceptedBuild": 24,
-    "physicalAcceptance": "pending",
-    "mergeStatus": "merged_pr87"
+    "physicalAcceptance": "action_button_speed_confirmed_by_user; latest_measured_3118ms; stable_2s_and_broader_regression_not_claimed",
+    "sourceCommit": "c89a002ac80dc693b8920271caffb5c27f1f0552",
+    "ipaSHA256": "607f4e36f70d9ebbff586811acd87dd7005ca652dea07d8c5ce5aa1655cb9a86",
+    "mergeStatus": "merged_via_PR101",
+    "serverCommit": "ffccc8fb6b38cd9662bd108f455a5e41aaba6a70"
   },
   "build10RollbackHistory": {
     "date": "2026-10-22",
@@ -414,10 +417,119 @@
     "signedIPACopiedAndVerified": true,
     "acceptedByTianyi": true
   },
+  "connectionIncident20261023": {
+    "nativeFixBuild26": {
+      "sourceCommit": "3002ed9ce220a9b5a724d154f96e0303ce76f46b",
+      "version": "1.0.0",
+      "build": "26",
+      "ipaSHA256": "a30304bf422a916fca1f79e634a64bf571bf982871dc062634d81d8c9ed26f15",
+      "exportedReleaseVerified": true,
+      "sameBindingEntitlements": true,
+      "deviceReportedVersion": "1.0.0",
+      "deviceReportedBuild": "26",
+      "installed": true,
+      "testFlightPublished": false,
+      "productionVoiceChanged": false,
+      "realVoiceAcceptance": "pending_user_test"
+    },
+    "diagnosticBuild27": {
+      "sourceCommit": "946141440f72a3aa98147e705df296ca7d682620",
+      "version": "1.0.0",
+      "build": "27",
+      "ipaSHA256": "2a1349b8407e1ef3dd5743d250a6b7cf6461214b55cb4e09bfcef64fea562150",
+      "exportedReleaseVerified": true,
+      "sameBindingEntitlements": true,
+      "deviceReportedVersion": "1.0.0",
+      "deviceReportedBuild": "27",
+      "installed": true,
+      "testFlightPublished": false,
+      "productionVoiceChanged": false,
+      "realVoiceAcceptance": "pending_user_test"
+    },
+    "serverReleases": [
+      {
+        "pr": 97,
+        "commit": "2e71cf28997e9878dc35ae0af37d409bbce4ca68",
+        "bothNodesVerified": true,
+        "gatewayRestarted": false
+      },
+      {
+        "pr": 98,
+        "commit": "0aed8757bb117a43d8c8b1016cca8c2b2928d8e8",
+        "bothNodesVerified": true,
+        "gatewayRestarted": false
+      }
+    ],
+    "realPhoneEvidence": {
+      "build26": "Background microphone starts; first call automatically failed after slow setup, later call connected slowly. Not a speed acceptance.",
+      "build27": "User confirmed Action Button connects. With VPN on: about 16 seconds; user confirms clearly faster with VPN off. Detailed comparison in docs/ios/PHONE-CONNECTION-INCIDENT.md."
+    }
+  },
+  "previousDeviceCandidateBeforeFastDial": {
+    "build": 27,
+    "installedOnRequestedIPhone": true,
+    "lastAcceptedBuild": 24,
+    "physicalAcceptance": "action_button_connection_confirmed; vpn_off_speed_improved; broader_regression_not_claimed",
+    "sourceCommit": "946141440f72a3aa98147e705df296ca7d682620",
+    "ipaSHA256": "2a1349b8407e1ef3dd5743d250a6b7cf6461214b55cb4e09bfcef64fea562150",
+    "mergeStatus": "local_diagnostic_branch"
+  },
+  "fastDialRelease20261023": {
+    "nativeBuild": 28,
+    "nativeSourceCommit": "c89a002ac80dc693b8920271caffb5c27f1f0552",
+    "serverCommit": "ffccc8fb6b38cd9662bd108f455a5e41aaba6a70",
+    "pr": 101,
+    "mainCI": {
+      "run": 39961345175,
+      "conclusion": "success"
+    },
+    "bothNodesVerified": true,
+    "filesSha256": "06fb325ebf3713479e789567bd1f493fbee97b0fed8dae70dc3813e3c9474e11",
+    "gatewayRestarted": false,
+    "homepageChangelogVerified": true,
+    "nativeSignatureVerified": true,
+    "bindingEntitlementsUnchanged": true,
+    "rollbackBuild": 27,
+    "testFlightPublished": false,
+    "physicalSpeedAcceptance": "user_confirmed_about_2_to_3_seconds",
+    "validation": {
+      "serviceTestsPassed": 819,
+      "speakerTestsPassed": 95,
+      "fleetTestsPassed": 11,
+      "nativeDistinctCasesPassed": 81,
+      "nativeSkipped": 1,
+      "nativeQualification": "Initial full run had 3 failures because the shared fixture was not running; all 3 and the new full-stack case passed after fixture startup. Four additional fast-dial cases passed. Not a single clean full-suite run."
+    },
+    "realPhoneEvidence": {
+      "humanFeedback": "Action Button connection about 2-3 seconds",
+      "deviceMeasurement": [
+        {
+          "start": "2026-10-23T13:39:51.104Z",
+          "fast": true,
+          "fastAt": "2026-10-23T13:39:52.207Z",
+          "connected": "2026-10-23T13:39:55.353Z",
+          "elapsedMs": 4249,
+          "fastToConnectedMs": 3146
+        },
+        {
+          "start": "2026-10-23T13:41:04.059Z",
+          "fast": true,
+          "fastAt": "2026-10-23T13:41:04.536Z",
+          "connected": "2026-10-23T13:41:07.177Z",
+          "elapsedMs": 3118,
+          "fastToConnectedMs": 2641
+        }
+      ],
+      "scope": "Action Button connection speed only; no claim of stable 2 seconds or full regression acceptance",
+      "latestStartToConnectedMs": 3118,
+      "firstRecoveryCallMs": 4249,
+      "firstRecoveryCleanupMs": 668
+    }
+  },
   "bindingJourneyCandidate": {
-    "build": 26,
+    "build": 29,
     "baseCommit": "694c18f3e5c75fea8b606158b9b3cb5dfcc7d8fa",
-    "status": "candidate_simulator_verified",
+    "status": "integrated_with_fast_dial_validation_pending",
     "record": "binding-journey/README.md",
     "threeStepSetup": true,
     "multipleSavedConversations": true,
@@ -430,6 +542,7 @@
     },
     "installedOnPhysicalPhone": false,
     "testflightPublished": false,
-    "serverDeploymentRequired": false
+    "serverDeploymentRequired": false,
+    "originalCandidateBuild": 26
   }
 }

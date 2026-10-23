@@ -4,6 +4,7 @@ import {controlVoiceTask} from '../../lib/voice-task-control.mjs';
 import {createVoiceCallControl,callControlEvaluatorFromEnv} from './call-control.mjs';
 import { randomUUID, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
+import {WebSocketServer, WebSocket} from "ws";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -110,6 +111,83 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   });
   const releaseGate = createReleaseGate({readiness: releaseReadiness});
   deviceEndpoint?.setAdmissionGate?.(() => releaseGate.blocked());
+  // HTTP and one-connection native dialing share admission, exact-session
+  // verification, limits, ownership and reservation. A transport never selects identity.
+  const reservePhoneCall = async ({context,binding,params,req,ip,cancelled=()=>false}) => {
+    const reply=(status,body)=>({status,body});
+    if (releaseGate.blocked()) return reply(503,{error:"V 正在更新，请稍后重新拨号。"});
+    if (!backendReady()) return reply(503,{error:"V 后端正在重新连接，请稍后重拨。"});
+    if(speakerRouting&&params.inputPolicy!==undefined&&!['native','speaker'].includes(params.inputPolicy))return reply(400,{error:'没有这个输入策略'});
+    if(params.nativeRuntimeVersion!==undefined&&params.nativeRuntimeVersion!==1)return reply(400,{error:'不支持的原生能力协议'});
+    if (params.model && !['gpt-live','seeduplex','grok'].includes(params.model)) return reply(400,{error:'没有这个语音模型'});
+    if (params.model === 'grok') {
+      try { grokVoice(params.voice); } catch (error) { return reply(400,{error:error.message}); }
+    }
+    if (params.model && params.model !== 'gpt-live' && !directVoice) return reply(503,{error:'这个语音模型尚未接入'});
+    if (context.creatingSession) return reply( 409, { error: "正在连接 V，请稍等。" });
+    // All devices share the selected personal conversation. Do not let a
+    // second device replace another device's voice owner or pending work.
+    if ([...contexts.values()].some(item => item !== context && item.sessionKey === binding.sessionKey && (item.active || item.creatingSession)) || deviceEndpoint?.busy(binding.sessionKey)) {
+      return reply( 409, { error: "另一台设备正在和 V 通话，请先结束那边的通话。" });
+    }
+    if (hosted) {
+      const busy = [...contexts.values()].filter(item => item.active || item.creatingSession);
+      if (!context.active && busy.length >= maxActiveSessions) return reply( 503, { error: "现在和 V 说话的人有点多，请稍后再试" });
+      if (!context.active && busy.filter(item => item.ip === ip).length >= maxActiveSessionsPerIp) return reply( 429, { error: "这台设备已有通话，请先结束后再试" });
+      if (!allow(`call:${ip}`)) return reply( 429, { error: "通话开始得太频繁，请稍后再试" });
+      context.ip = ip;
+    }
+    context.creatingSession = true;
+    try {
+      // New phone entries cannot create a guessed or stale conversation.
+      // Keep the accepted legacy personal entry's startup path unchanged.
+      if (binding.id !== 'tianyi') await verifyPhoneSession(gateway, binding);
+      if(cancelled())return reply(499,{error:"拨号已取消"});
+      await close(context);
+      if(cancelled())return reply(499,{error:"拨号已取消"});
+      const sessionKey = binding.sessionKey;
+      const replyTarget=replyTargets.get(binding.id)??null;
+      if (params.model && params.model !== 'gpt-live') {
+        // SeedDuplex needs the continuous microphone stream to own turn
+        // taking. Keep household/multi-speaker routing available explicitly;
+        // the deployment selects the phone default, not browser heuristics.
+        // Clients opt in only after implementing native response ownership and reversible pause.
+        const inputPolicy = params.inputPolicy ?? 'speaker';
+        const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...speakerRouting?{inputPolicy}:{}});
+        context.active={sessionKey,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
+        if(cancelled()){await close(context);return reply(499,{error:"拨号已取消"});}
+        rememberAvatarCall(context,context.active,params.model);
+        return reply(200,reservation);
+      }
+      const reservation = await gateway.request("talk.client.create", { sessionKey, provider: gptProvider, model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
+      const replyDelivery=createConversationReplyDelivery({gateway,target:replyTarget,ownerId:reservation.voiceSessionId,audit:callControlAudit,callReport:callReports.begin(binding,replyTarget,reservation.voiceSessionId),onStatus:value=>{for(const response of context.listeners)response.write(`data: ${JSON.stringify({type:'reply.sync',voiceSessionId:reservation.voiceSessionId,...value})}\n\n`);}});
+      const taskDelivery=createTaskDelivery({gateway,sessionKey,ownerId:reservation.voiceSessionId,replyDelivery,
+        ...(gptProvider==='v-voice-gpt-live'?{readNativeResult:runId=>gateway.request('voice.product.task-result',{clientSecret:reservation.clientSecret,runId},{timeoutMs:10000})}:{}),
+        audit:callControlAudit,onIdle:()=>{nativeTaskOwners.delete(taskDelivery);if(nativeTasks.get(reservation.voiceSessionId)===taskDelivery)nativeTasks.delete(reservation.voiceSessionId);}});
+      nativeTaskOwners.add(taskDelivery);
+      // Task audit only. Native GPT captions remain Gateway-owned.
+      callControlAudit({type:'call.created',voiceSessionId:reservation.voiceSessionId,sessionKey,provider:'openai',model:reservation.model});
+      context.active = { sessionKey, reservation, cookie:req.headers.cookie, touchedAt: Date.now(), taskDelivery, replyDelivery, presentation: { revision: 0, pending: new Map(), documents: new Map(), controls: [] } };
+      nativeTasks.set(reservation.voiceSessionId,context.active.taskDelivery);
+      if (reservation.model !== "gpt-live-1-codex" || reservation.transport !== "webrtc" || reservation.offerUrl !== "/plugins/openai/realtime/calls") {
+        await close(context);
+        return reply( 409, { error: "候选语音配置与 GPT Live 实验不匹配" });
+      }
+      const owned=context.active;
+      owned.callControl=createVoiceCallControl({evaluate:callControlEvaluate,audit:event=>callControlAudit({...event,voiceSessionId:owned.reservation.voiceSessionId}),isCurrent:()=>context.active===owned,onAccepted:async value=>{
+        if(context.active!==owned)return;
+        const message={...value,voiceSessionId:owned.reservation.voiceSessionId,revision:++owned.presentation.revision};
+        owned.presentation.controls.push(message);if(owned.presentation.controls.length>64)owned.presentation.controls.shift();
+        for(const response of context.listeners)response.write(`data: ${JSON.stringify(message)}\n\n`);
+      }});
+      rememberAvatarCall(context,context.active,'openai');
+      const speaker=speakerRouting?.reserve(reservation.voiceSessionId,{model:'gpt-live',policy:params.inputPolicy??'speaker'});
+      return reply( 200, { voiceSessionId: reservation.voiceSessionId, model: reservation.model,...speaker?{speakerRouting:speaker}:{} });
+    } finally {
+      context.creatingSession = false;
+    }
+  };
+  const dialSockets = new WebSocketServer({noServer:true,maxPayload:70000,perMessageDeflate:false});
   const server = createServer(async (req, res) => {
     res.setHeader("referrer-policy", "no-referrer"); res.setHeader("x-content-type-options", "nosniff");
     try {
@@ -128,7 +206,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       const url = new URL(req.url, requestOrigin);
       if (basePath && url.pathname === basePath && req.method === "GET") { res.writeHead(308, { location: `${basePath}/${url.search}`, "cache-control": "no-store" }); res.end(); return; }
       if (basePath && !url.pathname.startsWith(`${basePath}/`)) return json(res, 404, { error: "没有这个入口" });
-      const pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
+      let pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
+      let entryVisitor = null;
       if (phoneLogin && req.method === 'GET' && (pathname === '/feishu' || pathname === '/feishu/callback')) {
         try {
           let location;
@@ -136,11 +215,14 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           else {
             const selected = phoneLogin.select(req, url.searchParams.get('phone'));
             if (selected) {
-              entryAccess(selected).issue(res);
-              location = `${basePath}/?phone=${encodeURIComponent(selected.id)}${callIdValid(url.searchParams.get('call'))?'&call='+url.searchParams.get('call'):''}`;
+              entryVisitor = entryAccess(selected).issue(res);
+              // An explicit, authenticated phone entry can serve its first
+              // frame here. Relative assets/API URLs keep the same base path.
+              if (url.searchParams.get('phone') === selected.id) pathname = '/';
+              else location = `${basePath}/?phone=${encodeURIComponent(selected.id)}${callIdValid(url.searchParams.get('call'))?'&call='+url.searchParams.get('call'):''}`;
             } else location = phoneLogin.begin(req, res, url.searchParams.get('phone'),url.searchParams.get('call'));
           }
-          res.writeHead(302, {location, 'cache-control': 'no-store'}); res.end(); return;
+          if (location) { res.writeHead(302, {location, 'cache-control': 'no-store'}); res.end(); return; }
         } catch (error) {
           console.warn(JSON.stringify({type:'voice.feishu-login-error', ...feishuPhoneLoginFailure(error)}));
           return json(res, 403, {error:'暂时无法确认这个电话入口。请使用已开通的飞书账号重新打开。'});
@@ -193,10 +275,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           if(candidateRelease)html=html.replace('<script type="module" src="./app.js"></script>',`<script type="application/json" id="voiceCandidateRelease">${JSON.stringify(candidateRelease).replaceAll('<','\\u003c')}</script><script type="module" src="./app.js"></script>`);
           // Only an authenticated request receives an entry snapshot. It is a
           // presentation hint; every session/tool request still authorizes itself.
-          const visitor = hosted ? readVisitor(req,binding) : null;
+          const visitor = hosted ? entryVisitor ?? readVisitor(req,binding) : null;
           const canCheckEntry = visitor && (contexts.has(`${entry}:${visitor.id}`) || contexts.size < 512);
           if (!hosted || canCheckEntry) {
-            const initial = JSON.stringify({ ready: backendReady(), preview, defaultModel, conversation:{name:binding.displayName??'我的 V',kind:binding.kind,replySync:binding.replySync},iosBindingAvailable:hosted, ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}), ...(listening?{comparisonAvailable:true}:{}),
+            const initial = JSON.stringify({ ready: backendReady(), preview, defaultModel, ...(directVoice?.attach?{nativeDialVersion:1}:{}), conversation:{name:binding.displayName??'我的 V',kind:binding.kind,replySync:binding.replySync},iosBindingAvailable:hosted, ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}), ...(listening?{comparisonAvailable:true}:{}),
               ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'},...directVoice.models()]} : {}),
             }).replaceAll("<", "\\u003c");
             html = html.replace('<script type="module" src="./app.js"></script>', `<script type="application/json" id="voiceEntryStatus">${initial}</script><script type="module" src="./app.js"></script>`);
@@ -265,7 +347,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         return json(res,revoked?200:404,revoked?{ok:true}:{error:'没有这个 App 绑定。'});
       }
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
-        ready: backendReady(), preview, defaultModel, conversation:{name:binding.displayName??'我的 V',kind:binding.kind,replySync:binding.replySync},iosBindingAvailable:hosted, ...(speakerRouting?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
+        ready: backendReady(), preview, defaultModel, ...(directVoice?.attach?{nativeDialVersion:1}:{}), conversation:{name:binding.displayName??'我的 V',kind:binding.kind,replySync:binding.replySync},iosBindingAvailable:hosted, ...(speakerRouting?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
         releaseReadiness: releaseReadiness(),
         ...(listening?{comparisonAvailable:true}:{}), model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
         ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'},...directVoice.models()]} : {}),
@@ -310,74 +392,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (req.method !== "POST") return json(res, 404, { error: "没有这个入口" });
       const params = await readBody();
       if (pathname === "/api/session") {
-        if (releaseGate.blocked()) return json(res,503,{error:"V 正在更新，请稍后重新拨号。"});
-        if (!backendReady()) return json(res,503,{error:"V 后端正在重新连接，请稍后重拨。"});
-        if(speakerRouting&&params.inputPolicy!==undefined&&!['native','speaker'].includes(params.inputPolicy))return json(res,400,{error:'没有这个输入策略'});
-        if(params.nativeRuntimeVersion!==undefined&&params.nativeRuntimeVersion!==1)return json(res,400,{error:'不支持的原生能力协议'});
-        if (params.model && !['gpt-live','seeduplex','grok'].includes(params.model)) return json(res,400,{error:'没有这个语音模型'});
-        if (params.model === 'grok') {
-          try { grokVoice(params.voice); } catch (error) { return json(res,400,{error:error.message}); }
-        }
-        if (params.model && params.model !== 'gpt-live' && !directVoice) return json(res,503,{error:'这个语音模型尚未接入'});
-        if (context.creatingSession) return json(res, 409, { error: "正在连接 V，请稍等。" });
-        // All devices share the selected personal conversation. Do not let a
-        // second device replace another device's voice owner or pending work.
-        if ([...contexts.values()].some(item => item !== context && item.sessionKey === binding.sessionKey && (item.active || item.creatingSession)) || deviceEndpoint?.busy(binding.sessionKey)) {
-          return json(res, 409, { error: "另一台设备正在和 V 通话，请先结束那边的通话。" });
-        }
-        if (hosted) {
-          const busy = [...contexts.values()].filter(item => item.active || item.creatingSession);
-          if (!context.active && busy.length >= maxActiveSessions) return json(res, 503, { error: "现在和 V 说话的人有点多，请稍后再试" });
-          if (!context.active && busy.filter(item => item.ip === ip).length >= maxActiveSessionsPerIp) return json(res, 429, { error: "这台设备已有通话，请先结束后再试" });
-          if (!allow(`call:${ip}`)) return json(res, 429, { error: "通话开始得太频繁，请稍后再试" });
-          context.ip = ip;
-        }
-        context.creatingSession = true;
-        try {
-          // New phone entries cannot create a guessed or stale conversation.
-          // Keep the accepted legacy personal entry's startup path unchanged.
-          if (binding.id !== 'tianyi') await verifyPhoneSession(gateway, binding);
-          await close(context);
-          const sessionKey = binding.sessionKey;
-          const replyTarget=replyTargets.get(binding.id)??null;
-          if (params.model && params.model !== 'gpt-live') {
-            // SeedDuplex needs the continuous microphone stream to own turn
-            // taking. Keep household/multi-speaker routing available explicitly;
-            // the deployment selects the phone default, not browser heuristics.
-            // Clients opt in only after implementing native response ownership and reversible pause.
-            const inputPolicy = params.inputPolicy ?? 'speaker';
-            const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...speakerRouting?{inputPolicy}:{}});
-            context.active={sessionKey,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
-            rememberAvatarCall(context,context.active,params.model);
-            return json(res,200,reservation);
-          }
-          const reservation = await gateway.request("talk.client.create", { sessionKey, provider: gptProvider, model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
-          const replyDelivery=createConversationReplyDelivery({gateway,target:replyTarget,ownerId:reservation.voiceSessionId,audit:callControlAudit,callReport:callReports.begin(binding,replyTarget,reservation.voiceSessionId),onStatus:value=>{for(const response of context.listeners)response.write(`data: ${JSON.stringify({type:'reply.sync',voiceSessionId:reservation.voiceSessionId,...value})}\n\n`);}});
-          const taskDelivery=createTaskDelivery({gateway,sessionKey,ownerId:reservation.voiceSessionId,replyDelivery,
-            ...(gptProvider==='v-voice-gpt-live'?{readNativeResult:runId=>gateway.request('voice.product.task-result',{clientSecret:reservation.clientSecret,runId},{timeoutMs:10000})}:{}),
-            audit:callControlAudit,onIdle:()=>{nativeTaskOwners.delete(taskDelivery);if(nativeTasks.get(reservation.voiceSessionId)===taskDelivery)nativeTasks.delete(reservation.voiceSessionId);}});
-          nativeTaskOwners.add(taskDelivery);
-          // Task audit only. Native GPT captions remain Gateway-owned.
-          callControlAudit({type:'call.created',voiceSessionId:reservation.voiceSessionId,sessionKey,provider:'openai',model:reservation.model});
-          context.active = { sessionKey, reservation, cookie:req.headers.cookie, touchedAt: Date.now(), taskDelivery, replyDelivery, presentation: { revision: 0, pending: new Map(), documents: new Map(), controls: [] } };
-          nativeTasks.set(reservation.voiceSessionId,context.active.taskDelivery);
-          if (reservation.model !== "gpt-live-1-codex" || reservation.transport !== "webrtc" || reservation.offerUrl !== "/plugins/openai/realtime/calls") {
-            await close(context);
-            return json(res, 409, { error: "候选语音配置与 GPT Live 实验不匹配" });
-          }
-          const owned=context.active;
-          owned.callControl=createVoiceCallControl({evaluate:callControlEvaluate,audit:event=>callControlAudit({...event,voiceSessionId:owned.reservation.voiceSessionId}),isCurrent:()=>context.active===owned,onAccepted:async value=>{
-            if(context.active!==owned)return;
-            const message={...value,voiceSessionId:owned.reservation.voiceSessionId,revision:++owned.presentation.revision};
-            owned.presentation.controls.push(message);if(owned.presentation.controls.length>64)owned.presentation.controls.shift();
-            for(const response of context.listeners)response.write(`data: ${JSON.stringify(message)}\n\n`);
-          }});
-          rememberAvatarCall(context,context.active,'openai');
-          const speaker=speakerRouting?.reserve(reservation.voiceSessionId,{model:'gpt-live',policy:params.inputPolicy??'speaker'});
-          return json(res, 200, { voiceSessionId: reservation.voiceSessionId, model: reservation.model,...speaker?{speakerRouting:speaker}:{} });
-        } finally {
-          context.creatingSession = false;
-        }
+        const result=await reservePhoneCall({context,binding,params,req,ip});
+        return json(res,result.status,result.body);
       }
       if(pathname==='/api/avatar-events'){
         const owner=context.avatarOwners?.get(params.voiceSessionId);
@@ -554,6 +570,54 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     const expectedOrigin=hosted?publicOrigin:`http://${host}`;
     if(!directVoice||(hosted?host!==origin.host:!/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host))||req.headers.origin!==expectedOrigin){socket.destroy();return;}
     const url=new URL(req.url,expectedOrigin);
+    if(url.pathname===`${basePath}/api/dial`){
+      const reject=status=>socket.end(`HTTP/1.1 ${status} Rejected\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+      if(stopping||releaseGate.blocked()||!backendReady())return reject(503);
+      if(typeof directVoice.attach!=='function')return reject(404);
+      const allowed=new Set(['phone','model','voice','nativeRuntimeVersion','dialVersion']);
+      if([...url.searchParams.keys()].some(k=>!allowed.has(k)||url.searchParams.getAll(k).length!==1)
+        ||url.searchParams.get('dialVersion')!=='1'||url.searchParams.get('nativeRuntimeVersion')!=='1'
+        ||!['seeduplex','grok'].includes(url.searchParams.get('model')))return reject(400);
+      const binding=entries.resolve(url);if(!binding)return reject(404);
+      if(phoneLogin?.protects(binding)&&!phoneLogin.permits(req,binding)&&!iosBindings?.read(req,binding))return reject(401);
+      const visitor=hosted?readVisitor(req,binding):null;
+      if(hosted?!visitor:!String(req.headers.cookie??'').split(/;\s*/u).includes(`v_live_experiment=${cookie}`))return reject(401);
+      const ip=String(req.headers['cf-connecting-ip']??req.socket.remoteAddress??'unknown').slice(0,128);
+      const contextId=hosted?`${binding.id}:${visitor.id}`:binding.id;
+      let context=contexts.get(contextId);
+      if(!context){
+        if(contexts.size>=512)return reject(503);
+        context={active:null,creatingSession:false,listeners:new Set(),touchedAt:Date.now(),ip,entry:binding.id,sessionKey:binding.sessionKey};
+        contexts.set(contextId,context);
+      }
+      releaseClosedDirectCalls();context.touchedAt=Date.now();
+      const params={model:url.searchParams.get('model'),nativeRuntimeVersion:1,inputPolicy:phoneInputPolicy,
+        ...(url.searchParams.has('voice')?{voice:url.searchParams.get('voice')}:{})};
+      dialSockets.handleUpgrade(req,socket,head,client=>{
+        client.on('error',()=>{});
+        // Until attach owns the socket, reject all input. No microphone data
+        // or arbitrary startup messages may race reservation/authentication.
+        const earlyInput=()=>client.close(1008);client.on('message',earlyInput);
+        const cancelled=()=>client.readyState!==WebSocket.OPEN;
+        void (async()=>{
+          let reservation;
+          try{
+            const result=await reservePhoneCall({context,binding,params,req,ip,cancelled});
+            if(result.status!==200){if(!cancelled()){client.send(JSON.stringify({type:'dial.error',status:result.status}));client.close(1008);}return;}
+            reservation=result.body;
+            if(cancelled()){if(context.active?.reservation===reservation)await close(context);return;}
+            // The caller learns its owned ID and policy before any provider frame.
+            client.send(JSON.stringify({...reservation,type:'reservation',dialVersion:1,relayTicket:undefined}));
+            client.removeListener('message',earlyInput);
+            if(!directVoice.attach(reservation.voiceSessionId,reservation.relayTicket,client))throw Error('Dial attach failed');
+          }catch{
+            if(reservation&&context.active?.reservation===reservation)await close(context).catch(()=>{});
+            if(!cancelled()){client.send(JSON.stringify({type:'dial.error',status:503}));client.close(1011);}
+          }
+        })();
+      });
+      return;
+    }
     const speakerPath=url.pathname===`${basePath}/api/speaker-stream`&&speakerRouting;
     if(url.pathname!==`${basePath}/api/relay`&&!speakerPath){socket.destroy();return;}
     const context=[local,...contexts.values()].find(c=>(speakerPath||c.active?.direct)&&c.active?.reservation.voiceSessionId===url.searchParams.get('voiceSessionId'));
@@ -576,6 +640,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     for (const context of [local, ...contexts.values()]) { for (const response of context.listeners) response.end(); await close(context).catch(() => {}); }
     if(drain)while([...nativeTaskOwners].some(d=>d.pending))await new Promise(resolve=>setTimeout(resolve,50));
     for(const delivery of nativeTaskOwners)delivery.dispose();nativeTaskOwners.clear();nativeTasks.clear();
+    for(const client of dialSockets.clients)client.terminate();dialSockets.close();
     await directVoice?.dispose({drain});
     await iosBindings?.flush();await callReports.flush();
     speakerRouting?.dispose();

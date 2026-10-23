@@ -259,10 +259,12 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     s.client=client;
     client.on('close',()=>void close(s.id).catch(()=>{}));
     const connectionStage=stage=>audit({type:'call.connection-stage',voiceSessionId:s.id,model:s.model,stage});
-    connectionStage('catalog-requested');
-    const catalog=await gateway.request('tools.catalog',{agentId:'makaron',includePlugins:true},{timeoutMs:20000});
+    connectionStage('catalog-requested');connectionStage('context-requested');
+    const [catalog,context]=await Promise.all([
+      gateway.request('tools.catalog',{agentId:'makaron',includePlugins:true},{timeoutMs:20000}).then(value=>{if(current(s))connectionStage('catalog-ready');return value;}),
+      Promise.resolve().then(()=>loadContext(s.sessionKey)).then(value=>{if(current(s))connectionStage('context-ready');return value;}),
+    ]);
     if(!current(s))return;
-    connectionStage('catalog-ready');
     const entries=(catalog.groups??[]).flatMap(g=>g.tools??[]),allowedTools=new Set(entries.map(t=>t.id));
     // Phone lookups use the existing task UI, without host preface PCM.
     // Household endpoints retain their explicit cached-notice behavior.
@@ -384,10 +386,6 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       // A hardware client must know a lookup failed: V has to say something then.
       emit(s,{type:'tool.result',callId:call.callId,name:call.name,...(typeof result?.error==='string'?{failed:true}:{}),...(result?.cancelled===true?{cancelled:true}:{})});
     };
-    connectionStage('context-requested');
-    const context=await loadContext(s.sessionKey);
-    if(!current(s))return;
-    connectionStage('context-ready');
     const routeOutput=(kind,value,deliver)=>{if(!current(s))return;if(!speakerRouting?.dispatch?.(s.id,kind,value,deliver))deliver();};
     const hostCallControl=Boolean(speakerRouting?.controlsEnding?.(s.id));
     const tools=sessionTools(s);
