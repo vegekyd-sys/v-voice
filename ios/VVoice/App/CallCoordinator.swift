@@ -304,7 +304,9 @@ import VVoiceCore
     private func dial(owner: UUID, greeting: Bool) async throws {
         handshakingOwner = owner; providerReady = true
         defer { if handshakingOwner == owner { handshakingOwner = nil } }
+        CallDiagnostics.record("dial.wait-close")
         await closing?.value
+        CallDiagnostics.record("dial.recover")
         guard owned(owner) else { throw CancellationError() }
         try await api.recoverPreviousCall()
         guard owned(owner) else { throw CancellationError() }
@@ -359,7 +361,9 @@ import VVoiceCore
         relay.onEvent = { [weak self] value in
             guard let self, self.owned(owner) else { return }; try self.handle(value, owner: owner)
         }
+        CallDiagnostics.record("relay.start")
         try await relay.connect(session: api.session, request: api.relayRequest(id: id, ticket: ticket))
+        CallDiagnostics.record("relay.ready")
         guard owned(owner) else { relay.close(); throw CancellationError() }
         audio.onInput = { [weak self] data, rms in
             guard let self, self.owned(owner), self.audio.isRunning, self.phase != .interrupted else { return }

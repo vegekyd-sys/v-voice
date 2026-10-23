@@ -43,8 +43,19 @@ struct StoredBinding: Codable {
 }
 
 /// Never follow a redirect while carrying a personal entry or authenticated cookie.
-final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebSocketDelegate, @unchecked Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) { completionHandler(nil) }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didFinishCollecting metrics: URLSessionTaskMetrics) {
+        let route = task.originalRequest?.url?.lastPathComponent ?? ""
+        guard ["status", "session", "close", "relay"].contains(route) else { return }
+        func ms(_ start: Date?, _ end: Date?) -> Int { guard let start, let end else { return -1 }; return Int(end.timeIntervalSince(start) * 1000) }
+        guard let m = metrics.transactionMetrics.last else { return }
+        let value = "route=\(route) total=\(Int(metrics.taskInterval.duration * 1000)) dns=\(ms(m.domainLookupStartDate,m.domainLookupEndDate)) tcp=\(ms(m.connectStartDate,m.connectEndDate)) tls=\(ms(m.secureConnectionStartDate,m.secureConnectionEndDate)) wait=\(ms(m.requestEndDate,m.responseStartDate)) body=\(ms(m.responseStartDate,m.responseEndDate)) reused=\(m.isReusedConnection)"
+        Task { @MainActor in CallDiagnostics.record("http.metrics", code: value) }
+    }
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+        Task { @MainActor in CallDiagnostics.record("relay.open") }
+    }
 }
 
 @MainActor final class VoiceAPI {
@@ -124,8 +135,16 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
     private func raw(_ route: String, record: StoredBinding, body: [String: Any]? = nil) async throws -> [String: Any] {
         var r = request(route, binding: record.binding, cookie: record.cookie)
         if let body { r.httpMethod = "POST"; r.httpBody = try JSONSerialization.data(withJSONObject: body) }
-        let (data, response) = try await session.data(for: r)
+        let timed = ["status", "session", "close"].contains(route), start = Date()
+        if timed { CallDiagnostics.record("http.start", code: route) }
+        let data: Data, response: URLResponse
+        do { (data, response) = try await session.data(for: r) }
+        catch {
+            if timed { CallDiagnostics.record("http.failed", code: "route=\(route) ms=\(Int(Date().timeIntervalSince(start)*1000)) code=\((error as NSError).code)") }
+            throw error
+        }
         guard let http = response as? HTTPURLResponse else { throw VoiceError.connection }
+        if timed { CallDiagnostics.record("http.response", code: "route=\(route) ms=\(Int(Date().timeIntervalSince(start)*1000)) status=\(http.statusCode)") }
         try validate(http.statusCode, data: data)
         guard data.count < 2_000_000, let value = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw VoiceError.protocolMismatch }
         return value
