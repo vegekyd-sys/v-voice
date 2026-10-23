@@ -1,3 +1,9 @@
+## 2026-10-23 — Stop automatic iOS icon changes (candidate)
+
+- Remove the icon-selection call from launch and foreground activation. The previous cache-refresh workaround could show the system's icon-change alert when opening the app.
+- Keep both portrait icon sets and shortcut metadata refresh, preserving existing alternate-icon selections and notification/Spotlight/home-screen assets.
+- Simulator build, four cold launches and foreground return passed without the alert. Candidate only; no phone installation, server release or new voice acceptance. See `docs/ios/icon-startup-prompt-candidate.json`. Add the user-visible homepage note when packaging the approved native release.
+
 ## Unreleased — Refined call status and summaries · 2026-10-23
 
 ## Unreleased — Session phone access and iOS handoff · 2026-10-23
