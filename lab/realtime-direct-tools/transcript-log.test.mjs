@@ -141,3 +141,11 @@ test('search timing keeps bounded scalar metadata without results or arbitrary d
  assert.equal(row.searchMs,1975);assert.equal(row.hits,0);assert.equal(row.compacted,true);
  assert.equal(row.toolMs,undefined);assert.equal(row.managerMs,undefined);assert(!JSON.stringify(rows).includes('SECRET'));
 });
+
+
+test('post-call summary failure diagnostics survive call closure without persisting provider secrets',async t=>{
+ const f=await fixture(t);f.created();f.log.audit({type:'call.closed',voiceSessionId:'v1'});
+ assert.equal(f.log.audit({type:'call.report-error',voiceSessionId:'v1',reportId:'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',stage:'summary',error:'summary-timeout',providerResponse:'SECRET'}),true);
+ f.log.audit({type:'call.report-error',voiceSessionId:'v1',reportId:'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',stage:'summary',error:'Bearer SECRET'});
+ await f.log.close();const rows=await f.rows();assert.equal(rows.at(-2).error,'summary-timeout');assert.equal(rows.at(-1).error,'call-report-operation-failed');assert(!JSON.stringify(rows).includes('SECRET'));
+});

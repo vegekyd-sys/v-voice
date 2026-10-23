@@ -1,3 +1,9 @@
+## Candidate — DM call lifecycle and summary reliability · 2026-10-23
+
+- Apply the existing compact status/summary flow to explicit DM phone entries. Keep same-message elapsed/ended updates and suppress per-turn Q&A cards during calls.
+- Use “V正在电话通话” and “V电话通话已结束” consistently.
+- Set Grok 4.7 short-summary reasoning to low, retry transient/truncated responses once, and preserve safe failure diagnostics after the call ends. No native iOS change.
+
 ## Unreleased — Refined call status and summaries · 2026-10-23
 
 ## Unreleased — Session phone access and iOS handoff · 2026-10-23

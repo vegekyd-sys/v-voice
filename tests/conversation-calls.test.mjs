@@ -16,7 +16,7 @@ test('group call: real readiness, one summary, admitted complete transcript and 
   at=66000;await delivery.close();
   // close releases audio without waiting for the summarizer.
   for(let i=0;!release&&i<100;i++)await new Promise(r=>setTimeout(r,5));assert.ok(release);assert.ok(calls.pending);
-  assert.equal(sent.length,1);assert.equal(JSON.parse(sent[0].message).body.elements[0].content,'正在通话 · 00:00');assert.equal(edits.at(-1).args.messageId,'om_1');assert.match(edits.at(-1).args.card.body.elements[0].content,/通话已结束/);
+  assert.equal(sent.length,1);assert.equal(JSON.parse(sent[0].message).body.elements[0].content,'V正在电话通话 · 00:00');assert.equal(edits.at(-1).args.messageId,'om_1');assert.match(edits.at(-1).args.card.body.elements[0].content,/V电话通话已结束/);
   await delivery.result('run:final','方案已生成',{questionId:'run'});assert.equal(sent.length,2);
   release('讨论了今天的安排，并请求生成方案，结果待后台返回。');await calls.flush();
   assert.equal(sent.length,3);const card=JSON.parse(sent[2].message);assert.equal(card.body.elements[0].text.content,'讨论了今天的安排，并请求生成方案，结果待后台返回。');assert.doesNotMatch(JSON.stringify(card),/次提问|1 分 5 秒|电话已结束/);
@@ -33,14 +33,14 @@ test('reservation cancellation stays silent; unavailable summary retains full di
 });
 test('summary request is bounded, has no tools and rejects truncated completion',async()=>{
  let payload;const summarize=callSummarizerFromEnv({XAI_API_KEY:'test',VOICE_CALL_SUMMARY_MODEL:'test-model'},{fetchImpl:async(_,options)=>{payload=JSON.parse(options.body);return{ok:true,json:async()=>({choices:[{finish_reason:'length',message:{content:'half'}}]})};}});
- await assert.rejects(summarize({turns:[{role:'user',text:'测试'}]}),/summary-invalid/);assert.equal(payload.tools,undefined);assert.equal(payload.max_tokens,500);
+ await assert.rejects(summarize({turns:[{role:'user',text:'测试'}]}),/summary-invalid/);assert.equal(payload.tools,undefined);assert.equal(payload.max_tokens,1000);
 });
 
 test('same status receipt updates after a delayed start; close never posts a second status',async()=>{
  let finishSend;const edits=[],sent=[],errors=[];
  const gateway={request:async(method,a)=>{if(method==='send'){sent.push(a);if(sent.length===1)return new Promise(r=>finishSend=r);return {messageId:'summary'};}edits.push(a);return {ok:true,output:{details:{ok:true,messageId:a.args.messageId}}};}};
  const calls=createConversationCalls({gateway,publicOrigin:'https://phone.example',audit:e=>errors.push(e)}),call=calls.begin(binding,target,'fast');call.ready();call.close();finishSend({messageId:'original'});await calls.flush();
- assert.equal(sent.length,2);assert.equal(edits.length,1);assert.equal(edits[0].args.messageId,'original');assert.match(edits[0].args.card.body.elements[0].content,/通话已结束/);assert.equal(errors.filter(e=>e.type==='call.report-error'&&e.stage.startsWith('status')).length,0);
+ assert.equal(sent.length,2);assert.equal(edits.length,1);assert.equal(edits[0].args.messageId,'original');assert.match(edits[0].args.card.body.elements[0].content,/V电话通话已结束/);assert.equal(errors.filter(e=>e.type==='call.report-error'&&e.stage.startsWith('status')).length,0);
 });
 test('failed status edit is recorded without duplicate notification or losing the summary',async()=>{
  const sent=[],audit=[];const calls=createConversationCalls({gateway:{request:async(m,a)=>{if(m==='send'){sent.push(a);return {messageId:'owned'};}return {ok:false,error:{message:'denied'}};}},publicOrigin:'https://phone.example',audit:e=>audit.push(e)});
@@ -50,8 +50,8 @@ test('connected status uses the same receipt for styling and hangup, including a
  const sent=[],edits=[];let first=true;
  const gateway={request:async(method,a)=>{if(method==='send'){sent.push(a);return {messageId:'owned-card'};}edits.push(a);if(first){first=false;throw Object.assign(Error('request timed out'),{code:'TIMEOUT'});}return {ok:true,output:{details:{ok:true,messageId:a.args.messageId}}};}};
  const calls=createConversationCalls({gateway,publicOrigin:'https://phone.example'}),call=calls.begin(binding,target,'connected');call.ready();await calls.flush();
- assert.equal(edits.length,2);assert.deepEqual(edits[0],edits[1]);assert.match(edits[1].args.card.body.elements[0].content,/正在通话/);assert.equal(edits[1].args.card.body.elements[0].text_size,'notation');
- call.close();await calls.flush();assert.equal(sent.length,2);assert.equal(edits.length,3);assert.ok(edits.every(a=>a.args.messageId==='owned-card'));assert.match(edits[2].args.card.body.elements[0].content,/通话已结束/);
+ assert.equal(edits.length,2);assert.deepEqual(edits[0],edits[1]);assert.match(edits[1].args.card.body.elements[0].content,/V正在电话通话/);assert.equal(edits[1].args.card.body.elements[0].text_size,'notation');
+ call.close();await calls.flush();assert.equal(sent.length,2);assert.equal(edits.length,3);assert.ok(edits.every(a=>a.args.messageId==='owned-card'));assert.match(edits[2].args.card.body.elements[0].content,/V电话通话已结束/);
 });
 test('live counter uses elapsed time; a slow tick cannot overwrite ended duration or leave a timer',async()=>{
  let at=1000,slow=false,release;const edits=[],scheduled=new Map();let timerId=0;
@@ -60,6 +60,25 @@ test('live counter uses elapsed time; a slow tick cannot overwrite ended duratio
  const call=calls.begin(binding,target,'timer');call.ready();await calls.flush();assert.match(edits[0],/00:00/);assert.equal(scheduled.size,1);
  const [id,tick]=[...scheduled][0];scheduled.delete(id);at=3500;await tick.fn();assert.match(edits.at(-1),/00:02/);assert.equal(scheduled.size,1);
  const [nextId,next]=[...scheduled][0];scheduled.delete(nextId);at=6000;slow=true;const inFlight=next.fn();assert.ok(release);at=62000;call.close();assert.doesNotMatch(edits.at(-1),/已结束/);
- release();await inFlight;await calls.flush();assert.match(edits.at(-1),/通话已结束 · 1 分 1 秒/);assert.equal(scheduled.size,0);
+ release();await inFlight;await calls.flush();assert.match(edits.at(-1),/V电话通话已结束 · 1 分 1 秒/);assert.equal(scheduled.size,0);
  const count=edits.length;await next.fn();assert.equal(edits.length,count);
+});
+
+
+test('short summaries request low reasoning and retry a timeout once without losing input',async()=>{
+ const requests=[];let waits=0;
+ const summarize=callSummarizerFromEnv({XAI_API_KEY:'fixture',VOICE_CALL_SUMMARY_MODEL:'grok-4.7'},{wait:async()=>{waits++;},fetchImpl:async(_,options)=>{
+  requests.push(JSON.parse(options.body));if(requests.length===1)throw Object.assign(Error('provider timeout'),{name:'TimeoutError'});
+  return {ok:true,json:async()=>({choices:[{finish_reason:'stop',message:{content:'我把刚才电话的重点整理好了。'}}]})};
+ }});
+ assert.equal(await summarize({turns:[{role:'user',text:'请整理通话要点'}]}),'我把刚才电话的重点整理好了。');
+ assert.equal(requests.length,2);assert.equal(waits,1);assert.equal(requests[0].reasoning_effort,'low');
+ assert.deepEqual(requests[0].messages,requests[1].messages);assert.equal(requests[1].tools,undefined);
+});
+test('summary failures are bounded and permanent errors are not retried',async()=>{
+ for(const status of [401,503]){
+  let requests=0;const summarize=callSummarizerFromEnv({XAI_API_KEY:'fixture',VOICE_CALL_SUMMARY_MODEL:'grok-4.7'},{wait:async()=>{},fetchImpl:async()=>{requests++;return{ok:false,status};}});
+  await assert.rejects(summarize({turns:[{role:'user',text:'测试'}]}),e=>e.message==='summary-http-'+status&&e.attempts===(status===401?1:2));
+  assert.equal(requests,status===401?1:2);
+ }
 });

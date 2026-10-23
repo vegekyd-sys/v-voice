@@ -114,26 +114,27 @@ test('authenticated entry returns safe conversation label and passes only server
  assert.equal(call.args.sessionBound,true);assert.equal(call.args.sessionKey,entries[0].sessionKey);
 });
 
-test('reply sync is enabled by private entry only; native final goes to that exact bot and session',async t=>{
- const enabled=entries.map(e=>({...e,replySync:true}));
- const f=await fixture(t,{entries:enabled,feishuAccounts:{accounts:{lab:{appId:'existing-account'}}}}),cookie=await f.login(entries[0]);
- const first=await(await f.request(entries[0].id,'session',cookie,{replyTarget:{to:'oc_foreign',accountId:'other'}})).json();
- await f.request(entries[0].id,'offer',cookie,{voiceSessionId:first.voiceSessionId,sdp:'v=0\r\n'});
- await f.request(entries[0].id,'call-control-input',cookie,{voiceSessionId:first.voiceSessionId,revision:1,turnId:'u1',text:'说明计划',final:true});
+for(const kind of ['group','dm'])test(`${kind} call uses lifecycle cards and summary in its exact bot/session, without per-turn cards`,async t=>{
+ const scopedEntries=entries.map((e,i)=>i===0&&kind==='dm'?{...e,kind:'dm',sessionKey:'agent:makaron:feishu:direct:ou_alice'}:e);
+ const enabled=scopedEntries.map(e=>({...e,replySync:true}));
+ const f=await fixture(t,{entries:enabled,feishuAccounts:{accounts:{lab:{appId:'existing-account'}}}}),cookie=await f.login(scopedEntries[0]);
+ const first=await(await f.request(scopedEntries[0].id,'session',cookie,{replyTarget:{to:'oc_foreign',accountId:'other'}})).json();
+ await f.request(scopedEntries[0].id,'offer',cookie,{voiceSessionId:first.voiceSessionId,sdp:'v=0\r\n'});
+ await f.request(scopedEntries[0].id,'call-control-input',cookie,{voiceSessionId:first.voiceSessionId,revision:1,turnId:'u1',text:'说明计划',final:true});
  const event={event:'talk.event',payload:{voiceSessionId:first.voiceSessionId,talkEvent:{type:'output.text.done',responseId:'r1',payload:{text:'完整回答，只属于这通电话。'}}}};
  f.bridge.emit(event);f.bridge.emit(event);
- await f.request(entries[0].id,'close',cookie,first);
+ await f.request(scopedEntries[0].id,'close',cookie,first);
  for(let i=0;f.bridge.releaseReadiness().backgroundTasks&&i<100;i++)await new Promise(r=>setTimeout(r,2));
  const sent=f.calls.filter(c=>c.method==='send');assert.equal(sent.length,2);
- assert.equal(JSON.parse(sent[0].args.message).body.elements[0].content,'正在通话 · 00:00');const card=JSON.parse(sent[1].args.message);assert.equal(card.header.title.content,'通话总结');
- for(const row of sent){assert.equal(row.args.to,'oc_room_a');assert.equal(row.args.accountId,'lab');assert.equal(row.args.sessionKey,entries[0].sessionKey);}
- const edited=f.calls.filter(c=>c.method==='tools.invoke');assert.ok(edited.length);for(const row of edited){assert.equal(row.args.args.messageId,'om_fixture');assert.equal(row.args.args.target,'oc_room_a');assert.equal(row.args.args.accountId,'lab');}assert.match(edited.at(-1).args.args.card.body.elements[0].content,/通话已结束/);
+ assert.equal(JSON.parse(sent[0].args.message).body.elements[0].content,'V正在电话通话 · 00:00');const card=JSON.parse(sent[1].args.message);assert.equal(card.header.title.content,'通话总结');
+ for(const row of sent){assert.equal(row.args.to,scopedEntries[0].sessionKey.split(':').at(-1));assert.equal(row.args.accountId,'lab');assert.equal(row.args.sessionKey,scopedEntries[0].sessionKey);}
+ const edited=f.calls.filter(c=>c.method==='tools.invoke');assert.ok(edited.length);for(const row of edited){assert.equal(row.args.args.messageId,'om_fixture');assert.equal(row.args.args.target,scopedEntries[0].sessionKey.split(':').at(-1));assert.equal(row.args.args.accountId,'lab');}assert.match(edited.at(-1).args.args.card.body.elements[0].content,/V电话通话已结束/);
  const id=new URL(card.body.elements.at(-1).behaviors[0].default_url).searchParams.get('call');
- const report=await(await f.request(entries[0].id,'calls/'+id,cookie)).json();assert.deepEqual(report.turns.map(t=>t.text),['说明计划','完整回答，只属于这通电话。']);
- const foreignCookie=await f.login(entries[1]);assert.equal((await f.request(entries[1].id,'calls/'+id,foreignCookie)).status,404);
+ const report=await(await f.request(scopedEntries[0].id,'calls/'+id,cookie)).json();assert.deepEqual(report.turns.map(t=>t.text),['说明计划','完整回答，只属于这通电话。']);
+ const foreignCookie=await f.login(scopedEntries[1]);assert.equal((await f.request(scopedEntries[1].id,'calls/'+id,foreignCookie)).status,404);
  f.bridge.emit(event);assert.equal(f.calls.filter(c=>c.method==='send').length,2);
- const direct=await f.request(entries[0].id,'session',cookie,{model:'seeduplex',replySync:false,replyTarget:{to:'oc_foreign'}});assert.equal(direct.status,200);
- assert.equal(f.calls.find(c=>c.method==='direct.reserve').args.replyTarget.to,'oc_room_a');
+ const direct=await f.request(scopedEntries[0].id,'session',cookie,{model:'seeduplex',replySync:false,replyTarget:{to:'oc_foreign'}});assert.equal(direct.status,200);
+ assert.equal(f.calls.find(c=>c.method==='direct.reserve').args.replyTarget.to,scopedEntries[0].sessionKey.split(':').at(-1));
 });
 
 for(const model of ['seeduplex','grok','gpt-live'])test(`legacy personal ${model} shares reply routing without changing its session or tool identity`,async t=>{

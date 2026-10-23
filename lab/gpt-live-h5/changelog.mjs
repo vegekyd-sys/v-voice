@@ -1,10 +1,12 @@
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
 export const SESSION_REPLY_CANDIDATE_UPDATE = {
-  version:'voice-session-call.20261023.6',date:'2026-10-23',
-  title:'通话总结与 iOS 会话绑定（候选）',status:'candidate-validation',
+  version:'voice-session-call.20261023.7',date:'2026-10-23',
+  title:'私聊通话体验与摘要修复（候选）',status:'candidate-validation',
   items:[
-    '群电话用灰色小字状态卡显示通话计时，结束后原地保留总时长。',
+    '私聊和群聊统一为通话状态与结束纪要，不再逐轮刷问答卡。',
+    '通话提示改为「V正在电话通话」，结束后原地显示「V电话通话已结束」与总时长。',
+    '短通话摘要采用低推理强度，临时失败自动重试一次；完整对话始终保留。',
     'V 会像助理整理会议纪要一样，以第一人称开场归纳重点和结论；总结卡不再重复时长与提问次数。',
     '网页右上角 iOS App 入口可打开 App 设置并自动填好绑定链接；已绑定同一会话可直接继续。',
     '飞书登录可保持 30 天，服务更新不再导致重复授权；首次使用仍需确认身份。',
