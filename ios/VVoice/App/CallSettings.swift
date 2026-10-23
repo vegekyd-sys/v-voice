@@ -38,7 +38,7 @@ struct SettingsView: View {
                                     working = false
                                 }
                             }.disabled(working || link.isEmpty)
-                        }
+                        }.buttonStyle(.borderless)
                         if !feedback.isEmpty { Text(feedback).font(.footnote).foregroundStyle(.secondary).accessibilityIdentifier("bindingFeedback") }
                     }
                 } header: { Text(call.bound ? "当前会话" : "绑定一个会话") } footer: {
