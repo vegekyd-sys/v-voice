@@ -1,6 +1,6 @@
 {
   "version": "voice-caller-identity.20261024.1",
-  "status": "release-prepared",
+  "status": "deployed",
   "platformIntegrationRequired": false,
   "gatewayRestartRequired": false,
   "targets": [
@@ -10,5 +10,20 @@
   "candidateTestedCommit": "c2c2df5381cfa6c05325c2385c9ebb1ede4d2b61",
   "threeModelSyntheticSpeechAcceptance": true,
   "nativeAppInstallRequired": false,
-  "physicalAudioAcceptance": "not claimed"
+  "physicalAudioAcceptance": "not claimed",
+  "deployedCommit": "04d1022370ff2caff99a65c81e5051b8bad59425",
+  "filesSha256": "5969b642b2e263c3274b02da6b7afcf33c4f7b58d8de78f3acced3abc99b77b8",
+  "verifiedFiles": 226,
+  "productionReadyAt": "2026-10-24T04:40:15+08:00",
+  "rollbackCommit": "b0717249e8993e5685301e541b5b5263646a4725",
+  "verification": {
+    "bothServerArtifactsMatch": true,
+    "bothReadyAndAdmissionOpen": true,
+    "gatewayProcessAndConfigUnchanged": true,
+    "homepageChangelogVisible": true,
+    "accountLinkBelowDial": true,
+    "fivePublicHttpAssetsMatch": true,
+    "guestNoAccountLabel": true,
+    "productionPaidCallsStarted": 0
+  }
 }
