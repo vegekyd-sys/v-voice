@@ -1,3 +1,8 @@
+## 2026-10-24 — Quiet iPhone call start
+
+- Recognize verified iOS device grants on HTTP and fast-socket dialing. Skip the live Feishu status card for App calls, including Action Button, while preserving transcript storage and the hangup summary.
+- Browser calls retain the live timer. No native App install, Gateway change, or chat notification setting change is required.
+
 ## 2026-10-24 — iPhone handoff dialog production release
 
 - Ship PR #105 on the existing production baseline: a compact phone illustration, explicit destination conversation, and one primary “在 iPhone 上继续” action.

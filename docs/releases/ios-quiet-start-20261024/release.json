@@ -1,0 +1,7 @@
+{
+  "version": "voice-ios-quiet-start.20261024.1",
+  "baseline": "979035347ebc1f29db12ae0f92c416a1f96be3bd",
+  "scope": "Suppress the live Feishu status card for verified iOS App calls; preserve the end summary and transcript",
+  "nativeInstallRequired": false,
+  "deployment": {"status": "pending"}
+}
