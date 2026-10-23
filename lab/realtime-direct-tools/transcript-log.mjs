@@ -41,7 +41,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     const owner=owners.get(id)??(/^(?:task\.delivery-|backend\.|call\.report-)/.test(event.type)?closedOwners.get(id):null);if(!owner)return false;
     if(event.type==='call.report-error'){
       if(!/^[a-f0-9-]{36}$/u.test(event.reportId??'')||!['summary','save','status-tick','status-start','status-ended','finish'].includes(event.stage))return false;
-      const code=/^(?:summary-(?:http-\d{3}|invalid|context-limit|unavailable|timeout|network)|call-report-operation-failed)$/u.test(event.error??'')?event.error:'call-report-operation-failed';
+      const code=/^(?:summary-(?:http-\d{3}|invalid|context-limit|unavailable|timeout|network)|call-status-(?:target|update)-unconfirmed|call-report-operation-failed)$/u.test(event.error??'')?event.error:'call-report-operation-failed';
       return enqueue({...owner,type:event.type,reportId:event.reportId,stage:event.stage,error:code});
     }
     if(event.type==='call.connection-stage'){
