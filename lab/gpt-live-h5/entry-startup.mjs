@@ -17,6 +17,25 @@ export function publishVoiceTiming() {
     ttfbMs: nav ? Math.round(nav.responseStart * 10) / 10 : null,
     fcpMs: fcp ? Math.round(fcp.startTime * 10) / 10 : null, marks,
   });
+  try {
+    const profile=JSON.parse(window.sessionStorage.getItem('voice-entry-profile')??'null');
+    if(profile&&Date.now()-profile.startedAt<120000){
+      const ready=marks.find(m=>m.name==='voice.dial.ready');
+      document.documentElement.dataset.voiceLoginTiming=JSON.stringify({...profile,...(ready?{totalToDialMs:Math.round(performance.timeOrigin+ready.ms-profile.startedAt)}:{})});
+      if(ready){
+        window.sessionStorage.removeItem('voice-entry-profile');
+        const stages=profile.stages.map(({name,ms})=>({name,ms}));
+        const server={};
+        for(const part of (profile.stages.find(s=>s.name==='identity.confirmed')?.serverTiming??'').split(',')){
+          const match=/^\s*(app_token|code_exchange|user_info|conversation);dur=([0-9.]+)\s*$/u.exec(part);
+          if(match)server[match[1]]=Number(match[2]);
+        }
+        // Aggregate timing only. Never send codes, identities, URLs or content.
+        void fetch('./api/entry-timing',{method:'POST',headers:{'content-type':'application/json'},keepalive:true,
+          body:JSON.stringify({totalToDialMs:Math.round(performance.timeOrigin+ready.ms-profile.startedAt),stages,server})}).catch(()=>{});
+      }
+    }
+  } catch {}
 }
 export function markVoiceTiming(name) {
   performance.mark?.(name);
