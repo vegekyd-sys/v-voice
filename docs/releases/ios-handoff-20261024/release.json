@@ -5,5 +5,32 @@
   "scope": "Shared H5 iPhone handoff dialog and release notes",
   "unrelatedMultiuserCandidateIncluded": false,
   "nativeAudioCandidateIncluded": false,
-  "deployment": "pending"
+  "deployment": {
+    "status": "verified",
+    "sourceCommit": "979035347ebc1f29db12ae0f92c416a1f96be3bd",
+    "filesSha256": "27f1c21134fdaf69255f19b1899f991a80c82e202e5ebf93836105709e42794e",
+    "fleetReceipt": "20261024-003034-956ebc5f",
+    "matrixSha256": "9d23a3a34e56cb192b10d217632cf006a5d5bb2b6afdac528d0ff4a01e22ff28",
+    "bothNodesReady": true,
+    "gatewayIdentityUnchanged": true,
+    "rollbackCommit": "2002e249d5566315b6826a738d00015c719a1608"
+  },
+  "validation": {
+    "integratedTests": 837,
+    "isolatedSourceCI": 39986930113,
+    "integratedCI": [
+      39987003610,
+      39987092023
+    ],
+    "mainCI": 39987213308,
+    "conclusion": "success",
+    "productionBrowser": [
+      "dialog rendered",
+      "correct destination conversation",
+      "real handoff link prepared",
+      "install disclosure expanded",
+      "homepage changelog visible"
+    ],
+    "phoneAudioValidation": "Separate PR106 candidate; not included in this server release"
+  }
 }
