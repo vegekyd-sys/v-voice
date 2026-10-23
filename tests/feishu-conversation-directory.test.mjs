@@ -153,13 +153,13 @@ test('wrong browser identity gets a safe recovery page and explicit retry can re
   const signedIn=await finish(await get('/voice/feishu?phone='+phone)),oldCookie=cookie(signedIn);
   member='ou_bob';
   const denied=await get('/voice/feishu?phone='+phone,oldCookie),html=await denied.text();
-  assert.equal(denied.status,403);assert.match(html,/请切换到这个会话的飞书身份/);
+  assert.equal(denied.status,200);assert.equal(denied.headers.get('set-cookie'),null);assert.match(html,/请切换到这个会话的飞书身份/);
   assert.match(html,/外部联系人/);assert.match(html,/retry=1/);
   for(const value of ['ou_alice','ou_bob','private-provider-token','private-code','private gateway detail'])assert(!html.includes(value));
   const retry=await get('/voice/feishu?phone='+phone+'&retry=1',oldCookie);
   assert.equal(new URL(retry.headers.get('location')).searchParams.get('prompt'),'consent');
   const wrongCallback=await finish(retry),callbackHtml=await wrongCallback.text();
-  assert.equal(wrongCallback.status,403);assert.match(callbackHtml,/retry=1/);
+  assert.equal(wrongCallback.status,200);assert.equal(wrongCallback.headers.get('set-cookie'),null);assert.match(callbackHtml,/retry=1/);
   assert(!callbackHtml.includes('private-code'));
   subject='ou_bob';const corrected=await finish(await get('/voice/feishu?phone='+phone+'&retry=1',oldCookie));
   assert.equal(corrected.status,302);

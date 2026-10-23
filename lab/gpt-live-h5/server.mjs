@@ -232,7 +232,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         } catch (error) {
           const failure=feishuPhoneLoginFailure(error);
           console.warn(JSON.stringify({type:'voice.feishu-login-error', ...failure}));
-          res.writeHead(403,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','referrer-policy':'no-referrer'});
+          // Login recovery is a public document; protected APIs still reject access.
+          // Embedded browsers may replace a 403 document with their own error page.
+          res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','referrer-policy':'no-referrer'});
           res.end(feishuPhoneLoginErrorPage({reason:failure.reason,phone:error.recoveryPhone??url.searchParams.get('phone'),basePath}));
           return;
         }

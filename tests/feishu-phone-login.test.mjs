@@ -127,7 +127,8 @@ test('real HTTP login gates protected phone APIs, preserves legacy entry and nev
   assert.equal(defaultEntry.status,302);assert.equal(defaultEntry.headers.get('location'),'/voice/?phone='+records[0].id);
   const signedOut=await get('/voice/feishu?phone='+records[1].id);
   assert.equal(signedOut.status,302);assert.equal(new URL(signedOut.headers.get('location')).hostname,'accounts.feishu.cn');
-  assert.equal((await get('/voice/feishu?phone='+records[2].id,actorCookie)).status,403);
+  const unavailable=await get('/voice/feishu?phone='+records[2].id,actorCookie);
+  assert.match(await unavailable.text(),/暂时无法打开电话/);assert.equal(unavailable.headers.get('set-cookie'),null);
   const legacy=await get('/voice/api/access','',{access:'legacy'.repeat(8)});
   assert.equal(legacy.status,200);
   assert.equal(calls.length,0);
