@@ -310,8 +310,9 @@ function SessionSheet({state,actions}) {
    {value.error&&<p role="alert" className="session-error">{value.error}</p>}
    {value.kind==='binding'?<>
     <p>在 App 中继续<strong>{state.conversation?.name??'当前会话'}</strong>，沿用这里的上下文。</p>
-    <section className="binding-choice"><h3>已经安装 V Voice</h3><p className="session-muted">打开后，绑定链接会自动填入设置。确认绑定即可；已经绑定这个会话可以继续使用。</p>
-     {value.appUrl?<a className="session-primary" href={value.appUrl}>打开 V Voice 绑定</a>:<button type="button" className="session-primary" disabled={value.busy} onClick={actions.createBinding}>{value.busy?'正在准备…':'准备绑定'}</button>}
+    <section className="binding-choice"><h3>已经安装 V Voice</h3><p className="session-muted">跳转后，链接会自动填入 App 设置。请点<strong>「验证并绑定」</strong>，看到当前会话显示<strong>「{value.conversation?.name??state.conversation?.name??'当前会话'}」</strong>后再拨号。</p>
+     {value.appUrl?<a className="session-primary" href={value.appUrl}>打开 App，确认绑定</a>:<button type="button" className="session-primary" disabled={value.busy} onClick={actions.createBinding}>{value.busy?'正在准备…':'准备绑定'}</button>}
+     <p className="session-muted">只打开 App 尚未切换会话；未完成绑定时，App 仍使用原来的会话。</p>
     </section>
     <section className="binding-choice"><h3>还没有安装</h3>
      {value.appDownload?<a className="binding-download" href={value.appDownload.url} target="_blank" rel="noopener noreferrer">{value.appDownload.label} ↗</a>:<p className="session-muted">TestFlight 下载即将开放。你可以先继续使用网页电话。</p>}

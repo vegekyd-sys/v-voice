@@ -29,6 +29,13 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    date: '2026-10-23', title: '群电话入口与 App 会话切换',
+    items: [
+      '群电话入口按各群独立配置，通话上下文和纪要返回对应群聊。',
+      'iOS 绑定页明确提示在 App 点「验证并绑定」，并核对目标会话名称，避免跳转后仍使用原会话。',
+    ],
+  },
+  {
     date: '2026-10-23', title: '飞书会话电话与通话纪要',
     items: [
       '从私聊顶部电话标签或群内电话入口拨号，继续对应私聊或群聊的上下文；各群使用自己的独立入口。',
