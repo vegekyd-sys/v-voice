@@ -1,7 +1,7 @@
-## Unreleased — shared terminal behavior
+## 2026-10-24 — Shared terminal behavior
 
 - Share natural search acknowledgments, native dialogue policy, background progress and result recovery across Web, iOS, StackChan and speakers. Keep microphone routing, playback, display and physical-device capabilities in adapters.
-- Add receiver-matrix regression coverage and include shared lookup recovery in the fleet artifact. Candidate only; real device and shared integration acceptance remain required.
+- Add receiver-matrix regression coverage and include shared lookup recovery in the fleet artifact. Candidate regression verified; physical-device audio acceptance is separate.
 
 ## 2026-10-24 — Quiet iPhone call start
 

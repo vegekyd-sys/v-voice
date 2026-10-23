@@ -25,3 +25,5 @@ Web 与 iOS 的 direct-voice 入口，以及 StackChan/xiaozhi、原生音响入
 - VLab 独立 candidate 复验共享会话、设备 WebSocket 与查询恢复；结果另见候选验收记录。此阶段不占用共享集成租约、不重启 Gateway、不拨号。
 - 本次触及 Voice 会话行为，需要上线前共享 VLab 集成及真实设备验收。按照项目流程，先交付独立分支，由 Tianyi 决定合入和上线。
 - 沿用 `release:fleet` 的双节点同产物约束；新 recovery 模块已加入打包清单。正式发布时把候选登记中的用户可见说明加入 `lab/gpt-live-h5/changelog.mjs`，重新生成并校验 iOS shell，更新发布登记，再验证两个实际运行节点的产物 hash。候选文案现在不加入已发布首页列表。
+
+2026-10-24 发布授权补充：Tianyi 明确允许以 Candidate 替代共享 VLab 集成验收，通过后合入并发布；保持现有通话不中断。生产产物基于 681a349，只包含本次终端统一与首页发布说明，不包含 main 上独立多账号候选。
