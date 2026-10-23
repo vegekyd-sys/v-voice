@@ -124,13 +124,13 @@ test('reply sync is enabled by private entry only; native final goes to that exa
  f.bridge.emit(event);f.bridge.emit(event);
  await f.request(entries[0].id,'close',cookie,first);
  for(let i=0;f.bridge.releaseReadiness().backgroundTasks&&i<100;i++)await new Promise(r=>setTimeout(r,2));
- const sent=f.calls.filter(c=>c.method==='send');assert.equal(sent.length,2);
- assert.equal(sent[0].args.message,'📞 开始打电话');const card=JSON.parse(sent[1].args.message);assert.equal(card.header.title.content,'📞 通话结束');
+ const sent=f.calls.filter(c=>c.method==='send');assert.equal(sent.length,3);
+ assert.equal(sent[0].args.message,'📞 开始打电话');const card=JSON.parse(sent[2].args.message);assert.equal(card.header.title.content,'通话总结');
  for(const row of sent){assert.equal(row.args.to,'oc_room_a');assert.equal(row.args.accountId,'lab');assert.equal(row.args.sessionKey,entries[0].sessionKey);}
  const id=new URL(card.body.elements.at(-1).behaviors[0].default_url).searchParams.get('call');
  const report=await(await f.request(entries[0].id,'calls/'+id,cookie)).json();assert.deepEqual(report.turns.map(t=>t.text),['说明计划','完整回答，只属于这通电话。']);
  const foreignCookie=await f.login(entries[1]);assert.equal((await f.request(entries[1].id,'calls/'+id,foreignCookie)).status,404);
- f.bridge.emit(event);assert.equal(f.calls.filter(c=>c.method==='send').length,2);
+ f.bridge.emit(event);assert.equal(f.calls.filter(c=>c.method==='send').length,3);
  const direct=await f.request(entries[0].id,'session',cookie,{model:'seeduplex',replySync:false,replyTarget:{to:'oc_foreign'}});assert.equal(direct.status,200);
  assert.equal(f.calls.find(c=>c.method==='direct.reserve').args.replyTarget.to,'oc_room_a');
 });

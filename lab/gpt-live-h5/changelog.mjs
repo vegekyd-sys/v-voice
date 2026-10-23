@@ -1,7 +1,7 @@
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
 export const SESSION_REPLY_CANDIDATE_UPDATE = {
-  version:'voice-session-call.20261023.1',date:'2026-10-23',
+  version:'voice-session-call.20261023.2',date:'2026-10-23',
   title:'通话总结与 iOS 会话绑定（候选）',status:'candidate-validation',
   items:[
     '群电话接通时轻提示，结束后显示时长和简短总结，点击即可回看完整对话。',
