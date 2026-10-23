@@ -286,21 +286,22 @@ for(const nativePlaybackPolicy of ['provider','assisted'])test(nativePlaybackPol
  const played=f.pump(24000).filter(x=>x!==0);assert(played.length>0);assert(played.every(x=>x===-.25));assert.equal(f.relay.stats.clears,1);
 });
 
-test('assisted pause rejects low TV bursts and native onset alone, but yields for sustained foreground speech',()=>{
- const p=new NativeSpeechPause({minRms:.035,consecutiveOnset:true,trustNativeOnset:false});
+test('assisted pause needs both local speech and service confirmation',()=>{
+ const p=new NativeSpeechPause({minRms:.035,consecutiveOnset:true,trustNativeOnset:false,requireConfirmation:true});
  const quiet=new Int16Array(480).buffer,background=()=>{const a=new Int16Array(voiceFrame());for(let i=0;i<a.length;i++)a[i]*=.2;return a.buffer;};
- p.nativeStarted(0);assert.equal(p.held,false);
+ p.nativeStarted(0);assert.equal(p.held,false);p.nativeStopped(1,false);
  for(let i=0;i<100;i++)assert.equal(p.observe(i%6===5?quiet:background(),true,i*20),false);
- for(let i=0;i<7;i++)p.observe(voiceFrame(),true,2000+i*20);assert.equal(p.held,true);
+ for(let i=0;i<7;i++)p.observe(voiceFrame(),true,2000+i*20);assert.equal(p.held,false);p.nativeStarted(2140);assert.equal(p.held,true);
  p.ignored();assert.equal(p.observe(voiceFrame(),true,2160),false);
  for(let i=0;i<20;i++)p.observe(quiet,true,2200+i*20);
- for(let i=0;i<7;i++)p.observe(voiceFrame(),true,2600+i*20);assert.equal(p.held,true);
+ for(let i=0;i<7;i++)p.observe(voiceFrame(),true,2600+i*20);assert.equal(p.held,false);p.nativeStarted(2740);assert.equal(p.held,true);
 });
 test('assisted ignored-turn release is scoped to the preserved response',async t=>{
  const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true,nativePlaybackPolicy:'assisted'}});
  f.event({type:'audio',responseId:'story',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(24000,8192).buffer).toString('base64')});
  const mic=f.nodes.find(n=>n.name==='v-direct-mic');for(let i=0;i<8;i++)mic.port.onmessage({data:voiceFrame()});
- assert.equal(f.relay.stats.nativePauses,1);
+ assert.equal(f.relay.stats.nativePauses,0);
+ f.event({type:'input.speech.started'});assert.equal(f.relay.stats.nativePauses,1);
  f.event({type:'input.speech.ignored',preservedResponseId:'stale'});assert.equal(f.relay.stats.nativeResumes,0);
  f.event({type:'input.speech.ignored',preservedResponseId:'story'});assert.equal(f.relay.stats.nativeResumes,1);
  assert(f.pump(9600).some(x=>x===.25));assert.equal(f.relay.stats.clears,0);
@@ -361,4 +362,24 @@ test('recognized speech can still be ignored; failed or empty recognition remain
   p.ignored();assert.equal(p.observe(quiet,true,20020),false);
   p.reset();assert.equal(p.observe(quiet,true,20040),false);
  }
+});
+
+test('assisted sustained unconfirmed sound never pauses queued speech',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true,nativePlaybackPolicy:'assisted'}});
+ f.event({type:'audio',responseId:'story',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(24000,8192).buffer).toString('base64')});
+ const mic=f.nodes.find(n=>n.name==='v-direct-mic');
+ for(let i=0;i<3000;i++)mic.port.onmessage({data:voiceFrame()});
+ assert.equal(f.relay.stats.nativePauses,0);assert.equal(f.relay.stats.clears,0);
+ assert(f.pump(9600).some(x=>x===.25));
+});
+
+test('assisted service onset may precede local corroboration but cannot survive expiration or stop',()=>{
+ for(const delay of [0,3000]){
+  const p=new NativeSpeechPause({trustNativeOnset:false,requireConfirmation:true});p.nativeStarted(0);
+  for(let i=0;i<8;i++)p.observe(voiceFrame(),true,delay+i*20);
+  assert.equal(p.held,delay===0);
+ }
+ const p=new NativeSpeechPause({trustNativeOnset:false,requireConfirmation:true});p.nativeStarted(0);p.nativeStopped(10,false);
+ for(let i=0;i<8;i++)p.observe(voiceFrame(),true,20+i*20);
+ assert.equal(p.held,false);
 });

@@ -1,0 +1,58 @@
+{
+  "candidateSourceCommit": "f81ab420123176a5190ca1a2153ecdba4993148a",
+  "version": "1.0.0",
+  "build": 32,
+  "signedReleaseVerified": true,
+  "ipaSHA256": "1780a56f336e3feb9175ce3dda8e082600f0266699c83c3af41e2823657681c4",
+  "installedReadback": {
+    "version": "1.0.0",
+    "build": "32"
+  },
+  "idleLaunch": "success; authenticated status 200; no automatic call",
+  "installedAt": "2026-10-24T01:40:31.001754+08:00",
+  "coreTestsPassed": 45,
+  "webServiceTestsPassed": 50,
+  "finalNativeIntegration": {
+    "passed": 4,
+    "failed": 0
+  },
+  "physicalShortQuietSpeech": {
+    "input": "first second of fixed synthetic speech, amplitude scale 0.15",
+    "localHoldMS": 808,
+    "peakSpeechConfidence": 0.93,
+    "everyFrameBelowPreviousRMS": true
+  },
+  "physicalAcoustic": {
+    "durationSeconds": 16,
+    "capturedFrames": 808,
+    "selfInterruptions": 0,
+    "peakSpeechConfidence": 0.836,
+    "rawSamplesStored": false,
+    "rawSamplesUploaded": false
+  },
+  "physicalLiveModel": {
+    "result": "PASS",
+    "productionCallCoordinator": true,
+    "input": "fixed synthetic speech at physical capture cadence; interruption amplitude scale 0.15",
+    "continuousRenderMS": 16020,
+    "falsePauses": 0,
+    "queuedRenderStallMS": 0,
+    "localInterruptionMS": 817,
+    "observedInterruptionMS": 837,
+    "speechConfidence": 0.922,
+    "classificationAgeMS": 7,
+    "newAnswerVerified": true,
+    "hangupWithoutCrash": true
+  },
+  "physicalTestsBuildConfiguration": "Debug, same native source as signed Release",
+  "rollbackBuildsPreserved": [
+    31,
+    30
+  ],
+  "productionServiceChanged": false,
+  "productionServiceCommit": "9790353",
+  "userAcceptance": "accepted_by_Tianyi_2026-10-24: 现在很不错，现在这样。部署上线吧",
+  "humanFarFieldOrOverlappingSpeechAccepted": false,
+  "allNetworkStutterResolved": false,
+  "productionReleaseAuthorized": true
+}
