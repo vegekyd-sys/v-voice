@@ -16,3 +16,13 @@ The reported production call was recorded and closed after 89.128 seconds. Its a
 - Real mobile Feishu SDK end-to-end latency remains pending a phone opening. 2–3 seconds is a target, not an accepted measurement.
 
 889 Voice tests, 95 speaker tests and 11 release-controller tests passed. The exact generated H5 shell was checked. No paid model call or microphone recording was started for this correction. Production deployment and exact running commit are recorded separately.
+
+## Production receipt
+
+Both web and device nodes were deployed on 2026-10-24 at 05:24 CST from commit `78fd43e035b82754f16cc49016d8e4648781606f`, artifact SHA-256 `91d7344affc6530af3296ff86cb0ed4ddc32a338a30cb730c26ddfc824001eb6`. Both returned ready with admission released. The exact merge commit passed CI before deployment. Gateway PID, invocation, start time and configuration hash were unchanged. Previous commit `04d1022370ff2caff99a65c81e5051b8bad59425` and its launch/environment material remain available for rollback.
+
+Seven public files matched the packaged bytes, including the user-visible changelog and generated UI. The production browser showed the iOS App button. A fresh production binding was issued, redeemed and authorized without the browser OAuth cookie; status confirmed the verified actor and group. The test grant was then revoked through the browser, and its cookie subsequently returned 401. This verifies the server binding path, not a new physical iPhone call. Native Build 32 remains the accepted baseline.
+
+In the same desktop Chrome browser, one observation of the OAuth callback navigation to dial readiness improved from 2471.0 ms to 1718.7 ms (30.4%). The updated already-authenticated page took 1534.1 ms. These are single samples and exclude the mobile Feishu SDK path and time spent by a person at consent. Full mobile entry-to-dial 2–3 second acceptance remains pending.
+
+The previously stuck owned call card was updated through the verified message receipt to ended with 1 minute 29 seconds. The edit returned success; the message-read API exposed a fallback body, so a visual readback is not claimed. No new paid call was started.
