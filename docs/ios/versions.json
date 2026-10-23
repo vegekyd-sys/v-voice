@@ -652,8 +652,16 @@
   },
   "testFlightCandidate": {
     "build": 33,
-    "status": "packaging",
+    "status": "internal_testflight_available",
+    "sourceCommit": "f2a495dd4e71c22dfe9977c94ce132676b7ab1f1",
     "nativeBehaviorChanges": false,
-    "stableBaselineBuild": 32
+    "stableBaselineBuild": 32,
+    "record": "../releases/ios-testflight33-20261024/release.json",
+    "appStoreConnectAppID": "6826350407",
+    "buildID": "df8e243b-617b-43f8-ae33-fa1116b6e33e",
+    "processingState": "VALID",
+    "internalBuildState": "IN_BETA_TESTING",
+    "testersInvited": 1,
+    "installedViaTestFlight": false
   }
 }
