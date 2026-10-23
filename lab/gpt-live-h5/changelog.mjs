@@ -28,6 +28,14 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
   ],
 };
 export const VOICE_UPDATES = [
+  {
+    date: '2026-10-23', title: 'iPhone 拨号减少等待',
+    items: [
+      'iOS build 28 在支持的服务上通过一次连接完成豆包和 Grok 拨号，减少查询状态、创建通话与语音连接之间的等待。',
+      '工具目录和会话上下文同时准备；接通提示仍等到语音通道真正就绪，实际耗时受网络与模型响应影响。',
+      '取消拨号会清理本次连接；已有 App 与 GPT Live 继续使用原有连接方式。',
+    ],
+  },
   {version:'voice-phone-startup.20261023.2',date:'2026-10-23',title:'减少会话电话拨号等待',items:[
     '群聊和私聊电话改为只查询本次会话，避免每次拨号扫描整个会话库。',
     '仍实时确认会话存在、所属 Agent 与入口一致；不存在或不匹配的会话继续拒绝拨号。',

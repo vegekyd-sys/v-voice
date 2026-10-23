@@ -17,6 +17,7 @@ struct StoredBinding: Codable {
     var cookie: String
     var pendingVoiceID: String?
     var conversation: BoundConversation?
+    var nativeDialVersion: Int?
 }
 
 @MainActor final class BindingStore {
@@ -47,7 +48,7 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) { completionHandler(nil) }
     func urlSession(_ session: URLSession, task: URLSessionTask, didFinishCollecting metrics: URLSessionTaskMetrics) {
         let route = task.originalRequest?.url?.lastPathComponent ?? ""
-        guard ["status", "session", "close", "relay"].contains(route) else { return }
+        guard ["status", "session", "close", "relay", "dial"].contains(route) else { return }
         func ms(_ start: Date?, _ end: Date?) -> Int { guard let start, let end else { return -1 }; return Int(end.timeIntervalSince(start) * 1000) }
         guard let m = metrics.transactionMetrics.last else { return }
         let value = "route=\(route) total=\(Int(metrics.taskInterval.duration * 1000)) dns=\(ms(m.domainLookupStartDate,m.domainLookupEndDate)) tcp=\(ms(m.connectStartDate,m.connectEndDate)) tls=\(ms(m.secureConnectionStartDate,m.secureConnectionEndDate)) wait=\(ms(m.requestEndDate,m.responseStartDate)) body=\(ms(m.responseStartDate,m.responseEndDate)) reused=\(m.isReusedConnection)"
@@ -71,6 +72,8 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
     private(set) var record: StoredBinding?
     init(store: BindingStore, configuration: URLSessionConfiguration? = nil) { self.store = store; self.configuration = configuration; record = store.load() }
     var isBound: Bool { record != nil }
+    var supportsFastDial: Bool { record?.nativeDialVersion == 1 }
+    func disableFastDial() { guard var r = record else { return }; r.nativeDialVersion = nil; record = r; try? store.save(r) }
     func reloadIfAvailable() { if record == nil { record = store.load() } }
 
     @discardableResult func bind(link: String) async throws -> Bool {
@@ -93,6 +96,7 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
         r.conversation = r.conversation ?? conversation
         let status = try await raw("status", record: r)
         r.conversation = BoundConversation.read(status["conversation"]) ?? r.conversation
+        r.nativeDialVersion = status["nativeDialVersion"] as? Int
         // Commit only after the new session is fully authenticated; any failure preserves the old binding.
         try store.save(r); record = r
         return false
@@ -147,6 +151,10 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
         if timed { CallDiagnostics.record("http.response", code: "route=\(route) ms=\(Int(Date().timeIntervalSince(start)*1000)) status=\(http.statusCode)") }
         try validate(http.statusCode, data: data)
         guard data.count < 2_000_000, let value = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw VoiceError.protocolMismatch }
+        if route == "status", var current = self.record, current.binding == record.binding, current.cookie == record.cookie {
+            current.nativeDialVersion = value["nativeDialVersion"] as? Int
+            if current.nativeDialVersion != self.record?.nativeDialVersion { self.record = current; try? store.save(current) }
+        }
         return value
     }
     func call(_ route: String, body: [String: Any]? = nil, refresh: Bool = true) async throws -> [String: Any] {
@@ -191,6 +199,16 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
         var req = request("events", binding: r.binding, cookie: r.cookie)
         req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         req.timeoutInterval = 30
+        return req
+    }
+    func fastDialRequest(model: String, voice: String?) throws -> URLRequest {
+        guard let r = record else { throw VoiceError.unbound }
+        var req = request("dial", binding: r.binding, cookie: r.cookie)
+        var c = URLComponents(url: req.url!, resolvingAgainstBaseURL: false)!
+        c.scheme = r.binding.baseURL.scheme == "https" ? "wss" : "ws"
+        c.queryItems = (c.queryItems ?? []) + [URLQueryItem(name: "model", value: model), URLQueryItem(name: "dialVersion", value: "1"), URLQueryItem(name: "nativeRuntimeVersion", value: "1")]
+        if let voice { c.queryItems?.append(URLQueryItem(name: "voice", value: voice)) }
+        req.url = c.url; req.timeoutInterval = 60
         return req
     }
     func relayRequest(id: String, ticket: String) throws -> URLRequest {

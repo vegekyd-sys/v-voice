@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {request as httpRequest} from 'node:http';
 import {Readable} from 'node:stream';
+import WebSocket from 'ws';
 import {mkdtemp, readFile, rm, mkdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -24,7 +25,7 @@ async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'voice-ios-binding-http-'));
   t.after(() => rm(directory, {recursive: true, force: true}));
   const file = join(directory, 'grants.private.json'), calls = [], oauthRequests = [];
-  let serial = 0;
+  let serial = 0;const sockets=new Set();
   const bridge = createLiveH5Server({basePath: '/voice', publicOrigin: origin,
     accessToken: legacyAccess, conversationEntries: entries, iosBindingsFile: file,
     gateway: {request: async (method, args) => {
@@ -34,8 +35,8 @@ async function fixture(t) {
       return {ok: true};
     }},
     directVoice: {models: () => [], reserve: async args => {
-      calls.push({method: 'direct.reserve', args}); return {voiceSessionId: 'direct-' + (++serial), provider: args.model};
-    }, close: async () => {}, handleEvent: () => {}, dispose: async () => {}},
+      calls.push({method: 'direct.reserve', args}); return {voiceSessionId: 'direct-' + (++serial), provider: args.model,transport:'gateway-relay',relayTicket:'fixture'};
+    }, attach:(id,_ticket,ws)=>{sockets.add(ws);ws.on('close',()=>sockets.delete(ws));ws.send(JSON.stringify({type:'ready',voiceSessionId:id}));return true;}, close: async () => {}, handleEvent: () => {}, dispose: async () => {for(const ws of sockets)ws.terminate();}},
     feishuLogin: {appId: 'cli_bindingtest', appSecret: 'fixture-server-secret', actors: [actor],
       fetchImpl: async (url, init) => {
         oauthRequests.push({url, init});
@@ -90,7 +91,13 @@ async function fixture(t) {
     assert.ok(!jar.includes('v_feishu_phone'));
     return jar;
   };
-  return {api, login, issue, redeem, authorize, calls, oauthRequests, file};
+  const fast=(entry,jar)=>new Promise(resolve=>{
+    const ws=new WebSocket(`ws://127.0.0.1:${bridge.server.address().port}/voice/api/dial?phone=${entry.id}&model=seeduplex&dialVersion=1&nativeRuntimeVersion=1`,{headers:{host:new URL(origin).host,origin,cookie:jar},handshakeTimeout:1500});
+    t.after(()=>ws.terminate());
+    ws.on('message',raw=>{const v=JSON.parse(raw);if(v.type==='reservation')resolve({status:200,value:v,ws});});
+    ws.on('unexpected-response',(_,res)=>{res.resume();resolve({status:res.statusCode,ws});ws.terminate();});ws.on('error',()=>resolve({status:0,ws}));
+  });
+  return {api, login, issue, redeem, authorize, calls, oauthRequests, file, fast};
 }
 
 for (const entry of entries.slice(0, 2)) test(`OAuth-to-iOS HTTP handoff retains exact ${entry.kind} conversation for native and relay calls`, async t => {
@@ -171,4 +178,19 @@ test('device-grant persistence failure is unavailable, not an expired link or a 
   const retry = await f.issue(entry, browser);
   const recovered = await f.redeem(entry, retry.token);
   assert.deepEqual(recovered.conversation, {name: entry.displayName, kind: entry.kind});
+});
+
+
+test('fast socket revalidates the iOS device grant, exact entry and revocation',async t=>{
+ const f=await fixture(t),entry=entries[1],browser=await f.login(entry);
+ const handoff=await f.issue(entry,browser),grant=await f.redeem(entry,handoff.token),device=await f.authorize(entry,grant.deviceAccess);
+ assert.equal((await f.fast(entries[0],device)).status,401);
+ const accepted=await f.fast(entry,device);assert.equal(accepted.status,200);
+ assert.equal(f.calls.find(c=>c.method==='direct.reserve').args.sessionKey,entry.sessionKey);
+ accepted.ws.terminate();await new Promise(resolve=>setTimeout(resolve,10));
+ await f.api(entry,'close',device,{voiceSessionId:accepted.value.voiceSessionId});
+ const {devices}=await(await f.api(entry,'ios-binding',browser)).json();
+ assert.equal((await f.api(entry,'ios-binding/revoke',browser,{deviceId:devices[0].id})).status,200);
+ assert.equal((await f.fast(entry,device)).status,401);
+ assert.equal(f.calls.filter(c=>c.method==='direct.reserve').length,1);
 });

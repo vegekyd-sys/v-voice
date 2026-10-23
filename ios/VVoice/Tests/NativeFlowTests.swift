@@ -17,11 +17,11 @@ import VVoiceCore
         let (d, _) = try await URLSession.shared.data(from: base.appendingPathComponent("fixture/state"))
         return try JSONSerialization.jsonObject(with: d) as! [String: Any]
     }
-    private func client() async throws -> CallCoordinator {
+    private func client(audio: VoiceAudio = VoiceAudio()) async throws -> CallCoordinator {
         try await fixture("reset")
         let store = BindingStore(service: "com.versa.vvoice.tests.\(UUID().uuidString)")
         try store.save(StoredBinding(binding: VoiceBinding(testingBaseURL: base.appendingPathComponent("voice/")), cookie: "v_voice_access=fixture-cookie"))
-        let call = CallCoordinator(api: VoiceAPI(store: store)); call.sceneChanged(.active)
+        let call = CallCoordinator(api: VoiceAPI(store: store), audio: audio); call.sceneChanged(.active)
         addTeardownBlock { await call.end(); await MainActor.run { call.forget() } }
         return call
     }
@@ -39,6 +39,46 @@ import VVoiceCore
     private func documentAlerts() -> Int {
         let rows = (try? Data(contentsOf: lifecycleFile)).flatMap { try? JSONDecoder().decode([[String: String]].self, from: $0) } ?? []
         return rows.filter { $0["event"] == "island.attention.requested" && $0["code"] == "document" }.count
+    }
+    func testFastDialUsesOneConnectionAndKeepsCaptureMuteEndAndRedial() async throws {
+        let audio = VoiceAudio(), call = try await client(audio: audio)
+        try await fixture("fast-mode"); try await fixture("native-mode"); try await fixture("runtime-mode")
+        await call.refreshOptions(); call.model = .seeduplex
+        let before = try await stats()
+        try await call.startOrContinue()
+        XCTAssertTrue(call.active); XCTAssertTrue(audio.isRunning)
+        try await until { (try await self.stats())["inputFrames"] as? Int ?? 0 > 3 }
+        let first = try await stats()
+        XCTAssertEqual(first["fastDials"] as? Int, 1)
+        XCTAssertEqual(first["statusRequests"] as? Int, before["statusRequests"] as? Int)
+        XCTAssertEqual(first["sessionRequests"] as? Int, 0)
+        call.toggleMute(); XCTAssertTrue(call.muted); call.toggleMute()
+        await call.end(); XCTAssertFalse(audio.isRunning)
+        try await call.startOrContinue(); XCTAssertTrue(call.active)
+        let second = try await stats(); XCTAssertEqual(second["fastDials"] as? Int, 2)
+        XCTAssertEqual(second["sessionRequests"] as? Int, 0)
+    }
+    func testFastDialCancellationBeforeReservationDoesNotResurrectOrRedial() async throws {
+        let audio = VoiceAudio(), call = try await client(audio: audio); try await fixture("fast-mode"); await call.refreshOptions(); call.model = .seeduplex
+        try await fixture("slow-session", ["ms": 500])
+        let attempt = Task { try await call.startOrContinue() }
+        try await until { (try await self.stats())["fastDials"] as? Int == 1 }
+        await call.end(); _ = try? await attempt.value
+        try await until { (try await self.stats())["active"] is NSNull }
+        XCTAssertFalse(call.active); XCTAssertFalse(audio.isRunning)
+        let result = try await stats(); XCTAssertEqual(result["fastDials"] as? Int, 1); XCTAssertEqual(result["sessionRequests"] as? Int, 0)
+    }
+    func testFastDialRejectsWrongOwnerWithoutAutomaticSecondCall() async throws {
+        let audio = VoiceAudio(), call = try await client(audio: audio); try await fixture("fast-mode"); try await fixture("fast-wrong-owner"); await call.refreshOptions(); call.model = .seeduplex
+        do { try await call.startOrContinue(); XCTFail("Foreign ready must fail") }
+        catch { XCTAssertEqual(error as? VoiceError, .protocolMismatch) }
+        XCTAssertFalse(call.active); XCTAssertFalse(audio.isRunning)
+        let result = try await stats(); XCTAssertEqual(result["fastDials"] as? Int, 1); XCTAssertEqual(result["sessionRequests"] as? Int, 0)
+    }
+    func testFastDialExplicitUnsupportedEndpointFallsBackToLegacy() async throws {
+        let audio = VoiceAudio(), call = try await client(audio: audio); try await fixture("fast-mode"); await call.refreshOptions(); try await fixture("fast-reject"); call.model = .seeduplex
+        try await call.startOrContinue(); XCTAssertTrue(call.active)
+        let result = try await stats(); XCTAssertEqual(result["sessions"] as? Int, 1); XCTAssertEqual(result["sessionRequests"] as? Int, 1)
     }
     func testBothIslandLayoutsFollowPlaybackAndKeepReportEntry() async throws {
         let call = try await client()

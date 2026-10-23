@@ -1,3 +1,9 @@
+## 2026-10-23 — One-connection native phone dial
+
+- Add an authenticated, versioned WebSocket dial path that shares the existing exact-session check, admission lock, rate limits and per-conversation ownership with HTTP dialing. Reserve and attach on the same connection; cancellation releases only its own reservation.
+- iOS build 28 remembers the advertised capability per binding, accepts the owned reservation before provider events, and waits for real provider readiness. Definite pre-reservation authorization/unsupported-endpoint failures can use the legacy refresh path; ambiguous failures do not automatically double-dial. GPT and older clients remain on their existing transport.
+- Load the tool catalog and current conversation context concurrently. No idle provider prewarming, microphone recording or VPN changes.
+
 ## 2026-10-23 — Remove full-store reads from phone dialing
 
 - Verify each configured conversation with the existing exact `sessions.describe` read, replacing `sessions.resolve` which reads the entire agent store. Live read-only comparison: resolve 5134 ms; describe 178 ms, then 8 ms with derived titles/last message disabled.
