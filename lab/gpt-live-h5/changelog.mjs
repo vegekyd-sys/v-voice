@@ -55,6 +55,15 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-entry-speed-status.20261024.1',date:'2026-10-24',
+    title:'飞书电话入口提速与 iOS 绑定恢复',
+    items:[
+      '减少飞书账号识别的重复请求和页面跳转，更快进入可拨号状态。',
+      '恢复右上角 iOS 入口，新群也能生成当前 App 可用的绑定链接。',
+      '修复新群通话卡片一直停在 00:00、挂断后不更新的问题。',
+    ],
+  },
+  {
     version:'voice-caller-identity.20261024.1',date:'2026-10-24',
     title:'修复群电话来电账号识别',
     items:[

@@ -1,0 +1,14 @@
+{
+  "version": "voice-entry-speed-status.20261024.1",
+  "status": "candidate-validation",
+  "date": "2026-10-24",
+  "scope": "Voice entry, installed iOS binding compatibility and owned lifecycle cards",
+  "gatewayRestartRequired": false,
+  "nativeAppReleaseRequired": false,
+  "validation": {
+    "unitTests": 889,
+    "speakerTests": 95,
+    "releaseFleetTests": 11,
+    "realFeishuClientTiming": "pending"
+  }
+}

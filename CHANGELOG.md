@@ -1,3 +1,10 @@
+## 2026-10-24 — Faster Feishu entry and restored iOS/status paths
+
+- Serve the client handshake in the entry response, inline its bootstrap, reuse expiring app tokens and provider-returned basic identity, and consume the verified one-use admission without repeating Gateway resolution. Publish numeric entry-stage timings without codes or identity fields.
+- Restore iOS binding for verified dynamic conversations. Short server aliases remain compatible with installed native clients; one-use/device grants retain the original actor and conversation and recheck Gateway admission.
+- Update only server-owned status/minutes receipts through the existing host message contract. Caller sends and tools stay actor scoped. Persist final status delivery state.
+- Version: `voice-entry-speed-status.20261024.1`. No Gateway or native App code changes.
+
 ## 2026-10-24 — Verified group caller identity within Voice
 
 - Unify old group aliases with dynamic group entries; use the current Feishu client identity or verified browser OAuth. Failed identity falls back to isolated temporary voice without retaining a previous account.
