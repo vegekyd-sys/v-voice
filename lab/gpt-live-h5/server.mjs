@@ -12,7 +12,7 @@ import { createAvatarReactionSelector, avatarEvaluatorFromEnv } from "./avatar-d
 import { AVATAR_FILES, taskActivity } from "./avatar-state.mjs";
 import { createVoiceAccess } from "./access.mjs";
 import {createConversationCalls,callIdValid,callSummarizerFromEnv} from '../../lib/conversation-calls.mjs';
-import {createIosBindings,iosAppDownload} from '../../lib/ios-bindings.mjs';
+import {createIosBindings,iosAppDownload,IosBindingAuthorizationError} from '../../lib/ios-bindings.mjs';
 import { createConversationEntries } from "../../lib/conversation-entries.mjs";
 import { verifyPhoneSession } from "../../lib/phone-provisioning.mjs";
 import {conversationReplyTarget,createConversationReplyDelivery} from '../../lib/conversation-replies.mjs';
@@ -217,7 +217,11 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if(Object.keys(params).some(key=>key!==(pathname.endsWith('/redeem')?'token':'deviceAccess')))return json(res,400,{error:'绑定请求包含不支持的参数。'});
         if(pathname.endsWith('/redeem')){
           try{return json(res,200,await iosBindings.redeem(binding,params.token));}
-          catch{return json(res,403,{error:'绑定链接无效、已使用或已过期，请从当前飞书会话重新生成。'});}
+          catch(error){
+            if(error instanceof IosBindingAuthorizationError)return json(res,403,{error:'绑定链接无效、已使用或已过期，请从当前飞书会话重新生成。'});
+            console.warn(JSON.stringify({type:'voice.ios-binding-storage-error',reason:['EROFS','EACCES','ENOSPC','ENOTDIR'].includes(error.code)?error.code:'save_failed'}));
+            return json(res,503,{error:'服务暂时无法保存 App 绑定，请稍后重新生成链接。原会话尚未切换。'});
+          }
         }
         const result=iosBindings.authorize(binding,params.deviceAccess,res);
         return result?json(res,200,result):json(res,401,{error:'这个 App 绑定已失效，请从当前飞书会话重新绑定。'});

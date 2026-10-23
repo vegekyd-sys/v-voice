@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {request as httpRequest} from 'node:http';
 import {Readable} from 'node:stream';
-import {mkdtemp, readFile, rm} from 'node:fs/promises';
+import {mkdtemp, readFile, rm, mkdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createLiveH5Server} from '../lab/gpt-live-h5/server.mjs';
@@ -152,4 +152,22 @@ test('legacy personal link and device handoff coexist without letting a device m
   assert.equal((await f.api(null, 'status', browser)).status, 200, 'creating the app binding must preserve the old link');
   assert.equal((await f.api(null, 'ios-binding', device, {})).status, 403);
   assert.equal(f.calls.length, 0);
+});
+
+test('device-grant persistence failure is unavailable, not an expired link or a successful binding', async t => {
+  const f = await fixture(t), entry = entries[1], browser = await f.login(entry);
+  const handoff = await f.issue(entry, browser);
+  // The destination becomes unwritable after startup, as with a service sandbox.
+  await mkdir(f.file);
+  const response = await f.api(entry, 'ios-binding/redeem', '', {token: handoff.token});
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /无法保存 App 绑定/);
+  const list = await f.api(entry, 'ios-binding', browser);
+  assert.deepEqual((await list.json()).devices, []);
+  assert.equal((await f.api(entry, 'status', browser)).status, 200);
+  assert.equal(f.calls.length, 0);
+  await rm(f.file, {recursive: true});
+  const retry = await f.issue(entry, browser);
+  const recovered = await f.redeem(entry, retry.token);
+  assert.deepEqual(recovered.conversation, {name: entry.displayName, kind: entry.kind});
 });
