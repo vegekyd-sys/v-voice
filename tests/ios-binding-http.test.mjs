@@ -29,7 +29,7 @@ async function fixture(t) {
     accessToken: legacyAccess, conversationEntries: entries, iosBindingsFile: file,
     gateway: {request: async (method, args) => {
       calls.push({method, args});
-      if (method === 'sessions.resolve') return {key: args.key, agentId: args.agentId};
+      if (method === 'sessions.describe') return {session:{key: args.key, agentId: 'makaron'}};
       if (method === 'talk.client.create') return {voiceSessionId: 'native-' + (++serial), model: 'gpt-live-1-codex', transport: 'webrtc', offerUrl: '/plugins/openai/realtime/calls'};
       return {ok: true};
     }},
@@ -107,7 +107,7 @@ for (const entry of entries.slice(0, 2)) test(`OAuth-to-iOS HTTP handoff retains
     assert.equal(response.status, 200); const call = await response.json();
     const creation = f.calls.findLast(row => row.method === (model === 'gpt-live' ? 'talk.client.create' : 'direct.reserve'));
     assert.equal(creation.args.sessionKey, entry.sessionKey);
-    assert.equal(f.calls.findLast(row => row.method === 'sessions.resolve').args.key, entry.sessionKey);
+    assert.equal(f.calls.findLast(row => row.method === 'sessions.describe').args.key, entry.sessionKey);
     assert.equal((await f.api(entry, 'close', device, {voiceSessionId: call.voiceSessionId})).status, 200);
   }
   const disk = await readFile(f.file, 'utf8');
