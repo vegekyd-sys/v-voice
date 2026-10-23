@@ -1,11 +1,11 @@
 # 会话电话：通话纪要与 iOS 绑定候选验收
 
-2026-10-23；候选版本 `voice-session-call.20261023.4`。运行源码 `accc8de551182165e62cd1dff931af1ef17990bf`，主干已同步至 `5aa87088339f3c8604e666d4c2de3c204c28830f`（PR #86 / iOS build 24）。仅隔离 VLab 候选；未合入 main、未发布 TestFlight、未部署正式 V。
+2026-10-23；候选版本 `voice-session-call.20261023.5`。运行源码 `c67957fde35bf9ce7d21bf8e21121a1d7010a157`，主干已同步至 `5aa87088339f3c8604e666d4c2de3c204c28830f`（PR #86 / iOS build 24）。仅隔离 VLab 候选；未合入 main、未发布 TestFlight、未部署正式 V。
 
 ## 交付行为
 
-- 群电话在语音提供方准备好后发一张「正在通话」状态卡，采用 12px 灰色注释文字、紧凑宽度和无标题设计。仅创建预约、未连接媒体的操作不会发通知。
-- 挂断后原地更新同一消息 ID 为「通话已结束」，不再新增结束通知；随后发简短总结卡片。总结卡去掉时长和提问次数，由 V 用第一人称归纳关键认识、结论与下一步，建议不冒充已确认决定。摘要与飞书网络操作不阻塞音频收尾。摘要使用服务端 xAI `grok-4.7`，无工具、无执行能力；20 秒超时会保留完整对话并明确说明未生成摘要。
+- 群电话在语音提供方准备好后发一张「正在通话 · 00:00」状态卡，采用 12px 灰色注释文字、紧凑宽度和无标题设计。仅创建预约、未连接媒体的操作不会发通知。
+- 通话中按实际接通时间持续更新计数；目标刷新间隔 1 秒，网络较慢时只保留一个在途更新、不累积排队。挂断时清除计时器、等待在途更新结束，再原地更新同一消息 ID 为「通话已结束 · 总时长」，不再新增结束通知；随后发简短总结卡片。总结卡去掉时长和提问次数，由 V 以“我把刚才电话里关于……的要点整理一下”自然开场，像助理纪要一样用第一人称归纳关键认识、结论与下一步，建议不冒充已确认决定。摘要与飞书网络操作不阻塞音频收尾。摘要使用服务端 xAI `grok-4.7`，无工具、无执行能力；45 秒超时会保留完整对话并明确说明未生成摘要。
 - 卡片按钮打开受原会话登录保护的完整对话页，包含时间、时长、摘要和逐轮文字。被打断的输出标注为被打断；旁聊判定移除对应内容。不同入口无法读另一个入口的记录。
 - 已核实并实测既有 Gateway 的 authenticated operator `tools.invoke` → `message.edit` 接口。状态卡编辑使用服务端创建的原始回执、固定账号和群目标；不接收模型或浏览器传入的 messageId，也不修改 Gateway 权限或运行代码。发送路径会规范化字体样式，因此先发送无标签的文字卡，再用同消息编辑应用完整样式；快速挂断时直接更新为结束态。完整对话仍由受保护网页承接，不宣称已实现卡内折叠。
 - 群内通话不再逐条刷问答卡。私聊和旧个人入口保持既有问答同步；后台任务晚于挂断完成时，仍按原问题另行同步最终结果。
@@ -16,19 +16,19 @@
 
 | 路径 | 验证结果与边界 |
 | --- | --- |
-| 最终源码自动化 | 本轮全量 `npm test`：801/801；最后收紧总结文案后，受影响的生命周期、回复与 HTTP 入口测试 34/34。iOS 内置页面一致性检查通过。新增同消息更新、延迟发送后立即挂断、编辑重试与失败、旧新总结上下文解码覆盖。 |
+| 最终源码自动化 | 本轮全量 `npm test`：802/802（`66c6e52`）；最后仅放宽后台摘要等待上限的 `c67957f` 通过受影响生命周期、回复与 HTTP 入口测试 35/35。iOS 内置页面一致性检查通过。新增同消息更新、延迟发送后立即挂断、编辑重试与失败、旧新总结上下文解码覆盖。 |
 | iOS | Core 39 项、模拟器 XCTest 6 项、真实 HTTP 5 项通过。独立模拟器真实粘贴/输入候选链接后成功绑定群，App 重启后保留；重用已消费链接被拒绝，旧绑定保留。 |
 | 同一 Keychain 授权 | 实际 HTTPS GPT session reserve → close 成功；服务端创建、关闭审计均指向预期群会话。没有麦克风申请、SDP 或媒体连接。 |
 | 实际部署语音 | `88da220` 候选运行 Grok、SeedDuplex 各一通合成中文音频；均识别问题、输出音频、落盘逐轮对话、真实模型摘要并发送飞书卡片。挂断 HTTP 分别 8ms / 4ms；授权详情 200，未授权 401；收尾后活动/创建/后台任务均为 0。 |
-| 最终摘要与卡片 | `accc8de` 重放既有天气通话文字（不冒充新的实况音频）。真实 `grok-4.7` 18.3 秒生成总结；飞书仅新增状态与总结两条消息，开始和结束两次编辑确认同一状态消息 ID，零报告错误。桌面客户端实际看到小字灰色状态和无统计行的总结，内置浏览器打开完整对话成功。 |
+| 最终摘要与卡片 | `c67957f` 用既有天气文字重放并实际运行 44.635 秒的状态生命周期（不是新音频通话）。31 次编辑均确认同一消息 ID，从 00:01 递增到 00:44，结束后保留 44 秒；零报告错误。真实 `grok-4.7` 9.293 秒完成带助理式开场的总结，共新增状态和总结两条消息。桌面客户端截图确认计时递增、结束时长与新总结。 |
 | 实际用户入口 | 飞书桌面客户端看见卡片，点击按钮走真实 OAuth 回到原通话；右侧内置浏览器显示最终详情和绑定指引。 |
-| 发布安全 | 最终包 218 文件逐个校验，文件清单 SHA-256 `840ecb0ce9ff10490e30cedfe5ef9a2660bde7c37efdf50403be1115f7916967`；仅重启本任务候选 Voice 服务，Gateway InvocationID 不变。备份旧源码和私有配置，保留回滚。 |
+| 发布安全 | 最终包 218 文件逐个校验，文件清单 SHA-256 `2e5286786987dbadb2358319ad79bebd3be19f8583b86794662182dafa882c70`；仅重启本任务候选 Voice 服务，Gateway InvocationID 不变。备份旧源码和私有配置，保留回滚。 |
 
 真实 UI 验收发现并修复原生按钮串触发、网页绑定入口与更新日志重叠；关闭弹窗后过期的请求不会重新打开或覆盖后来的弹窗。早期摘要把建议写成结论，最终改用更明确的提示词和 `grok-4.7`，并把结束提示与较慢的摘要分开。最终重放脚本以 root 创建的单条测试记录最初无法被服务用户读取，已将该测试文件归属校正为候选服务用户；普通语音流程的记录本来就由服务用户创建，真实通话详情已验证可读。
 
-本机证据目录：`/Users/tianyicai/Documents/Codex/2026-10-22/session-pr/outputs/`：`call-refine-replay-evidence.json`、`call-refine-deploy.json`、`call-card-before.png`、`call-card-after.png`、`call-status-start.png`、`call-refine-changelog.png`、`call-live-evidence.json`、`call-final-replay-evidence.json`、`call-final-deploy.json`、`ios-reserve-close-audit.json`、`call-report-detail.png`、`ios-binding-web-guide.png` 与 `ios-session-binding/` 截图。证据不包含绑定 token 或设备密钥。
+本机证据目录：`/Users/tianyicai/Documents/Codex/2026-10-22/session-pr/outputs/`：`call-timer-replay-evidence.json`、`call-timer-deploy.json`、`call-timer-running.png`、`call-timer-ended.png`、`call-timer-summary.png`、`call-timer-changelog.png`、`call-refine-replay-evidence.json`、`call-refine-deploy.json`、`call-card-before.png`、`call-card-after.png`、`call-status-start.png`、`call-refine-changelog.png`、`call-live-evidence.json`、`call-final-replay-evidence.json`、`call-final-deploy.json`、`ios-reserve-close-audit.json`、`call-report-detail.png`、`ios-binding-web-guide.png` 与 `ios-session-binding/` 截图。证据不包含绑定 token 或设备密钥。
 
-本轮总结评估中有一次请求在既有 20 秒上限超时；重试评估和最终候选重放成功。运行时仍保留明确的摘要不可用提示与完整记录，不把超时视为成功。
+摘要评估中两次请求触及原 20 秒上限；成功请求耗时约 9–18 秒，延迟波动明显。后台摘要等待上限改为 45 秒，状态结束更新仍先执行，音频收尾不等待摘要。超时仍保留明确的摘要不可用提示与完整记录，不把超时视为成功。
 
 ## 个人入口与通用化结论
 
