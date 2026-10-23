@@ -934,23 +934,27 @@ async function sessionRequest(route,body){
  const response=await fetch(apiUrl(route),{credentials:'same-origin',...(body===undefined?{}:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})});
  const data=await response.json();if(!response.ok)throw Error(data.error??'暂时无法完成，请稍后重试。');return data;
 }
-function updateSessionSheet(patch){view.set(state=>({sessionSheet:{...state.sessionSheet,...patch}}));}
+function updateSessionSheet(patch,key){view.set(state=>state.sessionSheet?.key===key?{sessionSheet:{...state.sessionSheet,...patch}}:{});}
+let sessionSheetRevision=0;
 async function openIosBinding(){
- view.set({sessionSheet:{kind:'binding',busy:true,devices:[]}});
- try{const data=await sessionRequest('ios-binding');updateSessionSheet({busy:false,devices:data.devices});}catch(e){updateSessionSheet({busy:false,error:e.message});}
+ const key=++sessionSheetRevision;view.set({sessionSheet:{kind:'binding',key,busy:true,devices:[]}});
+ try{const data=await sessionRequest('ios-binding');updateSessionSheet({busy:false,devices:data.devices},key);}catch(e){updateSessionSheet({busy:false,error:e.message},key);}
 }
 async function createIosBinding(){
- updateSessionSheet({busy:true,error:null,copied:false,bindingUrl:null});
- try{const data=await sessionRequest('ios-binding',{});updateSessionSheet({...data,busy:false});}catch(e){updateSessionSheet({busy:false,error:e.message});}
+ const key=view.get().sessionSheet?.key;
+ updateSessionSheet({busy:true,error:null,copied:false,bindingUrl:null},key);
+ try{const data=await sessionRequest('ios-binding',{});updateSessionSheet({...data,busy:false},key);}catch(e){updateSessionSheet({busy:false,error:e.message},key);}
 }
 async function copyIosBinding(){
- try{await navigator.clipboard.writeText(view.get().sessionSheet.bindingUrl);updateSessionSheet({copied:true,error:null});}catch{updateSessionSheet({error:'请长按下方链接并复制。'});}
+ const key=view.get().sessionSheet?.key;
+ try{await navigator.clipboard.writeText(view.get().sessionSheet.bindingUrl);updateSessionSheet({copied:true,error:null},key);}catch{updateSessionSheet({error:'请长按下方链接并复制。'},key);}
 }
 async function revokeIosBinding(id){
- updateSessionSheet({busy:true,error:null});
- try{await sessionRequest('ios-binding/revoke',{deviceId:id});const data=await sessionRequest('ios-binding');updateSessionSheet({busy:false,devices:data.devices});}catch(e){updateSessionSheet({busy:false,error:e.message});}
+ const key=view.get().sessionSheet?.key;
+ updateSessionSheet({busy:true,error:null},key);
+ try{await sessionRequest('ios-binding/revoke',{deviceId:id});const data=await sessionRequest('ios-binding');updateSessionSheet({busy:false,devices:data.devices},key);}catch(e){updateSessionSheet({busy:false,error:e.message},key);}
 }
 async function openCallReport(id){
- view.set({sessionSheet:{kind:'report',busy:true}});
- try{const report=await sessionRequest('calls/'+encodeURIComponent(id));updateSessionSheet({busy:false,report});}catch(e){updateSessionSheet({busy:false,error:e.message});}
+ const key=++sessionSheetRevision;view.set({sessionSheet:{kind:'report',key,busy:true}});
+ try{const report=await sessionRequest('calls/'+encodeURIComponent(id));updateSessionSheet({busy:false,report},key);}catch(e){updateSessionSheet({busy:false,error:e.message},key);}
 }
