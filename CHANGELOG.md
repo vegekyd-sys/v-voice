@@ -1,3 +1,10 @@
+## Candidate — iOS guided binding and saved conversations · 2026-10-23
+
+- Replace the binding form with a three-step native journey: connect a conversation, configure the Action button, then “替代 Siri 的第一步：enjoy”. Show the journey on first launch without a binding; existing users enter the phone directly. Prefilled handoffs use a focused confirmation state and fixed primary actions.
+- Save multiple verified destinations in the device-only Keychain. Validate before switching, reuse saved grants without replaying a handoff, preserve other destinations on refresh/removal, and block changes during a live call. Existing single records import automatically; the selected record remains readable by build 25 for rollback.
+- Keep conversation management in the top-right settings. The existing “和 V 通话” intent follows the selected conversation; Action button assignment remains the user's system setting. No automatic dialing during onboarding.
+- Native build 26 candidate only. Simulator UI and binding regression verification are recorded separately; no production deployment, TestFlight upload or physical-phone installation is claimed.
+
 ## 2026-10-23 — Production binding and all-group rollout verified
 
 - Release PR #95 to both Voice nodes at `8e8dc76`; verify writable private state in each running service namespace and preserve the prior call report. The same App now binds the designated production group successfully and retains it after relaunch. Physical-phone retry remains separate.

@@ -8,6 +8,7 @@ import VVoiceCore
 @MainActor @Observable final class CallCoordinator {
     static let shared: CallCoordinator = {
         #if DEBUG
+        if CommandLine.arguments.contains("--binding-journey-fixture") { return BindingJourneyFixture.coordinator() }
         if CommandLine.arguments.contains("--local-voice-fixture") {
             let store = BindingStore(service: "com.versa.vvoice.local-fixture")
             let fixturePort = ProcessInfo.processInfo.environment["VVOICE_FIXTURE_PORT"] ?? "29837"
@@ -23,6 +24,7 @@ import VVoiceCore
     private(set) var lastCaption = ""
     private(set) var bound = false
     private(set) var boundConversation: BoundConversation?
+    private(set) var savedConversations: [SavedConversation] = []
     private(set) var permission = AVAudioApplication.shared.recordPermission
     private(set) var route = "iPhone"
     private(set) var startedAt = Date()
@@ -179,6 +181,7 @@ import VVoiceCore
         model = VoiceModel(rawValue: UserDefaults.standard.string(forKey: "voiceModel") ?? "") ?? .seeduplex
         bound = self.api.isBound
         boundConversation = self.api.record?.conversation
+        savedConversations = self.api.savedConversations
         avatar.onDisplayed = { [weak self] id in
             guard let self else { return }; self.islandDidDisplayReaction(id, owner: self.presentationID, fromH5: false)
         }
@@ -254,13 +257,34 @@ import VVoiceCore
         bindingInProgress = true; defer { bindingInProgress = false }
         await closing?.value
         try await api.recoverPreviousCall()
-        let existing = try await api.bind(link: link); bound = true; boundConversation = api.record?.conversation
+        let existing = try await api.bind(link: link); synchronizeBindings()
         detail = "会话已绑定，可以和 V 通话了"
         await refreshOptions()
         return existing
     }
+    private func synchronizeBindings() {
+        bound = api.isBound; boundConversation = api.record?.conversation; savedConversations = api.savedConversations
+        conversation.reset(); documents.removeAll(); tasks.removeAll(); autoOpenDocumentID = nil
+        lastCaption = ""; resultText = ""; resultID = nil; shownResults.removeAll()
+        presentationID = UUID().uuidString
+    }
+    func selectConversation(_ id: String) async throws {
+        guard !active, !bindingInProgress else { throw VoiceError.busy }
+        bindingInProgress = true; defer { bindingInProgress = false }
+        await closing?.value
+        try await api.recoverPreviousCall()
+        try await api.selectConversation(id: id)
+        synchronizeBindings(); detail = "已切换会话，操作按钮将继续这个会话"
+        await refreshOptions()
+    }
+    func removeConversation(_ id: String) throws {
+        guard !active, !bindingInProgress else { throw VoiceError.busy }
+        try api.removeConversation(id: id); synchronizeBindings()
+        detail = bound ? "可以和 V 通话了" : "选择一个已保存的会话，或添加新会话"
+    }
     func forget() {
-        guard !active, !bindingInProgress else { return }; api.forget(); bound = false; boundConversation = nil; lastCaption = ""; detail = "请从飞书或网页电话获取链接并绑定会话"
+        guard !active, !bindingInProgress else { return }
+        api.forget(); synchronizeBindings(); detail = "请从飞书或网页电话获取链接并绑定会话"
     }
     func startOrContinue(fromIntent: Bool = false) async throws {
         guard !bindingInProgress else { throw VoiceError.busy }

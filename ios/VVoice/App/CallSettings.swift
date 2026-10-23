@@ -3,128 +3,198 @@ import AVFoundation
 import AppIntents
 import VVoiceCore
 
-private let ink = VoiceStyle.background
-private let accent = VoiceStyle.accent
-
 struct SettingsView: View {
     @Bindable var call: CallCoordinator
     var initialLink = ""
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
-    @State private var link = ""
-    @State private var working = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var journey = false
+    @State private var firstSetup = false
+    @State private var initialized = false
+    @State private var selecting: String?
     @State private var feedback = ""
-    @State private var confirmForget = false
+    @State private var removal: SavedConversation?
+    @State private var confirmingRemoval = false
+    @State private var preferences = false
+
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    HStack { Label("通话会话", systemImage: "lock.shield"); Spacer(); Text(call.bound ? "已绑定" : "未绑定").foregroundStyle(call.bound ? accent : .secondary) }
-                    if call.bound {
-                        Text(call.boundConversation?.name ?? "已绑定的个人会话")
-                            .font(.headline).accessibilityIdentifier("boundConversation")
-                        Text(call.boundConversation?.kind == "group" ? "电话内容会回到这个群聊。" : "继续这个会话的上下文和工作。")
-                            .font(.footnote).foregroundStyle(.secondary)
+            Group {
+                if journey {
+                    BindingJourneyView(call: call, initialLink: initialLink) {
+                        journey = false
+                        if firstSetup { dismiss() }
                     }
-                    if !call.active {
-                        if !link.isEmpty, let binding = try? VoiceBinding(link: link) {
-                            Text("来自 " + (binding.baseURL.host ?? "网页电话") + "，确认后绑定到此设备。")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        }
-                        SecureField("粘贴 iOS 绑定链接", text: $link).textContentType(.none).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("bindingLink")
-                        HStack {
-                            Button("粘贴链接", systemImage: "doc.on.clipboard") { link = UIPasteboard.general.string ?? "" }
-                            Spacer()
-                            Button(working ? "正在验证…" : "验证并绑定") {
-                                working = true; feedback = ""
-                                Task {
-                                    do { let existing = try await call.bind(link); link = ""; feedback = existing ? "已绑定这个会话，可以直接开始通话。" : "绑定完成。之后可从 App 或操作按钮继续这个会话。" }
-                                    catch { feedback = error.localizedDescription }
-                                    working = false
-                                }
-                            }.disabled(working || link.isEmpty)
-                        }.buttonStyle(.borderless)
-                        if !feedback.isEmpty { Text(feedback).font(.footnote).foregroundStyle(.secondary).accessibilityIdentifier("bindingFeedback") }
-                    } else if !link.isEmpty {
-                        Text("绑定链接已填好，结束当前通话后即可确认。现有通话会继续。")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
-                } header: { Text(call.bound ? "当前会话" : "绑定一个会话") } footer: {
-                    Text("绑定链接仅供本人使用，5 分钟内有效且只能绑定一次。已有的个人入口链接仍可使用。验证失败会保留当前绑定。")
-                }
-                Section {
-                    Label("在飞书打开要继续的群聊或私聊电话入口，也可以打开网页电话。", systemImage: "1.circle")
-                    Label("在电话页面选择「iOS App」，再点「打开 V Voice 绑定」。", systemImage: "2.circle")
-                    Label("链接会自动填到这里，点「验证并绑定」。也可以手动粘贴链接。", systemImage: "3.circle")
-                } header: { Text("绑定链接在哪里？") } footer: {
-                    Text("更换会话时，从另一个电话入口复制新链接再绑定。会话和工具权限由服务端确认；App 只把设备授权保存在本机钥匙串。")
-                }
-                Section {
-                    HStack { Label("麦克风", systemImage: "mic"); Spacer(); Text(call.permission == .granted ? "已允许" : "未允许").foregroundStyle(.secondary) }
-                    if call.permission == .undetermined { Button("允许麦克风") { Task { await call.requestMicrophone() } } }
-                    if call.permission == .denied { Button("到系统设置允许麦克风") { openSettings() } }
-                    HStack { Label("实时活动与灵动岛", systemImage: "capsule"); Spacer(); Text(call.activitiesEnabled ? "已允许" : "未允许").foregroundStyle(.secondary) }
-                    if !call.activitiesEnabled { Button("到设置开启实时活动") { openSettings() } }
-                } header: { Text("通话准备") }
-                Section {
-                    Menu("对话声音：" + call.modelTitle) { VoiceModelMenu(call: call) }.disabled(call.active)
-                    GrokVoicePicker(call: call)
-                } footer: { Text("使用 V 现有实时语音与工具能力。音频设备由 iOS 自动选择；接入耳机后使用耳机麦克风。") }
-                Section {
-                    Toggle("灵动岛显示方案标题", isOn: $call.islandCaptions)
-                    Text("通话时显示声音波纹；有报告时提示点击查看。关闭后隐藏方案标题，完整内容仍在 App 中打开。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                } header: { Text("灵动岛") } footer: {
-                    Text("长按屏幕顶部的小岛，展开音频卡片；点波形展开静音等通话控制，点折叠箭头返回音频。轻点小岛返回 App，有方案时进入全文。")
-                }
-                Section {
-                    NavigationLink("设置操作按钮") { ActionButtonInstructions() }
-                    Text("已有通话时再次长按：继续当前通话；静音时恢复麦克风。结束通话请点灵动岛或 App 的结束按钮。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-                Section {
-                    Text("仅通话时使用麦克风。结束后停止收音。通话文字只在当前界面暂存，离开通话后清空；服务端沿用 V 已有通话记录策略。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    if call.bound { Button("解除本机会话绑定", role: .destructive) { confirmForget = true }.disabled(call.active || working) }
-                } footer: { Text("V Voice 1.0 · 专注于一按通话\n操作按钮请选择 V Voice 的「和 V 通话」。") }
+                } else { settings }
             }
-            .scrollContentBackground(.hidden).background(ink).tint(accent)
-            .navigationTitle("通话设置").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
-            .confirmationDialog("解除后需要从飞书或网页电话重新获取绑定链接。", isPresented: $confirmForget, titleVisibility: .visible) { Button("解除绑定", role: .destructive) { call.forget() } }
-        }.preferredColorScheme(.light)
-            .onAppear { if !initialLink.isEmpty { link = initialLink } }
-            .onChange(of: initialLink) { _, value in if !value.isEmpty { link = value; feedback = "" } }
+            .background(VoiceStyle.background)
+            .toolbar {
+                if journey, !firstSetup {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { journey = false } label: { Image(systemName: "chevron.left") }.accessibilityLabel("返回会话列表")
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) { Button(journey ? "关闭" : "完成") { dismiss() } }
+            }
+        }
+        .tint(VoiceStyle.purple).preferredColorScheme(.light)
+        .onAppear {
+            guard !initialized else { return }; initialized = true
+            firstSetup = call.savedConversations.isEmpty
+            journey = firstSetup || !initialLink.isEmpty
+        }
+        .onChange(of: initialLink) { _, value in if !value.isEmpty { journey = true } }
+        .confirmationDialog("移除「\(removal?.name ?? "这个会话")」？", isPresented: $confirmingRemoval, titleVisibility: .visible, presenting: removal) { saved in
+            Button("从本机移除", role: .destructive) {
+                do { try call.removeConversation(saved.id); feedback = "已从本机移除。" }
+                catch { feedback = error.localizedDescription }
+                removal = nil
+            }
+        } message: { _ in Text("其他已保存会话会保留。以后可以重新获取链接添加。") }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: journey)
     }
-    private func openSettings() { if let u = URL(string: UIApplication.openSettingsURLString) { openURL(u) } }
+
+    private var settings: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 9) {
+                    Text("聊什么，\n由你切换。").font(VoiceStyle.font(32, weight: .semibold)).tracking(-0.7)
+                    Text("保存不同的会话，给工作、灵感和日常各留一个位置。")
+                        .font(VoiceStyle.font(14)).foregroundStyle(VoiceStyle.soft).lineSpacing(5)
+                }.padding(.top, 14)
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Text("我的会话").font(VoiceStyle.font(16, weight: .semibold))
+                        Spacer()
+                        Text("\(call.savedConversations.count) 个已保存").font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted)
+                    }
+                    if call.savedConversations.isEmpty {
+                        Label("添加一个会话，让 V 接上你的上下文。", systemImage: "bubble.left.and.text.bubble.right")
+                            .font(VoiceStyle.font(14)).foregroundStyle(VoiceStyle.soft).padding(.vertical, 15)
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(Array(call.savedConversations.enumerated()), id: \.element.id) { index, saved in
+                                conversationRow(saved)
+                                if index < call.savedConversations.count - 1 { Divider().overlay(VoiceStyle.line).padding(.leading, 64) }
+                            }
+                        }.background(.white.opacity(0.88), in: RoundedRectangle(cornerRadius: 23))
+                    }
+                    Button { feedback = ""; journey = true } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "plus.circle.fill").foregroundStyle(VoiceStyle.purple)
+                            Text("添加一个会话")
+                            Spacer()
+                            Image(systemName: "arrow.up.right").font(.system(size: 12, weight: .semibold))
+                        }.font(VoiceStyle.font(14, weight: .semibold)).padding(.vertical, 16)
+                    }.accessibilityIdentifier("addConversation").disabled(call.active || selecting != nil)
+                    if call.active { Label("通话结束后可以切换或添加会话。", systemImage: "phone.fill").font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.soft) }
+                    else {
+                        Text(call.bound ? "操作按钮会呼叫当前选中的会话。长按会话可以从本机移除。" : "选一个已保存的会话，就可以继续聊天。")
+                            .font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted).lineSpacing(4)
+                    }
+                    if !feedback.isEmpty { Text(feedback).font(VoiceStyle.font(13)).foregroundStyle(VoiceStyle.soft).accessibilityIdentifier("bindingFeedback") }
+                }
+                Divider().overlay(VoiceStyle.line)
+                NavigationLink { ActionButtonInstructions() } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "button.programmable").font(.system(size: 24, weight: .light)).frame(width: 32)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("让 V，在一个按键之内").font(VoiceStyle.font(15, weight: .semibold))
+                            Text("设置操作按钮，长按就能开聊").font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
+                    }.padding(.vertical, 4)
+                }.buttonStyle(.plain)
+                Divider().overlay(VoiceStyle.line)
+                DisclosureGroup(isExpanded: $preferences) {
+                    preferencesContent.padding(.top, 20)
+                } label: { Label("声音与通话", systemImage: "waveform").font(VoiceStyle.font(15, weight: .semibold)) }
+                Text("V Voice · 从一颗按键开始")
+                    .font(VoiceStyle.font(11)).foregroundStyle(VoiceStyle.faint).frame(maxWidth: .infinity).padding(.top, 10)
+            }.frame(maxWidth: 520).padding(.horizontal, 26).padding(.bottom, 32).frame(maxWidth: .infinity)
+        }.foregroundStyle(VoiceStyle.ink).background(VoiceStyle.background)
+            .navigationTitle("设置").navigationBarTitleDisplayMode(.inline)
+    }
+    private func conversationRow(_ saved: SavedConversation) -> some View {
+        Button {
+            guard !saved.isCurrent else { return }
+            selecting = saved.id; feedback = ""
+            Task {
+                do { try await call.selectConversation(saved.id); UISelectionFeedbackGenerator().selectionChanged() }
+                catch { feedback = error.localizedDescription }
+                selecting = nil
+            }
+        } label: {
+            HStack(spacing: 13) {
+                Image(systemName: saved.kind == "group" ? "person.2" : "bubble.left")
+                    .font(.system(size: 18, weight: .regular)).foregroundStyle(saved.isCurrent ? .white : VoiceStyle.purple)
+                    .frame(width: 40, height: 40).background(saved.isCurrent ? VoiceStyle.purple : VoiceStyle.lavender, in: RoundedRectangle(cornerRadius: 14))
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(saved.name).font(VoiceStyle.font(15, weight: .semibold)).foregroundStyle(VoiceStyle.ink)
+                        .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(saved.isCurrent ? "boundConversation" : "savedConversation")
+                    Text(saved.isCurrent ? "当前会话 · 按下操作按钮，从这里继续" : (saved.kind == "group" ? "群聊" : "私聊") + " · " + saved.host)
+                        .font(VoiceStyle.font(11)).foregroundStyle(VoiceStyle.muted).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                if selecting == saved.id { ProgressView().tint(VoiceStyle.purple) }
+                else if saved.isCurrent { Image(systemName: "checkmark.circle.fill").foregroundStyle(VoiceStyle.purple).accessibilityLabel("当前会话") }
+                else { Image(systemName: "circle").foregroundStyle(VoiceStyle.line) }
+            }.padding(17).contentShape(Rectangle())
+        }.buttonStyle(.plain).disabled(call.active || selecting != nil)
+            .accessibilityLabel(saved.name + (saved.isCurrent ? "，当前会话" : "，切换到这个会话"))
+            .contextMenu {
+                Button("从本机移除", systemImage: "trash", role: .destructive) { removal = saved; confirmingRemoval = true }.disabled(call.active || selecting != nil)
+            }
+    }
+    private var preferencesContent: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Menu { VoiceModelMenu(call: call) } label: { settingLine("对话声音", value: call.modelTitle, symbol: "chevron.up.chevron.down") }.disabled(call.active)
+            GrokVoicePicker(call: call)
+            Divider().overlay(VoiceStyle.line)
+            settingLine("麦克风", value: call.permission == .granted ? "已允许" : "未允许")
+            if call.permission == .undetermined { Button("允许麦克风") { Task { await call.requestMicrophone() } } }
+            if call.permission == .denied { Button("到系统设置允许麦克风") { openSettings() } }
+            settingLine("实时活动与灵动岛", value: call.activitiesEnabled ? "已允许" : "未允许")
+            if !call.activitiesEnabled { Button("到设置开启实时活动") { openSettings() } }
+            Toggle("灵动岛显示方案标题", isOn: $call.islandCaptions)
+            Text("通话时显示声音波纹；有方案时轻点查看全文。音频设备由 iOS 自动选择，接入耳机后使用耳机麦克风。")
+                .font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted).lineSpacing(4)
+            Text("仅通话时使用麦克风，结束后停止收音。会话授权保存在本机钥匙串，电话内容沿用 V 的通话记录策略。")
+                .font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted).lineSpacing(4)
+        }.font(VoiceStyle.font(14))
+    }
+    private func settingLine(_ title: String, value: String, symbol: String? = nil) -> some View {
+        HStack {
+            Text(title); Spacer(); Text(value).foregroundStyle(VoiceStyle.muted)
+            if let symbol { Image(systemName: symbol).font(.system(size: 10)) }
+        }.foregroundStyle(VoiceStyle.ink)
+    }
+    private func openSettings() { if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) } }
 }
 
 struct ActionButtonGuide: View {
     @Environment(\.dismiss) private var dismiss
     var body: some View {
-        NavigationStack { ActionButtonInstructions().toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } } }
-            .preferredColorScheme(.light).tint(accent)
+        NavigationStack {
+            ActionButtonInstructions().toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
+        }.preferredColorScheme(.light).tint(VoiceStyle.purple)
     }
 }
 struct ActionButtonInstructions: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                Image(systemName: "button.programmable").font(.system(size: 42, weight: .light)).foregroundStyle(accent).padding(.top, 25)
-                Text("让 V，\n在一个按键之内。").font(.system(size: 32, weight: .medium)).lineSpacing(6)
-                Text("完成一次设置，之后长按 iPhone 操作按钮，就能和 V 说话。").font(.system(size: 16)).foregroundStyle(.secondary).lineSpacing(6)
-                instruction("01", "先准备好通话", "在 V Voice 绑定要继续的会话，允许麦克风和实时活动。先从 App 完成一次通话。")
-                instruction("02", "打开系统设置 → 操作按钮", "选择「快捷指令」，轻点「选取快捷指令」，找到 V Voice 的「和 V 通话」。")
-                instruction("03", "长按，等接通后开口", "听到接通提示后即可说话。长按屏幕顶部的灵动岛展开音频卡片，点波形展开静音等通话控制；轻点小岛返回 App。")
-                ShortcutsLink().frame(maxWidth: .infinity).padding(.vertical, 8)
-                Text("操作按钮在后台开始通话，灵动岛显示通话状态并提供静音、结束按钮。首次使用请先在 App 完成会话绑定和授权。系统来电与 Siri 会暂停通话；结束后按提示恢复。").font(.footnote).foregroundStyle(.secondary).lineSpacing(5)
-            }.padding(28)
-        }.background(ink).navigationTitle("操作按钮").navigationBarTitleDisplayMode(.inline)
-    }
-    private func instruction(_ n: String, _ title: String, _ text: String) -> some View {
-        HStack(alignment: .top, spacing: 18) {
-            Text(n).font(.system(size: 12, weight: .semibold, design: .monospaced)).foregroundStyle(accent).padding(.top, 4)
-            VStack(alignment: .leading, spacing: 8) { Text(title).font(.system(size: 16, weight: .semibold)); Text(text).font(.system(size: 14)).foregroundStyle(.secondary).lineSpacing(5) }
-        }
+                ActionButtonIllustration().frame(maxWidth: .infinity)
+                Text("让 V，\n在一个按键之内。").font(VoiceStyle.font(32, weight: .semibold))
+                Text("设置一次，之后长按操作按钮，就能和当前选中的会话继续聊。")
+                    .font(VoiceStyle.font(15)).foregroundStyle(VoiceStyle.soft).lineSpacing(6)
+                ActionButtonSetupSteps()
+                Text("首次使用请允许麦克风与实时活动。没有操作按钮的设备，也可以直接从 App 开始通话。")
+                    .font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted).lineSpacing(5)
+            }.frame(maxWidth: 500).padding(28).frame(maxWidth: .infinity)
+        }.background(VoiceStyle.background).foregroundStyle(VoiceStyle.ink)
+            .navigationTitle("操作按钮").navigationBarTitleDisplayMode(.inline)
     }
 }

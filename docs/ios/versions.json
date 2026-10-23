@@ -413,5 +413,23 @@
     "ipaSHA256": "cb96341de75cbd598a1806caaaff0e0e1fdd1dcc614a3dafed753cac3cf08ee8",
     "signedIPACopiedAndVerified": true,
     "acceptedByTianyi": true
+  },
+  "bindingJourneyCandidate": {
+    "build": 26,
+    "baseCommit": "694c18f3e5c75fea8b606158b9b3cb5dfcc7d8fa",
+    "status": "candidate_simulator_verified",
+    "record": "binding-journey/README.md",
+    "threeStepSetup": true,
+    "multipleSavedConversations": true,
+    "existingKeychainImported": true,
+    "actionButtonUsesSelectedConversation": true,
+    "bindingTests": {
+      "passed": 11,
+      "failed": 0,
+      "skipped": 1
+    },
+    "installedOnPhysicalPhone": false,
+    "testflightPublished": false,
+    "serverDeploymentRequired": false
   }
 }
