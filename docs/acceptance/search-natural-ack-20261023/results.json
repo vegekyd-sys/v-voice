@@ -1,0 +1,78 @@
+{
+  "syntheticInput": true,
+  "realSeeduplex": true,
+  "toolResults": "controlled fixtures, not live web/memory searches",
+  "physicalDevice": false,
+  "results": [
+    {
+      "id": "integrated-memory-final-1",
+      "mode": "model",
+      "tool": "memory_search",
+      "firstAudioMs": 1285,
+      "toolStartMs": 1776,
+      "preamble": true,
+      "toolCalls": 1,
+      "clears": 0
+    },
+    {
+      "id": "integrated-memory-final-2",
+      "mode": "model",
+      "tool": "memory_search",
+      "firstAudioMs": 1260,
+      "toolStartMs": 1503,
+      "preamble": true,
+      "toolCalls": 1,
+      "clears": 0
+    },
+    {
+      "id": "integrated-memory-final-interrupt",
+      "mode": "model",
+      "tool": "memory_search",
+      "firstAudioMs": 1214,
+      "toolStartMs": 1493,
+      "preamble": true,
+      "toolCalls": 1,
+      "clears": 2
+    },
+    {
+      "id": "integrated-memory-model-1",
+      "mode": "model",
+      "tool": "memory_search",
+      "firstAudioMs": 9948,
+      "toolStartMs": 1201,
+      "preamble": false,
+      "toolCalls": 1,
+      "clears": 0
+    },
+    {
+      "id": "integrated-memory-model-2",
+      "mode": "model",
+      "tool": "memory_search",
+      "firstAudioMs": 9899,
+      "toolStartMs": 1115,
+      "preamble": false,
+      "toolCalls": 1,
+      "clears": 0
+    },
+    {
+      "id": "integrated-web-model-1",
+      "mode": "model",
+      "tool": "web_search",
+      "firstAudioMs": 1344,
+      "toolStartMs": 1833,
+      "preamble": true,
+      "toolCalls": 1,
+      "clears": 0
+    },
+    {
+      "id": "integrated-web-off-1",
+      "mode": "off",
+      "tool": "web_search",
+      "firstAudioMs": 4723,
+      "toolStartMs": 1506,
+      "preamble": false,
+      "toolCalls": 1,
+      "clears": 0
+    }
+  ]
+}

@@ -12,8 +12,8 @@ public struct ConversationTurn: Identifiable, Equatable, Sendable {
     public var listenOnly = false
     public var sourceKey: String? = nil
     public var label: String { speakerLabel.isEmpty ? (role == "user" ? "你" : "V") : speakerLabel }
-    public init(role: String, text: String, complete: Bool) {
-        id = UUID(); self.role = role; self.text = text; self.complete = complete
+    public init(id: UUID = UUID(), role: String, text: String, complete: Bool) {
+        self.id = id; self.role = role; self.text = text; self.complete = complete
     }
 }
 
@@ -103,6 +103,27 @@ public struct ConversationPresentation: Sendable {
         while start > 0, turns[start - 1].role == "user" { start -= 1 }
         return Array(turns[start...])
     }
+    /// The service owns caption segmentation and speaker interpretation. Native
+    /// only stores bounded rows by stable ID for background/system rendering.
+    public mutating func project(_ row: NativeRuntimeRow) {
+        let index: Int
+        if let existing = turns.firstIndex(where: { $0.id == row.id }) { index = existing }
+        else {
+            turns.append(ConversationTurn(id: row.id, role: row.role, text: "", complete: row.complete))
+            index = turns.count - 1
+        }
+        turns[index].text = row.text; turns[index].complete = row.complete
+        turns[index].speakerID = row.speakerId; turns[index].speakerLabel = row.speakerLabel ?? ""
+        turns[index].speakerTone = row.speakerTone ?? 0; turns[index].listenOnly = row.listenOnly ?? false
+        turns[index].documentID = row.documentId
+        trim()
+    }
+    public mutating func projectPeople(_ value: [ConversationSpeaker]) {
+        people = Array(value.prefix(32))
+    }
+    public mutating func projectMode(lastSpeakerID: String?, listenOnly: Bool) {
+        self.lastSpeakerID = lastSpeakerID; self.listenOnly = listenOnly
+    }
 }
 
 public struct CallDocument: Identifiable, Equatable, Sendable {
@@ -111,7 +132,8 @@ public struct CallDocument: Identifiable, Equatable, Sendable {
     public let title: String
     public let preview: String
     public let serverOwned: Bool
-    public var shouldAutoOpen: Bool { text.count > 450 || text.range(of: #"(?m)^#{1,3}\s"#, options: .regularExpression) != nil || Self.hasMedia(text) }
+    private var projectedAutoOpen: Bool? = nil
+    public var shouldAutoOpen: Bool { projectedAutoOpen ?? (text.count > 450 || text.range(of: #"(?m)^#{1,3}\s"#, options: .regularExpression) != nil || Self.hasMedia(text)) }
     public static func hasMedia(_ text: String) -> Bool {
         text.range(of: #"!\[[^\]]*\]\([^)]*\)|https?://[^\s<>]+\.(?:mp4|webm|mov|png|jpe?g|webp|gif|avif)(?:[?#][^\s<>]*)?"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
@@ -126,6 +148,11 @@ public struct CallDocument: Identifiable, Equatable, Sendable {
         title = Self.plain(heading, limit: 32)
         let summary = lines.first(where: { !$0.isEmpty && !$0.hasPrefix("#") && !$0.hasPrefix("|") && !$0.hasPrefix("```") }) ?? "完整内容已送达"
         preview = Self.plain(summary, limit: 90)
+    }
+    public init(projection: NativeRuntimeDocument) {
+        id = projection.id; text = projection.text; title = Self.plain(projection.title, limit: 32)
+        preview = Self.plain(projection.preview, limit: 90); serverOwned = projection.serverOwned
+        projectedAutoOpen = projection.autoOpen
     }
     /// Never put access-bearing URLs or Markdown syntax in system previews.
     public static func plain(_ value: String, limit: Int) -> String {

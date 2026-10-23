@@ -18,11 +18,11 @@ import VVoiceCore
         if call.phase == .reconnecting { notice = ["kind":"warn","text":call.detail,"spinner":true,"full":call.detail] }
         else if call.phase == .interrupted { notice = ["kind":"action","text":"声音暂停","action":"resume","actionLabel":"轻点恢复","full":call.detail] }
         else if !call.speakerNotice.isEmpty {
-            notice = ["kind":call.speakerAction == "重拨" ? "error" : call.speakerNotice == "识别恢复中" ? "warn" : "notice","text":call.speakerNotice,"full":call.speakerNotice]
-            if !call.speakerAction.isEmpty { notice?["action"] = call.speakerAction == "重拨" ? "redial" : "hangup"; notice?["actionLabel"] = call.speakerAction }
+            notice = ["kind":call.nativeRuntimeVersion != nil ? call.speakerNoticeKind : call.speakerAction == "重拨" ? "error" : call.speakerNotice == "识别恢复中" ? "warn" : "notice","text":call.speakerNotice,"full":call.speakerNotice]
+            if !call.speakerAction.isEmpty { notice?["action"] = call.nativeRuntimeVersion != nil ? call.speakerActionID : call.speakerAction == "重拨" ? "redial" : "hangup"; notice?["actionLabel"] = call.speakerAction }
         }
         let people = call.conversation.people.enumerated().map { i, p -> [String: Any] in ["id":p.id,"label":p.name ?? p.label,"tone":i % 5] }
-        return ["callID":call.presentationID,"active":call.active,"visible":visible,"bound":call.bound,"phase":call.phase.rawValue,
+        return ["capabilities":["bridgeVersion":1,"runtimeVersion":1,"activeRuntimeVersion":call.nativeRuntimeVersion as Any? ?? NSNull(),"transports":["gateway-relay","webrtc"],"operations":NativeRuntimeEffect.operations.sorted()],"callID":call.presentationID,"active":call.active,"visible":visible,"bound":call.bound,"phase":call.phase.rawValue,
                 "voice":call.phase == .speaking ? "speaking" : "listening","thinking":call.thinkingVisible,"muted":call.muted,
                 "startedAt":call.startedAt.timeIntervalSince1970 * 1000,"model":call.model.rawValue,"models":models,
                 "grok":["voice":call.grokVoice,"voices":call.grokVoices.map { ["id":$0.id,"label":$0.title] },"hint":call.grokHint,"listenAvailable":call.comparisonAvailable,"listenHref":"./compare"],

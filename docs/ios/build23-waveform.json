@@ -1,0 +1,57 @@
+{
+  "version": "1.0.0",
+  "build": 23,
+  "baseBuild": 22,
+  "baseAcceptedByTianyi": true,
+  "sourceCommit": "2d8cd357b9aaaffee94c9e1076b0761115a2b01e",
+  "pullRequests": [
+    77,
+    78
+  ],
+  "mainCI": {
+    "run": 39823447278,
+    "commit": "2d8cd357b9aaaffee94c9e1076b0761115a2b01e",
+    "conclusion": "success"
+  },
+  "ipaSHA256": "8f792d361374289cf72db5a86414ada9885e12494d7f575f635ba915c435e62c",
+  "signedArchiveVerified": true,
+  "independentExportedIPAVerified": true,
+  "mainAppAndExtensionBuild": "23",
+  "installedOnRequestedIPhone": true,
+  "deviceReportedBuild": "23",
+  "normalLaunchVerified": true,
+  "installedFrom": "independently_unpacked_exported_IPA",
+  "preservedBinding": true,
+  "uninstalled": false,
+  "automaticCallPerformed": false,
+  "preinstallReadiness": {
+    "known": true,
+    "activeCalls": 0,
+    "creatingSessions": 0,
+    "backgroundTasks": 0,
+    "deviceOperations": 0
+  },
+  "localTests": {
+    "core": 34,
+    "nativeAll": 68,
+    "relatedServiceContracts": 92,
+    "mainCI": {
+      "run": 39823447278,
+      "commit": "2d8cd357b9aaaffee94c9e1076b0761115a2b01e",
+      "conclusion": "success"
+    },
+    "embeddedH5Parity": true,
+    "homepageCandidateBrowserVerified": true
+  },
+  "rollback": {
+    "build": 22,
+    "ipaSHA256": "feb69b3ed19df1ff3f21de38727b3799f2e949e5dd517ba114693299f846a91d",
+    "signedIPACopiedAndVerified": true,
+    "acceptedByTianyi": true
+  },
+  "physicalAcceptance": "build22 accepted; new build23 waveform feedback pending",
+  "serverDeployment": false,
+  "gatewayRestart": false,
+  "homepageEvidence": "evidence/build23-homepage.png",
+  "connectionTriggerChange": "none; user confirmed Sleep Focus caused missing medium card"
+}

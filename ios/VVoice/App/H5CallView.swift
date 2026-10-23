@@ -228,7 +228,7 @@ struct H5WebSurface: UIViewRepresentable {
             guard owned, call.active, let id = payload["id"] as? String, let document = call.documents.first(where: { $0.id == id }) else { throw VoiceError.connection }
             return ["id":id,"text":document.text]
         case "model":
-            guard !call.active, let id = payload["id"] as? String, let model = VoiceModel(rawValue: id), call.modelOptions.contains(where: { $0.id == id && $0.available }) else { throw VoiceError.unavailable }; call.model = model
+            guard !call.active, let id = payload["id"] as? String, let model = VoiceModel(rawValue: id), call.modelOptions.contains(where: { $0.id == id && $0.available && $0.nativeModel != nil }) else { throw VoiceError.unavailable }; call.model = model
         case "voice":
             guard !call.active, let id = payload["id"] as? String, call.grokVoices.contains(where: { $0.id == id }) else { throw VoiceError.unavailable }; call.grokVoice = id
         case "avatarDisplayed":

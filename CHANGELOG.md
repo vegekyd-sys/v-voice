@@ -16,6 +16,29 @@
 
 - Opt-in private conversation entries mirror completed substantive Voice replies and full backend results into their bound Feishu session through the existing Gateway send API. Resolve the configured bot account explicitly and retain the original session key for transcript mirroring.
 - Keep audio independent of sends; deduplicate response segments and ambiguous retry keys, omit greetings/progress/interrupted text, and surface delivery failures. Only VLab pilot entries are enabled; production and arbitrary-caller permissions are unchanged.
+
+## 2026-10-23 — Service-only query status update for installed build 24
+
+- Use the shared Web task label 查询网页, so the call status reads 查询网页中. The runtime projects that service-owned label to installed build 24; existing native source and signing inputs remain unchanged. PR #83 / main c009c5b passed CI and was deployed to both nodes with public resource hashes verified. No second native install. Tianyi accepted the query test; phone readback confirms changed policy fingerprint, unchanged installed bundle identity, and the exact published 114-file Web archive confirmed good after an idle app relaunch.
+
+## 2026-10-23 — iOS build 24 native capability bridge
+
+- Delivery: PR #82 / main `b8b71ac` passed CI; both Voice nodes run the same verified 208-file artifact. Signed build 24 was cover-installed and read back, preserving signing/Keychain identity and original build 22/23 rollback packages. Tianyi accepted voice, interruption, Action Button, locked-screen voice and Island controls; phone readback confirms policy cb418111e71a187b and valid microphone input. Follow-up service-only phone proof also passed on the same installed bundle; see the release record for idle update timing.
+
+- Move relay caption/speaker interpretation, notices, task/report presentation and bounded playback policy into the shared Voice service. Negotiate a versioned data-only runtime; native executes existing media and system primitives even without a WK page.
+- Discover relay models by declared transport instead of adding a Swift enum case for each service model. Preserve old clients and the separate GPT WebRTC transport.
+- Prepare build 24 for the authorized merge, dual-node release and private-device installation. Preserve signed build 22/23 rollback packages and Keychain identity. Bounded local diagnostics record only runtime policy fingerprints and numeric parameters so a later service-only update can be verified without reinstalling.
+- Synthetic same-binary acceptance changes service policy between calls; physical installation/background/Action Button/Island acceptance is recorded separately. See `docs/ios/NATIVE-CAPABILITY-BRIDGE.md`.
+
+## 2026-10-23 — Native search acknowledgment shared by web and iOS
+
+- Enable contextual SeedDuplex acknowledgment for phone web_search and memory_search, followed by tool execution in the same turn. No cached start audio, injected TTS or additional model. Explicit VOICE_SEARCH_ACK=off retains the silent lookup rollback.
+- Clarify that factual answers require records while a short acknowledgment can precede them. Keep native duplex/multi-person instructions, response ownership, native iOS audio and build 23 island changes.
+- Remove strictly duplicate text/details search wrappers without dropping citations or other content; persist bounded numeric timing diagnostics only. Include the new module in release artifacts.
+- Candidate evidence, failed iterations and timing limits: docs/acceptance/search-natural-ack-20261023/README.md. Production deployment is recorded separately in docs/releases.
+
+- Delivery: PR #80 merged; main CI passed. Both server nodes run 08eaecf with matching artifacts, public assets and iOS UI distribution verified. Existing native build 23 retained; no reinstallation or post-release physical call. Release approved after the documented identity/TV limitations were disclosed. See docs/releases/voice-search-natural-ack-20261023/release.json.
+
 ## 2026-10-23 — iOS build 23 natural speech waveform
 
 - Integrate the user-accepted build 22 baseline with waveform-only medium and large island cards. Keep the native interruption wait fix, Reaction, report entry, mute/end and background Action Button behavior.

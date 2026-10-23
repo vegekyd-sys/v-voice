@@ -1,0 +1,136 @@
+{
+  "schema": "v-voice-native-runtime-release-v1",
+  "sourceCommit": "c009c5bc2c73981d3ae2effe346553626d9c5d68",
+  "mergePR": 83,
+  "mainCI": {
+    "run": 39895278487,
+    "conclusion": "success"
+  },
+  "filesSha256": "76706d88f59d61ea9cf549ae7588786611f39432831d2ca9fb5c685e14f878ea",
+  "artifactFiles": 208,
+  "serverSyncComplete": true,
+  "nodes": {
+    "web": {
+      "sourceCommit": "c009c5bc2c73981d3ae2effe346553626d9c5d68",
+      "filesSha256": "76706d88f59d61ea9cf549ae7588786611f39432831d2ca9fb5c685e14f878ea",
+      "gatewayUnchanged": true,
+      "ready": true,
+      "admissionResumed": true,
+      "cutoverReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      }
+    },
+    "devices": {
+      "sourceCommit": "c009c5bc2c73981d3ae2effe346553626d9c5d68",
+      "filesSha256": "76706d88f59d61ea9cf549ae7588786611f39432831d2ca9fb5c685e14f878ea",
+      "gatewayUnchanged": true,
+      "ready": true,
+      "admissionResumed": true,
+      "cutoverReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      }
+    }
+  },
+  "publicAssetHashesVerified": true,
+  "homepageBrowserVerified": true,
+  "native": {
+    "build": 24,
+    "version": "1.0.0",
+    "ipaSHA256": "cb96341de75cbd598a1806caaaff0e0e1fdd1dcc614a3dafed753cac3cf08ee8",
+    "appSHA256": "59f9dcbbead0ff72bf8e6786bcb997e33f90d4ea365bb38d2944490377b8cd71",
+    "bindingIdentityUnchanged": true,
+    "signed": true,
+    "exportedIPAVerified": true,
+    "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+    "installedBuildReadBack": "24",
+    "coverInstalled": true,
+    "uninstalled": false,
+    "rollbackBuilds": [
+      22,
+      23
+    ],
+    "normalLaunch": "user_opened_and_completed_calls",
+    "physicalAcceptance": {
+      "status": "accepted_by_Tianyi",
+      "date": "2026-10-23",
+      "build": 24,
+      "scope": [
+        "two-way voice",
+        "barge-in interruption",
+        "Action Button start",
+        "locked-screen two-way voice",
+        "Dynamic Island mute/resume/end"
+      ],
+      "evidence": "Tianyi confirmed all five normal and hung up; physical screen sharing remained off",
+      "policyFingerprint": "cb418111e71a187b",
+      "validMicrophoneInputObserved": true
+    },
+    "appStoreOrTestFlight": false
+  },
+  "serviceOnlyPhoneProof": {
+    "status": "accepted_same_installed_binary",
+    "date": "2026-10-23",
+    "nativeBuild": 24,
+    "nativeReinstalled": false,
+    "installedBundleIdentityUnchanged": true,
+    "signedIPAUnchanged": true,
+    "beforePolicyFingerprint": "cb418111e71a187b",
+    "afterPolicyFingerprint": "08688b02805ac448",
+    "taskText": "查询网页中",
+    "humanAcceptance": "Tianyi confirmed the requested webpage-query test good",
+    "shellRevision": "b933919c83d8cdb276637eefb3c8e8747de44afba36bdc39f08ba44b6ddf2bea",
+    "phoneConfirmedWebCacheMatchesPublishedArchive": true,
+    "verifiedCachedFiles": 114,
+    "bindingPreserved": true,
+    "webActivation": "Idle app relaunch triggered the download; phone cache good list confirms page handshake. No reinstall or cache injection.",
+    "updateTiming": "An active call cancels in-flight UI download. Current build retries at the next eligible idle check (600-second interval) or a fresh app launch; calls retain the current page."
+  },
+  "initialBridgeRelease": {
+    "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+    "mergePR": 82,
+    "mainCI": {
+      "run": 39893373949,
+      "conclusion": "success"
+    },
+    "filesSha256": "e9c66090ac402c1c65b49298a2d75b43cf33fab697b841ff457e9489d57840ec",
+    "artifactFiles": 208,
+    "nodes": {
+      "web": {
+        "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+        "filesSha256": "e9c66090ac402c1c65b49298a2d75b43cf33fab697b841ff457e9489d57840ec",
+        "gatewayUnchanged": true,
+        "ready": true,
+        "admissionResumed": true,
+        "cutoverReadiness": {
+          "known": true,
+          "activeCalls": 0,
+          "creatingSessions": 0,
+          "backgroundTasks": 0,
+          "deviceOperations": 0
+        }
+      },
+      "devices": {
+        "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+        "filesSha256": "e9c66090ac402c1c65b49298a2d75b43cf33fab697b841ff457e9489d57840ec",
+        "gatewayUnchanged": true,
+        "ready": true,
+        "admissionResumed": true,
+        "cutoverReadiness": {
+          "known": true,
+          "activeCalls": 0,
+          "creatingSessions": 0,
+          "backgroundTasks": 0,
+          "deviceOperations": 0
+        }
+      }
+    }
+  }
+}

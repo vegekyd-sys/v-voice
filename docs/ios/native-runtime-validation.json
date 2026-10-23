@@ -1,0 +1,147 @@
+{
+  "schema": 1,
+  "date": "2026-10-23",
+  "status": "merged_deployed_build24_physically_accepted_same_binary_service_and_web_update_verified",
+  "developmentBase": "08eaecf1a92bc4aa748e1b6053e7924cf55241e1",
+  "branch": "codex/voice-native-capability-bridge",
+  "protocolVersion": 1,
+  "requiresFirstNativeUpgrade": true,
+  "nativeBuildAssigned": true,
+  "phoneInstalled": true,
+  "productionDeployed": true,
+  "gatewayChanged": false,
+  "validationEnvironment": "isolated local fixture, existing chat-owned iOS 26.5 simulator, ports 29937 and 29947",
+  "tests": {
+    "voiceNode": {
+      "passed": 742,
+      "failed": 0
+    },
+    "speakerNode": {
+      "passed": 95,
+      "failed": 0
+    },
+    "coreSwift": {
+      "passed": 37,
+      "failed": 0
+    },
+    "completeNativeSuite": {
+      "passed": 71,
+      "failed": 0
+    },
+    "additionalProjectedWKFlow": {
+      "passed": 1,
+      "failed": 0,
+      "reason": "Added after full suite to verify the new protocol drives actual shared H5 speaker labels, Markdown report, background capture and page reload"
+    },
+    "embeddedH5Parity": true,
+    "simulatorCompile": true,
+    "fleet": {
+      "passed": 10,
+      "failed": 0
+    },
+    "releaseContracts": {
+      "passed": 98,
+      "failed": 0
+    }
+  },
+  "demonstrated": [
+    "Same installed test binary and CallCoordinator uses changed service connected copy and 140ms/220ms onset behavior on subsequent calls without a WK page",
+    "Service-advertised future relay model selected through H5 bridge; unsupported transport rejected",
+    "Production HTTP/relay/provider adapter clears old reply before new PCM, rejects old tail, preserves capture, drains farewell",
+    "Recognized interruption stays paused beyond old timeout; ignored speech resumes retained samples",
+    "Normalized speaker rows and report render in actual WK H5, microphone upload continues when hidden and when page reloads, only one session created",
+    "Cross-language wire fixture exercises every operation; foreign/replayed/unknown or partially invalid batch rejected",
+    "Legacy fixtures and native GPT WebRTC loopback remain functional"
+  ],
+  "iterations": [
+    {
+      "issue": "GPT test fixture omitted transport field that actual production reservations provide",
+      "resolution": "Fixture now declares webrtc, transport-owned production selection preserved"
+    },
+    {
+      "issue": "New full service caption scenario reached missing assistant() method on local routing stub",
+      "resolution": "Completed the no-op stub interface; same-binary policy and caption scenario passed"
+    }
+  ],
+  "notEstablished": [
+    "Long calls, system call/Siri interruptions and network handover beyond the accepted short test",
+    "Provider judgment accuracy or TV/name recognition improvements"
+  ],
+  "releaseRequirements": [
+    "Review and merge main plus main CI",
+    "Assign next native build, retain current signed rollback and binding identity",
+    "Record actual phone install and human foreground/background/Action Button/Island acceptance",
+    "Update homepage changelog and release registry; publish both Voice nodes through release-fleet"
+  ],
+  "integratedMain": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+  "artifact": {
+    "commit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+    "files": 208,
+    "filesSha256": "e9c66090ac402c1c65b49298a2d75b43cf33fab697b841ff457e9489d57840ec",
+    "manifestVerified": true,
+    "packagedSessionDependencyGraphLoaded": true
+  },
+  "nativeBuild": 24,
+  "releaseAuthorized": true,
+  "rollback": {
+    "build22": {
+      "sha256": "feb69b3ed19df1ff3f21de38727b3799f2e949e5dd517ba114693299f846a91d",
+      "copiedAndVerified": true,
+      "accepted": true
+    },
+    "build23": {
+      "sha256": "8f792d361374289cf72db5a86414ada9885e12494d7f575f635ba915c435e62c",
+      "copiedAndVerified": true
+    }
+  },
+  "diagnostics": "Bounded local protocol version, policy fingerprint and numeric timing fields only; no entry, credentials, audio or transcript",
+  "mainSourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+  "mainCI": {
+    "run": 39893373949,
+    "conclusion": "success"
+  },
+  "signedBundle": {
+    "build": 24,
+    "version": "1.0.0",
+    "ipaSHA256": "cb96341de75cbd598a1806caaaff0e0e1fdd1dcc614a3dafed753cac3cf08ee8",
+    "appSHA256": "59f9dcbbead0ff72bf8e6786bcb997e33f90d4ea365bb38d2944490377b8cd71",
+    "bindingIdentityUnchanged": true,
+    "signed": true,
+    "exportedIPAVerified": true,
+    "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46"
+  },
+  "physicalAcceptance": {
+    "status": "accepted_by_Tianyi",
+    "date": "2026-10-23",
+    "build": 24,
+    "scope": [
+      "two-way voice",
+      "barge-in interruption",
+      "Action Button start",
+      "locked-screen two-way voice",
+      "Dynamic Island mute/resume/end"
+    ],
+    "evidence": "Tianyi confirmed all five normal and hung up; physical screen sharing remained off",
+    "policyFingerprint": "cb418111e71a187b",
+    "validMicrophoneInputObserved": true
+  },
+  "serviceOnlyPhoneProof": {
+    "status": "accepted_same_installed_binary",
+    "date": "2026-10-23",
+    "nativeBuild": 24,
+    "nativeReinstalled": false,
+    "installedBundleIdentityUnchanged": true,
+    "signedIPAUnchanged": true,
+    "beforePolicyFingerprint": "cb418111e71a187b",
+    "afterPolicyFingerprint": "08688b02805ac448",
+    "taskText": "查询网页中",
+    "humanAcceptance": "Tianyi confirmed the requested webpage-query test good",
+    "shellRevision": "b933919c83d8cdb276637eefb3c8e8747de44afba36bdc39f08ba44b6ddf2bea",
+    "phoneConfirmedWebCacheMatchesPublishedArchive": true,
+    "verifiedCachedFiles": 114,
+    "bindingPreserved": true,
+    "webActivation": "Idle app relaunch triggered the download; phone cache good list confirms page handshake. No reinstall or cache injection.",
+    "updateTiming": "An active call cancels in-flight UI download. Current build retries at the next eligible idle check (600-second interval) or a fresh app launch; calls retain the current page."
+  },
+  "serviceReleaseCommit": "c009c5bc2c73981d3ae2effe346553626d9c5d68"
+}

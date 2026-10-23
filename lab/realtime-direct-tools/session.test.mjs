@@ -22,7 +22,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy,sessionBound:options.sessionBound,replyTarget:options.replyTarget,surface:options.surface??'phone'});
+ const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy,sessionBound:options.sessionBound,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -32,6 +32,21 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
  const call=(name,args,id='call-1')=>{event({type:'response.created',response:{id:'response-'+id}});event({type:'response.function_call_arguments.done',response_id:'response-'+id,call_id:id,name,arguments:JSON.stringify(args)});event({type:'response.done',response:{id:'response-'+id,status:'completed'}});};
  return {service,reservation,client,upstream,event,call,audit,invocations,peers,completeBackend:text=>{sdkTask.status='ok';sdkTask.text=text;},progressBackend:text=>sdkTask.progress.push({text,kind:'commentary',provenance:{runId:sdkTask.runId,sequence:sdkTask.progress.length+1}})};
 }
+
+test('native runtime is explicit opt-in and preserves legacy web/installed clients',async t=>{
+ const old=await fixture();t.after(()=>old.service.dispose());
+ assert.equal(old.reservation.nativeRuntime,undefined);
+ old.event({type:'response.output_audio_transcript.delta',delta:'旧协议仍然可用'});
+ assert(old.client.sent.some(v=>v.type==='transcript'));
+ const f=await fixture(undefined,'grok',{nativeRuntimeVersion:1});t.after(()=>f.service.dispose());
+ assert.equal(f.reservation.nativeRuntime.version,1);
+ f.event({type:'response.output_audio_transcript.delta',delta:'新协议通用字幕'});
+ const frames=f.client.sent.filter(v=>v.type==='native.runtime');
+ assert(frames.some(v=>v.effects.some(e=>e.op==='conversation.row'&&e.row.text==='新协议通用字幕')));
+ assert(!f.client.sent.some(v=>v.type==='transcript'));
+ assert(frames.every((v,i)=>v.revision===i+1&&v.voiceSessionId===f.reservation.voiceSessionId));
+ await assert.rejects(f.service.reserve({model:'grok',sessionKey:'fixture',nativeRuntimeVersion:99}),/Unsupported native runtime/u);
+});
 
 test('a speaker switch preserves an admitted tool but never sends its old result to the new native persona',async t=>{
  let native,finish;
@@ -956,4 +971,31 @@ test('native replacement propagates a scoped clear before first new PCM, drops o
  assert.equal(f.client.sent.filter(e=>e.type==='audio.done').at(-1).responseId,'next');
  assert.deepEqual(f.client.sent.filter(e=>e.type==='audio').map(e=>e.responseId),['old','next']);
  assert(f.audit.some(e=>e.type==='audio.clear'&&e.reason==='response-replaced'&&e.retiredResponseId==='old'));
+});
+
+test('native search delivers one complete result copy and records only timing metadata',async t=>{
+ const details={results:[{title:'fixture',url:'https://example.com',snippet:'完整信息'}],debug:{searchMs:30,hits:1}};
+ const original={content:[{type:'text',text:JSON.stringify(details,null,2)}],details};
+ const f=await fixture(async()=>({ok:true,output:original}),'seeduplex');t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'search',name:'web_search',arguments:JSON.stringify({query:'fixture'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered')));
+ const item=f.upstream.sent.find(e=>e.items?.some(i=>i.call_id==='search'&&i.role==='tool')).items[0];
+ assert.deepEqual(JSON.parse(item.content[0].text),details);
+ const metrics=f.audit.find(e=>e.type==='tool.search-metrics');assert(metrics.compacted);assert.equal(metrics.hits,1);assert(metrics.deliveredBytes<metrics.originalBytes);assert.equal(metrics.result,undefined);
+});
+
+
+test('candidate model acknowledgment uses native instructions without host PCM or TTS injection',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{answer:'查到了'}}),'seeduplex',{searchAcknowledgment:'model'});t.after(()=>f.service.dispose());
+ const create=f.upstream.sent.find(x=>x.type==='session.create');
+ for(const tool of create.session.tools.filter(t=>['web_search','memory_search'].includes(t.name)))assert.match(tool.description,/不能只调用工具而保持沉默/);
+ assert.match(create.session.tools.find(t=>t.name==='memory_search').description,/只在答案需要当前通话之外的记录时调用/);assert.match(JSON.stringify(create),/语音查询接话规则/);assert.match(JSON.stringify(create),/不等待接话音频播放结束/);
+ assert.doesNotMatch(JSON.stringify(create),/查询状态由界面展示/);
+ assert.match(create.session.tools.find(t=>t.name==='memory_search').description,/由当前声音与本通话上下文回答，不调用本工具/);
+ const instructions=create.session.instructions;assert.equal(instructions.split('语音查询接话规则').length,2);for(const tool of create.session.tools.filter(t=>['web_search','memory_search'].includes(t.name)))assert(instructions.includes(tool.description));assert(instructions.lastIndexOf('真正插话：')>instructions.lastIndexOf('语音查询接话规则'));assert.match(instructions,/旁聊、电视、未说完的话、姓名介绍和普通聊天不触发本规则/);
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'look',name:'memory_search',arguments:JSON.stringify({query:'fixture'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered')));
+ assert.equal(f.client.sent.some(e=>e.type==='audio'&&e.source==='cached-native-tool-start'),false);
+ assert.equal(f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'),false);
+ assert.equal(f.service.progressNotice(f.reservation.voiceSessionId,0),false);
 });
