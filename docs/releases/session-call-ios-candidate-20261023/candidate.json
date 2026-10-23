@@ -1,0 +1,13 @@
+{
+  "version": "voice-session-call.20261023.2",
+  "runtimeCommit": "c99618994bdc8251e5fae9639615569ec368a0c8",
+  "mainBase": "5aa87088339f3c8604e666d4c2de3c204c28830f",
+  "files": 218,
+  "filesSha256": "ce0eb6523e88386030e5264da9d3f3e1c17367bb6d472e6bb00e84bf05085107",
+  "environment": "isolated VLab session phone candidate",
+  "summaryModel": "grok-4.7",
+  "testCount": 797,
+  "testFlightPublished": false,
+  "mainMerged": false,
+  "productionReleased": false
+}
