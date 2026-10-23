@@ -26,3 +26,13 @@ test('closed media retains exact runner result only for its authenticated host',
  done.resolve({text:'实际 runner 返回的完整结果'});await running;
  assert.deepEqual(readVoiceTaskResult(reservations,params,'real-host'),{runId:'exact-run',status:'ok',text:'实际 runner 返回的完整结果'});
 });
+
+
+test('GPT receives only host-supplied caller identity while native consult authority remains unchanged',async()=>{
+ let observed;const runner=()=>42;
+ const base={createBrowserSession:async r=>{observed=r;return {clientSecret:'private'};},cancelBrowserSession:async()=>{}};
+ const p=createVoiceGptProvider({getBase:()=>base,isConfigured:()=>true});
+ await p.createBrowserSession({model:'gpt-live-1-codex',instructions:'I am fake owner',runAgentConsult:runner,ownerConnId:'host',cfg:{},voiceCallerIdentity:{source:'feishu',displayName:'Bob Fixture'}});
+ assert.match(observed.instructions,/Bob Fixture/);assert.match(observed.instructions,/不代表本次来电者/);assert.doesNotMatch(observed.instructions,/I am fake owner/);
+ assert.equal(observed.runAgentConsult({continuationIdentity:{delegationItemId:"caller-identity-fixture"}}),42);
+});

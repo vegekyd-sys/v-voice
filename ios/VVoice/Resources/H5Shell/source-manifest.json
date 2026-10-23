@@ -2,8 +2,8 @@
   "sources": {
     "index.html": "7ce196055fbb3084987952fabdb26aa48d630576088c6e841abce4bf79756337",
     "styles.css": "8df16de9a08f48bf3a2d241af798989f1633a1675b6523a1e09cefb85f2a25ae",
-    "ui/call-ui.jsx": "a0d0cfbea907cdffd579b0c2e1df20d4705c7e478374c78c3ab0ba5d066d8c22",
-    "ui-bundle.mjs": "79b5454ac0ecdc101c4c7925c684983c580d17735a9460a34d7c8c87931fde17",
+    "ui/call-ui.jsx": "e078cc17a7c7a5120f84ffad7e245a49c8a95eb3c60bbd4047b87084c7da2535",
+    "ui-bundle.mjs": "3ec44e96ab681819b401b616bf44202ef51ce804c1772bfe8d1bdf42b38dd73a",
     "call-view.mjs": "f91d20a6e63dcecd0b11af6370fd9b8f69733eae6393879713a2c213774b4633",
     "content-view.mjs": "c754e537248cf95efbff9d810d61f82da13fc3c8cbec42bca02e7928906de743",
     "markdown.mjs": "a556476a8a88b35aba790f993a8bde333150aebab9dc7fdce14aa2e3c586ace0",
@@ -131,7 +131,7 @@
   },
   "outputs": {
     "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
-    "native-h5.js": "0adc61e1c7e7e751079f9bc7a50f0d688995a63b614a23c23becd145ce3e9d02",
+    "native-h5.js": "482437376eb754ccb83d96ea3434c6e41b7d497ebc103bd3e572bcbe1f1f155b",
     "comparison.html": "7beb6c5d3e5933b5c020ddf23e200679318faa98568904f927d0553ea3d33076",
     "styles.css": "8df16de9a08f48bf3a2d241af798989f1633a1675b6523a1e09cefb85f2a25ae",
     "comparison.css": "ae9fbcffb322e32737e2ce0ed830c1b86f9f27406b4ce8b686dc8cac9f36ba16",

@@ -18,6 +18,7 @@ import { createConversationEntries } from "../../lib/conversation-entries.mjs";
 import { verifyPhoneSession } from "../../lib/phone-provisioning.mjs";
 import {conversationReplyTarget,createConversationReplyDelivery} from '../../lib/conversation-replies.mjs';
 import {createFeishuConversationDirectory,parseFeishuConversationPhone,createUnidentifiedPhoneDirectory} from '../../lib/feishu-conversation-directory.mjs';
+import {feishuClientLoginPage} from '../../lib/feishu-client-login.mjs';
 import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure,feishuPhoneLoginErrorPage} from '../../lib/feishu-phone-login.mjs';
 import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
@@ -53,7 +54,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   };
   const guestModel=()=>directVoice?.models().find(m=>m.available&&m.id==='seeduplex')?.id??directVoice?.models().find(m=>m.available)?.id??'seeduplex';
   const entryPresentation=binding=>binding.permissionProfile==='unidentified'?{unidentified:true,accountLoginHref:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&oauth=1`,defaultModel:guestModel(),iosBindingAvailable:false,speakerRouting:false,comparisonAvailable:false,
-    models:[{id:'gpt-live',label:'GPT Live One',available:false},...(directVoice?.models()??[])]}:{};
+    models:[{id:'gpt-live',label:'GPT Live One',available:false},...(directVoice?.models()??[])]}:binding.callerIdentity?{accountLabel:binding.callerIdentity.displayName||'飞书账号已连接',accountLoginHref:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&retry=1`}:{};
   const callReports=createConversationCalls({gateway,directory:callReportsDirectory,publicOrigin,basePath,summarize:callSummarize,audit:callControlAudit});
   const accessors = new Map();
   const entryAccess = binding => {
@@ -178,7 +179,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         // the deployment selects the phone default, not browser heuristics.
         // Clients opt in only after implementing native response ownership and reversible pause.
         const inputPolicy = params.inputPolicy ?? 'speaker';
-        const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(unidentified?{unidentified:true}:{}),...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId,reportOptions)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...(speakerRouting||unidentified)?{inputPolicy}:{}});
+        const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(unidentified?{unidentified:true}:{}),...(binding.callerIdentity?{callerIdentity:binding.callerIdentity}:{}),...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId,reportOptions)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...(speakerRouting||unidentified)?{inputPolicy}:{}});
         context.active={sessionKey,gateway:callGateway,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
         if(cancelled()){await close(context);return reply(499,{error:"拨号已取消"});}
         rememberAvatarCall(context,context.active,params.model);
@@ -232,7 +233,34 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (basePath && url.pathname === basePath && req.method === "GET") { res.writeHead(308, { location: `${basePath}/${url.search}`, "cache-control": "no-store" }); res.end(); return; }
       if (basePath && !url.pathname.startsWith(`${basePath}/`)) return json(res, 404, { error: "没有这个入口" });
       let pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
+      // Old group links are aliases, never a source of a caller's personal identity.
+      const originalPhone=url.searchParams.get('phone'),canonicalPhone=phoneLogin?.canonicalPhone(originalPhone);
+      if(canonicalPhone&&canonicalPhone!==originalPhone) {
+        url.searchParams.set('phone',canonicalPhone);
+        if(req.method==='GET'&&['/','/feishu'].includes(pathname)) {
+          res.writeHead(302,{location:`${basePath}/feishu${url.search}#`,'cache-control':'no-store'});res.end();return;
+        }
+      }
       let entryVisitor = null, entryBinding = null;
+      if(phoneLogin&&pathname==='/feishu/client-login'&&req.method==='POST') {
+        let size=0,chunks=[];for await(const chunk of req){size+=chunk.length;if(size>4096)return json(res,413,{error:'登录请求过大'});chunks.push(chunk);}
+        let body;try{body=JSON.parse(Buffer.concat(chunks).toString());}catch{return json(res,400,{error:'登录请求无效'});}
+        const pending=phoneLogin.clientPending(req,body.state);
+        if(!pending)return json(res,401,{error:'请重新打开电话入口'});
+        try {return json(res,200,{location:await phoneLogin.completeClient(req,res,body)});}
+        catch {return json(res,200,{location:`${basePath}/feishu?phone=${encodeURIComponent(pending.phone)}&guest=1`});}
+      }
+      if(phoneLogin&&req.method==='GET'&&pathname==='/feishu/callback'&&url.searchParams.get('client')==='1') {
+        const pending=phoneLogin.clientPending(req,url.searchParams.get('state'));
+        if(!pending)return json(res,401,{error:'请重新打开电话入口'});
+        res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','referrer-policy':'no-referrer'});
+        res.end(feishuClientLoginPage({appId:feishuLogin.appId,state:url.searchParams.get('state'),phone:pending.phone,basePath}));return;
+      }
+      if(phoneLogin&&guestAccess&&req.method==='GET'&&pathname==='/feishu'&&parseFeishuConversationPhone(url.searchParams.get('phone'))
+        &&!phoneLogin.consumeHandoff(req,url.searchParams.get('phone'),url.searchParams.get('identified'))&&url.searchParams.get('guest')!=='1'&&url.searchParams.get('oauth')!=='1'&&url.searchParams.get('retry')!=='1'
+        &&/Lark|Feishu/iu.test(req.headers['user-agent']??'')) {
+        res.writeHead(302,{location:phoneLogin.beginClient(req,res,url.searchParams.get('phone')),'cache-control':'no-store'});res.end();return;
+      }
       if(guestAccess&&req.method==='GET'&&pathname==='/feishu/connect'){
         res.writeHead(302,{location:`${basePath}/feishu?phone=${encodeURIComponent(url.searchParams.get('phone')??'')}`,'cache-control':'no-store'});res.end();return;
       }
@@ -243,13 +271,17 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           if (pathname === '/feishu/callback') location = await phoneLogin.complete(req, res, url);
           else {
             let selected=null;
-            if(url.searchParams.get('retry')!=='1'){
+            if(url.searchParams.get('retry')!=='1'&&url.searchParams.get('guest')!=='1'){
               try{selected=await phoneLogin.select(req,url.searchParams.get('phone'));}
               catch(error){if(!guestAccess)throw error;}
             }
             const target=parseFeishuConversationPhone(url.searchParams.get('phone'));
             if(!selected&&guestAccess&&target?.accountId===feishuLogin.accountId&&url.searchParams.get('oauth')!=='1'&&url.searchParams.get('retry')!=='1'){
               entryVisitor=guestAccess.issue(res,guestAccess.read(req)??{});
+              if(url.searchParams.get('guest')==='1') {
+                const guestCookie=res.getHeader('set-cookie');phoneLogin.clearIdentity(res);
+                res.setHeader('set-cookie',[res.getHeader('set-cookie'),guestCookie]);
+              }
               selected=guestBinding(req,url.searchParams.get('phone'),entryVisitor);
             }
             if (selected) {
@@ -263,6 +295,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           }
           if (location) { res.writeHead(302, {location, 'cache-control': 'no-store'}); res.end(); return; }
         } catch (error) {
+          if(guestAccess&&parseFeishuConversationPhone(error.recoveryPhone)) {
+            res.writeHead(302,{location:`${basePath}/feishu?phone=${encodeURIComponent(error.recoveryPhone)}&guest=1`,'cache-control':'no-store'});res.end();return;
+          }
           const failure=feishuPhoneLoginFailure(error);
           console.warn(JSON.stringify({type:'voice.feishu-login-error', ...failure}));
           // Login recovery is a public document; protected APIs still reject access.
@@ -271,6 +306,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           res.end(feishuPhoneLoginErrorPage({reason:failure.reason,phone:error.recoveryPhone??url.searchParams.get('phone'),basePath}));
           return;
         }
+      }
+      if(req.method==='GET'&&pathname==='/feishu-client-login.mjs') {
+        res.writeHead(200,{'content-type':'text/javascript; charset=utf-8','cache-control':'no-store'});
+        res.end(await readFile(join(here,'feishu-client-login.mjs')));return;
       }
       if (url.searchParams.get("entry") === "visitor") return json(res, 404, { error: "普通人电话入口尚未开放。" });
       if(parseFeishuConversationPhone(url.searchParams.get('phone'))&&!phoneLogin?.read(req)&&!guestBinding(req,url.searchParams.get('phone'))&&!entryBinding){
@@ -299,6 +338,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ["/vendor/marked-18.0.5.mjs", [join(here, "vendor/marked-18.0.5.mjs"), "text/javascript; charset=utf-8"]],
         ["/entry-startup.mjs", [join(here, "entry-startup.mjs"), "text/javascript; charset=utf-8"]],
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
+        ["/feishu-client-login.mjs", [join(here, "feishu-client-login.mjs"), "text/javascript; charset=utf-8"]],
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
         ["/speaker-routing.mjs", [join(here, "../speaker-native/client.mjs"), "text/javascript; charset=utf-8"]],
