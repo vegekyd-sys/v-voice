@@ -1,3 +1,4 @@
+import {createCallerContext} from "./caller-context.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -140,6 +141,7 @@ async function fixture(t, options = {}) {
       addEventListener: (type, listener) => pageEvents.set(type, listener),
     },
     navigator: { mediaDevices: { getUserMedia: () => options.getUserMedia?.() ?? Promise.resolve(stream([track()])) }, sendBeacon: (url, body) => { beacons.push({url,body}); return true; } },
+    createCallerContext,
     RTCPeerConnection: Peer,
     AudioContext,
     EventSource,
@@ -1239,4 +1241,17 @@ test('native interruption gives the next answer a fresh caption row after the ne
  assert.deepEqual(Array.from(rows,r=>r.text),['还未说完的旧故事','先停，二加三等于几？','五。']);
  assert.deepEqual(Array.from(rows,r=>r.role),['assistant','user','assistant']);
  assert.equal(f.view.get().transcript.current.length,0,'the old unfinished caption cannot remain current after the new answer');
+});
+
+
+test('authenticated GPT reservation installs account context before greeting and preserves the existing media after ack',async t=>{
+ const f=await fixture(t,{api:(route,payload,result)=>route==='session'?{...result,callerContext:{voiceSessionId:result.voiceSessionId,text:'Verified Alice'}}:result});
+ await f.context.startCall();const peer=f.peers[0],sent=[];peer.channel.send=x=>sent.push(JSON.parse(x));peer.channel.readyState='open';
+ assert.equal(peer.tracks[0].enabled,false);
+ peer.channel.onopen();assert.equal(sent.length,0);
+ peer.channel.onmessage({data:JSON.stringify({type:'session.started'})});assert.equal(sent.length,1);assert.match(sent[0].content[0].text,/Verified Alice/);
+ assert.equal(peer.tracks[0].enabled,false);assert(!f.requests.some(r=>r.route==='ready'));
+ peer.channel.onmessage({data:JSON.stringify({type:'session.context.appended'})});assert.equal(peer.tracks[0].enabled,true);
+ peer.channel.onmessage({data:JSON.stringify({type:'session.started'})});assert.equal(sent.length,1);
+ await f.context.stopCall();assert.equal(peer.closed,true);
 });

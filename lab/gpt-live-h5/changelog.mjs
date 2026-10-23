@@ -55,6 +55,16 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-caller-identity.20261024.1',date:'2026-10-24',
+    title:'修复群电话来电账号识别',
+    items:[
+      '新旧群电话入口统一识别当前飞书账号，飞书内打开时自动获取当前账号。',
+      'GPT、小何和 Grok 使用本次确认的账号名称，不再从群历史猜测来电者。',
+      '账号识别失败时进入临时聊天，避免沿用旧账号；原会话权限保持。',
+      '移除右上角的账号名和切换账号，保留原 iOS App 入口；连接飞书账号移至拨号区下方。',
+    ],
+  },
+  {
     version:'voice-feishu-conversations.20261024.1',date:'2026-10-24',
     title:'飞书电话入口与外部联系人通话',
     items:[

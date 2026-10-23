@@ -22,7 +22,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
+ const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -1031,7 +1031,7 @@ test('unidentified caller uses only this call and cannot reach account tools eve
  const f=await fixture(undefined,'grok',{unidentified:true,sessionKey:'voice:guest:fixture',loadContext:async()=>{contextReads++;return 'private context';},calendar:async()=>{localReads++;},larkRead:async()=>{localReads++;}});
  t.after(()=>f.service.dispose());
  const update=f.upstream.sent.find(x=>x.type==='session.update');
- assert.match(update.session.instructions,/外部联系人，账号身份尚未确认/);
+ assert.match(update.session.instructions,/来电者的飞书账号身份尚未确认/);
  assert(!update.session.instructions.includes('private context'));
  assert.deepEqual(update.session.tools.map(x=>x.name).sort(),['end_call','show_content']);
  for(const name of ['exec','delegate_to_v','feishu_calendar','lark_read','openclaw_tool'])f.call(name,{command:'id',question:'private',name:'exec',arguments:'{}'},'guest-'+name);
@@ -1108,4 +1108,16 @@ for(const receiver of RECEIVERS)test(`${receiver.name}: long result keeps full f
  const result=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='report').result;
  assert(JSON.stringify(result).includes('已核对的事实、来源与限制。'));
  assert.equal(f.invocations.filter(e=>e.question).length,1);
+});
+
+
+test('both direct models receive the verified caller independently of group memory and without changing tools',async t=>{
+ for(const model of ['grok','seeduplex'])for(const name of ['Alice Fixture','Bob Fixture']) {
+  const f=await fixture(undefined,model,{sessionBound:true,actorScoped:true,callerIdentity:{source:'feishu',displayName:name},loadContext:async()=> '群历史提到了 Tianyi，但不是本次账号信息'});
+  t.after(()=>f.service.dispose());
+  const payload=JSON.stringify(f.upstream.sent);
+  assert(payload.includes(name));assert(payload.includes('本次来电账号由飞书确认'));
+  assert(payload.includes('不代表本次来电者'));
+  assert(f.client.sent.find(e=>e.type==='ready').tools.includes('exec'));
+ }
 });
