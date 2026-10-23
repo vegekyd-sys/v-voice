@@ -1,6 +1,6 @@
 # 共享终端行为
 
-2026-10-24 候选；未合入、未上线、未做真实设备音频验收。
+2026-10-24 已经 PR #113 合入并上线。生产源码 `bf1bdcd`，双节点同产物；真实设备音频验收未声称完成。详见 [发布记录](releases/shared-terminal-behavior-20261024/release.json)。
 
 Web 与 iOS 的 direct-voice 入口，以及 StackChan/xiaozhi、原生音响入口，均由 `lab/realtime-direct-tools/session.mjs` 执行对话、搜索、任务控制、进度播报与结果交付。模型可用性、服务器绑定的账号权限不因终端统一而扩大。GPT 自身传输适配保持原样；本次修复的是共享 direct-voice 引擎内的 phone/speaker 行为分叉。
 
@@ -20,10 +20,9 @@ Web 与 iOS 的 direct-voice 入口，以及 StackChan/xiaozhi、原生音响入
 
 ## 验证与发布
 
-- 本地 Voice 全套 848 项、Speaker 95 项通过；随后新增四端长结果测试 4 项通过。
-- `check:ios-shell` 通过；本次没有前端资源变化。
-- VLab 独立 candidate 复验共享会话、设备 WebSocket 与查询恢复；结果另见候选验收记录。此阶段不占用共享集成租约、不重启 Gateway、不拨号。
-- 本次触及 Voice 会话行为，需要上线前共享 VLab 集成及真实设备验收。按照项目流程，先交付独立分支，由 Tianyi 决定合入和上线。
-- 沿用 `release:fleet` 的双节点同产物约束；新 recovery 模块已加入打包清单。正式发布时把候选登记中的用户可见说明加入 `lab/gpt-live-h5/changelog.mjs`，重新生成并校验 iOS shell，更新发布登记，再验证两个实际运行节点的产物 hash。候选文案现在不加入已发布首页列表。
-
-2026-10-24 发布授权补充：Tianyi 明确允许以 Candidate 替代共享 VLab 集成验收，通过后合入并发布；保持现有通话不中断。生产产物基于 681a349，只包含本次终端统一与首页发布说明，不包含 main 上独立多账号候选。
+- 生产源码 Voice 853 项、Speaker 95 项、发布保护 11 项全部通过；合入 main 后 CI 同样通过。通话纪要测试改为等待实际开始事件，消除固定 500 ms 文件系统时序假设。
+- VLab 独立 Candidate 的共享会话、设备 WebSocket 与查询恢复 148 项通过，模型和 Gateway 使用测试替身。Tianyi 明确授权以 Candidate 替代共享 VLab；本次未写共享环境、未自动拨号。
+- 首页更新日志、CHANGELOG 和 iOS shell 同步更新。两个生产节点均校验 219 个实际运行文件，公网 7 项资源及 iOS 更新包内文件哈希一致；内置浏览器确认首页显示本次日志。
+- `release:fleet` 在原子空闲保护下切换，两端恢复接入；Gateway 身份、配置和其他私有配置未变。前版 `681a349` 及启动参数回执保留供回滚。
+- 生产源码基于 `681a349`，保留安静拨号修复，仅增加本次终端统一；main 上的独立多账号候选未随本次发布。
+- 发布时设备离线。这里只确认共享服务和 iOS UI 分发同步，不代表 iPhone、StackChan 或音响的真实收音、播放、打断已验收。未改原生 App 或固件。
