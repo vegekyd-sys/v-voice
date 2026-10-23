@@ -21,6 +21,7 @@ names.push('lab/realtime-direct-tools/native-interrupt.mjs','lab/realtime-direct
 names.push('lab/gpt-live-h5/ios-shell-release.json');
 names.push('lab/realtime-direct-tools/xiaozhi-wire.mjs','lab/realtime-direct-tools/device-vision.mjs','lab/robot/robot-catalog.mjs','lab/robot/robot-reactions.mjs');
 names.push('lib/ios-bindings.mjs','lib/conversation-calls.mjs','lib/conversation-replies.mjs','lib/phone-provisioning.mjs','lib/private-phone-file.mjs','lib/feishu-phone-login.mjs','lib/feishu-group-menu.mjs','lib/feishu-phone-tab.mjs','scripts/feishu-menu.mjs','scripts/phone.mjs');
+names.push('lib/feishu-actor-gateway.mjs','lib/feishu-conversation-directory.mjs');
 const target=resolve(process.argv[2]??join(root,'artifacts',commit));
 await mkdir(dirname(target),{recursive:true});
 await mkdir(target,{recursive:false});
