@@ -117,3 +117,14 @@ for(const mismatch of [null,'key','agentId','accountId','nativeDirectUserId','pr
  }}});
  const call=calls.begin(dm,to,'fallback');call.ready();call.close();await calls.flush();assert.equal(lookups,1);assert.equal(edits,mismatch?0:1);assert.equal(errors.some(e=>e.stage==='status-start'),!!mismatch);
 });
+
+test('quiet call retains persistence and fallback summary without creating timers or edits',async()=>{
+ const sent=[],audit=[];let timers=0;
+ const calls=createConversationCalls({gateway:{request:async(method,args)=>{assert.equal(method,'send');sent.push(args);return {messageId:'summary'};}},publicOrigin:'https://phone.example',audit:e=>audit.push(e),setTimer:()=>{timers++;}});
+ const call=calls.begin(binding,target,'quiet',{statusCard:false});call.ready();call.ready();call.user('保留完整记录');await calls.flush();
+ assert.equal(sent.length,0);assert.equal(timers,0);assert.equal(audit.filter(e=>e.type==='call.status-suppressed').length,1);
+ call.close();call.close();await calls.flush();assert.equal(sent.length,1);
+ assert.equal(JSON.parse(sent[0].message).header.title.content,'通话总结');
+ const report=await calls.read(binding,call.id);assert.equal(report.turns[0].text,'保留完整记录');assert.equal(report.summaryState,'unavailable');
+ const cancelled=calls.begin(binding,target,'cancelled',{statusCard:false});cancelled.close();await calls.flush();assert.equal(sent.length,1);
+});

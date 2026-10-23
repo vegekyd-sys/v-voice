@@ -29,6 +29,14 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version: 'voice-ios-quiet-start.20261024.1', date: '2026-10-24', title: 'iPhone 拨号更安静',
+    items: [
+      '从 iPhone App 或 Action Button 发起通话时，不再发送「V正在电话通话」飞书卡片，避免拨号时弹出通知。',
+      '通话状态继续由灵动岛显示，挂断后的通话总结和完整对话照常保留。',
+      '网页发起通话仍保留原来的实时计时卡片。',
+    ],
+  },
+  {
     version: 'voice-ios-handoff.20261024.1', date: '2026-10-24', title: '在 iPhone 上接着聊',
     items: [
       'iOS App 弹窗突出即将连接的会话，点击「在 iPhone 上继续」进入 App。',
