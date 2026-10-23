@@ -1,0 +1,54 @@
+{
+  "candidateSourceCommit": "93c72ceb4a2f9dc4b193530f978f87dd13dcc93d",
+  "version": "1.0.0",
+  "build": 31,
+  "installationType": "signed Release candidate; PR106 remains draft and unmerged",
+  "ipaSHA256": "04c0a7005a6cda1e8c726c1f83e94c4739cbee39c015de01497a2d01b3b95e3d",
+  "signedReleaseVerified": true,
+  "installedReadback": {
+    "version": "1.0.0",
+    "build": "31"
+  },
+  "idleLaunch": "success; authenticated status 200; no automatic call",
+  "installedAt": "2026-10-24T01:24:14.594485+08:00",
+  "coreTestsPassed": 44,
+  "webServiceTestsPassed": 50,
+  "finalNativeIntegration": {
+    "passed": 5,
+    "failed": 0
+  },
+  "physicalAcoustic": {
+    "durationSeconds": 16,
+    "capturedFrames": 809,
+    "selfInterruptions": 0,
+    "peakSpeechConfidence": 0.863,
+    "rawSamplesStored": false,
+    "rawSamplesUploaded": false
+  },
+  "physicalLiveModel": {
+    "result": "PASS",
+    "productionCallCoordinator": true,
+    "input": "fixed synthetic PCM at physical capture cadence",
+    "continuousRenderMS": 16020,
+    "falsePauses": 0,
+    "queuedRenderStallMS": 0,
+    "localInterruptionMS": 908,
+    "observedInterruptionMS": 929,
+    "speechConfidence": 0.94,
+    "classificationAgeMS": 17,
+    "newAnswerVerified": true,
+    "hangupWithoutCrash": true,
+    "maxCaptureGapMS": 22
+  },
+  "physicalTestsBuildConfiguration": "Debug, same native source as the signed Release candidate",
+  "rollback": {
+    "build": 30,
+    "ipaPreserved": true,
+    "ipaSHA256": "33294ce08e20e3a568ec2261cc81a4b51f1c71b664bc137e5dcf7752a2e168f8"
+  },
+  "productionServiceChanged": false,
+  "productionServiceCommit": "9790353",
+  "userAcceptance": "pending",
+  "allNetworkStutterResolved": false,
+  "humanFarFieldOrOverlappingSpeechAccepted": false
+}
