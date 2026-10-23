@@ -126,5 +126,13 @@
     "policyFingerprint": "cb418111e71a187b",
     "validMicrophoneInputObserved": true
   },
-  "serviceOnlyPhoneProof": "pending_second_service_release_and_phone_call"
+  "serviceOnlyPhoneProof": {
+    "status": "server_web_deployed_phone_readback_pending",
+    "nativeBuild": 24,
+    "nativeReinstalled": false,
+    "beforePolicyFingerprint": "cb418111e71a187b",
+    "expectedNewTaskText": "查询网页中",
+    "shellRevision": "b933919c83d8cdb276637eefb3c8e8747de44afba36bdc39f08ba44b6ddf2bea"
+  },
+  "serviceReleaseCommit": "c009c5bc2c73981d3ae2effe346553626d9c5d68"
 }
