@@ -68,10 +68,13 @@ async function fixture(t) {
     await selected.text();
     return actorCookie + '; ' + cookie(selected);
   };
+  const nativeEntries = new Map();
   const issue = async (entry, jar) => {
     const response = await api(entry, 'ios-binding', jar, {}); assert.equal(response.status, 200);
     const value = await response.json(), url = new URL(value.bindingUrl);
-    assert.equal(url.searchParams.get('phone'), entry?.id ?? null);
+    if(entry)assert.match(url.searchParams.get('phone'),/^ios-[a-f0-9]{40}$/u);
+    else assert.equal(url.searchParams.get('phone'),null);
+    nativeEntries.set(entry?.id,entry?{id:url.searchParams.get('phone')}:null);
     assert.equal(url.origin, origin); assert.equal(url.pathname, '/voice/');
     assert.ok(value.expiresAt > Date.now() && value.expiresAt <= Date.now() + 300000);
     const serialized = JSON.stringify(value);
@@ -80,14 +83,16 @@ async function fixture(t) {
     return {token: new URLSearchParams(url.hash.slice(1)).get('bind'), ...value};
   };
   const redeem = async (entry, token) => {
-    const response = await api(entry, 'ios-binding/redeem', '', {token}); assert.equal(response.status, 200);
+    const response = await api(nativeEntries.get(entry?.id), 'ios-binding/redeem', '', {token}); assert.equal(response.status, 200);
     const value = await response.json(); assert.match(value.deviceAccess, /^[A-Za-z0-9_-]{43}$/u);
     assert.equal(response.headers.get('set-cookie'), null, 'redeem never copies an OAuth cookie');
     return value;
   };
   const authorize = async (entry, deviceAccess) => {
-    const response = await api(entry, 'ios-binding/access', '', {deviceAccess}); assert.equal(response.status, 200);
-    const jar = cookie(response); assert.ok(jar.startsWith((entry ? 'v_voice_' + entry.id : 'v_voice_access') + '='));
+    const nativeEntry=nativeEntries.get(entry?.id);
+    const response = await api(nativeEntry, 'ios-binding/access', '', {deviceAccess}); assert.equal(response.status, 200);
+    const jar = cookie(response); assert.ok(jar.startsWith((nativeEntry ? 'v_voice_' + nativeEntry.id : 'v_voice_access') + '='));
+    assert.equal((await api(nativeEntry,'status',jar)).status,200);
     assert.ok(!jar.includes('v_feishu_phone'));
     return jar;
   };

@@ -5,7 +5,7 @@ import {createLiveH5Server} from '../lab/gpt-live-h5/server.mjs';
 import {feishuConversationPhone} from '../lib/feishu-conversation-directory.mjs';
 import {connectFeishuClient} from '../lab/gpt-live-h5/feishu-client-login.mjs';
 import WebSocket from 'ws';
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {createIosBindings} from '../lib/ios-bindings.mjs';
 
@@ -185,7 +185,9 @@ test('production-shaped App-ID legacy grants work through both URLs and share ma
  const old=createIosBindings({file,basePath:'/voice',publicOrigin:'https://voice.example',permits:()=>true});
  const link=old.issue(group,principal),token=new URLSearchParams(new URL(link.bindingUrl).hash.slice(1)).get('bind');
  const grant=await old.redeem(group,token);let oldCookie;
- old.authorize(group,grant.deviceAccess,{setHeader:(_,v)=>{oldCookie=v.split(';')[0];}});
+ const saved=JSON.parse(await readFile(file,'utf8'));for(const row of saved.grants)delete row.phoneAlias;await writeFile(file,JSON.stringify(saved));
+ const legacy=createIosBindings({file,basePath:'/voice',publicOrigin:'https://voice.example',permits:()=>true});
+ legacy.authorize(group,grant.deviceAccess,{setHeader:(_,v)=>{oldCookie=v.split(';')[0];}});
  const f=await fixture(t,{file});
  for(const id of [group.id,phone]){
   const status=await f.send('/voice/api/status?phone='+id,{cookies:oldCookie});assert.equal(status.status,200,status.text);assert.equal(status.json().unidentified,undefined);
@@ -194,18 +196,47 @@ test('production-shaped App-ID legacy grants work through both URLs and share ma
   const actual=f.reservations.at(-1);assert.equal(actual.sessionKey,group.sessionKey);assert.equal(actual.actorScoped,true);
   await actual.gateway.request('tools.catalog',{});assert.equal(f.calls.at(-1).p.voiceActor.actor.openId,'ou_alice');assert.equal(f.calls.at(-1).p.voiceActor.actor.accountId,'lab');
   await f.send('/voice/api/close?phone='+id,{cookies:oldCookie,body:call.json()});
+  if(id!==group.id)continue;
   const native=await new Promise((resolve,reject)=>{const ws=new WebSocket(`ws://127.0.0.1:${f.port}/voice/api/dial?phone=${id}&model=grok&nativeRuntimeVersion=1&dialVersion=1`,{headers:{host:'voice.example',origin:'https://voice.example',cookie:oldCookie}});const timer=setTimeout(()=>{ws.terminate();reject(Error('legacy native dial timed out'));},2000);ws.on('error',reject);ws.on('message',raw=>{clearTimeout(timer);ws.close();resolve(JSON.parse(raw));});});
   assert.equal(native.type,'reservation');assert.equal(f.reservations.at(-1).sessionKey,group.sessionKey);await f.send('/voice/api/close?phone='+id,{cookies:oldCookie,body:{voiceSessionId:native.voiceSessionId}});
  }
  await f.clientLogin();
  const before=await f.send('/voice/api/ios-binding?phone='+phone);assert.equal(before.json().devices.length,1);
  assert.deepEqual((await f.send('/voice/api/ios-binding?phone='+group.id)).json().devices,before.json().devices);
- const fresh=await f.send('/voice/api/ios-binding?phone='+group.id,{body:{}});assert.equal(fresh.status,200);
+ const fresh=await f.send('/voice/api/ios-binding?phone='+group.id,{body:{displayName:'Forged Owner',openId:'ou_other'}});assert.equal(fresh.status,200);
+ // The installed App may keep the original saved grant; it now sees the
+ // verified name without acquiring a browser OAuth cookie or extending expiry.
+ assert.equal((await f.send('/voice/api/status?phone='+group.id,{cookies:oldCookie})).json().accountLabel,'Alice Fixture');
+ for(const model of ['grok','seeduplex','gpt-live']){
+  const call=await f.send('/voice/api/session?phone='+group.id,{cookies:oldCookie,body:{model}});assert.equal(call.status,200,call.text);
+  if(model==='gpt-live')assert.match(call.json().callerContext.text,/Alice Fixture/);
+  else assert.equal(f.reservations.at(-1).callerIdentity.displayName,'Alice Fixture');
+  await f.send('/voice/api/close?phone='+group.id,{cookies:oldCookie,body:call.json()});
+ }
+ const refreshed=JSON.parse(await readFile(file,'utf8')).grants[0];assert.equal(refreshed.principal.displayName,'Alice Fixture');assert.equal(refreshed.principal.openId,'ou_alice');assert.equal(refreshed.expiresAt,saved.grants[0].expiresAt);
  const native=new URL(fresh.json().bindingUrl);assert.match(native.searchParams.get('phone'),/^ios-[a-f0-9]{40}$/);
  const newGrant=await f.send('/voice/api/ios-binding/redeem?phone='+native.searchParams.get('phone'),{cookies:'',body:{token:new URLSearchParams(native.hash.slice(1)).get('bind')}});assert.equal(newGrant.status,200,newGrant.text);
  assert.equal((await f.send('/voice/api/ios-binding?phone='+phone)).json().devices.length,2);
  const revoked=await f.send('/voice/api/ios-binding/revoke?phone='+group.id,{body:{deviceId:before.json().devices[0].id}});assert.equal(revoked.status,200);
  assert.equal((await f.send('/voice/api/status?phone='+phone,{cookies:oldCookie})).status,401);
+});
+
+test('iOS rebind from guest to Feishu and between accounts cannot reuse the prior native destination',async t=>{
+ const f=await fixture(t),devices=[];
+ await f.send('/voice/feishu?phone='+phone+'&guest=1');
+ for(const subject of [null,{open_id:'ou_alice',tenant_key:'fixture',name:'Alice Fixture'},{open_id:'ou_bob',tenant_key:'fixture',name:'Bob Fixture'}]){
+  if(subject){f.setSubject(subject);await f.send((await f.clientLogin()).location);}
+  const issued=await f.send('/voice/api/ios-binding?phone='+phone,{body:{}});assert.equal(issued.status,200,issued.text);
+  const url=new URL(issued.json().bindingUrl),alias=url.searchParams.get('phone');
+  assert(!devices.some(d=>d.alias===alias),'installed App must redeem when identity changes');
+  const redeemed=await f.send('/voice/api/ios-binding/redeem?phone='+alias,{cookies:'',body:{token:new URLSearchParams(url.hash.slice(1)).get('bind')}});assert.equal(redeemed.status,200,redeemed.text);
+  const access=await f.send('/voice/api/ios-binding/access?phone='+alias,{cookies:'',body:{deviceAccess:redeemed.json().deviceAccess}});assert.equal(access.status,200,access.text);
+  const cookie=access.headers['set-cookie'][0].split(';')[0];assert(cookie.startsWith('v_voice_'+alias+'='),'cookie must match native URL validation');
+  devices.push({alias,cookie,name:subject?.name});
+ }
+ for(const {alias,cookie,name} of devices){
+  const status=await f.send('/voice/api/status?phone='+alias,{cookies:cookie});assert.equal(status.status,200,status.text);assert.equal(status.json().accountLabel,name);assert.equal(status.json().unidentified,name?undefined:true);
+ }
 });
 
 test('guest iOS binding retains the guest conversation and never acquires a Feishu identity',async t=>{

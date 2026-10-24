@@ -317,6 +317,7 @@ function SessionSheet({state,actions}) {
     </div>
     <div className="binding-conversation"><span className="binding-conversation-icon"><Icon d={conversation?.kind==='group'?'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M15 3.1a4 4 0 0 1 0 7.8M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8':'M20 21v-2a7 7 0 0 0-14 0v2M13 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8'} /></span><div><span>即将连接的会话</span><strong>{conversation?.name??'当前会话'}</strong></div><span className="binding-context">{value.unidentified?'访客会话':'上下文随行'}</span></div>
     {value.unidentified&&<p className="session-muted">绑定这段访客对话，不会连接飞书群或使用账号工具。</p>}
+    {!value.unidentified&&state.accountLabel&&<p className="session-muted">同时绑定飞书身份：<strong>{state.accountLabel}</strong>。在 App 中通话时，V 也能知道是你。</p>}
     <div className="binding-action">
      {value.appUrl?<a className="session-primary" href={value.appUrl}><Icon d="M8 2.5h8a2 2 0 0 1 2 2v15a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2Zm2 16h4"/>在 iPhone 上继续</a>:<button type="button" className="session-primary" disabled={value.busy} onClick={actions.createBinding}>{value.busy?'正在准备链接…':'准备绑定链接'}</button>}
      <p className="binding-confirm">在 App 中点「验证并绑定」，再开始通话。<br/>完成前，App 会保留原来的会话。</p>

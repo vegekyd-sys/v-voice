@@ -487,6 +487,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if(req.method==='GET')return json(res,200,{devices:iosBindings.list(binding,principal),appDownload});
         if(req.method==='POST'){
           if(!allow(`ios-binding-create:${entry}:${ip}`))return json(res,429,{error:'生成次数较多，请稍后再试。'});
+          await iosBindings.refreshIdentity(binding,principal);
           return json(res,200,iosBindings.issue(binding,principal));
         }
       }

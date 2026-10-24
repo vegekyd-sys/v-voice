@@ -1,0 +1,16 @@
+{
+  "version": "voice-ios-bound-identity.20261024.1",
+  "status": "candidate-validation",
+  "date": "2026-10-24",
+  "gatewayRestartRequired": false,
+  "nativeAppReleaseRequired": false,
+  "validation": {
+    "voiceTests": 898,
+    "legacyGrantProfileRefresh": true,
+    "identityScopedNativeDestination": true,
+    "forgedClientIdentityIgnored": true,
+    "paidCallsStarted": 0,
+    "physicalIosAcceptance": "pending",
+    "productionDeployment": false
+  }
+}

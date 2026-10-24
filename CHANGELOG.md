@@ -1,3 +1,9 @@
+## 2026-10-24 — iOS bound caller identity (Candidate)
+
+- Persist verified Feishu profile fields into matching, active device grants when the browser prepares a binding. Existing device credentials, expiry and actor permissions remain unchanged.
+- Scope new native destinations by conversation and verified account, preventing the installed App from reusing a guest or different account's saved credential during rebind. Preserve old URLs and cookies.
+- Show the verified account name in the web binding panel. Version `voice-ios-bound-identity.20261024.1`; candidate only, no Gateway or native binary change.
+
 ## 2026-10-24 — Unified phone entry and App binding
 
 - Render the phone UI at the registered Feishu callback URL and resolve client identity in place. Remove the standalone recognition screen and avoid navigating to a second guest login page.

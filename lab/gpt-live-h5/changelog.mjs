@@ -1,5 +1,15 @@
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
+export const IOS_IDENTITY_CANDIDATE_UPDATE = {
+  version:'voice-ios-bound-identity.20261024.1',date:'2026-10-24',
+  title:'iOS 绑定同步飞书身份（Candidate）',status:'candidate-validation',
+  items:[
+    '绑定时同时保存已验证的飞书姓名，App 通话继续使用这份来电人身份。',
+    '从飞书重新生成绑定链接时，补齐同一账号、同一会话旧绑定缺失的姓名。',
+    '切换飞书账号或从访客绑定到飞书时，App 不再复用另一身份的旧绑定。',
+    '仅 Candidate 验证，尚未合入或上线。',
+  ],
+};
 export const UNIFIED_ENTRY_CANDIDATE_UPDATE = {
   version:'voice-unified-entry.20261024.1',date:'2026-10-24',
   title:'电话入口与 App 绑定统一（Candidate）',status:'candidate-validation',
