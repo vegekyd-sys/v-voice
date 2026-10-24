@@ -39,3 +39,12 @@ iOS 原因是旧文档读取失败写入的提示没有随 callID 清除，异�
 用户明确要求将身份、日历直查和内容提示修复合入上线，由本人随后使用 iOS 验证。候选代码在 V 主机以原服务用户、真实成员 admission 和签名 Gateway 工具目录完成日历直读，完整链路 1257ms、两次权限检查、后端任务 0；上游语音传输为本地 fixture，没有付费模型连接。共享 VLab 真实 admission、127 项工具目录和伪造身份拒绝检查通过，Gateway 未变。候选环境没有生产同账号 CLI 授权，因此没有把候选页面可访问当作真机日历验收。
 
 正式发布采用统一双节点 controller，核对空闲并保留原版本；首页发布日志与 iOS shell 同步更新。实体 iOS 的实际工具选择、听感和重新绑定由用户上线后确认。
+
+
+## 生产发布回执
+
+已合入 PR #131，main `8a67c6ac19867166bcac92d8f91ae90d2de77a92` CI 通过。统一 controller 将 web/devices 同步到同一 225 文件产物；两端 ready、hold 已释放。公开 HTTPS 的 7 项页面/iOS 发布资源逐 hash 一致，浏览器首页“修复 iOS 来电身份与日历直查”已展示。
+
+上线后的 namespace 检查发现：只在服务用户身份下运行候选不足以覆盖 systemd ProtectHome/ProtectSystem；真实服务沙箱拒绝 CLI 账号锁写入。保持严格隔离，仅为现有 CLI 的锁、加密 token 刷新、缓存和分账号目录开放写入；先在等价 transient sandbox 查询通过，再在原子空闲 hold 内调整 Voice unit，保留原 drop-in 并核对 Gateway 身份/配置未变。实际新服务 mount namespace + openclaw 用户查询成功，622ms。没有关闭全局隔离或复制凭据。此配置是本版本正常工作的部署依赖；未来回滚保留配置备份。
+
+现有 iOS 无需安装新原生版本。结束通话后重新打开 App，待新版页面加载；旧绑定的姓名补齐需从已验证飞书账号重新生成链接并在 App 验证绑定一次。真机语音体验由用户随后确认。

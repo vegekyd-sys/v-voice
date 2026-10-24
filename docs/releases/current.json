@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "unified-entry-20261024",
-  "version": "voice-unified-entry.20261024.1",
-  "entryCommit": "8c50d5d669a0d22471b7c107ad2bb7a84cb0d5b5",
-  "deviceEntryCommit": "8c50d5d669a0d22471b7c107ad2bb7a84cb0d5b5",
-  "filesSha256": "4eebd6f820c57cdd229daf43ff591646127df2dc47712829b9c88acb6604881b",
-  "registration": "unified-entry-20261024/release.json",
-  "previousEntryCommit": "78fd43e035b82754f16cc49016d8e4648781606f",
+  "release": "ios-bound-identity-20261024",
+  "version": "voice-ios-bound-identity.20261024.2",
+  "entryCommit": "8a67c6ac19867166bcac92d8f91ae90d2de77a92",
+  "deviceEntryCommit": "8a67c6ac19867166bcac92d8f91ae90d2de77a92",
+  "filesSha256": "cadf19a6fc69b499ffd2f8672ecb21abb59364d48fadaa5e41579ab8aa510d89",
+  "registration": "ios-bound-identity-20261024/release.json",
+  "previousEntryCommit": "8c50d5d669a0d22471b7c107ad2bb7a84cb0d5b5",
   "gatewayRestartRequired": false,
-  "deployedAt": "2026-10-24T11:24:21+08:00",
-  "runtimeDifference": "Both Voice service nodes run the same verified main artifact. Existing Gateway and Feishu app configuration are unchanged. Candidate was accepted by the user; production browser and HTTP entry checks passed. Native App and device firmware were not changed."
+  "deployedAt": "2026-10-24T12:31:43+08:00",
+  "runtimeDifference": "Both Voice nodes run the same verified main artifact. Gateway identity/configuration and native apps/firmware unchanged. Web CLI runtime directories are writable inside its existing strict sandbox; actual service-namespace calendar read passed. Physical iOS verification remains with the user."
 }
