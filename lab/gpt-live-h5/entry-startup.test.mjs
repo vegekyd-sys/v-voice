@@ -50,3 +50,11 @@ test('DOM profiling exports whitelisted timestamps rather than arbitrary marks o
  assert(!root.dataset.voiceTiming.includes('SECRET'));
  assert.deepEqual(Object.keys(value).sort(),['fcpMs','marks','ttfbMs']);
 });
+
+test('inline identity finishes before dial readiness and replaces the guest snapshot without another page or status fetch',async()=>{
+ const guest={ready:true,unidentified:true},verified={ready:true,accountLabel:'Verified caller'};let finish,settled=false;
+ const identity=new Promise(resolve=>{finish=resolve;});
+ const work=startVoiceEntry({location,initialStatus:guest,identity,fetch:()=>assert.fail('inline exchange already returns status')}).then(result=>{settled=true;return result;});
+ await Promise.resolve();assert.equal(settled,false);finish(verified);assert.deepEqual(await work,{status:verified});
+ assert.deepEqual(await startVoiceEntry({location,initialStatus:guest,identity:Promise.resolve(null),fetch:()=>assert.fail('guest stays on the existing page')}),{status:guest});
+});

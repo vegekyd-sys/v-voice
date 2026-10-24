@@ -45,3 +45,16 @@ test('app handoff preserves exact binding in a fragment and download links are r
  assert.equal(iosAppDownload('https://apps.apple.com/cn/app/v-voice/id123456789').label,'从 App Store 下载');
  for(const url of ['https://testflight.apple.com/','https://evil.example/join/123','http://testflight.apple.com/join/123','https://testflight.apple.com/join/123?redirect=evil'])assert.throws(()=>iosAppDownload(url));
 });
+
+test('legacy device migration requires the unchanged private binding, current actor permission and exact conversation',async t=>{
+ const dir=await mkdtemp(tmpdir()+'/voice-binding-alias-');t.after(()=>rm(dir,{recursive:true,force:true}));const file=dir+'/grants.json';
+ const old=createIosBindings({...options,file}),issued=old.issue(binding,principal),grant=await old.redeem(binding,token(issued));const res=response();old.authorize(binding,grant.deviceAccess,res);const req={headers:{cookie:cookie(res)}};
+ const current={...binding,id:'canonical-phone',accountId:'default',callerId:'feishu-owner',accessToken:'new-current-secret'.repeat(3)};
+ let legacy=binding,allowed=true;
+ const store=createIosBindings({...options,file,canonicalPhone:p=>p===binding.id?current.id:p,legacyBinding:()=>legacy,permits:p=>allowed&&p.openId===principal.openId});
+ assert(store.principalFor(req,current.id));assert(store.read(req,current));assert.equal(store.list(current,{...principal,displayName:'Updated name',callerId:'feishu-owner'}).length,1);
+ assert.equal(store.read(req,{...current,sessionKey:'different'}),null);
+ legacy={...binding,accessToken:'rotated-secret'.repeat(4)};assert.equal(store.principalFor(req,current.id),null);assert.equal(store.authorize(current,grant.deviceAccess,response()),null);
+ legacy=null;assert.equal(store.read(req,current),null);
+ legacy=binding;allowed=false;assert.equal(store.read(req,current),null);
+});

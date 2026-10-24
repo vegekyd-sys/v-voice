@@ -1,3 +1,4 @@
+import {connectFeishuClient} from './feishu-client-login.mjs';
 // DOM-visible diagnostics let a read-only browser inspector observe timings.
 // Only stage names and milliseconds are included; no speech or call identity.
 const visibleTimingStages = new Set([
@@ -49,7 +50,7 @@ if (typeof window !== 'undefined' && window.document && window.PerformanceObserv
 
 // Start the existing entry authorization/status request independently of the
 // audio, avatar and Markdown module graph. No microphone or call is started.
-export function startVoiceEntry({ location, fetch: request, replaceState, initialStatus, mark = () => {} }) {
+export function startVoiceEntry({ location, fetch: request, replaceState, initialStatus, identity, mark = () => {} }) {
   return (async () => {
     try {
       mark('voice.entry.start');
@@ -67,6 +68,7 @@ export function startVoiceEntry({ location, fetch: request, replaceState, initia
         if (!phone) search.set('entry', 'tianyi');
         replaceState(`${location.pathname}?${search}`);
       }
+      if(identity){const verified=await identity;if(verified)initialStatus=verified;}
       mark('voice.status.start');
       if (!access && initialStatus && typeof initialStatus.ready === 'boolean') {
         mark('voice.status.inline');
@@ -92,8 +94,15 @@ function initialEntryStatus() {
   catch { return null; }
 }
 
+function entryIdentity() {
+  try {
+    const element=window.document.getElementById('login-config');
+    return element?connectFeishuClient({config:JSON.parse(element.textContent),window,document:window.document}).ready:null;
+  } catch {return null;}
+}
+
 export const entryStartup = typeof window !== 'undefined' && window.document
-  ? startVoiceEntry({ initialStatus: initialEntryStatus(), location: window.location, fetch: (...args) => fetch(...args),
+  ? startVoiceEntry({ initialStatus: initialEntryStatus(), identity:entryIdentity(), location: window.location, fetch: (...args) => fetch(...args),
     replaceState: url => window.history.replaceState(null, '', url),
     mark: markVoiceTiming })
   : null;

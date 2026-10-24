@@ -145,3 +145,20 @@ test('login diagnostics identify failed stages without exposing provider credent
   });
   assert.deepEqual(feishuPhoneLoginFailure(new Error('private-token')),{reason:'unexpected_login_failure'});
 });
+
+test('App-ID and account-key aliases unify old groups and verified DM chat IDs without crossing accounts',async()=>{
+ const {feishuConversationPhone}=await import('../lib/feishu-conversation-directory.mjs');
+ const old=[{...records[0],accountId:'cli_test',sessionKey:'agent:makaron:feishu:direct:ou_test',nativeChatId:'oc_dm'},
+  {...records[1],accountId:'cli_test',sessionKey:'agent:makaron:feishu:group:oc_group'},
+  {...records[2],accountId:'another-app',sessionKey:'agent:makaron:feishu:group:oc_other'}];
+ const entries=createConversationEntries(old),seen=[];
+ const login=createFeishuPhoneLogin({appId:'cli_test',appSecret:'private-test',publicOrigin:origin,basePath:'/voice',entries,accountId:'default',actors:[actor],
+  resolveConversation:async(identity,phone)=>{seen.push({identity,phone});return {id:phone,sessionKey:phone===feishuConversationPhone('default','oc_dm')?old[0].sessionKey:old[1].sessionKey};}});
+ for(const [entry,chat] of [[old[0],'oc_dm'],[old[1],'oc_group']]){
+  const canonical=feishuConversationPhone('default',chat);
+  assert.equal(login.canonicalPhone(entry.id),canonical);assert.equal(login.canonicalPhone(feishuConversationPhone('cli_test',chat)),canonical);
+  const owner=await login.resolveDevice({type:'feishu',tenantKey:actor.tenantKey,openId:actor.openId},canonical);assert.deepEqual(owner.legacyBindings,[entries.resolve(new URL(origin+'/?phone='+entry.id))]);
+  const other=await login.resolveDevice({type:'feishu',tenantKey:actor.tenantKey,openId:'ou_other'},canonical);assert.equal(other.legacyBindings,undefined);
+ }
+ assert.equal(login.canonicalPhone(old[2].id),old[2].id);assert.equal(login.canonicalPhone('missing-entry'),'missing-entry');
+});

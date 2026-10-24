@@ -1,0 +1,20 @@
+{
+  "version": "voice-unified-entry.20261024.1",
+  "status": "approved-awaiting-deployment",
+  "date": "2026-10-24",
+  "candidateCommit": "35e32d246d5f8c11b51eeb54537df79a043af81a",
+  "humanCandidateAcceptance": true,
+  "gatewayRestartRequired": false,
+  "feishuAppConfigurationChangeRequired": false,
+  "nativeAppReleaseRequired": false,
+  "rollbackCommit": "78fd43e035b82754f16cc49016d8e4648781606f",
+  "validation": {
+    "voiceTests": 895,
+    "speakerTests": 95,
+    "legacyDeviceAccessAndRevocation": true,
+    "guestDeviceAccessAndRevocation": true,
+    "productionFeishuCallbackRegistered": true,
+    "productionAppMatchesGateway": true,
+    "productionLegacyEntryCount": 419
+  }
+}
