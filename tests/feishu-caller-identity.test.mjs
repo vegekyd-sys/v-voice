@@ -65,8 +65,8 @@ test('old group aliases and new group URLs use current account identity, includi
   const page=await f.send(location,{ua:'Lark/7.0'});assert.equal(page.status,200);assert.match(page.text,new RegExp(name));
   const status=await f.send('/voice/api/status?phone='+phone);assert.equal(status.json().accountLabel,name);
   const refresh=await f.send(location,{ua:'Lark/7.0'});assert.equal(refresh.status,302);assert.equal(refresh.headers.location,'/voice/feishu/callback?phone='+phone);
-  const call=await f.send('/voice/api/session?phone='+phone,{body:{model:'grok',callerIdentity:{source:'feishu',displayName:'Fake Owner'}}});assert.equal(call.status,200,call.text);
-  const actual=f.reservations.at(-1);assert.equal(actual.callerIdentity.displayName,name);assert.equal(actual.sessionKey,group.sessionKey);assert.equal(actual.actorScoped,true);
+  const call=await f.send('/voice/api/session?phone='+phone,{body:{model:'grok',callerIdentity:{source:'feishu',displayName:'Fake Owner'},toolIdentity:{appId:'forged',openId:'ou_owner'}}});assert.equal(call.status,200,call.text);
+  const actual=f.reservations.at(-1);assert.equal(actual.callerIdentity.displayName,name);assert.equal(actual.sessionKey,group.sessionKey);assert.equal(actual.actorScoped,true);assert.deepEqual(actual.toolIdentity,{appId:'cli_fixture',tenantKey:'fixture',openId:open_id});
   await actual.gateway.request('tools.invoke',{name:'read',args:{path:'fixture'}});
   const a=f.calls.at(-1).p.voiceActor.actor;assert.equal(a.openId,open_id);assert.equal(a.callerDisplayName,undefined);
   assert.equal(a.senderIsOwner,undefined);assert.equal(actual.unidentified,undefined);
@@ -193,7 +193,7 @@ test('production-shaped App-ID legacy grants work through both URLs and share ma
   const status=await f.send('/voice/api/status?phone='+id,{cookies:oldCookie});assert.equal(status.status,200,status.text);assert.equal(status.json().unidentified,undefined);
   const access=await f.send('/voice/api/ios-binding/access?phone='+id,{cookies:'',body:{deviceAccess:grant.deviceAccess}});assert.equal(access.status,200,access.text);
   const call=await f.send('/voice/api/session?phone='+id,{cookies:oldCookie,body:{model:'grok'}});assert.equal(call.status,200,call.text);
-  const actual=f.reservations.at(-1);assert.equal(actual.sessionKey,group.sessionKey);assert.equal(actual.actorScoped,true);
+  const actual=f.reservations.at(-1);assert.equal(actual.sessionKey,group.sessionKey);assert.equal(actual.actorScoped,true);assert.deepEqual(actual.toolIdentity,{appId:'cli_fixture',tenantKey:'fixture',openId:'ou_alice'});
   await actual.gateway.request('tools.catalog',{});assert.equal(f.calls.at(-1).p.voiceActor.actor.openId,'ou_alice');assert.equal(f.calls.at(-1).p.voiceActor.actor.accountId,'lab');
   await f.send('/voice/api/close?phone='+id,{cookies:oldCookie,body:call.json()});
   if(id!==group.id)continue;

@@ -44,6 +44,10 @@ export function calendarReadArgs(args){
   }
   return {argv};
 }
+function safeEnvironment(environment){
+  const env=Object.fromEntries(['PATH','HOME','USER','LOGNAME','LANG','LC_ALL','TMPDIR'].filter(k=>environment[k]).map(k=>[k,environment[k]]));
+  return {...env,PATH:[path.dirname(process.execPath),env.PATH].filter(Boolean).join(path.delimiter),TZ:'Asia/Shanghai'};
+}
 function privateEnvironment(environment){
   const configRoot=environment.LARKSUITE_CLI_CONFIG_DIR,dataRoot=environment.LARKSUITE_CLI_DATA_DIR;
   if(!configRoot||!dataRoot||!path.isAbsolute(configRoot)||!path.isAbsolute(dataRoot))throw Error('Voice 专用飞书 CLI 配置未就绪');
@@ -54,14 +58,11 @@ function privateEnvironment(environment){
   }
   const apps=Object.values(JSON.parse(fs.readFileSync(profile,'utf8')).apps??{});
   if(apps.length!==1||apps[0].defaultAs!=='user'||!Array.isArray(apps[0].users)||!apps[0].users.length)throw Error('Voice 本人飞书身份不可用');
-  // Do not give a local read command unrelated provider keys or proxy secrets.
-  const env=Object.fromEntries(['PATH','HOME','USER','LOGNAME','LANG','LC_ALL','TMPDIR','OPENCLAW_CONFIG_PATH','OPENCLAW_STATE_DIR'].filter(k=>environment[k]).map(k=>[k,environment[k]]));
-  return {...env,TZ:'Asia/Shanghai',LARKSUITE_CLI_CONFIG_DIR:configRoot,LARKSUITE_CLI_DATA_DIR:dataRoot};
+  return {...safeEnvironment(environment),LARKSUITE_CLI_CONFIG_DIR:configRoot,LARKSUITE_CLI_DATA_DIR:dataRoot};
 }
 export function createVoiceLarkReader({environment=process.env,binary='lark-cli',timeoutMs=45000,maxBytes=512*1024}={}){
-  const read=async(args,callId,signal)=>{
-    const argv=buildLarkReadArgv(args.argv);signal?.throwIfAborted();
-    const env=privateEnvironment(environment);
+  const execute=async(argv,env,signal,{probe=false}={})=>{
+    signal?.throwIfAborted();
     return new Promise((resolve,reject)=>{
       let child,stdout=[],bytes=0,failure,settled=false,killTimer,closeTimer;
       const finish=(error,result)=>{if(settled)return;settled=true;clearTimeout(timer);clearTimeout(killTimer);clearTimeout(closeTimer);signal?.removeEventListener('abort',abort);error?reject(error):resolve(result);};
@@ -79,15 +80,29 @@ export function createVoiceLarkReader({environment=process.env,binary='lark-cli'
         const text=Buffer.concat(stdout).toString('utf8');
         if(argv.at(-1)==='--help'){code===0?finish(null,{content:[{type:'text',text}],details:{status:'completed',exitCode:0,source:'voice-local-lark'}}):finish(Error('飞书只读命令用法查询失败'));return;}
         let value;try{value=JSON.parse(text);}catch{}
-        if(code!==0||value?.ok!==true){finish(Error('飞书查询未成功：'+(typeof value?.error?.subtype==='string'?value.error.subtype.replace(/[^a-z0-9_-]/giu,'').slice(0,80):'身份、权限或结果无效')));return;}
+        if(code!==0||!value||(!probe&&value.ok!==true)){finish(Error('飞书查询未成功：'+(typeof value?.error?.subtype==='string'?value.error.subtype.replace(/[^a-z0-9_-]/giu,'').slice(0,80):'身份、权限或结果无效')));return;}
+        if(probe){finish(null,value);return;}
         // Keep the native CLI output envelope, which the voice model already reads.
         finish(null,{content:[{type:'text',text:JSON.stringify(value)}],details:{status:'completed',exitCode:0,source:'voice-local-lark'}});
       });
       signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
     });
   };
-  // A service without its own Feishu profile must not offer these tools: every
-  // call would fail at once and the question would go unanswered.
+  const read=async(args,callId,signal)=>execute(buildLarkReadArgv(args.argv),privateEnvironment(environment),signal);
   let available=false;try{privateEnvironment(environment);available=true;}catch{}
-  return {read,calendar:(args,callId,signal)=>read(calendarReadArgs(args),callId,signal),available};
+  return {read,calendar:(args,callId,signal)=>read(calendarReadArgs(args),callId,signal),available,
+    async forActor(actor){
+      if(!actor?.appId||!/^ou_[0-9a-f]{32}$/u.test(actor?.openId??''))return null;
+      // Only the server's verified binding may supply this principal. The
+      // installed guard owns credential selection and revalidates on each read.
+      const expected=Object.freeze({appId:actor.appId,openId:actor.openId}),env=safeEnvironment(environment);
+      try{
+        const guard=await execute(['--guard-info'],env,undefined,{probe:true});
+        if(guard.guard!=='tianyi-default-v1'||guard.expected_app!==expected.appId)return null;
+        const identity=await execute(['--user',expected.openId,'whoami'],env,undefined,{probe:true});
+        if(identity.available!==true||identity.appId!==expected.appId||identity.onBehalfOf?.openId!==expected.openId)return null;
+      }catch{return null;}
+      const actorRead=(args,id,signal)=>execute(['--user',expected.openId,...buildLarkReadArgv(args.argv)],env,signal);
+      return {read:actorRead,calendar:(args,id,signal)=>actorRead(calendarReadArgs(args),id,signal)};
+    }};
 }
