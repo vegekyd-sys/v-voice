@@ -30,7 +30,8 @@ async function fixture(t,{file}={}) {
    actors:[{openId:'ou_alice',tenantKey:'fixture',callerId:'tianyi',defaultPhoneId:dm.id,phoneIds:[group.id,dm.id]}],
    fetchImpl:async(url,init)=>{
     providerCalls.push({url,body:init?.body});
-    if(url.includes('/app_access_token/'))return Response.json({code:0,app_access_token:'private-app-token',expire:7200});
+    if(url.includes('/app_access_token/'))return Response.json({code:0,app_access_token:'private-app-token',tenant_access_token:'private-tenant-token',expire:7200});
+    if(url.includes('/im/v1/chats/'))return Response.json({code:0,data:{name:'真实群名称'}});
     if(url.endsWith('/access_token'))return Response.json({code:0,data:{access_token:'private-user-token',...subject}});
     if(url.endsWith('/token'))return Response.json({code:0,access_token:'private-user-token',token_type:'Bearer'});
     return Response.json({code:0,data:subject});
@@ -113,6 +114,8 @@ test('identity entry exchanges once, reuses provider basic identity and consumes
  assert.equal(f.providerCalls.filter(c=>c.url.includes('/app_access_token/')).length,1);
  assert.equal(f.providerCalls.filter(c=>c.url.endsWith('/access_token')).length,2);
  assert.equal(f.providerCalls.filter(c=>c.url.endsWith('/user_info')).length,0);
+ assert.equal(f.providerCalls.filter(c=>c.url.includes('/im/v1/chats/')).length,1);
+ assert.equal((await f.send('/voice/api/status?phone='+phone)).json().conversation.name,'真实群名称');
 });
 
 test('dynamic group iOS handoff retains verified actor without OAuth cookie and revokes across device APIs',async t=>{
