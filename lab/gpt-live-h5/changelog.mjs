@@ -1,5 +1,17 @@
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
+export const IOS_IDENTITY_CANDIDATE_UPDATE = {
+  version:'voice-ios-bound-identity.20261024.2',date:'2026-10-24',
+  title:'iOS 身份、日历与内容提示修复（Candidate）',status:'candidate-validation',
+  items:[
+    '绑定时同时保存已验证的飞书姓名，App 通话继续使用这份来电人身份。',
+    '从飞书重新生成绑定链接时，补齐同一账号、同一会话旧绑定缺失的姓名。',
+    '切换飞书账号或从访客绑定到飞书时，App 不再复用另一身份的旧绑定。',
+    '恢复按当前已验证飞书账号直接查询日历，简单查询无需转交后端模型。',
+    '修复新通话残留旧内容已清除提示，以及旧内容请求晚到时误显示错误。',
+    '仅 Candidate 验证，尚未合入或上线。',
+  ],
+};
 export const UNIFIED_ENTRY_CANDIDATE_UPDATE = {
   version:'voice-unified-entry.20261024.1',date:'2026-10-24',
   title:'电话入口与 App 绑定统一（Candidate）',status:'candidate-validation',
@@ -64,6 +76,16 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
   ],
 };
 export const VOICE_UPDATES = [
+  {
+    version:'voice-ios-bound-identity.20261024.2',date:'2026-10-24',
+    title:'修复 iOS 来电身份与日历直查',
+    items:[
+      '从飞书生成 App 绑定时，同步已验证的账号姓名；切换账号时不再误用旧绑定。',
+      '恢复按当前已验证飞书账号直接查询日历，简单查询无需转交后端模型。',
+      '修复新通话残留“这份内容已清除”提示，以及旧内容请求晚到时误显示错误。',
+      '现有 App 可在空闲前台同步这次界面修复，无需重新安装。',
+    ],
+  },
   {
     version:'voice-unified-entry.20261024.1',date:'2026-10-24',
     title:'电话入口与 App 绑定统一',

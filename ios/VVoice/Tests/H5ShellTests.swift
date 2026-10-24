@@ -113,6 +113,42 @@ import VVoiceCore
     func testOriginalH5RendersSpeakersAndReportWhileNativeCaptureSurvivesReload() async throws {
         try await verifySpeakersReportAndReload(runtime: false)
     }
+    func testExpiredDocumentNoticeDoesNotCarryIntoNextCall() async throws {
+        let call = try await client(); try await call.startOrContinue()
+        let host = H5WebHost(call: call, onError: { XCTFail($0) })
+        host.latest = H5Snapshot.make(call, visible: true)
+        let web = host.makeWebView()
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene); window.rootViewController = UIViewController(); window.makeKeyAndVisible()
+        window.rootViewController!.view.addSubview(web); web.frame = window.rootViewController!.view.bounds
+        defer { window.isHidden = true; previous?.makeKeyAndVisible(); host.dispose(); web.configuration.userContentController.removeScriptMessageHandler(forName: "voice", contentWorld: .page) }
+        try await until { host.ready }
+        host.openDocument("expired-document-fixture")
+        try await until { try await web.evaluateJavaScript("document.body.innerText.includes('这份内容已清除')") as? Bool == true }
+        await call.end(); try await call.startOrContinue()
+        host.update(H5Snapshot.make(call, visible: true), foreground: true)
+        try await until { try await web.evaluateJavaScript("document.body.dataset.nativeOwner") as? String == call.presentationID }
+        let text = try await web.evaluateJavaScript("document.body.innerText") as? String ?? ""
+        XCTAssertFalse(text.contains("这份内容已清除"), "A previous call's missing document must not taint a fresh call")
+        // A late failure from the old owner must not repaint the new call.
+        _ = try await web.evaluateJavaScript("""
+          window.__originalVoicePost = window.webkit.messageHandlers.voice.postMessage.bind(window.webkit.messageHandlers.voice);
+          window.webkit.messageHandlers.voice.postMessage = message => message.action === 'document'
+            ? new Promise((resolve,reject) => { window.__rejectOldDocument = () => reject(new Error('expired')); })
+            : window.__originalVoicePost(message);
+          window.VVoiceH5.openDocument('late-expired-document');
+          """)
+        try await until { try await web.evaluateJavaScript("typeof window.__rejectOldDocument === 'function'") as? Bool == true }
+        await call.end(); try await call.startOrContinue()
+        host.update(H5Snapshot.make(call, visible: true), foreground: true)
+        try await until { try await web.evaluateJavaScript("document.body.dataset.nativeOwner") as? String == call.presentationID }
+        _ = try await web.evaluateJavaScript("window.__rejectOldDocument(); window.webkit.messageHandlers.voice.postMessage = window.__originalVoicePost; void 0")
+        try await Task.sleep(for: .milliseconds(100))
+        let afterLateFailure = try await web.evaluateJavaScript("document.body.innerText") as? String ?? ""
+        XCTAssertFalse(afterLateFailure.contains("这份内容已清除"), "A late old-owner failure must not repaint the new call")
+        await call.end()
+    }
     func testServiceProjectedH5RendersSpeakersAndReportWhileCaptureSurvivesReload() async throws {
         try await verifySpeakersReportAndReload(runtime: true)
     }

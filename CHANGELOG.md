@@ -1,3 +1,12 @@
+## 2026-10-24 — iOS caller identity, direct calendar and stale content notice
+
+- Persist verified Feishu profile fields into matching, active device grants when the browser prepares a binding. Existing device credentials, expiry and actor permissions remain unchanged.
+- Scope new native destinations by conversation and verified account, preventing the installed App from reusing a guest or different account's saved credential during rebind. Preserve old URLs and cookies.
+- Show the verified account name in the web binding panel. Version `voice-ios-bound-identity.20261024.2`; approved for production release; no Gateway or native binary change.
+
+- Restore local calendar and allowlisted Feishu reads for verified conversation callers through the installed per-user credential router, with signed Gateway capability revalidation for every query and no personal-account fallback.
+- Clear old H5 notices on call ownership changes and ignore late document failures from prior calls. Update the downloadable iOS shell; no native App release required.
+
 ## 2026-10-24 — Unified phone entry and App binding
 
 - Render the phone UI at the registered Feishu callback URL and resolve client identity in place. Remove the standalone recognition screen and avoid navigating to a second guest login page.

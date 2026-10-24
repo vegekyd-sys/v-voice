@@ -52,7 +52,7 @@ function receive(snapshot){
   if(!snapshot||typeof snapshot.callID!=='string')return;
   const changed=owner!==snapshot.callID;
   current=snapshot;
-  if(changed){if(owner!==undefined)pendingDocument=null;stopVisuals();content.reset();cards.clear();opened.clear();hiddenDocument.replaceChildren();owner=snapshot.callID;}
+  if(changed){if(owner!==undefined)pendingDocument=null;openingDocument=false;view.set({message:null,statusText:'',statusTone:'info'});stopVisuals();content.reset();cards.clear();opened.clear();hiddenDocument.replaceChildren();owner=snapshot.callID;}
   const call=snapshot.active?(snapshot.phase==='connecting'?'dialing':snapshot.phase==='ending'?'ending':'connected'):'idle';
   document.body.dataset.callState=call;
   document.body.dataset.voiceState=snapshot.voice;
@@ -71,7 +71,7 @@ function receive(snapshot){
     composer:{...view.get().composer,enabled:snapshot.canControl,open:snapshot.active&&view.get().composer.open},
   });
   if(snapshot.active&&call!=='dialing'&&!reactions)startVisuals(snapshot.callID);
-  if(!snapshot.active){stopVisuals();content.reset();cards.clear();hiddenDocument.replaceChildren();}
+  if(!snapshot.active){pendingDocument=null;openingDocument=false;stopVisuals();content.reset();cards.clear();hiddenDocument.replaceChildren();}
   avatar.show(snapshot.tasks.at(-1)?.activity??'idle');
   reactions?.update({snapshot:snapshot.transcript,activity:snapshot.tasks.at(-1)?.activity??'idle',taskOutcome:snapshot.tasks.length?'pending':snapshot.outcome});
   document.body.dataset.nativeOwner=snapshot.callID;
@@ -81,15 +81,15 @@ async function openPending(){
   if(!pendingDocument||document.hidden||openingDocument||view.get().reading)return;
   const id=pendingDocument,ownOwner=owner,card=cards.get(id);
   if(card?.isConnected){pendingDocument=null;card.click();return;}
-  openingDocument=true;
+  const request={owner:ownOwner,id};openingDocument=request;
   try{
-    const item=await post('document',{id});
-    if(owner!==ownOwner||pendingDocument!==id||document.hidden)return;
+    const item=await post('document',{id},ownOwner);
+    if(openingDocument!==request||owner!==ownOwner||!current?.active||pendingDocument!==id||document.hidden)return;
     content.render(hiddenDocument,{key:'deep-link-'+id,callId:id,role:'assistant',speaker:'V · 完整方案',document:true,complete:true,text:item.text});
     const target=hiddenDocument.querySelector('.content-card');
     if(target){pendingDocument=null;target.click();requestAnimationFrame(()=>void send('shown',{id}).catch(()=>{}));}
-  }catch{pendingDocument=null;view.message('这份内容已清除。','problem');}
-  finally{openingDocument=false;}
+  }catch{if(openingDocument===request&&owner===ownOwner&&current?.active&&pendingDocument===id){pendingDocument=null;view.message('这份内容已清除。','problem');}}
+  finally{if(openingDocument===request){openingDocument=false;if(pendingDocument&&pendingDocument!==id)requestAnimationFrame(openPending);}}
 }
 window.VVoiceH5={receive,openDocument(id){pendingDocument=id;if(view.get().reading)document.getElementById('readerBack').click();else requestAnimationFrame(openPending);},showConversation(){pendingDocument=null;if(view.get().reading)document.getElementById('readerBack').click();},stopMedia(){for(const media of document.querySelectorAll('audio,video'))media.pause();}};
 document.addEventListener('visibilitychange',()=>{if(document.hidden){window.VVoiceH5.stopMedia();void telemetry?.flush();}else{reactions?.resume();requestAnimationFrame(openPending);}});

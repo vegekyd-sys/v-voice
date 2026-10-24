@@ -22,7 +22,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
+ const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -1119,5 +1119,28 @@ test('both direct models receive the verified caller independently of group memo
   assert(payload.includes(name));assert(payload.includes('本次来电账号由飞书确认'));
   assert(payload.includes('不代表本次来电者'));
   assert(f.client.sent.find(e=>e.type==='ready').tools.includes('exec'));
+ }
+});
+for(const model of ['grok','seeduplex'])test(`${model} verified conversation calendar goes directly to caller reader and observes policy revocation`,async t=>{
+ const catalog=['exec','process'],reads=[],principals=[],toolIdentity={appId:'cli_fixture',openId:'ou_11111111111111111111111111111111'};
+ const f=await fixture(undefined,model,{sessionBound:true,actorScoped:true,toolIdentity,catalog,
+  calendar:async()=>{throw Error('must not use personal fallback');},
+  larkForActor:async p=>{principals.push(p);return {calendar:async args=>{reads.push(args);return {details:{exitCode:0},content:[{type:'text',text:'{"ok":true}'}]};}};}});
+ t.after(()=>f.service.dispose());assert.deepEqual(principals,[toolIdentity]);
+ const config=f.upstream.sent.find(x=>['session.update','session.create'].includes(x.type)).session;
+ assert(config.tools.some(x=>x.name==='feishu_calendar'));assert.match(config.instructions,/当前已验证来电账号执行/);
+ const call=id=>model==='seeduplex'?f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name:'feishu_calendar',arguments:'{}'}]}):f.call('feishu_calendar',{},id);
+ call('allowed-calendar');await delay(20);assert.equal(reads.length,1);assert.equal(f.invocations.length,0);
+ catalog.splice(0,1);call('revoked-calendar');await delay(20);assert.equal(reads.length,1);
+ assert(f.audit.some(x=>x.type==='tool.delivered'&&x.callId==='revoked-calendar'&&x.result.error));
+});
+test('actor reads require verified binding, valid actor credentials and current exec capability',async t=>{
+ for(const variant of [{actorScoped:false},{unidentified:true},{toolIdentity:undefined},{catalog:['web_search']},{unavailable:true}]){
+  let reads=0;
+  const f=await fixture(undefined,'grok',{sessionBound:true,actorScoped:true,toolIdentity:{appId:'cli_fixture',openId:'ou_11111111111111111111111111111111'},...variant,
+   larkForActor:async()=>variant.unavailable?null:{calendar:async()=>{reads++;}},calendar:async()=>{reads++;}});
+  t.after(()=>f.service.dispose());const config=f.upstream.sent.find(x=>x.type==='session.update').session;
+  assert(!config.tools.some(x=>x.name==='feishu_calendar'));
+  f.call('feishu_calendar',{},'denied');await delay(10);assert.equal(reads,0);
  }
 });

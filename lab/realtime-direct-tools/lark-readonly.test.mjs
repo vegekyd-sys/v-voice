@@ -62,3 +62,27 @@ test('a service without its own Feishu profile reports the local reader unavaila
   assert.equal(fixture(t,'').reader().available,true);
   assert.equal(createVoiceLarkReader({environment:{PATH:'/usr/bin'}}).available,false);
 });
+const actor={appId:'cli_fixture',openId:'ou_11111111111111111111111111111111'};
+function actorFixture(t,mode='valid'){
+ return fixture(t,`const argv=process.argv.slice(2),actor=${JSON.stringify(actor)};
+ fs.appendFileSync(process.env.HOME+'/calls',JSON.stringify(argv)+'\\n');
+ if(argv[0]==='--guard-info')console.log(JSON.stringify({guard:'tianyi-default-v1',expected_app:${mode==='wrong-app'?"'another-app'":"actor.appId"}}));
+ else if(argv[2]==='whoami')console.log(JSON.stringify({available:${mode==='unauthorized'?'false':'true'},appId:actor.appId,onBehalfOf:{openId:${mode==='wrong-user'?"'ou_22222222222222222222222222222222'":"actor.openId"}}}));
+ else if(fs.existsSync(process.env.HOME+'/revoked')){console.log(JSON.stringify({ok:false,error:{subtype:'LARK_USER_AUTH_REQUIRED'}}));process.exitCode=77;}
+ else console.log(JSON.stringify({ok:true,data:{argv,profile:process.env.LARKSUITE_CLI_CONFIG_DIR??null,data:process.env.LARKSUITE_CLI_DATA_DIR??null,secret:process.env.OPENROUTER_API_KEY??null}}));`);
+}
+test('verified actor uses installed identity router without owner profile or secret inheritance',async t=>{
+ const f=actorFixture(t),reader=await f.reader().forActor(actor);assert(reader);
+ const result=JSON.parse((await reader.calendar({start:'2026-10-26'})).content[0].text).data;
+ assert.deepEqual(result.argv.slice(0,4),['--user',actor.openId,'calendar','+agenda']);
+ assert.equal(result.profile,null);assert.equal(result.data,null);assert.equal(result.secret,null);
+ await assert.rejects(async()=>reader.read({argv:['calendar','+agenda','--user','ou_other']}),/选项/);
+ fs.writeFileSync(f.home+'/revoked','yes');await assert.rejects(reader.calendar({}),/LARK_USER_AUTH_REQUIRED/);
+});
+test('missing, mismatched and unauthorized actors never expose a reader or fall back to personal account',async t=>{
+ for(const mode of ['wrong-app','wrong-user','unauthorized']){
+  const f=actorFixture(t,mode);assert.equal(await f.reader().forActor(actor),null);
+  const calls=fs.readFileSync(f.home+'/calls','utf8');assert(!calls.includes('calendar'));
+ }
+ const f=actorFixture(t);assert.equal(await f.reader().forActor({appId:actor.appId,openId:'from-browser'}),null);assert(!fs.existsSync(f.home+'/calls'));
+});
