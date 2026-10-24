@@ -139,3 +139,11 @@ test('quiet call retains persistence and fallback summary without creating timer
  const report=await calls.read(binding,call.id);assert.equal(report.turns[0].text,'保留完整记录');assert.equal(report.summaryState,'unavailable');
  const cancelled=calls.begin(binding,target,'cancelled',{statusCard:false});cancelled.close();await calls.flush();assert.equal(sent.length,1);
 });
+
+test('canonical owner can read its authorized legacy report while another actor cannot',async()=>{
+ const calls=createConversationCalls({});
+ const report=calls.begin(binding,target,'legacy-call',{statusCard:false});report.ready();await calls.flush();
+ const current={...binding,id:'canonical-phone',callerId:'verified-owner',accountId:'default',legacyBindings:[binding]};
+ assert.ok(await calls.read(current,report.id));
+ assert.equal(await calls.read({...current,callerId:'another-actor',legacyBindings:[]},report.id),null);
+});

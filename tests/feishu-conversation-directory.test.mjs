@@ -186,9 +186,9 @@ test('unidentified phone opens without login and isolates browser, conversation 
   assert.equal(first.status,200);assert.match(html,/voiceEntryStatus/);assert(!html.includes('生成验证码'));
   const jar=first.headers.get('set-cookie').split(';')[0];
   const state=await(await get('/voice/api/status'+query,jar)).json();
-  assert.equal(state.unidentified,true);assert.equal(state.accountLoginHref,'/voice/feishu?phone='+phone+'&oauth=1');assert.equal(state.defaultModel,'seeduplex');assert.equal(state.iosBindingAvailable,false);
+  assert.equal(state.unidentified,true);assert.equal(state.accountLoginHref,'/voice/feishu?phone='+phone+'&oauth=1');assert.equal(state.defaultModel,'seeduplex');assert.equal(state.iosBindingAvailable,true);
   assert.equal(state.conversation.replySync,false);assert.equal(state.models.find(m=>m.id==='gpt-live').available,false);
-  for(const path of ['/api/calls/private','/api/ios-binding','/api/speaker-fixture','/api/comparison','/api/access'])assert.equal((await get('/voice'+path+query,jar)).status,403);
+  for(const path of ['/api/calls/private','/api/speaker-fixture','/api/comparison','/api/access'])assert.equal((await get('/voice'+path+query,jar)).status,403);
   assert.equal((await get('/voice/api/status'+query,jar.slice(0,-4)+'fake')).status,401);
   assert.equal((await get('/voice/api/session'+query,jar,{model:'gpt-live'})).status,400);
   const call=await(await get('/voice/api/session'+query,jar,{model:'grok',callerId:'tianyi',sessionKey:'agent:makaron:main',unidentified:false})).json();

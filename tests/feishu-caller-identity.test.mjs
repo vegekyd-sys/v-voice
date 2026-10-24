@@ -5,11 +5,14 @@ import {createLiveH5Server} from '../lab/gpt-live-h5/server.mjs';
 import {feishuConversationPhone} from '../lib/feishu-conversation-directory.mjs';
 import {connectFeishuClient} from '../lab/gpt-live-h5/feishu-client-login.mjs';
 import WebSocket from 'ws';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {createIosBindings} from '../lib/ios-bindings.mjs';
 
 const phone=feishuConversationPhone('lab','oc_groupa');
-const group={id:'feishu-group-fixture',agentId:'makaron',sessionKey:'agent:makaron:feishu:group:oc_groupa',accountId:'lab',kind:'group',callerId:'tianyi',permissionProfile:'personal-tianyi',accessToken:'group-only-token'.repeat(4)};
+const group={id:'feishu-group-fixture',agentId:'makaron',sessionKey:'agent:makaron:feishu:group:oc_groupa',accountId:'cli_fixture',kind:'group',callerId:'tianyi',permissionProfile:'personal-tianyi',accessToken:'group-only-token'.repeat(4)};
 const dm={...group,id:'feishu-dm-fixture',kind:'dm',sessionKey:'agent:makaron:feishu:direct:ou_alice',accessToken:'dm-only-token'.repeat(4)};
-async function fixture(t) {
+async function fixture(t,{file}={}) {
  let subject={open_id:'ou_alice',tenant_key:'fixture',name:'Alice Fixture'},reject=false,n=0;
  const calls=[],reservations=[],providerCalls=[];
  const gateway={request:async(method,p)=>{
@@ -21,7 +24,7 @@ async function fixture(t) {
   if(method==='talk.client.create')return {voiceSessionId:'gpt-'+(++n),model:'gpt-live-1-codex',transport:'webrtc',offerUrl:'/plugins/openai/realtime/calls',clientSecret:'private-fixture'};
   return {ok:true};
  }};
- const server=createLiveH5Server({gateway,publicOrigin:'https://voice.example',basePath:'/voice',accessToken:'private-fixture-token'.repeat(4),conversationEntries:[group,dm],
+ const server=createLiveH5Server({gateway,iosBindingsFile:file,publicOrigin:'https://voice.example',basePath:'/voice',accessToken:'private-fixture-token'.repeat(4),conversationEntries:[group,dm],
   directVoice:{models:()=>[{id:'seeduplex',available:true},{id:'grok',available:true}],reserve:async p=>{reservations.push(p);return {voiceSessionId:'fixture-call-'+(++n),relayTicket:'fixture',provider:p.model};},attach:()=>true,close:async()=>{},dispose:async()=>{}},
   feishuLogin:{appId:'cli_fixture',appSecret:'fixture-private-secret',accountId:'lab',conversations:true,allowUnidentified:true,
    actors:[{openId:'ou_alice',tenantKey:'fixture',callerId:'tianyi',defaultPhoneId:dm.id,phoneIds:[group.id,dm.id]}],
@@ -41,25 +44,26 @@ async function fixture(t) {
   });req.on('error',reject);req.end(body?JSON.stringify(body):undefined);
  });
  const clientLogin=async()=>{
-  const page=await send('/voice/feishu?phone='+phone,{ua:'Lark/7.0'});assert.equal(page.status,200);assert.match(page.text,/正在识别当前飞书账号/);
+  const entry=await send('/voice/feishu?phone='+phone,{ua:'Lark/7.0'});assert.equal(entry.status,302);assert.equal(entry.headers.location,'/voice/feishu/callback?phone='+phone);
+  const page=await send(entry.headers.location,{ua:'Lark/7.0'});assert.equal(page.status,200);assert.match(page.text,/<title>和 V 通话<\/title>/);assert.doesNotMatch(page.text,/正在识别当前飞书账号/);assert.match(page.text,/<base href="\/voice\/">/);
   const state=JSON.parse(page.text.match(/id="login-config">(.*?)<\/script>/s)[1]).state;
   const finish=await send('/voice/feishu/client-login',{body:{state,code:'valid-code',name:'Forged Tianyi',callerId:'tianyi'}});
-  assert.equal(finish.status,200);return {state,location:finish.json().location};
+  assert.equal(finish.status,200);return {state,location:finish.json().location,status:finish.json().status};
  };
  return {send,jar,calls,reservations,providerCalls,clientLogin,port:server.server.address().port,setSubject:s=>subject=s,setDenied:v=>reject=v};
 }
 
 test('old group aliases and new group URLs use current account identity, including switching accounts in one browser',async t=>{
  const f=await fixture(t);
- const old=await f.send('/voice/feishu?phone='+group.id);assert.equal(old.headers.location,'/voice/feishu?phone='+phone+'#');
- assert.equal((await f.send('/voice/?phone='+group.id)).headers.location,'/voice/feishu?phone='+phone+'#');
+ const old=await f.send('/voice/feishu?phone='+group.id,{ua:'Lark'});assert.equal(old.headers.location,'/voice/feishu/callback?phone='+phone);
+ assert.equal((await f.send('/voice/?phone='+group.id,{ua:'Lark'})).headers.location,old.headers.location);
  const personal=await f.send('/voice/feishu?phone='+dm.id);assert.match(personal.headers.location,/accounts.feishu.cn/);
  for(const [open_id,name] of [['ou_alice','Alice Fixture'],['ou_bob','Bob Fixture']]){
   f.setSubject({open_id,tenant_key:'fixture',name,email:'never-retain@example.com'});
   const {state,location}=await f.clientLogin();assert.match(location,/identified=/);
   const page=await f.send(location,{ua:'Lark/7.0'});assert.equal(page.status,200);assert.match(page.text,new RegExp(name));
   const status=await f.send('/voice/api/status?phone='+phone);assert.equal(status.json().accountLabel,name);
-  const refresh=await f.send(location,{ua:'Lark/7.0'});assert.equal(refresh.status,200);assert.match(refresh.text,/正在识别当前飞书账号/);
+  const refresh=await f.send(location,{ua:'Lark/7.0'});assert.equal(refresh.status,302);assert.equal(refresh.headers.location,'/voice/feishu/callback?phone='+phone);
   const call=await f.send('/voice/api/session?phone='+phone,{body:{model:'grok',callerIdentity:{source:'feishu',displayName:'Fake Owner'}}});assert.equal(call.status,200,call.text);
   const actual=f.reservations.at(-1);assert.equal(actual.callerIdentity.displayName,name);assert.equal(actual.sessionKey,group.sessionKey);assert.equal(actual.actorScoped,true);
   await actual.gateway.request('tools.invoke',{name:'read',args:{path:'fixture'}});
@@ -89,7 +93,7 @@ test('failed current-account admission clears old identity and becomes a genuine
 });
 
 test('client login rejects foreign origins, stolen state and excess payload without making provider calls',async t=>{
- const f=await fixture(t);const start=await f.send('/voice/feishu?phone='+phone,{ua:'Lark'});
+ const f=await fixture(t);const start=await f.send('/voice/feishu/callback?phone='+phone,{ua:'Lark'});
  const state=JSON.parse(start.text.match(/id="login-config">(.*?)<\/script>/s)[1]).state;
  assert.equal((await f.send('/voice/feishu/client-login',{body:{state,code:'stolen'},cookies:''})).status,401);
  assert.equal((await f.send('/voice/feishu/client-login',{body:{state,code:'stolen'},origin:'https://elsewhere.example'})).status,403);
@@ -154,20 +158,69 @@ function clientFixture({mode='success'}={}) {
  const window={location:{replace:x=>locations.push(x)},h5sdk:{error(){},ready:f=>f()},tt:{requestAccess:args=>{sdkOptions=args;if(mode==='success')args.success({code:'client-code'});else if(mode==='failure')args.fail({errno:20027});}}};
  const document={getElementById:id=>elements[id],createElement:()=>({}),head:{append:script=>{if(mode==='load-failure')script.onerror();else script.onload();}}};
  const result=connectFeishuClient({config:{appId:'cli_fixture',state:'nonce',endpoint:'/voice/feishu/client-login',guest:'/voice/feishu?guest=1'},window,document,
-  fetch:async(url,init)=>{requests.push({url,init});return {ok:true,json:async()=>({location:'/voice/feishu?identified=1'})};},setTimer:f=>{timers.push(f);return 1;},clearTimer:()=>{}});
+  fetch:async(url,init)=>{requests.push({url,init});return {ok:true,json:async()=>({status:JSON.parse(init.body).code?{ready:true,accountLabel:'Alice Fixture'}:{ready:true,unidentified:true}})};},setTimer:f=>{timers.push(f);return 1;},clearTimer:()=>{}});
  return {locations,requests,elements,timers,result,get sdkOptions(){return sdkOptions;}};
 }
 
-test('client SDK requests basic identity and only sends the code, then follows verified server result',async()=>{
+test('client SDK confirms identity in the phone page without navigation',async()=>{
  const f=clientFixture();await new Promise(r=>setImmediate(r));
  assert.deepEqual(f.sdkOptions.scopeList,[]);assert.equal(f.sdkOptions.appID,'cli_fixture');
  assert.deepEqual(JSON.parse(f.requests[0].init.body),{state:'nonce',code:'client-code'});
- assert.deepEqual(f.locations,['/voice/feishu?identified=1']);
- f.timers[0]();assert.equal(f.locations.length,1);
+ assert.deepEqual(await f.result.ready,{ready:true,accountLabel:'Alice Fixture'});assert.deepEqual(f.locations,[]);
+ f.timers[0]();assert.equal(f.locations.length,0);
 });
-test('SDK denial, loading failure and timeout fall back once, without reusing the old account',()=>{
+test('SDK denial, loading failure and timeout stay in the phone page as a guest',async()=>{
  for(const mode of ['failure','load-failure','timeout']){
-  const f=clientFixture({mode});f.timers[0]();f.timers[0]();
-  assert.deepEqual(f.locations,['/voice/feishu?guest=1']);assert.equal(f.requests.length,0);
+  const f=clientFixture({mode});if(mode==='timeout')f.timers[0]();
+  assert.deepEqual(await f.result.ready,{ready:true,unidentified:true});assert.deepEqual(f.locations,[]);assert.equal(f.requests.length,1);assert.ok(JSON.parse(f.requests[0].init.body).failure);
  }
+});
+
+test('production-shaped App-ID legacy grants work through both URLs and share management with canonical grants',async t=>{
+ const dir=await mkdtemp(tmpdir()+'/voice-legacy-bridge-');t.after(()=>rm(dir,{recursive:true,force:true}));const file=dir+'/devices.json';
+ const principal={type:'feishu',tenantKey:'fixture',openId:'ou_alice',callerId:'tianyi'};
+ const old=createIosBindings({file,basePath:'/voice',publicOrigin:'https://voice.example',permits:()=>true});
+ const link=old.issue(group,principal),token=new URLSearchParams(new URL(link.bindingUrl).hash.slice(1)).get('bind');
+ const grant=await old.redeem(group,token);let oldCookie;
+ old.authorize(group,grant.deviceAccess,{setHeader:(_,v)=>{oldCookie=v.split(';')[0];}});
+ const f=await fixture(t,{file});
+ for(const id of [group.id,phone]){
+  const status=await f.send('/voice/api/status?phone='+id,{cookies:oldCookie});assert.equal(status.status,200,status.text);assert.equal(status.json().unidentified,undefined);
+  const access=await f.send('/voice/api/ios-binding/access?phone='+id,{cookies:'',body:{deviceAccess:grant.deviceAccess}});assert.equal(access.status,200,access.text);
+  const call=await f.send('/voice/api/session?phone='+id,{cookies:oldCookie,body:{model:'grok'}});assert.equal(call.status,200,call.text);
+  const actual=f.reservations.at(-1);assert.equal(actual.sessionKey,group.sessionKey);assert.equal(actual.actorScoped,true);
+  await actual.gateway.request('tools.catalog',{});assert.equal(f.calls.at(-1).p.voiceActor.actor.openId,'ou_alice');assert.equal(f.calls.at(-1).p.voiceActor.actor.accountId,'lab');
+  await f.send('/voice/api/close?phone='+id,{cookies:oldCookie,body:call.json()});
+  const native=await new Promise((resolve,reject)=>{const ws=new WebSocket(`ws://127.0.0.1:${f.port}/voice/api/dial?phone=${id}&model=grok&nativeRuntimeVersion=1&dialVersion=1`,{headers:{host:'voice.example',origin:'https://voice.example',cookie:oldCookie}});const timer=setTimeout(()=>{ws.terminate();reject(Error('legacy native dial timed out'));},2000);ws.on('error',reject);ws.on('message',raw=>{clearTimeout(timer);ws.close();resolve(JSON.parse(raw));});});
+  assert.equal(native.type,'reservation');assert.equal(f.reservations.at(-1).sessionKey,group.sessionKey);await f.send('/voice/api/close?phone='+id,{cookies:oldCookie,body:{voiceSessionId:native.voiceSessionId}});
+ }
+ await f.clientLogin();
+ const before=await f.send('/voice/api/ios-binding?phone='+phone);assert.equal(before.json().devices.length,1);
+ assert.deepEqual((await f.send('/voice/api/ios-binding?phone='+group.id)).json().devices,before.json().devices);
+ const fresh=await f.send('/voice/api/ios-binding?phone='+group.id,{body:{}});assert.equal(fresh.status,200);
+ const native=new URL(fresh.json().bindingUrl);assert.match(native.searchParams.get('phone'),/^ios-[a-f0-9]{40}$/);
+ const newGrant=await f.send('/voice/api/ios-binding/redeem?phone='+native.searchParams.get('phone'),{cookies:'',body:{token:new URLSearchParams(native.hash.slice(1)).get('bind')}});assert.equal(newGrant.status,200,newGrant.text);
+ assert.equal((await f.send('/voice/api/ios-binding?phone='+phone)).json().devices.length,2);
+ const revoked=await f.send('/voice/api/ios-binding/revoke?phone='+group.id,{body:{deviceId:before.json().devices[0].id}});assert.equal(revoked.status,200);
+ assert.equal((await f.send('/voice/api/status?phone='+phone,{cookies:oldCookie})).status,401);
+});
+
+test('guest iOS binding retains the guest conversation and never acquires a Feishu identity',async t=>{
+ const f=await fixture(t);await f.send('/voice/feishu?phone='+phone+'&guest=1');
+ const issued=await f.send('/voice/api/ios-binding?phone='+phone,{body:{}});assert.equal(issued.status,200,issued.text);
+ const link=new URL(issued.json().bindingUrl),alias=link.searchParams.get('phone');
+ const grant=await f.send('/voice/api/ios-binding/redeem?phone='+alias,{cookies:'',body:{token:new URLSearchParams(link.hash.slice(1)).get('bind')}});assert.equal(grant.status,200,grant.text);
+ const access=await f.send('/voice/api/ios-binding/access?phone='+alias,{cookies:'',body:{deviceAccess:grant.json().deviceAccess}});assert.equal(access.status,200,access.text);
+ const cookie=access.headers['set-cookie'][0].split(';')[0];
+ const status=await f.send('/voice/api/status?phone='+alias,{cookies:cookie});assert.equal(status.json().unidentified,true);assert.equal(status.json().iosBindingAvailable,true);assert.equal(status.json().accountLabel,undefined);
+ const browserCall=await f.send('/voice/api/session?phone='+phone,{body:{model:'grok'}});assert.equal(browserCall.status,200,browserCall.text);
+ const session=f.reservations.at(-1).sessionKey;await f.send('/voice/api/close?phone='+phone,{body:browserCall.json()});
+ const deviceCall=await f.send('/voice/api/session?phone='+alias,{cookies:cookie,body:{model:'grok'}});assert.equal(deviceCall.status,200,deviceCall.text);
+ const actual=f.reservations.at(-1);assert.equal(actual.sessionKey,session);assert.equal(actual.unidentified,true);assert.equal(actual.callerIdentity,undefined);
+ await assert.rejects(actual.gateway.request('tools.catalog',{}),/账号工具权限/);assert.equal(f.calls.length,0);
+ await f.send('/voice/api/close?phone='+alias,{cookies:cookie,body:deviceCall.json()});
+ assert.equal((await f.send('/voice/api/ios-binding?phone='+alias,{cookies:cookie,body:{}})).status,403);
+ const devices=(await f.send('/voice/api/ios-binding?phone='+phone)).json().devices;
+ assert.equal((await f.send('/voice/api/ios-binding/revoke?phone='+phone,{body:{deviceId:devices[0].id}})).status,200);
+ assert.equal((await f.send('/voice/api/status?phone='+alias,{cookies:cookie})).status,401);
 });

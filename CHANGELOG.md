@@ -1,3 +1,10 @@
+## Candidate — 2026-10-24 unified phone entry
+
+- Render the phone UI at the registered Feishu callback URL and resolve client identity in place. Remove the standalone recognition screen and avoid navigating to a second guest login page.
+- Normalize configured App-ID/account-key aliases for both group and verified DM entries. Revalidate existing device grants against unchanged private legacy records, retain their cookie compatibility, and expose one management list under canonical identity.
+- Keep the iOS entry available for guests; device grants retain only the isolated guest conversation, with no Feishu identity, group history or account tools.
+- Preserve historical report access only for the configured legacy actor. Version `voice-unified-entry.20261024.1`; Candidate only, no production or Gateway change.
+
 ## 2026-10-24 — Faster Feishu entry and restored iOS/status paths
 
 - Serve the client handshake in the entry response, inline its bootstrap, reuse expiring app tokens and provider-returned basic identity, and consume the verified one-use admission without repeating Gateway resolution. Publish numeric entry-stage timings without codes or identity fields.

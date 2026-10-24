@@ -123,7 +123,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   const backendOnset=new BackendSpeechOnset();let backendPlayback=false, backendResponseId=null;const retiredResponses=new Set();
   const nativeDuplex=reservation.nativeDuplex===true,assisted=reservation.nativePlaybackPolicy==='assisted',nativeCourtesy=nativeDuplex&&reservation.nativePlaybackPolicy!=='provider',nativePause=new NativeSpeechPause(assisted?{minRms:.035,consecutiveOnset:true,trustNativeOnset:false,requireConfirmation:true}:{});let nativePaused=false,currentResponseId=null;
   let greetingHeld=reservation.provider==='grok';
-  const endpoint=new URL('./api/relay',location.href);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
+  const endpoint=new URL('./api/relay',globalThis.document?.baseURI??location.href);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
   const phone=new URLSearchParams(location.search).get('phone');if(phone)endpoint.searchParams.set('phone',phone);
   const socket=new WebSocket(endpoint);socket.binaryType='arraybuffer';
