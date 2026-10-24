@@ -65,6 +65,15 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-unified-entry.20261024.1',date:'2026-10-24',
+    title:'电话入口与 App 绑定统一',
+    items:[
+      '直接显示电话页面，在页内确认飞书账号，移除独立的账号识别页。',
+      '新旧群链接和私聊共用会话映射，保留已有 App 绑定与原通话记录。',
+      '访客也可使用 iOS App 入口，继续自己的访客对话；绑定时显示对应会话名称。',
+    ],
+  },
+  {
     version:'voice-entry-speed-status.20261024.1',date:'2026-10-24',
     title:'飞书电话入口提速与 iOS 绑定恢复',
     items:[
