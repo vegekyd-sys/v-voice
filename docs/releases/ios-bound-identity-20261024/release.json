@@ -1,0 +1,29 @@
+{
+  "version": "voice-ios-bound-identity.20261024.2",
+  "status": "approved-for-production",
+  "date": "2026-10-24",
+  "gatewayRestartRequired": false,
+  "nativeAppReleaseRequired": false,
+  "validation": {
+    "voiceTests": 903,
+    "legacyGrantProfileRefresh": true,
+    "identityScopedNativeDestination": true,
+    "forgedClientIdentityIgnored": true,
+    "paidCallsStarted": 0,
+    "physicalIosAcceptance": "user will verify after deployment",
+    "productionDeployment": false,
+    "iosH5ShellTests": 9,
+    "realActorCalendarRead": true,
+    "identityCheckMs": 151,
+    "calendarReadMs": 681,
+    "localCalendarBackendModelCalls": 0,
+    "lateDocumentFailureIgnored": true,
+    "realSignedGatewayCalendarMs": 1257,
+    "signedCatalogChecks": 2,
+    "sharedVlabActorAdmission": true,
+    "sharedVlabToolCatalog": true
+  },
+  "candidateCommit": "550e5fdbfb59d37769205b65b36d1785191deb84",
+  "rollbackCommit": "8c50d5d669a0d22471b7c107ad2bb7a84cb0d5b5",
+  "productionApproval": "User explicitly requested merge and deployment, with physical iOS verification to follow."
+}
