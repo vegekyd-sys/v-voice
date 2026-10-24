@@ -1,18 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "entryCommit": "8e8dc76e0b5d1eeecf7c6f32c6a6e27afd4c888e",
-  "gatewayPluginCommit": "a9ac516860a8856470262957ad6ea0cc2670cb0e",
-  "registration": "session-phone-storage-fix-20261023/release.json",
-  "runtimeDifference": "Both Voice nodes run the writable-state repair. All 417 current groups have distinct verified menus; current-user DM tab is installed and visually verified. Production App binding succeeds on the same simulator App and survives relaunch. Future first-entry DM auto-tab event handler still awaits idle Gateway restart. Physical phone retry is not claimed.",
+  "release": "unified-entry-20261024",
+  "version": "voice-unified-entry.20261024.1",
+  "entryCommit": "8c50d5d669a0d22471b7c107ad2bb7a84cb0d5b5",
+  "deviceEntryCommit": "8c50d5d669a0d22471b7c107ad2bb7a84cb0d5b5",
+  "filesSha256": "4eebd6f820c57cdd229daf43ff591646127df2dc47712829b9c88acb6604881b",
+  "registration": "unified-entry-20261024/release.json",
+  "previousEntryCommit": "78fd43e035b82754f16cc49016d8e4648781606f",
   "gatewayRestartRequired": false,
-  "release": "session-phone-storage-fix-20261023",
-  "previousEntryCommit": "87632bc063c326c7f33d5cc268d9be94c3a8fb8a",
-  "filesSha256": "c00da49a9d9cea8aae0aa2c6b41803920d651411e7eb5f15acbb1c68cd3a45b1",
-  "deviceEntryCommit": "8e8dc76e0b5d1eeecf7c6f32c6a6e27afd4c888e",
-  "companionGatewayRelease": {
-    "repository": "v-openclaw-platform",
-    "pullRequest": 458,
-    "restartRequiredForPrivateChatAutoTab": true,
-    "activation": "pending_idle_restart"
-  }
+  "deployedAt": "2026-10-24T11:24:21+08:00",
+  "runtimeDifference": "Both Voice service nodes run the same verified main artifact. Existing Gateway and Feishu app configuration are unchanged. Candidate was accepted by the user; production browser and HTTP entry checks passed. Native App and device firmware were not changed."
 }

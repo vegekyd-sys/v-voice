@@ -1,6 +1,6 @@
 {
   "version": "voice-unified-entry.20261024.1",
-  "status": "approved-awaiting-deployment",
+  "status": "deployed",
   "date": "2026-10-24",
   "candidateCommit": "35e32d246d5f8c11b51eeb54537df79a043af81a",
   "humanCandidateAcceptance": true,
@@ -15,6 +15,25 @@
     "guestDeviceAccessAndRevocation": true,
     "productionFeishuCallbackRegistered": true,
     "productionAppMatchesGateway": true,
-    "productionLegacyEntryCount": 419
-  }
+    "productionLegacyEntryCount": 419,
+    "releaseFleetTests": 11,
+    "productionArtifactFilesVerified": 225,
+    "publicArtifactFilesVerified": 7,
+    "gatewayIdentityAndConfigurationUnchanged": true,
+    "productionFeishuCallbackPhoneDocument": true,
+    "productionOldDmBindingVisible": true,
+    "productionOldGroupBindingVisible": true,
+    "productionGuestIosEntryAvailable": true,
+    "homepageChangelogVerified": true,
+    "paidCallsStarted": 0,
+    "physicalProductionCalls": "not started"
+  },
+  "commit": "8c50d5d669a0d22471b7c107ad2bb7a84cb0d5b5",
+  "filesSha256": "4eebd6f820c57cdd229daf43ff591646127df2dc47712829b9c88acb6604881b",
+  "deployedAt": "2026-10-24T11:24:21+08:00",
+  "productionNodes": [
+    "web",
+    "devices"
+  ],
+  "iosShellRevision": "ff2b6b53e6240f1ddcd31b89d7ae6622573473a7010afb406f177a8076ff5146"
 }
