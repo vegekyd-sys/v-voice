@@ -109,7 +109,24 @@
     "installedVersionEvidence": "/tmp/vvoice-ios-use-phone-apps-after36.json",
     "bindingVerified": true,
     "bindingEvidence": "User confirmed 已绑定; authenticated Candidate listed one grant created after this handoff; ready and zero active calls",
-    "notesVoiceEnabled": false
+    "notesVoiceEnabled": false,
+    "testWindow": {
+      "state": "released_to_control",
+      "at": "2026-10-25T12:25:03.678670+08:00",
+      "foregroundNeeded": false,
+      "nativeBuildVerified": 36,
+      "candidateReadiness": {
+        "known": true,
+        "activeCalls": 0,
+        "creatingSessions": 0,
+        "backgroundTasks": 0,
+        "deviceOperations": 0
+      },
+      "calendarRemindersPermissions": "awaiting human confirmation, no actual voice evidence",
+      "actualHumanCallStartedByThisLane": false,
+      "binding": "previously confirmed; unchanged by handoff",
+      "resumeDeviceOperationsRequiresWindowReassignment": true
+    }
   },
   "limitations": [
     "Backend Candidate uses the actual OpenClaw embedded runtime and configured DeepSeek model in private state; channels/cron/worker plugins disabled, no shared VLab writes",
