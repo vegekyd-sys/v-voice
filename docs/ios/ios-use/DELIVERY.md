@@ -63,3 +63,12 @@ iOS `IOSActionsCoordinator.receiveFrame(frame, voiceID, owner, foreground, prote
 签名build35及独立服务Candidate准备中，真机窗口目前让Public线先用。窗口释放后本路核对现有通话与已装版本，保留回退产物，再安装验收。真实Notes新建/追加、快捷指令一次配置与用户系统确认、真机前后台/锁屏音频和真实语音发起均未通过。
 
 GPT WebRTC设备动作仍未接通，不在本路接受范围；通话中从denied到granted后的前台工具目录即时刷新仍是公共层缺口。首次prompt授权后的同一请求继续已实际测试，不需要重新拨号。
+
+
+## 已准备产物（尚未真机安装）
+
+PR #133：https://github.com/vegekyd-sys/v-voice/pull/133 （draft，依赖位置公共线先合入）。实际App/服务产物源码 d70de5a8f55c863c98c951363b8cd0a90bf4783e。签名 build35：ios/build/VVoice.xcarchive 与 ios/build/export/VVoice.ipa；IPA SHA256 18a6ee99a6e45f0dd4bd30de05fa2e95b3df6afed6db8e3e4bdc589cdd66a21c。解包后独立校验通过：arm64、签名/profiles、正常TLS、原7个通话Intent及VerifyAppleNoteIntent、无DEBUG fixture；Notes核对Intent仍需设备认证。Native GPT WebRTC运行库存在不代表GPT设备动作已支持。
+
+服务包 /tmp/vvoice-ios-use-server35，237文件，filesSha256 6187930777cca0b71e4ea78dfa66f5d82fb479c0ef42b0abe0ad1a93dcd3920e。尚未部署生产。原签名build26归档由构建脚本改名保留；现有手机系统与Keychain未改。
+
+发布校验脚本已与依赖位置线同步允许audio+location背景模式，并要求WhenInUse用途说明；未增加Always权限。第一次签名导出虽成功，但旧校验仍限定audio一项而失败，修正校验后对同一签名IPA解包复验通过，没有将最初失败记为通过。

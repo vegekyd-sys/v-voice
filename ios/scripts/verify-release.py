@@ -17,7 +17,9 @@ for name in ['VVoiceAppIcon', 'VVoiceSystemPortrait']:
     widths = {item.get('PixelWidth') for item in app_assets if item.get('Name') == name and item.get('Idiom') == 'phone'}
     assert {60, 87, 120, 180} <= widths, 'Notification, settings, Spotlight and home icon renditions missing: ' + name
 assert info.get('NSSupportsLiveActivities') is True
-assert info.get('UIBackgroundModes')==['audio']
+assert 'audio' in info.get('UIBackgroundModes', [])
+assert set(info.get('UIBackgroundModes', [])) <= {'audio', 'location'}
+if 'location' in info.get('UIBackgroundModes', []): assert info.get('NSLocationWhenInUseUsageDescription')
 assert info.get('NSMicrophoneUsageDescription')
 assert info.get('NSCalendarsFullAccessUsageDescription')
 assert info.get('NSRemindersFullAccessUsageDescription')

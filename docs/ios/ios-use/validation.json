@@ -96,5 +96,38 @@
     "GPT WebRTC device path not implemented by the shared layer",
     "Live denied-to-granted tool catalog refresh remains a shared-layer gap; new call refreshes declaration",
     "Notes requires correctly configured Shortcuts; readback is user-configured workflow evidence, not independent Notes database or iCloud sync proof"
-  ]
+  ],
+  "artifacts": {
+    "version": "1.0.0",
+    "build": "35",
+    "architecture": "arm64",
+    "intents": [
+      "EndVIntent",
+      "IslandEndIntent",
+      "IslandLayoutIntent",
+      "IslandMuteIntent",
+      "MuteVIntent",
+      "OpenVIntent",
+      "TalkToVIntent",
+      "VerifyAppleNoteIntent"
+    ],
+    "nativeGPTWebRTC": true,
+    "liveActivityExtension": true,
+    "releaseTLS": true,
+    "debugFixtureAbsent": true,
+    "signed": true,
+    "profilesPresent": true,
+    "ipaSHA256": "18a6ee99a6e45f0dd4bd30de05fa2e95b3df6afed6db8e3e4bdc589cdd66a21c",
+    "sourceCommit": "d70de5a8f55c863c98c951363b8cd0a90bf4783e",
+    "ipaPath": "/Users/tianyicai/.codex/worktrees/voice-ios-apple-notes/v-voice/ios/build/export/VVoice.ipa",
+    "archivePath": "/Users/tianyicai/.codex/worktrees/voice-ios-apple-notes/v-voice/ios/build/VVoice.xcarchive",
+    "server": {
+      "artifact": "/tmp/vvoice-ios-use-server35",
+      "commit": "d70de5a8f55c863c98c951363b8cd0a90bf4783e",
+      "files": 237,
+      "bytes": 8257217,
+      "filesSha256": "6187930777cca0b71e4ea78dfa66f5d82fb479c0ef42b0abe0ad1a93dcd3920e"
+    }
+  },
+  "pullRequest": "https://github.com/vegekyd-sys/v-voice/pull/133"
 }
