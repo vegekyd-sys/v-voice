@@ -7,7 +7,7 @@ function fixture(overrides={}){
   if(name.endsWith('capabilities'))return pack({version:1,axes:'yaw,pitch',feedbackValid:true});
   if(name.endsWith('bind'))return pack({bound:true});
   if(name.endsWith('command')){owner=args;return pack({...args,status:'running'});}
-  return pack({...owner,...args,status:name.endsWith('cancel')?'cancelled':'completed',feedbackValid:true,reason:'hardware_feedback',reached:3,total:3});},takePhoto:()=>{}};
+  return pack({...owner,...args,yaw:0,pitch:30,status:name.endsWith('cancel')?'cancelled':'completed',feedbackValid:true,reason:'hardware_feedback',reached:3,total:3});},takePhoto:()=>{}};
  return {wire,calls,isCurrent:()=>current,close:()=>current=false};
 }
 const options=id=>({requestId:id,voiceSessionId:'call-one',deadline:Date.now()+4000});

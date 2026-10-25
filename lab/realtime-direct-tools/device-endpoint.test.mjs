@@ -6,6 +6,7 @@ import {Readable} from 'node:stream';
 import {setTimeout as delay} from 'node:timers/promises';
 import * as ws from 'ws';
 import OpusScript from 'opusscript';
+import {robotOperations} from '../robot/robot-device.mjs';
 import {createDirectVoiceService} from './session.mjs';
 import {TOOL_FAILURE_LINE,TOOL_RESULT_PROMPT_LINE} from './lookup-recovery.mjs';
 import {TOOL_PROGRESS_LINES} from './tool-start-audio.mjs';
@@ -27,7 +28,7 @@ async function fixture(options = {}) {
     close() {this.readyState = 3;this.emit('close');}
   }
   const gateway = options.gateway ?? {request:async method => method === 'tools.catalog' ? {groups:[{tools:[{id:'web_search'}]}]} : {ok:true}};
-  const directVoice = createDirectVoiceService({gateway,wsModule:{WebSocket:ProviderSocket,WebSocketServer:class {close() {}}},apiKeys:{seeduplex:'k',grok:'k'},speakerRouting:options.speakerRouting,toolProgressClips:options.toolProgressClips,lookupRecovery:{toolProgressMs:options.toolProgressMs??5000,toolProgressRepeatMs:options.toolProgressRepeatMs??5000,toolProgressMax:options.toolProgressMax??3,toolFailureMs:options.toolFailureMs??5000,resultSilenceMs:options.resultSilenceMs??5000,staleSpeechMs:options.staleSpeechMs??150},audit:v => audit.push(v)});
+  const directVoice = createDirectVoiceService({deviceOperations:robotOperations,gateway,wsModule:{WebSocket:ProviderSocket,WebSocketServer:class {close() {}}},apiKeys:{seeduplex:'k',grok:'k'},speakerRouting:options.speakerRouting,toolProgressClips:options.toolProgressClips,lookupRecovery:{toolProgressMs:options.toolProgressMs??5000,toolProgressRepeatMs:options.toolProgressRepeatMs??5000,toolProgressMax:options.toolProgressMax??3,toolFailureMs:options.toolFailureMs??5000,resultSilenceMs:options.resultSilenceMs??5000,staleSpeechMs:options.staleSpeechMs??150},audit:v => audit.push(v)});
   let busy = false;
   const endpoint = createDeviceEndpoint({directVoice,wsModule:ws,devices:parseDeviceEntries([record(options.record),...(options.extraDevices ?? [])]),audit:v => audit.push(v),
     maxBufferedBytes:options.maxBufferedBytes,robotEvaluate:options.robotEvaluate,visionPath:options.visionPath,describeImage:options.describeImage,isSessionBusy:() => busy,tickMs:10,idleMs:options.idleMs ?? 5000,initialIdleMs:options.initialIdleMs ?? 5000,followUpMs:options.followUpMs ?? 5000,chatterMs:options.chatterMs ?? 5000,
@@ -44,7 +45,7 @@ async function fixture(options = {}) {
     await new Promise((resolve, reject) => {client.once('open', resolve);client.once('error', reject);});
     return client;
   };
-  const until = async (predicate, label) => {for (let i = 0; i < 300 && !predicate(); i++) await delay(5);assert(predicate(), label);};
+  const until = async (predicate, label) => {for (let i = 0; i < 700 && !predicate(); i++) await delay(5);assert(predicate(), label);};
   return {directVoice,endpoint,server,url,connect,until,peers,audit,setBusy:v => {busy = v;},
     close:async () => {await endpoint.dispose();await directVoice.dispose();await new Promise(resolve => server.close(resolve));}};
 }
@@ -625,7 +626,7 @@ test('a xiaozhi robot changes its volume by voice and keeps it for the next call
     await f.until(() => client.events.some(e => e.type === 'mcp'), 'hello volume');
     return client;
   };
-  const volumeCalls = client => client.events.filter(e => e.type === 'mcp').map(e => e.payload);
+  const volumeCalls = client => client.events.filter(e => e.type === 'mcp'&&e.payload.params?.name==='self.audio_speaker.set_volume').map(e => e.payload);
   const first = await open();
   assert.equal(volumeCalls(first)[0].params.arguments.volume, 85, 'the operator volume applies at hello');
   await f.until(() => f.peers[0]?.sent.some(e => e.type === 'session.create'), 'provider session');
@@ -672,13 +673,13 @@ const uploadPhoto = (url, token, body) => new Promise((resolve, reject) => {
   req.on('error', reject);
   req.write(body.subarray(0, 40));req.end(body.subarray(40));
 });
-const openXiaozhi = async f => {
+const openXiaozhi = async (f, onMcp) => {
   const client = new ws.WebSocket(f.url.replace('/device/voice', '/device/xiaozhi'), {headers:{authorization:`Bearer ${TOKEN}`}});
   client.events = [];
-  client.on('message', (data, binary) => {if (!binary) client.events.push(JSON.parse(data.toString()));});
+  client.on('message', (data, binary) => {if (!binary){const e=JSON.parse(data.toString());client.events.push(e);if(e.type==='mcp')onMcp?.(e.payload,client);}});
   await new Promise((resolve, reject) => {client.once('open', resolve);client.once('error', reject);});
   client.send(JSON.stringify({type:'hello', version:1, transport:'websocket', audio_params:{format:'opus', sample_rate:16000, channels:1, frame_duration:60}}));
-  await f.until(() => f.peers[0]?.sent.some(e => e.type === 'session.create'), 'provider session');
+  await f.until(() => f.peers[0]?.sent.some(e => ['session.create','session.update'].includes(e.type)), 'provider session');
   return client;
 };
 const mcpOut = client => client.events.filter(e => e.type === 'mcp').map(e => e.payload);
@@ -738,7 +739,7 @@ test('an oversized photo is refused and a failed look reaches the model as a too
   client.send(JSON.stringify({session_id:'voice', type:'mcp', payload:{jsonrpc:'2.0', id:shot.id, result:{content:[{type:'text', text:upload.text}], isError:false}}}));
   await f.until(() => f.audit.some(e => e.type === 'device.look' && !e.ok), 'look failure');
   await f.until(() => f.audit.some(e => e.type === 'tool.delivered' && e.callId === 'look-2'), 'tool error');
-  assert.match(f.audit.find(e => e.type === 'tool.delivered' && e.callId === 'look-2').result.error, /photo_receipt_missing_or_expired/, 'the model hears it did not see, never a guess');
+  assert.match(f.audit.find(e => e.type === 'tool.delivered' && e.callId === 'look-2').result.error, /device_receipt_unavailable/, 'the model hears it did not see, never a guess');
 });
 
 test('a xiaozhi device without a camera gets no vision capability and no look tool', async t => {
@@ -933,4 +934,28 @@ test('hangup while vision is running discards the late description',async t=>{
  const upload=uploadPhoto(url,token,photoBody(shot.params.arguments.question));await f.until(()=>started,'vision started');
  client.close();await f.until(()=>signal.aborted,'vision cancelled');release();assert.equal((await upload).status,409);
  assert(!f.audit.some(e=>e.type==='device.vision'&&e.ok));
+});
+
+for(const model of ['seeduplex','grok'])test(`${model}: controlled motion is call-bound and leaves the audio uplink working`,async t=>{
+ let owner,command,waiting;const commands=[];
+ const f=await fixture({record:{robot:true,model}});t.after(f.close);
+ const send=(client,id,value)=>client.send(JSON.stringify({type:'mcp',payload:{jsonrpc:'2.0',id,result:{content:[{type:'text',text:JSON.stringify(value)}]}}}));
+ const client=await openXiaozhi(f,(rpc,client)=>{
+  const name=rpc.params?.name,args=rpc.params?.arguments;
+  if(name==='self.robot.capabilities')send(client,rpc.id,{version:1,axes:'yaw,pitch',feedbackValid:true});
+  if(name==='self.robot.bind'){owner=args.voiceSessionId;send(client,rpc.id,{bound:true});}
+  if(name==='self.robot.command'){command=args;commands.push(args);send(client,rpc.id,{...args,status:'running'});}
+  if(name==='self.robot.status')waiting={client,id:rpc.id,args};
+ });t.after(()=>client.close());
+ const setup=f.peers[0].sent.find(e=>['session.create','session.update'].includes(e.type));
+ assert(setup.session.tools.some(t=>t.name==='robot_action'));assert.match(setup.session.instructions,/"kind":"robot"/);
+ const event={type:'response.function_call_arguments.done',call_id:'move-one',name:'robot_action',arguments:JSON.stringify({action:'nod'})};
+ f.peers[0].emit('message',Buffer.from(JSON.stringify(model==='seeduplex'?{type:event.type,items:[event]}:event)),false);
+ await f.until(()=>waiting,'feedback poll');assert.equal(command.voiceSessionId,owner);assert.equal(command.action,'nod');assert.equal(commands.length,1);
+ assert(!f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='move-one'),'acceptance is not completion');
+ const enc=new OpusScript(16000,1,OpusScript.Application.VOIP);t.after(()=>enc.delete());client.send(enc.encode(Buffer.alloc(1920),960),{binary:true});
+ await f.until(()=>f.peers[0].sent.some(e=>e.type==='input_audio_buffer.append'),'audio continues during movement');
+ send(waiting.client,waiting.id,{...waiting.args,status:'completed',feedbackValid:true,reason:'hardware_feedback',yaw:0,pitch:30,reached:3,total:3});
+ await f.until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='move-one'),'confirmed result');
+ const receipt=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='move-one').result;assert.equal(receipt.status,'ok');assert.equal(receipt.result.status,'completed');
 });

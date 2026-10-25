@@ -793,6 +793,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     if(speakerPath)speakerRouting.upgrade(req,socket,head,url.searchParams.get('voiceSessionId'),url.searchParams.get('ticket'));
     else directVoice.upgrade(req,socket,head,url.searchParams.get('voiceSessionId'),url.searchParams.get('ticket'));
   });
+  deviceEndpoint?.setBackendDeviceURL?.(()=>`${hosted?publicOrigin:`http://127.0.0.1:${server.address().port}`}${basePath}/internal/device-request`);
   const sessionBusy = sessionKey => [local, ...contexts.values()].some(item => item.sessionKey === sessionKey && (item.active || item.creatingSession));
   return { server, emit, sessionBusy, serviceReady: backendReady, releaseReadiness, releaseGate, deviceInventory: () => deviceEndpoint?.inventory?.() ?? [], dispose: async ({drain=false}={}) => {
     stopping=true;clearInterval(timer);
@@ -841,7 +842,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const nativeInterruptModule=process.env.VOICE_NATIVE_INTERRUPT_ASR==='1'?await import('../realtime-direct-tools/native-interrupt.mjs'):null;
     const nativeInterrupt=nativeInterruptModule
       ? ({inputSampleRate,...callbacks})=>new nativeInterruptModule.NativeInterruptAsr({apiKey:process.env.VOLCENGINE_ASR_API_KEY,inputSampleRate,...callbacks}):undefined;
-    const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
+    const directVoice=createDirectVoiceService({deviceOperations:(await import('../robot/robot-device.mjs')).robotOperations,gateway,wsModule,speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
       calendar:lark.available?lark.calendar:null,larkRead:lark.available?lark.read:null,larkForActor:lark.forActor,
@@ -857,8 +858,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       const history=await callGateway.request('chat.history',{sessionKey,limit:6},{timeoutMs:10000});
       return voiceConversationContext(history.messages??[]);
     }});
-    // Robot faces pick reactions with a fast classifier; without one they use
-    // conservative keyword rules. Cosmetic only, never on the speech path.
+    // Robot faces reuse the shared H5 semantic selector and map its pose to
+    // hardware renderings. Neutral fallback; cosmetic, never on the speech path.
     const robotEvaluatorFromEnv = async env => {
       if (env.ROBOT_REACTION_PROVIDER === 'deepseek' && env.DEEPSEEK_API_KEY) return (await import('../robot/robot-reactions.mjs')).createDeepSeekChoiceEvaluator({apiKey:env.DEEPSEEK_API_KEY});
       if (env.ROBOT_REACTION_PROVIDER === 'decisions') return avatarEvaluatorFromEnv(env);

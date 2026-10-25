@@ -1,3 +1,4 @@
+import {ROBOT_ACTION_TOOL,robotActionRequest} from '../robot/robot-tools.mjs';
 import {normalizeDeviceActions,terminalContext,terminalInstructions} from '../../lib/terminal-context.mjs';
 import {feishuCallerIdentityInstructions} from '../../lib/feishu-caller-identity.mjs';
 import {createDeviceRequests} from '../../lib/device-requests.mjs';
@@ -207,7 +208,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // Local Feishu reads are declared only when this service has them configured.
   if(!['courtesy','provider','assisted'].includes(nativePlaybackPolicy))throw Error('Unsupported native playback policy');
   const localTools=TOOLS.filter(t=>(calendar||larkForActor||t.name!=='feishu_calendar')&&(larkRead||larkForActor||t.name!=='lark_read'));
-  const sessionTools=s=>[...localTools.filter(t=>(s.display||t.name!=='show_content')&&(!['feishu_calendar','lark_read'].includes(t.name)||Boolean(s.actorReader)||!s.sessionBound&&Boolean(t.name==='feishu_calendar'?calendar:larkRead))).map(t=>s.actorReader&&t.name==='feishu_calendar'?{...t,description:t.description.replace('天懿本人','当前已验证来电账号本人')}:s.actorReader&&t.name==='lark_read'?{...t,description:t.description.replace('本人的飞书资料','当前已验证来电账号本人的飞书资料')}:s.sessionBound&&t.name==='memory_search'?{...t,description:'查询当前会话可用的记忆，权限沿用会话已有边界。'}:s.sessionBound&&t.name==='delegate_to_v'?{...t,description:t.description.replace('个人 V','当前会话的 V')}:s.sessionBound&&t.name==='openclaw_tool'?{...t,description:'执行当前会话可用的 OpenClaw 原生工具，遵守会话既有权限；arguments 传工具参数的 JSON。复杂任务或需要后台模型时使用 delegate_to_v。外部操作遵守当前用户授权。'}:t),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[]),...(s.location?[LOCATION_TOOL]:[])].map(t=>s.location?({delegate_to_v:LOCATION_DELEGATE_TOOL,openclaw_agent_control:LOCATION_CONTROL_TOOL}[t.name]??t):t);
+  const sessionTools=s=>[...localTools.filter(t=>(s.display||t.name!=='show_content')&&(!['feishu_calendar','lark_read'].includes(t.name)||Boolean(s.actorReader)||!s.sessionBound&&Boolean(t.name==='feishu_calendar'?calendar:larkRead))).map(t=>s.actorReader&&t.name==='feishu_calendar'?{...t,description:t.description.replace('天懿本人','当前已验证来电账号本人')}:s.actorReader&&t.name==='lark_read'?{...t,description:t.description.replace('本人的飞书资料','当前已验证来电账号本人的飞书资料')}:s.sessionBound&&t.name==='memory_search'?{...t,description:'查询当前会话可用的记忆，权限沿用会话已有边界。'}:s.sessionBound&&t.name==='delegate_to_v'?{...t,description:t.description.replace('个人 V','当前会话的 V')}:s.sessionBound&&t.name==='openclaw_tool'?{...t,description:'执行当前会话可用的 OpenClaw 原生工具，遵守会话既有权限；arguments 传工具参数的 JSON。复杂任务或需要后台模型时使用 delegate_to_v。外部操作遵守当前用户授权。'}:t),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[]),...(s.deviceRequests?.state('robot.move')==='available'?[ROBOT_ACTION_TOOL]:[]),...(s.location?[LOCATION_TOOL]:[])].map(t=>s.location?({delegate_to_v:LOCATION_DELEGATE_TOOL,openclaw_agent_control:LOCATION_CONTROL_TOOL}[t.name]??t):t);
   // A successful native end_call can return no further speech at all. It is
   // already the model's semantic decision; never infer ending from keywords.
   const acceptEnding=(s,callId)=>{
@@ -347,7 +348,10 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       return work.then(result=>{audit({type:'tool.local-result',voiceSessionId:s.id,callId,name,result});return result;});
     });
     const admittedUserTurns=new Map();
-    const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',s.sessionBound?s.actorReader?.calendar:calendar),larkRead:localRead('lark_read',s.sessionBound?s.actorReader?.read:larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,look:s.speaker?.look,delegate:args=>s.backend.run({...args,context:(args.context??'')+s.backendDeviceContext()+(args.use_current_location?s.location.context():''),callerTurn:admittedUserTurns.get(args.callId)})});
+    const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',s.sessionBound?s.actorReader?.calendar:calendar),larkRead:localRead('lark_read',s.sessionBound?s.actorReader?.read:larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,look:s.deviceRequests?.state('robot.observe')==='available'?async(args,_callId,signal)=>{
+      const receipt=await s.deviceRequests.request('robot.observe',args,{signal});
+      if(receipt.status!=='ok')throw Error(receipt.reason??receipt.status);return receipt.result;
+    }:s.speaker?.look,robotAction:(args,_callId,signal)=>{const request=robotActionRequest(args);return s.deviceRequests.request(request.operation,request.args,{signal});},delegate:args=>s.backend.run({...args,context:(args.context??'')+s.backendDeviceContext()+(args.use_current_location?s.location.context():''),callerTurn:admittedUserTurns.get(args.callId)})});
     s.progressTimer=setInterval(()=>deferred(s),200);s.progressTimer.unref?.();
     s.lookup=createLookupRecovery({...lookupRecovery,
       state:()=>({pending:s.pending.size,background:Boolean(s.backend.snapshot()),ending:Boolean(s.ending),

@@ -1,4 +1,5 @@
 import {LOCATION_TOOL} from './device-location.mjs';
+import {ROBOT_ACTION_TOOL,robotActionRequest} from '../robot/robot-tools.mjs';
 import {buildLarkReadArgv,calendarReadArgs} from './lark-readonly.mjs';
 import {VOICE_TASK_CONTROL_TOOL,validateVoiceTaskControl} from '../../lib/voice-task-control.mjs';
 const object=(properties,required=[])=>({type:'object',properties,required,additionalProperties:false});
@@ -30,7 +31,7 @@ export const SPEAKER_VOLUME_TOOL={type:'function',name:'set_speaker_volume',desc
 // Declared only on calls from a device with a camera (for example StackChan).
 export const LOOK_TOOL={type:'function',name:'look',description:'让正在通话的这台机器人用自己的摄像头拍一张照片，再由看图模型回答 question。用户说“你看看这是什么”“我手里拿的是什么”“帮我看一下”时调用；question 写清要看什么，例如“用户手里拿的是什么”。只能看到机器人正前方摄像头拍到的画面，看不到别处、屏幕外或过去的事。结果是对真实照片的识别：只能按返回的 description 回答，不得编造或补充没看到的细节；没看清或失败就如实说，可以请用户把东西放到机器人面前再试。',parameters:object({question:str},['question'])};
 export function validateTool(name,args){
- const tool=Object.hasOwn(args??{},'use_current_location')&&['delegate_to_v','openclaw_agent_control'].includes(name)?(name==='delegate_to_v'?LOCATION_DELEGATE_TOOL:LOCATION_CONTROL_TOOL):[...TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,LOCATION_TOOL].find(t=>t.name===name);if(!tool)throw Error('不支持这个工具');
+ const tool=Object.hasOwn(args??{},'use_current_location')&&['delegate_to_v','openclaw_agent_control'].includes(name)?(name==='delegate_to_v'?LOCATION_DELEGATE_TOOL:LOCATION_CONTROL_TOOL):[...TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,ROBOT_ACTION_TOOL,LOCATION_TOOL].find(t=>t.name===name);if(!tool)throw Error('不支持这个工具');
  if(!args||typeof args!=='object'||Array.isArray(args))throw Error('工具参数必须是对象');
  for(const key of Object.keys(args))if(!(key in tool.parameters.properties))throw Error('未知工具参数');
  for(const key of tool.parameters.required)if(!(key in args))throw Error('缺少工具参数');
@@ -42,6 +43,7 @@ export function validateTool(name,args){
   if(spec.type==='boolean'&&typeof value!=='boolean')throw Error('无效布尔参数');
   if(spec.type==='integer'&&(!Number.isInteger(value)||value<spec.minimum||value>spec.maximum))throw Error('无效数字参数');
  }
+ if(name==='robot_action')robotActionRequest(args);
  if(name==='web_fetch'){const u=new URL(args.url);if(u.protocol!=='https:'&&u.protocol!=='http:')throw Error('只读取网页');}
  if(name==='feishu_calendar')for(const value of Object.values(args))if(!/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2}))?$/.test(value))throw Error('无效日程日期');
  if(name==='lark_read')buildLarkReadArgv(args.argv);
@@ -49,8 +51,9 @@ export function validateTool(name,args){
  if(name==='openclaw_agent_control'){validateVoiceTaskControl(args);if(args.use_current_location&&!['steer','followup'].includes(args.mode))throw Error('位置只用于补充当前任务');}
  return args;
 }
-export function createToolExecutor({invoke,allowedTools,calendar,larkRead,delegate,showContent,speakerVolume,look}){return async(name,args,callId,signal)=>{
+export function createToolExecutor({invoke,allowedTools,calendar,larkRead,delegate,showContent,speakerVolume,look,robotAction}){return async(name,args,callId,signal)=>{
  validateTool(name,args);
+ if(name==='robot_action'){if(!robotAction)throw Error('这台终端没有受控电机');return robotAction(args,callId,signal);}
  if(name==='look'){if(!look)throw Error('这台终端没有摄像头');return look(args,callId,signal);}
  if(name==='set_speaker_volume'){if(!speakerVolume)throw Error('这台终端不能调音量');return speakerVolume(args,callId,signal);}
  if(name==='show_content'){if(!showContent)throw Error('屏幕展示尚未就绪');return showContent(args,callId,signal);}

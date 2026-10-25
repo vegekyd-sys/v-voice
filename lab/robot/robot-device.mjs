@@ -11,7 +11,7 @@ export function firmwareResult(raw) {
 export const robotOperations={
   'robot.observe':{timeoutMS:16000,sideEffect:false,validateArguments:a=>{
     if(!object(a)||Object.keys(a).some(k=>k!=='question')||typeof a.question!=='string'||!a.question.trim()||a.question.length>350)throw Error('invalid_question');return a;
-  },validateResult:r=>{if(!object(r)||r.source!=='robot-camera'||typeof r.description!=='string'||!r.description||!idPattern.test(r.requestId)||!Number.isFinite(r.capturedAt))throw Error('invalid_photo_receipt');return r;}},
+  },validateResult:(r,m={})=>{if(!object(r)||r.source!=='robot-camera'||typeof r.description!=='string'||!r.description||!idPattern.test(r.requestId)||m.requestId&&r.requestId!==m.requestId||!Number.isFinite(r.capturedAt)||m.now&&(r.capturedAt>m.now+1000||m.now-r.capturedAt>16000))throw Error('invalid_photo_receipt');return r;}},
   'robot.move':{timeoutMS:12000,sideEffect:true,validateArguments:a=>{
     if(!object(a)||Object.keys(a).some(k=>!['yaw','pitch','speed'].includes(k))||!Number.isInteger(a.yaw)||a.yaw< -60||a.yaw>60||!Number.isInteger(a.pitch)||a.pitch<8||a.pitch>65||a.speed!==undefined&&(!Number.isInteger(a.speed)||a.speed<100||a.speed>500))throw Error('invalid_head_target');return a;
   }},
@@ -20,8 +20,9 @@ export const robotOperations={
   }},
   'robot.cancel':{timeoutMS:3000,sideEffect:true,validateArguments:a=>{if(!object(a)||Object.keys(a).length)throw Error('invalid_cancel');return a;}},
 };
-const validateMotion=r=>{if(!object(r)||r.status!=='completed'||r.feedbackValid!==true||r.reason!=='hardware_feedback'||r.total<1||r.reached!==r.total)throw Error('unconfirmed_motion');return r;};
-robotOperations['robot.move'].validateResult=robotOperations['robot.gesture'].validateResult=validateMotion;
+const validateMotion=(r,m={})=>{if(!object(r)||r.status!=='completed'||r.feedbackValid!==true||r.reason!=='hardware_feedback'||r.reached!==r.total||!Number.isFinite(r.yaw)||!Number.isFinite(r.pitch)||m.requestId&&r.requestId!==m.requestId||m.frame&&r.voiceSessionId!==m.frame.voiceSessionId)throw Error('unconfirmed_motion');return r;};
+robotOperations['robot.move'].validateResult=(r,m={})=>{validateMotion(r,m);if(r.total!==1||m.arguments&&(Math.abs(r.yaw-m.arguments.yaw)>2||Math.abs(r.pitch-m.arguments.pitch)>2))throw Error('target_not_reached');return r;};
+robotOperations['robot.gesture'].validateResult=(r,m)=>{validateMotion(r,m);if(r.total!==3)throw Error('gesture_incomplete');return r;};
 robotOperations['robot.cancel'].validateResult=r=>{if(!object(r)||!['cancelled','idle','completed'].includes(r.status))throw Error('unconfirmed_cancel');return r;};
 export async function probeRobot({wire,camera=false}) {
   let hardware=null;
@@ -48,14 +49,14 @@ export function createRobotDevice({wire,voiceSessionId,probe,look,isCurrent,now=
       if(operation==='robot.observe'){
         const result=await look(args,{...options,signal:controller.signal});
         if(!current()||controller.signal.aborted)return {status:'cancelled',reason:'call_retired'};
-        return {status:'ok',result:spec.validateResult(result)};
+        return {status:'ok',result:spec.validateResult(result,{requestId,arguments:args,frame:owner,now:now()})};
       }
       if(!bound)return failed('owner_unbound');
       if(operation==='robot.cancel'){
         if(!activeId)return {status:'ok',result:{status:'idle'}};
         const result=await cancel(activeId);
         if(!current())return {status:'unknown',reason:'call_retired'};
-        return {status:'ok',result:spec.validateResult(result)};
+        return {status:'ok',result:spec.validateResult(result,{requestId,arguments:args,frame:owner,now:now()})};
       }
       if(activeId)return failed('busy');
       activeId=requestId;
@@ -69,7 +70,7 @@ export function createRobotDevice({wire,voiceSessionId,probe,look,isCurrent,now=
       for(;;){
         if(!current()||controller.signal.aborted)throw Error('call_retired');
         if(result.requestId!==requestId||result.voiceSessionId!==voiceSessionId)throw Error('owner_mismatch');
-        if(result.status==='completed')return {status:'ok',result:spec.validateResult(result)};
+        if(result.status==='completed')return {status:'ok',result:spec.validateResult(result,{requestId,arguments:args,frame:owner,now:now()})};
         if(['failed','expired','cancelled','unknown'].includes(result.status))return {status:result.status==='expired'?'failed':result.status,reason:result.reason??'hardware_failed'};
         if(!['accepted','running'].includes(result.status))throw Error('invalid_hardware_status');
         await delay(pollMs,undefined,{signal:controller.signal});
