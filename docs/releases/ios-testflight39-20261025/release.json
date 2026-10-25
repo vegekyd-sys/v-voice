@@ -1,0 +1,35 @@
+{
+  "version": "1.0.0",
+  "build": 39,
+  "date": "2026-10-25",
+  "status": "preparing_testflight",
+  "prs": [
+    136
+  ],
+  "userAuthorization": "Regress existing binding Action Button, calls and switching; merge PR136 and deliver TestFlight for human acceptance.",
+  "stableBaselineBuild": 32,
+  "previousTestFlightBuild": 38,
+  "nativeAcceptance": "pending_Tianyi_TestFlight",
+  "gatewayRestartRequired": false,
+  "platformChangesIncluded": false,
+  "nativeInstalledByAgent": false,
+  "sourceCommit": null,
+  "serverDeploymentPerformed": false,
+  "testFlightInstallable": false,
+  "validation": {
+    "nodePassed": 930,
+    "speakerPassed": 95,
+    "fleetPassed": 11,
+    "nativeUniquePassed": 69,
+    "nativeSkipped": 0,
+    "nativeEvidence": "60 non-H5 cases passed in final regression; all 9 H5 cases passed after awaiting complete speaker decision. Initial runs exposed test preparation races; test-only changes are included in release prep.",
+    "hardwareActionButton": "pending_human",
+    "modelCallsPaid": false
+  },
+  "knownPending": [
+    "physical Action Button and lock-screen",
+    "physical continuous audio and interruption",
+    "Public human acceptance",
+    "restoration of ended-call task results is not included"
+  ]
+}

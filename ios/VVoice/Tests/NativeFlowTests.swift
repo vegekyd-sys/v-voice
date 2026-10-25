@@ -22,6 +22,8 @@ import VVoiceCore
         let store = BindingStore(service: "com.versa.vvoice.tests.\(UUID().uuidString)")
         try store.save(StoredBinding(binding: VoiceBinding(testingBaseURL: base.appendingPathComponent("voice/")), cookie: "v_voice_access=fixture-cookie"))
         let call = CallCoordinator(api: VoiceAPI(store: store), audio: audio); call.sceneChanged(.active)
+        // Finish foreground status discovery before a test changes fixture capabilities.
+        try await until { !call.modelOptions.isEmpty }
         addTeardownBlock { await call.end(); await MainActor.run { call.forget() } }
         return call
     }
@@ -358,18 +360,20 @@ import VVoiceCore
         XCTAssertNil(request?["inputPolicy"])
         await call.end()
     }
-    func testRealCapturePlaybackMuteRepeatTriggerAndRedial() async throws {
+    func testBoundActionButtonCapturePlaybackMuteRepeatTriggerAndRedial() async throws {
         let call = try await client()
         defer { call.forget() }
-        try await call.startOrContinue()
+        XCTAssertFalse(call.needsSetup)
+        XCTAssertTrue(call.activitiesEnabled)
+        try await call.startOrContinue(fromIntent: true)
         try await until { try await self.stats()["inputBytes"] as? Int ?? 0 > 1920 }
-        try await call.startOrContinue()
+        try await call.startOrContinue(fromIntent: true)
         let snapshot1 = try await stats()
         XCTAssertEqual(snapshot1["sessions"] as? Int, 1)
         call.toggleMute(); XCTAssertTrue(call.muted)
         let zeroBefore = try await stats()["zeroBytes"] as? Int ?? 0
         try await until { try await self.stats()["zeroBytes"] as? Int ?? 0 > zeroBefore + 1920 }
-        try await call.startOrContinue(); XCTAssertFalse(call.muted)
+        try await call.startOrContinue(fromIntent: true); XCTAssertFalse(call.muted)
         try await fixture("audio")
         try await until { call.phase == .speaking }
         try await until { call.phase == .listening }
@@ -382,7 +386,7 @@ import VVoiceCore
         try await Task.sleep(for: .milliseconds(350))
         let snapshot3 = try await stats()
         XCTAssertEqual(snapshot3["inputBytes"] as? Int, finalBytes)
-        try await call.startOrContinue()
+        try await call.startOrContinue(fromIntent: true)
         let snapshot4 = try await stats()
         XCTAssertEqual(snapshot4["sessions"] as? Int, 2)
         // A new relay restarts audio sequence numbers; greeting must still play.
@@ -503,9 +507,10 @@ import VVoiceCore
     func testCaptionPreviewCanBeHiddenWithoutStoppingAudio() async throws {
         let call = try await client(); try await call.startOrContinue()
         let prior = call.islandCaptions; defer { call.islandCaptions = prior }
+        call.islandCaptions = true
         try await fixture("demo")
-        try await until { call.conversation.turns.count >= 3 }
-        XCTAssertTrue(call.activityState.caption.contains("日程"))
+        // Await the actual rendered caption; a late greeting may satisfy the turn count first.
+        try await until { call.activityState.caption.contains("日程") }
         call.islandCaptions = false
         XCTAssertTrue(call.activityState.caption.isEmpty)
         XCTAssertTrue(call.active)
