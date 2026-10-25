@@ -1,3 +1,19 @@
+## 2026-10-25 — Feishu identity confirmation release preparation
+
+- Place the short confirmation instruction directly below V and above the retained phone button, as V saying “回飞书确认一下，我等你”. Keep the comparison marker visible and the guest action secondary.
+- Release the verified card-to-browser identity flow with platform PR #473; internal and external group members retain their own identity and conversation when binding iOS. Server/Web H5 delivery is separate from native Settings styling in a future App build.
+- Production authorization received. Use the shared VLab gate, the same platform bytes, `v-self-restart` with busy-abort protection and final alignment; publish the merged Voice artifact to both service nodes. Runtime acceptance is recorded after cutover.
+
+## 2026-10-25 — Feishu card identity confirmation (Candidate)
+
+- Keep the original phone button on arrival. For unresolved identity, clicking it sends the confirmation card, shows an existing V guidance Reaction and a compact return-to-Feishu prompt while retaining the phone button. Apply the verified entry without navigation and invalidate cancelled requests.
+- Reduce confirmation to one guidance sentence, a visible comparison marker and a secondary guest action.
+- Refine account/conversation hierarchy across Web and iOS; Web top-right opens iOS binding directly, with compact in-page account settings.
+- Add opt-in signed Feishu card confirmation for internal and external members using the same conversation URL; retain organization OAuth as an alternative.
+- Bind the callback actor to the initiating browser with a short-lived, single-use proof; recheck native Gateway admission and chat membership before accepting identity.
+- Reuse existing iOS principal grants so account name, actor identity and group context persist independently per binding.
+- Validated with two actual Feishu identities and the installed iOS Simulator app; no real audio acceptance or production release is claimed. Platform callback receiver is a separate dependent PR.
+
 ## 2026-10-25 — Unified access modes (candidate, unreleased)
 
 - Group entry presentation into Public, connected accounts/conversations and device permissions. Preserve server-configured fixed caller/account/session mappings and old native grants; devices may reference the same fixed entry.

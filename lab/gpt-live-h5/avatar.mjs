@@ -48,7 +48,7 @@ export function mountAvatar(document, window, {onDisplayed=()=>{},owner=()=>null
     }));
     return cache.get(url);
   };
-  let anchor = null, displayed = null, task = 'idle', disposed = false;
+  let anchor = null, displayed = null, task = 'idle', disposed = false, entryPicture = null;
   let timer, deadline, transitionTimer, approved=[], lastPictureAt = -Infinity, recent = [], phase = 0, fallback = 'listen-5', anchorRevision=null;
   const connected = () => ['connected','ending'].includes(document.body.dataset.callState);
   const fileFor = id => { const p=avatarPicture(id);return p && AVATAR_SEQUENCES[p.scene][p.frame]; };
@@ -104,7 +104,7 @@ export function mountAvatar(document, window, {onDisplayed=()=>{},owner=()=>null
     clearTimers();if(disposed)return;
     if(!connected()){
       anchor=null;anchorRevision=null;approved=[];clearTimeout(transitionTimer);recent=[];delete document.body.dataset.avatarAttention;
-      delete document.body.dataset.avatarReaction;show('idle');return;
+      delete document.body.dataset.avatarReaction;show(entryPicture??'idle',entryPicture?'entry_guidance':'state');return;
     }
     // Tiny neutral safety pair, not a download of the entire gallery.
     void load(fileFor('listen-5'));void load(fileFor('listen-3'));
@@ -121,6 +121,8 @@ export function mountAvatar(document, window, {onDisplayed=()=>{},owner=()=>null
   window.addEventListener('pagehide',dispose,{once:true});
   render();
   return {
+    // Pre-call guidance only. It does not create a call or a Decision anchor.
+    entryReaction(id){if(connected()||disposed)return;entryPicture=id&&avatarPicture(id)?id:null;render();},
     context(){return {currentPicture:displayed?.id??null,reactionPicture:anchor?.id??displayed?.id??null};},
     select(value){
       const id=typeof value==='string'?value:value?.picture,picture=avatarPicture(id);

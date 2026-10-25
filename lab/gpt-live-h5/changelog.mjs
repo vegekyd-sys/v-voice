@@ -1,3 +1,15 @@
+export const FEISHU_CARD_CONFIRM_CANDIDATE_UPDATE = {
+  version:'voice-feishu-card-confirm.20261025.5',date:'2026-10-25',
+  title:'飞书身份原页确认与账号界面优化（Candidate）',status:'candidate-validation',
+  items:[
+    '打开页面保留原来的电话按钮；点击后换上 V 的引导表情，以一句提示引导回飞书确认，确认后原页连接。',
+    '姓名与群会话分层显示，简化账号设置；网页右上角直接进入 iOS 绑定。',
+    '确认后的姓名与群会话可以一起绑定到 iPhone，同群不同账号的绑定分别保留。',
+    '身份与权限由服务端核验，群入口不会授予其他成员的个人工具账号。',
+    '身份链路已完成真实内外部账号验证；新界面通过本地交互与 iOS 模拟器验收，尚未合入或上线。',
+  ],
+};
+
 export const ACCESS_MODES_CANDIDATE_UPDATE = {
   version:'voice-access-modes.20261025.1',date:'2026-10-25',
   title:'Public、账号会话与设备权限（Candidate）',status:'candidate-validation',
@@ -103,6 +115,16 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
   ],
 };
 export const VOICE_UPDATES = [
+  {
+    version:'voice-feishu-confirm.20261025.1',date:'2026-10-25',
+    title:'飞书确认身份，原页接着聊',
+    items:[
+      '打开电话页面仍是熟悉的拨号按钮；需要确认身份时，V 会提示你回飞书点一下确认。',
+      '同一群链接支持内部和外部联系人确认本人身份，确认后仍在原电话页，保留当前群会话。',
+      '网页姓名与群会话分开显示；右上角可直接打开 iOS 绑定，确认后的身份和群会话一起带到 App。',
+      '访客仍可直接使用 Public；个人工具权限按本人身份核验。',
+    ],
+  },
   {
     version:'voice-public-testflight.20261025.1',date:'2026-10-25',
     title:'Public 通话与统一入口列表',

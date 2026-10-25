@@ -1,0 +1,66 @@
+{
+  "version": "voice-feishu-card-confirm.20261025.5",
+  "status": "candidate-validated",
+  "date": "2026-10-25",
+  "branch": "codex/feishu-card-confirm",
+  "validatedVoiceCommit": "6a05aa8efa67f591c8b66de8dc161cfe89ed92e6",
+  "merged": false,
+  "productionDeployed": false,
+  "testFlightSubmitted": false,
+  "tests": {
+    "fullBeforeDiagnostics": 947,
+    "targetedFinal": 8,
+    "existingIdentity": 20,
+    "platformCandidate": 6
+  },
+  "live": {
+    "realIdentities": 2,
+    "naturalPersons": 1,
+    "sameGroup": true,
+    "iOSSimulator": true,
+    "physicalDevice": false,
+    "audioCalls": 0,
+    "priorGenericRouteModelRun": 1,
+    "cost": "not separately measured"
+  },
+  "evidence": "docs/feishu-card-confirmation-20261025.md",
+  "homepageCandidateExport": "FEISHU_CARD_CONFIRM_CANDIDATE_UPDATE",
+  "uiRefinement": {
+    "scope": "Voice-only presentation and browser confirmation flow",
+    "fullTests": 952,
+    "clientFinalTargeted": 83,
+    "iOSSimulatorBuild": "Debug build 39, iOS 26.5",
+    "browser": "Codex IAB desktop and 390x640 viewport",
+    "callback": "local signed fixture; prior real callback evidence retained",
+    "newRealMessages": 0,
+    "newAudioCalls": 0,
+    "report": "docs/feishu-card-confirmation-20261025.md"
+  },
+  "dialFirstRefinement": {
+    "fullTests": 955,
+    "targetedTests": 100,
+    "trigger": "phone button, never page arrival",
+    "reaction": "reaction-1",
+    "browser": "Codex IAB 390x640 with real Voice HTTP and signed fixture callback",
+    "fixtureCards": 1,
+    "audioCalls": 0,
+    "realMessages": 0,
+    "iOSShell": "regenerated and consistency checked; no native rebuild in this refinement"
+  },
+  "quietConfirmationUI": {
+    "scope": "presentation only",
+    "targetedTests": 100,
+    "browser": "Codex IAB actual dial at 390x640",
+    "copy": "回飞书确认，就能通话",
+    "securityMarker": "visible, unchanged value",
+    "newAudioCalls": 0,
+    "productionDeployed": false
+  },
+  "releaseAuthorization": {
+    "approved": true,
+    "productionVersion": "voice-feishu-confirm.20261025.1",
+    "status": "preparing",
+    "restart": "v-self-restart --if-busy abort",
+    "alignmentRequired": true
+  }
+}

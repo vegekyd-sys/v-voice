@@ -62,7 +62,7 @@ function receive(snapshot){
   if(!snapshot.bound)entry={kind:'link',title:'绑定一个会话',description:'从飞书或网页电话获取绑定链接，再到右上角设置绑定。'};
   const people=snapshot.people;
   const notice=snapshot.notice?{...snapshot.notice,at:Date.now()}:null;
-  view.set({nativeSettings:true,entrySummary:snapshot.entrySummary,call,voice:snapshot.voice,thinkingAt:snapshot.thinking?Date.now():null,callStartedAt:snapshot.startedAt,
+  view.set({nativeSettings:true,accessContext:snapshot.accessContext??null,entrySummary:snapshot.entrySummary,call,voice:snapshot.voice,thinkingAt:snapshot.thinking?Date.now():null,callStartedAt:snapshot.startedAt,
     muted:snapshot.muted,models:snapshot.models,model:snapshot.model,modelDisabled:snapshot.active,
     grok:snapshot.grok,entry,dial:{disabled:!snapshot.bound,label:'和 V 通话'},stopLabel:call==='dialing'?'取消拨号':'结束通话',
     badge:snapshot.badge,homeNote:snapshot.active?null:snapshot.homeNote,homeNoteTone:snapshot.phase==='failed'?'error':'info',
