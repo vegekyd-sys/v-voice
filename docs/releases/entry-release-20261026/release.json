@@ -1,0 +1,58 @@
+{
+  "schema": "v-voice-production-release-v1",
+  "version": "voice-legacy-entry.20261026.1",
+  "status": "deployed-entry-validated-alignment-pending",
+  "entryCommit": "9ae49f523f735e9bb4dd8d9700128d2a66eb9e5e",
+  "deviceEntryCommit": "9ae49f523f735e9bb4dd8d9700128d2a66eb9e5e",
+  "filesSha256": "16fa5ad1904dc3b20c42f470744c4d67f4f7337a0d3c566d7003aa84947de863",
+  "deployedAt": "2026-10-26T00:30:15+08:00",
+  "previousEntryCommit": "ccebd66084d44d87cdf452b84741fe21c08d936a",
+  "voicePR": 148,
+  "platformPR": 476,
+  "platformRelease": "v-feishu-phone-entry-20261026",
+  "gatewayRestart": {
+    "method": "v-self-restart",
+    "request": "20261026-002224-3ea7",
+    "outcome": "ok",
+    "finishedAt": "2026-10-26T00:27:49+08:00",
+    "streams": 2,
+    "readyWorkers": 6,
+    "warnings": 0
+  },
+  "alignment": {
+    "result": "pending"
+  },
+  "fleet": {
+    "bothReady": true,
+    "sameArtifact": true,
+    "admissionReleased": true,
+    "gatewayStableDuringVoiceCutover": true,
+    "originalServicesAndPrivateEnvironmentRetained": true
+  },
+  "acceptance": {
+    "voiceTests": 957,
+    "speakerTests": 95,
+    "releaseTests": 11,
+    "platformInstalledModuleTests": 19,
+    "productionHTTPEntryCases": 12,
+    "productionBrowserOldGroup": true,
+    "productionBrowserOldDM": true,
+    "productionHomepageChangelog": true,
+    "realIPhoneExternalPhonePage": "confirmed by user after earlier targeted menu repair",
+    "newTestFlightBinary": false,
+    "paidVoiceCalls": 0,
+    "physicalAudio": false,
+    "productionRuntimeVerifiedEntryEvents": 10,
+    "productionFeishuWebsocketStarted": true
+  },
+  "migration": {
+    "verifiedGroups": 421,
+    "verifiedDMs": 56,
+    "totalVerified": 477,
+    "readOnlyRecheckVerified": 477,
+    "permissionDeniedDMs": 4,
+    "dissolvedChats": 1,
+    "historicalUsersWithoutNativeChatId": 13
+  },
+  "report": "release.md"
+}
