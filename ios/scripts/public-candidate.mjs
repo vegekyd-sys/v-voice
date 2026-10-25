@@ -17,7 +17,7 @@ const directVoice=createDirectVoiceService({gateway,wsModule,
 const bridge=createLiveH5Server({gateway,directVoice,basePath:'/voice',publicOrigin,
  accessToken:randomBytes(32).toString('base64url'),defaultModel:'seeduplex',phoneInputPolicy:'native',
  iosPublicEntry:true,iosBindingsFile:join(state,'guest-grants.private.json'),
- feishuLogin:{conversations:true,allowUnidentified:true,accountId:'public-candidate',appId:'cli_public_candidate',appSecret:randomBytes(32).toString('base64url'),actors:[]},
+ feishuLogin:{conversations:true,allowUnidentified:true,accountId:'public-candidate',appId:'cli_publiccandidate',appSecret:randomBytes(32).toString('base64url'),actors:[]},
  maxActiveSessions:2,maxActiveSessionsPerIp:2});
 bridge.server.listen(Number(process.env.VOICE_IOS_PUBLIC_PORT??29481),'127.0.0.1',()=>console.log('Public Candidate listening'));
 for(const signal of ['SIGINT','SIGTERM'])process.once(signal,async()=>{await bridge.dispose();process.exit(0);});
