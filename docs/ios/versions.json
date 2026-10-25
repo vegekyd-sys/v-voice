@@ -681,6 +681,7 @@
     "evidenceRecord": "public-entry-candidate.json",
     "status": "simulator_reviewed_not_signed_or_installed",
     "signedBuild37ContainsSettingsChange": false,
-    "platformUpdateRequired": false
+    "platformUpdateRequired": false,
+    "presentation": "original_system_sheet"
   }
 }

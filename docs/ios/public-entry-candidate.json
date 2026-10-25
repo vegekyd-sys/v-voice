@@ -37,6 +37,7 @@
       "Larger system text fits without truncating names or hiding controls"
     ],
     "screenshots": [
+      "public-settings-evidence/settings-sheet.jpg",
       "public-settings-evidence/existing-selection.jpg",
       "public-settings-evidence/public-selected.jpg",
       "public-settings-evidence/large-text.jpg"
@@ -77,5 +78,11 @@
     "newNativeBinarySignedOrInstalled": false,
     "build38ReservedForOtherRelease": true
   },
-  "integrationBaseCommit": "96a198d8b696a0b2e10680b47b829332349de1fb"
+  "integrationBaseCommit": "96a198d8b696a0b2e10680b47b829332349de1fb",
+  "presentation": {
+    "style": "Original system sheet from the H5 settings button",
+    "fullscreenDebugRouteRemoved": true,
+    "verification": "Built and opened/dismissed/reopened the actual sheet with Public and two saved channels",
+    "screenshot": "public-settings-evidence/settings-sheet.jpg"
+  }
 }
