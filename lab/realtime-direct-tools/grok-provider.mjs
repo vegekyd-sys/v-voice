@@ -99,6 +99,10 @@ export class GrokVoiceBridge {
   send(event){if(!this.closed&&this.socket?.readyState===1)this.socket.send(JSON.stringify(event));}
   sendAudio(audio){if(this.ready)this.send({type:'input_audio_buffer.append',audio:audio.toString('base64')});}
   sendUserMessage(text){this.send({type:'conversation.item.create',item:{type:'message',role:'user',content:[{type:'input_text',text}]}});this.send({type:'response.create'});}
+  updateTerminalContext(text,previous){
+    this.request.instructions=this.request.instructions.replace(previous,text);
+    this.send({type:'session.update',session:{instructions:[this.request.instructions,this.expressiveTags?GROK_EXPRESSIVE_INSTRUCTIONS:''].filter(Boolean).join('\n\n')}});
+  }
   triggerGreeting(text){this.sendUserMessage(text);}
   speakProgress(text){this.send({type:'conversation.item.create',item:{type:'force_message',role:'assistant',interruptible:true,content:[{type:'output_text',text}]}});}
   beginBackgroundTool(callId){

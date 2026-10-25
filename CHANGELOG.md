@@ -6,6 +6,23 @@
 - 通话期间保留 owner；首次系统权限可转前台，已授权操作按钮仍支持后台。
 - 服务端默认关闭 `VOICE_IOS_PUBLIC_ENTRY`；Candidate 与正式部署/真机验收分开登记。
 
+## 2026-10-25 — TestFlight 38: on-demand location and quiet icon startup
+
+- Integrate approved PR #88 and #134. Remove automatic icon mutation; add current-call, one-shot location for authenticated SeedDuplex calls on Web and native iOS.
+- Preserve build32 as the accepted audio baseline. Version 1.0.0 (38) is a TestFlight acceptance build; no new physical-device acceptance is claimed. Existing bindings remain compatible.
+- Ship the matching Voice service through the dual-node release flow. Leave backend-device bundle configuration unset; do not merge platform #470 or update/restart Gateway. GPT location, background/lock-screen behavior, Feishu WebView and the full DiDi quote flow remain pending.
+- User authorized merging and TestFlight delivery while away from the phone. Release and Apple-side processing/group availability are recorded separately in docs/releases/ios-testflight38-20261025/release.json.
+
+## 2026-10-23 — Stop automatic iOS icon changes (candidate)
+
+- Remove the icon-selection call from launch and foreground activation. The previous cache-refresh workaround could show the system's icon-change alert when opening the app.
+- Keep both portrait icon sets and shortcut metadata refresh, preserving existing alternate-icon selections and notification/Spotlight/home-screen assets.
+- Simulator build, four cold launches and foreground return passed without the alert. Candidate only; no phone installation, server release or new voice acceptance. See `docs/ios/icon-startup-prompt-candidate.json`. Add the user-visible homepage note when packaging the approved native release.
+## Unreleased — iOS on-demand location candidate
+
+- Add call-scoped, one-shot Core Location over the authenticated native relay. Attach fresh WGS84 / accuracy / timestamp metadata to the existing V task start or steer/followup context only when requested. Preserve native audio, Intents, H5 delivery and existing tool identity.
+- Candidate only; no production/Gateway change, phone install or ride order. Physical background/lock-screen acceptance remains pending. See `docs/ios/LOCATION-PROTOTYPE.md`.
+
 ## 2026-10-24 — iOS caller identity, direct calendar and stale content notice
 
 - Persist verified Feishu profile fields into matching, active device grants when the browser prepares a binding. Existing device credentials, expiry and actor permissions remain unchanged.

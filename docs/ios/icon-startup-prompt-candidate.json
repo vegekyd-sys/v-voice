@@ -1,0 +1,29 @@
+{
+  "date": "2026-10-23",
+  "status": "candidate-only",
+  "baseCommit": "6860ae59f01ce6712027e2c3267424ec786f0ca1",
+  "issue": "System icon-change alert appears when opening V Voice",
+  "cause": "Foreground lifecycle calls AppIconBranding.refreshWhenIdle, which can invoke UIApplication.setAlternateIconName. UIKit presents the icon-change alert for that operation.",
+  "fix": "Remove automatic icon selection and its helper. Retain primary and legacy alternate portrait assets and idle shortcut metadata updates.",
+  "validation": {
+    "simulator": "iPhone 17 Pro / iOS 26.5",
+    "debugBuild": "passed",
+    "firstLaunchAndThreeColdRelaunches": "passed: no icon-change alert",
+    "homeThenForegroundReturn": "passed: no icon-change alert",
+    "homeIcon": "purple portrait visible",
+    "allIconRoleSourceHashes": "passed: primary and legacy alternate, all 18 entries",
+    "compiledIconRoles": "passed: iPhone notification, settings, Spotlight and home sizes; primary and legacy alternate metadata retained for iPhone and iPad",
+    "compiledIconMutationSelector": "absent",
+    "compiledTalkToVIntent": "background AudioRecording declaration retained",
+    "embeddedH5DesignAndShellParity": "passed",
+    "physicalPhone": "not installed or tested",
+    "realVoice": "not dialed",
+    "baselinePackagingSync": "Regenerated H5Reader.css and H5DesignSource.json from current main after its session-binding UI merge, restoring the existing design-parity gate."
+  },
+  "release": {
+    "merged": false,
+    "deployed": false,
+    "buildNumberReserved": false,
+    "homepageChangelog": "Add the shipped fix to lab/gpt-live-h5/changelog.mjs and rebuild embedded H5 resources before the approved native release."
+  }
+}

@@ -7,8 +7,9 @@ import AppIntents
     init() { VoiceShortcuts.updateAppShortcutParameters() }
     private func refreshShortcutsWhenIdle() {
         guard !call.active else { return }
+        // Refresh shortcut metadata without changing the user's selected icon.
+        // Primary and legacy alternate assets already contain the same portrait.
         VoiceShortcuts.updateAppShortcutParameters()
-        AppIconBranding.refreshWhenIdle(allowed: !call.active)
     }
     @ViewBuilder private var content: some View {
         #if DEBUG

@@ -376,6 +376,8 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
         var c = URLComponents(url: req.url!, resolvingAgainstBaseURL: false)!
         c.scheme = r.binding.baseURL.scheme == "https" ? "wss" : "ws"
         c.queryItems = (c.queryItems ?? []) + [URLQueryItem(name: "model", value: model), URLQueryItem(name: "dialVersion", value: "1"), URLQueryItem(name: "nativeRuntimeVersion", value: "1")]
+        let actions = try JSONSerialization.data(withJSONObject: DeviceLocation.declaration)
+        c.queryItems?.append(URLQueryItem(name: "nativeDeviceActions", value: String(decoding: actions, as: UTF8.self)))
         if let voice { c.queryItems?.append(URLQueryItem(name: "voice", value: voice)) }
         req.url = c.url; req.timeoutInterval = 60; req.networkServiceType = .responsiveAV
         return req

@@ -23,10 +23,9 @@
     "os": "iOS 26.5",
     "fixture": "DEBUG-only URLProtocol and separate Keychain service; fake conversations; no calls",
     "bindingTests": {
-      "passed": 14,
+      "passed": 15,
       "failed": 0,
-      "skipped": 1,
-      "skipReason": "Microphone permission required for capture-before-slow-network test"
+      "skipped": 0
     },
     "uiChecksPassed": [
       "Public displayed first while the pre-existing work conversation remains selected",
@@ -45,7 +44,18 @@
     "publicAndBindingHTTPTests": {
       "passed": 11,
       "failed": 0
-    }
+    },
+    "mergedLocationRegression": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 2,
+      "skipReason": "Opt-in system-location and background simulator probes not enabled"
+    },
+    "serverAndBindingHTTPTests": {
+      "passed": 49,
+      "failed": 0
+    },
+    "integrationNotes": "Merged current main into the candidate; preserved location injection and icon startup changes. First location run lacked the local fixture; rerun on a dedicated fixture port passed."
   },
   "previousPhysicalAcceptance": {
     "build": 34,
@@ -66,5 +76,6 @@
     "deployed": false,
     "newNativeBinarySignedOrInstalled": false,
     "build38ReservedForOtherRelease": true
-  }
+  },
+  "integrationBaseCommit": "96a198d8b696a0b2e10680b47b829332349de1fb"
 }
