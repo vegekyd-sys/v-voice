@@ -185,6 +185,25 @@ test("dial stays unavailable until the real entry check finishes; no session sta
   assert.equal(f.view.get().badge, "可以拨号");
 });
 
+test('unidentified Feishu entry waits for the phone button before sending; no microphone or paid call starts',async t=>{
+  let microphones=0;const reactions=[];
+  const guest={ready:true,unidentified:true,confirmationAvailable:true};
+  const f=await fixture(t,{search:'?phone=feishu_test',avatar:{entryReaction:value=>reactions.push(value),show(){}},getUserMedia:()=>{microphones++;throw Error('must not open microphone');},
+    api:(route,payload,fallback)=>route==='status'?guest:route==='prepare'?{state:'owned',label:'海风 · 1234',expiresAt:Date.now()+300000,entry:guest}:fallback});
+  assert.deepEqual(f.requests.map(r=>r.route),['status']);assert.equal(f.view.get().confirmation,undefined);
+  assert.equal(f.view.get().confirmOnDial,true);assert.equal(f.view.get().dial.disabled,false);
+  await f.context.startCall();await f.context.startCall();
+  assert.deepEqual(f.requests.map(r=>r.route),['status','prepare','start']);
+  assert.equal(f.view.get().confirmation.phase,'waiting');assert.equal(reactions.at(-1),'reaction-1');
+  assert.equal(microphones,0);assert.equal(f.peers.length,0);assert.equal(f.contexts.length,0);
+  f.pageEvents.get('pagehide')();await tick();assert.equal(reactions.at(-1),null);
+});
+
+test('an explicit visitor choice keeps the phone button on the guest call path',async t=>{
+  const f=await fixture(t,{search:'?phone=feishu_test&guest=1',api:(route,payload,fallback)=>route==='status'?{ready:true,unidentified:true,confirmationAvailable:true}:fallback});
+  assert.equal(f.view.get().confirmOnDial,false);assert.deepEqual(f.requests.map(r=>r.route),['status']);
+});
+
 test("shared voice link exchanges fragment access before status and removes the credential", async t => {
   const replaced = [];
   const f = await fixture(t, { hash: "#access=private-test-access", replaceState: (...args) => replaced.push(args) });

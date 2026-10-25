@@ -32,7 +32,7 @@ if (document.querySelector) mountCallUi(document, view, {
   renderAssistant, onDocumentShown: callId => documentShown(callId),
   actions: {
     openBinding: () => void openIosBinding(),
-    connectIdentity: () => void confirmation.start(),
+    connectIdentity: () => { guestDialAllowed=false;void confirmation.start(); },
     skipConfirmation: () => void skipConfirmation(),
     createBinding: () => void createIosBinding(),
     copyBinding: () => void copyIosBinding(),
@@ -71,6 +71,7 @@ function speakerEvent(value){
   if(['speaker.utterance','speaker.decision'].includes(value.type))renderTranscript(presentation.consume(value));
 }
 const phoneEntry = new URLSearchParams(window.location.search).get("phone");
+let guestDialAllowed=new URLSearchParams(window.location.search).get('guest')==='1';
 const apiUrl = route => `./api/${route}?${phoneEntry ? `phone=${encodeURIComponent(phoneEntry)}` : `entry=${callerEntry}`}`;
 const duplexRecoveryMessage = "上一段语音还没确认结束。若仍无声音，请结束通话后重新开始。";
 const playbackRecoveryMessage = "声音播放被暂停了，点一下页面恢复声音。";
@@ -592,6 +593,7 @@ async function stopCall() {
 }
 async function startCall() {
   if (starting || call || view.get().confirmation) return;
+  if (view.get().confirmOnDial) { await confirmation.start(); return; }
   if (!liveReady) { setStatus(entryError ?? "当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
   for (const name of ["voice.dial.requested", "voice.microphone.ready", "voice.reservation.ready", "voice.connection.ready"])
     performance.clearMarks?.(name);
@@ -913,7 +915,6 @@ async function initializeEntry() {
     const { status } = result;
     applyEntryStatus(status);
     const query=new URLSearchParams(window.location.search);
-    if(status.confirmationAvailable&&status.unidentified&&query.get('guest')!=='1')void confirmation.start();
     const reportId=query.get('call');if(reportId)void openCallReport(reportId);
   } catch (error) {
     liveReady = false;
@@ -934,7 +935,7 @@ function applyEntryStatus(status) {
     if (!usable(model)) model = ["seeduplex", "gpt-live", "grok"].find(usable) ?? model;
     const grok = status.models?.find(item => item.id === "grok");
     const grokVoices = grok?.voices ?? [];
-    view.set({ models, model, confirmationAvailable:status.confirmationAvailable===true, accessContext:status.accessContext??null, publicHref:status.publicHref??null, accountLoginHref: status.accountLoginHref??null, accountLabel: status.accountLabel??null, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, unidentified:status.unidentified===true, grok: {
+    view.set({ models, model, confirmOnDial:status.confirmationAvailable===true&&status.unidentified===true&&!guestDialAllowed, confirmationAvailable:status.confirmationAvailable===true, accessContext:status.accessContext??null, publicHref:status.publicHref??null, accountLoginHref: status.accountLoginHref??null, accountLabel: status.accountLabel??null, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, unidentified:status.unidentified===true, grok: {
       voices: grokVoices.map(voice => ({ id: voice.id, label: voice.label })),
       voice: grokVoices.some(voice => voice.id === "iris") ? "iris" : grokVoices[0]?.id ?? null,
       hint: [grok?.speed && grok.speed !== 1 ? `${grok.speed}× 语速` : "", grok?.expressiveTags ? "自主表达试用" : ""].filter(Boolean).join(" · "),
@@ -953,7 +954,7 @@ const confirmation=createFeishuConfirmation({
     const response=await fetch(`./feishu/confirm/${action}?phone=${encodeURIComponent(phoneEntry??'')}`,{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const data=await response.json();if(!response.ok)throw Error(data.error??'暂时无法连接，请重试。');return data;
   },
-  onState:value=>{if(skippingConfirmation&&!value)return;view.set(state=>({confirmation:value,dial:{...state.dial,disabled:!liveReady||Boolean(value)}}));},
+  onState:value=>{if(skippingConfirmation&&!value)return;avatar?.entryReaction?.(value?'reaction-1':null);view.set(state=>({confirmation:value,dial:{...state.dial,disabled:!liveReady||Boolean(value)}}));},
   onEntry:status=>{
     applyEntryStatus(status);
     if(!status.unidentified){
@@ -970,10 +971,10 @@ async function skipConfirmation(){
     await confirmation.cancel();
     // A poll may already have redeemed the verified identity before cancel.
     // Re-read cookies so the displayed identity and the next call always agree.
-    const status=await sessionRequest('status');applyEntryStatus(status);
+    const status=await sessionRequest('status');guestDialAllowed=true;applyEntryStatus(status);
     const url=new URL(window.location.href);url.searchParams.set('guest','1');url.searchParams.delete('connect');window.history.replaceState(null,'',url);
   }catch(error){liveReady=false;view.set(state=>({dial:{...state.dial,disabled:true}}));showEntryNotice(error.message);}
-  finally{skippingConfirmation=false;view.set(state=>({confirmation:null,dial:{...state.dial,disabled:!liveReady}}));}
+  finally{skippingConfirmation=false;avatar?.entryReaction?.(null);view.set(state=>({confirmation:null,dial:{...state.dial,disabled:!liveReady}}));}
 }
 void initializeEntry();
 

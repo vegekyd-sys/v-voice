@@ -1,5 +1,5 @@
 {
-  "version": "voice-feishu-card-confirm.20261025.2",
+  "version": "voice-feishu-card-confirm.20261025.3",
   "status": "candidate-validated",
   "date": "2026-10-25",
   "branch": "codex/feishu-card-confirm",
@@ -35,5 +35,16 @@
     "newRealMessages": 0,
     "newAudioCalls": 0,
     "report": "docs/feishu-card-confirmation-20261025.md"
+  },
+  "dialFirstRefinement": {
+    "fullTests": 955,
+    "targetedTests": 100,
+    "trigger": "phone button, never page arrival",
+    "reaction": "reaction-1",
+    "browser": "Codex IAB 390x640 with real Voice HTTP and signed fixture callback",
+    "fixtureCards": 1,
+    "audioCalls": 0,
+    "realMessages": 0,
+    "iOSShell": "regenerated and consistency checked; no native rebuild in this refinement"
   }
 }

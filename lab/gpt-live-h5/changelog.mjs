@@ -1,8 +1,8 @@
 export const FEISHU_CARD_CONFIRM_CANDIDATE_UPDATE = {
-  version:'voice-feishu-card-confirm.20261025.2',date:'2026-10-25',
+  version:'voice-feishu-card-confirm.20261025.3',date:'2026-10-25',
   title:'飞书身份原页确认与账号界面优化（Candidate）',status:'candidate-validation',
   items:[
-    '未识别身份时，在电话首页自动发送飞书确认卡片；无需手输验证码，确认后原页连接。',
+    '打开页面保留原来的电话按钮；点击后换上 V 的引导表情，并提示回飞书确认，确认后原页连接。',
     '姓名与群会话分层显示，简化账号设置；网页右上角直接进入 iOS 绑定。',
     '确认后的姓名与群会话可以一起绑定到 iPhone，同群不同账号的绑定分别保留。',
     '身份与权限由服务端核验，群入口不会授予其他成员的个人工具账号。',

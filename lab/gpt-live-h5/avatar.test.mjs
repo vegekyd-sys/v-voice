@@ -74,6 +74,16 @@ function mountFixture({stall=false,reduced=false,small=false,onDisplayed,owner,p
  return {avatar:mountAvatar(document,window,{onDisplayed,owner}),image,body,document,events,paint(){while(frames.length)frames.shift()();}};
 }
 const settle=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
+test('entry guidance displays the approved invitation reaction while idle and resets without a call',async()=>{
+ const f=mountFixture();await settle();f.body.dataset.callState='idle';
+ f.avatar.entryReaction('reaction-1');await settle();
+ assert.match(f.image.src,/reaction-1-512/);assert.equal(f.body.dataset.avatarReaction,'reaction-1');
+ f.document.hidden=true;f.events.visibilitychange();f.document.hidden=false;f.events.visibilitychange();await settle();
+ assert.match(f.image.src,/reaction-1-512/);
+ f.avatar.entryReaction(null);await settle();assert.match(f.image.src,/home-1024/);
+ f.body.dataset.callState='connected';f.events.visibilitychange();await settle();
+ f.avatar.entryReaction('reaction-1');await settle();assert.doesNotMatch(f.image.src,/reaction-1-512/);f.avatar.dispose();
+});
 test('meaningful contextual reaction replaces old image immediately and background cannot erase empathy',async t=>{
  t.mock.timers.enable({apis:['setTimeout','Date'],now:0});const f=mountFixture();await settle();
  f.avatar.show('memory');await settle();f.avatar.select({picture:'listen-3',hold:false});await settle();

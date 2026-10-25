@@ -64,3 +64,14 @@ Validation:
 - The installed normal iOS app can still load the currently published remote H5 shell; the new shell remains Candidate until released. Fixture verification explicitly used the new bundled shell. No production, Gateway, TestFlight or shared VLab changes in this refinement.
 
 Local evidence: `v-voice-releases/audits/20261025-inline-identity/` contains Web home/settings/binding, mobile confirmation and native home/settings screenshots. The prior real two-identity audit above remains the identity-chain evidence.
+
+
+## Dial-first refinement — Candidate .3 (supersedes .2 entry trigger)
+
+Opening the page preserves the original portrait and phone button and sends no card. Only clicking the phone button starts confirmation for an unidentified Feishu entry. Before requesting a microphone, audio context or call session, the page shows the existing approved `reaction-1` (open-palm guidance), retains the phone button, and presents a compact “回飞书，点一下确认” instruction below it. The marker is a small text line instead of a separate authentication card. Confirming or skipping restores the normal portrait. Confirmation does not automatically place a call.
+
+- Full Node suite: 955/955; targeted app/avatar/client checks: 100/100. New checks cover no startup send, dial-to-confirm without microphone/peer/audio/session creation, explicit guest dialing, and actual Reaction image switching/reset without a Decision anchor.
+- Codex IAB 390×640 browser: initial state had zero cards; real phone-button activation produced one fixture card, retained the button and displayed the guidance Reaction. A signed fixture callback restored the same document to verified identity and normal portrait; zero audio calls. The fixture uses real Voice HTTP handlers and simulated Feishu/Gateway as described above.
+- This refinement changes only Web confirmation presentation/trigger and shared avatar rendering. Bundled iOS H5 resources were regenerated and checked; prior native build evidence remains separate, and no new native binary or TestFlight release is claimed.
+- Local screenshots: `v-voice-releases/audits/20261025-dial-first-confirm/{before,after-dial,after-confirm}.png`.
+- No new real Feishu messages, paid model calls, shared VLab changes or production release.

@@ -349,14 +349,13 @@ function IdentitySummary({context,onClick}) {
 function InlineConfirmation({value,actions}) {
  const waiting=value.phase==='waiting',failed=value.phase==='failed',cancelling=value.phase==='cancelling';
  return <section className="identity-confirmation" aria-labelledby="confirmationTitle">
-  <span className="confirmation-eyebrow">连接飞书身份</span>
-  <h2 id="confirmationTitle">{failed?'再试一次，就能连接':waiting?'回飞书，确认这是你':'正在准备你的连接'}</h2>
-  <p className="confirmation-description">{waiting?'在原会话找到确认卡片，核对下面的标记后点击确认。':'确认后，在这里继续和 V 聊天。'}</p>
-  <div className="confirmation-marker"><span>本页标记</span><strong>{value.label??'· · ·'}</strong></div>
-  <p className="confirmation-status" role="status">{failed?value.error:cancelling?'正在取消…':waiting?'卡片已发送 · 确认后自动连接':value.phase==='sending'?'正在发送确认卡片…':'正在准备确认卡片…'}</p>
-  <div className="confirmation-actions">{failed&&<button type="button" className="confirmation-retry" onClick={actions.connectIdentity}>重新发送</button>}<button type="button" disabled={cancelling} onClick={actions.skipConfirmation}>暂不连接</button></div>
+  <h2 id="confirmationTitle">{failed?'请重新确认':waiting?'回飞书，点一下确认':'先确认一下你的身份'}</h2>
+  <p className="confirmation-description" role="status">{failed?value.error:cancelling?'正在取消…':waiting?<>确认卡片已发到原飞书会话。<br/>确认后回来，就可以通话。</>:'正在发送确认卡片到原飞书会话…'}</p>
+  {value.label&&<p className="confirmation-marker"><span>核对标记</span><strong>{value.label}</strong></p>}
+  <div className="confirmation-actions">{failed&&<button type="button" className="confirmation-retry" onClick={actions.connectIdentity}>重新发送</button>}<button type="button" disabled={cancelling} onClick={actions.skipConfirmation}>先以访客聊聊</button></div>
  </section>;
 }
+
 function AccessSheet({state,actions,onClose}) {
  const dialog=useRef(null),context=state.accessContext,connected=context?.mode==='connected';
  useEffect(()=>{dialog.current?.showModal();return()=>dialog.current?.close();},[]);
@@ -400,7 +399,7 @@ function CallPage({view, actions, options}) {
   const wide = viewport.width >= 701;
   const width = Math.min(viewport.width, 560), {height} = viewport;
   const compact = inCall && !wide && (overflow || height < 560 || state.composer.open && height < 700);
-  const size = !inCall ? state.confirmation ? Math.min(width * .44, height * .22, 170) : Math.min(width * .72, height * .4, 300)
+  const size = !inCall ? Math.min(width * .72, height * .4, 300)
     : wide ? Math.min(viewport.width * .26, height * .48, 360)
     : history ? 52 : compact ? Math.min(width * .38, height * .2, 150) : Math.min(width * .62, height * .3, 250);
   const openTasks = working ? () => setSheet(true) : undefined;
@@ -437,16 +436,18 @@ function CallPage({view, actions, options}) {
                   <button id="stop" className="dial dialing" type="button" aria-label={state.stopLabel} title={state.stopLabel} onClick={actions.hangup}><Icon d={HANG} /></button>
                   <span id="badge" className="home-badge dialing-note" role="status">{state.badge}</span>
                 </>
-              ) : state.confirmation ? <InlineConfirmation value={state.confirmation} actions={actions}/> : state.entry ? <EntryNotice entry={state.entry} /> : (
+              ) : state.entry&&!state.confirmation ? <EntryNotice entry={state.entry} /> : (
                 <>
-                  <GrokPicker state={state} actions={actions} />
-                  <button id="start" className="dial" type="button" disabled={state.dial.disabled} aria-label={state.dial.label} title={state.dial.label} onClick={actions.dial}><Icon d={PHONE} /></button>
+                  {!state.confirmation&&<GrokPicker state={state} actions={actions} />}
+                  <button id="start" className={`dial${state.confirmation?' confirmation-dial':''}`} type="button" disabled={state.confirmation?state.confirmation.phase!=='failed':state.dial.disabled} aria-label={state.confirmation?(state.confirmation.phase==='failed'?'重试身份确认':'等待飞书确认'):state.dial.label} title={state.dial.label} onClick={state.confirmation?actions.connectIdentity:actions.dial}><Icon d={PHONE} /></button>
+                  {state.confirmation?<InlineConfirmation value={state.confirmation} actions={actions}/>:<>
                   <ModelPicker state={state} actions={actions} />
                   <span id="badge" className="home-badge" role="status">{state.badge}</span>
-                  <IdentitySummary context={state.accessContext} onClick={state.nativeSettings?undefined:()=>setAccessOpen(true)}/>
+                  <IdentitySummary context={state.confirmOnDial?null:state.accessContext} onClick={state.nativeSettings?undefined:()=>setAccessOpen(true)}/>
                   {state.nativeSettings&&!state.accessContext&&state.entrySummary&&<span className="access-summary">{state.entrySummary}</span>}
-                  {state.accountLoginHref&&!state.accountLabel&&(state.confirmationAvailable?<button type="button" className="home-note identity-connect" onClick={actions.connectIdentity}>连接飞书身份</button>:<a className="home-note" href={state.accountLoginHref}>连接飞书账号</a>)}
+                  {state.accountLoginHref&&!state.accountLabel&&!state.confirmOnDial&&(state.confirmationAvailable?<button type="button" className="home-note identity-connect" onClick={actions.connectIdentity}>连接飞书身份</button>:<a className="home-note" href={state.accountLoginHref}>连接飞书账号</a>)}
                   {state.homeNote && <p className="home-note" data-tone={state.homeNoteTone} role="status">{state.homeNote}</p>}
+                  </>}
                 </>
               )}
             </div>
