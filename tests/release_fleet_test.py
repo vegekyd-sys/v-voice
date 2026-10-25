@@ -41,7 +41,7 @@ class FleetSafety(unittest.TestCase):
             self.assertEqual(fleet.verify_artifact(root), manifest)
             for denied in ['scripts/extra.mjs', 'scripts/../phone.mjs', '/scripts/phone.mjs',
                            'skills/extra/SKILL.md', 'skills/device-use/../../secret',
-                           'backend-device-extra.json']:
+                           'backend-device-extra.json', 'ios/scripts/public-candidate.mjs']:
                 with self.subTest(path=denied):
                     files[-1]['path'] = denied
                     save()
