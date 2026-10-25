@@ -317,6 +317,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
         call.id = reservation.voiceSessionId;
         if (probe) {
           call.robotDevice = createRobotDevice({wire:ws,voiceSessionId:call.id,probe,look,now,
+            onCapabilities:capabilities=>{if(!call.ended&&connection.call===call&&call.client)call.client.emit('message',Buffer.from(JSON.stringify({type:'device.capabilities',version:1,voiceSessionId:call.id,revision:call.capabilityRevision=(call.capabilityRevision??0)+1,capabilities})),false);},
             isCurrent:()=>!call.ended&&connection.call===call&&connections.get(device.id)===connection&&ws.readyState===1});
           const motionAvailable = probe.capabilities['robot.move'].status==='available';
           if (!await call.robotDevice.bind() && motionAvailable) throw Error('robot_binding_failed');

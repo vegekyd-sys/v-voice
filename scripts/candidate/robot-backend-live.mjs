@@ -16,7 +16,9 @@ function runAgent(cli,args){return new Promise((resolve,reject)=>{
  child.on('error',()=>{clearTimeout(timer);reject(Error('candidate_agent_spawn_failed'));});
  child.on('exit',code=>{clearTimeout(timer);if(code!==0){
   writeFileSync(join(process.env.VLAB_CANDIDATE_DATA,'robot-agent-stderr.log'),stderr,{mode:0o600});
-  console.log(stderr.split('\n').filter(l=>/error:|Error:|Invalid config|not found|unknown option/.test(l)).map(l=>l.replace(/(?:Bearer |sk-)[A-Za-z0-9_./+-]+/g,'[REDACTED]')).join('\n').slice(-3500));
+  let diagnostic=(stdout+'\n'+stderr).slice(-4000);
+  for(const token of args.join(' ').matchAll(/"lease":"([^"]+)"/g))diagnostic=diagnostic.replaceAll(token[1],'[REDACTED]');
+  console.log(diagnostic.replace(/(?:Bearer |sk-)[A-Za-z0-9_./+-]+/g,'[REDACTED]'));
   // Do not print argv, prompts, leases, auth or complete provider output.
   return reject(Error('candidate_agent_exit_'+code+'_'+(stderr.includes('auth')?'auth':stderr.includes('plugin')?'plugin':'runtime')));
  }

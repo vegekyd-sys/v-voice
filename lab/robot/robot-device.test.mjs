@@ -38,3 +38,12 @@ test('expired owner never takes a photo, valid photo returns source and request 
  const f=fixture(),d=await adapter(f);assert.equal((await d.execute('robot.observe',{question:'看什么？'},options('r4'))).status,'ok');
  f.close();assert.equal((await d.execute('robot.observe',{question:'看什么？'},options('r5'))).status,'cancelled');d.close();
 });
+
+test('lost hardware feedback revokes motion for this call without replaying a command',async()=>{
+ let changes=0;const f=fixture({call:async(name,args)=>name.endsWith('capabilities')?pack({version:1,axes:'yaw,pitch',feedbackValid:true}):name.endsWith('bind')?pack({bound:true}):pack({...args,status:'failed',reason:'feedback_lost'})});
+ const probe=await probeRobot({wire:f.wire});const d=createRobotDevice({wire:f.wire,voiceSessionId:'call-one',probe,isCurrent:f.isCurrent,onCapabilities:()=>changes++});await d.bind();
+ assert.equal((await d.execute('robot.gesture',{gesture:'nod'},options('lost1'))).status,'failed');
+ assert.equal(changes,1);assert.equal(d.capabilities()['robot.gesture'].status,'unavailable');
+ assert.equal((await d.execute('robot.gesture',{gesture:'nod'},options('lost2'))).reason,'capability_unavailable');
+ assert.equal(f.calls.filter(x=>x.name.endsWith('command')).length,1);d.close();
+});

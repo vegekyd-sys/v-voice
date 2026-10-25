@@ -1,34 +1,32 @@
-# StackChan 能力线交付（进行中）
+# StackChan 当前端能力 Candidate
 
-总控：V Voice 总控；本路不合并、不上线、不刷机、不占共享 VLab。
+本路负责独立 Candidate、固件安装和真人验收；总控负责正式合并、部署、发布。当前没有正式发布，共享 VLab 未改动。
 
-## 继承基线
+## 提交与依赖
 
-- Voice 独立 worktree：`voice-shared-terminal-behavior/v-voice`，分支 `codex/stackchan-capabilities-20261025`，基于 main `ab8ad23`。
-- 固件独立 worktree：`v-stackchan/worktrees/controlled-capabilities-20261025`，分支 `codex/stackchan-controlled-capabilities-20261025`，继承 `8d88b0b` / PR #1 的 rc2 收音、清队列修复。PR #1 尚为草稿，不能退回仓库默认分支的旧音频行为。
-- 上次真人确认：rc2、1 米、播放音量 75、输出增益 1.6，自然插话及时、播放清楚、没有误停。100% 音量未通过，后台任务最终参数回归仍缺。此次不把历史听验外推为新固件验收。
+- Voice：`codex/stackchan-capabilities-20261025`，叠在位置线 PR #134 的 `b444956769767f4d950e38f5d02a8a06fce22b4c` 上。已包含 revisioned capabilities 和 artifact-owned Skill 增量，不能重复合入旧公共层。
+- 固件：Draft PR https://github.com/vegekyd-sys/v-stackchan/pull/2 ，`35b827abf670f61a8c55a72d50f2dd224b5c55d8`，版本 `1.5.3-capabilities-rc1`。依赖 PR #1 的 `8d88b0b` / rc2 收音与清队列修复，不能回到默认分支旧音频行为。
+- 当前现场仍为 `1.5.2-duplex-rc2`。历史用户确认仅覆盖 rc2、1 米、音量 75 / 增益 1.6 的播放与自然插话，不外推到本候选。
 
-## 已知硬件实现与待核实现场
+## 已实现
 
-- 当前板级配置为 ESP32-S3 / CoreS3，GC0308 DVP 摄像头，320×240、20 fps；已有拍照/JPEG 上传、视觉模型描述、无快门音的音频并行 worker。拍照结果必须来自当前请求的真实图片。
-- 两根 SCS 舵机：yaw（id 1）软件限位 −128°…128°；pitch（id 2）3°…87°且有堵转保护。没有 roll 轴，不能声称真的左右歪头。自然操作将采用更小范围，单位明确为角度；物理校准/NVS、在线反馈决定实际可用范围。
-- 已有 `self.robot.get_head_angles/set_head_angles`，但旧接口成功只证明已下发；读失败会退回软件估算角度，不能充当硬件完成证据。需要明确反馈有效性、deadline、取消与完成状态。
-- 现有 35 种机器人 Reaction 由 Voice 目录生成；本路改为复用 H5 的语义选择结果，只做脸与两轴动作映射，不另建机器人语义分类器，不逐帧调用模型。
+- 当前通话的可信 robot adapter 共用 `lib/device-requests.mjs`：前台 `look` / `robot_action`、后台 `robot-use` 都经同一 owner、deadline、取消、拒绝和回执路径。
+- 后台描述符直接给出产物内 `skills/robot-use/SKILL.md` 和 CLI 路径，不依赖生产 workspace 安装。Skill 入口短，视觉、动作、Reaction 细节按需读取，不授予账号权限。
+- `robot.observe` 只接受当前请求的真实 HTTP JPEG 上传；MCP 文本不能伪造照片成功。挂断、超时、重复上传、旧请求和晚到视觉结果拒绝生效。图片不写日志。
+- `robot.move`、`robot.gesture`、`robot.cancel` 只启用固件实际探测到的 yaw/pitch 两轴；无 roll。命令不重试；完成需要同 owner/request、真实舵机反馈、目标角度及动作步数。反馈丢失撤销本通话的动作能力；新通话重新探测，不重放旧动作。
+- 固件有界状态机、真实 `ReadPos/ReadMove` 反馈、限位、截止时间、断线取消；手控优先于 idle / Reaction 动作。相机忙时拒绝并发，不能退回音频主线程执行。
+- Reaction 复用 H5 的 `createAvatarReactionSelector` 语义选择，仅映射到已有 35 种机器人表情。工具任务 badge 与情绪选择分离。
 
-## 公共薄层需求（位置线牵头，本路不另建注册中心）
+## 证据与边界
 
-- 服务端注入 `version`、`terminal.kind=robot`、可信 actor/session/device 绑定；能力状态来自已认证连接的探测与运营配置交集，模型不能选择其他设备或扩权。
-- 本路提供模块适配器：`capabilities()` 和 `execute(operation, params, {requestId, voiceSessionId, deadline, signal})`；公共薄层负责请求 owner、去重、过期、断线与权限拒绝传播。适配器仍在执行前/后核对当前连接，拒绝旧会话回执。
-- 暂定操作：`robot.observe`、`robot.move`、`robot.gesture`、`robot.reaction`、`robot.cancel`。精确名称可随公共薄层统一。前端保留少量 look / robot 动作工具；后端 `robot-use` 通过同一薄层请求当前端，禁止失败后转 exec/其他设备绕过。
-- 摄像头需请求级 upload 关联（requestId / 当前通话 / 单次 token），图片只交视觉模型，不将上传令牌交给模型；返回真实照片摘要与采集证据。同一通话继续回答，拍照超时或取消不阻断音频。
-- 动作返回 accepted / running / completed / cancelled / expired / failed；只有有效硬件反馈到目标才 completed，单纯下发不能 completed。表情回执只证明渲染已应用，不能证明电机已到位。
+- 本地最新全套 **923/923** 通过，包含共同能力刷新增量。SeedDuplex / Grok fixture 验证动作等待回执期间 PCM 上行仍工作；不是实际模型音频或真人插话验收。
+- 固件 ESP-IDF 5.5.4 完整构建通过，CMake/CTest 两个目标通过；依赖 patch 在原始依赖上 `git apply --check` 通过。
+- 私有 Candidate 的实际 runtime Skill loader 已发现 `robot-use`，eligible=true，来源 openclaw-workspace。真实后端模型 → Skill → CLI → 当前通话模拟固件的测试仍在完善；模拟固件不能证明物理完成。
+- 新固件真实拍照、可观察点头/摇头、播放中插话及后台动作全链路仍待本路 Candidate 验收。用户已表示机器人在手边，环境准备好后通知其测试。
+- 私有证据在本机 `Documents/Codex/stackchan-capabilities-20261025/private`；凭据、个人入口、图片和日志不进 Git。
 
-## 预计公共文件接入点
+## 公共接入点
 
-- 本路模块集中在 `lab/robot/`、`xiaozhi-wire.mjs` 和设备端点，固件在独立仓库。
-- 共享 `session.mjs`、`tools.mjs`：仅增加小型适配器调用/工具入口；与位置线的当前端上下文及设备请求 hook 接口协同，避免重复实现 owner 与后端转发层。候选交付会列出精确冲突点。
-- `robot-use` 入口短文，视觉/动作详情按需加载。候选 V 的实际发现与后端加载另列证据，不能只以 Markdown 文件存在宣称完成。
+`session.mjs` / `tools.mjs` 只增加小型 robot 工具调用及按 terminal.kind 选择 Skill；`server.mjs` 注册 robot operations 和可信回调 URL。执行、拍照和 MCP 适配集中在 `lab/robot/`、`device-endpoint.mjs`、`xiaozhi-wire.mjs`。无 Gateway / Worker runtime 改动；正式集成若需平台改动另走平台 PR。
 
-## 验证计划
-
-本地确定性回归覆盖能力缺失、限位、节流、取消、过期、旧连接与错误回执；私有 Candidate 验证 Skill 发现和真实模型工具路径。硬件刷写与现场拍照/可观察动作由总控排期，保留当前镜像及参数备份，不误刷 ReSpeaker。
+发布前由总控按实际交付更新首页 `changelog.mjs`、`CHANGELOG.md` 与版本登记；当前候选不提前写成已上线。

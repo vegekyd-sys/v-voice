@@ -31,7 +31,7 @@ export async function probeRobot({wire,camera=false}) {
   return {hardware,capabilities:{'robot.observe':{status:camera&&typeof wire.takePhoto==='function'?'available':'unavailable'},
     ...Object.fromEntries(['robot.move','robot.gesture','robot.cancel'].map(op=>[op,{status:supported?'available':'unavailable'}]))}};
 }
-export function createRobotDevice({wire,voiceSessionId,probe,look,isCurrent,now=Date.now,pollMs=150}) {
+export function createRobotDevice({wire,voiceSessionId,probe,look,isCurrent,now=Date.now,pollMs=150,onCapabilities=()=>{}}) {
   let closed=false,activeId=null,bound=false;const requests=new Map(),controllers=new Set();
   const current=()=>!closed&&isCurrent();
   const owner={voiceSessionId};
@@ -71,6 +71,10 @@ export function createRobotDevice({wire,voiceSessionId,probe,look,isCurrent,now=
         if(!current()||controller.signal.aborted)throw Error('call_retired');
         if(result.requestId!==requestId||result.voiceSessionId!==voiceSessionId)throw Error('owner_mismatch');
         if(result.status==='completed')return {status:'ok',result:spec.validateResult(result,{requestId,arguments:args,frame:owner,now:now()})};
+        if(['feedback_lost','feedback_unavailable','limit_changed'].includes(result.reason)){
+          for(const op of ['robot.move','robot.gesture'])probe.capabilities[op]={status:'unavailable'};
+          onCapabilities(probe.capabilities);
+        }
         if(['failed','expired','cancelled','unknown'].includes(result.status))return {status:result.status==='expired'?'failed':result.status,reason:result.reason??'hardware_failed'};
         if(!['accepted','running'].includes(result.status))throw Error('invalid_hardware_status');
         await delay(pollMs,undefined,{signal:controller.signal});

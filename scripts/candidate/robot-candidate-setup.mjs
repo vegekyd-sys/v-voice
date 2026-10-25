@@ -23,6 +23,9 @@ export async function prepareRobotBackend({auth=false}={}){
   // Only provider auth tables, never the shared conversation database.
   const src=new DatabaseSync(join(process.env.VLAB_SHARED_STATE_DIR,'agents/makaron/agent/openclaw-agent.sqlite'),{readOnly:true});
   const dst=new DatabaseSync(join(agent.agentDir,'openclaw-agent.sqlite'));
+  // Recreate the schema only, retaining no shared session/history rows.
+  for(const row of src.prepare("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT IN (SELECT name FROM pragma_table_list WHERE type='shadow') AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END").all())dst.exec(row.sql);
+  dst.exec('PRAGMA user_version='+src.prepare('PRAGMA user_version').get().user_version);
   for(const table of ['auth_profile_store','auth_profile_state']){
    const row=src.prepare('SELECT sql FROM sqlite_master WHERE type=? AND name=?').get('table',table);if(!row)continue;
    if(!dst.prepare('SELECT 1 FROM sqlite_master WHERE type=? AND name=?').get('table',table))dst.exec(row.sql);
