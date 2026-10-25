@@ -169,7 +169,8 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
     func reloadIfAvailable() { if record == nil { record = store.load() } }
 
     var savedConversations: [SavedConversation] {
-        store.savedBindings().map { saved in
+        let saved = store.savedBindings()
+        return (saved.filter { $0.isPublic == true } + saved.filter { $0.isPublic != true }).map { saved in
             .init(id: saved.id, name: saved.conversation?.name ?? "我的 V", kind: saved.conversation?.kind ?? "personal",
                   host: saved.binding.baseURL.host ?? "", isCurrent: saved.id == record?.id, isPublic: saved.isPublic == true, accountLabel: saved.conversation?.accountLabel)
         }

@@ -13,6 +13,7 @@ import AppIntents
     @ViewBuilder private var content: some View {
         #if DEBUG
         if CommandLine.arguments.contains("--island-visual-review") { IslandPreviewGallery() }
+        else if CommandLine.arguments.contains("--settings-entry-preview") { SettingsView(call: call) }
         else { H5CallView(call: call) }
         #else
         H5CallView(call: call)

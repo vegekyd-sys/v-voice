@@ -61,112 +61,136 @@ struct SettingsView: View {
 
     private var settings: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                VStack(alignment: .leading, spacing: 9) {
-                    Text("聊什么，\n由你切换。").font(VoiceStyle.font(32, weight: .semibold)).tracking(-0.7)
-                    Text("保存不同的会话，给工作、灵感和日常各留一个位置。")
-                        .font(VoiceStyle.font(14)).foregroundStyle(VoiceStyle.soft).lineSpacing(5)
+            VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("通话入口").font(VoiceStyle.font(27, weight: .semibold)).tracking(-0.5)
+                    Text("选一个入口，和 V 继续聊。")
+                        .font(VoiceStyle.font(14)).foregroundStyle(VoiceStyle.soft)
                 }.padding(.top, 14)
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack {
-                        Text("Public 与我的绑定").font(VoiceStyle.font(16, weight: .semibold))
-                        Spacer()
-                        Text("\(call.savedConversations.count) 个已保存").font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted)
-                    }
-                    if !call.savedConversations.contains(where: { $0.isPublic }) {
-                        if call.publicPreparing { ProgressView("正在准备 Public…") }
-                        else {
-                            Button("Public · 重试准备独立访客会话") { Task { await call.preparePublicIfNeeded(retry: true) } }
-                                .disabled(call.active || selecting != nil)
-                            if !call.publicError.isEmpty { Text(call.publicError).font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted) }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(spacing: 0) {
+                        if !call.savedConversations.contains(where: { $0.isPublic }) {
+                            publicPlaceholder
+                            entryDivider
                         }
+                        ForEach(call.savedConversations) { saved in
+                            conversationRow(saved)
+                            entryDivider
+                        }
+                        Button { feedback = ""; journey = true } label: {
+                            HStack(spacing: 14) {
+                                Image(systemName: "plus").font(.system(size: 17, weight: .medium))
+                                    .frame(width: 40, height: 40)
+                                Text("添加入口").font(VoiceStyle.font(14, weight: .semibold))
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(VoiceStyle.faint)
+                            }.foregroundStyle(VoiceStyle.purple).padding(.horizontal, 17).padding(.vertical, 12)
+                                .contentShape(Rectangle())
+                        }.buttonStyle(.plain).accessibilityIdentifier("addConversation").disabled(entriesLocked)
+                    }.background(.white, in: RoundedRectangle(cornerRadius: 23))
+                        .clipShape(RoundedRectangle(cornerRadius: 23))
+                        .overlay { RoundedRectangle(cornerRadius: 23).strokeBorder(VoiceStyle.line.opacity(0.5), lineWidth: 0.5) }
+                    Text(call.active ? "通话结束后可以切换或管理入口。" : "操作按钮与灵动岛跟随当前选中的入口。")
+                        .font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted).lineSpacing(4).padding(.horizontal, 4)
+                    if !feedback.isEmpty {
+                        Text(feedback).font(VoiceStyle.font(13)).foregroundStyle(VoiceStyle.soft)
+                            .accessibilityIdentifier("bindingFeedback").padding(.horizontal, 4)
                     }
-                    if call.savedConversations.isEmpty {
-                        Label("添加一个会话，让 V 接上你的上下文。", systemImage: "bubble.left.and.text.bubble.right")
-                            .font(VoiceStyle.font(14)).foregroundStyle(VoiceStyle.soft).padding(.vertical, 15)
-                    } else {
-                        VStack(spacing: 0) {
-                            ForEach(Array(call.savedConversations.enumerated()), id: \.element.id) { index, saved in
-                                conversationRow(saved)
-                                if index < call.savedConversations.count - 1 { Divider().overlay(VoiceStyle.line).padding(.leading, 64) }
-                            }
-                        }.background(.white.opacity(0.88), in: RoundedRectangle(cornerRadius: 23))
-                    }
-                    Button { feedback = ""; journey = true } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "plus.circle.fill").foregroundStyle(VoiceStyle.purple)
-                            Text("添加一个会话")
-                            Spacer()
-                            Image(systemName: "arrow.up.right").font(.system(size: 12, weight: .semibold))
-                        }.font(VoiceStyle.font(14, weight: .semibold)).padding(.vertical, 16)
-                    }.accessibilityIdentifier("addConversation").disabled(call.active || selecting != nil)
-                    if call.active { Label("通话结束后可以切换或添加会话。", systemImage: "phone.fill").font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.soft) }
-                    else {
-                        Text(call.bound ? "操作按钮和灵动岛跟随当前会话。Public 是独立访客，不连接私人账号工具。" : "选一个已保存的会话，就可以继续聊天。")
-                            .font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted).lineSpacing(4)
-                    }
-                    if !feedback.isEmpty { Text(feedback).font(VoiceStyle.font(13)).foregroundStyle(VoiceStyle.soft).accessibilityIdentifier("bindingFeedback") }
                 }
-                Divider().overlay(VoiceStyle.line)
-                NavigationLink { ActionButtonInstructions() } label: {
-                    HStack(spacing: 14) {
-                        Image(systemName: "button.programmable").font(.system(size: 24, weight: .light)).frame(width: 32)
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text("让 V，在一个按键之内").font(VoiceStyle.font(15, weight: .semibold))
-                            Text("设置操作按钮，长按就能开聊").font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted)
+
+                VStack(spacing: 12) {
+                    NavigationLink { ActionButtonInstructions() } label: {
+                        HStack(spacing: 14) {
+                            settingsIcon("button.programmable")
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("操作按钮").font(VoiceStyle.font(15, weight: .semibold))
+                                Text("长按，开始通话").font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(VoiceStyle.faint)
+                        }.padding(17).contentShape(Rectangle())
+                    }.buttonStyle(.plain).background(.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 21))
+                    DisclosureGroup(isExpanded: $preferences) {
+                        preferencesContent.padding(.top, 20)
+                    } label: {
+                        HStack(spacing: 14) {
+                            settingsIcon("waveform")
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("声音与通话").font(VoiceStyle.font(15, weight: .semibold))
+                                Text("声音、权限与灵动岛").font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted)
+                            }
                         }
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
-                    }.padding(.vertical, 4)
-                }.buttonStyle(.plain)
-                Divider().overlay(VoiceStyle.line)
-                DisclosureGroup(isExpanded: $preferences) {
-                    preferencesContent.padding(.top, 20)
-                } label: { Label("声音与通话", systemImage: "waveform").font(VoiceStyle.font(15, weight: .semibold)) }
-                Text("V Voice · 从一颗按键开始")
-                    .font(VoiceStyle.font(11)).foregroundStyle(VoiceStyle.faint).frame(maxWidth: .infinity).padding(.top, 10)
-            }.frame(maxWidth: 520).padding(.horizontal, 26).padding(.bottom, 32).frame(maxWidth: .infinity)
+                    }.padding(17).background(.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 21))
+                }
+                Text("V Voice").font(VoiceStyle.font(11)).foregroundStyle(VoiceStyle.faint)
+                    .frame(maxWidth: .infinity).padding(.top, 2)
+            }.frame(maxWidth: 520).padding(.horizontal, 24).padding(.bottom, 32).frame(maxWidth: .infinity)
         }.foregroundStyle(VoiceStyle.ink).background(VoiceStyle.background)
             .navigationTitle("设置").navigationBarTitleDisplayMode(.inline)
     }
+
+    private var entriesLocked: Bool { call.active || selecting != nil || call.publicPreparing }
+    private var entryDivider: some View { Divider().overlay(VoiceStyle.line.opacity(0.65)).padding(.leading, 71) }
+    private func settingsIcon(_ name: String) -> some View {
+        Image(systemName: name).font(.system(size: 19, weight: .regular)).foregroundStyle(VoiceStyle.soft)
+            .frame(width: 40, height: 40).background(VoiceStyle.lavender.opacity(0.65), in: RoundedRectangle(cornerRadius: 14))
+    }
+    private var publicPlaceholder: some View {
+        Button { Task { await call.preparePublicIfNeeded(retry: true) } } label: {
+            HStack(spacing: 14) {
+                settingsIcon("globe")
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Public").font(VoiceStyle.font(15, weight: .semibold))
+                    Text(call.publicPreparing ? "正在准备…" : "暂时无法连接，轻点重试")
+                        .font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted)
+                }
+                Spacer(minLength: 8)
+                if call.publicPreparing { ProgressView().tint(VoiceStyle.purple) }
+                else { Image(systemName: "arrow.clockwise").foregroundStyle(VoiceStyle.purple) }
+            }.padding(17).contentShape(Rectangle())
+        }.buttonStyle(.plain).disabled(entriesLocked).accessibilityIdentifier("preparePublicEntry")
+    }
     private func conversationRow(_ saved: SavedConversation) -> some View {
         HStack(spacing: 0) {
-        Button {
-            if saved.isCurrent {
-                if saved.isPublic { Task { await call.preparePublicIfNeeded(retry: true) } }
-                return
-            }
-            selecting = saved.id; feedback = ""
-            Task {
-                do { try await call.selectConversation(saved.id); UISelectionFeedbackGenerator().selectionChanged() }
-                catch { feedback = error.localizedDescription }
-                selecting = nil
-            }
-        } label: {
-            HStack(spacing: 13) {
-                Image(systemName: saved.kind == "group" ? "person.2" : "bubble.left")
-                    .font(.system(size: 18, weight: .regular)).foregroundStyle(saved.isCurrent ? .white : VoiceStyle.purple)
-                    .frame(width: 40, height: 40).background(saved.isCurrent ? VoiceStyle.purple : VoiceStyle.lavender, in: RoundedRectangle(cornerRadius: 14))
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(saved.name).font(VoiceStyle.font(15, weight: .semibold)).foregroundStyle(VoiceStyle.ink)
-                        .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(saved.isCurrent ? "boundConversation" : "savedConversation")
-                    Text([saved.isCurrent ? "当前会话" : nil, saved.isPublic ? nil : saved.accountLabel, saved.isPublic ? "独立访客" : saved.kind == "group" ? "群聊" : "私聊", saved.host].compactMap { $0 }.joined(separator: " · "))
-                        .font(VoiceStyle.font(11)).foregroundStyle(VoiceStyle.muted).fixedSize(horizontal: false, vertical: true)
+            Button {
+                guard !saved.isCurrent else { return }
+                selecting = saved.id; feedback = ""
+                Task {
+                    do { try await call.selectConversation(saved.id); UISelectionFeedbackGenerator().selectionChanged() }
+                    catch { feedback = error.localizedDescription }
+                    selecting = nil
                 }
-                Spacer(minLength: 0)
-                if selecting == saved.id { ProgressView().tint(VoiceStyle.purple) }
-                else if saved.isCurrent { Image(systemName: "checkmark.circle.fill").foregroundStyle(VoiceStyle.purple).accessibilityLabel("当前会话") }
-                else { Image(systemName: "circle").foregroundStyle(VoiceStyle.line) }
-            }.padding(17).contentShape(Rectangle())
-        }.buttonStyle(.plain).disabled(call.active || selecting != nil)
-            .accessibilityLabel(saved.name + (saved.isCurrent ? "，当前会话" : "，切换到这个会话"))
-        if !saved.isPublic {
-            Button { removal = saved; confirmingRemoval = true } label: {
-                Image(systemName: "trash").foregroundStyle(VoiceStyle.muted).frame(width: 44, height: 56)
-            }.accessibilityLabel("移除「\(saved.name)」的本机绑定").accessibilityIdentifier("removeConversation")
-                .disabled(call.active || selecting != nil)
-        }
-        }
+            } label: {
+                HStack(spacing: 14) {
+                    Image(systemName: saved.isPublic ? "globe" : saved.kind == "group" ? "person.2" : "bubble.left.and.text.bubble.right")
+                        .font(.system(size: 19, weight: .regular)).foregroundStyle(saved.isCurrent ? .white : VoiceStyle.soft)
+                        .frame(width: 40, height: 40)
+                        .background(saved.isCurrent ? VoiceStyle.purple : VoiceStyle.lavender.opacity(0.65), in: RoundedRectangle(cornerRadius: 14))
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(saved.isPublic ? "Public" : saved.name).font(VoiceStyle.font(15, weight: .semibold))
+                            .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(saved.isCurrent ? "boundConversation" : "savedConversation")
+                        Text(saved.isPublic ? "与 V 直接聊，无需绑定" : saved.accountLabel ?? (saved.kind == "group" ? "群聊" : "个人会话"))
+                            .font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    if selecting == saved.id { ProgressView().tint(VoiceStyle.purple) }
+                    else if saved.isCurrent {
+                        Image(systemName: "checkmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(VoiceStyle.purple)
+                    }
+                }.padding(.leading, 17).padding(.trailing, saved.isPublic ? 20 : 4).padding(.vertical, 17).contentShape(Rectangle())
+            }.buttonStyle(.plain).disabled(entriesLocked)
+                .accessibilityLabel((saved.isPublic ? "Public" : saved.name) + (saved.isCurrent ? "，当前入口" : "，切换到这个入口"))
+                .accessibilityValue(saved.isCurrent ? "已选择" : "未选择")
+            if !saved.isPublic {
+                Button { removal = saved; confirmingRemoval = true } label: {
+                    Image(systemName: "trash").font(.system(size: 14)).foregroundStyle(VoiceStyle.muted)
+                        .frame(width: 44, height: 56).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityLabel("移除「\(saved.name)」的本机绑定")
+                    .accessibilityIdentifier("removeConversation").disabled(entriesLocked).padding(.trailing, 3)
+            }
+        }.background(saved.isCurrent ? VoiceStyle.lavender.opacity(0.35) : .clear)
     }
     private var preferencesContent: some View {
         VStack(alignment: .leading, spacing: 20) {

@@ -298,6 +298,8 @@ extension SessionBindingTests {
         try await upgraded.preparePublic(baseURL: URL(string: base)!)
         XCTAssertEqual(upgraded.record?.id, two.id)
         XCTAssertEqual(upgraded.savedConversations.count, 3)
+        XCTAssertEqual(upgraded.savedConversations.first?.isPublic, true)
+        XCTAssertEqual(upgraded.savedConversations.dropFirst().map(\.id), [one.id, two.id])
         try upgraded.removeConversation(id: one.id)
         XCTAssertEqual(upgraded.record?.id, two.id)
         try upgraded.removeConversation(id: two.id)

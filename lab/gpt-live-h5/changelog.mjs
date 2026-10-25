@@ -1,11 +1,12 @@
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
 export const IOS_PUBLIC_CANDIDATE_UPDATE = {
-  version:'voice-ios-public.20261025.1',date:'2026-10-25',
-  title:'iOS 默认 Public 与多入口管理（Candidate）',status:'candidate-validation',
+  version:'voice-ios-public.20261025.2',date:'2026-10-25',
+  title:'iOS 统一通话入口（Candidate）',status:'candidate-validation',
   items:[
     '全新安装自动准备独立 Public 访客会话，无需飞书登录或复制链接；启动不会自动拨号。',
     '保留已有入口和当前选择，可添加多个绑定并查看已验证账号标签。',
+    '设置页共用一个入口列表：Public 固定第一，其他会话依次排列；选中状态、添加与移除采用统一的轻量样式。',
     '会话列表提供可见的本机移除按钮，移除当前额外入口后回到 Public。',
     '首次系统权限需要时操作按钮引导到前台；已有授权继续后台通话。',
     '仅 Candidate，真实语音、操作按钮与共享集成验收另行登记。',
