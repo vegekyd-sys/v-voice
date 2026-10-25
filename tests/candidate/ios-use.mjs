@@ -14,12 +14,14 @@ const cfg=JSON.parse(fs.readFileSync(process.env.OPENCLAW_CONFIG_PATH));
 const workspace=cfg.agents.entries.makaron.workspace;
 assert(workspace.startsWith(process.env.VLAB_CANDIDATE_DATA));
 // Isolated model/tool test; never start channels, cron or a shared Gateway.
-cfg.channels={};cfg.cron={enabled:false};cfg.plugins={enabled:false,load:{paths:[]},entries:{},allow:[]};
+cfg.channels={};cfg.cron={enabled:false};cfg.plugins={enabled:true,load:{paths:[]},entries:{deepseek:{enabled:true}},allow:['deepseek']};
 cfg.agents.defaults.heartbeat={every:'0m'};
+if(cfg.tools)delete cfg.tools.web;
 fs.writeFileSync(process.env.OPENCLAW_CONFIG_PATH,JSON.stringify(cfg),{mode:0o600});
 const install=await installIOSUse(workspace);
 const cli=path.join(runtime,'openclaw','dist','index.js');
-const env={...process.env};
+const env={...process.env,OPENCLAW_GATEWAY_PORT:String(cfg.gateway.port),TMPDIR:path.join(process.env.VLAB_CANDIDATE_DATA,'tmp'),XDG_CACHE_HOME:path.join(process.env.VLAB_CANDIDATE_DATA,'cache')};
+fs.mkdirSync(env.TMPDIR,{recursive:true,mode:0o700});fs.mkdirSync(env.XDG_CACHE_HOME,{recursive:true,mode:0o700});
 if(!env.DEEPSEEK_API_KEY){
  const secretFile=path.join(path.dirname(process.env.VLAB_SHARED_STATE_DIR),'secrets.env');
  const match=fs.readFileSync(secretFile,'utf8').match(/^\s*(?:export\s+)?DEEPSEEK_API_KEY=(.*)$/m);
@@ -36,7 +38,9 @@ function run(args){return new Promise((resolve,reject)=>{
 function json(text){for(let i=0;i<text.length;i++)if(text[i]==='{'){try{return JSON.parse(text.slice(i));}catch{}}throw Error('No CLI JSON result');}
 const listed=json(await run(['skills','list','--agent','makaron','--json']));
 const skills=listed.skills??listed;
-assert(Array.isArray(skills)&&skills.some(s=>s.name==='ios-use'&&s.eligible!==false),'ios-use not discoverable');
+if(!Array.isArray(skills)||!skills.some(s=>s.name==='ios-use'&&s.eligible!==false)){console.log(JSON.stringify({discovery:{keys:Object.keys(listed),workspace:listed.workspaceDir,installed:install.path,skillCount:Array.isArray(skills)?skills.length:null,iosSkill:Array.isArray(skills)?skills.find(s=>s.name==='ios-use'):null}}));throw Error('ios-use not discoverable');}
+console.log(JSON.stringify({skillDiscovery:{name:'ios-use',eligible:true,workspaceIsPrivate:listed.workspaceDir===workspace}}));
+assert.equal(listed.workspaceDir,workspace,'Skill discovery must use the private workspace');
 const voiceSessionId=randomUUID(),lease=randomBytes(32).toString('base64url');
 const sent=[];
 let requests;

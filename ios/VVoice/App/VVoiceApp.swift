@@ -12,6 +12,18 @@ import AppIntents
     }
     @ViewBuilder private var content: some View {
         #if DEBUG
+        #if targetEnvironment(simulator)
+        if CommandLine.arguments.contains("--ios-use-review") { NavigationStack { IOSPermissionsView(call: call) } }
+        else { mainContent }
+        #else
+        mainContent
+        #endif
+        #else
+        H5CallView(call: call)
+        #endif
+    }
+    @ViewBuilder private var mainContent: some View {
+        #if DEBUG
         if CommandLine.arguments.contains("--island-visual-review") { IslandPreviewGallery() }
         else { H5CallView(call: call) }
         #else

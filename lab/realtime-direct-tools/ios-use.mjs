@@ -34,7 +34,7 @@ export function iosUseTool(snapshot){
  return {type:'function',name:'ios_use',description:'在当前通话的 iPhone 上执行苹果应用动作。仅执行用户明确要求的动作。日历是 iPhone 的系统日历，区别于飞书日历。参数规则：Notes title/body；Calendar create title/body/start/end/timeZone，query start/end/limit；Reminders create title/body，可选due/timeZone，query limit/includeCompleted。时间必须含时区，范围最多31天，最多20条。必要时系统提示解锁或授权，然后继续同一任务。等待真实回执才能宣称完成；unknown不重写。权限拒绝不能通过委托后端、换身份或其他工具绕过。复杂任务可委托后端按ios-use Skill使用同一能力，不重复执行。',parameters:{type:'object',properties:{operation:{type:'string',enum:operations},payload:{type:'object',properties:{title:{type:'string'},body:{type:'string'},start:{type:'string'},end:{type:'string'},due:{type:'string'},timeZone:{type:'string'},limit:{type:'integer',minimum:1,maximum:20},includeCompleted:{type:'boolean'}},additionalProperties:false}},required:['operation','payload'],additionalProperties:false}};
 }
 export function validateIOSResult(operation,result,{requestId,payload}={}){
- if(!object(result)||!['completed','denied','requires_foreground','failed','cancelled','unknown','unavailable'].includes(result.status))throw Error('iOS 回执状态无效');
+ if(!object(result)||Buffer.byteLength(JSON.stringify(result))>64000||!['completed','denied','requires_foreground','failed','cancelled','unknown','unavailable'].includes(result.status))throw Error('iOS 回执状态无效');
  if(result.status!=='completed')return {...result,completed:false,instruction:'设备动作未确认完成；不声称成功，不自动重试写入，不委托绕过拒绝。'};
  let valid=false;
  if(operation.startsWith('notes.')){
@@ -66,10 +66,9 @@ export function createIOSUseAdapter({request,capabilities}){
 /** Adapter map consumed by lib/device-requests.mjs. One instance per authenticated call. */
 export function iosUseOperations(){
  return Object.fromEntries(IOS_OPERATIONS.map(operation=>{
-  let argumentsValue;
   return [operation,{timeoutMS:180000,sideEffect:operation.endsWith('.create')||operation==='notes.append',
-   validateArguments(args){argumentsValue=validateIOSOperation(operation,args);return argumentsValue;},
-   validateResult(result,{requestId}){return validateIOSResult(operation,{...result,status:'completed'},{requestId,payload:argumentsValue});},
+   validateArguments(args){return validateIOSOperation(operation,args);},
+   validateResult(result,{requestId,arguments:args}){return validateIOSResult(operation,{...result,status:'completed'},{requestId,payload:args});},
   }];
  }));
 }

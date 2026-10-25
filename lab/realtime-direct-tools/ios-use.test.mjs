@@ -31,11 +31,22 @@ test('permission denied removes device action and cannot be delegated through ad
 test('public adapter follows operation-specific proof semantics',()=>{
  const operation=iosUseOperations()['calendar.create'];assert.equal(operation.sideEffect,true);
  operation.validateArguments(event);
- assert.equal(operation.validateResult({evidence:'eventkit_written_readback',written:true,readBack:true,item:{id:'saved',...event}},{requestId:'id'}).completed,true);
+ assert.equal(operation.validateResult({evidence:'eventkit_written_readback',written:true,readBack:true,item:{id:'saved',...event}},{requestId:'id',arguments:event}).completed,true);
  assert.equal(iosUseOperations()['calendar.query'].sideEffect,false);
 });
 test('query is bounded and reminders due time must match readback',()=>{
  assert.throws(()=>validateIOSResult('calendar.query',{status:'completed',evidence:'eventkit_query',items:[{id:'x',title:'a'},{id:'y',title:'b'}]},{payload:{limit:1}}));
  const payload={title:'Follow up',due:'2026-10-26T10:00:00+08:00',timeZone:'Asia/Shanghai'};
  assert.throws(()=>validateIOSResult('reminders.create',{status:'completed',evidence:'eventkit_written_readback',written:true,readBack:true,item:{id:'x',title:payload.title,due:'2026-10-26T11:00:00+08:00'}},{payload}));
+});
+
+test('common transport validates against this request arguments across interleaved calls',async()=>{
+ const {createDeviceRequests}=await import('../../lib/device-requests.mjs');
+ const adapters=iosUseOperations(),sentA=[],sentB=[];
+ const make=(voiceSessionId,frames)=>createDeviceRequests({voiceSessionId,send:f=>frames.push(f),operations:adapters,capabilities:{'notes.create':{status:'available'}}});
+ const a=make('call-A',sentA),b=make('call-B',sentB);
+ const pa=a.request('notes.create',{title:'A',body:'First'}),pb=b.request('notes.create',{title:'B',body:'Second'});
+ const receipt=(f,title,body)=>({type:'device.result',version:1,voiceSessionId:f.voiceSessionId,requestId:f.requestId,operation:f.operation,status:'ok',result:{evidence:'user_configured_shortcut_readback',contentDigest:createHash('sha256').update(title+'\n'+body+'\n\nV Voice · '+f.requestId).digest('hex')}});
+ b.receive(receipt(sentB[0],'B','Second'));a.receive(receipt(sentA[0],'A','First'));
+ assert.equal((await pa).status,'ok');assert.equal((await pb).status,'ok');a.close();b.close();
 });

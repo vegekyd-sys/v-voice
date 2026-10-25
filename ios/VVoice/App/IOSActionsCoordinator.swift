@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreFoundation
 import VVoiceCore
 
 /// Business executor plugged into the shared current-call device transport.
@@ -36,7 +37,8 @@ import VVoiceCore
     func receiveFrame(_ frame: [String: Any], voiceID: String, owner: String, foreground: Bool, protectedData: Bool,
                       isCurrent: @escaping () -> Bool, send: @escaping ([String: Any]) -> Void) throws {
         let keys: Set<String> = ["type","version","requestId","voiceSessionId","operation","deadline","arguments"]
-        guard Set(frame.keys) == keys, frame["type"] as? String == "device.request", frame["version"] as? Int == 1,
+        guard Set(frame.keys) == keys, frame["type"] as? String == "device.request",
+              let version = frame["version"], CFGetTypeID(version as CFTypeRef) != CFBooleanGetTypeID(), version as? Int == 1,
               frame["voiceSessionId"] as? String == voiceID, let id = frame["requestId"] as? String,
               let operation = frame["operation"] as? String, let deadline = frame["deadline"] as? Double,
               let arguments = frame["arguments"] as? [String: Any] else { throw IOSActionRequest.Invalid.request }

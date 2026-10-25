@@ -55,7 +55,7 @@ import VVoiceCore
                 let predicate = store.predicateForEvents(withStart: request.start!, end: request.end!, calendars: nil)
                 let rows = store.events(matching: predicate).sorted { $0.startDate < $1.startDate }
                 try current()
-                return ["status":"completed", "evidence":"eventkit_query", "items":rows.prefix(request.limit).map(eventValue), "truncated":rows.count > request.limit]
+                return ["status":"completed", "evidence":"eventkit_query", "items":rows.prefix(request.limit).map { eventValue($0, preview: true) }, "truncated":rows.count > request.limit]
             case .remindersCreate:
                 guard let calendar = store.defaultCalendarForNewReminders(), calendar.allowsContentModifications else { return ["status":"unavailable", "evidence":"no_writable_default_reminder_list"] }
                 let item = EKReminder(eventStore: store); item.calendar = calendar; item.title = request.title; item.notes = request.body
@@ -92,8 +92,9 @@ import VVoiceCore
         var calendar = Calendar(identifier: .gregorian); calendar.timeZone = zone
         guard let actual = calendar.date(from: components) else { return false }; return abs(actual.timeIntervalSince(date)) < 1
     }
-    private func eventValue(_ event: EKEvent) -> [String: Any] {
-        ["id":event.eventIdentifier ?? "", "title":event.title ?? "", "body":event.notes ?? "", "start":event.startDate.ISO8601Format(), "end":event.endDate.ISO8601Format(), "calendar":event.calendar.title, "allDay":event.isAllDay]
+    private func eventValue(_ event: EKEvent, preview: Bool = false) -> [String: Any] {
+        let title = event.title ?? "", body = event.notes ?? "", calendar = event.calendar.title
+        return ["id":event.eventIdentifier ?? "", "title":preview ? String(title.prefix(160)) : title, "body":preview ? String(body.prefix(256)) : body, "detailsTruncated":preview && (title.count > 160 || body.count > 256 || calendar.count > 80), "start":event.startDate.ISO8601Format(), "end":event.endDate.ISO8601Format(), "calendar":String(calendar.prefix(80)), "allDay":event.isAllDay]
     }
     private func reminderValue(_ item: EKReminder) -> [String: Any] {
         var value: [String: Any] = ["id":item.calendarItemIdentifier, "title":item.title ?? "", "body":item.notes ?? "", "completed":item.isCompleted, "list":item.calendar.title]
@@ -118,7 +119,7 @@ private struct ReminderSnapshot: Sendable {
         } else { due = nil }
     }
     var value: [String: Any] {
-        var result: [String: Any] = ["id":id, "title":title, "body":body, "list":list, "completed":isCompleted]
+        var result: [String: Any] = ["id":id, "title":String(title.prefix(160)), "body":String(body.prefix(256)), "list":String(list.prefix(80)), "detailsTruncated":title.count > 160 || body.count > 256 || list.count > 80, "completed":isCompleted]
         if let due { result["due"] = due.ISO8601Format() }; return result
     }
 }
