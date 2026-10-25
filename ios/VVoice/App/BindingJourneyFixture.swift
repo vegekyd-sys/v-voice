@@ -13,7 +13,7 @@ import VVoiceCore
             let secret = String(repeating: "preview", count: 8)
             for (phone, name, account) in [("preview-work", "工作与灵感", "工作账号 · 飞书"), ("preview-product", "产品讨论室", "产品账号 · 飞书")] {
                 if let binding = try? VoiceBinding(link: "https://binding-preview.invalid/voice/?phone=\(phone)#access=\(secret)") {
-                    try? store.save(StoredBinding(binding: binding, cookie: "v_voice_\(phone)=fixture-only", conversation: .init(name: name, kind: "group", accountLabel: account)), select: phone == "preview-work")
+                    try? store.save(StoredBinding(binding: binding, cookie: "v_voice_\(phone)=fixture-only", conversation: .init(name: name, kind: "group", accountLabel: account, entryKind: "fixed")), select: phone == "preview-work")
                 }
             }
         }
@@ -31,7 +31,7 @@ private final class BindingJourneyProtocol: URLProtocol, @unchecked Sendable {
         let phone = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "phone" })?.value ?? "preview-work"
         let isPublic = phone.hasPrefix("ios-")
         let name = isPublic ? "Public" : phone == "preview-work" ? "工作与灵感" : "产品讨论室"
-        var body: [String: Any] = ["conversation": ["name": name, "kind": isPublic ? "personal" : "group", "accountLabel": isPublic ? "独立访客" : phone == "preview-work" ? "工作账号 · 飞书" : "产品账号 · 飞书"], "ready": true, "unidentified": isPublic]
+        var body: [String: Any] = ["conversation": ["entryKind": isPublic ? "public" : "fixed", "name": name, "kind": isPublic ? "personal" : "group", "accountLabel": isPublic ? "独立访客" : phone == "preview-work" ? "工作账号 · 飞书" : "产品账号 · 飞书"], "ready": true, "unidentified": isPublic]
         var headers = ["Content-Type": "application/json"]
         switch route {
         case "ios-public":

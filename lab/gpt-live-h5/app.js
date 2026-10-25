@@ -878,7 +878,7 @@ window.addEventListener("pagehide", () => {
   void stopCall();
 });
 window.addEventListener("pageshow",event=>{if(event.persisted)microphoneSession=createPageMicrophoneSession();});
-function showEntryNotice(message, { reconnecting = false } = {}) {
+function showEntryNotice(message, { reconnecting = false, publicHref = null } = {}) {
   const needsLink = /本人入口|完整.*入口/u.test(message);
   const invalidLink = /分享链接.*(?:无效|失效)|入口.*(?:不存在|已关闭)/u.test(message);
   const crowded = /尝试次数过多|访问的人有点多/u.test(message);
@@ -886,7 +886,7 @@ function showEntryNotice(message, { reconnecting = false } = {}) {
     kind: needsLink || invalidLink ? "link" : "connection",
     title: needsLink ? "请从专属链接进入" : invalidLink ? "通话链接暂不可用" : reconnecting ? "V 正在重新连接" : crowded ? "稍等一下，再来找 V" : "暂时没连上 V",
     description: needsLink ? "重新打开完整的个人通话链接，就能和 V 聊天。" : invalidLink ? "请使用最新的完整个人链接重新打开。" : reconnecting ? "稍等片刻，再试着连接。" : crowded ? "当前连接较多，请稍后重试。" : "请检查网络，或稍后重新连接。",
-    retry: !needsLink && !invalidLink,
+    retry: !needsLink && !invalidLink, publicHref,
   } });
   document.body.dataset.entryState = "unavailable";
   // Initial entry failures belong to the home scene, not the call status line.
@@ -905,7 +905,7 @@ async function initializeEntry() {
       replaceState: url => window.history.replaceState(null, "", url),
       mark: markVoiceTiming,
     }));
-    if (result.error) throw new Error(result.error);
+    if (result.error) throw Object.assign(new Error(result.error),{publicHref:result.publicHref});
     const { status } = result;
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     liveReady = status.ready === true;
@@ -918,7 +918,7 @@ async function initializeEntry() {
     if (!usable(model)) model = ["seeduplex", "gpt-live", "grok"].find(usable) ?? model;
     const grok = status.models?.find(item => item.id === "grok");
     const grokVoices = grok?.voices ?? [];
-    view.set({ models, model, accountLoginHref: status.accountLoginHref??null, accountLabel: status.accountLabel??null, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, unidentified:status.unidentified===true, grok: {
+    view.set({ models, model, accessContext:status.accessContext??null, publicHref:status.publicHref??null, accountLoginHref: status.accountLoginHref??null, accountLabel: status.accountLabel??null, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, unidentified:status.unidentified===true, grok: {
       voices: grokVoices.map(voice => ({ id: voice.id, label: voice.label })),
       voice: grokVoices.some(voice => voice.id === "iris") ? "iris" : grokVoices[0]?.id ?? null,
       hint: [grok?.speed && grok.speed !== 1 ? `${grok.speed}× 语速` : "", grok?.expressiveTags ? "自主表达试用" : ""].filter(Boolean).join(" · "),
@@ -937,7 +937,7 @@ async function initializeEntry() {
     liveReady = false;
     entryError = error.message ?? "暂时无法连接 V，请稍后重试。";
     view.set(state => ({ badge: "暂未连接", dial: { ...state.dial, disabled: true } }));
-    showEntryNotice(entryError);
+    showEntryNotice(entryError,{publicHref:error.publicHref});
   }
 }
 void initializeEntry();

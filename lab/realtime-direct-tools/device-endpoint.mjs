@@ -1,3 +1,4 @@
+import {resolveFixedDeviceRecord,voiceAccessContext} from '../../lib/access-context.mjs';
 import {appendFileSync} from 'node:fs';
 import {createDevicePlayout,DEVICE_PLAYOUT_MAX_BYTES} from './device-playout.mjs';
 import {EventEmitter} from 'node:events';
@@ -22,10 +23,11 @@ const FORWARDED = new Set(['audio.clear','audio.done','end.accepted','end.after-
 const digest = value => createHash('sha256').update(String(value)).digest();
 
 /** Device records are private operator configuration, like phone entries. */
-export function parseDeviceEntries(records = []) {
+export function parseDeviceEntries(records = [], fixedEntries = []) {
   if (!Array.isArray(records)) throw Error('Device entries must be an array');
   const devices = [];
-  for (const record of records) {
+  for (const raw of records) {
+    const record=resolveFixedDeviceRecord(raw,fixedEntries);
     if (!/^[a-z0-9][a-z0-9_-]{2,63}$/u.test(record?.id ?? '') || devices.some(d => d.id === record.id)) throw Error('Invalid or duplicate device ID');
     if (record.agentId !== 'makaron' || record.callerId !== 'tianyi' || record.permissionProfile !== 'personal-tianyi') throw Error('Other caller identities require Gateway actor-scoped authorization');
     if (typeof record.sessionKey !== 'string' || !/^agent:makaron:feishu:(group|direct):[A-Za-z0-9_]+$/u.test(record.sessionKey)) throw Error('A device must bind an existing Feishu session');
@@ -65,7 +67,7 @@ export function parseDeviceEntries(records = []) {
     // room background (TV, far voices). On by default with multiSpeaker; 0 = off.
     const nearFieldGateDb = record.nearFieldGateDb ?? (record.multiSpeaker === true ? NEAR_FIELD_DEFAULT_DB : 0);
     if (typeof nearFieldGateDb !== 'number' || !Number.isFinite(nearFieldGateDb) || nearFieldGateDb < 0 || nearFieldGateDb > 30) throw Error('nearFieldGateDb must be 0-30');
-    devices.push(Object.freeze({deviceBargeIn:record.deviceBargeIn === true,followUpMs,multiSpeaker:record.multiSpeaker === true,nearFieldGateDb,inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,volume,outputGain,robot:record.robot === true,robotStatus:record.robotStatus === true,camera:record.camera === true,mac,otaToken:mac ? record.token : null,id:record.id,sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
+    devices.push(Object.freeze({deviceBargeIn:record.deviceBargeIn === true,followUpMs,multiSpeaker:record.multiSpeaker === true,nearFieldGateDb,inputGain,noiseGateRms,noiseGateHoldMs,playoutLeadMs,volume,outputGain,robot:record.robot === true,robotStatus:record.robotStatus === true,camera:record.camera === true,mac,otaToken:mac ? record.token : null,id:record.id,phoneEntry:record.phoneEntry,accountId:record.accountId,accessContext:voiceAccessContext({...record,kind:record.kind??(record.sessionKey.includes(':group:')?'group':'dm')}),sessionKey:record.sessionKey,model,models:Object.freeze([...models]),voice:typeof record.voice === 'string' ? record.voice : undefined,tokenDigest:digest(record.token),disabled:record.disabled === true}));
   }
   return devices;
 }
@@ -296,7 +298,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     creatingCalls.add(call);
     void (async () => {
       try {
-        const reservation = await directVoice.reserve({model,sessionKey:device.sessionKey,voice:device.voice,surface:'speaker',inputSampleRate:DEVICE_INPUT_SAMPLE_RATE,speaker:deviceTools,inputPolicy:device.multiSpeaker?'speaker':'native'});
+        const reservation = await directVoice.reserve({model,sessionKey:device.sessionKey,...(device.phoneEntry?{sessionBound:true}:{}),voice:device.voice,surface:'speaker',inputSampleRate:DEVICE_INPUT_SAMPLE_RATE,speaker:deviceTools,inputPolicy:device.multiSpeaker?'speaker':'native'});
         call.id = reservation.voiceSessionId;
         // Routing is real only when the server has it and the model supports it.
         call.multiSpeaker = Boolean(reservation.speakerRouting);
@@ -369,7 +371,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     }
     let event;try {event = JSON.parse(data.toString());} catch {return connection.ws.close(1008, 'invalid event');}
     if (event.type === 'ping') return sendJson(connection.ws, {type:'pong',at:now()});
-    if (event.type === 'hello') {connection.firmware = String(event.firmware ?? '').replace(/[^a-zA-Z0-9._+-]/g,'').slice(0,80) || null;if(connection.firmware)firmwareReports.set(connection.device.id,{version:connection.firmware,reportedAt:now()});return sendJson(connection.ws, {type:'hello',deviceId:connection.device.id,model:connection.device.model,models:connection.device.models});}
+    if (event.type === 'hello') {connection.firmware = String(event.firmware ?? '').replace(/[^a-zA-Z0-9._+-]/g,'').slice(0,80) || null;if(connection.firmware)firmwareReports.set(connection.device.id,{version:connection.firmware,reportedAt:now()});return sendJson(connection.ws, {type:'hello',deviceId:connection.device.id,accessContext:connection.device.accessContext,model:connection.device.model,models:connection.device.models});}
     if (event.type === 'call.start') return startCall(connection, event);
     if (!call) return;
     if (event.type === 'call.end') return call.end('device');
@@ -471,7 +473,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
         ws.on('message', (data, binary) => {connection.missed = 0;try {onMessage(connection, data, binary);} catch {ws.close(1011, 'device event failed');}});
         ws.on('close', () => {clearInterval(ping);connection.call?.end('device-disconnected');if (connections.get(device.id) === connection) connections.delete(device.id);});
         ws.on('error', () => {});
-        sendJson(ws, {type:'hello',deviceId:device.id,model:device.model,models:device.models});
+        sendJson(ws, {type:'hello',deviceId:device.id,accessContext:device.accessContext,model:device.model,models:device.models});
       });
     },
     async dispose() {

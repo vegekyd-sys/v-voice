@@ -55,7 +55,7 @@ struct SettingsView: View {
                     selecting = nil; removal = nil
                 }
             }
-        } message: { _ in Text("仅移除本机绑定，不删除远端群或历史。移除当前绑定后回到 Public。") }
+        } message: { _ in Text("仅从这台 iPhone 移除，不删除远端会话或历史，也不会撤销其他设备。撤销设备访问可在原网页入口的设备管理中操作。移除当前入口后回到 Public。") }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: journey)
     }
 
@@ -63,18 +63,21 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("通话入口").font(VoiceStyle.font(27, weight: .semibold)).tracking(-0.5)
-                    Text("选一个入口，和 V 继续聊。")
+                    Text("使用 V").font(VoiceStyle.font(27, weight: .semibold)).tracking(-0.5)
+                    Text(call.entrySummary)
                         .font(VoiceStyle.font(14)).foregroundStyle(VoiceStyle.soft)
                 }.padding(.top, 14)
 
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(spacing: 0) {
-                        if !call.savedConversations.contains(where: { $0.isPublic }) {
-                            publicPlaceholder
-                            entryDivider
-                        }
-                        ForEach(call.savedConversations) { saved in
+                        if let saved = call.savedConversations.first(where: { $0.isPublic }) { conversationRow(saved) }
+                        else { publicPlaceholder }
+                        Text("对话、搜索、V 记忆与后台任务。无需连接个人账号。")
+                            .font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted).padding(.horizontal, 20).padding(.bottom, 16)
+                    }.background(.white, in: RoundedRectangle(cornerRadius: 23))
+                    Text("我的账号与会话").font(VoiceStyle.font(17, weight: .semibold)).padding(.top, 8)
+                    VStack(spacing: 0) {
+                        ForEach(call.savedConversations.filter { !$0.isPublic }) { saved in
                             conversationRow(saved)
                             entryDivider
                         }
@@ -82,7 +85,7 @@ struct SettingsView: View {
                             HStack(spacing: 14) {
                                 Image(systemName: "plus").font(.system(size: 17, weight: .medium))
                                     .frame(width: 40, height: 40)
-                                Text("添加入口").font(VoiceStyle.font(14, weight: .semibold))
+                                Text("连接账号与会话").font(VoiceStyle.font(14, weight: .semibold))
                                 Spacer()
                                 Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
                                     .foregroundStyle(VoiceStyle.faint)
@@ -118,8 +121,8 @@ struct SettingsView: View {
                         HStack(spacing: 14) {
                             settingsIcon("waveform")
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("声音与通话").font(VoiceStyle.font(15, weight: .semibold))
-                                Text("声音、权限与灵动岛").font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted)
+                                Text("设备与权限").font(VoiceStyle.font(15, weight: .semibold))
+                                Text("麦克风、定位与灵动岛").font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted)
                             }
                         }
                     }.padding(17).background(.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 21))
@@ -171,7 +174,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 5) {
                         Text(saved.isPublic ? "Public" : saved.name).font(VoiceStyle.font(15, weight: .semibold))
                             .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(saved.isCurrent ? "boundConversation" : "savedConversation")
-                        Text(saved.isPublic ? "与 V 直接聊，无需绑定" : saved.accountLabel ?? (saved.kind == "group" ? "群聊" : "个人会话"))
+                        Text(saved.isPublic ? "访客模式" : (saved.accountLabel ?? "已连接账号") + (saved.entryKind == "fixed" ? " · 固定入口" : saved.kind == "group" ? " · 群聊" : " · 私聊"))
                             .font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 8)
@@ -200,6 +203,10 @@ struct SettingsView: View {
             settingLine("麦克风", value: call.permission == .granted ? "已允许" : "未允许")
             if call.permission == .undetermined { Button("允许麦克风") { Task { await call.requestMicrophone() } } }
             if call.permission == .denied { Button("到系统设置允许麦克风") { openSettings() } }
+            settingLine("当前位置", value: call.usingPublic ? "Public 未开放" : locationPermissionLabel)
+            if !call.usingPublic { Text("只在你要求时获取一次位置。首次授权需要打开 App。")
+                .font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted) }
+            Button("管理系统权限") { openSettings() }
             settingLine("实时活动与灵动岛", value: call.activitiesEnabled ? "已允许" : "未允许")
             if !call.activitiesEnabled { Button("到设置开启实时活动") { openSettings() } }
             Toggle("灵动岛显示方案标题", isOn: $call.islandCaptions)
@@ -208,6 +215,14 @@ struct SettingsView: View {
             Text("仅通话时使用麦克风，结束后停止收音。会话授权保存在本机钥匙串，电话内容沿用 V 的通话记录策略。")
                 .font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted).lineSpacing(4)
         }.font(VoiceStyle.font(14))
+    }
+    private var locationPermissionLabel: String {
+        let capabilities = DeviceLocation.declaration["capabilities"] as? [String: [String: String]]
+        switch capabilities?["location.current"]?["status"] {
+        case "available": return "按需使用"
+        case "denied": return "系统未允许"
+        default: return "使用时请求"
+        }
     }
     private func settingLine(_ title: String, value: String, symbol: String? = nil) -> some View {
         HStack {

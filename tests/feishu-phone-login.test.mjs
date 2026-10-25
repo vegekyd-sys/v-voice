@@ -156,9 +156,9 @@ test('App-ID and account-key aliases unify old groups and verified DM chat IDs w
   resolveConversation:async(identity,phone)=>{seen.push({identity,phone});return {id:phone,sessionKey:phone===feishuConversationPhone('default','oc_dm')?old[0].sessionKey:old[1].sessionKey};}});
  for(const [entry,chat] of [[old[0],'oc_dm'],[old[1],'oc_group']]){
   const canonical=feishuConversationPhone('default',chat);
-  assert.equal(login.canonicalPhone(entry.id),canonical);assert.equal(login.canonicalPhone(feishuConversationPhone('cli_test',chat)),canonical);
+  assert.equal(login.deviceCanonicalPhone(entry.id),canonical);assert.equal(login.deviceCanonicalPhone(feishuConversationPhone('cli_test',chat)),canonical);
   const owner=await login.resolveDevice({type:'feishu',tenantKey:actor.tenantKey,openId:actor.openId},canonical);assert.deepEqual(owner.legacyBindings,[entries.resolve(new URL(origin+'/?phone='+entry.id))]);
   const other=await login.resolveDevice({type:'feishu',tenantKey:actor.tenantKey,openId:'ou_other'},canonical);assert.equal(other.legacyBindings,undefined);
  }
- assert.equal(login.canonicalPhone(old[2].id),old[2].id);assert.equal(login.canonicalPhone('missing-entry'),'missing-entry');
+ assert.equal(login.deviceCanonicalPhone(old[2].id),old[2].id);assert.equal(login.deviceCanonicalPhone('missing-entry'),'missing-entry');
 });

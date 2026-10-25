@@ -264,6 +264,7 @@ function EntryNotice({entry}) {
       <div className="entry-notice-copy">
         <h2>{entry.title}</h2>
         <p>{entry.description}</p>
+        {entry.publicHref && <a className="session-primary" href={entry.publicHref}>使用 Public</a>}
         {entry.retry && <button type="button" onClick={() => window.location.reload()}>重新连接</button>}
       </div>
     </section>
@@ -316,7 +317,7 @@ function SessionSheet({state,actions}) {
      <div className="binding-scene-copy"><span>长按一下</span><strong>V 就在。</strong></div>
     </div>
     <div className="binding-conversation"><span className="binding-conversation-icon"><Icon d={conversation?.kind==='group'?'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M15 3.1a4 4 0 0 1 0 7.8M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8':'M20 21v-2a7 7 0 0 0-14 0v2M13 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8'} /></span><div><span>即将连接的会话</span><strong>{conversation?.name??'当前会话'}</strong></div><span className="binding-context">{value.unidentified?'访客会话':'上下文随行'}</span></div>
-    {value.unidentified&&<p className="session-muted">绑定这段访客对话，不会连接飞书群或使用账号工具。</p>}
+    {value.unidentified&&<p className="session-muted">{state.accessContext?.capabilities?.includes('web_search')?'连接这段 Public 访客对话，可继续使用搜索、V 记忆和后台任务；不会连接原飞书群或个人账号。':'连接这段访客对话；当前服务尚未开放 Public 工具。'}</p>}
     {!value.unidentified&&state.accountLabel&&<p className="session-muted">同时绑定飞书身份：<strong>{state.accountLabel}</strong>。在 App 中通话时，V 也能知道是你。</p>}
     <div className="binding-action">
      {value.appUrl?<a className="session-primary" href={value.appUrl}><Icon d="M8 2.5h8a2 2 0 0 1 2 2v15a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2Zm2 16h4"/>在 iPhone 上继续</a>:<button type="button" className="session-primary" disabled={value.busy} onClick={actions.createBinding}>{value.busy?'正在准备链接…':'准备绑定链接'}</button>}
@@ -327,7 +328,7 @@ function SessionSheet({state,actions}) {
       {value.appDownload?<><a className="binding-download" href={value.appDownload.url} target="_blank" rel="noopener noreferrer">{value.appDownload.label}</a><p className="session-muted">安装后回到这里，打开 App 完成绑定。</p></>:<><p className="session-muted">TestFlight 下载即将开放。现在也可以用网页和 V 聊天。</p><button type="button" className="binding-web" onClick={actions.closeSessionSheet}>先在网页聊</button></>}
      </div></details>
      {value.bindingUrl&&<details className="binding-fallback"><summary>没有跳转？复制链接</summary><div><p className="session-muted">在 App 设置中粘贴。链接 5 分钟内有效，过期后可重新生成。</p><div className="binding-link"><textarea aria-label="iOS 绑定链接" readOnly value={value.bindingUrl}/><div><button type="button" onClick={actions.copyBinding}>{value.copied?'已复制':'复制链接'}</button><button type="button" disabled={value.busy} onClick={actions.createBinding}>重新生成</button></div></div></div></details>}
-     {value.devices?.length>0&&<details className="binding-devices"><summary>管理已绑定的 App（{value.devices.length}）</summary>{value.devices.map(device=><div key={device.id}><span>{new Date(device.createdAt).toLocaleString('zh-CN')} 绑定</span><button type="button" disabled={value.busy} onClick={()=>actions.revokeBinding(device.id)}>解除绑定</button></div>)}</details>}
+     {value.devices?.length>0&&<details className="binding-devices"><summary>管理已绑定的 App（{value.devices.length}）</summary>{value.devices.map(device=><div key={device.id}><span>{new Date(device.createdAt).toLocaleString('zh-CN')} 绑定</span><button type="button" disabled={value.busy} onClick={()=>actions.revokeBinding(device.id)}>撤销此设备访问</button></div>)}</details>}
     </div>
    </>:<>
     {value.busy&&<p role="status">正在读取通话…</p>}
@@ -336,6 +337,27 @@ function SessionSheet({state,actions}) {
      <h3 className="report-transcript-heading">完整对话</h3><div className="report-transcript">{report.turns.map(row=><article key={row.id} data-role={row.role}><span>{row.role==='user'?'你':'V'}{row.interrupted?' · 被打断':''}</span><p>{row.text}</p></article>)}{!report.turns.length&&<p className="session-muted">没有可保存的对话。</p>}</div>
     </>}
    </>}
+  </div>
+ </dialog>,document.body);
+}
+
+function AccessSheet({state,actions,onClose}) {
+ const dialog=useRef(null), context=state.accessContext;
+ useEffect(()=>{dialog.current?.showModal();return()=>dialog.current?.close();},[]);
+ return createPortal(<dialog ref={dialog} className="session-dialog access-dialog" aria-labelledby="accessTitle" onCancel={onClose}>
+  <header><div><span className="session-eyebrow">V Voice</span><h2 id="accessTitle">账号与权限</h2></div><button type="button" aria-label="关闭" onClick={onClose}>×</button></header>
+  <div className="session-dialog-body">
+   <section><h3>Public</h3><p>{state.publicHref||context?.capabilities?.includes('web_search')?'直接和 V 对话、搜索资料、查询 V 记忆或委派任务。':'直接和 V 对话；工具能力取决于当前服务。'}</p>
+    {context?.mode==='public'?<span className="access-current">当前使用 · 独立访客</span>:state.publicHref?<a className="session-primary" href={state.publicHref}>使用 Public</a>:<p className="session-muted">当前服务尚未开放 Public。</p>}
+   </section>
+   <section><h3>我的账号与会话</h3>
+    {context?.mode==='connected'?<><dl><dt>账号</dt><dd>{context.accountLabel}</dd><dt>通话人</dt><dd>{context.identityLabel}</dd><dt>会话</dt><dd>{context.conversationLabel}</dd></dl><p className="session-muted">{context.scopeNote}</p></>:<p className="session-muted">尚未连接个人账号。从对应飞书私聊或群聊的电话入口连接，或使用已获准的固定入口。</p>}
+    {state.accountLoginHref&&<a className="access-link" href={state.accountLoginHref}>连接或切换飞书身份</a>}
+   </section>
+   <section><h3>设备与权限</h3><p className="session-muted">麦克风和定位由当前浏览器与系统管理。定位按需请求；Public 不使用个人账号和设备定位工具。</p>
+    {state.iosBindingAvailable&&<button className="session-primary" type="button" onClick={()=>{onClose();actions.openBinding();}}>连接 iPhone / 管理已授权设备</button>}
+    <p className="session-muted">音箱与机器人沿用预配置账号和会话；设备能力由各设备配置决定。</p>
+   </section>
   </div>
  </dialog>,document.body);
 }
@@ -350,6 +372,7 @@ function CallPage({view, actions, options}) {
   const [history, setHistory] = useState(false);
   const [overflow, setOverflow] = useState(false);
   const [sheet, setSheet] = useState(false);
+  const [accessOpen,setAccessOpen]=useState(false);
   const [controlsHeight, setControlsHeight] = useState(0);
   const main = useRef(null);
   const status = resolveStatus(state, now);
@@ -379,7 +402,8 @@ function CallPage({view, actions, options}) {
   return (
     <>
       <SessionSheet state={state} actions={actions}/>
-      {state.iosBindingAvailable&&!active&&<button className="ios-binding-trigger" type="button" onClick={actions.openBinding}>iOS App</button>}
+      {accessOpen&&!active&&<AccessSheet state={state} actions={actions} onClose={()=>setAccessOpen(false)}/>}
+      {!active&&!state.nativeSettings&&<button className="ios-binding-trigger" type="button" onClick={()=>setAccessOpen(true)}>账号与权限</button>}
       <button id="changelogOpen" className="changelog-trigger" type="button" aria-haspopup="dialog" aria-controls="changelogDialog" aria-expanded="false" hidden={active}>
         <Icon d={SPARK} />更新日志
       </button>
@@ -406,6 +430,8 @@ function CallPage({view, actions, options}) {
                   <button id="start" className="dial" type="button" disabled={state.dial.disabled} aria-label={state.dial.label} title={state.dial.label} onClick={actions.dial}><Icon d={PHONE} /></button>
                   <ModelPicker state={state} actions={actions} />
                   <span id="badge" className="home-badge" role="status">{state.badge}</span>
+                  {state.nativeSettings&&state.entrySummary&&<span className="access-summary">{state.entrySummary}</span>}
+                  {state.accessContext&&!state.nativeSettings&&<button className="access-summary" type="button" onClick={()=>setAccessOpen(true)}>{state.accessContext.mode==='public'?'Public · 独立访客':`${state.accessContext.accountLabel} · ${state.accessContext.conversationLabel}`}</button>}
                   {state.accountLoginHref&&!state.accountLabel&&<a className="home-note" href={state.accountLoginHref}>连接飞书账号</a>}
                   {state.homeNote && <p className="home-note" data-tone={state.homeNoteTone} role="status">{state.homeNote}</p>}
                 </>

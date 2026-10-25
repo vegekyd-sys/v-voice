@@ -1,0 +1,33 @@
+{
+  "schema": "voice-access-modes-candidate-v1",
+  "version": "voice-access-modes.20261025.1",
+  "date": "2026-10-25",
+  "status": "candidate-validation",
+  "sourceBase": "2649da7098bc4b6e9e63dcd5e94c687916f464a4",
+  "branch": "codex/unified-entry-permissions",
+  "merged": false,
+  "productionDeployed": false,
+  "testFlightSubmitted": false,
+  "nativeReleaseRequired": true,
+  "existingTestFlightBuild": 39,
+  "humanAcceptedAudioBuild": 32,
+  "tests": {
+    "service": 938,
+    "speaker": 95,
+    "fleet": 11,
+    "nativeFinal": 77
+  },
+  "vlab": {
+    "candidateId": "candidate-4fe41003-84a0-481a-8f6a-7821c4863ea8",
+    "inputSha256": "a4f0646b63013e2e1653dc3d11b847ca2b1fa18ced779812e278316047a4d636",
+    "baseRelease": "fullread-dingtalk-r2-20261025",
+    "sharedUnchanged": true,
+    "paidCalls": 0,
+    "channelMessages": 0,
+    "sharedWrites": 0,
+    "provider": "fixture",
+    "leaseReleased": true
+  },
+  "evidence": "docs/unified-access.md",
+  "homepageCandidateExport": "ACCESS_MODES_CANDIDATE_UPDATE"
+}

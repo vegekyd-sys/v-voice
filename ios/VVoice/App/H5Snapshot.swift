@@ -31,6 +31,7 @@ import VVoiceCore
                 "tasks":call.tasks.map { task -> [String: Any] in ["callId":task.id,"activity":task.activity,"stage":task.stage as Any? ?? NSNull(),"step":task.step,"startedAt":task.startedAt.timeIntervalSince1970 * 1000] },
                 "outcome":call.h5Outcome,"notice":notice as Any? ?? NSNull(),"baseURL":call.api.record?.binding.baseURL.absoluteString ?? "https://voice.invalid/voice/",
                 "canControl":call.active && ![.connecting,.reconnecting,.ending,.interrupted].contains(call.phase),
+                "entrySummary":call.entrySummary,
                 "badge":call.phase == .connecting ? "正在连接 V…" : call.bound ? "就绪" : "未绑定",
                 "homeNote":[.failed,.interrupted].contains(call.phase) ? call.detail : ""]
     }

@@ -29,7 +29,7 @@ async function fixture(options = {}) {
   const gateway = options.gateway ?? {request:async method => method === 'tools.catalog' ? {groups:[{tools:[{id:'web_search'}]}]} : {ok:true}};
   const directVoice = createDirectVoiceService({gateway,wsModule:{WebSocket:ProviderSocket,WebSocketServer:class {close() {}}},apiKeys:{seeduplex:'k',grok:'k'},speakerRouting:options.speakerRouting,toolProgressClips:options.toolProgressClips,lookupRecovery:{toolProgressMs:options.toolProgressMs??5000,toolProgressRepeatMs:options.toolProgressRepeatMs??5000,toolProgressMax:options.toolProgressMax??3,toolFailureMs:options.toolFailureMs??5000,resultSilenceMs:options.resultSilenceMs??5000,staleSpeechMs:options.staleSpeechMs??150},audit:v => audit.push(v)});
   let busy = false;
-  const endpoint = createDeviceEndpoint({directVoice,wsModule:ws,devices:parseDeviceEntries([record(options.record),...(options.extraDevices ?? [])]),audit:v => audit.push(v),
+  const endpoint = createDeviceEndpoint({directVoice,wsModule:ws,devices:parseDeviceEntries(options.records??[record(options.record),...(options.extraDevices ?? [])],options.fixedEntries??[]),audit:v => audit.push(v),
     maxBufferedBytes:options.maxBufferedBytes,robotEvaluate:options.robotEvaluate,visionPath:options.visionPath,describeImage:options.describeImage,isSessionBusy:() => busy,tickMs:10,idleMs:options.idleMs ?? 5000,initialIdleMs:options.initialIdleMs ?? 5000,followUpMs:options.followUpMs ?? 5000,chatterMs:options.chatterMs ?? 5000,
     chatterSpeechGraceMs:options.chatterSpeechGraceMs ?? 5000,toolHoldMs:options.toolHoldMs ?? 5000,toolProgressMs:options.toolProgressMs ?? 5000,toolProgressRepeatMs:options.toolProgressRepeatMs ?? 5000,toolProgressMax:options.toolProgressMax ?? 3,toolFailureMs:options.toolFailureMs ?? 5000,staleSpeechMs:options.staleSpeechMs ?? 5000,
     resultSilenceMs:options.resultSilenceMs ?? 5000,unheardTurnMs:options.unheardTurnMs ?? 5000,inputSilentMs:options.inputSilentMs ?? 3000});
@@ -902,4 +902,22 @@ test('a device disconnected during reservation remains pending until its late se
   assert.equal(f.endpoint.activeCalls(),0);assert.equal(f.endpoint.pendingOperations(),1);
   complete({voiceSessionId:'late'});
   await f.until(()=>f.endpoint.pendingOperations()===0,'late creation drained');assert.equal(retired,1);
+});
+
+
+test('a mapped hardware entry keeps its server session through hello, call and hangup', async t => {
+  const sessionKey='agent:makaron:feishu:direct:ou_fixed';
+  const f=await fixture({records:[{id:'speaker-test',phoneEntry:'fixed-work',token:TOKEN,model:'seeduplex'}],fixedEntries:[{id:'fixed-work',sessionKey,agentId:'makaron',accountId:'work-account',callerId:'tianyi',permissionProfile:'personal-tianyi',kind:'dm',displayName:'Work'}]});t.after(f.close);
+  const device=await f.connect();t.after(()=>device.close());
+  await f.until(()=>device.events.some(e=>e.type==='hello'),'mapped hello');
+  assert.equal(device.events.find(e=>e.type==='hello').accessContext.entryKind,'fixed');
+  assert(!JSON.stringify(device.events).includes(sessionKey));
+  device.send(JSON.stringify({type:'call.start',sessionKey:SESSION,callerId:'other',phoneEntry:'another'}));
+  await f.until(()=>device.events.some(e=>e.type==='call.ready'),'mapped call ready');
+  assert(f.audit.some(e=>e.type==='call.created'&&e.sessionKey===sessionKey));
+  assert.match(f.peers[0].sent.find(e=>e.type==='session.create').session.instructions,/当前飞书会话的语音入口/);
+  assert(!f.audit.some(e=>e.type==='call.created'&&e.sessionKey===SESSION));
+  device.send(JSON.stringify({type:'call.end'}));
+  await f.until(()=>device.events.some(e=>e.type==='call.closed'),'mapped call closed');
+  assert.equal(f.endpoint.activeCalls(),0);
 });

@@ -63,7 +63,7 @@ export function startVoiceEntry({ location, fetch: request, replaceState, initia
           credentials: 'same-origin', body: JSON.stringify({ access }),
         });
         const value = await response.json();
-        if (!response.ok) throw new Error(value.error ?? '暂时无法连接 V，请稍后重试。');
+        if (!response.ok) throw Object.assign(new Error(value.error ?? '暂时无法连接 V，请稍后重试。'),{publicHref:value.publicHref});
         const search = new URLSearchParams(location.search);
         if (!phone) search.set('entry', 'tianyi');
         replaceState(`${location.pathname}?${search}`);
@@ -77,14 +77,14 @@ export function startVoiceEntry({ location, fetch: request, replaceState, initia
       }
       const response = await request(`./api/status?${query}`);
       const status = await response.json();
-      if (!response.ok) throw new Error(status.error ?? '暂时无法连接 V，请稍后重试。');
+      if (!response.ok) throw Object.assign(new Error(status.error ?? '暂时无法连接 V，请稍后重试。'),{publicHref:status.publicHref});
       mark('voice.status.complete');
       return { status };
     } catch (error) {
       // Resolve failure as data: the main module can be late or unavailable,
       // and a standalone preload must never leave an unhandled rejection.
       mark('voice.entry.failed');
-      return { error: error.message ?? '暂时无法连接 V，请稍后重试。' };
+      return { error: error.message ?? '暂时无法连接 V，请稍后重试。',...(typeof error.publicHref==='string'?{publicHref:error.publicHref}:{}) };
     }
   })();
 }
