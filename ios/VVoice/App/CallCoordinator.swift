@@ -74,7 +74,8 @@ import VVoiceCore
         comparisonAvailable = status["comparisonAvailable"] as? Bool == true
     }
     var modelTitle: String { modelOptions.first(where: { $0.id == model.rawValue })?.title ?? model.title }
-    var needsSetup: Bool { !bound || permission != .granted }
+    var needsPublicPreparation: Bool { !bound || (api.record?.isPublic == true && !api.hasPublic(baseURL: publicServiceURL)) }
+    var needsSetup: Bool { needsPublicPreparation || permission != .granted }
     var phase: VoicePhase { state.phase }
     var active: Bool { phase.isActive }
     var muted: Bool { state.muted }
@@ -251,7 +252,7 @@ import VVoiceCore
         if active, permission != .granted { fail(VoiceError.microphone) }
         updateRoute()
         if !initialized { Task { await reconcileActivities() } }
-        if !active { Task { if !bound { await preparePublicIfNeeded() }; await refreshOptions() } }
+        if !active { Task { if needsPublicPreparation { await preparePublicIfNeeded() }; await refreshOptions() } }
     }
     private func reconcileActivities() async {
         guard !initialized else { return }; initialized = true

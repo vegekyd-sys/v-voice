@@ -16,7 +16,7 @@ struct TalkToVIntent: AudioRecordingIntent, LiveActivityIntent {
         let setupInForeground = !call.active && (call.needsSetup || !call.activitiesEnabled)
         if setupInForeground {
             try await continueInForeground("请打开 V Voice 完成首次准备与系统权限。", alwaysConfirm: false)
-            if !call.bound { await call.preparePublicIfNeeded() }
+            if call.needsPublicPreparation { await call.preparePublicIfNeeded() }
             if call.permission == .undetermined { await call.requestMicrophone() }
         }
         try await call.startOrContinue(fromIntent: !setupInForeground)
