@@ -7,7 +7,7 @@ import VVoiceCore
 /// Exercises physical Voice Processing I/O without opening a network connection,
 /// storing microphone samples, or contacting a model.
 @MainActor final class DeviceAudioTests: XCTestCase {
-    /// Opt-in only. Uses the existing private binding and a short paid model
+    /// Opt-in only. Uses an existing binding or an isolated Public candidate and a short paid model
     /// request. Microphone samples are neither transmitted nor stored. A local
     /// synthetic prompt and zero PCM exercise the real transport at capture cadence.
     func testLiveRelayLatencyWithSilentPhysicalCapture() async throws {
@@ -16,10 +16,22 @@ import VVoiceCore
         UIApplication.shared.isIdleTimerDisabled = true
         defer { UIApplication.shared.isIdleTimerDisabled = previousIdle }
         let fixturePath = ProcessInfo.processInfo.environment["VVOICE_LATENCY_BINDING_FILE"]
-        let store = BindingStore(service: fixturePath == nil ? "com.versa.vvoice.personal-entry" : "com.versa.vvoice.latency.\(UUID().uuidString)")
+        let publicService = ProcessInfo.processInfo.environment["VVOICE_LATENCY_PUBLIC_SERVICE"]
+        let expectedReply = ProcessInfo.processInfo.environment["VVOICE_PUBLIC_EXPECTED_REPLY"]
+        let expectedContent = ProcessInfo.processInfo.environment["VVOICE_PUBLIC_EXPECTED_CONTENT"]
+        let publicObserveSeconds = min(120, max(16, Int(ProcessInfo.processInfo.environment["VVOICE_PUBLIC_OBSERVE_SECONDS"] ?? "16") ?? 16))
+        let hangupAfterTask = ProcessInfo.processInfo.environment["VVOICE_PUBLIC_HANGUP_AFTER_TASK"] == "1"
+        let isolated = fixturePath != nil || publicService != nil
+        let store = BindingStore(service: isolated ? "com.versa.vvoice.latency.\(UUID().uuidString)" : "com.versa.vvoice.personal-entry")
+        defer { if isolated { store.remove() } }
         let api = VoiceAPI(store: store), audio = VoiceAudio(), relay = RelayTransport()
         let transportOnly = ProcessInfo.processInfo.environment["VVOICE_LATENCY_TRANSPORT_ONLY"] == "1"
-        if let fixturePath {
+        if let publicService {
+            try await api.preparePublic(baseURL: XCTUnwrap(URL(string: publicService)))
+            let first = try XCTUnwrap(api.record?.id)
+            try await api.preparePublic(baseURL: XCTUnwrap(URL(string: publicService)))
+            XCTAssertEqual(api.record?.id, first); XCTAssertEqual(api.record?.isPublic, true)
+        } else if let fixturePath {
             let file = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent(fixturePath)
             _ = try await api.bind(link: String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines))
         }
@@ -27,6 +39,7 @@ import VVoiceCore
         let status = try await api.call("status")
         guard status["activeCall"] as? Bool == false else { throw XCTSkip("A call is active") }
         var revision = 0, receivedBytes = 0, failure: Error?, firstOutput = true
+        var recognized = false, replied = false, documentReceived = false, documentSeen = false, backgroundStarted = false
         relay.onReservation = { value in
             guard let id = value["voiceSessionId"] as? String else { throw VoiceError.protocolMismatch }
             try api.rememberCall(id)
@@ -43,6 +56,15 @@ import VVoiceCore
                     if firstOutput { firstOutput = false; CallDiagnostics.record("latency.output-first", code: "bytes=\(bytes.count)") }
                     if !transportOnly { try audio.play(bytes, sequence: effect.sequence) }
                 case "audio.complete": if !transportOnly { audio.markOutputDone() }
+                case "conversation.row":
+                    if effect.row?.role == "user", effect.row?.text.isEmpty == false { recognized = true }
+                    if recognized, let row = effect.row, row.role == "assistant", !row.text.isEmpty {
+                        replied = replied || (expectedReply.map { row.text.contains($0) } ?? true)
+                    }
+                case "task.upsert": if effect.activity == "background" { backgroundStarted = true }
+                case "document.present":
+                    documentSeen = true
+                    documentReceived = effect.document.map { document in expectedContent.map { document.text.contains($0) } ?? !document.text.isEmpty } ?? false
                 default: break
                 }
             }
@@ -50,7 +72,7 @@ import VVoiceCore
         addTeardownBlock {
             await MainActor.run { audio.stop(); relay.close() }
             try? await api.recoverPreviousCall()
-            if fixturePath != nil { await MainActor.run { store.remove() } }
+            if isolated { await MainActor.run { store.remove() } }
         }
         if ProcessInfo.processInfo.environment["VVOICE_LATENCY_WEBKIT"] == "1" {
             try await compareWebKit(api: api)
@@ -86,13 +108,26 @@ import VVoiceCore
         } : nil
         defer { synthetic?.cancel() }
         audio.onPlayback = { speaking in relay.send(["type":"playback.state", "speaking":speaking || audio.queuedFrames > 0]) }
-        for index in 1...3 {
+        for index in 1...(publicService == nil ? 3 : 1) {
             attempt = index; offset = 0
             CallDiagnostics.record("latency.input-start", code: "attempt=\(attempt)")
-            try await Task.sleep(for: .seconds(16))
+            if hangupAfterTask, publicService != nil {
+                for _ in 0..<publicObserveSeconds {
+                    if backgroundStarted { try await Task.sleep(for: .seconds(2)); relay.close(); break }
+                    try await Task.sleep(for: .seconds(1))
+                }
+                XCTAssertTrue(backgroundStarted, "Hangup probe must first observe the actual background tool")
+            } else {
+                try await Task.sleep(for: .seconds(publicService == nil ? 16 : publicObserveSeconds))
+            }
         }
         CallDiagnostics.record("latency.live-test-done", code: "receivedBytes=\(receivedBytes) failed=\(failure != nil)")
-        XCTAssertNil(failure); XCTAssertGreaterThan(receivedBytes, 0)
+        XCTAssertNil(failure); if !hangupAfterTask { XCTAssertGreaterThan(receivedBytes, 0) }
+        if publicService != nil {
+            CallDiagnostics.record("public.live-result", code: "recognized=\(recognized) replied=\(replied) documentSeen=\(documentSeen) documentReceived=\(documentReceived) backgroundStarted=\(backgroundStarted) audioBytes=\(receivedBytes)")
+            XCTAssertTrue(recognized); if !hangupAfterTask { XCTAssertTrue(replied) }
+            if expectedContent != nil { XCTAssertTrue(documentReceived, "Requested Public content must arrive through the native document effect") }
+        }
     }
     /// Same physical phone, same saved conversation, same native runtime and PCM.
     /// Only the WebSocket implementation differs; no microphone is accessed.

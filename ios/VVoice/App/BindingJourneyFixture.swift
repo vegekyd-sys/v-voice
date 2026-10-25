@@ -6,11 +6,20 @@ import VVoiceCore
 /// user's saved conversations. Unknown/media requests are rejected.
 @MainActor enum BindingJourneyFixture {
     static func coordinator() -> CallCoordinator {
-        let store = BindingStore(service: "com.versa.vvoice.binding-journey-fixture")
+        let settingsPreview = CommandLine.arguments.contains("--settings-entry-preview")
+        let store = BindingStore(service: settingsPreview ? "com.versa.vvoice.settings-entry-preview" : "com.versa.vvoice.binding-journey-fixture")
         if CommandLine.arguments.contains("--binding-journey-reset") { store.remove() }
+        if settingsPreview, store.savedBindings().isEmpty {
+            let secret = String(repeating: "preview", count: 8)
+            for (phone, name, account) in [("preview-work", "工作与灵感", "工作账号 · 飞书"), ("preview-product", "产品讨论室", "产品账号 · 飞书")] {
+                if let binding = try? VoiceBinding(link: "https://binding-preview.invalid/voice/?phone=\(phone)#access=\(secret)") {
+                    try? store.save(StoredBinding(binding: binding, cookie: "v_voice_\(phone)=fixture-only", conversation: .init(name: name, kind: "group", accountLabel: account)), select: phone == "preview-work")
+                }
+            }
+        }
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [BindingJourneyProtocol.self]
-        return CallCoordinator(api: VoiceAPI(store: store, configuration: config))
+        return CallCoordinator(api: VoiceAPI(store: store, configuration: config), publicServiceURL: URL(string: "https://binding-preview.invalid/voice/")!)
     }
 }
 private final class BindingJourneyProtocol: URLProtocol, @unchecked Sendable {
@@ -20,10 +29,19 @@ private final class BindingJourneyProtocol: URLProtocol, @unchecked Sendable {
         guard request.url?.host == "binding-preview.invalid" else { fail(); return }
         let route = request.url!.lastPathComponent
         let phone = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "phone" })?.value ?? "preview-work"
-        let name = phone == "preview-work" ? "工作与灵感" : "产品讨论室"
-        var body: [String: Any] = ["conversation": ["name": name, "kind": "group"], "ready": true]
+        let isPublic = phone.hasPrefix("ios-")
+        let name = isPublic ? "Public" : phone == "preview-work" ? "工作与灵感" : "产品讨论室"
+        var body: [String: Any] = ["conversation": ["name": name, "kind": isPublic ? "personal" : "group", "accountLabel": isPublic ? "独立访客" : phone == "preview-work" ? "工作账号 · 飞书" : "产品账号 · 飞书"], "ready": true, "unidentified": isPublic]
         var headers = ["Content-Type": "application/json"]
         switch route {
+        case "ios-public":
+            var data = request.httpBody ?? Data()
+            if let stream = request.httpBodyStream {
+                stream.open(); defer { stream.close() }; var bytes = [UInt8](repeating: 0, count: 512)
+                while stream.hasBytesAvailable { let count = stream.read(&bytes, maxLength: bytes.count); if count <= 0 { break }; data.append(contentsOf: bytes.prefix(count)) }
+            }
+            let params = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            body = ["phone": "ios-" + String(repeating: "a", count: 40), "deviceAccess": params?["deviceKey"] ?? "", "conversation": ["name": "Public", "kind": "personal"]]
         case "redeem": body["deviceAccess"] = String(repeating: "preview", count: 8)
         case "access": headers["Set-Cookie"] = "v_voice_\(phone)=fixture-only; Secure; HttpOnly"
         case "status": body["models"] = []

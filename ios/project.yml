@@ -13,6 +13,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     CURRENT_PROJECT_VERSION: 38
     MARKETING_VERSION: '1.0.0'
+    VVOICE_PUBLIC_SERVICE_URL: 'https://openclaw.tianyi.live/voice/'
     TARGETED_DEVICE_FAMILY: '1,2'
 packages:
   WebRTC:

@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "date": "2026-10-25",
+  "status": "historical_basic_public_before_tool_enablement",
+  "supersededBy": "public-functional-regression-20261025.json",
+  "serviceSourceCommit": "07d6613856ebc1d376d18723ebeeb1dc48e84dc7",
+  "candidateEntrypointFromSameCommit": "ios/scripts/public-candidate.mjs",
+  "serviceArtifactFilesSHA256": "11c8060b6f33fc1139aec47037810e767429fae2a85c72327798c2d531de117d",
+  "simulator": "iOS 26.5, isolated VVoice Public simulator",
+  "uiRegression": {
+    "transport": "local URLProtocol fixture, separate Keychain service",
+    "passed": [
+      "Empty fixture binding store prepares and selects Public without starting a call",
+      "Real H5 settings button opens and dismisses the original system sheet",
+      "Public stays first while the previous work binding remains selected",
+      "Switch to Public, terminate and relaunch without reset; selection and bindings persist",
+      "Remove a non-current channel without changing Public selection",
+      "Select and remove the current extra channel; selection falls back to Public",
+      "Add another channel through the original binding journey and return to the same list",
+      "Expand and collapse voice settings; microphone and Live Activity state remain visible"
+    ]
+  },
+  "nativeTests": {
+    "bindingAndKeychain": { "passed": 17, "failed": 0, "skipped": 0, "transport": "controlled URLProtocol" },
+    "existingClientFlows": {
+      "passed": 5, "failed": 0, "skipped": 0, "transport": "local no-model HTTP/WebSocket fixture",
+      "scope": ["H5 content rendering through reload", "snapshot credential exclusion and stale control rejection", "mute, hangup and redial", "cancel before reservation without resurrection", "result recovery through presentation"]
+    }
+  },
+  "realPublicProviderTests": {
+    "provider": "seeduplex",
+    "client": "existing native VoiceAPI and RelayTransport running inside the simulator",
+    "input": "locally synthesized Mandarin PCM, no human microphone",
+    "physicalPlaybackAccepted": false,
+    "ordinaryReply": { "passed": true, "recognized": true, "expectedReplyMarkerMatched": true, "audioBytes": 85942 },
+    "contentDelivery": { "passed": true, "recognized": true, "expectedDocumentMarkerMatched": true, "replyReceived": true, "audioBytes": 113722, "proofBoundary": "Actual native document effect received; visible rendering separately exercised by local client test" },
+    "publicBootstrapRepeatedWithoutChangingGuest": true,
+    "nativeResultBundles": [
+      "test_sim_2026-10-25T05-51-28-951Z_pid34432_abedac91.xcresult",
+      "test_sim_2026-10-25T05-53-56-927Z_pid34432_8f6cc4f5.xcresult"
+    ]
+  },
+  "issues": [
+    {
+      "id": "existing_candidate_protocol_mismatch",
+      "evidence": "Existing Candidate returned HTTP 400 for the native capability declaration; the otherwise identical request without that declaration received reservation and ready",
+      "nativeSymptom": "CancellationError before provider ready",
+      "resolutionForTest": "Started a separate Candidate using the current packaged service; native handshake and both provider tests passed",
+      "existingCandidateChanged": false
+    },
+    {
+      "id": "requested_public_tools_not_enabled",
+      "web_search": "blocked_by_guest_tool_allowlist",
+      "memory_search": "blocked_by_guest_tool_allowlist",
+      "backgroundTasks": "not_declared_for_guest",
+      "evidence": "Current unidentified tool filtering and executor guard allow show_content and end_call only; 5 targeted guest/Public regression tests passed with that restriction",
+      "publicHangupContinuationCancelAndSubtaskReturnAccepted": false,
+      "completePublicAcceptance": false
+    }
+  ],
+  "cleanup": { "isolatedCandidateStopped": true, "isolatedTunnelStopped": true, "originalCandidateUntouched": true },
+  "release": { "openClawUpdated": false, "gatewayRestarted": false, "productionChanged": false, "phoneInstalled": false }
+}

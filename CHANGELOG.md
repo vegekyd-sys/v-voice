@@ -1,3 +1,14 @@
+## 2026-10-25 · iOS Public Candidate（未发布）
+
+- Public 复用 V 原有 web_search、memory_search 和后台任务；前后台共用个人内容红线，不创建访客记忆或新任务系统，不更新 OpenClaw。
+- Public 后台短结果也沿用原有报告卡片，语音与原生屏幕都可收到正文。搜索、记忆、挂断续跑和取消已通过模拟器实测；子任务等待在原任务内沿用已有工具，通过 Voice 提示词兼容当前 SDK；子任务结果回传和再次挂断续跑均通过，未宣称真机或发布验收。
+
+- 设置页统一通话入口列表，Public 固定第一；保留其他入口的相对顺序与当前选择，整理选中态、账号标签、添加/移除与下方通话设置。
+- 新安装使用设备独立的 Public guest 会话；凭证先写钥匙串再请求，超时重试复用同一访客。
+- 保留旧入口/当前选择，显示可信账号标签；显式移除本机额外入口，当前入口移除后回 Public。
+- 通话期间保留 owner；首次系统权限可转前台，已授权操作按钮仍支持后台。
+- 服务端默认关闭 `VOICE_IOS_PUBLIC_ENTRY`；Candidate 与正式部署/真机验收分开登记。
+
 ## 2026-10-25 — TestFlight 38: on-demand location and quiet icon startup
 
 - Integrate approved PR #88 and #134. Remove automatic icon mutation; add current-call, one-shot location for authenticated SeedDuplex calls on Web and native iOS.

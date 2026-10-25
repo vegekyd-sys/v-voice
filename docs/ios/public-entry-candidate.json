@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "date": "2026-10-25",
+  "status": "candidate_simulator_reviewed_not_released",
+  "uiSourceCommit": "99f904a5dccce38bab0a73c7cf25d200ffa9e7d8",
+  "version": "voice-ios-public.20261025.2",
+  "scope": [
+    "One Settings entry list, Public first, saved channels in their existing relative order",
+    "Preserve existing selection; unified selection, account label, add and local removal presentation",
+    "Reuse the existing binding journey, Action Button, call settings and background task implementation"
+  ],
+  "platform": {
+    "openClawUpdated": false,
+    "gatewayUpdatedOrRestarted": false,
+    "backgroundTasksRewired": false,
+    "newPublicToolActivationClaimed": false,
+    "obsoleteVoiceAdapterRevertedBy": "8ebb198",
+    "obsoletePlatformPR": "vegekyd-sys/v-openclaw-platform#471",
+    "platformPRRequired": false,
+    "backendAndRealtimeSessionDiffAgainstPRBase": "none"
+  },
+  "simulator": {
+    "os": "iOS 26.5",
+    "fixture": "DEBUG-only URLProtocol and separate Keychain service; fake conversations; no calls",
+    "bindingTests": {
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    "uiChecksPassed": [
+      "Public displayed first while the pre-existing work conversation remains selected",
+      "Switch to another channel and relaunch without resetting; selection and all bindings persist",
+      "Remove a non-current channel; current selection remains unchanged",
+      "Remove the current extra channel; Public becomes selected and cannot be removed",
+      "Add entry opens the existing binding journey; verify fixture link, finish and return to the same list",
+      "Open and dismiss Settings from the normal H5 settings button",
+      "Larger system text fits without truncating names or hiding controls"
+    ],
+    "screenshots": [
+      "public-settings-evidence/settings-sheet.jpg",
+      "public-settings-evidence/existing-selection.jpg",
+      "public-settings-evidence/public-selected.jpg",
+      "public-settings-evidence/large-text.jpg"
+    ],
+    "publicAndBindingHTTPTests": {
+      "passed": 11,
+      "failed": 0
+    },
+    "mergedLocationRegression": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 2,
+      "skipReason": "Opt-in system-location and background simulator probes not enabled"
+    },
+    "serverAndBindingHTTPTests": {
+      "passed": 49,
+      "failed": 0
+    },
+    "integrationNotes": "Merged current main into the candidate; preserved location injection and icon startup changes. First location run lacked the local fixture; rerun on a dedicated fixture port passed."
+  },
+  "previousPhysicalAcceptance": {
+    "build": 34,
+    "sourceCommit": "0aec6e16aff1f7de7758731f0a87cd97b9aab4a0",
+    "acceptedBy": "Tianyi",
+    "scope": "Public two-way voice, manual and Action Button dialing, original binding and selection preserved",
+    "coversNewSettingsUI": false
+  },
+  "previousSignedCandidate": {
+    "build": 37,
+    "nativeSourceCommit": "8ad6450c57707beac863a4987579ff0f8c96bb14",
+    "ipaSHA256": "53903c9a69c203e894ddcf4e9ba439252b9b89c326703a53a6ab12e8178bd6f2",
+    "containsNewSettingsUI": false,
+    "installedOrAccepted": false
+  },
+  "release": {
+    "merged": false,
+    "deployed": false,
+    "newNativeBinarySignedOrInstalled": false,
+    "build38ReservedForOtherRelease": true
+  },
+  "integrationBaseCommit": "96a198d8b696a0b2e10680b47b829332349de1fb",
+  "presentation": {
+    "style": "Original system sheet from the H5 settings button",
+    "fullscreenDebugRouteRemoved": true,
+    "verification": "Built and opened/dismissed/reopened the actual sheet with Public and two saved channels",
+    "screenshot": "public-settings-evidence/settings-sheet.jpg"
+  },
+  "latestSimulatorRegression": {
+    "record": "public-functional-regression-20261025.json",
+    "basicPublic": "passed",
+    "requestedWebMemoryAndBackgroundTools": "passed_with_existing_task_prompt_compatibility",
+    "completePublicAcceptance": false,
+    "requestedSimulatorFunctionalAcceptance": true
+  }
+}
