@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "ios-bound-identity-20261024",
-  "version": "voice-ios-bound-identity.20261024.2",
-  "entryCommit": "8a67c6ac19867166bcac92d8f91ae90d2de77a92",
-  "deviceEntryCommit": "8a67c6ac19867166bcac92d8f91ae90d2de77a92",
-  "filesSha256": "cadf19a6fc69b499ffd2f8672ecb21abb59364d48fadaa5e41579ab8aa510d89",
-  "registration": "ios-bound-identity-20261024/release.json",
-  "previousEntryCommit": "8c50d5d669a0d22471b7c107ad2bb7a84cb0d5b5",
+  "release": "ios-testflight38-20261025",
+  "version": "voice-location-testflight.20261025.1",
+  "entryCommit": "96a198d8b696a0b2e10680b47b829332349de1fb",
+  "deviceEntryCommit": "96a198d8b696a0b2e10680b47b829332349de1fb",
+  "filesSha256": "b6657b0d229d4d9131f332deedc79ff18a22c57469d18426bd44ffc95f483333",
+  "registration": "ios-testflight38-20261025/release.json",
+  "previousEntryCommit": "8a67c6ac19867166bcac92d8f91ae90d2de77a92",
   "gatewayRestartRequired": false,
-  "deployedAt": "2026-10-24T12:31:43+08:00",
-  "runtimeDifference": "Both Voice nodes run the same verified main artifact. Gateway identity/configuration and native apps/firmware unchanged. Web CLI runtime directories are writable inside its existing strict sandbox; actual service-namespace calendar read passed. Physical iOS verification remains with the user."
+  "deployedAt": "2026-10-25T13:20:09+08:00",
+  "runtimeDifference": "Both Voice nodes use the same verified artifact. Account-bound SeedDuplex calls can request on-demand location. Native Build 38 is uploaded for TestFlight; physical acceptance remains pending. Gateway and private configuration unchanged; backend device bundle is not enabled."
 }

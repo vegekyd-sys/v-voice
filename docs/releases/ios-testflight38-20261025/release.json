@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "build": 38,
   "date": "2026-10-25",
-  "status": "preparing_testflight",
+  "status": "external_beta_review_pending",
   "prs": [
     88,
     134
@@ -29,7 +29,34 @@
     "actual DiDi map conversion and quote"
   ],
   "appStoreConnectAppID": "6826350407",
-  "sourceCommit": null,
-  "serverDeploymentPerformed": false,
-  "testFlightInstallable": false
+  "sourceCommit": "bcd0afa41f0a2387bfa8dd3255bf4b24fbd52b88",
+  "serverDeploymentPerformed": true,
+  "testFlightInstallable": false,
+  "serverSourceCommit": "96a198d8b696a0b2e10680b47b829332349de1fb",
+  "serverFilesSha256": "b6657b0d229d4d9131f332deedc79ff18a22c57469d18426bd44ffc95f483333",
+  "serverNodesSynchronized": true,
+  "gatewayRestarted": false,
+  "privateConfigurationUnchanged": true,
+  "homepageChangelogVerified": true,
+  "signedArchiveVerified": true,
+  "exportedIPAVerified": true,
+  "ipaSHA256": "3c50ccdadb45f23c02861e35a04758315e745d911f0045a34acf1ed0b70f0b1e",
+  "buildID": "5ec015a6-1a07-4229-9d57-8de07646da9a",
+  "processingState": "VALID",
+  "externalTesterAdded": true,
+  "nativeInstalledByAgent": false,
+  "releaseValidatorPR": 138,
+  "nativeAndServerSourceDifference": "PR138 changes only release verification scripts and tests; iOS archive is from merged main bcd0afa, servers from merged main 96a198d. Both exact commits passed CI.",
+  "mainCI": {
+    "native": "https://github.com/vegekyd-sys/v-voice/actions/runs/40164763514",
+    "server": "https://github.com/vegekyd-sys/v-voice/actions/runs/40165057536"
+  },
+  "internalBuildState": "IN_BETA_TESTING",
+  "externalBuildState": "WAITING_FOR_BETA_REVIEW",
+  "betaReviewState": "WAITING_FOR_REVIEW",
+  "externalTesterInstallable": false,
+  "internalTestFlightAvailable": true,
+  "automaticTesterNotificationEnabled": true,
+  "testFlightPublicURL": "https://testflight.apple.com/join/5DybcrZA",
+  "updatedAt": "2026-10-25T13:22:55.827783+08:00"
 }
