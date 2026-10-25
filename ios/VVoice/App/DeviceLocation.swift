@@ -40,6 +40,7 @@ struct DeviceLocationResult: Sendable {
         }
         return ["version": 1, "capabilities": ["location.current": ["status": status]]]
     }
+    var onCapabilityChange: (() -> Void)?
     private let manager = CLLocationManager()
     private var waiting: CheckedContinuation<DeviceLocationResult, Never>?
     private var timeout: Task<Void, Never>?
@@ -84,6 +85,7 @@ struct DeviceLocationResult: Sendable {
         manager.requestLocation()
     }
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        onCapabilityChange?()
         guard waiting != nil else { return }
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse: requestFix()

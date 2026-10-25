@@ -87,6 +87,7 @@ import VVoiceCore
     @ObservationIgnored private var nativeRuntimeRevision = 0
     @ObservationIgnored private let location: any DeviceLocationProviding
     @ObservationIgnored private var locationTask: Task<Void, Never>?
+    @ObservationIgnored private var deviceCapabilityRevision = 0
     @ObservationIgnored private var locationRequestID: String?
     @ObservationIgnored private var locationRequests = Set<String>()
     @ObservationIgnored private var iosOperations: Set<String> = []
@@ -215,6 +216,7 @@ import VVoiceCore
             guard self.avatar.islandVisible || self.appIsActive else { throw CancellationError() }
             return try await self.h5Cosmetic("avatar", body: body, owner: self.presentationID, fromH5: false)
         }
+        (location as? DeviceLocation)?.onCapabilityChange = { [weak self] in self?.refreshDeviceCapabilities() }
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in guard let self else { return }; self.iosActions.resume(owner: self.presentationID, foreground: self.appIsActive, protectedData: true) }
@@ -258,6 +260,7 @@ import VVoiceCore
         api.reloadIfAvailable(); bound = api.isBound
         permission = AVAudioApplication.shared.recordPermission
         if active, permission != .granted { fail(VoiceError.microphone) }
+        refreshDeviceCapabilities()
         updateRoute()
         if !initialized { Task { await reconcileActivities() } }
         if !active { Task { await refreshOptions() } }
@@ -363,7 +366,7 @@ import VVoiceCore
         let accepted = (reservation["nativeDeviceActions"] as? [String: Any])?["capabilities"] as? [String: Any] ?? [:]
         iosOperations = Set(accepted.keys.filter { IOSActionRequest.Operation(rawValue: $0) != nil })
         nativeLocationEnabled = (reservation["nativeDeviceActions"] as? [String: Any])?["version"] as? Int == 1
-        locationRequests.removeAll()
+        locationRequests.removeAll(); deviceCapabilityRevision = 0
         nativeDuplex = reservation["nativeDuplex"] as? Bool == true
         nativeAssisted = nativeDuplex && reservation["nativePlaybackPolicy"] as? String == "assisted"
         if let runtime = nativeRuntime {
@@ -658,6 +661,12 @@ import VVoiceCore
             prepareIslandReport(documentID); publish(resultID: documentID)
         }
         scheduleCaptionUpdate(); updateAvatar()
+    }
+    private func refreshDeviceCapabilities() {
+        guard nativeLocationEnabled, active, let voiceID else { return }
+        deviceCapabilityRevision += 1
+        transport?.send(["type": "device.capabilities", "version": 1, "voiceSessionId": voiceID, "revision": deviceCapabilityRevision,
+                         "capabilities": DeviceLocation.declaration["capabilities"] ?? [:]])
     }
     private func handle(_ v: [String: Any], owner: UUID) throws {
         if let operation = v["operation"] as? String, IOSActionRequest.Operation(rawValue: operation) != nil,
