@@ -38,20 +38,23 @@ private struct BindingLibrary: Codable {
     var version = 1
     var activeID: String?
     var publicDeviceKey: String?
+    var publicDeviceKeys: [String: String]?
     var bindings: [StoredBinding]
     init(activeID: String? = nil, bindings: [StoredBinding]) { self.activeID = activeID; self.bindings = bindings }
-    private enum CodingKeys: String, CodingKey { case version, activeID, bindings, binding, cookie, pendingVoiceID, conversation, nativeDialVersion, publicDeviceKey }
+    private enum CodingKeys: String, CodingKey { case version, activeID, bindings, binding, cookie, pendingVoiceID, conversation, nativeDialVersion, publicDeviceKey, publicDeviceKeys }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         version = try c.decode(Int.self, forKey: .version)
         activeID = try c.decodeIfPresent(String.self, forKey: .activeID)
         bindings = try c.decode([StoredBinding].self, forKey: .bindings)
         publicDeviceKey = try c.decodeIfPresent(String.self, forKey: .publicDeviceKey)
+        publicDeviceKeys = try c.decodeIfPresent([String: String].self, forKey: .publicDeviceKeys)
     }
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(version, forKey: .version); try c.encodeIfPresent(activeID, forKey: .activeID); try c.encode(bindings, forKey: .bindings)
         try c.encodeIfPresent(publicDeviceKey, forKey: .publicDeviceKey)
+        try c.encodeIfPresent(publicDeviceKeys, forKey: .publicDeviceKeys)
         // Older App versions can still read the selected record after rollback.
         if let active {
             try c.encode(active.binding, forKey: .binding); try c.encode(active.cookie, forKey: .cookie)
@@ -86,7 +89,7 @@ private struct BindingLibrary: Codable {
     func save(_ value: StoredBinding, select: Bool = true) throws {
         var library = library()
         if value.isPublic == true {
-            library.bindings.removeAll { $0.isPublic == true && $0.binding.baseURL == value.binding.baseURL && $0.id != value.id }
+            library.bindings.removeAll { $0.isPublic == true && $0.id != value.id }
         }
         if let index = library.bindings.firstIndex(where: { $0.id == value.id }) { library.bindings[index] = value }
         else { library.bindings.append(value) }
@@ -100,13 +103,23 @@ private struct BindingLibrary: Codable {
         if library.activeID == id { library.activeID = library.bindings.first(where: { $0.isPublic == true })?.id }
         try write(library)
     }
-    func publicDeviceKey() throws -> String {
+    func publicDeviceKey(baseURL: URL? = nil) throws -> String {
         var library = library()
-        if let key = library.publicDeviceKey { return key }
+        if let baseURL {
+            if let key = library.publicDeviceKeys?[baseURL.absoluteString] { return key }
+            // Adopt the pre-request key from build 34 only for its original
+            // service. A new configured service receives a different secret.
+            if (library.publicDeviceKeys ?? [:]).isEmpty, let key = library.publicDeviceKey,
+               library.bindings.first(where: { $0.isPublic == true }).map({ $0.binding.baseURL == baseURL }) ?? true {
+                library.publicDeviceKeys = [baseURL.absoluteString: key]; try write(library); return key
+            }
+        } else if let key = library.publicDeviceKey { return key }
         var bytes = [UInt8](repeating: 0, count: 32)
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { throw VoiceError.secureStorage }
         let key = Data(bytes).base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
-        library.publicDeviceKey = key; try write(library)
+        if let baseURL { var keys = library.publicDeviceKeys ?? [:]; keys[baseURL.absoluteString] = key; library.publicDeviceKeys = keys }
+        if library.publicDeviceKey == nil { library.publicDeviceKey = key }
+        try write(library)
         return key
     }
     private func write(_ library: BindingLibrary) throws {
@@ -161,6 +174,7 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
                   host: saved.binding.baseURL.host ?? "", isCurrent: saved.id == record?.id, isPublic: saved.isPublic == true, accountLabel: saved.conversation?.accountLabel)
         }
     }
+    func hasPublic(baseURL: URL) -> Bool { store.savedBindings().contains { $0.isPublic == true && $0.binding.baseURL == baseURL } }
     private var bindingRevision = 0
     private var preparingPublic = false
     func preparePublic(baseURL: URL) async throws {
@@ -173,7 +187,7 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
         record = store.load()
     }
     private func publicRecord(baseURL: URL) async throws -> StoredBinding {
-        let key = try store.publicDeviceKey()
+        let key = try store.publicDeviceKey(baseURL: baseURL)
         // Use the configured public origin only. Never accept a redirect or a
         // server-supplied origin/path while carrying a device credential.
         let seed = try VoiceBinding(link: baseURL.absoluteString + "#bind=" + key)

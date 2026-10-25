@@ -320,3 +320,24 @@ extension SessionBindingTests {
         XCTAssertFalse(api.isBound); XCTAssertTrue(api.savedConversations.isEmpty)
     }
 }
+
+
+extension SessionBindingTests {
+    func testConfiguredPublicServiceChangesRotateOnlyGuestCredentialAndKeepPrivateSelection() throws {
+        let store = BindingStore(service: "com.versa.vvoice.public-origin.\(UUID().uuidString)"); defer { store.remove() }
+        let a = URL(string: "https://a.binding.test/voice/")!, b = URL(string: "https://b.binding.test/voice/")!
+        let keyA = try store.publicDeviceKey(baseURL: a)
+        let keyB = try store.publicDeviceKey(baseURL: b)
+        XCTAssertNotEqual(keyA, keyB)
+        XCTAssertEqual(try store.publicDeviceKey(baseURL: a), keyA)
+        let old = StoredBinding(binding: try VoiceBinding(link: a.absoluteString + "?phone=public-old#bind=" + keyA).redeemed(deviceAccess: keyA), cookie: "old", isPublic: true)
+        let selected = StoredBinding(binding: try VoiceBinding(link: a.absoluteString + "?phone=private-group#access=" + secret), cookie: "private")
+        try store.save(old); try store.save(selected)
+        let next = StoredBinding(binding: try VoiceBinding(link: b.absoluteString + "?phone=public-new#bind=" + keyB).redeemed(deviceAccess: keyB), cookie: "new", isPublic: true)
+        try store.save(next, select: false)
+        XCTAssertEqual(store.load()?.id, selected.id)
+        XCTAssertEqual(store.savedBindings().filter { $0.isPublic == true }.count, 1)
+        XCTAssertEqual(store.savedBindings().count, 2)
+        XCTAssertEqual(try store.publicDeviceKey(baseURL: a), keyA)
+    }
+}

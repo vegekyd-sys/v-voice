@@ -265,8 +265,14 @@ import VVoiceCore
         permission = AVAudioApplication.shared.recordPermission
     }
     func preparePublicIfNeeded(retry: Bool = false) async {
-        guard !active, !bindingInProgress, !publicPreparing else { return }
-        guard retry || !savedConversations.contains(where: { $0.isPublic }) else { return }
+        if publicPreparing {
+            while publicPreparing {
+                do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
+            }
+            return
+        }
+        guard !active, !bindingInProgress else { return }
+        guard retry || !api.hasPublic(baseURL: publicServiceURL) else { return }
         publicPreparing = true; bindingInProgress = true; publicError = ""
         defer { publicPreparing = false; bindingInProgress = false }
         do {
