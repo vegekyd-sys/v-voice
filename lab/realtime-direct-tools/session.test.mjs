@@ -1262,3 +1262,18 @@ test('missing or failed backend bundle validation never advertises a guessed exe
   const text=f.invocations.find(x=>x.question).question;assert.match(text,/未验证或未配置/);assert(!text.includes('"lease"'));assert(!text.includes('"cli"'));f.completeBackend('当前后台设备通道不可用');
  }
 });
+
+test('independent GPT device channel shares lease validation, permission state and retirement without a provider session',async t=>{
+ const frames=[],contexts=[];let current=true,descriptor;
+ class Server{close(){}}
+ const service=createDirectVoiceService({gateway:{},wsModule:{WebSocketServer:Server},backendDeviceBundle:{root:'/backend',sha256:'a'.repeat(64)},backendDeviceBundleProbe:async value=>{descriptor=value.descriptor;return true;}});t.after(()=>service.dispose());
+ const channel=service.openDeviceChannel({voiceSessionId:'gpt-call',sessionKey:'server-owned',nativeDeviceActions:{version:1,capabilities:{'location.current':{status:'prompt'}}},backendDeviceURL:'http://127.0.0.1:12345/internal/device-request',send:frame=>frames.push(frame),isCurrent:()=>current,onContext:context=>contexts.push(context)});
+ assert.equal((await channel.descriptor()).voiceSessionId,'gpt-call');assert.equal(service.hasSession('gpt-call'),false);
+ const requested=service.backendDeviceRequest({lease:descriptor.lease,operation:'location.current'});await delay(0);
+ assert.equal(frames[0].voiceSessionId,'gpt-call');assert.equal(channel.receive({...frames[0],type:'device.result',voiceSessionId:'foreign',status:'denied'}),false);
+ assert.equal(channel.receive({...frames[0],type:'device.result',status:'denied'}),true);assert.equal((await requested).status,'denied');
+ assert.equal(channel.receive({type:'device.capabilities',version:1,voiceSessionId:'gpt-call',revision:1,capabilities:{'location.current':{status:'available'}}}),true);assert.equal(contexts.at(-1).capabilities['location.current'].status,'available');
+ assert.equal(channel.receive({type:'device.capabilities',version:1,voiceSessionId:'gpt-call',revision:2,capabilities:{'notes.create':{status:'available'}}}),false);
+ current=false;await assert.rejects(service.backendDeviceRequest({lease:descriptor.lease,operation:'device.probe',args:{challenge:'late'}}),/expired/);
+ channel.close();assert.equal(await channel.descriptor(),null);
+});

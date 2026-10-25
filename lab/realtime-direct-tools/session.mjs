@@ -61,7 +61,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
-  const sessions=new Map(),detached=new Set();
+  const sessions=new Map(),detached=new Set(),deviceChannels=new Map();
   // Speaker routing rebuilds the native session whenever the audience changes,
   // including back to the same person. Ownership follows the audience, not the
   // connection: a result still goes to the person who asked for it.
@@ -187,7 +187,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(s.closePromise)return s.closePromise;
     if(s.closed&&!s.cleanupFailed)return;
     s.closePromise=(async()=>{
-      s.closed=true;s.deviceRequests?.close();s.location?.close();
+      s.closed=true;s.closeDeviceChannel?.();
       await s.replyDelivery?.close();
       for(const finish of [...s.contentWaiters.values()])finish(false);
       s.delivery?.close();
@@ -230,6 +230,45 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     };
     ending.fallbackTimer=setTimeout(fallback,nativeFarewellDelayMs);ending.fallbackTimer.unref?.();
   };
+  function prepareDeviceChannel(s,{deviceActions,backendDeviceURL,terminalAdapter,terminalKind,surface='phone',nativeRuntimeVersion,unidentified=false,callerIdentity},sendFrame,deviceCurrent=()=>current(s)){
+    s.deviceCurrent=deviceCurrent;
+    s.deviceActions=deviceActions;s.backendDeviceURL=backendDeviceURL;s.deviceLease=randomBytes(32).toString('base64url');
+    s.terminalContext=()=>terminalContext({voiceSessionId:s.id,kind:terminalAdapter?.kind??terminalKind??(surface==='speaker'?'speaker':nativeRuntimeVersion===1?'ios':'web'),capabilities:Object.fromEntries(Object.keys(deviceActions?.capabilities??{}).map(operation=>[operation,{status:s.deviceRequests?.state(operation)??'unavailable'}])),actor:{verified:!unidentified,displayName:callerIdentity?.displayName},session:{scope:unidentified?'guest':'bound'}});
+    s.backendDeviceContext=()=>!deviceActions?'':terminalInstructions(s.terminalContext())+(s.backendDeviceDescriptor?'\n当前设备执行通道（仅当前任务使用，不能输出/分享/记忆此短期 lease；拒绝不能绕过）：'+JSON.stringify(s.backendDeviceDescriptor)+'。需要位置或其他设备能力时先读取 skill 指定的 device-use Skill，再用服务端 CLI 调用，不能凭描述声称已执行。':'\n当前后台设备执行通道尚未验证或未配置，不可直接执行设备能力，不要猜路径或自行下载执行。');
+    if(!unidentified&&deviceActions){
+      const localExecutions=new Map();
+      const sendDevice=frame=>{
+        if(sendFrame){sendFrame(frame);return;}
+        if(!terminalAdapter){if(s.client?.readyState!==1)throw Error('disconnected');s.client.send(JSON.stringify(frame));return;}
+        if(frame.type==='device.cancel'){localExecutions.get(frame.requestId)?.abort();return;}
+        const controller=new AbortController();localExecutions.set(frame.requestId,controller);
+        void Promise.resolve().then(()=>terminalAdapter.execute(frame.operation,frame.arguments,{requestId:frame.requestId,voiceSessionId:s.id,deadline:frame.deadline,signal:controller.signal})).then(receipt=>{
+          if(deviceCurrent())s.deviceRequests.receive({...receipt,type:'device.result',version:1,requestId:frame.requestId,voiceSessionId:s.id,operation:frame.operation});
+        },()=>{if(deviceCurrent())s.deviceRequests.receive({type:'device.result',version:1,requestId:frame.requestId,voiceSessionId:s.id,operation:frame.operation,status:'unknown'});}).finally(()=>localExecutions.delete(frame.requestId));
+      };
+      s.deviceRequests=createDeviceRequests({voiceSessionId:s.id,operations:{'location.current':locationOperation,...(typeof deviceOperations==='function'?deviceOperations({voiceSessionId:s.id}):deviceOperations)},capabilities:deviceActions.capabilities,send:sendDevice,onState:()=>s.refreshDeviceContext?.()});
+      if(deviceActions.capabilities['location.current'])s.location=createDeviceLocation({requests:s.deviceRequests,voiceSessionId:s.id});
+    }
+    s.verifyBackendDeviceBundle=async()=>{
+      const descriptor=s.backendDeviceURL&&s.deviceRequests?backendDeviceDescriptor({endpoint:s.backendDeviceURL,lease:s.deviceLease,voiceSessionId:s.id},backendDeviceBundle):null;
+      if(!descriptor)return false;
+      try{if(await backendDeviceBundleProbe({gateway:s.gateway,agentId:s.agentId,sessionKey:s.sessionKey,descriptor})&&deviceCurrent()){s.backendDeviceDescriptor=descriptor;return true;}}catch{}
+      return false;
+    };
+    s.ensureBackendDeviceBundle=()=>s.backendDeviceBundleReady??=s.verifyBackendDeviceBundle();
+    s.closeDeviceChannel=()=>{s.deviceRetired=true;s.backendDeviceDescriptor=null;s.deviceRequests?.close();s.location?.close();deviceChannels.delete(s.deviceLease);};
+    if(s.deviceRequests)deviceChannels.set(s.deviceLease,s);
+  }
+  function receiveDeviceFrame(s,e){
+    if(!s.deviceCurrent()||s.deviceRetired)return false;
+    if(e.type==='device.capabilities'){
+      if(e.version!==1||e.voiceSessionId!==s.id||!Number.isSafeInteger(e.revision)||e.revision<1||e.revision<=(s.deviceCapabilityRevision??0)||!s.deviceRequests)return false;
+      const normalized=normalizeDeviceActions({version:1,capabilities:e.capabilities});
+      if(Object.keys(normalized.capabilities).some(op=>!Object.hasOwn(s.deviceActions.capabilities,op)))return false;
+      s.deviceCapabilityRevision=e.revision;s.deviceRequests.updateCapabilities(normalized.capabilities);return true;
+    }
+    return e.type==='device.result'?s.deviceRequests?.receive(e)??false:false;
+  }
   async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false,replyTarget=null,callReportFactory=null,nativeRuntimeVersion,nativeLocationVersion,nativeDeviceActions,terminalKind,terminalAdapter,backendDeviceURL,gateway:callGateway=gateway,actorScoped=false,agentId='makaron',unidentified=false,callerIdentity,toolIdentity}) {
     if(nativeRuntimeVersion!==undefined&&(nativeRuntimeVersion!==1||surface!=='phone'))throw Error('Unsupported native runtime');
     const deviceActions=normalizeDeviceActions(terminalAdapter?{version:1,capabilities:terminalAdapter.capabilities()}:nativeDeviceActions??(nativeLocationVersion===1?{version:1,capabilities:{'location.current':{status:'prompt'}}}:undefined));
@@ -252,28 +291,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     s.delivery=createTaskDelivery({gateway:callGateway,sessionKey,ownerId:s.id,replyDelivery:s.replyDelivery,audit});
     s.backend=createBackendDelegation({gateway:callGateway,sessionKey,sessionBound,ownerId:s.id,audit,taskDelivery:s.delivery,pollMs:backendPollMs,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}},
       onStage:stage=>{if(current(s)){audit({type:'backend.stage',voiceSessionId:s.id,callId:stage.callId,label:stage.latest,running:stage.latestRunning,completed:stage.completed,failed:stage.failed});emit(s,{type:'tool.progress',callId:stage.callId,name:'delegate_to_v',...(stage.latest?{stage:stage.latest}:{})});}}});
-    s.deviceActions=deviceActions;s.backendDeviceURL=backendDeviceURL;s.deviceLease=randomBytes(32).toString('base64url');
-    s.terminalContext=()=>terminalContext({voiceSessionId:s.id,kind:terminalAdapter?.kind??terminalKind??(surface==='speaker'?'speaker':nativeRuntimeVersion===1?'ios':'web'),capabilities:Object.fromEntries(Object.keys(deviceActions?.capabilities??{}).map(operation=>[operation,{status:s.deviceRequests?.state(operation)??'unavailable'}])),actor:{verified:!unidentified,displayName:callerIdentity?.displayName},session:{scope:unidentified?'guest':'bound'}});
-    s.backendDeviceContext=()=>!deviceActions?'':terminalInstructions(s.terminalContext())+(s.backendDeviceDescriptor?'\n当前设备执行通道（仅当前任务使用，不能输出/分享/记忆此短期 lease；拒绝不能绕过）：'+JSON.stringify(s.backendDeviceDescriptor)+'。需要位置或其他设备能力时先读取 skill 指定的 device-use Skill，再用服务端 CLI 调用，不能凭描述声称已执行。':'\n当前后台设备执行通道尚未验证或未配置，不可直接执行设备能力，不要猜路径或自行下载执行。');
-    if(!unidentified&&deviceActions){
-      const localExecutions=new Map();
-      const sendDevice=frame=>{
-        if(!terminalAdapter){if(s.client?.readyState!==1)throw Error('disconnected');s.client.send(JSON.stringify(frame));return;}
-        if(frame.type==='device.cancel'){localExecutions.get(frame.requestId)?.abort();return;}
-        const controller=new AbortController();localExecutions.set(frame.requestId,controller);
-        void Promise.resolve().then(()=>terminalAdapter.execute(frame.operation,frame.arguments,{requestId:frame.requestId,voiceSessionId:s.id,deadline:frame.deadline,signal:controller.signal})).then(receipt=>{
-          if(current(s))s.deviceRequests.receive({...receipt,type:'device.result',version:1,requestId:frame.requestId,voiceSessionId:s.id,operation:frame.operation});
-        },()=>{if(current(s))s.deviceRequests.receive({type:'device.result',version:1,requestId:frame.requestId,voiceSessionId:s.id,operation:frame.operation,status:'unknown'});}).finally(()=>localExecutions.delete(frame.requestId));
-      };
-      s.deviceRequests=createDeviceRequests({voiceSessionId:s.id,operations:{'location.current':locationOperation,...(typeof deviceOperations==='function'?deviceOperations({voiceSessionId:s.id}):deviceOperations)},capabilities:deviceActions.capabilities,send:sendDevice,onState:()=>s.refreshDeviceContext?.()});
-      if(deviceActions.capabilities['location.current'])s.location=createDeviceLocation({requests:s.deviceRequests,voiceSessionId:s.id});
-    }
-    s.verifyBackendDeviceBundle=async()=>{
-      const descriptor=s.backendDeviceURL&&s.deviceRequests?backendDeviceDescriptor({endpoint:s.backendDeviceURL,lease:s.deviceLease,voiceSessionId:s.id},backendDeviceBundle):null;
-      if(!descriptor)return false;
-      try{if(await backendDeviceBundleProbe({gateway:s.gateway,agentId:s.agentId,sessionKey:s.sessionKey,descriptor})&&current(s)){s.backendDeviceDescriptor=descriptor;return true;}}catch{}
-      return false;
-    };
+    prepareDeviceChannel(s,{deviceActions,backendDeviceURL,terminalAdapter,terminalKind,surface,nativeRuntimeVersion,unidentified,callerIdentity});
     sessions.set(s.id,s);
     audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model,voice:s.voice,surface,...(model==='grok'?{speed:grokSpeed,expressiveTags:grokExpressiveTags}:{})});
     // Receivers choose microphone routing explicitly; conversation policy is shared.
@@ -352,7 +370,6 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       cleanup.then(()=>s.localCleanups.delete(cleanup),()=>{});
       return work.then(result=>{audit({type:'tool.local-result',voiceSessionId:s.id,callId,name,result});return result;});
     });
-    s.ensureBackendDeviceBundle=()=>s.backendDeviceBundleReady??=s.verifyBackendDeviceBundle();
     const admittedUserTurns=new Map();
     const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',s.sessionBound?s.actorReader?.calendar:calendar),larkRead:localRead('lark_read',s.sessionBound?s.actorReader?.read:larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,look:s.speaker?.look,delegate:async args=>{await s.ensureBackendDeviceBundle();return s.backend.run({...args,context:(args.context??'')+s.backendDeviceContext()+(args.use_current_location?s.location.context():''),callerTurn:admittedUserTurns.get(args.callId)});}});
     s.progressTimer=setInterval(()=>deferred(s),200);s.progressTimer.unref?.();
@@ -517,12 +534,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         }catch(error){emit(s,{type:'error',message:error.message});void close(s.id).catch(()=>{});}
         return;
       }
-      try{const e=JSON.parse(data.toString());if(e.type==='device.capabilities'){
-        if(e.version!==1||e.voiceSessionId!==s.id||!Number.isSafeInteger(e.revision)||e.revision<1||e.revision<=(s.deviceCapabilityRevision??0)||!s.deviceRequests)return;
-        const normalized=normalizeDeviceActions({version:1,capabilities:e.capabilities});
-        if(Object.keys(normalized.capabilities).some(op=>!Object.hasOwn(s.deviceActions.capabilities,op)))return;
-        s.deviceCapabilityRevision=e.revision;s.deviceRequests.updateCapabilities(normalized.capabilities);return;
-      }if(e.type==='device.result'){s.deviceRequests?.receive(e);return;}if(e.type==='greeting'&&!s.greeted){s.greeted=true;if(s.speakerRouting&&speakerRouting.greet)void speakerRouting.greet(s.id);else s.bridge.triggerGreeting(s.sessionBound?'电话已接通。请用中文向当前会话的通话者简短打个招呼，然后听对方说话。':'电话已接通。请用中文向天懿简短打个招呼，然后听他说话。');}
+      try{const e=JSON.parse(data.toString());if(e.type==='device.capabilities'||e.type==='device.result'){receiveDeviceFrame(s,e);return;}if(e.type==='greeting'&&!s.greeted){s.greeted=true;if(s.speakerRouting&&speakerRouting.greet)void speakerRouting.greet(s.id);else s.bridge.triggerGreeting(s.sessionBound?'电话已接通。请用中文向当前会话的通话者简短打个招呼，然后听对方说话。':'电话已接通。请用中文向天懿简短打个招呼，然后听他说话。');}
       else if(e.type==='barge-in') {
         // Only a speaker endpoint can mark a barge-in as confirmed speech (device echo cancellation).
         const device=s.surface==='speaker'&&typeof e.deviceId==='string'?e.deviceId:null,confirmed=Boolean(device&&e.confirmed===true);
@@ -608,6 +620,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   }
   return {
     models,reserve,close,
+    openDeviceChannel({voiceSessionId,nativeDeviceActions,terminalKind='web',unidentified=false,callerIdentity,gateway:callGateway=gateway,agentId='makaron',sessionKey,backendDeviceURL,send,isCurrent,onContext=()=>{}}){
+      if(unidentified||!nativeDeviceActions||typeof voiceSessionId!=='string'||!voiceSessionId||voiceSessionId.length>160||typeof isCurrent!=='function'||typeof send!=='function')return null;
+      const s={id:voiceSessionId,unidentified,gateway:callGateway,agentId,sessionKey,closed:false};
+      prepareDeviceChannel(s,{deviceActions:normalizeDeviceActions(nativeDeviceActions),backendDeviceURL,terminalKind,unidentified,callerIdentity},send,()=>!s.closed&&isCurrent());
+      s.refreshDeviceContext=()=>{if(s.deviceCurrent())onContext(s.terminalContext());};
+      return {terminalContext:s.terminalContext,receive:frame=>receiveDeviceFrame(s,frame),async descriptor(){await s.ensureBackendDeviceBundle();return s.deviceCurrent()?s.backendDeviceDescriptor??null:null;},close(){s.closed=true;s.closeDeviceChannel();}};
+    },
     hasSession:id=>sessions.has(id),
     // A disconnected client is not proof its cleanup or final reply delivery finished.
     backgroundTaskCount:()=>[...new Set([...sessions.values(),...detached])].filter(s=>s.backend.snapshot() || s.replyDelivery?.pending || s.delivery?.pending || s.closePromise || s.cleanupFailed || (s.closed && s.localCleanups.size)).length,
@@ -634,8 +653,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     progressNotice(id,index=0){const s=sessions.get(id);return current(s)&&typeof s.progressNotice==='function'?s.progressNotice(index):false;},
     /** Bounded state for a hardware client's idle policy; never conversation content. */
     async backendDeviceRequest({lease,operation,args={}}){
-      const s=[...sessions.values()].find(row=>row.deviceLease===lease);
-      if(!s||!current(s)||s.unidentified||!s.deviceRequests)throw Error('Device call ownership expired');
+      const s=deviceChannels.get(lease);
+      if(!s||s.deviceRetired||!s.deviceCurrent()||s.unidentified||!s.deviceRequests)throw Error('Device call ownership expired');
       if(operation==='device.probe'){if(typeof args?.challenge!=='string'||args.challenge.length>80)throw Error('Invalid probe');return {version:1,voiceSessionId:s.id,operation,status:'ok',result:{challenge:args.challenge}};}
       if(operation==='location.current'){if(!s.location)throw Error('Current terminal does not support location');if(!args||typeof args!=='object'||Array.isArray(args)||Object.keys(args).length)throw Error('Location takes no arguments');const receipt=await s.location.request();return {version:1,voiceSessionId:s.id,operation,requestId:receipt.requestId,status:receipt.ok?'ok':receipt.status??'failed',...(receipt.ok?{result:receipt.location}:{reason:receipt.reason})};}
       return s.deviceRequests.request(operation,args);
@@ -652,6 +671,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       await Promise.all([...sessions.keys()].map(close));
       if(drain)while([...detached].some(s=>s.backend.snapshot()))await new Promise(resolve=>setTimeout(resolve,50));
       else await Promise.all([...detached].map(s=>s.backend.cancel().catch(()=>{})));
+      for(const s of deviceChannels.values()){s.closed=true;s.closeDeviceChannel();}
       detached.clear();websocketServer.close();
     },
   };

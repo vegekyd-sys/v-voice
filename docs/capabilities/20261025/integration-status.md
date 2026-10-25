@@ -45,3 +45,10 @@ Reused iOS Use commit bbb07cd74ceee86e6b48d36e780df9691dd0f5c3 as f51f6ca: consu
 ## Backend topology follow-up
 
 Artifact-local descriptor paths have been replaced by trusted backend bundle configuration and a real-helper asset/network preflight at first delegation (not voice startup). Packaging includes the helper, all tracked Skill assets and their hashes. Missing or failed mapping/probe returns no descriptor. Full Node regression: 918 passed; helper/HTTP/hash unit integration: 2 passed. Cross-host Candidate evidence is still pending and must not be inferred from those unit results.
+
+
+## 2026-10-25 GPT Live common device channel candidate
+
+The optional platform SDK hook now binds metadata to the admission-owned GPT call and authenticated Gateway connection. Voice reuses the common device broker for GPT SSE requests and authenticated HTTP results; clients receive no execution lease or backend paths. A missing SDK or failed backend bundle probe keeps the existing GPT call and omits device capability advertisement. Permission changes update the same broker and backend snapshot without replaying an action. Web and native send quiet developer context with the existing `session.context.append`; native initial context waits for acknowledgement while microphone input is muted. No model/audio transport change.
+
+Validation: 922/922 Node tests passed; native build-for-testing passed; selected native tests ran 9, passed 7, skipped 2 explicit system opt-ins. The new native test uses two real local WebRTC peers and synthetic PCM to verify context acknowledgement, quiet updates and close retirement. Platform Candidate imported the patched copied SDK and exercised metadata binding (1/1), without starting a Gateway/provider. These checks do not establish live GPT speech, physical GPS, lock-screen permission behavior or a DiDi quote. The human Chrome Candidate is still the older 91c3d59 artifact until its call is idle and a separate update is verified.

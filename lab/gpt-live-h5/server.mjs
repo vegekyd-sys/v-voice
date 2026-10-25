@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import {backendDeviceBundleFromEnv} from '../../lib/backend-device-bundle.mjs';
-import {normalizeDeviceActions} from '../../lib/terminal-context.mjs';
+import {terminalInstructions,normalizeDeviceActions} from '../../lib/terminal-context.mjs';
 import {feishuCallerIdentityInstructions} from '../../lib/feishu-caller-identity.mjs';
 import {createReleaseGate, readRelease, listenReleaseControl} from '../../lib/release-control.mjs';
 import {controlVoiceTask} from '../../lib/voice-task-control.mjs';
@@ -122,6 +122,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   };
   const close = async (context = local) => {
     const old = context.active;
+    old?.deviceChannel?.close();
+    if(old?.deviceBound)await (old.gateway??gateway).request('voice.product.device-context',{clientSecret:old.reservation.clientSecret,voiceSessionId:old.reservation.voiceSessionId,mode:'close'},{timeoutMs:5000}).catch(()=>{});
     old?.taskDelivery?.close();
     await old?.replyDelivery?.close();
     old?.callControl?.close();
@@ -232,9 +234,46 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         owned.presentation.controls.push(message);if(owned.presentation.controls.length>64)owned.presentation.controls.shift();
         for(const response of context.listeners)response.write(`data: ${JSON.stringify(message)}\n\n`);
       }});
+      if(params.nativeDeviceActions&&directVoice?.openDeviceChannel&&gptProvider==='v-voice-gpt-live'){
+        const ownerParams={clientSecret:reservation.clientSecret,voiceSessionId:reservation.voiceSessionId};
+        let channel;
+        try{
+          const supported=await callGateway.request('voice.product.device-context',{...ownerParams,mode:'check'},{timeoutMs:5000});
+          if(supported?.accepted&&context.active===owned){
+            let revision=1,updates=Promise.resolve();
+            const publish=terminal=>{
+              const message={type:'device.context',voiceSessionId:reservation.voiceSessionId,terminalContext:terminal,text:terminalInstructions(terminal)};
+              for(const response of context.listeners)response.write(`data: ${JSON.stringify(message)}\n\n`);
+            };
+            channel=directVoice.openDeviceChannel({voiceSessionId:reservation.voiceSessionId,nativeDeviceActions:params.nativeDeviceActions,
+              terminalKind:iosBindings?.read(req,binding)?'ios':'web',callerIdentity:binding.callerIdentity,gateway:callGateway,agentId:binding.agentId??'makaron',sessionKey,
+              backendDeviceURL:backendDeviceEndpoint||`${hosted?publicOrigin:`http://127.0.0.1:${server.address().port}`}${basePath}/internal/device-request`,
+              isCurrent:()=>context.active===owned&&!owned.deviceRetired,
+              send:frame=>{if(context.active===owned)for(const response of context.listeners)response.write(`data: ${JSON.stringify(frame)}\n\n`);},
+              onContext:terminal=>{
+                publish(terminal);
+                updates=updates.then(async()=>{
+                  if(!owned.deviceBound||context.active!==owned)return;
+                  const result=await callGateway.request('voice.product.device-context',{...ownerParams,revision:++revision,terminal,bridge:owned.deviceDescriptor},{timeoutMs:5000});
+                  if(!result?.accepted)throw Error('Device metadata update rejected');
+                }).catch(()=>{owned.deviceRetired=true;channel?.close();});
+              }});
+            owned.deviceChannel=channel;
+            const descriptor=await channel?.descriptor();
+            if(descriptor&&context.active===owned){
+              const bound=await callGateway.request('voice.product.device-context',{...ownerParams,revision,terminal:channel.terminalContext(),bridge:descriptor},{timeoutMs:5000});
+              if(!bound?.accepted)throw Error('Device metadata binding rejected');
+              owned.deviceBound=true;owned.deviceDescriptor=descriptor;
+            }else channel?.close();
+          }
+        }catch{channel?.close();owned.deviceRetired=true;}
+      }
       rememberAvatarCall(context,context.active,'openai');
       const speaker=speakerRouting?.reserve(reservation.voiceSessionId,{model:'gpt-live',policy:params.inputPolicy??'speaker'});
-      return reply( 200, { voiceSessionId: reservation.voiceSessionId, model: reservation.model,...(binding.callerIdentity?{callerContext:{voiceSessionId:reservation.voiceSessionId,text:feishuCallerIdentityInstructions(binding.callerIdentity)}}:{}),...speaker?{speakerRouting:speaker}:{} });
+      const terminal=owned.deviceBound&&!owned.deviceRetired?owned.deviceChannel.terminalContext():null;
+      const callerText=[binding.callerIdentity?feishuCallerIdentityInstructions(binding.callerIdentity):'',terminal?terminalInstructions(terminal):''].filter(Boolean).join('\n');
+      if(cancelled()){await close(context);return reply(499,{error:'拨号已取消'});}
+      return reply(200,{voiceSessionId:reservation.voiceSessionId,model:reservation.model,...(callerText?{callerContext:{voiceSessionId:reservation.voiceSessionId,text:callerText}}:{}),...(terminal?{nativeDeviceActions:{version:1,capabilities:terminal.capabilities},terminalContext:terminal}:{}),...speaker?{speakerRouting:speaker}:{}});
     } finally {
       context.creatingSession = false;
     }
@@ -567,6 +606,13 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       }
       if (!context.active || params.voiceSessionId !== context.active.reservation.voiceSessionId) return json(res, 409, { error: "通话已结束，请重新开始" });
       context.active.touchedAt = Date.now();
+      if(pathname==='/api/device-result'){
+        const active=context.active;
+        if(active.direct||!active.deviceBound||active.deviceRetired||Object.keys(params).some(k=>!['voiceSessionId','frame'].includes(k)))return json(res,409,{error:'设备通道已结束'});
+        let accepted=false;try{accepted=active.deviceChannel.receive(params.frame);}catch{}
+        return json(res,accepted?200:409,{accepted});
+      }
+
       if (pathname === '/api/avatar') {
         const active = context.active;
         if (!Number.isSafeInteger(params.revision) || params.revision < 1 || !Array.isArray(params.turns)

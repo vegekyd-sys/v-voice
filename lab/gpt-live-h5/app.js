@@ -638,7 +638,7 @@ async function startCall() {
     const selectedModel = ['seeduplex','grok'].includes(chosenModel)?chosenModel:'gpt-live';
     const inputPolicy = speakerCandidate() ? (new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy) : null;
     const nativeDeviceActions=await browserDeviceActions();
-    const reservation = await api("session", {model:selectedModel,...(selectedModel!=='gpt-live'?{nativeDeviceActions}:{}),...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:{})}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
+    const reservation = await api("session", {model:selectedModel,nativeDeviceActions,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:{})}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     const diagnosticOwner=avatarDiagnosticOwner=Symbol('avatar-call');
     document.body.dataset.avatarReactionRequests='0';
@@ -666,7 +666,7 @@ async function startCall() {
       apply:reaction=>avatar.select(reaction),attend:()=>avatar.attend(),current:()=>avatar.context(),
       isCurrent:()=>call===active,isVisible:()=>!document.hidden,
     });
-    if(reservation.nativeDeviceActions)active.deviceAdapter=createBrowserDeviceAdapter({voiceSessionId:active.voiceSessionId,isCurrent:()=>call===active,send:frame=>active.relay?.sendDeviceResult(frame)});
+    if(reservation.nativeDeviceActions)active.deviceAdapter=createBrowserDeviceAdapter({voiceSessionId:active.voiceSessionId,isCurrent:()=>call===active,send:frame=>{if(call!==active)return;if(active.relay)active.relay.sendDeviceResult(frame);else void api('device-result',{voiceSessionId:active.voiceSessionId,frame}).catch(()=>{});}});
     if (reservation.transport === 'gateway-relay') {
       await active.contextResume;
       if(call!==active)return;
@@ -741,6 +741,8 @@ async function startCall() {
       if (call !== active) return;
       const value = JSON.parse(event.data);
       if (value.voiceSessionId !== active.voiceSessionId) return;
+      if(active.deviceAdapter?.handle(value))return;
+      if(value.type==='device.context'){active.callerContext?.update(value);return;}
       if (Number.isSafeInteger(value.revision)) active.presentationRevision = Math.max(active.presentationRevision ?? 0, value.revision);
       if (value.type === 'avatar.expression') { avatar?.expression(value.expression); return; }
       tasks.consume(value);

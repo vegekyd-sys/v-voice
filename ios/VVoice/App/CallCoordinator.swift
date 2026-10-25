@@ -135,6 +135,8 @@ import VVoiceCore
     @ObservationIgnored private var gptCallerStarted = false
     @ObservationIgnored private var gptUserTurn = ""
     @ObservationIgnored private var gptCaptionRevision = 0
+    @ObservationIgnored private var gptContextText: String?
+    @ObservationIgnored private var gptDeviceContextText: String?
     @ObservationIgnored private var voiceID: String?
     @ObservationIgnored private var routeChangeTask: Task<Void, Never>?
     @ObservationIgnored private var heartbeat: Task<Void, Never>?
@@ -343,6 +345,11 @@ import VVoiceCore
         guard owned(owner) else { throw CancellationError() }
         guard let id = reservation["voiceSessionId"] as? String else { throw VoiceError.protocolMismatch }
         voiceID = id; try api.rememberCall(id)
+        gptContextText = nil; gptDeviceContextText = nil
+        if let context = reservation["callerContext"] as? [String: Any] {
+            guard context["voiceSessionId"] as? String == id, let text = context["text"] as? String, !text.isEmpty, text.count <= 2048 else { throw VoiceError.protocolMismatch }
+            gptContextText = text
+        }
         if let raw = reservation["nativeRuntime"] {
             guard let value = raw as? [String: Any] else { throw VoiceError.protocolMismatch }
             nativeRuntime = try NativeRuntimePolicy.decode(value)
@@ -556,13 +563,16 @@ import VVoiceCore
         }
         try audio.startWebRTC()
         startGPTEvents(owner: owner, id: id)
-        try await rtc.connect(muted: muted) { [weak self] sdp in
+        try await rtc.connect(muted: muted || gptContextText != nil) { [weak self] sdp in
             guard let self, self.owned(owner) else { throw CancellationError() }
             let result = try await self.api.call("offer", body: ["voiceSessionId": id, "sdp": sdp], refresh: false)
             guard self.owned(owner), let answer = result["sdp"] as? String else { throw VoiceError.protocolMismatch }
             return answer
         }
         guard owned(owner), rtc.isConnected else { rtc.close(); throw CancellationError() }
+        if let text = gptContextText { try await rtc.installContext(text) }
+        guard owned(owner) else { throw CancellationError() }
+        if let text = gptDeviceContextText { guard rtc.sendContext(text) else { throw VoiceError.connection } }
         rtc.setMuted(muted); audioReady = true; lastInput = Date(); updateRoute()
         setPhase(rtc.speaking ? .speaking : .listening, owner: owner)
         detail = "GPT Live One 已接通，可以直接开口"
@@ -651,11 +661,26 @@ import VVoiceCore
     private func refreshDeviceCapabilities() {
         guard nativeLocationEnabled, active, let voiceID else { return }
         deviceCapabilityRevision += 1
-        transport?.send(["type": "device.capabilities", "version": 1, "voiceSessionId": voiceID, "revision": deviceCapabilityRevision,
-                         "capabilities": DeviceLocation.declaration["capabilities"] ?? [:]])
+        sendDeviceFrame(["type": "device.capabilities", "version": 1, "voiceSessionId": voiceID, "revision": deviceCapabilityRevision,
+                         "capabilities": DeviceLocation.declaration["capabilities"] ?? [:]], owner: state.generation)
+    }
+    private func sendDeviceFrame(_ payload: [String: Any], owner: UUID) {
+        guard owned(owner), let id = voiceID else { return }
+        if let transport { transport.send(payload); return }
+        guard gpt != nil else { return }
+        Task { [weak self] in
+            guard let self, self.owned(owner), self.voiceID == id else { return }
+            _ = try? await self.api.call("device-result", body: ["voiceSessionId": id, "frame": payload], refresh: false)
+        }
     }
     private func handle(_ v: [String: Any], owner: UUID) throws {
-        if v["type"] as? String == "device.context" { return }
+        if v["type"] as? String == "device.context" {
+            if v["voiceSessionId"] as? String == voiceID, let text = v["text"] as? String, !text.isEmpty, text.count <= 2048 {
+                gptDeviceContextText = text
+                if audioReady { _ = gpt?.sendContext(text) }
+            }
+            return
+        }
         if v["type"] as? String == "device.cancel", v["operation"] as? String == "location.current" {
             if v["voiceSessionId"] as? String == voiceID, v["requestId"] as? String == locationRequestID {
                 locationTask?.cancel(); locationTask = nil; locationRequestID = nil; location.cancel()
@@ -671,9 +696,9 @@ import VVoiceCore
                   expiresAt <= Date().timeIntervalSince1970 * 1000 + 30_000,
                   !locationRequests.contains(id), locationRequests.count < 100 else { return }
             locationRequests.insert(id)
-            let transport = self.transport, voiceID = self.voiceID
+            let voiceID = self.voiceID
             if locationTask != nil {
-                transport?.send(["type": "device.result", "operation": "location.current", "version": 1, "voiceSessionId": voiceID ?? "", "requestId": id, "status": "failed", "reason": "unavailable"])
+                sendDeviceFrame(["type": "device.result", "operation": "location.current", "version": 1, "voiceSessionId": voiceID ?? "", "requestId": id, "status": "failed", "reason": "unavailable"], owner: owner)
                 return
             }
             locationRequestID = id
@@ -685,7 +710,7 @@ import VVoiceCore
                 var payload: [String: Any] = result.reason.map { ["status": $0 == "denied" || $0 == "restricted" ? "denied" : "failed", "reason": $0] } ?? ["status": "ok", "result": result.wire]
                 if Date().timeIntervalSince1970 * 1000 > expiresAt { payload = ["status": "failed", "reason": "timeout"] }
                 payload.merge(["type": "device.result", "operation": "location.current", "version": 1, "voiceSessionId": voiceID ?? "", "requestId": id]) { _, new in new }
-                transport?.send(payload)
+                self.sendDeviceFrame(payload, owner: owner)
             }
             return
         }
