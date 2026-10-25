@@ -439,22 +439,23 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if(s.epoch!==epoch&&call.name!=='cancel_task'&&!(call.name==='openclaw_agent_control'&&call.args.mode==='cancel'))result={cancelled:true,instruction:'旧任务已取消，不继续，也不播报旧结果。'};
       try {if(backgroundAck){
         const presentation=presentBackendResult(result);
+        const displayFullResult=Boolean(presentation)&&(s.publicVoice||presentation.long||presentation.media);
         const requester=audienceOf(audienceKeys.get(ownerBridge));
         const target=resultBridge(s,ownerBridge,requester),moved=!target;
-        const receipt=(moved||presentation?.long || presentation?.media)?await publishContent(s,call.callId,presentation?.text??JSON.stringify(result)):null;
+        const receipt=(moved||displayFullResult)?await publishContent(s,call.callId,presentation?.text??JSON.stringify(result)):null;
         if(receipt&&(!current(s)||s.epoch!==epoch))return;
         const spokenText=!s.display?speakerSpokenText(presentation):receipt?.shown?presentation.spokenText:presentation?.spokenText.replace(LONG_RESULT_NOTICE,'完整结果已准备好，屏幕正在同步。');
-        const payload=(presentation?.long || presentation?.media)?{...result,result:presentation.text}:result;
+        const payload=displayFullResult?{...result,result:presentation.text}:result;
         if(!result?.cancelled)s.lastBackgroundResult={question:call.args.question??'',result:String(presentation?.text??result?.error??'').slice(0,2000)};
         // A task belongs to the person who asked for it. After a switch to someone
         // else its result is shown and held until the person who asked is back.
         if(!target&&s.speakerRouting&&requester.length&&!result?.cancelled){
           const spoken=spokenText??(typeof result?.error==='string'?`后台任务没有完成：${result.error}`:presentation?.text);
-          if(spoken){s.heldResult={callId:call.callId,question:call.args.question??'',result:payload,options:(presentation?.long || presentation?.media)?{spokenText,displayedFullResult:true}:{},spoken,text:String(presentation?.text??spoken),requester,heldAt:Date.now()};audit({type:'backend.result-held',voiceSessionId:s.id,callId:call.callId});}
+          if(spoken){s.heldResult={callId:call.callId,question:call.args.question??'',result:payload,options:displayFullResult?{spokenText,displayedFullResult:true}:{},spoken,text:String(presentation?.text??spoken),requester,heldAt:Date.now()};audit({type:'backend.result-held',voiceSessionId:s.id,callId:call.callId});}
         }
         if(target){
           if(target!==ownerBridge)target.adoptBackgroundTool(call.callId,call.args.question??"");
-          const options=(presentation?.long || presentation?.media)?{spokenText,displayedFullResult:true}:{};
+          const options=displayFullResult?{spokenText,displayedFullResult:true}:{};
           // The host output gate belongs to whichever turn is in flight; a result
           // spoken outside a host turn is queued or dropped with that turn.
           if(s.speakerRouting&&speakerRouting?.hostSpeech)options.speak=text=>void speakerRouting.hostSpeech(s.id,text).then(spoken=>{if(!spoken)audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId:call.callId});},()=>audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId:call.callId}));

@@ -1298,6 +1298,8 @@ test('Public uses existing V search/memory tools and carries the same personal-c
  f.call('delegate_to_v',{question:'整理项目公开资料'},'public-backend');
  for(let i=0;i<100&&!calls.some(r=>r.method==='voice.product.task.start');i++)await delay(2);
  const task=calls.find(r=>r.method==='voice.product.task.start');assert(task);assert(task.params.question.includes('个人内容红线'));assert(task.params.question.includes('V 现有记忆'));
+ for(let i=0;i<100&&!f.client.sent.some(e=>e.type==='backend.result');i++)await delay(2);
+ assert(f.client.sent.some(e=>e.type==='backend.result'&&e.text==='V 原有后台执行结果'),'Public short backend results use the existing report card too');
  f.call('exec',{command:'anything'},'public-denied');await delay(10);
  assert(!calls.some(r=>r.params?.name==='exec'));assert.equal(f.invocations.length,0);
 });
