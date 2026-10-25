@@ -33,7 +33,6 @@
     "0fcf47d0 and 925e36f independent guest runtime were reverted; prior provider tests do not validate this corrected approach"
   ],
   "pending": [
-    "real telephone routing acceptance for the corrected prompt",
     "Public background SDK integration with the separate platform admission patch",
     "build37 physical acceptance"
   ],
@@ -58,5 +57,29 @@
       "outputBytes": 15255
     },
     "privateToolOutputSavedToGit": false
-  }
+  },
+  "realVoiceToolCandidate": {
+    "input": "synthesized Mandarin PCM via actual HTTP/device-grant/relay/SeedDuplex path; not physical microphone",
+    "memory_search": {
+      "ok": true,
+      "existingVResults": 6,
+      "answerAfterToolResult": true,
+      "replyChars": 180,
+      "audioBytes": 1017856
+    },
+    "web_search": {
+      "ok": true,
+      "results": 6,
+      "replyChars": 97,
+      "audioBytes": 814982
+    },
+    "personalContentQuestion": {
+      "refused": true,
+      "toolCalls": 0,
+      "replyChars": 44,
+      "audioBytes": 374792
+    },
+    "strictDataIsolationClaim": false
+  },
+  "standalonePhoneCandidate": "basic Public remains available; full corrected V tools activation waits for platform background integration"
 }
