@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "feishu-confirm-20261025",
-  "version": "voice-feishu-confirm.20261025.1",
-  "entryCommit": "ccebd66084d44d87cdf452b84741fe21c08d936a",
-  "deviceEntryCommit": "ccebd66084d44d87cdf452b84741fe21c08d936a",
-  "filesSha256": "07c1af61d86c461efee83314037808c7ff12c8797ddf808864d80af9914019db",
-  "registration": "feishu-confirm-20261025/release.json",
-  "previousEntryCommit": "d0e47f60addfaaa62c3436b872b9485863380ce0",
+  "release": "entry-release-20261026",
+  "version": "voice-legacy-entry.20261026.1",
+  "entryCommit": "9ae49f523f735e9bb4dd8d9700128d2a66eb9e5e",
+  "deviceEntryCommit": "9ae49f523f735e9bb4dd8d9700128d2a66eb9e5e",
+  "filesSha256": "16fa5ad1904dc3b20c42f470744c4d67f4f7337a0d3c566d7003aa84947de863",
+  "registration": "entry-release-20261026/release.json",
+  "previousEntryCommit": "ccebd66084d44d87cdf452b84741fe21c08d936a",
   "gatewayRestartRequired": true,
-  "deployedAt": "2026-10-25T21:50:00+08:00",
-  "runtimeDifference": "Both Voice nodes use the same artifact. Feishu confirmation was activated with separate platform PR 473 using v-self-restart and ALIGNED verification. Existing native build 39 accepted production binding on Simulator; no new TestFlight binary or firmware in this release."
+  "deployedAt": "2026-10-26T00:30:15+08:00",
+  "runtimeDifference": "Both Voice nodes use the same artifact. Separate platform PR 476 activated automatic Feishu entry reconciliation through v-self-restart; VLab/V alignment passed for 18,820 files. No native binary or firmware update. Historical visibility and missing-chat exceptions are recorded."
 }

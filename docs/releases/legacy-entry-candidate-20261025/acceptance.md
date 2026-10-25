@@ -10,3 +10,7 @@ Validation:
 - iOS shell source manifest regenerated because the shared changelog source changed. No native binary was built or published.
 
 Production browser redirects are not deployed. The separate platform change handles existing and future Feishu menus/tabs. The real external-user confirmation that the 十二家 entry now opens the phone page comes from the earlier targeted menu repair, not from this candidate.
+
+## Subsequent production release
+
+This candidate was promoted through PR #148. See [entry-release-20261026](../entry-release-20261026/release.md) for the production artifact, actual entry checks and remaining historical exceptions. The candidate evidence above retains its original scope.
