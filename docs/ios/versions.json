@@ -663,5 +663,13 @@
     "internalBuildState": "IN_BETA_TESTING",
     "testersInvited": 1,
     "installedViaTestFlight": false
+  },
+  "publicSettingsCandidate": {
+    "version": "voice-ios-public.20261025.2",
+    "sourceCommit": "99f904a5dccce38bab0a73c7cf25d200ffa9e7d8",
+    "evidenceRecord": "public-entry-candidate.json",
+    "status": "simulator_reviewed_not_signed_or_installed",
+    "signedBuild37ContainsSettingsChange": false,
+    "platformUpdateRequired": false
   }
 }
