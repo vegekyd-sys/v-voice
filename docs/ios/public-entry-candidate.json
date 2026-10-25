@@ -84,5 +84,11 @@
     "fullscreenDebugRouteRemoved": true,
     "verification": "Built and opened/dismissed/reopened the actual sheet with Public and two saved channels",
     "screenshot": "public-settings-evidence/settings-sheet.jpg"
+  },
+  "latestSimulatorRegression": {
+    "record": "public-regression-20261025.json",
+    "basicPublic": "passed",
+    "requestedWebMemoryAndBackgroundTools": "still_blocked",
+    "completePublicAcceptance": false
   }
 }

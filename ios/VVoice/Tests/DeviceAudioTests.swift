@@ -17,6 +17,8 @@ import VVoiceCore
         defer { UIApplication.shared.isIdleTimerDisabled = previousIdle }
         let fixturePath = ProcessInfo.processInfo.environment["VVOICE_LATENCY_BINDING_FILE"]
         let publicService = ProcessInfo.processInfo.environment["VVOICE_LATENCY_PUBLIC_SERVICE"]
+        let expectedReply = ProcessInfo.processInfo.environment["VVOICE_PUBLIC_EXPECTED_REPLY"]
+        let expectedContent = ProcessInfo.processInfo.environment["VVOICE_PUBLIC_EXPECTED_CONTENT"]
         let isolated = fixturePath != nil || publicService != nil
         let store = BindingStore(service: isolated ? "com.versa.vvoice.latency.\(UUID().uuidString)" : "com.versa.vvoice.personal-entry")
         defer { if isolated { store.remove() } }
@@ -35,7 +37,7 @@ import VVoiceCore
         let status = try await api.call("status")
         guard status["activeCall"] as? Bool == false else { throw XCTSkip("A call is active") }
         var revision = 0, receivedBytes = 0, failure: Error?, firstOutput = true
-        var recognized = false, replied = false, documentShown = false
+        var recognized = false, replied = false, documentReceived = false
         relay.onReservation = { value in
             guard let id = value["voiceSessionId"] as? String else { throw VoiceError.protocolMismatch }
             try api.rememberCall(id)
@@ -54,8 +56,10 @@ import VVoiceCore
                 case "audio.complete": if !transportOnly { audio.markOutputDone() }
                 case "conversation.row":
                     if effect.row?.role == "user", effect.row?.text.isEmpty == false { recognized = true }
-                    if recognized, effect.row?.role == "assistant", effect.row?.text.isEmpty == false { replied = true }
-                case "document.present": documentShown = effect.document?.text.isEmpty == false
+                    if recognized, let row = effect.row, row.role == "assistant", !row.text.isEmpty {
+                        replied = replied || (expectedReply.map { row.text.contains($0) } ?? true)
+                    }
+                case "document.present": documentReceived = effect.document.map { document in expectedContent.map { document.text.contains($0) } ?? !document.text.isEmpty } ?? false
                 default: break
                 }
             }
@@ -63,7 +67,7 @@ import VVoiceCore
         addTeardownBlock {
             await MainActor.run { audio.stop(); relay.close() }
             try? await api.recoverPreviousCall()
-            if fixturePath != nil { await MainActor.run { store.remove() } }
+            if isolated { await MainActor.run { store.remove() } }
         }
         if ProcessInfo.processInfo.environment["VVOICE_LATENCY_WEBKIT"] == "1" {
             try await compareWebKit(api: api)
@@ -107,8 +111,9 @@ import VVoiceCore
         CallDiagnostics.record("latency.live-test-done", code: "receivedBytes=\(receivedBytes) failed=\(failure != nil)")
         XCTAssertNil(failure); XCTAssertGreaterThan(receivedBytes, 0)
         if publicService != nil {
-            CallDiagnostics.record("public.live-result", code: "recognized=\(recognized) replied=\(replied) documentShown=\(documentShown) audioBytes=\(receivedBytes)")
+            CallDiagnostics.record("public.live-result", code: "recognized=\(recognized) replied=\(replied) documentReceived=\(documentReceived) audioBytes=\(receivedBytes)")
             XCTAssertTrue(recognized); XCTAssertTrue(replied)
+            if expectedContent != nil { XCTAssertTrue(documentReceived, "Requested Public content must arrive through the native document effect") }
         }
     }
     /// Same physical phone, same saved conversation, same native runtime and PCM.
