@@ -11,19 +11,25 @@ export const VISION_INSTRUCTIONS = '你在帮一个桌面机器人看它摄像�
 
 /** Read a request body, refusing more than `limit` bytes. An oversized chunked
  * upload is drained (not kept) so the device still receives the 413. */
-export function readLimitedBody(req, limit = MAX_PHOTO_BYTES) {
+export function readLimitedBody(req, limit = MAX_PHOTO_BYTES, signal) {
   const tooLarge = () => Object.assign(Error('photo too large'), {status:413});
   const declared = Number(req.headers['content-length']);
   if (Number.isFinite(declared) && declared > limit) return Promise.reject(tooLarge());
+  if (signal?.aborted) return Promise.reject(Object.assign(Error('photo cancelled'), {status:408}));
   return new Promise((resolve, reject) => {
-    const chunks = [];let size = 0;
-    req.on('data', chunk => {
+    const chunks = [];let size = 0, settled = false;
+    const cleanup = () => {req.off('data', data);req.off('end', end);req.off('error', error);req.off('aborted', abort);signal?.removeEventListener('abort', abort);};
+    const finish = (err, value) => {if(settled)return;settled=true;cleanup();err?reject(err):resolve(value);};
+    const error = err => finish(err);
+    const abort = () => finish(Object.assign(Error('photo cancelled'), {status:408}));
+    const data = chunk => {
       size += chunk.length;
-      if (size > 4 * limit) {req.destroy();return reject(tooLarge());}
+      if (size > 4 * limit) {finish(tooLarge());req.destroy();return;}
       if (size <= limit) chunks.push(chunk);
-    });
-    req.on('end', () => size > limit ? reject(tooLarge()) : resolve(Buffer.concat(chunks)));
-    req.on('error', reject);
+    };
+    const end = () => size > limit ? finish(tooLarge()) : finish(null, Buffer.concat(chunks));
+    req.on('data', data);req.on('end', end);req.on('error', error);req.on('aborted', abort);
+    signal?.addEventListener('abort', abort, {once:true});
   });
 }
 
@@ -82,6 +88,7 @@ export function createDeepSeekVision({apiKey,model = 'deepseek-flash',endpoint =
   return async ({question, image, signal}) => {
     const controller = new AbortController();
     const abort = () => controller.abort();
+    if (signal?.aborted) throw Error('vision_cancelled');
     signal?.addEventListener('abort', abort, {once:true});
     const timer = setTimer(abort, timeoutMs);
     try {

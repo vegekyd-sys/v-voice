@@ -23,6 +23,8 @@ names.push('lab/realtime-direct-tools/xiaozhi-wire.mjs','lab/realtime-direct-too
 names.push('lib/call-summary.mjs','lib/ios-bindings.mjs','lib/conversation-calls.mjs','lib/conversation-replies.mjs','lib/phone-provisioning.mjs','lib/private-phone-file.mjs','lib/feishu-phone-login.mjs','lib/feishu-group-menu.mjs','lib/feishu-phone-tab.mjs','scripts/feishu-menu.mjs','scripts/phone.mjs');
 names.push('lab/gpt-live-h5/caller-context.mjs','lib/feishu-caller-identity.mjs','lab/gpt-live-h5/feishu-client-login.mjs','lib/feishu-actor-gateway.mjs','lib/feishu-conversation-directory.mjs');
 names.push('lib/terminal-context.mjs','lib/device-requests.mjs','lab/gpt-live-h5/device-location.mjs','scripts/device-call.mjs','skills/device-use/SKILL.md');
+names.push('lab/robot/robot-device.mjs','lab/robot/robot-tools.mjs','lab/robot/robot-semantics.mjs',
+ 'skills/robot-use/SKILL.md',...['vision','motion','reaction'].map(n=>'skills/robot-use/references/'+n+'.md'));
 const target=resolve(process.argv[2]??join(root,'artifacts',commit));
 await mkdir(dirname(target),{recursive:true});
 await mkdir(target,{recursive:false});

@@ -4,8 +4,8 @@ import {EventEmitter} from 'node:events';
 import {createRobotReactionDriver} from '../robot/robot-reactions.mjs';
 import {createXiaozhiWire} from './xiaozhi-wire.mjs';
 import {createVolumeStore,targetVolume} from './device-volume.mjs';
-import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
-import {photoAnswer,photoUpload,readLimitedBody} from './device-vision.mjs';
+import {createHash,randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
+import {photoUpload,readLimitedBody,MAX_PHOTO_BYTES} from './device-vision.mjs';
 import {createNearFieldGate,NEAR_FIELD_DEFAULT_DB} from './near-field-gate.mjs';
 
 // A hardware speaker is one more Voice client. It owns only audio I/O, wake and
@@ -195,7 +195,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     };
     call.closed = reason => {
       if (call.ended) return;
-      call.ended = true;clearInterval(call.timer);clearInterval(call.fillTimer);call.playout.dispose();call.robot?.dispose();
+      call.ended = true;call.capture?.controller.abort();call.robotDevice?.close();clearInterval(call.timer);clearInterval(call.fillTimer);call.playout.dispose();call.robot?.dispose();
       if (connection.call === call) connection.call = null;
       if (call.id) audit({type:'device.call',voiceSessionId:call.id,stage:'closed',deviceId:device.id,reason:call.reason ?? reason,
         durationMs:now() - call.startedAt,inputBytes:call.inputBytes,outputBytes:call.outputBytes,userTurns:call.userTurns,gatedInputBytes:call.gatedInputBytes ?? 0,maxInputGapMs:call.maxInputGapMs ?? 0,...(call.nearField ? {nearField:call.nearField.summary()} : {})});
@@ -277,22 +277,34 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     }} : null;
     // Only a camera device given this call's vision token can look. The photo
     // goes from the firmware to handleVision; its answer comes back as the MCP result.
-    const look = typeof ws.takePhoto === 'function' ? async ({question}) => {
+    const look = typeof ws.takePhoto === 'function' ? async ({question}, options = {}) => {
       if (connection.looking) throw Error('正在拍照，请稍等');
-      connection.looking = call;
-      const started = now();
+      if (call.ended || connection.call !== call || options.signal?.aborted) throw Error('call_retired');
+      const requestId = options.requestId ?? randomUUID(), started = now();
+      const capture = {call, requestId, controller:new AbortController(), claimed:false,
+        deadline:Math.min(options.deadline ?? started + 15000, started + 15000), description:null,
+        question:String(question ?? '画面里有什么？').trim().slice(0,350)};
+      capture.wireQuestion = `v-robot-request:${requestId}\n${capture.question}`;
+      const abort = () => capture.controller.abort();
+      options.signal?.addEventListener('abort', abort, {once:true});
+      const timer = setTimeout(abort, Math.max(1,capture.deadline-now()));timer.unref?.();
+      connection.looking = call.capture = capture;
       try {
-        const description = photoAnswer(await ws.takePhoto(question));
+        await ws.takePhoto(capture.wireQuestion, {signal:capture.controller.signal, timeoutMs:capture.deadline-now()});
+        if (capture.controller.signal.aborted || now() >= capture.deadline || call.ended || connection.call !== call || !capture.description) throw Error('photo_receipt_missing_or_expired');
         audit({type:'device.look',voiceSessionId:call.id,deviceId:device.id,ok:true,latencyMs:now() - started});
-        return {description,source:'robot-camera',note:'这是机器人摄像头刚拍到的画面，由看图模型描述。只能按这段描述回答，不要补充描述里没有的内容。'};
+        return {description:capture.description,source:'robot-camera',requestId,capturedAt:capture.receivedAt,
+          note:'描述来自本次机器人照片，由看图模型生成。看不清时说明限制，不补充照片外的事实。'};
       } catch (error) {
-        audit({type:'device.look',voiceSessionId:call.id,deviceId:device.id,ok:false,latencyMs:now() - started,error:String(error?.message ?? error).slice(0,200)});
+        audit({type:'device.look',voiceSessionId:call.id,deviceId:device.id,ok:false,latencyMs:now() - started});
         throw error;
       } finally {
-        if (connection.looking === call) connection.looking = null;
+        clearTimeout(timer);abort();options.signal?.removeEventListener('abort', abort);
+        if (connection.looking === capture) connection.looking = null;
+        if (call.capture === capture) call.capture = null;
       }
     } : null;
-    const deviceTools = speaker || look ? {...speaker,...(look ? {look} : {})} : null;
+    const deviceTools = speaker || look ? {...speaker,...(look ? {look:(args,_callId,signal)=>look(args,{signal})} : {})} : null;
     creatingCalls.add(call);
     void (async () => {
       try {
@@ -402,16 +414,21 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
         for (const c of connections.values()) if (c.visionDigest && timingSafeEqual(c.visionDigest, presented)) connection = c;
       }
       // The token is per channel, and only valid while V is waiting for this photo.
-      const call = connection?.looking;
-      if (!call || call.ended || connection.call !== call) return reply(401, {success:false, message:'unauthorized'});
+      const capture = connection?.looking, call = capture?.call;
+      const current = () => capture && !capture.controller.signal.aborted && now() < capture.deadline && !call.ended && connection.call === call && connection.looking === capture;
+      if (!current()) return reply(401, {success:false, message:'unauthorized'});
       visionOperations++;
       try {
       let upload;
-      try {upload = photoUpload(await readLimitedBody(req), req.headers['content-type']);}
+      try {upload = photoUpload(await readLimitedBody(req,MAX_PHOTO_BYTES,capture.controller.signal), req.headers['content-type']);}
       catch (error) {return reply(error?.status ?? 400, {success:false, message:error?.status === 413 ? '照片太大' : '照片格式不对'});}
+      if (!current() || capture.claimed || upload.question !== capture.wireQuestion) return reply(409, {success:false, message:'stale_or_duplicate_photo'});
+      capture.claimed = true;capture.receivedAt = now();
       const started = now();
       try {
-        const result = await describeImage(upload);
+        const result = String(await describeImage({...upload,question:capture.question,signal:capture.controller.signal})).trim().slice(0,600);
+        if (!current() || !result) return reply(409, {success:false,message:'photo_expired'});
+        capture.description = result;
         audit({type:'device.vision',voiceSessionId:call.id,deviceId:connection.device.id,ok:true,photoBytes:upload.image.length,latencyMs:now() - started});
         reply(200, {success:true, result});
       } catch (error) {
