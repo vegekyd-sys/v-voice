@@ -13,3 +13,8 @@ jobs:
       - run: npm test
       - run: npm run test:speaker-native
       - run: python3 -m unittest discover -s tests -p "release_fleet_test.py"
+      - name: Verify production package with fleet safety rules
+        run: |
+          npm run package -- "$RUNNER_TEMP/voice-artifact"
+          node scripts/verify-package.mjs "$RUNNER_TEMP/voice-artifact"
+          python3 -c "import os,runpy; runpy.run_path('scripts/release-fleet.py')['verify_artifact'](os.environ['RUNNER_TEMP']+'/voice-artifact')"
