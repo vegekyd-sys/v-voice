@@ -112,6 +112,8 @@ import VVoiceCore
     }
 
 
+    let iosActions: IOSActionsCoordinator
+    var appleNotes: AppleNotesCoordinator { iosActions.notes }
     @ObservationIgnored let api: VoiceAPI
     @ObservationIgnored let avatar: VoiceAvatar
     @ObservationIgnored private var avatarOutcome = "none"
@@ -176,7 +178,8 @@ import VVoiceCore
     @ObservationIgnored private(set) var appScenePhase: ScenePhase = .background
     private var appIsActive: Bool { appScenePhase == .active }
 
-    init(api: VoiceAPI? = nil, audio: VoiceAudio = VoiceAudio(), makeGPT: @escaping () -> GPTLiveTransport = { GPTLiveTransport() }) {
+    init(api: VoiceAPI? = nil, audio: VoiceAudio = VoiceAudio(), makeGPT: @escaping () -> GPTLiveTransport = { GPTLiveTransport() }, appleNotes: AppleNotesCoordinator? = nil) {
+        self.iosActions = IOSActionsCoordinator(notes: appleNotes)
         self.audio = audio
         self.makeGPT = makeGPT
         self.api = api ?? VoiceAPI(store: BindingStore())
@@ -226,6 +229,7 @@ import VVoiceCore
     }
     func sceneChanged(_ scene: ScenePhase) {
         appScenePhase = scene
+        iosActions.resume(owner: presentationID, foreground: scene == .active, protectedData: UIApplication.shared.isProtectedDataAvailable)
         UIApplication.shared.isIdleTimerDisabled = appIsActive && active
         avatar.scene(appIsActive)
         refreshIslandAvatarSurface()
@@ -975,6 +979,7 @@ import VVoiceCore
         audio.clear(); localBargeInEnabled = false; pendingEndID = nil; naturalEnd?.cancel()
     }
     private func stopMedia(keepAudio: Bool = false) {
+        iosActions.invalidate()
         speakerNoticeTask?.cancel(); speakerNoticeTask = nil; speakerNotice = ""; speakerAction = ""
         thinkingNoticeTask?.cancel(); thinkingNoticeTask = nil; thinkingVisible = false
         routeChangeTask?.cancel(); routeChangeTask = nil

@@ -1,5 +1,9 @@
 ## 2026-10-24 — iOS caller identity, direct calendar and stale content notice
 
+## Unreleased
+
+- iOS Use 候选：一个按需加载的 `ios-use` Skill 入口，Notes 系统快捷指令回执、Calendar / Reminders 的真实权限状态与 EventKit 写后读回执行器。基于当前通话设备请求协议；未合入、未发布、未安装真机。
+
 - Persist verified Feishu profile fields into matching, active device grants when the browser prepares a binding. Existing device credentials, expiry and actor permissions remain unchanged.
 - Scope new native destinations by conversation and verified account, preventing the installed App from reusing a guest or different account's saved credential during rebind. Preserve old URLs and cookies.
 - Show the verified account name in the web binding panel. Version `voice-ios-bound-identity.20261024.2`; approved for production release; no Gateway or native binary change.

@@ -83,5 +83,9 @@
 			</array>
 		</dict>
 	</dict>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>在你要求时查询 iPhone 系统日历、创建日程，并在保存后读回核对结果。</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>在你要求时查询或创建提醒事项，并在保存后读回核对结果。</string>
 </dict>
 </plist>

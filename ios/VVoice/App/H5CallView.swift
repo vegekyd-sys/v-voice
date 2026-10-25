@@ -37,6 +37,7 @@ struct H5CallView: View {
             .sheet(item: $sheet, onDismiss: { bindingLink = "" }) { _ in SettingsView(call: call, initialLink: bindingLink) }
             .task { if !call.bound, !call.active, sheet == nil { sheet = .settings } }
             .onOpenURL { url in
+                if call.appleNotes.handle(url, owner: call.presentationID) { return }
                 if let link = VoiceBinding.link(fromDeepLink: url) {
                     bindingLink = link; error = ""; sheet = .settings; return
                 }
