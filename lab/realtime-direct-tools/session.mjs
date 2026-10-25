@@ -265,7 +265,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           if(current(s))s.deviceRequests.receive({...receipt,type:'device.result',version:1,requestId:frame.requestId,voiceSessionId:s.id,operation:frame.operation});
         },()=>{if(current(s))s.deviceRequests.receive({type:'device.result',version:1,requestId:frame.requestId,voiceSessionId:s.id,operation:frame.operation,status:'unknown'});}).finally(()=>localExecutions.delete(frame.requestId));
       };
-      s.deviceRequests=createDeviceRequests({voiceSessionId:s.id,operations:{'location.current':locationOperation,...(typeof deviceOperations==='function'?deviceOperations({voiceSessionId:s.id}):deviceOperations)},capabilities:deviceActions.capabilities,send:sendDevice});
+      s.deviceRequests=createDeviceRequests({voiceSessionId:s.id,operations:{'location.current':locationOperation,...(typeof deviceOperations==='function'?deviceOperations({voiceSessionId:s.id}):deviceOperations)},capabilities:deviceActions.capabilities,send:sendDevice,onState:()=>s.refreshDeviceContext?.()});
       if(deviceActions.capabilities['location.current'])s.location=createDeviceLocation({requests:s.deviceRequests,voiceSessionId:s.id});
     }
     sessions.set(s.id,s);
@@ -490,6 +490,15 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         :new GrokVoiceBridge(owned,{createWebSocket,apiKey:apiKeys.grok,model:grokModel,voice:s.voice,speed:grokSpeed,expressiveTags:grokExpressiveTags});
     };
     s.bridge=makeBridge();
+    let deviceContextText=s.unidentified?'':terminalInstructions(s.terminalContext());
+    s.refreshDeviceContext=()=>{
+      if(!current(s)||s.unidentified)return;
+      const next=terminalInstructions(s.terminalContext());if(next===deviceContextText)return;
+      request.instructions=request.instructions.replace(deviceContextText,next);
+      for(const lane of s.stagedBridges??[])lane.discard();
+      s.bridge.updateTerminalContext(next,deviceContextText);deviceContextText=next;
+      emit(s,{type:'device.context',terminalContext:s.terminalContext()});
+    };
     client.on('message',(data,binary)=>{
       if(!current(s))return;
       if(binary){
@@ -500,7 +509,12 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         }catch(error){emit(s,{type:'error',message:error.message});void close(s.id).catch(()=>{});}
         return;
       }
-      try{const e=JSON.parse(data.toString());if(e.type==='device.result'){s.deviceRequests?.receive(e);return;}if(e.type==='greeting'&&!s.greeted){s.greeted=true;if(s.speakerRouting&&speakerRouting.greet)void speakerRouting.greet(s.id);else s.bridge.triggerGreeting(s.sessionBound?'电话已接通。请用中文向当前会话的通话者简短打个招呼，然后听对方说话。':'电话已接通。请用中文向天懿简短打个招呼，然后听他说话。');}
+      try{const e=JSON.parse(data.toString());if(e.type==='device.capabilities'){
+        if(e.version!==1||e.voiceSessionId!==s.id||!Number.isSafeInteger(e.revision)||e.revision<1||e.revision<=(s.deviceCapabilityRevision??0)||!s.deviceRequests)return;
+        const normalized=normalizeDeviceActions({version:1,capabilities:e.capabilities});
+        if(Object.keys(normalized.capabilities).some(op=>!Object.hasOwn(s.deviceActions.capabilities,op)))return;
+        s.deviceCapabilityRevision=e.revision;s.deviceRequests.updateCapabilities(normalized.capabilities);return;
+      }if(e.type==='device.result'){s.deviceRequests?.receive(e);return;}if(e.type==='greeting'&&!s.greeted){s.greeted=true;if(s.speakerRouting&&speakerRouting.greet)void speakerRouting.greet(s.id);else s.bridge.triggerGreeting(s.sessionBound?'电话已接通。请用中文向当前会话的通话者简短打个招呼，然后听对方说话。':'电话已接通。请用中文向天懿简短打个招呼，然后听他说话。');}
       else if(e.type==='barge-in') {
         // Only a speaker endpoint can mark a barge-in as confirmed speech (device echo cancellation).
         const device=s.surface==='speaker'&&typeof e.deviceId==='string'?e.deviceId:null,confirmed=Boolean(device&&e.confirmed===true);

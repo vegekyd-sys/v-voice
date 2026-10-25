@@ -13,7 +13,7 @@ Baseline ab8ad23. This is implementation progress, not acceptance or deployment.
 - Web + Seed/Grok generic adapter implemented. iOS fast and HTTP negotiation migrated; simulator Debug build succeeded. Native runtime tests and physical-device acceptance remain pending. GPT WebRTC uses Gateway-owned tool declarations and callbacks, so it is **not yet a location-capable path**. It must not be marked all-model accepted; any Gateway tool protocol change requires a separate platform PR. Existing GPT behavior is preserved in this Voice candidate.
 - Shared VLab lease/pending belongs to monitor-v-production; no shared write/restart/stage was performed. Private Candidate only. Physical phone permission/location/lock screen and human speech remain required acceptance, not fixture claims.
 
-- This reusable changeset does not install the iOS Use operations/tool/executor or robot operations/UI. Each lane supplies its adapters; no implementation of an advertised operation means unavailable. Capability permission changes during a live call do not yet refresh frontend model instructions; a new call refreshes declaration. Backend snapshots are rebuilt for each new task/steer, and current-call denial stays blocked. GPT support and live permission-refresh remain explicitly unfinished.
+- This reusable changeset does not install the iOS Use operations/tool/executor or robot operations/UI. Each lane supplies its adapters; no implementation of an advertised operation means unavailable. Revisioned current-call device.capabilities refresh is implemented for browser/iOS and Seed/Grok model context; physical permission-change acceptance remains pending. Backend snapshots are rebuilt for each new task/steer, and current-call denial stays blocked. GPT support and real-device/provider acceptance of live permission-refresh remain explicitly unfinished.
 
 ## Reusable bridge validation (2026-10-25)
 
@@ -22,3 +22,9 @@ Baseline ab8ad23. This is implementation progress, not acceptance or deployment.
 - `npm run check:ios-shell`: exact shell sources and bundle verified.
 - Simulator Debug `xcodebuild` using this lane's explicit project, simulator and DerivedData: BUILD SUCCEEDED. No native runtime-test or physical-phone acceptance claimed for this changeset.
 - No merge, deployment, shared VLab stage/restart, physical-device installation, DiDi dispatch or payment.
+
+## Permission-refresh follow-up (2026-10-25)
+
+- Added revisioned current-call permission updates, no operation expansion, pending-request cancellation on revocation, explicit available-state recovery without replay, same backend/foreground snapshot.
+- Web PermissionStatus observer, iOS CoreLocation callback / foreground refresh. Grok session instruction update and SeedDuplex silent paired history; no injected audio and no automatic new response.
+- Complete npm test: 917 passed; core/browser adapter: 9 passed; simulator Debug BUILD SUCCEEDED. A first new cross-provider fixture used Grok-style call frames on SeedDuplex and failed; corrected to the provider's actual items envelope, then the test and complete suite passed. These remain fixture and build evidence, not live provider or physical-phone permission acceptance.

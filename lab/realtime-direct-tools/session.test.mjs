@@ -1229,3 +1229,27 @@ test('robot adapter and Notes-only capability share one backend channel without 
   f.completeBackend('设备只确认接受，未确认物理动作完成');
  }
 });
+
+test('live permission refresh reaches both model context and backend snapshot without retrying a refused action',async t=>{
+ for(const model of ['grok','seeduplex']){
+  const f=await fixture(undefined,model,{nativeDeviceActions:{version:1,capabilities:{'location.current':{status:'prompt'}}},backendDeviceURL:'http://127.0.0.1:28473/internal/device-request'});t.after(()=>f.service.dispose());
+  const invoke=(name,args,id)=>model==='grok'?f.call(name,args,id):f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+  const update=(status,revision=1,voiceSessionId=f.reservation.voiceSessionId)=>f.client.emit('message',Buffer.from(JSON.stringify({type:'device.capabilities',version:1,voiceSessionId,revision,capabilities:{'location.current':{status}}})),false);
+  const before=f.upstream.sent.filter(e=>e.type==='response.create').length;
+  update('denied');await delay(2);
+  const frames=f.upstream.sent.filter(e=>model==='grok'?e.type==='session.update':e.type==='conversation.item.create');
+  assert.match(JSON.stringify(frames.at(-1)),/location.current.*denied/);
+  invoke('get_current_location',{},'refused-location');await delay(5);assert.equal(f.client.sent.filter(e=>e.type==='device.request').length,0);
+  update('available',1);update('available',2,'foreign');await delay(2);
+  assert.equal(f.client.sent.filter(e=>e.type==='device.context').at(-1).terminalContext.capabilities['location.current'].status,'denied');
+  update('available',2);await delay(2);
+  assert.equal(f.client.sent.filter(e=>e.type==='device.context').at(-1).terminalContext.capabilities['location.current'].status,'available');
+  assert.equal(f.client.sent.filter(e=>e.type==='device.request').length,0);
+  // Only existing tool handling may request a response; capability updates do not.
+  const responses=f.upstream.sent.filter(e=>e.type==='response.create').length;assert(responses>=before);
+  update('denied',3);await delay(2);assert.equal(f.upstream.sent.filter(e=>e.type==='response.create').length,responses);
+  invoke('delegate_to_v',{question:'读取此刻设备权限，不要请求定位'},'permission-context');
+  for(let i=0;i<100&&!f.invocations.some(x=>x.question?.includes('"endpoint"'));i++)await delay(2);
+  assert.match(f.invocations.find(x=>x.question?.includes('"endpoint"')).question,/location.current.*denied/);f.completeBackend('已确认定位权限被拒绝，未取位置');
+ }
+});

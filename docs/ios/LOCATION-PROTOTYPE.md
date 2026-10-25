@@ -1,5 +1,7 @@
 # iPhone 位置 → 当前 V 后台任务（候选）
 
+> 历史记录：以下保留 2026-10-23 第一轮范围。2026-10-25 已迁移至通用 device.request/result、加入 Web 和后台设备通道；当前实现及未验项见 [本轮状态](../capabilities/20261025/integration-status.md) 与 [公共协议](../capabilities/shared-device-contract.md)。旧测试结果不能替代新协议或真实语音验收。
+
 2026-10-23，基于 `origin/main` `5aa8708`，分支 `codex/voice-ios-location`。这是未合入、未部署、未安装真机的本地原型。用户已明确 V 有滴滴 MCP，本候选只负责提供位置，后续出行对话复用原 V 后台任务。没有安装或替换滴滴能力，没有真实叫车或付费模型测试。
 
 ## 已实现的路径
