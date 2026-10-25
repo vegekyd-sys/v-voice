@@ -114,7 +114,7 @@ export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, cl
     if (event.type === 'mcp') {
       const reply = event.payload, waiter = mcpWaiters.get(reply?.id);
       if (!waiter) return;
-      mcpWaiters.delete(reply.id);clearTimer(waiter.timer);
+      mcpWaiters.delete(reply.id);clearTimer(waiter.timer);waiter.cleanup?.();
       if (reply.error || reply.result?.isError) return waiter.reject(Error(String(reply.error?.message ?? reply.result?.content?.[0]?.text ?? '音箱拒绝了这个操作').slice(0, 200)));
       return waiter.resolve(reply.result);
     }
@@ -122,7 +122,7 @@ export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, cl
   });
   ws.on('close', (...args) => {
     closed = true;
-    for (const waiter of mcpWaiters.values()) {clearTimer(waiter.timer);waiter.reject(Error('音箱已断开'));}
+    for (const waiter of mcpWaiters.values()) {clearTimer(waiter.timer);waiter.cleanup?.();waiter.reject(Error('音箱已断开'));}
     mcpWaiters.clear();clearTimer(drainTimer);decoder.delete();encoder.delete();wire.emit('close', ...args);});
   ws.on('error', error => wire.emit('error', error));
   ws.on('pong', (...args) => wire.emit('pong', ...args));
@@ -163,15 +163,28 @@ export function createXiaozhiWire(ws, {now = Date.now, setTimer = setTimeout, cl
     mcpWaiters.set(id, {timer, reject, resolve:() => resolve({volume:level, confirmed:true})});
     sendJson({type:'mcp', payload:{jsonrpc:'2.0', id, method:'tools/call', params:{name:'self.audio_speaker.set_volume', arguments:{volume:level}}}});
   });
-  /** Have a camera device take a photo and ask the vision service the question.
-   * Resolves the tool's text result: the vision endpoint's reply, relayed by the firmware. */
-  if (vision) wire.takePhoto = (question, {timeoutMs = 15000} = {}) => new Promise((resolve, reject) => {
-    if (closed || !helloSeen || ws.readyState !== 1) return reject(Error('机器人尚未连接'));
+  // Internal transport only. Callers must use the robot adapter's allowlist;
+  // arbitrary tool names are never exposed to either model.
+  wire.callTool = (name, args, {timeoutMs = 3000, signal} = {}) => new Promise((resolve, reject) => {
+    if (closed || !helloSeen || ws.readyState !== 1 || signal?.aborted) return reject(Error('device_unavailable'));
+    if (mcpWaiters.size >= 8) return reject(Error('device_busy'));
     const id = ++mcpId;
-    const timer = setTimer(() => {mcpWaiters.delete(id);reject(Error('机器人拍照超时'));}, timeoutMs);
-    mcpWaiters.set(id, {timer, reject, resolve:result => resolve((result?.content ?? []).filter(b => b?.type === 'text').map(b => String(b.text ?? '')).join('\n'))});
-    sendJson({type:'mcp', payload:{jsonrpc:'2.0', id, method:'tools/call', params:{name:'self.camera.take_photo', arguments:{question}}}});
+    const fail = reason => {mcpWaiters.delete(id);clearTimer(timer);cleanup();reject(Error(reason));};
+    const abort = () => fail('request_cancelled');
+    const cleanup = () => signal?.removeEventListener('abort', abort);
+    const timer = setTimer(() => fail('device_timeout'), Math.max(1, Math.min(15000, timeoutMs)));
+    mcpWaiters.set(id, {timer, cleanup, reject, resolve});
+    signal?.addEventListener('abort', abort, {once:true});
+    sendJson({type:'mcp', payload:{jsonrpc:'2.0', id, method:'tools/call', params:{name, arguments:args}}});
   });
+  if (vision) wire.takePhoto = async (question, options) => {
+    const result = await wire.callTool('self.camera.take_photo', {question}, {timeoutMs:15000, ...options}).catch(error => {
+      if(error.message==='device_unavailable')throw Error('机器人尚未连接');
+      if(error.message==='device_timeout')throw Error('机器人拍照超时');
+      throw error;
+    });
+    return (result?.content ?? []).filter(b => b?.type === 'text').map(b => String(b.text ?? '')).join('\n');
+  };
   wire.close = (code, reason) => {if (ws.readyState === 1) ws.close(code, reason);};
   wire.terminate = () => ws.terminate();
   wire.ping = () => ws.ping();

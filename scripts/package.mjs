@@ -25,6 +25,7 @@ names.push('lab/gpt-live-h5/caller-context.mjs','lib/feishu-caller-identity.mjs'
 names.push('lib/backend-device-bundle.mjs','scripts/install-backend-device-bundle.mjs');
 names.push(...run('ls-files','skills').split('\n').filter(Boolean));
 names.push('lib/terminal-context.mjs','lib/device-requests.mjs','lab/gpt-live-h5/device-location.mjs','scripts/device-call.mjs','skills/device-use/SKILL.md');
+names.push('lab/robot/robot-semantics.mjs');
 const target=resolve(process.argv[2]??join(root,'artifacts',commit));
 await mkdir(dirname(target),{recursive:true});
 await mkdir(target,{recursive:false});

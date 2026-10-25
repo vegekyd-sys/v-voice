@@ -904,8 +904,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       const history=await callGateway.request('chat.history',{sessionKey,limit:6},{timeoutMs:10000});
       return voiceConversationContext(history.messages??[]);
     }});
-    // Robot faces pick reactions with a fast classifier; without one they use
-    // conservative keyword rules. Cosmetic only, never on the speech path.
+    // Robot faces reuse the shared H5 semantic selector and map its pose to
+    // hardware renderings. Neutral fallback; cosmetic, never on the speech path.
     const robotEvaluatorFromEnv = async env => {
       if (env.ROBOT_REACTION_PROVIDER === 'deepseek' && env.DEEPSEEK_API_KEY) return (await import('../robot/robot-reactions.mjs')).createDeepSeekChoiceEvaluator({apiKey:env.DEEPSEEK_API_KEY});
       if (env.ROBOT_REACTION_PROVIDER === 'decisions') return avatarEvaluatorFromEnv(env);
