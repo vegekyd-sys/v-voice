@@ -393,7 +393,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         return json(res,401,{error:'请从飞书会话电话入口登录。'});
       }
       const binding = entryBinding ?? await resolveBinding(req,url);
-      if (!binding) return json(res,404,{error:"这个电话入口不存在或已关闭。"});
+      if (!binding) return json(res,iosPublicEntry&&url.searchParams.get('phone')==='public'?401:404,{error:"这个电话入口不存在或已关闭。"});
       const entry = binding.id;
       const access = entryAccess(binding);
       if (phoneLogin?.protects(binding) && !phoneLogin.permits(req, binding) && !iosBindings?.read(req,binding)

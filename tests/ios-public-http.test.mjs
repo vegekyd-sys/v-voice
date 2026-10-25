@@ -12,6 +12,7 @@ const keyA='a'.repeat(43),keyB='b'.repeat(43),origin='https://public.example';
 async function fixture(t,options={}){
  const dir=await mkdtemp(join(tmpdir(),'voice-public-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const file=join(dir,'grants.json'),calls=[];
+ if(options.prepareFile)await options.prepareFile(file);
  const bridge=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'private-entry'.repeat(4),iosBindingsFile:file,iosPublicEntry:true,
   feishuLogin:{conversations:true,allowUnidentified:true,appId:'cli_test',appSecret:'test-secret',accountId:'default',actors:[]},
   gateway:{ready:true,request(){throw Error('Public must not reach private Gateway');}},
@@ -60,4 +61,17 @@ test('same installation survives concurrent bootstrap, service restart and devic
  const principal=reopened.principalFor({headers:{}},'public',{deviceAccess:keyA}),binding=bindingFor(principal.visitorId);
  const id=reopened.list(binding,principal)[0].id;assert.equal(await reopened.revoke(binding,principal,id),true);
  await assert.rejects(reopened.provisionPublic(keyA,bindingFor));
+});
+
+test('expired Public HTTP device grant can renew the same guest using the installation credential',async t=>{
+ let old;
+ const f=await fixture(t,{prepareFile:async file=>{
+  const bindingFor=id=>createUnidentifiedPhoneDirectory({publicEntry:true})({headers:{}},'public',{id});
+  const store=createIosBindings({file,basePath:'/voice',publicOrigin:origin,now:()=>Date.now()-IOS_DEVICE_TTL_MS-1000,permits:()=>true});
+  old=await store.provisionPublic(keyA,bindingFor);
+ }});
+ assert.equal((await f.request('ios-binding/access',{deviceAccess:keyA},'',old.phone)).status,401);
+ const renewed=await f.bootstrap(keyA);assert.equal(renewed.phone,old.phone);
+ const cookie=await f.access(renewed);assert.equal((await f.request('status',undefined,cookie,old.phone)).status,200);
+ assert.equal(JSON.parse(await readFile(f.file,'utf8')).grants.length,1);
 });
