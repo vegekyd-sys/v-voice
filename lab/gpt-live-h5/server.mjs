@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {feishuConfirmationPage} from '../../lib/feishu-card-confirmation.mjs';
 import {voiceAccessContext} from '../../lib/access-context.mjs';
 import {createPublicVoiceGateway} from '../../lib/public-voice-gateway.mjs';
 import {backendDeviceBundleFromEnv} from '../../lib/backend-device-bundle.mjs';
@@ -73,8 +74,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     return guestBinding(req,url.searchParams.get('phone'));
   };
   const guestModel=()=>directVoice?.models().find(m=>m.available&&m.id==='seeduplex')?.id??directVoice?.models().find(m=>m.available)?.id??'seeduplex';
-  const entryPresentation=binding=>({...{accessContext:voiceAccessContext(binding,{publicEnabled:iosPublicEntry,publicTools}),...(iosPublicEntry&&guestAccess?{publicHref:`${basePath}/?phone=public`}:{})},...(binding.permissionProfile==='unidentified'?{unidentified:true,accountLoginHref:binding.id==='public'?null:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&oauth=1`,defaultModel:guestModel(),iosBindingAvailable:hosted,speakerRouting:false,comparisonAvailable:false,
-    models:[{id:'gpt-live',label:'GPT Live One',available:false},...(directVoice?.models()??[])]}:binding.callerIdentity?{accountLabel:binding.callerIdentity.displayName||'飞书账号已连接',accountLoginHref:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&retry=1`}:{})});
+  const entryPresentation=binding=>({...{accessContext:voiceAccessContext(binding,{publicEnabled:iosPublicEntry,publicTools}),...(iosPublicEntry&&guestAccess?{publicHref:`${basePath}/?phone=public`}:{})},...(binding.permissionProfile==='unidentified'?{unidentified:true,accountLoginHref:binding.id==='public'?null:phoneLogin?.confirmation?`${basePath}/feishu/confirm?phone=${encodeURIComponent(binding.id)}`:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&oauth=1`,defaultModel:guestModel(),iosBindingAvailable:hosted,speakerRouting:false,comparisonAvailable:false,
+    models:[{id:'gpt-live',label:'GPT Live One',available:false},...(directVoice?.models()??[])]}:binding.callerIdentity?{accountLabel:binding.callerIdentity.displayName||'飞书账号已连接',accountLoginHref:phoneLogin?.confirmation?`${basePath}/feishu/confirm?phone=${encodeURIComponent(binding.id)}`:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&retry=1`}:{})});
   const callReports=createConversationCalls({gateway,directory:callReportsDirectory,publicOrigin,basePath,summarize:callSummarize,audit:callControlAudit});
   const accessors = new Map();
   const entryAccess = binding => {
@@ -323,6 +324,14 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         return devicePathname === deviceEndpoint.otaPath ? deviceEndpoint.handleOta(req, res) : deviceEndpoint.handleVision(req, res);
       }
       if (hosted ? host !== origin.host : !/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host)) return json(res, 403, { error: "请求入口不匹配" });
+      // Server-to-server callback authenticates its exact bytes independently;
+      // browser Origin exceptions apply to this one path only.
+      if(phoneLogin?.confirmation&&req.method==='POST'&&new URL(req.url,'http://voice.invalid').pathname===`${basePath}/feishu/confirm/callback`){
+        if(req.headers.origin)return json(res,403,{error:'身份回调无效'});
+        let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>4096)return json(res,413,{error:'身份回调过大'});}
+        try{return json(res,200,await phoneLogin.confirmation.callback(raw,req.headers['x-voice-confirm-signature']));}
+        catch{return json(res,403,{error:'身份确认无效或已过期'});}
+      }
       const requestOrigin = hosted ? publicOrigin : `http://${host}`;
       if (req.headers.origin && req.headers.origin !== requestOrigin || hosted && req.method === "POST" && req.headers.origin !== requestOrigin) return json(res, 403, { error: "请求来源不匹配" });
       const url = new URL(req.url, requestOrigin);
@@ -363,6 +372,31 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       // Old group links are aliases, never a source of a caller's personal identity.
       const originalPhone=url.searchParams.get('phone'),devicePhone=iosBindings?.canonicalPhone(originalPhone)??originalPhone,canonicalPhone=phoneLogin?.canonicalPhone(devicePhone)??devicePhone;
       if(canonicalPhone&&canonicalPhone!==originalPhone)url.searchParams.set('phone',canonicalPhone);
+      if(phoneLogin?.confirmation&&pathname==='/feishu/confirm'&&req.method==='GET'){
+        const ip=String(req.headers['cf-connecting-ip']??req.socket.remoteAddress??'unknown').slice(0,128);
+        if(!allow('feishu-confirm:'+ip))return json(res,429,{error:'请求较多，请稍后重试。'});
+        try{
+          const setup=phoneLogin.confirmation.prepare(req,res,canonicalPhone);
+          const confirmationCookie=res.getHeader('set-cookie');phoneLogin.clearIdentity(res);res.setHeader('set-cookie',[confirmationCookie,res.getHeader('set-cookie')]);
+          res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','x-frame-options':'DENY','content-security-policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"});
+          res.end(feishuConfirmationPage({...setup,basePath,phone:canonicalPhone}));return;
+        }catch{return json(res,400,{error:'请从原飞书会话重新打开电话。'});}
+      }
+      if(phoneLogin?.confirmation&&['/feishu/confirm/start','/feishu/confirm/status'].includes(pathname)&&req.method==='POST'){
+        let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>512)return json(res,413,{error:'请求过大'});}
+        let body;try{body=JSON.parse(raw);}catch{return json(res,400,{error:'请求无效'});}
+        if(!body||Object.keys(body).length!==1||typeof body.state!=='string')return json(res,400,{error:'请求无效'});
+        try{
+          if(pathname.endsWith('/start')){
+            const result=await phoneLogin.confirmation.start(req,body.state);
+            phoneLogin.clearIdentity(res);
+            return json(res,200,result);
+          }
+          const result=await phoneLogin.confirmation.poll(req,res,body.state);
+          if(result.binding)issueVisitor(res,result.binding);
+          return json(res,200,{status:result.status,...(result.location?{location:result.location}:{})});
+        }catch(error){return json(res,error.message==='confirmation_rate_limited'?429:403,{error:error.message==='confirmation_rate_limited'?'此会话刚收到确认请求，请稍后重试。':'连接请求无效或已过期，请重新打开电话页面。'});}
+      }
       let entryVisitor = null, entryBinding = null, clientLoginConfig = null;
       const handoffBinding=phoneLogin&&pathname==='/feishu'?phoneLogin.consumeHandoff(req,url.searchParams.get('phone'),url.searchParams.get('identified')):null;
       if(phoneLogin&&pathname==='/feishu/client-login'&&req.method==='POST') {
