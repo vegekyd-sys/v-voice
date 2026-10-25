@@ -50,6 +50,15 @@ import VVoiceCore
         XCTAssertEqual(point?["horizontalAccuracyM"] as? Double, 15)
         XCTAssertEqual(result["pickupConfirmed"] as? Bool, false)
     }
+    func testDeviceContextSidebandDoesNotCloseNativeRuntimeCall() async throws {
+        let location = TestLocation(), call = try await client(location)
+        let owner = call.presentationID
+        _ = try await command(["command":"location-frame", "frame":["type":"device.context", "terminalContext":["version":1, "capabilities":["location.current":["status":"denied"]]]]])
+        try await Task.sleep(for:.milliseconds(150))
+        XCTAssertTrue(call.active); XCTAssertEqual(call.presentationID,owner); XCTAssertEqual(location.requests,0)
+        let result = try await command(["command":"location"])
+        XCTAssertEqual(result["ok"] as? Bool,true); XCTAssertTrue(call.active)
+    }
     func testForeignCallCannotRequestLocation() async throws {
         let location = TestLocation(), call = try await client(location)
         let id = UUID().uuidString
