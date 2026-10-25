@@ -666,14 +666,23 @@
   },
   "testFlightCandidate38": {
     "build": 38,
-    "status": "preparing_testflight",
+    "status": "external_beta_review_pending",
     "record": "../releases/ios-testflight38-20261025/release.json",
     "stableBaselineBuild": 32,
     "physicalAcceptance": "pending_user_TestFlight_test",
     "scope": [
       "PR88 icon startup fix",
       "PR134 on-demand location"
-    ]
+    ],
+    "sourceCommit": "bcd0afa41f0a2387bfa8dd3255bf4b24fbd52b88",
+    "ipaSHA256": "3c50ccdadb45f23c02861e35a04758315e745d911f0045a34acf1ed0b70f0b1e",
+    "buildID": "5ec015a6-1a07-4229-9d57-8de07646da9a",
+    "processingState": "VALID",
+    "testFlightInstallable": false,
+    "installedOnRequestedIPhone": false,
+    "internalBuildState": "IN_BETA_TESTING",
+    "externalBuildState": "WAITING_FOR_BETA_REVIEW",
+    "betaReviewState": "WAITING_FOR_REVIEW"
   },
   "publicSettingsCandidate": {
     "version": "voice-ios-public.20261025.2",
