@@ -330,7 +330,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if(req.headers.origin)return json(res,403,{error:'身份回调无效'});
         let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>4096)return json(res,413,{error:'身份回调过大'});}
         try{return json(res,200,await phoneLogin.confirmation.callback(raw,req.headers['x-voice-confirm-signature']));}
-        catch{return json(res,403,{error:'身份确认无效或已过期'});}
+        catch(error){console.warn(JSON.stringify({type:'voice.card-confirmation-rejected',reason:error.confirmationReason??'unavailable'}));return json(res,403,{error:'身份确认无效或已过期'});}
       }
       const requestOrigin = hosted ? publicOrigin : `http://${host}`;
       if (req.headers.origin && req.headers.origin !== requestOrigin || hosted && req.method === "POST" && req.headers.origin !== requestOrigin) return json(res, 403, { error: "请求来源不匹配" });
