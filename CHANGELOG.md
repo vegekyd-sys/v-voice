@@ -4,8 +4,6 @@
 - 保留旧入口/当前选择，显示可信账号标签；显式移除本机额外入口，当前入口移除后回 Public。
 - 通话期间保留 owner；首次系统权限可转前台，已授权操作按钮仍支持后台。
 - 服务端默认关闭 `VOICE_IOS_PUBLIC_ENTRY`；Candidate 与正式部署/真机验收分开登记。
-- 按本次授权开放 Public 公网搜索、访客自己的持久记忆及后台任务；工具/身份策略位于独立平台模块，Voice 只传服务端已验证的设备租约。
-- 后台任务挂断继续、重连查询原任务，重放不重复执行，授权失效取消；不引入个人 Gateway 或私人账号工具。
 
 ## 2026-10-24 — iOS caller identity, direct calendar and stale content notice
 

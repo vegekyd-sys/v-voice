@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import {loadPublicGuestRuntime} from '../../lib/public-guest-runtime.mjs';
 import {feishuCallerIdentityInstructions} from '../../lib/feishu-caller-identity.mjs';
 import {createReleaseGate, readRelease, listenReleaseControl} from '../../lib/release-control.mjs';
 import {controlVoiceTask} from '../../lib/voice-task-control.mjs';
@@ -30,7 +29,7 @@ import {voiceConversationContext} from '../realtime-direct-tools/conversation-co
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicGuestRuntime, iosAppDownloadUrl, callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, iosAppDownloadUrl, callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null }) {
   if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
   if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
   basePath = basePath.replace(/\/$/u, "");
@@ -54,7 +53,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     if(phone&&phone!==url.searchParams.get('phone')){url=new URL(url);url.searchParams.set('phone',phone);}
     if(url.searchParams.get('phone')==='public'){
       const principal=iosBindings?.principalFor(req,'public',req.iosExchangeBody);
-      return iosPublicEntry&&principal?.type==='guest'?withPublicBackend(req,guestBinding(req,'public',{id:principal.visitorId})):null;
+      return iosPublicEntry&&principal?.type==='guest'?guestBinding(req,'public',{id:principal.visitorId}):null;
     }
     try {
       const device=parseFeishuConversationPhone(url.searchParams.get('phone'))&&iosBindings?.principalFor(req,url.searchParams.get('phone'),req.iosExchangeBody);
@@ -84,13 +83,6 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     if(principal?.type==='feishu')return phoneLogin?.actorPermits(principal,binding)===true;
     return principal?.type==='entry'&&!phoneLogin?.protects(binding)&&principal.entry===binding.id;
   }}):null;
-  const withPublicBackend=(req,binding)=>{
-    if(!binding||!publicGuestRuntime)return binding;
-    const lease=iosBindings.read(req,binding);if(!lease?.deviceId)return binding;
-    const scoped=publicGuestRuntime.bind({visitorId:binding.visitorId,leaseId:lease.deviceId,
-      isAuthorized:()=>iosBindings.read(req,binding)?.deviceId===lease.deviceId});
-    return Object.freeze({...binding,gateway:scoped});
-  };
   const readVisitor=(req,binding)=>{
     const visitor=entryAccess(binding)?.read(req);
     return visitor&&(binding.permissionProfile!=='unidentified'||visitor.id===binding.visitorId)?visitor:iosBindings?.read(req,binding)??null;
@@ -814,7 +806,6 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     for(const delivery of nativeTaskOwners)delivery.dispose();nativeTaskOwners.clear();nativeTasks.clear();
     for(const client of dialSockets.clients)client.terminate();dialSockets.close();
     await directVoice?.dispose({drain});
-    await publicGuestRuntime?.dispose?.();
     await iosBindings?.flush();await callReports.flush();
     speakerRouting?.dispose();
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
@@ -907,7 +898,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       callReportsDirectory:process.env.VOICE_CALL_REPORTS_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-call-reports'),
       iosAppDownloadUrl:process.env.VOICE_IOS_APP_DOWNLOAD_URL,
       iosPublicEntry:process.env.VOICE_IOS_PUBLIC_ENTRY==='1',
-      publicGuestRuntime:await loadPublicGuestRuntime(),
       iosBindingsFile:process.env.VOICE_IOS_BINDINGS_FILE??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-ios-bindings.private.json'),
       feishuLogin: process.env.VOICE_FEISHU_LOGIN_FILE ? await readFeishuPhoneLoginFile(process.env.VOICE_FEISHU_LOGIN_FILE) : undefined,
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",

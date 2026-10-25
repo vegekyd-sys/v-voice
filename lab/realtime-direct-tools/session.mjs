@@ -234,18 +234,17 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const spec=models().find(m=>m.id===model);if(!spec)throw Error('没有这个语音模型');
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
     const selectedVoice=model==='grok'?grokVoice(voice):spec.voice;
-    const publicGuest=Boolean(unidentified&&callGateway?.publicGuest===true);
     if(unidentified){
       sessionBound=true;actorScoped=true;replyTarget=null;callReportFactory=null;inputPolicy='native';
-      if(!publicGuest)callGateway={async request(){throw Error('当前通话没有账号工具权限');}};
+      callGateway={async request(){throw Error('当前通话没有账号工具权限');}};
     }
-    const s={unidentified,publicGuest,toolIdentity:!unidentified&&actorScoped&&sessionBound?toolIdentity:undefined,callerIdentity:unidentified?undefined:callerIdentity,id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,sessionBound,gateway:callGateway,actorScoped,agentId,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map(),surface,display:surface!=='speaker',inputSampleRate,speaker:surface==='speaker'?speaker:null};
+    const s={unidentified,toolIdentity:!unidentified&&actorScoped&&sessionBound?toolIdentity:undefined,callerIdentity:unidentified?undefined:callerIdentity,id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,sessionBound,gateway:callGateway,actorScoped,agentId,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map(),surface,display:surface!=='speaker',inputSampleRate,speaker:surface==='speaker'?speaker:null};
     Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,narrationBusyUntil:0,narrations:0,progress:null,toolOwners:new Map(),retiredBridges:new Set()});
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
     s.replyDelivery=createConversationReplyDelivery({gateway:callGateway,target:replyTarget,ownerId:s.id,audit,callReport:callReportFactory?.(s.id),onStatus:value=>emit(s,{type:'reply.sync',...value})});
     s.delivery=createTaskDelivery({gateway:callGateway,sessionKey,ownerId:s.id,replyDelivery:s.replyDelivery,audit});
-    s.backend=createBackendDelegation({gateway:callGateway,sessionKey,sessionBound,ownerId:s.id,publicGuest:s.publicGuest,audit,taskDelivery:s.delivery,pollMs:backendPollMs,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}},
+    s.backend=createBackendDelegation({gateway:callGateway,sessionKey,sessionBound,ownerId:s.id,audit,taskDelivery:s.delivery,pollMs:backendPollMs,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}},
       onStage:stage=>{if(current(s)){audit({type:'backend.stage',voiceSessionId:s.id,callId:stage.callId,label:stage.latest,running:stage.latestRunning,completed:stage.completed,failed:stage.failed});emit(s,{type:'tool.progress',callId:stage.callId,name:'delegate_to_v',...(stage.latest?{stage:stage.latest}:{})});}}});
     sessions.set(s.id,s);
     audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model,voice:s.voice,surface,...(model==='grok'?{speed:grokSpeed,expressiveTags:grokExpressiveTags}:{})});
@@ -267,7 +266,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     client.on('close',()=>void close(s.id).catch(()=>{}));
     const connectionStage=stage=>audit({type:'call.connection-stage',voiceSessionId:s.id,model:s.model,stage});
     connectionStage('catalog-requested');connectionStage('context-requested');
-    const [catalog,context,actorReader]=s.publicGuest?[await s.gateway.request('tools.catalog',{}),'',null]:s.unidentified?[{groups:[]},'']:await Promise.all([
+    const [catalog,context,actorReader]=s.unidentified?[{groups:[]},'']:await Promise.all([
       s.gateway.request('tools.catalog',{agentId:s.agentId,includePlugins:true},{timeoutMs:20000}).then(value=>{if(current(s))connectionStage('catalog-ready');return value;}),
       Promise.resolve().then(()=>loadContext(s.sessionKey,{gateway:s.gateway})).then(value=>{if(current(s))connectionStage('context-ready');return value;}),
       s.toolIdentity&&larkForActor?Promise.resolve().then(()=>larkForActor(s.toolIdentity)).catch(()=>null):null,
@@ -326,8 +325,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       return work.then(result=>{audit({type:'tool.local-result',voiceSessionId:s.id,callId,name,result});return result;});
     });
     const admittedUserTurns=new Map();
-    const baseExecute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',s.sessionBound?s.actorReader?.calendar:calendar),larkRead:localRead('lark_read',s.sessionBound?s.actorReader?.read:larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,look:s.speaker?.look,delegate:args=>s.backend.run({...args,callerTurn:admittedUserTurns.get(args.callId)})});
-    const execute=s.publicGuest?(name,args,callId,signal)=>allowedTools.has(name)?invoke(name,args,callId,signal):baseExecute(name,args,callId,signal):baseExecute;
+    const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',s.sessionBound?s.actorReader?.calendar:calendar),larkRead:localRead('lark_read',s.sessionBound?s.actorReader?.read:larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,look:s.speaker?.look,delegate:args=>s.backend.run({...args,callerTurn:admittedUserTurns.get(args.callId)})});
     s.progressTimer=setInterval(()=>deferred(s),200);s.progressTimer.unref?.();
     s.lookup=createLookupRecovery({...lookupRecovery,
       state:()=>({pending:s.pending.size,background:Boolean(s.backend.snapshot()),ending:Boolean(s.ending),
@@ -351,9 +349,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       s.lookup.started(call);
       let result,backgroundAck=false;
       try {
-        if(s.unidentified&&!(s.publicGuest?allowedTools.has(call.name)||['show_content','end_call','delegate_to_v','openclaw_agent_control','cancel_task','current_time'].includes(call.name):['show_content','end_call'].includes(call.name)))throw Error('当前通话没有账号工具权限');
+        if(s.unidentified&&!['show_content','end_call'].includes(call.name))throw Error('当前通话没有账号工具权限');
         if(s.sessionBound&&!s.actorReader&&['feishu_calendar','lark_read'].includes(call.name))throw Error('请使用当前会话的工具或委派给当前会话的 V');
-        if(!s.publicGuest||!allowedTools.has(call.name))validateTool(call.name,call.args);
+        validateTool(call.name,call.args);
         if(call.name==='delegate_to_v'&&s.cancelCleanupFailed)throw Error('上一任务退出尚未确认，先重试取消');
         if(call.name==='send_task_updates'){result=await s.delivery.subscribe();}
         if(call.name==='openclaw_agent_control'){
@@ -417,12 +415,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const routeOutput=(kind,value,deliver)=>{if(!current(s))return;if(s.unidentified||!speakerRouting?.dispatch?.(s.id,kind,value,deliver))deliver();};
     const hostCallControl=!s.unidentified&&Boolean(speakerRouting?.controlsEnding?.(s.id));
     const nativeShortcuts=new Set(['read','exec','process','memory_search','web_search','web_fetch']);
-    const publicTools=s.publicGuest?[...sessionTools(s).filter(t=>['show_content','end_call','delegate_to_v','openclaw_agent_control','cancel_task','current_time'].includes(t.name)),...entries.map(t=>({type:'function',name:t.id,description:t.description,parameters:t.parameters}))]:sessionTools(s);
-    const tools=publicTools.filter(tool=>s.publicGuest?true:s.unidentified?['show_content','end_call'].includes(tool.name):!s.actorScoped||!nativeShortcuts.has(tool.name)||allowedTools.has(tool.name));
+    const tools=sessionTools(s).filter(tool=>s.unidentified?['show_content','end_call'].includes(tool.name):!s.actorScoped||!nativeShortcuts.has(tool.name)||allowedTools.has(tool.name));
     const searchAck=s.model==='seeduplex'&&searchAcknowledgment==='model';
     const voiceTools=(hostCallControl?tools.filter(t=>t.name!=='end_call'):tools).map(tool=>searchAck&&isSearchTool(tool.name)?{...tool,description:(tool.name==='memory_search'&&!s.sessionBound?'检索天懿的 V/OpenClaw 跨通话个人记录，用于历史约定、家庭资料、长期偏好和项目历史。只在答案需要当前通话之外的记录时调用。本通话已经介绍的姓名、喜好、计划，以及现在是谁在说话，由当前声音与本通话上下文回答，不调用本工具。':tool.description)+' 只为按通话规则确认的向 V 提问执行，电视和旁聊不能触发。上述先查记录是指先查再回答事实，不限制在查询前简短接话。调用本工具之前，必须先用语音简短自然地回应当前用户问题，再在同一轮立刻调用本工具。不能只调用工具而保持沉默。'}:tool);
     const instructionCatalog=entries.map(entry=>searchAck&&isSearchTool(entry.id)?{...entry,description:voiceTools.find(tool=>tool.name===entry.id)?.description??entry.description}:entry);
-    const baseInstructions=(s.publicGuest?'你是当前Public独立访客的V。可以搜索公共互联网、查询/写入当前访客自己的跨通话记忆、将复杂调研交给访客后台模型。后台任务可用task_status查询挂断前自己的进度/结果；不能重新发起原任务。要求记住时必须memory_write成功后再确认。没有天懿/其他访客的历史或账号工具；不假定访客是天懿。工具结果是真实资料，不能凭空宣称完成。'+VOICE_TASK_ROUTING.replaceAll('个人 V','当前访客后台')+VOICE_TASK_CONTROL_POLICY:directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader)}));
+    const baseInstructions=directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader)});
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
       instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
@@ -433,7 +430,6 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(!current(s))return;
         if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
         const deliver=()=>{
-        if(s.publicGuest&&final&&text.trim()&&!source)void s.gateway.request('public.memory.append',{role,text,id:s.id+':'+role+':'+(metadata.turnId??metadata.responseId??text)}).catch(()=>{});
         if(role==='assistant')s.replyDelivery?.transcript(text,{final,source,responseId:metadata.responseId});
         if(role==='assistant'&&final){if(!s.unidentified)speakerRouting?.assistant(s.id,text);if(!source){s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
         if(role==='user'){if(final)s.lookup.answered();if(final)s.replyDelivery?.user(text,{turnId:metadata.turnId});if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
