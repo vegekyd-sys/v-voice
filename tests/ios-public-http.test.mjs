@@ -13,7 +13,7 @@ async function fixture(t,options={}){
  const dir=await mkdtemp(join(tmpdir(),'voice-public-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const file=join(dir,'grants.json'),calls=[];
  if(options.prepareFile)await options.prepareFile(file);
- const bridge=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'private-entry'.repeat(4),iosBindingsFile:file,iosPublicEntry:true,
+ const bridge=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'private-entry'.repeat(4),iosBindingsFile:file,iosPublicEntry:true,publicTools:false,
   feishuLogin:{conversations:true,allowUnidentified:true,appId:'cli_test',appSecret:'test-secret',accountId:'default',actors:[]},
   gateway:{ready:true,request(){throw Error('Public must not reach private Gateway');}},
   directVoice:{models:()=>[{id:'seeduplex',available:true,nativeTransport:'pcm-relay'}],reserve:async args=>{calls.push(args);return {voiceSessionId:'public-'+calls.length,transport:'gateway-relay',provider:'seeduplex',relayTicket:'test'};},close:async()=>{},dispose:async()=>{}},...options});
@@ -74,4 +74,15 @@ test('expired Public HTTP device grant can renew the same guest using the instal
  const renewed=await f.bootstrap(keyA);assert.equal(renewed.phone,old.phone);
  const cookie=await f.access(renewed);assert.equal((await f.request('status',undefined,cookie,old.phone)).status,200);
  assert.equal(JSON.parse(await readFile(f.file,'utf8')).grants.length,1);
+});
+
+
+test('Public tools attach only after the server verifies its device grant',async t=>{
+ const calls=[];const f=await fixture(t,{publicTools:true,gateway:{ready:true,request:async(method,params)=>{calls.push({method,params});return {groups:[]};}}});
+ const a=await f.bootstrap(keyA),b=await f.bootstrap(keyB),ca=await f.access(a),cb=await f.access(b);
+ assert.equal((await f.request('session',{model:'seeduplex',sessionKey:'private',publicVoice:true},ca,a.phone)).status,200);
+ assert.equal(f.calls[0].gateway.publicVoice,true);
+ await f.calls[0].gateway.request('tools.catalog');assert.equal(calls.length,1);
+ await assert.rejects(f.calls[0].gateway.request('send',{}),/unavailable/);
+ assert.notEqual((await f.request('status',undefined,cb,a.phone)).status,200);
 });

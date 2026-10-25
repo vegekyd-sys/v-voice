@@ -19,6 +19,7 @@ import VVoiceCore
         let publicService = ProcessInfo.processInfo.environment["VVOICE_LATENCY_PUBLIC_SERVICE"]
         let expectedReply = ProcessInfo.processInfo.environment["VVOICE_PUBLIC_EXPECTED_REPLY"]
         let expectedContent = ProcessInfo.processInfo.environment["VVOICE_PUBLIC_EXPECTED_CONTENT"]
+        let publicObserveSeconds = min(120, max(16, Int(ProcessInfo.processInfo.environment["VVOICE_PUBLIC_OBSERVE_SECONDS"] ?? "16") ?? 16))
         let isolated = fixturePath != nil || publicService != nil
         let store = BindingStore(service: isolated ? "com.versa.vvoice.latency.\(UUID().uuidString)" : "com.versa.vvoice.personal-entry")
         defer { if isolated { store.remove() } }
@@ -106,7 +107,7 @@ import VVoiceCore
         for index in 1...(publicService == nil ? 3 : 1) {
             attempt = index; offset = 0
             CallDiagnostics.record("latency.input-start", code: "attempt=\(attempt)")
-            try await Task.sleep(for: .seconds(16))
+            try await Task.sleep(for: .seconds(publicService == nil ? 16 : publicObserveSeconds))
         }
         CallDiagnostics.record("latency.live-test-done", code: "receivedBytes=\(receivedBytes) failed=\(failure != nil)")
         XCTAssertNil(failure); XCTAssertGreaterThan(receivedBytes, 0)
