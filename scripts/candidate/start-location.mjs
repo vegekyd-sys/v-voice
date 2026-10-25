@@ -1,9 +1,10 @@
 // Run on V only. Starts an isolated Voice process; existing Gateway is read-only
 // configuration and the normal backend task executor. No call is placed here.
-import fs from 'node:fs';import path from 'node:path';import net from 'node:net';import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';import fs from 'node:fs';import path from 'node:path';import net from 'node:net';import {execFileSync} from 'node:child_process';
 const root=path.resolve(process.argv[2]??'');
 if(!root.startsWith('/var/lib/v-voice-candidates/location-')||!fs.existsSync(root+'/voice/manifest.json'))throw Error('Expected own private Candidate artifact');
 const manifest=JSON.parse(fs.readFileSync(root+'/voice/manifest.json','utf8'));
+for(const file of manifest.files){const target=path.resolve(root+'/voice',file.path);if(!target.startsWith(root+'/voice/')||createHash('sha256').update(fs.readFileSync(target)).digest('hex')!==file.sha256)throw Error('Candidate artifact hash mismatch');}
 const run=(cmd,args)=>execFileSync(cmd,args,{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
 const unit='voice-location-20261025',sourceUnit='openclaw-rtc-h5.service',port=28473;
 let running=false;try{running=run('systemctl',['is-active',unit+'.service'])==='active';}catch{}if(running)throw Error('Own Candidate already running');
