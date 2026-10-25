@@ -53,7 +53,7 @@ import VVoiceCore
     func testForeignCallCannotRequestLocation() async throws {
         let location = TestLocation(), call = try await client(location)
         let id = UUID().uuidString
-        let frame: [String: Any] = ["type":"device.location.request", "version":1, "requestId":id, "expiresAt":Date().timeIntervalSince1970*1000+20_000]
+        let frame: [String: Any] = ["type":"device.request", "operation":"location.current", "version":1, "requestId":id, "deadline":Date().timeIntervalSince1970*1000+20_000]
         _ = try await command(["command":"location-frame", "frame":frame.merging(["voiceSessionId":"foreign-call"]) { _, new in new }])
         // A foreign frame is rejected by RelayTransport before capability handling.
         try await Task.sleep(for: .milliseconds(150))
@@ -65,10 +65,10 @@ import VVoiceCore
         let (data, _) = try await URLSession.shared.data(from: base.appendingPathComponent("fixture/state"))
         let owner = (try JSONSerialization.jsonObject(with:data) as! [String:Any])["active"] as! String
         let id = UUID().uuidString
-        var frame: [String:Any] = ["type":"device.location.request", "version":1, "requestId":id, "voiceSessionId":owner, "expiresAt":Date().timeIntervalSince1970*1000-1]
+        var frame: [String:Any] = ["type":"device.request", "operation":"location.current", "version":1, "requestId":id, "voiceSessionId":owner, "deadline":Date().timeIntervalSince1970*1000-1]
         _ = try await command(["command":"location-frame", "frame":frame])
         try await Task.sleep(for:.milliseconds(100)); XCTAssertEqual(location.requests,0)
-        frame["expiresAt"] = Date().timeIntervalSince1970*1000+20_000
+        frame["deadline"] = Date().timeIntervalSince1970*1000+20_000
         _ = try await command(["command":"location-frame", "frame":frame])
         try await Task.sleep(for:.milliseconds(100)); XCTAssertEqual(location.requests,1)
         _ = try await command(["command":"location-frame", "frame":frame])

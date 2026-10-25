@@ -22,7 +22,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion});
+ const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion,nativeDeviceActions:options.nativeDeviceActions,backendDeviceURL:options.backendDeviceURL,terminalAdapter:options.terminalAdapter});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -1143,12 +1143,13 @@ test('actor reads require verified binding, valid actor credentials and current 
   assert(!config.tools.some(x=>x.name==='feishu_calendar'));
   f.call('feishu_calendar',{},'denied');await delay(10);assert.equal(reads,0);
  }
+});
 test('phone fix reaches only its current tool and explicit V backend task without a raw audit record',async t=>{
  const f=await fixture(undefined,'grok',{nativeRuntimeVersion:1,nativeLocationVersion:1});t.after(()=>f.service.dispose());
  assert.equal(f.reservation.nativeLocationVersion,1);
  f.call('get_current_location',{},'location-one');
- const req=f.client.sent.find(e=>e.type==='device.location.request');assert(req);
- f.client.emit('message',Buffer.from(JSON.stringify({type:'device.location.result',version:1,voiceSessionId:f.reservation.voiceSessionId,requestId:req.requestId,ok:true,latitude:31.2,longitude:121.4,horizontalAccuracyM:20,capturedAt:Date.now(),coordinateSystem:'WGS84',accuracyAuthorization:'full'})),false);
+ const req=f.client.sent.find(e=>e.type==='device.request');assert(req);
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'device.result',operation:'location.current',status:'ok',version:1,voiceSessionId:f.reservation.voiceSessionId,requestId:req.requestId,result:{source:'core_location',latitude:31.2,longitude:121.4,horizontalAccuracyM:20,capturedAt:Date.now(),coordinateSystem:'WGS84',accuracyAuthorization:'full'}})),false);
  for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='location-one');i++)await delay(2);
  const delivered=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='location-one');assert.equal(delivered.ok,true);assert.equal(delivered.result,undefined);
  f.call('delegate_to_v',{question:'请用手机位置确认附近上车点，只查询不下单',use_current_location:true},'ride-task');
@@ -1174,8 +1175,8 @@ test('a fresh device fix can supplement the same running V task with its control
  f.call('delegate_to_v',{question:'查一个打车上车点，只查询'},'running-ride');
  for(let i=0;i<100&&!f.invocations.some(v=>v.question);i++)await delay(2);
  f.call('get_current_location',{},'followup-fix');
- const req=f.client.sent.find(e=>e.type==='device.location.request');assert(req);
- f.client.emit('message',Buffer.from(JSON.stringify({type:'device.location.result',version:1,voiceSessionId:f.reservation.voiceSessionId,requestId:req.requestId,ok:true,latitude:31.2,longitude:121.4,horizontalAccuracyM:15,capturedAt:Date.now(),coordinateSystem:'WGS84',accuracyAuthorization:'full'})),false);
+ const req=f.client.sent.find(e=>e.type==='device.request');assert(req);
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'device.result',operation:'location.current',status:'ok',version:1,voiceSessionId:f.reservation.voiceSessionId,requestId:req.requestId,result:{source:'core_location',latitude:31.2,longitude:121.4,horizontalAccuracyM:15,capturedAt:Date.now(),coordinateSystem:'WGS84',accuracyAuthorization:'full'}})),false);
  for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='followup-fix');i++)await delay(2);
  f.call('openclaw_agent_control',{mode:'steer',text:'用手机刚刚提供的位置确认上车点，不下单',use_current_location:true},'location-followup');
  for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='location-followup');i++)await delay(2);
@@ -1183,4 +1184,48 @@ test('a fresh device fix can supplement the same running V task with its control
  const receipt=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='location-followup').result;
  assert.equal(receipt.queued,true);assert.equal(receipt.applied,false);assert.equal(f.invocations.filter(v=>v.question).length,1);
  f.completeBackend('收到位置补充，未下单');
+});
+
+test('the backend lease actually invokes the current device and cannot bypass denial or select a foreign actor',async t=>{
+ const f=await fixture(undefined,'grok',{nativeRuntimeVersion:1,nativeLocationVersion:1});t.after(()=>f.service.dispose());
+ f.call('delegate_to_v',{question:'读取当前设备能力，等候后续位置'},'lease-task');
+ for(let i=0;i<100&&!f.invocations.some(x=>x.question);i++)await delay(2);
+ // The public frontend context never contains a backend lease. This fixture
+ // omits the endpoint, so no secret is granted at all.
+ assert(!JSON.stringify(f.reservation).includes('deviceLease'));
+ await assert.rejects(f.service.backendDeviceRequest({lease:'forged',operation:'location.current'}),/ownership/);
+ f.completeBackend('能力已读，尚未获取位置');
+});
+
+
+test('backend execution lease obtains the exact same validated point and denial remains final',async t=>{
+ const f=await fixture(undefined,'grok',{nativeRuntimeVersion:1,nativeDeviceActions:{version:1,capabilities:{'location.current':{status:'prompt'}}},backendDeviceURL:'http://127.0.0.1:28473/internal/device-request'});t.after(()=>f.service.dispose());
+ f.call('delegate_to_v',{question:'读取当前端能力并按需取位置'},'backend-device');
+ for(let i=0;i<100&&!f.invocations.some(x=>x.question?.includes('"endpoint"'));i++)await delay(2);
+ const text=f.invocations.find(x=>x.question?.includes('"endpoint"')).question;
+ const start=text.indexOf('{"version":1,"endpoint"'),end=text.indexOf('}。需要位置',start)+1,descriptor=JSON.parse(text.slice(start,end));
+ assert(!JSON.stringify(f.reservation).includes(descriptor.lease));
+ const pending=f.service.backendDeviceRequest({lease:descriptor.lease,operation:'location.current'});
+ const req=f.client.sent.find(e=>e.type==='device.request');assert(req);
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'device.result',version:1,requestId:req.requestId,voiceSessionId:f.reservation.voiceSessionId,operation:'location.current',status:'denied'})),false);
+ assert.equal((await pending).status,'denied');assert.notEqual((await f.service.backendDeviceRequest({lease:descriptor.lease,operation:'location.current'})).status,'ok');assert.equal(f.client.sent.filter(e=>e.type==='device.request').length,1);
+ await f.service.close(f.reservation.voiceSessionId);await assert.rejects(f.service.backendDeviceRequest({lease:descriptor.lease,operation:'location.current'}),/ownership/);
+ f.completeBackend('定位被拒绝，未获取位置');
+});
+
+
+test('robot adapter and Notes-only capability share one backend channel without location',async t=>{
+ for(const kind of ['robot','ios']){
+  const operation=kind==='robot'?'robot.move':'notes.create',executed=[];
+  const adapter=kind==='robot'?{kind,capabilities:()=>({[operation]:{status:'available'}}),execute:async(op,args,owner)=>{executed.push({op,args,owner});return {type:'adapter-supplied',version:99,requestId:'foreign',voiceSessionId:'foreign',operation:'foreign',status:'ok',result:{accepted:true,completed:false}};}}:undefined;
+  const f=await fixture(undefined,'grok',{nativeDeviceActions:{version:1,capabilities:{[operation]:{status:'available'}}},backendDeviceURL:'http://127.0.0.1:28473/internal/device-request',terminalAdapter:adapter,
+   deviceOperations:()=>({[operation]:{timeoutMS:5000,sideEffect:true,validateArguments:x=>x,validateResult:(x,ctx)=>{assert.equal(ctx.arguments.angle,10);return x;}}})});t.after(()=>f.service.dispose());
+  f.call('delegate_to_v',{question:'按当前设备能力执行本次明确请求'},'no-location');
+  for(let i=0;i<100&&!f.invocations.some(x=>x.question?.includes('"endpoint"'));i++)await delay(2);
+  const text=f.invocations.find(x=>x.question?.includes('"endpoint"')).question,start=text.indexOf('{"version":1,"endpoint"'),descriptor=JSON.parse(text.slice(start,text.indexOf('}。需要位置',start)+1));
+  const pending=f.service.backendDeviceRequest({lease:descriptor.lease,operation,args:{angle:10}});
+  if(!adapter){const req=f.client.sent.find(x=>x.type==='device.request');assert(req);f.client.emit('message',Buffer.from(JSON.stringify({...req,type:'device.result',status:'ok',result:{accepted:true,completed:false}})),false);}
+  assert.equal((await pending).status,'ok');if(adapter){assert.equal(executed[0].owner.voiceSessionId,f.reservation.voiceSessionId);assert.equal(f.client.sent.filter(x=>x.type==='device.request').length,0);}
+  f.completeBackend('设备只确认接受，未确认物理动作完成');
+ }
 });

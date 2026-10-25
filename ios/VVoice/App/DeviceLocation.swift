@@ -10,7 +10,7 @@ struct DeviceLocationResult: Sendable {
     var reducedAccuracy = false
     var wire: [String: Any] {
         if let reason { return ["ok": false, "reason": reason] }
-        return ["ok": true, "latitude": latitude, "longitude": longitude,
+        return ["ok": true, "source": "core_location", "latitude": latitude, "longitude": longitude,
                 "horizontalAccuracyM": horizontalAccuracyM, "capturedAt": capturedAt.timeIntervalSince1970 * 1000,
                 "coordinateSystem": "WGS84", "accuracyAuthorization": reducedAccuracy ? "reduced" : "full"]
     }
@@ -31,6 +31,15 @@ struct DeviceLocationResult: Sendable {
 /// No continuous tracking, persisted coordinates or Always authorization.
 /// The call coordinator owns cancellation and never delegates this to WKWebView.
 @MainActor final class DeviceLocation: NSObject, DeviceLocationProviding, @preconcurrency CLLocationManagerDelegate {
+    static var declaration: [String: Any] {
+        let status: String
+        switch CLLocationManager().authorizationStatus {
+        case .denied, .restricted: status = "denied"
+        case .authorizedAlways, .authorizedWhenInUse: status = "available"
+        default: status = "prompt"
+        }
+        return ["version": 1, "capabilities": ["location.current": ["status": status]]]
+    }
     private let manager = CLLocationManager()
     private var waiting: CheckedContinuation<DeviceLocationResult, Never>?
     private var timeout: Task<Void, Never>?

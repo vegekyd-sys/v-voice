@@ -173,7 +173,7 @@ const server=createServer(async(req,res)=>{
    const reservation=body.model==='gpt-live'?{voiceSessionId:active,model:'gpt-live-1-codex',transport:'webrtc'}:{voiceSessionId:active,transport:'gateway-relay',provider:'seeduplex',relayTicket:'fixture-ticket',...(nativeMode&&body.inputPolicy==='native'?{nativeDuplex:true,nativePlaybackPolicy:'assisted'}:speakerMode?{speakerRouting:{policy:'speaker'}}:{})};
    nativeRuntime=runtimeMode&&body.nativeRuntimeVersion===1?createNativeRuntime({voiceSessionId:active,duplex:nativeMode,assisted:nativeMode,speakerRouted:speakerMode}):null;
    if(nativeRuntime)reservation.nativeRuntime=nativeRuntime.descriptor;
-   if(body.nativeLocationVersion===1&&body.model!=='gpt-live'){reservation.nativeLocationVersion=1;deviceLocation=createDeviceLocation({voiceSessionId:active,send:e=>client?.send(JSON.stringify(e))});}
+   if((body.nativeLocationVersion===1||body.nativeDeviceActions?.version===1)&&body.model!=='gpt-live'){reservation.nativeLocationVersion=1;reservation.nativeDeviceActions=body.nativeDeviceActions??{version:1,capabilities:{'location.current':{status:'prompt'}}};deviceLocation=createDeviceLocation({voiceSessionId:active,send:e=>client?.send(JSON.stringify(e))});}
    if(slowSession){slowSession=false;setTimeout(()=>send(200,reservation),slowSessionMS);return;}
    return send(200,reservation);
  }
@@ -203,7 +203,7 @@ function observeClient(ws){
        peakInputRMS=Math.max(peakInputRMS,rms);return;
      }
      const v=JSON.parse(bytes.toString());
-     if(v.type==='device.location.result')deviceLocation?.receive(v);
+     if(v.type==='device.result')deviceLocation?.receive(v);
      if(v.type==='greeting'){greetings++;emit({type:'transcript',role:'assistant',text:'本地音频测试，欢迎。',final:true});audio();}
      if(v.type==='playback.state'&&v.speaking===true)playbackStarts++;
      if(v.type==='playback.drained')playbackDrained++;
