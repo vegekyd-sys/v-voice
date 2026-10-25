@@ -1,5 +1,5 @@
 {
-  "version": "voice-feishu-card-confirm.20261025.3",
+  "version": "voice-feishu-card-confirm.20261025.4",
   "status": "candidate-validated",
   "date": "2026-10-25",
   "branch": "codex/feishu-card-confirm",
@@ -46,5 +46,14 @@
     "audioCalls": 0,
     "realMessages": 0,
     "iOSShell": "regenerated and consistency checked; no native rebuild in this refinement"
+  },
+  "quietConfirmationUI": {
+    "scope": "presentation only",
+    "targetedTests": 100,
+    "browser": "Codex IAB actual dial at 390x640",
+    "copy": "回飞书确认，就能通话",
+    "securityMarker": "visible, unchanged value",
+    "newAudioCalls": 0,
+    "productionDeployed": false
   }
 }

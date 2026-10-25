@@ -75,3 +75,12 @@ Opening the page preserves the original portrait and phone button and sends no c
 - This refinement changes only Web confirmation presentation/trigger and shared avatar rendering. Bundled iOS H5 resources were regenerated and checked; prior native build evidence remains separate, and no new native binary or TestFlight release is claimed.
 - Local screenshots: `v-voice-releases/audits/20261025-dial-first-confirm/{before,after-dial,after-confirm}.png`.
 - No new real Feishu messages, paid model calls, shared VLab changes or production release.
+
+
+## Quiet confirmation UI — Candidate .4
+
+Reduce the waiting state to one sentence (“回飞书确认，就能通话”), one quiet comparison marker and a secondary “访客通话” action. Remove the repeated card-sent/come-back paragraphs, reduce heading weight and marker emphasis, and retain 44px action targets. The original portrait size, phone button, dial-first trigger and identity protocol are unchanged. Errors retain their actionable detail only when needed.
+
+Validated through a real phone-button activation in Codex IAB at 390×640 with the same local HTTP/signed callback fixture; app/avatar/client checks 100/100 and generated iOS shell consistency passed. No new real messages, microphone usage, calls, platform changes or deployment. Screenshot: `v-voice-releases/audits/20261025-quiet-confirm/after-dial.png`.
+
+Platform scope assessment (read-only production check): current V uses the Feishu WebSocket channel and its monitor lacks the dedicated Voice confirmation handler. PR #473 adds authenticated card-action routing and a signed forward to Voice; it does not change the conversation model or tool policy. UI-only changes do not require it. Enabling this card identity flow with the current implementation requires matching platform code; no restart-free deployment of this PR has been validated. Plugin reload and an independent callback receiver are distinct alternatives requiring integration validation; neither is claimed as a completed no-impact release path. Production was not changed or restarted.

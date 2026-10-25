@@ -349,10 +349,10 @@ function IdentitySummary({context,onClick}) {
 function InlineConfirmation({value,actions}) {
  const waiting=value.phase==='waiting',failed=value.phase==='failed',cancelling=value.phase==='cancelling';
  return <section className="identity-confirmation" aria-labelledby="confirmationTitle">
-  <h2 id="confirmationTitle">{failed?'请重新确认':waiting?'回飞书，点一下确认':'先确认一下你的身份'}</h2>
-  <p className="confirmation-description" role="status">{failed?value.error:cancelling?'正在取消…':waiting?<>确认卡片已发到原飞书会话。<br/>确认后回来，就可以通话。</>:'正在发送确认卡片到原飞书会话…'}</p>
-  {value.label&&<p className="confirmation-marker"><span>核对标记</span><strong>{value.label}</strong></p>}
-  <div className="confirmation-actions">{failed&&<button type="button" className="confirmation-retry" onClick={actions.connectIdentity}>重新发送</button>}<button type="button" disabled={cancelling} onClick={actions.skipConfirmation}>先以访客聊聊</button></div>
+  <h2 id="confirmationTitle" role="status">{cancelling?'正在取消…':failed?'请重新确认':waiting?'回飞书确认，就能通话':'正在发送确认…'}</h2>
+  {failed&&<p className="confirmation-description" role="alert">{value.error}</p>}
+  {waiting&&value.label&&<p className="confirmation-marker"><span>核对</span><strong>{value.label}</strong></p>}
+  <div className="confirmation-actions">{failed&&<button type="button" className="confirmation-retry" onClick={actions.connectIdentity}>重新发送</button>}<button type="button" disabled={cancelling} onClick={actions.skipConfirmation}>访客通话</button></div>
  </section>;
 }
 
