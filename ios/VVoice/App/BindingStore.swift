@@ -5,11 +5,12 @@ import VVoiceCore
 struct BoundConversation: Codable, Equatable {
     let name: String
     let kind: String
+    var accountLabel: String? = nil
     static func read(_ value: Any?) -> BoundConversation? {
         guard let value = value as? [String: Any], let name = value["name"] as? String,
               !name.isEmpty, name.count <= 200, let kind = value["kind"] as? String,
               ["dm", "group", "personal"].contains(kind) else { return nil }
-        return .init(name: name, kind: kind)
+        return .init(name: name, kind: kind, accountLabel: (value["accountLabel"] as? String).map { String($0.prefix(200)) })
     }
 }
 struct StoredBinding: Codable, Identifiable {
@@ -20,6 +21,7 @@ struct StoredBinding: Codable, Identifiable {
     var pendingVoiceID: String?
     var conversation: BoundConversation?
     var nativeDialVersion: Int?
+    var isPublic: Bool? = nil
 }
 
 struct SavedConversation: Identifiable, Equatable {
@@ -28,23 +30,28 @@ struct SavedConversation: Identifiable, Equatable {
     let kind: String
     let host: String
     let isCurrent: Bool
+    var isPublic: Bool = false
+    var accountLabel: String? = nil
 }
 
 private struct BindingLibrary: Codable {
     var version = 1
     var activeID: String?
+    var publicDeviceKey: String?
     var bindings: [StoredBinding]
     init(activeID: String? = nil, bindings: [StoredBinding]) { self.activeID = activeID; self.bindings = bindings }
-    private enum CodingKeys: String, CodingKey { case version, activeID, bindings, binding, cookie, pendingVoiceID, conversation, nativeDialVersion }
+    private enum CodingKeys: String, CodingKey { case version, activeID, bindings, binding, cookie, pendingVoiceID, conversation, nativeDialVersion, publicDeviceKey }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         version = try c.decode(Int.self, forKey: .version)
         activeID = try c.decodeIfPresent(String.self, forKey: .activeID)
         bindings = try c.decode([StoredBinding].self, forKey: .bindings)
+        publicDeviceKey = try c.decodeIfPresent(String.self, forKey: .publicDeviceKey)
     }
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(version, forKey: .version); try c.encodeIfPresent(activeID, forKey: .activeID); try c.encode(bindings, forKey: .bindings)
+        try c.encodeIfPresent(publicDeviceKey, forKey: .publicDeviceKey)
         // Older App versions can still read the selected record after rollback.
         if let active {
             try c.encode(active.binding, forKey: .binding); try c.encode(active.cookie, forKey: .cookie)
@@ -76,18 +83,31 @@ private struct BindingLibrary: Codable {
     }
     func load() -> StoredBinding? { library().active }
     func savedBindings() -> [StoredBinding] { library().bindings }
-    func save(_ value: StoredBinding) throws {
+    func save(_ value: StoredBinding, select: Bool = true) throws {
         var library = library()
+        if value.isPublic == true {
+            library.bindings.removeAll { $0.isPublic == true && $0.binding.baseURL == value.binding.baseURL && $0.id != value.id }
+        }
         if let index = library.bindings.firstIndex(where: { $0.id == value.id }) { library.bindings[index] = value }
         else { library.bindings.append(value) }
-        library.activeID = value.id
+        if select { library.activeID = value.id }
         try write(library)
     }
     func removeBinding(id: String) throws {
         var library = library()
+        guard library.bindings.first(where: { $0.id == id })?.isPublic != true else { throw VoiceError.busy }
         library.bindings.removeAll { $0.id == id }
-        if library.activeID == id { library.activeID = nil }
+        if library.activeID == id { library.activeID = library.bindings.first(where: { $0.isPublic == true })?.id }
         try write(library)
+    }
+    func publicDeviceKey() throws -> String {
+        var library = library()
+        if let key = library.publicDeviceKey { return key }
+        var bytes = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { throw VoiceError.secureStorage }
+        let key = Data(bytes).base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+        library.publicDeviceKey = key; try write(library)
+        return key
     }
     private func write(_ library: BindingLibrary) throws {
         let data = try JSONEncoder().encode(library)
@@ -138,21 +158,52 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
     var savedConversations: [SavedConversation] {
         store.savedBindings().map { saved in
             .init(id: saved.id, name: saved.conversation?.name ?? "我的 V", kind: saved.conversation?.kind ?? "personal",
-                  host: saved.binding.baseURL.host ?? "", isCurrent: saved.id == record?.id)
+                  host: saved.binding.baseURL.host ?? "", isCurrent: saved.id == record?.id, isPublic: saved.isPublic == true, accountLabel: saved.conversation?.accountLabel)
         }
     }
     private var bindingRevision = 0
+    private var preparingPublic = false
+    func preparePublic(baseURL: URL) async throws {
+        guard !preparingPublic, record?.pendingVoiceID == nil else { throw VoiceError.busy }
+        preparingPublic = true; defer { preparingPublic = false }
+        let revision = bindingRevision
+        let candidate = try await publicRecord(baseURL: baseURL)
+        guard bindingRevision == revision else { throw CancellationError() }
+        try store.save(candidate, select: record == nil || record?.isPublic == true)
+        record = store.load()
+    }
+    private func publicRecord(baseURL: URL) async throws -> StoredBinding {
+        let key = try store.publicDeviceKey()
+        // Use the configured public origin only. Never accept a redirect or a
+        // server-supplied origin/path while carrying a device credential.
+        let seed = try VoiceBinding(link: baseURL.absoluteString + "#bind=" + key)
+        let (value, _) = try await authorization("ios-public", binding: seed, body: ["deviceKey": key])
+        guard let phone = value["phone"] as? String, phone.range(of: #"^ios-[a-f0-9]{40}$"#, options: .regularExpression) != nil,
+              value["deviceAccess"] as? String == key else { throw VoiceError.protocolMismatch }
+        var url = URLComponents(url: seed.baseURL, resolvingAgainstBaseURL: false)!
+        url.queryItems = [URLQueryItem(name: "phone", value: phone)]; url.fragment = "bind=" + key
+        let binding = try VoiceBinding(link: url.url!.absoluteString).redeemed(deviceAccess: key)
+        var candidate = try await authorize(binding)
+        let status = try await raw("status", record: candidate)
+        guard status["ready"] as? Bool == true, status["unidentified"] as? Bool == true else { throw VoiceError.unavailable }
+        candidate.isPublic = true; candidate.nativeDialVersion = status["nativeDialVersion"] as? Int
+        return candidate
+    }
     private func confirmed(_ saved: StoredBinding) async throws -> StoredBinding {
         guard saved.pendingVoiceID == nil else { throw VoiceError.busy }
         var candidate = saved
         let status: [String: Any]
         do { status = try await raw("status", record: candidate) }
         catch VoiceError.expired {
-            candidate = try await authorize(saved.binding)
+            candidate = saved.isPublic == true ? try await publicRecord(baseURL: saved.binding.baseURL) : try await authorize(saved.binding)
+            candidate.isPublic = saved.isPublic
             candidate.conversation = candidate.conversation ?? saved.conversation
             status = try await raw("status", record: candidate)
         }
-        candidate.conversation = BoundConversation.read(status["conversation"]) ?? candidate.conversation
+        if var conversation = BoundConversation.read(status["conversation"]) {
+            conversation.accountLabel = conversation.accountLabel ?? candidate.conversation?.accountLabel
+            candidate.conversation = conversation
+        }
         candidate.nativeDialVersion = status["nativeDialVersion"] as? Int
         return candidate
     }
@@ -187,7 +238,9 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
         var r = try await authorize(b)
         r.conversation = r.conversation ?? conversation
         let status = try await raw("status", record: r)
+        let accountLabel = r.conversation?.accountLabel
         r.conversation = BoundConversation.read(status["conversation"]) ?? r.conversation
+        r.conversation?.accountLabel = r.conversation?.accountLabel ?? accountLabel
         r.nativeDialVersion = status["nativeDialVersion"] as? Int
         guard bindingRevision == revision else { throw CancellationError() }
         // One atomic Keychain write preserves every other saved destination.
@@ -260,7 +313,10 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
         catch VoiceError.expired where refresh {
             // Refresh only without an active owner. A new cookie must not steal a live call.
             guard saved.pendingVoiceID == nil else { throw VoiceError.expired }
-            var renewed = try await authorize(saved.binding)
+            var renewed: StoredBinding
+            do { renewed = try await authorize(saved.binding) }
+            catch VoiceError.expired where saved.isPublic == true { renewed = try await publicRecord(baseURL: saved.binding.baseURL) }
+            renewed.isPublic = saved.isPublic
             renewed.conversation = renewed.conversation ?? saved.conversation
             // An older refresh must never overwrite a newly selected session or a local sign-out.
             guard record?.binding == saved.binding else { throw VoiceError.expired }

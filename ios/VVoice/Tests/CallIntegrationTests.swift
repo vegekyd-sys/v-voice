@@ -6,10 +6,14 @@ import VVoiceCore
 
 @MainActor final class CallIntegrationTests: XCTestCase {
     func testUnboundStartNeverActivatesMicrophoneOrCall() async throws {
-        let call = CallCoordinator.shared
-        guard !call.bound else { throw XCTSkip("Preserve existing personal binding") }
-        do { try await call.startOrContinue(); XCTFail("An unbound call must be rejected") }
-        catch { XCTAssertEqual(error as? VoiceError, .unbound) }
+        let store = BindingStore(service: "com.versa.vvoice.unavailable-public.\(UUID().uuidString)"); defer { store.remove() }
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [BindingMockProtocol.self]
+        let host = "unavailable.binding.test"
+        BindingMockProtocol.registry.set(host) { _ in .init(status: 503, body: "{}") }
+        defer { BindingMockProtocol.registry.set(host, nil) }
+        let call = CallCoordinator(api: VoiceAPI(store: store, configuration: config), publicServiceURL: URL(string: "https://\(host)/voice/")!)
+        do { try await call.startOrContinue(); XCTFail("Unavailable Public must be rejected") }
+        catch { XCTAssertEqual(error as? VoiceError, .unavailable) }
         XCTAssertFalse(call.active)
     }
     func testKeychainBindingSurvivesReopenWithDeviceOnlyProtection() throws {
@@ -269,5 +273,50 @@ private final class BindingMockProtocol: URLProtocol, @unchecked Sendable {
         try await api.bind(link: base + "#access=" + secret)
         XCTAssertNil(api.record?.binding.credentialKind)
         XCTAssertEqual(store.load()?.cookie, "v_voice_access=legacy")
+    }
+}
+
+
+extension SessionBindingTests {
+    func testPublicBootstrapPreservesUpgradeSelectionAndDeletionFallsBackOnlyWhenCurrent() async throws {
+        let service = "com.versa.vvoice.public-test.\(UUID().uuidString)"
+        let store = BindingStore(service: service); defer { store.remove() }
+        let key = try store.publicDeviceKey(), phone = "ios-" + String(repeating: "a", count: 40)
+        let (api, _, base) = setup { request in
+            switch request.url!.lastPathComponent {
+            case "ios-public": return .init(body: "{\"phone\":\"\(phone)\",\"deviceAccess\":\"\(key)\"}")
+            case "access": return .init(body: "{\"conversation\":{\"name\":\"Public\",\"kind\":\"personal\",\"accountLabel\":\"独立访客\"}}", cookie: "v_voice_\(phone)=fixture; Secure")
+            default: return .init(body: "{\"ready\":true,\"unidentified\":true}")
+            }
+        }
+        // Keep the mock transport while using a persistent, installation-local Keychain.
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [BindingMockProtocol.self]
+        let one = StoredBinding(binding: try VoiceBinding(link: base + "?phone=group-one#access=" + secret), cookie: "one")
+        let two = StoredBinding(binding: try VoiceBinding(link: base + "?phone=group-two#access=" + secret), cookie: "two")
+        try store.save(one); try store.save(two)
+        let upgraded = VoiceAPI(store: store, configuration: config)
+        try await upgraded.preparePublic(baseURL: URL(string: base)!)
+        XCTAssertEqual(upgraded.record?.id, two.id)
+        XCTAssertEqual(upgraded.savedConversations.count, 3)
+        try upgraded.removeConversation(id: one.id)
+        XCTAssertEqual(upgraded.record?.id, two.id)
+        try upgraded.removeConversation(id: two.id)
+        XCTAssertEqual(upgraded.record?.isPublic, true)
+        let publicID = try XCTUnwrap(upgraded.record?.id)
+        XCTAssertThrowsError(try upgraded.removeConversation(id: publicID))
+        XCTAssertEqual(VoiceAPI(store: store).record?.id, publicID)
+        try await upgraded.preparePublic(baseURL: URL(string: base)!)
+        XCTAssertEqual(upgraded.savedConversations.count, 1)
+        XCTAssertEqual(try BindingStore(service: service).publicDeviceKey(), key)
+        XCTAssertFalse(api.isBound)
+    }
+    func testPublicNetworkFailurePersistsSecretWithoutSavingFalseReadyConversation() async throws {
+        let (api, store, base) = setup { _ in .init(status: 503, body: "{}") }
+        let before = try store.publicDeviceKey()
+        for _ in 0..<2 {
+            do { try await api.preparePublic(baseURL: URL(string: base)!); XCTFail("Service is unavailable") } catch {}
+        }
+        XCTAssertEqual(try store.publicDeviceKey(), before)
+        XCTAssertFalse(api.isBound); XCTAssertTrue(api.savedConversations.isEmpty)
     }
 }

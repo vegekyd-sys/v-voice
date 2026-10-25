@@ -29,7 +29,7 @@ import {voiceConversationContext} from '../realtime-direct-tools/conversation-co
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosAppDownloadUrl, callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, iosAppDownloadUrl, callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null }) {
   if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
   if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
   basePath = basePath.replace(/\/$/u, "");
@@ -46,11 +46,15 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     ...(feishuLogin.conversations===true?{resolveConversation:createFeishuConversationDirectory({gateway,...feishuLogin})}:{})}) : null;
   const guestAccess=hosted&&feishuLogin?.conversations===true&&feishuLogin.allowUnidentified===true
     ?createVoiceAccess(createHash('sha256').update('voice-guest:'+feishuLogin.appSecret).digest('hex'),basePath,Date.now,{entry:'unidentified'}):null;
-  const guestBinding=guestAccess?createUnidentifiedPhoneDirectory({accountId:feishuLogin.accountId,access:guestAccess}):()=>null;
+  const guestBinding=guestAccess?createUnidentifiedPhoneDirectory({accountId:feishuLogin.accountId,access:guestAccess,publicEntry:iosPublicEntry}):()=>null;
   const resolveBinding=async(req,url)=>{
     const devicePhone=iosBindings?.canonicalPhone(url.searchParams.get('phone'))??url.searchParams.get('phone');
     const phone=phoneLogin?.canonicalPhone(devicePhone)??devicePhone;
     if(phone&&phone!==url.searchParams.get('phone')){url=new URL(url);url.searchParams.set('phone',phone);}
+    if(url.searchParams.get('phone')==='public'){
+      const principal=iosBindings?.principalFor(req,'public',req.iosExchangeBody);
+      return iosPublicEntry&&principal?.type==='guest'?guestBinding(req,'public',{id:principal.visitorId}):null;
+    }
     try {
       const device=parseFeishuConversationPhone(url.searchParams.get('phone'))&&iosBindings?.principalFor(req,url.searchParams.get('phone'),req.iosExchangeBody);
       const binding=phoneLogin?.read(req)?await phoneLogin.resolve(req,url):device?.type==='guest'?guestBinding(req,url.searchParams.get('phone'),{id:device.visitorId}):device?await phoneLogin?.resolveDevice(device,url.searchParams.get('phone')):phoneLogin?await phoneLogin.resolve(req,url):entries.resolve(url);
@@ -268,6 +272,16 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const server=Object.fromEntries(['app_token','code_exchange','user_info','conversation'].filter(k=>duration(value.server?.[k])).map(k=>[k,Math.round(value.server[k])]));
         console.info(JSON.stringify({type:'voice.entry-timing',outcome:['identified','guest'].includes(value.outcome)?value.outcome:'unknown',totalToDialMs:Math.round(value.totalToDialMs),stages,server}));
         return json(res,200,{ok:true});
+      }
+      if(pathname==='/api/ios-public'&&req.method==='POST'){
+        if(!iosPublicEntry||!guestAccess||!iosBindingsFile||!backendReady()||!directVoice?.models().some(m=>m.available))return json(res,503,{error:'Public 暂不可用，请稍后重试。'});
+        const ip=String(req.headers['cf-connecting-ip']??req.socket.remoteAddress??'unknown').slice(0,128);
+        if(!allow('ios-public:'+ip))return json(res,429,{error:'准备次数较多，请稍后重试。'});
+        const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>512)return json(res,413,{error:'请求过大。'});chunks.push(chunk);}
+        let params;try{params=JSON.parse(Buffer.concat(chunks).toString());}catch{return json(res,400,{error:'请求无效。'});}
+        if(!params||typeof params!=='object'||Array.isArray(params)||Object.keys(params).length!==1||typeof params.deviceKey!=='string')return json(res,400,{error:'仅接受设备凭证。'});
+        try{return json(res,200,await iosBindings.provisionPublic(params.deviceKey,id=>guestBinding(req,'public',{id})));}
+        catch(error){return json(res,error instanceof IosBindingAuthorizationError?403:503,{error:'无法准备 Public，请稍后重试。'});}
       }
       const iosExchange=pathname==='/api/ios-binding/redeem'||pathname==='/api/ios-binding/access';
       if(iosExchange&&req.method==='POST'){
@@ -883,6 +897,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       conversationEntries: process.env.VOICE_ENTRIES_FILE ? JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,"utf8")) : [],
       callReportsDirectory:process.env.VOICE_CALL_REPORTS_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-call-reports'),
       iosAppDownloadUrl:process.env.VOICE_IOS_APP_DOWNLOAD_URL,
+      iosPublicEntry:process.env.VOICE_IOS_PUBLIC_ENTRY==='1',
       iosBindingsFile:process.env.VOICE_IOS_BINDINGS_FILE??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-ios-bindings.private.json'),
       feishuLogin: process.env.VOICE_FEISHU_LOGIN_FILE ? await readFeishuPhoneLoginFile(process.env.VOICE_FEISHU_LOGIN_FILE) : undefined,
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",

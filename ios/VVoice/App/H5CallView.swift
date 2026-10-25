@@ -26,6 +26,17 @@ struct H5CallView: View {
                 Image(systemName: "slider.horizontal.3").font(.system(size: 17)).foregroundStyle(VoiceStyle.faint)
                     .frame(width: 40, height: 40)
             }.accessibilityLabel("通话设置").padding(.trailing, 12) }
+            if !call.bound {
+                VStack(spacing: 16) {
+                    Text("Public").font(VoiceStyle.font(28, weight: .semibold))
+                    Text("独立访客会话 · 无需登录飞书").font(VoiceStyle.font(14))
+                    if call.publicPreparing { ProgressView("正在准备…") }
+                    else {
+                        Text(call.publicError.isEmpty ? "准备后即可和 V 通话。" : call.publicError).multilineTextAlignment(.center)
+                        Button("重试准备 Public") { Task { await call.preparePublicIfNeeded(retry: true) } }.accessibilityIdentifier("retryPublic")
+                    }
+                }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(VoiceStyle.background)
+            }
             if !error.isEmpty {
                 VStack(spacing: 12) {
                     Text(error).font(VoiceStyle.font(14)).multilineTextAlignment(.center)
@@ -35,7 +46,7 @@ struct H5CallView: View {
             }
         }.background(VoiceStyle.background).tint(VoiceStyle.accent)
             .sheet(item: $sheet, onDismiss: { bindingLink = "" }) { _ in SettingsView(call: call, initialLink: bindingLink) }
-            .task { if !call.bound, !call.active, sheet == nil { sheet = .settings } }
+            .task { if !call.bound { await call.preparePublicIfNeeded() } }
             .onOpenURL { url in
                 if let link = VoiceBinding.link(fromDeepLink: url) {
                     bindingLink = link; error = ""; sheet = .settings; return

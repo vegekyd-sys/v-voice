@@ -50,6 +50,7 @@
 		B3DF34667002BAE96598431F /* VoiceStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82BCD1E278CA030F4584C6D0 /* VoiceStyle.swift */; };
 		B5407957466F22564A656AED /* GPTLiveTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31B6D38F987CC05C91D9830F /* GPTLiveTransport.swift */; };
 		B6B40DD773C97D5049C9C2DF /* H5Markdown.js in Resources */ = {isa = PBXBuildFile; fileRef = BFCDA98ECF8BCE22F93B58AD /* H5Markdown.js */; };
+		BD6ED4FE95DF160F7B18AAE5 /* PublicEntryConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4450FB32DC04BC75DD9CDCF /* PublicEntryConfiguration.swift */; };
 		BF1EC256D6D01B21B6B51AE8 /* CallActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C694805A7F537814758189E7 /* CallActivity.swift */; };
 		C1CDDF961E988F8F12C3E96B /* VoiceAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D75530190661A3CE19BAA28 /* VoiceAudio.swift */; };
 		C498FBC76120554268E17002 /* DeviceAudioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC5B54FF48C5CC112EF20F95 /* DeviceAudioTests.swift */; };
@@ -140,6 +141,7 @@
 		82BCD1E278CA030F4584C6D0 /* VoiceStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceStyle.swift; sourceTree = "<group>"; };
 		85026CB025534C921B1BF37D /* H5Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = H5Snapshot.swift; sourceTree = "<group>"; };
 		857F5E8922957A5BB87318B1 /* VoiceIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceIntents.swift; sourceTree = "<group>"; };
+		A4450FB32DC04BC75DD9CDCF /* PublicEntryConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicEntryConfiguration.swift; sourceTree = "<group>"; };
 		AA44C040A9E6D25236282244 /* VVoiceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VVoiceApp.swift; sourceTree = "<group>"; };
 		AC68CB218040B5DF93D95B7D /* RelaySignalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelaySignalTests.swift; sourceTree = "<group>"; };
 		B8B9C9B99CE97D32679A3DDC /* marked-LICENSE */ = {isa = PBXFileReference; path = "marked-LICENSE"; sourceTree = "<group>"; };
@@ -299,6 +301,7 @@
 				85026CB025534C921B1BF37D /* H5Snapshot.swift */,
 				5E34791F59508FFC82578CBD /* IslandPreviewGallery.swift */,
 				022BFA08A2C95FBF90410F34 /* NativeDocumentBody.swift */,
+				A4450FB32DC04BC75DD9CDCF /* PublicEntryConfiguration.swift */,
 				4624DC67397DA3829CD1438F /* RelayTransport.swift */,
 				2D75530190661A3CE19BAA28 /* VoiceAudio.swift */,
 				4CDD0899EF980DA00A5FD8F5 /* VoiceAvatar.swift */,
@@ -525,6 +528,7 @@
 				6929FBF811598A33FD0A2771 /* IslandCallSurface.swift in Sources */,
 				1BC8BA8E4DCFF883FD007379 /* IslandPreviewGallery.swift in Sources */,
 				40DE5A3CDF8284543835C80A /* NativeDocumentBody.swift in Sources */,
+				BD6ED4FE95DF160F7B18AAE5 /* PublicEntryConfiguration.swift in Sources */,
 				FEBE3CEFE457C6F635CF202C /* RelayTransport.swift in Sources */,
 				1433F687232744B21D4A6640 /* VVCaptureSink.mm in Sources */,
 				08A65DFD1AD70465414178B6 /* VVoiceApp.swift in Sources */,
@@ -662,7 +666,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 33;
+				CURRENT_PROJECT_VERSION = 34;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = E6YTL27QWA;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -748,7 +752,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 33;
+				CURRENT_PROJECT_VERSION = 34;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = E6YTL27QWA;
 				ENABLE_NS_ASSERTIONS = NO;

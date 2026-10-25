@@ -1,3 +1,10 @@
+## 2026-10-25 · iOS Public Candidate（未发布）
+
+- 新安装使用设备独立的 Public guest 会话；凭证先写钥匙串再请求，超时重试复用同一访客。
+- 保留旧入口/当前选择，显示可信账号标签；显式移除本机额外入口，当前入口移除后回 Public。
+- 通话期间保留 owner；首次系统权限可转前台，已授权操作按钮仍支持后台。
+- 服务端默认关闭 `VOICE_IOS_PUBLIC_ENTRY`；Candidate 与正式部署/真机验收分开登记。
+
 ## 2026-10-24 — iOS caller identity, direct calendar and stale content notice
 
 - Persist verified Feishu profile fields into matching, active device grants when the browser prepares a binding. Existing device credentials, expiry and actor permissions remain unchanged.

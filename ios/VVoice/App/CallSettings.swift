@@ -41,17 +41,21 @@ struct SettingsView: View {
         .tint(VoiceStyle.purple).preferredColorScheme(.light)
         .onAppear {
             guard !initialized else { return }; initialized = true
-            firstSetup = call.savedConversations.isEmpty
-            journey = firstSetup || !initialLink.isEmpty
+            firstSetup = false
+            journey = !initialLink.isEmpty
         }
+        .task { await call.preparePublicIfNeeded() }
         .onChange(of: initialLink) { _, value in if !value.isEmpty { journey = true } }
         .confirmationDialog("移除「\(removal?.name ?? "这个会话")」？", isPresented: $confirmingRemoval, titleVisibility: .visible, presenting: removal) { saved in
             Button("从本机移除", role: .destructive) {
-                do { try call.removeConversation(saved.id); feedback = "已从本机移除。" }
-                catch { feedback = error.localizedDescription }
-                removal = nil
+                selecting = saved.id
+                Task {
+                    do { try await call.removeConversation(saved.id); feedback = "已从本机移除。" }
+                    catch { feedback = error.localizedDescription }
+                    selecting = nil; removal = nil
+                }
             }
-        } message: { _ in Text("其他已保存会话会保留。以后可以重新获取链接添加。") }
+        } message: { _ in Text("仅移除本机绑定，不删除远端群或历史。移除当前绑定后回到 Public。") }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: journey)
     }
 
@@ -65,9 +69,17 @@ struct SettingsView: View {
                 }.padding(.top, 14)
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {
-                        Text("我的会话").font(VoiceStyle.font(16, weight: .semibold))
+                        Text("Public 与我的绑定").font(VoiceStyle.font(16, weight: .semibold))
                         Spacer()
                         Text("\(call.savedConversations.count) 个已保存").font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted)
+                    }
+                    if !call.savedConversations.contains(where: { $0.isPublic }) {
+                        if call.publicPreparing { ProgressView("正在准备 Public…") }
+                        else {
+                            Button("Public · 重试准备独立访客会话") { Task { await call.preparePublicIfNeeded(retry: true) } }
+                                .disabled(call.active || selecting != nil)
+                            if !call.publicError.isEmpty { Text(call.publicError).font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted) }
+                        }
                     }
                     if call.savedConversations.isEmpty {
                         Label("添加一个会话，让 V 接上你的上下文。", systemImage: "bubble.left.and.text.bubble.right")
@@ -90,7 +102,7 @@ struct SettingsView: View {
                     }.accessibilityIdentifier("addConversation").disabled(call.active || selecting != nil)
                     if call.active { Label("通话结束后可以切换或添加会话。", systemImage: "phone.fill").font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.soft) }
                     else {
-                        Text(call.bound ? "操作按钮会呼叫当前选中的会话。长按会话可以从本机移除。" : "选一个已保存的会话，就可以继续聊天。")
+                        Text(call.bound ? "操作按钮和灵动岛跟随当前会话。Public 是独立访客，不连接私人账号工具。" : "选一个已保存的会话，就可以继续聊天。")
                             .font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted).lineSpacing(4)
                     }
                     if !feedback.isEmpty { Text(feedback).font(VoiceStyle.font(13)).foregroundStyle(VoiceStyle.soft).accessibilityIdentifier("bindingFeedback") }
@@ -118,8 +130,12 @@ struct SettingsView: View {
             .navigationTitle("设置").navigationBarTitleDisplayMode(.inline)
     }
     private func conversationRow(_ saved: SavedConversation) -> some View {
+        HStack(spacing: 0) {
         Button {
-            guard !saved.isCurrent else { return }
+            if saved.isCurrent {
+                if saved.isPublic { Task { await call.preparePublicIfNeeded(retry: true) } }
+                return
+            }
             selecting = saved.id; feedback = ""
             Task {
                 do { try await call.selectConversation(saved.id); UISelectionFeedbackGenerator().selectionChanged() }
@@ -134,7 +150,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(saved.name).font(VoiceStyle.font(15, weight: .semibold)).foregroundStyle(VoiceStyle.ink)
                         .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(saved.isCurrent ? "boundConversation" : "savedConversation")
-                    Text(saved.isCurrent ? "当前会话 · 按下操作按钮，从这里继续" : (saved.kind == "group" ? "群聊" : "私聊") + " · " + saved.host)
+                    Text([saved.isCurrent ? "当前会话" : nil, saved.isPublic ? nil : saved.accountLabel, saved.isPublic ? "独立访客" : saved.kind == "group" ? "群聊" : "私聊", saved.host].compactMap { $0 }.joined(separator: " · "))
                         .font(VoiceStyle.font(11)).foregroundStyle(VoiceStyle.muted).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
@@ -144,9 +160,13 @@ struct SettingsView: View {
             }.padding(17).contentShape(Rectangle())
         }.buttonStyle(.plain).disabled(call.active || selecting != nil)
             .accessibilityLabel(saved.name + (saved.isCurrent ? "，当前会话" : "，切换到这个会话"))
-            .contextMenu {
-                Button("从本机移除", systemImage: "trash", role: .destructive) { removal = saved; confirmingRemoval = true }.disabled(call.active || selecting != nil)
-            }
+        if !saved.isPublic {
+            Button { removal = saved; confirmingRemoval = true } label: {
+                Image(systemName: "trash").foregroundStyle(VoiceStyle.muted).frame(width: 44, height: 56)
+            }.accessibilityLabel("移除「\(saved.name)」的本机绑定").accessibilityIdentifier("removeConversation")
+                .disabled(call.active || selecting != nil)
+        }
+        }
     }
     private var preferencesContent: some View {
         VStack(alignment: .leading, spacing: 20) {

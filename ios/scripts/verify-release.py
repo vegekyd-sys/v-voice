@@ -56,7 +56,7 @@ assert {p['asset'] for p in gallery}<=names, 'Island assets missing from compile
 metadata=json.loads((a.app/'Metadata.appintents/extract.actionsdata').read_text())
 actions=metadata['actions'];assert {'TalkToVIntent','MuteVIntent','EndVIntent','OpenVIntent','IslandLayoutIntent','IslandMuteIntent','IslandEndIntent'}<=actions.keys()
 assert actions['TalkToVIntent'].get('openAppWhenRun') is False
-assert actions['TalkToVIntent'].get('supportedModes') == 1, 'Do not replace island calling with foreground opening'
+assert actions['TalkToVIntent'].get('supportedModes') == 9, 'Keep background calling plus conditional foreground setup; never unconditional opening'
 protocols=actions['TalkToVIntent']['systemProtocols']
 assert any('AudioRecording' in x for x in protocols),protocols
 assert any('SessionStarting' in x for x in protocols),protocols

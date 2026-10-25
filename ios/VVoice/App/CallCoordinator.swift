@@ -8,7 +8,7 @@ import VVoiceCore
 @MainActor @Observable final class CallCoordinator {
     static let shared: CallCoordinator = {
         #if DEBUG
-        if CommandLine.arguments.contains("--binding-journey-fixture") { return BindingJourneyFixture.coordinator() }
+        if CommandLine.arguments.contains("--binding-journey-fixture") || CommandLine.arguments.contains("--public-entry-fixture") { return BindingJourneyFixture.coordinator() }
         if CommandLine.arguments.contains("--local-voice-fixture") {
             let store = BindingStore(service: "com.versa.vvoice.local-fixture")
             let fixturePort = ProcessInfo.processInfo.environment["VVOICE_FIXTURE_PORT"] ?? "29837"
@@ -22,6 +22,8 @@ import VVoiceCore
     private(set) var state = CallState()
     private(set) var detail = "长按操作按钮，即刻开始对话"
     private(set) var lastCaption = ""
+    private(set) var publicPreparing = false
+    private(set) var publicError = ""
     private(set) var bound = false
     private(set) var boundConversation: BoundConversation?
     private(set) var savedConversations: [SavedConversation] = []
@@ -62,6 +64,11 @@ import VVoiceCore
             if !grokVoices.isEmpty, !grokVoices.contains(where: { $0.id == grokVoice }) { grokVoice = grokVoices.first(where: { $0.id == "iris" })?.id ?? grokVoices[0].id }
             let speed = grok?["speed"] as? Double ?? 1
             grokHint = [speed != 1 ? "\(speed)× 语速" : "", grok?["expressiveTags"] as? Bool == true ? "自主表达试用" : ""].filter { !$0.isEmpty }.joined(separator: " · ")
+        }
+        if !modelOptions.isEmpty, !modelOptions.contains(where: { $0.id == model.rawValue && $0.available }) {
+            let available = modelOptions.filter(\.available)
+            let preferred = status["defaultModel"] as? String
+            if let id = available.first(where: { $0.id == preferred })?.id ?? available.first?.id, let supported = VoiceModel(rawValue: id) { model = supported }
         }
         preferredPhoneInputPolicy = status["phoneInputPolicy"] as? String
         comparisonAvailable = status["comparisonAvailable"] as? Bool == true
@@ -176,7 +183,9 @@ import VVoiceCore
     @ObservationIgnored private(set) var appScenePhase: ScenePhase = .background
     private var appIsActive: Bool { appScenePhase == .active }
 
-    init(api: VoiceAPI? = nil, audio: VoiceAudio = VoiceAudio(), makeGPT: @escaping () -> GPTLiveTransport = { GPTLiveTransport() }) {
+    @ObservationIgnored private let publicServiceURL: URL
+    init(api: VoiceAPI? = nil, publicServiceURL: URL = PublicEntryConfiguration.baseURL, audio: VoiceAudio = VoiceAudio(), makeGPT: @escaping () -> GPTLiveTransport = { GPTLiveTransport() }) {
+        self.publicServiceURL = publicServiceURL
         self.audio = audio
         self.makeGPT = makeGPT
         self.api = api ?? VoiceAPI(store: BindingStore())
@@ -242,7 +251,7 @@ import VVoiceCore
         if active, permission != .granted { fail(VoiceError.microphone) }
         updateRoute()
         if !initialized { Task { await reconcileActivities() } }
-        if !active { Task { await refreshOptions() } }
+        if !active { Task { if !bound { await preparePublicIfNeeded() }; await refreshOptions() } }
     }
     private func reconcileActivities() async {
         guard !initialized else { return }; initialized = true
@@ -254,6 +263,19 @@ import VVoiceCore
     func requestMicrophone() async {
         _ = await AVAudioApplication.requestRecordPermission()
         permission = AVAudioApplication.shared.recordPermission
+    }
+    func preparePublicIfNeeded(retry: Bool = false) async {
+        guard !active, !bindingInProgress, !publicPreparing else { return }
+        guard retry || !savedConversations.contains(where: { $0.isPublic }) else { return }
+        publicPreparing = true; bindingInProgress = true; publicError = ""
+        defer { publicPreparing = false; bindingInProgress = false }
+        do {
+            await closing?.value
+            try await api.recoverPreviousCall()
+            try await api.preparePublic(baseURL: publicServiceURL)
+            synchronizeBindings(); detail = "可以和 V 通话了"
+            await refreshOptions()
+        } catch { publicError = "暂时无法准备 Public，请检查网络后重试。" }
     }
     @discardableResult func bind(_ link: String) async throws -> Bool {
         guard !active, !bindingInProgress else { throw VoiceError.busy }
@@ -280,10 +302,11 @@ import VVoiceCore
         synchronizeBindings(); detail = "已切换会话，操作按钮将继续这个会话"
         await refreshOptions()
     }
-    func removeConversation(_ id: String) throws {
+    func removeConversation(_ id: String) async throws {
         guard !active, !bindingInProgress else { throw VoiceError.busy }
         try api.removeConversation(id: id); synchronizeBindings()
-        detail = bound ? "可以和 V 通话了" : "选择一个已保存的会话，或添加新会话"
+        if !bound { await preparePublicIfNeeded(retry: true) }
+        detail = bound ? "可以和 V 通话了" : "请重试准备 Public"
     }
     func forget() {
         guard !active, !bindingInProgress else { return }
@@ -292,7 +315,8 @@ import VVoiceCore
     func startOrContinue(fromIntent: Bool = false) async throws {
         guard !bindingInProgress else { throw VoiceError.busy }
         permission = AVAudioApplication.shared.recordPermission
-        guard bound else { throw VoiceError.unbound }
+        if !bound { await preparePublicIfNeeded() }
+        guard bound else { throw VoiceError.unavailable }
         if active {
             if phase == .interrupted { await resume(); if [.interrupted,.failed].contains(phase) { throw lastFailure ?? VoiceError.audio } }
             else if muted { toggleMute() }
