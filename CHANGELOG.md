@@ -1,3 +1,9 @@
+## 2026-10-25 — Feishu confirmation deployed
+
+- Deployed main `ccebd660` to both Voice nodes with matching file hashes; the production page confirms identity in the original Feishu conversation and stays on the same page.
+- Real production card confirmation, expired retry, iOS Simulator binding and homepage release notes verified. Shared VLab internal/external accounts in one group and both iOS bindings passed.
+- Separate platform PR #473 activated through `v-self-restart`; streams/workers healthy, VLab/V ALIGNED. No new native binary, firmware or paid voice call. See [production receipt](docs/releases/feishu-confirm-20261025/release.md).
+
 ## 2026-10-25 — Feishu identity confirmation release preparation
 
 - Place the short confirmation instruction directly below V and above the retained phone button, as V saying “回飞书确认一下，我等你”. Keep the comparison marker visible and the guest action secondary.
