@@ -403,3 +403,22 @@ test('native GPT task remains visible to release checks after its media owner cl
  for(let n=0;n<20&&(await status()).backgroundTasks;n++)await new Promise(r=>setImmediate(r));
  assert.equal((await status()).backgroundTasks,0);
 });
+
+test('backend helper uses the bounded HTTP device channel without browser identity overrides',async t=>{
+ const {spawn}=await import('node:child_process');
+ const calls=[],lease='l'.repeat(43);
+ const directVoice={models:()=>[],dispose:async()=>{},backendDeviceRequest:async args=>{calls.push(args);assert.equal(args.lease,lease);return {version:1,voiceSessionId:'owned-call',requestId:'owned-request',operation:args.operation,status:'ok',result:{verified:true}};}};
+ const f=await fixture(t,{directVoice}),endpoint=`${f.url}/internal/device-request`;
+ const request=body=>fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+ assert.equal((await request({lease,operation:'notes.create',args:{},actor:'foreign'})).status,403);
+ assert.equal((await fetch(endpoint,{method:'POST',headers:{origin:f.url},body:JSON.stringify({lease,operation:'notes.create',args:{}})})).status,403);
+ assert.equal((await fetch(endpoint,{method:'POST',body:'not-json'})).status,400);
+ assert.equal((await request({lease:'wrong',operation:'notes.create'})).status,403);
+ assert.equal(calls.length,0);
+ const child=spawn(process.execPath,['scripts/device-call.mjs','notes.create',JSON.stringify({title:'fixture'})],{stdio:['pipe','pipe','pipe']});
+ t.after(()=>{if(child.exitCode===null)child.kill();});let stdout='',stderr='';child.stdout.on('data',x=>stdout+=x);child.stderr.on('data',x=>stderr+=x);
+ const ended=new Promise((resolve,reject)=>{child.on('error',reject);child.on('close',resolve);});
+ child.stdin.end(JSON.stringify({version:1,endpoint,lease,voiceSessionId:'owned-call'}));
+ assert.equal(await ended,0,stderr);assert.equal(JSON.parse(stdout).status,'ok');
+ assert.deepEqual(calls,[{lease,operation:'notes.create',args:{title:'fixture'}}]);assert(!stdout.includes(lease));
+});

@@ -1,3 +1,4 @@
+import {browserDeviceActions,createBrowserDeviceAdapter} from "./device-location.mjs";
 import {createCallerContext} from "./caller-context.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -141,7 +142,7 @@ async function fixture(t, options = {}) {
       addEventListener: (type, listener) => pageEvents.set(type, listener),
     },
     navigator: { mediaDevices: { getUserMedia: () => options.getUserMedia?.() ?? Promise.resolve(stream([track()])) }, sendBeacon: (url, body) => { beacons.push({url,body}); return true; } },
-    createCallerContext,
+    createCallerContext,browserDeviceActions,createBrowserDeviceAdapter,
     RTCPeerConnection: Peer,
     AudioContext,
     EventSource,

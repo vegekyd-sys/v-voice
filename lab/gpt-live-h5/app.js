@@ -1,3 +1,4 @@
+import {browserDeviceActions,createBrowserDeviceAdapter} from "./device-location.mjs";
 import { createCallerContext } from "./caller-context.mjs";
 import { entryStartup, startVoiceEntry, markVoiceTiming } from "./entry-startup.mjs";
 import { createAvatarTasks } from "./avatar-state.mjs";
@@ -560,7 +561,7 @@ async function stopCall() {
     active.avatarTelemetry?.close();
     active.avatarReactions?.dispose();
     active.relay?.dispose();
-    active.callerContext?.close();
+    active.callerContext?.close();active.deviceAdapter?.close();
     active.speakerGate?.dispose();
     clearInterval(active.levelTimer); clearInterval(active.heartbeat); clearInterval(active.presentationPoll);
     active.presentationAbort?.abort();
@@ -636,7 +637,8 @@ async function startCall() {
     if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
     const selectedModel = ['seeduplex','grok'].includes(chosenModel)?chosenModel:'gpt-live';
     const inputPolicy = speakerCandidate() ? (new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy) : null;
-    const reservation = await api("session", {model:selectedModel,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:{})}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
+    const nativeDeviceActions=await browserDeviceActions();
+    const reservation = await api("session", {model:selectedModel,...(selectedModel!=='gpt-live'?{nativeDeviceActions}:{}),...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:{})}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     const diagnosticOwner=avatarDiagnosticOwner=Symbol('avatar-call');
     document.body.dataset.avatarReactionRequests='0';
@@ -664,6 +666,7 @@ async function startCall() {
       apply:reaction=>avatar.select(reaction),attend:()=>avatar.attend(),current:()=>avatar.context(),
       isCurrent:()=>call===active,isVisible:()=>!document.hidden,
     });
+    if(reservation.nativeDeviceActions)active.deviceAdapter=createBrowserDeviceAdapter({voiceSessionId:active.voiceSessionId,isCurrent:()=>call===active,send:frame=>active.relay?.sendDeviceResult(frame)});
     if (reservation.transport === 'gateway-relay') {
       await active.contextResume;
       if(call!==active)return;
@@ -673,6 +676,7 @@ async function startCall() {
         onPlaybackActivity:speaking=>{if(call===active){setVoiceState(speaking?'speaking':'listening');if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
         onEvent:value=>{
           if(call!==active)return;
+          if(active.deviceAdapter?.handle(value))return;
           // An interrupted native reply may never send its final transcript.
           // Its caption row must not be reused for the answer to the next turn.
           if(value.type==='input.speech.started'&&active.relayTurns?.assistant){
