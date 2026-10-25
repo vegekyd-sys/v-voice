@@ -12,7 +12,7 @@ const sentence = text => text.match(/[^。！？.!?\n]+[。！？.!?\n]+/g)?.joi
  */
 export function createRobotReactionDriver({evaluate=null,send,now=Date.now,audit=()=>{},assistantBeatMs=ROBOT_ASSISTANT_BEAT_MS,status=false}={}) {
   let closed=false,busy=false,pending=null,epoch=0;
-  const owner={};const selector=createAvatarReactionSelector({evaluate,now,audit});let picture=null;
+  const owner={};const selector=createAvatarReactionSelector({evaluate,now,audit,headGestures:true});let picture=null;
   const turns=[];let assistant='',assistantFirst=false,assistantAt=-Infinity,lastAssistantText='';
   // Task status badge, like the web phone's avatar: one coarse activity per
   // pending tool call (never its arguments), shown until the last call ends.
@@ -32,7 +32,7 @@ export function createRobotReactionDriver({evaluate=null,send,now=Date.now,audit
     const selected=await selector.select({owner,context:{turns:turns.at(-1)?.text===beat.text?[...turns]:[...turns,{role:beat.role,text:beat.text}],speaker:beat.role,
       currentPicture:picture,reactionPicture:picture,beat:{kind:beat.kind,text:beat.text}},
       isCurrent:()=>!closed&&epoch===own});
-    if(selected){picture=selected.picture;return {id:robotReactionForPicture(picture),source:'shared-avatar-semantics'};}
+    if(selected){picture=selected.picture;return {id:selected.headGesture==='shake'?'shake-no':selected.headGesture==='nod'?'nod-agree':robotReactionForPicture(picture),source:'shared-avatar-semantics'};}
     return {id:beat.role==='user'?'listen-attentive':'explain',source:'neutral-fallback'};
   }
   async function run(){
@@ -90,16 +90,17 @@ export function createRobotReactionDriver({evaluate=null,send,now=Date.now,audit
 export function createDeepSeekChoiceEvaluator({apiKey,model='deepseek-chat',endpoint='https://api.deepseek.com/chat/completions',fetchImpl=fetch}={}) {
   if(!apiKey)throw Error('DeepSeek 凭据未配置');
   return async(state,questions,signal)=>{
-    const [[name,question]]=Object.entries(questions);
-    const options=Object.entries(question.criteria).map(([id,text])=>`- ${id}: ${text}`).join('\n');
-    const body={model,temperature:0.4,max_tokens:40,response_format:{type:'json_object'},messages:[
-      {role:'system',content:`${state.purpose}\n${question.instructions}\n候选：\n${options}\n只输出 JSON：{"choice":"候选id"}`},
+    const entries=Object.entries(questions);
+    const options=entries.map(([name,q])=>`${name}: ${q.instructions}\n${Object.entries(q.criteria).map(([id,text])=>`- ${id}: ${text}`).join('\n')}`).join('\n');
+    const shape=Object.fromEntries(entries.map(([name])=>[name,'候选id']));
+    const body={model,temperature:0.4,max_tokens:80,response_format:{type:'json_object'},messages:[
+      {role:'system',content:`${state.purpose}\n${options}\n只输出 JSON：${JSON.stringify(shape)}`},
       {role:'user',content:JSON.stringify({turns:state.turns,beat:state.beat})},
     ]};
     const response=await fetchImpl(endpoint,{method:'POST',headers:{authorization:`Bearer ${apiKey}`,'content-type':'application/json'},body:JSON.stringify(body),signal});
     if(!response.ok)throw Error('DeepSeek 请求失败 HTTP '+response.status);
     const result=await response.json();
-    const choice=JSON.parse(result?.choices?.[0]?.message?.content??'{}').choice;
-    return {answers:{[name]:{type:'choice',choice}}};
+    const choices=JSON.parse(result?.choices?.[0]?.message?.content??'{}');
+    return {answers:Object.fromEntries(entries.map(([name])=>[name,{type:'choice',choice:choices[name]??(name==='picture'?choices.choice:undefined)}]))};
   };
 }

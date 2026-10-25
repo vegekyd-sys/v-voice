@@ -1,32 +1,27 @@
-# StackChan 当前端能力 Candidate
+# StackChan：前台相机与自然 Reaction 候选
 
-本路负责独立 Candidate、固件安装和真人验收；总控负责正式合并、部署、发布。当前没有正式发布，共享 VLab 未改动。
+2026-10-25 用户修正后的范围：拍照只通过前台语音模型 `look`；点头和摇头属于表情 Reaction，不是需要交给后台执行、等待完成回执的任务。本分支先前的 robot-use Skill、robot_action 和 robot.* 任务操作已移除，旧实现只保留在 Git 历史。公共位置/设备能力协议不改动。
 
-## 提交与依赖
+## 当前实现
 
-- Voice：`codex/stackchan-capabilities-20261025`，叠在位置线 PR #134 的 `b444956769767f4d950e38f5d02a8a06fce22b4c` 上。已包含 revisioned capabilities 和 artifact-owned Skill 增量，不能重复合入旧公共层。
-- 固件：Draft PR https://github.com/vegekyd-sys/v-stackchan/pull/2 ，`35b827abf670f61a8c55a72d50f2dd224b5c55d8`，版本 `1.5.3-capabilities-rc1`。依赖 PR #1 的 `8d88b0b` / rc2 收音与清队列修复，不能回到默认分支旧音频行为。
-- 当前现场仍为 `1.5.2-duplex-rc2`。历史用户确认仅覆盖 rc2、1 米、音量 75 / 增益 1.6 的播放与自然插话，不外推到本候选。
+- `look` 调用现有相机工具。每次捕获使用独立请求标记，照片必须来自当前连接、当前通话和当前未过期请求；拒绝重复/迟到上传，挂断取消图像理解；固件 MCP 文字本身不能伪造“看到了”。图像理解仍为独立视觉模型，结果交回前台语音模型。
+- 机器人和 H5 使用同一个 `createAvatarReactionSelector`、头像语义与上下文。机器人在同一次判断中增加可选 `headGesture: none|nod|shake`，用于弥补 H5 图库没有明确摇头姿态的限制；没有新增工具、后台模型或关键词分类器。H5 默认不启用该字段。
+- 固件接收已有 Reaction ID。点头改为一次小幅动作；姿态基于真实当前位置，眼睛先变化约 120 ms，头部按五次缓动曲线加减速，速度上限 45°/s，下一段等待前一段停止。两个轴同步时长；边界附近缩小幅度，不跳到预设中心。无有效舵机反馈则不启动。
+- 动作进行时不重启、不排队；至少间隔 3.5 秒。脸部仍可随对话更新。自主运动暂时让位，触摸和待机取消动作。串口反馈失败或超时停止。保留原音频/唤醒/打断代码。
 
-## 已实现
+## 研究依据与候选参数
 
-- 当前通话的可信 robot adapter 共用 `lib/device-requests.mjs`：前台 `look` / `robot_action`、后台 `robot-use` 都经同一 owner、deadline、取消、拒绝和回执路径。
-- 后台描述符直接给出产物内 `skills/robot-use/SKILL.md` 和 CLI 路径，不依赖生产 workspace 安装。Skill 入口短，视觉、动作、Reaction 细节按需读取，不授予账号权限。
-- `robot.observe` 只接受当前请求的真实 HTTP JPEG 上传；MCP 文本不能伪造照片成功。挂断、超时、重复上传、旧请求和晚到视觉结果拒绝生效。图片不写日志。
-- `robot.move`、`robot.gesture`、`robot.cancel` 只启用固件实际探测到的 yaw/pitch 两轴；无 roll。命令不重试；完成需要同 owner/request、真实舵机反馈、目标角度及动作步数。反馈丢失撤销本通话的动作能力；新通话重新探测，不重放旧动作。
-- 固件有界状态机、真实 `ReadPos/ReadMove` 反馈、限位、截止时间、断线取消；手控优先于 idle / Reaction 动作。相机忙时拒绝并发，不能退回音频主线程执行。
-- Reaction 复用 H5 的 `createAvatarReactionSelector` 语义选择，仅映射到已有 35 种机器人表情。工具任务 badge 与情绪选择分离。
+- [Expressive Robot Motion Timing, HRI 2017](https://arxiv.org/abs/1802.01536)：路径相同时，时间分配也改变用户对自然感和表达的判断。
+- [Nutty-based Robot Animation, 2019](https://arxiv.org/abs/1904.02898)：将动画表达、动作组合和真实物理限制一起设计。
+- [Disney Research, Realistic and Interactive Robot Gaze, 2020](https://la.disneyresearch.com/publication/realistic-and-interactive-robot-gaze/)：眼神与头部的不同运动带宽，以及分层行为，有助于可信的互动。
 
-## 证据与边界
+曲线、45°/s、3.5 秒间隔、角度与时长是针对本机两轴结构的工程候选，不是论文给出的最佳参数。低强度点头约 5–6°、轻摇头约 ±6°；应以真机观感继续调校。无 roll 轴；历史 face-follow 是图像活动位置跟随，不声称人脸识别。
 
-- 本地最新全套 **923/923** 通过，包含共同能力刷新增量。SeedDuplex / Grok fixture 验证动作等待回执期间 PCM 上行仍工作；不是实际模型音频或真人插话验收。
-- 固件 ESP-IDF 5.5.4 完整构建通过，CMake/CTest 两个目标通过；依赖 patch 在原始依赖上 `git apply --check` 通过。
-- 私有 Candidate 的实际 runtime Skill loader 已发现 `robot-use`，eligible=true，来源 openclaw-workspace。真实后端模型 → Skill → CLI → 当前通话模拟固件的测试仍在完善；模拟固件不能证明物理完成。
-- 新固件真实拍照、可观察点头/摇头、播放中插话及后台动作全链路仍待本路 Candidate 验收。用户已表示机器人在手边，环境准备好后通知其测试。
-- 私有证据在本机 `Documents/Codex/stackchan-capabilities-20261025/private`；凭据、个人入口、图片和日志不进 Git。
+## 验证与交付边界
 
-## 公共接入点
-
-`session.mjs` / `tools.mjs` 只增加小型 robot 工具调用及按 terminal.kind 选择 Skill；`server.mjs` 注册 robot operations 和可信回调 URL。执行、拍照和 MCP 适配集中在 `lab/robot/`、`device-endpoint.mjs`、`xiaozhi-wire.mjs`。无 Gateway / Worker runtime 改动；正式集成若需平台改动另走平台 PR。
-
-发布前由总控按实际交付更新首页 `changelog.mjs`、`CHANGELOG.md` 与版本登记；当前候选不提前写成已上线。
+- 原相机 Candidate 已获得真实 JPEG 并人工查看，用户确认拍照回答、前台旧动作及插话基本可用；旧动作随后被指出僵硬，不能用于新动作验收。
+- 旧后台点头有动作但没有口头结果，记为未通过；产品已取消该路径，不把旧测试包装成新能力通过。
+- 本轮使用私有 Candidate：仅 Voice 相机请求生命周期与既有 Reaction 传输、固件本地动画，不改 Gateway、Worker、身份或权限。共享 VLab 不占用。
+- 新固件版本 `1.5.3-reactions-rc2`，待记录构建、安装及真机观感。自动测试验证协议和曲线，不代替物理动作/真实音频验收。
+- Voice Draft PR #135；firmware Draft PR #2 仍基于未合入的音频 PR #1，不能因此自动合入依赖。正式 devices 服务仍在原主机；本 Candidate 不代表正式跨主机后台链路验收。
+- 尚未合入/正式发布；首页发布日志由实际发布时更新，不能提前宣称交付。旧 app/NVS 只读备份、候选 app 和私有环境均保留在本机证据目录。

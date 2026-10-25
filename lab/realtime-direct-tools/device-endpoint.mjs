@@ -1,7 +1,6 @@
 import {appendFileSync} from 'node:fs';
 import {createDevicePlayout,DEVICE_PLAYOUT_MAX_BYTES} from './device-playout.mjs';
 import {EventEmitter} from 'node:events';
-import {createRobotDevice,probeRobot} from '../robot/robot-device.mjs';
 import {createRobotReactionDriver} from '../robot/robot-reactions.mjs';
 import {createXiaozhiWire} from './xiaozhi-wire.mjs';
 import {createVolumeStore,targetVolume} from './device-volume.mjs';
@@ -86,7 +85,7 @@ class DeviceCallClient extends EventEmitter {
 export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '/device/voice',xiaozhiPath = null,otaPath = null,xiaozhiPublicUrl = null,audit = () => {},isSessionBusy = () => false,
   now = Date.now,idleMs = 15000,initialIdleMs = 12000,followUpMs = 10000,chatterMs = 30000,chatterSpeechGraceMs = 15000,toolHoldMs = 180000,
   staleSpeechMs = 6000,
-  unheardTurnMs = 5000,inputSilentMs = 3000,inputLoudRms = 300,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = DEVICE_PLAYOUT_MAX_BYTES,stallMs = 20000,uplinkGapMs = 300,uplinkFillMs = 100,robotEvaluate = null,volumeStore = createVolumeStore(),visionPath = null,describeImage = null,backendDeviceURL = null}) {
+  unheardTurnMs = 5000,inputSilentMs = 3000,inputLoudRms = 300,maxCallMs = 1800000,tickMs = 1000,pingMs = 20000,maxBufferedBytes = DEVICE_PLAYOUT_MAX_BYTES,stallMs = 20000,uplinkGapMs = 300,uplinkFillMs = 100,robotEvaluate = null,volumeStore = createVolumeStore(),visionPath = null,describeImage = null}) {
   if (!/^\/[a-zA-Z0-9/_-]+$/u.test(path) || visionPath !== null && !/^\/[a-zA-Z0-9/_-]+$/u.test(visionPath)) throw Error('Invalid device path');
   const server = new wsModule.WebSocketServer({noServer:true,maxPayload:65536,perMessageDeflate:false});
   const connections = new Map(), firmwareReports = new Map(), creatingCalls = new Set(), closingCalls = new Set();
@@ -196,7 +195,7 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     };
     call.closed = reason => {
       if (call.ended) return;
-      call.ended = true;call.capture?.controller.abort();call.robotDevice?.close();clearInterval(call.timer);clearInterval(call.fillTimer);call.playout.dispose();call.robot?.dispose();
+      call.ended = true;call.capture?.controller.abort();clearInterval(call.timer);clearInterval(call.fillTimer);call.playout.dispose();call.robot?.dispose();
       if (connection.call === call) connection.call = null;
       if (call.id) audit({type:'device.call',voiceSessionId:call.id,stage:'closed',deviceId:device.id,reason:call.reason ?? reason,
         durationMs:now() - call.startedAt,inputBytes:call.inputBytes,outputBytes:call.outputBytes,userTurns:call.userTurns,gatedInputBytes:call.gatedInputBytes ?? 0,maxInputGapMs:call.maxInputGapMs ?? 0,...(call.nearField ? {nearField:call.nearField.summary()} : {})});
@@ -309,19 +308,8 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
     creatingCalls.add(call);
     void (async () => {
       try {
-        const probe = device.robot && typeof ws.callTool==='function' ? await probeRobot({wire:ws,camera:Boolean(look)}) : null;
-        if (call.ended || connection.call !== call || ws.readyState!==1) return;
-        const terminalAdapter = probe ? {kind:'robot',capabilities:()=>probe.capabilities,
-          execute:(operation,args,options)=>call.robotDevice?.execute(operation,args,options)??Promise.resolve({status:'failed',reason:'device_unbound'})} : null;
-        const reservation = await directVoice.reserve({...(terminalAdapter?{terminalAdapter,backendDeviceURL:typeof backendDeviceURL==='function'?backendDeviceURL():backendDeviceURL}:{}),model,sessionKey:device.sessionKey,voice:device.voice,surface:'speaker',inputSampleRate:DEVICE_INPUT_SAMPLE_RATE,speaker:deviceTools,inputPolicy:device.multiSpeaker?'speaker':'native'});
+        const reservation = await directVoice.reserve({terminalKind:device.robot?'robot':'speaker',model,sessionKey:device.sessionKey,voice:device.voice,surface:'speaker',inputSampleRate:DEVICE_INPUT_SAMPLE_RATE,speaker:deviceTools,inputPolicy:device.multiSpeaker?'speaker':'native'});
         call.id = reservation.voiceSessionId;
-        if (probe) {
-          call.robotDevice = createRobotDevice({wire:ws,voiceSessionId:call.id,probe,look,now,
-            onCapabilities:capabilities=>{if(!call.ended&&connection.call===call&&call.client)call.client.emit('message',Buffer.from(JSON.stringify({type:'device.capabilities',version:1,voiceSessionId:call.id,revision:call.capabilityRevision=(call.capabilityRevision??0)+1,capabilities})),false);},
-            isCurrent:()=>!call.ended&&connection.call===call&&connections.get(device.id)===connection&&ws.readyState===1});
-          const motionAvailable = probe.capabilities['robot.move'].status==='available';
-          if (!await call.robotDevice.bind() && motionAvailable) throw Error('robot_binding_failed');
-        }
         // Routing is real only when the server has it and the model supports it.
         call.multiSpeaker = Boolean(reservation.speakerRouting);
         audit({type:'device.call',voiceSessionId:call.id,stage:'start',deviceId:device.id,latencyMs:now() - call.startedAt,...(device.multiSpeaker ? {multiSpeaker:call.multiSpeaker} : {})});
@@ -467,7 +455,6 @@ export function createDeviceEndpoint({directVoice,devices = [],wsModule,path = '
       reply(200, {server_time:{timestamp:now(), timezone_offset:480}, firmware:{version, url:''},
         websocket:{url:xiaozhiPublicUrl, token:device.otaToken, version:1}});
     },
-    setBackendDeviceURL: value => {backendDeviceURL=value;},
     setAdmissionGate: gate => {admissionBlocked = gate;},
     pendingOperations: () => creatingCalls.size + closingCalls.size + visionOperations + [...connections.values()].filter(c => c.looking).length,
     inventory: () => devices.filter(d=>!d.disabled).map(d => ({id:d.id,kind:d.robot?'robot':'speaker',

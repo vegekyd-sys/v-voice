@@ -61,3 +61,16 @@ test('DeepSeek transport carries the shared picture answer shape',async()=>{
  assert.deepEqual(await evaluate({purpose:'p',turns:[],beat:{}},{picture:{type:'choice',instructions:'i',criteria:{'listen-3':'温柔'}}}),choice('listen-3'));
  assert.match(request.messages[0].content,/listen-3: 温柔/);
 });
+
+test('head gesture is part of the same semantic evaluation and rejects arbitrary motor commands',async()=>{
+ for(const [gesture,expected] of [['nod','nod-agree'],['shake','shake-no'],['move:90','comfort'],['none','comfort']]){
+  let count=0;const h=harness(async(s,q)=>{count++;assert(q.picture&&q.headGesture);return {answers:{...choice('listen-3').answers,headGesture:{type:'choice',choice:gesture}}};});
+  h.driver.observe({type:'transcript',role:'user',text:'这个说法不对',final:true});await delay(5);
+  assert.equal(count,1);assert.equal(h.sent[0].id,expected);h.driver.dispose();
+ }
+});
+test('DeepSeek returns both face and head from one bounded response',async()=>{
+ const evaluate=createDeepSeekChoiceEvaluator({apiKey:'fixture',fetchImpl:async()=>({ok:true,json:async()=>({choices:[{message:{content:'{"picture":"listen-5","headGesture":"shake"}'}}]})})});
+ const result=await evaluate({purpose:'p'},{picture:{instructions:'face',criteria:{}},headGesture:{instructions:'head',criteria:{}}});
+ assert.equal(result.answers.picture.choice,'listen-5');assert.equal(result.answers.headGesture.choice,'shake');
+});
