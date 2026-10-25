@@ -20,6 +20,7 @@ import VVoiceCore
         let expectedReply = ProcessInfo.processInfo.environment["VVOICE_PUBLIC_EXPECTED_REPLY"]
         let expectedContent = ProcessInfo.processInfo.environment["VVOICE_PUBLIC_EXPECTED_CONTENT"]
         let publicObserveSeconds = min(120, max(16, Int(ProcessInfo.processInfo.environment["VVOICE_PUBLIC_OBSERVE_SECONDS"] ?? "16") ?? 16))
+        let hangupAfterTask = ProcessInfo.processInfo.environment["VVOICE_PUBLIC_HANGUP_AFTER_TASK"] == "1"
         let isolated = fixturePath != nil || publicService != nil
         let store = BindingStore(service: isolated ? "com.versa.vvoice.latency.\(UUID().uuidString)" : "com.versa.vvoice.personal-entry")
         defer { if isolated { store.remove() } }
@@ -38,7 +39,7 @@ import VVoiceCore
         let status = try await api.call("status")
         guard status["activeCall"] as? Bool == false else { throw XCTSkip("A call is active") }
         var revision = 0, receivedBytes = 0, failure: Error?, firstOutput = true
-        var recognized = false, replied = false, documentReceived = false
+        var recognized = false, replied = false, documentReceived = false, documentSeen = false, backgroundStarted = false
         relay.onReservation = { value in
             guard let id = value["voiceSessionId"] as? String else { throw VoiceError.protocolMismatch }
             try api.rememberCall(id)
@@ -60,7 +61,10 @@ import VVoiceCore
                     if recognized, let row = effect.row, row.role == "assistant", !row.text.isEmpty {
                         replied = replied || (expectedReply.map { row.text.contains($0) } ?? true)
                     }
-                case "document.present": documentReceived = effect.document.map { document in expectedContent.map { document.text.contains($0) } ?? !document.text.isEmpty } ?? false
+                case "task.upsert": if effect.activity == "background" { backgroundStarted = true }
+                case "document.present":
+                    documentSeen = true
+                    documentReceived = effect.document.map { document in expectedContent.map { document.text.contains($0) } ?? !document.text.isEmpty } ?? false
                 default: break
                 }
             }
@@ -107,13 +111,21 @@ import VVoiceCore
         for index in 1...(publicService == nil ? 3 : 1) {
             attempt = index; offset = 0
             CallDiagnostics.record("latency.input-start", code: "attempt=\(attempt)")
-            try await Task.sleep(for: .seconds(publicService == nil ? 16 : publicObserveSeconds))
+            if hangupAfterTask, publicService != nil {
+                for _ in 0..<publicObserveSeconds {
+                    if backgroundStarted { try await Task.sleep(for: .seconds(2)); relay.close(); break }
+                    try await Task.sleep(for: .seconds(1))
+                }
+                XCTAssertTrue(backgroundStarted, "Hangup probe must first observe the actual background tool")
+            } else {
+                try await Task.sleep(for: .seconds(publicService == nil ? 16 : publicObserveSeconds))
+            }
         }
         CallDiagnostics.record("latency.live-test-done", code: "receivedBytes=\(receivedBytes) failed=\(failure != nil)")
-        XCTAssertNil(failure); XCTAssertGreaterThan(receivedBytes, 0)
+        XCTAssertNil(failure); if !hangupAfterTask { XCTAssertGreaterThan(receivedBytes, 0) }
         if publicService != nil {
-            CallDiagnostics.record("public.live-result", code: "recognized=\(recognized) replied=\(replied) documentReceived=\(documentReceived) audioBytes=\(receivedBytes)")
-            XCTAssertTrue(recognized); XCTAssertTrue(replied)
+            CallDiagnostics.record("public.live-result", code: "recognized=\(recognized) replied=\(replied) documentSeen=\(documentSeen) documentReceived=\(documentReceived) backgroundStarted=\(backgroundStarted) audioBytes=\(receivedBytes)")
+            XCTAssertTrue(recognized); if !hangupAfterTask { XCTAssertTrue(replied) }
             if expectedContent != nil { XCTAssertTrue(documentReceived, "Requested Public content must arrive through the native document effect") }
         }
     }
