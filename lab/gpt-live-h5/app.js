@@ -1,3 +1,4 @@
+import { createCallerContext } from "./caller-context.mjs";
 import { entryStartup, startVoiceEntry, markVoiceTiming } from "./entry-startup.mjs";
 import { createAvatarTasks } from "./avatar-state.mjs";
 import { createAvatarReactions } from "./avatar-reactions.mjs";
@@ -132,7 +133,7 @@ function connectedStatus(active) {
   else setStatus("V 正在听，直接说话就好");
 }
 async function greetWhenReady(active) {
-  if(active.fixture||active.speakerGate)return;
+  if(active.fixture||active.speakerGate||active.callerContext?.pending)return;
   if (call !== active || active.greetingPending || active.greetingRequested || active.greetingSuppressed
     || active.greetingExpired || active.ending
     || active.pc.connectionState !== "connected" || active.context?.state !== "running"
@@ -475,6 +476,7 @@ function providerMessage(event) {
   let data;
   try { data = JSON.parse(event.data); } catch { return; }
   const active = call;
+  active?.callerContext?.observe(data);
   active?.speakerGate?.observe(data);
   if(speakerCandidate()&&['session.started','session.context.appended','turn.created','turn.done','error'].includes(data.type))speakerEvent(data);
   if (active && data.type === "session.started") void greetWhenReady(active);
@@ -558,6 +560,7 @@ async function stopCall() {
     active.avatarTelemetry?.close();
     active.avatarReactions?.dispose();
     active.relay?.dispose();
+    active.callerContext?.close();
     active.speakerGate?.dispose();
     clearInterval(active.levelTimer); clearInterval(active.heartbeat); clearInterval(active.presentationPoll);
     active.presentationAbort?.abort();
@@ -709,6 +712,9 @@ async function startCall() {
     const outgoing=active.speakerGate?.stream??active.stream;
     for (const track of outgoing.getAudioTracks()) active.pc.addTrack(track, outgoing);
     active.channel = active.pc.createDataChannel("oai-events"); active.channel.onmessage = (event) => { if (call === active) providerMessage(event); };
+    active.callerContext=createCallerContext({context:reservation.callerContext,voiceSessionId:active.voiceSessionId,channel:active.channel,tracks:outgoing.getAudioTracks(),isCurrent:()=>call===active,
+      onReady:()=>void greetWhenReady(active),onError:error=>{if(call===active)void stopCall().then(()=>{if(!call)setStatus(error.message,{tone:"error"});});}});
+    active.channel.onopen=()=>active.callerContext.open();
     active.events = new EventSource(apiUrl("events"));
     const applyNativeControl = value => {
       if(value.type==='reply.sync'&&value.status==='failed')setStatus(value.message,{tone:'problem'});
@@ -897,7 +903,7 @@ async function initializeEntry() {
     const { status } = result;
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     liveReady = status.ready === true;
-    const models = MODEL_CHOICES.map(choice => {
+    const models = MODEL_CHOICES.filter(choice=>!status.unidentified||choice.id!=='gpt-live').map(choice => {
       const model = status.models?.find(item => item.id === choice.id);
       return model ? { ...choice, available: Boolean(model.available), ...(model.label ? { label: model.label } : {}) } : choice;
     });
@@ -906,7 +912,7 @@ async function initializeEntry() {
     if (!usable(model)) model = ["seeduplex", "gpt-live", "grok"].find(usable) ?? model;
     const grok = status.models?.find(item => item.id === "grok");
     const grokVoices = grok?.voices ?? [];
-    view.set({ models, model, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, grok: {
+    view.set({ models, model, accountLoginHref: status.accountLoginHref??null, accountLabel: status.accountLabel??null, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, unidentified:status.unidentified===true, grok: {
       voices: grokVoices.map(voice => ({ id: voice.id, label: voice.label })),
       voice: grokVoices.some(voice => voice.id === "iris") ? "iris" : grokVoices[0]?.id ?? null,
       hint: [grok?.speed && grok.speed !== 1 ? `${grok.speed}× 语速` : "", grok?.expressiveTags ? "自主表达试用" : ""].filter(Boolean).join(" · "),
@@ -937,8 +943,8 @@ async function sessionRequest(route,body){
 function updateSessionSheet(patch,key){view.set(state=>state.sessionSheet?.key===key?{sessionSheet:{...state.sessionSheet,...patch}}:{});}
 let sessionSheetRevision=0;
 async function openIosBinding(){
- const key=++sessionSheetRevision;view.set({sessionSheet:{kind:'binding',key,busy:true,devices:[]}});
- try{const data=await sessionRequest('ios-binding');updateSessionSheet({busy:false,devices:data.devices,appDownload:data.appDownload},key);if(view.get().sessionSheet?.key===key)await createIosBinding();}catch(e){updateSessionSheet({busy:false,error:e.message},key);}
+ const key=++sessionSheetRevision;view.set({sessionSheet:{kind:'binding',key,busy:true,devices:[],unidentified:view.get().unidentified}});
+ try{const data=await sessionRequest('ios-binding');updateSessionSheet({busy:false,devices:data.devices,appDownload:data.appDownload,unidentified:view.get().unidentified},key);if(view.get().sessionSheet?.key===key)await createIosBinding();}catch(e){updateSessionSheet({busy:false,error:e.message},key);}
 }
 async function createIosBinding(){
  const key=view.get().sessionSheet?.key;

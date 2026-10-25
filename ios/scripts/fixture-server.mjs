@@ -10,6 +10,7 @@ import {normalizeAvatarEvent} from '../../lab/gpt-live-h5/avatar-telemetry.mjs';
 const port=Number(process.env.VVOICE_FIXTURE_PORT??29837);
 let active=null,client=null,sequence=0,sessions=0,inputBytes=0,zeroBytes=0,playbackDrained=0,playbackStarts=0,greetings=0,heartbeats=0,earlyAudio=false,slowSession=false;
 let slowSessionMS=300;
+let fastMode=false,fastReject=false,fastWrongOwner=false,fastDials=0,statusRequests=0,sessionRequests=0;
 let presentationRequests=0;
 let nativeMode=false,speakerMode=false,runtimeMode=false,nativeRuntime=null,lastSessionRequest=null;
 let shellDelayMS=0;
@@ -49,7 +50,7 @@ const server=createServer(async(req,res)=>{
  const path=new URL(req.url,'http://127.0.0.1').pathname;
  const body=await new Promise(resolve=>{const chunks=[];req.on('data',b=>chunks.push(b));req.on('end',()=>{try{resolve(JSON.parse(Buffer.concat(chunks).toString()||'{}'));}catch{resolve({});}});});
  const send=(status,value)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
- if(path==='/fixture/state')return send(200,{active,sessions,inputBytes,zeroBytes,inputFrames,inputActiveFrames,peakInputRMS,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,presentationRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects,lastOffer});
+ if(path==='/fixture/state')return send(200,{fastDials,statusRequests,sessionRequests,active,sessions,inputBytes,zeroBytes,inputFrames,inputActiveFrames,peakInputRMS,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,presentationRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects,lastOffer});
  if(path==='/fixture/redirect-target'){shellRedirects++;return send(200,{});}
  if(path==='/voice/ios-shell-release.json'){
    shellRequests.push({cookie:!!req.headers.cookie,authorization:!!req.headers.authorization});
@@ -66,6 +67,10 @@ const server=createServer(async(req,res)=>{
    if(body.command==='shell-delay')shellDelayMS=Math.max(0,Math.min(2000,Number(body.ms)||0));
    if(body.command==='shell-release')shellVariant=body.variant??'none';
    if(body.command==='reset'){shellDelayMS=0;shellVariant='none';shellRequests=[];shellRedirects=0;inputFrames=0;inputActiveFrames=0;peakInputRMS=0;}
+   if(body.command==='fast-mode')fastMode=true;
+   if(body.command==='fast-reject')fastReject=true;
+   if(body.command==='fast-wrong-owner')fastWrongOwner=true;
+   if(body.command==='reset'){fastMode=false;fastReject=false;fastWrongOwner=false;fastDials=0;statusRequests=0;sessionRequests=0;}
    if(body.command==='native-mode')nativeMode=true;
    if(body.command==='speaker-mode')speakerMode=true;
    if(body.command==='runtime-mode')runtimeMode=true;
@@ -147,8 +152,10 @@ const server=createServer(async(req,res)=>{
    if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
    supplements.push({text:body.text,mode:body.mode});return send(200,{ok:true,forwardedToVoice:true,queued:false});
  }
- if(path==='/voice/api/status')return send(200,{...(nativeMode?{phoneInputPolicy:'native'}:{}),ready:true,preview:false,comparisonAvailable:true,models:[{id:'future-relay-model',label:'服务新模型',available:true,nativeTransport:'gateway-relay'},{id:'unsupported-transport',label:'尚未支持的传输',available:true,nativeTransport:'future-transport'},{id:'gpt-live',label:'GPT Live',available:true},{id:'seeduplex',label:'豆包 SeedDuplex',available:true},{id:'grok',label:'Grok Voice 3.0',available:true,voices:[{id:'iris',label:'Iris'},{id:'eve',label:'Eve'}],speed:1.2,expressiveTags:true}],activeCall:Boolean(active)});
+ if(path==='/voice/api/status')statusRequests++;
+ if(path==='/voice/api/status')return send(200,{...(fastMode?{nativeDialVersion:1}:{}),...(nativeMode?{phoneInputPolicy:'native'}:{}),ready:true,preview:false,comparisonAvailable:true,models:[{id:'future-relay-model',label:'服务新模型',available:true,nativeTransport:'gateway-relay'},{id:'unsupported-transport',label:'尚未支持的传输',available:true,nativeTransport:'future-transport'},{id:'gpt-live',label:'GPT Live',available:true},{id:'seeduplex',label:'豆包 SeedDuplex',available:true},{id:'grok',label:'Grok Voice 3.0',available:true,voices:[{id:'iris',label:'Iris'},{id:'eve',label:'Eve'}],speed:1.2,expressiveTags:true}],activeCall:Boolean(active)});
  if(path==='/voice/api/session'){
+   sessionRequests++;
    lastSessionRequest=body;
    if(limitNextSession){limitNextSession=false;return send(429,{error:'通话开始得太频繁，请稍后再试'});}
    if(active)return send(409,{error:'Existing owner'});
@@ -174,12 +181,7 @@ const server=createServer(async(req,res)=>{
  }
  return send(404,{error:'Unknown route'});
 });
-const wss=new WebSocketServer({noServer:true});
-server.on('upgrade',(req,socket,head)=>{
- const url=new URL(req.url,'http://127.0.0.1');
- if(req.headers.cookie!=='v_voice_access=fixture-cookie'||url.searchParams.get('voiceSessionId')!==active||url.searchParams.get('ticket')!=='fixture-ticket'){socket.destroy();return;}
- wss.handleUpgrade(req,socket,head,ws=>{
-   client=ws;emit({type:'ready'});if(earlyAudio){earlyAudio=false;audio();}
+function observeClient(ws){
    ws.on('message',(bytes,binary)=>{
      if(binary){
        inputBytes+=bytes.length;inputFrames++;
@@ -194,6 +196,33 @@ server.on('upgrade',(req,socket,head)=>{
      if(v.type==='playback.state'&&v.speaking===true)playbackStarts++;
      if(v.type==='playback.drained')playbackDrained++;
    });
+}
+const wss=new WebSocketServer({noServer:true});
+server.on('upgrade',(req,socket,head)=>{
+ const url=new URL(req.url,'http://127.0.0.1');
+ if(url.pathname==='/voice/api/dial'&&fastMode){
+   if(fastReject){socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');return;}
+   if(req.headers.cookie!=='v_voice_access=fixture-cookie'||active){socket.destroy();return;}
+   fastDials++;lastSessionRequest=Object.fromEntries(url.searchParams);lastSessionRequest.nativeRuntimeVersion=Number(lastSessionRequest.nativeRuntimeVersion);
+   wss.handleUpgrade(req,socket,head,ws=>{
+     active=randomUUID();const owned=active;sequence=0;sessions++;documents=[];pending=[];acknowledgements=[];client=ws;
+     ws.on('close',()=>{if(active===owned){active=null;client=null;}});
+     nativeRuntime=runtimeMode?createNativeRuntime({voiceSessionId:active,duplex:nativeMode,assisted:nativeMode,speakerRouted:speakerMode}):null;
+     const reservation={type:'reservation',dialVersion:1,voiceSessionId:active,transport:'gateway-relay',model:'1.2.6.1',provider:'seeduplex',...(nativeMode?{nativeDuplex:true,nativePlaybackPolicy:'assisted'}:{}),...(nativeRuntime?{nativeRuntime:nativeRuntime.descriptor}:{})};
+     const complete=()=>{
+       if(ws.readyState!==1||active!==owned)return;
+       ws.send(JSON.stringify(reservation));
+       ws.send(JSON.stringify({type:'ready',voiceSessionId:fastWrongOwner?randomUUID():owned}));
+       if(earlyAudio){earlyAudio=false;audio();}
+     };
+     if(slowSession){slowSession=false;setTimeout(complete,slowSessionMS);}else complete();
+     observeClient(ws);
+   });return;
+ }
+ if(req.headers.cookie!=='v_voice_access=fixture-cookie'||url.searchParams.get('voiceSessionId')!==active||url.searchParams.get('ticket')!=='fixture-ticket'){socket.destroy();return;}
+ wss.handleUpgrade(req,socket,head,ws=>{
+   client=ws;emit({type:'ready'});if(earlyAudio){earlyAudio=false;audio();}
+   observeClient(ws);
  });
 });
 server.listen(port,'127.0.0.1',()=>console.log(`V Voice local fixture listening on 127.0.0.1:${port}; no model calls`));

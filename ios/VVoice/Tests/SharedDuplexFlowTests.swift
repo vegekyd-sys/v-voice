@@ -24,6 +24,27 @@ import VVoiceCore
         while Date() < end { if try await predicate() { return }; try await Task.sleep(for: .milliseconds(30)) }
         XCTFail("Shared service/native playback state did not converge")
     }
+    func testFastDialUsesProductionServiceAndStreamsWithoutHTTPPreflight() async throws {
+        let (_, response) = try await URLSession.shared.data(from: base.appendingPathComponent("voice/"))
+        let header = try XCTUnwrap((response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Set-Cookie"))
+        let store = BindingStore(service: "com.versa.vvoice.fast-shared.\(UUID().uuidString)")
+        try store.save(StoredBinding(binding: VoiceBinding(testingBaseURL: base.appendingPathComponent("voice/")), cookie: String(header.split(separator: ";")[0])))
+        let api = VoiceAPI(store: store), audio = VoiceAudio()
+        let call = CallCoordinator(api: api, audio: audio); call.model = .seeduplex
+        addTeardownBlock { await call.end(); await MainActor.run { call.forget() } }
+        await call.refreshOptions(); XCTAssertTrue(api.supportsFastDial)
+        let before = try await state()
+        try await call.startOrContinue()
+        XCTAssertTrue(call.active); XCTAssertTrue(audio.isRunning); XCTAssertEqual(call.nativeRuntimeVersion, 1)
+        try await until { (try await self.state())["inputFrames"] as? Int ?? 0 > (before["inputFrames"] as? Int ?? 0) }
+        let connected = try await state()
+        XCTAssertEqual(connected["fastDials"] as? Int, (before["fastDials"] as? Int ?? 0) + 1)
+        XCTAssertEqual(connected["httpSessionRequests"] as? Int, before["httpSessionRequests"] as? Int)
+        XCTAssertEqual(connected["statusRequests"] as? Int, before["statusRequests"] as? Int)
+        try await command("next")
+        try await until { try await self.state()["playbackBusy"] as? Bool == true }
+        await call.end(); XCTAssertFalse(audio.isRunning)
+    }
     func testSharedProviderClearsBeforeNewPCMRejectsOldTailAndStillHangsUp() async throws {
         let (_, response) = try await URLSession.shared.data(from: base.appendingPathComponent("voice/"))
         let header = try XCTUnwrap((response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Set-Cookie"))
@@ -73,7 +94,10 @@ import VVoiceCore
             let samples = (0..<480).map { Int16(0.15 * sin(Double($0) * 2 * .pi * 440 / 24000) * 32767).littleEndian }
             let voice = samples.withUnsafeBytes { Data($0) }
             for _ in 0..<8 { input(voice, 0.1) }
-            XCTAssertEqual(audio.playbackPaused, version == 1, "The same binary executes the changed onset policy")
+            XCTAssertFalse(audio.playbackPaused, "Local sound alone is not a hold command")
+            try await command("speech-start")
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertEqual(audio.playbackPaused, version == 1, "The same binary executes the changed corroboration policy")
             try await command("caption")
             try await until { call.conversation.turns.contains { $0.text == "新服务端策略的字幕，无需修改安装包。" } }
             let requests = try await state()["sessionRequests"] as? [[String: Any]]
@@ -103,8 +127,10 @@ import VVoiceCore
         try await until { audio.queuedFrames > 0 }
         for attempt in 0..<2 {
             for _ in 0..<8 { input(voice, 0.1) }
-            XCTAssertTrue(audio.playbackPaused)
-            try await command("speech-start"); try await command("speech-complete")
+            XCTAssertFalse(audio.playbackPaused)
+            try await command("speech-start")
+            try await until { audio.playbackPaused }
+            try await command("speech-complete")
             let retained = audio.queuedFrames
             for _ in 0..<32 {
                 try await Task.sleep(for: .milliseconds(100))

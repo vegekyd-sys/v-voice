@@ -1,25 +1,22 @@
 {
   "schema": 1,
   "version": "1.0.0",
-  "build": 24,
-  "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+  "build": 32,
+  "sourceCommit": "af6c0da95fd21eacfba1a5a842cc5f7b7f492b4d",
   "candidateOnly": false,
   "signedArchiveVerified": true,
   "exportedIPAVerified": true,
-  "ipaSHA256": "cb96341de75cbd598a1806caaaff0e0e1fdd1dcc614a3dafed753cac3cf08ee8",
+  "ipaSHA256": "ee494eb0b728ad31f1643288639459e4739407eb385fb798ff51a57fa1152511",
   "installedOnRequestedIPhone": true,
-  "realVoiceAcceptance": "build24_five_requested_scopes_passed",
+  "realVoiceAcceptance": "accepted_by_Tianyi_2026-10-24",
   "localTests": {
-    "core": 37,
-    "nativeAll": 71,
-    "relatedServiceContracts": 92,
-    "mainCI": {
-      "run": 39893373949,
-      "commit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
-      "conclusion": "success"
-    },
+    "core": 45,
+    "service": 863,
+    "speakerNative": 95,
+    "fleetProtection": 11,
+    "finalNativeIntegration": 4,
     "embeddedH5Parity": true,
-    "homepageCandidateBrowserVerified": true
+    "homepageProductionBrowserVerified": true
   },
   "backgroundActionButton": {
     "intentMetadataVerified": true,
@@ -38,7 +35,7 @@
     "build": 8,
     "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab"
   },
-  "deviceReportedBuild": "24",
+  "deviceReportedBuild": "32",
   "savedH5Baseline": {
     "build": 10,
     "sourceCommit": "3ffeb94",
@@ -47,28 +44,26 @@
   },
   "realVoiceAcceptedScopes": {
     "status": "accepted_by_Tianyi",
-    "date": "2026-10-23",
-    "build": 24,
+    "date": "2026-10-24",
+    "build": 32,
     "scope": [
-      "two-way voice",
-      "barge-in interruption",
-      "Action Button start",
-      "locked-screen two-way voice",
-      "Dynamic Island mute/resume/end"
+      "continuous_playback",
+      "normal_interruption"
     ],
-    "evidence": "Tianyi confirmed all five normal and hung up; physical screen sharing remained off",
-    "policyFingerprint": "cb418111e71a187b",
-    "validMicrophoneInputObserved": true
+    "evidence": "现在很不错，现在这样。部署上线吧",
+    "releaseNativeSourcesIdentical": true,
+    "physicalScreenSharingUsed": false
   },
   "mergedIntoMain": true,
-  "mergePR": 82,
+  "mergePR": 106,
   "mergeChecksPassed": true,
   "releaseScope": {
     "distribution": "development_signed_private_device",
     "webServerDeployed": true,
     "gatewayRestarted": false,
     "appStoreOrTestFlightPublished": false,
-    "homepageChangelog": "both_nodes_public_assets_and_browser_verified"
+    "homepageChangelog": "production_browser_verified",
+    "bothVoiceNodesDeployed": true
   },
   "appIcon": {
     "source": "Tianyi supplied purple headset portrait",
@@ -80,20 +75,14 @@
     "actionButtonLaunchOverlayAcceptance": "Tianyi_confirmed_build18_passed"
   },
   "webDeliveryRelease": {
-    "sourceCommit": "c009c5bc2c73981d3ae2effe346553626d9c5d68",
-    "mergePR": 83,
+    "sourceCommit": "8e8dc76e0b5d1eeecf7c6f32c6a6e27afd4c888e",
+    "mergePR": 95,
     "serverDeployed": true,
-    "publicAssetHashesVerified": true,
     "bothNodesVerified": true,
-    "record": "../releases/voice-native-runtime-20261023/release.json"
+    "record": "../releases/session-phone-storage-fix-20261023/release.json",
+    "physicalNewReleaseAcceptance": "not claimed; build 25 retained; production binding and relaunch verified in dedicated simulator"
   },
-  "currentDeviceCandidate": {
-    "build": 24,
-    "installedOnRequestedIPhone": true,
-    "lastAcceptedBuild": 24,
-    "physicalAcceptance": "accepted_by_Tianyi",
-    "mergeStatus": "merged_pr82"
-  },
+  "currentDeviceCandidate": null,
   "build10RollbackHistory": {
     "date": "2026-10-22",
     "fromBuild": 13,
@@ -119,9 +108,9 @@
     "build11NewPhysicalVoiceAcceptance": "not_run"
   },
   "mainChecks": {
-    "run": 39893373949,
-    "commit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
-    "conclusion": "success"
+    "run": 39998287471,
+    "conclusion": "success",
+    "commit": "af6c0da95fd21eacfba1a5a842cc5f7b7f492b4d"
   },
   "savedRollback": {
     "build": 18,
@@ -129,7 +118,7 @@
     "signedIPACopiedAndVerified": true,
     "originalArchiveRetained": true
   },
-  "recordScope": "build24_signed_installed_physically_accepted",
+  "recordScope": "build32_main_signed_installed_with_user_accepted_native_sources",
   "previouslyInstalledOnRequestedIPhone": true,
   "savedBuild14Rollback": {
     "build": 14,
@@ -199,7 +188,7 @@
       "conclusion": "success"
     }
   },
-  "mergeCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+  "mergeCommit": "d7edf61f1e7dd44192a85ac75b1980787c79e9c4",
   "acceptedJointBuild18": {
     "build": 18,
     "candidateOnly": false,
@@ -286,9 +275,9 @@
     "signedIPACopiedAndVerified": true
   },
   "deviceLaunchVerification": {
-    "build": 24,
+    "build": 25,
     "succeeded": true,
-    "evidence": "User opened V Voice and completed the five accepted scenarios",
+    "evidence": "devicectl ordinary foreground launch succeeded after install",
     "automaticDialPerformed": false
   },
   "previousNativeDelivery": {
@@ -322,17 +311,16 @@
   },
   "nativeWaveformRelease": "build23-waveform.json",
   "pendingNativeRelease": {
-    "build": 24,
-    "status": "installed_and_physically_accepted",
-    "protocolVersion": 1,
+    "build": 25,
+    "status": "signed_verified_installed",
+    "baseBuild": 24,
     "installed": true,
-    "physicalAcceptance": "accepted_by_Tianyi",
-    "rollbackBuildsVerified": [
-      22,
-      23
-    ]
+    "physicalAcceptance": "pending",
+    "scope": "Feishu session binding, Settings Deep Link and existing binding reuse",
+    "sourceIntegration": "PR2 merged as 6860ae59f01ce6712027e2c3267424ec786f0ca1",
+    "testFlight": "after phone acceptance"
   },
-  "lastAcceptedBuild": 24,
+  "lastAcceptedBuild": 32,
   "nativeRuntime": {
     "protocolVersion": 1,
     "policyReadback": "cb418111e71a187b",
@@ -357,5 +345,323 @@
       "webActivation": "Idle app relaunch triggered the download; phone cache good list confirms page handshake. No reinstall or cache injection.",
       "updateTiming": "An active call cancels in-flight UI download. Current build retries at the next eligible idle check (600-second interval) or a fresh app launch; calls retain the current page."
     }
+  },
+  "previousAcceptedNativeBuild24": {
+    "build": 24,
+    "sourceCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+    "ipaSHA256": "cb96341de75cbd598a1806caaaff0e0e1fdd1dcc614a3dafed753cac3cf08ee8",
+    "realVoiceAcceptance": "build24_five_requested_scopes_passed",
+    "realVoiceAcceptedScopes": {
+      "status": "accepted_by_Tianyi",
+      "date": "2026-10-23",
+      "build": 24,
+      "scope": [
+        "two-way voice",
+        "barge-in interruption",
+        "Action Button start",
+        "locked-screen two-way voice",
+        "Dynamic Island mute/resume/end"
+      ],
+      "evidence": "Tianyi confirmed all five normal and hung up; physical screen sharing remained off",
+      "policyFingerprint": "cb418111e71a187b",
+      "validMicrophoneInputObserved": true
+    },
+    "nativeRuntime": {
+      "protocolVersion": 1,
+      "policyReadback": "cb418111e71a187b",
+      "bindingIdentityUnchanged": true,
+      "uninstalled": false,
+      "normalLaunch": "user_opened_and_completed_calls",
+      "serviceOnlyPhoneProof": {
+        "status": "accepted_same_installed_binary",
+        "date": "2026-10-23",
+        "nativeBuild": 24,
+        "nativeReinstalled": false,
+        "installedBundleIdentityUnchanged": true,
+        "signedIPAUnchanged": true,
+        "beforePolicyFingerprint": "cb418111e71a187b",
+        "afterPolicyFingerprint": "08688b02805ac448",
+        "taskText": "查询网页中",
+        "humanAcceptance": "Tianyi confirmed the requested webpage-query test good",
+        "shellRevision": "b933919c83d8cdb276637eefb3c8e8747de44afba36bdc39f08ba44b6ddf2bea",
+        "phoneConfirmedWebCacheMatchesPublishedArchive": true,
+        "verifiedCachedFiles": 114,
+        "bindingPreserved": true,
+        "webActivation": "Idle app relaunch triggered the download; phone cache good list confirms page handshake. No reinstall or cache injection.",
+        "updateTiming": "An active call cancels in-flight UI download. Current build retries at the next eligible idle check (600-second interval) or a fresh app launch; calls retain the current page."
+      }
+    },
+    "mainChecks": {
+      "run": 39893373949,
+      "commit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
+      "conclusion": "success"
+    }
+  },
+  "savedBuild24Rollback": {
+    "build": 24,
+    "ipaSHA256": "cb96341de75cbd598a1806caaaff0e0e1fdd1dcc614a3dafed753cac3cf08ee8",
+    "signedIPACopiedAndVerified": true,
+    "acceptedByTianyi": true
+  },
+  "connectionIncident20261023": {
+    "nativeFixBuild26": {
+      "sourceCommit": "3002ed9ce220a9b5a724d154f96e0303ce76f46b",
+      "version": "1.0.0",
+      "build": "26",
+      "ipaSHA256": "a30304bf422a916fca1f79e634a64bf571bf982871dc062634d81d8c9ed26f15",
+      "exportedReleaseVerified": true,
+      "sameBindingEntitlements": true,
+      "deviceReportedVersion": "1.0.0",
+      "deviceReportedBuild": "26",
+      "installed": true,
+      "testFlightPublished": false,
+      "productionVoiceChanged": false,
+      "realVoiceAcceptance": "pending_user_test"
+    },
+    "diagnosticBuild27": {
+      "sourceCommit": "946141440f72a3aa98147e705df296ca7d682620",
+      "version": "1.0.0",
+      "build": "27",
+      "ipaSHA256": "2a1349b8407e1ef3dd5743d250a6b7cf6461214b55cb4e09bfcef64fea562150",
+      "exportedReleaseVerified": true,
+      "sameBindingEntitlements": true,
+      "deviceReportedVersion": "1.0.0",
+      "deviceReportedBuild": "27",
+      "installed": true,
+      "testFlightPublished": false,
+      "productionVoiceChanged": false,
+      "realVoiceAcceptance": "pending_user_test"
+    },
+    "serverReleases": [
+      {
+        "pr": 97,
+        "commit": "2e71cf28997e9878dc35ae0af37d409bbce4ca68",
+        "bothNodesVerified": true,
+        "gatewayRestarted": false
+      },
+      {
+        "pr": 98,
+        "commit": "0aed8757bb117a43d8c8b1016cca8c2b2928d8e8",
+        "bothNodesVerified": true,
+        "gatewayRestarted": false
+      }
+    ],
+    "realPhoneEvidence": {
+      "build26": "Background microphone starts; first call automatically failed after slow setup, later call connected slowly. Not a speed acceptance.",
+      "build27": "User confirmed Action Button connects. With VPN on: about 16 seconds; user confirms clearly faster with VPN off. Detailed comparison in docs/ios/PHONE-CONNECTION-INCIDENT.md."
+    }
+  },
+  "previousDeviceCandidateBeforeFastDial": {
+    "build": 27,
+    "installedOnRequestedIPhone": true,
+    "lastAcceptedBuild": 24,
+    "physicalAcceptance": "action_button_connection_confirmed; vpn_off_speed_improved; broader_regression_not_claimed",
+    "sourceCommit": "946141440f72a3aa98147e705df296ca7d682620",
+    "ipaSHA256": "2a1349b8407e1ef3dd5743d250a6b7cf6461214b55cb4e09bfcef64fea562150",
+    "mergeStatus": "local_diagnostic_branch"
+  },
+  "fastDialRelease20261023": {
+    "nativeBuild": 28,
+    "nativeSourceCommit": "c89a002ac80dc693b8920271caffb5c27f1f0552",
+    "serverCommit": "ffccc8fb6b38cd9662bd108f455a5e41aaba6a70",
+    "pr": 101,
+    "mainCI": {
+      "run": 39961345175,
+      "conclusion": "success"
+    },
+    "bothNodesVerified": true,
+    "filesSha256": "06fb325ebf3713479e789567bd1f493fbee97b0fed8dae70dc3813e3c9474e11",
+    "gatewayRestarted": false,
+    "homepageChangelogVerified": true,
+    "nativeSignatureVerified": true,
+    "bindingEntitlementsUnchanged": true,
+    "rollbackBuild": 27,
+    "testFlightPublished": false,
+    "physicalSpeedAcceptance": "user_confirmed_about_2_to_3_seconds",
+    "validation": {
+      "serviceTestsPassed": 819,
+      "speakerTestsPassed": 95,
+      "fleetTestsPassed": 11,
+      "nativeDistinctCasesPassed": 81,
+      "nativeSkipped": 1,
+      "nativeQualification": "Initial full run had 3 failures because the shared fixture was not running; all 3 and the new full-stack case passed after fixture startup. Four additional fast-dial cases passed. Not a single clean full-suite run."
+    },
+    "realPhoneEvidence": {
+      "humanFeedback": "Action Button connection about 2-3 seconds",
+      "deviceMeasurement": [
+        {
+          "start": "2026-10-23T13:39:51.104Z",
+          "fast": true,
+          "fastAt": "2026-10-23T13:39:52.207Z",
+          "connected": "2026-10-23T13:39:55.353Z",
+          "elapsedMs": 4249,
+          "fastToConnectedMs": 3146
+        },
+        {
+          "start": "2026-10-23T13:41:04.059Z",
+          "fast": true,
+          "fastAt": "2026-10-23T13:41:04.536Z",
+          "connected": "2026-10-23T13:41:07.177Z",
+          "elapsedMs": 3118,
+          "fastToConnectedMs": 2641
+        }
+      ],
+      "scope": "Action Button connection speed only; no claim of stable 2 seconds or full regression acceptance",
+      "latestStartToConnectedMs": 3118,
+      "firstRecoveryCallMs": 4249,
+      "firstRecoveryCleanupMs": 668
+    }
+  },
+  "bindingJourneyCandidate": {
+    "build": 29,
+    "baseCommit": "694c18f3e5c75fea8b606158b9b3cb5dfcc7d8fa",
+    "status": "merged_installed_and_user_accepted_binding_switch_and_action_button",
+    "record": "binding-journey/README.md",
+    "threeStepSetup": true,
+    "multipleSavedConversations": true,
+    "existingKeychainImported": true,
+    "actionButtonUsesSelectedConversation": true,
+    "bindingTests": {
+      "passed": 11,
+      "failed": 0,
+      "skipped": 1
+    },
+    "installedOnPhysicalPhone": true,
+    "testflightPublished": false,
+    "serverDeploymentRequired": true,
+    "originalCandidateBuild": 26,
+    "userAcceptance": "2026-10-23: binding and switching work; Action Button follows selected conversation; latency investigation remains separate"
+  },
+  "previousDeviceCandidateBeforeBindingJourney": {
+    "build": 28,
+    "installedOnRequestedIPhone": true,
+    "lastAcceptedBuild": 24,
+    "physicalAcceptance": "action_button_speed_confirmed_by_user; latest_measured_3118ms; stable_2s_and_broader_regression_not_claimed",
+    "sourceCommit": "c89a002ac80dc693b8920271caffb5c27f1f0552",
+    "ipaSHA256": "607f4e36f70d9ebbff586811acd87dd7005ca652dea07d8c5ce5aa1655cb9a86",
+    "mergeStatus": "merged_via_PR101",
+    "serverCommit": "ffccc8fb6b38cd9662bd108f455a5e41aaba6a70"
+  },
+  "bindingJourneyBuild29Delivery": {
+    "sourceCommit": "594e3c50d3d76a5084cf52b1860b881f540db3bd",
+    "serverCommit": "594e3c50d3d76a5084cf52b1860b881f540db3bd",
+    "version": "1.0.0",
+    "build": "29",
+    "ipaSHA256": "f40d1222958eb2607a2e1e81a853ffc71b5484624215f11c949b4d58c457d5ca",
+    "exportedReleaseVerified": true,
+    "sameBindingEntitlements": true,
+    "deviceReportedVersion": "1.0.0",
+    "deviceReportedBuild": "29",
+    "installed": true,
+    "testFlightPublished": false,
+    "productionVoiceChanged": true,
+    "realVoiceAcceptance": "pending_user_test",
+    "serverRelease": {
+      "complete": true,
+      "commit": "594e3c50d3d76a5084cf52b1860b881f540db3bd",
+      "bothNodesReady": true,
+      "filesSha256": "b5e69801e48742a437b760a2afdd0824035501b97f86bb29f4d130353818bee6",
+      "gatewayUnchanged": true,
+      "webPID": "2557204",
+      "devicesPID": "2278958"
+    },
+    "homepageChangelogVerified": true,
+    "previousBuildRetained": 28,
+    "tests": {
+      "servicePassed": 819,
+      "nativePassed": 87,
+      "nativeFailed": 0,
+      "nativeSkipped": 1,
+      "nativeSkipReason": "Preserve existing real binding"
+    },
+    "normalLaunchVerified": true,
+    "physicalBindingJourneyAcceptance": "pending_user_experience"
+  },
+  "latencyBuild30Candidate": {
+    "build": 30,
+    "status": "candidate_simulator_passed_physical_vpio_pending",
+    "record": "latency-build30.md",
+    "coreTestsPassed": 40,
+    "appTestsPassed": 87,
+    "appTestsFailed": 0,
+    "appTestsSkipped": 2,
+    "installedLowLatencyCandidate": false,
+    "overallLatencyResolved": false
+  },
+  "previousFormalRecordBeforeBuild32": {
+    "build": 25,
+    "sourceCommit": "d7edf61f1e7dd44192a85ac75b1980787c79e9c4",
+    "ipaSHA256": "e3f44f4dc7c546ce79d7001d1eba1edf93655abf8a030385cc499ef8e735d058",
+    "recordScope": "build25_signed_installed_phone_acceptance_pending",
+    "realVoiceAcceptance": "pending_user_test"
+  },
+  "releaseStatus": "deployed_both_nodes_native_build32_installed_and_accepted",
+  "responsiveInterruptionBuild32": {
+    "record": "../releases/ios-responsive-interruption-20261024/release.json",
+    "acceptedBy": "Tianyi",
+    "acceptedAt": "2026-10-24",
+    "scope": [
+      "continuous_playback",
+      "responsive_interruption"
+    ],
+    "productionReleaseAuthorized": true,
+    "priorControlledTests": {
+      "result": "PASS",
+      "productionCallCoordinator": true,
+      "input": "fixed synthetic speech at physical capture cadence; interruption amplitude scale 0.15",
+      "continuousRenderMS": 16020,
+      "falsePauses": 0,
+      "queuedRenderStallMS": 0,
+      "localInterruptionMS": 817,
+      "observedInterruptionMS": 837,
+      "speechConfidence": 0.922,
+      "classificationAgeMS": 7,
+      "newAnswerVerified": true,
+      "hangupWithoutCrash": true
+    },
+    "independentNetworkStutterResolved": false,
+    "sourceCommit": "af6c0da95fd21eacfba1a5a842cc5f7b7f492b4d",
+    "candidateEvidenceRecord": "responsive-interruption-build32.json",
+    "signedMainIPA": "ee494eb0b728ad31f1643288639459e4739407eb385fb798ff51a57fa1152511",
+    "nativeSourceIdenticalToAcceptedCandidate": true,
+    "installedOnRequestedIPhone": true,
+    "authenticatedLaunchVerified": true,
+    "iosUiRevisionVerified": "a89662ddd8fa274af7ed60cdece1cf04d61f22b1077c8ceccc676fb530c76e93"
+  },
+  "realVoiceAcceptedScopesBeforeBuild32": {
+    "status": "accepted_by_Tianyi",
+    "date": "2026-10-23",
+    "build": 24,
+    "scope": [
+      "two-way voice",
+      "barge-in interruption",
+      "Action Button start",
+      "locked-screen two-way voice",
+      "Dynamic Island mute/resume/end"
+    ],
+    "evidence": "Tianyi confirmed all five normal and hung up; physical screen sharing remained off",
+    "policyFingerprint": "cb418111e71a187b",
+    "validMicrophoneInputObserved": true
+  },
+  "stableBaseline": {
+    "build": 32,
+    "sourceCommit": "af6c0da95fd21eacfba1a5a842cc5f7b7f492b4d",
+    "tag": "ios-stable-build32-20261024",
+    "record": "stable-baseline-build32.md",
+    "rollbackVerifiedFiles": 378
+  },
+  "testFlightCandidate": {
+    "build": 33,
+    "status": "internal_testflight_available",
+    "sourceCommit": "f2a495dd4e71c22dfe9977c94ce132676b7ab1f1",
+    "nativeBehaviorChanges": false,
+    "stableBaselineBuild": 32,
+    "record": "../releases/ios-testflight33-20261024/release.json",
+    "appStoreConnectAppID": "6826350407",
+    "buildID": "df8e243b-617b-43f8-ae33-fa1116b6e33e",
+    "processingState": "VALID",
+    "internalBuildState": "IN_BETA_TESTING",
+    "testersInvited": 1,
+    "installedViaTestFlight": false
   }
 }

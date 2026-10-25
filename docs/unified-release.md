@@ -24,6 +24,10 @@ npm run release:fleet -- publish --artifact /absolute/private/artifact-directory
 
 ## 通话保护
 
+### 私有持久化目录
+
+启用 `ProtectSystem=strict` 的服务必须将 `VOICE_IOS_BINDINGS_FILE` 和 `VOICE_CALL_REPORTS_DIR` 指向该 unit 的 `StateDirectory` 下（目录 0700、凭据文件 0600、服务用户拥有）。不要将整个 OpenClaw 配置目录改为可写。首次调整先备份并逐文件校验已有数据，配置在统一发布切换时加载；随后以运行服务的 mount namespace 和服务用户验证可写，并通过真实 App 绑定确认凭据已保存。仅用 root 在服务外写入不能证明服务可写。
+
 - 服务提供仅本机服务用户/root 可访问的 Unix 管理 socket（0600，父目录 0700），没有公网管理 API。它返回当前 PID、版本、iOS UI revision、通话/建连/后台交付/设备拍照数量和有限设备版本信息。
 - 在同一事件循环中检查所有工作为 0，随后关闭新通话接入，没有“检查空闲后又拨入”的间隙。已有通话、建连和交付会使申请失败；申请失败不改变服务，也不关闭连接。网页/iOS 建连与设备已有 WebSocket 上的 call.start 都受保护。
 - hold 最长两分钟，发布程序崩溃会自动恢复接入。新服务启动时也短暂保持 hold，完成版本、原配置与 Gateway 身份核验后才恢复拨号。
@@ -51,3 +55,7 @@ artifact 的 clients 字段列出四端归属、iOS UI revision/bridge 范围/�
 ## 本次验收范围
 
 本次是独立 Voice 发布控制与观测，不变更 Gateway RPC、Worker、身份或会话协议；本地 Candidate 的真实 HTTP/WebSocket 测试和模拟 systemd/网络失败测试覆盖发布边界，无需占用共享 VLab。无自动拨号、付费模型测试或设备刷机。上线回执另行登记实际双节点版本、Gateway 未变和页面/iOS UI 包 hash；真实音响/机器人听感仍以本人使用验收为准。
+
+## 行为一致性回归
+
+同一产物只能证明代码版本一致。共享对话能力不得按 phone/speaker 关闭；新增能力需同时通过 `session.test.mjs` 中四端的搜索、任务进度、插话与结果矩阵，设备协议继续通过 `device-endpoint.test.mjs`。硬件适配边界及当前候选验收范围见 [共享终端行为](shared-terminal-behavior.md)。

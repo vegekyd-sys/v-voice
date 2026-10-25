@@ -1,0 +1,47 @@
+{
+  "version": "voice-call-minutes.20261024.1",
+  "status": "deployed",
+  "sourceCommit": "6e60bb4298cd59bada0936e5a182d3a29a509d37",
+  "PR": 117,
+  "mainCI": 40001300305,
+  "filesSha256": "5440cc0f19bb2b569667aca885c0f587fbb7308855e9181b82f8a70e915e1ea7",
+  "verifiedFiles": 222,
+  "fleetReceipt": "20261024-021244-405f31c3",
+  "bothNodesReady": true,
+  "gatewayUnchanged": true,
+  "rollbackCommit": "af6c0da95fd21eacfba1a5a842cc5f7b7f492b4d",
+  "iosShellRevision": "3354d862354d330077ccbc9bfc0fb2131f6ea1a52470fa58a8cb9ea7fd089afe",
+  "nativeInstallRequired": false,
+  "validation": {
+    "serviceTests": 868,
+    "speakerTests": 95,
+    "fleetTests": 11,
+    "realModelCases": 3,
+    "productionTextReplay": {
+      "generated": true,
+      "singleEndMessage": true,
+      "startSuppressed": true,
+      "styledSameReceipt": true,
+      "feishuReadback": true,
+      "errors": 0,
+      "nativeAudioCall": false
+    },
+    "fullTranscriptBrowserVerified": true,
+    "homepageChangelogBrowserVerified": true
+  },
+  "publicAssets": {
+    "changelog.mjs": {
+      "matchesArtifact": true,
+      "sha256": "97898bd502414eadc788420e4c125ab9c92fc8d494f45e70f2b70a5bcf72d18d"
+    },
+    "ios-shell-release.json": {
+      "matchesArtifact": true,
+      "sha256": "b37f46ff1e95c884ef4ca08ce4d30d54f36e9a1cf202583f27ba601f11f2b186"
+    }
+  },
+  "notes": [
+    "Gateway send adapter rejects nested card JSON; use readable flat-card send plus owned-receipt edit.",
+    "Production DM native chat mapping verified. Missing or mismatched mapping preserves readable fallback without unsafe edits.",
+    "Root-run verification fixture ownership reconciled to existing report directory owner before browser readback; real service reports retain their normal service owner."
+  ]
+}

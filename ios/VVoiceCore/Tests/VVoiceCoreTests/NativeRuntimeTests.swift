@@ -47,6 +47,16 @@ private func fixture() throws -> [String: Any] {
     var pause = raw["pause"] as! [String: Any]; pause["onsetMS"] = 220; raw["pause"] = pause
     let p = try NativeRuntimePolicy.decode(raw)
     #expect(p.pause.onsetMS == 220)
+    for threshold in [0.5, 1.1] {
+        var invalidPause = pause; invalidPause["speechConfidence"] = threshold
+        var invalid = raw; invalid["pause"] = invalidPause
+        #expect(throws: (any Error).self) { try NativeRuntimePolicy.decode(invalid) }
+    }
+    for (key, value) in [("speechRMS", 0.0), ("speechRMS", 0.5), ("speechOnsetMS", 0.0), ("speechOnsetMS", 501.0)] {
+        var invalidPause = pause; invalidPause[key] = value
+        var invalid = raw; invalid["pause"] = invalidPause
+        #expect(throws: (any Error).self) { try NativeRuntimePolicy.decode(invalid) }
+    }
     pause["maxHoldMS"] = 1_000_000; raw["pause"] = pause
     #expect(throws: (any Error).self) { try NativeRuntimePolicy.decode(raw) }
     #expect(VoiceModel(rawValue: "future-relay-model")?.rawValue == "future-relay-model")

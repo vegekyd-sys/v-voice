@@ -303,22 +303,32 @@ function SessionSheet({state,actions}) {
  const value=state.sessionSheet,dialog=useRef(null);
  useEffect(()=>{if(!value)return;dialog.current?.showModal();return()=>dialog.current?.close();},[Boolean(value)]);
  if(!value)return null;
- const report=value.report;
- return createPortal(<dialog ref={dialog} className="session-dialog" onCancel={actions.closeSessionSheet}>
-  <header><div><span className="session-eyebrow">{value.kind==='binding'?'在 iPhone 上继续':'通话记录'}</span><h2>{value.kind==='binding'?'V Voice for iPhone':report?.name??'完整对话'}</h2></div><button type="button" aria-label="关闭" onClick={actions.closeSessionSheet}>×</button></header>
+ const report=value.report, binding=value.kind==='binding';
+ const conversation=value.conversation??state.conversation;
+ return createPortal(<dialog ref={dialog} className={`session-dialog${binding?' binding-dialog':''}`} aria-labelledby="sessionSheetTitle" onCancel={actions.closeSessionSheet}>
+  <header><div><span className="session-eyebrow">{binding?'V Voice for iPhone':'通话记录'}</span><h2 id="sessionSheetTitle">{binding?'把 V 带在身边。':report?.name??'完整对话'}</h2></div><button type="button" aria-label="关闭" onClick={actions.closeSessionSheet}>×</button></header>
   <div className="session-dialog-body">
    {value.error&&<p role="alert" className="session-error">{value.error}</p>}
-   {value.kind==='binding'?<>
-    <p>在 App 中继续<strong>{state.conversation?.name??'当前会话'}</strong>，沿用这里的上下文。</p>
-    <section className="binding-choice"><h3>已经安装 V Voice</h3><p className="session-muted">打开后，绑定链接会自动填入设置。确认绑定即可；已经绑定这个会话可以继续使用。</p>
-     {value.appUrl?<a className="session-primary" href={value.appUrl}>打开 V Voice 绑定</a>:<button type="button" className="session-primary" disabled={value.busy} onClick={actions.createBinding}>{value.busy?'正在准备…':'准备绑定'}</button>}
-    </section>
-    <section className="binding-choice"><h3>还没有安装</h3>
-     {value.appDownload?<a className="binding-download" href={value.appDownload.url} target="_blank" rel="noopener noreferrer">{value.appDownload.label} ↗</a>:<p className="session-muted">TestFlight 下载即将开放。你可以先继续使用网页电话。</p>}
-     {value.appDownload&&<p className="session-muted">安装后回到这里，点击上方按钮完成绑定。</p>}
-    </section>
-    {value.bindingUrl&&<details className="binding-fallback"><summary>没有跳转？手动复制链接</summary><p className="session-muted">链接 5 分钟内有效。旧版 App 可在设置中粘贴；过期后重新生成。</p><div className="binding-link"><textarea aria-label="iOS 绑定链接" readOnly value={value.bindingUrl}/><button type="button" onClick={actions.copyBinding}>{value.copied?'已复制':'复制链接'}</button><button type="button" disabled={value.busy} onClick={actions.createBinding}>重新生成</button></div></details>}
-    {value.devices?.length>0&&<details className="binding-devices"><summary>管理已绑定的 App（{value.devices.length}）</summary>{value.devices.map(device=><div key={device.id}><span>{new Date(device.createdAt).toLocaleString('zh-CN')} 绑定</span><button disabled={value.busy} onClick={()=>actions.revokeBinding(device.id)}>解除绑定</button></div>)}</details>}
+   {binding?<>
+    <p className="binding-intro">{value.unidentified?'换到 iPhone，继续和 V 聊聊。':'换到 iPhone，这段对话接着聊。'}</p>
+    <div className="binding-scene" aria-hidden="true">
+     <div className="binding-phone"><span className="binding-island"/><img src="./assets/v-operator-home-1024.webp" alt=""/><span className="binding-wave"><i/><i/><i/><i/><i/></span></div>
+     <div className="binding-scene-copy"><span>长按一下</span><strong>V 就在。</strong></div>
+    </div>
+    <div className="binding-conversation"><span className="binding-conversation-icon"><Icon d={conversation?.kind==='group'?'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M15 3.1a4 4 0 0 1 0 7.8M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8':'M20 21v-2a7 7 0 0 0-14 0v2M13 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8'} /></span><div><span>即将连接的会话</span><strong>{conversation?.name??'当前会话'}</strong></div><span className="binding-context">{value.unidentified?'访客会话':'上下文随行'}</span></div>
+    {value.unidentified&&<p className="session-muted">绑定这段访客对话，不会连接飞书群或使用账号工具。</p>}
+    {!value.unidentified&&state.accountLabel&&<p className="session-muted">同时绑定飞书身份：<strong>{state.accountLabel}</strong>。在 App 中通话时，V 也能知道是你。</p>}
+    <div className="binding-action">
+     {value.appUrl?<a className="session-primary" href={value.appUrl}><Icon d="M8 2.5h8a2 2 0 0 1 2 2v15a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2Zm2 16h4"/>在 iPhone 上继续</a>:<button type="button" className="session-primary" disabled={value.busy} onClick={actions.createBinding}>{value.busy?'正在准备链接…':'准备绑定链接'}</button>}
+     <p className="binding-confirm">在 App 中点「验证并绑定」，再开始通话。<br/>完成前，App 会保留原来的会话。</p>
+    </div>
+    <div className="binding-help">
+     <details className="binding-install"><summary>还没有安装 V Voice？</summary><div>
+      {value.appDownload?<><a className="binding-download" href={value.appDownload.url} target="_blank" rel="noopener noreferrer">{value.appDownload.label}</a><p className="session-muted">安装后回到这里，打开 App 完成绑定。</p></>:<><p className="session-muted">TestFlight 下载即将开放。现在也可以用网页和 V 聊天。</p><button type="button" className="binding-web" onClick={actions.closeSessionSheet}>先在网页聊</button></>}
+     </div></details>
+     {value.bindingUrl&&<details className="binding-fallback"><summary>没有跳转？复制链接</summary><div><p className="session-muted">在 App 设置中粘贴。链接 5 分钟内有效，过期后可重新生成。</p><div className="binding-link"><textarea aria-label="iOS 绑定链接" readOnly value={value.bindingUrl}/><div><button type="button" onClick={actions.copyBinding}>{value.copied?'已复制':'复制链接'}</button><button type="button" disabled={value.busy} onClick={actions.createBinding}>重新生成</button></div></div></div></details>}
+     {value.devices?.length>0&&<details className="binding-devices"><summary>管理已绑定的 App（{value.devices.length}）</summary>{value.devices.map(device=><div key={device.id}><span>{new Date(device.createdAt).toLocaleString('zh-CN')} 绑定</span><button type="button" disabled={value.busy} onClick={()=>actions.revokeBinding(device.id)}>解除绑定</button></div>)}</details>}
+    </div>
    </>:<>
     {value.busy&&<p role="status">正在读取通话…</p>}
     {report&&<><p className="session-muted">{new Date(report.startedAt).toLocaleString('zh-CN')} · {clock(report.durationMs)} · {report.endedAt?'通话已结束':'通话进行中'}</p>
@@ -396,6 +406,7 @@ function CallPage({view, actions, options}) {
                   <button id="start" className="dial" type="button" disabled={state.dial.disabled} aria-label={state.dial.label} title={state.dial.label} onClick={actions.dial}><Icon d={PHONE} /></button>
                   <ModelPicker state={state} actions={actions} />
                   <span id="badge" className="home-badge" role="status">{state.badge}</span>
+                  {state.accountLoginHref&&!state.accountLabel&&<a className="home-note" href={state.accountLoginHref}>连接飞书账号</a>}
                   {state.homeNote && <p className="home-note" data-tone={state.homeNoteTone} role="status">{state.homeNote}</p>}
                 </>
               )}

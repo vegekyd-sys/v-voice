@@ -1,0 +1,25 @@
+{
+  "version": "voice-feishu-conversations.20261024.1",
+  "status": "deployed",
+  "platformIntegrationRequired": true,
+  "chatCodeLoginRemoved": true,
+  "oldBrowserLoginsRetired": true,
+  "nativeAppInstallRequired": false,
+  "physicalAudioAcceptance": "not claimed",
+  "deployedCommit": "b0717249e8993e5685301e541b5b5263646a4725",
+  "filesSha256": "b290507b76de20057f9c1305eafd47d4304a24d0e5e6270882965dcac5b9e0aa",
+  "productionReadyAt": "2026-10-24T03:07:11+08:00",
+  "targets": [
+    "web",
+    "devices"
+  ],
+  "platformRelease": "feishu-conversations-20261024",
+  "verification": {
+    "productionNewGroupComposerMenu": true,
+    "homepageChangelogVisible": true,
+    "codeLoginRemoved": true,
+    "nativeReadAndIdentityChecks": true,
+    "directExec": "same native admitted-run restriction; no bypass"
+  },
+  "activationIncident": "roughly nine minutes unavailable; recovered after Feishu package directory mapping and full database check"
+}

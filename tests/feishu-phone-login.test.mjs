@@ -112,13 +112,23 @@ test('real HTTP login gates protected phone APIs, preserves legacy entry and nev
   const finish=await get('/voice/feishu/callback?code=valid-code&state='+authorize.searchParams.get('state'),stateCookie);
   assert.equal(finish.status,302);const actorCookie=finish.headers.get('set-cookie').split(';')[0];
   const selected=await get(finish.headers.get('location'),actorCookie);
-  assert.equal(selected.status,302);assert.equal(selected.headers.get('location'),'/voice/?phone='+records[0].id);
+  assert.equal(selected.status,200);assert.equal(selected.headers.get('location'),null);
+  const initialHtml=await selected.text();
+  assert.match(initialHtml,/id="voiceEntryStatus"/);
+  assert.match(initialHtml,/"ready":true/);
+  assert(!initialHtml.includes(records[0].sessionKey));
   const accessCookie=selected.headers.get('set-cookie').split(';')[0];
   assert.equal((await get('/voice/api/status?phone='+records[0].id,actorCookie+'; '+accessCookie)).status,200);
   assert.equal((await get('/voice/api/status?phone='+records[0].id,accessCookie)).status,401);
   const group=await get('/voice/feishu?phone='+records[1].id,actorCookie);
-  assert.equal(group.headers.get('location'),'/voice/?phone='+records[1].id);
-  assert.equal((await get('/voice/feishu?phone='+records[2].id,actorCookie)).status,403);
+  assert.equal(group.status,200);assert.equal(group.headers.get('location'),null);
+  assert.match(await group.text(),/"kind":"group"/);
+  const defaultEntry=await get('/voice/feishu',actorCookie);
+  assert.equal(defaultEntry.status,302);assert.equal(defaultEntry.headers.get('location'),'/voice/?phone='+records[0].id);
+  const signedOut=await get('/voice/feishu?phone='+records[1].id);
+  assert.equal(signedOut.status,302);assert.equal(new URL(signedOut.headers.get('location')).hostname,'accounts.feishu.cn');
+  const unavailable=await get('/voice/feishu?phone='+records[2].id,actorCookie);
+  assert.match(await unavailable.text(),/暂时无法打开电话/);assert.equal(unavailable.headers.get('set-cookie'),null);
   const legacy=await get('/voice/api/access','',{access:'legacy'.repeat(8)});
   assert.equal(legacy.status,200);
   assert.equal(calls.length,0);
@@ -134,4 +144,21 @@ test('login diagnostics identify failed stages without exposing provider credent
     assert.deepEqual(feishuPhoneLoginFailure(error),{reason:'invalid_state',pending:true,browserMatched:false});return true;
   });
   assert.deepEqual(feishuPhoneLoginFailure(new Error('private-token')),{reason:'unexpected_login_failure'});
+});
+
+test('App-ID and account-key aliases unify old groups and verified DM chat IDs without crossing accounts',async()=>{
+ const {feishuConversationPhone}=await import('../lib/feishu-conversation-directory.mjs');
+ const old=[{...records[0],accountId:'cli_test',sessionKey:'agent:makaron:feishu:direct:ou_test',nativeChatId:'oc_dm'},
+  {...records[1],accountId:'cli_test',sessionKey:'agent:makaron:feishu:group:oc_group'},
+  {...records[2],accountId:'another-app',sessionKey:'agent:makaron:feishu:group:oc_other'}];
+ const entries=createConversationEntries(old),seen=[];
+ const login=createFeishuPhoneLogin({appId:'cli_test',appSecret:'private-test',publicOrigin:origin,basePath:'/voice',entries,accountId:'default',actors:[actor],
+  resolveConversation:async(identity,phone)=>{seen.push({identity,phone});return {id:phone,sessionKey:phone===feishuConversationPhone('default','oc_dm')?old[0].sessionKey:old[1].sessionKey};}});
+ for(const [entry,chat] of [[old[0],'oc_dm'],[old[1],'oc_group']]){
+  const canonical=feishuConversationPhone('default',chat);
+  assert.equal(login.canonicalPhone(entry.id),canonical);assert.equal(login.canonicalPhone(feishuConversationPhone('cli_test',chat)),canonical);
+  const owner=await login.resolveDevice({type:'feishu',tenantKey:actor.tenantKey,openId:actor.openId},canonical);assert.deepEqual(owner.legacyBindings,[entries.resolve(new URL(origin+'/?phone='+entry.id))]);
+  const other=await login.resolveDevice({type:'feishu',tenantKey:actor.tenantKey,openId:'ou_other'},canonical);assert.equal(other.legacyBindings,undefined);
+ }
+ assert.equal(login.canonicalPhone(old[2].id),old[2].id);assert.equal(login.canonicalPhone('missing-entry'),'missing-entry');
 });

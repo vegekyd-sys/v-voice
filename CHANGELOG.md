@@ -4,6 +4,162 @@
 - Keep both portrait icon sets and shortcut metadata refresh, preserving existing alternate-icon selections and notification/Spotlight/home-screen assets.
 - Simulator build, four cold launches and foreground return passed without the alert. Candidate only; no phone installation, server release or new voice acceptance. See `docs/ios/icon-startup-prompt-candidate.json`. Add the user-visible homepage note when packaging the approved native release.
 
+## 2026-10-24 — iOS caller identity, direct calendar and stale content notice
+
+- Persist verified Feishu profile fields into matching, active device grants when the browser prepares a binding. Existing device credentials, expiry and actor permissions remain unchanged.
+- Scope new native destinations by conversation and verified account, preventing the installed App from reusing a guest or different account's saved credential during rebind. Preserve old URLs and cookies.
+- Show the verified account name in the web binding panel. Version `voice-ios-bound-identity.20261024.2`; approved for production release; no Gateway or native binary change.
+
+- Restore local calendar and allowlisted Feishu reads for verified conversation callers through the installed per-user credential router, with signed Gateway capability revalidation for every query and no personal-account fallback.
+- Clear old H5 notices on call ownership changes and ignore late document failures from prior calls. Update the downloadable iOS shell; no native App release required.
+
+## 2026-10-24 — Unified phone entry and App binding
+
+- Render the phone UI at the registered Feishu callback URL and resolve client identity in place. Remove the standalone recognition screen and avoid navigating to a second guest login page.
+- Normalize configured App-ID/account-key aliases for both group and verified DM entries. Revalidate existing device grants against unchanged private legacy records, retain their cookie compatibility, and expose one management list under canonical identity.
+- Keep the iOS entry available for guests; device grants retain only the isolated guest conversation, with no Feishu identity, group history or account tools.
+- Preserve historical report access only for the configured legacy actor. Version `voice-unified-entry.20261024.1`; Human Candidate acceptance passed; approved for unified Voice release. No Gateway or native App change.
+
+## 2026-10-24 — Faster Feishu entry and restored iOS/status paths
+
+- Serve the client handshake in the entry response, inline its bootstrap, reuse expiring app tokens and provider-returned basic identity, and consume the verified one-use admission without repeating Gateway resolution. Publish numeric entry-stage timings without codes or identity fields.
+- Restore iOS binding for verified dynamic conversations. Short server aliases remain compatible with installed native clients; one-use/device grants retain the original actor and conversation and recheck Gateway admission.
+- Update only server-owned status/minutes receipts through the existing host message contract. Caller sends and tools stay actor scoped. Persist final status delivery state.
+- Version: `voice-entry-speed-status.20261024.1`. No Gateway or native App code changes.
+
+## 2026-10-24 — Verified group caller identity within Voice
+
+- Unify old group aliases with dynamic group entries; use the current Feishu client identity or verified browser OAuth. Failed identity falls back to isolated temporary voice without retaining a previous account.
+- Supply verified display context to all three models. GPT uses its existing WebRTC developer context channel and waits for acknowledgement before greeting/input; Gateway code and authorization remain unchanged.
+- Remove the top-right account name/switch link, preserve the iOS App entry and move optional account connection below the dial area.
+- Version: `voice-caller-identity.20261024.1`. Three-model synthetic-speech Candidate acceptance passed; no native App/firmware release or physical-client acceptance is claimed.
+
+## 2026-10-24 — Conversation phone entries without chat-code login
+
+- Remove private-chat verification pages, issuance/status APIs and Gateway challenge handling. Rotate the untagged browser identity format so removed-flow cookies cannot retain account access; fresh OAuth and legacy personal/device bindings remain supported.
+- Keep direct temporary voice for unidentified callers, with an optional Feishu account connection. Enforce isolated temporary context and no account tools in the service; naming the caller does not grant identity.
+- Use bottom chat menus for new groups and top tabs for DMs. Preserve authenticated native conversation capabilities, signed actor checks and current main's call minutes and shared terminal behavior.
+- Version: `voice-feishu-conversations.20261024.1`. Deployment evidence is recorded separately after shared platform integration and the unified fleet release.
+
+## 2026-10-24 — Feishu phone/text capability parity (independent Candidate)
+
+- Use the authenticated caller's effective Gateway tool catalog for phone shortcuts. Keep original Agent skills and CLI access through native tools or backend delegation; no telephone-specific reduced capability profile.
+- Verify native tool parity separately in the platform Candidate. New-group and first-ever DM entry acceptance is pending; shared VLab and production are unchanged.
+
+## 2026-10-24 — Durable private-call card targets
+
+- Bind native DM chat IDs in private phone entries and Gateway-authorized OAuth admissions, so status/minutes edits survive mutable session-origin metadata being replaced during real calls. Conflicting receipt chat IDs fail closed; provider message ownership checks remain in place.
+- Persist summary delivery state and retain safe post-call styling diagnostics. Cover the real iOS binding/dial/close paths with missing receipt and session chat IDs.
+- Operators must verify each legacy DM nativeChatId against an owned message and the exact bot/user before adding it to private configuration. No private IDs or credentials are shipped in source.
+
+## 2026-10-24 — Concise call minutes
+
+- Use the accepted pale-purple 电话纪要 card with topic sections and a lightweight transcript link.
+- Generate validated structured summaries without a fixed opening; keep brief checks short, distinguish suggestions from decisions, and preserve disputed facts as unverified.
+- Preserve readable report text, historical cards, pending-task notices, failure fallback and quiet iPhone call starts. Recover minutes text from cards for subsequent conversation context.
+
+## 2026-10-24 — Stable build 32 and TestFlight packaging
+
+- Pin the accepted continuous-playback/interruption baseline and retain verified rollback artifacts with explicit regression requirements.
+- Include an accurate camera-purpose declaration required by the bundled WebRTC SDK; this audio-only app does not request camera access.
+- Prepare build 33 with unchanged native behavior and required-reason privacy metadata for local preferences and elapsed-time measurement. TestFlight availability is tracked separately from packaging. The existing homepage release note still describes the delivered build 32 behavior; distribution preparation adds no user-facing capability.
+
+## 2026-10-24 — Responsive confirmed interruption · iOS build 32
+
+- Separate confirmed-speech corroboration from the old loudness/onset gate. Quiet syllables can acquire a reversible hold after local acoustic or provider confirmation; energy alone still cannot pause playback.
+- Add bounded service policy for corroboration RMS and duration, with backward-compatible defaults, and numeric speech-classifier diagnostics. Retain ignored-turn resume, old-tail replacement and stale-result protection.
+- Supersedes build 31 after user feedback that interruption was difficult. Physical short/quiet speech and echo validation is recorded in `docs/ios/responsive-interruption-build32.md`; Tianyi accepted build 32 and authorized production release.
+
+## 2026-10-24 — Confirmed assisted interruption · iOS build 31 candidate
+
+- Require local speech evidence plus on-device acoustic confirmation or a service onset before pausing assisted playback. Unconfirmed room sound no longer causes repeated 1.8–2.6 second pauses. Preserve recognized interruption, ignored-turn resume and old-tail replacement; handle either signal ordering with a bounded confirmation window.
+- Guard duplicate WebSocket ping callbacks during teardown. Keep build 30 rollback material and record physical-device validation separately in `docs/ios/confirmed-interruption-build31.md`.
+- Candidate only; server deployment and user acceptance remain separate.
+## 2026-10-24 — Shared terminal behavior
+
+- Share natural search acknowledgments, native dialogue policy, background progress and result recovery across Web, iOS, StackChan and speakers. Keep microphone routing, playback, display and physical-device capabilities in adapters.
+- Add receiver-matrix regression coverage and include shared lookup recovery in the fleet artifact. Candidate regression verified; physical-device audio acceptance is separate.
+
+## 2026-10-24 — Quiet iPhone call start
+
+- Recognize verified iOS device grants on HTTP and fast-socket dialing. Skip the live Feishu status card for App calls, including Action Button, while preserving transcript storage and the hangup summary.
+- Browser calls retain the live timer. No native App install, Gateway change, or chat notification setting change is required.
+
+## 2026-10-24 — iPhone handoff dialog production release
+
+- Ship PR #105 on the existing production baseline: a compact phone illustration, explicit destination conversation, and one primary “在 iPhone 上继续” action.
+- Fold installation, manual link copy/regeneration and bound-device management into secondary disclosures. Keep explicit App verification and existing bindings unchanged.
+- Native audio candidate PR #106 and the separate multiuser candidate are outside this server release.
+
+## 2026-10-23 — Private-call status card repair
+
+- Use the native Feishu chat ID for timer and hangup edits: take it from the exact send receipt, or resolve the canonical session and verify its agent, bot and direct-user identity when older adapters omit it. DM delivery still uses its original user ID, bot and canonical session. Missing or mismatched receipt targets fail closed; the transcript and summary remain available.
+- Verify the actual DM send/edit contract, elapsed updates and final duration, and retain group behavior. This hotfix is based on production `594e3c5`; unrelated multiuser candidates and native audio changes are separate releases.
+
+## 2026-10-23 — Feishu multiuser phone, shared VLab validation
+
+## Candidate — 2026-10-23 · iPhone handoff polish
+
+- Redesign the web iOS App dialog to match the native binding journey: a compact phone illustration, explicit destination conversation, and one primary “在 iPhone 上继续” action.
+- Collapse installation, manual link copy/regeneration, and bound-device management into secondary disclosures. Keep explicit App verification, existing-session retention, and all binding authorization unchanged.
+- Candidate only (`voice-ios-handoff.20261023.1`); no production deployment or native installation in this change.
+
+
+- Add OAuth-authenticated dynamic conversation entries and signed actor-scoped Gateway requests, preserving current Feishu text routing and tool policies. Disable personal host shortcuts for these callers.
+- Apply the same server-owned identity checks to HTTP and one-connection native dialing. Preserve PR97/98/101 startup improvements.
+- This version is authorized for shared VLab validation only. Production and real multiuser audio acceptance remain unchanged/pending.
+
+## 2026-10-23 — iOS guided binding and saved conversations · 2026-10-23
+
+- Replace the binding form with a three-step native journey: connect a conversation, configure the Action button, then “替代 Siri 的第一步：enjoy”. Show the journey on first launch without a binding; existing users enter the phone directly. Prefilled handoffs use a focused confirmation state and fixed primary actions.
+- Save multiple verified destinations in the device-only Keychain. Validate before switching, reuse saved grants without replaying a handoff, preserve other destinations on refresh/removal, and block changes during a live call. Existing single records import automatically; the selected record remains readable by build 25 for rollback.
+- Keep conversation management in the top-right settings. The existing “和 V 通话” intent follows the selected conversation; Action button assignment remains the user's system setting. No automatic dialing during onboarding.
+- Native build 29 combines this setup with build 28 fast dialing. Simulator validation, installation and physical acceptance are recorded separately.
+
+## 2026-10-23 — One-connection native phone dial
+
+- Add an authenticated, versioned WebSocket dial path that shares the existing exact-session check, admission lock, rate limits and per-conversation ownership with HTTP dialing. Reserve and attach on the same connection; cancellation releases only its own reservation.
+- iOS build 28 remembers the advertised capability per binding, accepts the owned reservation before provider events, and waits for real provider readiness. Definite pre-reservation authorization/unsupported-endpoint failures can use the legacy refresh path; ambiguous failures do not automatically double-dial. GPT and older clients remain on their existing transport.
+- Load the tool catalog and current conversation context concurrently. No idle provider prewarming, microphone recording or VPN changes.
+
+## 2026-10-23 — Remove full-store reads from phone dialing
+
+- Verify each configured conversation with the existing exact `sessions.describe` read, replacing `sessions.resolve` which reads the entire agent store. Live read-only comparison: resolve 5134 ms; describe 178 ms, then 8 ms with derived titles/last message disabled.
+- Keep verification uncached and reject missing sessions, canonical-key mismatches and wrong/missing agent identity before creating media.
+
+## 2026-10-23 — Background dial startup and Feishu entry latency
+
+- iOS build 26 prepares SeedDuplex/Grok capture while the user-triggered recording intent is fresh, before waiting on network setup; pre-connect PCM is discarded and setup failure releases capture.
+- Authenticated explicit Feishu phone links render the phone page and its initial status directly, preserving identity checks while removing one redirect.
+- Persist bounded audio startup failure stage/error codes for device diagnosis.
+
+## 2026-10-23 — Production binding and all-group rollout verified
+
+- Release PR #95 to both Voice nodes at `8e8dc76`; verify writable private state in each running service namespace and preserve the prior call report. The same App now binds the designated production group successfully and retains it after relaunch. Physical-phone retry remains separate.
+- Install and read back all 417 current group menus with unique URLs and exact canonical sessions; install the current-user DM tab and verify native Feishu UI. Future first-entry auto-tab handler activation still awaits an idle Gateway restart.
+
+## 2026-10-23 — Repair production App binding persistence
+
+- Return a storage-unavailable error when the device grant cannot be saved, instead of reporting an expired handoff. Failed persistence leaves the previous App session unchanged; retry after storage recovery is covered by the HTTP regression test.
+- Store production App bindings and call reports in the service's private writable StateDirectory, preserving the read-only application and OpenClaw directories.
+
+## 2026-10-23 — Make App session switching explicit
+
+- Name the target conversation and the exact native “验证并绑定” action in the browser handoff. Opening the App alone keeps its previous binding; the page now makes that state visible before the user dials.
+- Prepare per-group production entry expansion without changing native credentials, session authorization or existing bindings. Group installation and actual device acceptance are tracked separately from this UI change.
+
+## 2026-10-23 — Session phone production release
+
+- Publish the accepted PR #2 session phone path and PR #90 DM/status/summary fixes together. Each registered group has its own server-owned session and public login URL; V Backup is the acceptance group, never a shared fallback for other groups.
+- Update the actual homepage release notes for session context, one live status card, first-person call summaries, durable Feishu login and build 25 binding. Existing native build 25 needs no reinstall; a candidate-bound device must bind the production entry separately.
+- Roll out one verified artifact through the dual-node Voice release controller. The separate platform phone-tab event handler requires its own Gateway integration/restart; the Voice service switch itself does not.
+
+## Candidate history — DM call lifecycle and summary reliability · 2026-10-23
+
+- Apply the existing compact status/summary flow to explicit DM phone entries. Keep same-message elapsed/ended updates and suppress per-turn Q&A cards during calls.
+- Use “V正在电话通话” and “V电话通话已结束” consistently.
+- Set Grok 4.7 short-summary reasoning to low, retry transient/truncated responses once, and preserve safe failure diagnostics after the call ends. No native iOS change.
+
 ## Unreleased — Refined call status and summaries · 2026-10-23
 
 ## Unreleased — Session phone access and iOS handoff · 2026-10-23

@@ -8,6 +8,7 @@ import VVoiceCore
 @MainActor @Observable final class CallCoordinator {
     static let shared: CallCoordinator = {
         #if DEBUG
+        if CommandLine.arguments.contains("--binding-journey-fixture") { return BindingJourneyFixture.coordinator() }
         if CommandLine.arguments.contains("--local-voice-fixture") {
             let store = BindingStore(service: "com.versa.vvoice.local-fixture")
             let fixturePort = ProcessInfo.processInfo.environment["VVOICE_FIXTURE_PORT"] ?? "29837"
@@ -23,6 +24,7 @@ import VVoiceCore
     private(set) var lastCaption = ""
     private(set) var bound = false
     private(set) var boundConversation: BoundConversation?
+    private(set) var savedConversations: [SavedConversation] = []
     private(set) var permission = AVAudioApplication.shared.recordPermission
     private(set) var route = "iPhone"
     private(set) var startedAt = Date()
@@ -150,6 +152,9 @@ import VVoiceCore
     @ObservationIgnored private var nativeDuplex = false
     @ObservationIgnored private var nativeAssisted = false
     @ObservationIgnored private var nativePause = NativeSpeechPause()
+    @ObservationIgnored private var speechClassifier: VoiceSpeechClassifier?
+    @ObservationIgnored private var speechProbePeak = 0.0
+    @ObservationIgnored private var speechProbeAt = 0.0
     @ObservationIgnored private var nativeOutputDone = false
     @ObservationIgnored private var retiredResponseOrder: [String] = []
     @ObservationIgnored private var responseID: String?
@@ -179,6 +184,7 @@ import VVoiceCore
         model = VoiceModel(rawValue: UserDefaults.standard.string(forKey: "voiceModel") ?? "") ?? .seeduplex
         bound = self.api.isBound
         boundConversation = self.api.record?.conversation
+        savedConversations = self.api.savedConversations
         avatar.onDisplayed = { [weak self] id in
             guard let self else { return }; self.islandDidDisplayReaction(id, owner: self.presentationID, fromH5: false)
         }
@@ -254,13 +260,34 @@ import VVoiceCore
         bindingInProgress = true; defer { bindingInProgress = false }
         await closing?.value
         try await api.recoverPreviousCall()
-        let existing = try await api.bind(link: link); bound = true; boundConversation = api.record?.conversation
+        let existing = try await api.bind(link: link); synchronizeBindings()
         detail = "会话已绑定，可以和 V 通话了"
         await refreshOptions()
         return existing
     }
+    private func synchronizeBindings() {
+        bound = api.isBound; boundConversation = api.record?.conversation; savedConversations = api.savedConversations
+        conversation.reset(); documents.removeAll(); tasks.removeAll(); autoOpenDocumentID = nil
+        lastCaption = ""; resultText = ""; resultID = nil; shownResults.removeAll()
+        presentationID = UUID().uuidString
+    }
+    func selectConversation(_ id: String) async throws {
+        guard !active, !bindingInProgress else { throw VoiceError.busy }
+        bindingInProgress = true; defer { bindingInProgress = false }
+        await closing?.value
+        try await api.recoverPreviousCall()
+        try await api.selectConversation(id: id)
+        synchronizeBindings(); detail = "已切换会话，操作按钮将继续这个会话"
+        await refreshOptions()
+    }
+    func removeConversation(_ id: String) throws {
+        guard !active, !bindingInProgress else { throw VoiceError.busy }
+        try api.removeConversation(id: id); synchronizeBindings()
+        detail = bound ? "可以和 V 通话了" : "选择一个已保存的会话，或添加新会话"
+    }
     func forget() {
-        guard !active, !bindingInProgress else { return }; api.forget(); bound = false; boundConversation = nil; lastCaption = ""; detail = "请从飞书或网页电话获取链接并绑定会话"
+        guard !active, !bindingInProgress else { return }
+        api.forget(); synchronizeBindings(); detail = "请从飞书或网页电话获取链接并绑定会话"
     }
     func startOrContinue(fromIntent: Bool = false) async throws {
         guard !bindingInProgress else { throw VoiceError.busy }
@@ -283,6 +310,17 @@ import VVoiceCore
         retiredResponses.removeAll(); retiredResponseOrder.removeAll(); publish()
         do {
             try beginActivity(required: fromIntent)
+            // AudioRecordingIntent grants the user-triggered background start
+            // at invocation. Do not spend that window on HTTP/session setup.
+            // No input callback is installed yet: pre-connect PCM is discarded.
+            if model != .gptLive {
+                try audio.start()
+                // Keep the Action Button activation window, but let the first
+                // capture arrive while the network handshake is in flight.
+                // dial still verifies actual capture before showing connected.
+                CallDiagnostics.record("call.capture-started")
+                guard owned(owner) else { throw CancellationError() }
+            }
             try await dial(owner: owner, greeting: true)
         } catch {
             guard state.generation == owner else { throw CancellationError() }
@@ -292,29 +330,9 @@ import VVoiceCore
     }
     private func normalized(_ error: Error) -> Error { error is VoiceError ? error : VoiceError.connection }
     private func owned(_ owner: UUID) -> Bool { state.generation == owner && active && phase != .ending }
-    private func dial(owner: UUID, greeting: Bool) async throws {
-        handshakingOwner = owner; providerReady = true
-        defer { if handshakingOwner == owner { handshakingOwner = nil } }
-        await closing?.value
+    private func acceptReservation(_ reservation: [String: Any], owner: UUID) throws -> String {
         guard owned(owner) else { throw CancellationError() }
-        try await api.recoverPreviousCall()
-        guard owned(owner) else { throw CancellationError() }
-        let status = try await api.call("status")
-        guard owned(owner) else { throw CancellationError() }
-        guard status["ready"] as? Bool == true, status["preview"] as? Bool != true else { throw VoiceError.unavailable }
-        if let models = status["models"] as? [[String: Any]], !models.contains(where: { $0["id"] as? String == model.rawValue && $0["available"] as? Bool != false }) { throw VoiceError.unavailable }
-        applyOptions(status)
-        var request: [String: Any] = ["model": model.rawValue, "nativeRuntimeVersion": 1]
-        if model == .grok, !grokVoices.isEmpty { request["voice"] = grokVoice }
-        if model == .seeduplex, let policy = preferredPhoneInputPolicy, ["native", "speaker"].contains(policy) { request["inputPolicy"] = policy }
-        // GPT's existing native input policy sends live audio directly to the
-        // model. Speaker gating is a separate pipeline, never silently emulated.
-        if model == .gptLive { request["inputPolicy"] = "native" }
-        let reservation = try await api.call("session", body: request)
         guard let id = reservation["voiceSessionId"] as? String else { throw VoiceError.protocolMismatch }
-        guard owned(owner) else {
-            _ = try? await api.call("close", body: ["voiceSessionId": id], refresh: false); throw CancellationError()
-        }
         voiceID = id; try api.rememberCall(id)
         if let raw = reservation["nativeRuntime"] {
             guard let value = raw as? [String: Any] else { throw VoiceError.protocolMismatch }
@@ -330,15 +348,34 @@ import VVoiceCore
             nativeDuplex = runtime.playback.replaceResponse; nativeAssisted = runtime.playback.localPause
         }
         nativePause = NativeSpeechPause(policy: nativeRuntime?.pause); nativeOutputDone = false
+        speechProbePeak = 0; speechProbeAt = 0
+        speechClassifier?.stop(); speechClassifier = nil
+        if nativeAssisted {
+            speechClassifier = VoiceSpeechClassifier { [weak self] confidence, sampleAt in
+                Task { @MainActor [weak self] in
+                    guard let self, self.owned(owner), !self.muted, self.audio.queuedFrames > 0 else { return }
+                    let now = ProcessInfo.processInfo.systemUptime * 1000
+                    guard sampleAt > 0, now >= sampleAt, now - sampleAt <= 350 else { return }
+                    self.speechProbePeak = max(self.speechProbePeak, confidence)
+                    if now - self.speechProbeAt >= 5000 {
+                        CallDiagnostics.record("audio.speech-probe", code: "peakConfidenceMilli=\(Int(self.speechProbePeak * 1000)) held=\(self.nativePause.held)")
+                        self.speechProbeAt = now; self.speechProbePeak = 0
+                    }
+                    let wasHeld = self.nativePause.held
+                    self.nativePause.localSpeech(confidence: confidence, at: now)
+                    if !wasHeld && self.nativePause.held {
+                        CallDiagnostics.record("audio.local-speech-hold", code: "confidenceMilli=\(Int(confidence * 1000)) ageMS=\(Int(now - sampleAt))")
+                        self.audio.setPlaybackPaused(true)
+                    }
+                }
+            }
+        }
         speakerRouted = reservation["speakerRouting"] is [String: Any]
         conversation.beginSpeakerStream(); speakerNotice = ""; speakerAction = ""; speakerNoticeTask?.cancel()
         avatarOutcome = "none"; avatar.begin(owner: id); refreshIslandAvatarSurface(); updateAvatar()
-        if reservation["transport"] as? String == "webrtc" {
-            guard reservation["model"] as? String == "gpt-live-1-codex", reservation["speakerRouting"] == nil else { throw VoiceError.protocolMismatch }
-            try await dialGPT(owner: owner, id: id, greeting: greeting); return
-        }
-        guard reservation["transport"] as? String == "gateway-relay", let ticket = reservation["relayTicket"] as? String else { throw VoiceError.protocolMismatch }
-        audio.beginStream()
+        return id
+    }
+    private func makeRelay(owner: UUID, id: String? = nil) -> RelayTransport {
         let relay = RelayTransport(id: id); transport = relay
         relay.onFailure = { [weak self] error in
             guard let self, self.owned(owner) else { return }
@@ -350,7 +387,69 @@ import VVoiceCore
         relay.onEvent = { [weak self] value in
             guard let self, self.owned(owner) else { return }; try self.handle(value, owner: owner)
         }
-        try await relay.connect(session: api.session, request: api.relayRequest(id: id, ticket: ticket))
+        return relay
+    }
+    private func dial(owner: UUID, greeting: Bool, allowFast: Bool = true) async throws {
+        handshakingOwner = owner; providerReady = true
+        defer { if handshakingOwner == owner { handshakingOwner = nil } }
+        CallDiagnostics.record("dial.wait-close")
+        await closing?.value
+        CallDiagnostics.record("dial.recover")
+        guard owned(owner) else { throw CancellationError() }
+        try await api.recoverPreviousCall()
+        guard owned(owner) else { throw CancellationError() }
+        let fast = allowFast && api.supportsFastDial && model != .gptLive
+        let relay: RelayTransport, id: String
+        if fast {
+            audio.beginStream()
+            relay = makeRelay(owner: owner)
+            relay.onReservation = { [weak self] value in
+                guard let self, self.owned(owner) else { throw CancellationError() }
+                _ = try self.acceptReservation(value, owner: owner)
+            }
+            CallDiagnostics.record("dial.fast")
+            do {
+                try await relay.connect(session: api.session, request: api.fastDialRequest(model: model.rawValue, voice: model == .grok ? grokVoice : nil))
+            } catch {
+                // Only a definite rejection before a reservation may retry.
+                // An ambiguous disconnect is closed by the server, never double-dialed.
+                if relay.id == nil, owned(owner), let reason = error as? VoiceError,
+                   reason == .expired || reason == .server(404) || reason == .server(426) {
+                    api.disableFastDial(); transport = nil
+                    try await dial(owner: owner, greeting: greeting, allowFast: false)
+                    return
+                }
+                if relay.id == nil { api.disableFastDial() }
+                throw error
+            }
+            guard let assigned = relay.id, assigned == voiceID else { throw VoiceError.protocolMismatch }
+            id = assigned
+        } else {
+            let status = try await api.call("status")
+            guard owned(owner) else { throw CancellationError() }
+            guard status["ready"] as? Bool == true, status["preview"] as? Bool != true else { throw VoiceError.unavailable }
+            if let models = status["models"] as? [[String: Any]], !models.contains(where: { $0["id"] as? String == model.rawValue && $0["available"] as? Bool != false }) { throw VoiceError.unavailable }
+            applyOptions(status)
+            var request: [String: Any] = ["model": model.rawValue, "nativeRuntimeVersion": 1]
+            if model == .grok, !grokVoices.isEmpty { request["voice"] = grokVoice }
+            if model == .seeduplex, let policy = preferredPhoneInputPolicy, ["native", "speaker"].contains(policy) { request["inputPolicy"] = policy }
+            if model == .gptLive { request["inputPolicy"] = "native" }
+            let reservation = try await api.call("session", body: request)
+            guard owned(owner) else {
+                if let retired = reservation["voiceSessionId"] as? String { _ = try? await api.call("close", body: ["voiceSessionId": retired], refresh: false) }
+                throw CancellationError()
+            }
+            id = try acceptReservation(reservation, owner: owner)
+            if reservation["transport"] as? String == "webrtc" {
+                guard reservation["model"] as? String == "gpt-live-1-codex", reservation["speakerRouting"] == nil else { throw VoiceError.protocolMismatch }
+                try await dialGPT(owner: owner, id: id, greeting: greeting); return
+            }
+            guard reservation["transport"] as? String == "gateway-relay", let ticket = reservation["relayTicket"] as? String else { throw VoiceError.protocolMismatch }
+            audio.beginStream(); relay = makeRelay(owner: owner, id: id)
+            CallDiagnostics.record("relay.start")
+            try await relay.connect(session: api.session, request: api.relayRequest(id: id, ticket: ticket))
+        }
+        CallDiagnostics.record("relay.ready")
         guard owned(owner) else { relay.close(); throw CancellationError() }
         audio.onInput = { [weak self] data, rms in
             guard let self, self.owned(owner), self.audio.isRunning, self.phase != .interrupted else { return }
@@ -361,6 +460,7 @@ import VVoiceCore
                 let pcm = self.muted ? Data(count: data.count) : data
                 let held = self.nativePause.observe(pcm, enabled: self.audio.queuedFrames > 0, at: ProcessInfo.processInfo.systemUptime * 1000, generationComplete: self.nativeOutputDone)
                 self.audio.setPlaybackPaused(held)
+                self.speechClassifier?.submit(pcm, at: ProcessInfo.processInfo.systemUptime * 1000)
             }
             if !self.nativeDuplex, !self.muted, self.localBargeInEnabled, self.audio.queuedFrames > 0 {
                 self.onsetFrames = rms >= (self.nativeRuntime?.bargeIn.rms ?? 0.025) ? self.onsetFrames + 1 : 0
@@ -879,6 +979,7 @@ import VVoiceCore
         thinkingNoticeTask?.cancel(); thinkingNoticeTask = nil; thinkingVisible = false
         routeChangeTask?.cancel(); routeChangeTask = nil
         nativeRuntime = nil; nativeRuntimeRevision = 0; speakerActionID = ""; speakerNoticeKind = "notice"
+        speechClassifier?.stop(); speechClassifier = nil
         nativeDuplex = false; nativeAssisted = false; nativePause.reset(); nativeOutputDone = false; responseID = nil
         audioReady = false; earlyAudio.removeAll(); earlyAudioBytes = 0; earlyOutputDone = false
         providerDeadline?.cancel(); providerDeadline = nil

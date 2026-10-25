@@ -19,3 +19,12 @@ test('an entry cookie cannot authorize a different phone',()=>{
  a.issue({setHeader:(key,v)=>value=v});const req={headers:{cookie:value.split(';')[0]}};
  assert(a.read(req));assert.equal(b.read(req),null);
 });
+
+test('native DM binding is private operator configuration and cannot be overridden by a URL',()=>{
+ const dm={...entry,kind:'dm',sessionKey:'agent:makaron:feishu:direct:ou_alice',nativeChatId:'oc_verified'};
+ const registry=createConversationEntries([dm]);
+ assert.equal(registry.resolve(new URL('https://v/?phone='+entry.id+'&nativeChatId=oc_other')).nativeChatId,'oc_verified');
+ assert.equal(registry.publicEntries()[0].nativeChatId,undefined);
+ for(const nativeChatId of ['ou_alice','',123])assert.throws(()=>createConversationEntries([{...dm,nativeChatId}]),/native chat binding/);
+ assert.throws(()=>createConversationEntries([{...entry,nativeChatId:'oc_other'}]),/native chat binding/);
+});

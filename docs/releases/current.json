@@ -1,12 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "entryCommit": "c009c5bc2c73981d3ae2effe346553626d9c5d68",
-  "gatewayPluginCommit": "a9ac516860a8856470262957ad6ea0cc2670cb0e",
-  "registration": "voice-native-runtime-20261023/release.json",
-  "runtimeDifference": "Both nodes run c009c5b. Original signed build 24 is physically accepted; later service policy and published Web archive were read back on the same installed bundle. Gateway unchanged.",
+  "release": "ios-bound-identity-20261024",
+  "version": "voice-ios-bound-identity.20261024.2",
+  "entryCommit": "8a67c6ac19867166bcac92d8f91ae90d2de77a92",
+  "deviceEntryCommit": "8a67c6ac19867166bcac92d8f91ae90d2de77a92",
+  "filesSha256": "cadf19a6fc69b499ffd2f8672ecb21abb59364d48fadaa5e41579ab8aa510d89",
+  "registration": "ios-bound-identity-20261024/release.json",
+  "previousEntryCommit": "8c50d5d669a0d22471b7c107ad2bb7a84cb0d5b5",
   "gatewayRestartRequired": false,
-  "release": "voice-native-runtime-20261023",
-  "previousEntryCommit": "b8b71ac0ace5c8766c2555ac15f3d3a0a50b4e46",
-  "filesSha256": "76706d88f59d61ea9cf549ae7588786611f39432831d2ca9fb5c685e14f878ea",
-  "deviceEntryCommit": "c009c5bc2c73981d3ae2effe346553626d9c5d68"
+  "deployedAt": "2026-10-24T12:31:43+08:00",
+  "runtimeDifference": "Both Voice nodes run the same verified main artifact. Gateway identity/configuration and native apps/firmware unchanged. Web CLI runtime directories are writable inside its existing strict sandbox; actual service-namespace calendar read passed. Physical iOS verification remains with the user."
 }

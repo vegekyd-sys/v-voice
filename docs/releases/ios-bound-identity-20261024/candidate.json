@@ -1,0 +1,22 @@
+{
+  "version": "voice-ios-bound-identity.20261024.2",
+  "status": "candidate-validation",
+  "date": "2026-10-24",
+  "gatewayRestartRequired": false,
+  "nativeAppReleaseRequired": false,
+  "validation": {
+    "voiceTests": 903,
+    "legacyGrantProfileRefresh": true,
+    "identityScopedNativeDestination": true,
+    "forgedClientIdentityIgnored": true,
+    "paidCallsStarted": 0,
+    "physicalIosAcceptance": "pending",
+    "productionDeployment": false,
+    "iosH5ShellTests": 9,
+    "realActorCalendarRead": true,
+    "identityCheckMs": 151,
+    "calendarReadMs": 681,
+    "localCalendarBackendModelCalls": 0,
+    "lateDocumentFailureIgnored": true
+  }
+}

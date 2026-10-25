@@ -12,11 +12,48 @@ struct BoundConversation: Codable, Equatable {
         return .init(name: name, kind: kind)
     }
 }
-struct StoredBinding: Codable {
+struct StoredBinding: Codable, Identifiable {
+    // Public destination only; credentials never become UI identifiers.
+    var id: String { binding.baseURL.absoluteString + "|" + (binding.phone ?? "tianyi") }
     var binding: VoiceBinding
     var cookie: String
     var pendingVoiceID: String?
     var conversation: BoundConversation?
+    var nativeDialVersion: Int?
+}
+
+struct SavedConversation: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let kind: String
+    let host: String
+    let isCurrent: Bool
+}
+
+private struct BindingLibrary: Codable {
+    var version = 1
+    var activeID: String?
+    var bindings: [StoredBinding]
+    init(activeID: String? = nil, bindings: [StoredBinding]) { self.activeID = activeID; self.bindings = bindings }
+    private enum CodingKeys: String, CodingKey { case version, activeID, bindings, binding, cookie, pendingVoiceID, conversation, nativeDialVersion }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decode(Int.self, forKey: .version)
+        activeID = try c.decodeIfPresent(String.self, forKey: .activeID)
+        bindings = try c.decode([StoredBinding].self, forKey: .bindings)
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(version, forKey: .version); try c.encodeIfPresent(activeID, forKey: .activeID); try c.encode(bindings, forKey: .bindings)
+        // Older App versions can still read the selected record after rollback.
+        if let active {
+            try c.encode(active.binding, forKey: .binding); try c.encode(active.cookie, forKey: .cookie)
+            try c.encodeIfPresent(active.pendingVoiceID, forKey: .pendingVoiceID)
+            try c.encodeIfPresent(active.conversation, forKey: .conversation)
+            try c.encodeIfPresent(active.nativeDialVersion, forKey: .nativeDialVersion)
+        }
+    }
+    var active: StoredBinding? { bindings.first { $0.id == activeID } }
 }
 
 @MainActor final class BindingStore {
@@ -24,14 +61,36 @@ struct StoredBinding: Codable {
     init(service: String = "com.versa.vvoice.personal-entry") {
         query = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "binding"]
     }
-    func load() -> StoredBinding? {
+    private func library() -> BindingLibrary {
         var q = query; q[kSecReturnData as String] = true; q[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &item) == errSecSuccess, let data = item as? Data else { return nil }
-        return try? JSONDecoder().decode(StoredBinding.self, from: data)
+        guard SecItemCopyMatching(q as CFDictionary, &item) == errSecSuccess, let data = item as? Data else {
+            return .init(bindings: [])
+        }
+        if let library = try? JSONDecoder().decode(BindingLibrary.self, from: data), library.version == 1 { return library }
+        // Existing installs keep the same Keychain item and their working grant.
+        if let legacy = try? JSONDecoder().decode(StoredBinding.self, from: data) {
+            return .init(activeID: legacy.id, bindings: [legacy])
+        }
+        return .init(bindings: [])
     }
+    func load() -> StoredBinding? { library().active }
+    func savedBindings() -> [StoredBinding] { library().bindings }
     func save(_ value: StoredBinding) throws {
-        let data = try JSONEncoder().encode(value)
+        var library = library()
+        if let index = library.bindings.firstIndex(where: { $0.id == value.id }) { library.bindings[index] = value }
+        else { library.bindings.append(value) }
+        library.activeID = value.id
+        try write(library)
+    }
+    func removeBinding(id: String) throws {
+        var library = library()
+        library.bindings.removeAll { $0.id == id }
+        if library.activeID == id { library.activeID = nil }
+        try write(library)
+    }
+    private func write(_ library: BindingLibrary) throws {
+        let data = try JSONEncoder().encode(library)
         let attrs: [String: Any] = [kSecValueData as String: data, kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
         let status = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
         if status == errSecItemNotFound {
@@ -43,8 +102,20 @@ struct StoredBinding: Codable {
 }
 
 /// Never follow a redirect while carrying a personal entry or authenticated cookie.
-final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebSocketDelegate, @unchecked Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) { completionHandler(nil) }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didFinishCollecting metrics: URLSessionTaskMetrics) {
+        let route = task.originalRequest?.url?.lastPathComponent ?? ""
+        guard ["status", "session", "close", "relay", "dial"].contains(route) else { return }
+        func ms(_ start: Date?, _ end: Date?) -> Int { guard let start, let end else { return -1 }; return Int(end.timeIntervalSince(start) * 1000) }
+        guard let m = metrics.transactionMetrics.last else { return }
+        let value = "route=\(route) total=\(Int(metrics.taskInterval.duration * 1000)) dns=\(ms(m.domainLookupStartDate,m.domainLookupEndDate)) tcp=\(ms(m.connectStartDate,m.connectEndDate)) tls=\(ms(m.secureConnectionStartDate,m.secureConnectionEndDate)) wait=\(ms(m.requestEndDate,m.responseStartDate)) body=\(ms(m.responseStartDate,m.responseEndDate)) reused=\(m.isReusedConnection)"
+        let path = "route=\(route) protocol=\(m.networkProtocolName ?? "unknown") proxy=\(m.isProxyConnection) cellular=\(m.isCellular) expensive=\(m.isExpensive)"
+        Task { @MainActor in CallDiagnostics.record("http.metrics", code: value); CallDiagnostics.record("http.path", code: path) }
+    }
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+        Task { @MainActor in CallDiagnostics.record("relay.open") }
+    }
 }
 
 @MainActor final class VoiceAPI {
@@ -60,15 +131,50 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
     private(set) var record: StoredBinding?
     init(store: BindingStore, configuration: URLSessionConfiguration? = nil) { self.store = store; self.configuration = configuration; record = store.load() }
     var isBound: Bool { record != nil }
+    var supportsFastDial: Bool { record?.nativeDialVersion == 1 }
+    func disableFastDial() { guard var r = record else { return }; r.nativeDialVersion = nil; record = r; try? store.save(r) }
     func reloadIfAvailable() { if record == nil { record = store.load() } }
 
+    var savedConversations: [SavedConversation] {
+        store.savedBindings().map { saved in
+            .init(id: saved.id, name: saved.conversation?.name ?? "我的 V", kind: saved.conversation?.kind ?? "personal",
+                  host: saved.binding.baseURL.host ?? "", isCurrent: saved.id == record?.id)
+        }
+    }
+    private var bindingRevision = 0
+    private func confirmed(_ saved: StoredBinding) async throws -> StoredBinding {
+        guard saved.pendingVoiceID == nil else { throw VoiceError.busy }
+        var candidate = saved
+        let status: [String: Any]
+        do { status = try await raw("status", record: candidate) }
+        catch VoiceError.expired {
+            candidate = try await authorize(saved.binding)
+            candidate.conversation = candidate.conversation ?? saved.conversation
+            status = try await raw("status", record: candidate)
+        }
+        candidate.conversation = BoundConversation.read(status["conversation"]) ?? candidate.conversation
+        candidate.nativeDialVersion = status["nativeDialVersion"] as? Int
+        return candidate
+    }
+    func selectConversation(id: String) async throws {
+        guard record?.pendingVoiceID == nil else { throw VoiceError.busy }
+        guard let saved = store.savedBindings().first(where: { $0.id == id }) else { throw VoiceError.unbound }
+        bindingRevision += 1; let revision = bindingRevision
+        let candidate = try await confirmed(saved)
+        guard bindingRevision == revision else { throw CancellationError() }
+        try store.save(candidate); record = candidate
+    }
     @discardableResult func bind(link: String) async throws -> Bool {
+        guard record?.pendingVoiceID == nil else { throw VoiceError.busy }
+        bindingRevision += 1; let revision = bindingRevision
         var b = try VoiceBinding(link: link)
-        if let saved = record, saved.binding.baseURL == b.baseURL, saved.binding.phone == b.phone,
+        if let saved = store.savedBindings().first(where: { $0.binding.baseURL == b.baseURL && $0.binding.phone == b.phone }),
            b.credentialKind == .exchange || b == saved.binding {
             do {
-                _ = try await call("status")
-                return true // Existing authorization works; do not replay a one-use handoff.
+                let candidate = try await confirmed(saved)
+                guard bindingRevision == revision else { throw CancellationError() }
+                try store.save(candidate); record = candidate
+                return true // A saved destination reuses its grant, including a consumed handoff.
             } catch VoiceError.expired { /* A fresh link can replace a revoked grant. */ }
         }
         var conversation: BoundConversation?
@@ -82,11 +188,17 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
         r.conversation = r.conversation ?? conversation
         let status = try await raw("status", record: r)
         r.conversation = BoundConversation.read(status["conversation"]) ?? r.conversation
-        // Commit only after the new session is fully authenticated; any failure preserves the old binding.
+        r.nativeDialVersion = status["nativeDialVersion"] as? Int
+        guard bindingRevision == revision else { throw CancellationError() }
+        // One atomic Keychain write preserves every other saved destination.
         try store.save(r); record = r
         return false
     }
-    func forget() { record = nil; store.remove() }
+    func removeConversation(id: String) throws {
+        guard record?.pendingVoiceID == nil else { throw VoiceError.busy }
+        try store.removeBinding(id: id); bindingRevision += 1; record = store.load()
+    }
+    func forget() { bindingRevision += 1; record = nil; store.remove() }
     private func authorization(_ route: String, binding: VoiceBinding, body: [String: String]) async throws -> ([String: Any], HTTPURLResponse) {
         var req = request(route, binding: binding, cookie: "")
         req.httpMethod = "POST"; req.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -124,10 +236,22 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
     private func raw(_ route: String, record: StoredBinding, body: [String: Any]? = nil) async throws -> [String: Any] {
         var r = request(route, binding: record.binding, cookie: record.cookie)
         if let body { r.httpMethod = "POST"; r.httpBody = try JSONSerialization.data(withJSONObject: body) }
-        let (data, response) = try await session.data(for: r)
+        let timed = ["status", "session", "close"].contains(route), start = Date()
+        if timed { CallDiagnostics.record("http.start", code: route) }
+        let data: Data, response: URLResponse
+        do { (data, response) = try await session.data(for: r) }
+        catch {
+            if timed { CallDiagnostics.record("http.failed", code: "route=\(route) ms=\(Int(Date().timeIntervalSince(start)*1000)) code=\((error as NSError).code)") }
+            throw error
+        }
         guard let http = response as? HTTPURLResponse else { throw VoiceError.connection }
+        if timed { CallDiagnostics.record("http.response", code: "route=\(route) ms=\(Int(Date().timeIntervalSince(start)*1000)) status=\(http.statusCode)") }
         try validate(http.statusCode, data: data)
         guard data.count < 2_000_000, let value = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw VoiceError.protocolMismatch }
+        if route == "status", var current = self.record, current.binding == record.binding, current.cookie == record.cookie {
+            current.nativeDialVersion = value["nativeDialVersion"] as? Int
+            if current.nativeDialVersion != self.record?.nativeDialVersion { self.record = current; try? store.save(current) }
+        }
         return value
     }
     func call(_ route: String, body: [String: Any]? = nil, refresh: Bool = true) async throws -> [String: Any] {
@@ -174,11 +298,21 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sen
         req.timeoutInterval = 30
         return req
     }
+    func fastDialRequest(model: String, voice: String?) throws -> URLRequest {
+        guard let r = record else { throw VoiceError.unbound }
+        var req = request("dial", binding: r.binding, cookie: r.cookie)
+        var c = URLComponents(url: req.url!, resolvingAgainstBaseURL: false)!
+        c.scheme = r.binding.baseURL.scheme == "https" ? "wss" : "ws"
+        c.queryItems = (c.queryItems ?? []) + [URLQueryItem(name: "model", value: model), URLQueryItem(name: "dialVersion", value: "1"), URLQueryItem(name: "nativeRuntimeVersion", value: "1")]
+        if let voice { c.queryItems?.append(URLQueryItem(name: "voice", value: voice)) }
+        req.url = c.url; req.timeoutInterval = 60; req.networkServiceType = .responsiveAV
+        return req
+    }
     func relayRequest(id: String, ticket: String) throws -> URLRequest {
         guard let r = record else { throw VoiceError.unbound }
         var req = request("relay", binding: r.binding, cookie: r.cookie)
         var c = URLComponents(url: req.url!, resolvingAgainstBaseURL: false)!
         c.scheme = r.binding.baseURL.scheme == "https" ? "wss" : "ws"; c.queryItems = (c.queryItems ?? []) + [URLQueryItem(name: "voiceSessionId", value: id), URLQueryItem(name: "ticket", value: ticket)]
-        req.url = c.url; return req
+        req.url = c.url; req.networkServiceType = .responsiveAV; return req
     }
 }

@@ -71,11 +71,11 @@ export class BackendSpeechOnset {
 // Native recognition and the next response identity decide whether old speech
 // is discarded. A rejected/noisy probe resumes the exact unconsumed samples.
 export class NativeSpeechPause {
-  constructor({minRms=.018,consecutiveOnset=false,trustNativeOnset=true}={}){this.minRms=minRms;this.consecutiveOnset=consecutiveOnset;this.trustNativeOnset=trustNativeOnset;this.reset();this.floor=.004;}
-  reset(){this.voicedMs=0;this.quietMs=0;this.inUtterance=false;this.held=false;this.yielded=false;this.expires=0;this.hardExpires=0;this.locked=false;this.native=false;this.awaitingDecision=false;}
-  nativeStarted(at){if(!this.trustNativeOnset&&!this.held&&!this.inUtterance)return;this.held=true;this.yielded=true;this.native=true;this.expires=this.hardExpires=at+15000;}
-  ignored(){this.awaitingDecision=false;this.held=false;this.native=false;this.locked=true;this.yielded=false;}
-  nativeStopped(at,recognized=true){if(this.held){this.native=false;this.awaitingDecision||=recognized;this.expires=at+1800;}}
+  constructor({minRms=.018,consecutiveOnset=false,trustNativeOnset=true,requireConfirmation=false,confirmationMS=2000}={}){this.requireConfirmation=requireConfirmation;this.confirmationMS=confirmationMS;this.minRms=minRms;this.consecutiveOnset=consecutiveOnset;this.trustNativeOnset=trustNativeOnset;this.reset();this.floor=.004;}
+  reset(){this.pendingNativeStartAt=null;this.lastVoicedAt=null;this.voicedMs=0;this.quietMs=0;this.inUtterance=false;this.held=false;this.yielded=false;this.expires=0;this.hardExpires=0;this.locked=false;this.native=false;this.awaitingDecision=false;}
+  nativeStarted(at){if(!this.trustNativeOnset&&!this.held){if(this.locked)return;if(this.lastVoicedAt===null||at<this.lastVoicedAt||at-this.lastVoicedAt>this.confirmationMS){this.pendingNativeStartAt=at;return;}}this.pendingNativeStartAt=null;this.held=true;this.yielded=true;this.native=true;this.expires=this.hardExpires=at+15000;}
+  ignored(){this.pendingNativeStartAt=null;this.awaitingDecision=false;this.held=false;this.native=false;this.locked=true;this.yielded=false;}
+  nativeStopped(at,recognized=true){this.pendingNativeStartAt=null;if(this.held){this.native=false;this.awaitingDecision||=recognized;this.expires=at+1800;}}
   generationDone(at){if(this.held&&!this.native)this.expires=Math.max(this.expires,Math.min(this.hardExpires,at+250));}
   observe(frame,enabled,at,generationComplete=true){
     const pcm=new Int16Array(frame);let sum=0,crossings=0;
@@ -89,9 +89,15 @@ export class NativeSpeechPause {
     if(!enabled){
       // Track an ongoing utterance even before output arrives: otherwise an
       // early endpoint reply gets a fresh 140ms of playback over the caller.
-      this.held=false;this.yielded=false;this.expires=0;this.hardExpires=0;this.locked=false;this.native=false;this.awaitingDecision=false;return false;
+      this.pendingNativeStartAt=null;this.held=false;this.yielded=false;this.expires=0;this.hardExpires=0;this.locked=false;this.native=false;this.awaitingDecision=false;return false;
     }
-    if(this.inUtterance&&!this.held&&!this.locked){this.held=true;this.yielded=true;this.hardExpires=at+12000;}
+    if(this.inUtterance&&voiced)this.lastVoicedAt=at;
+    if(this.pendingNativeStartAt!==null){
+      if(at-this.pendingNativeStartAt>this.confirmationMS)this.pendingNativeStartAt=null;
+      else if(at>=this.pendingNativeStartAt&&this.inUtterance&&voiced)this.nativeStarted(at);
+    }
+    // Assisted playback requires the service onset as well as local evidence.
+    if(!this.requireConfirmation&&this.inUtterance&&!this.held&&!this.locked){this.held=true;this.yielded=true;this.hardExpires=at+12000;}
     if(this.held&&!this.native&&voiced)this.expires=Math.min(this.hardExpires,at+1800);
     // Output can begin in a gap between syllables of an already known turn.
     if(this.held&&!this.expires)this.expires=Math.min(this.hardExpires,at+1800-this.quietMs);
@@ -115,9 +121,9 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   // network gap. Hold only that first response to its native completion;
   // later answers keep streaming with their normal lead, and the mic stays on.
   const backendOnset=new BackendSpeechOnset();let backendPlayback=false, backendResponseId=null;const retiredResponses=new Set();
-  const nativeDuplex=reservation.nativeDuplex===true,assisted=reservation.nativePlaybackPolicy==='assisted',nativeCourtesy=nativeDuplex&&reservation.nativePlaybackPolicy!=='provider',nativePause=new NativeSpeechPause(assisted?{minRms:.035,consecutiveOnset:true,trustNativeOnset:false}:{});let nativePaused=false,currentResponseId=null;
+  const nativeDuplex=reservation.nativeDuplex===true,assisted=reservation.nativePlaybackPolicy==='assisted',nativeCourtesy=nativeDuplex&&reservation.nativePlaybackPolicy!=='provider',nativePause=new NativeSpeechPause(assisted?{minRms:.035,consecutiveOnset:true,trustNativeOnset:false,requireConfirmation:true}:{});let nativePaused=false,currentResponseId=null;
   let greetingHeld=reservation.provider==='grok';
-  const endpoint=new URL('./api/relay',location.href);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
+  const endpoint=new URL('./api/relay',globalThis.document?.baseURI??location.href);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
   const phone=new URLSearchParams(location.search).get('phone');if(phone)endpoint.searchParams.set('phone',phone);
   const socket=new WebSocket(endpoint);socket.binaryType='arraybuffer';

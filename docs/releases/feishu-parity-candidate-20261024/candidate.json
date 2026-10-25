@@ -1,0 +1,13 @@
+{
+  "version": "voice-feishu-parity.20261024.1",
+  "status": "independent-candidate",
+  "sharedVLabChanged": false,
+  "productionChanged": false,
+  "validation": {
+    "platformRuntimeTests": 24,
+    "voiceSessionTests": 90,
+    "newGroupLiveEvent": false,
+    "firstPrivateChatRealAccount": false,
+    "realAudio": false
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": "voice-call-minutes.20261024.2",
+  "status": "deployed",
+  "sourceCommit": "e9833b474286ee40a184a4e4fdaad386403d24cb",
+  "PR": 121,
+  "mainCI": 40004602836,
+  "filesSha256": "170a965e070d2350e305325e3b2b6419e154bcc6e155991dd7576b4e2229e0ba",
+  "fleetReceipt": "20261024-023702-f3a0cd99",
+  "bothNodesReady": true,
+  "gatewayUnchanged": true,
+  "rollbackCommit": "6e60bb4298cd59bada0936e5a182d3a29a509d37",
+  "nativeInstallRequired": false,
+  "validation": {
+    "serviceTests": 872,
+    "speakerTests": 95,
+    "fleetTests": 11,
+    "productionEntryNormalization": true,
+    "missingSessionNativeChat": true,
+    "missingReceiptChat": true,
+    "singleEndMessage": true,
+    "automaticStyle": true,
+    "feishuReadback": true,
+    "nativeFeishuVisualVerified": true,
+    "existingAffectedCardRepaired": true,
+    "homepageChangelogBrowserVerified": true,
+    "physicalAudioCall": false
+  },
+  "publicAssets": {
+    "changelog.mjs": {
+      "matchesArtifact": true,
+      "sha256": "6e3708e5060d4a20473fe7a4e64337793f67accbbb57fe9e65f3b43062938038"
+    },
+    "ios-shell-release.json": {
+      "matchesArtifact": true,
+      "sha256": "14d928fb7e6947f3f80cd0832838d57c80bd784333cd3fe80cf646e4f6f5aa17"
+    }
+  }
+}
