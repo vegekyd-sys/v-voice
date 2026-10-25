@@ -10,7 +10,8 @@ import VVoiceCore
         #if DEBUG
         if CommandLine.arguments.contains("--binding-journey-fixture") { return BindingJourneyFixture.coordinator() }
         if CommandLine.arguments.contains("--local-voice-fixture") {
-            let store = BindingStore(service: "com.versa.vvoice.local-fixture")
+            let fixtureRunID = ProcessInfo.processInfo.environment["VVOICE_FIXTURE_RUN_ID"] ?? "default"
+            let store = BindingStore(service: "com.versa.vvoice.local-fixture." + fixtureRunID)
             let fixturePort = ProcessInfo.processInfo.environment["VVOICE_FIXTURE_PORT"] ?? "29837"
             try? store.save(StoredBinding(binding: VoiceBinding(testingBaseURL: URL(string: "http://127.0.0.1:\(fixturePort)/voice/")!), cookie: ProcessInfo.processInfo.environment["VVOICE_FIXTURE_COOKIE"] ?? "v_voice_access=fixture-cookie"))
             return CallCoordinator(api: VoiceAPI(store: store))

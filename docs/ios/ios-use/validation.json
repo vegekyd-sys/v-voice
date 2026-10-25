@@ -2,14 +2,14 @@
   "schema": 1,
   "date": "2026-10-25",
   "candidateOnly": true,
-  "nativeBuild": 35,
+  "nativeBuild": 36,
   "baseCommit": "ab8ad23",
-  "sharedDependency": "011b4c9a493f87d639a7ed656b6867d203654fae",
+  "sharedDependency": "e213dfdbe85dc9baf999999c43ee81e598b1d75f",
   "checks": {
     "node": {
-      "passed": 923,
+      "passed": 925,
       "failed": 0,
-      "log": "/tmp/vvoice-ios-use-all-node3.log"
+      "log": "/tmp/vvoice-ios-use-all-node4.log"
     },
     "swiftCore": {
       "xctest": 6,
@@ -19,20 +19,23 @@
     "native": {
       "passed": 11,
       "failed": 0,
-      "resultBundle": "/tmp/vvoice-ios-use-wire.xcresult",
+      "resultBundle": "/tmp/vvoice-ios-use-native36.xcresult",
       "scope": [
         "HTTP reservation → production provider adapter (mock upstream) → authenticated relay → EventKit create → persisted-ID readback",
         "Calendar/Reminders real simulator create/query",
-        "Notes lifecycle/readback verifier fixtures; no actual Notes database"
+        "Notes lifecycle/readback verifier fixtures; no actual Notes database",
+        "Raw device.context sideband before Calendar create/readback; same owner stays active"
       ]
     },
     "systemPermissionUI": {
       "passed": 1,
-      "resultBundle": "/tmp/vvoice-ios-use-permission-ui.xcresult",
+      "resultBundle": "/tmp/vvoice-ios-use-refresh-ui4.xcresult",
       "actualChoice": "允许完全访问",
       "backgroundWait": true,
       "sameCallAfterConsent": true,
-      "voiceUpstream": "local fixture, no paid/human call"
+      "voiceUpstream": "local fixture, no paid/human call",
+      "noAutoRedialAfterTCCKill": true,
+      "revokeMayTerminateApp": true
     },
     "backend": {
       "id": "candidate-99daae26-fec3-4d08-8d37-5aa70c9dcf1a",
@@ -81,25 +84,38 @@
       },
       "deviceEvidence": "transport_fixture_unknown_no_physical_notes",
       "sharedModified": false
+    },
+    "relatedService": {
+      "passed": 127,
+      "failed": 0,
+      "log": "/tmp/vvoice-ios-use-refresh-service2.log"
     }
   },
   "phone": {
-    "installed": false,
+    "installed": true,
     "permissionsGranted": false,
     "notesActualCreateAppend": false,
     "humanSpeech": false,
-    "lockScreenAudioContinuity": false
+    "lockScreenAudioContinuity": false,
+    "installedBuild": 36,
+    "previousBuild": 34,
+    "installationEvidence": "/tmp/vvoice-ios-use-install36.json",
+    "installedVersionEvidence": "/tmp/vvoice-ios-use-phone-apps-after36.json",
+    "bindingVerified": false,
+    "bindingLaunchBlocked": "iOS denied app launch because device is locked; user unlock requested, no bypass"
   },
   "limitations": [
     "Backend Candidate uses the actual OpenClaw embedded runtime and configured DeepSeek model in private state; channels/cron/worker plugins disabled, no shared VLab writes",
     "Backend device endpoint intentionally returns unknown; this validates task/Skill/request and honest result, not a real iPhone Notes save",
     "GPT WebRTC device path not implemented by the shared layer",
-    "Live denied-to-granted tool catalog refresh remains a shared-layer gap; new call refreshes declaration",
-    "Notes requires correctly configured Shortcuts; readback is user-configured workflow evidence, not independent Notes database or iCloud sync proof"
+    "Notes requires correctly configured Shortcuts; readback is user-configured workflow evidence, not independent Notes database or iCloud sync proof",
+    "Stable negotiated ios_use verbs use current revisioned capabilities on every execution; restoring permission does not replay an old request",
+    "Revoking Calendar permission can cause iOS TCC to kill the app: original owner is retired, no same-call continuity claim and no automatic redial",
+    "Independent same-host HTTPS Candidate is ready; actual production Worker and cross-host artifact paths are not accepted by this evidence"
   ],
   "artifacts": {
     "version": "1.0.0",
-    "build": "35",
+    "build": "36",
     "architecture": "arm64",
     "intents": [
       "EndVIntent",
@@ -117,17 +133,35 @@
     "debugFixtureAbsent": true,
     "signed": true,
     "profilesPresent": true,
-    "ipaSHA256": "18a6ee99a6e45f0dd4bd30de05fa2e95b3df6afed6db8e3e4bdc589cdd66a21c",
-    "sourceCommit": "d70de5a8f55c863c98c951363b8cd0a90bf4783e",
+    "ipaSHA256": "fa9206fdda3cac08fecc273e9317e5eeb776bca1028b49a1f92226f79f6f7391",
+    "sourceCommit": "ac140707070af8a54c23ca6256c16c5b3acedb02",
     "ipaPath": "/Users/tianyicai/.codex/worktrees/voice-ios-apple-notes/v-voice/ios/build/export/VVoice.ipa",
     "archivePath": "/Users/tianyicai/.codex/worktrees/voice-ios-apple-notes/v-voice/ios/build/VVoice.xcarchive",
     "server": {
-      "artifact": "/tmp/vvoice-ios-use-server35",
-      "commit": "d70de5a8f55c863c98c951363b8cd0a90bf4783e",
+      "artifact": "/tmp/vvoice-ios-use-server36",
+      "commit": "ac140707070af8a54c23ca6256c16c5b3acedb02",
       "files": 237,
-      "bytes": 8257217,
-      "filesSha256": "6187930777cca0b71e4ea78dfa66f5d82fb479c0ef42b0abe0ad1a93dcd3920e"
+      "bytes": 8261038,
+      "filesSha256": "a934eb312f57744b99e1d106e7621cb84ae8490ecfa80dc9ba723eb99b230625"
     }
   },
-  "pullRequest": "https://github.com/vegekyd-sys/v-voice/pull/133"
+  "pullRequest": "https://github.com/vegekyd-sys/v-voice/pull/133",
+  "candidateService": {
+    "root": "/var/lib/v-voice-candidates/ios-use-20261025",
+    "service": "voice-ios-use-20261025",
+    "tunnel": "voice-ios-use-20261025-tunnel",
+    "port": 29485,
+    "sourceCommit": "ac140707070af8a54c23ca6256c16c5b3acedb02",
+    "productionModified": false,
+    "sharedVLabModified": false,
+    "ready": true,
+    "tlsAndReleaseAssetVerified": true,
+    "backendSkillReadableAsServiceUser": true
+  },
+  "rollback": {
+    "build": 34,
+    "ipaPath": "/Users/tianyicai/Documents/Codex/2026-10-25/vvoice-public-candidate/export/VVoice.ipa",
+    "ipaSHA256": "40c81cc83edcac6e33fb894a158bcc127129b05a38a821c7667082eeccc74641",
+    "uninstallPerformed": false
+  }
 }

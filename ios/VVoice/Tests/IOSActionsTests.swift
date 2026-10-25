@@ -40,6 +40,10 @@ import VVoiceCore
         let call=CallCoordinator(api:VoiceAPI(store:store)); call.model = .seeduplex;call.sceneChanged(.active)
         addTeardownBlock { await call.end();await MainActor.run{call.forget();UserDefaults.standard.set(oldModel,forKey:"voiceModel")} }
         try await call.startOrContinue();let owner=call.presentationID
+        var sideband=URLRequest(url:base.appendingPathComponent("fixture/command"));sideband.httpMethod="POST";sideband.setValue("application/json",forHTTPHeaderField:"Content-Type");sideband.httpBody=try JSONSerialization.data(withJSONObject:["command":"device-context"])
+        _=try await URLSession.shared.data(for:sideband)
+        try await Task.sleep(for:.milliseconds(100));XCTAssertTrue(call.active);XCTAssertEqual(call.presentationID,owner)
+
         var command=URLRequest(url:base.appendingPathComponent("fixture/command"));command.httpMethod="POST";command.setValue("application/json",forHTTPHeaderField:"Content-Type");command.httpBody=try JSONSerialization.data(withJSONObject:["command":"calendar"])
         _=try await URLSession.shared.data(for:command)
         let deadline=Date().addingTimeInterval(8)

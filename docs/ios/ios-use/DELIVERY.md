@@ -1,83 +1,42 @@
-# ios-use 候选交付（2026-10-25，进行中）
+# ios-use 候选交付（2026-10-25）
 
-基线：origin/main ab8ad23；分支 codex/ios-use-20261025。保留历史 Notes 候选 3b33f9d，历史 build 26 不安装到手机。当前主线 build 33，本路独立准备新 Candidate；实际安装后单独登记证据，不合入、不上线。
+PR [#133](https://github.com/vegekyd-sys/v-voice/pull/133)，分支 `codex/ios-use-20261025`；依赖位置公共层 PR #134。未合入、未正式上线。签名 App 与独立服务产物源码为 `ac140707070af8a54c23ca6256c16c5b3acedb02`；后续 PR 提交仅补 DEBUG/测试隔离与交付证据。
 
-## 建议模块接口（位置线公共薄层接入点）
+## 产品与执行边界
 
-- 统一 wire envelope 使用位置线负责的 version=1、requestId、voiceSessionId、operation、deadline；本模块参数放 payload，回执使用 status 与 evidence。actor/session/device 由已认证服务端注入，模型不传身份、设备或权限。
-- 建议操作名：notes.create、notes.append、calendar.create、calendar.query、reminders.create、reminders.query。
-- JS 模块导出 validateIOSOperation(operation,payload)、iosUseCapabilities(snapshot)、createIOSUseAdapter({request,capabilities})；request({operation,payload},callId,signal) 由公共层提供，模块不另设设备注册中心。
-- iOS IOSActionsCoordinator 接收有界设备请求，复用 AppleNotesCoordinator 作为 Notes 子模块，EventKit 子模块负责 Calendar / Reminders；退出 owner 时全部失效。
-- 后端 ios-use Skill 仅一个顶级入口，按 Notes / Calendar / Reminders 加载 references。公共层提供当前通话的受限请求入口，Skill 脚本只调用此入口，拒绝/离线/超时不换身份、不换设备、不自动重写。
-- Notes 历史 requestID/nonce/expiresAtMS 是模块内部快捷指令关联字段；对外公共 envelope 转换使用 requestId/deadline，不要求公共层复制 Notes 协议。
+通话中的明确指令由 V 整理成有界参数，经当前认证通话发送给这部 iPhone 执行。一个 `ios-use` Skill 按需读取 Notes / Calendar / Reminders 参考；前端只有一个 `ios_use` 工具。身份、设备、入口与 lease 来自服务，不由模型传入。
 
-## 公共文件影响
+操作限定为 notes.create/append、calendar.create/query、reminders.create/query。Notes 走一次配置的系统快捷指令；Calendar/Reminders 走 EventKit。没有全量 Notes/Mail 读取权限，不支持任意账户、任意 note ID、删除或修改既有日历事件。
 
-CallCoordinator.swift（挂载执行器、接收帧、能力状态、owner 清理）、CallSettings.swift（本机授权设置入口）、H5CallView.swift（Notes 系统回调）、Info.plist / DebugInfo.plist（EventKit 用途说明）、project.yml / 生成工程、session.mjs / server.mjs（仅公共模块接入）、scripts/package.mjs（模块与 Skill 产物）。不修改音频 owner、灵动岛实现、H5 表现策略或平台 Gateway 核心。
+公共 wire 为 device.request/device.result version=1，含 requestId、voiceSessionId、operation、deadline、arguments。统一协调器检查 owner、期限与重放，Notes 子模块保留本地 token 验证；退出 owner 后原请求失效。需要前台时保留原请求，恢复后继续；未知写入不自动重试。
 
-## 完成证据约定
+Notes 只有从实际 Note 读回、匹配本次正文摘要与标记的 user_configured_shortcut_readback 才报告快捷指令已保存并读回；交接或输入回显不算。EventKit 保存后按持久化 ID 读回并核对字段才报告完成。两者都不是 iCloud 同步证明。
 
-- Notes：system_handoff 不是成功；只有用户配置快捷指令从实际 Note 读回并验证，才 reported_written_readback。不是独立 Notes 数据库或 iCloud 同步证明。
-- Calendar / Reminders：系统授权状态来自 EventKit；save 返回后按持久化 ID fetch，核对实际字段，才 written_readback。不给 iCloud 同步结论。
-- unknown 不自动重试；权限 denied/restricted 明确返回，不委托绕过；需要前台只挂起原任务，恢复后继续，不重拨。
+## 当前验证
 
-## 待补验收
+- Node 全量 925/925，相关公共服务 127/127；Swift Core 6 XCTest +48 Swift Testing。
+- 原生 11/11，完整 xcresult Passed：真实 HTTP reservation、production provider adapter（mock upstream）、认证 relay、模拟器 EventKit 保存/持久化 ID 读回；包括 Calendar/Reminders 新建查询、Notes 生命周期 fixture。raw device.context 回归已进入同组测试。
+- 实际系统授权 UI 1/1：后台查询等前台，选择 TCC“允许完全访问”，原请求继续、无新增拨号。
+- 最终撤权 UI 1/1：iOS 以 TCC 终止 App 后原 socket 结束，重开不自动重拨。早期“撤权仍保活”错误断言的失败保留在 `/tmp/vvoice-ios-use-refresh-ui.xcresult`；不据此承诺撤权后连续通话。
+- DEBUG fixture 按每轮 UUID 隔离 Keychain，并只自动启动一次，避免测试重开造成误判；Release 不包含这些路径。
+- 私有后端 Candidate `candidate-99daae26-fec3-4d08-8d37-5aa70c9dcf1a`：实际 OpenClaw embedded +配置的 DeepSeek，发现并读取 ios-use/Notes 参考后发出一次 notes.create；设备 fixture 故意 unknown，后端如实报告未知。sharedUnchanged=true，关闭 channels/cron/worker，不证明生产 Worker 或真机写入。
 
-真实后端 Candidate 加载 Skill 与设备请求；模拟器 EventKit 实际写读；本路自行准备并安装独立真机 Candidate，负责 Notes、锁屏/音频连续性和系统授权验收（安装前核对其他线路/通话避免并发覆盖）。总控负责最后合入及上线。
+协商过的 ios_use 操作目录稳定，权限快照在同一通话按 revision 刷新；每次执行仍检查当前系统权限与 owner。首次授权可继续原任务，恢复授权不重放旧请求。公共 device.context 解码保护为独立 `bbb07cd`。
 
-## 已对齐位置线（首轮）
+## build 36 与独立 HTTPS Candidate
 
-读取 `docs/capabilities/shared-device-contract.md` 后采用 `device.request` / `device.result`、`arguments`、公共终态 `ok/denied/failed/cancelled/unknown`。模块内部 completed 在 wire 上转换为 ok。nativeDeviceActions 为 `{version:1,capabilities:{operation:{status}}}`；Notes disabled -> unavailable，EventKit not_determined/write_only -> prompt，full_access -> available，denied/restricted -> denied。
+IPA `ios/build/export/VVoice.ipa`，SHA256 `fa9206fdda3cac08fecc273e9317e5eeb776bca1028b49a1f92226f79f6f7391`；archive `ios/build/VVoice.xcarchive`。独立解包核验 arm64、签名/profiles、正常 TLS、原 7 个通话 Intent + VerifyAppleNoteIntent（需设备认证）、无 DEBUG fixture。包含既有 GPT WebRTC 运行库不代表支持 GPT 设备动作；当前 GPT 设备动作未接通。
 
-JS 导出 `iosUseOperations()` 适配公共 `operations` map：validateArguments / validateResult / timeoutMS / sideEffect。公共层已按建议传本次 arguments；本模块 adapter 为无状态，可对本次写后字段与 Notes digest 核对。
+服务包 `/tmp/vvoice-ios-use-server36`，237 文件，filesSha256 `a934eb312f57744b99e1d106e7621cb84ae8490ecfa80dc9ba723eb99b230625`。V 上独立路径 `/var/lib/v-voice-candidates/ios-use-20261025`，端口 29485，独立 service/tunnel。TLS、release 资产一致性、ready/空闲以及服务用户读取 artifact Skill/helper 均已核对。没有切换生产、重启 Gateway 或写共享 VLab。
 
-iOS `IOSActionsCoordinator.receiveFrame(frame, voiceID, owner, foreground, protectedData, isCurrent, send)` 对接公共 envelope；对非本模块操作由位置线分派。`capabilities` 返回本路操作状态字典；位置线与定位合并。`resume` 在 scene/protected-data 恢复时继续；`invalidate` 在 owner 结束时调用。位置线拥有 server/session/backend/fast-dial 公共接入，本路暂不复制其公共文件。
+同机 artifact 路径可读不证明跨主机 Worker 可读；正式跨主机部署仍须核对后端对应版本资产。日志不保存备忘录正文或通用 function_call_arguments，私有绑定与令牌不进仓库。
 
-公共 helper 已采用位置线的 `scripts/device-call.mjs`：服务注入 endpoint/lease/cli 的 descriptor，stdin 传 descriptor，argv 仅 operation/args。不添加本路 broker。复用了位置线提交 0fa055c 的三个公共模块（本分支 cherry-pick 为86c9bba；总控集成时应去重），后续公共服务接入以位置线提交为准。
+## 真机现状与未完成项
 
-模拟器第一轮：EventKit 实际 calendar create/query 与 reminders create/query 均已通过，按 ID 读回并核对，测试最后删除自身创建的合成条目。权限由本路隔离 simulator 的 simctl grant 设置，仅证明模拟器系统权限已给，不是 iPhone 人类授权。旧 Notes 专用 wire fixture 测试与新公共协议不兼容，正在迁移，不把该失败记为完成。
+Tianyi 明确回复手机“已空闲”后，2026-10-25 已安装 build 36，安装前后 devicectl 分别确认 build 34/36；没有卸载 App。现有 Keychain 绑定按原机制保留，候选服务一次性绑定仍需真实确认。此安装不等于体验接受。
 
+build 34 回退 IPA：`/Users/tianyicai/Documents/Codex/2026-10-25/vvoice-public-candidate/export/VVoice.ipa`，SHA256 `40c81cc83edcac6e33fb894a158bcc127129b05a38a821c7667082eeccc74641`。不在本候选覆盖正式已接受版本登记。
 
-## 服务接入还需保留的约束
+待完成：候选绑定确认、一次性 Notes 快捷指令配置与系统授权、真实 Notes 新建/追加、真实语音、真机前后台/锁屏音频连续性。尚未自动拨号。候选绑定页的实际打开被 iOS 因 Locked 拒绝，正等待用户解锁；未绕过或视为绑定成功。系统可能要求解锁/切前台；不得把 fixture 或模拟器通过写成这些真机项已通过。总控决定最终合入和正式上线。
 
-- 前端只声明一个 `ios_use` 工具，操作枚举来自本通话已声明且未拒绝的 iOS 能力；后端 Skill 共用公共请求入口。`iosUseTool` 接受标准 operation->status 字典。
-- `iosUseOperations()` 现在为无状态 map；本次 arguments 由公共层传入 validateResult，不保留跨通话闭包。
-- common session 的 `deviceOperations` 已由位置线支持 factory；本路采用无状态 map 或每通话 factory 均可。
-- tool.call 审计对 ios_use 的 title/body 只记录操作名与字节数，避免将备忘录正文放入通用工具日志；不回传快捷指令本地 token。
-- 本机 `capabilities` 在前台恢复时读取系统状态；公共层需把新的状态刷新给双方模型。执行前仍重新检查系统授权，不以旧声明代替权限。
-- 旧 AppleNotesFlowTests 的手动 supplemental 路径仅作历史回归；语音设备请求回执直接返回公共工具通道，不能再作为用户 steer 重复交给后端。
-
-
-## 本路集成与已验证结果
-
-已将位置线稳定依赖 011b4c9（含5d41869/bbd959e/0fa055c）按Git合并到本路，merge 982beec；本路前端增加唯一 ios_use 工具，公共动作按当前可信 iOS 端筛选，工具调用和上游参数审计脱敏。原生共享 fast/HTTP 声明、与 location.current 并列分派；取消/过期不切断音频。Candidate native build 35；不改已安装版本登记。
-
-- npm 全量923/923通过（独立npm ci后按锁定esbuild重新生成H5与Reader）；Swift Core 6 XCTest +48 Swift Testing通过。
-- 原生11/11通过：包括真实HTTP/production provider adapter/mock upstream/relay/本机EventKit实际保存及ID读回。模拟器Calendar与Reminders实际新建/查询，清理自身合成条目。
-- 首次系统授权 UI 1/1通过：后台原请求等待前台→返回App→实际TCC“允许完全访问”→原calendar.query完成，sessionRequests不增加、原连接保持。模拟器不代表真机锁屏/音频接受。
-- 私有VLab Candidate candidate-99daae26-fec3-4d08-8d37-5aa70c9dcf1a：真实OpenClaw后端使用配置的DeepSeek模型；实际发现、读取ios-use入口及notes参考后发出一次设备请求。fixture故意unknown，后端如实报告未确认。sharedUnchanged=true。该测试在私有embedded配置中关闭channels/cron/worker插件，不证明生产Worker路由或真实iPhone写入。
-- 精确输入hash/结果路径见validation.json；此前Candidate配置错误未算通过（继承端口/TMPDIR、无插件环境仍保留web provider及Worker选择，已在私有配置修正）。未改共享环境来消除测试错误。
-
-## 仍需本路完成/人类参与
-
-签名build35及独立服务Candidate准备中，真机窗口目前让Public线先用。窗口释放后本路核对现有通话与已装版本，保留回退产物，再安装验收。真实Notes新建/追加、快捷指令一次配置与用户系统确认、真机前后台/锁屏音频和真实语音发起均未通过。
-
-GPT WebRTC设备动作仍未接通，不在本路接受范围；通话中从denied到granted后的前台工具目录即时刷新仍是公共层缺口。首次prompt授权后的同一请求继续已实际测试，不需要重新拨号。
-
-
-## 已准备产物（尚未真机安装）
-
-PR #133：https://github.com/vegekyd-sys/v-voice/pull/133 （draft，依赖位置公共线先合入）。实际App/服务产物源码 d70de5a8f55c863c98c951363b8cd0a90bf4783e。签名 build35：ios/build/VVoice.xcarchive 与 ios/build/export/VVoice.ipa；IPA SHA256 18a6ee99a6e45f0dd4bd30de05fa2e95b3df6afed6db8e3e4bdc589cdd66a21c。解包后独立校验通过：arm64、签名/profiles、正常TLS、原7个通话Intent及VerifyAppleNoteIntent、无DEBUG fixture；Notes核对Intent仍需设备认证。Native GPT WebRTC运行库存在不代表GPT设备动作已支持。
-
-服务包 /tmp/vvoice-ios-use-server35，237文件，filesSha256 6187930777cca0b71e4ea78dfa66f5d82fb479c0ef42b0abe0ad1a93dcd3920e。尚未部署生产。原签名build26归档由构建脚本改名保留；现有手机系统与Keychain未改。
-
-发布校验脚本已与依赖位置线同步允许audio+location背景模式，并要求WhenInUse用途说明；未增加Always权限。第一次签名导出虽成功，但旧校验仍限定audio一项而失败，修正校验后对同一签名IPA解包复验通过，没有将最初失败记为通过。
-
-
-## 公共权限刷新增量（进行中）
-
-已吸收569502f/e213dfd，保留统一revisioned device.capabilities快照；本路Notes/Calendar/Reminders与location合并同一快照，系统首次授权/前台恢复通知同一发送器。ios_use工具仅声明本通话协商过的操作，保持稳定；声明不是授权，每次执行仍验证当前状态与owner。新后端task/steer读取同一快照，不能通过委托绕过拒绝。公共device.context分派保护独立commit bbb07cd，仅一行；新增动态能力原生候选改为build36，build35保留但未安装。
-
-当前实际全量Node925/925、相关服务127/127通过；首次授权实际TCC+同通话查询通过。实际撤权测试发现SpringBoard以domain:tcc(11) code:0终止VVoice，原socket关闭、sessionRequests仍1；该轮“撤权后仍连接”断言失败留存于 /tmp/vvoice-ios-use-refresh-ui.xcresult。系统终止后不承诺同通话存活，验收改为原owner/请求失效、无自动重拨和无重放写入；不会把该失败掩盖成持续通话通过。修订边界测试进行中。
-
-后端descriptor同时给出artifact内device-use与ios-use入口。候选任务按需read，不修改生产workspace技能目录。正式跨主机部署必须由总控提供后端可读的对应版本资产路径；本路同机Candidate不得外推跨主机接受。
+具体 hashes、检查和证据路径见 [validation.json](validation.json)。历史 Notes build 26、build 35 产物保留，均未安装到手机。

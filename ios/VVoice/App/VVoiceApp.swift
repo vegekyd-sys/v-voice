@@ -36,7 +36,11 @@ import AppIntents
                 .preferredColorScheme(.light)
                 #if DEBUG && targetEnvironment(simulator)
                 .task {
-                    if CommandLine.arguments.contains("--ios-use-call-review") {
+                    if CommandLine.arguments.contains("--ios-use-call-review"),
+                       let runID = ProcessInfo.processInfo.environment["VVOICE_FIXTURE_RUN_ID"],
+                       let preferences = UserDefaults(suiteName: "com.versa.vvoice.ios-use-test"),
+                       preferences.string(forKey: "startedRunID") != runID {
+                        preferences.set(runID, forKey: "startedRunID")
                         call.model = .seeduplex
                         try? await call.startOrContinue()
                     }

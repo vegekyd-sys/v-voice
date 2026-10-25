@@ -16,11 +16,12 @@ import XCTest
         let (_,response)=try await URLSession.shared.data(from:base.appendingPathComponent("voice/"))
         let cookie=String(try XCTUnwrap((response as? HTTPURLResponse)?.value(forHTTPHeaderField:"Set-Cookie")?.split(separator:";").first))
         let app=XCUIApplication();app.launchArguments=["--local-voice-fixture","--ios-use-call-review"]
-        app.launchEnvironment=["VVOICE_FIXTURE_PORT":"30157","VVOICE_FIXTURE_COOKIE":cookie]
+        app.launchEnvironment=["VVOICE_FIXTURE_PORT":"30157","VVOICE_FIXTURE_COOKIE":cookie,"VVOICE_FIXTURE_RUN_ID":UUID().uuidString]
         app.launch()
         let ready=Date().addingTimeInterval(15)
         while Date()<ready {if try await state()["connected"] as? Bool == true {break};try await Task.sleep(for:.milliseconds(100))}
         let before=try await state();XCTAssertEqual(before["connected"] as? Bool,true)
+        guard before["connected"] as? Bool == true else { app.terminate();return }
         XCUIDevice.shared.press(.home)
         var request=URLRequest(url:base.appendingPathComponent("fixture/command"));request.httpMethod="POST";request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.httpBody=try JSONSerialization.data(withJSONObject:["command":"calendar-query"])
         _=try await URLSession.shared.data(for:request)

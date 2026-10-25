@@ -10,6 +10,8 @@ import {createDirectVoiceService} from '../../lab/realtime-direct-tools/session.
 const port=Number(process.env.VVOICE_SHARED_FIXTURE_PORT??29847);
 const iosUseFixture=process.env.VVOICE_IOS_USE_FIXTURE==='1',iosResults=[],iosProgress=[],iosFrontendStatuses=[],iosBackendStatuses=[];
 let fastDials=0,statusRequests=0,httpSessionRequests=0;
+let nativePeer,nativeVoiceID;
+class CapturedServer extends WebSocketServer {handleUpgrade(req,socket,head,callback){super.handleUpgrade(req,socket,head,client=>{nativePeer=client;callback(client);});}}
 let peer,inputFrames=0,outputPackets=0,lookupCalls=0,sessionRequests=[],playbackBusy=false,clears=0;
 const emit=value=>{if(!peer||peer.readyState!==1)throw Error('Fixture relay is not connected');peer.emit('message',Buffer.from(JSON.stringify(value)),false);};
 const tone=(seconds,hz)=>{const n=Math.round(24000*seconds),b=Buffer.alloc(n*4);for(let i=0;i<n;i++)b.writeFloatLE(.15*Math.sin(i*2*Math.PI*hz/24000),i*4);return b.toString('base64');};
@@ -32,8 +34,9 @@ const gateway=Object.assign(new EventEmitter(),{ready:true,async request(method,
 }});
 const routing={snapshot:()=>({}),reserve:()=>null,has:()=>false,lazyNative:()=>false,assistant(){},close(){},dispose(){}};
 const runtimePolicy=structuredClone(DEFAULT_NATIVE_RUNTIME_POLICY);
-const directVoice=createDirectVoiceService({nativeRuntimePolicy:runtimePolicy,gateway,wsModule:{WebSocket:Upstream,WebSocketServer},apiKeys:{seeduplex:'local-fixture-only'},speakerRouting:routing,nativePlaybackPolicy:'assisted',loadContext:async()=>'',audit:e=>{if(e.type==='device.ios.progress')iosProgress.push({status:e.status});if(e.type==='client.playback-state')playbackBusy=e.speaking;if(e.type==='audio.clear')clears++;}});
-const reserve=directVoice.reserve;directVoice.reserve=async args=>{sessionRequests.push({model:args.model,inputPolicy:args.inputPolicy,nativeRuntimeVersion:args.nativeRuntimeVersion});return reserve({...args,...(iosUseFixture?{terminalKind:'ios'}:{})});};
+const directVoice=createDirectVoiceService({nativeRuntimePolicy:runtimePolicy,gateway,wsModule:{WebSocket:Upstream,WebSocketServer:iosUseFixture?CapturedServer:WebSocketServer},apiKeys:{seeduplex:'local-fixture-only'},speakerRouting:routing,nativePlaybackPolicy:'assisted',loadContext:async()=>'',audit:e=>{if(e.type==='device.ios.progress')iosProgress.push({status:e.status});if(e.type==='client.playback-state')playbackBusy=e.speaking;if(e.type==='audio.clear')clears++;}});
+const reserve=directVoice.reserve;directVoice.reserve=async args=>{sessionRequests.push({model:args.model,inputPolicy:args.inputPolicy,nativeRuntimeVersion:args.nativeRuntimeVersion});const value=await reserve({...args,...(iosUseFixture?{terminalKind:'ios'}:{})});nativeVoiceID=value.voiceSessionId;return value;};
+const attach=directVoice.attach;directVoice.attach=(id,ticket,client)=>{nativePeer=client;nativeVoiceID=id;return attach(id,ticket,client);};
 const bridge=createLiveH5Server({gateway,directVoice,speakerRouting:routing,phoneInputPolicy:'native',basePath:'/voice',defaultModel:'seeduplex',avatarEvaluate:async()=>({picture:'listen-5',continuations:[]})});
 // The native debug binding omits a nonstandard Origin port. Normalize only
 // this loopback fixture; the production origin checks remain unchanged.
@@ -56,6 +59,7 @@ bridge.server.on('request',async(req,res)=>{
   else if(command==='speech-complete'){emit({type:'conversation.item.input_audio_transcription.completed',text:'请换个话题'});}
   else if(command==='speech-failed'){emit({type:'conversation.item.input_audio_transcription.failed'});}
   else if(command==='ignored'){emit({type:'response.output_text.done',response_id:'aside-'+Date.now(),text:'（安静等候，不插话、不回应背景广播）'});}
+  else if(iosUseFixture&&command==='device-context'){if(nativePeer?.readyState!==1)throw Error('No current native client');nativePeer.send(JSON.stringify({type:'device.context',version:1,voiceSessionId:nativeVoiceID,terminalContext:{version:1,terminal:{kind:'ios'}}}));}
   else if(iosUseFixture&&['revoke-calendar','grant-calendar'].includes(command)){if(process.env.VVOICE_IOS_FIXTURE_SIMULATOR!=='24B897EC-974A-439B-94E5-FC8D17D10C05')throw Error('Explicit owned simulator required');execFileSync('xcrun',['simctl','privacy',process.env.VVOICE_IOS_FIXTURE_SIMULATOR,command==='revoke-calendar'?'revoke':'grant','calendar','com.versa.vvoice']);}
   else if(iosUseFixture&&command==='backend-context'){emit({type:'response.function_call_arguments.done',items:[{call_id:'ios-backend-'+Date.now(),name:'delegate_to_v',arguments:JSON.stringify({question:'读取此刻设备权限，不执行设备动作。'})}]});}
   else if(iosUseFixture&&command==='calendar-query'){emit({type:'response.function_call_arguments.done',items:[{call_id:'ios-calendar-query',name:'ios_use',arguments:JSON.stringify({operation:'calendar.query',payload:{start:'2031-01-02T10:00:00+08:00',end:'2031-01-02T10:30:00+08:00',limit:1}})}]});}
