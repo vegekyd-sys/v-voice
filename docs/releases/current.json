@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "ios-testflight39-20261025",
-  "version": "voice-public-testflight.20261025.1",
-  "entryCommit": "d0e47f60addfaaa62c3436b872b9485863380ce0",
-  "deviceEntryCommit": "d0e47f60addfaaa62c3436b872b9485863380ce0",
-  "filesSha256": "e2882095c7b80549c00c0d4dda06c4b89c6de2da9d361c9a27f865a4352c8354",
-  "registration": "ios-testflight39-20261025/release.json",
-  "previousEntryCommit": "96a198d8b696a0b2e10680b47b829332349de1fb",
-  "gatewayRestartRequired": false,
-  "deployedAt": "Sun 2026-10-25 15:28:11 CST",
-  "runtimeDifference": "Both Voice nodes use the same verified artifact. The web/iOS node enables Public entry with one dedicated feature flag. Native 1.0.0 (39) is VALID and available internally; Tianyi accepted the current internal TestFlight build and included PRs. Build 39 is waiting for external beta review; build 38 was expired with explicit authorization. Gateway, existing private identity configuration and firmware unchanged."
+  "release": "feishu-confirm-20261025",
+  "version": "voice-feishu-confirm.20261025.1",
+  "entryCommit": "ccebd66084d44d87cdf452b84741fe21c08d936a",
+  "deviceEntryCommit": "ccebd66084d44d87cdf452b84741fe21c08d936a",
+  "filesSha256": "07c1af61d86c461efee83314037808c7ff12c8797ddf808864d80af9914019db",
+  "registration": "feishu-confirm-20261025/release.json",
+  "previousEntryCommit": "d0e47f60addfaaa62c3436b872b9485863380ce0",
+  "gatewayRestartRequired": true,
+  "deployedAt": "2026-10-25T21:50:00+08:00",
+  "runtimeDifference": "Both Voice nodes use the same artifact. Feishu confirmation was activated with separate platform PR 473 using v-self-restart and ALIGNED verification. Existing native build 39 accepted production binding on Simulator; no new TestFlight binary or firmware in this release."
 }
