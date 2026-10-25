@@ -669,6 +669,7 @@ import VVoiceCore
                          "capabilities": DeviceLocation.declaration["capabilities"] ?? [:]])
     }
     private func handle(_ v: [String: Any], owner: UUID) throws {
+        if v["type"] as? String == "device.context" { return }
         if let operation = v["operation"] as? String, IOSActionRequest.Operation(rawValue: operation) != nil,
            ["device.request","device.cancel"].contains(v["type"] as? String ?? "") {
             guard owned(owner), iosOperations.contains(operation), let voiceID, v["voiceSessionId"] as? String == voiceID else { return }
