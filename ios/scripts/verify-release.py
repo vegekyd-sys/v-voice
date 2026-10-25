@@ -17,8 +17,12 @@ for name in ['VVoiceAppIcon', 'VVoiceSystemPortrait']:
     widths = {item.get('PixelWidth') for item in app_assets if item.get('Name') == name and item.get('Idiom') == 'phone'}
     assert {60, 87, 120, 180} <= widths, 'Notification, settings, Spotlight and home icon renditions missing: ' + name
 assert info.get('NSSupportsLiveActivities') is True
-assert info.get('UIBackgroundModes')==['audio']
+assert 'audio' in info.get('UIBackgroundModes', [])
+assert set(info.get('UIBackgroundModes', [])) <= {'audio', 'location'}
+if 'location' in info.get('UIBackgroundModes', []): assert info.get('NSLocationWhenInUseUsageDescription')
 assert info.get('NSMicrophoneUsageDescription')
+assert info.get('NSCalendarsFullAccessUsageDescription')
+assert info.get('NSRemindersFullAccessUsageDescription')
 assert info.get('UIDeviceFamily') == [1, 2], 'Native layout must support iPhone and iPad'
 shell=a.app/'H5Shell'
 manifest=json.loads((shell/'source-manifest.json').read_text())
@@ -37,7 +41,7 @@ assert all(set(p['continuations']) <= {x['id'] for x in gallery} for p in galler
 assert (a.app/'H5Reader.css').read_bytes() == (pathlib.Path(__file__).resolve().parents[2]/'lab/gpt-live-h5/styles.css').read_bytes(), 'H5 design must remain synchronized'
 assert 'NSAppTransportSecurity' not in info, 'Release must retain normal TLS enforcement'
 binary=a.app/info['CFBundleExecutable']; data=binary.read_bytes()
-for marker in [b'--local-voice-fixture',b'127.0.0.1:29837',b'fixture-cookie']:
+for marker in [b'--local-voice-fixture',b'127.0.0.1:29837',b'fixture-cookie',b'--ios-use-call-review',b'--ios-use-review']:
     assert marker not in data, f'Debug fixture marker in Release: {marker!r}'
 architecture=subprocess.check_output(['lipo','-archs',str(binary)],text=True).strip()
 assert architecture=='arm64',architecture
@@ -55,6 +59,8 @@ assert {p['asset'] for p in gallery}<=names, 'Island assets missing from compile
 
 metadata=json.loads((a.app/'Metadata.appintents/extract.actionsdata').read_text())
 actions=metadata['actions'];assert {'TalkToVIntent','MuteVIntent','EndVIntent','OpenVIntent','IslandLayoutIntent','IslandMuteIntent','IslandEndIntent'}<=actions.keys()
+assert actions['VerifyAppleNoteIntent'].get('authenticationPolicy') == 1
+assert actions['VerifyAppleNoteIntent'].get('openAppWhenRun') is False
 assert actions['TalkToVIntent'].get('openAppWhenRun') is False
 assert actions['TalkToVIntent'].get('supportedModes') == 1, 'Do not replace island calling with foreground opening'
 protocols=actions['TalkToVIntent']['systemProtocols']

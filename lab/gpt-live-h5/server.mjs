@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {normalizeDeviceActions} from '../../lib/terminal-context.mjs';
 import {feishuCallerIdentityInstructions} from '../../lib/feishu-caller-identity.mjs';
 import {createReleaseGate, readRelease, listenReleaseControl} from '../../lib/release-control.mjs';
 import {controlVoiceTask} from '../../lib/voice-task-control.mjs';
@@ -163,6 +164,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     if (releaseGate.blocked()) return reply(503,{error:"V 正在更新，请稍后重新拨号。"});
     if (!backendReady()) return reply(503,{error:"V 后端正在重新连接，请稍后重拨。"});
     if(speakerRouting&&params.inputPolicy!==undefined&&!['native','speaker'].includes(params.inputPolicy))return reply(400,{error:'没有这个输入策略'});
+    try{normalizeDeviceActions(params.nativeDeviceActions);}catch{return reply(400,{error:'不支持的设备能力协议'});}
     if(params.nativeRuntimeVersion!==undefined&&params.nativeRuntimeVersion!==1)return reply(400,{error:'不支持的原生能力协议'});
     if (params.model && !['gpt-live','seeduplex','grok'].includes(params.model)) return reply(400,{error:'没有这个语音模型'});
     if (params.model === 'grok') {
@@ -202,7 +204,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         // the deployment selects the phone default, not browser heuristics.
         // Clients opt in only after implementing native response ownership and reversible pause.
         const inputPolicy = params.inputPolicy ?? 'speaker';
-        const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(unidentified?{unidentified:true}:{}),...(binding.callerIdentity?{callerIdentity:binding.callerIdentity}:{}),...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId,toolIdentity:binding.actorPrincipal}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId,reportOptions)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...(speakerRouting||unidentified)?{inputPolicy}:{}});
+        const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(unidentified?{unidentified:true}:{}),...(binding.callerIdentity?{callerIdentity:binding.callerIdentity}:{}),...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId,toolIdentity:binding.actorPrincipal}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(params.nativeDeviceActions?{nativeDeviceActions:params.nativeDeviceActions,terminalKind:iosBindings?.read(req,binding)?'ios':'web',backendDeviceURL:`${hosted?publicOrigin:`http://127.0.0.1:${server.address().port}`}${basePath}/internal/device-request`}:{}),...(params.nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId,reportOptions)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...(speakerRouting||unidentified)?{inputPolicy}:{}});
         context.active={sessionKey,gateway:callGateway,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
         if(cancelled()){await close(context);return reply(499,{error:"拨号已取消"});}
         rememberAvatarCall(context,context.active,params.model);
@@ -242,6 +244,13 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     try {
       if(stopping)return json(res,503,{error:"服务正在收尾，请稍后重新拨号"});
       const host = req.headers.host ?? "";
+      if(req.method==='POST'&&new URL(req.url,'http://device.invalid').pathname===`${basePath}/internal/device-request`){
+        if(req.headers.origin||(hosted?host!==origin.host:!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)))return json(res,403,{error:'Local backend only'});
+        let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>16000)return json(res,413,{error:'Too large'});}
+        let body;try{body=JSON.parse(raw);}catch{return json(res,400,{error:'Invalid JSON'});}
+        if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>!['lease','operation','args'].includes(k))||typeof body.lease!=='string'||body.lease.length!==43)return json(res,403,{error:'Invalid device lease'});
+        return json(res,200,await directVoice.backendDeviceRequest(body));
+      }
       const devicePathname = deviceEndpoint && new URL(req.url, "http://device.invalid").pathname;
       if (deviceEndpoint && (deviceEndpoint.otaPath && devicePathname === deviceEndpoint.otaPath || deviceEndpoint.visionPath && devicePathname === deviceEndpoint.visionPath)) {
         // Device HTTP (OTA check, camera photo upload) authenticates itself; some firmware omits the port in Host.
@@ -403,7 +412,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
         ["/speaker-routing.mjs", [join(here, "../speaker-native/client.mjs"), "text/javascript; charset=utf-8"]],
-        ...["caller-context.mjs", "ui-bundle.mjs", "call-view.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
+        ...["device-location.mjs", "caller-context.mjs", "ui-bundle.mjs", "call-view.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
         ["/changelog.mjs", [join(here, "changelog.mjs"), "text/javascript; charset=utf-8"]],
         ["/assets/v-voice-icon.svg", [join(here, "assets/v-voice-icon.svg"), "image/svg+xml"]],
@@ -724,7 +733,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       const reject=status=>socket.end(`HTTP/1.1 ${status} Rejected\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
       if(stopping||releaseGate.blocked()||!backendReady())return reject(503);
       if(typeof directVoice.attach!=='function')return reject(404);
-      const allowed=new Set(['phone','model','voice','nativeRuntimeVersion','dialVersion']);
+      const allowed=new Set(['phone','model','voice','nativeRuntimeVersion','nativeDeviceActions','dialVersion']);
       if([...url.searchParams.keys()].some(k=>!allowed.has(k)||url.searchParams.getAll(k).length!==1)
         ||url.searchParams.get('dialVersion')!=='1'||url.searchParams.get('nativeRuntimeVersion')!=='1'
         ||!['seeduplex','grok'].includes(url.searchParams.get('model')))return reject(400);
@@ -741,7 +750,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         contexts.set(contextId,context);
       }
       releaseClosedDirectCalls();context.touchedAt=Date.now();
-      const params={model:url.searchParams.get('model'),nativeRuntimeVersion:1,inputPolicy:phoneInputPolicy,
+      let actions;try{actions=url.searchParams.has('nativeDeviceActions')?JSON.parse(url.searchParams.get('nativeDeviceActions')):undefined;normalizeDeviceActions(actions);}catch{return reject(400);}
+      const params={model:url.searchParams.get('model'),nativeRuntimeVersion:1,...(actions?{nativeDeviceActions:actions}:{}),inputPolicy:phoneInputPolicy,
         ...(url.searchParams.has('voice')?{voice:url.searchParams.get('voice')}:{})};
       dialSockets.handleUpgrade(req,socket,head,client=>{
         client.on('error',()=>{});

@@ -108,6 +108,8 @@ struct SettingsView: View {
                     }.padding(.vertical, 4)
                 }.buttonStyle(.plain)
                 Divider().overlay(VoiceStyle.line)
+                NavigationLink { IOSPermissionsView(call: call) } label: { Label("苹果应用", systemImage: "calendar.badge.plus") }.accessibilityIdentifier("iosApplications")
+                Divider().overlay(VoiceStyle.line)
                 DisclosureGroup(isExpanded: $preferences) {
                     preferencesContent.padding(.top, 20)
                 } label: { Label("声音与通话", systemImage: "waveform").font(VoiceStyle.font(15, weight: .semibold)) }

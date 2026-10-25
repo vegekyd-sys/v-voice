@@ -251,6 +251,6 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
       // Keep the page-owned microphone grant; attach audio nodes only after
       // the actual upstream ready event. Greeting PCM is retained above.
       await promise;if(!closed)await capture();
-    },sendText:text=>send({type:'text',text}),
+    },sendDeviceResult:value=>send(value),sendText:text=>send({type:'text',text}),
     dispose(){if(closed)return;reportStats();closed=true;clearInterval(statsTimer);clearTimeout(tailTimer);context.removeEventListener?.('statechange',stateChanged);globalThis.document?.removeEventListener?.('visibilitychange',visible);flush();node?.port.close();node?.disconnect();speaker?.port.close();speaker?.disconnect();source?.disconnect();quietGain?.disconnect();socket.close();}};
 }

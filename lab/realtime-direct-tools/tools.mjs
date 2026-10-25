@@ -1,3 +1,5 @@
+import {validateIOSOperation} from './ios-use.mjs';
+import {LOCATION_TOOL} from './device-location.mjs';
 import {buildLarkReadArgv,calendarReadArgs} from './lark-readonly.mjs';
 import {VOICE_TASK_CONTROL_TOOL,validateVoiceTaskControl} from '../../lib/voice-task-control.mjs';
 const object=(properties,required=[])=>({type:'object',properties,required,additionalProperties:false});
@@ -20,12 +22,17 @@ export const TOOLS=[
  {type:'function',name:'openclaw_tool',description:'直接执行 OpenClaw 工具，不调用另一个语言模型。可用工具和用法以本次会话提供的目录为准。飞书日历用 feishu_calendar，其他飞书只读查询用本地 lark_read；不要经 Gateway exec 执行 lark-cli。写操作交 delegate_to_v 且外部写入遵守用户授权，禁止自行确认。arguments 是原工具参数的 JSON 字符串。',parameters:object({tool:str,arguments:str},['tool','arguments'])},
  {type:'function',name:'end_call',description:'只结束当前电话，不取消已启动的后台任务。需要取消任务时必须另外调用 cancel_task。用户向你告别，例如“好了，那我们就聊到这里”“拜拜啦”“今天先这样，下次再聊”，立即调用本工具，不只口头告别，也不等用户再次要求挂断。先理解上下文：讨论挂断功能、引用别人的告别、转话题继续提问或取消一个任务都不要挂断。调用成功后简短告别，系统等待真实告别音频播完才关闭。',parameters:object({})}
 ];
+// Only negotiated native location calls see this extended task schema.
+const delegateTool=TOOLS.find(t=>t.name==='delegate_to_v');
+export const LOCATION_DELEGATE_TOOL={...delegateTool,description:delegateTool.description+'需要手机当前位置的任务，先调用 get_current_location 成功，再传 use_current_location=true；服务端会附入当前通话的新鲜定位，勿自行编造/抄写坐标。',parameters:object({...delegateTool.parameters.properties,use_current_location:{type:'boolean'}},delegateTool.parameters.required)};
+export const LOCATION_CONTROL_TOOL={...VOICE_TASK_CONTROL_TOOL,description:VOICE_TASK_CONTROL_TOOL.description+'用户要把手机位置补给正在执行的 V 任务时，先 get_current_location 成功，再用 steer/followup 并传 use_current_location=true。服务端附入当前通话的新鲜定位，不重复启动任务。',parameters:object({...VOICE_TASK_CONTROL_TOOL.parameters.properties,use_current_location:{type:'boolean'}},VOICE_TASK_CONTROL_TOOL.parameters.required)};
 // Declared only on calls from a speaker whose firmware has a volume control.
 export const SPEAKER_VOLUME_TOOL={type:'function',name:'set_speaker_volume',description:'调节正在通话的这台音箱自身的播放音量，范围0-100。用户说“大声点”“小声点”时传 change=up/down（每次约15），说“音量调到70”时传 volume=70；volume 和 change 只给一个。收到结果后才能说已调好，并说出新的音量；confirmed=false 表示指令已发出但音箱没有回执。不能调手机、电视或其他设备。',parameters:object({volume:{type:'integer',minimum:0,maximum:100},change:{type:'string',enum:['up','down']}})};
 // Declared only on calls from a device with a camera (for example StackChan).
 export const LOOK_TOOL={type:'function',name:'look',description:'让正在通话的这台机器人用自己的摄像头拍一张照片，再由看图模型回答 question。用户说“你看看这是什么”“我手里拿的是什么”“帮我看一下”时调用；question 写清要看什么，例如“用户手里拿的是什么”。只能看到机器人正前方摄像头拍到的画面，看不到别处、屏幕外或过去的事。结果是对真实照片的识别：只能按返回的 description 回答，不得编造或补充没看到的细节；没看清或失败就如实说，可以请用户把东西放到机器人面前再试。',parameters:object({question:str},['question'])};
 export function validateTool(name,args){
- const tool=[...TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL].find(t=>t.name===name);if(!tool)throw Error('不支持这个工具');
+ if(name==='ios_use'){if(!args||typeof args!=='object'||Array.isArray(args)||Object.keys(args).some(k=>!['operation','payload'].includes(k)))throw Error('iOS 请求不接受身份或设备覆盖');validateIOSOperation(args.operation,args.payload);return args;}
+ const tool=Object.hasOwn(args??{},'use_current_location')&&['delegate_to_v','openclaw_agent_control'].includes(name)?(name==='delegate_to_v'?LOCATION_DELEGATE_TOOL:LOCATION_CONTROL_TOOL):[...TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,LOCATION_TOOL].find(t=>t.name===name);if(!tool)throw Error('不支持这个工具');
  if(!args||typeof args!=='object'||Array.isArray(args))throw Error('工具参数必须是对象');
  for(const key of Object.keys(args))if(!(key in tool.parameters.properties))throw Error('未知工具参数');
  for(const key of tool.parameters.required)if(!(key in args))throw Error('缺少工具参数');
@@ -34,13 +41,14 @@ export function validateTool(name,args){
   if(spec.type==='string'&&(typeof value!=='string'||!value.trim()||value.length>16000))throw Error('无效文字参数');
   if(spec.enum&&!spec.enum.includes(value))throw Error('不支持这个动作');
   if(spec.type==='array'&&(!Array.isArray(value)||value.length<spec.minItems||value.length>spec.maxItems||value.some(v=>typeof v!=='string'||!v||v.length>4000)))throw Error('无效命令参数数组');
+  if(spec.type==='boolean'&&typeof value!=='boolean')throw Error('无效布尔参数');
   if(spec.type==='integer'&&(!Number.isInteger(value)||value<spec.minimum||value>spec.maximum))throw Error('无效数字参数');
  }
  if(name==='web_fetch'){const u=new URL(args.url);if(u.protocol!=='https:'&&u.protocol!=='http:')throw Error('只读取网页');}
  if(name==='feishu_calendar')for(const value of Object.values(args))if(!/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2}))?$/.test(value))throw Error('无效日程日期');
  if(name==='lark_read')buildLarkReadArgv(args.argv);
  if(name==='set_speaker_volume'&&('volume' in args)===('change' in args))throw Error('音量只给 volume 或 change 其中一个');
- if(name==='openclaw_agent_control')validateVoiceTaskControl(args);
+ if(name==='openclaw_agent_control'){validateVoiceTaskControl(args);if(args.use_current_location&&!['steer','followup'].includes(args.mode))throw Error('位置只用于补充当前任务');}
  return args;
 }
 export function createToolExecutor({invoke,allowedTools,calendar,larkRead,delegate,showContent,speakerVolume,look}){return async(name,args,callId,signal)=>{
