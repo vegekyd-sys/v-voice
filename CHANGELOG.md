@@ -1,3 +1,9 @@
+## 2026-10-26 — Legacy Feishu entry release preparation
+
+- Prepare the authorized release of historical group/DM bookmark redirects and the matching platform menu/tab repair.
+- Publish user-visible homepage notes; preserve current-account admission, fixed custom entries, device grants and existing report access.
+- Production cutover and runtime receipts remain pending until the shared platform gate and both Voice nodes verify the merged artifact.
+
 ## 2026-10-25 — Legacy Feishu browser entries (candidate, unreleased)
 
 - Redirect registered historical group and DM bookmarks to the same canonical conversation before rendering; subsequent browser API requests use that address.

@@ -116,6 +116,15 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-legacy-entry.20261026.1',date:'2026-10-26',
+    title:'旧群和私聊电话入口修复',
+    items:[
+      '已登记的旧群、私聊电话链接和历史收藏转到对应会话的新入口。',
+      '群里的电脑电话入口在飞书侧边栏打开，私聊电话页签在飞书内打开。',
+      '进入时识别当前来电账号；外部联系人沿用原页飞书身份确认，已有 App 绑定和通话记录保留。',
+    ],
+  },
+  {
     version:'voice-feishu-confirm.20261025.1',date:'2026-10-25',
     title:'飞书确认身份，原页接着聊',
     items:[
