@@ -33,9 +33,30 @@
     "0fcf47d0 and 925e36f independent guest runtime were reverted; prior provider tests do not validate this corrected approach"
   ],
   "pending": [
-    "real existing-tool/voice acceptance",
-    "real Public background SDK integration",
+    "real telephone routing acceptance for the corrected prompt",
+    "Public background SDK integration with the separate platform admission patch",
     "build37 physical acceptance"
   ],
-  "productionDeployed": false
+  "productionDeployed": false,
+  "platformPullRequest": "https://github.com/vegekyd-sys/v-openclaw-platform/pull/471",
+  "voicePullRequest": "https://github.com/vegekyd-sys/v-voice/pull/136",
+  "checks": {
+    "nodePassed": 909,
+    "targetedPassed": 123,
+    "platformPassed": 2,
+    "patchedOriginalTaskController": "original consult callback, same-task replay, foreign owner denial and result read passed; real backend model pending"
+  },
+  "existingVTools": {
+    "environment": "shared VLab under voice-ios-public integration lease",
+    "memory_search": {
+      "ok": true,
+      "outputBytes": 16031,
+      "sameExistingVIndex": true
+    },
+    "web_search": {
+      "ok": true,
+      "outputBytes": 15255
+    },
+    "privateToolOutputSavedToGit": false
+  }
 }
