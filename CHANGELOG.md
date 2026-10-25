@@ -1,3 +1,10 @@
+## 2026-10-25 — TestFlight 39: Public and unified saved entries
+
+- Release approved PR #136 after bound-session, native call and switching regression. Preserve existing selected bindings; Public stays first in the common settings list. First-use system preparation can foreground the app; prepared calls retain the Action Button path.
+- Public reuses the existing Voice search, memory and task integration. Enable the iOS Public entry on the web/iOS service only; no OpenClaw, Gateway or firmware update.
+- Native regression covers local simulator audio/transport and binding state. Physical Action Button, lock-screen, audio and Public acceptance remain pending Tianyi's TestFlight test. Build32 remains the accepted audio baseline; build38 remains available for rollback.
+- Stabilize the caption regression by waiting for its actual target caption and explicitly exercising the intent call path for capture, mute, repeated trigger, hangup and redial.
+
 ## 2026-10-25 · iOS Public Candidate（未发布）
 
 - Public 复用 V 原有 web_search、memory_search 和后台任务；前后台共用个人内容红线，不创建访客记忆或新任务系统，不更新 OpenClaw。

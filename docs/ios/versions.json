@@ -698,5 +698,16 @@
     "functionalSourceCommit": "4c1932a00a85f1cfcabb21a8a190051f2b32da74",
     "requestedSimulatorFunctionalAcceptance": true,
     "childTaskCompatibility": "Original task follows its original child using existing tools, guided by Voice prompt; SDK yield implementation unchanged."
+  },
+  "testFlightCandidate39": {
+    "version": "1.0.0",
+    "build": 39,
+    "status": "preparing_testflight",
+    "sourcePR": 136,
+    "nativeAcceptance": "pending_Tianyi_TestFlight",
+    "stableBaselineBuild": 32,
+    "previousTestFlightBuild": 38,
+    "nativeInstalledByAgent": false,
+    "gatewayRestarted": false
   }
 }

@@ -173,7 +173,8 @@ import VVoiceCore
         _ = try await web.evaluateJavaScript("document.getElementById('mute').click()")
         try await until { !call.muted }
         try await command("speakers-demo")
-        try await until { call.conversation.current.filter { $0.role == "user" }.count == 2 }
+        // The second utterance arrives before its speaker decision; snapshot both together.
+        try await until { call.conversation.current.filter { $0.role == "user" }.count == 2 && call.conversation.current.last?.listenOnly == true }
         host.update(H5Snapshot.make(call, visible: true), foreground: true)
         try await until { try await web.evaluateJavaScript("document.querySelectorAll('.turn.user').length") as? Int == 2 }
         let speakers = try await web.evaluateJavaScript("[...document.querySelectorAll('.turn.user .turn-who')].map(x=>x.textContent).join('|')") as? String ?? ""

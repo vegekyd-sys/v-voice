@@ -91,6 +91,17 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-public-testflight.20261025.1',date:'2026-10-25',
+    title:'Public 通话与统一入口列表',
+    items:[
+      'iOS 39 新安装自动准备 Public 访客会话，无需飞书登录或复制链接；启动不会自动拨号。',
+      '设置里共用一个入口列表：Public 固定第一，保留已绑定会话与当前选择，可添加、切换或移除本机入口。',
+      'Public 可使用网页搜索、记忆搜索和后台任务；通话中收到的完整结果沿用报告卡片。',
+      '首次需要系统权限时，操作按钮引导到前台准备；已有绑定和授权继续原通话路径。',
+      'iOS 39 通过 TestFlight 验收；实机操作按钮、锁屏和声音体验仍待确认。',
+    ],
+  },
+  {
     version:'voice-location-testflight.20261025.1',date:'2026-10-25',
     title:'按需获取当前位置与 iOS 启动修复',
     items:[
