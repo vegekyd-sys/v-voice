@@ -368,9 +368,17 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>4096)return json(res,413,{error:'绑定请求过大'});chunks.push(chunk);}
         try{req.iosExchangeBody=JSON.parse(Buffer.concat(chunks).toString());}catch{return json(res,400,{error:'绑定请求无效'});}
       }
-      // Old group links are aliases, never a source of a caller's personal identity.
-      const originalPhone=url.searchParams.get('phone'),devicePhone=iosBindings?.canonicalPhone(originalPhone)??originalPhone,canonicalPhone=phoneLogin?.canonicalPhone(devicePhone)??devicePhone;
+      // Managed historical bookmarks enter the current-account flow. Never
+      // rewrite callback state, API requests, or existing personal grants.
+      const browserEntry=req.method==='GET'&&['/','/feishu','/feishu/confirm'].includes(pathname);
+      const originalPhone=url.searchParams.get('phone'),devicePhone=iosBindings?.canonicalPhone(originalPhone)??originalPhone;
+      const canonicalPhone=(browserEntry?phoneLogin?.browserCanonicalPhone(devicePhone):phoneLogin?.canonicalPhone(devicePhone))??devicePhone;
       if(canonicalPhone&&canonicalPhone!==originalPhone)url.searchParams.set('phone',canonicalPhone);
+      if(browserEntry&&canonicalPhone&&canonicalPhone!==devicePhone){
+        // The browser and its subsequent API requests must share the same
+        // canonical address, including when opened outside Feishu.
+        res.writeHead(302,{location:`${basePath}${pathname}${url.search}`,'cache-control':'no-store'});res.end();return;
+      }
       // Existing confirmation links now open the phone itself. Sending requires
       // the same-origin POST below, never a navigation side effect.
       if(phoneLogin?.confirmation&&pathname==='/feishu/confirm'&&req.method==='GET'){

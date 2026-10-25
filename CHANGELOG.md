@@ -1,3 +1,9 @@
+## 2026-10-25 — Legacy Feishu browser entries (candidate, unreleased)
+
+- Redirect registered historical group and DM bookmarks to the same canonical conversation before rendering; subsequent browser API requests use that address.
+- Authenticate the current visitor; retain fixed custom entries, device grants, callback state and protected API access.
+- Validate aliases, unknown/foreign mappings, card admission and browser entry behavior with 36 focused tests. Platform menus/tabs are maintained in a separate PR.
+
 ## 2026-10-25 — Feishu confirmation deployed
 
 - Deployed main `ccebd660` to both Voice nodes with matching file hashes; the production page confirms identity in the original Feishu conversation and stays on the same page.
