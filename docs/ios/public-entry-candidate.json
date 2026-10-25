@@ -86,9 +86,10 @@
     "screenshot": "public-settings-evidence/settings-sheet.jpg"
   },
   "latestSimulatorRegression": {
-    "record": "public-regression-20261025.json",
+    "record": "public-functional-regression-20261025.json",
     "basicPublic": "passed",
-    "requestedWebMemoryAndBackgroundTools": "still_blocked",
-    "completePublicAcceptance": false
+    "requestedWebMemoryAndBackgroundTools": "passed_with_existing_task_prompt_compatibility",
+    "completePublicAcceptance": false,
+    "requestedSimulatorFunctionalAcceptance": true
   }
 }

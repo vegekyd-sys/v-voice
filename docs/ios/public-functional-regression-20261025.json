@@ -1,0 +1,158 @@
+{
+  "schema": 1,
+  "date": "2026-10-25",
+  "status": "requested_simulator_functional_regression_passed",
+  "serviceSourceCommit": "4c1932a00a85f1cfcabb21a8a190051f2b32da74",
+  "artifactFilesSHA256": "595f6964e4afa1fe6de5232b58784bff8accb39d209743dd89660087d39ac4d1",
+  "artifactFiles": 237,
+  "simulator": "iOS26.5 isolated VVoice Public simulator",
+  "input": "Locally synthesized Mandarin PCM and zero PCM through the original native VoiceAPI/RelayTransport; no human microphone audio",
+  "runtime": "Existing shared VLab Gateway and its existing V tools/SDK task RPCs; OpenClaw, Worker and Gateway plugins unchanged",
+  "nodeTests": {
+    "passed": 930,
+    "failed": 0,
+    "skipped": 0
+  },
+  "nativeReceipts": {
+    "web_search": {
+      "event": "public.live-result",
+      "at": "2026-10-25T06:19:25.345Z",
+      "code": "recognized=true replied=true documentReceived=false audioBytes=817900"
+    },
+    "memory_search": {
+      "event": "public.live-result",
+      "code": "recognized=true replied=true documentReceived=false audioBytes=517788",
+      "at": "2026-10-25T06:20:48.217Z"
+    },
+    "hangup": {
+      "code": "recognized=true replied=true documentSeen=false documentReceived=false backgroundStarted=true audioBytes=333824",
+      "at": "2026-10-25T06:30:01.949Z",
+      "event": "public.live-result"
+    },
+    "cancel": {
+      "code": "recognized=true replied=true documentSeen=false documentReceived=false backgroundStarted=true audioBytes=478074",
+      "at": "2026-10-25T06:38:22.467Z",
+      "event": "public.live-result"
+    },
+    "short_result_card": {
+      "at": "2026-10-25T06:43:35.607Z",
+      "event": "public.live-result",
+      "code": "recognized=true replied=true documentSeen=true documentReceived=true backgroundStarted=true audioBytes=231562"
+    },
+    "privacy_refusal": {
+      "code": "recognized=true replied=true documentSeen=false documentReceived=false backgroundStarted=false audioBytes=412672",
+      "at": "2026-10-25T06:44:37.447Z",
+      "event": "public.live-result"
+    },
+    "child_result_card_compat": {
+      "code": "recognized=true replied=true documentSeen=true documentReceived=true backgroundStarted=true audioBytes=1180144",
+      "event": "public.live-result",
+      "at": "2026-10-25T06:49:33.989Z"
+    },
+    "hangup_compat": {
+      "at": "2026-10-25T06:51:51.261Z",
+      "event": "public.live-result",
+      "code": "recognized=true replied=true documentSeen=false documentReceived=false backgroundStarted=true audioBytes=269718"
+    }
+  },
+  "observedChecks": {
+    "ordinaryWebSearch": true,
+    "ordinaryMemorySearch": true,
+    "existingTaskDelegation": true,
+    "hangupContinuedAndCompleted": true,
+    "completionAfterHangupMs": 54769,
+    "explicitCancelAcknowledgedByOriginalTask": true,
+    "actualChildSpawnAndOriginalTaskFinalReturned": true,
+    "shortResultReachedNativeDocumentAndSpeech": true,
+    "personalRequestRefusedWithoutToolCall": true,
+    "settingsRemainOriginalSystemSheet": true
+  },
+  "backendToolMetadata": {
+    "connectedChild": [
+      "sessions_spawn",
+      "subagents",
+      "exec",
+      "sessions_history",
+      "subagents"
+    ],
+    "hangupTask": [
+      "sessions_spawn",
+      "exec",
+      "sessions_history"
+    ],
+    "metadataInspection": "Read only tool names from these two dedicated Public task conversations after their execution; no transcript used to manufacture task completion"
+  },
+  "compatibility": {
+    "storageKey": "A lowercase Voice-owned legacy storage namespace accepted by the unchanged task RPC; no real Feishu identity/conversation/delivery target is borrowed",
+    "personalBoundary": "Same prompt redline on voice and backend; ordinary V memory_search with its existing index, not a visitor memory tool",
+    "childWait": "Prompt-only compatibility: original backend model follows the same child using its existing tools and returns through the original SDK task; it does not invoke sessions_yield",
+    "newModelLoop": false,
+    "newTaskSystem": false,
+    "abortTreatedAsSuccess": false,
+    "resubmissionAfterAmbiguousStart": false
+  },
+  "retainedFailures": [
+    {
+      "kind": "noncanonical_storage_key",
+      "observed": "Uppercase key was canonicalized and task aborted",
+      "fix": "Generate the independent key in canonical lowercase; basic original SDK task then completed"
+    },
+    {
+      "kind": "bootstrap_rate_limit",
+      "observed": "Repeated fresh test installations reached the existing six-per-ten-minute limit",
+      "handling": "Restarted only this idle Candidate between batches; production limits unchanged"
+    },
+    {
+      "kind": "short_result_screen",
+      "observed": "Original short-result path speaks directly and does not start another front model turn; prompt changes alone cannot produce the card",
+      "fix": "Public short results use the existing publishContent/document pathway too; later real native card test passed"
+    },
+    {
+      "kind": "sdk_yield_abort",
+      "observed": "Child completed, but yielded parent intermittently returned AbortError; one run logged sessions_yield abort settle timeout",
+      "handling": "No platform patch, error swallowing, Voice-side transcript recovery or replacement task; prompt compatibility keeps the original parent task active and follows its same child. Connected result/card and hangup completion both passed afterward. Underlying SDK yield behavior is not claimed fixed."
+    },
+    {
+      "kind": "strict_chinese_marker",
+      "observed": "An initial short-card probe received a native document but did not match the long Chinese marker",
+      "cause": "Unconfirmed; raw transcript was not captured",
+      "handling": "Changed the synthetic request itself to the unambiguous two-character result 成功; exact speech and document markers passed"
+    },
+    {
+      "kind": "simulator_input_after_xctest",
+      "observed": "Settings touch input had no visible effect after repeated XCTest runs; process sample showed the main thread idle",
+      "handling": "Rebooted only the owned simulator without changing code or erasing data; the original settings sheet then opened normally",
+      "cause": "Simulator input state is an inference from recovery after device reboot, not a diagnosed product change"
+    }
+  ],
+  "xcresults": {
+    "web": "test_sim_2026-10-25T06-18-37-192Z_pid34432_44a253f4.xcresult",
+    "memory": "test_sim_2026-10-25T06-20-06-685Z_pid34432_d2df1edd.xcresult",
+    "cancel": "test_sim_2026-10-25T06-37-21-639Z_pid34432_d89ac231.xcresult",
+    "shortCard": "test_sim_2026-10-25T06-42-43-660Z_pid34432_04f5670c.xcresult",
+    "privacy": "test_sim_2026-10-25T06-44-03-399Z_pid34432_272fde51.xcresult",
+    "childWithCard": "test_sim_2026-10-25T06-48-15-593Z_pid34432_88682d80.xcresult",
+    "hangup": "test_sim_2026-10-25T06-51-18-506Z_pid34432_f22774eb.xcresult"
+  },
+  "scopeLimits": [
+    "Simulator synthetic speech, not physical iPhone audio, lock-screen or Action Button acceptance of these new capabilities",
+    "Hangup proves backend continuation and final completion; ended-call result recovery or cross-redial handoff was not added or claimed",
+    "Prompt-guided child waiting was exercised on these real tasks; long-duration load testing was not performed"
+  ],
+  "release": {
+    "merged": false,
+    "productionDeployed": false,
+    "openClawUpdated": false,
+    "gatewayRestarted": false,
+    "newPhoneBinarySignedOrInstalled": false,
+    "completePublicReleaseAcceptance": false
+  },
+  "cleanup": {
+    "ownCandidateAndTunnelStopped": true,
+    "integrationLeaseReleased": true,
+    "sharedGatewayPIDUnchanged": true,
+    "sharedGatewayConfigSHA256Unchanged": true,
+    "otherCandidatesUntouched": true
+  },
+  "finalUIProof": "Original settings sheet visibly reopened after rebooting only the owned simulator; Public is first and both saved fixture channels remain."
+}

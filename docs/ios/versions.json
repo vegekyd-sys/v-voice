@@ -693,6 +693,10 @@
     "platformUpdateRequired": false,
     "presentation": "original_system_sheet",
     "latestRegressionRecord": "public-regression-20261025.json",
-    "completePublicAcceptance": false
+    "completePublicAcceptance": false,
+    "functionalRegressionRecord": "public-functional-regression-20261025.json",
+    "functionalSourceCommit": "4c1932a00a85f1cfcabb21a8a190051f2b32da74",
+    "requestedSimulatorFunctionalAcceptance": true,
+    "childTaskCompatibility": "Original task follows its original child using existing tools, guided by Voice prompt; SDK yield implementation unchanged."
   }
 }

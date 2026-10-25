@@ -10,7 +10,8 @@ export const IOS_PUBLIC_CANDIDATE_UPDATE = {
     '设置页共用一个入口列表：Public 固定第一，其他会话依次排列；选中状态、添加与移除采用统一的轻量样式。',
     '会话列表提供可见的本机移除按钮，移除当前额外入口后回到 Public。',
     '首次系统权限需要时操作按钮引导到前台；已有授权继续后台通话。',
-    '仅 Candidate，真实语音、操作按钮与共享集成验收另行登记。',
+    '后台结果沿用报告卡片，挂断不中断已接纳任务；明确取消仍控制原任务。',
+    '仅 Candidate，真机声音、锁屏和操作按钮验收另行登记。',
   ],
 };
 export const IOS_IDENTITY_CANDIDATE_UPDATE = {

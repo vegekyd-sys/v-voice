@@ -1,7 +1,8 @@
 {
   "schema": 1,
   "date": "2026-10-25",
-  "status": "basic_public_passed_requested_tools_still_blocked",
+  "status": "historical_basic_public_before_tool_enablement",
+  "supersededBy": "public-functional-regression-20261025.json",
   "serviceSourceCommit": "07d6613856ebc1d376d18723ebeeb1dc48e84dc7",
   "candidateEntrypointFromSameCommit": "ios/scripts/public-candidate.mjs",
   "serviceArtifactFilesSHA256": "11c8060b6f33fc1139aec47037810e767429fae2a85c72327798c2d531de117d",
