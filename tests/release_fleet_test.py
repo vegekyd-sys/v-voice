@@ -21,7 +21,11 @@ class FleetSafety(unittest.TestCase):
                        'lab/gpt-live-h5/server.mjs':'export {};',
                        'lab/gpt-live-h5/ios-shell-release.json':'{"revision":"fixture"}',
                        'package-lock.json':'{}', 'scripts/phone.mjs':'export {};',
-                       'scripts/feishu-menu.mjs':'export {};'}
+                       'scripts/feishu-menu.mjs':'export {};',
+                       'scripts/device-call.mjs':'export {};',
+                       'scripts/install-backend-device-bundle.mjs':'export {};',
+                       'skills/device-use/SKILL.md':'# Device use',
+                       'backend-device-bundle.json':'{}'}
             files = []
             for name, content in sources.items():
                 path = root/name
@@ -35,13 +39,15 @@ class FleetSafety(unittest.TestCase):
                 (root/'manifest.json').write_text(json.dumps(manifest))
             save()
             self.assertEqual(fleet.verify_artifact(root), manifest)
-            for denied in ['scripts/extra.mjs', 'scripts/../phone.mjs', '/scripts/phone.mjs']:
+            for denied in ['scripts/extra.mjs', 'scripts/../phone.mjs', '/scripts/phone.mjs',
+                           'skills/extra/SKILL.md', 'skills/device-use/../../secret',
+                           'backend-device-extra.json']:
                 with self.subTest(path=denied):
                     files[-1]['path'] = denied
                     save()
                     with self.assertRaisesRegex(RuntimeError, 'Unsafe artifact path'):
                         fleet.verify_artifact(root)
-            files[-1]['path'] = 'scripts/feishu-menu.mjs'
+            files[-1]['path'] = 'backend-device-bundle.json'
             save()
             (root/'scripts/phone.mjs').write_text('changed')
             with self.assertRaisesRegex(RuntimeError, 'Artifact byte mismatch'):
