@@ -9,5 +9,5 @@
   "previousEntryCommit": "96a198d8b696a0b2e10680b47b829332349de1fb",
   "gatewayRestartRequired": false,
   "deployedAt": "Sun 2026-10-25 15:28:11 CST",
-  "runtimeDifference": "Both Voice nodes use the same verified artifact. The web/iOS node enables Public entry with one dedicated feature flag. Native 1.0.0 (39) is VALID and available to the internal TestFlight group. Existing binding regression and production Public preparation passed; physical acceptance remains pending. Gateway, existing private identity configuration and firmware unchanged."
+  "runtimeDifference": "Both Voice nodes use the same verified artifact. The web/iOS node enables Public entry with one dedicated feature flag. Native 1.0.0 (39) is VALID and available internally; Tianyi accepted the current internal TestFlight build and included PRs. Build 39 is waiting for external beta review; build 38 was expired with explicit authorization. Gateway, existing private identity configuration and firmware unchanged."
 }
