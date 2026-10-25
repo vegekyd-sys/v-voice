@@ -84,3 +84,8 @@ Reduce the waiting state to one sentence (“回飞书确认，就能通话”),
 Validated through a real phone-button activation in Codex IAB at 390×640 with the same local HTTP/signed callback fixture; app/avatar/client checks 100/100 and generated iOS shell consistency passed. No new real messages, microphone usage, calls, platform changes or deployment. Screenshot: `v-voice-releases/audits/20261025-quiet-confirm/after-dial.png`.
 
 Platform scope assessment (read-only production check): current V uses the Feishu WebSocket channel and its monitor lacks the dedicated Voice confirmation handler. PR #473 adds authenticated card-action routing and a signed forward to Voice; it does not change the conversation model or tool policy. UI-only changes do not require it. Enabling this card identity flow with the current implementation requires matching platform code; no restart-free deployment of this PR has been validated. Plugin reload and an independent callback receiver are distinct alternatives requiring integration validation; neither is claimed as a completed no-impact release path. Production was not changed or restarted.
+
+
+## Approved integration and release preparation
+
+Tianyi approved deployment and requested `v-self-restart`, alignment and post-release acceptance. The final UI places “回飞书确认一下，我等你” below the portrait/name and above the original phone button. The visible comparison marker remains beside the instruction; guest entry remains below the button. The platform change is promoted only after shared VLab acceptance; production restart must use `v-self-restart --if-busy abort`, and both Voice services receive one merged artifact via `release-fleet.py`. Native Settings visual changes are not claimed installed by an H5/server update.

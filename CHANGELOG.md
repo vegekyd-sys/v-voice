@@ -1,3 +1,9 @@
+## 2026-10-25 — Feishu identity confirmation release preparation
+
+- Place the short confirmation instruction directly below V and above the retained phone button, as V saying “回飞书确认一下，我等你”. Keep the comparison marker visible and the guest action secondary.
+- Release the verified card-to-browser identity flow with platform PR #473; internal and external group members retain their own identity and conversation when binding iOS. Server/Web H5 delivery is separate from native Settings styling in a future App build.
+- Production authorization received. Use the shared VLab gate, the same platform bytes, `v-self-restart` with busy-abort protection and final alignment; publish the merged Voice artifact to both service nodes. Runtime acceptance is recorded after cutover.
+
 ## 2026-10-25 — Feishu card identity confirmation (Candidate)
 
 - Keep the original phone button on arrival. For unresolved identity, clicking it sends the confirmation card, shows an existing V guidance Reaction and a compact return-to-Feishu prompt while retaining the phone button. Apply the verified entry without navigation and invalidate cancelled requests.

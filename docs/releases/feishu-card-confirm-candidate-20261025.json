@@ -1,5 +1,5 @@
 {
-  "version": "voice-feishu-card-confirm.20261025.4",
+  "version": "voice-feishu-card-confirm.20261025.5",
   "status": "candidate-validated",
   "date": "2026-10-25",
   "branch": "codex/feishu-card-confirm",
@@ -55,5 +55,12 @@
     "securityMarker": "visible, unchanged value",
     "newAudioCalls": 0,
     "productionDeployed": false
+  },
+  "releaseAuthorization": {
+    "approved": true,
+    "productionVersion": "voice-feishu-confirm.20261025.1",
+    "status": "preparing",
+    "restart": "v-self-restart --if-busy abort",
+    "alignmentRequired": true
   }
 }

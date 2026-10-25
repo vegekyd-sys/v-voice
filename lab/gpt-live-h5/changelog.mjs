@@ -1,5 +1,5 @@
 export const FEISHU_CARD_CONFIRM_CANDIDATE_UPDATE = {
-  version:'voice-feishu-card-confirm.20261025.4',date:'2026-10-25',
+  version:'voice-feishu-card-confirm.20261025.5',date:'2026-10-25',
   title:'飞书身份原页确认与账号界面优化（Candidate）',status:'candidate-validation',
   items:[
     '打开页面保留原来的电话按钮；点击后换上 V 的引导表情，以一句提示引导回飞书确认，确认后原页连接。',
@@ -115,6 +115,16 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
   ],
 };
 export const VOICE_UPDATES = [
+  {
+    version:'voice-feishu-confirm.20261025.1',date:'2026-10-25',
+    title:'飞书确认身份，原页接着聊',
+    items:[
+      '打开电话页面仍是熟悉的拨号按钮；需要确认身份时，V 会提示你回飞书点一下确认。',
+      '同一群链接支持内部和外部联系人确认本人身份，确认后仍在原电话页，保留当前群会话。',
+      '网页姓名与群会话分开显示；右上角可直接打开 iOS 绑定，确认后的身份和群会话一起带到 App。',
+      '访客仍可直接使用 Public；个人工具权限按本人身份核验。',
+    ],
+  },
   {
     version:'voice-public-testflight.20261025.1',date:'2026-10-25',
     title:'Public 通话与统一入口列表',

@@ -349,10 +349,9 @@ function IdentitySummary({context,onClick}) {
 function InlineConfirmation({value,actions}) {
  const waiting=value.phase==='waiting',failed=value.phase==='failed',cancelling=value.phase==='cancelling';
  return <section className="identity-confirmation" aria-labelledby="confirmationTitle">
-  <h2 id="confirmationTitle" role="status">{cancelling?'正在取消…':failed?'请重新确认':waiting?'回飞书确认，就能通话':'正在发送确认…'}</h2>
+  <h2 id="confirmationTitle" role="status">{cancelling?'正在取消…':failed?'请重新确认':waiting?'回飞书确认一下，我等你':'正在发送确认…'}</h2>
   {failed&&<p className="confirmation-description" role="alert">{value.error}</p>}
   {waiting&&value.label&&<p className="confirmation-marker"><span>核对</span><strong>{value.label}</strong></p>}
-  <div className="confirmation-actions">{failed&&<button type="button" className="confirmation-retry" onClick={actions.connectIdentity}>重新发送</button>}<button type="button" disabled={cancelling} onClick={actions.skipConfirmation}>访客通话</button></div>
  </section>;
 }
 
@@ -438,9 +437,9 @@ function CallPage({view, actions, options}) {
                 </>
               ) : state.entry&&!state.confirmation ? <EntryNotice entry={state.entry} /> : (
                 <>
-                  {!state.confirmation&&<GrokPicker state={state} actions={actions} />}
+                  {state.confirmation?<InlineConfirmation value={state.confirmation} actions={actions}/>:<GrokPicker state={state} actions={actions} />}
                   <button id="start" className={`dial${state.confirmation?' confirmation-dial':''}`} type="button" disabled={state.confirmation?state.confirmation.phase!=='failed':state.dial.disabled} aria-label={state.confirmation?(state.confirmation.phase==='failed'?'重试身份确认':'等待飞书确认'):state.dial.label} title={state.dial.label} onClick={state.confirmation?actions.connectIdentity:actions.dial}><Icon d={PHONE} /></button>
-                  {state.confirmation?<InlineConfirmation value={state.confirmation} actions={actions}/>:<>
+                  {state.confirmation?<div className="confirmation-actions"><button type="button" disabled={state.confirmation.phase==='cancelling'} onClick={actions.skipConfirmation}>访客通话</button></div>:<>
                   <ModelPicker state={state} actions={actions} />
                   <span id="badge" className="home-badge" role="status">{state.badge}</span>
                   <IdentitySummary context={state.confirmOnDial?null:state.accessContext} onClick={state.nativeSettings?undefined:()=>setAccessOpen(true)}/>
