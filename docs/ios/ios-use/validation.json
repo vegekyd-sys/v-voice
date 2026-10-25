@@ -101,8 +101,9 @@
     "previousBuild": 34,
     "installationEvidence": "/tmp/vvoice-ios-use-install36.json",
     "installedVersionEvidence": "/tmp/vvoice-ios-use-phone-apps-after36.json",
-    "bindingVerified": false,
-    "bindingLaunchBlocked": "iOS denied app launch because device is locked; user unlock requested, no bypass"
+    "bindingVerified": true,
+    "bindingEvidence": "User confirmed 已绑定; authenticated Candidate listed one grant created after this handoff; ready and zero active calls",
+    "notesVoiceEnabled": false
   },
   "limitations": [
     "Backend Candidate uses the actual OpenClaw embedded runtime and configured DeepSeek model in private state; channels/cron/worker plugins disabled, no shared VLab writes",
@@ -163,5 +164,17 @@
     "ipaPath": "/Users/tianyicai/Documents/Codex/2026-10-25/vvoice-public-candidate/export/VVoice.ipa",
     "ipaSHA256": "40c81cc83edcac6e33fb894a158bcc127129b05a38a821c7667082eeccc74641",
     "uninstallPerformed": false
+  },
+  "shortcutTemplates": {
+    "generator": "ios/scripts/make-apple-notes-shortcuts.py",
+    "signedDirectory": "/tmp/vvoice-ios-use-shortcuts36",
+    "signedBy": "Apple shortcuts CLI, people-who-know-me; local private files only",
+    "createImportedOnMac": true,
+    "macSystemActionsRecognized": true,
+    "nativeVerifierRecognition": "Mac shows unknown operation with unexpected WPS Office label; cause unresolved, iPhone build36 confirmation pending",
+    "phoneExecution": false,
+    "systemExportAnyone": "Third export failed with NSURLErrorDomain 500; CLI signing succeeded",
+    "appendAccepted": false,
+    "graphInspection": "create/append Note output -> detect.text -> VerifyAppleNoteIntent -> output; unique UUIDs, create OpenWhenRun=false, no network actions"
   }
 }

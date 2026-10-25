@@ -33,10 +33,16 @@ IPA `ios/build/export/VVoice.ipa`，SHA256 `fa9206fdda3cac08fecc273e9317e5eeb776
 
 ## 真机现状与未完成项
 
-Tianyi 明确回复手机“已空闲”后，2026-10-25 已安装 build 36，安装前后 devicectl 分别确认 build 34/36；没有卸载 App。现有 Keychain 绑定按原机制保留，候选服务一次性绑定仍需真实确认。此安装不等于体验接受。
+Tianyi 明确回复手机“已空闲”后，2026-10-25 已安装 build 36，安装前后 devicectl 分别确认 build 34/36；没有卸载 App。现有 Keychain 绑定按原机制保留，随后用户回复“已解锁”，打开候选绑定页成功；Tianyi 确认“已绑定”，服务端收到同次新建的一条设备 grant。此安装不等于体验接受。
 
 build 34 回退 IPA：`/Users/tianyicai/Documents/Codex/2026-10-25/vvoice-public-candidate/export/VVoice.ipa`，SHA256 `40c81cc83edcac6e33fb894a158bcc127129b05a38a821c7667082eeccc74641`。不在本候选覆盖正式已接受版本登记。
 
-待完成：候选绑定确认、一次性 Notes 快捷指令配置与系统授权、真实 Notes 新建/追加、真实语音、真机前后台/锁屏音频连续性。尚未自动拨号。候选绑定页的实际打开被 iOS 因 Locked 拒绝，正等待用户解锁；未绕过或视为绑定成功。系统可能要求解锁/切前台；不得把 fixture 或模拟器通过写成这些真机项已通过。总控决定最终合入和正式上线。
+待完成：一次性 Notes 快捷指令配置与系统授权、真实 Notes 新建/追加、真实语音、真机前后台/锁屏音频连续性。尚未自动拨号。最初因 Locked 打开失败，解锁后重发单次链接并完成绑定；未绕过锁屏。系统可能要求解锁/切前台；不得把 fixture 或模拟器通过写成这些真机项已通过。总控决定最终合入和正式上线。
 
 具体 hashes、检查和证据路径见 [validation.json](validation.json)。历史 Notes build 26、build 35 产物保留，均未安装到手机。
+
+## 一次性快捷指令模板（待真机接受）
+
+新增可复现生成器 `ios/scripts/make-apple-notes-shortcuts.py`，不把个人签名文件、输入正文、token 或设备信息放入源码。Mac 系统实际导出确认 Notes 创建 action 为 com.apple.mobilenotes.SharingExtension、文本读回为 detect.text；模板显式 OpenWhenRun=false，正文只能由实际 Note 输出进入读回核对，不直接回显输入。追加模板导入时要求固定一个本机 Note，不让模型传 note ID。
+
+Apple 官方 CLI 的 people-who-know-me 签名成功；文件仅在私有 `/tmp/vvoice-ios-use-shortcuts36`。本机导入“V 新建备忘录”成功，字典/创建/读回/输出动作可见，但核对动作在 Mac 显示未知且带意外 WPS Office 标签，原因尚未确定，不能推定可用。已有“灵动岛拨给 V”在该 Mac 也提示需更新 V Voice，但这不足以解释新动作的标签。已请求在 build36 iPhone 打开编辑页，等待真实动作识别；尚未运行写入、未验证 iCloud 同步，追加模板也未接受。一次系统“任何人”导出报 NSURLErrorDomain 500，失败保留，不把 CLI 签名当功能验收。
