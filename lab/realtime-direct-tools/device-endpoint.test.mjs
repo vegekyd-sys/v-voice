@@ -942,6 +942,8 @@ for(const model of ['seeduplex','grok'])test(`${model}: robot camera stays foreg
  assert(setup.session.tools.some(t=>t.name==='look'));
  assert(!setup.session.tools.some(t=>t.name==='robot_action'));
  assert.match(setup.session.instructions,/"kind":"robot"/);
+ assert.match(setup.session.instructions,/不要声称没有实体/);
+ assert.match(setup.session.instructions,/不委派后台/);
  assert(!mcpOut(client).some(p=>p.params?.name?.startsWith('self.robot.')));
  const enc=new OpusScript(16000,1,OpusScript.Application.VOIP);t.after(()=>enc.delete());client.send(enc.encode(Buffer.alloc(1920),960),{binary:true});
  await f.until(()=>f.peers[0].sent.some(e=>e.type==='input_audio_buffer.append'),'audio continues');

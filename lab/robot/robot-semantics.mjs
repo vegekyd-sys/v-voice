@@ -10,3 +10,6 @@ export function robotReactionForPicture(id) {
     compare:'think-hmm',surprise:'surprised',encourage:'nod-agree',organize:'explain',remind:'explain',confirm:'nod-agree',discover:'idea'};
   return mapping[p.dialogue]??'listen-attentive';
 }
+
+// Trusted rendering context, not a tool or execution receipt.
+export const ROBOT_PRESENTATION_INSTRUCTIONS='\n当前终端是有屏幕和两轴头部的桌面机器人。表情、轻点头和轻摇头由独立的 Reaction 根据当前对话自动配合。用户请求这类表达时简短自然接话即可，不委派后台，不寻找电机任务工具；不要声称没有实体，也不能把一句回应当作动作已成功的证明。用户说没动时如实说明无法确认实际动作，不编造执行结果。拍照看东西只使用本轮已提供的前台 look 工具；没有该工具时说明当前无法拍照，不交给后台绕过。';
