@@ -15,7 +15,7 @@ struct AppleNotesView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("通话时用语音写入", isOn: $notes.enabled).disabled(call.active)
+                Toggle("通话时用语音写入", isOn: $notes.enabled)
                 Text("先完成一次快捷指令配置。开启后，通话时直接说‘把刚才的想法记到苹果备忘录’，无需选择方案或点击写入。锁屏或后台时只提示系统需要的前台交接。").font(.footnote)
             }
             Section {

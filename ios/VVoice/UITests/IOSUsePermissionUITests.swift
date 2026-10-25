@@ -5,6 +5,13 @@ import XCTest
     func state() async throws -> [String:Any] {
         let(data,_)=try await URLSession.shared.data(from:base.appendingPathComponent("fixture/state"));return try JSONSerialization.jsonObject(with:data) as! [String:Any]
     }
+    func command(_ name: String) async throws {
+        var request=URLRequest(url:base.appendingPathComponent("fixture/command"));request.httpMethod="POST";request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.httpBody=try JSONSerialization.data(withJSONObject:["command":name]);_=try await URLSession.shared.data(for:request)
+    }
+    func waitStatus(_ key: String, _ expected: String) async throws -> Bool {
+        let end=Date().addingTimeInterval(6)
+        while Date()<end { if (try await state()[key] as? [String])?.last == expected { return true };try await Task.sleep(for:.milliseconds(100)) };return false
+    }
     func testBackgroundPermissionRequestContinuesSameCallAfterSystemConsent() async throws {
         let (_,response)=try await URLSession.shared.data(from:base.appendingPathComponent("voice/"))
         let cookie=String(try XCTUnwrap((response as? HTTPURLResponse)?.value(forHTTPHeaderField:"Set-Cookie")?.split(separator:";").first))
@@ -34,10 +41,24 @@ import XCTest
         var completed=false
         while Date()<done {let rows=try await state()["iosResults"] as? [[String:Any]] ?? [];if String(describing:rows).contains("eventkit_query"){completed=true;break};try await Task.sleep(for:.milliseconds(100))}
         XCTAssertTrue(completed,"Original request must finish after actual consent")
+        let initiallyAvailable=try await waitStatus("iosFrontendStatuses","available");XCTAssertTrue(initiallyAvailable)
+        XCUIDevice.shared.press(.home);try await command("revoke-calendar")
+        let retired=Date().addingTimeInterval(18)
+        while Date()<retired { if try await state()["connected"] as? Bool == false { break };try await Task.sleep(for:.milliseconds(100)) }
+        let revoked=try await state()
+        if revoked["connected"] as? Bool == false {
+            let observation=XCTAttachment(string:"The simulator TCC service terminated the app on revocation. The old call closed; no automatic redial or replay is permitted.");observation.name="System revocation boundary";observation.lifetime = .keepAlways;add(observation)
+            app.activate()
+        } else {
+            app.activate()
+            let denied=try await waitStatus("iosFrontendStatuses","denied");XCTAssertTrue(denied)
+            try await command("backend-context")
+            let backendDenied=try await waitStatus("iosBackendStatuses","denied");XCTAssertTrue(backendDenied)
+        }
         let after=try await state()
         XCTAssertEqual((after["sessionRequests"] as? [Any])?.count,(before["sessionRequests"] as? [Any])?.count,"No new call after consent")
-        XCTAssertEqual(after["connected"] as? Bool,true)
-        let screenshot=XCTAttachment(screenshot:app.screenshot());screenshot.name="Same call after Calendar consent";screenshot.lifetime = .keepAlways;add(screenshot)
+        if revoked["connected"] as? Bool == false { XCTAssertEqual(after["connected"] as? Bool,false,"System termination must not auto-redial") }
+        let screenshot=XCTAttachment(screenshot:app.screenshot());screenshot.name="Calendar consent and revocation boundary";screenshot.lifetime = .keepAlways;add(screenshot)
         app.terminate()
     }
 }

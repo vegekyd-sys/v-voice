@@ -20,10 +20,10 @@ test('calendar completion requires persisted ID, actual fields and time readback
  assert.equal(validateIOSResult('calendar.create',result,{payload:event}).completed,true);
  for(const item of [{...result.item,id:''},{...result.item,title:'other'},{...result.item,start:'2026-10-26T11:00:00+08:00'}])assert.throws(()=>validateIOSResult('calendar.create',{...result,item},{payload:event}));
 });
-test('permission denied removes device action and cannot be delegated through adapter',async()=>{
+test('stable device tool retains negotiated verbs but denial cannot be delegated through adapter',async()=>{
  let invoked=0;
  const snapshot={'notes.create':{status:'denied'},'notes.append':{status:'denied'},'calendar.create':{status:'available'},'calendar.query':{status:'available'}};
- assert.deepEqual(iosUseTool(snapshot).parameters.properties.operation.enum,['calendar.create','calendar.query']);
+ assert.deepEqual(iosUseTool(snapshot).parameters.properties.operation.enum,['notes.create','notes.append','calendar.create','calendar.query']);
  const execute=createIOSUseAdapter({capabilities:snapshot,request:()=>{invoked++;}});
  await assert.rejects(()=>execute({operation:'notes.create',payload:{title:'x',body:'y'}},'call'));
  assert.equal(invoked,0);

@@ -72,3 +72,12 @@ PR #133：https://github.com/vegekyd-sys/v-voice/pull/133 （draft，依赖位�
 服务包 /tmp/vvoice-ios-use-server35，237文件，filesSha256 6187930777cca0b71e4ea78dfa66f5d82fb479c0ef42b0abe0ad1a93dcd3920e。尚未部署生产。原签名build26归档由构建脚本改名保留；现有手机系统与Keychain未改。
 
 发布校验脚本已与依赖位置线同步允许audio+location背景模式，并要求WhenInUse用途说明；未增加Always权限。第一次签名导出虽成功，但旧校验仍限定audio一项而失败，修正校验后对同一签名IPA解包复验通过，没有将最初失败记为通过。
+
+
+## 公共权限刷新增量（进行中）
+
+已吸收569502f/e213dfd，保留统一revisioned device.capabilities快照；本路Notes/Calendar/Reminders与location合并同一快照，系统首次授权/前台恢复通知同一发送器。ios_use工具仅声明本通话协商过的操作，保持稳定；声明不是授权，每次执行仍验证当前状态与owner。新后端task/steer读取同一快照，不能通过委托绕过拒绝。公共device.context分派保护独立commit bbb07cd，仅一行；新增动态能力原生候选改为build36，build35保留但未安装。
+
+当前实际全量Node925/925、相关服务127/127通过；首次授权实际TCC+同通话查询通过。实际撤权测试发现SpringBoard以domain:tcc(11) code:0终止VVoice，原socket关闭、sessionRequests仍1；该轮“撤权后仍连接”断言失败留存于 /tmp/vvoice-ios-use-refresh-ui.xcresult。系统终止后不承诺同通话存活，验收改为原owner/请求失效、无自动重拨和无重放写入；不会把该失败掩盖成持续通话通过。修订边界测试进行中。
+
+后端descriptor同时给出artifact内device-use与ios-use入口。候选任务按需read，不修改生产workspace技能目录。正式跨主机部署必须由总控提供后端可读的对应版本资产路径；本路同机Candidate不得外推跨主机接受。

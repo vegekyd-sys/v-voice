@@ -216,6 +216,8 @@ import VVoiceCore
             guard self.avatar.islandVisible || self.appIsActive else { throw CancellationError() }
             return try await self.h5Cosmetic("avatar", body: body, owner: self.presentationID, fromH5: false)
         }
+        iosActions.events.onCapabilityChange = { [weak self] in self?.refreshDeviceCapabilities() }
+        iosActions.notes.onCapabilityChange = { [weak self] in self?.refreshDeviceCapabilities() }
         (location as? DeviceLocation)?.onCapabilityChange = { [weak self] in self?.refreshDeviceCapabilities() }
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil, queue: .main) { [weak self] _ in
@@ -666,7 +668,7 @@ import VVoiceCore
         guard nativeLocationEnabled, active, let voiceID else { return }
         deviceCapabilityRevision += 1
         transport?.send(["type": "device.capabilities", "version": 1, "voiceSessionId": voiceID, "revision": deviceCapabilityRevision,
-                         "capabilities": DeviceLocation.declaration["capabilities"] ?? [:]])
+                         "capabilities": deviceActionDeclaration["capabilities"] ?? [:]])
     }
     private func handle(_ v: [String: Any], owner: UUID) throws {
         if v["type"] as? String == "device.context" { return }

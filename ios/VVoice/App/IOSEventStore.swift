@@ -4,13 +4,16 @@ import VVoiceCore
 
 /// EventKit objects stay on MainActor; no account or calendar ID comes from the model.
 @MainActor @Observable final class IOSEventStore {
+    @ObservationIgnored var onCapabilityChange: (() -> Void)?
     @ObservationIgnored let store: EKEventStore
     private(set) var calendarPermission = "not_determined"
     private(set) var remindersPermission = "not_determined"
     init(store: EKEventStore = EKEventStore()) { self.store = store; refresh() }
     func refresh() {
+        let previous = calendarPermission + ":" + remindersPermission
         calendarPermission = Self.permission(EKEventStore.authorizationStatus(for: .event))
         remindersPermission = Self.permission(EKEventStore.authorizationStatus(for: .reminder))
+        if previous != calendarPermission + ":" + remindersPermission { onCapabilityChange?() }
     }
     static func permission(_ value: EKAuthorizationStatus) -> String {
         switch value {

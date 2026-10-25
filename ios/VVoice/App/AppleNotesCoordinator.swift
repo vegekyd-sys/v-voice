@@ -6,7 +6,8 @@ import VVoiceCore
     static let shared = AppleNotesCoordinator()
     private let preferences: UserDefaults
     @ObservationIgnored private let openShortcut: (URL, @escaping @MainActor (Bool) -> Void) -> Void
-    var enabled: Bool { didSet { preferences.set(enabled, forKey: "appleNotesVoiceEnabled") } }
+    @ObservationIgnored var onCapabilityChange: (() -> Void)?
+    var enabled: Bool { didSet { preferences.set(enabled, forKey: "appleNotesVoiceEnabled"); if oldValue != enabled { onCapabilityChange?() } } }
     @ObservationIgnored private var seenRemoteIDs: Set<String> = []
     private struct Remote {
         let id: String
