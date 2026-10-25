@@ -655,6 +655,7 @@ import VVoiceCore
                          "capabilities": DeviceLocation.declaration["capabilities"] ?? [:]])
     }
     private func handle(_ v: [String: Any], owner: UUID) throws {
+        if v["type"] as? String == "device.context" { return }
         if v["type"] as? String == "device.cancel", v["operation"] as? String == "location.current" {
             if v["voiceSessionId"] as? String == voiceID, v["requestId"] as? String == locationRequestID {
                 locationTask?.cancel(); locationTask = nil; locationRequestID = nil; location.cancel()
