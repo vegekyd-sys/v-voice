@@ -1,3 +1,16 @@
+export const ACCESS_MODES_CANDIDATE_UPDATE = {
+  version:'voice-access-modes.20261025.1',date:'2026-10-25',
+  title:'Public、账号会话与设备权限（Candidate）',status:'candidate-validation',
+  items:[
+    '使用方式归为 Public 和已连接账号与会话，设备与权限集中管理。',
+    '网页 Public 与飞书访客沿用 V 原有搜索、记忆和后台任务。',
+    '固定网页保留预配置账号、通话人和会话，音箱与机器人可引用同一入口映射。',
+    '私有入口失效时可明确选择 Public；不自动切换身份或拨号，原绑定仍保留。',
+    'App 首页显示当前入口，设置页展示 Public、我的账号与会话、设备与权限。',
+    '当前为候选验证，尚未合入、发布或更新 TestFlight。',
+  ],
+};
+
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
 export const IOS_PUBLIC_CANDIDATE_UPDATE = {

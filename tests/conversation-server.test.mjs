@@ -107,7 +107,7 @@ test('inline readiness cannot cross phone-cookie ownership and reveals no sessio
 test('authenticated entry returns safe conversation label and passes only server-owned session mode',async t=>{
  const f=await fixture(t),cookie=await f.login(entries[0]);
  const status=await (await f.request(entries[0].id,'status',cookie)).json();
- assert.deepEqual(status.conversation,{name:'飞书群聊',kind:'group',replySync:false});
+ assert.deepEqual(status.conversation,{name:'飞书群聊',kind:'group',replySync:false,accountLabel:'预配置账号',entryKind:'fixed',scopeNote:'账号、通话人和会话由此入口预配置；切换浏览器账号不会替换它们。'});
  assert(!JSON.stringify(status).includes(entries[0].sessionKey));
  await f.request(entries[0].id,'session',cookie,{model:'seeduplex'});
  const call=f.calls.find(x=>x.method==='direct.reserve');

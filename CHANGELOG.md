@@ -1,3 +1,9 @@
+## 2026-10-25 — Unified access modes (candidate, unreleased)
+
+- Group entry presentation into Public, connected accounts/conversations and device permissions. Preserve server-configured fixed caller/account/session mappings and old native grants; devices may reference the same fixed entry.
+- Enable the existing Public tool contract for authenticated browser guests, without adding a memory store. Offer explicit Public recovery when private admission fails; never replace a missing/revoked native grant with a browser cookie or replay a private operation.
+- Show the selected entry in the actual iOS H5 home and native settings, keeping local removal separate from server revocation. Add HTTP/WebSocket, native and real read-only VLab verification; no production or TestFlight release.
+
 ## 2026-10-25 — TestFlight 39: Public and unified saved entries
 
 - Release approved PR #136 after bound-session, native call and switching regression. Preserve existing selected bindings; Public stays first in the common settings list. First-use system preparation can foreground the app; prepared calls retain the Action Button path.

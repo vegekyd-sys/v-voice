@@ -21,6 +21,7 @@ async function fixture(t,{file}={}) {
    if(reject)throw Object.assign(Error('denied'),{details:{reason:'conversation_membership_required'}});
    return {sessionKey:group.sessionKey,agentId:'makaron',accountId:'lab',kind:'group'};
   }
+  if(method==='sessions.describe')return {session:{key:p.key,agentId:'makaron'}};
   if(method==='talk.client.create')return {voiceSessionId:'gpt-'+(++n),model:'gpt-live-1-codex',transport:'webrtc',offerUrl:'/plugins/openai/realtime/calls',clientSecret:'private-fixture'};
   return {ok:true};
  }};
@@ -54,10 +55,8 @@ async function fixture(t,{file}={}) {
  return {send,jar,calls,reservations,providerCalls,clientLogin,port:server.server.address().port,setSubject:s=>subject=s,setDenied:v=>reject=v};
 }
 
-test('old group aliases and new group URLs use current account identity, including switching accounts in one browser',async t=>{
+test('dynamic group URLs use current account identity, including switching accounts in one browser',async t=>{
  const f=await fixture(t);
- const old=await f.send('/voice/feishu?phone='+group.id,{ua:'Lark'});assert.equal(old.headers.location,'/voice/feishu/callback?phone='+phone);
- assert.equal((await f.send('/voice/?phone='+group.id,{ua:'Lark'})).headers.location,old.headers.location);
  const personal=await f.send('/voice/feishu?phone='+dm.id);assert.match(personal.headers.location,/accounts.feishu.cn/);
  for(const [open_id,name] of [['ou_alice','Alice Fixture'],['ou_bob','Bob Fixture']]){
   f.setSubject({open_id,tenant_key:'fixture',name,email:'never-retain@example.com'});
@@ -91,6 +90,28 @@ test('failed current-account admission clears old identity and becomes a genuine
  const call=await f.send('/voice/api/session?phone='+phone,{body:{model:'grok',callerIdentity:{source:'feishu',displayName:'Tianyi'}}});
  assert.equal(call.status,200,call.text);assert.equal(f.reservations.at(-1).callerIdentity,undefined);assert.equal(f.reservations.at(-1).unidentified,true);
  assert.match(f.reservations.at(-1).sessionKey,/^voice:guest:/);assert.equal(f.calls.length,before);
+});
+
+test('provider refusal before issuing a login code cannot retain the previous account identity',async t=>{
+ const f=await fixture(t);await f.send((await f.clientLogin()).location);
+ assert.equal((await f.send('/voice/api/status?phone='+phone)).json().accountLabel,'Alice Fixture');
+ const page=await f.send('/voice/feishu/callback?phone='+phone,{ua:'Lark'});
+ const state=JSON.parse(page.text.match(/id="login-config">(.*?)<\/script>/s)[1]).state;
+ const gatewayBefore=f.calls.length,providerBefore=f.providerCalls.length;
+ // External self-built-app users cannot obtain a user token. Exercise the
+ // no-code failure boundary, not a fictional successful external OAuth grant.
+ const finish=await f.send('/voice/feishu/client-login',{body:{state,failure:{code:20027},name:'Forged Owner',openId:'ou_alice'}});
+ assert.equal(finish.status,200);assert.equal(finish.json().status.unidentified,true);
+ assert.equal(f.jar.get('v_feishu_phone'),'');
+ assert.equal(finish.json().status.accountLabel,undefined);
+ assert.equal(f.providerCalls.length,providerBefore);
+ const call=await f.send('/voice/api/session?phone='+phone,{body:{model:'grok',callerIdentity:{source:'feishu',displayName:'Alice Fixture'}}});
+ assert.equal(call.status,200,call.text);
+ const actual=f.reservations.at(-1);
+ assert.equal(actual.callerIdentity,undefined);assert.equal(actual.toolIdentity,undefined);
+ assert.equal(actual.unidentified,true);assert.match(actual.sessionKey,/^voice:guest:/);
+ assert.equal(f.calls.length,gatewayBefore);
+ await f.send('/voice/api/close?phone='+phone,{body:call.json()});
 });
 
 test('client login rejects foreign origins, stolen state and excess payload without making provider calls',async t=>{
@@ -185,7 +206,7 @@ test('production-shaped App-ID legacy grants work through both URLs and share ma
  const old=createIosBindings({file,basePath:'/voice',publicOrigin:'https://voice.example',permits:()=>true});
  const link=old.issue(group,principal),token=new URLSearchParams(new URL(link.bindingUrl).hash.slice(1)).get('bind');
  const grant=await old.redeem(group,token);let oldCookie;
- const saved=JSON.parse(await readFile(file,'utf8'));for(const row of saved.grants)delete row.phoneAlias;await writeFile(file,JSON.stringify(saved));
+ const saved=JSON.parse(await readFile(file,'utf8'));for(const row of saved.grants){delete row.phoneAlias;delete row.fixedMapping;}await writeFile(file,JSON.stringify(saved));
  const legacy=createIosBindings({file,basePath:'/voice',publicOrigin:'https://voice.example',permits:()=>true});
  legacy.authorize(group,grant.deviceAccess,{setHeader:(_,v)=>{oldCookie=v.split(';')[0];}});
  const f=await fixture(t,{file});
@@ -193,8 +214,9 @@ test('production-shaped App-ID legacy grants work through both URLs and share ma
   const status=await f.send('/voice/api/status?phone='+id,{cookies:oldCookie});assert.equal(status.status,200,status.text);assert.equal(status.json().unidentified,undefined);
   const access=await f.send('/voice/api/ios-binding/access?phone='+id,{cookies:'',body:{deviceAccess:grant.deviceAccess}});assert.equal(access.status,200,access.text);
   const call=await f.send('/voice/api/session?phone='+id,{cookies:oldCookie,body:{model:'grok'}});assert.equal(call.status,200,call.text);
-  const actual=f.reservations.at(-1);assert.equal(actual.sessionKey,group.sessionKey);assert.equal(actual.actorScoped,true);assert.deepEqual(actual.toolIdentity,{appId:'cli_fixture',tenantKey:'fixture',openId:'ou_alice'});
-  await actual.gateway.request('tools.catalog',{});assert.equal(f.calls.at(-1).p.voiceActor.actor.openId,'ou_alice');assert.equal(f.calls.at(-1).p.voiceActor.actor.accountId,'lab');
+  const actual=f.reservations.at(-1);assert.equal(actual.sessionKey,group.sessionKey);
+  if(id===phone){assert.equal(actual.actorScoped,true);assert.deepEqual(actual.toolIdentity,{appId:'cli_fixture',tenantKey:'fixture',openId:'ou_alice'});await actual.gateway.request('tools.catalog',{});assert.equal(f.calls.at(-1).p.voiceActor.actor.openId,'ou_alice');}
+  else {assert.equal(actual.toolIdentity,undefined);assert.equal(status.json().accessContext.entryKind,'fixed');}
   await f.send('/voice/api/close?phone='+id,{cookies:oldCookie,body:call.json()});
   if(id!==group.id)continue;
   const native=await new Promise((resolve,reject)=>{const ws=new WebSocket(`ws://127.0.0.1:${f.port}/voice/api/dial?phone=${id}&model=grok&nativeRuntimeVersion=1&dialVersion=1`,{headers:{host:'voice.example',origin:'https://voice.example',cookie:oldCookie}});const timer=setTimeout(()=>{ws.terminate();reject(Error('legacy native dial timed out'));},2000);ws.on('error',reject);ws.on('message',raw=>{clearTimeout(timer);ws.close();resolve(JSON.parse(raw));});});
@@ -206,17 +228,18 @@ test('production-shaped App-ID legacy grants work through both URLs and share ma
  const fresh=await f.send('/voice/api/ios-binding?phone='+group.id,{body:{displayName:'Forged Owner',openId:'ou_other'}});assert.equal(fresh.status,200);
  // The installed App may keep the original saved grant; it now sees the
  // verified name without acquiring a browser OAuth cookie or extending expiry.
- assert.equal((await f.send('/voice/api/status?phone='+group.id,{cookies:oldCookie})).json().accountLabel,'Alice Fixture');
+ assert.equal((await f.send('/voice/api/status?phone='+phone,{cookies:oldCookie})).json().accountLabel,'Alice Fixture');
  for(const model of ['grok','seeduplex','gpt-live']){
-  const call=await f.send('/voice/api/session?phone='+group.id,{cookies:oldCookie,body:{model}});assert.equal(call.status,200,call.text);
+  const call=await f.send('/voice/api/session?phone='+phone,{cookies:oldCookie,body:{model}});assert.equal(call.status,200,call.text);
   if(model==='gpt-live')assert.match(call.json().callerContext.text,/Alice Fixture/);
   else assert.equal(f.reservations.at(-1).callerIdentity.displayName,'Alice Fixture');
-  await f.send('/voice/api/close?phone='+group.id,{cookies:oldCookie,body:call.json()});
+  await f.send('/voice/api/close?phone='+phone,{cookies:oldCookie,body:call.json()});
  }
  const refreshed=JSON.parse(await readFile(file,'utf8')).grants[0];assert.equal(refreshed.principal.displayName,'Alice Fixture');assert.equal(refreshed.principal.openId,'ou_alice');assert.equal(refreshed.expiresAt,saved.grants[0].expiresAt);
  const native=new URL(fresh.json().bindingUrl);assert.match(native.searchParams.get('phone'),/^ios-[a-f0-9]{40}$/);
  const newGrant=await f.send('/voice/api/ios-binding/redeem?phone='+native.searchParams.get('phone'),{cookies:'',body:{token:new URLSearchParams(native.hash.slice(1)).get('bind')}});assert.equal(newGrant.status,200,newGrant.text);
- assert.equal((await f.send('/voice/api/ios-binding?phone='+phone)).json().devices.length,2);
+ assert.equal((await f.send('/voice/api/ios-binding?phone='+phone)).json().devices.length,1,'new fixed grants are not dynamic-account grants');
+ assert.equal((await f.send('/voice/api/ios-binding?phone='+group.id)).json().devices.length,2);
  const revoked=await f.send('/voice/api/ios-binding/revoke?phone='+group.id,{body:{deviceId:before.json().devices[0].id}});assert.equal(revoked.status,200);
  assert.equal((await f.send('/voice/api/status?phone='+phone,{cookies:oldCookie})).status,401);
 });
@@ -257,4 +280,16 @@ test('guest iOS binding retains the guest conversation and never acquires a Feis
  const devices=(await f.send('/voice/api/ios-binding?phone='+phone)).json().devices;
  assert.equal((await f.send('/voice/api/ios-binding/revoke?phone='+phone,{body:{deviceId:devices[0].id}})).status,200);
  assert.equal((await f.send('/voice/api/status?phone='+alias,{cookies:cookie})).status,401);
+});
+
+// A fixed entry and a dynamic conversation URL are intentionally distinct.
+test('named fixed entry retains configured caller and session after OAuth, while another actor is rejected',async t=>{
+ const f=await fixture(t);
+ const login=async()=>{const start=await f.send('/voice/feishu?phone='+group.id);const state=new URL(start.headers.location).searchParams.get('state');return f.send('/voice/feishu/callback?code=fixed-code&state='+state);};
+ const finish=await login();assert.equal(finish.status,302);const page=await f.send(finish.headers.location);assert.equal(page.status,200);
+ const status=(await f.send('/voice/api/status?phone='+group.id)).json();assert.equal(status.accessContext.entryKind,'fixed');
+ const r=await f.send('/voice/api/session?phone='+group.id,{body:{model:'grok',callerId:'someone'}});assert.equal(r.status,200,r.text);
+ assert.equal(f.reservations.at(-1).sessionKey,group.sessionKey);assert.equal(f.reservations.at(-1).toolIdentity,undefined);assert.equal(f.calls.filter(c=>c.method==='voice.feishu.resolve').length,0);
+ await f.send('/voice/api/close?phone='+group.id,{body:r.json()});
+ f.setSubject({open_id:'ou_other',tenant_key:'fixture',name:'Other'});f.jar.clear();const denied=await login();assert.equal(denied.status,200);assert.match(denied.text,/暂时无法打开电话/);assert.equal((await f.send('/voice/api/status?phone='+group.id)).status,401);
 });

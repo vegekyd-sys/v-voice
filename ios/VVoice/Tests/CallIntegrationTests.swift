@@ -343,3 +343,53 @@ extension SessionBindingTests {
         XCTAssertEqual(try store.publicDeviceKey(baseURL: a), keyA)
     }
 }
+
+extension SessionBindingTests {
+    func testExplicitPublicRecoveryKeepsFixedConversationAndNeverDials() async throws {
+        let phone = "ios-" + String(repeating: "b", count: 40)
+        final class Requests: @unchecked Sendable {
+            let lock = NSLock(); private var sessions = 0
+            func hit() { lock.lock(); sessions += 1; lock.unlock() }
+            func read() -> Int { lock.lock(); defer { lock.unlock() }; return sessions }
+        }
+        let requests = Requests()
+        let (_, store, base) = setup { request in
+            let path = request.url!.lastPathComponent
+            if path == "session" { requests.hit() }
+            if path == "ios-public" {
+                var data = request.httpBody ?? Data()
+                if let stream = request.httpBodyStream {
+                    stream.open(); defer { stream.close() }
+                    var buffer = [UInt8](repeating: 0, count: 1024)
+                    while stream.hasBytesAvailable {
+                        let count = stream.read(&buffer, maxLength: buffer.count)
+                        guard count > 0 else { break }
+                        data.append(contentsOf: buffer.prefix(count))
+                    }
+                }
+                guard let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: String], body["deviceKey"] != nil else { return .init(status: 400, body: "{}") }
+                return .init(body: "{\"phone\":\"\(phone)\",\"deviceAccess\":\"\(body["deviceKey"]!)\"}")
+            }
+            if path == "access" { return .init(body: "{\"conversation\":{\"name\":\"Public\",\"kind\":\"personal\",\"entryKind\":\"public\"}}", cookie: "v_voice_\(phone)=fixture; Secure") }
+            return .init(body: "{\"ready\":true,\"unidentified\":true,\"conversation\":{\"name\":\"Public\",\"kind\":\"personal\",\"entryKind\":\"public\",\"accountLabel\":\"独立访客\"}}")
+        }
+        let original = StoredBinding(binding: try VoiceBinding(link: base + "?phone=fixed-office#access=" + secret), cookie: "original-cookie", conversation: .init(name: "工作会话", kind: "group", accountLabel: "工作账号", entryKind: "fixed"))
+        try store.save(original)
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [BindingMockProtocol.self]
+        let api = VoiceAPI(store: store, configuration: config)
+        let call = CallCoordinator(api: api, publicServiceURL: URL(string: base)!)
+        XCTAssertFalse(call.usingPublic)
+        XCTAssertEqual(H5Snapshot.make(call, visible: true)["entrySummary"] as? String, "工作账号 · 工作会话")
+        try await call.selectPublic()
+        XCTAssertTrue(call.usingPublic)
+        XCTAssertEqual(call.entrySummary, "Public · 独立访客")
+        XCTAssertEqual(H5Snapshot.make(call, visible: true)["entrySummary"] as? String, "Public · 独立访客")
+        XCTAssertEqual(requests.read(), 0)
+        let preserved = try XCTUnwrap(store.savedBindings().first { $0.id == original.id })
+        XCTAssertEqual(preserved.binding, original.binding)
+        XCTAssertEqual(preserved.cookie, original.cookie)
+        XCTAssertEqual(preserved.conversation?.entryKind, "fixed")
+        XCTAssertEqual(api.savedConversations.count, 2)
+        XCTAssertFalse(call.active)
+    }
+}

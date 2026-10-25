@@ -6,11 +6,13 @@ struct BoundConversation: Codable, Equatable {
     let name: String
     let kind: String
     var accountLabel: String? = nil
+    var entryKind: String? = nil
+    var scopeNote: String? = nil
     static func read(_ value: Any?) -> BoundConversation? {
         guard let value = value as? [String: Any], let name = value["name"] as? String,
               !name.isEmpty, name.count <= 200, let kind = value["kind"] as? String,
               ["dm", "group", "personal"].contains(kind) else { return nil }
-        return .init(name: name, kind: kind, accountLabel: (value["accountLabel"] as? String).map { String($0.prefix(200)) })
+        return .init(name: name, kind: kind, accountLabel: (value["accountLabel"] as? String).map { String($0.prefix(200)) }, entryKind: value["entryKind"] as? String, scopeNote: (value["scopeNote"] as? String).map { String($0.prefix(400)) })
     }
 }
 struct StoredBinding: Codable, Identifiable {
@@ -32,6 +34,7 @@ struct SavedConversation: Identifiable, Equatable {
     let isCurrent: Bool
     var isPublic: Bool = false
     var accountLabel: String? = nil
+    var entryKind: String? = nil
 }
 
 private struct BindingLibrary: Codable {
@@ -172,7 +175,7 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
         let saved = store.savedBindings()
         return (saved.filter { $0.isPublic == true } + saved.filter { $0.isPublic != true }).map { saved in
             .init(id: saved.id, name: saved.conversation?.name ?? "我的 V", kind: saved.conversation?.kind ?? "personal",
-                  host: saved.binding.baseURL.host ?? "", isCurrent: saved.id == record?.id, isPublic: saved.isPublic == true, accountLabel: saved.conversation?.accountLabel)
+                  host: saved.binding.baseURL.host ?? "", isCurrent: saved.id == record?.id, isPublic: saved.isPublic == true, accountLabel: saved.conversation?.accountLabel, entryKind: saved.conversation?.entryKind)
         }
     }
     func hasPublic(baseURL: URL) -> Bool { store.savedBindings().contains { $0.isPublic == true && $0.binding.baseURL == baseURL } }

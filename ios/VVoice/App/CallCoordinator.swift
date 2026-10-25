@@ -320,6 +320,19 @@ import VVoiceCore
         synchronizeBindings(); detail = "已切换会话，操作按钮将继续这个会话"
         await refreshOptions()
     }
+    var usingPublic: Bool { api.record?.isPublic == true || boundConversation?.entryKind == "public" }
+    var entrySummary: String {
+        if usingPublic { return "Public · 独立访客" }
+        guard let conversation = boundConversation else { return "准备 Public 后即可通话" }
+        return "\(conversation.accountLabel ?? "已连接账号") · \(conversation.name)"
+    }
+    func selectPublic() async throws {
+        guard !active, !bindingInProgress else { throw VoiceError.busy }
+        await preparePublicIfNeeded()
+        guard let saved = savedConversations.first(where: { $0.isPublic }) else { throw VoiceError.unavailable }
+        try await selectConversation(saved.id)
+        detail = "已切换到 Public；原账号与会话仍保留"
+    }
     func removeConversation(_ id: String) async throws {
         guard !active, !bindingInProgress else { throw VoiceError.busy }
         try api.removeConversation(id: id); synchronizeBindings()

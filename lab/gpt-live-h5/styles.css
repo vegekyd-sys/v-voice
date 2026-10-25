@@ -1112,3 +1112,7 @@ body[data-reading="true"] .changelog-trigger { visibility: hidden; pointer-event
 }
 @media(max-height:680px){.binding-scene{padding:18px 0}.binding-phone{height:108px;width:70px;border-radius:20px}.binding-island{left:22px}.binding-phone img{width:46px;height:46px}.binding-wave{bottom:12px}.binding-confirm{margin-bottom:14px}}
 @media(prefers-reduced-motion:reduce){.binding-dialog .session-primary{transition:none}}
+
+/* Access summary stays secondary to the call control. */
+.access-summary{display:block;max-width:min(85vw,340px);margin:9px auto 0;border:0;background:none;color:#756781;font:inherit;font-size:12px;cursor:pointer;overflow-wrap:anywhere}
+.access-dialog section+section{border-top:1px solid #e9e4ed;margin-top:22px;padding-top:18px}.access-dialog h3{font-size:15px;margin:0 0 8px}.access-dialog p{margin:8px 0 14px}.access-dialog .session-primary{display:inline-block;text-decoration:none;font-size:13px}.access-current{color:#705193;font-size:13px}.access-dialog dl{display:grid;grid-template-columns:54px 1fr;gap:8px;margin:14px 0}.access-dialog dt{color:#867b93}.access-dialog dd{margin:0;overflow-wrap:anywhere}.access-link{color:#705193}.entry-notice .session-primary{display:inline-block;margin:12px 8px 0 0;text-decoration:none;font-size:13px}
