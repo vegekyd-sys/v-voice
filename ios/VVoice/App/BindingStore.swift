@@ -238,9 +238,10 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
         var r = try await authorize(b)
         r.conversation = r.conversation ?? conversation
         let status = try await raw("status", record: r)
-        let accountLabel = r.conversation?.accountLabel
-        r.conversation = BoundConversation.read(status["conversation"]) ?? r.conversation
-        r.conversation?.accountLabel = r.conversation?.accountLabel ?? accountLabel
+        if var conversation = BoundConversation.read(status["conversation"]) {
+            conversation.accountLabel = conversation.accountLabel ?? r.conversation?.accountLabel
+            r.conversation = conversation
+        }
         r.nativeDialVersion = status["nativeDialVersion"] as? Int
         guard bindingRevision == revision else { throw CancellationError() }
         // One atomic Keychain write preserves every other saved destination.
