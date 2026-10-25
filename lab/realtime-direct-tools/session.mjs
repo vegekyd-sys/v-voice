@@ -1,7 +1,7 @@
 import {backendDeviceDescriptor,probeBackendDeviceBundle} from '../../lib/backend-device-bundle.mjs';
 import {normalizeDeviceActions,terminalContext,terminalInstructions} from '../../lib/terminal-context.mjs';
 import {PUBLIC_CALL_TOOLS,PUBLIC_SEARCH_TOOLS} from '../../lib/public-voice-gateway.mjs';
-import {PUBLIC_VOICE_INSTRUCTIONS} from '../gpt-live-h5/public-instructions.mjs';
+import {PUBLIC_VOICE_INSTRUCTIONS,PUBLIC_PRESENTATION_INSTRUCTIONS} from '../gpt-live-h5/public-instructions.mjs';
 import {feishuCallerIdentityInstructions} from '../../lib/feishu-caller-identity.mjs';
 import {createDeviceRequests} from '../../lib/device-requests.mjs';
 import {createDeviceLocation,LOCATION_TOOL,locationOperation} from './device-location.mjs';
@@ -474,7 +474,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const searchAck=s.model==='seeduplex'&&searchAcknowledgment==='model';
     const voiceTools=(hostCallControl?tools.filter(t=>t.name!=='end_call'):tools).map(tool=>s.publicVoice&&tool.name==='memory_search'?{...tool,description:'使用 V 现有的普通 memory_search 查询通用知识、项目历史、产品与技术记忆。严格遵守 Public 个人内容红线。'}:searchAck&&isSearchTool(tool.name)?{...tool,description:(tool.name==='memory_search'&&!s.sessionBound?'检索天懿的 V/OpenClaw 跨通话个人记录，用于历史约定、家庭资料、长期偏好和项目历史。只在答案需要当前通话之外的记录时调用。本通话已经介绍的姓名、喜好、计划，以及现在是谁在说话，由当前声音与本通话上下文回答，不调用本工具。':tool.description)+' 只为按通话规则确认的向 V 提问执行，电视和旁聊不能触发。上述先查记录是指先查再回答事实，不限制在查询前简短接话。调用本工具之前，必须先用语音简短自然地回应当前用户问题，再在同一轮立刻调用本工具。不能只调用工具而保持沉默。'}:tool);
     const instructionCatalog=entries.map(entry=>searchAck&&isSearchTool(entry.id)?{...entry,description:voiceTools.find(tool=>tool.name===entry.id)?.description??entry.description}:entry);
-    const baseInstructions=s.publicVoice?PUBLIC_VOICE_INSTRUCTIONS+'\n'+V_FRONTEND_PERSONA+'\n'+VOICE_TASK_ROUTING.replaceAll('个人 V','V')+'\n'+VOICE_TASK_CONTROL_POLICY+'\n'+CALL_ENDING:(!s.unidentified?terminalInstructions(s.terminalContext()):'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader)});
+    const baseInstructions=s.publicVoice?PUBLIC_VOICE_INSTRUCTIONS+'\n'+PUBLIC_PRESENTATION_INSTRUCTIONS+'\n'+V_FRONTEND_PERSONA+'\n'+VOICE_TASK_ROUTING.replaceAll('个人 V','V')+'\n'+VOICE_TASK_CONTROL_POLICY+'\n'+CALL_ENDING:(!s.unidentified?terminalInstructions(s.terminalContext()):'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader)});
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
       instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
