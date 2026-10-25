@@ -77,6 +77,16 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-location-testflight.20261025.1',date:'2026-10-25',
+    title:'按需获取当前位置与 iOS 启动修复',
+    items:[
+      '已绑定账号的豆包通话支持按需获取当前位置；网页由浏览器授权，iOS 38 由系统授权。',
+      '只在你提出位置相关请求时获取一次位置，不持续追踪；首次授权请保持 App 在前台。',
+      'iOS 38 移除启动时自动切换图标的操作，避免反复出现系统图标更改提示。',
+      'iOS 38 通过 TestFlight 继续验收；锁屏定位、飞书内网页和打车完整流程仍在验证。',
+    ],
+  },
+  {
     version:'voice-ios-bound-identity.20261024.2',date:'2026-10-24',
     title:'修复 iOS 来电身份与日历直查',
     items:[

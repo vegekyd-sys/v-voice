@@ -663,5 +663,16 @@
     "internalBuildState": "IN_BETA_TESTING",
     "testersInvited": 1,
     "installedViaTestFlight": false
+  },
+  "testFlightCandidate38": {
+    "build": 38,
+    "status": "preparing_testflight",
+    "record": "../releases/ios-testflight38-20261025/release.json",
+    "stableBaselineBuild": 32,
+    "physicalAcceptance": "pending_user_TestFlight_test",
+    "scope": [
+      "PR88 icon startup fix",
+      "PR134 on-demand location"
+    ]
   }
 }
