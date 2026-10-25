@@ -1,3 +1,4 @@
+import {createFeishuConfirmation} from "./feishu-confirmation-client.mjs";
 import {browserDeviceActions,createBrowserDeviceAdapter} from "./device-location.mjs";
 import { createCallerContext } from "./caller-context.mjs";
 import { entryStartup, startVoiceEntry, markVoiceTiming } from "./entry-startup.mjs";
@@ -31,6 +32,8 @@ if (document.querySelector) mountCallUi(document, view, {
   renderAssistant, onDocumentShown: callId => documentShown(callId),
   actions: {
     openBinding: () => void openIosBinding(),
+    connectIdentity: () => void confirmation.start(),
+    skipConfirmation: () => void skipConfirmation(),
     createBinding: () => void createIosBinding(),
     copyBinding: () => void copyIosBinding(),
     revokeBinding: id => void revokeIosBinding(id),
@@ -588,7 +591,7 @@ async function stopCall() {
   }
 }
 async function startCall() {
-  if (starting || call) return;
+  if (starting || call || view.get().confirmation) return;
   if (!liveReady) { setStatus(entryError ?? "当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
   for (const name of ["voice.dial.requested", "voice.microphone.ready", "voice.reservation.ready", "voice.connection.ready"])
     performance.clearMarks?.(name);
@@ -868,6 +871,7 @@ async function cancelTasks() {
   catch (error) { if (call === active) setStatus(error.message, { tone: "problem" }); }
 }
 window.addEventListener("pagehide", () => {
+  void confirmation.cancel();
   screenWakeLock.setActive(false);
   microphoneSession.close();
   const active = call;
@@ -907,6 +911,18 @@ async function initializeEntry() {
     }));
     if (result.error) throw Object.assign(new Error(result.error),{publicHref:result.publicHref});
     const { status } = result;
+    applyEntryStatus(status);
+    const query=new URLSearchParams(window.location.search);
+    if(status.confirmationAvailable&&status.unidentified&&query.get('guest')!=='1')void confirmation.start();
+    const reportId=query.get('call');if(reportId)void openCallReport(reportId);
+  } catch (error) {
+    liveReady = false;
+    entryError = error.message ?? "暂时无法连接 V，请稍后重试。";
+    view.set(state => ({ badge: "暂未连接", dial: { ...state.dial, disabled: true } }));
+    showEntryNotice(entryError,{publicHref:error.publicHref});
+  }
+}
+function applyEntryStatus(status) {
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     liveReady = status.ready === true;
     const models = MODEL_CHOICES.filter(choice=>!status.unidentified||choice.id!=='gpt-live').map(choice => {
@@ -918,27 +934,46 @@ async function initializeEntry() {
     if (!usable(model)) model = ["seeduplex", "gpt-live", "grok"].find(usable) ?? model;
     const grok = status.models?.find(item => item.id === "grok");
     const grokVoices = grok?.voices ?? [];
-    view.set({ models, model, accessContext:status.accessContext??null, publicHref:status.publicHref??null, accountLoginHref: status.accountLoginHref??null, accountLabel: status.accountLabel??null, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, unidentified:status.unidentified===true, grok: {
+    view.set({ models, model, confirmationAvailable:status.confirmationAvailable===true, accessContext:status.accessContext??null, publicHref:status.publicHref??null, accountLoginHref: status.accountLoginHref??null, accountLabel: status.accountLabel??null, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, unidentified:status.unidentified===true, grok: {
       voices: grokVoices.map(voice => ({ id: voice.id, label: voice.label })),
       voice: grokVoices.some(voice => voice.id === "iris") ? "iris" : grokVoices[0]?.id ?? null,
       hint: [grok?.speed && grok.speed !== 1 ? `${grok.speed}× 语速` : "", grok?.expressiveTags ? "自主表达试用" : ""].filter(Boolean).join(" · "),
       listenHref: `./compare${window.location.search}`, listenAvailable: status.comparisonAvailable === true,
     } });
-    view.set(state => ({ badge: liveReady ? "可以拨号" : status.preview === false ? "后端重连中" : "页面预览", dial: { ...state.dial, disabled: !liveReady } }));
-    const reportId=new URLSearchParams(window.location.search).get('call');
-    if(reportId)void openCallReport(reportId);
+    view.set(state => ({ badge: liveReady ? "可以拨号" : status.preview === false ? "后端重连中" : "页面预览", dial: { ...state.dial, disabled: !liveReady || Boolean(state.confirmation) } }));
     if (liveReady) {
       view.set({ entry: null });
       delete document.body.dataset.entryState;
       markVoiceTiming("voice.dial.ready");
     } else if (status.preview === false) showEntryNotice("V 后端正在重新连接", { reconnecting: true });
     else setStatus("这是页面预览，真实通话需连接候选服务。");
-  } catch (error) {
-    liveReady = false;
-    entryError = error.message ?? "暂时无法连接 V，请稍后重试。";
-    view.set(state => ({ badge: "暂未连接", dial: { ...state.dial, disabled: true } }));
-    showEntryNotice(entryError,{publicHref:error.publicHref});
-  }
+}
+const confirmation=createFeishuConfirmation({
+  request:async(action,body)=>{
+    const response=await fetch(`./feishu/confirm/${action}?phone=${encodeURIComponent(phoneEntry??'')}`,{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    const data=await response.json();if(!response.ok)throw Error(data.error??'暂时无法连接，请重试。');return data;
+  },
+  onState:value=>{if(skippingConfirmation&&!value)return;view.set(state=>({confirmation:value,dial:{...state.dial,disabled:!liveReady||Boolean(value)}}));},
+  onEntry:status=>{
+    applyEntryStatus(status);
+    if(!status.unidentified){
+      const url=new URL(window.location.href);for(const key of ['guest','connect','identified','client','state'])url.searchParams.delete(key);
+      window.history.replaceState(null,'',url);
+    }
+  },
+});
+let skippingConfirmation=false;
+async function skipConfirmation(){
+  if(skippingConfirmation)return;skippingConfirmation=true;
+  view.set(state=>({confirmation:{...state.confirmation,phase:'cancelling'}}));
+  try{
+    await confirmation.cancel();
+    // A poll may already have redeemed the verified identity before cancel.
+    // Re-read cookies so the displayed identity and the next call always agree.
+    const status=await sessionRequest('status');applyEntryStatus(status);
+    const url=new URL(window.location.href);url.searchParams.set('guest','1');url.searchParams.delete('connect');window.history.replaceState(null,'',url);
+  }catch(error){liveReady=false;view.set(state=>({dial:{...state.dial,disabled:true}}));showEntryNotice(error.message);}
+  finally{skippingConfirmation=false;view.set(state=>({confirmation:null,dial:{...state.dial,disabled:!liveReady}}));}
 }
 void initializeEntry();
 
@@ -949,6 +984,7 @@ async function sessionRequest(route,body){
 function updateSessionSheet(patch,key){view.set(state=>state.sessionSheet?.key===key?{sessionSheet:{...state.sessionSheet,...patch}}:{});}
 let sessionSheetRevision=0;
 async function openIosBinding(){
+ if(view.get().confirmation||!view.get().iosBindingAvailable)return;
  const key=++sessionSheetRevision;view.set({sessionSheet:{kind:'binding',key,busy:true,devices:[],unidentified:view.get().unidentified}});
  try{const data=await sessionRequest('ios-binding');updateSessionSheet({busy:false,devices:data.devices,appDownload:data.appDownload,unidentified:view.get().unidentified},key);if(view.get().sessionSheet?.key===key)await createIosBinding();}catch(e){updateSessionSheet({busy:false,error:e.message},key);}
 }

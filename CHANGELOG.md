@@ -1,5 +1,7 @@
 ## 2026-10-25 — Feishu card identity confirmation (Candidate)
 
+- Automatically send confirmation from the phone page after unresolved identity; show the marker inline, apply the verified entry without navigation, and invalidate cancelled requests.
+- Refine account/conversation hierarchy across Web and iOS; Web top-right opens iOS binding directly, with compact in-page account settings.
 - Add opt-in signed Feishu card confirmation for internal and external members using the same conversation URL; retain organization OAuth as an alternative.
 - Bind the callback actor to the initiating browser with a short-lived, single-use proof; recheck native Gateway admission and chat membership before accepting identity.
 - Reuse existing iOS principal grants so account name, actor identity and group context persist independently per binding.

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import {feishuConfirmationPage} from '../../lib/feishu-card-confirmation.mjs';
 import {voiceAccessContext} from '../../lib/access-context.mjs';
 import {createPublicVoiceGateway} from '../../lib/public-voice-gateway.mjs';
 import {backendDeviceBundleFromEnv} from '../../lib/backend-device-bundle.mjs';
@@ -74,7 +73,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     return guestBinding(req,url.searchParams.get('phone'));
   };
   const guestModel=()=>directVoice?.models().find(m=>m.available&&m.id==='seeduplex')?.id??directVoice?.models().find(m=>m.available)?.id??'seeduplex';
-  const entryPresentation=binding=>({...{accessContext:voiceAccessContext(binding,{publicEnabled:iosPublicEntry,publicTools}),...(iosPublicEntry&&guestAccess?{publicHref:`${basePath}/?phone=public`}:{})},...(binding.permissionProfile==='unidentified'?{unidentified:true,accountLoginHref:binding.id==='public'?null:phoneLogin?.confirmation?`${basePath}/feishu/confirm?phone=${encodeURIComponent(binding.id)}`:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&oauth=1`,defaultModel:guestModel(),iosBindingAvailable:hosted,speakerRouting:false,comparisonAvailable:false,
+  const entryPresentation=binding=>({...{...(phoneLogin?.confirmation&&parseFeishuConversationPhone(binding.id)?{confirmationAvailable:true}:{}),accessContext:voiceAccessContext(binding,{publicEnabled:iosPublicEntry,publicTools}),...(iosPublicEntry&&guestAccess?{publicHref:`${basePath}/?phone=public`}:{})},...(binding.permissionProfile==='unidentified'?{unidentified:true,accountLoginHref:binding.id==='public'?null:phoneLogin?.confirmation?`${basePath}/feishu/confirm?phone=${encodeURIComponent(binding.id)}`:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&oauth=1`,defaultModel:guestModel(),iosBindingAvailable:hosted,speakerRouting:false,comparisonAvailable:false,
     models:[{id:'gpt-live',label:'GPT Live One',available:false},...(directVoice?.models()??[])]}:binding.callerIdentity?{accountLabel:binding.callerIdentity.displayName||'飞书账号已连接',accountLoginHref:phoneLogin?.confirmation?`${basePath}/feishu/confirm?phone=${encodeURIComponent(binding.id)}`:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&retry=1`}:{})});
   const callReports=createConversationCalls({gateway,directory:callReportsDirectory,publicOrigin,basePath,summarize:callSummarize,audit:callControlAudit});
   const accessors = new Map();
@@ -372,30 +371,38 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       // Old group links are aliases, never a source of a caller's personal identity.
       const originalPhone=url.searchParams.get('phone'),devicePhone=iosBindings?.canonicalPhone(originalPhone)??originalPhone,canonicalPhone=phoneLogin?.canonicalPhone(devicePhone)??devicePhone;
       if(canonicalPhone&&canonicalPhone!==originalPhone)url.searchParams.set('phone',canonicalPhone);
+      // Existing confirmation links now open the phone itself. Sending requires
+      // the same-origin POST below, never a navigation side effect.
       if(phoneLogin?.confirmation&&pathname==='/feishu/confirm'&&req.method==='GET'){
+        pathname='/feishu';url.searchParams.set('connect','1');
+      }
+      if(phoneLogin?.confirmation&&pathname==='/feishu/confirm/prepare'&&req.method==='POST'){
+        let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>512)return json(res,413,{error:'请求过大'});}
+        let body;try{body=JSON.parse(raw);}catch{return json(res,400,{error:'请求无效'});}
+        if(!body||Array.isArray(body)||Object.keys(body).length)return json(res,400,{error:'请求无效'});
         const ip=String(req.headers['cf-connecting-ip']??req.socket.remoteAddress??'unknown').slice(0,128);
         if(!allow('feishu-confirm:'+ip))return json(res,429,{error:'请求较多，请稍后重试。'});
         try{
+          if(!guestAccess)throw Error('guest_unavailable');
           const setup=phoneLogin.confirmation.prepare(req,res,canonicalPhone);
-          const confirmationCookie=res.getHeader('set-cookie');phoneLogin.clearIdentity(res);res.setHeader('set-cookie',[confirmationCookie,res.getHeader('set-cookie')]);
-          res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','x-frame-options':'DENY','content-security-policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"});
-          res.end(feishuConfirmationPage({...setup,basePath,phone:canonicalPhone}));return;
+          const confirmationCookie=res.getHeader('set-cookie');phoneLogin.clearIdentity(res);
+          res.setHeader('set-cookie',[confirmationCookie,res.getHeader('set-cookie')]);
+          const guest=guestBinding(req,canonicalPhone,guestAccess.read(req)??{id:randomBytes(16).toString('hex')});
+          issueVisitor(res,guest,{id:guest.visitorId});
+          return json(res,200,{...setup,entry:entrySnapshot(guest)});
         }catch{return json(res,400,{error:'请从原飞书会话重新打开电话。'});}
       }
-      if(phoneLogin?.confirmation&&['/feishu/confirm/start','/feishu/confirm/status'].includes(pathname)&&req.method==='POST'){
+      if(phoneLogin?.confirmation&&['/feishu/confirm/start','/feishu/confirm/status','/feishu/confirm/cancel'].includes(pathname)&&req.method==='POST'){
         let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>512)return json(res,413,{error:'请求过大'});}
         let body;try{body=JSON.parse(raw);}catch{return json(res,400,{error:'请求无效'});}
         if(!body||Object.keys(body).length!==1||typeof body.state!=='string')return json(res,400,{error:'请求无效'});
         try{
-          if(pathname.endsWith('/start')){
-            const result=await phoneLogin.confirmation.start(req,body.state);
-            phoneLogin.clearIdentity(res);
-            return json(res,200,result);
-          }
+          if(pathname.endsWith('/cancel')){phoneLogin.confirmation.cancel(req,body.state);return json(res,200,{status:'cancelled'});}
+          if(pathname.endsWith('/start'))return json(res,200,await phoneLogin.confirmation.start(req,body.state));
           const result=await phoneLogin.confirmation.poll(req,res,body.state);
           if(result.binding)issueVisitor(res,result.binding);
-          return json(res,200,{status:result.status,...(result.location?{location:result.location}:{})});
-        }catch(error){return json(res,error.message==='confirmation_rate_limited'?429:403,{error:error.message==='confirmation_rate_limited'?'此会话刚收到确认请求，请稍后重试。':'连接请求无效或已过期，请重新打开电话页面。'});}
+          return json(res,200,{status:result.status,...(result.binding?{entry:entrySnapshot(result.binding)}:{}),...(result.location?{location:result.location}:{})});
+        }catch(error){return json(res,error.message==='confirmation_rate_limited'?429:403,{error:error.message==='confirmation_rate_limited'?'此会话刚收到确认请求，请稍后重试。':'连接请求无效或已过期，请重新连接。'});}
       }
       let entryVisitor = null, entryBinding = null, clientLoginConfig = null;
       const handoffBinding=phoneLogin&&pathname==='/feishu'?phoneLogin.consumeHandoff(req,url.searchParams.get('phone'),url.searchParams.get('identified')):null;
@@ -423,7 +430,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       const currentPhone=url.searchParams.get('phone');
       const inFeishu=/Lark|Feishu/iu.test(req.headers['user-agent']??'');
       const sdkEntry=phoneLogin&&guestAccess&&req.method==='GET'&&parseFeishuConversationPhone(currentPhone)
-        &&!handoffBinding&&url.searchParams.get('guest')!=='1'&&url.searchParams.get('oauth')!=='1'&&url.searchParams.get('retry')!=='1';
+        &&!handoffBinding&&url.searchParams.get('guest')!=='1'&&url.searchParams.get('oauth')!=='1'&&url.searchParams.get('retry')!=='1'&&url.searchParams.get('connect')!=='1';
       if(sdkEntry&&inFeishu&&['/','/feishu'].includes(pathname)){
         // requestAccess validates the document URL. Use the already registered
         // callback as the phone page itself, not an intermediate login screen.
@@ -453,7 +460,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           if (pathname === '/feishu/callback'&&(url.searchParams.has('code')||url.searchParams.has('state')||url.searchParams.has('error'))) location = await phoneLogin.complete(req, res, url);
           else {
             let selected=null;
-            if(url.searchParams.get('retry')!=='1'&&url.searchParams.get('guest')!=='1'){
+            if(url.searchParams.get('retry')!=='1'&&url.searchParams.get('guest')!=='1'&&url.searchParams.get('connect')!=='1'){
               try{selected=handoffBinding||await phoneLogin.select(req,url.searchParams.get('phone'));}
               catch(error){if(!guestAccess)throw error;}
             }
@@ -526,6 +533,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ["/comparison.css", [join(here, "comparison.css"), "text/css; charset=utf-8"]],
         ["/markdown.mjs", [join(here, "markdown.mjs"), "text/javascript; charset=utf-8"]],
         ["/vendor/marked-18.0.5.mjs", [join(here, "vendor/marked-18.0.5.mjs"), "text/javascript; charset=utf-8"]],
+        ["/feishu-confirmation-client.mjs", [join(here, "feishu-confirmation-client.mjs"), "text/javascript; charset=utf-8"]],
         ["/entry-startup.mjs", [join(here, "entry-startup.mjs"), "text/javascript; charset=utf-8"]],
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
         ["/feishu-client-login.mjs", [join(here, "feishu-client-login.mjs"), "text/javascript; charset=utf-8"]],

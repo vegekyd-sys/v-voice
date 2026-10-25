@@ -33,7 +33,7 @@ async function fixture(t){
    let text='';res.on('data',b=>text+=b);res.on('end',()=>resolve({status:res.statusCode,text,headers:res.headers,json:()=>JSON.parse(text)}));
   });req.on('error',reject);req.end(raw??(body===undefined?undefined:JSON.stringify(body)));
  });
- const prepare=async()=>{const page=await send('/feishu/confirm?phone='+phone);assert.equal(page.status,200,page.text);return JSON.parse(page.text.match(/const c=(.*?),b=document/)[1]).state;};
+ const prepare=async()=>{const response=await send('/feishu/confirm/prepare?phone='+phone,{body:{}});assert.equal(response.status,200,response.text);assert.equal(response.json().entry.unidentified,true);return response.json().state;};
  const confirm=async(state,overrides={})=>{const raw=JSON.stringify({version:1,request:state,accountId:'default',appId:'cli_app',tenantKey:'external',openId:'ou_external',chatId:'oc_group',messageId:'om_card',issuedAt:Date.now(),...overrides});return send('/feishu/confirm/callback',{raw,requestOrigin:null,headers:{'x-voice-confirm-signature':createHmac('sha256','fixture').update('voice-card-confirm-v1\n'+raw).digest('base64url')}});};
  return {send,prepare,confirm,jar,api,rpc,reservations,file,deny:()=>denied=true};
 }
@@ -44,7 +44,7 @@ test('real HTTP confirmation creates an external principal; iOS retains actor an
  assert.equal(f.api.filter(x=>x.init.method==='POST'&&x.url.includes('/messages')).length,1);
  assert.equal((await f.confirm(state)).status,200);
  assert.equal((await f.send('/feishu/confirm/status',{body:{state},cookies:new Map()})).status,403);
- const poll=await f.send('/feishu/confirm/status',{body:{state}});assert.equal(poll.status,200,poll.text);assert.equal(poll.json().status,'complete');await f.send(poll.json().location);
+ const poll=await f.send('/feishu/confirm/status',{body:{state}});assert.equal(poll.status,200,poll.text);assert.equal(poll.json().status,'complete');assert.equal(poll.json().entry.accountLabel,'外部测试成员');
  const identified=(await f.send('/api/status?phone='+phone)).json();assert.equal(identified.accountLabel,'外部测试成员');assert.equal(identified.conversation.name,'内外部成员测试群');assert.equal(identified.conversation.replySync,true);
  assert(!f.api.some(x=>x.url.includes('/user_info')||x.url.includes('/oauth/')||x.url.includes('/authen/')));
  assert.equal((await f.confirm(state)).status,403);
@@ -66,6 +66,7 @@ test('real HTTP confirmation creates an external principal; iOS retains actor an
 });
 test('HTTP origin protection, body fields and callback authentication cannot be bypassed',async t=>{
  const f=await fixture(t),state=await f.prepare();
+ assert.equal((await f.send('/feishu/confirm/prepare?phone='+phone,{body:{openId:'ou_owner'}})).status,400);
  assert.equal((await f.send('/feishu/confirm/start',{body:{state},requestOrigin:'https://attacker.example'})).status,403);
  assert.equal((await f.send('/feishu/confirm/start',{body:{state,openId:'ou_owner'}})).status,400);
  assert.equal((await f.send('/feishu/confirm/callback',{body:{state}})).status,403);
@@ -74,4 +75,15 @@ test('HTTP origin protection, body fields and callback authentication cannot be 
 test('membership revoked after confirmation blocks browser redemption and cannot retain old identity',async t=>{
  const f=await fixture(t),state=await f.prepare();await f.send('/feishu/confirm/start',{body:{state}});await f.confirm(state);f.deny();
  assert.equal((await f.send('/feishu/confirm/status',{body:{state}})).status,403);assert.equal(f.jar.get('v_feishu_phone'),'');
+});
+
+test('legacy link serves the phone; inline prepare and cancel are protected and never grant identity',async t=>{
+ const f=await fixture(t);
+ const page=await f.send('/feishu/confirm?phone='+phone);assert.equal(page.status,200);assert.match(page.text,/ui-bundle|app.js/);assert(!page.text.includes('id="start">发送确认卡片'));
+ assert.equal(f.api.filter(x=>x.init.method==='POST'&&x.url.includes('/messages')).length,0);
+ assert.equal((await f.send('/feishu/confirm/prepare?phone='+phone,{body:{},requestOrigin:'https://attacker.example'})).status,403);
+ const state=await f.prepare();await f.send('/feishu/confirm/start',{body:{state}});
+ assert.equal((await f.send('/feishu/confirm/cancel',{body:{state}})).status,200);
+ assert.equal((await f.confirm(state)).status,403);
+ assert.equal((await f.send('/api/status?phone='+phone)).json().unidentified,true);
 });

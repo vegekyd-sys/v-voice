@@ -25,9 +25,9 @@ struct H5CallView: View {
             if !reading { Button { sheet = .settings } label: {
                 Group {
                     if call.active { Image(systemName: "slider.horizontal.3").font(.system(size: 17)).frame(width: 40, height: 40) }
-                    else { Text("账号与权限").font(VoiceStyle.font(12)).padding(.horizontal, 8).frame(height: 40) }
+                    else { Text("设置").font(VoiceStyle.font(12)).padding(.horizontal, 8).frame(height: 40) }
                 }.foregroundStyle(VoiceStyle.faint)
-            }.accessibilityLabel("账号与权限").padding(.trailing, 12) }
+            }.accessibilityLabel("设置").padding(.trailing, 12) }
             if !call.bound {
                 VStack(spacing: 16) {
                     Text("Public").font(VoiceStyle.font(28, weight: .semibold))

@@ -46,3 +46,21 @@ Voice 实测运行 `6a05aa8efa67f591c8b66de8dc161cfe89ed92e6`。平台使用真�
 ## 集成前提
 
 Voice 分支基于入口/权限 PR #144；需与独立 `v-openclaw-platform` 卡片回调 PR 协同评审。合入获准后，在共享 VLab 对实际服务重新执行一次卡片确认及 iOS 绑定门禁；再按生产授权发布匹配的两侧版本、启用私有配置 `cardConfirmation: true`，并将候选首页日志纳入实际发布。不能只部署网页而让平台仍运行旧通用卡片处理器。
+
+
+## 19:20 UX refinement — same-page confirmation (Candidate .2)
+
+The phone page now automatically prepares and sends a confirmation card when a Feishu conversation entry remains unidentified after the existing SDK flow. The page shows its marker and waiting/error state, with retry and skip controls. Successful polling returns the server-verified entry snapshot and updates the current page; no standalone confirmation document or confirmation-success navigation remains. The registered SDK callback is still the phone document itself. Explicit organization OAuth remains available through its existing route.
+
+The former confirmation URL now serves the phone app. New prepare/cancel POSTs preserve same-origin protection, browser ownership, expiry, membership checks and one-time redemption. Cancellation waits for an outstanding response, invalidates the pending request, then refreshes the entry before enabling dialing. An already redeemed response cannot leave the UI showing a different account than its browser cookie. No platform protocol, permissions or Gateway changes were made for this refinement.
+
+Web and native home show account and conversation as separate lines. Web top-right **iOS 绑定** opens binding directly. The in-page account sheet has a current-identity header and compact actions. Native Settings lists account first, conversation second, with a quieter selection treatment.
+
+Validation:
+- Full Node suite 952/952; final client/app targeted suite 83/83 after cancellation-state tightening. New tests cover duplicate start, prepare cancellation, late poll, retry, same-origin prepare, legacy phone rendering, server cancel and inline redemption. Existing current-account SDK switching remains unchanged and covered.
+- XcodeBuildMCP Debug build/run succeeded on iPhone 17 Pro, iOS 26.5. Viewed actual frames through Codex IAB serve-sim. Native Settings reviewed with prior saved test identities; new bundled H5 home and account switching verified using the separate settings-preview Keychain fixture.
+- Codex IAB tested automatic send, same-page verified identity, direct iOS binding sheet, account sheet, explicit guest/no auto-send, reconnect and cancel. A callback after cancellation was rejected. 390×640 responsive layout was visually checked. No microphone or call was started.
+- Browser harness uses the real Voice HTTP handlers with simulated Feishu/Gateway responses and signed callback. Its loopback-only HTTP proxy strips Secure on fixture cookies for visual testing; production cookie behavior is unchanged and covered by HTTP tests. This is UI/flow evidence, not a new real Feishu SDK run or physical iPhone acceptance.
+- The installed normal iOS app can still load the currently published remote H5 shell; the new shell remains Candidate until released. Fixture verification explicitly used the new bundled shell. No production, Gateway, TestFlight or shared VLab changes in this refinement.
+
+Local evidence: `v-voice-releases/audits/20261025-inline-identity/` contains Web home/settings/binding, mobile confirmation and native home/settings screenshots. The prior real two-identity audit above remains the identity-chain evidence.

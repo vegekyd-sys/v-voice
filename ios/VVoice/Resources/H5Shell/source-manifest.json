@@ -1,14 +1,14 @@
 {
   "sources": {
     "index.html": "7ce196055fbb3084987952fabdb26aa48d630576088c6e841abce4bf79756337",
-    "styles.css": "02c5410beb4869f0d58d6bf6d7d57bdabb2de4321c37066ea8fac3a492651389",
-    "ui/call-ui.jsx": "8e3f2426a7821151818efd144c3be93e5c71138b4107e132ac0415aa24053de1",
-    "ui-bundle.mjs": "6b72250b7e1f57876183cf2c33e5c519ded25999dc4c0fe888ba0ea4478c51ff",
+    "styles.css": "a41af2fec88b3035a7eef3bf65656ba83408501fa377e8644fe0f5224abe7192",
+    "ui/call-ui.jsx": "bb4e6ff623615d202309535267d94b8fe95edfab923d986195963f3f3c31e044",
+    "ui-bundle.mjs": "d6b13fcea09384b20b92178ae007ce75567217b96a10d521c95bf2f15f5fff73",
     "call-view.mjs": "f91d20a6e63dcecd0b11af6370fd9b8f69733eae6393879713a2c213774b4633",
     "content-view.mjs": "c754e537248cf95efbff9d810d61f82da13fc3c8cbec42bca02e7928906de743",
     "markdown.mjs": "a556476a8a88b35aba790f993a8bde333150aebab9dc7fdce14aa2e3c586ace0",
     "media-references.mjs": "ca8509fad6ef83f83f9365432652058e1a364b5adb1a199508d3239521d581f8",
-    "changelog.mjs": "c71268ef8df9521f74f4ab348679b4e491105e64606090325afa451405b411a5",
+    "changelog.mjs": "ec5769d9e985f180800b59d07a6e0310454513a6660e0a0b5202d64de66d18a3",
     "avatar.mjs": "964058d6700363a8c11b700304fa6662cce90caba7bbdb8605e4c270ad9a33dc",
     "avatar-reactions.mjs": "69880767130ffc0ff6adcecd6e4ea13b65073def959ce9a5189ab8806f9f1b1e",
     "avatar-telemetry.mjs": "236b9d6e5ad67009d83347f72002b69b01f3c5e7eb71bdde7d4166d59c9b254c",
@@ -127,13 +127,13 @@
     "assets/v-voice-icon.svg": "2b578443cc70bc8eb78ff9877be5e70473d61ed6713ea6f538bd1fa665d27c66",
     "assets/v-voice-icon-32.png": "7bae67ea83c9c7cf81afd9786a18b94c73f9d3643372467e7d331532d1d5555b",
     "assets/v-voice-apple-touch.png": "643f67cd7d67bb2563f79ec2938d01e869cd2634bd9f78e7597f98afe525763c",
-    "ios/H5/native-h5.mjs": "ddc9e7ceeecbffa97ae7119e6a166cd837e27f21ed13dc7e11f2f90c15d48d81"
+    "ios/H5/native-h5.mjs": "d581397de1cf3eb30e4af18677daebe0bd84ae64c4ac7364444348b47fb4dc5b"
   },
   "outputs": {
     "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
-    "native-h5.js": "fc5edbcc5839ff1012970b622899f8d2295f0f94cb0b5d0450457339149b7c17",
+    "native-h5.js": "11272dcfebfd8c2d3d533711dda15aa60314f88e8e61f3236c3286acf8c4caab",
     "comparison.html": "7beb6c5d3e5933b5c020ddf23e200679318faa98568904f927d0553ea3d33076",
-    "styles.css": "02c5410beb4869f0d58d6bf6d7d57bdabb2de4321c37066ea8fac3a492651389",
+    "styles.css": "a41af2fec88b3035a7eef3bf65656ba83408501fa377e8644fe0f5224abe7192",
     "comparison.css": "ae9fbcffb322e32737e2ce0ed830c1b86f9f27406b4ce8b686dc8cac9f36ba16",
     "comparison.mjs": "8fc7a4bd3323e4ff2aaab383103b950015f4fb3c05ca327ba09790fbc6f7113b",
     "assets/v-operator-home-1024.webp": "5cf1ddc6b9b9abd06c1ac15be325f9b86cbaa4db8363daeec0da6040e128d319",

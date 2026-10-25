@@ -32,6 +32,9 @@ import VVoiceCore
                 "outcome":call.h5Outcome,"notice":notice as Any? ?? NSNull(),"baseURL":call.api.record?.binding.baseURL.absoluteString ?? "https://voice.invalid/voice/",
                 "canControl":call.active && ![.connecting,.reconnecting,.ending,.interrupted].contains(call.phase),
                 "entrySummary":call.entrySummary,
+                "accessContext":["mode":call.usingPublic ? "public" : "connected",
+                                 "accountLabel":call.boundConversation?.accountLabel ?? "已连接账号",
+                                 "conversationLabel":call.boundConversation?.name ?? "当前会话"],
                 "badge":call.phase == .connecting ? "正在连接 V…" : call.bound ? "就绪" : "未绑定",
                 "homeNote":[.failed,.interrupted].contains(call.phase) ? call.detail : ""]
     }

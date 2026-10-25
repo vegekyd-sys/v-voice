@@ -63,8 +63,8 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("使用 V").font(VoiceStyle.font(27, weight: .semibold)).tracking(-0.5)
-                    Text(call.entrySummary)
+                    Text("账号与会话").font(VoiceStyle.font(27, weight: .semibold)).tracking(-0.5)
+                    Text("选择此刻想继续的对话。")
                         .font(VoiceStyle.font(14)).foregroundStyle(VoiceStyle.soft)
                 }.padding(.top, 14)
 
@@ -75,7 +75,7 @@ struct SettingsView: View {
                         Text("对话、搜索、V 记忆与后台任务。无需连接个人账号。")
                             .font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted).padding(.horizontal, 20).padding(.bottom, 16)
                     }.background(.white, in: RoundedRectangle(cornerRadius: 23))
-                    Text("我的账号与会话").font(VoiceStyle.font(17, weight: .semibold)).padding(.top, 8)
+                    Text("已连接").font(VoiceStyle.font(12, weight: .medium)).foregroundStyle(VoiceStyle.muted).padding(.top, 8)
                     VStack(spacing: 0) {
                         ForEach(call.savedConversations.filter { !$0.isPublic }) { saved in
                             conversationRow(saved)
@@ -168,13 +168,13 @@ struct SettingsView: View {
             } label: {
                 HStack(spacing: 14) {
                     Image(systemName: saved.isPublic ? "globe" : saved.kind == "group" ? "person.2" : "bubble.left.and.text.bubble.right")
-                        .font(.system(size: 19, weight: .regular)).foregroundStyle(saved.isCurrent ? .white : VoiceStyle.soft)
+                        .font(.system(size: 19, weight: .regular)).foregroundStyle(saved.isCurrent ? VoiceStyle.purple : VoiceStyle.soft)
                         .frame(width: 40, height: 40)
-                        .background(saved.isCurrent ? VoiceStyle.purple : VoiceStyle.lavender.opacity(0.65), in: RoundedRectangle(cornerRadius: 14))
+                        .background(saved.isCurrent ? VoiceStyle.lavender : VoiceStyle.lavender.opacity(0.4), in: RoundedRectangle(cornerRadius: 14))
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(saved.isPublic ? "Public" : saved.name).font(VoiceStyle.font(15, weight: .semibold))
+                        Text(saved.isPublic ? "Public" : saved.accountLabel ?? "已连接账号").font(VoiceStyle.font(15, weight: .semibold))
                             .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(saved.isCurrent ? "boundConversation" : "savedConversation")
-                        Text(saved.isPublic ? "访客模式" : (saved.accountLabel ?? "已连接账号") + (saved.entryKind == "fixed" ? " · 固定入口" : saved.kind == "group" ? " · 群聊" : " · 私聊"))
+                        Text(saved.isPublic ? "独立访客会话" : saved.name)
                             .font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.muted).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 8)
@@ -184,7 +184,7 @@ struct SettingsView: View {
                     }
                 }.padding(.leading, 17).padding(.trailing, saved.isPublic ? 20 : 4).padding(.vertical, 17).contentShape(Rectangle())
             }.buttonStyle(.plain).disabled(entriesLocked)
-                .accessibilityLabel((saved.isPublic ? "Public" : saved.name) + (saved.isCurrent ? "，当前入口" : "，切换到这个入口"))
+                .accessibilityLabel((saved.isPublic ? "Public" : (saved.accountLabel ?? "已连接账号") + "，" + saved.name) + (saved.isCurrent ? "，当前入口" : "，切换到这个入口"))
                 .accessibilityValue(saved.isCurrent ? "已选择" : "未选择")
             if !saved.isPublic {
                 Button { removal = saved; confirmingRemoval = true } label: {
@@ -193,7 +193,7 @@ struct SettingsView: View {
                 }.buttonStyle(.plain).accessibilityLabel("移除「\(saved.name)」的本机绑定")
                     .accessibilityIdentifier("removeConversation").disabled(entriesLocked).padding(.trailing, 3)
             }
-        }.background(saved.isCurrent ? VoiceStyle.lavender.opacity(0.35) : .clear)
+        }.background(saved.isCurrent ? VoiceStyle.lavender.opacity(0.18) : .clear)
     }
     private var preferencesContent: some View {
         VStack(alignment: .leading, spacing: 20) {

@@ -1,5 +1,5 @@
 {
-  "version": "voice-feishu-card-confirm.20261025.1",
+  "version": "voice-feishu-card-confirm.20261025.2",
   "status": "candidate-validated",
   "date": "2026-10-25",
   "branch": "codex/feishu-card-confirm",
@@ -24,5 +24,16 @@
     "cost": "not separately measured"
   },
   "evidence": "docs/feishu-card-confirmation-20261025.md",
-  "homepageCandidateExport": "FEISHU_CARD_CONFIRM_CANDIDATE_UPDATE"
+  "homepageCandidateExport": "FEISHU_CARD_CONFIRM_CANDIDATE_UPDATE",
+  "uiRefinement": {
+    "scope": "Voice-only presentation and browser confirmation flow",
+    "fullTests": 952,
+    "clientFinalTargeted": 83,
+    "iOSSimulatorBuild": "Debug build 39, iOS 26.5",
+    "browser": "Codex IAB desktop and 390x640 viewport",
+    "callback": "local signed fixture; prior real callback evidence retained",
+    "newRealMessages": 0,
+    "newAudioCalls": 0,
+    "report": "docs/feishu-card-confirmation-20261025.md"
+  }
 }
