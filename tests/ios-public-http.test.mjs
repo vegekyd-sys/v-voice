@@ -75,3 +75,15 @@ test('expired Public HTTP device grant can renew the same guest using the instal
  const cookie=await f.access(renewed);assert.equal((await f.request('status',undefined,cookie,old.phone)).status,200);
  assert.equal(JSON.parse(await readFile(f.file,'utf8')).grants.length,1);
 });
+
+test('Public backend identity comes from the verified device grant, never request tool identity fields',async t=>{
+ const scopes=[];const publicGuestRuntime={bind(scope){scopes.push(scope);return {publicGuest:true,request(){if(!scope.isAuthorized())throw Error('lease expired');return {ok:true};}};}};
+ const f=await fixture(t,{publicGuestRuntime});
+ const a=await f.bootstrap(keyA),b=await f.bootstrap(keyB),ca=await f.access(a),cb=await f.access(b);
+ assert.equal((await f.request('session',{model:'seeduplex',visitorId:'forged',sessionKey:'private'},ca,a.phone)).status,200);
+ assert.equal((await f.request('session',{model:'seeduplex'},cb,b.phone)).status,200);
+ const leases=scopes.filter(s=>s.isAuthorized());assert(leases.length>=2);
+ assert.notEqual(f.calls[0].sessionKey,f.calls[1].sessionKey);assert.equal(f.calls[0].gateway.publicGuest,true);
+ assert.notEqual((await f.request('status',undefined,cb,a.phone)).status,200);
+ assert(leases.every(s=>s.visitorId!=='forged'));
+});

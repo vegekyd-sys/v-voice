@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "status": "candidate-validation",
+  "version": "1.0.0",
+  "build": 37,
+  "nativeSourceCommit": "8ad6450c57707beac863a4987579ff0f8c96bb14",
+  "ipaSHA256": "53903c9a69c203e894ddcf4e9ba439252b9b89c326703a53a6ab12e8178bd6f2",
+  "signedArchiveVerified": true,
+  "installedOnRequestedIPhone": false,
+  "platformRuntimeCommit": "0fcf47d02cfcfbcf5f9ffb886afe40768d2ca7a5",
+  "physicalBaseline": {
+    "build": 34,
+    "nativeSourceCommit": "0aec6e16aff1f7de7758731f0a87cd97b9aab4a0",
+    "acceptedBy": "Tianyi",
+    "acceptedScopes": [
+      "retained old binding and active selection",
+      "select Public and manual two-way call",
+      "Action Button calls selected Public"
+    ],
+    "newSearchMemoryTaskAcceptance": false
+  },
+  "simulator": {
+    "nativeTestsPassed": 16,
+    "nativeTestsSkipped": 1,
+    "skippedReason": "microphone-ungranted slow-network capture",
+    "freshPublicWithoutWizard": true,
+    "multipleBindingsAndRestartSelection": true,
+    "visibleLocalDeleteAndPublicFallback": true,
+    "actualSimulatorInAppBrowser": true
+  },
+  "publicPermissions": [
+    "web_search: public internet only",
+    "memory_search/memory_write: this guest only",
+    "background tasks: this guest and original device lease only"
+  ],
+  "privatePermissions": false,
+  "taskLimits": {
+    "perVisitor": 1,
+    "global": 8,
+    "maxSteps": 12,
+    "timeoutSeconds": 600,
+    "restartAutoReplay": false
+  },
+  "platformCandidate": {
+    "id": "candidate-91c72451-151f-4ea1-982e-eab04d827bc5",
+    "inputSha256": "36c95d0b0f7455e43ab8165bbfbba9c294387f267a5ad553274404d29380369c",
+    "sharedUnchanged": true,
+    "realSearchCalls": 2,
+    "realModelSteps": 2,
+    "backgroundTaskCompleted": true,
+    "memoryPersistedAcrossRestart": true,
+    "otherVisitorDenied": true
+  },
+  "pending": [
+    "real Voice provider tool integration",
+    "physical acceptance of build37 and new Public tools",
+    "shared integration after authorized merge"
+  ],
+  "productionDeployed": false
+}

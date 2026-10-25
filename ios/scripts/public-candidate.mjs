@@ -5,6 +5,8 @@ import {join} from 'node:path';
 import {mkdir} from 'node:fs/promises';
 import * as wsModule from 'ws';
 import {createLiveH5Server} from '../../lab/gpt-live-h5/server.mjs';
+import {loadPublicGuestRuntime} from '../../lib/public-guest-runtime.mjs';
+import {IOS_PUBLIC_CANDIDATE_UPDATE} from '../../lab/gpt-live-h5/changelog.mjs';
 import {createDirectVoiceService} from '../../lab/realtime-direct-tools/session.mjs';
 const publicOrigin=process.env.VOICE_IOS_PUBLIC_ORIGIN;
 const state=process.env.VOICE_IOS_PUBLIC_STATE;
@@ -15,7 +17,9 @@ const directVoice=createDirectVoiceService({gateway,wsModule,
  apiKeys:{seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY??process.env.DOUBAO_SPEECH_API_KEY,grok:process.env.XAI_API_KEY},
  loadContext:async()=>{throw Error('Public Candidate cannot load private context');}});
 const bridge=createLiveH5Server({gateway,directVoice,basePath:'/voice',publicOrigin,
+ candidateRelease:IOS_PUBLIC_CANDIDATE_UPDATE,
  accessToken:randomBytes(32).toString('base64url'),defaultModel:'seeduplex',phoneInputPolicy:'native',
+ publicGuestRuntime:await loadPublicGuestRuntime(),
  iosPublicEntry:true,iosBindingsFile:join(state,'guest-grants.private.json'),
  feishuLogin:{conversations:true,allowUnidentified:true,accountId:'public-candidate',appId:'cli_publiccandidate',appSecret:randomBytes(32).toString('base64url'),actors:[]},
  maxActiveSessions:2,maxActiveSessionsPerIp:2});

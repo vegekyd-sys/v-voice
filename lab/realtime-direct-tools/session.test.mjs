@@ -22,7 +22,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
+ const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,gateway:options.publicGateway??gateway,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -1143,4 +1143,28 @@ test('actor reads require verified binding, valid actor credentials and current 
   assert(!config.tools.some(x=>x.name==='feishu_calendar'));
   f.call('feishu_calendar',{},'denied');await delay(10);assert.equal(reads,0);
  }
+});
+
+test('Public verified adapter advertises only scoped tools, executes them and never borrows the operator gateway',async t=>{
+ const owned=[];let task;
+ const schema={type:'object',properties:{},additionalProperties:true};
+ const publicGateway={publicGuest:true,async request(method,params){owned.push({method,params});
+  if(method==='tools.catalog')return {groups:[{tools:['web_search','memory_search','memory_write','task_status'].map(id=>({id,description:'scoped '+id,parameters:schema}))}]};
+  if(method==='tools.invoke')return {ok:true,output:{scope:'only-this-guest',results:[]}};
+  if(method==='public.memory.append')return {saved:true};
+  if(method==='voice.product.task.start'){task={taskId:'guest-task',runId:'guest-run',runs:['guest-run'],status:'ok',text:'独立访客后台真实返回结果',progress:[]};return task;}
+  if(method==='voice.product.task.read')return task;
+  throw Error('Unallowed Public method');
+ }};
+ const f=await fixture(undefined,'grok',{unidentified:true,publicGateway,sessionKey:'voice:guest:fixture'});t.after(()=>f.service.dispose());
+ const names=f.upstream.sent.find(e=>e.type==='session.update').session.tools.map(t=>t.name);
+ for(const name of ['web_search','memory_search','memory_write','task_status','delegate_to_v'])assert(names.includes(name));
+ for(const name of ['exec','process','lark_read','feishu_calendar','openclaw_tool'])assert(!names.includes(name));
+ f.call('memory_write',{text:'属于当前访客'},'write');f.call('web_search',{query:'公共资料'},'search');f.call('exec',{command:'read private'},'escape');
+ for(let i=0;i<30&&!owned.some(r=>r.method==='tools.invoke'&&r.params.name==='web_search');i++)await delay(5);
+ assert(owned.some(r=>r.method==='tools.invoke'&&r.params.name==='memory_write'));
+ assert(!owned.some(r=>r.method==='tools.invoke'&&r.params.name==='exec'));assert.equal(f.invocations.length,0);
+ f.call('delegate_to_v',{question:'给访客整理公开资料'},'task');
+ for(let i=0;i<100&&!owned.some(r=>r.method==='voice.product.task.start');i++)await delay(5);
+ const start=owned.find(r=>r.method==='voice.product.task.start');assert(start);assert.match(start.params.question,/Public独立访客/);assert(!start.params.question.includes('这是当前飞书会话'));
 });
