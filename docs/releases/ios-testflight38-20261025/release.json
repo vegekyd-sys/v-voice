@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "build": 38,
   "date": "2026-10-25",
-  "status": "external_beta_review_pending",
+  "status": "expired_superseded_by_build39",
   "prs": [
     88,
     134
@@ -51,12 +51,16 @@
     "native": "https://github.com/vegekyd-sys/v-voice/actions/runs/40164763514",
     "server": "https://github.com/vegekyd-sys/v-voice/actions/runs/40165057536"
   },
-  "internalBuildState": "IN_BETA_TESTING",
-  "externalBuildState": "WAITING_FOR_BETA_REVIEW",
-  "betaReviewState": "WAITING_FOR_REVIEW",
+  "internalBuildState": "EXPIRED",
+  "externalBuildState": "EXPIRED",
+  "betaReviewState": null,
   "externalTesterInstallable": false,
-  "internalTestFlightAvailable": true,
+  "internalTestFlightAvailable": false,
   "automaticTesterNotificationEnabled": true,
   "testFlightPublicURL": "https://testflight.apple.com/join/5DybcrZA",
-  "updatedAt": "2026-10-25T13:22:55.827783+08:00"
+  "updatedAt": "2026-10-25T16:02:19.886086+08:00",
+  "expired": true,
+  "supersededByBuild": 39,
+  "signedArchiveAndIPARetained": true,
+  "expiryAuthorization": "Tianyi explicitly approved expiring build 38 so build 39 could enter external beta review."
 }

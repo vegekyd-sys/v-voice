@@ -2,14 +2,14 @@
   "version": "1.0.0",
   "build": 39,
   "date": "2026-10-25",
-  "status": "internal_testflight_available_human_acceptance_pending",
+  "status": "human_accepted_external_beta_review_pending",
   "prs": [
     136
   ],
   "userAuthorization": "Regress existing binding Action Button, calls and switching; merge PR136 and deliver TestFlight for human acceptance.",
   "stableBaselineBuild": 32,
   "previousTestFlightBuild": 38,
-  "nativeAcceptance": "pending_Tianyi_TestFlight",
+  "nativeAcceptance": "accepted_by_Tianyi_internal_TestFlight_20261025",
   "gatewayRestartRequired": false,
   "platformChangesIncluded": false,
   "nativeInstalledByAgent": false,
@@ -23,13 +23,11 @@
     "nativeUniquePassed": 69,
     "nativeSkipped": 0,
     "nativeEvidence": "60 non-H5 cases passed in final regression; all 9 H5 cases passed after awaiting complete speaker decision. Initial runs exposed test preparation races; test-only changes are included in release prep.",
-    "hardwareActionButton": "pending_human",
+    "hardwareActionButton": "covered_by_human_build_acceptance_no_new_instrumented_measurement",
     "modelCallsPaid": false
   },
   "knownPending": [
-    "physical Action Button and lock-screen",
-    "physical continuous audio and interruption",
-    "Public human acceptance",
+    "Apple external beta review",
     "restoration of ended-call task results is not included"
   ],
   "serverSourceCommit": "d0e47f60addfaaa62c3436b872b9485863380ce0",
@@ -37,8 +35,8 @@
   "serverNodesSynchronized": true,
   "internalTestFlightAvailable": true,
   "internalBuildState": "IN_BETA_TESTING",
-  "externalBuildState": "READY_FOR_BETA_SUBMISSION",
-  "externalTestFlightSubmitted": false,
+  "externalBuildState": "WAITING_FOR_BETA_REVIEW",
+  "externalTestFlightSubmitted": true,
   "automaticTesterNotificationEnabled": true,
   "buildID": "88e89617-51a4-4c35-b706-aeebafb98e04",
   "processingState": "VALID",
@@ -61,5 +59,19 @@
     "native": "https://github.com/vegekyd-sys/v-voice/actions/runs/40172452444",
     "server": "https://github.com/vegekyd-sys/v-voice/actions/runs/40172776757"
   },
-  "updatedAt": "2026-10-25T15:30:00.723475+08:00"
+  "updatedAt": "2026-10-25T16:02:19.886086+08:00",
+  "humanAcceptance": {
+    "status": "accepted_by_Tianyi_internal_TestFlight",
+    "date": "2026-10-25",
+    "build": 39,
+    "scope": "Tianyi reported current internal TestFlight build and included PRs passed testing.",
+    "evidenceType": "direct_human_confirmation",
+    "agentPhysicalDeviceReadback": false
+  },
+  "betaReviewState": "WAITING_FOR_REVIEW",
+  "externalTesterInstallable": false,
+  "testFlightPublicURL": "https://testflight.apple.com/join/5DybcrZA",
+  "publicLinkEnabled": true,
+  "previousTestFlightBuildExpired": true,
+  "previousSignedArchiveAndIPARetained": true
 }

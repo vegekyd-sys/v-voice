@@ -666,7 +666,7 @@
   },
   "testFlightCandidate38": {
     "build": 38,
-    "status": "external_beta_review_pending",
+    "status": "expired_superseded_by_build39",
     "record": "../releases/ios-testflight38-20261025/release.json",
     "stableBaselineBuild": 32,
     "physicalAcceptance": "pending_user_TestFlight_test",
@@ -680,9 +680,13 @@
     "processingState": "VALID",
     "testFlightInstallable": false,
     "installedOnRequestedIPhone": false,
-    "internalBuildState": "IN_BETA_TESTING",
-    "externalBuildState": "WAITING_FOR_BETA_REVIEW",
-    "betaReviewState": "WAITING_FOR_REVIEW"
+    "internalBuildState": "EXPIRED",
+    "externalBuildState": "EXPIRED",
+    "betaReviewState": null,
+    "expired": true,
+    "internalTestFlightAvailable": false,
+    "supersededByBuild": 39,
+    "signedArchiveAndIPARetained": true
   },
   "publicSettingsCandidate": {
     "version": "voice-ios-public.20261025.2",
@@ -702,9 +706,9 @@
   "testFlightCandidate39": {
     "version": "1.0.0",
     "build": 39,
-    "status": "internal_testflight_available_human_acceptance_pending",
+    "status": "human_accepted_external_beta_review_pending",
     "sourcePR": 136,
-    "nativeAcceptance": "pending_Tianyi_TestFlight",
+    "nativeAcceptance": "accepted_by_Tianyi_internal_TestFlight_20261025",
     "stableBaselineBuild": 32,
     "previousTestFlightBuild": 38,
     "nativeInstalledByAgent": false,
@@ -716,6 +720,20 @@
     "processingState": "VALID",
     "internalTestFlightAvailable": true,
     "internalBuildState": "IN_BETA_TESTING",
-    "serverNodesSynchronized": true
+    "serverNodesSynchronized": true,
+    "humanAcceptance": {
+      "status": "accepted_by_Tianyi_internal_TestFlight",
+      "date": "2026-10-25",
+      "build": 39,
+      "scope": "Tianyi reported current internal TestFlight build and included PRs passed testing.",
+      "evidenceType": "direct_human_confirmation",
+      "agentPhysicalDeviceReadback": false
+    },
+    "externalTestFlightSubmitted": true,
+    "externalBuildState": "WAITING_FOR_BETA_REVIEW",
+    "betaReviewState": "WAITING_FOR_REVIEW",
+    "externalTesterInstallable": false,
+    "testFlightPublicURL": "https://testflight.apple.com/join/5DybcrZA",
+    "installedViaTestFlight": "user_reported"
   }
 }
