@@ -1,3 +1,14 @@
+export const FEISHU_CARD_CONFIRM_CANDIDATE_UPDATE = {
+  version:'voice-feishu-card-confirm.20261025.1',date:'2026-10-25',
+  title:'飞书内外部成员点击确认身份（Candidate）',status:'candidate-validation',
+  items:[
+    '同一个群电话链接支持内部成员和外部联系人，在原飞书群点击卡片确认自己的身份。',
+    '确认后的姓名与群会话可以一起绑定到 iPhone，同群不同账号的绑定分别保留。',
+    '身份与权限由服务端核验，群入口不会授予其他成员的个人工具账号。',
+    '候选环境已完成真实内外部账号与 iOS 模拟器验证，尚未合入或上线。',
+  ],
+};
+
 export const ACCESS_MODES_CANDIDATE_UPDATE = {
   version:'voice-access-modes.20261025.1',date:'2026-10-25',
   title:'Public、账号会话与设备权限（Candidate）',status:'candidate-validation',
