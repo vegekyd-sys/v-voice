@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createLiveH5Server } from "./server.mjs";
+import {createDirectVoiceService} from '../realtime-direct-tools/session.mjs';
 import { transcriptEvent } from "./events.mjs";
 import { AVATAR_FILES } from "./avatar-state.mjs";
 import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
@@ -15,7 +16,7 @@ async function fixture(t, overrides = {}) {
   } };
   if (overrides.gatewayReady !== undefined) gateway.ready = overrides.gatewayReady;
   const offers = [];
-  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate });
+  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, gptProvider:overrides.gptProvider, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate });
   await new Promise((resolve) => bridge.server.listen(0, "127.0.0.1", resolve));
   t.after(() => bridge.dispose());
   const url = `http://127.0.0.1:${bridge.server.address().port}`;
@@ -402,4 +403,52 @@ test('native GPT task remains visible to release checks after its media owner cl
  terminal({status:'ok'});
  for(let n=0;n<20&&(await status()).backgroundTasks;n++)await new Promise(r=>setImmediate(r));
  assert.equal((await status()).backgroundTasks,0);
+});
+
+test('backend helper uses the bounded HTTP device channel without browser identity overrides',async t=>{
+ const {spawn}=await import('node:child_process');
+ const calls=[],lease='l'.repeat(43);
+ const directVoice={models:()=>[],dispose:async()=>{},backendDeviceRequest:async args=>{calls.push(args);assert.equal(args.lease,lease);return {version:1,voiceSessionId:'owned-call',requestId:'owned-request',operation:args.operation,status:'ok',result:{verified:true}};}};
+ const f=await fixture(t,{directVoice}),endpoint=`${f.url}/internal/device-request`;
+ const request=body=>fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+ assert.equal((await request({lease,operation:'notes.create',args:{},actor:'foreign'})).status,403);
+ assert.equal((await fetch(endpoint,{method:'POST',headers:{origin:f.url},body:JSON.stringify({lease,operation:'notes.create',args:{}})})).status,403);
+ assert.equal((await fetch(endpoint,{method:'POST',body:'not-json'})).status,400);
+ assert.equal((await request({lease:'wrong',operation:'notes.create'})).status,403);
+ assert.equal(calls.length,0);
+ const child=spawn(process.execPath,['scripts/device-call.mjs','notes.create',JSON.stringify({title:'fixture'})],{stdio:['pipe','pipe','pipe']});
+ t.after(()=>{if(child.exitCode===null)child.kill();});let stdout='',stderr='';child.stdout.on('data',x=>stdout+=x);child.stderr.on('data',x=>stderr+=x);
+ const ended=new Promise((resolve,reject)=>{child.on('error',reject);child.on('close',resolve);});
+ child.stdin.end(JSON.stringify({version:1,endpoint,lease,voiceSessionId:'owned-call'}));
+ assert.equal(await ended,0,stderr);assert.equal(JSON.parse(stdout).status,'ok');
+ assert.deepEqual(calls,[{lease,operation:'notes.create',args:{title:'fixture'}}]);assert(!stdout.includes(lease));
+});
+
+test('GPT binds only a backend-verified current device channel and never exposes its lease or helper to the client',async t=>{
+ let descriptor;class Server{close(){}}
+ const directVoice=createDirectVoiceService({gateway:{},wsModule:{WebSocketServer:Server},backendDeviceBundle:{root:'/real-backend',sha256:'a'.repeat(64)},backendDeviceBundleProbe:async value=>{
+  descriptor=value.descriptor;
+  const response=await fetch(descriptor.endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({lease:descriptor.lease,operation:'device.probe',args:{challenge:'actual-http'}})});
+  return response.ok&&(await response.json()).result.challenge==='actual-http';
+ }});
+ const calls=[];
+ const f=await fixture(t,{directVoice,gptProvider:'v-voice-gpt-live',request:(method,params,reservation)=>{calls.push({method,params});return method==='talk.client.create'?reservation:{accepted:true};}});
+ const created=await f.request('session',{nativeDeviceActions:{version:1,capabilities:{'location.current':{status:'prompt'}}}});assert.equal(created.status,200);
+ const reply=await created.json();assert.equal(reply.nativeDeviceActions.version,1);assert.match(reply.callerContext.text,/location.current/);
+ assert(!JSON.stringify(reply).includes(descriptor.lease));assert(!JSON.stringify(reply).includes('/real-backend'));assert(!JSON.stringify(reply).includes('clientSecret'));
+ assert.equal(calls.find(c=>c.method==='voice.product.device-context'&&c.params.revision===1).params.bridge.lease,descriptor.lease);
+ const frame={type:'device.capabilities',version:1,voiceSessionId:reply.voiceSessionId,revision:1,capabilities:{'location.current':{status:'denied'}}};
+ assert.equal((await f.request('device-result',{voiceSessionId:'foreign',frame})).status,409);
+ assert.equal((await f.request('device-result',{voiceSessionId:reply.voiceSessionId,frame,actor:'other'})).status,409);
+ assert.equal((await f.request('device-result',{voiceSessionId:reply.voiceSessionId,frame})).status,200);
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(calls.find(c=>c.params.revision===2)?.params.terminal.capabilities['location.current'].status,'denied');
+ await f.request('close',{voiceSessionId:reply.voiceSessionId});
+ const expired=await fetch(descriptor.endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({lease:descriptor.lease,operation:'device.probe',args:{challenge:'late'}})});assert(!expired.ok);
+ assert.equal((await f.request('device-result',{voiceSessionId:reply.voiceSessionId,frame})).status,409);
+});
+test('a Gateway without GPT device support keeps the old call and advertises no usable device channel',async t=>{
+ let opened=false;const directVoice={models:()=>[],openDeviceChannel(){opened=true;},dispose:async()=>{}};
+ const f=await fixture(t,{directVoice,gptProvider:'v-voice-gpt-live',request:(method,params,reservation)=>{if(method==='voice.product.device-context')throw Error('unknown method');return method==='talk.client.create'?reservation:{ok:true};}});
+ const result=await (await f.request('session',{nativeDeviceActions:{version:1,capabilities:{'location.current':{status:'prompt'}}}})).json();
+ assert.equal(result.voiceSessionId,'voice-private');assert.equal(result.nativeDeviceActions,undefined);assert.equal(opened,false);
 });

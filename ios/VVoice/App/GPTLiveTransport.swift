@@ -12,6 +12,8 @@ import VVoiceCore
     private var statsTask: Task<Void, Never>?
     private var deadline: Task<Void, Never>?
     private var ready: CheckedContinuation<Void, Error>?
+    private var contextReady: CheckedContinuation<Void, Error>?
+    private var contextDeadline: Task<Void, Never>?
     private var started = false
     private var closed = false
     private var connected = false
@@ -77,6 +79,24 @@ import VVoiceCore
         guard !closed, channel?.readyState == .open, let bytes = try? JSONSerialization.data(withJSONObject: event), bytes.count < 65_536 else { return false }
         return channel?.sendData(RTCDataBuffer(data: bytes, isBinary: false)) == true
     }
+    func installContext(_ text: String) async throws {
+        guard !closed, started, contextReady == nil, !text.isEmpty, text.count <= 2048 else { throw VoiceError.protocolMismatch }
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
+                contextReady = c
+                guard sendContext(text) else { contextReady = nil; c.resume(throwing: VoiceError.connection); return }
+                contextDeadline = Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(8))
+                    guard !Task.isCancelled, let self else { return }
+                    self.contextReady?.resume(throwing: VoiceError.connection); self.contextReady = nil
+                }
+            }
+        } onCancel: { Task { @MainActor [weak self] in self?.close() } }
+    }
+    @discardableResult func sendContext(_ text: String) -> Bool {
+        guard !text.isEmpty, text.count <= 2048 else { return false }
+        return send(["type": "session.context.append", "channel": "developer", "content": [["type": "input_text", "text": text + " 这是静默的通话设备上下文，不要主动播报，不要因此发起工具调用。"]]])
+    }
     private func startStats(_ pc: RTCPeerConnection) {
         statsTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -112,6 +132,7 @@ import VVoiceCore
     private func receive(_ data: Data) {
         guard !closed, data.count <= 1_000_000, let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         if event["type"] as? String == "session.started" { started = true; checkReady() }
+        if event["type"] as? String == "session.context.appended" { contextReady?.resume(); contextReady = nil; contextDeadline?.cancel() }
         if event["type"] as? String == "error" { fail(VoiceError.unavailable); return }
         onEvent?(event)
     }
@@ -122,6 +143,7 @@ import VVoiceCore
     func close() {
         guard !closed else { return }; closed = true
         ready?.resume(throwing: CancellationError()); ready = nil
+        contextReady?.resume(throwing: CancellationError()); contextReady = nil; contextDeadline?.cancel()
         deadline?.cancel(); statsTask?.cancel(); statsTask = nil
         channel?.delegate = nil; channel?.close(); channel = nil
         track?.isEnabled = false; track = nil

@@ -8,6 +8,28 @@ import VVoiceCore
 
 /// Two actual native WebRTC peers, synthetic PCM only, no network/model account.
 @MainActor final class GPTLiveTransportTests: XCTestCase {
+    func testSilentDeviceContextWaitsForProviderAcknowledgementAndRetiresOnClose() async throws {
+        let device = GPTSyntheticAudio(), remote = GPTLoopbackPeer()
+        let transport = GPTLiveTransport(factory: RTCPeerConnectionFactory(encoderFactory: nil, decoderFactory: nil, audioDevice: device))
+        defer { transport.close(); remote.close(); device.shutdown() }
+        try await transport.connect(muted: true) { try await remote.answer($0) }
+        var completed = false
+        let installing = Task { try await transport.installContext("location.current prompt"); completed = true }
+        for _ in 0..<40 { if !remote.contexts.isEmpty { break }; try await Task.sleep(for: .milliseconds(50)) }
+        XCTAssertEqual(remote.contexts.first?["channel"] as? String, "developer")
+        XCTAssertFalse(completed)
+        _ = await remote.inputLevel(); XCTAssertLessThan(remote.inputTone, 0.001)
+        remote.send(["type": "session.context.appended"]); try await installing.value
+        XCTAssertTrue(completed)
+        XCTAssertTrue(transport.sendContext("location.current denied"))
+        for _ in 0..<40 { if remote.contexts.count == 2 { break }; try await Task.sleep(for: .milliseconds(50)) }
+        XCTAssertEqual(remote.contexts.count, 2)
+        XCTAssertTrue(remote.contexts.allSatisfy { $0["type"] as? String == "session.context.append" })
+        let late = Task { try await transport.installContext("retiring") }
+        await Task.yield(); transport.close()
+        do { try await late.value; XCTFail("Retired call context unexpectedly completed") } catch {}
+        XCTAssertFalse(transport.sendContext("after close"))
+    }
     func testLoopbackNegotiatesAudioCaptionsMuteAndClose() async throws {
         let device = GPTSyntheticAudio()
         let factory = RTCPeerConnectionFactory(encoderFactory: nil, decoderFactory: nil, audioDevice: device)
@@ -223,6 +245,7 @@ private final class GPTSyntheticAudio: NSObject, RTCAudioDevice, @unchecked Send
     private var peer: RTCPeerConnection!
     private var channel: RTCDataChannel?
     var receivedControl = false
+    var contexts: [[String: Any]] = []
     override init() {
         super.init()
         factory = RTCPeerConnectionFactory(encoderFactory: nil, decoderFactory: nil, audioDevice: device)
@@ -253,7 +276,13 @@ private final class GPTSyntheticAudio: NSObject, RTCAudioDevice, @unchecked Send
         }
     }
     nonisolated func dataChannelDidChangeState(_ dataChannel: RTCDataChannel) { Task { @MainActor in self.welcome(dataChannel) } }
-    nonisolated func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) { Task { @MainActor in self.receivedControl = true } }
+    nonisolated func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {
+        let bytes = buffer.data
+        Task { @MainActor in
+            self.receivedControl = true
+            if let event = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any], event["type"] as? String == "session.context.append" { self.contexts.append(event) }
+        }
+    }
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) { Task { @MainActor in self.channel = dataChannel; dataChannel.delegate = self; self.welcome(dataChannel) } }
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCSignalingState) {}
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {}
