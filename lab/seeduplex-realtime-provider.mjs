@@ -532,6 +532,15 @@ export class SeeduplexRealtimeVoiceBridge {
     this.#send({ type: "speech_text_buffer.commit", event_id: `event_${randomUUID()}`, text });
   }
 
+  updateTerminalContext(text, previous) {
+    this.request.instructions=this.request.instructions.replace(previous,text);
+    // This provider's existing paired-history event does not trigger speech.
+    this.#send({type:'conversation.item.create',items:[
+      {role:'user',content:[{type:'input_text',text:'设备状态通知（不是用户发言，不要求回复）：'+text}]},
+      {role:'assistant',content:[{type:'input_text',text:'后续设备请求以这份当前状态为准；不自动重试此前被拒绝的操作。'}]},
+    ]});
+  }
+
   sendUserMessage(text) {
     if(this.request.nativeDuplex)this.nativeLiteralRead=/朗读|复述|念出|读出|原样|逐字/u.test(text??'');
     const normalized = optionalString(text);

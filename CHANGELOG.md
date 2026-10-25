@@ -3,6 +3,10 @@
 - Remove the icon-selection call from launch and foreground activation. The previous cache-refresh workaround could show the system's icon-change alert when opening the app.
 - Keep both portrait icon sets and shortcut metadata refresh, preserving existing alternate-icon selections and notification/Spotlight/home-screen assets.
 - Simulator build, four cold launches and foreground return passed without the alert. Candidate only; no phone installation, server release or new voice acceptance. See `docs/ios/icon-startup-prompt-candidate.json`. Add the user-visible homepage note when packaging the approved native release.
+## Unreleased — iOS on-demand location candidate
+
+- Add call-scoped, one-shot Core Location over the authenticated native relay. Attach fresh WGS84 / accuracy / timestamp metadata to the existing V task start or steer/followup context only when requested. Preserve native audio, Intents, H5 delivery and existing tool identity.
+- Candidate only; no production/Gateway change, phone install or ride order. Physical background/lock-screen acceptance remains pending. See `docs/ios/LOCATION-PROTOTYPE.md`.
 
 ## 2026-10-24 — iOS caller identity, direct calendar and stale content notice
 
