@@ -2,11 +2,15 @@
 
 V 的独立 Web/H5 电话产品。GPT Live、豆包·小何、Grok 共用界面、头像 Reaction、通话控制和日志，继续通过既有 Gateway 使用 OpenClaw Agent/工具。
 
-## iOS 客户端候选
+## 开发、更新与交接
 
-原生一按通话客户端在 `ios/`：个人入口绑定、操作按钮快捷指令、连续音频、灵动岛／锁屏控制与恢复。当前支持小何／Grok PCM relay，客户端与模拟器回归已完成；已完成开发签名和真机安装；真机音频管线通过，真实通话与操作按钮接受仍待完成。没有发布或修改正式 Voice 服务。
+先读 [更新与接手指南](docs/UPDATE-GUIDE.md)：UI 标准、共用 H5 / Voice 服务与原生硬件边界、四端行为、Candidate / VLab 验收、双节点发布和回滚，以及 Codex / V 交接模板。优先在 Voice 内完成产品更新，平台接口和终端执行器按实际需要独立修改。
 
-构建、实际验证边界与真机验收见 [iOS 说明](docs/ios/README.md)。
+当前服务版本看 [生产登记](docs/releases/current.json)，原生安装与接受状态看 [iOS 版本登记](docs/ios/versions.json)。源码 main、生产服务、iOS 安装包和固件可能不同；专题内的早期候选结论须结合后续发布记录阅读。
+
+## iOS 客户端
+
+`ios/` 使用共用 H5 页面与原生音频执行器，提供入口绑定、Action Button、连续通话、灵动岛／锁屏控制与恢复。页面和兼容的服务策略可独立更新；系统能力、音频驱动、Widget 结构等改动需要原生升级。构建与具体传输边界见 [iOS 说明](docs/ios/README.md) 和 [原生能力桥](docs/ios/NATIVE-CAPABILITY-BRIDGE.md)。音频回归保留 [build 32 稳定基线](docs/ios/stable-baseline-build32.md)，不把新包分发等同于重新完成所有真机验收。
 
 ## 独立开发
 
@@ -26,19 +30,19 @@ Grok 默认使用固定版本 `grok-voice-3.0`，凭据沿用服务端 `XAI_API_
 
 ## 会话电话
 
-正式 `/voice/` 保留当前 Tianyi 本人入口。新增电话格式 `/voice/?phone=<入口编号>#access=<私有入口凭据>`：凭据换成按入口隔离的 HttpOnly cookie 后清除 fragment。通过 `VOICE_ENTRIES_FILE` 指定服务器私有映射 JSON；入口的 session 必须来自 Gateway 现有会话，不能根据姓名或浏览器请求编造。
+群聊和私聊动态电话入口由服务端映射至现有 Feishu session，核验实际来电账号及 Gateway 授权。飞书内部免登与外部联系人原页确认分别处理；每次拨号创建新的 voiceSessionId。已登记旧链接、原有 App 绑定和通话记录保留原归属。见 [身份确认发布](docs/releases/feishu-confirm-20261025/release.md) 和 [旧入口迁移](docs/releases/entry-release-20261026/release.md)。
 
-当前第一阶段只允许 `callerId=tianyi`、`permissionProfile=personal-tianyi`，用于验证本人多个群/DM 的电话承接。**其他人的电话仍未开放**：现有直接工具和 GPT Live 后端使用个人权限，必须先在 Gateway 增加经过验证的来电者身份与工具权限隔离。详见 [入口边界](docs/conversation-entries.md)。
+固定私有入口继续使用服务端配置，不能由浏览器账号或参数替换 caller/session。Public 和未确认访客使用受限能力，不继承来源群历史或个人工具身份。任何入口都不能通过换链接授予 Tianyi 的权限；多账号必须经过 actor-scoped 准入。早期固定入口设计保留在 [入口边界](docs/conversation-entries.md)，其第一阶段状态以较晚发布记录为准。
 
 ## 基线与发布
 
-114 个运行文件从线上平台 commit `52eefaab221ed8e1e20d439133875ee2cfcb4b19` 原字节提取，保留 [来源校验](docs/migration-baseline.json)。原平台库没有删文件、没有合入变更；当前生产尚未切换新仓库。
+最初 114 个运行文件从平台 commit `52eefaab221ed8e1e20d439133875ee2cfcb4b19` 提取，[来源校验](docs/migration-baseline.json) 保留历史基线。现已使用独立 Voice 仓库与双节点发布，实际运行版本由生产登记维护。
 
-提交并测试后运行：
+正式发布先按授权通过 PR 合入 main、确认合入提交检查通过，再从干净源码打包：
 
 ```sh
 npm run package
 node scripts/verify-package.mjs artifacts/<完整commit>
 ```
 
-包只包含运行文件和锁定依赖清单，不含配置、凭据、对话或 Gateway runtime。部署方式与上线边界见 [发布流程](docs/deployment.md)。
+包只包含运行文件和锁定依赖清单，不含配置、凭据、对话或 Gateway runtime。日常唯一发布入口为 `scripts/release-fleet.py`，同时覆盖网页/iOS 与上海机器人/音响节点，等待空闲并保留回滚材料；Voice 发布不重启 Gateway。完整命令见 [四端统一发布](docs/unified-release.md)，集成边界见 [发布流程](docs/deployment.md)。
