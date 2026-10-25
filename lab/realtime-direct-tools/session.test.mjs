@@ -22,7 +22,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,gateway:options.publicGateway??gateway,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
+ const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -1143,29 +1143,4 @@ test('actor reads require verified binding, valid actor credentials and current 
   assert(!config.tools.some(x=>x.name==='feishu_calendar'));
   f.call('feishu_calendar',{},'denied');await delay(10);assert.equal(reads,0);
  }
-});
-
-
-test('Public uses existing V search/memory tools and carries the same personal-content redline to the existing backend',async t=>{
- const calls=[];
- const publicGateway={publicVoice:true,async request(method,params){calls.push({method,params});
-  if(method==='tools.catalog')return {groups:[{tools:[{id:'memory_search'},{id:'web_search'}]}]};
-  if(method==='tools.invoke')return {ok:true,output:{content:[{type:'text',text:'V 原有项目记忆'}]}};
-  if(method==='voice.product.task.start')return {taskId:'public-task',runId:'public-run'};
-  if(method==='voice.product.task.read')return {taskId:'public-task',runId:'public-run',status:'ok',text:'V 原有后台执行结果'};
-  throw Error('Unexpected method');
- }};
- const f=await fixture(undefined,'grok',{unidentified:true,publicGateway,sessionKey:'voice:guest:'+'a'.repeat(64),loadContext:()=>{throw Error('Public must not preload private history');}});t.after(()=>f.service.dispose());
- const session=f.upstream.sent.find(e=>e.type==='session.update').session;
- assert(session.instructions.includes('个人内容红线'));assert(session.instructions.includes('V 现有记忆'));
- const names=session.tools.map(t=>t.name);assert(names.includes('memory_search'));assert(names.includes('web_search'));assert(names.includes('delegate_to_v'));
- assert(!names.some(n=>['memory_write','task_status','exec','lark_read','feishu_calendar','openclaw_tool'].includes(n)));
- f.call('memory_search',{query:'项目历史'},'public-memory');f.call('web_search',{query:'public资料'},'public-web');
- for(let i=0;i<100&&calls.filter(r=>r.method==='tools.invoke').length<2;i++)await delay(2);
- assert.deepEqual(calls.filter(r=>r.method==='tools.invoke').map(r=>r.params.name),['memory_search','web_search']);
- f.call('delegate_to_v',{question:'整理项目公开资料'},'public-backend');
- for(let i=0;i<100&&!calls.some(r=>r.method==='voice.product.task.start');i++)await delay(2);
- const task=calls.find(r=>r.method==='voice.product.task.start');assert(task);assert(task.params.question.includes('个人内容红线'));assert(task.params.question.includes('V 现有记忆'));
- f.call('exec',{command:'anything'},'public-denied');await delay(10);
- assert(!calls.some(r=>r.params?.name==='exec'));assert.equal(f.invocations.length,0);
 });

@@ -75,13 +75,3 @@ test('expired Public HTTP device grant can renew the same guest using the instal
  const cookie=await f.access(renewed);assert.equal((await f.request('status',undefined,cookie,old.phone)).status,200);
  assert.equal(JSON.parse(await readFile(f.file,'utf8')).grants.length,1);
 });
-
-
-test('Public tool gateway is attached only after the server verifies its device grant',async t=>{
- const scopes=[];const f=await fixture(t,{createPublicGateway:scope=>{scopes.push(scope);return {publicVoice:true,request:async()=>{if(!scope.isAuthorized())throw Error('expired');return {};}};}});
- const a=await f.bootstrap(keyA),b=await f.bootstrap(keyB),ca=await f.access(a),cb=await f.access(b);
- assert.equal((await f.request('session',{model:'seeduplex',sessionKey:'private'},ca,a.phone)).status,200);
- assert.equal(f.calls[0].gateway.publicVoice,true);assert(scopes.some(s=>s.isAuthorized()));
- assert.notEqual((await f.request('status',undefined,cb,a.phone)).status,200);
- assert(scopes.every(s=>s.sessionKey.startsWith('voice:guest:')));
-});
