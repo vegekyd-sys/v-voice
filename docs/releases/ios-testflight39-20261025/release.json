@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "build": 39,
   "date": "2026-10-25",
-  "status": "preparing_testflight",
+  "status": "internal_testflight_available_human_acceptance_pending",
   "prs": [
     136
   ],
@@ -13,9 +13,9 @@
   "gatewayRestartRequired": false,
   "platformChangesIncluded": false,
   "nativeInstalledByAgent": false,
-  "sourceCommit": null,
-  "serverDeploymentPerformed": false,
-  "testFlightInstallable": false,
+  "sourceCommit": "e1917442739657a7ec0a86ab703070a9a4d485d6",
+  "serverDeploymentPerformed": true,
+  "testFlightInstallable": true,
   "validation": {
     "nodePassed": 930,
     "speakerPassed": 95,
@@ -31,5 +31,35 @@
     "physical continuous audio and interruption",
     "Public human acceptance",
     "restoration of ended-call task results is not included"
-  ]
+  ],
+  "serverSourceCommit": "d0e47f60addfaaa62c3436b872b9485863380ce0",
+  "serverFilesSha256": "e2882095c7b80549c00c0d4dda06c4b89c6de2da9d361c9a27f865a4352c8354",
+  "serverNodesSynchronized": true,
+  "internalTestFlightAvailable": true,
+  "internalBuildState": "IN_BETA_TESTING",
+  "externalBuildState": "READY_FOR_BETA_SUBMISSION",
+  "externalTestFlightSubmitted": false,
+  "automaticTesterNotificationEnabled": true,
+  "buildID": "88e89617-51a4-4c35-b706-aeebafb98e04",
+  "processingState": "VALID",
+  "appStoreConnectAppID": "6826350407",
+  "internalTesterMembershipVerified": true,
+  "signedArchiveVerified": true,
+  "exportedIPAVerified": true,
+  "ipaSHA256": "7401bbbbfe7859b3d6eb7baabf8f38e4132e2867b3d63eed7ed95d439bde65a4",
+  "gatewayRestarted": false,
+  "publicEntryEnabledOnWeb": true,
+  "publicEntryEnabledOnDevices": false,
+  "otherPrivateConfigurationUnchanged": true,
+  "backendDeviceBundleConfigured": false,
+  "homepageChangelogVerified": true,
+  "productionPublicPreparationVerifiedOnSimulator": true,
+  "productionVoiceCallPerformed": false,
+  "releasePackageFixPR": 141,
+  "nativeAndServerSourceDifference": "PR141 changes only package inclusion, fleet test and CI; native/runtime sources are identical.",
+  "mainCI": {
+    "native": "https://github.com/vegekyd-sys/v-voice/actions/runs/40172452444",
+    "server": "https://github.com/vegekyd-sys/v-voice/actions/runs/40172776757"
+  },
+  "updatedAt": "2026-10-25T15:30:00.723475+08:00"
 }
