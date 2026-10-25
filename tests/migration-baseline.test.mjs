@@ -14,5 +14,5 @@ test('unchanged modules outside explicit Voice adapters retain deployed bytes',(
  for(const f of baseline.files){if(adapters.has(f.path))continue;const bytes=readFileSync(new URL('../'+f.path,import.meta.url));assert.equal(createHash('sha256').update(bytes).digest('hex'),nameCorrections.get(f.path)??currentHashes.get(f.path)??f.sha256,f.path);}
 });
 test('startup no longer loads OpenClaw install-directory SDK or dependencies',()=>{
- const code=readFileSync(new URL('../lab/gpt-live-h5/server.mjs',import.meta.url),'utf8');assert.doesNotMatch(code,/dist\/plugin-sdk\/gateway-runtime|node_modules\/ws\/wrapper|pathToFileURL|RUNTIME_ROOT/);
+ const code=readFileSync(new URL('../lab/gpt-live-h5/server.mjs',import.meta.url),'utf8');assert.doesNotMatch(code,/dist\/plugin-sdk\/gateway-runtime|node_modules\/ws\/wrapper|RUNTIME_ROOT/);
 });

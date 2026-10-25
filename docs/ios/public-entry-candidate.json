@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "status": "candidate-validation",
+  "build": 37,
+  "nativeSourceCommit": "8ad6450c57707beac863a4987579ff0f8c96bb14",
+  "ipaSHA256": "53903c9a69c203e894ddcf4e9ba439252b9b89c326703a53a6ab12e8178bd6f2",
+  "installedOnRequestedIPhone": false,
+  "physicalBaseline": {
+    "build": 34,
+    "acceptedScopes": [
+      "retained original binding and selection",
+      "Public manual two-way call",
+      "Action Button call"
+    ],
+    "newToolsAccepted": false
+  },
+  "publicTools": {
+    "memory_search": "existing ordinary V memory_search; same V memory index",
+    "web_search": "existing ordinary V web_search",
+    "background": "existing V Voice SDK task controller"
+  },
+  "personalContentProtection": "shared Public prompt redline in voice and backend; not a claim of strict data isolation",
+  "noGuestMemoryStore": true,
+  "noCustomBackendModelLoop": true,
+  "platformSourceCommit": "a9becd8e",
+  "simulator": {
+    "nativePassed": 16,
+    "nativeSkipped": 1,
+    "freshPublic": true,
+    "selectionRestartAndDeleteFallback": true
+  },
+  "supersededEvidence": [
+    "0fcf47d0 and 925e36f independent guest runtime were reverted; prior provider tests do not validate this corrected approach"
+  ],
+  "pending": [
+    "real existing-tool/voice acceptance",
+    "real Public background SDK integration",
+    "build37 physical acceptance"
+  ],
+  "productionDeployed": false
+}

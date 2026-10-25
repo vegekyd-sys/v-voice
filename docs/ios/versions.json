@@ -663,5 +663,6 @@
     "internalBuildState": "IN_BETA_TESTING",
     "testersInvited": 1,
     "installedViaTestFlight": false
-  }
+  },
+  "publicEntryCandidateEvidence": "public-entry-candidate.json"
 }
