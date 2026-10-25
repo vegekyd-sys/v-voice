@@ -1,0 +1,35 @@
+{
+  "version": "1.0.0",
+  "build": 38,
+  "date": "2026-10-25",
+  "status": "preparing_testflight",
+  "prs": [
+    88,
+    134
+  ],
+  "userAuthorization": "Merge PR88 and PR134 and deliver through TestFlight for subsequent human acceptance.",
+  "stableBaselineBuild": 32,
+  "nativeAcceptance": "pending_TestFlight_human_test",
+  "gatewayRestartRequired": false,
+  "platformChangesIncluded": false,
+  "backendDeviceBundleConfigured": false,
+  "validation": {
+    "nodePassed": 922,
+    "speakerPassed": 95,
+    "fleetPassed": 11,
+    "nativePassed": 12,
+    "nativeSystemOptInSkipped": 2
+  },
+  "knownPending": [
+    "Feishu WebView location",
+    "physical background/lock-screen location",
+    "revocation and reduced-accuracy combinations",
+    "GPT device location",
+    "cross-host backend device execution",
+    "actual DiDi map conversion and quote"
+  ],
+  "appStoreConnectAppID": "6826350407",
+  "sourceCommit": null,
+  "serverDeploymentPerformed": false,
+  "testFlightInstallable": false
+}

@@ -1,3 +1,10 @@
+## 2026-10-25 — TestFlight 38: on-demand location and quiet icon startup
+
+- Integrate approved PR #88 and #134. Remove automatic icon mutation; add current-call, one-shot location for authenticated SeedDuplex calls on Web and native iOS.
+- Preserve build32 as the accepted audio baseline. Version 1.0.0 (38) is a TestFlight acceptance build; no new physical-device acceptance is claimed. Existing bindings remain compatible.
+- Ship the matching Voice service through the dual-node release flow. Leave backend-device bundle configuration unset; do not merge platform #470 or update/restart Gateway. GPT location, background/lock-screen behavior, Feishu WebView and the full DiDi quote flow remain pending.
+- User authorized merging and TestFlight delivery while away from the phone. Release and Apple-side processing/group availability are recorded separately in docs/releases/ios-testflight38-20261025/release.json.
+
 ## 2026-10-23 — Stop automatic iOS icon changes (candidate)
 
 - Remove the icon-selection call from launch and foreground activation. The previous cache-refresh workaround could show the system's icon-change alert when opening the app.
