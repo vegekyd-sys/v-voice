@@ -116,6 +116,15 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-legacy-entry.20261026.1',date:'2026-10-26',
+    title:'旧群和私聊电话入口修复',
+    items:[
+      '已登记的旧群、私聊电话链接和历史收藏转到对应会话的新入口。',
+      '群里的电脑电话入口在飞书侧边栏打开，私聊电话页签在飞书内打开。',
+      '进入时识别当前来电账号；外部联系人沿用原页飞书身份确认，已有 App 绑定和通话记录保留。',
+    ],
+  },
+  {
     version:'voice-feishu-confirm.20261025.1',date:'2026-10-25',
     title:'飞书确认身份，原页接着聊',
     items:[
@@ -593,3 +602,12 @@ export function mountChangelog(document, view = globalThis) {
   });
   return { close };
 }
+export const LEGACY_ENTRY_CANDIDATE_UPDATE = {
+  version:'voice-legacy-entry.20261025.1',date:'2026-10-25',
+  title:'旧群与私聊电话入口兼容（Candidate）',status:'candidate-validation',
+  items:[
+    '已登记的旧群和私聊电话链接转到同一会话的新入口，历史收藏也能继续打开。',
+    '进入后识别当前来电者，沿用原页飞书身份确认；不会继承旧链接中的个人身份。',
+    '候选验证中，尚未合入或发布；群菜单和私聊页签修复由独立平台变更维护。',
+  ],
+};

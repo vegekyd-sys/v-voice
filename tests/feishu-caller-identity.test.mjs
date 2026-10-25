@@ -12,7 +12,7 @@ import {createIosBindings} from '../lib/ios-bindings.mjs';
 const phone=feishuConversationPhone('lab','oc_groupa');
 const group={id:'feishu-group-fixture',agentId:'makaron',sessionKey:'agent:makaron:feishu:group:oc_groupa',accountId:'cli_fixture',kind:'group',callerId:'tianyi',permissionProfile:'personal-tianyi',accessToken:'group-only-token'.repeat(4)};
 const dm={...group,id:'feishu-dm-fixture',kind:'dm',sessionKey:'agent:makaron:feishu:direct:ou_alice',accessToken:'dm-only-token'.repeat(4)};
-async function fixture(t,{file}={}) {
+async function fixture(t,{file,legacyEntries=[]}={}) {
  let subject={open_id:'ou_alice',tenant_key:'fixture',name:'Alice Fixture'},reject=false,n=0;
  const calls=[],reservations=[],providerCalls=[];
  const gateway={request:async(method,p)=>{
@@ -25,10 +25,10 @@ async function fixture(t,{file}={}) {
   if(method==='talk.client.create')return {voiceSessionId:'gpt-'+(++n),model:'gpt-live-1-codex',transport:'webrtc',offerUrl:'/plugins/openai/realtime/calls',clientSecret:'private-fixture'};
   return {ok:true};
  }};
- const server=createLiveH5Server({gateway,iosBindingsFile:file,publicOrigin:'https://voice.example',basePath:'/voice',accessToken:'private-fixture-token'.repeat(4),conversationEntries:[group,dm],
+ const server=createLiveH5Server({gateway,iosBindingsFile:file,publicOrigin:'https://voice.example',basePath:'/voice',accessToken:'private-fixture-token'.repeat(4),conversationEntries:[group,dm,...legacyEntries],
   directVoice:{models:()=>[{id:'seeduplex',available:true},{id:'grok',available:true}],reserve:async p=>{reservations.push(p);return {voiceSessionId:'fixture-call-'+(++n),relayTicket:'fixture',provider:p.model};},attach:()=>true,close:async()=>{},dispose:async()=>{}},
   feishuLogin:{appId:'cli_fixture',appSecret:'fixture-private-secret',accountId:'lab',conversations:true,allowUnidentified:true,
-   actors:[{openId:'ou_alice',tenantKey:'fixture',callerId:'tianyi',defaultPhoneId:dm.id,phoneIds:[group.id,dm.id]}],
+   actors:[{openId:'ou_alice',tenantKey:'fixture',callerId:'tianyi',defaultPhoneId:dm.id,phoneIds:[group.id,dm.id,...legacyEntries.map(x=>x.id)]}],
    fetchImpl:async(url,init)=>{
     providerCalls.push({url,body:init?.body});
     if(url.includes('/app_access_token/'))return Response.json({code:0,app_access_token:'private-app-token',tenant_access_token:'private-tenant-token',expire:7200});
@@ -292,4 +292,28 @@ test('named fixed entry retains configured caller and session after OAuth, while
  assert.equal(f.reservations.at(-1).sessionKey,group.sessionKey);assert.equal(f.reservations.at(-1).toolIdentity,undefined);assert.equal(f.calls.filter(c=>c.method==='voice.feishu.resolve').length,0);
  await f.send('/voice/api/close?phone='+group.id,{body:r.json()});
  f.setSubject({open_id:'ou_other',tenant_key:'fixture',name:'Other'});f.jar.clear();const denied=await login();assert.equal(denied.status,200);assert.match(denied.text,/暂时无法打开电话/);assert.equal((await f.send('/voice/api/status?phone='+group.id)).status,401);
+});
+
+test('managed legacy group and DM bookmarks enter current visitor login without granting the configured owner',async t=>{
+ const legacyEntries=[{...group,id:'feishu-group-groupa'},{...group,id:'feishu-group-oc_groupa'},
+  {...dm,id:'feishu-dm-known',nativeChatId:'oc_dma'}].map((x,i)=>({...x,accessToken:('legacy-'+i+'-token').repeat(4)}));
+ const f=await fixture(t,{legacyEntries});
+ for(const entry of legacyEntries){
+  const canonical=feishuConversationPhone('lab',entry.kind==='dm'?'oc_dma':'oc_groupa');
+  for(const route of ['/','/feishu']){
+   const start=await f.send('/voice'+route+'?phone='+entry.id,{ua:'Lark/7.0 iPhone'});
+   assert.equal(start.status,302);assert.equal(start.headers.location,'/voice'+route+'?phone='+canonical);
+   const sdk=await f.send(start.headers.location,{ua:'Lark/7.0 iPhone'});
+   assert.equal(sdk.headers.location,'/voice/feishu/callback?phone='+canonical);
+   const page=await f.send(sdk.headers.location,{ua:'Lark/7.0 iPhone'});
+   assert.equal(page.status,200);assert.match(page.text,/id="login-config"/);
+  }
+  assert.equal((await f.send('/voice/api/status?phone='+entry.id)).status,401);
+  const external=await f.send('/voice/feishu?phone='+entry.id+'&call=fixture-call');
+  assert.equal(external.headers.location,'/voice/feishu?phone='+canonical+'&call=fixture-call');
+  const page=await f.send(external.headers.location);assert.equal(page.status,200);assert.match(page.text,/<title>和 V 通话<\/title>/);
+ }
+ assert.equal(f.calls.length,0);assert.equal(f.providerCalls.length,0);assert.equal(f.reservations.length,0);
+ const fixed=await f.send('/voice/feishu?phone='+group.id,{ua:'Lark/7.0'});
+ assert.match(fixed.headers.location,/accounts.feishu.cn/);
 });
