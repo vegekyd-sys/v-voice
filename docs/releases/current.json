@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "ios-testflight38-20261025",
-  "version": "voice-location-testflight.20261025.1",
-  "entryCommit": "96a198d8b696a0b2e10680b47b829332349de1fb",
-  "deviceEntryCommit": "96a198d8b696a0b2e10680b47b829332349de1fb",
-  "filesSha256": "b6657b0d229d4d9131f332deedc79ff18a22c57469d18426bd44ffc95f483333",
-  "registration": "ios-testflight38-20261025/release.json",
-  "previousEntryCommit": "8a67c6ac19867166bcac92d8f91ae90d2de77a92",
+  "release": "ios-testflight39-20261025",
+  "version": "voice-public-testflight.20261025.1",
+  "entryCommit": "d0e47f60addfaaa62c3436b872b9485863380ce0",
+  "deviceEntryCommit": "d0e47f60addfaaa62c3436b872b9485863380ce0",
+  "filesSha256": "e2882095c7b80549c00c0d4dda06c4b89c6de2da9d361c9a27f865a4352c8354",
+  "registration": "ios-testflight39-20261025/release.json",
+  "previousEntryCommit": "96a198d8b696a0b2e10680b47b829332349de1fb",
   "gatewayRestartRequired": false,
-  "deployedAt": "2026-10-25T13:20:09+08:00",
-  "runtimeDifference": "Both Voice nodes use the same verified artifact. Account-bound SeedDuplex calls can request on-demand location. Native Build 38 is uploaded for TestFlight; physical acceptance remains pending. Gateway and private configuration unchanged; backend device bundle is not enabled."
+  "deployedAt": "Sun 2026-10-25 15:28:11 CST",
+  "runtimeDifference": "Both Voice nodes use the same verified artifact. The web/iOS node enables Public entry with one dedicated feature flag. Native 1.0.0 (39) is VALID and available to the internal TestFlight group. Existing binding regression and production Public preparation passed; physical acceptance remains pending. Gateway, existing private identity configuration and firmware unchanged."
 }

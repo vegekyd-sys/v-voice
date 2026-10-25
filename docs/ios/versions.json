@@ -702,12 +702,20 @@
   "testFlightCandidate39": {
     "version": "1.0.0",
     "build": 39,
-    "status": "preparing_testflight",
+    "status": "internal_testflight_available_human_acceptance_pending",
     "sourcePR": 136,
     "nativeAcceptance": "pending_Tianyi_TestFlight",
     "stableBaselineBuild": 32,
     "previousTestFlightBuild": 38,
     "nativeInstalledByAgent": false,
-    "gatewayRestarted": false
+    "gatewayRestarted": false,
+    "sourceCommit": "e1917442739657a7ec0a86ab703070a9a4d485d6",
+    "serverSourceCommit": "d0e47f60addfaaa62c3436b872b9485863380ce0",
+    "ipaSHA256": "7401bbbbfe7859b3d6eb7baabf8f38e4132e2867b3d63eed7ed95d439bde65a4",
+    "buildID": "88e89617-51a4-4c35-b706-aeebafb98e04",
+    "processingState": "VALID",
+    "internalTestFlightAvailable": true,
+    "internalBuildState": "IN_BETA_TESTING",
+    "serverNodesSynchronized": true
   }
 }
