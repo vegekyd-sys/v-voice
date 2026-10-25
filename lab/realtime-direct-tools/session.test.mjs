@@ -1229,3 +1229,20 @@ test('robot adapter and Notes-only capability share one backend channel without 
   f.completeBackend('设备只确认接受，未确认物理动作完成');
  }
 });
+
+test('iOS prompt permission continues one call through generic request and readback without logging note content',async t=>{
+ for(const model of ['seeduplex','grok']){
+  const f=await fixture(undefined,model,{nativeRuntimeVersion:1,nativeDeviceActions:{version:1,capabilities:{'calendar.create':{status:'prompt'}}}});t.after(()=>f.service.dispose());
+  const args={operation:'calendar.create',payload:{title:'Private title fixture',body:'Private body fixture',start:'2030-01-02T10:00:00+08:00',end:'2030-01-02T10:30:00+08:00',timeZone:'Asia/Shanghai'}};
+  if(model==='grok')f.call('ios_use',args,'ios-create');else f.event({type:'response.function_call_arguments.done',items:[{call_id:'ios-create',name:'ios_use',arguments:JSON.stringify(args)}]});
+  for(let i=0;i<100&&!f.client.sent.some(x=>x.type==='device.request');i++)await delay(2);
+  const request=f.client.sent.find(x=>x.type==='device.request');assert(request);assert.equal(request.operation,'calendar.create');
+  const receipt=(status,result)=>f.client.emit('message',Buffer.from(JSON.stringify({type:'device.result',version:1,voiceSessionId:f.reservation.voiceSessionId,requestId:request.requestId,operation:request.operation,status,result})),false);
+  receipt('requires_foreground',{});receipt('running',{});
+  receipt('ok',{evidence:'eventkit_written_readback',written:true,readBack:true,synced:false,item:{id:'persisted-fixture',...args.payload}});
+  for(let i=0;i<100&&!f.audit.some(x=>x.type==='tool.delivered'&&x.callId==='ios-create');i++)await delay(2);
+  assert.equal(f.audit.find(x=>x.type==='tool.delivered'&&x.callId==='ios-create').completed,true);
+  assert(!JSON.stringify(f.audit).includes(args.payload.body));assert(!JSON.stringify(f.audit).includes(args.payload.title));
+  assert.equal(f.client.readyState,1);assert.equal(f.invocations.some(x=>x.name==='ios_use'),false);
+ }
+});

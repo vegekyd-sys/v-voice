@@ -1,3 +1,4 @@
+import {iosUseOperations,iosUseTool,createIOSUseAdapter} from './ios-use.mjs';
 import {normalizeDeviceActions,terminalContext,terminalInstructions} from '../../lib/terminal-context.mjs';
 import {feishuCallerIdentityInstructions} from '../../lib/feishu-caller-identity.mjs';
 import {createDeviceRequests} from '../../lib/device-requests.mjs';
@@ -207,7 +208,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // Local Feishu reads are declared only when this service has them configured.
   if(!['courtesy','provider','assisted'].includes(nativePlaybackPolicy))throw Error('Unsupported native playback policy');
   const localTools=TOOLS.filter(t=>(calendar||larkForActor||t.name!=='feishu_calendar')&&(larkRead||larkForActor||t.name!=='lark_read'));
-  const sessionTools=s=>[...localTools.filter(t=>(s.display||t.name!=='show_content')&&(!['feishu_calendar','lark_read'].includes(t.name)||Boolean(s.actorReader)||!s.sessionBound&&Boolean(t.name==='feishu_calendar'?calendar:larkRead))).map(t=>s.actorReader&&t.name==='feishu_calendar'?{...t,description:t.description.replace('天懿本人','当前已验证来电账号本人')}:s.actorReader&&t.name==='lark_read'?{...t,description:t.description.replace('本人的飞书资料','当前已验证来电账号本人的飞书资料')}:s.sessionBound&&t.name==='memory_search'?{...t,description:'查询当前会话可用的记忆，权限沿用会话已有边界。'}:s.sessionBound&&t.name==='delegate_to_v'?{...t,description:t.description.replace('个人 V','当前会话的 V')}:s.sessionBound&&t.name==='openclaw_tool'?{...t,description:'执行当前会话可用的 OpenClaw 原生工具，遵守会话既有权限；arguments 传工具参数的 JSON。复杂任务或需要后台模型时使用 delegate_to_v。外部操作遵守当前用户授权。'}:t),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[]),...(s.location?[LOCATION_TOOL]:[])].map(t=>s.location?({delegate_to_v:LOCATION_DELEGATE_TOOL,openclaw_agent_control:LOCATION_CONTROL_TOOL}[t.name]??t):t);
+  const sessionTools=s=>[...localTools.filter(t=>(s.display||t.name!=='show_content')&&(!['feishu_calendar','lark_read'].includes(t.name)||Boolean(s.actorReader)||!s.sessionBound&&Boolean(t.name==='feishu_calendar'?calendar:larkRead))).map(t=>s.actorReader&&t.name==='feishu_calendar'?{...t,description:t.description.replace('天懿本人','当前已验证来电账号本人')}:s.actorReader&&t.name==='lark_read'?{...t,description:t.description.replace('本人的飞书资料','当前已验证来电账号本人的飞书资料')}:s.sessionBound&&t.name==='memory_search'?{...t,description:'查询当前会话可用的记忆，权限沿用会话已有边界。'}:s.sessionBound&&t.name==='delegate_to_v'?{...t,description:t.description.replace('个人 V','当前会话的 V')}:s.sessionBound&&t.name==='openclaw_tool'?{...t,description:'执行当前会话可用的 OpenClaw 原生工具，遵守会话既有权限；arguments 传工具参数的 JSON。复杂任务或需要后台模型时使用 delegate_to_v。外部操作遵守当前用户授权。'}:t),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[]),...(s.location?[LOCATION_TOOL]:[]),...(s.iosUseTool?[s.iosUseTool]:[])].map(t=>s.location?({delegate_to_v:LOCATION_DELEGATE_TOOL,openclaw_agent_control:LOCATION_CONTROL_TOOL}[t.name]??t):t);
   // A successful native end_call can return no further speech at all. It is
   // already the model's semantic decision; never infer ending from keywords.
   const acceptEnding=(s,callId)=>{
@@ -254,7 +255,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       onStage:stage=>{if(current(s)){audit({type:'backend.stage',voiceSessionId:s.id,callId:stage.callId,label:stage.latest,running:stage.latestRunning,completed:stage.completed,failed:stage.failed});emit(s,{type:'tool.progress',callId:stage.callId,name:'delegate_to_v',...(stage.latest?{stage:stage.latest}:{})});}}});
     s.deviceActions=deviceActions;s.backendDeviceURL=backendDeviceURL;s.deviceLease=randomBytes(32).toString('base64url');
     s.terminalContext=()=>terminalContext({voiceSessionId:s.id,kind:terminalAdapter?.kind??terminalKind??(surface==='speaker'?'speaker':nativeRuntimeVersion===1?'ios':'web'),capabilities:Object.fromEntries(Object.keys(deviceActions?.capabilities??{}).map(operation=>[operation,{status:s.deviceRequests?.state(operation)??'unavailable'}])),actor:{verified:!unidentified,displayName:callerIdentity?.displayName},session:{scope:unidentified?'guest':'bound'}});
-    s.backendDeviceContext=()=>!deviceActions?'':terminalInstructions(s.terminalContext())+(s.deviceRequests&&s.backendDeviceURL&&!s.unidentified?'\n当前设备执行通道（仅当前任务使用，不能输出/分享/记忆此短期 lease；拒绝不能绕过）：'+JSON.stringify({version:1,endpoint:s.backendDeviceURL,lease:s.deviceLease,voiceSessionId:s.id,cli:fileURLToPath(new URL('../../scripts/device-call.mjs',import.meta.url))})+'。需要位置或其他设备能力时按 device-use Skill 用服务端 CLI 调用，不能凭描述声称已执行。':'');
+    s.backendDeviceContext=()=>!deviceActions?'':terminalInstructions(s.terminalContext())+(s.deviceRequests&&s.backendDeviceURL&&!s.unidentified?'\n当前设备执行通道（仅当前任务使用，不能输出/分享/记忆此短期 lease；拒绝不能绕过）：'+JSON.stringify({version:1,endpoint:s.backendDeviceURL,lease:s.deviceLease,voiceSessionId:s.id,cli:fileURLToPath(new URL('../../scripts/device-call.mjs',import.meta.url))})+'。需要位置或其他设备能力时按 device-use Skill 用服务端 CLI 调用；苹果应用任务按 ios-use Skill 加载对应参考，不能凭描述声称已执行。':'');
     if(!unidentified&&deviceActions){
       const localExecutions=new Map();
       const sendDevice=frame=>{
@@ -265,8 +266,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           if(current(s))s.deviceRequests.receive({...receipt,type:'device.result',version:1,requestId:frame.requestId,voiceSessionId:s.id,operation:frame.operation});
         },()=>{if(current(s))s.deviceRequests.receive({type:'device.result',version:1,requestId:frame.requestId,voiceSessionId:s.id,operation:frame.operation,status:'unknown'});}).finally(()=>localExecutions.delete(frame.requestId));
       };
-      s.deviceRequests=createDeviceRequests({voiceSessionId:s.id,operations:{'location.current':locationOperation,...(typeof deviceOperations==='function'?deviceOperations({voiceSessionId:s.id}):deviceOperations)},capabilities:deviceActions.capabilities,send:sendDevice});
+      s.deviceRequests=createDeviceRequests({voiceSessionId:s.id,operations:{'location.current':locationOperation,...(s.terminalContext().terminal.kind==='ios'?iosUseOperations():{}),...(typeof deviceOperations==='function'?deviceOperations({voiceSessionId:s.id}):deviceOperations)},capabilities:deviceActions.capabilities,send:sendDevice,onState:progress=>{if(/^(notes|calendar|reminders)\./u.test(progress.operation)){audit({type:'device.ios.progress',voiceSessionId:s.id,...progress});if(progress.status==='requires_foreground')s.bridge?.speakProgress('请解锁并返回当前 V 通话，完成系统提示后我会继续。',{caption:true,source:'device-ios'});}}});
       if(deviceActions.capabilities['location.current'])s.location=createDeviceLocation({requests:s.deviceRequests,voiceSessionId:s.id});
+      if(s.terminalContext().terminal.kind==='ios'){s.iosUseTool=iosUseTool(s.terminalContext());s.iosUse=createIOSUseAdapter({capabilities:()=>s.terminalContext().capabilities,request:({operation,payload},callId,signal)=>s.deviceRequests.request(operation,payload,{signal})});}
     }
     sessions.set(s.id,s);
     audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model,voice:s.voice,surface,...(model==='grok'?{speed:grokSpeed,expressiveTags:grokExpressiveTags}:{})});
@@ -367,13 +369,14 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       const controller=new AbortController(),epoch=s.epoch;
       const ownerBridge=s.bridge;s.toolOwners.set(call.callId,ownerBridge);
       s.pending.set(call.callId,controller);
-      audit({type:'tool.call',voiceSessionId:s.id,...call});emit(s,{type:'tool.call',callId:call.callId,name:call.name,activity:taskActivity(call.name,call.args)});
+      audit({type:'tool.call',voiceSessionId:s.id,...(call.name==='ios_use'?{callId:call.callId,name:call.name,args:{operation:call.args.operation,bodyBytes:Buffer.byteLength(String(call.args.payload?.body??''))}}:call)});emit(s,{type:'tool.call',callId:call.callId,name:call.name,activity:taskActivity(call.name,call.args)});
       s.lookup.started(call);
       let result,backgroundAck=false;
       try {
         if(s.unidentified&&!['show_content','end_call'].includes(call.name))throw Error('当前通话没有账号工具权限');
         if(s.sessionBound&&!s.actorReader&&['feishu_calendar','lark_read'].includes(call.name))throw Error('请使用当前会话的工具或委派给当前会话的 V');
         validateTool(call.name,call.args);
+        if(call.name==='ios_use'){if(!s.iosUse)throw Error('当前设备没有苹果应用能力');result=await s.iosUse(call.args,call.callId,controller.signal);}
         if(call.name==='get_current_location'){if(!s.location)throw Error('当前终端不支持定位');result=await s.location.request(controller.signal);}
         if(call.name==='delegate_to_v'&&s.cancelCleanupFailed)throw Error('上一任务退出尚未确认，先重试取消');
         if(call.name==='send_task_updates'){result=await s.delivery.subscribe();}
@@ -397,7 +400,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           if(s.heldResult){audit({type:'backend.result-superseded',voiceSessionId:s.id,callId:s.heldResult.callId});s.heldResult=null;}
           s.backgroundCallId=call.callId;s.backgroundBridge=ownerBridge;s.backgroundRequester=audienceOf(audienceKeys.get(ownerBridge));s.narrations=0;ownerBridge.beginBackgroundTool(call.callId,call.args.question);backgroundAck=true;
         }
-        if(!['send_task_updates','openclaw_agent_control','get_current_location'].includes(call.name))result=await execute(call.name,call.args,call.callId,controller.signal);
+        if(!['send_task_updates','openclaw_agent_control','get_current_location','ios_use'].includes(call.name))result=await execute(call.name,call.args,call.callId,controller.signal);
         if(call.name==='delegate_to_v'&&current(s)&&s.epoch===epoch){
           s.progress=null;await new Promise(resolve=>{s.backendResult={resolve};deferred(s);});
         }
@@ -434,10 +437,10 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         }
       }else if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
       catch {result={error:'工具结果过大或无法续传，请缩小范围并分页读取。'};if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
-      audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId,name:call.name,...(call.name==='get_current_location'?{ok:result?.ok===true,reason:result?.reason}:{result})});
+      audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId,name:call.name,...(call.name==='ios_use'?{status:result?.status,completed:result?.completed===true}:call.name==='get_current_location'?{ok:result?.ok===true,reason:result?.reason}:{result})});
       s.lookup.finished(call,result,ownerBridge===s.bridge);
       // All receivers observe the same tool completion.
-      emit(s,{type:'tool.result',callId:call.callId,name:call.name,...(typeof result?.error==='string'||call.name==='get_current_location'&&result?.ok===false?{failed:true}:{}),...(result?.cancelled===true?{cancelled:true}:{})});
+      emit(s,{type:'tool.result',callId:call.callId,name:call.name,...(typeof result?.error==='string'||call.name==='ios_use'&&result?.completed!==true||call.name==='get_current_location'&&result?.ok===false?{failed:true}:{}),...(result?.cancelled===true?{cancelled:true}:{})});
     };
     const routeOutput=(kind,value,deliver)=>{if(!current(s))return;if(s.unidentified||!speakerRouting?.dispatch?.(s.id,kind,value,deliver))deliver();};
     const hostCallControl=!s.unidentified&&Boolean(speakerRouting?.controlsEnding?.(s.id));
@@ -446,7 +449,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const searchAck=s.model==='seeduplex'&&searchAcknowledgment==='model';
     const voiceTools=(hostCallControl?tools.filter(t=>t.name!=='end_call'):tools).map(tool=>searchAck&&isSearchTool(tool.name)?{...tool,description:(tool.name==='memory_search'&&!s.sessionBound?'检索天懿的 V/OpenClaw 跨通话个人记录，用于历史约定、家庭资料、长期偏好和项目历史。只在答案需要当前通话之外的记录时调用。本通话已经介绍的姓名、喜好、计划，以及现在是谁在说话，由当前声音与本通话上下文回答，不调用本工具。':tool.description)+' 只为按通话规则确认的向 V 提问执行，电视和旁聊不能触发。上述先查记录是指先查再回答事实，不限制在查询前简短接话。调用本工具之前，必须先用语音简短自然地回应当前用户问题，再在同一轮立刻调用本工具。不能只调用工具而保持沉默。'}:tool);
     const instructionCatalog=entries.map(entry=>searchAck&&isSearchTool(entry.id)?{...entry,description:voiceTools.find(tool=>tool.name===entry.id)?.description??entry.description}:entry);
-    const baseInstructions=(!s.unidentified?terminalInstructions(s.terminalContext()):'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader)});
+    const baseInstructions=(!s.unidentified?terminalInstructions(s.terminalContext()):'')+(s.iosUseTool?'\n用户明确要求的简单 iPhone 苹果应用动作直接调用本次 ios_use；复杂任务交后端按 ios-use Skill 办理。不要让前后端重复执行同一写入。':'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader)});
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
       instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
@@ -474,7 +477,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.replyDelivery?.inputStarted();s.userSpeaking=true;s.lastUserAt=Date.now();}
         if(e.type==='input_audio_buffer.speech_stopped'){s.userSpeaking=false;s.lastUserAt=Date.now();}
         audit({type:'provider.event',voiceSessionId:s.id,providerEventType:e.type,responseId:e.responseId});},
-      onProtocolEvent:e=>{if(['response.created','response.output_text.delta','response.output_audio.started'].includes(e.type))s.replyDelivery?.begin(e.response_id??e.response?.id);audit({type:'provider.protocol',voiceSessionId:s.id,event:{...e,...(e.delta&&e.type?.includes('audio')?{delta:'[audio retained separately]'}:{})}});},
+      onProtocolEvent:e=>{if(['response.created','response.output_text.delta','response.output_audio.started'].includes(e.type))s.replyDelivery?.begin(e.response_id??e.response?.id);const toolArgs=e.type?.includes('function_call_arguments');audit({type:'provider.protocol',voiceSessionId:s.id,event:toolArgs?{type:e.type,callId:e.call_id,name:e.name,arguments:'[tool arguments omitted]'}:{...e,...(e.delta&&e.type?.includes('audio')?{delta:'[audio retained separately]'}:{})}});},
       onDiagnostic:e=>{if(!current(s))return;audit({type:'call.provider-status',voiceSessionId:s.id,...e});
         if(['reconnecting','recovered'].includes(e.stage))emit(s,{type:`provider.${e.stage}`});},
       onError:e=>{audit({type:'call.connection-error',voiceSessionId:s.id,model:s.model,message:e.message});emit(s,{type:'error',message:e.message});void close(s.id).catch(()=>{});},

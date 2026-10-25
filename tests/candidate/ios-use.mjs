@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import http from 'node:http';
+import {DatabaseSync} from 'node:sqlite';
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import {installIOSUse} from '../../scripts/install-ios-use.mjs';
 import {createDeviceRequests} from '../../lib/device-requests.mjs';
@@ -14,13 +15,15 @@ const cfg=JSON.parse(fs.readFileSync(process.env.OPENCLAW_CONFIG_PATH));
 const workspace=cfg.agents.entries.makaron.workspace;
 assert(workspace.startsWith(process.env.VLAB_CANDIDATE_DATA));
 // Isolated model/tool test; never start channels, cron or a shared Gateway.
-cfg.channels={};cfg.cron={enabled:false};cfg.plugins={enabled:true,load:{paths:[]},entries:{deepseek:{enabled:true}},allow:['deepseek']};
-cfg.agents.defaults.heartbeat={every:'0m'};
-if(cfg.tools)delete cfg.tools.web;
+cfg.bindings=[];cfg.channels={};cfg.cron={enabled:false};cfg.plugins={enabled:false,load:{paths:[]},entries:{},allow:[]};
+cfg.agents={ownership:'explicit',defaults:{workspace:path.dirname(workspace),model:{primary:'deepseek/deepseek-flash',fallbacks:[]}},entries:{makaron:{name:'V Candidate',workspace,agentDir:path.join(state,'agents/makaron/agent'),model:{primary:'deepseek/deepseek-flash',fallbacks:[]}}}};
+cfg.tools={profile:'full',exec:{security:'full',ask:'off'}};
+if(cfg.models?.providers?.deepseek)delete cfg.models.providers.deepseek.agentRuntime;
 fs.writeFileSync(process.env.OPENCLAW_CONFIG_PATH,JSON.stringify(cfg),{mode:0o600});
 const install=await installIOSUse(workspace);
 const cli=path.join(runtime,'openclaw','dist','index.js');
 const env={...process.env,OPENCLAW_GATEWAY_PORT:String(cfg.gateway.port),TMPDIR:path.join(process.env.VLAB_CANDIDATE_DATA,'tmp'),XDG_CACHE_HOME:path.join(process.env.VLAB_CANDIDATE_DATA,'cache')};
+delete env.VLAB_OPENCLAW_AGENT_RUNTIME;
 fs.mkdirSync(env.TMPDIR,{recursive:true,mode:0o700});fs.mkdirSync(env.XDG_CACHE_HOME,{recursive:true,mode:0o700});
 if(!env.DEEPSEEK_API_KEY){
  const secretFile=path.join(path.dirname(process.env.VLAB_SHARED_STATE_DIR),'secrets.env');
@@ -61,9 +64,14 @@ const descriptor={version:1,endpoint:`http://127.0.0.1:${server.address().port}/
 const prompt='这是当前通话从语音侧委托给后端的设备任务验收。用户明确要求：把“先验证用户需求，再安排下一步”新建到苹果备忘录，标题“候选想法”。仅操作本任务当前设备。当前设备 iOS，notes.create 可用，calendar.query 已拒绝。按可发现的 ios-use Skill 操作，等待设备结果再回答。不要创建文件代替备忘录，不要向外发送消息，不要自动重试。\n服务注入的当前设备执行 descriptor（不能输出或记忆）：'+JSON.stringify(descriptor);
 try{
  const output=json(await run(['agent','--local','--agent','makaron','--session-key','agent:makaron:candidate-ios-use-'+randomUUID(),'--model','deepseek/deepseek-flash','--message',prompt,'--json','--timeout','180']));
+ const dbPath=path.join(state,'agents/makaron/agent/openclaw-agent.sqlite');
+ let skillRead=false,notesReferenceRead=false;
+ if(fs.existsSync(dbPath)){const db=new DatabaseSync(dbPath,{readOnly:true});const trace=db.prepare('SELECT event_json FROM transcript_events ORDER BY seq').all().map(x=>x.event_json).join('\n');skillRead=trace.includes('# iOS Use');notesReferenceRead=trace.includes('# 苹果备忘录');db.close();}
+ assert(skillRead&&notesReferenceRead,'Backend must actually read the Skill and Notes reference');
  assert.equal(sent.length,1,'backend must issue exactly one correlated device request');assert.equal(sent[0].operation,'notes.create');
  const text=JSON.stringify(output.payloads??output);
+ if(sent.length!==1)console.log(JSON.stringify({backendReply:text.replaceAll(lease,'[redacted]')}));
  assert(!text.includes(lease),'backend leaked device lease');
  // Actual transcript proof is inspected separately; this report states only proven execution.
- console.log(JSON.stringify({ok:true,skill:{name:install.name,files:install.files,discoverable:true},backend:{runtime:'OpenClaw',model:'deepseek/deepseek-flash',taskAccepted:true,deviceRequests:sent,reportedUnknown:/未知|未确认|无法确认|没有确认|不能确认|未能确认|未收到/.test(text)},deviceEvidence:'transport_fixture_unknown_no_physical_notes',sharedModified:false}));
+ console.log(JSON.stringify({ok:true,skill:{name:install.name,files:install.files,discoverable:true},backend:{runtime:'OpenClaw',model:'deepseek/deepseek-flash',taskAccepted:true,skillRead,notesReferenceRead,deviceRequests:sent,reportedUnknown:/未知|未确认|无法确认|没有确认|不能确认|未能确认|未收到/.test(text)},deviceEvidence:'transport_fixture_unknown_no_physical_notes',sharedModified:false}));
 }finally{requests.close();await new Promise(resolve=>server.close(resolve));}

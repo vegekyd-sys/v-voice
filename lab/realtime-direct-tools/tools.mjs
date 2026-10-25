@@ -1,3 +1,4 @@
+import {validateIOSOperation} from './ios-use.mjs';
 import {LOCATION_TOOL} from './device-location.mjs';
 import {buildLarkReadArgv,calendarReadArgs} from './lark-readonly.mjs';
 import {VOICE_TASK_CONTROL_TOOL,validateVoiceTaskControl} from '../../lib/voice-task-control.mjs';
@@ -30,6 +31,7 @@ export const SPEAKER_VOLUME_TOOL={type:'function',name:'set_speaker_volume',desc
 // Declared only on calls from a device with a camera (for example StackChan).
 export const LOOK_TOOL={type:'function',name:'look',description:'让正在通话的这台机器人用自己的摄像头拍一张照片，再由看图模型回答 question。用户说“你看看这是什么”“我手里拿的是什么”“帮我看一下”时调用；question 写清要看什么，例如“用户手里拿的是什么”。只能看到机器人正前方摄像头拍到的画面，看不到别处、屏幕外或过去的事。结果是对真实照片的识别：只能按返回的 description 回答，不得编造或补充没看到的细节；没看清或失败就如实说，可以请用户把东西放到机器人面前再试。',parameters:object({question:str},['question'])};
 export function validateTool(name,args){
+ if(name==='ios_use'){if(!args||typeof args!=='object'||Array.isArray(args)||Object.keys(args).some(k=>!['operation','payload'].includes(k)))throw Error('iOS 请求不接受身份或设备覆盖');validateIOSOperation(args.operation,args.payload);return args;}
  const tool=Object.hasOwn(args??{},'use_current_location')&&['delegate_to_v','openclaw_agent_control'].includes(name)?(name==='delegate_to_v'?LOCATION_DELEGATE_TOOL:LOCATION_CONTROL_TOOL):[...TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,LOCATION_TOOL].find(t=>t.name===name);if(!tool)throw Error('不支持这个工具');
  if(!args||typeof args!=='object'||Array.isArray(args))throw Error('工具参数必须是对象');
  for(const key of Object.keys(args))if(!(key in tool.parameters.properties))throw Error('未知工具参数');

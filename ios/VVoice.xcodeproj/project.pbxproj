@@ -47,6 +47,7 @@
 		7F29D74444DB07C50CB95609 /* VoiceComparison.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08A624E6F16469B2F4941AB0 /* VoiceComparison.swift */; };
 		8159E2473B07C08167B0FD98 /* SharedDuplexFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E2B7ECB25AEFE948D49544B /* SharedDuplexFlowTests.swift */; };
 		86E0D28CB20237D88346B3CE /* CallSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7793FA9355C2CE185FE89524 /* CallSettings.swift */; };
+		8A44D77FEB245D7F3E5B10A9 /* IOSUsePermissionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15D7F9EC70E7E7A475D95363 /* IOSUsePermissionUITests.swift */; };
 		8B9B09CD2C03DF5A31F015B2 /* H5Shell in Resources */ = {isa = PBXBuildFile; fileRef = 1BD7A9E9F549C0BC8FEE308B /* H5Shell */; };
 		8E4C6BA1932EA200ADE9F440 /* NativeFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6DC401CBC28DC4E5E00D8B4 /* NativeFlowTests.swift */; };
 		9E4C76775E9C12F4BCCCCEA2 /* VoiceWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D7BA1CED3B5C99A8E33694C /* VoiceWidget.swift */; };
@@ -96,6 +97,13 @@
 			remoteGlobalIDString = 76B72D8DD948B5242D78A53C;
 			remoteInfo = VVoice;
 		};
+		F304624ED65605AA8175E561 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 43BCFD24D3DB3A196D9A4816 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 76B72D8DD948B5242D78A53C;
+			remoteInfo = VVoice;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -121,6 +129,7 @@
 		13185E1590D05298912335D1 /* CallDocumentReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallDocumentReader.swift; sourceTree = "<group>"; };
 		13760D7F18C1D0CA48444844 /* GPTLiveTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPTLiveTransportTests.swift; sourceTree = "<group>"; };
 		14B4ECE5A0223B8A3F2182C0 /* AppIconBranding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconBranding.swift; sourceTree = "<group>"; };
+		15D7F9EC70E7E7A475D95363 /* IOSUsePermissionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSUsePermissionUITests.swift; sourceTree = "<group>"; };
 		160D305C3A5C05A7DC1E862F /* BindingJourneyFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BindingJourneyFixture.swift; sourceTree = "<group>"; };
 		1BD7A9E9F549C0BC8FEE308B /* H5Shell */ = {isa = PBXFileReference; lastKnownFileType = folder; name = H5Shell; path = VVoice/Resources/H5Shell; sourceTree = SOURCE_ROOT; };
 		1D650C3BEF748AF2B061E3A8 /* CallCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallCoordinator.swift; sourceTree = "<group>"; };
@@ -158,6 +167,7 @@
 		85026CB025534C921B1BF37D /* H5Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = H5Snapshot.swift; sourceTree = "<group>"; };
 		857F5E8922957A5BB87318B1 /* VoiceIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceIntents.swift; sourceTree = "<group>"; };
 		8D4D345BC789E025A5392879 /* DeviceLocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLocationTests.swift; sourceTree = "<group>"; };
+		90B4412D09B266B4F4CCFEEC /* VVoiceIOSUseUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VVoiceIOSUseUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A8FC199529FFCD2C2BBDA41F /* AppleNotesFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleNotesFlowTests.swift; sourceTree = "<group>"; };
 		AA44C040A9E6D25236282244 /* VVoiceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VVoiceApp.swift; sourceTree = "<group>"; };
 		AC68CB218040B5DF93D95B7D /* RelaySignalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelaySignalTests.swift; sourceTree = "<group>"; };
@@ -216,6 +226,7 @@
 				9E8B28BAEB22EBCE142AED57 /* Resources */,
 				9EBA31684B1E6AFE1A678690 /* Shared */,
 				AE10E952BAF9893DD53B1272 /* Tests */,
+				9E34B7750F5BA907C4088270 /* UITests */,
 				292F392478660666E4DC9212 /* Widget */,
 				7754225845284A0F2A375343 /* Products */,
 			);
@@ -250,9 +261,19 @@
 			children = (
 				E44018070C4751C833BA02F4 /* VVoice.app */,
 				445925F85326700CF3C4BA73 /* VVoiceActivity.appex */,
+				90B4412D09B266B4F4CCFEEC /* VVoiceIOSUseUITests.xctest */,
 				3EDEAC67D66165AD0E275FD2 /* VVoiceTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		9E34B7750F5BA907C4088270 /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				15D7F9EC70E7E7A475D95363 /* IOSUsePermissionUITests.swift */,
+			);
+			name = UITests;
+			path = VVoice/UITests;
 			sourceTree = "<group>";
 		};
 		9E8B28BAEB22EBCE142AED57 /* Resources */ = {
@@ -405,6 +426,24 @@
 			productReference = E44018070C4751C833BA02F4 /* VVoice.app */;
 			productType = "com.apple.product-type.application";
 		};
+		B0289B6493C297B90B1BE7D4 /* VVoiceIOSUseUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1873855DA10CCF6BF067DE11 /* Build configuration list for PBXNativeTarget "VVoiceIOSUseUITests" */;
+			buildPhases = (
+				F3C0ED07D1B6BF262B3853F0 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A5AA629FBCD4C77314A9022A /* PBXTargetDependency */,
+			);
+			name = VVoiceIOSUseUITests;
+			packageProductDependencies = (
+			);
+			productName = VVoiceIOSUseUITests;
+			productReference = 90B4412D09B266B4F4CCFEEC /* VVoiceIOSUseUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		CC68812CA4AAD7C41F0E1583 /* VVoiceActivity */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = D31FF6CF8E248FC5FE7CB3BA /* Build configuration list for PBXNativeTarget "VVoiceActivity" */;
@@ -442,6 +481,11 @@
 						DevelopmentTeam = E6YTL27QWA;
 						ProvisioningStyle = Automatic;
 					};
+					B0289B6493C297B90B1BE7D4 = {
+						DevelopmentTeam = E6YTL27QWA;
+						ProvisioningStyle = Automatic;
+						TestTargetID = 76B72D8DD948B5242D78A53C;
+					};
 					CC68812CA4AAD7C41F0E1583 = {
 						DevelopmentTeam = E6YTL27QWA;
 						ProvisioningStyle = Automatic;
@@ -469,6 +513,7 @@
 				76B72D8DD948B5242D78A53C /* VVoice */,
 				CC68812CA4AAD7C41F0E1583 /* VVoiceActivity */,
 				1F47812CF8ADC7F4E8D755D6 /* VVoiceTests */,
+				B0289B6493C297B90B1BE7D4 /* VVoiceIOSUseUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -580,6 +625,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F3C0ED07D1B6BF262B3853F0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8A44D77FEB245D7F3E5B10A9 /* IOSUsePermissionUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -592,6 +645,11 @@
 			isa = PBXTargetDependency;
 			target = 76B72D8DD948B5242D78A53C /* VVoice */;
 			targetProxy = E3C91533DD1D376651CA8FBD /* PBXContainerItemProxy */;
+		};
+		A5AA629FBCD4C77314A9022A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 76B72D8DD948B5242D78A53C /* VVoice */;
+			targetProxy = F304624ED65605AA8175E561 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -706,7 +764,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 33;
+				CURRENT_PROJECT_VERSION = 35;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = E6YTL27QWA;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -739,6 +797,23 @@
 			};
 			name = Debug;
 		};
+		55DB0E4E1176957555BAABAA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.versa.VVoiceIOSUseUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = VVoice;
+			};
+			name = Debug;
+		};
 		5AAFA4FF48BE448628E02A45 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -754,6 +829,23 @@
 				SKIP_INSTALL = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) VOICE_WIDGET";
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		6A3769AC66C7B00CBA1E5461 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.versa.VVoiceIOSUseUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = VVoice;
 			};
 			name = Release;
 		};
@@ -792,7 +884,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 33;
+				CURRENT_PROJECT_VERSION = 35;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = E6YTL27QWA;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -838,6 +930,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		1873855DA10CCF6BF067DE11 /* Build configuration list for PBXNativeTarget "VVoiceIOSUseUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				55DB0E4E1176957555BAABAA /* Debug */,
+				6A3769AC66C7B00CBA1E5461 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		950B0EEE0B5535701FB2E2A3 /* Build configuration list for PBXProject "VVoice" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

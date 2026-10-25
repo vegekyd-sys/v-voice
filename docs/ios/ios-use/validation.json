@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "date": "2026-10-25",
+  "candidateOnly": true,
+  "nativeBuild": 35,
+  "baseCommit": "ab8ad23",
+  "sharedDependency": "011b4c9a493f87d639a7ed656b6867d203654fae",
+  "checks": {
+    "node": {
+      "passed": 923,
+      "failed": 0,
+      "log": "/tmp/vvoice-ios-use-all-node3.log"
+    },
+    "swiftCore": {
+      "xctest": 6,
+      "swiftTesting": 48,
+      "log": "/tmp/vvoice-ios-use-core.log"
+    },
+    "native": {
+      "passed": 11,
+      "failed": 0,
+      "resultBundle": "/tmp/vvoice-ios-use-wire.xcresult",
+      "scope": [
+        "HTTP reservation → production provider adapter (mock upstream) → authenticated relay → EventKit create → persisted-ID readback",
+        "Calendar/Reminders real simulator create/query",
+        "Notes lifecycle/readback verifier fixtures; no actual Notes database"
+      ]
+    },
+    "systemPermissionUI": {
+      "passed": 1,
+      "resultBundle": "/tmp/vvoice-ios-use-permission-ui.xcresult",
+      "actualChoice": "允许完全访问",
+      "backgroundWait": true,
+      "sameCallAfterConsent": true,
+      "voiceUpstream": "local fixture, no paid/human call"
+    },
+    "backend": {
+      "id": "candidate-99daae26-fec3-4d08-8d37-5aa70c9dcf1a",
+      "ok": true,
+      "inputSha256": "1aae8c069f2b37932a17d9adde30491b1c0f0bfb661c2d4b06a1cb89bfbe146e",
+      "runtimeSha": "aad023612820ae98ddeac9de6103706d60431a6dee04ea01465d8173c6f36eda",
+      "sharedUnchanged": true
+    },
+    "backendReport": {
+      "ok": true,
+      "skill": {
+        "name": "ios-use",
+        "files": [
+          {
+            "path": "SKILL.md",
+            "sha256": "26f44b1c99d59d90a0e45634ccb6e4368b7197570ab9124a078da964ec327c28"
+          },
+          {
+            "path": "references/calendar.md",
+            "sha256": "57eaa654d151a4db44173302f0c263542707eacf3cf9938814c79395f83cddc8"
+          },
+          {
+            "path": "references/notes.md",
+            "sha256": "f96b087d55c8c1974250004a659ee3669343ec617f4c29c09540d4cbee4e1987"
+          },
+          {
+            "path": "references/reminders.md",
+            "sha256": "35807b94f3dceedc1ab7247c22e15c4525fac7ab559ba40ffc4a7b7c8e0c2770"
+          }
+        ],
+        "discoverable": true
+      },
+      "backend": {
+        "runtime": "OpenClaw",
+        "model": "deepseek/deepseek-flash",
+        "taskAccepted": true,
+        "skillRead": true,
+        "notesReferenceRead": true,
+        "deviceRequests": [
+          {
+            "operation": "notes.create",
+            "requestId": "6fde18bb-35d7-4099-8b33-b43102be27de"
+          }
+        ],
+        "reportedUnknown": true
+      },
+      "deviceEvidence": "transport_fixture_unknown_no_physical_notes",
+      "sharedModified": false
+    }
+  },
+  "phone": {
+    "installed": false,
+    "permissionsGranted": false,
+    "notesActualCreateAppend": false,
+    "humanSpeech": false,
+    "lockScreenAudioContinuity": false
+  },
+  "limitations": [
+    "Backend Candidate uses the actual OpenClaw embedded runtime and configured DeepSeek model in private state; channels/cron/worker plugins disabled, no shared VLab writes",
+    "Backend device endpoint intentionally returns unknown; this validates task/Skill/request and honest result, not a real iPhone Notes save",
+    "GPT WebRTC device path not implemented by the shared layer",
+    "Live denied-to-granted tool catalog refresh remains a shared-layer gap; new call refreshes declaration",
+    "Notes requires correctly configured Shortcuts; readback is user-configured workflow evidence, not independent Notes database or iCloud sync proof"
+  ]
+}

@@ -34,6 +34,14 @@ import AppIntents
         WindowGroup {
             content
                 .preferredColorScheme(.light)
+                #if DEBUG && targetEnvironment(simulator)
+                .task {
+                    if CommandLine.arguments.contains("--ios-use-call-review") {
+                        call.model = .seeduplex
+                        try? await call.startOrContinue()
+                    }
+                }
+                #endif
                 .onAppear { call.sceneChanged(scene); refreshShortcutsWhenIdle() }
                 .onChange(of: scene) { _, value in call.sceneChanged(value); if value == .active { refreshShortcutsWhenIdle() } }
         }

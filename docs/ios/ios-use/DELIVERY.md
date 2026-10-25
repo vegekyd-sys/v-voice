@@ -46,3 +46,20 @@ iOS `IOSActionsCoordinator.receiveFrame(frame, voiceID, owner, foreground, prote
 - tool.call 审计对 ios_use 的 title/body 只记录操作名与字节数，避免将备忘录正文放入通用工具日志；不回传快捷指令本地 token。
 - 本机 `capabilities` 在前台恢复时读取系统状态；公共层需把新的状态刷新给双方模型。执行前仍重新检查系统授权，不以旧声明代替权限。
 - 旧 AppleNotesFlowTests 的手动 supplemental 路径仅作历史回归；语音设备请求回执直接返回公共工具通道，不能再作为用户 steer 重复交给后端。
+
+
+## 本路集成与已验证结果
+
+已将位置线稳定依赖 011b4c9（含5d41869/bbd959e/0fa055c）按Git合并到本路，merge 982beec；本路前端增加唯一 ios_use 工具，公共动作按当前可信 iOS 端筛选，工具调用和上游参数审计脱敏。原生共享 fast/HTTP 声明、与 location.current 并列分派；取消/过期不切断音频。Candidate native build 35；不改已安装版本登记。
+
+- npm 全量923/923通过（独立npm ci后按锁定esbuild重新生成H5与Reader）；Swift Core 6 XCTest +48 Swift Testing通过。
+- 原生11/11通过：包括真实HTTP/production provider adapter/mock upstream/relay/本机EventKit实际保存及ID读回。模拟器Calendar与Reminders实际新建/查询，清理自身合成条目。
+- 首次系统授权 UI 1/1通过：后台原请求等待前台→返回App→实际TCC“允许完全访问”→原calendar.query完成，sessionRequests不增加、原连接保持。模拟器不代表真机锁屏/音频接受。
+- 私有VLab Candidate candidate-99daae26-fec3-4d08-8d37-5aa70c9dcf1a：真实OpenClaw后端使用配置的DeepSeek模型；实际发现、读取ios-use入口及notes参考后发出一次设备请求。fixture故意unknown，后端如实报告未确认。sharedUnchanged=true。该测试在私有embedded配置中关闭channels/cron/worker插件，不证明生产Worker路由或真实iPhone写入。
+- 精确输入hash/结果路径见validation.json；此前Candidate配置错误未算通过（继承端口/TMPDIR、无插件环境仍保留web provider及Worker选择，已在私有配置修正）。未改共享环境来消除测试错误。
+
+## 仍需本路完成/人类参与
+
+签名build35及独立服务Candidate准备中，真机窗口目前让Public线先用。窗口释放后本路核对现有通话与已装版本，保留回退产物，再安装验收。真实Notes新建/追加、快捷指令一次配置与用户系统确认、真机前后台/锁屏音频和真实语音发起均未通过。
+
+GPT WebRTC设备动作仍未接通，不在本路接受范围；通话中从denied到granted后的前台工具目录即时刷新仍是公共层缺口。首次prompt授权后的同一请求继续已实际测试，不需要重新拨号。

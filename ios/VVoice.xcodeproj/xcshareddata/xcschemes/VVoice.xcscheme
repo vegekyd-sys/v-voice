@@ -50,6 +50,17 @@
                ReferencedContainer = "container:VVoice.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "B0289B6493C297B90B1BE7D4"
+               BuildableName = "VVoiceIOSUseUITests.xctest"
+               BlueprintName = "VVoiceIOSUseUITests"
+               ReferencedContainer = "container:VVoice.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>
