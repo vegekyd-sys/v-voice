@@ -92,6 +92,28 @@ test('failed current-account admission clears old identity and becomes a genuine
  assert.match(f.reservations.at(-1).sessionKey,/^voice:guest:/);assert.equal(f.calls.length,before);
 });
 
+test('provider refusal before issuing a login code cannot retain the previous account identity',async t=>{
+ const f=await fixture(t);await f.send((await f.clientLogin()).location);
+ assert.equal((await f.send('/voice/api/status?phone='+phone)).json().accountLabel,'Alice Fixture');
+ const page=await f.send('/voice/feishu/callback?phone='+phone,{ua:'Lark'});
+ const state=JSON.parse(page.text.match(/id="login-config">(.*?)<\/script>/s)[1]).state;
+ const gatewayBefore=f.calls.length,providerBefore=f.providerCalls.length;
+ // External self-built-app users cannot obtain a user token. Exercise the
+ // no-code failure boundary, not a fictional successful external OAuth grant.
+ const finish=await f.send('/voice/feishu/client-login',{body:{state,failure:{code:20027},name:'Forged Owner',openId:'ou_alice'}});
+ assert.equal(finish.status,200);assert.equal(finish.json().status.unidentified,true);
+ assert.equal(f.jar.get('v_feishu_phone'),'');
+ assert.equal(finish.json().status.accountLabel,undefined);
+ assert.equal(f.providerCalls.length,providerBefore);
+ const call=await f.send('/voice/api/session?phone='+phone,{body:{model:'grok',callerIdentity:{source:'feishu',displayName:'Alice Fixture'}}});
+ assert.equal(call.status,200,call.text);
+ const actual=f.reservations.at(-1);
+ assert.equal(actual.callerIdentity,undefined);assert.equal(actual.toolIdentity,undefined);
+ assert.equal(actual.unidentified,true);assert.match(actual.sessionKey,/^voice:guest:/);
+ assert.equal(f.calls.length,gatewayBefore);
+ await f.send('/voice/api/close?phone='+phone,{body:call.json()});
+});
+
 test('client login rejects foreign origins, stolen state and excess payload without making provider calls',async t=>{
  const f=await fixture(t);const start=await f.send('/voice/feishu/callback?phone='+phone,{ua:'Lark'});
  const state=JSON.parse(start.text.match(/id="login-config">(.*?)<\/script>/s)[1]).state;

@@ -48,3 +48,7 @@ This does not authorize arbitrary callers: the existing `personal-tianyi` admiss
 The probe first exposed harness setup issues (missing package dependency, short fixture ID and per-IP fixture capacity), then caught that normalized hardware records dropped account metadata; the mapping now preserves it internally. A separate HTTP negative test reproduced browser-cookie fallback through an App alias before the fix and passed afterwards.
 
 Physical iPhone permissions/background audio and speaker/robot firmware acceptance are not represented by these results. The current production service, TestFlight 39 and device configuration remain unchanged. Release requires approval of this candidate and a new native build for the changed settings/snapshot; it is not delivered by web shell sync alone.
+
+## Feishu identity follow-up — 2026-10-25
+
+Real browser verification found that the current OAuth flow cannot identify external contacts of an externally shared self-built Feishu app. Public/guest usability does not close this gap. Production V is available to all employees, while VLab is restricted to its owner. The owner completed a fresh VLab OAuth login; another internal employee has not completed a real login in this verification. See [the identity verification and proposed external handoff](feishu-identity-verification-20261025.md). This candidate must not be described as completed external-account support.
