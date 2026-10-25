@@ -4,9 +4,10 @@ import {execFileSync} from 'node:child_process';
 import {readFileSync,existsSync} from 'node:fs';
 import {GrokVoiceBridge} from '../../lab/realtime-direct-tools/grok-provider.mjs';
 import {LOCATION_TOOL} from '../../lab/realtime-direct-tools/device-location.mjs';
-const runtime=process.env.VLAB_CANDIDATE_RUNTIME;
-if(!runtime||!process.env.VLAB_CANDIDATE_DATA)throw Error('Private Candidate runner required');
-const require=createRequire(runtime+'/openclaw/package.json'),{WebSocket}=require('ws');
+const runtime=process.env.VLAB_CANDIDATE_RUNTIME??process.env.VOICE_CANDIDATE_RUNTIME;
+const data=process.env.VLAB_CANDIDATE_DATA??process.env.VOICE_CANDIDATE_DATA;
+if(!runtime||!data||!data.includes('/candidate-tests/runs/candidate-')&&!data.startsWith('/var/lib/v-voice-candidates/'))throw Error('Private Candidate required');
+const require=createRequire(existsSync(runtime+'/openclaw/package.json')?runtime+'/openclaw/package.json':runtime+'/package.json'),{WebSocket}=require('ws');
 const keyFile=process.env.VLAB_SHARED_STATE_DIR+'/secrets/store/XAI_API_KEY';
 let apiKey=process.env.XAI_API_KEY??(existsSync(keyFile)?readFileSync(keyFile,'utf8').trim():undefined);
 // Voice provider keys belong to the deployed Voice unit, not the Gateway.
