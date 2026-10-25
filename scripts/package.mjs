@@ -22,6 +22,8 @@ names.push('lab/gpt-live-h5/ios-shell-release.json');
 names.push('lab/realtime-direct-tools/xiaozhi-wire.mjs','lab/realtime-direct-tools/device-vision.mjs','lab/robot/robot-catalog.mjs','lab/robot/robot-reactions.mjs');
 names.push('lib/call-summary.mjs','lib/ios-bindings.mjs','lib/conversation-calls.mjs','lib/conversation-replies.mjs','lib/phone-provisioning.mjs','lib/private-phone-file.mjs','lib/feishu-phone-login.mjs','lib/feishu-group-menu.mjs','lib/feishu-phone-tab.mjs','scripts/feishu-menu.mjs','scripts/phone.mjs');
 names.push('lab/gpt-live-h5/caller-context.mjs','lib/feishu-caller-identity.mjs','lab/gpt-live-h5/feishu-client-login.mjs','lib/feishu-actor-gateway.mjs','lib/feishu-conversation-directory.mjs');
+names.push('lib/backend-device-bundle.mjs','scripts/install-backend-device-bundle.mjs');
+names.push(...run('ls-files','skills').split('\n').filter(Boolean));
 names.push('lib/terminal-context.mjs','lib/device-requests.mjs','lab/gpt-live-h5/device-location.mjs','scripts/device-call.mjs','skills/device-use/SKILL.md');
 const target=resolve(process.argv[2]??join(root,'artifacts',commit));
 await mkdir(dirname(target),{recursive:true});
@@ -31,6 +33,10 @@ for(const name of [...new Set(names)].sort()){
  const bytes=await readFile(join(root,name)),dest=join(target,name);await mkdir(dirname(dest),{recursive:true});await copyFile(join(root,name),dest);
  files.push({path:name,sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length});
 }
+const backendFiles=files.filter(file=>file.path==='scripts/device-call.mjs'||file.path.startsWith('skills/'));
+const backendBundle=Buffer.from(JSON.stringify({schema:'v-voice-backend-device-bundle-v1',sourceCommit:commit,files:backendFiles},null,2)+'\n');
+await writeFile(join(target,'backend-device-bundle.json'),backendBundle,{flag:'wx'});
+files.push({path:'backend-device-bundle.json',sha256:createHash('sha256').update(backendBundle).digest('hex'),bytes:backendBundle.length});
 const shell=JSON.parse(await readFile(join(root,'lab/gpt-live-h5/ios-shell-release.json'),'utf8'));
 const ios=JSON.parse(await readFile(join(root,'docs/ios/versions.json'),'utf8'));
 const clients={web:{node:'web'},ios:{node:'web',shellRevision:shell.revision,minimumBridge:shell.minimumBridge,maximumBridge:shell.maximumBridge,acceptedBuild:ios.lastAcceptedBuild??ios.currentDeviceCandidate?.lastAcceptedBuild??ios.build,nativeSourceCommit:ios.sourceCommit},robot:{node:'devices',protocol:'xiaozhi-v1',firmwareUpdate:'separate-if-required'},speaker:{node:'devices',protocol:'voice-device-v1',firmwareUpdate:'separate-if-required'}};

@@ -21,7 +21,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   if(method==='voice.product.task.cancel'){sdkTask.status='cancelled';return {taskId:sdkTask.taskId,cancelled:true};}
   return invoke(args,method);
  }};
- const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
+ const service=createDirectVoiceService({gateway,...(options.backendDeviceURL?{backendDeviceBundle:{root:'/fixture/backend-device-bundle',sha256:'a'.repeat(64)},backendDeviceBundleProbe:async()=>true}:{}),wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
  const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion,nativeDeviceActions:options.nativeDeviceActions,backendDeviceURL:options.backendDeviceURL,terminalAdapter:options.terminalAdapter});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
@@ -1251,5 +1251,14 @@ test('live permission refresh reaches both model context and backend snapshot wi
   invoke('delegate_to_v',{question:'读取此刻设备权限，不要请求定位'},'permission-context');
   for(let i=0;i<100&&!f.invocations.some(x=>x.question?.includes('"endpoint"'));i++)await delay(2);
   assert.match(f.invocations.find(x=>x.question?.includes('"endpoint"')).question,/location.current.*denied/);f.completeBackend('已确认定位权限被拒绝，未取位置');
+ }
+});
+
+test('missing or failed backend bundle validation never advertises a guessed execution path',async t=>{
+ for(const options of [{backendDeviceBundle:null},{backendDeviceBundleProbe:async()=>false}]){
+  const f=await fixture(undefined,'grok',{nativeDeviceActions:{version:1,capabilities:{'location.current':{status:'prompt'}}},backendDeviceURL:'https://different-voice.example/internal/device-request',...options});t.after(()=>f.service.dispose());
+  f.call('delegate_to_v',{question:'读取本次设备上下文，不操作设备'},'unverified-bundle');
+  for(let i=0;i<100&&!f.invocations.some(x=>x.question);i++)await delay(2);
+  const text=f.invocations.find(x=>x.question).question;assert.match(text,/未验证或未配置/);assert(!text.includes('"lease"'));assert(!text.includes('"cli"'));f.completeBackend('当前后台设备通道不可用');
  }
 });

@@ -41,3 +41,7 @@ Baseline ab8ad23. This is implementation progress, not acceptance or deployment.
 ## Native device.context dispatch fix
 
 Reused iOS Use commit bbb07cd74ceee86e6b48d36e780df9691dd0f5c3 as f51f6ca: consume device.context before native audio-runtime decoding. A new real relay/native-coordinator regression receives the sideband frame, asserts the call owner stays active, then completes another location request. Simulator test passed (1/1). This does not claim OS permission revocation keeps an app alive: if TCC terminates it, disconnect/owner retirement must invalidate lease and pending requests, without auto-redial or side-effect retry.
+
+## Backend topology follow-up
+
+Artifact-local descriptor paths have been replaced by trusted backend bundle configuration and a real-helper asset/network preflight at first delegation (not voice startup). Packaging includes the helper, all tracked Skill assets and their hashes. Missing or failed mapping/probe returns no descriptor. Full Node regression: 918 passed; helper/HTTP/hash unit integration: 2 passed. Cross-host Candidate evidence is still pending and must not be inferred from those unit results.
