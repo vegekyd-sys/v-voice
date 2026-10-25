@@ -1,4 +1,5 @@
-import {getRealtimeVoiceProvider,resolveConfiguredRealtimeVoiceProvider,consultRealtimeVoiceAgent,controlRealtimeVoiceAgentRun} from 'openclaw/plugin-sdk/realtime-voice';
+import * as realtimeVoiceSDK from 'openclaw/plugin-sdk/realtime-voice';
+const {getRealtimeVoiceProvider,resolveConfiguredRealtimeVoiceProvider,consultRealtimeVoiceAgent,controlRealtimeVoiceAgentRun}=realtimeVoiceSDK;
 import {createVoiceTasks} from './tasks.mjs';
 import {createVoiceGptProvider} from './provider.mjs';
 import {readVoiceTaskResult} from './delivery.mjs';
@@ -7,6 +8,7 @@ export default {
  register(api){
  const caller=client=>client?.internal?.voiceActor?JSON.stringify([client.connId,client.internal.voiceActor.accountId,client.internal.voiceActor.openId,client.internal.voiceActor.sessionKey]):client?.connId;
  const reservations=new Map();
+ const deviceContexts=realtimeVoiceSDK.registerRealtimeVoiceDeviceContext?.(api,{reservations});
  const tasks=createVoiceTasks({consult:consultRealtimeVoiceAgent,control:controlRealtimeVoiceAgentRun,agentRuntime:api.runtime.agent,getConfig:()=>api.config,logger:api.logger,subscribe:fn=>api.runtime.events.onAgentEvent(fn)});
  api.registerGatewayMethod('voice.product.task.start',async({params,client,context,respond})=>{
   let sent=false;
@@ -35,7 +37,7 @@ export default {
   if(!row||row.ownerConnId!==client?.connId||params?.mode!=='end'){respond(false,undefined,{code:'INVALID_REQUEST',message:'Voice control requires its authenticated reservation owner'});return;}
   try{respond(true,row.delivery.end());}catch{respond(false,undefined,{code:'INVALID_REQUEST',message:'Voice reservation is closed'});}
  },{scope:'operator.write'});
- api.registerRealtimeVoiceProvider(createVoiceGptProvider({reservations,
+ api.registerRealtimeVoiceProvider(createVoiceGptProvider({reservations,deviceContexts,
   getBase:cfg=>getRealtimeVoiceProvider('openai',cfg),
   isConfigured:ctx=>{try{return Boolean(resolveConfiguredRealtimeVoiceProvider({configuredProviderId:'openai',cfg:ctx.cfg,agentId:ctx.agentId,surface:'browser-session',providerConfigOverrides:ctx.providerConfig}).provider);}catch{return false;}},
  }));},
