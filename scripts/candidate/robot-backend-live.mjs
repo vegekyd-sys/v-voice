@@ -3,7 +3,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';import {spawn} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
-import {dirname} from 'node:path';import {randomUUID} from 'node:crypto';
+import {dirname,join} from 'node:path';import {writeFileSync} from 'node:fs';import {randomUUID} from 'node:crypto';
 import {prepareRobotBackend} from './robot-candidate-setup.mjs';
 import {createDirectVoiceService} from '../../lab/realtime-direct-tools/session.mjs';
 import {createLiveH5Server} from '../../lab/gpt-live-h5/server.mjs';
@@ -15,6 +15,8 @@ function runAgent(cli,args){return new Promise((resolve,reject)=>{
  const timer=setTimeout(()=>child.kill('SIGTERM'),180000);
  child.on('error',()=>{clearTimeout(timer);reject(Error('candidate_agent_spawn_failed'));});
  child.on('exit',code=>{clearTimeout(timer);if(code!==0){
+  writeFileSync(join(process.env.VLAB_CANDIDATE_DATA,'robot-agent-stderr.log'),stderr,{mode:0o600});
+  console.log(stderr.split('\n').filter(l=>/error:|Error:|Invalid config|not found|unknown option/.test(l)).map(l=>l.replace(/(?:Bearer |sk-)[A-Za-z0-9_./+-]+/g,'[REDACTED]')).join('\n').slice(-3500));
   // Do not print argv, prompts, leases, auth or complete provider output.
   return reject(Error('candidate_agent_exit_'+code+'_'+(stderr.includes('auth')?'auth':stderr.includes('plugin')?'plugin':'runtime')));
  }
