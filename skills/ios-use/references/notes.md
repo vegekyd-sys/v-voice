@@ -1,5 +1,7 @@
 # 苹果备忘录
 
+这是用户主动启用的选配实验，不是默认原生能力。不要催用户逐个搭建快捷指令，也不把此配置当作日历/提醒事项权限开通的前提。苹果未提供 iOS Notes CRUD API，不能把 App Intents 当作直接调用其他 App 动作的通用 API。
+
 仅 notes.create / notes.append，payload 为 title、body（title <=240 UTF-8 bytes，body 非空且 <=8000 bytes）。用户说“记下刚才的想法”时按对话整理正文；无须让用户打开 App 选内容或点写入。
 
 需要当前 iPhone 的 Notes 快捷指令一次性配置并启用。append 目标由用户在快捷指令固定或系统选择，不能传任意 note ID、快捷指令或账户。没有全量 Notes 查询 API，也不宣称得到 Notes/Mail 全部访问权限。

@@ -89,6 +89,12 @@
       "passed": 127,
       "failed": 0,
       "log": "/tmp/vvoice-ios-use-refresh-service2.log"
+    },
+    "productDirectionFollowup": {
+      "skillQuickValidate": "passed",
+      "simulatorBuild": "passed",
+      "log": "/tmp/vvoice-ios-use-optional-ui.log",
+      "installedOrDeployed": false
     }
   },
   "phone": {
@@ -175,6 +181,21 @@
     "phoneExecution": false,
     "systemExportAnyone": "Third export failed with NSURLErrorDomain 500; CLI signing succeeded",
     "appendAccepted": false,
-    "graphInspection": "create/append Note output -> detect.text -> VerifyAppleNoteIntent -> output; unique UUIDs, create OpenWhenRun=false, no network actions"
+    "graphInspection": "create/append Note output -> detect.text -> VerifyAppleNoteIntent -> output; unique UUIDs, create OpenWhenRun=false, no network actions",
+    "defaultFlowStopped": true
+  },
+  "productDirection": {
+    "mainline": [
+      "calendar.create",
+      "calendar.query",
+      "reminders.create",
+      "reminders.query"
+    ],
+    "permissionModel": "Native EventKit per-capability system authorization in one permission page",
+    "notes": "optional experiment only; stop prompting setup, no default acceptance gate",
+    "notesAPIPrimarySource": "https://developer.apple.com/forums/thread/813810",
+    "grokPrimaryPost": "https://x.com/bot/status/2113393684209176718",
+    "grokPrimaryPostAccess": "403, no direct iPhone Notes access evidence",
+    "followupSourceNotInBuild36": true
   }
 }

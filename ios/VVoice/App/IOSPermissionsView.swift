@@ -6,16 +6,16 @@ struct IOSPermissionsView: View {
     var body: some View {
         Form {
             Section {
-                Text("通话中可以让 V 新建或查询系统日历、提醒事项，以及通过本机快捷指令保存备忘录。首次使用时由系统请求相应授权。")
+                Text("分别允许系统日历和提醒事项后，通话中就可以直接让 V 查询或新建。每项能力首次使用时由系统请求授权，无需逐个配置快捷指令。")
                 permissionRow("系统日历", status: call.iosActions.events.calendarPermission, reminders: false)
                 permissionRow("提醒事项", status: call.iosActions.events.remindersPermission, reminders: true)
                 if !feedback.isEmpty { Text(feedback).font(.footnote) }
             } footer: { Text("日历申请完整访问，用于查询及写入后核对。提醒事项也需要完整访问。授权由你在系统弹窗确认；可以随时在系统设置撤回。") }
             Section {
-                NavigationLink("配置苹果备忘录") { AppleNotesView(call: call) }
-                Text(call.appleNotes.enabled ? "已启用通话语音写入；快捷指令是否正确配置仍需实际测试。" : "完成一次快捷指令配置后，开启通话语音写入。")
+                NavigationLink("备忘录快捷指令实验（选配）") { AppleNotesView(call: call) }
+                Text(call.appleNotes.enabled ? "已启用选配实验；快捷指令是否正确配置仍需实际测试。" : "不影响日历和提醒事项使用，无需为此配置快捷指令。")
                     .font(.footnote)
-            } footer: { Text("备忘录通过系统快捷指令执行。本 App 没有全量备忘录或邮件读取权限。") }
+            } footer: { Text("苹果未提供 iOS 备忘录的原生读写接口。此选配实验通过用户组合的快捷指令执行，不是一次系统授权后的原生访问。本 App 没有全量备忘录或邮件读取权限。") }
         }.navigationTitle("苹果应用").navigationBarTitleDisplayMode(.inline)
             .onAppear { call.iosActions.events.refresh() }
     }

@@ -1,6 +1,6 @@
 ## Unreleased
 
-- iOS Use 候选：一个按需加载的 `ios-use` Skill 入口，Notes 系统快捷指令回执、Calendar / Reminders 的真实权限状态与 EventKit 写后读回执行器。基于当前通话设备请求协议；未合入、未发布、未安装真机。
+- iOS Use 候选：系统日历与提醒事项采用统一权限页、EventKit 原生授权和写后读回，一个 `ios-use` Skill 复用当前通话设备请求协议。Notes 快捷指令单列为用户主动启用的选配实验，不作为开通门槛。build 36 已安装并绑定独立 Candidate；真实语音读写仍待验收。后续权限页/Skill 文案尚未重建安装或部署，未合入、未正式发布。
 
 ## 2026-10-24 — iOS caller identity, direct calendar and stale content notice
 

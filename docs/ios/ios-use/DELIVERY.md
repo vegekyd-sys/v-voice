@@ -1,6 +1,6 @@
 # ios-use 候选交付（2026-10-25）
 
-PR [#133](https://github.com/vegekyd-sys/v-voice/pull/133)，分支 `codex/ios-use-20261025`；依赖位置公共层 PR #134。未合入、未正式上线。签名 App 与独立服务产物源码为 `ac140707070af8a54c23ca6256c16c5b3acedb02`；后续 PR 提交仅补 DEBUG/测试隔离与交付证据。
+PR [#133](https://github.com/vegekyd-sys/v-voice/pull/133)，分支 `codex/ios-use-20261025`；依赖位置公共层 PR #134。未合入、未正式上线。签名 App 与独立服务产物源码为 `ac140707070af8a54c23ca6256c16c5b3acedb02`；后续 PR 补充 DEBUG/测试隔离、交付证据及产品文案/Skill 调整；后续内容未重建安装为 build36，也未替换正在运行的 ac140 服务产物。
 
 ## 产品与执行边界
 
@@ -37,7 +37,7 @@ Tianyi 明确回复手机“已空闲”后，2026-10-25 已安装 build 36，�
 
 build 34 回退 IPA：`/Users/tianyicai/Documents/Codex/2026-10-25/vvoice-public-candidate/export/VVoice.ipa`，SHA256 `40c81cc83edcac6e33fb894a158bcc127129b05a38a821c7667082eeccc74641`。不在本候选覆盖正式已接受版本登记。
 
-待完成：一次性 Notes 快捷指令配置与系统授权、真实 Notes 新建/追加、真实语音、真机前后台/锁屏音频连续性。尚未自动拨号。最初因 Locked 打开失败，解锁后重发单次链接并完成绑定；未绕过锁屏。系统可能要求解锁/切前台；不得把 fixture 或模拟器通过写成这些真机项已通过。总控决定最终合入和正式上线。
+本轮主线待完成：日历/提醒事项真实系统授权、真实语音新建/查询及真机前后台/锁屏音频连续性。Notes 配置与真实新建/追加改为选配实验，不作为本轮主线接受门槛。尚未自动拨号。最初因 Locked 打开失败，解锁后重发单次链接并完成绑定；未绕过锁屏。系统可能要求解锁/切前台；不得把 fixture 或模拟器通过写成这些真机项已通过。总控决定最终合入和正式上线。
 
 具体 hashes、检查和证据路径见 [validation.json](validation.json)。历史 Notes build 26、build 35 产物保留，均未安装到手机。
 
@@ -46,3 +46,11 @@ build 34 回退 IPA：`/Users/tianyicai/Documents/Codex/2026-10-25/vvoice-public
 新增可复现生成器 `ios/scripts/make-apple-notes-shortcuts.py`，不把个人签名文件、输入正文、token 或设备信息放入源码。Mac 系统实际导出确认 Notes 创建 action 为 com.apple.mobilenotes.SharingExtension、文本读回为 detect.text；模板显式 OpenWhenRun=false，正文只能由实际 Note 输出进入读回核对，不直接回显输入。追加模板导入时要求固定一个本机 Note，不让模型传 note ID。
 
 Apple 官方 CLI 的 people-who-know-me 签名成功；文件仅在私有 `/tmp/vvoice-ios-use-shortcuts36`。本机导入“V 新建备忘录”成功，字典/创建/读回/输出动作可见，但核对动作在 Mac 显示未知且带意外 WPS Office 标签，原因尚未确定，不能推定可用。已有“灵动岛拨给 V”在该 Mac 也提示需更新 V Voice，但这不足以解释新动作的标签。已请求在 build36 iPhone 打开编辑页，等待真实动作识别；尚未运行写入、未验证 iCloud 同步，追加模板也未接受。一次系统“任何人”导出报 NSURLErrorDomain 500，失败保留，不把 CLI 签名当功能验收。
+
+## 产品方向纠正：原生能力与统一权限为主线
+
+收到总控同步的用户纠正后，停止催促 Notes 导入/配置，也不新增按操作拆分的快捷指令。当前默认主线是已实现的 Calendar/Reminders EventKit 执行器和统一权限页：各能力首次完成系统授权，此后通话中直接新建/查询。已打开 iPhone V Voice，只请求用户确认这两项系统权限，尚未自动拨号。
+
+本路亲自读取 [Apple DTS 2026年1月答复](https://developer.apple.com/forums/thread/813810)：iOS Notes 没有 CRUD API，App Intents 可让用户组合本 App 与 Notes 动作，不能直接调用其他 App 动作来绕过 API 缺失。[EventKit 官方文档](https://developer.apple.com/documentation/eventkit/accessing-the-event-store)覆盖日历和提醒事项。Grok 原帖 https://x.com/bot/status/2113393684209176718 本路访问同为403，没有其原生直控 Apple Notes 的真机证据；不把 Reminders 混同 Notes，不据转引截图扩大实现范围。
+
+后续源码已把权限页和 Skill 明确为 EventKit 主线/Notes 选配，quick_validate 通过；当前手机与服务器仍是已核验 ac140 产物，不能声称后续文案已在 build36 交付。所有 Notes 代码和本地签名实验材料保留，当前开关未启用、没有实际 Notes 写入。
