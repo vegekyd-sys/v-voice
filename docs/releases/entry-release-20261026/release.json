@@ -1,7 +1,7 @@
 {
   "schema": "v-voice-production-release-v1",
   "version": "voice-legacy-entry.20261026.1",
-  "status": "deployed-entry-validated-alignment-pending",
+  "status": "deployed-and-entry-validated",
   "entryCommit": "9ae49f523f735e9bb4dd8d9700128d2a66eb9e5e",
   "deviceEntryCommit": "9ae49f523f735e9bb4dd8d9700128d2a66eb9e5e",
   "filesSha256": "16fa5ad1904dc3b20c42f470744c4d67f4f7337a0d3c566d7003aa84947de863",
@@ -20,7 +20,11 @@
     "warnings": 0
   },
   "alignment": {
-    "result": "pending"
+    "result": "ALIGNED",
+    "comparedFiles": 18820,
+    "at": "2026-10-25T16:51:18.299Z",
+    "driftFindings": 0,
+    "driftFiles": 9222
   },
   "fleet": {
     "bothReady": true,
@@ -54,5 +58,6 @@
     "dissolvedChats": 1,
     "historicalUsersWithoutNativeChatId": 13
   },
-  "report": "release.md"
+  "report": "release.md",
+  "validatedAt": "2026-10-26T00:51:18+08:00"
 }
