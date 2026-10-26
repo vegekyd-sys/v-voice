@@ -24,3 +24,7 @@
 - 请求共享 VLab integration lease 时被拒绝，因为当前由其他任务持有；未抢占、写入配置或重启服务。本次真实 Gateway 集成验证尚未完成，不能用模拟测试代替。
 - 不修改 Gateway、权限策略、Feishu callback 协议或生产身份数据。上线前仍需完成共享身份集成检查，并取得本次合入/上线决定；实际外部飞书客户端重开需上线后核验。
 - 追加 UI/入口 8 项检查通过，`check:ios-shell` 通过；[首页候选日志](homepage-updates.png) 已在内置浏览器实际打开核验。Candidate 首页日志来自 `FEISHU_LOGIN_PERSISTENCE_CANDIDATE_UPDATE`。上线时应将该能力移入首页已发布日志，并登记实际发布 commit、两节点产物和回滚信息。
+
+## 后续发布
+
+用户批准后，PR #152 已合入并发布。共享 VLab 当时由其他候选占用，本次完成隔离代码对生产 Gateway 的只读准入验证；实际产物与浏览器证据见[发布回执](../login-persistence-20261026/release.md)。以上候选记录保留原始验证范围。

@@ -1,3 +1,9 @@
+## 2026-10-26 — External Feishu login persistence deployed
+
+- Published PR #152 at `0aae20e` to both Voice nodes with matching artifact hashes; both ready and admission released. Gateway and private configuration retained.
+- Production account-switch UI and homepage update notes verified. Old unmarked grants need one confirmation; actual external Feishu reopen/switch acceptance remains with Tianyi.
+- Main CI, 963 Voice tests, 95 speaker tests, 11 release tests and isolated read-only real Gateway admission passed. See [release receipt](docs/releases/login-persistence-20261026/release.md).
+
 ## 2026-10-26 — External Feishu login persistence release preparation
 
 - User approved PR #152 for production acceptance. Publish homepage notes for persistent external login, visible account switching and explicit return from Public.
