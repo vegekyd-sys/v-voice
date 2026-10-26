@@ -25,11 +25,20 @@ public class EntryRepositoryTest {
         assertEquals(bound.url,repo.bind(link).url);
         assertEquals(publicEntry.url,repo.publicEntry().url);assertEquals(1,repo.entries().length());
         assertEquals(bound.url,repo.select("tianyi").url);
-        assertThrows(Exception.class,()->repo.bind(link.replace("127.0.0.1","evil.example")));
-        assertThrows(Exception.class,()->repo.bind(link+"&bind="+"x".repeat(40)));
+        assertTrue(repo.entries().getJSONObject(0).getBoolean("selected"));assertFalse(repo.publicSelected());
+        var removed=repo.remove("tianyi");assertEquals("Public",removed.label);assertEquals(0,repo.entries().length());assertTrue(repo.publicSelected());
+        try(var input=new URL("http://127.0.0.1:29849/fixture/binding").openStream()){
+            link=new JSONObject(new String(BoundedInput.read(input,4096),java.nio.charset.StandardCharsets.UTF_8)).getString("bindingUrl");
+        }
+        bound=repo.bind(link);
+        String finalLink=link;
+        assertThrows(Exception.class,()->repo.bind(finalLink.replace("127.0.0.1","evil.example")));
+        assertThrows(Exception.class,()->repo.bind(finalLink+"&bind="+"x".repeat(40)));
         var store=new SecureStore(context,BuildConfig.SERVICE_URL);var root=store.read();root.getJSONObject("entries").getJSONObject("tianyi").put("credential","x".repeat(43)).put("cookie","v_voice_access=invalid");store.write(root);
         var fallback=repo.initial();assertEquals("Public",fallback.label);assertNotNull(fallback.notice);assertEquals(1,repo.entries().length());
         String sealed=context.getSharedPreferences(store.preferencesName,0).getString("sealed","");
         assertFalse(sealed.contains(root.getString("publicKey")));assertFalse(sealed.contains("credential"));
+        assertNull(repo.remove("tianyi"));assertEquals(0,repo.entries().length());assertTrue(repo.publicSelected());
+        String publicId=store.read().getString("selected");assertThrows(Exception.class,()->repo.remove(publicId));
     }
 }

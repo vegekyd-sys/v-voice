@@ -1,3 +1,10 @@
+## 2026-10-27 — Android Candidate 0.1.1 (2)
+
+- 对齐 iOS H5 首页，移除原生标题行，设置入口悬浮在右上角；阅读器和网页弹层展开时隐藏。
+- 设置改为底部面板，标记当前入口，支持移除本机绑定；通话期间保留查看能力并锁定入口变更。
+- 返回键优先收起键盘、弹层、阅读器及文字输入；安全区与键盘避让由宿主统一处理。
+- Candidate APK；未合入、未部署服务、未更新真机。验收见 `docs/android/candidate-2.md`。
+
 ## 2026-10-25 — TestFlight 39: Public and unified saved entries
 
 - Release approved PR #136 after bound-session, native call and switching regression. Preserve existing selected bindings; Public stays first in the common settings list. First-use system preparation can foreground the app; prepared calls retain the Action Button path.

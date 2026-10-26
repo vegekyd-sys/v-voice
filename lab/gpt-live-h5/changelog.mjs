@@ -1,5 +1,16 @@
 // Product-facing notes for shipped Voice updates. Keep newest entries first;
 // experiments and unaccepted capabilities do not belong in this list.
+// Registered for the Android candidate; promote into the homepage list only with its approved release.
+export const ANDROID_POLISH_CANDIDATE_UPDATE = {
+  version:'android-0.1.1-2',date:'2026-10-27',
+  title:'Android 界面细节对齐（Candidate）',status:'candidate-validation',
+  items:[
+    '首页移除多余标题栏，设置入口收在右上角，阅读时自动隐藏。',
+    '底部设置面板标记当前入口，可移除本机绑定；通话中保护当前入口。',
+    '返回键先收起键盘、弹层和阅读内容，再返回首页或将通话放入后台。',
+    '仅 Android 候选包；真机安装与体验另行验收。',
+  ],
+};
 export const IOS_PUBLIC_CANDIDATE_UPDATE = {
   version:'voice-ios-public.20261025.3',date:'2026-10-25',
   title:'Public 搜索、记忆与后台任务（Candidate）',status:'candidate-validation',

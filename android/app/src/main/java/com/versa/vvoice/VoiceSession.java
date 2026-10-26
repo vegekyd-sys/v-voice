@@ -31,6 +31,7 @@ final class VoiceSession {
     boolean muted, serviceStarted, loaded, rendererGone;
     private JavaScriptReplyProxy reply;
     private long pageRevision;
+    private boolean pageFailed;
     long callGeneration;
     VoiceSession(Context context) {
         this.context=context;entries=new EntryRepository(context,endpoint);
@@ -51,11 +52,11 @@ final class VoiceSession {
                 if(request.isForMainFrame() && request.hasGesture() && activity!=null)activity.openExternal(request.getUrl());
                 return true;
             }
-            @Override public void onPageStarted(WebView view,String url,Bitmap icon) { pageRevision++;reply=null;setState("idle",false); }
-            @Override public void onPageFinished(WebView view,String url) { if(activity!=null && endpoint.page(url))activity.loaded(); }
-            @Override public void onReceivedSslError(WebView view,SslErrorHandler handler,SslError error) { handler.cancel();showError("连接证书无效，请稍后重试。"); }
+            @Override public void onPageStarted(WebView view,String url,Bitmap icon) { pageRevision++;pageFailed=false;reply=null;if(activity!=null)activity.presentation(false);setState("idle",false); }
+            @Override public void onPageFinished(WebView view,String url) { if(activity!=null && !pageFailed && endpoint.page(url))activity.loaded(); }
+            @Override public void onReceivedSslError(WebView view,SslErrorHandler handler,SslError error) { handler.cancel();pageFailed=true;showError("连接证书无效，请稍后重试。"); }
             @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error) {
-                if(request.isForMainFrame()){shutdownCall();showError("页面未能加载，请检查网络后重试。");}
+                if(request.isForMainFrame()){pageFailed=true;shutdownCall();showError("页面未能加载，请检查网络后重试。");}
             }
             @Override public boolean onRenderProcessGone(WebView view,RenderProcessGoneDetail detail) {
                 setState("idle",false); loaded=false;rendererGone=true;
@@ -86,6 +87,7 @@ final class VoiceSession {
                     String text=value.optString("text"),title=value.optString("title","V 的方案");
                     if(text.length()<=500000 && title.length()<=100)activity.saveDocument(title,text);return;
                 }
+                if("presentation".equals(value.optString("type")) && activity!=null){activity.presentation(value.optBoolean("obscured"));return;}
                 if(!"state".equals(value.optString("type")))return;
                 String next=value.optString("state");if(!Set.of("idle","dialing","connected","ending").contains(next))return;
                 reply=proxy;setState(next,value.optBoolean("muted"));

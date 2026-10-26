@@ -24,9 +24,26 @@
     if (state === 'idle' && wasActive) { for(const track of tracks) track.stop(); tracks.clear(); }
     send({type:'state',state,muted});
   }
+  let lastObscured;
+  function presentation() {
+    const obscured = document.body?.dataset.reading === 'true' || !!document.getElementById('changelogDialog')?.open ||
+      !!document.querySelector('.sheet[aria-modal="true"]');
+    if (obscured !== lastObscured) { lastObscured=obscured;send({type:'presentation',obscured}); }
+  }
+  // Android back dismisses the current H5 surface before backgrounding a call.
+  // Use its own controls so React/reader state remains the single owner.
+  window.__vVoiceAndroidBack = () => {
+    if(document.getElementById('changelogDialog')?.open){document.getElementById('changelogClose')?.click();return true;}
+    if(document.querySelector('.sheet[aria-modal="true"]')){document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));return true;}
+    if(document.getElementById('modelMenu')){document.getElementById('modelTrigger')?.click();return true;}
+    if(document.body?.dataset.reading === 'true'){document.getElementById('readerBack')?.click();return true;}
+    if(document.getElementById('textToggle')?.getAttribute('aria-expanded')==='true'){document.getElementById('textToggle').click();return true;}
+    return false;
+  };
   const observe = () => {
     const style=document.createElement('style');style.textContent='.ios-binding-trigger{display:none!important}';document.head.append(style);
     new MutationObserver(report).observe(document.body,{attributes:true,attributeFilter:['data-call-state','data-microphone-muted']});report();
+    new MutationObserver(presentation).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['data-reading','open']});presentation();
   };
   if(document.body)observe();else document.addEventListener('DOMContentLoaded',observe,{once:true});
   VVoiceHost.onmessage = event => {

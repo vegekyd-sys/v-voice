@@ -44,6 +44,10 @@ bridge.server.on('request',async(req,res)=>{
   if(!grant.ok){res.writeHead(500).end('Fixture handoff failed');return;}
   const value=await grant.json();return send({bindingUrl:value.bindingUrl.replace('https://android-fixture.invalid',origin)});
  }
+ if(req.url==='/fixture/document'&&req.method==='POST'){
+  const text='# 安卓阅读验证\n\n'+('这是一份用于本地界面验收的方案。验证阅读、返回与通话控制不会相互干扰。\n\n'.repeat(40));
+  emit({type:'response.output_text.done',response_id:'document',text});return send({ok:true});
+ }
  if(req.url==='/fixture/tone'&&req.method==='POST'){
   const pcm=Buffer.alloc(24000*4);for(let i=0;i<24000;i++)pcm.writeFloatLE(.15*Math.sin(i*2*Math.PI*440/24000),i*4);
   emit({type:'response.output_text.done',response_id:'tone',text:'安卓本地验证：共用网页字幕、头像和播放。'});

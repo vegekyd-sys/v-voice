@@ -47,10 +47,24 @@ final class EntryRepository {
         } finally { conn.disconnect(); }
     }
     synchronized JSONArray entries() throws Exception {
-        JSONObject items=store.read().optJSONObject("entries"); JSONArray out=new JSONArray();
+        JSONObject root=store.read(),items=root.optJSONObject("entries"); JSONArray out=new JSONArray();
         if(items!=null) for(var keys=items.keys();keys.hasNext();) { String id=keys.next(); JSONObject item=items.getJSONObject(id);
-            if(!item.optBoolean("public"))out.put(new JSONObject().put("id",id).put("label",item.optString("label","已连接会话"))); }
+            if(!item.optBoolean("public"))out.put(new JSONObject().put("id",id).put("label",item.optString("label","已连接会话")).put("selected",id.equals(root.optString("selected")))); }
         return out;
+    }
+    synchronized boolean publicSelected() throws Exception {
+        JSONObject root=store.read(),items=root.optJSONObject("entries");
+        JSONObject selected=items==null?null:items.optJSONObject(root.optString("selected"));
+        return selected==null || selected.optBoolean("public");
+    }
+    synchronized Authorized remove(String id) throws Exception {
+        JSONObject root=store.read(),items=root.optJSONObject("entries");
+        if(items==null || !items.has(id))return null;
+        if(items.getJSONObject(id).optBoolean("public"))throw new Exception("Public 入口不能移除。");
+        Authorized fallback=null;
+        // Prepare the replacement first; failed authorization must preserve the binding.
+        if(id.equals(root.optString("selected"))){fallback=publicEntry();root=store.read();items=root.getJSONObject("entries");}
+        items.remove(id);store.write(root);return fallback;
     }
     synchronized Authorized initial() throws Exception {
         JSONObject root=store.read(); String selected=root.optString("selected", "");
@@ -59,7 +73,7 @@ final class EntryRepository {
             try{return authorize(items.getJSONObject(selected), root);}
             catch(Exception e){
                 var fallback=publicEntry();
-                if(!items.getJSONObject(selected).optBoolean("public"))fallback.notice="原入口暂不可用，已回到 Public。可在「入口」中重新连接。";
+                if(!items.getJSONObject(selected).optBoolean("public"))fallback.notice="原入口暂不可用，已回到 Public。可在「设置」中重新连接。";
                 return fallback;
             }
         }
