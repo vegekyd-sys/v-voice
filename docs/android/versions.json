@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "candidate": {
+    "versionName": "0.1.0-candidate",
+    "versionCode": 1,
+    "applicationId": "com.versa.vvoice.candidate",
+    "minimumAndroidApi": 30,
+    "targetAndroidApi": 36,
+    "serviceURL": "https://openclaw.tianyi.live/voice/",
+    "status": "candidate_simulator_verified",
+    "physicalDeviceAccepted": false,
+    "googlePlaySubmitted": false,
+    "serverDeploymentRequired": false,
+    "acceptance": "docs/android/candidate-1.md"
+  }
+}
