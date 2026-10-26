@@ -364,6 +364,7 @@ function AccessSheet({state,actions,onClose}) {
    <div className="access-identity"><span className="access-monogram" aria-hidden="true">{connected?Array.from(context.accountLabel)[0]:'V'}</span><div><span className="access-kicker">当前使用</span><strong>{connected?context.accountLabel:'Public'}</strong><span>{connected?context.conversationLabel:'独立访客会话'}</span></div><span className="access-check" aria-label="已选择">✓</span></div>
    <p className="access-scope">{connected?(context.replySync?'通话与结果同步到这个飞书会话。':'使用这个账号获准的会话与工具。'):'无需连接个人账号，直接和 V 聊聊。'}</p>
    <div className="access-options">
+    {state.returnToAccountHref&&<a className="access-option" href={state.returnToAccountHref}><span>返回已连接账号<small>打开上次确认的飞书会话</small></span><span aria-hidden="true">↗</span></a>}
     {state.accountLoginHref&&(state.confirmationAvailable?<button type="button" className="access-option" onClick={()=>{onClose();actions.connectIdentity();}}><span>{connected?'切换飞书身份':'连接飞书身份'}<small>在原飞书会话确认</small></span><span aria-hidden="true">↗</span></button>:<a className="access-option" href={state.accountLoginHref}><span>连接飞书身份</span><span aria-hidden="true">↗</span></a>)}
     {connected&&state.publicHref&&<a className="access-option" href={state.publicHref}><span>Public<small>开启独立访客会话</small></span><span aria-hidden="true">↗</span></a>}
     {state.iosBindingAvailable&&<button className="access-option" type="button" disabled={Boolean(state.confirmation)} onClick={()=>{onClose();actions.openBinding();}}><span>iOS 绑定<small>把当前身份与会话带到 iPhone</small></span><span aria-hidden="true">↗</span></button>}
@@ -442,9 +443,9 @@ function CallPage({view, actions, options}) {
                   {state.confirmation?<div className="confirmation-actions"><button type="button" disabled={state.confirmation.phase==='cancelling'} onClick={actions.skipConfirmation}>访客通话</button></div>:<>
                   <ModelPicker state={state} actions={actions} />
                   <span id="badge" className="home-badge" role="status">{state.badge}</span>
-                  <IdentitySummary context={state.confirmOnDial?null:state.accessContext} onClick={state.nativeSettings?undefined:()=>setAccessOpen(true)}/>
+                  <IdentitySummary context={state.accessContext} onClick={state.nativeSettings?undefined:()=>setAccessOpen(true)}/>
                   {state.nativeSettings&&!state.accessContext&&state.entrySummary&&<span className="access-summary">{state.entrySummary}</span>}
-                  {state.accountLoginHref&&!state.accountLabel&&!state.confirmOnDial&&(state.confirmationAvailable?<button type="button" className="home-note identity-connect" onClick={actions.connectIdentity}>连接飞书身份</button>:<a className="home-note" href={state.accountLoginHref}>连接飞书账号</a>)}
+                  {state.accountLoginHref&&!state.accountLabel&&(state.confirmationAvailable?<button type="button" className="home-note identity-connect" onClick={actions.connectIdentity}>连接飞书身份</button>:<a className="home-note" href={state.accountLoginHref}>连接飞书账号</a>)}
                   {state.homeNote && <p className="home-note" data-tone={state.homeNoteTone} role="status">{state.homeNote}</p>}
                   </>}
                 </>

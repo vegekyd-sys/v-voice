@@ -73,8 +73,11 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     return guestBinding(req,url.searchParams.get('phone'));
   };
   const guestModel=()=>directVoice?.models().find(m=>m.available&&m.id==='seeduplex')?.id??directVoice?.models().find(m=>m.available)?.id??'seeduplex';
-  const entryPresentation=binding=>({...{...(phoneLogin?.confirmation&&parseFeishuConversationPhone(binding.id)?{confirmationAvailable:true}:{}),accessContext:voiceAccessContext(binding,{publicEnabled:iosPublicEntry,publicTools}),...(iosPublicEntry&&guestAccess?{publicHref:`${basePath}/?phone=public`}:{})},...(binding.permissionProfile==='unidentified'?{unidentified:true,accountLoginHref:binding.id==='public'?null:phoneLogin?.confirmation?`${basePath}/feishu/confirm?phone=${encodeURIComponent(binding.id)}`:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&oauth=1`,defaultModel:guestModel(),iosBindingAvailable:hosted,speakerRouting:false,comparisonAvailable:false,
-    models:[{id:'gpt-live',label:'GPT Live One',available:false},...(directVoice?.models()??[])]}:binding.callerIdentity?{accountLabel:binding.callerIdentity.displayName||'飞书账号已连接',accountLoginHref:phoneLogin?.confirmation?`${basePath}/feishu/confirm?phone=${encodeURIComponent(binding.id)}`:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&retry=1`}:{})});
+  const entryPresentation=(binding,req)=>{
+    const remembered=binding.id==='public'&&req?phoneLogin?.rememberedPhone(req):null;
+    return {...{...(phoneLogin?.confirmation&&parseFeishuConversationPhone(binding.id)?{confirmationAvailable:true}:{}),accessContext:voiceAccessContext(binding,{publicEnabled:iosPublicEntry,publicTools}),...(iosPublicEntry&&guestAccess?{publicHref:`${basePath}/?phone=public`}:{}),...(remembered?{returnToAccountHref:`${basePath}/feishu?phone=${encodeURIComponent(remembered)}`}:{})},...(binding.permissionProfile==='unidentified'?{unidentified:true,accountLoginHref:binding.id==='public'?null:phoneLogin?.confirmation?`${basePath}/feishu/confirm?phone=${encodeURIComponent(binding.id)}`:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&oauth=1`,defaultModel:guestModel(),iosBindingAvailable:hosted,speakerRouting:false,comparisonAvailable:false,
+      models:[{id:'gpt-live',label:'GPT Live One',available:false},...(directVoice?.models()??[])]}:binding.callerIdentity?{accountLabel:binding.callerIdentity.displayName||'飞书账号已连接',accountLoginHref:phoneLogin?.confirmation?`${basePath}/feishu/confirm?phone=${encodeURIComponent(binding.id)}`:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&retry=1`}:{})};
+  };
   const callReports=createConversationCalls({gateway,directory:callReportsDirectory,publicOrigin,basePath,summarize:callSummarize,audit:callControlAudit});
   const accessors = new Map();
   const entryAccess = binding => {
@@ -122,10 +125,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     return issued;
   };
   const conversationPresentation=binding=>{const context=voiceAccessContext(binding,{publicEnabled:iosPublicEntry,publicTools});return {name:context.conversationLabel,kind:binding.kind,replySync:binding.replySync,accountLabel:context.accountLabel,entryKind:context.entryKind,scopeNote:context.scopeNote};};
-  const entrySnapshot=binding=>({ready:backendReady(),preview,defaultModel,
+  const entrySnapshot=(binding,req)=>({ready:backendReady(),preview,defaultModel,
     ...(directVoice?.attach?{nativeDialVersion:1}:{}),conversation:conversationPresentation(binding),iosBindingAvailable:hosted,
     ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}),...(listening?{comparisonAvailable:true}:{}),
-    ...(directVoice?{models:[{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'},...directVoice.models()]}:{}),...entryPresentation(binding)});
+    ...(directVoice?{models:[{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'},...directVoice.models()]}:{}),...entryPresentation(binding,req)});
   const visual = createAvatarReactionSelector({evaluate:avatarEvaluate});
   const contexts = new Map(),nativeTasks=new Map(),nativeTaskOwners=new Set();let stopping=false;
   const local = { active: null, creatingSession: false, listeners: new Set(), touchedAt: Date.now(), entry: "tianyi" };
@@ -421,8 +424,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if(!pending)return json(res,401,{error:'请重新打开电话入口'});
         try {
           if(body.failure){
-            phoneLogin.cancelClient(req,body.state);
             console.warn(JSON.stringify({type:'voice.feishu-client-error',stage:'sdk',providerCode:Number.isInteger(body.failure.code)?body.failure.code:null}));
+            const remembered=await phoneLogin.resumeConfirmedClient(req,body.state);
+            if(remembered){
+              issueVisitor(res,remembered);
+              return json(res,200,{status:entrySnapshot(remembered)});
+            }
           } else {
             const result=await phoneLogin.completeClient(req,res,body,{inline:true});
             issueVisitor(res,result.binding);
@@ -449,10 +456,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if(sdkEntry&&pathname==='/feishu/callback'&&(url.searchParams.get('client')==='1'||inFeishu&&!url.searchParams.has('code')&&!url.searchParams.has('state')&&!url.searchParams.has('error'))){
         const oldState=url.searchParams.get('client')==='1'?url.searchParams.get('state'):null;
         if(oldState&&!phoneLogin.clientPending(req,oldState))return json(res,401,{error:'请重新打开电话入口'});
-        phoneLogin.clearIdentity(res);
+        if(!phoneLogin.hasConfirmedIdentity(req))phoneLogin.clearIdentity(res);
         const cleared=res.getHeader('set-cookie');
         const callback=oldState?null:new URL(phoneLogin.beginClient(req,res,currentPhone),publicOrigin);
-        if(callback)res.setHeader('set-cookie',[cleared,res.getHeader('set-cookie')]);
+        if(cleared&&callback)res.setHeader('set-cookie',[cleared,res.getHeader('set-cookie')]);
         entryBinding=guestBinding(req,currentPhone,guestAccess.read(req)??{id:randomBytes(16).toString('hex')});
         entryVisitor=issueVisitor(res,entryBinding,{id:entryBinding.visitorId});
         clientLoginConfig={appId:feishuLogin.appId,state:oldState??callback.searchParams.get('state'),endpoint:basePath+'/feishu/client-login'};
@@ -573,7 +580,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           const visitor = hosted ? entryVisitor ?? readVisitor(req,binding) : null;
           const canCheckEntry = visitor && (contexts.has(`${entry}:${visitor.id}`) || contexts.size < 512);
           if (!hosted || canCheckEntry) {
-            const initial = JSON.stringify(entrySnapshot(binding)).replaceAll("<", "\\u003c");
+            const initial = JSON.stringify(entrySnapshot(binding,req)).replaceAll("<", "\\u003c");
             html = html.replace('<script type="module" src="./app.js"></script>', `<script type="application/json" id="voiceEntryStatus">${initial}</script><script type="module" src="./app.js"></script>`);
           }
           contents = Buffer.from(html);
@@ -645,7 +652,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ready: backendReady(), preview, defaultModel, ...(directVoice?.attach?{nativeDialVersion:1}:{}), conversation:conversationPresentation(binding),iosBindingAvailable:hosted, ...(speakerRouting&&binding.permissionProfile!=='unidentified'?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
         releaseReadiness: releaseReadiness(),
         ...(listening?{comparisonAvailable:true}:{}), model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
-        ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'},...directVoice.models()]} : {}),...entryPresentation(binding),
+        ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'},...directVoice.models()]} : {}),...entryPresentation(binding,req),
       });
       if(req.method==='GET'&&pathname==='/api/comparison')return listening?json(res,200,listening.manifest):json(res,404,{error:'当前没有试听样本'});
       if(req.method==='GET'&&pathname==='/api/speaker-fixture'){

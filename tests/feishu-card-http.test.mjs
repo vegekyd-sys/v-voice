@@ -10,13 +10,14 @@ import {feishuConversationPhone} from '../lib/feishu-conversation-directory.mjs'
 const phone=feishuConversationPhone('default','oc_group'),origin='https://voice.example';
 async function fixture(t){
  const dir=await mkdtemp(join(tmpdir(),'voice-card-http-'));t.after(()=>rm(dir,{recursive:true,force:true}));
- const file=join(dir,'ios.json'),api=[],rpc=[],reservations=[];let denied=false;
+ const file=join(dir,'ios.json'),api=[],rpc=[],reservations=[];let denied=false,clientIdentity=null,time=Date.now();
  const server=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'f'.repeat(40),iosBindingsFile:file,iosPublicEntry:true,
-  feishuLogin:{conversations:true,allowUnidentified:true,cardConfirmation:true,appId:'cli_app',appSecret:'fixture',accountId:'default',actors:[],fetchImpl:async(url,init)=>{
+  feishuLogin:{conversations:true,allowUnidentified:true,cardConfirmation:true,appId:'cli_app',appSecret:'fixture',accountId:'default',actors:[],now:()=>time,fetchImpl:async(url,init)=>{
    api.push({url,init});if(url.includes('/app_access_token/'))return Response.json({code:0,app_access_token:'private-app',tenant_access_token:'private-tenant',expire:7200});
    if(url.includes('/members?'))return Response.json({code:0,data:{items:[{member_id:'ou_external',name:'外部测试成员'}]}});
    if(url.includes('/messages?'))return Response.json({code:0,data:{message_id:'om_card'}});
    if(url.includes('/chats/oc_group'))return Response.json({code:0,data:{chat_mode:'group',name:'内外部成员测试群'}});
+   if(url.endsWith('/access_token')&&clientIdentity)return Response.json({code:0,data:{access_token:'private-user-token',...clientIdentity}});
    throw Error('OAuth must not be called');
   }},gateway:{ready:true,request:async(method,params)=>{
    rpc.push({method,params});if(denied)throw Object.assign(Error('denied'),{details:{reason:'conversation_membership_required'}});
@@ -35,8 +36,76 @@ async function fixture(t){
  });
  const prepare=async()=>{const response=await send('/feishu/confirm/prepare?phone='+phone,{body:{}});assert.equal(response.status,200,response.text);assert.equal(response.json().entry.unidentified,true);return response.json().state;};
  const confirm=async(state,overrides={})=>{const raw=JSON.stringify({version:1,request:state,accountId:'default',appId:'cli_app',tenantKey:'external',openId:'ou_external',chatId:'oc_group',messageId:'om_card',issuedAt:Date.now(),...overrides});return send('/feishu/confirm/callback',{raw,requestOrigin:null,headers:{'x-voice-confirm-signature':createHmac('sha256','fixture').update('voice-card-confirm-v1\n'+raw).digest('base64url')}});};
- return {send,prepare,confirm,jar,api,rpc,reservations,file,deny:()=>denied=true};
+ const login=async()=>{const state=await prepare();await send('/feishu/confirm/start',{body:{state}});assert.equal((await confirm(state)).status,200);assert.equal((await send('/feishu/confirm/status',{body:{state}})).json().status,'complete');};
+ const reopen=async()=>{
+  const start=await send('/feishu?phone='+phone,{headers:{'user-agent':'Lark/7.0'}});assert.equal(start.status,302);
+  const page=await send(start.headers.location,{headers:{'user-agent':'Lark/7.0'}});assert.equal(page.status,200);
+  return JSON.parse(page.text.match(/id="login-config">(.*?)<\/script>/s)[1]).state;
+ };
+ return {send,prepare,confirm,login,reopen,jar,api,rpc,reservations,file,deny:()=>denied=true,setClientIdentity:value=>clientIdentity=value,advance:ms=>time+=ms};
 }
+
+test('card-confirmed browser survives reopening and external SDK refusal without renewing its grant',async t=>{
+ const f=await fixture(t);await f.login();const saved=f.jar.get('v_feishu_phone');
+ for(let i=0;i<2;i++){
+  const state=await f.reopen();
+  assert.equal(f.jar.get('v_feishu_phone'),saved,'opening the phone must not erase the explicit browser confirmation');
+  const response=await f.send('/feishu/client-login',{body:{state,failure:{code:20027}}});assert.equal(response.status,200);
+  assert.equal(response.json().status.accountLabel,'外部测试成员');assert.equal(response.json().status.unidentified,undefined);
+  assert.equal(response.json().status.conversation.replySync,true);assert.equal(response.json().status.confirmationAvailable,true);
+  assert.match(response.json().status.accountLoginHref,/\/feishu\/confirm\?/);
+  assert.equal(f.jar.get('v_feishu_phone'),saved,'resume neither replaces the cookie nor extends the 30-day expiry');
+  assert.equal((await f.send('/api/status?phone='+phone)).json().accountLabel,'外部测试成员');
+ }
+ assert.equal(f.api.filter(x=>x.init.method==='POST'&&x.url.includes('/messages')).length,1,'no new confirmation card on reopening');
+ assert.equal(f.reservations.length,0,'reopening never starts a call');
+});
+
+test('resuming a card-confirmed browser still checks live membership and fails closed',async t=>{
+ const f=await fixture(t);await f.login();const state=await f.reopen();f.deny();
+ const response=await f.send('/feishu/client-login',{body:{state,failure:{code:20027}}});assert.equal(response.status,200);
+ assert.equal(response.json().status.unidentified,true);assert.equal(response.json().status.accountLabel,undefined);
+ assert.equal(f.jar.get('v_feishu_phone'),'');
+});
+
+test('card login survives a new server instance but expires after its original 30 days',async t=>{
+ const first=await fixture(t);await first.login();
+ const restarted=await fixture(t);for(const [key,value] of first.jar)restarted.jar.set(key,value);
+ const state=await restarted.reopen();const resumed=await restarted.send('/feishu/client-login',{body:{state,failure:{code:20027}}});
+ assert.equal(resumed.json().status.accountLabel,'外部测试成员');
+ assert.equal(restarted.api.filter(x=>x.url.includes('/messages')).length,0);
+ restarted.advance(31*86400000);
+ const expired=await restarted.reopen();const guest=await restarted.send('/feishu/client-login',{body:{state:expired,failure:{code:20027}}});
+ assert.equal(guest.json().status.unidentified,true);assert.equal(restarted.jar.get('v_feishu_phone'),'');
+});
+
+test('explicit reconnect clears the saved card identity; a stale SDK request cannot restore it',async t=>{
+ const f=await fixture(t);await f.login();const state=await f.reopen();await f.prepare();
+ const response=await f.send('/feishu/client-login',{body:{state,failure:{code:20027}}});assert.equal(response.status,200);
+ assert.equal(response.json().status.unidentified,true);assert.equal(f.jar.get('v_feishu_phone'),'');
+});
+
+test('Public stays isolated and offers an explicit route back to the saved account',async t=>{
+ const f=await fixture(t);await f.login();const saved=f.jar.get('v_feishu_phone');
+ const page=await f.send('/?phone=public');assert.equal(page.status,200);
+ const status=(await f.send('/api/status?phone=public')).json();
+ assert.equal(status.unidentified,true);assert.equal(status.accessContext.mode,'public');assert.equal(status.conversation.replySync,false);
+ assert.equal(status.returnToAccountHref,'/voice/feishu?phone='+phone);assert.equal(status.accountLabel,undefined);
+ assert(page.text.includes('returnToAccountHref'));assert.equal(f.jar.get('v_feishu_phone'),saved);
+ const state=await f.reopen();const resumed=await f.send('/feishu/client-login',{body:{state,failure:{code:20027}}});
+ assert.equal(resumed.json().status.accountLabel,'外部测试成员');
+ const stranger=await f.send('/?phone=public',{cookies:new Map()});assert(!stranger.text.includes('returnToAccountHref'));
+});
+
+test('fresh SDK identity replaces a saved card identity and cannot be resumed after a later SDK refusal',async t=>{
+ const f=await fixture(t);await f.login();const state=await f.reopen();
+ f.setClientIdentity({open_id:'ou_internal',tenant_key:'internal',name:'内部测试成员'});
+ const identified=await f.send('/feishu/client-login',{body:{state,code:'valid-code'}});
+ assert.equal(identified.json().status.accountLabel,'内部测试成员');
+ const next=await f.reopen();const failed=await f.send('/feishu/client-login',{body:{state:next,failure:{code:20027}}});
+ assert.equal(failed.json().status.unidentified,true);assert.equal(failed.json().status.accountLabel,undefined);
+ assert.equal(f.jar.get('v_feishu_phone'),'');
+});
 test('real HTTP confirmation creates an external principal; iOS retains actor and group, rejects injected identity and revocation',async t=>{
  const f=await fixture(t);await f.send('/feishu?phone='+phone+'&guest=1');
  const status=(await f.send('/api/status?phone='+phone)).json();assert.match(status.accountLoginHref,/\/feishu\/confirm\?/);
