@@ -1,6 +1,6 @@
 # Android Candidate 2 — 0.1.1 (2)
 
-独立分支 `codex/voice-android`，PR #145。对照 iOS `H5CallView` 与设置面板的当前交互，继续复用服务端 H5。没有修改 iOS、Gateway、Worker、工具授权或共享配置；选择 Candidate 验证，无需占用共享 VLab。
+独立分支 `codex/voice-android`，PR #145。对照 iOS `H5CallView` 与设置面板的当前交互，继续复用服务端 H5。没有修改 iOS 行为、Gateway、Worker、工具授权或共享配置；选择 Candidate 验证，无需占用共享 VLab。
 
 ## 本次调整
 
@@ -27,3 +27,5 @@
 ## 仍需真机验收
 
 本轮 vivo Y300 未连接，尚未安装 Candidate 2；Candidate 1 的真机记录不作为新版本验收。真实语音听感、蓝牙、回声、长时间后台、省电策略与真人账号登录仍需单独验证。
+
+首页日志登记触发 H5 来源清单校验，已同步生成的 iOS H5 source manifest 哈希；iOS 网页 bundle 与运行代码均未改变。
