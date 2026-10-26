@@ -104,14 +104,14 @@ test('missing audio samples expire instead of leaving a speaking animation',asyn
   assert.deepEqual(api.getAudio(),{source:'none',levels:[]});
 });
 
-test('TV report scroll keys leave the side rail navigable to mute and hangup',()=>{
+test('TV report scroll keys preserve the original horizontal call controls',()=>{
   const {view,window,api}=fixture();view.set({reading:true,call:'connected'});
   const doc=window.document,scroll=[];
   const button=(id,x,y,dock=false)=>({id,tagName:'BUTTON',tabIndex:0,disabled:false,
     getBoundingClientRect:()=>({x,y,width:42,height:42,left:x,right:x+42,top:y,bottom:y+42}),
     closest:s=>s==='#readerDock'&&dock?{}:null,
     focus(){doc.activeElement=this;},scrollIntoView(){}});
-  const back=button('readerBack',20,10),save=button('readerDownload',700,10),compose=button('textToggle',800,140,true),mute=button('mute',800,190,true),end=button('stop',800,240,true);
+  const back=button('readerBack',20,10),save=button('readerDownload',700,10),compose=button('textToggle',350,420,true),mute=button('mute',400,420,true),end=button('stop',450,420,true);
   const controls=[back,save,compose,mute,end];
   doc.querySelector=()=>null;
   doc.getElementById=id=>id==='readerBody'?{clientHeight:400,scrollBy:value=>scroll.push(value.top)}:id==='contentReader'?{querySelectorAll:()=>controls}:controls.find(c=>c.id===id);
@@ -119,8 +119,30 @@ test('TV report scroll keys leave the side rail navigable to mute and hangup',()
   back.focus();api.navigate('down');assert.deepEqual(scroll,[320]);assert.equal(doc.activeElement,back);
   api.navigate('right');assert.equal(doc.activeElement,save);
   api.navigate('right');assert.equal(doc.activeElement,compose);
-  api.navigate('down');assert.equal(doc.activeElement,mute);
-  api.navigate('down');assert.equal(doc.activeElement,end);assert.deepEqual(scroll,[320]);
-  api.navigate('left');assert.equal(doc.activeElement,back);
+  api.navigate('right');assert.equal(doc.activeElement,mute);
+  api.navigate('right');assert.equal(doc.activeElement,end);assert.deepEqual(scroll,[320]);
+  api.navigate('up');assert.equal(doc.activeElement,back);
   api.navigate('up');assert.deepEqual(scroll,[320,-320]);
+});
+
+test('native full window changes viewport scale without changing call owner, then restores island scale',()=>{
+  const {api,view,window,calls}=fixture('?tv=1&tvShell=1');
+  let content='width=device-width,initial-scale=1';
+  window.document.querySelector=selector=>selector==='meta[name="viewport"]'?{getAttribute:()=>content,setAttribute:(key,value)=>{content=value;}}:null;
+  view.set({call:'connected'});const owner=api.snapshot;
+  api.setLayout('full',owner);assert.equal(api.commitLayout('full',owner,{width:912}),true);
+  assert.equal(content,'width=1600,initial-scale=0.57,viewport-fit=cover');
+  api.setLayout('medium',owner);api.commitLayout('medium',owner,{width:420});
+  assert.equal(content,'width=420,initial-scale=1,viewport-fit=cover');
+  assert.equal(api.commitLayout('medium',{...owner,owner:'stale'},{width:500}),false);
+  assert.equal(content,'width=420,initial-scale=1,viewport-fit=cover');
+  assert.equal(api.snapshot.owner,owner.owner);assert.equal(api.snapshot.generation,owner.generation);assert.deepEqual(calls,[]);
+});
+
+test('TV compose right reaches Send instead of a geometrically closer hangup',()=>{
+  const {api,window}=fixture();const doc=window.document;
+  const input={id:'steerText',focus(){doc.activeElement=this;}},send={id:'steer',focus(){doc.activeElement=this;}};
+  doc.getElementById=id=>id==='steer'?send:input;
+  input.focus();api.navigate('right');assert.equal(doc.activeElement,send);
+  api.navigate('left');assert.equal(doc.activeElement,input);
 });

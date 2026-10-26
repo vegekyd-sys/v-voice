@@ -56,6 +56,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       return Object.freeze({...snapshot,reading:state.reading===true,
         hasDocument:[...(state.transcript.history??[]),...(state.transcript.current??[])].some(row=>row.document===true),
         meter:Object.freeze({source:audio.source,peak:Math.max(0,...audio.levels)}),
+        viewport:Object.freeze({width:Math.round(window.innerWidth??0),height:Math.round(window.innerHeight??0)}),
         focus:['dial','end','mute','expand','fold','compact','return','compose','input','send','reader-back'].includes(focus)?focus:null});
     },
     // Only this lightweight surface subscribes to the 10 Hz visual meter.
@@ -63,7 +64,20 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     getAudio() { return audio; },
     setLayout,
     // Native acknowledges only after its WebView has the requested window bounds.
-    commitLayout(value,expected) {if(value!==layout||!validOwner(expected))return false;commitLayout();return true;},
+    commitLayout(value,expected,bounds) {
+      if(value!==layout||!validOwner(expected))return false;
+      // Android density otherwise gives a 1080p TV only ~912 CSS pixels.
+      // Full pages use the original desktop layout at a wider CSS viewport;
+      // compact/medium windows retain their established island scale.
+      if(shell&&Number.isFinite(bounds?.width)&&bounds.width>=100&&bounds.width<=7680) {
+        const width=value==='full'?Math.max(1600,bounds.width):bounds.width;
+        const scale=value==='full'?bounds.width/width:1;
+        const viewport=document.querySelector?.('meta[name="viewport"]');
+        const content=`width=${Math.round(width)},initial-scale=${scale},viewport-fit=cover`;
+        if(viewport&&viewport.getAttribute('content')!==content)viewport.setAttribute('content',content);
+      }
+      commitLayout();return true;
+    },
     focusPrimary,
     back() {
       const dialog = document.querySelector?.('dialog[open]');
@@ -75,17 +89,18 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     },
     navigate(direction) {
       if (!['up','down','left','right'].includes(direction)) return false;
+      if(direction==='right'&&document.activeElement?.id==='steerText') {document.getElementById?.('steer')?.focus({preventScroll:true});return true;}
+      if(direction==='left'&&document.activeElement?.id==='steer') {document.getElementById?.('steerText')?.focus({preventScroll:true});return true;}
       if(view.get().reading) {
-        const active=document.activeElement, inDock=Boolean(active?.closest?.('#readerDock'));
-        // The reading lane scrolls; the side rail keeps normal control navigation.
+        const active=document.activeElement,inDock=Boolean(active?.closest?.('#readerDock'));
         if(!inDock&&['up','down'].includes(direction)) {
           const body=document.getElementById?.('readerBody');
-          if(body){const step=Math.max(120,body.clientHeight*.8);body.scrollBy({top:direction==='down'?step:-step,behavior:'smooth'});return true;}
+          if(body){body.scrollBy({top:(direction==='down'?1:-1)*Math.max(120,body.clientHeight*.8),behavior:'smooth'});return true;}
         }
         if(direction==='right'&&active?.id==='readerDownload') {
           document.getElementById?.('textToggle')?.focus({preventScroll:true});return true;
         }
-        if(direction==='left'&&inDock&&active?.tagName!=='INPUT') {
+        if(direction==='up'&&inDock&&active?.tagName!=='INPUT') {
           document.getElementById?.('readerBack')?.focus({preventScroll:true});return true;
         }
       }
