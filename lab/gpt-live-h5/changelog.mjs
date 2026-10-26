@@ -1,9 +1,9 @@
 export const TV_REACTION_CANDIDATE_UPDATE = {
-  version:'voice-tv-reaction.20261026.1',date:'2026-10-26',
+  version:'voice-tv-reaction.20261027.2',date:'2026-10-27',
   title:'电视 V 头像入口与收音候选',status:'candidate-validation',
   items:[
-    '首页右上方常驻 V 的 Reaction 头像；点击直接呼叫，默认使用豆包。',
-    '接通后头像放大三倍，真实音量波形、静音和挂断跟随同一通话；挂断恢复小头像。',
+    'V 的 Reaction 头像重新居中并保留头部留白，移除连线与电话徽标；聚焦轻微放大和呼吸，点击直接呼叫豆包。',
+    '接通后头像平滑放大三倍，喇叭和挂断独立排列在头像下方；喇叭控制播放声音，麦克风继续收听。',
     '电视阵列收音与回声消除已完成本地合成验证，客厅远场收音和真实回声仍待真机验收。',
     '仅本地候选，尚未更新真实电视或正式 Voice 服务。',
   ],

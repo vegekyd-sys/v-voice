@@ -34,16 +34,17 @@ export function relayWorkletSource(){return `${PcmPlaybackQueue.toString()}
 class Speaker extends AudioWorkletProcessor {
  constructor(options){super();const prefill=options?.processorOptions?.prefillMs??120;this.reference=options?.processorOptions?.renderReference===true;this.ref=new Float32Array(Math.round(sampleRate/50));this.refPos=0;
  if(!Number.isFinite(prefill)||prefill<0||prefill>1000)throw Error('Invalid playback buffer');
- this.queue=new PcmPlaybackQueue(sampleRate,prefill);this.epoch=0;this.tick=0;
+ this.outputMuted=false;this.queue=new PcmPlaybackQueue(sampleRate,prefill);this.epoch=0;this.tick=0;
  this.port.onmessage=({data:e})=>{if(e.type==='clear'){this.epoch=e.epoch;this.queue.clear();}
+ else if(e.type==='output-mute')this.outputMuted=e.muted===true;
  else if(e.type==='hold'&&e.epoch===this.epoch)this.queue.hold();
  else if(e.type==='pause'&&e.epoch===this.epoch)this.queue.paused=e.paused===true;
  else if(e.type==='done'&&e.epoch===this.epoch)this.queue.end();
  else if(e.type==='audio'&&e.epoch===this.epoch){try{this.queue.push(new Int16Array(e.buffer));}catch{this.port.postMessage({type:'error',epoch:this.epoch});}}};}
  process(inputs,outputs){const out=outputs[0]?.[0];if(!out)return true;
- const before=this.queue.frames;this.queue.render(out,currentTime);
+ const before=this.queue.frames;this.queue.render(out,currentTime);if(this.outputMuted)out.fill(0);
  if(this.reference)for(const value of out){this.ref[this.refPos++]=value;if(this.refPos===this.ref.length){this.port.postMessage({type:'render-reference',epoch:this.epoch,sampleRate,buffer:this.ref.buffer},[this.ref.buffer]);this.ref=new Float32Array(Math.round(sampleRate/50));this.refPos=0;}}
- if(++this.tick%8===0||before>0&&this.queue.frames===0)this.port.postMessage({type:'playback',epoch:this.epoch,consumed:this.queue.consumed,underflows:this.queue.underflows,lastPlayedAt:this.queue.lastPlayedAt,playing:this.queue.playing&&!this.queue.paused});return true;}
+ if(++this.tick%8===0||before>0&&this.queue.frames===0)this.port.postMessage({type:'playback',epoch:this.epoch,consumed:this.queue.consumed,underflows:this.queue.underflows,lastPlayedAt:this.queue.lastPlayedAt,playing:this.queue.playing&&!this.queue.paused&&!this.outputMuted});return true;}
 }
 class Mic extends AudioWorkletProcessor {
  constructor(){super();this.sum=0;this.count=0;this.phase=0;this.frame=new Int16Array(480);this.index=0;}
@@ -126,7 +127,7 @@ export function observeAudioMeters({context,input,output,onLevel}) {
   return ()=>{clearInterval(timer);try{input.disconnect(mic);output.disconnect(speaker);}catch{}mic.disconnect();speaker.disconnect();};
 }
 export function createRelayAudio({context,stream,reservation,onEvent,onError,onClosed,onPlaybackActivity=()=>{},onAudioLevel,renderReference,startCapture,greeting=true,inputGated=false}) {
-  let stopMeter;
+  let stopMeter,outputMuted=false;
   // Recorded Grok packets: 245ms of speech, then a 595ms arrival gap.
   // 400ms protects that real startup cadence; Xiaohe retains its smaller lead.
   const startBufferMs=reservation.provider==='grok'?400:120;
@@ -228,7 +229,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     try{await context.audioWorklet.addModule(url);}finally{URL.revokeObjectURL(url);}
     if(closed)return;
     speaker=new AudioWorkletNode(context,'v-direct-speaker',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1],processorOptions:{prefillMs:startBufferMs,renderReference:typeof renderReference==='function'}});
-    speaker.port.postMessage({type:'clear',epoch});if(nativePaused)speaker.port.postMessage({type:'pause',paused:true,epoch});if(greetingHeld)speaker.port.postMessage({type:'hold',epoch});speaker.connect(context.destination);
+    speaker.port.postMessage({type:'output-mute',muted:outputMuted});speaker.port.postMessage({type:'clear',epoch});if(nativePaused)speaker.port.postMessage({type:'pause',paused:true,epoch});if(greetingHeld)speaker.port.postMessage({type:'hold',epoch});speaker.connect(context.destination);
     speaker.port.onmessage=({data:e})=>{
       if(closed||e.epoch!==epoch)return;
       if(e.type==='render-reference'){renderReference?.(e.buffer,e.sampleRate);return;}
@@ -260,7 +261,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
         flushInput();}
     };
   }
-  return {ready:promise,stats,async start(){
+  return {ready:promise,stats,setOutputMuted(value){outputMuted=value===true;speaker?.port.postMessage({type:'output-mute',muted:outputMuted});if(outputMuted)activity(false);},async start(){
       // Connecting is not yet a listening call. Starting capture beforehand
       // filled an eight-second PCM queue and aborted legitimate 20s connects.
       // Keep the page-owned microphone grant; attach audio nodes only after

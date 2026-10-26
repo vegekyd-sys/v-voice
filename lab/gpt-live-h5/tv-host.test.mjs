@@ -31,6 +31,7 @@ function fixture(search = '?tv=1') {
   const api = installTvHost({view,window,onError:e=>errors.push(e),actions:{
     dial(){calls.push('dial');view.set({call:'dialing'});},
     mute(){calls.push('mute');view.set({muted:!view.get().muted});},
+    speaker(){calls.push('speaker');view.set({outputMuted:!view.get().outputMuted});},
     end(){calls.push('end');view.set({call:'idle',muted:false});},
   }});
   return {view,window,api,calls,errors};
@@ -172,4 +173,12 @@ test('TV compose right reaches Send instead of a geometrically closer hangup',()
   doc.getElementById=id=>id==='steer'?send:input;
   input.focus();api.navigate('right');assert.equal(doc.activeElement,send);
   api.navigate('left');assert.equal(doc.activeElement,input);
+});
+
+test('TV speaker control changes output only and immediately clears stale audible meters',()=>{
+ const {api,view}=fixture();view.set({call:'connected'});api.observeAudio({output:.2,at:1000});
+ assert.equal(api.action('speaker',api.snapshot),true);assert.equal(api.snapshot.outputMuted,true);assert.equal(view.get().muted,false);
+ assert.equal(api.getAudio().source,'none');api.observeAudio({output:.2,at:1200});assert.equal(api.getAudio().source,'none');
+ api.observeAudio({input:.1,output:.2,at:1400});assert.equal(api.getAudio().source,'input');
+ api.action('speaker',api.snapshot);assert.equal(api.snapshot.outputMuted,false);
 });

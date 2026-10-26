@@ -25,7 +25,7 @@ const $ = (id) => document.getElementById(id);
 // app.js is the call engine; everything the page shows is written to this view
 // and rendered by the React UI. Audio elements and the reader stay in the HTML.
 const view = createCallView();
-const tvHost=installTvHost({view,window,actions:{dial:()=>startCall(),end:()=>stopCall(),mute:()=>setMuted(!view.get().muted)},onError:error=>setStatus(error.message,{tone:'error'})});
+const tvHost=installTvHost({view,window,actions:{dial:()=>startCall(),end:()=>stopCall(),mute:()=>setMuted(!view.get().muted),speaker:()=>setOutputMuted(!view.get().outputMuted)},onError:error=>setStatus(error.message,{tone:'error'})});
 const contentView = document.querySelector ? createContentView(document, window, { onReading: reading => view.set({ reading }) }) : null;
 const renderAssistant = (target, item) => {
   if (contentView) contentView.render(target, item, { auto: item.document === true && (!tvHost || view.get().tvLayout==='full') });
@@ -47,6 +47,7 @@ if (document.querySelector) mountCallUi(document, view, {
     steer: text => sendSteer(text), cancelTasks: () => cancelTasks(),
     // Toggle from the store, not the last render, so quick taps alternate.
     mute: () => setMuted(!view.get().muted),
+    speaker: () => setOutputMuted(!view.get().outputMuted),
     compose: open => view.set(state => ({ composer: { ...state.composer, open } })),
     composerOpen: () => view.get().composer.open,
     chooseModel: id => { if (view.get().models.some(model => model.id === id && model.available)) view.set({ model: id }); },
@@ -89,7 +90,7 @@ function setCallState(state) {
   screenWakeLock.setActive(state !== 'idle');
   const live = ["connected", "ending"].includes(state);
   view.set(current => ({ call: state, callStartedAt: live ? current.callStartedAt ?? Date.now() : null,
-    ...(live ? {} : { composer: { ...current.composer, open: false }, muted: false }) }));
+    ...(live ? {} : { composer: { ...current.composer, open: false }, muted: false, outputMuted: false }) }));
   if (!live) document.body.dataset.microphoneMuted = "false";
   if (document.body.dataset.callState === state) return;
   document.body.dataset.callState = state;
@@ -103,6 +104,12 @@ function setMuted(muted) {
   for (const track of call.stream.getAudioTracks()) track.enabled = !muted;
   document.body.dataset.microphoneMuted = String(muted);
   view.set({ muted });
+}
+function setOutputMuted(outputMuted) {
+  if (!call) return;
+  call.relay?.setOutputMuted(outputMuted);
+  $("remoteAudio").muted = outputMuted || Boolean(call.duplex?.snapshot().localPlaybackMuted);
+  view.set({outputMuted});
 }
 // The last full sentence, for the few places that compare it; the view keeps
 // its short display form for the one status line.
@@ -625,7 +632,7 @@ async function startCall() {
   globalThis.__gptLiveDuplexDiagnostics = active.duplexDiagnostics;
   active.duplex = createH5DuplexPlaybackGate({ mode: "native", onGateChange: (entry) => {
     if (call !== active) return;
-    $("remoteAudio").muted = entry.localPlaybackMuted;
+    $("remoteAudio").muted = entry.localPlaybackMuted || view.get().outputMuted;
     duplexDiagnostic(active, { type: "local-playback-gate", at: entry.at,
       muted: entry.localPlaybackMuted, reason: entry.reason,
       oldTurnTerminal: entry.oldTurnTerminal, outputDrained: entry.outputDrained, ...playbackState(active) });
@@ -805,7 +812,7 @@ async function startCall() {
         // This analyser reads the inbound stream before HTML playback muting,
         // so a local gate cannot manufacture evidence of a provider audio gap.
         const duplex = active.duplex.observe({ at, microphoneRms: microphoneEnergy, remoteRms: energy });
-        tvHost?.observeAudio({input:microphoneEnergy,output:duplex.localPlaybackMuted||active.playbackNeedsGesture||$("remoteAudio").paused||active.context.state!=="running"?0:energy});
+        tvHost?.observeAudio({input:microphoneEnergy,output:view.get().outputMuted||duplex.localPlaybackMuted||active.playbackNeedsGesture||$("remoteAudio").paused||active.context.state!=="running"?0:energy});
         duplexDiagnostic(active, { type: "activity-window", at, microphoneRms: microphoneEnergy, remoteRms: energy,
           microphoneAboveAttack: microphoneEnergy >= .02, microphoneAboveRelease: microphoneEnergy > .01,
           microphoneVoiced: duplex.localUserSpeaking,

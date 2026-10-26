@@ -17,7 +17,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
   const listeners = new Set();
   const launchRequests = new Set();
   let audio = Object.freeze({levels: [], source: 'none'}), lastSample = 0, clearTimer;
-  let inputLevels=[],outputLevels=[],inputEnvelope=0,outputEnvelope=0,inputEnergy=0,outputEnergy=0,observations=0,wasMuted=false;
+  let inputLevels=[],outputLevels=[],inputEnvelope=0,outputEnvelope=0,inputEnergy=0,outputEnergy=0,observations=0,wasMuted=false,wasOutputMuted=false;
   document.documentElement.dataset.tvLayout = layout;
   const validOwner = expected => expected === undefined || Boolean(expected && expected.owner === owner && expected.generation === generation);
   const focusable = () => [...((document.querySelector?.('dialog[open]') ?? (view.get().reading?document.getElementById?.('contentReader'):document))?.querySelectorAll?.('button,a[href],input,select,textarea,[tabindex]') ?? [])].filter(e => {
@@ -52,6 +52,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
   const available = state => ({
     dial: state.call === 'idle' && !state.dial.disabled,
     mute: state.call === 'connected',
+    speaker: state.call === 'connected',
     end: state.call !== 'idle',
   });
   const api = Object.freeze({
@@ -76,7 +77,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
         hasDocument:[...(state.transcript.history??[]),...(state.transcript.current??[])].some(row=>row.document===true),
         meter:Object.freeze({source:audio.source,peak:Math.max(0,...audio.levels)}),
         viewport:Object.freeze({width:Math.round(window.innerWidth??0),height:Math.round(window.innerHeight??0)}),
-        focus:['dial','end','mute','expand','fold','compact','return','compose','input','send','reader-back','reader-body'].includes(focus)?focus:null});
+        focus:['dial','end','mute','speaker','expand','fold','compact','return','compose','input','send','reader-back','reader-body'].includes(focus)?focus:null});
     },
     // Only this lightweight surface subscribes to the 10 Hz visual meter.
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
@@ -143,7 +144,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       if(view.get().call!=='connected')return;
       if(lastSample&&(at-lastSample>350||at<lastSample))clearAudio();
       const safe=value=>Number.isFinite(value)?Math.min(1,Math.max(0,value)):0;
-      inputEnergy+=(view.get().muted?0:safe(input))**2;outputEnergy+=safe(output)**2;observations++;
+      inputEnergy+=(view.get().muted?0:safe(input))**2;outputEnergy+=(view.get().outputMuted?0:safe(output))**2;observations++;
       if(at-lastSample<99)return;
       lastSample=at;
       const follow=(value,previous)=>value>=previous?value:value*.75+previous*.25;
@@ -161,7 +162,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       clearTimeout(clearTimer);clearTimer=setTimeout(clearAudio,450);clearTimer.unref?.();
     },
     action(name, expected) {
-      if (!['dial', 'mute', 'end'].includes(name)) return false;
+      if (!['dial', 'mute', 'speaker', 'end'].includes(name)) return false;
       if (!validOwner(expected)) return false;
       if (!available(view.get())[name]) return false;
       try {
@@ -174,8 +175,8 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
   const update = () => {
     const state = view.get();
     if (state.call !== 'idle' && last === 'idle') generation++;
-    if(state.call!=='connected'&&last==='connected'||state.muted&&!wasMuted)clearAudio();
-    wasMuted=state.muted;
+    if(state.call!=='connected'&&last==='connected'||state.muted&&!wasMuted||state.outputMuted!==wasOutputMuted)clearAudio();
+    wasMuted=state.muted;wasOutputMuted=state.outputMuted;
     last = state.call;
     const status = resolveStatus(state);
     const label = state.call === 'idle'
@@ -185,7 +186,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       : ['error', 'warn', 'action'].includes(status?.kind) ? status.text
       : state.muted ? '麦克风已静音' : status?.text ?? '通话中';
     snapshot = Object.freeze({version: 1, owner, generation, revision: ++revision, layout,
-      call: state.call, model:state.model??null, muted: state.muted === true, label: String(label).slice(0, 48),
+      call: state.call, model:state.model??null, muted: state.muted === true, outputMuted:state.outputMuted===true, label: String(label).slice(0, 48),
       actions: Object.freeze(available(state))});
   };
   update();

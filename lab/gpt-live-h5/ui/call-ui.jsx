@@ -8,6 +8,8 @@ import {clock, resolveStatus, splitTurns} from '../call-view.mjs';
 
 const Icon = ({d, children}) => <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">{d ? <path d={d} /> : children}</svg>;
 const PHONE = 'm8.5 3.5 2.1 4.4-2.3 2.3a15.5 15.5 0 0 0 5.5 5.5l2.3-2.3 4.4 2.1v3a2 2 0 0 1-2.2 2C10.4 20 4 13.6 3.5 5.7a2 2 0 0 1 2-2.2h3Z';
+const SPEAKER='M11 5 6 9H3v6h3l5 4V5Zm4 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14';
+const SPEAKER_OFF='M11 5 6 9H3v6h3l5 4V5Zm5 4 5 6m0-6-5 6';
 const HANG = 'M3 11.8c5.1-4.4 12.9-4.4 18 0v3.7l-4.5.5-.7-3.2a12.3 12.3 0 0 0-7.6 0l-.7 3.2-4.5-.5v-3.7Z';
 const SPARK = 'M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1';
 const ACTIVITY_ICON = {
@@ -394,9 +396,7 @@ function TvIsland({state,actions,status}) {
   useEffect(()=>{if(layout==='full'&&documentRequested.current){documentRequested.current=false;requestAnimationFrame(()=>[...document.querySelectorAll('.content-card')].at(-1)?.click());}},[layout]);
   useEffect(()=>{const id=requestAnimationFrame(()=>api.focusPrimary());return()=>cancelAnimationFrame(id);},[layout,state.call,state.dial.disabled]);
   if(layout==='full')return state.reading?null:<button type="button" className="tv-return" data-tv-control="return" aria-label="收起到灵动岛" onClick={()=>change('medium')}><Icon d="m7 10 5 5 5-5"/><span>收起</span></button>;
-  if(layout==='compact')return <button type="button" className="tv-compact tv-avatar-action" data-tv-control="compact" data-tv-primary aria-label={latestDocument?'查看本通话方案':`展开 V，${api.snapshot.label}`} onClick={()=>!active?actions.dial():latestDocument?expand():change('medium')}>
-    <span className="tv-avatar-badge"><Icon d={latestDocument?'M6 3h9l4 4v14H6V3Zm8 0v5h5':state.muted?MIC_OFF:active?MIC:PHONE}/></span>
-  </button>;
+  if(layout==='compact')return <button type="button" className="tv-compact tv-avatar-action" data-tv-control="compact" data-tv-primary aria-label={!active?'和 V 直接通话':latestDocument?'查看本通话方案':`展开 V，${api.snapshot.label}`} onClick={()=>!active?actions.dial():latestDocument?expand():change('medium')}/>;
   const error=status&&['error','warn','action'].includes(status.kind)||state.homeNoteTone==='error';
   const title=state.call==='dialing'?'正在呼叫 V':state.call==='ending'?'正在结束':error?api.snapshot.label:connected?api.snapshot.label:'和 V 说话';
   return <section className="tv-island tv-avatar-dock" aria-label="V 通话">
@@ -404,7 +404,7 @@ function TvIsland({state,actions,status}) {
     <button type="button" className="tv-avatar-action tv-avatar-large" data-tv-control={active?'expand':'dial'} data-tv-primary={!active||undefined} aria-label={active?'展开对话':state.dial.disabled?'正在准备连接':'和 V 直接通话'} disabled={!active&&state.dial.disabled} onClick={active?expand:actions.dial}/>
     <div className="tv-dock-status" role="status">{title}</div>
     <div className="tv-dock-actions">
-      {connected&&<button type="button" className={`tv-round tv-mute ${state.muted?'is-muted':''}`} data-tv-control="mute" aria-label={state.muted?'恢复麦克风':'静音麦克风'} onClick={actions.mute}><Icon d={state.muted?MIC_OFF:MIC}/></button>}
+      {connected&&<button type="button" className={`tv-round tv-speaker ${state.outputMuted?'is-muted':''}`} data-tv-control="speaker" aria-label={state.outputMuted?'恢复 V 的声音':'关闭 V 的声音'} aria-pressed={state.outputMuted} onClick={actions.speaker}><Icon d={state.outputMuted?SPEAKER_OFF:SPEAKER}/></button>}
       {active&&<button className="tv-round tv-call tv-end" type="button" data-tv-control="end" data-tv-primary aria-label="结束通话" onClick={actions.hangup}><Icon d={HANG}/></button>}
       {!active&&<button type="button" className="tv-expand" data-tv-control="expand" onClick={expand}><span>{latestDocument?'查看方案':'通话设置'}</span><Icon d="M8 5h11v11M19 5 5 19"/></button>}
     </div>

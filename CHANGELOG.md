@@ -1,3 +1,10 @@
+## 2026-10-27 — TV portrait refinement (local candidate)
+
+- Center the existing Reaction portrait, preserve headroom, remove connector/badge clutter and use the same natural crop in native Home and shared H5.
+- Add focus lift/breathing with lifecycle and reduced-motion handling; grow from the Home position on dial and place controls in a separate glass group.
+- Provide a true speaker-output toggle in the TV dock. Muted output is consumed without backlog; rendered AEC reference and audible meters reflect silence while microphone upload stays active.
+- Local-only verification; physical-TV installation and acoustic acceptance remain pending.
+
 ## 2026-10-26 — TV Reaction dock and array capture (local candidate)
 
 - Select Doubao for TV entries; native home actions wait for readiness and dial once without a second confirmation panel.

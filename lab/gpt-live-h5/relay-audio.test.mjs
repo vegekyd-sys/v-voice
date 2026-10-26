@@ -404,3 +404,18 @@ test('assisted service onset may precede local corroboration but cannot survive 
  for(let i=0;i<8;i++)p.observe(voiceFrame(),true,20+i*20);
  assert.equal(p.held,false);
 });
+
+test('speaker mute silences rendered audio and AEC reference while microphone and FIFO keep running',async t=>{
+ const references=[];
+ const f=await fixture(t,'seeduplex',false,{renderReference:buffer=>references.push(new Float32Array(buffer))});
+ f.event({type:'audio',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(24000,8192).buffer).toString('base64')});
+ assert(f.pump(12000).some(value=>value!==0));
+ const consumed=f.speaker.processor.queue.consumed;
+ f.relay.setOutputMuted(true);references.length=0;
+ assert(f.pump(2400).every(value=>value===0));
+ assert(f.speaker.processor.queue.consumed>consumed,'muting must consume rather than queue stale speech');
+ assert(references.length>0);assert(references.at(-1).every(value=>value===0),'AEC sees the sound actually rendered');
+ const mic=f.nodes.find(n=>n.name==='v-direct-mic'),before=f.relay.stats.inputBytes;
+ mic.port.onmessage({data:pcm(480,3000).buffer});assert.equal(f.relay.stats.inputBytes,before+960);
+ f.relay.setOutputMuted(false);assert(f.pump(2400).some(value=>value!==0));
+});

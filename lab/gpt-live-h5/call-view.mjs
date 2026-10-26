@@ -115,7 +115,7 @@ export const INITIAL_VIEW = Object.freeze({
   speaker: {multi: false, people: [], lastSpeakerId: null, listenOnly: false, status: null},
   tasks: [], cancelEnabled: false,
   transcript: {history: [], current: []},
-  composer: {enabled: false, open: false}, muted: false,
+  composer: {enabled: false, open: false}, muted: false, outputMuted: false,
   models: [], model: 'seeduplex', modelDisabled: false,
   grok: {voices: [], voice: null, hint: '', listenHref: './compare', listenAvailable: false},
   reading: false,
