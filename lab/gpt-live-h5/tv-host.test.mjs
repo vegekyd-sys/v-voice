@@ -103,3 +103,24 @@ test('missing audio samples expire instead of leaving a speaking animation',asyn
   await new Promise(resolve=>setTimeout(resolve,480));
   assert.deepEqual(api.getAudio(),{source:'none',levels:[]});
 });
+
+test('TV report scroll keys leave the side rail navigable to mute and hangup',()=>{
+  const {view,window,api}=fixture();view.set({reading:true,call:'connected'});
+  const doc=window.document,scroll=[];
+  const button=(id,x,y,dock=false)=>({id,tagName:'BUTTON',tabIndex:0,disabled:false,
+    getBoundingClientRect:()=>({x,y,width:42,height:42,left:x,right:x+42,top:y,bottom:y+42}),
+    closest:s=>s==='#readerDock'&&dock?{}:null,
+    focus(){doc.activeElement=this;},scrollIntoView(){}});
+  const back=button('readerBack',20,10),save=button('readerDownload',700,10),compose=button('textToggle',800,140,true),mute=button('mute',800,190,true),end=button('stop',800,240,true);
+  const controls=[back,save,compose,mute,end];
+  doc.querySelector=()=>null;
+  doc.getElementById=id=>id==='readerBody'?{clientHeight:400,scrollBy:value=>scroll.push(value.top)}:id==='contentReader'?{querySelectorAll:()=>controls}:controls.find(c=>c.id===id);
+  window.innerWidth=900;window.innerHeight=500;
+  back.focus();api.navigate('down');assert.deepEqual(scroll,[320]);assert.equal(doc.activeElement,back);
+  api.navigate('right');assert.equal(doc.activeElement,save);
+  api.navigate('right');assert.equal(doc.activeElement,compose);
+  api.navigate('down');assert.equal(doc.activeElement,mute);
+  api.navigate('down');assert.equal(doc.activeElement,end);assert.deepEqual(scroll,[320]);
+  api.navigate('left');assert.equal(doc.activeElement,back);
+  api.navigate('up');assert.deepEqual(scroll,[320,-320]);
+});

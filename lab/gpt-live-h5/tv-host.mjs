@@ -75,9 +75,19 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     },
     navigate(direction) {
       if (!['up','down','left','right'].includes(direction)) return false;
-      if(view.get().reading&&['up','down'].includes(direction)) {
-        const body=document.getElementById?.('readerBody');
-        if(body&&(direction==='down'||body.scrollTop>0)){body.scrollBy({top:direction==='down'?180:-180,behavior:'smooth'});return true;}
+      if(view.get().reading) {
+        const active=document.activeElement, inDock=Boolean(active?.closest?.('#readerDock'));
+        // The reading lane scrolls; the side rail keeps normal control navigation.
+        if(!inDock&&['up','down'].includes(direction)) {
+          const body=document.getElementById?.('readerBody');
+          if(body){const step=Math.max(120,body.clientHeight*.8);body.scrollBy({top:direction==='down'?step:-step,behavior:'smooth'});return true;}
+        }
+        if(direction==='right'&&active?.id==='readerDownload') {
+          document.getElementById?.('textToggle')?.focus({preventScroll:true});return true;
+        }
+        if(direction==='left'&&inDock&&active?.tagName!=='INPUT') {
+          document.getElementById?.('readerBack')?.focus({preventScroll:true});return true;
+        }
       }
       const items=focusable(), active=document.activeElement;
       if (!items.includes(active)) { focusPrimary(); return true; }
