@@ -544,6 +544,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ["/feishu-confirmation-client.mjs", [join(here, "feishu-confirmation-client.mjs"), "text/javascript; charset=utf-8"]],
         ["/entry-startup.mjs", [join(here, "entry-startup.mjs"), "text/javascript; charset=utf-8"]],
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
+        ["/tv-host.mjs", [join(here,"tv-host.mjs"), "text/javascript; charset=utf-8"]],
         ["/feishu-client-login.mjs", [join(here, "feishu-client-login.mjs"), "text/javascript; charset=utf-8"]],
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],

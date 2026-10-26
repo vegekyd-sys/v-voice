@@ -1303,3 +1303,37 @@ test('Public uses existing V search/memory tools and carries the same personal-c
  f.call('exec',{command:'anything'},'public-denied');await delay(10);
  assert(!calls.some(r=>r.params?.name==='exec'));assert.equal(f.invocations.length,0);
 });
+
+for (const [receiver,options] of [['web',{}],['ios',{nativeRuntimeVersion:1}],['speaker',{surface:'speaker'}],['robot',{surface:'speaker',inputPolicy:'native'}]]) {
+ test(`authorized TV control uses the shared direct path on ${receiver}`,async t=>{
+  const f=await fixture(async()=>({ok:true,output:{accepted:true,simulation:true,physical_playback_verified:false}}),'grok',{
+   ...options,sessionBound:true,actorScoped:true,catalog:['xiaomi-tv_tv_volume']});
+  t.after(()=>f.service.dispose());
+  const config=f.upstream.sent.find(e=>e.type==='session.update').session;
+  assert.match(config.instructions,/一两步明确控制可直接用 openclaw_tool/);
+  assert.match(config.instructions,/accepted=true 仅表示命令已接受/);
+  assert.match(config.tools.find(t=>t.name==='openclaw_tool').description,/其他写操作交 delegate_to_v/);
+  f.call('openclaw_tool',{tool:'xiaomi-tv_tv_volume',arguments:'{"percent":15}'},'tv-volume');
+  for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.native-result');i++)await delay(2);
+  assert.equal(f.invocations.length,1);assert.equal(f.invocations[0].name,'xiaomi-tv_tv_volume');
+  assert.deepEqual(f.invocations[0].args,{percent:15});
+  assert.equal(f.audit.find(e=>e.type==='tool.native-result').result.output.physical_playback_verified,false);
+  // A name mentioned by another tool is not a catalog grant.
+  f.call('openclaw_tool',{tool:'xiaomi-tv_tv_command',arguments:'{"text":"暂停音乐"}'},'missing-tv');
+  for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='missing-tv');i++)await delay(2);
+  assert.equal(f.invocations.length,1);
+  assert.match(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='missing-tv').result.error,/没有这个 OpenClaw 工具/);
+ });
+}
+
+test('TV guidance and account control are absent for an unidentified caller',async t=>{
+ const f=await fixture(undefined,'grok',{unidentified:true,sessionKey:'voice:guest:tv-fixture',catalog:['xiaomi-tv_tv_volume']});
+ t.after(()=>f.service.dispose());
+ const config=f.upstream.sent.find(e=>e.type==='session.update').session;
+ assert.equal(config.instructions.includes('电视控制：'),false);
+ assert.equal(config.tools.some(t=>t.name==='openclaw_tool'),false);
+ f.call('openclaw_tool',{tool:'xiaomi-tv_tv_volume',arguments:'{"percent":15}'},'guest-tv');
+ for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered');i++)await delay(2);
+ assert.deepEqual(f.invocations,[]);
+ assert.equal(f.audit.find(e=>e.type==='tool.delivered').result.error,'当前通话没有账号工具权限');
+});

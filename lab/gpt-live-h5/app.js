@@ -1,3 +1,4 @@
+import {installTvHost} from "./tv-host.mjs";
 import {createFeishuConfirmation} from "./feishu-confirmation-client.mjs";
 import {browserDeviceActions,createBrowserDeviceAdapter} from "./device-location.mjs";
 import { createCallerContext } from "./caller-context.mjs";
@@ -23,6 +24,7 @@ const $ = (id) => document.getElementById(id);
 // app.js is the call engine; everything the page shows is written to this view
 // and rendered by the React UI. Audio elements and the reader stay in the HTML.
 const view = createCallView();
+installTvHost({view,window,actions:{dial:()=>startCall(),end:()=>stopCall(),mute:()=>setMuted(!view.get().muted)},onError:error=>setStatus(error.message,{tone:'error'})});
 const contentView = document.querySelector ? createContentView(document, window, { onReading: reading => view.set({ reading }) }) : null;
 const renderAssistant = (target, item) => {
   if (contentView) contentView.render(target, item, { auto: item.document === true });

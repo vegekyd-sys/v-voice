@@ -1,7 +1,7 @@
 {
   "sources": {
     "index.html": "7ce196055fbb3084987952fabdb26aa48d630576088c6e841abce4bf79756337",
-    "styles.css": "2a19aa68afa7cb171db65bcca93960ba5b1b910d80e77c07b98712d7d225b8d4",
+    "styles.css": "f14f9dc5212abaff02623cdf95b74475f7301ee21e857a9cd90393d247faff73",
     "ui/call-ui.jsx": "2cf2d3a6e32b968ee11fa7b9436e3a36fafe3a8c1850cb611956988ece56a705",
     "ui-bundle.mjs": "2394b100f5f8c8631b1d371d2435b090d16666e4e15537daa3de19c6801277e8",
     "call-view.mjs": "f91d20a6e63dcecd0b11af6370fd9b8f69733eae6393879713a2c213774b4633",
@@ -133,7 +133,7 @@
     "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
     "native-h5.js": "949b0aabc794077116ae0c69b9806d70766033ae112cf881d92ab01dc3b2b557",
     "comparison.html": "7beb6c5d3e5933b5c020ddf23e200679318faa98568904f927d0553ea3d33076",
-    "styles.css": "2a19aa68afa7cb171db65bcca93960ba5b1b910d80e77c07b98712d7d225b8d4",
+    "styles.css": "f14f9dc5212abaff02623cdf95b74475f7301ee21e857a9cd90393d247faff73",
     "comparison.css": "ae9fbcffb322e32737e2ce0ed830c1b86f9f27406b4ce8b686dc8cac9f36ba16",
     "comparison.mjs": "8fc7a4bd3323e4ff2aaab383103b950015f4fb3c05ca327ba09790fbc6f7113b",
     "assets/v-operator-home-1024.webp": "5cf1ddc6b9b9abd06c1ac15be325f9b86cbaa4db8363daeec0da6040e128d319",
