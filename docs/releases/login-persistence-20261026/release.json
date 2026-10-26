@@ -1,7 +1,7 @@
 {
   "schema": "v-voice-production-release-v1",
   "version": "voice-feishu-login-persistence.20261026.1",
-  "status": "deployed-awaiting-user-acceptance",
+  "status": "deployed-and-user-accepted",
   "entryCommit": "0aae20e18bdc83b3f8ad638e4d6a55fb71a6a754",
   "deviceEntryCommit": "0aae20e18bdc83b3f8ad638e4d6a55fb71a6a754",
   "filesSha256": "c5b1e22dde0ed142406c51b15e696c68ea75cf9168bef1cc38d2b1409a125a85",
@@ -28,11 +28,18 @@
     "cardCallbacksSimulated": true,
     "productionBrowserAccountSwitchVisible": true,
     "productionHomepageChangelog": true,
-    "actualExternalClientReopen": "pending user acceptance",
+    "actualExternalClientReopen": "user confirmed reported bug fixed; individual steps not enumerated",
     "realMessagesSent": 0,
     "paidVoiceCalls": 0,
     "newIOSBinary": false
   },
   "report": "release.md",
-  "deployedAt": "2026-10-26T23:05:47+08:00"
+  "deployedAt": "2026-10-26T23:05:47+08:00",
+  "userAcceptance": {
+    "date": "2026-10-26",
+    "recordedAt": "2026-10-26T23:11:13+08:00",
+    "by": "Tianyi",
+    "feedback": "修好了 记录下",
+    "scope": "User confirms the reported external-account login persistence and switching bug is fixed; individual test actions and other terminal/audio acceptance were not enumerated."
+  }
 }

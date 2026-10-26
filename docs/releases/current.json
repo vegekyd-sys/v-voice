@@ -9,6 +9,7 @@
   "previousEntryCommit": "9ae49f523f735e9bb4dd8d9700128d2a66eb9e5e",
   "gatewayRestartRequired": false,
   "validatedAt": "2026-10-26T23:07:45+08:00",
-  "runtimeDifference": "Both Voice nodes use the same verified artifact; external browser login persistence and account switching restored. Gateway and private configuration unchanged. Real external Feishu client acceptance pending Tianyi.",
-  "deployedAt": "2026-10-26T23:05:47+08:00"
+  "runtimeDifference": "Both Voice nodes use the same verified artifact; external browser login persistence and account switching restored. Gateway and private configuration unchanged. Tianyi confirmed the reported external-login bug fixed; individual test steps and other terminal/audio acceptance were not enumerated.",
+  "deployedAt": "2026-10-26T23:05:47+08:00",
+  "userAcceptance": "Tianyi confirmed the reported external-login bug fixed on 2026-10-26"
 }
