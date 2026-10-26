@@ -1,3 +1,10 @@
+## 2026-10-26 — External Feishu login persistence release preparation
+
+- User approved PR #152 for production acceptance. Publish homepage notes for persistent external login, visible account switching and explicit return from Public.
+- Deploy the same verified artifact to both Voice nodes under idle/drain protection. No Gateway, native App or firmware update.
+- Shared VLab is occupied by an unrelated platform candidate. This Voice-only change keeps the existing authorization protocol; isolated candidate verification against the production Gateway is read-only, with provider/card operations simulated and no calls or messages.
+- Production cutover and exact artifact receipts are recorded separately after verification.
+
 ## 2026-10-26 — External Feishu login persistence (candidate, unreleased)
 
 - Preserve explicit card-confirmed browser identity across Feishu SDK refusal and page reopening; recheck Gateway admission without extending the existing 30-day expiry.

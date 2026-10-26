@@ -128,6 +128,15 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-feishu-login-persistence.20261026.1',date:'2026-10-26',
+    title:'外部账号保持登录，可以切换身份',
+    items:[
+      '通过飞书卡片确认后，重新打开电话保留账号与会话，不再因组织免登失败退回 Public。',
+      '首页恢复当前使用方式与连接飞书身份入口；账号设置可切换身份，切到 Public 后也能主动返回原账号。',
+      '旧登录需要重新确认一次；之后沿用 30 天有效期，访问会话仍核验当前资格。',
+    ],
+  },
+  {
     version:'voice-legacy-entry.20261026.1',date:'2026-10-26',
     title:'旧群和私聊电话入口修复',
     items:[
