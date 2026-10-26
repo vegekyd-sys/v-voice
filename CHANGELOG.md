@@ -1,3 +1,10 @@
+## 2026-10-26 — External Feishu login persistence (candidate, unreleased)
+
+- Preserve explicit card-confirmed browser identity across Feishu SDK refusal and page reopening; recheck Gateway admission without extending the existing 30-day expiry.
+- Show account settings and identity connection on the dial-ready page. Public remains isolated and offers an explicit route back to the remembered conversation.
+- Retain ordinary OAuth rejection, account switching, expiry and membership-revocation boundaries. Old unmarked grants need one new confirmation because their issuer cannot be distinguished safely.
+- All 963 tests and local browser login/reopen/Public/switching paths passed with simulated identities. Shared Gateway verification is pending: its integration lease was occupied. No production or TestFlight deployment. See [candidate acceptance](docs/releases/login-persistence-candidate-20261026/acceptance.md).
+
 ## 2026-10-26 — Legacy Feishu entry release preparation
 
 - Prepare the authorized release of historical group/DM bookmark redirects and the matching platform menu/tab repair.

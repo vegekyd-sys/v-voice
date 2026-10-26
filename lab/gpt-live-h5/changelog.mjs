@@ -1,3 +1,15 @@
+export const FEISHU_LOGIN_PERSISTENCE_CANDIDATE_UPDATE = {
+  version:'voice-feishu-login-persistence.20261026.1',date:'2026-10-26',
+  title:'外部账号登录保持与身份切换（Candidate）',status:'candidate-validation',
+  items:[
+    '通过飞书卡片确认后，重新打开电话保留已确认账号，不再因免登失败退回 Public。',
+    '电话首页显示当前使用方式和连接飞书身份入口，可以主动切换身份。',
+    '切到 Public 后，可从账号设置返回上次连接的账号与会话。',
+    '旧登录需重新确认一次；之后在原有 30 天有效期内保留，每次访问仍检查会话资格。',
+    '已完成本地页面与回归验证，尚未上线。',
+  ],
+};
+
 export const FEISHU_CARD_CONFIRM_CANDIDATE_UPDATE = {
   version:'voice-feishu-card-confirm.20261025.5',date:'2026-10-25',
   title:'飞书身份原页确认与账号界面优化（Candidate）',status:'candidate-validation',
