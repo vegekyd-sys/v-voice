@@ -113,7 +113,19 @@ export class NativeSpeechPause {
     return this.held;
   }
 }
-export function createRelayAudio({context,stream,reservation,onEvent,onError,onClosed,onPlaybackActivity=()=>{},greeting=true,inputGated=false}) {
+// Observe the actual rendered output and live input without modifying either path.
+// Only bounded RMS is published; buffers are overwritten and never retained.
+export function observeAudioMeters({context,input,output,onLevel}) {
+  const mic=context.createAnalyser(),speaker=context.createAnalyser();
+  mic.fftSize=speaker.fftSize=1024;
+  input.connect(mic);output.connect(speaker);
+  const a=new Float32Array(1024),b=new Float32Array(1024);
+  const rms=(node,buffer)=>{node.getFloatTimeDomainData(buffer);let sum=0;for(const value of buffer)sum+=value*value;return Math.sqrt(sum/buffer.length);};
+  const timer=setInterval(()=>onLevel(context.state==='running'?{input:rms(mic,a),output:rms(speaker,b)}:{input:0,output:0}),100);
+  return ()=>{clearInterval(timer);try{input.disconnect(mic);output.disconnect(speaker);}catch{}mic.disconnect();speaker.disconnect();};
+}
+export function createRelayAudio({context,stream,reservation,onEvent,onError,onClosed,onPlaybackActivity=()=>{},onAudioLevel,greeting=true,inputGated=false}) {
+  let stopMeter;
   // Recorded Grok packets: 245ms of speech, then a 595ms arrival gap.
   // 400ms protects that real startup cadence; Xiaohe retains its smaller lead.
   const startBufferMs=reservation.provider==='grok'?400:120;
@@ -227,6 +239,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     for(const buffer of pendingOutput)transfer(buffer);pendingOutput.length=0;if(outputComplete)speaker.port.postMessage({type:'done',epoch});
     node=new AudioWorkletNode(context,'v-direct-mic');source=context.createMediaStreamSource(stream);
     quietGain=context.createGain();quietGain.gain.value=0;source.connect(node);node.connect(quietGain);quietGain.connect(context.destination);
+    if(onAudioLevel)stopMeter=observeAudioMeters({context,input:source,output:speaker,onLevel:onAudioLevel});
     node.port.onmessage=e=>{if(closed||uploadFailed)return;const frame=e.data;
       const at=performance.now();if(lastInputAt!==null)stats.maxInputGapMs=Math.max(stats.maxInputGapMs,Math.round(at-lastInputAt));lastInputAt=at;stats.inputFrames++;
       // Count activity only; never retain samples, labels or device identifiers.
@@ -252,5 +265,5 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
       // the actual upstream ready event. Greeting PCM is retained above.
       await promise;if(!closed)await capture();
     },sendDeviceResult:value=>send(value),sendText:text=>send({type:'text',text}),
-    dispose(){if(closed)return;reportStats();closed=true;clearInterval(statsTimer);clearTimeout(tailTimer);context.removeEventListener?.('statechange',stateChanged);globalThis.document?.removeEventListener?.('visibilitychange',visible);flush();node?.port.close();node?.disconnect();speaker?.port.close();speaker?.disconnect();source?.disconnect();quietGain?.disconnect();socket.close();}};
+    dispose(){if(closed)return;stopMeter?.();reportStats();closed=true;clearInterval(statsTimer);clearTimeout(tailTimer);context.removeEventListener?.('statechange',stateChanged);globalThis.document?.removeEventListener?.('visibilitychange',visible);flush();node?.port.close();node?.disconnect();speaker?.port.close();speaker?.disconnect();source?.disconnect();quietGain?.disconnect();socket.close();}};
 }

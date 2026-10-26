@@ -64,3 +64,42 @@ test('asynchronous host action failures use the shared error callback',async()=>
   assert.equal(api.action('dial'),true);await new Promise(r=>setImmediate(r));
   assert.deepEqual(errors,['unavailable']);assert.equal(api.snapshot.call,'idle');
 });
+
+test('three sizes preserve the call owner and never dial or end implicitly',()=>{
+  const {api,view,calls,window}=fixture('?tv=1&tvShell=1');
+  assert.equal(api.snapshot.layout,'medium');view.set({dial:{disabled:false}});
+  api.action('dial');view.set({call:'connected'});const original=api.snapshot;
+  for(const size of ['compact','medium','full','medium']){
+    assert.equal(api.setLayout(size,original),true);
+    assert.equal(api.commitLayout(size,original),true);
+    assert.equal(api.snapshot.owner,original.owner);assert.equal(api.snapshot.generation,original.generation);
+    assert.equal(view.get().tvLayout,size);assert.equal(window.document.documentElement.dataset.tvLayout,size);
+  }
+  assert.equal(api.setLayout('full',{...original,owner:'old'}),false);
+  assert.equal(api.setLayout('anything'),false);
+  assert.equal(api.commitLayout('full',{...original,owner:'old'}),false);
+  assert.equal(api.back(),'handled');assert.equal(api.snapshot.layout,'compact');assert.equal(api.back(),'exit');
+  assert.equal(view.get().call,'connected');assert.deepEqual(calls,['dial']);
+});
+
+test('meter uses measured energy, prefers audible output, suppresses mute, clears after a gap and end',()=>{
+  const {api,view}=fixture();view.set({call:'connected'});
+  api.observeAudio({input:.24,output:.06,at:1000});
+  assert.equal(api.getAudio().source,'output');assert.deepEqual(api.getAudio().levels,[35]);
+  api.observeAudio({input:.24,output:.06,at:1050});assert.equal(api.getAudio().levels.length,1);
+  api.observeAudio({input:.24,output:0,at:1500});assert.equal(api.getAudio().source,'input');
+  assert.deepEqual(api.getAudio().levels,[100]);
+  view.set({muted:true});assert.equal(api.getAudio().source,'none');
+  api.observeAudio({input:1,output:0,at:1600});assert.deepEqual(api.getAudio().levels,[]);
+  api.observeAudio({input:NaN,output:Infinity,at:1700});assert.deepEqual(api.getAudio().levels,[]);
+  api.observeAudio({input:0,output:.1,at:1800});assert.equal(api.getAudio().source,'output');
+  view.set({call:'idle'});assert.equal(api.getAudio().source,'none');
+  assert.equal('audio' in api.snapshot,false);
+});
+
+test('missing audio samples expire instead of leaving a speaking animation',async()=>{
+  const {api,view}=fixture();view.set({call:'connected'});api.observeAudio({input:.1});
+  assert.equal(api.getAudio().source,'input');
+  await new Promise(resolve=>setTimeout(resolve,480));
+  assert.deepEqual(api.getAudio(),{source:'none',levels:[]});
+});

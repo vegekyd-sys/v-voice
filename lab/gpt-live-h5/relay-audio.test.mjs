@@ -1,9 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {createRelayAudio,PcmPlaybackQueue,relayWorkletSource,NativeSpeechPause} from './relay-audio.mjs';
+import {GrokVoiceBridge} from '../realtime-direct-tools/grok-provider.mjs';
+import {createRelayAudio,PcmPlaybackQueue,relayWorkletSource,NativeSpeechPause,observeAudioMeters} from './relay-audio.mjs';
 
 function queue(rate=48000,ms=120){return new PcmPlaybackQueue(rate,ms)}
+test('visual meters read actual nodes, publish silence when suspended and detach only their taps',t=>{
+ t.mock.timers.enable({apis:['setInterval']});
+ const analysers=[],detached=[],levels=[];
+ const context={state:'running',createAnalyser(){const node={value:analysers.length?.04:.1,getFloatTimeDomainData(a){a.fill(this.value);},disconnect(){detached.push(this);}};analysers.push(node);return node;}};
+ const input={connect(node){this.tap=node;},disconnect(node){assert.equal(node,this.tap);}},output={...input};
+ const stop=observeAudioMeters({context,input,output,onLevel:e=>levels.push(e)});
+ t.mock.timers.tick(100);assert.ok(Math.abs(levels[0].input-.1)<1e-7);assert.ok(Math.abs(levels[0].output-.04)<1e-7);
+ context.state='suspended';t.mock.timers.tick(100);assert.deepEqual(levels[1],{input:0,output:0});
+ stop();assert.equal(detached.length,2);t.mock.timers.tick(500);assert.equal(levels.length,2);
+});
 const pcm=(n,value=8192)=>new Int16Array(n).fill(value);
 function render(q,n=128,at=0){const out=new Float32Array(n);q.render(out,at);return out;}
 function replay(rate,arrivals){
@@ -73,6 +84,16 @@ async function fixture(t,provider,deferReady=false,options={}){
 }
 test('actual serialized worklet receives only the selected Grok buffer; Xiaohe stays at 120ms',async t=>{
  const f=await fixture(t,'grok');assert.equal(f.relay.stats.startBufferMs,400);assert.equal(f.speaker.processor.queue.prefill,19200);
+});
+test('real Grok bridge audio identity matches its completion and releases the held greeting',async t=>{
+ const f=await fixture(t,'grok');let sequence=0;
+ const bridge=new GrokVoiceBridge({onAudio:(bytes,metadata)=>f.event({type:'audio',sequence:++sequence,sampleRate:24000,audio:bytes.toString('base64'),...metadata}),
+  onResponseDone:e=>f.event({type:'audio.done',responseId:e.responseId})},{apiKey:'LOCAL_FIXTURE_ONLY'});
+ bridge.receive({type:'response.created',response:{id:'greeting-1'}});
+ bridge.receive({type:'response.output_audio.delta',delta:Buffer.from(pcm(4800,8192).buffer).toString('base64')});
+ assert(f.pump(1024).every(v=>v===0));
+ bridge.receive({type:'response.done',response:{id:'greeting-1',status:'completed'}});
+ const heard=f.pump(12000);assert(heard.some(v=>v===.25));assert.equal(f.relay.stats.queuedOutputBytes,0);
 });
 test('recorded Grok greeting hole is held to completion; next answer keeps its streaming lead and the microphone',async t=>{
  const f=await fixture(t,'grok');

@@ -24,10 +24,10 @@ const $ = (id) => document.getElementById(id);
 // app.js is the call engine; everything the page shows is written to this view
 // and rendered by the React UI. Audio elements and the reader stay in the HTML.
 const view = createCallView();
-installTvHost({view,window,actions:{dial:()=>startCall(),end:()=>stopCall(),mute:()=>setMuted(!view.get().muted)},onError:error=>setStatus(error.message,{tone:'error'})});
+const tvHost=installTvHost({view,window,actions:{dial:()=>startCall(),end:()=>stopCall(),mute:()=>setMuted(!view.get().muted)},onError:error=>setStatus(error.message,{tone:'error'})});
 const contentView = document.querySelector ? createContentView(document, window, { onReading: reading => view.set({ reading }) }) : null;
 const renderAssistant = (target, item) => {
-  if (contentView) contentView.render(target, item, { auto: item.document === true });
+  if (contentView) contentView.render(target, item, { auto: item.document === true && (!tvHost || view.get().tvLayout==='full') });
   else renderMarkdown(target, item.text, document);
 };
 if (document.querySelector) mountCallUi(document, view, {
@@ -678,6 +678,7 @@ async function startCall() {
       await active.contextResume;
       if(call!==active)return;
       active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,greeting:!active.fixture,inputGated:Boolean(reservation.speakerRouting),
+        onAudioLevel:tvHost?value=>{if(call===active)tvHost.observeAudio(value);}:undefined,
         onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message, { tone: "error" }));},
         onClosed:()=>{if(call===active)void stopCall();},
         onPlaybackActivity:speaking=>{if(call===active){setVoiceState(speaking?'speaking':'listening');if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
@@ -797,6 +798,7 @@ async function startCall() {
         // This analyser reads the inbound stream before HTML playback muting,
         // so a local gate cannot manufacture evidence of a provider audio gap.
         const duplex = active.duplex.observe({ at, microphoneRms: microphoneEnergy, remoteRms: energy });
+        tvHost?.observeAudio({input:microphoneEnergy,output:duplex.localPlaybackMuted||active.playbackNeedsGesture||$("remoteAudio").paused||active.context.state!=="running"?0:energy});
         duplexDiagnostic(active, { type: "activity-window", at, microphoneRms: microphoneEnergy, remoteRms: energy,
           microphoneAboveAttack: microphoneEnergy >= .02, microphoneAboveRelease: microphoneEnergy > .01,
           microphoneVoiced: duplex.localUserSpeaking,

@@ -306,7 +306,8 @@ test('end requires native semantic tool, actual farewell audio and matching drai
  const f=await fixture();f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'讨论挂断功能'})),false);await delay(2);
  assert.equal(f.client.sent.some(x=>x.type==='end.accepted'),false);
  f.call('end_call',{});await delay(5);assert.equal(f.client.sent.some(x=>x.type==='end.after-playback'),false);
- f.event({type:'response.output_audio.delta',delta:Buffer.alloc(960).toString('base64')});f.event({type:'response.done',response:{id:'farewell',status:'completed'}});
+ f.event({type:'response.created',response:{id:'farewell'}});
+ f.event({type:'response.output_audio.delta',response_id:'farewell',delta:Buffer.alloc(960).toString('base64')});f.event({type:'response.done',response:{id:'farewell',status:'completed'}});
  assert.equal(f.client.sent.some(x=>x.type==='end.after-playback'),true);
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:'foreign'})),false);assert.equal(f.client.readyState,1);
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:'call-1'})),false);await delay(5);assert.equal(f.client.readyState,3);await f.service.dispose();
