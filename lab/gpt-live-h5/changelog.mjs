@@ -128,6 +128,15 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-background-feishu.20261027.1',date:'2026-10-27',
+    title:'后台任务在飞书里也看得见',
+    items:[
+      '通话中交给会话执行的后台任务，会在绑定的飞书会话里展示请求、公开进度与最终结果。',
+      '任务沿用原会话和飞书原生卡片；通话里也继续接收任务结果。',
+      '普通语音对话不逐句同步到飞书。',
+    ],
+  },
+  {
     version:'voice-feishu-login-persistence.20261026.1',date:'2026-10-26',
     title:'外部账号保持登录，可以切换身份',
     items:[
