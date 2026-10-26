@@ -924,6 +924,7 @@ async function initializeEntry() {
   }
 }
 function applyEntryStatus(status) {
+    view.set({returnToAccountHref:status.returnToAccountHref??null});
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     liveReady = status.ready === true;
     const models = MODEL_CHOICES.filter(choice=>!status.unidentified||choice.id!=='gpt-live').map(choice => {

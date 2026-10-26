@@ -1,13 +1,15 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "entry-release-20261026",
-  "version": "voice-legacy-entry.20261026.1",
-  "entryCommit": "9ae49f523f735e9bb4dd8d9700128d2a66eb9e5e",
-  "deviceEntryCommit": "9ae49f523f735e9bb4dd8d9700128d2a66eb9e5e",
-  "filesSha256": "16fa5ad1904dc3b20c42f470744c4d67f4f7337a0d3c566d7003aa84947de863",
-  "registration": "entry-release-20261026/release.json",
-  "previousEntryCommit": "ccebd66084d44d87cdf452b84741fe21c08d936a",
-  "gatewayRestartRequired": true,
-  "deployedAt": "2026-10-26T00:30:15+08:00",
-  "runtimeDifference": "Both Voice nodes use the same artifact. Separate platform PR 476 activated automatic Feishu entry reconciliation through v-self-restart; VLab/V alignment passed for 18,820 files. No native binary or firmware update. Historical visibility and missing-chat exceptions are recorded."
+  "release": "login-persistence-20261026",
+  "version": "voice-feishu-login-persistence.20261026.1",
+  "entryCommit": "0aae20e18bdc83b3f8ad638e4d6a55fb71a6a754",
+  "deviceEntryCommit": "0aae20e18bdc83b3f8ad638e4d6a55fb71a6a754",
+  "filesSha256": "c5b1e22dde0ed142406c51b15e696c68ea75cf9168bef1cc38d2b1409a125a85",
+  "registration": "login-persistence-20261026/release.json",
+  "previousEntryCommit": "9ae49f523f735e9bb4dd8d9700128d2a66eb9e5e",
+  "gatewayRestartRequired": false,
+  "validatedAt": "2026-10-26T23:07:45+08:00",
+  "runtimeDifference": "Both Voice nodes use the same verified artifact; external browser login persistence and account switching restored. Gateway and private configuration unchanged. Tianyi confirmed the reported external-login bug fixed; individual test steps and other terminal/audio acceptance were not enumerated.",
+  "deployedAt": "2026-10-26T23:05:47+08:00",
+  "userAcceptance": "Tianyi confirmed the reported external-login bug fixed on 2026-10-26"
 }

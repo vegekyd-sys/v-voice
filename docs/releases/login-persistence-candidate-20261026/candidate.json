@@ -1,0 +1,14 @@
+{
+  "version": "voice-feishu-login-persistence.20261026.1",
+  "status": "candidate-unreleased",
+  "branch": "codex/feishu-login-persistence-20261026",
+  "productionChanged": false,
+  "testsPassed": 963,
+  "browserValidation": "Real local HTTP/UI; simulated Feishu identities, SDK and Gateway; login, reopen, Public return, account switch and reopen passed",
+  "sharedGatewayValidation": "Pending: integration lease occupied; no shared mutation performed",
+  "realMessagesSent": 0,
+  "paidCalls": 0,
+  "newIOSBinary": false,
+  "compatibility": "Old unmarked or deleted browser grants need one new confirmation; new card grants retain the original 30-day expiry",
+  "report": "acceptance.md"
+}
