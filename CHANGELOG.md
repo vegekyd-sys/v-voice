@@ -578,3 +578,9 @@ The earlier accepted task-continuity baseline uses Voice `a9ac5168` and the plat
 - 候选首页日志仅在该独立入口展示，正式已发布列表不加入实验能力。
 
 状态：独立 Candidate 已部署，未合入、未发布生产。版本元数据见 `lab/speaker-native/linux-release.mjs`，实际验收见 `docs/experiments/speaker-stream-linux-2026-10-19.md`。
+## 2026-10-27 — Background task Feishu visibility release preparation
+
+- Route GPT Live native consultation and shared Voice background tasks through the bound session's unified native Feishu presentation. Preserve the calling identity, task correlation, public progress and result return to the call.
+- Keep ordinary speech outside this background-task flow. Integrate the current external-login fixes and publish homepage notes.
+- Shared VLab and production acceptance, exact artifact and dual-node deployment receipts will be recorded after validation; this entry does not claim deployment.
+

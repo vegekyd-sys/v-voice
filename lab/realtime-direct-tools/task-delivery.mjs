@@ -46,8 +46,23 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,
   let authorized=false,closed=false,activeRun,lastResult;
   const watched=new Set(),observers=new Map(),currentByDelegation=new Map();let disposed=false;
   const outcomes=new Map();let tail=Promise.resolve();
+  const nativeClaims=new Map();let claiming=0;
   const target=voiceFeishuTarget(sessionKey);
-  const send=(runId,kind,text)=>{
+  const send=async(runId,kind,text)=>{
+    const hasReply=replyDelivery&&runId&&['final','failure','cancelled'].includes(kind);
+    if((hasReply||authorized&&target&&runId&&text?.trim())&&gateway.supportsMethod?.('v.feishu.taskPresentation')){
+      try{
+        if(!nativeClaims.has(runId)){
+          claiming++;
+          const claim=Promise.resolve().then(()=>gateway.request('v.feishu.taskPresentation',{op:'owns',agentId:target?.agentId??sessionKey.split(':')[1],sessionKey,runId},{timeoutMs:5000})).then(receipt=>receipt?.owned===true).catch(error=>{nativeClaims.delete(runId);throw error;}).finally(()=>claiming--);
+          nativeClaims.set(runId,claim);
+        }
+        if(await nativeClaims.get(runId)){
+          audit({type:'task.delivery-native-owned',voiceSessionId:ownerId,runId,kind});
+          return hasReply?replyDelivery.result(`${runId}:${kind}`,text,{questionId:runId,nativeOwned:true}):{sent:false,nativeOwned:true};
+        }
+      }catch(error){audit({type:'task.delivery-failed',voiceSessionId:ownerId,runId,kind,error:'原生卡片归属尚未确认，已暂停旧发送'});throw error;}
+    }
     if(replyDelivery&&runId&&['final','failure','cancelled'].includes(kind))return replyDelivery.result(`${runId}:${kind}`,text,{questionId:runId});
     if(!authorized||!target||!runId||!text?.trim())return Promise.resolve({sent:false});
     const digest=createHash('sha256').update(text).digest('hex').slice(0,20);
@@ -80,7 +95,7 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,
     async cancelled(runId){await send(runId,'cancelled','已按你的明确要求取消这通电话的后台任务。');if(activeRun===runId)activeRun=undefined;},
     close(){closed=true;if(!activeRun&&!watched.size)onIdle();if(authorized&&activeRun)void send(activeRun,'accepted','已接续这通电话的后台任务，后续进展和结果会发在这里。').catch(()=>{});},
     get detached(){return closed;},
-    get pending(){return Boolean(activeRun||watched.size||replyDelivery?.pending);},
+    get pending(){return Boolean(activeRun||watched.size||claiming||replyDelivery?.pending);},
     handleEvent(event){
       const native=event.event==='talk.event'&&event.payload?.voiceSessionId===ownerId?event.payload.talkEvent:null;
       const completed=native&&observers.get(native.callId);
@@ -134,6 +149,6 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,
       })().catch(error=>{if(currentByDelegation.get(delegationId)===runId)void send(runId,'failure',`电话中的后台任务未确认完成：${error.message}。`).catch(()=>{});}).finally(()=>{if(activeRun===runId)activeRun=undefined;watched.delete(runId);observers.get(runId)?.observer.close();observers.delete(runId);if(closed&&!watched.size)onIdle();});
     },
     dispose(){disposed=true;for(const r of observers.values())r.observer.close();observers.clear();},
-    flush:()=>tail,
+    flush:async()=>{await Promise.allSettled([...nativeClaims.values()]);await tail;},
   };
 }

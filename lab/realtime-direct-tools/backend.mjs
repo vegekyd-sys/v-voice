@@ -47,7 +47,7 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,sessionBound
       taskDelivery?.requested?.(callId,callerTurn?.text);
       log(row,'backend.start-requested');
       let ack;
-      try{ack=await gateway.request('voice.product.task.start',{sessionKey,voiceSessionId:ownerId,callId,question:backendQuestion(question,context,{voiceSessionId:ownerId,callId,receivedAt:new Date().toISOString(),...(callerTurn?{callerTurn}:{})},{sessionBound,publicVoice})},{timeoutMs:30000});}
+      try{ack=await gateway.request('voice.product.task.start',{sessionKey,voiceSessionId:ownerId,callId,publicQuestion:question,question:backendQuestion(question,context,{voiceSessionId:ownerId,callId,receivedAt:new Date().toISOString(),...(callerTurn?{callerTurn}:{})},{sessionBound,publicVoice})},{timeoutMs:30000});}
       catch(error){
         // A lost response is not permission to launch a second task. Reconcile
         // only this connection's original call/tool identity, never a latest run.
