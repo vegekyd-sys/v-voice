@@ -3,7 +3,7 @@
     "index.html": "7ce196055fbb3084987952fabdb26aa48d630576088c6e841abce4bf79756337",
     "styles.css": "2a19aa68afa7cb171db65bcca93960ba5b1b910d80e77c07b98712d7d225b8d4",
     "ui/call-ui.jsx": "268f2e14c6f784997270d3e53b1b4f7897d8ac5a9da46cefb08556a6a8efd033",
-    "ui-bundle.mjs": "e0bf33d552bf137e5a46df4d70ba6b4aba781e331f4c8568f049e3be7ea875ff",
+    "ui-bundle.mjs": "c72fa65976c23686878174c79d83b61b5d4b6c45819bf89633fd547cbbcdc77f",
     "call-view.mjs": "f91d20a6e63dcecd0b11af6370fd9b8f69733eae6393879713a2c213774b4633",
     "content-view.mjs": "c754e537248cf95efbff9d810d61f82da13fc3c8cbec42bca02e7928906de743",
     "markdown.mjs": "a556476a8a88b35aba790f993a8bde333150aebab9dc7fdce14aa2e3c586ace0",
@@ -131,7 +131,7 @@
   },
   "outputs": {
     "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
-    "native-h5.js": "5232145aea7a057e48f103aaa33a1205ea5e028d27a861de161ab94c5198375c",
+    "native-h5.js": "626c345ab46a5333d4281c5db6a0585e097ebcbda99aed9b60ffb681becacb09",
     "comparison.html": "7beb6c5d3e5933b5c020ddf23e200679318faa98568904f927d0553ea3d33076",
     "styles.css": "2a19aa68afa7cb171db65bcca93960ba5b1b910d80e77c07b98712d7d225b8d4",
     "comparison.css": "ae9fbcffb322e32737e2ce0ed830c1b86f9f27406b4ce8b686dc8cac9f36ba16",
