@@ -1,4 +1,5 @@
-import {installTvHost} from "./tv-host.mjs";
+import {installTvHost,tvDefaultModel} from "./tv-host.mjs";
+import {captureTvArray,hasTvArrayCapture,tvArraySupportsModel} from "./tv-array-capture.mjs";
 import {createFeishuConfirmation} from "./feishu-confirmation-client.mjs";
 import {browserDeviceActions,createBrowserDeviceAdapter} from "./device-location.mjs";
 import { createCallerContext } from "./caller-context.mjs";
@@ -596,6 +597,7 @@ async function stopCall() {
 async function startCall() {
   if (starting || call || view.get().confirmation) return;
   if (view.get().confirmOnDial) { await confirmation.start(); return; }
+  if(tvHost&&hasTvArrayCapture()&&!tvArraySupportsModel(view.get().model)){setStatus("当前电视阵列输入支持豆包和 Grok，请选择豆包。",{tone:"error"});return;}
   if (!liveReady) { setStatus(entryError ?? "当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
   for (const name of ["voice.dial.requested", "voice.microphone.ready", "voice.reservation.ready", "voice.connection.ready"])
     performance.clearMarks?.(name);
@@ -633,7 +635,10 @@ async function startCall() {
   try {
     const fixtureId=speakerCandidate()?new URLSearchParams(location.search).get('fixture'):null;
     if(speakerCandidate()){document.body.dataset.speakerEvents='[]';document.body.dataset.speakerAnswerDone='false';}
-    active.capture = fixtureId?await createSpeakerFixture(active.context,fixtureId,{onEvent:speakerEvent}):await microphoneSession.acquire({
+    active.capture = fixtureId?await createSpeakerFixture(active.context,fixtureId,{onEvent:speakerEvent}):tvHost&&hasTvArrayCapture()?await captureTvArray({context:active.context,signal:active.captureAbort.signal,isCurrent:()=>call===active,
+      onDiagnostics:metadata=>{if(call===active)active.duplexDiagnostics.microphone=metadata;},
+      onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message,{tone:'error'}));},
+    }):await microphoneSession.acquire({
       mediaDevices: navigator.mediaDevices, signal: active.captureAbort.signal,
       isCurrent: () => call === active,
       onDiagnostics: (metadata) => { if (call === active) active.duplexDiagnostics.microphone = metadata; },
@@ -678,6 +683,8 @@ async function startCall() {
       await active.contextResume;
       if(call!==active)return;
       active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,greeting:!active.fixture,inputGated:Boolean(reservation.speakerRouting),
+        renderReference:active.capture.renderReference,
+        startCapture:active.capture.startCapture,
         onAudioLevel:tvHost?value=>{if(call===active)tvHost.observeAudio(value);}:undefined,
         onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message, { tone: "error" }));},
         onClosed:()=>{if(call===active)void stopCall();},
@@ -932,11 +939,12 @@ function applyEntryStatus(status) {
     liveReady = status.ready === true;
     const models = MODEL_CHOICES.filter(choice=>!status.unidentified||choice.id!=='gpt-live').map(choice => {
       const model = status.models?.find(item => item.id === choice.id);
-      return model ? { ...choice, available: Boolean(model.available), ...(model.label ? { label: model.label } : {}) } : choice;
+      return model ? { ...choice, available: Boolean(model.available)&&(!tvHost||!hasTvArrayCapture()||tvArraySupportsModel(model.id)), ...(model.label ? { label: model.label } : {}) } : choice;
     });
     const usable = id => models.some(model => model.id === id && model.available);
-    let model = usable(status.defaultModel) ? status.defaultModel : view.get().model;
-    if (!usable(model)) model = ["seeduplex", "gpt-live", "grok"].find(usable) ?? model;
+    let model = tvHost ? tvDefaultModel(models).model : usable(status.defaultModel) ? status.defaultModel : view.get().model;
+    if (!tvHost&&!usable(model)) model = ["seeduplex", "gpt-live", "grok"].find(usable) ?? model;
+    if(tvHost&&!tvDefaultModel(models).available){liveReady=false;entryError='豆包暂不可用，请稍后重试。';}
     const grok = status.models?.find(item => item.id === "grok");
     const grokVoices = grok?.voices ?? [];
     view.set({ models, model, confirmOnDial:status.confirmationAvailable===true&&status.unidentified===true&&!guestDialAllowed, confirmationAvailable:status.confirmationAvailable===true, accessContext:status.accessContext??null, publicHref:status.publicHref??null, accountLoginHref: status.accountLoginHref??null, accountLabel: status.accountLabel??null, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, unidentified:status.unidentified===true, grok: {

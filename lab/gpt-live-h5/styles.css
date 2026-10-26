@@ -1194,3 +1194,54 @@ html[data-tv="true"] :is(button,a[href],input,select,textarea,[tabindex]):focus-
 /* Keep a comfortable line length on the TV's desktop-size viewport. */
 html[data-tv="true"] .reader-layer[data-kind="report"] .reader-surface{width:min(760px,100%)}
 html[data-tv="true"] #readerBody:focus-visible{outline:2px solid #b8a6c5;outline-offset:-3px}
+
+/* Selected home companion dock: same mounted Reaction in every call size. */
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) #app{background:transparent!important;border-radius:0;box-shadow:none;overflow:visible}
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) .call-page{display:block!important;overflow:visible!important}
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) .call-page .stage{display:block!important;position:static!important;width:100%!important;padding:0!important;margin:0!important}
+html[data-tv-layout="medium"] .call-page .avatar{left:auto!important;right:12px!important;top:18px!important;width:144px!important;height:144px!important;--avatar-size:144px!important}
+html[data-tv-layout="medium"] .avatar-face{width:144px!important;height:144px!important;border:1px solid #bed7ea99!important;box-shadow:0 0 0 4px #8bbed00b,0 10px 24px #0004!important;overflow:hidden}
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) .avatar-face img{transform:scale(1.55);transform-origin:60% 27%;object-fit:cover}
+html[data-tv-layout="compact"] .call-page .avatar{position:absolute!important;left:auto!important;right:12px!important;top:18px!important;width:48px!important;height:48px!important;--avatar-size:48px!important;margin:0!important;transform:none!important}
+html[data-tv-layout="compact"] .avatar-face{width:48px!important;height:48px!important;overflow:hidden;border:1px solid #bed7ea99!important;box-shadow:none!important}
+html[data-tv-layout="compact"] .avatar-aura{display:none}
+.tv-avatar-dock{padding:0;display:block;pointer-events:none}
+.tv-avatar-dock::before{content:"";position:absolute;right:18px;top:0;width:26px;height:48px;border-right:1px solid #a1c5d85c;border-bottom:1px solid #a1c5d85c;border-radius:0 28px 24px 0;pointer-events:none}
+.tv-avatar-dock button{pointer-events:auto}
+.tv-avatar-action{position:absolute;border:0;background:transparent!important;border-radius:50%;padding:0;color:var(--island-lilac);cursor:pointer}
+.tv-avatar-large{right:12px;top:18px;width:144px;height:144px}
+.tv-dock-status{position:absolute;right:0;top:174px;width:170px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#d7d9e4;font-size:12px;line-height:20px;text-shadow:0 1px 6px #0009}
+.tv-dock-actions{position:absolute;right:22px;top:202px;display:flex;justify-content:center;gap:18px}
+.tv-avatar-dock .tv-round{width:38px;height:38px;padding:10px;background:#172b3eaa;box-shadow:inset 0 0 0 1px #b7d2e533;backdrop-filter:blur(16px);color:#e6eef6}
+.tv-avatar-dock .tv-end{background:#d93651d9;color:white}
+.tv-avatar-dock .is-muted{background:#a5baca88}
+.tv-wave-orbit{position:absolute;right:-6px;top:0;width:180px;height:180px;display:block;pointer-events:none}
+.tv-wave-orbit i{position:absolute;left:calc(50% - 1.5px);top:50%;width:2px;min-height:2px;max-height:20px;background:#a9dff3;transform-origin:50% 1px;transform:rotate(var(--angle)) translateY(-87px)}
+html[data-tv-layout="compact"] .tv-compact{width:48px;height:48px;right:12px;top:18px;padding:0;display:block}
+.tv-avatar-badge{position:absolute;right:-3px;bottom:-3px;width:20px;height:20px;border-radius:50%;padding:4px;background:#172b3eb3;box-shadow:inset 0 0 0 1px #b7d2e566}
+html[data-tv="true"]:is([data-tv-layout="medium"],[data-tv-layout="compact"]) button:focus-visible{outline:1px solid #d3e4f1;outline-offset:3px}
+/* Keep the portrait edge fixed while leaving the outer waveform inside the window. */
+html[data-tv-layout="medium"] .call-page .avatar{right:22px!important}
+.tv-avatar-large{right:22px}.tv-wave-orbit{right:4px}.tv-dock-status{right:10px}.tv-dock-actions{right:32px}.tv-avatar-dock::before{right:28px}
+
+/* TV dock owns its rim and input target; suppress the full-page avatar trim. */
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) .avatar-face{padding:0!important;background:transparent!important}
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) .avatar-aura{display:none!important}
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) .avatar{pointer-events:none}
+
+html[data-tv-layout="compact"] .tv-compact::before{content:"";position:absolute;right:0;top:-18px;width:26px;height:27px;border-right:1px solid #a1c5d85c;border-top:1px solid #a1c5d85c;border-radius:0 26px 18px 0;pointer-events:none}
+
+/* Match the selected concept: 64 px idle, exactly 3x during a call. */
+html[data-tv-layout="medium"] .call-page .avatar{width:192px!important;height:192px!important;--avatar-size:192px!important}
+html[data-tv-layout="medium"] .avatar-face{width:192px!important;height:192px!important}
+.tv-avatar-large{width:192px;height:192px}
+.tv-wave-orbit{width:228px;height:228px}.tv-wave-orbit i{transform:rotate(var(--angle)) translateY(-111px)}
+.tv-dock-actions{right:71px;top:192px}.tv-dock-status{right:22px;top:238px;width:192px;font-size:11px;line-height:18px}
+html[data-tv-layout="compact"] .call-page .avatar{width:64px!important;height:64px!important;--avatar-size:64px!important}
+html[data-tv-layout="compact"] .avatar-face{width:64px!important;height:64px!important}
+html[data-tv-layout="compact"] .tv-compact{width:64px;height:64px}
+.tv-avatar-badge{width:22px;height:22px}
+
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) :is(.tv-avatar-dock,.tv-compact){z-index:10}
+html[data-tv-layout="medium"] .avatar-face{border-color:#bed7eacc!important;box-shadow:0 0 0 4px #8bbed011,0 0 22px #a2def319!important}
+.tv-avatar-dock::before{border-color:#a1dcef99;filter:drop-shadow(0 0 3px #a1dcef66)}

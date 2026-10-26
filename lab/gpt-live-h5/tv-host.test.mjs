@@ -1,7 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCallView} from './call-view.mjs';
-import {installTvHost} from './tv-host.mjs';
+import {installTvHost,tvDefaultModel} from './tv-host.mjs';
+
+test('TV defaults to Doubao and reports unavailable rather than choosing Grok',()=>{
+  assert.deepEqual(tvDefaultModel([{id:'grok',available:true},{id:'seeduplex',available:true}]),{model:'seeduplex',available:true});
+  assert.deepEqual(tvDefaultModel([{id:'grok',available:true}]),{model:'seeduplex',available:false});
+});
+
+test('native launch dials once after readiness and never redials a replay or an active call',()=>{
+  const {api,view,calls}=fixture('?tv=1&tvShell=1');
+  const id='launch-12345678';
+  assert.equal(api.requestDial(id,api.snapshot),false);
+  view.set({dial:{disabled:false}});
+  assert.equal(api.requestDial(id,{...api.snapshot,owner:'old'}),false);
+  assert.equal(api.requestDial(id,api.snapshot),true);
+  view.set({call:'connected'});
+  assert.equal(api.requestDial('launch-87654321',api.snapshot),true);
+  api.action('end');
+  assert.equal(api.requestDial(id,api.snapshot),true);
+  assert.equal(api.requestDial('launch-87654321',api.snapshot),true);
+  assert.deepEqual(calls,['dial','end']);
+  assert.equal(api.requestDial('launch-abcdefgh',api.snapshot),true);
+  assert.deepEqual(calls,['dial','end','dial']);
+});
 
 function fixture(search = '?tv=1') {
   const view = createCallView(), calls = [], errors = [];
@@ -139,6 +161,8 @@ test('native full window changes viewport scale without changing call owner, the
   assert.equal(content,'width=420,initial-scale=1,viewport-fit=cover');
   assert.equal(api.commitLayout('medium',{...owner,owner:'stale'},{width:500}),false);
   assert.equal(content,'width=420,initial-scale=1,viewport-fit=cover');
+  api.setLayout('compact',owner);api.commitLayout('compact',owner,{width:72});
+  assert.equal(content,'width=72,initial-scale=1,viewport-fit=cover');
   assert.equal(api.snapshot.owner,owner.owner);assert.equal(api.snapshot.generation,owner.generation);assert.deepEqual(calls,[]);
 });
 

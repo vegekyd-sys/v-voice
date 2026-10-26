@@ -1,3 +1,10 @@
+## 2026-10-26 — TV Reaction dock and array capture (local candidate)
+
+- Select Doubao for TV entries; native home actions wait for readiness and dial once without a second confirmation panel.
+- Attach the existing Reaction portrait below Settings, enlarge it 3x in a call, show measured orbital audio and keep the same owner through compact/full modes.
+- Add an explicit, foreground-only built-in array capability and local WebRTC AEC3 render-reference processing; unsupported array input fails closed. Keep conversation/models/tools in shared H5/Voice.
+- Local emulator and synthetic audio validation only. Real TV acoustic acceptance, installation and service rollout remain pending; no Gateway or formal production change.
+
 ## 2026-10-26 — Legacy Feishu entry release preparation
 
 - Prepare the authorized release of historical group/DM bookmark redirects and the matching platform menu/tab repair.

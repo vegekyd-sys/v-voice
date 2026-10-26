@@ -1,5 +1,9 @@
 import {resolveStatus} from './call-view.mjs';
 
+export function tvDefaultModel(models = []) {
+  return {model:'seeduplex', available:models.some(model=>model.id==='seeduplex'&&model.available===true)};
+}
+
 // A projection of the shared page, never a second call engine or an identity bridge.
 // Native hosts may echo owner + generation to reject queued actions from an old page/call.
 export function installTvHost({view, window, actions, onError = () => {}}) {
@@ -11,6 +15,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
   const shell=new URLSearchParams(window.location.search).get('tvShell')==='1';
   let layout = shell ? 'medium' : 'full';
   const listeners = new Set();
+  const launchRequests = new Set();
   let audio = Object.freeze({levels: [], source: 'none'}), lastSample = 0, clearTimer;
   let inputLevels=[],outputLevels=[],inputEnvelope=0,outputEnvelope=0,inputEnergy=0,outputEnergy=0,observations=0,wasMuted=false;
   document.documentElement.dataset.tvLayout = layout;
@@ -50,11 +55,24 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     end: state.call !== 'idle',
   });
   const api = Object.freeze({
+    requestDial(requestId, expected) {
+      if(typeof requestId!=='string'||!/^launch-[a-zA-Z0-9-]{8,64}$/.test(requestId)||!validOwner(expected))return false;
+      if(launchRequests.has(requestId))return true;
+      if(view.get().call!=='idle'){launchRequests.add(requestId);if(launchRequests.size>128)launchRequests.delete(launchRequests.values().next().value);return true;}
+      if(!available(view.get()).dial)return false;
+      launchRequests.add(requestId);
+      if(launchRequests.size>128)launchRequests.delete(launchRequests.values().next().value);
+      return api.action('dial',expected);
+    },
     get snapshot() {
       const element=document.activeElement;
       const focus=element?.getAttribute?.('data-tv-control')??({textToggle:'compose',steerText:'input',steer:'send',readerBack:'reader-back',readerBody:'reader-body',mute:'mute',stop:'end'})[element?.id];
       const state=view.get();
+      const mic=window.__gptLiveDuplexDiagnostics?.microphone;
       return Object.freeze({...snapshot,reading:state.reading===true,
+        microphone:Object.freeze({driver:state.call==='idle'?'none':mic?.kind==='tv-array-microphone'?'tv-array':'browser',
+          channels:mic?.kind==='tv-array-microphone'&&[4,6].includes(mic.channels)?mic.channels:null,
+          acousticEchoTestPassed:false}),
         hasDocument:[...(state.transcript.history??[]),...(state.transcript.current??[])].some(row=>row.document===true),
         meter:Object.freeze({source:audio.source,peak:Math.max(0,...audio.levels)}),
         viewport:Object.freeze({width:Math.round(window.innerWidth??0),height:Math.round(window.innerHeight??0)}),
@@ -70,7 +88,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       // Android density otherwise gives a 1080p TV only ~912 CSS pixels.
       // Full pages use the original desktop layout at a wider CSS viewport;
       // compact/medium windows retain their established island scale.
-      if(shell&&Number.isFinite(bounds?.width)&&bounds.width>=100&&bounds.width<=7680) {
+      if(shell&&Number.isFinite(bounds?.width)&&bounds.width>=48&&bounds.width<=7680) {
         const width=value==='full'?Math.max(1600,bounds.width):bounds.width;
         const scale=value==='full'?bounds.width/width:1;
         const viewport=document.querySelector?.('meta[name="viewport"]');
@@ -167,7 +185,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       : ['error', 'warn', 'action'].includes(status?.kind) ? status.text
       : state.muted ? '麦克风已静音' : status?.text ?? '通话中';
     snapshot = Object.freeze({version: 1, owner, generation, revision: ++revision, layout,
-      call: state.call, muted: state.muted === true, label: String(label).slice(0, 48),
+      call: state.call, model:state.model??null, muted: state.muted === true, label: String(label).slice(0, 48),
       actions: Object.freeze(available(state))});
   };
   update();

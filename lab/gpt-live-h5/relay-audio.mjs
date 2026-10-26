@@ -32,7 +32,7 @@ export class PcmPlaybackQueue {
 }
 export function relayWorkletSource(){return `${PcmPlaybackQueue.toString()}
 class Speaker extends AudioWorkletProcessor {
- constructor(options){super();const prefill=options?.processorOptions?.prefillMs??120;
+ constructor(options){super();const prefill=options?.processorOptions?.prefillMs??120;this.reference=options?.processorOptions?.renderReference===true;this.ref=new Float32Array(Math.round(sampleRate/50));this.refPos=0;
  if(!Number.isFinite(prefill)||prefill<0||prefill>1000)throw Error('Invalid playback buffer');
  this.queue=new PcmPlaybackQueue(sampleRate,prefill);this.epoch=0;this.tick=0;
  this.port.onmessage=({data:e})=>{if(e.type==='clear'){this.epoch=e.epoch;this.queue.clear();}
@@ -42,6 +42,7 @@ class Speaker extends AudioWorkletProcessor {
  else if(e.type==='audio'&&e.epoch===this.epoch){try{this.queue.push(new Int16Array(e.buffer));}catch{this.port.postMessage({type:'error',epoch:this.epoch});}}};}
  process(inputs,outputs){const out=outputs[0]?.[0];if(!out)return true;
  const before=this.queue.frames;this.queue.render(out,currentTime);
+ if(this.reference)for(const value of out){this.ref[this.refPos++]=value;if(this.refPos===this.ref.length){this.port.postMessage({type:'render-reference',epoch:this.epoch,sampleRate,buffer:this.ref.buffer},[this.ref.buffer]);this.ref=new Float32Array(Math.round(sampleRate/50));this.refPos=0;}}
  if(++this.tick%8===0||before>0&&this.queue.frames===0)this.port.postMessage({type:'playback',epoch:this.epoch,consumed:this.queue.consumed,underflows:this.queue.underflows,lastPlayedAt:this.queue.lastPlayedAt,playing:this.queue.playing&&!this.queue.paused});return true;}
 }
 class Mic extends AudioWorkletProcessor {
@@ -124,7 +125,7 @@ export function observeAudioMeters({context,input,output,onLevel}) {
   const timer=setInterval(()=>onLevel(context.state==='running'?{input:rms(mic,a),output:rms(speaker,b)}:{input:0,output:0}),100);
   return ()=>{clearInterval(timer);try{input.disconnect(mic);output.disconnect(speaker);}catch{}mic.disconnect();speaker.disconnect();};
 }
-export function createRelayAudio({context,stream,reservation,onEvent,onError,onClosed,onPlaybackActivity=()=>{},onAudioLevel,greeting=true,inputGated=false}) {
+export function createRelayAudio({context,stream,reservation,onEvent,onError,onClosed,onPlaybackActivity=()=>{},onAudioLevel,renderReference,startCapture,greeting=true,inputGated=false}) {
   let stopMeter;
   // Recorded Grok packets: 245ms of speech, then a 595ms arrival gap.
   // 400ms protects that real startup cadence; Xiaohe retains its smaller lead.
@@ -226,10 +227,11 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     const url=URL.createObjectURL(new Blob([relayWorkletSource()],{type:'text/javascript'}));
     try{await context.audioWorklet.addModule(url);}finally{URL.revokeObjectURL(url);}
     if(closed)return;
-    speaker=new AudioWorkletNode(context,'v-direct-speaker',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1],processorOptions:{prefillMs:startBufferMs}});
+    speaker=new AudioWorkletNode(context,'v-direct-speaker',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1],processorOptions:{prefillMs:startBufferMs,renderReference:typeof renderReference==='function'}});
     speaker.port.postMessage({type:'clear',epoch});if(nativePaused)speaker.port.postMessage({type:'pause',paused:true,epoch});if(greetingHeld)speaker.port.postMessage({type:'hold',epoch});speaker.connect(context.destination);
     speaker.port.onmessage=({data:e})=>{
       if(closed||e.epoch!==epoch)return;
+      if(e.type==='render-reference'){renderReference?.(e.buffer,e.sampleRate);return;}
       if(e.type==='error'){onError(Error('语音缓存过大，请重新拨号'));return;}
       if(e.type!=='playback')return;
       stats.queuedOutputBytes=Math.max(0,written-e.consumed)*2;stats.underflows=e.underflows;lastPlayedAt=e.lastPlayedAt;
@@ -263,7 +265,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
       // filled an eight-second PCM queue and aborted legitimate 20s connects.
       // Keep the page-owned microphone grant; attach audio nodes only after
       // the actual upstream ready event. Greeting PCM is retained above.
-      await promise;if(!closed)await capture();
+      await promise;if(!closed)await capture();if(!closed)await startCapture?.();
     },sendDeviceResult:value=>send(value),sendText:text=>send({type:'text',text}),
     dispose(){if(closed)return;stopMeter?.();reportStats();closed=true;clearInterval(statsTimer);clearTimeout(tailTimer);context.removeEventListener?.('statechange',stateChanged);globalThis.document?.removeEventListener?.('visibilitychange',visible);flush();node?.port.close();node?.disconnect();speaker?.port.close();speaker?.disconnect();source?.disconnect();quietGain?.disconnect();socket.close();}};
 }
