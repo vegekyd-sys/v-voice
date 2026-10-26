@@ -1190,3 +1190,7 @@ html[data-tv="true"] :is(button,a[href],input,select,textarea,[tabindex]):focus-
 
 
 :root[data-tv="true"] #readerBack,:root[data-tv="true"] #readerDownload{border-radius:14px}
+
+/* Keep a comfortable line length on the TV's desktop-size viewport. */
+html[data-tv="true"] .reader-layer[data-kind="report"] .reader-surface{width:min(760px,100%)}
+html[data-tv="true"] #readerBody:focus-visible{outline:2px solid #b8a6c5;outline-offset:-3px}

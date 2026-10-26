@@ -150,7 +150,13 @@ export function createContentView(document, window, { onReading = () => {} } = {
     // The page renders its status line and call controls into the reader
     // dock; the call itself, its microphone and its listeners never move.
     onReading(true);
-    $("readerBack").focus({ preventScroll: true });
+    if(document.documentElement?.dataset?.tv === "true") {
+      body.tabIndex = 0;
+      body.setAttribute("role", "region");
+      body.setAttribute("aria-label", content.kind === "report" ? "文件正文" : "文件内容");
+      body.scrollTop = 0;
+      body.focus({ preventScroll: true });
+    } else $("readerBack").focus({ preventScroll: true });
     void morph(from, surface.getBoundingClientRect());
   }
   async function close({ immediate = false } = {}) {

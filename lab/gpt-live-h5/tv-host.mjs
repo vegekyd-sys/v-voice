@@ -20,6 +20,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     return !e.disabled && e.tabIndex >= 0 && r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth && !e.closest('[inert]');
   });
   const focusPrimary = () => {
+    if(view.get().reading){document.getElementById?.('readerBody')?.focus({preventScroll:true});return;}
     const items = focusable();
     (items.find(e => e.hasAttribute('data-tv-primary')) ?? items.find(e => e.id === 'start') ?? items[0])?.focus({preventScroll:true});
   };
@@ -51,13 +52,13 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
   const api = Object.freeze({
     get snapshot() {
       const element=document.activeElement;
-      const focus=element?.getAttribute?.('data-tv-control')??({textToggle:'compose',steerText:'input',steer:'send',readerBack:'reader-back',mute:'mute',stop:'end'})[element?.id];
+      const focus=element?.getAttribute?.('data-tv-control')??({textToggle:'compose',steerText:'input',steer:'send',readerBack:'reader-back',readerBody:'reader-body',mute:'mute',stop:'end'})[element?.id];
       const state=view.get();
       return Object.freeze({...snapshot,reading:state.reading===true,
         hasDocument:[...(state.transcript.history??[]),...(state.transcript.current??[])].some(row=>row.document===true),
         meter:Object.freeze({source:audio.source,peak:Math.max(0,...audio.levels)}),
         viewport:Object.freeze({width:Math.round(window.innerWidth??0),height:Math.round(window.innerHeight??0)}),
-        focus:['dial','end','mute','expand','fold','compact','return','compose','input','send','reader-back'].includes(focus)?focus:null});
+        focus:['dial','end','mute','expand','fold','compact','return','compose','input','send','reader-back','reader-body'].includes(focus)?focus:null});
     },
     // Only this lightweight surface subscribes to the 10 Hz visual meter.
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
@@ -93,15 +94,17 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       if(direction==='left'&&document.activeElement?.id==='steer') {document.getElementById?.('steerText')?.focus({preventScroll:true});return true;}
       if(view.get().reading) {
         const active=document.activeElement,inDock=Boolean(active?.closest?.('#readerDock'));
-        if(!inDock&&['up','down'].includes(direction)) {
+        const inBody=active?.id==='readerBody'||Boolean(active?.closest?.('#readerBody'));
+        if(inBody&&['up','down'].includes(direction)) {
           const body=document.getElementById?.('readerBody');
           if(body){body.scrollBy({top:(direction==='down'?1:-1)*Math.max(120,body.clientHeight*.8),behavior:'smooth'});return true;}
         }
-        if(direction==='right'&&active?.id==='readerDownload') {
+        if(inBody&&direction==='left'){document.getElementById?.('readerBack')?.focus({preventScroll:true});return true;}
+        if(direction==='right'&&(inBody||active?.id==='readerDownload')) {
           document.getElementById?.('textToggle')?.focus({preventScroll:true});return true;
         }
-        if(direction==='up'&&inDock&&active?.tagName!=='INPUT') {
-          document.getElementById?.('readerBack')?.focus({preventScroll:true});return true;
+        if((direction==='up'&&inDock&&active?.tagName!=='INPUT')||(direction==='down'&&['readerBack','readerDownload'].includes(active?.id))) {
+          document.getElementById?.('readerBody')?.focus({preventScroll:true});return true;
         }
       }
       const items=focusable(), active=document.activeElement;

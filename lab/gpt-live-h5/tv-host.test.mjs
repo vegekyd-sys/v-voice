@@ -104,7 +104,7 @@ test('missing audio samples expire instead of leaving a speaking animation',asyn
   assert.deepEqual(api.getAudio(),{source:'none',levels:[]});
 });
 
-test('TV report scroll keys preserve the original horizontal call controls',()=>{
+test('TV files focus their body, scroll there, and return from controls to reading',()=>{
   const {view,window,api}=fixture();view.set({reading:true,call:'connected'});
   const doc=window.document,scroll=[];
   const button=(id,x,y,dock=false)=>({id,tagName:'BUTTON',tabIndex:0,disabled:false,
@@ -112,17 +112,20 @@ test('TV report scroll keys preserve the original horizontal call controls',()=>
     closest:s=>s==='#readerDock'&&dock?{}:null,
     focus(){doc.activeElement=this;},scrollIntoView(){}});
   const back=button('readerBack',20,10),save=button('readerDownload',700,10),compose=button('textToggle',350,420,true),mute=button('mute',400,420,true),end=button('stop',450,420,true);
-  const controls=[back,save,compose,mute,end];
+  const body={...button('readerBody',20,60),tagName:'DIV',clientHeight:400,scrollBy:value=>scroll.push(value.top)};
+  const controls=[back,save,body,compose,mute,end];
   doc.querySelector=()=>null;
-  doc.getElementById=id=>id==='readerBody'?{clientHeight:400,scrollBy:value=>scroll.push(value.top)}:id==='contentReader'?{querySelectorAll:()=>controls}:controls.find(c=>c.id===id);
+  doc.getElementById=id=>id==='contentReader'?{querySelectorAll:()=>controls}:controls.find(c=>c.id===id);
   window.innerWidth=900;window.innerHeight=500;
-  back.focus();api.navigate('down');assert.deepEqual(scroll,[320]);assert.equal(doc.activeElement,back);
-  api.navigate('right');assert.equal(doc.activeElement,save);
+  back.focus();api.focusPrimary();assert.equal(doc.activeElement,body);assert.equal(api.snapshot.focus,'reader-body');
+  api.navigate('down');assert.deepEqual(scroll,[320]);assert.equal(doc.activeElement,body);
+  api.navigate('up');assert.deepEqual(scroll,[320,-320]);assert.equal(doc.activeElement,body);
   api.navigate('right');assert.equal(doc.activeElement,compose);
   api.navigate('right');assert.equal(doc.activeElement,mute);
-  api.navigate('right');assert.equal(doc.activeElement,end);assert.deepEqual(scroll,[320]);
-  api.navigate('up');assert.equal(doc.activeElement,back);
-  api.navigate('up');assert.deepEqual(scroll,[320,-320]);
+  api.navigate('right');assert.equal(doc.activeElement,end);assert.deepEqual(scroll,[320,-320]);
+  api.navigate('up');assert.equal(doc.activeElement,body);
+  api.navigate('left');assert.equal(doc.activeElement,back);
+  api.navigate('down');assert.equal(doc.activeElement,body);
 });
 
 test('native full window changes viewport scale without changing call owner, then restores island scale',()=>{
