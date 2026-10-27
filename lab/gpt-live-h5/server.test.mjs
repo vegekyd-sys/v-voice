@@ -27,8 +27,8 @@ async function fixture(t, overrides = {}) {
 
 test("exact native model reservation and SDP proxy keep credentials off the browser", async (t) => {
   const f = await fixture(t);
-  const created = await f.request("session"); assert.equal(created.status, 200);
-  const result = await created.json(); assert.deepEqual(result, { voiceSessionId: "voice-private", model: "gpt-live-1-codex" });
+  const created = await f.request("session", {model:"gpt-live",inputPolicy:"native",nativeRuntimeVersion:1}); assert.equal(created.status, 200);
+  const result = await created.json(); assert.deepEqual(result, { voiceSessionId: "voice-private", model: "gpt-live-1-codex", transport: "webrtc" });
   assert.equal(f.calls[0].params.model, "gpt-live-1-codex"); assert.equal(f.calls[0].params.transport, "webrtc");
   assert.equal(f.calls[0].params.sessionKey, GPT_LIVE_PERSONAL_SESSION_KEY);
   const answer = await f.request("offer", { voiceSessionId: result.voiceSessionId, sdp: "v=0\r\noffer" });

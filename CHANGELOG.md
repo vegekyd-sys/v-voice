@@ -1,3 +1,9 @@
+## 2026-10-27 — iOS GPT Live One transport contract (candidate, unreleased)
+
+- Preserve the validated `webrtc` transport in the shared GPT session response so the native call owner can select its existing WebRTC backend. Provider secrets and SDP endpoint credentials remain server-side.
+- Add a native integration regression through the actual shared HTTP service and two local WebRTC peers, with synthetic PCM, mute/unmute, captions and owner cleanup. Retain the existing native playback and interruption implementations.
+- Validation, compatibility and proposed rollout: [candidate acceptance](docs/acceptance/ios-gpt-transport-20261027.md). No merge, deployment, TestFlight upload or paid model call performed.
+
 ## 2026-10-27 — Platform-free connection preparation overlap (candidate, unreleased)
 
 - Keep Gateway and platform modules unchanged. Coalesce only outstanding same-subject/conversation admission reads in Voice, with a bounded join window and immediate deletion on success/failure; each request receives its own binding.
@@ -24,6 +30,7 @@
 - V CLI 0.1.0 and the model-visible voice-cli skill installed. Production HTTPS guest authorization/revocation and access boundaries passed; test grant revoked and entry disabled.
 - Production logged-in homepage, two-model menu, App binding sheet, visible changelog and immutable code/no-store identity caching verified. No real voice calls, native binary/firmware update or physical App installation acceptance.
 - [Production receipt](docs/releases/voice-release-20261027/release.md).
+
 
 ## 2026-10-27 — Voice entry and CLI release preparation
 

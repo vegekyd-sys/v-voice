@@ -349,7 +349,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       const callerText=[binding.callerIdentity?feishuCallerIdentityInstructions(binding.callerIdentity):'',terminal?terminalInstructions(terminal):''].filter(Boolean).join('\n');
       if(cancelled()){await close(context);return reply(499,{error:'拨号已取消'});}
       recordAdmissionTiming(reservation);
-      return reply(200,{voiceSessionId:reservation.voiceSessionId,model:reservation.model,...(callerText?{callerContext:{voiceSessionId:reservation.voiceSessionId,text:callerText}}:{}),...(terminal?{nativeDeviceActions:{version:1,capabilities:terminal.capabilities},terminalContext:terminal}:{}),...speaker?{speakerRouting:speaker}:{}});
+      // The native owner selects its audio backend from this public field.
+      // Keep the validated transport while withholding provider credentials.
+      return reply(200,{voiceSessionId:reservation.voiceSessionId,model:reservation.model,transport:reservation.transport,...(callerText?{callerContext:{voiceSessionId:reservation.voiceSessionId,text:callerText}}:{}),...(terminal?{nativeDeviceActions:{version:1,capabilities:terminal.capabilities},terminalContext:terminal}:{}),...speaker?{speakerRouting:speaker}:{}});
     } finally {
       context.creatingSession = false;
     }

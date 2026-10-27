@@ -1,3 +1,13 @@
+export const IOS_GPT_TRANSPORT_CANDIDATE_UPDATE = {
+  version:'voice-ios-gpt-transport.20261027.1',date:'2026-10-27',
+  title:'iOS GPT Live One 连接修复（Candidate）',status:'candidate-validation',
+  items:[
+    '修复已绑定会话选择 GPT Live One 后，拨号因传输信息缺失而失败的问题。',
+    '候选已验证原生 WebRTC 双向合成音频、字幕、静音恢复与挂断。',
+    '尚未上线，真实 iPhone 收音、扬声器、打断和后台通话等待验收。',
+  ],
+};
+
 export const GROK_VISIBILITY_CANDIDATE_UPDATE = {
   version:'voice-grok-visibility.20261027.1',date:'2026-10-27',
   title:'正式模型目录收敛（Candidate）',status:'candidate-validation',
