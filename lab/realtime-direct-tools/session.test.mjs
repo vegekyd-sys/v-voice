@@ -1,3 +1,4 @@
+import {VOICE_OPERATION_CONSENT_POLICY,VOICE_CALENDAR_SERVICE_POLICY} from '../../lib/voice-operation-policy.mjs';
 import {conversationReplyText} from '../../lib/conversation-replies.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -1064,6 +1065,8 @@ for(const receiver of RECEIVERS)test(`${receiver.name}: shared natural search, p
  const setup=f.upstream.sent.find(e=>e.type==='session.create').session;
  assert(f.reservation.nativeDuplex,'duplex depends on microphone routing, not terminal name');
  assert.match(setup.instructions,/语音查询接话规则/);assert.match(setup.instructions,/真正插话/);
+ assert(setup.instructions.includes(VOICE_OPERATION_CONSENT_POLICY));
+ assert(setup.instructions.includes(VOICE_CALENDAR_SERVICE_POLICY));
  for(const name of ['web_search','memory_search'])assert.match(setup.tools.find(t=>t.name===name).description,/不能只调用工具而保持沉默/);
  const native=(id,name,args)=>f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
  native('search','memory_search',{query:'项目背景'});
