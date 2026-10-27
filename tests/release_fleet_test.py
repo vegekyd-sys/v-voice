@@ -25,6 +25,8 @@ class FleetSafety(unittest.TestCase):
                        'scripts/device-call.mjs':'export {};',
                        'scripts/install-backend-device-bundle.mjs':'export {};',
                        'skills/device-use/SKILL.md':'# Device use',
+                       'skills/voice-cli/SKILL.md':'# Voice CLI',
+                       'bin/v-voice.mjs':'export {};',
                        'backend-device-bundle.json':'{}'}
             files = []
             for name, content in sources.items():

@@ -24,6 +24,7 @@ names.push('lib/call-summary.mjs','lib/ios-bindings.mjs','lib/conversation-calls
 names.push('lab/gpt-live-h5/caller-context.mjs','lib/feishu-caller-identity.mjs','lab/gpt-live-h5/feishu-client-login.mjs','lib/feishu-actor-gateway.mjs','lib/feishu-conversation-directory.mjs');
 names.push('lab/gpt-live-h5/feishu-confirmation-client.mjs','lib/access-context.mjs','lib/public-voice-gateway.mjs','lab/gpt-live-h5/public-instructions.mjs');
 names.push('lib/backend-device-bundle.mjs','scripts/install-backend-device-bundle.mjs');
+names.push('lib/voice-agent-control.mjs','lib/voice-cli-contract.mjs','bin/v-voice.mjs');
 names.push(...run('ls-files','skills').split('\n').filter(Boolean));
 names.push('lab/gpt-live-h5/model-options.mjs');
 names.push('lib/terminal-context.mjs','lib/device-requests.mjs','lab/gpt-live-h5/device-location.mjs','scripts/device-call.mjs','skills/device-use/SKILL.md');
@@ -35,7 +36,7 @@ for(const name of [...new Set(names)].sort()){
  const bytes=await readFile(join(root,name)),dest=join(target,name);await mkdir(dirname(dest),{recursive:true});await copyFile(join(root,name),dest);
  files.push({path:name,sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length});
 }
-const backendFiles=files.filter(file=>file.path==='scripts/device-call.mjs'||file.path.startsWith('skills/'));
+const backendFiles=files.filter(file=>file.path==='scripts/device-call.mjs'||file.path.startsWith('skills/device-use/'));
 const backendBundle=Buffer.from(JSON.stringify({schema:'v-voice-backend-device-bundle-v1',sourceCommit:commit,files:backendFiles},null,2)+'\n');
 await writeFile(join(target,'backend-device-bundle.json'),backendBundle,{flag:'wx'});
 files.push({path:'backend-device-bundle.json',sha256:createHash('sha256').update(backendBundle).digest('hex'),bytes:backendBundle.length});
