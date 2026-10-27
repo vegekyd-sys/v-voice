@@ -24,7 +24,8 @@ import { createConversationEntries } from "../../lib/conversation-entries.mjs";
 import { verifyPhoneSession } from "../../lib/phone-provisioning.mjs";
 import {conversationReplyTarget,createConversationReplyDelivery} from '../../lib/conversation-replies.mjs';
 import {createFeishuConversationDirectory,parseFeishuConversationPhone,createUnidentifiedPhoneDirectory} from '../../lib/feishu-conversation-directory.mjs';
-import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure,feishuPhoneLoginErrorPage} from '../../lib/feishu-phone-login.mjs';
+import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure,feishuPhoneLoginErrorPage,PRIVATE_PHONE_ENTRY} from '../../lib/feishu-phone-login.mjs';
+import {createPrivatePhoneLocator} from '../../lib/feishu-private-conversations.mjs';
 import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
 import {createTaskDelivery} from '../realtime-direct-tools/task-delivery.mjs';
@@ -59,6 +60,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   const replyTargets=new Map(entries.replyBindings().map(e=>[e.id,conversationReplyTarget(e,feishuAccounts)]));
   const appDownload=iosAppDownload(iosAppDownloadUrl);
   const phoneLogin = feishuLogin ? createFeishuPhoneLogin({...feishuLogin, publicOrigin, basePath, entries,
+    ...(feishuLogin.privateConversationsFile?{resolvePrivatePhone:createPrivatePhoneLocator({file:feishuLogin.privateConversationsFile,appId:feishuLogin.appId,accountId:feishuLogin.accountId,waitMs:5000})}:{}),
     ...(feishuLogin.conversations===true?{resolveConversation:createFeishuConversationDirectory({gateway,...feishuLogin})}:{})}) : null;
   const guestAccess=hosted&&feishuLogin?.conversations===true&&feishuLogin.allowUnidentified===true
     ?createVoiceAccess(createHash('sha256').update('voice-guest:'+feishuLogin.appSecret).digest('hex'),basePath,Date.now,{entry:'unidentified'}):null;
@@ -480,18 +482,20 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if(!pending)return json(res,401,{error:'请重新打开电话入口'});
         try {
           if(body.failure){
-            console.warn(JSON.stringify({type:'voice.feishu-client-error',stage:'sdk',providerCode:Number.isInteger(body.failure.code)?body.failure.code:null}));
+            console.warn(JSON.stringify({type:'voice.feishu-client-error',stage:'sdk',providerCode:Number.isInteger(body.failure.code)?body.failure.code:null,
+              detailCode:Number.isSafeInteger(body.failure.detailCode)&&body.failure.detailCode>=0&&body.failure.detailCode<=2147483647?body.failure.detailCode:null}));
             const remembered=await phoneLogin.resumeConfirmedClient(req,body.state);
             if(remembered){
               issueVisitor(res,remembered);
-              return json(res,200,{status:entrySnapshot(remembered)});
+              return json(res,200,{status:entrySnapshot(remembered),...(pending.phone===PRIVATE_PHONE_ENTRY?{phone:remembered.id}:{})});
             }
           } else {
             const result=await phoneLogin.completeClient(req,res,body,{inline:true});
             issueVisitor(res,result.binding);
-            return json(res,200,{location:result.location,status:entrySnapshot(result.binding)});
+            return json(res,200,{location:result.location,status:entrySnapshot(result.binding),...(pending.phone===PRIVATE_PHONE_ENTRY?{phone:result.binding.id}:{})});
           }
         } catch(error) {console.warn(JSON.stringify({type:'voice.feishu-login-error',...feishuPhoneLoginFailure(error)}));}
+        if(pending.phone===PRIVATE_PHONE_ENTRY){phoneLogin.clearIdentity(res);return json(res,403,{error:'暂时无法确认当前飞书私聊，请在飞书中重新打开。'});}
         if(!guestAccess)return json(res,401,{error:'飞书账号暂未连接，请重试。'});
         phoneLogin.clearIdentity(res);
         const guest=guestBinding(req,pending.phone,guestAccess.read(req)??{id:randomBytes(16).toString('hex')});
@@ -500,7 +504,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       }
       const currentPhone=url.searchParams.get('phone');
       const inFeishu=/Lark|Feishu/iu.test(req.headers['user-agent']??'');
-      const sdkEntry=phoneLogin&&guestAccess&&req.method==='GET'&&parseFeishuConversationPhone(currentPhone)
+      const privateEntry=phoneLogin?.privateEntryEnabled&&currentPhone===PRIVATE_PHONE_ENTRY&&iosPublicEntry;
+      const sdkEntry=phoneLogin&&guestAccess&&req.method==='GET'&&(parseFeishuConversationPhone(currentPhone)||privateEntry)
         &&!handoffBinding&&url.searchParams.get('guest')!=='1'&&url.searchParams.get('oauth')!=='1'&&url.searchParams.get('retry')!=='1'&&url.searchParams.get('connect')!=='1';
       if(sdkEntry&&inFeishu&&['/','/feishu'].includes(pathname)){
         // requestAccess validates the document URL. Use the already registered
@@ -516,9 +521,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const cleared=res.getHeader('set-cookie');
         const callback=oldState?null:new URL(phoneLogin.beginClient(req,res,currentPhone),publicOrigin);
         if(cleared&&callback)res.setHeader('set-cookie',[cleared,res.getHeader('set-cookie')]);
-        entryBinding=guestBinding(req,currentPhone,guestAccess.read(req)??{id:randomBytes(16).toString('hex')});
+        entryBinding=guestBinding(req,privateEntry?'public':currentPhone,guestAccess.read(req)??{id:randomBytes(16).toString('hex')});
         entryVisitor=issueVisitor(res,entryBinding,{id:entryBinding.visitorId});
-        clientLoginConfig={appId:feishuLogin.appId,state:oldState??callback.searchParams.get('state'),endpoint:basePath+'/feishu/client-login'};
+        clientLoginConfig={appId:feishuLogin.appId,state:oldState??callback.searchParams.get('state'),endpoint:basePath+'/feishu/client-login',...(privateEntry?{privateEntry:true}:{})};
         pathname='/';
       }
       if(guestAccess&&req.method==='GET'&&pathname==='/feishu/connect'){
