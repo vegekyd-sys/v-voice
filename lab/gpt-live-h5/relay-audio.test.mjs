@@ -1,10 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {build} from 'esbuild';
 import {createRelayAudio,PcmPlaybackQueue,relayWorkletSource,NativeSpeechPause} from './relay-audio.mjs';
 
 function queue(rate=48000,ms=120){return new PcmPlaybackQueue(rate,ms)}
 const pcm=(n,value=8192)=>new Int16Array(n).fill(value);
+test('minified shipping target initializes both worklets and renders actual PCM',async()=>{
+ const result=await build({entryPoints:[new URL('./relay-audio.mjs',import.meta.url).pathname],bundle:true,
+  format:'esm',platform:'browser',target:['safari15','chrome100'],minify:true,write:false});
+ const bundled=await import('data:text/javascript;base64,'+Buffer.from(result.outputFiles[0].contents).toString('base64'));
+ const processors=new Map();
+ vm.runInNewContext(bundled.relayWorkletSource(),{Int16Array,sampleRate:48000,currentTime:0,
+  AudioWorkletProcessor:class{constructor(){this.port={postMessage(){}}}},registerProcessor:(name,value)=>processors.set(name,value)});
+ assert.equal(processors.size,2);
+ const speaker=new(processors.get('v-direct-speaker'))({processorOptions:{prefillMs:0}});
+ speaker.port.onmessage({data:{type:'audio',epoch:0,buffer:pcm(480).buffer}});
+ const output=new Float32Array(128);speaker.process([],[[output]]);
+ assert(output.every(value=>value===.25));
+ const mic=new(processors.get('v-direct-mic'))();let captured;
+ mic.port.postMessage=value=>captured=value;
+ mic.process([[new Float32Array(960).fill(.25)]]);
+ assert.equal(new Int16Array(captured).length,480);
+ assert(new Int16Array(captured).every(value=>value===8192));
+});
 function render(q,n=128,at=0){const out=new Float32Array(n);q.render(out,at);return out;}
 function replay(rate,arrivals){
  const q=queue(rate),out=[];let index=0,first=null;

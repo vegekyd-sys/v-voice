@@ -42,7 +42,9 @@ export function markVoiceTiming(name) {
   performance.mark?.(name);
   publishVoiceTiming();
 }
-if (typeof window !== 'undefined' && window.document && window.PerformanceObserver) {
+const timingObserverKey=Symbol.for('v-voice.entry-paint-observer');
+if (typeof window !== 'undefined' && window.document && window.PerformanceObserver && !window[timingObserverKey]) {
+  window[timingObserverKey]=true;
   const observer = new window.PerformanceObserver(() => publishVoiceTiming());
   observer.observe({ type: 'paint', buffered: true });
   window.addEventListener('pagehide', () => observer.disconnect(), { once: true });
@@ -102,7 +104,7 @@ function entryIdentity() {
 }
 
 export const entryStartup = typeof window !== 'undefined' && window.document
-  ? startVoiceEntry({ initialStatus: initialEntryStatus(), identity:entryIdentity(), location: window.location, fetch: (...args) => fetch(...args),
+  ? window[Symbol.for('v-voice.entry-startup')] ??= startVoiceEntry({ initialStatus: initialEntryStatus(), identity:entryIdentity(), location: window.location, fetch: (...args) => fetch(...args),
     replaceState: url => window.history.replaceState(null, '', url),
     mark: markVoiceTiming })
   : null;

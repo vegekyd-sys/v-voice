@@ -1,0 +1,438 @@
+{
+  "before": {
+    "kind": "controlled-preparation-replay",
+    "delaysMs": {
+      "catalog": 650,
+      "context": 800,
+      "model": 600,
+      "speechControl": 200,
+      "handoff": 500
+    },
+    "providerConnections": 0,
+    "samples": [
+      {
+        "toReadyMs": 1928,
+        "stages": [
+          {
+            "stage": "catalog-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "context-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "catalog-ready",
+            "elapsedMs": 650
+          },
+          {
+            "stage": "context-ready",
+            "elapsedMs": 800
+          },
+          {
+            "stage": "provider-connecting",
+            "elapsedMs": 821
+          },
+          {
+            "stage": "speech-control-connecting",
+            "elapsedMs": 821
+          },
+          {
+            "stage": "speech-control-ready",
+            "elapsedMs": 1022
+          },
+          {
+            "stage": "model-ready",
+            "elapsedMs": 1422
+          },
+          {
+            "stage": "provider-ready",
+            "elapsedMs": 1422
+          }
+        ]
+      },
+      {
+        "toReadyMs": 1902,
+        "stages": [
+          {
+            "stage": "catalog-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "context-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "catalog-ready",
+            "elapsedMs": 651
+          },
+          {
+            "stage": "context-ready",
+            "elapsedMs": 800
+          },
+          {
+            "stage": "provider-connecting",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "speech-control-connecting",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "speech-control-ready",
+            "elapsedMs": 1000
+          },
+          {
+            "stage": "model-ready",
+            "elapsedMs": 1401
+          },
+          {
+            "stage": "provider-ready",
+            "elapsedMs": 1401
+          }
+        ]
+      },
+      {
+        "toReadyMs": 1905,
+        "stages": [
+          {
+            "stage": "catalog-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "context-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "catalog-ready",
+            "elapsedMs": 650
+          },
+          {
+            "stage": "context-ready",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "provider-connecting",
+            "elapsedMs": 802
+          },
+          {
+            "stage": "speech-control-connecting",
+            "elapsedMs": 802
+          },
+          {
+            "stage": "speech-control-ready",
+            "elapsedMs": 1002
+          },
+          {
+            "stage": "model-ready",
+            "elapsedMs": 1403
+          },
+          {
+            "stage": "provider-ready",
+            "elapsedMs": 1403
+          }
+        ]
+      },
+      {
+        "toReadyMs": 1905,
+        "stages": [
+          {
+            "stage": "catalog-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "context-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "catalog-ready",
+            "elapsedMs": 650
+          },
+          {
+            "stage": "context-ready",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "provider-connecting",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "speech-control-connecting",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "speech-control-ready",
+            "elapsedMs": 1002
+          },
+          {
+            "stage": "model-ready",
+            "elapsedMs": 1402
+          },
+          {
+            "stage": "provider-ready",
+            "elapsedMs": 1402
+          }
+        ]
+      },
+      {
+        "toReadyMs": 1907,
+        "stages": [
+          {
+            "stage": "catalog-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "context-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "catalog-ready",
+            "elapsedMs": 651
+          },
+          {
+            "stage": "context-ready",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "provider-connecting",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "speech-control-connecting",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "speech-control-ready",
+            "elapsedMs": 1000
+          },
+          {
+            "stage": "model-ready",
+            "elapsedMs": 1401
+          },
+          {
+            "stage": "provider-ready",
+            "elapsedMs": 1401
+          }
+        ]
+      }
+    ]
+  },
+  "after": {
+    "kind": "controlled-preparation-replay",
+    "delaysMs": {
+      "catalog": 650,
+      "context": 800,
+      "model": 600,
+      "speechControl": 200,
+      "handoff": 500
+    },
+    "providerConnections": 0,
+    "samples": [
+      {
+        "toReadyMs": 1420,
+        "stages": [
+          {
+            "stage": "catalog-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "context-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "catalog-ready",
+            "elapsedMs": 650
+          },
+          {
+            "stage": "context-ready",
+            "elapsedMs": 800
+          },
+          {
+            "stage": "provider-connecting",
+            "elapsedMs": 817
+          },
+          {
+            "stage": "speech-control-connecting",
+            "elapsedMs": 817
+          },
+          {
+            "stage": "speech-control-ready",
+            "elapsedMs": 1018
+          },
+          {
+            "stage": "model-ready",
+            "elapsedMs": 1419
+          },
+          {
+            "stage": "provider-ready",
+            "elapsedMs": 1419
+          }
+        ]
+      },
+      {
+        "toReadyMs": 1404,
+        "stages": [
+          {
+            "stage": "catalog-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "context-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "catalog-ready",
+            "elapsedMs": 651
+          },
+          {
+            "stage": "context-ready",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "provider-connecting",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "speech-control-connecting",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "speech-control-ready",
+            "elapsedMs": 1002
+          },
+          {
+            "stage": "model-ready",
+            "elapsedMs": 1402
+          },
+          {
+            "stage": "provider-ready",
+            "elapsedMs": 1402
+          }
+        ]
+      },
+      {
+        "toReadyMs": 1401,
+        "stages": [
+          {
+            "stage": "catalog-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "context-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "catalog-ready",
+            "elapsedMs": 650
+          },
+          {
+            "stage": "context-ready",
+            "elapsedMs": 799
+          },
+          {
+            "stage": "provider-connecting",
+            "elapsedMs": 800
+          },
+          {
+            "stage": "speech-control-connecting",
+            "elapsedMs": 800
+          },
+          {
+            "stage": "speech-control-ready",
+            "elapsedMs": 1000
+          },
+          {
+            "stage": "model-ready",
+            "elapsedMs": 1400
+          },
+          {
+            "stage": "provider-ready",
+            "elapsedMs": 1400
+          }
+        ]
+      },
+      {
+        "toReadyMs": 1404,
+        "stages": [
+          {
+            "stage": "catalog-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "context-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "catalog-ready",
+            "elapsedMs": 650
+          },
+          {
+            "stage": "context-ready",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "provider-connecting",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "speech-control-connecting",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "speech-control-ready",
+            "elapsedMs": 1001
+          },
+          {
+            "stage": "model-ready",
+            "elapsedMs": 1401
+          },
+          {
+            "stage": "provider-ready",
+            "elapsedMs": 1401
+          }
+        ]
+      },
+      {
+        "toReadyMs": 1407,
+        "stages": [
+          {
+            "stage": "catalog-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "context-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "catalog-ready",
+            "elapsedMs": 651
+          },
+          {
+            "stage": "context-ready",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "provider-connecting",
+            "elapsedMs": 802
+          },
+          {
+            "stage": "speech-control-connecting",
+            "elapsedMs": 802
+          },
+          {
+            "stage": "speech-control-ready",
+            "elapsedMs": 1001
+          },
+          {
+            "stage": "model-ready",
+            "elapsedMs": 1401
+          },
+          {
+            "stage": "provider-ready",
+            "elapsedMs": 1401
+          }
+        ]
+      }
+    ]
+  }
+}
