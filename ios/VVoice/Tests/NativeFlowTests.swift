@@ -347,6 +347,22 @@ import VVoiceCore
         XCTAssertEqual(call.phase, .speaking, "late old clear cannot clear the current new response")
         try await until({ call.phase == .listening }, timeout: 2)
     }
+    func testHiddenGrokPreferenceRefreshesIntoSharedH5WithoutDialing() async throws {
+        let call = try await client()
+        call.model = .grok
+        try await fixture("production-models")
+        await call.refreshOptions()
+        XCTAssertEqual(call.model, .seeduplex)
+        XCTAssertFalse(call.modelOptions.contains { $0.id == "grok" })
+        XCTAssertTrue(call.grokVoices.isEmpty)
+        let snapshot = H5Snapshot.make(call, visible: true)
+        XCTAssertFalse((snapshot["models"] as? [[String: Any]] ?? []).contains { $0["id"] as? String == "grok" })
+        let state = try await stats()
+        XCTAssertEqual(state["sessions"] as? Int, 0)
+        try await fixture("test-models")
+        await call.refreshOptions()
+        XCTAssertTrue(call.modelOptions.contains { $0.id == "grok" && $0.available })
+    }
     func testGrokVoiceChoiceIsSentAndGPTNativeOptionIsAvailable() async throws {
         let call = try await client()
         await call.refreshOptions()

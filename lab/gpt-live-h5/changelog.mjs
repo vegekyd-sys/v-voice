@@ -1,3 +1,23 @@
+export const GROK_VISIBILITY_CANDIDATE_UPDATE = {
+  version:'voice-grok-visibility.20261027.1',date:'2026-10-27',
+  title:'正式模型目录收敛（Candidate）',status:'candidate-validation',
+  items:[
+    '正式电话模型列表保留小何和 GPT Live；Grok 测试路径由服务端显式开启。',
+    '旧 Grok 选择在空闲刷新后回到可用模型，不切换正在进行的通话。',
+    '仅候选验证，尚未合入或上线；设备测试配置和原生版本保持。',
+  ],
+};
+
+export const ENTRY_LATENCY_CANDIDATE_UPDATE = {
+  version:'voice-entry-latency.20261027.1',date:'2026-10-27',
+  title:'电话进入速度优化（Candidate）',status:'candidate-validation',
+  items:[
+    '电话页优先开始飞书身份确认，缩短等待页面程序加载的时间。',
+    '重复进入复用相同版本的页面程序；账号、会话和成员资格仍逐次核验。',
+    '仅隔离候选验证，尚未上线；真实手机与飞书客户端速度另验。',
+  ],
+};
+
 export const FEISHU_LOGIN_PERSISTENCE_CANDIDATE_UPDATE = {
   version:'voice-feishu-login-persistence.20261026.1',date:'2026-10-26',
   title:'外部账号登录保持与身份切换（Candidate）',status:'candidate-validation',
@@ -127,6 +147,17 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
   ],
 };
 export const VOICE_UPDATES = [
+  {
+    version:'voice-entry-cli.20261027.1',date:'2026-10-27',
+    title:'进入更快、挂断更及时，支持按需生成电话链接',
+    items:[
+      '电话页提前开始身份确认，重复进入复用相同版本的页面程序，减少等待。',
+      '点击挂断立即停止本地通话并恢复页面；再次拨号仍等待原通话清理完成。',
+      '正式电话模型列表保留小何和 GPT Live。',
+      '网页可继续在 V App 中使用；未安装时提供 TestFlight 安装入口，安装后返回原页完成绑定。',
+      'V 可按需创建独立访客电话或飞书登录邀请，并查询有效期、撤销链接；邀请沿用收件人自己的账号权限。',
+    ],
+  },
   {
     version:'voice-calendar-consent.20261027.1',date:'2026-10-27',
     title:'日程直接办理，保留指定的日历服务',

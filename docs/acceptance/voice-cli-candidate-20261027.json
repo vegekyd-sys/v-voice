@@ -1,0 +1,510 @@
+{
+  "schema": "v-voice-cli-candidate-acceptance/v1",
+  "date": "2026-10-27",
+  "status": "candidate-not-merged-not-deployed",
+  "baseCommit": "002313bd66978dc188b5fea898cb0a1a633f8cc9",
+  "localCLIHTTPDemo": {
+    "schema": "v-voice-cli-demo/v1",
+    "passed": true,
+    "calls": 0,
+    "externalMessages": 0,
+    "paidModels": 0,
+    "evidence": [
+      {
+        "command": [
+          "status"
+        ],
+        "exitCode": 0,
+        "result": {
+          "identity": {
+            "kind": "service-os-user",
+            "uid": 501,
+            "scope": "cli-managed-entries-only"
+          },
+          "ready": true,
+          "preview": false,
+          "models": [
+            {
+              "id": "seeduplex",
+              "available": true
+            }
+          ],
+          "readiness": {
+            "known": false,
+            "activeCalls": 0,
+            "creatingSessions": 0,
+            "backgroundTasks": 0,
+            "deviceOperations": 0
+          },
+          "configuration": {
+            "publicOrigin": "https://voice-cli.example",
+            "basePath": "/voice",
+            "accountId": "default",
+            "guestEnabled": true,
+            "publicTools": true,
+            "registryPersistent": true
+          },
+          "limits": {
+            "entries": 256,
+            "links": 1024,
+            "requestJournal": 4096,
+            "ttlSeconds": {
+              "min": 60,
+              "max": 86400
+            }
+          }
+        }
+      },
+      {
+        "command": [
+          "entries",
+          "create",
+          "--id",
+          "demo-conversation",
+          "--kind",
+          "guest",
+          "--request-id",
+          "demo-entry-20261027"
+        ],
+        "exitCode": 0,
+        "result": {
+          "replayed": false,
+          "result": {
+            "entry": "demo-conversation"
+          },
+          "entry": {
+            "id": "demo-conversation",
+            "kind": "guest",
+            "createdAt": 1793082306394,
+            "scope": {
+              "mode": "guest-capability",
+              "context": "isolated-cli-conversation",
+              "personalIdentity": false,
+              "sourceChatHistory": false,
+              "personalAccountTools": false,
+              "capabilities": [
+                "conversation",
+                "web_search",
+                "memory_search",
+                "background_tasks",
+                "show_content"
+              ],
+              "revocation": "all access through this grant, including existing cookies; active call ended; background effects already completed are not undone"
+            },
+            "binding": {
+              "type": "isolated-guest",
+              "createdLazily": true
+            },
+            "activeCalls": 0,
+            "creatingSessions": 0
+          }
+        }
+      },
+      {
+        "command": [
+          "links",
+          "create",
+          "--entry",
+          "demo-conversation",
+          "--ttl",
+          "600",
+          "--request-id",
+          "demo-link-20261027",
+          "--out",
+          "[private-output]"
+        ],
+        "exitCode": 0,
+        "result": {
+          "replayed": false,
+          "result": {
+            "link": "e9c52b249c38b72a07a1af718d406520"
+          },
+          "link": {
+            "id": "e9c52b249c38b72a07a1af718d406520",
+            "entry": "demo-conversation",
+            "createdAt": 1793082306432,
+            "expiresAt": 1793082906432,
+            "active": true,
+            "state": "active",
+            "scope": {
+              "mode": "guest-capability",
+              "context": "isolated-cli-conversation",
+              "personalIdentity": false,
+              "sourceChatHistory": false,
+              "personalAccountTools": false,
+              "capabilities": [
+                "conversation",
+                "web_search",
+                "memory_search",
+                "background_tasks",
+                "show_content"
+              ],
+              "revocation": "all access through this grant, including existing cookies; active call ended; background effects already completed are not undone"
+            },
+            "linkFile": "[private-output]",
+            "secretPrinted": false
+          }
+        }
+      },
+      {
+        "command": [
+          "auth",
+          "check",
+          "--id",
+          "e9c52b249c38b72a07a1af718d406520"
+        ],
+        "exitCode": 0,
+        "result": {
+          "link": {
+            "id": "e9c52b249c38b72a07a1af718d406520",
+            "entry": "demo-conversation",
+            "createdAt": 1793082306432,
+            "expiresAt": 1793082906432,
+            "active": true,
+            "state": "active",
+            "scope": {
+              "mode": "guest-capability",
+              "context": "isolated-cli-conversation",
+              "personalIdentity": false,
+              "sourceChatHistory": false,
+              "personalAccountTools": false,
+              "capabilities": [
+                "conversation",
+                "web_search",
+                "memory_search",
+                "background_tasks",
+                "show_content"
+              ],
+              "revocation": "all access through this grant, including existing cookies; active call ended; background effects already completed are not undone"
+            }
+          }
+        }
+      },
+      {
+        "step": "recipient HTTP access",
+        "status": 200,
+        "accessContext": {
+          "version": 1,
+          "mode": "public",
+          "entryKind": "public",
+          "accountLabel": "独立访客",
+          "identityLabel": "访客身份",
+          "conversationLabel": "Public",
+          "conversationKind": "personal",
+          "replySync": false,
+          "capabilities": [
+            "conversation",
+            "web_search",
+            "memory_search",
+            "background_tasks",
+            "show_content"
+          ],
+          "scopeNote": "可对话、搜索、查询 V 记忆和委派后台任务；未连接个人账号。"
+        }
+      },
+      {
+        "step": "personal entry denied",
+        "status": 401
+      },
+      {
+        "command": [
+          "links",
+          "revoke",
+          "--id",
+          "e9c52b249c38b72a07a1af718d406520",
+          "--request-id",
+          "demo-revoke-20261027"
+        ],
+        "exitCode": 0,
+        "result": {
+          "replayed": false,
+          "result": {
+            "link": "e9c52b249c38b72a07a1af718d406520",
+            "revoked": true
+          },
+          "link": {
+            "id": "e9c52b249c38b72a07a1af718d406520",
+            "entry": "demo-conversation",
+            "createdAt": 1793082306432,
+            "expiresAt": 1793082906432,
+            "revokedAt": 1793082306517,
+            "active": false,
+            "state": "revoked",
+            "scope": {
+              "mode": "guest-capability",
+              "context": "isolated-cli-conversation",
+              "personalIdentity": false,
+              "sourceChatHistory": false,
+              "personalAccountTools": false,
+              "capabilities": [
+                "conversation",
+                "web_search",
+                "memory_search",
+                "background_tasks",
+                "show_content"
+              ],
+              "revocation": "all access through this grant, including existing cookies; active call ended; background effects already completed are not undone"
+            }
+          }
+        }
+      },
+      {
+        "command": [
+          "auth",
+          "check",
+          "--id",
+          "e9c52b249c38b72a07a1af718d406520"
+        ],
+        "exitCode": 0,
+        "result": {
+          "link": {
+            "id": "e9c52b249c38b72a07a1af718d406520",
+            "entry": "demo-conversation",
+            "createdAt": 1793082306432,
+            "expiresAt": 1793082906432,
+            "revokedAt": 1793082306517,
+            "active": false,
+            "state": "revoked",
+            "scope": {
+              "mode": "guest-capability",
+              "context": "isolated-cli-conversation",
+              "personalIdentity": false,
+              "sourceChatHistory": false,
+              "personalAccountTools": false,
+              "capabilities": [
+                "conversation",
+                "web_search",
+                "memory_search",
+                "background_tasks",
+                "show_content"
+              ],
+              "revocation": "all access through this grant, including existing cookies; active call ended; background effects already completed are not undone"
+            }
+          }
+        }
+      },
+      {
+        "step": "old cookie denied after revocation",
+        "status": 404
+      }
+    ]
+  },
+  "vOSRuntime": {
+    "method": "ssh v; offline package installation in a dedicated temporary directory; execute as existing openclaw OS user; reverse Unix socket tunnel to isolated local fixture",
+    "actualVAgentModelUse": false,
+    "result": {
+      "node": "v22.23.1",
+      "uid": 1002,
+      "candidateOnly": true,
+      "passed": true,
+      "evidence": [
+        {
+          "command": "entries.create",
+          "ok": true,
+          "result": {
+            "replayed": false,
+            "result": {
+              "entry": "v-os-runtime-test"
+            },
+            "entry": {
+              "id": "v-os-runtime-test",
+              "kind": "guest",
+              "createdAt": 1793082111522,
+              "scope": {
+                "mode": "guest-capability",
+                "context": "isolated-cli-conversation",
+                "personalIdentity": false,
+                "sourceChatHistory": false,
+                "personalAccountTools": false,
+                "capabilities": [
+                  "conversation",
+                  "web_search",
+                  "memory_search",
+                  "background_tasks",
+                  "show_content"
+                ],
+                "revocation": "all access through this grant, including existing cookies; active call ended; background effects already completed are not undone"
+              },
+              "binding": {
+                "type": "isolated-guest",
+                "createdLazily": true
+              },
+              "activeCalls": 0,
+              "creatingSessions": 0
+            }
+          }
+        },
+        {
+          "command": "links.create",
+          "ok": true,
+          "result": {
+            "replayed": false,
+            "result": {
+              "link": "e2decb7166d1cbb1494f719549827686"
+            },
+            "link": {
+              "id": "e2decb7166d1cbb1494f719549827686",
+              "entry": "v-os-runtime-test",
+              "createdAt": 1793082112110,
+              "expiresAt": 1793082712110,
+              "active": true,
+              "state": "active",
+              "scope": {
+                "mode": "guest-capability",
+                "context": "isolated-cli-conversation",
+                "personalIdentity": false,
+                "sourceChatHistory": false,
+                "personalAccountTools": false,
+                "capabilities": [
+                  "conversation",
+                  "web_search",
+                  "memory_search",
+                  "background_tasks",
+                  "show_content"
+                ],
+                "revocation": "all access through this grant, including existing cookies; active call ended; background effects already completed are not undone"
+              },
+              "linkFile": "[private-output]",
+              "secretPrinted": false
+            }
+          }
+        },
+        {
+          "command": "auth.check",
+          "ok": true,
+          "result": {
+            "link": {
+              "id": "e2decb7166d1cbb1494f719549827686",
+              "entry": "v-os-runtime-test",
+              "createdAt": 1793082112110,
+              "expiresAt": 1793082712110,
+              "active": true,
+              "state": "active",
+              "scope": {
+                "mode": "guest-capability",
+                "context": "isolated-cli-conversation",
+                "personalIdentity": false,
+                "sourceChatHistory": false,
+                "personalAccountTools": false,
+                "capabilities": [
+                  "conversation",
+                  "web_search",
+                  "memory_search",
+                  "background_tasks",
+                  "show_content"
+                ],
+                "revocation": "all access through this grant, including existing cookies; active call ended; background effects already completed are not undone"
+              }
+            }
+          }
+        },
+        {
+          "command": "links.revoke",
+          "ok": true,
+          "result": {
+            "replayed": false,
+            "result": {
+              "link": "e2decb7166d1cbb1494f719549827686",
+              "revoked": true
+            },
+            "link": {
+              "id": "e2decb7166d1cbb1494f719549827686",
+              "entry": "v-os-runtime-test",
+              "createdAt": 1793082112110,
+              "expiresAt": 1793082712110,
+              "revokedAt": 1793082114702,
+              "active": false,
+              "state": "revoked",
+              "scope": {
+                "mode": "guest-capability",
+                "context": "isolated-cli-conversation",
+                "personalIdentity": false,
+                "sourceChatHistory": false,
+                "personalAccountTools": false,
+                "capabilities": [
+                  "conversation",
+                  "web_search",
+                  "memory_search",
+                  "background_tasks",
+                  "show_content"
+                ],
+                "revocation": "all access through this grant, including existing cookies; active call ended; background effects already completed are not undone"
+              }
+            }
+          }
+        },
+        {
+          "command": "auth.check",
+          "ok": true,
+          "result": {
+            "link": {
+              "id": "e2decb7166d1cbb1494f719549827686",
+              "entry": "v-os-runtime-test",
+              "createdAt": 1793082112110,
+              "expiresAt": 1793082712110,
+              "revokedAt": 1793082114702,
+              "active": false,
+              "state": "revoked",
+              "scope": {
+                "mode": "guest-capability",
+                "context": "isolated-cli-conversation",
+                "personalIdentity": false,
+                "sourceChatHistory": false,
+                "personalAccountTools": false,
+                "capabilities": [
+                  "conversation",
+                  "web_search",
+                  "memory_search",
+                  "background_tasks",
+                  "show_content"
+                ],
+                "revocation": "all access through this grant, including existing cookies; active call ended; background effects already completed are not undone"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "browser": {
+    "surface": "Codex in-app browser",
+    "fixture": true,
+    "viewport": [
+      1280,
+      720
+    ],
+    "pageTitle": "和 V 通话",
+    "checks": {
+      "nonblank": true,
+      "dialReady": true,
+      "urlFragmentClearedAfterAccess": true,
+      "guestScopeVisible": true,
+      "longLivedIosBindingDisabled": true,
+      "consoleErrorsOrWarnings": 0,
+      "revokedCookieReloadDenied": true
+    },
+    "interactions": [
+      "open CLI-issued link",
+      "open account/session sheet",
+      "expand permissions",
+      "revoke through CLI",
+      "reload and observe unavailable entry"
+    ],
+    "noMicrophoneOrDial": true
+  },
+  "regressions": {
+    "voiceTests": 978,
+    "speakerTests": 95,
+    "releaseFleetPythonTests": 11,
+    "iosShellCheck": "passed",
+    "skillValidation": "passed"
+  },
+  "unverified": [
+    "real V model discovers and autonomously selects commands",
+    "real Feishu recipient authentication/membership and account tool execution for CLI invitations",
+    "real audio, phone permissions and physical devices",
+    "production socket/registry activation and dual-node release",
+    "merge and merged-head CI"
+  ],
+  "productionChanges": false
+}

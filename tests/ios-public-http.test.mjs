@@ -86,3 +86,12 @@ test('Public tools attach only after the server verifies its device grant',async
  await assert.rejects(f.calls[0].gateway.request('send',{}),/unavailable/);
  assert.notEqual((await f.request('status',undefined,cb,a.phone)).status,200);
 });
+
+for(const enableGrok of [false,true])test(`Public iOS catalog Grok visibility is server-owned (${enableGrok})`,async t=>{
+ const f=await fixture(t,{enableGrok,directVoice:{models:()=>[{id:'seeduplex',available:true},{id:'grok',available:true}],dispose:async()=>{}}});
+ const grant=await f.bootstrap(keyA),cookie=await f.access(grant);
+ const status=await(await f.request('status',undefined,cookie,grant.phone)).json();
+ assert.equal(status.models.some(m=>m.id==='grok'),enableGrok);
+ assert.equal(status.models.find(m=>m.id==='gpt-live').available,false);
+ assert.equal(status.defaultModel,'seeduplex');
+});

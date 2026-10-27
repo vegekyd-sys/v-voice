@@ -65,7 +65,8 @@ def verify_artifact(directory):
         require((re.fullmatch(r'(lab|lib|plugins)/[A-Za-z0-9_@./-]+|package(?:-lock)?\.json', name)
                  or name in {'scripts/phone.mjs', 'scripts/feishu-menu.mjs',
                              'scripts/device-call.mjs', 'scripts/install-backend-device-bundle.mjs',
-                             'skills/device-use/SKILL.md', 'backend-device-bundle.json'})
+                             'skills/device-use/SKILL.md', 'skills/voice-cli/SKILL.md',
+                             'bin/v-voice.mjs', 'backend-device-bundle.json'})
                 and '..' not in Path(name).parts and name not in names, 'Unsafe artifact path')
         names.add(name)
         file = directory / name

@@ -1,3 +1,29 @@
+## 2026-10-27 — Voice entry and CLI release preparation
+
+- Integrate approved PRs #158, #160, #163, #164 and #165. Production phone catalog hides Grok, entry bootstrap and code caching improve repeat loading, hangup restores local UI immediately, and the App handoff includes TestFlight fallback.
+- Install the private Voice CLI and skill for V. Only the web node enables the managed registry/socket; guest grants and Feishu invitations retain existing authorization boundaries.
+- Resolve shared server parameters and regenerate combined browser/iOS resources. No Gateway restart, native binary or firmware update. Candidate measurements are not production performance guarantees.
+- Release and post-deployment evidence: [voice-release-20261027](docs/releases/voice-release-20261027/release.md).
+
+## 2026-10-27 — Phone entry latency (candidate, unreleased)
+
+- Prebuild the browser call engine and prioritize its independent Feishu identity bootstrap. Cache only content-versioned application code; HTML, identity exchanges, API status and membership checks retain their existing authorization and no-store behavior.
+- Controlled browser comparison: Feishu first/return paths improve by about 25–27%, and an authenticated external-browser revisit by about 42%. These are local simulated-service measurements, not production phone acceptance.
+- Candidate homepage notes and validation: [entry latency](docs/acceptance/entry-latency-20261027/acceptance.md). No production, Gateway, native App, firmware or model-list change.
+
+## 2026-10-27 — V Voice CLI candidate (not deployed)
+
+- Add a zero-dependency, discoverable JSON CLI and private Unix control service for managed guest conversations and Feishu login invitations. Support exact binding metadata, bounded expiry, revocation, readback, idempotent retries and private link files.
+- Reuse existing Voice access cookies, Public tools and Feishu actor admission. Temporary guest capabilities cannot become independent long-lived device grants; no personal identity is delegated by an invitation.
+- Candidate validation and production integration requirements are tracked in [CLI guide](docs/voice-cli.md). No main merge, production activation, real calls or external delivery is implied.
+
+## Candidate — voice-grok-visibility.20261027.1
+
+- Web/H5 与 iOS 服务端模型目录默认隐藏 Grok，测试服务通过 `VOICE_ENABLE_GROK=1` 明确启用。
+- 网页采用服务端目录；旧 Grok 偏好在空闲刷新时回退，旧缓存拨号得到重新选择提示，保留当前通话。
+- 保留 Grok provider、机器人/音响已有私有白名单和测试能力；无原生 App/固件升级。未合入、未部署。
+
+
 ## 2026-10-27 — Calendar consent policy deployed to Voice services
 
 - PR #155 deployed at `7ce20a2` to both Voice nodes; both ready with identical artifact hashes and admission released. Gateway and private configuration retained.

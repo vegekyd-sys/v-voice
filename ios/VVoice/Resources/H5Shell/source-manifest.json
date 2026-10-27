@@ -1,14 +1,15 @@
 {
   "sources": {
-    "index.html": "7ce196055fbb3084987952fabdb26aa48d630576088c6e841abce4bf79756337",
+    "index.html": "9e07ebba958bc73fe5a6153aae869e8ed26f999e79ce09bd9aedd44dd1b6abb5",
     "styles.css": "2a19aa68afa7cb171db65bcca93960ba5b1b910d80e77c07b98712d7d225b8d4",
-    "ui/call-ui.jsx": "268f2e14c6f784997270d3e53b1b4f7897d8ac5a9da46cefb08556a6a8efd033",
-    "ui-bundle.mjs": "c72fa65976c23686878174c79d83b61b5d4b6c45819bf89633fd547cbbcdc77f",
+    "ui/call-ui.jsx": "480b69932d6039856f8211afa60114a9e20a6f09a212be1b2071b05f5e1fde66",
+    "ui-bundle.mjs": "7032ffce634ab43a642e1f1453fac95868cebcfd562cdf6efc0400b705c0dd7d",
+    "app-handoff.mjs": "31705d0424c9043e64844ac047ef090fe4582f475b74d78e4b5dec04ebca3465",
     "call-view.mjs": "f91d20a6e63dcecd0b11af6370fd9b8f69733eae6393879713a2c213774b4633",
     "content-view.mjs": "c754e537248cf95efbff9d810d61f82da13fc3c8cbec42bca02e7928906de743",
     "markdown.mjs": "a556476a8a88b35aba790f993a8bde333150aebab9dc7fdce14aa2e3c586ace0",
     "media-references.mjs": "ca8509fad6ef83f83f9365432652058e1a364b5adb1a199508d3239521d581f8",
-    "changelog.mjs": "5c14ef97c4dc18b31ff2d7ad53d0fc9cd20740f8362c77922168d8e1c663438b",
+    "changelog.mjs": "4dc1ad8abdea2009e7afd9f649b650dd2e22734c29108ba68a17470e0c7b0dcd",
     "avatar.mjs": "65ea1485a75d69816e2cb408b508716f151e7d33b9a8957af5a3d0f55e360df7",
     "avatar-reactions.mjs": "69880767130ffc0ff6adcecd6e4ea13b65073def959ce9a5189ab8806f9f1b1e",
     "avatar-telemetry.mjs": "236b9d6e5ad67009d83347f72002b69b01f3c5e7eb71bdde7d4166d59c9b254c",
@@ -127,11 +128,11 @@
     "assets/v-voice-icon.svg": "2b578443cc70bc8eb78ff9877be5e70473d61ed6713ea6f538bd1fa665d27c66",
     "assets/v-voice-icon-32.png": "7bae67ea83c9c7cf81afd9786a18b94c73f9d3643372467e7d331532d1d5555b",
     "assets/v-voice-apple-touch.png": "643f67cd7d67bb2563f79ec2938d01e869cd2634bd9f78e7597f98afe525763c",
-    "ios/H5/native-h5.mjs": "d581397de1cf3eb30e4af18677daebe0bd84ae64c4ac7364444348b47fb4dc5b"
+    "ios/H5/native-h5.mjs": "d58ba9f768ffe9b6276bb82238bc4a679359cfd7aca82dace3ee99bbdd046220"
   },
   "outputs": {
     "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
-    "native-h5.js": "af5b0f82c03a9b02ff3bb5394108446d15a4a1cd8f8848b9015cff1efb781e02",
+    "native-h5.js": "efb954440bfdcb5945652b2ab88706b86680229167f92cf455283cdac159a2dd",
     "comparison.html": "7beb6c5d3e5933b5c020ddf23e200679318faa98568904f927d0553ea3d33076",
     "styles.css": "2a19aa68afa7cb171db65bcca93960ba5b1b910d80e77c07b98712d7d225b8d4",
     "comparison.css": "ae9fbcffb322e32737e2ce0ed830c1b86f9f27406b4ce8b686dc8cac9f36ba16",

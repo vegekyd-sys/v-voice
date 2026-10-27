@@ -13,7 +13,7 @@ const dynamic=feishuConversationPhone('fixture-account','oc_dynamic');
 async function fixture(t,{enabled=true}={}){
  const dir=await mkdtemp(join(tmpdir(),'voice-unified-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const calls=[],rpc=[];
- const bridge=createLiveH5Server({basePath:'/voice',publicOrigin:'https://voice.example',accessToken:'p'.repeat(40),iosBindingsFile:join(dir,'grants.json'),iosPublicEntry:enabled,publicTools:true,conversationEntries:[fixed],
+ const bridge=createLiveH5Server({enableGrok:true,basePath:'/voice',publicOrigin:'https://voice.example',accessToken:'p'.repeat(40),iosBindingsFile:join(dir,'grants.json'),iosPublicEntry:enabled,publicTools:true,conversationEntries:[fixed],
   feishuLogin:{conversations:true,allowUnidentified:true,appId:'cli_fixture',appSecret:'fixture-secret',accountId:'fixture-account',actors:[]},
   gateway:{ready:true,request:async(method,params)=>{rpc.push({method,params});if(method==='tools.catalog')return {groups:[{tools:[{id:'web_search'},{id:'memory_search'},{id:'exec'}]}]};if(method==='sessions.describe')return {session:{key:params.key,agentId:'makaron'}};return {ok:true};}},
   directVoice:{models:()=>[{id:'seeduplex',available:true},{id:'grok',available:true}],reserve:async args=>{calls.push(args);return {voiceSessionId:'fixture-'+calls.length,relayTicket:'fixture',provider:args.model};},close:async()=>{},dispose:async()=>{}}});

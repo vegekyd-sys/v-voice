@@ -11,7 +11,7 @@ const phone=feishuConversationPhone('default','oc_group'),origin='https://voice.
 async function fixture(t){
  const dir=await mkdtemp(join(tmpdir(),'voice-card-http-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const file=join(dir,'ios.json'),api=[],rpc=[],reservations=[];let denied=false,clientIdentity=null,time=Date.now();
- const server=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'f'.repeat(40),iosBindingsFile:file,iosPublicEntry:true,
+ const server=createLiveH5Server({enableGrok:true,basePath:'/voice',publicOrigin:origin,accessToken:'f'.repeat(40),iosBindingsFile:file,iosPublicEntry:true,
   feishuLogin:{conversations:true,allowUnidentified:true,cardConfirmation:true,appId:'cli_app',appSecret:'fixture',accountId:'default',actors:[],now:()=>time,fetchImpl:async(url,init)=>{
    api.push({url,init});if(url.includes('/app_access_token/'))return Response.json({code:0,app_access_token:'private-app',tenant_access_token:'private-tenant',expire:7200});
    if(url.includes('/members?'))return Response.json({code:0,data:{items:[{member_id:'ou_external',name:'外部测试成员'}]}});
@@ -66,6 +66,23 @@ test('resuming a card-confirmed browser still checks live membership and fails c
  const response=await f.send('/feishu/client-login',{body:{state,failure:{code:20027}}});assert.equal(response.status,200);
  assert.equal(response.json().status.unidentified,true);assert.equal(response.json().status.accountLabel,undefined);
  assert.equal(f.jar.get('v_feishu_phone'),'');
+});
+
+test('cached browser code carries no account status and never caches membership admission',async t=>{
+ const f=await fixture(t);await f.login();
+ const page=await f.send('/feishu?phone='+phone);
+ assert.equal(page.headers['cache-control'],'no-store');
+ const path=page.text.match(/src="\.\/(app-bundle\.mjs\?v=[a-f0-9]{64})"/)?.[1];assert(path);
+ const code=await f.send('/'+path);assert.equal(code.status,200);
+ assert.match(code.headers['cache-control'],/private.*immutable/);
+ assert(!code.text.includes('外部测试成员')&&!code.text.includes('oc_group')&&!code.text.includes('ou_external'));
+ const before=f.rpc.filter(r=>r.method==='voice.feishu.resolve').length;
+ assert.equal((await f.send('/api/status?phone='+phone)).json().accountLabel,'外部测试成员');
+ assert.equal(f.rpc.filter(r=>r.method==='voice.feishu.resolve').length,before+1);
+ f.deny();const denied=await f.send('/api/status?phone='+phone);
+ assert.equal(denied.headers['cache-control'],'no-store');assert.equal(denied.json().accountLabel,undefined);
+ assert.equal(denied.json().unidentified,true);
+ assert.equal(f.reservations.length,0);
 });
 
 test('card login survives a new server instance but expires after its original 30 days',async t=>{
