@@ -46,6 +46,37 @@ test('browser cannot supply a signed identity or change a scoped request',async(
   await assert.rejects(scoped.request('tools.invoke',{voiceActor:{openId:'ou_other'}}),/cannot be supplied/);
 });
 
+test('simultaneous requests share only a live admission and keep independent caller bindings',async()=>{
+ let complete,reads=0,member=true;
+ const gateway={request:async()=>{reads++;await new Promise(r=>{complete=r;});if(!member)throw Object.assign(Error('denied'),{details:{reason:'conversation_membership_required'}});return {sessionKey:'agent:makaron:feishu:group:oc_groupA',agentId:'makaron',accountId:'lab',kind:'group'};}};
+ const resolve=createFeishuConversationDirectory({...config,gateway});
+ const a=resolve({...identity,displayName:'First profile'},phone),b=resolve({...identity,displayName:'Updated profile'},phone);
+ await Promise.resolve();assert.equal(reads,1);complete();const [first,second]=await Promise.all([a,b]);
+ assert.notEqual(first,second);assert.equal(first.callerIdentity.displayName,'First profile');assert.equal(second.callerIdentity.displayName,'Updated profile');
+ member=false;const denied=resolve(identity,phone);await Promise.resolve();assert.equal(reads,2);complete();
+ await assert.rejects(denied,e=>e.code==='FEISHU_CONVERSATION_MEMBERSHIP_REQUIRED');
+ member=true;const retry=resolve(identity,phone);await Promise.resolve();assert.equal(reads,3);complete();assert.equal((await retry).permissionProfile,'feishu-current');
+});
+
+test('slow admissions stop accepting joiners and an old completion cannot clear a newer request',async()=>{
+ let clock=0;const finishes=[];
+ const gateway={request:()=>new Promise(resolve=>finishes.push(()=>resolve({sessionKey:'agent:makaron:feishu:group:oc_groupA',agentId:'makaron',accountId:'lab',kind:'group'})))};
+ const resolve=createFeishuConversationDirectory({...config,gateway,now:()=>clock});
+ const first=resolve(identity,phone);await Promise.resolve();clock=1000;
+ const second=resolve(identity,phone);await Promise.resolve();assert.equal(finishes.length,2);
+ finishes[0]();await first;const third=resolve(identity,phone);await Promise.resolve();assert.equal(finishes.length,2);
+ finishes[1]();await Promise.all([second,third]);
+});
+
+test('concurrent directory reads never coalesce another subject, tenant, user identity or conversation',async()=>{
+ const reads=[];let release;const gate=new Promise(r=>{release=r;});
+ const gateway={request:async(_method,p)=>{reads.push(p.voiceActor.actor);await gate;return {sessionKey:'agent:makaron:feishu:group:'+p.voiceActor.actor.chatId,agentId:'makaron',accountId:'lab',kind:'group'};}};
+ const resolve=createFeishuConversationDirectory({...config,gateway});
+ const jobs=[resolve(identity,phone),resolve({...identity,openId:'ou_bob'},phone),resolve({...identity,tenantKey:'other_tenant'},phone),resolve({...identity,userId:'user_other'},phone),resolve(identity,feishuConversationPhone('lab','oc_groupB'))];
+ await Promise.resolve();assert.equal(reads.length,5);release();const values=await Promise.all(jobs);
+ assert.notEqual(values[0].callerId,values[1].callerId);assert.notEqual(values[0].callerId,values[2].callerId);assert.notEqual(values[0].sessionKey,values[4].sessionKey);
+});
+
 test('proof canonicalization matches JSON RPC wire semantics for optional undefined fields',async()=>{
   let actual;
   const scoped=createFeishuActorGateway({...config,identity,chatId:'oc_groupA',sessionKey:'canonical',gateway:{request:async(_,p)=>{actual=JSON.parse(JSON.stringify(p));}}});
@@ -92,7 +123,7 @@ test('HTTP OAuth and dialing preserve both fixture subjects, groups, and server-
     await p.gateway.request('tools.catalog',{agentId:p.agentId,includePlugins:true});
     return {voiceSessionId:'direct-'+(++sequence),relayTicket:'fixture-ticket',provider:p.model};
   },attach:()=>true,close:async()=>{},dispose:async()=>{}};
-  const bridge=createLiveH5Server({gateway,directVoice,publicOrigin:origin,basePath:'/voice',accessToken:'fixture-legacy-token'.repeat(3),
+  const bridge=createLiveH5Server({enableGrok:true,gateway,directVoice,publicOrigin:origin,basePath:'/voice',accessToken:'fixture-legacy-token'.repeat(3),
     feishuLogin:{...config,conversations:true,allowUnidentified:true,fetchImpl:async url=>Response.json(url.endsWith('/token')?
       {code:0,access_token:'fixture-token',token_type:'Bearer'}:{code:0,data:{open_id:subject,tenant_key:'tenant_fixture'}})}});
   await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
@@ -137,7 +168,7 @@ test('HTTP OAuth and dialing preserve both fixture subjects, groups, and server-
 test('wrong browser identity gets a safe recovery page and explicit retry can replace an existing login',async t=>{
   let subject='ou_alice',member='ou_alice';const methods=[];
   const origin='https://voice.example';
-  const bridge=createLiveH5Server({gateway:{request:async(method,p)=>{
+  const bridge=createLiveH5Server({enableGrok:true,gateway:{request:async(method,p)=>{
     methods.push(method);
     if(p.voiceActor.actor.openId!==member)throw Object.assign(Error('private gateway detail'),{details:{reason:'conversation_membership_required'}});
     return {sessionKey:'agent:makaron:feishu:direct:'+member,agentId:'makaron',accountId:'lab',kind:'dm'};
@@ -173,7 +204,7 @@ test('unidentified phone opens without login and isolates browser, conversation 
   const directVoice={models:()=>[{id:'seeduplex',available:true},{id:'grok',available:true}],reserve:async args=>{
     reservations.push(args);return {voiceSessionId:'guest-call-'+(++n),relayTicket:'fixture',provider:args.model};
   },close:async()=>{},dispose:async()=>{},attach:()=>true};
-  const bridge=createLiveH5Server({gateway:{request:async(method)=>{calls.push(method);throw Error('Personal gateway must not be used');}},directVoice,
+  const bridge=createLiveH5Server({enableGrok:true,gateway:{request:async(method)=>{calls.push(method);throw Error('Personal gateway must not be used');}},directVoice,
     publicOrigin:'https://voice.example',basePath:'/voice',accessToken:'fixture-legacy-token'.repeat(3),
     feishuLogin:{...config,conversations:true,allowUnidentified:true}});
   await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
@@ -226,7 +257,7 @@ test('removed chat-code endpoints cannot mint identities and all old untagged lo
   const login=createFeishuPhoneLogin(opts),cookie='v_feishu_phone='+old;
   assert.equal(login.read({headers:{cookie}}),null);assert.equal(await login.select({headers:{cookie}},phone),null);
   assert.equal(login.beginConversation,undefined);assert.equal(login.completeConversation,undefined);
-  const bridge=createLiveH5Server({gateway:{request:async()=>{requests++;throw Error('must not be reached');}},publicOrigin:origin,basePath,accessToken:'fixture-legacy-token'.repeat(3),feishuLogin:{...config,conversations:true,allowUnidentified:true}});
+  const bridge=createLiveH5Server({enableGrok:true,gateway:{request:async()=>{requests++;throw Error('must not be reached');}},publicOrigin:origin,basePath,accessToken:'fixture-legacy-token'.repeat(3),feishuLogin:{...config,conversations:true,allowUnidentified:true}});
   await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
   const get=(path,method='GET')=>new Promise((resolve,reject)=>{
     const req=request({host:'127.0.0.1',port:bridge.server.address().port,path,method,headers:{host:'voice.example',origin,cookie,'content-type':'application/json'}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end(method==='POST'?JSON.stringify({phone}):undefined);

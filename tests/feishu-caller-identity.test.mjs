@@ -25,7 +25,7 @@ async function fixture(t,{file,legacyEntries=[]}={}) {
   if(method==='talk.client.create')return {voiceSessionId:'gpt-'+(++n),model:'gpt-live-1-codex',transport:'webrtc',offerUrl:'/plugins/openai/realtime/calls',clientSecret:'private-fixture'};
   return {ok:true};
  }};
- const server=createLiveH5Server({gateway,iosBindingsFile:file,publicOrigin:'https://voice.example',basePath:'/voice',accessToken:'private-fixture-token'.repeat(4),conversationEntries:[group,dm,...legacyEntries],
+ const server=createLiveH5Server({enableGrok:true,gateway,iosBindingsFile:file,publicOrigin:'https://voice.example',basePath:'/voice',accessToken:'private-fixture-token'.repeat(4),conversationEntries:[group,dm,...legacyEntries],
   directVoice:{models:()=>[{id:'seeduplex',available:true},{id:'grok',available:true}],reserve:async p=>{reservations.push(p);return {voiceSessionId:'fixture-call-'+(++n),relayTicket:'fixture',provider:p.model};},attach:()=>true,close:async()=>{},dispose:async()=>{}},
   feishuLogin:{appId:'cli_fixture',appSecret:'fixture-private-secret',accountId:'lab',conversations:true,allowUnidentified:true,
    actors:[{openId:'ou_alice',tenantKey:'fixture',callerId:'tianyi',defaultPhoneId:dm.id,phoneIds:[group.id,dm.id,...legacyEntries.map(x=>x.id)]}],

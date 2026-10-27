@@ -1,3 +1,45 @@
+export const IOS_GPT_TRANSPORT_CANDIDATE_UPDATE = {
+  version:'voice-ios-gpt-transport.20261027.1',date:'2026-10-27',
+  title:'iOS GPT Live One 连接修复（Candidate）',status:'candidate-validation',
+  items:[
+    '修复已绑定会话选择 GPT Live One 后，拨号因传输信息缺失而失败的问题。',
+    '候选已验证原生 WebRTC 双向合成音频、字幕、静音恢复与挂断。',
+    '尚未上线，真实 iPhone 收音、扬声器、打断和后台通话等待验收。',
+  ],
+};
+
+export const GROK_VISIBILITY_CANDIDATE_UPDATE = {
+  version:'voice-grok-visibility.20261027.1',date:'2026-10-27',
+  title:'正式模型目录收敛（Candidate）',status:'candidate-validation',
+  items:[
+    '正式电话模型列表保留小何和 GPT Live；Grok 测试路径由服务端显式开启。',
+    '旧 Grok 选择在空闲刷新后回到可用模型，不切换正在进行的通话。',
+    '仅候选验证，尚未合入或上线；设备测试配置和原生版本保持。',
+  ],
+};
+
+export const STARTUP_LATENCY_CANDIDATE_UPDATE = {
+  version:'voice-startup-latency.20261027.3',date:'2026-10-27',
+  title:'飞书进入与 App 拨号减少等待（Candidate）',status:'candidate-validation',
+  items:[
+    '飞书身份准备直接随首页加载，减少开始识别账号前的网络等待。',
+    '网页与 App 拨号复用同一次请求刚完成的会话核验，减少重复等待；新请求仍重新核验。',
+    '语音连接与打断检测并行准备，两者就绪后才接通；飞书只读工具在实际使用时检查授权。',
+    '通话预约后提前准备当前会话，与连接握手并行；同时到达的相同账号与会话请求合并进行中的核验。',
+    '仅隔离候选验证，真实手机与 Action Button 接通时间仍待实测，尚未上线。',
+  ],
+};
+
+export const ENTRY_LATENCY_CANDIDATE_UPDATE = {
+  version:'voice-entry-latency.20261027.1',date:'2026-10-27',
+  title:'电话进入速度优化（Candidate）',status:'candidate-validation',
+  items:[
+    '电话页优先开始飞书身份确认，缩短等待页面程序加载的时间。',
+    '重复进入复用相同版本的页面程序；账号、会话和成员资格仍逐次核验。',
+    '仅隔离候选验证，尚未上线；真实手机与飞书客户端速度另验。',
+  ],
+};
+
 export const FEISHU_LOGIN_PERSISTENCE_CANDIDATE_UPDATE = {
   version:'voice-feishu-login-persistence.20261026.1',date:'2026-10-26',
   title:'外部账号登录保持与身份切换（Candidate）',status:'candidate-validation',
@@ -127,6 +169,27 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
   ],
 };
 export const VOICE_UPDATES = [
+  {
+    version:'voice-connect-audio.20261027.1',date:'2026-10-27',
+    title:'减少拨号等待，修复网页与 GPT 连接',
+    items:[
+      '飞书身份确认随首页开始，网页与 App 拨号减少重复核验和串行准备的等待。',
+      '修复网页取得麦克风权限后，音频模块启动报错、无法接通的问题。',
+      '修复 iPhone 已绑定会话选择 GPT Live One 后因传输信息缺失而拨号失败的问题。',
+      '补充音频交付与播放状态诊断，便于排查停顿；不保存原始音频。',
+    ],
+  },
+  {
+    version:'voice-entry-cli.20261027.1',date:'2026-10-27',
+    title:'进入更快、挂断更及时，支持按需生成电话链接',
+    items:[
+      '电话页提前开始身份确认，重复进入复用相同版本的页面程序，减少等待。',
+      '点击挂断立即停止本地通话并恢复页面；再次拨号仍等待原通话清理完成。',
+      '正式电话模型列表保留小何和 GPT Live。',
+      '网页可继续在 V App 中使用；未安装时提供 TestFlight 安装入口，安装后返回原页完成绑定。',
+      'V 可按需创建独立访客电话或飞书登录邀请，并查询有效期、撤销链接；邀请沿用收件人自己的账号权限。',
+    ],
+  },
   {
     version:'voice-calendar-consent.20261027.1',date:'2026-10-27',
     title:'日程直接办理，保留指定的日历服务',

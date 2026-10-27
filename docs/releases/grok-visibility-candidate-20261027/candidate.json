@@ -1,0 +1,13 @@
+{
+  "version": "voice-grok-visibility.20261027.1",
+  "status": "candidate-validation",
+  "baseCommit": "002313b",
+  "branch": "codex/grok-model-visibility-20261027",
+  "productionChanged": false,
+  "gatewayChanged": false,
+  "nativeProductionSourceChanged": false,
+  "modelCalls": 0,
+  "visibility": {"default": ["gpt-live", "seeduplex"], "testOptIn": "VOICE_ENABLE_GROK=1", "devicePolicy": "existing explicit per-device allowlist retained"},
+  "verification": {"npmTest": 976, "speakerTests": 95, "releaseFleetTests": 11, "iosSimulatorTests": 2, "iosShellCheck": true, "webBrowser": "Codex IAB menu interaction, no console errors/warnings", "simulatorMirror": "live frame verified"},
+  "limits": ["not merged or deployed", "no physical iPhone or device audio acceptance", "older native fast-dial uses its existing generic rejection message", "device node not independently re-inspected this turn"]
+}

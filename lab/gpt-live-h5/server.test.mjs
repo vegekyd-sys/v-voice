@@ -16,7 +16,7 @@ async function fixture(t, overrides = {}) {
   } };
   if (overrides.gatewayReady !== undefined) gateway.ready = overrides.gatewayReady;
   const offers = [];
-  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, gptProvider:overrides.gptProvider, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate });
+  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, enableGrok: overrides.enableGrok ?? true, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, gptProvider:overrides.gptProvider, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate });
   await new Promise((resolve) => bridge.server.listen(0, "127.0.0.1", resolve));
   t.after(() => bridge.dispose());
   const url = `http://127.0.0.1:${bridge.server.address().port}`;
@@ -27,8 +27,8 @@ async function fixture(t, overrides = {}) {
 
 test("exact native model reservation and SDP proxy keep credentials off the browser", async (t) => {
   const f = await fixture(t);
-  const created = await f.request("session"); assert.equal(created.status, 200);
-  const result = await created.json(); assert.deepEqual(result, { voiceSessionId: "voice-private", model: "gpt-live-1-codex" });
+  const created = await f.request("session", {model:"gpt-live",inputPolicy:"native",nativeRuntimeVersion:1}); assert.equal(created.status, 200);
+  const result = await created.json(); assert.deepEqual(result, { voiceSessionId: "voice-private", model: "gpt-live-1-codex", transport: "webrtc" });
   assert.equal(f.calls[0].params.model, "gpt-live-1-codex"); assert.equal(f.calls[0].params.transport, "webrtc");
   assert.equal(f.calls[0].params.sessionKey, GPT_LIVE_PERSONAL_SESSION_KEY);
   const answer = await f.request("offer", { voiceSessionId: result.voiceSessionId, sdp: "v=0\r\noffer" });
@@ -451,4 +451,28 @@ test('a Gateway without GPT device support keeps the old call and advertises no 
  const f=await fixture(t,{directVoice,gptProvider:'v-voice-gpt-live',request:(method,params,reservation)=>{if(method==='voice.product.device-context')throw Error('unknown method');return method==='talk.client.create'?reservation:{ok:true};}});
  const result=await (await f.request('session',{nativeDeviceActions:{version:1,capabilities:{'location.current':{status:'prompt'}}}})).json();
  assert.equal(result.voiceSessionId,'voice-private');assert.equal(result.nativeDeviceActions,undefined);assert.equal(opened,false);
+});
+
+test('ordinary phone catalog omits Grok in HTML/status and refuses a stale preference without ending the active call',async t=>{
+ const directVoice={models:()=>[{id:'seeduplex',available:true},{id:'grok',available:true}],dispose:async()=>{}};
+ const f=await fixture(t,{enableGrok:false,defaultModel:'grok',directVoice});
+ const html=await(await fetch(f.url)).text();assert.doesNotMatch(html,/"id":"grok"/);
+ const status=await(await fetch(f.url+'/api/status?model=grok&enableGrok=1',{headers:{cookie:f.cookie}})).json();
+ assert.deepEqual(status.models.map(m=>m.id),['gpt-live','seeduplex']);assert.equal(status.defaultModel,'seeduplex');
+ await f.request('session',{model:'gpt-live'});
+ const blocked=await f.request('session',{model:'grok'});assert.equal(blocked.status,409);assert.equal((await blocked.json()).code,'model_hidden');
+ assert.equal(f.calls.filter(c=>c.method==='talk.client.close').length,0);
+ assert.equal((await(await fetch(f.url+'/api/status',{headers:{cookie:f.cookie}})).json()).activeCall,true);
+});
+test('test phone catalog explicitly exposes Grok and keeps provider reservation',async t=>{
+ const reserved=[];const directVoice={models:()=>[{id:'seeduplex',available:true},{id:'grok',available:true}],reserve:async p=>{reserved.push(p);return {voiceSessionId:'test-grok',transport:'gateway-relay'};},close:async()=>{},dispose:async()=>{}};
+ const f=await fixture(t,{enableGrok:true,defaultModel:'grok',directVoice});
+ const status=await(await fetch(f.url+'/api/status',{headers:{cookie:f.cookie}})).json();assert.equal(status.models.at(-1).id,'grok');
+ assert.equal((await f.request('session',{model:'grok'})).status,200);assert.equal(reserved[0].model,'grok');
+});
+test('Grok visibility defaults off independently of preview and candidate labels',async t=>{
+ const bridge=createLiveH5Server({preview:true,candidateRelease:{title:'test'},defaultModel:'grok',directVoice:{models:()=>[{id:'grok',available:true}],dispose:async()=>{}}});
+ await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
+ const html=await(await fetch(`http://127.0.0.1:${bridge.server.address().port}`)).text();
+ assert.doesNotMatch(html,/"id":"grok"/);assert.match(html,/"defaultModel":"gpt-live"/);
 });

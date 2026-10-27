@@ -1,14 +1,14 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "calendar-consent-20261027",
-  "version": "voice-calendar-consent.20261027.1",
-  "entryCommit": "7ce20a2de22bedba1cc32086d5f832a44539cd8c",
-  "deviceEntryCommit": "7ce20a2de22bedba1cc32086d5f832a44539cd8c",
-  "filesSha256": "720fbf7a4960144a742c314465dd4d39e7aee86cf9b830efa9e2f4f751f5b1af",
-  "registration": "calendar-consent-20261027/release.json",
-  "previousEntryCommit": "ab8d078dd2937c303ab1eb0008b62fc5a4b8d309",
+  "release": "voice-combined-release-20261027",
+  "version": "voice-connect-audio.20261027.1",
+  "entryCommit": "7baa878a39ecd7903e9b1a384b0c115e3ddcdfac",
+  "deviceEntryCommit": "7baa878a39ecd7903e9b1a384b0c115e3ddcdfac",
+  "filesSha256": "f1efaad2f86613aa467c812f8895ce0d6e70cbbb5655b82371ab6fd1309f54c4",
+  "registration": "voice-combined-release-20261027/release.json",
+  "previousEntryCommit": "b4ed555cd3171534a9a57067b5bb8a1936ba0a34",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-10-27T12:34:21+08:00",
-  "deployedAt": "2026-10-27T12:31:59+08:00",
-  "runtimeDifference": "Both Voice nodes use one verified artifact. SeedDuplex/Grok action-consent and calendar-service policy active; GPT Live source merged but Gateway plugin remains on previous artifact. No live model/audio/calendar-write acceptance."
+  "validatedAt": "2026-10-27T21:45:11+08:00",
+  "deployedAt": "2026-10-27T20:58:06+08:00",
+  "runtimeDifference": "Voice-only connection preparation, GPT transport response, minified AudioWorklet fix and private audio diagnostics on both nodes. Gateway and private configuration preserved. Three real desktop Feishu calls passed; native binary and firmware unchanged."
 }

@@ -4,11 +4,14 @@ VVOICE_REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$VVOICE_REPO"
 VVOICE_FIXTURE_PID=''
 VVOICE_SHARED_FIXTURE_PID=''
+VVOICE_GPT_FIXTURE_PID=''
 export VVOICE_FIXTURE_PORT="${VVOICE_FIXTURE_PORT:-29837}"
 export VVOICE_SHARED_FIXTURE_PORT="${VVOICE_SHARED_FIXTURE_PORT:-29847}"
+export VVOICE_GPT_FIXTURE_PORT="${VVOICE_GPT_FIXTURE_PORT:-29857}"
 cleanup_vvoice_fixture() {
   if [[ -n "$VVOICE_FIXTURE_PID" ]]; then kill "$VVOICE_FIXTURE_PID" 2>/dev/null || true; fi
   if [[ -n "$VVOICE_SHARED_FIXTURE_PID" ]]; then kill "$VVOICE_SHARED_FIXTURE_PID" 2>/dev/null || true; fi
+  if [[ -n "$VVOICE_GPT_FIXTURE_PID" ]]; then kill "$VVOICE_GPT_FIXTURE_PID" 2>/dev/null || true; fi
 }
 trap cleanup_vvoice_fixture EXIT INT TERM HUP
 if [[ -z "${VVOICE_SIMULATOR_ID:-}" ]]; then
@@ -33,12 +36,20 @@ if ! curl --silent --fail "http://127.0.0.1:$VVOICE_SHARED_FIXTURE_PORT/fixture/
     sleep 0.1
   done
 fi
+if ! curl --silent --fail "http://127.0.0.1:$VVOICE_GPT_FIXTURE_PORT/fixture/state" >/dev/null; then
+  node ios/scripts/shared-gpt-fixture.mjs > ios/build/shared-gpt-fixture.log 2>&1 &
+  VVOICE_GPT_FIXTURE_PID=$!
+  for VVOICE_WAIT in {1..50}; do
+    if curl --silent --fail "http://127.0.0.1:$VVOICE_GPT_FIXTURE_PORT/fixture/state" >/dev/null; then break; fi
+    sleep 0.1
+  done
+fi
 swift test --package-path ios/VVoiceCore
 xcodegen generate --spec ios/project.yml
 xcodebuild -project ios/VVoice.xcodeproj -scheme VVoice -configuration Debug \
   -destination "id=$VVOICE_SIMULATOR_ID" -derivedDataPath ios/DerivedData build
 xcrun simctl install "$VVOICE_SIMULATOR_ID" ios/DerivedData/Build/Products/Debug-iphonesimulator/VVoice.app
 xcrun simctl privacy "$VVOICE_SIMULATOR_ID" grant microphone com.versa.vvoice
-TEST_RUNNER_VVOICE_FIXTURE_PORT="$VVOICE_FIXTURE_PORT" TEST_RUNNER_VVOICE_SHARED_FIXTURE_PORT="$VVOICE_SHARED_FIXTURE_PORT" xcodebuild -project ios/VVoice.xcodeproj -scheme VVoice -configuration Debug \
+TEST_RUNNER_VVOICE_FIXTURE_PORT="$VVOICE_FIXTURE_PORT" TEST_RUNNER_VVOICE_SHARED_FIXTURE_PORT="$VVOICE_SHARED_FIXTURE_PORT" TEST_RUNNER_VVOICE_GPT_FIXTURE_PORT="$VVOICE_GPT_FIXTURE_PORT" xcodebuild -project ios/VVoice.xcodeproj -scheme VVoice -configuration Debug \
   -destination "id=$VVOICE_SIMULATOR_ID" -derivedDataPath ios/DerivedData -parallel-testing-enabled NO -collect-test-diagnostics never test
 node --test lab/gpt-live-h5/hosted.test.mjs lab/realtime-direct-tools/session.test.mjs

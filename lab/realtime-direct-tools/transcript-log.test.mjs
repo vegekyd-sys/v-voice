@@ -5,6 +5,22 @@ import os from 'node:os';
 import path from 'node:path';
 import {createVoiceTranscriptLog} from './transcript-log.mjs';
 
+test('audio delivery and playback diagnostics keep only owned scalar timing metadata',async t=>{
+ const f=await fixture(t);f.created();
+ assert.equal(f.log.audit({type:'audio.delivery',voiceSessionId:'foreign',phase:'first'}),false);
+ assert.equal(f.log.audit({type:'audio.delivery',voiceSessionId:'v1',phase:'SECRET'}),false);
+ assert(f.log.audit({type:'audio.delivery',voiceSessionId:'v1',phase:'summary',reason:'done',responseId:'reply',packets:2,bytes:32768,audioMs:683,elapsedMs:1100,maxGapMs:1000,gaps:1,gapMs:-1,audio:'SECRET',text:'SECRET',payload:{token:'SECRET'}}));
+ assert(f.log.audit({type:'call.media',voiceSessionId:'v1',surface:'phone',nativeDuplex:true,playbackPolicy:'assisted',inputSampleRate:24000,terminal:'SECRET'}));
+ assert(f.log.audit({type:'client.playback-state',voiceSessionId:'v1',speaking:false,audio:'SECRET'}));
+ assert.equal(f.log.audit({type:'client.playback-state',voiceSessionId:'v1',speaking:'SECRET'}),false);
+ assert(f.log.audit({type:'transcript',voiceSessionId:'v1',role:'assistant',text:'fixture',final:true,responseId:'reply',turnId:'turn',audio:'SECRET'}));
+ await f.log.close();const rows=await f.rows();
+ assert(!JSON.stringify(rows).includes('SECRET'));
+ assert.equal(rows[1].bytes,32768);assert.equal(rows[1].gapMs,undefined);
+ assert.equal(rows[2].playbackPolicy,'assisted');assert.equal(rows[3].speaking,false);
+ assert.equal(rows[4].responseId,'reply');assert.equal(rows[4].turnId,'turn');
+});
+
 async function fixture(t,extra={}) {
   const root=await mkdtemp(path.join(os.tmpdir(),'voice-text-'));
   t.after(()=>rm(root,{recursive:true,force:true}));
@@ -68,13 +84,25 @@ test('connection profiling persists only known stages for the reserved call owne
   const f=await fixture(t);f.created();
   assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'foreign',stage:'provider-ready'}),false);
   assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'v1',stage:'arbitrary SECRET'}),false);
-  for(const stage of ['catalog-requested','catalog-ready','context-requested','context-ready','provider-connecting','provider-ready']){
-    f.tick(10);assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'v1',stage,token:'SECRET',text:'SECRET'}),true);
+  const stages=['catalog-requested','catalog-ready','context-requested','context-ready','actor-reader-requested','actor-reader-ready','provider-connecting','model-ready','speech-control-connecting','speech-control-ready','provider-ready'];
+  for(const [index,stage] of stages.entries()){
+    f.tick(10);assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'v1',stage,elapsedMs:index*10,token:'SECRET',text:'SECRET'}),true);
   }
   await f.log.close();const rows=await f.rows();
-  assert.equal(rows.filter(r=>r.type==='call.connection-stage').length,6);
+  const profiling=rows.filter(r=>r.type==='call.connection-stage');
+  assert.equal(profiling.length,stages.length);
+  assert.deepEqual(profiling.map(r=>r.elapsedMs),stages.map((_,i)=>i*10));
   assert(!JSON.stringify(rows).includes('SECRET'));
   assert(rows.every(r=>r.sessionKey==='personal'));
+});
+
+test('admission profiling accepts only scalar timings for an existing call',async t=>{
+ const f=await fixture(t);f.created();
+ assert.equal(f.log.audit({type:'call.admission-timing',voiceSessionId:'foreign',resolveMs:123}),false);
+ f.log.audit({type:'call.admission-timing',voiceSessionId:'v1',resolveMs:123,verificationMs:0,previousCloseMs:2,reservationMs:-1,toReservationMs:150,token:'SECRET',identity:'SECRET'});
+ await f.log.close();const rows=await f.rows(),row=rows.find(r=>r.type==='call.admission-timing');
+ assert.equal(row.resolveMs,123);assert.equal(row.verificationMs,0);assert.equal(row.previousCloseMs,2);assert.equal(row.toReservationMs,150);assert.equal(row.reservationMs,undefined);
+ assert(!JSON.stringify(rows).includes('SECRET'));
 });
 
 test('post-hangup delivery receipt survives without accepting late transcript or protocol',async t=>{

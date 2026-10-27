@@ -73,16 +73,24 @@ function actorFixture(t,mode='valid'){
 }
 test('verified actor uses installed identity router without owner profile or secret inheritance',async t=>{
  const f=actorFixture(t),reader=await f.reader().forActor(actor);assert(reader);
+ assert(!fs.existsSync(f.home+'/calls'),'Preparing a call must not start identity probe processes');
  const result=JSON.parse((await reader.calendar({start:'2026-10-26'})).content[0].text).data;
  assert.deepEqual(result.argv.slice(0,4),['--user',actor.openId,'calendar','+agenda']);
  assert.equal(result.profile,null);assert.equal(result.data,null);assert.equal(result.secret,null);
  await assert.rejects(async()=>reader.read({argv:['calendar','+agenda','--user','ou_other']}),/选项/);
  fs.writeFileSync(f.home+'/revoked','yes');await assert.rejects(reader.calendar({}),/LARK_USER_AUTH_REQUIRED/);
 });
-test('missing, mismatched and unauthorized actors never expose a reader or fall back to personal account',async t=>{
+test('mismatched and unauthorized actors fail before a read without falling back to personal account',async t=>{
  for(const mode of ['wrong-app','wrong-user','unauthorized']){
-  const f=actorFixture(t,mode);assert.equal(await f.reader().forActor(actor),null);
+  const f=actorFixture(t,mode),reader=await f.reader().forActor(actor);assert(reader);
+  assert(!fs.existsSync(f.home+'/calls'));
+  await assert.rejects(reader.calendar({}),/身份路由|只读授权/);
   const calls=fs.readFileSync(f.home+'/calls','utf8');assert(!calls.includes('calendar'));
  }
  const f=actorFixture(t);assert.equal(await f.reader().forActor({appId:actor.appId,openId:'from-browser'}),null);assert(!fs.existsSync(f.home+'/calls'));
+});
+test('lazy actor probes honor cancellation before starting any process',async t=>{
+ const f=actorFixture(t),reader=await f.reader().forActor(actor),controller=new AbortController();controller.abort();
+ await assert.rejects(reader.calendar({},'cancelled',controller.signal),{name:'AbortError'});
+ assert(!fs.existsSync(f.home+'/calls'));
 });

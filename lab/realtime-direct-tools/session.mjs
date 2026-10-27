@@ -24,6 +24,7 @@ import {VOICE_TASK_CONTROL_POLICY} from '../../lib/voice-task-control.mjs';
 import {NATIVE_DUPLEX_POLICY} from './native-duplex-policy.mjs';
 import {createLookupRecovery} from './lookup-recovery.mjs';
 import {compactSearchResult,isSearchTool,searchMetrics} from './search-result.mjs';
+import {createAudioDeliveryMetrics} from './audio-delivery-metrics.mjs';
 
 export const VOICE_TASK_ROUTING = '图片、视频生成也用 delegate_to_v，把画面、时长和要求完整交给后台；语音模型自身不生成媒体不代表后台不能生成。工具拒绝或报错意味着未启动，不能说正在做、已经排队或马上完成。用户明确取消仍在执行的当前后台任务并改做新任务时，先实际 cancel_task，确认取消后再实际 delegate_to_v 新目标。已完成的旧任务不能通过取消另一个无关任务来代替。任务分工：简单查询、日历和一两步明确操作直接调用原生工具。多步比较、跨资料调研、复杂规划或需要持续等待/反复轮询的任务，用 delegate_to_v 将完整目标及用户条件一次交给个人 V 后端语言模型。用户要求交给后端模型、交给 V 或交给后台处理时必须调用 delegate_to_v，即使已经给出完整命令，也不能自行用 exec/process/openclaw_tool 代做。这里的后端指另一个语言模型；exec/process 只是执行工具，命令的 background 参数也不是模型委派。只说‘交给后端’却自己执行不算委派。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，等待时正常聊天。只有真实的新事实才简短汇报，不反复播报等待、倒计时或轮询状态。只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
 
@@ -190,7 +191,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(s.closePromise)return s.closePromise;
     if(s.closed&&!s.cleanupFailed)return;
     s.closePromise=(async()=>{
-      s.closed=true;s.closeDeviceChannel?.();
+      s.closed=true;s.audioDelivery?.finish('closed');s.closeDeviceChannel?.();
       await s.replyDelivery?.close();
       for(const finish of [...s.contentWaiters.values()])finish(false);
       s.delivery?.close();
@@ -304,29 +305,52 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(route)speakerRouting.setBusyProbe?.(s.id,()=>Boolean(s.backend?.snapshot?.()));
     s.speakerRouting=Boolean(route);
     s.nativeDuplex=model==='seeduplex'&&!route;
+    audit({type:'call.media',voiceSessionId:s.id,surface:s.surface,nativeDuplex:s.nativeDuplex,
+      playbackPolicy:s.nativeDuplex?nativePlaybackPolicy:'standard',inputSampleRate});
     if(nativeRuntimeVersion===1)s.nativeRuntime=createNativeRuntime({voiceSessionId:s.id,duplex:s.nativeDuplex,assisted:s.nativeDuplex&&nativePlaybackPolicy==='assisted',speakerRouted:Boolean(route),policy:nativeRuntimePolicy});
+    // An admitted call can load its environment while the HTTP response and
+    // authenticated relay handshake travel. No provider or microphone is opened.
+    if(s.actorScoped&&s.sessionBound&&!s.unidentified)s.preparation=prepareConnectionEnvironment(s);
     return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket,...(deviceActions?{nativeDeviceActions:{version:1,capabilities:s.terminalContext().capabilities},terminalContext:s.terminalContext()}:{}),...(nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(s.nativeRuntime?{nativeRuntime:s.nativeRuntime.descriptor}:{}),...(s.nativeDuplex?{nativeDuplex:true,nativePlaybackPolicy}:{}),...route?{speakerRouting:route}:{}};
   }
   function attachClient(s,client){
     client.on('error',()=>void close(s.id).catch(()=>{}));
     void start(s,client).catch(()=>{emit(s,{type:'error',message:'语音或工具环境尚未就绪'});void close(s.id).catch(()=>{});});
   }
+  const recordConnectionStage=(s,stage)=>audit({type:'call.connection-stage',voiceSessionId:s.id,model:s.model,stage,elapsedMs:Math.round(performance.now()-s.connectionStartedAt)});
+  function prepareConnectionEnvironment(s){
+    s.connectionStartedAt??=performance.now();
+    const preparation={pending:true,succeeded:false,startedAt:performance.now()};
+    preparation.promise=Promise.resolve().then(async()=>{
+      if(!current(s))throw Error('Call preparation retired');
+      const connectionStage=stage=>recordConnectionStage(s,stage);
+      connectionStage('catalog-requested');connectionStage('context-requested');
+      return s.publicVoice?[await s.gateway.request('tools.catalog',{}),'',null]:s.unidentified?[{groups:[]},'']:await Promise.all([
+        s.gateway.request('tools.catalog',{agentId:s.agentId,includePlugins:true},{timeoutMs:20000}).then(value=>{if(current(s))connectionStage('catalog-ready');return value;}),
+        Promise.resolve().then(()=>loadContext(s.sessionKey,{gateway:s.gateway})).then(value=>{if(current(s))connectionStage('context-ready');return value;}),
+        s.toolIdentity&&larkForActor?Promise.resolve().then(()=>{connectionStage('actor-reader-requested');return larkForActor(s.toolIdentity);}).then(value=>{if(current(s))connectionStage('actor-reader-ready');return value;}).catch(()=>null):null,
+      ]);
+    });
+    // Observe both outcomes even if a cancelled/delayed client never attaches.
+    // This is a one-use snapshot for this reserved call, not an authorization
+    // credential. Socket ownership and every real tool invocation still pass
+    // their existing live checks. Failed or delayed handoffs refresh it.
+    preparation.promise.then(()=>{preparation.pending=false;preparation.succeeded=true;},()=>{preparation.pending=false;});
+    return preparation;
+  }
   async function start(s,client) {
     s.client=client;
     client.on('close',()=>void close(s.id).catch(()=>{}));
-    const connectionStage=stage=>audit({type:'call.connection-stage',voiceSessionId:s.id,model:s.model,stage});
-    connectionStage('catalog-requested');connectionStage('context-requested');
-    const [catalog,context,actorReader]=s.publicVoice?[await s.gateway.request('tools.catalog',{}),'',null]:s.unidentified?[{groups:[]},'']:await Promise.all([
-      s.gateway.request('tools.catalog',{agentId:s.agentId,includePlugins:true},{timeoutMs:20000}).then(value=>{if(current(s))connectionStage('catalog-ready');return value;}),
-      Promise.resolve().then(()=>loadContext(s.sessionKey,{gateway:s.gateway})).then(value=>{if(current(s))connectionStage('context-ready');return value;}),
-      s.toolIdentity&&larkForActor?Promise.resolve().then(()=>larkForActor(s.toolIdentity)).catch(()=>null):null,
-    ]);
+    const connectionStage=stage=>recordConnectionStage(s,stage);
+    const preparation=s.preparation&&(s.preparation.pending||s.preparation.succeeded)&&performance.now()-s.preparation.startedAt<1000?s.preparation:prepareConnectionEnvironment(s);s.preparation=null;
+    const [catalog,context,actorReader]=await preparation.promise;
     if(!current(s))return;
     const entries=(catalog.groups??[]).flatMap(g=>g.tools??[]),allowedTools=new Set(entries.map(t=>t.id));
     s.actorReader=allowedTools.has('exec')?actorReader:null;
     // Lookup recovery is shared; cached PCM never interrupts the provider's pending function.
     const noticeClips=s.model==='seeduplex'?loadToolStartClips():null,progressClips=s.model==='seeduplex'?toolProgressClips??loadToolProgressClips():[];
-    const deliverAudio=(audio,metadata={})=>{if(!current(s))return;emit(s,{type:'audio',sequence:++s.audioSequence,audio:audio.toString('base64'),sampleRate:24000,...metadata});onOutputAudio(s.id,audio);audit({type:'audio',voiceSessionId:s.id,bytes:audio.length,...metadata});};
+    s.audioDelivery=createAudioDeliveryMetrics({report:event=>audit({...event,voiceSessionId:s.id})});
+    const deliverAudio=(audio,metadata={})=>{if(!current(s))return;emit(s,{type:'audio',sequence:++s.audioSequence,audio:audio.toString('base64'),sampleRate:24000,...metadata});onOutputAudio(s.id,audio);s.audioDelivery.packet(audio.length,metadata.responseId);audit({type:'audio',voiceSessionId:s.id,bytes:audio.length,...metadata});};
     // A slow native lookup gets a cached "still looking" line, delivered like the
     // start notice: never upstream TTS, which can cost the pending function its turn.
     s.progressNotice=index=>{
@@ -491,13 +515,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(role==='assistant'&&final){if(!s.unidentified)speakerRouting?.assistant(s.id,text);if(!source){s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
         if(role==='user'){if(final)s.lookup.answered();if(final)s.replyDelivery?.user(text,{turnId:metadata.turnId});if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
         if(role==='user'&&final&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}
-        emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{})});
+        emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{}),responseId:metadata.responseId,turnId:metadata.turnId});
         };
         if(role==='assistant')routeOutput('transcript',{role,text,final,source},deliver);else deliver();
       },
-      onClearAudio:(reason,metadata)=>routeOutput('clear',null,()=>{s.replyDelivery?.interrupt(metadata?.retiredResponseId);audit({type:'audio.clear',voiceSessionId:s.id,reason,...(metadata??{})});s.responseActive=false;if(s.ending&&reason!=='response-replaced'){clearEnding(s);emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear',reason,...(typeof metadata?.retiredResponseId==='string'?{retiredResponseId:metadata.retiredResponseId}:{})});}),
-      onAudioSegmentDone:()=>routeOutput('done',null,()=>{s.responseActive=false;}),
-      onResponseDone:e=>routeOutput('done',e,()=>{void s.replyDelivery?.finish(e);s.responseActive=false;s.narrationBusyUntil=0;if(e.status==='completed')emit(s,{type:'audio.done',...(e.responseId?{responseId:e.responseId}:{})});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'&&(!s.ending.responseId||!e.responseId||e.responseId===s.ending.responseId)){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}}),
+      onClearAudio:(reason,metadata)=>routeOutput('clear',null,()=>{s.audioDelivery?.finish('clear');s.replyDelivery?.interrupt(metadata?.retiredResponseId);audit({type:'audio.clear',voiceSessionId:s.id,reason,...(metadata??{})});s.responseActive=false;if(s.ending&&reason!=='response-replaced'){clearEnding(s);emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear',reason,...(typeof metadata?.retiredResponseId==='string'?{retiredResponseId:metadata.retiredResponseId}:{})});}),
+      onAudioSegmentDone:()=>routeOutput('done',null,()=>{s.audioDelivery?.finish('segment-done');s.responseActive=false;}),
+      onResponseDone:e=>routeOutput('done',e,()=>{s.audioDelivery?.finish('done');void s.replyDelivery?.finish(e);s.responseActive=false;s.narrationBusyUntil=0;if(e.status==='completed')emit(s,{type:'audio.done',...(e.responseId?{responseId:e.responseId}:{})});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'&&(!s.ending.responseId||!e.responseId||e.responseId===s.ending.responseId)){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}}),
       onEvent:e=>{if(e.type==='response.created'){s.responseActive=true;s.replyDelivery?.begin(e.responseId);}
         if(e.type==='native.listening-aside')s.replyDelivery?.ignore(e.responseId);
         if(s.nativeDuplex&&e.type==='native.listening-aside')emit(s,{type:'input.speech.ignored',preservedResponseId:s.bridge?.audioResponseId??null});
@@ -556,16 +580,28 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       }catch{client.close(1008);}
     });
     connectionStage('provider-connecting');
-    if(s.unidentified||!speakerRouting?.lazyNative?.(s.id))await s.bridge.connect();
-    if(s.nativeDuplex&&nativePlaybackPolicy!=='provider'&&nativeInterrupt&&current(s)){
-      s.interruptDetector=nativeInterrupt({inputSampleRate:s.inputSampleRate,
-        isSpeaking:()=>current(s)&&Boolean(s.playing||s.bridge.responseActive),
-        getResponseId:()=>current(s)?s.bridge.audioResponseId:null,
-        onInterrupt:()=>{if(!current(s))return;s.lastUserAt=Date.now();s.bridge.handleBargeIn({confirmed:true});audit({type:'speech.control',voiceSessionId:s.id,stage:'interrupted'});},
-        onStatus:stage=>audit({type:'speech.control',voiceSessionId:s.id,stage})});
-      await s.interruptDetector.connect();
-      if(!current(s)){s.interruptDetector.close();return;}
-    }
+    const connectModel=async()=>{
+      if(s.unidentified||!speakerRouting?.lazyNative?.(s.id))await s.bridge.connect();
+      if(current(s))connectionStage('model-ready');
+    };
+    const connectSpeechControl=async()=>{
+      if(s.nativeDuplex&&nativePlaybackPolicy!=='provider'&&nativeInterrupt&&current(s)){
+        connectionStage('speech-control-connecting');
+        s.interruptDetector=nativeInterrupt({inputSampleRate:s.inputSampleRate,
+          isSpeaking:()=>current(s)&&Boolean(s.playing||s.bridge?.responseActive),
+          getResponseId:()=>current(s)?s.bridge.audioResponseId:null,
+          onInterrupt:()=>{if(!current(s))return;s.lastUserAt=Date.now();s.bridge.handleBargeIn({confirmed:true});audit({type:'speech.control',voiceSessionId:s.id,stage:'interrupted'});},
+          onStatus:stage=>audit({type:'speech.control',voiceSessionId:s.id,stage})});
+        await s.interruptDetector.connect();
+        if(!current(s)){s.interruptDetector.close();return;}
+        connectionStage('speech-control-ready');
+      }
+    };
+    // Both lanes must be ready before the client can send microphone audio.
+    // Starting them together removes a serial handshake without weakening the
+    // existing speech-control readiness or failure/cleanup requirements.
+    await Promise.all([connectModel(),connectSpeechControl()]);
+    if(!current(s))return;
     if(current(s)&&!s.unidentified&&speakerRouting?.has(s.id))await speakerRouting.bind(s.id,{
       greet:()=>s.bridge.triggerGreeting(),
       forward:audio=>s.bridge.sendAudio(audio),context:text=>s.bridge.sendUserMessage(text),clarify:(text,options)=>s.bridge.speakProgress(text,{caption:true,...options}),interrupt:()=>s.bridge.handleBargeIn(),

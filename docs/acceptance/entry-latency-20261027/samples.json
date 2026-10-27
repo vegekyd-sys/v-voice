@@ -1,0 +1,1403 @@
+{
+  "schema": "voice-entry-browser-samples-v1",
+  "date": "2026-10-27",
+  "mode": "local browser; simulated SDK/provider/Gateway",
+  "requestDelayMs": 150,
+  "gatewayAdmissionDelayMs": 550,
+  "providerDelayMs": 200,
+  "sdkReplyDelayMs": 500,
+  "samples": [
+    {
+      "surface": "baseline",
+      "scenario": "first",
+      "sample": 0,
+      "timing": {
+        "ttfbMs": 303.5,
+        "fcpMs": 516,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1255
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1255.9
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1255.9
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1255.9
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1263.4
+          }
+        ]
+      }
+    },
+    {
+      "surface": "baseline",
+      "scenario": "first",
+      "sample": 1,
+      "timing": {
+        "ttfbMs": 213.3,
+        "fcpMs": 288,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1076.9
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1077.1
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1077.1
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1077.1
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1080.5
+          }
+        ]
+      }
+    },
+    {
+      "surface": "baseline",
+      "scenario": "first",
+      "sample": 2,
+      "timing": {
+        "ttfbMs": 161.6,
+        "fcpMs": 264,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1021.4
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1021.7
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1021.7
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1021.7
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1026.4
+          }
+        ]
+      }
+    },
+    {
+      "surface": "baseline",
+      "scenario": "return",
+      "sample": 0,
+      "timing": {
+        "ttfbMs": 718.5,
+        "fcpMs": 800,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1531.2
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1531.3
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1531.4
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1531.4
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1535.2
+          }
+        ]
+      }
+    },
+    {
+      "surface": "baseline",
+      "scenario": "return",
+      "sample": 1,
+      "timing": {
+        "ttfbMs": 708.9,
+        "fcpMs": 868,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1584
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1584.4
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1584.4
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1584.4
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1592.7
+          }
+        ]
+      }
+    },
+    {
+      "surface": "baseline",
+      "scenario": "return",
+      "sample": 2,
+      "timing": {
+        "ttfbMs": 713.1,
+        "fcpMs": 780,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1527.3
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1527.5
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1527.5
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1527.5
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1530.8
+          }
+        ]
+      }
+    },
+    {
+      "surface": "baseline",
+      "scenario": "sdk-first",
+      "sample": 0,
+      "timing": {
+        "ttfbMs": 409.8,
+        "fcpMs": 504,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1238.3
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 2680.1
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 2680.1
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 2680.1
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 2680.3
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 1234.199951171875
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 1246.199951171875
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 1246.199951171875
+        },
+        {
+          "name": "client.code",
+          "ms": 1748.199951171875
+        },
+        {
+          "name": "identity.confirmed",
+          "ms": 2679.199951171875,
+          "serverTiming": "app_token;dur=0.2, code_exchange;dur=202.6, conversation;dur=554.4"
+        },
+        {
+          "name": "login.complete",
+          "ms": 2679.199951171875
+        }
+      ]
+    },
+    {
+      "surface": "baseline",
+      "scenario": "sdk-first",
+      "sample": 1,
+      "timing": {
+        "ttfbMs": 358.2,
+        "fcpMs": 492,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1219.2
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 2637.7
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 2637.8
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 2637.8
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 2638
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 1218.39990234375
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 1219.39990234375
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 1219.39990234375
+        },
+        {
+          "name": "client.code",
+          "ms": 1721.39990234375
+        },
+        {
+          "name": "identity.confirmed",
+          "ms": 2637.39990234375,
+          "serverTiming": "app_token;dur=0.0, code_exchange;dur=203.1, conversation;dur=552.4"
+        },
+        {
+          "name": "login.complete",
+          "ms": 2637.39990234375
+        }
+      ]
+    },
+    {
+      "surface": "baseline",
+      "scenario": "sdk-first",
+      "sample": 2,
+      "timing": {
+        "ttfbMs": 378.9,
+        "fcpMs": 468,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1214.9
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 2679.8
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 2679.9
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 2679.9
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 2680
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 1214.300048828125
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 1222.300048828125
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 1222.300048828125
+        },
+        {
+          "name": "client.code",
+          "ms": 1724.300048828125
+        },
+        {
+          "name": "identity.confirmed",
+          "ms": 2679.300048828125,
+          "serverTiming": "app_token;dur=0.0, code_exchange;dur=204.9, conversation;dur=552.4"
+        },
+        {
+          "name": "login.complete",
+          "ms": 2679.300048828125
+        }
+      ]
+    },
+    {
+      "surface": "baseline",
+      "scenario": "sdk-return",
+      "sample": 0,
+      "timing": {
+        "ttfbMs": 327.9,
+        "fcpMs": 420,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1165.9
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 2583
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 2583.1
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 2583.1
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 2583.2
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 1165
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 1172
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 1172
+        },
+        {
+          "name": "client.code",
+          "ms": 1673
+        },
+        {
+          "name": "identity.confirmed",
+          "ms": 2583,
+          "serverTiming": "app_token;dur=0.0, code_exchange;dur=202.8, conversation;dur=551.5"
+        },
+        {
+          "name": "login.complete",
+          "ms": 2583
+        }
+      ]
+    },
+    {
+      "surface": "baseline",
+      "scenario": "sdk-return",
+      "sample": 1,
+      "timing": {
+        "ttfbMs": 381.3,
+        "fcpMs": 540,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1263.3
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 2684
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 2684.1
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 2684.1
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 2684.2
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 1262.60009765625
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 1269.60009765625
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 1269.60009765625
+        },
+        {
+          "name": "client.code",
+          "ms": 1770.60009765625
+        },
+        {
+          "name": "identity.confirmed",
+          "ms": 2683.60009765625,
+          "serverTiming": "app_token;dur=0.0, code_exchange;dur=201.6, conversation;dur=551.5"
+        },
+        {
+          "name": "login.complete",
+          "ms": 2683.60009765625
+        }
+      ]
+    },
+    {
+      "surface": "baseline",
+      "scenario": "sdk-return",
+      "sample": 2,
+      "timing": {
+        "ttfbMs": 329.4,
+        "fcpMs": 428,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1165.4
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 2579.4
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 2579.4
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 2579.4
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 2579.5
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 1164.89990234375
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 1171.89990234375
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 1171.89990234375
+        },
+        {
+          "name": "client.code",
+          "ms": 1673.89990234375
+        },
+        {
+          "name": "identity.confirmed",
+          "ms": 2578.89990234375,
+          "serverTiming": "app_token;dur=0.0, code_exchange;dur=200.4, conversation;dur=551.5"
+        },
+        {
+          "name": "login.complete",
+          "ms": 2578.89990234375
+        }
+      ]
+    },
+    {
+      "surface": "baseline",
+      "scenario": "card-return",
+      "sample": 0,
+      "timing": {
+        "ttfbMs": 353.7,
+        "fcpMs": 436,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1172.1
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 2378.8
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 2378.9
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 2378.9
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 2379
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 1171.60009765625
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 1171.60009765625
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 1171.60009765625
+        },
+        {
+          "name": "client.failed",
+          "ms": 1673.60009765625,
+          "code": 20027
+        },
+        {
+          "name": "login.complete",
+          "ms": 2378.60009765625
+        }
+      ]
+    },
+    {
+      "surface": "baseline",
+      "scenario": "card-return",
+      "sample": 1,
+      "timing": {
+        "ttfbMs": 353.6,
+        "fcpMs": 484,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1197.8
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 2413.9
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 2414
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 2414.1
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 2414.1
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 1197.39990234375
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 1204.39990234375
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 1204.39990234375
+        },
+        {
+          "name": "client.failed",
+          "ms": 1706.39990234375,
+          "code": 20027
+        },
+        {
+          "name": "login.complete",
+          "ms": 2413.39990234375
+        }
+      ]
+    },
+    {
+      "surface": "baseline",
+      "scenario": "card-return",
+      "sample": 2,
+      "timing": {
+        "ttfbMs": 361,
+        "fcpMs": 476,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1194.7
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 2410
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 2410.2
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 2410.2
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 2410.2
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 1194.39990234375
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 1201.39990234375
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 1201.39990234375
+        },
+        {
+          "name": "client.failed",
+          "ms": 1703.39990234375,
+          "code": 20027
+        },
+        {
+          "name": "login.complete",
+          "ms": 2409.39990234375
+        }
+      ]
+    },
+    {
+      "surface": "after",
+      "scenario": "first",
+      "sample": 0,
+      "timing": {
+        "ttfbMs": 161.4,
+        "fcpMs": 272,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 373.5
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 374.3
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 374.3
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 374.3
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 389.3
+          }
+        ]
+      }
+    },
+    {
+      "surface": "after",
+      "scenario": "first",
+      "sample": 1,
+      "timing": {
+        "ttfbMs": 155.4,
+        "fcpMs": 224,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 332.5
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 332.7
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 332.7
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 332.7
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 335.2
+          }
+        ]
+      }
+    },
+    {
+      "surface": "after",
+      "scenario": "first",
+      "sample": 2,
+      "timing": {
+        "ttfbMs": 156.4,
+        "fcpMs": 280,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 382.4
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 382.6
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 382.6
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 382.7
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 386.2
+          }
+        ]
+      }
+    },
+    {
+      "surface": "after",
+      "scenario": "return",
+      "sample": 0,
+      "timing": {
+        "ttfbMs": 707.5,
+        "fcpMs": 764,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 871.3
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 871.5
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 871.5
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 871.5
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 874.3
+          }
+        ]
+      }
+    },
+    {
+      "surface": "after",
+      "scenario": "return",
+      "sample": 1,
+      "timing": {
+        "ttfbMs": 708.1,
+        "fcpMs": 804,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 916.5
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 916.6
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 916.6
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 916.6
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 919.1
+          }
+        ]
+      }
+    },
+    {
+      "surface": "after",
+      "scenario": "return",
+      "sample": 2,
+      "timing": {
+        "ttfbMs": 708.5,
+        "fcpMs": 776,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 879.7
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 879.8
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 879.9
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 879.9
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 882.9
+          }
+        ]
+      }
+    },
+    {
+      "surface": "after",
+      "scenario": "sdk-first",
+      "sample": 0,
+      "timing": {
+        "ttfbMs": 324.7,
+        "fcpMs": 460,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 570.9
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1990.2
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1990.3
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1990.3
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1990.4
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 569.800048828125
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 576.800048828125
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 576.800048828125
+        },
+        {
+          "name": "client.code",
+          "ms": 1077.800048828125
+        },
+        {
+          "name": "identity.confirmed",
+          "ms": 1989.800048828125,
+          "serverTiming": "app_token;dur=0.0, code_exchange;dur=200.8, conversation;dur=551.3"
+        },
+        {
+          "name": "login.complete",
+          "ms": 1989.800048828125
+        }
+      ]
+    },
+    {
+      "surface": "after",
+      "scenario": "sdk-first",
+      "sample": 1,
+      "timing": {
+        "ttfbMs": 315.4,
+        "fcpMs": 444,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 549.8
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1964.1
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1964.2
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1964.2
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1964.3
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 549.39990234375
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 556.39990234375
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 556.39990234375
+        },
+        {
+          "name": "client.code",
+          "ms": 1057.39990234375
+        },
+        {
+          "name": "identity.confirmed",
+          "ms": 1963.39990234375,
+          "serverTiming": "app_token;dur=0.0, code_exchange;dur=201.2, conversation;dur=551.4"
+        },
+        {
+          "name": "login.complete",
+          "ms": 1963.39990234375
+        }
+      ]
+    },
+    {
+      "surface": "after",
+      "scenario": "sdk-first",
+      "sample": 2,
+      "timing": {
+        "ttfbMs": 328.9,
+        "fcpMs": 424,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 531.2
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1946.5
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1946.5
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1946.6
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1946.7
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 530.60009765625
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 536.60009765625
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 536.60009765625
+        },
+        {
+          "name": "client.code",
+          "ms": 1037.60009765625
+        },
+        {
+          "name": "identity.confirmed",
+          "ms": 1945.60009765625,
+          "serverTiming": "app_token;dur=0.0, code_exchange;dur=201.2, conversation;dur=551.3"
+        },
+        {
+          "name": "login.complete",
+          "ms": 1945.60009765625
+        }
+      ]
+    },
+    {
+      "surface": "after",
+      "scenario": "sdk-return",
+      "sample": 0,
+      "timing": {
+        "ttfbMs": 381.5,
+        "fcpMs": 496,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 604.2
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 2026.9
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 2027
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 2027
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 2027
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 603.10009765625
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 610.10009765625
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 610.10009765625
+        },
+        {
+          "name": "client.code",
+          "ms": 1111.10009765625
+        },
+        {
+          "name": "identity.confirmed",
+          "ms": 2026.10009765625,
+          "serverTiming": "app_token;dur=0.0, code_exchange;dur=201.4, conversation;dur=551.0"
+        },
+        {
+          "name": "login.complete",
+          "ms": 2026.10009765625
+        }
+      ]
+    },
+    {
+      "surface": "after",
+      "scenario": "sdk-return",
+      "sample": 1,
+      "timing": {
+        "ttfbMs": 321.6,
+        "fcpMs": 396,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 514.3
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1929.4
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1929.5
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1929.5
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1929.6
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 513.300048828125
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 520.300048828125
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 520.300048828125
+        },
+        {
+          "name": "client.code",
+          "ms": 1022.300048828125
+        },
+        {
+          "name": "identity.confirmed",
+          "ms": 1928.300048828125,
+          "serverTiming": "app_token;dur=0.0, code_exchange;dur=201.5, conversation;dur=551.4"
+        },
+        {
+          "name": "login.complete",
+          "ms": 1929.300048828125
+        }
+      ]
+    },
+    {
+      "surface": "after",
+      "scenario": "sdk-return",
+      "sample": 2,
+      "timing": {
+        "ttfbMs": 318.5,
+        "fcpMs": 388,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 494
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1908.5
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1908.5
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1908.5
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1908.6
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 492.800048828125
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 500.800048828125
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 500.800048828125
+        },
+        {
+          "name": "client.code",
+          "ms": 1001.800048828125
+        },
+        {
+          "name": "identity.confirmed",
+          "ms": 1907.800048828125,
+          "serverTiming": "app_token;dur=0.0, code_exchange;dur=201.5, conversation;dur=549.8"
+        },
+        {
+          "name": "login.complete",
+          "ms": 1907.800048828125
+        }
+      ]
+    },
+    {
+      "surface": "after",
+      "scenario": "card-return",
+      "sample": 0,
+      "timing": {
+        "ttfbMs": 396.7,
+        "fcpMs": 528,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 614.3
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1828
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1828
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1828
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1828.1
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 613.89990234375
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 620.89990234375
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 620.89990234375
+        },
+        {
+          "name": "client.failed",
+          "ms": 1121.89990234375,
+          "code": 20027
+        },
+        {
+          "name": "login.complete",
+          "ms": 1827.89990234375
+        }
+      ]
+    },
+    {
+      "surface": "after",
+      "scenario": "card-return",
+      "sample": 1,
+      "timing": {
+        "ttfbMs": 344.2,
+        "fcpMs": 464,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 578.8
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1790.9
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1791
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1791
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1791
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 577.699951171875
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 583.699951171875
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 583.699951171875
+        },
+        {
+          "name": "client.failed",
+          "ms": 1084.699951171875,
+          "code": 20027
+        },
+        {
+          "name": "login.complete",
+          "ms": 1790.699951171875
+        }
+      ]
+    },
+    {
+      "surface": "after",
+      "scenario": "card-return",
+      "sample": 2,
+      "timing": {
+        "ttfbMs": 324.8,
+        "fcpMs": 488,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 580.4
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1795.2
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1795.3
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1795.3
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1795.4
+          }
+        ]
+      },
+      "identityStages": [
+        {
+          "name": "login.start",
+          "ms": 580.10009765625
+        },
+        {
+          "name": "sdk.loaded",
+          "ms": 588.10009765625
+        },
+        {
+          "name": "sdk.ready",
+          "ms": 588.10009765625
+        },
+        {
+          "name": "client.failed",
+          "ms": 1090.10009765625,
+          "code": 20027
+        },
+        {
+          "name": "login.complete",
+          "ms": 1795.10009765625
+        }
+      ]
+    }
+  ]
+}

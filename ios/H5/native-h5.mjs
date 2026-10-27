@@ -50,6 +50,12 @@ function startVisuals(id){
 }
 function receive(snapshot){
   if(!snapshot||typeof snapshot.callID!=='string')return;
+  // Existing bridge 1 shells stop local media before publishing `ending`.
+  // The remaining HTTP cleanup must not keep the phone page in the call.
+  // Keep controls unavailable until the native owner is ready for another call.
+  const cleaningUp=snapshot.phase==='ending';
+  if(cleaningUp)snapshot={...snapshot,active:false,voice:'idle',muted:true,thinking:false,canControl:false,
+    tasks:[],transcript:{history:[],current:[]},people:[],lastSpeakerID:null,listenOnly:false,notice:null,outcome:'none',homeNote:'通话已结束'};
   const changed=owner!==snapshot.callID;
   current=snapshot;
   if(changed){if(owner!==undefined)pendingDocument=null;openingDocument=false;view.set({message:null,statusText:'',statusTone:'info'});stopVisuals();content.reset();cards.clear();opened.clear();hiddenDocument.replaceChildren();owner=snapshot.callID;}
@@ -63,8 +69,8 @@ function receive(snapshot){
   const people=snapshot.people;
   const notice=snapshot.notice?{...snapshot.notice,at:Date.now()}:null;
   view.set({nativeSettings:true,accessContext:snapshot.accessContext??null,entrySummary:snapshot.entrySummary,call,voice:snapshot.voice,thinkingAt:snapshot.thinking?Date.now():null,callStartedAt:snapshot.startedAt,
-    muted:snapshot.muted,models:snapshot.models,model:snapshot.model,modelDisabled:snapshot.active,
-    grok:snapshot.grok,entry,dial:{disabled:!snapshot.bound,label:'和 V 通话'},stopLabel:call==='dialing'?'取消拨号':'结束通话',
+    muted:snapshot.muted,models:snapshot.models,model:snapshot.model,modelDisabled:snapshot.active||cleaningUp,
+    grok:snapshot.grok,entry,dial:{disabled:!snapshot.bound||cleaningUp,label:'和 V 通话'},stopLabel:call==='dialing'?'取消拨号':'结束通话',
     badge:snapshot.badge,homeNote:snapshot.active?null:snapshot.homeNote,homeNoteTone:snapshot.phase==='failed'?'error':'info',
     tasks:snapshot.tasks,cancelEnabled:snapshot.tasks.length>0,transcript:snapshot.transcript,
     speaker:{multi:people.length>0,people,lastSpeakerId:snapshot.lastSpeakerID,listenOnly:snapshot.listenOnly,status:notice},
