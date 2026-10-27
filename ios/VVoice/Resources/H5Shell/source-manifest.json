@@ -2,8 +2,9 @@
   "sources": {
     "index.html": "7ce196055fbb3084987952fabdb26aa48d630576088c6e841abce4bf79756337",
     "styles.css": "2a19aa68afa7cb171db65bcca93960ba5b1b910d80e77c07b98712d7d225b8d4",
-    "ui/call-ui.jsx": "5ebea3bc5c476d13e0347986a800481d638619f5d6e2bc18787a72d30c7f77f1",
-    "ui-bundle.mjs": "2927b8778a790acf9b5b1c3777c6e64c3a11038937ce84c3d375bfac5a68fea0",
+    "ui/call-ui.jsx": "480b69932d6039856f8211afa60114a9e20a6f09a212be1b2071b05f5e1fde66",
+    "ui-bundle.mjs": "7032ffce634ab43a642e1f1453fac95868cebcfd562cdf6efc0400b705c0dd7d",
+    "app-handoff.mjs": "31705d0424c9043e64844ac047ef090fe4582f475b74d78e4b5dec04ebca3465",
     "call-view.mjs": "f91d20a6e63dcecd0b11af6370fd9b8f69733eae6393879713a2c213774b4633",
     "content-view.mjs": "c754e537248cf95efbff9d810d61f82da13fc3c8cbec42bca02e7928906de743",
     "markdown.mjs": "a556476a8a88b35aba790f993a8bde333150aebab9dc7fdce14aa2e3c586ace0",
@@ -131,7 +132,7 @@
   },
   "outputs": {
     "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
-    "native-h5.js": "00c617d005166a09f716766ab1431942e8e72d801cce2e4a8021f13ce593938a",
+    "native-h5.js": "def17473b92c72625cbdd9b8bb3a630d0b2ac807b4b863893b09107a7754aa4f",
     "comparison.html": "7beb6c5d3e5933b5c020ddf23e200679318faa98568904f927d0553ea3d33076",
     "styles.css": "2a19aa68afa7cb171db65bcca93960ba5b1b910d80e77c07b98712d7d225b8d4",
     "comparison.css": "ae9fbcffb322e32737e2ce0ed830c1b86f9f27406b4ce8b686dc8cac9f36ba16",

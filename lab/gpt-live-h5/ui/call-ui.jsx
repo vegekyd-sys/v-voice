@@ -5,6 +5,7 @@ import React, {memo, useCallback, useEffect, useLayoutEffect, useRef, useState, 
 import {createRoot} from 'react-dom/client';
 import {createPortal, flushSync} from 'react-dom';
 import {clock, resolveStatus, splitTurns} from '../call-view.mjs';
+import {openAppWithFallback, refreshBindingOnExpiry} from '../app-handoff.mjs';
 
 const Icon = ({d, children}) => <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">{d ? <path d={d} /> : children}</svg>;
 const PHONE = 'm8.5 3.5 2.1 4.4-2.3 2.3a15.5 15.5 0 0 0 5.5 5.5l2.3-2.3 4.4 2.1v3a2 2 0 0 1-2.2 2C10.4 20 4 13.6 3.5 5.7a2 2 0 0 1 2-2.2h3Z';
@@ -301,8 +302,10 @@ function TaskSheet({state, now, actions, onClose}) {
 }
 
 function SessionSheet({state,actions}) {
- const value=state.sessionSheet,dialog=useRef(null);
+ const value=state.sessionSheet,dialog=useRef(null),handoff=useRef(null);
  useEffect(()=>{if(!value)return;dialog.current?.showModal();return()=>dialog.current?.close();},[Boolean(value)]);
+ useEffect(()=>()=>{handoff.current?.();handoff.current=null;},[value?.key,value?.appUrl]);
+ useEffect(()=>{if(value?.kind==='binding'&&value.appUrl)return refreshBindingOnExpiry({expiresAt:value.expiresAt,refresh:actions.createBinding});},[value?.key,value?.appUrl,value?.expiresAt,actions.createBinding]);
  if(!value)return null;
  const report=value.report, binding=value.kind==='binding';
  const conversation=value.conversation??state.conversation;
@@ -319,9 +322,8 @@ function SessionSheet({state,actions}) {
     <div className="binding-conversation"><span className="binding-conversation-icon"><Icon d={conversation?.kind==='group'?'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M15 3.1a4 4 0 0 1 0 7.8M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8':'M20 21v-2a7 7 0 0 0-14 0v2M13 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8'} /></span><div><strong>{value.unidentified?'Public':state.accountLabel??conversation?.accountLabel??'当前账号'}</strong><span>{conversation?.name??'当前会话'}</span></div><span className="binding-context">{value.unidentified?'访客':'已确认'}</span></div>
     {value.unidentified&&<p className="session-muted">{state.accessContext?.capabilities?.includes('web_search')?'连接这段 Public 访客对话，可继续使用搜索、V 记忆和后台任务；不会连接原飞书群或个人账号。':'连接这段访客对话；当前服务尚未开放 Public 工具。'}</p>}
     <div className="binding-action">
-     {value.appDownload?<a className="session-primary" href={value.appDownload.url} target="_blank" rel="noopener noreferrer"><Icon d="M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4"/>Testflight 下载</a>:value.appUrl?<a className="session-primary" href={value.appUrl}><Icon d="M8 2.5h8a2 2 0 0 1 2 2v15a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2Zm2 16h4"/>在 iPhone 上继续</a>:<button type="button" className="session-primary" disabled={value.busy} onClick={actions.createBinding}>{value.busy?'正在准备链接…':'准备绑定链接'}</button>}
-     {value.appDownload&&value.appUrl&&<a className="binding-download" href={value.appUrl}>已安装？打开 App 继续</a>}
-     <p className="binding-confirm">{value.appDownload?'安装后回到这里，打开 App 完成绑定。':'在 App 中点「验证并绑定」，即可继续。'}</p>
+     {value.appUrl?<a className="session-primary" href={value.appUrl} onClick={event=>{if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;event.preventDefault();handoff.current?.();handoff.current=openAppWithFallback({appUrl:value.appUrl,downloadUrl:value.appDownload?.url});}}><Icon d="M8 2.5h8a2 2 0 0 1 2 2v15a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2Zm2 16h4"/>在 iPhone 上继续</a>:<button type="button" className="session-primary" disabled={value.busy} onClick={actions.createBinding}>{value.busy?'正在准备链接…':'准备绑定链接'}</button>}
+     <p className="binding-confirm">{value.appDownload?'已安装将打开 App；未安装将前往 TestFlight 下载。':'在 App 中点「验证并绑定」，即可继续。'}</p>
     </div>
     <div className="binding-help">
      {!value.appDownload&&<details className="binding-install"><summary>还没有安装 V Voice？</summary><div><p className="session-muted">TestFlight 下载即将开放。现在也可以用网页和 V 聊天。</p><button type="button" className="binding-web" onClick={actions.closeSessionSheet}>先在网页聊</button></div></details>}
