@@ -1,3 +1,13 @@
+export const GROK_VISIBILITY_CANDIDATE_UPDATE = {
+  version:'voice-grok-visibility.20261027.1',date:'2026-10-27',
+  title:'正式模型目录收敛（Candidate）',status:'candidate-validation',
+  items:[
+    '正式电话模型列表保留小何和 GPT Live；Grok 测试路径由服务端显式开启。',
+    '旧 Grok 选择在空闲刷新后回到可用模型，不切换正在进行的通话。',
+    '仅候选验证，尚未合入或上线；设备测试配置和原生版本保持。',
+  ],
+};
+
 export const FEISHU_LOGIN_PERSISTENCE_CANDIDATE_UPDATE = {
   version:'voice-feishu-login-persistence.20261026.1',date:'2026-10-26',
   title:'外部账号登录保持与身份切换（Candidate）',status:'candidate-validation',

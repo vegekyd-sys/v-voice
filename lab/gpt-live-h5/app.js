@@ -1,3 +1,4 @@
+import {phoneModelOptions} from "./model-options.mjs";
 import {createFeishuConfirmation} from "./feishu-confirmation-client.mjs";
 import {browserDeviceActions,createBrowserDeviceAdapter} from "./device-location.mjs";
 import { createCallerContext } from "./caller-context.mjs";
@@ -898,12 +899,8 @@ function showEntryNotice(message, { reconnecting = false, publicHref = null } = 
   // Initial entry failures belong to the home scene, not the call status line.
   setStatus("拨号后，直接说话。");
 }
-const MODEL_CHOICES = [
-  { id: "gpt-live", label: "GPT Live", available: true },
-  { id: "seeduplex", label: "豆包 SeedDuplex", available: false },
-  { id: "grok", label: "Grok Voice 3.0", available: false },
-];
-view.set({ models: MODEL_CHOICES, model: "seeduplex" });
+// Until the server catalog arrives, expose no experimental model.
+view.set({ models: [], model: "seeduplex" });
 async function initializeEntry() {
   try {
     const result = await (entryStartup ?? startVoiceEntry({
@@ -927,13 +924,7 @@ function applyEntryStatus(status) {
     view.set({returnToAccountHref:status.returnToAccountHref??null});
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     liveReady = status.ready === true;
-    const models = MODEL_CHOICES.filter(choice=>!status.unidentified||choice.id!=='gpt-live').map(choice => {
-      const model = status.models?.find(item => item.id === choice.id);
-      return model ? { ...choice, available: Boolean(model.available), ...(model.label ? { label: model.label } : {}) } : choice;
-    });
-    const usable = id => models.some(model => model.id === id && model.available);
-    let model = usable(status.defaultModel) ? status.defaultModel : view.get().model;
-    if (!usable(model)) model = ["seeduplex", "gpt-live", "grok"].find(usable) ?? model;
+    const {models, model} = phoneModelOptions(status, view.get().model);
     const grok = status.models?.find(item => item.id === "grok");
     const grokVoices = grok?.voices ?? [];
     view.set({ models, model, confirmOnDial:status.confirmationAvailable===true&&status.unidentified===true&&!guestDialAllowed, confirmationAvailable:status.confirmationAvailable===true, accessContext:status.accessContext??null, publicHref:status.publicHref??null, accountLoginHref: status.accountLoginHref??null, accountLabel: status.accountLabel??null, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, unidentified:status.unidentified===true, grok: {

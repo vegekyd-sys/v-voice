@@ -1,5 +1,12 @@
 ## 2026-10-27 — Calendar consent policy deployed to Voice services
 
+## Candidate — voice-grok-visibility.20261027.1
+
+- Web/H5 与 iOS 服务端模型目录默认隐藏 Grok，测试服务通过 `VOICE_ENABLE_GROK=1` 明确启用。
+- 网页采用服务端目录；旧 Grok 偏好在空闲刷新时回退，旧缓存拨号得到重新选择提示，保留当前通话。
+- 保留 Grok provider、机器人/音响已有私有白名单和测试能力；无原生 App/固件升级。未合入、未部署。
+
+
 - PR #155 deployed at `7ce20a2` to both Voice nodes; both ready with identical artifact hashes and admission released. Gateway and private configuration retained.
 - SeedDuplex/Grok use the new explicit-request consent and Feishu calendar service rules. GPT Live source is merged, but its Gateway-loaded plugin remains on the previous artifact; not counted as activated.
 - Main CI, runtime policy checks, public readiness, browser dial-ready state and visible homepage update passed. Real voice/model/calendar-write acceptance remains untested. See [production receipt](docs/releases/calendar-consent-20261027/release.md).

@@ -20,7 +20,7 @@ async function fixture(t,options={}){
  const request=(entry,route,cookie,body)=>new Promise((resolve,reject)=>{const req=httpRequest({hostname:'127.0.0.1',port:bridge.server.address().port,path:'/voice/api/'+route+'?phone='+entry.id,method:body?'POST':'GET',headers:{host:new URL(origin).host,origin,...cookie?{cookie}:{},'content-type':'application/json'}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end(body?JSON.stringify(body):undefined);});
  const login=async entry=>(await request(entry,'access','',{access:entry.accessToken})).headers.get('set-cookie').split(';')[0];
  const connect=(entry,cookie,extra='',headers={})=>{
-  const ws=new WebSocket(`ws://127.0.0.1:${bridge.server.address().port}/voice/api/dial?phone=${entry.id}&model=seeduplex&dialVersion=1&nativeRuntimeVersion=1${extra}`,{headers:{host:new URL(origin).host,origin,cookie,...headers},handshakeTimeout:2000});
+  const ws=new WebSocket(`ws://127.0.0.1:${bridge.server.address().port}/voice/api/dial?phone=${entry.id}&model=${options.model??'seeduplex'}&dialVersion=1&nativeRuntimeVersion=1${extra}`,{headers:{host:new URL(origin).host,origin,cookie,...headers},handshakeTimeout:2000});
   const messages=[];const done=new Promise(resolve=>{ws.on('message',data=>{messages.push(JSON.parse(data));if(['ready','dial.error'].includes(messages.at(-1).type))resolve({messages,ws});});ws.on('unexpected-response',(_,res)=>{res.resume();resolve({status:res.statusCode,messages,ws});ws.terminate();});ws.on('error',()=>resolve({status:0,messages,ws}));});
   t.after(()=>ws.terminate());return {ws,done,messages};
  };
@@ -71,4 +71,11 @@ test('cancel during reservation retires the owned reservation without attaching 
  const f=await fixture(t,{reserve:async()=>{entered();await pending;}}),cookie=await f.login(entries[0]);
  const attempt=f.connect(entries[0],cookie);await started;attempt.ws.terminate();await new Promise(r=>attempt.ws.once('close',r));await new Promise(r=>setTimeout(r,20));resolve();await new Promise(r=>setTimeout(r,20));
  assert.equal(f.calls.filter(c=>c[0]==='close').length,1);assert.equal(f.calls.some(c=>c[0]==='attach'),false);assert.equal(f.sessions.size,0);
+});
+
+test('an old Grok fast-dial preference cannot allocate or close a call in the ordinary catalog',async t=>{
+ const f=await fixture(t,{model:'grok'}),cookie=await f.login(entries[0]);
+ const result=await f.connect(entries[0],cookie).done;
+ assert.equal(result.messages[0].type,'dial.error');assert.equal(result.messages[0].status,409);
+ assert.equal(f.calls.length,0);assert.equal(f.sessions.size,0);
 });

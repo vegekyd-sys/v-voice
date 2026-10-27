@@ -11,7 +11,7 @@ const phone=feishuConversationPhone('default','oc_group'),origin='https://voice.
 async function fixture(t){
  const dir=await mkdtemp(join(tmpdir(),'voice-card-http-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const file=join(dir,'ios.json'),api=[],rpc=[],reservations=[];let denied=false,clientIdentity=null,time=Date.now();
- const server=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'f'.repeat(40),iosBindingsFile:file,iosPublicEntry:true,
+ const server=createLiveH5Server({enableGrok:true,basePath:'/voice',publicOrigin:origin,accessToken:'f'.repeat(40),iosBindingsFile:file,iosPublicEntry:true,
   feishuLogin:{conversations:true,allowUnidentified:true,cardConfirmation:true,appId:'cli_app',appSecret:'fixture',accountId:'default',actors:[],now:()=>time,fetchImpl:async(url,init)=>{
    api.push({url,init});if(url.includes('/app_access_token/'))return Response.json({code:0,app_access_token:'private-app',tenant_access_token:'private-tenant',expire:7200});
    if(url.includes('/members?'))return Response.json({code:0,data:{items:[{member_id:'ou_external',name:'外部测试成员'}]}});
