@@ -1,3 +1,9 @@
+## 2026-10-27 — Calendar consent policy deployed to Voice services
+
+- PR #155 deployed at `7ce20a2` to both Voice nodes; both ready with identical artifact hashes and admission released. Gateway and private configuration retained.
+- SeedDuplex/Grok use the new explicit-request consent and Feishu calendar service rules. GPT Live source is merged, but its Gateway-loaded plugin remains on the previous artifact; not counted as activated.
+- Main CI, runtime policy checks, public readiness, browser dial-ready state and visible homepage update passed. Real voice/model/calendar-write acceptance remains untested. See [production receipt](docs/releases/calendar-consent-20261027/release.md).
+
 ## 2026-10-27 — Calendar consent and service selection release preparation
 
 - User approved PR #155 for merge and production deployment. Explicit action requests reuse existing consent across backend delegation; retain exact service and request constraints.
