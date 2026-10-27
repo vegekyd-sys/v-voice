@@ -6,6 +6,7 @@ import {pathToFileURL} from 'node:url';
 import WebSocket from 'ws';
 const root=process.argv[2],port=Number(process.argv[3]);
 const dialBenchmark=process.argv.includes('--dial-benchmark');
+const callFixture=process.argv.includes('--call-fixture');
 const requestDelayMs=Number(process.env.VOICE_ENTRY_FIXTURE_REQUEST_MS??150);
 if(!Number.isFinite(requestDelayMs)||requestDelayMs<0||requestDelayMs>2000)throw Error('Invalid fixture delay');
 const {createLiveH5Server}=await import(pathToFileURL(root+'/lab/gpt-live-h5/server.mjs'));
@@ -14,12 +15,23 @@ const {feishuConversationPhone}=await import(pathToFileURL(root+'/lib/feishu-con
 const phone=feishuConversationPhone('default','oc_fixture'),origin='https://voice.example';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let rpc=0,provider=0,calls=0,scenario="setup";
-const app=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'fixture'.repeat(8),iosPublicEntry:true,iosBindingsFile:`/tmp/voice-entry-latency-ios-${port}.json`,candidateRelease:updates.STARTUP_LATENCY_CANDIDATE_UPDATE??updates.ENTRY_LATENCY_CANDIDATE_UPDATE,
+const fixtureCalls=new Map();
+const attachFixture=(id,ticket,ws)=>{
+ const reservation=fixtureCalls.get(id);if(!reservation||ticket!==reservation.relayTicket)return false;
+ reservation.socket=ws;ws.on('close',()=>fixtureCalls.delete(id));
+ ws.on('message',(raw,binary)=>{if(binary)return;try{const value=JSON.parse(raw.toString());if(value.type==='greeting'){
+  const samples=new Int16Array(24000);for(let n=0;n<samples.length;n++)samples[n]=Math.round(Math.sin(n*2*Math.PI*440/24000)*1000);
+  ws.send(JSON.stringify({type:'audio',voiceSessionId:id,sequence:1,sampleRate:24000,audio:Buffer.from(samples.buffer).toString('base64')}));
+  ws.send(JSON.stringify({type:'audio.done',voiceSessionId:id}));
+ }}catch{ws.close(1008);}});
+ ws.send(JSON.stringify({type:'ready',voiceSessionId:id}));return true;
+};
+const app=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'fixture'.repeat(8),iosPublicEntry:true,iosBindingsFile:`/tmp/voice-entry-latency-ios-${port}.json`,candidateRelease:updates.WEB_DIAL_CANDIDATE_UPDATE??updates.STARTUP_LATENCY_CANDIDATE_UPDATE??updates.ENTRY_LATENCY_CANDIDATE_UPDATE,
   gateway:{ready:true,request:async method=>{rpc++;if(method!=='voice.feishu.resolve')throw Error('forbidden:'+method);await sleep(550);return {sessionKey:'agent:fixture:feishu:group:oc_fixture',agentId:'fixture',accountId:'default',kind:'group'};}},
   directVoice:{models:()=>[{id:'seeduplex',label:'小何',available:true}],reserve:async()=>{
-    calls++;if(!dialBenchmark)throw Error('NO CALLS');
-    return {voiceSessionId:randomUUID(),transport:'gateway-relay',provider:'seeduplex',relayTicket:'fixture'};
-  },...(dialBenchmark?{attach:()=>true}:{}),close:async()=>{},dispose:async()=>{}},
+    calls++;if(!dialBenchmark&&!callFixture)throw Error('NO CALLS');
+    const reservation={voiceSessionId:randomUUID(),transport:'gateway-relay',provider:'seeduplex',relayTicket:'fixture'};fixtureCalls.set(reservation.voiceSessionId,reservation);return reservation;
+  },...(callFixture?{attach:attachFixture,hasSession:id=>fixtureCalls.has(id),upgrade:(req,socket,head,id,ticket)=>fixtureSocketServer.handleUpgrade(req,socket,head,ws=>{if(!attachFixture(id,ticket,ws))ws.close(1008);})}:dialBenchmark?{attach:()=>true}:{}),close:async id=>{fixtureCalls.get(id)?.socket?.close();fixtureCalls.delete(id);},dispose:async()=>{for(const value of fixtureCalls.values())value.socket?.terminate();fixtureCalls.clear();}},
   feishuLogin:{appId:'cli_fixture',appSecret:'fixture',accountId:'default',actors:[],conversations:true,allowUnidentified:true,cardConfirmation:true,
     fetchImpl:async (url,init)=>{provider++;await sleep(200);
       if(url.includes('app_access_token'))return Response.json({code:0,app_access_token:'fixture-app',tenant_access_token:'fixture-tenant',expire:7200});
@@ -41,6 +53,8 @@ const app=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:
       return Response.json({code:0,data:{chat_mode:'group',name:'候选测试群'}});
     }}});
 await new Promise(r=>app.server.listen(0,'127.0.0.1',r));
+const {WebSocketServer}=await import('ws');
+const fixtureSocketServer=new WebSocketServer({noServer:true});
 const internal=(path,jar,body,extra={})=>new Promise((resolve,reject)=>{
  const req=request({hostname:'127.0.0.1',port:app.server.address().port,path,method:body?'POST':'GET',headers:{host:'voice.example',origin,...extra,cookie:[...jar].map(([k,v])=>k+'='+v).join('; '),'content-type':'application/json'}},res=>{
   for(const cookie of res.headers['set-cookie']??[]){const [k,...v]=cookie.split(';')[0].split('=');jar.set(k,v.join('='));}
@@ -95,6 +109,9 @@ const proxy=createServer(async(req,res)=>{
  });target.on('error',()=>{res.writeHead(502);res.end();});req.pipe(target);
 });
 await new Promise(r=>proxy.listen(port,'127.0.0.1',r));
+if(callFixture)proxy.on('upgrade',(req,socket,head)=>{
+ void sleep(requestDelayMs).then(()=>{req.headers.host='voice.example';req.headers.origin=origin;app.server.emit('upgrade',req,socket,head);});
+});
 console.log(JSON.stringify({port,root,phone,ready:true,requestDelayMs}));
 if(dialBenchmark){
  const samples=[];
