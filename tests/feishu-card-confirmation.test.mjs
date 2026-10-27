@@ -4,9 +4,9 @@ import {createHmac} from 'node:crypto';
 import {createFeishuCardConfirmation} from '../lib/feishu-card-confirmation.mjs';
 import {feishuConversationPhone} from '../lib/feishu-conversation-directory.mjs';
 const phone=feishuConversationPhone('default','oc_group');
-function fixture() {
+function fixture(options={}) {
  let time=1000000,denied=false,serial=0;const sent=[],admissions=[],completed=[];
- const bridge=createFeishuCardConfirmation({appId:'cli_app',appSecret:'fixture',accountId:'default',basePath:'/voice',now:()=>time,
+ const bridge=createFeishuCardConfirmation({appId:'cli_app',appSecret:'fixture',accountId:'default',basePath:'/voice',now:()=>time,...options,
  api:async(method,path,body)=>{
   if(method==='POST'){sent.push(body);return {message_id:'om_card'+(++serial)};}
   if(path.includes('/members?'))return {items:[{member_id:'ou_external',name:'外部成员'},{member_id:'ou_internal',name:'内部成员'}]};
@@ -18,6 +18,13 @@ function fixture() {
  const callback=(p,signature)=>{const raw=JSON.stringify(p);return bridge.callback(raw,signature??createHmac('sha256','fixture').update('voice-card-confirm-v1\n'+raw).digest('base64url'));};
  return {bridge,prepare,proof,callback,sent,admissions,completed,advance:ms=>time+=ms,deny:()=>denied=true};
 }
+test('isolated private-menu candidate selects its callback without changing the default group action',async()=>{
+ for(const action of ['v.voice.confirm.v1','v.voice.confirm.private.v1']){
+  const f=fixture(action==='v.voice.confirm.v1'?{}:{action}),p=f.prepare();await f.bridge.start(p.req,p.state);
+  const card=JSON.parse(f.sent[0].content);assert.equal(card.body.elements.find(e=>e.tag==='button').behaviors[0].value.action,action);
+ }
+ assert.throws(()=>fixture({action:'arbitrary.callback'}),/Invalid confirmation/);
+});
 test('external and internal members confirm the same group URL without OAuth; only the initiating browser redeems',async()=>{
  const f=fixture();
  for(const [openId,tenantKey] of [['ou_external','externalTenant'],['ou_internal','internalTenant']]){
