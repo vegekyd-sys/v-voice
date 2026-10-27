@@ -18,7 +18,7 @@ let presentationRequests=0;
 let nativeMode=false,speakerMode=false,runtimeMode=false,nativeRuntime=null,lastSessionRequest=null;
 let shellDelayMS=0;
 let lastOffer=null,offerReply=null;const eventClients=new Set();
-let limitNextSession=false,slowClose=false,closeRequests=0;
+let limitNextSession=false,slowClose=false,slowCloseMS=250,closeRequests=0;
 let documents=[],pending=[],acknowledgements=[],supplements=[];
 let avatarRequests=[],avatarEvents=[],avatarReply="reaction-0",avatarContinuations=["reaction-1","listen-5"],slowAvatar=false;
 let shellVariant='none',shellRequests=[],shellRedirects=0;
@@ -99,7 +99,7 @@ const server=createServer(async(req,res)=>{
    if(body.command==='event'&&body.event)emit(body.event);
    if(body.command==='slow-session'){slowSession=true;slowSessionMS=Math.max(100,Math.min(15000,Number(body.ms)||300));}
    if(body.command==='limit-next-session')limitNextSession=true;
-   if(body.command==='slow-close')slowClose=true;
+   if(body.command==='slow-close'){slowClose=true;slowCloseMS=Math.max(100,Math.min(15000,Number(body.ms)||250));}
    if(body.command==='malformed-audio')emit({type:'audio',sequence:++sequence,audio:Buffer.from([1]).toString('base64'),sampleRate:24000});
    if(body.command==='early-audio')earlyAudio=true;
    if(body.command==='audio')audio(body.ms??240,body.responseId);
@@ -186,7 +186,7 @@ const server=createServer(async(req,res)=>{
    closeRequests++;lastOffer=null;offerReply?.(409,{error:"Closed"});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();
    if(slowClose){
      slowClose=false;const old=active,ws=client;
-     setTimeout(()=>{if(active===old)active=null;ws?.close();if(client===ws)client=null;send(200,{ok:true});},250);return;
+     setTimeout(()=>{if(active===old)active=null;ws?.close();if(client===ws)client=null;send(200,{ok:true});},slowCloseMS);return;
    }
    active=null;client?.close();client=null;return send(200,{ok:true});
  }
