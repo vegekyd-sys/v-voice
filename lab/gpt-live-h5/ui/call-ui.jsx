@@ -323,7 +323,7 @@ function SessionSheet({state,actions}) {
      <p className="binding-confirm">在 App 中点「验证并绑定」，即可继续。</p>
     </div>
     <div className="binding-help">
-     <details className="binding-install"><summary>还没有安装 V Voice？</summary><div>
+     <details className="binding-install" open={Boolean(value.appDownload)}><summary>还没有安装 V Voice？</summary><div>
       {value.appDownload?<><a className="binding-download" href={value.appDownload.url} target="_blank" rel="noopener noreferrer">{value.appDownload.label}</a><p className="session-muted">安装后回到这里，打开 App 完成绑定。</p></>:<><p className="session-muted">TestFlight 下载即将开放。现在也可以用网页和 V 聊天。</p><button type="button" className="binding-web" onClick={actions.closeSessionSheet}>先在网页聊</button></>}
      </div></details>
      {value.bindingUrl&&<details className="binding-fallback"><summary>没有跳转？复制链接</summary><div><p className="session-muted">在 App 设置中粘贴。链接 5 分钟内有效，过期后可重新生成。</p><div className="binding-link"><textarea aria-label="iOS 绑定链接" readOnly value={value.bindingUrl}/><div><button type="button" onClick={actions.copyBinding}>{value.copied?'已复制':'复制链接'}</button><button type="button" disabled={value.busy} onClick={actions.createBinding}>重新生成</button></div></div></div></details>}
