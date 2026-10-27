@@ -3,13 +3,12 @@ import AppIntents
 
 @main struct VVoiceApp: App {
     @Environment(\.scenePhase) private var scene
-    @State private var call = CallCoordinator.shared
-    init() { VoiceShortcuts.updateAppShortcutParameters() }
-    private func refreshShortcutsWhenIdle() {
-        guard !call.active else { return }
-        // Refresh shortcut metadata without changing the user's selected icon.
-        // Primary and legacy alternate assets already contain the same portrait.
-        VoiceShortcuts.updateAppShortcutParameters()
+    @State private var call: CallCoordinator
+    @State private var shortcutsRefreshed = false
+    init() {
+        CallDiagnostics.record("app.init.begin")
+        _call = State(initialValue: CallCoordinator.shared)
+        CallDiagnostics.record("app.init.complete")
     }
     @ViewBuilder private var content: some View {
         #if DEBUG
@@ -23,8 +22,20 @@ import AppIntents
         WindowGroup {
             content
                 .preferredColorScheme(.light)
-                .onAppear { call.sceneChanged(scene); refreshShortcutsWhenIdle() }
-                .onChange(of: scene) { _, value in call.sceneChanged(value); if value == .active { refreshShortcutsWhenIdle() } }
+                .onAppear { call.sceneChanged(scene); CallDiagnostics.record("app.scene.appear") }
+                .onChange(of: scene) { _, value in call.sceneChanged(value) }
+                .task(id: scene) {
+                    // Static shortcuts are extracted from the app. Refresh
+                    // metadata once after the foreground scene has rendered,
+                    // never during a background Action Button launch.
+                    guard scene == .active, !shortcutsRefreshed else { return }
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard !Task.isCancelled, scene == .active, !call.active else { return }
+                    shortcutsRefreshed = true
+                    CallDiagnostics.record("shortcuts.refresh.begin")
+                    VoiceShortcuts.updateAppShortcutParameters()
+                    CallDiagnostics.record("shortcuts.refresh.complete")
+                }
         }
     }
 }

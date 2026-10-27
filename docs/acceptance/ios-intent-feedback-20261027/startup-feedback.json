@@ -1,0 +1,8 @@
+{
+  "mode": "iOS Simulator with local fixture; not physical Action Button gesture",
+  "blockedOldActivityRetirement": true,
+  "networkSessionDelayMs": 1200,
+  "feedbackSamples": [
+    "ms=307"
+  ]
+}

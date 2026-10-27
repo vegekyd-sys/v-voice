@@ -113,6 +113,7 @@ import VVoiceCore
     }
     func testReportWaitsForBackgroundAndUpdatedReportReopensAfterManualFold() async throws {
         let call = try await client()
+        await CallDiagnostics.flush()
         try? FileManager.default.removeItem(at: lifecycleFile)
         try await call.startOrContinue()
         call.sceneChanged(.inactive)
@@ -230,6 +231,40 @@ import VVoiceCore
         XCTAssertEqual(call.phase, .listening)
         await call.end()
     }
+    func testColdIntentShowsCallingWhileOldActivityRetirementIsBlocked() async throws {
+        @MainActor final class RetirementGate {
+            var started = false
+            var continuation: CheckedContinuation<Void, Never>?
+            func wait() async { started = true; await withCheckedContinuation { continuation = $0 } }
+            func release() { continuation?.resume(); continuation = nil }
+        }
+        try await fixture("reset"); try await fixture("slow-session", ["ms": 1200])
+        let store = BindingStore(service: "com.versa.vvoice.intent-startup.\(UUID().uuidString)")
+        try store.save(StoredBinding(binding: VoiceBinding(testingBaseURL: base.appendingPathComponent("voice/")), cookie: "v_voice_access=fixture-cookie"))
+        let gate = RetirementGate(), api = VoiceAPI(store: store)
+        let call = CallCoordinator(api: api, retireActivities: { await gate.wait() })
+        let previousModel = call.model; call.model = .seeduplex
+        defer { gate.release(); call.model = previousModel }
+        addTeardownBlock { await MainActor.run { gate.release() }; await call.end(); await MainActor.run { store.remove() } }
+        let started = ProcessInfo.processInfo.systemUptime
+        let connecting = Task { try await call.startOrContinue(fromIntent: true) }
+        try await until { gate.started && Activity<CallAttributes>.activities.contains { $0.attributes.callID == call.presentationID } }
+        let feedbackMS = Int((ProcessInfo.processInfo.systemUptime - started) * 1000)
+        XCTAssertLessThan(feedbackMS, 1000, "Initial feedback must not wait for stale activity retirement or network readiness")
+        XCTAssertNotNil(gate.continuation, "Retirement must still be blocked when new feedback is already present")
+        XCTAssertEqual(call.phase, .connecting)
+        CallDiagnostics.record("intent.fixture-feedback", code: "ms=\(feedbackMS)")
+        gate.release(); try await connecting.value; await call.end()
+    }
+    func testLifecycleDiagnosticsKeepOrderedMonotonicStartupStages() async throws {
+        CallDiagnostics.record("intent.fixture.begin")
+        CallDiagnostics.record("intent.fixture.created")
+        await CallDiagnostics.flush()
+        let rows = try JSONDecoder().decode([[String: String]].self, from: Data(contentsOf: lifecycleFile))
+        let stages = rows.filter { ["intent.fixture.begin", "intent.fixture.created"].contains($0["event"] ?? "") }.suffix(2)
+        XCTAssertEqual(stages.compactMap { $0["event"] }, ["intent.fixture.begin", "intent.fixture.created"])
+        XCTAssertEqual(stages.compactMap { $0["uptimeMS"].flatMap(Int.init) }.count, 2)
+    }
     func testBackgroundConnectionAndLongReplyRequestAttentionWithoutAnotherCall() async throws {
         let call = try await client()
         let file = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -239,6 +274,7 @@ import VVoiceCore
             return rows.filter { $0["event"] == "island.attention.requested" }.compactMap { $0["code"] }
         }
         // This is only the simulator fixture client's cache, never a real binding.
+        await CallDiagnostics.flush()
         try? FileManager.default.removeItem(at: file)
         call.sceneChanged(.background)
         try await call.startOrContinue()
