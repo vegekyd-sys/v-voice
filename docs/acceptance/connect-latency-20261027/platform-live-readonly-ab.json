@@ -1,47 +1,98 @@
 {
   "kind": "production-readonly-feishu-policy-ab",
   "baselineSha256": "88e361a38810e9a609e3073759a8daafc3a084462f871b7a281784bde7482bf6",
-  "candidateSha256": "f6975d2663e780d31263ce456bdc0f5e47b42de649c80cd305d67ee44066ea6b",
-  "policyRouting": "fixture; real installed client and live chat/member reads only",
+  "candidateSha256": "c895aef35096e30105caa670256b2947d956afab5b0d55321c968150e7a451ce",
+  "policyRouting": "fixture; real installed client created per policy request, matching production lifecycle; live chat/member reads only",
   "samples": [
     {
       "pair": 0,
       "variant": "baseline",
-      "ms": 665,
+      "ms": 739,
       "admitted": true,
       "reads": 2,
       "readTimes": [
         {
           "kind": "chat",
-          "ms": 423
+          "ms": 442
         },
         {
           "kind": "members",
-          "ms": 242
+          "ms": 281
         }
       ]
     },
     {
       "pair": 0,
       "variant": "candidate",
-      "ms": 265,
+      "ms": 309,
       "admitted": true,
       "reads": 2,
       "readTimes": [
         {
           "kind": "chat",
-          "ms": 259
+          "ms": 281
         },
         {
           "kind": "members",
-          "ms": 264
+          "ms": 307
         }
       ]
     },
     {
       "pair": 1,
       "variant": "candidate",
-      "ms": 262,
+      "ms": 269,
+      "admitted": true,
+      "reads": 2,
+      "readTimes": [
+        {
+          "kind": "members",
+          "ms": 249
+        },
+        {
+          "kind": "chat",
+          "ms": 267
+        }
+      ]
+    },
+    {
+      "pair": 1,
+      "variant": "baseline",
+      "ms": 521,
+      "admitted": true,
+      "reads": 2,
+      "readTimes": [
+        {
+          "kind": "chat",
+          "ms": 267
+        },
+        {
+          "kind": "members",
+          "ms": 252
+        }
+      ]
+    },
+    {
+      "pair": 2,
+      "variant": "baseline",
+      "ms": 502,
+      "admitted": true,
+      "reads": 2,
+      "readTimes": [
+        {
+          "kind": "chat",
+          "ms": 223
+        },
+        {
+          "kind": "members",
+          "ms": 278
+        }
+      ]
+    },
+    {
+      "pair": 2,
+      "variant": "candidate",
+      "ms": 280,
       "admitted": true,
       "reads": 2,
       "readTimes": [
@@ -51,100 +102,49 @@
         },
         {
           "kind": "members",
-          "ms": 262
-        }
-      ]
-    },
-    {
-      "pair": 1,
-      "variant": "baseline",
-      "ms": 513,
-      "admitted": true,
-      "reads": 2,
-      "readTimes": [
-        {
-          "kind": "chat",
-          "ms": 257
-        },
-        {
-          "kind": "members",
-          "ms": 256
-        }
-      ]
-    },
-    {
-      "pair": 2,
-      "variant": "baseline",
-      "ms": 556,
-      "admitted": true,
-      "reads": 2,
-      "readTimes": [
-        {
-          "kind": "chat",
-          "ms": 290
-        },
-        {
-          "kind": "members",
-          "ms": 266
-        }
-      ]
-    },
-    {
-      "pair": 2,
-      "variant": "candidate",
-      "ms": 235,
-      "admitted": true,
-      "reads": 2,
-      "readTimes": [
-        {
-          "kind": "chat",
-          "ms": 218
-        },
-        {
-          "kind": "members",
-          "ms": 235
+          "ms": 278
         }
       ]
     },
     {
       "variant": "baseline",
       "concurrentCallers": 2,
-      "ms": 536,
+      "ms": 962,
       "admitted": true,
       "reads": 4,
       "readTimes": [
         {
           "kind": "chat",
-          "ms": 239
+          "ms": 231
+        },
+        {
+          "kind": "members",
+          "ms": 229
         },
         {
           "kind": "chat",
-          "ms": 252
+          "ms": 681
         },
         {
           "kind": "members",
-          "ms": 281
-        },
-        {
-          "kind": "members",
-          "ms": 284
+          "ms": 279
         }
       ]
     },
     {
       "variant": "candidate",
       "concurrentCallers": 2,
-      "ms": 259,
+      "ms": 280,
       "admitted": true,
       "reads": 2,
       "readTimes": [
         {
           "kind": "chat",
-          "ms": 258
+          "ms": 219
         },
         {
           "kind": "members",
-          "ms": 258
+          "ms": 274
         }
       ]
     }

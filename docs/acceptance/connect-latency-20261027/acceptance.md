@@ -23,15 +23,15 @@
 
 实际 owning source 是平台的 `lab/feishu-voice-policy.mjs`，不在 Voice 复制它。该候选并行读取 chat 信息和第一页成员，合并尚未返回的相同只读请求；已经完成/失败的结果立即丢弃。每个 actor 的成员判断与配置、路由、owner 和工具授权仍分别执行。
 
-用生产安装的飞书客户端和真实 API，将线上 policy 源码与候选源码在同一主机交替执行。只有 chat/member 读取是真实的，后续路由依赖为 fixture，未经过候选 Gateway dispatch；不能记作平台完整上线验收。
+每次 policy 请求按生产行为新建飞书客户端，使用真实 API，将线上 policy 源码与候选源码在同一主机交替执行。只有 chat/member 读取是真实的，后续路由依赖为 fixture，未经过候选 Gateway dispatch；不能记作平台完整上线验收。
 
 | 场景 | 线上源码 | 候选源码 |
 | --- | ---: | ---: |
-| 单次只读准入三样本 | 665 / 513 / 556ms | 265 / 262 / 235ms |
-| 中位数 | 556ms | 262ms |
-| 两个同时准入：时间 / HTTP 读取数 | 536ms / 4 | 259ms / 2 |
+| 单次只读准入三样本 | 739 / 521 / 502ms | 309 / 269 / 280ms |
+| 中位数 | 521ms | 280ms |
+| 两个同时准入：时间 / HTTP 读取数 | 962ms / 4 | 280ms / 2 |
 
-源文件 hash 与样本见 [platform-live-readonly-ab.json](platform-live-readonly-ab.json)。这约 53% 的改善仅指该只读准入段，不是整通电话。没有缓存完成后的权限结果；下一批请求重新查询。平台代码、PR 与隔离 VLab 证据由独立平台工作树维护。
+源文件 hash 与样本见 [platform-live-readonly-ab.json](platform-live-readonly-ab.json)。这约 46% 的改善仅指该只读准入段，不是整通电话。没有缓存完成后的权限结果；下一批请求重新查询。平台代码、PR 与隔离 VLab 证据由独立平台工作树维护。
 
 ## 验证和发布边界
 

@@ -16,5 +16,13 @@
     "lab/realtime-direct-tools/transcript-log.mjs": "1fc073d015c0f77a58a962431a080d2150bafdaeea6f8437f9107d66f10ec0c1",
     "lab/gpt-live-h5/entry-bootstrap.js": "052d97335f158120852068f0beccc5a555548f8d32f2d3d3646fbe0ff34cbc1d",
     "lab/gpt-live-h5/app-bundle.mjs": "c0da319c62d1888800ae7f0459b09a96488406c69f094c82150a32934271c2fd"
+  },
+  "artifact": {
+    "artifact": "/tmp/voice-connect-candidate-e1ab2c9",
+    "commit": "e1ab2c95a562b85f635912c9f5680fcdbf3b1379",
+    "files": 247,
+    "bytes": 8761876,
+    "filesSha256": "275baac01f119eca314563173d17ac0051a01e0c3770f776d9b84228ac6b0b48",
+    "verifiedBy": "scripts/release-fleet.py verify_artifact"
   }
 }
