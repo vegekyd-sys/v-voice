@@ -128,6 +128,15 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-calendar-consent.20261027.1',date:'2026-10-27',
+    title:'日程直接办理，保留指定的日历服务',
+    items:[
+      '明确要求创建日程后，直接办理或交后台，不再仅因写入或转后台重复询问授权。',
+      '后台交接保留原要求、指定服务、对象、时间和最新修正；缺少必要信息时只确认缺项。',
+      '飞书会话的个人日程默认使用已授权飞书账号，不以企业微信替代；账号权限失效仍说明实际原因。',
+    ],
+  },
+  {
     version:'voice-background-feishu.20261027.1',date:'2026-10-27',
     title:'后台任务在飞书里也看得见',
     items:[

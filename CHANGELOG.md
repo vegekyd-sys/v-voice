@@ -1,3 +1,9 @@
+## 2026-10-27 — Calendar consent and service selection release preparation
+
+- User approved PR #155 for merge and production deployment. Explicit action requests reuse existing consent across backend delegation; retain exact service and request constraints.
+- Publish the matching homepage update. Bound Feishu personal calendar tasks retain Feishu service and existing account/tool authorization boundaries.
+- Local checks: 968 Voice tests, 95 speaker tests, 11 release tests; no actual calendar write or paid voice call. Production cutover and browser verification are recorded separately after deployment.
+
 ## 2026-10-26 — External Feishu login persistence deployed
 
 - Published PR #152 at `0aae20e` to both Voice nodes with matching artifact hashes; both ready and admission released. Gateway and private configuration retained.
