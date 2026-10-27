@@ -1,7 +1,10 @@
 export const TV_REACTION_CANDIDATE_UPDATE = {
-  version:'voice-tv-reaction.20261027.4',date:'2026-10-27',
-  title:'电视 V 头像入口与收音候选',status:'candidate-validation',
+  version:'voice-tv-recovery.20261028.1',date:'2026-10-28',
+  title:'电视通话恢复与遥控修复候选',status:'candidate-validation',
   items:[
+    '拨号时显示轻量的取消呼叫；接通后喇叭与挂断收拢为头像底部的玻璃操作区。',
+    '连接或收音失败时保留原因与重新呼叫，方向键和返回键可直接回到首页，不再卡在头像。',
+    '电视收音先完成回声处理预热，再开始有界批量传输，避免启动阶段逐帧脚本推送积压。',
     '移除 Reaction 头像下方的通话设置入口；空闲头像下方不再显示操作条。',
     '电视入口从首帧保持透明，等待实际画面就绪后展开，避免启动时闪过白色网页。',
     'V 的 Reaction 头像重新居中并保留头部留白，移除连线与电话徽标；聚焦轻微放大和呼吸，点击直接呼叫豆包。',

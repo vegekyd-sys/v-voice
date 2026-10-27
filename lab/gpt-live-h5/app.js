@@ -568,7 +568,7 @@ function providerMessage(event) {
   if(!routedUserCaption)renderTranscript(presentation.consume(data, Date.now()));
   if (data.type === "error") setStatus("语音服务报告错误，请结束通话后重试。", { tone: "error" });
 }
-async function stopCall() {
+async function stopCall({failure}={}) {
   const active = call; call = null;
   if (starting === active) starting = null;
   if (active) {
@@ -595,7 +595,8 @@ async function stopCall() {
   setCallState("idle");
   view.set(state => ({ dial: { ...state.dial, disabled: false }, stopLabel: "结束通话", badge: liveReady ? "可以拨号" : "暂未连接",
     composer: { enabled: false, open: false }, modelDisabled: false }));
-  setStatus("拨号后，直接说话。");
+  view.set({failureCode:failure?.code??null});
+  setStatus(failure?.message??"拨号后，直接说话。",{tone:failure?"error":"info"});
   if (active) {
     await active.context?.close().catch(() => {});
     if (active.voiceSessionId) await api("close", { voiceSessionId: active.voiceSessionId }).catch(() => {});
@@ -611,7 +612,7 @@ async function startCall() {
   markVoiceTiming("voice.dial.requested");
   view.set(state => ({ dial: { ...state.dial, disabled: true }, stopLabel: "取消拨号", badge: "连接中", modelDisabled: true }));
   setCallState("dialing"); setStatus("正在连接 V…");
-  resetTranscript();
+  resetTranscript();view.set({failureCode:null});
   const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController() }; call = active; starting = active;
   const chosenModel = view.get().model;
   if (speakerCandidate()||['seeduplex','grok'].includes(chosenModel)) {
@@ -644,7 +645,7 @@ async function startCall() {
     if(speakerCandidate()){document.body.dataset.speakerEvents='[]';document.body.dataset.speakerAnswerDone='false';}
     active.capture = fixtureId?await createSpeakerFixture(active.context,fixtureId,{onEvent:speakerEvent}):tvHost&&hasTvArrayCapture()?await captureTvArray({context:active.context,signal:active.captureAbort.signal,isCurrent:()=>call===active,
       onDiagnostics:metadata=>{if(call===active)active.duplexDiagnostics.microphone=metadata;},
-      onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message,{tone:'error'}));},
+      onError:error=>{if(call===active)void stopCall({failure:error});},
     }):await microphoneSession.acquire({
       mediaDevices: navigator.mediaDevices, signal: active.captureAbort.signal,
       isCurrent: () => call === active,
@@ -693,12 +694,14 @@ async function startCall() {
         renderReference:active.capture.renderReference,
         startCapture:active.capture.startCapture,
         onAudioLevel:tvHost?value=>{if(call===active)tvHost.observeAudio(value);}:undefined,
-        onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message, { tone: "error" }));},
-        onClosed:()=>{if(call===active)void stopCall();},
+        onError:error=>{if(call===active)void stopCall({failure:error});},
+        onClosed:()=>{if(call===active)void stopCall({failure:active.remoteEnding?undefined:Object.assign(Error("连接已中断，请重新呼叫"),{code:"RELAY_CLOSED"})});},
         onPlaybackActivity:speaking=>{if(call===active){setVoiceState(speaking?'speaking':'listening');if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
         onEvent:value=>{
           if(call!==active)return;
           if(active.deviceAdapter?.handle(value))return;
+          if(value.type==='end.after-playback')active.remoteEnding=true;
+          if(value.type==='end.cancelled')active.remoteEnding=false;
           // An interrupted native reply may never send its final transcript.
           // Its caption row must not be reused for the answer to the next turn.
           if(value.type==='input.speech.started'&&active.relayTurns?.assistant){
@@ -865,7 +868,7 @@ async function startCall() {
     await active.pc.setRemoteDescription({ type: "answer", sdp: result.sdp });
     if (call !== active) return;
     active.heartbeat = setInterval(() => { if (call === active) void api("heartbeat", { voiceSessionId: active.voiceSessionId }).catch(() => {}); }, 15000);
-  } catch (error) { if (call === active) { await stopCall(); if (!call) setStatus(error.name === "NotAllowedError" ? "请允许麦克风访问后重试。" : error.message, { tone: "error" }); } }
+  } catch (error) { if (call === active) { await stopCall({failure:Object.assign(Error(error.name === "NotAllowedError" ? "请允许麦克风访问后重试。" : error.message),{code:error.code??"CALL_START_FAILED"})}); } }
   finally { if (starting === active) starting = null; if (!call) view.set(state => ({ dial: { ...state.dial, disabled: false } })); }
 }
 // A tap anywhere can restore browser playback. Never gate/stop the microphone

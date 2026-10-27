@@ -192,3 +192,13 @@ test('native first-paint presentation is owner scoped and never starts a call',(
  assert.deepEqual(calls,[]);
  assert.equal(fixture('?tv=1&tvShell=1').window.document.documentElement.dataset.tvPresented,'true');
 });
+
+test('idle or failed island releases every direction and Back to Home, active call stays owned',()=>{
+ const {api,view}=fixture('?tv=1&tvShell=1');
+ for(const layout of ['compact','medium']){
+  api.setLayout(layout);view.set({call:'idle'});view.message('电视收音暂不可用，请重试','error');
+  for(const dir of ['up','down','left','right'])assert.equal(api.navigate(dir),'exit');
+  assert.equal(api.back(),'exit');assert.equal(api.snapshot.label,'电视收音暂不可用，请重试');
+ }
+ view.set({call:'connected'});assert.notEqual(api.navigate('up'),'exit');assert.equal(api.back(),'handled');
+});

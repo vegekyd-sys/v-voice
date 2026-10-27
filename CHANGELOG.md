@@ -1,3 +1,9 @@
+## 2026-10-28 — TV call recovery (local candidate)
+
+- Prewarm array AEC before capture; use a versioned prepare/begin/pull hardware bridge with bounded batches and visible failure codes. No PCM is saved.
+- Preserve errors before asynchronous teardown, allow immediate retry, and release idle directional/Back navigation to Home. Replace the dialing handset with a cancel label; center connected controls across the portrait base.
+- Local simulator and synthetic input only; device installation and acoustic acceptance remain pending.
+
 ## 2026-10-27 — TV idle portrait cleanup
 
 - Remove the call-settings shortcut below the idle Reaction portrait and omit its empty glass action group. Active speaker/hangup controls and existing document access remain available.

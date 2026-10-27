@@ -21,8 +21,18 @@ class Model extends EventEmitter {
 const service=createDirectVoiceService({gateway,wsModule:{WebSocket:Model,WebSocketServer},apiKeys:{grok:'LOCAL_FIXTURE_ONLY',seeduplex:'LOCAL_FIXTURE_ONLY'},audit,loadContext:async()=>'',searchAcknowledgment:'off'});
 bridge=createLiveH5Server({gateway,directVoice:service,defaultModel:'seeduplex',conversationEntries:[{id:'tv_fixture',agentId:'makaron',callerId:'tianyi',permissionProfile:'personal-tianyi',sessionKey:'agent:makaron:feishu:group:tv_fixture',accountId:'fixture',kind:'group',accountLabel:'本地演示账号',displayName:'TV 替身 · 非真实身份',accessToken:'LOCAL_FIXTURE_NOT_A_REAL_SECRET_0000'}],callSummarize:async()=>'',avatarEvaluate:async()=>({}),callControlEvaluate:async()=>({}),candidateRelease:{...TV_REACTION_CANDIDATE_UPDATE,id:'tv-island-local-1',warning:'本地模拟：身份未连接；不会控制真实电视'}});
 // Keep the shell's original URL usable while making the fixture identity visible.
+let scenario='normal';
 const [handleRequest]=bridge.server.listeners('request');
 bridge.server.removeListener('request',handleRequest);
-bridge.server.on('request',(req,res)=>{const url=new URL(req.url,'http://127.0.0.1');if(url.pathname==='/app.js'&&Number(process.env.TV_FIXTURE_MODULE_DELAY_MS)>0){setTimeout(()=>handleRequest(req,res),Math.min(5000,Number(process.env.TV_FIXTURE_MODULE_DELAY_MS)));return;}if(url.pathname==='/tv-array-test'){res.writeHead(200,{'content-type':'text/html; charset=utf-8'});void readFile(new URL('./tv-array-test.html',import.meta.url)).then(b=>res.end(b));return;}if(url.pathname==='/'&&!url.searchParams.has('phone')){url.searchParams.set('phone','tv_fixture');res.writeHead(302,{location:url.pathname+url.search});res.end();return;}handleRequest(req,res);});
+bridge.server.on('request',(req,res)=>{const url=new URL(req.url,'http://127.0.0.1');
+if(process.env.TV_FIXTURE_RECOVERY==='1'){
+ if(url.pathname==='/__fixture/scenario'&&req.method==='POST'){const next=url.searchParams.get('mode');if(!['normal','fail-session','slow','mic-route'].includes(next)){res.writeHead(400);res.end();return;}scenario=next;res.end('ok');return;}
+ if(url.pathname==='/__fixture/scenario'){res.setHeader('content-type','application/json');res.end(JSON.stringify({mode:scenario}));return;}
+ if(url.pathname==='/fixture-array.mjs'){res.setHeader('content-type','text/javascript');void readFile(new URL('./tv-recovery-array.mjs',import.meta.url)).then(b=>res.end(b));return;}
+ if(url.pathname==='/app.js'){res.setHeader('content-type','text/javascript');void readFile(new URL('../../lab/gpt-live-h5/app.js',import.meta.url),'utf8').then(b=>res.end("import '/fixture-array.mjs';\n"+b));return;}
+ if(url.pathname==='/api/session'&&scenario==='fail-session'){setTimeout(()=>{res.writeHead(503,{'content-type':'application/json'});res.end(JSON.stringify({error:'连接暂不可用，请重试'}));},1800);return;}
+ if(url.pathname==='/api/session'&&scenario==='slow'){setTimeout(()=>handleRequest(req,res),6000);return;}
+}
+if(url.pathname==='/app.js'&&Number(process.env.TV_FIXTURE_MODULE_DELAY_MS)>0){setTimeout(()=>handleRequest(req,res),Math.min(5000,Number(process.env.TV_FIXTURE_MODULE_DELAY_MS)));return;}if(url.pathname==='/tv-array-test'){res.writeHead(200,{'content-type':'text/html; charset=utf-8'});void readFile(new URL('./tv-array-test.html',import.meta.url)).then(b=>res.end(b));return;}if(url.pathname==='/'&&!url.searchParams.has('phone')){url.searchParams.set('phone','tv_fixture');res.writeHead(302,{location:url.pathname+url.search});res.end();return;}handleRequest(req,res);});
 bridge.server.listen(26326,'127.0.0.1',()=>console.log('TV_ISLAND_LOCAL http://127.0.0.1:26326/?tv=1'));
 process.on('SIGTERM',()=>void bridge.dispose().finally(()=>process.exit()));

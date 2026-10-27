@@ -6,7 +6,7 @@ self.onmessage=({data})=>{
  if(closed)return;
  try{
   if(data.type==='close'){closed=true;dsp?.close();self.close();return;}
-  if(data.type==='configure'){if(!module||![4,6].includes(data.channels))throw Error('电视阵列格式无效');dsp?.close();channels=data.channels;dsp=new Processor(module,channels);return;}
+  if(data.type==='configure'){if(!module||![4,6].includes(data.channels))throw Error('电视阵列格式无效');dsp?.close();channels=data.channels;dsp=new Processor(module,channels);dsp.render(new Float32Array(960),48000);dsp.capture(new Int16Array(960*channels));lastSequence=0;postMessage({type:'configured',channels});return;}
   if(!dsp)return;
   if(data.type==='render'){
    if(!(data.buffer instanceof ArrayBuffer)||data.buffer.byteLength>16384||![24000,44100,48000].includes(data.sampleRate))throw Error('回声参考格式无效');

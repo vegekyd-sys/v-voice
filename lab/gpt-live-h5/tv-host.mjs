@@ -75,6 +75,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
         microphone:Object.freeze({driver:state.call==='idle'?'none':mic?.kind==='tv-array-microphone'?'tv-array':'browser',
           channels:mic?.kind==='tv-array-microphone'&&[4,6].includes(mic.channels)?mic.channels:null,
           acousticEchoTestPassed:false}),
+        failureCode:/^[A-Z0-9_]{1,64}$/.test(state.failureCode??'')?state.failureCode:null,
         hasDocument:[...(state.transcript.history??[]),...(state.transcript.current??[])].some(row=>row.document===true),
         meter:Object.freeze({source:audio.source,peak:Math.max(0,...audio.levels)}),
         viewport:Object.freeze({width:Math.round(window.innerWidth??0),height:Math.round(window.innerHeight??0)}),
@@ -109,12 +110,16 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       const dialog = document.querySelector?.('dialog[open]');
       if (dialog) { dialog.dispatchEvent(new window.Event('cancel', {cancelable:true})); dialog.close(); return 'handled'; }
       if (view.get().reading) { document.getElementById?.('readerBack')?.click(); return 'handled'; }
+      if (shell && view.get().call === 'idle' && layout !== 'full') return 'exit';
       if (layout === 'full') { setLayout('medium'); return 'handled'; }
       if (layout === 'medium') { setLayout('compact'); return 'handled'; }
       return 'exit';
     },
     navigate(direction) {
       if (!['up','down','left','right'].includes(direction)) return false;
+      // The compact window is still an Activity. Explicitly hand idle navigation
+      // back to Home; consuming it here traps the remote on a dead portrait.
+      if(shell&&view.get().call==='idle'&&layout!=='full')return 'exit';
       if(direction==='right'&&document.activeElement?.id==='steerText') {document.getElementById?.('steer')?.focus({preventScroll:true});return true;}
       if(direction==='left'&&document.activeElement?.id==='steer') {document.getElementById?.('steerText')?.focus({preventScroll:true});return true;}
       if(view.get().reading) {
@@ -186,7 +191,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     last = state.call;
     const status = resolveStatus(state);
     const label = state.call === 'idle'
-      ? state.homeNoteTone === 'error' ? '连接未就绪' : state.dial.disabled ? '正在准备' : '准备通话'
+      ? state.homeNoteTone === 'error' ? state.homeNote : state.dial.disabled ? '正在准备' : '准备通话'
       : state.call === 'dialing' ? '正在连接'
       : state.call === 'ending' ? '正在结束'
       : ['error', 'warn', 'action'].includes(status?.kind) ? status.text

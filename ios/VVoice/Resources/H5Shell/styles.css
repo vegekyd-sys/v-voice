@@ -1175,12 +1175,15 @@ html[data-tv="true"] .tv-avatar-large:focus-visible{outline:0}
 html[data-tv-layout="medium"]:has(.tv-avatar-large:focus-visible) .avatar-face{border-color:#e5f4ffdd!important}
 .tv-compact{right:16px;top:16px;width:64px;height:64px;z-index:10}
 html[data-tv="true"] .tv-compact:focus-visible{outline:0}
-.tv-dock-status{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.tv-dock-actions{position:absolute;right:62px;top:212px;display:flex;gap:14px;padding:5px;border:1px solid #d9edf522;border-radius:28px;background:#16233299;box-shadow:0 8px 20px #0003,inset 0 1px #fff08;backdrop-filter:blur(20px);animation:tv-controls-arrive .28s .18s ease-out both}
+.tv-dock-status{position:absolute;right:0;top:240px;width:224px;text-align:center;font-size:12px;line-height:1.5;color:#d7e3ed;text-shadow:0 1px 8px #0009}
+.tv-dock-status.is-error{font-size:11px;color:#e4d6d9}
+.tv-dock-actions{position:absolute;right:112px;top:184px;transform:translateX(50%);display:flex;gap:14px;padding:5px;border:1px solid #d9edf522;border-radius:28px;background:#16233299;box-shadow:0 8px 20px #0003,inset 0 1px #fff08;backdrop-filter:blur(20px);animation:tv-controls-arrive .28s .18s ease-out both}
 .tv-avatar-dock .tv-round{display:flex;align-items:center;justify-content:center;width:38px;height:38px;padding:10px;border-radius:50%;background:#ffffff0b;color:#e6eef6;transition:background .18s,transform .18s}
 html[data-tv="true"] .tv-avatar-dock .tv-round:focus-visible{outline:1px solid #dceaf2;outline-offset:3px}
 .tv-avatar-dock .tv-round:active{transform:scale(.94)}
 .tv-avatar-dock .tv-end{background:#c94862;color:#fff;box-shadow:inset 0 1px #ffffff20}
+.tv-text-action{height:36px;padding:0 18px;border-radius:22px!important;background:transparent;color:#e6eef6;font-size:12px!important;white-space:nowrap}
+.tv-text-action:focus-visible{outline:1px solid #dceaf2;outline-offset:3px}
 .tv-avatar-dock .is-muted{background:#d5e1ed24;color:#b5c5d5}
 .tv-avatar-dock svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .tv-expand{height:38px;display:flex;align-items:center;gap:8px;background:none;color:#c7d8e7;font-size:11px!important;border-radius:20px;padding:8px}
@@ -1191,5 +1194,5 @@ html[data-tv="true"] .tv-avatar-dock .tv-round:focus-visible{outline:1px solid #
 html[data-tv-presented="false"] :is(.call-page .avatar,.tv-dock-actions,.tv-wave-orbit){animation-play-state:paused!important}
 @keyframes tv-companion-reveal{from{opacity:.5;transform:translate(64px,-46px) scale(.3333)}to{opacity:1;transform:translate(0,0) scale(1)}}
 @keyframes tv-companion-breathe{0%,100%{transform:scale(1.055)}50%{transform:scale(1.073)}}
-@keyframes tv-controls-arrive{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@keyframes tv-controls-arrive{from{opacity:0;translate:0 5px}to{opacity:1;translate:0 0}}
 @media(prefers-reduced-motion:reduce){html[data-tv="true"] #app,html[data-tv="true"] .avatar,.tv-dock-actions,.tv-wave-orbit{animation:none!important;transition:none!important}}
