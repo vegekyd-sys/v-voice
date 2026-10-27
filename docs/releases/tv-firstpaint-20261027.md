@@ -14,3 +14,7 @@ Validation:
 - Recordings, captured frames and metrics: `/tmp/v-tv-firstpaint-20261027/`. Native frozen receipt: sibling `v-voice-tv-island/docs/releases/tv-firstpaint-20261027.json`.
 
 This is a local candidate only. No physical TV, online candidate, Gateway or production service was modified; no household audio or paid model call was recorded. Physical acoustic and remote/STR acceptance remain separate.
+
+## Subsequent authorized TV trial
+
+On 2026-10-27 Tianyi explicitly requested “装到电视上我看下”. This exact shared artifact f025824 was installed on the isolated TV candidate (248 frozen file hashes verified); existing HTTPS tunnel and private entry were retained, default model is Doubao. Production Voice/Gateway remain unchanged. Desktop 0.4.14 / host 0.2.4 compatibility builds and 16 actual-device software checks passed; real audio and physical acceptance remain pending. See [installation receipt](../../../v-voice-tv-island/docs/releases/tv-firstpaint-installed-20261027/README.md). Candidate runtime release metadata contains the installed TV update notes; shipped global Voice notes are unchanged.
