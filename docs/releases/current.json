@@ -1,15 +1,14 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "login-persistence-20261026",
-  "version": "voice-feishu-login-persistence.20261026.1",
-  "entryCommit": "0aae20e18bdc83b3f8ad638e4d6a55fb71a6a754",
-  "deviceEntryCommit": "0aae20e18bdc83b3f8ad638e4d6a55fb71a6a754",
-  "filesSha256": "c5b1e22dde0ed142406c51b15e696c68ea75cf9168bef1cc38d2b1409a125a85",
-  "registration": "login-persistence-20261026/release.json",
-  "previousEntryCommit": "9ae49f523f735e9bb4dd8d9700128d2a66eb9e5e",
+  "release": "calendar-consent-20261027",
+  "version": "voice-calendar-consent.20261027.1",
+  "entryCommit": "7ce20a2de22bedba1cc32086d5f832a44539cd8c",
+  "deviceEntryCommit": "7ce20a2de22bedba1cc32086d5f832a44539cd8c",
+  "filesSha256": "720fbf7a4960144a742c314465dd4d39e7aee86cf9b830efa9e2f4f751f5b1af",
+  "registration": "calendar-consent-20261027/release.json",
+  "previousEntryCommit": "ab8d078dd2937c303ab1eb0008b62fc5a4b8d309",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-10-26T23:07:45+08:00",
-  "runtimeDifference": "Both Voice nodes use the same verified artifact; external browser login persistence and account switching restored. Gateway and private configuration unchanged. Tianyi confirmed the reported external-login bug fixed; individual test steps and other terminal/audio acceptance were not enumerated.",
-  "deployedAt": "2026-10-26T23:05:47+08:00",
-  "userAcceptance": "Tianyi confirmed the reported external-login bug fixed on 2026-10-26"
+  "validatedAt": "2026-10-27T12:34:21+08:00",
+  "deployedAt": "2026-10-27T12:31:59+08:00",
+  "runtimeDifference": "Both Voice nodes use one verified artifact. SeedDuplex/Grok action-consent and calendar-service policy active; GPT Live source merged but Gateway plugin remains on previous artifact. No live model/audio/calendar-write acceptance."
 }
