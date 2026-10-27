@@ -22,7 +22,7 @@ export function connectFeishuClient({config,window,document,fetch=globalThis.fet
         headers:{'content-type':'application/json'},body:JSON.stringify({state:config.state,...payload})});
       const body=await response.json();
       if(payload.code)record('identity.confirmed',{serverTiming:response.headers?.get?.('server-timing')??null});
-      finish(response.ok&&body.status&&typeof body.status.ready==='boolean'?body.status:null);
+      finish(response.ok&&body.status&&typeof body.status.ready==='boolean'?{...body.status,...(config.privateEntry?{canonicalPhone:body.phone}:{})}:config.privateEntry?{error:'暂时无法确认当前飞书私聊，请在飞书中重新打开。'}:null);
     } catch {finish(null);}
   };
   const fallback=error=>{

@@ -70,7 +70,7 @@ function speakerEvent(value){
   if(value.type==='speaker.decision')document.body.dataset.speakerState=JSON.stringify({participants:value.participants,targetId:value.targetId,mode:value.mode,shouldRespond:value.shouldRespond,addresseeIds:value.addresseeIds,timings:value.timings});
   if(['speaker.utterance','speaker.decision'].includes(value.type))renderTranscript(presentation.consume(value));
 }
-const phoneEntry = new URLSearchParams(window.location.search).get("phone");
+let phoneEntry = new URLSearchParams(window.location.search).get("phone");
 let guestDialAllowed=new URLSearchParams(window.location.search).get('guest')==='1';
 const apiUrl = route => `./api/${route}?${phoneEntry ? `phone=${encodeURIComponent(phoneEntry)}` : `entry=${callerEntry}`}`;
 const duplexRecoveryMessage = "上一段语音还没确认结束。若仍无声音，请结束通话后重新开始。";
@@ -924,6 +924,7 @@ async function initializeEntry() {
   }
 }
 function applyEntryStatus(status) {
+    if(phoneEntry==='feishu_self'&&/^feishu_[A-Za-z0-9_-]{1,400}$/u.test(status.canonicalPhone??''))phoneEntry=status.canonicalPhone;
     view.set({returnToAccountHref:status.returnToAccountHref??null});
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     liveReady = status.ready === true;

@@ -68,7 +68,9 @@ export function startVoiceEntry({ location, fetch: request, replaceState, initia
         if (!phone) search.set('entry', 'tianyi');
         replaceState(`${location.pathname}?${search}`);
       }
-      if(identity){const verified=await identity;if(verified)initialStatus=verified;}
+      if(identity){const verified=await identity;if(verified?.error)throw Error(verified.error);if(verified){initialStatus=verified;
+        if(/^feishu_[A-Za-z0-9_-]{1,400}$/u.test(verified.canonicalPhone??''))replaceState(`${location.pathname}?phone=${encodeURIComponent(verified.canonicalPhone)}`);
+      }}
       mark('voice.status.start');
       if (!access && initialStatus && typeof initialStatus.ready === 'boolean') {
         mark('voice.status.inline');
