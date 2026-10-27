@@ -22,6 +22,14 @@ test('private locator isolates actors/apps, rejects ambiguous/public/symlink dir
   await chmod(file,0o600);await symlink(file,dir+'/link');await assert.rejects(createPrivatePhoneLocator({file:dir+'/link',appId:'cli_app',accountId:'default'})({openId:'ou_old'}));
 });
 
+test('a first entry waits for its native event without user retry, but never waits past the bound',async t=>{
+  const dir=await mkdtemp(tmpdir()+'/v-direct-race-');t.after(()=>rm(dir,{recursive:true,force:true}));
+  const file=dir+'/directory.json',locate=createPrivatePhoneLocator({file,appId:'cli_app',accountId:'default',waitMs:600});
+  const timer=setTimeout(()=>void writeFile(file,JSON.stringify({version:1,bindings:[{appId:'cli_app',openId:'ou_new',chatId:'oc_new',updatedAt:Date.now()}]}),{mode:0o600}),50);t.after(()=>clearTimeout(timer));
+  assert.equal(await locate({openId:'ou_new'}),feishuConversationPhone('default','oc_new'));
+  const at=performance.now();await assert.rejects(locate({openId:'ou_unknown'}));assert(performance.now()-at<900);
+});
+
 async function fixture(t,{deny=false,kind='dm'}={}){
   const dir=await mkdtemp(tmpdir()+'/v-direct-http-');t.after(()=>rm(dir,{recursive:true,force:true}));
   const file=dir+'/directory.json',at=Date.now();

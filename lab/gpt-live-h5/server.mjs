@@ -48,7 +48,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   const replyTargets=new Map(entries.replyBindings().map(e=>[e.id,conversationReplyTarget(e,feishuAccounts)]));
   const appDownload=iosAppDownload(iosAppDownloadUrl);
   const phoneLogin = feishuLogin ? createFeishuPhoneLogin({...feishuLogin, publicOrigin, basePath, entries,
-    ...(feishuLogin.privateConversationsFile?{resolvePrivatePhone:createPrivatePhoneLocator({file:feishuLogin.privateConversationsFile,appId:feishuLogin.appId,accountId:feishuLogin.accountId})}:{}),
+    ...(feishuLogin.privateConversationsFile?{resolvePrivatePhone:createPrivatePhoneLocator({file:feishuLogin.privateConversationsFile,appId:feishuLogin.appId,accountId:feishuLogin.accountId,waitMs:5000})}:{}),
     ...(feishuLogin.conversations===true?{resolveConversation:createFeishuConversationDirectory({gateway,...feishuLogin})}:{})}) : null;
   const guestAccess=hosted&&feishuLogin?.conversations===true&&feishuLogin.allowUnidentified===true
     ?createVoiceAccess(createHash('sha256').update('voice-guest:'+feishuLogin.appSecret).digest('hex'),basePath,Date.now,{entry:'unidentified'}):null;
