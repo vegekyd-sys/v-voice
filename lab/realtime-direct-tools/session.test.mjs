@@ -34,6 +34,24 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
  return {service,reservation,client,upstream,event,call,audit,invocations,peers,completeBackend:text=>{sdkTask.status='ok';sdkTask.text=text;},progressBackend:text=>sdkTask.progress.push({text,kind:'commentary',provenance:{runId:sdkTask.runId,sequence:sdkTask.progress.length+1}})};
 }
 
+test('server audio metrics observe delivered packets without changing relay bytes or interruption',async t=>{
+ const f=await fixture();t.after(()=>f.service.dispose());
+ f.event({type:'response.created',response:{id:'reply-metrics'}});
+ const pcm=Buffer.alloc(960).toString('base64');
+ f.event({type:'response.output_audio.delta',response_id:'reply-metrics',delta:pcm});
+ f.event({type:'response.output_audio.delta',response_id:'reply-metrics',delta:pcm});
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:true})),false);
+ f.event({type:'response.done',response:{id:'reply-metrics',status:'completed'}});
+ const rows=f.audit.filter(r=>r.type==='audio.delivery');
+ assert.deepEqual(rows.map(r=>r.phase),['first','summary']);
+ assert.equal(rows[1].packets,2);assert.equal(rows[1].bytes,1920);assert.equal(rows[1].audioMs,40);
+ // This Grok adapter supplies anonymous PCM; metrics must not invent ownership.
+ assert.equal(rows[1].responseId,undefined);
+ assert.deepEqual(f.client.sent.filter(r=>r.type==='audio').map(r=>r.audio),[pcm,pcm]);
+ assert(f.audit.some(r=>r.type==='client.playback-state'&&r.speaking));
+ assert(f.audit.some(r=>r.type==='call.media'&&r.surface==='phone'&&!r.nativeDuplex));
+});
+
 test('native runtime is explicit opt-in and preserves legacy web/installed clients',async t=>{
  const old=await fixture();t.after(()=>old.service.dispose());
  assert.equal(old.reservation.nativeRuntime,undefined);

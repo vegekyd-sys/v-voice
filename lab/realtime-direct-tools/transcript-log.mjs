@@ -39,6 +39,25 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       return enqueue({...owners.get(id),type:'call.created'});
     }
     const owner=owners.get(id)??(/^(?:task\.delivery-|backend\.|call\.report-|call\.summary-styled)/.test(event.type)?closedOwners.get(id):null);if(!owner)return false;
+    if(event.type==='call.media'){
+      if(!['phone','speaker'].includes(event.surface)||!['standard','courtesy','provider','assisted'].includes(event.playbackPolicy)||
+        typeof event.nativeDuplex!=='boolean'||![16000,24000].includes(event.inputSampleRate))return false;
+      return enqueue({...owner,type:event.type,surface:event.surface,nativeDuplex:event.nativeDuplex,
+        playbackPolicy:event.playbackPolicy,inputSampleRate:event.inputSampleRate});
+    }
+    if(event.type==='audio.delivery'){
+      if(!['first','gap','summary'].includes(event.phase))return false;
+      const safe={phase:event.phase};
+      if(typeof event.responseId==='string')safe.responseId=event.responseId.slice(0,160);
+      if(['done','segment-done','clear','closed','replaced'].includes(event.reason))safe.reason=event.reason;
+      for(const key of ['packets','bytes','audioMs','elapsedMs','maxGapMs','gaps','gapMs'])
+        if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      return enqueue({...owner,type:event.type,...safe});
+    }
+    if(event.type==='client.playback-state'){
+      if(typeof event.speaking!=='boolean')return false;
+      return enqueue({...owner,type:event.type,speaking:event.speaking});
+    }
     if(event.type==='call.report-error'){
       if(!/^[a-f0-9-]{36}$/u.test(event.reportId??'')||!['summary','save','status-tick','status-start','status-ended','summary-style','finish'].includes(event.stage))return false;
       const code=/^(?:summary-(?:http-\d{3}|invalid|context-limit|unavailable|timeout|network)|call-(?:status|card|summary)-(?:target|update)-unconfirmed|call-report-operation-failed)$/u.test(event.error??'')?event.error:'call-report-operation-failed';
@@ -113,6 +132,8 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       // A delta remains a delta; interrupted speech need not produce final.
       return enqueue({...owner,type:'transcript',role:event.role,text:event.text,final:event.final,
         ...(typeof event.source==='string'?{source:event.source}:{}),
+        ...(typeof event.responseId==='string'?{responseId:event.responseId.slice(0,160)}:{}),
+        ...(typeof event.turnId==='string'?{turnId:event.turnId.slice(0,160)}:{}),
         ...(typeof event.callId==='string'?{callId:event.callId}:{})});
     }
     if(['task.delivery-confirmed','task.delivery-failed'].includes(event.type)){
