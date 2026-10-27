@@ -35,7 +35,7 @@ for(const name of [...new Set(names)].sort()){
  const bytes=await readFile(join(root,name)),dest=join(target,name);await mkdir(dirname(dest),{recursive:true});await copyFile(join(root,name),dest);
  files.push({path:name,sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length});
 }
-const backendFiles=files.filter(file=>file.path==='scripts/device-call.mjs'||file.path.startsWith('skills/'));
+const backendFiles=files.filter(file=>file.path==='scripts/device-call.mjs'||file.path.startsWith('skills/device-use/'));
 const backendBundle=Buffer.from(JSON.stringify({schema:'v-voice-backend-device-bundle-v1',sourceCommit:commit,files:backendFiles},null,2)+'\n');
 await writeFile(join(target,'backend-device-bundle.json'),backendBundle,{flag:'wx'});
 files.push({path:'backend-device-bundle.json',sha256:createHash('sha256').update(backendBundle).digest('hex'),bytes:backendBundle.length});
