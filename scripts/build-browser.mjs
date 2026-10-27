@@ -6,6 +6,13 @@ import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=resolve(import.meta.dirname,'..');
 export const BROWSER_BUNDLE=resolve(root,'lab/gpt-live-h5/app-bundle.mjs');
+export const ENTRY_BOOTSTRAP=resolve(root,'lab/gpt-live-h5/entry-bootstrap.js');
+export async function buildEntryBootstrap(){
+  const result=await build({entryPoints:[resolve(root,'lab/gpt-live-h5/entry-startup.mjs')],bundle:true,
+    format:'iife',platform:'browser',target:['safari15','chrome100'],minify:true,charset:'utf8',
+    write:false,logLevel:'silent',absWorkingDir:root});
+  return result.outputFiles[0].contents;
+}
 export async function buildBrowser(){
   const result=await build({entryPoints:[resolve(root,'lab/gpt-live-h5/app.js')],bundle:true,
     plugins:[{name:'server-static-alias',setup(context){
@@ -15,11 +22,12 @@ export async function buildBrowser(){
         resolveDir:resolve(root,'lab/gpt-live-h5'),loader:'js',
       }));
     }}],
-    external:['./entry-startup.mjs'],format:'esm',platform:'browser',target:['safari15','chrome100'],
+    format:'esm',platform:'browser',target:['safari15','chrome100'],
     minify:true,legalComments:'eof',charset:'utf8',write:false,logLevel:'silent',absWorkingDir:root});
   return result.outputFiles[0].contents;
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)){
   const bytes=await buildBrowser();await writeFile(BROWSER_BUNDLE,bytes);
+  await writeFile(ENTRY_BOOTSTRAP,await buildEntryBootstrap());
   console.log(JSON.stringify({bundle:'lab/gpt-live-h5/app-bundle.mjs',bytes:bytes.length}));
 }

@@ -30,7 +30,9 @@ export class PcmPlaybackQueue {
     }
   }
 }
-export function relayWorkletSource(){return `${PcmPlaybackQueue.toString()}
+// Bundlers may rename this class or serialize it as an anonymous expression.
+// Give the worklet its own stable binding instead of relying on the outer name.
+export function relayWorkletSource(){return `const PcmPlaybackQueue = ${PcmPlaybackQueue.toString()};
 class Speaker extends AudioWorkletProcessor {
  constructor(options){super();const prefill=options?.processorOptions?.prefillMs??120;
  if(!Number.isFinite(prefill)||prefill<0||prefill>1000)throw Error('Invalid playback buffer');

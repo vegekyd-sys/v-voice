@@ -11,7 +11,7 @@ import {VOICE_CAPABILITY_POLICY} from '../gpt-live-h5/capability-policy.mjs';
 async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}),model='grok',options={}) {
  const peers=[],audit=[],invocations=[];let sdkTask;
  class WS extends EventEmitter {constructor(url){super();this.url=url;this.readyState=1;this.sent=[];peers.push(this);setImmediate(()=>this.emit('open'));}
-  send(raw){const value=JSON.parse(raw);this.sent.push(value);if(value.type==='session.update')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.updated'})),false));if(value.type==='session.create')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.created',session:{id:value.session.id??'fixture-dialog'}})),false));}
+  send(raw){const value=JSON.parse(raw);this.sent.push(value);if(value.type==='session.update')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.updated'})),false));if(value.type==='session.create'){const complete=()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.created',session:{id:value.session.id??'fixture-dialog'}})),false);if(options.providerSetup)options.providerSetup(complete);else queueMicrotask(complete);}}
   close(){this.readyState=3;this.emit('close');}}
  class Server {handleUpgrade(req,socket,head,done){done(socket);}close(){}}
  const gateway={request:async(method,args)=>{
@@ -23,12 +23,14 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,...(options.backendDeviceURL?{backendDeviceBundle:{root:'/fixture/backend-device-bundle',sha256:'a'.repeat(64)},backendDeviceBundleProbe:async()=>true}:{}),wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,gateway:options.publicGateway??gateway,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion,nativeDeviceActions:options.nativeDeviceActions,backendDeviceURL:options.backendDeviceURL,terminalAdapter:options.terminalAdapter});
+ const reservation=await service.reserve({model,gateway:options.publicGateway??options.gateway??gateway,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion,nativeDeviceActions:options.nativeDeviceActions,backendDeviceURL:options.backendDeviceURL,terminalAdapter:options.terminalAdapter});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
+ if(options.beforeAttach)await options.beforeAttach({service,reservation,client,peers});
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
- for(let attempt=0;attempt<200&&!client.sent.some(e=>e.type==='ready');attempt++)await delay(5);
- assert(client.sent.some(e=>e.type==='ready'),'Fixture provider did not become ready');
+ for(let attempt=0;attempt<200&&!client.sent.some(e=>e.type==='ready')&&client.readyState!==3;attempt++)await delay(5);
+ if(options.expectConnectionFailure){assert.equal(client.readyState,3);assert(!client.sent.some(e=>e.type==='ready'));}
+ else assert(client.sent.some(e=>e.type==='ready'),'Fixture provider did not become ready');
  const upstream=peers[0],event=v=>upstream.emit('message',Buffer.from(JSON.stringify(v)),false);
  const call=(name,args,id='call-1')=>{event({type:'response.created',response:{id:'response-'+id}});event({type:'response.function_call_arguments.done',response_id:'response-'+id,call_id:id,name,arguments:JSON.stringify(args)});event({type:'response.done',response:{id:'response-'+id,status:'completed'}});};
  return {service,reservation,client,upstream,event,call,audit,invocations,peers,completeBackend:text=>{sdkTask.status='ok';sdkTask.text=text;},progressBackend:text=>sdkTask.progress.push({text,kind:'commentary',provenance:{runId:sdkTask.runId,sequence:sdkTask.progress.length+1}})};
@@ -871,6 +873,30 @@ test('assisted native playback reuses one existing control stream and does not g
  await f.service.close(f.reservation.voiceSessionId);assert.equal(closed,1);await f.service.dispose();
 });
 
+test('model and speech-control handshakes overlap but both must finish before ready',async t=>{
+ let modelRelease,controlRelease;const stages=[];
+ const pending=fixture(undefined,'seeduplex',{nativePlaybackPolicy:'assisted',audit:e=>{if(e.type==='call.connection-stage')stages.push(e);},
+  providerSetup:complete=>{modelRelease=complete;},
+  nativeInterrupt:()=>({connect:()=>new Promise(resolve=>{controlRelease=resolve;}),append(){},close(){}})});
+ assert(await until(()=>modelRelease&&controlRelease),'Both independent handshakes start before either finishes');
+ assert(!stages.some(e=>e.stage==='provider-ready'));
+ modelRelease();assert(await until(()=>stages.some(e=>e.stage==='model-ready')));
+ assert(!stages.some(e=>e.stage==='provider-ready'),'A connected model alone is not a connected call');
+ controlRelease();const f=await pending;t.after(()=>f.service.dispose());
+ assert(stages.some(e=>e.stage==='speech-control-ready'));
+ assert(stages.some(e=>e.stage==='provider-ready'));
+ assert(stages.every(e=>Number.isSafeInteger(e.elapsedMs)&&e.elapsedMs>=0));
+});
+
+test('a failed parallel speech-control handshake closes the unfinished model without announcing ready',async t=>{
+ let controlClosed=false;
+ const f=await fixture(undefined,'seeduplex',{nativePlaybackPolicy:'assisted',expectConnectionFailure:true,
+  providerSetup:()=>{},nativeInterrupt:()=>({async connect(){throw Error('fixture speech control unavailable');},append(){},close(){controlClosed=true;}})});
+ t.after(()=>f.service.dispose());assert.equal(controlClosed,true);
+ assert(!f.client.sent.some(e=>e.type==='ready'));
+ assert(await until(()=>f.peers.every(peer=>peer.readyState===3)),'Existing provider graceful-close completes even when setup fails');
+});
+
 const nativeEnd=async(f,id='native-end')=>{
  f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name:'end_call',arguments:'{}'}]});
  assert(await until(()=>f.client.sent.some(e=>e.type==='end.accepted'&&e.callId===id)));
@@ -1030,6 +1056,58 @@ test('dial loads exact conversation context concurrently with the tool catalog',
  assert(f.client.sent.some(event=>event.type==='ready'));
  const stages=f.audit.filter(event=>event.type==='call.connection-stage').map(event=>event.stage);
  assert(stages.indexOf('context-requested')<stages.indexOf('catalog-ready'));
+});
+
+test('an admitted call prepares while relay handoff waits, without opening a provider before attachment',async t=>{
+ let release,catalogReads=0,contextReads=0;const gate=new Promise(r=>{release=r;});
+ const f=await fixture(undefined,'grok',{actorScoped:true,sessionBound:true,
+  gateway:{request:async()=>{catalogReads++;await gate;return {groups:[]};}},loadContext:async()=>{contextReads++;await gate;return 'Exact handoff context';},
+  beforeAttach:async({peers})=>{await until(()=>contextReads===1);assert.equal(catalogReads,1);assert.equal(peers.length,0);setImmediate(release);}});
+ t.after(()=>f.service.dispose());assert.equal(catalogReads,1);assert.equal(contextReads,1);
+ assert(JSON.stringify(f.upstream.sent).includes('Exact handoff context'));
+});
+
+test('a prepared call snapshot never authorizes a local read after tool-policy revocation',async t=>{
+ let catalogReads=0,contextReads=0,reads=0,tools=['exec'];
+ const f=await fixture(undefined,'grok',{actorScoped:true,sessionBound:true,
+  toolIdentity:{appId:'cli_fixture',openId:'ou_11111111111111111111111111111111'},larkForActor:async()=>({calendar:async()=>{reads++;return {};}}),
+  gateway:{request:async()=>{catalogReads++;return {groups:[{tools:tools.map(id=>({id}))}]};}},loadContext:async()=>{contextReads++;return 'Reserved call context';},
+  beforeAttach:async()=>{await delay(0);tools=[];}});
+ t.after(()=>f.service.dispose());assert.equal(catalogReads,1);assert.equal(contextReads,1);
+ f.call('feishu_calendar',{},'revoked-after-reserve');
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='revoked-after-reserve')));
+ assert.equal(reads,0);assert.equal(catalogReads,2);
+ assert(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='revoked-after-reserve').result.error);
+});
+
+test('a relay delayed beyond the bounded overlap starts fresh environment reads',async t=>{
+ let release,catalogReads=0,contextReads=0;const gate=new Promise(r=>{release=r;});
+ const f=await fixture(undefined,'grok',{actorScoped:true,sessionBound:true,
+  gateway:{request:async()=>{catalogReads++;await gate;return {groups:[]};}},loadContext:async()=>{const read=++contextReads;await gate;return 'Context read '+read;},
+  beforeAttach:async()=>{await delay(1050);setImmediate(release);}});
+ t.after(()=>f.service.dispose());assert.equal(catalogReads,2);assert.equal(contextReads,2);
+ assert(JSON.stringify(f.upstream.sent).includes('Context read 2'));
+});
+
+test('a completed preparation expires before a delayed relay and cannot supply old history or tools',async t=>{
+ let catalogReads=0,contextReads=0,text='Old reserved context',tools=['exec'];
+ const f=await fixture(undefined,'grok',{actorScoped:true,sessionBound:true,
+  gateway:{request:async()=>{catalogReads++;return {groups:[{tools:tools.map(id=>({id}))}]};}},loadContext:async()=>{contextReads++;return text;},
+  beforeAttach:async()=>{await delay(1050);text='Fresh relay context';tools=['web_search'];}});
+ t.after(()=>f.service.dispose());assert.equal(catalogReads,2);assert.equal(contextReads,2);
+ const config=f.upstream.sent.find(v=>v.type==='session.update').session;
+ assert(config.instructions.includes('Fresh relay context'));assert(!config.instructions.includes('Old reserved context'));
+ assert(!config.tools.some(t=>t.name==='exec'));assert(config.tools.some(t=>t.name==='web_search'));
+});
+
+test('closing a reserved call during preparation cannot later open a provider',async t=>{
+ let release,opened=0;const gate=new Promise(r=>{release=r;});
+ class Server {close(){}}
+ class WS {constructor(){opened++;throw Error('No provider before attachment');}}
+ const service=createDirectVoiceService({gateway:{request:()=>gate.then(()=>({groups:[]}))},loadContext:()=>gate.then(()=>''),wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture'}});
+ t.after(()=>service.dispose());const r=await service.reserve({model:'grok',sessionKey:'fixture',actorScoped:true,sessionBound:true});
+ await service.close(r.voiceSessionId);release();await delay(0);
+ assert.equal(opened,0);assert.equal(service.hasSession(r.voiceSessionId),false);
 });
 
 

@@ -19,7 +19,7 @@ if(existsSync(join(root,'lab/realtime-direct-tools/assets/tool-progress-provenan
 names.push('lab/realtime-direct-tools/device-location.mjs','lab/realtime-direct-tools/lookup-recovery.mjs','lab/realtime-direct-tools/native-runtime.mjs','lab/realtime-direct-tools/task-progress.mjs','lab/realtime-direct-tools/search-result.mjs');
 names.push('lab/realtime-direct-tools/audio-delivery-metrics.mjs');
 names.push('lab/realtime-direct-tools/native-interrupt.mjs','lab/realtime-direct-tools/native-duplex-policy.mjs');
-names.push('lab/gpt-live-h5/ios-shell-release.json','lab/gpt-live-h5/app-bundle.mjs');
+names.push('lab/gpt-live-h5/ios-shell-release.json','lab/gpt-live-h5/app-bundle.mjs','lab/gpt-live-h5/entry-bootstrap.js');
 names.push('lab/realtime-direct-tools/xiaozhi-wire.mjs','lab/realtime-direct-tools/device-vision.mjs','lab/robot/robot-catalog.mjs','lab/robot/robot-reactions.mjs');
 names.push('lib/call-summary.mjs','lib/ios-bindings.mjs','lib/conversation-calls.mjs','lib/conversation-replies.mjs','lib/phone-provisioning.mjs','lib/private-phone-file.mjs','lib/feishu-phone-login.mjs','lib/feishu-card-confirmation.mjs','lib/feishu-group-menu.mjs','lib/feishu-phone-tab.mjs','scripts/feishu-menu.mjs','scripts/phone.mjs');
 names.push('lab/gpt-live-h5/caller-context.mjs','lib/feishu-caller-identity.mjs','lab/gpt-live-h5/feishu-client-login.mjs','lib/feishu-actor-gateway.mjs','lib/feishu-conversation-directory.mjs');

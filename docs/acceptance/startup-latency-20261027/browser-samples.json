@@ -1,0 +1,738 @@
+{
+  "request150ms": [
+    {
+      "variant": "before",
+      "n": 0,
+      "timing": {
+        "ttfbMs": 419.3,
+        "fcpMs": 528,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 637.3
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 2059.7
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 2059.8
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 2059.8
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 2060.1
+          }
+        ]
+      },
+      "login": {
+        "stages": [
+          {
+            "name": "login.start",
+            "ms": 636.5
+          },
+          {
+            "name": "sdk.loaded",
+            "ms": 639.5
+          },
+          {
+            "name": "sdk.ready",
+            "ms": 639.5
+          },
+          {
+            "name": "client.code",
+            "ms": 1141.5
+          },
+          {
+            "name": "identity.confirmed",
+            "ms": 2059.5,
+            "serverTiming": "app_token;dur=0.0, code_exchange;dur=202.4, conversation;dur=554.8"
+          },
+          {
+            "name": "login.complete",
+            "ms": 2059.5
+          }
+        ],
+        "outcome": "identified",
+        "totalToDialMs": 2060
+      }
+    },
+    {
+      "variant": "before",
+      "n": 1,
+      "timing": {
+        "ttfbMs": 326.5,
+        "fcpMs": 440,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 539.1
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1951.4
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1951.5
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1951.6
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1951.7
+          }
+        ]
+      },
+      "login": {
+        "stages": [
+          {
+            "name": "login.start",
+            "ms": 538.39990234375
+          },
+          {
+            "name": "sdk.loaded",
+            "ms": 543.39990234375
+          },
+          {
+            "name": "sdk.ready",
+            "ms": 543.39990234375
+          },
+          {
+            "name": "client.code",
+            "ms": 1044.39990234375
+          },
+          {
+            "name": "identity.confirmed",
+            "ms": 1950.39990234375,
+            "serverTiming": "app_token;dur=0.0, code_exchange;dur=201.4, conversation;dur=551.0"
+          },
+          {
+            "name": "login.complete",
+            "ms": 1950.39990234375
+          }
+        ],
+        "outcome": "identified",
+        "totalToDialMs": 1952
+      }
+    },
+    {
+      "variant": "before",
+      "n": 2,
+      "timing": {
+        "ttfbMs": 331.3,
+        "fcpMs": 468,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 555.3
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1972.7
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1972.7
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1972.7
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1972.9
+          }
+        ]
+      },
+      "login": {
+        "stages": [
+          {
+            "name": "login.start",
+            "ms": 554.300048828125
+          },
+          {
+            "name": "sdk.loaded",
+            "ms": 560.300048828125
+          },
+          {
+            "name": "sdk.ready",
+            "ms": 560.300048828125
+          },
+          {
+            "name": "client.code",
+            "ms": 1062.300048828125
+          },
+          {
+            "name": "identity.confirmed",
+            "ms": 1972.300048828125,
+            "serverTiming": "app_token;dur=0.0, code_exchange;dur=201.6, conversation;dur=551.6"
+          },
+          {
+            "name": "login.complete",
+            "ms": 1972.300048828125
+          }
+        ],
+        "outcome": "identified",
+        "totalToDialMs": 1973
+      }
+    },
+    {
+      "variant": "after",
+      "n": 0,
+      "timing": {
+        "ttfbMs": 337.9,
+        "fcpMs": 460,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 425.2
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1841
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1841.1
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1841.1
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1841.5
+          }
+        ]
+      },
+      "login": {
+        "stages": [
+          {
+            "name": "login.start",
+            "ms": 424.60009765625
+          },
+          {
+            "name": "sdk.loaded",
+            "ms": 429.60009765625
+          },
+          {
+            "name": "sdk.ready",
+            "ms": 429.60009765625
+          },
+          {
+            "name": "client.code",
+            "ms": 930.60009765625
+          },
+          {
+            "name": "identity.confirmed",
+            "ms": 1840.60009765625,
+            "serverTiming": "app_token;dur=0.0, code_exchange;dur=201.8, conversation;dur=551.1"
+          },
+          {
+            "name": "login.complete",
+            "ms": 1840.60009765625
+          }
+        ],
+        "outcome": "identified",
+        "totalToDialMs": 1842
+      }
+    },
+    {
+      "variant": "after",
+      "n": 1,
+      "timing": {
+        "ttfbMs": 414.6,
+        "fcpMs": 524,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 481.8
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1901.5
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1901.6
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1901.6
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1901.8
+          }
+        ]
+      },
+      "login": {
+        "stages": [
+          {
+            "name": "login.start",
+            "ms": 480.89990234375
+          },
+          {
+            "name": "sdk.loaded",
+            "ms": 488.89990234375
+          },
+          {
+            "name": "sdk.ready",
+            "ms": 488.89990234375
+          },
+          {
+            "name": "client.code",
+            "ms": 989.89990234375
+          },
+          {
+            "name": "identity.confirmed",
+            "ms": 1900.89990234375,
+            "serverTiming": "app_token;dur=0.0, code_exchange;dur=201.1, conversation;dur=551.9"
+          },
+          {
+            "name": "login.complete",
+            "ms": 1900.89990234375
+          }
+        ],
+        "outcome": "identified",
+        "totalToDialMs": 1902
+      }
+    },
+    {
+      "variant": "after",
+      "n": 2,
+      "timing": {
+        "ttfbMs": 400.9,
+        "fcpMs": 516,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 471.6
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 1889.1
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 1889.2
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 1889.3
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 1889.5
+          }
+        ]
+      },
+      "login": {
+        "stages": [
+          {
+            "name": "login.start",
+            "ms": 470.5
+          },
+          {
+            "name": "sdk.loaded",
+            "ms": 477.5
+          },
+          {
+            "name": "sdk.ready",
+            "ms": 477.5
+          },
+          {
+            "name": "client.code",
+            "ms": 979.5
+          },
+          {
+            "name": "identity.confirmed",
+            "ms": 1888.5,
+            "serverTiming": "app_token;dur=0.0, code_exchange;dur=201.6, conversation;dur=550.8"
+          },
+          {
+            "name": "login.complete",
+            "ms": 1888.5
+          }
+        ],
+        "outcome": "identified",
+        "totalToDialMs": 1890
+      }
+    }
+  ],
+  "request500ms": [
+    {
+      "variant": "before",
+      "n": 0,
+      "timing": {
+        "ttfbMs": 1098.1,
+        "fcpMs": 1204,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1661.3
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 3431.1
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 3431.2
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 3431.2
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 3431.6
+          }
+        ]
+      },
+      "login": {
+        "stages": [
+          {
+            "name": "login.start",
+            "ms": 1659.800048828125
+          },
+          {
+            "name": "sdk.loaded",
+            "ms": 1663.800048828125
+          },
+          {
+            "name": "sdk.ready",
+            "ms": 1663.800048828125
+          },
+          {
+            "name": "client.code",
+            "ms": 2164.800048828125
+          },
+          {
+            "name": "identity.confirmed",
+            "ms": 3430.800048828125,
+            "serverTiming": "app_token;dur=0.0, code_exchange;dur=201.9, conversation;dur=551.6"
+          },
+          {
+            "name": "login.complete",
+            "ms": 3430.800048828125
+          }
+        ],
+        "outcome": "identified",
+        "totalToDialMs": 3432
+      }
+    },
+    {
+      "variant": "before",
+      "n": 1,
+      "timing": {
+        "ttfbMs": 1032.3,
+        "fcpMs": 1116,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1573.2
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 3346.4
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 3346.6
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 3346.6
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 3346.8
+          }
+        ]
+      },
+      "login": {
+        "stages": [
+          {
+            "name": "login.start",
+            "ms": 1571.699951171875
+          },
+          {
+            "name": "sdk.loaded",
+            "ms": 1582.699951171875
+          },
+          {
+            "name": "sdk.ready",
+            "ms": 1582.699951171875
+          },
+          {
+            "name": "client.code",
+            "ms": 2083.699951171875
+          },
+          {
+            "name": "identity.confirmed",
+            "ms": 3345.699951171875,
+            "serverTiming": "app_token;dur=0.0, code_exchange;dur=202.9, conversation;dur=552.0"
+          },
+          {
+            "name": "login.complete",
+            "ms": 3345.699951171875
+          }
+        ],
+        "outcome": "identified",
+        "totalToDialMs": 3347
+      }
+    },
+    {
+      "variant": "before",
+      "n": 2,
+      "timing": {
+        "ttfbMs": 1031,
+        "fcpMs": 1112,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1574.2
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 3344.4
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 3344.5
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 3344.6
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 3344.7
+          }
+        ]
+      },
+      "login": {
+        "stages": [
+          {
+            "name": "login.start",
+            "ms": 1573.60009765625
+          },
+          {
+            "name": "sdk.loaded",
+            "ms": 1580.60009765625
+          },
+          {
+            "name": "sdk.ready",
+            "ms": 1580.60009765625
+          },
+          {
+            "name": "client.code",
+            "ms": 2082.60009765625
+          },
+          {
+            "name": "identity.confirmed",
+            "ms": 3343.60009765625,
+            "serverTiming": "app_token;dur=0.0, code_exchange;dur=201.6, conversation;dur=551.2"
+          },
+          {
+            "name": "login.complete",
+            "ms": 3343.60009765625
+          }
+        ],
+        "outcome": "identified",
+        "totalToDialMs": 3345
+      }
+    },
+    {
+      "variant": "after",
+      "n": 0,
+      "timing": {
+        "ttfbMs": 1032.7,
+        "fcpMs": 1096,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1055
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 2815.4
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 2815.5
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 2815.5
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 2816
+          }
+        ]
+      },
+      "login": {
+        "stages": [
+          {
+            "name": "login.start",
+            "ms": 1054.60009765625
+          },
+          {
+            "name": "sdk.loaded",
+            "ms": 1055.60009765625
+          },
+          {
+            "name": "sdk.ready",
+            "ms": 1055.60009765625
+          },
+          {
+            "name": "client.code",
+            "ms": 1555.60009765625
+          },
+          {
+            "name": "identity.confirmed",
+            "ms": 2814.60009765625,
+            "serverTiming": "app_token;dur=0.0, code_exchange;dur=202.5, conversation;dur=550.1"
+          },
+          {
+            "name": "login.complete",
+            "ms": 2814.60009765625
+          }
+        ],
+        "outcome": "identified",
+        "totalToDialMs": 2816
+      }
+    },
+    {
+      "variant": "after",
+      "n": 1,
+      "timing": {
+        "ttfbMs": 1036.1,
+        "fcpMs": 1108,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1059.2
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 2826.1
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 2826.2
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 2826.2
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 2826.3
+          }
+        ]
+      },
+      "login": {
+        "stages": [
+          {
+            "name": "login.start",
+            "ms": 1059
+          },
+          {
+            "name": "sdk.loaded",
+            "ms": 1066
+          },
+          {
+            "name": "sdk.ready",
+            "ms": 1066
+          },
+          {
+            "name": "client.code",
+            "ms": 1567
+          },
+          {
+            "name": "identity.confirmed",
+            "ms": 2826,
+            "serverTiming": "app_token;dur=0.0, code_exchange;dur=200.8, conversation;dur=551.5"
+          },
+          {
+            "name": "login.complete",
+            "ms": 2826
+          }
+        ],
+        "outcome": "identified",
+        "totalToDialMs": 2826
+      }
+    },
+    {
+      "variant": "after",
+      "n": 2,
+      "timing": {
+        "ttfbMs": 1026.8,
+        "fcpMs": 1104,
+        "marks": [
+          {
+            "name": "voice.entry.start",
+            "ms": 1060.4
+          },
+          {
+            "name": "voice.status.start",
+            "ms": 2830
+          },
+          {
+            "name": "voice.status.inline",
+            "ms": 2830
+          },
+          {
+            "name": "voice.status.complete",
+            "ms": 2830.1
+          },
+          {
+            "name": "voice.dial.ready",
+            "ms": 2830.3
+          }
+        ]
+      },
+      "login": {
+        "stages": [
+          {
+            "name": "login.start",
+            "ms": 1059.199951171875
+          },
+          {
+            "name": "sdk.loaded",
+            "ms": 1066.199951171875
+          },
+          {
+            "name": "sdk.ready",
+            "ms": 1066.199951171875
+          },
+          {
+            "name": "client.code",
+            "ms": 1568.199951171875
+          },
+          {
+            "name": "identity.confirmed",
+            "ms": 2829.199951171875,
+            "serverTiming": "app_token;dur=0.0, code_exchange;dur=201.7, conversation;dur=550.4"
+          },
+          {
+            "name": "login.complete",
+            "ms": 2829.199951171875
+          }
+        ],
+        "outcome": "identified",
+        "totalToDialMs": 2830
+      }
+    }
+  ]
+}

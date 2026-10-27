@@ -308,22 +308,42 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     audit({type:'call.media',voiceSessionId:s.id,surface:s.surface,nativeDuplex:s.nativeDuplex,
       playbackPolicy:s.nativeDuplex?nativePlaybackPolicy:'standard',inputSampleRate});
     if(nativeRuntimeVersion===1)s.nativeRuntime=createNativeRuntime({voiceSessionId:s.id,duplex:s.nativeDuplex,assisted:s.nativeDuplex&&nativePlaybackPolicy==='assisted',speakerRouted:Boolean(route),policy:nativeRuntimePolicy});
+    // An admitted call can load its environment while the HTTP response and
+    // authenticated relay handshake travel. No provider or microphone is opened.
+    if(s.actorScoped&&s.sessionBound&&!s.unidentified)s.preparation=prepareConnectionEnvironment(s);
     return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket,...(deviceActions?{nativeDeviceActions:{version:1,capabilities:s.terminalContext().capabilities},terminalContext:s.terminalContext()}:{}),...(nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(s.nativeRuntime?{nativeRuntime:s.nativeRuntime.descriptor}:{}),...(s.nativeDuplex?{nativeDuplex:true,nativePlaybackPolicy}:{}),...route?{speakerRouting:route}:{}};
   }
   function attachClient(s,client){
     client.on('error',()=>void close(s.id).catch(()=>{}));
     void start(s,client).catch(()=>{emit(s,{type:'error',message:'语音或工具环境尚未就绪'});void close(s.id).catch(()=>{});});
   }
+  const recordConnectionStage=(s,stage)=>audit({type:'call.connection-stage',voiceSessionId:s.id,model:s.model,stage,elapsedMs:Math.round(performance.now()-s.connectionStartedAt)});
+  function prepareConnectionEnvironment(s){
+    s.connectionStartedAt??=performance.now();
+    const preparation={pending:true,succeeded:false,startedAt:performance.now()};
+    preparation.promise=Promise.resolve().then(async()=>{
+      if(!current(s))throw Error('Call preparation retired');
+      const connectionStage=stage=>recordConnectionStage(s,stage);
+      connectionStage('catalog-requested');connectionStage('context-requested');
+      return s.publicVoice?[await s.gateway.request('tools.catalog',{}),'',null]:s.unidentified?[{groups:[]},'']:await Promise.all([
+        s.gateway.request('tools.catalog',{agentId:s.agentId,includePlugins:true},{timeoutMs:20000}).then(value=>{if(current(s))connectionStage('catalog-ready');return value;}),
+        Promise.resolve().then(()=>loadContext(s.sessionKey,{gateway:s.gateway})).then(value=>{if(current(s))connectionStage('context-ready');return value;}),
+        s.toolIdentity&&larkForActor?Promise.resolve().then(()=>{connectionStage('actor-reader-requested');return larkForActor(s.toolIdentity);}).then(value=>{if(current(s))connectionStage('actor-reader-ready');return value;}).catch(()=>null):null,
+      ]);
+    });
+    // Observe both outcomes even if a cancelled/delayed client never attaches.
+    // This is a one-use snapshot for this reserved call, not an authorization
+    // credential. Socket ownership and every real tool invocation still pass
+    // their existing live checks. Failed or delayed handoffs refresh it.
+    preparation.promise.then(()=>{preparation.pending=false;preparation.succeeded=true;},()=>{preparation.pending=false;});
+    return preparation;
+  }
   async function start(s,client) {
     s.client=client;
     client.on('close',()=>void close(s.id).catch(()=>{}));
-    const connectionStage=stage=>audit({type:'call.connection-stage',voiceSessionId:s.id,model:s.model,stage});
-    connectionStage('catalog-requested');connectionStage('context-requested');
-    const [catalog,context,actorReader]=s.publicVoice?[await s.gateway.request('tools.catalog',{}),'',null]:s.unidentified?[{groups:[]},'']:await Promise.all([
-      s.gateway.request('tools.catalog',{agentId:s.agentId,includePlugins:true},{timeoutMs:20000}).then(value=>{if(current(s))connectionStage('catalog-ready');return value;}),
-      Promise.resolve().then(()=>loadContext(s.sessionKey,{gateway:s.gateway})).then(value=>{if(current(s))connectionStage('context-ready');return value;}),
-      s.toolIdentity&&larkForActor?Promise.resolve().then(()=>larkForActor(s.toolIdentity)).catch(()=>null):null,
-    ]);
+    const connectionStage=stage=>recordConnectionStage(s,stage);
+    const preparation=s.preparation&&(s.preparation.pending||s.preparation.succeeded)&&performance.now()-s.preparation.startedAt<1000?s.preparation:prepareConnectionEnvironment(s);s.preparation=null;
+    const [catalog,context,actorReader]=await preparation.promise;
     if(!current(s))return;
     const entries=(catalog.groups??[]).flatMap(g=>g.tools??[]),allowedTools=new Set(entries.map(t=>t.id));
     s.actorReader=allowedTools.has('exec')?actorReader:null;
@@ -560,16 +580,28 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       }catch{client.close(1008);}
     });
     connectionStage('provider-connecting');
-    if(s.unidentified||!speakerRouting?.lazyNative?.(s.id))await s.bridge.connect();
-    if(s.nativeDuplex&&nativePlaybackPolicy!=='provider'&&nativeInterrupt&&current(s)){
-      s.interruptDetector=nativeInterrupt({inputSampleRate:s.inputSampleRate,
-        isSpeaking:()=>current(s)&&Boolean(s.playing||s.bridge.responseActive),
-        getResponseId:()=>current(s)?s.bridge.audioResponseId:null,
-        onInterrupt:()=>{if(!current(s))return;s.lastUserAt=Date.now();s.bridge.handleBargeIn({confirmed:true});audit({type:'speech.control',voiceSessionId:s.id,stage:'interrupted'});},
-        onStatus:stage=>audit({type:'speech.control',voiceSessionId:s.id,stage})});
-      await s.interruptDetector.connect();
-      if(!current(s)){s.interruptDetector.close();return;}
-    }
+    const connectModel=async()=>{
+      if(s.unidentified||!speakerRouting?.lazyNative?.(s.id))await s.bridge.connect();
+      if(current(s))connectionStage('model-ready');
+    };
+    const connectSpeechControl=async()=>{
+      if(s.nativeDuplex&&nativePlaybackPolicy!=='provider'&&nativeInterrupt&&current(s)){
+        connectionStage('speech-control-connecting');
+        s.interruptDetector=nativeInterrupt({inputSampleRate:s.inputSampleRate,
+          isSpeaking:()=>current(s)&&Boolean(s.playing||s.bridge?.responseActive),
+          getResponseId:()=>current(s)?s.bridge.audioResponseId:null,
+          onInterrupt:()=>{if(!current(s))return;s.lastUserAt=Date.now();s.bridge.handleBargeIn({confirmed:true});audit({type:'speech.control',voiceSessionId:s.id,stage:'interrupted'});},
+          onStatus:stage=>audit({type:'speech.control',voiceSessionId:s.id,stage})});
+        await s.interruptDetector.connect();
+        if(!current(s)){s.interruptDetector.close();return;}
+        connectionStage('speech-control-ready');
+      }
+    };
+    // Both lanes must be ready before the client can send microphone audio.
+    // Starting them together removes a serial handshake without weakening the
+    // existing speech-control readiness or failure/cleanup requirements.
+    await Promise.all([connectModel(),connectSpeechControl()]);
+    if(!current(s))return;
     if(current(s)&&!s.unidentified&&speakerRouting?.has(s.id))await speakerRouting.bind(s.id,{
       greet:()=>s.bridge.triggerGreeting(),
       forward:audio=>s.bridge.sendAudio(audio),context:text=>s.bridge.sendUserMessage(text),clarify:(text,options)=>s.bridge.speakProgress(text,{caption:true,...options}),interrupt:()=>s.bridge.handleBargeIn(),
