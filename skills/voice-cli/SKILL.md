@@ -1,20 +1,51 @@
 ---
 name: voice-cli
-description: Use the V Voice CLI to manage isolated conversation entries, Feishu login invitations, scoped guest links, expiry and revocation. Use when asked to operate V Voice; does not manage Gateway policy or deploy services.
+description: 用 V Voice CLI 管理对话入口、授权链接和会话状态。用户需要创建电话入口、生成或撤销链接、检查授权时使用。
 ---
 
-Run `v-voice capabilities` to discover commands, arguments, limits and exit codes as JSON. `--help` / `-h` shows readable Chinese help at root, group and command levels; append `--json` for its structured schema. Operational stdout and errors remain one JSON envelope; check `ok` and the process exit code.
+# V Voice CLI
 
-`V_VOICE_SOCKET` selects the existing Voice service's private Unix control socket. The OS identity with access to that socket manages only CLI-owned objects. There is no Gateway token, browser credential or account impersonation parameter. `v-voice doctor` reports the configured account and effective guest capability mode. If unavailable, inspect configuration; do not deploy, restart or change permissions unless authorized for the current task.
+用现有服务管理电话入口和链接，按任务自由组合命令；不会自动拨号。
 
-Choose `guest` for a new isolated context. Links for the same entry share that entry's guest context; separate people who should not share context need separate entries. Public tools follow the service's existing Public policy. No personal account tools or source-chat history are delegated.
+## 先看帮助
 
-Choose `feishu` for a login invitation to an exact chat under the account reported by doctor. The recipient authenticates through the existing Voice flow, and Gateway checks their own membership and tools. An active invitation does not mean the recipient has authenticated. Revoking it stops invitation use, not independent Feishu/device authorization.
+```sh
+v-voice --help                 # 全部命令
+v-voice links create --help    # 参数、限制和示例
+v-voice capabilities           # 完整 JSON 能力说明
+v-voice doctor                 # 服务配置和可用账号
+```
 
-Mutations need a stable `--request-id` (8–128 URL-safe characters). Retrying the same command and arguments returns the same object; changing arguments with that ID fails. Read back with `entries get`, `links get`, `auth check` or `sessions status`. An unknown transport/write outcome calls for readback and retry with the same ID.
+通过已配置的 `V_VOICE_SOCKET` 连接服务，也可传 `--socket <绝对路径>`。无需获取 Gateway 密钥或冒用用户身份。
 
-Links require `--out` in an owned mode-0700 directory; the file is created exclusively with mode 0600. stdout contains its path and scope, never the bearer URL. Recover a lost output with `links export --id ID --out NEW_FILE`. Share the file's contents only when the current user request authorizes delivery to that recipient. Do not print credentials into logs, general memory or unrelated tools.
+## 选哪种入口
 
-Use primitives in any order that satisfies their preconditions. A typical guest test is `entries create` → `links create` → `auth check` → recipient access → `links revoke` → `auth check`. Nothing dials automatically. `entries bind` is limited to unused Feishu entries; an issued destination cannot silently change accounts/chats. Temporary guest links cannot become long-lived iOS grants.
+- `guest`：独立访客对话，不带个人账号工具或来源群历史。同一入口的链接共享上下文；需要隔离的人分别建入口。
+- `feishu`：指定 `doctor` 返回的 `--account` 和目标 `--chat`。收件人自行登录，Gateway 核验其会话与工具权限；链接有效不等于对方已获授权。
 
-Report local/Candidate functionality, V OS-runtime execution, actual V Agent use, merge and production activation separately. Real audio, recipient identity and tool execution require their own evidence.
+## 例子：生成访客链接
+
+示例 ID 和请求 ID 按本次任务替换。需要复用已有对话时，先用 `entries list` / `entries get` 查询。
+
+```sh
+v-voice entries create --id demo-room --kind guest --request-id entry-demo-001
+mkdir -m 700 ./voice-links
+v-voice links create --entry demo-room --ttl 600 --out ./voice-links/demo.url --request-id link-demo-001
+```
+
+从返回值取 `result.link.id`，再用 `auth check --id LINK_ID` 核对范围和有效期。完整链接保存在 `result.link.linkFile` 指向的文件中，按用户指定的收件人交付，不写入普通日志。TTL 为 60–86400 秒，输出文件必须不存在。
+
+不再需要时：
+
+```sh
+v-voice links revoke --id LINK_ID --request-id revoke-demo-001
+v-voice auth check --id LINK_ID
+```
+
+访客链接撤销后原 cookie 也失效。飞书邀请的撤销只阻止继续使用邀请，不撤回对方已独立取得的账号或设备授权。
+
+## 看结果与恢复
+
+- 操作返回 JSON：检查退出码和 `ok`；失败按 `error.next` 处理。帮助加 `--json` 可供程序读取。
+- 每次新操作使用新的 `--request-id`；同一次操作重试时保留原 ID 和参数。结果不确定先用 `entries get` / `links get` 回读，不盲目重复创建。
+- 链接文件丢失，用 `links export --id LINK_ID --out 新文件` 恢复；查看会话活动用 `sessions status --entry 入口ID`。
