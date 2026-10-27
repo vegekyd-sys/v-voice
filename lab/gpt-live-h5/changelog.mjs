@@ -148,6 +148,17 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-entry-cli.20261027.1',date:'2026-10-27',
+    title:'进入更快、挂断更及时，支持按需生成电话链接',
+    items:[
+      '电话页提前开始身份确认，重复进入复用相同版本的页面程序，减少等待。',
+      '点击挂断立即停止本地通话并恢复页面；再次拨号仍等待原通话清理完成。',
+      '正式电话模型列表保留小何和 GPT Live。',
+      '网页可继续在 V App 中使用；未安装时提供 TestFlight 安装入口，安装后返回原页完成绑定。',
+      'V 可按需创建独立访客电话或飞书登录邀请，并查询有效期、撤销链接；邀请沿用收件人自己的账号权限。',
+    ],
+  },
+  {
     version:'voice-calendar-consent.20261027.1',date:'2026-10-27',
     title:'日程直接办理，保留指定的日历服务',
     items:[

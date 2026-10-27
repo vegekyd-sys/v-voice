@@ -1,3 +1,10 @@
+## 2026-10-27 — Voice entry and CLI release preparation
+
+- Integrate approved PRs #158, #160, #163, #164 and #165. Production phone catalog hides Grok, entry bootstrap and code caching improve repeat loading, hangup restores local UI immediately, and the App handoff includes TestFlight fallback.
+- Install the private Voice CLI and skill for V. Only the web node enables the managed registry/socket; guest grants and Feishu invitations retain existing authorization boundaries.
+- Resolve shared server parameters and regenerate combined browser/iOS resources. No Gateway restart, native binary or firmware update. Candidate measurements are not production performance guarantees.
+- Release and post-deployment evidence: [voice-release-20261027](docs/releases/voice-release-20261027/release.md).
+
 ## 2026-10-27 — Phone entry latency (candidate, unreleased)
 
 - Prebuild the browser call engine and prioritize its independent Feishu identity bootstrap. Cache only content-versioned application code; HTML, identity exchanges, API status and membership checks retain their existing authorization and no-store behavior.

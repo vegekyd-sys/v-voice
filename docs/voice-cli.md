@@ -1,6 +1,6 @@
-# V Voice CLI（Candidate）
+# V Voice CLI
 
-`v-voice` 是可组合的产品管理客户端，Node >=22、零第三方依赖。通过 Voice 服务私有 Unix socket 管理自己的入口和链接；不访问 Gateway 凭据，不修改原有真人入口、App 绑定或设备。服务端保存对象、绑定、授权范围、期限、撤销及幂等日志。首次交付为 Candidate；未自动合入或启用生产。
+`v-voice` 是可组合的产品管理客户端，Node >=22、零第三方依赖。通过 Voice 服务私有 Unix socket 管理自己的入口和链接；不访问 Gateway 凭据，不修改原有真人入口、App 绑定或设备。服务端保存对象、绑定、授权范围、期限、撤销及幂等日志。候选验证已完成；本次经用户授权随 `voice-entry-cli.20261027.1` 发布，实际生产状态见 [发布登记](releases/voice-release-20261027/release.md)。
 
 ## 能力盘点与归属
 
@@ -114,4 +114,4 @@ node scripts/voice-cli-demo.mjs
 
 演示实际启动隔离 Voice + 私有管理 socket，spawn 真实 CLI 新建入口/链接，通过 HTTP 授权并检查 scope，撤销后再次验证失败。Gateway/模型是禁止真实调用的 fixture；没有产生通话、消息或账单。服务进程重启、跨入口、ID 冲突、输出恢复、写失败和撤销竞态由回归覆盖。
 
-V OS-runtime 安装/调用验证、浏览器 Candidate、实际 V Agent 使用、真人飞书确认、真实音频、合入 CI 和生产双节点启用分别记录在 Candidate 验收文档。正式接入仍须按 `docs/UPDATE-GUIDE.md` 从合入源码统一发布，并核对首页正式日志、CHANGELOG 和版本登记；本次不擅自切换生产。
+V OS-runtime 安装/调用验证、浏览器 Candidate、实际 V Agent 使用、真人飞书确认、真实音频、合入 CI 和生产双节点启用分别记录在 Candidate 验收文档。正式接入仍须按 `docs/UPDATE-GUIDE.md` 从合入源码统一发布，并核对首页正式日志、CHANGELOG 和版本登记；本轮用户已明确授权安装 V CLI/skill 与生产发布，实际运行回执见上述登记。
