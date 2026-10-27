@@ -1,5 +1,11 @@
 // Identity is resolved inside the phone page. No second document or login screen.
 // Only the server exchanges the code and decides the caller/conversation.
+export function feishuSdkFailure(error) {
+  const number=value=>Number.isSafeInteger(value)&&value>=0&&value<=2147483647?value:null;
+  const detail=typeof error?.errString==='string'?error.errString.slice(0,1024):'';
+  const match=/(?:error\s*code|code)\s*[:：=]\s*(\d{1,10})(?=[;,\s]|$)/iu.exec(detail);
+  return {code:number(error?.errno),detailCode:match?number(Number(match[1])):null};
+}
 export function connectFeishuClient({config,window,document,fetch=globalThis.fetch,setTimer=setTimeout,clearTimer=clearTimeout}) {
   let finished=false,exchanging=false,timer,resolve;
   const ready=new Promise(done=>{resolve=done;});
@@ -28,9 +34,10 @@ export function connectFeishuClient({config,window,document,fetch=globalThis.fet
   const fallback=error=>{
     if(finished||exchanging)return;
     exchanging=true;clearTimer(timer);
-    record('client.failed',{code:Number.isInteger(error?.errno)?error.errno:null});
+    const failure=feishuSdkFailure(error);
+    record('client.failed',failure);
     timer=setTimer(()=>{controller.abort();finish(null);},4000);
-    void exchange({failure:{code:Number.isInteger(error?.errno)?error.errno:null}});
+    void exchange({failure});
   };
   const success=result=>{
     if(finished||exchanging)return;

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {request} from 'node:http';
 import {createLiveH5Server} from '../lab/gpt-live-h5/server.mjs';
 import {feishuConversationPhone} from '../lib/feishu-conversation-directory.mjs';
-import {connectFeishuClient} from '../lab/gpt-live-h5/feishu-client-login.mjs';
+import {connectFeishuClient,feishuSdkFailure} from '../lab/gpt-live-h5/feishu-client-login.mjs';
 import WebSocket from 'ws';
 import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -185,6 +185,14 @@ function clientFixture({mode='success'}={}) {
   fetch:async(url,init)=>{requests.push({url,init});return {ok:true,json:async()=>({status:JSON.parse(init.body).code?{ready:true,accountLabel:'Alice Fixture'}:{ready:true,unidentified:true}})};},setTimer:f=>{timers.push(f);return 1;},clearTimer:()=>{}});
  return {locations,requests,elements,timers,result,get sdkOptions(){return sdkOptions;}};
 }
+
+test('SDK authorization diagnostics retain only bounded numeric codes, never raw provider messages',()=>{
+ const failure=feishuSdkFailure({errno:2700002,errString:'Authorization terminated unexpectedly. Error code: 10003; error message: private-token-and-user'});
+ assert.deepEqual(failure,{code:2700002,detailCode:10003});
+ assert(!JSON.stringify(failure).includes('private-token'));
+ for(const error of [null,{errno:'2700002',errString:'token=private'},{errno:Infinity,errString:'code: 99999999999;'}])
+  assert.deepEqual(feishuSdkFailure(error),{code:null,detailCode:null});
+});
 
 test('client SDK confirms identity in the phone page without navigation',async()=>{
  const f=clientFixture();await new Promise(r=>setImmediate(r));

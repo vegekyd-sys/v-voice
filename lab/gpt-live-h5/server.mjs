@@ -426,7 +426,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if(!pending)return json(res,401,{error:'请重新打开电话入口'});
         try {
           if(body.failure){
-            console.warn(JSON.stringify({type:'voice.feishu-client-error',stage:'sdk',providerCode:Number.isInteger(body.failure.code)?body.failure.code:null}));
+            console.warn(JSON.stringify({type:'voice.feishu-client-error',stage:'sdk',providerCode:Number.isInteger(body.failure.code)?body.failure.code:null,
+              detailCode:Number.isSafeInteger(body.failure.detailCode)&&body.failure.detailCode>=0&&body.failure.detailCode<=2147483647?body.failure.detailCode:null}));
             const remembered=await phoneLogin.resumeConfirmedClient(req,body.state);
             if(remembered){
               issueVisitor(res,remembered);
