@@ -7,6 +7,10 @@
     "node": ">=22"
   },
   "scripts": {
+    "cli": "node bin/v-voice.mjs",
+    "test:cli": "node --test tests/voice-cli.test.mjs",
+    "demo:cli": "node scripts/voice-cli-demo.mjs",
+    "package:cli": "node scripts/package-cli.mjs",
     "lab:volc-speaker-auto": "node lab/volc-speaker-auto/server.mjs",
     "test:volc-speaker-auto": "node --test lab/volc-speaker-auto/*.test.mjs",
     "lab:volc-speaker": "node lab/volc-speaker/server.mjs",

@@ -1,0 +1,130 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile,stat,symlink,chmod,mkdir,rename,rmdir} from 'node:fs/promises';
+import {join} from 'node:path';
+import {voiceCliFixture} from './helpers/voice-cli-fixture.mjs';
+import {createVoiceAgentControl} from '../lib/voice-agent-control.mjs';
+import {runVoiceCli} from '../bin/v-voice.mjs';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+const create=(f,id='cli-test-room',request='entry-request-001')=>f.cli('entries','create','--id',id,'--kind','guest','--request-id',request);
+const issue=(f,entry='cli-test-room',request='link-request-001',out=join(f.dir,request+'.url'))=>f.cli('links','create','--entry',entry,'--ttl','600','--request-id',request,'--out',out);
+async function login(f,file){const url=new URL((await readFile(file,'utf8')).trim()),phone=url.searchParams.get('phone'),token=new URLSearchParams(url.hash.slice(1)).get('access');const response=await f.http('/voice/api/access?phone='+phone,'',{access:token});assert.equal(response.status,200);return {url,phone,token,cookie:response.headers['set-cookie'][0].split(';')[0]};}
+
+test('offline discovery/help/version work before credentials/network and reject unknown input',async()=>{
+  assert.equal((await runVoiceCli(['--help'],{})).result.schema,'v-voice-cli/v1');
+  assert.equal((await runVoiceCli(['links','create','--help'],{})).result.args.ttl,'required:integer');
+  assert.equal((await runVoiceCli(['--version'],{})).result.version,'0.1.0');
+  await assert.rejects(runVoiceCli(['status','--sessionKey','forged'],{}),{code:'INVALID_ARGUMENT'});
+  await assert.rejects(runVoiceCli(['__proto__'],{}),{code:'UNKNOWN_COMMAND'});
+  await assert.rejects(runVoiceCli(['links','create','--entry','testroom'],{}),{code:'INVALID_ARGUMENT'});
+});
+test('npm-style executable symlink invokes the CLI rather than silently importing it',async t=>{
+  const f=await voiceCliFixture();t.after(()=>f.close());
+  const binary=join(f.dir,'v-voice');await symlink(new URL('../bin/v-voice.mjs',import.meta.url).pathname,binary);
+  const {stdout}=await promisify(execFile)(binary,['--version']);assert.equal(JSON.parse(stdout).result.version,'0.1.0');
+});
+test('real CLI → service → browser access → revoke invalidates cookie and replay; no call or secret on stdout',async t=>{
+  const f=await voiceCliFixture();t.after(()=>f.close());
+  assert.equal((await create(f)).code,0);
+  const issued=await issue(f);assert.equal(issued.code,0);const link=issued.value.result.link;
+  const a=await login(f,link.linkFile);
+  assert(!issued.stdout.includes(a.token));assert(!issued.stdout.includes('#access='));assert.equal((await stat(link.linkFile)).mode&0o777,0o600);
+  const html=await f.http(a.url.pathname+a.url.search);assert.equal(html.status,200);assert.match(html.body,/<title>和 V 通话<\/title>/u);
+  const status=await f.http('/voice/api/status?phone='+a.phone,a.cookie);assert.equal(status.status,200);assert.equal(status.json().unidentified,true);assert.equal(status.json().iosBindingAvailable,false);assert.equal(status.json().accessContext.mode,'public');
+  assert.equal((await f.cli('auth','check','--id',link.id)).value.result.link.active,true);
+  assert.notEqual((await f.http('/voice/api/status?phone=public',a.cookie)).status,200);
+  assert.notEqual((await f.http('/voice/api/status',a.cookie)).status,200);
+  assert.equal((await f.http('/voice/api/ios-binding?phone='+a.phone,a.cookie,{})).status,403);
+  const revoked=await f.cli('links','revoke','--id',link.id,'--request-id','revoke-request-001');assert.equal(revoked.code,0);
+  assert.equal((await f.cli('auth','check','--id',link.id)).value.result.link.state,'revoked');
+  assert.equal((await f.http('/voice/api/status?phone='+a.phone,a.cookie)).status,404);
+  assert.equal((await f.http('/voice/api/access?phone='+a.phone,'',{access:a.token})).status,404);
+  const disk=await readFile(f.file,'utf8');assert(!disk.includes(a.token));assert(!disk.includes('private-legacy-fixture'));
+  assert.equal(f.calls.length,0);
+});
+test('idempotency, private output recovery, expiry, persistence and exclusive service ownership',async t=>{
+  let time=Date.now();let f=await voiceCliFixture({now:()=>time});t.after(()=>f.close());
+  await create(f);const repeated=await create(f);assert.equal(repeated.value.result.replayed,true);
+  const conflict=await f.cli('entries','create','--id','other-room','--kind','guest','--request-id','entry-request-001');assert.equal(conflict.code,6);
+  const issued=await issue(f),a=await login(f,issued.value.result.link.linkFile),id=issued.value.result.link.id;
+  assert.equal((await issue(f)).code,8,'exclusive output failure reports recoverable committed operation');
+  const recovered=await f.cli('links','export','--id',id,'--out',join(f.dir,'recovered.url'));assert.equal(recovered.code,0);assert.equal(await readFile(recovered.value.result.link.linkFile,'utf8'),a.url.href+'\n');
+  assert.equal((await issue(f,'cli-test-room','link-request-001',join(f.dir,'retry.url'))).value.result.replayed,true);
+  assert.equal((await f.cli('links','list','--entry','cli-test-room')).value.result.links.length,1);
+  await assert.rejects(createVoiceAgentControl({file:f.file,...f.bridge.cliConfiguration()}),{code:'EEXIST'});
+  const dir=f.dir;await f.close({keep:true});f=await voiceCliFixture({directory:dir,now:()=>time});
+  assert.equal((await f.http('/voice/api/status?phone='+a.phone,a.cookie)).status,200,'same capability and cookie survive restart');
+  time+=601000;
+  assert.equal((await f.cli('auth','check','--id',id)).value.result.link.state,'expired');
+  assert.equal((await f.http('/voice/api/status?phone='+a.phone,a.cookie)).status,404);
+});
+test('separate conversations and grants cannot cross authority; revocation cannot be bypassed by forging phones or body',async t=>{
+  const f=await voiceCliFixture();t.after(()=>f.close());
+  await create(f);await create(f,'other-room','entry-request-002');
+  const [ia,ib]=await Promise.all([issue(f),issue(f,'other-room','link-request-002')]);
+  const a=await login(f,ia.value.result.link.linkFile),b=await login(f,ib.value.result.link.linkFile);
+  assert.notEqual((await f.http('/voice/api/status?phone='+b.phone,a.cookie)).status,200);
+  assert.equal((await f.http('/voice/api/access?phone='+b.phone,'',{access:a.token})).status,403);
+  const injected=await f.cli('entries','create','--id','malicious-room','--kind','guest','--chat','oc_private','--request-id','entry-request-003');assert.equal(injected.code,2);
+  await f.cli('entries','disable','--id','cli-test-room','--request-id','disable-request-001');
+  assert.equal((await f.http('/voice/api/status?phone='+a.phone,a.cookie)).status,404);
+  assert.equal((await f.http('/voice/api/status?phone='+b.phone,b.cookie)).status,200);
+});
+test('Feishu invitations require recipient admission; bind before use, expire/revoke invitation without account delegation',async t=>{
+  const f=await voiceCliFixture();t.after(()=>f.close());
+  const wrong=await f.cli('entries','create','--id','feishu-room','--kind','feishu','--account','unknown','--chat','oc_fixture','--request-id','entry-request-001');assert.equal(wrong.code,5);
+  const made=await f.cli('entries','create','--id','feishu-room','--kind','feishu','--account','default','--chat','oc_fixture','--request-id','entry-request-002');assert.equal(made.code,0);assert.equal(made.value.result.entry.binding.actorVerified,false);
+  assert.equal((await f.cli('entries','bind','--id','feishu-room','--account','default','--chat','oc_second','--request-id','binding-request-001')).code,0);
+  const issued=await issue(f,'feishu-room');const value=issued.value.result.link;
+  const url=new URL((await readFile(value.linkFile,'utf8')).trim());assert.equal(url.hash,'');
+  const redirect=await f.http(url.pathname);assert.equal(redirect.status,302);assert.match(redirect.headers.location,/\/feishu\?phone=feishu_/u);
+  assert.equal((await f.cli('entries','bind','--id','feishu-room','--account','default','--chat','oc_third','--request-id','binding-request-002')).code,6);
+  assert.equal(value.scope.mode,'feishu-invitation');assert.equal(value.scope.personalIdentity,false);
+  await f.cli('links','revoke','--id',value.id,'--request-id','revoke-request-001');assert.equal((await f.http(url.pathname)).status,410);assert.equal(f.calls.length,0);
+});
+test('CLI and server fail closed on invalid args, missing/foreign paths and unsafe output',async t=>{
+  const f=await voiceCliFixture();t.after(()=>f.close());
+  assert.equal((await f.cli('entries','get','--id','does-not-exist')).code,4);
+  assert.equal((await f.cli('status','--socket',join(f.dir,'absent.sock'))).code,3);
+  await create(f);
+  await symlink('/dev/null',join(f.dir,'symlink.url'));
+  assert.equal((await issue(f,'cli-test-room','link-request-001',join(f.dir,'symlink.url'))).code,8);
+  await mkdir(join(f.dir,'public'),{mode:0o755});await chmod(join(f.dir,'public'),0o755);
+  assert.equal((await issue(f,'cli-test-room','link-request-002',join(f.dir,'public','link.url'))).code,2);
+  const records=await f.cli('links','list','--entry','cli-test-room');assert.equal(records.value.result.links.length,1,'unsafe output directory rejected before mutation');
+});
+test('revocation closes only own active fixture call and cancels an in-flight reservation',async t=>{
+  let finish,started;const began=new Promise(r=>started=r),closed=[];
+  const f=await voiceCliFixture({directVoice:{reserve:async()=>{started();return new Promise(r=>finish=r);},close:async id=>closed.push(id)}});t.after(()=>f.close());
+  await create(f);const issued=await issue(f),a=await login(f,issued.value.result.link.linkFile);
+  const pending=f.http('/voice/api/session?phone='+a.phone,a.cookie,{model:'seeduplex'});await began;
+  assert.equal((await f.cli('links','revoke','--id',issued.value.result.link.id,'--request-id','revoke-request-001')).code,0);
+  finish({voiceSessionId:'fixture-only-call',transport:'gateway-relay'});
+  assert.equal((await pending).status,499);assert.deepEqual(closed,['fixture-only-call']);
+});
+test('write failure publishes no authority; concurrent same-ID writes commit only one object',async t=>{
+  const f=await voiceCliFixture();t.after(()=>f.close());
+  const args={id:'concurrent-room',kind:'guest','request-id':'concurrent-entry-001'};
+  const receipts=await Promise.all(Array.from({length:8},()=>f.controller.execute('entries.create',args)));
+  assert.equal(receipts.filter(r=>!r.replayed).length,1);
+  await rename(f.file,f.file+'.saved');await mkdir(f.file);
+  const linkArgs={entry:'concurrent-room',ttl:'600','request-id':'failed-link-001'};
+  await assert.rejects(f.controller.execute('links.create',linkArgs),{code:'STORAGE_UNAVAILABLE'});
+  assert.equal((await f.controller.execute('links.list',{entry:'concurrent-room'})).links.length,0);
+  await rmdir(f.file);await rename(f.file+'.saved',f.file);
+  const retry=await f.controller.execute('links.create',linkArgs);assert.equal(retry.replayed,false);
+  assert.equal((await f.controller.execute('links.list',{entry:'concurrent-room'})).links.length,1);
+});
+test('managed guest uses existing Public gateway only; revoke blocks subsequent tool requests and closes the fixture call',async t=>{
+  let reserved;const closed=[];
+  const f=await voiceCliFixture({directVoice:{reserve:async args=>{reserved=args;return {voiceSessionId:'managed-fixture-call',transport:'gateway-relay'};},close:async id=>closed.push(id)}});t.after(()=>f.close());
+  await create(f);const issued=await issue(f),a=await login(f,issued.value.result.link.linkFile);
+  assert.equal((await f.http('/voice/api/session?phone='+a.phone,a.cookie,{model:'seeduplex'})).status,200);
+  assert.equal(reserved.unidentified,true);assert.equal(reserved.gateway.publicVoice,true);assert.equal(reserved.toolIdentity,undefined);assert.match(reserved.sessionKey,/^voice:guest:/u);
+  await reserved.gateway.request('tools.catalog');assert.equal(f.calls.length,1);
+  await assert.rejects(reserved.gateway.request('send',{}),/unavailable/u);
+  await f.cli('links','revoke','--id',issued.value.result.link.id,'--request-id','revoke-request-001');
+  await assert.rejects(reserved.gateway.request('tools.catalog'),/expired/u);assert.deepEqual(closed,['managed-fixture-call']);
+  assert.equal(f.calls.length,1);
+});

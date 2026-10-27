@@ -24,6 +24,7 @@ names.push('lib/call-summary.mjs','lib/ios-bindings.mjs','lib/conversation-calls
 names.push('lab/gpt-live-h5/caller-context.mjs','lib/feishu-caller-identity.mjs','lab/gpt-live-h5/feishu-client-login.mjs','lib/feishu-actor-gateway.mjs','lib/feishu-conversation-directory.mjs');
 names.push('lab/gpt-live-h5/feishu-confirmation-client.mjs','lib/access-context.mjs','lib/public-voice-gateway.mjs','lab/gpt-live-h5/public-instructions.mjs');
 names.push('lib/backend-device-bundle.mjs','scripts/install-backend-device-bundle.mjs');
+names.push('lib/voice-agent-control.mjs','lib/voice-cli-contract.mjs','bin/v-voice.mjs');
 names.push(...run('ls-files','skills').split('\n').filter(Boolean));
 names.push('lib/terminal-context.mjs','lib/device-requests.mjs','lab/gpt-live-h5/device-location.mjs','scripts/device-call.mjs','skills/device-use/SKILL.md');
 const target=resolve(process.argv[2]??join(root,'artifacts',commit));

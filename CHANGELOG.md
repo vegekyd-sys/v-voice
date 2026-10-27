@@ -1,3 +1,9 @@
+## 2026-10-27 — V Voice CLI candidate (not deployed)
+
+- Add a zero-dependency, discoverable JSON CLI and private Unix control service for managed guest conversations and Feishu login invitations. Support exact binding metadata, bounded expiry, revocation, readback, idempotent retries and private link files.
+- Reuse existing Voice access cookies, Public tools and Feishu actor admission. Temporary guest capabilities cannot become independent long-lived device grants; no personal identity is delegated by an invitation.
+- Candidate validation and production integration requirements are tracked in [CLI guide](docs/voice-cli.md). No main merge, production activation, real calls or external delivery is implied.
+
 ## 2026-10-27 — Calendar consent policy deployed to Voice services
 
 - PR #155 deployed at `7ce20a2` to both Voice nodes; both ready with identical artifact hashes and admission released. Gateway and private configuration retained.
