@@ -1,3 +1,10 @@
+## 2026-10-27 — Platform-free connection preparation overlap (candidate, unreleased)
+
+- Keep Gateway and platform modules unchanged. Coalesce only outstanding same-subject/conversation admission reads in Voice, with a bounded join window and immediate deletion on success/failure; each request receives its own binding.
+- An admitted actor-scoped call starts read-only environment preparation during reservation, overlapping relay handoff. Only that call may consume the one-use snapshot within one second; delayed/failed handoffs read again. Live socket ownership/membership and actual tool authorization still use the existing Gateway checks.
+- No provider connection or microphone starts during this preparation. Closing before attachment cannot open a provider later. Voice 1017, speaker 95 and fleet 11 regressions pass; real phone/provider acceptance remains separate.
+- See [platform-free acceptance](docs/acceptance/no-platform-latency-20261027/acceptance.md). Platform #499 remains a deferred alternative, not a dependency or a required release.
+
 ## 2026-10-27 — Call connection preparation reduction (candidate, unreleased)
 
 - Benchmark against production `b4ed555`: current-release passive connection timings and three live read-only admission/environment probes. These exclude client startup and do not establish end-to-end phone latency.

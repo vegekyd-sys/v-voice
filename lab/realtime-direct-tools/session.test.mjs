@@ -23,8 +23,9 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,...(options.backendDeviceURL?{backendDeviceBundle:{root:'/fixture/backend-device-bundle',sha256:'a'.repeat(64)},backendDeviceBundleProbe:async()=>true}:{}),wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,gateway:options.publicGateway??gateway,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion,nativeDeviceActions:options.nativeDeviceActions,backendDeviceURL:options.backendDeviceURL,terminalAdapter:options.terminalAdapter});
+ const reservation=await service.reserve({model,gateway:options.publicGateway??options.gateway??gateway,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion,nativeDeviceActions:options.nativeDeviceActions,backendDeviceURL:options.backendDeviceURL,terminalAdapter:options.terminalAdapter});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
+ if(options.beforeAttach)await options.beforeAttach({service,reservation,client,peers});
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
  for(let attempt=0;attempt<200&&!client.sent.some(e=>e.type==='ready')&&client.readyState!==3;attempt++)await delay(5);
@@ -1037,6 +1038,58 @@ test('dial loads exact conversation context concurrently with the tool catalog',
  assert(f.client.sent.some(event=>event.type==='ready'));
  const stages=f.audit.filter(event=>event.type==='call.connection-stage').map(event=>event.stage);
  assert(stages.indexOf('context-requested')<stages.indexOf('catalog-ready'));
+});
+
+test('an admitted call prepares while relay handoff waits, without opening a provider before attachment',async t=>{
+ let release,catalogReads=0,contextReads=0;const gate=new Promise(r=>{release=r;});
+ const f=await fixture(undefined,'grok',{actorScoped:true,sessionBound:true,
+  gateway:{request:async()=>{catalogReads++;await gate;return {groups:[]};}},loadContext:async()=>{contextReads++;await gate;return 'Exact handoff context';},
+  beforeAttach:async({peers})=>{await until(()=>contextReads===1);assert.equal(catalogReads,1);assert.equal(peers.length,0);setImmediate(release);}});
+ t.after(()=>f.service.dispose());assert.equal(catalogReads,1);assert.equal(contextReads,1);
+ assert(JSON.stringify(f.upstream.sent).includes('Exact handoff context'));
+});
+
+test('a prepared call snapshot never authorizes a local read after tool-policy revocation',async t=>{
+ let catalogReads=0,contextReads=0,reads=0,tools=['exec'];
+ const f=await fixture(undefined,'grok',{actorScoped:true,sessionBound:true,
+  toolIdentity:{appId:'cli_fixture',openId:'ou_11111111111111111111111111111111'},larkForActor:async()=>({calendar:async()=>{reads++;return {};}}),
+  gateway:{request:async()=>{catalogReads++;return {groups:[{tools:tools.map(id=>({id}))}]};}},loadContext:async()=>{contextReads++;return 'Reserved call context';},
+  beforeAttach:async()=>{await delay(0);tools=[];}});
+ t.after(()=>f.service.dispose());assert.equal(catalogReads,1);assert.equal(contextReads,1);
+ f.call('feishu_calendar',{},'revoked-after-reserve');
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='revoked-after-reserve')));
+ assert.equal(reads,0);assert.equal(catalogReads,2);
+ assert(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='revoked-after-reserve').result.error);
+});
+
+test('a relay delayed beyond the bounded overlap starts fresh environment reads',async t=>{
+ let release,catalogReads=0,contextReads=0;const gate=new Promise(r=>{release=r;});
+ const f=await fixture(undefined,'grok',{actorScoped:true,sessionBound:true,
+  gateway:{request:async()=>{catalogReads++;await gate;return {groups:[]};}},loadContext:async()=>{const read=++contextReads;await gate;return 'Context read '+read;},
+  beforeAttach:async()=>{await delay(1050);setImmediate(release);}});
+ t.after(()=>f.service.dispose());assert.equal(catalogReads,2);assert.equal(contextReads,2);
+ assert(JSON.stringify(f.upstream.sent).includes('Context read 2'));
+});
+
+test('a completed preparation expires before a delayed relay and cannot supply old history or tools',async t=>{
+ let catalogReads=0,contextReads=0,text='Old reserved context',tools=['exec'];
+ const f=await fixture(undefined,'grok',{actorScoped:true,sessionBound:true,
+  gateway:{request:async()=>{catalogReads++;return {groups:[{tools:tools.map(id=>({id}))}]};}},loadContext:async()=>{contextReads++;return text;},
+  beforeAttach:async()=>{await delay(1050);text='Fresh relay context';tools=['web_search'];}});
+ t.after(()=>f.service.dispose());assert.equal(catalogReads,2);assert.equal(contextReads,2);
+ const config=f.upstream.sent.find(v=>v.type==='session.update').session;
+ assert(config.instructions.includes('Fresh relay context'));assert(!config.instructions.includes('Old reserved context'));
+ assert(!config.tools.some(t=>t.name==='exec'));assert(config.tools.some(t=>t.name==='web_search'));
+});
+
+test('closing a reserved call during preparation cannot later open a provider',async t=>{
+ let release,opened=0;const gate=new Promise(r=>{release=r;});
+ class Server {close(){}}
+ class WS {constructor(){opened++;throw Error('No provider before attachment');}}
+ const service=createDirectVoiceService({gateway:{request:()=>gate.then(()=>({groups:[]}))},loadContext:()=>gate.then(()=>''),wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture'}});
+ t.after(()=>service.dispose());const r=await service.reserve({model:'grok',sessionKey:'fixture',actorScoped:true,sessionBound:true});
+ await service.close(r.voiceSessionId);release();await delay(0);
+ assert.equal(opened,0);assert.equal(service.hasSession(r.voiceSessionId),false);
 });
 
 
