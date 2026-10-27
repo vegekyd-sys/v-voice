@@ -5,7 +5,7 @@ import {open,lstat,unlink} from 'node:fs/promises';
 import {realpathSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {CLI_SCHEMA,COMMANDS,capabilities,validateCommand,VoiceCliError} from '../lib/voice-cli-contract.mjs';
+import {CLI_SCHEMA,COMMANDS,capabilities,validateCommand,VoiceCliError,commandGroup,helpResult,renderHelp} from '../lib/voice-cli-contract.mjs';
 
 async function writeSecret(file,value) {
   const path=resolve(file),parent=await lstat(dirname(path));
@@ -16,13 +16,19 @@ async function writeSecret(file,value) {
 }
 export async function runVoiceCli(argv,env=process.env) {
   let parsed;
-  try {parsed=parseArgs({args:argv,allowPositionals:true,strict:true,options:{help:{type:'boolean'},version:{type:'boolean'},json:{type:'boolean'},...Object.fromEntries(['socket','id','entry','kind','account','chat','ttl','out','request-id'].map(k=>[k,{type:'string'}]))}});}
+  try {parsed=parseArgs({args:argv,allowPositionals:true,strict:true,options:{help:{type:'boolean',short:'h'},version:{type:'boolean',short:'v'},json:{type:'boolean'},...Object.fromEntries(['socket','id','entry','kind','account','chat','ttl','out','request-id'].map(k=>[k,{type:'string'}]))}});}
   catch{throw new VoiceCliError('INVALID_ARGUMENT','Invalid command line.','Run v-voice capabilities.');}
   const {values,positionals}=parsed;
   if(values.version)return {schema:CLI_SCHEMA,ok:true,result:{version:capabilities().version}};
   const command=positionals.length===2?positionals.join('.'):positionals[0]??'capabilities';
+  if((positionals.length<=1&&commandGroup(command))||!positionals.length||values.help){
+    if(positionals.length>2||!Object.hasOwn(COMMANDS,command)&&!commandGroup(command))throw new VoiceCliError('UNKNOWN_COMMAND','Unknown command.','Run v-voice --help.');
+    const value={schema:CLI_SCHEMA,ok:true,result:helpResult(command)};
+    if(!values.json)Object.defineProperty(value,'helpText',{value:renderHelp(command)});
+    return value;
+  }
   if(positionals.length>2||!Object.hasOwn(COMMANDS,command))throw new VoiceCliError('UNKNOWN_COMMAND','Unknown command.','Run v-voice capabilities.');
-  if(values.help||command==='capabilities')return {schema:CLI_SCHEMA,ok:true,result:values.help&&command!=='capabilities'?{command,...COMMANDS[command],globalArgs:capabilities().globalArgs}:capabilities()};
+  if(command==='capabilities')return {schema:CLI_SCHEMA,ok:true,result:capabilities()};
   const args=Object.fromEntries(Object.entries(values).filter(([k])=>!['socket','json'].includes(k)));
   validateCommand(command,args);
   // Validate output before the mutation. Atomic exclusive creation still handles races.
@@ -51,6 +57,6 @@ export async function runVoiceCli(argv,env=process.env) {
   return response;
 }
 if(process.argv[1]&&realpathSync(resolve(process.argv[1]))===fileURLToPath(import.meta.url)){
-  try{const value=await runVoiceCli(process.argv.slice(2));process.stdout.write(JSON.stringify(value)+'\n');if(!value.ok)process.exitCode=value.error?.exitCode??7;}
+  try{const value=await runVoiceCli(process.argv.slice(2));process.stdout.write(value.helpText??JSON.stringify(value)+'\n');if(!value.ok)process.exitCode=value.error?.exitCode??7;}
   catch(error){const known=error instanceof VoiceCliError;process.stdout.write(JSON.stringify({schema:CLI_SCHEMA,ok:false,error:known?{code:error.code,message:error.message,next:error.next,exitCode:error.exitCode}:{code:'LOCAL_ERROR',message:'Local command failed.',next:'Check private paths and command arguments.',exitCode:2}})+'\n');process.exitCode=known?error.exitCode:2;}
 }

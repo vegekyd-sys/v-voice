@@ -7,6 +7,7 @@ import {createVoiceAgentControl} from '../lib/voice-agent-control.mjs';
 import {runVoiceCli} from '../bin/v-voice.mjs';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
+import {COMMANDS} from '../lib/voice-cli-contract.mjs';
 const create=(f,id='cli-test-room',request='entry-request-001')=>f.cli('entries','create','--id',id,'--kind','guest','--request-id',request);
 const issue=(f,entry='cli-test-room',request='link-request-001',out=join(f.dir,request+'.url'))=>f.cli('links','create','--entry',entry,'--ttl','600','--request-id',request,'--out',out);
 async function login(f,file){const url=new URL((await readFile(file,'utf8')).trim()),phone=url.searchParams.get('phone'),token=new URLSearchParams(url.hash.slice(1)).get('access');const response=await f.http('/voice/api/access?phone='+phone,'',{access:token});assert.equal(response.status,200);return {url,phone,token,cookie:response.headers['set-cookie'][0].split(';')[0]};}
@@ -18,6 +19,21 @@ test('offline discovery/help/version work before credentials/network and reject 
   await assert.rejects(runVoiceCli(['status','--sessionKey','forged'],{}),{code:'INVALID_ARGUMENT'});
   await assert.rejects(runVoiceCli(['__proto__'],{}),{code:'UNKNOWN_COMMAND'});
   await assert.rejects(runVoiceCli(['links','create','--entry','testroom'],{}),{code:'INVALID_ARGUMENT'});
+});
+test('root, group and command help are readable offline; --json retains structured discovery',async()=>{
+  const execute=promisify(execFile),binary=new URL('../bin/v-voice.mjs',import.meta.url).pathname;
+  const invoke=async args=>(await execute(process.execPath,[binary,...args],{env:{...process.env,V_VOICE_SOCKET:'/nonexistent/voice-help.sock'}})).stdout;
+  const root=await invoke(['--help']);assert.match(root,/用法：v-voice <命令>/u);
+  for(const command of Object.keys(COMMANDS))assert(root.includes(command.replaceAll('.',' ')));
+  assert.equal(await invoke(['-h']),root);assert.equal(await invoke([]),root);
+  const group=await invoke(['links','--help']);assert.match(group,/links create/u);assert.match(group,/links revoke/u);assert(!group.includes('entries create'));
+  assert.equal(await invoke(['links']),group);
+  const command=await invoke(['links','create','--help']);assert.match(command,/--ttl <秒>/u);assert.match(command,/60–86400/u);assert.match(command,/0700/u);assert.match(command,/link-demo-001/u);
+  const machine=JSON.parse(await invoke(['links','create','--help','--json']));assert.equal(machine.result.command,'links.create');assert.equal(machine.result.args.out,'required:local-path');assert.equal(machine.helpText,undefined);
+  assert.equal(Object.keys(JSON.parse(await invoke(['links','--help','--json'])).result.commands).length,5);
+  const discovery=JSON.parse(await invoke(['capabilities']));assert.equal(Object.keys(discovery.result.commands).length,Object.keys(COMMANDS).length);
+  for(const name of Object.keys(COMMANDS))assert((await runVoiceCli([...name.split('.'),'--help'],{})).helpText.length>0);
+  await assert.rejects(runVoiceCli(['links','unknown','--help'],{}),{code:'UNKNOWN_COMMAND'});
 });
 test('npm-style executable symlink invokes the CLI rather than silently importing it',async t=>{
   const f=await voiceCliFixture();t.after(()=>f.close());

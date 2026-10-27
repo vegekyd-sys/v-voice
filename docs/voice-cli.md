@@ -21,6 +21,8 @@
 
 ```sh
 node bin/v-voice.mjs capabilities
+node bin/v-voice.mjs --help
+node bin/v-voice.mjs links --help
 node bin/v-voice.mjs links create --help
 ```
 
@@ -50,7 +52,9 @@ VOICE_CLI_SOCKET=/absolute/private-run/voice-cli.sock
 
 ## 命令与完成凭证
 
-`capabilities` 返回完整 JSON 参数规范，无需网络/凭据。所有命令始终输出一行 `{"schema":"v-voice-cli/v1","ok":true,"result":...}`；失败输出 `ok:false,error:{code,message,next,exitCode}`，错误也走 stdout，便于 Agent 直接消费。`--json` 可显式写出，但并非必需。`--help` 在连接前返回。
+`--help` / `-h` 默认显示中文可读帮助，包含命令表、用法、必填/可选参数、范围、示例和退出码。支持根级 `v-voice --help`、分组 `v-voice links --help`、单命令 `v-voice links create --help`；不带命令或仅输入分组时也显示对应帮助，无需网络/凭据。`--help --json` 保留结构化帮助，`capabilities` 始终返回完整 JSON 参数规范。
+
+实际操作与错误始终输出一行 `{"schema":"v-voice-cli/v1","ok":true,"result":...}`；失败输出 `ok:false,error:{code,message,next,exitCode}`，错误也走 stdout，便于 Agent 直接消费。`--json` 可显式写出，但操作结果不依赖这个参数。帮助在连接前返回。
 
 | 命令 | 用途 |
 | --- | --- |

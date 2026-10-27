@@ -3,7 +3,7 @@ name: voice-cli
 description: Use the V Voice CLI to manage isolated conversation entries, Feishu login invitations, scoped guest links, expiry and revocation. Use when asked to operate V Voice; does not manage Gateway policy or deploy services.
 ---
 
-Run `v-voice capabilities` to discover commands, arguments, limits and exit codes. Run a command with `--help` for its schema. stdout is always one JSON envelope; check `ok` and the process exit code.
+Run `v-voice capabilities` to discover commands, arguments, limits and exit codes as JSON. `--help` / `-h` shows readable Chinese help at root, group and command levels; append `--json` for its structured schema. Operational stdout and errors remain one JSON envelope; check `ok` and the process exit code.
 
 `V_VOICE_SOCKET` selects the existing Voice service's private Unix control socket. The OS identity with access to that socket manages only CLI-owned objects. There is no Gateway token, browser credential or account impersonation parameter. `v-voice doctor` reports the configured account and effective guest capability mode. If unavailable, inspect configuration; do not deploy, restart or change permissions unless authorized for the current task.
 
