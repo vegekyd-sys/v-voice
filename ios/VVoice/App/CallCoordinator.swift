@@ -1199,33 +1199,35 @@ import VVoiceCore
         finishActivity(phase: .failed)
         if let id = voiceID {
             voiceID = nil
-            closing = Task {
-                let background = CallCleanupTime()
-                defer { background.end() }
-                if (try? await self.api.call("close", body: ["voiceSessionId": id], refresh: false)) != nil, self.api.record?.pendingVoiceID == id { try? self.api.rememberCall(nil) }
-            }
+            closeCallInBackground(id)
+        }
+    }
+    private func closeCallInBackground(_ id: String) {
+        guard let saved = api.record else { return }
+        let background = CallCleanupTime()
+        closing = Task {
+            defer { background.end() }
+            // Keep this call's binding even if the user removes it before the task starts.
+            // Failed cleanup stays persisted and is retried before the next dial.
+            try? await api.closeCall(id, using: saved)
         }
     }
     func end() async {
         guard phase != .ending else { return }
         guard active || voiceID != nil else { return }
         recovery?.cancel(); recovery = nil; recoveryDeadline?.cancel(); recoveryDeadline = nil
-        let background = CallCleanupTime()
-        defer { background.end() }
         avatar.end()
-        let owner = state.finish(.ending); stopMedia(); detail = "正在安全结束通话"; publish()
+        state.finish(.ended); stopMedia()
         CallDiagnostics.record("call.end")
         let id = voiceID; voiceID = nil
-        finishActivity(phase: .ended)
-        if let id {
-            do { _ = try await api.call("close", body: ["voiceSessionId": id], refresh: false); if api.record?.pendingVoiceID == id { try api.rememberCall(nil) } }
-            catch { /* Persisted ID is retried before the next dial. */ }
-        }
-        guard state.generation == owner else { return }
         captionUpdate?.cancel(); captionUpdate = nil
         conversation.reset(); documents.removeAll(); tasks.removeAll()
-        state.finish(.ended); lastCaption = ""; resultText = ""; resultID = nil; detail = "通话已结束，麦克风已关闭"
+        lastCaption = ""; resultText = ""; resultID = nil; detail = "通话已结束，麦克风已关闭"
+        publish(); finishActivity(phase: .ended)
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        // Local media and presentation are finished before any network work.
+        // Ending a redial that is still waiting must retain the older cleanup task.
+        if let id { closeCallInBackground(id) }
     }
     private func beginActivity(required: Bool) throws {
         guard activitiesEnabled else { if required { throw VoiceError.liveActivity }; return }
