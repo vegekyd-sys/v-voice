@@ -1,3 +1,10 @@
+## 2026-10-27 — Voice entry and CLI deployed
+
+- PRs #158, #160, #163, #164 and #165 merged through #167 and deployed at `b4ed555` to both Voice nodes. Main CI passed; matching artifacts, readiness, admission release and unchanged Gateway identity verified.
+- V CLI 0.1.0 and the model-visible voice-cli skill installed. Production HTTPS guest authorization/revocation and access boundaries passed; test grant revoked and entry disabled.
+- Production logged-in homepage, two-model menu, App binding sheet, visible changelog and immutable code/no-store identity caching verified. No real voice calls, native binary/firmware update or physical App installation acceptance.
+- [Production receipt](docs/releases/voice-release-20261027/release.md).
+
 ## 2026-10-27 — Voice entry and CLI release preparation
 
 - Integrate approved PRs #158, #160, #163, #164 and #165. Production phone catalog hides Grok, entry bootstrap and code caching improve repeat loading, hangup restores local UI immediately, and the App handoff includes TestFlight fallback.
