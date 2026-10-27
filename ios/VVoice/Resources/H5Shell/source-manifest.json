@@ -1,6 +1,6 @@
 {
   "sources": {
-    "index.html": "7ce196055fbb3084987952fabdb26aa48d630576088c6e841abce4bf79756337",
+    "index.html": "9e07ebba958bc73fe5a6153aae869e8ed26f999e79ce09bd9aedd44dd1b6abb5",
     "styles.css": "2a19aa68afa7cb171db65bcca93960ba5b1b910d80e77c07b98712d7d225b8d4",
     "ui/call-ui.jsx": "268f2e14c6f784997270d3e53b1b4f7897d8ac5a9da46cefb08556a6a8efd033",
     "ui-bundle.mjs": "c72fa65976c23686878174c79d83b61b5d4b6c45819bf89633fd547cbbcdc77f",
@@ -8,7 +8,7 @@
     "content-view.mjs": "c754e537248cf95efbff9d810d61f82da13fc3c8cbec42bca02e7928906de743",
     "markdown.mjs": "a556476a8a88b35aba790f993a8bde333150aebab9dc7fdce14aa2e3c586ace0",
     "media-references.mjs": "ca8509fad6ef83f83f9365432652058e1a364b5adb1a199508d3239521d581f8",
-    "changelog.mjs": "fb111288787eb0c3e4166eab33375a4648bc4b029eaa9faa102fd8463be9f8a2",
+    "changelog.mjs": "ee0c0d32ca3ce2b791f71890a63d9f335f92d6fc751aafc1d159b33c0fbd1189",
     "avatar.mjs": "65ea1485a75d69816e2cb408b508716f151e7d33b9a8957af5a3d0f55e360df7",
     "avatar-reactions.mjs": "69880767130ffc0ff6adcecd6e4ea13b65073def959ce9a5189ab8806f9f1b1e",
     "avatar-telemetry.mjs": "236b9d6e5ad67009d83347f72002b69b01f3c5e7eb71bdde7d4166d59c9b254c",
@@ -131,7 +131,7 @@
   },
   "outputs": {
     "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
-    "native-h5.js": "5195e11214f21c4e64580cd078879a7b50647221d403827173ff4496a78a58ec",
+    "native-h5.js": "aa4f6d98934c9bd3dd384178128e04097c707bd2cd8a855b1fdbc1d428c35797",
     "comparison.html": "7beb6c5d3e5933b5c020ddf23e200679318faa98568904f927d0553ea3d33076",
     "styles.css": "2a19aa68afa7cb171db65bcca93960ba5b1b910d80e77c07b98712d7d225b8d4",
     "comparison.css": "ae9fbcffb322e32737e2ce0ed830c1b86f9f27406b4ce8b686dc8cac9f36ba16",

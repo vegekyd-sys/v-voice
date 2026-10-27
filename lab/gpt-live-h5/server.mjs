@@ -43,6 +43,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
   const hosted = Boolean(publicOrigin || accessToken);
+  let browserBundleWork;
+  const browserBundle = () => browserBundleWork ??= readFile(join(here,'app-bundle.mjs')).then(bytes=>({
+    bytes,revision:createHash('sha256').update(bytes).digest('hex'),
+  }));
   const backendReady = () => !preview && gateway?.ready !== false;
   const origin = hosted ? new URL(publicOrigin) : null;
   if (hosted && (origin.protocol !== "https:" || origin.origin !== publicOrigin || !basePath)) throw new Error("Hosted voice requires an HTTPS origin and base path");
@@ -559,6 +563,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ["/entry-startup.mjs", [join(here, "entry-startup.mjs"), "text/javascript; charset=utf-8"]],
         ["/model-options.mjs", [join(here, "model-options.mjs"), "text/javascript; charset=utf-8"]],
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
+        ["/app-bundle.mjs", [join(here, "app-bundle.mjs"), "text/javascript; charset=utf-8"]],
         ["/feishu-client-login.mjs", [join(here, "feishu-client-login.mjs"), "text/javascript; charset=utf-8"]],
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
@@ -574,7 +579,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (req.method === "GET" && staticFiles.has(pathname)) {
         if (pathname === "/" && !hosted) res.setHeader("set-cookie", `v_live_experiment=${cookie}; HttpOnly; SameSite=Strict; Path=/`);
         const [file, type] = staticFiles.get(pathname);
-        let contents = await readFile(file);
+        const bundled = pathname === '/app-bundle.mjs' ? await browserBundle() : null;
+        let contents = bundled?.bytes ?? await readFile(file);
         if (pathname === "/") {
           // The first frame needs this CSS, so return the exact release bytes
           // in the HTML instead of requiring another mobile-network round trip.
@@ -591,9 +597,14 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
             const initial = JSON.stringify(entrySnapshot(binding,req)).replaceAll("<", "\\u003c");
             html = html.replace('<script type="module" src="./app.js"></script>', `<script type="application/json" id="voiceEntryStatus">${initial}</script><script type="module" src="./app.js"></script>`);
           }
+          // Only public application code is cacheable. HTML, inline account
+          // status, login/SDK exchanges and every API keep their existing gate
+          // and no-store policy. A new artifact gets a new bundle URL.
+          const {revision}=await browserBundle();
+          html=html.replaceAll('./app.js',`./app-bundle.mjs?v=${revision}`);
           contents = Buffer.from(html);
         }
-        res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
+        res.writeHead(200, { "content-type": type, "cache-control": bundled && url.searchParams.get("v") === bundled.revision ? "private, max-age=31536000, immutable" : pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
       }
       if(binding.permissionProfile==='unidentified'&&!new Set(['/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke']).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
       const readBody = async () => {

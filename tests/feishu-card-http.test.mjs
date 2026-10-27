@@ -68,6 +68,23 @@ test('resuming a card-confirmed browser still checks live membership and fails c
  assert.equal(f.jar.get('v_feishu_phone'),'');
 });
 
+test('cached browser code carries no account status and never caches membership admission',async t=>{
+ const f=await fixture(t);await f.login();
+ const page=await f.send('/feishu?phone='+phone);
+ assert.equal(page.headers['cache-control'],'no-store');
+ const path=page.text.match(/src="\.\/(app-bundle\.mjs\?v=[a-f0-9]{64})"/)?.[1];assert(path);
+ const code=await f.send('/'+path);assert.equal(code.status,200);
+ assert.match(code.headers['cache-control'],/private.*immutable/);
+ assert(!code.text.includes('外部测试成员')&&!code.text.includes('oc_group')&&!code.text.includes('ou_external'));
+ const before=f.rpc.filter(r=>r.method==='voice.feishu.resolve').length;
+ assert.equal((await f.send('/api/status?phone='+phone)).json().accountLabel,'外部测试成员');
+ assert.equal(f.rpc.filter(r=>r.method==='voice.feishu.resolve').length,before+1);
+ f.deny();const denied=await f.send('/api/status?phone='+phone);
+ assert.equal(denied.headers['cache-control'],'no-store');assert.equal(denied.json().accountLabel,undefined);
+ assert.equal(denied.json().unidentified,true);
+ assert.equal(f.reservations.length,0);
+});
+
 test('card login survives a new server instance but expires after its original 30 days',async t=>{
  const first=await fixture(t);await first.login();
  const restarted=await fixture(t);for(const [key,value] of first.jar)restarted.jar.set(key,value);

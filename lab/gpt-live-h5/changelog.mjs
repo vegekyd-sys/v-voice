@@ -8,6 +8,16 @@ export const GROK_VISIBILITY_CANDIDATE_UPDATE = {
   ],
 };
 
+export const ENTRY_LATENCY_CANDIDATE_UPDATE = {
+  version:'voice-entry-latency.20261027.1',date:'2026-10-27',
+  title:'电话进入速度优化（Candidate）',status:'candidate-validation',
+  items:[
+    '电话页优先开始飞书身份确认，缩短等待页面程序加载的时间。',
+    '重复进入复用相同版本的页面程序；账号、会话和成员资格仍逐次核验。',
+    '仅隔离候选验证，尚未上线；真实手机与飞书客户端速度另验。',
+  ],
+};
+
 export const FEISHU_LOGIN_PERSISTENCE_CANDIDATE_UPDATE = {
   version:'voice-feishu-login-persistence.20261026.1',date:'2026-10-26',
   title:'外部账号登录保持与身份切换（Candidate）',status:'candidate-validation',

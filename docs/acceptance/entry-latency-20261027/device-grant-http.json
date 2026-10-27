@@ -1,0 +1,188 @@
+[
+  {
+    "surface": "baseline",
+    "port": 28735,
+    "n": 0,
+    "timing": {
+      "ttfbMs": 725.1,
+      "fcpMs": 808,
+      "marks": [
+        {
+          "name": "voice.entry.start",
+          "ms": 1532.8
+        },
+        {
+          "name": "voice.status.start",
+          "ms": 1533.5
+        },
+        {
+          "name": "voice.status.inline",
+          "ms": 1533.5
+        },
+        {
+          "name": "voice.status.complete",
+          "ms": 1533.5
+        },
+        {
+          "name": "voice.dial.ready",
+          "ms": 1541.3
+        }
+      ]
+    }
+  },
+  {
+    "surface": "baseline",
+    "port": 28735,
+    "n": 1,
+    "timing": {
+      "ttfbMs": 708.8,
+      "fcpMs": 828,
+      "marks": [
+        {
+          "name": "voice.entry.start",
+          "ms": 1566.5
+        },
+        {
+          "name": "voice.status.start",
+          "ms": 1566.7
+        },
+        {
+          "name": "voice.status.inline",
+          "ms": 1566.8
+        },
+        {
+          "name": "voice.status.complete",
+          "ms": 1566.8
+        },
+        {
+          "name": "voice.dial.ready",
+          "ms": 1572.1
+        }
+      ]
+    }
+  },
+  {
+    "surface": "baseline",
+    "port": 28735,
+    "n": 2,
+    "timing": {
+      "ttfbMs": 781.6,
+      "fcpMs": 1244,
+      "marks": [
+        {
+          "name": "voice.entry.start",
+          "ms": 1974.6
+        },
+        {
+          "name": "voice.status.start",
+          "ms": 1975
+        },
+        {
+          "name": "voice.status.inline",
+          "ms": 1975.1
+        },
+        {
+          "name": "voice.status.complete",
+          "ms": 1975.1
+        },
+        {
+          "name": "voice.dial.ready",
+          "ms": 1991.1
+        }
+      ]
+    }
+  },
+  {
+    "surface": "candidate",
+    "port": 28736,
+    "n": 0,
+    "timing": {
+      "ttfbMs": 756.8,
+      "fcpMs": 824,
+      "marks": [
+        {
+          "name": "voice.entry.start",
+          "ms": 959.6
+        },
+        {
+          "name": "voice.status.start",
+          "ms": 962.4
+        },
+        {
+          "name": "voice.status.inline",
+          "ms": 962.5
+        },
+        {
+          "name": "voice.status.complete",
+          "ms": 962.5
+        },
+        {
+          "name": "voice.dial.ready",
+          "ms": 984
+        }
+      ]
+    }
+  },
+  {
+    "surface": "candidate",
+    "port": 28736,
+    "n": 1,
+    "timing": {
+      "ttfbMs": 714.4,
+      "fcpMs": 864,
+      "marks": [
+        {
+          "name": "voice.entry.start",
+          "ms": 973.6
+        },
+        {
+          "name": "voice.status.start",
+          "ms": 973.9
+        },
+        {
+          "name": "voice.status.inline",
+          "ms": 973.9
+        },
+        {
+          "name": "voice.status.complete",
+          "ms": 973.9
+        },
+        {
+          "name": "voice.dial.ready",
+          "ms": 978.8
+        }
+      ]
+    }
+  },
+  {
+    "surface": "candidate",
+    "port": 28736,
+    "n": 2,
+    "timing": {
+      "ttfbMs": 720,
+      "fcpMs": 776,
+      "marks": [
+        {
+          "name": "voice.entry.start",
+          "ms": 887.2
+        },
+        {
+          "name": "voice.status.start",
+          "ms": 887.4
+        },
+        {
+          "name": "voice.status.inline",
+          "ms": 887.5
+        },
+        {
+          "name": "voice.status.complete",
+          "ms": 887.5
+        },
+        {
+          "name": "voice.dial.ready",
+          "ms": 892.2
+        }
+      ]
+    }
+  }
+]
