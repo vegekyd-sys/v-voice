@@ -1,0 +1,55 @@
+{
+  "schema": "v-voice-feishu-bottom-entry-research-v1",
+  "observedDate": "2026-10-27",
+  "timezone": "Asia/Shanghai",
+  "mode": "read-only-research",
+  "voiceMain": "002313bd66978dc188b5fea898cb0a1a633f8cc9",
+  "platformSourceInspected": "d4486e724425da80adac335e8c2dd327cb5fd047",
+  "webRuntime": {
+    "method": "ssh v; systemd working directory and authenticated Unix socket GET /status",
+    "commit": "7ce20a2de22bedba1cc32086d5f832a44539cd8c",
+    "filesSha256": "720fbf7a4960144a742c314465dd4d39e7aee86cf9b830efa9e2f4f751f5b1af",
+    "ready": true,
+    "pidMatches": true,
+    "admissionHeld": false
+  },
+  "devicesRuntime": "Not re-probed in this task; see existing 2026-10-27 release verification receipt",
+  "gptLiveRuntime": "No activation in this task; existing release records source merged but Gateway artifact unchanged",
+  "developerConsole": {
+    "application": "production enterprise custom app; matched server-side configured app",
+    "changesPublished": true,
+    "botMenuEnabled": false,
+    "observation": "Opened existing menu settings, observed off selected, cancelled without saving"
+  },
+  "samples": [
+    {
+      "kind": "dm",
+      "infoCode": 0,
+      "chatMode": "p2p",
+      "external": false,
+      "surfaceCode": 0,
+      "phoneItemCount": 1,
+      "builtIn": true,
+      "target": {"path": "/voice/feishu", "phoneParam": true, "sidebar": false}
+    },
+    {
+      "kind": "group",
+      "infoCode": 0,
+      "chatMode": "group",
+      "external": false,
+      "surfaceCode": 0,
+      "phoneItemCount": 1,
+      "commonUrl": {"path": "/voice/feishu", "phoneParam": true, "sidebar": false},
+      "pcUrl": {"path": "/voice/feishu", "phoneParam": true, "sidebar": true}
+    }
+  ],
+  "externalMenuRendering": "not tested",
+  "businessWrites": 0,
+  "appConfigSaves": 0,
+  "appReleases": 0,
+  "serviceRestarts": 0,
+  "liveCalls": 0,
+  "paidModelRequests": 0,
+  "sentMessages": 0,
+  "secretsAndConversationIdentifiers": "omitted"
+}
