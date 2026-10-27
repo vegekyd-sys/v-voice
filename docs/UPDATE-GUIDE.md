@@ -122,7 +122,7 @@ build 32 / `af6c0da` 是用户明确保留的连续播放与正常打断回归�
 ### Voice 日常发布
 
 1. 发布前更新用户可见 `lab/gpt-live-h5/changelog.mjs` 的正式 `VOICE_UPDATES`、`CHANGELOG.md` 与版本登记。Candidate 项不能混入正式历史；文档指南变更不伪装成新产品功能发布。
-2. H5 修改后运行 `npm run build:ios-shell` 或所需 `npm run build:ui`，检查生成差异并一并提交。特别核对 `ios/VVoice/Resources/H5Shell/native-h5.js`、`source-manifest.json` 和 `lab/gpt-live-h5/ios-shell-release.json`；漏交生成物会使源码、包与 CI 不一致。
+2. H5 修改后运行 `npm run build:ui`，同步网页 `app-bundle.mjs` 和 iOS 共用 H5 资源，检查生成差异并一并提交。只有原生壳适配修改时可单独运行 `npm run build:ios-shell`。特别核对 `ios/VVoice/Resources/H5Shell/native-h5.js`、`source-manifest.json` 和 `lab/gpt-live-h5/ios-shell-release.json`；漏交生成物会使源码、包与 CI 不一致。网页 bundle 以内容 hash 更新缓存地址，身份入口与 API 始终不缓存。
 3. 通过相称测试以及发布必需检查：
 
    ```sh

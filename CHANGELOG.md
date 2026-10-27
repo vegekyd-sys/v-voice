@@ -1,3 +1,9 @@
+## 2026-10-27 — Phone entry latency (candidate, unreleased)
+
+- Prebuild the browser call engine and prioritize its independent Feishu identity bootstrap. Cache only content-versioned application code; HTML, identity exchanges, API status and membership checks retain their existing authorization and no-store behavior.
+- Controlled browser comparison: Feishu first/return paths improve by about 25–27%, and an authenticated external-browser revisit by about 42%. These are local simulated-service measurements, not production phone acceptance.
+- Candidate homepage notes and validation: [entry latency](docs/acceptance/entry-latency-20261027/acceptance.md). No production, Gateway, native App, firmware or model-list change.
+
 ## 2026-10-27 — Calendar consent policy deployed to Voice services
 
 - PR #155 deployed at `7ce20a2` to both Voice nodes; both ready with identical artifact hashes and admission released. Gateway and private configuration retained.
