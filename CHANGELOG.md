@@ -658,6 +658,8 @@ The earlier accepted task-continuity baseline uses Voice `a9ac5168` and the plat
 
 ## 2026-10-27 — Combined connection and audio release
 
+- Deployed at `7baa878` through #171 to both Voice nodes after main CI passed. Three actual desktop Feishu calls connected and ended; dial-to-connected median 4.862 s. Homepage changelog and HTTPS artifact parity verified; Gateway identity/private configuration preserved. See [production receipt](docs/releases/voice-combined-release-20261027/release.md).
+
 - Integrate Voice-only startup preparation from #169, the shared GPT `webrtc` response correction, and bounded server audio-delivery diagnostics. No Gateway restart or platform update, native binary or firmware change.
 - Fix the AudioWorklet syntax error discovered in a real Feishu call: minification serializes the queue as an anonymous class. Bind the serialized expression explicitly inside the worklet and exercise minified microphone/playback processors in regression.
 - Candidate suite: 1,023 Voice, 95 speaker and 11 fleet checks. Earlier candidate records below remain historical; physical native audio and Action Button changes are excluded.
