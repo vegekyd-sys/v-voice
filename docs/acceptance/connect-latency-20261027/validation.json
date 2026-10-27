@@ -1,0 +1,20 @@
+{
+  "baseProductionCommit": "b4ed555cd3171534a9a57067b5bb8a1936ba0a34",
+  "voiceTests": 1009,
+  "voiceFailed": 0,
+  "speakerTests": 95,
+  "fleetTests": 11,
+  "buildUi": "passed",
+  "iosShellCheck": "passed",
+  "nativeSourcesChanged": false,
+  "actualProviderOrPhoneCallTested": false,
+  "productionChanged": false,
+  "sourceSha256": {
+    "lab/gpt-live-h5/server.mjs": "6e8fbb3c981e8478f29ce8c9d671cbb208494cedf1713f954c502f15de323aae",
+    "lab/realtime-direct-tools/session.mjs": "52a683a918168769c7c11a276a7dbe4659e13aec3067781ab9d1adfb00629e32",
+    "lab/realtime-direct-tools/lark-readonly.mjs": "037ec5a985e7e9ae739bb49328819376195218d8e43250cc0071fc1f8d672466",
+    "lab/realtime-direct-tools/transcript-log.mjs": "1fc073d015c0f77a58a962431a080d2150bafdaeea6f8437f9107d66f10ec0c1",
+    "lab/gpt-live-h5/entry-bootstrap.js": "052d97335f158120852068f0beccc5a555548f8d32f2d3d3646fbe0ff34cbc1d",
+    "lab/gpt-live-h5/app-bundle.mjs": "c0da319c62d1888800ae7f0459b09a96488406c69f094c82150a32934271c2fd"
+  }
+}

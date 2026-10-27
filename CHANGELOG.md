@@ -1,3 +1,10 @@
+## 2026-10-27 — Call connection preparation reduction (candidate, unreleased)
+
+- Benchmark against production `b4ed555`: current-release passive connection timings and three live read-only admission/environment probes. These exclude client startup and do not establish end-to-end phone latency.
+- Prepare the actor's local read accessor without running CLI identity probes before connection. Validate the installed guard, app and user before every actual read, alongside the existing live Gateway tool-policy check; never use the service owner's account as fallback.
+- Connect the speech model and auxiliary interruption lane concurrently, retaining the requirement that both succeed before ready and closing both on failure. Controlled replay with fixed 650/800/600/200ms dependencies: 1605→1405ms median. No claim of physical audio acceptance.
+- Add monotonic connection-stage diagnostics. Platform chat/member read parallelism has separate owning-repository changes and live read-only API A/B evidence. See [connection acceptance](docs/acceptance/connect-latency-20261027/acceptance.md).
+
 ## 2026-10-27 — Further startup latency reduction (candidate, unreleased)
 
 - Deliver the independent identity bootstrap in the HTML, avoiding a network module round trip before Feishu SDK initialization. The call bundle shares the same startup promise and cannot exchange identity twice.

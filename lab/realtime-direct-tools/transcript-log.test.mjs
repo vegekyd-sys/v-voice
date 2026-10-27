@@ -68,13 +68,25 @@ test('connection profiling persists only known stages for the reserved call owne
   const f=await fixture(t);f.created();
   assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'foreign',stage:'provider-ready'}),false);
   assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'v1',stage:'arbitrary SECRET'}),false);
-  for(const stage of ['catalog-requested','catalog-ready','context-requested','context-ready','provider-connecting','provider-ready']){
-    f.tick(10);assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'v1',stage,token:'SECRET',text:'SECRET'}),true);
+  const stages=['catalog-requested','catalog-ready','context-requested','context-ready','actor-reader-requested','actor-reader-ready','provider-connecting','model-ready','speech-control-connecting','speech-control-ready','provider-ready'];
+  for(const [index,stage] of stages.entries()){
+    f.tick(10);assert.equal(f.log.audit({type:'call.connection-stage',voiceSessionId:'v1',stage,elapsedMs:index*10,token:'SECRET',text:'SECRET'}),true);
   }
   await f.log.close();const rows=await f.rows();
-  assert.equal(rows.filter(r=>r.type==='call.connection-stage').length,6);
+  const profiling=rows.filter(r=>r.type==='call.connection-stage');
+  assert.equal(profiling.length,stages.length);
+  assert.deepEqual(profiling.map(r=>r.elapsedMs),stages.map((_,i)=>i*10));
   assert(!JSON.stringify(rows).includes('SECRET'));
   assert(rows.every(r=>r.sessionKey==='personal'));
+});
+
+test('admission profiling accepts only scalar timings for an existing call',async t=>{
+ const f=await fixture(t);f.created();
+ assert.equal(f.log.audit({type:'call.admission-timing',voiceSessionId:'foreign',resolveMs:123}),false);
+ f.log.audit({type:'call.admission-timing',voiceSessionId:'v1',resolveMs:123,verificationMs:0,previousCloseMs:2,reservationMs:-1,toReservationMs:150,token:'SECRET',identity:'SECRET'});
+ await f.log.close();const rows=await f.rows(),row=rows.find(r=>r.type==='call.admission-timing');
+ assert.equal(row.resolveMs,123);assert.equal(row.verificationMs,0);assert.equal(row.previousCloseMs,2);assert.equal(row.toReservationMs,150);assert.equal(row.reservationMs,undefined);
+ assert(!JSON.stringify(rows).includes('SECRET'));
 });
 
 test('post-hangup delivery receipt survives without accepting late transcript or protocol',async t=>{

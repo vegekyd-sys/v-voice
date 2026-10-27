@@ -314,12 +314,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   async function start(s,client) {
     s.client=client;
     client.on('close',()=>void close(s.id).catch(()=>{}));
-    const connectionStage=stage=>audit({type:'call.connection-stage',voiceSessionId:s.id,model:s.model,stage});
+    const connectionStartedAt=performance.now();
+    const connectionStage=stage=>audit({type:'call.connection-stage',voiceSessionId:s.id,model:s.model,stage,elapsedMs:Math.round(performance.now()-connectionStartedAt)});
     connectionStage('catalog-requested');connectionStage('context-requested');
     const [catalog,context,actorReader]=s.publicVoice?[await s.gateway.request('tools.catalog',{}),'',null]:s.unidentified?[{groups:[]},'']:await Promise.all([
       s.gateway.request('tools.catalog',{agentId:s.agentId,includePlugins:true},{timeoutMs:20000}).then(value=>{if(current(s))connectionStage('catalog-ready');return value;}),
       Promise.resolve().then(()=>loadContext(s.sessionKey,{gateway:s.gateway})).then(value=>{if(current(s))connectionStage('context-ready');return value;}),
-      s.toolIdentity&&larkForActor?Promise.resolve().then(()=>larkForActor(s.toolIdentity)).catch(()=>null):null,
+      s.toolIdentity&&larkForActor?Promise.resolve().then(()=>{connectionStage('actor-reader-requested');return larkForActor(s.toolIdentity);}).then(value=>{if(current(s))connectionStage('actor-reader-ready');return value;}).catch(()=>null):null,
     ]);
     if(!current(s))return;
     const entries=(catalog.groups??[]).flatMap(g=>g.tools??[]),allowedTools=new Set(entries.map(t=>t.id));
@@ -556,16 +557,28 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       }catch{client.close(1008);}
     });
     connectionStage('provider-connecting');
-    if(s.unidentified||!speakerRouting?.lazyNative?.(s.id))await s.bridge.connect();
-    if(s.nativeDuplex&&nativePlaybackPolicy!=='provider'&&nativeInterrupt&&current(s)){
-      s.interruptDetector=nativeInterrupt({inputSampleRate:s.inputSampleRate,
-        isSpeaking:()=>current(s)&&Boolean(s.playing||s.bridge.responseActive),
-        getResponseId:()=>current(s)?s.bridge.audioResponseId:null,
-        onInterrupt:()=>{if(!current(s))return;s.lastUserAt=Date.now();s.bridge.handleBargeIn({confirmed:true});audit({type:'speech.control',voiceSessionId:s.id,stage:'interrupted'});},
-        onStatus:stage=>audit({type:'speech.control',voiceSessionId:s.id,stage})});
-      await s.interruptDetector.connect();
-      if(!current(s)){s.interruptDetector.close();return;}
-    }
+    const connectModel=async()=>{
+      if(s.unidentified||!speakerRouting?.lazyNative?.(s.id))await s.bridge.connect();
+      if(current(s))connectionStage('model-ready');
+    };
+    const connectSpeechControl=async()=>{
+      if(s.nativeDuplex&&nativePlaybackPolicy!=='provider'&&nativeInterrupt&&current(s)){
+        connectionStage('speech-control-connecting');
+        s.interruptDetector=nativeInterrupt({inputSampleRate:s.inputSampleRate,
+          isSpeaking:()=>current(s)&&Boolean(s.playing||s.bridge?.responseActive),
+          getResponseId:()=>current(s)?s.bridge.audioResponseId:null,
+          onInterrupt:()=>{if(!current(s))return;s.lastUserAt=Date.now();s.bridge.handleBargeIn({confirmed:true});audit({type:'speech.control',voiceSessionId:s.id,stage:'interrupted'});},
+          onStatus:stage=>audit({type:'speech.control',voiceSessionId:s.id,stage})});
+        await s.interruptDetector.connect();
+        if(!current(s)){s.interruptDetector.close();return;}
+        connectionStage('speech-control-ready');
+      }
+    };
+    // Both lanes must be ready before the client can send microphone audio.
+    // Starting them together removes a serial handshake without weakening the
+    // existing speech-control readiness or failure/cleanup requirements.
+    await Promise.all([connectModel(),connectSpeechControl()]);
+    if(!current(s))return;
     if(current(s)&&!s.unidentified&&speakerRouting?.has(s.id))await speakerRouting.bind(s.id,{
       greet:()=>s.bridge.triggerGreeting(),
       forward:audio=>s.bridge.sendAudio(audio),context:text=>s.bridge.sendUserMessage(text),clarify:(text,options)=>s.bridge.speakProgress(text,{caption:true,...options}),interrupt:()=>s.bridge.handleBargeIn(),

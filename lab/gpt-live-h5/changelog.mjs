@@ -9,11 +9,12 @@ export const GROK_VISIBILITY_CANDIDATE_UPDATE = {
 };
 
 export const STARTUP_LATENCY_CANDIDATE_UPDATE = {
-  version:'voice-startup-latency.20261027.1',date:'2026-10-27',
+  version:'voice-startup-latency.20261027.2',date:'2026-10-27',
   title:'飞书进入与 App 拨号减少等待（Candidate）',status:'candidate-validation',
   items:[
     '飞书身份准备直接随首页加载，减少开始识别账号前的网络等待。',
     '网页与 App 拨号复用同一次请求刚完成的会话核验，减少重复等待；新请求仍重新核验。',
+    '语音连接与打断检测并行准备，两者就绪后才接通；飞书只读工具在实际使用时检查授权。',
     '仅隔离候选验证，真实手机与 Action Button 接通时间仍待实测，尚未上线。',
   ],
 };

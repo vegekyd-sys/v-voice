@@ -94,15 +94,17 @@ export function createVoiceLarkReader({environment=process.env,binary='lark-cli'
     async forActor(actor){
       if(!actor?.appId||!/^ou_[0-9a-f]{32}$/u.test(actor?.openId??''))return null;
       // Only the server's verified binding may supply this principal. The
-      // installed guard owns credential selection and revalidates on each read.
+      // installed guard owns credential selection. Prepare the accessor without
+      // starting CLI processes during call setup; verify before every real read.
       const expected=Object.freeze({appId:actor.appId,openId:actor.openId}),env=safeEnvironment(environment);
-      try{
-        const guard=await execute(['--guard-info'],env,undefined,{probe:true});
-        if(guard.guard!=='tianyi-default-v1'||guard.expected_app!==expected.appId)return null;
-        const identity=await execute(['--user',expected.openId,'whoami'],env,undefined,{probe:true});
-        if(identity.available!==true||identity.appId!==expected.appId||identity.onBehalfOf?.openId!==expected.openId)return null;
-      }catch{return null;}
-      const actorRead=(args,id,signal)=>execute(['--user',expected.openId,...buildLarkReadArgv(args.argv)],env,signal);
+      const actorRead=async(args,id,signal)=>{
+        const argv=buildLarkReadArgv(args.argv);
+        const guard=await execute(['--guard-info'],env,signal,{probe:true});
+        if(guard.guard!=='tianyi-default-v1'||guard.expected_app!==expected.appId)throw Error('飞书只读身份路由不可用');
+        const identity=await execute(['--user',expected.openId,'whoami'],env,signal,{probe:true});
+        if(identity.available!==true||identity.appId!==expected.appId||identity.onBehalfOf?.openId!==expected.openId)throw Error('当前来电账号的飞书只读授权不可用');
+        return execute(['--user',expected.openId,...argv],env,signal);
+      };
       return {read:actorRead,calendar:(args,id,signal)=>actorRead(calendarReadArgs(args),id,signal)};
     }};
 }

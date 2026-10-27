@@ -68,6 +68,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   // never an identity cache across requests; slow request bodies must recheck.
   const requestAdmissions=new WeakMap();
   const resolveBinding=async(req,url)=>{
+    const startedAt=performance.now();
     const requestedPhone=new URL(req.url??url.href,'http://voice.invalid').searchParams.get('phone');
     if(requestedPhone?.startsWith('cli_')){
       const managed=agentControl?.resolve(requestedPhone);
@@ -91,7 +92,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       const device=parseFeishuConversationPhone(url.searchParams.get('phone'))&&iosBindings?.principalFor(req,url.searchParams.get('phone'),req.iosExchangeBody);
       const binding=phoneLogin?.read(req)?await phoneLogin.resolve(req,url):device?.type==='guest'?guestBinding(req,url.searchParams.get('phone'),{id:device.visitorId}):device?await phoneLogin?.resolveDevice(device,url.searchParams.get('phone')):phoneLogin?await phoneLogin.resolve(req,url):entries.resolve(url);
       if(binding){
-        if(binding.permissionProfile==='feishu-current')requestAdmissions.set(req,{binding,at:performance.now()});
+        if(binding.permissionProfile==='feishu-current')requestAdmissions.set(req,{binding,startedAt,at:performance.now()});
         return binding;
       }
     }
@@ -253,11 +254,21 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       // New phone entries cannot create a guessed or stale conversation.
       // Keep the accepted legacy personal entry's startup path unchanged.
       const admitted=requestAdmissions.get(req);requestAdmissions.delete(req);
+      const verifyStartedAt=performance.now();
       const currentAdmission=binding.permissionProfile==='feishu-current'&&admitted?.binding===binding&&performance.now()-admitted.at<1000;
       if (binding.id !== 'tianyi'&&!unidentified&&!currentAdmission) await verifyPhoneSession(binding.gateway??gateway, binding);
+      const verifiedAt=performance.now();
       if(cancelled())return reply(499,{error:"拨号已取消"});
       await close(context);
+      const closedAt=performance.now();
       if(cancelled())return reply(499,{error:"拨号已取消"});
+      const recordAdmissionTiming=reservation=>{
+        const now=performance.now(),resolved=admitted?.binding===binding;
+        callControlAudit({type:'call.admission-timing',voiceSessionId:reservation.voiceSessionId,
+          ...(resolved?{resolveMs:Math.round(admitted.at-admitted.startedAt)}:{}),
+          verificationMs:Math.round(verifiedAt-verifyStartedAt),previousCloseMs:Math.round(closedAt-verifiedAt),
+          reservationMs:Math.round(now-closedAt),toReservationMs:Math.round(now-(resolved?admitted.startedAt:verifyStartedAt))});
+      };
       const sessionKey = binding.sessionKey;
       const callGateway=binding.gateway??gateway;
       const replyTarget=binding.replyTarget??replyTargets.get(binding.id)??null;
@@ -274,6 +285,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         context.active={sessionKey,gateway:callGateway,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
         if(cancelled()){await close(context);return reply(499,{error:"拨号已取消"});}
         rememberAvatarCall(context,context.active,params.model);
+        recordAdmissionTiming(reservation);
         return reply(200,reservation);
       }
       const reservation = await callGateway.request("talk.client.create", { sessionKey, provider: gptProvider, model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
@@ -336,6 +348,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       const terminal=owned.deviceBound&&!owned.deviceRetired?owned.deviceChannel.terminalContext():null;
       const callerText=[binding.callerIdentity?feishuCallerIdentityInstructions(binding.callerIdentity):'',terminal?terminalInstructions(terminal):''].filter(Boolean).join('\n');
       if(cancelled()){await close(context);return reply(499,{error:'拨号已取消'});}
+      recordAdmissionTiming(reservation);
       return reply(200,{voiceSessionId:reservation.voiceSessionId,model:reservation.model,...(callerText?{callerContext:{voiceSessionId:reservation.voiceSessionId,text:callerText}}:{}),...(terminal?{nativeDeviceActions:{version:1,capabilities:terminal.capabilities},terminalContext:terminal}:{}),...speaker?{speakerRouting:speaker}:{}});
     } finally {
       context.creatingSession = false;

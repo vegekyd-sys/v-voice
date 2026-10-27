@@ -11,7 +11,7 @@ import {VOICE_CAPABILITY_POLICY} from '../gpt-live-h5/capability-policy.mjs';
 async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}),model='grok',options={}) {
  const peers=[],audit=[],invocations=[];let sdkTask;
  class WS extends EventEmitter {constructor(url){super();this.url=url;this.readyState=1;this.sent=[];peers.push(this);setImmediate(()=>this.emit('open'));}
-  send(raw){const value=JSON.parse(raw);this.sent.push(value);if(value.type==='session.update')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.updated'})),false));if(value.type==='session.create')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.created',session:{id:value.session.id??'fixture-dialog'}})),false));}
+  send(raw){const value=JSON.parse(raw);this.sent.push(value);if(value.type==='session.update')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.updated'})),false));if(value.type==='session.create'){const complete=()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.created',session:{id:value.session.id??'fixture-dialog'}})),false);if(options.providerSetup)options.providerSetup(complete);else queueMicrotask(complete);}}
   close(){this.readyState=3;this.emit('close');}}
  class Server {handleUpgrade(req,socket,head,done){done(socket);}close(){}}
  const gateway={request:async(method,args)=>{
@@ -27,8 +27,9 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
- for(let attempt=0;attempt<200&&!client.sent.some(e=>e.type==='ready');attempt++)await delay(5);
- assert(client.sent.some(e=>e.type==='ready'),'Fixture provider did not become ready');
+ for(let attempt=0;attempt<200&&!client.sent.some(e=>e.type==='ready')&&client.readyState!==3;attempt++)await delay(5);
+ if(options.expectConnectionFailure){assert.equal(client.readyState,3);assert(!client.sent.some(e=>e.type==='ready'));}
+ else assert(client.sent.some(e=>e.type==='ready'),'Fixture provider did not become ready');
  const upstream=peers[0],event=v=>upstream.emit('message',Buffer.from(JSON.stringify(v)),false);
  const call=(name,args,id='call-1')=>{event({type:'response.created',response:{id:'response-'+id}});event({type:'response.function_call_arguments.done',response_id:'response-'+id,call_id:id,name,arguments:JSON.stringify(args)});event({type:'response.done',response:{id:'response-'+id,status:'completed'}});};
  return {service,reservation,client,upstream,event,call,audit,invocations,peers,completeBackend:text=>{sdkTask.status='ok';sdkTask.text=text;},progressBackend:text=>sdkTask.progress.push({text,kind:'commentary',provenance:{runId:sdkTask.runId,sequence:sdkTask.progress.length+1}})};
@@ -851,6 +852,30 @@ test('assisted native playback reuses one existing control stream and does not g
  assert.equal(controls,1);assert.equal(f.reservation.nativePlaybackPolicy,'assisted');
  f.client.emit('message',Buffer.alloc(960),true);assert.equal(frames,1);assert(f.upstream.sent.some(e=>e.type==='input_audio_buffer.append'));
  await f.service.close(f.reservation.voiceSessionId);assert.equal(closed,1);await f.service.dispose();
+});
+
+test('model and speech-control handshakes overlap but both must finish before ready',async t=>{
+ let modelRelease,controlRelease;const stages=[];
+ const pending=fixture(undefined,'seeduplex',{nativePlaybackPolicy:'assisted',audit:e=>{if(e.type==='call.connection-stage')stages.push(e);},
+  providerSetup:complete=>{modelRelease=complete;},
+  nativeInterrupt:()=>({connect:()=>new Promise(resolve=>{controlRelease=resolve;}),append(){},close(){}})});
+ assert(await until(()=>modelRelease&&controlRelease),'Both independent handshakes start before either finishes');
+ assert(!stages.some(e=>e.stage==='provider-ready'));
+ modelRelease();assert(await until(()=>stages.some(e=>e.stage==='model-ready')));
+ assert(!stages.some(e=>e.stage==='provider-ready'),'A connected model alone is not a connected call');
+ controlRelease();const f=await pending;t.after(()=>f.service.dispose());
+ assert(stages.some(e=>e.stage==='speech-control-ready'));
+ assert(stages.some(e=>e.stage==='provider-ready'));
+ assert(stages.every(e=>Number.isSafeInteger(e.elapsedMs)&&e.elapsedMs>=0));
+});
+
+test('a failed parallel speech-control handshake closes the unfinished model without announcing ready',async t=>{
+ let controlClosed=false;
+ const f=await fixture(undefined,'seeduplex',{nativePlaybackPolicy:'assisted',expectConnectionFailure:true,
+  providerSetup:()=>{},nativeInterrupt:()=>({async connect(){throw Error('fixture speech control unavailable');},append(){},close(){controlClosed=true;}})});
+ t.after(()=>f.service.dispose());assert.equal(controlClosed,true);
+ assert(!f.client.sent.some(e=>e.type==='ready'));
+ assert(await until(()=>f.peers.every(peer=>peer.readyState===3)),'Existing provider graceful-close completes even when setup fails');
 });
 
 const nativeEnd=async(f,id='native-end')=>{
