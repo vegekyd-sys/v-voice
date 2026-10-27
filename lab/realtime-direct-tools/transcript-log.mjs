@@ -48,9 +48,14 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       if(!/^[a-f0-9-]{36}$/u.test(event.reportId??'')||!/^om_[A-Za-z0-9_]+$/u.test(event.messageId??''))return false;
       return enqueue({...owner,type:event.type,reportId:event.reportId,messageId:event.messageId});
     }
+    if(event.type==='call.admission-timing'){
+      const timing={};
+      for(const key of ['resolveMs','verificationMs','previousCloseMs','reservationMs','toReservationMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)timing[key]=event[key];
+      return enqueue({...owner,type:event.type,...timing});
+    }
     if(event.type==='call.connection-stage'){
-      if(!['catalog-requested','catalog-ready','context-requested','context-ready','provider-connecting','provider-ready'].includes(event.stage))return false;
-      return enqueue({...owner,type:event.type,stage:event.stage});
+      if(!['catalog-requested','catalog-ready','context-requested','context-ready','actor-reader-requested','actor-reader-ready','provider-connecting','model-ready','speech-control-connecting','speech-control-ready','provider-ready'].includes(event.stage))return false;
+      return enqueue({...owner,type:event.type,stage:event.stage,...(Number.isSafeInteger(event.elapsedMs)&&event.elapsedMs>=0?{elapsedMs:event.elapsedMs}:{})});
     }
     if(event.type==='call.provider-status'){
       if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed'].includes(event.stage))return false;

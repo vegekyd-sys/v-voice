@@ -1,18 +1,25 @@
 // Local-only browser timing fixture. No real Gateway/provider/card/model calls.
 // Usage: node scripts/candidate/entry-latency.mjs /absolute/source/root 28732
 import {createServer,request} from 'node:http';
-import {createHmac} from 'node:crypto';
+import {createHmac,randomUUID} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
+import WebSocket from 'ws';
 const root=process.argv[2],port=Number(process.argv[3]);
+const dialBenchmark=process.argv.includes('--dial-benchmark');
+const requestDelayMs=Number(process.env.VOICE_ENTRY_FIXTURE_REQUEST_MS??150);
+if(!Number.isFinite(requestDelayMs)||requestDelayMs<0||requestDelayMs>2000)throw Error('Invalid fixture delay');
 const {createLiveH5Server}=await import(pathToFileURL(root+'/lab/gpt-live-h5/server.mjs'));
-const {ENTRY_LATENCY_CANDIDATE_UPDATE}=await import(pathToFileURL(root+'/lab/gpt-live-h5/changelog.mjs'));
+const updates=await import(pathToFileURL(root+'/lab/gpt-live-h5/changelog.mjs'));
 const {feishuConversationPhone}=await import(pathToFileURL(root+'/lib/feishu-conversation-directory.mjs'));
 const phone=feishuConversationPhone('default','oc_fixture'),origin='https://voice.example';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let rpc=0,provider=0,calls=0,scenario="setup";
-const app=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'fixture'.repeat(8),iosPublicEntry:true,iosBindingsFile:`/tmp/voice-entry-latency-ios-${port}.json`,candidateRelease:ENTRY_LATENCY_CANDIDATE_UPDATE,
+const app=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'fixture'.repeat(8),iosPublicEntry:true,iosBindingsFile:`/tmp/voice-entry-latency-ios-${port}.json`,candidateRelease:updates.STARTUP_LATENCY_CANDIDATE_UPDATE??updates.ENTRY_LATENCY_CANDIDATE_UPDATE,
   gateway:{ready:true,request:async method=>{rpc++;if(method!=='voice.feishu.resolve')throw Error('forbidden:'+method);await sleep(550);return {sessionKey:'agent:fixture:feishu:group:oc_fixture',agentId:'fixture',accountId:'default',kind:'group'};}},
-  directVoice:{models:()=>[{id:'seeduplex',label:'小何',available:true}],reserve:async()=>{calls++;throw Error('NO CALLS');},dispose:async()=>{}},
+  directVoice:{models:()=>[{id:'seeduplex',label:'小何',available:true}],reserve:async()=>{
+    calls++;if(!dialBenchmark)throw Error('NO CALLS');
+    return {voiceSessionId:randomUUID(),transport:'gateway-relay',provider:'seeduplex',relayTicket:'fixture'};
+  },...(dialBenchmark?{attach:()=>true}:{}),close:async()=>{},dispose:async()=>{}},
   feishuLogin:{appId:'cli_fixture',appSecret:'fixture',accountId:'default',actors:[],conversations:true,allowUnidentified:true,cardConfirmation:true,
     fetchImpl:async (url,init)=>{provider++;await sleep(200);
       if(url.includes('app_access_token'))return Response.json({code:0,app_access_token:'fixture-app',tenant_access_token:'fixture-tenant',expire:7200});
@@ -76,7 +83,7 @@ const proxy=createServer(async(req,res)=>{
  if(url.pathname==='/sdk.js'){res.setHeader('content-type','text/javascript');res.end(sdk.replace('SCENARIO',JSON.stringify(scenario)));return;}
  if(url.pathname==='/fixture-stats'){res.setHeader('content-type','application/json');res.end(JSON.stringify({rpc,provider,calls}));return;}
  if(url.pathname==='/voice/api/entry-timing'){res.setHeader('content-type','application/json');res.end('{"ok":true}');return;}
- await sleep(150);
+ await sleep(requestDelayMs);
  const headers={...req.headers,host:'voice.example',...(req.headers.origin?{origin}:{}),...(/sdk-|card-return/.test(scenario)?{'user-agent':'Lark/7.0'}:{'user-agent':'fixture-browser'})};
  const target=request({hostname:'127.0.0.1',port:app.server.address().port,path:req.url,method:req.method,headers},up=>{
   const chunks=[];up.on('data',c=>chunks.push(c));up.on('end',()=>{
@@ -88,4 +95,20 @@ const proxy=createServer(async(req,res)=>{
  });target.on('error',()=>{res.writeHead(502);res.end();});req.pipe(target);
 });
 await new Promise(r=>proxy.listen(port,'127.0.0.1',r));
-console.log(JSON.stringify({port,root,phone,ready:true}));
+console.log(JSON.stringify({port,root,phone,ready:true,requestDelayMs}));
+if(dialBenchmark){
+ const samples=[];
+ for(let n=0;n<5;n++){
+  const before=rpc,at=performance.now();
+  const reservation=await new Promise((resolve,reject)=>{
+   const client=new WebSocket(`ws://127.0.0.1:${app.server.address().port}/voice/api/dial?phone=${devicePhone}&model=seeduplex&dialVersion=1&nativeRuntimeVersion=1`,
+    {headers:{host:'voice.example',origin,cookie:[...nativeJar].map(([k,v])=>k+'='+v).join('; ')}});
+   const timer=setTimeout(()=>{client.terminate();reject(Error('fixture timeout'));},5000);
+   client.on('error',reject);client.on('message',raw=>{const value=JSON.parse(raw);if(value.type==='reservation'){clearTimeout(timer);client.close();resolve(value);}});
+  });
+  samples.push({n,toReservationMs:Math.round(performance.now()-at),membershipRequests:rpc-before});
+  await internal('/voice/api/close?phone='+devicePhone,nativeJar,reservation);
+ }
+ console.log(JSON.stringify({mode:'simulated native device grant WebSocket admission; no model/audio',gatewayDelayMs:550,samples}));
+ await new Promise(r=>proxy.close(r));await app.dispose();
+}

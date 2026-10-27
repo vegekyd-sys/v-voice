@@ -46,6 +46,37 @@ test('browser cannot supply a signed identity or change a scoped request',async(
   await assert.rejects(scoped.request('tools.invoke',{voiceActor:{openId:'ou_other'}}),/cannot be supplied/);
 });
 
+test('simultaneous requests share only a live admission and keep independent caller bindings',async()=>{
+ let complete,reads=0,member=true;
+ const gateway={request:async()=>{reads++;await new Promise(r=>{complete=r;});if(!member)throw Object.assign(Error('denied'),{details:{reason:'conversation_membership_required'}});return {sessionKey:'agent:makaron:feishu:group:oc_groupA',agentId:'makaron',accountId:'lab',kind:'group'};}};
+ const resolve=createFeishuConversationDirectory({...config,gateway});
+ const a=resolve({...identity,displayName:'First profile'},phone),b=resolve({...identity,displayName:'Updated profile'},phone);
+ await Promise.resolve();assert.equal(reads,1);complete();const [first,second]=await Promise.all([a,b]);
+ assert.notEqual(first,second);assert.equal(first.callerIdentity.displayName,'First profile');assert.equal(second.callerIdentity.displayName,'Updated profile');
+ member=false;const denied=resolve(identity,phone);await Promise.resolve();assert.equal(reads,2);complete();
+ await assert.rejects(denied,e=>e.code==='FEISHU_CONVERSATION_MEMBERSHIP_REQUIRED');
+ member=true;const retry=resolve(identity,phone);await Promise.resolve();assert.equal(reads,3);complete();assert.equal((await retry).permissionProfile,'feishu-current');
+});
+
+test('slow admissions stop accepting joiners and an old completion cannot clear a newer request',async()=>{
+ let clock=0;const finishes=[];
+ const gateway={request:()=>new Promise(resolve=>finishes.push(()=>resolve({sessionKey:'agent:makaron:feishu:group:oc_groupA',agentId:'makaron',accountId:'lab',kind:'group'})))};
+ const resolve=createFeishuConversationDirectory({...config,gateway,now:()=>clock});
+ const first=resolve(identity,phone);await Promise.resolve();clock=1000;
+ const second=resolve(identity,phone);await Promise.resolve();assert.equal(finishes.length,2);
+ finishes[0]();await first;const third=resolve(identity,phone);await Promise.resolve();assert.equal(finishes.length,2);
+ finishes[1]();await Promise.all([second,third]);
+});
+
+test('concurrent directory reads never coalesce another subject, tenant, user identity or conversation',async()=>{
+ const reads=[];let release;const gate=new Promise(r=>{release=r;});
+ const gateway={request:async(_method,p)=>{reads.push(p.voiceActor.actor);await gate;return {sessionKey:'agent:makaron:feishu:group:'+p.voiceActor.actor.chatId,agentId:'makaron',accountId:'lab',kind:'group'};}};
+ const resolve=createFeishuConversationDirectory({...config,gateway});
+ const jobs=[resolve(identity,phone),resolve({...identity,openId:'ou_bob'},phone),resolve({...identity,tenantKey:'other_tenant'},phone),resolve({...identity,userId:'user_other'},phone),resolve(identity,feishuConversationPhone('lab','oc_groupB'))];
+ await Promise.resolve();assert.equal(reads.length,5);release();const values=await Promise.all(jobs);
+ assert.notEqual(values[0].callerId,values[1].callerId);assert.notEqual(values[0].callerId,values[2].callerId);assert.notEqual(values[0].sessionKey,values[4].sessionKey);
+});
+
 test('proof canonicalization matches JSON RPC wire semantics for optional undefined fields',async()=>{
   let actual;
   const scoped=createFeishuActorGateway({...config,identity,chatId:'oc_groupA',sessionKey:'canonical',gateway:{request:async(_,p)=>{actual=JSON.parse(JSON.stringify(p));}}});

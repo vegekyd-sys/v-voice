@@ -1,3 +1,23 @@
+## 2026-10-27 — Platform-free connection preparation overlap (candidate, unreleased)
+
+- Keep Gateway and platform modules unchanged. Coalesce only outstanding same-subject/conversation admission reads in Voice, with a bounded join window and immediate deletion on success/failure; each request receives its own binding.
+- An admitted actor-scoped call starts read-only environment preparation during reservation, overlapping relay handoff. Only that call may consume the one-use snapshot within one second; delayed/failed handoffs read again. Live socket ownership/membership and actual tool authorization still use the existing Gateway checks.
+- No provider connection or microphone starts during this preparation. Closing before attachment cannot open a provider later. Voice 1017, speaker 95 and fleet 11 regressions pass; real phone/provider acceptance remains separate.
+- See [platform-free acceptance](docs/acceptance/no-platform-latency-20261027/acceptance.md). Platform #499 remains a deferred alternative, not a dependency or a required release.
+
+## 2026-10-27 — Call connection preparation reduction (candidate, unreleased)
+
+- Benchmark against production `b4ed555`: current-release passive connection timings and three live read-only admission/environment probes. These exclude client startup and do not establish end-to-end phone latency.
+- Prepare the actor's local read accessor without running CLI identity probes before connection. Validate the installed guard, app and user before every actual read, alongside the existing live Gateway tool-policy check; never use the service owner's account as fallback.
+- Connect the speech model and auxiliary interruption lane concurrently, retaining the requirement that both succeed before ready and closing both on failure. Controlled replay with fixed 650/800/600/200ms dependencies: 1605→1405ms median. No claim of physical audio acceptance.
+- Add monotonic connection-stage diagnostics. Platform chat/member read parallelism has separate owning-repository changes and live read-only API A/B evidence. See [connection acceptance](docs/acceptance/connect-latency-20261027/acceptance.md).
+
+## 2026-10-27 — Further startup latency reduction (candidate, unreleased)
+
+- Deliver the independent identity bootstrap in the HTML, avoiding a network module round trip before Feishu SDK initialization. The call bundle shares the same startup promise and cannot exchange identity twice.
+- Web and native one-connection dialing consume their own just-resolved Feishu admission once; the next request still re-admits, and a request delayed after resolution rechecks before reservation. No cross-request identity cache or actor policy change.
+- Controlled 500ms-request browser comparison: 3347→2826ms to dial-ready. Native device-grant protocol fixture: two membership RPCs become one, 1104→553ms to reservation with a 550ms simulated Gateway. These are not physical-phone or provider/audio results. See [candidate acceptance](docs/acceptance/startup-latency-20261027/acceptance.md).
+
 ## 2026-10-27 — Voice entry and CLI deployed
 
 - PRs #158, #160, #163, #164 and #165 merged through #167 and deployed at `b4ed555` to both Voice nodes. Main CI passed; matching artifacts, readiness, admission release and unchanged Gateway identity verified.

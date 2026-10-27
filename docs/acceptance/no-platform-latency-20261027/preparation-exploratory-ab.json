@@ -1,0 +1,251 @@
+{
+  "kind": "live-Gateway-call-preparation-ab-with-simulated-relay-and-model",
+  "baselineVoiceCommit": "dc612c68cf964ef081037d4c00a1c3ec91933db5",
+  "sourceSha256": {
+    "baseline": "52a683a918168769c7c11a276a7dbe4659e13aec3067781ab9d1adfb00629e32",
+    "candidate": "ca5bd981bff92101095e4a038e47e81d2e47745d7814bff53e690d6cfbc010da"
+  },
+  "platformChanged": false,
+  "realProviderSessions": 0,
+  "realDeviceOrPublicNetworkTest": false,
+  "samples": [
+    {
+      "pair": 0,
+      "variant": "baseline",
+      "reserveToReadyMs": 1145,
+      "liveHandoffAdmissionMs": 533,
+      "liveEnvironmentGatewayReads": 2,
+      "events": [
+        {
+          "stage": "catalog-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "context-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "catalog-ready",
+          "elapsedMs": 541
+        },
+        {
+          "stage": "context-ready",
+          "elapsedMs": 587
+        },
+        {
+          "stage": "provider-connecting",
+          "elapsedMs": 608
+        },
+        {
+          "stage": "model-ready",
+          "elapsedMs": 609
+        },
+        {
+          "stage": "provider-ready",
+          "elapsedMs": 609
+        }
+      ]
+    },
+    {
+      "pair": 0,
+      "variant": "candidate",
+      "reserveToReadyMs": 588,
+      "liveHandoffAdmissionMs": 581,
+      "liveEnvironmentGatewayReads": 2,
+      "events": [
+        {
+          "stage": "catalog-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "context-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "catalog-ready",
+          "elapsedMs": 563
+        },
+        {
+          "stage": "context-ready",
+          "elapsedMs": 579
+        },
+        {
+          "stage": "provider-connecting",
+          "elapsedMs": 583
+        },
+        {
+          "stage": "model-ready",
+          "elapsedMs": 584
+        },
+        {
+          "stage": "provider-ready",
+          "elapsedMs": 584
+        }
+      ]
+    },
+    {
+      "pair": 1,
+      "variant": "candidate",
+      "reserveToReadyMs": 4035,
+      "liveHandoffAdmissionMs": 3396,
+      "liveEnvironmentGatewayReads": 4,
+      "events": [
+        {
+          "stage": "catalog-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "context-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "catalog-requested",
+          "elapsedMs": 3397
+        },
+        {
+          "stage": "context-requested",
+          "elapsedMs": 3397
+        },
+        {
+          "stage": "context-ready",
+          "elapsedMs": 3411
+        },
+        {
+          "stage": "catalog-ready",
+          "elapsedMs": 3464
+        },
+        {
+          "stage": "context-ready",
+          "elapsedMs": 3979
+        },
+        {
+          "stage": "catalog-ready",
+          "elapsedMs": 4033
+        },
+        {
+          "stage": "provider-connecting",
+          "elapsedMs": 4033
+        },
+        {
+          "stage": "model-ready",
+          "elapsedMs": 4034
+        },
+        {
+          "stage": "provider-ready",
+          "elapsedMs": 4034
+        }
+      ]
+    },
+    {
+      "pair": 1,
+      "variant": "baseline",
+      "reserveToReadyMs": 1035,
+      "liveHandoffAdmissionMs": 475,
+      "liveEnvironmentGatewayReads": 2,
+      "events": [
+        {
+          "stage": "catalog-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "context-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "catalog-ready",
+          "elapsedMs": 541
+        },
+        {
+          "stage": "context-ready",
+          "elapsedMs": 556
+        },
+        {
+          "stage": "provider-connecting",
+          "elapsedMs": 557
+        },
+        {
+          "stage": "model-ready",
+          "elapsedMs": 557
+        },
+        {
+          "stage": "provider-ready",
+          "elapsedMs": 557
+        }
+      ]
+    },
+    {
+      "pair": 2,
+      "variant": "baseline",
+      "reserveToReadyMs": 1083,
+      "liveHandoffAdmissionMs": 525,
+      "liveEnvironmentGatewayReads": 2,
+      "events": [
+        {
+          "stage": "catalog-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "context-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "context-ready",
+          "elapsedMs": 491
+        },
+        {
+          "stage": "catalog-ready",
+          "elapsedMs": 555
+        },
+        {
+          "stage": "provider-connecting",
+          "elapsedMs": 555
+        },
+        {
+          "stage": "model-ready",
+          "elapsedMs": 556
+        },
+        {
+          "stage": "provider-ready",
+          "elapsedMs": 556
+        }
+      ]
+    },
+    {
+      "pair": 2,
+      "variant": "candidate",
+      "reserveToReadyMs": 581,
+      "liveHandoffAdmissionMs": 575,
+      "liveEnvironmentGatewayReads": 2,
+      "events": [
+        {
+          "stage": "catalog-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "context-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "context-ready",
+          "elapsedMs": 532
+        },
+        {
+          "stage": "catalog-ready",
+          "elapsedMs": 572
+        },
+        {
+          "stage": "provider-connecting",
+          "elapsedMs": 576
+        },
+        {
+          "stage": "model-ready",
+          "elapsedMs": 577
+        },
+        {
+          "stage": "provider-ready",
+          "elapsedMs": 577
+        }
+      ]
+    }
+  ]
+}

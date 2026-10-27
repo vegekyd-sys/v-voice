@@ -5,6 +5,7 @@ import {request as httpRequest} from 'node:http';
 import {mkdtemp,rm,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import WebSocket from 'ws';
 import {createLiveH5Server} from '../lab/gpt-live-h5/server.mjs';
 import {feishuConversationPhone} from '../lib/feishu-conversation-directory.mjs';
 const phone=feishuConversationPhone('default','oc_group'),origin='https://voice.example';
@@ -24,15 +25,17 @@ async function fixture(t){
    if(method==='voice.feishu.resolve')return {sessionKey:'agent:makaron:feishu:group:oc_group',agentId:'makaron',accountId:'default',kind:'group'};
    if(method==='sessions.describe')return {session:{key:params.key,agentId:'makaron'}};
    if(method==='tools.catalog')return {groups:[{tools:[{id:'read'}]}]};return {ok:true};
-  }},directVoice:{models:()=>[{id:'grok',available:true}],reserve:async params=>{reservations.push(params);return {voiceSessionId:'fixture-'+reservations.length,provider:'grok',relayTicket:'fixture'};},close:async()=>{},dispose:async()=>{}}});
+  }},directVoice:{models:()=>[{id:'grok',available:true}],reserve:async params=>{reservations.push(params);return {voiceSessionId:'fixture-'+reservations.length,provider:'grok',relayTicket:'fixture'};},attach:(_id,_ticket,client)=>{client.send(JSON.stringify({type:'ready'}));return true;},close:async()=>{},dispose:async()=>{}}});
  await new Promise(r=>server.server.listen(0,'127.0.0.1',r));t.after(()=>server.dispose());
  const jar=new Map();
- const send=(path,{body,raw,cookies=jar,requestOrigin=origin,headers={}}={})=>new Promise((resolve,reject)=>{
+ const send=(path,{body,raw,cookies=jar,requestOrigin=origin,headers={},delayBodyMs=0}={})=>new Promise((resolve,reject)=>{
   const cookie=[...cookies].map(([k,v])=>k+'='+v).join('; ');
   const req=httpRequest({host:'127.0.0.1',port:server.server.address().port,path:path.startsWith('/voice')?path:'/voice'+path,method:body===undefined&&raw===undefined?'GET':'POST',headers:{host:'voice.example',...(requestOrigin?{origin:requestOrigin}:{}),cookie,'content-type':'application/json',...headers}},res=>{
    for(const item of res.headers['set-cookie']??[]){const [k,...v]=item.split(';')[0].split('=');cookies.set(k,v.join('='));}
    let text='';res.on('data',b=>text+=b);res.on('end',()=>resolve({status:res.statusCode,text,headers:res.headers,json:()=>JSON.parse(text)}));
-  });req.on('error',reject);req.end(raw??(body===undefined?undefined:JSON.stringify(body)));
+  });req.on('error',reject);
+  if(delayBodyMs){req.flushHeaders();setTimeout(()=>req.end(raw??JSON.stringify(body)),delayBodyMs);}
+  else req.end(raw??(body===undefined?undefined:JSON.stringify(body)));
  });
  const prepare=async()=>{const response=await send('/feishu/confirm/prepare?phone='+phone,{body:{}});assert.equal(response.status,200,response.text);assert.equal(response.json().entry.unidentified,true);return response.json().state;};
  const confirm=async(state,overrides={})=>{const raw=JSON.stringify({version:1,request:state,accountId:'default',appId:'cli_app',tenantKey:'external',openId:'ou_external',chatId:'oc_group',messageId:'om_card',issuedAt:Date.now(),...overrides});return send('/feishu/confirm/callback',{raw,requestOrigin:null,headers:{'x-voice-confirm-signature':createHmac('sha256','fixture').update('voice-card-confirm-v1\n'+raw).digest('base64url')}});};
@@ -42,8 +45,37 @@ async function fixture(t){
   const page=await send(start.headers.location,{headers:{'user-agent':'Lark/7.0'}});assert.equal(page.status,200);
   return JSON.parse(page.text.match(/id="login-config">(.*?)<\/script>/s)[1]).state;
  };
- return {send,prepare,confirm,login,reopen,jar,api,rpc,reservations,file,deny:()=>denied=true,setClientIdentity:value=>clientIdentity=value,advance:ms=>time+=ms};
+ return {send,prepare,confirm,login,reopen,jar,api,rpc,reservations,file,port:server.server.address().port,deny:()=>denied=true,setClientIdentity:value=>clientIdentity=value,advance:ms=>time+=ms};
 }
+
+test('HTTP and native one-connection dialing reuse only their own fresh membership admission',async t=>{
+ const f=await fixture(t);await f.login();
+ const count=()=>f.rpc.filter(r=>r.method==='voice.feishu.resolve').length;
+ let before=count();
+ const first=await f.send('/api/session?phone='+phone,{body:{model:'grok'}});
+ assert.equal(first.status,200,first.text);assert.equal(count()-before,1);
+ await f.send('/api/close?phone='+phone,{body:first.json()});before=count();
+ const reservation=await new Promise((resolve,reject)=>{
+  const client=new WebSocket(`ws://127.0.0.1:${f.port}/voice/api/dial?phone=${phone}&model=grok&nativeRuntimeVersion=1&dialVersion=1`,
+   {headers:{host:'voice.example',origin,cookie:[...f.jar].map(([k,v])=>k+'='+v).join('; ')}});
+  const timer=setTimeout(()=>{client.terminate();reject(Error('fixture timeout'));},2000);
+  client.on('error',reject);client.on('message',raw=>{const value=JSON.parse(raw);if(value.type==='reservation'){clearTimeout(timer);client.close();resolve(value);}});
+ });
+ assert.equal(count()-before,1);await f.send('/api/close?phone='+phone,{body:reservation});
+ f.deny();const denied=await f.send('/api/session?phone='+phone,{body:{model:'grok'}});
+ assert.equal(denied.status,200);assert.equal(f.reservations.at(-1).unidentified,true);
+ assert.equal(f.reservations.at(-1).toolIdentity,undefined,'revoked browser may only use its existing isolated guest path');
+ assert.equal(count()-before,3,'close and the next request each re-admit; no cross-request reuse');
+});
+
+test('slow request bodies cannot reuse a stale membership admission',async t=>{
+ const f=await fixture(t);await f.login();
+ const before=f.rpc.length;
+ const pending=f.send('/api/session?phone='+phone,{body:{model:'grok'},delayBodyMs:1200});
+ while(f.rpc.length===before)await new Promise(r=>setTimeout(r,5));
+ f.deny();assert.notEqual((await pending).status,200);assert.equal(f.reservations.length,0);
+ assert.equal(f.rpc.slice(before).filter(r=>r.method==='voice.feishu.resolve').length,2);
+});
 
 test('card-confirmed browser survives reopening and external SDK refusal without renewing its grant',async t=>{
  const f=await fixture(t);await f.login();const saved=f.jar.get('v_feishu_phone');
