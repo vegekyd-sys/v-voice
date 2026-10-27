@@ -25,6 +25,7 @@ names.push('lab/gpt-live-h5/caller-context.mjs','lib/feishu-caller-identity.mjs'
 names.push('lab/gpt-live-h5/feishu-confirmation-client.mjs','lib/access-context.mjs','lib/public-voice-gateway.mjs','lab/gpt-live-h5/public-instructions.mjs');
 names.push('lib/backend-device-bundle.mjs','scripts/install-backend-device-bundle.mjs');
 names.push(...run('ls-files','skills').split('\n').filter(Boolean));
+names.push('lab/gpt-live-h5/model-options.mjs');
 names.push('lib/terminal-context.mjs','lib/device-requests.mjs','lab/gpt-live-h5/device-location.mjs','scripts/device-call.mjs','skills/device-use/SKILL.md');
 const target=resolve(process.argv[2]??join(root,'artifacts',commit));
 await mkdir(dirname(target),{recursive:true});

@@ -1,3 +1,4 @@
+import {phoneModelOptions} from "./model-options.mjs";
 import {createFeishuConfirmation} from "./feishu-confirmation-client.mjs";
 import {browserDeviceActions,createBrowserDeviceAdapter} from "./device-location.mjs";
 import {createCallerContext} from "./caller-context.mjs";
@@ -119,7 +120,7 @@ async function fixture(t, options = {}) {
     renderMarkdown: (target,text) => { target.textContent = text; }, createTranscriptPresentation, createPageMicrophoneSession, createScreenWakeLock, createAvatarTasks, ACTIVITY_LABELS,
     createContentView: () => options.contentView,
     createCallView: (...values) => (view = createCallView(...values)), mountCallUi: () => {},
-    createFeishuConfirmation, entryStartup, startVoiceEntry, markVoiceTiming: () => {}, mountChangelog,
+    phoneModelOptions, createFeishuConfirmation, entryStartup, startVoiceEntry, markVoiceTiming: () => {}, mountChangelog,
     createRelayAudio: values => options.relayFactory(values),
     mountAvatar: () => options.avatar,
     createAvatarReactions: () => options.reactions,

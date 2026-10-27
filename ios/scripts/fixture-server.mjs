@@ -11,6 +11,7 @@ import {normalizeAvatarEvent} from '../../lab/gpt-live-h5/avatar-telemetry.mjs';
 const port=Number(process.env.VVOICE_FIXTURE_PORT??29837);
 let active=null,client=null,sequence=0,sessions=0,inputBytes=0,zeroBytes=0,playbackDrained=0,playbackStarts=0,greetings=0,heartbeats=0,earlyAudio=false,slowSession=false;
 let slowSessionMS=300;
+let hideGrok=false;
 let fastMode=false,fastReject=false,fastWrongOwner=false,fastDials=0,statusRequests=0,sessionRequests=0;
 let deviceLocation=null,locationResults=[],systemBackgroundReady=false;
 let presentationRequests=0;
@@ -81,6 +82,9 @@ const server=createServer(async(req,res)=>{
    if(body.command==='fast-reject')fastReject=true;
    if(body.command==='fast-wrong-owner')fastWrongOwner=true;
    if(body.command==='reset'){fastMode=false;fastReject=false;fastWrongOwner=false;fastDials=0;statusRequests=0;sessionRequests=0;}
+   if(body.command==='production-models')hideGrok=true;
+   if(body.command==='test-models')hideGrok=false;
+   if(body.command==='reset')hideGrok=false;
    if(body.command==='native-mode')nativeMode=true;
    if(body.command==='speaker-mode')speakerMode=true;
    if(body.command==='runtime-mode')runtimeMode=true;
@@ -163,7 +167,7 @@ const server=createServer(async(req,res)=>{
    supplements.push({text:body.text,mode:body.mode});return send(200,{ok:true,forwardedToVoice:true,queued:false});
  }
  if(path==='/voice/api/status')statusRequests++;
- if(path==='/voice/api/status')return send(200,{...(fastMode?{nativeDialVersion:1}:{}),...(nativeMode?{phoneInputPolicy:'native'}:{}),ready:true,preview:false,comparisonAvailable:true,models:[{id:'future-relay-model',label:'服务新模型',available:true,nativeTransport:'gateway-relay'},{id:'unsupported-transport',label:'尚未支持的传输',available:true,nativeTransport:'future-transport'},{id:'gpt-live',label:'GPT Live',available:true},{id:'seeduplex',label:'豆包 SeedDuplex',available:true},{id:'grok',label:'Grok Voice 3.0',available:true,voices:[{id:'iris',label:'Iris'},{id:'eve',label:'Eve'}],speed:1.2,expressiveTags:true}],activeCall:Boolean(active)});
+ if(path==='/voice/api/status')return send(200,{...(fastMode?{nativeDialVersion:1}:{}),...(nativeMode?{phoneInputPolicy:'native'}:{}),ready:true,preview:false,...(hideGrok?{defaultModel:'seeduplex'}:{}),comparisonAvailable:!hideGrok,models:[{id:'future-relay-model',label:'服务新模型',available:true,nativeTransport:'gateway-relay'},{id:'unsupported-transport',label:'尚未支持的传输',available:true,nativeTransport:'future-transport'},{id:'gpt-live',label:'GPT Live',available:true},{id:'seeduplex',label:'豆包 SeedDuplex',available:true},{id:'grok',label:'Grok Voice 3.0',available:true,voices:[{id:'iris',label:'Iris'},{id:'eve',label:'Eve'}],speed:1.2,expressiveTags:true}].filter(m=>!hideGrok||m.id!=='grok'),activeCall:Boolean(active)});
  if(path==='/voice/api/session'){
    sessionRequests++;
    lastSessionRequest=body;
