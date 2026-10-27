@@ -403,11 +403,11 @@ function TvIsland({state,actions,status}) {
     {connected&&<TvWaveform orbit/>}
     <button type="button" className="tv-avatar-action tv-avatar-large" data-tv-control={active?'expand':'dial'} data-tv-primary={!active||undefined} aria-label={active?'展开对话':state.dial.disabled?'正在准备连接':'和 V 直接通话'} disabled={!active&&state.dial.disabled} onClick={active?expand:actions.dial}/>
     <div className="tv-dock-status" role="status">{title}</div>
-    <div className="tv-dock-actions">
+    {(active||latestDocument)&&<div className="tv-dock-actions">
       {connected&&<button type="button" className={`tv-round tv-speaker ${state.outputMuted?'is-muted':''}`} data-tv-control="speaker" aria-label={state.outputMuted?'恢复 V 的声音':'关闭 V 的声音'} aria-pressed={state.outputMuted} onClick={actions.speaker}><Icon d={state.outputMuted?SPEAKER_OFF:SPEAKER}/></button>}
       {active&&<button className="tv-round tv-call tv-end" type="button" data-tv-control="end" data-tv-primary aria-label="结束通话" onClick={actions.hangup}><Icon d={HANG}/></button>}
-      {!active&&<button type="button" className="tv-expand" data-tv-control="expand" onClick={expand}><span>{latestDocument?'查看方案':'通话设置'}</span><Icon d="M8 5h11v11M19 5 5 19"/></button>}
-    </div>
+      {!active&&latestDocument&&<button type="button" className="tv-expand" data-tv-control="expand" onClick={expand}><span>查看方案</span><Icon d="M8 5h11v11M19 5 5 19"/></button>}
+    </div>}
   </section>;
 }
 

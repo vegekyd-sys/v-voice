@@ -1,3 +1,8 @@
+## 2026-10-27 — TV idle portrait cleanup
+
+- Remove the call-settings shortcut below the idle Reaction portrait and omit its empty glass action group. Active speaker/hangup controls and existing document access remain available.
+- Shared H5 update for the authorized installed TV candidate; native APKs unchanged.
+
 ## 2026-10-27 — TV first-paint correction (local candidate)
 
 - Render TV layout and transparency in initial HTML before module loading. Hold the native WebView until its committed visual frame and pause entrance motion until presentation is ready.

@@ -1,7 +1,8 @@
 export const TV_REACTION_CANDIDATE_UPDATE = {
-  version:'voice-tv-reaction.20261027.3',date:'2026-10-27',
+  version:'voice-tv-reaction.20261027.4',date:'2026-10-27',
   title:'电视 V 头像入口与收音候选',status:'candidate-validation',
   items:[
+    '移除 Reaction 头像下方的通话设置入口；空闲头像下方不再显示操作条。',
     '电视入口从首帧保持透明，等待实际画面就绪后展开，避免启动时闪过白色网页。',
     'V 的 Reaction 头像重新居中并保留头部留白，移除连线与电话徽标；聚焦轻微放大和呼吸，点击直接呼叫豆包。',
     '接通后头像平滑放大三倍，喇叭和挂断独立排列在头像下方；喇叭控制播放声音，麦克风继续收听。',
