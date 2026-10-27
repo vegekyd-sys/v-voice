@@ -1,0 +1,26 @@
+{
+  "schema": "voice-tool-study-provenance-v1",
+  "researchBaseCommit": "002313bd66978dc188b5fea898cb0a1a633f8cc9",
+  "runtimeWebCommit": "7ce20a2de22bedba1cc32086d5f832a44539cd8c",
+  "runtimeWebCheck": "read-only systemd WorkingDirectory and three-file SHA-256; no restart",
+  "secondNodeCheck": "existing release verification receipt only; no fresh independent probe",
+  "files": {
+    "lab/realtime-direct-tools/session.mjs": {
+      "sha256": "e7c0ef41aeddb4a7bba9207b06d307b00d35f19be691fd94bfe4d47756eaa5a4",
+      "matchesWebRuntime": true
+    },
+    "lab/realtime-direct-tools/tools.mjs": {
+      "sha256": "59b4aaff9767e08130ed2b1dd6ef890ed43946c557d04df4551b41e77c719dd7",
+      "matchesWebRuntime": true
+    },
+    "lab/seeduplex-realtime-provider.mjs": {
+      "sha256": "a350a9e85499840e0d3a93f46bab9269be18a9ba6479a0a499aea72fb258df2e",
+      "matchesWebRuntime": true
+    }
+  },
+  "officialMustReadUpdatedAt": "2026-10-26T10:29:18+08:00",
+  "aggregateWindowEndExclusive": "2026-10-27T12:52:31+08:00",
+  "noModelCalls": true,
+  "noWritesOrDeployment": true,
+  "sourceNotes": "Research code and product source are separate; docs registration commit is not the running artifact."
+}
