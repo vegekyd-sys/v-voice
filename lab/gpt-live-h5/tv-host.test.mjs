@@ -182,3 +182,13 @@ test('TV speaker control changes output only and immediately clears stale audibl
  api.observeAudio({input:.1,output:.2,at:1400});assert.equal(api.getAudio().source,'input');
  api.action('speaker',api.snapshot);assert.equal(api.snapshot.outputMuted,false);
 });
+
+test('native first-paint presentation is owner scoped and never starts a call',()=>{
+ const {api,window,calls}=fixture('?tv=1&tvShell=1&tvSurface=1');
+ assert.equal(window.document.documentElement.dataset.tvPresented,'false');
+ assert.equal(api.present({...api.snapshot,owner:'retired'}),false);
+ assert.equal(window.document.documentElement.dataset.tvPresented,'false');
+ assert.equal(api.present(api.snapshot),true);assert.equal(window.document.documentElement.dataset.tvPresented,'true');
+ assert.deepEqual(calls,[]);
+ assert.equal(fixture('?tv=1&tvShell=1').window.document.documentElement.dataset.tvPresented,'true');
+});

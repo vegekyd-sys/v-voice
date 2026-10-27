@@ -452,3 +452,21 @@ test('a Gateway without GPT device support keeps the old call and advertises no 
  const result=await (await f.request('session',{nativeDeviceActions:{version:1,capabilities:{'location.current':{status:'prompt'}}}})).json();
  assert.equal(result.voiceSessionId,'voice-private');assert.equal(result.nativeDeviceActions,undefined);assert.equal(opened,false);
 });
+
+test('TV first HTML is transparent before modules run; regular Web and legacy TV keep their presentation',async t=>{
+ const f=await fixture(t,{preview:true});
+ for(const [query,expected] of [
+  ['?tv=1&tvShell=1&tvSurface=1',/data-tv="true" data-tv-layout="medium" data-tv-presented="false"/],
+  ['?tv=1&tvShell=1',/data-tv="true" data-tv-layout="medium" data-tv-presented="true"/],
+  ['?tv=1',/data-tv="true" data-tv-layout="full" data-tv-presented="true"/],
+ ]){
+  const html=await(await fetch(f.url+'/'+query,{headers:{cookie:f.cookie}})).text();
+  assert.match(html.split('</head>')[0],expected);
+  assert.match(html,/<style data-voice-entry>/);
+ }
+ for(const query of ['','?tvShell=1&tvSurface=1']){
+  const html=await(await fetch(f.url+'/'+query,{headers:{cookie:f.cookie}})).text();
+  assert.match(html,/<html lang="zh-CN">/);assert.doesNotMatch(html.split('</head>')[0],/<html[^>]*data-tv=/);
+ }
+ assert.equal(f.calls.length,0);
+});

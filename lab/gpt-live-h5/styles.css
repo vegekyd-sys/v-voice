@@ -1188,6 +1188,7 @@ html[data-tv="true"] .tv-avatar-dock .tv-round:focus-visible{outline:1px solid #
 .tv-wave{display:flex;align-items:center;gap:3px}
 .tv-wave-orbit{position:absolute;right:0;top:-4px;width:224px;height:224px;display:block;pointer-events:none;animation:tv-controls-arrive .28s .24s ease-out both}
 .tv-wave-orbit i{position:absolute;left:calc(50% - 1px);top:50%;width:2px;min-height:2px;max-height:14px;border-radius:2px;background:#b4d5e5;transform-origin:50% 1px;transform:rotate(var(--angle)) translateY(-105px);transition:height .1s linear}
+html[data-tv-presented="false"] :is(.call-page .avatar,.tv-dock-actions,.tv-wave-orbit){animation-play-state:paused!important}
 @keyframes tv-companion-reveal{from{opacity:.5;transform:translate(64px,-46px) scale(.3333)}to{opacity:1;transform:translate(0,0) scale(1)}}
 @keyframes tv-companion-breathe{0%,100%{transform:scale(1.055)}50%{transform:scale(1.073)}}
 @keyframes tv-controls-arrive{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}

@@ -1,3 +1,9 @@
+## 2026-10-27 — TV first-paint correction (local candidate)
+
+- Render TV layout and transparency in initial HTML before module loading. Hold the native WebView until its committed visual frame and pause entrance motion until presentation is ready.
+- Preserve legacy shell/full-page behavior; presentation requires the current owner/generation and never starts a call.
+- Local simulator only; no physical TV or online service update.
+
 ## 2026-10-27 — TV portrait refinement (local candidate)
 
 - Center the existing Reaction portrait, preserve headroom, remove connector/badge clutter and use the same natural crop in native Home and shared H5.

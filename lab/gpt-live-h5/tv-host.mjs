@@ -14,6 +14,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
   let revision = 0, generation = 0, last = 'idle', snapshot;
   const shell=new URLSearchParams(window.location.search).get('tvShell')==='1';
   let layout = shell ? 'medium' : 'full';
+  document.documentElement.dataset.tvPresented=String(!(shell&&new URLSearchParams(window.location.search).get('tvSurface')==='1'));
   const listeners = new Set();
   const launchRequests = new Set();
   let audio = Object.freeze({levels: [], source: 'none'}), lastSample = 0, clearTimer;
@@ -99,6 +100,11 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       commitLayout();return true;
     },
     focusPrimary,
+    present(expected) {
+      if(!validOwner(expected))return false;
+      document.documentElement.dataset.tvPresented='true';
+      return true;
+    },
     back() {
       const dialog = document.querySelector?.('dialog[open]');
       if (dialog) { dialog.dispatchEvent(new window.Event('cancel', {cancelable:true})); dialog.close(); return 'handled'; }
