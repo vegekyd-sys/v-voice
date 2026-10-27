@@ -170,6 +170,16 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-connect-audio.20261027.1',date:'2026-10-27',
+    title:'减少拨号等待，修复网页与 GPT 连接',
+    items:[
+      '飞书身份确认随首页开始，网页与 App 拨号减少重复核验和串行准备的等待。',
+      '修复网页取得麦克风权限后，音频模块启动报错、无法接通的问题。',
+      '修复 iPhone 已绑定会话选择 GPT Live One 后因传输信息缺失而拨号失败的问题。',
+      '补充音频交付与播放状态诊断，便于排查停顿；不保存原始音频。',
+    ],
+  },
+  {
     version:'voice-entry-cli.20261027.1',date:'2026-10-27',
     title:'进入更快、挂断更及时，支持按需生成电话链接',
     items:[

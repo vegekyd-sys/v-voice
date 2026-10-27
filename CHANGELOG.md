@@ -656,3 +656,10 @@ The earlier accepted task-continuity baseline uses Voice `a9ac5168` and the plat
 - Keep ordinary speech outside this background-task flow. Integrate the current external-login fixes and publish homepage notes.
 - Shared VLab and production acceptance, exact artifact and dual-node deployment receipts will be recorded after validation; this entry does not claim deployment.
 
+## 2026-10-27 — Combined connection and audio release
+
+- Integrate Voice-only startup preparation from #169, the shared GPT `webrtc` response correction, and bounded server audio-delivery diagnostics. No Gateway restart or platform update, native binary or firmware change.
+- Fix the AudioWorklet syntax error discovered in a real Feishu call: minification serializes the queue as an anonymous class. Bind the serialized expression explicitly inside the worklet and exercise minified microphone/playback processors in regression.
+- Candidate suite: 1,023 Voice, 95 speaker and 11 fleet checks. Earlier candidate records below remain historical; physical native audio and Action Button changes are excluded.
+- Production versions, real Feishu benchmarks and post-deployment evidence are recorded in `docs/releases/voice-combined-release-20261027/` after rollout.
+

@@ -5,6 +5,22 @@ import os from 'node:os';
 import path from 'node:path';
 import {createVoiceTranscriptLog} from './transcript-log.mjs';
 
+test('audio delivery and playback diagnostics keep only owned scalar timing metadata',async t=>{
+ const f=await fixture(t);f.created();
+ assert.equal(f.log.audit({type:'audio.delivery',voiceSessionId:'foreign',phase:'first'}),false);
+ assert.equal(f.log.audit({type:'audio.delivery',voiceSessionId:'v1',phase:'SECRET'}),false);
+ assert(f.log.audit({type:'audio.delivery',voiceSessionId:'v1',phase:'summary',reason:'done',responseId:'reply',packets:2,bytes:32768,audioMs:683,elapsedMs:1100,maxGapMs:1000,gaps:1,gapMs:-1,audio:'SECRET',text:'SECRET',payload:{token:'SECRET'}}));
+ assert(f.log.audit({type:'call.media',voiceSessionId:'v1',surface:'phone',nativeDuplex:true,playbackPolicy:'assisted',inputSampleRate:24000,terminal:'SECRET'}));
+ assert(f.log.audit({type:'client.playback-state',voiceSessionId:'v1',speaking:false,audio:'SECRET'}));
+ assert.equal(f.log.audit({type:'client.playback-state',voiceSessionId:'v1',speaking:'SECRET'}),false);
+ assert(f.log.audit({type:'transcript',voiceSessionId:'v1',role:'assistant',text:'fixture',final:true,responseId:'reply',turnId:'turn',audio:'SECRET'}));
+ await f.log.close();const rows=await f.rows();
+ assert(!JSON.stringify(rows).includes('SECRET'));
+ assert.equal(rows[1].bytes,32768);assert.equal(rows[1].gapMs,undefined);
+ assert.equal(rows[2].playbackPolicy,'assisted');assert.equal(rows[3].speaking,false);
+ assert.equal(rows[4].responseId,'reply');assert.equal(rows[4].turnId,'turn');
+});
+
 async function fixture(t,extra={}) {
   const root=await mkdtemp(path.join(os.tmpdir(),'voice-text-'));
   t.after(()=>rm(root,{recursive:true,force:true}));
