@@ -1,3 +1,9 @@
+## 2026-10-27 — Further startup latency reduction (candidate, unreleased)
+
+- Deliver the independent identity bootstrap in the HTML, avoiding a network module round trip before Feishu SDK initialization. The call bundle shares the same startup promise and cannot exchange identity twice.
+- Web and native one-connection dialing consume their own just-resolved Feishu admission once; the next request still re-admits, and a request delayed after resolution rechecks before reservation. No cross-request identity cache or actor policy change.
+- Controlled 500ms-request browser comparison: 3347→2826ms to dial-ready. Native device-grant protocol fixture: two membership RPCs become one, 1104→553ms to reservation with a 550ms simulated Gateway. These are not physical-phone or provider/audio results. See [candidate acceptance](docs/acceptance/startup-latency-20261027/acceptance.md).
+
 ## 2026-10-27 — Voice entry and CLI deployed
 
 - PRs #158, #160, #163, #164 and #165 merged through #167 and deployed at `b4ed555` to both Voice nodes. Main CI passed; matching artifacts, readiness, admission release and unchanged Gateway identity verified.

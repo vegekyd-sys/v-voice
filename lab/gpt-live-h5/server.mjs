@@ -49,6 +49,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   const browserBundle = () => browserBundleWork ??= readFile(join(here,'app-bundle.mjs')).then(bytes=>({
     bytes,revision:createHash('sha256').update(bytes).digest('hex'),
   }));
+  let entryBootstrapWork;
+  const entryBootstrap=()=>entryBootstrapWork??=readFile(join(here,'entry-bootstrap.js'),'utf8');
   const backendReady = () => !preview && gateway?.ready !== false;
   const origin = hosted ? new URL(publicOrigin) : null;
   if (hosted && (origin.protocol !== "https:" || origin.origin !== publicOrigin || !basePath)) throw new Error("Hosted voice requires an HTTPS origin and base path");
@@ -62,6 +64,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     ?createVoiceAccess(createHash('sha256').update('voice-guest:'+feishuLogin.appSecret).digest('hex'),basePath,Date.now,{entry:'unidentified'}):null;
   const guestDirectory=guestAccess?createUnidentifiedPhoneDirectory({accountId:feishuLogin.accountId,access:guestAccess,publicEntry:iosPublicEntry}):()=>null;
   const guestBinding=(req,...args)=>withPublicGateway(req,guestDirectory(req,...args));
+  // One inbound request may reuse its own just-verified dynamic route. This is
+  // never an identity cache across requests; slow request bodies must recheck.
+  const requestAdmissions=new WeakMap();
   const resolveBinding=async(req,url)=>{
     const requestedPhone=new URL(req.url??url.href,'http://voice.invalid').searchParams.get('phone');
     if(requestedPhone?.startsWith('cli_')){
@@ -85,7 +90,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     try {
       const device=parseFeishuConversationPhone(url.searchParams.get('phone'))&&iosBindings?.principalFor(req,url.searchParams.get('phone'),req.iosExchangeBody);
       const binding=phoneLogin?.read(req)?await phoneLogin.resolve(req,url):device?.type==='guest'?guestBinding(req,url.searchParams.get('phone'),{id:device.visitorId}):device?await phoneLogin?.resolveDevice(device,url.searchParams.get('phone')):phoneLogin?await phoneLogin.resolve(req,url):entries.resolve(url);
-      if(binding)return binding;
+      if(binding){
+        if(binding.permissionProfile==='feishu-current')requestAdmissions.set(req,{binding,at:performance.now()});
+        return binding;
+      }
     }
     catch(error){if(!guestAccess||!parseFeishuConversationPhone(url.searchParams.get('phone')))throw error;}
     return guestBinding(req,url.searchParams.get('phone'));
@@ -244,7 +252,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     try {
       // New phone entries cannot create a guessed or stale conversation.
       // Keep the accepted legacy personal entry's startup path unchanged.
-      if (binding.id !== 'tianyi'&&!unidentified) await verifyPhoneSession(binding.gateway??gateway, binding);
+      const admitted=requestAdmissions.get(req);requestAdmissions.delete(req);
+      const currentAdmission=binding.permissionProfile==='feishu-current'&&admitted?.binding===binding&&performance.now()-admitted.at<1000;
+      if (binding.id !== 'tianyi'&&!unidentified&&!currentAdmission) await verifyPhoneSession(binding.gateway??gateway, binding);
       if(cancelled())return reply(499,{error:"拨号已取消"});
       await close(context);
       if(cancelled())return reply(499,{error:"拨号已取消"});
@@ -625,6 +635,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           // and no-store policy. A new artifact gets a new bundle URL.
           const {revision}=await browserBundle();
           html=html.replaceAll('./app.js',`./app-bundle.mjs?v=${revision}`);
+          const bootstrap=(await entryBootstrap()).replace(/<\/script/giu,'<\\/script');
+          html=html.replace('<script type="module" src="./entry-startup.mjs"></script>',
+            `<script type="module" data-voice-entry-bootstrap>${bootstrap}</script>`);
           contents = Buffer.from(html);
         }
         res.writeHead(200, { "content-type": type, "cache-control": bundled && url.searchParams.get("v") === bundled.revision ? "private, max-age=31536000, immutable" : pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
