@@ -1,7 +1,8 @@
 export const TV_REACTION_CANDIDATE_UPDATE = {
-  version:'voice-tv-audio.20261028.2',date:'2026-10-28',
-  title:'电视收音与回声修复候选',status:'candidate-validation',
+  version:'voice-tv-portrait.20261028.3',date:'2026-10-28',
+  title:'电视通话头像展开修复候选',status:'candidate-validation',
   items:[
+    '修复网页初始化较慢时，接通后的 Reaction 停在小头像、控制按钮不出现的问题。需要电视壳 0.2.9。',
     '电视收音直接上传，移除重复播放与重采集；为已核验电视区分人声通道与硬件回声参考，并补偿远场收音音量。',
     '拨号时显示轻量的取消呼叫；接通后喇叭与挂断收拢为头像底部的玻璃操作区。',
     '连接或收音失败时保留原因与重新呼叫，方向键和返回键可直接回到首页，不再卡在头像。',

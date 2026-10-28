@@ -29,7 +29,7 @@ if(process.env.TV_FIXTURE_RECOVERY==='1'){
  if(url.pathname==='/__fixture/scenario'&&req.method==='POST'){const next=url.searchParams.get('mode');if(!['normal','fail-session','slow','mic-route'].includes(next)){res.writeHead(400);res.end();return;}scenario=next;res.end('ok');return;}
  if(url.pathname==='/__fixture/scenario'){res.setHeader('content-type','application/json');res.end(JSON.stringify({mode:scenario}));return;}
  if(url.pathname==='/fixture-array.mjs'){res.setHeader('content-type','text/javascript');void readFile(new URL('./tv-recovery-array.mjs',import.meta.url)).then(b=>res.end(b));return;}
- if(url.pathname==='/app.js'){res.setHeader('content-type','text/javascript');void readFile(new URL('../../lab/gpt-live-h5/app.js',import.meta.url),'utf8').then(b=>res.end("import '/fixture-array.mjs';\n"+b));return;}
+ if(url.pathname==='/app.js'){res.setHeader('content-type','text/javascript');void readFile(new URL('../../lab/gpt-live-h5/app.js',import.meta.url),'utf8').then(b=>{const delay=Math.min(5000,Math.max(0,Number(process.env.TV_FIXTURE_HOST_DELAY_MS)||0));if(delay)b=b.replace(/(const tvHost=installTvHost[^\n]+\n)/,`$1const heldTvHost=window.vVoiceTV;delete window.vVoiceTV;setTimeout(()=>{window.vVoiceTV=heldTvHost;},${delay});\n`);res.end("import '/fixture-array.mjs';\n"+b);});return;}
  if(url.pathname==='/api/session'&&scenario==='fail-session'){setTimeout(()=>{res.writeHead(503,{'content-type':'application/json'});res.end(JSON.stringify({error:'连接暂不可用，请重试'}));},1800);return;}
  if(url.pathname==='/api/session'&&scenario==='slow'){setTimeout(()=>handleRequest(req,res),6000);return;}
 }

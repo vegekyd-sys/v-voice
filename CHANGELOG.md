@@ -1,3 +1,9 @@
+## 2026-10-28 — TV portrait readiness (isolated candidate)
+
+- TV shell 0.2.9 independently acknowledges shared-page presentation after legacy fallback; late initialization can no longer leave the enlarged portrait and controls paused at their first animation frame.
+- The local fixture delays host readiness to reproduce the failure; delayed initialization, full/medium/compact navigation and Home cleanup are verified on the named emulator.
+- Audio behavior remains at 85d51d1. Tianyi reports live human speech recognition works well; computer-speaker results must not be treated as human-speech acceptance or failure.
+
 ## 2026-10-28 — TV call recovery (local candidate)
 
 - Prewarm array AEC before capture; use a versioned prepare/begin/pull hardware bridge with bounded batches and visible failure codes. No PCM is saved.
