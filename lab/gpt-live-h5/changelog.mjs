@@ -180,6 +180,15 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-ios-post-call-catalog.20261028.1',date:'2026-10-28',
+    title:'修复 iPhone 挂断后的模型显示',
+    items:[
+      '修复操作按钮快速拨号后，挂断页面仍显示旧默认名称「小何」的问题。',
+      '挂断并回到页面后同步最新模型名称和可选项，与网页保持一致，不增加拨号前等待。',
+      '通过共用页面更新交付，无需安装新的 iOS 测试包；空闲时打开 App 可获取更新。',
+    ],
+  },
+  {
     version:'voice-call-response.20261028.1',date:'2026-10-28',
     title:'拨号减少等待，iPhone 通话响应优化',
     items:[

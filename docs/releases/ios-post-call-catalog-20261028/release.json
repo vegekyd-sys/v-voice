@@ -1,0 +1,12 @@
+{
+  "schema": "v-voice-production-release-v1",
+  "version": "voice-ios-post-call-catalog.20261028.1",
+  "status": "authorized-preparing",
+  "functionalSourceCommit": "7af9457",
+  "previousEntryCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
+  "gatewayRestartRequired": false,
+  "nativeBinaryUpdated": false,
+  "firmwareUpdated": false,
+  "scope": "Shared H5 adapter refreshes service model catalog after fast call hangup",
+  "validation": {"simulatorH5TestsPassed": 11, "physicalPhone": "pending"}
+}
