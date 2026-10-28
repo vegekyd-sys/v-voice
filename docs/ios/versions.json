@@ -745,8 +745,14 @@
     "buildID": "332826bc-342c-4cd7-92c3-8a36b48f8964",
     "processingState": "VALID",
     "internalBuildState": "IN_BETA_TESTING",
-    "externalBuildState": "READY_FOR_BETA_SUBMISSION",
-    "externalTestFlightSubmitted": false
+    "externalBuildState": "IN_BETA_TESTING",
+    "externalTestFlightSubmitted": false,
+    "externalBuildSubmitted": true,
+    "betaReviewState": "APPROVED",
+    "externalGroupContainsBuild": true,
+    "testFlightPublicURL": "https://testflight.apple.com/join/5DybcrZA",
+    "externalVerifiedAt": "2026-10-28T22:20:52+08:00",
+    "externalReceipt": "../releases/ios-testflight40-external-20261028/release.json"
   },
   "currentNativeRelease": {
     "version": "1.0.0",
