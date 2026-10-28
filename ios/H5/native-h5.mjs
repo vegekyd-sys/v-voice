@@ -9,7 +9,7 @@ import {mountAvatar} from '../../lab/gpt-live-h5/avatar.mjs';
 import {createAvatarReactions} from '../../lab/gpt-live-h5/avatar-reactions.mjs';
 import {createAvatarTelemetry} from '../../lab/gpt-live-h5/avatar-telemetry.mjs';
 
-let current, owner, reactions, telemetry, opened = new Set(), pendingDocument, openingDocument=false;
+let current, owner, reactions, telemetry, opened = new Set(), pendingDocument, openingDocument=false, idleCatalogOwner;
 const hiddenDocument=document.createElement('div');hiddenDocument.hidden=true;document.body.append(hiddenDocument);
 const view = createCallView();
 const post = (action, payload = {}, callID = current?.callID ?? '') => window.webkit.messageHandlers.voice.postMessage({action,payload,callID,pageID:window.__VVoicePageID});
@@ -50,6 +50,7 @@ function startVisuals(id){
 }
 function receive(snapshot){
   if(!snapshot||typeof snapshot.callID!=='string')return;
+  if(snapshot.active)idleCatalogOwner=snapshot.callID;
   // Existing bridge 1 shells stop local media before publishing `ending`.
   // The remaining HTTP cleanup must not keep the phone page in the call.
   // Keep controls unavailable until the native owner is ready for another call.
@@ -82,6 +83,19 @@ function receive(snapshot){
   reactions?.update({snapshot:snapshot.transcript,activity:snapshot.tasks.at(-1)?.activity??'idle',taskOutcome:snapshot.tasks.length?'pending':snapshot.outcome});
   document.body.dataset.nativeOwner=snapshot.callID;
   document.body.dataset.nativeReady='true';
+  refreshIdleCatalog();
+}
+function refreshIdleCatalog(){
+  const id=idleCatalogOwner;
+  if(!id||current?.callID!==id||current.active||current.phase==='ending'||!current.bound||!current.visible||document.hidden)return;
+  // A cold Action Button call can make the initial bridge handshake happen
+  // while active, when native catalog refresh is intentionally skipped. Repeat
+  // the existing bridge-1 handshake once after the call, without reloading the
+  // page or adding a status request to the dialing path.
+  idleCatalogOwner=undefined;
+  void post('ready',{bridgeVersion:1},id).then(result=>{
+    if(current?.callID===id&&!current.active&&result?.snapshot?.callID===id)receive(result.snapshot);
+  }).catch(()=>{});
 }
 async function openPending(){
   if(!pendingDocument||document.hidden||openingDocument||view.get().reading)return;
@@ -98,7 +112,7 @@ async function openPending(){
   finally{if(openingDocument===request){openingDocument=false;if(pendingDocument&&pendingDocument!==id)requestAnimationFrame(openPending);}}
 }
 window.VVoiceH5={receive,openDocument(id){pendingDocument=id;if(view.get().reading)document.getElementById('readerBack').click();else requestAnimationFrame(openPending);},showConversation(){pendingDocument=null;if(view.get().reading)document.getElementById('readerBack').click();},stopMedia(){for(const media of document.querySelectorAll('audio,video'))media.pause();}};
-document.addEventListener('visibilitychange',()=>{if(document.hidden){window.VVoiceH5.stopMedia();void telemetry?.flush();}else{reactions?.resume();requestAnimationFrame(openPending);}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){window.VVoiceH5.stopMedia();void telemetry?.flush();}else{reactions?.resume();refreshIdleCatalog();requestAnimationFrame(openPending);}});
 window.addEventListener('pagehide',stopVisuals);
 // H5's Markdown download uses a blob URL; pass the same bytes to the iOS share UI.
 document.getElementById('readerDownload').addEventListener('click',event=>{

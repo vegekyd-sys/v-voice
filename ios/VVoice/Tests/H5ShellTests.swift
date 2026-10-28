@@ -16,18 +16,67 @@ import VVoiceCore
         let (bytes, _) = try await URLSession.shared.data(from: base.appendingPathComponent("fixture/state"))
         return try JSONSerialization.jsonObject(with: bytes) as! [String: Any]
     }
-    private func client() async throws -> CallCoordinator {
+    private func client(coldFastDial: Bool = false) async throws -> CallCoordinator {
         try await command("reset")
+        if coldFastDial { try await command("fast-mode"); try await command("production-models") }
         let store = BindingStore(service: "com.versa.vvoice.h5-tests.\(UUID().uuidString)")
-        try store.save(StoredBinding(binding: VoiceBinding(testingBaseURL: base.appendingPathComponent("voice/")), cookie: "v_voice_access=fixture-cookie"))
+        try store.save(StoredBinding(binding: VoiceBinding(testingBaseURL: base.appendingPathComponent("voice/")), cookie: "v_voice_access=fixture-cookie", nativeDialVersion: coldFastDial ? 1 : nil))
         let previousModel = UserDefaults.standard.string(forKey: "voiceModel")
-        let call = CallCoordinator(api: VoiceAPI(store: store)); call.model = .seeduplex; call.sceneChanged(.active)
+        let call = CallCoordinator(api: VoiceAPI(store: store)); call.model = .seeduplex
+        if !coldFastDial { call.sceneChanged(.active) }
         addTeardownBlock { await call.end(); await MainActor.run { call.forget(); UserDefaults.standard.set(previousModel, forKey: "voiceModel") } }; return call
     }
     private func until(_ predicate: @MainActor () async throws -> Bool) async throws {
         let deadline = Date().addingTimeInterval(15)
         while Date() < deadline { if try await predicate() { return }; try await Task.sleep(for: .milliseconds(100)) }
         XCTFail("H5 shell condition timed out")
+    }
+    func testColdFastDialRefreshesCatalogAfterPageHangup() async throws {
+        try await verifyColdFastDialCatalog(hiddenAtHangup: false)
+    }
+    func testColdFastDialDefersCatalogUntilPageVisible() async throws {
+        try await verifyColdFastDialCatalog(hiddenAtHangup: true)
+    }
+    private func verifyColdFastDialCatalog(hiddenAtHangup: Bool) async throws {
+        let call = try await client(coldFastDial: true)
+        try await call.startOrContinue()
+        let owner = call.presentationID
+        XCTAssertTrue(call.modelOptions.isEmpty)
+        let host = H5WebHost(call: call, onError: { XCTFail($0) })
+        host.latest = H5Snapshot.make(call, visible: true)
+        let web = host.makeWebView()
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene); window.rootViewController = UIViewController(); window.makeKeyAndVisible()
+        window.rootViewController!.view.addSubview(web); web.frame = window.rootViewController!.view.bounds
+        defer { window.isHidden = true; previous?.makeKeyAndVisible(); host.dispose(); web.configuration.userContentController.removeScriptMessageHandler(forName: "voice", contentWorld: .page) }
+        try await until {
+            guard host.ready else { return false }
+            return try await web.evaluateJavaScript("document.body.dataset.nativeReady") as? String == "true"
+        }
+        let connected = try await stats()
+        XCTAssertEqual(connected["fastDials"] as? Int, 1)
+        XCTAssertEqual(connected["statusRequests"] as? Int, 0, "Cold fast dialing must not gain an extra serial status request")
+        if hiddenAtHangup {
+            await call.end()
+            host.update(H5Snapshot.make(call, visible: false), foreground: true)
+            try await until { try await web.evaluateJavaScript("document.body.dataset.callState") as? String == "idle" }
+            let hidden = try await stats()
+            XCTAssertEqual(hidden["statusRequests"] as? Int, 0)
+            host.update(H5Snapshot.make(call, visible: true), foreground: true)
+        } else {
+            _ = try await web.evaluateJavaScript("document.getElementById('stop').click()")
+        }
+        try await until { try await web.evaluateJavaScript("document.getElementById('modelName')?.textContent") as? String == "豆包 SeedDuplex" }
+        XCTAssertFalse(call.active)
+        XCTAssertEqual(call.modelTitle, "豆包 SeedDuplex")
+        XCTAssertFalse(call.modelOptions.contains { $0.id == "grok" })
+        XCTAssertEqual(call.presentationID, owner)
+        for _ in 0..<3 { host.update(H5Snapshot.make(call, visible: true), foreground: true) }
+        try await Task.sleep(for: .milliseconds(400))
+        let ended = try await stats()
+        XCTAssertEqual(ended["statusRequests"] as? Int, 1, "Repeated idle snapshots must not create a refresh loop")
+        XCTAssertEqual(ended["fastDials"] as? Int, 1, "Refreshing the catalog cannot dial a new call")
     }
     func testBridgeAndResourcesRejectExternalFramesAndAPIExpansion() {
         XCTAssertTrue(H5WebHost.trusted(URL(string: "vvoice-h5://app/index.html"), mainFrame: true))
