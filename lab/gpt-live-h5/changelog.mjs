@@ -180,6 +180,17 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-call-response.20261028.1',date:'2026-10-28',
+    title:'拨号减少等待，iPhone 通话响应优化',
+    items:[
+      '网页将身份核验、创建通话和语音接入放在同一条连接，减少拨号前的重复请求。',
+      'iPhone 新版优先显示呼叫反馈，减少开始通话前的界面准备等待。',
+      'iPhone 挂断立即停止本地通话，服务器连接在后台清理；清理完成后可再次拨号。',
+      '修复连续插话超过 15 秒后可能恢复播放旧回复尾音的问题。',
+      'iPhone 三项改进需要安装 1.0.0（40）；实际接通速度受网络和模型响应影响。',
+    ],
+  },
+  {
     version:'voice-connect-audio.20261027.1',date:'2026-10-27',
     title:'减少拨号等待，修复网页与 GPT 连接',
     items:[
