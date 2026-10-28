@@ -1,7 +1,7 @@
 {
   "schema": "v-voice-production-release-v1",
   "version": "voice-call-response.20261028.1",
-  "status": "prepared-not-deployed",
+  "status": "deployed-and-verified-with-latency-limitation",
   "nativeVersion": "1.0.0",
   "nativeBuild": 40,
   "integrationPR": 175,
@@ -22,9 +22,67 @@
     "releaseTests": 11,
     "nativeTests": 73,
     "coreTests": 47,
-    "physicalAcceptance": "pending",
-    "speedComparison": "pending"
+    "physicalAcceptance": "Tianyi confirmed immediate hangup and 20-second long insertion normal; three automated physical audio tests passed",
+    "speedComparison": "Complete: Web public median 1584→1475 ms, phone playback-start median 4829→5006 ms; no stable end-to-end speedup demonstrated",
+    "physicalAutomatedPassed": 3,
+    "physicalAutomatedFailed": 0
   },
-  "testFlightAvailable": false,
-  "installedOnRequestedPhone": false
+  "testFlightAvailable": true,
+  "installedOnRequestedPhone": true,
+  "entryCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
+  "deviceEntryCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
+  "filesSha256": "dbe04f385b7bc40a273c82e9b737f1faafbc82ed83c3ef3f982fafacdda2b9d0",
+  "iosShellRevision": "86850ecfe41f4459c8e41e0b99bac78f3e4caba0e965ac46daab3426c0b54c5d",
+  "releasePreparationPR": 176,
+  "mainCIRun": 40634134518,
+  "serverNodesSynchronized": true,
+  "gatewayRestarted": false,
+  "privateConfigurationUnchanged": true,
+  "homepageChangelogVerified": true,
+  "httpsResourcesMatchArtifact": true,
+  "nativeSourceCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
+  "nativeDistribution": "USB development-signed Release archive plus internal TestFlight",
+  "testFlight": {
+    "appID": "6826350407",
+    "buildID": "332826bc-342c-4cd7-92c3-8a36b48f8964",
+    "processingState": "VALID",
+    "internalBuildState": "IN_BETA_TESTING",
+    "externalBuildState": "READY_FOR_BETA_SUBMISSION",
+    "externalBuildSubmitted": false
+  },
+  "distributionIPA": {
+    "filename": "VVoice.ipa",
+    "sha256": "ac32f492509e4589fcae5e958147c986f037ef012a39a8bf8f12504d19aa227e"
+  },
+  "deviceIPA": {
+    "name": "VVoice-build40-device.ipa",
+    "sha256": "44fea49ed85d3bc99b157b8bbafb0530aa5b019cbb5f159b7a7d99b4ac8266ea"
+  },
+  "signedArchiveVerified": true,
+  "exportedAppStoreIPAVerified": true,
+  "finalReleaseReinstalledAfterTests": true,
+  "bindingPreservedAndStatus200": true,
+  "productionCallFromPhysicalPhonePassed": true,
+  "firmwareUpdated": false,
+  "deployedAt": "2026-10-28T12:52:33+08:00",
+  "benchmark": "benchmark.json",
+  "physicalRegression": "physical-audio.json",
+  "report": "release.md",
+  "validatedAt": "2026-10-28T13:07:24+08:00",
+  "humanAcceptance": {
+    "date": "2026-10-28",
+    "build": 40,
+    "scopes": [
+      "immediate hangup",
+      "20-second insertion without old reply tail"
+    ],
+    "evidence": "两项都正常",
+    "speedReport": "action bar 离接通大概4s",
+    "network": "Wi-Fi, VPN on"
+  },
+  "knownRemaining": [
+    "stale close=409 retries before redial add about 1s in warm phone samples",
+    "full Feishu menu-to-first-audible comparison not established",
+    "external TestFlight build40 not submitted"
+  ]
 }

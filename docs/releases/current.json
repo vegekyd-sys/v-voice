@@ -1,14 +1,14 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "voice-combined-release-20261027",
-  "version": "voice-connect-audio.20261027.1",
-  "entryCommit": "7baa878a39ecd7903e9b1a384b0c115e3ddcdfac",
-  "deviceEntryCommit": "7baa878a39ecd7903e9b1a384b0c115e3ddcdfac",
-  "filesSha256": "f1efaad2f86613aa467c812f8895ce0d6e70cbbb5655b82371ab6fd1309f54c4",
-  "registration": "voice-combined-release-20261027/release.json",
-  "previousEntryCommit": "b4ed555cd3171534a9a57067b5bb8a1936ba0a34",
+  "release": "voice-functional-20261028",
+  "version": "voice-call-response.20261028.1",
+  "entryCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
+  "deviceEntryCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
+  "filesSha256": "dbe04f385b7bc40a273c82e9b737f1faafbc82ed83c3ef3f982fafacdda2b9d0",
+  "registration": "voice-functional-20261028/release.json",
+  "previousEntryCommit": "7baa878a39ecd7903e9b1a384b0c115e3ddcdfac",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-10-27T21:45:11+08:00",
-  "deployedAt": "2026-10-27T20:58:06+08:00",
-  "runtimeDifference": "Voice-only connection preparation, GPT transport response, minified AudioWorklet fix and private audio diagnostics on both nodes. Gateway and private configuration preserved. Three real desktop Feishu calls passed; native binary and firmware unchanged."
+  "validatedAt": "2026-10-28T13:07:24+08:00",
+  "deployedAt": "2026-10-28T12:52:33+08:00",
+  "runtimeDifference": "Voice-only one-connection browser dialing and iOS build40 initial feedback, immediate hangup and long-insertion fixes deployed. Three physical audio tests passed; Tianyi accepted hangup and long insertion. Speed comparison does not establish stable end-to-end improvement. Gateway and private configuration preserved."
 }
