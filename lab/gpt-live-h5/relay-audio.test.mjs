@@ -419,3 +419,14 @@ test('speaker mute silences rendered audio and AEC reference while microphone an
  mic.port.onmessage({data:pcm(480,3000).buffer});assert.equal(f.relay.stats.inputBytes,before+960);
  f.relay.setOutputMuted(false);assert(f.pump(2400).some(value=>value!==0));
 });
+
+test('hardware PCM uses the existing relay once, without an output-clock recapture, and respects mute and teardown',async t=>{
+ let receive,unsubscribed=0;const track={enabled:true,readyState:'live'};
+ const f=await fixture(t,'seeduplex',false,{stream:{getAudioTracks:()=>[track]},subscribePcm:fn=>{receive=fn;return ()=>unsubscribed++;},startCapture:()=>{assert.equal(typeof receive,'function');}});
+ assert.equal(f.nodes.filter(n=>n.name==='v-direct-mic').length,0);
+ const first=new Int16Array(480).fill(3210);receive(first.buffer);
+ let binary=f.sent.filter(x=>x instanceof ArrayBuffer);assert.equal(binary.length,1);assert.deepEqual(new Int16Array(binary[0]),first);
+ track.enabled=false;receive(new Int16Array(480).fill(3210).buffer);binary=f.sent.filter(x=>x instanceof ArrayBuffer);assert(new Int16Array(binary[1]).every(x=>x===0));
+ track.enabled=true;receive(new Int16Array(480).fill(-4321).buffer);binary=f.sent.filter(x=>x instanceof ArrayBuffer);assert(new Int16Array(binary[2]).every(x=>x===-4321));
+ f.relay.dispose();receive(first.buffer);assert.equal(unsubscribed,1);assert.equal(f.sent.filter(x=>x instanceof ArrayBuffer).length,3);
+});

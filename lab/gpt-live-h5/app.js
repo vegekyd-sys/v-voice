@@ -643,7 +643,7 @@ async function startCall() {
   try {
     const fixtureId=speakerCandidate()?new URLSearchParams(location.search).get('fixture'):null;
     if(speakerCandidate()){document.body.dataset.speakerEvents='[]';document.body.dataset.speakerAnswerDone='false';}
-    active.capture = fixtureId?await createSpeakerFixture(active.context,fixtureId,{onEvent:speakerEvent}):tvHost&&hasTvArrayCapture()?await captureTvArray({context:active.context,signal:active.captureAbort.signal,isCurrent:()=>call===active,
+    active.capture = fixtureId?await createSpeakerFixture(active.context,fixtureId,{onEvent:speakerEvent}):tvHost&&hasTvArrayCapture()?await captureTvArray({directPcm:true,context:active.context,signal:active.captureAbort.signal,isCurrent:()=>call===active,
       onDiagnostics:metadata=>{if(call===active)active.duplexDiagnostics.microphone=metadata;},
       onError:error=>{if(call===active)void stopCall({failure:error});},
     }):await microphoneSession.acquire({
@@ -693,6 +693,7 @@ async function startCall() {
       active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,greeting:!active.fixture,inputGated:Boolean(reservation.speakerRouting),
         renderReference:active.capture.renderReference,
         startCapture:active.capture.startCapture,
+        subscribePcm:active.capture.subscribePcm,
         onAudioLevel:tvHost?value=>{if(call===active)tvHost.observeAudio(value);}:undefined,
         onError:error=>{if(call===active)void stopCall({failure:error});},
         onClosed:()=>{if(call===active)void stopCall({failure:active.remoteEnding?undefined:Object.assign(Error("连接已中断，请重新呼叫"),{code:"RELAY_CLOSED"})});},
