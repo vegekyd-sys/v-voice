@@ -96,11 +96,11 @@ test('verified two-mic/two-reference hardware uses synchronous reference without
  assert(erle>15);assert(nearOutput>nearInput*.5);dsp.close();
 });
 
-test('raw TV microphone gain preserves low speech and protects near loud peaks without gating',async()=>{
+test('raw TV gain removes DC while preserving speech and protecting loud peaks',async()=>{
  const {TvInputGain}=await import('./tv-array-dsp.mjs');const gain=new TvInputGain();
  for(let n=0;n<100;n++)gain.process(new Int16Array(480).fill(65).buffer);
- const quiet=new Int16Array(480).fill(65);gain.process(quiet.buffer);assert(quiet[0]>1200);assert(quiet.every(v=>v===quiet[0]));
- const loud=new Int16Array(480).fill(30000);gain.process(loud.buffer);assert(loud[0]>0&&loud[0]<30000);assert(loud.length===480);
+ const dc=new Int16Array(480).fill(65);gain.process(dc.buffer);assert(dc.every(v=>Math.abs(v)<2));
+ const loud=new Int16Array(480);for(let i=0;i<480;i++)loud[i]=Math.round(30000*Math.sin(i*.3));gain.process(loud.buffer);assert(loud.every(v=>Math.abs(v)<=29492));assert(loud.length===480);
 });
 
 // Observed far-field speech is about 0.0005 RMS; it must remain audible after
@@ -109,4 +109,15 @@ test('raw far-field speech reaches usable level without clipping',async()=>{
  const {TvInputGain}=await import('./tv-array-dsp.mjs');const gain=new TvInputGain();
  for(let n=0;n<100;n++){const p=new Int16Array(480);for(let i=0;i<p.length;i++)p[i]=Math.round(23*Math.sin(i*.3));gain.process(p.buffer);if(n===99){const rms=Math.sqrt(p.reduce((a,v)=>a+(v/32768)**2,0)/480);assert(rms>.025&&rms<.045);}}
  const peak=new Int16Array([32767,-32768]);gain.process(peak.buffer);assert(peak.every(v=>Math.abs(v)<=29492));
+});
+
+test('TV soft noise attenuation retains weak speech above steady room noise',async()=>{
+ const {TvInputGain}=await import('./tv-array-dsp.mjs');const gain=new TvInputGain();let seed=47,noisePower=0,speechPower=0;
+ for(let f=0;f<200;f++){
+  const pcm=new Int16Array(480);
+  for(let i=0;i<480;i++){seed=(seed*1664525+1013904223)>>>0;pcm[i]=Math.round((seed/4294967296-.5)*10+(f>=100?23*Math.sin((f*480+i)*.3):0));}
+  gain.process(pcm.buffer);const power=pcm.reduce((sum,v)=>sum+(v/32768)**2,0)/480;
+  if(f>=50&&f<100)noisePower+=power/50;if(f>=150)speechPower+=power/50;
+ }
+ assert(Math.sqrt(noisePower)<.003);assert(Math.sqrt(speechPower)>.025);
 });

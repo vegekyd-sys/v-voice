@@ -43,15 +43,32 @@ export class TvArrayEchoProcessor {
 // Raw array PCM has no browser AGC. Normalize post-AEC speech, retaining every
 // sample and reserving headroom; this never gates based on assistant speaking.
 export class TvInputGain {
-  constructor(){this.gain=1;}
+  constructor(){this.gain=1;this.previousInput=0;this.previousHighpass=0;this.noiseRms=.0001;this.levels=[];this.noiseFactor=1;this.frames=0;}
   process(buffer){
-    const pcm=new Int16Array(buffer);let peak=0,energy=0;
-    for(const v of pcm){peak=Math.max(peak,Math.abs(v)/32768);energy+=(v/32768)**2;}
+    const pcm=new Int16Array(buffer),filtered=new Float32Array(pcm.length);let peak=0,energy=0;
+    // Raw arrays include DC and low-frequency room rumble. Remove these before
+    // estimating speech level, rather than amplifying them into a permanent VAD.
+    const coefficient=Math.exp(-2*Math.PI*80/24000);
+    for(let i=0;i<pcm.length;i++){
+      const input=pcm[i]/32768,value=coefficient*(this.previousHighpass+input-this.previousInput);
+      this.previousInput=input;this.previousHighpass=value;filtered[i]=value;peak=Math.max(peak,Math.abs(value));energy+=value*value;
+    }
     const rms=Math.sqrt(energy/Math.max(1,pcm.length));
+    this.levels.push(rms);if(this.levels.length>100)this.levels.shift();
+    if(++this.frames%50===0){
+      const sorted=[...this.levels].sort((a,b)=>a-b),low=sorted[Math.floor(sorted.length*.2)];
+      // Follow quieter backgrounds promptly; never learn an entire spoken
+      // sentence as noise. A louder floor requires sustained evidence.
+      this.noiseRms=low<this.noiseRms?this.noiseRms*.5+low*.5:Math.min(low,this.noiseRms*1.02);
+    }
+    // Soft attenuation retains every sample and a nonzero floor. It depends
+    // only on local signal power, never on model speech or transcript content.
+    const desired=Math.sqrt(Math.max(.01,1-(this.noiseRms/Math.max(rms,1e-7))**2));
+    this.noiseFactor+=(desired-this.noiseFactor)*(desired>this.noiseFactor?.8:.2);
     const target=Math.min(64,.8/Math.max(peak,.00001),.04/Math.max(rms,.00001));
-    this.gain+= (target-this.gain)*(target<this.gain?.8:.08);
-    const applied=Math.min(this.gain,.9/Math.max(peak,.00001));
-    for(let i=0;i<pcm.length;i++)pcm[i]=Math.round(pcm[i]*applied);
+    this.gain+=(target-this.gain)*(target<this.gain?.8:.08);
+    const applied=Math.min(this.gain,.9/Math.max(peak,.00001))*this.noiseFactor;
+    for(let i=0;i<pcm.length;i++)pcm[i]=Math.round(filtered[i]*applied*32768);
     return buffer;
   }
 }
