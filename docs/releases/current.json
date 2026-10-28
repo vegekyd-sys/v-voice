@@ -1,14 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "voice-functional-20261028",
-  "version": "voice-call-response.20261028.1",
-  "entryCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
-  "deviceEntryCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
-  "filesSha256": "dbe04f385b7bc40a273c82e9b737f1faafbc82ed83c3ef3f982fafacdda2b9d0",
-  "registration": "voice-functional-20261028/release.json",
-  "previousEntryCommit": "7baa878a39ecd7903e9b1a384b0c115e3ddcdfac",
+  "release": "ios-post-call-catalog-20261028",
+  "version": "voice-ios-post-call-catalog.20261028.1",
+  "entryCommit": "0d97329faa3e151ac4b7e9b3f5c262303f736a43",
+  "deviceEntryCommit": "0d97329faa3e151ac4b7e9b3f5c262303f736a43",
+  "filesSha256": "28bc1f4904f630271bdb376f7b6d873e97cf338f5b2661ce83afcbff3dbfbcb3",
+  "registration": "ios-post-call-catalog-20261028/release.json",
+  "previousEntryCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-10-28T13:07:24+08:00",
-  "deployedAt": "2026-10-28T12:52:33+08:00",
-  "runtimeDifference": "Voice-only one-connection browser dialing and iOS build40 initial feedback, immediate hangup and long-insertion fixes deployed. Three physical audio tests passed; Tianyi accepted hangup and long insertion. Speed comparison does not establish stable end-to-end improvement. Gateway and private configuration preserved."
+  "validatedAt": "2026-10-28T21:38:20+08:00",
+  "runtimeDifference": "Voice H5 catalog refresh after iOS fast-call hangup. Same installed native binary; Gateway unchanged. Online resources and 18 simulator H5/delivery tests verified; physical phone confirmation pending."
 }
