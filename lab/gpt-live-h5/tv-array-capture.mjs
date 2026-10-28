@@ -38,8 +38,9 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
   function pull(){
     if(!current())return;
     try{
-      // Never queue another batch while the DSP is processing the previous one.
-      if(outstanding===0){
+      // Overlap one bounded read batch with DSP work; at most eight frames
+      // can be in flight, retaining the existing fail-closed upper bound.
+      if(outstanding<=4){
         const now=performance.now();if(lastPull)metrics.maxPullGapMs=Math.max(metrics.maxPullGapMs,Math.round(now-lastPull));lastPull=now;metrics.pullCount++;
         const pullStart=performance.now(),batch=JSON.parse(bridge.pull(token,id));metrics.bridgeMs+=Math.round(performance.now()-pullStart);
         if(batch.error)throw fault(/^[A-Z0-9_]{1,64}$/.test(batch.error)?batch.error:'TV_MIC_READ','电视收音暂不可用，请重试');
@@ -73,7 +74,7 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
       if(!current())return;
       if(data.type==='error'){const e=fault('TV_DSP_PROCESS','电视音频处理中断，请重试');configureWait?.reject(e);configureWait=null;fail(e);return;}
       if(data.type==='configured'){if(Array.isArray(data.warmup))console.info('VTVAudio stats '+JSON.stringify({warmup:data.warmup}));configured=`${data.channels}:${data.sampleRate??48000}`;configureWait?.resolve();configureWait=null;return;}
-      if(data.type==='pcm'){if(submitted.has(data.sequence)){metrics.maxRoundtripMs=Math.max(metrics.maxRoundtripMs,Math.round(performance.now()-submitted.get(data.sequence)));submitted.delete(data.sequence);}metrics.renderMs=Math.round(data.renderMs??0);metrics.dspFrames++;if(Number.isFinite(data.processMs)){metrics.dspMs+=Math.round(data.processMs);metrics.maxDspMs=Math.max(metrics.maxDspMs,Math.round(data.processMs));}outstanding--;node?.port.postMessage(data.buffer,[data.buffer]);if(metadata?.version>=2&&outstanding===0)schedulePull(0);}
+      if(data.type==='pcm'){if(submitted.has(data.sequence)){metrics.maxRoundtripMs=Math.max(metrics.maxRoundtripMs,Math.round(performance.now()-submitted.get(data.sequence)));submitted.delete(data.sequence);}metrics.renderMs=Math.round(data.renderMs??0);metrics.dspFrames++;if(Number.isFinite(data.processMs)){metrics.dspMs+=Math.round(data.processMs);metrics.maxDspMs=Math.max(metrics.maxDspMs,Math.round(data.processMs));}outstanding--;node?.port.postMessage(data.buffer,[data.buffer]);if(metadata?.version>=2&&outstanding<=4)schedulePull(0);}
     };
     worker.onerror=()=>fail(fault('TV_DSP_PROCESS','电视音频处理中断，请重试'));
     signal?.addEventListener('abort',dispose,{once:true});
