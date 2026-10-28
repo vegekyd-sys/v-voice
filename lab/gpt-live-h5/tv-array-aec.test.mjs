@@ -99,6 +99,14 @@ test('verified two-mic/two-reference hardware uses synchronous reference without
 test('raw TV microphone gain preserves low speech and protects near loud peaks without gating',async()=>{
  const {TvInputGain}=await import('./tv-array-dsp.mjs');const gain=new TvInputGain();
  for(let n=0;n<100;n++)gain.process(new Int16Array(480).fill(65).buffer);
- const quiet=new Int16Array(480).fill(65);gain.process(quiet.buffer);assert(quiet[0]>900);assert(quiet.every(v=>v===quiet[0]));
+ const quiet=new Int16Array(480).fill(65);gain.process(quiet.buffer);assert(quiet[0]>1200);assert(quiet.every(v=>v===quiet[0]));
  const loud=new Int16Array(480).fill(30000);gain.process(loud.buffer);assert(loud[0]>0&&loud[0]<30000);assert(loud.length===480);
+});
+
+// Observed far-field speech is about 0.0005 RMS; it must remain audible after
+// normalization, with no sample skipping and immediate loud-peak protection.
+test('raw far-field speech reaches usable level without clipping',async()=>{
+ const {TvInputGain}=await import('./tv-array-dsp.mjs');const gain=new TvInputGain();
+ for(let n=0;n<100;n++){const p=new Int16Array(480);for(let i=0;i<p.length;i++)p[i]=Math.round(23*Math.sin(i*.3));gain.process(p.buffer);if(n===99){const rms=Math.sqrt(p.reduce((a,v)=>a+(v/32768)**2,0)/480);assert(rms>.025&&rms<.045);}}
+ const peak=new Int16Array([32767,-32768]);gain.process(peak.buffer);assert(peak.every(v=>Math.abs(v)<=29492));
 });

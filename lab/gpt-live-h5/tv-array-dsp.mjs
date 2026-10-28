@@ -48,7 +48,7 @@ export class TvInputGain {
     const pcm=new Int16Array(buffer);let peak=0,energy=0;
     for(const v of pcm){peak=Math.max(peak,Math.abs(v)/32768);energy+=(v/32768)**2;}
     const rms=Math.sqrt(energy/Math.max(1,pcm.length));
-    const target=Math.min(16,.8/Math.max(peak,.00001),.04/Math.max(rms,.00001));
+    const target=Math.min(64,.8/Math.max(peak,.00001),.04/Math.max(rms,.00001));
     this.gain+= (target-this.gain)*(target<this.gain?.8:.08);
     const applied=Math.min(this.gain,.9/Math.max(peak,.00001));
     for(let i=0;i<pcm.length;i++)pcm[i]=Math.round(pcm[i]*applied);
