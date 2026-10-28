@@ -68,3 +68,37 @@ for(const channels of [4,6])test(`${channels}-channel 16k hardware frames produc
  }
  assert.equal(samples,5*24000);assert(energy>1000000,'near speech survives with no render echo');dsp.close();
 });
+
+test('verified two-mic/two-reference hardware uses synchronous reference without feeding it into near speech',async()=>{
+ const m=await module(),{TvArrayEchoProcessor}=await import('./tv-array-dsp.mjs');
+ const layout={version:1,microphones:[0,1],references:[2,3]};
+ assert.throws(()=>new TvArrayEchoProcessor(m,4,16000,{...layout,references:[0,3]}));
+ const dsp=new TvArrayEchoProcessor(m,4,16000,layout);let seed=13,history=[],raw=0,clean=0,nearInput=0,nearOutput=0;
+ for(let f=0;f<450;f++){
+  const pcm=new Int16Array(1280);
+  for(let i=0;i<320;i++){
+   const n=f*320+i;seed=(seed*1664525+1013904223)>>>0;const ref=(seed/4294967296-.5)*.25;history.push(ref);
+   const echo=(history[n-640]??0)*.45+(history[n-960]??0)*.1;
+   const near=f>300?.04*Math.sin(n*2*Math.PI*337/16000)+.025*Math.sin(n*2*Math.PI*677/16000):0;
+   pcm[i*4]=Math.round((echo+near)*32768);pcm[i*4+1]=Math.round((echo*.9+near)*32768);
+   pcm[i*4+2]=pcm[i*4+3]=Math.round(ref*32768);
+   if(f>150&&f<250)raw+=echo**2;
+   if(f>350)nearInput+=near**2;
+  }
+  // No rendered callbacks are needed: the device reference shares the ADC clock.
+  const out=new Int16Array(dsp.capture(pcm).buffer);assert.equal(out.length,480);
+  if(f>150&&f<250)for(const v of out)clean+=(v/32768)**2/1.5;
+  if(f>350)for(const v of out)nearOutput+=(v/32768)**2/1.5;
+ }
+ const erle=10*Math.log10(raw/clean);console.log({hardwareErleDb:erle,nearRetention:nearOutput/nearInput});
+ // Use the existing 15 dB suite requirement; report the measured attenuation,
+ // and separately require preservation of overlapping near speech.
+ assert(erle>15);assert(nearOutput>nearInput*.5);dsp.close();
+});
+
+test('raw TV microphone gain preserves low speech and protects near loud peaks without gating',async()=>{
+ const {TvInputGain}=await import('./tv-array-dsp.mjs');const gain=new TvInputGain();
+ for(let n=0;n<100;n++)gain.process(new Int16Array(480).fill(65).buffer);
+ const quiet=new Int16Array(480).fill(65);gain.process(quiet.buffer);assert(quiet[0]>900);assert(quiet.every(v=>v===quiet[0]));
+ const loud=new Int16Array(480).fill(30000);gain.process(loud.buffer);assert(loud[0]>0&&loud[0]<30000);assert(loud.length===480);
+});

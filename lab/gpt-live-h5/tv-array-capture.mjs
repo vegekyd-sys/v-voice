@@ -1,3 +1,4 @@
+import {TvInputGain} from './tv-array-dsp.mjs';
 import {PcmPlaybackQueue} from './relay-audio.mjs';
 
 export const hasTvArrayCapture=()=>globalThis.vTvAudioCapability?.version===1&&typeof globalThis.VTVArray?.start==='function';
@@ -7,6 +8,7 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
   if(!hasTvArrayCapture())throw fault('TV_MIC_CAPABILITY','电视收音尚未就绪，请重试');
   const bridge=globalThis.VTVArray,token=globalThis.vTvAudioCapability.pageToken,id='capture-'+crypto.randomUUID();
   let closed=false,capturing=false,node,destination,metadata,sequence=0,outstanding=0,poll,configured=0,configureWait,pcmSink;
+  const inputGain=new TvInputGain();
   const metrics={dspFrames:0,dspMs:0,maxDspMs:0,pullCount:0,maxPullGapMs:0,elapsedMs:0,decodeMs:0,bridgeMs:0,renderMs:0,maxRoundtripMs:0};const submitted=new Map();let beganAt=0,lastPull=0;
   const worker=new Worker(new URL('./tv-array-worker.js',import.meta.url));
   const fail=error=>{if(closed)return;dispose();onError(error);};
@@ -55,7 +57,7 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
     return new Promise((resolve,reject)=>{
       const timeout=setTimeout(()=>{configureWait=null;reject(fault('TV_DSP_TIMEOUT','电视音频准备超时，请重试'));},8000);
       configureWait={resolve:()=>{clearTimeout(timeout);resolve();},reject:e=>{clearTimeout(timeout);reject(e);}};
-      worker.postMessage({type:'configure',channels,sampleRate});
+      worker.postMessage({type:'configure',channels,sampleRate,channelLayout:metadata?.channelLayout});
     });
   }
   try{
@@ -75,7 +77,7 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
       if(data.type==='error'){const e=fault('TV_DSP_PROCESS','电视音频处理中断，请重试');configureWait?.reject(e);configureWait=null;fail(e);return;}
       if(data.type==='metrics'){console.info('VTVAudio stats '+JSON.stringify(data));return;}
       if(data.type==='configured'){if(Array.isArray(data.warmup))console.info('VTVAudio stats '+JSON.stringify({warmup:data.warmup}));configured=`${data.channels}:${data.sampleRate??48000}`;configureWait?.resolve();configureWait=null;return;}
-      if(data.type==='pcm'){if(submitted.has(data.sequence)){metrics.maxRoundtripMs=Math.max(metrics.maxRoundtripMs,Math.round(performance.now()-submitted.get(data.sequence)));submitted.delete(data.sequence);}metrics.renderMs=Math.round(data.renderMs??0);metrics.dspFrames++;if(Number.isFinite(data.processMs)){metrics.dspMs+=Math.round(data.processMs);metrics.maxDspMs=Math.max(metrics.maxDspMs,Math.round(data.processMs));}outstanding--;if(pcmSink)pcmSink(data.buffer);else node?.port.postMessage(data.buffer,[data.buffer]);if(metadata?.version>=2&&outstanding<=4)schedulePull(0);}
+      if(data.type==='pcm'){if(submitted.has(data.sequence)){metrics.maxRoundtripMs=Math.max(metrics.maxRoundtripMs,Math.round(performance.now()-submitted.get(data.sequence)));submitted.delete(data.sequence);}metrics.renderMs=Math.round(data.renderMs??0);metrics.dspFrames++;if(Number.isFinite(data.processMs)){metrics.dspMs+=Math.round(data.processMs);metrics.maxDspMs=Math.max(metrics.maxDspMs,Math.round(data.processMs));}outstanding--;if(metadata?.channelLayout)inputGain.process(data.buffer);if(pcmSink)pcmSink(data.buffer);else node?.port.postMessage(data.buffer,[data.buffer]);if(metadata?.version>=2&&outstanding<=4)schedulePull(0);}
     };
     worker.onerror=()=>fail(fault('TV_DSP_PROCESS','电视音频处理中断，请重试'));
     signal?.addEventListener('abort',dispose,{once:true});
@@ -117,6 +119,6 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
         }
         diagnostics={...diagnostics,source:metadata.source,channels:metadata.channels,sampleRate:metadata.sampleRate};onDiagnostics(diagnostics);
       },
-      renderReference(buffer,sampleRate){if(current())worker.postMessage({type:'render',buffer,sampleRate},[buffer]);}};
+      renderReference:metadata?.channelLayout?undefined:(buffer,sampleRate)=>{if(current())worker.postMessage({type:'render',buffer,sampleRate},[buffer]);}};
   }catch(error){dispose();throw error;}
 }

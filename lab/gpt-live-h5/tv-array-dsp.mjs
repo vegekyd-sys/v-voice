@@ -3,22 +3,34 @@
 // channels use two filters so strong electrical references cannot dominate all
 // microphones' suppression. Only cancelled outputs are combined for the model.
 export class TvArrayEchoProcessor {
-  constructor(module,channels,sampleRate=48000){
+  constructor(module,channels,sampleRate=48000,layout){
     if(![16000,48000].includes(sampleRate))throw Error('Unsupported TV sample rate');
     this.sampleRate=sampleRate;this.frameSize=sampleRate/50;
     if(![4,6].includes(channels))throw Error('Unsupported TV array');
     this.channels=channels;this.closed=false;
-    const groups=channels===6?2:1;
+    if(layout){
+      const all=[...(layout.microphones??[]),...(layout.references??[])];
+      if(layout.version!==1||!layout.microphones?.length||!layout.references?.length||all.length!==channels||new Set(all).size!==channels||all.some(c=>!Number.isInteger(c)||c<0||c>=channels))throw Error('Invalid array layout');
+      this.layout={microphones:[...layout.microphones],references:[...layout.references]};
+    }
+    const groups=layout?1:channels===6?2:1;
     this.groupSize=channels/groups;
     this.processors=Array.from({length:groups},()=>new module.AEC3(16000,1,1));
   }
-  render(data,sampleRate=48000){if(!this.closed)for(const aec of this.processors)aec.analyze([data],{sampleRateIn:sampleRate});}
+  render(data,sampleRate=48000){if(!this.closed&&!this.layout)for(const aec of this.processors)aec.analyze([data],{sampleRateIn:sampleRate});}
   capture(pcm){
     if(this.closed||pcm.length!==this.frameSize*this.channels)throw Error('Invalid TV frame');
+    if(this.layout){
+      // The reference is captured in the same hardware frame as the mics.
+      // Never mix electrical speaker-reference channels into the user voice.
+      const reference=new Float32Array(this.frameSize);
+      for(let i=0;i<this.frameSize;i++)for(const c of this.layout.references)reference[i]+=pcm[i*this.channels+c]/32768/this.layout.references.length;
+      this.processors[0].analyze([reference],{sampleRateIn:this.sampleRate});
+    }
     const options={sampleRateIn:this.sampleRate,sampleRateOut:24000},outputs=[];let inputEnergy=0,outputEnergy=0;
     for(let g=0;g<this.processors.length;g++){
-      const input=new Float32Array(this.frameSize);
-      for(let i=0;i<this.frameSize;i++){let value=0;for(let c=0;c<this.groupSize;c++)value+=pcm[i*this.channels+g*this.groupSize+c]/32768;value/=this.groupSize;input[i]=value;inputEnergy+=value*value;}
+      const input=new Float32Array(this.frameSize),members=this.layout?.microphones??Array.from({length:this.groupSize},(_,c)=>g*this.groupSize+c);
+      for(let i=0;i<this.frameSize;i++){let value=0;for(const c of members)value+=pcm[i*this.channels+c]/32768;value/=members.length;input[i]=value;inputEnergy+=value*value;}
       const aec=this.processors[g],out=new Float32Array(aec.processSize([input],options));aec.process([out],[input],options);outputs.push(out);
     }
     const mono=new Int16Array(outputs[0].length);
@@ -26,4 +38,20 @@ export class TvArrayEchoProcessor {
     return {buffer:mono.buffer,inputRms:Math.sqrt(inputEnergy/(this.frameSize*outputs.length)),outputRms:Math.sqrt(outputEnergy/Math.max(1,mono.length))};
   }
   close(){if(this.closed)return;this.closed=true;for(const aec of this.processors)aec.free();this.processors=[];}
+}
+
+// Raw array PCM has no browser AGC. Normalize post-AEC speech, retaining every
+// sample and reserving headroom; this never gates based on assistant speaking.
+export class TvInputGain {
+  constructor(){this.gain=1;}
+  process(buffer){
+    const pcm=new Int16Array(buffer);let peak=0,energy=0;
+    for(const v of pcm){peak=Math.max(peak,Math.abs(v)/32768);energy+=(v/32768)**2;}
+    const rms=Math.sqrt(energy/Math.max(1,pcm.length));
+    const target=Math.min(16,.8/Math.max(peak,.00001),.04/Math.max(rms,.00001));
+    this.gain+= (target-this.gain)*(target<this.gain?.8:.08);
+    const applied=Math.min(this.gain,.9/Math.max(peak,.00001));
+    for(let i=0;i<pcm.length;i++)pcm[i]=Math.round(pcm[i]*applied);
+    return buffer;
+  }
 }
