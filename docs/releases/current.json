@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "ios-post-call-catalog-20261028",
-  "version": "voice-ios-post-call-catalog.20261028.1",
-  "entryCommit": "0d97329faa3e151ac4b7e9b3f5c262303f736a43",
-  "deviceEntryCommit": "0d97329faa3e151ac4b7e9b3f5c262303f736a43",
-  "filesSha256": "28bc1f4904f630271bdb376f7b6d873e97cf338f5b2661ce83afcbff3dbfbcb3",
-  "registration": "ios-post-call-catalog-20261028/release.json",
-  "previousEntryCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
+  "release": "redial-cleanup-20261028",
+  "version": "voice-redial-cleanup.20261028.1",
+  "entryCommit": "4f06888030edeb2704ecdd944b724fece900061d",
+  "deviceEntryCommit": "4f06888030edeb2704ecdd944b724fece900061d",
+  "filesSha256": "fff75f3d800bc7d3954e10d508368577856b7fc4deb3fcac41f584b793796b25",
+  "registration": "redial-cleanup-20261028/release.json",
+  "previousEntryCommit": "0d97329faa3e151ac4b7e9b3f5c262303f736a43",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-10-28T21:38:20+08:00",
-  "runtimeDifference": "Voice H5 catalog refresh after iOS fast-call hangup. Same installed native binary; Gateway unchanged. Online resources and 18 simulator H5/delivery tests verified; physical phone confirmation pending."
+  "validatedAt": "2026-10-28T23:31:16+08:00",
+  "runtimeDifference": "Completed-call acknowledgement removes redundant iOS redial cleanup; existing native binary. Production probe confirms removal but does not establish total latency improvement; one transient disconnect retained in comparison."
 }

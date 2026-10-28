@@ -1,7 +1,7 @@
-## 2026-10-28 — Retired-call cleanup acknowledgement (release prepared)
+## 2026-10-28 — Retired-call cleanup acknowledgement released
 
 - Acknowledge a recently completed call only within its original authenticated visitor context. Existing iOS binaries can clear the pending call after relay-first shutdown, avoiding another HTTP cleanup request before redial; failed cleanup and unrelated IDs remain protected.
-- Physical Candidate ABBA: six warm redials per side, cleanup median 271.5→0ms and native transport connected median 1807.5→1485ms; restored Release40. Public transport short test, not Action Button/lock-screen or long-interruption reacceptance. Production before/after validation is pending release.
+- Physical Candidate ABBA: six warm redials per side, cleanup median 271.5→0ms and native transport connected median 1807.5→1485ms; restored Release40. Public transport short test, not Action Button/lock-screen or long-interruption reacceptance. Merged #180 and deployed 4f06888 to both nodes. Production probe removes all three redundant cleanup requests, but total connected median is 1264→1629ms; no end-to-end speed claim. One transient disconnect followed by two successful calls is retained in the release record.
 - Same compiled iOS test product, fixed 500ms close delay: three warm-redial samples change from 765/675/672ms to 231/226/200ms, with one redundant request becoming zero. Local protocol evidence only; [acceptance and limits](docs/acceptance/redial-cleanup-20261028.md).
 
 ## 2026-10-28 — iOS post-call model catalog released

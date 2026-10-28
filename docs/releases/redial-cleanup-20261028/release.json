@@ -1,7 +1,7 @@
 {
   "schema": "v-voice-production-release-v1",
   "version": "voice-redial-cleanup.20261028.1",
-  "status": "prepared_not_deployed",
+  "status": "deployed_verified_cleanup_fixed_end_to_end_speed_not_established",
   "previousEntryCommit": "0d97329faa3e151ac4b7e9b3f5c262303f736a43",
   "functionalSourceCommit": "9ba8eb594f849caa3e42087639eb4fa828c0a4a5",
   "releasePR": 180,
@@ -10,6 +10,28 @@
   "firmwareUpdated": false,
   "scope": "Acknowledge completed owned calls to avoid redundant HTTP close before redial",
   "candidateValidation": "../../acceptance/redial-cleanup-20261028-physical.json",
-  "productionComparison": "pending",
-  "serverNodesSynchronized": false
+  "productionComparison": "production-comparison.json",
+  "serverNodesSynchronized": true,
+  "entryCommit": "4f06888030edeb2704ecdd944b724fece900061d",
+  "deviceEntryCommit": "4f06888030edeb2704ecdd944b724fece900061d",
+  "filesSha256": "fff75f3d800bc7d3954e10d508368577856b7fc4deb3fcac41f584b793796b25",
+  "iosShellRevision": "e35957e0391249fccc6eee15487d9aebb06e569c6e22f6e50bbc27622d90e130",
+  "gatewayRestarted": false,
+  "gatewayIdentityAndConfigUnchanged": true,
+  "homepageChangelogVerified": true,
+  "httpsResourcesMatchArtifact": true,
+  "validatedAt": "2026-10-28T23:31:16+08:00",
+  "mainCIRun": 40714231488,
+  "rollbackCommit": "0d97329faa3e151ac4b7e9b3f5c262303f736a43",
+  "phone": "Original Release1.0.0(40) retained; physical production comparison unavailable because locked",
+  "validation": {
+    "voiceTests": 1033,
+    "speakerTests": 95,
+    "releaseTests": 11,
+    "candidatePhysicalRedialsPerSide": 6,
+    "productionProbeRedialsPerSide": 3,
+    "productionProbeTransientFailure": 1,
+    "followupCallsPassed": 2,
+    "finalNodesReadyIdleUnheld": true
+  }
 }
