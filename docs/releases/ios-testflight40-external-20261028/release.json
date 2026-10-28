@@ -1,0 +1,19 @@
+{
+  "schema": "v-voice-ios-distribution-receipt-v1",
+  "version": "1.0.0",
+  "build": 40,
+  "buildID": "332826bc-342c-4cd7-92c3-8a36b48f8964",
+  "nativeSourceCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
+  "verifiedAt": "2026-10-28T22:20:52+08:00",
+  "processingState": "VALID",
+  "expired": false,
+  "internalBuildState": "IN_BETA_TESTING",
+  "externalBuildState": "IN_BETA_TESTING",
+  "betaReviewState": "APPROVED",
+  "externalGroupContainsBuild": true,
+  "testFlightPublicURL": "https://testflight.apple.com/join/5DybcrZA",
+  "newBinaryUploaded": false,
+  "phoneReinstalled": false,
+  "serverDeployed": false,
+  "scope": "Existing build40 assigned to the existing external group, submitted for beta review and Apple approval read back. Separate from the unmerged redial-cleanup service candidate."
+}
