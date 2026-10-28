@@ -1,0 +1,192 @@
+{
+  "schema": "v-voice-production-redial-comparison-v1",
+  "entry": "Formal Public HTTPS entry",
+  "client": "Same Mac native-protocol Node probe; not physical iPhone",
+  "beforeCommit": "0d97329faa3e151ac4b7e9b3f5c262303f736a43",
+  "afterCommit": "4f06888030edeb2704ecdd944b724fece900061d",
+  "date": "2026-10-28T23:31:16+08:00",
+  "before": {
+    "client": "Node native-protocol probe; no physical microphone or speaker",
+    "entry": "production Public",
+    "samples": [
+      {
+        "sample": 0,
+        "warmup": true,
+        "pendingBefore": false,
+        "recoveryStatus": null,
+        "recoveryMS": 0,
+        "connectedMS": 1026,
+        "firstPCMMS": 6122,
+        "audioBytes": 133448,
+        "closeStatus": 409,
+        "closeMS": 577,
+        "pendingAfter": true
+      },
+      {
+        "sample": 1,
+        "warmup": false,
+        "pendingBefore": true,
+        "recoveryStatus": 409,
+        "recoveryMS": 208,
+        "connectedMS": 1264,
+        "firstPCMMS": 5833,
+        "audioBytes": 126976,
+        "closeStatus": 409,
+        "closeMS": 542,
+        "pendingAfter": true
+      },
+      {
+        "sample": 2,
+        "warmup": false,
+        "pendingBefore": true,
+        "recoveryStatus": 409,
+        "recoveryMS": 196,
+        "connectedMS": 1248,
+        "firstPCMMS": 5890,
+        "audioBytes": 133190,
+        "closeStatus": 409,
+        "closeMS": 647,
+        "pendingAfter": true
+      },
+      {
+        "sample": 3,
+        "warmup": false,
+        "pendingBefore": true,
+        "recoveryStatus": 409,
+        "recoveryMS": 321,
+        "connectedMS": 1349,
+        "firstPCMMS": 6063,
+        "audioBytes": 131072,
+        "closeStatus": 409,
+        "closeMS": 572,
+        "pendingAfter": true
+      }
+    ]
+  },
+  "afterInitial": {
+    "client": "Node native-protocol probe; no physical microphone or speaker",
+    "entry": "production Public",
+    "samples": [
+      {
+        "sample": 0,
+        "warmup": true,
+        "pendingBefore": false,
+        "recoveryStatus": null,
+        "recoveryMS": 0,
+        "connectedMS": 1825,
+        "firstPCMMS": 6812,
+        "audioBytes": 134058,
+        "closeStatus": 200,
+        "closeMS": 1263,
+        "pendingAfter": false
+      },
+      {
+        "sample": 1,
+        "warmup": false,
+        "pendingBefore": false,
+        "recoveryStatus": null,
+        "recoveryMS": 0,
+        "connectedMS": 1629,
+        "firstPCMMS": 6572,
+        "audioBytes": 132972,
+        "closeStatus": 200,
+        "closeMS": 1262,
+        "pendingAfter": false
+      },
+      {
+        "sample": 2,
+        "warmup": false,
+        "pendingBefore": false,
+        "recoveryStatus": null,
+        "recoveryMS": 0,
+        "connectedMS": 1886,
+        "firstPCMMS": 6992,
+        "audioBytes": 125514,
+        "closeStatus": 200,
+        "closeMS": 1409,
+        "pendingAfter": false
+      }
+    ],
+    "exit": 1,
+    "additionalFailedAttempt": {
+      "sample": 3,
+      "error": "Relay closed early",
+      "includedInLatencyMedian": false
+    }
+  },
+  "afterRecovery": {
+    "client": "Node native-protocol probe; no physical microphone or speaker",
+    "entry": "production Public",
+    "samples": [
+      {
+        "sample": 0,
+        "warmup": true,
+        "pendingBefore": false,
+        "recoveryStatus": null,
+        "recoveryMS": 0,
+        "connectedMS": 2301,
+        "firstPCMMS": 7543,
+        "audioBytes": 94208,
+        "closeStatus": 200,
+        "closeMS": 1264,
+        "pendingAfter": false
+      },
+      {
+        "sample": 1,
+        "warmup": false,
+        "pendingBefore": false,
+        "recoveryStatus": null,
+        "recoveryMS": 0,
+        "connectedMS": 1228,
+        "firstPCMMS": 5906,
+        "audioBytes": 133462,
+        "closeStatus": 200,
+        "closeMS": 1387,
+        "pendingAfter": false
+      }
+    ],
+    "exit": 0,
+    "probeChanges": "Only bounded sample count (2), failure diagnostics, cleanup on failure and normal ten-second heartbeat; request/audio/measurement loop unchanged."
+  },
+  "mediansMS": {
+    "before": {
+      "recoveryMS": 208,
+      "connectedMS": 1264,
+      "firstPCMMS": 5890
+    },
+    "after": {
+      "recoveryMS": 0,
+      "connectedMS": 1629,
+      "firstPCMMS": 6572
+    }
+  },
+  "redialCounts": {
+    "before": 3,
+    "after": 3
+  },
+  "redundantRecoveryRequests": {
+    "before": 3,
+    "after": 0
+  },
+  "connectionAttempts": {
+    "before": {
+      "success": 4,
+      "failure": 0
+    },
+    "afterIncludingRecovery": {
+      "success": 5,
+      "failure": 1
+    }
+  },
+  "conclusion": "Redundant cleanup eliminated in production. This small sequential public-network sample does not establish end-to-end latency improvement; after median connected and first PCM were slower. One connection ended early; two subsequent calls succeeded. Root cause of the transient disconnect remains unconfirmed.",
+  "serverObservation": "Failed attempt reached provider-ready after 3695ms, then input-paused and later closed. No provider connection-error diagnostic observed for that call. Final both nodes idle/ready, no residual call or task.",
+  "excludedComparison": "Prior iPhone Candidate ABBA results retained separately; not mixed with this production client. iPhone remained locked so no formal physical before/after acceptance.",
+  "audioBoundary": "Synthetic speech only; PCM arrival measured, no speaker rendering or raw human audio collection.",
+  "cost": {
+    "modelAttempts": 10,
+    "budgetTargetUSD": 5,
+    "absoluteCapUSD": 10,
+    "invoiceVerified": false
+  },
+  "sourceProbeSHA256": "e87d222fbe4a09154d325ea0a3c763e28a0d5242cb98c9cfe9ac107ce5f19e01"
+}
