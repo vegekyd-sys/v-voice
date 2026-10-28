@@ -1,3 +1,9 @@
+## 2026-10-28 — Browser one-connection dialing (candidate, unreleased)
+
+- Use an explicitly advertised web v2 dial socket for SeedDuplex/Grok, keeping live admission, cookie/origin checks and the original input policy. Preserve native v1 and GPT WebRTC behavior. Cancellation closes the allocation; failures never trigger an ambiguous automatic second dial.
+- Retain ready/audio frames across reservation handoff. Record bounded timing for upstream ready, first relay PCM and the first nonzero audio-thread render observation; pickup cues do not count.
+- Original production baselines and comparison conditions: [experiment record](docs/experiments/entry-latency-20261028.md). No platform dependency, Gateway restart or native binary change. Real end-to-end benefit is pending validation.
+
 ## 2026-10-27 — iOS GPT Live One transport contract (candidate, unreleased)
 
 - Preserve the validated `webrtc` transport in the shared GPT session response so the native call owner can select its existing WebRTC backend. Provider secrets and SDP endpoint credentials remain server-side.

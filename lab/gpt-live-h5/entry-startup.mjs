@@ -6,6 +6,7 @@ const visibleTimingStages = new Set([
   'voice.status.inline', 'voice.status.complete', 'voice.dial.ready',
   'voice.dial.requested', 'voice.microphone.ready', 'voice.reservation.ready',
   'voice.connection.ready',
+  'voice.output.received', 'voice.output.rendered',
 ]);
 export function publishVoiceTiming() {
   if (typeof document === 'undefined' || typeof performance === 'undefined') return;

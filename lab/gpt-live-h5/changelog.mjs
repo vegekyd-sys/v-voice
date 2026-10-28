@@ -1,3 +1,13 @@
+export const WEB_DIAL_CANDIDATE_UPDATE = {
+  version:'voice-web-dial.20261028.1',date:'2026-10-28',
+  title:'网页拨号减少重复等待（Candidate）',status:'candidate-validation',
+  items:[
+    '网页将本次身份核验、创建通话和语音接入放到同一条连接，减少接通前的重复请求。',
+    '保留每通电话的身份和权限检查，取消拨号会关闭本次连接。',
+    '仅候选验证，完整飞书菜单至接通的真实收益仍待对照；不需要更新平台或原生 App。',
+  ],
+};
+
 export const IOS_GPT_TRANSPORT_CANDIDATE_UPDATE = {
   version:'voice-ios-gpt-transport.20261027.1',date:'2026-10-27',
   title:'iOS GPT Live One 连接修复（Candidate）',status:'candidate-validation',

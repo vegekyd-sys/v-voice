@@ -16,6 +16,7 @@ import { createPageMicrophoneSession } from "./microphone-session.mjs";
 import { createCallSounds } from "./call-sounds.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 import { createRelayAudio } from "./relay-audio.mjs";
+import { createDialConnection } from "./dial-connection.mjs";
 import { createScreenWakeLock } from "./screen-wake-lock.mjs";
 import { mountChangelog } from "./changelog.mjs";
 import { createSpeakerGate, createSpeakerFixture } from "./speaker-routing.mjs";
@@ -60,6 +61,7 @@ let liveReady = false;
 let entryError = null;
 let callerEntry = "tianyi";
 let preferredPhoneInputPolicy = null;
+let webDialVersion = null;
 const speakerCandidate=()=>document.body?.dataset?.speakerRouting==='true';
 function speakerEvent(value){
   if(!speakerCandidate())return;
@@ -566,6 +568,7 @@ async function stopCall() {
     active.avatarTelemetry?.close();
     active.avatarReactions?.dispose();
     active.relay?.dispose();
+    active.dialConnection?.dispose();
     active.callerContext?.close();active.deviceAdapter?.close();
     active.speakerGate?.dispose();
     clearInterval(active.levelTimer); clearInterval(active.heartbeat); clearInterval(active.presentationPoll);
@@ -596,13 +599,13 @@ async function startCall() {
   if (starting || call || view.get().confirmation) return;
   if (view.get().confirmOnDial) { await confirmation.start(); return; }
   if (!liveReady) { setStatus(entryError ?? "当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
-  for (const name of ["voice.dial.requested", "voice.microphone.ready", "voice.reservation.ready", "voice.connection.ready"])
+  for (const name of ["voice.dial.requested", "voice.microphone.ready", "voice.reservation.ready", "voice.connection.ready", "voice.output.received", "voice.output.rendered"])
     performance.clearMarks?.(name);
   markVoiceTiming("voice.dial.requested");
   view.set(state => ({ dial: { ...state.dial, disabled: true }, stopLabel: "取消拨号", badge: "连接中", modelDisabled: true }));
   setCallState("dialing"); setStatus("正在连接 V…");
   resetTranscript();
-  const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController() }; call = active; starting = active;
+  const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController(), dialStartedAt:performance.now() }; call = active; starting = active;
   const chosenModel = view.get().model;
   if (speakerCandidate()||['seeduplex','grok'].includes(chosenModel)) {
     // Create/resume in the dial gesture, before microphone and network awaits.
@@ -644,7 +647,15 @@ async function startCall() {
     const selectedModel = ['seeduplex','grok'].includes(chosenModel)?chosenModel:'gpt-live';
     const inputPolicy = speakerCandidate() ? (new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy) : null;
     const nativeDeviceActions=await browserDeviceActions();
-    const reservation = await api("session", {model:selectedModel,nativeDeviceActions,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:{})}); active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
+    const params={model:selectedModel,nativeDeviceActions,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:{})};
+    let reservation;
+    if(webDialVersion===2&&phoneEntry&&['seeduplex','grok'].includes(selectedModel)){
+      const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
+      endpoint.search=new URLSearchParams({phone:phoneEntry,model:selectedModel,dialVersion:'2',...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
+      active.dialConnection=createDialConnection({url:endpoint,signal:active.captureAbort.signal});
+      reservation=await active.dialConnection.reservation;
+    }else reservation=await api('session',params);
+    active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     const diagnosticOwner=avatarDiagnosticOwner=Symbol('avatar-call');
     document.body.dataset.avatarReactionRequests='0';
@@ -676,7 +687,7 @@ async function startCall() {
     if (reservation.transport === 'gateway-relay') {
       await active.contextResume;
       if(call!==active)return;
-      active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,greeting:!active.fixture,inputGated:Boolean(reservation.speakerRouting),
+      active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,connection:active.dialConnection,dialStartedAt:active.dialStartedAt,onTiming:name=>{if(call===active)markVoiceTiming(name);},greeting:!active.fixture,inputGated:Boolean(reservation.speakerRouting),
         onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message, { tone: "error" }));},
         onClosed:()=>{if(call===active)void stopCall();},
         onPlaybackActivity:speaking=>{if(call===active){setVoiceState(speaking?'speaking':'listening');if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
@@ -923,6 +934,7 @@ async function initializeEntry() {
 function applyEntryStatus(status) {
     view.set({returnToAccountHref:status.returnToAccountHref??null});
     preferredPhoneInputPolicy = status.phoneInputPolicy;
+    webDialVersion = status.webDialVersion;
     liveReady = status.ready === true;
     const {models, model} = phoneModelOptions(status, view.get().model);
     const grok = status.models?.find(item => item.id === "grok");

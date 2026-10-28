@@ -149,16 +149,18 @@ test('HTTP OAuth and dialing preserve both fixture subjects, groups, and server-
     assert.equal(actual.p.sessionKey,'agent:makaron:feishu:group:'+chat);
     assert.equal(actual.p.voiceActor.actor.openId,user);
     await get('/voice/api/close'+query,jar,await connected.json());
+    for(const dialVersion of [1,2]){
     const reservation=await new Promise((resolve,reject)=>{
-      const ws=new WebSocket(`ws://127.0.0.1:${bridge.server.address().port}/voice/api/dial${query}&model=grok&nativeRuntimeVersion=1&dialVersion=1`,
+      const ws=new WebSocket(`ws://127.0.0.1:${bridge.server.address().port}/voice/api/dial${query}&model=grok&dialVersion=${dialVersion}${dialVersion===1?'&nativeRuntimeVersion=1':''}`,
         {headers:{host:'voice.example',origin,cookie:jar}});
       const timer=setTimeout(()=>{ws.terminate();reject(Error('fixture dial timed out'));},2000);
       ws.on('error',reject);ws.on('message',raw=>{const value=JSON.parse(raw);clearTimeout(timer);ws.close();resolve(value);});
     });
-    assert.equal(reservation.type,'reservation');
+    assert.equal(reservation.type,'reservation');assert.equal(reservation.dialVersion,dialVersion);
     const catalog=calls.filter(c=>c.method==='tools.catalog').at(-1);
     assert.equal(catalog.p.voiceActor.actor.openId,user);assert.equal(catalog.p.sessionKey,'agent:makaron:feishu:group:'+chat);
     await get('/voice/api/close'+query,jar,reservation);
+    }
   }
   assert.equal((await get('/voice/api/status?phone='+logins[0].phone,logins[1].jar)).status,401);
   assert.equal((await get('/voice/api/status?phone='+logins[1].phone,logins[0].jar)).status,401);
