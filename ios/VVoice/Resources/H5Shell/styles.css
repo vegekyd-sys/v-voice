@@ -1219,3 +1219,7 @@ html[data-tv-overlay="true"][data-tv-layout="compact"] .avatar::after{content:""
 html[data-tv-overlay="true"][data-tv-layout="compact"][data-tv-passive-focused="true"] .avatar-face{border-color:#f1f7ff!important;box-shadow:0 0 0 7px #bedcf588,0 0 30px #bbddec55!important}
 
 html[data-tv-overlay="true"] .tv-compact{outline:none!important;box-shadow:none!important}
+
+/* Meter samples already arrive at 10 Hz. Interpolating every bar's height
+   forces continuous paint on TV WebView; avatar motion keeps its own transform. */
+html[data-tv-overlay="true"] .tv-wave-orbit i{transition:none}
