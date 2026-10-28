@@ -59,3 +59,12 @@ for(const channels of [4,6])test(`${channels}-channel mixed path cancels direct 
  const erle=10*Math.log10(raw/clean);console.log(JSON.stringify({channels,directAndDelayedErleDb:erle,nearCorrelation:corr,nearRetention:energy/baseline}));
  assert(erle>15,'direct+room echo attenuation '+erle);assert(corr>.75,'near speech correlation '+corr);assert(energy>baseline*.5,'overlapping near speech must survive');
 });
+
+for(const channels of [4,6])test(`${channels}-channel 16k hardware frames produce 24k model frames without timing drift`,async()=>{
+ const m=await module(),{TvArrayEchoProcessor}=await import('./tv-array-dsp.mjs'),dsp=new TvArrayEchoProcessor(m,channels,16000);let samples=0,energy=0;
+ for(let f=0;f<250;f++){
+  const pcm=new Int16Array(320*channels);for(let i=0;i<320;i++)for(let c=0;c<channels;c++)pcm[i*channels+c]=Math.round(4000*Math.sin((f*320+i)*2*Math.PI*337/16000));
+  dsp.render(new Float32Array(960),48000);const out=new Int16Array(dsp.capture(pcm).buffer);assert.equal(out.length,480);samples+=out.length;for(const v of out)energy+=v*v;
+ }
+ assert.equal(samples,5*24000);assert(energy>1000000,'near speech survives with no render echo');dsp.close();
+});

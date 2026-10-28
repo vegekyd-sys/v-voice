@@ -29,7 +29,7 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
       const decodeStart=performance.now(),binary=atob(encoded),bytes=new Uint8Array(binary.length);
       for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
       metrics.decodeMs+=Math.round(performance.now()-decodeStart);
-      if(bytes.length!==960*channels*2)throw Error();
+      if(bytes.length!==(metadata.sampleRate/50)*channels*2)throw Error();
       submitted.set(seq,performance.now());worker.postMessage({type:'capture',sequence:seq,buffer:bytes.buffer},[bytes.buffer]);
     }catch{fail(fault('TV_MIC_FORMAT','电视收音格式异常，请重试'));}
   }
@@ -49,12 +49,12 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
       schedulePull(20);
     }catch(error){fail(error);}
   }
-  function configure(channels){
-    if(configured===channels)return Promise.resolve();
+  function configure(channels,sampleRate=48000){
+    if(configured===`${channels}:${sampleRate}`)return Promise.resolve();
     return new Promise((resolve,reject)=>{
       const timeout=setTimeout(()=>{configureWait=null;reject(fault('TV_DSP_TIMEOUT','电视音频准备超时，请重试'));},8000);
       configureWait={resolve:()=>{clearTimeout(timeout);resolve();},reject:e=>{clearTimeout(timeout);reject(e);}};
-      worker.postMessage({type:'configure',channels});
+      worker.postMessage({type:'configure',channels,sampleRate});
     });
   }
   try{
@@ -72,8 +72,8 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
     worker.onmessage=({data})=>{
       if(!current())return;
       if(data.type==='error'){const e=fault('TV_DSP_PROCESS','电视音频处理中断，请重试');configureWait?.reject(e);configureWait=null;fail(e);return;}
-      if(data.type==='configured'){if(Array.isArray(data.warmup))console.info('VTVAudio stats '+JSON.stringify({warmup:data.warmup}));configured=data.channels;configureWait?.resolve();configureWait=null;return;}
-      if(data.type==='pcm'){if(submitted.has(data.sequence)){metrics.maxRoundtripMs=Math.max(metrics.maxRoundtripMs,Math.round(performance.now()-submitted.get(data.sequence)));submitted.delete(data.sequence);}metrics.renderMs=Math.round(data.renderMs??0);metrics.dspFrames++;if(Number.isFinite(data.processMs)){metrics.dspMs+=Math.round(data.processMs);metrics.maxDspMs=Math.max(metrics.maxDspMs,Math.round(data.processMs));}outstanding--;node?.port.postMessage(data.buffer,[data.buffer]);if(metadata?.version===2&&outstanding===0)schedulePull(0);}
+      if(data.type==='configured'){if(Array.isArray(data.warmup))console.info('VTVAudio stats '+JSON.stringify({warmup:data.warmup}));configured=`${data.channels}:${data.sampleRate??48000}`;configureWait?.resolve();configureWait=null;return;}
+      if(data.type==='pcm'){if(submitted.has(data.sequence)){metrics.maxRoundtripMs=Math.max(metrics.maxRoundtripMs,Math.round(performance.now()-submitted.get(data.sequence)));submitted.delete(data.sequence);}metrics.renderMs=Math.round(data.renderMs??0);metrics.dspFrames++;if(Number.isFinite(data.processMs)){metrics.dspMs+=Math.round(data.processMs);metrics.maxDspMs=Math.max(metrics.maxDspMs,Math.round(data.processMs));}outstanding--;node?.port.postMessage(data.buffer,[data.buffer]);if(metadata?.version>=2&&outstanding===0)schedulePull(0);}
     };
     worker.onerror=()=>fail(fault('TV_DSP_PROCESS','电视音频处理中断，请重试'));
     signal?.addEventListener('abort',dispose,{once:true});
@@ -92,15 +92,15 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
         if(metadata)return;
         metadata=JSON.parse(bridge.start(token,id));
         if(metadata.error)throw fault('TV_MIC_START',metadata.error);
-        if(![1,2].includes(metadata.version)||metadata.sampleRate!==48000||![4,6].includes(metadata.channels))throw fault('TV_MIC_FORMAT','电视阵列不支持当前格式');
-        await configure(metadata.channels);
+        if(![1,2,3].includes(metadata.version)||![16000,48000].includes(metadata.sampleRate)||![4,6].includes(metadata.channels))throw fault('TV_MIC_FORMAT','电视阵列不支持当前格式');
+        await configure(metadata.channels,metadata.sampleRate);
         if(!current())throw fault('TV_MIC_CANCELLED','采集已结束');
-        if(metadata.version===2){
+        if(metadata.version>=2){
           if(typeof bridge.begin!=='function'||typeof bridge.pull!=='function')throw fault('TV_MIC_CAPABILITY','请更新电视收音组件');
           beganAt=performance.now();const result=bridge.begin(token,id);if(result!=='ok')throw fault('TV_MIC_START','电视本体麦克风暂不可用，请重试');
           pull();
         }
-        diagnostics={...diagnostics,source:metadata.source,channels:metadata.channels};onDiagnostics(diagnostics);
+        diagnostics={...diagnostics,source:metadata.source,channels:metadata.channels,sampleRate:metadata.sampleRate};onDiagnostics(diagnostics);
       },
       renderReference(buffer,sampleRate){if(current())worker.postMessage({type:'render',buffer,sampleRate},[buffer]);}};
   }catch(error){dispose();throw error;}

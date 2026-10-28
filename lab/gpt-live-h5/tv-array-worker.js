@@ -6,16 +6,17 @@ self.onmessage=({data})=>{
  if(closed)return;
  try{
   if(data.type==='close'){closed=true;dsp?.close();self.close();return;}
-  if(data.type==='configure'){if(!module||![4,6].includes(data.channels))throw Error('电视阵列格式无效');dsp?.close();channels=data.channels;dsp=new Processor(module,channels);
+  if(data.type==='configure'){if(!module||![4,6].includes(data.channels))throw Error('电视阵列格式无效');dsp?.close();channels=data.channels;const sampleRate=data.sampleRate??48000;if(![16000,48000].includes(sampleRate))throw Error('Invalid capture rate');const frameSize=sampleRate/50;dsp=new Processor(module,channels,sampleRate);
   // Exercise the actual WASM paths before opening the hardware route. The
   // temporary instance is discarded; synthetic warmup never enters the stream.
   const warmup=[];let seed=31;
   for(let f=0;f<64;f++){
-   const render=new Float32Array(960),capture=new Int16Array(960*channels);
-   for(let i=0;i<960;i++){seed=(seed*1664525+1013904223)>>>0;render[i]=(seed/4294967296-.5)*.1;for(let c=0;c<channels;c++)capture[i*channels+c]=Math.round(render[i]*12000);}
+   const render=new Float32Array(960),capture=new Int16Array(frameSize*channels);
+   for(let i=0;i<960;i++){seed=(seed*1664525+1013904223)>>>0;render[i]=(seed/4294967296-.5)*.1;}
+   for(let i=0;i<frameSize;i++)for(let c=0;c<channels;c++)capture[i*channels+c]=Math.round(render[Math.floor(i*48000/sampleRate)]*12000);
    const t=performance.now();dsp.render(render,48000);dsp.capture(capture);warmup.push(Math.round(performance.now()-t));
   }
-  dsp.close();dsp=new Processor(module,channels);dsp.render(new Float32Array(960),48000);dsp.capture(new Int16Array(960*channels));lastSequence=0;postMessage({type:'configured',channels,warmup});return;}
+  dsp.close();dsp=new Processor(module,channels,sampleRate);dsp.render(new Float32Array(960),48000);dsp.capture(new Int16Array(frameSize*channels));lastSequence=0;postMessage({type:'configured',channels,sampleRate,warmup});return;}
   if(!dsp)return;
   if(data.type==='render'){
    if(!(data.buffer instanceof ArrayBuffer)||data.buffer.byteLength>16384||![24000,44100,48000].includes(data.sampleRate))throw Error('回声参考格式无效');
