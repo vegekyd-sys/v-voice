@@ -1,3 +1,8 @@
+## 2026-10-28 — Retired-call cleanup acknowledgement (candidate, unreleased)
+
+- Acknowledge a recently completed call only within its original authenticated visitor context. Existing iOS binaries can clear the pending call after relay-first shutdown, avoiding another HTTP cleanup request before redial; failed cleanup and unrelated IDs remain protected.
+- Same compiled iOS test product, fixed 500ms close delay: three warm-redial samples change from 765/675/672ms to 231/226/200ms, with one redundant request becoming zero. Local protocol evidence only; [acceptance and limits](docs/acceptance/redial-cleanup-20261028.md).
+
 ## 2026-10-28 — iOS post-call model catalog released
 
 - Refresh the service catalog through the existing H5 bridge after a cold fast-dial call ends and its page is visible. This replaces the stale native fallback label and options without adding a status request before dialing.
