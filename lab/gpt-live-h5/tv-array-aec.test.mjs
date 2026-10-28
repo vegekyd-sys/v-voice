@@ -36,3 +36,26 @@ test('TV array capture only offers models with rendered PCM reference support',a
  assert(tvArraySupportsModel('seeduplex'));assert(tvArraySupportsModel('grok'));
  assert.equal(tvArraySupportsModel('gpt-live'),false);assert.equal(tvArraySupportsModel('unknown'),false);
 });
+
+for(const channels of [4,6])test(`${channels}-channel mixed path cancels direct references plus delayed room echo and keeps near speech`,async()=>{
+ const m=await module(),{TvArrayEchoProcessor}=await import('./tv-array-dsp.mjs'),dsp=new TvArrayEchoProcessor(m,channels);
+ let seed=77;const ref=[],expected=[],observed=[];let raw=0,clean=0;
+ const near=i=>.045*Math.sin(i*2*Math.PI*239/48000)+.03*Math.sin(i*2*Math.PI*541/48000)+.02*Math.sin(i*2*Math.PI*1163/48000);
+ for(let frame=0;frame<650;frame++){
+  const render=new Float32Array(960),pcm=new Int16Array(960*channels);
+  for(let i=0;i<960;i++){
+   const n=frame*960+i;seed=(seed*1664525+1013904223)>>>0;render[i]=(seed/4294967296-.5)*.32;ref.push(render[i]);
+   // Two electrical references lead the real microphone channels by 40 ms.
+   pcm[i*channels]=Math.round(render[i]*32768);pcm[i*channels+1]=Math.round((ref[n-32]??0)*.8*32768);
+   for(let c=2;c<channels;c++){const echo=(ref[n-1920-c*4]??0)*.45+(ref[n-3360]??0)*.12;pcm[i*channels+c]=Math.round((echo+(frame>=450?near(n-c*2):0))*32768);}
+  }
+  dsp.render(render);const output=new Int16Array(dsp.capture(pcm).buffer);
+  if(frame>=300&&frame<425)for(let i=0;i<480;i++){let x=0;for(let c=0;c<channels;c++)x+=pcm[i*2*channels+c]/32768/channels;raw+=x*x;clean+=(output[i]/32768)**2;}
+  if(frame>=525)for(let i=0;i<480;i++){let x=0;for(let c=2;c<channels;c++)x+=near(frame*960+i*2-c*2)/channels;expected.push(x);observed.push(output[i]/32768);}
+ }
+ dsp.close();let corr=-1,energy=0,baseline=0;
+ for(let i=0;i<observed.length;i++){energy+=observed[i]**2;baseline+=expected[i]**2;}
+ for(let lag=0;lag<=240;lag+=2){let dot=0,a=0,b=0;for(let i=240;i<observed.length;i+=2){const x=expected[i-lag],y=observed[i];dot+=x*y;a+=x*x;b+=y*y;}corr=Math.max(corr,dot/Math.sqrt(a*b));}
+ const erle=10*Math.log10(raw/clean);console.log(JSON.stringify({channels,directAndDelayedErleDb:erle,nearCorrelation:corr,nearRetention:energy/baseline}));
+ assert(erle>15,'direct+room echo attenuation '+erle);assert(corr>.75,'near speech correlation '+corr);assert(energy>baseline*.5,'overlapping near speech must survive');
+});
