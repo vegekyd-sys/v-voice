@@ -1,0 +1,159 @@
+{
+  "humanBefore": {
+    "nativeBuild": 39,
+    "serverCommit": "7baa878",
+    "actionButtonToAudibleSeconds": [
+      4,
+      5
+    ],
+    "reportedStable": true,
+    "network": "Wi-Fi",
+    "vpn": true,
+    "scope": "human approximate range, no instrumented physical-button timestamp"
+  },
+  "after": "complete within recorded scopes",
+  "webBefore": {
+    "client": "Chrome public SeedDuplex, existing page, no artificial delay",
+    "uiConnectedMs": [
+      1631,
+      1406,
+      1584
+    ],
+    "sampleDefinition": "clock before UI click to listening text visible; includes automation overhead; not first audible audio",
+    "warmupCalls": 1,
+    "inAppBrowserAttempt": "stayed connecting; cancelled; excluded from successful timing"
+  },
+  "phoneBefore": {
+    "nativeBuild": 39,
+    "serverCommit": "7baa878",
+    "samples": [
+      {
+        "appDialToConnectedMs": 3871,
+        "appDialToPlaybackStartMs": 4711,
+        "recoveryBeforeDialMs": 44
+      },
+      {
+        "appDialToConnectedMs": 4197,
+        "appDialToPlaybackStartMs": 5033,
+        "recoveryBeforeDialMs": 1142
+      },
+      {
+        "appDialToConnectedMs": 4019,
+        "appDialToPlaybackStartMs": 4829,
+        "recoveryBeforeDialMs": 987
+      }
+    ],
+    "playbackStartMedianMs": 4829,
+    "note": "App lifecycle to queue playback start, not measured physical speaker latency; existing close=409 caused recovery before next dial"
+  },
+  "web": {
+    "before": [
+      {
+        "uiConnectedMs": 1631,
+        "serverCallClosed": true,
+        "maxOutputBytes": 105648,
+        "maxUnderflows": 0,
+        "inputFrames": 568
+      },
+      {
+        "uiConnectedMs": 1406,
+        "serverCallClosed": true,
+        "maxOutputBytes": 105844,
+        "maxUnderflows": 0,
+        "inputFrames": 540
+      },
+      {
+        "uiConnectedMs": 1584,
+        "serverCallClosed": true,
+        "maxOutputBytes": 124078,
+        "maxUnderflows": 0,
+        "inputFrames": 1021
+      }
+    ],
+    "after": [
+      {
+        "uiConnectedMs": 2247,
+        "serverCallClosed": true,
+        "maxOutputBytes": null,
+        "maxUnderflows": null,
+        "inputFrames": null,
+        "clientReadyMs": 2139,
+        "firstPcmMs": 2805,
+        "firstRenderObservedMs": 2923,
+        "telemetryNote": "Client periodic statistics missing; DOM confirms first audio-thread render observation and server delivered 114196 PCM bytes. Do not infer microphone upload or underflow absence for this call."
+      },
+      {
+        "uiConnectedMs": 1220,
+        "serverCallClosed": true,
+        "maxOutputBytes": 114434,
+        "maxUnderflows": 0,
+        "inputFrames": 732,
+        "clientReadyMs": 1128,
+        "firstPcmMs": 1680,
+        "firstRenderObservedMs": 1800
+      },
+      {
+        "uiConnectedMs": 1475,
+        "serverCallClosed": true,
+        "maxOutputBytes": 113356,
+        "maxUnderflows": 0,
+        "inputFrames": 952,
+        "clientReadyMs": 1377,
+        "firstPcmMs": 1956,
+        "firstRenderObservedMs": 2082
+      }
+    ],
+    "beforeMedianMs": 1584,
+    "afterMedianMs": 1475,
+    "interpretation": "Three warmed Public desktop samples per version; UI connected median improves 109 ms, but samples overlap and one new sample is slower; no robust or Feishu full-path speedup claim."
+  },
+  "phoneAfter": {
+    "nativeBuild": 40,
+    "serverCommit": "a1146b3",
+    "samples": [
+      {
+        "appDialToConnectedMs": 5032,
+        "appDialToPlaybackStartMs": 5857,
+        "callStartToActivityCreatedMs": 13,
+        "recoveryBeforeDialMs": 1887,
+        "ended": true
+      },
+      {
+        "appDialToConnectedMs": 4084,
+        "appDialToPlaybackStartMs": 4856,
+        "callStartToActivityCreatedMs": 9,
+        "recoveryBeforeDialMs": 980,
+        "ended": true
+      },
+      {
+        "appDialToConnectedMs": 4212,
+        "appDialToPlaybackStartMs": 5006,
+        "callStartToActivityCreatedMs": 9,
+        "recoveryBeforeDialMs": 1013,
+        "ended": true
+      }
+    ],
+    "playbackStartMedianMs": 5006,
+    "humanReport": {
+      "network": "Wi-Fi",
+      "vpn": true,
+      "observation": "action bar 离接通大概4s",
+      "callBarToConnectedSecondsApprox": 4,
+      "hangup": "normal",
+      "longInsertion20Seconds": "normal, no old tail resumed",
+      "feedbackEvidence": "两项都正常"
+    },
+    "limitations": [
+      "First new sample includes a cold app launch; identical cold/warm startup state was not instrumented before",
+      "User later report starts at Action Bar appearance, whereas original 4-5s report starts at the physical button; do not present them as an exact paired metric",
+      "Both versions retain a stale-close 409 cleanup request before redial; new repeats take approximately 1s after warm startup",
+      "9-13 ms measures activity request creation, not OS display or physical button latency"
+    ]
+  },
+  "phoneConclusion": {
+    "beforePlaybackStartMedianMs": 4829,
+    "afterPlaybackStartMedianMs": 5006,
+    "differenceMs": 177,
+    "claim": "No stable phone connection speedup demonstrated; hangup and 20-second long insertion accepted by Tianyi."
+  }
+}

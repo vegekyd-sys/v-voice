@@ -35,7 +35,7 @@
     "build": 8,
     "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab"
   },
-  "deviceReportedBuild": "32",
+  "deviceReportedBuild": "40",
   "savedH5Baseline": {
     "build": 10,
     "sourceCommit": "3ffeb94",
@@ -310,16 +310,7 @@
     "acceptedByTianyi": true
   },
   "nativeWaveformRelease": "build23-waveform.json",
-  "pendingNativeRelease": {
-    "build": 25,
-    "status": "signed_verified_installed",
-    "baseBuild": 24,
-    "installed": true,
-    "physicalAcceptance": "pending",
-    "scope": "Feishu session binding, Settings Deep Link and existing binding reuse",
-    "sourceIntegration": "PR2 merged as 6860ae59f01ce6712027e2c3267424ec786f0ca1",
-    "testFlight": "after phone acceptance"
-  },
+  "pendingNativeRelease": null,
   "lastAcceptedBuild": 32,
   "nativeRuntime": {
     "protocolVersion": 1,
@@ -736,11 +727,38 @@
     "testFlightPublicURL": "https://testflight.apple.com/join/5DybcrZA",
     "installedViaTestFlight": "user_reported"
   },
-  "pendingRelease": {
+  "pendingRelease": null,
+  "currentInstalledBuild": 40,
+  "currentInstalledVersion": "1.0.0",
+  "currentInstalledSourceCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
+  "testFlightCandidate40": {
     "version": "1.0.0",
     "build": 40,
+    "sourceCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
     "record": "../releases/voice-functional-20261028/release.json",
-    "status": "prepared-not-installed",
-    "preserveStableBaselineBuild": 32
+    "stableBaselineBuild": 32,
+    "previousPhoneBuild": 39,
+    "nativeAcceptance": "Tianyi accepted hangup and long insertion; 3 physical automated audio regressions passed",
+    "installedViaUSB": true,
+    "installedViaTestFlight": false,
+    "internalTestFlightAvailable": true,
+    "buildID": "332826bc-342c-4cd7-92c3-8a36b48f8964",
+    "processingState": "VALID",
+    "internalBuildState": "IN_BETA_TESTING",
+    "externalBuildState": "READY_FOR_BETA_SUBMISSION",
+    "externalTestFlightSubmitted": false
+  },
+  "currentNativeRelease": {
+    "version": "1.0.0",
+    "build": 40,
+    "sourceCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
+    "record": "../releases/voice-functional-20261028/release.json",
+    "installedViaUSB": true,
+    "humanAcceptedScopes": [
+      "immediate hangup",
+      "20-second insertion without old reply tail"
+    ],
+    "stableAudioBaselineBuild": 32,
+    "overallConnectionSpeedupDemonstrated": false
   }
 }
