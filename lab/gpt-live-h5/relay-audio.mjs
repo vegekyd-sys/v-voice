@@ -36,7 +36,7 @@ export function relayWorkletSource(){return `const PcmPlaybackQueue = ${PcmPlayb
 class Speaker extends AudioWorkletProcessor {
  constructor(options){super();const prefill=options?.processorOptions?.prefillMs??120;
  if(!Number.isFinite(prefill)||prefill<0||prefill>1000)throw Error('Invalid playback buffer');
- this.queue=new PcmPlaybackQueue(sampleRate,prefill);this.epoch=0;this.tick=0;
+ this.queue=new PcmPlaybackQueue(sampleRate,prefill);this.epoch=0;this.tick=0;this.firstNonzeroAt=null;
  this.port.onmessage=({data:e})=>{if(e.type==='clear'){this.epoch=e.epoch;this.queue.clear();}
  else if(e.type==='hold'&&e.epoch===this.epoch)this.queue.hold();
  else if(e.type==='pause'&&e.epoch===this.epoch)this.queue.paused=e.paused===true;
@@ -44,6 +44,7 @@ class Speaker extends AudioWorkletProcessor {
  else if(e.type==='audio'&&e.epoch===this.epoch){try{this.queue.push(new Int16Array(e.buffer));}catch{this.port.postMessage({type:'error',epoch:this.epoch});}}};}
  process(inputs,outputs){const out=outputs[0]?.[0];if(!out)return true;
  const before=this.queue.frames;this.queue.render(out,currentTime);
+ if(this.firstNonzeroAt===null){const index=out.findIndex(value=>value!==0);if(index>=0){this.firstNonzeroAt=currentTime+index/sampleRate;this.port.postMessage({type:'first-render',epoch:this.epoch,contextTime:this.firstNonzeroAt});}}
  if(++this.tick%8===0||before>0&&this.queue.frames===0)this.port.postMessage({type:'playback',epoch:this.epoch,consumed:this.queue.consumed,underflows:this.queue.underflows,lastPlayedAt:this.queue.lastPlayedAt,playing:this.queue.playing&&!this.queue.paused});return true;}
 }
 class Mic extends AudioWorkletProcessor {
@@ -115,7 +116,8 @@ export class NativeSpeechPause {
     return this.held;
   }
 }
-export function createRelayAudio({context,stream,reservation,onEvent,onError,onClosed,onPlaybackActivity=()=>{},greeting=true,inputGated=false}) {
+export function createRelayAudio({context,stream,reservation,connection,dialStartedAt=performance.now(),onTiming=()=>{},onEvent,onError,onClosed,onPlaybackActivity=()=>{},greeting=true,inputGated=false}) {
+  const timing=name=>{try{onTiming(name);}catch{}};
   // Recorded Grok packets: 245ms of speech, then a 595ms arrival gap.
   // 400ms protects that real startup cadence; Xiaohe retains its smaller lead.
   const startBufferMs=reservation.provider==='grok'?400:120;
@@ -128,7 +130,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   const endpoint=new URL('./api/relay',globalThis.document?.baseURI??location.href);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
   const phone=new URLSearchParams(location.search).get('phone');if(phone)endpoint.searchParams.set('phone',phone);
-  const socket=new WebSocket(endpoint);socket.binaryType='arraybuffer';
+  const socket=connection?.socket??new WebSocket(endpoint);socket.binaryType='arraybuffer';
   let recoveryAttempted=false;
   let closed=false,ready=false,node,speaker,source,quietGain,ending=null,tailTimer,epoch=0,written=0,lastPlayedAt=null,lastSequence=0,blocked=false,outputComplete=false,playbackActive=false,busy=false,lastReceiveAt=null,statsTimer,uploadFailed=false;
   const pendingOutput=[];
@@ -173,6 +175,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     if(Number.isSafeInteger(e.sequence)&&e.sequence>0){if(e.sequence<=lastSequence){stats.duplicateFrames++;return;}lastSequence=e.sequence;}
     const bytes=Uint8Array.from(atob(e.audio),c=>c.charCodeAt(0));
     if(!bytes.length||bytes.length%2||bytes.length>480000||e.sampleRate!==24000)throw Error('语音帧格式无效');
+    if(stats.dialToFirstPcmMs===undefined){stats.dialToFirstPcmMs=Math.round(performance.now()-dialStartedAt);timing('voice.output.received');}
     if(stats.queuedOutputBytes+bytes.length>maxQueuedOutputBytes)throw Error('语音缓存过大，请重新拨号');
     const receivedAt=performance.now();if(lastReceiveAt!==null&&stats.queuedOutputBytes>0)stats.maxReceiveGapMs=Math.max(stats.maxReceiveGapMs,receivedAt-lastReceiveAt);lastReceiveAt=receivedAt;
     if(e.responseId&&retiredResponses.has(e.responseId))return;
@@ -189,7 +192,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   const promise=new Promise((resolve,reject)=>{
     socket.onmessage=e=>{if(closed)return;try{
       const value=JSON.parse(e.data);if(value.voiceSessionId!==reservation.voiceSessionId)return;
-      if(value.type==='ready'&&!ready){ready=true;resolve();if(greeting)send({type:'greeting'});reportBusy();statsTimer=setInterval(reportStats,2000);}
+      if(value.type==='ready'&&!ready){ready=true;stats.dialToReadyMs=Math.round(performance.now()-dialStartedAt);resolve();if(greeting)send({type:'greeting'});reportBusy();statsTimer=setInterval(reportStats,2000);}
       if(value.type==='audio')play(value);
       if(value.type==='audio.clear'){
         if(typeof value.retiredResponseId==='string'){retiredResponses.add(value.retiredResponseId);if(retiredResponses.size>256)retiredResponses.delete(retiredResponses.values().next().value);if(nativeDuplex&&currentResponseId&&currentResponseId!==value.retiredResponseId)return;if(nativeDuplex)currentResponseId=null;}
@@ -207,6 +210,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     socket.onerror=()=>{const error=Error('实时语音连接失败');reject(error);onError(error);};
     socket.onclose=()=>{reject(Error('实时语音连接已关闭'));if(!closed)onClosed();};
   });void promise.catch(()=>{});
+  connection?.adopt();
   async function capture(){
     // A fulfilled dial-gesture resume does not survive Safari activating the
     // microphone or returning from another app. Check the current context.
@@ -219,7 +223,11 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     speaker=new AudioWorkletNode(context,'v-direct-speaker',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1],processorOptions:{prefillMs:startBufferMs}});
     speaker.port.postMessage({type:'clear',epoch});if(nativePaused)speaker.port.postMessage({type:'pause',paused:true,epoch});if(greetingHeld)speaker.port.postMessage({type:'hold',epoch});speaker.connect(context.destination);
     speaker.port.onmessage=({data:e})=>{
-      if(closed||e.epoch!==epoch)return;
+      if(closed)return;
+      // A render-thread nonzero PCM receipt excludes pickup cues and silent
+      // packets. This is an observation upper bound, not physical audibility.
+      if(e.type==='first-render'&&stats.dialToFirstRenderObservedMs===undefined){stats.dialToFirstRenderObservedMs=Math.round(performance.now()-dialStartedAt);timing('voice.output.rendered');reportStats();return;}
+      if(e.epoch!==epoch)return;
       if(e.type==='error'){onError(Error('语音缓存过大，请重新拨号'));return;}
       if(e.type!=='playback')return;
       stats.queuedOutputBytes=Math.max(0,written-e.consumed)*2;stats.underflows=e.underflows;lastPlayedAt=e.lastPlayedAt;

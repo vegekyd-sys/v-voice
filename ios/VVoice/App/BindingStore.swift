@@ -356,6 +356,11 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
         guard var r = record else { throw VoiceError.unbound }
         r.pendingVoiceID = id; try store.save(r); record = r
     }
+    func closeCall(_ id: String, using saved: StoredBinding) async throws {
+        _ = try await raw("close", record: saved, body: ["voiceSessionId": id])
+        guard record?.id == saved.id, record?.pendingVoiceID == id else { return }
+        try rememberCall(nil)
+    }
     func recoverPreviousCall() async throws {
         guard let id = record?.pendingVoiceID else { return }
         do { _ = try await call("close", body: ["voiceSessionId": id], refresh: false) }

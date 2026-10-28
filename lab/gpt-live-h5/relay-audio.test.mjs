@@ -124,6 +124,19 @@ test('serialized production worklet executes; exact relay sequence is consumed o
  for(const sequence of [1,1,2])f.event({type:'audio',sequence,sampleRate:24000,audio});f.event({type:'audio.done'});f.pump(48000);
  assert.equal(f.relay.stats.duplicateFrames,1);assert.equal(f.relay.stats.outputBytes,1920);assert.equal(f.relay.stats.queuedOutputBytes,0);assert.equal(f.speaker.processor.queue.consumed,960);assert.deepEqual(f.errors,[]);
 });
+test('first render timing waits for nonzero PCM in the audio thread and never counts silent packets',async t=>{
+ const timings=[],f=await fixture(t,'seeduplex',false,{onTiming:name=>timings.push(name)});
+ f.event({type:'audio',sequence:1,sampleRate:24000,audio:Buffer.alloc(960).toString('base64')});f.event({type:'audio.done'});f.pump(48000);
+ assert.deepEqual(timings,['voice.output.received']);assert.equal(f.relay.stats.dialToFirstRenderObservedMs,undefined);
+ f.event({type:'audio',sequence:2,sampleRate:24000,audio:Buffer.from(pcm(480).buffer).toString('base64')});f.event({type:'audio.done'});f.pump(48000);
+ assert.deepEqual(timings,['voice.output.received','voice.output.rendered']);assert(f.relay.stats.dialToFirstRenderObservedMs>=f.relay.stats.dialToFirstPcmMs);
+});
+test('a failing timing observer cannot discard PCM or terminate the call',async t=>{
+ const f=await fixture(t,'seeduplex',false,{onTiming(){throw Error('observer unavailable');}});
+ f.event({type:'audio',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(480).buffer).toString('base64')});f.event({type:'audio.done'});
+ assert(f.pump(48000).some(value=>value===.25));assert.deepEqual(f.errors,[]);
+ assert(f.relay.stats.dialToFirstRenderObservedMs>=0);
+});
 test('Safari interruption buffers audio without ending the call; render-thread playback drains after resume',async t=>{
  const f=await fixture(t);f.ctx.state='interrupted';f.listeners.get('statechange')();f.event({type:'audio',sequence:1,sampleRate:24000,audio:Buffer.alloc(960,1).toString('base64')});
  assert.equal(f.relay.stats.queuedOutputBytes,960);assert(f.events.some(e=>e.type==='playback.blocked'));assert.deepEqual(f.errors,[]);

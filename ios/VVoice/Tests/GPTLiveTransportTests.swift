@@ -64,6 +64,11 @@ import VVoiceCore
         XCTAssertGreaterThan(remote.inputTone, 0.01)
         await call.end()
         XCTAssertFalse(call.active)
+        // Local hangup is immediate; the owned server close completes in the background.
+        for _ in 0..<100 {
+            if (try await state()["closes"] as? Int ?? 0) > (initial["closes"] as? Int ?? 0) { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
         let final = try await state()
         XCTAssertEqual((final["sessions"] as? Int ?? 0) - (initial["sessions"] as? Int ?? 0), 1)
         XCTAssertEqual((final["closes"] as? Int ?? 0) - (initial["closes"] as? Int ?? 0), 1)
@@ -200,6 +205,10 @@ import VVoiceCore
         XCTAssertEqual(sessions, 1)
         await call.end()
         XCTAssertFalse(call.active)
+        for _ in 0..<100 {
+            if try await state()["closeRequests"] as? Int == 1 { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
         let closes = try await state()["closeRequests"] as? Int
         XCTAssertEqual(closes, 1)
     }

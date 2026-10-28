@@ -28,6 +28,7 @@ names.push('lib/backend-device-bundle.mjs','scripts/install-backend-device-bundl
 names.push('lib/voice-agent-control.mjs','lib/voice-cli-contract.mjs','bin/v-voice.mjs');
 names.push(...run('ls-files','skills').split('\n').filter(Boolean));
 names.push('lab/gpt-live-h5/model-options.mjs');
+names.push('lab/gpt-live-h5/dial-connection.mjs');
 names.push('lib/terminal-context.mjs','lib/device-requests.mjs','lab/gpt-live-h5/device-location.mjs','scripts/device-call.mjs','skills/device-use/SKILL.md');
 const target=resolve(process.argv[2]??join(root,'artifacts',commit));
 await mkdir(dirname(target),{recursive:true});

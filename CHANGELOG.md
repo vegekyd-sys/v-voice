@@ -1,3 +1,9 @@
+## 2026-10-28 — Browser one-connection dialing (candidate, unreleased)
+
+- Use an explicitly advertised web v2 dial socket for SeedDuplex/Grok, keeping live admission, cookie/origin checks and the original input policy. Preserve native v1 and GPT WebRTC behavior. Cancellation closes the allocation; failures never trigger an ambiguous automatic second dial.
+- Retain ready/audio frames across reservation handoff. Record bounded timing for upstream ready, first relay PCM and the first nonzero audio-thread render observation; pickup cues do not count.
+- Original production baselines and comparison conditions: [experiment record](docs/experiments/entry-latency-20261028.md). No platform dependency, Gateway restart or native binary change. Real end-to-end benefit is pending validation.
+
 ## 2026-10-27 — iOS GPT Live One transport contract (candidate, unreleased)
 
 - Preserve the validated `webrtc` transport in the shared GPT session response so the native call owner can select its existing WebRTC backend. Provider secrets and SDP endpoint credentials remain server-side.
@@ -23,6 +29,12 @@
 - Deliver the independent identity bootstrap in the HTML, avoiding a network module round trip before Feishu SDK initialization. The call bundle shares the same startup promise and cannot exchange identity twice.
 - Web and native one-connection dialing consume their own just-resolved Feishu admission once; the next request still re-admits, and a request delayed after resolution rechecks before reservation. No cross-request identity cache or actor policy change.
 - Controlled 500ms-request browser comparison: 3347→2826ms to dial-ready. Native device-grant protocol fixture: two membership RPCs become one, 1104→553ms to reservation with a 550ms simulated Gateway. These are not physical-phone or provider/audio results. See [candidate acceptance](docs/acceptance/startup-latency-20261027/acceptance.md).
+
+## 2026-10-27 — iOS initial call feedback (candidate, unreleased)
+
+- Create new call feedback without waiting for retired Live Activities; wait and retry only for ActivityKit activity-limit errors. Move shortcut metadata refresh to the rendered, idle foreground scene and move bounded lifecycle JSON I/O off the main actor.
+- Add monotonic stages for App/Coordinator initialization, Intent entry, activity request and shortcut refresh. Account binding, Gateway authorization and audio executors retain their existing behavior.
+- Native candidate requires a new App binary. Simulator/fixture results and physical-device limitations: [acceptance](docs/acceptance/ios-intent-feedback-20261027/acceptance.md). No device installation, TestFlight or production deployment.
 
 ## 2026-10-27 — Voice entry and CLI deployed
 

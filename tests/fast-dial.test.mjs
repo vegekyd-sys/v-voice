@@ -5,6 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {Readable} from 'node:stream';
 import WebSocket from 'ws';
 import {createLiveH5Server} from '../lab/gpt-live-h5/server.mjs';
+import {createDialConnection} from '../lab/gpt-live-h5/dial-connection.mjs';
 const origin='https://voice.example.com';
 const entries=['a','b','alias'].map((id,i)=>({id:'phone-room-'+id,agentId:'makaron',sessionKey:'agent:makaron:feishu:group:room-'+(id==='alias'?'a':id),accountId:'existing',kind:'group',callerId:'tianyi',permissionProfile:'personal-tianyi',accessToken:String(i+1).repeat(40)}));
 async function fixture(t,options={}){
@@ -20,7 +21,7 @@ async function fixture(t,options={}){
  const request=(entry,route,cookie,body)=>new Promise((resolve,reject)=>{const req=httpRequest({hostname:'127.0.0.1',port:bridge.server.address().port,path:'/voice/api/'+route+'?phone='+entry.id,method:body?'POST':'GET',headers:{host:new URL(origin).host,origin,...cookie?{cookie}:{},'content-type':'application/json'}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end(body?JSON.stringify(body):undefined);});
  const login=async entry=>(await request(entry,'access','',{access:entry.accessToken})).headers.get('set-cookie').split(';')[0];
  const connect=(entry,cookie,extra='',headers={})=>{
-  const ws=new WebSocket(`ws://127.0.0.1:${bridge.server.address().port}/voice/api/dial?phone=${entry.id}&model=${options.model??'seeduplex'}&dialVersion=1&nativeRuntimeVersion=1${extra}`,{headers:{host:new URL(origin).host,origin,cookie,...headers},handshakeTimeout:2000});
+  const ws=new WebSocket(`ws://127.0.0.1:${bridge.server.address().port}/voice/api/dial?phone=${entry.id}&model=${options.model??'seeduplex'}&dialVersion=${options.web?'2':'1&nativeRuntimeVersion=1'}${extra}`,{headers:{host:new URL(origin).host,origin,cookie,...headers},handshakeTimeout:2000});
   const messages=[];const done=new Promise(resolve=>{ws.on('message',data=>{messages.push(JSON.parse(data));if(['ready','dial.error'].includes(messages.at(-1).type))resolve({messages,ws});});ws.on('unexpected-response',(_,res)=>{res.resume();resolve({status:res.statusCode,messages,ws});ws.terminate();});ws.on('error',()=>resolve({status:0,messages,ws}));});
   t.after(()=>ws.terminate());return {ws,done,messages};
  };
@@ -35,6 +36,30 @@ test('one socket authenticates and reserves exact session before ready, with ser
  const args=f.calls.find(c=>c[0]==='reserve')[1];assert.equal(args.sessionKey,entries[0].sessionKey);assert.equal(args.inputPolicy,'native');assert.equal(args.sessionBound,true);assert.equal(args.nativeRuntimeVersion,1);
  assert.equal(f.calls.filter(c=>c[0]==='sessions.describe').length,1);
  ws.close();await new Promise(r=>ws.once('close',r));for(let i=0;i<20&&f.sessions.size;i++)await new Promise(r=>setTimeout(r,5));assert.equal(f.sessions.size,0);
+});
+test('web one-socket dial preserves HTTP input policy and raw events without opting into native runtime',async t=>{
+ const f=await fixture(t,{web:true}),cookie=await f.login(entries[0]);
+ assert.equal((await(await f.request(entries[0],'status',cookie)).json()).webDialVersion,2);
+ const url=`ws://127.0.0.1:${f.bridge.server.address().port}/voice/api/dial?phone=${entries[0].id}&model=seeduplex&dialVersion=2`;
+ class BrowserSocket extends WebSocket{constructor(value){super(value,{headers:{host:new URL(origin).host,origin,cookie}});}}
+ const connection=createDialConnection({url,Socket:BrowserSocket});t.after(()=>connection.dispose());
+ const reservation=await connection.reservation;
+ assert.equal(reservation.dialVersion,2);assert.equal(reservation.relayTicket,undefined);
+ const received=[];connection.socket.onmessage=e=>received.push(JSON.parse(e.data));
+ connection.adopt();await new Promise(r=>setImmediate(r));
+ assert.equal(received[0].type,'ready');assert.equal(received[0].voiceSessionId,reservation.voiceSessionId);
+ const args=f.calls.find(c=>c[0]==='reserve')[1];
+ assert.equal(args.nativeRuntimeVersion,undefined);assert.equal(args.inputPolicy,'speaker');
+ assert.equal(f.calls.filter(c=>c[0]==='sessions.describe').length,1);
+ assert.equal(f.calls.filter(c=>c[0]==='reserve').length,1);
+});
+test('web dial rejects native runtime, unknown policy and forged identity before reservation',async t=>{
+ const f=await fixture(t,{web:true}),cookie=await f.login(entries[0]);
+ for(const extra of ['&nativeRuntimeVersion=1','&inputPolicy=unrestricted','&callerId=tianyi','&inputPolicy=native&inputPolicy=speaker'])assert.equal((await f.connect(entries[0],cookie,extra).done).status,400);
+ assert.equal((await f.connect(entries[1],cookie).done).status,401);
+ assert.equal(f.calls.some(c=>c[0]==='reserve'),false);
+ const {messages}=await f.connect(entries[0],cookie,'&inputPolicy=native').done;
+ assert.equal(messages[0].dialVersion,2);assert.equal(f.calls.find(c=>c[0]==='reserve')[1].inputPolicy,'native');
 });
 test('wrong cookie, origin, unknown identity parameters and duplicate model cannot create calls',async t=>{
  const f=await fixture(t),cookie=await f.login(entries[0]);
