@@ -382,7 +382,7 @@ function TvWaveform({orbit=false}) {
   const audio = useSyncExternalStore(api.subscribe, api.getAudio, api.getAudio);
   const values = [...Array(Math.max(0,24-audio.levels.length)).fill(0),...audio.levels];
   return <span className={`tv-wave ${orbit?'tv-wave-orbit':''}`} role="img" aria-label={audio.source==='output'?'V 的语音波形':audio.source==='input'?'你的语音波形':'当前安静'}>
-    {values.map((value,index)=><i key={index} style={{height:(2+value*(orbit?.18:.42))+'px',opacity:.38+.62*index/23,...orbit?{'--angle':((index<12?58:238)+(index%12)*5.45)+'deg'}:{}}} />)}
+    {values.map((value,index)=><i key={index} style={{height:(orbit?Math.round(2+value*.18):2+value*.42)+'px',opacity:.38+.62*index/23,...orbit?{'--angle':((index<12?58:238)+(index%12)*5.45)+'deg'}:{}}} />)}
   </span>;
 }
 function TvIsland({state,actions,status}) {
