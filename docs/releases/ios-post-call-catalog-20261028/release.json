@@ -1,12 +1,32 @@
 {
   "schema": "v-voice-production-release-v1",
   "version": "voice-ios-post-call-catalog.20261028.1",
-  "status": "authorized-preparing",
+  "status": "deployed-verified-phone-confirmation-pending",
   "functionalSourceCommit": "7af9457",
   "previousEntryCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
   "gatewayRestartRequired": false,
   "nativeBinaryUpdated": false,
   "firmwareUpdated": false,
   "scope": "Shared H5 adapter refreshes service model catalog after fast call hangup",
-  "validation": {"simulatorH5TestsPassed": 11, "physicalPhone": "pending"}
+  "validation": {
+    "simulatorH5TestsPassed": 11,
+    "physicalPhone": "Unavailable: requested iPhone disconnected; no claim of installed-page or audio acceptance",
+    "voiceTests": 1030,
+    "speakerTests": 95,
+    "releaseTests": 11,
+    "simulatorH5AndDeliveryTestsPassed": 18,
+    "legacyRegression": "Old test expected ending instead of build40 ended; reproduced against pre-fix resources, updated test verifies immediate finish and deferred redial allocation"
+  },
+  "entryCommit": "0d97329faa3e151ac4b7e9b3f5c262303f736a43",
+  "deviceEntryCommit": "0d97329faa3e151ac4b7e9b3f5c262303f736a43",
+  "filesSha256": "28bc1f4904f630271bdb376f7b6d873e97cf338f5b2661ce83afcbff3dbfbcb3",
+  "iosShellRevision": "c4585f4bfaa6f6309914e68d1b4f00e565720d7861064e88f8ef6bea24b14dd3",
+  "serverNodesSynchronized": true,
+  "gatewayRestarted": false,
+  "homepageChangelogVerified": true,
+  "httpsResourcesMatchArtifact": true,
+  "validatedAt": "2026-10-28T21:38:20+08:00",
+  "releasePR": 178,
+  "mainCIRun": 40697316400,
+  "rollbackCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9"
 }

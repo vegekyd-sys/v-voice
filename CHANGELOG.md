@@ -1,8 +1,8 @@
-## 2026-10-28 — iOS post-call model catalog release preparation
+## 2026-10-28 — iOS post-call model catalog released
 
 - Refresh the service catalog through the existing H5 bridge after a cold fast-dial call ends and its page is visible. This replaces the stale native fallback label and options without adding a status request before dialing.
-- Eleven simulator H5 integration tests pass, including foreground and deferred background hangup. No phone installation or production deployment; [candidate evidence](docs/acceptance/ios-post-call-catalog-20261028.md).
-- Tianyi authorized merge and Voice-only release. Homepage notes and shared H5 resources are included; deployment and verification are tracked in `docs/releases/ios-post-call-catalog-20261028/release.json`.
+- PR #178 merged and `0d97329` deployed to both Voice nodes; Gateway unchanged. Production HTTPS resources match the artifact and the homepage changelog is verified.
+- Eighteen simulator H5/delivery tests pass, including foreground/background hangup, same-binary updates, rollback and redial waiting for cleanup. Corrected an outdated legacy-hangup test, also failing with pre-fix resources, to the already-shipped build40 behavior. Physical iPhone is disconnected, so installed-page receipt remains pending; no native binary update. [Release registration](docs/releases/ios-post-call-catalog-20261028/release.json).
 
 ## 2026-10-28 — Call response release / iOS 1.0.0 (40)
 

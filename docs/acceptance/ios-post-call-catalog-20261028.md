@@ -1,5 +1,7 @@
 # iOS 挂断后的模型目录刷新（Candidate）
 
+后续状态：Tianyi 已授权合入上线，PR #178 / `0d97329` 已发布双节点。下文保留候选阶段原始记录；实际发布与 18 项回归、真机未连接限制见 [发布登记](../releases/ios-post-call-catalog-20261028/release.json)。
+
 - 日期：2026-10-28；分支：`codex/ios-post-call-catalog-20261028`；基线：`71073ae`。
 - 状态：本地候选已验证，未合入、未部署，未更新手机安装包或 TestFlight。
 
