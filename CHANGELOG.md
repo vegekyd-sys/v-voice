@@ -3,7 +3,7 @@
 - TV overlay mode keeps one fixed companion canvas and scales the existing avatar with a compositor transform through connect, fold and hangup. Native first paint waits for the shared host instead of briefly displaying a full-page fallback.
 - Shared owner/generation and call state remain intact while native foreground service hosts the WebView across Home and other applications. Boundary navigation releases focus; Home entry reopens the existing call. A compact persistent reaction provides visible call presence.
 - The Android shell owns overlay permission, microphone foreground service and screen-off cleanup. Conversation, audio DSP, avatar reactions and controls remain in shared H5. Compact mode omits waveform subscriptions and native diagnostics are throttled.
-- Requires shell 0.3.0 and launcher 0.4.15; local, installed and human acceptance evidence remain separate.
+- Installed TV candidate uses shell 0.3.7 and launcher 0.4.16. The shell keeps a software-rendered WebView for this TV graphics compatibility; shared waveform paint uses integer pixels. Final six-minute microphone/app-switching and visible-return checks passed; human speech, echo, physical remote and STR acceptance remain separate.
 
 ## 2026-10-29 — TV worker audio transport (isolated candidate)
 
