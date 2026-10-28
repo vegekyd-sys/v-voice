@@ -1,3 +1,10 @@
+## 2026-10-29 — TV persistent companion (isolated candidate)
+
+- TV overlay mode keeps one fixed companion canvas and scales the existing avatar with a compositor transform through connect, fold and hangup. Native first paint waits for the shared host instead of briefly displaying a full-page fallback.
+- Shared owner/generation and call state remain intact while native foreground service hosts the WebView across Home and other applications. Boundary navigation releases focus; Home entry reopens the existing call. A compact persistent reaction provides visible call presence.
+- The Android shell owns overlay permission, microphone foreground service and screen-off cleanup. Conversation, audio DSP, avatar reactions and controls remain in shared H5. Compact mode omits waveform subscriptions and native diagnostics are throttled.
+- Requires shell 0.3.0 and launcher 0.4.15; local, installed and human acceptance evidence remain separate.
+
 ## 2026-10-29 — TV worker audio transport (isolated candidate)
 
 - TV shell 0.2.10 transfers a per-capture message port directly to the shared audio Worker. Native array frames no longer depend on synchronous JavaScript-interface polling or main-thread base64 decoding.

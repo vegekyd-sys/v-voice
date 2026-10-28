@@ -406,6 +406,7 @@ function TvIsland({state,actions,status}) {
     {connected&&<TvWaveform orbit/>}
     <button type="button" className="tv-avatar-action tv-avatar-large" data-tv-control={active?'expand':'dial'} data-tv-primary={!active&&!error||undefined} aria-label={connected?'展开对话':state.dial.disabled?'正在准备连接':error?'重新呼叫 V':'和 V 直接通话'} disabled={active&&!connected||!active&&state.dial.disabled} onClick={connected?expand:actions.dial}/>
     <div className={`tv-dock-status ${error?'is-error':''}`} role="status">{title}</div>
+    {connected&&<div className="tv-dock-hint">按返回继续使用电视</div>}
     {(active||latestDocument||error)&&<div className="tv-dock-actions">
       {connected&&<button type="button" className={`tv-round tv-speaker ${state.outputMuted?'is-muted':''}`} data-tv-control="speaker" aria-label={state.outputMuted?'恢复 V 的声音':'关闭 V 的声音'} aria-pressed={state.outputMuted} onClick={actions.speaker}><Icon d={state.outputMuted?SPEAKER_OFF:SPEAKER}/></button>}
       {connected&&<button className="tv-round tv-call tv-end" type="button" data-tv-control="end" data-tv-primary aria-label="挂断通话" onClick={actions.hangup}><Icon d={HANG}/></button>}

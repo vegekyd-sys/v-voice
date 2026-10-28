@@ -573,7 +573,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           if(url.searchParams.get('tv')==='1') {
             const shell=url.searchParams.get('tvShell')==='1';
             const presented=!(shell&&url.searchParams.get('tvSurface')==='1');
-            html=html.replace('<html lang="zh-CN">',`<html lang="zh-CN" data-tv="true" data-tv-layout="${shell?'medium':'full'}" data-tv-presented="${presented}">`);
+            html=html.replace('<html lang="zh-CN">',`<html lang="zh-CN" data-tv="true" data-tv-layout="${shell?'medium':'full'}" data-tv-presented="${presented}"${url.searchParams.get('tvOverlay')==='1'?' data-tv-overlay="true"':''}>`);
           }
           if(clientLoginConfig)html=html.replace('</head>','<link rel="preconnect" href="https://lf1-cdn-tos.bytegoofy.com"><link rel="preload" as="script" href="https://lf1-cdn-tos.bytegoofy.com/goofy/lark/op/h5-js-sdk-1.5.26.js"></head>').replace('<script type="module" src="./entry-startup.mjs"></script>',`<script type="application/json" id="login-config">${JSON.stringify(clientLoginConfig).replaceAll('<','\\u003c')}</script><script type="module" src="./entry-startup.mjs"></script>`);
           if(speakerRouting)html=html.replace('<body','<body data-speaker-routing="true"');

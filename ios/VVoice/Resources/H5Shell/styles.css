@@ -1196,3 +1196,26 @@ html[data-tv-presented="false"] :is(.call-page .avatar,.tv-dock-actions,.tv-wave
 @keyframes tv-companion-breathe{0%,100%{transform:scale(1.055)}50%{transform:scale(1.073)}}
 @keyframes tv-controls-arrive{from{opacity:0;translate:0 5px}to{opacity:1;translate:0 0}}
 @media(prefers-reduced-motion:reduce){html[data-tv="true"] #app,html[data-tv="true"] .avatar,.tv-dock-actions,.tv-wave-orbit{animation:none!important;transition:none!important}}
+
+/* One persistent compositor layer across connect, collapse and hangup. Native
+   overlay keeps identical bounds, so no WebView resize or blank intermediate. */
+html[data-tv-overlay="true"] #app{transition:none;opacity:1}
+html[data-tv-overlay="true"]:is([data-tv-layout="medium"],[data-tv-layout="compact"]) .call-page .avatar{
+  right:16px;top:12px;width:192px!important;height:192px!important;--avatar-size:192px!important;
+  transform-origin:top right;transform:translateY(0) scale(1);animation:none!important;
+  transition:transform .42s cubic-bezier(.22,.8,.25,1)!important;will-change:transform;
+}
+html[data-tv-overlay="true"][data-tv-layout="compact"] .call-page .avatar,
+html[data-tv-overlay="true"]:not([data-tv-revealed="true"]) .call-page .avatar{transform:translateY(18px) scale(.333333)}
+html[data-tv-overlay="true"] .tv-compact{top:30px}
+html[data-tv-overlay="true"] .tv-dock-actions{backdrop-filter:none;background:#192634ed;animation:none}
+html[data-tv-overlay="true"]:not([data-tv-revealed="true"]) :is(.tv-dock-actions,.tv-dock-status,.tv-wave-orbit){opacity:0}
+html[data-tv-overlay="true"][data-tv-layout="compact"] .avatar-face{box-shadow:0 5px 16px #0005!important;border:3px solid #d6e5efaa!important}
+html[data-tv-overlay="true"][data-tv-layout="compact"] .avatar::after{content:"";position:absolute;right:4px;bottom:12px;width:22px;height:22px;border:4px solid #253540;border-radius:50%;background:#88d5b2}
+@media(prefers-reduced-motion:reduce){html[data-tv-overlay="true"] .call-page .avatar{transition:none!important}}
+
+.tv-dock-hint{display:none}html[data-tv-overlay="true"] .tv-dock-hint{display:block;position:absolute;right:0;top:264px;width:224px;text-align:center;font-size:10px;color:#b2c3d2;text-shadow:0 1px 7px #0009}
+
+html[data-tv-overlay="true"][data-tv-layout="compact"][data-tv-passive-focused="true"] .avatar-face{border-color:#f1f7ff!important;box-shadow:0 0 0 7px #bedcf588,0 0 30px #bbddec55!important}
+
+html[data-tv-overlay="true"] .tv-compact{outline:none!important;box-shadow:none!important}

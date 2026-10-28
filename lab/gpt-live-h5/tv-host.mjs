@@ -12,6 +12,8 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
   document.documentElement.dataset.tv = 'true';
   const owner = window.crypto.randomUUID();
   let revision = 0, generation = 0, last = 'idle', snapshot;
+  const overlay=new URLSearchParams(window.location.search).get('tvOverlay')==='1';
+  if(overlay)document.documentElement.dataset.tvOverlay='true';
   const shell=new URLSearchParams(window.location.search).get('tvShell')==='1';
   let layout = shell ? 'medium' : 'full';
   document.documentElement.dataset.tvPresented=String(!(shell&&new URLSearchParams(window.location.search).get('tvSurface')==='1'));
@@ -41,7 +43,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     if (!validOwner(expected) || !['compact','medium','full'].includes(value)) return false;
     if(value===layout&&view.get().tvLayout===value)return true;
     layout = value;
-    if(shell){document.activeElement?.blur?.();document.documentElement.dataset.tvTransition='true';}
+    if(shell&&!overlay){document.activeElement?.blur?.();document.documentElement.dataset.tvTransition='true';}
     else commitLayout();
     update();
     return true;
@@ -101,6 +103,8 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       commitLayout();return true;
     },
     focusPrimary,
+    passiveFocus(focused){if(overlay)document.documentElement.dataset.tvPassiveFocused=String(focused===true);},
+    reveal(){if(overlay)document.documentElement.dataset.tvRevealed='true';return true;},
     present(expected) {
       if(!validOwner(expected))return false;
       document.documentElement.dataset.tvPresented='true';
@@ -147,6 +151,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
         const cross=direction==='up'||direction==='down'?Math.abs(dx):Math.abs(dy);
         if(forward>3&&forward>=cross*.6&&forward+cross*3<score){best=item;score=forward+cross*3;}
       }
+      if(!best&&overlay&&layout==='medium')return 'exit';
       if(best){best.focus({preventScroll:true});if(layout==='full')best.scrollIntoView({block:'nearest'});}
       return true;
     },

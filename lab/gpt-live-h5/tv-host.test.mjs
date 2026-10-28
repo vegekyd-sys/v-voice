@@ -202,3 +202,21 @@ test('idle or failed island releases every direction and Back to Home, active ca
  }
  view.set({call:'connected'});assert.notEqual(api.navigate('up'),'exit');assert.equal(api.back(),'handled');
 });
+
+
+test('overlay layout changes preserve call ownership and avoid blank intermediate frames',()=>{
+  const {api,view,window,calls}=fixture('?tv=1&tvShell=1&tvSurface=1&tvOverlay=1');
+  view.set({dial:{disabled:false}});
+  api.requestDial('launch-overlay01',api.snapshot);view.set({call:'connected'});
+  const owner=api.snapshot.owner,generation=api.snapshot.generation;
+  for(const layout of ['compact','medium','compact','full','medium']){
+    assert.equal(api.setLayout(layout,{owner,generation}),true);
+    assert.equal(window.document.documentElement.dataset.tvTransition,undefined);
+    assert.equal(view.get().tvLayout,layout);
+    assert.equal(api.snapshot.call,'connected');assert.equal(api.snapshot.generation,generation);
+  }
+  assert.equal(window.document.documentElement.dataset.tvOverlay,'true');
+  assert.equal(window.document.documentElement.dataset.tvRevealed,undefined);
+  api.reveal();assert.equal(window.document.documentElement.dataset.tvRevealed,'true');
+  assert.deepEqual(calls,['dial']);
+});
