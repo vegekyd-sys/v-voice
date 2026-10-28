@@ -177,6 +177,21 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     registry.set(active.reservation.voiceSessionId,{voiceSessionId:active.reservation.voiceSessionId,sessionKey:active.sessionKey,
       provider,model:active.reservation.model??null,avatarSequences:new Map()});
   };
+  // A relay can finish cleanup before the phone's HTTP close arrives. Retain
+  // only confirmed completions in the same authenticated visitor context, so
+  // the existing app can clear its pending ID without retrying on the next dial.
+  const rememberClosedCall = (context,id) => {
+    const completed=context.completedCalls??=new Map(),now=Date.now();
+    for(const [key,at] of completed)if(now-at>300000)completed.delete(key);
+    completed.set(id,now);
+    while(completed.size>4)completed.delete(completed.keys().next().value);
+  };
+  const isClosedCall = (context,id) => {
+    const at=context.completedCalls?.get(id);
+    if(at===undefined)return false;
+    if(Date.now()-at>300000){context.completedCalls.delete(id);return false;}
+    return true;
+  };
   const close = async (context = local) => {
     const old = context.active;
     old?.deviceChannel?.close();
@@ -188,6 +203,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     if (old) visual.forget(old.reservation.voiceSessionId);
     if (old?.direct) await directVoice.close(old.reservation.voiceSessionId);
     else if (old) await (old.gateway??gateway).request("talk.client.close", { sessionKey: old.sessionKey, voiceSessionId: old.reservation.voiceSessionId });
+    if(old)rememberClosedCall(context,old.reservation.voiceSessionId);
     if(old&&!old.direct)callControlAudit({type:'call.closed',voiceSessionId:old.reservation.voiceSessionId});
     if (context.active === old) {context.active = null;const owner=context.avatarOwners?.get(old?.reservation.voiceSessionId);if(owner)owner.endedAt=Date.now();}
   };
@@ -199,6 +215,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       // fully retired native session can release another device's lock.
       if(!old?.direct||directVoice.hasSession(old.reservation.voiceSessionId))continue;
       visual.forget(old.reservation.voiceSessionId);
+      rememberClosedCall(context,old.reservation.voiceSessionId);
       context.active=null;
       const owner=context.avatarOwners?.get(old.reservation.voiceSessionId);if(owner)owner.endedAt=Date.now();
     }
@@ -779,6 +796,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         try{return json(res,200,await avatarLog.write({owner,clientCaptureId:params.captureId,events:params.events}));}
         catch{return json(res,503,{error:'头像记录暂未保存'});}
       }
+      if(pathname==='/api/close'&&params.voiceSessionId!==context.active?.reservation.voiceSessionId&&isClosedCall(context,params.voiceSessionId))return json(res,200,{ok:true});
       if (!context.active || params.voiceSessionId !== context.active.reservation.voiceSessionId) return json(res, 409, { error: "通话已结束，请重新开始" });
       context.active.touchedAt = Date.now();
       if(pathname==='/api/device-result'){

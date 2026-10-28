@@ -7,7 +7,7 @@ import {createLiveH5Server} from '../../lab/gpt-live-h5/server.mjs';
 import {DEFAULT_NATIVE_RUNTIME_POLICY} from '../../lab/realtime-direct-tools/native-runtime.mjs';
 import {createDirectVoiceService} from '../../lab/realtime-direct-tools/session.mjs';
 const port=Number(process.env.VVOICE_SHARED_FIXTURE_PORT??29847);
-let fastDials=0,statusRequests=0,httpSessionRequests=0;
+let fastDials=0,statusRequests=0,httpSessionRequests=0,httpCloseRequests=0,httpCloseStatuses=[],closeDelayMS=0;
 let peer,inputFrames=0,outputPackets=0,lookupCalls=0,sessionRequests=[],playbackBusy=false,clears=0;
 const emit=value=>{if(!peer||peer.readyState!==1)throw Error('Fixture relay is not connected');peer.emit('message',Buffer.from(JSON.stringify(value)),false);};
 const tone=(seconds,hz)=>{const n=Math.round(24000*seconds),b=Buffer.alloc(n*4);for(let i=0;i<n;i++)b.writeFloatLE(.15*Math.sin(i*2*Math.PI*hz/24000),i*4);return b.toString('base64');};
@@ -36,14 +36,20 @@ const normalize=req=>{if(req.headers.host===`127.0.0.1:${port}`&&req.headers.ori
 bridge.server.prependListener('upgrade',req=>{normalize(req);if(req.url.startsWith('/voice/api/dial?'))fastDials++;});
 const handler=bridge.server.listeners('request')[0];bridge.server.removeAllListeners('request');
 bridge.server.on('request',async(req,res)=>{
- if(!req.url.startsWith('/fixture/')){normalize(req);if(req.url.startsWith('/voice/api/status'))statusRequests++;if(req.url.startsWith('/voice/api/session'))httpSessionRequests++;return handler(req,res);}
+ if(!req.url.startsWith('/fixture/')){
+  normalize(req);if(req.url.startsWith('/voice/api/status'))statusRequests++;if(req.url.startsWith('/voice/api/session'))httpSessionRequests++;
+  if(req.url.startsWith('/voice/api/close')){httpCloseRequests++;res.once('finish',()=>httpCloseStatuses.push(res.statusCode));if(closeDelayMS)await new Promise(resolve=>setTimeout(resolve,closeDelayMS));}
+  return handler(req,res);
+ }
  const send=(code,value)=>{res.writeHead(code,{'content-type':'application/json'});res.end(JSON.stringify(value));};
- if(req.url==='/fixture/state')return send(200,{fastDials,statusRequests,httpSessionRequests,connected:peer?.readyState===1,inputFrames,outputPackets,lookupCalls,sessionRequests,playbackBusy,clears});
+ if(req.url==='/fixture/state')return send(200,{fastDials,statusRequests,httpSessionRequests,httpCloseRequests,httpCloseStatuses,connected:peer?.readyState===1,inputFrames,outputPackets,lookupCalls,sessionRequests,playbackBusy,clears});
  if(req.url!=='/fixture/command'||req.method!=='POST')return send(404,{});
  try{
   let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>4096)throw Error('Fixture command too large');}
   const {command}=JSON.parse(raw);
-  if(command==='policy-v1'){runtimePolicy.copy.connected='候选策略一已接通';runtimePolicy.pause.speechOnsetMS=140;}
+  if(command==='close-delay')closeDelayMS=500;
+  else if(command==='close-immediate')closeDelayMS=0;
+  else if(command==='policy-v1'){runtimePolicy.copy.connected='候选策略一已接通';runtimePolicy.pause.speechOnsetMS=140;}
   else if(command==='policy-v2'){runtimePolicy.copy.connected='候选策略二已接通';runtimePolicy.pause.speechOnsetMS=220;}
   else if(command==='caption'){emit({type:'response.output_text.done',response_id:'caption',text:'新服务端策略的字幕，无需修改安装包。'});}
   else if(command==='old'){start('old');audio('old',oldTone);done('old');}
