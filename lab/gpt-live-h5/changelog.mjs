@@ -180,6 +180,15 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-redial-cleanup.20261028.1',date:'2026-10-28',
+    title:'再次拨号减少一次等待',
+    items:[
+      '修复部分 iPhone 通话挂断后，旧通话标记没有及时清除的问题。',
+      '下一次拨号无需重复确认已结束的通话，减少一次网络等待；实际收益随网络情况变化。',
+      '由服务端更新交付，现有 App 即可使用，无需安装新版本。',
+    ],
+  },
+  {
     version:'voice-ios-post-call-catalog.20261028.1',date:'2026-10-28',
     title:'修复 iPhone 挂断后的模型显示',
     items:[

@@ -1,0 +1,15 @@
+{
+  "schema": "v-voice-production-release-v1",
+  "version": "voice-redial-cleanup.20261028.1",
+  "status": "prepared_not_deployed",
+  "previousEntryCommit": "0d97329faa3e151ac4b7e9b3f5c262303f736a43",
+  "functionalSourceCommit": "9ba8eb594f849caa3e42087639eb4fa828c0a4a5",
+  "releasePR": 180,
+  "gatewayRestartRequired": false,
+  "nativeBinaryUpdated": false,
+  "firmwareUpdated": false,
+  "scope": "Acknowledge completed owned calls to avoid redundant HTTP close before redial",
+  "candidateValidation": "../../acceptance/redial-cleanup-20261028-physical.json",
+  "productionComparison": "pending",
+  "serverNodesSynchronized": false
+}
