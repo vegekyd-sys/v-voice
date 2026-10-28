@@ -1,0 +1,30 @@
+{
+  "schema": "v-voice-production-release-v1",
+  "version": "voice-call-response.20261028.1",
+  "status": "prepared-not-deployed",
+  "nativeVersion": "1.0.0",
+  "nativeBuild": 40,
+  "integrationPR": 175,
+  "includedPRs": [
+    174,
+    170,
+    161,
+    173
+  ],
+  "functionalSourceCommit": "912caae",
+  "previousEntryCommit": "7baa878a39ecd7903e9b1a384b0c115e3ddcdfac",
+  "previousPhoneBuild": 39,
+  "stableAudioBaselineBuild": 32,
+  "gatewayRestartRequired": false,
+  "validation": {
+    "voiceTests": 1030,
+    "speakerTests": 95,
+    "releaseTests": 11,
+    "nativeTests": 73,
+    "coreTests": 47,
+    "physicalAcceptance": "pending",
+    "speedComparison": "pending"
+  },
+  "testFlightAvailable": false,
+  "installedOnRequestedPhone": false
+}

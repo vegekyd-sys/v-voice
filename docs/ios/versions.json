@@ -735,5 +735,12 @@
     "externalTesterInstallable": false,
     "testFlightPublicURL": "https://testflight.apple.com/join/5DybcrZA",
     "installedViaTestFlight": "user_reported"
+  },
+  "pendingRelease": {
+    "version": "1.0.0",
+    "build": 40,
+    "record": "../releases/voice-functional-20261028/release.json",
+    "status": "prepared-not-installed",
+    "preserveStableBaselineBuild": 32
   }
 }

@@ -1,3 +1,9 @@
+## 2026-10-28 — Call response release / iOS 1.0.0 (40)
+
+- Release the merged #174 browser one-connection dial and #170/#161/#173 native initial feedback, immediate local hangup, and persistent interruption suppression through integration PR #175.
+- Update the visible homepage notes and generated H5 resources. Native changes require build 40; server deployment alone does not deliver them.
+- Release validation and physical speed comparison are tracked in `docs/releases/voice-functional-20261028/release.json`. Keep build 32 as the accepted interruption baseline and build 39 as the current before/after phone comparison; no unmeasured speed claim.
+
 ## 2026-10-28 — Browser one-connection dialing (candidate, unreleased)
 
 - Use an explicitly advertised web v2 dial socket for SeedDuplex/Grok, keeping live admission, cookie/origin checks and the original input policy. Preserve native v1 and GPT WebRTC behavior. Cancellation closes the allocation; failures never trigger an ambiguous automatic second dial.
