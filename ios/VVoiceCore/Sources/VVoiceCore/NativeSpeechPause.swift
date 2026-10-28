@@ -72,6 +72,15 @@ public struct NativeSpeechPause: Sendable {
         }
         // RMS/ZCR alone never acquires a pause. A service hold or a trusted
         // acoustic speech classification must corroborate the local candidate.
+        // A service-confirmed utterance may last longer than fifteen seconds.
+        // Its watchdog measures missing speech/disposition, not time since onset:
+        // replaying a retained reply tail while the caller still speaks is stale
+        // output. Energy only renews an already confirmed hold; it cannot acquire
+        // one. Ignored speech/reset still releases immediately, and silence keeps
+        // a finite fallback when the service never sends a disposition.
+        if held && native && inUtterance && voiced {
+            expires = at + (policy?.nativeHoldMS ?? 15000); hardExpires = expires
+        }
         if held && !native && voiced { expires = min(hardExpires, at + (policy?.holdMS ?? 1800)) }
         if held && expires == 0 { expires = min(hardExpires, at + (policy?.holdMS ?? 1800) - quietMS) }
         let grace = !native && !generationComplete ? (policy?.generationGraceMS ?? 600) : 0
