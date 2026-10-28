@@ -12,7 +12,9 @@ struct TalkToVIntent: AudioRecordingIntent, LiveActivityIntent {
     static var authenticationPolicy: IntentAuthenticationPolicy { .alwaysAllowed }
     @MainActor func perform() async throws -> some IntentResult {
         #if !VOICE_WIDGET
+        CallDiagnostics.record("intent.talk.begin")
         let call = CallCoordinator.shared
+        CallDiagnostics.record("intent.talk.coordinator-ready")
         let setupInForeground = !call.active && (call.needsSetup || !call.activitiesEnabled)
         if setupInForeground {
             try await continueInForeground("请打开 V Voice 完成首次准备与系统权限。", alwaysConfirm: false)
@@ -20,6 +22,7 @@ struct TalkToVIntent: AudioRecordingIntent, LiveActivityIntent {
             if call.permission == .undetermined { await call.requestMicrophone() }
         }
         try await call.startOrContinue(fromIntent: !setupInForeground)
+        CallDiagnostics.record("intent.talk.complete")
         #endif
         return .result()
     }

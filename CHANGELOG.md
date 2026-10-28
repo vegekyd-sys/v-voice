@@ -30,6 +30,12 @@
 - Web and native one-connection dialing consume their own just-resolved Feishu admission once; the next request still re-admits, and a request delayed after resolution rechecks before reservation. No cross-request identity cache or actor policy change.
 - Controlled 500ms-request browser comparison: 3347→2826ms to dial-ready. Native device-grant protocol fixture: two membership RPCs become one, 1104→553ms to reservation with a 550ms simulated Gateway. These are not physical-phone or provider/audio results. See [candidate acceptance](docs/acceptance/startup-latency-20261027/acceptance.md).
 
+## 2026-10-27 — iOS initial call feedback (candidate, unreleased)
+
+- Create new call feedback without waiting for retired Live Activities; wait and retry only for ActivityKit activity-limit errors. Move shortcut metadata refresh to the rendered, idle foreground scene and move bounded lifecycle JSON I/O off the main actor.
+- Add monotonic stages for App/Coordinator initialization, Intent entry, activity request and shortcut refresh. Account binding, Gateway authorization and audio executors retain their existing behavior.
+- Native candidate requires a new App binary. Simulator/fixture results and physical-device limitations: [acceptance](docs/acceptance/ios-intent-feedback-20261027/acceptance.md). No device installation, TestFlight or production deployment.
+
 ## 2026-10-27 — Voice entry and CLI deployed
 
 - PRs #158, #160, #163, #164 and #165 merged through #167 and deployed at `b4ed555` to both Voice nodes. Main CI passed; matching artifacts, readiness, admission release and unchanged Gateway identity verified.
