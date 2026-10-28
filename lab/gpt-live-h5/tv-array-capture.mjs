@@ -7,7 +7,7 @@ const fault=(code,message)=>Object.assign(Error(message),{code});
 export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagnostics=()=>{},onError=()=>{},directPcm=false}={}){
   if(!hasTvArrayCapture())throw fault('TV_MIC_CAPABILITY','电视收音尚未就绪，请重试');
   const bridge=globalThis.VTVArray,token=globalThis.vTvAudioCapability.pageToken,id='capture-'+crypto.randomUUID();
-  let closed=false,capturing=false,node,destination,metadata,sequence=0,outstanding=0,poll,configured=0,configureWait,pcmSink;
+  let closed=false,capturing=false,node,destination,metadata,sequence=0,outstanding=0,poll,configured=0,configureWait,pcmSink,streamWait,portListener;
   const inputGain=new TvInputGain();
   const metrics={dspFrames:0,dspMs:0,maxDspMs:0,pullCount:0,maxPullGapMs:0,elapsedMs:0,decodeMs:0,bridgeMs:0,renderMs:0,maxRoundtripMs:0};const submitted=new Map();let beganAt=0,lastPull=0;
   const worker=new Worker(new URL('./tv-array-worker.js',import.meta.url));
@@ -15,8 +15,9 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
   const current=()=>!closed&&!signal?.aborted&&isCurrent();
   function dispose(){
     if(closed)return;closed=true;clearTimeout(poll);
-    if(beganAt){metrics.elapsedMs=Math.round(performance.now()-beganAt);console.info('VTVAudio stats '+JSON.stringify(metrics));}signal?.removeEventListener('abort',dispose);
-    configureWait?.reject(fault('TV_MIC_CANCELLED','采集已结束'));configureWait=null;
+    if(beganAt){metrics.elapsedMs=Math.round(performance.now()-beganAt);console.info('VTVAudio stats '+JSON.stringify({...metrics,transport:metadata?.version===4?'worker-port':'ui-pull'}));}signal?.removeEventListener('abort',dispose);
+    configureWait?.reject(fault('TV_MIC_CANCELLED','采集已结束'));configureWait=null;streamWait?.reject(fault('TV_MIC_CANCELLED','采集已结束'));streamWait=null;
+    if(portListener)globalThis.removeEventListener('message',portListener);
     bridge.stop(token,id);worker.terminate();node?.disconnect();node?.port.close();
     for(const track of destination?.stream.getTracks()??[])track.stop();
     if(globalThis.__vTvAudioFrame===frame)delete globalThis.__vTvAudioFrame;
@@ -52,6 +53,26 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
       schedulePull(20);
     }catch(error){fail(error);}
   }
+  function openWorkerStream(){
+    return new Promise((resolve,reject)=>{
+      const cleanup=()=>{clearTimeout(timeout);if(portListener)globalThis.removeEventListener('message',portListener);portListener=null;};
+      const timeout=setTimeout(()=>{cleanup();streamWait=null;reject(fault('TV_MIC_STREAM','电视收音连接超时，请重试'));},8000);
+      streamWait={resolve:()=>{cleanup();resolve();},reject:error=>{cleanup();reject(error);}};
+      portListener=event=>{
+        if(!current()||typeof event.data!=='string'||event.data.length>512||event.ports?.length!==1)return;
+        let message;try{message=JSON.parse(event.data);}catch{return;}
+        if(message.type!=='v-tv-array-port'||message.version!==1||message.pageToken!==token||message.captureId!==id)return;
+        // Native delivers only to the checked top-frame origin. The per-page
+        // token and capture id reject late or unrelated channel transfers.
+        globalThis.removeEventListener('message',portListener);portListener=null;
+        worker.postMessage({type:'bind-port',port:event.ports[0]},[event.ports[0]]);
+      };
+      globalThis.addEventListener('message',portListener);
+      if(typeof bridge.openStream!=='function'||bridge.openStream(token,id)!=='ok'){
+        cleanup();streamWait=null;reject(fault('TV_MIC_STREAM','电视收音连接失败，请重试'));
+      }
+    });
+  }
   function configure(channels,sampleRate=48000){
     if(configured===`${channels}:${sampleRate}`)return Promise.resolve();
     return new Promise((resolve,reject)=>{
@@ -74,10 +95,11 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
     if(!current())throw fault('TV_MIC_CANCELLED','采集已结束');
     worker.onmessage=({data})=>{
       if(!current())return;
-      if(data.type==='error'){const e=fault('TV_DSP_PROCESS','电视音频处理中断，请重试');configureWait?.reject(e);configureWait=null;fail(e);return;}
+      if(data.type==='error'){const e=fault(/^[A-Z0-9_]{1,64}$/.test(data.code??'')?data.code:'TV_DSP_PROCESS','电视音频处理中断，请重试');configureWait?.reject(e);configureWait=null;streamWait?.reject(e);streamWait=null;fail(e);return;}
+      if(data.type==='stream-ready'){streamWait?.resolve();streamWait=null;return;}
       if(data.type==='metrics'){console.info('VTVAudio stats '+JSON.stringify(data));return;}
       if(data.type==='configured'){if(Array.isArray(data.warmup))console.info('VTVAudio stats '+JSON.stringify({warmup:data.warmup}));configured=`${data.channels}:${data.sampleRate??48000}`;configureWait?.resolve();configureWait=null;return;}
-      if(data.type==='pcm'){if(submitted.has(data.sequence)){metrics.maxRoundtripMs=Math.max(metrics.maxRoundtripMs,Math.round(performance.now()-submitted.get(data.sequence)));submitted.delete(data.sequence);}metrics.renderMs=Math.round(data.renderMs??0);metrics.dspFrames++;if(Number.isFinite(data.processMs)){metrics.dspMs+=Math.round(data.processMs);metrics.maxDspMs=Math.max(metrics.maxDspMs,Math.round(data.processMs));}outstanding--;if(metadata?.channelLayout)inputGain.process(data.buffer);if(pcmSink)pcmSink(data.buffer);else node?.port.postMessage(data.buffer,[data.buffer]);if(metadata?.version>=2&&outstanding<=4)schedulePull(0);}
+      if(data.type==='pcm'){if(submitted.has(data.sequence)){metrics.maxRoundtripMs=Math.max(metrics.maxRoundtripMs,Math.round(performance.now()-submitted.get(data.sequence)));submitted.delete(data.sequence);}metrics.renderMs=Math.round(data.renderMs??0);metrics.dspFrames++;if(Number.isFinite(data.processMs)){metrics.dspMs+=Math.round(data.processMs);metrics.maxDspMs=Math.max(metrics.maxDspMs,Math.round(data.processMs));}if(metadata?.version!==4)outstanding--;if(metadata?.channelLayout)inputGain.process(data.buffer);if(pcmSink)pcmSink(data.buffer);else node?.port.postMessage(data.buffer,[data.buffer]);if(metadata?.version===4)worker.postMessage({type:'consumed',sequence:data.sequence});else if(metadata?.version>=2&&outstanding<=4)schedulePull(0);}
     };
     worker.onerror=()=>fail(fault('TV_DSP_PROCESS','电视音频处理中断，请重试'));
     signal?.addEventListener('abort',dispose,{once:true});
@@ -87,8 +109,9 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
     if(typeof bridge.begin==='function'){
       metadata=JSON.parse(bridge.start(token,id));
       if(metadata.error)throw fault('TV_MIC_START',metadata.error);
-      if(![2,3].includes(metadata.version)||![16000,48000].includes(metadata.sampleRate)||![4,6].includes(metadata.channels))throw fault('TV_MIC_FORMAT','电视阵列不支持当前格式');
+      if(![2,3,4].includes(metadata.version)||![16000,48000].includes(metadata.sampleRate)||![4,6].includes(metadata.channels))throw fault('TV_MIC_FORMAT','电视阵列不支持当前格式');
       await configure(metadata.channels,metadata.sampleRate);
+      if(metadata.version===4)await openWorkerStream();
     }else await configure(4);
     if(!directPcm){
     const worklet=`${PcmPlaybackQueue.toString()}\nclass ArrayInput extends AudioWorkletProcessor {constructor(){super();this.q=new PcmPlaybackQueue(sampleRate,20,24000);this.tick=0;this.peak=0;this.port.onmessage=({data})=>{try{this.q.push(new Int16Array(data));this.peak=Math.max(this.peak,this.q.frames);}catch{this.port.postMessage({type:'overflow',frames:this.q.frames,consumed:this.q.consumed,at:currentTime});}};}process(i,o){if(o[0]?.[0])this.q.render(o[0][0],currentTime);if(++this.tick%375===0){this.port.postMessage({type:'queue',frames:this.q.frames,peak:this.peak,consumed:this.q.consumed,at:currentTime,underflows:this.q.underflows});this.peak=0;}return true;}}registerProcessor('v-tv-array-input',ArrayInput);`;
@@ -115,9 +138,9 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
         if(metadata.version>=2){
           if(typeof bridge.begin!=='function'||typeof bridge.pull!=='function')throw fault('TV_MIC_CAPABILITY','请更新电视收音组件');
           beganAt=performance.now();const result=bridge.begin(token,id);if(result!=='ok')throw fault('TV_MIC_START','电视本体麦克风暂不可用，请重试');
-          pull();
+          if(metadata.version!==4)pull();
         }
-        diagnostics={...diagnostics,source:metadata.source,channels:metadata.channels,sampleRate:metadata.sampleRate};onDiagnostics(diagnostics);
+        diagnostics={...diagnostics,source:metadata.source,channels:metadata.channels,sampleRate:metadata.sampleRate,transport:metadata.version===4?'worker-port':'ui-pull'};onDiagnostics(diagnostics);
       },
       renderReference:metadata?.channelLayout?undefined:(buffer,sampleRate)=>{if(current())worker.postMessage({type:'render',buffer,sampleRate},[buffer]);}};
   }catch(error){dispose();throw error;}

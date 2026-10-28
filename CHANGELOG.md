@@ -1,3 +1,9 @@
+## 2026-10-29 — TV worker audio transport (isolated candidate)
+
+- TV shell 0.2.10 transfers a per-capture message port directly to the shared audio Worker. Native array frames no longer depend on synchronous JavaScript-interface polling or main-thread base64 decoding.
+- Keep the existing 25-frame native queue and eight-frame processing/output window. Acknowledgements follow PCM consumption; stale owners and unordered acknowledgements cannot grant credit. Every frame retains its sequence and the existing AEC/gain processing.
+- Android instrumented tests exercise the real native message channel, shared Worker and capture controller with synthetic input and repeated main-thread stalls. Hardware installation and sustained-call evidence are recorded separately.
+
 ## 2026-10-28 — TV portrait readiness (isolated candidate)
 
 - TV shell 0.2.9 independently acknowledges shared-page presentation after legacy fallback; late initialization can no longer leave the enlarged portrait and controls paused at their first animation frame.
