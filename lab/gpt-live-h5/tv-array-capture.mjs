@@ -69,7 +69,7 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
     worker.onmessage=({data})=>{
       if(!current())return;
       if(data.type==='error'){const e=fault('TV_DSP_PROCESS','电视音频处理中断，请重试');configureWait?.reject(e);configureWait=null;fail(e);return;}
-      if(data.type==='configured'){configured=data.channels;configureWait?.resolve();configureWait=null;return;}
+      if(data.type==='configured'){if(Array.isArray(data.warmup))console.info('VTVAudio stats '+JSON.stringify({warmup:data.warmup}));configured=data.channels;configureWait?.resolve();configureWait=null;return;}
       if(data.type==='pcm'){metrics.dspFrames++;if(Number.isFinite(data.processMs)){metrics.dspMs+=Math.round(data.processMs);metrics.maxDspMs=Math.max(metrics.maxDspMs,Math.round(data.processMs));}outstanding--;node?.port.postMessage(data.buffer,[data.buffer]);}
     };
     worker.onerror=()=>fail(fault('TV_DSP_PROCESS','电视音频处理中断，请重试'));
