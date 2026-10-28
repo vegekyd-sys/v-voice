@@ -23,7 +23,7 @@
   "validatedAt": "2026-10-28T23:31:16+08:00",
   "mainCIRun": 40714231488,
   "rollbackCommit": "0d97329faa3e151ac4b7e9b3f5c262303f736a43",
-  "phone": "Original Release1.0.0(40) retained; physical production comparison unavailable because locked",
+  "phone": "Post-release physical Public test: 4/4 calls passed, 3/3 redials without recovery; original Release 1.0.0 (40) restored and launched. Matched production physical before baseline unavailable.",
   "validation": {
     "voiceTests": 1033,
     "speakerTests": 95,
@@ -32,6 +32,10 @@
     "productionProbeRedialsPerSide": 3,
     "productionProbeTransientFailure": 1,
     "followupCallsPassed": 2,
-    "finalNodesReadyIdleUnheld": true
-  }
+    "finalNodesReadyIdleUnheld": true,
+    "productionPhoneCallsPassed": 4,
+    "productionPhoneRedialsWithoutRecovery": 3
+  },
+  "productionPhysicalValidation": "phone-production.json",
+  "physicalValidatedAt": "2026-10-28T23:39:53+08:00"
 }
