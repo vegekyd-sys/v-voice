@@ -1,3 +1,9 @@
+## 2026-10-29 — Fish realtime STT (candidate, blocked by credential)
+
+- Add an opt-in `fish-stt` relay using native Fish `transcribe-stream-1`, existing DeepSeek dialog and Volc Xiaohe streaming PCM TTS. Keep existing default models and session/tool authorization; no Gateway or Swift model routing changes.
+- Exercise the real dialog/TTS APIs and produce a playable synthetic sample. Fish returned 401 without a key; realtime recognition, complete calls and physical interruption remain unverified. Bound calls and persist a conservative test budget.
+- Record provider audit, synthetic evaluation scripts, browser preview evidence and limitations in [the Candidate report](docs/releases/fish-stt-candidate-20261029/README.md). Unmerged and not deployed.
+
 ## 2026-10-28 — Retired-call cleanup acknowledgement released
 
 - Acknowledge a recently completed call only within its original authenticated visitor context. Existing iOS binaries can clear the pending call after relay-first shutdown, avoiding another HTTP cleanup request before redial; failed cleanup and unrelated IDs remain protected.
@@ -695,4 +701,3 @@ The earlier accepted task-continuity baseline uses Voice `a9ac5168` and the plat
 - Fix the AudioWorklet syntax error discovered in a real Feishu call: minification serializes the queue as an anonymous class. Bind the serialized expression explicitly inside the worklet and exercise minified microphone/playback processors in regression.
 - Candidate suite: 1,023 Voice, 95 speaker and 11 fleet checks. Earlier candidate records below remain historical; physical native audio and Action Button changes are excluded.
 - Production versions, real Feishu benchmarks and post-deployment evidence are recorded in `docs/releases/voice-combined-release-20261027/` after rollout.
-

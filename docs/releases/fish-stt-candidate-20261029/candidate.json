@@ -1,0 +1,120 @@
+{
+  "schema": "v-voice-candidate-v1",
+  "version": "voice-fish-stt.20261029.1",
+  "status": "blocked-missing-fish-credential",
+  "owner": "Tianyi / Codex Fish realtime STT evaluation",
+  "purpose": "Independent Fish transcribe-stream-1 candidate alongside existing voice models",
+  "baseCommit": "0dbc893e3b89042f5c0e103fa1547cd9ea6efdf7",
+  "branch": "codex/voice-fish-stt-20261029",
+  "productionChanged": false,
+  "gatewayChanged": false,
+  "nativeBinaryChanged": false,
+  "defaultModelChanged": false,
+  "providerRoute": {
+    "asr": "Fish native transcribe-stream-1 (preview)",
+    "dialog": "existing DeepSeek deepseek-flash",
+    "tts": "existing Volc seed-tts-2.0 / zh_female_xiaohe_uranus_bigtts"
+  },
+  "providerAudit": {
+    "evolink": {
+      "status": 200,
+      "models": 274,
+      "targetFound": false
+    },
+    "openrouter": {
+      "status": 200,
+      "models": 456,
+      "targetFound": false,
+      "scope": "general catalog; public Fish model is file transcription"
+    },
+    "fal": {
+      "status": 200,
+      "queries": [
+        "fish",
+        "transcribe-stream-1"
+      ],
+      "matches": 0
+    },
+    "fish": {
+      "credentialFound": false,
+      "unauthenticatedHandshakeStatus": 401,
+      "audioSent": false
+    }
+  },
+  "realApi": {
+    "fishAuthenticated": false,
+    "dialogTts": true,
+    "dialogInputTokens": 50,
+    "dialogOutputTokens": 17,
+    "ttsBillableCharacters": 32,
+    "firstPcmMs": 1184,
+    "pcmBytes": 248658,
+    "audioDurationMs": 5180.375,
+    "firstPcmScope": "text-to-PCM receipt; excludes ASR and physical render",
+    "microphoneOpened": false,
+    "gatewayToolInvocations": 0
+  },
+  "budget": {
+    "targetUsd": 5,
+    "absoluteLimitUsd": 10,
+    "adapterConservativeReserveLimitUsd": 4,
+    "conservativeReservedUsd": 0.0103389,
+    "estimatedDeepSeekPeakUsd": 3.54e-05,
+    "estimatedTtsCny": 0.0096,
+    "providerBillReconciled": false
+  },
+  "verification": {
+    "npmTest": {
+      "passed": 1051,
+      "failed": 0
+    },
+    "fishAdapterTests": 14,
+    "iosShellSourceCheck": true,
+    "browser": {
+      "surface": "Codex IAB",
+      "url": "http://127.0.0.1:29639/",
+      "title": "和 V 通话",
+      "viewport": "1280x720",
+      "modelMenu": "Fish disabled without credentials",
+      "candidateUpdate": "visible and states blocked",
+      "consoleErrors": 0,
+      "consoleWarnings": 0
+    },
+    "syntheticFixturesPrepared": 8,
+    "fishRealAudioCasesRun": 0
+  },
+  "artifacts": {
+    "sourceWorktree": "/Users/tianyicai/.codex/worktrees/voice-fish-stt-20261029/v-voice",
+    "privateLocalOutputs": "artifacts/fish-stt-private",
+    "committedEvidence": [
+      "model-menu.png",
+      "candidate-update.png"
+    ],
+    "runtimeArtifact": "artifacts/fish-stt-20261029 (built from committed source after this registration)"
+  },
+  "temporaryServices": [
+    {
+      "scope": "local loopback only",
+      "entrypoint": "scripts/candidate/fish-preview.mjs",
+      "port": 29639,
+      "paidCalls": false,
+      "status": "stopped",
+      "stoppedAt": "2026-10-29T02:30:32.796885+08:00",
+      "listenerVerifiedClosed": true
+    }
+  ],
+  "lastActualUse": "2026-10-29T02:29:54.304432+08:00",
+  "reclaimCondition": "After credential follow-up and review, or user abandons candidate; retain source/report and required rollback evidence. No old 10/07 or 10/24 candidate directory reused.",
+  "unverified": [
+    "Fish preview entitlement / authenticated handshake",
+    "Chinese and mixed-language accuracy",
+    "partial/eager/final real latency and revisions",
+    "natural endpointing and short/long pauses",
+    "backchannels and acoustic interruptions",
+    "concurrency/rate limits/upstream reconnect behavior",
+    "end-to-end first audible reply",
+    "physical iPhone/background/lock-screen/audio quality",
+    "robot and speaker Fish audio",
+    "provider bill reconciliation"
+  ]
+}

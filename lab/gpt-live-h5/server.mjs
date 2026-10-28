@@ -34,13 +34,14 @@ import {voiceConversationContext} from '../realtime-direct-tools/conversation-co
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, enableGrok = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, enableGrok = false, enableFish = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
   let agentControl = null;
   if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
   if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
   if (typeof enableGrok !== 'boolean') throw new Error('Invalid Grok visibility setting');
+  if (typeof enableFish !== 'boolean') throw new Error('Invalid Fish visibility setting');
   // Visibility belongs to the phone product catalog, not provider/device capability.
-  const phoneModels = () => [{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'},...(directVoice?.models?.() ?? [])].filter(m => enableGrok || m.id !== 'grok');
+  const phoneModels = () => [{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'},...(directVoice?.models?.() ?? [])].filter(m => (enableGrok || m.id !== 'grok') && (enableFish || m.id !== 'fish-stt'));
   if (defaultModel === 'grok' && !enableGrok) defaultModel = phoneModels().find(m => m.id === 'seeduplex' && m.available)?.id ?? 'gpt-live';
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
@@ -235,6 +236,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     const reply=(status,body)=>({status,body});
     // An old cached native preference must not silently start another model or
     // end an existing call. The existing options refresh selects the new default.
+    if (params.model === 'fish-stt' && !enableFish) return reply(409,{error:'Fish 尚未开启候选试用。',code:'model_hidden',fallbackModel:defaultModel});
     if (params.model === 'grok' && !enableGrok) return reply(409,{error:'Grok 目前仅供测试，请返回首页刷新后选择可用模型。',code:'model_hidden',fallbackModel:defaultModel});
     const externalCancelled=cancelled;
     cancelled=()=>externalCancelled()||Boolean(binding.cliManaged&&!agentControl?.active(binding.id));
@@ -248,7 +250,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     if(speakerRouting&&params.inputPolicy!==undefined&&!['native','speaker'].includes(params.inputPolicy))return reply(400,{error:'没有这个输入策略'});
     try{normalizeDeviceActions(params.nativeDeviceActions);}catch{return reply(400,{error:'不支持的设备能力协议'});}
     if(params.nativeRuntimeVersion!==undefined&&params.nativeRuntimeVersion!==1)return reply(400,{error:'不支持的原生能力协议'});
-    if (params.model && !['gpt-live','seeduplex','grok'].includes(params.model)) return reply(400,{error:'没有这个语音模型'});
+    if (params.model && !['gpt-live','seeduplex','grok','fish-stt'].includes(params.model)) return reply(400,{error:'没有这个语音模型'});
     if (params.model === 'grok') {
       try { grokVoice(params.voice); } catch (error) { return reply(400,{error:error.message}); }
     }
@@ -297,7 +299,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         // taking. Keep household/multi-speaker routing available explicitly;
         // the deployment selects the phone default, not browser heuristics.
         // Clients opt in only after implementing native response ownership and reversible pause.
-        const inputPolicy = params.inputPolicy ?? 'speaker';
+        const inputPolicy = params.model === 'fish-stt' ? 'native' : params.inputPolicy ?? 'speaker';
         const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(unidentified?{unidentified:true}:{}),...(binding.callerIdentity?{callerIdentity:binding.callerIdentity}:{}),...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId,toolIdentity:binding.actorPrincipal}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(params.nativeDeviceActions?{nativeDeviceActions:params.nativeDeviceActions,terminalKind:iosBindings?.read(req,binding)?'ios':'web',backendDeviceURL:backendDeviceEndpoint||`${hosted?publicOrigin:`http://127.0.0.1:${server.address().port}`}${basePath}/internal/device-request`}:{}),...(params.nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId,reportOptions)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...(speakerRouting||unidentified)?{inputPolicy}:{}});
         context.active={sessionKey,gateway:callGateway,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
         if(cancelled()){await close(context);return reply(499,{error:"拨号已取消"});}
@@ -980,7 +982,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ||!['1','2'].includes(dialVersion)
         ||(dialVersion==='1'?url.searchParams.get('nativeRuntimeVersion')!=='1':url.searchParams.has('nativeRuntimeVersion'))
         ||url.searchParams.has('inputPolicy')&&!['native','speaker'].includes(url.searchParams.get('inputPolicy'))
-        ||!['seeduplex','grok'].includes(url.searchParams.get('model')))return reject(400);
+        ||!['seeduplex','grok','fish-stt'].includes(url.searchParams.get('model')))return reject(400);
       const binding=await resolveBinding(req,url).catch(()=>null);if(!binding)return reject(404);
       if(phoneLogin?.protects(binding)&&!phoneLogin.permits(req,binding)&&!iosBindings?.read(req,binding))return reject(401);
       const visitor=hosted?readVisitor(req,binding):null;
@@ -1082,6 +1084,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       scopes:["operator.read","operator.write","operator.admin"],caps:["voice-direct-tools","tool-events","voice-feishu-actor-v1"],subscribeSessions:true,onEvent:event=>bridge?.emit(event),
     },{onConnectError:error=>console.warn(JSON.stringify({type:"voice.gateway-connection-error",code:/^[A-Z0-9_]{1,80}$/.test(error.code??"")?error.code:"CONNECT_ERROR"}))});
     const {createDirectVoiceService}=await import('../realtime-direct-tools/session.mjs');
+    const {fishBudgetFromFile}=await import('../realtime-direct-tools/fish-provider.mjs');
     const wsModule=await import('ws');
     transcriptLog=createVoiceTranscriptLog({
       directory:process.env.RTC_H5_TRANSCRIPT_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-transcripts'),
@@ -1101,6 +1104,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
       calendar:lark.available?lark.calendar:null,larkRead:lark.available?lark.read:null,larkForActor:lark.forActor,
+      fish:{enabled:process.env.VOICE_ENABLE_FISH==='1',...(process.env.VOICE_ENABLE_FISH==='1'?{budget:fishBudgetFromFile(process.env.VOICE_FISH_BUDGET_FILE)}:{})},
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),
       grokExpressiveTags:process.env.XAI_VOICE_EXPRESSIVE_TAGS === '1',
@@ -1109,6 +1113,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       apiKeys:{
       seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY??process.env.DOUBAO_SPEECH_API_KEY,
       grok:process.env.XAI_API_KEY,
+      fish:process.env.FISH_API_KEY,fishDialog:process.env.DEEPSEEK_API_KEY,fishTts:process.env.VOLCENGINE_TTS_API_KEY??process.env.DOUBAO_SPEECH_API_KEY,
     },loadContext:async (sessionKey,{gateway:callGateway=gateway}={})=>{
       const history=await callGateway.request('chat.history',{sessionKey,limit:6},{timeoutMs:10000});
       return voiceConversationContext(history.messages??[]);
@@ -1144,6 +1149,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       directVoice, speakerRouting, avatarLog,callControlAudit:transcriptLog.audit,
       phoneInputPolicy:process.env.VOICE_PHONE_INPUT_POLICY ?? 'speaker',
       enableGrok: process.env.VOICE_ENABLE_GROK === '1',
+      enableFish: process.env.VOICE_ENABLE_FISH === '1',
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",
       feishuAccounts:process.env.VOICE_FEISHU_ACCOUNTS_FILE?JSON.parse(await readFile(process.env.VOICE_FEISHU_ACCOUNTS_FILE,'utf8')):config.channels?.feishu??{},
       personalReply: {replySync:!!process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID,accountId:process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID},

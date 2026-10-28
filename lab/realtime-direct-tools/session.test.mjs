@@ -1402,3 +1402,19 @@ test('Public uses existing V search/memory tools and carries the same personal-c
  f.call('exec',{command:'anything'},'public-denied');await delay(10);
  assert(!calls.some(r=>r.params?.name==='exec'));assert.equal(f.invocations.length,0);
 });
+
+test('Fish uses the existing shared tool executor, relay/native projection, and server-bound session',async t=>{
+ let callbacks;const bodies=[];let requests=0;
+ const asr={connect:async()=>{},close(){},append(){},context(){},agentSpeaking(){}};
+ const f=await fixture(undefined,'fish-stt',{nativeRuntimeVersion:1,apiKeys:{fish:'fixture-fish',fishDialog:'fixture-dialog',fishTts:'fixture-tts'},fish:{enabled:true,asrFactory:c=>{callbacks=c;return asr;},tts:async(_t,o)=>o.onAudio(Buffer.alloc(960)),fetchImpl:async(_url,opts)=>{
+  bodies.push(JSON.parse(opts.body));const delta=++requests===1?{tool_calls:[{index:0,id:'fish-memory',function:{name:'memory_search',arguments:'{"query":"fixture-only"}'}}]}:{content:'已收到真实结果。'};
+  return new Response('data: '+JSON.stringify({choices:[{delta}]})+'\n\ndata: [DONE]\n\n');
+ }}});t.after(()=>f.service.dispose());
+ assert.equal(f.reservation.transport,'gateway-relay');assert.equal(f.reservation.nativeRuntime.version,1);
+ callbacks.onEvent({type:'committed',turn_index:0,text:'fixture-only',user_turn:true});
+ for(let n=0;n<100&&!f.audit.some(e=>e.type==='response.done'&&e.status==='completed');n++)await delay(5);
+ const tool=f.invocations.find(x=>x.name==='memory_search');assert(tool);assert.equal(tool.sessionKey,'agent:makaron:explicit:personal-fixture');
+ assert.equal(bodies.length,2);assert(bodies[0].tools.some(x=>x.function.name==='delegate_to_v'));assert(bodies[1].messages.some(m=>m.role==='tool'&&m.content.includes('实际结果')));
+ assert(f.client.sent.some(e=>e.type==='native.runtime'&&e.effects.some(v=>v.op==='audio.append')));
+ assert(!f.client.sent.some(e=>e.type==='audio'));assert(!JSON.stringify(f.client.sent).includes('fixture-fish'));
+});

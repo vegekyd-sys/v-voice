@@ -93,6 +93,13 @@ export function createTranscriptPresentation() {
           resolve(event.turn.role, at, event.turn.id);
         return snapshot();
       }
+      if(event.type==='turn.snapshot'){
+        const turn=event.turn;
+        if(!['user','assistant'].includes(turn?.role)||typeof turn.id!=='string'||!turn.id||typeof turn.transcript!=='string')return snapshot();
+        const row=resolve(turn.role,at,turn.id);
+        if(!row.complete)row.text=turn.transcript;
+        return snapshot();
+      }
       if (event.type === 'turn.done') {
         const turn = event.turn;
         if (!['user', 'assistant'].includes(turn?.role) ||

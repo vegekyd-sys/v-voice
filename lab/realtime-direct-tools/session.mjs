@@ -25,6 +25,7 @@ import {NATIVE_DUPLEX_POLICY} from './native-duplex-policy.mjs';
 import {createLookupRecovery} from './lookup-recovery.mjs';
 import {compactSearchResult,isSearchTool,searchMetrics} from './search-result.mjs';
 import {createAudioDeliveryMetrics} from './audio-delivery-metrics.mjs';
+import {FishVoiceBridge,fishConfigured,createFishBudget} from './fish-provider.mjs';
 
 export const VOICE_TASK_ROUTING = '图片、视频生成也用 delegate_to_v，把画面、时长和要求完整交给后台；语音模型自身不生成媒体不代表后台不能生成。工具拒绝或报错意味着未启动，不能说正在做、已经排队或马上完成。用户明确取消仍在执行的当前后台任务并改做新任务时，先实际 cancel_task，确认取消后再实际 delegate_to_v 新目标。已完成的旧任务不能通过取消另一个无关任务来代替。任务分工：简单查询、日历和一两步明确操作直接调用原生工具。多步比较、跨资料调研、复杂规划或需要持续等待/反复轮询的任务，用 delegate_to_v 将完整目标及用户条件一次交给个人 V 后端语言模型。用户要求交给后端模型、交给 V 或交给后台处理时必须调用 delegate_to_v，即使已经给出完整命令，也不能自行用 exec/process/openclaw_tool 代做。这里的后端指另一个语言模型；exec/process 只是执行工具，命令的 background 参数也不是模型委派。只说‘交给后端’却自己执行不算委派。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，等待时正常聊天。只有真实的新事实才简短汇报，不反复播报等待、倒计时或轮询状态。只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
 
@@ -61,8 +62,9 @@ export function directInstructions(catalog,context='',model='',options={}) {
 // announced, so a burst of quick tool calls becomes one line.
 export const NARRATION_DEFAULTS=Object.freeze({firstMs:6000,firstHeartbeatMs:15000,settleMs:2000,stageGapMs:12000,factGapMs:6000,heartbeatMs:30000,quietAfterUserMs:4000,startMs:2500,max:12});
 
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},fish={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
+  const fishBudget=fish.budget??createFishBudget();
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
   const sessions=new Map(),detached=new Set(),deviceChannels=new Map();
@@ -141,8 +143,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     else if(since>=NARRATION.heartbeatMs)narrate(s,stageLine(stage,{elapsedMs:elapsed,heartbeat:true}),'heartbeat',stage);
   };
   const websocketServer=new wsModule.WebSocketServer({noServer:true,maxPayload:65536});
-  const configured=id=>id==='seeduplex'?Boolean(apiKeys.seeduplex):id==='grok'&&Boolean(apiKeys.grok);
-  const models=()=>DIRECT_MODELS.map(m=>({...m,...(m.id==='grok'?{model:grokModel,label:grokVoiceLabel(grokModel),voices:GROK_VOICES,speed:grokSpeed,expressiveTags:grokExpressiveTags}:{}),available:configured(m.id),billing:'api',nativeTransport:'gateway-relay'}));
+  const configured=id=>id==='fish-stt'?fishConfigured(apiKeys,fish):id==='seeduplex'?Boolean(apiKeys.seeduplex):id==='grok'&&Boolean(apiKeys.grok);
+  const models=()=>[...DIRECT_MODELS,...(fish.enabled?[{id:'fish-stt',label:'Fish 实时识别 · 小何语音（候选）',model:'transcribe-stream-1',voice:'xiaohe',description:'Fish STT + DeepSeek deepseek-flash + 火山小何 TTS；单次三分钟，待真实语音验收',...(!configured('fish-stt')?{unavailableReason:'尚未配置 Fish、DeepSeek 或火山 TTS 凭据'}:{})}]:[])].map(m=>({...m,...(m.id==='grok'?{model:grokModel,label:grokVoiceLabel(grokModel),voices:GROK_VOICES,speed:grokSpeed,expressiveTags:grokExpressiveTags}:{}),available:configured(m.id),billing:'api',nativeTransport:'gateway-relay'}));
   const current=s=>Boolean(s)&&!s.closed&&sessions.get(s.id)===s;
   const emit=(s,value)=>{
     if(!current(s))return;
@@ -300,7 +302,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     sessions.set(s.id,s);
     audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model,voice:s.voice,surface,...(model==='grok'?{speed:grokSpeed,expressiveTags:grokExpressiveTags}:{})});
     // Receivers choose microphone routing explicitly; conversation policy is shared.
-    const route=!s.unidentified&&inputPolicy!=='native'?speakerRouting?.reserve(s.id,{model,policy:inputPolicy??'speaker',surface,inputSampleRate}):null;
+    const route=model!=='fish-stt'&&!s.unidentified&&inputPolicy!=='native'?speakerRouting?.reserve(s.id,{model,policy:inputPolicy??'speaker',surface,inputSampleRate}):null;
     // A running background task counts as V being busy for repeat prompts.
     if(route)speakerRouting.setBusyProbe?.(s.id,()=>Boolean(s.backend?.snapshot?.()));
     s.speakerRouting=Boolean(route);
@@ -515,7 +517,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(role==='assistant'&&final){if(!s.unidentified)speakerRouting?.assistant(s.id,text);if(!source){s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
         if(role==='user'){if(final)s.lookup.answered();if(final)s.replyDelivery?.user(text,{turnId:metadata.turnId});if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
         if(role==='user'&&final&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}
-        emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{}),responseId:metadata.responseId,turnId:metadata.turnId});
+        emit(s,{type:'transcript',role,text,final,...(source?{source}:{}),...(s.model==='fish-stt'&&metadata.turnId?{turnId:metadata.turnId,...(metadata.snapshot?{snapshot:true}:{})}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{}),responseId:metadata.responseId,turnId:metadata.turnId});
         };
         if(role==='assistant')routeOutput('transcript',{role,text,final,source},deliver);else deliver();
       },
@@ -540,7 +542,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       const generation=wrap?null:s.providerGeneration=(s.providerGeneration??0)+1;
       const owned={...request,instructions};
       for(const [key,value]of Object.entries(owned))if(key.startsWith('on')&&typeof value==='function')owned[key]=wrap?wrap(key,value):(...args)=>{if(current(s)&&generation===s.providerGeneration)return value(...args);};
-      return s.model==='seeduplex'?new SeeduplexRealtimeVoiceBridge(owned,{createWebSocket})
+      return s.model==='fish-stt'?new FishVoiceBridge(owned,{...fish,createWebSocket,apiKey:apiKeys.fish,dialogApiKey:apiKeys.fishDialog,ttsApiKey:apiKeys.fishTts,budget:fishBudget})
+        :s.model==='seeduplex'?new SeeduplexRealtimeVoiceBridge(owned,{createWebSocket})
         :new GrokVoiceBridge(owned,{createWebSocket,apiKey:apiKeys.grok,model:grokModel,voice:s.voice,speed:grokSpeed,expressiveTags:grokExpressiveTags});
     };
     s.bridge=makeBridge();
@@ -569,7 +572,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         const device=s.surface==='speaker'&&typeof e.deviceId==='string'?e.deviceId:null,confirmed=Boolean(device&&e.confirmed===true);
         s.bridge.handleBargeIn({confirmed});audit({type:'client.barge-in',voiceSessionId:s.id,...(device?{deviceId:device,confirmed}:{})});}
       else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){if(s.nativeDuplex&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}s.lookup.answered();s.latestUserTurn=Object.freeze({text:e.text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(e.text);}
-      else if(e.type==='playback.state'&&typeof e.speaking==='boolean'){s.playing=e.speaking;audit({type:'client.playback-state',voiceSessionId:s.id,speaking:e.speaking});}
+      else if(e.type==='playback.state'&&typeof e.speaking==='boolean'){s.playing=e.speaking;s.bridge.setPlaybackState?.(e.speaking);audit({type:'client.playback-state',voiceSessionId:s.id,speaking:e.speaking});}
       else if(e.type==='playback.stats'){
         const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','inputBatches','inputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','nativePauses','nativeResumes'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
         for(const key of ['dialToReadyMs','dialToFirstPcmMs','dialToFirstRenderObservedMs'])if(Number.isFinite(e[key])&&e[key]>=0&&e[key]<=120000)stats[key]=Math.round(e[key]);
