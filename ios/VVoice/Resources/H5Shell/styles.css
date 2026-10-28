@@ -1223,3 +1223,6 @@ html[data-tv-overlay="true"] .tv-compact{outline:none!important;box-shadow:none!
 /* Meter samples already arrive at 10 Hz. Interpolating every bar's height
    forces continuous paint on TV WebView; avatar motion keeps its own transform. */
 html[data-tv-overlay="true"] .tv-wave-orbit i{transition:none}
+
+/* Focus is drawn on the portrait itself, never on the still-full-size hit area. */
+html[data-tv-overlay="true"] .tv-avatar-large{outline:none!important;box-shadow:none!important}
