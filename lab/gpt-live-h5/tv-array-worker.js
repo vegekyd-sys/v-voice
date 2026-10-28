@@ -1,6 +1,6 @@
 // PCM remains local memory. This worker has no transcript, model or network API.
 importScripts('./assets/tv-aec/webrtcaec3-0.3.0.js');
-let module,Processor,dsp,channels=0,closed=false,lastSequence=0,renderMs=0;
+let module,Processor,dsp,channels=0,closed=false,lastSequence=0,renderMs=0,renderFrames=0,renderEnergy=0;
 Promise.all([WebRtcAec3(),import('./tv-array-dsp.mjs')]).then(([m,p])=>{module=m;Processor=p.TvArrayEchoProcessor;postMessage({type:'ready'});}).catch(()=>postMessage({type:'error',message:'回声消除初始化失败'}));
 self.onmessage=({data})=>{
  if(closed)return;
@@ -20,10 +20,12 @@ self.onmessage=({data})=>{
   if(!dsp)return;
   if(data.type==='render'){
    if(!(data.buffer instanceof ArrayBuffer)||data.buffer.byteLength>16384||![24000,44100,48000].includes(data.sampleRate))throw Error('回声参考格式无效');
-   const t=performance.now();dsp.render(new Float32Array(data.buffer),data.sampleRate);renderMs+=performance.now()-t;return;
+   const t=performance.now();dsp.render(new Float32Array(data.buffer),data.sampleRate);renderMs+=performance.now()-t;renderFrames++;for(const v of new Float32Array(data.buffer))renderEnergy+=v*v;return;
   }
   if(data.type!=='capture')return;
   if(!Number.isSafeInteger(data.sequence)||data.sequence!==lastSequence+1)throw Error('电视采集时序中断');lastSequence=data.sequence;
-  const before=performance.now(),output=dsp.capture(new Int16Array(data.buffer));postMessage({type:'pcm',sequence:data.sequence,renderMs,processMs:performance.now()-before,...output},[output.buffer]);
+  const pcm=new Int16Array(data.buffer),before=performance.now(),output=dsp.capture(pcm);
+  if(data.sequence%50===0){const energies=Array(channels).fill(0);for(let i=0;i<pcm.length;i++)energies[i%channels]+=(pcm[i]/32768)**2;postMessage({type:'metrics',sequence:data.sequence,channelRms:energies.map(e=>Math.sqrt(e/(pcm.length/channels))),inputRms:output.inputRms,outputRms:output.outputRms,renderFrames,renderEnergy});renderFrames=0;renderEnergy=0;}
+  postMessage({type:'pcm',sequence:data.sequence,renderMs,processMs:performance.now()-before,...output},[output.buffer]);
  }catch(error){postMessage({type:'error',message:error.message});}
 };

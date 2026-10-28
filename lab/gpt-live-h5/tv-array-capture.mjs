@@ -73,6 +73,7 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
     worker.onmessage=({data})=>{
       if(!current())return;
       if(data.type==='error'){const e=fault('TV_DSP_PROCESS','电视音频处理中断，请重试');configureWait?.reject(e);configureWait=null;fail(e);return;}
+      if(data.type==='metrics'){console.info('VTVAudio channels '+JSON.stringify(data));return;}
       if(data.type==='configured'){if(Array.isArray(data.warmup))console.info('VTVAudio stats '+JSON.stringify({warmup:data.warmup}));configured=`${data.channels}:${data.sampleRate??48000}`;configureWait?.resolve();configureWait=null;return;}
       if(data.type==='pcm'){if(submitted.has(data.sequence)){metrics.maxRoundtripMs=Math.max(metrics.maxRoundtripMs,Math.round(performance.now()-submitted.get(data.sequence)));submitted.delete(data.sequence);}metrics.renderMs=Math.round(data.renderMs??0);metrics.dspFrames++;if(Number.isFinite(data.processMs)){metrics.dspMs+=Math.round(data.processMs);metrics.maxDspMs=Math.max(metrics.maxDspMs,Math.round(data.processMs));}outstanding--;node?.port.postMessage(data.buffer,[data.buffer]);if(metadata?.version>=2&&outstanding<=4)schedulePull(0);}
     };
@@ -80,11 +81,11 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
     signal?.addEventListener('abort',dispose,{once:true});
     // Warm all AEC instances and resampling buffers before any hardware frames.
     await configure(4);
-    const worklet=`${PcmPlaybackQueue.toString()}\nclass ArrayInput extends AudioWorkletProcessor {constructor(){super();this.q=new PcmPlaybackQueue(sampleRate,20,24000);this.port.onmessage=({data})=>{try{this.q.push(new Int16Array(data));}catch{this.port.postMessage('overflow');}};}process(i,o){if(o[0]?.[0])this.q.render(o[0][0],currentTime);return true;}}registerProcessor('v-tv-array-input',ArrayInput);`;
+    const worklet=`${PcmPlaybackQueue.toString()}\nclass ArrayInput extends AudioWorkletProcessor {constructor(){super();this.q=new PcmPlaybackQueue(sampleRate,20,24000);this.tick=0;this.peak=0;this.port.onmessage=({data})=>{try{this.q.push(new Int16Array(data));this.peak=Math.max(this.peak,this.q.frames);}catch{this.port.postMessage({type:'overflow',frames:this.q.frames,consumed:this.q.consumed,at:currentTime});}};}process(i,o){if(o[0]?.[0])this.q.render(o[0][0],currentTime);if(++this.tick%375===0){this.port.postMessage({type:'queue',frames:this.q.frames,peak:this.peak,consumed:this.q.consumed,at:currentTime,underflows:this.q.underflows});this.peak=0;}return true;}}registerProcessor('v-tv-array-input',ArrayInput);`;
     const url=URL.createObjectURL(new Blob([worklet],{type:'text/javascript'}));try{await context.audioWorklet.addModule(url);}finally{URL.revokeObjectURL(url);}
     if(!current())throw fault('TV_MIC_CANCELLED','采集已结束');
     destination=context.createMediaStreamDestination();node=new AudioWorkletNode(context,'v-tv-array-input',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1]});node.connect(destination);
-    node.port.onmessage=()=>fail(fault('TV_MIC_QUEUE','电视音频处理积压，请重试'));
+    node.port.onmessage=({data})=>{console.info('VTVAudio queue '+JSON.stringify({...data,contextState:context.state}));if(data?.type==='overflow')fail(fault('TV_MIC_QUEUE','电视音频处理积压，请重试'));};
     globalThis.__vTvAudioFrame=frame;globalThis.__vTvAudioError=nativeError;
     let diagnostics={kind:'tv-array-microphone',source:'pending',channels:null,sampleRate:48000,echoCancellation:'webrtc-aec3-render-reference',acousticEchoTestPassed:false};
     return {stream:destination.stream,track:destination.stream.getAudioTracks()[0],diagnostics,snapshot:()=>diagnostics,dispose,
