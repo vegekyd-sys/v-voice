@@ -7,11 +7,13 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
   if(!hasTvArrayCapture())throw fault('TV_MIC_CAPABILITY','电视收音尚未就绪，请重试');
   const bridge=globalThis.VTVArray,token=globalThis.vTvAudioCapability.pageToken,id='capture-'+crypto.randomUUID();
   let closed=false,node,destination,metadata,sequence=0,outstanding=0,poll,configured=0,configureWait;
+  const metrics={dspFrames:0,dspMs:0,maxDspMs:0,pullCount:0,maxPullGapMs:0,elapsedMs:0};let beganAt=0,lastPull=0;
   const worker=new Worker(new URL('./tv-array-worker.js',import.meta.url));
   const fail=error=>{if(closed)return;dispose();onError(error);};
   const current=()=>!closed&&!signal?.aborted&&isCurrent();
   function dispose(){
-    if(closed)return;closed=true;clearTimeout(poll);signal?.removeEventListener('abort',dispose);
+    if(closed)return;closed=true;clearTimeout(poll);
+    if(beganAt){metrics.elapsedMs=Math.round(performance.now()-beganAt);console.info('VTVAudio stats '+JSON.stringify(metrics));}signal?.removeEventListener('abort',dispose);
     configureWait?.reject(fault('TV_MIC_CANCELLED','采集已结束'));configureWait=null;
     bridge.stop(token,id);worker.terminate();node?.disconnect();node?.port.close();
     for(const track of destination?.stream.getTracks()??[])track.stop();
@@ -35,6 +37,7 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
     try{
       // Never queue another batch while the DSP is processing the previous one.
       if(outstanding===0){
+        const now=performance.now();if(lastPull)metrics.maxPullGapMs=Math.max(metrics.maxPullGapMs,Math.round(now-lastPull));lastPull=now;metrics.pullCount++;
         const batch=JSON.parse(bridge.pull(token,id));
         if(batch.error)throw fault(/^[A-Z0-9_]{1,64}$/.test(batch.error)?batch.error:'TV_MIC_READ','电视收音暂不可用，请重试');
         if(!Array.isArray(batch.frames)||batch.frames.length>4)throw fault('TV_MIC_FORMAT','电视收音格式异常，请重试');
@@ -67,7 +70,7 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
       if(!current())return;
       if(data.type==='error'){const e=fault('TV_DSP_PROCESS','电视音频处理中断，请重试');configureWait?.reject(e);configureWait=null;fail(e);return;}
       if(data.type==='configured'){configured=data.channels;configureWait?.resolve();configureWait=null;return;}
-      if(data.type==='pcm'){outstanding--;node?.port.postMessage(data.buffer,[data.buffer]);}
+      if(data.type==='pcm'){metrics.dspFrames++;if(Number.isFinite(data.processMs)){metrics.dspMs+=Math.round(data.processMs);metrics.maxDspMs=Math.max(metrics.maxDspMs,Math.round(data.processMs));}outstanding--;node?.port.postMessage(data.buffer,[data.buffer]);}
     };
     worker.onerror=()=>fail(fault('TV_DSP_PROCESS','电视音频处理中断，请重试'));
     signal?.addEventListener('abort',dispose,{once:true});
@@ -91,7 +94,7 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
         if(!current())throw fault('TV_MIC_CANCELLED','采集已结束');
         if(metadata.version===2){
           if(typeof bridge.begin!=='function'||typeof bridge.pull!=='function')throw fault('TV_MIC_CAPABILITY','请更新电视收音组件');
-          const result=bridge.begin(token,id);if(result!=='ok')throw fault('TV_MIC_START','电视本体麦克风暂不可用，请重试');
+          beganAt=performance.now();const result=bridge.begin(token,id);if(result!=='ok')throw fault('TV_MIC_START','电视本体麦克风暂不可用，请重试');
           pull();
         }
         diagnostics={...diagnostics,source:metadata.source,channels:metadata.channels};onDiagnostics(diagnostics);

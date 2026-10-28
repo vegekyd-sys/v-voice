@@ -14,6 +14,6 @@ self.onmessage=({data})=>{
   }
   if(data.type!=='capture')return;
   if(!Number.isSafeInteger(data.sequence)||data.sequence!==lastSequence+1)throw Error('电视采集时序中断');lastSequence=data.sequence;
-  const output=dsp.capture(new Int16Array(data.buffer));postMessage({type:'pcm',...output},[output.buffer]);
+  const before=performance.now(),output=dsp.capture(new Int16Array(data.buffer));postMessage({type:'pcm',processMs:performance.now()-before,...output},[output.buffer]);
  }catch(error){postMessage({type:'error',message:error.message});}
 };
