@@ -544,6 +544,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ["/feishu-confirmation-client.mjs", [join(here, "feishu-confirmation-client.mjs"), "text/javascript; charset=utf-8"]],
         ["/entry-startup.mjs", [join(here, "entry-startup.mjs"), "text/javascript; charset=utf-8"]],
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
+        ["/tv-startup.bundle.mjs", [join(here, "tv-startup.bundle.mjs"), "text/javascript; charset=utf-8"]],
         ["/tv-entry.bundle.mjs", [join(here, "tv-entry.bundle.mjs"), "text/javascript; charset=utf-8"]],
         ["/tv-host.mjs", [join(here,"tv-host.mjs"), "text/javascript; charset=utf-8"]],
         ...["tv-array-capture.mjs","tv-array-dsp.mjs","tv-array-worker.js"].map(name=>[`/${name}`,[join(here,name),"text/javascript; charset=utf-8"]]),
@@ -594,7 +595,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           // TV engine bundle removes the high-latency static-import waterfall.
           if(url.searchParams.get('tv')==='1'){
             html=html.replace(/<link rel="modulepreload" href="[^"]+" \/>/g,'');
-            html=html.replace('</head>','<link rel="modulepreload" href="./entry-startup.mjs"><link rel="modulepreload" href="./tv-entry.bundle.mjs"></head>');
+            html=html.replace('src="./entry-startup.mjs"','src="./tv-startup.bundle.mjs"');
+            html=html.replace('</head>','<link rel="modulepreload" href="./tv-startup.bundle.mjs"><link rel="modulepreload" href="./tv-entry.bundle.mjs"></head>');
             html=html.replace('src="./app.js"','src="./tv-entry.bundle.mjs"');
           }
           contents = Buffer.from(html);

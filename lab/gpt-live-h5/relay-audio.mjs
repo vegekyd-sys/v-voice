@@ -184,7 +184,7 @@ export function observeAudioMeters({context,input,output,onLevel,inputLevel}) {
   const timer=setInterval(()=>onLevel(context.state==='running'?{input:inputLevel?inputLevel():rms(mic,a),output:rms(speaker,b)}:{input:0,output:0}),100);
   return ()=>{clearInterval(timer);try{input?.disconnect(mic);output.disconnect(speaker);}catch{}mic.disconnect();speaker.disconnect();};
 }
-export function createRelayAudio({context,stream,reservation,onEvent,onError,onClosed,onPlaybackActivity=()=>{},onAudioLevel,renderReference,startCapture,subscribePcm,bufferedOutput=false,greeting=true,inputGated=false}) {
+export function createRelayAudio({context,stream,reservation,onEvent,onError,onClosed,onPlaybackActivity=()=>{},onAudioLevel,renderReference,startCapture,subscribePcm,prepareCapture,bufferedOutput=false,greeting=true,inputGated=false}) {
   let stopMeter,stopPcm,pcmLevel=0,pcmLevelAt=0,outputMuted=false;
   // Recorded Grok packets: 245ms of speech, then a 595ms arrival gap.
   // 400ms protects that real startup cadence; Xiaohe retains its smaller lead.
@@ -205,7 +205,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   const inputBatch=[];let inputBatchBytes=0;
   const flushInput=()=>{if(!inputBatchBytes)return;const bytes=new Uint8Array(inputBatchBytes);let at=0;for(const frame of inputBatch){bytes.set(new Uint8Array(frame),at);at+=frame.byteLength;}inputBatch.length=0;inputBatchBytes=0;socket.send(bytes.buffer);stats.inputBytes+=bytes.byteLength;stats.inputBatches++;};
   const maxQueuedOutputBytes=16*1024*1024;
-  const inputTrack=stream.getAudioTracks?.()[0];
+  let inputTrack=stream?.getAudioTracks?.()[0];
   const inputStartedAt=performance.now();let lastInputAt=null;
   const stats={inputFrames:0,inputActiveFrames:0,maxInputGapMs:0,inputIdleMs:0,inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs,contextState:context.state,contextSampleRate:context.sampleRate,playbackDrained:false,peakInputBufferedBytes:0,inputBatches:0,nativePauses:0,nativeResumes:0};
   const activity=value=>{if(playbackActive!==value){playbackActive=value;onPlaybackActivity(value);}};
@@ -284,6 +284,12 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     socket.onclose=()=>{reject(Error('实时语音连接已关闭'));if(!closed)onClosed();};
   });void promise.catch(()=>{});
   async function capture(){
+    if(prepareCapture){
+      const input=await prepareCapture();
+      if(closed){input?.dispose?.();return;}
+      ({stream,renderReference,startCapture,subscribePcm}=input);inputTrack=stream?.getAudioTracks?.()[0];
+    }
+
     // A fulfilled dial-gesture resume does not survive Safari activating the
     // microphone or returning from another app. Check the current context.
     if(context.state!=='running')await context.resume();

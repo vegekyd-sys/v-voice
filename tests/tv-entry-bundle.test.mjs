@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {buildTvEntry,TV_ENTRY_BUNDLE} from '../scripts/build-tv-entry.mjs';
+import {buildTvEntry,TV_ENTRY_BUNDLE,buildTvStartup,TV_STARTUP_BUNDLE} from '../scripts/build-tv-entry.mjs';
 test('TV bundle matches shared sources and preserves the single entry startup owner',async()=>{
  const [built,committed]=await Promise.all([buildTvEntry(),readFile(TV_ENTRY_BUNDLE)]);
  assert.ok(Buffer.from(built).equals(committed),'Run node scripts/build-tv-entry.mjs');
+ assert.ok(Buffer.from(await buildTvStartup()).equals(await readFile(TV_STARTUP_BUNDLE)));
  const text=committed.toString();
- assert.match(text,/from[ ]*"\.\/entry-startup\.mjs"/);
+ assert.match(text,/from[ ]*"\.\/tv-startup\.bundle\.mjs"/);
  assert.match(text,/const PcmPlaybackQueue=/,'Generated speaker worklet binds bundled class expressions');
  assert.match(text,/new URL\("\.\/tv-array-worker.js",import.meta.url\)/,'Worker stays relative to the same served directory');
 });

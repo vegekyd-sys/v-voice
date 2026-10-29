@@ -430,3 +430,19 @@ test('hardware PCM uses the existing relay once, without an output-clock recaptu
  track.enabled=true;receive(new Int16Array(480).fill(-4321).buffer);binary=f.sent.filter(x=>x instanceof ArrayBuffer);assert(new Int16Array(binary[2]).every(x=>x===-4321));
  f.relay.dispose();receive(first.buffer);assert.equal(unsubscribed,1);assert.equal(f.sent.filter(x=>x instanceof ArrayBuffer).length,3);
 });
+
+test('parallel device preparation buffers early model output and starts input only after both are ready',async t=>{
+ let release,begin=0,sink;const prepared=new Promise(r=>release=r);
+ const f=await fixture(t,'seeduplex',true,{stream:undefined,prepareCapture:()=>prepared});
+ f.event({type:'ready'});f.event({type:'audio',sequence:1,sampleRate:24000,audio:Buffer.alloc(960,1).toString('base64')});f.event({type:'audio.done'});
+ await new Promise(r=>setImmediate(r));assert.equal(f.nodes.length,0);assert.equal(begin,0);
+ release({stream:{},subscribePcm:listener=>{sink=listener;return()=>{};},startCapture:()=>{begin++;}});await f.started;
+ assert.equal(begin,1);assert.equal(f.nodes.length,1);assert.equal(f.nodes[0].processor.queue.frames,480);
+ sink(new Int16Array(480).buffer);assert.equal(f.relay.stats.inputBytes,960);
+});
+test('a cancelled call releases late prepared hardware without attaching playback or starting capture',async t=>{
+ let release,disposed=0,begin=0;const prepared=new Promise(r=>release=r);
+ const f=await fixture(t,'seeduplex',true,{stream:undefined,prepareCapture:()=>prepared});f.event({type:'ready'});await new Promise(r=>setImmediate(r));f.relay.dispose();
+ release({stream:{},dispose:()=>{disposed++;},startCapture:()=>{begin++;}});await f.started;
+ assert.equal(disposed,1);assert.equal(begin,0);assert.equal(f.nodes.length,0);
+});

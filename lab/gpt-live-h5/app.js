@@ -643,18 +643,25 @@ async function startCall() {
   try {
     const fixtureId=speakerCandidate()?new URLSearchParams(location.search).get('fixture'):null;
     if(speakerCandidate()){document.body.dataset.speakerEvents='[]';document.body.dataset.speakerAnswerDone='false';}
-    active.capture = fixtureId?await createSpeakerFixture(active.context,fixtureId,{onEvent:speakerEvent}):tvHost&&hasTvArrayCapture()?await captureTvArray({directPcm:true,context:active.context,signal:active.captureAbort.signal,isCurrent:()=>call===active,
+    const parallelTvCapture=Boolean(tvHost&&hasTvArrayCapture());
+    const capturePreparation = fixtureId? createSpeakerFixture(active.context,fixtureId,{onEvent:speakerEvent}):parallelTvCapture?captureTvArray({directPcm:true,context:active.context,signal:active.captureAbort.signal,isCurrent:()=>call===active,
       onDiagnostics:metadata=>{if(call===active)active.duplexDiagnostics.microphone=metadata;},
       onError:error=>{if(call===active)void stopCall({failure:error});},
-    }):await microphoneSession.acquire({
+    }):microphoneSession.acquire({
       mediaDevices: navigator.mediaDevices, signal: active.captureAbort.signal,
       isCurrent: () => call === active,
       onDiagnostics: (metadata) => { if (call === active) active.duplexDiagnostics.microphone = metadata; },
     });
-    markVoiceTiming("voice.microphone.ready");
-    active.stream = active.capture.stream;
-    if(fixtureId)active.fixture=active.capture;
-    if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
+    const acceptCapture=capture=>{
+      if(call!==active){capture.dispose();throw new DOMException('Call ended','AbortError');}
+      active.capture=capture;active.stream=capture.stream;markVoiceTiming("voice.microphone.ready");
+      if(fixtureId)active.fixture=capture;return capture;
+    };
+    // The TV already has a native microphone grant. Prepare its local DSP and
+    // the remote model concurrently, but begin capture only when both are ready.
+    if(parallelTvCapture){active.capturePreparation=Promise.resolve(capturePreparation).then(acceptCapture);void active.capturePreparation.catch(error=>{if(call===active)void stopCall({failure:error});});}
+    else await Promise.resolve(capturePreparation).then(acceptCapture);
+    if(call!==active)return;
     const selectedModel = ['seeduplex','grok'].includes(chosenModel)?chosenModel:'gpt-live';
     const inputPolicy = speakerCandidate() ? (new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy) : null;
     const nativeDeviceActions=await browserDeviceActions();
@@ -691,9 +698,10 @@ async function startCall() {
       await active.contextResume;
       if(call!==active)return;
       active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,greeting:!active.fixture,inputGated:Boolean(reservation.speakerRouting),
-        renderReference:active.capture.renderReference,
-        startCapture:active.capture.startCapture,
-        subscribePcm:active.capture.subscribePcm,bufferedOutput:Boolean(tvHost&&hasTvArrayCapture()),
+        prepareCapture:active.capturePreparation?()=>active.capturePreparation:undefined,
+        renderReference:active.capture?.renderReference,
+        startCapture:active.capture?.startCapture,
+        subscribePcm:active.capture?.subscribePcm,bufferedOutput:Boolean(tvHost&&hasTvArrayCapture()),
         onAudioLevel:tvHost?value=>{if(call===active)tvHost.observeAudio(value);}:undefined,
         onError:error=>{if(call===active)void stopCall({failure:error});},
         onClosed:()=>{if(call===active)void stopCall({failure:active.remoteEnding?undefined:Object.assign(Error("连接已中断，请重新呼叫"),{code:"RELAY_CLOSED"})});},

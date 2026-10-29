@@ -476,7 +476,7 @@ test('TV entry uses bundled engine without changing identity snapshot or other t
  const tv=await (await fetch(`${f.url}/?tv=1&tvShell=1&tvSurface=1&tvOverlay=1`)).text();
  assert.match(tv,/src="\.\/tv-entry.bundle.mjs"/);assert.doesNotMatch(tv,/src="\.\/app.js"/);
  assert.doesNotMatch(tv,/modulepreload" href="\.\/app.js/);assert.doesNotMatch(tv,/modulepreload" href="\.\/ui-bundle/);
- assert.match(tv,/id="voiceEntryStatus"/);assert.match(tv,/src="\.\/entry-startup.mjs"/);
+ assert.match(tv,/id="voiceEntryStatus"/);assert.match(tv,/src="\.\/tv-startup.bundle.mjs"/);
  assert.match(tv,/data-tv-presented="false"/);
  const normal=await (await fetch(f.url+'/')).text();assert.match(normal,/src="\.\/app.js"/);
  assert.match(tv,/as="fetch" type="application\/wasm"/);
