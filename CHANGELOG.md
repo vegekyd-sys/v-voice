@@ -627,3 +627,5 @@ The earlier accepted task-continuity baseline uses Voice `a9ac5168` and the plat
 - Home 0.4.18 starts a bounded local dialing cue in the click handler, before the WebView is ready. Shell 0.3.8 hands it off to the shared call sound and stops it on abort/teardown.
 - Reassert a transparent native backing canvas at navigation commit and first reveal; keep the overlay root/body/app explicitly transparent. The reported brief white frame has not yet been reproduced in captured baseline videos; this is a first-paint safeguard pending user confirmation.
 - Xiaomi remote voice key resolves through its proprietary VoiceControlService. No system key mapping or Xiaoai service changed.
+
+- Shell 0.3.9 provisions the page microphone capability at commit, at most once per navigation, and gates native auto-dial on its acknowledgement. This removes the window where shared startup could select browser capture before the array capability was published.
