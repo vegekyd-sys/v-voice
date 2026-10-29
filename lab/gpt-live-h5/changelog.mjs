@@ -1,5 +1,5 @@
 export const TV_REACTION_CANDIDATE_UPDATE = {
-  version:'voice-tv-playback.20261029.1',date:'2026-10-29',
+  version:'voice-tv-playback.20261029.2',date:'2026-10-29',
   title:'电视通话启动与播放修复',status:'candidate-validation',
   items:[
     '合并电视入口脚本，提前加载回声处理资源，减少首次呼叫的串行等待。',

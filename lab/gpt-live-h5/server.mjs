@@ -592,7 +592,11 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           }
           // Keep the early startup/auth module as the single entry owner. The
           // TV engine bundle removes the high-latency static-import waterfall.
-          if(url.searchParams.get('tv')==='1')html=html.replace('src="./app.js"','src="./tv-entry.bundle.mjs"');
+          if(url.searchParams.get('tv')==='1'){
+            html=html.replace(/<link rel="modulepreload" href="[^"]+" \/>/g,'');
+            html=html.replace('</head>','<link rel="modulepreload" href="./entry-startup.mjs"><link rel="modulepreload" href="./tv-entry.bundle.mjs"></head>');
+            html=html.replace('src="./app.js"','src="./tv-entry.bundle.mjs"');
+          }
           contents = Buffer.from(html);
         }
         res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/tv-aec/webrtcaec3-0.3.0.") ? "public, max-age=31536000, immutable" : pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;

@@ -1226,3 +1226,9 @@ html[data-tv-overlay="true"] .tv-wave-orbit i{transition:none}
 
 /* Focus is drawn on the portrait itself, never on the still-full-size hit area. */
 html[data-tv-overlay="true"] .tv-avatar-large{outline:none!important;box-shadow:none!important}
+
+/* The TV shell uses software rasterization for window reattachment. The full
+   reader must not continuously rasterize a large blurred halo while capturing. */
+html[data-tv-overlay="true"][data-tv-layout="full"] .avatar-aura{display:none!important}
+html[data-tv-overlay="true"][data-tv-layout="full"] .avatar{transition:none!important;will-change:auto}
+html[data-tv-overlay="true"][data-tv-layout="full"] :is(.call-pill,.composer,.reader-backdrop,.reader-surface){backdrop-filter:none;-webkit-backdrop-filter:none}
