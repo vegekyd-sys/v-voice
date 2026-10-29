@@ -3,7 +3,7 @@
 ## 2026-10-30 — TV portrait expands at click (isolated candidate)
 
 - Launcher 0.4.17 immediately animates the existing local portrait to the shared overlay's large bounds while the page prepares. First committed shared frame keeps those bounds, without repeating the small-to-large animation.
-- Shared compact entry expands before requesting the call. The large portrait omits regular status/help text and retains the two connected-call controls; actionable failure text remains available.
+- Shared compact entry expands before requesting the call. The large portrait omits status/help text and retains the two connected-call controls; failed calls retain the retry button and accessible action labels.
 - Existing audio, call owner, Home and hangup behavior remain; native voice shell stays 0.3.7. Local slow-page fixture verifies expansion before the page and model are ready.
 
 - Bundle the TV entry modules and preload/cache versioned AEC assets. Personalized HTML and dynamic code keep their existing cache policy; the startup owner and entry identity remain singular.
