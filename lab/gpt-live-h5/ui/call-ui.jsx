@@ -399,14 +399,13 @@ function TvIsland({state,actions,status}) {
   useEffect(()=>{if(layout==='full'&&documentRequested.current){documentRequested.current=false;requestAnimationFrame(()=>[...document.querySelectorAll('.content-card')].at(-1)?.click());}},[layout]);
   useEffect(()=>{const id=requestAnimationFrame(()=>api.focusPrimary());return()=>cancelAnimationFrame(id);},[layout,state.call,state.dial.disabled]);
   if(layout==='full')return state.reading?null:<button type="button" className="tv-return" data-tv-control="return" aria-label="收起到灵动岛" onClick={()=>change('medium')}><Icon d="m7 10 5 5 5-5"/><span>收起</span></button>;
-  if(layout==='compact')return <button type="button" className="tv-compact tv-avatar-action" data-tv-control="compact" data-tv-primary aria-label={!active?'和 V 直接通话':latestDocument?'查看本通话方案':`展开 V，${api.snapshot.label}`} onClick={()=>!active?actions.dial():latestDocument?expand():change('medium')}/>;
+  if(layout==='compact')return <button type="button" className="tv-compact tv-avatar-action" data-tv-control="compact" data-tv-primary aria-label={!active?'和 V 直接通话':latestDocument?'查看本通话方案':`展开 V，${api.snapshot.label}`} onClick={()=>{if(!active){change('medium');actions.dial();}else if(latestDocument)expand();else change('medium');}}/>;
   const error=status&&['error','warn','action'].includes(status.kind)||state.homeNoteTone==='error';
   const title=state.call==='dialing'?'正在呼叫 V…':state.call==='ending'?'正在结束':error?(state.homeNote||api.snapshot.label):connected?api.snapshot.label:'和 V 说话';
   return <section className="tv-island tv-avatar-dock" aria-label="V 通话">
     {connected&&<TvWaveform orbit/>}
     <button type="button" className="tv-avatar-action tv-avatar-large" data-tv-control={active?'expand':'dial'} data-tv-primary={!active&&!error||undefined} aria-label={connected?'展开对话':state.dial.disabled?'正在准备连接':error?'重新呼叫 V':'和 V 直接通话'} disabled={active&&!connected||!active&&state.dial.disabled} onClick={connected?expand:actions.dial}/>
-    <div className={`tv-dock-status ${error?'is-error':''}`} role="status">{title}</div>
-    {connected&&<div className="tv-dock-hint">按返回继续使用电视</div>}
+    {error&&<div className="tv-dock-status is-error" role="status">{title}</div>}
     {(active||latestDocument||error)&&<div className="tv-dock-actions">
       {connected&&<button type="button" className={`tv-round tv-speaker ${state.outputMuted?'is-muted':''}`} data-tv-control="speaker" aria-label={state.outputMuted?'恢复 V 的声音':'关闭 V 的声音'} aria-pressed={state.outputMuted} onClick={actions.speaker}><Icon d={state.outputMuted?SPEAKER_OFF:SPEAKER}/></button>}
       {connected&&<button className="tv-round tv-call tv-end" type="button" data-tv-control="end" data-tv-primary aria-label="挂断通话" onClick={actions.hangup}><Icon d={HANG}/></button>}

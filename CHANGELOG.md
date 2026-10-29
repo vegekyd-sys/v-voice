@@ -1,5 +1,11 @@
 ## 2026-10-29 — TV startup and PCM output clock (isolated candidate)
 
+## 2026-10-30 — TV portrait expands at click (isolated candidate)
+
+- Launcher 0.4.17 immediately animates the existing local portrait to the shared overlay's large bounds while the page prepares. First committed shared frame keeps those bounds, without repeating the small-to-large animation.
+- Shared compact entry expands before requesting the call. The large portrait omits regular status/help text and retains the two connected-call controls; actionable failure text remains available.
+- Existing audio, call owner, Home and hangup behavior remain; native voice shell stays 0.3.7. Local slow-page fixture verifies expansion before the page and model are ready.
+
 - Bundle the TV entry modules and preload/cache versioned AEC assets. Personalized HTML and dynamic code keep their existing cache policy; the startup owner and entry identity remain singular.
 - TV native-array calls render PCM with short-horizon AudioBufferSource scheduling. Twelve real-TV cold-context probes stayed at 0.961–1.009 audio/wall ratio; the previous AudioWorklet path intermittently fell to 0.60–0.63. Pause reclaims unplayed samples; clear invalidates the epoch. Other terminal output paths remain on their existing renderer.
 - Track audio/wall clock ratio and missed scheduling deadlines, including when complete PCM remains queued. Earlier no-underflow silence tests did not prove continuous reply quality.

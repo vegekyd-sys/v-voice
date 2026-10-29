@@ -108,6 +108,9 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     present(expected) {
       if(!validOwner(expected))return false;
       document.documentElement.dataset.tvPresented='true';
+      // Home has already expanded its local portrait at the initial click.
+      // Paint the matching large frame before handing ownership to this page.
+      if(overlay&&layout==='medium')document.documentElement.dataset.tvRevealed='true';
       return true;
     },
     back() {
