@@ -199,3 +199,14 @@ test('speaker input labels bind to their own utterance and later names update ea
  assert.equal(p.snapshot().history[0].speaker,'天懿 · Speaker A','a later speaker must never relabel earlier turns');
  p.reset();p.consume({type:'speaker.utterance',turn},140);assert.equal(p.snapshot().history[0].speaker,'Speaker A');
 });
+
+test('full draft snapshots revise one user row and the final transcript replaces it without duplication',()=>{
+ const p=createTranscriptPresentation();
+ p.consume({type:'turn.snapshot',turn:{id:'fish-1',role:'user',transcript:'明天三点'}},100);
+ const key=p.snapshot().current[0].key;
+ p.consume({type:'turn.snapshot',turn:{id:'fish-1',role:'user',transcript:'后天两点'}},200);
+ assert.equal(p.snapshot().current.length,1);assert.equal(p.snapshot().current[0].text,'后天两点');assert.equal(p.snapshot().current[0].key,key);
+ p.consume(done('user','fish-1','不是明天，是后天两点。'),300);
+ p.consume({type:'turn.snapshot',turn:{id:'fish-1',role:'user',transcript:'late draft'}},400);
+ assert.equal(p.snapshot().history.length,1);assert.equal(p.snapshot().history[0].key,key);assert.equal(p.snapshot().history[0].text,'不是明天，是后天两点。');
+});

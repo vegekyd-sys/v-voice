@@ -752,3 +752,12 @@ export const LEGACY_ENTRY_CANDIDATE_UPDATE = {
     '候选验证中，尚未合入或发布；群菜单和私聊页签修复由独立平台变更维护。',
   ],
 };
+export const FISH_STT_CANDIDATE_UPDATE = {
+  version:'voice-fish-stt.20261029.1',date:'2026-10-29',
+  title:'Fish 实时语音候选（待开通）',status:'candidate-blocked',
+  items:[
+    '新增独立候选：Fish 实时识别、DeepSeek 对话与小何语音输出。',
+    '对话与语音输出已通过真实 API 测试；Fish 凭据尚缺，实时识别及完整试聊未验。',
+    '候选单次三分钟，默认不开放；豆包与 GPT Live 的默认设置保持。',
+  ],
+};

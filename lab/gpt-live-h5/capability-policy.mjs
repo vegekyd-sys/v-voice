@@ -14,6 +14,6 @@ export const VOICE_CAPABILITY_POLICY = [
 
 export function voiceCapabilityInstructions(provider) {
   if (provider === 'gpt-live') return `${VOICE_CAPABILITY_POLICY}\n本模型使用 native client delegation 委派后台。需要真实工具的查询或动作都实际委派；不要伪造 delegate_to_v 或 JSON 调用。通话控制沿用原有主机控制协议。`;
-  if (provider === 'seeduplex' || provider === 'grok') return `${VOICE_CAPABILITY_POLICY}\n本模型通过 delegate_to_v({question, context}) 实际委派后台，question 保留完整当前目标，context 带上已有资料、约束和失败状态。挂断调用 end_call；本地飞书只读工具不能发送或修改。`;
+  if (provider === 'seeduplex' || provider === 'grok' || provider === 'fish-stt') return `${VOICE_CAPABILITY_POLICY}\n本模型通过 delegate_to_v({question, context}) 实际委派后台，question 保留完整当前目标，context 带上已有资料、约束和失败状态。挂断调用 end_call；本地飞书只读工具不能发送或修改。`;
   throw new Error('Unknown Voice capability adapter');
 }

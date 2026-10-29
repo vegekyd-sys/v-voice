@@ -16,7 +16,7 @@ async function fixture(t, overrides = {}) {
   } };
   if (overrides.gatewayReady !== undefined) gateway.ready = overrides.gatewayReady;
   const offers = [];
-  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, enableGrok: overrides.enableGrok ?? true, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, gptProvider:overrides.gptProvider, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate });
+  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, enableGrok: overrides.enableGrok ?? true, enableFish:overrides.enableFish, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, gptProvider:overrides.gptProvider, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate });
   await new Promise((resolve) => bridge.server.listen(0, "127.0.0.1", resolve));
   t.after(() => bridge.dispose());
   const url = `http://127.0.0.1:${bridge.server.address().port}`;
@@ -475,4 +475,16 @@ test('Grok visibility defaults off independently of preview and candidate labels
  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
  const html=await(await fetch(`http://127.0.0.1:${bridge.server.address().port}`)).text();
  assert.doesNotMatch(html,/"id":"grok"/);assert.match(html,/"defaultModel":"gpt-live"/);
+});
+
+test('Fish is hidden and rejected until explicitly enabled, then reserves existing identity with native Fish endpointing',async t=>{
+ const reserved=[];
+ const directVoice={models:()=>[{id:'fish-stt',label:'Fish 候选',available:true,nativeTransport:'gateway-relay'}],reserve:async p=>{reserved.push(p);return {voiceSessionId:'fish-fixture',provider:p.model,transport:'gateway-relay'};},close:async()=>{},dispose:async()=>{}};
+ const hidden=await fixture(t,{directVoice});
+ const status=await(await fetch(hidden.url+'/api/status',{headers:{cookie:hidden.cookie}})).json();
+ assert(!status.models.some(m=>m.id==='fish-stt'));assert.equal((await hidden.request('session',{model:'fish-stt'})).status,409);assert.equal(reserved.length,0);
+ const f=await fixture(t,{directVoice,enableFish:true,speakerRouting:{snapshot:()=>({}),close(){},dispose(){}}});
+ const visible=await(await fetch(f.url+'/api/status',{headers:{cookie:f.cookie}})).json();assert(visible.models.some(m=>m.id==='fish-stt'));assert.equal(visible.defaultModel,'gpt-live');
+ assert.equal((await f.request('session',{model:'fish-stt',sessionKey:'browser-spoof',callerId:'browser-spoof',inputPolicy:'speaker'})).status,200);
+ assert.equal(reserved[0].sessionKey,GPT_LIVE_PERSONAL_SESSION_KEY);assert.equal(reserved[0].inputPolicy,'native');
 });

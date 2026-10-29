@@ -607,7 +607,7 @@ async function startCall() {
   resetTranscript();
   const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController(), dialStartedAt:performance.now() }; call = active; starting = active;
   const chosenModel = view.get().model;
-  if (speakerCandidate()||['seeduplex','grok'].includes(chosenModel)) {
+  if (speakerCandidate()||['seeduplex','grok','fish-stt'].includes(chosenModel)) {
     // Create/resume in the dial gesture, before microphone and network awaits.
     active.context = new AudioContext({latencyHint:"interactive"});
     active.contextResume = active.context.resume();
@@ -644,12 +644,12 @@ async function startCall() {
     active.stream = active.capture.stream;
     if(fixtureId)active.fixture=active.capture;
     if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
-    const selectedModel = ['seeduplex','grok'].includes(chosenModel)?chosenModel:'gpt-live';
+    const selectedModel = ['seeduplex','grok','fish-stt'].includes(chosenModel)?chosenModel:'gpt-live';
     const inputPolicy = speakerCandidate() ? (new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy) : null;
     const nativeDeviceActions=await browserDeviceActions();
     const params={model:selectedModel,nativeDeviceActions,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:{})};
     let reservation;
-    if(webDialVersion===2&&phoneEntry&&['seeduplex','grok'].includes(selectedModel)){
+    if(webDialVersion===2&&phoneEntry&&['seeduplex','grok','fish-stt'].includes(selectedModel)){
       const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
       endpoint.search=new URLSearchParams({phone:phoneEntry,model:selectedModel,dialVersion:'2',...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
       active.dialConnection=createDialConnection({url:endpoint,signal:active.captureAbort.signal});
@@ -714,8 +714,9 @@ async function startCall() {
           if(value.type==='provider.recovered')setStatus('V 正在听，直接说话就好');
           if(value.type==='transcript'&&!(reservation.speakerRouting&&value.role==='user')) {
             active.relayTurns??={};
-            const id=active.relayTurns[value.role]??=crypto.randomUUID();
+            const id=value.turnId??(active.relayTurns[value.role]??=crypto.randomUUID());
             renderTranscript(presentation.consume(value.final?{type:'turn.done',turn:{id,role:value.role,transcript:value.text}}:
+              value.snapshot?{type:'turn.snapshot',turn:{id,role:value.role,transcript:value.text}}:
               {type:'output_transcript.delta',turn_id:id,delta:value.text}));
             if(value.final)delete active.relayTurns[value.role];
             if(value.final&&value.role==='user')view.thinking();
