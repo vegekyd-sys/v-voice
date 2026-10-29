@@ -1,7 +1,7 @@
 {
   "schema": "v-voice-candidate-v1",
   "version": "voice-fish-stt.20261029.1",
-  "status": "blocked-missing-fish-credential",
+  "status": "shelved-native-speech-to-speech-required",
   "owner": "Tianyi / Codex Fish realtime STT evaluation",
   "purpose": "Independent Fish transcribe-stream-1 candidate alongside existing voice models",
   "baseCommit": "0dbc893e3b89042f5c0e103fa1547cd9ea6efdf7",
@@ -25,7 +25,24 @@
       "status": 200,
       "models": 456,
       "targetFound": false,
-      "scope": "general catalog; public Fish model is file transcription"
+      "scope": "general catalog; public Fish model is file transcription",
+      "dedicatedAudioCatalog": {
+        "transcriptionCount": 28,
+        "speechCount": 38,
+        "fishTranscription": [
+          "fish-audio/transcribe-1",
+          "fish-audio/transcribe-1-pro"
+        ],
+        "fishSpeech": [
+          "fish-audio/drama-3",
+          "fish-audio/s1",
+          "fish-audio/s2-pro",
+          "fish-audio/s2.1-pro-free:free",
+          "fish-audio/s2.1-pro"
+        ],
+        "targetRealtimeSttFound": false,
+        "fishNativeSpeechToSpeechFound": false
+      }
     },
     "fal": {
       "status": 200,
@@ -116,5 +133,12 @@
     "physical iPhone/background/lock-screen/audio quality",
     "robot and speaker Fish audio",
     "provider bill reconciliation"
-  ]
+  ],
+  "scopeCorrection": {
+    "date": "2026-10-29",
+    "required": "native speech-to-speech conversation comparable to Xiaohe",
+    "actual": "Fish realtime STT followed by separate dialog and TTS",
+    "matchesRequirement": false,
+    "nextStep": "Do not continue cascade or request Fish key as if it solves native S2S. Preserve research only."
+  }
 }

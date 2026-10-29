@@ -1,6 +1,12 @@
 # Fish Realtime STT 候选接入 · 2026-10-29
 
-状态：**代码候选已实现，Fish 真实语音测试和可试聊入口被凭据阻塞**。没有合入、正式部署、手机安装或真人音频验收。基于 `origin/main` 的 `0dbc893e3b89042f5c0e103fa1547cd9ea6efdf7`，独立分支 `codex/voice-fish-stt-20261029`。
+状态：**研究草稿搁置，不作为接入候选继续推进**。用户在 2026-10-29 明确要求类似豆包小何的原生语音到语音对话模型。Fish `transcribe-stream-1` 仅提供 STT/turn 信号，已写的 Fish → DeepSeek → 小何 TTS 三段组合不符合该要求；补 Fish Key 不能解决模型能力不匹配。保留代码和历史实验结果供审阅，不合入、不上线、不新增付费调用。
+
+本次复核用已有 OpenRouter Key 查询独立目录：`output_modalities=transcription` 返回 28 项，其中有 `fish-audio/transcribe-1` 和 `fish-audio/transcribe-1-pro`；`output_modalities=speech` 返回 38 项，其中有 Fish Drama 3、S1、S2 Pro、S2.1 Pro/Free；均不是原生语音到语音对话模型，且没有目标 `transcribe-stream-1`。默认 `/models` 不列独立 STT/TTS，上一轮默认目录审计不够完整，本次补正。
+
+`input_modalities=audio&output_modalities=audio` 返回 `openai/gpt-audio`、`openai/gpt-audio-mini`。OpenRouter 文档展示的是提交音频片段后以 Chat Completions/SSE 返回音频；没有据此确认到等同小何的持续双向 realtime 会话或打断合同，未替换目标模型或调用付费测试。
+
+以下是保留的历史实现与验证记录。基于 `origin/main` 的 `0dbc893e3b89042f5c0e103fa1547cd9ea6efdf7`，独立分支 `codex/voice-fish-stt-20261029`。没有合入、正式部署、手机安装或真人音频验收。
 
 ## 模型与 provider 结论
 
@@ -57,7 +63,9 @@
 
 Fish 官方为 **US$0.36/连接小时**，按秒结算，连接静音也收费，若发送音频时长更长则取较长者；最多 60 分钟 session/60 秒 turn，入门档为同账户共享 5 并发。本次没有建立已认证 Fish session。
 
-## 继续执行
+## 历史续测步骤（当前搁置，不自动执行）
+
+用户澄清后的方向是原生语音到语音；以下步骤只保留作研究复现，不再把补 Fish Key 当作当前下一步。
 
 唯一新增凭据需求是可用于该 preview 的 `FISH_API_KEY` 和可用 API 余额。请保存在用户控制的本机私有 env 文件，权限 `600`，只提供路径，不在聊天或 Git 粘贴密钥。若账户无余额/无 preview 权限，只报告真实 402/权限拒绝，不自动充值或改模型。
 
