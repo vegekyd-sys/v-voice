@@ -470,3 +470,16 @@ test('TV first HTML is transparent before modules run; regular Web and legacy TV
  }
  assert.equal(f.calls.length,0);
 });
+
+test('TV entry uses bundled engine without changing identity snapshot or other terminals',async t=>{
+ const f=await fixture(t,{preview:true});
+ const tv=await (await fetch(`${f.url}/?tv=1&tvShell=1&tvSurface=1&tvOverlay=1`)).text();
+ assert.match(tv,/src="\.\/tv-entry.bundle.mjs"/);assert.doesNotMatch(tv,/src="\.\/app.js"/);
+ assert.match(tv,/id="voiceEntryStatus"/);assert.match(tv,/src="\.\/entry-startup.mjs"/);
+ assert.match(tv,/data-tv-presented="false"/);
+ const normal=await (await fetch(f.url+'/')).text();assert.match(normal,/src="\.\/app.js"/);
+ assert.match(tv,/as="fetch" type="application\/wasm"/);
+ const dsp=await fetch(f.url+'/assets/tv-aec/webrtcaec3-0.3.0.wasm');assert.match(dsp.headers.get('cache-control'),/immutable/);
+ const bundle=await fetch(f.url+'/tv-entry.bundle.mjs');assert.equal(bundle.status,200);assert.match(bundle.headers.get('content-type'),/javascript/);
+ assert.equal(f.calls.length,0);
+});

@@ -2,10 +2,12 @@
 import {readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';import {existsSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {createHash} from 'node:crypto';import {execFileSync} from 'node:child_process';
+import {buildTvEntry,TV_ENTRY_BUNDLE} from './build-tv-entry.mjs';
 import {AVATAR_FILES} from '../lab/gpt-live-h5/avatar-state.mjs';
 const root=resolve(import.meta.dirname,'..');
 const run=(...args)=>execFileSync('git',['-C',root,...args],{encoding:'utf8'}).trim();
 if(run('status','--porcelain'))throw Error('Commit and test the exact source before packaging');
+if(!Buffer.from(await buildTvEntry()).equals(await readFile(TV_ENTRY_BUNDLE)))throw Error('Rebuild and commit TV entry before packaging');
 const commit=run('rev-parse','HEAD');
 const baseline=JSON.parse(await readFile(join(root,'docs/migration-baseline.json'),'utf8'));
 const names=[...new Set([...baseline.files.map(f=>f.path),...['v-voice-icon.svg','v-voice-icon-32.png','v-voice-apple-touch.png'].map(n=>'lab/gpt-live-h5/assets/'+n),...AVATAR_FILES.map(n=>'lab/gpt-live-h5/assets/'+n),'plugins/v-voice-gpt-live/package.json','plugins/v-voice-gpt-live/index.mjs','plugins/v-voice-gpt-live/provider.mjs','plugins/v-voice-gpt-live/delivery.mjs','plugins/v-voice-gpt-live/openclaw.plugin.json','lib/voice-task-control.mjs','plugins/v-voice-gpt-live/task-control.mjs','lib/gateway-client.mjs','lib/conversation-entries.mjs','lab/gpt-live-h5/call-control.mjs','lab/speaker-native/client.mjs','lab/gpt-live-h5/capability-policy.mjs','lab/gpt-live-h5/instructions.mjs','lab/gpt-live-h5/media-references.mjs','lab/gpt-live-h5/content-view.mjs','lab/gpt-live-h5/entry-startup.mjs','lab/gpt-live-h5/changelog.mjs','lab/gpt-live-h5/ui-bundle.mjs','lab/gpt-live-h5/call-view.mjs','lab/gpt-live-h5/screen-wake-lock.mjs','lab/gpt-live-h5/avatar-approved-reactions.mjs','lab/realtime-direct-tools/conversation-context.mjs','lab/realtime-direct-tools/lark-readonly.mjs','lab/realtime-direct-tools/task-delivery.mjs','lab/gpt-live-h5/listening.mjs','lab/gpt-live-h5/comparison.html','lab/gpt-live-h5/comparison.mjs','lab/gpt-live-h5/comparison.css','package.json','package-lock.json'])];
@@ -19,7 +21,7 @@ if(existsSync(join(root,'lab/realtime-direct-tools/assets/tool-progress-provenan
 names.push('lab/realtime-direct-tools/device-location.mjs','lab/realtime-direct-tools/lookup-recovery.mjs','lab/realtime-direct-tools/native-runtime.mjs','lab/realtime-direct-tools/task-progress.mjs','lab/realtime-direct-tools/search-result.mjs');
 names.push('lab/realtime-direct-tools/native-interrupt.mjs','lab/realtime-direct-tools/native-duplex-policy.mjs');
 names.push('lab/realtime-direct-tools/tv-control-policy.mjs');
-names.push('lab/gpt-live-h5/tv-host.mjs');
+names.push('lab/gpt-live-h5/tv-host.mjs','lab/gpt-live-h5/tv-entry.bundle.mjs');
 names.push('lab/gpt-live-h5/tv-array-capture.mjs','lab/gpt-live-h5/tv-array-dsp.mjs','lab/gpt-live-h5/tv-array-worker.js','lab/gpt-live-h5/assets/tv-aec/webrtcaec3-0.3.0.js','lab/gpt-live-h5/assets/tv-aec/webrtcaec3-0.3.0.wasm','lab/gpt-live-h5/assets/tv-aec/license.js','lab/gpt-live-h5/assets/tv-aec/source.json');
 names.push('lab/gpt-live-h5/ios-shell-release.json');
 names.push('lab/realtime-direct-tools/xiaozhi-wire.mjs','lab/realtime-direct-tools/device-vision.mjs','lab/robot/robot-catalog.mjs','lab/robot/robot-reactions.mjs');

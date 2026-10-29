@@ -30,7 +30,7 @@ export class PcmPlaybackQueue {
     }
   }
 }
-export function relayWorkletSource(){return `${PcmPlaybackQueue.toString()}
+export function relayWorkletSource(){return `const PcmPlaybackQueue=${PcmPlaybackQueue.toString()};
 class Speaker extends AudioWorkletProcessor {
  constructor(options){super();const prefill=options?.processorOptions?.prefillMs??120;this.reference=options?.processorOptions?.renderReference===true;this.ref=new Float32Array(Math.round(sampleRate/50));this.refPos=0;
  if(!Number.isFinite(prefill)||prefill<0||prefill>1000)throw Error('Invalid playback buffer');
@@ -53,6 +53,64 @@ class Mic extends AudioWorkletProcessor {
  if(this.index===480){this.port.postMessage(this.frame.buffer,[this.frame.buffer]);this.frame=new Int16Array(480);this.index=0;}}}return true;}
 }
 registerProcessor('v-direct-speaker',Speaker);registerProcessor('v-direct-mic',Mic);`;}
+// Some Android TV WebViews intermittently run AudioWorklet output at ~0.62x
+// wall time. AudioBufferSource uses the browser's native renderer instead.
+// Schedule only a short horizon; reclaim precisely the unplayed samples on
+// pause/hold. Policy (turns, interruption, mute) remains in the shared relay.
+export function createBufferedPcmSpeaker(context,{prefillMs=120}={}){
+  const output=context.createGain(),disconnect=output.disconnect.bind(output);
+  let chunks=[],offset=0,frames=0,scheduled=[],consumed=0,epoch=0,nextAt=null,firstAt=null;
+  let paused=false,held=false,complete=false,muted=false,closed=false,underflows=0,starved=false,lastPlayedAt=null;
+  const rate=24000,blockFrames=2400,lead=.16;
+  const port={onmessage:null,postMessage:command,close:dispose};output.port=port;
+  const futureFrames=(block,now)=>Math.max(0,block.pcm.length-Math.max(0,Math.min(block.pcm.length,Math.floor((now-block.at)*rate+1e-5))));
+  function trim(now){scheduled=scheduled.filter(b=>b.at+b.pcm.length/rate>now);}
+  function reclaim(){
+    const now=context.currentTime,rest=[];let count=0;
+    for(const b of scheduled){const n=futureFrames(b,now);if(n){rest.push(b.pcm.subarray(b.pcm.length-n));count+=n;}try{b.node.stop();b.node.disconnect();}catch{}}
+    if(offset&&chunks.length)chunks[0]=chunks[0].subarray(offset);
+    chunks=rest.concat(chunks);offset=0;frames+=count;consumed-=count;scheduled=[];nextAt=null;firstAt=context.currentTime-prefillMs/1000;
+  }
+  function take(count){const out=new Int16Array(count);let n=0;while(n<count){const chunk=chunks[0],size=Math.min(count-n,chunk.length-offset);out.set(chunk.subarray(offset,offset+size),n);n+=size;offset+=size;frames-=size;if(offset===chunk.length){chunks.shift();offset=0;}}return out;}
+  function notify(data){port.onmessage?.({data:{epoch,...data}});}
+  function command(e){if(closed)return;
+    if(e.type==='clear'){reclaim();chunks=[];offset=frames=consumed=underflows=0;epoch=e.epoch;nextAt=firstAt=lastPlayedAt=null;paused=held=complete=starved=false;return;}
+    if(e.type==='output-mute'){muted=e.muted===true;output.gain.value=muted?0:1;return;}
+    if(e.epoch!==epoch)return;
+    if(e.type==='pause'){if(e.paused===true&&!paused)reclaim();paused=e.paused===true;return;}
+    if(e.type==='hold'){if(!held)reclaim();held=true;return;}
+    if(e.type==='done'){complete=true;held=false;return;}
+    if(e.type==='audio'){
+      const pcm=new Int16Array(e.buffer);
+      const pending=scheduled.reduce((n,b)=>n+futureFrames(b,context.currentTime),0);
+      if(!pcm.length||frames+pending+pcm.length>8*1024*1024){notify({type:'error'});return;}
+      chunks.push(pcm);frames+=pcm.length;complete=false;if(firstAt===null&&nextAt===null)firstAt=context.currentTime;
+    }
+  }
+  function tick(){if(closed)return;const now=context.currentTime;
+    let pending=0,playing=false;
+    for(const b of scheduled){const left=futureFrames(b,now);pending+=left;if(now>=b.at&&left>0)playing=true;if(now>=b.at)lastPlayedAt=Math.min(now,b.at+b.pcm.length/rate);}
+    trim(now);
+    if(playing)starved=false;
+    if(nextAt!==null&&now>nextAt+.005&&!paused&&!held&&(frames>0||!complete)&&!starved){underflows++;starved=true;}
+    if(!paused&&!held&&context.state==='running'&&frames){
+      if(nextAt===null||nextAt<now){nextAt=Math.max(now+.02,(firstAt??now)+(complete?0:prefillMs/1000));}
+      while(frames&&nextAt<now+lead){
+        const pcm=take(Math.min(blockFrames,frames)),buffer=context.createBuffer(1,pcm.length,rate),out=buffer.getChannelData(0);
+        for(let i=0;i<pcm.length;i++)out[i]=pcm[i]/32768;
+        const node=context.createBufferSource();node.buffer=buffer;node.connect(output);node.start(nextAt);
+        node.onended=()=>{try{node.disconnect();}catch{}};
+        scheduled.push({node,pcm,at:nextAt});nextAt+=pcm.length/rate;consumed+=pcm.length;pending+=pcm.length;
+      }
+    }
+    if(!frames&&!scheduled.length){nextAt=null;firstAt=null;}
+    notify({type:'playback',consumed:Math.max(0,consumed-pending),underflows,lastPlayedAt,playing:playing&&!paused&&!held&&!muted});
+  }
+  const timer=setInterval(tick,20);
+  function dispose(){if(closed)return;reclaim();closed=true;clearInterval(timer);chunks=[];frames=0;}
+  output.disconnect=(...args)=>{if(!args.length)dispose();return disconnect(...args);};
+  return output;
+}
 // Only fixed backend speech needs client onset detection: its upstream ASR can
 // be delayed behind synthesis. Frames are the existing post-AEC microphone PCM.
 export class BackendSpeechOnset {
@@ -126,7 +184,7 @@ export function observeAudioMeters({context,input,output,onLevel,inputLevel}) {
   const timer=setInterval(()=>onLevel(context.state==='running'?{input:inputLevel?inputLevel():rms(mic,a),output:rms(speaker,b)}:{input:0,output:0}),100);
   return ()=>{clearInterval(timer);try{input?.disconnect(mic);output.disconnect(speaker);}catch{}mic.disconnect();speaker.disconnect();};
 }
-export function createRelayAudio({context,stream,reservation,onEvent,onError,onClosed,onPlaybackActivity=()=>{},onAudioLevel,renderReference,startCapture,subscribePcm,greeting=true,inputGated=false}) {
+export function createRelayAudio({context,stream,reservation,onEvent,onError,onClosed,onPlaybackActivity=()=>{},onAudioLevel,renderReference,startCapture,subscribePcm,bufferedOutput=false,greeting=true,inputGated=false}) {
   let stopMeter,stopPcm,pcmLevel=0,pcmLevelAt=0,outputMuted=false;
   // Recorded Grok packets: 245ms of speech, then a 595ms arrival gap.
   // 400ms protects that real startup cadence; Xiaohe retains its smaller lead.
@@ -169,12 +227,18 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   };
   const visible=()=>{if(globalThis.document?.hidden!==true){recoveryAttempted=false;stateChanged();}};
   globalThis.document?.addEventListener?.('visibilitychange',visible);
+  let clockSample={wall:performance.now(),audio:context.currentTime,running:context.state==='running'};
   const reportStats=()=>{
+    const now=performance.now(),audioNow=context.currentTime,wallMs=now-clockSample.wall;
+    if(clockSample.running&&context.state==='running'&&wallMs>=500){stats.outputClockWallMs=Math.round(wallMs);stats.outputClockAudioMs=Math.round((audioNow-clockSample.audio)*1000);stats.outputClockRatio=Math.round(stats.outputClockAudioMs/wallMs*1000)/1000;}
+    else{delete stats.outputClockWallMs;delete stats.outputClockAudioMs;delete stats.outputClockRatio;}
+    clockSample={wall:now,audio:audioNow,running:context.state==='running'};
     stats.inputBufferedBytes=socket.bufferedAmount;
     stats.contextState=context.state;stats.contextTimeMs=Math.round(context.currentTime*1000);
     stats.inputIdleMs=Math.round(performance.now()-(lastInputAt??inputStartedAt));
     stats.trackMuted=inputTrack?.muted===true;stats.trackEnabled=inputTrack?.enabled===true;stats.trackLive=inputTrack?.readyState==='live';
     stats.pageHidden=globalThis.document?.hidden===true;
+    if(globalThis.document?.documentElement?.dataset.tv==='true')document.documentElement.dataset.voicePlaybackClock=JSON.stringify({wallMs:stats.outputClockWallMs,audioMs:stats.outputClockAudioMs,ratio:stats.outputClockRatio,buffered:stats.bufferedOutput===1,underflows:stats.underflows,queuedBytes:stats.queuedOutputBytes,outputBytes:stats.outputBytes});
     send({type:'playback.stats',...stats});
   };
   context.addEventListener?.('statechange',stateChanged);
@@ -225,10 +289,15 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     if(context.state!=='running')await context.resume();
     if(closed)return;
     if(context.state!=='running')throw Error('麦克风和声音已暂停，请轻点页面后重新拨号。');
-    const url=URL.createObjectURL(new Blob([relayWorkletSource()],{type:'text/javascript'}));
-    try{await context.audioWorklet.addModule(url);}finally{URL.revokeObjectURL(url);}
-    if(closed)return;
-    speaker=new AudioWorkletNode(context,'v-direct-speaker',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1],processorOptions:{prefillMs:startBufferMs,renderReference:typeof renderReference==='function'}});
+    const buffered=bufferedOutput&&typeof subscribePcm==='function'&&typeof renderReference!=='function';
+    stats.bufferedOutput=buffered?1:0;
+    if(buffered)speaker=createBufferedPcmSpeaker(context,{prefillMs:startBufferMs});
+    else {
+      const url=URL.createObjectURL(new Blob([relayWorkletSource()],{type:'text/javascript'}));
+      try{await context.audioWorklet.addModule(url);}finally{URL.revokeObjectURL(url);}
+      if(closed)return;
+      speaker=new AudioWorkletNode(context,'v-direct-speaker',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1],processorOptions:{prefillMs:startBufferMs,renderReference:typeof renderReference==='function'}});
+    }
     speaker.port.postMessage({type:'output-mute',muted:outputMuted});speaker.port.postMessage({type:'clear',epoch});if(nativePaused)speaker.port.postMessage({type:'pause',paused:true,epoch});if(greetingHeld)speaker.port.postMessage({type:'hold',epoch});speaker.connect(context.destination);
     speaker.port.onmessage=({data:e})=>{
       if(closed||e.epoch!==epoch)return;

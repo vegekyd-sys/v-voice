@@ -693,7 +693,7 @@ async function startCall() {
       active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,greeting:!active.fixture,inputGated:Boolean(reservation.speakerRouting),
         renderReference:active.capture.renderReference,
         startCapture:active.capture.startCapture,
-        subscribePcm:active.capture.subscribePcm,
+        subscribePcm:active.capture.subscribePcm,bufferedOutput:Boolean(tvHost&&hasTvArrayCapture()),
         onAudioLevel:tvHost?value=>{if(call===active)tvHost.observeAudio(value);}:undefined,
         onError:error=>{if(call===active)void stopCall({failure:error});},
         onClosed:()=>{if(call===active)void stopCall({failure:active.remoteEnding?undefined:Object.assign(Error("连接已中断，请重新呼叫"),{code:"RELAY_CLOSED"})});},

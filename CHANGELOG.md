@@ -1,3 +1,10 @@
+## 2026-10-29 — TV startup and PCM output clock (isolated candidate)
+
+- Bundle the TV entry modules and preload/cache versioned AEC assets. Personalized HTML and dynamic code keep their existing cache policy; the startup owner and entry identity remain singular.
+- TV native-array calls render PCM with short-horizon AudioBufferSource scheduling. Twelve real-TV cold-context probes stayed at 0.961–1.009 audio/wall ratio; the previous AudioWorklet path intermittently fell to 0.60–0.63. Pause reclaims unplayed samples; clear invalidates the epoch. Other terminal output paths remain on their existing renderer.
+- Track audio/wall clock ratio and missed scheduling deadlines, including when complete PCM remains queued. Earlier no-underflow silence tests did not prove continuous reply quality.
+- Native shell and launcher require no binary update. Real model speech and startup measurements are recorded in the installation receipt separately from human acoustic acceptance.
+
 ## 2026-10-29 — TV persistent companion (isolated candidate)
 
 - TV overlay mode keeps one fixed companion canvas and scales the existing avatar with a compositor transform through connect, fold and hangup. Native first paint waits for the shared host instead of briefly displaying a full-page fallback.

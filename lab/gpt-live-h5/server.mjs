@@ -544,6 +544,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ["/feishu-confirmation-client.mjs", [join(here, "feishu-confirmation-client.mjs"), "text/javascript; charset=utf-8"]],
         ["/entry-startup.mjs", [join(here, "entry-startup.mjs"), "text/javascript; charset=utf-8"]],
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
+        ["/tv-entry.bundle.mjs", [join(here, "tv-entry.bundle.mjs"), "text/javascript; charset=utf-8"]],
         ["/tv-host.mjs", [join(here,"tv-host.mjs"), "text/javascript; charset=utf-8"]],
         ...["tv-array-capture.mjs","tv-array-dsp.mjs","tv-array-worker.js"].map(name=>[`/${name}`,[join(here,name),"text/javascript; charset=utf-8"]]),
         ["/assets/tv-aec/webrtcaec3-0.3.0.js",[join(here,"assets/tv-aec/webrtcaec3-0.3.0.js"),"text/javascript; charset=utf-8"]],
@@ -571,6 +572,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           let html = contents.toString("utf8").replace('<head>', `<head><base href="${basePath||''}/">`).replace('<link rel="stylesheet" href="./styles.css" />', `<style data-voice-entry>${css}</style>`);
           // TV transparency/layout must exist before the first paint, not after app.js loads.
           if(url.searchParams.get('tv')==='1') {
+            // These versioned local DSP assets contain no user data. Fetch them
+            // with the entry instead of waiting for the capture worker waterfall.
+            html=html.replace('</head>','<link rel="preload" as="script" href="./assets/tv-aec/webrtcaec3-0.3.0.js"><link rel="preload" as="fetch" type="application/wasm" crossorigin href="./assets/tv-aec/webrtcaec3-0.3.0.wasm"></head>');
             const shell=url.searchParams.get('tvShell')==='1';
             const presented=!(shell&&url.searchParams.get('tvSurface')==='1');
             html=html.replace('<html lang="zh-CN">',`<html lang="zh-CN" data-tv="true" data-tv-layout="${shell?'medium':'full'}" data-tv-presented="${presented}"${url.searchParams.get('tvOverlay')==='1'?' data-tv-overlay="true"':''}>`);
@@ -586,9 +590,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
             const initial = JSON.stringify(entrySnapshot(binding)).replaceAll("<", "\\u003c");
             html = html.replace('<script type="module" src="./app.js"></script>', `<script type="application/json" id="voiceEntryStatus">${initial}</script><script type="module" src="./app.js"></script>`);
           }
+          // Keep the early startup/auth module as the single entry owner. The
+          // TV engine bundle removes the high-latency static-import waterfall.
+          if(url.searchParams.get('tv')==='1')html=html.replace('src="./app.js"','src="./tv-entry.bundle.mjs"');
           contents = Buffer.from(html);
         }
-        res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
+        res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/tv-aec/webrtcaec3-0.3.0.") ? "public, max-age=31536000, immutable" : pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
       }
       if(binding.permissionProfile==='unidentified'&&!new Set(['/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke']).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
       const readBody = async () => {
