@@ -4,38 +4,61 @@ import SwiftUI
 /// options are tappable and the answer goes back through `question.resolve`.
 struct QuestionCardView: View {
     let question: QuestionState
-    let onAnswer: (Set<Int>) -> Void
+    let onAnswer: (Set<Int>, String?) -> Void
     @State private var selection: Set<Int> = []
+    @State private var other = ""
 
-    private var answered: Bool { question.answer != nil }
+    private var answered: Bool { question.answer != nil || question.expired }
+    private var needsSubmit: Bool { question.allowsMultiple || question.allowsOther || question.isSecret }
+    private var canSubmit: Bool { !selection.isEmpty || !other.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             CardHeaderView(header: .init(
-                title: answered ? "已回答" : "V 想确认一下",
-                subtitle: question.allowsMultiple ? "可多选" : nil,
+                title: question.expired ? "问题已失效" : answered ? "已回答" : (question.header ?? "V 想确认一下"),
+                subtitle: answered ? nil : question.allowsMultiple ? "可多选" : nil,
                 template: answered ? .grey : .wathet,
                 tags: []))
             VStack(alignment: .leading, spacing: 10) {
                 FeishuMarkdownView(markdown: question.prompt)
-                VStack(spacing: 8) {
-                    ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
-                        optionRow(index: index, option: option)
+                if !question.options.isEmpty {
+                    VStack(spacing: 8) {
+                        ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
+                            optionRow(index: index, option: option)
+                        }
                     }
                 }
-                if !answered, question.allowsMultiple {
+                if let otherAnswer = question.otherAnswer, answered {
+                    Label(question.isSecret ? "已提交（内容不显示）" : otherAnswer, systemImage: "text.bubble")
+                        .font(.subheadline)
+                        .foregroundStyle(VTheme.soft)
+                } else if !answered, question.allowsOther || question.isSecret || question.options.isEmpty {
+                    Group {
+                        if question.isSecret {
+                            SecureField("在这里填写，只发给 V", text: $other)
+                        } else {
+                            TextField(question.options.isEmpty ? "输入你的回答" : "其他（自己写）", text: $other, axis: .vertical)
+                                .lineLimit(1...4)
+                        }
+                    }
+                    .font(.subheadline)
+                    .padding(10)
+                    .background(VTheme.sunken, in: RoundedRectangle(cornerRadius: VTheme.controlRadius, style: .continuous))
+                }
+                if !answered, needsSubmit || question.options.isEmpty {
                     Button {
-                        onAnswer(selection)
+                        let text = other.trimmingCharacters(in: .whitespacesAndNewlines)
+                        onAnswer(selection, text.isEmpty ? nil : text)
                     } label: {
-                        Text(selection.isEmpty ? "选好后提交" : "提交 \(selection.count) 项")
+                        Text(selection.count > 1 ? "提交 \(selection.count) 项" : "提交")
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity, minHeight: 40)
                             .foregroundStyle(.white)
                             .background(VTheme.purple, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(PressableStyle())
-                    .disabled(selection.isEmpty)
-                    .opacity(selection.isEmpty ? 0.5 : 1)
+                    .disabled(!canSubmit)
+                    .opacity(canSubmit ? 1 : 0.5)
                 }
             }
             .padding(14)
@@ -45,12 +68,14 @@ struct QuestionCardView: View {
 
     private func optionRow(index: Int, option: String) -> some View {
         let chosen = question.answer.map { $0.contains(index) } ?? selection.contains(index)
+        let detail = question.details.indices.contains(index) ? question.details[index] : nil
         return Button {
             guard !answered else { return }
-            if question.allowsMultiple {
+            if needsSubmit {
+                if !question.allowsMultiple { selection.removeAll() }
                 if selection.contains(index) { selection.remove(index) } else { selection.insert(index) }
             } else {
-                onAnswer([index])
+                onAnswer([index], nil)
             }
         } label: {
             HStack(spacing: 10) {
@@ -59,10 +84,15 @@ struct QuestionCardView: View {
                     .frame(width: 24, height: 24)
                     .foregroundStyle(chosen ? .white : VTheme.purple)
                     .background(chosen ? VTheme.purple : VTheme.lavender, in: Circle())
-                Text(option)
-                    .font(.subheadline)
-                    .foregroundStyle(answered && !chosen ? VTheme.muted : VTheme.ink)
-                    .multilineTextAlignment(.leading)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(option)
+                        .font(.subheadline)
+                        .foregroundStyle(answered && !chosen ? VTheme.muted : VTheme.ink)
+                    if let detail, !detail.isEmpty {
+                        Text(detail).font(.caption).foregroundStyle(VTheme.muted)
+                    }
+                }
+                .multilineTextAlignment(.leading)
                 Spacer(minLength: 4)
                 if chosen {
                     Image(systemName: "checkmark").font(.footnote.weight(.bold)).foregroundStyle(VTheme.purple)

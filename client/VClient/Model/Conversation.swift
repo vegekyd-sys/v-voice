@@ -1,7 +1,7 @@
 import Foundation
 
 struct ChatSession: Identifiable, Hashable, Sendable {
-    enum Kind: Hashable, Sendable { case direct, group }
+    enum Kind: Hashable, Sendable { case direct, group, main, other }
 
     var id: String
     var title: String
@@ -11,30 +11,52 @@ struct ChatSession: Identifiable, Hashable, Sendable {
     var items: [ChatItem]
     var unread: Int = 0
     var pinned: Bool = false
+    var preview: String = ""
+    var lastActivity: Date = .distantPast
+    var historyLoaded = false
+    var hasMoreHistory = false
+    /// Model label from the session's defaults, e.g. "deepseek-flash".
+    var model: String?
 
-    var lastActivity: Date { items.last?.time ?? .distantPast }
-
-    var preview: String {
-        guard let last = items.last else { return "" }
-        let prefix = last.sender == .user ? "我：" : ""
+    var displayPreview: String {
+        guard let last = items.last else { return preview }
+        let prefix = switch last.sender {
+        case .user: "我："
+        case .member(let name): "\(name)："
+        default: ""
+        }
         return prefix + last.content.previewText
     }
 
-    var isWorking: Bool {
-        items.contains { item in
-            if case .reply(let work) = item.content { return work.isActive }
-            return false
+    var displayActivity: Date { max(lastActivity, items.last?.time ?? .distantPast) }
+
+    var activeRun: String? {
+        for item in items.reversed() {
+            if case .reply(let work) = item.content, work.isActive { return work.runId }
         }
+        return nil
     }
+
+    var isWorking: Bool { activeRun != nil }
 }
 
 struct ChatItem: Identifiable, Hashable, Sendable {
-    enum Sender: Hashable, Sendable { case user, v, system }
+    enum Sender: Hashable, Sendable {
+        /// The person using this app (the owner).
+        case user
+        /// Another person in a group chat.
+        case member(String)
+        case v
+        case system
+    }
 
     var id: String
     var sender: Sender
     var time: Date
     var content: Content
+    /// Sent from this app and not yet confirmed by the Gateway.
+    var pending = false
+    var failed = false
 
     enum Content: Hashable, Sendable {
         case text(String)
@@ -46,9 +68,9 @@ struct ChatItem: Identifiable, Hashable, Sendable {
 
         var previewText: String {
             switch self {
-            case .text(let text): text
+            case .text(let text): text.replacingOccurrences(of: "\n", with: " ")
             case .reply(let work):
-                work.isActive ? "正在处理…" : work.answer.replacingOccurrences(of: "\n", with: " ")
+                work.isActive && work.answer.isEmpty ? "正在处理…" : work.answer.replacingOccurrences(of: "\n", with: " ")
             case .card(let card): "[卡片] " + (card.header?.title ?? "")
             case .question(let question): "[需要你回答] " + question.prompt
             case .file(let file): "[文件] " + file.name
@@ -63,14 +85,17 @@ struct ChatItem: Identifiable, Hashable, Sendable {
 /// ⚙️ current tool, ❓ waiting for an answer, and the background line.
 struct WorkState: Hashable, Sendable {
     enum Phase: Hashable, Sendable {
-        case thinking, working, waiting, done, failed(String)
+        case thinking, working, waiting, done, failed(String), aborted
     }
 
+    var runId: String?
     var phase: Phase = .thinking
+    /// Gateway startup stage before any visible activity, e.g. "starting_model".
+    var stage: String?
     var answer: String = ""
     var commentary: String?
     var plan: [PlanStep] = []
-    var tool: String?
+    var tools: [ToolStep] = []
     var background: BackgroundSummary?
     var model: String?
     var startedAt: Date
@@ -79,15 +104,26 @@ struct WorkState: Hashable, Sendable {
     var isActive: Bool {
         switch phase {
         case .thinking, .working, .waiting: true
-        case .done, .failed: false
+        case .done, .failed, .aborted: false
         }
     }
+
+    var currentTool: ToolStep? { tools.last { $0.status == .running } }
 }
 
 struct PlanStep: Hashable, Sendable {
     enum Status: Hashable, Sendable { case pending, running, done }
 
     var text: String
+    var status: Status
+}
+
+struct ToolStep: Hashable, Sendable {
+    enum Status: Hashable, Sendable { case running, done, failed }
+
+    var id: String
+    var name: String
+    var summary: String
     var status: Status
 }
 
@@ -105,13 +141,21 @@ struct BackgroundSummary: Hashable, Sendable {
     }
 }
 
-/// Gateway `ask_user`: numbered options, answered in place.
+/// Gateway `ask_user` (one question of a `question.requested` record).
 struct QuestionState: Hashable, Sendable {
     var id: String
+    /// The question id inside the record; answers are keyed by it.
+    var questionId: String = "q"
+    var header: String?
     var prompt: String
     var options: [String]
+    var details: [String?] = []
     var allowsMultiple: Bool
+    var allowsOther = false
+    var isSecret = false
     var answer: [Int]?
+    var otherAnswer: String?
+    var expired = false
 }
 
 struct FileRef: Hashable, Sendable {

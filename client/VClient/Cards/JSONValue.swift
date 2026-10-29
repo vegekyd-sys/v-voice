@@ -72,4 +72,32 @@ enum JSONValue: Codable, Hashable, Sendable {
         if let string { return string }
         return self["content"]?.string
     }
+
+    var object: [String: JSONValue]? {
+        if case .object(let value) = self { return value }
+        return nil
+    }
+
+    var int: Int? { double.map { Int($0) } }
+
+    var isNull: Bool { self == .null }
+
+    func data() throws -> Data { try JSONEncoder().encode(self) }
+
+    static func parse(_ data: Data) throws -> JSONValue { try JSONDecoder().decode(JSONValue.self, from: data) }
+}
+
+extension JSONValue: ExpressibleByStringLiteral, ExpressibleByIntegerLiteral, ExpressibleByBooleanLiteral,
+    ExpressibleByArrayLiteral, ExpressibleByDictionaryLiteral, ExpressibleByFloatLiteral
+{
+    init(stringLiteral value: String) { self = .string(value) }
+    init(integerLiteral value: Int) { self = .number(Double(value)) }
+    init(floatLiteral value: Double) { self = .number(value) }
+    init(booleanLiteral value: Bool) { self = .bool(value) }
+    init(arrayLiteral elements: JSONValue...) { self = .array(elements) }
+    init(dictionaryLiteral elements: (String, JSONValue)...) {
+        self = .object(Dictionary(elements, uniquingKeysWith: { _, last in last }))
+    }
+
+    init(_ value: String?) { self = value.map(JSONValue.string) ?? .null }
 }

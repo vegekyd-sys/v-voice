@@ -111,6 +111,12 @@ enum FeishuMarkdown {
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
             ?? AttributedString(text)
         value.foregroundColor = color
+        // Inline code like Feishu: smaller monospace on a light tint.
+        for run in value.runs where run.inlinePresentationIntent?.contains(.code) == true {
+            value[run.range].font = .system(.footnote, design: .monospaced)
+            value[run.range].backgroundColor = VTheme.sunken
+            value[run.range].foregroundColor = color == VTheme.muted ? color : VTheme.soft
+        }
         return value
     }
 }

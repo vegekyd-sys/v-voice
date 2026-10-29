@@ -1,47 +1,65 @@
-# V 客户端（iOS 原型）
+# V 客户端（iOS）
 
-和 V 文字对话的原生 App：会话列表、聊天，以及和飞书里一样的卡片——V 的工作卡、审批、「电脑」接管、凭据、`ask_user` 选择题、夜班交付。和 `ios/`（V Voice，一按通话）是两个 App；通话入口留给 V Voice。
+和 V 文字对话的原生 App：会话列表、聊天，以及和飞书一样的卡片——V 的工作卡（说明、计划、工具、后台）、命令审批、V 的提问、「电脑」接管、凭据、夜班交付。和 `ios/`（V Voice，一按通话）是两个 App。
 
-状态：**界面原型**。所有数据来自本地示例（`FixtureTransport`），没有连接 V 的 Gateway，也没有调用模型。
+状态：**已能连真实 V Gateway（9.1）**，在 VLab 私有 candidate Gateway 上端到端验证过；还没连过生产 V，没上过真机。
 
-![会话列表](docs/prototype/01-sessions.jpg) ![工作卡与接管卡](docs/prototype/02-work-and-handoff.jpg) ![审批卡回调后](docs/prototype/03-approval-resolved.jpg) ![夜班交付卡](docs/prototype/04-nightshift-delivery.jpg) ![深色](docs/prototype/05-dark.jpg)
+![配对](docs/live/01-pairing.jpg) ![会话](docs/live/02-sessions.jpg) ![飞书发来的任务，实时工作卡](docs/live/03-working-from-feishu.jpg) ![完成后收起](docs/live/04-finished.jpg) ![V 提问](docs/live/05-question.jpg) ![回答后 V 继续](docs/live/06-question-answered.jpg) ![审批卡](docs/live/07-approval-card.jpg) ![设置](docs/live/08-settings.jpg)
 
-## 参考了官方 App 的什么
+## 体验和飞书对齐的地方
 
-参考的是 OpenClaw 官方 iOS App（`openclaw-versa/apps/ios`，MIT，本机副本是 2026-09-24 的）：
+| 飞书里 | App 里 | 数据来源（Gateway 9.1） |
+|---|---|---|
+| 私聊、群聊列表，未读、时间、预览 | 同一批会话，标题「V」/群名 + 「飞书私聊/飞书群」标签 | `sessions.list`、`sessions.changed` |
+| V 的回复卡：答案逐段出现，下面 💬 说明、✅/▶️/◻️ 计划、⚙️ 当前工具 | 同一张工作卡：状态条（正在思考·连接模型 / 正在处理 / 等你回答）+ 计时，说明、计划（收起时显示当前步和 2/4）、最近 3 个操作 | `chat`（status/delta/final）、`agent`（tool、plan、item 的 preamble、run_status）、`progressCard.get` |
+| 完成后卡片收起，只留答案 | 只留答案和「用时 · N 个操作 · 模型」，操作可展开 | 完成后用 `chat.history` 校正 |
+| 飞书里发的消息、V 在飞书的回复 | 实时出现在 App 里（自己发的在右侧，群里其他人带名字在左侧） | `session.message`、`chat` 事件 |
+| `ask_user` 问题：编号选项，回复数字 | 可点的选项、多选提交、「其他」自由填写、密码类输入 | `question.requested` / `question.resolve` |
+| 审批卡：需要你审批：命令（允许一次/总是允许/拒绝），结束后变灰 | 同样的卡片和按钮，结束后灰色「审批已结束」 | `session.approval`（订阅时 `includeApprovals: true`）、`approval.resolve` |
+| 插件发来的卡片（凭据、电脑接管、夜班交付） | `FeishuCard` 直接渲染飞书卡片 JSON 2.0 | 现在只在示例模式；见下文「还差什么」 |
 
-- 设计规则照搬它的 `DESIGN.md`：系统结构优先（`NavigationSplitView`、`List`、工具栏）；Liquid Glass 只用于输入栏这类可交互的控件，卡片和正文用不透明的安静背景；颜色只表达语义；支持深色和 iPad 双栏。
-- 计划区沿用它 `ChatProgressCard` 的形式：收起时显示当前步骤和 `2/4`，点开看全部。
-- 连接方式沿用它的路线：作为 operator 连 Gateway WebSocket（见下文第二阶段）。
+另外：停止当前回合（`chat.abort`）、发送失败可点重发、断线自动重连（握手 10 秒超时重试，回前台立即重连）、长历史「查看更早的消息」、深色模式、iPad 双栏。
 
-没有直接依赖它的 `OpenClawKit`：那个包跟的是上游 9.x 协议（`progressCard.get`、`sessions.messages.subscribe` 等），V 生产还在 9.1，接口不一定都有；而且整个 App 会带上 GRDB、Watch 的 Rust 工具链。第二阶段只摘取连接和设备认证需要的部分，并按 V 的实际版本核对。
+从 App 发的消息 **只在 App 里显示 V 的回复**（`chat.send` 带 `deliver: false`），不会往飞书群里推一条没有提问的回复；飞书里的对话照常实时同步到 App。
 
-## 卡片：直接吃 V 发给飞书的 JSON
+## 连接与配对
 
-`FeishuCard` 解析飞书卡片 JSON（schema 2.0，兼容 1.0），覆盖 V 现在实际在发的元素：
+和官方 OpenClaw iOS App 同一套协议：WebSocket 协议 4，身份 `openclaw-ios` / `ui` / `operator`，权限 `operator.read/write/approvals/questions`（不要 admin）。
 
-| 元素 | 说明 |
-|---|---|
-| `header` | 标题、副标题、`template` 颜色、`text_tag_list` 标签 |
-| `markdown` / `div` / `lark_md` | 段落、标题、列表、引用、代码块、分割线；飞书专有的 `<font color>`、`<text_tag>`、`<at>`、`<br>`；`text_size: notation` 灰色小字 |
-| `button` | `primary` / `primary_filled` / `danger` / `default` / `text`；`open_url` 直接打开，`callback` 的 `value` 原样交回 V |
-| `column_set` | 普通分栏；`flex_mode: flow` 按钮一行排开、放不下自动换行 |
-| `div.fields` | 两列字段（夜班交付卡） |
-| `img` | `img_key` 由 V 换成可下载的地址（飞书的 key 客户端读不到） |
-| `collapsible_panel` | 可折叠段落 |
-| 未知元素 | 显示一行「此卡片包含暂不支持的内容，请在飞书查看」，其余照常显示 |
+1. 设备身份是 Ed25519 密钥，设备 ID = 公钥 SHA-256；按 v3 签名串（`v3|deviceId|clientId|mode|role|scopes|signedAt|token|nonce|platform|deviceFamily`）回应 `connect.challenge`。
+2. 首次配对用设置码：V 主机上 `openclaw qr`（或 Control UI「设备」）生成，粘贴或点 `oc-pair://` 链接。设置码里的一次性 bootstrap token 换成长期设备令牌，存在 Keychain（`AfterFirstUnlockThisDeviceOnly`）。也可以手填地址 + Gateway 令牌，再等管理员批准。
+3. 只接受 `wss://`；`ws://` 只放行本机回环（开发时走 SSH 隧道）。
+4. 设备令牌被吊销时自动清掉并提示重新配对。
 
-审批卡的测试用例就是 V 飞书审批插件 `vFaCard` 产出的结构。这样服务端同一份卡片可以同时发给飞书和客户端，不用为客户端另写一套。
+## 在 VLab 上怎么测的
 
-V 自己的工作卡（`WorkCardView`）不是飞书 JSON，而是由 Gateway 事件拼出来的原生视图，内容对齐飞书进度卡：答案逐段出现；处理中显示 💬 说明、计划、⚙️ 当前工具、❓ 等你回答、后台任务行；完成后只留答案和「用时 / 完成 N 步 / 模型」。
+不碰共享 VLab 和生产 V：`v-openclaw-platform` 的 `lab/candidate/v-client-gateway.mjs` 在 VLab 主机上起一个私有 Gateway（真实模型 DeepSeek flash + Worker，假飞书），预置一个飞书私聊和一个飞书群，签发回环地址的设置码；Mac 用 `ssh -L <端口>:127.0.0.1:<端口>` 转发，模拟器连 `ws://127.0.0.1:<端口>`。
 
-## 第二阶段：连上 V
+```bash
+node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo <platform worktree> --owner v-client-ios --plan <platform worktree>/lab/candidate/v-client-gateway.plan.json
+```
 
-1. **连接**：走 Control UI 已有的公网 HTTPS 入口，以 operator 身份连 Gateway WebSocket；设备身份用 Ed25519，首次连接走现有的设备配对审批；令牌存 Keychain。不新开公网端口。
-2. **对话**：`sessions.list`、`chat.history`、`chat.send`、`chat.abort`；订阅 `chat`（delta/final）和 `agent`（plan / tool / assistant）事件拼工作卡；`question.get` / `question.resolve` 回答选择题。先在 VLab 核对 9.1 上每个方法和事件确实存在、字段一致。
-3. **卡片同步（需要平台改动）**：现在审批卡、「电脑」卡、凭据卡是插件直接发到飞书的，Gateway 的会话记录里没有，客户端拿不到。需要在 `v-openclaw-platform` 另开 PR：插件发飞书卡片时，同时把同一份卡片 JSON 作为会话事件发出，按钮回调走和飞书卡片相同的处理函数。审批也可以直接用 Gateway 原生的审批接口。
-4. **身份与权限**：会话可见范围和按钮权限由 Gateway 按配对的设备和 owner 判断，客户端不传、也不能自称 sessionKey 或用户身份。
-5. **之后**：推送（APNs 需要中转）、图片/文件上传、iPad 键盘快捷键、从聊天直接拨 V Voice。
+运行中可以往 `/tmp/vclient-gateway/inject-<n>.json` 写 `{"chat":"dm"|"group","text":"…"}` 模拟飞书来消息；写 `/tmp/vclient-gateway/stop` 结束并清理。
+
+2026-10-30 实测（iPhone 17 Pro 模拟器，iOS 26.3，Gateway 2026.9.1）：
+
+- 设置码配对、拿到设备令牌、重启 App 用设备令牌直连。
+- 会话列表、两个飞书会话的历史（含工具调用、模型、用时）。
+- 从 App 发消息：思考 → 工具 → 逐段出字 → 完成，完成后自动校正。
+- 「飞书」发来的任务在 App 里实时显示：说明、progress_card 计划 0/3 → 3/3、7 个操作、最终答案。
+- V 调 `ask_user`：App 里多选火锅 + 寿司提交，V 按选择继续回答。
+- 命令审批：打开 `ask: always` 后，App 收到审批卡并在结束后变灰。
+- 停止：App 自己发起的回合可以停止（25 秒命令在第 12 秒被中止）；别的设备发起的回合按 9.1 规则不能停，App 给出说明。
+- 14 个单元测试：卡片解析、设置码、v3 签名串与设备 ID、历史折叠、合并规则、会话标题、审批卡、工具文案。
+
+## 还差什么
+
+- **审批按钮没能端到端点通**：9.1 + Worker 在回合结束时就把命令审批取消（`cancelled / run-aborted`），审批只活 1–2 秒，飞书里也一样。App 的卡片和 `approval.resolve` 已接好，需要一个会等审批的回合才能验证。
+- **插件卡片同步**：「电脑」接管、凭据、夜班交付等卡片是插件直接发给飞书的，Gateway 的会话事件里没有，App 拿不到。需要在 `v-openclaw-platform` 另开 PR，让插件发飞书卡片时也把同一份 JSON 作为会话事件发出，按钮回调走同一个处理函数。
+- **后台任务行**（⏳ 后台 2 项进行中）：没接 `tasks` 事件。
+- **生产 V**：要用 `openclaw qr` 生成指向公网入口（Control UI 的 HTTPS 地址）的设置码；连接后这台手机会出现在 V 的设备列表里。没有在生产上试过。
+- 真机、推送、图片/文件收发、语音入口（拨 V Voice）都还没做。
+- 模拟器里 emoji 显示为方框（运行时有 emoji 字体，疑为模拟器问题），需真机确认。
 
 ## 构建与测试
 
@@ -50,15 +68,19 @@ cd client && xcodegen generate
 ```
 
 ```bash
-xcodebuild -project client/VClient.xcodeproj -scheme VClient -destination 'platform=iOS Simulator,name=iPhone 17 Pro' CODE_SIGNING_ALLOWED=NO test
+xcodebuild -project client/VClient.xcodeproj -scheme VClient -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 
-- 最低 iOS 26，Swift 6 严格并发。工程由 `project.yml` 生成，生成出的 `VClient.xcodeproj` 一起提交（和 `ios/` 一致）。
-- 启动时设环境变量 `VCLIENT_OPEN_SESSION=dm|dev|night` 可直接打开某个示例会话（截图用）。
-- 示例卡片在 `VClient/Resources/Fixtures/`，单元测试保证它们全部能解析、没有不支持的元素。
+- 最低 iOS 26，Swift 6 严格并发；工程由 `project.yml` 生成并一起提交。
+- 模拟器构建要签名（默认的本地签名即可），否则 Keychain 写不进去，配对信息存不住。
+- 启动参数 `-demo` 直接进示例模式；环境变量 `VCLIENT_OPEN_SESSION=<会话 key 的一部分>` 启动后直接打开该会话。
 
-## 已验证与未验证
+## 代码结构
 
-已验证（2026-10-30，iPhone 17 Pro 模拟器，iOS 26.3）：构建通过；4 个单元测试通过；会话列表、三个示例会话、审批卡点击后变为「审批已结束」、发消息后工作卡从思考→计划/工具→逐段出字→完成的全过程、深色模式。
-
-未验证：真机；iPad 双栏；没有连接任何 V 环境。模拟器里 emoji（✅、🔑）显示为方框，运行时里有 emoji 字体，疑为这台模拟器的显示问题，需在真机确认。
+| 目录 | 内容 |
+|---|---|
+| `Gateway/` | `GatewayConnection`（握手、请求/事件、重连）、`DeviceIdentity`、`GatewayEndpoint`（设置码、Keychain）、`LiveTransport`（会话、历史、实时事件、审批、提问）、`HistoryMapper`、`ApprovalCards` |
+| `Cards/` | 飞书卡片 JSON 解析与渲染、飞书 markdown、V 工作卡、提问卡 |
+| `Chat/` | 会话列表、聊天页、输入栏 |
+| `Model/` | 数据模型、`AppModel`、示例数据 `FixtureTransport` |
+| `App/` | 入口、配对页、设置页 |

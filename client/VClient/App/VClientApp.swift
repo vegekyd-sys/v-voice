@@ -2,18 +2,29 @@ import SwiftUI
 
 @main
 struct VClientApp: App {
-    @State private var model = AppModel(transport: FixtureTransport(), connection: "原型 · 本地示例数据")
+    @State private var model = AppModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environment(model)
-                .task {
-                    await model.load()
-                    if let session = ProcessInfo.processInfo.environment["VCLIENT_OPEN_SESSION"] {
-                        model.open(session)
-                    }
+            Group {
+                if model.mode == .onboarding {
+                    OnboardingView()
+                } else {
+                    RootView()
                 }
+            }
+            .environment(model)
+            .tint(VTheme.purple)
+            .task { await model.boot() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { model.becameActive() }
+            }
+            .onOpenURL { url in
+                // oc-pair://<setup code> links open straight into pairing.
+                guard url.scheme == "oc-pair", let endpoint = try? GatewayEndpoint.parse(setupCode: url.absoluteString) else { return }
+                Task { await model.connect(endpoint) }
+            }
         }
     }
 }
@@ -28,13 +39,13 @@ struct RootView: View {
             SessionListView()
                 .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 400)
         } detail: {
-            if let id = model.selectedSessionID, model.sessions.contains(where: { $0.id == id }) {
+            if let id = model.selectedSessionID, model.session(id) != nil {
                 ChatScreen(sessionID: id)
                     .id(id)
             } else {
-                ContentUnavailableView("选择一个会话", systemImage: "bubble.left.and.text.bubble.right", description: Text("和 V 的私聊、群和夜班通知都在左侧"))
+                ContentUnavailableView("选择一个会话", systemImage: "bubble.left.and.text.bubble.right",
+                                       description: Text("和 V 的私聊、群聊都在左侧"))
             }
         }
-        .tint(VTheme.purple)
     }
 }

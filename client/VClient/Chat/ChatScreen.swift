@@ -5,13 +5,22 @@ struct ChatScreen: View {
     @Environment(AppModel.self) private var model
     @State private var draft = ""
 
-    private var session: ChatSession? { model.sessions.first { $0.id == sessionID } }
+    private var session: ChatSession? { model.session(sessionID) }
 
     var body: some View {
         if let session {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
+                        if session.hasMoreHistory {
+                            Button("查看更早的消息") { model.loadEarlier(sessionID) }
+                                .font(.footnote.weight(.medium))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                        }
+                        if !session.historyLoaded, session.items.isEmpty, model.mode == .live {
+                            ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
+                        }
                         ForEach(Array(session.items.enumerated()), id: \.element.id) { index, item in
                             let previous = index > 0 ? session.items[index - 1] : nil
                             if previous.map({ item.time.timeIntervalSince($0.time) > 600 }) ?? true {
@@ -39,29 +48,69 @@ struct ChatScreen: View {
                         withAnimation(.snappy) { proxy.scrollTo(last.id, anchor: .bottom) }
                     }
                 }
+                .onChange(of: session.historyLoaded) { _, loaded in
+                    // First page in: jump to the newest message without animating through history.
+                    guard loaded, let last = session.items.last else { return }
+                    // Wait one layout pass so the lazy stack knows where the last row is.
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(80))
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
+                }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                Composer(text: $draft, isWorking: session.isWorking) {
-                    model.send(draft, in: sessionID)
-                    draft = ""
+                VStack(spacing: 6) {
+                    if let notice = model.notice {
+                        NoticeBanner(text: notice).transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else if !model.status.isConnected, model.mode == .live {
+                        NoticeBanner(text: model.status.label, tone: .quiet)
+                    }
+                    Composer(text: $draft, isWorking: session.isWorking, onSend: {
+                        model.send(draft, in: sessionID)
+                        draft = ""
+                    }, onStop: {
+                        model.abort(sessionID)
+                    })
                 }
+                .animation(.snappy, value: model.notice)
             }
             .navigationTitle(session.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 1) {
-                        Text(session.title).font(.headline)
-                        Text(session.isWorking ? "V 正在处理…" : session.channel)
-                            .font(.caption2)
-                            .foregroundStyle(session.isWorking ? VTheme.purple : VTheme.muted)
+                        Text(session.title).font(.headline).lineLimit(1)
+                        Group {
+                            if session.isWorking {
+                                Text("V 正在处理…").foregroundStyle(VTheme.purple)
+                            } else {
+                                Text([session.channel, session.model].compactMap { $0 }.joined(separator: " · "))
+                                    .foregroundStyle(VTheme.muted)
+                            }
+                        }
+                        .font(.caption2)
                     }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("和 V 通话", systemImage: "phone") {}
                 }
             }
         }
+    }
+}
+
+struct NoticeBanner: View {
+    enum Tone { case alert, quiet }
+    let text: String
+    var tone: Tone = .alert
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: tone == .alert ? "exclamationmark.circle.fill" : "wifi")
+            Text(text).lineLimit(2)
+        }
+        .font(.footnote.weight(.medium))
+        .foregroundStyle(tone == .alert ? VTheme.red : VTheme.muted)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .glassEffect(.regular, in: Capsule())
     }
 }
 
@@ -84,9 +133,46 @@ struct MessageRow: View {
                     .frame(maxWidth: .infinity)
             }
         case .user:
-            HStack {
+            HStack(alignment: .bottom, spacing: 8) {
                 Spacer(minLength: 56)
+                if item.pending {
+                    ProgressView().controlSize(.mini)
+                } else if item.failed {
+                    Button {
+                        if case .text(let text) = item.content {
+                            model.update(sessionID) { $0.items.removeAll { $0.id == item.id } }
+                            model.send(text, in: sessionID)
+                        }
+                    } label: {
+                        Image(systemName: "exclamationmark.circle.fill").foregroundStyle(VTheme.red)
+                    }
+                    .accessibilityLabel("重新发送")
+                }
                 userContent
+            }
+        case .member(let name):
+            HStack(alignment: .top, spacing: 10) {
+                if showsSender {
+                    MemberAvatar(name: name)
+                } else {
+                    Color.clear.frame(width: VTheme.avatarSize, height: 1)
+                }
+                VStack(alignment: .leading, spacing: 5) {
+                    if showsSender {
+                        Text(name).font(.caption).foregroundStyle(VTheme.muted)
+                    }
+                    if case .text(let text) = item.content {
+                        Text(text)
+                            .font(.callout)
+                            .foregroundStyle(VTheme.ink)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 9)
+                            .background(VTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(VTheme.hairline, lineWidth: 0.75) }
+                            .textSelection(.enabled)
+                    }
+                }
+                Spacer(minLength: 56)
             }
         case .v:
             HStack(alignment: .top, spacing: 10) {
@@ -127,6 +213,7 @@ struct MessageRow: View {
                 .padding(.horizontal, 13)
                 .padding(.vertical, 9)
                 .background(VTheme.userBubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .opacity(item.pending ? 0.75 : 1)
                 .textSelection(.enabled)
         case .file(let file):
             FileCardView(file: file)
@@ -140,12 +227,17 @@ struct MessageRow: View {
         switch item.content {
         case .reply(let work):
             WorkCardView(work: work)
+                .contextMenu {
+                    if !work.answer.isEmpty {
+                        Button("复制", systemImage: "doc.on.doc") { UIPasteboard.general.string = work.answer }
+                    }
+                }
         case .card(let card):
             FeishuCardView(card: card)
                 .transition(.opacity)
         case .question(let question):
-            QuestionCardView(question: question) { choices in
-                model.answer(question, choices: choices, item: item.id, in: sessionID)
+            QuestionCardView(question: question) { choices, other in
+                model.answer(question, choices: choices, other: other, item: item.id, in: sessionID)
             }
         case .file(let file):
             FileCardView(file: file)
@@ -156,6 +248,19 @@ struct MessageRow: View {
         case .notice(let text):
             Text(text).font(.footnote).foregroundStyle(VTheme.muted)
         }
+    }
+}
+
+struct MemberAvatar: View {
+    let name: String
+
+    var body: some View {
+        Text(String(name.prefix(1)))
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.white)
+            .frame(width: VTheme.avatarSize, height: VTheme.avatarSize)
+            .background(LinearGradient(colors: SessionAvatar.palette(name), startPoint: .topLeading, endPoint: .bottomTrailing),
+                        in: Circle())
     }
 }
 

@@ -27,6 +27,15 @@ targets:
     platform: iOS
     sources:
       - path: VClient
+    info:
+      path: VClient/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # `openclaw qr` setup links open straight into pairing.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.versa.vclient.pair
+            CFBundleURLSchemes: [oc-pair]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.versa.vclient

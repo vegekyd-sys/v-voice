@@ -1,0 +1,149 @@
+import CryptoKit
+import XCTest
+@testable import V
+
+final class GatewayTests: XCTestCase {
+    // MARK: Setup codes
+
+    func testParsesSetupCodeAndLinkForm() throws {
+        let payload = #"{"url":"wss://v.example.com/openclaw","bootstrapToken":"boot-123","expiresAtMs":4102444800000}"#
+        let code = Data(payload.utf8).base64URLEncoded()
+        let endpoint = try GatewayEndpoint.parse(setupCode: "  \(code)\n")
+        XCTAssertEqual(endpoint.url.absoluteString, "wss://v.example.com/openclaw")
+        XCTAssertEqual(endpoint.bootstrapToken, "boot-123")
+        XCTAssertNil(endpoint.deviceToken)
+        XCTAssertEqual(try GatewayEndpoint.parse(setupCode: "oc-pair://" + code), endpoint)
+        XCTAssertEqual(endpoint.displayHost, "v.example.com/openclaw")
+    }
+
+    func testRejectsExpiredInsecureAndGarbageSetupCodes() {
+        let expired = Data(#"{"url":"wss://v.example.com","bootstrapToken":"t","expiresAtMs":1000}"#.utf8).base64URLEncoded()
+        XCTAssertThrowsError(try GatewayEndpoint.parse(setupCode: expired)) { XCTAssertEqual($0 as? SetupCodeError, .expired) }
+        let cleartext = Data(#"{"url":"ws://192.168.1.5:18789","bootstrapToken":"t"}"#.utf8).base64URLEncoded()
+        XCTAssertThrowsError(try GatewayEndpoint.parse(setupCode: cleartext)) { XCTAssertEqual($0 as? SetupCodeError, .insecure) }
+        let loopback = Data(#"{"url":"ws://127.0.0.1:18789","bootstrapToken":"t"}"#.utf8).base64URLEncoded()
+        XCTAssertNoThrow(try GatewayEndpoint.parse(setupCode: loopback))
+        XCTAssertThrowsError(try GatewayEndpoint.parse(setupCode: "not a code!")) { XCTAssertEqual($0 as? SetupCodeError, .invalid) }
+    }
+
+    func testManualAddressBecomesWebSocketURL() throws {
+        let endpoint = try GatewayEndpoint.manual(address: "https://openclaw.example.com/abc/", token: " secret ")
+        XCTAssertEqual(endpoint.url.absoluteString, "wss://openclaw.example.com/abc/")
+        XCTAssertEqual(endpoint.gatewayToken, "secret")
+        XCTAssertEqual(try GatewayEndpoint.manual(address: "openclaw.example.com", token: "").url.scheme, "wss")
+        XCTAssertNil(try GatewayEndpoint.manual(address: "openclaw.example.com", token: "").gatewayToken)
+    }
+
+    // MARK: Device identity
+
+    func testDeviceIdentityMatchesGatewayDerivation() throws {
+        let identity = DeviceIdentity(privateKey: Curve25519.Signing.PrivateKey())
+        let raw = identity.privateKey.publicKey.rawRepresentation
+        XCTAssertEqual(identity.deviceId, SHA256.hash(data: raw).map { String(format: "%02x", $0) }.joined())
+        XCTAssertEqual(Data(base64URLEncoded: identity.publicKeyBase64URL), raw)
+        XCTAssertFalse(identity.publicKeyBase64URL.contains("="))
+
+        let payload = DeviceIdentity.authPayload(
+            deviceId: "abc", clientId: "openclaw-ios", clientMode: "ui", role: "operator",
+            scopes: ["operator.read", "operator.write"], signedAtMs: 42, token: nil, nonce: "n",
+            platform: "ios", deviceFamily: "iPhone")
+        // Byte-for-byte what the 9.1 Gateway rebuilds (buildDeviceAuthPayloadV3).
+        XCTAssertEqual(payload, "v3|abc|openclaw-ios|ui|operator|operator.read,operator.write|42||n|ios|iphone")
+        let signature = try XCTUnwrap(Data(base64URLEncoded: try identity.sign(payload)))
+        XCTAssertTrue(identity.privateKey.publicKey.isValidSignature(signature, for: Data(payload.utf8)))
+    }
+
+    // MARK: History
+
+    /// Shapes recorded from a 9.1 Gateway (`chat.history`): a Feishu user turn,
+    /// a run with a tool call, its result and the final answer.
+    private let history: [JSONValue] = [
+        ["role": "user", "content": "ou_1: 帮我看下时间", "timestamp": 1_000_000,
+         "__openclaw": ["id": "u1", "senderName": "ou_1", "senderId": "ou_1", "senderIsOwner": true]],
+        ["role": "assistant", "model": "deepseek-flash", "stopReason": "toolUse", "timestamp": 1_002_000,
+         "content": [["type": "thinking", "thinking": "run date"], ["type": "toolCall", "id": "c1", "name": "exec", "arguments": ["command": "date"]]],
+         "__openclaw": ["id": "a1", "runId": "r1"]],
+        ["role": "toolResult", "toolCallId": "c1", "toolName": "exec", "isError": false, "timestamp": 1_003_000,
+         "content": [["type": "text", "text": "Fri Oct 30"]], "__openclaw": ["id": "t1", "runId": "r1"]],
+        ["role": "assistant", "model": "deepseek-flash", "stopReason": "stop", "timestamp": 1_009_000,
+         "content": [["type": "text", "text": "现在是 **周五**。"]], "__openclaw": ["id": "a2", "runId": "r1"]],
+        ["role": "user", "content": "ou_9: 我也想问", "timestamp": 1_010_000,
+         "__openclaw": ["id": "u2", "senderName": "ou_9", "senderId": "ou_9", "senderIsOwner": false]],
+        ["role": "assistant", "content": [["type": "text", "text": "NO_REPLY"]], "timestamp": 1_011_000, "__openclaw": ["id": "a3", "runId": "r2"]],
+    ]
+
+    func testHistoryFoldsARunIntoOneReply() throws {
+        let items = HistoryMapper.items(from: history, sessionKind: .direct)
+        XCTAssertEqual(items.map(\.id), ["m:u1", "run:r1", "m:u2"], "the silent NO_REPLY run is dropped")
+        XCTAssertEqual(items[0].content, .text("帮我看下时间"), "the Feishu sender prefix is stripped")
+        guard case .reply(let work) = items[1].content else { return XCTFail("expected a reply") }
+        XCTAssertEqual(work.answer, "现在是 **周五**。")
+        XCTAssertEqual(work.tools.map(\.summary), ["执行命令 date"])
+        XCTAssertEqual(work.model, "DeepSeek flash")
+        XCTAssertEqual(work.phase, .done)
+        XCTAssertEqual(try XCTUnwrap(work.finishedAt).timeIntervalSince(work.startedAt), 9, accuracy: 0.01,
+                       "a run is timed from the message that triggered it")
+        XCTAssertEqual(items[2].sender, .user, "everyone in a DM is the owner side")
+    }
+
+    func testGroupMembersAreNamedAndOwnerIsMe() {
+        let items = HistoryMapper.items(from: history, sessionKind: .group)
+        XCTAssertEqual(items[0].sender, .user)
+        XCTAssertEqual(items[2].sender, .member("成员 ou_9"))
+    }
+
+    func testMergeKeepsWhatHistoryCannotKnow() {
+        let now = Date(timeIntervalSince1970: 2000)
+        let history = [ChatItem(id: "run:r1", sender: .v, time: now, content: .reply(WorkState(runId: "r1", phase: .done, startedAt: now)))]
+        var pending = ChatItem(id: "send:x", sender: .user, time: now.addingTimeInterval(5), content: .text("hi"))
+        pending.pending = true
+        let stopped = ChatItem(id: "run:r1", sender: .v, time: now, content: .reply(WorkState(runId: "r1", phase: .aborted, startedAt: now)))
+        let streaming = ChatItem(id: "run:r2", sender: .v, time: now.addingTimeInterval(6), content: .reply(WorkState(runId: "r2", phase: .working, startedAt: now)))
+        let stale = ChatItem(id: "m:old", sender: .user, time: now, content: .text("gone"))
+        let merged = LiveTransport.merge(history: history, local: [stopped, pending, streaming, stale])
+        XCTAssertEqual(merged.map(\.id), ["run:r1", "send:x", "run:r2"])
+        guard case .reply(let first) = merged[0].content else { return XCTFail() }
+        XCTAssertEqual(first.phase, .aborted, "a stop the transcript did not record survives a refresh")
+    }
+
+    func testSessionTitlesFollowFeishu() {
+        let dm = LiveTransport.session(from: ["key": "agent:makaron:feishu:direct:ou_1", "channel": "feishu", "chatType": "direct", "displayName": "V probe"])
+        XCTAssertEqual(dm?.title, "V")
+        XCTAssertEqual(dm?.channel, "飞书私聊")
+        let group = LiveTransport.session(from: ["key": "agent:makaron:feishu:group:oc_1", "channel": "feishu", "chatType": "group", "subject": "研发群", "unread": true])
+        XCTAssertEqual(group?.title, "研发群")
+        XCTAssertEqual(group?.unread, 1)
+        XCTAssertNil(LiveTransport.session(from: ["key": "agent:makaron:subagent:abc"]))
+        XCTAssertNil(LiveTransport.session(from: ["key": "agent:makaron:x", "isBackground": true]))
+    }
+
+    // MARK: Approvals
+
+    func testApprovalCardsMatchTheFeishuPlugin() {
+        let pending: JSONValue = [
+            "id": "ap1", "status": "pending", "createdAtMs": 1, "expiresAtMs": 4_102_444_800_000,
+            "presentation": ["kind": "exec", "commandText": "whoami", "host": "gateway", "agentId": "main",
+                             "allowedDecisions": ["allow-once", "allow-always", "deny"]],
+        ]
+        let card = ApprovalCards.card(for: pending)
+        XCTAssertEqual(card.header?.title, "需要你审批：命令")
+        XCTAssertEqual(card.header?.template, .blue)
+        XCTAssertEqual(card.elements.first, .markdown("V 想执行：\n```\nwhoami\n```", size: .normal))
+        guard case .columns(let columns, true) = card.elements.last else { return XCTFail("expected buttons") }
+        let labels = columns.compactMap { column -> String? in
+            if case .button(let button) = column.elements.first { button.text } else { nil }
+        }
+        XCTAssertEqual(labels, ["允许一次", "总是允许", "拒绝"])
+
+        let done = ApprovalCards.card(for: ["id": "ap1", "status": "cancelled", "resolvedAtMs": 2,
+                                            "presentation": ["kind": "exec", "commandText": "whoami", "allowedDecisions": ["deny"]]])
+        XCTAssertEqual(done.header?.title, "审批已结束：命令")
+        XCTAssertEqual(done.header?.template, .grey)
+    }
+
+    func testToolLabels() {
+        XCTAssertEqual(ToolLabel.summary(name: "web_search", args: ["query": "上海天气"]), "搜索 上海天气")
+        XCTAssertEqual(ToolLabel.summary(name: "read", args: ["path": "/etc/hosts"]), "读取 /etc/hosts")
+        XCTAssertEqual(ToolLabel.summary(name: "custom_tool", args: nil), "custom_tool")
+    }
+}

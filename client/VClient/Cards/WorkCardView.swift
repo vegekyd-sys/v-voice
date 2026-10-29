@@ -6,20 +6,28 @@ import SwiftUI
 struct WorkCardView: View {
     let work: WorkState
     @State private var planOpen = false
+    @State private var stepsOpen = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if work.isActive || isFailed {
+            if work.isActive || isFailed || work.phase == .aborted {
                 statusStrip
             }
             VStack(alignment: .leading, spacing: 12) {
                 if !work.answer.isEmpty {
                     FeishuMarkdownView(markdown: work.isActive ? FeishuMarkdown.closingOpenMarks(work.answer) : work.answer)
                 } else if work.phase == .thinking {
-                    TypingDots().padding(.vertical, 4)
+                    HStack(spacing: 10) {
+                        TypingDots()
+                        if let stage = work.stage { Text(Self.stageLabel(stage)).font(.footnote).foregroundStyle(VTheme.muted) }
+                    }
+                    .padding(.vertical, 4)
+                } else if !work.isActive {
+                    Text(work.phase == .aborted ? "这一轮已停止。" : work.phase == .done ? "V 处理完了，没有需要回复的内容。" : "这一轮没有完成。")
+                        .font(.subheadline).foregroundStyle(VTheme.muted)
                 }
                 if work.isActive, hasWorkView {
-                    Divider().overlay(VTheme.hairline)
+                    if !work.answer.isEmpty { Divider().overlay(VTheme.hairline) }
                     workView
                 }
                 if !work.isActive {
@@ -33,7 +41,7 @@ struct WorkCardView: View {
         // Animate structure (phase, plan, tool), not every streamed character.
         .animation(.snappy(duration: 0.25), value: work.phase)
         .animation(.snappy(duration: 0.25), value: work.plan)
-        .animation(.snappy(duration: 0.25), value: work.tool)
+        .animation(.snappy(duration: 0.25), value: work.tools)
     }
 
     private var isFailed: Bool {
@@ -42,7 +50,7 @@ struct WorkCardView: View {
     }
 
     private var hasWorkView: Bool {
-        work.commentary != nil || !work.plan.isEmpty || work.tool != nil || work.phase == .waiting
+        work.commentary != nil || !work.plan.isEmpty || !work.tools.isEmpty || work.phase == .waiting
     }
 
     private var statusStrip: some View {
@@ -51,13 +59,15 @@ struct WorkCardView: View {
         case .working: ("正在处理", VTheme.purple)
         case .waiting: ("等你回答", VTheme.orange)
         case .failed(let reason): ("没有完成 · \(reason)", VTheme.red)
+        case .aborted: ("已停止", VTheme.muted)
         case .done: ("已完成", VTheme.green)
         }
         return HStack(spacing: 8) {
             if work.isActive {
                 PulseDot(color: color)
             } else {
-                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(color).font(.caption)
+                Image(systemName: work.phase == .aborted ? "stop.circle.fill" : "exclamationmark.circle.fill")
+                    .foregroundStyle(color).font(.caption)
             }
             Text(label).font(.footnote.weight(.semibold)).foregroundStyle(color)
             Spacer()
@@ -76,7 +86,7 @@ struct WorkCardView: View {
     private var workView: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let commentary = work.commentary {
-                Text(commentary)
+                Text(FeishuMarkdown.inline(commentary, base: VTheme.soft))
                     .font(.subheadline)
                     .foregroundStyle(VTheme.soft)
                     .fixedSize(horizontal: false, vertical: true)
@@ -85,24 +95,41 @@ struct WorkCardView: View {
             if !work.plan.isEmpty {
                 planView
             }
-            if let tool = work.tool {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.mini)
-                    Text(tool)
-                        .font(.footnote)
-                        .foregroundStyle(VTheme.soft)
-                        .lineLimit(2)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(VTheme.sunken, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .transition(.opacity)
+            if !work.tools.isEmpty {
+                toolsView
             }
             if work.phase == .waiting {
                 Label("等你在下面的问题里选一下", systemImage: "questionmark.bubble")
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(VTheme.orange)
             }
+        }
+    }
+
+    /// The last few tool calls, newest at the bottom, the running one spinning.
+    private var toolsView: some View {
+        let recent = work.tools.suffix(3)
+        return VStack(alignment: .leading, spacing: 6) {
+            if work.tools.count > 3 {
+                Text("已完成 \(work.tools.count - 3) 步…").font(.caption).foregroundStyle(VTheme.muted)
+            }
+            ForEach(recent, id: \.id) { tool in
+                ToolRow(tool: tool)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(VTheme.sunken, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    static func stageLabel(_ stage: String) -> String {
+        switch stage {
+        case "preparing_workspace": "准备工作区"
+        case "preparing_context": "整理上下文"
+        case "starting_model": "连接模型"
+        case "provisioning_environment": "准备环境"
+        default: "准备中"
         }
     }
 
@@ -157,11 +184,18 @@ struct WorkCardView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
-                if let finished = work.finishedAt {
+                if let finished = work.finishedAt, finished.timeIntervalSince(work.startedAt) >= 1 {
                     Label(Self.duration(finished.timeIntervalSince(work.startedAt)), systemImage: "clock")
                 }
                 if !work.plan.isEmpty {
                     Label("完成 \(work.plan.count) 步", systemImage: "checklist")
+                } else if !work.tools.isEmpty {
+                    Button {
+                        withAnimation(.snappy(duration: 0.22)) { stepsOpen.toggle() }
+                    } label: {
+                        Label("\(work.tools.count) 个操作", systemImage: stepsOpen ? "chevron.up" : "chevron.down")
+                    }
+                    .buttonStyle(.plain)
                 }
                 if let model = work.model {
                     Label(model, systemImage: "cpu")
@@ -169,6 +203,12 @@ struct WorkCardView: View {
             }
             .lineLimit(1)
             .fixedSize()
+            if stepsOpen {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(work.tools, id: \.id) { ToolRow(tool: $0) }
+                }
+                .transition(.opacity)
+            }
             if let background = work.background {
                 BackgroundPill(summary: background)
             }
@@ -182,6 +222,29 @@ struct WorkCardView: View {
     static func duration(_ seconds: TimeInterval) -> String {
         let total = Int(seconds.rounded())
         return total < 60 ? "用时 \(total) 秒" : "用时 \(total / 60) 分 \(total % 60) 秒"
+    }
+}
+
+struct ToolRow: View {
+    let tool: ToolStep
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Group {
+                switch tool.status {
+                case .running: ProgressView().controlSize(.mini)
+                case .done: Image(systemName: "checkmark").foregroundStyle(VTheme.green)
+                case .failed: Image(systemName: "xmark").foregroundStyle(VTheme.red)
+                }
+            }
+            .font(.caption2.weight(.bold))
+            .frame(width: 14)
+            Text(tool.summary)
+                .font(.footnote)
+                .foregroundStyle(tool.status == .running ? VTheme.ink : VTheme.soft)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
     }
 }
 

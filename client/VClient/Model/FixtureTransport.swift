@@ -4,7 +4,25 @@ import Foundation
 /// scripted run for every message you send. Nothing leaves the device.
 @MainActor
 final class FixtureTransport: VTransport {
-    func loadSessions() async -> [ChatSession] {
+    func start(model: AppModel) async {
+        model.status = .demo
+        model.sessions = Self.sessions()
+    }
+
+    func stop() {}
+    func reconnect() {}
+    func open(session: String, model: AppModel) async {}
+    func loadEarlier(session: String, model: AppModel) async {}
+
+    func abort(session: String, model: AppModel) async {
+        guard let runId = model.session(session)?.activeRun else { return }
+        model.updateWork("run:\(runId)", in: session) { work in
+            work.phase = .aborted
+            work.finishedAt = .now
+        }
+    }
+
+    static func sessions() -> [ChatSession] {
         let now = Date.now
         func ago(_ minutes: Double) -> Date { now.addingTimeInterval(-minutes * 60) }
 
@@ -100,10 +118,11 @@ final class FixtureTransport: VTransport {
         return [direct, group, nightshift]
     }
 
-    func send(_ text: String, session: String, model: AppModel) async {
-        let id = UUID().uuidString
+    func send(_ text: String, session: String, itemId: String, model: AppModel) async {
+        let runId = UUID().uuidString
+        let id = "run:\(runId)"
         let start = Date.now
-        model.append(ChatItem(id: id, sender: .v, time: start, content: .reply(WorkState(startedAt: start))), to: session)
+        model.append(ChatItem(id: id, sender: .v, time: start, content: .reply(WorkState(runId: runId, startedAt: start))), to: session)
 
         try? await Task.sleep(for: .milliseconds(900))
         model.updateWork(id, in: session) { work in
@@ -114,14 +133,15 @@ final class FixtureTransport: VTransport {
                 PlanStep(text: "查找相关记录", status: .running),
                 PlanStep(text: "整理回复", status: .pending),
             ]
-            work.tool = "memory_search · “\(text.prefix(16))”"
+            work.tools = [ToolStep(id: "t1", name: "memory_search", summary: "查找记忆 \(text.prefix(16))", status: .running)]
         }
 
         try? await Task.sleep(for: .milliseconds(1600))
         model.updateWork(id, in: session) { work in
+            guard work.isActive else { return }
             work.plan[1].status = .done
             work.plan[2].status = .running
-            work.tool = nil
+            work.tools[0].status = .done
             work.commentary = "找到了 3 条相关记录，正在整理。"
             work.background = BackgroundSummary(running: 1, subagents: 1, commands: 0)
         }
@@ -136,6 +156,7 @@ final class FixtureTransport: VTransport {
         """
         var shown = ""
         for character in answer {
+            guard model.session(session)?.activeRun == runId else { return }
             shown.append(character)
             if character == "\n" || shown.count % 6 == 0 {
                 let snapshot = shown
@@ -149,7 +170,7 @@ final class FixtureTransport: VTransport {
             work.plan[2].status = .done
             work.commentary = nil
             work.phase = .done
-            work.model = "原型 · 无模型"
+            work.model = "示例 · 无模型"
             work.background = BackgroundSummary(running: 0, subagents: 0, commands: 0)
             work.finishedAt = .now
         }
@@ -182,14 +203,14 @@ final class FixtureTransport: VTransport {
         }
     }
 
-    func answer(_ question: String, choices: Set<Int>, item: String, session: String, model: AppModel) async {
+    func answer(_ question: QuestionState, choices: Set<Int>, other: String?, item: String, session: String, model: AppModel) async {
         try? await Task.sleep(for: .milliseconds(500))
         model.updateWork("dm-5", in: session) { work in
             work.phase = .working
             work.plan[1].status = .done
             work.plan[2].status = .running
             work.commentary = "好，按你选的加购。"
-            work.tool = "browser · 加入购物车"
+            work.tools = [ToolStep(id: "t2", name: "browser", summary: "操作浏览器 加入购物车", status: .running)]
         }
     }
 
