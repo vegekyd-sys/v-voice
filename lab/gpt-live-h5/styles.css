@@ -1232,3 +1232,9 @@ html[data-tv-overlay="true"] .tv-avatar-large{outline:none!important;box-shadow:
 html[data-tv-overlay="true"][data-tv-layout="full"] .avatar-aura{display:none!important}
 html[data-tv-overlay="true"][data-tv-layout="full"] .avatar{transition:none!important;will-change:auto}
 html[data-tv-overlay="true"][data-tv-layout="full"] :is(.call-pill,.composer,.reader-backdrop,.reader-surface){backdrop-filter:none;-webkit-backdrop-filter:none}
+
+/* The overlay canvas has no page/card background, including the first native
+   reveal. Use one explicit rule instead of relying on body propagation. */
+html[data-tv-overlay="true"]:not([data-tv-layout="full"]),
+html[data-tv-overlay="true"]:not([data-tv-layout="full"]) body,
+html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:transparent!important}

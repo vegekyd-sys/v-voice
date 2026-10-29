@@ -621,3 +621,9 @@ The earlier accepted task-continuity baseline uses Voice `a9ac5168` and the plat
 - 候选首页日志仅在该独立入口展示，正式已发布列表不加入实验能力。
 
 状态：独立 Candidate 已部署，未合入、未发布生产。版本元数据见 `lab/speaker-native/linux-release.mjs`，实际验收见 `docs/experiments/speaker-stream-linux-2026-10-19.md`。
+
+## TV immediate dial candidate (2026-10-30)
+
+- Home 0.4.18 starts a bounded local dialing cue in the click handler, before the WebView is ready. Shell 0.3.8 hands it off to the shared call sound and stops it on abort/teardown.
+- Reassert a transparent native backing canvas at navigation commit and first reveal; keep the overlay root/body/app explicitly transparent. The reported brief white frame has not yet been reproduced in captured baseline videos; this is a first-paint safeguard pending user confirmation.
+- Xiaomi remote voice key resolves through its proprietary VoiceControlService. No system key mapping or Xiaoai service changed.

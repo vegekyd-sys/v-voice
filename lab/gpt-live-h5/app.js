@@ -624,6 +624,9 @@ async function startCall() {
   // pause or replace the next call's pickup. The page element configures assets.
   active.soundElement = document.createElement("audio"); active.soundElement.playsInline = true;
   for (const key of ["ringSrc", "pickupSrc"]) if ($("callSound").dataset[key]) active.soundElement.dataset[key] = $("callSound").dataset[key];
+  // The TV Home gesture owns only the bounded cold-start cue. Hand it off
+  // before this shared call starts its normal ring; no native call policy.
+  try { window.VTVStartupCue?.finish?.(); } catch {}
   active.sounds = createCallSounds({ audioElement: active.soundElement, sharedContext: active.context });
   void active.sounds.dial();
   // Activity metadata stays in this page's memory only. It contains no audio,
