@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "redial-cleanup-20261028",
-  "version": "voice-redial-cleanup.20261028.1",
-  "entryCommit": "4f06888030edeb2704ecdd944b724fece900061d",
-  "deviceEntryCommit": "4f06888030edeb2704ecdd944b724fece900061d",
-  "filesSha256": "fff75f3d800bc7d3954e10d508368577856b7fc4deb3fcac41f584b793796b25",
-  "registration": "redial-cleanup-20261028/release.json",
-  "previousEntryCommit": "0d97329faa3e151ac4b7e9b3f5c262303f736a43",
+  "release": "one-voice-20261030",
+  "version": "voice-one-v.20261030.1",
+  "entryCommit": "899ed2ffdfe76cd7d76d593af36040dfe80e62c7",
+  "deviceEntryCommit": "899ed2ffdfe76cd7d76d593af36040dfe80e62c7",
+  "filesSha256": "4d722bfc4121bcf24023c159b8c31e8d43f68de1ed06f0240048d1217945a3e0",
+  "registration": "one-voice-20261030/release.json",
+  "previousEntryCommit": "4f06888030edeb2704ecdd944b724fece900061d",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-10-28T23:31:16+08:00",
-  "runtimeDifference": "Completed-call acknowledgement removes redundant iOS redial cleanup; existing native binary. Production probe confirms removal but does not establish total latency improvement; one transient disconnect retained in comparison."
+  "validatedAt": "2026-10-30T23:55:00+08:00",
+  "runtimeDifference": "One V while a task runs: first-person speech, results from the conclusion, no spoken durations, premature completion claims cut. Existing native binaries; Gateway unchanged. Synthetic production calls plus Tianyi's Candidate call."
 }
