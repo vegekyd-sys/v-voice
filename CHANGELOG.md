@@ -12,7 +12,7 @@
 - Results are heard from their conclusion: the backend writes spoken lines as V, and the host strips process openings and second-party words. The whole result stays on screen and in model context. Seeduplex cannot phrase a result itself: on the live endpoint `response.create` is rejected and a late tool result produces no reply.
 - No spoken durations: a real step or finding, or after 45 s of silence at most two plain lines. Timing stays on screen.
 - A model reply claiming the job is done while it is running is cut from its text and corrected (`ca2433b7`: "整理好了" 16 s before the task ended). Synthetic call: V declined when pushed; the cut itself has not fired in a real call and is covered by unit tests only.
-- PR #186. No Gateway, native binary or firmware change.
+- PR #186, deployed to both Voice nodes as `899ed2f`; Gateway unchanged. Production synthetic regression: a 39 s real task with no second-party words or durations and its result spoken; 3/3 native lookups answered. Tianyi approved after a real Candidate call. Devices checked by version only; see `docs/releases/one-voice-20261030/release.json`.
 
 ## 2026-10-28 — Retired-call cleanup acknowledgement released
 
