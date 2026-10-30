@@ -13,7 +13,7 @@ const TOOL_LABELS = Object.freeze({
   message:'发消息', write:'写文件', edit:'改文件', apply_patch:'改文件',
 });
 export const STAGE_LABELS = new Set(Object.values(TOOL_LABELS));
-const QUIET_LABELS = new Set(['运行命令', '等命令跑完']);
+const QUIET_LABELS = new Set(['运行命令', '等命令跑完', '安排子任务']);
 const clip = (text, max = 32) => {
   const flat = String(text).replace(/[\s\u200b]+/gu, ' ').replace(/["“”「」]/gu, '').trim();
   return flat.length <= max ? flat : flat.slice(0, max).replace(/[\s,，、.。;；:：-]*\S*$/u, '') || flat.slice(0, max);
@@ -28,12 +28,12 @@ export function stepDetail(name, args) {
   }
   return null;
 }
-/** One spoken sentence for a step; the detail is the backend's own words. */
+/** One spoken sentence for a step, in V's own voice; the detail is the step's own subject. */
 export function stepPhrase(label, detail) {
-  if (label === '上网搜索' || label === '搜索资料') return detail ? `后台在搜“${detail}”` : '后台在上网搜索';
-  if (label === '查记忆') return detail ? `后台在翻记忆里“${detail}”的记录` : '后台在翻记忆里的记录';
-  if (label === '读网页') return detail ? `后台在看 ${detail} 上的网页` : '后台在读网页';
-  return label ? `后台在${label}` : '后台在处理下一步';
+  if (label === '上网搜索' || label === '搜索资料') return detail ? `我在查${detail}` : '我在上网查';
+  if (label === '查记忆') return detail ? `我翻翻记忆里${detail}的记录` : '我翻翻记忆里的记录';
+  if (label === '读网页') return detail ? `我在看 ${detail} 上的内容` : '我在看网页';
+  return label ? `我在${label}` : '我在弄下一步';
 }
 export const toolStageLabel = name => {
   const base = typeof name === 'string' ? name.split(/[.:/]/u).at(-1) : '';
@@ -100,21 +100,21 @@ export function createTaskStages({now = Date.now} = {}) {
     observed: () => ({events, streams:{...streams}, steps:done.size + pending.size}),
   };
 }
-/** What makes a stage worth a new line: a new subject or kind of step, or a failure. */
-export const stageKey = stage => stage.steps ? `${stage.latest ?? '?'}|${stage.detail ?? ''}|${stage.failed}` : 'none';
-
-// Rounded down: "已经40秒了" is never more than the time that actually passed.
-const minutes = ms => ms < 60000 ? `${Math.max(1, Math.floor(ms / 10000)) * 10}秒` : `${Math.floor(ms / 30000) / 2}分钟`.replace('.5分钟', '分半钟');
+/** What makes a stage worth a new line: a new subject or kind of step, or that step failing. */
+export const stageKey = stage => stage.steps ? `${stage.latest ?? '?'}|${stage.detail ?? ''}|${stage.latestFailed && !stage.latestRunning ? 'failed' : ''}` : 'none';
 
 /**
- * One short spoken line from verified state only: what the backend is doing
- * (its latest step and that step's own subject) and, for a repeat, how long the
- * task has been running. Counting steps tells the caller nothing, so it is not said.
+ * One short spoken line from verified state only: what V is doing right now
+ * (the latest step and that step's own subject). Time is never spoken: the
+ * screen shows it. Null when there is nothing the caller would want to hear.
  */
-export function stageLine(stage, {elapsedMs, heartbeat = false} = {}) {
-  const time = minutes(elapsedMs);
-  if (!stage.steps || !stage.latest) return `后台还在处理，已经${time}了。`;
-  if (stage.latestFailed && !stage.latestRunning && !heartbeat) return '刚才有一步没成功，后台还在继续。';
-  const doing = stepPhrase(stage.latest, stage.detail);
-  return heartbeat ? `还在弄，已经${time}了，刚才${doing.replace(/^后台/u, '')}。` : `${doing}。`;
+export function stageLine(stage) {
+  if (!stage.steps || !stage.latest) return null;
+  if (stage.latestFailed && !stage.latestRunning) return '刚才有一步没走通，我还在弄。';
+  return `${stepPhrase(stage.latest, stage.detail)}。`;
 }
+// For a long silence with nothing new. Bounded, and it never states a duration.
+export const IDLE_LINES = Object.freeze(['还在弄，有新进展我就说。', '这个有点费工夫，我还在看。']);
+// The model said a job is done before it is: V corrects itself at once.
+export const NOT_DONE_LINE = '等一下，这个我还没弄完，弄好了告诉你。';
+export const TASK_FAILED_LINE = '这个我没弄成，要不要我再试一次？';

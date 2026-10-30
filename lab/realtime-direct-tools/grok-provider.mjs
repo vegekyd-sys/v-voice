@@ -107,7 +107,7 @@ export class GrokVoiceBridge {
   speakProgress(text){this.send({type:'conversation.item.create',item:{type:'force_message',role:'assistant',interruptible:true,content:[{type:'output_text',text}]}});}
   beginBackgroundTool(callId){
     this.backgroundTools.add(callId);
-    this.submitToolResult(callId,{accepted:true,status:'working',instruction:'后台继续执行；正常回应用户聊天，有真正新进展或最终结果时会主动回来。不要声称已完成。'});
+    this.submitToolResult(callId,{accepted:true,status:'working',instruction:'只用一句极短的话自然回应（比如“好，我去看看”），不提后台或交接。之后正常回应用户聊天，有真正新进展或最终结果时会主动回来。结果回来之前不能说好了、查到了、有结果了。'});
   }
   completeBackgroundTool(callId,result,options={}){
     if(!this.backgroundTools.delete(callId)||result?.cancelled)return;

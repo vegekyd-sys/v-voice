@@ -494,7 +494,7 @@ export class SeeduplexRealtimeVoiceBridge {
     // Finish the native function immediately; the host owns the async job.
     // Keeping a native continuation open suppresses later conversational turns.
     this.backgroundTools.set(callId, question);
-    this.submitToolResult(callId, {accepted:true,status:"working",message:"已交给 V 后台，我会继续做完。",instruction:"简短说明任务已开始，随后正常回应用户聊天。任务仍在后台继续，不要声称已完成。"}, {backgroundAck:true});
+    this.submitToolResult(callId, {accepted:true,status:"working",message:"好，我去看看。",instruction:"只用一句极短的话自然回应（比如“好，我去看看”），不提后台或交接，不复述计划。之后正常回应用户聊天。事情还在做，结果回来之前不能说好了、查到了、有结果了。"}, {backgroundAck:true});
   }
 
   /** Take over a background task whose native session was replaced for the same audience. */
@@ -518,7 +518,7 @@ export class SeeduplexRealtimeVoiceBridge {
     const spoken = options.spokenText ?? text;
     // A host-provided speaker captions the line when its audio starts.
     if (options.speak) return void options.speak(spoken);
-    if (!options.displayedFullResult) this.request.onTranscript?.("assistant", text, true, "V-backend");
+    if (!options.displayedFullResult) this.request.onTranscript?.("assistant", spoken, true, "V-backend");
     this.speakProgress(spoken, { caption: options.displayedFullResult === true });
   }
 

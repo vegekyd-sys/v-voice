@@ -180,6 +180,16 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-one-v.20261030.1',date:'2026-10-30',
+    title:'等任务时听起来始终是 V 一个人',
+    items:[
+      'V 不再说“交给后台”，进度和结果都用第一人称。',
+      '结果从结论开始说，去掉“我查下”这类开场；完整内容仍在屏幕上。',
+      '不再播报“已经多少秒”，只说真实进展；很久没动静时最多说两句，不带时间。',
+      '任务还没做完时，V 如果抢先说“整理好了”，会被当场拦下并改口。',
+    ],
+  },
+  {
     version:'voice-redial-cleanup.20261028.1',date:'2026-10-28',
     title:'再次拨号减少一次等待',
     items:[

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {presentBackendResult,LONG_RESULT_NOTICE,readBackendResult,backendResultQuestion} from './result-presentation.mjs';
+import {presentBackendResult,LONG_RESULT_NOTICE,readBackendResult,backendResultQuestion,speakableResult,speakableProgress,claimsCompletion} from './result-presentation.mjs';
 
 test('short generated media is displayed and speech gives its caption without reading the URL',()=>{
  for (const text of ['小赛车在积木赛道上。\n![赛车](https://cdn.test/a.webp)','小赛车的五秒视频。\n[视频](https://cdn.test/a.mp4)']) {
@@ -61,4 +61,19 @@ test('a spoken progress line before the headings keeps the document whole but st
   const shown=presentBackendResult(raw);assert(shown.spokenText.startsWith(summary));assert.doesNotMatch(shown.spokenText,/【/u);
  }
  assert.doesNotMatch(presentBackendResult('前置文字。【语音摘要】\n'+'很长'.repeat(80)+'\n'+body).spokenText,/【语音摘要】|【完整方案】/u,'a marker is never read aloud');
+});
+
+test('what the caller hears starts at the conclusion and names no second party',()=>{
+ for(const [raw,heard] of [
+  ['我查下相关资料。天街在西侧。','天街在西侧。'],['我查了一下，天街在西侧。','天街在西侧。'],['收到。我先核对了路线，走十五分钟。','走十五分钟。'],['好的，我帮你看一下，今天有雨。','今天有雨。'],
+  ['后台整理好了，耀中偏双语。','我整理好了，耀中偏双语。'],['交给后台再试一次就行。','我来再试一次就行。'],
+  ['我查到天街在西侧。','我查到天街在西侧。'],['我确认明天没课。','我确认明天没课。'],['我先查了 3 个来源，都说有雨。','我先查了 3 个来源，都说有雨。'],['记忆里只有使用记录，没有价格。','记忆里只有使用记录，没有价格。'],['我查了一下。','我查了一下。'],
+ ])assert.equal(speakableResult(raw),heard,raw);
+ assert.equal(presentBackendResult('我查下路线。天街在西侧。').text,'我查下路线。天街在西侧。','the document stays whole');
+ assert.equal(presentBackendResult('我查下路线。天街在西侧。').spokenText,'天街在西侧。');
+});
+test('a claim of being done is told apart from a promise, a negation or an unfinished clause',()=>{
+ for(const t of ['后台整理好了，核心区别很明确','都查到了。','弄好了！','这个完成了，你看','有结果了：耀中'])assert.equal(claimsCompletion(t),true,t);
+ for(const t of ['等我整理好了告诉你。','还没查到，再等等。','有结果了我就说。','整理好了','查好了给你','一会儿弄好了，我告诉你','如果查到了，我跟你说','快弄好了，再等下','我帮你查一下','记忆里没有记录'])assert.equal(claimsCompletion(t),false,t);
+ assert.equal(speakableProgress('整理好了，马上给你。'),null);assert.equal(speakableProgress('后台在拉最新赛程。'),'我在拉最新赛程。');
 });
