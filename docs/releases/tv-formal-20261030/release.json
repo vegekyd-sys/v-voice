@@ -1,6 +1,6 @@
 {
   "version": "voice-tv-formal.20261030.1",
-  "status": "PREPARED_NOT_DEPLOYED",
+  "status": "DEPLOYED_TV_OFFICIAL_PATH_VERIFIED",
   "rollbackServiceCommit": "899ed2ffdfe76cd7d76d593af36040dfe80e62c7",
   "launcherVersion": "0.4.19-media-cue-tv",
   "nativeVersion": "0.3.11-host-focus-tv",
@@ -17,9 +17,43 @@
     "no loading white frame"
   ],
   "pending": [
-    "PR merge and main CI",
-    "dual node release",
-    "official TV endpoint and live call validation",
-    "human far field echo and physical STR"
+    "Human far-field echo and physical STR were not newly accepted"
+  ],
+  "schema": "v-voice-production-release-v1",
+  "releasePR": 188,
+  "entryCommit": "53f1e621745610b5a9811d00ef82cdf4ac1cc07f",
+  "deviceEntryCommit": "53f1e621745610b5a9811d00ef82cdf4ac1cc07f",
+  "filesSha256": "f2fe63a68f1662db3ff460e9291806b179d6014fad4baade5765df663fc4a211",
+  "iosShellRevision": "a305909636a1e4852ebf8d16f0b1208b35c4d7c037c6030058c4dcf1725b75d5",
+  "serverNodesSynchronized": true,
+  "homepageChangelogVerified": true,
+  "gatewayRestarted": false,
+  "gatewayIdentityAndConfigUnchanged": true,
+  "validatedAt": "2026-10-31T00:51:29+08:00",
+  "tvOfficialEntry": {
+    "sameIdentityPreserved": true,
+    "consecutiveSuccessfulRuns": 2,
+    "checks": [
+      "same private identity migrated from candidate to official HTTPS entry",
+      "official real model connected with four-channel TV array",
+      "Home and system Settings retained original call",
+      "home avatar restored same WebView and generation",
+      "speaker output toggled off and on",
+      "remote confirm hung up and capture released"
+    ],
+    "protectedUnchanged": {
+      "theme": true,
+      "homeHelper": true,
+      "str": true,
+      "standby": true
+    },
+    "restoredPriorSleepState": true,
+    "newHumanAcousticAcceptance": false
+  },
+  "limits": [
+    "First recorded start failed TV_DSP_TIMEOUT before capture; two subsequent starts without screenrecord passed. Cache/network/recording load are not isolated, so the cause is unconfirmed and first-load reliability is not declared fixed.",
+    "The wakeup key had no effect on this TV; the test used the existing power toggle only after checking asleep/awake state.",
+    "No new real iPhone, speaker or robot audio call in this release; two server nodes and distributed H5 hashes were verified.",
+    "Exact previously accepted launcher/native APKs retained, not rebuilt or reinstalled."
   ]
 }
