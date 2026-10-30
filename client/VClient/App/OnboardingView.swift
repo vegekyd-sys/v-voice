@@ -155,7 +155,6 @@ struct SettingsView: View {
                 if model.mode == .live {
                     Section("连接") {
                         LabeledContent("地址", value: model.endpoint?.displayHost ?? "—")
-                        LabeledContent("连接", value: model.status.label)
                         if let version = model.serverVersion { LabeledContent("OpenClaw", value: version) }
                         if let id = model.deviceId { LabeledContent("设备 ID", value: String(id.prefix(12)) + "…") }
                         LabeledContent("权限", value: model.endpoint?.deviceTokenScopes?.map { $0.replacingOccurrences(of: "operator.", with: "") }.joined(separator: "、") ?? "配对中")
@@ -209,7 +208,7 @@ struct StatusLine: View {
 
     private var color: Color {
         switch status {
-        case .connected: VTheme.green
+        case .connected: VTheme.purple
         case .demo: VTheme.orange
         case .offline: VTheme.red
         default: VTheme.muted

@@ -21,8 +21,7 @@ struct SessionListView: View {
     var body: some View {
         @Bindable var model = model
         List(selection: $model.selectedSessionID) {
-            HomeHeader(status: model.status, working: model.sessions.filter(\.isWorking).count)
-                .quietRow(top: 2, bottom: 10)
+            HomeStatus(status: model.status, working: model.sessions.filter(\.isWorking).count)
             if case .awaitingApproval = model.status {
                 ApprovalWaitingRow().quietRow()
             }
@@ -63,8 +62,28 @@ struct SessionListView: View {
                 }
             }
         }
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaBar(edge: .top) {
+            // Wordmark and settings on one line, centred on each other.
+            HStack {
+                Text("V")
+                    .font(.system(size: 34, weight: .semibold, design: .serif))
+                    .foregroundStyle(VTheme.ink)
+                Spacer()
+                Button { showSettings = true } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(VTheme.soft)
+                        .frame(width: 40, height: 40)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: Circle())
+                .accessibilityLabel("设置")
+            }
+            .padding(.horizontal, VTheme.pagePadding)
+            .padding(.top, 4)
+            .padding(.bottom, 8)
+        }
         .searchable(text: $query, prompt: "搜索会话")
         .refreshable {
             model.becameActive()
@@ -72,11 +91,6 @@ struct SessionListView: View {
         }
         .onChange(of: model.selectedSessionID) { previous, id in
             if let id { model.open(id) } else if let previous { model.closeChat(previous) }
-        }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("设置", systemImage: "gearshape") { showSettings = true }
-            }
         }
         .sheet(isPresented: $showSettings) { SettingsView() }
     }
@@ -109,20 +123,24 @@ private extension View {
     }
 }
 
-/// The wordmark, and one line only when there is something to say: what V is
-/// doing, or why it cannot be reached. A healthy idle connection says nothing.
-private struct HomeHeader: View {
+/// One line only when there is something to say: what V is doing, or why it
+/// cannot be reached. A healthy idle connection says nothing.
+private struct HomeStatus: View {
     let status: ConnectionStatus
     let working: Int
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("V")
-                .font(.system(size: 44, weight: .semibold, design: .serif))
-                .foregroundStyle(VTheme.ink)
-            line
+    private var hasLine: Bool {
+        switch status {
+        case .connected: working > 0
+        case .awaitingApproval: false
+        default: true
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    var body: some View {
+        if hasLine {
+            line.quietRow(top: 0, bottom: 10)
+        }
     }
 
     @ViewBuilder
