@@ -317,11 +317,15 @@ struct SessionAvatar: View {
     var body: some View {
         Group {
             if session.kind == .group || (session.kind == .direct && session.title != "V") {
+                // The initial stays underneath until the picture arrives, and if it never does.
                 Text(initial)
                     .font(.system(size: size * 0.4, weight: .medium))
                     .foregroundStyle(VTheme.purple)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(VTheme.lavender)
+                    .overlay {
+                        if let url = session.avatarURL { RemoteAvatarImage(url: url) }
+                    }
             } else {
                 Image("VAvatar").resizable().scaledToFill()
             }
@@ -335,5 +339,32 @@ struct SessionAvatar: View {
         // Stable across launches, unlike hashValue.
         let pick = palettes[seed.unicodeScalars.reduce(0) { $0 &+ Int($1.value) } % palettes.count]
         return pick.map { Color(hex: $0) }
+    }
+}
+
+/// A picture from Feishu's CDN: no credentials, kept in memory, on disk by URLCache.
+private struct RemoteAvatarImage: View {
+    let url: URL
+    @State private var image: UIImage?
+
+    @MainActor private static let memory = NSCache<NSURL, UIImage>()
+
+    var body: some View {
+        // Color.clear, not an empty group: an empty view never runs its task.
+        Color.clear
+            .overlay {
+                if let image { Image(uiImage: image).resizable().scaledToFill() }
+            }
+            .task(id: url) {
+            if let hit = Self.memory.object(forKey: url as NSURL) {
+                image = hit
+                return
+            }
+            guard let (data, _) = try? await URLSession.shared.data(from: url),
+                  let decoded = await Task.detached(operation: { UIImage(data: data)?.preparingForDisplay() }).value
+            else { return }
+            Self.memory.setObject(decoded, forKey: url as NSURL)
+            image = decoded
+        }
     }
 }

@@ -17,6 +17,8 @@ struct ChatSession: Identifiable, Hashable, Sendable, Codable {
     var hasMoreHistory = false
     /// Model label from the session's defaults, e.g. "deepseek-flash".
     var model: String?
+    /// The chat's picture in Feishu, when V knows it.
+    var avatarURL: URL?
 
     var displayPreview: String {
         guard let last = items.last else { return preview }

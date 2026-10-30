@@ -119,6 +119,7 @@ final class LiveTransport: VTransport {
                     session.model = existing.model ?? session.model
                     // V only reads a preview for part of a long list.
                     if session.preview.isEmpty { session.preview = existing.preview }
+                    if session.avatarURL == nil { session.avatarURL = existing.avatarURL }
                 }
                 merged.append(session)
             }
@@ -214,7 +215,8 @@ final class LiveTransport: VTransport {
             pinned: json["pinned"]?.bool ?? false,
             preview: json["lastMessagePreview"]?.string.map(MessageParser.preview) ?? "",
             lastActivity: activity,
-            model: json["model"]?.string.map(HistoryMapper.modelLabel))
+            model: json["model"]?.string.map(HistoryMapper.modelLabel),
+            avatarURL: json["avatar"]?.string.flatMap(URL.init(string:)))
     }
 
     // MARK: Transcript
