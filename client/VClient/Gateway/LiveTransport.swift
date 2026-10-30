@@ -14,6 +14,12 @@ final class LiveTransport: VTransport {
     private var historyLimit: [String: Int] = [:]
     private var refreshes: [String: Task<Void, Never>] = [:]
     private var sessionsReload: Task<Void, Never>?
+    private var lastSessionsReload: ContinuousClock.Instant?
+    /// `sessions.list` walks every session on the Gateway's main thread (about 3 s
+    /// on production V whatever the filters), so it runs on connect and when a new
+    /// session shows up, at most once per interval. Everything else comes from the
+    /// row snapshot in `sessions.changed`.
+    private static let sessionsReloadInterval: Duration = .seconds(60)
 
     private static let pageSize = 60
     private let endpoint: GatewayEndpoint
@@ -41,6 +47,7 @@ final class LiveTransport: VTransport {
         connection = nil
         refreshes.values.forEach { $0.cancel() }
         sessionsReload?.cancel()
+        sessionsReload = nil
     }
 
     func reconnect() { connection?.reconnectIfNeeded() }
@@ -73,6 +80,7 @@ final class LiveTransport: VTransport {
 
     private func reloadSessions() async {
         guard let connection, let model else { return }
+        lastSessionsReload = .now
         do {
             let result = try await connection.request("sessions.list", ["limit": 80, "includeLastMessage": true])
             let fresh = result["sessions"]?.array.compactMap(Self.session(from:)) ?? []
@@ -98,11 +106,29 @@ final class LiveTransport: VTransport {
     }
 
     private func scheduleSessionsReload() {
-        sessionsReload?.cancel()
+        guard sessionsReload == nil else { return }
+        let due = lastSessionsReload.map { $0 + Self.sessionsReloadInterval } ?? .now
         sessionsReload = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.5))
+            try? await Task.sleep(until: max(due, .now + .seconds(1.5)))
             guard !Task.isCancelled else { return }
+            self?.sessionsReload = nil
             await self?.reloadSessions()
+        }
+    }
+
+    /// `sessions.changed` carries a snapshot of the changed row. Known sessions are
+    /// updated from it in place; only a session the app has not seen costs a list.
+    private func applySessionChange(_ payload: JSONValue) {
+        guard let model, let key = payload["sessionKey"]?.string,
+              case .object(var row) = payload
+        else { return scheduleSessionsReload() }
+        row["key"] = .string(key)
+        guard let fresh = Self.session(from: .object(row)) else { return }
+        guard model.session(key) != nil else { return scheduleSessionsReload() }
+        model.update(key) { session in
+            if !fresh.preview.isEmpty { session.preview = fresh.preview }
+            session.lastActivity = max(session.lastActivity, fresh.lastActivity)
+            if fresh.unread > 0, key != model.selectedSessionID { session.unread = max(session.unread, 1) }
         }
     }
 
@@ -284,7 +310,7 @@ final class LiveTransport: VTransport {
         case "chat": handleChat(payload)
         case "agent": handleAgent(payload)
         case "session.message": handleSessionMessage(payload)
-        case "sessions.changed": scheduleSessionsReload()
+        case "sessions.changed": applySessionChange(payload)
         case "progressCard.changed":
             if let key = payload["sessionKey"]?.string { Task { await refreshProgressCard(key) } }
         case "session.approval": handleApproval(payload)
@@ -315,7 +341,6 @@ final class LiveTransport: VTransport {
         if state == "final" || state == "error" || state == "aborted", model.session(key)?.items.contains(where: { $0.id == "run:\(runId)" }) != true {
             // A run we never saw start (e.g. connected late): the transcript has it.
             scheduleHistoryRefresh(key, delay: .milliseconds(300))
-            scheduleSessionsReload()
             return
         }
         guard let itemId = ensureRun(runId, in: key, at: .now) else { return }
@@ -364,7 +389,6 @@ final class LiveTransport: VTransport {
     private func finish(_ runId: String, _ key: String) {
         runs[runId] = nil
         scheduleHistoryRefresh(key)
-        scheduleSessionsReload()
     }
 
     private func handleAgent(_ payload: JSONValue) {
@@ -458,7 +482,6 @@ final class LiveTransport: VTransport {
             for item in HistoryMapper.items(from: [message], sessionKind: session.kind) {
                 model.append(item, to: key)
             }
-            scheduleSessionsReload()
         } else if let runId = message["__openclaw"]?["runId"]?.string, runs[runId] != nil {
             return // streaming already shows it
         } else {

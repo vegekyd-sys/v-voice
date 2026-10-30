@@ -184,6 +184,9 @@ final class AppModel {
             guard !session.items.contains(where: { $0.id == item.id }) else { return }
             session.items.append(item)
             if sessionID != selectedSessionID, item.sender != .user { session.unread += 1 }
+            // Keep the list current between the (throttled) sessions.list reloads.
+            session.lastActivity = max(session.lastActivity, item.time)
+            if case .text(let text) = item.content { session.preview = text }
         }
     }
 
