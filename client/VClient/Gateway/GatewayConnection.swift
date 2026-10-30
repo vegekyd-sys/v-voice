@@ -149,7 +149,11 @@ final class GatewayConnection {
             case .data(let bytes): data = bytes
             @unknown default: continue
             }
-            guard let frame = try? JSONValue.parse(data) else { continue }
+            // A transcript or session list can be megabytes; never decode those on the main thread.
+            let parsed: JSONValue? = data.count < 32 * 1024
+                ? try? JSONValue.parse(data)
+                : await Task.detached(priority: .userInitiated) { try? JSONValue.parse(data) }.value
+            guard current == generation, let frame = parsed else { continue }
             handle(frame)
         }
     }

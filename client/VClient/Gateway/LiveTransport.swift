@@ -29,7 +29,7 @@ final class LiveTransport: VTransport {
     private var vappOldest: String?
 
     /// `VCLIENT_HISTORY_LIMIT` (launch environment) loads a deeper first page for testing.
-    private static let pageSize = ProcessInfo.processInfo.environment["VCLIENT_HISTORY_LIMIT"].flatMap(Int.init) ?? 60
+    private static let pageSize = ProcessInfo.processInfo.environment["VCLIENT_HISTORY_LIMIT"].flatMap(Int.init) ?? 20
     private let endpoint: GatewayEndpoint
 
     init(endpoint: GatewayEndpoint) {
@@ -78,14 +78,15 @@ final class LiveTransport: VTransport {
         model.serverVersion = connection.hello?.serverVersion
         model.media = MediaLoader(endpoint: connection.endpoint)
         subscribedMessages.removeAll()
-        _ = try? await connection.request("sessions.subscribe", [:])
+        // No `sessions.subscribe`: it also sends every session's tool events, which
+        // this app does not use and which can fill a slow link (25 KB/s measured on V).
         await helloVapp()
-        // Before the session list (a 3 s walk on V): cards missed while away come back first.
         await loadVappHistory()
-        await reloadSessions()
+        // One socket, so a long list would hold up an open chat. The chat goes first.
         if let open = openSession {
             await self.open(session: open, model: model)
         }
+        if !model.sessionsAreFresh { await reloadSessions() } else { model.sessionsLoaded = true }
     }
 
     // MARK: Sessions
@@ -97,7 +98,16 @@ final class LiveTransport: VTransport {
         guard let connection, let model else { return }
         lastSessionsReload = .now
         do {
-            let result = try await connection.request("sessions.list", ["limit": 300, "includeLastMessage": true])
+            // A busy V can take half a minute over this walk; the cached list stays usable meanwhile.
+            // Rows cost about 2.4 KB each and sub-agents fill the newest ones. The first
+            // list has to dig deep to reach the chats; after that the recent rows update it.
+            let result: JSONValue
+            if connection.supports("vapp.sessions") {
+                result = try await connection.request("vapp.sessions", [:], timeout: .seconds(120))
+            } else {
+                let limit = model.sessions.count > 1 ? 100 : 300
+                result = try await connection.request("sessions.list", ["limit": .number(Double(limit)), "includeLastMessage": true], timeout: .seconds(120))
+            }
             let fresh = result["sessions"]?.array.compactMap(Self.session(from:)) ?? []
             var merged: [ChatSession] = []
             for var session in fresh {
@@ -110,10 +120,9 @@ final class LiveTransport: VTransport {
                 }
                 merged.append(session)
             }
-            // Keep a session the user has open even if the list no longer returns it.
-            for existing in model.sessions where !merged.contains(where: { $0.id == existing.id }) && existing.id == openSession {
-                merged.append(existing)
-            }
+            // A shorter list says nothing about the chats it does not reach.
+            let returned = Set(merged.map(\.id))
+            merged += model.sessions.filter { !returned.contains($0.id) }
             if let vapp = vappSession {
                 if let index = merged.firstIndex(where: { $0.id == vapp }) {
                     merged[index].pinned = true
@@ -123,7 +132,11 @@ final class LiveTransport: VTransport {
                 }
             }
             model.sessions = merged
+            model.sessionsLoaded = true
+            model.sessionsLoadedAt = .now
+            model.saveCache()
         } catch {
+            model.sessionsLoaded = true
             model.showNotice("会话列表加载失败：\(error.localizedDescription)")
         }
     }
@@ -205,22 +218,43 @@ final class LiveTransport: VTransport {
     // MARK: Transcript
 
     func open(session key: String, model: AppModel) async {
+        if let previous = openSession, previous != key { await close(session: previous) }
         openSession = key
         guard let connection, connection.state == .connected else { return }
-        if !subscribedMessages.contains(key) {
-            // includeApprovals opts this connection into the session's approval cards.
-            if let result = try? await connection.request(
-                "sessions.messages.subscribe", ["key": .string(key), "includeApprovals": true])
-            {
-                subscribedMessages.insert(key)
-                let replay = result["approvals"]?["approvals"] ?? result["approvals"] ?? .null
-                for approval in replay.array {
-                    handleApproval(["sessionKey": .string(key), "phase": "pending", "approval": approval])
-                }
-            }
-        }
+        // Together: the subscription needs no answer before the history can be asked for.
+        async let subscribed: Void = subscribe(key)
         await loadHistory(key)
+        await subscribed
         await refreshProgressCard(key)
+    }
+
+    private func subscribe(_ key: String) async {
+        guard let connection, !subscribedMessages.contains(key) else { return }
+        subscribedMessages.insert(key)
+        // includeApprovals opts this connection into the session's approval cards.
+        guard let result = try? await connection.request(
+            "sessions.messages.subscribe", ["key": .string(key), "includeApprovals": true])
+        else {
+            subscribedMessages.remove(key)
+            return
+        }
+        let replay = result["approvals"]?["approvals"] ?? result["approvals"] ?? .null
+        for approval in replay.array {
+            handleApproval(["sessionKey": .string(key), "phase": "pending", "approval": approval])
+        }
+    }
+
+    /// Back on the list: stop that chat's events and bring the list up to date.
+    func close(session key: String) async {
+        if openSession == key { openSession = nil }
+        if subscribedMessages.remove(key) != nil {
+            _ = try? await connection?.request("sessions.messages.unsubscribe", ["key": .string(key)])
+        }
+        scheduleSessionsReload()
+    }
+
+    func refreshSessions() async {
+        await reloadSessions()
     }
 
     func loadEarlier(session key: String, model: AppModel) async {
@@ -240,9 +274,12 @@ final class LiveTransport: VTransport {
         guard let connection, let model, let session = model.session(key) else { return }
         let limit = historyLimit[key] ?? Self.pageSize
         do {
-            let result = try await connection.request(
-                "chat.history", ["sessionKey": .string(key), "limit": .number(Double(limit))], timeout: .seconds(45))
-            let history = HistoryMapper.items(from: result["messages"]?.array ?? [], sessionKind: session.kind)
+                let result = try await connection.request(
+                "chat.history", ["sessionKey": .string(key), "limit": .number(Double(limit))], timeout: .seconds(120))
+            let kind = session.kind
+            let history = await Task.detached(priority: .userInitiated) {
+                HistoryMapper.items(from: result["messages"]?.array ?? [], sessionKind: kind)
+            }.value
             let modelName = result["defaults"]?["model"]?.string.map(HistoryMapper.modelLabel)
             model.update(key) { session in
                 session.items = Self.merge(history: history, local: session.items)
@@ -250,6 +287,7 @@ final class LiveTransport: VTransport {
                 session.hasMoreHistory = result["hasMore"]?.bool ?? false
                 if let modelName { session.model = modelName }
             }
+            model.saveCache()
         } catch {
             model.showNotice("聊天记录加载失败：\(error.localizedDescription)")
         }

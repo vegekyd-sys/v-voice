@@ -40,6 +40,8 @@ struct SessionListView: View {
                 switch model.status {
                 case .connecting:
                     ProgressView("正在连接 V…").foregroundStyle(VTheme.muted)
+                case .connected where query.isEmpty && !model.sessionsLoaded:
+                    ProgressView("正在读取会话…").foregroundStyle(VTheme.muted)
                 case .connected where query.isEmpty:
                     ContentUnavailableView("还没有会话", systemImage: "bubble.left",
                                            description: Text("在飞书里和 V 说句话，会话就会出现在这里"))
@@ -58,9 +60,12 @@ struct SessionListView: View {
         }
         .navigationTitle("V")
         .searchable(text: $query, prompt: "搜索会话")
-        .refreshable { model.becameActive() }
-        .onChange(of: model.selectedSessionID) { _, id in
-            if let id { model.open(id) }
+        .refreshable {
+            model.becameActive()
+            await model.refreshSessions()
+        }
+        .onChange(of: model.selectedSessionID) { previous, id in
+            if let id { model.open(id) } else if let previous { model.closeChat(previous) }
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

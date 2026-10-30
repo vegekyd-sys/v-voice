@@ -11,6 +11,8 @@ final class FixtureTransport: VTransport {
 
     func stop() {}
     func registerPush() async {}
+    func close(session: String) async {}
+    func refreshSessions() async {}
     func reconnect() {}
     func open(session: String, model: AppModel) async {}
     func loadEarlier(session: String, model: AppModel) async {}

@@ -15,6 +15,8 @@ protocol VTransport: AnyObject {
     func perform(_ action: FeishuCard.Action, form: [String: String], item: String, session: String, model: AppModel) async
     func react(item: ChatItem, emoji: String, remove: Bool, session: String, model: AppModel) async
     func registerPush() async
+    func close(session: String) async
+    func refreshSessions() async
     func answer(_ question: QuestionState, choices: Set<Int>, other: String?, item: String, session: String, model: AppModel) async
 }
 
@@ -60,6 +62,18 @@ final class AppModel {
     @ObservationIgnored private var sessionIndex: [String: Int] = [:]
     /// The app's own chat with V, when the Gateway has the vapp channel.
     var vappSessionID: String?
+    /// False until the first session list came back, so an empty list is not mistaken for "no chats".
+    var sessionsLoaded = false
+    /// When the list last came from V; survives restarts, since the list is cached too.
+    var sessionsLoadedAt: Date? {
+        get { UserDefaults.standard.object(forKey: "sessionsLoadedAt") as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: "sessionsLoadedAt") }
+    }
+    /// Reopening the app need not walk V's sessions again right away.
+    var sessionsAreFresh: Bool {
+        sessions.count > 1 && (sessionsLoadedAt.map { Date.now.timeIntervalSince($0) < 600 } ?? false)
+    }
+    @ObservationIgnored private var cacheSave: Task<Void, Never>?
     /// What a failed send needs for a retry.
     @ObservationIgnored private var unsent: [String: Outgoing] = [:]
     var selectedSessionID: String?
@@ -128,6 +142,7 @@ final class AppModel {
         endpoint.save()
         self.endpoint = endpoint
         sessions = []
+        sessionsLoaded = false
         selectedSessionID = nil
         mode = .live
         await boot()
@@ -165,7 +180,18 @@ final class AppModel {
     }
 
     func becameInactive() {
+        cacheSave?.cancel()
         if mode == .live, let endpoint { ChatCache.save(sessions, host: endpoint.displayHost) }
+    }
+
+    /// Soon after new content, so a chat opened again starts from what was last seen.
+    func saveCache() {
+        cacheSave?.cancel()
+        cacheSave = Task {
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            becameInactive()
+        }
     }
 
     // MARK: User actions
@@ -174,6 +200,14 @@ final class AppModel {
         selectedSessionID = sessionID
         update(sessionID) { $0.unread = 0 }
         Task { await transport?.open(session: sessionID, model: self) }
+    }
+
+    func closeChat(_ sessionID: String) {
+        Task { await transport?.close(session: sessionID) }
+    }
+
+    func refreshSessions() async {
+        await transport?.refreshSessions()
     }
 
     func loadEarlier(_ sessionID: String) {
