@@ -234,3 +234,56 @@ final class VappChatTests: XCTestCase {
         XCTAssertEqual(decoded, session)
     }
 }
+
+final class ChatPerformanceTests: XCTestCase {
+    func testGroupPreviewHidesReplyNote() {
+        XCTAssertEqual(MessageParser.preview("张寒冰: [Replying to: \"上一条\"]\n好的"), "张寒冰：好的")
+    }
+
+    /// A long answer streaming at Feishu's cadence: each rewrite adds a little text.
+    func testStreamingRewriteStaysCheap() {
+        let line = "这是一段**流式**输出的文字，带 `代码` 和 [链接](https://v.example)。\n\n"
+        var text = ""
+        var slowest = 0.0
+        var total = 0.0
+        for step in 1...300 {
+            text += line
+            let start = CFAbsoluteTimeGetCurrent()
+            for block in FeishuMarkdown.blocks(text) {
+                if case .paragraph(let paragraph) = block { _ = FeishuMarkdown.inline(paragraph, base: .primary) }
+            }
+            let elapsed = CFAbsoluteTimeGetCurrent() - start
+            total += elapsed
+            if step > 1 { slowest = max(slowest, elapsed) }
+        }
+        print("streaming rewrite: \(text.count) chars, avg \(total / 300 * 1000) ms, slowest \(slowest * 1000) ms")
+        XCTAssertLessThan(slowest, 0.1, "a rewrite must leave the 300 ms cadence alone")
+    }
+
+    func testLongChatMergeStaysCheap() {
+        let entries: [JSONValue] = (0..<600).map { n in
+            .object(["id": .string("card:t\(n):0"), "kind": "card", "cardId": .string("t\(n):0"), "at": .number(Double(n) * 1000 + 1000),
+                     "card": .object(["body": .object(["elements": .array([.object(["tag": "markdown", "content": .string("第 \(n) 条回复")])])])])])
+        }
+        let start = CFAbsoluteTimeGetCurrent()
+        let merged = LiveTransport.mergeVapp(entries: entries, liveCards: [], local: [], settleLocal: true)
+        let elapsed = CFAbsoluteTimeGetCurrent() - start
+        print("merge 600 entries: \(elapsed * 1000) ms")
+        XCTAssertEqual(merged.count, 600)
+        XCTAssertLessThan(elapsed, 0.2)
+    }
+
+    func testCacheRoundTripTimeForAFullChat() throws {
+        let items = (0..<60).map { n in
+            ChatItem(id: "vcard:\(n)", sender: .v, time: .now, content: .card(FeishuCard(json: .object(["body": .object(["elements": .array([.object(["tag": "markdown", "content": .string(String(repeating: "内容", count: 200))])])])]))))
+        }
+        let sessions = (0..<40).map { ChatSession(id: "s\($0)", title: "会话", kind: .group, channel: "飞书群", items: items) }
+        let start = CFAbsoluteTimeGetCurrent()
+        let data = try JSONEncoder().encode(sessions)
+        let encoded = CFAbsoluteTimeGetCurrent()
+        _ = try JSONDecoder().decode([ChatSession].self, from: data)
+        let decoded = CFAbsoluteTimeGetCurrent()
+        print("cache: \(data.count / 1024) KB, encode \((encoded - start) * 1000) ms, decode \((decoded - encoded) * 1000) ms")
+        XCTAssertLessThan(decoded - encoded, 0.5)
+    }
+}

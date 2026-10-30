@@ -129,10 +129,16 @@ enum MessageParser {
     static func preview(_ raw: String) -> String {
         var raw = raw
         if let prefix = raw.firstMatch(of: #/^ou_[0-9a-z]+: /#) { raw.removeSubrange(prefix.range) }
+        // A group preview starts with the sender's name, which hides the notes behind it.
+        var speaker = ""
+        if let name = raw.firstMatch(of: #/^([^\n:：\[]{1,30}): (?=\[)/#) {
+            speaker = "\(name.1)："
+            raw.removeSubrange(name.range)
+        }
         // The Gateway clips previews, which can cut the id line before its "]".
         if let id = raw.firstMatch(of: #/^\[message_id: [^\]\n]*\]?\s*/#) { raw.removeSubrange(id.range) }
         let message = user(raw)
         let text = message.text.isEmpty ? message.media.map(\.previewLabel).joined(separator: " ") : message.text
-        return text.replacingOccurrences(of: "\n", with: " ")
+        return speaker + text.replacingOccurrences(of: "\n", with: " ")
     }
 }
