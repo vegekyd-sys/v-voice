@@ -148,7 +148,7 @@ Gateway 挂点（progressCard / taskRegistry / question / approval / 回复回�
 ## 7. Tianyi 的决定（2026-10-30）
 
 1. 手机上的 App 连生产 V。生产 Gateway 没有公网入口，先用 Tailscale 内网的 HTTPS 入口
-   （`tailscale serve` → `wss://v-zkda.tail06783a.ts.net`，只有自己 tailnet 里的设备能连），
+   （`tailscale serve` → V 的 tailnet 地址，只有自己 tailnet 里的设备能连），
    手机要开 Tailscale。公网入口以后单独定。
 2. 方向：**App 作为 V Experience 的渠道**，「飞书分块迁入 V Experience」随之提前。
 3. 登录：**飞书登录、Apple 登录、手机号以后都支持**。身份层按「一个人可以有多种登录方式」设计，
