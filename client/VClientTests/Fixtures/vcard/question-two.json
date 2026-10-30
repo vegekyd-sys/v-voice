@@ -1,0 +1,127 @@
+{
+  "schema": "2.0",
+  "v_card": 1,
+  "header": {
+    "title": {
+      "tag": "plain_text",
+      "content": "V 想问你"
+    },
+    "template": "blue"
+  },
+  "body": {
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "**1. 哪天出发？**"
+      },
+      {
+        "tag": "button",
+        "text": {
+          "tag": "plain_text",
+          "content": "周六"
+        },
+        "type": "default",
+        "width": "fill",
+        "behaviors": [
+          {
+            "type": "callback",
+            "value": {
+              "kind": "question",
+              "id": "q-trip",
+              "question": 0,
+              "option": "周六"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "button",
+        "text": {
+          "tag": "plain_text",
+          "content": "周日"
+        },
+        "type": "default",
+        "width": "fill",
+        "behaviors": [
+          {
+            "type": "callback",
+            "value": {
+              "kind": "question",
+              "id": "q-trip",
+              "question": 0,
+              "option": "周日"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "markdown",
+        "content": "**2. 几个人？**"
+      },
+      {
+        "tag": "button",
+        "text": {
+          "tag": "plain_text",
+          "content": "两个人"
+        },
+        "type": "default",
+        "width": "fill",
+        "behaviors": [
+          {
+            "type": "callback",
+            "value": {
+              "kind": "question",
+              "id": "q-trip",
+              "question": 1,
+              "option": "两个人"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "button",
+        "text": {
+          "tag": "plain_text",
+          "content": "全家"
+        },
+        "type": "default",
+        "width": "fill",
+        "behaviors": [
+          {
+            "type": "callback",
+            "value": {
+              "kind": "question",
+              "id": "q-trip",
+              "question": 1,
+              "option": "全家"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "button",
+        "text": {
+          "tag": "plain_text",
+          "content": "确认"
+        },
+        "type": "primary_filled",
+        "width": "fill",
+        "behaviors": [
+          {
+            "type": "callback",
+            "value": {
+              "kind": "question",
+              "id": "q-trip",
+              "submit": true
+            }
+          }
+        ]
+      },
+      {
+        "tag": "markdown",
+        "content": "也可以直接在聊天中回复答案",
+        "text_size": "notation"
+      }
+    ]
+  }
+}
