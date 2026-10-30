@@ -630,6 +630,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
         ["/app-bundle.mjs", [join(here, "app-bundle.mjs"), "text/javascript; charset=utf-8"]],
         ["/dial-connection.mjs", [join(here, "dial-connection.mjs"), "text/javascript; charset=utf-8"]],
+        ["/tv-startup.bundle.mjs", [join(here, "tv-startup.bundle.mjs"), "text/javascript; charset=utf-8"]],
+        ["/tv-entry.bundle.mjs", [join(here, "tv-entry.bundle.mjs"), "text/javascript; charset=utf-8"]],
+        ["/tv-host.mjs", [join(here,"tv-host.mjs"), "text/javascript; charset=utf-8"]],
+        ...["tv-array-capture.mjs","tv-array-dsp.mjs","tv-array-worker.js"].map(name=>[`/${name}`,[join(here,name),"text/javascript; charset=utf-8"]]),
+        ["/assets/tv-aec/webrtcaec3-0.3.0.js",[join(here,"assets/tv-aec/webrtcaec3-0.3.0.js"),"text/javascript; charset=utf-8"]],
+        ["/assets/tv-aec/webrtcaec3-0.3.0.wasm",[join(here,"assets/tv-aec/webrtcaec3-0.3.0.wasm"),"application/wasm"]],
         ["/feishu-client-login.mjs", [join(here, "feishu-client-login.mjs"), "text/javascript; charset=utf-8"]],
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
@@ -652,6 +658,15 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           // in the HTML instead of requiring another mobile-network round trip.
           const css = await readFile(join(here, "styles.css"), "utf8");
           let html = contents.toString("utf8").replace('<head>', `<head><base href="${basePath||''}/">`).replace('<link rel="stylesheet" href="./styles.css" />', `<style data-voice-entry>${css}</style>`);
+          // TV transparency/layout must exist before the first paint, not after app.js loads.
+          if(url.searchParams.get('tv')==='1') {
+            // These versioned local DSP assets contain no user data. Fetch them
+            // with the entry instead of waiting for the capture worker waterfall.
+            html=html.replace('</head>','<link rel="preload" as="script" href="./assets/tv-aec/webrtcaec3-0.3.0.js"><link rel="preload" as="fetch" type="application/wasm" crossorigin href="./assets/tv-aec/webrtcaec3-0.3.0.wasm"></head>');
+            const shell=url.searchParams.get('tvShell')==='1';
+            const presented=!(shell&&url.searchParams.get('tvSurface')==='1');
+            html=html.replace('<html lang="zh-CN">',`<html lang="zh-CN" data-tv="true" data-tv-layout="${shell?'medium':'full'}" data-tv-presented="${presented}"${url.searchParams.get('tvOverlay')==='1'?' data-tv-overlay="true"':''}>`);
+          }
           if(clientLoginConfig)html=html.replace('</head>','<link rel="preconnect" href="https://lf1-cdn-tos.bytegoofy.com"><link rel="preload" as="script" href="https://lf1-cdn-tos.bytegoofy.com/goofy/lark/op/h5-js-sdk-1.5.26.js"></head>').replace('<script type="module" src="./entry-startup.mjs"></script>',`<script type="application/json" id="login-config">${JSON.stringify(clientLoginConfig).replaceAll('<','\\u003c')}</script><script type="module" src="./entry-startup.mjs"></script>`);
           if(speakerRouting)html=html.replace('<body','<body data-speaker-routing="true"');
           if(candidateRelease)html=html.replace('<script type="module" src="./app.js"></script>',`<script type="application/json" id="voiceCandidateRelease">${JSON.stringify(candidateRelease).replaceAll('<','\\u003c')}</script><script type="module" src="./app.js"></script>`);
@@ -663,6 +678,14 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
             const initial = JSON.stringify(entrySnapshot(binding,req)).replaceAll("<", "\\u003c");
             html = html.replace('<script type="module" src="./app.js"></script>', `<script type="application/json" id="voiceEntryStatus">${initial}</script><script type="module" src="./app.js"></script>`);
           }
+          // Keep the early startup/auth module as the single entry owner. The
+          // TV engine bundle removes the high-latency static-import waterfall.
+          if(url.searchParams.get('tv')==='1'){
+            html=html.replace(/<link rel="modulepreload" href="[^"]+" \/>/g,'');
+            html=html.replace('src="./entry-startup.mjs"','src="./tv-startup.bundle.mjs"');
+            html=html.replace('</head>','<link rel="modulepreload" href="./tv-startup.bundle.mjs"><link rel="modulepreload" href="./tv-entry.bundle.mjs"></head>');
+            html=html.replace('src="./app.js"','src="./tv-entry.bundle.mjs"');
+          } else {
           // Only public application code is cacheable. HTML, inline account
           // status, login/SDK exchanges and every API keep their existing gate
           // and no-store policy. A new artifact gets a new bundle URL.
@@ -671,9 +694,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           const bootstrap=(await entryBootstrap()).replace(/<\/script/giu,'<\\/script');
           html=html.replace('<script type="module" src="./entry-startup.mjs"></script>',
             `<script type="module" data-voice-entry-bootstrap>${bootstrap}</script>`);
+          }
           contents = Buffer.from(html);
         }
-        res.writeHead(200, { "content-type": type, "cache-control": bundled && url.searchParams.get("v") === bundled.revision ? "private, max-age=31536000, immutable" : pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
+        res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/tv-aec/webrtcaec3-0.3.0.") ? "public, max-age=31536000, immutable" : bundled && url.searchParams.get("v") === bundled.revision ? "private, max-age=31536000, immutable" : pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
       }
       if(binding.permissionProfile==='unidentified'&&!new Set(['/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke',...(binding.cliManaged?['/api/access']:[])]).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
       const readBody = async () => {

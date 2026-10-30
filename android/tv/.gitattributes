@@ -1,0 +1,2 @@
+# Unified patch context deliberately starts blank lines with one space.
+docs/releases/**/*.patch -whitespace

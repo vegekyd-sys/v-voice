@@ -137,7 +137,7 @@ export class GrokVoiceBridge {
     if(e.type==='conversation.item.input_audio_transcription.completed'&&e.transcript)this.request.onTranscript?.('user',e.transcript,true,undefined,{turnId:e.item_id});
     if(['response.output_audio_transcript.delta','response.audio_transcript.delta'].includes(e.type))this.caption(e,false);
     if(['response.output_audio_transcript.done','response.audio_transcript.done'].includes(e.type))this.caption(e,true);
-    if(['response.output_audio.delta','response.audio.delta'].includes(e.type)&&e.delta)this.request.onAudio?.(Buffer.from(e.delta,'base64'));
+    if(['response.output_audio.delta','response.audio.delta'].includes(e.type)&&e.delta)this.request.onAudio?.(Buffer.from(e.delta,'base64'),{responseId:e.response_id??this.activeResponse});
     if(e.type==='response.function_call_arguments.done'){
       if(!e.call_id||!e.name||typeof e.arguments!=='string')return this.fail('Grok Voice 工具调用不完整');
       const previous=this.calls.get(e.call_id);

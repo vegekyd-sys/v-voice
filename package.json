@@ -26,7 +26,8 @@
     "build:ios-shell": "node ios/scripts/sync-h5-shell.mjs",
     "check:ios-shell": "node ios/scripts/sync-h5-shell.mjs --check",
     "phone": "node scripts/phone.mjs",
-    "release:fleet": "python3 scripts/release-fleet.py"
+    "release:fleet": "python3 scripts/release-fleet.py",
+    "build:tv": "node scripts/build-tv-entry.mjs"
   },
   "dependencies": {
     "opusscript": "0.1.1",

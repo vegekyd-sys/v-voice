@@ -10,3 +10,6 @@ artifacts/
 /tmp/
 
 __pycache__/
+
+# Worktree dependency runtime may be a symlink rather than a directory.
+/node_modules

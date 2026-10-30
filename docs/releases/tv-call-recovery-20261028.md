@@ -1,0 +1,9 @@
+# TV call recovery — local review candidate, 2026-10-28
+
+Shared source `53b056460a379c210a247cf4acd72a86c0339d6d`; companion TV shell `bb5af28f2e06b11f8d9f9de15d8b0c83ed95a0a4`, version 0.2.5-call-recovery-local. Frozen artifact `artifacts/tv-call-recovery-20261028`, filesSha256 `346862ce9dafcba082fff7c880f3a3acf6e6158876f3b0aec22ecc62cdf5f020`.
+
+Prewarm the actual array DSP before capture and negotiate prepare/begin/pull for the version-2 hardware adapter. Preserve version-1 compatibility. Bounded batches avoid per-frame native evaluateJavascript callbacks; sustained lag reports an error rather than dropping samples. Failure status is written before asynchronous close, and the idle native window releases directional/Back navigation. Dialing uses a cancel label; connected output mute/hangup occupy the portrait base. Expected model-requested ending is not reported as a transport error.
+
+989 shared tests passed, generated iOS shell verified, native tests/lint/build passed. Named Android emulator exercised the shared H5, actual WASM/AudioWorklet and synthetic 4-channel input: a 240ms startup burst, 60s sustained call, retry, output mute, full/compact presentation and four-way/Back escape. 4/6-channel startup and cancel/error regressions passed. These are synthetic/local results, not physical acoustic acceptance.
+
+The prior real-TV logs show model readiness followed by rapid client capture closure; exact old client error was not retained. Queue/DSP startup defects and focus trapping are corrected in this candidate, but actual TV failure resolution remains unconfirmed. No production service, isolated online TV candidate, real-TV APK, launcher/theme or Gateway was changed this turn. Current installed H5 remains 6884696 and host 0.2.4. Full review receipt and frozen native APK: sibling `v-voice-tv-island/docs/releases/tv-call-recovery-20261028/` and ignored evidence directory.

@@ -1,4 +1,6 @@
 import {phoneModelOptions} from "./model-options.mjs";
+import {installTvHost,tvDefaultModel} from "./tv-host.mjs";
+import {captureTvArray,hasTvArrayCapture,tvArraySupportsModel} from "./tv-array-capture.mjs";
 import {createFeishuConfirmation} from "./feishu-confirmation-client.mjs";
 import {browserDeviceActions,createBrowserDeviceAdapter} from "./device-location.mjs";
 import { createCallerContext } from "./caller-context.mjs";
@@ -25,9 +27,10 @@ const $ = (id) => document.getElementById(id);
 // app.js is the call engine; everything the page shows is written to this view
 // and rendered by the React UI. Audio elements and the reader stay in the HTML.
 const view = createCallView();
+const tvHost=installTvHost({view,window,actions:{dial:()=>startCall(),end:()=>stopCall(),mute:()=>setMuted(!view.get().muted),speaker:()=>setOutputMuted(!view.get().outputMuted)},onError:error=>setStatus(error.message,{tone:'error'})});
 const contentView = document.querySelector ? createContentView(document, window, { onReading: reading => view.set({ reading }) }) : null;
 const renderAssistant = (target, item) => {
-  if (contentView) contentView.render(target, item, { auto: item.document === true });
+  if (contentView) contentView.render(target, item, { auto: item.document === true && (!tvHost || view.get().tvLayout==='full') });
   else renderMarkdown(target, item.text, document);
 };
 if (document.querySelector) mountCallUi(document, view, {
@@ -46,6 +49,7 @@ if (document.querySelector) mountCallUi(document, view, {
     steer: text => sendSteer(text), cancelTasks: () => cancelTasks(),
     // Toggle from the store, not the last render, so quick taps alternate.
     mute: () => setMuted(!view.get().muted),
+    speaker: () => setOutputMuted(!view.get().outputMuted),
     compose: open => view.set(state => ({ composer: { ...state.composer, open } })),
     composerOpen: () => view.get().composer.open,
     chooseModel: id => { if (view.get().models.some(model => model.id === id && model.available)) view.set({ model: id }); },
@@ -89,7 +93,7 @@ function setCallState(state) {
   screenWakeLock.setActive(state !== 'idle');
   const live = ["connected", "ending"].includes(state);
   view.set(current => ({ call: state, callStartedAt: live ? current.callStartedAt ?? Date.now() : null,
-    ...(live ? {} : { composer: { ...current.composer, open: false }, muted: false }) }));
+    ...(live ? {} : { composer: { ...current.composer, open: false }, muted: false, outputMuted: false }) }));
   if (!live) document.body.dataset.microphoneMuted = "false";
   if (document.body.dataset.callState === state) return;
   document.body.dataset.callState = state;
@@ -103,6 +107,12 @@ function setMuted(muted) {
   for (const track of call.stream.getAudioTracks()) track.enabled = !muted;
   document.body.dataset.microphoneMuted = String(muted);
   view.set({ muted });
+}
+function setOutputMuted(outputMuted) {
+  if (!call) return;
+  call.relay?.setOutputMuted(outputMuted);
+  $("remoteAudio").muted = outputMuted || Boolean(call.duplex?.snapshot().localPlaybackMuted);
+  view.set({outputMuted});
 }
 // The last full sentence, for the few places that compare it; the view keeps
 // its short display form for the one status line.
@@ -561,7 +571,7 @@ function providerMessage(event) {
   if(!routedUserCaption)renderTranscript(presentation.consume(data, Date.now()));
   if (data.type === "error") setStatus("语音服务报告错误，请结束通话后重试。", { tone: "error" });
 }
-async function stopCall() {
+async function stopCall({failure}={}) {
   const active = call; call = null;
   if (starting === active) starting = null;
   if (active) {
@@ -589,7 +599,8 @@ async function stopCall() {
   setCallState("idle");
   view.set(state => ({ dial: { ...state.dial, disabled: false }, stopLabel: "结束通话", badge: liveReady ? "可以拨号" : "暂未连接",
     composer: { enabled: false, open: false }, modelDisabled: false }));
-  setStatus("拨号后，直接说话。");
+  view.set({failureCode:failure?.code??null});
+  setStatus(failure?.message??"拨号后，直接说话。",{tone:failure?"error":"info"});
   if (active) {
     await active.context?.close().catch(() => {});
     if (active.voiceSessionId) await api("close", { voiceSessionId: active.voiceSessionId }).catch(() => {});
@@ -598,13 +609,14 @@ async function stopCall() {
 async function startCall() {
   if (starting || call || view.get().confirmation) return;
   if (view.get().confirmOnDial) { await confirmation.start(); return; }
+  if(tvHost&&hasTvArrayCapture()&&!tvArraySupportsModel(view.get().model)){setStatus("当前电视阵列输入支持豆包和 Grok，请选择豆包。",{tone:"error"});return;}
   if (!liveReady) { setStatus(entryError ?? "当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
   for (const name of ["voice.dial.requested", "voice.microphone.ready", "voice.reservation.ready", "voice.connection.ready", "voice.output.received", "voice.output.rendered"])
     performance.clearMarks?.(name);
   markVoiceTiming("voice.dial.requested");
   view.set(state => ({ dial: { ...state.dial, disabled: true }, stopLabel: "取消拨号", badge: "连接中", modelDisabled: true }));
   setCallState("dialing"); setStatus("正在连接 V…");
-  resetTranscript();
+  resetTranscript();view.set({failureCode:null});
   const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController(), dialStartedAt:performance.now() }; call = active; starting = active;
   const chosenModel = view.get().model;
   if (speakerCandidate()||['seeduplex','grok'].includes(chosenModel)) {
@@ -616,6 +628,9 @@ async function startCall() {
   // pause or replace the next call's pickup. The page element configures assets.
   active.soundElement = document.createElement("audio"); active.soundElement.playsInline = true;
   for (const key of ["ringSrc", "pickupSrc"]) if ($("callSound").dataset[key]) active.soundElement.dataset[key] = $("callSound").dataset[key];
+  // The TV Home gesture owns only the bounded cold-start cue. Hand it off
+  // before this shared call starts its normal ring; no native call policy.
+  try { window.VTVStartupCue?.finish?.(); } catch {}
   active.sounds = createCallSounds({ audioElement: active.soundElement, sharedContext: active.context });
   void active.sounds.dial();
   // Activity metadata stays in this page's memory only. It contains no audio,
@@ -625,7 +640,7 @@ async function startCall() {
   globalThis.__gptLiveDuplexDiagnostics = active.duplexDiagnostics;
   active.duplex = createH5DuplexPlaybackGate({ mode: "native", onGateChange: (entry) => {
     if (call !== active) return;
-    $("remoteAudio").muted = entry.localPlaybackMuted;
+    $("remoteAudio").muted = entry.localPlaybackMuted || view.get().outputMuted;
     duplexDiagnostic(active, { type: "local-playback-gate", at: entry.at,
       muted: entry.localPlaybackMuted, reason: entry.reason,
       oldTurnTerminal: entry.oldTurnTerminal, outputDrained: entry.outputDrained, ...playbackState(active) });
@@ -635,15 +650,25 @@ async function startCall() {
   try {
     const fixtureId=speakerCandidate()?new URLSearchParams(location.search).get('fixture'):null;
     if(speakerCandidate()){document.body.dataset.speakerEvents='[]';document.body.dataset.speakerAnswerDone='false';}
-    active.capture = fixtureId?await createSpeakerFixture(active.context,fixtureId,{onEvent:speakerEvent}):await microphoneSession.acquire({
+    const parallelTvCapture=Boolean(tvHost&&hasTvArrayCapture());
+    const capturePreparation = fixtureId? createSpeakerFixture(active.context,fixtureId,{onEvent:speakerEvent}):parallelTvCapture?captureTvArray({directPcm:true,context:active.context,signal:active.captureAbort.signal,isCurrent:()=>call===active,
+      onDiagnostics:metadata=>{if(call===active)active.duplexDiagnostics.microphone=metadata;},
+      onError:error=>{if(call===active)void stopCall({failure:error});},
+    }):microphoneSession.acquire({
       mediaDevices: navigator.mediaDevices, signal: active.captureAbort.signal,
       isCurrent: () => call === active,
       onDiagnostics: (metadata) => { if (call === active) active.duplexDiagnostics.microphone = metadata; },
     });
-    markVoiceTiming("voice.microphone.ready");
-    active.stream = active.capture.stream;
-    if(fixtureId)active.fixture=active.capture;
-    if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
+    const acceptCapture=capture=>{
+      if(call!==active){capture.dispose();throw new DOMException('Call ended','AbortError');}
+      active.capture=capture;active.stream=capture.stream;markVoiceTiming("voice.microphone.ready");
+      if(fixtureId)active.fixture=capture;return capture;
+    };
+    // The TV already has a native microphone grant. Prepare its local DSP and
+    // the remote model concurrently, but begin capture only when both are ready.
+    if(parallelTvCapture){active.capturePreparation=Promise.resolve(capturePreparation).then(acceptCapture);void active.capturePreparation.catch(error=>{if(call===active)void stopCall({failure:error});});}
+    else await Promise.resolve(capturePreparation).then(acceptCapture);
+    if(call!==active)return;
     const selectedModel = ['seeduplex','grok'].includes(chosenModel)?chosenModel:'gpt-live';
     const inputPolicy = speakerCandidate() ? (new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy) : null;
     const nativeDeviceActions=await browserDeviceActions();
@@ -688,12 +713,19 @@ async function startCall() {
       await active.contextResume;
       if(call!==active)return;
       active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,connection:active.dialConnection,dialStartedAt:active.dialStartedAt,onTiming:name=>{if(call===active)markVoiceTiming(name);},greeting:!active.fixture,inputGated:Boolean(reservation.speakerRouting),
-        onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message, { tone: "error" }));},
-        onClosed:()=>{if(call===active)void stopCall();},
+        prepareCapture:active.capturePreparation?()=>active.capturePreparation:undefined,
+        renderReference:active.capture?.renderReference,
+        startCapture:active.capture?.startCapture,
+        subscribePcm:active.capture?.subscribePcm,bufferedOutput:Boolean(tvHost&&hasTvArrayCapture()),
+        onAudioLevel:tvHost?value=>{if(call===active)tvHost.observeAudio(value);}:undefined,
+        onError:error=>{if(call===active)void stopCall({failure:error});},
+        onClosed:()=>{if(call===active)void stopCall({failure:active.remoteEnding?undefined:Object.assign(Error("连接已中断，请重新呼叫"),{code:"RELAY_CLOSED"})});},
         onPlaybackActivity:speaking=>{if(call===active){setVoiceState(speaking?'speaking':'listening');if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
         onEvent:value=>{
           if(call!==active)return;
           if(active.deviceAdapter?.handle(value))return;
+          if(value.type==='end.after-playback')active.remoteEnding=true;
+          if(value.type==='end.cancelled')active.remoteEnding=false;
           // An interrupted native reply may never send its final transcript.
           // Its caption row must not be reused for the answer to the next turn.
           if(value.type==='input.speech.started'&&active.relayTurns?.assistant){
@@ -807,6 +839,7 @@ async function startCall() {
         // This analyser reads the inbound stream before HTML playback muting,
         // so a local gate cannot manufacture evidence of a provider audio gap.
         const duplex = active.duplex.observe({ at, microphoneRms: microphoneEnergy, remoteRms: energy });
+        tvHost?.observeAudio({input:microphoneEnergy,output:view.get().outputMuted||duplex.localPlaybackMuted||active.playbackNeedsGesture||$("remoteAudio").paused||active.context.state!=="running"?0:energy});
         duplexDiagnostic(active, { type: "activity-window", at, microphoneRms: microphoneEnergy, remoteRms: energy,
           microphoneAboveAttack: microphoneEnergy >= .02, microphoneAboveRelease: microphoneEnergy > .01,
           microphoneVoiced: duplex.localUserSpeaking,
@@ -859,7 +892,7 @@ async function startCall() {
     await active.pc.setRemoteDescription({ type: "answer", sdp: result.sdp });
     if (call !== active) return;
     active.heartbeat = setInterval(() => { if (call === active) void api("heartbeat", { voiceSessionId: active.voiceSessionId }).catch(() => {}); }, 15000);
-  } catch (error) { if (call === active) { await stopCall(); if (!call) setStatus(error.name === "NotAllowedError" ? "请允许麦克风访问后重试。" : error.message, { tone: "error" }); } }
+  } catch (error) { if (call === active) { await stopCall({failure:Object.assign(Error(error.name === "NotAllowedError" ? "请允许麦克风访问后重试。" : error.message),{code:error.code??"CALL_START_FAILED"})}); } }
   finally { if (starting === active) starting = null; if (!call) view.set(state => ({ dial: { ...state.dial, disabled: false } })); }
 }
 // A tap anywhere can restore browser playback. Never gate/stop the microphone
@@ -936,7 +969,10 @@ function applyEntryStatus(status) {
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     webDialVersion = status.webDialVersion;
     liveReady = status.ready === true;
-    const {models, model} = phoneModelOptions(status, view.get().model);
+    const phoneOptions = phoneModelOptions(status, view.get().model);
+    const models = phoneOptions.models.map(choice => ({...choice, available:choice.available&&(!tvHost||!hasTvArrayCapture()||tvArraySupportsModel(choice.id))}));
+    const model = tvHost ? tvDefaultModel(models).model : phoneOptions.model;
+    if(tvHost&&!tvDefaultModel(models).available){liveReady=false;entryError='豆包暂不可用，请稍后重试。';}
     const grok = status.models?.find(item => item.id === "grok");
     const grokVoices = grok?.voices ?? [];
     view.set({ models, model, confirmOnDial:status.confirmationAvailable===true&&status.unidentified===true&&!guestDialAllowed, confirmationAvailable:status.confirmationAvailable===true, accessContext:status.accessContext??null, publicHref:status.publicHref??null, accountLoginHref: status.accountLoginHref??null, accountLabel: status.accountLabel??null, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, unidentified:status.unidentified===true, grok: {

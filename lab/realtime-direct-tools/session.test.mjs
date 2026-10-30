@@ -47,8 +47,8 @@ test('server audio metrics observe delivered packets without changing relay byte
  const rows=f.audit.filter(r=>r.type==='audio.delivery');
  assert.deepEqual(rows.map(r=>r.phase),['first','summary']);
  assert.equal(rows[1].packets,2);assert.equal(rows[1].bytes,1920);assert.equal(rows[1].audioMs,40);
- // This Grok adapter supplies anonymous PCM; metrics must not invent ownership.
- assert.equal(rows[1].responseId,undefined);
+ // Provider response ownership is preserved by the shared Grok adapter.
+ assert.equal(rows[1].responseId,'reply-metrics');
  assert.deepEqual(f.client.sent.filter(r=>r.type==='audio').map(r=>r.audio),[pcm,pcm]);
  assert(f.audit.some(r=>r.type==='client.playback-state'&&r.speaking));
  assert(f.audit.some(r=>r.type==='call.media'&&r.surface==='phone'&&!r.nativeDuplex));
@@ -327,7 +327,8 @@ test('end requires native semantic tool, actual farewell audio and matching drai
  const f=await fixture();f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'讨论挂断功能'})),false);await delay(2);
  assert.equal(f.client.sent.some(x=>x.type==='end.accepted'),false);
  f.call('end_call',{});await delay(5);assert.equal(f.client.sent.some(x=>x.type==='end.after-playback'),false);
- f.event({type:'response.output_audio.delta',delta:Buffer.alloc(960).toString('base64')});f.event({type:'response.done',response:{id:'farewell',status:'completed'}});
+ f.event({type:'response.created',response:{id:'farewell'}});
+ f.event({type:'response.output_audio.delta',response_id:'farewell',delta:Buffer.alloc(960).toString('base64')});f.event({type:'response.done',response:{id:'farewell',status:'completed'}});
  assert.equal(f.client.sent.some(x=>x.type==='end.after-playback'),true);
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:'foreign'})),false);assert.equal(f.client.readyState,1);
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:'call-1'})),false);await delay(5);assert.equal(f.client.readyState,3);await f.service.dispose();
@@ -1458,4 +1459,37 @@ test('instructions and the task acknowledgement speak as one V',async t=>{
  await delegated(f);
  const ack=f.upstream.sent.find(x=>x.items?.[0]?.role==='tool').items[0].content[0].text;
  assert.match(ack,/好，我去看看/);assert.doesNotMatch(JSON.parse(ack).message,/后台/);
+});
+for (const [receiver,options] of [['web',{}],['ios',{nativeRuntimeVersion:1}],['speaker',{surface:'speaker'}],['robot',{surface:'speaker',inputPolicy:'native'}]]) {
+ test(`authorized TV control uses the shared direct path on ${receiver}`,async t=>{
+  const f=await fixture(async()=>({ok:true,output:{accepted:true,simulation:true,physical_playback_verified:false}}),'grok',{
+   ...options,sessionBound:true,actorScoped:true,catalog:['xiaomi-tv_tv_volume']});
+  t.after(()=>f.service.dispose());
+  const config=f.upstream.sent.find(e=>e.type==='session.update').session;
+  assert.match(config.instructions,/一两步明确控制可直接用 openclaw_tool/);
+  assert.match(config.instructions,/accepted=true 仅表示命令已接受/);
+  assert.match(config.tools.find(t=>t.name==='openclaw_tool').description,/其他写操作交 delegate_to_v/);
+  f.call('openclaw_tool',{tool:'xiaomi-tv_tv_volume',arguments:'{"percent":15}'},'tv-volume');
+  for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.native-result');i++)await delay(2);
+  assert.equal(f.invocations.length,1);assert.equal(f.invocations[0].name,'xiaomi-tv_tv_volume');
+  assert.deepEqual(f.invocations[0].args,{percent:15});
+  assert.equal(f.audit.find(e=>e.type==='tool.native-result').result.output.physical_playback_verified,false);
+  // A name mentioned by another tool is not a catalog grant.
+  f.call('openclaw_tool',{tool:'xiaomi-tv_tv_command',arguments:'{"text":"暂停音乐"}'},'missing-tv');
+  for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='missing-tv');i++)await delay(2);
+  assert.equal(f.invocations.length,1);
+  assert.match(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='missing-tv').result.error,/没有这个 OpenClaw 工具/);
+ });
+}
+
+test('TV guidance and account control are absent for an unidentified caller',async t=>{
+ const f=await fixture(undefined,'grok',{unidentified:true,sessionKey:'voice:guest:tv-fixture',catalog:['xiaomi-tv_tv_volume']});
+ t.after(()=>f.service.dispose());
+ const config=f.upstream.sent.find(e=>e.type==='session.update').session;
+ assert.equal(config.instructions.includes('电视控制：'),false);
+ assert.equal(config.tools.some(t=>t.name==='openclaw_tool'),false);
+ f.call('openclaw_tool',{tool:'xiaomi-tv_tv_volume',arguments:'{"percent":15}'},'guest-tv');
+ for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered');i++)await delay(2);
+ assert.deepEqual(f.invocations,[]);
+ assert.equal(f.audit.find(e=>e.type==='tool.delivered').result.error,'当前通话没有账号工具权限');
 });

@@ -18,3 +18,15 @@ jobs:
           npm run package -- "$RUNNER_TEMP/voice-artifact"
           node scripts/verify-package.mjs "$RUNNER_TEMP/voice-artifact"
           python3 -c "import os,runpy; runpy.run_path('scripts/release-fleet.py')['verify_artifact'](os.environ['RUNNER_TEMP']+'/voice-artifact')"
+
+  android-tv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - run: ./gradlew --no-daemon :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease
+        working-directory: android/tv

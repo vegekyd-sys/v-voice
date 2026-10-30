@@ -1,0 +1,10 @@
+.gradle/
+**/build/
+local.properties
+*.private.*
+evidence/
+*.log
+*.pid
+*.private.json
+__pycache__/
+*.pyc
