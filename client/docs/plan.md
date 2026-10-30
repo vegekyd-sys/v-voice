@@ -145,10 +145,13 @@ Gateway 挂点（progressCard / taskRegistry / question / approval / 回复回�
 | 4 | 身份与多人：飞书登录、identityLinks、owner 控制台、多 V | 第二个人用 TestFlight 正常使用 |
 | 5 | iOS 能力：实时活动、分享、节点能力、快捷指令、小组件 | 逐项真机验收 |
 
-## 7. 要 Tianyi 拍板的
+## 7. Tianyi 的决定（2026-10-30）
 
-1. 手机上的 App 连哪个 V：生产 V（需要生成指向公网入口的设置码，手机会作为一台
-   operator 设备出现在 V 的设备列表里），还是先连 VLab 测试 Gateway（手机要开 Tailscale）。
-2. 方向：App 作为 V Experience 的渠道（本文建议），并因此把「飞书分块迁入 V Experience」提前。
-3. 多人登录方式：飞书登录，还是 Sign in with Apple / 手机号。
-4. 长期是否把 V Voice 合进这个 App（一个 App 里聊天 + 电话），还是保持两个 App。
+1. 手机上的 App 连生产 V。生产 Gateway 没有公网入口，先用 Tailscale 内网的 HTTPS 入口
+   （`tailscale serve` → `wss://v-zkda.tail06783a.ts.net`，只有自己 tailnet 里的设备能连），
+   手机要开 Tailscale。公网入口以后单独定。
+2. 方向：**App 作为 V Experience 的渠道**，「飞书分块迁入 V Experience」随之提前。
+3. 登录：**飞书登录、Apple 登录、手机号以后都支持**。身份层按「一个人可以有多种登录方式」设计，
+   都映射到同一个 V 用户，再由 `session.identityLinks` 关联到各渠道 ID。
+4. **V Voice 以后合进这个 App**：一个 App 里聊天 + 电话。合并前两个 App 并存；
+   `VKit` / `VCards` 按两边都能用来拆，V Voice 的通话、实时活动、绑定流程逐步搬进来。
