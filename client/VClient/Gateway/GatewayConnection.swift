@@ -244,7 +244,7 @@ final class GatewayConnection {
                 "mode": .string(Self.clientMode),
                 "instanceId": .string(identity.deviceId.prefix(16).description),
             ],
-            "caps": ["tool-events"],
+            "caps": ["tool-events", "approvals"],
             "role": .string(Self.role),
             "scopes": .array(scopes.map(JSONValue.string)),
             "auth": .object(auth),

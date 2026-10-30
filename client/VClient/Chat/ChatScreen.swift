@@ -218,10 +218,13 @@ struct MessageRow: View, Equatable {
             Button("引用回复", systemImage: "arrowshape.turn.up.left") { actions.quote(String(text.prefix(200))) }
         }
         if canReact {
-            ForEach(["👍", "❤️", "😂", "🎉", "🙏"], id: \.self) { emoji in
-                let mine = item.reactions.contains { $0.emoji == emoji && $0.from == "user" }
-                Button("\(emoji)\(mine ? " 取消" : "")") { model.react(item, emoji: emoji, remove: mine, in: sessionID) }
+            ControlGroup {
+                ForEach(["👍", "❤️", "😂", "🙏"], id: \.self) { emoji in
+                    let mine = item.reactions.contains { $0.emoji == emoji && $0.from == "user" }
+                    Button(emoji) { model.react(item, emoji: emoji, remove: mine, in: sessionID) }
+                }
             }
+            .controlGroupStyle(.compactMenu)
         }
     }
 
