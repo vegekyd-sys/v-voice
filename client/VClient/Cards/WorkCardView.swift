@@ -189,7 +189,7 @@ struct WorkCardView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
+            FlowRow(spacing: 12) {
                 if let finished = work.finishedAt, finished.timeIntervalSince(work.startedAt) >= 1 {
                     Label(Self.duration(finished.timeIntervalSince(work.startedAt)), systemImage: "clock")
                 }
@@ -208,7 +208,6 @@ struct WorkCardView: View {
                 }
             }
             .lineLimit(1)
-            .fixedSize()
             if stepsOpen {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(work.tools, id: \.id) { ToolRow(tool: $0) }

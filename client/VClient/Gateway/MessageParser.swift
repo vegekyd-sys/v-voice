@@ -139,6 +139,6 @@ enum MessageParser {
         if let id = raw.firstMatch(of: #/^\[message_id: [^\]\n]*\]?\s*/#) { raw.removeSubrange(id.range) }
         let message = user(raw)
         let text = message.text.isEmpty ? message.media.map(\.previewLabel).joined(separator: " ") : message.text
-        return speaker + text.replacingOccurrences(of: "\n", with: " ")
+        return speaker + FeishuMarkdown.plain(text)
     }
 }

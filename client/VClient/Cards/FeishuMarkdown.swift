@@ -198,7 +198,26 @@ enum FeishuMarkdown {
         return linked
     }
 
+    /// A file on V is written as its path. It opens through the Gateway's media route,
+    /// which decides what may be read.
+    static let fileLinkScheme = "vfile"
+
+    private static func fileLink(_ path: String) -> URL? {
+        var components = URLComponents()
+        components.scheme = fileLinkScheme
+        components.host = "open"
+        components.queryItems = [URLQueryItem(name: "source", value: path)]
+        return components.url
+    }
+
+    static func fileSource(_ url: URL) -> String? {
+        guard url.scheme == fileLinkScheme else { return nil }
+        return URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "source" }?.value
+    }
+
     private static func webURL(_ text: String) -> URL? {
+        if text.hasPrefix("/") { return fileLink(text) }
+        if text.hasPrefix("file:///") { return fileLink(String(text.dropFirst("file://".count)).removingPercentEncoding ?? String(text.dropFirst("file://".count))) }
         guard let url = URL(string: text), let scheme = url.scheme?.lowercased(), ["http", "https", "mailto", "tel"].contains(scheme) else { return nil }
         return url
     }
@@ -279,6 +298,22 @@ enum FeishuMarkdown {
         let styled = attributed(runs, base: base)
         styledCache.setObject(Styled(styled), forKey: key)
         return styled
+    }
+
+    /// The words without any markup, for one-line previews.
+    static func plain(_ source: String) -> String {
+        func words(_ block: Block) -> [String] {
+            switch block {
+            case .paragraph(let runs), .heading(let runs, _): [runs.map(\.text).joined()]
+            case .list(_, _, let items): items.flatMap { $0.blocks.flatMap(words) }
+            case .quote(let blocks): blocks.flatMap(words)
+            case .code(let code): [code]
+            case .rule: []
+            case .table(let header, _, let rows): ([header] + rows).map { $0.map { $0.map(\.text).joined() }.joined(separator: " ") }
+            case .image(_, let alt): [alt.isEmpty ? "[图片]" : "[\(alt)]"]
+            }
+        }
+        return blocks(source).flatMap(words).joined(separator: " ").replacingOccurrences(of: "\n", with: " ")
     }
 
     /// A streamed answer can stop inside `**bold**` or `` `code` ``; close the

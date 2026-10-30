@@ -97,14 +97,14 @@ struct ChatItem: Identifiable, Hashable, Sendable, Codable {
 
         var previewText: String {
             switch self {
-            case .text(let text): text.replacingOccurrences(of: "\n", with: " ")
+            case .text(let text): FeishuMarkdown.plain(text)
             case .reply(let work):
                 if work.isActive && work.visibleAnswer.isEmpty { "正在处理…" }
                 else if work.visibleAnswer.isEmpty { work.media.map(\.previewLabel).joined(separator: " ") }
-                else { work.visibleAnswer.replacingOccurrences(of: "\n", with: " ") }
+                else { FeishuMarkdown.plain(work.visibleAnswer) }
             case .card(let card):
                 if let title = card.header?.title { "[卡片] " + title }
-                else { card.plainText.replacingOccurrences(of: "\n", with: " ") }
+                else { FeishuMarkdown.plain(card.plainText) }
             case .question(let question): "[需要你回答] " + question.prompt
             case .file(let file): "[文件] " + file.name
             case .notice(let text): text

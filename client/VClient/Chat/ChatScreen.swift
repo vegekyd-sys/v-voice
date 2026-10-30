@@ -1,3 +1,4 @@
+import QuickLook
 import SwiftUI
 
 struct ChatScreen: View {
@@ -7,6 +8,8 @@ struct ChatScreen: View {
     @State private var quote: String?
     @State private var attachments: [Attachment] = []
     @State private var selecting: String?
+    @State private var filePreview: URL?
+    @State private var markdownFile: MarkdownFile?
     /// Follow new messages only while the reader is at the bottom, like Feishu.
     @State private var atBottom = true
 
@@ -91,6 +94,27 @@ struct ChatScreen: View {
                 }
                 .animation(.snappy, value: model.notice)
             }
+            .quickLookPreview($filePreview)
+            .sheet(item: $markdownFile) { MarkdownFileSheet(file: $0) }
+            .environment(\.openURL, OpenURLAction { url in
+                guard let source = FeishuMarkdown.fileSource(url) else { return .systemAction }
+                Task {
+                    guard let loader = model.media else { return model.showNotice("还没连上 V") }
+                    do {
+                        let file = try await loader.file(MediaRef(source: source))
+                        if ["md", "markdown"].contains(file.pathExtension.lowercased()),
+                           let text = await Task.detached(operation: { try? String(contentsOf: file, encoding: .utf8) }).value
+                        {
+                            markdownFile = MarkdownFile(url: file, text: text)
+                        } else {
+                            filePreview = file
+                        }
+                    } catch {
+                        model.showNotice("打不开这个文件：\(error.localizedDescription)")
+                    }
+                }
+                return .handled
+            })
             .sheet(item: Binding(get: { selecting.map(SelectableText.init) }, set: { selecting = $0?.text })) { SelectableTextSheet(text: $0.text) }
             .navigationTitle(session.title)
             .navigationBarTitleDisplayMode(.inline)
@@ -139,6 +163,39 @@ struct MessageActions {
 
 extension EnvironmentValues {
     @Entry var messageActions = MessageActions()
+}
+
+private struct MarkdownFile: Identifiable {
+    let url: URL
+    let text: String
+    var id: URL { url }
+}
+
+/// A report V wrote, drawn like V's messages and shareable as the file.
+private struct MarkdownFileSheet: View {
+    let file: MarkdownFile
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                FeishuMarkdownView(markdown: file.text)
+                    .textSelection(.enabled)
+                    .padding(16)
+            }
+            .background(VTheme.surface)
+            .navigationTitle(file.url.deletingPathExtension().lastPathComponent)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭", systemImage: "xmark") { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    ShareLink(item: file.url)
+                }
+            }
+        }
+    }
 }
 
 private struct SelectableText: Identifiable {

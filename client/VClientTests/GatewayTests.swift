@@ -200,6 +200,16 @@ final class VappChatTests: XCTestCase {
         XCTAssertNil(runs.last!.link)
     }
 
+    func testFileOnVIsALink() {
+        guard case .paragraph(let runs) = FeishuMarkdown.blocks("[完整报告](/home/openclaw/报告 1.md)已保存")[0] else {
+            guard case .paragraph(let plain) = FeishuMarkdown.blocks("[完整报告](</home/openclaw/报告 1.md>)已保存")[0], let link = plain[0].link else { return XCTFail("link") }
+            return XCTAssertEqual(FeishuMarkdown.fileSource(link), "/home/openclaw/报告 1.md")
+        }
+        if let link = runs[0].link { XCTAssertNotNil(FeishuMarkdown.fileSource(link)) }
+        guard case .paragraph(let spaced) = FeishuMarkdown.blocks("[报告](/w/memory/2026-10-30-qc.md)")[0], let link = spaced[0].link else { return XCTFail("link") }
+        XCTAssertEqual(FeishuMarkdown.fileSource(link), "/w/memory/2026-10-30-qc.md")
+    }
+
     func testUnsafeSchemesAreNotLinks() {
         guard case .paragraph(let runs) = FeishuMarkdown.blocks("[点我](javascript:alert(1))")[0] else { return XCTFail("paragraph") }
         XCTAssertNil(runs[0].link)
