@@ -117,6 +117,8 @@ final class LiveTransport: VTransport {
                     session.hasMoreHistory = existing.hasMoreHistory
                     session.unread = existing.id == model.selectedSessionID ? 0 : max(existing.unread, session.unread)
                     session.model = existing.model ?? session.model
+                    // V only reads a preview for part of a long list.
+                    if session.preview.isEmpty { session.preview = existing.preview }
                 }
                 merged.append(session)
             }
