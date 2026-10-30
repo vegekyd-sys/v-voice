@@ -21,10 +21,16 @@ schemes:
         VClient: all
     test:
       targets: [VClientTests]
+packages:
+  Markdown:
+    url: https://github.com/swiftlang/swift-markdown
+    exactVersion: 0.8.0
 targets:
   VClient:
     type: application
     platform: iOS
+    dependencies:
+      - package: Markdown
     sources:
       - path: VClient
     entitlements:

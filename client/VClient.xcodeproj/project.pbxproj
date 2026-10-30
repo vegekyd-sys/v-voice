@@ -12,6 +12,7 @@
 		07F38E073F4EB6C2B00DA9C4 /* work-thinking.json in Resources */ = {isa = PBXBuildFile; fileRef = C5D3C38ED02218F81CE8B80F /* work-thinking.json */; };
 		0F09BE6FB2C07468E169EBC8 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9863EB50287788227CEC0384 /* AppModel.swift */; };
 		128F56650D1C178B387747F1 /* FeishuMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B5A56684342F217F80CB23F /* FeishuMarkdown.swift */; };
+		271A7B6C55F61D84085082D8 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = A05699F321D1920198C95FD9 /* Markdown */; };
 		281A0D5E6CF6695200152D43 /* GatewayConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E7143286BF3FC1DDB66568D /* GatewayConnection.swift */; };
 		2B71F32E39019E189230A54E /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71FC9D79B825F27879DBDC6F /* OnboardingView.swift */; };
 		3B255AFECFC86795B58E07E4 /* VCardFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF0E777CFED256924257AAB /* VCardFixtureTests.swift */; };
@@ -123,6 +124,17 @@
 		FE3B83A41CB47BE31439B3C6 /* work-streaming.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "work-streaming.json"; sourceTree = "<group>"; };
 		FFD3D324FE3D89F45C024EAB /* Media.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Media.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		394B6F43E9C4FBDBAD62CD83 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				271A7B6C55F61D84085082D8 /* Markdown in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		3D210D513D9EA90AFECE9B93 /* VClientTests */ = {
@@ -316,6 +328,7 @@
 			buildPhases = (
 				1765B401BF4CAAFCDE132FC6 /* Sources */,
 				31C71FCC075DB6B2601CCEC4 /* Resources */,
+				394B6F43E9C4FBDBAD62CD83 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -323,6 +336,7 @@
 			);
 			name = VClient;
 			packageProductDependencies = (
+				A05699F321D1920198C95FD9 /* Markdown */,
 			);
 			productName = VClient;
 			productReference = 90F92A13B0898867C4CD3DFC /* VClient.app */;
@@ -356,6 +370,9 @@
 			);
 			mainGroup = 64322A700240482E645332C1;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				2419D177675B5E5A615551A7 /* XCRemoteSwiftPackageReference "swift-markdown" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A4E87AB45BDB3D3BE20B1B46 /* Products */;
 			projectDirPath = "";
@@ -705,6 +722,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		2419D177675B5E5A615551A7 /* XCRemoteSwiftPackageReference "swift-markdown" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/swiftlang/swift-markdown";
+			requirement = {
+				kind = exactVersion;
+				version = 0.8.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A05699F321D1920198C95FD9 /* Markdown */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2419D177675B5E5A615551A7 /* XCRemoteSwiftPackageReference "swift-markdown" */;
+			productName = Markdown;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = DEEEFB4E28E9DF9DF422457D /* Project object */;
 }

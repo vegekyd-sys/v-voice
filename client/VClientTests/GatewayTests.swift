@@ -149,17 +149,71 @@ final class GatewayTests: XCTestCase {
 }
 
 final class VappChatTests: XCTestCase {
+    private typealias Run = FeishuMarkdown.Run
+
     func testMarkdownTable() {
-        let blocks = FeishuMarkdown.blocks("前言\n\n| 项 | 值 |\n|---|:--:|\n| a | 1 |\n| b | 2 |\n\n结尾")
-        XCTAssertEqual(blocks, [
-            .paragraph("前言"),
-            .table(header: ["项", "值"], rows: [["a", "1"], ["b", "2"]]),
-            .paragraph("结尾"),
-        ])
+        let blocks = FeishuMarkdown.blocks("前言\n\n| 项 | 值 |\n|---|:--:|\n| a | **1** |\n| b | 2 |\n\n结尾")
+        XCTAssertEqual(blocks.count, 3)
+        guard case .table(let header, let alignments, let rows) = blocks[1] else { return XCTFail("table") }
+        XCTAssertEqual(header.map { $0.map(\.text).joined() }, ["项", "值"])
+        XCTAssertEqual(alignments, [.leading, .center])
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows[0][1], [Run(text: "1", bold: true)])
     }
 
-    func testPipeLineWithoutRuleStaysText() {
-        XCTAssertEqual(FeishuMarkdown.blocks("| 不是表格"), [.paragraph("| 不是表格")])
+    func testFullMarkdown() {
+        let source = """
+        ## 标题
+
+        - 一
+          - 嵌套
+        - [x] 完成
+        - [ ] 未完成
+
+        > 引用 **粗**
+
+        ~~删除~~ *斜*
+
+        ```swift
+        let x = 1
+        ```
+        """
+        let blocks = FeishuMarkdown.blocks(source)
+        guard case .heading(_, level: 2) = blocks[0] else { return XCTFail("heading") }
+        guard case .list(false, _, let items) = blocks[1] else { return XCTFail("list") }
+        XCTAssertEqual(items.count, 3)
+        guard case .list = items[0].blocks[1] else { return XCTFail("nested list") }
+        XCTAssertEqual(items[1].checked, true)
+        XCTAssertEqual(items[2].checked, false)
+        guard case .quote = blocks[2] else { return XCTFail("quote") }
+        guard case .paragraph(let runs) = blocks[3] else { return XCTFail("paragraph") }
+        XCTAssertTrue(runs[0].strike)
+        XCTAssertTrue(runs.last!.italic)
+        XCTAssertEqual(blocks[4], .code("let x = 1"))
+    }
+
+    func testLinksOpen() {
+        let source = "看 https://example.com/a?b=1 和 [文档](https://docs.example.com) 以及 `https://no.link`"
+        guard case .paragraph(let runs) = FeishuMarkdown.blocks(source)[0] else { return XCTFail("paragraph") }
+        let links = runs.compactMap(\.link?.absoluteString)
+        XCTAssertEqual(links, ["https://example.com/a?b=1", "https://docs.example.com"])
+        XCTAssertNil(runs.last!.link)
+    }
+
+    func testUnsafeSchemesAreNotLinks() {
+        guard case .paragraph(let runs) = FeishuMarkdown.blocks("[点我](javascript:alert(1))")[0] else { return XCTFail("paragraph") }
+        XCTAssertNil(runs[0].link)
+    }
+
+    func testFeishuTags() {
+        guard case .paragraph(let runs) = FeishuMarkdown.blocks("<font color='grey'>灰</font> <at id=ou_1>张三</at>")[0] else { return XCTFail("paragraph") }
+        XCTAssertEqual(runs[0], Run(text: "灰", color: "grey"))
+        XCTAssertTrue(runs.map(\.text).joined().contains("@张三"))
+    }
+
+    func testLineBreaksStay() {
+        guard case .paragraph(let runs) = FeishuMarkdown.blocks("☑️ 一\n▶️ **二**")[0] else { return XCTFail("paragraph") }
+        XCTAssertEqual(runs.map(\.text).joined(), "☑️ 一\n▶️ 二")
     }
 
     func testFormElementsParse() {
@@ -250,7 +304,7 @@ final class ChatPerformanceTests: XCTestCase {
             text += line
             let start = CFAbsoluteTimeGetCurrent()
             for block in FeishuMarkdown.blocks(text) {
-                if case .paragraph(let paragraph) = block { _ = FeishuMarkdown.inline(paragraph, base: .primary) }
+                if case .paragraph(let runs) = block { _ = FeishuMarkdown.attributed(runs, base: .primary) }
             }
             let elapsed = CFAbsoluteTimeGetCurrent() - start
             total += elapsed

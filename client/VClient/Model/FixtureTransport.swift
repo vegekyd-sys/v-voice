@@ -25,6 +25,36 @@ final class FixtureTransport: VTransport {
         }
     }
 
+    /// Everything the markdown renderer draws, for the demo and for checking it by eye.
+    static let markdownSample = """
+    ## 判定
+
+    | 项目 | 结果 | 说明 |
+    |---|:--:|---|
+    | 登录 | ✓ | 登录失败与授权边界保留正确，但附带的 **Memory** 网页维修被诊断成了只读问题，还需要后续确认 |
+    | 排序 | ✕ | 见 https://example.com/report?id=1 |
+
+    看 [文档](https://docs.openclaw.ai) 或 https://openclaw.ai，~~旧说法~~ *作废*，`代码`。
+
+    - 第一项
+      - 嵌套一项，文字比较长的时候要能正常换行，不要和下面重叠
+    - [x] 完成了
+    - [ ] 还没做
+
+    1. 第一步
+    2. 第二步
+
+    > 引用里有 **粗体**
+    >
+    > 第二段
+
+    ```swift
+    let answer = 42
+    ```
+
+    <font color='grey'>灰色说明</font>
+    """
+
     static func sessions() -> [ChatSession] {
         let now = Date.now
         func ago(_ minutes: Double) -> Date { now.addingTimeInterval(-minutes * 60) }
@@ -36,6 +66,7 @@ final class FixtureTransport: VTransport {
             channel: "飞书私聊",
             items: [
                 ChatItem(id: "dm-1", sender: .user, time: ago(62), content: .text("昨晚 Gateway 为什么卡了一下？")),
+                ChatItem(id: "dm-md", sender: .v, time: ago(61.5), content: .text(Self.markdownSample)),
                 ChatItem(id: "dm-2", sender: .v, time: ago(61), content: .reply(WorkState(
                     phase: .done,
                     answer: """

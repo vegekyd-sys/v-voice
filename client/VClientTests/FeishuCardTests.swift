@@ -56,10 +56,11 @@ final class FeishuCardTests: XCTestCase {
 
     func testMarkdownBlocksAndInlineTags() {
         let blocks = FeishuMarkdown.blocks("## 结论\n- 一\n- 二\n\n1. 三\n> 引用\n```\ncode\n```\n---\n正文")
-        XCTAssertEqual(blocks, [
-            .heading("结论", level: 2), .bullet("一", depth: 0), .bullet("二", depth: 0),
-            .ordered("三", number: "1"), .quote("引用"), .code("code"), .rule, .paragraph("正文"),
-        ])
+        XCTAssertEqual(blocks.count, 7)
+        XCTAssertEqual(blocks[0], .heading([.init(text: "结论")], level: 2))
+        XCTAssertEqual(blocks[4], .code("code"))
+        XCTAssertEqual(blocks[5], .rule)
+        XCTAssertEqual(blocks[6], .paragraph([.init(text: "正文")]))
         XCTAssertEqual(FeishuMarkdown.closingOpenMarks("收到：**How"), "收到：**How**")
         XCTAssertEqual(FeishuMarkdown.closingOpenMarks("看 `live"), "看 `live`")
         XCTAssertEqual(FeishuMarkdown.closingOpenMarks("**完整**"), "**完整**")
