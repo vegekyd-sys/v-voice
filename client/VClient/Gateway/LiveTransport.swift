@@ -239,6 +239,11 @@ final class LiveTransport: VTransport {
                 if let modelName { session.model = modelName }
             }
         } catch {
+            // The app chat has no session on V until its first message.
+            if key == vappSession {
+                model.update(key) { $0.historyLoaded = true }
+                return
+            }
             model.showNotice("聊天记录加载失败：\(error.localizedDescription)")
         }
     }
