@@ -1,0 +1,23 @@
+{
+  "schema": "2.0",
+  "header": {
+    "title": { "tag": "plain_text", "content": "电脑" },
+    "subtitle": { "tag": "plain_text", "content": "需要你接管 V 的电脑" },
+    "template": "orange",
+    "text_tag_list": [ { "tag": "text_tag", "text": { "tag": "plain_text", "content": "等待中" }, "color": "orange" } ]
+  },
+  "body": {
+    "elements": [
+      { "tag": "markdown", "content": "饿了么要求**短信验证码登录**，V 没有你的手机，需要你在下面的桌面里完成登录。" },
+      { "tag": "img", "img_key": "fixture:desktop", "alt": { "tag": "plain_text", "content": "V 的桌面" } },
+      {
+        "tag": "column_set", "flex_mode": "flow",
+        "columns": [
+          { "tag": "column", "width": "auto", "elements": [ { "tag": "button", "text": { "tag": "plain_text", "content": "接管" }, "type": "primary_filled", "behaviors": [ { "type": "open_url", "default_url": "https://openclaw.tianyi.live/desktop-handoff/" } ] } ] },
+          { "tag": "column", "width": "auto", "elements": [ { "tag": "button", "text": { "tag": "plain_text", "content": "我完成了" }, "type": "default", "behaviors": [ { "type": "callback", "value": { "command": "/v-handback h1" } } ] } ] },
+          { "tag": "column", "width": "auto", "elements": [ { "tag": "button", "text": { "tag": "plain_text", "content": "跳过" }, "type": "text", "behaviors": [ { "type": "callback", "value": { "command": "/v-skip h1" } } ] } ] }
+        ]
+      }
+    ]
+  }
+}

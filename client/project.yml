@@ -1,0 +1,77 @@
+name: VClient
+options:
+  bundleIdPrefix: com.versa
+  deploymentTarget:
+    iOS: '26.0'
+  developmentLanguage: zh-Hans
+  knownRegions: [zh-Hans, en, Base]
+  xcodeVersion: '27.1'
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    DEVELOPMENT_TEAM: E6YTL27QWA
+    CODE_SIGN_STYLE: Automatic
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: '0.1.0'
+    TARGETED_DEVICE_FAMILY: '1,2'
+schemes:
+  VClient:
+    build:
+      targets:
+        VClient: all
+    test:
+      targets: [VClientTests]
+packages:
+  Markdown:
+    url: https://github.com/swiftlang/swift-markdown
+    exactVersion: 0.8.0
+targets:
+  VClient:
+    type: application
+    platform: iOS
+    dependencies:
+      - package: Markdown
+    sources:
+      - path: VClient
+    entitlements:
+      path: VClient/VClient.entitlements
+      properties:
+        aps-environment: development
+    info:
+      path: VClient/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Media comes over plain HTTP only through a local SSH tunnel (127.0.0.1).
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        # `openclaw qr` setup links open straight into pairing.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.versa.vclient.pair
+            CFBundleURLSchemes: [oc-pair]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.versa.vclient
+        PRODUCT_NAME: V
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: V
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: 'UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight'
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SWIFT_STRICT_CONCURRENCY: complete
+  VClientTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: VClientTests
+    dependencies:
+      - target: VClient
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.versa.vclient.tests
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/V.app/V
+        BUNDLE_LOADER: $(TEST_HOST)

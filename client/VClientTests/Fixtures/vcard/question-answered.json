@@ -1,0 +1,19 @@
+{
+  "schema": "2.0",
+  "v_card": 1,
+  "header": {
+    "title": {
+      "tag": "plain_text",
+      "content": "V 的问题"
+    },
+    "template": "grey"
+  },
+  "body": {
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "✓ 已选择：火锅、寿司"
+      }
+    ]
+  }
+}
