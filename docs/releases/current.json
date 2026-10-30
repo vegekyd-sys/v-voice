@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "one-voice-20261030",
-  "version": "voice-one-v.20261030.1",
-  "entryCommit": "899ed2ffdfe76cd7d76d593af36040dfe80e62c7",
-  "deviceEntryCommit": "899ed2ffdfe76cd7d76d593af36040dfe80e62c7",
-  "filesSha256": "4d722bfc4121bcf24023c159b8c31e8d43f68de1ed06f0240048d1217945a3e0",
-  "registration": "one-voice-20261030/release.json",
-  "previousEntryCommit": "4f06888030edeb2704ecdd944b724fece900061d",
+  "release": "tv-formal-20261030",
+  "version": "voice-tv-formal.20261030.1",
+  "entryCommit": "53f1e621745610b5a9811d00ef82cdf4ac1cc07f",
+  "deviceEntryCommit": "53f1e621745610b5a9811d00ef82cdf4ac1cc07f",
+  "filesSha256": "f2fe63a68f1662db3ff460e9291806b179d6014fad4baade5765df663fc4a211",
+  "registration": "tv-formal-20261030/release.json",
+  "previousEntryCommit": "899ed2ffdfe76cd7d76d593af36040dfe80e62c7",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-10-30T23:55:00+08:00",
-  "runtimeDifference": "One V while a task runs: first-person speech, results from the conclusion, no spoken durations, premature completion claims cut. Existing native binaries; Gateway unchanged. Synthetic production calls plus Tianyi's Candidate call."
+  "validatedAt": "2026-10-31T00:51:29+08:00",
+  "runtimeDifference": "TV array audio, bounded playback, companion UI and native TV source consolidation. Existing accepted Android APKs retained; official TV entry verified twice. First recorded start had one DSP timeout; cause unconfirmed."
 }
