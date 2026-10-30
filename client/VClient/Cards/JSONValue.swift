@@ -10,6 +10,10 @@ enum JSONValue: Codable, Hashable, Sendable {
     case array([JSONValue])
     case null
 
+    var objectValue: [String: JSONValue]? {
+        if case .object(let value) = self { value } else { nil }
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {

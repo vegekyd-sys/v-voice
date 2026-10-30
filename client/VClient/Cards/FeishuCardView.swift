@@ -3,11 +3,20 @@ import SwiftUI
 /// What a tap on a card button asks the app to do. Callback values are sent
 /// back to V untouched, exactly as Feishu would post them.
 struct CardActionHandler {
-    var perform: @MainActor (FeishuCard.Action) -> Void = { _ in }
+    var perform: @MainActor (FeishuCard.Action, [String: String]) async -> Void = { _, _ in }
+}
+
+/// The values typed into a card's form. Lives only in the view; a submitted
+/// credential is cleared at once and never reaches the model or the cache.
+@MainActor
+@Observable
+final class CardFormValues {
+    var values: [String: String] = [:]
 }
 
 extension EnvironmentValues {
     @Entry var cardAction = CardActionHandler()
+    @Entry var cardForm: CardFormValues? = nil
     /// Resolves `img_key` values. Feishu image keys are only readable through
     /// Feishu, so V has to give the client a fetchable URL for each.
     @Entry var cardImageURL: @Sendable (String) -> URL? = { URL(string: $0) }
@@ -183,6 +192,10 @@ struct CardElementView: View {
                         .gridCellColumns(field.isShort ? 1 : 2)
                 }
             }
+        case .form(let elements):
+            CardFormView(elements: elements)
+        case .input(let name, let placeholder, let password):
+            CardInputView(name: name, placeholder: placeholder, password: password)
         case .unsupported(let tag):
             Label("此卡片包含暂不支持的内容（\(tag)），请在飞书查看", systemImage: "rectangle.dashed")
                 .font(.footnote)
@@ -191,21 +204,68 @@ struct CardElementView: View {
     }
 }
 
+private struct CardFormView: View {
+    let elements: [FeishuCard.Element]
+    @State private var form = CardFormValues()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(elements.enumerated()), id: \.offset) { _, element in
+                CardElementView(element: element)
+            }
+        }
+        .environment(\.cardForm, form)
+    }
+}
+
+private struct CardInputView: View {
+    let name: String
+    let placeholder: String
+    let password: Bool
+    @Environment(\.cardForm) private var form
+
+    var body: some View {
+        let value = Binding(get: { form?.values[name] ?? "" }, set: { form?.values[name] = $0 })
+        Group {
+            if password {
+                SecureField(placeholder, text: value).textContentType(.password)
+            } else {
+                TextField(placeholder, text: value, axis: .vertical)
+            }
+        }
+        .font(.callout)
+        .textInputAutocapitalization(.never)
+        .autocorrectionDisabled()
+        .padding(.horizontal, 12)
+        .frame(minHeight: 40)
+        .background(VTheme.sunken, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+}
+
 struct CardButtonView: View {
     let button: FeishuCard.Button
     @Environment(\.cardAction) private var cardAction
+    @Environment(\.cardForm) private var form
     @Environment(\.openURL) private var openURL
+    /// Shown from the tap until V has answered, so a slow link never reads as a missed tap.
+    @State private var working = false
 
     var body: some View {
         Button {
-            guard let action = button.action else { return }
+            guard let action = button.action, !working else { return }
             if case .openURL(let url) = action {
                 openURL(url)
-            } else {
-                cardAction.perform(action)
+                return
+            }
+            working = true
+            Task {
+                await cardAction.perform(action, button.submitsForm ? form?.values ?? [:] : [:])
+                if button.submitsForm { form?.values = [:] }
+                working = false
             }
         } label: {
             HStack(spacing: 5) {
+                if working { ProgressView().controlSize(.mini).tint(foreground) }
                 Text(button.text)
                 if case .openURL = button.action {
                     Image(systemName: "arrow.up.right").font(.caption2.weight(.bold))
@@ -213,7 +273,7 @@ struct CardButtonView: View {
             }
             .font(.subheadline.weight(.semibold))
             .padding(.horizontal, 14)
-            .frame(minHeight: 36)
+            .frame(maxWidth: button.fill ? .infinity : nil, minHeight: 36)
             .foregroundStyle(foreground)
             .background(background, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             .overlay {
@@ -223,6 +283,7 @@ struct CardButtonView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableStyle())
+        .sensoryFeedback(.selection, trigger: working) { _, now in now }
         .disabled(button.disabled || button.action == nil)
         .opacity(button.disabled ? 0.45 : 1)
     }

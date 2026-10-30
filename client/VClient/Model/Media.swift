@@ -2,8 +2,8 @@ import Foundation
 
 /// An image, video, voice clip or file in a message. `source` is what the
 /// Gateway's media route accepts: a path on V, a `media://inbound/…` ref or a URL.
-struct MediaRef: Hashable, Sendable, Identifiable {
-    enum Kind: Hashable, Sendable { case image, video, audio, file }
+struct MediaRef: Hashable, Sendable, Codable, Identifiable {
+    enum Kind: Hashable, Sendable, Codable { case image, video, audio, file }
 
     var source: String
     var kind: Kind

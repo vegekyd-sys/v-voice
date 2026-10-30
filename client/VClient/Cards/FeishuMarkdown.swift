@@ -12,12 +12,63 @@ enum FeishuMarkdown {
         case quote(String)
         case code(String)
         case rule
+        case table(header: [String], rows: [[String]])
     }
 
+    private final class Parsed: @unchecked Sendable {
+        let blocks: [Block]
+        init(_ blocks: [Block]) { self.blocks = blocks }
+    }
+
+    private final class Styled: @unchecked Sendable {
+        let text: AttributedString
+        init(_ text: AttributedString) { self.text = text }
+    }
+
+    // A card is redrawn several times a second while V writes; only the block
+    // that changed costs anything.
+    nonisolated(unsafe) private static let parsedCache: NSCache<NSString, Parsed> = {
+        let cache = NSCache<NSString, Parsed>()
+        cache.countLimit = 200
+        return cache
+    }()
+    nonisolated(unsafe) private static let styledCache: NSCache<NSString, Styled> = {
+        let cache = NSCache<NSString, Styled>()
+        cache.countLimit = 2000
+        return cache
+    }()
+
     static func blocks(_ source: String) -> [Block] {
+        let key = source as NSString
+        if let hit = parsedCache.object(forKey: key) { return hit.blocks }
+        let parsed = parseBlocks(source)
+        parsedCache.setObject(Parsed(parsed), forKey: key)
+        return parsed
+    }
+
+    private static func cells(_ line: String) -> [String] {
+        var row = line
+        if row.hasPrefix("|") { row.removeFirst() }
+        if row.hasSuffix("|") { row.removeLast() }
+        return row.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    private static func parseBlocks(_ source: String) -> [Block] {
         var blocks: [Block] = []
         var paragraph: [String] = []
         var code: [String]?
+        var tableLines: [String] = []
+
+        func flushTable() {
+            guard !tableLines.isEmpty else { return }
+            defer { tableLines.removeAll() }
+            let isRule = tableLines.count >= 2 && tableLines[1].wholeMatch(of: /\|?(\s*:?-+:?\s*\|)*\s*:?-+:?\s*\|?/) != nil
+            if isRule {
+                blocks.append(.table(header: cells(tableLines[0]), rows: tableLines.dropFirst(2).map(cells)))
+            } else {
+                paragraph.append(contentsOf: tableLines)
+            }
+        }
 
         func flushParagraph() {
             if !paragraph.isEmpty {
@@ -42,6 +93,12 @@ enum FeishuMarkdown {
                 code?.append(rawLine)
                 continue
             }
+            if line.hasPrefix("|") {
+                flushParagraph()
+                tableLines.append(line)
+                continue
+            }
+            flushTable()
             if line.isEmpty {
                 flushParagraph()
             } else if line == "---" || line == "***" {
@@ -64,6 +121,7 @@ enum FeishuMarkdown {
             }
         }
         if let open = code { blocks.append(.code(open.joined(separator: "\n"))) }
+        flushTable()
         flushParagraph()
         return blocks
     }
@@ -79,6 +137,14 @@ enum FeishuMarkdown {
     }
 
     static func inline(_ source: String, base: Color) -> AttributedString {
+        let key = "\(base)|\(source)" as NSString
+        if let hit = styledCache.object(forKey: key) { return hit.text }
+        let styled = styleInline(source, base: base)
+        styledCache.setObject(Styled(styled), forKey: key)
+        return styled
+    }
+
+    private static func styleInline(_ source: String, base: Color) -> AttributedString {
         var text = source
             .replacing(/<br\s*\/?>/, with: "\n")
             .replacing(/<at[^>]*>([^<]*)<\/at>/) { match in
@@ -188,6 +254,28 @@ struct FeishuMarkdownView: View {
             .background(VTheme.sunken, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         case .rule:
             Divider().overlay(VTheme.hairline)
+        case .table(let header, let rows):
+            ScrollView(.horizontal, showsIndicators: false) {
+                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
+                    GridRow {
+                        ForEach(Array(header.enumerated()), id: \.offset) { _, cell in
+                            Text(FeishuMarkdown.inline(cell, base: baseColor)).font(bodyFont.weight(.semibold))
+                        }
+                    }
+                    Divider().overlay(VTheme.hairline)
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                        GridRow {
+                            ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
+                                Text(FeishuMarkdown.inline(cell, base: baseColor)).font(bodyFont)
+                                    .frame(maxWidth: 260, alignment: .leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+                .padding(10)
+            }
+            .background(VTheme.sunken, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
     }
 }

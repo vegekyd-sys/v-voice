@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct VClientApp: App {
+    @UIApplicationDelegateAdaptor(PushDelegate.self) private var push
     @State private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -16,9 +17,14 @@ struct VClientApp: App {
             }
             .environment(model)
             .tint(VTheme.purple)
-            .task { await model.boot() }
+            .task {
+                PushDelegate.model = model
+                await model.boot()
+                if model.mode == .live { PushRegistration.requestPermission() }
+            }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { model.becameActive() }
+                if phase == .background { model.becameInactive() }
             }
             .onOpenURL { url in
                 // oc-pair://<setup code> links open straight into pairing.

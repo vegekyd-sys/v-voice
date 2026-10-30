@@ -4,6 +4,9 @@ struct ChatScreen: View {
     let sessionID: String
     @Environment(AppModel.self) private var model
     @State private var draft = ""
+    @State private var quote: String?
+    @State private var attachments: [Attachment] = []
+    @State private var selecting: String?
     /// Follow new messages only while the reader is at the bottom, like Feishu.
     @State private var atBottom = true
 
@@ -32,7 +35,10 @@ struct ChatScreen: View {
                                 item: item,
                                 showsSender: previous?.sender != item.sender
                                     || item.time.timeIntervalSince(previous?.time ?? .distantPast) > 600,
-                                sessionID: sessionID)
+                                sessionID: sessionID,
+                                canReact: sessionID == model.vappSessionID)
+                                .equatable()
+                                .environment(\.messageActions, MessageActions(quote: { quote = $0 }, select: { selecting = $0 }))
                                 .id(item.id)
                         }
                     }
@@ -74,15 +80,18 @@ struct ChatScreen: View {
                     } else if !model.status.isConnected, model.mode == .live {
                         NoticeBanner(text: model.status.label, tone: .quiet)
                     }
-                    Composer(text: $draft, isWorking: session.isWorking, onSend: {
-                        model.send(draft, in: sessionID)
+                    Composer(text: $draft, quote: $quote, attachments: $attachments, isWorking: session.isWorking, onSend: {
+                        model.send(draft, quote: quote, attachments: attachments, in: sessionID)
                         draft = ""
+                        quote = nil
+                        attachments = []
                     }, onStop: {
                         model.abort(sessionID)
                     })
                 }
                 .animation(.snappy, value: model.notice)
             }
+            .sheet(item: Binding(get: { selecting.map(SelectableText.init) }, set: { selecting = $0?.text })) { SelectableTextSheet(text: $0.text) }
             .navigationTitle(session.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -123,11 +132,102 @@ struct NoticeBanner: View {
     }
 }
 
-struct MessageRow: View {
+struct MessageActions {
+    var quote: (String) -> Void = { _ in }
+    var select: (String) -> Void = { _ in }
+}
+
+extension EnvironmentValues {
+    @Entry var messageActions = MessageActions()
+}
+
+private struct SelectableText: Identifiable {
+    let text: String
+    var id: String { text }
+}
+
+/// Long press offers 选择文字: a text view where any part can be selected.
+private struct SelectableTextSheet: View {
+    let text: String
+
+    var body: some View {
+        NavigationStack {
+            TextViewer(text: text)
+                .navigationTitle("选择文字")
+                .navigationBarTitleDisplayMode(.inline)
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+private struct TextViewer: UIViewRepresentable {
+    let text: String
+
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView()
+        view.isEditable = false
+        view.font = .preferredFont(forTextStyle: .callout)
+        view.textContainerInset = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        return view
+    }
+
+    func updateUIView(_ view: UITextView, context: Context) {
+        if view.text != text { view.text = text }
+    }
+}
+
+private struct ReactionsRow: View {
+    let reactions: [ChatItem.Reaction]
+    let onTap: (ChatItem.Reaction) -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(Array(reactions.enumerated()), id: \.offset) { _, reaction in
+                Button { onTap(reaction) } label: {
+                    Text(reaction.emoji)
+                        .font(.footnote)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(VTheme.sunken, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+struct MessageRow: View, Equatable {
     let item: ChatItem
     let showsSender: Bool
     let sessionID: String
+    var canReact = false
     @Environment(AppModel.self) private var model
+    @Environment(\.messageActions) private var actions
+
+    /// Only a changed message redraws; rewriting one card leaves the rest of a long chat alone.
+    nonisolated static func == (lhs: MessageRow, rhs: MessageRow) -> Bool {
+        lhs.showsSender == rhs.showsSender && lhs.canReact == rhs.canReact && lhs.sessionID == rhs.sessionID && lhs.item == rhs.item
+    }
+
+    @ViewBuilder
+    private var menu: some View {
+        let text = item.plainText
+        if !text.isEmpty {
+            Button("复制", systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
+            Button("选择文字", systemImage: "selection.pin.in.out") { actions.select(text) }
+            Button("引用回复", systemImage: "arrowshape.turn.up.left") { actions.quote(String(text.prefix(200))) }
+        }
+        if canReact {
+            ForEach(["👍", "❤️", "😂", "🎉", "🙏"], id: \.self) { emoji in
+                let mine = item.reactions.contains { $0.emoji == emoji && $0.from == "user" }
+                Button("\(emoji)\(mine ? " 取消" : "")") { model.react(item, emoji: emoji, remove: mine, in: sessionID) }
+            }
+        }
+    }
+
+    private func tapped(_ reaction: ChatItem.Reaction) {
+        if reaction.from == "user" { model.react(item, emoji: reaction.emoji, remove: true, in: sessionID) }
+    }
 
     var body: some View {
         switch item.sender {
@@ -148,16 +248,16 @@ struct MessageRow: View {
                     ProgressView().controlSize(.mini)
                 } else if item.failed {
                     Button {
-                        if case .text(let text) = item.content {
-                            model.update(sessionID) { $0.items.removeAll { $0.id == item.id } }
-                            model.send(text, in: sessionID)
-                        }
+                        model.retry(item, in: sessionID)
                     } label: {
                         Image(systemName: "exclamationmark.circle.fill").foregroundStyle(VTheme.red)
                     }
                     .accessibilityLabel("重新发送")
                 }
-                userContent
+                VStack(alignment: .trailing, spacing: 4) {
+                    userContent.contextMenu { menu }
+                    if !item.reactions.isEmpty { ReactionsRow(reactions: item.reactions, onTap: tapped) }
+                }
             }
         case .member(let name):
             HStack(alignment: .top, spacing: 10) {
@@ -205,11 +305,13 @@ struct MessageRow: View {
                     }
                     vContent
                         .frame(maxWidth: VTheme.bubbleMaxWidth, alignment: .leading)
+                        .contextMenu { menu }
+                    if !item.reactions.isEmpty { ReactionsRow(reactions: item.reactions, onTap: tapped) }
                 }
                 Spacer(minLength: 0)
             }
-            .environment(\.cardAction, CardActionHandler { action in
-                model.perform(action, item: item.id, in: sessionID)
+            .environment(\.cardAction, CardActionHandler { action, form in
+                await model.perform(action, form: form, item: item.id, in: sessionID)
             })
         }
     }
@@ -244,11 +346,6 @@ struct MessageRow: View {
         switch item.content {
         case .reply(let work):
             WorkCardView(work: work)
-                .contextMenu {
-                    if !work.visibleAnswer.isEmpty {
-                        Button("复制", systemImage: "doc.on.doc") { UIPasteboard.general.string = work.visibleAnswer }
-                    }
-                }
         case .card(let card):
             VStack(alignment: .leading, spacing: 6) {
                 FeishuCardView(card: card)

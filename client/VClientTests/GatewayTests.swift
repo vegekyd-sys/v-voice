@@ -147,3 +147,90 @@ final class GatewayTests: XCTestCase {
         XCTAssertEqual(ToolLabel.summary(name: "custom_tool", args: nil), "custom_tool")
     }
 }
+
+final class VappChatTests: XCTestCase {
+    func testMarkdownTable() {
+        let blocks = FeishuMarkdown.blocks("前言\n\n| 项 | 值 |\n|---|:--:|\n| a | 1 |\n| b | 2 |\n\n结尾")
+        XCTAssertEqual(blocks, [
+            .paragraph("前言"),
+            .table(header: ["项", "值"], rows: [["a", "1"], ["b", "2"]]),
+            .paragraph("结尾"),
+        ])
+    }
+
+    func testPipeLineWithoutRuleStaysText() {
+        XCTAssertEqual(FeishuMarkdown.blocks("| 不是表格"), [.paragraph("| 不是表格")])
+    }
+
+    func testFormElementsParse() {
+        let card = FeishuCard(json: .object(["body": .object(["elements": .array([.object([
+            "tag": "form",
+            "elements": .array([
+                .object(["tag": "input", "name": "secret_value", "input_type": "password", "placeholder": .object(["content": "粘贴"])]),
+                .object(["tag": "button", "text": .object(["content": "保存"]), "width": "fill", "form_action_type": "submit",
+                         "behaviors": .array([.object(["type": "callback", "value": .object(["kind": "secret"])])])]),
+            ]),
+        ])])])]))
+        guard case .form(let elements) = card.elements.first, case .input(let name, _, let password) = elements[0],
+              case .button(let button) = elements[1]
+        else { return XCTFail("form") }
+        XCTAssertEqual(name, "secret_value")
+        XCTAssertTrue(password)
+        XCTAssertTrue(button.fill)
+        XCTAssertTrue(button.submitsForm)
+    }
+
+    private func card(_ text: String) -> ChatItem.Content {
+        .card(FeishuCard(json: .object(["body": .object(["elements": .array([.object(["tag": "markdown", "content": .string(text)])])])])))
+    }
+
+    func testCutOffCardSettlesAndLoggedCardWins() {
+        var cut = ChatItem(id: "vcard:t1:0", sender: .v, time: .now, content: card("写到一半"))
+        cut.live = true
+        var running = ChatItem(id: "vcard:t2:0", sender: .v, time: .now, content: card("还在写"))
+        running.live = true
+        var done = ChatItem(id: "vcard:t3:0", sender: .v, time: .now, content: card("旧"))
+        done.live = true
+        var unsent = ChatItem(id: "send:x", sender: .user, time: .now, content: .text("没发出去"))
+        unsent.failed = true
+        let entries: [JSONValue] = [.object([
+            "id": "card:t3:0", "kind": "card", "cardId": "t3:0", "at": 1000,
+            "card": .object(["body": .object(["elements": .array([.object(["tag": "markdown", "content": "最终答案"])])])]),
+        ])]
+        let merged = LiveTransport.mergeVapp(entries: entries, liveCards: ["t2:0"], local: [cut, running, done, unsent], settleLocal: true)
+        let byId = Dictionary(uniqueKeysWithValues: merged.map { ($0.id, $0) })
+        XCTAssertFalse(byId["vcard:t1:0"]!.live)
+        XCTAssertTrue(byId["vcard:t1:0"]!.plainText.contains("连接中断"))
+        XCTAssertTrue(byId["vcard:t2:0"]!.live)
+        XCTAssertEqual(byId["vcard:t3:0"]!.plainText, "最终答案")
+        XCTAssertFalse(byId["vcard:t3:0"]!.live)
+        XCTAssertTrue(byId["send:x"]!.failed)
+    }
+
+    func testReactionLandsOnItsMessage() {
+        let entries: [JSONValue] = [
+            .object(["id": "m1", "kind": "user", "text": "你好", "at": 1000]),
+            .object(["id": "reaction:m1:v:👍", "kind": "reaction", "messageId": "m1", "emoji": "👍", "from": "v", "at": 1001]),
+        ]
+        let merged = LiveTransport.mergeVapp(entries: entries, liveCards: [], local: [], settleLocal: true)
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged[0].reactions, [.init(emoji: "👍", from: "v")])
+    }
+
+    func testWorkingFollowsLiveCards() {
+        var item = ChatItem(id: "vcard:t", sender: .v, time: .now, content: card("写"))
+        item.live = true
+        var session = ChatSession(id: "s", title: "V", kind: .direct, channel: "App 私聊", items: [item])
+        XCTAssertTrue(session.isWorking)
+        session.items[0].live = false
+        XCTAssertFalse(session.isWorking)
+    }
+
+    func testSessionsSurviveTheCache() throws {
+        var item = ChatItem(id: "vcard:t", sender: .v, time: .now, content: card("缓存"))
+        item.reactions = [.init(emoji: "👍", from: "user")]
+        let session = ChatSession(id: "s", title: "V", kind: .group, channel: "飞书群", items: [item])
+        let decoded = try JSONDecoder().decode(ChatSession.self, from: JSONEncoder().encode(session))
+        XCTAssertEqual(decoded, session)
+    }
+}

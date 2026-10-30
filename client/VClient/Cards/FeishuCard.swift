@@ -5,32 +5,32 @@ import Foundation
 /// buttons, column sets, images, collapsible panels and field lists.
 /// Unknown elements are kept as `.unsupported` so a newer card still shows
 /// everything this client can read instead of failing as a whole.
-struct FeishuCard: Hashable, Sendable {
+struct FeishuCard: Hashable, Sendable, Codable {
     var header: Header?
     var elements: [Element]
 
-    struct Header: Hashable, Sendable {
+    struct Header: Hashable, Sendable, Codable {
         var title: String
         var subtitle: String?
         var template: Template
         var tags: [TextTag]
     }
 
-    struct TextTag: Hashable, Sendable {
+    struct TextTag: Hashable, Sendable, Codable {
         var text: String
         var color: String
     }
 
-    enum Template: String, Sendable, CaseIterable {
+    enum Template: String, Sendable, Codable, CaseIterable {
         case blue, wathet, turquoise, green, yellow, orange, red, carmine, violet, purple, indigo, grey
         case plain = "default"
     }
 
-    enum TextSize: Hashable, Sendable {
+    enum TextSize: Hashable, Sendable, Codable {
         case normal, notation, heading
     }
 
-    indirect enum Element: Hashable, Sendable {
+    indirect enum Element: Hashable, Sendable, Codable {
         case markdown(String, size: TextSize)
         case divider
         case button(Button)
@@ -38,21 +38,23 @@ struct FeishuCard: Hashable, Sendable {
         case image(key: String, alt: String)
         case panel(title: String, expanded: Bool, elements: [Element])
         case fields([Field])
+        case form([Element])
+        case input(name: String, placeholder: String, password: Bool)
         case unsupported(tag: String)
     }
 
-    struct Column: Hashable, Sendable {
+    struct Column: Hashable, Sendable, Codable {
         var weight: Double?
         var elements: [Element]
     }
 
-    struct Field: Hashable, Sendable {
+    struct Field: Hashable, Sendable, Codable {
         var markdown: String
         var isShort: Bool
     }
 
-    struct Button: Hashable, Sendable {
-        enum Style: Hashable, Sendable {
+    struct Button: Hashable, Sendable, Codable {
+        enum Style: Hashable, Sendable, Codable {
             case plain, primary, primaryFilled, danger, dangerFilled, text
         }
 
@@ -60,9 +62,12 @@ struct FeishuCard: Hashable, Sendable {
         var style: Style
         var action: Action?
         var disabled: Bool
+        var fill = false
+        /// Posts the values of the form around it with the action.
+        var submitsForm = false
     }
 
-    enum Action: Hashable, Sendable {
+    enum Action: Hashable, Sendable, Codable {
         case openURL(URL)
         case callback(JSONValue)
     }
@@ -132,6 +137,15 @@ extension FeishuCard {
                 title: title,
                 expanded: json["expanded"]?.bool ?? false,
                 elements: json["elements"]?.array.compactMap(element) ?? [])
+        case "form":
+            return .form(json["elements"]?.array.compactMap(element) ?? [])
+        case "input":
+            return .input(
+                name: json["name"]?.string ?? "",
+                placeholder: json["placeholder"]?.text ?? "",
+                password: json["input_type"]?.string == "password")
+        case "interactive_container":
+            return .columns([Column(weight: 1, elements: json["elements"]?.array.compactMap(element) ?? [])], flow: false)
         default:
             return .unsupported(tag: tag)
         }
@@ -169,6 +183,25 @@ extension FeishuCard {
         } else if let value = json["value"] {
             action = .callback(value)
         }
-        return Button(text: text, style: style, action: action, disabled: json["disabled"]?.bool ?? false)
+        return Button(
+            text: text, style: style, action: action, disabled: json["disabled"]?.bool ?? false,
+            fill: json["width"]?.string == "fill", submitsForm: json["form_action_type"]?.string == "submit")
+    }
+
+    /// The card's readable text, without Feishu's inline tags.
+    var plainText: String {
+        func words(_ element: Element) -> [String] {
+            switch element {
+            case .markdown(let text, _): [text]
+            case .columns(let columns, _): columns.flatMap { $0.elements.flatMap(words) }
+            case .panel(let title, _, let elements): [title] + elements.flatMap(words)
+            case .fields(let fields): fields.map(\.markdown)
+            case .form(let elements): elements.flatMap(words)
+            default: []
+            }
+        }
+        let body = elements.flatMap(words).joined(separator: "\n\n")
+        let text = [header?.title, body.isEmpty ? nil : body].compactMap { $0 }.joined(separator: "\n")
+        return text.replacing(/<[^>]+>/, with: "")
     }
 }

@@ -25,6 +25,10 @@ final class LiveTransport: VTransport {
     /// V cards (`plugin.vapp.card`); the operator run events are not used for it.
     private var vappSession: String?
     private var vappCardSeq: [String: Double] = [:]
+    /// Log id of the oldest entry shown, where "earlier" continues from.
+    private var vappOldest: String?
+    private var shownApprovals: Set<String> = []
+    private var ownerApprovals: [String: JSONValue] = [:]
 
     /// `VCLIENT_HISTORY_LIMIT` (launch environment) loads a deeper first page for testing.
     private static let pageSize = ProcessInfo.processInfo.environment["VCLIENT_HISTORY_LIMIT"].flatMap(Int.init) ?? 60
@@ -78,6 +82,8 @@ final class LiveTransport: VTransport {
         subscribedMessages.removeAll()
         _ = try? await connection.request("sessions.subscribe", [:])
         await helloVapp()
+        // Before the session list (a 3 s walk on V): cards missed while away come back first.
+        await loadVappHistory()
         await reloadSessions()
         if let open = openSession {
             await self.open(session: open, model: model)
@@ -220,11 +226,19 @@ final class LiveTransport: VTransport {
     }
 
     func loadEarlier(session key: String, model: AppModel) async {
+        if key == vappSession {
+            await loadVappHistory(before: vappOldest)
+            return
+        }
         historyLimit[key] = min((historyLimit[key] ?? Self.pageSize) + Self.pageSize, 1000)
         await loadHistory(key)
     }
 
     private func loadHistory(_ key: String) async {
+        if key == vappSession {
+            await loadVappHistory()
+            return
+        }
         guard let connection, let model, let session = model.session(key) else { return }
         let limit = historyLimit[key] ?? Self.pageSize
         do {
@@ -239,11 +253,6 @@ final class LiveTransport: VTransport {
                 if let modelName { session.model = modelName }
             }
         } catch {
-            // The app chat has no session on V until its first message.
-            if key == vappSession {
-                model.update(key) { $0.historyLoaded = true }
-                return
-            }
             model.showNotice("聊天记录加载失败：\(error.localizedDescription)")
         }
     }
@@ -290,7 +299,8 @@ final class LiveTransport: VTransport {
 
     // MARK: Sending
 
-    func send(_ text: String, session key: String, itemId: String, model: AppModel) async {
+    func send(_ message: Outgoing, session key: String, itemId: String, model: AppModel) async {
+        let text = message.text
         guard let connection, connection.state == .connected else {
             model.updateItem("send:\(itemId)", in: key) { $0.pending = false; $0.failed = true }
             model.showNotice("还没连上 V，消息没有发出")
@@ -298,7 +308,12 @@ final class LiveTransport: VTransport {
         }
         if key == vappSession {
             do {
-                let result = try await connection.request("vapp.send", ["text": .string(text), "clientMessageId": .string(itemId)])
+                var params: [String: JSONValue] = ["text": .string(text), "clientMessageId": .string(itemId)]
+                if let quote = message.quote { params["quote"] = .string(quote) }
+                if !message.attachments.isEmpty {
+                    params["media"] = .array(await Self.encoded(message.attachments, dataKey: "contentBase64"))
+                }
+                let result = try await connection.request("vapp.send", .object(params), timeout: .seconds(120))
                 model.updateItem("send:\(itemId)", in: key) { $0.pending = false }
                 if let notice = result["notice"]?.string { model.showNotice(notice) }
             } catch {
@@ -307,13 +322,22 @@ final class LiveTransport: VTransport {
             }
             return
         }
+        let images = message.attachments.filter(\.isImage)
+        if images.count < message.attachments.count {
+            model.showNotice("这个会话只能发图片，文件请在 App 私聊里发")
+        }
         do {
-            let result = try await connection.request("chat.send", [
+            var params: [String: JSONValue] = [
                 "sessionKey": .string(key),
-                "message": .string(text),
+                "message": .string(message.quote.map { "[Replying to: \"\($0)\"]\n\n\(text)" } ?? text),
                 "idempotencyKey": .string(itemId),
                 "deliver": false,
-            ])
+            ]
+            if !images.isEmpty {
+                let encoded = await Self.encoded(images, dataKey: "content", extra: ["type": "image"])
+                params["attachments"] = .array(encoded)
+            }
+            let result = try await connection.request("chat.send", .object(params), timeout: .seconds(120))
             let runId = result["runId"]?.string ?? itemId
             model.updateItem("send:\(itemId)", in: key) { item in
                 item.pending = false
@@ -326,8 +350,29 @@ final class LiveTransport: VTransport {
         }
     }
 
+    /// Base64 of a large photo takes long enough to be felt on the main thread.
+    nonisolated private static func encoded(_ attachments: [Attachment], dataKey: String, extra: [String: JSONValue] = [:]) async -> [JSONValue] {
+        await Task.detached(priority: .userInitiated) {
+            attachments.map { file in
+                var object = extra
+                object["mimeType"] = .string(file.mimeType)
+                object["fileName"] = .string(file.fileName)
+                object[dataKey] = .string(file.data.base64EncodedString())
+                return .object(object)
+            }
+        }.value
+    }
+
     func abort(session key: String, model: AppModel) async {
         guard let connection else { return }
+        if key == vappSession {
+            do {
+                _ = try await connection.request("vapp.stop", [:])
+            } catch {
+                model.showNotice("没能停止：\(error.localizedDescription)")
+            }
+            return
+        }
         var params: JSONValue = ["sessionKey": .string(key)]
         if let runId = model.session(key)?.activeRun, case .object(var object) = params {
             object["runId"] = .string(runId)
@@ -354,10 +399,15 @@ final class LiveTransport: VTransport {
         case "progressCard.changed":
             if let key = payload["sessionKey"]?.string { Task { await refreshProgressCard(key) } }
         case "session.approval": handleApproval(payload)
+        case "exec.approval.requested": handleOwnerApproval(payload, kind: "exec")
+        case "plugin.approval.requested": handleOwnerApproval(payload, kind: "plugin")
+        case "exec.approval.resolved", "plugin.approval.resolved": handleOwnerApprovalResolved(payload)
         case "question.requested": handleQuestion(payload, resolved: false)
         case "question.resolved": handleQuestion(payload, resolved: true)
         case "plugin.vapp.card": handleVappCard(payload)
         case "plugin.vapp.message": handleVappMessage(payload)
+        case "plugin.vapp.user": handleVappUser(payload)
+        case "plugin.vapp.reaction": handleVappReaction(payload)
         case "shutdown": model?.status = .connecting(host)
         default: break
         }
@@ -552,7 +602,162 @@ final class LiveTransport: VTransport {
             return
         }
         vappSession = key
+        model.vappSessionID = key
         if model.session(key) == nil { model.sessions.append(Self.vappPlaceholder(key)) }
+        await registerPush()
+    }
+
+    /// Hands the APNs token to V; again whenever iOS gives a new one.
+    func registerPush() async {
+        guard let connection, connection.state == .connected, vappSession != nil, let token = PushRegistration.token else { return }
+        #if DEBUG
+        let sandbox = true
+        #else
+        let sandbox = false
+        #endif
+        _ = try? await connection.request("vapp.push", ["token": .string(token), "sandbox": .bool(sandbox)])
+    }
+
+    /// The chat as V's plugin logged it, with the cards that are still changing.
+    private func loadVappHistory(before: String? = nil) async {
+        guard let connection, let model, let key = vappSession else { return }
+        var params: [String: JSONValue] = ["limit": .number(Double(Self.pageSize))]
+        if let before { params["before"] = .string(before) }
+        do {
+            let result = try await connection.request("vapp.history", .object(params))
+            let entries = result["items"]?.array ?? []
+            let live = result["live"]?.array ?? []
+            let firstEntry = entries.first(where: { $0["kind"]?.string != "reaction" })?["id"]?.string
+            if before == nil || firstEntry != nil { vappOldest = firstEntry ?? vappOldest }
+            let liveIds = Set(live.compactMap { $0["cardId"]?.string })
+            model.update(key) { session in
+                session.items = Self.mergeVapp(entries: entries, liveCards: liveIds, local: session.items, settleLocal: before == nil)
+                session.historyLoaded = true
+                session.hasMoreHistory = result["hasMore"]?.bool ?? false
+            }
+            for card in live { handleVappCard(card) }
+        } catch {
+            model.update(key) { $0.historyLoaded = true }
+            model.showNotice("聊天记录加载失败：\(error.localizedDescription)")
+        }
+    }
+
+    /// One line of `vapp.history` as a chat item; nil for a reaction.
+    nonisolated static func vappItem(_ entry: JSONValue) -> ChatItem? {
+        let time = HistoryMapper.date(entry["at"]) ?? .now
+        var item: ChatItem
+        switch entry["kind"]?.string {
+        case "user":
+            guard let id = entry["id"]?.string else { return nil }
+            item = ChatItem(id: "send:\(id)", sender: .user, time: time, content: .text(entry["text"]?.string ?? ""))
+            item.quote = entry["quote"]?.string
+        case "card":
+            guard let cardId = entry["cardId"]?.string, let card = entry["card"], !card.isNull else { return nil }
+            item = ChatItem(id: "vcard:\(cardId)", sender: .v, time: time, content: .card(FeishuCard(json: card)))
+        case "message":
+            guard let id = entry["id"]?.string else { return nil }
+            let content: ChatItem.Content = if let card = entry["card"], !card.isNull {
+                .card(FeishuCard(json: card))
+            } else {
+                .text(entry["text"]?.string ?? "")
+            }
+            item = ChatItem(id: "vmsg:\(id)", sender: .v, time: time, content: content)
+        default:
+            return nil
+        }
+        item.media = mediaRefs(entry["media"])
+        return item
+    }
+
+    nonisolated private static func mediaRefs(_ value: JSONValue?) -> [MediaRef] {
+        value?.array.compactMap { ref in
+            ref["source"]?.string.map { MediaRef(source: $0, mimeType: ref["mimeType"]?.string, name: ref["name"]?.string) }
+        } ?? []
+    }
+
+    /// The log wins for what it has; unsent messages and what the page does not
+    /// reach stay. A card we still show as changing that is neither logged nor live
+    /// was cut off (the Gateway restarted mid-turn): it settles and says so.
+    nonisolated static func mergeVapp(entries: [JSONValue], liveCards: Set<String>, local: [ChatItem], settleLocal: Bool) -> [ChatItem] {
+        var merged = local
+        var positions = Dictionary(merged.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for entry in entries {
+            guard var item = vappItem(entry) else { continue }
+            if let index = positions[item.id] {
+                item.reactions = merged[index].reactions
+                merged[index] = item
+            } else {
+                positions[item.id] = merged.count
+                merged.append(item)
+            }
+        }
+        if settleLocal {
+            let logged = Set(entries.compactMap { $0["cardId"]?.string })
+            for index in merged.indices where merged[index].live && merged[index].id.hasPrefix("vcard:") {
+                let cardId = String(merged[index].id.dropFirst("vcard:".count))
+                if liveCards.contains(cardId) || logged.contains(cardId) { continue }
+                merged[index].live = false
+                if case .card(var card) = merged[index].content {
+                    card.elements.removeAll { element in
+                        if case .divider = element { return true }
+                        if case .markdown(_, let size) = element, size == .notation { return true }
+                        return false
+                    }
+                    card.elements.append(.markdown("连接中断，这一轮可能没有完成。", size: .notation))
+                    merged[index].content = .card(card)
+                }
+            }
+        }
+        for entry in entries where entry["kind"]?.string == "reaction" {
+            applyReaction(entry, to: &merged)
+        }
+        return merged.enumerated().sorted { lhs, rhs in
+            lhs.element.time == rhs.element.time ? lhs.offset < rhs.offset : lhs.element.time < rhs.element.time
+        }.map(\.element)
+    }
+
+    nonisolated private static func applyReaction(_ payload: JSONValue, to items: inout [ChatItem]) {
+        guard let id = payload["messageId"]?.string, let emoji = payload["emoji"]?.string else { return }
+        let ids = [id, "send:\(id)", "vcard:\(id)", "vmsg:\(id)"]
+        guard let index = items.lastIndex(where: { ids.contains($0.id) }) else { return }
+        let from = payload["from"]?.string ?? "v"
+        items[index].reactions.removeAll { $0.emoji == emoji && $0.from == from }
+        if payload["remove"]?.bool != true { items[index].reactions.append(.init(emoji: emoji, from: from)) }
+    }
+
+    private func handleVappReaction(_ payload: JSONValue) {
+        guard let key = payload["sessionKey"]?.string else { return }
+        model?.update(key) { Self.applyReaction(payload, to: &$0.items) }
+    }
+
+    /// The user's own message: confirms this device's copy, or shows one sent from another device.
+    private func handleVappUser(_ payload: JSONValue) {
+        guard let model, let key = payload["sessionKey"]?.string, let id = payload["id"]?.string else { return }
+        let itemId = "send:\(id)"
+        let media = Self.mediaRefs(payload["media"])
+        if model.session(key)?.items.contains(where: { $0.id == itemId }) == true {
+            model.updateItem(itemId, in: key) {
+                $0.pending = false
+                if !media.isEmpty { $0.media = media }
+            }
+            return
+        }
+        guard let item = Self.vappItem(.object((payload.objectValue ?? [:]).merging(["kind": "user"]) { first, _ in first })) else { return }
+        model.append(item, to: key)
+    }
+
+    func react(item: ChatItem, emoji: String, remove: Bool, session key: String, model: AppModel) async {
+        guard let connection, key == vappSession else { return }
+        let messageId = ["send:", "vcard:", "vmsg:"].reduce(item.id) { id, prefix in
+            id.hasPrefix(prefix) ? String(id.dropFirst(prefix.count)) : id
+        }
+        do {
+            _ = try await connection.request("vapp.react", [
+                "messageId": .string(messageId), "emoji": .string(emoji), "remove": .bool(remove),
+            ])
+        } catch {
+            model.showNotice("表情回应没有发出：\(error.localizedDescription)")
+        }
     }
 
     nonisolated static func vappPlaceholder(_ key: String) -> ChatSession {
@@ -574,10 +779,16 @@ final class LiveTransport: VTransport {
         }
         guard let json = payload["card"], !json.isNull else { return }
         let card = FeishuCard(json: json)
+        let live = payload["live"]?.bool ?? (payload["final"]?.bool != true)
         if model.session(key)?.items.contains(where: { $0.id == itemId }) == true {
-            model.updateItem(itemId, in: key) { $0.content = .card(card) }
+            model.updateItem(itemId, in: key) {
+                $0.content = .card(card)
+                $0.live = live
+            }
         } else {
-            model.append(ChatItem(id: itemId, sender: .v, time: .now, content: .card(card)), to: key)
+            var item = ChatItem(id: itemId, sender: .v, time: HistoryMapper.date(payload["at"]) ?? .now, content: .card(card))
+            item.live = live
+            model.append(item, to: key)
         }
     }
 
@@ -585,9 +796,7 @@ final class LiveTransport: VTransport {
     private func handleVappMessage(_ payload: JSONValue) {
         guard let model, let key = payload["sessionKey"]?.string, let id = payload["id"]?.string else { return }
         if model.session(key) == nil { model.sessions.append(Self.vappPlaceholder(key)) }
-        let media = payload["media"]?.array.compactMap { ref in
-            ref["source"]?.string.map { MediaRef(source: $0, mimeType: ref["mimeType"]?.string, name: ref["name"]?.string) }
-        } ?? []
+        let media = Self.mediaRefs(payload["media"])
         let content: ChatItem.Content = if let card = payload["card"], !card.isNull {
             .card(FeishuCard(json: card))
         } else {
@@ -600,10 +809,39 @@ final class LiveTransport: VTransport {
 
     // MARK: Approvals
 
+    /// Like Feishu's owner approvals: whichever session asks, the card reaches the
+    /// owner's own chat. A session that is open here shows it there through
+    /// `session.approval` instead.
+    private func handleOwnerApproval(_ payload: JSONValue, kind: String) {
+        guard let model, let key = vappSession, let id = payload["id"]?.string, !shownApprovals.contains(id) else { return }
+        let request = payload["request"] ?? .null
+        if let source = request["sessionKey"]?.string, source == openSession, subscribedMessages.contains(source) { return }
+        var presentation: [String: JSONValue] = ["kind": .string(kind)]
+        presentation["commandText"] = request["commandPreview"] ?? request["command"]
+        for field in ["host", "agentId", "title", "description", "severity", "warningText", "allowedDecisions"] {
+            if let value = request[field] { presentation[field] = value }
+        }
+        var approval: [String: JSONValue] = ["id": .string(id), "status": "pending", "presentation": .object(presentation)]
+        approval["expiresAtMs"] = payload["expiresAtMs"]
+        approval["createdAtMs"] = payload["createdAtMs"]
+        ownerApprovals[id] = .object(approval)
+        handleApproval(["sessionKey": .string(key), "phase": "pending", "approval": .object(approval)])
+    }
+
+    private func handleOwnerApprovalResolved(_ payload: JSONValue) {
+        guard let key = vappSession, let id = payload["id"]?.string, case .object(var approval)? = ownerApprovals.removeValue(forKey: id) else { return }
+        let decision = payload["decision"]?.string
+        approval["status"] = .string(decision == "deny" ? "denied" : decision == nil ? "cancelled" : "allowed")
+        approval["decision"] = decision.map(JSONValue.string)
+        approval["resolvedAtMs"] = payload["ts"]
+        handleApproval(["sessionKey": .string(key), "phase": "resolved", "approval": .object(approval)])
+    }
+
     private func handleApproval(_ payload: JSONValue) {
         guard let model, let key = payload["sessionKey"]?.string, model.session(key) != nil,
               let approval = payload["approval"], let id = approval["id"]?.string
         else { return }
+        shownApprovals.insert(id)
         let card = ApprovalCards.card(for: approval)
         let itemId = "approval:\(id)"
         if model.session(key)?.items.contains(where: { $0.id == itemId }) == true {
@@ -619,15 +857,17 @@ final class LiveTransport: VTransport {
         }
     }
 
-    func perform(_ action: FeishuCard.Action, item: String, session key: String, model: AppModel) async {
+    func perform(_ action: FeishuCard.Action, form: [String: String], item: String, session key: String, model: AppModel) async {
         guard case .callback(let value) = action else { return }
-        if let kind = value["kind"]?.string, kind == "question" || kind == "command" {
+        if let kind = value["kind"]?.string, kind == "question" || kind == "command" || kind == "secret" {
             guard let connection, connection.supports("vapp.action") else {
                 model.showNotice("这个按钮需要在飞书里操作")
                 return
             }
             do {
-                let result = try await connection.request("vapp.action", ["value": value])
+                let result = try await connection.request("vapp.action", [
+                    "value": value, "form": .object(form.mapValues(JSONValue.string)),
+                ])
                 if result["ok"]?.bool == false, let toast = result["toast"]?.string { model.showNotice(toast) }
             } catch {
                 model.showNotice("没有提交成功：\(error.localizedDescription)")

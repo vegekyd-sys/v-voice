@@ -1,7 +1,7 @@
 import Foundation
 
-struct ChatSession: Identifiable, Hashable, Sendable {
-    enum Kind: Hashable, Sendable { case direct, group, main, other }
+struct ChatSession: Identifiable, Hashable, Sendable, Codable {
+    enum Kind: Hashable, Sendable, Codable { case direct, group, main, other }
 
     var id: String
     var title: String
@@ -40,11 +40,12 @@ struct ChatSession: Identifiable, Hashable, Sendable {
         return nil
     }
 
-    var isWorking: Bool { activeRun != nil }
+    /// A V card still being rewritten counts too: the app chat has no run events.
+    var isWorking: Bool { activeRun != nil || items.suffix(16).contains(where: \.live) }
 }
 
-struct ChatItem: Identifiable, Hashable, Sendable {
-    enum Sender: Hashable, Sendable {
+struct ChatItem: Identifiable, Hashable, Sendable, Codable {
+    enum Sender: Hashable, Sendable, Codable {
         /// The person using this app (the owner).
         case user
         /// Another person in a group chat.
@@ -64,8 +65,29 @@ struct ChatItem: Identifiable, Hashable, Sendable {
     /// Sent from this app and not yet confirmed by the Gateway.
     var pending = false
     var failed = false
+    /// A V card V is still rewriting; it settles when the turn ends.
+    var live = false
+    var reactions: [Reaction] = []
 
-    enum Content: Hashable, Sendable {
+    struct Reaction: Hashable, Sendable, Codable {
+        var emoji: String
+        /// "user" or "v".
+        var from: String
+    }
+
+    /// The words of this message, for copying and quoting.
+    var plainText: String {
+        switch content {
+        case .text(let text): text
+        case .reply(let work): work.visibleAnswer
+        case .card(let card): card.plainText
+        case .question(let question): question.prompt
+        case .file(let file): file.name
+        case .notice(let text): text
+        }
+    }
+
+    enum Content: Hashable, Sendable, Codable {
         case text(String)
         case reply(WorkState)
         case card(FeishuCard)
@@ -80,7 +102,9 @@ struct ChatItem: Identifiable, Hashable, Sendable {
                 if work.isActive && work.visibleAnswer.isEmpty { "正在处理…" }
                 else if work.visibleAnswer.isEmpty { work.media.map(\.previewLabel).joined(separator: " ") }
                 else { work.visibleAnswer.replacingOccurrences(of: "\n", with: " ") }
-            case .card(let card): "[卡片] " + (card.header?.title ?? "")
+            case .card(let card):
+                if let title = card.header?.title { "[卡片] " + title }
+                else { card.plainText.replacingOccurrences(of: "\n", with: " ") }
             case .question(let question): "[需要你回答] " + question.prompt
             case .file(let file): "[文件] " + file.name
             case .notice(let text): text
@@ -92,8 +116,8 @@ struct ChatItem: Identifiable, Hashable, Sendable {
 /// V's "work view": the answer so far plus what V is doing right now.
 /// Mirrors the Feishu progress card: 💬 commentary, ✅/▶️/◻️ plan,
 /// ⚙️ current tool, ❓ waiting for an answer, and the background line.
-struct WorkState: Hashable, Sendable {
-    enum Phase: Hashable, Sendable {
+struct WorkState: Hashable, Sendable, Codable {
+    enum Phase: Hashable, Sendable, Codable {
         case thinking, working, waiting, done, failed(String), aborted
     }
 
@@ -130,15 +154,15 @@ struct WorkState: Hashable, Sendable {
     }
 }
 
-struct PlanStep: Hashable, Sendable {
-    enum Status: Hashable, Sendable { case pending, running, done }
+struct PlanStep: Hashable, Sendable, Codable {
+    enum Status: Hashable, Sendable, Codable { case pending, running, done }
 
     var text: String
     var status: Status
 }
 
-struct ToolStep: Hashable, Sendable {
-    enum Status: Hashable, Sendable { case running, done, failed }
+struct ToolStep: Hashable, Sendable, Codable {
+    enum Status: Hashable, Sendable, Codable { case running, done, failed }
 
     var id: String
     var name: String
@@ -146,7 +170,7 @@ struct ToolStep: Hashable, Sendable {
     var status: Status
 }
 
-struct BackgroundSummary: Hashable, Sendable {
+struct BackgroundSummary: Hashable, Sendable, Codable {
     var running: Int
     var subagents: Int
     var commands: Int
@@ -161,7 +185,7 @@ struct BackgroundSummary: Hashable, Sendable {
 }
 
 /// Gateway `ask_user` (one question of a `question.requested` record).
-struct QuestionState: Hashable, Sendable {
+struct QuestionState: Hashable, Sendable, Codable {
     var id: String
     /// The question id inside the record; answers are keyed by it.
     var questionId: String = "q"
@@ -177,7 +201,7 @@ struct QuestionState: Hashable, Sendable {
     var expired = false
 }
 
-struct FileRef: Hashable, Sendable {
+struct FileRef: Hashable, Sendable, Codable {
     var name: String
     var size: String
     var symbol: String

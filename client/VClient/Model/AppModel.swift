@@ -10,9 +10,11 @@ protocol VTransport: AnyObject {
     func reconnect()
     func open(session: String, model: AppModel) async
     func loadEarlier(session: String, model: AppModel) async
-    func send(_ text: String, session: String, itemId: String, model: AppModel) async
+    func send(_ message: Outgoing, session: String, itemId: String, model: AppModel) async
     func abort(session: String, model: AppModel) async
-    func perform(_ action: FeishuCard.Action, item: String, session: String, model: AppModel) async
+    func perform(_ action: FeishuCard.Action, form: [String: String], item: String, session: String, model: AppModel) async
+    func react(item: ChatItem, emoji: String, remove: Bool, session: String, model: AppModel) async
+    func registerPush() async
     func answer(_ question: QuestionState, choices: Set<Int>, other: String?, item: String, session: String, model: AppModel) async
 }
 
@@ -53,6 +55,13 @@ final class AppModel {
         }
     }
     @ObservationIgnored private var pendingOpen: String?
+    /// Session id → position; `session(_:)` runs on every card rewrite. Checked on read,
+    /// so whoever replaces `sessions` needs not maintain it.
+    @ObservationIgnored private var sessionIndex: [String: Int] = [:]
+    /// The app's own chat with V, when the Gateway has the vapp channel.
+    var vappSessionID: String?
+    /// What a failed send needs for a retry.
+    @ObservationIgnored private var unsent: [String: Outgoing] = [:]
     var selectedSessionID: String?
     var serverVersion: String?
     var deviceId: String?
@@ -87,7 +96,13 @@ final class AppModel {
         }
     }
 
-    func session(_ id: String) -> ChatSession? { sessions.first { $0.id == id } }
+    private func position(_ id: String) -> Int? {
+        if let index = sessionIndex[id], index < sessions.count, sessions[index].id == id { return index }
+        sessionIndex = Dictionary(sessions.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return sessionIndex[id]
+    }
+
+    func session(_ id: String) -> ChatSession? { position(id).map { sessions[$0] } }
 
     // MARK: Lifecycle
 
@@ -97,6 +112,7 @@ final class AppModel {
         case .demo: transport = FixtureTransport()
         case .live:
             guard let endpoint else { mode = .onboarding; return }
+            if sessions.isEmpty { sessions = await ChatCache.load(host: endpoint.displayHost) }
             transport = LiveTransport(endpoint: endpoint)
         }
         await transport?.start(model: self)
@@ -128,6 +144,7 @@ final class AppModel {
     func disconnect() {
         transport?.stop()
         transport = nil
+        if let endpoint { ChatCache.forget(host: endpoint.displayHost) }
         GatewayEndpoint.forget()
         endpoint = nil
         sessions = []
@@ -137,6 +154,19 @@ final class AppModel {
     }
 
     func becameActive() { transport?.reconnect() }
+
+    func pushTokenChanged() {
+        Task { await transport?.registerPush() }
+    }
+
+    /// A tapped notification opens its chat, once the list has it.
+    func openFromNotification(_ sessionKey: String) {
+        if session(sessionKey) != nil { open(sessionKey) } else { pendingOpen = sessionKey }
+    }
+
+    func becameInactive() {
+        if mode == .live, let endpoint { ChatCache.save(sessions, host: endpoint.displayHost) }
+    }
 
     // MARK: User actions
 
@@ -150,22 +180,39 @@ final class AppModel {
         Task { await transport?.loadEarlier(session: sessionID, model: self) }
     }
 
-    func send(_ text: String, in sessionID: String) {
+    func send(_ text: String, quote: String? = nil, attachments: [Attachment] = [], in sessionID: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty || !attachments.isEmpty else { return }
         let id = UUID().uuidString.lowercased()
         var item = ChatItem(id: "send:\(id)", sender: .user, time: .now, content: .text(trimmed))
         item.pending = mode == .live
+        item.quote = quote
+        item.media = attachments.map { MediaRef(source: "local:\($0.id)", mimeType: $0.mimeType, name: $0.fileName) }
         append(item, to: sessionID)
-        Task { await transport?.send(trimmed, session: sessionID, itemId: id, model: self) }
+        let message = Outgoing(text: trimmed, quote: quote, attachments: attachments)
+        if !attachments.isEmpty { unsent[item.id] = message }
+        Task {
+            await transport?.send(message, session: sessionID, itemId: id, model: self)
+            if self.session(sessionID)?.items.first(where: { $0.id == item.id })?.failed != true { unsent[item.id] = nil }
+        }
+    }
+
+    func retry(_ item: ChatItem, in sessionID: String) {
+        let message = unsent.removeValue(forKey: item.id)
+        update(sessionID) { $0.items.removeAll { $0.id == item.id } }
+        send(message?.text ?? item.plainText, quote: message?.quote ?? item.quote, attachments: message?.attachments ?? [], in: sessionID)
+    }
+
+    func react(_ item: ChatItem, emoji: String, remove: Bool, in sessionID: String) {
+        Task { await transport?.react(item: item, emoji: emoji, remove: remove, session: sessionID, model: self) }
     }
 
     func abort(_ sessionID: String) {
         Task { await transport?.abort(session: sessionID, model: self) }
     }
 
-    func perform(_ action: FeishuCard.Action, item: String, in sessionID: String) {
-        Task { await transport?.perform(action, item: item, session: sessionID, model: self) }
+    func perform(_ action: FeishuCard.Action, form: [String: String] = [:], item: String, in sessionID: String) async {
+        await transport?.perform(action, form: form, item: item, session: sessionID, model: self)
     }
 
     func answer(_ question: QuestionState, choices: Set<Int>, other: String? = nil, item: String, in sessionID: String) {
@@ -188,7 +235,7 @@ final class AppModel {
             if sessionID != selectedSessionID, item.sender != .user { session.unread += 1 }
             // Keep the list current between the (throttled) sessions.list reloads.
             session.lastActivity = max(session.lastActivity, item.time)
-            if case .text(let text) = item.content { session.preview = text }
+            if case .text(let text) = item.content, !text.isEmpty { session.preview = text }
         }
     }
 
@@ -208,7 +255,7 @@ final class AppModel {
     }
 
     func update(_ sessionID: String, _ change: (inout ChatSession) -> Void) {
-        guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        guard let index = position(sessionID) else { return }
         change(&sessions[index])
     }
 

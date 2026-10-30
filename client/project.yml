@@ -27,6 +27,10 @@ targets:
     platform: iOS
     sources:
       - path: VClient
+    entitlements:
+      path: VClient/VClient.entitlements
+      properties:
+        aps-environment: development
     info:
       path: VClient/Info.plist
       properties:

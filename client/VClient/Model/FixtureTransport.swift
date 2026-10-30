@@ -10,6 +10,7 @@ final class FixtureTransport: VTransport {
     }
 
     func stop() {}
+    func registerPush() async {}
     func reconnect() {}
     func open(session: String, model: AppModel) async {}
     func loadEarlier(session: String, model: AppModel) async {}
@@ -118,7 +119,15 @@ final class FixtureTransport: VTransport {
         return [direct, group, nightshift]
     }
 
-    func send(_ text: String, session: String, itemId: String, model: AppModel) async {
+    func react(item: ChatItem, emoji: String, remove: Bool, session: String, model: AppModel) async {
+        model.updateItem(item.id, in: session) { item in
+            item.reactions.removeAll { $0.emoji == emoji && $0.from == "user" }
+            if !remove { item.reactions.append(.init(emoji: emoji, from: "user")) }
+        }
+    }
+
+    func send(_ message: Outgoing, session: String, itemId: String, model: AppModel) async {
+        let text = message.text
         let runId = UUID().uuidString
         let id = "run:\(runId)"
         let start = Date.now
@@ -176,7 +185,7 @@ final class FixtureTransport: VTransport {
         }
     }
 
-    func perform(_ action: FeishuCard.Action, item: String, session: String, model: AppModel) async {
+    func perform(_ action: FeishuCard.Action, form: [String: String], item: String, session: String, model: AppModel) async {
         guard case .callback(let value) = action else { return }
         if value["kind"]?.string == "approval" {
             let decision = value["decision"]?.string ?? ""
