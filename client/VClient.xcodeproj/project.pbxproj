@@ -24,6 +24,7 @@
 		5A5F7FCC1DB5EA7AD6BC2073 /* question-answered.json in Resources */ = {isa = PBXBuildFile; fileRef = A192B9BE65F9307C364081FD /* question-answered.json */; };
 		5C3B2B1B1FEB940E7E64F18B /* VClientApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CCF1BD3C63090E4F2208C8 /* VClientApp.swift */; };
 		5F89F322F4853823E1143437 /* DeviceIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC8E9E376490908170AD5FC /* DeviceIdentity.swift */; };
+		69AC20951AB3A13CAF4325FF /* link-handoff.json in Resources */ = {isa = PBXBuildFile; fileRef = B35F01012863DD602E83F2C4 /* link-handoff.json */; };
 		6B4099645A3A45140E7F623D /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2AE571E51946C621B61496D /* SessionListView.swift */; };
 		6C68A1280068B54789C1F8B3 /* VTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDCEB1633BBF3100A9BCE3B3 /* VTheme.swift */; };
 		73A89C48827373A9C00FD1F5 /* nightshift-delivery.json in Resources */ = {isa = PBXBuildFile; fileRef = F1875E619976CB6871086E5C /* nightshift-delivery.json */; };
@@ -46,6 +47,7 @@
 		CBB82549BD32EC911C725DC0 /* FeishuCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9765C13F251C9AF8183FBF32 /* FeishuCard.swift */; };
 		CC9D2C5A13D92D4D459A4822 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B994551254656A9D4FD9546 /* Keychain.swift */; };
 		D4EB46E2E200D291226C34F1 /* question-two.json in Resources */ = {isa = PBXBuildFile; fileRef = 71D6F412DC93EE5E125CE54E /* question-two.json */; };
+		DCC2C8E3B7A5BD4C7C629BE1 /* link-secret.json in Resources */ = {isa = PBXBuildFile; fileRef = EDE37A77B0B84E0CB6B13B5F /* link-secret.json */; };
 		E8D7CCCDED527D8E1EBE1195 /* MessageParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD59EF462C6E24133488262C /* MessageParserTests.swift */; };
 		EBC8020D506A178A7B7ACA43 /* FeishuCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A7E7B048DEE7A4E97C4DF1 /* FeishuCardView.swift */; };
 		EFF2092BFEA2F9B50C7FB8D1 /* ChatScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B9517B8898BC2C28EF9E08F /* ChatScreen.swift */; };
@@ -94,6 +96,7 @@
 		A192B9BE65F9307C364081FD /* question-answered.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "question-answered.json"; sourceTree = "<group>"; };
 		A2AE571E51946C621B61496D /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
 		B35D473D09CB170EFE571440 /* Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Composer.swift; sourceTree = "<group>"; };
+		B35F01012863DD602E83F2C4 /* link-handoff.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "link-handoff.json"; sourceTree = "<group>"; };
 		C5D3C38ED02218F81CE8B80F /* work-thinking.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "work-thinking.json"; sourceTree = "<group>"; };
 		C82105DFFC0913A325C70126 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D1CCF1BD3C63090E4F2208C8 /* VClientApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VClientApp.swift; sourceTree = "<group>"; };
@@ -104,6 +107,7 @@
 		DD59EF462C6E24133488262C /* MessageParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageParserTests.swift; sourceTree = "<group>"; };
 		DDCEB1633BBF3100A9BCE3B3 /* VTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VTheme.swift; sourceTree = "<group>"; };
 		E07B5905A7DEA306FA5072F5 /* FixtureTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureTransport.swift; sourceTree = "<group>"; };
+		EDE37A77B0B84E0CB6B13B5F /* link-secret.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "link-secret.json"; sourceTree = "<group>"; };
 		EFC8E9E376490908170AD5FC /* DeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentity.swift; sourceTree = "<group>"; };
 		F1875E619976CB6871086E5C /* nightshift-delivery.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "nightshift-delivery.json"; sourceTree = "<group>"; };
 		F1A7E7B048DEE7A4E97C4DF1 /* FeishuCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeishuCardView.swift; sourceTree = "<group>"; };
@@ -230,6 +234,8 @@
 		D12B5B23955AD38362FC5D1B /* vcard */ = {
 			isa = PBXGroup;
 			children = (
+				B35F01012863DD602E83F2C4 /* link-handoff.json */,
+				EDE37A77B0B84E0CB6B13B5F /* link-secret.json */,
 				A192B9BE65F9307C364081FD /* question-answered.json */,
 				FD6B5DDE412496D39D2046FE /* question-multi.json */,
 				71D6F412DC93EE5E125CE54E /* question-two.json */,
@@ -367,6 +373,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				69AC20951AB3A13CAF4325FF /* link-handoff.json in Resources */,
+				DCC2C8E3B7A5BD4C7C629BE1 /* link-secret.json in Resources */,
 				5A5F7FCC1DB5EA7AD6BC2073 /* question-answered.json in Resources */,
 				800FC157D46FE1C1B09ACC4B /* question-multi.json in Resources */,
 				D4EB46E2E200D291226C34F1 /* question-two.json in Resources */,

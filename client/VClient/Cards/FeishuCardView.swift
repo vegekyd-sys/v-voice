@@ -262,10 +262,16 @@ struct CardImageView: View {
     let alt: String
     let url: URL?
 
+    /// V cards may point at a file on V (`/…`, `media://…`); those come through
+    /// the Gateway's media route with this device's token.
+    private var isVMedia: Bool { key.hasPrefix("/") || key.hasPrefix("media://") }
+
     var body: some View {
         Group {
             if key.hasPrefix("fixture:") {
                 FixtureImage(name: String(key.dropFirst("fixture:".count)))
+            } else if isVMedia {
+                VMediaImage(source: key) { placeholder }
             } else if let url {
                 AsyncImage(url: url) { phase in
                     if let image = phase.image {
@@ -285,6 +291,23 @@ struct CardImageView: View {
     private var placeholder: some View {
         Rectangle().fill(VTheme.sunken).aspectRatio(16 / 10, contentMode: .fit)
             .overlay { Image(systemName: "photo").foregroundStyle(VTheme.muted) }
+    }
+}
+
+private struct VMediaImage<Placeholder: View>: View {
+    let source: String
+    @ViewBuilder let placeholder: () -> Placeholder
+    @Environment(AppModel.self) private var model
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image { Image(uiImage: image).resizable().scaledToFit() } else { placeholder() }
+        }
+        .task(id: source) {
+            guard let loader = model.media, let data = try? await loader.data(MediaRef(source: source)) else { return }
+            image = UIImage(data: data)
+        }
     }
 }
 

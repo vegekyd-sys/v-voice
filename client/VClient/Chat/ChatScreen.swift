@@ -250,8 +250,11 @@ struct MessageRow: View {
                     }
                 }
         case .card(let card):
-            FeishuCardView(card: card)
-                .transition(.opacity)
+            VStack(alignment: .leading, spacing: 6) {
+                FeishuCardView(card: card)
+                if !item.media.isEmpty { MediaGallery(media: item.media) }
+            }
+            .transition(.opacity)
         case .question(let question):
             QuestionCardView(question: question) { choices, other in
                 model.answer(question, choices: choices, other: other, item: item.id, in: sessionID)
@@ -259,9 +262,14 @@ struct MessageRow: View {
         case .file(let file):
             FileCardView(file: file)
         case .text(let text):
-            FeishuMarkdownView(markdown: text)
-                .padding(12)
-                .cardSurface()
+            VStack(alignment: .leading, spacing: 6) {
+                if !item.media.isEmpty { MediaGallery(media: item.media) }
+                if !text.isEmpty {
+                    FeishuMarkdownView(markdown: text)
+                        .padding(12)
+                        .cardSurface()
+                }
+            }
         case .notice(let text):
             Text(text).font(.footnote).foregroundStyle(VTheme.muted)
         }
