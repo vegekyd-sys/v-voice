@@ -21,7 +21,8 @@ final class LiveTransport: VTransport {
     /// row snapshot in `sessions.changed`.
     private static let sessionsReloadInterval: Duration = .seconds(60)
 
-    private static let pageSize = 60
+    /// `VCLIENT_HISTORY_LIMIT` (launch environment) loads a deeper first page for testing.
+    private static let pageSize = ProcessInfo.processInfo.environment["VCLIENT_HISTORY_LIMIT"].flatMap(Int.init) ?? 60
     private let endpoint: GatewayEndpoint
 
     init(endpoint: GatewayEndpoint) {
@@ -68,6 +69,7 @@ final class LiveTransport: VTransport {
     private func didConnect() async {
         guard let connection, let model else { return }
         model.serverVersion = connection.hello?.serverVersion
+        model.media = MediaLoader(endpoint: connection.endpoint)
         subscribedMessages.removeAll()
         _ = try? await connection.request("sessions.subscribe", [:])
         await reloadSessions()
@@ -78,11 +80,14 @@ final class LiveTransport: VTransport {
 
     // MARK: Sessions
 
+    /// Night-shift sub-agents fill most of the newest rows on V and the list has no
+    /// filter for them, so ask for enough rows to still reach the chats. The cost
+    /// is the same full walk either way.
     private func reloadSessions() async {
         guard let connection, let model else { return }
         lastSessionsReload = .now
         do {
-            let result = try await connection.request("sessions.list", ["limit": 80, "includeLastMessage": true])
+            let result = try await connection.request("sessions.list", ["limit": 300, "includeLastMessage": true])
             let fresh = result["sessions"]?.array.compactMap(Self.session(from:)) ?? []
             var merged: [ChatSession] = []
             for var session in fresh {
@@ -136,6 +141,8 @@ final class LiveTransport: VTransport {
         guard let key = json["key"]?.string else { return nil }
         if json["isBackground"]?.bool == true || json["archived"]?.bool == true { return nil }
         if key.contains(":subagent:") || key.contains(":cron:") || key.contains(":hook:") { return nil }
+        // Heartbeat runs and Feishu sidecar supervisors are V's own bookkeeping.
+        if key.hasSuffix(":heartbeat") || key.contains(":sidecar-") { return nil }
         let channel = json["channel"]?.string ?? json["origin"]?["provider"]?.string
         let chatType = json["chatType"]?.string ?? json["kind"]?.string
         let isMain = json["isMain"]?.bool == true || key.hasSuffix(":main")
@@ -171,7 +178,7 @@ final class LiveTransport: VTransport {
             id: key, title: title, kind: kind, channel: subtitle, items: [],
             unread: json["unread"]?.bool == true ? 1 : 0,
             pinned: json["pinned"]?.bool ?? false,
-            preview: json["lastMessagePreview"]?.string ?? "",
+            preview: json["lastMessagePreview"]?.string.map(MessageParser.preview) ?? "",
             lastActivity: activity,
             model: json["model"]?.string.map(HistoryMapper.modelLabel))
     }

@@ -14,20 +14,26 @@ struct WorkCardView: View {
                 statusStrip
             }
             VStack(alignment: .leading, spacing: 12) {
-                if !work.answer.isEmpty {
-                    FeishuMarkdownView(markdown: work.isActive ? FeishuMarkdown.closingOpenMarks(work.answer) : work.answer)
-                } else if work.phase == .thinking {
-                    HStack(spacing: 10) {
-                        TypingDots()
-                        if let stage = work.stage { Text(Self.stageLabel(stage)).font(.footnote).foregroundStyle(VTheme.muted) }
+                if !work.visibleAnswer.isEmpty {
+                    FeishuMarkdownView(markdown: work.isActive ? FeishuMarkdown.closingOpenMarks(work.visibleAnswer) : work.visibleAnswer)
+                }
+                if !work.media.isEmpty {
+                    MediaGallery(media: work.media)
+                }
+                if work.visibleAnswer.isEmpty, work.media.isEmpty {
+                    if work.phase == .thinking {
+                        HStack(spacing: 10) {
+                            TypingDots()
+                            if let stage = work.stage { Text(Self.stageLabel(stage)).font(.footnote).foregroundStyle(VTheme.muted) }
+                        }
+                        .padding(.vertical, 4)
+                    } else if !work.isActive {
+                        Text(work.phase == .aborted ? "这一轮已停止。" : work.phase == .done ? "V 处理完了，没有需要回复的内容。" : "这一轮没有完成。")
+                            .font(.subheadline).foregroundStyle(VTheme.muted)
                     }
-                    .padding(.vertical, 4)
-                } else if !work.isActive {
-                    Text(work.phase == .aborted ? "这一轮已停止。" : work.phase == .done ? "V 处理完了，没有需要回复的内容。" : "这一轮没有完成。")
-                        .font(.subheadline).foregroundStyle(VTheme.muted)
                 }
                 if work.isActive, hasWorkView {
-                    if !work.answer.isEmpty { Divider().overlay(VTheme.hairline) }
+                    if !work.visibleAnswer.isEmpty || !work.media.isEmpty { Divider().overlay(VTheme.hairline) }
                     workView
                 }
                 if !work.isActive {

@@ -25,6 +25,9 @@ struct ChatSession: Identifiable, Hashable, Sendable {
         case .member(let name): "\(name)："
         default: ""
         }
+        if case .text(let text) = last.content, text.isEmpty, !last.media.isEmpty {
+            return prefix + last.media.map(\.previewLabel).joined(separator: " ")
+        }
         return prefix + last.content.previewText
     }
 
@@ -54,6 +57,10 @@ struct ChatItem: Identifiable, Hashable, Sendable {
     var sender: Sender
     var time: Date
     var content: Content
+    /// Images, videos and files that came with a text message.
+    var media: [MediaRef] = []
+    /// The message this one replied to, as Feishu shows it above the bubble.
+    var quote: String?
     /// Sent from this app and not yet confirmed by the Gateway.
     var pending = false
     var failed = false
@@ -70,7 +77,9 @@ struct ChatItem: Identifiable, Hashable, Sendable {
             switch self {
             case .text(let text): text.replacingOccurrences(of: "\n", with: " ")
             case .reply(let work):
-                work.isActive && work.answer.isEmpty ? "正在处理…" : work.answer.replacingOccurrences(of: "\n", with: " ")
+                if work.isActive && work.visibleAnswer.isEmpty { "正在处理…" }
+                else if work.visibleAnswer.isEmpty { work.media.map(\.previewLabel).joined(separator: " ") }
+                else { work.visibleAnswer.replacingOccurrences(of: "\n", with: " ") }
             case .card(let card): "[卡片] " + (card.header?.title ?? "")
             case .question(let question): "[需要你回答] " + question.prompt
             case .file(let file): "[文件] " + file.name
@@ -93,6 +102,11 @@ struct WorkState: Hashable, Sendable {
     /// Gateway startup stage before any visible activity, e.g. "starting_model".
     var stage: String?
     var answer: String = ""
+    /// Messages V posted into the chat with the `message` tool during the run.
+    /// In Feishu they are separate messages; here they lead the reply.
+    var sent: [String] = []
+    /// Images, videos and files V sent during the run.
+    var media: [MediaRef] = []
     var commentary: String?
     var plan: [PlanStep] = []
     var tools: [ToolStep] = []
@@ -109,6 +123,11 @@ struct WorkState: Hashable, Sendable {
     }
 
     var currentTool: ToolStep? { tools.last { $0.status == .running } }
+
+    /// Everything V said to the chat in this run, in order.
+    var visibleAnswer: String {
+        (sent + [answer]).filter { !$0.isEmpty }.joined(separator: "\n\n")
+    }
 }
 
 struct PlanStep: Hashable, Sendable {

@@ -56,6 +56,8 @@ final class AppModel {
     var selectedSessionID: String?
     var serverVersion: String?
     var deviceId: String?
+    /// Reads message media from V; nil in the demo and before the first connection.
+    @ObservationIgnored var media: MediaLoader?
     /// Transient error shown above the composer, e.g. a failed send.
     var notice: String?
 

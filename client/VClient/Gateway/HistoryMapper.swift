@@ -21,10 +21,15 @@ enum HistoryMapper {
                 let senderName = meta?["senderName"]?.string
                 if let name = senderName, text.hasPrefix(name + ": ") { text.removeFirst(name.count + 2) }
                 if isInternal(text) { continue }
+                let parsed = MessageParser.user(text)
+                guard !parsed.text.isEmpty || !parsed.media.isEmpty else { continue }
                 let isOwner = meta?["senderIsOwner"]?.bool ?? (meta?["senderId"] == nil)
                 let sender: ChatItem.Sender = isOwner || sessionKind != .group
-                    ? .user : .member(displayName(senderName ?? meta?["senderId"]?.string ?? "成员"))
-                items.append(ChatItem(id: "m:\(id)", sender: sender, time: time, content: .text(text)))
+                    ? .user : .member(displayName(senderName ?? parsed.speaker ?? meta?["senderId"]?.string ?? "成员"))
+                var item = ChatItem(id: "m:\(id)", sender: sender, time: time, content: .text(parsed.text))
+                item.media = parsed.media
+                item.quote = parsed.quote
+                items.append(item)
 
             case "assistant", "toolResult", "tool":
                 let runKey = meta?["runId"]?.string ?? "solo:\(id)"
@@ -51,14 +56,17 @@ enum HistoryMapper {
         // Drop runs that ended without anything to show (NO_REPLY, heartbeats).
         return items.filter { item in
             guard case .reply(let work) = item.content else { return true }
-            return !work.answer.isEmpty || !work.tools.isEmpty || work.phase != .done
+            return !work.visibleAnswer.isEmpty || !work.media.isEmpty || !work.tools.isEmpty || work.phase != .done
         }
     }
 
     static func apply(_ message: JSONValue, to work: inout WorkState, time: Date) {
         work.finishedAt = time
         if message["role"]?.string == "assistant" {
-            if let model = message["model"]?.string { work.model = modelLabel(model) }
+            // Mirrored deliveries (cron announcements, sends) carry a pseudo model.
+            if let model = message["model"]?.string, !["delivery-mirror", "gateway-injected"].contains(model) {
+                work.model = modelLabel(model)
+            }
             var texts: [String] = []
             for block in message["content"]?.array ?? [] {
                 switch block["type"]?.string {
@@ -66,6 +74,11 @@ enum HistoryMapper {
                     if let text = block["text"]?.string { texts.append(text) }
                 case "toolCall", "tool_use":
                     let name = block["name"]?.string ?? "tool"
+                    let args = block["arguments"] ?? block["input"]
+                    if name == "message", let sent = MessageParser.sentMessage(args) {
+                        if let text = sent.text { work.sent.append(text) }
+                        work.media.append(contentsOf: sent.media.filter { !work.media.contains($0) })
+                    }
                     work.tools.append(ToolStep(
                         id: block["id"]?.string ?? UUID().uuidString,
                         name: name,
@@ -76,7 +89,8 @@ enum HistoryMapper {
                 }
             }
             if case .string(let text) = message["content"] { texts.append(text) }
-            let text = texts.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            let (text, media) = MessageParser.assistant(texts.joined(separator: "\n\n"))
+            work.media.append(contentsOf: media.filter { !work.media.contains($0) })
             if !text.isEmpty, !isSilent(text) { work.answer = text }
             if message["stopReason"]?.string == "error" {
                 work.phase = .failed(message["errorMessage"]?.string.map { String($0.prefix(80)) } ?? "出错了")

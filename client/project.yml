@@ -32,6 +32,9 @@ targets:
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Media comes over plain HTTP only through a local SSH tunnel (127.0.0.1).
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         # `openclaw qr` setup links open straight into pairing.
         CFBundleURLTypes:
           - CFBundleURLName: com.versa.vclient.pair

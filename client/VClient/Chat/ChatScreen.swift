@@ -4,6 +4,8 @@ struct ChatScreen: View {
     let sessionID: String
     @Environment(AppModel.self) private var model
     @State private var draft = ""
+    /// Follow new messages only while the reader is at the bottom, like Feishu.
+    @State private var atBottom = true
 
     private var session: ChatSession? { model.session(sessionID) }
 
@@ -40,13 +42,20 @@ struct ChatScreen: View {
                     .frame(maxWidth: 820)
                     .frame(maxWidth: .infinity)
                 }
-                .defaultScrollAnchor(.bottom)
+                .defaultScrollAnchor(.bottom, for: .initialOffset)
+                // Rows above grow as pictures and cards load; only stay pinned to
+                // the bottom while the reader is there.
+                .defaultScrollAnchor(atBottom ? .bottom : nil, for: .sizeChanges)
                 .scrollDismissesKeyboard(.interactively)
                 .background(VTheme.page)
+                .onScrollGeometryChange(for: Bool.self) { geometry in
+                    geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 120
+                } action: { _, isAtBottom in
+                    atBottom = isAtBottom
+                }
                 .onChange(of: session.items.last) {
-                    if let last = session.items.last {
-                        withAnimation(.snappy) { proxy.scrollTo(last.id, anchor: .bottom) }
-                    }
+                    guard let last = session.items.last, atBottom || last.pending else { return }
+                    withAnimation(.snappy) { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
                 .onChange(of: session.historyLoaded) { _, loaded in
                     // First page in: jump to the newest message without animating through history.
@@ -161,7 +170,9 @@ struct MessageRow: View {
                     if showsSender {
                         Text(name).font(.caption).foregroundStyle(VTheme.muted)
                     }
-                    if case .text(let text) = item.content {
+                    if let quote = item.quote { QuoteLine(text: quote) }
+                    if !item.media.isEmpty { MediaGallery(media: item.media) }
+                    if case .text(let text) = item.content, !text.isEmpty {
                         Text(text)
                             .font(.callout)
                             .foregroundStyle(VTheme.ink)
@@ -207,14 +218,20 @@ struct MessageRow: View {
     private var userContent: some View {
         switch item.content {
         case .text(let text):
-            Text(text)
-                .font(.callout)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 9)
-                .background(VTheme.userBubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .opacity(item.pending ? 0.75 : 1)
-                .textSelection(.enabled)
+            VStack(alignment: .trailing, spacing: 5) {
+                if let quote = item.quote { QuoteLine(text: quote) }
+                if !item.media.isEmpty { MediaGallery(media: item.media, alignment: .trailing) }
+                if !text.isEmpty {
+                    Text(text)
+                        .font(.callout)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 9)
+                        .background(VTheme.userBubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .opacity(item.pending ? 0.75 : 1)
+                        .textSelection(.enabled)
+                }
+            }
         case .file(let file):
             FileCardView(file: file)
         default:
@@ -228,8 +245,8 @@ struct MessageRow: View {
         case .reply(let work):
             WorkCardView(work: work)
                 .contextMenu {
-                    if !work.answer.isEmpty {
-                        Button("复制", systemImage: "doc.on.doc") { UIPasteboard.general.string = work.answer }
+                    if !work.visibleAnswer.isEmpty {
+                        Button("复制", systemImage: "doc.on.doc") { UIPasteboard.general.string = work.visibleAnswer }
                     }
                 }
         case .card(let card):
