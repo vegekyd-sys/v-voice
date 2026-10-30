@@ -100,8 +100,8 @@ export function createTaskStages({now = Date.now} = {}) {
     observed: () => ({events, streams:{...streams}, steps:done.size + pending.size}),
   };
 }
-/** What makes a stage worth a new line: a new subject or kind of step, or a failure. */
-export const stageKey = stage => stage.steps ? `${stage.latest ?? '?'}|${stage.detail ?? ''}|${stage.failed}` : 'none';
+/** What makes a stage worth a new line: a new subject or kind of step, or that step failing. */
+export const stageKey = stage => stage.steps ? `${stage.latest ?? '?'}|${stage.detail ?? ''}|${stage.latestFailed && !stage.latestRunning ? 'failed' : ''}` : 'none';
 
 /**
  * One short spoken line from verified state only: what V is doing right now

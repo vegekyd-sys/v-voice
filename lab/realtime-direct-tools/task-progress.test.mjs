@@ -65,3 +65,11 @@ test('only an accepted sub-agent spawn names a child run of this task',()=>{
  assert.equal(spawnedChild({stream:'tool',data:{phase:'result',name:'web_search',result:{details:{status:'accepted',childSessionKey:'x',runId:'y'}}}}),null);
  assert.equal(spawnedChild(spawn({content:[{type:'text',text:'not json'}]})),null);
 });
+
+test('an earlier failure does not make the same step worth saying again',()=>{
+ const stages=createTaskStages(),key=()=>stageKey(stages.snapshot());
+ stages.consume({stream:'tool',data:{phase:'start',name:'web_fetch',toolCallId:'1',args:{url:'https://shsid.org/a'}}});
+ stages.consume({stream:'tool',data:{phase:'start',name:'exec',toolCallId:'2',args:{command:'x'}}});const before=key();
+ stages.consume({stream:'tool',data:{phase:'result',isError:true,toolCallId:'2'}});assert.equal(key(),before,'the failed command is not the stage');
+ stages.consume({stream:'tool',data:{phase:'start',name:'web_fetch',toolCallId:'3',args:{url:'https://shsid.org/b'}}});assert.equal(key(),before,'same site, nothing new to say');
+});
