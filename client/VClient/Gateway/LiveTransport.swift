@@ -27,8 +27,6 @@ final class LiveTransport: VTransport {
     private var vappCardSeq: [String: Double] = [:]
     /// Log id of the oldest entry shown, where "earlier" continues from.
     private var vappOldest: String?
-    private var shownApprovals: Set<String> = []
-    private var ownerApprovals: [String: JSONValue] = [:]
 
     /// `VCLIENT_HISTORY_LIMIT` (launch environment) loads a deeper first page for testing.
     private static let pageSize = ProcessInfo.processInfo.environment["VCLIENT_HISTORY_LIMIT"].flatMap(Int.init) ?? 60
@@ -399,9 +397,6 @@ final class LiveTransport: VTransport {
         case "progressCard.changed":
             if let key = payload["sessionKey"]?.string { Task { await refreshProgressCard(key) } }
         case "session.approval": handleApproval(payload)
-        case "exec.approval.requested": handleOwnerApproval(payload, kind: "exec")
-        case "plugin.approval.requested": handleOwnerApproval(payload, kind: "plugin")
-        case "exec.approval.resolved", "plugin.approval.resolved": handleOwnerApprovalResolved(payload)
         case "question.requested": handleQuestion(payload, resolved: false)
         case "question.resolved": handleQuestion(payload, resolved: true)
         case "plugin.vapp.card": handleVappCard(payload)
@@ -809,39 +804,10 @@ final class LiveTransport: VTransport {
 
     // MARK: Approvals
 
-    /// Like Feishu's owner approvals: whichever session asks, the card reaches the
-    /// owner's own chat. A session that is open here shows it there through
-    /// `session.approval` instead.
-    private func handleOwnerApproval(_ payload: JSONValue, kind: String) {
-        guard let model, let key = vappSession, let id = payload["id"]?.string, !shownApprovals.contains(id) else { return }
-        let request = payload["request"] ?? .null
-        if let source = request["sessionKey"]?.string, source == openSession, subscribedMessages.contains(source) { return }
-        var presentation: [String: JSONValue] = ["kind": .string(kind)]
-        presentation["commandText"] = request["commandPreview"] ?? request["command"]
-        for field in ["host", "agentId", "title", "description", "severity", "warningText", "allowedDecisions"] {
-            if let value = request[field] { presentation[field] = value }
-        }
-        var approval: [String: JSONValue] = ["id": .string(id), "status": "pending", "presentation": .object(presentation)]
-        approval["expiresAtMs"] = payload["expiresAtMs"]
-        approval["createdAtMs"] = payload["createdAtMs"]
-        ownerApprovals[id] = .object(approval)
-        handleApproval(["sessionKey": .string(key), "phase": "pending", "approval": .object(approval)])
-    }
-
-    private func handleOwnerApprovalResolved(_ payload: JSONValue) {
-        guard let key = vappSession, let id = payload["id"]?.string, case .object(var approval)? = ownerApprovals.removeValue(forKey: id) else { return }
-        let decision = payload["decision"]?.string
-        approval["status"] = .string(decision == "deny" ? "denied" : decision == nil ? "cancelled" : "allowed")
-        approval["decision"] = decision.map(JSONValue.string)
-        approval["resolvedAtMs"] = payload["ts"]
-        handleApproval(["sessionKey": .string(key), "phase": "resolved", "approval": .object(approval)])
-    }
-
     private func handleApproval(_ payload: JSONValue) {
         guard let model, let key = payload["sessionKey"]?.string, model.session(key) != nil,
               let approval = payload["approval"], let id = approval["id"]?.string
         else { return }
-        shownApprovals.insert(id)
         let card = ApprovalCards.card(for: approval)
         let itemId = "approval:\(id)"
         if model.session(key)?.items.contains(where: { $0.id == itemId }) == true {
@@ -859,7 +825,7 @@ final class LiveTransport: VTransport {
 
     func perform(_ action: FeishuCard.Action, form: [String: String], item: String, session key: String, model: AppModel) async {
         guard case .callback(let value) = action else { return }
-        if let kind = value["kind"]?.string, kind == "question" || kind == "command" || kind == "secret" {
+        if let kind = value["kind"]?.string, kind == "question" || kind == "command" || kind == "secret" || kind == "vapp-approval" {
             guard let connection, connection.supports("vapp.action") else {
                 model.showNotice("这个按钮需要在飞书里操作")
                 return
