@@ -4,7 +4,7 @@ import Foundation
 /// connected. One file per V; removed when the device is unpaired. Only
 /// finished recent items: the Gateway stays the truth once connected.
 enum ChatCache {
-    private static let version = 1
+    private static let version = 2
     private static let sessionLimit = 40
     private static let itemLimit = 60
 

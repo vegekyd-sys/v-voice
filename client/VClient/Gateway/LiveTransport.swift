@@ -197,9 +197,9 @@ final class LiveTransport: VTransport {
             title = json["subject"]?.string ?? json["displayName"]?.string ?? json["label"]?.string ?? "群聊"
             subtitle = "\(channelName)群"
         case .direct:
-            // A DM is always the conversation with V. `displayName` follows the
-            // last client that touched the session, so only an explicit label wins.
-            title = json["label"]?.string ?? "V"
+            // Every DM is with V, so what tells them apart is who it is with. `displayName`
+            // follows the last client that touched the session; `origin.label` does not.
+            title = json["label"]?.string ?? (channel == "vapp" ? nil : json["origin"]?["label"]?.string) ?? "V"
             subtitle = "\(channelName)私聊"
         case .other:
             title = json["label"]?.string ?? json["displayName"]?.string ?? key
