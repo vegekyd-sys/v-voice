@@ -19,7 +19,7 @@
 ## 发布前验证
 
 - 1095 项 Voice、95 项 speaker、11 项 fleet 检查全部通过，iOS 共用 H5 生成物一致。
-- Android TV 迁入后单测/lint/release 构建通过；family-tv 公开源码单测/lint/release 构建通过。
+- Android TV 迁入后单测/lint/release 构建通过；真实模拟器 SurfaceHandoff 仪器测试通过：加载期 WebView 不抢原生焦点，接通后确定键可挂断。失败重试、同 WebView 保持 14 秒、收起与关屏释放回归通过。family-tv 公开源码单测/lint/release 构建通过。
 - 共享页面走本地 HTTP/WebSocket/真实 Android WebView；模型和数组输入为明确替身，不算真实音频验收。
 - 首轮恢复脚本仍拦截旧 HTTP 预约，主线已走单连接拨号，故未注入故障；已将故障注入移到共同预约边界。第二轮发现历史已死亡辅助服务绑定使宽泛“nothing”断言失效，改为检查本次 CallService 已释放；不隐藏实际生命周期失败。
 
