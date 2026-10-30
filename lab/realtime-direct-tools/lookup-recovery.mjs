@@ -1,5 +1,5 @@
 // Same recovery for every receiver. No device names, permissions or transport logic.
-export const TOOL_FAILURE_LINE = '这个刚才没查成，要不要我交给后台再试试？';
+export const TOOL_FAILURE_LINE = '这个刚才没查成，要不要我换个办法再试试？';
 export const TOOL_RESULT_PROMPT_LINE = '结果查到了，要我现在说说吗？';
 const NOT_LOOKUPS = new Set(['delegate_to_v','end_call','cancel_task','openclaw_agent_control','send_task_updates','set_speaker_volume','look','show_content']);
 export function createLookupRecovery({state,progress,say,audit=()=>{},now=Date.now,

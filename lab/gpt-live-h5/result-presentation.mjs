@@ -1,15 +1,50 @@
 import {VOICE_OPERATION_CONSENT_POLICY,VOICE_CALENDAR_SERVICE_POLICY} from '../../lib/voice-operation-policy.mjs';
 import { mediaReferences } from './media-references.mjs';
 // One host-owned policy for backend documents; provider captions remain captions.
-export const LONG_RESULT_NOTICE = '详细方案在屏幕上，需要的话也可以整理成文档发给你。';
+export const LONG_RESULT_NOTICE = '详细的我放屏幕上了。';
 export const MAKARON_MEDIA_INSTRUCTIONS = '媒体生成任务通过 exec 调用已安装的 makaron CLI，复用执行环境已有凭据，不读取或输出 key。优先 makaron chat --project auto -b --json；续做同一作品使用已返回的 projectId。保存返回的 runId/id，仅用 makaron responses get 同一ID --wait --json 跟进，等待命令用原生 process 轮询，不用 nohup 或脱离管理的后台进程。只依据 completed 的 image/video 输出交付，不把计划、提交成功或 design JSON 当成最终图片/MP4；未知状态先查询原任务，不重复付费提交。用户指定 Makaron 时不要改用 image_generate/video_generate。最终保留图片、视频及用户需要的说明文字，不展示命令、私有路径、凭据或内部验收信息。';
-export const BACKEND_RESULT_INSTRUCTIONS = '图片、视频任务须实际调用可用的媒体生成能力，跟进同一任务到完成，不重复付费提交；最终给出可访问的HTTPS链接：图片用 ![图片说明](URL)，视频用 [视频说明](实际MP4的URL)。不能只给本地路径、任务ID或假链接。能力或权限不可用时明确说明未完成。\n电话结果呈现：如果最终结果超过120字，或含有表格、代码、多个列表项，最后一次回答必须同时写语音摘要和完整正文，不另起任务。严格使用这两个标题：\n【语音摘要】\n两到三句自然中文，100字以内，直接说最重要的结论、推荐或下一步，保留影响结论的必要条件和未完成项。语音摘要是直接给用户听的成品，不是写给语音模型的排布提示，不写“顺序照上”“念到某项为止”之类的指令。用户指定要念的项目、范围、数字时，严格只保留这个范围，范围外内容只放完整方案；例如要求念前十个结果，就完整写出这十个结果，不能从表格只抽两格代替。不能只说完成了或让用户看屏幕，不能编造原结果没有的事实。\n【完整方案】\n完整Markdown正文，保留全部事实、来源、条件和细节。不要把摘要当成正文的替代。普通短答案直接回答，不需要这两个标题。';
+export const BACKEND_RESULT_INSTRUCTIONS = '图片、视频任务须实际调用可用的媒体生成能力，跟进同一任务到完成，不重复付费提交；最终给出可访问的HTTPS链接：图片用 ![图片说明](URL)，视频用 [视频说明](实际MP4的URL)。不能只给本地路径、任务ID或假链接。能力或权限不可用时明确说明未完成。\n电话结果呈现：如果最终结果超过120字，或含有表格、代码、多个列表项，最后一次回答必须同时写语音摘要和完整正文，不另起任务。严格使用这两个标题：\n【语音摘要】\n两到三句自然中文，100字以内，直接说最重要的结论、推荐或下一步，保留影响结论的必要条件和未完成项。语音摘要是 V 本人在电话里说的话：用第一人称，第一句就是结论，不写“我查了”“我先”“收到”这类过程开场，不出现后台、后端、模型、子任务、转交这些词。不超过120字的最终结果同样从结论开始。语音摘要是直接给用户听的成品，不是写给语音模型的排布提示，不写“顺序照上”“念到某项为止”之类的指令。用户指定要念的项目、范围、数字时，严格只保留这个范围，范围外内容只放完整方案；例如要求念前十个结果，就完整写出这十个结果，不能从表格只抽两格代替。不能只说完成了或让用户看屏幕，不能编造原结果没有的事实。\n【完整方案】\n完整Markdown正文，保留全部事实、来源、条件和细节。不要把摘要当成正文的替代。普通短答案直接回答，不需要这两个标题。';
 export const VOICE_RESULT_DELIVERY_INSTRUCTIONS = '电话任务的交付职责：用户要求挂断后把本任务的进展、报告或最终结果发到当前绑定飞书群时，Voice 主机会依据真实用户授权负责投递和核对回执。你继续完成原任务并返回完整结果，不要为这项结果交付再查询群、搜索会话ID、调用 message/sessions_send 或另建发送任务；不要把群ID等内部路由标识提交给 web_search。不得在没有发送回执时声称已发送。用户单独要求给指定对象发一条消息、发往其他目标或修改飞书资料，是独立业务操作，仍按用户已有明确授权实际调用工具，不能以主机交付为由省略。';
 export function backendResultQuestion(question) {
   return `${question}\n\n${VOICE_OPERATION_CONSENT_POLICY}\n\n${VOICE_CALENDAR_SERVICE_POLICY}\n\n${VOICE_RESULT_DELIVERY_INSTRUCTIONS}\n\n${MAKARON_MEDIA_INSTRUCTIONS}\n\n${BACKEND_RESULT_INSTRUCTIONS}`;
 }
 // A media URL can arrive as a short streamed commentary fragment before the
 // canonical final. Keep it for the final screen delivery, never spoken progress.
+// The caller talks to one V. Everything the host speaks goes through these.
+const NOT_DONE_BEFORE = /(?:还没|没有|没|未|等到?|等我|等它|一旦|如果|要是|待会|一会儿?|回头|之后|快|才能|才会|会)[^，。！？,.!?]{0,6}$/u;
+/** A claim that the work is finished, at a clause end ("整理好了告诉你" is a promise, not a claim). */
+export function claimsCompletion(text) {
+  const re = /(?:整理|查|弄|做|办|搞|处理|核对|对比|比较|找)(?:好|完)了|查到了|完成了|搞定了|有结果了|结果(?:出来|回来)了|拿到结果了/gu;
+  const value = String(text ?? '');
+  for (const match of value.matchAll(re)) {
+    const end = match.index + match[0].length;
+    if (end < value.length && !/[，,。！？!?：:；;\s]/u.test(value[end])) continue;
+    if (end === value.length) continue; // the clause may still go on
+    if (!NOT_DONE_BEFORE.test(value.slice(0, match.index))) return true;
+  }
+  return false;
+}
+const ONE_V_WORDS = [[/(?:交给|转给|转交给?|委派给?)(?:V\s*)?(?:后台|后端)(?:模型|语言模型)?/gu, '我来'], [/(?:V\s*)?(?:后台|后端)(?:语言)?(?:模型|任务|Agent)?/gu, '我']];
+const firstPerson = text => ONE_V_WORDS.reduce((value, [re, word]) => value.replace(re, word), text).replace(/我我/gu, '我');
+const ACK_CLAUSE = /^(?:好的?|好嘞|嗯+|收到|OK|ok|行|没问题|明白(?:了)?)$/u;
+const VERB = '(?:查|看|搜|翻|核对|核实|确认|整理|找|问|对|拉|读)';
+const PROCESS_CLAUSE = new RegExp(`^(?:(?:好的?|嗯|收到)[，, ]*)?(?:我|这边|后台)?(?:(?:先|再|去|刚刚?|刚才|已经|帮你|给你|马上|这就|来|重新)+${VERB}(?![到出完好])|${VERB}(?:了|过)?(?:一下|一查|一看|下)(?![到出完好]))`, 'u');
+/** Drop process openings ("我查了一下，", "收到。") from a result the caller will hear. */
+export function speakableResult(text) {
+  let value = String(text ?? '').trim();
+  for (let i = 0; i < 3; i++) {
+    const match = /^([^，,。！？!?：:；;\n]{1,24})[，,。！？!?：:；;\n]+\s*/u.exec(value);
+    if (!match || /\d/u.test(match[1]) || !(ACK_CLAUSE.test(match[1].trim()) || PROCESS_CLAUSE.test(match[1].trim()))) break;
+    const rest = value.slice(match[0].length);
+    if (!rest.trim()) break;
+    value = rest;
+  }
+  return firstPerson(value);
+}
+/** A backend progress line in V's voice, or null if it may not be said yet. */
+export function speakableProgress(text) {
+  return typeof text === 'string' && text.trim() && !claimsCompletion(text) ? firstPerson(text.trim()) : null;
+}
 export function isSpokenBackendProgress(progress) {
   return typeof progress?.text === 'string' &&
     !/(?:https?:\/\/|!\[|(?:^|\n)\s*MEDIA:)/iu.test(progress.text);
@@ -72,5 +107,5 @@ export function presentBackendResult(result) {
   const media = mediaReferences(text).length > 0;
   const caption = text.replace(/!?\[[^\]]*\]\([^)]*\)/gu, '').replace(/https?:\/\/\S+/gu, '').trim();
   const summary = long ? parsed.summary ?? extractResultSummary(text) : null;
-  return {text, long, ...(media ? {media: true} : {}), spokenText: media ? `${parsed.summary ?? (caption ? extractResultSummary(caption) : '可以在屏幕上打开结果。')}` : long ? `${summary} ${LONG_RESULT_NOTICE}` : text};
+  return {text, long, ...(media ? {media: true} : {}), spokenText: media ? speakableResult(`${parsed.summary ?? (caption ? extractResultSummary(caption) : '可以在屏幕上打开结果。')}`) : long ? `${speakableResult(summary)} ${LONG_RESULT_NOTICE}` : speakableResult(text)};
 }

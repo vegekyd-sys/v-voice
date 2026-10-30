@@ -33,7 +33,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
  else assert(client.sent.some(e=>e.type==='ready'),'Fixture provider did not become ready');
  const upstream=peers[0],event=v=>upstream.emit('message',Buffer.from(JSON.stringify(v)),false);
  const call=(name,args,id='call-1')=>{event({type:'response.created',response:{id:'response-'+id}});event({type:'response.function_call_arguments.done',response_id:'response-'+id,call_id:id,name,arguments:JSON.stringify(args)});event({type:'response.done',response:{id:'response-'+id,status:'completed'}});};
- return {service,reservation,client,upstream,event,call,audit,invocations,peers,completeBackend:text=>{sdkTask.status='ok';sdkTask.text=text;},progressBackend:text=>sdkTask.progress.push({text,kind:'commentary',provenance:{runId:sdkTask.runId,sequence:sdkTask.progress.length+1}})};
+ return {service,reservation,client,upstream,event,call,audit,invocations,peers,completeBackend:text=>{sdkTask.status='ok';sdkTask.text=text;},failBackend:error=>{sdkTask.status='error';sdkTask.error=error;},progressBackend:text=>sdkTask.progress.push({text,kind:'commentary',provenance:{runId:sdkTask.runId,sequence:sdkTask.progress.length+1}})};
 }
 
 test('server audio metrics observe delivered packets without changing relay bytes or interruption',async t=>{
@@ -724,7 +724,7 @@ test('streaming pickup asks the Speaker host to open a greeting gate before nati
  assert.equal(requests,1);assert.equal(f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').length,1);
 });
 
-const FAST_NARRATION={firstMs:0,firstHeartbeatMs:300,settleMs:20,stageGapMs:60,factGapMs:0,heartbeatMs:300,quietAfterUserMs:0,startMs:30};
+const FAST_NARRATION={firstMs:0,settleMs:20,stageGapMs:60,factGapMs:0,idleMs:300,idleMax:2,quietAfterUserMs:0,startMs:30,correctionDelayMs:10};
 const until=async(predicate,ms=3000)=>{for(const end=Date.now()+ms;Date.now()<end;await delay(5))if(predicate())return true;return false;};
 const toolEvent=(f,runId,phase,name,toolCallId,args)=>f.service.handleEvent({event:'session.tool',payload:{runId,stream:'tool',sessionKey:'agent:makaron:explicit:personal-fixture',data:{phase,name,toolCallId,...(args?{args}:{})}}});
 test('a long background task narrates its real stages on an idle phone line, then its result still arrives',async t=>{
@@ -734,12 +734,13 @@ test('a long background task narrates its real stages on an idle phone line, the
  assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
  toolEvent(f,'another-session-run','start','memory_search','foreign');
  toolEvent(f,'sdk-fixture-run','start','web_search','search-1',{query:'勇士 新赛季 前十场 赛程'});
- assert(await until(()=>spoken().includes('后台在搜“勇士 新赛季 前十场 赛程”。')),'what the backend searches for is announced');
+ assert(await until(()=>spoken().includes('我在查勇士 新赛季 前十场 赛程。')),'what is being looked up is announced');
  toolEvent(f,'sdk-fixture-run','result','web_search','search-1');toolEvent(f,'sdk-fixture-run','start','web_fetch','fetch-1',{url:'https://www.nba.com/warriors/schedule?x=1'});
- assert(await until(()=>spoken().includes('后台在看 nba.com 上的网页。')),'a new subject is announced after the gap; only the site, not the path');
- assert(await until(()=>spoken().some(x=>/^还在弄，已经\d+秒了，刚才在看 nba\.com 上的网页。$/.test(x))),'an unchanged stage is repeated with elapsed time');
+ assert(await until(()=>spoken().includes('我在看 nba.com 上的内容。')),'a new subject is announced after the gap; only the site, not the path');
+ assert(await until(()=>spoken().includes('还在弄，有新进展我就说。')),'a long silence gets a plain line');
+ assert.equal(spoken().some(x=>/\d+\s*(?:秒|分钟)|后台/u.test(x)),false,'never a duration, never a second party');
  assert.equal(spoken().some(x=>x.includes('查记忆')),false,'another run never speaks on this call');
- assert.deepEqual([...new Set(f.audit.filter(e=>e.type==='backend.progress-spoken').map(e=>e.kind))],['stage','heartbeat']);
+ assert.deepEqual([...new Set(f.audit.filter(e=>e.type==='backend.progress-spoken').map(e=>e.kind))],['stage','idle']);
  const before=spoken().length;f.completeBackend('报告整理好了，一共三条结论。');
  assert(await until(()=>spoken().slice(before).some(x=>x.includes('三条结论'))),'the result follows the narration');
  assert(f.audit.some(e=>e.type==='backend.stages-observed'&&e.steps===2));
@@ -750,7 +751,7 @@ test('task narration never injects speech while a native lookup is still pending
  native('task','delegate_to_v',{question:'做一个长任务'});assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
  native('lookup','memory_search',{query:'正在等的原生查询'});assert(await until(()=>f.audit.some(e=>e.type==='tool.invoke'&&e.name==='memory_search')));
  toolEvent(f,'sdk-fixture-run','start','web_search','search-1');await delay(700);
- assert.equal(f.upstream.sent.some(x=>x.type==='speech_text_buffer.commit'&&x.text.startsWith('后台')),false);
+ assert.equal(f.upstream.sent.some(x=>x.type==='speech_text_buffer.commit'&&x.text.startsWith('我')),false);
  assert.equal(f.audit.some(e=>e.type==='backend.progress-spoken'),false);
 });
 test('under multi-speaker routing task narration passes the output gate as host speech',async t=>{
@@ -761,8 +762,8 @@ test('under multi-speaker routing task narration passes the output gate as host 
  assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
  toolEvent(f,'sdk-fixture-run','start','memory_search','memory-1');
  assert(await until(()=>hosted.length>0));
- assert.deepEqual(hosted[0],{text:'后台在翻记忆里的记录。',options:{source:'task-progress'}});
- assert.equal(f.upstream.sent.some(x=>x.type==='speech_text_buffer.commit'&&x.text.startsWith('后台')),false,'not past the gate');
+ assert.deepEqual(hosted[0],{text:'我翻翻记忆里的记录。',options:{source:'task-progress'}});
+ assert.equal(f.upstream.sent.some(x=>x.type==='speech_text_buffer.commit'&&x.text.startsWith('我翻翻')),false,'not past the gate');
 });
 test('a sub-agent spawned by the task is the same task: its stages are narrated, a stranger session is not',async t=>{
  const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:FAST_NARRATION});t.after(()=>f.service.dispose());
@@ -774,9 +775,9 @@ test('a sub-agent spawned by the task is the same task: its stages are narrated,
  assert(f.audit.some(e=>e.type==='backend.child-run'&&e.childRunId==='child-run-1'));
  f.service.handleEvent({event:'session.tool',payload:{runId:'unrelated-run',sessionKey:'agent:makaron:subagent:someone-else',stream:'tool',data:{phase:'start',name:'memory_search',toolCallId:'m-x'}}});
  f.service.handleEvent({event:'session.tool',payload:{runId:'child-run-1',sessionKey:'agent:makaron:subagent:child-1',stream:'tool',data:{phase:'start',name:'web_fetch',toolCallId:'w-1'}}});
- assert(await until(()=>spoken().includes('后台在读网页。')),'the child stage is announced');
+ assert(await until(()=>spoken().includes('我在看网页。')),'the child stage is announced');
  f.service.handleEvent({event:'session.tool',payload:{runId:'child-run-2',sessionKey:'agent:makaron:subagent:child-1',stream:'tool',data:{phase:'start',name:'pdf',toolCallId:'p-1'}}});
- assert(await until(()=>spoken().includes('后台在读 PDF 文档。')),'a later run of the same child session counts too');
+ assert(await until(()=>spoken().includes('我在读 PDF 文档。')),'a later run of the same child session counts too');
  assert.equal(spoken().some(x=>x.includes('查记忆')),false);
 });
 test('quick tool calls with long model thinking between them are still narrated (as on V, 2026-10-20)',async t=>{
@@ -788,9 +789,9 @@ test('quick tool calls with long model thinking between them are still narrated 
  quick('exec','e1',{command:'curl -s https://example.com'});await delay(200);
  assert.equal(spoken().some(x=>x.includes('命令')),false,'a shell command tells the caller nothing');
  quick('web_fetch','w1',{url:'https://www.nba.com/schedule'});
- assert(await until(()=>spoken().includes('后台在看 nba.com 上的网页。')),'a step that already returned is still what the backend is doing');
+ assert(await until(()=>spoken().includes('我在看 nba.com 上的内容。')),'a step that already returned is still what V is doing');
  quick('exec','e2',{command:'python3 parse.py'});quick('web_search','s1',{query:'勇士 直播 平台'});
- assert(await until(()=>spoken().includes('后台在搜“勇士 直播 平台”。')),'the latest describable step');
+ assert(await until(()=>spoken().includes('我在查勇士 直播 平台。')),'the latest describable step');
 });
 test('phone lookups have no cached speech, even with a legacy notice setting',async t=>{
  const f=await fixture(async()=>({ok:true,output:{answer:'查到了'}}),'seeduplex',{toolStartNotice:'model'});t.after(()=>f.service.dispose());
@@ -1401,4 +1402,60 @@ test('Public uses existing V search/memory tools and carries the same personal-c
  assert(f.client.sent.some(e=>e.type==='backend.result'&&e.text==='V 原有后台执行结果'),'Public short backend results use the existing report card too');
  f.call('exec',{command:'anything'},'public-denied');await delay(10);
  assert(!calls.some(r=>r.params?.name==='exec'));assert.equal(f.invocations.length,0);
+});
+
+// Timelines from real calls on 2026-10-29/30.
+const delegated=async(f,question='比较三所学校')=>{f.event({type:'response.function_call_arguments.done',items:[{call_id:'task',name:'delegate_to_v',arguments:JSON.stringify({question})}]});assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));};
+const modelSays=(f,id,...deltas)=>{for(const delta of deltas)f.event({type:'response.output_text.delta',response_id:id,delta});};
+const heard=f=>f.upstream.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text);
+test('call ca2433b7: "整理好了" before the task ended is cut, corrected, and the real result still arrives',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:{...FAST_NARRATION,firstMs:60000}});t.after(()=>f.service.dispose());
+ await delegated(f);
+ f.event({type:'response.output_audio.started',response_id:'made-up',tts_type:'default'});
+ modelSays(f,'made-up','后台','整理','好了','，核心区别很明确：');
+ assert(await until(()=>f.audit.some(e=>e.type==='speech.premature-completion-cut')),'the claim is caught from its text');
+ assert(f.upstream.sent.some(x=>x.type==='response.cancel'),'the reply is cancelled upstream');
+ assert(await until(()=>heard(f).includes('等一下，这个我还没弄完，弄好了告诉你。')));
+ modelSays(f,'made-up','耀中 YCIS 双母语打底');
+ assert.equal(f.client.sent.some(e=>e.type==='transcript'&&e.text?.includes('耀中')),false,'the rest of the made-up answer never shows');
+ f.completeBackend('耀中偏双语，上中国际学术最强，包玉刚重全人。');
+ assert(await until(()=>heard(f).some(x=>x.includes('上中国际学术最强'))),'the real result follows');
+});
+test('saying what is still to come, or answering once the task is over, is not cut',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:{...FAST_NARRATION,firstMs:60000}});t.after(()=>f.service.dispose());
+ await delegated(f);
+ modelSays(f,'r1','还在弄，','等我整理好了','告诉你。');modelSays(f,'r2','还没查到，','有结果了我就说。');
+ await delay(50);assert.equal(f.audit.some(e=>e.type==='speech.premature-completion-cut'),false);
+ f.completeBackend('结论是耀中。');assert(await until(()=>heard(f).some(x=>x.includes('结论是耀中'))));
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered')));
+ modelSays(f,'r3','整理好了，','结论是耀中。');await delay(50);
+ assert.equal(f.audit.some(e=>e.type==='speech.premature-completion-cut'),false);
+});
+test('a native lookup that just returned may be reported as found while a task runs',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{answer:'明天有课'}}),'seeduplex',{narration:{...FAST_NARRATION,firstMs:60000}});t.after(()=>f.service.dispose());
+ await delegated(f);
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'look',name:'memory_search',arguments:JSON.stringify({query:'明天'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.name==='memory_search')));
+ modelSays(f,'r1','查到了，','明天有课。');await delay(50);
+ assert.equal(f.audit.some(e=>e.type==='speech.premature-completion-cut'),false);
+});
+test('call a6216417: a result opening with process words is heard from its conclusion; the screen keeps it whole',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:{...FAST_NARRATION,firstMs:60000}});t.after(()=>f.service.dispose());
+ await delegated(f,'去虹桥天街怎么走');
+ f.completeBackend('我查下路线。后台核对过了：天街就在火车站西侧，步行十五分钟。');
+ assert(await until(()=>heard(f).length>0));
+ assert.equal(heard(f)[0],'我核对过了：天街就在火车站西侧，步行十五分钟。');
+ const history=f.upstream.sent.find(x=>x.items?.length===2);assert(history.items[1].content[0].text.startsWith('我查下路线。'),'the model still has the whole result');
+});
+test('a failed task is said plainly, without naming a second party',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:{...FAST_NARRATION,firstMs:60000}});t.after(()=>f.service.dispose());
+ await delegated(f);f.failBackend('V 后台任务未完成');
+ assert(await until(()=>heard(f).length>0));assert.deepEqual(heard(f),['这个我没弄成，要不要我再试一次？']);
+});
+test('instructions and the task acknowledgement speak as one V',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex');t.after(()=>f.service.dispose());
+ assert.match(JSON.stringify(f.upstream.sent.find(x=>x.type==='session.create')),/只有一个你/);
+ await delegated(f);
+ const ack=f.upstream.sent.find(x=>x.items?.[0]?.role==='tool').items[0].content[0].text;
+ assert.match(ack,/好，我去看看/);assert.doesNotMatch(JSON.parse(ack).message,/后台/);
 });

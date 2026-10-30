@@ -93,7 +93,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     }
     // Causal metadata only: never persist tool arguments, results, PCM or raw
     // provider frames. A received utterance without a reply must be diagnosable.
-    if(['tool.call','tool.delivered','backend.start-requested','backend.started','backend.completed','backend.child-run','backend.control','backend.cancel-observed','backend.cancel-unconfirmed','backend.read-retry','backend.result-held','backend.result-context','backend.result-notice','backend.result-spoken-late','backend.result-answered','backend.result-superseded','backend.result-unspoken','response.done','provider.event','audio.clear'].includes(event.type)){
+    if(['tool.call','tool.delivered','backend.start-requested','backend.started','backend.completed','backend.child-run','speech.premature-completion-cut','backend.control','backend.cancel-observed','backend.cancel-unconfirmed','backend.read-retry','backend.result-held','backend.result-context','backend.result-notice','backend.result-spoken-late','backend.result-answered','backend.result-superseded','backend.result-unspoken','response.done','provider.event','audio.clear'].includes(event.type)){
       if(event.type==='provider.event'&&!['conversation.item.input_audio_transcription.started','response.created','response.output_audio.started','response.canceled','input_audio_buffer.speech_started','input_audio_buffer.speech_stopped','client.response.cancel','client.response.cancel.rejected','native.listening-aside','conversation.item.input_audio_transcription.completed'].includes(event.providerEventType))return false;
       if(event.type==='tool.call'&&(typeof event.name!=='string'||typeof event.callId!=='string'))return false;
       const safe={};
@@ -109,7 +109,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     if(['backend.stage','backend.progress-spoken','backend.stages-observed'].includes(event.type)){
       const safe={};
       for(const key of ['callId','runId'])if(typeof event[key]==='string')safe[key]=event[key].slice(0,160);
-      if(event.type==='backend.progress-spoken'&&['fact','stage','heartbeat'].includes(event.kind))safe.kind=event.kind;
+      if(event.type==='backend.progress-spoken'&&['fact','stage','idle'].includes(event.kind))safe.kind=event.kind;
       if(typeof event.label==='string'&&STAGE_LABELS.has(event.label))safe.label=event.label;
       if(typeof event.running==='boolean')safe.running=event.running;
       for(const key of ['elapsedMs','completed','failed','events','steps'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
