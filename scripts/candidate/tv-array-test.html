@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8"><title>TV array worker diagnostic</title><button id="capture">Test native bridge capture lifecycle</button><p id="captureResult"></p><p id="status">Testing actual browser worker…</p><pre id="result"></pre><script>
+const worker=new Worker('/tv-array-worker.js');let index=0,completed=0,seed=17;const started=performance.now(),history=[];
+const next=()=>{let ref=new Float32Array(960),pcm=new Int16Array(3840);for(let i=0;i<960;i++){seed=(seed*1664525+1013904223)>>>0;ref[i]=(seed/4294967296-.5)*.2;history.push(ref[i]);const echo=history[index*960+i-960]??0;pcm[i*4]=echo*32768;for(let c=1;c<4;c++)pcm[i*4+c]=echo*.5*32768;}worker.postMessage({type:'render',sampleRate:48000,buffer:ref.buffer},[ref.buffer]);worker.postMessage({type:'capture',sequence:++index,buffer:pcm.buffer},[pcm.buffer]);};
+const fail=message=>{statusEl.textContent='FAIL';resultEl.textContent=message;worker.terminate();};const statusEl=document.getElementById('status'),resultEl=document.getElementById('result');
+worker.onerror=e=>fail(e.message);worker.onmessage=({data})=>{if(data.type==='error')return fail(data.message);if(data.type==='ready'){worker.postMessage({type:'configure',channels:4});return next();}if(data.type==='pcm'){if(data.buffer.byteLength!==960)return fail('Unexpected PCM size');if(++completed<100)return next();worker.terminate();statusEl.textContent='PASS';resultEl.textContent=JSON.stringify({actualWorker:true,frames:completed,channels:4,outputRate:24000,wallMs:Math.round(performance.now()-started),rawAudioRetained:false,networkModelCalls:0});}};
+</script><script type="module">
+import {captureTvArray} from '/tv-array-capture.mjs';
+document.getElementById('capture').onclick=async()=>{
+ const result=document.getElementById('captureResult');let timer,stops=0,starts=0,sequence=0;
+ const context=new AudioContext({sampleRate:48000});await context.resume();
+ window.vTvAudioCapability={version:1,pageToken:'diagnostic-token'};
+ window.VTVArray={start(token,id){starts++;timer=setInterval(()=>{let pcm=new Int16Array(3840);for(let i=0;i<960;i++)for(let c=1;c<4;c++)pcm[i*4+c]=Math.sin((sequence*960+i)*2*Math.PI*240/48000)*2000;let bytes=new Uint8Array(pcm.buffer);let b='';for(const value of bytes)b+=String.fromCharCode(value);window.__vTvAudioFrame?.(token,id,++sequence,4,btoa(b));},20);return JSON.stringify({version:1,sampleRate:48000,channels:4,source:'local-fixture-array'});},stop(){stops++;clearInterval(timer);}};
+ try{
+  const cap=await captureTvArray({context,onError:e=>{result.textContent='FAIL '+e.message;}});
+  if(starts!==0)throw Error('Capture started before transport readiness');
+  const source=context.createMediaStreamSource(cap.stream),analyser=context.createAnalyser(),gain=context.createGain();gain.gain.value=0;source.connect(analyser);analyser.connect(gain);gain.connect(context.destination);
+  cap.startCapture();await new Promise(r=>setTimeout(r,1500));const data=new Float32Array(analyser.fftSize);analyser.getFloatTimeDomainData(data);const peak=Math.max(...data.map(Math.abs));
+  cap.dispose();cap.dispose();source.disconnect();analyser.disconnect();gain.disconnect();await context.close();
+  if(starts!==1||stops!==1||cap.track.readyState!=='ended'||peak<.003)throw Error('Capture lifecycle or signal missing');
+  result.textContent='CAPTURE PASS '+JSON.stringify({starts,stops,frames:sequence,peak,syntheticOnly:true});
+ }catch(e){clearInterval(timer);result.textContent='FAIL '+e.message;}
+};
+</script>

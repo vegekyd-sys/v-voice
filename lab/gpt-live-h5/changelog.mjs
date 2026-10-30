@@ -62,6 +62,24 @@ export const FEISHU_LOGIN_PERSISTENCE_CANDIDATE_UPDATE = {
   ],
 };
 
+export const TV_REACTION_CANDIDATE_UPDATE = {
+  version:'voice-tv-immediate-dial.20261030.3',date:'2026-10-30',
+  title:'电视点击即响起拨号音',status:'candidate-validation',
+  items:[
+    '电视阵列麦克风能力在页面提交时准备；自动拨号等待能力就绪，避免冷启动偶发选错收音方式。',
+    '点击首页头像立即响起拨号音；网页接管后自动交接，取消、失败或关闭屏幕会停止。',
+    '头像浮层在页面加载、首帧交接时再次明确透明背景，减少加载瞬间闪框。',
+    '点击首页小头像立即放大，连接在后台继续；通话页面就绪后接续同尺寸头像，不等待接通才展开。',
+    '大头像下方去掉小字，只保留声音和挂断两个按钮。',
+    '合并电视入口脚本，提前加载声音处理资源，并行准备麦克风与模型连接，减少首次呼叫等待。',
+    '电视连续回话改用浏览器原生音频缓冲播放，修复部分通话声音输出持续落后于真实时间的问题。',
+    '打断会清除旧回复；短暂停顿后从尚未播放的位置继续，保留喇叭静音和已有收音、回声处理。',
+    '通话时按返回或 Home 收起 V，继续菜单或其他应用；回到首页点头像展开原通话。语音壳 0.3.9 与桌面 0.4.18 配合，点击即展开并响起拨号音。',
+    '接通、收起和挂断保留连续头像动画与轻量 Reaction；挂断或关闭屏幕后释放通话。',
+    '本次只更新独立电视候选；真人远场、回声、实体遥控与 STR 仍需分别体验。',
+  ],
+};
+
 export const FEISHU_CARD_CONFIRM_CANDIDATE_UPDATE = {
   version:'voice-feishu-card-confirm.20261025.5',date:'2026-10-25',
   title:'飞书身份原页确认与账号界面优化（Candidate）',status:'candidate-validation',
@@ -179,6 +197,12 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
   ],
 };
 export const VOICE_UPDATES = [
+  {version:'voice-tv-formal.20261030.1',date:'2026-10-30',title:'电视通话与跨应用陪伴',items:[
+    '首页点 V 头像立即展开并播放拨号音；加载交接不再出现整窗白框。',
+    '通话时 Home 或返回可收起，继续使用菜单和其他应用；点首页头像回到同一通话。',
+    '电视阵列收音与连续回复播放经过适配，支持声音开关、挂断和关屏释放。',
+    '配套首页 0.4.19、电视语音壳 0.3.11；遥控器麦克风键继续使用小爱。',
+  ]},
   {
     version:'voice-one-v.20261030.1',date:'2026-10-30',
     title:'等任务时听起来始终是 V 一个人',

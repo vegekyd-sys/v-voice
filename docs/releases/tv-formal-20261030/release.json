@@ -1,0 +1,25 @@
+{
+  "version": "voice-tv-formal.20261030.1",
+  "status": "PREPARED_NOT_DEPLOYED",
+  "rollbackServiceCommit": "899ed2ffdfe76cd7d76d593af36040dfe80e62c7",
+  "launcherVersion": "0.4.19-media-cue-tv",
+  "nativeVersion": "0.3.11-host-focus-tv",
+  "nativeReinstalled": false,
+  "launcherApkSha256": "6f6766c53d3ed4aac1269b5995d387765f788fab3fe2e79f2a0cb68b1783970b",
+  "nativeApkSha256": "f06adfce23670e8e6a7bbf8133c733bcb639894bd565df527ace60a8b1f1f96b",
+  "tests": {
+    "voice": 1095,
+    "speaker": 95,
+    "fleet": 11
+  },
+  "userConfirmed": [
+    "audible dial cue",
+    "no loading white frame"
+  ],
+  "pending": [
+    "PR merge and main CI",
+    "dual node release",
+    "official TV endpoint and live call validation",
+    "human far field echo and physical STR"
+  ]
+}

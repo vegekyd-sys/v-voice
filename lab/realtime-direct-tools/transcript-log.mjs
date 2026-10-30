@@ -127,7 +127,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     }
     if(event.type==='client.playback-stats'){
       const stats={};
-      for(const key of ['inputBytes','outputBytes','queuedOutputBytes','clears','underflows','maxReceiveGapMs','contextSampleRate','inputBufferedBytes','peakInputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','nativePauses','nativeResumes'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0)stats[key]=event.stats[key];
+      for(const key of ['inputBytes','outputBytes','queuedOutputBytes','clears','underflows','maxReceiveGapMs','contextSampleRate','inputBufferedBytes','peakInputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','outputClockWallMs','outputClockAudioMs','outputClockRatio','bufferedOutput','nativePauses','nativeResumes'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0)stats[key]=event.stats[key];
       for(const key of ['trackMuted','trackEnabled','trackLive','pageHidden'])if(typeof event.stats?.[key]==='boolean')stats[key]=event.stats[key];
       if(['running','suspended','interrupted','closed'].includes(event.stats?.contextState))stats.contextState=event.stats.contextState;
       return enqueue({...owner,type:event.type,stats});

@@ -1136,3 +1136,105 @@ button.access-summary{cursor:pointer;border-radius:12px}button.access-summary:ho
 .confirmation-actions button{min-height:44px;padding:8px 12px;background:none;border:0;font:inherit;font-size:11px;color:#8e7899;cursor:pointer}.confirmation-actions .confirmation-retry{color:#735185}
 .dial.confirmation-dial:disabled{opacity:.72;box-shadow:0 8px 22px #d7497026}
 @media(max-height:700px){.identity-confirmation{margin-top:10px}.identity-confirmation h2{font-size:14px}.confirmation-actions{margin-top:3px}}
+
+/* TV: the shared page stays mounted behind a small, transparent companion. */
+html[data-tv="true"]{--voice-height:100dvh;--island-ink:#111014;--island-lilac:#d6c2ed;--island-rose:#c96385}
+html[data-tv="true"] #app{transition:opacity .16s ease}
+html[data-tv-transition="true"] #app{opacity:0}
+html[data-tv="true"] .ios-binding-trigger{display:none}
+html[data-tv="true"][data-tv-layout="full"] .call-page:is([data-call="connected"],[data-call="ending"]){padding-top:64px}
+.tv-return{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:6px;border:0;background:#ebe6efb3;color:#796c87;border-radius:24px;padding:9px 16px;font:inherit;font-size:13px;cursor:pointer}
+.tv-return svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.8;fill:none}
+html[data-tv="true"] :is(button,a[href],input,select,textarea,[tabindex]):focus-visible{outline:2px solid #b9cddd;outline-offset:4px}
+:root[data-tv="true"] #readerBack,:root[data-tv="true"] #readerDownload{border-radius:14px}
+html[data-tv="true"] .reader-layer[data-kind="report"] .reader-surface{width:min(760px,100%)}
+html[data-tv="true"] #readerBody:focus-visible{outline:2px solid #b8a6c5;outline-offset:-3px}
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]){background:transparent;color:#fff;color-scheme:dark}
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) body{background:transparent!important;overflow:hidden}
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) #app{height:100dvh;background:transparent!important;border-radius:0;box-shadow:none;overflow:visible}
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) .changelog-trigger{display:none}
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) .call-page{position:absolute!important;inset:0!important;display:block!important;margin:0!important;padding:0!important;min-height:0!important;height:100%!important;overflow:visible!important;background:none!important;pointer-events:none}
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) .call-page :is(.home,.topbar,.chat-panel,.status){display:none!important}
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) .call-page .stage{display:block!important;position:static!important;width:100%!important;padding:0!important;margin:0!important}
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) .call-page .avatar{position:absolute!important;left:auto!important;margin:0!important;pointer-events:none;transition:none;isolation:isolate}
+html[data-tv-layout="medium"] .call-page .avatar{right:16px;top:12px;width:192px!important;height:192px!important;--avatar-size:192px!important;animation:tv-companion-reveal .44s cubic-bezier(.22,.61,.36,1) both}
+html[data-tv-layout="compact"] .call-page .avatar{right:16px;top:16px;width:64px!important;height:64px!important;--avatar-size:64px!important}
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) .avatar-face{width:100%!important;height:100%!important;padding:0!important;overflow:hidden;border:.7px solid #c6d8e670!important;background:#b4a5cc!important;box-shadow:0 5px 18px #0003!important}
+/* Same normalized crop as native: center (.55,.44), scale 1.12. */
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) .avatar-face img{border-radius:0;object-fit:cover;transform-origin:center;transform:translate(-5.6%,6.72%) scale(1.12)}
+html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) .avatar-aura{display:none!important}
+html[data-tv-layout="compact"]:has(.tv-compact:focus-visible) .avatar{animation:tv-companion-breathe 3.6s ease-in-out infinite}
+html[data-tv-layout="compact"]:has(.tv-compact:focus-visible) .avatar-face{border-color:#e5f4ffdd!important;box-shadow:0 0 16px #bbddec33!important}
+.tv-avatar-dock{position:absolute;inset:0;padding:0;display:block;pointer-events:none;z-index:10;color:#e6eef6}
+.tv-avatar-dock button,.tv-compact{font:inherit;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.tv-avatar-dock button{pointer-events:auto}
+.tv-avatar-dock button:disabled{opacity:.35;cursor:default}
+.tv-avatar-action{position:absolute;border:0;background:transparent!important;border-radius:50%;padding:0;color:#e6eef6;cursor:pointer}
+.tv-avatar-large{right:16px;top:12px;width:192px;height:192px}
+html[data-tv="true"] .tv-avatar-large:focus-visible{outline:0}
+html[data-tv-layout="medium"]:has(.tv-avatar-large:focus-visible) .avatar-face{border-color:#e5f4ffdd!important}
+.tv-compact{right:16px;top:16px;width:64px;height:64px;z-index:10}
+html[data-tv="true"] .tv-compact:focus-visible{outline:0}
+.tv-dock-status{position:absolute;right:0;top:240px;width:224px;text-align:center;font-size:12px;line-height:1.5;color:#d7e3ed;text-shadow:0 1px 8px #0009}
+.tv-dock-status.is-error{font-size:11px;color:#e4d6d9}
+.tv-dock-actions{position:absolute;right:112px;top:184px;transform:translateX(50%);display:flex;gap:14px;padding:5px;border:1px solid #d9edf522;border-radius:28px;background:#16233299;box-shadow:0 8px 20px #0003,inset 0 1px #fff08;backdrop-filter:blur(20px);animation:tv-controls-arrive .28s .18s ease-out both}
+.tv-avatar-dock .tv-round{display:flex;align-items:center;justify-content:center;width:38px;height:38px;padding:10px;border-radius:50%;background:#ffffff0b;color:#e6eef6;transition:background .18s,transform .18s}
+html[data-tv="true"] .tv-avatar-dock .tv-round:focus-visible{outline:1px solid #dceaf2;outline-offset:3px}
+.tv-avatar-dock .tv-round:active{transform:scale(.94)}
+.tv-avatar-dock .tv-end{background:#c94862;color:#fff;box-shadow:inset 0 1px #ffffff20}
+.tv-text-action{height:36px;padding:0 18px;border-radius:22px!important;background:transparent;color:#e6eef6;font-size:12px!important;white-space:nowrap}
+.tv-text-action:focus-visible{outline:1px solid #dceaf2;outline-offset:3px}
+.tv-avatar-dock .is-muted{background:#d5e1ed24;color:#b5c5d5}
+.tv-avatar-dock svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.tv-expand{height:38px;display:flex;align-items:center;gap:8px;background:none;color:#c7d8e7;font-size:11px!important;border-radius:20px;padding:8px}
+.tv-expand svg{width:13px;height:13px}
+.tv-wave{display:flex;align-items:center;gap:3px}
+.tv-wave-orbit{position:absolute;right:0;top:-4px;width:224px;height:224px;display:block;pointer-events:none;animation:tv-controls-arrive .28s .24s ease-out both}
+.tv-wave-orbit i{position:absolute;left:calc(50% - 1px);top:50%;width:2px;min-height:2px;max-height:14px;border-radius:2px;background:#b4d5e5;transform-origin:50% 1px;transform:rotate(var(--angle)) translateY(-105px);transition:height .1s linear}
+html[data-tv-presented="false"] :is(.call-page .avatar,.tv-dock-actions,.tv-wave-orbit){animation-play-state:paused!important}
+@keyframes tv-companion-reveal{from{opacity:.5;transform:translate(64px,-46px) scale(.3333)}to{opacity:1;transform:translate(0,0) scale(1)}}
+@keyframes tv-companion-breathe{0%,100%{transform:scale(1.055)}50%{transform:scale(1.073)}}
+@keyframes tv-controls-arrive{from{opacity:0;translate:0 5px}to{opacity:1;translate:0 0}}
+@media(prefers-reduced-motion:reduce){html[data-tv="true"] #app,html[data-tv="true"] .avatar,.tv-dock-actions,.tv-wave-orbit{animation:none!important;transition:none!important}}
+
+/* One persistent compositor layer across connect, collapse and hangup. Native
+   overlay keeps identical bounds, so no WebView resize or blank intermediate. */
+html[data-tv-overlay="true"] #app{transition:none;opacity:1}
+html[data-tv-overlay="true"]:is([data-tv-layout="medium"],[data-tv-layout="compact"]) .call-page .avatar{
+  right:16px;top:12px;width:192px!important;height:192px!important;--avatar-size:192px!important;
+  transform-origin:top right;transform:translateY(0) scale(1);animation:none!important;
+  transition:transform .42s cubic-bezier(.22,.8,.25,1)!important;will-change:transform;
+}
+html[data-tv-overlay="true"][data-tv-layout="compact"] .call-page .avatar,
+html[data-tv-overlay="true"]:not([data-tv-revealed="true"]) .call-page .avatar{transform:translateY(18px) scale(.333333)}
+html[data-tv-overlay="true"] .tv-compact{top:30px}
+html[data-tv-overlay="true"] .tv-dock-actions{backdrop-filter:none;background:#192634ed;animation:none}
+html[data-tv-overlay="true"]:not([data-tv-revealed="true"]) :is(.tv-dock-actions,.tv-dock-status,.tv-wave-orbit){opacity:0}
+html[data-tv-overlay="true"][data-tv-layout="compact"] .avatar-face{box-shadow:0 5px 16px #0005!important;border:3px solid #d6e5efaa!important}
+html[data-tv-overlay="true"][data-tv-layout="compact"] .avatar::after{content:"";position:absolute;right:4px;bottom:12px;width:22px;height:22px;border:4px solid #253540;border-radius:50%;background:#88d5b2}
+@media(prefers-reduced-motion:reduce){html[data-tv-overlay="true"] .call-page .avatar{transition:none!important}}
+
+.tv-dock-hint{display:none}html[data-tv-overlay="true"] .tv-dock-hint{display:block;position:absolute;right:0;top:264px;width:224px;text-align:center;font-size:10px;color:#b2c3d2;text-shadow:0 1px 7px #0009}
+
+html[data-tv-overlay="true"][data-tv-layout="compact"][data-tv-passive-focused="true"] .avatar-face{border-color:#f1f7ff!important;box-shadow:0 0 0 7px #bedcf588,0 0 30px #bbddec55!important}
+
+html[data-tv-overlay="true"] .tv-compact{outline:none!important;box-shadow:none!important}
+
+/* Meter samples already arrive at 10 Hz. Interpolating every bar's height
+   forces continuous paint on TV WebView; avatar motion keeps its own transform. */
+html[data-tv-overlay="true"] .tv-wave-orbit i{transition:none}
+
+/* Focus is drawn on the portrait itself, never on the still-full-size hit area. */
+html[data-tv-overlay="true"] .tv-avatar-large{outline:none!important;box-shadow:none!important}
+
+/* The TV shell uses software rasterization for window reattachment. The full
+   reader must not continuously rasterize a large blurred halo while capturing. */
+html[data-tv-overlay="true"][data-tv-layout="full"] .avatar-aura{display:none!important}
+html[data-tv-overlay="true"][data-tv-layout="full"] .avatar{transition:none!important;will-change:auto}
+html[data-tv-overlay="true"][data-tv-layout="full"] :is(.call-pill,.composer,.reader-backdrop,.reader-surface){backdrop-filter:none;-webkit-backdrop-filter:none}
+
+/* The overlay canvas has no page/card background, including the first native
+   reveal. Use one explicit rule instead of relying on body propagation. */
+html[data-tv-overlay="true"]:not([data-tv-layout="full"]),
+html[data-tv-overlay="true"]:not([data-tv-layout="full"]) body,
+html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:transparent!important}

@@ -1,3 +1,11 @@
+# Changelog
+
+## 2026-10-30 — Formal television integration
+
+- Consolidate accepted Android TV shell 0.3.11 under `android/tv`; preserve the installed binary and its rollback. Pair with family-tv 0.4.19.
+- Integrate TV array capture, clock-correct buffered playback, companion reaction, immediate entry and focus handoff with current Voice mainline startup, narration and authorization fixes.
+- Shared Voice deployment and endpoint migration receipts are recorded separately after verification; native focus/cue fixes were user-confirmed. Physical far-field/echo and STR are not newly accepted by this release.
+
 ## 2026-10-30 — One V while a task runs
 
 - First person throughout: instructions, task acknowledgement, progress and failure lines no longer name a backend. Real-call evidence: `aac5631f`, `a6216417`.
@@ -128,6 +136,68 @@
 - Show account settings and identity connection on the dial-ready page. Public remains isolated and offers an explicit route back to the remembered conversation.
 - Retain ordinary OAuth rejection, account switching, expiry and membership-revocation boundaries. Old unmarked grants need one new confirmation because their issuer cannot be distinguished safely.
 - All 963 tests and local browser login/reopen/Public/switching paths passed with simulated identities. Shared Gateway verification is pending: its integration lease was occupied. No production or TestFlight deployment. See [candidate acceptance](docs/releases/login-persistence-candidate-20261026/acceptance.md).
+## 2026-10-29 — TV startup and PCM output clock (isolated candidate)
+
+## 2026-10-30 — TV portrait expands at click (isolated candidate)
+
+- Launcher 0.4.17 immediately animates the existing local portrait to the shared overlay's large bounds while the page prepares. First committed shared frame keeps those bounds, without repeating the small-to-large animation.
+- Shared compact entry expands before requesting the call. The large portrait omits status/help text and retains the two connected-call controls; failed calls retain the retry button and accessible action labels.
+- Existing audio, call owner, Home and hangup behavior remain; native voice shell stays 0.3.7. Local slow-page fixture verifies expansion before the page and model are ready.
+
+- Bundle the TV entry modules and preload/cache versioned AEC assets. Personalized HTML and dynamic code keep their existing cache policy; the startup owner and entry identity remain singular.
+- TV native-array calls render PCM with short-horizon AudioBufferSource scheduling. Twelve real-TV cold-context probes stayed at 0.961–1.009 audio/wall ratio; the previous AudioWorklet path intermittently fell to 0.60–0.63. Pause reclaims unplayed samples; clear invalidates the epoch. Other terminal output paths remain on their existing renderer.
+- Track audio/wall clock ratio and missed scheduling deadlines, including when complete PCM remains queued. Earlier no-underflow silence tests did not prove continuous reply quality.
+- Native shell and launcher require no binary update. Real model speech and startup measurements are recorded in the installation receipt separately from human acoustic acceptance.
+
+## 2026-10-29 — TV persistent companion (isolated candidate)
+
+- TV overlay mode keeps one fixed companion canvas and scales the existing avatar with a compositor transform through connect, fold and hangup. Native first paint waits for the shared host instead of briefly displaying a full-page fallback.
+- Shared owner/generation and call state remain intact while native foreground service hosts the WebView across Home and other applications. Boundary navigation releases focus; Home entry reopens the existing call. A compact persistent reaction provides visible call presence.
+- The Android shell owns overlay permission, microphone foreground service and screen-off cleanup. Conversation, audio DSP, avatar reactions and controls remain in shared H5. Compact mode omits waveform subscriptions and native diagnostics are throttled.
+- Installed TV candidate uses shell 0.3.7 and launcher 0.4.16. The shell keeps a software-rendered WebView for this TV graphics compatibility; shared waveform paint uses integer pixels. Final six-minute microphone/app-switching and visible-return checks passed; human speech, echo, physical remote and STR acceptance remain separate.
+
+## 2026-10-29 — TV worker audio transport (isolated candidate)
+
+- TV shell 0.2.10 transfers a per-capture message port directly to the shared audio Worker. Native array frames no longer depend on synchronous JavaScript-interface polling or main-thread base64 decoding.
+- Keep the existing 25-frame native queue and eight-frame processing/output window. Acknowledgements follow PCM consumption; stale owners and unordered acknowledgements cannot grant credit. Every frame retains its sequence and the existing AEC/gain processing.
+- Android instrumented tests exercise the real native message channel, shared Worker and capture controller with synthetic input and repeated main-thread stalls. Hardware installation and sustained-call evidence are recorded separately.
+
+## 2026-10-28 — TV portrait readiness (isolated candidate)
+
+- TV shell 0.2.9 independently acknowledges shared-page presentation after legacy fallback; late initialization can no longer leave the enlarged portrait and controls paused at their first animation frame.
+- The local fixture delays host readiness to reproduce the failure; delayed initialization, full/medium/compact navigation and Home cleanup are verified on the named emulator.
+- Audio behavior remains at 85d51d1. Tianyi reports live human speech recognition works well; computer-speaker results must not be treated as human-speech acceptance or failure.
+
+## 2026-10-28 — TV call recovery (local candidate)
+
+- Prewarm array AEC before capture; use a versioned prepare/begin/pull hardware bridge with bounded batches and visible failure codes. No PCM is saved.
+- Preserve errors before asynchronous teardown, allow immediate retry, and release idle directional/Back navigation to Home. Replace the dialing handset with a cancel label; center connected controls across the portrait base.
+- Local simulator and synthetic input only; device installation and acoustic acceptance remain pending.
+
+## 2026-10-27 — TV idle portrait cleanup
+
+- Remove the call-settings shortcut below the idle Reaction portrait and omit its empty glass action group. Active speaker/hangup controls and existing document access remain available.
+- Shared H5 update for the authorized installed TV candidate; native APKs unchanged.
+
+## 2026-10-27 — TV first-paint correction (local candidate)
+
+- Render TV layout and transparency in initial HTML before module loading. Hold the native WebView until its committed visual frame and pause entrance motion until presentation is ready.
+- Preserve legacy shell/full-page behavior; presentation requires the current owner/generation and never starts a call.
+- Local simulator only; no physical TV or online service update.
+
+## 2026-10-27 — TV portrait refinement (local candidate)
+
+- Center the existing Reaction portrait, preserve headroom, remove connector/badge clutter and use the same natural crop in native Home and shared H5.
+- Add focus lift/breathing with lifecycle and reduced-motion handling; grow from the Home position on dial and place controls in a separate glass group.
+- Provide a true speaker-output toggle in the TV dock. Muted output is consumed without backlog; rendered AEC reference and audible meters reflect silence while microphone upload stays active.
+- Local-only verification; physical-TV installation and acoustic acceptance remain pending.
+
+## 2026-10-26 — TV Reaction dock and array capture (local candidate)
+
+- Select Doubao for TV entries; native home actions wait for readiness and dial once without a second confirmation panel.
+- Attach the existing Reaction portrait below Settings, enlarge it 3x in a call, show measured orbital audio and keep the same owner through compact/full modes.
+- Add an explicit, foreground-only built-in array capability and local WebRTC AEC3 render-reference processing; unsupported array input fails closed. Keep conversation/models/tools in shared H5/Voice.
+- Local emulator and synthetic audio validation only. Real TV acoustic acceptance, installation and service rollout remain pending; no Gateway or formal production change.
 
 ## 2026-10-26 — Legacy Feishu entry release preparation
 
@@ -704,3 +774,11 @@ The earlier accepted task-continuity baseline uses Voice `a9ac5168` and the plat
 - Candidate suite: 1,023 Voice, 95 speaker and 11 fleet checks. Earlier candidate records below remain historical; physical native audio and Action Button changes are excluded.
 - Production versions, real Feishu benchmarks and post-deployment evidence are recorded in `docs/releases/voice-combined-release-20261027/` after rollout.
 
+
+## TV immediate dial candidate (2026-10-30)
+
+- Home 0.4.18 starts a bounded local dialing cue in the click handler, before the WebView is ready. Shell 0.3.8 hands it off to the shared call sound and stops it on abort/teardown.
+- Reassert a transparent native backing canvas at navigation commit and first reveal; keep the overlay root/body/app explicitly transparent. The reported brief white frame has not yet been reproduced in captured baseline videos; this is a first-paint safeguard pending user confirmation.
+- Xiaomi remote voice key resolves through its proprietary VoiceControlService. No system key mapping or Xiaoai service changed.
+
+- Shell 0.3.9 provisions the page microphone capability at commit, at most once per navigation, and gates native auto-dial on its acknowledgement. This removes the window where shared startup could select browser capture before the array capability was published.

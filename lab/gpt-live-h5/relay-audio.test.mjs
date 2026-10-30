@@ -2,9 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {build} from 'esbuild';
-import {createRelayAudio,PcmPlaybackQueue,relayWorkletSource,NativeSpeechPause} from './relay-audio.mjs';
+import {GrokVoiceBridge} from '../realtime-direct-tools/grok-provider.mjs';
+import {createRelayAudio,PcmPlaybackQueue,relayWorkletSource,NativeSpeechPause,observeAudioMeters} from './relay-audio.mjs';
 
 function queue(rate=48000,ms=120){return new PcmPlaybackQueue(rate,ms)}
+test('visual meters read actual nodes, publish silence when suspended and detach only their taps',t=>{
+ t.mock.timers.enable({apis:['setInterval']});
+ const analysers=[],detached=[],levels=[];
+ const context={state:'running',createAnalyser(){const node={value:analysers.length?.04:.1,getFloatTimeDomainData(a){a.fill(this.value);},disconnect(){detached.push(this);}};analysers.push(node);return node;}};
+ const input={connect(node){this.tap=node;},disconnect(node){assert.equal(node,this.tap);}},output={...input};
+ const stop=observeAudioMeters({context,input,output,onLevel:e=>levels.push(e)});
+ t.mock.timers.tick(100);assert.ok(Math.abs(levels[0].input-.1)<1e-7);assert.ok(Math.abs(levels[0].output-.04)<1e-7);
+ context.state='suspended';t.mock.timers.tick(100);assert.deepEqual(levels[1],{input:0,output:0});
+ stop();assert.equal(detached.length,2);t.mock.timers.tick(500);assert.equal(levels.length,2);
+});
 const pcm=(n,value=8192)=>new Int16Array(n).fill(value);
 test('minified shipping target initializes both worklets and renders actual PCM',async()=>{
  const result=await build({entryPoints:[new URL('./relay-audio.mjs',import.meta.url).pathname],bundle:true,
@@ -92,6 +103,16 @@ async function fixture(t,provider,deferReady=false,options={}){
 }
 test('actual serialized worklet receives only the selected Grok buffer; Xiaohe stays at 120ms',async t=>{
  const f=await fixture(t,'grok');assert.equal(f.relay.stats.startBufferMs,400);assert.equal(f.speaker.processor.queue.prefill,19200);
+});
+test('real Grok bridge audio identity matches its completion and releases the held greeting',async t=>{
+ const f=await fixture(t,'grok');let sequence=0;
+ const bridge=new GrokVoiceBridge({onAudio:(bytes,metadata)=>f.event({type:'audio',sequence:++sequence,sampleRate:24000,audio:bytes.toString('base64'),...metadata}),
+  onResponseDone:e=>f.event({type:'audio.done',responseId:e.responseId})},{apiKey:'LOCAL_FIXTURE_ONLY'});
+ bridge.receive({type:'response.created',response:{id:'greeting-1'}});
+ bridge.receive({type:'response.output_audio.delta',delta:Buffer.from(pcm(4800,8192).buffer).toString('base64')});
+ assert(f.pump(1024).every(v=>v===0));
+ bridge.receive({type:'response.done',response:{id:'greeting-1',status:'completed'}});
+ const heard=f.pump(12000);assert(heard.some(v=>v===.25));assert.equal(f.relay.stats.queuedOutputBytes,0);
 });
 test('recorded Grok greeting hole is held to completion; next answer keeps its streaming lead and the microphone',async t=>{
  const f=await fixture(t,'grok');
@@ -414,4 +435,46 @@ test('assisted service onset may precede local corroboration but cannot survive 
  const p=new NativeSpeechPause({trustNativeOnset:false,requireConfirmation:true});p.nativeStarted(0);p.nativeStopped(10,false);
  for(let i=0;i<8;i++)p.observe(voiceFrame(),true,20+i*20);
  assert.equal(p.held,false);
+});
+
+test('speaker mute silences rendered audio and AEC reference while microphone and FIFO keep running',async t=>{
+ const references=[];
+ const f=await fixture(t,'seeduplex',false,{renderReference:buffer=>references.push(new Float32Array(buffer))});
+ f.event({type:'audio',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(24000,8192).buffer).toString('base64')});
+ assert(f.pump(12000).some(value=>value!==0));
+ const consumed=f.speaker.processor.queue.consumed;
+ f.relay.setOutputMuted(true);references.length=0;
+ assert(f.pump(2400).every(value=>value===0));
+ assert(f.speaker.processor.queue.consumed>consumed,'muting must consume rather than queue stale speech');
+ assert(references.length>0);assert(references.at(-1).every(value=>value===0),'AEC sees the sound actually rendered');
+ const mic=f.nodes.find(n=>n.name==='v-direct-mic'),before=f.relay.stats.inputBytes;
+ mic.port.onmessage({data:pcm(480,3000).buffer});assert.equal(f.relay.stats.inputBytes,before+960);
+ f.relay.setOutputMuted(false);assert(f.pump(2400).some(value=>value!==0));
+});
+
+test('hardware PCM uses the existing relay once, without an output-clock recapture, and respects mute and teardown',async t=>{
+ let receive,unsubscribed=0;const track={enabled:true,readyState:'live'};
+ const f=await fixture(t,'seeduplex',false,{stream:{getAudioTracks:()=>[track]},subscribePcm:fn=>{receive=fn;return ()=>unsubscribed++;},startCapture:()=>{assert.equal(typeof receive,'function');}});
+ assert.equal(f.nodes.filter(n=>n.name==='v-direct-mic').length,0);
+ const first=new Int16Array(480).fill(3210);receive(first.buffer);
+ let binary=f.sent.filter(x=>x instanceof ArrayBuffer);assert.equal(binary.length,1);assert.deepEqual(new Int16Array(binary[0]),first);
+ track.enabled=false;receive(new Int16Array(480).fill(3210).buffer);binary=f.sent.filter(x=>x instanceof ArrayBuffer);assert(new Int16Array(binary[1]).every(x=>x===0));
+ track.enabled=true;receive(new Int16Array(480).fill(-4321).buffer);binary=f.sent.filter(x=>x instanceof ArrayBuffer);assert(new Int16Array(binary[2]).every(x=>x===-4321));
+ f.relay.dispose();receive(first.buffer);assert.equal(unsubscribed,1);assert.equal(f.sent.filter(x=>x instanceof ArrayBuffer).length,3);
+});
+
+test('parallel device preparation buffers early model output and starts input only after both are ready',async t=>{
+ let release,begin=0,sink;const prepared=new Promise(r=>release=r);
+ const f=await fixture(t,'seeduplex',true,{stream:undefined,prepareCapture:()=>prepared});
+ f.event({type:'ready'});f.event({type:'audio',sequence:1,sampleRate:24000,audio:Buffer.alloc(960,1).toString('base64')});f.event({type:'audio.done'});
+ await new Promise(r=>setImmediate(r));assert.equal(f.nodes.length,0);assert.equal(begin,0);
+ release({stream:{},subscribePcm:listener=>{sink=listener;return()=>{};},startCapture:()=>{begin++;}});await f.started;
+ assert.equal(begin,1);assert.equal(f.nodes.length,1);assert.equal(f.nodes[0].processor.queue.frames,480);
+ sink(new Int16Array(480).buffer);assert.equal(f.relay.stats.inputBytes,960);
+});
+test('a cancelled call releases late prepared hardware without attaching playback or starting capture',async t=>{
+ let release,disposed=0,begin=0;const prepared=new Promise(r=>release=r);
+ const f=await fixture(t,'seeduplex',true,{stream:undefined,prepareCapture:()=>prepared});f.event({type:'ready'});await new Promise(r=>setImmediate(r));f.relay.dispose();
+ release({stream:{},dispose:()=>{disposed++;},startCapture:()=>{begin++;}});await f.started;
+ assert.equal(disposed,1);assert.equal(begin,0);assert.equal(f.nodes.length,0);
 });
