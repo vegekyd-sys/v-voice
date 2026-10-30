@@ -1,0 +1,43 @@
+{
+  "schema": "v-voice-production-release-v1",
+  "version": "voice-one-v.20261030.1",
+  "status": "deployed_verified_synthetic_human_candidate_accepted",
+  "previousEntryCommit": "4f06888030edeb2704ecdd944b724fece900061d",
+  "releasePR": 186,
+  "gatewayRestartRequired": false,
+  "nativeBinaryUpdated": false,
+  "firmwareUpdated": false,
+  "scope": "While a task runs the caller hears one V: first person, results from the conclusion, no spoken durations, no claim of completion before the task ends",
+  "serverNodesSynchronized": true,
+  "entryCommit": "899ed2ffdfe76cd7d76d593af36040dfe80e62c7",
+  "deviceEntryCommit": "899ed2ffdfe76cd7d76d593af36040dfe80e62c7",
+  "filesSha256": "4d722bfc4121bcf24023c159b8c31e8d43f68de1ed06f0240048d1217945a3e0",
+  "iosShellRevision": "eb90e1b6a90bbaaf5e46e3f84c763c0508b2d109b17f2cdbb537be5803af0d2e",
+  "gatewayRestarted": false,
+  "gatewayIdentityAndConfigUnchanged": true,
+  "homepageChangelogVerified": true,
+  "validatedAt": "2026-10-30T23:55:00+08:00",
+  "rollbackCommit": "4f06888030edeb2704ecdd944b724fece900061d",
+  "humanValidation": "Tianyi tried the Candidate on a real call and approved the release (no per-line record).",
+  "validation": {
+    "voiceTests": 1042,
+    "speakerTests": 95,
+    "releaseTests": 11,
+    "productionSyntheticTaskCall": {
+      "model": "seeduplex",
+      "taskSeconds": 39,
+      "secondPartyWords": 0,
+      "spokenDurations": 0,
+      "resultSpoken": true
+    },
+    "productionSyntheticNativeLookups": "3/3 answered",
+    "seeduplexProtocolProbe": "response.create rejected as unknown event and closes the connection; unknown-id and late tool results (same and new id, 3 runs) produce no reply"
+  },
+  "limits": [
+    "Completion-claim cut has not fired in a real call; unit tests only. In a synthetic call V declined when pushed to claim completion.",
+    "No device (robot/speaker) call in this regression; the devices node was verified by version only.",
+    "Grok and GPT Live speech not exercised.",
+    "A short synthetic phrase (2.5 s) never finalized in speaker ASR with or without a running task, so it got no reply; independent of this release.",
+    "A result still waits while V's long reply plays or the caller keeps talking."
+  ]
+}
