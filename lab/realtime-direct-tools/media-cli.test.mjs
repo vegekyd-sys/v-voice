@@ -13,7 +13,7 @@ test('CLI arguments preserve quoted user content but cannot run shell or other c
 async function fixture(t,opts={}){
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'media-cli-test-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
  const binary=path.join(root,'makaron');
- await fs.writeFile(binary,`#!${process.execPath}\n`+`import fs from 'node:fs';\nconst a=process.argv.slice(2);\nif(a.includes('hang')){console.log('started');setInterval(()=>{},100);}\nelse if(a.includes('fail')){console.error(process.env.MAKARON_API_KEY);process.exitCode=2;}\nelse if(a[0]==='edit'){fs.writeFileSync(a[a.indexOf('--out')+1],'image');console.log('image generated');}\nelse if(a[0]==='create')console.log('https://cdn.example/image.png');\nelse if(a[1]==='create')console.log('Task ID: task-123');\nelse console.log('https://cdn.example/video.mp4');\nif(process.env.UNRELATED_SECRET)throw Error('unrelated secret leaked');`,{mode:0o700});
+ await fs.writeFile(binary,`#!${process.execPath}\n`+`import fs from 'node:fs';\nconst a=process.argv.slice(2);\nif(a.includes('hang')){console.log('started');setInterval(()=>{},100);}\nelse if(a.includes('fail')){console.error(process.env.MAKARON_API_KEY);process.exitCode=2;}\nelse if(a[0]==='edit'){fs.writeFileSync(a[a.indexOf('--out')+1].replace(/png$/, 'jpg'),'image');console.log('image generated');}\nelse if(a[0]==='create')console.log('https://cdn.example/image.png');\nelse if(a[1]==='create')console.log('Task ID: task-123');\nelse console.log('https://cdn.example/video.mp4');\nif(process.env.UNRELATED_SECRET)throw Error('unrelated secret leaked');`,{mode:0o700});
  const cli=createVoiceMediaCli({binary,baseDirectory:root,environment:{PATH:process.env.PATH,MAKARON_API_KEY:'fixture-private-key',UNRELATED_SECRET:'must-not-inherit'},...opts});
  return {cli,runner:await cli.forCall(),root};
 }
@@ -22,7 +22,7 @@ test('real subprocess enforces per-call file/task ownership, idempotency, exit c
  const command=`makaron edit --image-model gpt-image-2.5-flare 'moon'`;
  const [one,two]=await Promise.all([runner.execute(command),runner.execute(command)]);
  assert.equal(one,two);assert.equal(one.isError,false);
- const file=one.content[0].text.match(/Image file: (.*)/u)[1];
+ const file=one.content[0].text.match(/Image file: (.*)/u)[1];assert(file.endsWith('.jpg'));
  assert.equal((await runner.execute(`makaron create --image '${file}' --title 'Moon'`)).isError,false);
  await assert.rejects(other.execute(`makaron create --image '${file}'`),/本通话/);
  await assert.rejects(runner.execute('makaron create --image /etc/passwd'),/本通话/);

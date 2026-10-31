@@ -383,7 +383,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     s.progressNotice=index=>{
       const clip=progressClips[index%(progressClips.length||1)];
       const waiting=[...s.pending.keys()].filter(id=>id!==s.backgroundCallId).map(id=>JSON.parse(s.seen.get(id)??'[]'));
-      if(!clip||!noticeClips||s.ending||s.speakerRouting||!waiting.length||waiting.some(([name,args])=>!toolStartClip({name,args},noticeClips)))return false;
+      if(!clip||!noticeClips||s.ending||s.speakerRouting||!waiting.length||waiting.some(([name,args])=>name==='exec'&&s.mediaCliAvailable&&/^\s*makaron(?:\s|$)/u.test(args.command??'')||!toolStartClip({name,args},noticeClips)))return false;
       emit(s,{type:'transcript',role:'assistant',text:clip.text,final:true,source:'tool-progress'});
       audit({type:'transcript',voiceSessionId:s.id,role:'assistant',text:clip.text,final:true,source:'tool-progress'});
       deliverAudio(clip.pcm,{source:clip.source,sha256:clip.sha256});emit(s,{type:'audio.done'});return true;

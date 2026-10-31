@@ -77,7 +77,16 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
       });
       const text=result.content[0].text;
       for(const match of text.matchAll(/Task ID:\s*([\w:-]+)/gu))tasks.add(match[1]);
-      if(outputFile&&!result.isError){try{const stat=await fs.lstat(outputFile);if(stat.isFile()&&!stat.isSymbolicLink()){files.add(outputFile);result.content[0].text+='\nImage file: '+outputFile;}}catch{}}
+      if(outputFile&&!result.isError){
+        // CLI chooses the extension from actual MIME bytes, regardless of --out.
+        // Admit only this submission's random stem, never paths from tool text.
+        const stem=path.basename(outputFile,'.png');
+        for(const name of await fs.readdir(directory)){
+          if(!new RegExp('^'+stem+'(?:-[1-9][0-9]?)?\\.(?:png|jpg|jpeg|webp)$','u').test(name))continue;
+          const file=path.join(directory,name),stat=await fs.lstat(file);
+          if(stat.isFile()&&!stat.isSymbolicLink()){files.add(file);result.content[0].text+='\nImage file: '+file;}
+        }
+      }
       return result;
     };
     return {execute:(command,signal)=>{
