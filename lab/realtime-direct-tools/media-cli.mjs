@@ -36,6 +36,10 @@ export function validateMediaArgv(argv) {
   if(verb==='edit'&&flags['image-model']!=='gpt-image-2.5-flare'||verb==='video create'&&flags['video-model']!=='fal-h3-max')throw Error('必须使用本次指定的创作模型');
   if(flags.aspect&&!/^\d{1,2}:\d{1,2}$/u.test(flags.aspect))throw Error('无效画幅');
   if(verb==='video create'&&(!flags.script||!/^([5-9]|1[0-5])$/u.test(flags.duration??'5')||flags['video-resolution']&&flags['video-resolution']!=='768p'))throw Error('无效视频参数');
+  if(verb==='video create'){
+    const references=[...flags.script.matchAll(/<<<media_(\d+)>>>/gu)].map(m=>m[1]);
+    if(flags.image&&!references.includes('1')||references.some(id=>!flags.image||id!=='1'))throw Error('本地校验未提交、未扣费：带 --image 的脚本必须用 <<<media_1>>> 引用图片；无图片时不写媒体标记。请修正参数后提交。');
+  }
   for(const key of ['image','ref'])if(flags[key]&&verb!=='create'&&!https(flags[key]))throw Error('参考图必须是 HTTPS 媒体链接');
   if(verb==='create'&&!flags.image)throw Error('只能保存本通话已生成图片');
   if(verb==='video status'&&!/^[\w:-]{1,200}$/u.test(positionals[0]))throw Error('无效任务 ID');
@@ -87,6 +91,9 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
           if(stat.isFile()&&!stat.isSymbolicLink()){files.add(file);result.content[0].text+='\nImage file: '+file;}
         }
       }
+      // Private diagnostic receipts survive disconnects; never lose a completed
+      // generation or its task ID merely because the receipt disk is full.
+      await fs.writeFile(path.join(directory,'receipt-'+randomUUID()+'.json'),JSON.stringify({operation:verb,model:flags['image-model']??flags['video-model'],result}),{mode:0o600}).catch(()=>{});
       return result;
     };
     return {execute:(command,signal)=>{

@@ -10,6 +10,16 @@ test('CLI arguments preserve quoted user content but cannot run shell or other c
   for(const command of ['makaron edit x; touch /tmp/bad','makaron edit $(whoami)','makaron edit `id`','makaron edit x | cat','makaron edit x\nwhoami','sh -c makaron','makaron edit "unclosed'])assert.throws(()=>mediaArgv(command));
   for(const argv of [['chat','hello'],['edit','--image-model','openai','x'],['edit','--image-model','gpt-image-2.5-flare','--out','/tmp/a','x'],['edit','--image-model','gpt-image-2.5-flare','--image','/etc/passwd','x'],['video','create','--video-model','fal-h3-max','--duration','99','--script','x'],['video','status','task','--wait'],['create','--title','empty']])assert.throws(()=>validateMediaArgv(argv));
 });
+test('image-to-video requires valid media references before any subprocess or charge',async t=>{
+ const {runner}=await fixture(t);
+ const prefix="makaron video create --video-model fal-h3-max --image 'https://cdn.example/image.png' --script ";
+ await assert.rejects(runner.execute(prefix+"'animate the cat'"),/本地校验未提交、未扣费/);
+ await assert.rejects(runner.execute(prefix+"'animate <<<media_2>>>'"),/本地校验未提交、未扣费/);
+ await assert.rejects(runner.execute("makaron video create --video-model fal-h3-max --script 'animate <<<media_1>>>'"),/本地校验未提交、未扣费/);
+ await assert.rejects(runner.execute('makaron video status task-123'),/本通话/);
+ assert.equal((await runner.execute(prefix+"'animate <<<media_1>>>'")).isError,false);
+ assert.equal((await runner.execute('makaron video status task-123')).isError,false);
+});
 async function fixture(t,opts={}){
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'media-cli-test-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
  const binary=path.join(root,'makaron');
