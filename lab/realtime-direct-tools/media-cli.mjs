@@ -45,7 +45,8 @@ export function validateMediaArgv(argv) {
   if(verb==='video status'&&!/^[\w:-]{1,200}$/u.test(positionals[0]))throw Error('无效任务 ID');
   return {verb,flags,positionals};
 }
-export function createVoiceMediaCli({environment=process.env,binary='makaron',baseDirectory=environment.TMPDIR??os.tmpdir(),maxBytes=128*1024,timeoutMs=120000}={}) {
+const videoPending=result=>!result.isError&&/\b(?:is rendering|is queued|is processing|is saving)\b/iu.test(result.content[0].text);
+export function createVoiceMediaCli({environment=process.env,binary='makaron',baseDirectory=environment.TMPDIR??os.tmpdir(),maxBytes=128*1024,timeoutMs=120000,pollIntervalMs=2000}={}) {
   // Explicit deployment-owned key only: the default CLI login may belong to
   // another account. Never fall back to it or the Gateway secret store.
   if(!environment.MAKARON_API_KEY||environment.MAKARON_URL&&environment.MAKARON_URL!=='https://www.makaron.app')return null;
@@ -54,7 +55,7 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
   return {forCall:async()=>{
     const directory=await fs.realpath(await fs.mkdtemp(path.join(baseDirectory,'voice-media-')));await fs.chmod(directory,0o700);
     const files=new Set(),tasks=new Set(),requests=new Map(),lastPoll=new Map();let tail=Promise.resolve();
-    const execute=async(command,signal)=>{
+    const execute=async(command,signal,remainingMs=timeoutMs)=>{
       signal?.throwIfAborted();const argv=mediaArgv(command),{verb,flags,positionals}=validateMediaArgv(argv);
       if(verb==='create'){
         const file=path.resolve(directory,flags.image);
@@ -62,7 +63,7 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
         argv[argv.indexOf('--image')+1]=file;
       }
       if(verb==='video status'&&!tasks.has(positionals[0]))throw Error('只能查询本通话提交的任务');
-      if(verb==='video status'){const remaining=2000-(Date.now()-(lastPoll.get(positionals[0])??0));if(remaining>0)await delay(remaining,undefined,{signal});lastPoll.set(positionals[0],Date.now());}
+      if(verb==='video status'){const remaining=pollIntervalMs-(Date.now()-(lastPoll.get(positionals[0])??0));if(remaining>0)await delay(remaining,undefined,{signal});lastPoll.set(positionals[0],Date.now());}
       const outputFile=verb==='edit'?path.join(directory,randomUUID()+'.png'):null;
       if(outputFile)argv.push('--out',outputFile);
       const result=await new Promise((resolve,reject)=>{
@@ -71,7 +72,7 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
         const kill=()=>{try{process.kill(-child.pid,'SIGKILL');}catch{}};
         const stop=message=>{if(failure)return;failure=message;try{process.kill(-child.pid,'SIGTERM');}catch{}killTimer=setTimeout(kill,1000);};
         const abort=()=>stop('创作命令已中止；供应商状态未确认，不要重新生成');
-        const timer=setTimeout(()=>stop('创作命令超时；状态未知，不要重新生成'),timeoutMs);
+        const timer=setTimeout(()=>stop('创作命令超时；状态未知，不要重新生成'),remainingMs);
         const collect=data=>{bytes+=data.length;if(bytes>maxBytes){stop('创作结果超限；不要重新生成');return;}output+=data.toString();};
         child.stdout.on('data',collect);child.stderr.on('data',collect);
         const cleanup=()=>{clearTimeout(timer);clearTimeout(killTimer);signal?.removeEventListener('abort',abort);};
@@ -100,7 +101,19 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
       // Serialize requests and reuse even failed/unknown submissions, never spend twice.
       const argv=mediaArgv(command),key=JSON.stringify(argv),query=argv[0]==='video'&&argv[1]==='status';
       if(!query&&requests.has(key))return requests.get(key);
-      const pending=tail.then(()=>execute(command,signal));tail=pending.catch(()=>{});
+      const pending=tail.then(async()=>{
+        const deadline=Date.now()+timeoutMs;
+        let result=await execute(command,signal);
+        // A realtime model can end its turn after hearing "rendering". Keep
+        // this one read-only CLI query open until the original task resolves.
+        while(query&&videoPending(result)&&Date.now()+pollIntervalMs<deadline){
+          result=await execute(command,signal,Math.max(1,deadline-Date.now()-pollIntervalMs));
+        }
+        if(query&&videoPending(result)){
+          result={...result,details:{...result.details,status:'pending'},content:[{type:'text',text:result.content[0].text+'\nTask ID: '+argv[2]+'\n本次等待已结束，原视频仍未完成；保留任务ID，不重新提交生成。'}]};
+        }
+        return result;
+      });tail=pending.catch(()=>{});
       if(!query)requests.set(key,pending);
       return pending;
     }};

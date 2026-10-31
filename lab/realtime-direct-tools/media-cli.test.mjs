@@ -52,4 +52,22 @@ test('cancellation and timeout wait for process exit and do not resubmit uncerta
  setTimeout(()=>controller.abort(),100);const aborted=await pending;
  assert.equal(aborted.isError,true);assert(aborted.details.exitSignal);assert.match(aborted.content[0].text,/中止/);
 });
+test('one video status call follows the same rendering task through to its playable result',async t=>{
+ const {runner,root}=await fixture(t,{pollIntervalMs:10});
+ await runner.execute("makaron video create --video-model fal-h3-max --script 'rotate'");
+ const counter=path.join(root,'queries');
+ await fs.writeFile(path.join(root,'makaron'),`#!${process.execPath}\n`+`import fs from 'node:fs';const args=process.argv.slice(2);if(JSON.stringify(args)!==JSON.stringify(['video','status','task-123']))process.exit(9);const p=${JSON.stringify(counter)};const n=fs.existsSync(p)?Number(fs.readFileSync(p))+1:1;fs.writeFileSync(p,String(n));console.log(n<3?'FAL H3 Max video is rendering.':'Video ready: https://cdn.example/final.mp4');`,{mode:0o700});
+ const result=await runner.execute('makaron video status task-123');
+ assert.equal(result.isError,false);assert.match(result.content[0].text,/final.mp4/);assert.equal(await fs.readFile(counter,'utf8'),'3');
+});
+test('cancelling a pending video wait stops polling without creating another task',async t=>{
+ const {runner,root}=await fixture(t,{pollIntervalMs:500});
+ await runner.execute("makaron video create --video-model fal-h3-max --script 'rotate'");
+ const counter=path.join(root,'queries');
+ await fs.writeFile(path.join(root,'makaron'),`#!${process.execPath}\n`+`import fs from 'node:fs';if(process.argv[3]!=='status')process.exit(9);fs.writeFileSync(${JSON.stringify(counter)},'queried');console.log('FAL H3 Max video is rendering.');`,{mode:0o700});
+ const controller=new AbortController(),pending=runner.execute('makaron video status task-123',controller.signal);
+ while(true){try{await fs.stat(counter);break;}catch{await new Promise(r=>setTimeout(r,5));}}
+ setTimeout(()=>controller.abort(),50);
+ await assert.rejects(pending,/abort/iu);
+});
 test('CLI capability requires an explicitly supplied existing key',()=>assert.equal(createVoiceMediaCli({environment:{}}),null));
