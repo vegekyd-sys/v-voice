@@ -463,7 +463,10 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       const controller=new AbortController(),epoch=s.epoch;
       const ownerBridge=s.bridge;s.toolOwners.set(call.callId,ownerBridge);
       s.pending.set(call.callId,controller);
-      audit({type:'tool.call',voiceSessionId:s.id,...call});emit(s,{type:'tool.call',callId:call.callId,name:call.name,activity:taskActivity(call.name,call.args)});
+      const mediaCommand=call.name==='exec'&&s.mediaCliAvailable&&/^\s*makaron(?:\s|$)/u.test(call.args?.command??'');
+      const foreground=mediaCommand||call.name==='show_content';
+      const stage=call.name==='show_content'?'展示内容':/\bvideo\s+status\b/u.test(call.args?.command??'')?'等待视频':/\bvideo\s+create\b/u.test(call.args?.command??'')?'生成视频':/\bedit\b/u.test(call.args?.command??'')?'生成图片':'保存图片';
+      audit({type:'tool.call',voiceSessionId:s.id,...call});emit(s,{type:'tool.call',callId:call.callId,name:call.name,activity:taskActivity(call.name,call.args),...(foreground?{execution:'foreground',stage}:{})});
       s.lookup.started(call);
       let result,backgroundAck=false;
       try {

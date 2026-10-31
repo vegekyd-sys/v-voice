@@ -1539,6 +1539,9 @@ for (const model of ['grok','seeduplex']) test(`${model} direct CLI media uses l
  assert(!f.audit.some(e=>e.type.startsWith('backend.start')));
  assert.deepEqual(f.service.presentation(f.reservation.voiceSessionId).documents.map(d=>d.text),[image,video]);
  assert.equal(f.service.backgroundTaskCount(),0);
+ assert.deepEqual(f.client.sent.filter(e=>e.type==='tool.call').map(e=>[e.execution,e.stage]),[
+   ['foreground','生成图片'],['foreground','保存图片'],['foreground','展示内容'],['foreground','生成视频'],['foreground','等待视频'],['foreground','展示内容'],
+ ]);
 });
 
 for(const options of [{sessionBound:true},{actorScoped:true},{unidentified:true},{catalog:['memory_search'] }])test('local media capability cannot cross identity or catalog boundary '+JSON.stringify(options),async t=>{
