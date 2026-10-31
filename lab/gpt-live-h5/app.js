@@ -914,7 +914,8 @@ async function sendSteer(value) {
 async function cancelTasks() {
   if (!call) return;
   const active = call;
-  try { await api("steer", { voiceSessionId: active.voiceSessionId, text: "取消当前后台任务，不要继续执行。", mode: "cancel" }); if (call === active) setStatus("已请求取消后台任务。", { tone: "success" }); }
+  const foregroundOnly=view.get().tasks.length>0&&view.get().tasks.every(task=>task.execution==='foreground');
+  try { await api("steer", { voiceSessionId: active.voiceSessionId, text: foregroundOnly?"停止等待当前创作，不重新生成。":"取消当前后台任务，不要继续执行。", mode: "cancel" }); if (call === active) setStatus(foregroundOnly?"已停止等待；已提交的生成可能仍在继续。":"已请求取消后台任务。", { tone: "success" }); }
   catch (error) { if (call === active) setStatus(error.message, { tone: "problem" }); }
 }
 window.addEventListener("pagehide", () => {

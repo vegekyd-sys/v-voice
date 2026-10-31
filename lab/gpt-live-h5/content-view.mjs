@@ -116,8 +116,19 @@ export function createContentView(document, window, { onReading = () => {} } = {
       const media = document.createElement(entry.kind === "video" ? "video" : "img");
       media.className = "media-asset";
       if (entry.kind === "video") {
-        media.controls = true; media.playsInline = true; media.preload = "none";
+        media.controls = true; media.playsInline = true; media.preload = "auto";
         media.setAttribute("aria-label", entry.title);
+        media.addEventListener("loadedmetadata", () => {
+          if (media.videoWidth && media.videoHeight) {
+            media.width = media.videoWidth; media.height = media.videoHeight;
+            media.style.aspectRatio = `${media.videoWidth} / ${media.videoHeight}`;
+          }
+          // Decode a poster frame without playing audio or requiring a play tap.
+          // A tiny seek also paints the initial frame on WebKit.
+          if (media.paused && media.currentTime === 0 && media.duration > 0) {
+            media.currentTime = Math.min(0.001, media.duration / 2);
+          }
+        }, { once: true });
       } else { media.alt = entry.title; media.decoding = "async"; }
       media.referrerPolicy = "no-referrer"; media.src = entry.url;
       const wrap = document.createElement("span");

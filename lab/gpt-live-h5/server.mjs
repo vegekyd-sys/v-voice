@@ -28,6 +28,7 @@ import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure,
 import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
 import {createTaskDelivery} from '../realtime-direct-tools/task-delivery.mjs';
+import {createVoiceMediaCli} from '../realtime-direct-tools/media-cli.mjs';
 import {createVoiceLarkReader} from '../realtime-direct-tools/lark-readonly.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
 import {voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
@@ -1124,6 +1125,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const directVoice=createDirectVoiceService({gateway,wsModule,backendDeviceBundle:backendDeviceBundleFromEnv(),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
+      mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({environment:process.env}):null,
       calendar:lark.available?lark.calendar:null,larkRead:lark.available?lark.read:null,larkForActor:lark.forActor,
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),

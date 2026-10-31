@@ -41,7 +41,7 @@ export function createAvatarTasks() {
         const activity = Object.hasOwn(ACTIVITY_LABELS, event.activity) || event.activity === 'control'
           ? event.activity : taskActivity(event.name);
         if (activity !== 'control' && !pending.has(event.callId)) pending.set(event.callId, activity);
-        if (activity !== 'control' && !details.has(event.callId)) details.set(event.callId, {startedAt: now, stage: null, step: 0});
+        if (activity !== 'control' && !details.has(event.callId)) details.set(event.callId, {startedAt: now, stage: event.execution==='foreground'&&typeof event.stage==='string'?event.stage.slice(0,80):null, step: 0,...(event.execution==='foreground'?{execution:'foreground'}:{})});
       } else if (event.type === 'tool.progress' && pending.has(event.callId) && typeof event.stage === 'string' && event.stage) {
         const detail = details.get(event.callId);
         if (detail && detail.stage !== event.stage) { detail.stage = event.stage; detail.step++; }
@@ -54,7 +54,7 @@ export function createAvatarTasks() {
     reset() { pending.clear(); details.clear(); completion = null; },
     list(now = Date.now()) {
       return [...pending].map(([callId, activity]) => ({callId, activity, startedAt: details.get(callId)?.startedAt ?? now,
-        stage: details.get(callId)?.stage ?? null, step: details.get(callId)?.step ?? 0}));
+        stage: details.get(callId)?.stage ?? null, step: details.get(callId)?.step ?? 0,...(details.get(callId)?.execution?{execution:details.get(callId).execution}:{})}));
     },
     get completion() { return completion; },
     get size() { return pending.size; },
