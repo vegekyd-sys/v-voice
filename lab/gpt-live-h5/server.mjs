@@ -30,7 +30,7 @@ import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
 import {createTaskDelivery} from '../realtime-direct-tools/task-delivery.mjs';
 import {createVoiceLarkReader} from '../realtime-direct-tools/lark-readonly.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
-import {voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
+import {VOICE_CONTEXT_HISTORY_REQUEST,voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -1134,7 +1134,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY??process.env.DOUBAO_SPEECH_API_KEY,
       grok:process.env.XAI_API_KEY,
     },loadContext:async (sessionKey,{gateway:callGateway=gateway}={})=>{
-      const history=await callGateway.request('chat.history',{sessionKey,limit:6},{timeoutMs:10000});
+      const history=await callGateway.request('chat.history',{sessionKey,...VOICE_CONTEXT_HISTORY_REQUEST},{timeoutMs:10000});
       return voiceConversationContext(history.messages??[]);
     }});
     // Robot faces pick reactions with a fast classifier; without one they use
