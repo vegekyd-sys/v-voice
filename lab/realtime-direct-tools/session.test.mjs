@@ -1493,3 +1493,49 @@ test('TV guidance and account control are absent for an unidentified caller',asy
  assert.deepEqual(f.invocations,[]);
  assert.equal(f.audit.find(e=>e.type==='tool.delivered').result.error,'当前通话没有账号工具权限');
 });
+
+
+// Protocol fixture: real host dispatch/ownership/presentation, no paid provider
+// generation and no claim that a model chose these calls autonomously.
+for (const model of ['grok','seeduplex']) test(`${model} direct CLI media uses owned processes and screen receipts without a backend job`,async t=>{
+ const calls=[];
+ const f=await fixture(async(args,method)=>{
+   calls.push({method,...args});
+   assert.equal(method,'tools.invoke');
+   if(args.name==='exec'){
+     if(args.args.command.startsWith('makaron edit'))return {ok:true,output:{content:[{type:'text',text:'makaron-output-fixture.webp'}],details:{status:'completed',exitCode:0}}};
+     if(args.args.command.startsWith('makaron create --image'))return {ok:true,output:{content:[{type:'text',text:'ID: project-fixture\nImages: 1\n[1] https://cdn.test/generated.webp\nURL: https://www.makaron.app/project/project-fixture'}],details:{status:'completed',exitCode:0}}};
+     if(args.args.command.startsWith('makaron video create'))return {ok:true,output:{content:[{type:'text',text:'Task ID: fal-h3max-fixture'}],details:{status:'completed',exitCode:0}}};
+     return {ok:true,output:{details:{status:'running',sessionId:'owned-media-query'}}};
+   }
+   assert.equal(args.name,'process');assert.equal(args.args.sessionId,'owned-media-query');
+   return {ok:true,output:{content:[{type:'text',text:'https://cdn.test/generated.mp4'}],details:{status:'completed',exitCode:0}}};
+ },model);
+ t.after(()=>f.service.dispose());
+ const config=f.upstream.sent.find(e=>['session.create','session.update'].includes(e.type)).session;
+ assert(config.instructions.includes('makaron edit --image-model gpt-image-2.5-flare'));
+ assert(config.instructions.includes('makaron video create --video-model fal-h3-max'));
+ assert(!config.instructions.includes('图片、视频生成也用 delegate_to_v'));
+ assert(!config.tools.some(tool=>/^(generate_image|generate_video|makaron_)/.test(tool.name)));
+ const invoke=async(name,args,id)=>{
+   if(model==='grok')f.call(name,args,id);
+   else f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+   for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId===id);i++)await delay(5);
+   const delivered=f.audit.find(e=>e.type==='tool.delivered'&&e.callId===id);assert(delivered,`missing ${id}`);return delivered.result;
+ };
+ await invoke('exec',{command:"makaron edit --image-model gpt-image-2.5-flare 'a small blue moon'",timeoutSeconds:120},'image-submit');
+ await invoke('exec',{command:"makaron create --image 'makaron-output-fixture.webp' --title '月亮'",timeoutSeconds:120},'image-save');
+ const image='![月亮](https://cdn.test/generated.webp)';
+ assert.equal((await invoke('show_content',{markdown:image},'image-show')).shown,true);
+ await invoke('exec',{command:"makaron video create --video-model fal-h3-max --duration 5 --script 'slow rotation' --image 'https://cdn.test/generated.webp'",timeoutSeconds:120},'video-submit');
+ await invoke('exec',{command:"makaron video status 'fal-h3max-fixture'",timeoutSeconds:120},'video-query');
+ await invoke('process',{action:'poll',sessionId:'owned-media-query',timeout:5000},'video-poll');
+ const video='[月亮转动](https://cdn.test/generated.mp4)';
+ assert.equal((await invoke('show_content',{markdown:video},'video-show')).shown,true);
+ assert.deepEqual(calls.map(c=>c.name),['exec','exec','exec','exec','process']);
+ assert.equal(calls[2].args.command.includes('--image'),true);
+ assert(calls.every(c=>c.sessionKey==='agent:makaron:explicit:personal-fixture'));
+ assert(!f.audit.some(e=>e.type.startsWith('backend.start')));
+ assert.deepEqual(f.service.presentation(f.reservation.voiceSessionId).documents.map(d=>d.text),[image,video]);
+ assert.equal(f.service.backgroundTaskCount(),0);
+});
