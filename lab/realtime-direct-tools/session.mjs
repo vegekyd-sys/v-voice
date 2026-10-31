@@ -206,6 +206,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   };
   const clearEnding=s=>{clearTimeout(s.ending?.fallbackTimer);clearTimeout(s.ending?.noAudioTimer);s.ending=null;};
   const cancel=async(s,{includeBackend=true}={})=>{s.epoch++;for(const [id,c] of s.pending)if(includeBackend||id!==s.backgroundCallId)c.abort();clearEnding(s);emit(s,{type:'end.cancelled'});
+    if(s.mediaOperation&&!s.mediaOperation.output)s.mediaOperation.output={cancelled:true,status:'cancelled',message:'已停止本通话的媒体等待；供应商任务状态未确认，不代表已取消生成或退款。'};
     s.progress=null;s.backendResult?.resolve();s.backendResult=null;
     const backend=await Promise.allSettled([includeBackend?s.backend?.cancel():undefined]);
     const local=await Promise.allSettled([...s.localCleanups]);
@@ -393,6 +394,15 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const invoke=async(name,args,callId,signal)=>{
       if(signal.aborted||!current(s))throw Error('本次任务已取消');
       if(!allowedTools.has(name))throw Error('OpenClaw 未开放这个工具');
+      // A follow-up asks about the original media operation, not a shell
+      // process. Return its real state even if the model invents a process ID
+      // or rewrites a creation command; neither case may trigger another spend.
+      const mediaProgress=s.mediaCliAvailable&&s.mediaOperation&&mediaStatusQuestion(s.latestUserTurn?.text)
+        &&(name==='exec'&&/^\s*makaron(?:\s|$)/u.test(args.command??'')||name==='process'&&!s.processes.has(args.sessionId));
+      if(mediaProgress){
+        const operation=s.mediaOperation;
+        return operation.output??{isError:false,status:'running',operation:operation.kind,message:'正在跟进原来的媒体请求，完成后会自动显示。',instruction:'这不是 process 执行会话。只自然回应真实进度，结束这一句；不要再调用 process、生成或轮询工具，不重新提交、不说参数错误。原任务仍由执行器跟进。'};
+      }
       if(name==='exec'&&s.mediaCliAvailable&&/^\s*makaron(?:\s|$)/u.test(args.command??'')){
         // Explicit, bounded personal CLI capability; never retry a denied Gateway
         // call here and never use the owner's credentials for actor/group calls.
@@ -406,7 +416,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         const cleanup=work.then(()=>{},()=>{});s.localCleanups.add(cleanup);
         cleanup.then(()=>s.localCleanups.delete(cleanup));
         audit({type:'tool.media-cli',voiceSessionId:s.id,callId,phase:'start'});
-        const output=await work;
+        const creation=/^\s*makaron\s+(edit|video\s+create)\b/u.test(args.command);
+        const operation=creation?{kind:/\bvideo\s+create\b/u.test(args.command)?'video':'image',callId}:null;
+        if(operation)s.mediaOperation=operation;
+        let output;
+        try{output=await work;}catch(error){if(operation)operation.output={error:error.message,instruction:'原操作未完成，不能因为追问状态而重新付费生成。'};throw error;}
         audit({type:'tool.media-cli',voiceSessionId:s.id,callId,phase:'result',ok:!output.isError,exitCode:output.details?.exitCode});
         if(signal.aborted||!current(s))throw Error('本次任务已取消');
         if(output.media&&!output.isError){
@@ -416,8 +430,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
             s.mediaDeliveries.set(url,publishContent(s,callId,kind==='image'?`![生成图片](${url})`:`[生成视频](${url})`));
           }
           const presentation=await s.mediaDeliveries.get(url);
-          return {...output,presentation,instruction:'媒体已经自动提交显示。根据 presentation 回执简短说明结果，不再保存、轮询或重复 show_content；追问进度不重新生成。'};
+          const delivered={...output,presentation,instruction:'媒体已经自动提交显示。根据 presentation 回执简短说明结果，不再保存、轮询或重复 show_content；追问进度不重新生成。'};
+          if(operation)operation.output=delivered;
+          return delivered;
         }
+        if(operation)operation.output=output;
         return output;
       }
       if(name==='process'&&args.action!=='list'&&!s.processes.has(args.sessionId))throw Error('只能管理本次电话发起的执行会话');
@@ -481,8 +498,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       s.pending.set(call.callId,controller);
       const mediaCommand=call.name==='exec'&&s.mediaCliAvailable&&/^\s*makaron(?:\s|$)/u.test(call.args?.command??'');
       if(mediaCommand)s.mediaRecovery?.started();
-      const foreground=mediaCommand||call.name==='show_content';
-      const stage=call.name==='show_content'?'展示内容':/\bvideo\s+status\b/u.test(call.args?.command??'')?'等待视频':/\bvideo\s+create\b/u.test(call.args?.command??'')?'生成视频':/\bedit\b/u.test(call.args?.command??'')?'生成图片':'保存图片';
+      const mediaProgress=s.mediaCliAvailable&&s.mediaOperation&&mediaStatusQuestion(s.latestUserTurn?.text)&&(mediaCommand||call.name==='process'&&!s.processes.has(call.args?.sessionId));
+      const foreground=mediaCommand||mediaProgress||call.name==='show_content';
+      const stage=mediaProgress?(s.mediaOperation.kind==='video'?'等待视频':'生成图片'):call.name==='show_content'?'展示内容':/\bvideo\s+status\b/u.test(call.args?.command??'')?'等待视频':/\bvideo\s+create\b/u.test(call.args?.command??'')?'生成视频':/\bedit\b/u.test(call.args?.command??'')?'生成图片':'保存图片';
       audit({type:'tool.call',voiceSessionId:s.id,...call});emit(s,{type:'tool.call',callId:call.callId,name:call.name,activity:taskActivity(call.name,call.args),...(foreground?{execution:'foreground',stage}:{})});
       s.lookup.started(call);
       let result,backgroundAck=false;
