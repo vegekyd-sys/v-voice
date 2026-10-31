@@ -6,6 +6,18 @@ const plain = (text) =>
     .replace(/!?(\[[^\]]*\])\([^)]*\)/gu, "$1")
     .replace(/[#*_`>|]/gu, "")
     .trim();
+export function contentDownloads(content) {
+  const media=content.kind==='report'?(content.media??[]):[content];
+  // Prose around an image/video does not turn the user's artwork into Markdown.
+  return media.length?media.map(entry=>({...entry,title:entry.title||content.title})):
+    [{kind:'document',title:content.title,text:content.text}];
+}
+const downloadName=(entry,mime='')=>{
+  const ext=({'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif','image/avif':'avif','video/mp4':'mp4','video/webm':'webm','video/quicktime':'mov'})[mime.split(';')[0]]
+    ?? entry.url?.match(/\.(png|jpe?g|webp|gif|avif|mp4|webm|mov)(?:[?#]|$)/iu)?.[1]
+    ?? (entry.kind==='video'?'mp4':entry.kind==='document'?'md':'jpg');
+  return String(entry.title||'作品').replace(/[\\/:*?"<>|]/gu,'-').replace(/\.(md|png|jpe?g|webp|gif|avif|mp4|webm|mov)$/iu,'').slice(0,100)+'.'+ext;
+};
 export function contentItems(item, base = "https://voice.invalid/voice/") {
   if (item.role !== "assistant" || !item.complete) return [];
   const text = String(item.text ?? ""),
@@ -33,7 +45,7 @@ export function contentItems(item, base = "https://voice.invalid/voice/") {
 
 // One reader holds the original controls: opening content never recreates the
 // call, microphone, event subscriptions, task ownership, or avatar renderer.
-export function createContentView(document, window, { onReading = () => {} } = {}) {
+export function createContentView(document, window, { onReading = () => {}, onSaveMedia, mediaSaveLabel='保存' } = {}) {
   const $ = (id) => document.getElementById(id);
   const layer = $("contentReader"),
     surface = $("readerSurface"),
@@ -42,7 +54,60 @@ export function createContentView(document, window, { onReading = () => {} } = {
     origin = null,
     closing = false,
     automatic = new Set(),
-    animations = [];
+    animations = [], downloadController=null, downloadMenu=null, pendingAuto=null;
+  const isMedia=content=>content.kind!=='report'||Boolean(content.media?.length);
+  async function openPending() {
+    if(!pendingAuto||closing||current&&(!isMedia(current)||[...body.querySelectorAll('video')].some(video=>!video.paused&&!video.ended)))return;
+    const next=pendingAuto;pendingAuto=null;
+    if(current)await close({immediate:true,openNext:false});
+    if(!current&&next.card.isConnected&&['connected','ending'].includes(document.body.dataset.callState))open(next.content,next.card);
+  }
+  async function saveMedia(entry,button) {
+    if(downloadController)return;
+    if(onSaveMedia){await onSaveMedia(entry);return;}
+    const controller=new AbortController();downloadController=controller;
+    const title=button.textContent;button.textContent='准备下载…';button.setAttribute('aria-busy','true');
+    const timeout=setTimeout(()=>controller.abort(),30000);
+    try {
+      const response=await fetch(entry.url,{signal:controller.signal,credentials:'omit',referrerPolicy:'no-referrer'});
+      if(!response.ok)throw Error('download failed');
+      const blob=await response.blob();
+      if(!blob.size||blob.type&&blob.type!=='application/octet-stream'&&!blob.type.startsWith(entry.kind+'/'))throw Error('invalid media');
+      if(controller.signal.aborted)return;
+      const url=URL.createObjectURL(blob),link=document.createElement('a');
+      link.href=url;link.download=downloadName(entry,blob.type);link.hidden=true;
+      document.body.append(link);link.click();link.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),60000);
+    }catch {
+      if(current&&downloadController===controller){
+        const fallback=document.createElement('a');fallback.href=entry.url;fallback.target='_blank';fallback.rel='noopener noreferrer';
+        fallback.className='media-error';fallback.textContent='下载未成功，打开原文件保存';body.append(fallback);
+      }
+    }finally{clearTimeout(timeout);button.textContent=title;button.removeAttribute('aria-busy');if(downloadController===controller)downloadController=null;}
+  }
+  function prepareDownload(content) {
+    const button=$('readerDownload'),entries=contentDownloads(content);
+    downloadMenu?.remove();downloadMenu=null;button.onclick=null;button.hidden=false;
+    delete button.dataset.mediaDownload;
+    if(entries[0].kind==='document'){
+      button.href=URL.createObjectURL(new Blob([content.text],{type:'text/markdown;charset=utf-8'}));
+      button.download=downloadName(entries[0]);button.textContent='↓ 保存文档';return;
+    }
+    button.dataset.mediaDownload='true';button.removeAttribute('download');
+    if(entries.length===1){
+      const entry=entries[0];button.href=entry.url;
+      button.textContent=`↓ ${mediaSaveLabel}${mediaSaveLabel==='保存'?(entry.kind==='video'?'视频':'图片'):''}`;
+      button.onclick=event=>{event.preventDefault();void saveMedia(entry,button);};return;
+    }
+    button.href='#';button.textContent=`↓ 选择${mediaSaveLabel}`;
+    downloadMenu=document.createElement('div');downloadMenu.className='reader-download-menu';downloadMenu.hidden=true;
+    entries.forEach((entry,index)=>{
+      const link=document.createElement('a');link.href=entry.url;link.textContent=`${entry.kind==='video'?'视频':'图片'} ${index+1} · ${entry.title}`;
+      link.onclick=event=>{event.preventDefault();void saveMedia(entry,link);};downloadMenu.append(link);
+    });
+    button.parentElement.append(downloadMenu);
+    button.onclick=event=>{event.preventDefault();downloadMenu.hidden=!downloadMenu.hidden;};
+  }
   const cancelAnimations = () => {
     for (const animation of animations) animation.cancel();
     animations = [];
@@ -118,6 +183,7 @@ export function createContentView(document, window, { onReading = () => {} } = {
       if (entry.kind === "video") {
         media.controls = true; media.playsInline = true; media.preload = "auto";
         media.setAttribute("aria-label", entry.title);
+        media.addEventListener('ended',()=>void openPending());
         media.addEventListener("loadedmetadata", () => {
           if (media.videoWidth && media.videoHeight) {
             media.width = media.videoWidth; media.height = media.videoHeight;
@@ -149,15 +215,7 @@ export function createContentView(document, window, { onReading = () => {} } = {
         loaded.add(url); return asset(entry);
       }});
     } else body.append(asset(content));
-    if (content.kind === "report") {
-      const blob = new Blob([content.text], {
-        type: "text/markdown;charset=utf-8",
-      });
-      $("readerDownload").href = URL.createObjectURL(blob);
-      $("readerDownload").download =
-        content.title.replace(/[\\/:*?"<>|]/gu, "-") + ".md";
-      $("readerDownload").hidden = false;
-    } else $("readerDownload").hidden = true;
+    prepareDownload(content);
     // The page renders its status line and call controls into the reader
     // dock; the call itself, its microphone and its listeners never move.
     onReading(true);
@@ -170,9 +228,10 @@ export function createContentView(document, window, { onReading = () => {} } = {
     } else $("readerBack").focus({ preventScroll: true });
     void morph(from, surface.getBoundingClientRect());
   }
-  async function close({ immediate = false } = {}) {
+  async function close({ immediate = false, openNext=true } = {}) {
     if (!current || closing) return;
     closing = true;
+    downloadController?.abort();downloadController=null;downloadMenu?.remove();downloadMenu=null;
     cancelAnimations();
     layer.dataset.closing = "true";
     const from = surface.getBoundingClientRect(),
@@ -189,6 +248,7 @@ export function createContentView(document, window, { onReading = () => {} } = {
     current = null;
     closing = false;
     origin?.focus({ preventScroll: true });
+    if(openNext&&pendingAuto)window.requestAnimationFrame(()=>void openPending());
   }
   $("readerBack").addEventListener("click", () => void close());
   $("readerBackdrop").addEventListener("click", () => void close());
@@ -271,17 +331,16 @@ export function createContentView(document, window, { onReading = () => {} } = {
         if (auto && shouldOpen && !automatic.has(content.id)) {
           automatic.add(content.id);
           window.requestAnimationFrame(() => {
-            if (
-              !current &&
-              card.isConnected &&
-              ["connected", "ending"].includes(document.body.dataset.callState)
-            )
-              open(content, card);
+            if(card.isConnected&&["connected", "ending"].includes(document.body.dataset.callState)){
+              if(isMedia(content)){pendingAuto={content,card};void openPending();}
+              else if(!current)open(content,card);
+            }
           });
         }
       }
     },
     reset() {
+      pendingAuto=null;
       automatic.clear();
       void close({ immediate: true });
     },

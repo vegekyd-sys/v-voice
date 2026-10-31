@@ -1558,3 +1558,23 @@ test('media catalog revocation stops local execution without attempting Gateway 
  await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='revoked-media'));
  assert.equal(local,0);assert.equal(f.invocations.length,0);assert.match(f.audit.find(e=>e.type==='tool.delivered').result.error,/撤回/);
 });
+
+for(const model of ['grok','seeduplex'])test(`${model} completed media is displayed across a spoken interruption without another model tool round`,async t=>{
+ let finish;const calls=[];
+ const work=new Promise(resolve=>{finish=resolve;});
+ const f=await fixture(async()=>{throw Error('must not use Gateway');},model,{mediaCli:{forCall:async()=>({execute:(command,signal,options)=>{calls.push({command,options});return work;}})}});
+ t.after(()=>f.service.dispose());
+ const call=(id,command)=>model==='grok'?f.call('exec',{command},id):f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name:'exec',arguments:JSON.stringify({command})}]});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'把这张图动起来'});
+ call('first-media',"makaron video create --video-model fal-h3-max --script 'animate'");
+ assert(await until(()=>calls.length===1));
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'做好了吗？'});
+ call('status-only',"makaron video create --video-model fal-h3-max --script 'animate again'");
+ assert(await until(()=>calls.length===2));assert.equal(calls[1].options.reuseExisting,true);
+ finish({isError:false,media:{kind:'video',url:'https://cdn.test/final.mp4'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
+ assert(await until(()=>f.audit.filter(e=>e.type==='tool.delivered').length===2));
+ const docs=f.service.presentation(f.reservation.voiceSessionId).documents;
+ assert.equal(docs.length,1);assert.equal(docs[0].text,'[生成视频](https://cdn.test/final.mp4)');
+ assert(!f.audit.some(e=>e.type==='tool.call'&&e.name==='show_content'));
+ assert.equal(f.service.backgroundTaskCount(),0);
+});

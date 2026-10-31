@@ -24,7 +24,7 @@ async function fixture(t,opts={}){
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'media-cli-test-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
  const binary=path.join(root,'makaron');
  await fs.writeFile(binary,`#!${process.execPath}\n`+`import fs from 'node:fs';\nconst a=process.argv.slice(2);\nif(a.includes('hang')){console.log('started');setInterval(()=>{},100);}\nelse if(a.includes('fail')){console.error(process.env.MAKARON_API_KEY);process.exitCode=2;}\nelse if(a[0]==='edit'){fs.writeFileSync(a[a.indexOf('--out')+1].replace(/png$/, 'jpg'),'image');console.log('image generated');}\nelse if(a[0]==='create')console.log('https://cdn.example/image.png');\nelse if(a[1]==='create')console.log('Task ID: task-123');\nelse console.log('https://cdn.example/video.mp4');\nif(process.env.UNRELATED_SECRET)throw Error('unrelated secret leaked');`,{mode:0o700});
- const cli=createVoiceMediaCli({binary,baseDirectory:root,environment:{PATH:process.env.PATH,MAKARON_API_KEY:'fixture-private-key',UNRELATED_SECRET:'must-not-inherit'},...opts});
+ const cli=createVoiceMediaCli({binary,baseDirectory:root,completeMedia:false,environment:{PATH:process.env.PATH,MAKARON_API_KEY:'fixture-private-key',UNRELATED_SECRET:'must-not-inherit'},...opts});
  return {cli,runner:await cli.forCall(),root};
 }
 test('real subprocess enforces per-call file/task ownership, idempotency, exit code and secret filtering',async t=>{
@@ -71,3 +71,32 @@ test('cancelling a pending video wait stops polling without creating another tas
  await assert.rejects(pending,/abort/iu);
 });
 test('CLI capability requires an explicitly supplied existing key',()=>assert.equal(createVoiceMediaCli({environment:{}}),null));
+
+test('one image operation returns a URL and never exposes a file-save step to the model',async t=>{
+ const {runner,root}=await fixture(t,{completeMedia:true});
+ const result=await runner.execute("makaron edit --image-model wan2.7-image 'moon'");
+ assert.deepEqual(result.media,{kind:'image',url:'https://cdn.example/image.png'});
+ assert.doesNotMatch(JSON.stringify(result),/Image file:|voice-media-|Saved to:/);
+ const dir=(await fs.readdir(root)).find(x=>x.startsWith('voice-media-'));
+ const receipts=await Promise.all((await fs.readdir(path.join(root,dir))).filter(x=>x.startsWith('receipt-')).map(x=>fs.readFile(path.join(root,dir,x),'utf8').then(JSON.parse)));
+ assert.deepEqual(receipts.map(r=>r.operation).sort(),['create','edit']);
+ const reordered=await runner.execute("makaron edit 'moon' --image-model wan2.7-image");
+ assert.equal(reordered,result);
+});
+test('one video operation polls its original task; status questions and concurrent rephrasing cannot spend again',async t=>{
+ const {runner,root}=await fixture(t,{completeMedia:true,pollIntervalMs:1});
+ const log=path.join(root,'invocations');
+ await fs.writeFile(path.join(root,'makaron'),`#!${process.execPath}\nimport fs from 'node:fs';const a=process.argv.slice(2);fs.appendFileSync(${JSON.stringify(log)},a.join(' ')+'\\n');if(a[1]==='create')console.log('Task ID: task-123');else console.log('https://cdn.example/video.mp4');`,{mode:0o700});
+ const first=runner.execute("makaron video create --video-model fal-h3-max --script 'animate'");
+ const second=runner.execute("makaron video create --video-model fal-h3-max --script 'animate differently'");
+ assert.equal(first,second);
+ const result=await first;
+ assert.deepEqual(result.media,{kind:'video',url:'https://cdn.example/video.mp4',taskId:'task-123'});
+ assert.equal(await runner.execute("makaron video create --video-model fal-h3-max --script 'again'",undefined,{reuseExisting:true}),result);
+ assert.equal((await fs.readFile(log,'utf8')).trim().split('\n').length,2);
+});
+test('a status-only question with no original task cannot start a generation',async t=>{
+ const {runner}=await fixture(t,{completeMedia:true});
+ const result=await runner.execute("makaron video create --video-model fal-h3-max --script 'animate'",undefined,{reuseExisting:true});
+ assert.equal(result.isError,true);assert.equal(result.details.status,'not-started');
+});

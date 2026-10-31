@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { contentItems } from "./content-view.mjs";
+import { contentItems,contentDownloads } from "./content-view.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 
 test('short backend media caption stays with its asset in one deliverable', () => {
@@ -10,7 +10,14 @@ test('short backend media caption stays with its asset in one deliverable', () =
     assert.equal(items[0].kind, "report");
     assert.deepEqual(items[0].media.map(item => item.kind), [kind]);
     assert.equal(items[0].media[0].url,url);
+    assert.deepEqual(contentDownloads(items[0]).map(entry=>entry.kind),[kind]);
   }
+});
+test('save offers actual media for mixed results and Markdown only for plain documents',()=>{
+ const content=contentItems({key:'mixed',role:'assistant',complete:true,document:true,text:'# 作品\n说明\n![图片](https://cdn.test/a.jpg)\n[视频](https://cdn.test/a.mp4)'})[0];
+ assert.deepEqual(contentDownloads(content).map(entry=>entry.kind),['image','video']);
+ const doc=contentItems({key:'doc',role:'assistant',complete:true,document:true,text:'# 报告\n实际报告正文'})[0];
+ assert.deepEqual(contentDownloads(doc),[{kind:'document',title:'报告',text:doc.text}]);
 });
 
 test("actual backend result stays exact, becomes a report, and does not duplicate the speech turn", () => {

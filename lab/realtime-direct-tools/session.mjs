@@ -1,4 +1,5 @@
-import {mediaCliInstructions,MEDIA_CLI_START_NOTICE} from './media-cli-policy.mjs';
+import {mediaCliInstructions,MEDIA_CLI_START_NOTICE,mediaStatusQuestion} from './media-cli-policy.mjs';
+import {createMediaTurnRecovery} from './media-turn-recovery.mjs';
 import {VOICE_OPERATION_CONSENT_POLICY,VOICE_CALENDAR_SERVICE_POLICY} from '../../lib/voice-operation-policy.mjs';
 import {hasTvControls,writePolicy,tvControlTool} from './tv-control-policy.mjs';
 import {backendDeviceDescriptor,probeBackendDeviceBundle} from '../../lib/backend-device-bundle.mjs';
@@ -135,6 +136,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   };
   const deferred=s=>{
     s.lookup?.tick();
+    s.mediaRecovery?.tick();
     if(s.heldResult)contextHeld(s);
     if(s.backendResult&&s.backgroundBridge&&s.backgroundBridge!==s.bridge){
       // A persona being connected may still turn out to be the requester again.
@@ -399,13 +401,23 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(!['exec','process'].every(id=>(latest.groups??[]).some(g=>(g.tools??[]).some(t=>t.id===id))))throw Error('当前会话创作权限已撤回');
         if(signal.aborted||!current(s))throw Error('本次任务已取消');
         s.mediaRunner??=Promise.resolve().then(()=>mediaCli.forCall());
-        const work=s.mediaRunner.then(runner=>runner.execute(args.command,signal));
+        const reuseExisting=mediaStatusQuestion(s.latestUserTurn?.text);
+        const work=s.mediaRunner.then(runner=>runner.execute(args.command,signal,{reuseExisting}));
         const cleanup=work.then(()=>{},()=>{});s.localCleanups.add(cleanup);
         cleanup.then(()=>s.localCleanups.delete(cleanup));
         audit({type:'tool.media-cli',voiceSessionId:s.id,callId,phase:'start'});
         const output=await work;
         audit({type:'tool.media-cli',voiceSessionId:s.id,callId,phase:'result',ok:!output.isError,exitCode:output.details?.exitCode});
         if(signal.aborted||!current(s))throw Error('本次任务已取消');
+        if(output.media&&!output.isError){
+          const {kind,url}=output.media;
+          s.mediaDeliveries??=new Map();
+          if(!s.mediaDeliveries.has(url)){
+            s.mediaDeliveries.set(url,publishContent(s,callId,kind==='image'?`![生成图片](${url})`:`[生成视频](${url})`));
+          }
+          const presentation=await s.mediaDeliveries.get(url);
+          return {...output,presentation,instruction:'媒体已经自动提交显示。根据 presentation 回执简短说明结果，不再保存、轮询或重复 show_content；追问进度不重新生成。'};
+        }
         return output;
       }
       if(name==='process'&&args.action!=='list'&&!s.processes.has(args.sessionId))throw Error('只能管理本次电话发起的执行会话');
@@ -445,6 +457,10 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const admittedUserTurns=new Map();
     const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',s.sessionBound?s.actorReader?.calendar:calendar),larkRead:localRead('lark_read',s.sessionBound?s.actorReader?.read:larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,look:s.speaker?.look,delegate:async args=>{await s.ensureBackendDeviceBundle();return s.backend.run({...args,context:(args.context??'')+s.backendDeviceContext()+(args.use_current_location?s.location.context():''),callerTurn:admittedUserTurns.get(args.callId)});}});
     s.progressTimer=setInterval(()=>deferred(s),200);s.progressTimer.unref?.();
+    if(s.mediaCliAvailable)s.mediaRecovery=createMediaTurnRecovery({
+      state:()=>({current:current(s),ending:s.ending,routed:s.speakerRouting,pending:s.pending.size,playing:s.playing,responseActive:s.responseActive,userSpeaking:s.userSpeaking}),
+      resume:text=>s.bridge?.sendUserMessage(text),audit:event=>audit({...event,voiceSessionId:s.id}),
+    });
     s.lookup=createLookupRecovery({...lookupRecovery,
       state:()=>({pending:s.pending.size,background:Boolean(s.backend.snapshot()),ending:Boolean(s.ending),
         playing:s.playing,responseActive:s.responseActive,userSpeaking:s.userSpeaking,lastUserAt:s.lastUserAt,
@@ -464,6 +480,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       const ownerBridge=s.bridge;s.toolOwners.set(call.callId,ownerBridge);
       s.pending.set(call.callId,controller);
       const mediaCommand=call.name==='exec'&&s.mediaCliAvailable&&/^\s*makaron(?:\s|$)/u.test(call.args?.command??'');
+      if(mediaCommand)s.mediaRecovery?.started();
       const foreground=mediaCommand||call.name==='show_content';
       const stage=call.name==='show_content'?'展示内容':/\bvideo\s+status\b/u.test(call.args?.command??'')?'等待视频':/\bvideo\s+create\b/u.test(call.args?.command??'')?'生成视频':/\bedit\b/u.test(call.args?.command??'')?'生成图片':'保存图片';
       audit({type:'tool.call',voiceSessionId:s.id,...call});emit(s,{type:'tool.call',callId:call.callId,name:call.name,activity:taskActivity(call.name,call.args),...(foreground?{execution:'foreground',stage}:{})});
@@ -567,8 +584,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
         const deliver=()=>{
         if(role==='assistant')s.replyDelivery?.transcript(text,{final,source,responseId:metadata.responseId});
-        if(role==='assistant'&&final){if(!s.unidentified)speakerRouting?.assistant(s.id,text);if(!source){s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
-        if(role==='user'){if(final)s.lookup.answered();if(final)s.replyDelivery?.user(text,{turnId:metadata.turnId});if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
+        if(role==='assistant'&&final){if(!s.unidentified)speakerRouting?.assistant(s.id,text);if(!source){s.mediaRecovery?.assistant(text);s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
+        if(role==='user'){if(final){s.lookup.answered();s.mediaRecovery?.user();}if(final)s.replyDelivery?.user(text,{turnId:metadata.turnId});if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
         if(role==='user'&&final&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{}),responseId:metadata.responseId,turnId:metadata.turnId});
         };

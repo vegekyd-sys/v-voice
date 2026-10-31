@@ -46,7 +46,16 @@ export function validateMediaArgv(argv) {
   return {verb,flags,positionals};
 }
 const videoPending=result=>!result.isError&&/\b(?:is rendering|is queued|is processing|is saving)\b/iu.test(result.content[0].text);
-export function createVoiceMediaCli({environment=process.env,binary='makaron',baseDirectory=environment.TMPDIR??os.tmpdir(),maxBytes=128*1024,timeoutMs=120000,pollIntervalMs=2000}={}) {
+const quote=value=>"'"+String(value).replaceAll("'","'\\''")+"'";
+const mediaUrl=(result,kind)=>{
+  if(result?.isError)return null;
+  for(const match of String(result?.content?.[0]?.text??'').matchAll(/https:\/\/[^\s<>"']+/gu)){
+    try {const url=new URL(match[0].replace(/[),.;]+$/u,''));
+      if(!url.username&&!url.password&&(kind==='video'?/\.(mp4|webm|mov)$/iu:/\.(png|jpe?g|webp|gif|avif)$/iu).test(url.pathname))return url.href;
+    }catch{}
+  }return null;
+};
+export function createVoiceMediaCli({environment=process.env,binary='makaron',baseDirectory=environment.TMPDIR??os.tmpdir(),maxBytes=128*1024,timeoutMs=120000,pollIntervalMs=2000,completeMedia=true}={}) {
   // Explicit deployment-owned key only: the default CLI login may belong to
   // another account. Never fall back to it or the Gateway secret store.
   if(!environment.MAKARON_API_KEY||environment.MAKARON_URL&&environment.MAKARON_URL!=='https://www.makaron.app')return null;
@@ -54,11 +63,12 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
   env.PATH=[path.dirname(process.execPath),env.PATH].filter(Boolean).join(path.delimiter);
   return {forCall:async()=>{
     const directory=await fs.realpath(await fs.mkdtemp(path.join(baseDirectory,'voice-media-')));await fs.chmod(directory,0o700);
-    const files=new Set(),tasks=new Set(),requests=new Map(),lastPoll=new Map();let tail=Promise.resolve();
+    const files=new Set(),tasks=new Set(),requests=new Map(),lastPoll=new Map(),active=new Map(),latest=new Map(),savedFiles=new Map();let tail=Promise.resolve();
     const execute=async(command,signal,remainingMs=timeoutMs)=>{
       signal?.throwIfAborted();const argv=mediaArgv(command),{verb,flags,positionals}=validateMediaArgv(argv);
       if(verb==='create'){
         const file=path.resolve(directory,flags.image);
+        if(savedFiles.has(file))return savedFiles.get(file);
         if(!files.has(file)||await fs.realpath(file)!==file||(await fs.lstat(file)).isSymbolicLink())throw Error('只能保存本通话生成的文件');
         argv[argv.indexOf('--image')+1]=file;
       }
@@ -97,24 +107,52 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
       await fs.writeFile(path.join(directory,'receipt-'+randomUUID()+'.json'),JSON.stringify({operation:verb,model:flags['image-model']??flags['video-model'],result}),{mode:0o600}).catch(()=>{});
       return result;
     };
-    return {execute:(command,signal)=>{
+    return {execute:(command,signal,{reuseExisting=false}={})=>{
       // Serialize requests and reuse even failed/unknown submissions, never spend twice.
-      const argv=mediaArgv(command),key=JSON.stringify(argv),query=argv[0]==='video'&&argv[1]==='status';
+      let argv,parsed;try{argv=mediaArgv(command);parsed=validateMediaArgv(argv);}catch(error){return Promise.reject(error);}
+      const key=JSON.stringify([parsed.verb,Object.entries(parsed.flags).sort(),parsed.positionals]);
+      const creation=parsed.verb==='edit'?'image':parsed.verb==='video create'?'video':null;
+      const query=parsed.verb==='video status';
+      if(creation&&active.has(creation))return active.get(creation);
+      if(creation&&reuseExisting){
+        if(latest.has(creation))return latest.get(creation);
+        return Promise.resolve({isError:true,content:[{type:'text',text:'当前没有这类已提交任务；用户只在问进度，不能新建付费生成。'}],details:{status:'not-started'}});
+      }
       if(!query&&requests.has(key))return requests.get(key);
       const pending=tail.then(async()=>{
         const deadline=Date.now()+timeoutMs;
         let result=await execute(command,signal);
+        let taskId=query?parsed.positionals[0]:null,queryCommand=command;
+        if(completeMedia&&creation==='image'&&!result.isError&&!mediaUrl(result,'image')){
+          const file=result.content[0].text.match(/\nImage file: (.+)/u)?.[1];
+          if(file&&files.has(file)){
+            // The current image API returns bytes. Store them once inside the
+            // original operation; the model sees only the final media URL.
+            if(!savedFiles.has(file))savedFiles.set(file,execute(`makaron create --image ${quote(file)} --title 'Voice 图片'`,signal,Math.max(1,deadline-Date.now())));
+            result=await savedFiles.get(file);
+          }
+        }
+        if(completeMedia&&creation==='video'&&!result.isError){
+          taskId=result.content[0].text.match(/Task ID:\s*([\w:-]+)/u)?.[1]??null;
+          if(taskId&&!mediaUrl(result,'video')){
+            queryCommand=`makaron video status ${quote(taskId)}`;
+            result=await execute(queryCommand,signal,Math.max(1,deadline-Date.now()));
+          }
+        }
         // A realtime model can end its turn after hearing "rendering". Keep
         // this one read-only CLI query open until the original task resolves.
-        while(query&&videoPending(result)&&Date.now()+pollIntervalMs<deadline){
-          result=await execute(command,signal,Math.max(1,deadline-Date.now()-pollIntervalMs));
+        while(taskId&&videoPending(result)&&Date.now()+pollIntervalMs<deadline){
+          result=await execute(queryCommand,signal,Math.max(1,deadline-Date.now()-pollIntervalMs));
         }
-        if(query&&videoPending(result)){
-          result={...result,details:{...result.details,status:'pending'},content:[{type:'text',text:result.content[0].text+'\nTask ID: '+argv[2]+'\n本次等待已结束，原视频仍未完成；保留任务ID，不重新提交生成。'}]};
+        if(taskId&&videoPending(result)){
+          result={...result,details:{...result.details,status:'pending'},content:[{type:'text',text:result.content[0].text+'\nTask ID: '+taskId+'\n本次等待已结束，原视频仍未完成；保留任务ID，不重新提交生成。'}]};
         }
+        const kind=creation??(query?'video':parsed.verb==='create'?'image':null),url=kind&&mediaUrl(result,kind);
+        if(completeMedia&&url)result={isError:false,media:{kind,url,...(taskId?{taskId}:{})},content:[{type:'text',text:`${kind==='video'?'视频':'图片'}已生成：${url}`}],details:{...result.details,status:'completed'}};
         return result;
       });tail=pending.catch(()=>{});
       if(!query)requests.set(key,pending);
+      if(creation){active.set(creation,pending);latest.set(creation,pending);pending.finally(()=>{if(active.get(creation)===pending)active.delete(creation);}).catch(()=>{});}
       return pending;
     }};
   }};

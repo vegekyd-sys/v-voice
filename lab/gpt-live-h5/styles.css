@@ -893,6 +893,9 @@ body[data-reading="true"] .content-card {
 .markdown-media video.media-asset { width: 100%; background: #261d2d; }
 .markdown-media .media-error { display: block; margin-top: 8px; }
 .markdown-media .media-error[hidden] { display: none; }
+.reader-download-menu { position: absolute; right: 16px; top: 64px; z-index: 5; max-width: min(320px,90vw); padding: 8px; border: 1px solid #e7dced; border-radius: 16px; background: #fff; box-shadow: 0 8px 32px #261d2d22; }
+.reader-download-menu[hidden] { display: none; }
+.reader-download-menu a { display: block; padding: 10px 12px; overflow-wrap: anywhere; }
 
 .reader-layer:not([data-kind="report"]) .markdown-media { display: contents; }
 
