@@ -412,7 +412,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(signal.aborted||!current(s))throw Error('本次任务已取消');
         s.mediaRunner??=Promise.resolve().then(()=>mediaCli.forCall());
         const reuseExisting=mediaStatusQuestion(s.latestUserTurn?.text);
-        const work=s.mediaRunner.then(runner=>runner.execute(args.command,signal,{reuseExisting}));
+        const requestToken=s.latestUserTurn??s;
+        const work=s.mediaRunner.then(runner=>runner.execute(args.command,signal,{reuseExisting,requestToken}));
         const cleanup=work.then(()=>{},()=>{});s.localCleanups.add(cleanup);
         cleanup.then(()=>s.localCleanups.delete(cleanup));
         audit({type:'tool.media-cli',voiceSessionId:s.id,callId,phase:'start'});

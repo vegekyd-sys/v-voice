@@ -63,7 +63,7 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
   env.PATH=[path.dirname(process.execPath),env.PATH].filter(Boolean).join(path.delimiter);
   return {forCall:async()=>{
     const directory=await fs.realpath(await fs.mkdtemp(path.join(baseDirectory,'voice-media-')));await fs.chmod(directory,0o700);
-    const files=new Set(),tasks=new Set(),requests=new Map(),lastPoll=new Map(),active=new Map(),latest=new Map(),savedFiles=new Map();let tail=Promise.resolve();
+    const files=new Set(),tasks=new Set(),requests=new Map(),turnRequests=new Map(),lastPoll=new Map(),active=new Map(),latest=new Map(),savedFiles=new Map();let tail=Promise.resolve();
     const execute=async(command,signal,remainingMs=timeoutMs)=>{
       signal?.throwIfAborted();const argv=mediaArgv(command),{verb,flags,positionals}=validateMediaArgv(argv);
       if(verb==='create'){
@@ -107,12 +107,16 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
       await fs.writeFile(path.join(directory,'receipt-'+randomUUID()+'.json'),JSON.stringify({operation:verb,model:flags['image-model']??flags['video-model'],result}),{mode:0o600}).catch(()=>{});
       return result;
     };
-    return {execute:(command,signal,{reuseExisting=false}={})=>{
+    return {execute:(command,signal,{reuseExisting=false,requestToken}={})=>{
       // Serialize requests and reuse even failed/unknown submissions, never spend twice.
       let argv,parsed;try{argv=mediaArgv(command);parsed=validateMediaArgv(argv);}catch(error){return Promise.reject(error);}
       const key=JSON.stringify([parsed.verb,Object.entries(parsed.flags).sort(),parsed.positionals]);
       const creation=parsed.verb==='edit'?'image':parsed.verb==='video create'?'video':null;
       const query=parsed.verb==='video status';
+      // One human request admits one submission per media kind. A rewritten
+      // command (including dropping a failed reference image) is not new consent.
+      // Local argv validation above may still be corrected before any submission.
+      if(creation&&requestToken&&turnRequests.get(requestToken)?.has(creation))return turnRequests.get(requestToken).get(creation);
       if(creation&&active.has(creation))return active.get(creation);
       if(creation&&reuseExisting){
         if(latest.has(creation))return latest.get(creation);
@@ -152,6 +156,7 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
         return result;
       });tail=pending.catch(()=>{});
       if(!query)requests.set(key,pending);
+      if(creation&&requestToken){if(!turnRequests.has(requestToken))turnRequests.set(requestToken,new Map());turnRequests.get(requestToken).set(creation,pending);}
       if(creation){active.set(creation,pending);latest.set(creation,pending);pending.finally(()=>{if(active.get(creation)===pending)active.delete(creation);}).catch(()=>{});}
       return pending;
     }};

@@ -100,3 +100,17 @@ test('a status-only question with no original task cannot start a generation',as
  const result=await runner.execute("makaron video create --video-model fal-h3-max --script 'animate'",undefined,{reuseExisting:true});
  assert.equal(result.isError,true);assert.equal(result.details.status,'not-started');
 });
+
+test('a failed reference cannot become a second text-to-video submission in the same human turn',async t=>{
+ const {runner,root}=await fixture(t,{completeMedia:true});
+ const log=path.join(root,'submissions');
+ await fs.writeFile(path.join(root,'makaron'),`#!${process.execPath}\nimport fs from 'node:fs';fs.appendFileSync(${JSON.stringify(log)},'submit\\n');console.log('[NON_RETRYABLE:INVALID_INPUT_IMAGE] No generation was submitted');process.exitCode=1;`,{mode:0o700});
+ const requestToken={};
+ const first=await runner.execute("makaron video create --video-model fal-h3-max --image 'https://cdn.example/missing.jpg' --script 'animate <<<media_1>>>'",undefined,{requestToken});
+ assert.equal(first.isError,true);
+ const fallback=await runner.execute("makaron video create --video-model fal-h3-max --script 'recreate it from words'",undefined,{requestToken});
+ assert.equal(fallback,first);assert.equal((await fs.readFile(log,'utf8')).trim().split('\n').length,1);
+ // A later explicit human request can authorize a different submission.
+ await runner.execute("makaron video create --video-model fal-h3-max --script 'recreate it from words'",undefined,{requestToken:{}});
+ assert.equal((await fs.readFile(log,'utf8')).trim().split('\n').length,2);
+});

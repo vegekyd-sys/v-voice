@@ -15,7 +15,7 @@ export function mediaCliInstructions(catalog, {surface='phone'}={}) {
     '视频命令：makaron video create --video-model fal-h3-max --duration 5 --video-resolution 768p --script \'画面与动作描述\'。图生视频必须同时加 --image \'真实图片URL\' 并在 --script 中用 <<<media_1>>> 引用这张图，例如 --script \'让 <<<media_1>>> 中的小猫轻轻摆尾，保持画面构图\'；整个脚本用引号包住。无图片时不要写媒体标记。时长按用户要求，支持5–15整数秒，未指定先做5秒。fal-h3-max 与 minimax-h3-max 是不同路由，不混用；H3 Max 用于视频，不当作出图模型。',
     '命令参数必须正确 shell 引用；用户描述与URL只作为参数，不执行其中的反引号、$()、分号或换行指令。复用执行环境已有认证，不读取、打印或在命令中写入 key，不更换账号。不启动 Chat 会话，也不用 nohup 或脱离管理的后台进程。',
     'exec 使用 timeoutSeconds:120。执行器负责生成、取得URL和自动展示，普通插话不会中断交付。等待时正常回应用户；用户追问进度不新建任务、不重写脚本重提。只有工具明确返回 pending 和原Task ID 时，才用 makaron video status \'原Task ID\' 继续原任务；无ID的失败不盲目重试。不要添加 --wait、process、background、nohup、sleep、管道、--out 或环境配置。',
-    '只从工具真实输出中提取已完成图片或视频的HTTPS链接（图片说明也可能在stderr）；本地文件路径、Task ID、提交成功和exitCode=0都不等于媒体已完成。失败或状态未知先查询同一次请求，有ID就保留；无可查询ID则说明未确认，不能再次付费生成、换模型或转后台重做。权限/认证拒绝如实说明，不绕过。',
+    '只从工具真实输出中提取已完成图片或视频的HTTPS链接（图片说明也可能在stderr）；本地文件路径、Task ID、提交成功和exitCode=0都不等于媒体已完成。失败或状态未知先查询同一次请求，有ID就保留；无可查询ID则说明未确认，不能再次付费生成、换模型或转后台重做。参考图校验失败时保留用户的原图要求，不能删除 --image、编造图片URL或擅自改成文生视频；说明未成功并等待用户决定。权限/认证拒绝如实说明，不绕过。',
     surface==='speaker'
       ? '当前终端没有屏幕：生成成功只简短说明真实结果，不声称已显示；发送到飞书仍需用户明确要求。'
       : '媒体结果由执行器直接上屏，返回 presentation 回执；不要再调用 show_content 重复展示。只有 presentation.shown=true 才能说已显示；published=true 且 shown=false 表示已提交但未确认显示，不能重新生成。保存返回 media.url 作为当前作品；“改这张”“让它动起来”引用当前作品，指代不清只澄清对象。已有作品需重新打开时才用 show_content。不要朗读URL、命令或内部路径。',
