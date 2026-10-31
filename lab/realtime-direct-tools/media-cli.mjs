@@ -33,7 +33,7 @@ export function validateMediaArgv(argv) {
     const v=argv[i];if(v.startsWith('-')){const key=v.slice(2);if(!v.startsWith('--')||!specs[verb].includes(key)||Object.hasOwn(flags,key)||!argv[i+1]||argv[i+1].startsWith('--'))throw Error('不支持的创作选项');flags[key]=argv[++i];}else positionals.push(v);
   }
   if(positionals.length!==(['edit','video status'].includes(verb)?1:0))throw Error('创作参数不完整');
-  if(verb==='edit'&&flags['image-model']!=='gpt-image-2.5-flare'||verb==='video create'&&flags['video-model']!=='fal-h3-max')throw Error('必须使用本次指定的创作模型');
+  if(verb==='edit'&&flags['image-model']!=='wan2.7-image'||verb==='video create'&&flags['video-model']!=='fal-h3-max')throw Error('必须使用本次指定的创作模型');
   if(flags.aspect&&!/^\d{1,2}:\d{1,2}$/u.test(flags.aspect))throw Error('无效画幅');
   if(verb==='video create'&&(!flags.script||!/^([5-9]|1[0-5])$/u.test(flags.duration??'5')||flags['video-resolution']&&flags['video-resolution']!=='768p'))throw Error('无效视频参数');
   if(verb==='video create'){

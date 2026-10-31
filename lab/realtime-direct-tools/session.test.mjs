@@ -1515,7 +1515,7 @@ for (const model of ['grok','seeduplex']) test(`${model} direct CLI media uses l
  const f=await fixture(async()=>{throw Error('Gateway exec must not run');},model,{mediaCli:{forCall:async()=>({execute:async command=>(await invokeMedia({name:'exec',args:{command}})).output})}});
  t.after(()=>f.service.dispose());
  const config=f.upstream.sent.find(e=>['session.create','session.update'].includes(e.type)).session;
- assert(config.instructions.includes('makaron edit --image-model gpt-image-2.5-flare'));
+ assert(config.instructions.includes('makaron edit --image-model wan2.7-image'));
  assert(config.instructions.includes('makaron video create --video-model fal-h3-max'));
  assert(!config.instructions.includes('图片、视频生成也用 delegate_to_v'));
  assert(!config.tools.some(tool=>/^(generate_image|generate_video|makaron_)/.test(tool.name)));
@@ -1525,7 +1525,7 @@ for (const model of ['grok','seeduplex']) test(`${model} direct CLI media uses l
    for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId===id);i++)await delay(5);
    const delivered=f.audit.find(e=>e.type==='tool.delivered'&&e.callId===id);assert(delivered,`missing ${id}`);return delivered.result;
  };
- await invoke('exec',{command:"makaron edit --image-model gpt-image-2.5-flare 'a small blue moon'",timeoutSeconds:120},'image-submit');
+ await invoke('exec',{command:"makaron edit --image-model wan2.7-image 'a small blue moon'",timeoutSeconds:120},'image-submit');
  await invoke('exec',{command:"makaron create --image 'makaron-output-fixture.webp' --title '月亮'",timeoutSeconds:120},'image-save');
  const image='![月亮](https://cdn.test/generated.webp)';
  assert.equal((await invoke('show_content',{markdown:image},'image-show')).shown,true);
@@ -1548,13 +1548,13 @@ for(const options of [{sessionBound:true},{actorScoped:true},{unidentified:true}
  let local=0;const f=await fixture(async()=>({ok:false,error:{message:'denied'}}),'grok',{...options,mediaCli:{forCall:async()=>{local++;throw Error('must not run');}}});t.after(()=>f.service.dispose());
  const config=f.upstream.sent.find(e=>e.type==='session.update').session;
  assert(!config.instructions.includes('makaron edit --image-model'));
- f.call('exec',{command:"makaron edit --image-model gpt-image-2.5-flare 'x'"},'isolated-media');
+ f.call('exec',{command:"makaron edit --image-model wan2.7-image 'x'"},'isolated-media');
  await delay(20);assert.equal(local,0);
 });
 test('media catalog revocation stops local execution without attempting Gateway fallback',async t=>{
  let local=0;const catalog=['exec','process'];
  const f=await fixture(async()=>{throw Error('must not call Gateway tool');},'grok',{catalog,mediaCli:{forCall:async()=>({execute:async()=>{local++;return {};}})}});t.after(()=>f.service.dispose());
- catalog.splice(0);f.call('exec',{command:"makaron edit --image-model gpt-image-2.5-flare 'x'"},'revoked-media');
+ catalog.splice(0);f.call('exec',{command:"makaron edit --image-model wan2.7-image 'x'"},'revoked-media');
  await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='revoked-media'));
  assert.equal(local,0);assert.equal(f.invocations.length,0);assert.match(f.audit.find(e=>e.type==='tool.delivered').result.error,/撤回/);
 });

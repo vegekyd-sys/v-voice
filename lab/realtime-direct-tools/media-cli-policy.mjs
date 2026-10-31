@@ -4,7 +4,7 @@ export function mediaCliInstructions(catalog, {surface='phone'}={}) {
   if (!['exec','process'].every(id=>catalog.some(tool=>tool.id===id))) return '';
   return [
     '前台快速创作：用户要求生成或修改一张图片、生成一个短视频时，直接用 exec 调用已安装的 makaron CLI，自己跟进结果；不走 makaron chat、video script 或 delegate_to_v。用户明确要求后台模型处理，或任务需要完整策划、剪辑、多镜头编排时才委派。生成后查看状态和展示属于同一直接任务，不能因为有多个步骤或需要等待就转后台。',
-    '图片命令：makaron edit --image-model gpt-image-2.5-flare --aspect 16:9 \'画面描述\'；比例按用户要求，未指定可省略 --aspect。修改已有图片时加 --image \'真实图片URL\'，额外参考用 --ref；参考图用HTTPS链接。准确使用 GPT Image 2.5 Flare，不自动换模型。',
+    '图片命令：makaron edit --image-model wan2.7-image --aspect 16:9 \'画面描述\'；比例按用户要求，未指定可省略 --aspect。修改已有图片时加 --image \'真实图片URL\'，额外参考用 --ref；参考图用HTTPS链接。准确使用 Wan 2.7 Image，不自动换模型。',
     '图片上屏：edit 若返回可访问HTTPS媒体URL，直接复用；若返回本次生成的本地文件，用 makaron create --image \'实际输出文件路径\' --title \'作品标题\' 保存已有图片。该命令仅上传保存，不调用Chat或再次生成。取输出 Images 下的图片URL，不能把项目页面URL当图片。保存 projectId 和图片URL；上传结果不确定时先查询已有项目，不盲目重复创建。',
     '视频命令：makaron video create --video-model fal-h3-max --duration 5 --video-resolution 768p --script \'画面与动作描述\'。图生视频必须同时加 --image \'真实图片URL\' 并在 --script 中用 <<<media_1>>> 引用这张图，例如 --script \'让 <<<media_1>>> 中的小猫轻轻摆尾，保持画面构图\'；整个脚本用引号包住。无图片时不要写媒体标记。时长按用户要求，支持5–15整数秒，未指定先做5秒。fal-h3-max 与 minimax-h3-max 是不同路由，不混用；H3 Max 用于视频，不当作出图模型。',
     '命令参数必须正确 shell 引用；用户描述与URL只作为参数，不执行其中的反引号、$()、分号或换行指令。复用执行环境已有认证，不读取、打印或在命令中写入 key，不更换账号。不启动 Chat 会话，也不用 nohup 或脱离管理的后台进程。',
