@@ -1,9 +1,11 @@
 // Instructions for existing exec/process/show_content tools only. This module
 // neither registers a media tool nor changes Gateway or backend permissions.
+export const MEDIA_CLI_START_NOTICE = '创作接话与执行：用户第一次明确要求出图、改图或做视频，就先用自己组织的一句简短口语回应具体画面或动作，然后在同一轮立即调用 exec；接话和工具调用是同一次响应，不要在“我来做”后结束响应、等待下一句话或等语音播完才调用。用户补充“要搞笑”等风格条件，是继续原请求并带上新条件执行，不是只回复“我调整”就结束。真正发起工具之前不能声称任务已经开始。保存图片、查询原视频、展示结果连续执行，不重复接话；已提交的生成不得因追问、插话或补充条件重复付费提交。';
 export function mediaCliInstructions(catalog, {surface='phone'}={}) {
   if (!['exec','process'].every(id=>catalog.some(tool=>tool.id===id))) return '';
   return [
     '前台快速创作：用户要求生成或修改一张图片、生成一个短视频时，直接用 exec 调用已安装的 makaron CLI，自己跟进结果；不走 makaron chat、video script 或 delegate_to_v。用户明确要求后台模型处理，或任务需要完整策划、剪辑、多镜头编排时才委派。生成后查看状态和展示属于同一直接任务，不能因为有多个步骤或需要等待就转后台。',
+    MEDIA_CLI_START_NOTICE,
     '图片命令：makaron edit --image-model wan2.7-image --aspect 16:9 \'画面描述\'；比例按用户要求，未指定可省略 --aspect。修改已有图片时加 --image \'真实图片URL\'，额外参考用 --ref；参考图用HTTPS链接。准确使用 Wan 2.7 Image，不自动换模型。',
     '图片上屏：edit 若返回可访问HTTPS媒体URL，直接复用；若返回本次生成的本地文件，用 makaron create --image \'实际输出文件路径\' --title \'作品标题\' 保存已有图片。该命令仅上传保存，不调用Chat或再次生成。取输出 Images 下的图片URL，不能把项目页面URL当图片。保存 projectId 和图片URL；上传结果不确定时先查询已有项目，不盲目重复创建。',
     '视频命令：makaron video create --video-model fal-h3-max --duration 5 --video-resolution 768p --script \'画面与动作描述\'。图生视频必须同时加 --image \'真实图片URL\' 并在 --script 中用 <<<media_1>>> 引用这张图，例如 --script \'让 <<<media_1>>> 中的小猫轻轻摆尾，保持画面构图\'；整个脚本用引号包住。无图片时不要写媒体标记。时长按用户要求，支持5–15整数秒，未指定先做5秒。fal-h3-max 与 minimax-h3-max 是不同路由，不混用；H3 Max 用于视频，不当作出图模型。',
@@ -13,6 +15,6 @@ export function mediaCliInstructions(catalog, {surface='phone'}={}) {
     surface==='speaker'
       ? '当前终端没有屏幕：生成成功只简短说明真实结果，不声称已显示；发送到飞书仍需用户明确要求。'
       : '拿到真实媒体URL后，立即用 show_content 提交图片 ![图片](真实URL) 或视频 [视频](真实MP4_URL)，不用等用户另说“放屏幕”。只有 shown=true 才能说已显示；published=true 且 shown=false 表示已提交但未确认显示，不能重新生成。保存当前展示作品的URL和版本；“改这张”“让它动起来”引用当前作品，指代不清只澄清对象。不要朗读URL、命令或内部路径。',
-    '10–20秒是体验目标，不是完成承诺。结果未返回时不能说已完成；普通插话不代表取消。取消只处理本通话对应任务，停止CLI查询不等于供应商任务已取消或已退款。',
+    '视频上屏只表示播放器已展示，不代表正在播放；用户点播放前不能说“已经播了”。10–20秒是体验目标，不是完成承诺。结果未返回时不能说已完成；普通插话不代表取消。取消只处理本通话对应任务，停止CLI查询不等于供应商任务已取消或已退款。',
   ].join('\n');
 }
