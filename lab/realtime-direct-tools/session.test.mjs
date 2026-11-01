@@ -1586,28 +1586,3 @@ for(const model of ['grok','seeduplex'])test(`${model} long local exec returns a
  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='foreign')));
  assert.match(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='foreign').result.error,/本次电话/);
 });
-
-for(const [terminal,model,options] of [['web','grok',{}],['ios','grok',{nativeRuntimeVersion:1}],['speaker','seeduplex',{surface:'speaker'}],['robot','seeduplex',{surface:'speaker',inputPolicy:'native'}]])test(`${terminal} wakes the Agent with an execution ID only after playback and user speech settle`,async t=>{
- let finish;const work=new Promise(resolve=>finish=resolve);
- const f=await fixture(async()=>{throw Error('no Gateway execution');},model,{...options,mediaCli:{forCall:async()=>({execute:()=>work})}});
- t.after(()=>{finish({});return f.service.dispose();});
- const call=(id,name,args)=>model==='grok'?f.call(name,args,id):f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
- call('started','exec',{command:"makaron edit --image-model wan2.7-image 'test'"});
- assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='started')));
- const id=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='started').result.sessionId;
- f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:true})),false);
- finish({content:[{type:'text',text:'private final tool data'}],details:{status:'completed'}});
- await delay(250);assert(!f.audit.some(e=>e.type==='execution.finished-notified'));
- f.event({type:'conversation.item.input_audio_transcription.started'});
- f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:false})),false);
- await delay(250);assert(!f.audit.some(e=>e.type==='execution.finished-notified'));
- f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'先说别的'});
- assert(await until(()=>f.audit.some(e=>e.type==='execution.finished-notified')));
- const wire=f.upstream.sent.filter(e=>e.type==='conversation.item.create').map(e=>JSON.stringify(e));
- const notification=wire.find(e=>e.includes('execution.finished'));
- assert(notification?.includes(id));assert(!notification.includes('private final tool data'));
- assert(!notification.includes('role\":\"assistant'));assert(!notification.includes('本通话创作记录'));
- call('final-read','process',{action:'poll',sessionId:id});
- assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='final-read')));
- assert.equal(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='final-read').result.content[0].text,'private final tool data');
-});

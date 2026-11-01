@@ -1,6 +1,6 @@
 import {mediaCliInstructions,MEDIA_CLI_START_NOTICE,mediaStatusQuestion} from './media-cli-policy.mjs';
 import {createMediaTurnRecovery} from './media-turn-recovery.mjs';
-import {createLocalExecutions,LOCAL_EXECUTION_POLICY,executionFinishedMessage} from './local-executions.mjs';
+import {createLocalExecutions,LOCAL_EXECUTION_POLICY} from './local-executions.mjs';
 import {VOICE_OPERATION_CONSENT_POLICY,VOICE_CALENDAR_SERVICE_POLICY} from '../../lib/voice-operation-policy.mjs';
 import {hasTvControls,writePolicy,tvControlTool} from './tv-control-policy.mjs';
 import {backendDeviceDescriptor,probeBackendDeviceBundle} from '../../lib/backend-device-bundle.mjs';
@@ -31,7 +31,7 @@ import {createLookupRecovery} from './lookup-recovery.mjs';
 import {compactSearchResult,isSearchTool,searchMetrics} from './search-result.mjs';
 import {createAudioDeliveryMetrics} from './audio-delivery-metrics.mjs';
 
-export const VOICE_TASK_ROUTING = '当前入口已启用前台快速创作时，简单图片和短视频按前台快速创作规则直接调用 Makaron CLI；无获准直接工具或需要完整创作编排时才委派后台。工具拒绝或报错意味着未启动，不能说正在做、已经排队或马上完成。用户明确取消仍在执行的当前后台任务并改做新任务时，先实际 cancel_task，确认取消后再按直接工具或后台分工实际执行新目标。已完成的旧任务不能通过取消另一个无关任务来代替。任务分工：简单查询、日历和一两步明确操作直接调用原生工具。多步比较、跨资料调研、复杂规划或前台快速创作之外需要持续等待/反复轮询的任务，用 delegate_to_v 将完整目标及用户条件一次交给个人 V 后端语言模型。用户要求交给后端模型、交给 V 或交给后台处理时必须调用 delegate_to_v，即使已经给出完整命令，也不能自行用 exec/process/openclaw_tool 代做。这里的后端指另一个语言模型；exec/process 只是执行工具，命令的 background 参数也不是模型委派。只说‘交给后端’却自己执行不算委派。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，等待时正常聊天。只有真实的新事实才简短汇报，不反复播报等待、倒计时或轮询状态。只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
+export const VOICE_TASK_ROUTING = '当前入口已启用前台快速创作时，简单图片和短视频按前台快速创作规则直接调用 Makaron CLI；无获准直接工具或需要完整创作编排时才委派后台。工具错误按返回的真实执行状态解释：明确未提交时说明尚未启动，提交结果未知时说明无法确认，不猜测正在做、已经排队或马上完成，不盲目重提。用户明确取消仍在执行的当前后台任务并改做新任务时，先实际 cancel_task，确认取消后再按直接工具或后台分工实际执行新目标。已完成的旧任务不能通过取消另一个无关任务来代替。任务分工：简单查询、日历和一两步明确操作直接调用原生工具。多步比较、跨资料调研、复杂规划或前台快速创作之外需要持续等待/反复轮询的任务，用 delegate_to_v 将完整目标及用户条件一次交给个人 V 后端语言模型。用户要求交给后端模型、交给 V 或交给后台处理时必须调用 delegate_to_v，即使已经给出完整命令，也不能自行用 exec/process/openclaw_tool 代做。这里的后端指另一个语言模型；exec/process 只是执行工具，命令的 background 参数也不是模型委派。只说‘交给后端’却自己执行不算委派。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，等待时正常聊天。只有真实的新事实才简短汇报，不反复播报等待、倒计时或轮询状态。只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
 
 export const SELF_START_NOTICE='\n语音查询接话规则：仅对明确向 V 发起、需要 web_search 或 memory_search 的请求，用自己组织的一句极短口语回应查找目标，同一轮立即调用工具，不等待接话音频播放结束。先查记录约束的是事实回答，不禁止简短接话；结果回来前不能编造答案或声称查到。同一请求后续查询不重复接话。旁聊、电视、未说完的话、姓名介绍和普通聊天不触发本规则。该规则不能改变声音与姓名的绑定。每次问到当前身份都重新根据当前这句话的声音匹配已确认的姓名，不能沿用上一轮助手回答的名字。';
 const CALL_ENDING = '通话控制：用户对你说“好了，那我们就聊到这里”“今天先这样，下次再聊”“拜拜啦”等结束这通电话的告别，是 end_call 工具请求，不是普通闲聊。必须在当前这一轮调用 end_call({})，收到成功结果后简短告别，系统等真实告别音频播放完再关闭。只说“拜拜”“随时叫我”而不调用工具不算完成；不要等待用户再说一句“挂断”。“你能挂断吗”的功能讨论、转述别人说拜拜、结束一个话题但继续问问题、仅取消后台任务，都不表示结束电话。';
@@ -147,15 +147,6 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(speakerRouting?.pending?.(s.id))return;
     // A turn let through but not yet answered: host speech would cancel it.
     if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking||Date.now()-s.lastUserAt<1200||Date.now()<s.narrationBusyUntil||speakerRouting?.awaitingResponse?.(s.id))return;
-    if(!s.pending.size&&s.bridge?.ready){
-      const notification=s.localExecutions?.takeNotification(metadata=>metadata.epoch===s.epoch&&Boolean(resultBridge(s,metadata.owner,metadata.requester)));
-      if(notification){
-        s.bridge.sendUserMessage(executionFinishedMessage(notification));
-        s.narrationBusyUntil=Date.now()+NARRATION.startMs;
-        audit({type:'execution.finished-notified',voiceSessionId:s.id,...notification});
-        return;
-      }
-    }
     if(s.backendResult){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;resolve();return;}
     const h=s.heldResult;
     if(h&&h.contextBridge===s.bridge&&servesHeld(s)){
