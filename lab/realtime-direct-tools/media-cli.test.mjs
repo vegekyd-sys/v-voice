@@ -115,3 +115,10 @@ test('a failed reference cannot become a second text-to-video submission in the 
  await runner.execute("makaron video create --video-model fal-h3-max --script 'recreate it from words'",undefined,{requestToken:{}});
  assert.equal((await fs.readFile(log,'utf8')).trim().split('\n').length,2);
 });
+test('a forgotten image marker is supplied, other marker mistakes still stop before submission',()=>{
+ const argv=mediaArgv("makaron video create --video-model fal-h3-max --image 'https://cdn.example/a.jpg' --script 'animate'");
+ validateMediaArgv(argv);
+ assert.equal(argv[argv.indexOf('--script')+1],'<<<media_1>>> animate');
+ assert.throws(()=>validateMediaArgv(mediaArgv("makaron video create --video-model fal-h3-max --image 'https://cdn.example/a.jpg' --script 'animate <<<media_2>>>'")),/本地校验未提交/);
+ assert.throws(()=>validateMediaArgv(mediaArgv("makaron video create --video-model fal-h3-max --script 'animate <<<media_1>>>'")),/本地校验未提交/);
+});

@@ -38,7 +38,9 @@ export function validateMediaArgv(argv) {
   if(verb==='video create'&&(!flags.script||!/^([5-9]|1[0-5])$/u.test(flags.duration??'5')||flags['video-resolution']&&flags['video-resolution']!=='768p'))throw Error('无效视频参数');
   if(verb==='video create'){
     const references=[...flags.script.matchAll(/<<<media_(\d+)>>>/gu)].map(m=>m[1]);
-    if(flags.image&&!references.includes('1')||references.some(id=>!flags.image||id!=='1'))throw Error('本地校验未提交、未扣费：带 --image 的脚本必须用 <<<media_1>>> 引用图片；无图片时不写媒体标记。请修正参数后提交。');
+    // The image is what was asked for; a forgotten marker should not cost a turn.
+    if(flags.image&&!references.length){flags.script='<<<media_1>>> '+flags.script;argv[argv.indexOf('--script')+1]=flags.script;}
+    else if(flags.image&&!references.includes('1')||references.some(id=>!flags.image||id!=='1'))throw Error('本地校验未提交、未扣费：带 --image 的脚本必须用 <<<media_1>>> 引用图片；无图片时不写媒体标记。请修正参数后提交。');
   }
   for(const key of ['image','ref'])if(flags[key]&&verb!=='create'&&!https(flags[key]))throw Error('参考图必须是 HTTPS 媒体链接');
   if(verb==='create'&&!flags.image)throw Error('只能保存本通话已生成图片');
