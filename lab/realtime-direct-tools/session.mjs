@@ -533,6 +533,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
       instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
+      withoutContext:text=>text.replace(voiceConversationBlock(context,{sessionBound:s.sessionBound}),()=>voiceConversationBlock('',{sessionBound:s.sessionBound})),
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
       onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),
       onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.lookup.answered();s.responseActive=true;s.narrationBusyUntil=0;if(s.ending&&(!s.nativeDuplex||metadata?.responseId&&metadata.responseId!==s.ending.priorResponseId)){s.ending.hasAudio=true;s.ending.responseId=metadata?.responseId;clearTimeout(s.ending.fallbackTimer);clearTimeout(s.ending.noAudioTimer);}deliverAudio(audio,metadata);}),
@@ -560,6 +561,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         audit({type:'provider.event',voiceSessionId:s.id,providerEventType:e.type,responseId:e.responseId});},
       onProtocolEvent:e=>{if(['response.created','response.output_text.delta','response.output_audio.started'].includes(e.type))s.replyDelivery?.begin(e.response_id??e.response?.id);audit({type:'provider.protocol',voiceSessionId:s.id,event:{...e,...(e.delta&&e.type?.includes('audio')?{delta:'[audio retained separately]'}:{})}});},
       onDiagnostic:e=>{if(!current(s))return;audit({type:'call.provider-status',voiceSessionId:s.id,...e});
+        if(e.stage==='context-dropped')request.instructions=request.withoutContext(request.instructions);
         if(['reconnecting','recovered'].includes(e.stage))emit(s,{type:`provider.${e.stage}`});},
       onError:e=>{audit({type:'call.connection-error',voiceSessionId:s.id,model:s.model,message:e.message});emit(s,{type:'error',message:e.message});void close(s.id).catch(()=>{});},
       onClose:()=>{if(current(s))void close(s.id).catch(()=>{});},
