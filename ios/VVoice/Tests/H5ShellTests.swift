@@ -198,6 +198,31 @@ import VVoiceCore
         XCTAssertFalse(afterLateFailure.contains("这份内容已清除"), "A late old-owner failure must not repaint the new call")
         await call.end()
     }
+    func testGeneratedMediaOpensLargeAndStaysInConversation() async throws {
+        let call = try await client()
+        try await call.startOrContinue()
+        let host = H5WebHost(call: call, onError: { XCTFail($0) })
+        host.latest = H5Snapshot.make(call, visible: true)
+        let web = host.makeWebView()
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene); window.rootViewController = UIViewController(); window.makeKeyAndVisible()
+        window.rootViewController!.view.addSubview(web); web.frame = window.rootViewController!.view.bounds; web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        defer { window.isHidden = true; previous?.makeKeyAndVisible() }
+        defer { host.dispose(); web.configuration.userContentController.removeScriptMessageHandler(forName: "voice", contentWorld: .page) }
+        try await until { host.ready }
+        try await command("media-result")
+        try await until { !call.documents.isEmpty }
+        host.update(H5Snapshot.make(call, visible: true), foreground: true)
+        try await until { try await web.evaluateJavaScript("document.querySelector('#readerBody img') !== null") as? Bool == true }
+        _ = try await web.evaluateJavaScript("document.getElementById('readerBack').click()")
+        try await until { try await web.evaluateJavaScript("document.getElementById('contentReader').hidden") as? Bool == true }
+        let inline = try await web.evaluateJavaScript("document.querySelector('.turn .inline-media img') !== null") as? Bool
+        XCTAssertEqual(inline, true, "The image must stay in the conversation after the reader closes")
+        host.openDocument("fixture-media")
+        try await until { try await web.evaluateJavaScript("document.querySelector('#readerBody img') !== null") as? Bool == true }
+        XCTAssertTrue(call.active)
+    }
     func testServiceProjectedH5RendersSpeakersAndReportWhileCaptureSurvivesReload() async throws {
         try await verifySpeakersReportAndReload(runtime: true)
     }

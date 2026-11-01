@@ -121,6 +121,7 @@ const server=createServer(async(req,res)=>{
      emit({type:'transcript',role:'assistant',text:'好的，我来看看今天的日程，再帮你安排好优先级。',final:true});
    }
    if(body.command==='report')emit({type:'backend.result',callId:'fixture-plan',text:'# 今天的安排与建议\n\n建议先完成产品评审，再留出一段不被打断的工作时间。\n\n## 时间安排\n\n| 时间 | 事项 | 优先级 |\n| --- | --- | --- |\n| 09:30 | 产品评审 | 高 |\n| 11:00 | 专注工作 | 高 |\n| 15:00 | 团队同步 | 中 |\n\n## 接下来怎么做\n\n1. 把最重要的决定放在上午。\n2. 下午留出 30 分钟处理临时事项。\n3. 收工前回顾今天的进展。\n\n> 这是一份本地界面测试方案，没有连接真实模型或日历。\n\n```text\n先做重要的事，再做紧急的事。\n```'});
+   if(body.command==='media-result')emit({type:'backend.result',callId:'fixture-media',text:'![生成图片](/voice/assets/v-operator-home-1024.webp)'});
    if(body.command==='result')emit({type:'backend.result',callId:'fixture-result',text:'## 本地测试结果\n完整内容已送达。'});
    if(body.command==='report-poll-only')documents.push({type:'backend.result',callId:'fixture-poll-report',text:'# 后台完整报告\n\n这份报告只通过已有 presentation 接口送达，不从音频 WebSocket 推送。'});
    if(body.command==='think')emit({type:'transcript',role:'user',text:'本地测试',final:true});

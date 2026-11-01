@@ -198,7 +198,7 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
-    version:'voice-media-direct.20261101.1',date:'2026-11-01',
+    version:'voice-media-direct.20261102.1',date:'2026-11-02',
     title:'电话里直接出图、出视频',
     items:[
       '个人主入口的电话里，简单的图片和短视频由 V 直接生成，生成时可以继续聊别的。其他入口仍走原来的后台流程。',

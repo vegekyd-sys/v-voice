@@ -22,8 +22,8 @@ const content = createContentView(document,readerWindow,{mediaSaveLabel:'分享�
 const cards=new Map();
 mountCallUi(document,view,{
   renderAssistant(target,row){
-    content.render(target,row,{auto:row.document===true});
-    if(row.callId){const card=target.querySelector('.content-card');if(card)cards.set(row.callId,card);}
+    content.render(target,row,{auto:row.document===true,inline:true});
+    if(row.callId){const card=target.querySelector('.content-card,[data-open-content]');if(card)cards.set(row.callId,card);}
     if(pendingDocument)requestAnimationFrame(openPending);
   },
   onDocumentShown:callId=>{if(!opened.has(callId)){opened.add(callId);void send('shown',{id:callId}).catch(()=>opened.delete(callId));}},

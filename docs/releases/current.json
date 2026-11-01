@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "conversation-context-20261101",
-  "version": "voice-conversation-context.20261101.1",
-  "entryCommit": "de595f067686fba719f6904190b84658d727f8f0",
-  "deviceEntryCommit": "de595f067686fba719f6904190b84658d727f8f0",
-  "filesSha256": "730b13a897b988b8ac5598da5c746d19dad6089cbd8ae66c7facbaf21206ff38",
-  "registration": "conversation-context-20261101/release.json",
-  "previousEntryCommit": "53f1e621745610b5a9811d00ef82cdf4ac1cc07f",
+  "release": "media-direct-20261102",
+  "version": "voice-media-direct.20261102.1",
+  "entryCommit": "e389646e5e863ef6e301dc52517e6e200cd6e997",
+  "deviceEntryCommit": "e389646e5e863ef6e301dc52517e6e200cd6e997",
+  "filesSha256": "a8db13b6551c4bf36de1895d265a22d6ccf986c5f30abe65e650163d0555532e",
+  "registration": "media-direct-20261102/release.json",
+  "previousEntryCommit": "de595f067686fba719f6904190b84658d727f8f0",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-01T14:40:00+08:00",
-  "runtimeDifference": "Doubao and Grok calls read more earlier dialogue at connect; markers and open IDs removed; day lines date old messages; Seeduplex reconnects without the record if upstream keeps refusing before V has spoken. GPT Live and clients unchanged. No new real phone call after the switch at registration time."
+  "validatedAt": "2026-11-02T00:40:00+08:00",
+  "runtimeDifference": "Main personal entry generates images and short videos in the call through the Makaron CLI executor, enabled by private service configuration. Reader opens generated media and the web conversation keeps it inline. Phone uplink congestion sheds microphone frames. Other entries unchanged."
 }
