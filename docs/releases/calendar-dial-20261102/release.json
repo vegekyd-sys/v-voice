@@ -1,0 +1,42 @@
+{
+  "schema": "v-voice-production-release-v1",
+  "version": "voice-calendar-dial.20261102.1",
+  "status": "DEPLOYED_SERVER_NODES_VERIFIED_USER_CONFIRMED_ON_IPHONE",
+  "releasePR": 197,
+  "resourcesPR": 198,
+  "entryCommit": "61e7ef6ddbdf983e05ae7c3c7841d0fe25ea5dfa",
+  "deviceEntryCommit": "61e7ef6ddbdf983e05ae7c3c7841d0fe25ea5dfa",
+  "filesSha256": "c28f5ce5ca2a87076b828737b831428ff10b31b86cf6a08c3c466f704cb7bb22",
+  "iosShellRevision": "be170c7202867fca02330cff5b87a621f5500451108c363aafe203e35aa676dd",
+  "rollbackServiceCommit": "9bdf5a89425b4fabd847ed8950d1bbb30d52a796",
+  "serverNodesSynchronized": true,
+  "homepageChangelogVerified": false,
+  "gatewayRestarted": false,
+  "validatedAt": "2026-11-02T02:30:00+08:00",
+  "tests": {
+    "voice": 1151,
+    "speaker": 95
+  },
+  "native": {
+    "build": 41,
+    "sourceCommit": "8e158bb",
+    "installedOnOwnerIPhone": true,
+    "testFlight": {
+      "internal": "IN_BETA_TESTING",
+      "external": "IN_BETA_TESTING",
+      "betaReview": "APPROVED"
+    }
+  },
+  "userConfirmed": [
+    "Tianyi confirmed the personal entry calendar works",
+    "Tianyi confirmed save to Photos works on iPhone build 41"
+  ],
+  "productionSynthetic": {
+    "model": "seeduplex",
+    "calendarDelivered": "ok"
+  },
+  "pending": [
+    "The higher dial limit has unit tests only",
+    "First launch of a new binary can show the previous cached page until the shell updates"
+  ]
+}
