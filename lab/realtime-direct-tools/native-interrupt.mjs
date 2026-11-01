@@ -16,11 +16,11 @@ export function explicitSpeechStop(text,final=false){
 }
 
 export class NativeInterruptAsr{
-  constructor({apiKey,inputSampleRate=24000,isSpeaking=()=>false,getResponseId,onInterrupt=()=>{},onStatus=()=>{},settleMs=400,createAsr=o=>new VolcAsrStream(o)}){
+  constructor({apiKey,inputSampleRate=24000,isSpeaking=()=>false,getResponseId,onInterrupt=()=>{},onStatus=()=>{},onText=()=>{},settleMs=400,createAsr=o=>new VolcAsrStream(o)}){
     if(!apiKey)throw Error('Native interruption ASR credential missing');
     if(![16000,24000].includes(inputSampleRate))throw Error('Unsupported speech-control input rate');
     this.apiKey=apiKey;this.inputSampleRate=inputSampleRate;this.isSpeaking=isSpeaking;this.getResponseId=getResponseId;this.windows=[];
-    this.onInterrupt=onInterrupt;this.onStatus=onStatus;this.createAsr=createAsr;this.settleMs=settleMs;
+    this.onInterrupt=onInterrupt;this.onStatus=onStatus;this.onText=onText;this.createAsr=createAsr;this.settleMs=settleMs;
     this.resampler=new Pcm24To16Resampler();this.inputBytes=0;this.offsetMs=0;
     this.lastControlStart=-Infinity;this.epoch=0;this.ready=false;this.closed=false;this.retries=[];
   }
@@ -37,6 +37,7 @@ export class NativeInterruptAsr{
   }
   result(event){
     if(!this.ready)return;
+    const latest=event.body?.result?.utterances?.at(-1);if(latest?.text)this.onText(latest.text);
     for(const turn of event.body?.result?.utterances??[]){
       const start=this.offsetMs+(turn.start_time??0);
       const early=explicitSpeechStop(turn.text,false),final=turn.definite===true&&explicitSpeechStop(turn.text,true);

@@ -197,7 +197,7 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
   // network gap. Hold only that first response to its native completion;
   // later answers keep streaming with their normal lead, and the mic stays on.
   const backendOnset=new BackendSpeechOnset();let backendPlayback=false, backendResponseId=null;const retiredResponses=new Set();
-  const nativeDuplex=reservation.nativeDuplex===true,assisted=reservation.nativePlaybackPolicy==='assisted',nativeCourtesy=nativeDuplex&&reservation.nativePlaybackPolicy!=='provider',nativePause=new NativeSpeechPause(assisted?{minRms:.035,consecutiveOnset:true,trustNativeOnset:false,requireConfirmation:true}:{});let nativePaused=false,currentResponseId=null;
+  const nativeDuplex=reservation.nativeDuplex===true,assisted=reservation.nativePlaybackPolicy==='assisted',nativeCourtesy=nativeDuplex&&reservation.nativePlaybackPolicy!=='provider',nativePause=new NativeSpeechPause(assisted?{minRms:.035,consecutiveOnset:true,trustNativeOnset:false,requireConfirmation:true}:{});let nativePaused=false,currentResponseId=null,listeningOnly=false;
   let greetingHeld=reservation.provider==='grok';
   const endpoint=new URL('./api/relay',globalThis.document?.baseURI??location.href);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
@@ -263,6 +263,8 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
     }
     if(e.responseId)currentResponseId=e.responseId;
     if(e.source==='injected-speech'){backendPlayback=true;backendResponseId=e.responseId??null;}
+    // A listening sound plays over the caller by design; only a real answer yields to them.
+    listeningOnly=e.source==='backchannel'&&(listeningOnly||stats.queuedOutputBytes===0);
     outputComplete=false;written+=bytes.length/2;stats.queuedOutputBytes+=bytes.length;stats.peakQueuedOutputBytes=Math.max(stats.peakQueuedOutputBytes,stats.queuedOutputBytes);stats.outputBytes+=bytes.length;stats.playbackDrained=false;
     reportBusy();if(speaker)transfer(bytes.buffer);else pendingOutput.push(bytes.buffer);
     if(context.state!=='running')stateChanged();
@@ -276,7 +278,7 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
         if(typeof value.retiredResponseId==='string'){retiredResponses.add(value.retiredResponseId);if(retiredResponses.size>256)retiredResponses.delete(retiredResponses.values().next().value);if(nativeDuplex&&currentResponseId&&currentResponseId!==value.retiredResponseId)return;if(nativeDuplex)currentResponseId=null;}
         flush();
       }
-      if(nativeCourtesy&&value.type==='input.speech.started'&&stats.queuedOutputBytes>0){nativePause.nativeStarted(performance.now());pause(nativePause.held);}
+      if(nativeCourtesy&&value.type==='input.speech.started'&&stats.queuedOutputBytes>0&&!listeningOnly){nativePause.nativeStarted(performance.now());pause(nativePause.held);}
       if(nativeCourtesy&&value.type==='input.speech.stopped')nativePause.nativeStopped(performance.now(),value.recognized!==false);
       if(nativeCourtesy&&value.type==='input.speech.ignored'&&value.preservedResponseId===currentResponseId){nativePause.ignored();pause(false);}
       if(value.type==='audio.done'&&(!value.responseId||value.responseId===currentResponseId)){outputComplete=true;if(nativeCourtesy)nativePause.generationDone(performance.now());greetingHeld=false;speaker?.port.postMessage({type:'done',epoch});}
@@ -336,7 +338,7 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
       pcmLevel=Math.sqrt(energy/Math.max(1,samples.length));pcmLevelAt=at;
       if(pcmLevel>=.02)stats.inputActiveFrames++;
       if(ready&&socket.readyState===WebSocket.OPEN){
-        if(nativeCourtesy)pause(nativePause.observe(frame,stats.queuedOutputBytes>0,at,outputComplete));
+        if(nativeCourtesy)pause(nativePause.observe(frame,stats.queuedOutputBytes>0&&!listeningOnly,at,outputComplete));
         if(!nativeDuplex&&!inputGated&&backendOnset.observe(frame,backendPlayback&&stats.queuedOutputBytes>0)){
           if(backendResponseId){retiredResponses.add(backendResponseId);if(retiredResponses.size>256)retiredResponses.delete(retiredResponses.values().next().value);}
           flush();send({type:'barge-in'});}

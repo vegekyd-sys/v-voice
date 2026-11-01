@@ -1,0 +1,35 @@
+{
+  "provider": "seeduplex",
+  "voice": "xiaohe",
+  "model": "1.2.6.1",
+  "sampleRate": 24000,
+  "format": "pcm16le",
+  "createdAt": "2026-11-01T04:21:58.632Z",
+  "source": "Actual native SayHello TTS, trimmed to the voiced part at 0.7 gain, generated separately from any call",
+  "clips": {
+    "mm": {
+      "text": "嗯。",
+      "bytes": 17520,
+      "seconds": 0.365,
+      "sha256": "aa2238f0f32c601bb9ace7479aa6873502f68af4d2328c733bb52e58ef3a3e2f"
+    },
+    "mmhm": {
+      "text": "嗯嗯。",
+      "bytes": 24720,
+      "seconds": 0.515,
+      "sha256": "3c30e72e9fa400a912dd25891b9556431e6c0094bb318dc254a9b10fb850f50e"
+    },
+    "oh": {
+      "text": "哦。",
+      "bytes": 18480,
+      "seconds": 0.385,
+      "sha256": "fb1ababde70ccabe30e32d04c5c80bc38d93f66165caf79d1b17e1801be87594"
+    },
+    "really": {
+      "text": "这样啊。",
+      "bytes": 44880,
+      "seconds": 0.935,
+      "sha256": "229418755b0f6bba8597f9fbe187ae7b7886e6abb611daf5e81557b79b49b167"
+    }
+  }
+}
