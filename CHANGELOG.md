@@ -3,7 +3,7 @@
 ## Candidate — voice-doubao-liveness.20261101.1
 
 - 豆包网页电话在呼叫方短停顿时用小何缓存音频应和，并加长段倾听提示词。`VOICE_BACKCHANNEL=1` 才开启，默认关闭；iOS App 和设备未开启。
-- 未合入、未发布，无真人或真机验收。结论与证据见 [研究报告](docs/research/duplex-liveness-20261101/README.md)。
+- 用户否决模型外的硬编码应和，候选已下线，不合入、不发布；无真人或真机验收。结论与证据见 [研究报告](docs/research/duplex-liveness-20261101/README.md)。
 
 ## 2026-10-30 — Formal television integration
 
