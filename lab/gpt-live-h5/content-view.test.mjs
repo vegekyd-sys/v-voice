@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { contentItems } from "./content-view.mjs";
+import { contentItems,contentDownloads,createContentView,inlineFits } from "./content-view.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 
 test('short backend media caption stays with its asset in one deliverable', () => {
@@ -10,7 +10,14 @@ test('short backend media caption stays with its asset in one deliverable', () =
     assert.equal(items[0].kind, "report");
     assert.deepEqual(items[0].media.map(item => item.kind), [kind]);
     assert.equal(items[0].media[0].url,url);
+    assert.deepEqual(contentDownloads(items[0]).map(entry=>entry.kind),[kind]);
   }
+});
+test('save offers actual media for mixed results and Markdown only for plain documents',()=>{
+ const content=contentItems({key:'mixed',role:'assistant',complete:true,document:true,text:'# 作品\n说明\n![图片](https://cdn.test/a.jpg)\n[视频](https://cdn.test/a.mp4)'})[0];
+ assert.deepEqual(contentDownloads(content).map(entry=>entry.kind),['image','video']);
+ const doc=contentItems({key:'doc',role:'assistant',complete:true,document:true,text:'# 报告\n实际报告正文'})[0];
+ assert.deepEqual(contentDownloads(doc),[{kind:'document',title:'报告',text:doc.text}]);
 });
 
 test("actual backend result stays exact, becomes a report, and does not duplicate the speech turn", () => {
@@ -140,4 +147,56 @@ test('plain attachment URLs become one deliverable without exposing unsafe or du
  const result=contentItems({key:'plain',role:'assistant',complete:true,text});
  assert.equal(result.length,1);assert.equal(result[0].text,text);
  assert.deepEqual(result[0].media.map(m=>m.url),['https://cdn.test/a.jpg','https://cdn.test/a.mp4']);
+});
+
+test("generated media and short captioned media belong in the conversation; long reports stay cards", () => {
+  const items = text => contentItems({key:"m",role:"assistant",complete:true,document:true,text});
+  assert(inlineFits(items("![生成图片](https://cdn.test/a.jpg)")[0]));
+  assert(inlineFits(items("[生成视频](https://cdn.test/a.mp4)")[0]));
+  assert(inlineFits(items("一张小猫。\n![图](https://cdn.test/a.jpg)")[0]));
+  assert(!inlineFits(items("# 报告\n实际报告正文")[0]));
+  assert(!inlineFits(items("# 报告\n"+"正文".repeat(300)+"\n![图](https://cdn.test/a.jpg)")[0]));
+});
+
+function fakeReaderPage({playing=false}={}) {
+  const element = tag => ({
+    tagName: tag.toUpperCase(), dataset: {}, style: {}, children: [], isConnected: true, listeners: {},
+    append(...nodes) { this.children.push(...nodes); },
+    replaceChildren(...nodes) { this.children = nodes; },
+    remove() {}, focus() {}, pause() {}, setAttribute() {}, removeAttribute() {}, getAttribute() { return null; },
+    addEventListener(type, listener) { this.listeners[type] = listener; },
+    getBoundingClientRect: () => ({x: 0, y: 0, width: 0, height: 0}),
+    querySelector(selector) { return selector === ".media-asset" ? this.children[0] : null; },
+    querySelectorAll() { return []; },
+  });
+  const ids = new Map();
+  const document = {
+    body: {dataset: {callState: "connected"}},
+    createElement: element,
+    getElementById: id => { if (!ids.has(id)) ids.set(id, element("div")); return ids.get(id); },
+    querySelectorAll: () => playing ? [{paused: false, ended: false}] : [],
+  };
+  const window = {location: {href: "https://voice.test/voice/"}, requestAnimationFrame: run => run(), matchMedia: () => ({matches: true})};
+  ids.set("contentReader", Object.assign(element("div"), {hidden: true}));
+  return {document, window, layer: ids.get("contentReader")};
+}
+const mediaResult = {key: "m", role: "assistant", complete: true, document: true, text: "![生成图片](https://cdn.test/a.jpg)"};
+
+test("generated media opens large and also stays in the conversation", () => {
+  const {document, window, layer} = fakeReaderPage();
+  const view = createContentView(document, window), target = document.createElement("div");
+  view.render(target, mediaResult, {auto: true, inline: true});
+  assert.equal(target.children[0].className, "inline-media");
+  assert.equal(layer.hidden, false);
+});
+
+test("generated media opens once per result and not over a playing video", () => {
+  const quiet = fakeReaderPage();
+  const again = createContentView(quiet.document, quiet.window);
+  again.render(quiet.document.createElement("div"), mediaResult, {auto: false, inline: true});
+  assert.equal(quiet.layer.hidden, true);
+
+  const busy = fakeReaderPage({playing: true});
+  createContentView(busy.document, busy.window).render(busy.document.createElement("div"), mediaResult, {auto: true, inline: true});
+  assert.equal(busy.layer.hidden, true);
 });

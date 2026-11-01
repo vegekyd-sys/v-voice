@@ -81,7 +81,7 @@ export function resolveStatus(state, now = Date.now()) {
     const time = clock(now - Math.min(...tasks.map(task => task.startedAt)));
     const text = tasks.length > 1 ? `${tasks.length} 个任务` : `${label}中`;
     return {key: 'task', tone: 'task', text, time, tappable: true,
-      full: `后台任务进行中：${tasks.length > 1 ? `${tasks.length} 个任务，最新` : ''}${label}，已进行 ${time}`};
+      full: `${tasks.every(task=>task.execution==='foreground')?'当前任务':'后台任务'}进行中：${tasks.length > 1 ? `${tasks.length} 个任务，最新` : ''}${label}，已进行 ${time}`};
   }
   return voiceStatus(state, now);
 }

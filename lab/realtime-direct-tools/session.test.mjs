@@ -1493,3 +1493,180 @@ test('TV guidance and account control are absent for an unidentified caller',asy
  assert.deepEqual(f.invocations,[]);
  assert.equal(f.audit.find(e=>e.type==='tool.delivered').result.error,'当前通话没有账号工具权限');
 });
+
+
+// Protocol fixture: real host dispatch/ownership/presentation, no paid provider
+// generation and no claim that a model chose these calls autonomously.
+for (const model of ['grok','seeduplex']) test(`${model} direct CLI media uses local execution and screen receipts without a backend job`,async t=>{
+ const calls=[];
+ const invokeMedia=async args=>{
+   const method='local-cli';
+   calls.push({method,...args});
+   assert.equal(method,'local-cli');
+   if(args.name==='exec'){
+     if(args.args.command.startsWith('makaron edit'))return {ok:true,output:{content:[{type:'text',text:'makaron-output-fixture.webp'}],details:{status:'completed',exitCode:0}}};
+     if(args.args.command.startsWith('makaron create --image'))return {ok:true,output:{content:[{type:'text',text:'ID: project-fixture\nImages: 1\n[1] https://cdn.test/generated.webp\nURL: https://www.makaron.app/project/project-fixture'}],details:{status:'completed',exitCode:0}}};
+     if(args.args.command.startsWith('makaron video create'))return {ok:true,output:{content:[{type:'text',text:'Task ID: fal-h3max-fixture'}],details:{status:'completed',exitCode:0}}};
+     return {ok:true,output:{content:[{type:'text',text:'https://cdn.test/generated.mp4'}],details:{status:'completed',exitCode:0}}};
+   }
+   assert.equal(args.name,'process');assert.equal(args.args.sessionId,'owned-media-query');
+   return {ok:true,output:{content:[{type:'text',text:'https://cdn.test/generated.mp4'}],details:{status:'completed',exitCode:0}}};
+ };
+ const f=await fixture(async()=>{throw Error('Gateway exec must not run');},model,{mediaCli:{forCall:async()=>({execute:async command=>(await invokeMedia({name:'exec',args:{command}})).output})}});
+ t.after(()=>f.service.dispose());
+ const config=f.upstream.sent.find(e=>['session.create','session.update'].includes(e.type)).session;
+ assert(config.instructions.includes('makaron edit --image-model wan2.7-image'));
+ assert(config.instructions.includes('makaron video create --video-model fal-h3-max'));
+ assert(!config.instructions.includes('图片、视频生成也用 delegate_to_v'));
+ assert(!config.tools.some(tool=>/^(generate_image|generate_video|makaron_)/.test(tool.name)));
+ const invoke=async(name,args,id)=>{
+   if(model==='grok')f.call(name,args,id);
+   else f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+   for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId===id);i++)await delay(5);
+   const delivered=f.audit.find(e=>e.type==='tool.delivered'&&e.callId===id);assert(delivered,`missing ${id}`);return delivered.result;
+ };
+ await invoke('exec',{command:"makaron edit --image-model wan2.7-image 'a small blue moon'",timeoutSeconds:120},'image-submit');
+ await invoke('exec',{command:"makaron create --image 'makaron-output-fixture.webp' --title '月亮'",timeoutSeconds:120},'image-save');
+ const image='![月亮](https://cdn.test/generated.webp)';
+ assert.equal((await invoke('show_content',{markdown:image},'image-show')).shown,true);
+ await invoke('exec',{command:"makaron video create --video-model fal-h3-max --duration 5 --script 'slow rotation' --image 'https://cdn.test/generated.webp'",timeoutSeconds:120},'video-submit');
+ await invoke('exec',{command:"makaron video status 'fal-h3max-fixture'",timeoutSeconds:120},'video-query');
+ const video='[月亮转动](https://cdn.test/generated.mp4)';
+ assert.equal((await invoke('show_content',{markdown:video},'video-show')).shown,true);
+ assert.deepEqual(calls.map(c=>c.name),['exec','exec','exec','exec']);
+ assert.equal(calls[2].args.command.includes('--image'),true);
+ assert.equal(f.invocations.length,0);
+ assert(!f.audit.some(e=>e.type.startsWith('backend.start')));
+ assert.deepEqual(f.service.presentation(f.reservation.voiceSessionId).documents.map(d=>d.text),[image,video]);
+ assert.equal(f.service.backgroundTaskCount(),0);
+ assert.deepEqual(f.client.sent.filter(e=>e.type==='tool.call').map(e=>[e.execution,e.stage]),[
+   ['foreground','生成图片'],['foreground','保存图片'],['foreground','展示内容'],['foreground','生成视频'],['foreground','等待视频'],['foreground','展示内容'],
+ ]);
+});
+
+for(const options of [{sessionBound:true},{actorScoped:true},{unidentified:true},{catalog:['memory_search'] }])test('local media capability cannot cross identity or catalog boundary '+JSON.stringify(options),async t=>{
+ let local=0;const f=await fixture(async()=>({ok:false,error:{message:'denied'}}),'grok',{...options,mediaCli:{forCall:async()=>{local++;throw Error('must not run');}}});t.after(()=>f.service.dispose());
+ const config=f.upstream.sent.find(e=>e.type==='session.update').session;
+ assert(!config.instructions.includes('makaron edit --image-model'));
+ f.call('exec',{command:"makaron edit --image-model wan2.7-image 'x'"},'isolated-media');
+ await delay(20);assert.equal(local,0);
+});
+test('media catalog revocation stops local execution without attempting Gateway fallback',async t=>{
+ let local=0;const catalog=['exec','process'];
+ const f=await fixture(async()=>{throw Error('must not call Gateway tool');},'grok',{catalog,mediaCli:{forCall:async()=>({execute:async()=>{local++;return {};}})}});t.after(()=>f.service.dispose());
+ catalog.splice(0);f.call('exec',{command:"makaron edit --image-model wan2.7-image 'x'"},'revoked-media');
+ await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='revoked-media'));
+ assert.equal(local,0);assert.equal(f.invocations.length,0);assert.match(f.audit.find(e=>e.type==='tool.delivered').result.error,/撤回/);
+});
+
+for(const model of ['grok','seeduplex'])test(`${model} long local exec returns a real process handle and final native tool result across interruption, without media memory`,async t=>{
+ let finish;const calls=[];
+ const work=new Promise(resolve=>{finish=resolve;});
+ const f=await fixture(async()=>{throw Error('must not use Gateway');},model,{mediaCli:{forCall:async()=>({execute:(command,signal,options)=>{calls.push({command,options});return work;}})}});
+ t.after(()=>{finish({});return f.service.dispose();});
+ const call=(id,name,args)=>model==='grok'?f.call(name,args,id):f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'把这张图动起来'});
+ call('first-media','exec',{command:"makaron video create --video-model fal-h3-max --script 'animate'"});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='first-media')));
+ const started=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='first-media').result;
+ assert.equal(started.details.status,'running');assert.match(started.details.sessionId,/^voice-exec-/);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'做好了吗？'});
+ call('poll-pending','process',{action:'poll',sessionId:started.details.sessionId,timeout:1});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='poll-pending')));
+ assert.equal(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='poll-pending').result.details.status,'running');
+ finish({isError:false,media:{kind:'video',url:'https://cdn.test/final.mp4'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
+ assert(await until(()=>f.service.presentation(f.reservation.voiceSessionId).documents.length===1));
+ call('poll-final','process',{action:'poll',sessionId:started.details.sessionId,timeout:1000});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='poll-final')));
+ const result=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='poll-final').result;
+ assert.equal(result.media.url,'https://cdn.test/final.mp4');assert.equal(result.presentation.shown,true);assert.equal(calls.length,1);
+ const wire=JSON.stringify(f.upstream.sent);assert(wire.includes('https://cdn.test/final.mp4'));assert(!wire.includes('本通话创作记录'));
+ assert(!f.upstream.sent.some(e=>e.items?.length===2&&e.items[0].role==='user'&&e.items[1].role==='assistant'));
+ call('foreign','process',{action:'poll',sessionId:'invented'});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='foreign')));
+ assert.match(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='foreign').result.error,/本次电话/);
+});
+
+for(const model of ['grok','seeduplex'])test(`${model} tells a finished execution in the model's own words once it stopped following, then keeps it in the conversation`,async t=>{
+ let finish;const work=new Promise(resolve=>{finish=resolve;});
+ const f=await fixture(async()=>{throw Error('must not use Gateway');},model,{mediaCli:{forCall:async()=>({execute:()=>work})}});
+ t.after(()=>{finish({});return f.service.dispose();});
+ const call=(id,name,args)=>model==='grok'?f.call(name,args,id):f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+ const said=()=>model==='grok'?f.upstream.sent.filter(e=>e.type==='conversation.item.create'&&e.item?.type==='force_message').map(e=>e.item.content[0].text):f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').map(e=>e.text);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'让小猫动起来'});
+ call('told-media','exec',{command:"makaron video create --video-model fal-h3-max --script 'animate'",completionLine:'小猫的视频做好了，你看看',failureLine:'小猫那个视频这次没拿到结果'});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='told-media')));
+ const started=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='told-media').result;
+ if(model==='seeduplex')f.event({type:'response.done',response:{id:'told-media-reply',status:'completed'}});
+ finish({isError:false,media:{kind:'video',url:'https://cdn.test/told.mp4'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
+ assert(await until(()=>f.service.presentation(f.reservation.voiceSessionId).documents.length===1));
+ assert.deepEqual(said().filter(x=>x.includes('小猫')),[],'nothing before the settle window');
+ for(let i=0;i<120&&!said().includes('小猫的视频做好了，你看看');i++)await delay(50);
+ assert(said().includes('小猫的视频做好了，你看看'));
+ assert(f.audit.some(e=>e.type==='execution.finished-told'&&e.ownWords&&e.status==='completed'));
+ assert(JSON.stringify(f.upstream.sent).includes('told.mp4'),'the conversation can refer to the result later');
+ assert(!said().some(x=>x.includes('told.mp4')),'the link is never read out');
+ await delay(400);
+ assert.equal(said().filter(x=>x==='小猫的视频做好了，你看看').length,1);
+ call('told-poll','process',{action:'poll',sessionId:started.details.sessionId,timeout:1});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='told-poll')));
+ assert.match(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='told-poll').result.instruction,/不要再通报/);
+});
+
+test('a model still following its execution answers it itself; the service says nothing',async t=>{
+ let finish;const work=new Promise(resolve=>{finish=resolve;});
+ const f=await fixture(async()=>{throw Error('must not use Gateway');},'seeduplex',{mediaCli:{forCall:async()=>({execute:()=>work})}});
+ t.after(()=>{finish({});return f.service.dispose();});
+ const call=(id,name,args)=>f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'画一只小猫'});
+ call('followed','exec',{command:"makaron edit --image-model wan2.7-image 'cat'",completionLine:'小猫画好了'});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='followed')));
+ const {sessionId}=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='followed').result.details;
+ finish({isError:false,media:{kind:'image',url:'https://cdn.test/followed.webp'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
+ call('followed-poll','process',{action:'poll',sessionId,timeout:1000});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='followed-poll')));
+ await delay(3200);
+ assert(!f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'&&e.text==='小猫画好了'));
+ assert(!f.audit.some(e=>e.type==='execution.finished-told'));
+});
+
+test('a turn the provider opened and abandoned does not hold back a finished execution',async t=>{
+ let finish;const work=new Promise(resolve=>{finish=resolve;});
+ const f=await fixture(async()=>{throw Error('must not use Gateway');},'seeduplex',{narration:{abandonedResponseMs:300},mediaCli:{forCall:async()=>({execute:()=>work})}});
+ t.after(()=>{finish({});return f.service.dispose();});
+ const said=()=>f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').map(e=>e.text);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'画一只小猫'});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'abandoned',name:'exec',arguments:JSON.stringify({command:"makaron edit --image-model wan2.7-image 'cat'",completionLine:'小猫画好了'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='abandoned')));
+ f.event({type:'response.created',response:{id:'never-finished'}});
+ finish({isError:false,media:{kind:'image',url:'https://cdn.test/abandoned.webp'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
+ for(let i=0;i<100&&!said().includes('小猫画好了');i++)await delay(50);
+ assert(said().includes('小猫画好了'));
+});
+
+test('a poll still running never claims a result; a finished one the model ignores uses its own line, not an offer',async t=>{
+ let finish;const work=new Promise(resolve=>{finish=resolve;});
+ const f=await fixture(async()=>{throw Error('must not use Gateway');},'seeduplex',{mediaCli:{forCall:async()=>({execute:()=>work})},lookupRecovery:{resultSilenceMs:60}});
+ t.after(()=>{finish({});return f.service.dispose();});
+ const call=(id,name,args)=>f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+ const said=()=>f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').map(e=>e.text);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'做个视频'});
+ call('poll-media','exec',{command:"makaron video create --video-model fal-h3-max --script 'animate'",completionLine:'小猫的视频做好了，你看看'});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='poll-media')));
+ const {sessionId}=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='poll-media').result.details;
+ f.event({type:'response.done',response:{id:'poll-media-reply',status:'completed'}});
+ await delay(1300);
+ call('poll-running','process',{action:'poll',sessionId,timeout:1});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='poll-running')));
+ f.event({type:'response.done',response:{id:'poll-running-reply',status:'completed'}});
+ await delay(600);
+ assert.deepEqual(said().filter(x=>x.includes('结果')||x.includes('小猫')),[],'nothing exists yet, so nothing is claimed');
+ finish({isError:false,media:{kind:'video',url:'https://cdn.test/poll.mp4'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
+ assert(await until(()=>f.service.presentation(f.reservation.voiceSessionId).documents.length===1));
+ call('poll-final','process',{action:'poll',sessionId,timeout:1});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='poll-final')));
+ f.event({type:'response.done',response:{id:'poll-final-reply',status:'completed'}});
+ for(let i=0;i<120&&!said().includes('小猫的视频做好了，你看看');i++)await delay(50);
+ assert.equal(said().filter(x=>x==='小猫的视频做好了，你看看').length,1);
+ assert(!said().some(x=>/要我|说说吗/u.test(x)),'no offer');
+});

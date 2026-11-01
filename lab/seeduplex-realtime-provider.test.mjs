@@ -619,7 +619,6 @@ test('async background tool releases the native call, accepts chat, and adds act
  assert.equal(socket.sent.filter(x=>x.type==='speech_text_buffer.commit'&&x.text==='已完成全部步骤。').length,1);assert(texts.some(x=>x[3]==='V-backend'));bridge.close();
 });
 
-
 test('host notice leaves the native function turn intact and never holds a completed tool result',async()=>{
  const socket=new FakeSocket(),calls=[],notices=[];
  const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},tools:['memory_search','web_search'].map(name=>({type:'function',name,parameters:{type:'object'}})),toolStartNotice:()=> '我查一下记录。',onToolStartNotice:(text,call)=>notices.push({text,call}),onAudio(){},onToolCall:call=>{calls.push(call);bridge.submitToolResult(call.callId,{answer:'真实工具结果'});},onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});

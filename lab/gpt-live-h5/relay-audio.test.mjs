@@ -99,7 +99,7 @@ async function fixture(t,provider,deferReady=false,options={}){
  const event=e=>socket.onmessage({data:JSON.stringify({voiceSessionId:'fixture',...e})});const started=relay.start();if(!deferReady){event({type:'ready'});await started;}
  t.after(()=>{relay.dispose();Object.assign(globalThis,old)});
  const speaker=nodes.find(n=>n.name==='v-direct-speaker');const pump=n=>{const output=[];for(let i=0;i<n;i+=128){realm.currentTime=ctx.currentTime;const block=new Float32Array(128);speaker.processor.process([],[[block]]);output.push(...block);ctx.currentTime+=128/48000;}return output;};
- return {relay,event,ctx,speaker,nodes,sent,events,errors,pump,listeners,started};
+ return {relay,event,ctx,speaker,nodes,sent,events,errors,pump,listeners,started,socket:()=>socket};
 }
 test('actual serialized worklet receives only the selected Grok buffer; Xiaohe stays at 120ms',async t=>{
  const f=await fixture(t,'grok');assert.equal(f.relay.stats.startBufferMs,400);assert.equal(f.speaker.processor.queue.prefill,19200);
@@ -477,4 +477,14 @@ test('a cancelled call releases late prepared hardware without attaching playbac
  const f=await fixture(t,'seeduplex',true,{stream:undefined,prepareCapture:()=>prepared});f.event({type:'ready'});await new Promise(r=>setImmediate(r));f.relay.dispose();
  release({stream:{},dispose:()=>{disposed++;},startCapture:()=>{begin++;}});await f.started;
  assert.equal(disposed,1);assert.equal(begin,0);assert.equal(f.nodes.length,0);
+});
+
+test('a congested uplink sheds microphone frames and only a stuck one ends the call',async t=>{
+ const f=await fixture(t,'grok'),mic=f.nodes.find(n=>n.name==='v-direct-mic'),sock=f.socket();
+ const realNow=performance.now;let clock=1000;performance.now=()=>clock;t.after(()=>{performance.now=realNow});
+ const frame=()=>{clock+=20;mic.port.onmessage({data:new Int16Array(480).buffer});};
+ sock.bufferedAmount=96001;frame();frame();assert.equal(f.relay.stats.droppedInputFrames,2);assert.deepEqual(f.errors,[]);
+ sock.bufferedAmount=30000;frame();assert.equal(f.relay.stats.droppedInputFrames,3);
+ sock.bufferedAmount=1000;frame();assert.equal(f.relay.stats.droppedInputFrames,3);assert.deepEqual(f.errors,[]);
+ sock.bufferedAmount=96001;frame();clock+=31000;frame();assert.deepEqual(f.errors,['音频上传积压，请重新拨号']);assert(f.events.some(e=>e.type==='upload.backpressure'));
 });

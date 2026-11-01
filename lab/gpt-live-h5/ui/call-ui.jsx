@@ -276,6 +276,7 @@ function EntryNotice({entry}) {
 
 function TaskSheet({state, now, actions, onClose}) {
   const ref = useRef(null);
+  const foregroundOnly=state.tasks.length>0&&state.tasks.every(task=>task.execution==='foreground');
   useEffect(() => {
     ref.current?.focus();
     const key = event => { if (event.key === 'Escape') onClose(); };
@@ -287,7 +288,7 @@ function TaskSheet({state, now, actions, onClose}) {
     <>
       <div className="sheet-veil" onClick={onClose} />
       <section className="sheet" role="dialog" aria-modal="true" aria-labelledby="taskSheetTitle" tabIndex={-1} ref={ref}>
-        <h2 id="taskSheetTitle">后台任务 <small>挂断后也会继续</small></h2>
+        <h2 id="taskSheetTitle">{foregroundOnly?'当前任务':'后台任务'} <small>{foregroundOnly?'停止等待不会撤销已经提交的生成':'挂断后也会继续'}</small></h2>
         {state.tasks.map(task => (
           <div className="task-row" key={task.callId}>
             <span className="task-icon">{ACTIVITY_ICON[task.activity] ?? ACTIVITY_ICON.background}</span>
@@ -297,7 +298,7 @@ function TaskSheet({state, now, actions, onClose}) {
             </div>
           </div>
         ))}
-        <button id="cancel" type="button" className="sheet-cancel" disabled={!state.cancelEnabled} onClick={async () => { await actions.cancelTasks(); onClose(); }}>取消后台任务</button>
+        <button id="cancel" type="button" className="sheet-cancel" disabled={!state.cancelEnabled} onClick={async () => { await actions.cancelTasks(); onClose(); }}>{foregroundOnly?'停止等待':'取消后台任务'}</button>
       </section>
     </>
   );
@@ -469,7 +470,7 @@ function CallPage({view, actions, options}) {
           {state.call === 'connected' || state.call === 'ending' ? <time className="call-clock">{state.callStartedAt ? clock(now - state.callStartedAt) : ''}</time> : null}
         </header>
         <section className="stage" aria-label="V">
-          <Avatar onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? '查看后台任务' : 'V'} />
+          <Avatar onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? state.tasks.every(task=>task.execution==='foreground')?'查看当前任务':'查看后台任务' : 'V'} />
           {!inCall && (
             <div className="home">
               <a className="avatar-name" href={`./${window.location.search}`} aria-label="V 通话首页">V</a>

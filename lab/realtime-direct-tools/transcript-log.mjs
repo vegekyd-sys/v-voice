@@ -100,10 +100,11 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       for(const key of ['callId','runId','taskId','responseId','retiredResponseId','reason','providerEventType','name','mode','status','childRunId'])if(typeof event[key]==='string')safe[key]=event[key].slice(0,160);
       if(event.type==='backend.started'&&typeof event.ack?.taskId==='string')safe.taskId=event.ack.taskId;
       if(event.type==='backend.started'&&typeof event.ack?.runId==='string')safe.runId=event.ack.runId;
-      if(event.type==='tool.delivered')safe.status=event.result?.error?'error':event.result?.cancelled?'cancelled':'ok';
+      if(event.type==='tool.delivered')safe.status=event.result?.error||event.result?.isError?'error':event.result?.cancelled?'cancelled':'ok';
       for(const key of ['ok','queued','applied'])if(typeof event[key]==='boolean')safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
     }
+    if(event.type==='tool.media-cli'&&['start','result'].includes(event.phase)&&typeof event.callId==='string')return enqueue({...owner,type:event.type,callId:event.callId.slice(0,160),phase:event.phase,...(event.phase==='result'?{ok:event.ok===true,exitCode:Number.isInteger(event.exitCode)?event.exitCode:null}:{})});
     // Task narration: which kind of line and the verified counts behind it. The
     // spoken words themselves are already the assistant transcript.
     if(['backend.stage','backend.progress-spoken','backend.stages-observed'].includes(event.type)){
@@ -127,7 +128,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     }
     if(event.type==='client.playback-stats'){
       const stats={};
-      for(const key of ['inputBytes','outputBytes','queuedOutputBytes','clears','underflows','maxReceiveGapMs','contextSampleRate','inputBufferedBytes','peakInputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','outputClockWallMs','outputClockAudioMs','outputClockRatio','bufferedOutput','nativePauses','nativeResumes'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0)stats[key]=event.stats[key];
+      for(const key of ['inputBytes','outputBytes','queuedOutputBytes','clears','underflows','maxReceiveGapMs','contextSampleRate','inputBufferedBytes','peakInputBufferedBytes','droppedInputFrames','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','outputClockWallMs','outputClockAudioMs','outputClockRatio','bufferedOutput','nativePauses','nativeResumes'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0)stats[key]=event.stats[key];
       for(const key of ['trackMuted','trackEnabled','trackLive','pageHidden'])if(typeof event.stats?.[key]==='boolean')stats[key]=event.stats[key];
       if(['running','suspended','interrupted','closed'].includes(event.stats?.contextState))stats.contextState=event.stats.contextState;
       return enqueue({...owner,type:event.type,stats});
