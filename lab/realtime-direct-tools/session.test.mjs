@@ -1493,3 +1493,30 @@ test('TV guidance and account control are absent for an unidentified caller',asy
  assert.deepEqual(f.invocations,[]);
  assert.equal(f.audit.find(e=>e.type==='tool.delivered').result.error,'当前通话没有账号工具权限');
 });
+
+test('a listening sound is host PCM: it reaches the caller and nothing else',async t=>{
+ let control;
+ const f=await fixture(undefined,'seeduplex',{nativePlaybackPolicy:'assisted',backchannel:{skip:0,minSpeechMs:60},nativeInterrupt:callbacks=>{control=callbacks;return {async connect(){},append(){},close(){}};}});t.after(()=>f.service.dispose());
+ const speech=Buffer.alloc(960);for(let i=0;i<480;i++)speech.writeInt16LE(Math.round(8000*Math.sin(i/4)),i*2);
+ for(let i=0;i<15;i++)f.client.emit('message',speech,true);
+ control.onText('上周我们公司搬到了新楼');
+ const before=f.upstream.sent.filter(e=>e.type!=='input_audio_buffer.append').length;
+ await delay(5);for(let i=0;i<16;i++){f.client.emit('message',Buffer.alloc(960),true);await delay(20);}
+ const sound=f.client.sent.filter(e=>e.type==='audio'&&e.source==='backchannel');
+ assert.equal(sound.length,1);
+ assert(f.client.sent.some(e=>e.type==='audio.done'));
+ assert.equal(f.client.sent.some(e=>e.type==='transcript'&&e.role==='assistant'),false,'not part of the transcript');
+ assert.equal(f.upstream.sent.filter(e=>e.type!=='input_audio_buffer.append').length,before,'the provider never hears about it');
+ assert.match(f.upstream.sent.find(e=>e.type==='session.create').session.instructions,/长段倾诉/);
+});
+
+test('without the flag no listening sound is played and the prompt is unchanged',async t=>{
+ let control;
+ const f=await fixture(undefined,'seeduplex',{nativePlaybackPolicy:'assisted',nativeInterrupt:callbacks=>{control=callbacks;return {async connect(){},append(){},close(){}};}});t.after(()=>f.service.dispose());
+ const speech=Buffer.alloc(960);for(let i=0;i<480;i++)speech.writeInt16LE(Math.round(8000*Math.sin(i/4)),i*2);
+ for(let i=0;i<200;i++)f.client.emit('message',speech,true);
+ control.onText('上周我们公司搬到了新楼');
+ for(let i=0;i<30;i++)f.client.emit('message',Buffer.alloc(960),true);
+ assert.equal(f.client.sent.some(e=>e.source==='backchannel'),false);
+ assert.doesNotMatch(f.upstream.sent.find(e=>e.type==='session.create').session.instructions,/长段倾诉/);
+});

@@ -23,10 +23,11 @@ import {stageLine,stageKey,IDLE_LINES,NOT_DONE_LINE,TASK_FAILED_LINE} from './ta
 import {presentBackendResult,LONG_RESULT_NOTICE,claimsCompletion,speakableProgress} from '../gpt-live-h5/result-presentation.mjs';
 import {voiceCapabilityInstructions} from '../gpt-live-h5/capability-policy.mjs';
 import {VOICE_TASK_CONTROL_POLICY} from '../../lib/voice-task-control.mjs';
-import {NATIVE_DUPLEX_POLICY} from './native-duplex-policy.mjs';
+import {NATIVE_DUPLEX_POLICY,NATIVE_LONG_TURN_POLICY} from './native-duplex-policy.mjs';
 import {createLookupRecovery} from './lookup-recovery.mjs';
 import {compactSearchResult,isSearchTool,searchMetrics} from './search-result.mjs';
 import {createAudioDeliveryMetrics} from './audio-delivery-metrics.mjs';
+import {createBackchannel,loadBackchannelClips} from './backchannel.mjs';
 
 export const VOICE_TASK_ROUTING = '图片、视频生成也用 delegate_to_v，把画面、时长和要求完整交给后台；语音模型自身不生成媒体不代表后台不能生成。工具拒绝或报错意味着未启动，不能说正在做、已经排队或马上完成。用户明确取消仍在执行的当前后台任务并改做新任务时，先实际 cancel_task，确认取消后再实际 delegate_to_v 新目标。已完成的旧任务不能通过取消另一个无关任务来代替。任务分工：简单查询、日历和一两步明确操作直接调用原生工具。多步比较、跨资料调研、复杂规划或需要持续等待/反复轮询的任务，用 delegate_to_v 将完整目标及用户条件一次交给个人 V 后端语言模型。用户要求交给后端模型、交给 V 或交给后台处理时必须调用 delegate_to_v，即使已经给出完整命令，也不能自行用 exec/process/openclaw_tool 代做。这里的后端指另一个语言模型；exec/process 只是执行工具，命令的 background 参数也不是模型委派。只说‘交给后端’却自己执行不算委派。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，等待时正常聊天。只有真实的新事实才简短汇报，不反复播报等待、倒计时或轮询状态。只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
 
@@ -63,7 +64,7 @@ export function directInstructions(catalog,context='',model='',options={}) {
 // announced, so a burst of quick tool calls becomes one line.
 export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageGapMs:15000,factGapMs:6000,idleMs:45000,idleMax:2,quietAfterUserMs:4000,startMs:2500,max:12,correctionDelayMs:400});
 
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,backchannel=null}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -434,6 +435,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       say:text=>{if(!current(s)||!s.bridge||s.ending)return false;
         s.responseActive=true;s.bridge.speakProgress(text);return true;},
       audit:event=>audit({...event,voiceSessionId:s.id})});
+    // Web phone only: other clients have their own local pause and echo behaviour.
+    if(backchannel&&s.nativeDuplex&&s.surface==='phone'&&!s.nativeRuntime&&nativeInterrupt)s.backchannel=createBackchannel({clips:loadBackchannelClips(),inputSampleRate:s.inputSampleRate,options:backchannel===true?undefined:backchannel,
+      isBlocked:()=>!current(s)||s.playing||s.responseActive||Boolean(s.bridge?.responseActive)||Boolean(s.ending)||[...s.pending.keys()].some(id=>id!==s.backgroundCallId),
+      play:clip=>{deliverAudio(clip.pcm,{source:clip.source,sha256:clip.sha256});emit(s,{type:'audio.done'});},
+      audit:event=>audit({...event,voiceSessionId:s.id})});
     const onToolCall=async call=>{
       if(!current(s))return;
       const signature=JSON.stringify([call.name,call.args]),old=s.seen.get(call.callId);
@@ -531,7 +537,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const baseInstructions=s.publicVoice?PUBLIC_VOICE_INSTRUCTIONS+'\n'+PUBLIC_PRESENTATION_INSTRUCTIONS+'\n'+V_FRONTEND_PERSONA+'\n'+V_ONE_VOICE_POLICY+'\n'+VOICE_TASK_ROUTING.replaceAll('个人 V','V')+'\n'+VOICE_TASK_CONTROL_POLICY+'\n'+CALL_ENDING:(!s.unidentified?terminalInstructions(s.terminalContext()):'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader)});
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
-      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
+      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY+(backchannel?NATIVE_LONG_TURN_POLICY:''):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
       onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),
       onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.lookup.answered();s.responseActive=true;s.narrationBusyUntil=0;if(s.ending&&(!s.nativeDuplex||metadata?.responseId&&metadata.responseId!==s.ending.priorResponseId)){s.ending.hasAudio=true;s.ending.responseId=metadata?.responseId;clearTimeout(s.ending.fallbackTimer);clearTimeout(s.ending.noAudioTimer);}deliverAudio(audio,metadata);}),
@@ -588,7 +594,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         try{
           if(data.length%2||data.length>24000){client.close(1008);return;}
           if(s.speakerRouting){if(!speakerRouting.has(s.id))throw Error('说话人识别已中断，请结束后重拨');speakerRouting.audio(s.id,Buffer.from(data));}
-          else {s.bridge.sendAudio(data);s.interruptDetector?.append(data);}
+          else {s.bridge.sendAudio(data);s.interruptDetector?.append(data);s.backchannel?.audio(data);}
         }catch(error){emit(s,{type:'error',message:error.message});void close(s.id).catch(()=>{});}
         return;
       }
@@ -621,6 +627,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           isSpeaking:()=>current(s)&&Boolean(s.playing||s.bridge?.responseActive),
           getResponseId:()=>current(s)?s.bridge.audioResponseId:null,
           onInterrupt:()=>{if(!current(s))return;s.lastUserAt=Date.now();s.bridge.handleBargeIn({confirmed:true});audit({type:'speech.control',voiceSessionId:s.id,stage:'interrupted'});},
+          onText:text=>s.backchannel?.text(text),
           onStatus:stage=>audit({type:'speech.control',voiceSessionId:s.id,stage})});
         await s.interruptDetector.connect();
         if(!current(s)){s.interruptDetector.close();return;}

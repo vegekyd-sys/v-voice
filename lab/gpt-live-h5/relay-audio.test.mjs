@@ -478,3 +478,13 @@ test('a cancelled call releases late prepared hardware without attaching playbac
  release({stream:{},dispose:()=>{disposed++;},startCapture:()=>{begin++;}});await f.started;
  assert.equal(disposed,1);assert.equal(begin,0);assert.equal(f.nodes.length,0);
 });
+
+test('a listening sound keeps playing over the caller, a real answer still yields',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true,nativePlaybackPolicy:'assisted'}});
+ f.event({type:'audio',source:'backchannel',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(9600,8192).buffer).toString('base64')});
+ const mic=f.nodes.find(n=>n.name==='v-direct-mic');for(let i=0;i<8;i++)mic.port.onmessage({data:voiceFrame()});
+ f.event({type:'input.speech.started'});assert.equal(f.relay.stats.nativePauses,0);
+ f.event({type:'audio',responseId:'answer',sequence:2,sampleRate:24000,audio:Buffer.from(pcm(24000,8192).buffer).toString('base64')});
+ for(let i=0;i<8;i++)mic.port.onmessage({data:voiceFrame()});
+ f.event({type:'input.speech.started'});assert.equal(f.relay.stats.nativePauses,1);
+});
