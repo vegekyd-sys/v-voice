@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "tv-formal-20261030",
-  "version": "voice-tv-formal.20261030.1",
-  "entryCommit": "53f1e621745610b5a9811d00ef82cdf4ac1cc07f",
-  "deviceEntryCommit": "53f1e621745610b5a9811d00ef82cdf4ac1cc07f",
-  "filesSha256": "f2fe63a68f1662db3ff460e9291806b179d6014fad4baade5765df663fc4a211",
-  "registration": "tv-formal-20261030/release.json",
-  "previousEntryCommit": "899ed2ffdfe76cd7d76d593af36040dfe80e62c7",
+  "release": "conversation-context-20261101",
+  "version": "voice-conversation-context.20261101.1",
+  "entryCommit": "de595f067686fba719f6904190b84658d727f8f0",
+  "deviceEntryCommit": "de595f067686fba719f6904190b84658d727f8f0",
+  "filesSha256": "730b13a897b988b8ac5598da5c746d19dad6089cbd8ae66c7facbaf21206ff38",
+  "registration": "conversation-context-20261101/release.json",
+  "previousEntryCommit": "53f1e621745610b5a9811d00ef82cdf4ac1cc07f",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-10-31T00:51:29+08:00",
-  "runtimeDifference": "TV array audio, bounded playback, companion UI and native TV source consolidation. Existing accepted Android APKs retained; official TV entry verified twice. First recorded start had one DSP timeout; cause unconfirmed."
+  "validatedAt": "2026-11-01T14:40:00+08:00",
+  "runtimeDifference": "Doubao and Grok calls read more earlier dialogue at connect; markers and open IDs removed; day lines date old messages; Seeduplex reconnects without the record if upstream keeps refusing before V has spoken. GPT Live and clients unchanged. No new real phone call after the switch at registration time."
 }
