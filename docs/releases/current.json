@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "media-direct-20261102",
-  "version": "voice-media-direct.20261102.1",
-  "entryCommit": "9bdf5a89425b4fabd847ed8950d1bbb30d52a796",
-  "deviceEntryCommit": "9bdf5a89425b4fabd847ed8950d1bbb30d52a796",
-  "filesSha256": "734dd9becb6b88ff9570fc18f59a8c4211f84285d897bc4bb9fd9da0593a18d8",
-  "registration": "media-direct-20261102/release.json",
-  "previousEntryCommit": "e389646e5e863ef6e301dc52517e6e200cd6e997",
+  "release": "calendar-dial-20261102",
+  "version": "voice-calendar-dial.20261102.1",
+  "entryCommit": "61e7ef6ddbdf983e05ae7c3c7841d0fe25ea5dfa",
+  "deviceEntryCommit": "61e7ef6ddbdf983e05ae7c3c7841d0fe25ea5dfa",
+  "filesSha256": "c28f5ce5ca2a87076b828737b831428ff10b31b86cf6a08c3c466f704cb7bb22",
+  "registration": "calendar-dial-20261102/release.json",
+  "previousEntryCommit": "9bdf5a89425b4fabd847ed8950d1bbb30d52a796",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-02T01:05:00+08:00",
-  "runtimeDifference": "Main personal entry generates images and short videos in the call through the Makaron CLI executor, enabled by private service configuration. Reader opens generated media and the web and iOS conversations keep it inline. Phone uplink congestion sheds microphone frames. Other entries unchanged."
+  "validatedAt": "2026-11-02T02:30:00+08:00",
+  "runtimeDifference": "Personal entry Feishu reads use the verified owner identity. Identified entries allow 30 dials per 10 minutes. H5 saves media through iOS build 41 and keeps the share link for older binaries."
 }
