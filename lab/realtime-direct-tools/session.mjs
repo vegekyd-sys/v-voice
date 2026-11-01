@@ -65,7 +65,7 @@ export function directInstructions(catalog,context='',model='',options={}) {
 /** One real provider connection per dial; tool authorization stays in OpenClaw. */
 // Pacing of task narration (ms). A stage must hold for settleMs before it is
 // announced, so a burst of quick tool calls becomes one line.
-export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageGapMs:15000,factGapMs:6000,idleMs:45000,idleMax:2,quietAfterUserMs:4000,startMs:2500,max:12,correctionDelayMs:400});
+export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageGapMs:15000,factGapMs:6000,idleMs:45000,idleMax:2,quietAfterUserMs:4000,startMs:2500,max:12,correctionDelayMs:400,abandonedResponseMs:8000});
 
 export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
@@ -148,6 +148,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     return true;
   };
   const deferred=s=>{
+    // A turn the provider opened and abandoned sends neither audio nor done, and
+    // would otherwise hold back every later line in this call.
+    if(s.responseActive&&!s.pending.size&&Date.now()-(s.responseActivityAt??0)>NARRATION.abandonedResponseMs)s.responseActive=false;
     s.lookup?.tick();
     s.mediaRecovery?.tick();
     if(s.heldResult)contextHeld(s);
@@ -597,7 +600,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       withoutContext:text=>text.replace(voiceConversationBlock(context,{sessionBound:s.sessionBound}),()=>voiceConversationBlock('',{sessionBound:s.sessionBound})),
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
       onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),
-      onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.lookup.answered();s.responseActive=true;s.narrationBusyUntil=0;if(s.ending&&(!s.nativeDuplex||metadata?.responseId&&metadata.responseId!==s.ending.priorResponseId)){s.ending.hasAudio=true;s.ending.responseId=metadata?.responseId;clearTimeout(s.ending.fallbackTimer);clearTimeout(s.ending.noAudioTimer);}deliverAudio(audio,metadata);}),
+      onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.lookup.answered();s.responseActive=true;s.responseActivityAt=Date.now();s.narrationBusyUntil=0;if(s.ending&&(!s.nativeDuplex||metadata?.responseId&&metadata.responseId!==s.ending.priorResponseId)){s.ending.hasAudio=true;s.ending.responseId=metadata?.responseId;clearTimeout(s.ending.fallbackTimer);clearTimeout(s.ending.noAudioTimer);}deliverAudio(audio,metadata);}),
       onTranscript:(role,text,final,source,metadata={})=>{
         if(!current(s))return;
         if(role==='assistant'&&!source&&guardReply(s,text,final,metadata.responseId))return;
@@ -614,7 +617,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       onClearAudio:(reason,metadata)=>routeOutput('clear',null,()=>{s.audioDelivery?.finish('clear');s.replyDelivery?.interrupt(metadata?.retiredResponseId);audit({type:'audio.clear',voiceSessionId:s.id,reason,...(metadata??{})});s.responseActive=false;if(s.ending&&reason!=='response-replaced'){clearEnding(s);emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear',reason,...(typeof metadata?.retiredResponseId==='string'?{retiredResponseId:metadata.retiredResponseId}:{})});}),
       onAudioSegmentDone:()=>routeOutput('done',null,()=>{s.audioDelivery?.finish('segment-done');s.responseActive=false;}),
       onResponseDone:e=>routeOutput('done',e,()=>{s.audioDelivery?.finish('done');void s.replyDelivery?.finish(e);s.responseActive=false;s.narrationBusyUntil=0;if(e.status==='completed')emit(s,{type:'audio.done',...(e.responseId?{responseId:e.responseId}:{})});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'&&(!s.ending.responseId||!e.responseId||e.responseId===s.ending.responseId)){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}}),
-      onEvent:e=>{if(e.type==='response.created'){s.responseActive=true;s.replyDelivery?.begin(e.responseId);}
+      onEvent:e=>{if(e.type==='response.created'){s.responseActive=true;s.responseActivityAt=Date.now();s.replyDelivery?.begin(e.responseId);}
         if(e.type==='native.listening-aside')s.replyDelivery?.ignore(e.responseId);
         if(s.nativeDuplex&&e.type==='native.listening-aside')emit(s,{type:'input.speech.ignored',preservedResponseId:s.bridge?.audioResponseId??null});
         if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.replyDelivery?.inputStarted();s.userSpeaking=true;s.lastUserAt=Date.now();}

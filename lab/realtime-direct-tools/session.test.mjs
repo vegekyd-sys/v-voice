@@ -1629,3 +1629,17 @@ test('a model still following its execution answers it itself; the service says 
  assert(!f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'&&e.text==='小猫画好了'));
  assert(!f.audit.some(e=>e.type==='execution.finished-told'));
 });
+
+test('a turn the provider opened and abandoned does not hold back a finished execution',async t=>{
+ let finish;const work=new Promise(resolve=>{finish=resolve;});
+ const f=await fixture(async()=>{throw Error('must not use Gateway');},'seeduplex',{narration:{abandonedResponseMs:300},mediaCli:{forCall:async()=>({execute:()=>work})}});
+ t.after(()=>{finish({});return f.service.dispose();});
+ const said=()=>f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').map(e=>e.text);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'画一只小猫'});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'abandoned',name:'exec',arguments:JSON.stringify({command:"makaron edit --image-model wan2.7-image 'cat'",completionLine:'小猫画好了'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='abandoned')));
+ f.event({type:'response.created',response:{id:'never-finished'}});
+ finish({isError:false,media:{kind:'image',url:'https://cdn.test/abandoned.webp'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
+ for(let i=0;i<100&&!said().includes('小猫画好了');i++)await delay(50);
+ assert(said().includes('小猫画好了'));
+});
