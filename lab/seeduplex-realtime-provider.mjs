@@ -541,6 +541,18 @@ export class SeeduplexRealtimeVoiceBridge {
     ]});
   }
 
+  updateMediaContext(text, previous='') {
+    if(this.terminal||!text)return;
+    this.request.instructions=previous?this.request.instructions.replace(previous,text):[this.request.instructions,text].filter(Boolean).join('\n\n');
+    // Native tool results only resume their original function turn. Paired
+    // history also makes long-running results available to later user turns.
+    // Updating request.instructions retains the latest snapshot on reconnect.
+    this.#send({type:'conversation.item.create',items:[
+      {role:'user',content:[{type:'input_text',text:'创作状态同步（系统事件，不是用户发言，不要求回复）'}]},
+      {role:'assistant',content:[{type:'input_text',text}]},
+    ]});
+  }
+
   sendUserMessage(text) {
     if(this.request.nativeDuplex)this.nativeLiteralRead=/朗读|复述|念出|读出|原样|逐字/u.test(text??'');
     const normalized = optionalString(text);

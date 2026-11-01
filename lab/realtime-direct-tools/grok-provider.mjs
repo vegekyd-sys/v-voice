@@ -103,6 +103,11 @@ export class GrokVoiceBridge {
     this.request.instructions=this.request.instructions.replace(previous,text);
     this.send({type:'session.update',session:{instructions:[this.request.instructions,this.expressiveTags?GROK_EXPRESSIVE_INSTRUCTIONS:''].filter(Boolean).join('\n\n')}});
   }
+  updateMediaContext(text,previous=''){
+    if(this.closed||!text)return;
+    this.request.instructions=previous?this.request.instructions.replace(previous,text):[this.request.instructions,text].filter(Boolean).join('\n\n');
+    this.send({type:'session.update',session:{instructions:[this.request.instructions,this.expressiveTags?GROK_EXPRESSIVE_INSTRUCTIONS:''].filter(Boolean).join('\n\n')}});
+  }
   triggerGreeting(text){this.sendUserMessage(text);}
   speakProgress(text){this.send({type:'conversation.item.create',item:{type:'force_message',role:'assistant',interruptible:true,content:[{type:'output_text',text}]}});}
   beginBackgroundTool(callId){

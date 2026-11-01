@@ -1577,6 +1577,10 @@ for(const model of ['grok','seeduplex'])test(`${model} completed media is displa
  assert(await until(()=>f.audit.filter(e=>e.type==='tool.delivered').length===2));
  const docs=f.service.presentation(f.reservation.voiceSessionId).documents;
  assert.equal(docs.length,1);assert.equal(docs[0].text,'[生成视频](https://cdn.test/final.mp4)');
+ const remembered=model==='seeduplex'?f.upstream.sent.find(e=>e.items?.[1]?.content?.[0]?.text?.startsWith('本通话创作记录'))?.items[1].content[0].text:
+   f.upstream.sent.filter(e=>e.type==='session.update'&&e.session.instructions?.includes('本通话创作记录')).at(-1)?.session.instructions;
+ assert(remembered);assert.match(remembered,/"status":"completed"/);assert.match(remembered,/"request":"把这张图动起来"/);assert.match(remembered,/https:\/\/cdn.test\/final.mp4/);assert.match(remembered,/"presentation":"shown"/);
+ assert(!f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'&&e.text?.includes('本通话创作记录')));
  assert(!f.audit.some(e=>e.type==='tool.call'&&e.name==='show_content'));
  assert.equal(f.service.backgroundTaskCount(),0);
  if(model==='grok')f.call('process',{action:'poll',sessionId:'invented'},'status-process');

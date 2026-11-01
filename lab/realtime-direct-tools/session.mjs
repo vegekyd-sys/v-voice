@@ -1,5 +1,6 @@
 import {mediaCliInstructions,MEDIA_CLI_START_NOTICE,mediaStatusQuestion} from './media-cli-policy.mjs';
 import {createMediaTurnRecovery} from './media-turn-recovery.mjs';
+import {createMediaConversationState} from './media-conversation-state.mjs';
 import {VOICE_OPERATION_CONSENT_POLICY,VOICE_CALENDAR_SERVICE_POLICY} from '../../lib/voice-operation-policy.mjs';
 import {hasTvControls,writePolicy,tvControlTool} from './tv-control-policy.mjs';
 import {backendDeviceDescriptor,probeBackendDeviceBundle} from '../../lib/backend-device-bundle.mjs';
@@ -432,6 +433,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           }
           const presentation=await s.mediaDeliveries.get(url);
           const delivered={...output,presentation,instruction:'媒体已经自动提交显示。根据 presentation 回执简短说明结果，不再保存、轮询或重复 show_content；追问进度不重新生成。'};
+          s.mediaConversation??=createMediaConversationState();
+          if(s.mediaConversation.record({id:callId,request:requestToken.text,kind,output:delivered}))s.mediaContextDirty=true;
           if(operation)operation.output=delivered;
           return delivered;
         }
@@ -571,7 +574,12 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           if(s.speakerRouting&&speakerRouting?.hostSpeech)options.speak=text=>void speakerRouting.hostSpeech(s.id,text).then(spoken=>{if(!spoken)audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId:call.callId});},()=>audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId:call.callId}));
           target.completeBackgroundTool(call.callId,payload,options);
         }
-      }else if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
+      }else if(ownerBridge===s.bridge){
+        ownerBridge.submitToolResult(call.callId,result);
+        // Tool continuations can expire during a long generation. Persist the
+        // actual delivered facts separately for subsequent conversation turns.
+        if(s.mediaContextDirty){ownerBridge.updateMediaContext(s.mediaConversation.context(),s.mediaContext??'');s.mediaContext=s.mediaConversation.context();s.mediaContextDirty=false;}
+      }}
       catch {result={error:'工具结果过大或无法续传，请缩小范围并分页读取。'};if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
       audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId,name:call.name,...(call.name==='get_current_location'?{ok:result?.ok===true,reason:result?.reason}:{result})});
       if(call.name!=='delegate_to_v')s.nativeResultAt=Date.now();
