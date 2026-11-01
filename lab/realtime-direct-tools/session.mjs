@@ -408,12 +408,12 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         // Explicit, bounded personal CLI capability; never retry a denied Gateway
         // call here and never use the owner's credentials for actor/group calls.
         if(Object.keys(args).some(k=>!['command','timeoutSeconds'].includes(k)))throw Error('创作命令不接受环境、身份或执行配置覆盖');
+        const requestToken=s.latestUserTurn??s;
         const latest=await s.gateway.request('tools.catalog',{agentId:s.agentId,includePlugins:true},{timeoutMs:20000});
         if(!['exec','process'].every(id=>(latest.groups??[]).some(g=>(g.tools??[]).some(t=>t.id===id))))throw Error('当前会话创作权限已撤回');
         if(signal.aborted||!current(s))throw Error('本次任务已取消');
         s.mediaRunner??=Promise.resolve().then(()=>mediaCli.forCall());
-        const reuseExisting=mediaStatusQuestion(s.latestUserTurn?.text);
-        const requestToken=s.latestUserTurn??s;
+        const reuseExisting=mediaStatusQuestion(requestToken.text);
         const work=s.mediaRunner.then(runner=>runner.execute(args.command,signal,{reuseExisting,requestToken}));
         const cleanup=work.then(()=>{},()=>{});s.localCleanups.add(cleanup);
         cleanup.then(()=>s.localCleanups.delete(cleanup));
