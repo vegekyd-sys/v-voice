@@ -1,0 +1,40 @@
+{
+  "schema": "v-voice-production-release-v1",
+  "version": "voice-media-direct.20261102.1",
+  "status": "DEPLOYED_SERVER_NODES_VERIFIED_REAL_CALL_PENDING",
+  "releasePR": 191,
+  "entryCommit": "e389646e5e863ef6e301dc52517e6e200cd6e997",
+  "deviceEntryCommit": "e389646e5e863ef6e301dc52517e6e200cd6e997",
+  "filesSha256": "a8db13b6551c4bf36de1895d265a22d6ccf986c5f30abe65e650163d0555532e",
+  "iosShellRevision": "3ef4810f24cd9aa94cf2f5c5060b4ad09f9ab4e1667ca31717da058038e5d6dc",
+  "rollbackServiceCommit": "de595f067686fba719f6904190b84658d727f8f0",
+  "serverNodesSynchronized": true,
+  "homepageChangelogVerified": true,
+  "gatewayRestarted": false,
+  "gatewayIdentityAndConfigUnchanged": true,
+  "validatedAt": "2026-11-02T00:40:00+08:00",
+  "tests": {
+    "voice": 1148,
+    "speaker": 95
+  },
+  "userConfirmed": [
+    "Tianyi tried the candidates on real calls and approved release to the main personal entry on 2026-11-01"
+  ],
+  "productionSynthetic": {
+    "model": "seeduplex",
+    "imageSeconds": 8.3,
+    "videoSeconds": 35,
+    "submissions": {
+      "image": 1,
+      "video": 1
+    },
+    "completionSpokenOnce": true,
+    "droppedCalls": 0,
+    "browserCallReaderOpenAndInline": true
+  },
+  "pending": [
+    "No real phone call on the released build at registration",
+    "iOS shell on this release shows a card after the reader closes; fixed in the follow-up PR, not released at registration",
+    "No physical iPhone regression"
+  ]
+}

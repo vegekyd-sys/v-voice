@@ -215,6 +215,13 @@ export function createContentView(document, window, { onReading = () => {}, onSa
       if (scroller && scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 360) scroller.scrollTop = scroller.scrollHeight;
     }, { once: true });
   };
+  const expandButton = (content, figure) => {
+    const expand = document.createElement("button");
+    expand.type = "button"; expand.className = "inline-media-expand"; expand.textContent = "↗"; expand.setAttribute("aria-label", "放大查看");
+    expand.dataset.openContent = "true";
+    expand.addEventListener("click", () => { figure.querySelectorAll?.("video").forEach(video => video.pause()); open(content, figure); });
+    return expand;
+  };
   // A generated image or video opens large, and stays in the conversation as
   // itself once the reader closes.
   const inlineMedia = (content) => {
@@ -224,12 +231,9 @@ export function createContentView(document, window, { onReading = () => {}, onSa
     keepInView(figure, media);
     figure.append(wrap);
     if (content.kind === "video") {
-      const expand = document.createElement("button");
-      expand.type = "button"; expand.className = "inline-media-expand"; expand.textContent = "↗"; expand.setAttribute("aria-label", "放大查看");
-      expand.addEventListener("click", () => { media.pause(); open(content, figure); });
-      figure.append(expand);
+      figure.append(expandButton(content, figure));
     } else {
-      media.tabIndex = 0; media.setAttribute("role", "button"); media.setAttribute("aria-label", "查看大图");
+      media.dataset.openContent = "true"; media.tabIndex = 0; media.setAttribute("role", "button"); media.setAttribute("aria-label", "查看大图");
       media.addEventListener("click", () => open(content, figure));
       media.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(content, figure); } });
     }
@@ -343,6 +347,7 @@ export function createContentView(document, window, { onReading = () => {}, onSa
             figure.className = "inline-media inline-report";
             reportMedia(figure, content);
             figure.querySelectorAll(".media-asset").forEach(media => keepInView(figure, media));
+            figure.append(expandButton(content, figure));
             target.append(figure);
             openAutomatically(content, figure, item, auto);
           } else {
