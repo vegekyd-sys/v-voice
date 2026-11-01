@@ -569,21 +569,6 @@ test('async background tool releases the native call, accepts chat, and adds act
  assert.equal(socket.sent.filter(x=>x.type==='speech_text_buffer.commit'&&x.text==='已完成全部步骤。').length,1);assert(texts.some(x=>x[3]==='V-backend'));bridge.close();
 });
 
-test('completed media is paired conversation history and the latest snapshot survives a new session configuration without starting speech',async()=>{
- const socket=new FakeSocket();
- const bridge=new SeeduplexRealtimeVoiceBridge({instructions:'原始权限和人设',providerConfig:{apiKey:'fixture'},tools:[],onAudio(){},onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
- const connecting=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connecting;
- const before=socket.sent.length;
- bridge.updateMediaContext('创作快照1：图片已完成');
- bridge.updateMediaContext('创作快照2：图片、视频已完成','创作快照1：图片已完成');
- const updates=socket.sent.slice(before);assert.equal(updates.length,2);assert(updates.every(e=>e.type==='conversation.item.create'&&e.items.map(i=>i.role).join(',')==='user,assistant'));
- assert.equal(updates[1].items[1].content[0].text,'创作快照2：图片、视频已完成');
- const resumed=buildSeeduplexSession(bridge.request.providerConfig,bridge.request);
- assert.match(resumed.session.instructions,/原始权限和人设/);assert.match(resumed.session.instructions,/创作快照2/);assert.doesNotMatch(resumed.session.instructions,/创作快照1/);
- bridge.close();
-});
-
-
 test('host notice leaves the native function turn intact and never holds a completed tool result',async()=>{
  const socket=new FakeSocket(),calls=[],notices=[];
  const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},tools:['memory_search','web_search'].map(name=>({type:'function',name,parameters:{type:'object'}})),toolStartNotice:()=> '我查一下记录。',onToolStartNotice:(text,call)=>notices.push({text,call}),onAudio(){},onToolCall:call=>{calls.push(call);bridge.submitToolResult(call.callId,{answer:'真实工具结果'});},onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});

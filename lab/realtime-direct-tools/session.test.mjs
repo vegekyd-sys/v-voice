@@ -1559,33 +1559,30 @@ test('media catalog revocation stops local execution without attempting Gateway 
  assert.equal(local,0);assert.equal(f.invocations.length,0);assert.match(f.audit.find(e=>e.type==='tool.delivered').result.error,/撤回/);
 });
 
-for(const model of ['grok','seeduplex'])test(`${model} completed media is displayed across a spoken interruption without another model tool round`,async t=>{
+for(const model of ['grok','seeduplex'])test(`${model} long local exec returns a real process handle and final native tool result across interruption, without media memory`,async t=>{
  let finish;const calls=[];
  const work=new Promise(resolve=>{finish=resolve;});
  const f=await fixture(async()=>{throw Error('must not use Gateway');},model,{mediaCli:{forCall:async()=>({execute:(command,signal,options)=>{calls.push({command,options});return work;}})}});
- t.after(()=>f.service.dispose());
- const call=(id,command)=>model==='grok'?f.call('exec',{command},id):f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name:'exec',arguments:JSON.stringify({command})}]});
+ t.after(()=>{finish({});return f.service.dispose();});
+ const call=(id,name,args)=>model==='grok'?f.call(name,args,id):f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'把这张图动起来'});
- call('first-media',"makaron video create --video-model fal-h3-max --script 'animate'");
- assert(await until(()=>calls.length===1));
+ call('first-media','exec',{command:"makaron video create --video-model fal-h3-max --script 'animate'"});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='first-media')));
+ const started=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='first-media').result;
+ assert.equal(started.details.status,'running');assert.match(started.details.sessionId,/^voice-exec-/);
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'做好了吗？'});
- call('status-only',"makaron video create --video-model fal-h3-max --script 'animate again'");
- assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='status-only')));assert.equal(calls.length,1);
- const progress=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='status-only').result;
- assert.equal(progress.status,'running');assert.equal(progress.isError,false);
+ call('poll-pending','process',{action:'poll',sessionId:started.details.sessionId,timeout:1});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='poll-pending')));
+ assert.equal(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='poll-pending').result.details.status,'running');
  finish({isError:false,media:{kind:'video',url:'https://cdn.test/final.mp4'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
- assert(await until(()=>f.audit.filter(e=>e.type==='tool.delivered').length===2));
- const docs=f.service.presentation(f.reservation.voiceSessionId).documents;
- assert.equal(docs.length,1);assert.equal(docs[0].text,'[生成视频](https://cdn.test/final.mp4)');
- const remembered=model==='seeduplex'?f.upstream.sent.find(e=>e.items?.[1]?.content?.[0]?.text?.startsWith('本通话创作记录'))?.items[1].content[0].text:
-   f.upstream.sent.filter(e=>e.type==='session.update'&&e.session.instructions?.includes('本通话创作记录')).at(-1)?.session.instructions;
- assert(remembered);assert.match(remembered,/"status":"completed"/);assert.match(remembered,/"request":"把这张图动起来"/);assert.match(remembered,/https:\/\/cdn.test\/final.mp4/);assert.match(remembered,/"presentation":"shown"/);
- assert(!f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'&&e.text?.includes('本通话创作记录')));
- assert(!f.audit.some(e=>e.type==='tool.call'&&e.name==='show_content'));
- assert.equal(f.service.backgroundTaskCount(),0);
- if(model==='grok')f.call('process',{action:'poll',sessionId:'invented'},'status-process');
- else f.event({type:'response.function_call_arguments.done',items:[{call_id:'status-process',name:'process',arguments:JSON.stringify({action:'poll',sessionId:'invented'})}]});
- assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='status-process')));
- const status=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='status-process').result;
- assert.equal(status.media.url,'https://cdn.test/final.mp4');assert.equal(calls.length,1);
+ assert(await until(()=>f.service.presentation(f.reservation.voiceSessionId).documents.length===1));
+ call('poll-final','process',{action:'poll',sessionId:started.details.sessionId,timeout:1000});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='poll-final')));
+ const result=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='poll-final').result;
+ assert.equal(result.media.url,'https://cdn.test/final.mp4');assert.equal(result.presentation.shown,true);assert.equal(calls.length,1);
+ const wire=JSON.stringify(f.upstream.sent);assert(wire.includes('https://cdn.test/final.mp4'));assert(!wire.includes('本通话创作记录'));
+ assert(!f.upstream.sent.some(e=>e.items?.length===2&&e.items[0].role==='user'&&e.items[1].role==='assistant'));
+ call('foreign','process',{action:'poll',sessionId:'invented'});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='foreign')));
+ assert.match(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='foreign').result.error,/本次电话/);
 });
