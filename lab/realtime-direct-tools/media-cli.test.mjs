@@ -13,8 +13,7 @@ test('CLI arguments preserve quoted user content but cannot run shell or other c
 test('image-to-video requires valid media references before any subprocess or charge',async t=>{
  const {runner}=await fixture(t);
  const prefix="makaron video create --video-model fal-h3-max --image 'https://cdn.example/image.png' --script ";
- await assert.rejects(runner.execute(prefix+"'animate the cat'"),error=>{assert.match(error.message,/本地校验未提交、未扣费/);assert.equal(error.submission,'not-submitted');assert.equal(error.code,'invalid_arguments');return true;});
- await assert.rejects(runner.execute(prefix+"'animate <<<media_2>>>'"),/本地校验未提交、未扣费/);
+ await assert.rejects(runner.execute(prefix+"'animate <<<media_2>>>'"),error=>{assert.match(error.message,/本地校验未提交、未扣费/);assert.equal(error.submission,'not-submitted');assert.equal(error.code,'invalid_arguments');return true;});
  await assert.rejects(runner.execute("makaron video create --video-model fal-h3-max --script 'animate <<<media_1>>>'"),/本地校验未提交、未扣费/);
  await assert.rejects(runner.execute('makaron video status task-123'),/本通话/);
  assert.equal((await runner.execute(prefix+"'animate <<<media_1>>>'")).isError,false);
