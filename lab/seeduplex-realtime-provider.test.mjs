@@ -358,6 +358,56 @@ test("upstream rejection never relays vendor diagnostics or credentials", async 
   assert.equal(errors.join(" ").includes("do-not-leak"), false);
 });
 
+test("a record upstream keeps refusing is dropped before V has spoken", async () => {
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+  const start = async (extra = {}) => {
+    const sockets = [], stages = [], errors = [];
+    const bridge = new SeeduplexRealtimeVoiceBridge({
+      providerConfig: { apiKey: "k" }, instructions: "规则\n记录：有问题的消息",
+      withoutContext: (text) => text.replace("有问题的消息", "暂无"), greetingText: "你好",
+      onAudio() {}, onClearAudio() {}, onClose() {},
+      onDiagnostic: (event) => stages.push(event.stage), onError: (error) => errors.push(error.message), ...extra,
+    }, { createWebSocket: async () => { const socket = new FakeSocket(); sockets.push(socket); return socket; }, reconnectDelayMs: 0 });
+    const connecting = bridge.connect().catch(() => {});
+    await tick();
+    const refuse = async () => {
+      const socket = sockets.at(-1);
+      socket.open();
+      socket.message({ type: "session.created", session: { id: "s1" } });
+      await connecting;
+      socket.message({ type: "error", error: { code: "55000000" } });
+      await tick();
+    };
+    return { bridge, sockets, stages, errors, refuse };
+  };
+
+  const call = await start();
+  await call.refuse();
+  call.bridge.triggerGreeting();
+  await call.refuse();await call.refuse();await call.refuse();
+  assert.deepEqual(call.errors, []);
+  assert.equal(call.stages.filter((stage) => stage === "context-dropped").length, 1);
+  const socket = call.sockets.at(-1);
+  socket.open();
+  const created = socket.sent.find((event) => event.type === "session.create");
+  assert.match(created.session.instructions, /记录：暂无/);
+  assert.equal(created.session.id, undefined, "a resumed session would keep the refused record");
+  socket.message({ type: "session.created", session: { id: "s2" } });
+  assert.equal(socket.sent.filter((event) => event.type === "speech_text_buffer.commit").length, 1, "the greeting still plays");
+  assert.equal(call.stages.at(-1), "recovered");
+  call.bridge.close();
+
+  const spoken = await start();
+  spoken.bridge.producedAudio = true;
+  for (let i = 0; i < 4; i += 1) await spoken.refuse();
+  assert.deepEqual(spoken.errors, ["语音连接暂时无法恢复，请重新拨号。"], "mid-call failures keep the existing behaviour");
+
+  const plain = await start({ withoutContext: undefined });
+  for (let i = 0; i < 4; i += 1) await plain.refuse();
+  assert.equal(plain.errors.length, 1);
+  assert.equal(plain.stages.includes("context-dropped"), false);
+});
+
 test("Gateway-owned consults return one ordered Seeduplex tool-result batch", async () => {
   const socket = new FakeSocket();
   const prompts = [];

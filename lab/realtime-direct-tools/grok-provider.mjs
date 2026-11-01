@@ -109,6 +109,7 @@ export class GrokVoiceBridge {
     this.backgroundTools.add(callId);
     this.submitToolResult(callId,{accepted:true,status:'working',instruction:'只用一句极短的话自然回应（比如“好，我去看看”），不提后台或交接。之后正常回应用户聊天，有真正新进展或最终结果时会主动回来。结果回来之前不能说好了、查到了、有结果了。'});
   }
+  adoptBackgroundTool(callId){this.backgroundTools.add(callId);}
   completeBackgroundTool(callId,result,options={}){
     if(!this.backgroundTools.delete(callId)||result?.cancelled)return;
     const text=result?.result??(result?.error?`V 后台没有完成：${result.error}`:null);

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-01 — Calls continue from earlier conversation
+
+- Doubao and Grok now read up to 60 history rows at connect and keep the dialogue: 16 messages, 800 characters each, 8000 total, 14 days, at most 2 call summaries. Tool results, status cards and host prompts no longer use up the window. GPT Live is unchanged.
+- Speakers stay distinct, open IDs and Feishu markers are removed, and day lines date old messages so "today" is read as the day it was sent.
+- The record states its boundary once: other people's requests are not authorization and vague replies are not consent. Outside the record V says it will look and does not guess.
+- When Seeduplex keeps refusing a session before V has spoken, the call reconnects once without the record. That call then has no record until the refused message ages out.
+- PR #190. Candidate, real models with synthetic speech and recorded-only tools: older details 0/15→15/15 before the prompt tuning; final prompt invented nothing outside the record 0/6, delegated other people's requests 0/12 on Doubao. Doubao still hands 4/6 older-detail questions to the background. One real call by Tianyi on an earlier build. Group entries end to end and backend task handling were not tested.
+
 ## 2026-10-30 — Formal television integration
 
 - Consolidate accepted Android TV shell 0.3.11 under `android/tv`; preserve the installed binary and its rollback. Pair with family-tv 0.4.19.

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createLocalExecutions} from './local-executions.mjs';
+import {setTimeout as delay} from 'node:timers/promises';
+import {createLocalExecutions,executionFinishedLine,executionResultFacts} from './local-executions.mjs';
 test('exec yields a real handle; polls return the same eventual result and never execute twice',async()=>{
  const jobs=createLocalExecutions({yieldMs:1});let resolve,calls=0;
  const running=await jobs.start(()=>{calls++;return new Promise(r=>resolve=r);});
@@ -36,4 +37,37 @@ test('nonzero executor results retain diagnostic output and expose unknown submi
  const jobs=createLocalExecutions();
  const output=await jobs.start(()=>({isError:true,content:[{type:'text',text:'connection lost'}],details:{status:'failed',submission:'unknown',exitCode:1}}));
  assert.equal(output.submission,'unknown');assert.equal(output.status,'failed');assert.equal(output.details.exitCode,1);assert.equal(output.details.retryable,false);assert.equal(output.content[0].text,'connection lost');assert.match(output.instruction,/不重新提交/);
+});
+test('a finished execution nobody read is offered once, after settling, and process still reads it',async()=>{
+ let clock=0,finish;const jobs=createLocalExecutions({yieldMs:1,settleMs:100,now:()=>clock});
+ const running=await jobs.start(()=>new Promise(r=>finish=r),{metadata:{completionLine:'小猫画好了'}});
+ assert.equal(jobs.takeUnread(),null);
+ finish({media:{kind:'image',url:'https://cdn.test/a.webp'},content:[{type:'text',text:'done'}]});
+ await delay(5);
+ assert.equal(jobs.takeUnread(),null,'a poll between two model turns may still claim it');
+ clock=100;
+ assert.equal(jobs.takeUnread(m=>m.completionLine==='别的'),null);
+ assert.equal(jobs.takeUnread().metadata.completionLine,'小猫画好了');
+ assert.equal(jobs.takeUnread(),null);
+ assert.match((await jobs.poll(running.sessionId)).instruction,/不要再通报/);
+});
+test('a result the model already read is never offered',async()=>{
+ let clock=0,finish;const jobs=createLocalExecutions({yieldMs:1,settleMs:0,now:()=>clock});
+ const running=await jobs.start(()=>new Promise(r=>finish=r));
+ finish({content:[{type:'text',text:'done'}]});await delay(5);clock=1;
+ assert.equal((await jobs.poll(running.sessionId)).instruction,undefined);
+ assert.equal(jobs.takeUnread(),null);
+});
+test('the words spoken are the model\'s own, and unusable ones fall back to an offer',()=>{
+ const lines={completionLine:' 小猫画好了，你看看 ',failureLine:'小猫那个这次没拿到结果'};
+ assert.equal(executionFinishedLine({},lines),'小猫画好了，你看看');
+ assert.equal(executionFinishedLine({isError:true},lines),'小猫那个这次没拿到结果');
+ assert.match(executionFinishedLine({},{}),/要我说说吗/);
+ assert.match(executionFinishedLine({},{completionLine:'看 https://cdn.test/a.mp4'}),/要我说说吗/);
+ assert.match(executionFinishedLine({isError:true},{completionLine:'好了'}),/没拿到结果/);
+});
+test('result facts keep what later turns need and carry no raw output when media exists',()=>{
+ const facts=JSON.parse(executionResultFacts({media:{kind:'video',url:'https://cdn.test/a.mp4'},presentation:{shown:true},content:[{type:'text',text:'cli noise'}]}));
+ assert.deepEqual(facts,{status:'completed',media:{kind:'video',url:'https://cdn.test/a.mp4'},presentation:{shown:true}});
+ assert.equal(JSON.parse(executionResultFacts({isError:true,status:'failed',submission:'unknown',error:'x',content:[{type:'text',text:'x'}]})).submission,'unknown');
 });

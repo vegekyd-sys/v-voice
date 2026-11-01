@@ -1586,3 +1586,46 @@ for(const model of ['grok','seeduplex'])test(`${model} long local exec returns a
  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='foreign')));
  assert.match(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='foreign').result.error,/本次电话/);
 });
+
+for(const model of ['grok','seeduplex'])test(`${model} tells a finished execution in the model's own words once it stopped following, then keeps it in the conversation`,async t=>{
+ let finish;const work=new Promise(resolve=>{finish=resolve;});
+ const f=await fixture(async()=>{throw Error('must not use Gateway');},model,{mediaCli:{forCall:async()=>({execute:()=>work})}});
+ t.after(()=>{finish({});return f.service.dispose();});
+ const call=(id,name,args)=>model==='grok'?f.call(name,args,id):f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+ const said=()=>model==='grok'?f.upstream.sent.filter(e=>e.type==='conversation.item.create'&&e.item?.type==='force_message').map(e=>e.item.content[0].text):f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').map(e=>e.text);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'让小猫动起来'});
+ call('told-media','exec',{command:"makaron video create --video-model fal-h3-max --script 'animate'",completionLine:'小猫的视频做好了，你看看',failureLine:'小猫那个视频这次没拿到结果'});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='told-media')));
+ const started=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='told-media').result;
+ if(model==='seeduplex')f.event({type:'response.done',response:{id:'told-media-reply',status:'completed'}});
+ finish({isError:false,media:{kind:'video',url:'https://cdn.test/told.mp4'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
+ assert(await until(()=>f.service.presentation(f.reservation.voiceSessionId).documents.length===1));
+ assert.deepEqual(said().filter(x=>x.includes('小猫')),[],'nothing before the settle window');
+ for(let i=0;i<120&&!said().includes('小猫的视频做好了，你看看');i++)await delay(50);
+ assert(said().includes('小猫的视频做好了，你看看'));
+ assert(f.audit.some(e=>e.type==='execution.finished-told'&&e.ownWords&&e.status==='completed'));
+ assert(JSON.stringify(f.upstream.sent).includes('told.mp4'),'the conversation can refer to the result later');
+ assert(!said().some(x=>x.includes('told.mp4')),'the link is never read out');
+ await delay(400);
+ assert.equal(said().filter(x=>x==='小猫的视频做好了，你看看').length,1);
+ call('told-poll','process',{action:'poll',sessionId:started.details.sessionId,timeout:1});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='told-poll')));
+ assert.match(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='told-poll').result.instruction,/不要再通报/);
+});
+
+test('a model still following its execution answers it itself; the service says nothing',async t=>{
+ let finish;const work=new Promise(resolve=>{finish=resolve;});
+ const f=await fixture(async()=>{throw Error('must not use Gateway');},'seeduplex',{mediaCli:{forCall:async()=>({execute:()=>work})}});
+ t.after(()=>{finish({});return f.service.dispose();});
+ const call=(id,name,args)=>f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'画一只小猫'});
+ call('followed','exec',{command:"makaron edit --image-model wan2.7-image 'cat'",completionLine:'小猫画好了'});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='followed')));
+ const {sessionId}=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='followed').result.details;
+ finish({isError:false,media:{kind:'image',url:'https://cdn.test/followed.webp'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
+ call('followed-poll','process',{action:'poll',sessionId,timeout:1000});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='followed-poll')));
+ await delay(3200);
+ assert(!f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'&&e.text==='小猫画好了'));
+ assert(!f.audit.some(e=>e.type==='execution.finished-told'));
+});
