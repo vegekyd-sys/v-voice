@@ -198,6 +198,16 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-media-direct.20261101.1',date:'2026-11-01',
+    title:'电话里直接出图、出视频',
+    items:[
+      '个人主入口的电话里，简单的图片和短视频由 V 直接生成，生成时可以继续聊别的。其他入口仍走原来的后台流程。',
+      '做好后默认放大显示，关掉后图片和视频留在对话里；视频正在播放时，新结果等它播完再放大。',
+      '没人追问时，V 会在通话空闲时说一句结果，只说一次，不再提前问“要说说吗”。',
+      '视频只预加载开头。手机上行拥塞时优先保住通话，可能丢一小段你说的话，持续 30 秒没恢复才会结束通话。',
+    ],
+  },
+  {
     version:'voice-conversation-context.20261101.1',date:'2026-11-01',
     title:'电话能接着之前的聊天继续聊',
     items:[
