@@ -58,13 +58,13 @@ test('a result the model already read is never offered',async()=>{
  assert.equal((await jobs.poll(running.sessionId)).instruction,undefined);
  assert.equal(jobs.takeUnread(),null);
 });
-test('the words spoken are the model\'s own, and unusable ones fall back to an offer',()=>{
+test('the words spoken are the model\'s own, and unusable ones fall back to a plain statement',()=>{
  const lines={completionLine:' 小猫画好了，你看看 ',failureLine:'小猫那个这次没拿到结果'};
  assert.equal(executionFinishedLine({},lines),'小猫画好了，你看看');
  assert.equal(executionFinishedLine({isError:true},lines),'小猫那个这次没拿到结果');
- assert.match(executionFinishedLine({},{}),/要我说说吗/);
- assert.match(executionFinishedLine({},{completionLine:'看 https://cdn.test/a.mp4'}),/要我说说吗/);
- assert.match(executionFinishedLine({isError:true},{completionLine:'好了'}),/没拿到结果/);
+ assert.equal(executionFinishedLine({},{}),'刚才那个弄好了。');
+ assert.equal(executionFinishedLine({},{completionLine:'看 https://cdn.test/a.mp4'}),'刚才那个弄好了。');
+ assert.equal(executionFinishedLine({isError:true},{completionLine:'好了'}),'刚才那个没弄成。');assert.doesNotMatch(executionFinishedLine({},{}),/[吗？?]/u);
 });
 test('result facts keep what later turns need and carry no raw output when media exists',()=>{
  const facts=JSON.parse(executionResultFacts({media:{kind:'video',url:'https://cdn.test/a.mp4'},presentation:{shown:true},content:[{type:'text',text:'cli noise'}]}));

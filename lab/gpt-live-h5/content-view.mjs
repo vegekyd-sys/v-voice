@@ -43,6 +43,9 @@ export function contentItems(item, base = "https://voice.invalid/voice/") {
   return result;
 }
 
+// A long report stays a card; a picture with a short caption reads as one message.
+export const inlineFits = content => content.kind !== "report" || (content.media?.length > 0 && content.text.length <= 450);
+
 // One reader holds the original controls: opening content never recreates the
 // call, microphone, event subscriptions, task ownership, or avatar renderer.
 export function createContentView(document, window, { onReading = () => {}, onSaveMedia, mediaSaveLabel='保存' } = {}) {
@@ -165,6 +168,72 @@ export function createContentView(document, window, { onReading = () => {}, onSa
       cancelAnimations();
     });
   }
+  // preload=auto would pull a whole video over the link carrying the call.
+  const asset = (entry) => {
+    const media = document.createElement(entry.kind === "video" ? "video" : "img");
+    media.className = "media-asset";
+    if (entry.kind === "video") {
+      media.controls = true; media.playsInline = true; media.preload = "metadata";
+      media.setAttribute("aria-label", entry.title);
+      media.addEventListener('ended',()=>void openPending());
+      media.addEventListener("loadedmetadata", () => {
+        if (media.videoWidth && media.videoHeight) {
+          media.width = media.videoWidth; media.height = media.videoHeight;
+          media.style.aspectRatio = `${media.videoWidth} / ${media.videoHeight}`;
+        }
+        // Decode a poster frame without playing audio or requiring a play tap.
+        // A tiny seek also paints the initial frame on WebKit.
+        if (media.paused && media.currentTime === 0 && media.duration > 0) {
+          media.currentTime = Math.min(0.001, media.duration / 2);
+        }
+      }, { once: true });
+    } else { media.alt = entry.title; media.decoding = "async"; }
+    media.referrerPolicy = "no-referrer"; media.src = entry.url;
+    const wrap = document.createElement("span");
+    wrap.className = "markdown-media";
+    const failure = document.createElement("span");
+    failure.className = "media-error"; failure.hidden = true;
+    failure.textContent = "内容暂时无法加载，可以收起后重试。";
+    media.addEventListener("error", () => { failure.hidden = false; });
+    wrap.append(media, failure); return wrap;
+  };
+  const reportMedia = (target, content) => {
+    const loaded = new Set();
+    const entries = new Map(content.media.map(entry => [entry.url, entry]));
+    renderMarkdown(target, content.text, document, {media: href => {
+      let url; try { url = new URL(href, window.location.href).href; } catch { return null; }
+      const entry = entries.get(url); if (!entry) return null;
+      if (loaded.has(url)) return document.createDocumentFragment();
+      loaded.add(url); return asset(entry);
+    }});
+  };
+  const keepInView = (figure, media) => {
+    media.addEventListener(media.tagName === "VIDEO" ? "loadedmetadata" : "load", () => {
+      figure.dataset.loaded = "true";
+      const scroller = figure.closest(".turns");
+      if (scroller && scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 360) scroller.scrollTop = scroller.scrollHeight;
+    }, { once: true });
+  };
+  // A generated image or video sits in the conversation itself; the reader is
+  // only for looking closer or saving.
+  const inlineMedia = (content) => {
+    const figure = document.createElement("figure");
+    figure.className = "inline-media"; figure.dataset.kind = content.kind;
+    const wrap = asset(content), media = wrap.querySelector(".media-asset");
+    keepInView(figure, media);
+    figure.append(wrap);
+    if (content.kind === "video") {
+      const expand = document.createElement("button");
+      expand.type = "button"; expand.className = "inline-media-expand"; expand.textContent = "↗"; expand.setAttribute("aria-label", "放大查看");
+      expand.addEventListener("click", () => { media.pause(); open(content, figure); });
+      figure.append(expand);
+    } else {
+      media.tabIndex = 0; media.setAttribute("role", "button"); media.setAttribute("aria-label", "查看大图");
+      media.addEventListener("click", () => open(content, figure));
+      media.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(content, figure); } });
+    }
+    return figure;
+  };
   function open(content, card) {
     if (closing) return;
     if (current) return;
@@ -177,44 +246,8 @@ export function createContentView(document, window, { onReading = () => {}, onSa
     document.body.dataset.reading = "true";
     $("readerTitle").textContent = content.title;
     body.replaceChildren();
-    const asset = (entry) => {
-      const media = document.createElement(entry.kind === "video" ? "video" : "img");
-      media.className = "media-asset";
-      if (entry.kind === "video") {
-        media.controls = true; media.playsInline = true; media.preload = "auto";
-        media.setAttribute("aria-label", entry.title);
-        media.addEventListener('ended',()=>void openPending());
-        media.addEventListener("loadedmetadata", () => {
-          if (media.videoWidth && media.videoHeight) {
-            media.width = media.videoWidth; media.height = media.videoHeight;
-            media.style.aspectRatio = `${media.videoWidth} / ${media.videoHeight}`;
-          }
-          // Decode a poster frame without playing audio or requiring a play tap.
-          // A tiny seek also paints the initial frame on WebKit.
-          if (media.paused && media.currentTime === 0 && media.duration > 0) {
-            media.currentTime = Math.min(0.001, media.duration / 2);
-          }
-        }, { once: true });
-      } else { media.alt = entry.title; media.decoding = "async"; }
-      media.referrerPolicy = "no-referrer"; media.src = entry.url;
-      const wrap = document.createElement("span");
-      wrap.className = "markdown-media";
-      const failure = document.createElement("span");
-      failure.className = "media-error"; failure.hidden = true;
-      failure.textContent = "内容暂时无法加载，可以收起后重试。";
-      media.addEventListener("error", () => { failure.hidden = false; });
-      wrap.append(media, failure); return wrap;
-    };
-    if (content.kind === "report") {
-      const loaded = new Set();
-      const entries = new Map(content.media.map(entry => [entry.url, entry]));
-      renderMarkdown(body, content.text, document, {media: href => {
-        let url; try { url = new URL(href, window.location.href).href; } catch { return null; }
-        const entry = entries.get(url); if (!entry) return null;
-        if (loaded.has(url)) return document.createDocumentFragment();
-        loaded.add(url); return asset(entry);
-      }});
-    } else body.append(asset(content));
+    if (content.kind === "report") reportMedia(body, content);
+    else body.append(asset(content));
     prepareDownload(content);
     // The page renders its status line and call controls into the reader
     // dock; the call itself, its microphone and its listeners never move.
@@ -279,7 +312,7 @@ export function createContentView(document, window, { onReading = () => {}, onSa
     }
   });
   return {
-    render(target, item, { auto = false } = {}) {
+    render(target, item, { auto = false, inline = false } = {}) {
       const contents = contentItems(item, window.location.href);
       if (!contents.length) {
         renderMarkdown(target, item.text, document);
@@ -287,6 +320,16 @@ export function createContentView(document, window, { onReading = () => {}, onSa
       }
       target.replaceChildren();
       for (const content of contents) {
+        if (inline && inlineFits(content)) {
+          if (content.kind === "report") {
+            const figure = document.createElement("div");
+            figure.className = "inline-media inline-report";
+            reportMedia(figure, content);
+            figure.querySelectorAll(".media-asset").forEach(media => keepInView(figure, media));
+            target.append(figure);
+          } else target.append(inlineMedia(content));
+          continue;
+        }
         const card = document.createElement("button");
         card.type = "button";
         card.className = "content-card";

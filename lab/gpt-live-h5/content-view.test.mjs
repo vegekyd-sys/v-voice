@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { contentItems,contentDownloads } from "./content-view.mjs";
+import { contentItems,contentDownloads,inlineFits } from "./content-view.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 
 test('short backend media caption stays with its asset in one deliverable', () => {
@@ -147,4 +147,13 @@ test('plain attachment URLs become one deliverable without exposing unsafe or du
  const result=contentItems({key:'plain',role:'assistant',complete:true,text});
  assert.equal(result.length,1);assert.equal(result[0].text,text);
  assert.deepEqual(result[0].media.map(m=>m.url),['https://cdn.test/a.jpg','https://cdn.test/a.mp4']);
+});
+
+test("generated media and short captioned media belong in the conversation; long reports stay cards", () => {
+  const items = text => contentItems({key:"m",role:"assistant",complete:true,document:true,text});
+  assert(inlineFits(items("![生成图片](https://cdn.test/a.jpg)")[0]));
+  assert(inlineFits(items("[生成视频](https://cdn.test/a.mp4)")[0]));
+  assert(inlineFits(items("一张小猫。\n![图](https://cdn.test/a.jpg)")[0]));
+  assert(!inlineFits(items("# 报告\n实际报告正文")[0]));
+  assert(!inlineFits(items("# 报告\n"+"正文".repeat(300)+"\n![图](https://cdn.test/a.jpg)")[0]));
 });

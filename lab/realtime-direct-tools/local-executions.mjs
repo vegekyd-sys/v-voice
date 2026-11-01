@@ -5,7 +5,7 @@ export const LOCAL_EXECUTION_POLICY='exec 返回 running/sessionId 后必须用 
 // Doubao has no event that starts a model turn (response.create, a user item, a
 // late tool result and input commit are all silent once the caller has spoken).
 // So the model writes its own words up front and they are used only if needed.
-const EXECUTION_FINISHED_FALLBACK={done:'刚才那个有结果了，要我说说吗？',failed:'刚才那个没拿到结果，要我说说情况吗？'};
+const EXECUTION_FINISHED_FALLBACK={done:'刚才那个弄好了。',failed:'刚才那个没弄成。'};
 const ownLine=value=>{const line=typeof value==='string'?value.trim():'';return line&&line.length<=120&&!/https?:|voice-exec-|[\r\n]/u.test(line)?line:'';};
 export const executionFinishedLine=(result,{completionLine,failureLine}={})=>result?.isError?ownLine(failureLine)||EXECUTION_FINISHED_FALLBACK.failed:ownLine(completionLine)||EXECUTION_FINISHED_FALLBACK.done;
 // What the conversation needs to act on the result later; never spoken.
@@ -57,6 +57,7 @@ export function createLocalExecutions({yieldMs=1000,maxJobs=128,settleMs=2500,no
       return null;
     },
     metadata:id=>jobs.get(id)?.metadata,
+    announced:id=>Boolean(jobs.get(id)?.announced),
     start(factory,{signal,metadata}={}) {
       signal?.throwIfAborted();
       for(const [id,job] of jobs){if(jobs.size<maxJobs)break;if(job.done&&(job.readFinal||job.announced||job.controller.signal.aborted))jobs.delete(id);}

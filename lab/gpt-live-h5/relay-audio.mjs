@@ -187,6 +187,7 @@ export function observeAudioMeters({context,input,output,onLevel,inputLevel}) {
   const timer=setInterval(()=>onLevel(context.state==='running'?{input:inputLevel?inputLevel():rms(mic,a),output:rms(speaker,b)}:{input:0,output:0}),100);
   return ()=>{clearInterval(timer);try{input?.disconnect(mic);output.disconnect(speaker);}catch{}mic.disconnect();speaker.disconnect();};
 }
+const UPLOAD_SHED_BYTES=96000,UPLOAD_RESUME_BYTES=24000,UPLOAD_STALL_MS=30000;
 export function createRelayAudio({context,stream,reservation,connection,dialStartedAt=performance.now(),onTiming=()=>{},onEvent,onError,onClosed,onPlaybackActivity=()=>{},onAudioLevel,renderReference,startCapture,subscribePcm,prepareCapture,bufferedOutput=false,greeting=true,inputGated=false}) {
   let stopMeter,stopPcm,pcmLevel=0,pcmLevelAt=0,outputMuted=false;
   const timing=name=>{try{onTiming(name);}catch{}};
@@ -211,7 +212,8 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
   const maxQueuedOutputBytes=16*1024*1024;
   let inputTrack=stream?.getAudioTracks?.()[0];
   const inputStartedAt=performance.now();let lastInputAt=null;
-  const stats={inputFrames:0,inputActiveFrames:0,maxInputGapMs:0,inputIdleMs:0,inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs,contextState:context.state,contextSampleRate:context.sampleRate,playbackDrained:false,peakInputBufferedBytes:0,inputBatches:0,nativePauses:0,nativeResumes:0};
+  let uploadStalledAt=null;
+  const stats={droppedInputFrames:0,inputFrames:0,inputActiveFrames:0,maxInputGapMs:0,inputIdleMs:0,inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs,contextState:context.state,contextSampleRate:context.sampleRate,playbackDrained:false,peakInputBufferedBytes:0,inputBatches:0,nativePauses:0,nativeResumes:0};
   const activity=value=>{if(playbackActive!==value){playbackActive=value;onPlaybackActivity(value);}};
   const send=e=>{if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(e));};
   const reportBusy=()=>{const next=stats.queuedOutputBytes>0||playbackActive;if(next!==busy){busy=next;send({type:'playback.state',speaking:busy});}};
@@ -341,7 +343,14 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
           if(backendResponseId){retiredResponses.add(backendResponseId);if(retiredResponses.size>256)retiredResponses.delete(retiredResponses.values().next().value);}
           flush();send({type:'barge-in'});}
         stats.peakInputBufferedBytes=Math.max(stats.peakInputBufferedBytes,socket.bufferedAmount);
-        if(socket.bufferedAmount>480000){uploadFailed=true;onEvent({type:'upload.backpressure',bufferedBytes:socket.bufferedAmount,inputBytes:stats.inputBytes});onError(Error('音频上传积压，请重新拨号'));return;}
+        // A slow uplink (a large download on the same link, say) sheds microphone
+        // frames so speech stays current; only an uplink that never drains ends the call.
+        if(uploadStalledAt===null?socket.bufferedAmount>UPLOAD_SHED_BYTES:socket.bufferedAmount>UPLOAD_RESUME_BYTES){
+          uploadStalledAt??=at;stats.droppedInputFrames++;
+          if(at-uploadStalledAt>UPLOAD_STALL_MS){uploadFailed=true;onEvent({type:'upload.backpressure',bufferedBytes:socket.bufferedAmount,inputBytes:stats.inputBytes});onError(Error('音频上传积压，请重新拨号'));}
+          return;
+        }
+        uploadStalledAt=null;
         inputBatch.push(frame);inputBatchBytes+=frame.byteLength;
         // Preserve the native 20ms uplink cadence across hosted proxies.
         // A speaker decision still owns interruption; batching does not.
