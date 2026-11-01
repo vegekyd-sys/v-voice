@@ -6,7 +6,7 @@
     "ui-bundle.mjs": "0ef6e94d1b806498749e3cc0a2ec2ac43f9b3d48849aa8210cf9bc2a4f3977a4",
     "app-handoff.mjs": "31705d0424c9043e64844ac047ef090fe4582f475b74d78e4b5dec04ebca3465",
     "call-view.mjs": "e7746eaccfb29243b116d5b33f5886812cf3be3660a351a5e69d4d6d366e1af7",
-    "content-view.mjs": "18bcc91eb63b6c96782c50cae85f61e8449187a5725f734131308cb8209286b5",
+    "content-view.mjs": "a28bfe781e44b35fd9e367eb222e1fbf254a25fb379729a5a2961996aa05c9be",
     "markdown.mjs": "a556476a8a88b35aba790f993a8bde333150aebab9dc7fdce14aa2e3c586ace0",
     "media-references.mjs": "ca8509fad6ef83f83f9365432652058e1a364b5adb1a199508d3239521d581f8",
     "changelog.mjs": "5c0b8d229e5b15569470a089fcad641f0e081d21056928f71b8f88ea97c23829",
@@ -132,7 +132,7 @@
   },
   "outputs": {
     "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
-    "native-h5.js": "6b39fb91b08de64741902d015a88f19f04069413c7e21186807b0cba9f6c2616",
+    "native-h5.js": "4c5fcbffddcd1a29b2a8a8056a16c2ccd225060790079bdea2d51cb0825e3047",
     "comparison.html": "7beb6c5d3e5933b5c020ddf23e200679318faa98568904f927d0553ea3d33076",
     "styles.css": "9b12c9e11bdafe1a2d25f33ba560dd34cc36562f41d0688b0f6d3443db1fedc5",
     "comparison.css": "ae9fbcffb322e32737e2ce0ed830c1b86f9f27406b4ce8b686dc8cac9f36ba16",

@@ -60,7 +60,8 @@ export function createContentView(document, window, { onReading = () => {}, onSa
     animations = [], downloadController=null, downloadMenu=null, pendingAuto=null;
   const isMedia=content=>content.kind!=='report'||Boolean(content.media?.length);
   async function openPending() {
-    if(!pendingAuto||closing||current&&(!isMedia(current)||[...body.querySelectorAll('video')].some(video=>!video.paused&&!video.ended)))return;
+    const playing=root=>[...root.querySelectorAll('video')].some(video=>!video.paused&&!video.ended);
+    if(!pendingAuto||closing||playing(document)||current&&!isMedia(current))return;
     const next=pendingAuto;pendingAuto=null;
     if(current)await close({immediate:true,openNext:false});
     if(!current&&next.card.isConnected&&['connected','ending'].includes(document.body.dataset.callState))open(next.content,next.card);
@@ -214,8 +215,8 @@ export function createContentView(document, window, { onReading = () => {}, onSa
       if (scroller && scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 360) scroller.scrollTop = scroller.scrollHeight;
     }, { once: true });
   };
-  // A generated image or video sits in the conversation itself; the reader is
-  // only for looking closer or saving.
+  // A generated image or video opens large, and stays in the conversation as
+  // itself once the reader closes.
   const inlineMedia = (content) => {
     const figure = document.createElement("figure");
     figure.className = "inline-media"; figure.dataset.kind = content.kind;
@@ -233,6 +234,22 @@ export function createContentView(document, window, { onReading = () => {}, onSa
       media.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(content, figure); } });
     }
     return figure;
+  };
+  // Short factual lookups stay quiet; reports and explicit media open by
+  // themselves while the current call is connected, once per result.
+  const openAutomatically = (content, anchor, item, auto) => {
+    const shouldOpen =
+      content.kind !== "report" || content.media?.length > 0 ||
+      item.text.length > 450 ||
+      /^#{1,3}\s/mu.test(item.text);
+    if (!auto || !shouldOpen || automatic.has(content.id)) return;
+    automatic.add(content.id);
+    window.requestAnimationFrame(() => {
+      if(anchor.isConnected&&["connected", "ending"].includes(document.body.dataset.callState)){
+        if(isMedia(content)){pendingAuto={content,card:anchor};void openPending();}
+        else if(!current)open(content,anchor);
+      }
+    });
   };
   function open(content, card) {
     if (closing) return;
@@ -327,7 +344,12 @@ export function createContentView(document, window, { onReading = () => {}, onSa
             reportMedia(figure, content);
             figure.querySelectorAll(".media-asset").forEach(media => keepInView(figure, media));
             target.append(figure);
-          } else target.append(inlineMedia(content));
+            openAutomatically(content, figure, item, auto);
+          } else {
+            const figure = inlineMedia(content);
+            target.append(figure);
+            openAutomatically(content, figure, item, auto);
+          }
           continue;
         }
         const card = document.createElement("button");
@@ -365,21 +387,7 @@ export function createContentView(document, window, { onReading = () => {}, onSa
           summary.textContent = content.summary;
           target.prepend(summary);
         }
-        // Short factual lookups remain quiet cards; reports and explicit media
-        // can open automatically while the current call is connected.
-        const shouldOpen =
-          content.kind !== "report" || content.media?.length > 0 ||
-          item.text.length > 450 ||
-          /^#{1,3}\s/mu.test(item.text);
-        if (auto && shouldOpen && !automatic.has(content.id)) {
-          automatic.add(content.id);
-          window.requestAnimationFrame(() => {
-            if(card.isConnected&&["connected", "ending"].includes(document.body.dataset.callState)){
-              if(isMedia(content)){pendingAuto={content,card};void openPending();}
-              else if(!current)open(content,card);
-            }
-          });
-        }
+        openAutomatically(content, card, item, auto);
       }
     },
     reset() {

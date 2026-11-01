@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { contentItems,contentDownloads,inlineFits } from "./content-view.mjs";
+import { contentItems,contentDownloads,createContentView,inlineFits } from "./content-view.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 
 test('short backend media caption stays with its asset in one deliverable', () => {
@@ -156,4 +156,47 @@ test("generated media and short captioned media belong in the conversation; long
   assert(inlineFits(items("一张小猫。\n![图](https://cdn.test/a.jpg)")[0]));
   assert(!inlineFits(items("# 报告\n实际报告正文")[0]));
   assert(!inlineFits(items("# 报告\n"+"正文".repeat(300)+"\n![图](https://cdn.test/a.jpg)")[0]));
+});
+
+function fakeReaderPage({playing=false}={}) {
+  const element = tag => ({
+    tagName: tag.toUpperCase(), dataset: {}, style: {}, children: [], isConnected: true, listeners: {},
+    append(...nodes) { this.children.push(...nodes); },
+    replaceChildren(...nodes) { this.children = nodes; },
+    remove() {}, focus() {}, pause() {}, setAttribute() {}, removeAttribute() {}, getAttribute() { return null; },
+    addEventListener(type, listener) { this.listeners[type] = listener; },
+    getBoundingClientRect: () => ({x: 0, y: 0, width: 0, height: 0}),
+    querySelector(selector) { return selector === ".media-asset" ? this.children[0] : null; },
+    querySelectorAll() { return []; },
+  });
+  const ids = new Map();
+  const document = {
+    body: {dataset: {callState: "connected"}},
+    createElement: element,
+    getElementById: id => { if (!ids.has(id)) ids.set(id, element("div")); return ids.get(id); },
+    querySelectorAll: () => playing ? [{paused: false, ended: false}] : [],
+  };
+  const window = {location: {href: "https://voice.test/voice/"}, requestAnimationFrame: run => run(), matchMedia: () => ({matches: true})};
+  ids.set("contentReader", Object.assign(element("div"), {hidden: true}));
+  return {document, window, layer: ids.get("contentReader")};
+}
+const mediaResult = {key: "m", role: "assistant", complete: true, document: true, text: "![生成图片](https://cdn.test/a.jpg)"};
+
+test("generated media opens large and also stays in the conversation", () => {
+  const {document, window, layer} = fakeReaderPage();
+  const view = createContentView(document, window), target = document.createElement("div");
+  view.render(target, mediaResult, {auto: true, inline: true});
+  assert.equal(target.children[0].className, "inline-media");
+  assert.equal(layer.hidden, false);
+});
+
+test("generated media opens once per result and not over a playing video", () => {
+  const quiet = fakeReaderPage();
+  const again = createContentView(quiet.document, quiet.window);
+  again.render(quiet.document.createElement("div"), mediaResult, {auto: false, inline: true});
+  assert.equal(quiet.layer.hidden, true);
+
+  const busy = fakeReaderPage({playing: true});
+  createContentView(busy.document, busy.window).render(busy.document.createElement("div"), mediaResult, {auto: true, inline: true});
+  assert.equal(busy.layer.hidden, true);
 });
