@@ -1,0 +1,35 @@
+{
+  "schema": "v-voice-production-release-v1",
+  "version": "voice-conversation-context.20261101.1",
+  "status": "DEPLOYED_SERVER_NODES_VERIFIED_REAL_CALL_PENDING",
+  "releasePR": 190,
+  "notesPR": 193,
+  "entryCommit": "de595f067686fba719f6904190b84658d727f8f0",
+  "deviceEntryCommit": "de595f067686fba719f6904190b84658d727f8f0",
+  "filesSha256": "730b13a897b988b8ac5598da5c746d19dad6089cbd8ae66c7facbaf21206ff38",
+  "iosShellRevision": "134c075ce7efdb70a8590598787733f99acdf37083c9a7ee714967ebddc54876",
+  "rollbackServiceCommit": "53f1e621745610b5a9811d00ef82cdf4ac1cc07f",
+  "serverNodesSynchronized": true,
+  "homepageChangelogVerified": true,
+  "gatewayRestarted": false,
+  "gatewayIdentityAndConfigUnchanged": true,
+  "validatedAt": "2026-11-01T14:40:00+08:00",
+  "tests": {
+    "voice": 1104,
+    "speaker": 95
+  },
+  "userConfirmed": [
+    "Tianyi tried a personal-path candidate call on an earlier build",
+    "Tianyi approved production release on 2026-11-01"
+  ],
+  "pending": [
+    "No real phone call on the released build at registration",
+    "Group entry end to end and backend task handling not tested",
+    "Doubao hands most older-detail questions to the background"
+  ],
+  "limits": [
+    "Model probes used invented chats, synthetic speech and recorded-only tools; they are not calls and prove no phone audio.",
+    "Doubao delegated other people's requests 1/3 in the production probe and 0/12 on the same prompt in Candidate; the prompt reduces this and does not prevent it.",
+    "A call that falls back without the record has none until the refused message ages out."
+  ]
+}
