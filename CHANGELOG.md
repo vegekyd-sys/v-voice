@@ -1,5 +1,10 @@
 # Changelog
 
+## Candidate — voice-doubao-liveness.20261101.1
+
+- 豆包网页电话在呼叫方短停顿时用小何缓存音频应和，并加长段倾听提示词。`VOICE_BACKCHANNEL=1` 才开启，默认关闭；iOS App 和设备未开启。
+- 未合入、未发布，无真人或真机验收。结论与证据见 [研究报告](docs/research/duplex-liveness-20261101/README.md)。
+
 ## 2026-10-30 — Formal television integration
 
 - Consolidate accepted Android TV shell 0.3.11 under `android/tv`; preserve the installed binary and its rollback. Pair with family-tv 0.4.19.

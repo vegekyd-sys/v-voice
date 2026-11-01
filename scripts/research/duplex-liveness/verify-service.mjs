@@ -17,19 +17,20 @@ const res=await service.reserve({model:'seeduplex',sessionKey:'voice-liveness-fi
 const client=new EventEmitter();client.readyState=1;client.close=()=>{};
 const gain=echo==='off'?0:10**(Number(echo)/20);let echoBuf=[];
 let ready;const readyP=new Promise(r=>{ready=r;});
-const outputs=[];
+const outputs=[];let drainAt=0,speaking=false;
 client.send=d=>{const e=JSON.parse(d);
   if(e.type==='ready')ready();
   if(e.type==='audio'){const pcm=Buffer.from(e.audio,'base64');
     outputs.push({t:t(),source:e.source??'model',responseId:e.responseId,ms:Math.round(pcm.length/48)});
-    // Residual speaker-to-microphone leak, delayed by the output itself, downsampled 3:2.
-    if(gain)for(let i=0;i+6<=pcm.length;i+=6){echoBuf.push(Math.round(pcm.readInt16LE(i)*gain),Math.round(pcm.readInt16LE(i+2)*gain));}
+    // Residual speaker-to-microphone leak of the listening sound only, downsampled 3:2.
+    drainAt=Math.max(drainAt,Date.now())+pcm.length/48;if(!speaking){speaking=true;client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:true})),false);}
+    if(gain&&e.source==='backchannel')for(let i=0;i+6<=pcm.length;i+=6){echoBuf.push(Math.round(pcm.readInt16LE(i)*gain),Math.round(pcm.readInt16LE(i+2)*gain));}
   }
 };
 service.attach(res.voiceSessionId,res.relayTicket,client);await readyP;
 t0=Date.now();let next=Date.now();
 const pace=()=>{next+=20;return new Promise(r=>setTimeout(r,Math.max(0,next-Date.now())));};
-const push=async pcm=>{const f=Buffer.from(pcm);for(let i=0;i<320&&echoBuf.length;i++)f.writeInt16LE(Math.max(-32768,Math.min(32767,f.readInt16LE(i*2)+echoBuf.shift())),i*2);client.emit('message',f,true);await pace();};
+const push=async pcm=>{if(speaking&&Date.now()>=drainAt){speaking=false;client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:false})),false);}const f=Buffer.from(pcm);for(let i=0;i<320&&echoBuf.length;i++)f.writeInt16LE(Math.max(-32768,Math.min(32767,f.readInt16LE(i*2)+echoBuf.shift())),i*2);client.emit('message',f,true);await pace();};
 const quiet=async ms=>{for(let i=0;i<ms/20;i++)await push(Buffer.alloc(640));};
 const spans=[];
 await quiet(1000);
