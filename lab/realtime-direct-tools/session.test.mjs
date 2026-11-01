@@ -1643,3 +1643,30 @@ test('a turn the provider opened and abandoned does not hold back a finished exe
  for(let i=0;i<100&&!said().includes('小猫画好了');i++)await delay(50);
  assert(said().includes('小猫画好了'));
 });
+
+test('a poll still running never claims a result; a finished one the model ignores uses its own line, not an offer',async t=>{
+ let finish;const work=new Promise(resolve=>{finish=resolve;});
+ const f=await fixture(async()=>{throw Error('must not use Gateway');},'seeduplex',{mediaCli:{forCall:async()=>({execute:()=>work})},lookupRecovery:{resultSilenceMs:60}});
+ t.after(()=>{finish({});return f.service.dispose();});
+ const call=(id,name,args)=>f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+ const said=()=>f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').map(e=>e.text);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'做个视频'});
+ call('poll-media','exec',{command:"makaron video create --video-model fal-h3-max --script 'animate'",completionLine:'小猫的视频做好了，你看看'});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='poll-media')));
+ const {sessionId}=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='poll-media').result.details;
+ f.event({type:'response.done',response:{id:'poll-media-reply',status:'completed'}});
+ await delay(1300);
+ call('poll-running','process',{action:'poll',sessionId,timeout:1});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='poll-running')));
+ f.event({type:'response.done',response:{id:'poll-running-reply',status:'completed'}});
+ await delay(600);
+ assert.deepEqual(said().filter(x=>x.includes('结果')||x.includes('小猫')),[],'nothing exists yet, so nothing is claimed');
+ finish({isError:false,media:{kind:'video',url:'https://cdn.test/poll.mp4'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
+ assert(await until(()=>f.service.presentation(f.reservation.voiceSessionId).documents.length===1));
+ call('poll-final','process',{action:'poll',sessionId,timeout:1});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='poll-final')));
+ f.event({type:'response.done',response:{id:'poll-final-reply',status:'completed'}});
+ for(let i=0;i<120&&!said().includes('小猫的视频做好了，你看看');i++)await delay(50);
+ assert.equal(said().filter(x=>x==='小猫的视频做好了，你看看').length,1);
+ assert(!said().some(x=>/要我|说说吗/u.test(x)),'no offer');
+});
