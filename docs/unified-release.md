@@ -22,6 +22,8 @@ npm run release:fleet -- publish --artifact /absolute/private/artifact-directory
 
 这个命令只在一次已授权的正式发布中执行；合入普通代码并不绕过既有上线授权。发布者必须使用本入口，不再只切网页电话服务。
 
+发布机到设备节点的直连很慢时（曾低至约 6 KB/s），可在发布机的 SSH 配置里给设备节点加一个 `ProxyJump v` 的别名，并把私有 inventory 的 `ssh` 指向它。凭据仍留在发布机，V 只转发连接。
+
 ## 通话保护
 
 ### 私有持久化目录
