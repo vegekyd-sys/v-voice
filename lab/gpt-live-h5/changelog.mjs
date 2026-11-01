@@ -198,6 +198,15 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-calendar-dial.20261102.1',date:'2026-11-02',
+    title:'个人入口能查飞书日历，拨号限制放宽',
+    items:[
+      '个人主入口查飞书日程和飞书资料，用的是你已确认的飞书身份，不再提示没有权限。',
+      '已确认身份的入口每 10 分钟最多拨 30 次，反复重拨不再轻易提示过于频繁。访客入口限制不变。',
+      'iOS App 更新到 build 41 后，右上角可以把图片和视频存到相册；旧版本仍是分享链接。',
+    ],
+  },
+  {
     version:'voice-media-direct.20261102.1',date:'2026-11-02',
     title:'电话里直接出图、出视频',
     items:[

@@ -68,7 +68,14 @@ export function createContentView(document, window, { onReading = () => {}, onSa
   }
   async function saveMedia(entry,button) {
     if(downloadController)return;
-    if(onSaveMedia){await onSaveMedia(entry);return;}
+    if(onSaveMedia){
+      if(button.getAttribute('aria-busy'))return;
+      const title=button.textContent;button.textContent='保存中…';button.setAttribute('aria-busy','true');
+      let result;try{result=await onSaveMedia(entry);}catch{result='保存失败';}
+      button.removeAttribute('aria-busy');button.textContent=result||title;
+      if(result)window.setTimeout?.(()=>{button.textContent=title;},2500);
+      return;
+    }
     const controller=new AbortController();downloadController=controller;
     const title=button.textContent;button.textContent='准备下载…';button.setAttribute('aria-busy','true');
     const timeout=setTimeout(()=>controller.abort(),30000);
@@ -90,7 +97,7 @@ export function createContentView(document, window, { onReading = () => {}, onSa
     }finally{clearTimeout(timeout);button.textContent=title;button.removeAttribute('aria-busy');if(downloadController===controller)downloadController=null;}
   }
   function prepareDownload(content) {
-    const button=$('readerDownload'),entries=contentDownloads(content);
+    const button=$('readerDownload'),entries=contentDownloads(content),saveLabel=typeof mediaSaveLabel==='function'?mediaSaveLabel():mediaSaveLabel;
     downloadMenu?.remove();downloadMenu=null;button.onclick=null;button.hidden=false;
     delete button.dataset.mediaDownload;
     if(entries[0].kind==='document'){
@@ -100,10 +107,10 @@ export function createContentView(document, window, { onReading = () => {}, onSa
     button.dataset.mediaDownload='true';button.removeAttribute('download');
     if(entries.length===1){
       const entry=entries[0];button.href=entry.url;
-      button.textContent=`↓ ${mediaSaveLabel}${mediaSaveLabel==='保存'?(entry.kind==='video'?'视频':'图片'):''}`;
+      button.textContent=`↓ ${saveLabel}${saveLabel==='保存'?(entry.kind==='video'?'视频':'图片'):''}`;
       button.onclick=event=>{event.preventDefault();void saveMedia(entry,button);};return;
     }
-    button.href='#';button.textContent=`↓ 选择${mediaSaveLabel}`;
+    button.href='#';button.textContent=`↓ 选择${saveLabel}`;
     downloadMenu=document.createElement('div');downloadMenu.className='reader-download-menu';downloadMenu.hidden=true;
     entries.forEach((entry,index)=>{
       const link=document.createElement('a');link.href=entry.url;link.textContent=`${entry.kind==='video'?'视频':'图片'} ${index+1} · ${entry.title}`;

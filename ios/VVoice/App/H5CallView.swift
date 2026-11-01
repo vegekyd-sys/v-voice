@@ -260,6 +260,10 @@ struct H5WebSurface: UIViewRepresentable {
             onReading(reading)
             return [:]
         case "avatar", "avatarEvents": return try await call.h5Cosmetic(action == "avatar" ? "avatar" : "avatar-events", body: payload, owner: owner)
+        case "saveMedia":
+            guard owned, let text = payload["url"] as? String, let url = URL(string: text), let kind = payload["kind"] as? String else { throw VoiceError.protocolMismatch }
+            try await MediaLibrarySaver.save(url: url, kind: kind)
+            return [:]
         case "share":
             guard owned, let text = payload["text"] as? String, text.utf8.count <= 200_000 else { throw VoiceError.protocolMismatch }
             let controller = UIActivityViewController(activityItems: [text], applicationActivities: nil)
