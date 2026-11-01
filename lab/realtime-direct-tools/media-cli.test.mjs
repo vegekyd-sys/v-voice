@@ -13,7 +13,7 @@ test('CLI arguments preserve quoted user content but cannot run shell or other c
 test('image-to-video requires valid media references before any subprocess or charge',async t=>{
  const {runner}=await fixture(t);
  const prefix="makaron video create --video-model fal-h3-max --image 'https://cdn.example/image.png' --script ";
- await assert.rejects(runner.execute(prefix+"'animate the cat'"),/本地校验未提交、未扣费/);
+ await assert.rejects(runner.execute(prefix+"'animate the cat'"),error=>{assert.match(error.message,/本地校验未提交、未扣费/);assert.equal(error.submission,'not-submitted');assert.equal(error.code,'invalid_arguments');return true;});
  await assert.rejects(runner.execute(prefix+"'animate <<<media_2>>>'"),/本地校验未提交、未扣费/);
  await assert.rejects(runner.execute("makaron video create --video-model fal-h3-max --script 'animate <<<media_1>>>'"),/本地校验未提交、未扣费/);
  await assert.rejects(runner.execute('makaron video status task-123'),/本通话/);
@@ -47,6 +47,7 @@ test('cancellation and timeout wait for process exit and do not resubmit uncerta
  const {runner}=await fixture(t,{timeoutMs:80});
  const result=await runner.execute(`makaron edit --image-model wan2.7-image 'hang'`);
  assert.equal(result.isError,true);assert(result.details.exitSignal);assert.match(result.content[0].text,/超时/);
+ assert.equal(result.details.submission,'unknown');assert.equal(result.details.retryable,false);
  const {runner:second}=await fixture(t);const controller=new AbortController();
  const pending=second.execute(`makaron edit --image-model wan2.7-image 'hang'`,controller.signal);
  setTimeout(()=>controller.abort(),100);const aborted=await pending;

@@ -86,8 +86,8 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
         const collect=data=>{bytes+=data.length;if(bytes>maxBytes){stop('创作结果超限；不要重新生成');return;}output+=data.toString();};
         child.stdout.on('data',collect);child.stderr.on('data',collect);
         const cleanup=()=>{clearTimeout(timer);clearTimeout(killTimer);signal?.removeEventListener('abort',abort);};
-        child.once('error',()=>{cleanup();reject(Error('Makaron CLI 无法启动'));});
-        child.once('close',(code,exitSignal)=>{cleanup();const text=output.split(environment.MAKARON_API_KEY).join('[redacted]');resolve({isError:Boolean(failure)||code!==0,content:[{type:'text',text:[text,failure].filter(Boolean).join('\n')}],details:{status:failure||code!==0?'failed':'completed',exitCode:code,exitSignal,source:'voice-local-makaron'}});});
+        child.once('error',()=>{cleanup();reject(Object.assign(Error('Makaron CLI 无法启动；本次未提交。'),{code:'executor_unavailable',submission:'not-submitted'}));});
+        child.once('close',(code,exitSignal)=>{cleanup();const text=output.split(environment.MAKARON_API_KEY).join('[redacted]');resolve({isError:Boolean(failure)||code!==0,content:[{type:'text',text:[text,failure].filter(Boolean).join('\n')}],details:{status:failure||code!==0?'failed':'completed',...(failure||code!==0?{submission:'unknown',retryable:false}:{}),exitCode:code,exitSignal,source:'voice-local-makaron'}});});
         signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
       });
       const text=result.content[0].text;
@@ -109,7 +109,7 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
     };
     return {execute:(command,signal,{reuseExisting=false,requestToken}={})=>{
       // Serialize requests and reuse even failed/unknown submissions, never spend twice.
-      let argv,parsed;try{argv=mediaArgv(command);parsed=validateMediaArgv(argv);}catch(error){return Promise.reject(error);}
+      let argv,parsed;try{argv=mediaArgv(command);parsed=validateMediaArgv(argv);}catch(error){return Promise.reject(Object.assign(error,{code:'invalid_arguments',submission:'not-submitted'}));}
       const key=JSON.stringify([parsed.verb,Object.entries(parsed.flags).sort(),parsed.positionals]);
       const creation=parsed.verb==='edit'?'image':parsed.verb==='video create'?'video':null;
       const query=parsed.verb==='video status';
