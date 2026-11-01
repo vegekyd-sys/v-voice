@@ -108,3 +108,12 @@ export function createVoiceLarkReader({environment=process.env,binary='lark-cli'
       return {read:actorRead,calendar:(args,id,signal)=>actorRead(calendarReadArgs(args),id,signal)};
     }};
 }
+
+// The owner's fixed entry reads through the same verified identity as their
+// Feishu calls; the installed guard rejects the shared private profile.
+export async function personalLarkReader(lark,login){
+  const owner=login?.actors?.find(actor=>actor.callerId==='tianyi');
+  const reader=owner&&await lark.forActor({appId:login.appId,openId:owner.openId});
+  if(reader)return reader;
+  return lark.available?{calendar:lark.calendar,read:lark.read}:{calendar:null,read:null};
+}

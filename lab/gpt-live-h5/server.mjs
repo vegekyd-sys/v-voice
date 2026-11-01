@@ -29,12 +29,15 @@ import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
 import {createTaskDelivery} from '../realtime-direct-tools/task-delivery.mjs';
 import {createVoiceMediaCli} from '../realtime-direct-tools/media-cli.mjs';
-import {createVoiceLarkReader} from '../realtime-direct-tools/lark-readonly.mjs';
+import {createVoiceLarkReader,personalLarkReader} from '../realtime-direct-tools/lark-readonly.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
 import {VOICE_CONTEXT_HISTORY_REQUEST,voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
+// Dialing is how a known caller retries; only anonymous callers keep the tight limit.
+export const callAttemptLimit = binding => binding.permissionProfile === 'unidentified' ? 6 : 30;
+
 export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, enableGrok = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
   let agentControl = null;
   if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
@@ -164,9 +167,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   const contexts = new Map(),nativeTasks=new Map(),nativeTaskOwners=new Set();let stopping=false;
   const local = { active: null, creatingSession: false, listeners: new Set(), touchedAt: Date.now(), entry: "tianyi" };
   const attempts = new Map();
-  const allow = key => {
+  const allow = (key, limit = 6) => {
     const times = (attempts.get(key) ?? []).filter(at => Date.now() - at < 600000);
-    if (times.length >= 6) return false;
+    if (times.length >= limit) return false;
     times.push(Date.now()); attempts.set(key, times); return true;
   };
   const cookie = randomBytes(32).toString("hex");
@@ -264,7 +267,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       const busy = [...contexts.values()].filter(item => item.active || item.creatingSession);
       if (!context.active && busy.length >= maxActiveSessions) return reply( 503, { error: "现在和 V 说话的人有点多，请稍后再试" });
       if (!context.active && busy.filter(item => item.ip === ip).length >= maxActiveSessionsPerIp) return reply( 429, { error: "这台设备已有通话，请先结束后再试" });
-      if (!allow(`call:${ip}`)) return reply( 429, { error: "通话开始得太频繁，请稍后再试" });
+      if (!allow(`call:${ip}`, callAttemptLimit(binding))) return reply( 429, { error: "通话开始得太频繁，请稍后再试" });
       context.ip = ip;
     }
     context.creatingSession = true;
@@ -1118,7 +1121,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     productionSpeaker=await (await import('../speaker-native/production.mjs')).createProductionSpeaker({audit:transcriptLog.audit});
     const speakerRouting=productionSpeaker?.service;
     const lark=createVoiceLarkReader({environment:process.env});
-    if(!lark.available)console.warn(JSON.stringify({type:'voice.lark-unavailable'}));
+    const feishuLoginConfig=process.env.VOICE_FEISHU_LOGIN_FILE?await readFeishuPhoneLoginFile(process.env.VOICE_FEISHU_LOGIN_FILE):undefined;
+    const personalLark=await personalLarkReader(lark,feishuLoginConfig);
+    if(!personalLark.calendar)console.warn(JSON.stringify({type:'voice.lark-unavailable'}));
     const nativeInterruptModule=process.env.VOICE_NATIVE_INTERRUPT_ASR==='1'?await import('../realtime-direct-tools/native-interrupt.mjs'):null;
     const nativeInterrupt=nativeInterruptModule
       ? ({inputSampleRate,...callbacks})=>new nativeInterruptModule.NativeInterruptAsr({apiKey:process.env.VOLCENGINE_ASR_API_KEY,inputSampleRate,...callbacks}):undefined;
@@ -1126,7 +1131,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
       mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({environment:process.env}):null,
-      calendar:lark.available?lark.calendar:null,larkRead:lark.available?lark.read:null,larkForActor:lark.forActor,
+      calendar:personalLark.calendar,larkRead:personalLark.read,larkForActor:lark.forActor,
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),
       grokExpressiveTags:process.env.XAI_VOICE_EXPRESSIVE_TAGS === '1',
@@ -1179,7 +1184,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       iosPublicEntry:process.env.VOICE_IOS_PUBLIC_ENTRY==='1',
       publicTools:process.env.VOICE_PUBLIC_TOOLS!=='0',
       iosBindingsFile:process.env.VOICE_IOS_BINDINGS_FILE??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-ios-bindings.private.json'),
-      feishuLogin: process.env.VOICE_FEISHU_LOGIN_FILE ? await readFeishuPhoneLoginFile(process.env.VOICE_FEISHU_LOGIN_FILE) : undefined,
+      feishuLogin: feishuLoginConfig,
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",
       publicOrigin: process.env.GPT_LIVE_H5_PUBLIC_ORIGIN ?? process.env.RTC_H5_PUBLIC_ORIGIN
         ?? (process.env.RTC_H5_BASE_PATH && process.env.RTC_H5_ACCESS_TOKEN ? "https://openclaw.tianyi.live" : ""),

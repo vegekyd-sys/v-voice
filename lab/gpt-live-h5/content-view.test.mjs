@@ -200,3 +200,15 @@ test("generated media opens once per result and not over a playing video", () =>
   createContentView(busy.document, busy.window).render(busy.document.createElement("div"), mediaResult, {auto: true, inline: true});
   assert.equal(busy.layer.hidden, true);
 });
+
+test("saving through the app reports the result on the button", async () => {
+  const {document, window} = fakeReaderPage();
+  const button = document.getElementById("readerDownload");
+  button.parentElement = document.createElement("div");
+  const seen = [], view = createContentView(document, window, {mediaSaveLabel: () => "保存", onSaveMedia: async entry => { seen.push(entry.url); return "已存到相册"; }});
+  view.render(document.createElement("div"), mediaResult, {auto: true, inline: true});
+  assert.equal(button.textContent, "↓ 保存图片");
+  await button.onclick({preventDefault() {}});
+  assert.deepEqual(seen, ["https://cdn.test/a.jpg"]);
+  assert.equal(button.textContent, "已存到相册");
+});

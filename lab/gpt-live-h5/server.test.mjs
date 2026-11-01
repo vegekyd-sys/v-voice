@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createLiveH5Server } from "./server.mjs";
+import { createLiveH5Server ,callAttemptLimit} from "./server.mjs";
 import {createDirectVoiceService} from '../realtime-direct-tools/session.mjs';
 import { transcriptEvent } from "./events.mjs";
 import { AVATAR_FILES } from "./avatar-state.mjs";
@@ -506,4 +506,10 @@ test('TV entry uses bundled engine without changing identity snapshot or other t
  const dsp=await fetch(f.url+'/assets/tv-aec/webrtcaec3-0.3.0.wasm');assert.match(dsp.headers.get('cache-control'),/immutable/);
  const bundle=await fetch(f.url+'/tv-entry.bundle.mjs');assert.equal(bundle.status,200);assert.match(bundle.headers.get('content-type'),/javascript/);
  assert.equal(f.calls.length,0);
+});
+
+test('only anonymous callers keep the tight dial limit',()=>{
+  assert.equal(callAttemptLimit({permissionProfile:'unidentified'}),6);
+  assert.equal(callAttemptLimit({permissionProfile:'personal-tianyi'}),30);
+  assert.equal(callAttemptLimit({permissionProfile:'feishu-current'}),30);
 });

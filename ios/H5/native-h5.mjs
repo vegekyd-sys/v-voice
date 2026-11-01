@@ -18,7 +18,7 @@ const send = async (action,payload) => {
   catch(error){view.message(String(error.message??error),'problem');throw error;}
 };
 const readerWindow={get location(){return {href:current?.baseURL??'https://voice.invalid/voice/'};},matchMedia:q=>window.matchMedia(q),requestAnimationFrame:fn=>window.requestAnimationFrame(fn),getComputedStyle:el=>window.getComputedStyle(el)};
-const content = createContentView(document,readerWindow,{mediaSaveLabel:'分享链接',onSaveMedia:entry=>send('share',{text:entry.url,title:entry.title}).catch(()=>{}),onReading:reading=>{view.set({reading});void post('reading',{reading}).catch(()=>{});if(!reading){reactions?.resume();if(pendingDocument)requestAnimationFrame(openPending);}}});
+const content = createContentView(document,readerWindow,{mediaSaveLabel:()=>current?.capabilities?.mediaSave?'保存':'分享链接',onSaveMedia:async entry=>{if(current?.capabilities?.mediaSave){try{await post('saveMedia',{url:entry.url,kind:entry.kind});}catch(error){view.message(String(error.message??error),'problem');throw error;}return '已存到相册';}await send('share',{text:entry.url,title:entry.title}).catch(()=>{});},onReading:reading=>{view.set({reading});void post('reading',{reading}).catch(()=>{});if(!reading){reactions?.resume();if(pendingDocument)requestAnimationFrame(openPending);}}});
 const cards=new Map();
 mountCallUi(document,view,{
   renderAssistant(target,row){

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
-import {buildLarkReadArgv,calendarReadArgs,createVoiceLarkReader} from './lark-readonly.mjs';
+import {buildLarkReadArgv,calendarReadArgs,createVoiceLarkReader,personalLarkReader} from './lark-readonly.mjs';
 
 function fixture(t,script){
   const home=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'voice-lark-read-')));t.after(()=>fs.rmSync(home,{recursive:true,force:true}));
@@ -93,4 +93,12 @@ test('lazy actor probes honor cancellation before starting any process',async t=
  const f=actorFixture(t),reader=await f.reader().forActor(actor),controller=new AbortController();controller.abort();
  await assert.rejects(reader.calendar({},'cancelled',controller.signal),{name:'AbortError'});
  assert(!fs.existsSync(f.home+'/calls'));
+});
+
+test('the owner entry reads through the verified owner identity',async()=>{
+ const asked=[],owner={calendar:()=>'owner',read:()=>'owner'},shared={available:true,calendar:()=>'shared',read:()=>'shared',forActor:async actor=>{asked.push(actor);return owner;}};
+ assert.equal(await personalLarkReader(shared,{appId:'app',actors:[{callerId:'tianyi',openId:'ou_1'}]}),owner);
+ assert.deepEqual(asked,[{appId:'app',openId:'ou_1'}]);
+ assert.equal((await personalLarkReader(shared,undefined)).calendar,shared.calendar);
+ assert.equal((await personalLarkReader({...shared,available:false,forActor:async()=>null},{appId:'app',actors:[{callerId:'tianyi',openId:'bad'}]})).calendar,null);
 });
