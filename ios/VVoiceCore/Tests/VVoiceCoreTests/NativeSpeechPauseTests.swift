@@ -116,3 +116,29 @@ private func frame(amplitude: Double = 0.15, hz: Double = 440) -> Data {
     _ = p.observe(Data(count: 960), enabled: false, at: 100, generationComplete: true)
     p.localSpeech(confidence: 0.99, at: 120); verify(!p.held)
 }
+
+@Test func confirmedLongUtteranceCannotResumeAnOldAudioTailAtFifteenSeconds() {
+    for complete in [false, true] {
+        var p = NativeSpeechPause()
+        let speech = frame()
+        for i in 0..<8 { _ = p.observe(speech, enabled: true, at: Double(i * 20), generationComplete: complete) }
+        p.nativeStarted(at: 160)
+        for i in 8..<1000 { _ = p.observe(speech, enabled: true, at: Double(i * 20), generationComplete: complete) }
+        verify(p.held)
+        p.nativeStopped(at: 20000)
+        verify(p.observe(Data(count: 960), enabled: true, at: 60000, generationComplete: complete))
+        p.ignored(); verify(!p.held)
+    }
+}
+
+@Test func missingServiceDispositionStillRecoversAfterLocalSpeechGoesQuiet() {
+    var p = NativeSpeechPause()
+    let speech = frame()
+    for i in 0..<8 { _ = p.observe(speech, enabled: true, at: Double(i * 20), generationComplete: true) }
+    p.nativeStarted(at: 160)
+    for i in 8..<1000 { _ = p.observe(speech, enabled: true, at: Double(i * 20), generationComplete: true) }
+    let silence = Data(count: 960)
+    verify(p.observe(silence, enabled: true, at: 20000, generationComplete: true))
+    verify(!p.observe(silence, enabled: true, at: 35000, generationComplete: true))
+    p.reset(); verify(!p.held)
+}

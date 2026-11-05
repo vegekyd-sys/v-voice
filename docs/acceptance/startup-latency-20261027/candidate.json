@@ -1,0 +1,18 @@
+{
+  "schema":"v-voice-candidate-v1",
+  "version":"voice-startup-latency.20261027.1",
+  "status":"candidate-validated-unmerged-undeployed",
+  "baseCommit":"70ea3e1",
+  "branch":"codex/voice-startup-latency-20261027",
+  "productionUnchanged":true,
+  "gatewayPolicyChange":false,
+  "crossRequestIdentityCache":false,
+  "nativeBinaryChange":false,
+  "voiceTests":1005,
+  "speakerTests":95,
+  "releaseTests":11,
+  "realModelCalls":0,
+  "realProviderMessages":0,
+  "physicalActionButtonLatency":"not measured",
+  "report":"acceptance.md"
+}

@@ -9,6 +9,14 @@ test('verified Gateway actor reaches native consult unchanged and the other acto
  assert.equal(actual.senderId,'ou_bob');assert.equal(actual.senderIsOwner,false);assert.equal(actual.voiceActor,actor);assert.equal(actual.messageProvider,'feishu');
  assert.throws(()=>service.read({taskId:result.taskId},'host:alice:group'),/authenticated/);
 });
+test('public brief is separate from the execution context and replay cannot change it',async()=>{
+ const calls=[];const s=createVoiceTasks({getConfig:()=>({}),agentRuntime:{},consult:async p=>{calls.push(p);p.onRunStarted({runId:'r'});return {text:'done'};}});
+ await s.start({...request,question:'PRIVATE_EXECUTION_CONTEXT',publicQuestion:'公开任务'},'owner');
+ assert.deepEqual(calls[0].taskPresentation,{source:'voice-direct',text:'公开任务'});assert.equal(calls[0].args.question,'PRIVATE_EXECUTION_CONTEXT');
+ await assert.rejects(s.start({...request,question:'PRIVATE_EXECUTION_CONTEXT',publicQuestion:'changed'},'owner'),/replay changed/);
+ await s.start({...request,callId:'old'},'owner');assert.equal(calls[1].taskPresentation.text,'收到一个语音后台任务。');
+ await assert.rejects(s.start({...request,callId:'invalid',publicQuestion:{}},'owner'),/public/);
+});
 function fixture(control=async()=>({ok:true,queued:true})){const done=Promise.withResolvers();let input,event,started;const service=createVoiceTasks({control,getConfig:()=>({agents:{defaults:{thinkingDefault:'off'}}}),agentRuntime:{real:true},subscribe:fn=>{event=fn;return()=>event=undefined;},consult:async p=>{input=p;p.onRunStarted({runId:'root'});return done.promise;}});const pending=service.start(request,'host',x=>started??=x);return {service,pending,done,get input(){return input;},get id(){return started.taskId;},emit:e=>event(e)};}
 test('logical task survives initial yield and uses only the SDK causal final',async()=>{
  const f=fixture();assert.equal(f.service.read({taskId:f.id},'host').status,'running');

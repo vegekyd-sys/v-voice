@@ -1,0 +1,50 @@
+{
+  "ok": true,
+  "commit": "7ce20a2de22bedba1cc32086d5f832a44539cd8c",
+  "nodes": {
+    "web": {
+      "commit": "7ce20a2de22bedba1cc32086d5f832a44539cd8c",
+      "filesSha256": "720fbf7a4960144a742c314465dd4d39e7aee86cf9b830efa9e2f4f751f5b1af",
+      "ready": true,
+      "admissionHeld": false,
+      "privateConfigRetained": true,
+      "gatewayIdentityRetained": true,
+      "policyChecks": {
+        "ok": true,
+        "providerSurfaceCases": 4,
+        "backendRules": true,
+        "unidentifiedBoundary": true,
+        "mode": "read-only-import-no-model-no-calendar-write"
+      }
+    },
+    "devices": {
+      "commit": "7ce20a2de22bedba1cc32086d5f832a44539cd8c",
+      "filesSha256": "720fbf7a4960144a742c314465dd4d39e7aee86cf9b830efa9e2f4f751f5b1af",
+      "ready": true,
+      "admissionHeld": false,
+      "privateConfigRetained": true,
+      "gatewayIdentityRetained": true,
+      "policyChecks": {
+        "ok": true,
+        "providerSurfaceCases": 4,
+        "backendRules": true,
+        "unidentifiedBoundary": true,
+        "mode": "read-only-import-no-model-no-calendar-write"
+      }
+    }
+  },
+  "publicReady": true,
+  "assets": {
+    "changelog.mjs": {
+      "matchesArtifact": true,
+      "sha256": "5c14ef97c4dc18b31ff2d7ad53d0fc9cd20740f8362c77922168d8e1c663438b"
+    },
+    "ios-shell-release.json": {
+      "matchesArtifact": true,
+      "sha256": "251b6d246f26b55a4833c1a218b334c47663fc23996698b4ba2cf7c9aedc2c82"
+    }
+  },
+  "gptLiveRuntime": "unchanged Gateway plugin; source included but not activated",
+  "realModelCalls": 0,
+  "calendarWrites": 0
+}

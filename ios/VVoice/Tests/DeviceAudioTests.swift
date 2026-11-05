@@ -7,7 +7,7 @@ import VVoiceCore
 /// Exercises physical Voice Processing I/O without opening a network connection,
 /// storing microphone samples, or contacting a model.
 @MainActor final class DeviceAudioTests: XCTestCase {
-    /// Opt-in only. Uses the existing private binding and a short paid model
+    /// Opt-in only. Uses an existing binding or an isolated Public candidate and a short paid model
     /// request. Microphone samples are neither transmitted nor stored. A local
     /// synthetic prompt and zero PCM exercise the real transport at capture cadence.
     func testLiveRelayLatencyWithSilentPhysicalCapture() async throws {
@@ -16,10 +16,22 @@ import VVoiceCore
         UIApplication.shared.isIdleTimerDisabled = true
         defer { UIApplication.shared.isIdleTimerDisabled = previousIdle }
         let fixturePath = ProcessInfo.processInfo.environment["VVOICE_LATENCY_BINDING_FILE"]
-        let store = BindingStore(service: fixturePath == nil ? "com.versa.vvoice.personal-entry" : "com.versa.vvoice.latency.\(UUID().uuidString)")
+        let publicService = ProcessInfo.processInfo.environment["VVOICE_LATENCY_PUBLIC_SERVICE"]
+        let expectedReply = ProcessInfo.processInfo.environment["VVOICE_PUBLIC_EXPECTED_REPLY"]
+        let expectedContent = ProcessInfo.processInfo.environment["VVOICE_PUBLIC_EXPECTED_CONTENT"]
+        let publicObserveSeconds = min(120, max(16, Int(ProcessInfo.processInfo.environment["VVOICE_PUBLIC_OBSERVE_SECONDS"] ?? "16") ?? 16))
+        let hangupAfterTask = ProcessInfo.processInfo.environment["VVOICE_PUBLIC_HANGUP_AFTER_TASK"] == "1"
+        let isolated = fixturePath != nil || publicService != nil
+        let store = BindingStore(service: isolated ? "com.versa.vvoice.latency.\(UUID().uuidString)" : "com.versa.vvoice.personal-entry")
+        defer { if isolated { store.remove() } }
         let api = VoiceAPI(store: store), audio = VoiceAudio(), relay = RelayTransport()
         let transportOnly = ProcessInfo.processInfo.environment["VVOICE_LATENCY_TRANSPORT_ONLY"] == "1"
-        if let fixturePath {
+        if let publicService {
+            try await api.preparePublic(baseURL: XCTUnwrap(URL(string: publicService)))
+            let first = try XCTUnwrap(api.record?.id)
+            try await api.preparePublic(baseURL: XCTUnwrap(URL(string: publicService)))
+            XCTAssertEqual(api.record?.id, first); XCTAssertEqual(api.record?.isPublic, true)
+        } else if let fixturePath {
             let file = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent(fixturePath)
             _ = try await api.bind(link: String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines))
         }
@@ -27,6 +39,7 @@ import VVoiceCore
         let status = try await api.call("status")
         guard status["activeCall"] as? Bool == false else { throw XCTSkip("A call is active") }
         var revision = 0, receivedBytes = 0, failure: Error?, firstOutput = true
+        var recognized = false, replied = false, documentReceived = false, documentSeen = false, backgroundStarted = false
         relay.onReservation = { value in
             guard let id = value["voiceSessionId"] as? String else { throw VoiceError.protocolMismatch }
             try api.rememberCall(id)
@@ -43,6 +56,15 @@ import VVoiceCore
                     if firstOutput { firstOutput = false; CallDiagnostics.record("latency.output-first", code: "bytes=\(bytes.count)") }
                     if !transportOnly { try audio.play(bytes, sequence: effect.sequence) }
                 case "audio.complete": if !transportOnly { audio.markOutputDone() }
+                case "conversation.row":
+                    if effect.row?.role == "user", effect.row?.text.isEmpty == false { recognized = true }
+                    if recognized, let row = effect.row, row.role == "assistant", !row.text.isEmpty {
+                        replied = replied || (expectedReply.map { row.text.contains($0) } ?? true)
+                    }
+                case "task.upsert": if effect.activity == "background" { backgroundStarted = true }
+                case "document.present":
+                    documentSeen = true
+                    documentReceived = effect.document.map { document in expectedContent.map { document.text.contains($0) } ?? !document.text.isEmpty } ?? false
                 default: break
                 }
             }
@@ -50,7 +72,7 @@ import VVoiceCore
         addTeardownBlock {
             await MainActor.run { audio.stop(); relay.close() }
             try? await api.recoverPreviousCall()
-            if fixturePath != nil { await MainActor.run { store.remove() } }
+            if isolated { await MainActor.run { store.remove() } }
         }
         if ProcessInfo.processInfo.environment["VVOICE_LATENCY_WEBKIT"] == "1" {
             try await compareWebKit(api: api)
@@ -86,13 +108,119 @@ import VVoiceCore
         } : nil
         defer { synthetic?.cancel() }
         audio.onPlayback = { speaking in relay.send(["type":"playback.state", "speaking":speaking || audio.queuedFrames > 0]) }
-        for index in 1...3 {
+        for index in 1...(publicService == nil ? 3 : 1) {
             attempt = index; offset = 0
             CallDiagnostics.record("latency.input-start", code: "attempt=\(attempt)")
-            try await Task.sleep(for: .seconds(16))
+            if hangupAfterTask, publicService != nil {
+                for _ in 0..<publicObserveSeconds {
+                    if backgroundStarted { try await Task.sleep(for: .seconds(2)); relay.close(); break }
+                    try await Task.sleep(for: .seconds(1))
+                }
+                XCTAssertTrue(backgroundStarted, "Hangup probe must first observe the actual background tool")
+            } else {
+                try await Task.sleep(for: .seconds(publicService == nil ? 16 : publicObserveSeconds))
+            }
         }
         CallDiagnostics.record("latency.live-test-done", code: "receivedBytes=\(receivedBytes) failed=\(failure != nil)")
-        XCTAssertNil(failure); XCTAssertGreaterThan(receivedBytes, 0)
+        XCTAssertNil(failure); if !hangupAfterTask { XCTAssertGreaterThan(receivedBytes, 0) }
+        if publicService != nil {
+            CallDiagnostics.record("public.live-result", code: "recognized=\(recognized) replied=\(replied) documentSeen=\(documentSeen) documentReceived=\(documentReceived) backgroundStarted=\(backgroundStarted) audioBytes=\(receivedBytes)")
+            XCTAssertTrue(recognized); if !hangupAfterTask { XCTAssertTrue(replied) }
+            if expectedContent != nil { XCTAssertTrue(documentReceived, "Requested Public content must arrive through the native document effect") }
+        }
+    }
+    /// Opt-in real provider A/B through the unchanged VoiceAPI, relay and physical
+    /// audio engine. Isolated Public Keychain; captured human PCM is discarded.
+    func testLivePublicRedialCleanupLatency() async throws {
+        let env = ProcessInfo.processInfo.environment
+        guard env["VVOICE_RUN_REDIAL_LATENCY"] == "1", let endpoint = env["VVOICE_LATENCY_PUBLIC_SERVICE"] else {
+            throw XCTSkip("Explicit physical live redial authorization and isolated endpoint required")
+        }
+        let store = BindingStore(service: "com.versa.vvoice.redial-benchmark.\(UUID().uuidString)")
+        let api = VoiceAPI(store: store), audio = VoiceAudio()
+        let idle = UIApplication.shared.isIdleTimerDisabled
+        UIApplication.shared.isIdleTimerDisabled = true
+        try await api.preparePublic(baseURL: XCTUnwrap(URL(string: endpoint)))
+        _ = try await api.call("status")
+        XCTAssertTrue(api.supportsFastDial)
+        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        let prompt = try Data(contentsOf: directory.appendingPathComponent("VoiceLatencyPrompt.pcm"))
+        var current: RelayTransport?
+        addTeardownBlock {
+            await MainActor.run { audio.stop(); current?.close() }
+            try? await api.recoverPreviousCall()
+            await MainActor.run { store.remove(); UIApplication.shared.isIdleTimerDisabled = idle }
+        }
+        var samples = [[String: Any]]()
+        for index in 0..<4 {
+            let pending = store.load()?.pendingVoiceID != nil
+            let start = ProcessInfo.processInfo.systemUptime
+            try await api.recoverPreviousCall()
+            let recovered = ProcessInfo.processInfo.systemUptime
+            let relay = RelayTransport(); current = relay
+            var revision = 0, received = 0, failure: Error?, firstPCM: Double?
+            relay.onReservation = { event in try api.rememberCall(try XCTUnwrap(event["voiceSessionId"] as? String)) }
+            relay.onFailure = { failure = $0 }
+            relay.onEvent = { event in
+                guard event["type"] as? String == "native.runtime", let id = relay.id else { return }
+                let frame = try NativeRuntimeFrame.decode(event, owner: id, after: revision); revision = frame.revision
+                for effect in frame.effects {
+                    switch effect.op {
+                    case "audio.clear": audio.clear()
+                    case "audio.append":
+                        let bytes = try XCTUnwrap(Data(base64Encoded: try XCTUnwrap(effect.audio)))
+                        received += bytes.count
+                        if firstPCM == nil { firstPCM = ProcessInfo.processInfo.systemUptime }
+                        try audio.play(bytes, sequence: effect.sequence)
+                    case "audio.complete": audio.markOutputDone()
+                    default: break
+                    }
+                }
+            }
+            try audio.start(); try await audio.waitUntilCapturing(); audio.beginStream()
+            // Match CallCoordinator's fresh stream boundary; sequence IDs restart per call.
+            // No capture callback is connected until after the real relay is ready.
+            try await relay.connect(session: api.session, request: api.fastDialRequest(model: "seeduplex", voice: nil))
+            let connected = ProcessInfo.processInfo.systemUptime
+            var offset = 0
+            audio.onInput = { data, _ in
+                var pcm = Data(count: data.count)
+                if offset < prompt.count {
+                    let count = min(pcm.count, prompt.count - offset)
+                    pcm.replaceSubrange(0..<count, with: prompt[offset..<(offset + count)]); offset += count
+                }
+                relay.sendAudio(pcm)
+            }
+            audio.onPlayback = { speaking in relay.send(["type":"playback.state", "speaking":speaking || audio.queuedFrames > 0]) }
+            var rendered: Double?
+            let deadline = Date().addingTimeInterval(18)
+            while Date() < deadline {
+                if rendered == nil, received > 0, (audio.playbackSampleTime ?? 0) > 0 { rendered = ProcessInfo.processInfo.systemUptime }
+                if rendered != nil, offset == prompt.count { break }
+                if failure != nil { break }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            XCTAssertNil(failure); XCTAssertNotNil(rendered); XCTAssertGreaterThan(received, 0)
+            let id = try XCTUnwrap(relay.id), saved = try XCTUnwrap(api.record)
+            let hangup = ProcessInfo.processInfo.systemUptime
+            audio.stop(); audio.onInput = nil; audio.onPlayback = nil; relay.close()
+            XCTAssertFalse(audio.isRunning); XCTAssertEqual(audio.queuedFrames, 0)
+            var closeCode = "ok"
+            do { try await api.closeCall(id, using: saved) } catch { closeCode = String(describing: error) }
+            let sample: [String: Any] = ["sample":index, "warmup":index == 0, "pendingBefore":pending,
+                "recoveryMS":Int((recovered-start)*1000), "connectedMS":Int((connected-start)*1000),
+                "firstPCMMS":firstPCM.map { Int(($0-start)*1000) } ?? -1,
+                "firstRenderMS":rendered.map { Int(($0-start)*1000) } ?? -1,
+                "closeMS":Int((ProcessInfo.processInfo.systemUptime-hangup)*1000),
+                "closeResult":closeCode, "pendingAfter":store.load()?.pendingVoiceID != nil,
+                "audioBytes":received]
+            samples.append(sample)
+            let bytes = try JSONSerialization.data(withJSONObject: samples, options: [.prettyPrinted,.sortedKeys])
+            try bytes.write(to: directory.appendingPathComponent("VoiceRedialBenchmark.json"), options: .atomic)
+            print("Physical redial sample: \(String(decoding: try JSONSerialization.data(withJSONObject: sample, options: .sortedKeys), as: UTF8.self))")
+            try await Task.sleep(for: .seconds(2))
+        }
+        await CallDiagnostics.flush()
     }
     /// Same physical phone, same saved conversation, same native runtime and PCM.
     /// Only the WebSocket implementation differs; no microphone is accessed.

@@ -92,7 +92,7 @@ test("redial keeps the group conversation but gets a new voice owner; another de
   assert.notEqual(redial.voiceSessionId, a.voiceSessionId);
   assert.equal(f.calls.filter(row => row.method === "talk.client.create")[1].params.sessionKey, creates[0].params.sessionKey);
   assert.equal(creates[0].params.sessionKey, GPT_LIVE_PERSONAL_SESSION_KEY);
-  assert.equal((await f.request("/voice/api/close?entry=tianyi", oldCookie, a)).status, 409);
+  assert.equal((await f.request("/voice/api/close?entry=tianyi", oldCookie, a)).status, 200);
   assert.equal((await (await f.request("/voice/api/status?entry=tianyi", oldCookie)).json()).activeCall, true);
 });
 
@@ -136,7 +136,10 @@ test('first-frame styles are exact and only verified cookies receive an entry hi
  const cookie=await f.visitor();
  const html=await (await f.request('/voice/',cookie)).text();
  const hint=JSON.parse(html.match(/id="voiceEntryStatus">([^<]+)<\/script>/u)[1]);
- assert.deepEqual(hint,{ready:true,preview:false,defaultModel:'gpt-live',conversation:{name:'我的 V',kind:'group',replySync:false},iosBindingAvailable:true});
+ assert.equal(hint.accessContext.entryKind,'fixed');
+ assert.equal(hint.accessContext.mode,'connected');
+ const {accessContext,...legacyHint}=hint;
+ assert.deepEqual(legacyHint,{ready:true,preview:false,defaultModel:'gpt-live',conversation:{name:'我的 V',kind:'group',replySync:false,accountLabel:'预配置账号',entryKind:'fixed',scopeNote:'账号、通话人和会话由此入口预配置；切换浏览器账号不会替换它们。'},iosBindingAvailable:true,models:[{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'}]});
  assert.doesNotMatch(html,new RegExp(token));
  const denied=await (await f.request('/voice/',cookie+'broken')).text();
  assert.doesNotMatch(denied,/id="voiceEntryStatus"/u);
@@ -183,6 +186,51 @@ test('a retired direct transport releases its visitor lock before heartbeat expi
  live.delete(old.voiceSessionId);
  const status=await(await f.request('/voice/api/status?entry=tianyi',a)).json();assert.equal(status.activeCall,false);assert.equal(status.releaseReadiness.activeCalls,0);
  const next=await(await f.request('/voice/api/session?entry=tianyi',b,{model:'seeduplex'})).json();assert.notEqual(next.voiceSessionId,old.voiceSessionId);
- assert.equal((await f.request('/voice/api/close?entry=tianyi',a,old)).status,409);
+ assert.equal((await f.request('/voice/api/close?entry=tianyi',a,old)).status,200);
  assert(live.has(next.voiceSessionId));
+});
+
+test('close acknowledges only this visitor\'s confirmed retired call and never closes a newer owner',async t=>{
+ const live=new Set(),closes=[];let id=0;
+ const directVoice={models:()=>[{id:'seeduplex',available:true}],reserve:async()=>{const voiceSessionId='retired-'+(++id);live.add(voiceSessionId);return {voiceSessionId,transport:'gateway-relay'};},hasSession:id=>live.has(id),close:async id=>{closes.push(id);live.delete(id);},dispose:async()=>{}};
+ const f=await fixture(t,{directVoice}),a=await f.visitor(),b=await f.visitor();
+ const old=await(await f.request('/voice/api/session?entry=tianyi',a,{model:'seeduplex'})).json();
+ // Socket cleanup completed before the native app's later HTTP close arrives.
+ live.delete(old.voiceSessionId);
+ for(let i=0;i<2;i++)assert.equal((await f.request('/voice/api/close?entry=tianyi',a,old)).status,200);
+ assert.deepEqual(closes,[],'Already retired transport must not be closed again');
+ assert.equal((await f.request('/voice/api/close?entry=tianyi',b,old)).status,409);
+ assert.equal((await f.request('/voice/api/close?entry=tianyi',a,{voiceSessionId:'unknown'})).status,409);
+ assert.equal((await f.request('/voice/api/heartbeat?entry=tianyi',a,old)).status,409);
+ const next=await(await f.request('/voice/api/session?entry=tianyi',a,{model:'seeduplex'})).json();
+ assert.equal((await f.request('/voice/api/close?entry=tianyi',a,old)).status,200);
+ assert(live.has(next.voiceSessionId));assert.deepEqual(closes,[]);
+ assert.equal((await f.request('/voice/api/close?entry=tianyi',a,next)).status,200);
+ assert.equal((await f.request('/voice/api/close?entry=tianyi',a,next)).status,200);
+ assert.deepEqual(closes,[next.voiceSessionId]);
+});
+
+test('a failed direct cleanup remains owned and cannot receive an already-closed acknowledgement',async t=>{
+ const live=new Set();let closes=0;
+ const directVoice={models:()=>[{id:'seeduplex',available:true}],reserve:async()=>{live.add('pending');return {voiceSessionId:'pending',transport:'gateway-relay'};},hasSession:id=>live.has(id),close:async id=>{if(++closes===1)throw Error('cleanup failed');live.delete(id);},dispose:async()=>{}};
+ const f=await fixture(t,{directVoice}),a=await f.visitor(),b=await f.visitor();
+ const owner=await(await f.request('/voice/api/session?entry=tianyi',a,{model:'seeduplex'})).json();
+ assert.equal((await f.request('/voice/api/close?entry=tianyi',a,owner)).status,500);
+ assert.equal((await f.request('/voice/api/session?entry=tianyi',b,{model:'seeduplex'})).status,409);
+ assert.equal((await f.request('/voice/api/close?entry=tianyi',a,owner)).status,200);
+ assert.equal(closes,2,'Failed cleanup must be retried, not acknowledged from the completed-call cache');
+ assert.equal((await f.request('/voice/api/close?entry=tianyi',a,owner)).status,200);
+ assert.equal(closes,2);
+});
+
+test('completed-close acknowledgements expire and retain at most four IDs per visitor',async t=>{
+ const f=await fixture(t),a=await f.visitor(),owners=[];
+ for(let i=0;i<5;i++){
+  const owner=await(await f.request('/voice/api/session?entry=tianyi',a,{})).json();owners.push(owner);
+  assert.equal((await f.request('/voice/api/close?entry=tianyi',a,owner)).status,200);
+ }
+ assert.equal((await f.request('/voice/api/close?entry=tianyi',a,owners[0])).status,409);
+ assert.equal((await f.request('/voice/api/close?entry=tianyi',a,owners[1])).status,200);
+ const now=Date.now();t.mock.method(Date,'now',()=>now+300001);
+ assert.equal((await f.request('/voice/api/close?entry=tianyi',a,owners[4])).status,409);
 });

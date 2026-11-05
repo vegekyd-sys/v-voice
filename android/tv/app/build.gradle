@@ -1,0 +1,24 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'live.tianyi.vvoice.tv'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'live.tianyi.vvoice.tv.lab'
+        minSdk 26
+        targetSdk 34
+        versionCode 123
+        versionName '0.3.11-host-focus-local'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    buildTypes { release { minifyEnabled false; signingConfig signingConfigs.debug } }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+}

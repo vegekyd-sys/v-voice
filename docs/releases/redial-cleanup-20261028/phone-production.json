@@ -1,0 +1,105 @@
+{
+  "schema": "v-voice-production-physical-redial-v1",
+  "validatedAt": "2026-10-28T23:39:53+08:00",
+  "productionCommit": "4f06888030edeb2704ecdd944b724fece900061d",
+  "device": "Physical iPhone, iOS 27.0.1",
+  "client": "Same build40 Debug test binary used for Candidate ABBA; native production sources unchanged",
+  "entry": "Production Public HTTPS; isolated test Keychain",
+  "test": "DeviceAudioTests.testLivePublicRedialCleanupLatency",
+  "samples": [
+    {
+      "audioBytes": 32768,
+      "closeMS": 633,
+      "closeResult": "ok",
+      "connectedMS": 2165,
+      "firstPCMMS": 6819,
+      "firstRenderMS": 6904,
+      "pendingAfter": false,
+      "pendingBefore": false,
+      "recoveryMS": 0,
+      "sample": 0,
+      "warmup": true
+    },
+    {
+      "audioBytes": 32768,
+      "closeMS": 646,
+      "closeResult": "ok",
+      "connectedMS": 2245,
+      "firstPCMMS": 6851,
+      "firstRenderMS": 6942,
+      "pendingAfter": false,
+      "pendingBefore": false,
+      "recoveryMS": 0,
+      "sample": 1,
+      "warmup": false
+    },
+    {
+      "audioBytes": 32768,
+      "closeMS": 684,
+      "closeResult": "ok",
+      "connectedMS": 2228,
+      "firstPCMMS": 6789,
+      "firstRenderMS": 6878,
+      "pendingAfter": false,
+      "pendingBefore": false,
+      "recoveryMS": 0,
+      "sample": 2,
+      "warmup": false
+    },
+    {
+      "audioBytes": 30720,
+      "closeMS": 663,
+      "closeResult": "ok",
+      "connectedMS": 2258,
+      "firstPCMMS": 7162,
+      "firstRenderMS": 7241,
+      "pendingAfter": false,
+      "pendingBefore": false,
+      "recoveryMS": 0,
+      "sample": 3,
+      "warmup": false
+    }
+  ],
+  "mediansMS": {
+    "recoveryMS": 0,
+    "connectedMS": 2245,
+    "firstPCMMS": 6851,
+    "firstRenderMS": 6942,
+    "closeMS": 663
+  },
+  "callsPassed": 4,
+  "redialsMeasured": 3,
+  "hardwarePlaybackCursorAdvancedAllCalls": true,
+  "audioStoppedAndQueueClearedAllCalls": true,
+  "restoredRelease": {
+    "version": "1.0.0",
+    "build": 40,
+    "archiveInstall": "success",
+    "launch": "success",
+    "installedVersionReadback": "1.0.0 (40)"
+  },
+  "beforeEvidence": {
+    "historicalPhoneRecoveryMS": [
+      972,
+      1581
+    ],
+    "historicalScope": "Earlier personal production calls, unmatched time/context; no percentage comparison",
+    "matchedCandidateComparison": "../../acceptance/redial-cleanup-20261028-physical.json",
+    "matchedProductionPhysicalBaselineAvailable": false
+  },
+  "boundaries": [
+    "Direct native VoiceAPI / RelayTransport / VoiceAudio test, not full CallCoordinator, Action Button or lock-screen UI.",
+    "Serial setup in harness differs from production overlapping preparation; connectedMS is not button-to-ready time.",
+    "Synthetic speech response timing includes input duration; not greeting latency. Physical microphone samples discarded, only synthetic speech/zero PCM sent; no human audio recorded.",
+    "Playback cursor advance demonstrates render progress, not acoustic listening acceptance.",
+    "Public scope does not exercise personal Gateway tools; no long-interruption retest.",
+    "Prior production Mac probe disconnect remains unresolved; four successful phone calls do not erase that failure."
+  ],
+  "conclusion": "Production physical phone confirms redundant redial cleanup removed. No matched physical production before/after baseline and no established overall speedup.",
+  "cost": {
+    "additionalModelCalls": 4,
+    "budgetTargetUSD": 5,
+    "absoluteCapUSD": 10,
+    "invoiceVerified": false
+  }
+}

@@ -4,7 +4,7 @@ import {V_FRONTEND_PERSONA} from '../../lab/gpt-live-h5/persona.mjs';
 
 export const VOICE_GPT_PROVIDER = 'v-voice-gpt-live';
 // Product policy belongs to this immutable Voice artifact, not Talk globals.
-export function createVoiceGptProvider({getBase,isConfigured,reservations=new Map()}) {
+export function createVoiceGptProvider({getBase,isConfigured,reservations=new Map(),deviceContexts}) {
   const provider = {
     id:VOICE_GPT_PROVIDER,label:'V GPT Live',defaultModel:'gpt-live-1-codex',models:['gpt-live-1-codex'],
     capabilities:{transports:['webrtc'],inputAudioFormats:[],outputAudioFormats:[],supportsBrowserSession:true,supportsBargeIn:true,supportsToolCalls:false,handlesAgentConsult:true},
@@ -14,20 +14,22 @@ export function createVoiceGptProvider({getBase,isConfigured,reservations=new Ma
     async createBrowserSession(request){
       const base=prepare(request.cfg);
       if(request.model!=='gpt-live-1-codex'||typeof base?.createBrowserSession!=='function')throw Error('Unsupported Voice GPT browser contract');
-      // Decorate delivery only; keep the real runner and host authority. The Gateway
-      // remains responsible for session admission, Agent tools and credentials.
+      // The platform SDK owns optional device metadata; preserve the admitted
+      // runner, account/tool authority and existing delivery lifecycle.
       const delivery=createVoiceDeliveryOwner({onTranscript:request.gatewayControl?.onTranscript,onBackendResult:request.gatewayControl?.onBackendResult});
+      const deviceContext=deviceContexts?.create(request);
+      const consult=deviceContext?.wrapConsult(request.runAgentConsult)??request.runAgentConsult;
       const taskResults=new Map(),owned={ownerConnId:request.ownerConnId,delivery,taskResults,expiresAt:Infinity};
       let secret;
       const control=request.gatewayControl?{...request.gatewayControl,
         onTranscript:(...args)=>delivery.transcript(...args),
         onBackendResult:value=>delivery.result(value),
-        onClose:(...args)=>{delivery.close();owned.expiresAt=Date.now()+600000;request.gatewayControl.onClose?.(...args);},
+        onClose:(...args)=>{deviceContext?.close();delivery.close();owned.expiresAt=Date.now()+600000;request.gatewayControl.onClose?.(...args);},
       }:undefined;
       const session=await base.createBrowserSession({...request,
         runAgentConsult:params=>{
           const wrapped=delivery.begin(params);let runId;
-          const value=request.runAgentConsult({...wrapped,onRunStarted:row=>{
+          const value=consult({...wrapped,onRunStarted:row=>{
             runId=row.runId;if(typeof runId==='string')taskResults.set(runId,{runId,status:'running'});
             wrapped.onRunStarted?.(row);
           }});
@@ -42,10 +44,11 @@ export function createVoiceGptProvider({getBase,isConfigured,reservations=new Ma
       if(typeof session.clientSecret!=='string'||!request.ownerConnId)throw Error('Voice reservation requires a host owner');
       secret=session.clientSecret;
       for(const [key,row] of reservations)if(row.expiresAt<Date.now()&&![...row.taskResults.values()].some(t=>t.status==='running'))reservations.delete(key);
-      reservations.set(session.clientSecret,owned);
+      reservations.set(session.clientSecret,owned);deviceContext?.activate(session.clientSecret);
       return session;
     },
     async cancelBrowserSession(request,session){
+      deviceContexts?.retire(session.clientSecret);
       const base=prepare(request.cfg);
       if(typeof base?.cancelBrowserSession!=='function')throw Error('Voice GPT provider cleanup contract unavailable');
       return base.cancelBrowserSession(request,session);

@@ -108,10 +108,10 @@ async function fixture(t) {
 for (const entry of entries.slice(0, 2)) test(`OAuth-to-iOS HTTP handoff retains exact ${entry.kind} conversation for native and relay calls`, async t => {
   const f = await fixture(t), browser = await f.login(entry);
   const handoff = await f.issue(entry, browser), grant = await f.redeem(entry, handoff.token);
-  assert.deepEqual(grant.conversation, {name: entry.displayName, kind: entry.kind});
+  assert.deepEqual(grant.conversation, {name: entry.displayName, kind: entry.kind, accountLabel: "飞书账号 · 1c00883a"});
   const device = await f.authorize(entry, grant.deviceAccess);
   const status = await f.api(entry, 'status', device); assert.equal(status.status, 200);
-  assert.deepEqual((await status.json()).conversation, {name: entry.displayName, kind: entry.kind, replySync: false});
+  assert.deepEqual((await status.json()).conversation, {name: entry.displayName, kind: entry.kind, replySync: false, accountLabel:'预配置账号', entryKind:'fixed', scopeNote:'账号、通话人和会话由此入口预配置；切换浏览器账号不会替换它们。'});
   assert.equal(f.calls.length, 0, 'binding and status must not start media');
   assert.equal(f.oauthRequests.length, 2, 'native device access uses its own grant, not a provider login');
   for (const model of ['gpt-live', 'seeduplex']) {
@@ -182,7 +182,7 @@ test('device-grant persistence failure is unavailable, not an expired link or a 
   await rm(f.file, {recursive: true});
   const retry = await f.issue(entry, browser);
   const recovered = await f.redeem(entry, retry.token);
-  assert.deepEqual(recovered.conversation, {name: entry.displayName, kind: entry.kind});
+  assert.deepEqual(recovered.conversation, {name: entry.displayName, kind: entry.kind, accountLabel: "飞书账号 · 1c00883a"});
 });
 
 

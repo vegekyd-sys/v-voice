@@ -1,0 +1,22 @@
+{
+  "version": "voice-ios-gpt-transport.20261027.1",
+  "date": "2026-10-27",
+  "status": "candidate_unreleased",
+  "baseCommit": "b4ed555cd3171534a9a57067b5bb8a1936ba0a34",
+  "branch": "codex/ios-gpt-live-one-fix",
+  "serverModel": "gpt-live-1-codex",
+  "transport": "webrtc",
+  "provider": "v-voice-gpt-live",
+  "latestTestFlightBuildObserved": 39,
+  "internalBuildStateObserved": "IN_BETA_TESTING",
+  "externalBuildStateObserved": "IN_BETA_TESTING",
+  "physicalInstalledBuildRead": false,
+  "validation": {"node": 1002, "swiftCore": 45, "nativeFlow": 38, "gptNative": 7, "h5Shell": 9},
+  "syntheticAudioOnly": true,
+  "paidModelCalls": false,
+  "rawAudioCaptured": false,
+  "productionChanged": false,
+  "gatewayRestarted": false,
+  "nativeAudioImplementationChanged": false,
+  "acceptance": "../../acceptance/ios-gpt-transport-20261027.md"
+}

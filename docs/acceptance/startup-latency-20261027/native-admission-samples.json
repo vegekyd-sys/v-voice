@@ -1,0 +1,64 @@
+{
+  "before": {
+    "mode": "simulated native device grant WebSocket admission; no model/audio",
+    "gatewayDelayMs": 550,
+    "samples": [
+      {
+        "n": 0,
+        "toReservationMs": 1107,
+        "membershipRequests": 2
+      },
+      {
+        "n": 1,
+        "toReservationMs": 1107,
+        "membershipRequests": 2
+      },
+      {
+        "n": 2,
+        "toReservationMs": 1104,
+        "membershipRequests": 2
+      },
+      {
+        "n": 3,
+        "toReservationMs": 1104,
+        "membershipRequests": 2
+      },
+      {
+        "n": 4,
+        "toReservationMs": 1104,
+        "membershipRequests": 2
+      }
+    ]
+  },
+  "after": {
+    "mode": "simulated native device grant WebSocket admission; no model/audio",
+    "gatewayDelayMs": 550,
+    "samples": [
+      {
+        "n": 0,
+        "toReservationMs": 557,
+        "membershipRequests": 1
+      },
+      {
+        "n": 1,
+        "toReservationMs": 553,
+        "membershipRequests": 1
+      },
+      {
+        "n": 2,
+        "toReservationMs": 552,
+        "membershipRequests": 1
+      },
+      {
+        "n": 3,
+        "toReservationMs": 552,
+        "membershipRequests": 1
+      },
+      {
+        "n": 4,
+        "toReservationMs": 553,
+        "membershipRequests": 1
+      }
+    ]
+  }
+}

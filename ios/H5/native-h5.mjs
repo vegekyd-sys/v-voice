@@ -9,7 +9,7 @@ import {mountAvatar} from '../../lab/gpt-live-h5/avatar.mjs';
 import {createAvatarReactions} from '../../lab/gpt-live-h5/avatar-reactions.mjs';
 import {createAvatarTelemetry} from '../../lab/gpt-live-h5/avatar-telemetry.mjs';
 
-let current, owner, reactions, telemetry, opened = new Set(), pendingDocument, openingDocument=false;
+let current, owner, reactions, telemetry, opened = new Set(), pendingDocument, openingDocument=false, idleCatalogOwner;
 const hiddenDocument=document.createElement('div');hiddenDocument.hidden=true;document.body.append(hiddenDocument);
 const view = createCallView();
 const post = (action, payload = {}, callID = current?.callID ?? '') => window.webkit.messageHandlers.voice.postMessage({action,payload,callID,pageID:window.__VVoicePageID});
@@ -18,12 +18,12 @@ const send = async (action,payload) => {
   catch(error){view.message(String(error.message??error),'problem');throw error;}
 };
 const readerWindow={get location(){return {href:current?.baseURL??'https://voice.invalid/voice/'};},matchMedia:q=>window.matchMedia(q),requestAnimationFrame:fn=>window.requestAnimationFrame(fn),getComputedStyle:el=>window.getComputedStyle(el)};
-const content = createContentView(document,readerWindow,{onReading:reading=>{view.set({reading});void post('reading',{reading}).catch(()=>{});if(!reading){reactions?.resume();if(pendingDocument)requestAnimationFrame(openPending);}}});
+const content = createContentView(document,readerWindow,{mediaSaveLabel:()=>current?.capabilities?.mediaSave?'保存':'分享链接',onSaveMedia:async entry=>{if(current?.capabilities?.mediaSave){view.set({message:null});try{await post('saveMedia',{url:entry.url,kind:entry.kind});}catch(error){view.message(String(error.message??error),'problem');throw error;}return '已存到相册';}await send('share',{text:entry.url,title:entry.title}).catch(()=>{});},onReading:reading=>{view.set({reading});void post('reading',{reading}).catch(()=>{});if(!reading){reactions?.resume();if(pendingDocument)requestAnimationFrame(openPending);}}});
 const cards=new Map();
 mountCallUi(document,view,{
   renderAssistant(target,row){
-    content.render(target,row,{auto:row.document===true});
-    if(row.callId){const card=target.querySelector('.content-card');if(card)cards.set(row.callId,card);}
+    content.render(target,row,{auto:row.document===true,inline:true});
+    if(row.callId){const card=target.querySelector('.content-card,[data-open-content]');if(card)cards.set(row.callId,card);}
     if(pendingDocument)requestAnimationFrame(openPending);
   },
   onDocumentShown:callId=>{if(!opened.has(callId)){opened.add(callId);void send('shown',{id:callId}).catch(()=>opened.delete(callId));}},
@@ -50,6 +50,13 @@ function startVisuals(id){
 }
 function receive(snapshot){
   if(!snapshot||typeof snapshot.callID!=='string')return;
+  if(snapshot.active)idleCatalogOwner=snapshot.callID;
+  // Existing bridge 1 shells stop local media before publishing `ending`.
+  // The remaining HTTP cleanup must not keep the phone page in the call.
+  // Keep controls unavailable until the native owner is ready for another call.
+  const cleaningUp=snapshot.phase==='ending';
+  if(cleaningUp)snapshot={...snapshot,active:false,voice:'idle',muted:true,thinking:false,canControl:false,
+    tasks:[],transcript:{history:[],current:[]},people:[],lastSpeakerID:null,listenOnly:false,notice:null,outcome:'none',homeNote:'通话已结束'};
   const changed=owner!==snapshot.callID;
   current=snapshot;
   if(changed){if(owner!==undefined)pendingDocument=null;openingDocument=false;view.set({message:null,statusText:'',statusTone:'info'});stopVisuals();content.reset();cards.clear();opened.clear();hiddenDocument.replaceChildren();owner=snapshot.callID;}
@@ -62,9 +69,9 @@ function receive(snapshot){
   if(!snapshot.bound)entry={kind:'link',title:'绑定一个会话',description:'从飞书或网页电话获取绑定链接，再到右上角设置绑定。'};
   const people=snapshot.people;
   const notice=snapshot.notice?{...snapshot.notice,at:Date.now()}:null;
-  view.set({call,voice:snapshot.voice,thinkingAt:snapshot.thinking?Date.now():null,callStartedAt:snapshot.startedAt,
-    muted:snapshot.muted,models:snapshot.models,model:snapshot.model,modelDisabled:snapshot.active,
-    grok:snapshot.grok,entry,dial:{disabled:!snapshot.bound,label:'和 V 通话'},stopLabel:call==='dialing'?'取消拨号':'结束通话',
+  view.set({nativeSettings:true,accessContext:snapshot.accessContext??null,entrySummary:snapshot.entrySummary,call,voice:snapshot.voice,thinkingAt:snapshot.thinking?Date.now():null,callStartedAt:snapshot.startedAt,
+    muted:snapshot.muted,models:snapshot.models,model:snapshot.model,modelDisabled:snapshot.active||cleaningUp,
+    grok:snapshot.grok,entry,dial:{disabled:!snapshot.bound||cleaningUp,label:'和 V 通话'},stopLabel:call==='dialing'?'取消拨号':'结束通话',
     badge:snapshot.badge,homeNote:snapshot.active?null:snapshot.homeNote,homeNoteTone:snapshot.phase==='failed'?'error':'info',
     tasks:snapshot.tasks,cancelEnabled:snapshot.tasks.length>0,transcript:snapshot.transcript,
     speaker:{multi:people.length>0,people,lastSpeakerId:snapshot.lastSpeakerID,listenOnly:snapshot.listenOnly,status:notice},
@@ -76,6 +83,19 @@ function receive(snapshot){
   reactions?.update({snapshot:snapshot.transcript,activity:snapshot.tasks.at(-1)?.activity??'idle',taskOutcome:snapshot.tasks.length?'pending':snapshot.outcome});
   document.body.dataset.nativeOwner=snapshot.callID;
   document.body.dataset.nativeReady='true';
+  refreshIdleCatalog();
+}
+function refreshIdleCatalog(){
+  const id=idleCatalogOwner;
+  if(!id||current?.callID!==id||current.active||current.phase==='ending'||!current.bound||!current.visible||document.hidden)return;
+  // A cold Action Button call can make the initial bridge handshake happen
+  // while active, when native catalog refresh is intentionally skipped. Repeat
+  // the existing bridge-1 handshake once after the call, without reloading the
+  // page or adding a status request to the dialing path.
+  idleCatalogOwner=undefined;
+  void post('ready',{bridgeVersion:1},id).then(result=>{
+    if(current?.callID===id&&!current.active&&result?.snapshot?.callID===id)receive(result.snapshot);
+  }).catch(()=>{});
 }
 async function openPending(){
   if(!pendingDocument||document.hidden||openingDocument||view.get().reading)return;
@@ -92,7 +112,7 @@ async function openPending(){
   finally{if(openingDocument===request){openingDocument=false;if(pendingDocument&&pendingDocument!==id)requestAnimationFrame(openPending);}}
 }
 window.VVoiceH5={receive,openDocument(id){pendingDocument=id;if(view.get().reading)document.getElementById('readerBack').click();else requestAnimationFrame(openPending);},showConversation(){pendingDocument=null;if(view.get().reading)document.getElementById('readerBack').click();},stopMedia(){for(const media of document.querySelectorAll('audio,video'))media.pause();}};
-document.addEventListener('visibilitychange',()=>{if(document.hidden){window.VVoiceH5.stopMedia();void telemetry?.flush();}else{reactions?.resume();requestAnimationFrame(openPending);}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){window.VVoiceH5.stopMedia();void telemetry?.flush();}else{reactions?.resume();refreshIdleCatalog();requestAnimationFrame(openPending);}});
 window.addEventListener('pagehide',stopVisuals);
 // H5's Markdown download uses a blob URL; pass the same bytes to the iOS share UI.
 document.getElementById('readerDownload').addEventListener('click',event=>{

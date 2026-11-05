@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createLiveH5Server } from "./server.mjs";
+import { createLiveH5Server ,callAttemptLimit} from "./server.mjs";
+import {createDirectVoiceService} from '../realtime-direct-tools/session.mjs';
 import { transcriptEvent } from "./events.mjs";
 import { AVATAR_FILES } from "./avatar-state.mjs";
 import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
@@ -15,7 +16,7 @@ async function fixture(t, overrides = {}) {
   } };
   if (overrides.gatewayReady !== undefined) gateway.ready = overrides.gatewayReady;
   const offers = [];
-  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate });
+  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, enableGrok: overrides.enableGrok ?? true, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, gptProvider:overrides.gptProvider, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate });
   await new Promise((resolve) => bridge.server.listen(0, "127.0.0.1", resolve));
   t.after(() => bridge.dispose());
   const url = `http://127.0.0.1:${bridge.server.address().port}`;
@@ -26,8 +27,8 @@ async function fixture(t, overrides = {}) {
 
 test("exact native model reservation and SDP proxy keep credentials off the browser", async (t) => {
   const f = await fixture(t);
-  const created = await f.request("session"); assert.equal(created.status, 200);
-  const result = await created.json(); assert.deepEqual(result, { voiceSessionId: "voice-private", model: "gpt-live-1-codex" });
+  const created = await f.request("session", {model:"gpt-live",inputPolicy:"native",nativeRuntimeVersion:1}); assert.equal(created.status, 200);
+  const result = await created.json(); assert.deepEqual(result, { voiceSessionId: "voice-private", model: "gpt-live-1-codex", transport: "webrtc" });
   assert.equal(f.calls[0].params.model, "gpt-live-1-codex"); assert.equal(f.calls[0].params.transport, "webrtc");
   assert.equal(f.calls[0].params.sessionKey, GPT_LIVE_PERSONAL_SESSION_KEY);
   const answer = await f.request("offer", { voiceSessionId: result.voiceSessionId, sdp: "v=0\r\noffer" });
@@ -421,4 +422,94 @@ test('backend helper uses the bounded HTTP device channel without browser identi
  child.stdin.end(JSON.stringify({version:1,endpoint,lease,voiceSessionId:'owned-call'}));
  assert.equal(await ended,0,stderr);assert.equal(JSON.parse(stdout).status,'ok');
  assert.deepEqual(calls,[{lease,operation:'notes.create',args:{title:'fixture'}}]);assert(!stdout.includes(lease));
+});
+
+test('GPT binds only a backend-verified current device channel and never exposes its lease or helper to the client',async t=>{
+ let descriptor;class Server{close(){}}
+ const directVoice=createDirectVoiceService({gateway:{},wsModule:{WebSocketServer:Server},backendDeviceBundle:{root:'/real-backend',sha256:'a'.repeat(64)},backendDeviceBundleProbe:async value=>{
+  descriptor=value.descriptor;
+  const response=await fetch(descriptor.endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({lease:descriptor.lease,operation:'device.probe',args:{challenge:'actual-http'}})});
+  return response.ok&&(await response.json()).result.challenge==='actual-http';
+ }});
+ const calls=[];
+ const f=await fixture(t,{directVoice,gptProvider:'v-voice-gpt-live',request:(method,params,reservation)=>{calls.push({method,params});return method==='talk.client.create'?reservation:{accepted:true};}});
+ const created=await f.request('session',{nativeDeviceActions:{version:1,capabilities:{'location.current':{status:'prompt'}}}});assert.equal(created.status,200);
+ const reply=await created.json();assert.equal(reply.nativeDeviceActions.version,1);assert.match(reply.callerContext.text,/location.current/);
+ assert(!JSON.stringify(reply).includes(descriptor.lease));assert(!JSON.stringify(reply).includes('/real-backend'));assert(!JSON.stringify(reply).includes('clientSecret'));
+ assert.equal(calls.find(c=>c.method==='voice.product.device-context'&&c.params.revision===1).params.bridge.lease,descriptor.lease);
+ const frame={type:'device.capabilities',version:1,voiceSessionId:reply.voiceSessionId,revision:1,capabilities:{'location.current':{status:'denied'}}};
+ assert.equal((await f.request('device-result',{voiceSessionId:'foreign',frame})).status,409);
+ assert.equal((await f.request('device-result',{voiceSessionId:reply.voiceSessionId,frame,actor:'other'})).status,409);
+ assert.equal((await f.request('device-result',{voiceSessionId:reply.voiceSessionId,frame})).status,200);
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(calls.find(c=>c.params.revision===2)?.params.terminal.capabilities['location.current'].status,'denied');
+ await f.request('close',{voiceSessionId:reply.voiceSessionId});
+ const expired=await fetch(descriptor.endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({lease:descriptor.lease,operation:'device.probe',args:{challenge:'late'}})});assert(!expired.ok);
+ assert.equal((await f.request('device-result',{voiceSessionId:reply.voiceSessionId,frame})).status,409);
+});
+test('a Gateway without GPT device support keeps the old call and advertises no usable device channel',async t=>{
+ let opened=false;const directVoice={models:()=>[],openDeviceChannel(){opened=true;},dispose:async()=>{}};
+ const f=await fixture(t,{directVoice,gptProvider:'v-voice-gpt-live',request:(method,params,reservation)=>{if(method==='voice.product.device-context')throw Error('unknown method');return method==='talk.client.create'?reservation:{ok:true};}});
+ const result=await (await f.request('session',{nativeDeviceActions:{version:1,capabilities:{'location.current':{status:'prompt'}}}})).json();
+ assert.equal(result.voiceSessionId,'voice-private');assert.equal(result.nativeDeviceActions,undefined);assert.equal(opened,false);
+});
+
+test('ordinary phone catalog omits Grok in HTML/status and refuses a stale preference without ending the active call',async t=>{
+ const directVoice={models:()=>[{id:'seeduplex',available:true},{id:'grok',available:true}],dispose:async()=>{}};
+ const f=await fixture(t,{enableGrok:false,defaultModel:'grok',directVoice});
+ const html=await(await fetch(f.url)).text();assert.doesNotMatch(html,/"id":"grok"/);
+ const status=await(await fetch(f.url+'/api/status?model=grok&enableGrok=1',{headers:{cookie:f.cookie}})).json();
+ assert.deepEqual(status.models.map(m=>m.id),['gpt-live','seeduplex']);assert.equal(status.defaultModel,'seeduplex');
+ await f.request('session',{model:'gpt-live'});
+ const blocked=await f.request('session',{model:'grok'});assert.equal(blocked.status,409);assert.equal((await blocked.json()).code,'model_hidden');
+ assert.equal(f.calls.filter(c=>c.method==='talk.client.close').length,0);
+ assert.equal((await(await fetch(f.url+'/api/status',{headers:{cookie:f.cookie}})).json()).activeCall,true);
+});
+test('test phone catalog explicitly exposes Grok and keeps provider reservation',async t=>{
+ const reserved=[];const directVoice={models:()=>[{id:'seeduplex',available:true},{id:'grok',available:true}],reserve:async p=>{reserved.push(p);return {voiceSessionId:'test-grok',transport:'gateway-relay'};},close:async()=>{},dispose:async()=>{}};
+ const f=await fixture(t,{enableGrok:true,defaultModel:'grok',directVoice});
+ const status=await(await fetch(f.url+'/api/status',{headers:{cookie:f.cookie}})).json();assert.equal(status.models.at(-1).id,'grok');
+ assert.equal((await f.request('session',{model:'grok'})).status,200);assert.equal(reserved[0].model,'grok');
+});
+test('Grok visibility defaults off independently of preview and candidate labels',async t=>{
+ const bridge=createLiveH5Server({preview:true,candidateRelease:{title:'test'},defaultModel:'grok',directVoice:{models:()=>[{id:'grok',available:true}],dispose:async()=>{}}});
+ await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
+ const html=await(await fetch(`http://127.0.0.1:${bridge.server.address().port}`)).text();
+ assert.doesNotMatch(html,/"id":"grok"/);assert.match(html,/"defaultModel":"gpt-live"/);
+});
+test('TV first HTML is transparent before modules run; regular Web and legacy TV keep their presentation',async t=>{
+ const f=await fixture(t,{preview:true});
+ for(const [query,expected] of [
+  ['?tv=1&tvShell=1&tvSurface=1',/data-tv="true" data-tv-layout="medium" data-tv-presented="false"/],
+  ['?tv=1&tvShell=1',/data-tv="true" data-tv-layout="medium" data-tv-presented="true"/],
+  ['?tv=1',/data-tv="true" data-tv-layout="full" data-tv-presented="true"/],
+ ]){
+  const html=await(await fetch(f.url+'/'+query,{headers:{cookie:f.cookie}})).text();
+  assert.match(html.split('</head>')[0],expected);
+  assert.match(html,/<style data-voice-entry>/);
+ }
+ for(const query of ['','?tvShell=1&tvSurface=1']){
+  const html=await(await fetch(f.url+'/'+query,{headers:{cookie:f.cookie}})).text();
+  assert.match(html,/<html lang="zh-CN">/);assert.doesNotMatch(html.split('</head>')[0],/<html[^>]*data-tv=/);
+ }
+ assert.equal(f.calls.length,0);
+});
+
+test('TV entry uses bundled engine without changing identity snapshot or other terminals',async t=>{
+ const f=await fixture(t,{preview:true});
+ const tv=await (await fetch(`${f.url}/?tv=1&tvShell=1&tvSurface=1&tvOverlay=1`)).text();
+ assert.match(tv,/src="\.\/tv-entry.bundle.mjs"/);assert.doesNotMatch(tv,/src="\.\/app.js"/);
+ assert.doesNotMatch(tv,/modulepreload" href="\.\/app.js/);assert.doesNotMatch(tv,/modulepreload" href="\.\/ui-bundle/);
+ assert.match(tv,/id="voiceEntryStatus"/);assert.match(tv,/src="\.\/tv-startup.bundle.mjs"/);
+ assert.match(tv,/data-tv-presented="false"/);
+ const normal=await (await fetch(f.url+'/')).text();assert.match(normal,/src="\.\/app-bundle.mjs\?v=/);
+ assert.match(tv,/as="fetch" type="application\/wasm"/);
+ const dsp=await fetch(f.url+'/assets/tv-aec/webrtcaec3-0.3.0.wasm');assert.match(dsp.headers.get('cache-control'),/immutable/);
+ const bundle=await fetch(f.url+'/tv-entry.bundle.mjs');assert.equal(bundle.status,200);assert.match(bundle.headers.get('content-type'),/javascript/);
+ assert.equal(f.calls.length,0);
+});
+
+test('only anonymous callers keep the tight dial limit',()=>{
+  assert.equal(callAttemptLimit({permissionProfile:'unidentified'}),6);
+  assert.equal(callAttemptLimit({permissionProfile:'personal-tianyi'}),30);
+  assert.equal(callAttemptLimit({permissionProfile:'feishu-current'}),30);
 });

@@ -107,8 +107,9 @@ export class GrokVoiceBridge {
   speakProgress(text){this.send({type:'conversation.item.create',item:{type:'force_message',role:'assistant',interruptible:true,content:[{type:'output_text',text}]}});}
   beginBackgroundTool(callId){
     this.backgroundTools.add(callId);
-    this.submitToolResult(callId,{accepted:true,status:'working',instruction:'后台继续执行；正常回应用户聊天，有真正新进展或最终结果时会主动回来。不要声称已完成。'});
+    this.submitToolResult(callId,{accepted:true,status:'working',instruction:'只用一句极短的话自然回应（比如“好，我去看看”），不提后台或交接。之后正常回应用户聊天，有真正新进展或最终结果时会主动回来。结果回来之前不能说好了、查到了、有结果了。'});
   }
+  adoptBackgroundTool(callId){this.backgroundTools.add(callId);}
   completeBackgroundTool(callId,result,options={}){
     if(!this.backgroundTools.delete(callId)||result?.cancelled)return;
     const text=result?.result??(result?.error?`V 后台没有完成：${result.error}`:null);
@@ -137,7 +138,7 @@ export class GrokVoiceBridge {
     if(e.type==='conversation.item.input_audio_transcription.completed'&&e.transcript)this.request.onTranscript?.('user',e.transcript,true,undefined,{turnId:e.item_id});
     if(['response.output_audio_transcript.delta','response.audio_transcript.delta'].includes(e.type))this.caption(e,false);
     if(['response.output_audio_transcript.done','response.audio_transcript.done'].includes(e.type))this.caption(e,true);
-    if(['response.output_audio.delta','response.audio.delta'].includes(e.type)&&e.delta)this.request.onAudio?.(Buffer.from(e.delta,'base64'));
+    if(['response.output_audio.delta','response.audio.delta'].includes(e.type)&&e.delta)this.request.onAudio?.(Buffer.from(e.delta,'base64'),{responseId:e.response_id??this.activeResponse});
     if(e.type==='response.function_call_arguments.done'){
       if(!e.call_id||!e.name||typeof e.arguments!=='string')return this.fail('Grok Voice 工具调用不完整');
       const previous=this.calls.get(e.call_id);

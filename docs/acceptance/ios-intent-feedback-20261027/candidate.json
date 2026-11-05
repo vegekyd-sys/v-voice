@@ -1,0 +1,19 @@
+{
+  "schema":"v-voice-ios-candidate-v1",
+  "version":"voice-ios-intent-feedback.20261027.1",
+  "status":"local-native-candidate-unmerged-undistributed",
+  "baseCommit":"70ea3e1",
+  "branch":"codex/ios-intent-feedback-20261027",
+  "requiresNewNativeBinary":true,
+  "simulatorBuildVersion":39,
+  "simulatorVersionNote":"local Debug build; not a new distributed build 39",
+  "physicalInstalledVersion":"not checked or changed",
+  "productionChanged":false,
+  "gatewayOrPermissionPolicyChanged":false,
+  "nativeRegressionTests":77,
+  "finalStartupAndBindingRetest":19,
+  "coreTests":45,
+  "serverSubsetTests":127,
+  "physicalActionButtonAcceptance":"not performed",
+  "report":"acceptance.md"
+}

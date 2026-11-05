@@ -1,0 +1,24 @@
+{
+  "nativeBuild": 40,
+  "serverCommit": "a1146b3",
+  "device": "iPhone 17 Pro",
+  "tests": 3,
+  "passed": 3,
+  "failed": 0,
+  "continuousPlayback": {
+    "observedMS": 16020,
+    "falsePauses": 0,
+    "queuedStallMS": 0
+  },
+  "confirmedInterruptionPauseMS": 711,
+  "quietShortSpeechHoldMS": 807,
+  "speakerSelfInterrupts": 0,
+  "newAnswerConfirmed": true,
+  "rawMicrophoneAudioStored": false,
+  "input": "existing synthetic speech fixtures through physical cadence; acoustic test uses physical microphone transiently",
+  "limitations": [
+    "Same synthetic prompts as build32; prior baseline is historical, not a new paired run",
+    "Action Button-to-first-visible-feedback and 20-second human insertion require human acceptance",
+    "Release archive restored after Debug test host"
+  ]
+}

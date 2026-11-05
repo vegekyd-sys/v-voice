@@ -1,0 +1,20 @@
+{
+  "version": "voice-startup-latency.20261027.3",
+  "voiceTests": 1017,
+  "voiceFailures": 0,
+  "speakerTests": 95,
+  "fleetTests": 11,
+  "buildUi": "passed",
+  "iosShellCheck": "passed",
+  "platformFilesChanged": false,
+  "gatewayRestartedByThisTask": false,
+  "realModelSessions": 0,
+  "physicalPhoneTested": false,
+  "nativeSourceChanges": false,
+  "sourceSha256": {
+    "lib/feishu-conversation-directory.mjs": "b45eb264e00ce82c81197bc929e1d78a80cb02e97f8846f33b4021150a379b2b",
+    "lab/realtime-direct-tools/session.mjs": "bc9fb9ca93079aa8f3fdd4416aa028cc043d0cab3ea3bf0ee5e54db2451579b1",
+    "lab/gpt-live-h5/server.mjs": "6e8fbb3c981e8478f29ce8c9d671cbb208494cedf1713f954c502f15de323aae",
+    "lab/realtime-direct-tools/lark-readonly.mjs": "037ec5a985e7e9ae739bb49328819376195218d8e43250cc0071fc1f8d672466"
+  }
+}

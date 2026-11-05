@@ -17,12 +17,27 @@ import VVoiceCore
         let (d, _) = try await URLSession.shared.data(from: base.appendingPathComponent("fixture/state"))
         return try JSONSerialization.jsonObject(with: d) as! [String: Any]
     }
-    private func client(audio: VoiceAudio = VoiceAudio()) async throws -> CallCoordinator {
+    private func client(audio: VoiceAudio = VoiceAudio(), store suppliedStore: BindingStore? = nil) async throws -> CallCoordinator {
         try await fixture("reset")
-        let store = BindingStore(service: "com.versa.vvoice.tests.\(UUID().uuidString)")
+        let store = suppliedStore ?? BindingStore(service: "com.versa.vvoice.tests.\(UUID().uuidString)")
         try store.save(StoredBinding(binding: VoiceBinding(testingBaseURL: base.appendingPathComponent("voice/")), cookie: "v_voice_access=fixture-cookie"))
         let call = CallCoordinator(api: VoiceAPI(store: store), audio: audio); call.sceneChanged(.active)
-        addTeardownBlock { await call.end(); await MainActor.run { call.forget() } }
+        // Finish foreground status discovery before a test changes fixture capabilities.
+        try await until { !call.modelOptions.isEmpty }
+        let stateURL = base.appendingPathComponent("fixture/state")
+        addTeardownBlock { @MainActor in
+            await call.end()
+            let deadline = Date().addingTimeInterval(10)
+            var retired = false
+            while Date() < deadline {
+                let (data, _) = try await URLSession.shared.data(from: stateURL)
+                let snapshot = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+                if snapshot["active"] is NSNull { retired = true; break }
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            XCTAssertTrue(retired, "Background cleanup must finish before resetting the fixture")
+            call.forget()
+        }
         return call
     }
     private func until(_ predicate: @MainActor () async throws -> Bool, timeout: Double = 10, file: StaticString = #filePath, line: UInt = #line) async throws {
@@ -111,6 +126,7 @@ import VVoiceCore
     }
     func testReportWaitsForBackgroundAndUpdatedReportReopensAfterManualFold() async throws {
         let call = try await client()
+        await CallDiagnostics.flush()
         try? FileManager.default.removeItem(at: lifecycleFile)
         try await call.startOrContinue()
         call.sceneChanged(.inactive)
@@ -228,6 +244,40 @@ import VVoiceCore
         XCTAssertEqual(call.phase, .listening)
         await call.end()
     }
+    func testColdIntentShowsCallingWhileOldActivityRetirementIsBlocked() async throws {
+        @MainActor final class RetirementGate {
+            var started = false
+            var continuation: CheckedContinuation<Void, Never>?
+            func wait() async { started = true; await withCheckedContinuation { continuation = $0 } }
+            func release() { continuation?.resume(); continuation = nil }
+        }
+        try await fixture("reset"); try await fixture("slow-session", ["ms": 1200])
+        let store = BindingStore(service: "com.versa.vvoice.intent-startup.\(UUID().uuidString)")
+        try store.save(StoredBinding(binding: VoiceBinding(testingBaseURL: base.appendingPathComponent("voice/")), cookie: "v_voice_access=fixture-cookie"))
+        let gate = RetirementGate(), api = VoiceAPI(store: store)
+        let call = CallCoordinator(api: api, retireActivities: { await gate.wait() })
+        let previousModel = call.model; call.model = .seeduplex
+        defer { gate.release(); call.model = previousModel }
+        addTeardownBlock { await MainActor.run { gate.release() }; await call.end(); await MainActor.run { store.remove() } }
+        let started = ProcessInfo.processInfo.systemUptime
+        let connecting = Task { try await call.startOrContinue(fromIntent: true) }
+        try await until { gate.started && Activity<CallAttributes>.activities.contains { $0.attributes.callID == call.presentationID } }
+        let feedbackMS = Int((ProcessInfo.processInfo.systemUptime - started) * 1000)
+        XCTAssertLessThan(feedbackMS, 1000, "Initial feedback must not wait for stale activity retirement or network readiness")
+        XCTAssertNotNil(gate.continuation, "Retirement must still be blocked when new feedback is already present")
+        XCTAssertEqual(call.phase, .connecting)
+        CallDiagnostics.record("intent.fixture-feedback", code: "ms=\(feedbackMS)")
+        gate.release(); try await connecting.value; await call.end()
+    }
+    func testLifecycleDiagnosticsKeepOrderedMonotonicStartupStages() async throws {
+        CallDiagnostics.record("intent.fixture.begin")
+        CallDiagnostics.record("intent.fixture.created")
+        await CallDiagnostics.flush()
+        let rows = try JSONDecoder().decode([[String: String]].self, from: Data(contentsOf: lifecycleFile))
+        let stages = rows.filter { ["intent.fixture.begin", "intent.fixture.created"].contains($0["event"] ?? "") }.suffix(2)
+        XCTAssertEqual(stages.compactMap { $0["event"] }, ["intent.fixture.begin", "intent.fixture.created"])
+        XCTAssertEqual(stages.compactMap { $0["uptimeMS"].flatMap(Int.init) }.count, 2)
+    }
     func testBackgroundConnectionAndLongReplyRequestAttentionWithoutAnotherCall() async throws {
         let call = try await client()
         let file = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -237,6 +287,7 @@ import VVoiceCore
             return rows.filter { $0["event"] == "island.attention.requested" }.compactMap { $0["code"] }
         }
         // This is only the simulator fixture client's cache, never a real binding.
+        await CallDiagnostics.flush()
         try? FileManager.default.removeItem(at: file)
         call.sceneChanged(.background)
         try await call.startOrContinue()
@@ -345,6 +396,22 @@ import VVoiceCore
         XCTAssertEqual(call.phase, .speaking, "late old clear cannot clear the current new response")
         try await until({ call.phase == .listening }, timeout: 2)
     }
+    func testHiddenGrokPreferenceRefreshesIntoSharedH5WithoutDialing() async throws {
+        let call = try await client()
+        call.model = .grok
+        try await fixture("production-models")
+        await call.refreshOptions()
+        XCTAssertEqual(call.model, .seeduplex)
+        XCTAssertFalse(call.modelOptions.contains { $0.id == "grok" })
+        XCTAssertTrue(call.grokVoices.isEmpty)
+        let snapshot = H5Snapshot.make(call, visible: true)
+        XCTAssertFalse((snapshot["models"] as? [[String: Any]] ?? []).contains { $0["id"] as? String == "grok" })
+        let state = try await stats()
+        XCTAssertEqual(state["sessions"] as? Int, 0)
+        try await fixture("test-models")
+        await call.refreshOptions()
+        XCTAssertTrue(call.modelOptions.contains { $0.id == "grok" && $0.available })
+    }
     func testGrokVoiceChoiceIsSentAndGPTNativeOptionIsAvailable() async throws {
         let call = try await client()
         await call.refreshOptions()
@@ -358,31 +425,34 @@ import VVoiceCore
         XCTAssertNil(request?["inputPolicy"])
         await call.end()
     }
-    func testRealCapturePlaybackMuteRepeatTriggerAndRedial() async throws {
+    func testBoundActionButtonCapturePlaybackMuteRepeatTriggerAndRedial() async throws {
         let call = try await client()
         defer { call.forget() }
-        try await call.startOrContinue()
+        XCTAssertFalse(call.needsSetup)
+        XCTAssertTrue(call.activitiesEnabled)
+        try await call.startOrContinue(fromIntent: true)
         try await until { try await self.stats()["inputBytes"] as? Int ?? 0 > 1920 }
-        try await call.startOrContinue()
+        try await call.startOrContinue(fromIntent: true)
         let snapshot1 = try await stats()
         XCTAssertEqual(snapshot1["sessions"] as? Int, 1)
         call.toggleMute(); XCTAssertTrue(call.muted)
         let zeroBefore = try await stats()["zeroBytes"] as? Int ?? 0
         try await until { try await self.stats()["zeroBytes"] as? Int ?? 0 > zeroBefore + 1920 }
-        try await call.startOrContinue(); XCTAssertFalse(call.muted)
+        try await call.startOrContinue(fromIntent: true); XCTAssertFalse(call.muted)
         try await fixture("audio")
         try await until { call.phase == .speaking }
         try await until { call.phase == .listening }
         // A later response must enter speaking again after the player drains.
         try await fixture("audio"); try await until { call.phase == .speaking }
         await call.end(); XCTAssertEqual(call.phase, .ended)
+        try await until { (try await self.stats())["active"] is NSNull }
         let snapshot2 = try await stats()
         XCTAssertNil(snapshot2["active"] as? String)
         let finalBytes = try await stats()["inputBytes"] as? Int
         try await Task.sleep(for: .milliseconds(350))
         let snapshot3 = try await stats()
         XCTAssertEqual(snapshot3["inputBytes"] as? Int, finalBytes)
-        try await call.startOrContinue()
+        try await call.startOrContinue(fromIntent: true)
         let snapshot4 = try await stats()
         XCTAssertEqual(snapshot4["sessions"] as? Int, 2)
         // A new relay restarts audio sequence numbers; greeting must still play.
@@ -394,6 +464,7 @@ import VVoiceCore
         try await call.startOrContinue()
         try await fixture("end")
         try await until { call.phase == .ended }
+        try await until { (try await self.stats())["active"] is NSNull }
         let snapshot5 = try await stats()
         XCTAssertNil(snapshot5["active"] as? String)
         call.forget()
@@ -503,9 +574,10 @@ import VVoiceCore
     func testCaptionPreviewCanBeHiddenWithoutStoppingAudio() async throws {
         let call = try await client(); try await call.startOrContinue()
         let prior = call.islandCaptions; defer { call.islandCaptions = prior }
+        call.islandCaptions = true
         try await fixture("demo")
-        try await until { call.conversation.turns.count >= 3 }
-        XCTAssertTrue(call.activityState.caption.contains("日程"))
+        // Await the actual rendered caption; a late greeting may satisfy the turn count first.
+        try await until { call.activityState.caption.contains("日程") }
         call.islandCaptions = false
         XCTAssertTrue(call.activityState.caption.isEmpty)
         XCTAssertTrue(call.active)
@@ -628,6 +700,82 @@ import VVoiceCore
         XCTAssertEqual(snapshot["sessions"] as? Int, 2)
         XCTAssertEqual(snapshot["closeRequests"] as? Int, 1)
         XCTAssertTrue(call.active)
+    }
+
+    func testManualHangupFinishesLocallyBeforeSlowServerCleanup() async throws {
+        let audio = VoiceAudio(), call = try await client(audio: audio)
+        try await call.startOrContinue()
+        try await fixture("report")
+        try await until { !call.documents.isEmpty }
+        try await fixture("slow-close", ["ms": 2000])
+        let started = Date()
+        await call.end()
+        let elapsed = Date().timeIntervalSince(started)
+        print("Local hangup completed in \(Int(elapsed * 1000)) ms with 2000 ms server cleanup")
+        XCTAssertLessThan(elapsed, 0.5)
+        XCTAssertEqual(call.phase, .ended)
+        XCTAssertFalse(call.active); XCTAssertFalse(audio.isRunning)
+        XCTAssertTrue(call.documents.isEmpty); XCTAssertTrue(call.conversation.turns.isEmpty)
+        XCTAssertFalse(UIApplication.shared.isIdleTimerDisabled)
+        let waiting = try await stats()
+        XCTAssertNotNil(waiting["active"] as? String, "The local UI must finish while the server still owns cleanup")
+        await call.end()
+        try await until { (try await self.stats())["active"] is NSNull }
+        let closed = try await stats()
+        XCTAssertEqual(closed["closeRequests"] as? Int, 1)
+        XCTAssertEqual(call.phase, .ended)
+    }
+
+    func testCancelledImmediateRedialKeepsOldCleanupAndCanDialAgain() async throws {
+        let audio = VoiceAudio(), call = try await client(audio: audio)
+        try await call.startOrContinue()
+        try await fixture("slow-close", ["ms": 1500])
+        await call.end()
+        let redial = Task { try await call.startOrContinue() }
+        try await until { call.phase == .connecting }
+        await call.end(); _ = try? await redial.value
+        XCTAssertEqual(call.phase, .ended); XCTAssertFalse(audio.isRunning)
+        let cancelled = try await stats()
+        XCTAssertEqual(cancelled["sessions"] as? Int, 1)
+        try await call.startOrContinue()
+        XCTAssertTrue(call.active); XCTAssertTrue(audio.isRunning)
+        let next = try await stats()
+        XCTAssertEqual(next["sessions"] as? Int, 2)
+        XCTAssertEqual(next["closeRequests"] as? Int, 1)
+    }
+
+    func testFailedHangupRetainsOwnedCleanupForNextDial() async throws {
+        let store = BindingStore(service: "com.versa.vvoice.tests.\(UUID().uuidString)")
+        let audio = VoiceAudio(), call = try await client(audio: audio, store: store)
+        try await call.startOrContinue()
+        let oldID = try XCTUnwrap(store.load()?.pendingVoiceID)
+        try await fixture("fail-close")
+        await call.end()
+        XCTAssertEqual(call.phase, .ended); XCTAssertFalse(audio.isRunning)
+        try await until { (try await self.stats())["closeRequests"] as? Int == 1 }
+        XCTAssertEqual(store.load()?.pendingVoiceID, oldID)
+        try await call.startOrContinue()
+        XCTAssertTrue(call.active)
+        let nextID = try XCTUnwrap(store.load()?.pendingVoiceID)
+        XCTAssertNotEqual(nextID, oldID)
+        let next = try await stats()
+        XCTAssertEqual(next["sessions"] as? Int, 2)
+        XCTAssertEqual(next["closeRequests"] as? Int, 2)
+        XCTAssertEqual(next["active"] as? String, nextID)
+    }
+
+    func testForgettingBindingAfterHangupStillClosesOnlyRetiredCall() async throws {
+        let store = BindingStore(service: "com.versa.vvoice.tests.\(UUID().uuidString)")
+        let call = try await client(store: store)
+        try await call.startOrContinue()
+        try await fixture("slow-close", ["ms": 500])
+        await call.end(); call.forget()
+        XCTAssertFalse(call.bound); XCTAssertNil(store.load())
+        try await until { (try await self.stats())["active"] is NSNull }
+        XCTAssertFalse(call.bound); XCTAssertNil(store.load())
+        let closed = try await stats()
+        XCTAssertEqual(closed["closeRequests"] as? Int, 1)
+        XCTAssertEqual(call.phase, .ended)
     }
 
 }

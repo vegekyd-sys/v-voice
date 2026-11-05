@@ -6,6 +6,7 @@ const visibleTimingStages = new Set([
   'voice.status.inline', 'voice.status.complete', 'voice.dial.ready',
   'voice.dial.requested', 'voice.microphone.ready', 'voice.reservation.ready',
   'voice.connection.ready',
+  'voice.output.received', 'voice.output.rendered',
 ]);
 export function publishVoiceTiming() {
   if (typeof document === 'undefined' || typeof performance === 'undefined') return;
@@ -42,7 +43,9 @@ export function markVoiceTiming(name) {
   performance.mark?.(name);
   publishVoiceTiming();
 }
-if (typeof window !== 'undefined' && window.document && window.PerformanceObserver) {
+const timingObserverKey=Symbol.for('v-voice.entry-paint-observer');
+if (typeof window !== 'undefined' && window.document && window.PerformanceObserver && !window[timingObserverKey]) {
+  window[timingObserverKey]=true;
   const observer = new window.PerformanceObserver(() => publishVoiceTiming());
   observer.observe({ type: 'paint', buffered: true });
   window.addEventListener('pagehide', () => observer.disconnect(), { once: true });
@@ -63,7 +66,7 @@ export function startVoiceEntry({ location, fetch: request, replaceState, initia
           credentials: 'same-origin', body: JSON.stringify({ access }),
         });
         const value = await response.json();
-        if (!response.ok) throw new Error(value.error ?? '暂时无法连接 V，请稍后重试。');
+        if (!response.ok) throw Object.assign(new Error(value.error ?? '暂时无法连接 V，请稍后重试。'),{publicHref:value.publicHref});
         const search = new URLSearchParams(location.search);
         if (!phone) search.set('entry', 'tianyi');
         replaceState(`${location.pathname}?${search}`);
@@ -77,14 +80,14 @@ export function startVoiceEntry({ location, fetch: request, replaceState, initia
       }
       const response = await request(`./api/status?${query}`);
       const status = await response.json();
-      if (!response.ok) throw new Error(status.error ?? '暂时无法连接 V，请稍后重试。');
+      if (!response.ok) throw Object.assign(new Error(status.error ?? '暂时无法连接 V，请稍后重试。'),{publicHref:status.publicHref});
       mark('voice.status.complete');
       return { status };
     } catch (error) {
       // Resolve failure as data: the main module can be late or unavailable,
       // and a standalone preload must never leave an unhandled rejection.
       mark('voice.entry.failed');
-      return { error: error.message ?? '暂时无法连接 V，请稍后重试。' };
+      return { error: error.message ?? '暂时无法连接 V，请稍后重试。',...(typeof error.publicHref==='string'?{publicHref:error.publicHref}:{}) };
     }
   })();
 }
@@ -102,7 +105,7 @@ function entryIdentity() {
 }
 
 export const entryStartup = typeof window !== 'undefined' && window.document
-  ? startVoiceEntry({ initialStatus: initialEntryStatus(), identity:entryIdentity(), location: window.location, fetch: (...args) => fetch(...args),
+  ? window[Symbol.for('v-voice.entry-startup')] ??= startVoiceEntry({ initialStatus: initialEntryStatus(), identity:entryIdentity(), location: window.location, fetch: (...args) => fetch(...args),
     replaceState: url => window.history.replaceState(null, '', url),
     mark: markVoiceTiming })
   : null;

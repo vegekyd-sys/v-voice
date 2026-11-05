@@ -22,7 +22,7 @@ import VVoiceCore
             if !call.speakerAction.isEmpty { notice?["action"] = call.nativeRuntimeVersion != nil ? call.speakerActionID : call.speakerAction == "重拨" ? "redial" : "hangup"; notice?["actionLabel"] = call.speakerAction }
         }
         let people = call.conversation.people.enumerated().map { i, p -> [String: Any] in ["id":p.id,"label":p.name ?? p.label,"tone":i % 5] }
-        return ["capabilities":["bridgeVersion":1,"runtimeVersion":1,"activeRuntimeVersion":call.nativeRuntimeVersion as Any? ?? NSNull(),"transports":["gateway-relay","webrtc"],"operations":NativeRuntimeEffect.operations.sorted()],"callID":call.presentationID,"active":call.active,"visible":visible,"bound":call.bound,"phase":call.phase.rawValue,
+        return ["capabilities":["mediaSave":true,"bridgeVersion":1,"runtimeVersion":1,"activeRuntimeVersion":call.nativeRuntimeVersion as Any? ?? NSNull(),"transports":["gateway-relay","webrtc"],"operations":NativeRuntimeEffect.operations.sorted()],"callID":call.presentationID,"active":call.active,"visible":visible,"bound":call.bound,"phase":call.phase.rawValue,
                 "voice":call.phase == .speaking ? "speaking" : "listening","thinking":call.thinkingVisible,"muted":call.muted,
                 "startedAt":call.startedAt.timeIntervalSince1970 * 1000,"model":call.model.rawValue,"models":models,
                 "grok":["voice":call.grokVoice,"voices":call.grokVoices.map { ["id":$0.id,"label":$0.title] },"hint":call.grokHint,"listenAvailable":call.comparisonAvailable,"listenHref":"./compare"],
@@ -31,6 +31,10 @@ import VVoiceCore
                 "tasks":call.tasks.map { task -> [String: Any] in ["callId":task.id,"activity":task.activity,"stage":task.stage as Any? ?? NSNull(),"step":task.step,"startedAt":task.startedAt.timeIntervalSince1970 * 1000] },
                 "outcome":call.h5Outcome,"notice":notice as Any? ?? NSNull(),"baseURL":call.api.record?.binding.baseURL.absoluteString ?? "https://voice.invalid/voice/",
                 "canControl":call.active && ![.connecting,.reconnecting,.ending,.interrupted].contains(call.phase),
+                "entrySummary":call.entrySummary,
+                "accessContext":["mode":call.usingPublic ? "public" : "connected",
+                                 "accountLabel":call.boundConversation?.accountLabel ?? "已连接账号",
+                                 "conversationLabel":call.boundConversation?.name ?? "当前会话"],
                 "badge":call.phase == .connecting ? "正在连接 V…" : call.bound ? "就绪" : "未绑定",
                 "homeNote":[.failed,.interrupted].contains(call.phase) ? call.detail : ""]
     }

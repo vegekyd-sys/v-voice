@@ -311,6 +311,9 @@ export class SeeduplexRealtimeVoiceBridge {
     this.reconnecting = false;
     this.reconnectTimer = null;
     this.reconnectAttempts = [];
+    this.producedAudio = false;
+    this.contextDropped = false;
+    this.greetAfterReconnect = false;
     this.outbox = [];
     this.startedAt = Date.now();
     this.lastInputAt = Date.now();
@@ -463,7 +466,7 @@ export class SeeduplexRealtimeVoiceBridge {
     if (!reason.recoverable) return this.#fail(new Error("豆包语音连接未完成，请重新拨号。"));
     const now = Date.now();
     this.reconnectAttempts = this.reconnectAttempts.filter(at => now-at < 60_000);
-    if (this.reconnectAttempts.length >= (this.options.maxReconnectAttempts ?? 3)) return this.#fail(new Error("语音连接暂时无法恢复，请重新拨号。"));
+    if (this.reconnectAttempts.length >= (this.options.maxReconnectAttempts ?? 3) && !this.#dropContext(reason)) return this.#fail(new Error("语音连接暂时无法恢复，请重新拨号。"));
     this.reconnectAttempts.push(now);
     this.reconnecting = true;
     this.ready = false;
@@ -488,13 +491,29 @@ export class SeeduplexRealtimeVoiceBridge {
     this.reconnectTimer.unref?.();
   }
 
+  // Upstream refuses some chat text with a transient-looking code, every time.
+  // Before V has spoken, a plain call beats no call: restart without the record.
+  #dropContext(reason) {
+    if (reason.category !== "upstream-transient" || this.producedAudio || this.contextDropped) return false;
+    const instructions = this.request.withoutContext?.(this.request.instructions);
+    if (!instructions || instructions === this.request.instructions) return false;
+    this.request.instructions = instructions;
+    this.contextDropped = true;
+    this.sessionId = null;
+    this.reconnectAttempts = [];
+    this.greetAfterReconnect ||= this.greetingRequested;
+    this.greetingRequested = false;
+    this.#diagnostic({stage:"context-dropped"});
+    return true;
+  }
+
   setMediaTimestamp(_timestamp) {}
 
   beginBackgroundTool(callId, question) {
     // Finish the native function immediately; the host owns the async job.
     // Keeping a native continuation open suppresses later conversational turns.
     this.backgroundTools.set(callId, question);
-    this.submitToolResult(callId, {accepted:true,status:"working",message:"已交给 V 后台，我会继续做完。",instruction:"简短说明任务已开始，随后正常回应用户聊天。任务仍在后台继续，不要声称已完成。"}, {backgroundAck:true});
+    this.submitToolResult(callId, {accepted:true,status:"working",message:"好，我去看看。",instruction:"只用一句极短的话自然回应（比如“好，我去看看”），不提后台或交接，不复述计划。之后正常回应用户聊天。事情还在做，结果回来之前不能说好了、查到了、有结果了。"}, {backgroundAck:true});
   }
 
   /** Take over a background task whose native session was replaced for the same audience. */
@@ -518,7 +537,7 @@ export class SeeduplexRealtimeVoiceBridge {
     const spoken = options.spokenText ?? text;
     // A host-provided speaker captions the line when its audio starts.
     if (options.speak) return void options.speak(spoken);
-    if (!options.displayedFullResult) this.request.onTranscript?.("assistant", text, true, "V-backend");
+    if (!options.displayedFullResult) this.request.onTranscript?.("assistant", spoken, true, "V-backend");
     this.speakProgress(spoken, { caption: options.displayedFullResult === true });
   }
 
@@ -555,6 +574,7 @@ export class SeeduplexRealtimeVoiceBridge {
   }
 
   triggerGreeting(instructions) {
+    if (this.reconnecting && !this.terminal && !this.greetingRequested) return void (this.greetAfterReconnect = true);
     if (!this.ready || this.terminal || this.greetingRequested) return;
     // Seeduplex conversation.item.create injects paired history; it does not
     // trigger an assistant turn. SayHello is the documented speech event.
@@ -834,8 +854,9 @@ export class SeeduplexRealtimeVoiceBridge {
       this.seenEvents.clear();
       clearTimeout(this.connectTimer);
       this.connectResolve?.();
-      if (resumed) this.#diagnostic({stage:"recovered"});
+      if (resumed || this.contextDropped) this.#diagnostic({stage:"recovered"});
       else this.request.onReady?.();
+      if (this.greetAfterReconnect) { this.greetAfterReconnect = false; this.triggerGreeting(); }
       this.inputTimer ??= setInterval(() => this.#watchInput(), 250);
       this.inputTimer.unref?.();
       for (const queued of this.outbox.splice(0)) this.#send(queued);
@@ -986,7 +1007,7 @@ export class SeeduplexRealtimeVoiceBridge {
         // most recent TTS start, not a new answer's earlier text event.
         const deliveredId=responseId??(this.request.nativeDuplex?this.nativeTtsResponseId:this.audioResponseId);
         if(this.request.nativeDuplex&&(!deliveredId||this.retiredResponses.has(deliveredId)))return;
-        if(audio.length)this.deliveredAudioResponseId=deliveredId;
+        if(audio.length){this.deliveredAudioResponseId=deliveredId;this.producedAudio=true;}
         this.request.onAudio(audio, { ...(this.injectedSpeech ? {source:"injected-speech"} : {}), responseId: deliveredId });
         this.request.onMark?.(`seeduplex-audio-${randomUUID()}`);
       } catch {

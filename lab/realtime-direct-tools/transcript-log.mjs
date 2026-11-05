@@ -39,6 +39,25 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       return enqueue({...owners.get(id),type:'call.created'});
     }
     const owner=owners.get(id)??(/^(?:task\.delivery-|backend\.|call\.report-|call\.summary-styled)/.test(event.type)?closedOwners.get(id):null);if(!owner)return false;
+    if(event.type==='call.media'){
+      if(!['phone','speaker'].includes(event.surface)||!['standard','courtesy','provider','assisted'].includes(event.playbackPolicy)||
+        typeof event.nativeDuplex!=='boolean'||![16000,24000].includes(event.inputSampleRate))return false;
+      return enqueue({...owner,type:event.type,surface:event.surface,nativeDuplex:event.nativeDuplex,
+        playbackPolicy:event.playbackPolicy,inputSampleRate:event.inputSampleRate});
+    }
+    if(event.type==='audio.delivery'){
+      if(!['first','gap','summary'].includes(event.phase))return false;
+      const safe={phase:event.phase};
+      if(typeof event.responseId==='string')safe.responseId=event.responseId.slice(0,160);
+      if(['done','segment-done','clear','closed','replaced'].includes(event.reason))safe.reason=event.reason;
+      for(const key of ['packets','bytes','audioMs','elapsedMs','maxGapMs','gaps','gapMs'])
+        if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      return enqueue({...owner,type:event.type,...safe});
+    }
+    if(event.type==='client.playback-state'){
+      if(typeof event.speaking!=='boolean')return false;
+      return enqueue({...owner,type:event.type,speaking:event.speaking});
+    }
     if(event.type==='call.report-error'){
       if(!/^[a-f0-9-]{36}$/u.test(event.reportId??'')||!['summary','save','status-tick','status-start','status-ended','summary-style','finish'].includes(event.stage))return false;
       const code=/^(?:summary-(?:http-\d{3}|invalid|context-limit|unavailable|timeout|network)|call-(?:status|card|summary)-(?:target|update)-unconfirmed|call-report-operation-failed)$/u.test(event.error??'')?event.error:'call-report-operation-failed';
@@ -48,9 +67,14 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       if(!/^[a-f0-9-]{36}$/u.test(event.reportId??'')||!/^om_[A-Za-z0-9_]+$/u.test(event.messageId??''))return false;
       return enqueue({...owner,type:event.type,reportId:event.reportId,messageId:event.messageId});
     }
+    if(event.type==='call.admission-timing'){
+      const timing={};
+      for(const key of ['resolveMs','verificationMs','previousCloseMs','reservationMs','toReservationMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)timing[key]=event[key];
+      return enqueue({...owner,type:event.type,...timing});
+    }
     if(event.type==='call.connection-stage'){
-      if(!['catalog-requested','catalog-ready','context-requested','context-ready','provider-connecting','provider-ready'].includes(event.stage))return false;
-      return enqueue({...owner,type:event.type,stage:event.stage});
+      if(!['catalog-requested','catalog-ready','context-requested','context-ready','actor-reader-requested','actor-reader-ready','provider-connecting','model-ready','speech-control-connecting','speech-control-ready','provider-ready'].includes(event.stage))return false;
+      return enqueue({...owner,type:event.type,stage:event.stage,...(Number.isSafeInteger(event.elapsedMs)&&event.elapsedMs>=0?{elapsedMs:event.elapsedMs}:{})});
     }
     if(event.type==='call.provider-status'){
       if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed'].includes(event.stage))return false;
@@ -69,23 +93,24 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     }
     // Causal metadata only: never persist tool arguments, results, PCM or raw
     // provider frames. A received utterance without a reply must be diagnosable.
-    if(['tool.call','tool.delivered','backend.start-requested','backend.started','backend.completed','backend.child-run','backend.control','backend.cancel-observed','backend.cancel-unconfirmed','backend.read-retry','backend.result-held','backend.result-context','backend.result-notice','backend.result-spoken-late','backend.result-answered','backend.result-superseded','backend.result-unspoken','response.done','provider.event','audio.clear'].includes(event.type)){
+    if(['tool.call','tool.delivered','backend.start-requested','backend.started','backend.completed','backend.child-run','speech.premature-completion-cut','backend.control','backend.cancel-observed','backend.cancel-unconfirmed','backend.read-retry','backend.result-held','backend.result-context','backend.result-notice','backend.result-spoken-late','backend.result-answered','backend.result-superseded','backend.result-unspoken','response.done','provider.event','audio.clear'].includes(event.type)){
       if(event.type==='provider.event'&&!['conversation.item.input_audio_transcription.started','response.created','response.output_audio.started','response.canceled','input_audio_buffer.speech_started','input_audio_buffer.speech_stopped','client.response.cancel','client.response.cancel.rejected','native.listening-aside','conversation.item.input_audio_transcription.completed'].includes(event.providerEventType))return false;
       if(event.type==='tool.call'&&(typeof event.name!=='string'||typeof event.callId!=='string'))return false;
       const safe={};
       for(const key of ['callId','runId','taskId','responseId','retiredResponseId','reason','providerEventType','name','mode','status','childRunId'])if(typeof event[key]==='string')safe[key]=event[key].slice(0,160);
       if(event.type==='backend.started'&&typeof event.ack?.taskId==='string')safe.taskId=event.ack.taskId;
       if(event.type==='backend.started'&&typeof event.ack?.runId==='string')safe.runId=event.ack.runId;
-      if(event.type==='tool.delivered')safe.status=event.result?.error?'error':event.result?.cancelled?'cancelled':'ok';
+      if(event.type==='tool.delivered')safe.status=event.result?.error||event.result?.isError?'error':event.result?.cancelled?'cancelled':'ok';
       for(const key of ['ok','queued','applied'])if(typeof event[key]==='boolean')safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
     }
+    if(event.type==='tool.media-cli'&&['start','result'].includes(event.phase)&&typeof event.callId==='string')return enqueue({...owner,type:event.type,callId:event.callId.slice(0,160),phase:event.phase,...(event.phase==='result'?{ok:event.ok===true,exitCode:Number.isInteger(event.exitCode)?event.exitCode:null}:{})});
     // Task narration: which kind of line and the verified counts behind it. The
     // spoken words themselves are already the assistant transcript.
     if(['backend.stage','backend.progress-spoken','backend.stages-observed'].includes(event.type)){
       const safe={};
       for(const key of ['callId','runId'])if(typeof event[key]==='string')safe[key]=event[key].slice(0,160);
-      if(event.type==='backend.progress-spoken'&&['fact','stage','heartbeat'].includes(event.kind))safe.kind=event.kind;
+      if(event.type==='backend.progress-spoken'&&['fact','stage','idle'].includes(event.kind))safe.kind=event.kind;
       if(typeof event.label==='string'&&STAGE_LABELS.has(event.label))safe.label=event.label;
       if(typeof event.running==='boolean')safe.running=event.running;
       for(const key of ['elapsedMs','completed','failed','events','steps'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
@@ -103,7 +128,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     }
     if(event.type==='client.playback-stats'){
       const stats={};
-      for(const key of ['inputBytes','outputBytes','queuedOutputBytes','clears','underflows','maxReceiveGapMs','contextSampleRate','inputBufferedBytes','peakInputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','nativePauses','nativeResumes'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0)stats[key]=event.stats[key];
+      for(const key of ['inputBytes','outputBytes','queuedOutputBytes','clears','underflows','maxReceiveGapMs','contextSampleRate','inputBufferedBytes','peakInputBufferedBytes','droppedInputFrames','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','outputClockWallMs','outputClockAudioMs','outputClockRatio','bufferedOutput','nativePauses','nativeResumes'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0)stats[key]=event.stats[key];
       for(const key of ['trackMuted','trackEnabled','trackLive','pageHidden'])if(typeof event.stats?.[key]==='boolean')stats[key]=event.stats[key];
       if(['running','suspended','interrupted','closed'].includes(event.stats?.contextState))stats.contextState=event.stats.contextState;
       return enqueue({...owner,type:event.type,stats});
@@ -113,6 +138,8 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       // A delta remains a delta; interrupted speech need not produce final.
       return enqueue({...owner,type:'transcript',role:event.role,text:event.text,final:event.final,
         ...(typeof event.source==='string'?{source:event.source}:{}),
+        ...(typeof event.responseId==='string'?{responseId:event.responseId.slice(0,160)}:{}),
+        ...(typeof event.turnId==='string'?{turnId:event.turnId.slice(0,160)}:{}),
         ...(typeof event.callId==='string'?{callId:event.callId}:{})});
     }
     if(['task.delivery-confirmed','task.delivery-failed'].includes(event.type)){

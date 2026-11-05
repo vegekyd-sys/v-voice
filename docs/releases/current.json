@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "ios-bound-identity-20261024",
-  "version": "voice-ios-bound-identity.20261024.2",
-  "entryCommit": "8a67c6ac19867166bcac92d8f91ae90d2de77a92",
-  "deviceEntryCommit": "8a67c6ac19867166bcac92d8f91ae90d2de77a92",
-  "filesSha256": "cadf19a6fc69b499ffd2f8672ecb21abb59364d48fadaa5e41579ab8aa510d89",
-  "registration": "ios-bound-identity-20261024/release.json",
-  "previousEntryCommit": "8c50d5d669a0d22471b7c107ad2bb7a84cb0d5b5",
+  "release": "calendar-dial-20261102",
+  "version": "voice-calendar-dial.20261102.1",
+  "entryCommit": "61e7ef6ddbdf983e05ae7c3c7841d0fe25ea5dfa",
+  "deviceEntryCommit": "61e7ef6ddbdf983e05ae7c3c7841d0fe25ea5dfa",
+  "filesSha256": "c28f5ce5ca2a87076b828737b831428ff10b31b86cf6a08c3c466f704cb7bb22",
+  "registration": "calendar-dial-20261102/release.json",
+  "previousEntryCommit": "9bdf5a89425b4fabd847ed8950d1bbb30d52a796",
   "gatewayRestartRequired": false,
-  "deployedAt": "2026-10-24T12:31:43+08:00",
-  "runtimeDifference": "Both Voice nodes run the same verified main artifact. Gateway identity/configuration and native apps/firmware unchanged. Web CLI runtime directories are writable inside its existing strict sandbox; actual service-namespace calendar read passed. Physical iOS verification remains with the user."
+  "validatedAt": "2026-11-02T02:30:00+08:00",
+  "runtimeDifference": "Personal entry Feishu reads use the verified owner identity. Identified entries allow 30 dials per 10 minutes. H5 saves media through iOS build 41 and keeps the share link for older binaries."
 }

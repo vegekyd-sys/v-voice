@@ -1,0 +1,68 @@
+{
+  "schema": "v-voice-production-release-v1",
+  "version": "voice-entry-cli.20261027.1",
+  "status": "deployed-and-verified",
+  "entryCommit": "b4ed555cd3171534a9a57067b5bb8a1936ba0a34",
+  "deviceEntryCommit": "b4ed555cd3171534a9a57067b5bb8a1936ba0a34",
+  "filesSha256": "38e10cc813a685a3f648548325d0c0dd853b6ea5f034e55b3c90ced1f42339ab",
+  "iosShellRevision": "b33bafb2c9212183f0f1c52e699034849488db2c399e88f731fe88ec7c82643a",
+  "previousEntryCommit": "7ce20a2de22bedba1cc32086d5f832a44539cd8c",
+  "voicePRs": [
+    158,
+    160,
+    163,
+    164,
+    165
+  ],
+  "integrationPR": 167,
+  "deployedAt": "2026-10-27T15:50:03+08:00",
+  "validatedAt": "2026-10-27T15:56:11+08:00",
+  "gatewayRestartRequired": false,
+  "fleet": {
+    "bothReady": true,
+    "sameArtifact": true,
+    "admissionReleased": true,
+    "gatewayStableDuringVoiceCutover": true,
+    "originalPrivateConfigurationPreserved": true,
+    "webOnlyCLIConfigAdded": true
+  },
+  "cli": {
+    "version": "0.1.0",
+    "sourceCommit": "b4ed555cd3171534a9a57067b5bb8a1936ba0a34",
+    "installedForExistingServiceUser": true,
+    "skillModelVisible": true,
+    "skillEligible": true,
+    "skillSha256": "b255d901f332e291efdd6f338fdf784db6eabfddb47a926edcdbfb2903a7f5fc",
+    "guestHTTPSLifecyclePassed": true,
+    "registryAndSocketMode": "0600",
+    "privateParentMode": "0700",
+    "testEntryDisabled": true,
+    "testLinkRevoked": true,
+    "agentAutonomousTask": "not run",
+    "feishuInvitationHTTPSLifecyclePassed": true
+  },
+  "acceptance": {
+    "voiceTests": 1002,
+    "speakerTests": 95,
+    "releaseTests": 11,
+    "mainCIPassed": true,
+    "mainCIRun": 40468827160,
+    "productionHomepageChangelog": true,
+    "productionLoggedInDialReady": true,
+    "productionModelCatalog": [
+      "gpt-live",
+      "seeduplex"
+    ],
+    "productionAppBindingSheet": true,
+    "browserConsoleErrors": 0,
+    "httpsResourcesMatchArtifact": true,
+    "versionedBundleImmutable": true,
+    "htmlAndAPINoStore": true,
+    "realModelCalls": 0,
+    "externalMessages": 0,
+    "newIOSBinary": false,
+    "physicalAudio": "not tested",
+    "OSAppAndTestFlightHandoff": "previous Candidate evidence; not rerun on physical phone"
+  },
+  "report": "release.md"
+}

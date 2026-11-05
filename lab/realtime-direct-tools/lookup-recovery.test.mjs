@@ -18,3 +18,10 @@ test('pending lookup keeps its native turn: only capped PCM progress, never inje
 test('recovery expires instead of holding an unavailable receiver forever',()=>{
  const f=fixture(),call={callId:'a',name:'web_search'};f.r.started(call);f.r.finished(call,{answer:'fact'},true);f.s.playing=true;f.advance(30000);assert(!f.r.waiting());assert.deepEqual(f.spoken,[]);
 });
+
+test('a running poll is not a result; an execution speaks its own line once',()=>{
+ const f=fixture();
+ f.r.finished({callId:'a',name:'process'},{status:'running',details:{status:'running'}},true);f.advance(30000);assert.deepEqual(f.spoken,[]);assert(!f.r.waiting());
+ f.r.finished({callId:'b',name:'process'},{isError:false},true,{quiet:true});f.advance(30000);assert.deepEqual(f.spoken,[]);
+ f.r.finished({callId:'c',name:'process'},{isError:false},true,{line:'视频好了'});f.advance(9000);assert.deepEqual(f.spoken,['视频好了']);
+});

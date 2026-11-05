@@ -11,13 +11,14 @@ import {normalizeAvatarEvent} from '../../lab/gpt-live-h5/avatar-telemetry.mjs';
 const port=Number(process.env.VVOICE_FIXTURE_PORT??29837);
 let active=null,client=null,sequence=0,sessions=0,inputBytes=0,zeroBytes=0,playbackDrained=0,playbackStarts=0,greetings=0,heartbeats=0,earlyAudio=false,slowSession=false;
 let slowSessionMS=300;
+let hideGrok=false;
 let fastMode=false,fastReject=false,fastWrongOwner=false,fastDials=0,statusRequests=0,sessionRequests=0;
 let deviceLocation=null,locationResults=[],systemBackgroundReady=false;
 let presentationRequests=0;
 let nativeMode=false,speakerMode=false,runtimeMode=false,nativeRuntime=null,lastSessionRequest=null;
 let shellDelayMS=0;
 let lastOffer=null,offerReply=null;const eventClients=new Set();
-let limitNextSession=false,slowClose=false,closeRequests=0;
+let limitNextSession=false,slowClose=false,slowCloseMS=250,failClose=false,closeRequests=0;
 let documents=[],pending=[],acknowledgements=[],supplements=[];
 let avatarRequests=[],avatarEvents=[],avatarReply="reaction-0",avatarContinuations=["reaction-1","listen-5"],slowAvatar=false;
 let shellVariant='none',shellRequests=[],shellRedirects=0;
@@ -81,6 +82,9 @@ const server=createServer(async(req,res)=>{
    if(body.command==='fast-reject')fastReject=true;
    if(body.command==='fast-wrong-owner')fastWrongOwner=true;
    if(body.command==='reset'){fastMode=false;fastReject=false;fastWrongOwner=false;fastDials=0;statusRequests=0;sessionRequests=0;}
+   if(body.command==='production-models')hideGrok=true;
+   if(body.command==='test-models')hideGrok=false;
+   if(body.command==='reset')hideGrok=false;
    if(body.command==='native-mode')nativeMode=true;
    if(body.command==='speaker-mode')speakerMode=true;
    if(body.command==='runtime-mode')runtimeMode=true;
@@ -95,7 +99,9 @@ const server=createServer(async(req,res)=>{
    if(body.command==='event'&&body.event)emit(body.event);
    if(body.command==='slow-session'){slowSession=true;slowSessionMS=Math.max(100,Math.min(15000,Number(body.ms)||300));}
    if(body.command==='limit-next-session')limitNextSession=true;
-   if(body.command==='slow-close')slowClose=true;
+   if(body.command==='slow-close'){slowClose=true;slowCloseMS=Math.max(100,Math.min(15000,Number(body.ms)||250));}
+   if(body.command==='fail-close')failClose=true;
+   if(body.command==='reset'){slowCloseMS=250;failClose=false;}
    if(body.command==='malformed-audio')emit({type:'audio',sequence:++sequence,audio:Buffer.from([1]).toString('base64'),sampleRate:24000});
    if(body.command==='early-audio')earlyAudio=true;
    if(body.command==='audio')audio(body.ms??240,body.responseId);
@@ -115,6 +121,7 @@ const server=createServer(async(req,res)=>{
      emit({type:'transcript',role:'assistant',text:'好的，我来看看今天的日程，再帮你安排好优先级。',final:true});
    }
    if(body.command==='report')emit({type:'backend.result',callId:'fixture-plan',text:'# 今天的安排与建议\n\n建议先完成产品评审，再留出一段不被打断的工作时间。\n\n## 时间安排\n\n| 时间 | 事项 | 优先级 |\n| --- | --- | --- |\n| 09:30 | 产品评审 | 高 |\n| 11:00 | 专注工作 | 高 |\n| 15:00 | 团队同步 | 中 |\n\n## 接下来怎么做\n\n1. 把最重要的决定放在上午。\n2. 下午留出 30 分钟处理临时事项。\n3. 收工前回顾今天的进展。\n\n> 这是一份本地界面测试方案，没有连接真实模型或日历。\n\n```text\n先做重要的事，再做紧急的事。\n```'});
+   if(body.command==='media-result')emit({type:'backend.result',callId:'fixture-media',text:'![生成图片](/voice/assets/v-operator-home-1024.webp)'});
    if(body.command==='result')emit({type:'backend.result',callId:'fixture-result',text:'## 本地测试结果\n完整内容已送达。'});
    if(body.command==='report-poll-only')documents.push({type:'backend.result',callId:'fixture-poll-report',text:'# 后台完整报告\n\n这份报告只通过已有 presentation 接口送达，不从音频 WebSocket 推送。'});
    if(body.command==='think')emit({type:'transcript',role:'user',text:'本地测试',final:true});
@@ -163,7 +170,7 @@ const server=createServer(async(req,res)=>{
    supplements.push({text:body.text,mode:body.mode});return send(200,{ok:true,forwardedToVoice:true,queued:false});
  }
  if(path==='/voice/api/status')statusRequests++;
- if(path==='/voice/api/status')return send(200,{...(fastMode?{nativeDialVersion:1}:{}),...(nativeMode?{phoneInputPolicy:'native'}:{}),ready:true,preview:false,comparisonAvailable:true,models:[{id:'future-relay-model',label:'服务新模型',available:true,nativeTransport:'gateway-relay'},{id:'unsupported-transport',label:'尚未支持的传输',available:true,nativeTransport:'future-transport'},{id:'gpt-live',label:'GPT Live',available:true},{id:'seeduplex',label:'豆包 SeedDuplex',available:true},{id:'grok',label:'Grok Voice 3.0',available:true,voices:[{id:'iris',label:'Iris'},{id:'eve',label:'Eve'}],speed:1.2,expressiveTags:true}],activeCall:Boolean(active)});
+ if(path==='/voice/api/status')return send(200,{...(fastMode?{nativeDialVersion:1}:{}),...(nativeMode?{phoneInputPolicy:'native'}:{}),ready:true,preview:false,...(hideGrok?{defaultModel:'seeduplex'}:{}),comparisonAvailable:!hideGrok,models:[{id:'future-relay-model',label:'服务新模型',available:true,nativeTransport:'gateway-relay'},{id:'unsupported-transport',label:'尚未支持的传输',available:true,nativeTransport:'future-transport'},{id:'gpt-live',label:'GPT Live',available:true},{id:'seeduplex',label:'豆包 SeedDuplex',available:true},{id:'grok',label:'Grok Voice 3.0',available:true,voices:[{id:'iris',label:'Iris'},{id:'eve',label:'Eve'}],speed:1.2,expressiveTags:true}].filter(m=>!hideGrok||m.id!=='grok'),activeCall:Boolean(active)});
  if(path==='/voice/api/session'){
    sessionRequests++;
    lastSessionRequest=body;
@@ -180,9 +187,10 @@ const server=createServer(async(req,res)=>{
  if(path==='/voice/api/close'){
    if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
    closeRequests++;lastOffer=null;offerReply?.(409,{error:"Closed"});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();
+   if(failClose){failClose=false;return send(503,{error:'Local cleanup failure'});}
    if(slowClose){
      slowClose=false;const old=active,ws=client;
-     setTimeout(()=>{if(active===old)active=null;ws?.close();if(client===ws)client=null;send(200,{ok:true});},250);return;
+     setTimeout(()=>{if(active===old)active=null;ws?.close();if(client===ws)client=null;send(200,{ok:true});},slowCloseMS);return;
    }
    active=null;client?.close();client=null;return send(200,{ok:true});
  }

@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-import {normalizeDeviceActions} from '../../lib/terminal-context.mjs';
+import {voiceAccessContext} from '../../lib/access-context.mjs';
+import {createPublicVoiceGateway} from '../../lib/public-voice-gateway.mjs';
+import {createVoiceAgentControl,listenVoiceAgentControl} from '../../lib/voice-agent-control.mjs';
+import {backendDeviceBundleFromEnv} from '../../lib/backend-device-bundle.mjs';
+import {terminalInstructions,normalizeDeviceActions} from '../../lib/terminal-context.mjs';
 import {feishuCallerIdentityInstructions} from '../../lib/feishu-caller-identity.mjs';
 import {createReleaseGate, readRelease, listenReleaseControl} from '../../lib/release-control.mjs';
 import {controlVoiceTask} from '../../lib/voice-task-control.mjs';
@@ -24,18 +28,33 @@ import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure,
 import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
 import {createTaskDelivery} from '../realtime-direct-tools/task-delivery.mjs';
-import {createVoiceLarkReader} from '../realtime-direct-tools/lark-readonly.mjs';
+import {createVoiceMediaCli} from '../realtime-direct-tools/media-cli.mjs';
+import {createVoiceLarkReader,personalLarkReader} from '../realtime-direct-tools/lark-readonly.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
-import {voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
+import {VOICE_CONTEXT_HISTORY_REQUEST,voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosAppDownloadUrl, callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null }) {
+// Dialing is how a known caller retries; only anonymous callers keep the tight limit.
+export const callAttemptLimit = binding => binding.permissionProfile === 'unidentified' ? 6 : 30;
+
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, enableGrok = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
+  let agentControl = null;
   if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
   if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
+  if (typeof enableGrok !== 'boolean') throw new Error('Invalid Grok visibility setting');
+  // Visibility belongs to the phone product catalog, not provider/device capability.
+  const phoneModels = () => [{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'},...(directVoice?.models?.() ?? [])].filter(m => enableGrok || m.id !== 'grok');
+  if (defaultModel === 'grok' && !enableGrok) defaultModel = phoneModels().find(m => m.id === 'seeduplex' && m.available)?.id ?? 'gpt-live';
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
   const hosted = Boolean(publicOrigin || accessToken);
+  let browserBundleWork;
+  const browserBundle = () => browserBundleWork ??= readFile(join(here,'app-bundle.mjs')).then(bytes=>({
+    bytes,revision:createHash('sha256').update(bytes).digest('hex'),
+  }));
+  let entryBootstrapWork;
+  const entryBootstrap=()=>entryBootstrapWork??=readFile(join(here,'entry-bootstrap.js'),'utf8');
   const backendReady = () => !preview && gateway?.ready !== false;
   const origin = hosted ? new URL(publicOrigin) : null;
   if (hosted && (origin.protocol !== "https:" || origin.origin !== publicOrigin || !basePath)) throw new Error("Hosted voice requires an HTTPS origin and base path");
@@ -47,26 +66,54 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     ...(feishuLogin.conversations===true?{resolveConversation:createFeishuConversationDirectory({gateway,...feishuLogin})}:{})}) : null;
   const guestAccess=hosted&&feishuLogin?.conversations===true&&feishuLogin.allowUnidentified===true
     ?createVoiceAccess(createHash('sha256').update('voice-guest:'+feishuLogin.appSecret).digest('hex'),basePath,Date.now,{entry:'unidentified'}):null;
-  const guestBinding=guestAccess?createUnidentifiedPhoneDirectory({accountId:feishuLogin.accountId,access:guestAccess}):()=>null;
+  const guestDirectory=guestAccess?createUnidentifiedPhoneDirectory({accountId:feishuLogin.accountId,access:guestAccess,publicEntry:iosPublicEntry}):()=>null;
+  const guestBinding=(req,...args)=>withPublicGateway(req,guestDirectory(req,...args));
+  // One inbound request may reuse its own just-verified dynamic route. This is
+  // never an identity cache across requests; slow request bodies must recheck.
+  const requestAdmissions=new WeakMap();
   const resolveBinding=async(req,url)=>{
-    const devicePhone=iosBindings?.canonicalPhone(url.searchParams.get('phone'))??url.searchParams.get('phone');
+    const startedAt=performance.now();
+    const requestedPhone=new URL(req.url??url.href,'http://voice.invalid').searchParams.get('phone');
+    if(requestedPhone?.startsWith('cli_')){
+      const managed=agentControl?.resolve(requestedPhone);
+      if(!managed)return null;
+      const binding=guestDirectory(req,'public',{id:managed.entry.visitorId});
+      if(!binding)return null;
+      return withPublicGateway(req,Object.freeze({...binding,id:requestedPhone,cliManaged:true,
+        cliEntry:managed.entry.id,accessToken:undefined,cliAccess:managed.access}));
+    }
+    const devicePhone=iosBindings?.canonicalPhone(requestedPhone)??requestedPhone;
     const phone=phoneLogin?.canonicalPhone(devicePhone)??devicePhone;
     if(phone&&phone!==url.searchParams.get('phone')){url=new URL(url);url.searchParams.set('phone',phone);}
+    if(url.searchParams.get('phone')==='public'){
+      const principal=iosBindings?.principalFor(req,'public',req.iosExchangeBody);
+      if(!iosPublicEntry)return null;
+      if(principal?.type==='guest')return guestBinding(req,'public',{id:principal.visitorId});
+      // A browser Public cookie cannot replace a missing/revoked native grant.
+      return requestedPhone==='public'?guestBinding(req,'public'):null;
+    }
     try {
       const device=parseFeishuConversationPhone(url.searchParams.get('phone'))&&iosBindings?.principalFor(req,url.searchParams.get('phone'),req.iosExchangeBody);
       const binding=phoneLogin?.read(req)?await phoneLogin.resolve(req,url):device?.type==='guest'?guestBinding(req,url.searchParams.get('phone'),{id:device.visitorId}):device?await phoneLogin?.resolveDevice(device,url.searchParams.get('phone')):phoneLogin?await phoneLogin.resolve(req,url):entries.resolve(url);
-      if(binding)return binding;
+      if(binding){
+        if(binding.permissionProfile==='feishu-current')requestAdmissions.set(req,{binding,startedAt,at:performance.now()});
+        return binding;
+      }
     }
     catch(error){if(!guestAccess||!parseFeishuConversationPhone(url.searchParams.get('phone')))throw error;}
     return guestBinding(req,url.searchParams.get('phone'));
   };
-  const guestModel=()=>directVoice?.models().find(m=>m.available&&m.id==='seeduplex')?.id??directVoice?.models().find(m=>m.available)?.id??'seeduplex';
-  const entryPresentation=binding=>binding.permissionProfile==='unidentified'?{unidentified:true,accountLoginHref:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&oauth=1`,defaultModel:guestModel(),iosBindingAvailable:hosted,speakerRouting:false,comparisonAvailable:false,
-    models:[{id:'gpt-live',label:'GPT Live One',available:false},...(directVoice?.models()??[])]}:binding.callerIdentity?{accountLabel:binding.callerIdentity.displayName||'飞书账号已连接',accountLoginHref:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&retry=1`}:{};
+  const guestModel=()=>phoneModels().find(m=>m.available&&m.id==='seeduplex')?.id??phoneModels().find(m=>m.available&&m.id!=='gpt-live')?.id??'seeduplex';
+  const entryPresentation=(binding,req)=>{
+    const remembered=binding.id==='public'&&req?phoneLogin?.rememberedPhone(req):null;
+    return {...{...(phoneLogin?.confirmation&&parseFeishuConversationPhone(binding.id)?{confirmationAvailable:true}:{}),accessContext:voiceAccessContext(binding,{publicEnabled:iosPublicEntry,publicTools}),...(iosPublicEntry&&guestAccess?{publicHref:`${basePath}/?phone=public`}:{}),...(remembered?{returnToAccountHref:`${basePath}/feishu?phone=${encodeURIComponent(remembered)}`}:{})},...(binding.permissionProfile==='unidentified'?{unidentified:true,accountLoginHref:binding.id==='public'?null:phoneLogin?.confirmation?`${basePath}/feishu/confirm?phone=${encodeURIComponent(binding.id)}`:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&oauth=1`,defaultModel:guestModel(),iosBindingAvailable:hosted,speakerRouting:false,comparisonAvailable:false,
+      models:phoneModels().map(m=>m.id==='gpt-live'?{...m,available:false}:m)}:binding.callerIdentity?{accountLabel:binding.callerIdentity.displayName||'飞书账号已连接',accountLoginHref:phoneLogin?.confirmation?`${basePath}/feishu/confirm?phone=${encodeURIComponent(binding.id)}`:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&retry=1`}:{}),...(binding.cliManaged?{iosBindingAvailable:false,accountLoginHref:null,confirmationAvailable:false}:{})};
+  };
   const callReports=createConversationCalls({gateway,directory:callReportsDirectory,publicOrigin,basePath,summarize:callSummarize,audit:callControlAudit});
   const accessors = new Map();
   const entryAccess = binding => {
     if (!hosted) return null;
+    if(binding.cliManaged)return binding.cliAccess;
     if(binding.permissionProfile==='unidentified')return guestAccess;
     const key=binding.id+':'+binding.callerId;
     const entry=binding.permissionProfile==='feishu-current'?'feishu-'+createHash('sha256').update(key).digest('hex').slice(0,40):binding.id;
@@ -75,13 +122,27 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   };
   const access = entryAccess(entries.resolve(new URL("http://localhost")));
   const iosBindings=hosted?createIosBindings({file:iosBindingsFile,basePath,publicOrigin,
-    canonicalPhone:phone=>phoneLogin?.canonicalPhone(phone)??phone,legacyBinding:phone=>phoneLogin?.legacyBinding(phone),permits:(principal,binding)=>{
+    canonicalPhone:phone=>phoneLogin?.deviceCanonicalPhone(phone)??phone,legacyBinding:phone=>phoneLogin?.legacyBinding(phone),permits:(principal,binding)=>{
     if(principal?.type==='guest')return binding.permissionProfile==='unidentified'&&principal.visitorId===binding.visitorId;
     if(principal?.type==='feishu')return phoneLogin?.actorPermits(principal,binding)===true;
     return principal?.type==='entry'&&!phoneLogin?.protects(binding)&&principal.entry===binding.id;
   }}):null;
+  const withPublicGateway=(req,binding)=>{
+    if(!binding||binding.permissionProfile!=='unidentified'||!iosPublicEntry||!publicTools)return binding;
+    const authorized=()=>{
+      if(binding.cliManaged){const visitor=entryAccess(binding)?.read(req);return agentControl?.active(binding.id)&&visitor?.id===binding.visitorId?'browser:'+visitor.id:null;}
+      const device=iosBindings?.read(req,binding);
+      if(device)return 'device:'+device.deviceId;
+      const visitor=guestAccess?.read(req);
+      return visitor?.id===binding.visitorId?'browser:'+visitor.id:null;
+    };
+    const owner=authorized();if(!owner)return binding;
+    return Object.freeze({...binding,gateway:createPublicVoiceGateway({gateway,sessionKey:binding.sessionKey,
+      isAuthorized:()=>authorized()===owner})});
+  };
   const readVisitor=(req,binding)=>{
     const visitor=entryAccess(binding)?.read(req);
+    if(binding.cliManaged)return agentControl?.active(binding.id)&&visitor?.id===binding.visitorId?visitor:null;
     return visitor&&(binding.permissionProfile!=='unidentified'||visitor.id===binding.visitorId)?visitor:iosBindings?.read(req,binding)??null;
   };
   const bindingPrincipal=(req,binding)=>{
@@ -97,21 +158,22 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     if(cookies)res.setHeader('set-cookie',[cookies].flat().concat([res.getHeader('set-cookie')].flat()));
     return issued;
   };
-  const entrySnapshot=binding=>({ready:backendReady(),preview,defaultModel,
-    ...(directVoice?.attach?{nativeDialVersion:1}:{}),conversation:{name:binding.displayName??'我的 V',kind:binding.kind,replySync:binding.replySync},iosBindingAvailable:hosted,
+  const conversationPresentation=binding=>{const context=voiceAccessContext(binding,{publicEnabled:iosPublicEntry,publicTools});return {name:context.conversationLabel,kind:binding.kind,replySync:binding.replySync,accountLabel:context.accountLabel,entryKind:context.entryKind,scopeNote:context.scopeNote};};
+  const entrySnapshot=(binding,req)=>({ready:backendReady(),preview,defaultModel,
+    ...(directVoice?.attach?{nativeDialVersion:1,webDialVersion:2}:{}),conversation:conversationPresentation(binding),iosBindingAvailable:hosted,
     ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}),...(listening?{comparisonAvailable:true}:{}),
-    ...(directVoice?{models:[{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'},...directVoice.models()]}:{}),...entryPresentation(binding)});
+    models:phoneModels(),...entryPresentation(binding,req)});
   const visual = createAvatarReactionSelector({evaluate:avatarEvaluate});
   const contexts = new Map(),nativeTasks=new Map(),nativeTaskOwners=new Set();let stopping=false;
   const local = { active: null, creatingSession: false, listeners: new Set(), touchedAt: Date.now(), entry: "tianyi" };
   const attempts = new Map();
-  const allow = key => {
+  const allow = (key, limit = 6) => {
     const times = (attempts.get(key) ?? []).filter(at => Date.now() - at < 600000);
-    if (times.length >= 6) return false;
+    if (times.length >= limit) return false;
     times.push(Date.now()); attempts.set(key, times); return true;
   };
   const cookie = randomBytes(32).toString("hex");
-  const json = (res, status, data) => { res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }); res.end(JSON.stringify(data)); };
+  const json = (res, status, data) => { res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }); res.end(JSON.stringify(data?.error&&iosPublicEntry&&guestAccess?{...data,publicHref:`${basePath}/?phone=public`}:data)); };
   const rememberAvatarCall = (context,active,provider) => {
     const registry=context.avatarOwners??=new Map();
     for(const [id,owner] of registry)if(owner.endedAt&&Date.now()-owner.endedAt>300000)registry.delete(id);
@@ -119,8 +181,25 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     registry.set(active.reservation.voiceSessionId,{voiceSessionId:active.reservation.voiceSessionId,sessionKey:active.sessionKey,
       provider,model:active.reservation.model??null,avatarSequences:new Map()});
   };
+  // A relay can finish cleanup before the phone's HTTP close arrives. Retain
+  // only confirmed completions in the same authenticated visitor context, so
+  // the existing app can clear its pending ID without retrying on the next dial.
+  const rememberClosedCall = (context,id) => {
+    const completed=context.completedCalls??=new Map(),now=Date.now();
+    for(const [key,at] of completed)if(now-at>300000)completed.delete(key);
+    completed.set(id,now);
+    while(completed.size>4)completed.delete(completed.keys().next().value);
+  };
+  const isClosedCall = (context,id) => {
+    const at=context.completedCalls?.get(id);
+    if(at===undefined)return false;
+    if(Date.now()-at>300000){context.completedCalls.delete(id);return false;}
+    return true;
+  };
   const close = async (context = local) => {
     const old = context.active;
+    old?.deviceChannel?.close();
+    if(old?.deviceBound)await (old.gateway??gateway).request('voice.product.device-context',{clientSecret:old.reservation.clientSecret,voiceSessionId:old.reservation.voiceSessionId,mode:'close'},{timeoutMs:5000}).catch(()=>{});
     old?.taskDelivery?.close();
     await old?.replyDelivery?.close();
     old?.callControl?.close();
@@ -128,6 +207,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     if (old) visual.forget(old.reservation.voiceSessionId);
     if (old?.direct) await directVoice.close(old.reservation.voiceSessionId);
     else if (old) await (old.gateway??gateway).request("talk.client.close", { sessionKey: old.sessionKey, voiceSessionId: old.reservation.voiceSessionId });
+    if(old)rememberClosedCall(context,old.reservation.voiceSessionId);
     if(old&&!old.direct)callControlAudit({type:'call.closed',voiceSessionId:old.reservation.voiceSessionId});
     if (context.active === old) {context.active = null;const owner=context.avatarOwners?.get(old?.reservation.voiceSessionId);if(owner)owner.endedAt=Date.now();}
   };
@@ -139,6 +219,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       // fully retired native session can release another device's lock.
       if(!old?.direct||directVoice.hasSession(old.reservation.voiceSessionId))continue;
       visual.forget(old.reservation.voiceSessionId);
+      rememberClosedCall(context,old.reservation.voiceSessionId);
       context.active=null;
       const owner=context.avatarOwners?.get(old.reservation.voiceSessionId);if(owner)owner.endedAt=Date.now();
     }
@@ -156,10 +237,15 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   // verification, limits, ownership and reservation. A transport never selects identity.
   const reservePhoneCall = async ({context,binding,params,req,ip,cancelled=()=>false}) => {
     const reply=(status,body)=>({status,body});
+    // An old cached native preference must not silently start another model or
+    // end an existing call. The existing options refresh selects the new default.
+    if (params.model === 'grok' && !enableGrok) return reply(409,{error:'Grok 目前仅供测试，请返回首页刷新后选择可用模型。',code:'model_hidden',fallbackModel:defaultModel});
+    const externalCancelled=cancelled;
+    cancelled=()=>externalCancelled()||Boolean(binding.cliManaged&&!agentControl?.active(binding.id));
     const unidentified=binding.permissionProfile==='unidentified';
     if(unidentified){
       params={...params,model:params.model??guestModel(),inputPolicy:'native'};
-      if(!directVoice||!directVoice.models().some(m=>m.id===params.model&&m.available))return reply(400,{error:'当前访客电话请选择小何或 Grok。'});
+      if(!directVoice||!directVoice.models().some(m=>m.id===params.model&&m.available))return reply(400,{error:enableGrok?'当前访客电话请选择小何或 Grok。':'当前访客电话请选择小何。'});
     }
     if (releaseGate.blocked()) return reply(503,{error:"V 正在更新，请稍后重新拨号。"});
     if (!backendReady()) return reply(503,{error:"V 后端正在重新连接，请稍后重拨。"});
@@ -181,17 +267,29 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       const busy = [...contexts.values()].filter(item => item.active || item.creatingSession);
       if (!context.active && busy.length >= maxActiveSessions) return reply( 503, { error: "现在和 V 说话的人有点多，请稍后再试" });
       if (!context.active && busy.filter(item => item.ip === ip).length >= maxActiveSessionsPerIp) return reply( 429, { error: "这台设备已有通话，请先结束后再试" });
-      if (!allow(`call:${ip}`)) return reply( 429, { error: "通话开始得太频繁，请稍后再试" });
+      if (!allow(`call:${ip}`, callAttemptLimit(binding))) return reply( 429, { error: "通话开始得太频繁，请稍后再试" });
       context.ip = ip;
     }
     context.creatingSession = true;
     try {
       // New phone entries cannot create a guessed or stale conversation.
       // Keep the accepted legacy personal entry's startup path unchanged.
-      if (binding.id !== 'tianyi'&&!unidentified) await verifyPhoneSession(binding.gateway??gateway, binding);
+      const admitted=requestAdmissions.get(req);requestAdmissions.delete(req);
+      const verifyStartedAt=performance.now();
+      const currentAdmission=binding.permissionProfile==='feishu-current'&&admitted?.binding===binding&&performance.now()-admitted.at<1000;
+      if (binding.id !== 'tianyi'&&!unidentified&&!currentAdmission) await verifyPhoneSession(binding.gateway??gateway, binding);
+      const verifiedAt=performance.now();
       if(cancelled())return reply(499,{error:"拨号已取消"});
       await close(context);
+      const closedAt=performance.now();
       if(cancelled())return reply(499,{error:"拨号已取消"});
+      const recordAdmissionTiming=reservation=>{
+        const now=performance.now(),resolved=admitted?.binding===binding;
+        callControlAudit({type:'call.admission-timing',voiceSessionId:reservation.voiceSessionId,
+          ...(resolved?{resolveMs:Math.round(admitted.at-admitted.startedAt)}:{}),
+          verificationMs:Math.round(verifiedAt-verifyStartedAt),previousCloseMs:Math.round(closedAt-verifiedAt),
+          reservationMs:Math.round(now-closedAt),toReservationMs:Math.round(now-(resolved?admitted.startedAt:verifyStartedAt))});
+      };
       const sessionKey = binding.sessionKey;
       const callGateway=binding.gateway??gateway;
       const replyTarget=binding.replyTarget??replyTargets.get(binding.id)??null;
@@ -204,10 +302,11 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         // the deployment selects the phone default, not browser heuristics.
         // Clients opt in only after implementing native response ownership and reversible pause.
         const inputPolicy = params.inputPolicy ?? 'speaker';
-        const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(unidentified?{unidentified:true}:{}),...(binding.callerIdentity?{callerIdentity:binding.callerIdentity}:{}),...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId,toolIdentity:binding.actorPrincipal}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(params.nativeDeviceActions?{nativeDeviceActions:params.nativeDeviceActions,terminalKind:iosBindings?.read(req,binding)?'ios':'web',backendDeviceURL:`${hosted?publicOrigin:`http://127.0.0.1:${server.address().port}`}${basePath}/internal/device-request`}:{}),...(params.nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId,reportOptions)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...(speakerRouting||unidentified)?{inputPolicy}:{}});
+        const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(unidentified?{unidentified:true}:{}),...(binding.callerIdentity?{callerIdentity:binding.callerIdentity}:{}),...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId,toolIdentity:binding.actorPrincipal}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(params.nativeDeviceActions?{nativeDeviceActions:params.nativeDeviceActions,terminalKind:iosBindings?.read(req,binding)?'ios':'web',backendDeviceURL:backendDeviceEndpoint||`${hosted?publicOrigin:`http://127.0.0.1:${server.address().port}`}${basePath}/internal/device-request`}:{}),...(params.nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId,reportOptions)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...(speakerRouting||unidentified)?{inputPolicy}:{}});
         context.active={sessionKey,gateway:callGateway,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
         if(cancelled()){await close(context);return reply(499,{error:"拨号已取消"});}
         rememberAvatarCall(context,context.active,params.model);
+        recordAdmissionTiming(reservation);
         return reply(200,reservation);
       }
       const reservation = await callGateway.request("talk.client.create", { sessionKey, provider: gptProvider, model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
@@ -231,9 +330,49 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         owned.presentation.controls.push(message);if(owned.presentation.controls.length>64)owned.presentation.controls.shift();
         for(const response of context.listeners)response.write(`data: ${JSON.stringify(message)}\n\n`);
       }});
+      if(params.nativeDeviceActions&&directVoice?.openDeviceChannel&&gptProvider==='v-voice-gpt-live'){
+        const ownerParams={clientSecret:reservation.clientSecret,voiceSessionId:reservation.voiceSessionId};
+        let channel;
+        try{
+          const supported=await callGateway.request('voice.product.device-context',{...ownerParams,mode:'check'},{timeoutMs:5000});
+          if(supported?.accepted&&context.active===owned){
+            let revision=1,updates=Promise.resolve();
+            const publish=terminal=>{
+              const message={type:'device.context',voiceSessionId:reservation.voiceSessionId,terminalContext:terminal,text:terminalInstructions(terminal)};
+              for(const response of context.listeners)response.write(`data: ${JSON.stringify(message)}\n\n`);
+            };
+            channel=directVoice.openDeviceChannel({voiceSessionId:reservation.voiceSessionId,nativeDeviceActions:params.nativeDeviceActions,
+              terminalKind:iosBindings?.read(req,binding)?'ios':'web',callerIdentity:binding.callerIdentity,gateway:callGateway,agentId:binding.agentId??'makaron',sessionKey,
+              backendDeviceURL:backendDeviceEndpoint||`${hosted?publicOrigin:`http://127.0.0.1:${server.address().port}`}${basePath}/internal/device-request`,
+              isCurrent:()=>context.active===owned&&!owned.deviceRetired,
+              send:frame=>{if(context.active===owned)for(const response of context.listeners)response.write(`data: ${JSON.stringify(frame)}\n\n`);},
+              onContext:terminal=>{
+                publish(terminal);
+                updates=updates.then(async()=>{
+                  if(!owned.deviceBound||context.active!==owned)return;
+                  const result=await callGateway.request('voice.product.device-context',{...ownerParams,revision:++revision,terminal,bridge:owned.deviceDescriptor},{timeoutMs:5000});
+                  if(!result?.accepted)throw Error('Device metadata update rejected');
+                }).catch(()=>{owned.deviceRetired=true;channel?.close();});
+              }});
+            owned.deviceChannel=channel;
+            const descriptor=await channel?.descriptor();
+            if(descriptor&&context.active===owned){
+              const bound=await callGateway.request('voice.product.device-context',{...ownerParams,revision,terminal:channel.terminalContext(),bridge:descriptor},{timeoutMs:5000});
+              if(!bound?.accepted)throw Error('Device metadata binding rejected');
+              owned.deviceBound=true;owned.deviceDescriptor=descriptor;
+            }else channel?.close();
+          }
+        }catch{channel?.close();owned.deviceRetired=true;}
+      }
       rememberAvatarCall(context,context.active,'openai');
       const speaker=speakerRouting?.reserve(reservation.voiceSessionId,{model:'gpt-live',policy:params.inputPolicy??'speaker'});
-      return reply( 200, { voiceSessionId: reservation.voiceSessionId, model: reservation.model,...(binding.callerIdentity?{callerContext:{voiceSessionId:reservation.voiceSessionId,text:feishuCallerIdentityInstructions(binding.callerIdentity)}}:{}),...speaker?{speakerRouting:speaker}:{} });
+      const terminal=owned.deviceBound&&!owned.deviceRetired?owned.deviceChannel.terminalContext():null;
+      const callerText=[binding.callerIdentity?feishuCallerIdentityInstructions(binding.callerIdentity):'',terminal?terminalInstructions(terminal):''].filter(Boolean).join('\n');
+      if(cancelled()){await close(context);return reply(499,{error:'拨号已取消'});}
+      recordAdmissionTiming(reservation);
+      // The native owner selects its audio backend from this public field.
+      // Keep the validated transport while withholding provider credentials.
+      return reply(200,{voiceSessionId:reservation.voiceSessionId,model:reservation.model,transport:reservation.transport,...(callerText?{callerContext:{voiceSessionId:reservation.voiceSessionId,text:callerText}}:{}),...(terminal?{nativeDeviceActions:{version:1,capabilities:terminal.capabilities},terminalContext:terminal}:{}),...speaker?{speakerRouting:speaker}:{}});
     } finally {
       context.creatingSession = false;
     }
@@ -259,12 +398,25 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         return devicePathname === deviceEndpoint.otaPath ? deviceEndpoint.handleOta(req, res) : deviceEndpoint.handleVision(req, res);
       }
       if (hosted ? host !== origin.host : !/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host)) return json(res, 403, { error: "请求入口不匹配" });
+      // Server-to-server callback authenticates its exact bytes independently;
+      // browser Origin exceptions apply to this one path only.
+      if(phoneLogin?.confirmation&&req.method==='POST'&&new URL(req.url,'http://voice.invalid').pathname===`${basePath}/feishu/confirm/callback`){
+        if(req.headers.origin)return json(res,403,{error:'身份回调无效'});
+        let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>4096)return json(res,413,{error:'身份回调过大'});}
+        try{return json(res,200,await phoneLogin.confirmation.callback(raw,req.headers['x-voice-confirm-signature']));}
+        catch(error){console.warn(JSON.stringify({type:'voice.card-confirmation-rejected',reason:error.confirmationReason??'unavailable'}));return json(res,403,{error:'身份确认无效或已过期'});}
+      }
       const requestOrigin = hosted ? publicOrigin : `http://${host}`;
       if (req.headers.origin && req.headers.origin !== requestOrigin || hosted && req.method === "POST" && req.headers.origin !== requestOrigin) return json(res, 403, { error: "请求来源不匹配" });
       const url = new URL(req.url, requestOrigin);
       if (basePath && url.pathname === basePath && req.method === "GET") { res.writeHead(308, { location: `${basePath}/${url.search}`, "cache-control": "no-store" }); res.end(); return; }
       if (basePath && !url.pathname.startsWith(`${basePath}/`)) return json(res, 404, { error: "没有这个入口" });
       let pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
+      if(req.method==='GET'&&/^\/invite\/[a-f0-9]{32}$/u.test(pathname)){
+        const location=agentControl?.invitation(pathname.slice('/invite/'.length));
+        if(!location)return json(res,410,{error:'这个邀请已撤销、过期或不存在。'});
+        res.writeHead(302,{location,'cache-control':'no-store','referrer-policy':'no-referrer'});res.end();return;
+      }
       if(req.method==='POST'&&pathname==='/api/entry-timing'){
         const ip=String(req.headers['cf-connecting-ip']??req.socket.remoteAddress??'unknown').slice(0,128);
         if(!allow('entry-timing:'+ip))return json(res,429,{ok:false});
@@ -278,14 +430,68 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         console.info(JSON.stringify({type:'voice.entry-timing',outcome:['identified','guest'].includes(value.outcome)?value.outcome:'unknown',totalToDialMs:Math.round(value.totalToDialMs),stages,server}));
         return json(res,200,{ok:true});
       }
+      if(pathname==='/public'&&req.method==='GET'){
+        res.writeHead(302,{location:`${basePath}/?phone=public`,'cache-control':'no-store'});res.end();return;
+      }
+      if(pathname==='/api/ios-public'&&req.method==='POST'){
+        if(!iosPublicEntry||!guestAccess||!iosBindingsFile||!backendReady()||!phoneModels().some(m=>m.id!=='gpt-live'&&m.available))return json(res,503,{error:'Public 暂不可用，请稍后重试。'});
+        const ip=String(req.headers['cf-connecting-ip']??req.socket.remoteAddress??'unknown').slice(0,128);
+        if(!allow('ios-public:'+ip))return json(res,429,{error:'准备次数较多，请稍后重试。'});
+        const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>512)return json(res,413,{error:'请求过大。'});chunks.push(chunk);}
+        let params;try{params=JSON.parse(Buffer.concat(chunks).toString());}catch{return json(res,400,{error:'请求无效。'});}
+        if(!params||typeof params!=='object'||Array.isArray(params)||Object.keys(params).length!==1||typeof params.deviceKey!=='string')return json(res,400,{error:'仅接受设备凭证。'});
+        try{return json(res,200,await iosBindings.provisionPublic(params.deviceKey,id=>guestBinding(req,'public',{id})));}
+        catch(error){return json(res,error instanceof IosBindingAuthorizationError?403:503,{error:'无法准备 Public，请稍后重试。'});}
+      }
       const iosExchange=pathname==='/api/ios-binding/redeem'||pathname==='/api/ios-binding/access';
       if(iosExchange&&req.method==='POST'){
         const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>4096)return json(res,413,{error:'绑定请求过大'});chunks.push(chunk);}
         try{req.iosExchangeBody=JSON.parse(Buffer.concat(chunks).toString());}catch{return json(res,400,{error:'绑定请求无效'});}
       }
-      // Old group links are aliases, never a source of a caller's personal identity.
-      const originalPhone=url.searchParams.get('phone'),devicePhone=iosBindings?.canonicalPhone(originalPhone)??originalPhone,canonicalPhone=phoneLogin?.canonicalPhone(devicePhone)??devicePhone;
+      // Managed historical bookmarks enter the current-account flow. Never
+      // rewrite callback state, API requests, or existing personal grants.
+      const browserEntry=req.method==='GET'&&['/','/feishu','/feishu/confirm'].includes(pathname);
+      const originalPhone=url.searchParams.get('phone'),devicePhone=iosBindings?.canonicalPhone(originalPhone)??originalPhone;
+      const canonicalPhone=(browserEntry?phoneLogin?.browserCanonicalPhone(devicePhone):phoneLogin?.canonicalPhone(devicePhone))??devicePhone;
       if(canonicalPhone&&canonicalPhone!==originalPhone)url.searchParams.set('phone',canonicalPhone);
+      if(browserEntry&&canonicalPhone&&canonicalPhone!==devicePhone){
+        // The browser and its subsequent API requests must share the same
+        // canonical address, including when opened outside Feishu.
+        res.writeHead(302,{location:`${basePath}${pathname}${url.search}`,'cache-control':'no-store'});res.end();return;
+      }
+      // Existing confirmation links now open the phone itself. Sending requires
+      // the same-origin POST below, never a navigation side effect.
+      if(phoneLogin?.confirmation&&pathname==='/feishu/confirm'&&req.method==='GET'){
+        pathname='/feishu';url.searchParams.set('connect','1');
+      }
+      if(phoneLogin?.confirmation&&pathname==='/feishu/confirm/prepare'&&req.method==='POST'){
+        let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>512)return json(res,413,{error:'请求过大'});}
+        let body;try{body=JSON.parse(raw);}catch{return json(res,400,{error:'请求无效'});}
+        if(!body||Array.isArray(body)||Object.keys(body).length)return json(res,400,{error:'请求无效'});
+        const ip=String(req.headers['cf-connecting-ip']??req.socket.remoteAddress??'unknown').slice(0,128);
+        if(!allow('feishu-confirm:'+ip))return json(res,429,{error:'请求较多，请稍后重试。'});
+        try{
+          if(!guestAccess)throw Error('guest_unavailable');
+          const setup=phoneLogin.confirmation.prepare(req,res,canonicalPhone);
+          const confirmationCookie=res.getHeader('set-cookie');phoneLogin.clearIdentity(res);
+          res.setHeader('set-cookie',[confirmationCookie,res.getHeader('set-cookie')]);
+          const guest=guestBinding(req,canonicalPhone,guestAccess.read(req)??{id:randomBytes(16).toString('hex')});
+          issueVisitor(res,guest,{id:guest.visitorId});
+          return json(res,200,{...setup,entry:entrySnapshot(guest)});
+        }catch{return json(res,400,{error:'请从原飞书会话重新打开电话。'});}
+      }
+      if(phoneLogin?.confirmation&&['/feishu/confirm/start','/feishu/confirm/status','/feishu/confirm/cancel'].includes(pathname)&&req.method==='POST'){
+        let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>512)return json(res,413,{error:'请求过大'});}
+        let body;try{body=JSON.parse(raw);}catch{return json(res,400,{error:'请求无效'});}
+        if(!body||Object.keys(body).length!==1||typeof body.state!=='string')return json(res,400,{error:'请求无效'});
+        try{
+          if(pathname.endsWith('/cancel')){phoneLogin.confirmation.cancel(req,body.state);return json(res,200,{status:'cancelled'});}
+          if(pathname.endsWith('/start'))return json(res,200,await phoneLogin.confirmation.start(req,body.state));
+          const result=await phoneLogin.confirmation.poll(req,res,body.state);
+          if(result.binding)issueVisitor(res,result.binding);
+          return json(res,200,{status:result.status,...(result.binding?{entry:entrySnapshot(result.binding)}:{}),...(result.location?{location:result.location}:{})});
+        }catch(error){return json(res,error.message==='confirmation_rate_limited'?429:403,{error:error.message==='confirmation_rate_limited'?'此会话刚收到确认请求，请稍后重试。':'连接请求无效或已过期，请重新连接。'});}
+      }
       let entryVisitor = null, entryBinding = null, clientLoginConfig = null;
       const handoffBinding=phoneLogin&&pathname==='/feishu'?phoneLogin.consumeHandoff(req,url.searchParams.get('phone'),url.searchParams.get('identified')):null;
       if(phoneLogin&&pathname==='/feishu/client-login'&&req.method==='POST') {
@@ -295,8 +501,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if(!pending)return json(res,401,{error:'请重新打开电话入口'});
         try {
           if(body.failure){
-            phoneLogin.cancelClient(req,body.state);
             console.warn(JSON.stringify({type:'voice.feishu-client-error',stage:'sdk',providerCode:Number.isInteger(body.failure.code)?body.failure.code:null}));
+            const remembered=await phoneLogin.resumeConfirmedClient(req,body.state);
+            if(remembered){
+              issueVisitor(res,remembered);
+              return json(res,200,{status:entrySnapshot(remembered)});
+            }
           } else {
             const result=await phoneLogin.completeClient(req,res,body,{inline:true});
             issueVisitor(res,result.binding);
@@ -312,7 +522,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       const currentPhone=url.searchParams.get('phone');
       const inFeishu=/Lark|Feishu/iu.test(req.headers['user-agent']??'');
       const sdkEntry=phoneLogin&&guestAccess&&req.method==='GET'&&parseFeishuConversationPhone(currentPhone)
-        &&!handoffBinding&&url.searchParams.get('guest')!=='1'&&url.searchParams.get('oauth')!=='1'&&url.searchParams.get('retry')!=='1';
+        &&!handoffBinding&&url.searchParams.get('guest')!=='1'&&url.searchParams.get('oauth')!=='1'&&url.searchParams.get('retry')!=='1'&&url.searchParams.get('connect')!=='1';
       if(sdkEntry&&inFeishu&&['/','/feishu'].includes(pathname)){
         // requestAccess validates the document URL. Use the already registered
         // callback as the phone page itself, not an intermediate login screen.
@@ -323,10 +533,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if(sdkEntry&&pathname==='/feishu/callback'&&(url.searchParams.get('client')==='1'||inFeishu&&!url.searchParams.has('code')&&!url.searchParams.has('state')&&!url.searchParams.has('error'))){
         const oldState=url.searchParams.get('client')==='1'?url.searchParams.get('state'):null;
         if(oldState&&!phoneLogin.clientPending(req,oldState))return json(res,401,{error:'请重新打开电话入口'});
-        phoneLogin.clearIdentity(res);
+        if(!phoneLogin.hasConfirmedIdentity(req))phoneLogin.clearIdentity(res);
         const cleared=res.getHeader('set-cookie');
         const callback=oldState?null:new URL(phoneLogin.beginClient(req,res,currentPhone),publicOrigin);
-        if(callback)res.setHeader('set-cookie',[cleared,res.getHeader('set-cookie')]);
+        if(cleared&&callback)res.setHeader('set-cookie',[cleared,res.getHeader('set-cookie')]);
         entryBinding=guestBinding(req,currentPhone,guestAccess.read(req)??{id:randomBytes(16).toString('hex')});
         entryVisitor=issueVisitor(res,entryBinding,{id:entryBinding.visitorId});
         clientLoginConfig={appId:feishuLogin.appId,state:oldState??callback.searchParams.get('state'),endpoint:basePath+'/feishu/client-login'};
@@ -342,7 +552,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           if (pathname === '/feishu/callback'&&(url.searchParams.has('code')||url.searchParams.has('state')||url.searchParams.has('error'))) location = await phoneLogin.complete(req, res, url);
           else {
             let selected=null;
-            if(url.searchParams.get('retry')!=='1'&&url.searchParams.get('guest')!=='1'){
+            if(url.searchParams.get('retry')!=='1'&&url.searchParams.get('guest')!=='1'&&url.searchParams.get('connect')!=='1'){
               try{selected=handoffBinding||await phoneLogin.select(req,url.searchParams.get('phone'));}
               catch(error){if(!guestAccess)throw error;}
             }
@@ -374,7 +584,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           // Login recovery is a public document; protected APIs still reject access.
           // Embedded browsers may replace a 403 document with their own error page.
           res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','referrer-policy':'no-referrer'});
-          res.end(feishuPhoneLoginErrorPage({reason:failure.reason,phone:error.recoveryPhone??url.searchParams.get('phone'),basePath}));
+          res.end(feishuPhoneLoginErrorPage({reason:failure.reason,phone:error.recoveryPhone??url.searchParams.get('phone'),basePath,publicHref:iosPublicEntry&&guestAccess?`${basePath}/?phone=public`:null}));
           return;
         }
       }
@@ -382,15 +592,27 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         res.writeHead(200,{'content-type':'text/javascript; charset=utf-8','cache-control':'no-store'});
         res.end(await readFile(join(here,'feishu-client-login.mjs')));return;
       }
-      if (url.searchParams.get("entry") === "visitor") return json(res, 404, { error: "普通人电话入口尚未开放。" });
+      if(url.searchParams.get('entry')==='visitor'){
+        if(iosPublicEntry&&guestAccess&&req.method==='GET'&&pathname==='/'){
+          res.writeHead(302,{location:`${basePath}/?phone=public`,'cache-control':'no-store'});res.end();return;
+        }
+        return json(res,404,{error:'请从 Public 入口重新进入。'});
+      }
+      if(iosPublicEntry&&guestAccess&&req.method==='GET'&&pathname==='/'&&url.searchParams.get('phone')==='public'){
+        entryVisitor=guestAccess.issue(res,guestAccess.read(req)??{});
+        entryBinding=guestBinding(req,'public',entryVisitor);
+      }
       if(parseFeishuConversationPhone(url.searchParams.get('phone'))&&!phoneLogin?.read(req)&&!iosBindings?.principalFor(req,url.searchParams.get('phone'),req.iosExchangeBody)&&!guestBinding(req,url.searchParams.get('phone'))&&!entryBinding){
         if(req.method==='GET'&&pathname==='/'){res.writeHead(302,{location:`${basePath}/feishu?phone=${encodeURIComponent(url.searchParams.get('phone'))}`,'cache-control':'no-store'});res.end();return;}
         return json(res,401,{error:'请从飞书会话电话入口登录。'});
       }
       const binding = entryBinding ?? await resolveBinding(req,url);
-      if (!binding) return json(res,404,{error:"这个电话入口不存在或已关闭。"});
+      if (!binding) return json(res,iosPublicEntry&&url.searchParams.get('phone')==='public'?401:404,{error:"这个电话入口不存在或已关闭。"});
       const entry = binding.id;
       const access = entryAccess(binding);
+      // Managed guest capabilities must not be converted into independent
+      // long-lived iOS grants that outlive their revocation/expiry.
+      if(binding.cliManaged&&pathname.startsWith('/api/ios-binding'))return json(res,403,{error:'此临时授权不支持转为长期设备绑定。'});
       if (phoneLogin?.protects(binding) && !phoneLogin.permits(req, binding) && !iosBindings?.read(req,binding)
         && !iosExchange && (pathname === '/' || pathname.startsWith('/api/'))) {
         if (req.method === 'GET' && pathname === '/') {
@@ -406,8 +628,18 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ["/comparison.css", [join(here, "comparison.css"), "text/css; charset=utf-8"]],
         ["/markdown.mjs", [join(here, "markdown.mjs"), "text/javascript; charset=utf-8"]],
         ["/vendor/marked-18.0.5.mjs", [join(here, "vendor/marked-18.0.5.mjs"), "text/javascript; charset=utf-8"]],
+        ["/feishu-confirmation-client.mjs", [join(here, "feishu-confirmation-client.mjs"), "text/javascript; charset=utf-8"]],
         ["/entry-startup.mjs", [join(here, "entry-startup.mjs"), "text/javascript; charset=utf-8"]],
+        ["/model-options.mjs", [join(here, "model-options.mjs"), "text/javascript; charset=utf-8"]],
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
+        ["/app-bundle.mjs", [join(here, "app-bundle.mjs"), "text/javascript; charset=utf-8"]],
+        ["/dial-connection.mjs", [join(here, "dial-connection.mjs"), "text/javascript; charset=utf-8"]],
+        ["/tv-startup.bundle.mjs", [join(here, "tv-startup.bundle.mjs"), "text/javascript; charset=utf-8"]],
+        ["/tv-entry.bundle.mjs", [join(here, "tv-entry.bundle.mjs"), "text/javascript; charset=utf-8"]],
+        ["/tv-host.mjs", [join(here,"tv-host.mjs"), "text/javascript; charset=utf-8"]],
+        ...["tv-array-capture.mjs","tv-array-dsp.mjs","tv-array-worker.js"].map(name=>[`/${name}`,[join(here,name),"text/javascript; charset=utf-8"]]),
+        ["/assets/tv-aec/webrtcaec3-0.3.0.js",[join(here,"assets/tv-aec/webrtcaec3-0.3.0.js"),"text/javascript; charset=utf-8"]],
+        ["/assets/tv-aec/webrtcaec3-0.3.0.wasm",[join(here,"assets/tv-aec/webrtcaec3-0.3.0.wasm"),"application/wasm"]],
         ["/feishu-client-login.mjs", [join(here, "feishu-client-login.mjs"), "text/javascript; charset=utf-8"]],
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
@@ -423,12 +655,22 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (req.method === "GET" && staticFiles.has(pathname)) {
         if (pathname === "/" && !hosted) res.setHeader("set-cookie", `v_live_experiment=${cookie}; HttpOnly; SameSite=Strict; Path=/`);
         const [file, type] = staticFiles.get(pathname);
-        let contents = await readFile(file);
+        const bundled = pathname === '/app-bundle.mjs' ? await browserBundle() : null;
+        let contents = bundled?.bytes ?? await readFile(file);
         if (pathname === "/") {
           // The first frame needs this CSS, so return the exact release bytes
           // in the HTML instead of requiring another mobile-network round trip.
           const css = await readFile(join(here, "styles.css"), "utf8");
           let html = contents.toString("utf8").replace('<head>', `<head><base href="${basePath||''}/">`).replace('<link rel="stylesheet" href="./styles.css" />', `<style data-voice-entry>${css}</style>`);
+          // TV transparency/layout must exist before the first paint, not after app.js loads.
+          if(url.searchParams.get('tv')==='1') {
+            // These versioned local DSP assets contain no user data. Fetch them
+            // with the entry instead of waiting for the capture worker waterfall.
+            html=html.replace('</head>','<link rel="preload" as="script" href="./assets/tv-aec/webrtcaec3-0.3.0.js"><link rel="preload" as="fetch" type="application/wasm" crossorigin href="./assets/tv-aec/webrtcaec3-0.3.0.wasm"></head>');
+            const shell=url.searchParams.get('tvShell')==='1';
+            const presented=!(shell&&url.searchParams.get('tvSurface')==='1');
+            html=html.replace('<html lang="zh-CN">',`<html lang="zh-CN" data-tv="true" data-tv-layout="${shell?'medium':'full'}" data-tv-presented="${presented}"${url.searchParams.get('tvOverlay')==='1'?' data-tv-overlay="true"':''}>`);
+          }
           if(clientLoginConfig)html=html.replace('</head>','<link rel="preconnect" href="https://lf1-cdn-tos.bytegoofy.com"><link rel="preload" as="script" href="https://lf1-cdn-tos.bytegoofy.com/goofy/lark/op/h5-js-sdk-1.5.26.js"></head>').replace('<script type="module" src="./entry-startup.mjs"></script>',`<script type="application/json" id="login-config">${JSON.stringify(clientLoginConfig).replaceAll('<','\\u003c')}</script><script type="module" src="./entry-startup.mjs"></script>`);
           if(speakerRouting)html=html.replace('<body','<body data-speaker-routing="true"');
           if(candidateRelease)html=html.replace('<script type="module" src="./app.js"></script>',`<script type="application/json" id="voiceCandidateRelease">${JSON.stringify(candidateRelease).replaceAll('<','\\u003c')}</script><script type="module" src="./app.js"></script>`);
@@ -437,14 +679,31 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           const visitor = hosted ? entryVisitor ?? readVisitor(req,binding) : null;
           const canCheckEntry = visitor && (contexts.has(`${entry}:${visitor.id}`) || contexts.size < 512);
           if (!hosted || canCheckEntry) {
-            const initial = JSON.stringify(entrySnapshot(binding)).replaceAll("<", "\\u003c");
+            const initial = JSON.stringify(entrySnapshot(binding,req)).replaceAll("<", "\\u003c");
             html = html.replace('<script type="module" src="./app.js"></script>', `<script type="application/json" id="voiceEntryStatus">${initial}</script><script type="module" src="./app.js"></script>`);
+          }
+          // Keep the early startup/auth module as the single entry owner. The
+          // TV engine bundle removes the high-latency static-import waterfall.
+          if(url.searchParams.get('tv')==='1'){
+            html=html.replace(/<link rel="modulepreload" href="[^"]+" \/>/g,'');
+            html=html.replace('src="./entry-startup.mjs"','src="./tv-startup.bundle.mjs"');
+            html=html.replace('</head>','<link rel="modulepreload" href="./tv-startup.bundle.mjs"><link rel="modulepreload" href="./tv-entry.bundle.mjs"></head>');
+            html=html.replace('src="./app.js"','src="./tv-entry.bundle.mjs"');
+          } else {
+          // Only public application code is cacheable. HTML, inline account
+          // status, login/SDK exchanges and every API keep their existing gate
+          // and no-store policy. A new artifact gets a new bundle URL.
+          const {revision}=await browserBundle();
+          html=html.replaceAll('./app.js',`./app-bundle.mjs?v=${revision}`);
+          const bootstrap=(await entryBootstrap()).replace(/<\/script/giu,'<\\/script');
+          html=html.replace('<script type="module" src="./entry-startup.mjs"></script>',
+            `<script type="module" data-voice-entry-bootstrap>${bootstrap}</script>`);
           }
           contents = Buffer.from(html);
         }
-        res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
+        res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/tv-aec/webrtcaec3-0.3.0.") ? "public, max-age=31536000, immutable" : bundled && url.searchParams.get("v") === bundled.revision ? "private, max-age=31536000, immutable" : pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
       }
-      if(binding.permissionProfile==='unidentified'&&!new Set(['/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke']).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
+      if(binding.permissionProfile==='unidentified'&&!new Set(['/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke',...(binding.cliManaged?['/api/access']:[])]).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
       const readBody = async () => {
         const chunks = []; let size = 0;
         for await (const chunk of req) { size += chunk.length; if (size > 70000) throw new Error("Request too large"); chunks.push(chunk); }
@@ -469,8 +728,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (hosted && req.method === "POST" && pathname === "/api/access") {
         if (!allow(`access:${ip}`)) return json(res, 429, { error: "尝试次数过多，请稍后再试" });
         const params = await readBody();
+        if(binding.cliManaged&&Object.keys(params).some(key=>key!=='access'))return json(res,400,{error:'临时授权只接受访问凭据。'});
         if (!access.accepts(params.access)) return json(res, 403, { error: "分享链接无效或已失效" });
-        const visitor = access.issue(res); return json(res, 200, { ok: true, expiresAt: visitor.expiresAt });
+        const visitor = access.issue(res,binding.cliManaged?{id:binding.visitorId}:{}); return json(res, 200, { ok: true, expiresAt: visitor.expiresAt });
       }
       let context = local;
       if (!hosted) { context = contexts.get(entry) ?? {...local,listeners:new Set(),entry,sessionKey:binding.sessionKey}; contexts.set(entry,context); }
@@ -506,10 +766,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         return json(res,revoked?200:404,revoked?{ok:true}:{error:'没有这个 App 绑定。'});
       }
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
-        ready: backendReady(), preview, defaultModel, ...(directVoice?.attach?{nativeDialVersion:1}:{}), conversation:{name:binding.displayName??'我的 V',kind:binding.kind,replySync:binding.replySync},iosBindingAvailable:hosted, ...(speakerRouting&&binding.permissionProfile!=='unidentified'?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
+        ready: backendReady(), preview, defaultModel, ...(directVoice?.attach?{nativeDialVersion:1,webDialVersion:2}:{}), conversation:conversationPresentation(binding),iosBindingAvailable:hosted, ...(speakerRouting&&binding.permissionProfile!=='unidentified'?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
         releaseReadiness: releaseReadiness(),
         ...(listening?{comparisonAvailable:true}:{}), model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
-        ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'},...directVoice.models()]} : {}),...entryPresentation(binding),
+        models:phoneModels(),...entryPresentation(binding,req),
       });
       if(req.method==='GET'&&pathname==='/api/comparison')return listening?json(res,200,listening.manifest):json(res,404,{error:'当前没有试听样本'});
       if(req.method==='GET'&&pathname==='/api/speaker-fixture'){
@@ -564,8 +824,16 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         try{return json(res,200,await avatarLog.write({owner,clientCaptureId:params.captureId,events:params.events}));}
         catch{return json(res,503,{error:'头像记录暂未保存'});}
       }
+      if(pathname==='/api/close'&&params.voiceSessionId!==context.active?.reservation.voiceSessionId&&isClosedCall(context,params.voiceSessionId))return json(res,200,{ok:true});
       if (!context.active || params.voiceSessionId !== context.active.reservation.voiceSessionId) return json(res, 409, { error: "通话已结束，请重新开始" });
       context.active.touchedAt = Date.now();
+      if(pathname==='/api/device-result'){
+        const active=context.active;
+        if(active.direct||!active.deviceBound||active.deviceRetired||Object.keys(params).some(k=>!['voiceSessionId','frame'].includes(k)))return json(res,409,{error:'设备通道已结束'});
+        let accepted=false;try{accepted=active.deviceChannel.receive(params.frame);}catch{}
+        return json(res,accepted?200:409,{accepted});
+      }
+
       if (pathname === '/api/avatar') {
         const active = context.active;
         if (!Number.isSafeInteger(params.revision) || params.revision < 1 || !Array.isArray(params.turns)
@@ -637,6 +905,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     }
   });
   const timer = setInterval(() => {
+    void invalidateManagedCalls().catch(()=>{});
     releaseClosedDirectCalls();
     for (const [id, context] of [...contexts, [null, local]]) {
       if (context.active && Date.now() - context.active.touchedAt > 45000) void close(context).catch(() => {});
@@ -733,9 +1002,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       const reject=status=>socket.end(`HTTP/1.1 ${status} Rejected\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
       if(stopping||releaseGate.blocked()||!backendReady())return reject(503);
       if(typeof directVoice.attach!=='function')return reject(404);
-      const allowed=new Set(['phone','model','voice','nativeRuntimeVersion','nativeDeviceActions','dialVersion']);
+      const dialVersion=url.searchParams.get('dialVersion');
+      const allowed=new Set(['phone','model','voice','nativeRuntimeVersion','nativeDeviceActions','dialVersion',...(dialVersion==='2'?['inputPolicy']:[])]);
       if([...url.searchParams.keys()].some(k=>!allowed.has(k)||url.searchParams.getAll(k).length!==1)
-        ||url.searchParams.get('dialVersion')!=='1'||url.searchParams.get('nativeRuntimeVersion')!=='1'
+        ||!['1','2'].includes(dialVersion)
+        ||(dialVersion==='1'?url.searchParams.get('nativeRuntimeVersion')!=='1':url.searchParams.has('nativeRuntimeVersion'))
+        ||url.searchParams.has('inputPolicy')&&!['native','speaker'].includes(url.searchParams.get('inputPolicy'))
         ||!['seeduplex','grok'].includes(url.searchParams.get('model')))return reject(400);
       const binding=await resolveBinding(req,url).catch(()=>null);if(!binding)return reject(404);
       if(phoneLogin?.protects(binding)&&!phoneLogin.permits(req,binding)&&!iosBindings?.read(req,binding))return reject(401);
@@ -751,7 +1023,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       }
       releaseClosedDirectCalls();context.touchedAt=Date.now();
       let actions;try{actions=url.searchParams.has('nativeDeviceActions')?JSON.parse(url.searchParams.get('nativeDeviceActions')):undefined;normalizeDeviceActions(actions);}catch{return reject(400);}
-      const params={model:url.searchParams.get('model'),nativeRuntimeVersion:1,...(actions?{nativeDeviceActions:actions}:{}),inputPolicy:phoneInputPolicy,
+      const params={model:url.searchParams.get('model'),...(dialVersion==='1'?{nativeRuntimeVersion:1,inputPolicy:phoneInputPolicy}:url.searchParams.has('inputPolicy')?{inputPolicy:url.searchParams.get('inputPolicy')}:{}),...(actions?{nativeDeviceActions:actions}:{}),
         ...(url.searchParams.has('voice')?{voice:url.searchParams.get('voice')}:{})};
       dialSockets.handleUpgrade(req,socket,head,client=>{
         client.on('error',()=>{});
@@ -767,7 +1039,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
             reservation=result.body;
             if(cancelled()){if(context.active?.reservation===reservation)await close(context);return;}
             // The caller learns its owned ID and policy before any provider frame.
-            client.send(JSON.stringify({...reservation,type:'reservation',dialVersion:1,relayTicket:undefined}));
+            client.send(JSON.stringify({...reservation,type:'reservation',dialVersion:Number(dialVersion),relayTicket:undefined}));
             client.removeListener('message',earlyInput);
             if(!directVoice.attach(reservation.voiceSessionId,reservation.relayTicket,client))throw Error('Dial attach failed');
           }catch{
@@ -794,7 +1066,19 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     else directVoice.upgrade(req,socket,head,url.searchParams.get('voiceSessionId'),url.searchParams.get('ticket'));
   });
   const sessionBusy = sessionKey => [local, ...contexts.values()].some(item => item.sessionKey === sessionKey && (item.active || item.creatingSession));
-  return { server, emit, sessionBusy, serviceReady: backendReady, releaseReadiness, releaseGate, deviceInventory: () => deviceEndpoint?.inventory?.() ?? [], dispose: async ({drain=false}={}) => {
+  async function invalidateManagedCalls(){
+    for(const context of contexts.values())if(context.entry?.startsWith('cli_')&&!agentControl?.active(context.entry)){
+      for(const response of context.listeners)response.end();context.listeners.clear();
+      await close(context);
+    }
+  }
+  return { server, emit, sessionBusy, serviceReady: backendReady, releaseReadiness, releaseGate,
+    setAgentControl:control=>{if(agentControl||entries.publicEntries().some(e=>e.id.startsWith('cli_')))throw Error('CLI controller or reserved entry prefix already in use');agentControl=control;},
+    invalidateManagedCalls,
+    cliConfiguration:()=>({publicOrigin,basePath,accountId:feishuLogin?.conversations?feishuLogin.accountId:null,guestEnabled:!!guestAccess&&iosPublicEntry,publicTools:!!guestAccess&&iosPublicEntry&&publicTools}),
+    cliStatus:()=>({ready:backendReady(),preview,models:directVoice?.models().map(({id,available})=>({id,available}))??[],readiness:releaseReadiness()}),
+    cliActivity:entry=>({activeCalls:[...contexts.values()].filter(c=>c.active&&agentControl?.entryId(c.entry)===entry).length,creatingSessions:[...contexts.values()].filter(c=>c.creatingSession&&agentControl?.entryId(c.entry)===entry).length}),
+    deviceInventory: () => deviceEndpoint?.inventory?.() ?? [], dispose: async ({drain=false}={}) => {
     stopping=true;clearInterval(timer);
     await deviceEndpoint?.dispose();
     for (const context of [local, ...contexts.values()]) { for (const response of context.listeners) response.end(); await close(context).catch(() => {}); }
@@ -811,7 +1095,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const preview = process.env.GPT_LIVE_H5_PREVIEW === "1";
   const port = Number(process.env.GPT_LIVE_H5_PORT ?? process.env.RTC_H5_PORT ?? 26244);
-  let gateway, bridge, transcriptLog, avatarLog, productionSpeaker, releaseControl;
+  let gateway, bridge, transcriptLog, avatarLog, productionSpeaker, releaseControl, agentControl, agentSocket;
   if (!preview) {
     const configPath = process.env.OPENCLAW_CONFIG_PATH;
     if (!configPath) throw new Error("OPENCLAW_CONFIG_PATH is required");
@@ -837,14 +1121,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     productionSpeaker=await (await import('../speaker-native/production.mjs')).createProductionSpeaker({audit:transcriptLog.audit});
     const speakerRouting=productionSpeaker?.service;
     const lark=createVoiceLarkReader({environment:process.env});
-    if(!lark.available)console.warn(JSON.stringify({type:'voice.lark-unavailable'}));
+    const feishuLoginConfig=process.env.VOICE_FEISHU_LOGIN_FILE?await readFeishuPhoneLoginFile(process.env.VOICE_FEISHU_LOGIN_FILE):undefined;
+    const personalLark=await personalLarkReader(lark,feishuLoginConfig);
+    if(!personalLark.calendar)console.warn(JSON.stringify({type:'voice.lark-unavailable'}));
     const nativeInterruptModule=process.env.VOICE_NATIVE_INTERRUPT_ASR==='1'?await import('../realtime-direct-tools/native-interrupt.mjs'):null;
     const nativeInterrupt=nativeInterruptModule
       ? ({inputSampleRate,...callbacks})=>new nativeInterruptModule.NativeInterruptAsr({apiKey:process.env.VOLCENGINE_ASR_API_KEY,inputSampleRate,...callbacks}):undefined;
-    const directVoice=createDirectVoiceService({gateway,wsModule,speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
+    const directVoice=createDirectVoiceService({gateway,wsModule,backendDeviceBundle:backendDeviceBundleFromEnv(),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
-      calendar:lark.available?lark.calendar:null,larkRead:lark.available?lark.read:null,larkForActor:lark.forActor,
+      mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({environment:process.env}):null,
+      calendar:personalLark.calendar,larkRead:personalLark.read,larkForActor:lark.forActor,
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),
       grokExpressiveTags:process.env.XAI_VOICE_EXPRESSIVE_TAGS === '1',
@@ -854,7 +1141,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY??process.env.DOUBAO_SPEECH_API_KEY,
       grok:process.env.XAI_API_KEY,
     },loadContext:async (sessionKey,{gateway:callGateway=gateway}={})=>{
-      const history=await callGateway.request('chat.history',{sessionKey,limit:6},{timeoutMs:10000});
+      const history=await callGateway.request('chat.history',{sessionKey,...VOICE_CONTEXT_HISTORY_REQUEST},{timeoutMs:10000});
       return voiceConversationContext(history.messages??[]);
     }});
     // Robot faces reuse the shared H5 semantic selector and map its pose to
@@ -871,7 +1158,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       deviceEndpoint = createDeviceEndpoint({directVoice,wsModule,audit:transcriptLog.audit,
         // Spoken volume changes; without a file they last until the service restarts.
         volumeStore:createVolumeStore({file:process.env.VOICE_DEVICE_VOLUME_FILE ?? null}),
-        devices:parseDeviceEntries(JSON.parse(await readFile(process.env.VOICE_DEVICES_FILE,"utf8"))),
+        devices:parseDeviceEntries(JSON.parse(await readFile(process.env.VOICE_DEVICES_FILE,"utf8")),process.env.VOICE_ENTRIES_FILE?JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,'utf8')):[]),
         path:process.env.VOICE_DEVICE_PATH ?? "/device/voice",
         xiaozhiPath:process.env.VOICE_XIAOZHI_PATH ?? null,
         otaPath:process.env.VOICE_XIAOZHI_OTA_PATH ?? null,
@@ -882,19 +1169,22 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         describeImage:process.env.DEEPSEEK_API_KEY ? (await import('../realtime-direct-tools/device-vision.mjs')).createDeepSeekVision({apiKey:process.env.DEEPSEEK_API_KEY,model:process.env.VOICE_DEVICE_VISION_MODEL ?? 'deepseek-flash'}) : null,
         robotEvaluate:await robotEvaluatorFromEnv(process.env)});
     }
-    bridge = createLiveH5Server({ gateway, deviceEndpoint,
+    bridge = createLiveH5Server({ gateway, deviceEndpoint,backendDeviceEndpoint:process.env.VOICE_BACKEND_DEVICE_ENDPOINT??'',
       candidateRelease:process.env.VOICE_CANDIDATE_RELEASE_FILE?JSON.parse(await readFile(process.env.VOICE_CANDIDATE_RELEASE_FILE,'utf8')):undefined,
       listening:process.env.VOICE_LISTENING_DIR ? await (await import('./listening.mjs')).loadVoiceListening(process.env.VOICE_LISTENING_DIR) : undefined,
       directVoice, speakerRouting, avatarLog,callControlAudit:transcriptLog.audit,
       phoneInputPolicy:process.env.VOICE_PHONE_INPUT_POLICY ?? 'speaker',
+      enableGrok: process.env.VOICE_ENABLE_GROK === '1',
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",
       feishuAccounts:process.env.VOICE_FEISHU_ACCOUNTS_FILE?JSON.parse(await readFile(process.env.VOICE_FEISHU_ACCOUNTS_FILE,'utf8')):config.channels?.feishu??{},
       personalReply: {replySync:!!process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID,accountId:process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID},
       conversationEntries: process.env.VOICE_ENTRIES_FILE ? JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,"utf8")) : [],
       callReportsDirectory:process.env.VOICE_CALL_REPORTS_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-call-reports'),
       iosAppDownloadUrl:process.env.VOICE_IOS_APP_DOWNLOAD_URL,
+      iosPublicEntry:process.env.VOICE_IOS_PUBLIC_ENTRY==='1',
+      publicTools:process.env.VOICE_PUBLIC_TOOLS!=='0',
       iosBindingsFile:process.env.VOICE_IOS_BINDINGS_FILE??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-ios-bindings.private.json'),
-      feishuLogin: process.env.VOICE_FEISHU_LOGIN_FILE ? await readFeishuPhoneLoginFile(process.env.VOICE_FEISHU_LOGIN_FILE) : undefined,
+      feishuLogin: feishuLoginConfig,
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",
       publicOrigin: process.env.GPT_LIVE_H5_PUBLIC_ORIGIN ?? process.env.RTC_H5_PUBLIC_ORIGIN
         ?? (process.env.RTC_H5_BASE_PATH && process.env.RTC_H5_ACCESS_TOKEN ? "https://openclaw.tianyi.live" : ""),
@@ -906,9 +1196,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       if (!response.ok) throw new Error("Native SDP exchange failed"); return response.text();
     } });
   } else bridge = createLiveH5Server({ preview: true });
+  if(process.env.VOICE_CLI_SOCKET||process.env.VOICE_CLI_REGISTRY){
+    if(!process.env.VOICE_CLI_SOCKET||!process.env.VOICE_CLI_REGISTRY||preview)throw Error('CLI needs a hosted service, socket and persistent private registry');
+    agentControl=await createVoiceAgentControl({file:process.env.VOICE_CLI_REGISTRY,
+      ...bridge.cliConfiguration(),status:bridge.cliStatus,activity:bridge.cliActivity,onInvalidate:bridge.invalidateManagedCalls});
+    bridge.setAgentControl(agentControl);
+    agentSocket=await listenVoiceAgentControl({socketPath:process.env.VOICE_CLI_SOCKET,controller:agentControl});
+  }
   if(Number(process.env.VOICE_RELEASE_BOOT_HOLD_UNTIL)>Date.now()) bridge.releaseGate.hold();
   if(process.env.VOICE_RELEASE_SOCKET) releaseControl = await listenReleaseControl({socketPath:process.env.VOICE_RELEASE_SOCKET,bridge,
     release:await readRelease(new URL('../../',import.meta.url))});
   bridge.server.listen(port, "127.0.0.1", () => console.log(JSON.stringify({ ready: true, host: "127.0.0.1", port, preview })));
-  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void bridge.dispose({drain:true}).finally(async () => { await releaseControl?.close(); await transcriptLog?.close(); await avatarLog?.close(); productionSpeaker?.close(); gateway?.stop(); process.exit(0); }));
+  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void bridge.dispose({drain:true}).finally(async () => { await agentSocket?.close();await agentControl?.close();await releaseControl?.close(); await transcriptLog?.close(); await avatarLog?.close(); productionSpeaker?.close(); gateway?.stop(); process.exit(0); }));
 }

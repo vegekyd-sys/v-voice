@@ -1,0 +1,346 @@
+{
+  "baseline": {
+    "kind": "controlled-preparation-replay",
+    "delaysMs": {
+      "catalog": 650,
+      "context": 800,
+      "model": 600,
+      "speechControl": 200
+    },
+    "providerConnections": 0,
+    "samples": [
+      {
+        "toReadyMs": 1615,
+        "stages": [
+          {
+            "stage": "catalog-requested"
+          },
+          {
+            "stage": "context-requested"
+          },
+          {
+            "stage": "catalog-ready"
+          },
+          {
+            "stage": "context-ready"
+          },
+          {
+            "stage": "provider-connecting"
+          },
+          {
+            "stage": "provider-ready"
+          }
+        ]
+      },
+      {
+        "toReadyMs": 1610,
+        "stages": [
+          {
+            "stage": "catalog-requested"
+          },
+          {
+            "stage": "context-requested"
+          },
+          {
+            "stage": "catalog-ready"
+          },
+          {
+            "stage": "context-ready"
+          },
+          {
+            "stage": "provider-connecting"
+          },
+          {
+            "stage": "provider-ready"
+          }
+        ]
+      },
+      {
+        "toReadyMs": 1605,
+        "stages": [
+          {
+            "stage": "catalog-requested"
+          },
+          {
+            "stage": "context-requested"
+          },
+          {
+            "stage": "catalog-ready"
+          },
+          {
+            "stage": "context-ready"
+          },
+          {
+            "stage": "provider-connecting"
+          },
+          {
+            "stage": "provider-ready"
+          }
+        ]
+      },
+      {
+        "toReadyMs": 1604,
+        "stages": [
+          {
+            "stage": "catalog-requested"
+          },
+          {
+            "stage": "context-requested"
+          },
+          {
+            "stage": "catalog-ready"
+          },
+          {
+            "stage": "context-ready"
+          },
+          {
+            "stage": "provider-connecting"
+          },
+          {
+            "stage": "provider-ready"
+          }
+        ]
+      },
+      {
+        "toReadyMs": 1603,
+        "stages": [
+          {
+            "stage": "catalog-requested"
+          },
+          {
+            "stage": "context-requested"
+          },
+          {
+            "stage": "catalog-ready"
+          },
+          {
+            "stage": "context-ready"
+          },
+          {
+            "stage": "provider-connecting"
+          },
+          {
+            "stage": "provider-ready"
+          }
+        ]
+      }
+    ]
+  },
+  "candidate": {
+    "kind": "controlled-preparation-replay",
+    "delaysMs": {
+      "catalog": 650,
+      "context": 800,
+      "model": 600,
+      "speechControl": 200
+    },
+    "providerConnections": 0,
+    "samples": [
+      {
+        "toReadyMs": 1422,
+        "stages": [
+          {
+            "stage": "catalog-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "context-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "catalog-ready",
+            "elapsedMs": 650
+          },
+          {
+            "stage": "context-ready",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "provider-connecting",
+            "elapsedMs": 818
+          },
+          {
+            "stage": "speech-control-connecting",
+            "elapsedMs": 818
+          },
+          {
+            "stage": "speech-control-ready",
+            "elapsedMs": 1019
+          },
+          {
+            "stage": "model-ready",
+            "elapsedMs": 1420
+          },
+          {
+            "stage": "provider-ready",
+            "elapsedMs": 1420
+          }
+        ]
+      },
+      {
+        "toReadyMs": 1403,
+        "stages": [
+          {
+            "stage": "catalog-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "context-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "catalog-ready",
+            "elapsedMs": 650
+          },
+          {
+            "stage": "context-ready",
+            "elapsedMs": 800
+          },
+          {
+            "stage": "provider-connecting",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "speech-control-connecting",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "speech-control-ready",
+            "elapsedMs": 1002
+          },
+          {
+            "stage": "model-ready",
+            "elapsedMs": 1401
+          },
+          {
+            "stage": "provider-ready",
+            "elapsedMs": 1401
+          }
+        ]
+      },
+      {
+        "toReadyMs": 1405,
+        "stages": [
+          {
+            "stage": "catalog-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "context-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "catalog-ready",
+            "elapsedMs": 651
+          },
+          {
+            "stage": "context-ready",
+            "elapsedMs": 802
+          },
+          {
+            "stage": "provider-connecting",
+            "elapsedMs": 803
+          },
+          {
+            "stage": "speech-control-connecting",
+            "elapsedMs": 803
+          },
+          {
+            "stage": "speech-control-ready",
+            "elapsedMs": 1003
+          },
+          {
+            "stage": "model-ready",
+            "elapsedMs": 1404
+          },
+          {
+            "stage": "provider-ready",
+            "elapsedMs": 1404
+          }
+        ]
+      },
+      {
+        "toReadyMs": 1404,
+        "stages": [
+          {
+            "stage": "catalog-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "context-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "catalog-ready",
+            "elapsedMs": 651
+          },
+          {
+            "stage": "context-ready",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "provider-connecting",
+            "elapsedMs": 802
+          },
+          {
+            "stage": "speech-control-connecting",
+            "elapsedMs": 802
+          },
+          {
+            "stage": "speech-control-ready",
+            "elapsedMs": 1002
+          },
+          {
+            "stage": "model-ready",
+            "elapsedMs": 1404
+          },
+          {
+            "stage": "provider-ready",
+            "elapsedMs": 1404
+          }
+        ]
+      },
+      {
+        "toReadyMs": 1408,
+        "stages": [
+          {
+            "stage": "catalog-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "context-requested",
+            "elapsedMs": 0
+          },
+          {
+            "stage": "catalog-ready",
+            "elapsedMs": 650
+          },
+          {
+            "stage": "context-ready",
+            "elapsedMs": 800
+          },
+          {
+            "stage": "provider-connecting",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "speech-control-connecting",
+            "elapsedMs": 801
+          },
+          {
+            "stage": "speech-control-ready",
+            "elapsedMs": 1001
+          },
+          {
+            "stage": "model-ready",
+            "elapsedMs": 1402
+          },
+          {
+            "stage": "provider-ready",
+            "elapsedMs": 1402
+          }
+        ]
+      }
+    ]
+  }
+}

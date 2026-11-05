@@ -1,0 +1,23 @@
+{
+  "schema": "v-voice-candidate-v1",
+  "version": "voice-entry-latency.20261027.1",
+  "status": "candidate-validated-unmerged-undeployed",
+  "branch": "codex/voice-entry-latency-20261027",
+  "baseCommit": "002313b",
+  "productionUnchanged": true,
+  "gatewayChange": false,
+  "nativeBinaryChange": false,
+  "modelListChange": false,
+  "validation": {
+    "voiceTests": 971,
+    "speakerTests": 95,
+    "releaseTests": 11,
+    "browser": "Codex IAB; actual candidate HTTP/rendering with simulated SDK/provider/Gateway",
+    "samplesPerPrimaryPathPerVariant": 3,
+    "coldSDKSamplePerVariant": 1,
+    "realProviderMessages": 0,
+    "paidCalls": 0,
+    "nativeIOSLatency": "not measured"
+  },
+  "report": "acceptance.md"
+}

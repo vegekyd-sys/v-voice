@@ -23,9 +23,22 @@ struct H5CallView: View {
             }, onError: { error = $0 }, onReading: { reading = $0 })
                 .ignoresSafeArea()
             if !reading { Button { sheet = .settings } label: {
-                Image(systemName: "slider.horizontal.3").font(.system(size: 17)).foregroundStyle(VoiceStyle.faint)
-                    .frame(width: 40, height: 40)
-            }.accessibilityLabel("通话设置").padding(.trailing, 12) }
+                Group {
+                    if call.active { Image(systemName: "slider.horizontal.3").font(.system(size: 17)).frame(width: 40, height: 40) }
+                    else { Text("设置").font(VoiceStyle.font(12)).padding(.horizontal, 8).frame(height: 40) }
+                }.foregroundStyle(VoiceStyle.faint)
+            }.accessibilityLabel("设置").padding(.trailing, 12) }
+            if !call.bound {
+                VStack(spacing: 16) {
+                    Text("Public").font(VoiceStyle.font(28, weight: .semibold))
+                    Text("独立访客会话 · 无需登录飞书").font(VoiceStyle.font(14))
+                    if call.publicPreparing { ProgressView("正在准备…") }
+                    else {
+                        Text(call.publicError.isEmpty ? "准备后即可和 V 通话。" : call.publicError).multilineTextAlignment(.center)
+                        Button("重试准备 Public") { Task { await call.preparePublicIfNeeded(retry: true) } }.accessibilityIdentifier("retryPublic")
+                    }
+                }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(VoiceStyle.background)
+            }
             if !error.isEmpty {
                 VStack(spacing: 12) {
                     Text(error).font(VoiceStyle.font(14)).multilineTextAlignment(.center)
@@ -35,7 +48,7 @@ struct H5CallView: View {
             }
         }.background(VoiceStyle.background).tint(VoiceStyle.accent)
             .sheet(item: $sheet, onDismiss: { bindingLink = "" }) { _ in SettingsView(call: call, initialLink: bindingLink) }
-            .task { if !call.bound, !call.active, sheet == nil { sheet = .settings } }
+            .task { if call.needsPublicPreparation { await call.preparePublicIfNeeded() } }
             .onOpenURL { url in
                 if let link = VoiceBinding.link(fromDeepLink: url) {
                     bindingLink = link; error = ""; sheet = .settings; return
@@ -247,6 +260,10 @@ struct H5WebSurface: UIViewRepresentable {
             onReading(reading)
             return [:]
         case "avatar", "avatarEvents": return try await call.h5Cosmetic(action == "avatar" ? "avatar" : "avatar-events", body: payload, owner: owner)
+        case "saveMedia":
+            guard owned, let text = payload["url"] as? String, let url = URL(string: text), let kind = payload["kind"] as? String else { throw VoiceError.protocolMismatch }
+            try await MediaLibrarySaver.save(url: url, kind: kind)
+            return [:]
         case "share":
             guard owned, let text = payload["text"] as? String, text.utf8.count <= 200_000 else { throw VoiceError.protocolMismatch }
             let controller = UIActivityViewController(activityItems: [text], applicationActivities: nil)

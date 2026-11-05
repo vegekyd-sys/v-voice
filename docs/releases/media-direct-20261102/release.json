@@ -1,0 +1,42 @@
+{
+  "schema": "v-voice-production-release-v1",
+  "version": "voice-media-direct.20261102.1",
+  "status": "DEPLOYED_SERVER_NODES_VERIFIED_REAL_CALL_PENDING",
+  "releasePR": 195,
+  "entryCommit": "9bdf5a89425b4fabd847ed8950d1bbb30d52a796",
+  "deviceEntryCommit": "9bdf5a89425b4fabd847ed8950d1bbb30d52a796",
+  "filesSha256": "734dd9becb6b88ff9570fc18f59a8c4211f84285d897bc4bb9fd9da0593a18d8",
+  "iosShellRevision": "f66dd0edd383b4f7e18b75ea5e59b72b643eaf9aba8843f6368c5d0d40a7c7e1",
+  "rollbackServiceCommit": "e389646e5e863ef6e301dc52517e6e200cd6e997",
+  "serverNodesSynchronized": true,
+  "homepageChangelogVerified": true,
+  "gatewayRestarted": false,
+  "gatewayIdentityAndConfigUnchanged": true,
+  "validatedAt": "2026-11-02T01:05:00+08:00",
+  "tests": {
+    "voice": 1148,
+    "speaker": 95
+  },
+  "userConfirmed": [
+    "Tianyi tried the candidates on real calls and approved release to the main personal entry on 2026-11-01",
+    "Tianyi approved merging and releasing the iOS fix PR #195 on 2026-11-02"
+  ],
+  "productionSynthetic": {
+    "model": "seeduplex",
+    "imageSeconds": 8.3,
+    "videoSeconds": 35,
+    "submissions": {
+      "image": 1,
+      "video": 1
+    },
+    "completionSpokenOnce": true,
+    "droppedCalls": 0,
+    "browserCallReaderOpenAndInline": true
+  },
+  "pending": [
+    "No real phone call on the released build at registration",
+    "No physical iPhone regression; iOS shell verified in the simulator on the fix branch, and production shell bytes match the artifact"
+  ],
+  "mediaPR": 191,
+  "firstSwitchCommit": "e389646e5e863ef6e301dc52517e6e200cd6e997"
+}

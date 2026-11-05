@@ -10,7 +10,7 @@ const entries=['a','b','alias'].map((suffix,i)=>({
  callerId:'tianyi',permissionProfile:'personal-tianyi',accessToken:String(i+1).repeat(40)}));
 async function fixture(t,options={}){
  const calls=[];let serial=0;
- const bridge=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:options.entries??entries,callSummarize:options.summarize??(async()=>'讨论了计划。'),personalReply:options.personalReply,feishuAccounts:options.feishuAccounts??{},
+ const bridge=createLiveH5Server({enableGrok:true,basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:options.entries??entries,callSummarize:options.summarize??(async()=>'讨论了计划。'),personalReply:options.personalReply,feishuAccounts:options.feishuAccounts??{},
  gateway:{request:async(method,args)=>{calls.push({method,args});if(method==='sessions.describe')return {session:options.resolve?options.resolve(args):{key:args.key,agentId:'makaron'}};if(method==='send'&&options.omitReceiptChat)return {messageId:'om_fixture'};if(method==='send')return {messageId:'om_fixture',chatId:args.to.startsWith('ou_')?'oc_dm_fixture':args.to};if(method==='tools.invoke')return {ok:true,output:{details:{ok:true,messageId:args.args.messageId}}};return method==='talk.client.create'?{voiceSessionId:'native-'+(++serial),model:'gpt-live-1-codex',transport:'webrtc',offerUrl:'/plugins/openai/realtime/calls'}:{ok:true};}},
  directVoice:{models:()=>[],reserve:async args=>{calls.push({method:'direct.reserve',args});return {voiceSessionId:'direct-'+(++serial),provider:args.model};},close:async()=>{},handleEvent:()=>{},dispose:async()=>{},...options.directVoice},offer:options.offer??(async()=> '')});
  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
@@ -107,7 +107,7 @@ test('inline readiness cannot cross phone-cookie ownership and reveals no sessio
 test('authenticated entry returns safe conversation label and passes only server-owned session mode',async t=>{
  const f=await fixture(t),cookie=await f.login(entries[0]);
  const status=await (await f.request(entries[0].id,'status',cookie)).json();
- assert.deepEqual(status.conversation,{name:'飞书群聊',kind:'group',replySync:false});
+ assert.deepEqual(status.conversation,{name:'飞书群聊',kind:'group',replySync:false,accountLabel:'预配置账号',entryKind:'fixed',scopeNote:'账号、通话人和会话由此入口预配置；切换浏览器账号不会替换它们。'});
  assert(!JSON.stringify(status).includes(entries[0].sessionKey));
  await f.request(entries[0].id,'session',cookie,{model:'seeduplex'});
  const call=f.calls.find(x=>x.method==='direct.reserve');

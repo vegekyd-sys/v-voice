@@ -7,8 +7,10 @@ import VVoiceCore
 
 @MainActor @Observable final class CallCoordinator {
     static let shared: CallCoordinator = {
+        CallDiagnostics.record("coordinator.init.begin")
+        defer { CallDiagnostics.record("coordinator.init.complete") }
         #if DEBUG
-        if CommandLine.arguments.contains("--binding-journey-fixture") { return BindingJourneyFixture.coordinator() }
+        if CommandLine.arguments.contains("--binding-journey-fixture") || CommandLine.arguments.contains("--public-entry-fixture") { return BindingJourneyFixture.coordinator() }
         if CommandLine.arguments.contains("--local-voice-fixture") {
             let store = BindingStore(service: "com.versa.vvoice.local-fixture")
             let fixturePort = ProcessInfo.processInfo.environment["VVOICE_FIXTURE_PORT"] ?? "29837"
@@ -22,6 +24,8 @@ import VVoiceCore
     private(set) var state = CallState()
     private(set) var detail = "长按操作按钮，即刻开始对话"
     private(set) var lastCaption = ""
+    private(set) var publicPreparing = false
+    private(set) var publicError = ""
     private(set) var bound = false
     private(set) var boundConversation: BoundConversation?
     private(set) var savedConversations: [SavedConversation] = []
@@ -63,11 +67,17 @@ import VVoiceCore
             let speed = grok?["speed"] as? Double ?? 1
             grokHint = [speed != 1 ? "\(speed)× 语速" : "", grok?["expressiveTags"] as? Bool == true ? "自主表达试用" : ""].filter { !$0.isEmpty }.joined(separator: " · ")
         }
+        if !modelOptions.isEmpty, !modelOptions.contains(where: { $0.id == model.rawValue && $0.available }) {
+            let available = modelOptions.filter(\.available)
+            let preferred = status["defaultModel"] as? String
+            if let id = available.first(where: { $0.id == preferred })?.id ?? available.first?.id, let supported = VoiceModel(rawValue: id) { model = supported }
+        }
         preferredPhoneInputPolicy = status["phoneInputPolicy"] as? String
         comparisonAvailable = status["comparisonAvailable"] as? Bool == true
     }
     var modelTitle: String { modelOptions.first(where: { $0.id == model.rawValue })?.title ?? model.title }
-    var needsSetup: Bool { !bound || permission != .granted }
+    var needsPublicPreparation: Bool { !bound || (api.record?.isPublic == true && !api.hasPublic(baseURL: publicServiceURL)) }
+    var needsSetup: Bool { needsPublicPreparation || permission != .granted }
     var phase: VoicePhase { state.phase }
     var active: Bool { phase.isActive }
     var muted: Bool { state.muted }
@@ -135,6 +145,8 @@ import VVoiceCore
     @ObservationIgnored private var gptCallerStarted = false
     @ObservationIgnored private var gptUserTurn = ""
     @ObservationIgnored private var gptCaptionRevision = 0
+    @ObservationIgnored private var gptContextText: String?
+    @ObservationIgnored private var gptDeviceContextText: String?
     @ObservationIgnored private var voiceID: String?
     @ObservationIgnored private var routeChangeTask: Task<Void, Never>?
     @ObservationIgnored private var heartbeat: Task<Void, Never>?
@@ -179,10 +191,15 @@ import VVoiceCore
     @ObservationIgnored private var shownResults: Set<String> = []
     @ObservationIgnored private var acknowledgingResults: Set<String> = []
     @ObservationIgnored private var initialized = false
+    @ObservationIgnored private var retiringActivities: Task<Void, Never>?
+    @ObservationIgnored private let retireActivities: (@MainActor () async -> Void)?
     @ObservationIgnored private(set) var appScenePhase: ScenePhase = .background
     private var appIsActive: Bool { appScenePhase == .active }
 
-    init(api: VoiceAPI? = nil, audio: VoiceAudio = VoiceAudio(), location: any DeviceLocationProviding = DeviceLocation(), makeGPT: @escaping () -> GPTLiveTransport = { GPTLiveTransport() }) {
+    @ObservationIgnored private let publicServiceURL: URL
+    init(api: VoiceAPI? = nil, publicServiceURL: URL = PublicEntryConfiguration.baseURL, audio: VoiceAudio = VoiceAudio(), location: any DeviceLocationProviding = DeviceLocation(), makeGPT: @escaping () -> GPTLiveTransport = { GPTLiveTransport() }, retireActivities: (@MainActor () async -> Void)? = nil) {
+        self.retireActivities = retireActivities
+        self.publicServiceURL = publicServiceURL
         self.location = location
         self.audio = audio
         self.makeGPT = makeGPT
@@ -250,19 +267,48 @@ import VVoiceCore
         if active, permission != .granted { fail(VoiceError.microphone) }
         refreshDeviceCapabilities()
         updateRoute()
-        if !initialized { Task { await reconcileActivities() } }
-        if !active { Task { await refreshOptions() } }
+        _ = reconcileActivities()
+        if !active { Task { if needsPublicPreparation { await preparePublicIfNeeded() }; await refreshOptions() } }
     }
-    private func reconcileActivities() async {
-        guard !initialized else { return }; initialized = true
+    @discardableResult private func reconcileActivities() -> Task<Void, Never>? {
+        guard !initialized else { return retiringActivities }; initialized = true
         // An activity surviving process death is never evidence of live audio.
-        for old in Activity<CallAttributes>.activities where old.id != activity?.id {
-            await old.end(ActivityContent(state: .init(phase: .interrupted, muted: true, startedAt: Date(), detail: "通话已中断，请返回 V Voice"), staleDate: nil), dismissalPolicy: .immediate)
+        // Snapshot only retired IDs before creating the new owner's activity.
+        let retired = Activity<CallAttributes>.activities.filter { $0.id != activity?.id }
+        guard !retired.isEmpty || retireActivities != nil else { return nil }
+        let retire = retireActivities
+        retiringActivities = Task {
+            CallDiagnostics.record("island.cleanup.begin")
+            if let retire { await retire() }
+            else { for old in retired {
+                await old.end(ActivityContent(state: .init(phase: .interrupted, muted: true, startedAt: Date(), detail: "通话已中断，请返回 V Voice"), staleDate: nil), dismissalPolicy: .immediate)
+            } }
+            CallDiagnostics.record("island.cleanup.complete")
         }
+        return retiringActivities
     }
     func requestMicrophone() async {
         _ = await AVAudioApplication.requestRecordPermission()
         permission = AVAudioApplication.shared.recordPermission
+    }
+    func preparePublicIfNeeded(retry: Bool = false) async {
+        if publicPreparing {
+            while publicPreparing {
+                do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
+            }
+            return
+        }
+        guard !active, !bindingInProgress else { return }
+        guard retry || !api.hasPublic(baseURL: publicServiceURL) else { return }
+        publicPreparing = true; bindingInProgress = true; publicError = ""
+        defer { publicPreparing = false; bindingInProgress = false }
+        do {
+            await closing?.value
+            try await api.recoverPreviousCall()
+            try await api.preparePublic(baseURL: publicServiceURL)
+            synchronizeBindings(); detail = "可以和 V 通话了"
+            await refreshOptions()
+        } catch { publicError = "暂时无法准备 Public，请检查网络后重试。" }
     }
     @discardableResult func bind(_ link: String) async throws -> Bool {
         guard !active, !bindingInProgress else { throw VoiceError.busy }
@@ -289,10 +335,24 @@ import VVoiceCore
         synchronizeBindings(); detail = "已切换会话，操作按钮将继续这个会话"
         await refreshOptions()
     }
-    func removeConversation(_ id: String) throws {
+    var usingPublic: Bool { api.record?.isPublic == true || boundConversation?.entryKind == "public" }
+    var entrySummary: String {
+        if usingPublic { return "Public · 独立访客" }
+        guard let conversation = boundConversation else { return "准备 Public 后即可通话" }
+        return "\(conversation.accountLabel ?? "已连接账号") · \(conversation.name)"
+    }
+    func selectPublic() async throws {
+        guard !active, !bindingInProgress else { throw VoiceError.busy }
+        await preparePublicIfNeeded()
+        guard let saved = savedConversations.first(where: { $0.isPublic }) else { throw VoiceError.unavailable }
+        try await selectConversation(saved.id)
+        detail = "已切换到 Public；原账号与会话仍保留"
+    }
+    func removeConversation(_ id: String) async throws {
         guard !active, !bindingInProgress else { throw VoiceError.busy }
         try api.removeConversation(id: id); synchronizeBindings()
-        detail = bound ? "可以和 V 通话了" : "选择一个已保存的会话，或添加新会话"
+        if !bound { await preparePublicIfNeeded(retry: true) }
+        detail = bound ? "可以和 V 通话了" : "请重试准备 Public"
     }
     func forget() {
         guard !active, !bindingInProgress else { return }
@@ -301,7 +361,8 @@ import VVoiceCore
     func startOrContinue(fromIntent: Bool = false) async throws {
         guard !bindingInProgress else { throw VoiceError.busy }
         permission = AVAudioApplication.shared.recordPermission
-        guard bound else { throw VoiceError.unbound }
+        if !bound { await preparePublicIfNeeded() }
+        guard bound else { throw VoiceError.unavailable }
         if active {
             if phase == .interrupted { await resume(); if [.interrupted,.failed].contains(phase) { throw lastFailure ?? VoiceError.audio } }
             else if muted { toggleMute() }
@@ -310,7 +371,7 @@ import VVoiceCore
         }
         guard permission == .granted else { throw VoiceError.microphone }
         if fromIntent, !activitiesEnabled { throw VoiceError.liveActivity }
-        await reconcileActivities()
+        let retiring = reconcileActivities()
         guard let owner = state.begin() else { return }
         CallDiagnostics.record("call.start")
         lastFailure = nil
@@ -318,7 +379,18 @@ import VVoiceCore
         startedAt = Date(); lastCaption = ""; resultID = nil; resultText = ""; shownResults.removeAll(); detail = "接通后会提示你开口"
         retiredResponses.removeAll(); retiredResponseOrder.removeAll(); publish()
         do {
-            try beginActivity(required: fromIntent)
+            do { try beginActivity(required: fromIntent) }
+            catch {
+                // If the system's activity quota requires retirement first,
+                // preserve that fallback without delaying the normal path.
+                guard let reason = error as? ActivityAuthorizationError,
+                      [.globalMaximumExceeded, .targetMaximumExceeded].contains(reason),
+                      let retiring else { throw VoiceError.liveActivity }
+                await retiring.value
+                guard owned(owner) else { throw CancellationError() }
+                do { try beginActivity(required: fromIntent) }
+                catch { throw VoiceError.liveActivity }
+            }
             // AudioRecordingIntent grants the user-triggered background start
             // at invocation. Do not spend that window on HTTP/session setup.
             // No input callback is installed yet: pre-connect PCM is discarded.
@@ -343,6 +415,11 @@ import VVoiceCore
         guard owned(owner) else { throw CancellationError() }
         guard let id = reservation["voiceSessionId"] as? String else { throw VoiceError.protocolMismatch }
         voiceID = id; try api.rememberCall(id)
+        gptContextText = nil; gptDeviceContextText = nil
+        if let context = reservation["callerContext"] as? [String: Any] {
+            guard context["voiceSessionId"] as? String == id, let text = context["text"] as? String, !text.isEmpty, text.count <= 2048 else { throw VoiceError.protocolMismatch }
+            gptContextText = text
+        }
         if let raw = reservation["nativeRuntime"] {
             guard let value = raw as? [String: Any] else { throw VoiceError.protocolMismatch }
             nativeRuntime = try NativeRuntimePolicy.decode(value)
@@ -556,13 +633,16 @@ import VVoiceCore
         }
         try audio.startWebRTC()
         startGPTEvents(owner: owner, id: id)
-        try await rtc.connect(muted: muted) { [weak self] sdp in
+        try await rtc.connect(muted: muted || gptContextText != nil) { [weak self] sdp in
             guard let self, self.owned(owner) else { throw CancellationError() }
             let result = try await self.api.call("offer", body: ["voiceSessionId": id, "sdp": sdp], refresh: false)
             guard self.owned(owner), let answer = result["sdp"] as? String else { throw VoiceError.protocolMismatch }
             return answer
         }
         guard owned(owner), rtc.isConnected else { rtc.close(); throw CancellationError() }
+        if let text = gptContextText { try await rtc.installContext(text) }
+        guard owned(owner) else { throw CancellationError() }
+        if let text = gptDeviceContextText { guard rtc.sendContext(text) else { throw VoiceError.connection } }
         rtc.setMuted(muted); audioReady = true; lastInput = Date(); updateRoute()
         setPhase(rtc.speaking ? .speaking : .listening, owner: owner)
         detail = "GPT Live One 已接通，可以直接开口"
@@ -651,10 +731,26 @@ import VVoiceCore
     private func refreshDeviceCapabilities() {
         guard nativeLocationEnabled, active, let voiceID else { return }
         deviceCapabilityRevision += 1
-        transport?.send(["type": "device.capabilities", "version": 1, "voiceSessionId": voiceID, "revision": deviceCapabilityRevision,
-                         "capabilities": DeviceLocation.declaration["capabilities"] ?? [:]])
+        sendDeviceFrame(["type": "device.capabilities", "version": 1, "voiceSessionId": voiceID, "revision": deviceCapabilityRevision,
+                         "capabilities": DeviceLocation.declaration["capabilities"] ?? [:]], owner: state.generation)
+    }
+    private func sendDeviceFrame(_ payload: [String: Any], owner: UUID) {
+        guard owned(owner), let id = voiceID else { return }
+        if let transport { transport.send(payload); return }
+        guard gpt != nil else { return }
+        Task { [weak self] in
+            guard let self, self.owned(owner), self.voiceID == id else { return }
+            _ = try? await self.api.call("device-result", body: ["voiceSessionId": id, "frame": payload], refresh: false)
+        }
     }
     private func handle(_ v: [String: Any], owner: UUID) throws {
+        if v["type"] as? String == "device.context" {
+            if v["voiceSessionId"] as? String == voiceID, let text = v["text"] as? String, !text.isEmpty, text.count <= 2048 {
+                gptDeviceContextText = text
+                if audioReady { _ = gpt?.sendContext(text) }
+            }
+            return
+        }
         if v["type"] as? String == "device.cancel", v["operation"] as? String == "location.current" {
             if v["voiceSessionId"] as? String == voiceID, v["requestId"] as? String == locationRequestID {
                 locationTask?.cancel(); locationTask = nil; locationRequestID = nil; location.cancel()
@@ -670,9 +766,9 @@ import VVoiceCore
                   expiresAt <= Date().timeIntervalSince1970 * 1000 + 30_000,
                   !locationRequests.contains(id), locationRequests.count < 100 else { return }
             locationRequests.insert(id)
-            let transport = self.transport, voiceID = self.voiceID
+            let voiceID = self.voiceID
             if locationTask != nil {
-                transport?.send(["type": "device.result", "operation": "location.current", "version": 1, "voiceSessionId": voiceID ?? "", "requestId": id, "status": "failed", "reason": "unavailable"])
+                sendDeviceFrame(["type": "device.result", "operation": "location.current", "version": 1, "voiceSessionId": voiceID ?? "", "requestId": id, "status": "failed", "reason": "unavailable"], owner: owner)
                 return
             }
             locationRequestID = id
@@ -684,7 +780,7 @@ import VVoiceCore
                 var payload: [String: Any] = result.reason.map { ["status": $0 == "denied" || $0 == "restricted" ? "denied" : "failed", "reason": $0] } ?? ["status": "ok", "result": result.wire]
                 if Date().timeIntervalSince1970 * 1000 > expiresAt { payload = ["status": "failed", "reason": "timeout"] }
                 payload.merge(["type": "device.result", "operation": "location.current", "version": 1, "voiceSessionId": voiceID ?? "", "requestId": id]) { _, new in new }
-                transport?.send(payload)
+                self.sendDeviceFrame(payload, owner: owner)
             }
             return
         }
@@ -1129,47 +1225,51 @@ import VVoiceCore
         finishActivity(phase: .failed)
         if let id = voiceID {
             voiceID = nil
-            closing = Task {
-                let background = CallCleanupTime()
-                defer { background.end() }
-                if (try? await self.api.call("close", body: ["voiceSessionId": id], refresh: false)) != nil, self.api.record?.pendingVoiceID == id { try? self.api.rememberCall(nil) }
-            }
+            closeCallInBackground(id)
+        }
+    }
+    private func closeCallInBackground(_ id: String) {
+        guard let saved = api.record else { return }
+        let background = CallCleanupTime()
+        closing = Task {
+            defer { background.end() }
+            // Keep this call's binding even if the user removes it before the task starts.
+            // Failed cleanup stays persisted and is retried before the next dial.
+            try? await api.closeCall(id, using: saved)
         }
     }
     func end() async {
         guard phase != .ending else { return }
         guard active || voiceID != nil else { return }
         recovery?.cancel(); recovery = nil; recoveryDeadline?.cancel(); recoveryDeadline = nil
-        let background = CallCleanupTime()
-        defer { background.end() }
         avatar.end()
-        let owner = state.finish(.ending); stopMedia(); detail = "正在安全结束通话"; publish()
+        state.finish(.ended); stopMedia()
         CallDiagnostics.record("call.end")
         let id = voiceID; voiceID = nil
-        finishActivity(phase: .ended)
-        if let id {
-            do { _ = try await api.call("close", body: ["voiceSessionId": id], refresh: false); if api.record?.pendingVoiceID == id { try api.rememberCall(nil) } }
-            catch { /* Persisted ID is retried before the next dial. */ }
-        }
-        guard state.generation == owner else { return }
         captionUpdate?.cancel(); captionUpdate = nil
         conversation.reset(); documents.removeAll(); tasks.removeAll()
-        state.finish(.ended); lastCaption = ""; resultText = ""; resultID = nil; detail = "通话已结束，麦克风已关闭"
+        lastCaption = ""; resultText = ""; resultID = nil; detail = "通话已结束，麦克风已关闭"
+        publish(); finishActivity(phase: .ended)
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        // Local media and presentation are finished before any network work.
+        // Ending a redial that is still waiting must retain the older cleanup task.
+        if let id { closeCallInBackground(id) }
     }
     private func beginActivity(required: Bool) throws {
         guard activitiesEnabled else { if required { throw VoiceError.liveActivity }; return }
         do {
+            CallDiagnostics.record("island.request.begin")
             islandReportAttention = IslandReportAttention(owner: presentationID)
             let a = try Activity.request(attributes: CallAttributes(callID: presentationID), content: ActivityContent(state: activityState, staleDate: Date().addingTimeInterval(25)), pushType: nil)
             activity = a
+            CallDiagnostics.record("island.request.created")
             activityWatch = Task { [weak self] in
                 for await s in a.activityStateUpdates {
                     guard let self, self.activity?.id == a.id else { return }
                     if s == .dismissed || s == .ended { self.activityWatch = nil; await self.end(); return }
                 }
             }
-        } catch { if required { throw VoiceError.liveActivity } }
+        } catch { if required { throw error } }
     }
     // Only cosmetic H5 calls use this narrow bridge. The native owner supplies
     // the real voiceSessionId; JavaScript never receives a cookie or relay ticket.

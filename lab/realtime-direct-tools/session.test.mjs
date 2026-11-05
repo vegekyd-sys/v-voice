@@ -1,3 +1,4 @@
+import {VOICE_OPERATION_CONSENT_POLICY,VOICE_CALENDAR_SERVICE_POLICY} from '../../lib/voice-operation-policy.mjs';
 import {conversationReplyText} from '../../lib/conversation-replies.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +11,7 @@ import {VOICE_CAPABILITY_POLICY} from '../gpt-live-h5/capability-policy.mjs';
 async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}),model='grok',options={}) {
  const peers=[],audit=[],invocations=[];let sdkTask;
  class WS extends EventEmitter {constructor(url){super();this.url=url;this.readyState=1;this.sent=[];peers.push(this);setImmediate(()=>this.emit('open'));}
-  send(raw){const value=JSON.parse(raw);this.sent.push(value);if(value.type==='session.update')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.updated'})),false));if(value.type==='session.create')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.created',session:{id:value.session.id??'fixture-dialog'}})),false));}
+  send(raw){const value=JSON.parse(raw);this.sent.push(value);if(value.type==='session.update')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.updated'})),false));if(value.type==='session.create'){const complete=()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.created',session:{id:value.session.id??'fixture-dialog'}})),false);if(options.providerSetup)options.providerSetup(complete);else queueMicrotask(complete);}}
   close(){this.readyState=3;this.emit('close');}}
  class Server {handleUpgrade(req,socket,head,done){done(socket);}close(){}}
  const gateway={request:async(method,args)=>{
@@ -21,17 +22,37 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   if(method==='voice.product.task.cancel'){sdkTask.status='cancelled';return {taskId:sdkTask.taskId,cancelled:true};}
   return invoke(args,method);
  }};
- const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion,nativeDeviceActions:options.nativeDeviceActions,backendDeviceURL:options.backendDeviceURL,terminalAdapter:options.terminalAdapter});
+ const service=createDirectVoiceService({gateway,...(options.backendDeviceURL?{backendDeviceBundle:{root:'/fixture/backend-device-bundle',sha256:'a'.repeat(64)},backendDeviceBundleProbe:async()=>true}:{}),wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
+ const reservation=await service.reserve({model,gateway:options.publicGateway??options.gateway??gateway,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion,nativeDeviceActions:options.nativeDeviceActions,backendDeviceURL:options.backendDeviceURL,terminalAdapter:options.terminalAdapter});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
+ if(options.beforeAttach)await options.beforeAttach({service,reservation,client,peers});
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
- for(let attempt=0;attempt<200&&!client.sent.some(e=>e.type==='ready');attempt++)await delay(5);
- assert(client.sent.some(e=>e.type==='ready'),'Fixture provider did not become ready');
+ for(let attempt=0;attempt<200&&!client.sent.some(e=>e.type==='ready')&&client.readyState!==3;attempt++)await delay(5);
+ if(options.expectConnectionFailure){assert.equal(client.readyState,3);assert(!client.sent.some(e=>e.type==='ready'));}
+ else assert(client.sent.some(e=>e.type==='ready'),'Fixture provider did not become ready');
  const upstream=peers[0],event=v=>upstream.emit('message',Buffer.from(JSON.stringify(v)),false);
  const call=(name,args,id='call-1')=>{event({type:'response.created',response:{id:'response-'+id}});event({type:'response.function_call_arguments.done',response_id:'response-'+id,call_id:id,name,arguments:JSON.stringify(args)});event({type:'response.done',response:{id:'response-'+id,status:'completed'}});};
- return {service,reservation,client,upstream,event,call,audit,invocations,peers,completeBackend:text=>{sdkTask.status='ok';sdkTask.text=text;},progressBackend:text=>sdkTask.progress.push({text,kind:'commentary',provenance:{runId:sdkTask.runId,sequence:sdkTask.progress.length+1}})};
+ return {service,reservation,client,upstream,event,call,audit,invocations,peers,completeBackend:text=>{sdkTask.status='ok';sdkTask.text=text;},failBackend:error=>{sdkTask.status='error';sdkTask.error=error;},progressBackend:text=>sdkTask.progress.push({text,kind:'commentary',provenance:{runId:sdkTask.runId,sequence:sdkTask.progress.length+1}})};
 }
+
+test('server audio metrics observe delivered packets without changing relay bytes or interruption',async t=>{
+ const f=await fixture();t.after(()=>f.service.dispose());
+ f.event({type:'response.created',response:{id:'reply-metrics'}});
+ const pcm=Buffer.alloc(960).toString('base64');
+ f.event({type:'response.output_audio.delta',response_id:'reply-metrics',delta:pcm});
+ f.event({type:'response.output_audio.delta',response_id:'reply-metrics',delta:pcm});
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:true})),false);
+ f.event({type:'response.done',response:{id:'reply-metrics',status:'completed'}});
+ const rows=f.audit.filter(r=>r.type==='audio.delivery');
+ assert.deepEqual(rows.map(r=>r.phase),['first','summary']);
+ assert.equal(rows[1].packets,2);assert.equal(rows[1].bytes,1920);assert.equal(rows[1].audioMs,40);
+ // Provider response ownership is preserved by the shared Grok adapter.
+ assert.equal(rows[1].responseId,'reply-metrics');
+ assert.deepEqual(f.client.sent.filter(r=>r.type==='audio').map(r=>r.audio),[pcm,pcm]);
+ assert(f.audit.some(r=>r.type==='client.playback-state'&&r.speaking));
+ assert(f.audit.some(r=>r.type==='call.media'&&r.surface==='phone'&&!r.nativeDuplex));
+});
 
 test('native runtime is explicit opt-in and preserves legacy web/installed clients',async t=>{
  const old=await fixture();t.after(()=>old.service.dispose());
@@ -306,7 +327,8 @@ test('end requires native semantic tool, actual farewell audio and matching drai
  const f=await fixture();f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'讨论挂断功能'})),false);await delay(2);
  assert.equal(f.client.sent.some(x=>x.type==='end.accepted'),false);
  f.call('end_call',{});await delay(5);assert.equal(f.client.sent.some(x=>x.type==='end.after-playback'),false);
- f.event({type:'response.output_audio.delta',delta:Buffer.alloc(960).toString('base64')});f.event({type:'response.done',response:{id:'farewell',status:'completed'}});
+ f.event({type:'response.created',response:{id:'farewell'}});
+ f.event({type:'response.output_audio.delta',response_id:'farewell',delta:Buffer.alloc(960).toString('base64')});f.event({type:'response.done',response:{id:'farewell',status:'completed'}});
  assert.equal(f.client.sent.some(x=>x.type==='end.after-playback'),true);
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:'foreign'})),false);assert.equal(f.client.readyState,1);
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:'call-1'})),false);await delay(5);assert.equal(f.client.readyState,3);await f.service.dispose();
@@ -703,7 +725,7 @@ test('streaming pickup asks the Speaker host to open a greeting gate before nati
  assert.equal(requests,1);assert.equal(f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').length,1);
 });
 
-const FAST_NARRATION={firstMs:0,firstHeartbeatMs:300,settleMs:20,stageGapMs:60,factGapMs:0,heartbeatMs:300,quietAfterUserMs:0,startMs:30};
+const FAST_NARRATION={firstMs:0,settleMs:20,stageGapMs:60,factGapMs:0,idleMs:300,idleMax:2,quietAfterUserMs:0,startMs:30,correctionDelayMs:10};
 const until=async(predicate,ms=3000)=>{for(const end=Date.now()+ms;Date.now()<end;await delay(5))if(predicate())return true;return false;};
 const toolEvent=(f,runId,phase,name,toolCallId,args)=>f.service.handleEvent({event:'session.tool',payload:{runId,stream:'tool',sessionKey:'agent:makaron:explicit:personal-fixture',data:{phase,name,toolCallId,...(args?{args}:{})}}});
 test('a long background task narrates its real stages on an idle phone line, then its result still arrives',async t=>{
@@ -713,12 +735,13 @@ test('a long background task narrates its real stages on an idle phone line, the
  assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
  toolEvent(f,'another-session-run','start','memory_search','foreign');
  toolEvent(f,'sdk-fixture-run','start','web_search','search-1',{query:'勇士 新赛季 前十场 赛程'});
- assert(await until(()=>spoken().includes('后台在搜“勇士 新赛季 前十场 赛程”。')),'what the backend searches for is announced');
+ assert(await until(()=>spoken().includes('我在查勇士 新赛季 前十场 赛程。')),'what is being looked up is announced');
  toolEvent(f,'sdk-fixture-run','result','web_search','search-1');toolEvent(f,'sdk-fixture-run','start','web_fetch','fetch-1',{url:'https://www.nba.com/warriors/schedule?x=1'});
- assert(await until(()=>spoken().includes('后台在看 nba.com 上的网页。')),'a new subject is announced after the gap; only the site, not the path');
- assert(await until(()=>spoken().some(x=>/^还在弄，已经\d+秒了，刚才在看 nba\.com 上的网页。$/.test(x))),'an unchanged stage is repeated with elapsed time');
+ assert(await until(()=>spoken().includes('我在看 nba.com 上的内容。')),'a new subject is announced after the gap; only the site, not the path');
+ assert(await until(()=>spoken().includes('还在弄，有新进展我就说。')),'a long silence gets a plain line');
+ assert.equal(spoken().some(x=>/\d+\s*(?:秒|分钟)|后台/u.test(x)),false,'never a duration, never a second party');
  assert.equal(spoken().some(x=>x.includes('查记忆')),false,'another run never speaks on this call');
- assert.deepEqual([...new Set(f.audit.filter(e=>e.type==='backend.progress-spoken').map(e=>e.kind))],['stage','heartbeat']);
+ assert.deepEqual([...new Set(f.audit.filter(e=>e.type==='backend.progress-spoken').map(e=>e.kind))],['stage','idle']);
  const before=spoken().length;f.completeBackend('报告整理好了，一共三条结论。');
  assert(await until(()=>spoken().slice(before).some(x=>x.includes('三条结论'))),'the result follows the narration');
  assert(f.audit.some(e=>e.type==='backend.stages-observed'&&e.steps===2));
@@ -729,7 +752,7 @@ test('task narration never injects speech while a native lookup is still pending
  native('task','delegate_to_v',{question:'做一个长任务'});assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
  native('lookup','memory_search',{query:'正在等的原生查询'});assert(await until(()=>f.audit.some(e=>e.type==='tool.invoke'&&e.name==='memory_search')));
  toolEvent(f,'sdk-fixture-run','start','web_search','search-1');await delay(700);
- assert.equal(f.upstream.sent.some(x=>x.type==='speech_text_buffer.commit'&&x.text.startsWith('后台')),false);
+ assert.equal(f.upstream.sent.some(x=>x.type==='speech_text_buffer.commit'&&x.text.startsWith('我')),false);
  assert.equal(f.audit.some(e=>e.type==='backend.progress-spoken'),false);
 });
 test('under multi-speaker routing task narration passes the output gate as host speech',async t=>{
@@ -740,8 +763,8 @@ test('under multi-speaker routing task narration passes the output gate as host 
  assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
  toolEvent(f,'sdk-fixture-run','start','memory_search','memory-1');
  assert(await until(()=>hosted.length>0));
- assert.deepEqual(hosted[0],{text:'后台在翻记忆里的记录。',options:{source:'task-progress'}});
- assert.equal(f.upstream.sent.some(x=>x.type==='speech_text_buffer.commit'&&x.text.startsWith('后台')),false,'not past the gate');
+ assert.deepEqual(hosted[0],{text:'我翻翻记忆里的记录。',options:{source:'task-progress'}});
+ assert.equal(f.upstream.sent.some(x=>x.type==='speech_text_buffer.commit'&&x.text.startsWith('我翻翻')),false,'not past the gate');
 });
 test('a sub-agent spawned by the task is the same task: its stages are narrated, a stranger session is not',async t=>{
  const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:FAST_NARRATION});t.after(()=>f.service.dispose());
@@ -753,9 +776,9 @@ test('a sub-agent spawned by the task is the same task: its stages are narrated,
  assert(f.audit.some(e=>e.type==='backend.child-run'&&e.childRunId==='child-run-1'));
  f.service.handleEvent({event:'session.tool',payload:{runId:'unrelated-run',sessionKey:'agent:makaron:subagent:someone-else',stream:'tool',data:{phase:'start',name:'memory_search',toolCallId:'m-x'}}});
  f.service.handleEvent({event:'session.tool',payload:{runId:'child-run-1',sessionKey:'agent:makaron:subagent:child-1',stream:'tool',data:{phase:'start',name:'web_fetch',toolCallId:'w-1'}}});
- assert(await until(()=>spoken().includes('后台在读网页。')),'the child stage is announced');
+ assert(await until(()=>spoken().includes('我在看网页。')),'the child stage is announced');
  f.service.handleEvent({event:'session.tool',payload:{runId:'child-run-2',sessionKey:'agent:makaron:subagent:child-1',stream:'tool',data:{phase:'start',name:'pdf',toolCallId:'p-1'}}});
- assert(await until(()=>spoken().includes('后台在读 PDF 文档。')),'a later run of the same child session counts too');
+ assert(await until(()=>spoken().includes('我在读 PDF 文档。')),'a later run of the same child session counts too');
  assert.equal(spoken().some(x=>x.includes('查记忆')),false);
 });
 test('quick tool calls with long model thinking between them are still narrated (as on V, 2026-10-20)',async t=>{
@@ -767,9 +790,9 @@ test('quick tool calls with long model thinking between them are still narrated 
  quick('exec','e1',{command:'curl -s https://example.com'});await delay(200);
  assert.equal(spoken().some(x=>x.includes('命令')),false,'a shell command tells the caller nothing');
  quick('web_fetch','w1',{url:'https://www.nba.com/schedule'});
- assert(await until(()=>spoken().includes('后台在看 nba.com 上的网页。')),'a step that already returned is still what the backend is doing');
+ assert(await until(()=>spoken().includes('我在看 nba.com 上的内容。')),'a step that already returned is still what V is doing');
  quick('exec','e2',{command:'python3 parse.py'});quick('web_search','s1',{query:'勇士 直播 平台'});
- assert(await until(()=>spoken().includes('后台在搜“勇士 直播 平台”。')),'the latest describable step');
+ assert(await until(()=>spoken().includes('我在查勇士 直播 平台。')),'the latest describable step');
 });
 test('phone lookups have no cached speech, even with a legacy notice setting',async t=>{
  const f=await fixture(async()=>({ok:true,output:{answer:'查到了'}}),'seeduplex',{toolStartNotice:'model'});t.after(()=>f.service.dispose());
@@ -850,6 +873,30 @@ test('assisted native playback reuses one existing control stream and does not g
  assert.equal(controls,1);assert.equal(f.reservation.nativePlaybackPolicy,'assisted');
  f.client.emit('message',Buffer.alloc(960),true);assert.equal(frames,1);assert(f.upstream.sent.some(e=>e.type==='input_audio_buffer.append'));
  await f.service.close(f.reservation.voiceSessionId);assert.equal(closed,1);await f.service.dispose();
+});
+
+test('model and speech-control handshakes overlap but both must finish before ready',async t=>{
+ let modelRelease,controlRelease;const stages=[];
+ const pending=fixture(undefined,'seeduplex',{nativePlaybackPolicy:'assisted',audit:e=>{if(e.type==='call.connection-stage')stages.push(e);},
+  providerSetup:complete=>{modelRelease=complete;},
+  nativeInterrupt:()=>({connect:()=>new Promise(resolve=>{controlRelease=resolve;}),append(){},close(){}})});
+ assert(await until(()=>modelRelease&&controlRelease),'Both independent handshakes start before either finishes');
+ assert(!stages.some(e=>e.stage==='provider-ready'));
+ modelRelease();assert(await until(()=>stages.some(e=>e.stage==='model-ready')));
+ assert(!stages.some(e=>e.stage==='provider-ready'),'A connected model alone is not a connected call');
+ controlRelease();const f=await pending;t.after(()=>f.service.dispose());
+ assert(stages.some(e=>e.stage==='speech-control-ready'));
+ assert(stages.some(e=>e.stage==='provider-ready'));
+ assert(stages.every(e=>Number.isSafeInteger(e.elapsedMs)&&e.elapsedMs>=0));
+});
+
+test('a failed parallel speech-control handshake closes the unfinished model without announcing ready',async t=>{
+ let controlClosed=false;
+ const f=await fixture(undefined,'seeduplex',{nativePlaybackPolicy:'assisted',expectConnectionFailure:true,
+  providerSetup:()=>{},nativeInterrupt:()=>({async connect(){throw Error('fixture speech control unavailable');},append(){},close(){controlClosed=true;}})});
+ t.after(()=>f.service.dispose());assert.equal(controlClosed,true);
+ assert(!f.client.sent.some(e=>e.type==='ready'));
+ assert(await until(()=>f.peers.every(peer=>peer.readyState===3)),'Existing provider graceful-close completes even when setup fails');
 });
 
 const nativeEnd=async(f,id='native-end')=>{
@@ -1013,6 +1060,58 @@ test('dial loads exact conversation context concurrently with the tool catalog',
  assert(stages.indexOf('context-requested')<stages.indexOf('catalog-ready'));
 });
 
+test('an admitted call prepares while relay handoff waits, without opening a provider before attachment',async t=>{
+ let release,catalogReads=0,contextReads=0;const gate=new Promise(r=>{release=r;});
+ const f=await fixture(undefined,'grok',{actorScoped:true,sessionBound:true,
+  gateway:{request:async()=>{catalogReads++;await gate;return {groups:[]};}},loadContext:async()=>{contextReads++;await gate;return 'Exact handoff context';},
+  beforeAttach:async({peers})=>{await until(()=>contextReads===1);assert.equal(catalogReads,1);assert.equal(peers.length,0);setImmediate(release);}});
+ t.after(()=>f.service.dispose());assert.equal(catalogReads,1);assert.equal(contextReads,1);
+ assert(JSON.stringify(f.upstream.sent).includes('Exact handoff context'));
+});
+
+test('a prepared call snapshot never authorizes a local read after tool-policy revocation',async t=>{
+ let catalogReads=0,contextReads=0,reads=0,tools=['exec'];
+ const f=await fixture(undefined,'grok',{actorScoped:true,sessionBound:true,
+  toolIdentity:{appId:'cli_fixture',openId:'ou_11111111111111111111111111111111'},larkForActor:async()=>({calendar:async()=>{reads++;return {};}}),
+  gateway:{request:async()=>{catalogReads++;return {groups:[{tools:tools.map(id=>({id}))}]};}},loadContext:async()=>{contextReads++;return 'Reserved call context';},
+  beforeAttach:async()=>{await delay(0);tools=[];}});
+ t.after(()=>f.service.dispose());assert.equal(catalogReads,1);assert.equal(contextReads,1);
+ f.call('feishu_calendar',{},'revoked-after-reserve');
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='revoked-after-reserve')));
+ assert.equal(reads,0);assert.equal(catalogReads,2);
+ assert(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='revoked-after-reserve').result.error);
+});
+
+test('a relay delayed beyond the bounded overlap starts fresh environment reads',async t=>{
+ let release,catalogReads=0,contextReads=0;const gate=new Promise(r=>{release=r;});
+ const f=await fixture(undefined,'grok',{actorScoped:true,sessionBound:true,
+  gateway:{request:async()=>{catalogReads++;await gate;return {groups:[]};}},loadContext:async()=>{const read=++contextReads;await gate;return 'Context read '+read;},
+  beforeAttach:async()=>{await delay(1050);setImmediate(release);}});
+ t.after(()=>f.service.dispose());assert.equal(catalogReads,2);assert.equal(contextReads,2);
+ assert(JSON.stringify(f.upstream.sent).includes('Context read 2'));
+});
+
+test('a completed preparation expires before a delayed relay and cannot supply old history or tools',async t=>{
+ let catalogReads=0,contextReads=0,text='Old reserved context',tools=['exec'];
+ const f=await fixture(undefined,'grok',{actorScoped:true,sessionBound:true,
+  gateway:{request:async()=>{catalogReads++;return {groups:[{tools:tools.map(id=>({id}))}]};}},loadContext:async()=>{contextReads++;return text;},
+  beforeAttach:async()=>{await delay(1050);text='Fresh relay context';tools=['web_search'];}});
+ t.after(()=>f.service.dispose());assert.equal(catalogReads,2);assert.equal(contextReads,2);
+ const config=f.upstream.sent.find(v=>v.type==='session.update').session;
+ assert(config.instructions.includes('Fresh relay context'));assert(!config.instructions.includes('Old reserved context'));
+ assert(!config.tools.some(t=>t.name==='exec'));assert(config.tools.some(t=>t.name==='web_search'));
+});
+
+test('closing a reserved call during preparation cannot later open a provider',async t=>{
+ let release,opened=0;const gate=new Promise(r=>{release=r;});
+ class Server {close(){}}
+ class WS {constructor(){opened++;throw Error('No provider before attachment');}}
+ const service=createDirectVoiceService({gateway:{request:()=>gate.then(()=>({groups:[]}))},loadContext:()=>gate.then(()=>''),wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture'}});
+ t.after(()=>service.dispose());const r=await service.reserve({model:'grok',sessionKey:'fixture',actorScoped:true,sessionBound:true});
+ await service.close(r.voiceSessionId);release();await delay(0);
+ assert.equal(opened,0);assert.equal(service.hasSession(r.voiceSessionId),false);
+});
+
 
 test('actor calls advertise exactly the available native shortcuts and keep delegation for original skills',async t=>{
  const f=await fixture(undefined,'grok',{sessionBound:true,actorScoped:true,catalog:['exec','process','web_fetch']});t.after(()=>f.service.dispose());
@@ -1064,6 +1163,8 @@ for(const receiver of RECEIVERS)test(`${receiver.name}: shared natural search, p
  const setup=f.upstream.sent.find(e=>e.type==='session.create').session;
  assert(f.reservation.nativeDuplex,'duplex depends on microphone routing, not terminal name');
  assert.match(setup.instructions,/语音查询接话规则/);assert.match(setup.instructions,/真正插话/);
+ assert(setup.instructions.includes(VOICE_OPERATION_CONSENT_POLICY));
+ assert(setup.instructions.includes(VOICE_CALENDAR_SERVICE_POLICY));
  for(const name of ['web_search','memory_search'])assert.match(setup.tools.find(t=>t.name===name).description,/不能只调用工具而保持沉默/);
  const native=(id,name,args)=>f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
  native('search','memory_search',{query:'项目背景'});
@@ -1252,4 +1353,320 @@ test('live permission refresh reaches both model context and backend snapshot wi
   for(let i=0;i<100&&!f.invocations.some(x=>x.question?.includes('"endpoint"'));i++)await delay(2);
   assert.match(f.invocations.find(x=>x.question?.includes('"endpoint"')).question,/location.current.*denied/);f.completeBackend('已确认定位权限被拒绝，未取位置');
  }
+});
+
+test('missing or failed backend bundle validation never advertises a guessed execution path',async t=>{
+ for(const options of [{backendDeviceBundle:null},{backendDeviceBundleProbe:async()=>false}]){
+  const f=await fixture(undefined,'grok',{nativeDeviceActions:{version:1,capabilities:{'location.current':{status:'prompt'}}},backendDeviceURL:'https://different-voice.example/internal/device-request',...options});t.after(()=>f.service.dispose());
+  f.call('delegate_to_v',{question:'读取本次设备上下文，不操作设备'},'unverified-bundle');
+  for(let i=0;i<100&&!f.invocations.some(x=>x.question);i++)await delay(2);
+  const text=f.invocations.find(x=>x.question).question;assert.match(text,/未验证或未配置/);assert(!text.includes('"lease"'));assert(!text.includes('"cli"'));f.completeBackend('当前后台设备通道不可用');
+ }
+});
+
+test('independent GPT device channel shares lease validation, permission state and retirement without a provider session',async t=>{
+ const frames=[],contexts=[];let current=true,descriptor;
+ class Server{close(){}}
+ const service=createDirectVoiceService({gateway:{},wsModule:{WebSocketServer:Server},backendDeviceBundle:{root:'/backend',sha256:'a'.repeat(64)},backendDeviceBundleProbe:async value=>{descriptor=value.descriptor;return true;}});t.after(()=>service.dispose());
+ const channel=service.openDeviceChannel({voiceSessionId:'gpt-call',sessionKey:'server-owned',nativeDeviceActions:{version:1,capabilities:{'location.current':{status:'prompt'}}},backendDeviceURL:'http://127.0.0.1:12345/internal/device-request',send:frame=>frames.push(frame),isCurrent:()=>current,onContext:context=>contexts.push(context)});
+ assert.equal((await channel.descriptor()).voiceSessionId,'gpt-call');assert.equal(service.hasSession('gpt-call'),false);
+ const requested=service.backendDeviceRequest({lease:descriptor.lease,operation:'location.current'});await delay(0);
+ assert.equal(frames[0].voiceSessionId,'gpt-call');assert.equal(channel.receive({...frames[0],type:'device.result',voiceSessionId:'foreign',status:'denied'}),false);
+ assert.equal(channel.receive({...frames[0],type:'device.result',status:'denied'}),true);assert.equal((await requested).status,'denied');
+ assert.equal(channel.receive({type:'device.capabilities',version:1,voiceSessionId:'gpt-call',revision:1,capabilities:{'location.current':{status:'available'}}}),true);assert.equal(contexts.at(-1).capabilities['location.current'].status,'available');
+ assert.equal(channel.receive({type:'device.capabilities',version:1,voiceSessionId:'gpt-call',revision:2,capabilities:{'notes.create':{status:'available'}}}),false);
+ current=false;await assert.rejects(service.backendDeviceRequest({lease:descriptor.lease,operation:'device.probe',args:{challenge:'late'}}),/expired/);
+ channel.close();assert.equal(await channel.descriptor(),null);
+});
+
+test('Public uses existing V search/memory tools and carries the same personal-content redline to the existing backend',async t=>{
+ const calls=[];
+ const publicGateway={publicVoice:true,async request(method,params){calls.push({method,params});
+  if(method==='tools.catalog')return {groups:[{tools:[{id:'memory_search'},{id:'web_search'}]}]};
+  if(method==='tools.invoke')return {ok:true,output:{content:[{type:'text',text:'V 原有项目记忆'}]}};
+  if(method==='voice.product.task.start')return {taskId:'public-task',runId:'public-run'};
+  if(method==='voice.product.task.read')return {taskId:'public-task',runId:'public-run',status:'ok',text:'V 原有后台执行结果'};
+  throw Error('Unexpected method');
+ }};
+ const f=await fixture(undefined,'grok',{unidentified:true,publicGateway,sessionKey:'voice:guest:'+'a'.repeat(64),loadContext:()=>{throw Error('Public must not preload private history');}});t.after(()=>f.service.dispose());
+ const session=f.upstream.sent.find(e=>e.type==='session.update').session;
+ assert(session.instructions.includes('个人内容红线'));assert(session.instructions.includes('V 现有记忆'));
+ const names=session.tools.map(t=>t.name);assert(names.includes('memory_search'));assert(names.includes('web_search'));assert(names.includes('delegate_to_v'));
+ assert(!names.some(n=>['memory_write','task_status','exec','lark_read','feishu_calendar','openclaw_tool'].includes(n)));
+ f.call('memory_search',{query:'项目历史'},'public-memory');f.call('web_search',{query:'public资料'},'public-web');
+ for(let i=0;i<100&&calls.filter(r=>r.method==='tools.invoke').length<2;i++)await delay(2);
+ assert.deepEqual(calls.filter(r=>r.method==='tools.invoke').map(r=>r.params.name),['memory_search','web_search']);
+ f.call('delegate_to_v',{question:'整理项目公开资料'},'public-backend');
+ for(let i=0;i<100&&!calls.some(r=>r.method==='voice.product.task.start');i++)await delay(2);
+ const task=calls.find(r=>r.method==='voice.product.task.start');assert(task);assert(task.params.question.includes('个人内容红线'));assert(task.params.question.includes('不要调用 sessions_yield')); assert(task.params.question.includes('V 现有记忆'));
+ for(let i=0;i<100&&!f.client.sent.some(e=>e.type==='backend.result');i++)await delay(2);
+ assert(f.client.sent.some(e=>e.type==='backend.result'&&e.text==='V 原有后台执行结果'),'Public short backend results use the existing report card too');
+ f.call('exec',{command:'anything'},'public-denied');await delay(10);
+ assert(!calls.some(r=>r.params?.name==='exec'));assert.equal(f.invocations.length,0);
+});
+
+// Timelines from real calls on 2026-10-29/30.
+const delegated=async(f,question='比较三所学校')=>{f.event({type:'response.function_call_arguments.done',items:[{call_id:'task',name:'delegate_to_v',arguments:JSON.stringify({question})}]});assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));};
+const modelSays=(f,id,...deltas)=>{for(const delta of deltas)f.event({type:'response.output_text.delta',response_id:id,delta});};
+const heard=f=>f.upstream.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text);
+test('call ca2433b7: "整理好了" before the task ended is cut, corrected, and the real result still arrives',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:{...FAST_NARRATION,firstMs:60000}});t.after(()=>f.service.dispose());
+ await delegated(f);
+ f.event({type:'response.output_audio.started',response_id:'made-up',tts_type:'default'});
+ modelSays(f,'made-up','后台','整理','好了','，核心区别很明确：');
+ assert(await until(()=>f.audit.some(e=>e.type==='speech.premature-completion-cut')),'the claim is caught from its text');
+ assert(f.upstream.sent.some(x=>x.type==='response.cancel'),'the reply is cancelled upstream');
+ assert(await until(()=>heard(f).includes('等一下，这个我还没弄完，弄好了告诉你。')));
+ modelSays(f,'made-up','耀中 YCIS 双母语打底');
+ assert.equal(f.client.sent.some(e=>e.type==='transcript'&&e.text?.includes('耀中')),false,'the rest of the made-up answer never shows');
+ f.completeBackend('耀中偏双语，上中国际学术最强，包玉刚重全人。');
+ assert(await until(()=>heard(f).some(x=>x.includes('上中国际学术最强'))),'the real result follows');
+});
+test('saying what is still to come, or answering once the task is over, is not cut',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:{...FAST_NARRATION,firstMs:60000}});t.after(()=>f.service.dispose());
+ await delegated(f);
+ modelSays(f,'r1','还在弄，','等我整理好了','告诉你。');modelSays(f,'r2','还没查到，','有结果了我就说。');
+ await delay(50);assert.equal(f.audit.some(e=>e.type==='speech.premature-completion-cut'),false);
+ f.completeBackend('结论是耀中。');assert(await until(()=>heard(f).some(x=>x.includes('结论是耀中'))));
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered')));
+ modelSays(f,'r3','整理好了，','结论是耀中。');await delay(50);
+ assert.equal(f.audit.some(e=>e.type==='speech.premature-completion-cut'),false);
+});
+test('a native lookup that just returned may be reported as found while a task runs',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{answer:'明天有课'}}),'seeduplex',{narration:{...FAST_NARRATION,firstMs:60000}});t.after(()=>f.service.dispose());
+ await delegated(f);
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'look',name:'memory_search',arguments:JSON.stringify({query:'明天'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.name==='memory_search')));
+ modelSays(f,'r1','查到了，','明天有课。');await delay(50);
+ assert.equal(f.audit.some(e=>e.type==='speech.premature-completion-cut'),false);
+});
+test('call a6216417: a result opening with process words is heard from its conclusion; the screen keeps it whole',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:{...FAST_NARRATION,firstMs:60000}});t.after(()=>f.service.dispose());
+ await delegated(f,'去虹桥天街怎么走');
+ f.completeBackend('我查下路线。后台核对过了：天街就在火车站西侧，步行十五分钟。');
+ assert(await until(()=>heard(f).length>0));
+ assert.equal(heard(f)[0],'我核对过了：天街就在火车站西侧，步行十五分钟。');
+ const history=f.upstream.sent.find(x=>x.items?.length===2);assert(history.items[1].content[0].text.startsWith('我查下路线。'),'the model still has the whole result');
+});
+test('a failed task is said plainly, without naming a second party',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{narration:{...FAST_NARRATION,firstMs:60000}});t.after(()=>f.service.dispose());
+ await delegated(f);f.failBackend('V 后台任务未完成');
+ assert(await until(()=>heard(f).length>0));assert.deepEqual(heard(f),['这个我没弄成，要不要我再试一次？']);
+});
+test('instructions and the task acknowledgement speak as one V',async t=>{
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex');t.after(()=>f.service.dispose());
+ assert.match(JSON.stringify(f.upstream.sent.find(x=>x.type==='session.create')),/只有一个你/);
+ await delegated(f);
+ const ack=f.upstream.sent.find(x=>x.items?.[0]?.role==='tool').items[0].content[0].text;
+ assert.match(ack,/好，我去看看/);assert.doesNotMatch(JSON.parse(ack).message,/后台/);
+});
+for (const [receiver,options] of [['web',{}],['ios',{nativeRuntimeVersion:1}],['speaker',{surface:'speaker'}],['robot',{surface:'speaker',inputPolicy:'native'}]]) {
+ test(`authorized TV control uses the shared direct path on ${receiver}`,async t=>{
+  const f=await fixture(async()=>({ok:true,output:{accepted:true,simulation:true,physical_playback_verified:false}}),'grok',{
+   ...options,sessionBound:true,actorScoped:true,catalog:['xiaomi-tv_tv_volume']});
+  t.after(()=>f.service.dispose());
+  const config=f.upstream.sent.find(e=>e.type==='session.update').session;
+  assert.match(config.instructions,/一两步明确控制可直接用 openclaw_tool/);
+  assert.match(config.instructions,/accepted=true 仅表示命令已接受/);
+  assert.match(config.tools.find(t=>t.name==='openclaw_tool').description,/其他写操作交 delegate_to_v/);
+  f.call('openclaw_tool',{tool:'xiaomi-tv_tv_volume',arguments:'{"percent":15}'},'tv-volume');
+  for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.native-result');i++)await delay(2);
+  assert.equal(f.invocations.length,1);assert.equal(f.invocations[0].name,'xiaomi-tv_tv_volume');
+  assert.deepEqual(f.invocations[0].args,{percent:15});
+  assert.equal(f.audit.find(e=>e.type==='tool.native-result').result.output.physical_playback_verified,false);
+  // A name mentioned by another tool is not a catalog grant.
+  f.call('openclaw_tool',{tool:'xiaomi-tv_tv_command',arguments:'{"text":"暂停音乐"}'},'missing-tv');
+  for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='missing-tv');i++)await delay(2);
+  assert.equal(f.invocations.length,1);
+  assert.match(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='missing-tv').result.error,/没有这个 OpenClaw 工具/);
+ });
+}
+
+test('TV guidance and account control are absent for an unidentified caller',async t=>{
+ const f=await fixture(undefined,'grok',{unidentified:true,sessionKey:'voice:guest:tv-fixture',catalog:['xiaomi-tv_tv_volume']});
+ t.after(()=>f.service.dispose());
+ const config=f.upstream.sent.find(e=>e.type==='session.update').session;
+ assert.equal(config.instructions.includes('电视控制：'),false);
+ assert.equal(config.tools.some(t=>t.name==='openclaw_tool'),false);
+ f.call('openclaw_tool',{tool:'xiaomi-tv_tv_volume',arguments:'{"percent":15}'},'guest-tv');
+ for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered');i++)await delay(2);
+ assert.deepEqual(f.invocations,[]);
+ assert.equal(f.audit.find(e=>e.type==='tool.delivered').result.error,'当前通话没有账号工具权限');
+});
+
+
+// Protocol fixture: real host dispatch/ownership/presentation, no paid provider
+// generation and no claim that a model chose these calls autonomously.
+for (const model of ['grok','seeduplex']) test(`${model} direct CLI media uses local execution and screen receipts without a backend job`,async t=>{
+ const calls=[];
+ const invokeMedia=async args=>{
+   const method='local-cli';
+   calls.push({method,...args});
+   assert.equal(method,'local-cli');
+   if(args.name==='exec'){
+     if(args.args.command.startsWith('makaron edit'))return {ok:true,output:{content:[{type:'text',text:'makaron-output-fixture.webp'}],details:{status:'completed',exitCode:0}}};
+     if(args.args.command.startsWith('makaron create --image'))return {ok:true,output:{content:[{type:'text',text:'ID: project-fixture\nImages: 1\n[1] https://cdn.test/generated.webp\nURL: https://www.makaron.app/project/project-fixture'}],details:{status:'completed',exitCode:0}}};
+     if(args.args.command.startsWith('makaron video create'))return {ok:true,output:{content:[{type:'text',text:'Task ID: fal-h3max-fixture'}],details:{status:'completed',exitCode:0}}};
+     return {ok:true,output:{content:[{type:'text',text:'https://cdn.test/generated.mp4'}],details:{status:'completed',exitCode:0}}};
+   }
+   assert.equal(args.name,'process');assert.equal(args.args.sessionId,'owned-media-query');
+   return {ok:true,output:{content:[{type:'text',text:'https://cdn.test/generated.mp4'}],details:{status:'completed',exitCode:0}}};
+ };
+ const f=await fixture(async()=>{throw Error('Gateway exec must not run');},model,{mediaCli:{forCall:async()=>({execute:async command=>(await invokeMedia({name:'exec',args:{command}})).output})}});
+ t.after(()=>f.service.dispose());
+ const config=f.upstream.sent.find(e=>['session.create','session.update'].includes(e.type)).session;
+ assert(config.instructions.includes('makaron edit --image-model wan2.7-image'));
+ assert(config.instructions.includes('makaron video create --video-model fal-h3-max'));
+ assert(!config.instructions.includes('图片、视频生成也用 delegate_to_v'));
+ assert(!config.tools.some(tool=>/^(generate_image|generate_video|makaron_)/.test(tool.name)));
+ const invoke=async(name,args,id)=>{
+   if(model==='grok')f.call(name,args,id);
+   else f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+   for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId===id);i++)await delay(5);
+   const delivered=f.audit.find(e=>e.type==='tool.delivered'&&e.callId===id);assert(delivered,`missing ${id}`);return delivered.result;
+ };
+ await invoke('exec',{command:"makaron edit --image-model wan2.7-image 'a small blue moon'",timeoutSeconds:120},'image-submit');
+ await invoke('exec',{command:"makaron create --image 'makaron-output-fixture.webp' --title '月亮'",timeoutSeconds:120},'image-save');
+ const image='![月亮](https://cdn.test/generated.webp)';
+ assert.equal((await invoke('show_content',{markdown:image},'image-show')).shown,true);
+ await invoke('exec',{command:"makaron video create --video-model fal-h3-max --duration 5 --script 'slow rotation' --image 'https://cdn.test/generated.webp'",timeoutSeconds:120},'video-submit');
+ await invoke('exec',{command:"makaron video status 'fal-h3max-fixture'",timeoutSeconds:120},'video-query');
+ const video='[月亮转动](https://cdn.test/generated.mp4)';
+ assert.equal((await invoke('show_content',{markdown:video},'video-show')).shown,true);
+ assert.deepEqual(calls.map(c=>c.name),['exec','exec','exec','exec']);
+ assert.equal(calls[2].args.command.includes('--image'),true);
+ assert.equal(f.invocations.length,0);
+ assert(!f.audit.some(e=>e.type.startsWith('backend.start')));
+ assert.deepEqual(f.service.presentation(f.reservation.voiceSessionId).documents.map(d=>d.text),[image,video]);
+ assert.equal(f.service.backgroundTaskCount(),0);
+ assert.deepEqual(f.client.sent.filter(e=>e.type==='tool.call').map(e=>[e.execution,e.stage]),[
+   ['foreground','生成图片'],['foreground','保存图片'],['foreground','展示内容'],['foreground','生成视频'],['foreground','等待视频'],['foreground','展示内容'],
+ ]);
+});
+
+for(const options of [{sessionBound:true},{actorScoped:true},{unidentified:true},{catalog:['memory_search'] }])test('local media capability cannot cross identity or catalog boundary '+JSON.stringify(options),async t=>{
+ let local=0;const f=await fixture(async()=>({ok:false,error:{message:'denied'}}),'grok',{...options,mediaCli:{forCall:async()=>{local++;throw Error('must not run');}}});t.after(()=>f.service.dispose());
+ const config=f.upstream.sent.find(e=>e.type==='session.update').session;
+ assert(!config.instructions.includes('makaron edit --image-model'));
+ f.call('exec',{command:"makaron edit --image-model wan2.7-image 'x'"},'isolated-media');
+ await delay(20);assert.equal(local,0);
+});
+test('media catalog revocation stops local execution without attempting Gateway fallback',async t=>{
+ let local=0;const catalog=['exec','process'];
+ const f=await fixture(async()=>{throw Error('must not call Gateway tool');},'grok',{catalog,mediaCli:{forCall:async()=>({execute:async()=>{local++;return {};}})}});t.after(()=>f.service.dispose());
+ catalog.splice(0);f.call('exec',{command:"makaron edit --image-model wan2.7-image 'x'"},'revoked-media');
+ await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='revoked-media'));
+ assert.equal(local,0);assert.equal(f.invocations.length,0);assert.match(f.audit.find(e=>e.type==='tool.delivered').result.error,/撤回/);
+});
+
+for(const model of ['grok','seeduplex'])test(`${model} long local exec returns a real process handle and final native tool result across interruption, without media memory`,async t=>{
+ let finish;const calls=[];
+ const work=new Promise(resolve=>{finish=resolve;});
+ const f=await fixture(async()=>{throw Error('must not use Gateway');},model,{mediaCli:{forCall:async()=>({execute:(command,signal,options)=>{calls.push({command,options});return work;}})}});
+ t.after(()=>{finish({});return f.service.dispose();});
+ const call=(id,name,args)=>model==='grok'?f.call(name,args,id):f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'把这张图动起来'});
+ call('first-media','exec',{command:"makaron video create --video-model fal-h3-max --script 'animate'"});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='first-media')));
+ const started=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='first-media').result;
+ assert.equal(started.details.status,'running');assert.match(started.details.sessionId,/^voice-exec-/);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'做好了吗？'});
+ call('poll-pending','process',{action:'poll',sessionId:started.details.sessionId,timeout:1});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='poll-pending')));
+ assert.equal(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='poll-pending').result.details.status,'running');
+ finish({isError:false,media:{kind:'video',url:'https://cdn.test/final.mp4'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
+ assert(await until(()=>f.service.presentation(f.reservation.voiceSessionId).documents.length===1));
+ call('poll-final','process',{action:'poll',sessionId:started.details.sessionId,timeout:1000});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='poll-final')));
+ const result=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='poll-final').result;
+ assert.equal(result.media.url,'https://cdn.test/final.mp4');assert.equal(result.presentation.shown,true);assert.equal(calls.length,1);
+ const wire=JSON.stringify(f.upstream.sent);assert(wire.includes('https://cdn.test/final.mp4'));assert(!wire.includes('本通话创作记录'));
+ assert(!f.upstream.sent.some(e=>e.items?.length===2&&e.items[0].role==='user'&&e.items[1].role==='assistant'));
+ call('foreign','process',{action:'poll',sessionId:'invented'});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='foreign')));
+ assert.match(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='foreign').result.error,/本次电话/);
+});
+
+for(const model of ['grok','seeduplex'])test(`${model} tells a finished execution in the model's own words once it stopped following, then keeps it in the conversation`,async t=>{
+ let finish;const work=new Promise(resolve=>{finish=resolve;});
+ const f=await fixture(async()=>{throw Error('must not use Gateway');},model,{mediaCli:{forCall:async()=>({execute:()=>work})}});
+ t.after(()=>{finish({});return f.service.dispose();});
+ const call=(id,name,args)=>model==='grok'?f.call(name,args,id):f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+ const said=()=>model==='grok'?f.upstream.sent.filter(e=>e.type==='conversation.item.create'&&e.item?.type==='force_message').map(e=>e.item.content[0].text):f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').map(e=>e.text);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'让小猫动起来'});
+ call('told-media','exec',{command:"makaron video create --video-model fal-h3-max --script 'animate'",completionLine:'小猫的视频做好了，你看看',failureLine:'小猫那个视频这次没拿到结果'});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='told-media')));
+ const started=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='told-media').result;
+ if(model==='seeduplex')f.event({type:'response.done',response:{id:'told-media-reply',status:'completed'}});
+ finish({isError:false,media:{kind:'video',url:'https://cdn.test/told.mp4'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
+ assert(await until(()=>f.service.presentation(f.reservation.voiceSessionId).documents.length===1));
+ assert.deepEqual(said().filter(x=>x.includes('小猫')),[],'nothing before the settle window');
+ for(let i=0;i<120&&!said().includes('小猫的视频做好了，你看看');i++)await delay(50);
+ assert(said().includes('小猫的视频做好了，你看看'));
+ assert(f.audit.some(e=>e.type==='execution.finished-told'&&e.ownWords&&e.status==='completed'));
+ assert(JSON.stringify(f.upstream.sent).includes('told.mp4'),'the conversation can refer to the result later');
+ assert(!said().some(x=>x.includes('told.mp4')),'the link is never read out');
+ await delay(400);
+ assert.equal(said().filter(x=>x==='小猫的视频做好了，你看看').length,1);
+ call('told-poll','process',{action:'poll',sessionId:started.details.sessionId,timeout:1});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='told-poll')));
+ assert.match(f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='told-poll').result.instruction,/不要再通报/);
+});
+
+test('a model still following its execution answers it itself; the service says nothing',async t=>{
+ let finish;const work=new Promise(resolve=>{finish=resolve;});
+ const f=await fixture(async()=>{throw Error('must not use Gateway');},'seeduplex',{mediaCli:{forCall:async()=>({execute:()=>work})}});
+ t.after(()=>{finish({});return f.service.dispose();});
+ const call=(id,name,args)=>f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'画一只小猫'});
+ call('followed','exec',{command:"makaron edit --image-model wan2.7-image 'cat'",completionLine:'小猫画好了'});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='followed')));
+ const {sessionId}=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='followed').result.details;
+ finish({isError:false,media:{kind:'image',url:'https://cdn.test/followed.webp'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
+ call('followed-poll','process',{action:'poll',sessionId,timeout:1000});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='followed-poll')));
+ await delay(3200);
+ assert(!f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'&&e.text==='小猫画好了'));
+ assert(!f.audit.some(e=>e.type==='execution.finished-told'));
+});
+
+test('a turn the provider opened and abandoned does not hold back a finished execution',async t=>{
+ let finish;const work=new Promise(resolve=>{finish=resolve;});
+ const f=await fixture(async()=>{throw Error('must not use Gateway');},'seeduplex',{narration:{abandonedResponseMs:300},mediaCli:{forCall:async()=>({execute:()=>work})}});
+ t.after(()=>{finish({});return f.service.dispose();});
+ const said=()=>f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').map(e=>e.text);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'画一只小猫'});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'abandoned',name:'exec',arguments:JSON.stringify({command:"makaron edit --image-model wan2.7-image 'cat'",completionLine:'小猫画好了'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='abandoned')));
+ f.event({type:'response.created',response:{id:'never-finished'}});
+ finish({isError:false,media:{kind:'image',url:'https://cdn.test/abandoned.webp'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
+ for(let i=0;i<100&&!said().includes('小猫画好了');i++)await delay(50);
+ assert(said().includes('小猫画好了'));
+});
+
+test('a poll still running never claims a result; a finished one the model ignores uses its own line, not an offer',async t=>{
+ let finish;const work=new Promise(resolve=>{finish=resolve;});
+ const f=await fixture(async()=>{throw Error('must not use Gateway');},'seeduplex',{mediaCli:{forCall:async()=>({execute:()=>work})},lookupRecovery:{resultSilenceMs:60}});
+ t.after(()=>{finish({});return f.service.dispose();});
+ const call=(id,name,args)=>f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
+ const said=()=>f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').map(e=>e.text);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'做个视频'});
+ call('poll-media','exec',{command:"makaron video create --video-model fal-h3-max --script 'animate'",completionLine:'小猫的视频做好了，你看看'});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='poll-media')));
+ const {sessionId}=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='poll-media').result.details;
+ f.event({type:'response.done',response:{id:'poll-media-reply',status:'completed'}});
+ await delay(1300);
+ call('poll-running','process',{action:'poll',sessionId,timeout:1});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='poll-running')));
+ f.event({type:'response.done',response:{id:'poll-running-reply',status:'completed'}});
+ await delay(600);
+ assert.deepEqual(said().filter(x=>x.includes('结果')||x.includes('小猫')),[],'nothing exists yet, so nothing is claimed');
+ finish({isError:false,media:{kind:'video',url:'https://cdn.test/poll.mp4'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
+ assert(await until(()=>f.service.presentation(f.reservation.voiceSessionId).documents.length===1));
+ call('poll-final','process',{action:'poll',sessionId,timeout:1});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='poll-final')));
+ f.event({type:'response.done',response:{id:'poll-final-reply',status:'completed'}});
+ for(let i=0;i<120&&!said().includes('小猫的视频做好了，你看看');i++)await delay(50);
+ assert.equal(said().filter(x=>x==='小猫的视频做好了，你看看').length,1);
+ assert(!said().some(x=>/要我|说说吗/u.test(x)),'no offer');
 });

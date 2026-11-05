@@ -1,0 +1,348 @@
+{
+  "schema": "v-voice-redial-physical-ab-v1",
+  "date": "2026-10-28",
+  "status": "candidate_not_merged_or_deployed",
+  "productionServiceCommit": "0d97329faa3e151ac4b7e9b3f5c262303f736a43",
+  "candidateServiceCommit": "9ba8eb594f849caa3e42087639eb4fa828c0a4a5",
+  "candidateArtifactSHA256": "e2d88ac06e7a47245d7852ebc6a0ec827fc3f3346d5e7858811bd461b0bedd12",
+  "phoneOS": "iOS 27.0.1",
+  "testAppVersion": "1.0.0 (40) Debug test host",
+  "unchangedNativeSourceCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
+  "design": {
+    "order": [
+      "a1-valid",
+      "b1",
+      "b2",
+      "a2"
+    ],
+    "sameCompiledBinaryAcrossValidRuns": true,
+    "samePhone": true,
+    "sameHTTPSOrigin": true,
+    "sameServerPort": true,
+    "sameRealProvider": "seeduplex",
+    "sameSyntheticInput": true,
+    "publicIsolatedBinding": true,
+    "personalBindingModified": false,
+    "restartOwnServiceBeforeEveryRun": true,
+    "addedNetworkDelay": false,
+    "perRunWarmupExcluded": 1,
+    "productionRolledBackForComparison": false
+  },
+  "metrics": {
+    "baseline": {
+      "redialSamples": 6,
+      "pendingBeforeCount": 6,
+      "closeSuccessAllCalls": 2,
+      "allCalls": 8,
+      "medianMS": {
+        "recoveryMS": 271.5,
+        "connectedMS": 1807.5,
+        "firstPCMMS": 6301.0,
+        "firstRenderMS": 6385.0
+      },
+      "minRecoveryMS": 227,
+      "maxRecoveryMS": 393
+    },
+    "candidate": {
+      "redialSamples": 6,
+      "pendingBeforeCount": 0,
+      "closeSuccessAllCalls": 8,
+      "allCalls": 8,
+      "medianMS": {
+        "recoveryMS": 0.0,
+        "connectedMS": 1485.0,
+        "firstPCMMS": 5977.5,
+        "firstRenderMS": 6066.5
+      },
+      "minRecoveryMS": 0,
+      "maxRecoveryMS": 0
+    }
+  },
+  "runs": [
+    {
+      "run": "a1-valid",
+      "exit": 0,
+      "variant": "baseline",
+      "samples": [
+        {
+          "audioBytes": 30720,
+          "closeMS": 423,
+          "closeResult": "busy",
+          "connectedMS": 1386,
+          "firstPCMMS": 5763,
+          "firstRenderMS": 5852,
+          "pendingAfter": true,
+          "pendingBefore": false,
+          "recoveryMS": 0,
+          "sample": 0,
+          "warmup": true
+        },
+        {
+          "audioBytes": 36864,
+          "closeMS": 431,
+          "closeResult": "busy",
+          "connectedMS": 2023,
+          "firstPCMMS": 6392,
+          "firstRenderMS": 6474,
+          "pendingAfter": true,
+          "pendingBefore": true,
+          "recoveryMS": 291,
+          "sample": 1,
+          "warmup": false
+        },
+        {
+          "audioBytes": 73728,
+          "closeMS": 426,
+          "closeResult": "busy",
+          "connectedMS": 2443,
+          "firstPCMMS": 6953,
+          "firstRenderMS": 7051,
+          "pendingAfter": true,
+          "pendingBefore": true,
+          "recoveryMS": 393,
+          "sample": 2,
+          "warmup": false
+        },
+        {
+          "audioBytes": 30720,
+          "closeMS": 417,
+          "closeResult": "ok",
+          "connectedMS": 1772,
+          "firstPCMMS": 6225,
+          "firstRenderMS": 6306,
+          "pendingAfter": false,
+          "pendingBefore": true,
+          "recoveryMS": 234,
+          "sample": 3,
+          "warmup": false
+        }
+      ]
+    },
+    {
+      "run": "b1",
+      "exit": 0,
+      "variant": "candidate",
+      "samples": [
+        {
+          "audioBytes": 34816,
+          "closeMS": 472,
+          "closeResult": "ok",
+          "connectedMS": 1384,
+          "firstPCMMS": 5778,
+          "firstRenderMS": 5858,
+          "pendingAfter": false,
+          "pendingBefore": false,
+          "recoveryMS": 0,
+          "sample": 0,
+          "warmup": true
+        },
+        {
+          "audioBytes": 36864,
+          "closeMS": 410,
+          "closeResult": "ok",
+          "connectedMS": 1385,
+          "firstPCMMS": 5817,
+          "firstRenderMS": 5897,
+          "pendingAfter": false,
+          "pendingBefore": false,
+          "recoveryMS": 0,
+          "sample": 1,
+          "warmup": false
+        },
+        {
+          "audioBytes": 32768,
+          "closeMS": 431,
+          "closeResult": "ok",
+          "connectedMS": 1513,
+          "firstPCMMS": 6000,
+          "firstRenderMS": 6089,
+          "pendingAfter": false,
+          "pendingBefore": false,
+          "recoveryMS": 0,
+          "sample": 2,
+          "warmup": false
+        },
+        {
+          "audioBytes": 32768,
+          "closeMS": 440,
+          "closeResult": "ok",
+          "connectedMS": 1777,
+          "firstPCMMS": 6480,
+          "firstRenderMS": 6551,
+          "pendingAfter": false,
+          "pendingBefore": false,
+          "recoveryMS": 0,
+          "sample": 3,
+          "warmup": false
+        }
+      ]
+    },
+    {
+      "run": "b2",
+      "exit": 0,
+      "variant": "candidate",
+      "samples": [
+        {
+          "audioBytes": 32768,
+          "closeMS": 441,
+          "closeResult": "ok",
+          "connectedMS": 1707,
+          "firstPCMMS": 6399,
+          "firstRenderMS": 6471,
+          "pendingAfter": false,
+          "pendingBefore": false,
+          "recoveryMS": 0,
+          "sample": 0,
+          "warmup": true
+        },
+        {
+          "audioBytes": 32768,
+          "closeMS": 402,
+          "closeResult": "ok",
+          "connectedMS": 1457,
+          "firstPCMMS": 6052,
+          "firstRenderMS": 6142,
+          "pendingAfter": false,
+          "pendingBefore": false,
+          "recoveryMS": 0,
+          "sample": 1,
+          "warmup": false
+        },
+        {
+          "audioBytes": 36864,
+          "closeMS": 409,
+          "closeResult": "ok",
+          "connectedMS": 1387,
+          "firstPCMMS": 5852,
+          "firstRenderMS": 5926,
+          "pendingAfter": false,
+          "pendingBefore": false,
+          "recoveryMS": 0,
+          "sample": 2,
+          "warmup": false
+        },
+        {
+          "audioBytes": 55296,
+          "closeMS": 413,
+          "closeResult": "ok",
+          "connectedMS": 1525,
+          "firstPCMMS": 5955,
+          "firstRenderMS": 6044,
+          "pendingAfter": false,
+          "pendingBefore": false,
+          "recoveryMS": 0,
+          "sample": 3,
+          "warmup": false
+        }
+      ]
+    },
+    {
+      "run": "a2",
+      "exit": 0,
+      "variant": "baseline",
+      "samples": [
+        {
+          "audioBytes": 32768,
+          "closeMS": 453,
+          "closeResult": "busy",
+          "connectedMS": 1471,
+          "firstPCMMS": 6146,
+          "firstRenderMS": 6236,
+          "pendingAfter": true,
+          "pendingBefore": false,
+          "recoveryMS": 0,
+          "sample": 0,
+          "warmup": true
+        },
+        {
+          "audioBytes": 32768,
+          "closeMS": 394,
+          "closeResult": "busy",
+          "connectedMS": 1608,
+          "firstPCMMS": 5945,
+          "firstRenderMS": 6021,
+          "pendingAfter": true,
+          "pendingBefore": true,
+          "recoveryMS": 227,
+          "sample": 1,
+          "warmup": false
+        },
+        {
+          "audioBytes": 32768,
+          "closeMS": 421,
+          "closeResult": "busy",
+          "connectedMS": 1566,
+          "firstPCMMS": 6032,
+          "firstRenderMS": 6112,
+          "pendingAfter": true,
+          "pendingBefore": true,
+          "recoveryMS": 285,
+          "sample": 2,
+          "warmup": false
+        },
+        {
+          "audioBytes": 94208,
+          "closeMS": 423,
+          "closeResult": "ok",
+          "connectedMS": 1843,
+          "firstPCMMS": 6377,
+          "firstRenderMS": 6464,
+          "pendingAfter": false,
+          "pendingBefore": true,
+          "recoveryMS": 258,
+          "sample": 3,
+          "warmup": false
+        }
+      ]
+    }
+  ],
+  "invalidRuns": [
+    {
+      "run": "a1r",
+      "modelCalls": 4,
+      "cause": "Test harness omitted beginStream; retained sequence numbers caused one render failure. Excluded entire run; corrected harness before all valid runs."
+    },
+    {
+      "run": "a1-final",
+      "modelCalls": 2,
+      "rejectedDialAttempts": 1,
+      "cause": "Same service had six attempts within ten-minute rate window; next dial rejected. Excluded entire run. Valid design restarts only isolated service before each run; production limits unchanged."
+    }
+  ],
+  "validAssertions": [
+    "All sixteen valid calls received provider PCM and observed positive AVAudioPlayerNode render sample time.",
+    "Hangup immediately stopped VoiceAudio and emptied its queue in all sixteen valid calls.",
+    "Candidate cleared saved pending ID after every close; six subsequent redials made no recovery request."
+  ],
+  "limits": [
+    "Production VoiceAPI, RelayTransport and VoiceAudio on physical iPhone; test host orchestrates sequence directly. This is not a full CallCoordinator/Action Button/lock-screen UI measurement.",
+    "connectedMS starts before recoverPreviousCall and includes physical audio setup plus actual relay readiness. Production coordinator overlaps some audio setup; do not equate absolute values with button latency.",
+    "firstRenderMS measures the synthetic prompt reply, including input duration and model generation; not the normal welcome or an acoustic recording.",
+    "Public isolated context with no Gateway tools, not the personal conversation route. No long-interruption reacceptance in this round.",
+    "Small ABBA sample; network and model timing still vary."
+  ],
+  "cost": {
+    "authorizedBudgetTargetUSD": 5,
+    "absoluteCapUSD": 10,
+    "liveModelCallsIncludingExcludedRuns": 22,
+    "providerInvoiceVerified": false,
+    "rawHumanAudioStoredOrTransmitted": false
+  },
+  "productionChanged": false,
+  "gatewayRestarted": false,
+  "evidence": {
+    "a1-valid": "048ea9f2685e86fb18a69b9f865b3d7acf74de38748791f787e4f79facdbea56",
+    "b1": "b0d712193d6decd9e73ebd853123a87ff9924abe6042b4ea332a94004c0b7c88",
+    "b2": "59380940904afd49aa31d93abdeed96199c96b190ca25e8d2fe413eebcc3f353",
+    "a2": "2bffe8fcc37e26e368344e03fb2b6b2573038d0a1eb0467635ceddb8130df022"
+  },
+  "restoration": {
+    "originalRelease40ArchiveInstalled": true,
+    "installReceipt": "success",
+    "launchReceipt": "success",
+    "installedVersionReadback": "1.0.0 (40)",
+    "ownServiceStopped": true,
+    "ownTunnelStopped": true
+  },
+  "testHarnessSourceSHA256": "86466ee8d359b280046fbc9122d5fb885d3a10930bb3cb24a20577efe1821f8d"
+}

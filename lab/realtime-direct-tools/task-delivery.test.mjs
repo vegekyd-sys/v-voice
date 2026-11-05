@@ -2,6 +2,20 @@ import {conversationReplyText} from '../../lib/conversation-replies.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';
 import {createTaskDelivery,requestsTaskDelivery,voiceFeishuTarget} from './task-delivery.mjs';
 import {createConversationReplyDelivery} from '../../lib/conversation-replies.mjs';
+test('native ownership suppresses legacy subscription and automatic result sync, retaining the call report',async()=>{
+ const calls=[],reported=[],sessionKey='agent:makaron:feishu:group:oc_room';
+ const gateway={supportsMethod:m=>m==='v.feishu.taskPresentation',request:async(m,p)=>{calls.push({m,p});return {owned:true};}};
+ const replies=createConversationReplyDelivery({gateway,target:{channel:'feishu',to:'oc_room',sessionKey},ownerId:'call',callReport:{result:(...a)=>reported.push(a)}});
+ const d=createTaskDelivery({gateway,sessionKey,ownerId:'call',replyDelivery:replies});
+ replies.user('完成后把结果发飞书群');d.requested('request','完成后把结果发飞书群');d.observeUser('完成后把结果发飞书群');d.started('run',{requestId:'request'});
+ await d.subscribe();d.progress('run','公开进展');d.close();await d.completed('run','完整结果');await d.completed('run','完整结果');await d.flush();
+ assert.equal(calls.length,1);assert.equal(calls[0].m,'v.feishu.taskPresentation');assert.equal(calls[0].p.runId,'run');assert(reported.some(a=>a[1]==='完整结果'));assert(!d.pending);
+});
+test('uncertain native ownership cannot fall through to a duplicate legacy send',async()=>{
+ const calls=[],audit=[],gateway={supportsMethod:()=>true,request:async(m,p)=>{calls.push(m);throw Object.assign(Error('timeout'),{code:'TIMEOUT'});}};
+ const d=createTaskDelivery({gateway,sessionKey:'agent:makaron:feishu:group:oc_room',ownerId:'call',audit:e=>audit.push(e)});
+ d.observeUser('把结果发飞书群');await d.completed('run','完整结果').catch(()=>{});await d.flush();assert.deepEqual(calls,['v.feishu.taskPresentation']);assert(audit.some(e=>e.type==='task.delivery-failed'));
+});
 test('automatic reply sync sends the full backend result once even with explicit delivery subscribed',async()=>{
  const calls=[],gateway={request:async(method,args)=>{calls.push({method,args});return {messageId:'om_sent'};}};
  const target={channel:'feishu',agentId:'makaron',sessionKey:'agent:makaron:feishu:group:oc_room',accountId:'lab',to:'oc_room'};

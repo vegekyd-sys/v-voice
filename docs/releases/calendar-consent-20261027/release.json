@@ -1,0 +1,41 @@
+{
+  "schema": "v-voice-production-release-v1",
+  "version": "voice-calendar-consent.20261027.1",
+  "status": "deployed-voice-services",
+  "entryCommit": "7ce20a2de22bedba1cc32086d5f832a44539cd8c",
+  "deviceEntryCommit": "7ce20a2de22bedba1cc32086d5f832a44539cd8c",
+  "filesSha256": "720fbf7a4960144a742c314465dd4d39e7aee86cf9b830efa9e2f4f751f5b1af",
+  "iosShellRevision": "8ec6f7a8711ea608eecea338e329249fff1b4b03e395af2ec80d8a80884c43a1",
+  "previousEntryCommit": "ab8d078dd2937c303ab1eb0008b62fc5a4b8d309",
+  "voicePR": 155,
+  "deployedAt": "2026-10-27T12:31:59+08:00",
+  "validatedAt": "2026-10-27T12:34:21+08:00",
+  "gatewayRestartRequired": false,
+  "fleet": {
+    "bothReady": true,
+    "sameArtifact": true,
+    "admissionReleased": true,
+    "gatewayStableDuringVoiceCutover": true,
+    "originalServicesAndPrivateEnvironmentRetained": true
+  },
+  "acceptance": {
+    "voiceTests": 968,
+    "speakerTests": 95,
+    "releaseTests": 11,
+    "mainCIPassed": true,
+    "runtimePolicyProviderSurfaceCasesPerNode": 4,
+    "productionHomepageChangelog": true,
+    "productionDialReady": true,
+    "publicReady": true,
+    "realModelCalls": 0,
+    "calendarWrites": 0,
+    "newIOSBinary": false,
+    "physicalAudio": "not tested"
+  },
+  "providerScope": {
+    "seeduplex": "deployed",
+    "grok": "deployed",
+    "gpt-live": "source merged; Gateway-loaded plugin remains on previous artifact"
+  },
+  "report": "release.md"
+}

@@ -17,7 +17,10 @@ for name in ['VVoiceAppIcon', 'VVoiceSystemPortrait']:
     widths = {item.get('PixelWidth') for item in app_assets if item.get('Name') == name and item.get('Idiom') == 'phone'}
     assert {60, 87, 120, 180} <= widths, 'Notification, settings, Spotlight and home icon renditions missing: ' + name
 assert info.get('NSSupportsLiveActivities') is True
-assert info.get('UIBackgroundModes')==['audio']
+assert set(info.get('UIBackgroundModes', []))=={'audio', 'location'}
+assert info.get('NSLocationWhenInUseUsageDescription')
+assert not info.get('NSLocationAlwaysUsageDescription')
+assert not info.get('NSLocationAlwaysAndWhenInUseUsageDescription')
 assert info.get('NSMicrophoneUsageDescription')
 assert info.get('UIDeviceFamily') == [1, 2], 'Native layout must support iPhone and iPad'
 shell=a.app/'H5Shell'
@@ -56,7 +59,7 @@ assert {p['asset'] for p in gallery}<=names, 'Island assets missing from compile
 metadata=json.loads((a.app/'Metadata.appintents/extract.actionsdata').read_text())
 actions=metadata['actions'];assert {'TalkToVIntent','MuteVIntent','EndVIntent','OpenVIntent','IslandLayoutIntent','IslandMuteIntent','IslandEndIntent'}<=actions.keys()
 assert actions['TalkToVIntent'].get('openAppWhenRun') is False
-assert actions['TalkToVIntent'].get('supportedModes') == 1, 'Do not replace island calling with foreground opening'
+assert actions['TalkToVIntent'].get('supportedModes') == 9, 'Keep background calling plus conditional foreground setup; never unconditional opening'
 protocols=actions['TalkToVIntent']['systemProtocols']
 assert any('AudioRecording' in x for x in protocols),protocols
 assert any('SessionStarting' in x for x in protocols),protocols

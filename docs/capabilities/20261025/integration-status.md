@@ -37,3 +37,42 @@ Baseline ab8ad23. This is implementation progress, not acceptance or deployment.
 - Existing DiDi MCP initialized and listed 13 real tools using its existing server credential. No secret URL/key or raw tool output is included here. This proves authentication/discovery only.
 - Artifact built from 91c3d59 with 231 files; no production release. Private loopback Voice Candidate launcher is scripts/candidate/start-location.mjs; it creates own bind/report/log paths, preserves the existing Gateway, disables device endpoints/shared speaker worker and automatic channel reply, and does not place a call. Actual readiness is separate from this build record.
 - GPT remains a distinct unfinished path: this repo's provider advertises supportsToolCalls:false / handlesAgentConsult:true and delegates to the Gateway-owned runner. Official session/context and tool control capabilities do not themselves provide a current-device return path. Any new trusted Gateway binding/consult context must be delivered in a separate platform PR and integrated under the VLab gate. Do not emulate a successful location callback in the browser or mark the current Voice Candidate all-model accepted.
+
+## Native device.context dispatch fix
+
+Reused iOS Use commit bbb07cd74ceee86e6b48d36e780df9691dd0f5c3 as f51f6ca: consume device.context before native audio-runtime decoding. A new real relay/native-coordinator regression receives the sideband frame, asserts the call owner stays active, then completes another location request. Simulator test passed (1/1). This does not claim OS permission revocation keeps an app alive: if TCC terminates it, disconnect/owner retirement must invalidate lease and pending requests, without auto-redial or side-effect retry.
+
+## Backend topology follow-up
+
+Artifact-local descriptor paths have been replaced by trusted backend bundle configuration and a real-helper asset/network preflight at first delegation (not voice startup). Packaging includes the helper, all tracked Skill assets and their hashes. Missing or failed mapping/probe returns no descriptor. Full Node regression: 918 passed; helper/HTTP/hash unit integration: 2 passed. Cross-host Candidate evidence is still pending and must not be inferred from those unit results.
+
+
+## 2026-10-25 GPT Live common device channel candidate
+
+The optional platform SDK hook now binds metadata to the admission-owned GPT call and authenticated Gateway connection. Voice reuses the common device broker for GPT SSE requests and authenticated HTTP results; clients receive no execution lease or backend paths. A missing SDK or failed backend bundle probe keeps the existing GPT call and omits device capability advertisement. Permission changes update the same broker and backend snapshot without replaying an action. Web and native send quiet developer context with the existing `session.context.append`; native initial context waits for acknowledgement while microphone input is muted. No model/audio transport change.
+
+Validation: 922/922 Node tests passed; native build-for-testing passed; selected native tests ran 9, passed 7, skipped 2 explicit system opt-ins. The new native test uses two real local WebRTC peers and synthetic PCM to verify context acknowledgement, quiet updates and close retirement. Platform Candidate imported the patched copied SDK and exercised metadata binding (1/1), without starting a Gateway/provider. These checks do not establish live GPT speech, physical GPS, lock-screen permission behavior or a DiDi quote. The human Chrome Candidate is still the older 91c3d59 artifact until its call is idle and a separate update is verified.
+
+
+### Actual cross-host preflight blocker
+
+An independent Mac Voice HTTP broker and immutable V backend bundle were prepared without restarting the human Candidate or Gateway. The probe used the real V Gateway tools.invoke exec under the backend account. V rejected both the helper probe and a trivial printf control: `Secret egress proxy requires an admitted agent run instance`. Therefore the current default preflight does not succeed on this deployment; it correctly withholds a usable descriptor. The admitted background-task execution path must provide the probe, without weakening the secret egress policy. No cross-host pass or live GPT/location acceptance is claimed. The reverse test tunnel was closed after diagnosis; the human Chrome Candidate remains available.
+
+
+## Human location and audio transport follow-up
+
+Tianyi confirmed that the Chrome location request returned a position, then reported very poor voice performance. The observed call used SeedDuplex. Its scalar diagnostics showed a live, enabled microphone and running audio context, browser socket buffering at most 960 bytes, an 8039 ms gap between server-received playback reports, and repeated provider input pause/resume in that interval. The V host load was below 1 with about 50 GB available memory. No raw microphone samples were collected.
+
+The temporary Mac-to-V SSH transport was demonstrably slow: two 65536-byte transfers took 14.18 and 7.74 seconds; the same Candidate's 63421-byte app script took 10.85 seconds via the original local forward, versus about 0.70 seconds for the production HTTPS app script. The exact audio tunnel connection also had substantial cumulative TCP retransmission. Compression improved one load to 1.86 seconds but another took 7.67 seconds, so it is not accepted as the fix. These measurements establish a test-path impairment, not complete attribution of every voice symptom.
+
+After the human call naturally ended, a separate authenticated HTTPS Candidate was started from the exact same human-tested 91c3d59 artifact (231 source files, filesSha256 f47bd5da115102c810ba7e0421c686e613e8768289b86a89a3ce6062a7c746d1). It uses its own loopback port 28475, systemd service/tunnel, random access token and private state while preserving the same existing V backend identity. The launcher is scripts/candidate/start-location-https.py. Provider credentials remain on V. The random hostname is not an authentication mechanism.
+
+Actual negative checks: unauthenticated status/session/binding returned 401, invalid binding redemption/backend lease returned 403, wrong-origin authenticated session returned 403. Unauthenticated native dial WS returned 401; relay with an unowned call was closed before handshake (Cloudflare surfaced 502). Authenticated status returned 200/ready. These checks did not create a provider session. Chrome completed the normal access-cookie exchange, removed the fragment credential and displayed the SeedDuplex dial page without console warnings/errors. The same Candidate app script loaded in 1.82 seconds from the Mac through HTTPS. No existing Gateway, production Voice or iOS Use service was restarted or replaced. Tianyi subsequently confirmed that the new HTTPS link was fast; Chrome location had also returned a position. These are limited human observations, not a long-call, all-model or DiDi acceptance.
+
+## Physical iPhone foreground location acceptance
+
+Tianyi used the installed V Voice 1.0.0 (36), exact iOS Use artifact ac140707070af8a54c23ca6256c16c5b3acedb02, bound to that lane's independent Candidate on port 29485. This lane did not reinstall, rebind or replace the service. The human explicitly requested location and confirmed “V 已返回位置”. Sanitized server receipts for SeedDuplex call 4aad8819-b9ab-4c0e-85f5-71afcafd5186 show an initial get_current_location result ok:false / needs_foreground, followed by a second request with ok:true after 4514 ms. The call then ended. The explicit ok field is decisive; the existing generic delivery status alone does not establish success.
+
+This establishes actual native foreground location returned to V. It does not establish locked-screen/background location, first-permission and reduced-accuracy combinations, permission revocation, GPT speech or a DiDi quote. Location remains requested on demand; no permanent current-location cache or continuous tracking was added. Coordinates, speech and private entry credentials are excluded from this record.
+
+Feishu acceptance remains separate: the actual Mac Feishu WebView has loaded the authenticated HTTPS Candidate and shows the dial page; its real location request is pending. The documented custom AppLink was dispatched to the installed iPhone Feishu 8.2.18; actual WebView loading and location still require human confirmation. Neither opening action dialed a call, and no chat message was sent.

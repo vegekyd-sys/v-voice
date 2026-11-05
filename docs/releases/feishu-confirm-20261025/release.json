@@ -1,0 +1,56 @@
+{
+  "schema": "v-voice-production-release-v1",
+  "version": "voice-feishu-confirm.20261025.1",
+  "status": "deployed-and-identity-validated",
+  "entryCommit": "ccebd66084d44d87cdf452b84741fe21c08d936a",
+  "deviceEntryCommit": "ccebd66084d44d87cdf452b84741fe21c08d936a",
+  "filesSha256": "07c1af61d86c461efee83314037808c7ff12c8797ddf808864d80af9914019db",
+  "deployedAt": "2026-10-25T21:50:00+08:00",
+  "validatedAt": "2026-10-25T21:59:00+08:00",
+  "previousEntryCommit": "d0e47f60addfaaa62c3436b872b9485863380ce0",
+  "voicePR": 146,
+  "platformPR": 473,
+  "platformRelease": "v-feishu-voice-confirm-20261025",
+  "gatewayRestart": {
+    "method": "v-self-restart",
+    "request": "20261025-212713-fa39",
+    "outcome": "ok",
+    "finishedAt": "2026-10-25T21:48:25+08:00",
+    "streams": 2,
+    "readyWorkers": 5
+  },
+  "alignment": {
+    "result": "ALIGNED",
+    "comparedFiles": 18820,
+    "driftFindings": 0,
+    "driftFiles": 9222
+  },
+  "fleet": {
+    "bothReady": true,
+    "sameArtifact": true,
+    "admissionReleased": true,
+    "gatewayStableDuringVoiceCutover": true,
+    "originalServicesAndPrivateEnvironmentRetained": true
+  },
+  "acceptance": {
+    "voiceTests": 955,
+    "platformCandidateTests": 6,
+    "platformTargetedTests": 4,
+    "platformStatic": true,
+    "sharedRealAccounts": 2,
+    "sharedNaturalPersons": 1,
+    "sharedSameGroup": true,
+    "sharedIOSBindings": 2,
+    "productionRealCard": true,
+    "productionExpiredRequestRetry": true,
+    "productionIOSBinding": true,
+    "productionHomepageChangelog": true,
+    "unsignedCallbackHTTP": 403,
+    "wrongOriginHTTP": 403,
+    "iOS": "existing Debug build 39 on Simulator",
+    "newTestFlightBinary": false,
+    "paidVoiceCalls": 0,
+    "physicalAudio": false
+  },
+  "report": "release.md"
+}

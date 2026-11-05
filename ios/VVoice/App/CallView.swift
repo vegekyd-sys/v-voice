@@ -130,7 +130,13 @@ struct CallView: View {
                                 .font(VoiceStyle.font(13)).foregroundStyle(VoiceStyle.soft).padding(.horizontal, 14).frame(height: 34)
                                 .background(.white.opacity(0.6), in: Capsule()).overlay { Capsule().stroke(.white) }
                         }.padding(.top, 16).accessibilityLabel("选择语音模型")
-                        Text(call.bound ? "就绪" : "绑定后，拨号直接说话").font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.faint).padding(.top, 8)
+                        Text(call.entrySummary).font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.faint).padding(.top, 8)
+                        if call.bound && !call.usingPublic {
+                            Button("使用 Public") {
+                                Task { do { try await call.selectPublic() } catch { call.report(error) } }
+                            }.font(VoiceStyle.font(12)).foregroundStyle(VoiceStyle.purple).padding(.top, 6)
+                                .accessibilityIdentifier("switchToPublic").disabled(call.publicPreparing)
+                        }
                         if [.failed,.interrupted].contains(call.phase) {
                             Text(call.detail).font(VoiceStyle.font(13)).foregroundStyle(VoiceStyle.muted).multilineTextAlignment(.center).lineSpacing(5).padding(.top, 10).frame(maxWidth: 300)
                         }

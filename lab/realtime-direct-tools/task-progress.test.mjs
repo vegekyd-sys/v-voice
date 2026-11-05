@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createTaskStages,stageLine,stageKey,stepDetail,toolStageLabel,spawnedChild} from './task-progress.mjs';
+import {createTaskStages,stageLine,stageKey,stepDetail,toolStageLabel,spawnedChild,IDLE_LINES,NOT_DONE_LINE,TASK_FAILED_LINE} from './task-progress.mjs';
 
 test('one tool call is one step, whether it arrives as a tool event, an item event or both',()=>{
  let t=0;const stages=createTaskStages({now:()=>t});
@@ -25,13 +25,14 @@ test('a new subject is news; a returned step, a shell command or an unknown tool
  assert.equal(stages.snapshot().steps,3,'still counted as work');
  stages.consume({stream:'tool',data:{phase:'start',name:'web_search',toolCallId:'4',args:{query:'勇士 直播'}}});assert.notEqual(key(),first,'a new search is news');
  stages.consume({stream:'tool',data:{phase:'result',isError:true,toolCallId:'4'}});
- assert.equal(stageLine(stages.snapshot(),{elapsedMs:3000}),'刚才有一步没成功，后台还在继续。');
+ assert.equal(stageLine(stages.snapshot()),'刚才有一步没走通，我还在弄。');
 });
 
-test('only commands so far: the caller hears how long, never an invented subject',()=>{
+test('only commands so far: nothing to say, and no invented subject',()=>{
  const stages=createTaskStages();
  stages.consume({stream:'tool',data:{phase:'start',name:'exec',toolCallId:'x',args:{command:'ls'}}});
- assert.equal(stages.snapshot().latest,null);assert.equal(stageLine(stages.snapshot(),{elapsedMs:21000}),'后台还在处理，已经20秒了。');
+ assert.equal(stages.snapshot().latest,null);assert.equal(stageLine(stages.snapshot()),null);
+ stages.consume({stream:'tool',data:{phase:'start',name:'sessions_spawn',toolCallId:'y'}});assert.equal(stageLine(stages.snapshot()),null,'a sub-agent is internal');
  assert.equal(toolStageLabel('functions.web_fetch'),'读网页');assert.equal(toolStageLabel({}),null);
 });
 
@@ -45,18 +46,14 @@ test('a step is described by its own subject: search terms, memory query, the si
  assert.equal(stepDetail('web_search',{query:'"引号"\n换行'}),'引号 换行');
 });
 
-test('spoken lines say what the backend is doing, and how long only when repeating',()=>{
+test('spoken lines are V doing the work: no second party, no duration, no claim of a result',()=>{
  const step=(latest,detail,latestRunning=true)=>({latest,detail,latestRunning,latestFailed:false,steps:3,completed:2,failed:0});
- assert.equal(stageLine(step('上网搜索','勇士 赛程'),{elapsedMs:9000}),'后台在搜“勇士 赛程”。');
- assert.equal(stageLine(step('查记忆','StackChan'),{elapsedMs:9000}),'后台在翻记忆里“StackChan”的记录。');
- assert.equal(stageLine(step('读网页','nba.com',false),{elapsedMs:9000}),'后台在看 nba.com 上的网页。');
- assert.equal(stageLine(step('读 PDF 文档',null),{elapsedMs:9000}),'后台在读 PDF 文档。');
- assert.equal(stageLine(step('读网页','nba.com'),{elapsedMs:41000,heartbeat:true}),'还在弄，已经40秒了，刚才在看 nba.com 上的网页。');
- assert.equal(stageLine(step('读网页','nba.com'),{elapsedMs:15600,heartbeat:true}),'还在弄，已经10秒了，刚才在看 nba.com 上的网页。','rounded down, never more than elapsed');
- assert.equal(stageLine({steps:0,latest:null},{elapsedMs:65000,heartbeat:true}),'后台还在处理，已经1分钟了。');
- assert.equal(stageLine({steps:0,latest:null},{elapsedMs:92000,heartbeat:true}),'后台还在处理，已经1分半钟了。');
- for(const line of [stageLine(step('查记忆',null),{elapsedMs:1}),stageLine({steps:0},{elapsedMs:20000})]){
-  assert.doesNotMatch(line,/完成了任务|查到了|结果是/,'never claims a result');assert.doesNotMatch(line,/第\d+步|一共/,'no step counting');}
+ assert.equal(stageLine(step('上网搜索','勇士 赛程')),'我在查勇士 赛程。');
+ assert.equal(stageLine(step('查记忆','StackChan')),'我翻翻记忆里StackChan的记录。');
+ assert.equal(stageLine(step('读网页','nba.com',false)),'我在看 nba.com 上的内容。');
+ assert.equal(stageLine(step('读 PDF 文档',null)),'我在读 PDF 文档。');
+ for(const line of [stageLine(step('查记忆',null)),stageLine(step('生成图片',null)),'刚才有一步没走通，我还在弄。',...IDLE_LINES,NOT_DONE_LINE,TASK_FAILED_LINE]){
+  assert.doesNotMatch(line,/后台|后端|模型|子任务|转交|\d+\s*秒|分钟/u,line);assert.doesNotMatch(line,/查到了|结果是/u,line);}
 });
 
 test('only an accepted sub-agent spawn names a child run of this task',()=>{
@@ -67,4 +64,12 @@ test('only an accepted sub-agent spawn names a child run of this task',()=>{
  assert.equal(spawnedChild(spawn({details:{status:'accepted',childSessionKey:'x',runId:'y'}},{isError:true})),null);
  assert.equal(spawnedChild({stream:'tool',data:{phase:'result',name:'web_search',result:{details:{status:'accepted',childSessionKey:'x',runId:'y'}}}}),null);
  assert.equal(spawnedChild(spawn({content:[{type:'text',text:'not json'}]})),null);
+});
+
+test('an earlier failure does not make the same step worth saying again',()=>{
+ const stages=createTaskStages(),key=()=>stageKey(stages.snapshot());
+ stages.consume({stream:'tool',data:{phase:'start',name:'web_fetch',toolCallId:'1',args:{url:'https://shsid.org/a'}}});
+ stages.consume({stream:'tool',data:{phase:'start',name:'exec',toolCallId:'2',args:{command:'x'}}});const before=key();
+ stages.consume({stream:'tool',data:{phase:'result',isError:true,toolCallId:'2'}});assert.equal(key(),before,'the failed command is not the stage');
+ stages.consume({stream:'tool',data:{phase:'start',name:'web_fetch',toolCallId:'3',args:{url:'https://shsid.org/b'}}});assert.equal(key(),before,'same site, nothing new to say');
 });

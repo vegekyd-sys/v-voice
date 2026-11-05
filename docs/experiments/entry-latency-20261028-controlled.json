@@ -1,0 +1,138 @@
+{
+  "schema": 1,
+  "kind": "controlled-browser-fixture-not-production-e2e",
+  "baselineCommit": "7baa878a39ecd7903e9b1a384b0c115e3ddcdfac",
+  "candidateCommit": "b54bfb1f57d29cf5d3acd88b7b40491f35dd75d9",
+  "artifactFilesSha256": "5085794d17aa14a7fcbfeab124399314f26c8f70ceea92107f4df3575652bdd1",
+  "environment": {
+    "client": "Chrome on macOS",
+    "singleTab": true,
+    "model": "local SeedDuplex protocol fixture",
+    "gatewayResolveMs": 550,
+    "perHttpOrWebsocketRequestMs": 150,
+    "permissions": "pregranted",
+    "cache": "code warmed before measurement",
+    "capture": "fresh document per call, actual processed microphone, frames discarded locally",
+    "playback": "synthetic PCM through shipping AudioWorklet; no physical-audibility claim",
+    "paidModelCalls": 0,
+    "pairOrder": [
+      "AB",
+      "BA",
+      "AB",
+      "BA",
+      "AB"
+    ]
+  },
+  "samples": [
+    {
+      "pair": 1,
+      "variant": "baseline",
+      "microphoneMs": 580.1,
+      "dialToConnectedMs": 2015.2,
+      "microphoneToConnectedMs": 1435.1,
+      "dialToFirstPcmMs": null,
+      "dialToFirstRenderObservedMs": null
+    },
+    {
+      "pair": 1,
+      "variant": "candidate",
+      "microphoneMs": 544.0,
+      "dialToConnectedMs": 1259.7,
+      "microphoneToConnectedMs": 715.7,
+      "dialToFirstPcmMs": 1259.0,
+      "dialToFirstRenderObservedMs": 1262.8
+    },
+    {
+      "pair": 2,
+      "variant": "candidate",
+      "microphoneMs": 561.6,
+      "dialToConnectedMs": 1270.2,
+      "microphoneToConnectedMs": 708.6,
+      "dialToFirstPcmMs": 1269.6,
+      "dialToFirstRenderObservedMs": 1272.2
+    },
+    {
+      "pair": 2,
+      "variant": "baseline",
+      "microphoneMs": 676.7,
+      "dialToConnectedMs": 2094.0,
+      "microphoneToConnectedMs": 1417.3,
+      "dialToFirstPcmMs": null,
+      "dialToFirstRenderObservedMs": null
+    },
+    {
+      "pair": 3,
+      "variant": "baseline",
+      "microphoneMs": 644.7,
+      "dialToConnectedMs": 2073.9,
+      "microphoneToConnectedMs": 1429.2,
+      "dialToFirstPcmMs": null,
+      "dialToFirstRenderObservedMs": null
+    },
+    {
+      "pair": 3,
+      "variant": "candidate",
+      "microphoneMs": 629.6,
+      "dialToConnectedMs": 1338.5,
+      "microphoneToConnectedMs": 708.9,
+      "dialToFirstPcmMs": 1338.0,
+      "dialToFirstRenderObservedMs": 1340.8
+    },
+    {
+      "pair": 4,
+      "variant": "candidate",
+      "microphoneMs": 635.2,
+      "dialToConnectedMs": 1342.2,
+      "microphoneToConnectedMs": 707.0,
+      "dialToFirstPcmMs": 1341.8,
+      "dialToFirstRenderObservedMs": 1344.0
+    },
+    {
+      "pair": 4,
+      "variant": "baseline",
+      "microphoneMs": 644.8,
+      "dialToConnectedMs": 2064.7,
+      "microphoneToConnectedMs": 1419.9,
+      "dialToFirstPcmMs": null,
+      "dialToFirstRenderObservedMs": null
+    },
+    {
+      "pair": 5,
+      "variant": "baseline",
+      "microphoneMs": 658.4,
+      "dialToConnectedMs": 2076.3,
+      "microphoneToConnectedMs": 1417.9,
+      "dialToFirstPcmMs": null,
+      "dialToFirstRenderObservedMs": null
+    },
+    {
+      "pair": 5,
+      "variant": "candidate",
+      "microphoneMs": 656.2,
+      "dialToConnectedMs": 1368.7,
+      "microphoneToConnectedMs": 712.5,
+      "dialToFirstPcmMs": 1368,
+      "dialToFirstRenderObservedMs": 1378.4
+    }
+  ],
+  "summary": {
+    "baseline": {
+      "dialToConnectedMs": 2073.9,
+      "microphoneToConnectedMs": 1419.9,
+      "fixtureCounters": {
+        "rpc": 43,
+        "provider": 15,
+        "calls": 5
+      }
+    },
+    "candidate": {
+      "dialToConnectedMs": 1338.5,
+      "microphoneToConnectedMs": 708.9,
+      "fixtureCounters": {
+        "rpc": 46,
+        "provider": 15,
+        "calls": 5
+      }
+    }
+  }
+}

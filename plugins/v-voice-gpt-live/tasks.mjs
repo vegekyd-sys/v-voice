@@ -19,15 +19,17 @@ export function createVoiceTasks({consult,control,agentRuntime,getConfig,logger,
    if(!connId||typeof params?.voiceSessionId!=='string'||!params.voiceSessionId||typeof params.callId!=='string'||!params.callId||typeof params.question!=='string'||!params.question.trim()||params.question.length>32768)throw Error('Invalid Voice task');
    const match=/^agent:([^:]+):feishu:(?:group|direct|dm):(?:oc_|ou_)[A-Za-z0-9]+$/.exec(params.sessionKey??'');
    if(!match)throw Error('Voice task requires its bound Feishu session');
+   if(params.publicQuestion!==undefined&&(typeof params.publicQuestion!=='string'||!params.publicQuestion.trim()||params.publicQuestion.length>32768))throw Error('Invalid public Voice task question');
+   const publicQuestion=params.publicQuestion??'收到一个语音后台任务。';
    const key=requestKey(params,connId),existing=requests.get(key);
    if(existing){
-    if(existing.sessionKey!==params.sessionKey||existing.question!==params.question)throw Error('Voice task replay changed its input');
+    if(existing.sessionKey!==params.sessionKey||existing.question!==params.question||existing.publicQuestion!==publicQuestion)throw Error('Voice task replay changed its input');
     onStarted?.(await existing.accepted.promise);await existing.done.promise;return snapshot(existing);
    }
    if(tasks.size>=512)throw Error('Voice task capacity reached');
    const cfg=getConfig(),taskId=randomUUID(),controller=new AbortController(),accepted=Promise.withResolvers(),done=Promise.withResolvers();
    void accepted.promise.catch(()=>{});
-   const row={taskId,ownerConnId:connId,requestKey:key,sessionKey:params.sessionKey,question:params.question,controller,accepted,done,status:'starting',runs:[],progress:[],expiresAt:Infinity};
+   const row={taskId,ownerConnId:connId,requestKey:key,sessionKey:params.sessionKey,question:params.question,publicQuestion,controller,accepted,done,status:'starting',runs:[],progress:[],expiresAt:Infinity};
    tasks.set(taskId,row);requests.set(key,row);
    // The public runtime accepts an opaque Gateway-side tool-authority identity.
    // Its Worker bridge validates that identity, then translates it to the
@@ -49,6 +51,7 @@ export function createVoiceTasks({consult,control,agentRuntime,getConfig,logger,
      ...(voiceActor?{senderId:voiceActor.openId,senderIsOwner:voiceActor.senderIsOwner,messageProvider:'feishu',voiceActor}:{}),
      args:{question:params.question},transcript:[],surface:'a V Voice telephone',userLabel:'User',questionSourceLabel:'user',
      runIdPrefix:'voice-product-task',lane:'talk',thinkLevel:cfg.talk?.consultThinkingLevel??cfg.agents?.defaults?.thinkingDefault,
+     taskPresentation:{source:'voice-direct',text:publicQuestion},
      abortSignal:controller.signal,onRunStarted:started,onResumeRunStarted:started,
      onProgress:p=>{if(toolResults.has(p.provenance?.runId)){row.progress.push(p);if(row.progress.length>100)row.progress.shift();}},
      continuationContext:{identity:{delegationItemId:taskId,delegationGeneration:1},ownerConnId:connId,

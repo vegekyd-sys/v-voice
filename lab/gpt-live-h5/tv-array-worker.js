@@ -1,0 +1,52 @@
+// PCM remains local memory. This worker has no transcript, model or network API.
+importScripts('./assets/tv-aec/webrtcaec3-0.3.0.js');
+let module,Processor,dsp,channels=0,closed=false,lastSequence=0,renderMs=0,renderFrames=0,renderEnergy=0,nativePort,consumedSequence=0;
+Promise.all([WebRtcAec3(),import('./tv-array-dsp.mjs')]).then(([m,p])=>{module=m;Processor=p.TvArrayEchoProcessor;postMessage({type:'ready'});}).catch(()=>postMessage({type:'error',message:'回声消除初始化失败'}));
+function handle(data){
+ if(closed)return;
+ try{
+  if(data.type==='close'){closed=true;nativePort?.close();dsp?.close();self.close();return;}
+  if(data.type==='bind-port'){
+   if(!dsp||nativePort||!data.port)throw Error('Invalid native audio port');
+   nativePort=data.port;consumedSequence=0;
+   nativePort.onmessage=({data:raw})=>{
+    if(closed)return;
+    try{
+     if(typeof raw!=='string'||raw.length>20000)throw Error('Invalid native audio message');
+     const frame=JSON.parse(raw);
+     if(frame.error){postMessage({type:'error',code:frame.error});return;}
+     if(frame.type==='ready'){postMessage({type:'stream-ready'});return;}
+     if(lastSequence-consumedSequence>=8||frame.channels!==channels||typeof frame.pcm!=='string'||frame.pcm.length>16384)throw Error('Invalid native audio frame');
+     const binary=atob(frame.pcm),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+     handle({type:'capture',sequence:frame.sequence,buffer:bytes.buffer});
+    }catch(error){postMessage({type:'error',code:'TV_MIC_STREAM',message:error.message});}
+   };nativePort.start();nativePort.postMessage(JSON.stringify({type:'ready'}));return;
+  }
+  if(data.type==='consumed'){
+   if(!nativePort||data.sequence!==consumedSequence+1||data.sequence>lastSequence)throw Error('Invalid native audio acknowledgement');
+   consumedSequence=data.sequence;nativePort.postMessage(JSON.stringify({type:'consumed',sequence:data.sequence}));return;
+  }
+  if(data.type==='configure'){if(!module||![4,6].includes(data.channels))throw Error('电视阵列格式无效');dsp?.close();channels=data.channels;const sampleRate=data.sampleRate??48000;if(![16000,48000].includes(sampleRate))throw Error('Invalid capture rate');const frameSize=sampleRate/50;dsp=new Processor(module,channels,sampleRate,data.channelLayout);
+  // Exercise the actual WASM paths before opening the hardware route. The
+  // temporary instance is discarded; synthetic warmup never enters the stream.
+  const warmup=[];let seed=31;
+  for(let f=0;f<64;f++){
+   const render=new Float32Array(960),capture=new Int16Array(frameSize*channels);
+   for(let i=0;i<960;i++){seed=(seed*1664525+1013904223)>>>0;render[i]=(seed/4294967296-.5)*.1;}
+   for(let i=0;i<frameSize;i++)for(let c=0;c<channels;c++)capture[i*channels+c]=Math.round(render[Math.floor(i*48000/sampleRate)]*12000);
+   const t=performance.now();dsp.render(render,48000);dsp.capture(capture);warmup.push(Math.round(performance.now()-t));
+  }
+  dsp.close();dsp=new Processor(module,channels,sampleRate,data.channelLayout);dsp.render(new Float32Array(960),48000);dsp.capture(new Int16Array(frameSize*channels));lastSequence=0;postMessage({type:'configured',channels,sampleRate,warmup});return;}
+  if(!dsp)return;
+  if(data.type==='render'){
+   if(!(data.buffer instanceof ArrayBuffer)||data.buffer.byteLength>16384||![24000,44100,48000].includes(data.sampleRate))throw Error('回声参考格式无效');
+   const t=performance.now();dsp.render(new Float32Array(data.buffer),data.sampleRate);renderMs+=performance.now()-t;renderFrames++;for(const v of new Float32Array(data.buffer))renderEnergy+=v*v;return;
+  }
+  if(data.type!=='capture')return;
+  if(!Number.isSafeInteger(data.sequence)||data.sequence!==lastSequence+1)throw Error('电视采集时序中断');lastSequence=data.sequence;
+  const pcm=new Int16Array(data.buffer),before=performance.now(),output=dsp.capture(pcm);
+  if(data.sequence%50===0){const energies=Array(channels).fill(0);for(let i=0;i<pcm.length;i++)energies[i%channels]+=(pcm[i]/32768)**2;postMessage({type:'metrics',sequence:data.sequence,channelRms:energies.map(e=>Math.sqrt(e/(pcm.length/channels))),inputRms:output.inputRms,outputRms:output.outputRms,renderFrames,renderEnergy});renderFrames=0;renderEnergy=0;}
+  postMessage({type:'pcm',sequence:data.sequence,renderMs,processMs:performance.now()-before,...output},[output.buffer]);
+ }catch(error){postMessage({type:'error',message:error.message});}
+};
+self.onmessage=({data})=>handle(data);

@@ -1,0 +1,15 @@
+{
+  "version": "voice-legacy-entry.20261025.1",
+  "status": "candidate-unreleased",
+  "branch": "codex/feishu-legacy-entry-migration",
+  "productionChanged": false,
+  "testsPassed": 51,
+  "scope": "Registered legacy browser links only; same account and native conversation, current visitor authentication",
+  "notCovered": [
+    "Real audio",
+    "New iOS binary",
+    "Production legacy-bookmark redirect"
+  ],
+  "platformDependency": "codex/feishu-phone-entry-migration",
+  "browserValidation": "Codex in-app browser: legacy group and DM URLs redirect and render full phone page; candidate homepage changelog verified"
+}

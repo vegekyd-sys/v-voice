@@ -1,0 +1,25 @@
+{
+  "result": "Passed",
+  "passedTests": 77,
+  "failedTests": 0,
+  "skippedTests": 0,
+  "totalTestCount": 77,
+  "runtimeWarningCount": 16,
+  "runtimeWarningKind": "QoS priority inversion in simulator fixture tests; not a proven cause of physical startup delay",
+  "finalStartupAndBindingRetest": {
+    "passed": 19,
+    "failed": 0,
+    "skipped": 0
+  },
+  "coreTests": 45,
+  "voiceHTTPAndSessionTests": 127,
+  "physicalActionButton": "not tested",
+  "configuration": "Debug, iOS Simulator 26.5, iPhone 17 Pro, arm64",
+  "talkIntentExtracted": true,
+  "nativeSourceHashes": {
+    "ios/VVoice/App/CallCoordinator.swift": "69deeccb80da31750909096c36d561ab3a9a1036666deb05256f8b782a261448",
+    "ios/VVoice/App/CallDiagnostics.swift": "02244cec1428f443f915947319ad8102665cb9c073cb87c81fc1f42b9c885d71",
+    "ios/VVoice/App/VVoiceApp.swift": "f0085f0656b807a9b9a6d6cce981ee9260b13db9970b7addd973d8a29255c87c",
+    "ios/VVoice/Shared/VoiceIntents.swift": "84c15eb5f3c96db4b4abefeffd4e199c3af126a8feff4181fb7612c25d68abd2"
+  }
+}

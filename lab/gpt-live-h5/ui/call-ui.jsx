@@ -5,9 +5,12 @@ import React, {memo, useCallback, useEffect, useLayoutEffect, useRef, useState, 
 import {createRoot} from 'react-dom/client';
 import {createPortal, flushSync} from 'react-dom';
 import {clock, resolveStatus, splitTurns} from '../call-view.mjs';
+import {openAppWithFallback, refreshBindingOnExpiry} from '../app-handoff.mjs';
 
 const Icon = ({d, children}) => <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">{d ? <path d={d} /> : children}</svg>;
 const PHONE = 'm8.5 3.5 2.1 4.4-2.3 2.3a15.5 15.5 0 0 0 5.5 5.5l2.3-2.3 4.4 2.1v3a2 2 0 0 1-2.2 2C10.4 20 4 13.6 3.5 5.7a2 2 0 0 1 2-2.2h3Z';
+const SPEAKER='M11 5 6 9H3v6h3l5 4V5Zm4 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14';
+const SPEAKER_OFF='M11 5 6 9H3v6h3l5 4V5Zm5 4 5 6m0-6-5 6';
 const HANG = 'M3 11.8c5.1-4.4 12.9-4.4 18 0v3.7l-4.5.5-.7-3.2a12.3 12.3 0 0 0-7.6 0l-.7 3.2-4.5-.5v-3.7Z';
 const SPARK = 'M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1';
 const ACTIVITY_ICON = {
@@ -264,6 +267,7 @@ function EntryNotice({entry}) {
       <div className="entry-notice-copy">
         <h2>{entry.title}</h2>
         <p>{entry.description}</p>
+        {entry.publicHref && <a className="session-primary" href={entry.publicHref}>使用 Public</a>}
         {entry.retry && <button type="button" onClick={() => window.location.reload()}>重新连接</button>}
       </div>
     </section>
@@ -272,6 +276,7 @@ function EntryNotice({entry}) {
 
 function TaskSheet({state, now, actions, onClose}) {
   const ref = useRef(null);
+  const foregroundOnly=state.tasks.length>0&&state.tasks.every(task=>task.execution==='foreground');
   useEffect(() => {
     ref.current?.focus();
     const key = event => { if (event.key === 'Escape') onClose(); };
@@ -283,7 +288,7 @@ function TaskSheet({state, now, actions, onClose}) {
     <>
       <div className="sheet-veil" onClick={onClose} />
       <section className="sheet" role="dialog" aria-modal="true" aria-labelledby="taskSheetTitle" tabIndex={-1} ref={ref}>
-        <h2 id="taskSheetTitle">后台任务 <small>挂断后也会继续</small></h2>
+        <h2 id="taskSheetTitle">{foregroundOnly?'当前任务':'后台任务'} <small>{foregroundOnly?'停止等待不会撤销已经提交的生成':'挂断后也会继续'}</small></h2>
         {state.tasks.map(task => (
           <div className="task-row" key={task.callId}>
             <span className="task-icon">{ACTIVITY_ICON[task.activity] ?? ACTIVITY_ICON.background}</span>
@@ -293,20 +298,22 @@ function TaskSheet({state, now, actions, onClose}) {
             </div>
           </div>
         ))}
-        <button id="cancel" type="button" className="sheet-cancel" disabled={!state.cancelEnabled} onClick={async () => { await actions.cancelTasks(); onClose(); }}>取消后台任务</button>
+        <button id="cancel" type="button" className="sheet-cancel" disabled={!state.cancelEnabled} onClick={async () => { await actions.cancelTasks(); onClose(); }}>{foregroundOnly?'停止等待':'取消后台任务'}</button>
       </section>
     </>
   );
 }
 
 function SessionSheet({state,actions}) {
- const value=state.sessionSheet,dialog=useRef(null);
+ const value=state.sessionSheet,dialog=useRef(null),handoff=useRef(null);
  useEffect(()=>{if(!value)return;dialog.current?.showModal();return()=>dialog.current?.close();},[Boolean(value)]);
+ useEffect(()=>()=>{handoff.current?.();handoff.current=null;},[value?.key,value?.appUrl]);
+ useEffect(()=>{if(value?.kind==='binding'&&value.appUrl)return refreshBindingOnExpiry({expiresAt:value.expiresAt,refresh:actions.createBinding});},[value?.key,value?.appUrl,value?.expiresAt,actions.createBinding]);
  if(!value)return null;
  const report=value.report, binding=value.kind==='binding';
  const conversation=value.conversation??state.conversation;
  return createPortal(<dialog ref={dialog} className={`session-dialog${binding?' binding-dialog':''}`} aria-labelledby="sessionSheetTitle" onCancel={actions.closeSessionSheet}>
-  <header><div><span className="session-eyebrow">{binding?'V Voice for iPhone':'通话记录'}</span><h2 id="sessionSheetTitle">{binding?'把 V 带在身边。':report?.name??'完整对话'}</h2></div><button type="button" aria-label="关闭" onClick={actions.closeSessionSheet}>×</button></header>
+  <header><div><span className="session-eyebrow">{binding?'V Voice for iPhone':'通话记录'}</span><h2 id="sessionSheetTitle">{binding?'在 iPhone 继续。':report?.name??'完整对话'}</h2></div><button type="button" aria-label="关闭" onClick={actions.closeSessionSheet}>×</button></header>
   <div className="session-dialog-body">
    {value.error&&<p role="alert" className="session-error">{value.error}</p>}
    {binding?<>
@@ -315,19 +322,16 @@ function SessionSheet({state,actions}) {
      <div className="binding-phone"><span className="binding-island"/><img src="./assets/v-operator-home-1024.webp" alt=""/><span className="binding-wave"><i/><i/><i/><i/><i/></span></div>
      <div className="binding-scene-copy"><span>长按一下</span><strong>V 就在。</strong></div>
     </div>
-    <div className="binding-conversation"><span className="binding-conversation-icon"><Icon d={conversation?.kind==='group'?'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M15 3.1a4 4 0 0 1 0 7.8M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8':'M20 21v-2a7 7 0 0 0-14 0v2M13 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8'} /></span><div><span>即将连接的会话</span><strong>{conversation?.name??'当前会话'}</strong></div><span className="binding-context">{value.unidentified?'访客会话':'上下文随行'}</span></div>
-    {value.unidentified&&<p className="session-muted">绑定这段访客对话，不会连接飞书群或使用账号工具。</p>}
-    {!value.unidentified&&state.accountLabel&&<p className="session-muted">同时绑定飞书身份：<strong>{state.accountLabel}</strong>。在 App 中通话时，V 也能知道是你。</p>}
+    <div className="binding-conversation"><span className="binding-conversation-icon"><Icon d={conversation?.kind==='group'?'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M15 3.1a4 4 0 0 1 0 7.8M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8':'M20 21v-2a7 7 0 0 0-14 0v2M13 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8'} /></span><div><strong>{value.unidentified?'Public':state.accountLabel??conversation?.accountLabel??'当前账号'}</strong><span>{conversation?.name??'当前会话'}</span></div><span className="binding-context">{value.unidentified?'访客':'已确认'}</span></div>
+    {value.unidentified&&<p className="session-muted">{state.accessContext?.capabilities?.includes('web_search')?'连接这段 Public 访客对话，可继续使用搜索、V 记忆和后台任务；不会连接原飞书群或个人账号。':'连接这段访客对话；当前服务尚未开放 Public 工具。'}</p>}
     <div className="binding-action">
-     {value.appUrl?<a className="session-primary" href={value.appUrl}><Icon d="M8 2.5h8a2 2 0 0 1 2 2v15a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2Zm2 16h4"/>在 iPhone 上继续</a>:<button type="button" className="session-primary" disabled={value.busy} onClick={actions.createBinding}>{value.busy?'正在准备链接…':'准备绑定链接'}</button>}
-     <p className="binding-confirm">在 App 中点「验证并绑定」，再开始通话。<br/>完成前，App 会保留原来的会话。</p>
+     {value.appUrl?<a className="session-primary" href={value.appUrl} onClick={event=>{if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;event.preventDefault();handoff.current?.();handoff.current=openAppWithFallback({appUrl:value.appUrl,downloadUrl:value.appDownload?.url});}}><Icon d="M8 2.5h8a2 2 0 0 1 2 2v15a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2Zm2 16h4"/>在 iPhone 上继续</a>:<button type="button" className="session-primary" disabled={value.busy} onClick={actions.createBinding}>{value.busy?'正在准备链接…':'准备绑定链接'}</button>}
+     <p className="binding-confirm">{value.appDownload?'已安装将打开 App；未安装将前往 TestFlight 下载。':'在 App 中点「验证并绑定」，即可继续。'}</p>
     </div>
     <div className="binding-help">
-     <details className="binding-install"><summary>还没有安装 V Voice？</summary><div>
-      {value.appDownload?<><a className="binding-download" href={value.appDownload.url} target="_blank" rel="noopener noreferrer">{value.appDownload.label}</a><p className="session-muted">安装后回到这里，打开 App 完成绑定。</p></>:<><p className="session-muted">TestFlight 下载即将开放。现在也可以用网页和 V 聊天。</p><button type="button" className="binding-web" onClick={actions.closeSessionSheet}>先在网页聊</button></>}
-     </div></details>
+     {!value.appDownload&&<details className="binding-install"><summary>还没有安装 V Voice？</summary><div><p className="session-muted">TestFlight 下载即将开放。现在也可以用网页和 V 聊天。</p><button type="button" className="binding-web" onClick={actions.closeSessionSheet}>先在网页聊</button></div></details>}
      {value.bindingUrl&&<details className="binding-fallback"><summary>没有跳转？复制链接</summary><div><p className="session-muted">在 App 设置中粘贴。链接 5 分钟内有效，过期后可重新生成。</p><div className="binding-link"><textarea aria-label="iOS 绑定链接" readOnly value={value.bindingUrl}/><div><button type="button" onClick={actions.copyBinding}>{value.copied?'已复制':'复制链接'}</button><button type="button" disabled={value.busy} onClick={actions.createBinding}>重新生成</button></div></div></div></details>}
-     {value.devices?.length>0&&<details className="binding-devices"><summary>管理已绑定的 App（{value.devices.length}）</summary>{value.devices.map(device=><div key={device.id}><span>{new Date(device.createdAt).toLocaleString('zh-CN')} 绑定</span><button type="button" disabled={value.busy} onClick={()=>actions.revokeBinding(device.id)}>解除绑定</button></div>)}</details>}
+     {value.devices?.length>0&&<details className="binding-devices"><summary>管理已绑定的 App（{value.devices.length}）</summary>{value.devices.map(device=><div key={device.id}><span>{new Date(device.createdAt).toLocaleString('zh-CN')} 绑定</span><button type="button" disabled={value.busy} onClick={()=>actions.revokeBinding(device.id)}>撤销此设备访问</button></div>)}</details>}
     </div>
    </>:<>
     {value.busy&&<p role="status">正在读取通话…</p>}
@@ -340,6 +344,79 @@ function SessionSheet({state,actions}) {
  </dialog>,document.body);
 }
 
+const GROUP_ICON='M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M15 3.1a4 4 0 0 1 0 7.8M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8';
+function IdentitySummary({context,onClick}) {
+ if(!context)return null;
+ const content=<><strong>{context.mode==='public'?'Public':context.accountLabel}</strong><span><Icon d={context.mode==='public'?'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M3 12h18M12 3c4 5 4 13 0 18-4-5-4-13 0-18':GROUP_ICON}/>{context.mode==='public'?'独立访客':context.conversationLabel}</span></>;
+ return onClick?<button className="access-summary" type="button" aria-label="查看账号与会话" onClick={onClick}>{content}</button>:<div className="access-summary">{content}</div>;
+}
+function InlineConfirmation({value,actions}) {
+ const waiting=value.phase==='waiting',failed=value.phase==='failed',cancelling=value.phase==='cancelling';
+ return <section className="identity-confirmation" aria-labelledby="confirmationTitle">
+  <h2 id="confirmationTitle" role="status">{cancelling?'正在取消…':failed?'请重新确认':waiting?'回飞书确认一下，我等你':'正在发送确认…'}</h2>
+  {failed&&<p className="confirmation-description" role="alert">{value.error}</p>}
+  {waiting&&value.label&&<p className="confirmation-marker"><span>核对</span><strong>{value.label}</strong></p>}
+ </section>;
+}
+
+function AccessSheet({state,actions,onClose}) {
+ const dialog=useRef(null),context=state.accessContext,connected=context?.mode==='connected';
+ useEffect(()=>{dialog.current?.showModal();return()=>dialog.current?.close();},[]);
+ return createPortal(<dialog ref={dialog} className="session-dialog access-dialog" aria-labelledby="accessTitle" onCancel={onClose}>
+  <header><div><span className="session-eyebrow">V Voice</span><h2 id="accessTitle">账号与会话</h2></div><button type="button" aria-label="关闭" onClick={onClose}>×</button></header>
+  <div className="session-dialog-body">
+   <div className="access-identity"><span className="access-monogram" aria-hidden="true">{connected?Array.from(context.accountLabel)[0]:'V'}</span><div><span className="access-kicker">当前使用</span><strong>{connected?context.accountLabel:'Public'}</strong><span>{connected?context.conversationLabel:'独立访客会话'}</span></div><span className="access-check" aria-label="已选择">✓</span></div>
+   <p className="access-scope">{connected?(context.replySync?'通话与结果同步到这个飞书会话。':'使用这个账号获准的会话与工具。'):'无需连接个人账号，直接和 V 聊聊。'}</p>
+   <div className="access-options">
+    {state.returnToAccountHref&&<a className="access-option" href={state.returnToAccountHref}><span>返回已连接账号<small>打开上次确认的飞书会话</small></span><span aria-hidden="true">↗</span></a>}
+    {state.accountLoginHref&&(state.confirmationAvailable?<button type="button" className="access-option" onClick={()=>{onClose();actions.connectIdentity();}}><span>{connected?'切换飞书身份':'连接飞书身份'}<small>在原飞书会话确认</small></span><span aria-hidden="true">↗</span></button>:<a className="access-option" href={state.accountLoginHref}><span>连接飞书身份</span><span aria-hidden="true">↗</span></a>)}
+    {connected&&state.publicHref&&<a className="access-option" href={state.publicHref}><span>Public<small>开启独立访客会话</small></span><span aria-hidden="true">↗</span></a>}
+    {state.iosBindingAvailable&&<button className="access-option" type="button" disabled={Boolean(state.confirmation)} onClick={()=>{onClose();actions.openBinding();}}><span>iOS 绑定<small>把当前身份与会话带到 iPhone</small></span><span aria-hidden="true">↗</span></button>}
+   </div>
+   <details className="access-permissions"><summary>权限与隐私</summary><p>{context?.scopeNote}</p><p>麦克风、定位由浏览器与系统管理，只在需要时请求。</p></details>
+  </div>
+ </dialog>,document.body);
+}
+
+const MIC = 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3ZM5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8';
+const MIC_OFF = 'm3 3 18 18M9 9v3a3 3 0 0 0 5.2 2M9 5a3 3 0 0 1 6 1v4M5 10v2a7 7 0 0 0 11.5 5.4M19 10v2m-7 7v3m-4 0h8';
+function TvWaveform({orbit=false}) {
+  const api = window.vVoiceTV;
+  const audio = useSyncExternalStore(api.subscribe, api.getAudio, api.getAudio);
+  const values = [...Array(Math.max(0,24-audio.levels.length)).fill(0),...audio.levels];
+  return <span className={`tv-wave ${orbit?'tv-wave-orbit':''}`} role="img" aria-label={audio.source==='output'?'V 的语音波形':audio.source==='input'?'你的语音波形':'当前安静'}>
+    {values.map((value,index)=><i key={index} style={{height:(orbit?Math.round(2+value*.18):2+value*.42)+'px',opacity:.38+.62*index/23,...orbit?{'--angle':((index<12?58:238)+(index%12)*5.45)+'deg'}:{}}} />)}
+  </span>;
+}
+function TvIsland({state,actions,status}) {
+  const api=window.vVoiceTV, layout=state.tvLayout;
+  const documentRequested=useRef(false), previousCall=useRef(state.call);
+  const connected=state.call==='connected', active=state.call!=='idle';
+  const latestDocument=[...state.transcript.history,...state.transcript.current].some(row=>row.document);
+  const change=value=>api.setLayout(value,api.snapshot);
+  useEffect(()=>{const before=previousCall.current;previousCall.current=state.call;
+    if(state.call==='idle'&&state.homeNoteTone==='error')change('medium');
+    else if(before!==state.call){if(state.call==='idle')change('compact');else if(before==='idle'&&layout==='compact')change('medium');}
+  },[state.call,state.homeNoteTone]);
+  const expand=()=>{documentRequested.current=latestDocument;change('full');};
+  useEffect(()=>{if(layout==='full'&&documentRequested.current){documentRequested.current=false;requestAnimationFrame(()=>[...document.querySelectorAll('.content-card')].at(-1)?.click());}},[layout]);
+  useEffect(()=>{const id=requestAnimationFrame(()=>api.focusPrimary());return()=>cancelAnimationFrame(id);},[layout,state.call,state.dial.disabled]);
+  if(layout==='full')return state.reading?null:<button type="button" className="tv-return" data-tv-control="return" aria-label="收起到灵动岛" onClick={()=>change('medium')}><Icon d="m7 10 5 5 5-5"/><span>收起</span></button>;
+  if(layout==='compact')return <button type="button" className="tv-compact tv-avatar-action" data-tv-control="compact" data-tv-primary aria-label={!active?'和 V 直接通话':latestDocument?'查看本通话方案':`展开 V，${api.snapshot.label}`} onClick={()=>{if(!active){change('medium');actions.dial();}else if(latestDocument)expand();else change('medium');}}/>;
+  const error=status&&['error','warn','action'].includes(status.kind)||state.homeNoteTone==='error';
+  return <section className="tv-island tv-avatar-dock" aria-label="V 通话">
+    {connected&&<TvWaveform orbit/>}
+    <button type="button" className="tv-avatar-action tv-avatar-large" data-tv-control={active?'expand':'dial'} data-tv-primary={!active&&!error||undefined} aria-label={connected?'展开对话':state.dial.disabled?'正在准备连接':error?'重新呼叫 V':'和 V 直接通话'} disabled={active&&!connected||!active&&state.dial.disabled} onClick={connected?expand:actions.dial}/>
+    {(active||latestDocument||error)&&<div className="tv-dock-actions">
+      {connected&&<button type="button" className={`tv-round tv-speaker ${state.outputMuted?'is-muted':''}`} data-tv-control="speaker" aria-label={state.outputMuted?'恢复 V 的声音':'关闭 V 的声音'} aria-pressed={state.outputMuted} onClick={actions.speaker}><Icon d={state.outputMuted?SPEAKER_OFF:SPEAKER}/></button>}
+      {connected&&<button className="tv-round tv-call tv-end" type="button" data-tv-control="end" data-tv-primary aria-label="挂断通话" onClick={actions.hangup}><Icon d={HANG}/></button>}
+      {active&&!connected&&<button className="tv-text-action" type="button" data-tv-control="end" data-tv-primary onClick={actions.hangup}>取消呼叫</button>}
+      {!active&&error&&<button className="tv-text-action" type="button" data-tv-control="dial" data-tv-primary disabled={state.dial.disabled} onClick={actions.dial}>重新呼叫</button>}
+      {!active&&latestDocument&&<button type="button" className="tv-expand" data-tv-control="expand" onClick={expand}><span>查看方案</span><Icon d="M8 5h11v11M19 5 5 19"/></button>}
+    </div>}
+  </section>;
+}
+
 function CallPage({view, actions, options}) {
   const state = useView(view);
   const active = state.call !== 'idle';
@@ -350,6 +427,7 @@ function CallPage({view, actions, options}) {
   const [history, setHistory] = useState(false);
   const [overflow, setOverflow] = useState(false);
   const [sheet, setSheet] = useState(false);
+  const [accessOpen,setAccessOpen]=useState(false);
   const [controlsHeight, setControlsHeight] = useState(0);
   const main = useRef(null);
   const status = resolveStatus(state, now);
@@ -378,19 +456,21 @@ function CallPage({view, actions, options}) {
   );
   return (
     <>
+      {state.tvHost&&<TvIsland state={state} actions={actions} status={status}/>}
       <SessionSheet state={state} actions={actions}/>
-      {state.iosBindingAvailable&&!active&&<button className="ios-binding-trigger" type="button" onClick={actions.openBinding}>iOS App</button>}
+      {accessOpen&&!active&&<AccessSheet state={state} actions={actions} onClose={()=>setAccessOpen(false)}/>}
+      {!active&&!state.nativeSettings&&<button className="ios-binding-trigger" type="button" disabled={!state.iosBindingAvailable||Boolean(state.confirmation)} onClick={actions.openBinding}>iOS 绑定</button>}
       <button id="changelogOpen" className="changelog-trigger" type="button" aria-haspopup="dialog" aria-controls="changelogDialog" aria-expanded="false" hidden={active}>
         <Icon d={SPARK} />更新日志
       </button>
-      <main ref={main} className="call-page" data-call={state.call} data-voice={voice} data-work={String(working)}
+      <main ref={main} className="call-page" data-call={state.call} data-confirmation={Boolean(state.confirmation)} data-voice={voice} data-work={String(working)}
         data-alert={status && ['error', 'warn'].includes(status.key) ? status.key : undefined} data-history={String(!wide && history)} data-compact={String(compact)}
         style={{'--avatar-size': Math.round(size) + 'px', '--controls-height': Math.ceil(controlsHeight) + 'px'}}>
         <header className="topbar" aria-live="off">
           {state.call === 'connected' || state.call === 'ending' ? <time className="call-clock">{state.callStartedAt ? clock(now - state.callStartedAt) : ''}</time> : null}
         </header>
         <section className="stage" aria-label="V">
-          <Avatar onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? '查看后台任务' : 'V'} />
+          <Avatar onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? state.tasks.every(task=>task.execution==='foreground')?'查看当前任务':'查看后台任务' : 'V'} />
           {!inCall && (
             <div className="home">
               <a className="avatar-name" href={`./${window.location.search}`} aria-label="V 通话首页">V</a>
@@ -400,14 +480,18 @@ function CallPage({view, actions, options}) {
                   <button id="stop" className="dial dialing" type="button" aria-label={state.stopLabel} title={state.stopLabel} onClick={actions.hangup}><Icon d={HANG} /></button>
                   <span id="badge" className="home-badge dialing-note" role="status">{state.badge}</span>
                 </>
-              ) : state.entry ? <EntryNotice entry={state.entry} /> : (
+              ) : state.entry&&!state.confirmation ? <EntryNotice entry={state.entry} /> : (
                 <>
-                  <GrokPicker state={state} actions={actions} />
-                  <button id="start" className="dial" type="button" disabled={state.dial.disabled} aria-label={state.dial.label} title={state.dial.label} onClick={actions.dial}><Icon d={PHONE} /></button>
+                  {state.confirmation?<InlineConfirmation value={state.confirmation} actions={actions}/>:<GrokPicker state={state} actions={actions} />}
+                  <button id="start" className={`dial${state.confirmation?' confirmation-dial':''}`} type="button" disabled={state.confirmation?state.confirmation.phase!=='failed':state.dial.disabled} aria-label={state.confirmation?(state.confirmation.phase==='failed'?'重试身份确认':'等待飞书确认'):state.dial.label} title={state.dial.label} onClick={state.confirmation?actions.connectIdentity:actions.dial}><Icon d={PHONE} /></button>
+                  {state.confirmation?<div className="confirmation-actions"><button type="button" disabled={state.confirmation.phase==='cancelling'} onClick={actions.skipConfirmation}>访客通话</button></div>:<>
                   <ModelPicker state={state} actions={actions} />
                   <span id="badge" className="home-badge" role="status">{state.badge}</span>
-                  {state.accountLoginHref&&!state.accountLabel&&<a className="home-note" href={state.accountLoginHref}>连接飞书账号</a>}
+                  <IdentitySummary context={state.accessContext} onClick={state.nativeSettings?undefined:()=>setAccessOpen(true)}/>
+                  {state.nativeSettings&&!state.accessContext&&state.entrySummary&&<span className="access-summary">{state.entrySummary}</span>}
+                  {state.accountLoginHref&&!state.accountLabel&&(state.confirmationAvailable?<button type="button" className="home-note identity-connect" onClick={actions.connectIdentity}>连接飞书身份</button>:<a className="home-note" href={state.accountLoginHref}>连接飞书账号</a>)}
                   {state.homeNote && <p className="home-note" data-tone={state.homeNoteTone} role="status">{state.homeNote}</p>}
+                  </>}
                 </>
               )}
             </div>

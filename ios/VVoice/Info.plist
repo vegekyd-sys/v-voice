@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>VVoicePublicServiceURL</key>
+	<string>$(VVOICE_PUBLIC_SERVICE_URL)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -35,6 +37,8 @@
 	<string>V Voice 当前仅提供语音通话，不使用相机，也不会主动请求相机权限。</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>仅在你要求使用当前位置时获取一次定位，提供给当前 V 通话用于附近查询或确认上车点。不会持续追踪。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>把你在通话里生成的图片和视频存到相册。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>与 V 实时对话时收取你的声音。结束通话后立即停止收音。</string>
 	<key>NSSupportsLiveActivities</key>

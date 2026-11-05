@@ -1,0 +1,71 @@
+{
+  "observedAt": "2026-10-27",
+  "productionVoiceCommit": "b4ed555cd3171534a9a57067b5bb8a1936ba0a34",
+  "evidence": [
+    {
+      "kind": "passive-production-calls",
+      "sourceCommit": "b4ed555cd3171534a9a57067b5bb8a1936ba0a34",
+      "samples": [
+        {
+          "provider": "seeduplex",
+          "completed": true,
+          "deltasMs": {
+            "call.created": 0,
+            "catalog-requested": 2,
+            "context-requested": 3,
+            "catalog-ready": 657,
+            "context-ready": 1351,
+            "provider-connecting": 1360,
+            "ready": 2195,
+            "provider-ready": 2195
+          }
+        },
+        {
+          "provider": "seeduplex",
+          "completed": true,
+          "deltasMs": {
+            "call.created": 0,
+            "catalog-requested": 1,
+            "context-requested": 1,
+            "context-ready": 521,
+            "catalog-ready": 612,
+            "provider-connecting": 613,
+            "ready": 2030,
+            "provider-ready": 2030
+          }
+        }
+      ]
+    },
+    {
+      "kind": "production-readonly-preparation",
+      "samples": [
+        {
+          "membershipMs": 652,
+          "actorReaderAvailable": true,
+          "actorReaderMs": 174,
+          "catalogMs": 710,
+          "contextMs": 791,
+          "environmentMs": 792
+        },
+        {
+          "membershipMs": 686,
+          "actorReaderAvailable": true,
+          "actorReaderMs": 170,
+          "catalogMs": 689,
+          "contextMs": 775,
+          "environmentMs": 775
+        },
+        {
+          "membershipMs": 4969,
+          "actorReaderAvailable": true,
+          "actorReaderMs": 155,
+          "contextMs": 521,
+          "catalogMs": 629,
+          "environmentMs": 629
+        }
+      ],
+      "createsProviderSession": false
+    }
+  ],
+  "limits": "Passive calls begin after reservation creation, exclude admission/client/network/first audio; three read-only probes are not an SLO."
+}

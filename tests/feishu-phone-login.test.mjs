@@ -156,9 +156,25 @@ test('App-ID and account-key aliases unify old groups and verified DM chat IDs w
   resolveConversation:async(identity,phone)=>{seen.push({identity,phone});return {id:phone,sessionKey:phone===feishuConversationPhone('default','oc_dm')?old[0].sessionKey:old[1].sessionKey};}});
  for(const [entry,chat] of [[old[0],'oc_dm'],[old[1],'oc_group']]){
   const canonical=feishuConversationPhone('default',chat);
-  assert.equal(login.canonicalPhone(entry.id),canonical);assert.equal(login.canonicalPhone(feishuConversationPhone('cli_test',chat)),canonical);
+  assert.equal(login.deviceCanonicalPhone(entry.id),canonical);assert.equal(login.deviceCanonicalPhone(feishuConversationPhone('cli_test',chat)),canonical);
   const owner=await login.resolveDevice({type:'feishu',tenantKey:actor.tenantKey,openId:actor.openId},canonical);assert.deepEqual(owner.legacyBindings,[entries.resolve(new URL(origin+'/?phone='+entry.id))]);
   const other=await login.resolveDevice({type:'feishu',tenantKey:actor.tenantKey,openId:'ou_other'},canonical);assert.equal(other.legacyBindings,undefined);
  }
- assert.equal(login.canonicalPhone(old[2].id),old[2].id);assert.equal(login.canonicalPhone('missing-entry'),'missing-entry');
+ assert.equal(login.deviceCanonicalPhone(old[2].id),old[2].id);assert.equal(login.deviceCanonicalPhone('missing-entry'),'missing-entry');
+});
+
+test('browser alias migration requires a registered managed entry in this account with an exact native conversation',()=>{
+ const old=[{...records[0],id:'feishu-dm-known',nativeChatId:'oc_dm'},
+  {...records[1],id:'feishu-group-group',sessionKey:'agent:makaron:feishu:group:oc_group'},
+  {...records[2],id:'feishu-group-other',accountId:'another',sessionKey:'agent:makaron:feishu:group:oc_other'},
+  {...records[1],id:'feishu-dm-missing',kind:'dm',accessToken:'missing'.repeat(8)},
+  {...records[1],id:'fixed-custom',accessToken:'custom'.repeat(8)},
+  {...records[1],id:'feishu-group-wrong',accessToken:'wrong'.repeat(8)},
+  {...records[1],id:'feishu-group-unregistered',sessionKey:'agent:makaron:feishu:group:oc_unregistered',accessToken:'unregistered'.repeat(8)}];
+ const login=createFeishuPhoneLogin({appId:'cli_test',appSecret:'private-test',publicOrigin:origin,basePath:'/voice',entries:createConversationEntries(old),accountId:'default',
+  actors:[{...actor,defaultPhoneId:old[0].id,phoneIds:old.slice(0,-1).map(x=>x.id)}],resolveConversation:async()=>{throw Error('not invoked');}});
+ for(const entry of old.slice(0,2))assert.notEqual(login.browserCanonicalPhone(entry.id),entry.id);
+ for(const entry of old.slice(2))assert.equal(login.browserCanonicalPhone(entry.id),entry.id);
+ assert.equal(login.browserCanonicalPhone('feishu-group-unknown'),'feishu-group-unknown');
+ assert.equal(login.canonicalPhone(old[0].id),old[0].id);
 });

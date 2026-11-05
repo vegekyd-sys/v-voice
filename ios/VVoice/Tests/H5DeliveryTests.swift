@@ -65,6 +65,52 @@ import VVoiceCore
         let state = try await stats(); XCTAssertEqual(state["sessions"] as? Int, 0)
         for request in state["shellRequests"] as? [[String: Bool]] ?? [] { XCTAssertEqual(request["cookie"], false); XCTAssertEqual(request["authorization"], false) }
     }
+    func testWebDeliveredHangupReturnsHomeAndRedialWaitsForNativeCleanup() async throws {
+        let (call, root, _) = try await setup()
+        call.model = .seeduplex
+        let (host, web, _) = surface(call, root: root)
+        try await until { host.ready }
+        // Fetch the published web resource into the running, unchanged native shell.
+        try await command("shell-release", variant: "a"); host.checkForUpdates(force: true)
+        try await until { guard host.ready else { return false }; return try await self.marker(web) == "a" }
+        let binding = call.api.record?.binding
+        _ = try await web.evaluateJavaScript("document.getElementById('start').click()")
+        try await until { call.active && call.phase != .connecting }
+        let firstOwner = call.presentationID
+        host.update(H5Snapshot.make(call, visible: true), foreground: true)
+        try await until { try await web.evaluateJavaScript("document.getElementById('stop') !== null") as? Bool == true }
+        var delay = URLRequest(url: base.appendingPathComponent("fixture/command")); delay.httpMethod = "POST"
+        delay.httpBody = try JSONSerialization.data(withJSONObject: ["command":"slow-close", "ms":2000])
+        _ = try await URLSession.shared.data(for: delay)
+        let started = Date()
+        _ = try await web.evaluateJavaScript("document.getElementById('stop').click()")
+        try await until { call.phase == .ended }
+        host.update(H5Snapshot.make(call, visible: true), foreground: true)
+        try await until { try await web.evaluateJavaScript("document.body.dataset.callState === 'idle'") as? Bool == true }
+        let elapsed = Date().timeIntervalSince(started)
+        print("Web-delivered hangup returned home in \(Int(elapsed * 1000)) ms while native cleanup is delayed 2000 ms")
+        XCTAssertLessThan(elapsed, 1)
+        XCTAssertEqual(call.phase, .ended, "Local hangup must finish before HTTP cleanup")
+        let waiting = try await stats()
+        XCTAssertNotNil(waiting["active"] as? String)
+        let bytes = waiting["inputBytes"] as? Int
+        try await Task.sleep(for: .milliseconds(150))
+        let stopped = try await stats()
+        XCTAssertEqual(stopped["inputBytes"] as? Int, bytes, "Existing native end already stops capture")
+        let disabled = try await web.evaluateJavaScript("document.getElementById('start').disabled") as? Bool
+        XCTAssertEqual(disabled, false, "The native owner accepts redial and waits for its prior cleanup")
+        _ = try await web.evaluateJavaScript("document.getElementById('start').click()")
+        try await Task.sleep(for: .milliseconds(150))
+        let queued = try await stats()
+        XCTAssertEqual(queued["sessions"] as? Int, 1, "Redial must not allocate another call before prior cleanup finishes")
+        try await until { call.active && call.phase != .connecting }
+        XCTAssertNotEqual(call.presentationID, firstOwner)
+        XCTAssertEqual(call.api.record?.binding, binding)
+        let redialed = try await stats()
+        XCTAssertEqual(redialed["sessions"] as? Int, 2)
+        XCTAssertEqual(redialed["closeRequests"] as? Int, 1)
+        await call.end()
+    }
     func testForcedWebCheckSupersedesAnOlderInFlightRelease() async throws {
         let (call, root, _) = try await setup()
         let (host, web, _) = surface(call, root: root)

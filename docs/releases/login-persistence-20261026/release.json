@@ -1,0 +1,45 @@
+{
+  "schema": "v-voice-production-release-v1",
+  "version": "voice-feishu-login-persistence.20261026.1",
+  "status": "deployed-and-user-accepted",
+  "entryCommit": "0aae20e18bdc83b3f8ad638e4d6a55fb71a6a754",
+  "deviceEntryCommit": "0aae20e18bdc83b3f8ad638e4d6a55fb71a6a754",
+  "filesSha256": "c5b1e22dde0ed142406c51b15e696c68ea75cf9168bef1cc38d2b1409a125a85",
+  "iosShellRevision": "58fbb58b875d0bcfef1d5c5fd1388f872acfd01644918a5080ea0ea4c38a93eb",
+  "validatedAt": "2026-10-26T23:07:45+08:00",
+  "previousEntryCommit": "9ae49f523f735e9bb4dd8d9700128d2a66eb9e5e",
+  "voicePR": 152,
+  "gatewayRestartRequired": false,
+  "fleet": {
+    "bothReady": true,
+    "sameArtifact": true,
+    "admissionReleased": true,
+    "gatewayStableDuringVoiceCutover": true,
+    "originalServicesAndPrivateEnvironmentRetained": true
+  },
+  "acceptance": {
+    "voiceTests": 963,
+    "speakerTests": 95,
+    "releaseTests": 11,
+    "mainCIPassed": true,
+    "realGatewayReadOnlyActors": 1,
+    "realGatewayAdmissions": 4,
+    "realGatewaySessionDescriptions": 2,
+    "cardCallbacksSimulated": true,
+    "productionBrowserAccountSwitchVisible": true,
+    "productionHomepageChangelog": true,
+    "actualExternalClientReopen": "user confirmed reported bug fixed; individual steps not enumerated",
+    "realMessagesSent": 0,
+    "paidVoiceCalls": 0,
+    "newIOSBinary": false
+  },
+  "report": "release.md",
+  "deployedAt": "2026-10-26T23:05:47+08:00",
+  "userAcceptance": {
+    "date": "2026-10-26",
+    "recordedAt": "2026-10-26T23:11:13+08:00",
+    "by": "Tianyi",
+    "feedback": "修好了 记录下",
+    "scope": "User confirms the reported external-account login persistence and switching bug is fixed; individual test actions and other terminal/audio acceptance were not enumerated."
+  }
+}

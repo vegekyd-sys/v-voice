@@ -1,0 +1,78 @@
+{
+  "schema": "v-voice-production-release-v1",
+  "version": "voice-connect-audio.20261027.1",
+  "status": "deployed-and-verified",
+  "entryCommit": "7baa878a39ecd7903e9b1a384b0c115e3ddcdfac",
+  "deviceEntryCommit": "7baa878a39ecd7903e9b1a384b0c115e3ddcdfac",
+  "filesSha256": "f1efaad2f86613aa467c812f8895ce0d6e70cbbb5655b82371ab6fd1309f54c4",
+  "iosShellRevision": "8dd8527e0298ec9a01d580b98e69eb6ddf4cfc08b7fa32e94c6bc491997bfcad",
+  "previousEntryCommit": "b4ed555cd3171534a9a57067b5bb8a1936ba0a34",
+  "integrationPR": 171,
+  "includedPRs": [
+    169
+  ],
+  "includedSourceCommits": {
+    "gptTransport": "4d89724",
+    "serverDiagnosticsOnly": "e7262a4"
+  },
+  "deployedAt": "2026-10-27T20:58:06+08:00",
+  "validatedAt": "2026-10-27T21:45:11+08:00",
+  "gatewayRestartRequired": false,
+  "fleet": {
+    "bothReady": true,
+    "sameArtifact": true,
+    "admissionReleased": true,
+    "gatewayIdentityPreserved": true,
+    "originalPrivateConfigurationPreserved": true,
+    "allValidationCallsEnded": true
+  },
+  "acceptance": {
+    "voiceTests": 1023,
+    "speakerTests": 95,
+    "releaseTests": 11,
+    "mainCIPassed": true,
+    "mainCIRun": 40507723159,
+    "candidateBrowserAudio": "actual minified page, microphone input and local synthetic PCM output",
+    "productionHomepageChangelog": true,
+    "homepageBrowsers": [
+      "Feishu",
+      "Codex in-app browser"
+    ],
+    "httpsResourcesMatchArtifact": true,
+    "htmlAndAPINoStore": true,
+    "versionedBundleImmutable": true,
+    "realFeishuCallsPassed": 3,
+    "realFeishuCallsAttemptedAfterRelease": 3,
+    "realProvider": "seeduplex",
+    "preReleaseDial": "failed due to bundled AudioWorklet syntax error",
+    "benchmark": "benchmark.json",
+    "newIOSBinary": false,
+    "firmwareUpdate": false,
+    "physicalIOSGPT": "not rerun; native shared-service WebRTC fixture and service contract regression passed",
+    "robotSpeakerHardware": "not tested",
+    "modelBill": "unavailable"
+  },
+  "deferred": [
+    {
+      "pr": 161,
+      "reason": "native immediate hangup needs binary and physical acceptance"
+    },
+    {
+      "pr": 170,
+      "reason": "Action Button needs binary and physical acceptance"
+    },
+    {
+      "commit": "e7262a4 native Swift changes",
+      "reason": "long utterance audio requires stable build32 physical regression"
+    },
+    {
+      "pr": 166,
+      "reason": "platform and external-account entry coverage incomplete"
+    },
+    {
+      "pr": 145,
+      "reason": "latest Android candidate lacks matching physical install acceptance"
+    }
+  ],
+  "report": "release.md"
+}

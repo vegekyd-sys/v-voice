@@ -1,0 +1,63 @@
+{
+  "kind": "live-production-Gateway-readonly-directory-ab",
+  "baselineSha256": "33efaaa13d53e470e03eead7c1cda5cfe872669b4def698b4eda7340ffd65145",
+  "candidateSha256": "b45eb264e00ce82c81197bc929e1d78a80cb02e97f8846f33b4021150a379b2b",
+  "platformChanged": false,
+  "providerSessions": 0,
+  "samples": [
+    {
+      "pair": 0,
+      "variant": "baseline",
+      "concurrentRequests": 2,
+      "gatewayReads": 2,
+      "ms": 600,
+      "sameVerifiedRoute": true,
+      "independentBindings": true
+    },
+    {
+      "pair": 0,
+      "variant": "candidate",
+      "concurrentRequests": 2,
+      "gatewayReads": 1,
+      "ms": 531,
+      "sameVerifiedRoute": true,
+      "independentBindings": true
+    },
+    {
+      "pair": 1,
+      "variant": "candidate",
+      "concurrentRequests": 2,
+      "gatewayReads": 1,
+      "ms": 542,
+      "sameVerifiedRoute": true,
+      "independentBindings": true
+    },
+    {
+      "pair": 1,
+      "variant": "baseline",
+      "concurrentRequests": 2,
+      "gatewayReads": 2,
+      "ms": 521,
+      "sameVerifiedRoute": true,
+      "independentBindings": true
+    },
+    {
+      "pair": 2,
+      "variant": "baseline",
+      "concurrentRequests": 2,
+      "gatewayReads": 2,
+      "ms": 522,
+      "sameVerifiedRoute": true,
+      "independentBindings": true
+    },
+    {
+      "pair": 2,
+      "variant": "candidate",
+      "concurrentRequests": 2,
+      "gatewayReads": 1,
+      "ms": 530,
+      "sameVerifiedRoute": true,
+      "independentBindings": true
+    }
+  ]
+}

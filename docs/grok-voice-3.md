@@ -12,7 +12,7 @@
 | `grok-voice-2.0` | 2.0 对照或人工回退 |
 | `grok-voice-think-fast-2.0` | 保留旧部署使用的 2.0 pin |
 
-候选服务可设置 `VOICE_DEFAULT_MODEL=grok`，让首次打开及刷新时默认选择 Grok；这只改变界面默认选择，不创建语音连接，也不授予额外权限。
+候选服务须显式设置 `VOICE_ENABLE_GROK=1` 才把 Grok 加入 Web/iOS 电话目录和接纳新拨号；再设置 `VOICE_DEFAULT_MODEL=grok`，让首次打开及刷新时默认选择 Grok；这只改变界面默认选择，不创建语音连接，也不授予额外权限。
 
 不使用 `latest`，避免比较期间自动变更版本。无效值在初始化时拒绝，不静默回退。模型选择仅由服务端配置；浏览器仍传 `model: "grok"`，不能指定上游版本、身份或权限。目录、reservation、审计记录和页面模型名称均反映服务端选择。
 

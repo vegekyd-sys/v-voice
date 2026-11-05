@@ -1,0 +1,152 @@
+{
+  "ok": true,
+  "commit": "b4ed555cd3171534a9a57067b5bb8a1936ba0a34",
+  "nodes": {
+    "web": {
+      "commit": "b4ed555cd3171534a9a57067b5bb8a1936ba0a34",
+      "filesSha256": "38e10cc813a685a3f648548325d0c0dd853b6ea5f034e55b3c90ced1f42339ab",
+      "ready": true,
+      "admissionHeld": false,
+      "originalPrivateFilesPreserved": true,
+      "gatewayIdentityPreserved": true,
+      "cliConfigAdded": true
+    },
+    "devices": {
+      "commit": "b4ed555cd3171534a9a57067b5bb8a1936ba0a34",
+      "filesSha256": "38e10cc813a685a3f648548325d0c0dd853b6ea5f034e55b3c90ced1f42339ab",
+      "ready": true,
+      "admissionHeld": false,
+      "originalPrivateFilesPreserved": true,
+      "gatewayIdentityPreserved": true,
+      "cliConfigAdded": false
+    }
+  },
+  "publicReady": true,
+  "phoneModelIds": [
+    "gpt-live",
+    "seeduplex"
+  ],
+  "assets": {
+    "changelog.mjs": {
+      "matchesArtifact": true,
+      "sha256": "4dc1ad8abdea2009e7afd9f649b650dd2e22734c29108ba68a17470e0c7b0dcd",
+      "cacheControl": "no-store"
+    },
+    "ios-shell-release.json": {
+      "matchesArtifact": true,
+      "sha256": "475bc14d0674812f57c17ba8f1191672c49bd8a06de8066f1f350953ceeb2009",
+      "cacheControl": "no-store"
+    },
+    "app-bundle.mjs": {
+      "matchesArtifact": true,
+      "sha256": "b3dc941274c9e92df5d07266b6b55f4ed7d4880d69e0eb33119921303860b400",
+      "cacheControl": "private, max-age=31536000, immutable"
+    }
+  },
+  "htmlAndIdentityNoStore": true,
+  "gptLiveRuntime": "unchanged Gateway plugin",
+  "newIOSBinary": false,
+  "firmwareUpdate": false,
+  "realModelCalls": 0,
+  "externalMessages": 0,
+  "cli": {
+    "passed": true,
+    "steps": [
+      {
+        "command": "status",
+        "ok": true
+      },
+      {
+        "command": "doctor",
+        "ok": true
+      },
+      {
+        "command": "entries create",
+        "ok": true
+      },
+      {
+        "command": "links create",
+        "ok": true
+      },
+      {
+        "command": "auth check",
+        "ok": true
+      },
+      {
+        "step": "production HTTPS authorized guest status",
+        "status": 200,
+        "mode": "public",
+        "grokHidden": true,
+        "longLivedIOSBindingUnavailable": true
+      },
+      {
+        "step": "temporary grant cannot create iOS binding",
+        "status": 403
+      },
+      {
+        "step": "guest cookie cannot access personal entry",
+        "status": 401
+      },
+      {
+        "command": "sessions status",
+        "ok": true
+      },
+      {
+        "command": "links revoke",
+        "ok": true
+      },
+      {
+        "command": "auth check",
+        "ok": true
+      },
+      {
+        "step": "existing cookie denied after revoke",
+        "status": 404
+      },
+      {
+        "command": "entries disable",
+        "ok": true
+      }
+    ],
+    "socketAndRegistryMode": {
+      "registry.json": "0o600",
+      "control.sock": "0o600"
+    },
+    "calls": 0,
+    "externalMessages": 0,
+    "paidModels": 0,
+    "testEntryDisabled": true,
+    "testLinkRevoked": true
+  },
+  "skill": {
+    "name": "voice-cli",
+    "source": "openclaw-managed",
+    "eligible": true,
+    "modelVisible": true,
+    "disabled": false,
+    "blockedByAllowlist": false,
+    "blockedByAgentFilter": false
+  },
+  "browser": {
+    "surface": "Codex in-app browser",
+    "productionLoggedInDialReady": true,
+    "modelMenu": [
+      "GPT Live One",
+      "豆包 SeedDuplex"
+    ],
+    "appBindingSheetReady": true,
+    "homepageUpdateVisible": true,
+    "consoleErrors": 0,
+    "screenshots": "Private release receipt; contains no bearer links"
+  },
+  "feishuInvitation": {
+    "passed": true,
+    "invitationRedirectsToExistingFeishuLogin": true,
+    "revokedInvitationHTTPStatus": 410,
+    "testLinkRevoked": true,
+    "testEntryDisabled": true,
+    "recipientLoginPerformed": false,
+    "externalMessages": 0,
+    "calls": 0
+  }
+}

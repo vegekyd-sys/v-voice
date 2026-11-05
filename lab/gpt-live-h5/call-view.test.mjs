@@ -10,6 +10,17 @@ const connected = (patch = {}) => {
 };
 const task = (patch = {}) => ({callId: 'c1', activity: 'web', stage: null, step: 0, startedAt: 0, ...patch});
 
+test('direct media work keeps its actual stage and never presents itself as a backend task',()=>{
+ const tasks=createAvatarTasks();
+ const call={type:'tool.call',callId:'media',name:'exec',activity:'background',execution:'foreground',stage:'生成图片'};
+ tasks.consume(call,1000);
+ tasks.clear();tasks.consume(call,3000);
+ const view=connected({tasks:tasks.list(5000)}),status=resolveStatus(view.get(),5000);
+ assert.equal(status.text,'生成图片中');assert.equal(status.time,'0:04');assert(!status.full.includes('后台'));
+ assert.equal(view.get().tasks[0].execution,'foreground');
+ tasks.consume({type:'tool.result',callId:'media'});assert.equal(tasks.size,0);
+});
+
 test('status line is one short phrase, picked by priority, never stacked', () => {
   const view = connected({tasks: [task({stage: '上网搜索', startedAt: 0})]});
   assert.deepEqual(['task', '上网搜索中', '0:42'], [resolveStatus(view.get(), 42_000).key, resolveStatus(view.get(), 42_000).text, resolveStatus(view.get(), 42_000).time]);

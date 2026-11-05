@@ -1,0 +1,205 @@
+{
+  "kind": "live-Gateway-call-preparation-ab-with-simulated-relay-and-model",
+  "baselineVoiceCommit": "b4ed555cd3171534a9a57067b5bb8a1936ba0a34",
+  "sourceSha256": {
+    "baseline": "e7c0ef41aeddb4a7bba9207b06d307b00d35f19be691fd94bfe4d47756eaa5a4",
+    "candidate": "bc9fb9ca93079aa8f3fdd4416aa028cc043d0cab3ea3bf0ee5e54db2451579b1"
+  },
+  "platformChanged": false,
+  "realProviderSessions": 0,
+  "realDeviceOrPublicNetworkTest": false,
+  "samples": [
+    {
+      "pair": 0,
+      "variant": "baseline",
+      "reserveToReadyMs": 1149,
+      "liveHandoffAdmissionMs": 526,
+      "liveEnvironmentGatewayReads": 2,
+      "events": [
+        {
+          "stage": "catalog-requested"
+        },
+        {
+          "stage": "context-requested"
+        },
+        {
+          "stage": "catalog-ready"
+        },
+        {
+          "stage": "context-ready"
+        },
+        {
+          "stage": "provider-connecting"
+        },
+        {
+          "stage": "provider-ready"
+        }
+      ]
+    },
+    {
+      "pair": 0,
+      "variant": "candidate",
+      "reserveToReadyMs": 605,
+      "liveHandoffAdmissionMs": 553,
+      "liveEnvironmentGatewayReads": 2,
+      "events": [
+        {
+          "stage": "catalog-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "context-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "context-ready",
+          "elapsedMs": 525
+        },
+        {
+          "stage": "catalog-ready",
+          "elapsedMs": 603
+        },
+        {
+          "stage": "provider-connecting",
+          "elapsedMs": 604
+        },
+        {
+          "stage": "model-ready",
+          "elapsedMs": 605
+        },
+        {
+          "stage": "provider-ready",
+          "elapsedMs": 605
+        }
+      ]
+    },
+    {
+      "pair": 1,
+      "variant": "candidate",
+      "reserveToReadyMs": 641,
+      "liveHandoffAdmissionMs": 564,
+      "liveEnvironmentGatewayReads": 2,
+      "events": [
+        {
+          "stage": "catalog-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "context-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "catalog-ready",
+          "elapsedMs": 561
+        },
+        {
+          "stage": "context-ready",
+          "elapsedMs": 638
+        },
+        {
+          "stage": "provider-connecting",
+          "elapsedMs": 638
+        },
+        {
+          "stage": "model-ready",
+          "elapsedMs": 639
+        },
+        {
+          "stage": "provider-ready",
+          "elapsedMs": 639
+        }
+      ]
+    },
+    {
+      "pair": 1,
+      "variant": "baseline",
+      "reserveToReadyMs": 1090,
+      "liveHandoffAdmissionMs": 527,
+      "liveEnvironmentGatewayReads": 2,
+      "events": [
+        {
+          "stage": "catalog-requested"
+        },
+        {
+          "stage": "context-requested"
+        },
+        {
+          "stage": "catalog-ready"
+        },
+        {
+          "stage": "context-ready"
+        },
+        {
+          "stage": "provider-connecting"
+        },
+        {
+          "stage": "provider-ready"
+        }
+      ]
+    },
+    {
+      "pair": 2,
+      "variant": "baseline",
+      "reserveToReadyMs": 1092,
+      "liveHandoffAdmissionMs": 511,
+      "liveEnvironmentGatewayReads": 2,
+      "events": [
+        {
+          "stage": "catalog-requested"
+        },
+        {
+          "stage": "context-requested"
+        },
+        {
+          "stage": "catalog-ready"
+        },
+        {
+          "stage": "context-ready"
+        },
+        {
+          "stage": "provider-connecting"
+        },
+        {
+          "stage": "provider-ready"
+        }
+      ]
+    },
+    {
+      "pair": 2,
+      "variant": "candidate",
+      "reserveToReadyMs": 597,
+      "liveHandoffAdmissionMs": 591,
+      "liveEnvironmentGatewayReads": 2,
+      "events": [
+        {
+          "stage": "catalog-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "context-requested",
+          "elapsedMs": 0
+        },
+        {
+          "stage": "catalog-ready",
+          "elapsedMs": 568
+        },
+        {
+          "stage": "context-ready",
+          "elapsedMs": 589
+        },
+        {
+          "stage": "provider-connecting",
+          "elapsedMs": 592
+        },
+        {
+          "stage": "model-ready",
+          "elapsedMs": 593
+        },
+        {
+          "stage": "provider-ready",
+          "elapsedMs": 593
+        }
+      ]
+    }
+  ]
+}

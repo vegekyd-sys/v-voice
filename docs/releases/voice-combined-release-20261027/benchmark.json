@@ -1,0 +1,70 @@
+{
+  "client": "Desktop Feishu; same existing internal account and test group; SeedDuplex 1.2.6.1",
+  "beforePageEntryMs": [
+    3595,
+    2353,
+    2267
+  ],
+  "postPageEntryMs": [
+    3370,
+    2234,
+    3862
+  ],
+  "postDialToConnectedObservedMs": [
+    5165,
+    4862,
+    4677
+  ],
+  "postMenuToDialReadyObservedMs": [
+    2905,
+    4651
+  ],
+  "postMenuToConnectedObservedMs": [
+    7767,
+    9328
+  ],
+  "calls": [
+    {
+      "sample": 1,
+      "connected": true,
+      "ended": true,
+      "inputFrames": 937,
+      "activeInputFrames": 541,
+      "outputBytes": 105502,
+      "zeroQueueObservedAfterAudio": true,
+      "underflows": 0,
+      "mutedAfterConnection": false
+    },
+    {
+      "sample": 2,
+      "connected": true,
+      "ended": true,
+      "inputFrames": 1399,
+      "activeInputFrames": 708,
+      "outputBytes": 421056,
+      "zeroQueueObservedAfterAudio": true,
+      "underflows": 0,
+      "mutedAfterConnection": false
+    },
+    {
+      "sample": 3,
+      "connected": true,
+      "ended": true,
+      "inputFrames": 836,
+      "activeInputFrames": 0,
+      "outputBytes": 105552,
+      "zeroQueueObservedAfterAudio": true,
+      "underflows": 0,
+      "mutedAfterConnection": true
+    }
+  ],
+  "limitations": [
+    "UI elapsed timing includes accessibility polling, not first audible sound",
+    "Before samples were reloads; post samples reopened the menu; third sample followed a 36 minute locked-screen break. No controlled overall speedup claim",
+    "Pre-release dial failed due to the bundled worklet syntax error; no valid before/after dial comparison",
+    "First full-menu elapsed sample excluded because observation paused between tool calls",
+    "Third call was muted immediately after connection to check quiet playback, so active microphone frames were zero",
+    "Physical iPhone/GPT, robot and speaker audio not accepted by this run",
+    "Actual provider billed cost unavailable; 3 short successful model calls and 1 failed pre-release attempt; no raw audio retained"
+  ]
+}

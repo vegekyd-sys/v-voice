@@ -1,0 +1,202 @@
+{
+  "schema": "voice-tool-aggregate-v1",
+  "interval": {
+    "startEpochMs": 1792771200000,
+    "endExclusiveEpochMs": 1793076751000
+  },
+  "firstCallAtEpochMs": 1792772821680,
+  "lastCallAtEpochMs": 1793076643088,
+  "callsByProvider": {
+    "grok": 2,
+    "openai": 1,
+    "seeduplex": 104
+  },
+  "tools": [
+    {
+      "provider": "seeduplex",
+      "name": "cancel_task",
+      "calls": 1,
+      "deliveredStatuses": {
+        "cancelled": 1
+      },
+      "notDeliveredInWindow": 0,
+      "callToDelivered": {
+        "n": 1,
+        "p50Ms": 1,
+        "p95Ms": 1
+      }
+    },
+    {
+      "provider": "seeduplex",
+      "name": "delegate_to_v",
+      "calls": 28,
+      "deliveredStatuses": {
+        "ok": 21,
+        "error": 1
+      },
+      "notDeliveredInWindow": 6,
+      "callToDelivered": {
+        "n": 22,
+        "p50Ms": 29953,
+        "p95Ms": 191794
+      }
+    },
+    {
+      "provider": "seeduplex",
+      "name": "end_call",
+      "calls": 41,
+      "deliveredStatuses": {
+        "ok": 41
+      },
+      "notDeliveredInWindow": 0,
+      "callToDelivered": {
+        "n": 41,
+        "p50Ms": 1,
+        "p95Ms": 1
+      }
+    },
+    {
+      "provider": "seeduplex",
+      "name": "exec",
+      "calls": 3,
+      "deliveredStatuses": {
+        "error": 3
+      },
+      "notDeliveredInWindow": 0,
+      "callToDelivered": {
+        "n": 3,
+        "p50Ms": 62,
+        "p95Ms": 487
+      }
+    },
+    {
+      "provider": "seeduplex",
+      "name": "feishu_calendar",
+      "calls": 11,
+      "deliveredStatuses": {
+        "ok": 11
+      },
+      "notDeliveredInWindow": 0,
+      "callToDelivered": {
+        "n": 11,
+        "p50Ms": 1282,
+        "p95Ms": 3794
+      }
+    },
+    {
+      "provider": "seeduplex",
+      "name": "get_current_location",
+      "calls": 3,
+      "deliveredStatuses": {
+        "ok": 3
+      },
+      "notDeliveredInWindow": 0,
+      "callToDelivered": {
+        "n": 3,
+        "p50Ms": 4822,
+        "p95Ms": 12888
+      }
+    },
+    {
+      "provider": "seeduplex",
+      "name": "memory_search",
+      "calls": 33,
+      "deliveredStatuses": {
+        "ok": 33
+      },
+      "notDeliveredInWindow": 0,
+      "callToDelivered": {
+        "n": 33,
+        "p50Ms": 1675,
+        "p95Ms": 3570
+      }
+    },
+    {
+      "provider": "seeduplex",
+      "name": "openclaw_agent_control",
+      "calls": 4,
+      "deliveredStatuses": {
+        "ok": 3,
+        "error": 1
+      },
+      "notDeliveredInWindow": 0,
+      "callToDelivered": {
+        "n": 4,
+        "p50Ms": 1,
+        "p95Ms": 557
+      }
+    },
+    {
+      "provider": "seeduplex",
+      "name": "read",
+      "calls": 3,
+      "deliveredStatuses": {
+        "ok": 1,
+        "error": 2
+      },
+      "notDeliveredInWindow": 0,
+      "callToDelivered": {
+        "n": 3,
+        "p50Ms": 769,
+        "p95Ms": 797
+      }
+    },
+    {
+      "provider": "seeduplex",
+      "name": "send_task_updates",
+      "calls": 2,
+      "deliveredStatuses": {
+        "ok": 2
+      },
+      "notDeliveredInWindow": 0,
+      "callToDelivered": {
+        "n": 2,
+        "p50Ms": 0,
+        "p95Ms": 1
+      }
+    },
+    {
+      "provider": "seeduplex",
+      "name": "show_content",
+      "calls": 2,
+      "deliveredStatuses": {
+        "ok": 2
+      },
+      "notDeliveredInWindow": 0,
+      "callToDelivered": {
+        "n": 2,
+        "p50Ms": 250,
+        "p95Ms": 386
+      }
+    },
+    {
+      "provider": "seeduplex",
+      "name": "web_search",
+      "calls": 38,
+      "deliveredStatuses": {
+        "ok": 38
+      },
+      "notDeliveredInWindow": 0,
+      "callToDelivered": {
+        "n": 38,
+        "p50Ms": 508,
+        "p95Ms": 1021
+      }
+    }
+  ],
+  "backendRequestedToCompleted": {
+    "seeduplex": {
+      "n": 26,
+      "p50Ms": 26697,
+      "p95Ms": 189154
+    }
+  },
+  "quality": {},
+  "limitations": [
+    "One node only; mixed running revisions and fixture/human calls cannot be separated by this log schema.",
+    "Tool delivered ok is transport/executor status, not semantic accuracy, audible answer, or side-effect completion.",
+    "Call-to-delivered includes wrapper overhead; delegate_to_v may deliver acceptance before backend completion.",
+    "Nearest-rank quantiles are descriptive only; sparse samples do not establish performance.",
+    "No transcript, result, arguments, owner, session, capture, call or task identifiers emitted."
+  ]
+}

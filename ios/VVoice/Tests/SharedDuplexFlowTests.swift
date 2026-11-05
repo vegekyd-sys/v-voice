@@ -24,6 +24,50 @@ import VVoiceCore
         while Date() < end { if try await predicate() { return }; try await Task.sleep(for: .milliseconds(30)) }
         XCTFail("Shared service/native playback state did not converge")
     }
+    func testRetiredRelayCleanupClearsPendingIDAndRedialsWithoutAnotherClose() async throws {
+        let (_, response) = try await URLSession.shared.data(from: base.appendingPathComponent("voice/"))
+        let header = try XCTUnwrap((response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Set-Cookie"))
+        let store = BindingStore(service: "com.versa.vvoice.cleanup-shared.\(UUID().uuidString)")
+        try store.save(StoredBinding(binding: VoiceBinding(testingBaseURL: base.appendingPathComponent("voice/")), cookie: String(header.split(separator: ";")[0])))
+        let api = VoiceAPI(store: store), call = CallCoordinator(api: api)
+        call.model = .seeduplex
+        let commandURL = base.appendingPathComponent("fixture/command")
+        addTeardownBlock {
+            await call.end()
+            var reset = URLRequest(url: commandURL); reset.httpMethod = "POST"
+            reset.httpBody = Data("{\"command\":\"close-immediate\"}".utf8)
+            _ = try? await URLSession.shared.data(for: reset)
+            await MainActor.run { call.forget() }
+        }
+        await call.refreshOptions(); XCTAssertTrue(api.supportsFastDial)
+        try await command("close-delay") // Deterministic socket-before-HTTP race, no real model/network benchmark.
+        try await call.startOrContinue()
+        for sample in 0..<3 {
+            let previousID = try XCTUnwrap(store.load()?.pendingVoiceID)
+            let before = try await state()
+            let responses = (before["httpCloseStatuses"] as? [Int] ?? []).count
+            await call.end()
+            try await until { (try await self.state()["httpCloseStatuses"] as? [Int] ?? []).count > responses }
+            // Observe actual URLSession completion before inspecting persisted cleanup state.
+            try await until { store.load()?.pendingVoiceID == nil }
+            let cleaned = try await state()
+            XCTAssertEqual((cleaned["httpCloseStatuses"] as? [Int])?.last, 200)
+            let started = Date()
+            try await call.startOrContinue()
+            let elapsed = Int(Date().timeIntervalSince(started) * 1000)
+            let next = try await state()
+            let extraCloses = (next["httpCloseRequests"] as? Int ?? 0) - (cleaned["httpCloseRequests"] as? Int ?? 0)
+            print("Retired relay cleanup sample=\(sample + 1) redialConnectedMS=\(elapsed) redundantCloseRequests=\(extraCloses)")
+            XCTAssertEqual(extraCloses, 0, "An acknowledged retired call must not add a cleanup request before redial")
+            XCTAssertEqual(next["fastDials"] as? Int, (cleaned["fastDials"] as? Int ?? 0) + 1)
+            XCTAssertEqual(next["statusRequests"] as? Int, cleaned["statusRequests"] as? Int)
+            XCTAssertNotEqual(store.load()?.pendingVoiceID, previousID)
+            XCTAssertTrue(call.active)
+        }
+        await call.end()
+        try await until { store.load()?.pendingVoiceID == nil }
+        try await command("close-immediate")
+    }
     func testFastDialUsesProductionServiceAndStreamsWithoutHTTPPreflight() async throws {
         let (_, response) = try await URLSession.shared.data(from: base.appendingPathComponent("voice/"))
         let header = try XCTUnwrap((response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Set-Cookie"))

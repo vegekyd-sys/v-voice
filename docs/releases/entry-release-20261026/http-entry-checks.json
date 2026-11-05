@@ -1,0 +1,155 @@
+{
+  "passed": 12,
+  "results": [
+    {
+      "entry": "group",
+      "agent": "desktop",
+      "route": "/voice/",
+      "statuses": [
+        302,
+        302,
+        200
+      ],
+      "canonicalSameConversation": true,
+      "phonePage": true,
+      "clientLoginConfig": false
+    },
+    {
+      "entry": "group",
+      "agent": "desktop",
+      "route": "/voice/feishu",
+      "statuses": [
+        302,
+        200
+      ],
+      "canonicalSameConversation": true,
+      "phonePage": true,
+      "clientLoginConfig": false
+    },
+    {
+      "entry": "group",
+      "agent": "desktop",
+      "route": "/voice/feishu/confirm",
+      "statuses": [
+        302,
+        200
+      ],
+      "canonicalSameConversation": true,
+      "phonePage": true,
+      "clientLoginConfig": false
+    },
+    {
+      "entry": "group",
+      "agent": "lark-iphone",
+      "route": "/voice/",
+      "statuses": [
+        302,
+        302,
+        200
+      ],
+      "canonicalSameConversation": true,
+      "phonePage": true,
+      "clientLoginConfig": true
+    },
+    {
+      "entry": "group",
+      "agent": "lark-iphone",
+      "route": "/voice/feishu",
+      "statuses": [
+        302,
+        302,
+        200
+      ],
+      "canonicalSameConversation": true,
+      "phonePage": true,
+      "clientLoginConfig": true
+    },
+    {
+      "entry": "group",
+      "agent": "lark-iphone",
+      "route": "/voice/feishu/confirm",
+      "statuses": [
+        302,
+        200
+      ],
+      "canonicalSameConversation": true,
+      "phonePage": true,
+      "clientLoginConfig": false
+    },
+    {
+      "entry": "dm",
+      "agent": "desktop",
+      "route": "/voice/",
+      "statuses": [
+        302,
+        302,
+        200
+      ],
+      "canonicalSameConversation": true,
+      "phonePage": true,
+      "clientLoginConfig": false
+    },
+    {
+      "entry": "dm",
+      "agent": "desktop",
+      "route": "/voice/feishu",
+      "statuses": [
+        302,
+        200
+      ],
+      "canonicalSameConversation": true,
+      "phonePage": true,
+      "clientLoginConfig": false
+    },
+    {
+      "entry": "dm",
+      "agent": "desktop",
+      "route": "/voice/feishu/confirm",
+      "statuses": [
+        302,
+        200
+      ],
+      "canonicalSameConversation": true,
+      "phonePage": true,
+      "clientLoginConfig": false
+    },
+    {
+      "entry": "dm",
+      "agent": "lark-iphone",
+      "route": "/voice/",
+      "statuses": [
+        302,
+        302,
+        200
+      ],
+      "canonicalSameConversation": true,
+      "phonePage": true,
+      "clientLoginConfig": true
+    },
+    {
+      "entry": "dm",
+      "agent": "lark-iphone",
+      "route": "/voice/feishu",
+      "statuses": [
+        302,
+        302,
+        200
+      ],
+      "canonicalSameConversation": true,
+      "phonePage": true,
+      "clientLoginConfig": true
+    },
+    {
+      "entry": "dm",
+      "agent": "lark-iphone",
+      "route": "/voice/feishu/confirm",
+      "statuses": [
+        302,
+        200
+      ],
+      "canonicalSameConversation": true,
+      "phonePage": true,
+      "clientLoginConfig": false
+    }
+  ]
+}

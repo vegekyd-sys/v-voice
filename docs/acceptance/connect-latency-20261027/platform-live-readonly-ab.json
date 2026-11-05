@@ -1,0 +1,153 @@
+{
+  "kind": "production-readonly-feishu-policy-ab",
+  "baselineSha256": "88e361a38810e9a609e3073759a8daafc3a084462f871b7a281784bde7482bf6",
+  "candidateSha256": "c895aef35096e30105caa670256b2947d956afab5b0d55321c968150e7a451ce",
+  "policyRouting": "fixture; real installed client created per policy request, matching production lifecycle; live chat/member reads only",
+  "samples": [
+    {
+      "pair": 0,
+      "variant": "baseline",
+      "ms": 739,
+      "admitted": true,
+      "reads": 2,
+      "readTimes": [
+        {
+          "kind": "chat",
+          "ms": 442
+        },
+        {
+          "kind": "members",
+          "ms": 281
+        }
+      ]
+    },
+    {
+      "pair": 0,
+      "variant": "candidate",
+      "ms": 309,
+      "admitted": true,
+      "reads": 2,
+      "readTimes": [
+        {
+          "kind": "chat",
+          "ms": 281
+        },
+        {
+          "kind": "members",
+          "ms": 307
+        }
+      ]
+    },
+    {
+      "pair": 1,
+      "variant": "candidate",
+      "ms": 269,
+      "admitted": true,
+      "reads": 2,
+      "readTimes": [
+        {
+          "kind": "members",
+          "ms": 249
+        },
+        {
+          "kind": "chat",
+          "ms": 267
+        }
+      ]
+    },
+    {
+      "pair": 1,
+      "variant": "baseline",
+      "ms": 521,
+      "admitted": true,
+      "reads": 2,
+      "readTimes": [
+        {
+          "kind": "chat",
+          "ms": 267
+        },
+        {
+          "kind": "members",
+          "ms": 252
+        }
+      ]
+    },
+    {
+      "pair": 2,
+      "variant": "baseline",
+      "ms": 502,
+      "admitted": true,
+      "reads": 2,
+      "readTimes": [
+        {
+          "kind": "chat",
+          "ms": 223
+        },
+        {
+          "kind": "members",
+          "ms": 278
+        }
+      ]
+    },
+    {
+      "pair": 2,
+      "variant": "candidate",
+      "ms": 280,
+      "admitted": true,
+      "reads": 2,
+      "readTimes": [
+        {
+          "kind": "chat",
+          "ms": 261
+        },
+        {
+          "kind": "members",
+          "ms": 278
+        }
+      ]
+    },
+    {
+      "variant": "baseline",
+      "concurrentCallers": 2,
+      "ms": 962,
+      "admitted": true,
+      "reads": 4,
+      "readTimes": [
+        {
+          "kind": "chat",
+          "ms": 231
+        },
+        {
+          "kind": "members",
+          "ms": 229
+        },
+        {
+          "kind": "chat",
+          "ms": 681
+        },
+        {
+          "kind": "members",
+          "ms": 279
+        }
+      ]
+    },
+    {
+      "variant": "candidate",
+      "concurrentCallers": 2,
+      "ms": 280,
+      "admitted": true,
+      "reads": 2,
+      "readTimes": [
+        {
+          "kind": "chat",
+          "ms": 219
+        },
+        {
+          "kind": "members",
+          "ms": 274
+        }
+      ]
+    }
+  ],
+  "providerSessions": 0
+}

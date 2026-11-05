@@ -1,5 +1,5 @@
 // Same recovery for every receiver. No device names, permissions or transport logic.
-export const TOOL_FAILURE_LINE = '这个刚才没查成，要不要我交给后台再试试？';
+export const TOOL_FAILURE_LINE = '这个刚才没查成，要不要我换个办法再试试？';
 export const TOOL_RESULT_PROMPT_LINE = '结果查到了，要我现在说说吗？';
 const NOT_LOOKUPS = new Set(['delegate_to_v','end_call','cancel_task','openclaw_agent_control','send_task_updates','set_speaker_volume','look','show_content']);
 export function createLookupRecovery({state,progress,say,audit=()=>{},now=Date.now,
@@ -7,8 +7,10 @@ export function createLookupRecovery({state,progress,say,audit=()=>{},now=Date.n
   const tools=new Map();let startedAt=0,notices=0,lastNoticeAt=0,answer=null;
   return {
     started(call){answer=null;if(NOT_LOOKUPS.has(call.name))return;if(!tools.size){startedAt=now();notices=0;}tools.set(call.callId,call.name);},
-    finished(call,result,owned){tools.delete(call.callId);if(!owned||tools.size||NOT_LOOKUPS.has(call.name)||result?.cancelled)return;
-      answer={at:now(),name:call.name,failed:typeof result?.error==='string'};},
+    // A still-running exec or poll is not a result. An execution brings its own
+    // words (line); one already told to the user (quiet) needs nothing more.
+    finished(call,result,owned,{line,quiet=false}={}){tools.delete(call.callId);if(!owned||tools.size||NOT_LOOKUPS.has(call.name)||result?.cancelled||quiet||result?.status==='running'||result?.details?.status==='running')return;
+      answer={at:now(),name:call.name,failed:typeof result?.error==='string',line};},
     answered(){answer=null;},
     waiting(){return Boolean(answer);},
     tick(){
@@ -27,7 +29,7 @@ export function createLookupRecovery({state,progress,say,audit=()=>{},now=Date.n
       const timeout=answer.failed?toolFailureMs:resultSilenceMs;
       if(at-answer.at>timeout+20000){answer=null;return;}
       if(at-answer.at<timeout||!gap)return;
-      const spoken=Boolean(say(answer.failed?TOOL_FAILURE_LINE:TOOL_RESULT_PROMPT_LINE));
+      const spoken=Boolean(say(answer.line||(answer.failed?TOOL_FAILURE_LINE:TOOL_RESULT_PROMPT_LINE)));
       audit({type:answer.failed?'lookup.failure-notice':'lookup.result-prompt',tool:answer.name,spoken});answer=null;
     },
   };
