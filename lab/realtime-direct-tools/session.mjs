@@ -803,6 +803,24 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       const s=sessions.get(id);if(!current(s))return null;
       return {pendingTools:s.pending.size,backgroundTask:Boolean(s.backend?.snapshot()),awaitingToolAnswer:Boolean(s.lookup?.waiting()),responseActive:s.responseActive,userSpeaking:s.userSpeaking,playing:s.playing,ending:Boolean(s.ending),lastUserAt:s.lastUserAt};
     },
+    /** Media the caller shared from the phone, said to V as the caller's own turn. */
+    share(id,{message,images=0,videos=0,hasText=false}){
+      const s=sessions.get(id);if(!current(s)||!s.bridge||s.ending||s.unidentified||typeof message!=='string'||!message.trim())return {ok:false};
+      s.latestUserTurn=Object.freeze({text:message,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();
+      s.bridge.sendUserMessage(message);
+      // Seeduplex keeps an injected turn as history without answering it. Say
+      // one fixed receipt so the caller knows; the paid work waits for their
+      // next spoken turn, which already carries the share in context.
+      let spoken=false;
+      if(s.model==='seeduplex'){
+        const what=[images?`${images} 张图片`:'',videos?`${videos} 段视频`:''].filter(Boolean).join('和')||'素材';
+        const line=hasText?`收到你分享的 ${what}和附言了。要我现在按你说的开始吗？`:`收到你分享的 ${what}了，想让我怎么用？`;
+        s.responseActive=true;spoken=true;
+        if(s.speakerRouting&&speakerRouting.hostSpeech)void speakerRouting.hostSpeech(s.id,line).catch(()=>{});else s.bridge.speakProgress(line);
+      }
+      audit({type:'share.forwarded',voiceSessionId:s.id,images,videos,spoken});
+      return {ok:true,spoken};
+    },
     async steer(id,{mode,text}){const s=sessions.get(id);if(!current(s)||!s.bridge)throw Error('语音会话已结束');
       if(mode==='append'||mode==='steer'&&!s.backend.snapshot()){s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(text);return {ok:true,forwardedToVoice:true,queued:false};}
       const result=mode==='cancel'?await cancel(s):await s.backend.control({mode,text});

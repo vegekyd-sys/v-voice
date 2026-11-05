@@ -84,6 +84,7 @@ struct CallView: View {
             }
         }
         .onOpenURL { url in
+            if ShareInbox.shareID(from: url) != nil { return }
             guard let destination = CallDestination.parse(url, callID: call.presentationID, documentIDs: Set(call.documents.map(\.id))) else { sheet = .notice; return }
             switch destination { case .call: sheet = nil; case .document(let id): sheet = .reader(id) }
         }

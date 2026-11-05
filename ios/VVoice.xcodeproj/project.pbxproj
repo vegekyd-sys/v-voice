@@ -17,6 +17,7 @@
 		1688E5B67B7B6A8C109D5F95 /* IslandActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BD6728F103FB047DC55A066 /* IslandActivityTests.swift */; };
 		16F9BBAC1806652BF0570FF9 /* VoiceFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBF1ACCF9EA74D03B4EC7B54 /* VoiceFixture.swift */; };
 		1BC8BA8E4DCFF883FD007379 /* IslandPreviewGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E34791F59508FFC82578CBD /* IslandPreviewGallery.swift */; };
+		1D1A2B46FCE598B542CAF4CA /* ShareToVTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28680AF2D861145882276D59 /* ShareToVTests.swift */; };
 		206A2D9E237C1639E053CB31 /* RelaySignalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC68CB218040B5DF93D95B7D /* RelaySignalTests.swift */; };
 		23EBB12D206A5170CB9689D9 /* GPTLiveTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13760D7F18C1D0CA48444844 /* GPTLiveTransportTests.swift */; };
 		2A878C373EA3DEC48CADE370 /* BindingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 581754E3A730420284362EA3 /* BindingStore.swift */; };
@@ -28,10 +29,12 @@
 		40DE5A3CDF8284543835C80A /* NativeDocumentBody.swift in Sources */ = {isa = PBXBuildFile; fileRef = 022BFA08A2C95FBF90410F34 /* NativeDocumentBody.swift */; };
 		432E10AAC22974C8FD2262C1 /* CallCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D650C3BEF748AF2B061E3A8 /* CallCoordinator.swift */; };
 		47F424CF0720D006C216514F /* CallActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C694805A7F537814758189E7 /* CallActivity.swift */; };
+		4934DDA532138B8F4AAA3E7D /* VVoiceShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D156B8BF8132D320F2B7B25B /* VVoiceShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		4D480DD5A361537E08A726AD /* BindingJourney.swift in Sources */ = {isa = PBXBuildFile; fileRef = C288F3A2531966C955A6EEF3 /* BindingJourney.swift */; };
 		532DA0962BC1E763270EECE0 /* VoiceAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CDD0899EF980DA00A5FD8F5 /* VoiceAvatar.swift */; };
 		5D82361E565AEEDA584509D4 /* AvatarCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB7DC0E277A785098CD0EB2 /* AvatarCatalogTests.swift */; };
 		5F9CB05A3A70A74F01D0C38D /* DeviceLocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D4D345BC789E025A5392879 /* DeviceLocationTests.swift */; };
+		5FD07203E6108C004F5055F6 /* ShareInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69A01AF2C529F983B550CDCC /* ShareInbox.swift */; };
 		64635A67BBC73E73A1EAAE6C /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 670CC81DE9FBEF0B28ABC4F6 /* WebRTC */; };
 		66ED269A523F7BFADCC1CB9B /* IslandCallSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = D37141DC53B720B7B96CC90F /* IslandCallSurface.swift */; };
 		6929FBF811598A33FD0A2771 /* IslandCallSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = D37141DC53B720B7B96CC90F /* IslandCallSurface.swift */; };
@@ -56,6 +59,7 @@
 		BF1EC256D6D01B21B6B51AE8 /* CallActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C694805A7F537814758189E7 /* CallActivity.swift */; };
 		C1CDDF961E988F8F12C3E96B /* VoiceAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D75530190661A3CE19BAA28 /* VoiceAudio.swift */; };
 		C498FBC76120554268E17002 /* DeviceAudioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC5B54FF48C5CC112EF20F95 /* DeviceAudioTests.swift */; };
+		C632F8D82B80E5F3401EE960 /* ShareInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69A01AF2C529F983B550CDCC /* ShareInbox.swift */; };
 		CA4DDB15CA6F1597FF1F9406 /* H5AvatarCatalog.json in Resources */ = {isa = PBXBuildFile; fileRef = E292A32BB617F45942500127 /* H5AvatarCatalog.json */; };
 		CA88A73C515B16D61F29E267 /* WebRTC-LICENSE.md in Resources */ = {isa = PBXBuildFile; fileRef = 58D5BD423D2B3F907A747783 /* WebRTC-LICENSE.md */; };
 		D2C479A0672AA07EBDF5E85F /* VVoiceActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 445925F85326700CF3C4BA73 /* VVoiceActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -68,7 +72,9 @@
 		E9F141D2521C76774F2A8327 /* VoiceStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82BCD1E278CA030F4584C6D0 /* VoiceStyle.swift */; };
 		EBED088F9C31FAB0B35228EB /* CallDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3761BB469B52E8F4F2631C2 /* CallDiagnostics.swift */; };
 		EFBC64E0392EFC898C762802 /* H5CallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3D3F29E57D937B4843EFBA7 /* H5CallView.swift */; };
+		F5ACCD503439ADB584C4AE27 /* ShareDelivery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47C7D9AC3294DF6BFF793CB5 /* ShareDelivery.swift */; };
 		F5BE616F7245C22272C02F34 /* H5DeliveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA02392D095FEF5043B9AC46 /* H5DeliveryTests.swift */; };
+		F61DF584E7DB5642E76F3975 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD52D7C6EFB7F0E39ED5E7F /* ShareViewController.swift */; };
 		F88E80BEC9FB9D80016428F9 /* BindingJourneyFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 160D305C3A5C05A7DC1E862F /* BindingJourneyFixture.swift */; };
 		FEBE3CEFE457C6F635CF202C /* RelayTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4624DC67397DA3829CD1438F /* RelayTransport.swift */; };
 		FECFB2234633EB8055E533A4 /* H5ResourceScheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3AB743DE4EC6C48B772C72D /* H5ResourceScheme.swift */; };
@@ -89,6 +95,13 @@
 			remoteGlobalIDString = 76B72D8DD948B5242D78A53C;
 			remoteInfo = VVoice;
 		};
+		F2F5767CE5B30F697A856BEB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 43BCFD24D3DB3A196D9A4816 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9EE5F70F2A6881C0676C25FA;
+			remoteInfo = VVoiceShare;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -99,6 +112,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				D2C479A0672AA07EBDF5E85F /* VVoiceActivity.appex in Embed Foundation Extensions */,
+				4934DDA532138B8F4AAA3E7D /* VVoiceShare.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -114,8 +128,10 @@
 		13185E1590D05298912335D1 /* CallDocumentReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallDocumentReader.swift; sourceTree = "<group>"; };
 		13760D7F18C1D0CA48444844 /* GPTLiveTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPTLiveTransportTests.swift; sourceTree = "<group>"; };
 		160D305C3A5C05A7DC1E862F /* BindingJourneyFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BindingJourneyFixture.swift; sourceTree = "<group>"; };
+		1BD52D7C6EFB7F0E39ED5E7F /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		1BD7A9E9F549C0BC8FEE308B /* H5Shell */ = {isa = PBXFileReference; lastKnownFileType = folder; name = H5Shell; path = VVoice/Resources/H5Shell; sourceTree = SOURCE_ROOT; };
 		1D650C3BEF748AF2B061E3A8 /* CallCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallCoordinator.swift; sourceTree = "<group>"; };
+		28680AF2D861145882276D59 /* ShareToVTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareToVTests.swift; sourceTree = "<group>"; };
 		2D75530190661A3CE19BAA28 /* VoiceAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAudio.swift; sourceTree = "<group>"; };
 		2DB9AB5DEB5EA43B085292F3 /* H5DesignSource.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = H5DesignSource.json; sourceTree = "<group>"; };
 		2ECB48467FD3F45A94D790DE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -126,6 +142,7 @@
 		445925F85326700CF3C4BA73 /* VVoiceActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = VVoiceActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		45619E039B8DBD8B3AD20743 /* IslandAssets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = IslandAssets.xcassets; sourceTree = "<group>"; };
 		4624DC67397DA3829CD1438F /* RelayTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayTransport.swift; sourceTree = "<group>"; };
+		47C7D9AC3294DF6BFF793CB5 /* ShareDelivery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareDelivery.swift; sourceTree = "<group>"; };
 		4CDD0899EF980DA00A5FD8F5 /* VoiceAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAvatar.swift; sourceTree = "<group>"; };
 		4F6592CE77AB072C3F353CD6 /* DeviceLocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLocation.swift; sourceTree = "<group>"; };
 		581754E3A730420284362EA3 /* BindingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BindingStore.swift; sourceTree = "<group>"; };
@@ -133,6 +150,7 @@
 		5E34791F59508FFC82578CBD /* IslandPreviewGallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IslandPreviewGallery.swift; sourceTree = "<group>"; };
 		5F39DA2631814E6EE198F3EB /* H5Reader.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = H5Reader.css; sourceTree = "<group>"; };
 		662A97C00F54C938F246DBE4 /* CallIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallIntegrationTests.swift; sourceTree = "<group>"; };
+		69A01AF2C529F983B550CDCC /* ShareInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareInbox.swift; sourceTree = "<group>"; };
 		6EEDBEC86D8EA3876D12E606 /* H5Delivery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = H5Delivery.swift; sourceTree = "<group>"; };
 		6FE71FA2DD0DD3956F7D2FA0 /* CallOptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallOptions.swift; sourceTree = "<group>"; };
 		74F2FE640D58B26E022A9943 /* H5Updates.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = H5Updates.json; sourceTree = "<group>"; };
@@ -158,6 +176,8 @@
 		C694805A7F537814758189E7 /* CallActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallActivity.swift; sourceTree = "<group>"; };
 		C967786B594C6900ED76BF8A /* H5ShellTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = H5ShellTests.swift; sourceTree = "<group>"; };
 		CBB7DC0E277A785098CD0EB2 /* AvatarCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarCatalogTests.swift; sourceTree = "<group>"; };
+		D0229AC90374782B83E414FB /* VVoiceShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VVoiceShare.entitlements; sourceTree = "<group>"; };
+		D156B8BF8132D320F2B7B25B /* VVoiceShare.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = VVoiceShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		D37141DC53B720B7B96CC90F /* IslandCallSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IslandCallSurface.swift; sourceTree = "<group>"; };
 		D7D2EE17BE9D48F5FA66CA14 /* IslandAssets.manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = IslandAssets.manifest.json; sourceTree = "<group>"; };
 		D7E71EDE5E203F685FAAA6F0 /* MediaLibrarySaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaLibrarySaver.swift; sourceTree = "<group>"; };
@@ -201,6 +221,8 @@
 				BBBA893F034256916A1F1189 /* Packages */,
 				9E8B28BAEB22EBCE142AED57 /* Resources */,
 				9EBA31684B1E6AFE1A678690 /* Shared */,
+				6BFF5EF1B8AB76D6C0946EA8 /* ShareExtension */,
+				9432AB9FF933A24359597686 /* ShareKit */,
 				AE10E952BAF9893DD53B1272 /* Tests */,
 				292F392478660666E4DC9212 /* Widget */,
 				7754225845284A0F2A375343 /* Products */,
@@ -231,14 +253,34 @@
 			path = Reader;
 			sourceTree = "<group>";
 		};
+		6BFF5EF1B8AB76D6C0946EA8 /* ShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				1BD52D7C6EFB7F0E39ED5E7F /* ShareViewController.swift */,
+				D0229AC90374782B83E414FB /* VVoiceShare.entitlements */,
+			);
+			name = ShareExtension;
+			path = VVoice/ShareExtension;
+			sourceTree = "<group>";
+		};
 		7754225845284A0F2A375343 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				E44018070C4751C833BA02F4 /* VVoice.app */,
 				445925F85326700CF3C4BA73 /* VVoiceActivity.appex */,
+				D156B8BF8132D320F2B7B25B /* VVoiceShare.appex */,
 				3EDEAC67D66165AD0E275FD2 /* VVoiceTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		9432AB9FF933A24359597686 /* ShareKit */ = {
+			isa = PBXGroup;
+			children = (
+				69A01AF2C529F983B550CDCC /* ShareInbox.swift */,
+			);
+			name = ShareKit;
+			path = VVoice/ShareKit;
 			sourceTree = "<group>";
 		};
 		9E8B28BAEB22EBCE142AED57 /* Resources */ = {
@@ -282,6 +324,7 @@
 				E6DC401CBC28DC4E5E00D8B4 /* NativeFlowTests.swift */,
 				AC68CB218040B5DF93D95B7D /* RelaySignalTests.swift */,
 				3E2B7ECB25AEFE948D49544B /* SharedDuplexFlowTests.swift */,
+				28680AF2D861145882276D59 /* ShareToVTests.swift */,
 				DBF1ACCF9EA74D03B4EC7B54 /* VoiceFixture.swift */,
 			);
 			name = Tests;
@@ -312,6 +355,7 @@
 				022BFA08A2C95FBF90410F34 /* NativeDocumentBody.swift */,
 				A4450FB32DC04BC75DD9CDCF /* PublicEntryConfiguration.swift */,
 				4624DC67397DA3829CD1438F /* RelayTransport.swift */,
+				47C7D9AC3294DF6BFF793CB5 /* ShareDelivery.swift */,
 				2D75530190661A3CE19BAA28 /* VoiceAudio.swift */,
 				4CDD0899EF980DA00A5FD8F5 /* VoiceAvatar.swift */,
 				08A624E6F16469B2F4941AB0 /* VoiceComparison.swift */,
@@ -374,6 +418,7 @@
 			);
 			dependencies = (
 				1A09995BD5B4E25ACB489F93 /* PBXTargetDependency */,
+				C220C2DB16657EC94D868C16 /* PBXTargetDependency */,
 			);
 			name = VVoice;
 			packageProductDependencies = (
@@ -383,6 +428,23 @@
 			productName = VVoice;
 			productReference = E44018070C4751C833BA02F4 /* VVoice.app */;
 			productType = "com.apple.product-type.application";
+		};
+		9EE5F70F2A6881C0676C25FA /* VVoiceShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B0ED3DD51D080A434D71D82B /* Build configuration list for PBXNativeTarget "VVoiceShare" */;
+			buildPhases = (
+				7D4788A5F2AC5E8C39138AA4 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VVoiceShare;
+			packageProductDependencies = (
+			);
+			productName = VVoiceShare;
+			productReference = D156B8BF8132D320F2B7B25B /* VVoiceShare.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 		CC68812CA4AAD7C41F0E1583 /* VVoiceActivity */ = {
 			isa = PBXNativeTarget;
@@ -421,6 +483,10 @@
 						DevelopmentTeam = E6YTL27QWA;
 						ProvisioningStyle = Automatic;
 					};
+					9EE5F70F2A6881C0676C25FA = {
+						DevelopmentTeam = E6YTL27QWA;
+						ProvisioningStyle = Automatic;
+					};
 					CC68812CA4AAD7C41F0E1583 = {
 						DevelopmentTeam = E6YTL27QWA;
 						ProvisioningStyle = Automatic;
@@ -447,6 +513,7 @@
 			targets = (
 				76B72D8DD948B5242D78A53C /* VVoice */,
 				CC68812CA4AAD7C41F0E1583 /* VVoiceActivity */,
+				9EE5F70F2A6881C0676C25FA /* VVoiceShare */,
 				1F47812CF8ADC7F4E8D755D6 /* VVoiceTests */,
 			);
 		};
@@ -481,6 +548,15 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		7D4788A5F2AC5E8C39138AA4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5FD07203E6108C004F5055F6 /* ShareInbox.swift in Sources */,
+				F61DF584E7DB5642E76F3975 /* ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		914EF587754CECAC4C115206 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -510,6 +586,7 @@
 				3AB1DA0DB8669D3079623FB1 /* MediaLibrarySaverTests.swift in Sources */,
 				8E4C6BA1932EA200ADE9F440 /* NativeFlowTests.swift in Sources */,
 				206A2D9E237C1639E053CB31 /* RelaySignalTests.swift in Sources */,
+				1D1A2B46FCE598B542CAF4CA /* ShareToVTests.swift in Sources */,
 				8159E2473B07C08167B0FD98 /* SharedDuplexFlowTests.swift in Sources */,
 				16F9BBAC1806652BF0570FF9 /* VoiceFixture.swift in Sources */,
 			);
@@ -542,6 +619,8 @@
 				40DE5A3CDF8284543835C80A /* NativeDocumentBody.swift in Sources */,
 				BD6ED4FE95DF160F7B18AAE5 /* PublicEntryConfiguration.swift in Sources */,
 				FEBE3CEFE457C6F635CF202C /* RelayTransport.swift in Sources */,
+				F5ACCD503439ADB584C4AE27 /* ShareDelivery.swift in Sources */,
+				C632F8D82B80E5F3401EE960 /* ShareInbox.swift in Sources */,
 				1433F687232744B21D4A6640 /* VVCaptureSink.mm in Sources */,
 				08A65DFD1AD70465414178B6 /* VVoiceApp.swift in Sources */,
 				C1CDDF961E988F8F12C3E96B /* VoiceAudio.swift in Sources */,
@@ -565,6 +644,11 @@
 			target = 76B72D8DD948B5242D78A53C /* VVoice */;
 			targetProxy = E3C91533DD1D376651CA8FBD /* PBXContainerItemProxy */;
 		};
+		C220C2DB16657EC94D868C16 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9EE5F70F2A6881C0676C25FA /* VVoiceShare */;
+			targetProxy = F2F5767CE5B30F697A856BEB /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -574,6 +658,7 @@
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = VVoiceSystemPortrait;
 				ASSETCATALOG_COMPILER_APPICON_NAME = VVoiceAppIcon;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = VVoice/VVoice.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = VVoice/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -629,6 +714,7 @@
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = VVoiceSystemPortrait;
 				ASSETCATALOG_COMPILER_APPICON_NAME = VVoiceAppIcon;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = VVoice/VVoice.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = VVoice/DebugInfo.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -792,6 +878,42 @@
 			};
 			name = Release;
 		};
+		A7696FEDEF001F4265F54B71 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = VVoice/ShareExtension/VVoiceShare.entitlements;
+				INFOPLIST_FILE = VVoice/ShareInfo.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.versa.vvoice.share;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		BAD87B137420DCC8EA829533 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = VVoice/ShareExtension/VVoiceShare.entitlements;
+				INFOPLIST_FILE = VVoice/ShareInfo.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.versa.vvoice.share;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		F6F0690E1EFCB3785B2C243E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -826,6 +948,15 @@
 			buildConfigurations = (
 				3BD102B90A765004D87E4141 /* Debug */,
 				107055B92ACD260EC41804A1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B0ED3DD51D080A434D71D82B /* Build configuration list for PBXNativeTarget "VVoiceShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A7696FEDEF001F4265F54B71 /* Debug */,
+				BAD87B137420DCC8EA829533 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

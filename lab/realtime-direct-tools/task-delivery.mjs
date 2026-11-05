@@ -42,8 +42,10 @@ export function requestsTaskDelivery(text) {
 }
 
 /** One delivery subscription per exact task. Hangup does not own its lifetime. */
-export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,replyDelivery,audit=()=>{},onIdle=()=>{}}) {
-  let authorized=false,closed=false,activeRun,lastResult;
+// `authorized` is only for a request the caller made outside any call (a phone
+// share): the bound session is then the only place a result can be seen.
+export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,replyDelivery,authorized:preauthorized=false,acceptedLine='已接续这通电话的后台任务，后续进展和结果会发在这里。',audit=()=>{},onIdle=()=>{}}) {
+  let authorized=preauthorized===true,closed=false,activeRun,lastResult;
   const watched=new Set(),observers=new Map(),currentByDelegation=new Map();let disposed=false;
   const outcomes=new Map();let tail=Promise.resolve();
   const nativeClaims=new Map();let claiming=0;
@@ -83,17 +85,17 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,
     async subscribe(){
       if(!authorized)throw Error('用户尚未要求把任务进展发到飞书群');
       if(!target)throw Error('当前电话没有经过验证的飞书交付入口');
-      if(activeRun)await send(activeRun,'accepted','已接续这通电话的后台任务，后续进展和结果会发在这里。');
+      if(activeRun)await send(activeRun,'accepted',acceptedLine);
       else if(lastResult)await send(lastResult.runId,'final',lastResult.text);
       return {accepted:true,channel:'feishu',continuedAfterHangup:true};
     },
     requested(id,text){replyDelivery?.captureTask(id,{text});},
-    started(runId,{requestId}={}){replyDelivery?.captureTask(runId,{from:requestId});activeRun=runId;if(authorized)void send(runId,'accepted','已接续这通电话的后台任务，后续进展和结果会发在这里。').catch(()=>{});},
+    started(runId,{requestId}={}){replyDelivery?.captureTask(runId,{from:requestId});activeRun=runId;if(authorized)void send(runId,'accepted',acceptedLine).catch(()=>{});},
     progress(runId,text){if(authorized)void send(runId,'progress',text).catch(()=>{});},
     async completed(runId,text){lastResult={runId,text};await send(runId,'final',text);if(activeRun===runId)activeRun=undefined;},
     async failed(runId,error){await send(runId,'failure',`电话中的后台任务未完成：${error.message??error}。没有确认完成的操作，请勿当作已成功。`);if(activeRun===runId)activeRun=undefined;},
     async cancelled(runId){await send(runId,'cancelled','已按你的明确要求取消这通电话的后台任务。');if(activeRun===runId)activeRun=undefined;},
-    close(){closed=true;if(!activeRun&&!watched.size)onIdle();if(authorized&&activeRun)void send(activeRun,'accepted','已接续这通电话的后台任务，后续进展和结果会发在这里。').catch(()=>{});},
+    close(){closed=true;if(!activeRun&&!watched.size)onIdle();if(authorized&&activeRun)void send(activeRun,'accepted',acceptedLine).catch(()=>{});},
     get detached(){return closed;},
     get pending(){return Boolean(activeRun||watched.size||claiming||replyDelivery?.pending);},
     handleEvent(event){
@@ -110,7 +112,7 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,
       if(watched.has(runId))return;replyDelivery?.captureTask(delegationId);replyDelivery?.captureTask(runId,{from:delegationId});currentByDelegation.set(delegationId,runId);watched.add(runId);activeRun=runId;
       const terminal=Promise.withResolvers();
       observers.set(runId,{terminal,hasToolResult:false,observer:createGptLiveConsultProgressObserver({runId,onProgress:p=>{if(authorized&&p.text?.length<=220)void send(runId,'progress',p.text).catch(()=>{});}})});
-      if(authorized)void send(runId,'accepted','已接续这通电话的后台任务，后续进展和结果会发在这里。').catch(()=>{});
+      if(authorized)void send(runId,'accepted',acceptedLine).catch(()=>{});
       void (async()=>{
         let misses=0;const deadline=Date.now()+600000;
         while(!disposed&&currentByDelegation.get(delegationId)===runId){

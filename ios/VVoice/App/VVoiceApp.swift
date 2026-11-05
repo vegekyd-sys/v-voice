@@ -23,7 +23,14 @@ import AppIntents
             content
                 .preferredColorScheme(.light)
                 .onAppear { call.sceneChanged(scene); CallDiagnostics.record("app.scene.appear") }
-                .onChange(of: scene) { _, value in call.sceneChanged(value) }
+                .onChange(of: scene) { _, value in
+                    call.sceneChanged(value)
+                    if value == .active { Task { await ShareDelivery.shared.deliverPending() } }
+                }
+                .onOpenURL { url in
+                    // The share is read from the App Group; the URL only wakes delivery.
+                    if ShareInbox.shareID(from: url) != nil { Task { await ShareDelivery.shared.deliverPending() } }
+                }
                 .task(id: scene) {
                     // Static shortcuts are extracted from the app. Refresh
                     // metadata once after the foreground scene has rendered,

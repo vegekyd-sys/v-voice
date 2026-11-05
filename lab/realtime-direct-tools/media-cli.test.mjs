@@ -121,3 +121,17 @@ test('a forgotten image marker is supplied, other marker mistakes still stop bef
  assert.throws(()=>validateMediaArgv(mediaArgv("makaron video create --video-model fal-h3-max --image 'https://cdn.example/a.jpg' --script 'animate <<<media_2>>>'")),/本地校验未提交/);
  assert.throws(()=>validateMediaArgv(mediaArgv("makaron video create --video-model fal-h3-max --script 'animate <<<media_1>>>'")),/本地校验未提交/);
 });
+test('a video may reference up to four shared images, each with its own marker',()=>{
+ const images=n=>Array.from({length:n},(_,i)=>`--image 'https://voice.example/share-media/${i+1}.jpg'`).join(' ');
+ const ok=validateMediaArgv(mediaArgv(`makaron video create --video-model fal-h3-max ${images(3)} --script 'join <<<media_1>>> <<<media_2>>> then <<<media_3>>>'`));
+ assert.deepEqual(ok.flags.images,['https://voice.example/share-media/1.jpg','https://voice.example/share-media/2.jpg','https://voice.example/share-media/3.jpg']);
+ assert.equal(ok.flags.image,'https://voice.example/share-media/1.jpg');
+ const argv=mediaArgv(`makaron video create --video-model fal-h3-max ${images(2)} --script 'a short montage'`);validateMediaArgv(argv);
+ assert.equal(argv[argv.indexOf('--script')+1],'<<<media_1>>> <<<media_2>>> a short montage');
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron video create --video-model fal-h3-max ${images(2)} --script 'only <<<media_1>>>'`)),/本地校验未提交/);
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron video create --video-model fal-h3-max ${images(2)} --script '<<<media_1>>> <<<media_2>>> <<<media_3>>>'`)),/本地校验未提交/);
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron video create --video-model fal-h3-max ${images(5)} --script 'too many'`)),/不支持的创作选项/);
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron video create --video-model fal-h3-max ${images(1)} --image '/etc/passwd' --script '<<<media_1>>> <<<media_2>>>'`)),/HTTPS/);
+ // Image edits keep exactly one --image.
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model wan2.7-image --image 'https://a.example/1.jpg' --image 'https://a.example/2.jpg' 'x'`)),/不支持的创作选项/);
+});
