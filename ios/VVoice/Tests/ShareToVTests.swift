@@ -95,7 +95,10 @@ import VVoiceCore
     }
     private func committedShare(_ store: ShareInbox.Store, text: String, video: Bool = false) throws -> ShareInbox.Manifest {
         let id = try store.begin()
-        var items = [try store.add(id, data: try ShareInbox.jpeg(data: jpegWithLocation(width: 64, height: 48)), kind: .image, contentType: "image/jpeg", index: 0)]
+        let jpeg = try ShareInbox.jpeg(data: jpegWithLocation(width: 64, height: 48))
+        var image = try store.add(id, data: jpeg, kind: .image, contentType: "image/jpeg", index: 0)
+        store.addPreview(id, to: &image, data: ShareInbox.preview(jpeg: jpeg), index: 0)
+        var items = [image]
         if video {
             let movie = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).mov")
             var bytes = Data([0, 0, 0, 20]); bytes.append(Data("ftypqt  ".utf8)); bytes.append(Data(count: 256))
@@ -111,9 +114,13 @@ import VVoiceCore
         let manifest = try committedShare(store, text: "把这几张做成一段视频发到产品群", video: true)
         let delivery = ShareDelivery(api: api, store: store)
         await delivery.deliverPending()
-        XCTAssertEqual(delivery.notice?.failed, false, delivery.notice?.text ?? "")
-        XCTAssertEqual(delivery.notice?.text, "V 会在后台处理 \(manifest.summary)，结果发到你绑定的飞书会话。")
+        XCTAssertNil(delivery.failure)
         XCTAssertEqual(store.pending(), [], "A delivered share leaves the App Group")
+        // 最近分享: the record is there at once, with the caller's words and thumbnail.
+        let record = try XCTUnwrap(delivery.shares.first)
+        XCTAssertEqual(record.text, manifest.text); XCTAssertEqual(record.images, 1); XCTAssertEqual(record.videos, 1)
+        XCTAssertEqual(record.previews.first?["kind"], "image")
+        XCTAssertTrue(record.previews.first?["src"]?.hasPrefix("data:image/jpeg;base64,") == true)
         try await until("background task") { (try await self.state()["shareTasks"] as? [[String: Any]])?.count == 1 }
         let tasks = try await state()["shareTasks"] as? [[String: Any]]
         let task = try XCTUnwrap(tasks?.first)
@@ -129,6 +136,9 @@ import VVoiceCore
             XCTAssertFalse(data.isEmpty)
         }
         try await until("Feishu result") { (try await self.state()["shareFeishu"] as? [String])?.contains { $0.contains("未调用 Makaron") } == true }
+        try await until("record done") { await delivery.refreshRecords(); return delivery.records.first?.status == "done" }
+        let result = try await delivery.result(record.id)
+        XCTAssertTrue(result.contains("未调用 Makaron"))
     }
 
     func testShareDuringACallIsSaidToTheCurrentCall() async throws {
@@ -142,12 +152,34 @@ import VVoiceCore
         _ = try committedShare(store, text: "换成夜景")
         let delivery = ShareDelivery(api: api, store: store)
         await delivery.deliverPending()
-        XCTAssertEqual(delivery.notice?.text, "已把 1 张图片交给当前通话里的 V。")
+        XCTAssertNil(delivery.failure)
         try await until("call message") { (try await self.state()["shareCallMessages"] as? [String])?.first?.contains("我的附言：换成夜景") == true }
-        let spoken = try await state()["shareSpoken"] as? [String]
-        XCTAssertEqual(spoken, ["收到你分享的 1 张图片和附言了。要我现在按你说的开始吗？"])
+        // The share is the caller's own row in this call, with its thumbnail.
+        try await until("conversation row") { call.conversation.turns.contains { $0.role == "user" && $0.text == "换成夜景" && $0.media?.count == 1 } }
+        let row = try XCTUnwrap(call.conversation.turns.last { $0.media != nil })
+        XCTAssertEqual(row.media?.previews.first?.kind, "image")
+        let snapshotRow = (H5Snapshot.make(call, visible: true)["transcript"] as? [String: Any]).flatMap { ($0["history"] as? [[String: Any]])?.last { $0["media"] != nil } }
+        XCTAssertEqual((snapshotRow?["media"] as? [String: Any])?["count"] as? Int, 1)
+        // Doubao cannot act on an injected turn: the caption starts V's task directly.
+        try await until("spoken start") { (try await self.state()["shareSpoken"] as? [String])?.first == "好，我按你说的处理这 1 张图片。" }
+        try await until("background task started") { (try await self.state()["shareTasks"] as? [Any])?.count == 1 }
+        XCTAssertTrue(delivery.records.isEmpty, "In-call shares live in the call, not 最近分享")
+    }
+
+    func testShareWithoutCaptionDuringACallAsksFirst() async throws {
+        try await command("share-reset")
+        let (api, _) = try await boundAPI(), store = try temporaryStore()
+        let call = CallCoordinator(api: api); call.model = .seeduplex
+        addTeardownBlock { await call.end(); await MainActor.run { call.forget() } }
+        await call.refreshOptions()
+        try await call.startOrContinue()
+        try await until("relay connected") { try await self.state()["connected"] as? Bool == true }
+        _ = try committedShare(store, text: "")
+        await ShareDelivery(api: api, store: store).deliverPending()
+        try await until("spoken question") { (try await self.state()["shareSpoken"] as? [String])?.first == "收到你分享的 1 张图片了，想让我怎么用？" }
+        try await Task.sleep(for: .milliseconds(300))
         let tasks = try await state()["shareTasks"] as? [Any]
-        XCTAssertEqual(tasks?.count, 0)
+        XCTAssertEqual(tasks?.count, 0, "No caption, no paid work")
     }
 
     func testRejectedFilesAreDroppedAndOfflineSharesKept() async throws {
@@ -157,8 +189,7 @@ import VVoiceCore
         try store.commit(id, text: "", items: [fake])
         let delivery = ShareDelivery(api: api, store: store)
         await delivery.deliverPending()
-        XCTAssertEqual(delivery.notice?.failed, true)
-        XCTAssertEqual(delivery.notice?.text, "文件内容与类型不符")
+        XCTAssertEqual(delivery.failure, "文件内容与类型不符")
         XCTAssertEqual(store.pending(), [], "A 415 cannot succeed on retry")
 
         let offline = BindingStore(service: "com.versa.vvoice.share-offline.\(UUID().uuidString)")
@@ -167,7 +198,7 @@ import VVoiceCore
         let kept = try committedShare(store, text: "")
         let unreachable = ShareDelivery(api: VoiceAPI(store: offline), store: store)
         await unreachable.deliverPending()
-        XCTAssertEqual(unreachable.notice?.failed, true)
+        XCTAssertNotNil(unreachable.failure)
         XCTAssertEqual(store.pending().map(\.id), [kept.id], "Network failures keep the share for the next activation")
     }
 }

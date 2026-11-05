@@ -14,9 +14,6 @@ struct H5CallView: View {
     @State private var reading = false
     @State private var bindingLink = ""
     @Environment(\.scenePhase) private var scene
-    private var safeTop: CGFloat {
-        (UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first?.keyWindow?.safeAreaInsets.top) ?? 0
-    }
     var body: some View {
         let snapshot = H5Snapshot.make(call, visible: scene == .active && sheet == nil && !reading)
         ZStack(alignment: .topTrailing) {
@@ -49,9 +46,6 @@ struct H5CallView: View {
                     if call.active { Button("结束通话", role: .destructive) { Task { await call.end() } } }
                 }.padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18)).frame(maxWidth: 320).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        }.overlay(alignment: .top) {
-            // Below the status bar and Dynamic Island; the web surface ignores the safe area.
-            ShareNoticeBanner(delivery: ShareDelivery.shared).padding(.top, safeTop)
         }.background(VoiceStyle.background).tint(VoiceStyle.accent)
             .sheet(item: $sheet, onDismiss: { bindingLink = "" }) { _ in SettingsView(call: call, initialLink: bindingLink) }
             .task { if call.needsPublicPreparation { await call.preparePublicIfNeeded() } }
@@ -268,6 +262,10 @@ struct H5WebSurface: UIViewRepresentable {
             onReading(reading)
             return [:]
         case "avatar", "avatarEvents": return try await call.h5Cosmetic(action == "avatar" ? "avatar" : "avatar-events", body: payload, owner: owner)
+        case "shareResult":
+            // V's result for one of this entry's 最近分享, read with the app's binding.
+            guard let id = payload["id"] as? String else { throw VoiceError.protocolMismatch }
+            return ["id": id, "text": try await ShareDelivery.shared.result(id)]
         case "saveMedia":
             guard owned, let text = payload["url"] as? String, let url = URL(string: text), let kind = payload["kind"] as? String else { throw VoiceError.protocolMismatch }
             try await MediaLibrarySaver.save(url: url, kind: kind)

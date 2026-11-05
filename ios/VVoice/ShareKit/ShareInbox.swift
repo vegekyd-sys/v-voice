@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import ImageIO
 import UniformTypeIdentifiers
 
@@ -12,6 +13,9 @@ enum ShareInbox {
     static let maxVideoBytes = 200 * 1024 * 1024
     static let maxTextCharacters = 500
     static let maxImagePixels = 2048
+    /// Thumbnails shown in the conversation and in 最近分享; small enough to
+    /// travel inline with the share request (server limit 24000 characters).
+    static let previewPixels = 240, maxPreviewCount = 4, maxPreviewCharacters = 24000
     static let expiry: TimeInterval = 24 * 60 * 60
 
     enum Kind: String, Codable, Sendable { case image, video }
@@ -19,6 +23,7 @@ enum ShareInbox {
         var file: String
         var kind: Kind
         var contentType: String
+        var preview: String? = nil
     }
     struct Manifest: Codable, Equatable, Sendable, Identifiable {
         var version = 1
@@ -116,6 +121,21 @@ enum ShareInbox {
             return result.sorted { $0.createdAt < $1.createdAt }
         }
         func file(_ manifest: Manifest, _ item: Item) -> URL { directory(manifest.id).appendingPathComponent(item.file) }
+        /// Attach a small JPEG thumbnail; a failed thumbnail never blocks the share.
+        func addPreview(_ id: String, to item: inout Item, data: Data?, index: Int) {
+            guard let data, data.count * 4 / 3 + 32 <= maxPreviewCharacters else { return }
+            let name = "\(index).preview.jpg"
+            guard (try? data.write(to: directory(id).appendingPathComponent(name), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])) != nil else { return }
+            item.preview = name
+        }
+        /// Up to four thumbnails, in order, as inline JPEG data URLs.
+        func previews(_ manifest: Manifest) -> [[String: String]] {
+            Array(manifest.items.compactMap { item -> [String: String]? in
+                guard let name = item.preview, !name.contains("/"), let data = try? Data(contentsOf: directory(manifest.id).appendingPathComponent(name)) else { return nil }
+                let src = "data:image/jpeg;base64," + data.base64EncodedString()
+                return src.count <= maxPreviewCharacters ? ["kind": item.kind.rawValue, "src": src] : nil
+            }.prefix(maxPreviewCount))
+        }
         func remove(_ id: String) { try? fileManager.removeItem(at: directory(id)) }
         static func ext(_ contentType: String) -> String {
             switch contentType { case "image/png": "png"; case "video/mp4": "mp4"; case "video/quicktime": "mov"; default: "jpg" }
@@ -141,6 +161,21 @@ enum ShareInbox {
     static func jpeg(data: Data) throws -> Data {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { throw Failure.unsupported }
         return try jpeg(from: source)
+    }
+    static func preview(jpeg data: Data) -> Data? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        return try? jpeg(from: source, maxPixels: previewPixels, quality: 0.6)
+    }
+    static func preview(video url: URL) async -> Data? {
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: previewPixels * 2, height: previewPixels * 2)
+        guard let frame = try? await generator.image(at: CMTime(seconds: 0.1, preferredTimescale: 600)).image else { return nil }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, frame, nil)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return preview(jpeg: data as Data)
     }
     static func videoContentType(_ type: UTType?) -> String { type?.conforms(to: .mpeg4Movie) == true ? "video/mp4" : "video/quicktime" }
 }

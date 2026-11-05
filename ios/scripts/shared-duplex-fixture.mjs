@@ -24,7 +24,7 @@ class Upstream extends EventEmitter{
  constructor(){super();this.readyState=1;peer=this;setImmediate(()=>this.emit('open'));}
  send(raw){const value=JSON.parse(raw);
   for(const item of value.type==='conversation.item.create'?value.items??[]:[])for(const part of item.content??[])if(/【手机分享】/u.test(part.text??''))shareCallMessages.push(part.text);
-  if(value.type==='speech_text_buffer.commit'&&/分享/u.test(value.text??''))shareSpoken.push(value.text);
+  if(value.type==='speech_text_buffer.commit'&&/分享|按你说的/u.test(value.text??''))shareSpoken.push(value.text);
  if(value.type==='session.create')queueMicrotask(()=>emit({type:'session.created',session:{id:'local-duplex'}}));if(value.type==='input_audio_buffer.append')inputFrames++;}
  close(){if(this.readyState===3)return;this.readyState=3;this.emit('close');}
 }

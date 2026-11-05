@@ -9,6 +9,7 @@ import VVoiceCore
                                     "text":document?.text ?? turn.text,"complete":turn.complete,"at":call.startedAt.timeIntervalSince1970 * 1000 + Double(index)]
             if let document, document.serverOwned { row["document"] = true; row["callId"] = document.id }
             if let id = turn.speakerID { row["speakerId"] = id; row["speakerTone"] = turn.speakerTone; row["listenOnly"] = turn.listenOnly }
+            if let media = turn.media { row["media"] = ["count": media.count, "previews": media.previews.map { ["kind": $0.kind, "src": $0.src] }] }
             return row
         }
         let models: [[String: Any]] = call.modelOptions.isEmpty ? VoiceModel.allCases.map { ["id":$0.rawValue,"label":$0.title,"available":true] } : call.modelOptions.map {
@@ -21,6 +22,8 @@ import VVoiceCore
             notice = ["kind":call.nativeRuntimeVersion != nil ? call.speakerNoticeKind : call.speakerAction == "重拨" ? "error" : call.speakerNotice == "识别恢复中" ? "warn" : "notice","text":call.speakerNotice,"full":call.speakerNotice]
             if !call.speakerAction.isEmpty { notice?["action"] = call.nativeRuntimeVersion != nil ? call.speakerActionID : call.speakerAction == "重拨" ? "redial" : "hangup"; notice?["actionLabel"] = call.speakerAction }
         }
+        let shares = ShareDelivery.shared
+        if notice == nil, call.active, let failure = shares.failure { notice = ["kind":"warn","text":failure,"full":failure] }
         let people = call.conversation.people.enumerated().map { i, p -> [String: Any] in ["id":p.id,"label":p.name ?? p.label,"tone":i % 5] }
         return ["capabilities":["mediaSave":true,"bridgeVersion":1,"runtimeVersion":1,"activeRuntimeVersion":call.nativeRuntimeVersion as Any? ?? NSNull(),"transports":["gateway-relay","webrtc"],"operations":NativeRuntimeEffect.operations.sorted()],"callID":call.presentationID,"active":call.active,"visible":visible,"bound":call.bound,"phase":call.phase.rawValue,
                 "voice":call.phase == .speaking ? "speaking" : "listening","thinking":call.thinkingVisible,"muted":call.muted,
@@ -36,6 +39,7 @@ import VVoiceCore
                                  "accountLabel":call.boundConversation?.accountLabel ?? "已连接账号",
                                  "conversationLabel":call.boundConversation?.name ?? "当前会话"],
                 "badge":call.phase == .connecting ? "正在连接 V…" : call.bound ? "就绪" : "未绑定",
-                "homeNote":[.failed,.interrupted].contains(call.phase) ? call.detail : ""]
+                "homeNote":[.failed,.interrupted].contains(call.phase) ? call.detail : (shares.failure ?? ""),
+                "shares":shares.shares.map(\.snapshot)]
     }
 }

@@ -30,7 +30,7 @@ import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
 import {createTaskDelivery} from '../realtime-direct-tools/task-delivery.mjs';
 import {createVoiceMediaCli} from '../realtime-direct-tools/media-cli.mjs';
 import {createBackendDelegation} from '../realtime-direct-tools/backend.mjs';
-import {createShareInbox,normalizeShareText,shareMessage,startShareTask,ShareRejected} from './share-inbox.mjs';
+import {createShareInbox,createShareRecords,normalizeSharePreviews,normalizeShareText,sharePresentation,shareMessage,startShareTask,ShareRejected} from './share-inbox.mjs';
 import {createVoiceLarkReader,personalLarkReader} from '../realtime-direct-tools/lark-readonly.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
 import {VOICE_CONTEXT_HISTORY_REQUEST,voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
@@ -112,7 +112,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       models:phoneModels().map(m=>m.id==='gpt-live'?{...m,available:false}:m)}:binding.callerIdentity?{accountLabel:binding.callerIdentity.displayName||'飞书账号已连接',accountLoginHref:phoneLogin?.confirmation?`${basePath}/feishu/confirm?phone=${encodeURIComponent(binding.id)}`:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&retry=1`}:{}),...(binding.cliManaged?{iosBindingAvailable:false,accountLoginHref:null,confirmationAvailable:false}:{})};
   };
   // Share to V (iOS share sheet). Off unless the deployment names a private directory.
-  const shareInbox=shareDirectory?createShareInbox({directory:shareDirectory}):null;
+  const shareInbox=shareDirectory?createShareInbox({directory:join(shareDirectory,'media')}):null;
+  const shareRecords=shareDirectory?createShareRecords({directory:join(shareDirectory,'records')}):null;
+  // Records belong to the phone entry (its conversation), not to one cookie.
+  const shareRecordOwner=binding=>`${binding.id}|${binding.sessionKey}`;
   const shareTasks=new Map();
   const callReports=createConversationCalls({gateway,directory:callReportsDirectory,publicOrigin,basePath,summarize:callSummarize,audit:callControlAudit});
   const accessors = new Map();
@@ -822,27 +825,38 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         try{return json(res,200,await shareInbox.receive(req,{owner:context.shareOwner,contentType:req.headers['content-type'],publicBase:`${hosted?publicOrigin:requestOrigin}${basePath}/`}));}
         catch(error){if(error instanceof ShareRejected)return json(res,error.status,{error:error.message});throw error;}
       }
+      if(req.method==='GET'&&pathname==='/api/shares'){
+        if(!shareRecords)return json(res,200,{shares:[]});
+        return json(res,200,{shares:(await shareRecords.list(shareRecordOwner(binding))).map(sharePresentation)});
+      }
+      if(req.method==='GET'&&/^\/api\/shares\/[0-9a-f-]{36}$/u.test(pathname)){
+        const row=shareRecords&&(await shareRecords.list(shareRecordOwner(binding))).find(item=>item.id===pathname.slice('/api/shares/'.length));
+        return row?.result?json(res,200,{id:row.id,result:row.result}):json(res,404,{error:'这条分享还没有结果'});
+      }
       if (req.method !== "POST") return json(res, 404, { error: "没有这个入口" });
       const params = await readBody();
       if(pathname==='/api/share'){
         if(!shareInbox)return json(res,503,{error:'分享给 V 尚未启用'});
-        if(Object.keys(params).some(key=>!['media','text'].includes(key)))return json(res,400,{error:'分享请求包含不支持的参数'});
-        let text,items;
-        try{text=normalizeShareText(params.text);items=await shareInbox.claim(context.shareOwner,params.media);}
+        if(Object.keys(params).some(key=>!['media','text','previews'].includes(key)))return json(res,400,{error:'分享请求包含不支持的参数'});
+        let text,items,previews;
+        try{text=normalizeShareText(params.text);if(!Array.isArray(params.media))throw new ShareRejected(400,'分享素材无效');previews=normalizeSharePreviews(params.previews,params.media);items=await shareInbox.claim(context.shareOwner,params.media);}
         catch(error){if(error instanceof ShareRejected)return json(res,error.status,{error:error.message});throw error;}
         const message=shareMessage({text,items,ttlMs:shareInbox.limits.ttlMs});
         const counts={images:items.filter(item=>item.kind==='image').length,videos:items.filter(item=>item.kind==='video').length};
         // The server's own owner, never a client-supplied voiceSessionId.
         const active=context.active;
-        if(active?.direct&&directVoice?.share?.(active.reservation.voiceSessionId,{message,hasText:Boolean(text),...counts})?.ok)
+        if(active?.direct&&directVoice?.share?.(active.reservation.voiceSessionId,{message,text,media:{count:items.length,previews},...counts})?.ok)
           return json(res,200,{delivered:'call',voiceSessionId:active.reservation.voiceSessionId,...counts});
         if(!/^agent:[^:]+:feishu:(?:group|direct|dm):(?:oc_|ou_)[A-Za-z0-9]+$/u.test(binding.sessionKey??''))return json(res,409,{error:'当前入口没有可交付结果的飞书会话，请在通话中分享'});
         const owner=context.shareOwner,running=shareTasks.get(owner)??0;
         if(running>=2)return json(res,429,{error:'V 还在处理你之前分享的素材，请稍后再试'});
         shareTasks.set(owner,running+1);
-        const task=startShareTask({gateway:binding.gateway??gateway,sessionKey:binding.sessionKey,message,text,createBackendDelegation,createTaskDelivery,audit:callControlAudit,
+        const recordOwner=shareRecordOwner(binding);
+        const record=await shareRecords.create(recordOwner,{text,previews,...counts});
+        startShareTask({gateway:binding.gateway??gateway,sessionKey:binding.sessionKey,message,text,createBackendDelegation,createTaskDelivery,audit:callControlAudit,
+          onResult:value=>void shareRecords.finish(recordOwner,record.id,value).catch(()=>{}),
           onSettled:()=>{const left=(shareTasks.get(owner)??1)-1;if(left>0)shareTasks.set(owner,left);else shareTasks.delete(owner);}});
-        return json(res,202,{delivered:'background',taskOwner:task.ownerId,...counts});
+        return json(res,202,{delivered:'background',share:sharePresentation(record),...counts});
       }
       if (pathname === "/api/session") {
         const result=await reservePhoneCall({context,binding,params,req,ip});

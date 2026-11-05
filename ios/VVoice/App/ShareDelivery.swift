@@ -3,14 +3,45 @@ import VVoiceCore
 
 /// Delivers shares the extension left in the App Group, with the app's own
 /// binding cookie. The server decides whether a share joins the current call
-/// or becomes a background task; this client sends no call identity.
+/// (it then appears as the caller's row in the conversation) or becomes a
+/// background task (it then appears in 最近分享). Native draws no UI of its own.
 @MainActor @Observable final class ShareDelivery {
     static let shared = ShareDelivery(api: CallCoordinator.shared.api, store: ShareInbox.root().map { ShareInbox.Store(root: $0) })
-    struct Notice: Equatable, Identifiable { let id = UUID(); var text: String; var failed: Bool; var progress = false }
-    private(set) var notice: Notice?
+    struct Record: Equatable, Identifiable {
+        let id: String
+        var text: String
+        var status: String
+        var images: Int
+        var videos: Int
+        var previews: [[String: String]]
+        var hasResult: Bool
+        var createdAt: Double
+        var snapshot: [String: Any] {
+            ["id": id, "text": text, "status": status, "images": images, "videos": videos, "previews": previews, "hasResult": hasResult, "at": createdAt]
+        }
+        init(id: String, text: String, status: String, images: Int, videos: Int, previews: [[String: String]], hasResult: Bool, createdAt: Double) {
+            self.id = id; self.text = text; self.status = status; self.images = images; self.videos = videos
+            self.previews = previews; self.hasResult = hasResult; self.createdAt = createdAt
+        }
+        init?(_ value: Any?) {
+            guard let v = value as? [String: Any], let id = v["id"] as? String, UUID(uuidString: id) != nil,
+                  let status = v["status"] as? String, ["running", "done", "failed", "unknown"].contains(status) else { return nil }
+            let previews = (v["previews"] as? [[String: String]] ?? []).filter { ["image", "video"].contains($0["kind"]) && ($0["src"]?.hasPrefix("data:image/jpeg;base64,") ?? false) }
+            self.init(id: id, text: String((v["text"] as? String ?? "").prefix(500)), status: status, images: v["images"] as? Int ?? 0, videos: v["videos"] as? Int ?? 0,
+                      previews: Array(previews.prefix(ShareInbox.maxPreviewCount)), hasResult: v["hasResult"] as? Bool == true, createdAt: v["createdAt"] as? Double ?? 0)
+        }
+    }
+    /// Shares still uploading from this phone, then the entry's recent records.
+    private(set) var uploading: [Record] = []
+    private(set) var records: [Record] = []
+    /// One short, user-facing reason when a share could not be handed over.
+    private(set) var failure: String?
     private(set) var busy = false
+    var shares: [Record] { Array((uploading + records.filter { r in !uploading.contains { $0.id == r.id } }).prefix(20)) }
     @ObservationIgnored private let api: VoiceAPI
     @ObservationIgnored private let store: ShareInbox.Store?
+    @ObservationIgnored private var polling: Task<Void, Never>?
+    @ObservationIgnored private var failureClear: Task<Void, Never>?
     init(api: VoiceAPI, store: ShareInbox.Store?) { self.api = api; self.store = store }
 
     struct Failure: Error, Equatable {
@@ -26,18 +57,16 @@ import VVoiceCore
             }
         }
     }
-    static func outcome(_ value: [String: Any], summary: String) -> String {
-        value["delivered"] as? String == "call"
-            ? "已把 \(summary)交给当前通话里的 V。"
-            : "V 会在后台处理 \(summary)，结果发到你绑定的飞书会话。"
-    }
 
-    func dismiss() { notice = nil }
+    private func fail(_ text: String) {
+        failure = text; failureClear?.cancel()
+        failureClear = Task { [weak self] in try? await Task.sleep(for: .seconds(8)); if !Task.isCancelled { self?.failure = nil } }
+    }
     func deliverPending() async {
         guard !busy, let store else { return }
         let pending = store.pending()
         guard !pending.isEmpty else { return }
-        guard api.isBound else { notice = .init(text: "请先在 V Voice 里完成绑定，再分享素材。", failed: true); return }
+        guard api.isBound else { fail("请先在 V Voice 里完成绑定，再分享素材。"); return }
         busy = true; defer { busy = false }
         CallDiagnostics.record("share.deliver.begin", code: "count=\(pending.count)")
         // A status read renews an expired cookie the same way dialing does.
@@ -45,7 +74,9 @@ import VVoiceCore
         for manifest in pending { await deliver(manifest, store: store) }
     }
     private func deliver(_ manifest: ShareInbox.Manifest, store: ShareInbox.Store) async {
-        notice = .init(text: "正在把 \(manifest.summary)交给 V…", failed: false, progress: true)
+        let previews = store.previews(manifest)
+        let local = Record(id: manifest.id, text: manifest.text, status: "uploading", images: manifest.images, videos: manifest.videos, previews: previews, hasResult: false, createdAt: manifest.createdAt.timeIntervalSince1970 * 1000)
+        uploading.append(local); defer { uploading.removeAll { $0.id == manifest.id } }
         do {
             var ids: [String] = []
             for item in manifest.items {
@@ -53,45 +84,44 @@ import VVoiceCore
                 guard status == 200, let id = value["id"] as? String else { throw Failure(status: status, message: value["error"] as? String) }
                 ids.append(id)
             }
-            let (status, value) = try await api.share("share", body: ["media": ids, "text": manifest.text])
+            let (status, value) = try await api.share("share", body: ["media": ids, "text": manifest.text, "previews": previews])
             guard status == 200 || status == 202 else { throw Failure(status: status, message: value["error"] as? String) }
             store.remove(manifest.id)
             CallDiagnostics.record("share.deliver.complete", code: "delivered=\(value["delivered"] as? String ?? "unknown") images=\(manifest.images) videos=\(manifest.videos)")
-            notice = .init(text: Self.outcome(value, summary: manifest.summary), failed: false)
+            if let record = Record(value["share"]) { records.removeAll { $0.id == record.id }; records.insert(record, at: 0); pollWhileRunning() }
         } catch let failure as Failure {
             if failure.permanent { store.remove(manifest.id) }
             CallDiagnostics.record("share.deliver.failed", code: "status=\(failure.status)")
-            notice = .init(text: failure.text, failed: true)
+            fail(failure.text)
         } catch {
             CallDiagnostics.record("share.deliver.failed", code: "network")
-            notice = .init(text: "网络不稳定，素材还在手机上，回到 V Voice 时会自动重试。", failed: true)
+            fail("网络不稳定，素材还在手机上，回到 V Voice 时会自动重试。")
         }
     }
-}
 
-struct ShareNoticeBanner: View {
-    let delivery: ShareDelivery
-    var body: some View {
-        if let notice = delivery.notice {
-            HStack(spacing: 10) {
-                Image(systemName: notice.failed ? "exclamationmark.circle.fill" : notice.progress ? "arrow.up.circle" : "checkmark.circle.fill")
-                    .foregroundStyle(notice.failed ? Color.orange : VoiceStyle.accent)
-                Text(notice.text).font(VoiceStyle.font(14)).foregroundStyle(VoiceStyle.ink).fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 14).padding(.vertical, 12)
-            .background(Color.white, in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(VoiceStyle.line))
-            .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
-            .padding(.horizontal, 16).padding(.top, 8)
-            .accessibilityIdentifier("shareNotice")
-            .onTapGesture { delivery.dismiss() }
-            .task(id: notice.id) {
-                guard !notice.progress else { return }
+    /// The entry's 最近分享 from the server; failures keep what is shown.
+    func refreshRecords() async {
+        guard api.isBound, let value = try? await api.call("shares", refresh: false), let rows = value["shares"] as? [Any] else { return }
+        records = rows.compactMap(Record.init)
+        pollWhileRunning()
+    }
+    func result(_ id: String) async throws -> String {
+        guard UUID(uuidString: id) != nil else { throw VoiceError.protocolMismatch }
+        let value = try await api.call("shares/" + id.lowercased(), refresh: false)
+        guard let text = value["result"] as? String else { throw VoiceError.protocolMismatch }
+        return text
+    }
+    private func pollWhileRunning() {
+        guard records.contains(where: { $0.status == "running" }), polling == nil else { return }
+        polling = Task { [weak self] in
+            while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(6))
-                if delivery.notice?.id == notice.id { delivery.dismiss() }
+                guard let self else { return }
+                guard UIApplication.shared.applicationState == .active else { continue }
+                await self.refreshRecords()
+                if !self.records.contains(where: { $0.status == "running" }) { break }
             }
-            .transition(.move(edge: .top).combined(with: .opacity))
+            self?.polling = nil
         }
     }
 }

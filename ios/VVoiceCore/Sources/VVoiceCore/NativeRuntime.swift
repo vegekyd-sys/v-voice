@@ -52,6 +52,7 @@ public struct NativeRuntimeRow: Decodable, Sendable {
     public let speakerTone: Int?
     public let listenOnly: Bool?
     public let documentId: String?
+    public let media: ConversationMedia?
 }
 public struct NativeRuntimeDocument: Decodable, Sendable {
     public let id: String, text: String, title: String, preview: String
@@ -89,7 +90,7 @@ public struct NativeRuntimeEffect: Decodable, Sendable {
         guard Self.operations.contains(op), [responseId,retiredResponseId,id,lastSpeakerId].allSatisfy({ ($0?.count ?? 0) <= 160 }) else { return false }
         switch op {
         case "audio.append": return sampleRate == 24000 && (sequence == nil || sequence! > 0) && audio.flatMap { Data(base64Encoded: $0) }.map { !$0.isEmpty && $0.count % 2 == 0 && $0.count <= 480_000 } == true
-        case "conversation.row": return row.map { ["user","assistant"].contains($0.role) && $0.text.count <= 8000 && ($0.speakerLabel?.count ?? 0) <= 200 && ($0.documentId?.count ?? 0) <= 160 && ($0.speakerId?.count ?? 0) <= 160 && (0...4).contains($0.speakerTone ?? 0) } == true
+        case "conversation.row": return row.map { ["user","assistant"].contains($0.role) && $0.text.count <= 8000 && ($0.speakerLabel?.count ?? 0) <= 200 && ($0.documentId?.count ?? 0) <= 160 && ($0.speakerId?.count ?? 0) <= 160 && (0...4).contains($0.speakerTone ?? 0) && ($0.media?.isValid ?? true) } == true
         case "conversation.speakers": return people.map { $0.count <= 32 && $0.allSatisfy { !$0.id.isEmpty && $0.id.count <= 160 && $0.label.count <= 80 && ($0.name?.count ?? 0) <= 80 } } == true
         case "conversation.mode": return listenOnly != nil
         case "surface.notice": return text != nil && text!.count <= 500 && ["", "redial", "hangup"].contains(action ?? "") && (0...30_000).contains(ttlMS ?? 0) && (actionLabel?.count ?? 0) <= 80 && ["notice","warn","error","ending","action"].contains(kind ?? "notice")

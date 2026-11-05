@@ -68,10 +68,12 @@ extension ShareViewController {
             let id = try store.begin(); shareID = id
             for (index, provider) in media.prefix(ShareInbox.maxItems).enumerated() {
                 do {
-                    let item = try await Self.import(provider, into: store, id: id, index: index)
+                    var item = try await Self.import(provider, into: store, id: id, index: index)
+                    let file = store.directory(id).appendingPathComponent(item.file)
+                    let thumbnail = item.kind == .image ? (try? Data(contentsOf: file)).flatMap(ShareInbox.preview(jpeg:)) : await ShareInbox.preview(video: file)
+                    store.addPreview(id, to: &item, data: thumbnail, index: index)
                     items.append(item)
-                    let thumbnail = item.kind == .image ? UIImage(contentsOfFile: store.directory(id).appendingPathComponent(item.file).path)?.preparingThumbnail(of: CGSize(width: 240, height: 240)) : nil
-                    previews.append(.init(id: index, kind: item.kind, image: thumbnail))
+                    previews.append(.init(id: index, kind: item.kind, image: thumbnail.flatMap(UIImage.init(data:))))
                 } catch { self.error = (error as? LocalizedError)?.errorDescription ?? "有一个素材无法读取，已跳过。" }
             }
         } catch { self.error = ShareInbox.Failure.unavailable.localizedDescription }
@@ -121,6 +123,7 @@ struct ShareComposeView: View {
                                     RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground))
                                     if let image = preview.image { Image(uiImage: image).resizable().scaledToFill() }
                                     else { Image(systemName: preview.kind == .video ? "video.fill" : "photo").font(.title2).foregroundStyle(.secondary) }
+                                    if preview.kind == .video, preview.image != nil { Image(systemName: "play.circle.fill").font(.title3).foregroundStyle(.white).shadow(radius: 2) }
                                 }.frame(width: 84, height: 84).clipShape(RoundedRectangle(cornerRadius: 12))
                                     .accessibilityLabel(preview.kind == .video ? "视频" : "图片")
                             }
@@ -131,7 +134,7 @@ struct ShareComposeView: View {
                     .lineLimit(2...5).focused($focused).padding(12)
                     .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                     .accessibilityIdentifier("shareText")
-                Text("在通话中会直接交给当前通话；不在通话时交给 V 后台处理，结果发到你绑定的飞书会话。")
+                Text("通话中会出现在对话里，由 V 接着处理；不在通话时交给 V 后台处理，记在 V Voice 首页的「最近分享」，结果也会发到你绑定的飞书会话。")
                     .font(.footnote).foregroundStyle(.secondary)
                 if !model.error.isEmpty { Text(model.error).font(.footnote).foregroundStyle(.red).accessibilityIdentifier("shareError") }
                 Spacer(minLength: 0)

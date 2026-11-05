@@ -6,11 +6,13 @@ import path from 'node:path';
 import {request as httpRequest} from 'node:http';
 import {Readable} from 'node:stream';
 import {createLiveH5Server} from './server.mjs';
-import {createShareInbox,normalizeShareText,shareMessage,sniffShareType,SHARE_LIMITS} from './share-inbox.mjs';
+import {createShareInbox,createShareRecords,normalizeSharePreviews,normalizeShareText,shareMessage,sniffShareType,SHARE_LIMITS,SHARE_RECORD_LIMITS} from './share-inbox.mjs';
+import {createNativeRuntime} from '../realtime-direct-tools/native-runtime.mjs';
 
 const JPEG=Buffer.concat([Buffer.from([0xff,0xd8,0xff,0xe0]),Buffer.alloc(60,7)]);
 const PNG=Buffer.concat([Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),Buffer.alloc(40,1)]);
 const MOV=Buffer.concat([Buffer.from([0,0,0,20]),Buffer.from('ftypqt  '),Buffer.alloc(80,2)]);
+const PREVIEW='data:image/jpeg;base64,'+JPEG.toString('base64');
 const token='private-test-token-with-at-least-32-characters';
 const origin='https://openclaw.tianyi.live';
 
@@ -92,9 +94,13 @@ test('outside a call, shared media becomes one background task for the bound Fei
   const second=await (await f.upload(MOV,'video/quicktime')).json();
   assert.equal((await f.upload(PNG,'image/jpeg')).status,415);
   assert.equal((await f.share({media:[first.id],text:'x',voiceSessionId:'forged'})).status,400);
-  const response=await f.share({media:[first.id,second.id],text:'把这些做成一段视频发到产品群'});
+  assert.equal((await f.share({media:[first.id],previews:['https://cdn.example/x.jpg']})).status,400);
+  assert.equal((await f.share({media:[first.id],previews:[{kind:'image',src:'data:image/jpeg;base64,'+PNG.toString('base64')}]})).status,400);
+  const response=await f.share({media:[first.id,second.id],text:'把这些做成一段视频发到产品群',previews:[{kind:'image',src:PREVIEW},{kind:'video',src:PREVIEW}]});
   assert.equal(response.status,202);
-  assert.deepEqual({...await response.json(),taskOwner:undefined},{delivered:'background',taskOwner:undefined,images:1,videos:1});
+  const accepted=await response.json();
+  assert.equal(accepted.delivered,'background');assert.equal(accepted.share.status,'running');
+  assert.deepEqual(accepted.share.previews.map(p=>p.kind),['image','video']);
   const sent=await done;
   const start=f.calls.find(call=>call.method==='voice.product.task.start').params;
   assert.equal(start.sessionKey.startsWith('agent:makaron:feishu:group:oc_'),true);
@@ -110,6 +116,14 @@ test('outside a call, shared media becomes one background task for the bound Fei
   assert.equal(media.status,200);assert.equal(media.headers.get('content-type'),'image/jpeg');
   assert.deepEqual(Buffer.from(await media.arrayBuffer()),JPEG);
   assert.equal((await f.raw('/voice/share-media/'+'A'.repeat(43)+'.jpg',{method:'GET'})).status,404);
+  // The share stays in 最近分享 with V's result, for this entry only.
+  let shares;
+  for(let i=0;i<50;i++){shares=(await (await f.raw('/voice/api/shares',{cookie:f.cookie,method:'GET'})).json()).shares;if(shares[0]?.status==='done')break;await new Promise(r=>setTimeout(r,20));}
+  assert.equal(shares.length,1);assert.equal(shares[0].status,'done');assert.equal(shares[0].hasResult,true);assert.equal(shares[0].text,'把这些做成一段视频发到产品群');
+  assert.equal(shares[0].result,undefined,'the list never carries result bodies');
+  const detail=await (await f.raw('/voice/api/shares/'+shares[0].id,{cookie:f.cookie,method:'GET'})).json();
+  assert.match(detail.result,/视频已生成/u);
+  assert.equal((await f.raw('/voice/api/shares/'+shares[0].id,{method:'GET'})).status,401);
   // A claimed upload cannot be shared a second time.
   assert.equal((await f.share({media:[first.id]})).status,409);
 });
@@ -125,10 +139,38 @@ test('during a direct call, the share is said to V as the caller\'s own turn',as
   const call=await f.raw('/voice/api/session',{cookie:f.cookie,data:JSON.stringify({model:'seeduplex'})});
   assert.equal(call.status,200,await call.clone().text());
   const item=await (await f.upload(PNG,'image/png')).json();
-  const response=await f.share({media:[item.id],text:'换成夜景'});
+  const response=await f.share({media:[item.id],text:'换成夜景',previews:[{kind:'image',src:PREVIEW}]});
   assert.equal(response.status,200);
   assert.deepEqual(await response.json(),{delivered:'call',voiceSessionId:'direct-1',images:1,videos:0});
   assert.equal(forwarded.length,1);assert.equal(forwarded[0].id,'direct-1');
+  assert.equal(forwarded[0].text,'换成夜景');assert.deepEqual(forwarded[0].media,{count:1,previews:[{kind:'image',src:PREVIEW}]});
+  assert.deepEqual((await (await f.raw('/voice/api/shares',{cookie:f.cookie,method:'GET'})).json()).shares,[],'in-call shares live in the call');
   assert.match(forwarded[0].message,/我的附言：换成夜景/u);
   assert.equal(f.calls.some(c=>c.method==='voice.product.task.start'),false);
+});
+
+test('a share row carries only bounded inline JPEG thumbnails',()=>{
+  const runtime=createNativeRuntime({voiceSessionId:'v'});
+  const [effect]=runtime.project({type:'user.share',shareId:'s1',text:'做成视频',media:{count:6,previews:[{kind:'image',src:PREVIEW},{kind:'video',src:PREVIEW},{kind:'image',src:'https://cdn.example/a.jpg'},{kind:'image',src:'data:image/png;base64,AAAA'}]}}).effects;
+  assert.equal(effect.op,'conversation.row');
+  assert.equal(effect.row.role,'user');assert.equal(effect.row.text,'做成视频');assert.equal(effect.row.complete,true);
+  assert.deepEqual(effect.row.media,{count:6,previews:[{kind:'image',src:PREVIEW},{kind:'video',src:PREVIEW}]});
+  assert.deepEqual(runtime.project({type:'user.share',shareId:'s2',text:'x',media:{count:0,previews:[]}}).effects,[]);
+  assert.throws(()=>normalizeSharePreviews([{kind:'image',src:PREVIEW}],[]),/预览无效/);
+  assert.deepEqual(normalizeSharePreviews(undefined,['a']),[]);
+});
+
+test('records keep 20 recent shares for 7 days and never leave a lost task running',async t=>{
+  const directory=await fs.mkdtemp(path.join(os.tmpdir(),'share-records-'));t.after(()=>fs.rm(directory,{recursive:true,force:true}));
+  let clock=1_000_000;const records=createShareRecords({directory,now:()=>clock});
+  const rows=[];for(let i=0;i<22;i++){clock+=1;rows.push(await records.create('entry-a',{text:'t'+i,images:1,videos:0,previews:[]}));}
+  const listed=await records.list('entry-a');
+  assert.equal(listed.length,SHARE_RECORD_LIMITS.max);assert.equal(listed[0].text,'t21');
+  assert.deepEqual(await records.list('entry-b'),[]);
+  await records.finish('entry-a',rows[21].id,{status:'done',result:'结果'});
+  clock+=SHARE_RECORD_LIMITS.staleRunningMs+1;
+  const later=await records.list('entry-a');
+  assert.equal(later[0].status,'done');assert.equal(later[1].status,'unknown');
+  clock+=SHARE_RECORD_LIMITS.ttlMs;
+  assert.deepEqual(await records.list('entry-a'),[]);
 });

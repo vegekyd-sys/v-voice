@@ -535,7 +535,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           if(s.backend.snapshot())throw Error('新任务未启动：这通电话已有一个 V 后台任务。未加入队列，不要说正在做。修改或补充原任务请调用 openclaw_agent_control 的 steer/followup；用户明确取消时先调用 cancel_task，再委派新任务。');
           admittedUserTurns.set(call.callId,s.latestUserTurn);
           if(s.heldResult){audit({type:'backend.result-superseded',voiceSessionId:s.id,callId:s.heldResult.callId});s.heldResult=null;}
-          s.backgroundCallId=call.callId;s.backgroundBridge=ownerBridge;s.backgroundRequester=audienceOf(audienceKeys.get(ownerBridge));s.narrations=0;s.narrationIdles=0;ownerBridge.beginBackgroundTool(call.callId,call.args.question);backgroundAck=true;
+          s.backgroundCallId=call.callId;s.backgroundBridge=ownerBridge;s.backgroundRequester=audienceOf(audienceKeys.get(ownerBridge));s.narrations=0;s.narrationIdles=0;
+          // A host-started task (a phone share) has no native function call to acknowledge.
+          if(call.hostInitiated)ownerBridge.adoptBackgroundTool(call.callId,call.args.question);else ownerBridge.beginBackgroundTool(call.callId,call.args.question);backgroundAck=true;
         }
         if(!['send_task_updates','openclaw_agent_control','get_current_location'].includes(call.name))result=await execute(call.name,call.args,call.callId,controller.signal);
         if(call.name==='delegate_to_v'&&current(s)&&s.epoch===epoch){
@@ -575,8 +577,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           if(s.speakerRouting&&speakerRouting?.hostSpeech)options.speak=text=>void speakerRouting.hostSpeech(s.id,text).then(spoken=>{if(!spoken)audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId:call.callId});},()=>audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId:call.callId}));
           target.completeBackgroundTool(call.callId,payload,options);
         }
-      }else if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
-      catch {result={error:'工具结果过大或无法续传，请缩小范围并分页读取。'};if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
+      }else if(ownerBridge===s.bridge&&!call.hostInitiated)ownerBridge.submitToolResult(call.callId,result);}
+      catch {result={error:'工具结果过大或无法续传，请缩小范围并分页读取。'};if(ownerBridge===s.bridge&&!call.hostInitiated)ownerBridge.submitToolResult(call.callId,result);}
       audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId,name:call.name,...(call.name==='get_current_location'?{ok:result?.ok===true,reason:result?.reason}:{result})});
       if(call.name!=='delegate_to_v')s.nativeResultAt=Date.now();
       const executionId=call.args?.sessionId??result?.sessionId,execution=s.localExecutions?.metadata(executionId);
@@ -584,6 +586,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       // All receivers observe the same tool completion.
       emit(s,{type:'tool.result',callId:call.callId,name:call.name,...((typeof result?.error==='string'||result?.isError===true)||call.name==='get_current_location'&&result?.ok===false?{failed:true}:{}),...(result?.cancelled===true?{cancelled:true}:{})});
     };
+    s.onToolCall=onToolCall;
     const routeOutput=(kind,value,deliver)=>{if(!current(s))return;if(s.unidentified||!speakerRouting?.dispatch?.(s.id,kind,value,deliver))deliver();};
     const hostCallControl=!s.unidentified&&Boolean(speakerRouting?.controlsEnding?.(s.id));
     const nativeShortcuts=new Set(['read','exec','process','memory_search','web_search','web_fetch']);
@@ -804,22 +807,29 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       return {pendingTools:s.pending.size,backgroundTask:Boolean(s.backend?.snapshot()),awaitingToolAnswer:Boolean(s.lookup?.waiting()),responseActive:s.responseActive,userSpeaking:s.userSpeaking,playing:s.playing,ending:Boolean(s.ending),lastUserAt:s.lastUserAt};
     },
     /** Media the caller shared from the phone, said to V as the caller's own turn. */
-    share(id,{message,images=0,videos=0,hasText=false}){
+    share(id,{message,text='',media,images=0,videos=0}){
       const s=sessions.get(id);if(!current(s)||!s.bridge||s.ending||s.unidentified||typeof message!=='string'||!message.trim())return {ok:false};
+      const shareId=randomUUID(),hasText=Boolean(text.trim());
       s.latestUserTurn=Object.freeze({text:message,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();
-      s.bridge.sendUserMessage(message);
-      // Seeduplex keeps an injected turn as history without answering it. Say
-      // one fixed receipt so the caller knows; the paid work waits for their
-      // next spoken turn, which already carries the share in context.
-      let spoken=false;
-      if(s.model==='seeduplex'){
-        const what=[images?`${images} 张图片`:'',videos?`${videos} 段视频`:''].filter(Boolean).join('和')||'素材';
-        const line=hasText?`收到你分享的 ${what}和附言了。要我现在按你说的开始吗？`:`收到你分享的 ${what}了，想让我怎么用？`;
-        s.responseActive=true;spoken=true;
-        if(s.speakerRouting&&speakerRouting.hostSpeech)void speakerRouting.hostSpeech(s.id,line).catch(()=>{});else s.bridge.speakProgress(line);
+      // Shown in the conversation as the caller's row: their thumbnails and words.
+      emit(s,{type:'user.share',shareId,text,media});
+      const what=[images?`${images} 张图片`:'',videos?`${videos} 段视频`:''].filter(Boolean).join('和')||'素材';
+      const say=line=>{s.responseActive=true;if(s.speakerRouting&&speakerRouting.hostSpeech)void speakerRouting.hostSpeech(s.id,line).catch(()=>{});else s.bridge.speakProgress(line);};
+      let mode='model';
+      if(s.model!=='seeduplex')s.bridge.sendUserMessage(message);
+      else if(!hasText){
+        // Seeduplex keeps an injected turn as history without answering it.
+        s.bridge.sendUserMessage(message);say(`收到你分享的 ${what}了，想让我怎么用？`);mode='asked';
+      }else if(s.backend.snapshot()||!s.onToolCall){
+        s.bridge.sendUserMessage(message);say(`收到你分享的 ${what}了。等手上这件事做完，我再按你说的处理。`);mode='held';
+      }else{
+        // The caller already said what to make; Seeduplex cannot act on an
+        // injected turn, so start V's existing background task for it here.
+        s.bridge.sendUserMessage(message);say(`好，我按你说的处理这 ${what}。`);mode='started';
+        void s.onToolCall({callId:'share-'+shareId,name:'delegate_to_v',args:{question:message},hostInitiated:true});
       }
-      audit({type:'share.forwarded',voiceSessionId:s.id,images,videos,spoken});
-      return {ok:true,spoken};
+      audit({type:'share.forwarded',voiceSessionId:s.id,images,videos,mode});
+      return {ok:true,mode};
     },
     async steer(id,{mode,text}){const s=sessions.get(id);if(!current(s)||!s.bridge)throw Error('语音会话已结束');
       if(mode==='append'||mode==='steer'&&!s.backend.snapshot()){s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(text);return {ok:true,forwardedToVoice:true,queued:false};}

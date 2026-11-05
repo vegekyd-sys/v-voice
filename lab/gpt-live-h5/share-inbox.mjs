@@ -1,9 +1,10 @@
-import {randomBytes,randomUUID} from 'node:crypto';
+import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {createReadStream,createWriteStream} from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {pipeline} from 'node:stream/promises';
 import {Transform} from 'node:stream';
+import {shareMedia,SHARE_PREVIEW_LIMIT} from '../realtime-direct-tools/native-runtime.mjs';
 
 // Media a caller shares from the phone's share sheet. The authenticated phone
 // entry uploads each file through its existing cookie; only the server-chosen
@@ -116,16 +117,70 @@ export function createShareInbox({directory,limits=SHARE_LIMITS,now=Date.now}) {
  * The destination is the entry's bound Feishu session, the same one its calls
  * use; words in the caption never select another target or extend authority.
  */
-export function startShareTask({gateway,sessionKey,message,text,createBackendDelegation,createTaskDelivery,audit=()=>{},onSettled=()=>{}}) {
+export function startShareTask({gateway,sessionKey,message,text,createBackendDelegation,createTaskDelivery,audit=()=>{},onSettled=()=>{},onResult=()=>{}}) {
   const ownerId='share-'+randomUUID(),callId='share-task-'+randomUUID();
   const taskDelivery=createTaskDelivery({gateway,sessionKey,ownerId,authorized:true,acceptedLine:'V 收到了你从手机分享的素材，正在处理，结果会发在这里。',audit});
   const backend=createBackendDelegation({gateway,sessionKey,ownerId,audit,taskDelivery});
   const callerTurn={text:text||'（分享了素材，没有附言）'};
   audit({type:'share.background-start',voiceSessionId:ownerId,callId});
   const work=backend.run({question:message,callId,callerTurn})
-    .then(result=>{audit({type:'share.background-complete',voiceSessionId:ownerId,callId,runId:result?.runId});return result;},
-      error=>{audit({type:'share.background-failed',voiceSessionId:ownerId,callId,error:error?.message});throw error;})
+    .then(result=>{audit({type:'share.background-complete',voiceSessionId:ownerId,callId,runId:result?.runId});onResult({status:'done',result:result?.result});return result;},
+      error=>{audit({type:'share.background-failed',voiceSessionId:ownerId,callId,error:error?.message});onResult({status:'failed'});throw error;})
     .finally(()=>{taskDelivery.dispose?.();onSettled();});
   void work.catch(()=>{});
   return {ownerId,callId,work};
+}
+
+/** Up to four caller-made JPEG thumbnails; anything else is dropped, never fetched. */
+export function normalizeSharePreviews(value,items) {
+  if(value===undefined)return [];
+  if(!Array.isArray(value)||value.length>SHARE_PREVIEW_LIMIT)throw new ShareRejected(400,'分享预览无效');
+  const media=shareMedia({count:items.length,previews:value});
+  if(!media||media.previews.length!==value.length)throw new ShareRejected(400,'分享预览无效');
+  for(const preview of media.previews){
+    const bytes=Buffer.from(preview.src.slice(preview.src.indexOf(',')+1),'base64');
+    if(!sniffShareType(Buffer.concat([bytes.subarray(0,12),Buffer.alloc(12)]),'image/jpeg'))throw new ShareRejected(400,'分享预览无效');
+  }
+  return media.previews;
+}
+
+export const SHARE_RECORD_LIMITS=Object.freeze({max:20,ttlMs:7*24*60*60*1000,staleRunningMs:20*60*1000,resultChars:12000});
+/**
+ * "最近分享": shares handled outside a call, per phone entry, on the server so
+ * they survive an app reinstall. Holds only the caller's caption, thumbnails,
+ * status and V's own result text.
+ */
+export function createShareRecords({directory,limits=SHARE_RECORD_LIMITS,now=Date.now}) {
+  let chain=Promise.resolve();
+  const file=owner=>path.join(directory,createHash('sha256').update(owner).digest('hex').slice(0,40)+'.json');
+  const read=async owner=>{
+    try{const rows=JSON.parse(await fs.readFile(file(owner),'utf8'));return Array.isArray(rows)?rows:[];}catch{return [];}
+  };
+  const write=async(owner,rows)=>{
+    await fs.mkdir(directory,{recursive:true,mode:0o700});
+    const target=file(owner),temporary=target+'.'+randomUUID()+'.tmp';
+    await fs.writeFile(temporary,JSON.stringify(rows),{mode:0o600});await fs.rename(temporary,target);
+  };
+  const fresh=rows=>rows.filter(row=>now()-row.createdAt<limits.ttlMs).slice(0,limits.max)
+    // A result that never came back after a restart is not "still working".
+    .map(row=>row.status==='running'&&now()-row.createdAt>limits.staleRunningMs?{...row,status:'unknown'}:row);
+  const locked=work=>{const next=chain.then(work,work);chain=next.catch(()=>{});return next;};
+  return {
+    async list(owner){return fresh(await read(owner));},
+    create(owner,{text,images,videos,previews}){
+      const row={id:randomUUID(),createdAt:now(),text,images,videos,previews,status:'running'};
+      return locked(async()=>{await write(owner,fresh([row,...await read(owner)]));return row;});
+    },
+    finish(owner,id,{status,result}){
+      return locked(async()=>{
+        const rows=await read(owner),row=rows.find(item=>item.id===id);if(!row)return null;
+        row.status=status;row.finishedAt=now();if(typeof result==='string')row.result=result.slice(0,limits.resultChars);
+        await write(owner,fresh(rows));return row;
+      });
+    },
+  };
+}
+/** What the phone shows: thumbnails, words and status; the result only on request. */
+export function sharePresentation(row){
+  return {id:row.id,createdAt:row.createdAt,text:row.text,images:row.images,videos:row.videos,previews:row.previews,status:row.status,hasResult:Boolean(row.result)};
 }
