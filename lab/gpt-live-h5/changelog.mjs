@@ -198,6 +198,16 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-robot-formal.20261105.1',date:'2026-11-05',
+    title:'小机器人回到国内节点，表情和点头更自然',
+    items:[
+      '小机器人改连上海的国内语音节点，不再绕道海外临时通道，唤醒后接通更快、更稳。',
+      '点头、摇头和表情一起随对话判断，动作改成一次小幅、先快后慢，不再像执行命令。',
+      '拍照只回答这一次拍到的画面，旧照片或挂断后迟到的结果会被丢弃。',
+      '需要刷入新固件；手机网页和 iOS 不受影响。',
+    ],
+  },
+  {
     version:'voice-calendar-dial.20261102.1',date:'2026-11-02',
     title:'个人入口能查飞书日历，拨号限制放宽',
     items:[

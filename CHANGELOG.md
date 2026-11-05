@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-05 — StackChan back on the Shanghai node; natural reactions
+
+- StackChan moves from the private V candidate (trycloudflare, Singapore) back to the Shanghai devices node. Over the international tunnel the xiaozhi handshake took about 9.6 s against the firmware's 10 s server-hello timeout, and some wakes dropped about 1 s after `ready`.
+- Merges vegekyd-sys/v-voice#135: the camera stays a foreground `look` tool, and photos must match the current call and capture. Nod and shake come from the shared reaction selector (`headGesture`) instead of backend robot tasks. H5 output is unchanged.
+- Firmware `1.5.3-v20261105` (v-stackchan PRs #1 and #2) is flashed separately. Device config and volume are unchanged.
+
 ## 2026-11-02 — Personal Feishu reads, dial limit, save to Photos
 
 - The personal main entry reads Feishu through the owner's verified identity. The shared private profile had been rejected by the identity guard, so its calendar and `lark_read` calls failed.
