@@ -37,6 +37,7 @@ names.push(...run('ls-files','skills').split('\n').filter(Boolean));
 names.push('lab/gpt-live-h5/model-options.mjs');
 names.push('lab/gpt-live-h5/dial-connection.mjs');
 names.push('lib/terminal-context.mjs','lib/device-requests.mjs','lab/gpt-live-h5/device-location.mjs','scripts/device-call.mjs','skills/device-use/SKILL.md');
+names.push('lab/robot/robot-semantics.mjs');
 const target=resolve(process.argv[2]??join(root,'artifacts',commit));
 await mkdir(dirname(target),{recursive:true});
 await mkdir(target,{recursive:false});

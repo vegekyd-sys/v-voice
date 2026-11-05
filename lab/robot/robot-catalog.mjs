@@ -14,7 +14,7 @@ const rows = [
  ['greet','开心打招呼','happy','grin','sparkles','sway',2200,2,'欢迎、开心','你好、早上好、见面、回家','悲伤倾诉',['listen-attentive']],
  ['listen-attentive','认真听','normal','small','none','lean_in',2000,0,'专注、真诚','用户在说、简短回应、需要耐心听','庆祝',[]],
  ['listen-curious','好奇歪头','wide','open','question','tilt_curious',2200,1,'好奇、疑问','用户提出有趣问题、想了解、需要澄清','已经确定的结论',['think-hmm']],
- ['nod-agree','点头认同','happy','smile','none','double_nod',1600,1,'认同、理解','同意、明白了、对、确认','用户难过时的坏消息',['explain']],
+ ['nod-agree','点头认同','happy','smile','none','nod',1600,1,'认同、理解','同意、明白了、对、确认','用户难过时的坏消息',['explain']],
  ['shake-no','摇摇头','normal','flat','none','shake',1600,1,'否定、温和不同意','不对、不是、不行、纠正误解','用户请求被正常完成',['explain']],
  ['think-hmm','想一想','look_up','flat','dots','look_up',2600,1,'思考、斟酌','开放问题、需要想想、比较可能性','确定的好消息',['idea']],
  ['think-hard','苦思冥想','squint','wavy','sweat','look_up_side',2800,1,'努力思考、有点为难','难题、信息矛盾、复杂规划','轻松闲聊',['idea','think-hmm']],

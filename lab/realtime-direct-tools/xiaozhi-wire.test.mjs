@@ -158,3 +158,11 @@ test('output gain lifts quiet speech and rounds off peaks without clipping', () 
   assert(s(3) < -24000 && s(3) >= -32767);
   assert.equal(applyOutputGain(pcm, 1), pcm, 'unity gain is a no-op');
 });
+
+test('bounded firmware RPC aborts promptly and ignores a late matching id',async()=>{
+ const h=harness();h.ws.emit('message',Buffer.from(JSON.stringify({type:'hello',audio_params:{format:'opus',sample_rate:16000}})),false);
+ const abort=new AbortController();const result=h.wire.callTool('self.robot.status',{requestId:'r'},{signal:abort.signal});
+ const rpc=h.ws.out.filter(e=>e.type==='mcp').at(-1).payload;abort.abort();await assert.rejects(result,/request_cancelled/);
+ h.ws.emit('message',Buffer.from(JSON.stringify({type:'mcp',payload:{id:rpc.id,result:{content:[{type:'text',text:'late'}]}}})),false);
+ h.ws.emit('close');
+});
