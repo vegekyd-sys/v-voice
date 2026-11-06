@@ -1670,3 +1670,37 @@ test('a poll still running never claims a result; a finished one the model ignor
  assert.equal(said().filter(x=>x==='小猫的视频做好了，你看看').length,1);
  assert(!said().some(x=>/要我|说说吗/u.test(x)),'no offer');
 });
+const idleTiming={...farewellTiming,idleHangup:{idleMs:120,maxCallMs:0}};
+const hostEnded=(f,reason)=>f.client.sent.find(e=>e.type==='end.accepted'&&e.callId.startsWith(`host-${reason}-`));
+test('a silent call gets a host farewell and closes after its playback drains, on any client',async t=>{
+ const f=await fixture(undefined,'seeduplex',idleTiming);t.after(()=>f.service.dispose());
+ assert(await until(()=>hostEnded(f,'silence')));const id=hostEnded(f,'silence').callId;
+ assert(f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'&&e.text.includes('先挂了')));
+ assert(f.audit.some(e=>e.type==='call.ending'&&e.stage==='host-silence'));assert.equal(f.client.readyState,1);
+ nativeFarewellAudio(f);assert(f.client.sent.some(e=>e.type==='end.after-playback'&&e.callId===id));
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:id})),false);
+ assert(await until(()=>f.client.readyState===3));
+});
+test('speech keeps the call alive and speaking during the idle farewell cancels it',async t=>{
+ const f=await fixture(undefined,'seeduplex',idleTiming);t.after(()=>f.service.dispose());
+ for(let i=0;i<4;i++){await delay(60);f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'我还在，'+i});}
+ assert.equal(hostEnded(f,'silence'),undefined,'user speech is activity');
+ assert(await until(()=>hostEnded(f,'silence')));
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'等一下，我还在'});
+ assert(await until(()=>f.client.sent.some(e=>e.type==='end.cancelled')));
+ await delay(200);assert.equal(f.client.readyState,1,'a cancelled host end never closes the call');
+});
+test('a running tool is not silence',async t=>{
+ const f=await fixture(()=>new Promise(()=>{}),'seeduplex',idleTiming);t.after(()=>f.service.dispose());
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'slow',name:'current_time',arguments:'{}'}]});
+ await delay(400);assert.equal(hostEnded(f,'silence'),undefined);
+});
+test('the call length cap ends the call with its own farewell',async t=>{
+ const f=await fixture(undefined,'grok',{...farewellTiming,idleHangup:{idleMs:0,maxCallMs:150}});t.after(()=>f.service.dispose());
+ assert(await until(()=>hostEnded(f,'max-duration')));
+});
+test('a client that never reports drained playback is still hung up after the farewell',async t=>{
+ const f=await fixture(undefined,'seeduplex',{nativeFarewellDelayMs:10,nativeFarewellTimeoutMs:20,idleHangup:{idleMs:60,maxCallMs:0}});t.after(()=>f.service.dispose());
+ assert(await until(()=>hostEnded(f,'silence')));nativeFarewellAudio(f);
+ assert(await until(()=>f.client.readyState===3,35000));
+});
