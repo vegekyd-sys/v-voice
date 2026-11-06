@@ -37,6 +37,8 @@ private func fixture() throws -> [String: Any] {
         ["op":"surface.notice","text":"unsafe action","action":"pay"],
         ["op":"audio.append","audio":"AA==","sampleRate":24000],
         ["op":"conversation.row","row":["id":UUID().uuidString,"role":"system","text":"fake","complete":true]],
+        ["op":"conversation.row","row":["id":UUID().uuidString,"role":"user","text":"x","complete":true,"media":["count":1,"previews":[["kind":"image","src":"https://cdn.example/a.jpg"]]]]],
+        ["op":"conversation.row","row":["id":UUID().uuidString,"role":"user","text":"x","complete":true,"media":["count":20,"previews":[]]]],
     ] {
         var invalid = value; invalid["effects"] = (value["effects"] as! [[String: Any]]) + [effect]
         #expect(throws: (any Error).self) { try NativeRuntimeFrame.decode(invalid, owner: "native-contract-fixture", after: 0) }
@@ -63,4 +65,17 @@ private func fixture() throws -> [String: Any] {
     #expect(VoiceModel(rawValue: "../../credentials") == nil)
     let model = try JSONDecoder().decode(VoiceModel.self, from: Data("\"future-relay-model\"".utf8))
     #expect(String(decoding: try JSONEncoder().encode(model), as: UTF8.self) == "\"future-relay-model\"")
+}
+
+@Test func sharedMediaRowsKeepInlineThumbnailsOnly() throws {
+    let value = (try fixture()["frames"] as! [[String: Any]])[0]
+    let id = UUID()
+    var frame = value
+    frame["effects"] = [["op":"conversation.row","row":["id":id.uuidString,"role":"user","text":"做成视频","complete":true,
+                                                         "media":["count":3,"previews":[["kind":"image","src":"data:image/jpeg;base64,/9j/4AAQ"],["kind":"video","src":"data:image/jpeg;base64,/9j/4AAQ"]]]]]]
+    let decoded = try NativeRuntimeFrame.decode(frame, owner: "native-contract-fixture", after: 0)
+    var conversation = ConversationPresentation()
+    conversation.project(try #require(decoded.effects.first?.row))
+    #expect(conversation.turns.last?.media?.count == 3)
+    #expect(conversation.turns.last?.media?.previews.map(\.kind) == ["image", "video"])
 }

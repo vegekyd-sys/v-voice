@@ -29,6 +29,9 @@ import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
 import {createTaskDelivery} from '../realtime-direct-tools/task-delivery.mjs';
 import {createVoiceMediaCli} from '../realtime-direct-tools/media-cli.mjs';
+import {createBackendDelegation} from '../realtime-direct-tools/backend.mjs';
+import {SHARE_PREVIEW_LIMIT,SHARE_PREVIEW_CHARS} from '../realtime-direct-tools/native-runtime.mjs';
+import {createShareInbox,createShareRecords,normalizeSharePreviews,normalizeShareText,sharePresentation,shareMessage,startShareTask,ShareRejected} from './share-inbox.mjs';
 import {createVoiceLarkReader,personalLarkReader} from '../realtime-direct-tools/lark-readonly.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
 import {VOICE_CONTEXT_HISTORY_REQUEST,voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
@@ -39,7 +42,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 // Dialing is how a known caller retries; only anonymous callers keep the tight limit.
 export const callAttemptLimit = binding => binding.permissionProfile === 'unidentified' ? 6 : 30;
 
-export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, enableGrok = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, enableGrok = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '', shareDirectory = null }) {
   let agentControl = null;
   if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
   if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
@@ -110,6 +113,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     return {...{...(phoneLogin?.confirmation&&parseFeishuConversationPhone(binding.id)?{confirmationAvailable:true}:{}),accessContext:voiceAccessContext(binding,{publicEnabled:iosPublicEntry,publicTools}),...(iosPublicEntry&&guestAccess?{publicHref:`${basePath}/?phone=public`}:{}),...(remembered?{returnToAccountHref:`${basePath}/feishu?phone=${encodeURIComponent(remembered)}`}:{})},...(binding.permissionProfile==='unidentified'?{unidentified:true,accountLoginHref:binding.id==='public'?null:phoneLogin?.confirmation?`${basePath}/feishu/confirm?phone=${encodeURIComponent(binding.id)}`:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&oauth=1`,defaultModel:guestModel(),iosBindingAvailable:hosted,speakerRouting:false,comparisonAvailable:false,
       models:phoneModels().map(m=>m.id==='gpt-live'?{...m,available:false}:m)}:binding.callerIdentity?{accountLabel:binding.callerIdentity.displayName||'飞书账号已连接',accountLoginHref:phoneLogin?.confirmation?`${basePath}/feishu/confirm?phone=${encodeURIComponent(binding.id)}`:`${basePath}/feishu?phone=${encodeURIComponent(binding.id)}&retry=1`}:{}),...(binding.cliManaged?{iosBindingAvailable:false,accountLoginHref:null,confirmationAvailable:false}:{})};
   };
+  // Share to V (iOS share sheet). Off unless the deployment names a private directory.
+  const shareInbox=shareDirectory?createShareInbox({directory:join(shareDirectory,'media')}):null;
+  const shareRecords=shareDirectory?createShareRecords({directory:join(shareDirectory,'records')}):null;
+  // Records belong to the phone entry (its conversation), not to one cookie.
+  const shareRecordOwner=binding=>`${binding.id}|${binding.sessionKey}`;
+  const shareTasks=new Map();
   const callReports=createConversationCalls({gateway,directory:callReportsDirectory,publicOrigin,basePath,summarize:callSummarize,audit:callControlAudit});
   const accessors = new Map();
   const entryAccess = binding => {
@@ -381,7 +390,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   const dialSockets = new WebSocketServer({noServer:true,maxPayload:70000,perMessageDeflate:false});
   const server = createServer(async (req, res) => {
     res.setHeader("referrer-policy", "no-referrer"); res.setHeader("x-content-type-options", "nosniff");
-    try {
+    let pathname = ""; try {
       if(stopping)return json(res,503,{error:"服务正在收尾，请稍后重新拨号"});
       const host = req.headers.host ?? "";
       if(req.method==='POST'&&new URL(req.url,'http://device.invalid').pathname===`${basePath}/internal/device-request`){
@@ -412,7 +421,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       const url = new URL(req.url, requestOrigin);
       if (basePath && url.pathname === basePath && req.method === "GET") { res.writeHead(308, { location: `${basePath}/${url.search}`, "cache-control": "no-store" }); res.end(); return; }
       if (basePath && !url.pathname.startsWith(`${basePath}/`)) return json(res, 404, { error: "没有这个入口" });
-      let pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
+      pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
+      // Capability URLs Makaron fetches as references: no cookie, unguessable, short-lived.
+      if(shareInbox&&['GET','HEAD'].includes(req.method)&&pathname.startsWith('/share-media/'))return shareInbox.serve(req,res,pathname.slice('/share-media/'.length));
       if(req.method==='GET'&&/^\/invite\/[a-f0-9]{32}$/u.test(pathname)){
         const location=agentControl?.invitation(pathname.slice('/invite/'.length));
         if(!location)return json(res,410,{error:'这个邀请已撤销、过期或不存在。'});
@@ -705,9 +716,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/tv-aec/webrtcaec3-0.3.0.") ? "public, max-age=31536000, immutable" : bundled && url.searchParams.get("v") === bundled.revision ? "private, max-age=31536000, immutable" : pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
       }
       if(binding.permissionProfile==='unidentified'&&!new Set(['/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke',...(binding.cliManaged?['/api/access']:[])]).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
-      const readBody = async () => {
+      const readBody = async (limit = 70000) => {
         const chunks = []; let size = 0;
-        for await (const chunk of req) { size += chunk.length; if (size > 70000) throw new Error("Request too large"); chunks.push(chunk); }
+        for await (const chunk of req) { size += chunk.length; if (size > limit) throw new Error("Request too large"); chunks.push(chunk); }
         return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
       };
       const ip = String(req.headers["cf-connecting-ip"] ?? req.socket.remoteAddress ?? "unknown").slice(0, 128);
@@ -809,8 +820,50 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const keepalive = setInterval(() => res.write(": keepalive\n\n"), 15000); keepalive.unref();
         res.on("close", () => { clearInterval(keepalive); context.listeners.delete(res); }); return;
       }
+      // Share errors say scope:'share': the app shows server text only from these routes,
+      // never an older server's call errors for a route it does not have.
+      const shareError=(res,status,error)=>json(res,status,{error,scope:'share'});
+      if(req.method==='POST'&&pathname==='/api/share/media'){
+        if(!shareInbox)return shareError(res,503,'分享给 V 尚未启用');
+        if(!allow(`share-media:${ip}`,60))return shareError(res,429,'分享得太频繁，请稍后再试');
+        context.shareOwner??=randomUUID();
+        try{return json(res,200,await shareInbox.receive(req,{owner:context.shareOwner,contentType:req.headers['content-type'],publicBase:`${hosted?publicOrigin:requestOrigin}${basePath}/`}));}
+        catch(error){if(error instanceof ShareRejected)return shareError(res,error.status,error.message);throw error;}
+      }
+      if(req.method==='GET'&&pathname==='/api/shares'){
+        if(!shareRecords)return json(res,200,{shares:[]});
+        return json(res,200,{shares:(await shareRecords.list(shareRecordOwner(binding))).map(sharePresentation)});
+      }
+      if(req.method==='GET'&&/^\/api\/shares\/[0-9a-f-]{36}$/u.test(pathname)){
+        const row=shareRecords&&(await shareRecords.list(shareRecordOwner(binding))).find(item=>item.id===pathname.slice('/api/shares/'.length));
+        return row?.result?json(res,200,{id:row.id,result:row.result}):shareError(res,404,'这条分享还没有结果');
+      }
       if (req.method !== "POST") return json(res, 404, { error: "没有这个入口" });
-      const params = await readBody();
+      // /api/share carries up to four inline thumbnails, more than other calls send.
+      const params = await readBody(pathname==='/api/share'?SHARE_PREVIEW_LIMIT*SHARE_PREVIEW_CHARS+16000:70000);
+      if(pathname==='/api/share'){
+        if(!shareInbox)return shareError(res,503,'分享给 V 尚未启用');
+        if(Object.keys(params).some(key=>!['media','text','previews'].includes(key)))return shareError(res,400,'分享请求包含不支持的参数');
+        let text,items,previews;
+        try{text=normalizeShareText(params.text);if(!Array.isArray(params.media))throw new ShareRejected(400,'分享素材无效');previews=normalizeSharePreviews(params.previews,params.media);items=await shareInbox.claim(context.shareOwner,params.media);}
+        catch(error){if(error instanceof ShareRejected)return shareError(res,error.status,error.message);throw error;}
+        const message=shareMessage({text,items,ttlMs:shareInbox.limits.ttlMs});
+        const counts={images:items.filter(item=>item.kind==='image').length,videos:items.filter(item=>item.kind==='video').length};
+        // The server's own owner, never a client-supplied voiceSessionId.
+        const active=context.active;
+        if(active?.direct&&directVoice?.share?.(active.reservation.voiceSessionId,{message,text,media:{count:items.length,previews},...counts})?.ok)
+          return json(res,200,{delivered:'call',voiceSessionId:active.reservation.voiceSessionId,...counts});
+        if(!/^agent:[^:]+:feishu:(?:group|direct|dm):(?:oc_|ou_)[A-Za-z0-9]+$/u.test(binding.sessionKey??''))return shareError(res,409,'当前入口没有可交付结果的飞书会话，请在通话中分享');
+        const owner=context.shareOwner,running=shareTasks.get(owner)??0;
+        if(running>=2)return shareError(res,429,'V 还在处理你之前分享的素材，请稍后再试');
+        shareTasks.set(owner,running+1);
+        const recordOwner=shareRecordOwner(binding);
+        const record=await shareRecords.create(recordOwner,{text,previews,...counts});
+        startShareTask({gateway:binding.gateway??gateway,sessionKey:binding.sessionKey,message,text,createBackendDelegation,createTaskDelivery,audit:callControlAudit,
+          onResult:value=>void shareRecords.finish(recordOwner,record.id,value).catch(()=>{}),
+          onSettled:()=>{const left=(shareTasks.get(owner)??1)-1;if(left>0)shareTasks.set(owner,left);else shareTasks.delete(owner);}});
+        return json(res,202,{delivered:'background',share:sharePresentation(record),...counts});
+      }
       if (pathname === "/api/session") {
         const result=await reservePhoneCall({context,binding,params,req,ip});
         return json(res,result.status,result.body);
@@ -901,8 +954,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (pathname === "/api/close") { await close(context); return json(res, 200, { ok: true }); }
       return json(res, 404, { error: "没有这个入口" });
     } catch (error) {
+      const status = error.message === "Request too large" ? 413 : 500;
+      if (pathname.startsWith("/api/share")) return json(res, status, { error: status === 413 ? "这次分享的内容太大，请少选几个再试。" : "V 暂时没有收下这次分享，稍后会自动重试。", scope: "share" });
       const message = /requires an active|No active|no active/iu.test(error.message) ? "目前没有正在运行的后台任务，可以直接对 V 说话。" : "这次连接没有完成，请重新开始通话。";
-      json(res, error.message === "Request too large" ? 413 : 500, { error: message });
+      json(res, status, { error: message });
     }
   });
   const timer = setInterval(() => {
@@ -1181,6 +1236,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       personalReply: {replySync:!!process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID,accountId:process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID},
       conversationEntries: process.env.VOICE_ENTRIES_FILE ? JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,"utf8")) : [],
       callReportsDirectory:process.env.VOICE_CALL_REPORTS_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-call-reports'),
+      // Share to V stays off until a release turns it on and records the TTL/visibility decision.
+      shareDirectory:process.env.VOICE_SHARE_TO_V==='1'?process.env.VOICE_SHARE_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-share-media'):null,
       iosAppDownloadUrl:process.env.VOICE_IOS_APP_DOWNLOAD_URL,
       iosPublicEntry:process.env.VOICE_IOS_PUBLIC_ENTRY==='1',
       publicTools:process.env.VOICE_PUBLIC_TOOLS!=='0',

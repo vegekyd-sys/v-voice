@@ -23,26 +23,35 @@ export function mediaArgv(command) {
   if(out.shift()!=='makaron')throw Error('此执行器只支持 makaron 创作命令');
   return out;
 }
+const MAX_VIDEO_IMAGES=4;
 const specs={edit:['image-model','aspect','image','ref'],create:['image','title'],'video create':['video-model','duration','video-resolution','script','image'], 'video status':[]};
 const https=value=>{try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password;}catch{return false;}};
 export function validateMediaArgv(argv) {
   const verb=argv[0]==='video'?argv.slice(0,2).join(' '):argv[0];
   if(!Object.hasOwn(specs,verb))throw Error('仅支持图片生成/保存、视频生成/查询');
-  const flags={},positionals=[];
+  const flags={},positionals=[],images=[];
   for(let i=verb.startsWith('video ')?2:1;i<argv.length;i++){
-    const v=argv[i];if(v.startsWith('-')){const key=v.slice(2);if(!v.startsWith('--')||!specs[verb].includes(key)||Object.hasOwn(flags,key)||!argv[i+1]||argv[i+1].startsWith('--'))throw Error('不支持的创作选项');flags[key]=argv[++i];}else positionals.push(v);
+    const v=argv[i];if(v.startsWith('-')){const key=v.slice(2);
+      // One video may use several reference images (for example a phone share
+      // of a few photos); every other option, and image options elsewhere, stay single.
+      const repeatable=verb==='video create'&&key==='image'&&images.length<MAX_VIDEO_IMAGES;
+      if(!v.startsWith('--')||!specs[verb].includes(key)||Object.hasOwn(flags,key)&&!repeatable||!argv[i+1]||argv[i+1].startsWith('--'))throw Error('不支持的创作选项');
+      flags[key]??=argv[i+1];if(key==='image')images.push(argv[i+1]);i++;}else positionals.push(v);
   }
+  if(images.length>1)flags.images=images;
   if(positionals.length!==(['edit','video status'].includes(verb)?1:0))throw Error('创作参数不完整');
   if(verb==='edit'&&flags['image-model']!=='wan2.7-image'||verb==='video create'&&flags['video-model']!=='fal-h3-max')throw Error('必须使用本次指定的创作模型');
   if(flags.aspect&&!/^\d{1,2}:\d{1,2}$/u.test(flags.aspect))throw Error('无效画幅');
   if(verb==='video create'&&(!flags.script||!/^([5-9]|1[0-5])$/u.test(flags.duration??'5')||flags['video-resolution']&&flags['video-resolution']!=='768p'))throw Error('无效视频参数');
   if(verb==='video create'){
     const references=[...flags.script.matchAll(/<<<media_(\d+)>>>/gu)].map(m=>m[1]);
+    const expected=images.map((_,index)=>String(index+1));
     // The image is what was asked for; a forgotten marker should not cost a turn.
-    if(flags.image&&!references.length){flags.script='<<<media_1>>> '+flags.script;argv[argv.indexOf('--script')+1]=flags.script;}
-    else if(flags.image&&!references.includes('1')||references.some(id=>!flags.image||id!=='1'))throw Error('本地校验未提交、未扣费：带 --image 的脚本必须用 <<<media_1>>> 引用图片；无图片时不写媒体标记。请修正参数后提交。');
+    if(images.length&&!references.length){flags.script=expected.map(id=>`<<<media_${id}>>>`).join(' ')+' '+flags.script;argv[argv.indexOf('--script')+1]=flags.script;}
+    else if(expected.some(id=>!references.includes(id))||references.some(id=>!expected.includes(id)))throw Error(images.length>1?`本地校验未提交、未扣费：带 ${images.length} 个 --image 的脚本必须依次用 <<<media_1>>> 到 <<<media_${images.length}>>> 引用每张图片。请修正参数后提交。`:'本地校验未提交、未扣费：带 --image 的脚本必须用 <<<media_1>>> 引用图片；无图片时不写媒体标记。请修正参数后提交。');
   }
   for(const key of ['image','ref'])if(flags[key]&&verb!=='create'&&!https(flags[key]))throw Error('参考图必须是 HTTPS 媒体链接');
+  if(verb==='video create'&&images.some(value=>!https(value)))throw Error('参考图必须是 HTTPS 媒体链接');
   if(verb==='create'&&!flags.image)throw Error('只能保存本通话已生成图片');
   if(verb==='video status'&&!/^[\w:-]{1,200}$/u.test(positionals[0]))throw Error('无效任务 ID');
   return {verb,flags,positionals};

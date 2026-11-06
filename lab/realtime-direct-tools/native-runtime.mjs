@@ -24,6 +24,17 @@ export const DEFAULT_NATIVE_RUNTIME_POLICY = Object.freeze({
 const text=(value,limit=8000)=>typeof value==='string'?Array.from(value).slice(0,limit).join(''):'';
 const speakerID=id=>String(id).startsWith('speaker:')?String(id):'speaker:'+id;
 const plain=(value,limit)=>text(String(value).replace(/https?:\/\/\S+/gu,'链接').replace(/[#*_`\[\]<>]/gu,'').replace(/\s+/gu,' ').trim(),limit);
+// Shared-media thumbnails are small inline JPEGs from the caller's own phone;
+// never a URL, so a row cannot make the app fetch anything.
+export const SHARE_PREVIEW_LIMIT=4, SHARE_PREVIEW_CHARS=24000;
+export function shareMedia(value){
+  if(!value||typeof value!=='object')return null;
+  const count=Number.isSafeInteger(value.count)?Math.max(0,Math.min(9,value.count)):0;
+  const previews=(Array.isArray(value.previews)?value.previews:[]).slice(0,SHARE_PREVIEW_LIMIT)
+    .filter(p=>['image','video'].includes(p?.kind)&&typeof p.src==='string'&&p.src.length<=SHARE_PREVIEW_CHARS&&/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/u.test(p.src))
+    .map(p=>({kind:p.kind,src:p.src}));
+  return count?{count:Math.max(count,previews.length),previews}:null;
+}
 const hasMedia=value=>/!\[[^\]]*\]\([^)]*\)|https?:\/\/[^\s<>]+\.(?:mp4|webm|mov|png|jpe?g|webp|gif|avif)(?:[?#][^\s<>]*)?/iu.test(value);
 export function documentPresentation(id,body,serverOwned=true){
   const value=text(body,60000), lines=value.split('\n').map(s=>s.trim());
@@ -39,7 +50,8 @@ export function createNativeRuntime({voiceSessionId,duplex=false,assisted=false,
   let revision=0, listenOnly=false, lastSpeakerId=null;
   const rows=[], people=[], documents=new Map();
   const descriptor={...structuredClone(policy), playback:{replaceResponse:duplex, localPause:assisted}};
-  const trim=()=>{while(rows.length>80||rows.reduce((n,row)=>n+row.text.length,0)>64000)rows.shift();};
+  const size=row=>row.text.length+(row.media?.previews.reduce((n,p)=>n+p.src.length,0)??0);
+  const trim=()=>{while(rows.length>80||rows.reduce((n,row)=>n+size(row),0)>160000)rows.shift();};
   const row=(role,key)=>{
     let r=key?rows.find(r=>r.key===key):rows.findLast(r=>r.role===role&&!r.complete&&!r.speakerId);
     if(!r){r={id:randomUUID(),key,role,text:'',complete:false};rows.push(r);}return r;
@@ -89,6 +101,12 @@ export function createNativeRuntime({voiceSessionId,duplex=false,assisted=false,
           r.documentId='reply-'+r.id;push('conversation.row',{row:{...r}});push('document.present',{document:documentPresentation(r.documentId,r.text,false)});
         }
         break;
+      }
+      case 'user.share':{
+        // The caller's share is their own turn in the conversation.
+        const media=shareMedia(value.media);if(!media||typeof value.shareId!=='string')break;
+        const r=row('user','share:'+text(value.shareId,80));Object.assign(r,{text:text(value.text,500),complete:true,media});
+        push('conversation.row',{row:{...r}});trim();break;
       }
       case 'tool.call':case 'tool.progress':
         push('task.upsert',{id:text(value.callId,160),activity:text(value.activity??'background',80),stage:value.stage?plain(value.stage,28):value.type==='tool.call'?(descriptor.taskLabels?.[value.activity]??descriptor.taskLabels?.background??TASK_LABELS.background):null,step:value.step});

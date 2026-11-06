@@ -66,6 +66,14 @@ assert any('SessionStarting' in x for x in protocols),protocols
 signed=subprocess.run(['codesign','--verify','--deep','--strict',str(a.app)],capture_output=True).returncode==0
 entitlements=plistlib.loads(subprocess.check_output(['codesign','-d','--entitlements',':-',str(a.app)],stderr=subprocess.DEVNULL)) if signed else {}
 if signed: assert not entitlements.get('com.apple.developer.siri'), 'Island recording does not use the Siri call handoff'
-provisioned=(a.app/'embedded.mobileprovision').is_file() and (extension/'embedded.mobileprovision').is_file()
+share=a.app/'PlugIns/VVoiceShare.appex';assert share.is_dir(), 'Share to V extension missing'
+share_info=plistlib.loads((share/'Info.plist').read_bytes())
+assert share_info['CFBundleIdentifier']=='com.versa.vvoice.share' and share_info['CFBundleVersion']==info['CFBundleVersion']
+assert share_info['NSExtension']['NSExtensionPointIdentifier']=='com.apple.share-services'
+if signed:
+    share_entitlements=plistlib.loads(subprocess.check_output(['codesign','-d','--entitlements',':-',str(share)],stderr=subprocess.DEVNULL))
+    group='group.com.versa.vvoice'
+    assert group in entitlements.get('com.apple.security.application-groups',[]) and group in share_entitlements.get('com.apple.security.application-groups',[]), 'App and Share extension must share the App Group'
+provisioned=all((x/'embedded.mobileprovision').is_file() for x in [a.app,extension,share])
 assert (signed and provisioned) or a.allow_unsigned, 'Signing/profiles missing; do not report this bundle as installable'
-print(json.dumps({'version':info['CFBundleShortVersionString'],'build':info['CFBundleVersion'],'architecture':architecture,'intents':list(actions),'nativeGPTWebRTC':True,'liveActivityExtension':True,'releaseTLS':True,'debugFixtureAbsent':True,'signed':signed,'profilesPresent':provisioned},ensure_ascii=False,indent=2))
+print(json.dumps({'version':info['CFBundleShortVersionString'],'build':info['CFBundleVersion'],'architecture':architecture,'intents':list(actions),'nativeGPTWebRTC':True,'liveActivityExtension':True,'shareExtension':True,'releaseTLS':True,'debugFixtureAbsent':True,'signed':signed,'profilesPresent':provisioned},ensure_ascii=False,indent=2))

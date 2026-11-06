@@ -96,12 +96,61 @@ function StatusLine({status, onTask, actions}) {
   );
 }
 
+/** Thumbnails of media the caller shared; inline JPEGs only, never fetched. */
+function SharedMedia({media, size = 'turn'}) {
+  const previews = (media?.previews ?? []).filter(p => typeof p?.src === 'string' && p.src.startsWith('data:image/jpeg;base64,')).slice(0, 4);
+  const extra = Math.max(0, (media?.count ?? previews.length) - previews.length);
+  if (!previews.length && !extra) return null;
+  return (
+    <div className={`shared-media ${size}`} data-count={Math.min(4, previews.length + (extra ? 1 : 0))}>
+      {previews.map((p, i) => (
+        <span key={i} className="shared-thumb" data-kind={p.kind}>
+          <img src={p.src} alt={p.kind === 'video' ? '分享的视频' : '分享的图片'} />
+          {i === previews.length - 1 && extra > 0 && <span className="shared-more">+{extra}</span>}
+        </span>
+      ))}
+      {!previews.length && <span className="shared-thumb empty"><span className="shared-more">{extra}</span></span>}
+    </div>
+  );
+}
+const SHARE_STATUS = {uploading: '正在交给 V', running: 'V 正在处理', done: '已完成 · 结果已发到飞书', failed: '没有完成', unknown: '结果未确认，可到飞书查看'};
+const shareSummary = share => [share.images ? `${share.images} 张图片` : '', share.videos ? `${share.videos} 段视频` : ''].filter(Boolean).join('、') || '素材';
+/** 最近分享: shares handed to V outside a call. Shown only when the host supplies them. */
+function RecentShares({shares, onOpen}) {
+  if (!shares?.length) return null;
+  return (
+    <section className="recent-shares" aria-label="最近分享">
+      <h2>最近分享</h2>
+      <ul>
+        {shares.slice(0, 1).map(share => {
+          const open = share.hasResult && onOpen;
+          const count = (share.images ?? 0) + (share.videos ?? 0);
+          const cover = (share.previews ?? []).find(p => typeof p?.src === 'string' && p.src.startsWith('data:image/jpeg;base64,'));
+          const body = (
+            <>
+              <span className="share-cover" data-kind={cover?.kind}>
+                {cover && <img src={cover.src} alt="" />}
+                {count > 1 && <span className="share-count">{count}</span>}
+              </span>
+              <span className="share-copy">
+                <span className="share-text">{share.text || `分享了 ${shareSummary(share)}`}</span>
+                <span className="share-status" data-status={share.status}>{SHARE_STATUS[share.status] ?? ''}</span>
+              </span>
+            </>
+          );
+          return <li key={share.id}>{open ? <button type="button" onClick={() => onOpen(share.id)} aria-label={`查看结果：${share.text || shareSummary(share)}`}>{body}</button> : <div>{body}</div>}</li>;
+        })}
+      </ul>
+    </section>
+  );
+}
+
 function Turn({row, options, quiet}) {
   const text = useRef(null);
   const assistant = row.role === 'assistant';
   useLayoutEffect(() => {
     if (assistant) options.renderAssistant(text.current, row);
-    else text.current.textContent = row.text;
+    else text.current.textContent = row.text || (row.media ? `分享了 ${row.media.count} 个素材` : '');
   }, [row.text, row.complete, row.key]);
   useEffect(() => { if (row.document && !quiet) options.onDocumentShown?.(row.callId); }, [row.document, row.callId, quiet]);
   const label = row.speaker + (row.listenOnly ? ' · 仅倾听' : '');
@@ -110,6 +159,7 @@ function Turn({row, options, quiet}) {
       data-tone={row.speakerId ? row.speakerTone : undefined} data-listen-only={row.listenOnly ? 'true' : undefined}
       data-document={row.document ? 'true' : undefined}>
       <span className="turn-who">{label}</span>
+      {!assistant && row.media && <SharedMedia media={row.media} />}
       <div className="turn-text" ref={text} />
     </article>
   );
@@ -442,7 +492,9 @@ function CallPage({view, actions, options}) {
   const wide = viewport.width >= 701;
   const width = Math.min(viewport.width, 560), {height} = viewport;
   const compact = inCall && !wide && (overflow || height < 560 || state.composer.open && height < 700);
-  const size = !inCall ? Math.min(width * .72, height * .4, 300)
+  // 最近分享 takes the space under the portrait; keep the home inside one screen.
+  const sharing = !inCall && state.call === 'idle' && state.shares?.length > 0;
+  const size = !inCall ? (sharing ? Math.min(width * .6, height * .3, 240) : Math.min(width * .72, height * .4, 300))
     : wide ? Math.min(viewport.width * .26, height * .48, 360)
     : history ? 52 : compact ? Math.min(width * .38, height * .2, 150) : Math.min(width * .62, height * .3, 250);
   const openTasks = working ? () => setSheet(true) : undefined;
@@ -491,6 +543,7 @@ function CallPage({view, actions, options}) {
                   {state.nativeSettings&&!state.accessContext&&state.entrySummary&&<span className="access-summary">{state.entrySummary}</span>}
                   {state.accountLoginHref&&!state.accountLabel&&(state.confirmationAvailable?<button type="button" className="home-note identity-connect" onClick={actions.connectIdentity}>连接飞书身份</button>:<a className="home-note" href={state.accountLoginHref}>连接飞书账号</a>)}
                   {state.homeNote && <p className="home-note" data-tone={state.homeNoteTone} role="status">{state.homeNote}</p>}
+                  <RecentShares shares={state.shares} onOpen={actions.openShare} />
                   </>}
                 </>
               )}

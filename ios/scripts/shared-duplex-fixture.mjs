@@ -6,8 +6,13 @@ import {WebSocketServer} from 'ws';
 import {createLiveH5Server} from '../../lab/gpt-live-h5/server.mjs';
 import {DEFAULT_NATIVE_RUNTIME_POLICY} from '../../lab/realtime-direct-tools/native-runtime.mjs';
 import {createDirectVoiceService} from '../../lab/realtime-direct-tools/session.mjs';
+import {mkdtempSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 const port=Number(process.env.VVOICE_SHARED_FIXTURE_PORT??29847);
 let fastDials=0,statusRequests=0,httpSessionRequests=0,httpCloseRequests=0,httpCloseStatuses=[],closeDelayMS=0;
+// Share to V: what reached the call or the background path, without media bytes.
+let shareCallMessages=[],shareSpoken=[],shareTasks=[],shareFeishu=[],shareMediaFetches=[];
 let peer,inputFrames=0,outputPackets=0,lookupCalls=0,sessionRequests=[],playbackBusy=false,clears=0;
 const emit=value=>{if(!peer||peer.readyState!==1)throw Error('Fixture relay is not connected');peer.emit('message',Buffer.from(JSON.stringify(value)),false);};
 const tone=(seconds,hz)=>{const n=Math.round(24000*seconds),b=Buffer.alloc(n*4);for(let i=0;i<n;i++)b.writeFloatLE(.15*Math.sin(i*2*Math.PI*hz/24000),i*4);return b.toString('base64');};
@@ -17,37 +22,51 @@ const audio=(id,delta)=>{outputPackets++;emit({type:'response.output_audio.delta
 const done=id=>emit({type:'response.output_audio.done',response_id:id});
 class Upstream extends EventEmitter{
  constructor(){super();this.readyState=1;peer=this;setImmediate(()=>this.emit('open'));}
- send(raw){const value=JSON.parse(raw);if(value.type==='session.create')queueMicrotask(()=>emit({type:'session.created',session:{id:'local-duplex'}}));if(value.type==='input_audio_buffer.append')inputFrames++;}
+ send(raw){const value=JSON.parse(raw);
+  for(const item of value.type==='conversation.item.create'?value.items??[]:[])for(const part of item.content??[])if(/【手机分享】/u.test(part.text??''))shareCallMessages.push(part.text);
+  if(value.type==='speech_text_buffer.commit'&&/分享|按你说的/u.test(value.text??''))shareSpoken.push(value.text);
+ if(value.type==='session.create')queueMicrotask(()=>emit({type:'session.created',session:{id:'local-duplex'}}));if(value.type==='input_audio_buffer.append')inputFrames++;}
  close(){if(this.readyState===3)return;this.readyState=3;this.emit('close');}
 }
 const gateway=Object.assign(new EventEmitter(),{ready:true,async request(method,args){
  if(method==='tools.catalog')return {groups:[{tools:[{id:'web_search'},{id:'memory_search'}]}]};
  if(method==='tools.invoke'){lookupCalls++;return {ok:true,output:{answer:'local fixture result'}};}
+ // No Agent, Makaron or Feishu: the share's background task is answered here.
+ if(method==='voice.product.task.start'){shareTasks.push({sessionKey:args.sessionKey,voiceSessionId:args.voiceSessionId,question:args.question});return {taskId:'share-task-'+shareTasks.length,runId:'share-run-'+shareTasks.length};}
+ if(method==='voice.product.task.read')return {taskId:args.taskId,status:'ok',runId:args.taskId.replace('task','run'),runs:[args.taskId.replace('task','run')],text:'本地 fixture：已收到分享素材，未调用 Makaron。'};
+ if(method==='send'){shareFeishu.push(args.message);return {messageId:'om-fixture-'+shareFeishu.length};}
  return {ok:true};
 }});
 const routing={snapshot:()=>({}),reserve:()=>null,has:()=>false,lazyNative:()=>false,assistant(){},close(){},dispose(){}};
 const runtimePolicy=structuredClone(DEFAULT_NATIVE_RUNTIME_POLICY);
 const directVoice=createDirectVoiceService({nativeRuntimePolicy:runtimePolicy,gateway,wsModule:{WebSocket:Upstream,WebSocketServer},apiKeys:{seeduplex:'local-fixture-only'},speakerRouting:routing,nativePlaybackPolicy:'assisted',loadContext:async()=>'',audit:e=>{if(e.type==='client.playback-state')playbackBusy=e.speaking;if(e.type==='audio.clear')clears++;}});
 const reserve=directVoice.reserve;directVoice.reserve=async args=>{sessionRequests.push({model:args.model,inputPolicy:args.inputPolicy,nativeRuntimeVersion:args.nativeRuntimeVersion});return reserve(args);};
-const bridge=createLiveH5Server({gateway,directVoice,speakerRouting:routing,phoneInputPolicy:'native',basePath:'/voice',defaultModel:'seeduplex',avatarEvaluate:async()=>({picture:'listen-5',continuations:[]})});
+const bridge=createLiveH5Server({shareDirectory:mkdtempSync(join(tmpdir(),'vvoice-share-fixture-')),gateway,directVoice,speakerRouting:routing,phoneInputPolicy:'native',basePath:'/voice',defaultModel:'seeduplex',avatarEvaluate:async()=>({picture:'listen-5',continuations:[]})});
 // The native debug binding omits a nonstandard Origin port. Normalize only
 // this loopback fixture; the production origin checks remain unchanged.
-const normalize=req=>{if(req.headers.host===`127.0.0.1:${port}`&&req.headers.origin==='http://127.0.0.1')req.headers.origin=`http://127.0.0.1:${port}`;};
+// The app's --local-voice-fixture binding carries a fixed debug cookie; map it
+// to this process's experiment cookie so a manual simulator run can use the
+// production routes (Share to V acceptance). Loopback fixture only.
+let experimentCookie='';
+const normalize=req=>{if(req.headers.host===`127.0.0.1:${port}`&&req.headers.origin==='http://127.0.0.1')req.headers.origin=`http://127.0.0.1:${port}`;
+ if(experimentCookie&&req.headers.cookie==='v_voice_access=fixture-cookie')req.headers.cookie=experimentCookie;};
 bridge.server.prependListener('upgrade',req=>{normalize(req);if(req.url.startsWith('/voice/api/dial?'))fastDials++;});
 const handler=bridge.server.listeners('request')[0];bridge.server.removeAllListeners('request');
 bridge.server.on('request',async(req,res)=>{
  if(!req.url.startsWith('/fixture/')){
-  normalize(req);if(req.url.startsWith('/voice/api/status'))statusRequests++;if(req.url.startsWith('/voice/api/session'))httpSessionRequests++;
+  normalize(req);if(req.url.startsWith('/voice/share-media/'))res.once('finish',()=>shareMediaFetches.push({status:res.statusCode,type:res.getHeader('content-type'),bytes:Number(res.getHeader('content-length')??0)}));
+  if(req.url.startsWith('/voice/api/status'))statusRequests++;if(req.url.startsWith('/voice/api/session'))httpSessionRequests++;
   if(req.url.startsWith('/voice/api/close')){httpCloseRequests++;res.once('finish',()=>httpCloseStatuses.push(res.statusCode));if(closeDelayMS)await new Promise(resolve=>setTimeout(resolve,closeDelayMS));}
   return handler(req,res);
  }
  const send=(code,value)=>{res.writeHead(code,{'content-type':'application/json'});res.end(JSON.stringify(value));};
- if(req.url==='/fixture/state')return send(200,{fastDials,statusRequests,httpSessionRequests,httpCloseRequests,httpCloseStatuses,connected:peer?.readyState===1,inputFrames,outputPackets,lookupCalls,sessionRequests,playbackBusy,clears});
+ if(req.url==='/fixture/state')return send(200,{fastDials,statusRequests,httpSessionRequests,httpCloseRequests,httpCloseStatuses,connected:peer?.readyState===1,shareCallMessages,shareSpoken,shareTasks,shareFeishu,shareMediaFetches,inputFrames,outputPackets,lookupCalls,sessionRequests,playbackBusy,clears});
  if(req.url!=='/fixture/command'||req.method!=='POST')return send(404,{});
  try{
   let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>4096)throw Error('Fixture command too large');}
   const {command}=JSON.parse(raw);
-  if(command==='close-delay')closeDelayMS=500;
+  if(command==='share-reset'){shareCallMessages=[];shareSpoken=[];shareTasks=[];shareFeishu=[];shareMediaFetches=[];}
+  else if(command==='close-delay')closeDelayMS=500;
   else if(command==='close-immediate')closeDelayMS=0;
   else if(command==='policy-v1'){runtimePolicy.copy.connected='候选策略一已接通';runtimePolicy.pause.speechOnsetMS=140;}
   else if(command==='policy-v2'){runtimePolicy.copy.connected='候选策略二已接通';runtimePolicy.pause.speechOnsetMS=220;}
@@ -65,5 +84,8 @@ bridge.server.on('request',async(req,res)=>{
   send(200,{ok:true});
  }catch(error){send(409,{error:error.message});}
 });
-bridge.server.listen(port,'127.0.0.1',()=>console.log(`Shared duplex local fixture http://127.0.0.1:${port}/voice/; no model calls`));
+bridge.server.listen(port,'127.0.0.1',async()=>{
+ console.log(`Shared duplex local fixture http://127.0.0.1:${port}/voice/; no model calls`);
+ try{experimentCookie=(await fetch(`http://127.0.0.1:${port}/voice/`)).headers.get('set-cookie')?.split(';')[0]??'';}catch{}
+});
 const close=()=>{void bridge.dispose().finally(()=>process.exit(0));};process.once('SIGINT',close);process.once('SIGTERM',close);

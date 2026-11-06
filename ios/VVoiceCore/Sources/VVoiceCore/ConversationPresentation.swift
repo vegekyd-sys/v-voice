@@ -1,5 +1,24 @@
 import Foundation
 
+/// Media the caller shared into the call: a count and up to four inline JPEG
+/// thumbnails. Never a URL, so showing a row never fetches anything.
+public struct ConversationMedia: Codable, Equatable, Sendable {
+    public struct Preview: Codable, Equatable, Sendable {
+        public let kind: String
+        public let src: String
+        public init(kind: String, src: String) { self.kind = kind; self.src = src }
+    }
+    public let count: Int
+    public let previews: [Preview]
+    public init(count: Int, previews: [Preview]) { self.count = count; self.previews = previews }
+    public var isValid: Bool {
+        (1...9).contains(count) && previews.count <= min(4, count) && previews.allSatisfy {
+            ["image", "video"].contains($0.kind) && $0.src.count <= 24000 && $0.src.hasPrefix("data:image/jpeg;base64,")
+                && $0.src.dropFirst(23).allSatisfy { $0.isLetter && $0.isASCII || $0.isNumber && $0.isASCII || "+/=".contains($0) }
+        }
+    }
+}
+
 public struct ConversationTurn: Identifiable, Equatable, Sendable {
     public let id: UUID
     public let role: String
@@ -11,6 +30,7 @@ public struct ConversationTurn: Identifiable, Equatable, Sendable {
     public var speakerTone = 0
     public var listenOnly = false
     public var sourceKey: String? = nil
+    public var media: ConversationMedia? = nil
     public var label: String { speakerLabel.isEmpty ? (role == "user" ? "你" : "V") : speakerLabel }
     public init(id: UUID = UUID(), role: String, text: String, complete: Bool) {
         self.id = id; self.role = role; self.text = text; self.complete = complete
@@ -116,6 +136,7 @@ public struct ConversationPresentation: Sendable {
         turns[index].speakerID = row.speakerId; turns[index].speakerLabel = row.speakerLabel ?? ""
         turns[index].speakerTone = row.speakerTone ?? 0; turns[index].listenOnly = row.listenOnly ?? false
         turns[index].documentID = row.documentId
+        turns[index].media = row.media
         trim()
     }
     public mutating func projectPeople(_ value: [ConversationSpeaker]) {

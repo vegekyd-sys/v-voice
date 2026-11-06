@@ -50,6 +50,8 @@ struct H5CallView: View {
             .sheet(item: $sheet, onDismiss: { bindingLink = "" }) { _ in SettingsView(call: call, initialLink: bindingLink) }
             .task { if call.needsPublicPreparation { await call.preparePublicIfNeeded() } }
             .onOpenURL { url in
+                // Share Extension handoff: delivered by ShareDelivery, never a navigation.
+                if ShareInbox.shareID(from: url) != nil { return }
                 if let link = VoiceBinding.link(fromDeepLink: url) {
                     bindingLink = link; error = ""; sheet = .settings; return
                 }
@@ -260,6 +262,10 @@ struct H5WebSurface: UIViewRepresentable {
             onReading(reading)
             return [:]
         case "avatar", "avatarEvents": return try await call.h5Cosmetic(action == "avatar" ? "avatar" : "avatar-events", body: payload, owner: owner)
+        case "shareResult":
+            // V's result for one of this entry's 最近分享, read with the app's binding.
+            guard let id = payload["id"] as? String else { throw VoiceError.protocolMismatch }
+            return ["id": id, "text": try await ShareDelivery.shared.result(id)]
         case "saveMedia":
             guard owned, let text = payload["url"] as? String, let url = URL(string: text), let kind = payload["kind"] as? String else { throw VoiceError.protocolMismatch }
             try await MediaLibrarySaver.save(url: url, kind: kind)

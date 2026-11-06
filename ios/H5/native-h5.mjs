@@ -9,7 +9,7 @@ import {mountAvatar} from '../../lab/gpt-live-h5/avatar.mjs';
 import {createAvatarReactions} from '../../lab/gpt-live-h5/avatar-reactions.mjs';
 import {createAvatarTelemetry} from '../../lab/gpt-live-h5/avatar-telemetry.mjs';
 
-let current, owner, reactions, telemetry, opened = new Set(), pendingDocument, openingDocument=false, idleCatalogOwner;
+let current, owner, reactions, telemetry, opened = new Set(), pendingDocument, openingDocument=false, idleCatalogOwner, wasActive=false;
 const hiddenDocument=document.createElement('div');hiddenDocument.hidden=true;document.body.append(hiddenDocument);
 const view = createCallView();
 const post = (action, payload = {}, callID = current?.callID ?? '') => window.webkit.messageHandlers.voice.postMessage({action,payload,callID,pageID:window.__VVoicePageID});
@@ -35,6 +35,7 @@ mountCallUi(document,view,{
     async steer(text){try{const receipt=await send('steer',{text});view.set(s=>({composer:{...s.composer,open:false}}));view.message(receipt.message,'success');return true;}catch{return false;}},
     async cancelTasks(){try{await send('cancel');view.message('已请求取消后台任务。','success');}catch{}},
     chooseModel:id=>void send('model',{id}).catch(()=>{}),chooseGrokVoice:id=>void send('voice',{id}).catch(()=>{}),
+    openShare:id=>void openShare(id),
   },
 });
 mountChangelog(document,window);
@@ -73,12 +74,16 @@ function receive(snapshot){
     muted:snapshot.muted,models:snapshot.models,model:snapshot.model,modelDisabled:snapshot.active||cleaningUp,
     grok:snapshot.grok,entry,dial:{disabled:!snapshot.bound||cleaningUp,label:'和 V 通话'},stopLabel:call==='dialing'?'取消拨号':'结束通话',
     badge:snapshot.badge,homeNote:snapshot.active?null:snapshot.homeNote,homeNoteTone:snapshot.phase==='failed'?'error':'info',
-    tasks:snapshot.tasks,cancelEnabled:snapshot.tasks.length>0,transcript:snapshot.transcript,
+    tasks:snapshot.tasks,cancelEnabled:snapshot.tasks.length>0,transcript:snapshot.transcript,shares:snapshot.active?[]:snapshot.shares??[],
     speaker:{multi:people.length>0,people,lastSpeakerId:snapshot.lastSpeakerID,listenOnly:snapshot.listenOnly,status:notice},
     composer:{...view.get().composer,enabled:snapshot.canControl,open:snapshot.active&&view.get().composer.open},
   });
   if(snapshot.active&&call!=='dialing'&&!reactions)startVisuals(snapshot.callID);
-  if(!snapshot.active){pendingDocument=null;openingDocument=false;stopVisuals();content.reset();cards.clear();hiddenDocument.replaceChildren();}
+  // Clear call content once when a call ends. An idle reader (最近分享) stays
+  // open across the idle snapshots that opening it causes.
+  if(!snapshot.active&&(wasActive||changed)){pendingDocument=null;openingDocument=false;stopVisuals();content.reset();cards.clear();hiddenDocument.replaceChildren();}
+  else if(!snapshot.active)stopVisuals();
+  wasActive=snapshot.active;
   avatar.show(snapshot.tasks.at(-1)?.activity??'idle');
   reactions?.update({snapshot:snapshot.transcript,activity:snapshot.tasks.at(-1)?.activity??'idle',taskOutcome:snapshot.tasks.length?'pending':snapshot.outcome});
   document.body.dataset.nativeOwner=snapshot.callID;
@@ -96,6 +101,15 @@ function refreshIdleCatalog(){
   void post('ready',{bridgeVersion:1},id).then(result=>{
     if(current?.callID===id&&!current.active&&result?.snapshot?.callID===id)receive(result.snapshot);
   }).catch(()=>{});
+}
+// 最近分享: V's result opens in the same H5 reader as a call's 完整方案.
+async function openShare(id){
+  try{
+    const item=await post('shareResult',{id});
+    if(current?.active||typeof item?.text!=='string')return;
+    content.render(hiddenDocument,{key:'share-'+id,callId:'share-'+id,role:'assistant',speaker:'V · 分享结果',document:true,complete:true,text:item.text});
+    hiddenDocument.querySelector('.content-card')?.click();
+  }catch{view.message('这条分享的结果暂时打不开。','problem');}
 }
 async function openPending(){
   if(!pendingDocument||document.hidden||openingDocument||view.get().reading)return;

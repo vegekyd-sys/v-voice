@@ -326,6 +326,24 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
         }
         return value
     }
+    private lazy var uploadSession: URLSession = {
+        let c = configuration ?? URLSessionConfiguration.ephemeral
+        c.httpCookieStorage = nil; c.httpShouldSetCookies = false; c.urlCache = nil
+        c.timeoutIntervalForRequest = 120; c.timeoutIntervalForResource = 900
+        return URLSession(configuration: c, delegate: delegate, delegateQueue: nil)
+    }()
+    /// Share to V: one raw upload or the share request itself, with the
+    /// current binding's cookie. Returns the server's own status and message.
+    func share(_ route: String, file: URL? = nil, contentType: String = "application/json", body: [String: Any]? = nil) async throws -> (status: Int, value: [String: Any]) {
+        guard let saved = record else { throw VoiceError.unbound }
+        var r = request(route, binding: saved.binding, cookie: saved.cookie)
+        r.httpMethod = "POST"; r.setValue(contentType, forHTTPHeaderField: "Content-Type"); r.timeoutInterval = file == nil ? 30 : 120
+        let data: Data, response: URLResponse
+        if let file { (data, response) = try await uploadSession.upload(for: r, fromFile: file) }
+        else { r.httpBody = try JSONSerialization.data(withJSONObject: body ?? [:]); (data, response) = try await uploadSession.data(for: r) }
+        guard let http = response as? HTTPURLResponse, data.count < 100_000 else { throw VoiceError.connection }
+        return (http.statusCode, (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:])
+    }
     func call(_ route: String, body: [String: Any]? = nil, refresh: Bool = true) async throws -> [String: Any] {
         guard let saved = record else { throw VoiceError.unbound }
         do { return try await raw(route, record: saved, body: body) }
