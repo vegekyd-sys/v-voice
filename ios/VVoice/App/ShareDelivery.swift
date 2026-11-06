@@ -46,14 +46,24 @@ import VVoiceCore
 
     struct Failure: Error, Equatable {
         var status: Int; var message: String?
+        /// Only the share routes mark their replies `scope: "share"`. Anything
+        /// else (an older server without them) answers with its own call
+        /// errors, which must never be shown as the reason a share failed.
+        init(status: Int, reply: [String: Any]) {
+            self.status = status
+            message = reply["scope"] as? String == "share" ? (reply["error"] as? String).map { String($0.prefix(120)) } : nil
+        }
+        /// The server cannot take shares at all.
+        var unsupported: Bool { message == nil && [404, 405, 413].contains(status) }
         /// The server rejected these exact files; retrying cannot help.
-        var permanent: Bool { [400, 404, 409, 413, 415].contains(status) }
+        var permanent: Bool { unsupported || message != nil && [400, 404, 409, 413, 415].contains(status) }
         var text: String {
             switch status {
-            case 401, 403: "V Voice 的入口已失效，请重新绑定后再分享。素材会保留 24 小时。"
-            case 429: message ?? "分享得太频繁，请稍后再试。"
-            case 503: message ?? "V 暂时不能接收分享，素材会保留 24 小时，稍后自动重试。"
-            default: message ?? "V 没有收下这次分享（\(status)）。"
+            case 401, 403: return "V Voice 的入口已失效，请重新绑定后再分享。素材会保留 24 小时。"
+            case _ where message != nil: return message!
+            case _ where unsupported: return "现在连接的 V 服务还不支持分享，这次分享没有发出去。"
+            case 429: return "分享得太频繁，请稍后再试。"
+            default: return "V 暂时没有收下这次分享，素材会保留 24 小时，稍后自动重试。"
             }
         }
     }
@@ -81,11 +91,11 @@ import VVoiceCore
             var ids: [String] = []
             for item in manifest.items {
                 let (status, value) = try await api.share("share/media", file: store.file(manifest, item), contentType: item.contentType)
-                guard status == 200, let id = value["id"] as? String else { throw Failure(status: status, message: value["error"] as? String) }
+                guard status == 200, let id = value["id"] as? String else { throw Failure(status: status, reply: value) }
                 ids.append(id)
             }
             let (status, value) = try await api.share("share", body: ["media": ids, "text": manifest.text, "previews": previews])
-            guard status == 200 || status == 202 else { throw Failure(status: status, message: value["error"] as? String) }
+            guard status == 200 || status == 202 else { throw Failure(status: status, reply: value) }
             store.remove(manifest.id)
             CallDiagnostics.record("share.deliver.complete", code: "delivered=\(value["delivered"] as? String ?? "unknown") images=\(manifest.images) videos=\(manifest.videos)")
             if let record = Record(value["share"]) { records.removeAll { $0.id == record.id }; records.insert(record, at: 0); pollWhileRunning() }

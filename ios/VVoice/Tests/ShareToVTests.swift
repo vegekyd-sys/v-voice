@@ -49,6 +49,27 @@ import VVoiceCore
         XCTAssertThrowsError(try ShareInbox.jpeg(data: Data("not an image".utf8)))
     }
 
+    func testOnlyShareRepliesSayWhyAShareFailed() {
+        typealias F = ShareDelivery.Failure
+        // An older server without the share routes reads the upload as a call
+        // request and answers with a call error; that text is not shown.
+        let old = F(status: 413, reply: ["error": "这次连接没有完成，请重新开始通话。"])
+        XCTAssertNil(old.message)
+        XCTAssertTrue(old.permanent)
+        XCTAssertEqual(old.text, "现在连接的 V 服务还不支持分享，这次分享没有发出去。")
+        XCTAssertTrue(F(status: 404, reply: ["error": "没有这个入口"]).unsupported)
+        let crashed = F(status: 500, reply: ["error": "这次连接没有完成，请重新开始通话。"])
+        XCTAssertFalse(crashed.permanent, "A server error is retried on the next activation")
+        XCTAssertFalse(crashed.text.contains("通话"))
+        let rejected = F(status: 415, reply: ["error": "文件内容与类型不符", "scope": "share"])
+        XCTAssertEqual(rejected.text, "文件内容与类型不符")
+        XCTAssertTrue(rejected.permanent)
+        let disabled = F(status: 503, reply: ["error": "分享给 V 尚未启用", "scope": "share"])
+        XCTAssertEqual(disabled.text, "分享给 V 尚未启用")
+        XCTAssertFalse(disabled.permanent)
+        XCTAssertTrue(F(status: 401, reply: ["error": "x", "scope": "share"]).text.hasPrefix("V Voice 的入口已失效"))
+    }
+
     func testOnlyCommittedUnexpiredSharesAreDelivered() throws {
         let clock = Clock(); let store = try temporaryStore(now: { clock.now })
         let pendingWrite = try store.begin() // extension still writing: no manifest yet

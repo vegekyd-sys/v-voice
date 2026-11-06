@@ -174,3 +174,20 @@ test('records keep 20 recent shares for 7 days and never leave a lost task runni
   clock+=SHARE_RECORD_LIMITS.ttlMs;
   assert.deepEqual(await records.list('entry-a'),[]);
 });
+
+test('share replies are marked as share replies, and four full-size thumbnails fit in one share',async t=>{
+  const f=await server(t);
+  const rejected=await f.upload(PNG,'image/jpeg');
+  assert.equal(rejected.status,415);
+  // The app shows server text only with this mark: an older server answers
+  // with its own call errors, which are not a reason a share failed.
+  assert.equal((await rejected.json()).scope,'share');
+  const ids=[];for(let i=0;i<4;i++)ids.push((await (await f.upload(JPEG,'image/jpeg')).json()).id);
+  const big='data:image/jpeg;base64,'+Buffer.concat([JPEG,Buffer.alloc(17500-JPEG.length)]).toString('base64');
+  assert.equal(big.length<=24000&&big.length>23000,true);
+  const response=await f.share({media:ids,text:'做成一段视频',previews:ids.map(()=>({kind:'image',src:big}))});
+  assert.equal(response.status,202,'four thumbnails at the row limit exceed the general 70 KB body limit');
+  const tooLarge=await f.raw('/voice/api/share',{cookie:f.cookie,data:'x'.repeat(200000)});
+  assert.equal(tooLarge.status,413);
+  assert.equal((await tooLarge.json()).scope,'share');
+});

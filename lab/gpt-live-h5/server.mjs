@@ -30,6 +30,7 @@ import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
 import {createTaskDelivery} from '../realtime-direct-tools/task-delivery.mjs';
 import {createVoiceMediaCli} from '../realtime-direct-tools/media-cli.mjs';
 import {createBackendDelegation} from '../realtime-direct-tools/backend.mjs';
+import {SHARE_PREVIEW_LIMIT,SHARE_PREVIEW_CHARS} from '../realtime-direct-tools/native-runtime.mjs';
 import {createShareInbox,createShareRecords,normalizeSharePreviews,normalizeShareText,sharePresentation,shareMessage,startShareTask,ShareRejected} from './share-inbox.mjs';
 import {createVoiceLarkReader,personalLarkReader} from '../realtime-direct-tools/lark-readonly.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
@@ -388,7 +389,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   const dialSockets = new WebSocketServer({noServer:true,maxPayload:70000,perMessageDeflate:false});
   const server = createServer(async (req, res) => {
     res.setHeader("referrer-policy", "no-referrer"); res.setHeader("x-content-type-options", "nosniff");
-    try {
+    let pathname = ""; try {
       if(stopping)return json(res,503,{error:"服务正在收尾，请稍后重新拨号"});
       const host = req.headers.host ?? "";
       if(req.method==='POST'&&new URL(req.url,'http://device.invalid').pathname===`${basePath}/internal/device-request`){
@@ -419,7 +420,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       const url = new URL(req.url, requestOrigin);
       if (basePath && url.pathname === basePath && req.method === "GET") { res.writeHead(308, { location: `${basePath}/${url.search}`, "cache-control": "no-store" }); res.end(); return; }
       if (basePath && !url.pathname.startsWith(`${basePath}/`)) return json(res, 404, { error: "没有这个入口" });
-      let pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
+      pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
       // Capability URLs Makaron fetches as references: no cookie, unguessable, short-lived.
       if(shareInbox&&['GET','HEAD'].includes(req.method)&&pathname.startsWith('/share-media/'))return shareInbox.serve(req,res,pathname.slice('/share-media/'.length));
       if(req.method==='GET'&&/^\/invite\/[a-f0-9]{32}$/u.test(pathname)){
@@ -714,9 +715,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/tv-aec/webrtcaec3-0.3.0.") ? "public, max-age=31536000, immutable" : bundled && url.searchParams.get("v") === bundled.revision ? "private, max-age=31536000, immutable" : pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
       }
       if(binding.permissionProfile==='unidentified'&&!new Set(['/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke',...(binding.cliManaged?['/api/access']:[])]).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
-      const readBody = async () => {
+      const readBody = async (limit = 70000) => {
         const chunks = []; let size = 0;
-        for await (const chunk of req) { size += chunk.length; if (size > 70000) throw new Error("Request too large"); chunks.push(chunk); }
+        for await (const chunk of req) { size += chunk.length; if (size > limit) throw new Error("Request too large"); chunks.push(chunk); }
         return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
       };
       const ip = String(req.headers["cf-connecting-ip"] ?? req.socket.remoteAddress ?? "unknown").slice(0, 128);
@@ -818,12 +819,15 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const keepalive = setInterval(() => res.write(": keepalive\n\n"), 15000); keepalive.unref();
         res.on("close", () => { clearInterval(keepalive); context.listeners.delete(res); }); return;
       }
+      // Share errors say scope:'share': the app shows server text only from these routes,
+      // never an older server's call errors for a route it does not have.
+      const shareError=(res,status,error)=>json(res,status,{error,scope:'share'});
       if(req.method==='POST'&&pathname==='/api/share/media'){
-        if(!shareInbox)return json(res,503,{error:'分享给 V 尚未启用'});
-        if(!allow(`share-media:${ip}`,60))return json(res,429,{error:'分享得太频繁，请稍后再试'});
+        if(!shareInbox)return shareError(res,503,'分享给 V 尚未启用');
+        if(!allow(`share-media:${ip}`,60))return shareError(res,429,'分享得太频繁，请稍后再试');
         context.shareOwner??=randomUUID();
         try{return json(res,200,await shareInbox.receive(req,{owner:context.shareOwner,contentType:req.headers['content-type'],publicBase:`${hosted?publicOrigin:requestOrigin}${basePath}/`}));}
-        catch(error){if(error instanceof ShareRejected)return json(res,error.status,{error:error.message});throw error;}
+        catch(error){if(error instanceof ShareRejected)return shareError(res,error.status,error.message);throw error;}
       }
       if(req.method==='GET'&&pathname==='/api/shares'){
         if(!shareRecords)return json(res,200,{shares:[]});
@@ -831,25 +835,26 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       }
       if(req.method==='GET'&&/^\/api\/shares\/[0-9a-f-]{36}$/u.test(pathname)){
         const row=shareRecords&&(await shareRecords.list(shareRecordOwner(binding))).find(item=>item.id===pathname.slice('/api/shares/'.length));
-        return row?.result?json(res,200,{id:row.id,result:row.result}):json(res,404,{error:'这条分享还没有结果'});
+        return row?.result?json(res,200,{id:row.id,result:row.result}):shareError(res,404,'这条分享还没有结果');
       }
       if (req.method !== "POST") return json(res, 404, { error: "没有这个入口" });
-      const params = await readBody();
+      // /api/share carries up to four inline thumbnails, more than other calls send.
+      const params = await readBody(pathname==='/api/share'?SHARE_PREVIEW_LIMIT*SHARE_PREVIEW_CHARS+16000:70000);
       if(pathname==='/api/share'){
-        if(!shareInbox)return json(res,503,{error:'分享给 V 尚未启用'});
-        if(Object.keys(params).some(key=>!['media','text','previews'].includes(key)))return json(res,400,{error:'分享请求包含不支持的参数'});
+        if(!shareInbox)return shareError(res,503,'分享给 V 尚未启用');
+        if(Object.keys(params).some(key=>!['media','text','previews'].includes(key)))return shareError(res,400,'分享请求包含不支持的参数');
         let text,items,previews;
         try{text=normalizeShareText(params.text);if(!Array.isArray(params.media))throw new ShareRejected(400,'分享素材无效');previews=normalizeSharePreviews(params.previews,params.media);items=await shareInbox.claim(context.shareOwner,params.media);}
-        catch(error){if(error instanceof ShareRejected)return json(res,error.status,{error:error.message});throw error;}
+        catch(error){if(error instanceof ShareRejected)return shareError(res,error.status,error.message);throw error;}
         const message=shareMessage({text,items,ttlMs:shareInbox.limits.ttlMs});
         const counts={images:items.filter(item=>item.kind==='image').length,videos:items.filter(item=>item.kind==='video').length};
         // The server's own owner, never a client-supplied voiceSessionId.
         const active=context.active;
         if(active?.direct&&directVoice?.share?.(active.reservation.voiceSessionId,{message,text,media:{count:items.length,previews},...counts})?.ok)
           return json(res,200,{delivered:'call',voiceSessionId:active.reservation.voiceSessionId,...counts});
-        if(!/^agent:[^:]+:feishu:(?:group|direct|dm):(?:oc_|ou_)[A-Za-z0-9]+$/u.test(binding.sessionKey??''))return json(res,409,{error:'当前入口没有可交付结果的飞书会话，请在通话中分享'});
+        if(!/^agent:[^:]+:feishu:(?:group|direct|dm):(?:oc_|ou_)[A-Za-z0-9]+$/u.test(binding.sessionKey??''))return shareError(res,409,'当前入口没有可交付结果的飞书会话，请在通话中分享');
         const owner=context.shareOwner,running=shareTasks.get(owner)??0;
-        if(running>=2)return json(res,429,{error:'V 还在处理你之前分享的素材，请稍后再试'});
+        if(running>=2)return shareError(res,429,'V 还在处理你之前分享的素材，请稍后再试');
         shareTasks.set(owner,running+1);
         const recordOwner=shareRecordOwner(binding);
         const record=await shareRecords.create(recordOwner,{text,previews,...counts});
@@ -948,8 +953,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (pathname === "/api/close") { await close(context); return json(res, 200, { ok: true }); }
       return json(res, 404, { error: "没有这个入口" });
     } catch (error) {
+      const status = error.message === "Request too large" ? 413 : 500;
+      if (pathname.startsWith("/api/share")) return json(res, status, { error: status === 413 ? "这次分享的内容太大，请少选几个再试。" : "V 暂时没有收下这次分享，稍后会自动重试。", scope: "share" });
       const message = /requires an active|No active|no active/iu.test(error.message) ? "目前没有正在运行的后台任务，可以直接对 V 说话。" : "这次连接没有完成，请重新开始通话。";
-      json(res, error.message === "Request too large" ? 413 : 500, { error: message });
+      json(res, status, { error: message });
     }
   });
   const timer = setInterval(() => {
