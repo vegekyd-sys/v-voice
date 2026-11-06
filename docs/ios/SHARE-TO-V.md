@@ -61,7 +61,7 @@ H5 的两处顺带修正：
 
 ## 需要真机、TestFlight 或线上才能确认
 
-- **App Group 签名**：`group.com.versa.vvoice` 需要在开发者账号里注册，主 App 和扩展都要能签上。
+- **App Group 签名**：已解决。2026-11-06 build 42 用开发签名装到 Tianyi 的 iPhone，`verify-release.py` 通过（signed、profilesPresent、shareExtension）；主 App 和扩展都带 `group.com.versa.vvoice`，描述文件分别是 `com.versa.vvoice` 和 `com.versa.vvoice.share` 的 Team Profile。分发证书、TestFlight 的签名还没验证。
 - **扩展打开主 App**：走的是响应链里的 `openURL:options:completionHandler:`。模拟器上可行，App 审核是否接受还不确定。打不开时，下次打开 App 会自动交付。
 - **真实的通话体验**：豆包开口确认后，后台结果能否完整回到对话；Grok 收到分享后是否直接调用 Makaron；GPT Live 通话（没有注入通道，分享会交给后台任务，界面同上）。
 - **真实的 Makaron**：能否拉到公网的 `/share-media/` 链接，以及 fal-h3-max 多图参考的效果。
@@ -72,4 +72,4 @@ H5 的两处顺带修正：
 - 在首页 `changelog.mjs`、`CHANGELOG.md`、`versions.json` 里登记。
 - 线上节点设置 `VOICE_SHARE_TO_V=1`，确认目录权限和磁盘空间。用 `release-fleet.py` 正常发布，不重启 Gateway。
 - 这次改了共用 H5（对话行缩略图、首页最近分享），网页发布和 App 内置 H5 包会一起更新。
-- 换新的 build 号（当前是 41），真机安装后按上面的清单验收。
+- build 号已经是 42（开发签名已装到真机，见上）。真机上要按上面的清单逐项验收；服务端开关打开之前，点「交给 V」会失败。
