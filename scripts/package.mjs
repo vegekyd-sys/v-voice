@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import {readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';import {existsSync} from 'node:fs';
-import {resolve,dirname,join} from 'node:path';
+import {resolve,dirname,join,relative} from 'node:path';
 import {createHash} from 'node:crypto';import {execFileSync} from 'node:child_process';
 import {buildTvEntry,TV_ENTRY_BUNDLE,buildTvStartup,TV_STARTUP_BUNDLE} from './build-tv-entry.mjs';
 import {AVATAR_FILES} from '../lab/gpt-live-h5/avatar-state.mjs';
@@ -38,6 +38,22 @@ names.push('lab/gpt-live-h5/model-options.mjs');
 names.push('lab/gpt-live-h5/dial-connection.mjs');
 names.push('lib/terminal-context.mjs','lib/device-requests.mjs','lab/gpt-live-h5/device-location.mjs','scripts/device-call.mjs','skills/device-use/SKILL.md');
 names.push('lab/robot/robot-semantics.mjs');
+names.push('lab/realtime-direct-tools/idle-hangup.mjs');
+// Every relative import of a packaged module must itself be packaged, so a
+// new file can never ship as a release that fails to start.
+// Browser URL aliases served by server.mjs: /voice/speaker-routing.mjs is
+// speaker-native/client.mjs, so its ./relay-audio.mjs is the gpt-live-h5 one.
+const urlAliases={'lab/gpt-live-h5/speaker-routing.mjs':'lab/speaker-native/client.mjs','lab/speaker-native/relay-audio.mjs':'lab/gpt-live-h5/relay-audio.mjs'};
+const packaged=new Set(names),missing=[];
+for(const name of packaged){
+ if(!/\.m?js$/u.test(name))continue;
+ const source=await readFile(join(root,name),'utf8');
+ for(const [,spec] of source.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)['"](\.{1,2}\/[^'"]+)['"]/gu)){
+  const dep=relative(root,resolve(root,dirname(name),spec));
+  if(!packaged.has(urlAliases[dep]??dep))missing.push(name+' -> '+dep);
+ }
+}
+if(missing.length)throw Error('Packaged modules import unpackaged files:\n'+missing.join('\n'));
 const target=resolve(process.argv[2]??join(root,'artifacts',commit));
 await mkdir(dirname(target),{recursive:true});
 await mkdir(target,{recursive:false});
