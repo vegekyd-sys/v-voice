@@ -1,0 +1,29 @@
+{
+  "schema": "2.0",
+  "v_card": 1,
+  "body": {
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "先看一下上周的停顿记录，再按原因归类。"
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "markdown",
+        "content": "🛠️ 运行命令",
+        "text_size": "notation"
+      },
+      {
+        "tag": "markdown",
+        "content": "☑️ 读取上周的停顿记录\n▶️ **按原因归类**　进行中\n◻️ 写成报告"
+      },
+      {
+        "tag": "markdown",
+        "content": "⏳ 后台 2 项进行中 · 子 agent 1 · 后台命令 1",
+        "text_size": "notation"
+      }
+    ]
+  }
+}

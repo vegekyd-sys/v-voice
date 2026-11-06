@@ -1,0 +1,108 @@
+{
+  "schema": "2.0",
+  "v_card": 1,
+  "header": {
+    "title": {
+      "tag": "plain_text",
+      "content": "V 想问你"
+    },
+    "template": "blue"
+  },
+  "body": {
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "**今晚吃什么？**（可多选）"
+      },
+      {
+        "tag": "button",
+        "text": {
+          "tag": "plain_text",
+          "content": "火锅"
+        },
+        "type": "default",
+        "width": "fill",
+        "behaviors": [
+          {
+            "type": "callback",
+            "value": {
+              "kind": "question",
+              "id": "q-meal",
+              "question": 0,
+              "option": "火锅"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "button",
+        "text": {
+          "tag": "plain_text",
+          "content": "寿司"
+        },
+        "type": "primary_filled",
+        "width": "fill",
+        "behaviors": [
+          {
+            "type": "callback",
+            "value": {
+              "kind": "question",
+              "id": "q-meal",
+              "question": 0,
+              "option": "寿司"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "markdown",
+        "content": "离公司近",
+        "text_size": "notation"
+      },
+      {
+        "tag": "button",
+        "text": {
+          "tag": "plain_text",
+          "content": "面条"
+        },
+        "type": "default",
+        "width": "fill",
+        "behaviors": [
+          {
+            "type": "callback",
+            "value": {
+              "kind": "question",
+              "id": "q-meal",
+              "question": 0,
+              "option": "面条"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "button",
+        "text": {
+          "tag": "plain_text",
+          "content": "确认"
+        },
+        "type": "primary_filled",
+        "width": "fill",
+        "behaviors": [
+          {
+            "type": "callback",
+            "value": {
+              "kind": "question",
+              "id": "q-meal",
+              "submit": true
+            }
+          }
+        ]
+      },
+      {
+        "tag": "markdown",
+        "content": "也可以直接在聊天中回复答案",
+        "text_size": "notation"
+      }
+    ]
+  }
+}
