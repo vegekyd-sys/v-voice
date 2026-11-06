@@ -50,6 +50,7 @@
 		8E4C6BA1932EA200ADE9F440 /* NativeFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6DC401CBC28DC4E5E00D8B4 /* NativeFlowTests.swift */; };
 		9E4C76775E9C12F4BCCCCEA2 /* VoiceWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D7BA1CED3B5C99A8E33694C /* VoiceWidget.swift */; };
 		A091D643A8C19C5D2BDBA51C /* CallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FA57ABCE44F7870BD8DE61 /* CallView.swift */; };
+		A72C154D35C38C05762F427B /* ShareAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4C2588115F143D5C295EFBF3 /* ShareAssets.xcassets */; };
 		AE1747E1C86A804A73A542C2 /* H5Updates.json in Resources */ = {isa = PBXBuildFile; fileRef = 74F2FE640D58B26E022A9943 /* H5Updates.json */; };
 		AED8FBE10AC065C07DA6F92D /* IslandAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 45619E039B8DBD8B3AD20743 /* IslandAssets.xcassets */; };
 		B3DF34667002BAE96598431F /* VoiceStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82BCD1E278CA030F4584C6D0 /* VoiceStyle.swift */; };
@@ -143,6 +144,7 @@
 		45619E039B8DBD8B3AD20743 /* IslandAssets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = IslandAssets.xcassets; sourceTree = "<group>"; };
 		4624DC67397DA3829CD1438F /* RelayTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayTransport.swift; sourceTree = "<group>"; };
 		47C7D9AC3294DF6BFF793CB5 /* ShareDelivery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareDelivery.swift; sourceTree = "<group>"; };
+		4C2588115F143D5C295EFBF3 /* ShareAssets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = ShareAssets.xcassets; sourceTree = "<group>"; };
 		4CDD0899EF980DA00A5FD8F5 /* VoiceAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAvatar.swift; sourceTree = "<group>"; };
 		4F6592CE77AB072C3F353CD6 /* DeviceLocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLocation.swift; sourceTree = "<group>"; };
 		581754E3A730420284362EA3 /* BindingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BindingStore.swift; sourceTree = "<group>"; };
@@ -256,6 +258,7 @@
 		6BFF5EF1B8AB76D6C0946EA8 /* ShareExtension */ = {
 			isa = PBXGroup;
 			children = (
+				4C2588115F143D5C295EFBF3 /* ShareAssets.xcassets */,
 				1BD52D7C6EFB7F0E39ED5E7F /* ShareViewController.swift */,
 				D0229AC90374782B83E414FB /* VVoiceShare.entitlements */,
 			);
@@ -434,6 +437,7 @@
 			buildConfigurationList = B0ED3DD51D080A434D71D82B /* Build configuration list for PBXNativeTarget "VVoiceShare" */;
 			buildPhases = (
 				7D4788A5F2AC5E8C39138AA4 /* Sources */,
+				649BA72E861779868879008D /* Resources */,
 			);
 			buildRules = (
 			);
@@ -533,6 +537,14 @@
 				AE1747E1C86A804A73A542C2 /* H5Updates.json in Resources */,
 				6AC6D19510D81D205BDEB867 /* PrivacyInfo.xcprivacy in Resources */,
 				CA88A73C515B16D61F29E267 /* WebRTC-LICENSE.md in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		649BA72E861779868879008D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A72C154D35C38C05762F427B /* ShareAssets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
