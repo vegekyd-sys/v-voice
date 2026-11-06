@@ -198,6 +198,15 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-idle-hangup.20261106.1',date:'2026-11-06',
+    title:'没人说话时 V 会自己挂断',
+    items:[
+      '通话里两分钟没人说话，V 也没在查东西或跑任务，V 会说一句“我先挂了”再挂断，不再空挂着计时。',
+      '每通电话最长一小时，到时 V 同样道别后挂断。告别时你一开口，挂断就取消，继续聊。',
+      '网页、iOS 和小机器人共用服务端这一条规则，App 和固件都不用更新。',
+    ],
+  },
+  {
     version:'voice-robot-formal.20261105.1',date:'2026-11-05',
     title:'小机器人回到国内节点，表情和点头更自然',
     items:[

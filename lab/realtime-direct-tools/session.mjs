@@ -32,6 +32,7 @@ import {NATIVE_DUPLEX_POLICY} from './native-duplex-policy.mjs';
 import {createLookupRecovery} from './lookup-recovery.mjs';
 import {compactSearchResult,isSearchTool,searchMetrics} from './search-result.mjs';
 import {createAudioDeliveryMetrics} from './audio-delivery-metrics.mjs';
+import {IDLE_FAREWELL,IDLE_HANGUP_DEFAULTS,idleHangupDue,idleHangupExempt} from './idle-hangup.mjs';
 
 export const VOICE_TASK_ROUTING = '当前入口已启用前台快速创作时，简单图片和短视频按前台快速创作规则直接调用 Makaron CLI；无获准直接工具或需要完整创作编排时才委派后台。工具错误按返回的真实执行状态解释：明确未提交时说明尚未启动，提交结果未知时说明无法确认，不猜测正在做、已经排队或马上完成，不盲目重提。用户明确取消仍在执行的当前后台任务并改做新任务时，先实际 cancel_task，确认取消后再按直接工具或后台分工实际执行新目标。已完成的旧任务不能通过取消另一个无关任务来代替。任务分工：简单查询、日历和一两步明确操作直接调用原生工具。多步比较、跨资料调研、复杂规划或前台快速创作之外需要持续等待/反复轮询的任务，用 delegate_to_v 将完整目标及用户条件一次交给个人 V 后端语言模型。用户要求交给后端模型、交给 V 或交给后台处理时必须调用 delegate_to_v，即使已经给出完整命令，也不能自行用 exec/process/openclaw_tool 代做。这里的后端指另一个语言模型；exec/process 只是执行工具，命令的 background 参数也不是模型委派。只说‘交给后端’却自己执行不算委派。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，等待时正常聊天。只有真实的新事实才简短汇报，不反复播报等待、倒计时或轮询状态。只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
 
@@ -68,7 +69,7 @@ export function directInstructions(catalog,context='',model='',options={}) {
 // announced, so a burst of quick tool calls becomes one line.
 export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageGapMs:15000,factGapMs:6000,idleMs:45000,idleMax:2,quietAfterUserMs:4000,startMs:2500,max:12,correctionDelayMs:400,abandonedResponseMs:8000});
 
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -222,7 +223,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(terminal.ok===true&&processExited(terminal.output))s.processes.delete(id);
     else throw Error('执行会话退出尚未确认');
   };
-  const clearEnding=s=>{clearTimeout(s.ending?.fallbackTimer);clearTimeout(s.ending?.noAudioTimer);s.ending=null;};
+  const clearEnding=s=>{clearTimeout(s.ending?.fallbackTimer);clearTimeout(s.ending?.noAudioTimer);clearTimeout(s.ending?.backstopTimer);s.ending=null;};
   const cancel=async(s,{includeBackend=true}={})=>{s.epoch++;for(const [id,c] of s.pending)if(includeBackend||id!==s.backgroundCallId)c.abort();clearEnding(s);emit(s,{type:'end.cancelled'});
     await s.localExecutions?.cancelAll();
     s.progress=null;s.backendResult?.resolve();s.backendResult=null;
@@ -279,6 +280,30 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       ending.noAudioTimer=setTimeout(finishSilent,nativeFarewellTimeoutMs);ending.noAudioTimer.unref?.();
     };
     ending.fallbackTimer=setTimeout(fallback,nativeFarewellDelayMs);ending.fallbackTimer.unref?.();
+  };
+  // Host-initiated end (silence, or the call ran too long): the same farewell
+  // and end-after-playback flow every client already follows for goodbyes.
+  // Speech from the user during the farewell cancels it like any ending.
+  const hostEnd=(s,reason)=>{
+    if(!current(s)||!s.bridge?.ready||s.ending)return;
+    const ending=s.ending={callId:`host-${reason}-${s.id}`,hasAudio:false,source:'host',priorResponseId:s.bridge.audioResponseId??null};
+    audit({type:'call.ending',voiceSessionId:s.id,stage:'host-'+reason});
+    emit(s,{type:'end.accepted',callId:ending.callId});
+    s.bridge.speakProgress(IDLE_FAREWELL[reason],{caption:true,source:'call-farewell'});
+    const finish=()=>{if(current(s)&&s.ending===ending)void close(s.id).catch(()=>{});};
+    ending.noAudioTimer=setTimeout(()=>{if(!ending.hasAudio)finish();},nativeFarewellTimeoutMs);ending.noAudioTimer.unref?.();
+    // A client that never reports playback drained still gets hung up.
+    ending.backstopTimer=setTimeout(finish,nativeFarewellTimeoutMs+30000);ending.backstopTimer.unref?.();
+  };
+  const idleTick=s=>{
+    if(!current(s)||!s.bridge?.ready)return;
+    const now=Date.now();
+    if(!s.callStartedAt)s.callStartedAt=s.activityAt=now;
+    const speaking=Boolean(s.userSpeaking||s.playing||s.responseActive);
+    const busy=speaking||s.pending.size>0||Boolean(s.backend?.snapshot?.())||Boolean(s.backendResult)||Boolean(s.lookup?.waiting?.())||Boolean(speakerRouting?.pending?.(s.id));
+    if(busy)s.activityAt=now;
+    const reason=idleHangupDue({now,startedAt:s.callStartedAt,activityAt:Math.max(s.activityAt,s.lastUserAt||0,s.responseActivityAt||0),busy,speaking,ending:Boolean(s.ending),exempt:idleHangupExempt(s.surface)},idleHangup);
+    if(reason)hostEnd(s,reason);
   };
   function prepareDeviceChannel(s,{deviceActions,backendDeviceURL,terminalAdapter,terminalKind,surface='phone',nativeRuntimeVersion,unidentified=false,callerIdentity},sendFrame,deviceCurrent=()=>current(s)){
     s.deviceCurrent=deviceCurrent;
@@ -478,7 +503,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     });
     const admittedUserTurns=new Map();
     const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',s.sessionBound?s.actorReader?.calendar:calendar),larkRead:localRead('lark_read',s.sessionBound?s.actorReader?.read:larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,look:s.speaker?.look,delegate:async args=>{await s.ensureBackendDeviceBundle();return s.backend.run({...args,context:(args.context??'')+s.backendDeviceContext()+(args.use_current_location?s.location.context():''),callerTurn:admittedUserTurns.get(args.callId)});}});
-    s.progressTimer=setInterval(()=>deferred(s),200);s.progressTimer.unref?.();
+    s.progressTimer=setInterval(()=>{idleTick(s);deferred(s);},200);s.progressTimer.unref?.();
     if(s.mediaCliAvailable)s.mediaRecovery=createMediaTurnRecovery({
       state:()=>({current:current(s),ending:s.ending,routed:s.speakerRouting,pending:s.pending.size,playing:s.playing,responseActive:s.responseActive,userSpeaking:s.userSpeaking}),
       resume:text=>s.bridge?.sendUserMessage(text),audit:event=>audit({...event,voiceSessionId:s.id}),
@@ -608,6 +633,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.lookup.answered();s.responseActive=true;s.responseActivityAt=Date.now();s.narrationBusyUntil=0;if(s.ending&&(!s.nativeDuplex||metadata?.responseId&&metadata.responseId!==s.ending.priorResponseId)){s.ending.hasAudio=true;s.ending.responseId=metadata?.responseId;clearTimeout(s.ending.fallbackTimer);clearTimeout(s.ending.noAudioTimer);}deliverAudio(audio,metadata);}),
       onTranscript:(role,text,final,source,metadata={})=>{
         if(!current(s))return;
+        s.activityAt=Date.now();
         if(role==='assistant'&&!source&&guardReply(s,text,final,metadata.responseId))return;
         if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
         const deliver=()=>{
