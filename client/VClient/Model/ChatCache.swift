@@ -38,7 +38,9 @@ enum ChatCache {
                 .prefix(sessionLimit)
                 .map { session -> ChatSession in
                     var session = session
-                    session.items = session.items.filter { !$0.pending && !$0.failed }.suffix(itemLimit)
+                    // A card still changing when saved is a snapshot of a turn that has
+                    // likely finished by the next launch; V sends it again once connected.
+                    session.items = session.items.filter { !$0.pending && !$0.failed && !$0.live && !$0.isActiveWork }.suffix(itemLimit)
                     session.historyLoaded = false
                     return session
                 }

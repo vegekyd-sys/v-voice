@@ -12,6 +12,7 @@ final class FixtureTransport: VTransport {
     func stop() {}
     func registerPush() async {}
     func close(session: String) async {}
+    func markRead(session: String) async {}
     func refreshSessions() async {}
     func reconnect() {}
     func open(session: String, model: AppModel) async {}
@@ -149,7 +150,19 @@ final class FixtureTransport: VTransport {
             ],
             unread: 1)
 
-        return [direct, group, nightshift]
+        var sessions = [direct, group, nightshift]
+        // `VCLIENT_DEMO_LONG=<n>`: a long chat for scrolling tests.
+        if let count = ProcessInfo.processInfo.environment["VCLIENT_DEMO_LONG"].flatMap(Int.init) {
+            let start = now.addingTimeInterval(-Double(count) * 90)
+            sessions[0].items = (0..<count).map { index in
+                let time = start.addingTimeInterval(Double(index) * 90)
+                if index.isMultiple(of: 2) {
+                    return ChatItem(id: "long-\(index)", sender: .user, time: time, content: .text("第 \(index) 条：帮我看看这个问题"))
+                }
+                return ChatItem(id: "long-\(index)", sender: .v, time: time, content: .text(index.isMultiple(of: 6) ? markdownSample : "第 \(index) 条回复，**要点**如下：\n\n- 一\n- 二\n\n`code` 和 [链接](https://example.com)"))
+            }
+        }
+        return sessions
     }
 
     func react(item: ChatItem, emoji: String, remove: Bool, session: String, model: AppModel) async {
@@ -159,8 +172,12 @@ final class FixtureTransport: VTransport {
         }
     }
 
-    func send(_ message: Outgoing, session: String, itemId: String, model: AppModel) async {
-        let text = message.text
+    func send(_ entry: OutboxEntry, attachments: [Attachment], model: AppModel) async -> SendOutcome {
+        await play(entry.text, session: entry.session, model: model)
+        return .sent
+    }
+
+    private func play(_ text: String, session: String, model: AppModel) async {
         let runId = UUID().uuidString
         let id = "run:\(runId)"
         let start = Date.now

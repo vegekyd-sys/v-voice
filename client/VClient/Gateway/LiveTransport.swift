@@ -38,6 +38,9 @@ final class LiveTransport: VTransport {
 
     func start(model: AppModel) async {
         self.model = model
+        // Known from last time: a chat opened before vapp.hello answers must not be
+        // read from the transcript like the other chats.
+        vappSession = model.vappSessionID
         let identity = DeviceIdentity.loadOrCreate()
         model.deviceId = identity.deviceId
         model.status = .connecting(endpoint.displayHost)
@@ -81,6 +84,8 @@ final class LiveTransport: VTransport {
         // No `sessions.subscribe`: it also sends every session's tool events, which
         // this app does not use and which can fill a slow link (25 KB/s measured on V).
         await helloVapp()
+        // Queued messages go before anything is loaded: they were typed first.
+        model.flushOutbox()
         await loadVappHistory()
         // One socket, so a long list would hold up an open chat. The chat goes first.
         if let open = openSession {
@@ -339,55 +344,93 @@ final class LiveTransport: VTransport {
 
     // MARK: Sending
 
-    func send(_ message: Outgoing, session key: String, itemId: String, model: AppModel) async {
-        let text = message.text
-        guard let connection, connection.state == .connected else {
-            model.updateItem("send:\(itemId)", in: key) { $0.pending = false; $0.failed = true }
-            model.showNotice("还没连上 V，消息没有发出")
-            return
-        }
-        if key == vappSession {
-            do {
-                var params: [String: JSONValue] = ["text": .string(text), "clientMessageId": .string(itemId)]
-                if let quote = message.quote { params["quote"] = .string(quote) }
-                if !message.attachments.isEmpty {
-                    params["media"] = .array(await Self.encoded(message.attachments, dataKey: "contentBase64"))
-                }
-                let result = try await connection.request("vapp.send", .object(params), timeout: .seconds(120))
-                model.updateItem("send:\(itemId)", in: key) { $0.pending = false }
-                if let notice = result["notice"]?.string { model.showNotice(notice) }
-            } catch {
-                model.updateItem("send:\(itemId)", in: key) { $0.pending = false; $0.failed = true }
-                model.showNotice("发送失败：\(error.localizedDescription)")
-            }
-            return
-        }
-        let images = message.attachments.filter(\.isImage)
-        if images.count < message.attachments.count {
-            model.showNotice("这个会话只能发图片，文件请在 App 私聊里发")
-        }
+    func send(_ entry: OutboxEntry, attachments: [Attachment], model: AppModel) async -> SendOutcome {
+        let key = entry.session
+        let text = entry.text
+        guard let connection, connection.state == .connected else { return .later }
         do {
+            if key == vappSession {
+                var params: [String: JSONValue] = ["text": .string(text), "clientMessageId": .string(entry.id)]
+                if let quote = entry.quote { params["quote"] = .string(quote) }
+                if !attachments.isEmpty {
+                    if connection.supports("vapp.upload") {
+                        params["media"] = .array(try await upload(entry, attachments, over: connection, model: model).map { ["uploadId": .string($0)] })
+                    } else {
+                        params["media"] = .array(await Self.encoded(attachments, dataKey: "contentBase64"))
+                    }
+                }
+                let result = try await connection.request("vapp.send", .object(params), timeout: .seconds(60))
+                if let notice = result["notice"]?.string { model.showNotice(notice) }
+                return .sent
+            }
+            let images = attachments.filter(\.isImage)
+            if images.count < attachments.count {
+                model.showNotice("这个会话只能发图片，视频和文件请在 App 私聊里发")
+            }
             var params: [String: JSONValue] = [
                 "sessionKey": .string(key),
-                "message": .string(message.quote.map { "[Replying to: \"\($0)\"]\n\n\(text)" } ?? text),
-                "idempotencyKey": .string(itemId),
+                "message": .string(entry.quote.map { "[Replying to: \"\($0)\"]\n\n\(text)" } ?? text),
+                "idempotencyKey": .string(entry.id),
                 "deliver": false,
             ]
             if !images.isEmpty {
-                let encoded = await Self.encoded(images, dataKey: "content", extra: ["type": "image"])
-                params["attachments"] = .array(encoded)
+                params["attachments"] = .array(await Self.encoded(images, dataKey: "content", extra: ["type": "image"]))
             }
-            let result = try await connection.request("chat.send", .object(params), timeout: .seconds(120))
-            let runId = result["runId"]?.string ?? itemId
-            model.updateItem("send:\(itemId)", in: key) { item in
-                item.pending = false
-                item.id = "send:\(runId)"
-            }
+            let result = try await connection.request("chat.send", .object(params), timeout: .seconds(60))
+            let runId = result["runId"]?.string ?? entry.id
+            model.updateItem(entry.itemId, in: key) { $0.id = "send:\(runId)" }
             ensureRun(runId, in: key, at: .now)
+            return .sent
+        } catch let error as GatewayError where ["TIMEOUT", "DISCONNECTED", "UNAVAILABLE"].contains(error.code) {
+            return .later
         } catch {
-            model.updateItem("send:\(itemId)", in: key) { $0.pending = false; $0.failed = true }
-            model.showNotice("发送失败：\(error.localizedDescription)")
+            // An upload V let expire is sent again from the start on retry.
+            for file in attachments { uploaded[file.id] = nil }
+            return .refused(error.localizedDescription)
         }
+    }
+
+    /// 512 KB pieces, each its own frame: progress to show, and replies and other
+    /// requests still get through while a video goes up. Returns V's upload ids.
+    private static let uploadPiece = 512 * 1024
+    private var uploaded: [UUID: String] = [:]
+
+    private func upload(_ entry: OutboxEntry, _ files: [Attachment], over connection: GatewayConnection, model: AppModel) async throws -> [String] {
+        let total = Double(max(1, files.reduce(0) { $0 + $1.data.count }))
+        var done = 0.0
+        var ids: [String] = []
+        for file in files {
+            if let id = uploaded[file.id] {
+                ids.append(id)
+                done += Double(file.data.count)
+                continue
+            }
+            var uploadId: String?
+            var offset = 0
+            while offset < file.data.count {
+                let end = min(offset + Self.uploadPiece, file.data.count)
+                let chunk = await Task.detached(priority: .userInitiated) { [data = file.data, offset, end] in
+                    data.subdata(in: offset..<end).base64EncodedString()
+                }.value
+                var params: [String: JSONValue] = ["offset": .number(Double(offset)), "chunkBase64": .string(chunk)]
+                if let uploadId {
+                    params["uploadId"] = .string(uploadId)
+                } else {
+                    params["mimeType"] = .string(file.mimeType)
+                    params["fileName"] = .string(file.fileName)
+                    params["size"] = .number(Double(file.data.count))
+                }
+                let result = try await connection.request("vapp.upload", .object(params), timeout: .seconds(45))
+                uploadId = result["uploadId"]?.string
+                offset = result["received"]?.double.map { Int($0) } ?? end
+                model.setUploadProgress((done + Double(offset)) / total, for: entry)
+            }
+            guard let uploadId else { throw GatewayError(code: "INVALID_RESPONSE", message: "V 没有收到文件") }
+            uploaded[file.id] = uploadId
+            ids.append(uploadId)
+            done += Double(file.data.count)
+        }
+        return ids
     }
 
     /// Base64 of a large photo takes long enough to be felt on the main thread.
@@ -594,6 +637,17 @@ final class LiveTransport: VTransport {
         }
     }
 
+    /// A message's words without the bracketed notes V adds on its side.
+    nonisolated static func withoutNotes(_ text: String) -> String {
+        text.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { line in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                return !(trimmed.hasPrefix("[") && trimmed.hasSuffix("]"))
+            }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private func handleSessionMessage(_ payload: JSONValue) {
         guard let model, let key = payload["sessionKey"]?.string, let session = model.session(key),
               let message = payload["message"]
@@ -603,9 +657,12 @@ final class LiveTransport: VTransport {
             // V's side arrives as cards; a user message is new only when it came from elsewhere.
             guard role == "user" else { return }
             let parsed = MessageParser.user(HistoryMapper.plainText(message["content"]) ?? "")
-            let recent = session.items.suffix(8).contains { item in
+            let words = Self.withoutNotes(parsed.text)
+            // The transcript copy can carry V's notes ("[Video attachment could not be
+            // analyzed]"), and a message with a video can take minutes to upload.
+            let recent = session.items.suffix(12).contains { item in
                 guard item.sender == .user, case .text(let text) = item.content else { return false }
-                return text == parsed.text && item.time > .now - 120
+                return Self.withoutNotes(text) == words && item.time > .now - 900
             }
             if recent { return }
         }
@@ -716,11 +773,14 @@ final class LiveTransport: VTransport {
     /// reach stay. A card we still show as changing that is neither logged nor live
     /// was cut off (the Gateway restarted mid-turn): it settles and says so.
     nonisolated static func mergeVapp(entries: [JSONValue], liveCards: Set<String>, local: [ChatItem], settleLocal: Bool) -> [ChatItem] {
-        var merged = local
+        // This chat is only what the app channel logged; anything read from the
+        // transcript (a chat opened before the channel was known) does not belong.
+        var merged = local.filter { ["send:", "vcard:", "vmsg:"].contains(where: $0.id.hasPrefix) }
         var positions = Dictionary(merged.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
         for entry in entries {
             guard var item = vappItem(entry) else { continue }
             if let index = positions[item.id] {
+                OutboxStore.remember(sent: merged[index].media, asOnV: item.media)
                 item.reactions = merged[index].reactions
                 merged[index] = item
             } else {
@@ -747,6 +807,16 @@ final class LiveTransport: VTransport {
         }
         for entry in entries where entry["kind"]?.string == "reaction" {
             applyReaction(entry, to: &merged)
+        }
+        // A transcript copy of a message this app sent (it carries V's notes) goes.
+        let sent = merged.filter { $0.sender == .user && $0.id.hasPrefix("send:") }
+        merged.removeAll { item in
+            guard item.sender == .user, !item.id.hasPrefix("send:"), case .text(let text) = item.content else { return false }
+            let words = withoutNotes(text)
+            return sent.contains { mine in
+                guard case .text(let original) = mine.content else { return false }
+                return withoutNotes(original) == words && abs(mine.time.timeIntervalSince(item.time)) < 900
+            }
         }
         return merged.enumerated().sorted { lhs, rhs in
             lhs.element.time == rhs.element.time ? lhs.offset < rhs.offset : lhs.element.time < rhs.element.time
@@ -775,12 +845,20 @@ final class LiveTransport: VTransport {
         if model.session(key)?.items.contains(where: { $0.id == itemId }) == true {
             model.updateItem(itemId, in: key) {
                 $0.pending = false
-                if !media.isEmpty { $0.media = media }
+                if !media.isEmpty {
+                    OutboxStore.remember(sent: $0.media, asOnV: media)
+                    $0.media = media
+                }
             }
             return
         }
         guard let item = Self.vappItem(.object((payload.objectValue ?? [:]).merging(["kind": "user"]) { first, _ in first })) else { return }
         model.append(item, to: key)
+    }
+
+    func markRead(session key: String) async {
+        guard let connection, connection.state == .connected else { return }
+        _ = try? await connection.request("sessions.patch", ["key": .string(key), "unread": false])
     }
 
     func react(item: ChatItem, emoji: String, remove: Bool, session key: String, model: AppModel) async {

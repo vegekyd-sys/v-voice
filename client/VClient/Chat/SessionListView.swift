@@ -21,17 +21,22 @@ struct SessionListView: View {
     var body: some View {
         @Bindable var model = model
         List(selection: $model.selectedSessionID) {
-            HomeStatus(status: model.status, working: model.sessions.filter(\.isWorking).count)
+            // With nothing listed the middle of the screen says it; once is enough.
+            if !sessions.isEmpty || model.status.isConnected {
+                HomeStatus(status: model.status, working: model.sessions.filter(\.isWorking).count, slowToConnect: model.slowToConnect)
+            }
             if case .awaitingApproval = model.status {
                 ApprovalWaitingRow().quietRow()
             }
             if query.isEmpty, let own = ownChat {
                 OwnChatRow(session: own)
+                    .accessibilityIdentifier("session:\(own.id)")
                     .tag(own.id)
                     .quietRow(top: 0, bottom: 14)
             }
             ForEach(sessions.filter { !query.isEmpty || $0.id != ownChat?.id }) { session in
                 SessionRow(session: session)
+                    .accessibilityIdentifier("session:\(session.id)")
                     .tag(session.id)
                     .quietRow()
             }
@@ -40,7 +45,9 @@ struct SessionListView: View {
         .scrollContentBackground(.hidden)
         .background(VTheme.page)
         .overlay {
-            if sessions.isEmpty {
+            if sessions.isEmpty, !query.isEmpty {
+                ContentUnavailableView.search(text: query)
+            } else if sessions.isEmpty {
                 switch model.status {
                 case .connecting:
                     ProgressView("正在连接 V…").foregroundStyle(VTheme.muted)
@@ -128,10 +135,14 @@ private extension View {
 private struct HomeStatus: View {
     let status: ConnectionStatus
     let working: Int
+    /// Connecting for more than a moment; a line that comes and goes within a
+    /// second or two only makes the list jump.
+    var slowToConnect = false
 
     private var hasLine: Bool {
         switch status {
         case .connected: working > 0
+        case .connecting: slowToConnect
         case .awaitingApproval: false
         default: true
         }
@@ -368,3 +379,4 @@ private struct RemoteAvatarImage: View {
         }
     }
 }
+

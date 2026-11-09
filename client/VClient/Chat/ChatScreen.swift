@@ -4,6 +4,8 @@ import SwiftUI
 struct ChatScreen: View {
     let sessionID: String
     @Environment(AppModel.self) private var model
+    /// Local, so the field never sees a binding rebuilt mid-typing (that drops
+    /// keystrokes); copied to the model's drafts as it changes.
     @State private var draft = ""
     @State private var quote: String?
     @State private var attachments: [Attachment] = []
@@ -12,6 +14,12 @@ struct ChatScreen: View {
     @State private var markdownFile: MarkdownFile?
     /// Follow new messages only while the reader is at the bottom, like Feishu.
     @State private var atBottom = true
+    /// Following the newest message. Only the reader's own scrolling changes it:
+    /// content growing above (a card filling in) must not stop the follow.
+    @State private var pinned = true
+    /// Messages that arrived while the reader was further up.
+    @State private var unseen = 0
+
 
     private var session: ChatSession? { model.session(sessionID) }
 
@@ -54,17 +62,75 @@ struct ChatScreen: View {
                 .defaultScrollAnchor(.bottom, for: .initialOffset)
                 // Rows above grow as pictures and cards load; only stay pinned to
                 // the bottom while the reader is there.
-                .defaultScrollAnchor(atBottom ? .bottom : nil, for: .sizeChanges)
+                .defaultScrollAnchor(pinned ? .bottom : nil, for: .sizeChanges)
                 .scrollDismissesKeyboard(.interactively)
                 .background(VTheme.page)
                 .onScrollGeometryChange(for: Bool.self) { geometry in
-                    geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 120
+                    // containerSize leaves out the insets (navigation bar above, composer
+                    // below); the visible bottom in content terms is offset + size + top inset.
+                    geometry.contentOffset.y + geometry.containerSize.height + geometry.contentInsets.top
+                        >= geometry.contentSize.height - 120
                 } action: { _, isAtBottom in
                     atBottom = isAtBottom
+                    if isAtBottom { unseen = 0 }
                 }
-                .onChange(of: session.items.last) {
-                    guard let last = session.items.last, atBottom || last.pending else { return }
-                    withAnimation(.snappy) { proxy.scrollTo(last.id, anchor: .bottom) }
+                .onScrollPhaseChange { _, phase in
+                    // The reader's hand is on the list: stop holding it to the bottom, or rows
+                    // measured during a fling pull it back down. Where it comes to rest decides.
+                    switch phase {
+                    case .interacting: pinned = false
+                    case .idle: pinned = atBottom
+                    default: break
+                    }
+                }
+                // Any change at the end (a new message, a card growing) keeps a
+                // following reader at the newest line.
+                .onChange(of: Self.tail(session.items)) {
+                    guard pinned, let last = session.items.last else { return }
+                    proxy.scrollTo(last.id, anchor: .bottom)
+                }
+                .onChange(of: session.items.last?.id) { old, _ in
+                    guard let last = session.items.last else { return }
+                    if pinned || last.sender == .user {
+                        pinned = true
+                        withAnimation(.snappy) { proxy.scrollTo(last.id, anchor: .bottom) }
+                    } else if old != nil {
+                        unseen += 1
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if !pinned {
+                        Button {
+                            jumpToLatest(proxy)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.down")
+                                if unseen > 0 { Text("\(unseen)").monospacedDigit() }
+                            }
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(unseen > 0 ? VTheme.purple : VTheme.soft)
+                            .padding(.horizontal, unseen > 0 ? 12 : 0)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .glassEffect(.regular.interactive(), in: Capsule())
+                        .padding(.trailing, 14)
+                        .padding(.bottom, 8)
+                        .transition(.scale(scale: 0.8).combined(with: .opacity))
+                        .accessibilityLabel(unseen > 0 ? "回到最新，\(unseen) 条新消息" : "回到最新")
+                        .accessibilityIdentifier("jumpToLatest")
+                    }
+                }
+                .animation(.snappy(duration: 0.2), value: pinned)
+                // The keyboard takes the bottom of the screen: whoever was reading
+                // the newest message still sees it, as in Feishu.
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                    guard pinned, let last = session.items.last else { return }
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(30))
+                        withAnimation(.snappy) { proxy.scrollTo(last.id, anchor: .bottom) }
+                    }
                 }
                 .onChange(of: session.historyLoaded) { _, loaded in
                     // First page in: jump to the newest message without animating through history.
@@ -94,6 +160,8 @@ struct ChatScreen: View {
                 }
                 .animation(.snappy, value: model.notice)
             }
+            .onAppear { draft = model.drafts[sessionID] ?? "" }
+            .onChange(of: draft) { _, text in model.drafts[sessionID] = text }
             .quickLookPreview($filePreview)
             .sheet(item: $markdownFile) { MarkdownFileSheet(file: $0) }
             .environment(\.openURL, OpenURLAction { url in
@@ -134,6 +202,27 @@ struct ChatScreen: View {
                     }
                 }
             }
+        }
+    }
+
+    /// Cheap fingerprint of the end of the chat: how many messages, the last one, and its size.
+    private static func tail(_ items: [ChatItem]) -> String {
+        guard let last = items.last else { return "" }
+        return "\(items.count)|\(last.id)|\(last.plainText.count)|\(last.media.count)|\(last.live)"
+    }
+
+    /// From far up, a lazy stack only knows row heights it has drawn, so one
+    /// jump lands short; jump again until the newest row is really in view.
+    private func jumpToLatest(_ proxy: ScrollViewProxy) {
+        Task {
+            for _ in 0..<8 {
+                guard let last = session?.items.last else { return }
+                proxy.scrollTo(last.id, anchor: .bottom)
+                try? await Task.sleep(for: .milliseconds(50))
+                if atBottom { break }
+            }
+            unseen = 0
+            pinned = true
         }
     }
 }
@@ -304,15 +393,24 @@ struct MessageRow: View, Equatable {
         case .user:
             HStack(alignment: .bottom, spacing: 8) {
                 Spacer(minLength: 56)
-                if item.pending {
-                    ProgressView().controlSize(.mini)
-                } else if item.failed {
-                    Button {
-                        model.retry(item, in: sessionID)
+                if item.failed {
+                    Menu {
+                        Button("重新发送", systemImage: "arrow.clockwise") { model.retry(item, in: sessionID) }
+                        Button("删除", systemImage: "trash", role: .destructive) { model.discard(item, in: sessionID) }
                     } label: {
                         Image(systemName: "exclamationmark.circle.fill").foregroundStyle(VTheme.red)
                     }
-                    .accessibilityLabel("重新发送")
+                    .accessibilityLabel("没有发出")
+                } else if item.queued {
+                    Image(systemName: "clock")
+                        .font(.caption)
+                        .foregroundStyle(VTheme.muted)
+                        .accessibilityLabel("等待联网后发送")
+                } else if let progress = item.progress {
+                    UploadRing(progress: progress)
+                        .accessibilityLabel("正在上传 \(Int(progress * 100))%")
+                } else if item.pending {
+                    ProgressView().controlSize(.mini)
                 }
                 VStack(alignment: .trailing, spacing: 4) {
                     userContent.contextMenu { menu }
@@ -463,5 +561,21 @@ struct TimeSeparator: View {
         if calendar.isDateInToday(date) { return time }
         if calendar.isDateInYesterday(date) { return "昨天 \(time)" }
         return date.formatted(.dateTime.month().day().hour().minute())
+    }
+}
+
+/// How much of a message's pictures and videos V has.
+private struct UploadRing: View {
+    let progress: Double
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(VTheme.hairline, lineWidth: 2)
+            Circle().trim(from: 0, to: max(0.04, progress))
+                .stroke(VTheme.purple, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(.linear(duration: 0.2), value: progress)
+        }
+        .frame(width: 14, height: 14)
     }
 }

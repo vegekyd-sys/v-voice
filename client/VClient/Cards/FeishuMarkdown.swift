@@ -441,16 +441,33 @@ private struct MarkdownTableView: View {
     let rows: [[[FeishuMarkdown.Run]]]
     let color: Color
 
-    private var widths: [CGFloat] {
-        header.indices.map { column in
-            let cells = [header[column]] + rows.map { column < $0.count ? $0[column] : [] }
-            let widest = cells.map { runs in
-                runs.reduce(0.0) { sum, run in
-                    sum + run.text.reduce(0.0) { $0 + ($1.isASCII ? 8.0 : 15.5) }
-                }
+    /// The width the card gives the table; columns fit inside it, as in Feishu.
+    @State private var available: CGFloat = 0
+    private static let spacing: CGFloat = 14
+    private static let inset: CGFloat = 10
+
+    /// One-line width of each column's widest cell, measured with the cell font.
+    private var natural: [CGFloat] {
+        let body = UIFont.preferredFont(forTextStyle: .footnote)
+        let bold = UIFont.systemFont(ofSize: body.pointSize, weight: .semibold)
+        return header.indices.map { column in
+            let cells = [(header[column], bold)] + rows.map { (column < $0.count ? $0[column] : [], body) }
+            let widest = cells.map { runs, font in
+                (runs.map(\.text).joined() as NSString).size(withAttributes: [.font: font]).width
             }.max() ?? 0
-            return min(max(widest + 2, 44), 240)
+            return min(max(ceil(widest) + 2, 44), 240)
         }
+    }
+
+    /// Too wide for the card: every column gives up the same share and wraps,
+    /// down to 56 pt; only a table that still does not fit scrolls sideways.
+    private var widths: [CGFloat] {
+        let natural = natural
+        let gaps = Self.spacing * CGFloat(max(0, natural.count - 1)) + Self.inset * 2
+        let total = natural.reduce(0, +) + gaps
+        guard available > 0, total > available else { return natural }
+        let scale = max(0, available - gaps) / max(1, natural.reduce(0, +))
+        return natural.map { max(56, floor($0 * scale)) }
     }
 
     private func cell(_ runs: [FeishuMarkdown.Run], column: Int, width: CGFloat, isHeader: Bool) -> some View {
@@ -470,22 +487,23 @@ private struct MarkdownTableView: View {
         let widths = widths
         ScrollView(.horizontal, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 7) {
-                HStack(alignment: .top, spacing: 14) {
+                HStack(alignment: .top, spacing: Self.spacing) {
                     ForEach(header.indices, id: \.self) { column in
                         cell(header[column], column: column, width: widths[column], isHeader: true)
                     }
                 }
                 Divider().overlay(VTheme.hairline)
                 ForEach(rows.indices, id: \.self) { index in
-                    HStack(alignment: .top, spacing: 14) {
+                    HStack(alignment: .top, spacing: Self.spacing) {
                         ForEach(header.indices, id: \.self) { column in
                             cell(column < rows[index].count ? rows[index][column] : [], column: column, width: widths[column], isHeader: false)
                         }
                     }
                 }
             }
-            .padding(10)
+            .padding(Self.inset)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { available = $0 }
         .background(VTheme.sunken, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }

@@ -106,7 +106,8 @@ final class GatewayConnection {
     private func open() {
         close(error: .disconnected)
         let current = generation
-        state = .connecting
+        // While it keeps failing, the reason stays up between attempts.
+        if failures < 2 || state == .awaitingApproval { state = .connecting }
         var request = URLRequest(url: endpoint.url)
         request.timeoutInterval = 20
         let socket = session.webSocketTask(with: request)
@@ -118,7 +119,7 @@ final class GatewayConnection {
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(10))
             guard let self, self.generation == current, self.hello == nil, self.state == .connecting else { return }
-            self.dropped(reason: "handshake timeout")
+            self.dropped(error: GatewayError.timeout)
         }
     }
 
@@ -139,7 +140,7 @@ final class GatewayConnection {
                 message = try await socket.receive()
             } catch {
                 guard current == generation else { return }
-                dropped(reason: error.localizedDescription)
+                dropped(error: error)
                 return
             }
             guard current == generation else { return }
@@ -158,12 +159,33 @@ final class GatewayConnection {
         }
     }
 
-    private func dropped(reason: String) {
+    /// Attempts since the last good connection; after a second failure the
+    /// app says why instead of "connecting" forever, and keeps retrying.
+    private var failures = 0
+
+    private func dropped(error: Error) {
         close(error: .disconnected)
         hello = nil
         guard !stopped else { return }
-        if state != .awaitingApproval { state = .connecting }
+        failures += 1
+        if state != .awaitingApproval {
+            state = failures >= 2 ? .failed(Self.explain(error, host: endpoint.url.host() ?? "")) : .connecting
+        }
         scheduleReconnect()
+    }
+
+    /// What a person can do about it.
+    nonisolated static func explain(_ error: Error, host: String) -> String {
+        let tailnet = host.hasSuffix(".ts.net") || host.hasPrefix("100.")
+        let unreachable = tailnet ? "连不上 V，请确认手机的 Tailscale 已打开" : "连不上 V，请检查网络"
+        if let gateway = error as? GatewayError, gateway.code == "TIMEOUT" { return unreachable }
+        switch (error as? URLError)?.code {
+        case .notConnectedToInternet, .dataNotAllowed: return "手机没有联网"
+        case .cannotFindHost, .dnsLookupFailed: return tailnet ? unreachable : "找不到 V 的地址，请检查网络"
+        case .timedOut, .cannotConnectToHost, .networkConnectionLost: return unreachable
+        case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate: return "和 V 的安全连接失败，请检查网络"
+        default: return unreachable
+        }
     }
 
     private func scheduleReconnect(after delay: Duration? = nil) {
@@ -286,6 +308,7 @@ final class GatewayConnection {
             events: Set(payload["features"]?["events"]?.array.compactMap(\.string) ?? []),
             scopes: auth?["scopes"]?.array.compactMap(\.string) ?? [])
         retryDelay = .seconds(1)
+        failures = 0
         state = .connected
         onConnected?()
     }

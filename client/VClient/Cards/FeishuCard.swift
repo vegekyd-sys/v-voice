@@ -189,10 +189,15 @@ extension FeishuCard {
     }
 
     /// The card's readable text, without Feishu's inline tags.
-    var plainText: String {
+    /// The card's words without the small print (the Agent/Model footer), for list previews.
+    var previewText: String { text(notation: false) }
+
+    var plainText: String { text(notation: true) }
+
+    private func text(notation: Bool) -> String {
         func words(_ element: Element) -> [String] {
             switch element {
-            case .markdown(let text, _): [text]
+            case .markdown(let text, let size): size == .notation && !notation ? [] : [text]
             case .columns(let columns, _): columns.flatMap { $0.elements.flatMap(words) }
             case .panel(let title, _, let elements): [title] + elements.flatMap(words)
             case .fields(let fields): fields.map(\.markdown)

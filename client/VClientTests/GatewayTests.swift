@@ -248,6 +248,16 @@ final class VappChatTests: XCTestCase {
         .card(FeishuCard(json: .object(["body": .object(["elements": .array([.object(["tag": "markdown", "content": .string(text)])])])])))
     }
 
+    /// The app chat read from the transcript by mistake (opened before vapp.hello answered):
+    /// its run cards and V-annotated copies of sent messages go when the log arrives.
+    func testTranscriptItemsLeaveTheAppChat() {
+        let sent = ChatItem(id: "send:m1", sender: .user, time: .now, content: .text("这段视频是什么？"))
+        let copy = ChatItem(id: "hist:7", sender: .user, time: .now, content: .text("这段视频是什么？\n\n[Video attachment could not be analyzed]"))
+        let run = ChatItem(id: "run:r1", sender: .v, time: .now, content: .reply(WorkState(runId: "r1", phase: .done, startedAt: .now)))
+        let merged = LiveTransport.mergeVapp(entries: [], liveCards: [], local: [sent, copy, run], settleLocal: true)
+        XCTAssertEqual(merged.map(\.id), ["send:m1"])
+    }
+
     func testCutOffCardSettlesAndLoggedCardWins() {
         var cut = ChatItem(id: "vcard:t1:0", sender: .v, time: .now, content: card("写到一半"))
         cut.live = true

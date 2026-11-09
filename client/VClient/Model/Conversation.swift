@@ -19,6 +19,8 @@ struct ChatSession: Identifiable, Hashable, Sendable, Codable {
     var model: String?
     /// The chat's picture in Feishu, when V knows it.
     var avatarURL: URL?
+    /// When this chat was last open here; older messages arriving late are not new.
+    var lastReadAt: Date?
 
     var displayPreview: String {
         guard let last = items.last else { return preview }
@@ -67,6 +69,10 @@ struct ChatItem: Identifiable, Hashable, Sendable, Codable {
     /// Sent from this app and not yet confirmed by the Gateway.
     var pending = false
     var failed = false
+    /// Waiting for a connection, not yet on its way.
+    var queued = false
+    /// Share of the attachments V has, while they upload.
+    var progress: Double?
     /// A V card V is still rewriting; it settles when the turn ends.
     var live = false
     var reactions: [Reaction] = []
@@ -76,6 +82,9 @@ struct ChatItem: Identifiable, Hashable, Sendable, Codable {
         /// "user" or "v".
         var from: String
     }
+
+    /// A run card V is still working on.
+    var isActiveWork: Bool { if case .reply(let work) = content { work.isActive } else { false } }
 
     /// The words of this message, for copying and quoting.
     var plainText: String {
@@ -106,7 +115,7 @@ struct ChatItem: Identifiable, Hashable, Sendable, Codable {
                 else { FeishuMarkdown.plain(work.visibleAnswer) }
             case .card(let card):
                 if let title = card.header?.title { "[卡片] " + title }
-                else { FeishuMarkdown.plain(card.plainText) }
+                else { FeishuMarkdown.plain(card.previewText) }
             case .question(let question): "[需要你回答] " + question.prompt
             case .file(let file): "[文件] " + file.name
             case .notice(let text): text

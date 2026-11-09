@@ -1,13 +1,7 @@
+import AVFoundation
 import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
-
-/// What the composer sends: words, the message being answered, and files.
-struct Outgoing: Sendable {
-    var text: String
-    var quote: String?
-    var attachments: [Attachment] = []
-}
 
 struct Attachment: Identifiable, Hashable, Sendable {
     var id = UUID()
@@ -17,8 +11,58 @@ struct Attachment: Identifiable, Hashable, Sendable {
 
     var isImage: Bool { mimeType.hasPrefix("image/") }
 
-    /// One Gateway frame is 25 MiB and base64 grows by a third.
-    static let maxBytes = 18 * 1024 * 1024
+    /// The vapp channel takes files in pieces up to 64 MB; other chats send
+    /// pictures inline, where one Gateway frame (25 MiB, base64) is the limit.
+    static let maxBytes = 64 * 1024 * 1024
+    static let maxInlineBytes = 18 * 1024 * 1024
+    /// Longer videos are better trimmed first than sent for minutes.
+    static let maxVideoSeconds: Double = 180
+
+    var isVideo: Bool { mimeType.hasPrefix("video/") }
+
+    /// Small enough to draw in the composer without decoding the whole picture each time.
+    var thumbnail: UIImage? {
+        guard isImage, let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceThumbnailMaxPixelSize: 160,
+              ] as CFDictionary)
+        else { return nil }
+        return UIImage(cgImage: image)
+    }
+
+    enum PrepareError: LocalizedError {
+        case tooLarge(Int)
+        case tooLong
+        case unreadable
+
+        var errorDescription: String? {
+            switch self {
+            case .tooLarge(let bytes): "文件 \(bytes / 1_048_576) MB，超过了 64 MB"
+            case .tooLong: "视频超过 3 分钟，剪短一点再发"
+            case .unreadable: "读不出这个文件"
+            }
+        }
+    }
+
+    /// 960×540 H.264 (about 2.5 Mbit/s, so a minute is about 20 MB): enough for V to
+    /// watch, quick to send. Export sessions also turn HDR into SDR correctly.
+    static func video(at source: URL) async throws -> Attachment {
+        let asset = AVURLAsset(url: source)
+        let seconds = try await asset.load(.duration).seconds
+        guard seconds.isFinite, seconds > 0 else { throw PrepareError.unreadable }
+        guard seconds <= maxVideoSeconds else { throw PrepareError.tooLong }
+        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPreset960x540) else { throw PrepareError.unreadable }
+        session.shouldOptimizeForNetworkUse = true
+        let output = FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString).mp4")
+        defer { try? FileManager.default.removeItem(at: output) }
+        try await session.export(to: output, as: .mp4)
+        let data = try Data(contentsOf: output)
+        guard data.count <= maxBytes else { throw PrepareError.tooLarge(data.count) }
+        let base = source.deletingPathExtension().lastPathComponent
+        return Attachment(data: data, mimeType: "video/mp4", fileName: "\(base.isEmpty ? "video" : base).mp4")
+    }
 
     /// Long edge 2048, JPEG: what V can read, small enough to send quickly.
     /// A GIF keeps its frames.

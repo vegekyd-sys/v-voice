@@ -20,7 +20,7 @@ schemes:
       targets:
         VClient: all
     test:
-      targets: [VClientTests]
+      targets: [VClientTests, VClientUITests]
 packages:
   Markdown:
     url: https://github.com/swiftlang/swift-markdown
@@ -75,3 +75,15 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.versa.vclient.tests
         TEST_HOST: $(BUILT_PRODUCTS_DIR)/V.app/V
         BUNDLE_LOADER: $(TEST_HOST)
+  VClientUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: VClientUITests
+    dependencies:
+      - target: VClient
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.versa.vclient.uitests
+        TEST_TARGET_NAME: VClient

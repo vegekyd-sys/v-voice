@@ -50,6 +50,17 @@
                ReferencedContainer = "container:VClient.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "128E2B270FB2587BF31D2F85"
+               BuildableName = "VClientUITests.xctest"
+               BlueprintName = "VClientUITests"
+               ReferencedContainer = "container:VClient.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

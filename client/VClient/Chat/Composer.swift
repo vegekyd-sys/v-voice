@@ -16,7 +16,9 @@ struct Composer: View {
     @State private var importing = false
     @State private var picked: [PhotosPickerItem] = []
     @State private var preparing = 0
-    @State private var tooLarge = false
+    @State private var problem: String?
+    /// Shift-Return on a hardware keyboard adds a line; plain Return sends.
+    @State private var keepNewline = false
 
     private var canSend: Bool {
         preparing == 0 && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
@@ -36,7 +38,10 @@ struct Composer: View {
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result else { return }
             for url in urls {
-                prepare { await Attachment.file(at: url) }
+                prepare {
+                    guard let file = await Attachment.file(at: url) else { throw Attachment.PrepareError.tooLarge(Attachment.maxBytes + 1) }
+                    return file
+                }
             }
         }
         .onChange(of: picked) { _, items in
@@ -44,21 +49,34 @@ struct Composer: View {
             picked = []
             for item in items {
                 prepare {
-                    guard let data = try? await item.loadTransferable(type: Data.self) else { return nil }
                     if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
-                        return data.count <= Attachment.maxBytes ? Attachment(data: data, mimeType: "video/mp4", fileName: "video.mp4") : nil
+                        // As a file, not Data: a phone video can be a gigabyte before it is shrunk.
+                        guard let movie = try await item.loadTransferable(type: PickedMovie.self) else { throw Attachment.PrepareError.unreadable }
+                        defer { try? FileManager.default.removeItem(at: movie.url) }
+                        return try await Attachment.video(at: movie.url)
                     }
-                    return await Attachment.image(data)
+                    guard let data = try await item.loadTransferable(type: Data.self),
+                          let image = await Attachment.image(data)
+                    else { throw Attachment.PrepareError.unreadable }
+                    return image
                 }
             }
         }
-        .alert("文件太大", isPresented: $tooLarge) { Button("好", role: .cancel) {} } message: { Text("单个附件不能超过 18 MB。") }
+        .alert("没有加上这个附件", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(problem ?? "")
+        }
     }
 
-    private func prepare(_ load: @escaping @MainActor () async -> Attachment?) {
+    private func prepare(_ load: @escaping @MainActor () async throws -> Attachment) {
         preparing += 1
         Task {
-            if let attachment = await load() { attachments.append(attachment) } else { tooLarge = true }
+            do {
+                attachments.append(try await load())
+            } catch {
+                problem = error.localizedDescription
+            }
             preparing -= 1
         }
     }
@@ -76,23 +94,40 @@ struct Composer: View {
         .padding(.horizontal, 18)
     }
 
+    private func removeButton(_ file: Attachment) -> some View {
+        Button { attachments.removeAll { $0.id == file.id } } label: {
+            Image(systemName: "xmark.circle.fill")
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, .black.opacity(0.45))
+        }
+        .buttonStyle(.plain)
+        .padding(3)
+        .accessibilityLabel("移除附件")
+    }
+
     private var attachmentBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(attachments) { file in
-                    HStack(spacing: 6) {
-                        Image(systemName: file.isImage ? "photo" : file.mimeType.hasPrefix("video/") ? "video" : "doc")
-                        Text(file.fileName).lineLimit(1).frame(maxWidth: 120)
-                        Button { attachments.removeAll { $0.id == file.id } } label: {
-                            Image(systemName: "xmark.circle.fill")
+                    if file.isImage, let thumbnail = file.thumbnail {
+                        // A picture is shown as itself, not by a file name.
+                        Image(uiImage: thumbnail)
+                            .resizable().scaledToFill()
+                            .frame(width: 52, height: 52)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(alignment: .topTrailing) { removeButton(file) }
+                    } else {
+                        HStack(spacing: 6) {
+                            Image(systemName: file.isVideo ? "video" : "doc")
+                            Text(file.isVideo ? "视频 \(file.data.count / 1_048_576 + 1) MB" : file.fileName).lineLimit(1).frame(maxWidth: 140)
+                            removeButton(file)
                         }
-                        .accessibilityLabel("移除附件")
+                        .font(.footnote)
+                        .foregroundStyle(VTheme.soft)
+                        .padding(.horizontal, 10)
+                        .frame(height: 36)
+                        .background(VTheme.sunken, in: Capsule())
                     }
-                    .font(.footnote)
-                    .foregroundStyle(VTheme.soft)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(VTheme.sunken, in: Capsule())
                 }
                 if preparing > 0 { ProgressView().controlSize(.small) }
             }
@@ -119,15 +154,26 @@ struct Composer: View {
                     TextField(isWorking ? "补充一句，V 会接着处理" : "给 V 发消息", text: $text, axis: .vertical)
                         .lineLimit(1...6)
                         .focused($focused)
+                        .accessibilityIdentifier("composer")
                         .font(.body)
                         .padding(.vertical, 11)
                         .padding(.leading, 2)
                         .submitLabel(.send)
+                        // A hardware keyboard's Return submits a vertical field (after any
+                        // input method composition is confirmed); the on-screen one adds a line.
+                        .onSubmit { if canSend { onSend() } }
                         .onKeyPress(.return, phases: .down) { press in
-                            // Hardware keyboard: Return sends, Shift-Return adds a line.
-                            guard !press.modifiers.contains(.shift) else { return .ignored }
+                            if press.modifiers.contains(.shift) { keepNewline = true }
+                            return .ignored
+                        }
+                        // Return sends, as in Feishu. The keyboard's Return arrives as a new
+                        // line in the text; while an input method is composing, Return
+                        // confirms the composition and adds no line, so nothing is sent early.
+                        .onChange(of: text) { old, new in
+                            guard let typed = typedReturn(old: old, new: new) else { return }
+                            if keepNewline { keepNewline = false; return }
+                            text = typed
                             if canSend { onSend() }
-                            return .handled
                         }
                     Button {
                         switch trailing {
@@ -161,6 +207,33 @@ struct Composer: View {
         case .send: VTheme.purple
         case .stop: VTheme.ink
         case .idle: VTheme.sunken
+        }
+    }
+}
+
+/// When Return was typed, the text without that line break. SwiftUI can hand
+/// over several keystrokes at once (an input method commits a word, then
+/// Return), so this looks at what was inserted, not at how much: a short
+/// insertion ending in its only line break is Return; a pasted paragraph is not.
+func typedReturn(old: String, new: String) -> String? {
+    let prefix = zip(old, new).prefix { $0 == $1 }.count
+    let oldRest = old.dropFirst(prefix), newRest = new.dropFirst(prefix)
+    let suffix = zip(oldRest.reversed(), newRest.reversed()).prefix { $0 == $1 }.count
+    guard oldRest.count == suffix else { return nil } // something was replaced or deleted
+    let inserted = newRest.dropLast(suffix)
+    guard inserted.last == "\n", inserted.count <= 12, inserted.filter({ $0 == "\n" }).count == 1 else { return nil }
+    return String(new.prefix(prefix)) + String(inserted.dropLast()) + String(newRest.suffix(suffix))
+}
+
+/// A picked video as a file in our temporary folder.
+struct PickedMovie: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .movie) { received in
+            let copy = FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString)-\(received.file.lastPathComponent)")
+            try FileManager.default.copyItem(at: received.file, to: copy)
+            return PickedMovie(url: copy)
         }
     }
 }

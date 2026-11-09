@@ -28,8 +28,14 @@ struct VClientApp: App {
             }
             .onOpenURL { url in
                 // oc-pair://<setup code> links open straight into pairing.
-                guard url.scheme == "oc-pair", let endpoint = try? GatewayEndpoint.parse(setupCode: url.absoluteString) else { return }
-                Task { await model.connect(endpoint) }
+                guard url.scheme == "oc-pair" else { return }
+                do {
+                    let endpoint = try GatewayEndpoint.parse(setupCode: url.absoluteString)
+                    Task { await model.connect(endpoint) }
+                } catch {
+                    // An expired or damaged link says so instead of doing nothing.
+                    model.showNotice(error.localizedDescription)
+                }
             }
         }
     }

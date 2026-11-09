@@ -88,6 +88,19 @@ private struct MediaTile: View {
     }
 
     private func load() async {
+        // Sent from this phone and not yet on V: shown from the copy kept for sending.
+        if let local = OutboxStore.localURL(media.source) {
+            if media.kind == .video {
+                // The kept copy has no file extension; say what it is.
+                let mime = media.mimeType ?? "video/mp4"
+                let seconds = (try? await AVURLAsset(url: local, options: [AVURLAssetOverrideMIMETypeKey: mime]).load(.duration).seconds) ?? 0
+                if seconds.isFinite, seconds > 0 { duration = Self.clock(Int(seconds)) }
+                image = await Self.poster(local, mimeType: mime)
+            } else {
+                image = await Task.detached { UIImage(contentsOfFile: local.path)?.preparingThumbnail(of: CGSize(width: 600, height: 600)) }.value
+            }
+            return
+        }
         guard let loader = model.media else { failure = "未连接 V"; return }
         do {
             switch media.kind {
@@ -110,8 +123,9 @@ private struct MediaTile: View {
         }
     }
 
-    private static func poster(_ url: URL) async -> UIImage? {
-        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+    private static func poster(_ url: URL, mimeType: String? = nil) async -> UIImage? {
+        let options = mimeType.map { [AVURLAssetOverrideMIMETypeKey: $0] }
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url, options: options))
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 600, height: 600)
         guard let (cgImage, _) = try? await generator.image(at: CMTime(seconds: 0.3, preferredTimescale: 600)) else { return nil }
@@ -166,6 +180,15 @@ private struct MediaViewer: View {
             .accessibilityLabel("关闭")
         }
         .task {
+            if let local = OutboxStore.localURL(media.source) {
+                if media.kind == .video {
+                    player = AVPlayer(playerItem: AVPlayerItem(asset: AVURLAsset(url: local, options: [AVURLAssetOverrideMIMETypeKey: media.mimeType ?? "video/mp4"])))
+                    player?.play()
+                } else {
+                    full = UIImage(contentsOfFile: local.path)
+                }
+                return
+            }
             guard let loader = model.media else { return }
             do {
                 if media.kind == .video {
