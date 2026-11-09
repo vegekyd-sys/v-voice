@@ -46,9 +46,9 @@ struct OnboardingView: View {
                 .cardSurface()
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("怎么拿到设置码").font(.subheadline.weight(.semibold)).foregroundStyle(VTheme.ink)
-                    step(1, "在 V 主机上运行 `openclaw qr`，或在 Control UI 的「设备」里生成手机设置码。")
-                    step(2, "复制设置码（或 oc-pair:// 链接）粘贴到上面。设置码 10 分钟内有效，只能用一次。")
+                    Text("怎么登录").font(.subheadline.weight(.semibold)).foregroundStyle(VTheme.ink)
+                    step(1, "在飞书里私聊 V，发送 /app。")
+                    step(2, "在这台手机上点开 V 回复的链接，会直接登录。链接 10 分钟内有效，只能用一次。")
                     step(3, "连接后这台 iPhone 会出现在 V 的设备列表里，随时可以在那里移除。")
                 }
                 .padding(.horizontal, 4)
@@ -77,7 +77,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("设置码").font(.footnote.weight(.semibold)).foregroundStyle(VTheme.soft)
             HStack(alignment: .top, spacing: 8) {
-                TextField("粘贴设置码或 oc-pair:// 链接", text: $code, axis: .vertical)
+                TextField("也可以把登录链接或设置码粘贴到这里", text: $code, axis: .vertical)
                     .lineLimit(2...4)
                     .font(.system(.footnote, design: .monospaced))
                     .textInputAutocapitalization(.never)

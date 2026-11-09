@@ -106,6 +106,24 @@ final class OutboxTests: XCTestCase {
         XCTAssertEqual(LiveTransport.withoutNotes("看 [链接] 这个"), "看 [链接] 这个", "brackets inside a line are the user's")
     }
 
+    func testATeammatesLinkIsAMemberLoginAndTheOwnersIsAPairing() throws {
+        func code(_ json: String) -> String { Data(json.utf8).base64EncodedString().replacing("+", with: "-").replacing("/", with: "_").replacing("=", with: "") }
+        let future = (Date.now.timeIntervalSince1970 + 600) * 1000
+        let invite = code(#"{"url":"https://v.example.com","invite":"tok123","expiresAtMs":\#(future),"name":"小 A"}"#)
+        let member = try GatewayEndpoint.parse(setupCode: "https://v.example.com/vapp/login#\(invite)")
+        XCTAssertTrue(member.isMember)
+        XCTAssertEqual(member.invite, "tok123")
+        XCTAssertNil(member.bootstrapToken)
+        let owner = try GatewayEndpoint.parse(setupCode: "oc-pair://" + code(#"{"url":"wss://v.example.com/base","bootstrapToken":"boot","expiresAtMs":\#(future)}"#))
+        XCTAssertFalse(owner.isMember)
+        XCTAssertEqual(owner.bootstrapToken, "boot")
+        let stale = code(#"{"url":"https://v.example.com","invite":"x","expiresAtMs":1000}"#)
+        XCTAssertThrowsError(try GatewayEndpoint.parse(setupCode: "oc-pair://" + stale)) { XCTAssertEqual($0 as? SetupCodeError, .expired) }
+        XCTAssertThrowsError(try GatewayEndpoint.parse(setupCode: "oc-pair://" + code(#"{"url":"http://v.example.com","invite":"x"}"#))) {
+            XCTAssertEqual($0 as? SetupCodeError, .insecure, "a login over plain http is refused")
+        }
+    }
+
     func testConnectionFailuresSayWhatToDo() {
         XCTAssertEqual(GatewayConnection.explain(URLError(.notConnectedToInternet), host: "openclaw.tianyi.live"), "手机没有联网")
         XCTAssertEqual(GatewayConnection.explain(URLError(.timedOut), host: "v.example.ts.net"), "连不上 V，请确认手机的 Tailscale 已打开")

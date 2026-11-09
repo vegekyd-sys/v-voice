@@ -40,6 +40,7 @@
 		8EB226E7D458F9F76305B44E /* GatewayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70871438F61A2C787A52E970 /* GatewayTests.swift */; };
 		9002DF578752BBBAAD028FD3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D60EC36761443F2D7CAAAC5A /* Assets.xcassets */; };
 		90B6D783BE60B6EB9914F652 /* GatewayEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18A725573279B36167B9E9AB /* GatewayEndpoint.swift */; };
+		9870FAE91535726159B4CDB0 /* MemberConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 592B6DDDC72B03D8646C396F /* MemberConnection.swift */; };
 		98B4A3ECA808885789D302B3 /* Media.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFD3D324FE3D89F45C024EAB /* Media.swift */; };
 		9969EDB2705E67D3C97F2127 /* ChatCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBCC8F9FFF162D9408E7E611 /* ChatCache.swift */; };
 		9EA008F2FE27DA6B2E00A70D /* FixtureTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E07B5905A7DEA306FA5072F5 /* FixtureTransport.swift */; };
@@ -96,6 +97,7 @@
 		3DF0E777CFED256924257AAB /* VCardFixtureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VCardFixtureTests.swift; sourceTree = "<group>"; };
 		51A386D62FDBDD7EEF696E9F /* VClientTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VClientTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		527665BF2A5ECDD4EB2FB859 /* VClientUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VClientUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		592B6DDDC72B03D8646C396F /* MemberConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemberConnection.swift; sourceTree = "<group>"; };
 		5ABA01EEE8F6CC955D2D566C /* JSONValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValue.swift; sourceTree = "<group>"; };
 		5D37A19F9ADCFCFD9A93ED27 /* work-aborted.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "work-aborted.json"; sourceTree = "<group>"; };
 		6A55E0A54C4ED7D2696A6306 /* HistoryMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryMapper.swift; sourceTree = "<group>"; };
@@ -183,6 +185,7 @@
 				1B994551254656A9D4FD9546 /* Keychain.swift */,
 				0ED6D43621CAC4194ED795C7 /* LiveTransport.swift */,
 				D8CE53A2A358EECEA4023BA8 /* MediaLoader.swift */,
+				592B6DDDC72B03D8646C396F /* MemberConnection.swift */,
 				8A17491A30BC2D1914D5FBFD /* MessageParser.swift */,
 			);
 			path = Gateway;
@@ -492,6 +495,7 @@
 				98B4A3ECA808885789D302B3 /* Media.swift in Sources */,
 				B16582A6443240476284E119 /* MediaLoader.swift in Sources */,
 				85DFF525641D5D4B167CE4AD /* MediaViews.swift in Sources */,
+				9870FAE91535726159B4CDB0 /* MemberConnection.swift in Sources */,
 				A8E7C1EC4B5EB44A5FC770BE /* MessageParser.swift in Sources */,
 				2B71F32E39019E189230A54E /* OnboardingView.swift in Sources */,
 				13BA8203B7B209B19E23B878 /* Outbox.swift in Sources */,

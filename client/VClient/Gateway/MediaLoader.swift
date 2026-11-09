@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 /// Fetches message media through the Gateway's `assistant-media` route — the
@@ -29,18 +30,21 @@ final class MediaLoader {
 
     private let route: URL
     private let token: String?
+    private let member: Bool
     private let session: URLSession
     private let images = NSCache<NSString, NSData>()
     private var infos: [String: Info] = [:]
 
     init(endpoint: GatewayEndpoint) {
         var components = URLComponents(url: endpoint.url, resolvingAgainstBaseURL: false) ?? URLComponents()
-        components.scheme = components.scheme == "wss" ? "https" : "http"
+        components.scheme = ["wss", "https"].contains(components.scheme) ? "https" : "http"
         let base = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
-        components.path = base + "/__openclaw__/assistant-media"
+        // A teammate reads only their own chat's files, through the member endpoint.
+        components.path = base + (endpoint.isMember ? "/vapp/member/media" : "/__openclaw__/assistant-media")
         components.query = nil
         route = components.url ?? endpoint.url
-        token = endpoint.deviceToken ?? endpoint.gatewayToken
+        member = endpoint.isMember
+        token = endpoint.isMember ? endpoint.memberCredential : (endpoint.deviceToken ?? endpoint.gatewayToken)
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 30
         session = URLSession(configuration: configuration)
@@ -57,6 +61,19 @@ final class MediaLoader {
 
     func info(_ media: MediaRef) async throws -> Info {
         if let info = infos[media.source] { return info }
+        // The member endpoint has no meta query; the file's headers are enough.
+        if member {
+            var head = request(media.source)
+            head.httpMethod = "HEAD"
+            let (_, response) = try await session.data(for: head)
+            try check(response)
+            let http = response as? HTTPURLResponse
+            let info = Info(mimeType: http?.value(forHTTPHeaderField: "Content-Type"),
+                            sizeBytes: http?.value(forHTTPHeaderField: "Content-Length").flatMap(Int.init),
+                            durationMs: nil, width: nil, height: nil, ticket: nil, needsTranscode: false)
+            infos[media.source] = info
+            return info
+        }
         let (data, response) = try await session.data(for: request(media.source, extra: [URLQueryItem(name: "meta", value: "1")]))
         try check(response)
         let json = try JSONDecoder().decode(JSONValue.self, from: data)
@@ -73,6 +90,26 @@ final class MediaLoader {
             needsTranscode: json["playback"]?.string == "transcode")
         infos[media.source] = info
         return info
+    }
+
+    /// What AVPlayer opens. The owner's link carries a five-minute ticket; a
+    /// teammate's credential goes in a header, never in the URL.
+    func playable(_ media: MediaRef) async throws -> Playable {
+        if member { return Playable(url: request(media.source).url ?? route, headers: ["Authorization": "Bearer \(token ?? "")"]) }
+        return Playable(url: try await playableURL(media), headers: [:])
+    }
+
+    struct Playable: Sendable {
+        var url: URL
+        var headers: [String: String]
+
+        /// A fresh asset where it is used; assets do not cross tasks.
+        func asset(mimeType: String? = nil) -> AVURLAsset {
+            var options: [String: Any] = [:]
+            if !headers.isEmpty { options["AVURLAssetHTTPHeaderFieldsKey"] = headers }
+            if let mimeType { options[AVURLAssetOverrideMIMETypeKey] = mimeType }
+            return AVURLAsset(url: url, options: options)
+        }
     }
 
     /// A URL AVPlayer can open on its own (no headers): the ticket authorizes it.

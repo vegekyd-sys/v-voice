@@ -5,7 +5,7 @@ import Foundation
 /// what happens in Feishu shows up here through the same session.
 @MainActor
 final class LiveTransport: VTransport {
-    private var connection: GatewayConnection?
+    private var connection: VConnection?
     private weak var model: AppModel?
     private var openSession: String?
     private var subscribedMessages: Set<String> = []
@@ -44,7 +44,10 @@ final class LiveTransport: VTransport {
         let identity = DeviceIdentity.loadOrCreate()
         model.deviceId = identity.deviceId
         model.status = .connecting(endpoint.displayHost)
-        let connection = GatewayConnection(endpoint: endpoint, identity: identity)
+        // A teammate's phone uses the member endpoint; only the owner's pairs as an operator.
+        let connection: VConnection = endpoint.isMember
+            ? MemberConnection(endpoint: endpoint)
+            : GatewayConnection(endpoint: endpoint, identity: identity)
         connection.onState = { [weak self] state in self?.stateChanged(state) }
         connection.onEndpointChange = { [weak model] endpoint in model?.endpoint = endpoint }
         connection.onEvent = { [weak self] name, payload in self?.handle(name, payload) }
@@ -395,7 +398,7 @@ final class LiveTransport: VTransport {
     private static let uploadPiece = 512 * 1024
     private var uploaded: [UUID: String] = [:]
 
-    private func upload(_ entry: OutboxEntry, _ files: [Attachment], over connection: GatewayConnection, model: AppModel) async throws -> [String] {
+    private func upload(_ entry: OutboxEntry, _ files: [Attachment], over connection: VConnection, model: AppModel) async throws -> [String] {
         let total = Double(max(1, files.reduce(0) { $0 + $1.data.count }))
         var done = 0.0
         var ids: [String] = []

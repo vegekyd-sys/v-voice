@@ -191,6 +191,16 @@ final class AppModel {
 
     func connect(_ endpoint: GatewayEndpoint) async {
         transport?.stop()
+        // A new login on this phone (another person, or the owner pairing again): nothing
+        // of the previous one stays. The cache is per host, and a teammate and the owner
+        // reach the same host.
+        if let old = self.endpoint { ChatCache.forget(host: old.displayHost) }
+        ChatCache.forget(host: endpoint.displayHost)
+        vappSessionID = nil
+        sessionsLoadedAt = nil
+        outbox = []
+        OutboxStore.save([])
+        drafts = [:]
         endpoint.save()
         self.endpoint = endpoint
         sessions = []

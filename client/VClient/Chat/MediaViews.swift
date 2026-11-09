@@ -95,7 +95,7 @@ private struct MediaTile: View {
                 let mime = media.mimeType ?? "video/mp4"
                 let seconds = (try? await AVURLAsset(url: local, options: [AVURLAssetOverrideMIMETypeKey: mime]).load(.duration).seconds) ?? 0
                 if seconds.isFinite, seconds > 0 { duration = Self.clock(Int(seconds)) }
-                image = await Self.poster(local, mimeType: mime)
+                image = await Self.poster(MediaLoader.Playable(url: local, headers: [:]), mimeType: mime)
             } else {
                 image = await Task.detached { UIImage(contentsOfFile: local.path)?.preparingThumbnail(of: CGSize(width: 600, height: 600)) }.value
             }
@@ -111,8 +111,7 @@ private struct MediaTile: View {
             case .video:
                 let info = try await loader.info(media)
                 duration = info.durationMs.map { Self.clock($0 / 1000) }
-                let url = try await loader.playableURL(media)
-                image = await Self.poster(url)
+                image = await Self.poster(try await loader.playable(media))
             default:
                 break
             }
@@ -123,9 +122,8 @@ private struct MediaTile: View {
         }
     }
 
-    private static func poster(_ url: URL, mimeType: String? = nil) async -> UIImage? {
-        let options = mimeType.map { [AVURLAssetOverrideMIMETypeKey: $0] }
-        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url, options: options))
+    private static func poster(_ playable: MediaLoader.Playable, mimeType: String? = nil) async -> UIImage? {
+        let generator = AVAssetImageGenerator(asset: playable.asset(mimeType: mimeType))
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 600, height: 600)
         guard let (cgImage, _) = try? await generator.image(at: CMTime(seconds: 0.3, preferredTimescale: 600)) else { return nil }
@@ -192,7 +190,7 @@ private struct MediaViewer: View {
             guard let loader = model.media else { return }
             do {
                 if media.kind == .video {
-                    let item = AVPlayer(url: try await loader.playableURL(media))
+                    let item = AVPlayer(playerItem: AVPlayerItem(asset: try await loader.playable(media).asset()))
                     player = item
                     item.play()
                 } else {
