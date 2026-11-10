@@ -92,6 +92,32 @@ final class OutboxTests: XCTestCase {
         XCTAssertFalse(model.session("s1")!.items[0].failed)
     }
 
+    /// The transcript names a sent picture as V stored it; the copy kept for
+    /// sending is shown under that name instead of being read back from V.
+    func testASentPictureIsShownFromThePhonesCopyUnderVsName() throws {
+        let photo = Attachment(data: Data([0xFF, 0xD8, 0xFF, 0xD9]), mimeType: "image/jpeg", fileName: "photo.jpg")
+        OutboxStore.write(photo)
+        let file = try XCTUnwrap(OutboxStore.fileURL(photo.id))
+        defer {
+            try? FileManager.default.removeItem(at: file)
+            OutboxStore.sweep(keeping: saved)
+        }
+        var sent = ChatItem(id: "send:r1", sender: .user, time: .now, content: .text("看看这张"))
+        sent.media = [MediaRef(source: "local:\(photo.id)", mimeType: photo.mimeType, name: photo.fileName)]
+        let onV = "media://inbound/\(UUID().uuidString.lowercased()).jpg"
+        let transcript: [JSONValue] = [
+            ["role": "user", "content": "看看这张", "timestamp": 1_000, "idempotencyKey": "r1:user",
+             "__openclaw": ["id": "u1", "senderIsOwner": true,
+                            "media": [["url": .string(onV), "contentType": "image/jpeg", "kind": "image"]]]],
+        ]
+        XCTAssertNil(OutboxStore.localURL(onV))
+        HistoryPager.keepSentCopies(of: [sent], as: HistoryMapper.sentAttachments(in: transcript))
+        XCTAssertEqual(OutboxStore.localURL(onV)?.lastPathComponent, file.lastPathComponent)
+        // Another message's pictures are not this one's.
+        HistoryPager.keepSentCopies(of: [sent], as: ["send:other": [MediaRef(source: "media://inbound/else.jpg")]])
+        XCTAssertNil(OutboxStore.localURL("media://inbound/else.jpg"))
+    }
+
     func testTheTranscriptCopyOfASentMessageMatchesDespiteVsNotes() {
         XCTAssertEqual(LiveTransport.withoutNotes("这段视频里是什么？\n\n[Video attachment could not be analyzed]"), "这段视频里是什么？")
         XCTAssertEqual(LiveTransport.withoutNotes("看 [链接] 这个"), "看 [链接] 这个", "brackets inside a line are the user's")

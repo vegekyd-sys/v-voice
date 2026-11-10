@@ -94,6 +94,66 @@ final class MessageParserTests: XCTestCase {
         XCTAssertEqual(work.media.map(\.name), ["cat.png"])
     }
 
+    /// `chat.send` stores a picture beside the turn, not in its text: the words
+    /// stay bare and `__openclaw.media` names the stored file.
+    private func sentTurn(_ content: JSONValue, id: String = "u1", run: String = "r1", media: [JSONValue]) -> JSONValue {
+        ["role": "user", "content": content, "timestamp": 1_000, "idempotencyKey": .string("\(run):user"),
+         "__openclaw": ["id": .string(id), "senderIsOwner": true, "idempotencyKey": .string("\(run):user"), "seq": 7,
+                        "media": .array(media), "mediaImageLayout": ["slots": [["kind": "inline", "factIndex": 0]]]]]
+    }
+
+    func testAPictureSentFromTheAppIsStillThereInHistory() {
+        let fact: JSONValue = ["url": "media://inbound/3f2a.jpg", "contentType": "image/jpeg", "kind": "image", "sizeBytes": 48_211]
+        let items = HistoryMapper.items(from: [sentTurn("看看这张", media: [fact])], sessionKind: .direct)
+        XCTAssertEqual(items.map(\.id), ["m:u1"])
+        XCTAssertEqual(items.first?.content, .text("看看这张"))
+        XCTAssertEqual(items.first?.media.map(\.source), ["media://inbound/3f2a.jpg"], "what the media route reads")
+        XCTAssertEqual(items.first?.media.map(\.kind), [.image])
+    }
+
+    func testAPictureWithNoWordsIsNotAnEmptyTurn() {
+        let fact: JSONValue = ["url": "media://inbound/3f2a", "kind": "image", "sizeBytes": 48_211]
+        // The text is empty, or the picture's bytes are left out of a block list.
+        let omitted: JSONValue = [["type": "image", "mimeType": "image/jpeg", "omitted": true, "bytes": 48_211]]
+        for content in ["", omitted] as [JSONValue] {
+            let items = HistoryMapper.items(from: [sentTurn(content, media: [fact])], sessionKind: .direct)
+            XCTAssertEqual(items.map(\.id), ["m:u1"], "the message stays")
+            XCTAssertEqual(items.first?.sender, .user)
+            XCTAssertEqual(items.first?.content, .text(""))
+            XCTAssertEqual(items.first?.media.map(\.kind), [.image], "the stored name has no extension; the fact says it is a picture")
+        }
+        // The same turn written again for the model is not a second message.
+        var late = sentTurn(omitted, id: "u2", media: [fact]).objectValue ?? [:]
+        late["__openclaw"] = ["id": "u2", "lateMedia": true, "media": [fact]]
+        let both = HistoryMapper.items(from: [sentTurn("", media: [fact]), .object(late)], sessionKind: .direct)
+        XCTAssertEqual(both.map(\.id), ["m:u1"])
+    }
+
+    func testAFileNamedTwiceShowsOnceAndOneVCannotServeIsNamed() {
+        // Older turns name the file in the text; the fact is the same file by its store name.
+        let both = sentTurn("[media attached: /home/v/media/inbound/a---1.png (image/png)]\n这个",
+                            media: [["path": "media://inbound/a---1.png", "contentType": "image/png", "kind": "image"]])
+        let items = HistoryMapper.items(from: [both], sessionKind: .direct)
+        XCTAssertEqual(items.first?.media.count, 1)
+        XCTAssertEqual(items.first?.content, .text("这个"))
+
+        // A picture sent in Feishu: the Gateway keeps its type and leaves out where it is.
+        let feishu: [JSONValue] = [
+            ["role": "user", "content": "ou_1: 这张图里是什么", "timestamp": 1_000,
+             "__openclaw": ["id": "f1", "senderName": "ou_1", "senderId": "ou_1", "senderIsOwner": true,
+                            "media": [["contentType": "image/jpeg", "kind": "image"]]]],
+            ["role": "user", "content": "", "timestamp": 2_000,
+             "__openclaw": ["id": "f2", "senderId": "ou_1", "senderIsOwner": true,
+                            "media": [["contentType": "image/jpeg", "kind": "image"]]]],
+        ]
+        let shown = HistoryMapper.items(from: feishu, sessionKind: .direct)
+        XCTAssertEqual(shown.map(\.id), ["m:f1", "m:f2"])
+        guard shown.count == 2 else { return }
+        XCTAssertEqual(shown[0].content, .text("这张图里是什么"))
+        XCTAssertTrue(shown[0].media.isEmpty, "nothing to load it from")
+        XCTAssertEqual(shown[1].content, .text("[图片]"), "sent without words: at least say a picture was sent")
+    }
+
     func testListPreview() {
         XCTAssertEqual(MessageParser.preview("ou_2e57da: [message_id: om_1]\n刷新完成"), "刷新完成")
         XCTAssertEqual(MessageParser.preview("[media attached: /w/a---1.mp4 (video/mp4)]\n[Video]\nDescription:\nx"), "[视频]")

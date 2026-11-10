@@ -41,6 +41,21 @@ final class HistoryPager {
         await load(key, earlier: true, model: model)
     }
 
+    /// The transcript's copy of a message sent from here names its pictures as V
+    /// stored them. The copy kept for sending goes on being shown under that
+    /// name, so the picture neither blinks nor comes back over the network.
+    static func keepSentCopies(of local: [ChatItem], as sent: [String: [MediaRef]]) {
+        guard !sent.isEmpty else { return }
+        for item in local {
+            guard let theirs = sent[item.id], item.media.contains(where: { $0.source.hasPrefix("local:") }) else { continue }
+            // Only pictures go through `chat.send`; a video picked with them stayed here.
+            let mine = item.media.count == theirs.count ? item.media : item.media.filter { $0.kind == .image }
+            guard mine.count == theirs.count else { continue }
+            OutboxStore.remember(sent: mine, asOnV: theirs)
+            for (kept, stored) in zip(mine, theirs) { MediaThumbnails.alias(kept.source, as: stored.source) }
+        }
+    }
+
     /// Reads one page into the chat's window and maps the whole window.
     private func load(_ key: String, earlier: Bool, model: AppModel) async -> Bool {
         guard let session = model.session(key) else { return false }
@@ -79,14 +94,15 @@ final class HistoryPager {
             versions[key] = version
             let kind = session.kind
             let messages = window.messages
-            let history = await Task.detached(priority: .userInitiated) {
-                HistoryMapper.items(from: messages, sessionKind: kind)
+            let (history, sent) = await Task.detached(priority: .userInitiated) {
+                (HistoryMapper.items(from: messages, sessionKind: kind), HistoryMapper.sentAttachments(in: messages))
             }.value
             // A later page is being mapped; it covers this one.
             guard versions[key] == version else { return true }
             let modelName = result["defaults"]?["model"]?.string.map(HistoryMapper.modelLabel)
             let hasMore = window.hasMore
             model.update(key) { session in
+                Self.keepSentCopies(of: session.items, as: sent)
                 session.items = LiveTransport.merge(history: history, local: session.items, keepEarlier: hasMore)
                 session.historyLoaded = true
                 session.hasMoreHistory = hasMore

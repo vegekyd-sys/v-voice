@@ -20,6 +20,13 @@ struct MediaRef: Hashable, Sendable, Codable, Identifiable {
         self.kind = Self.kind(mimeType: mimeType, name: self.name)
     }
 
+    /// The stored file, however it is addressed: `/…/media/inbound/a.jpg` and
+    /// `media://inbound/a.jpg` are one file.
+    var fileKey: String {
+        let last = source.split(separator: "/").last.map(String.init) ?? source
+        return last.removingPercentEncoding ?? last
+    }
+
     var previewLabel: String {
         switch kind {
         case .image: "[图片]"

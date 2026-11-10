@@ -16,7 +16,12 @@ enum HistoryMapper {
             let time = date(message["timestamp"]) ?? date(meta?["recordTimestampMs"]) ?? .now
             switch message["role"]?.string {
             case "user":
-                guard var text = plainText(message["content"]), !text.isEmpty else { continue }
+                // The pictures of a turn written twice for the model; the turn itself has them.
+                if meta?["lateMedia"]?.bool == true { continue }
+                // A picture sent with no words is a turn whose text is empty.
+                let attached = attachments(message)
+                var text = plainText(message["content"]) ?? ""
+                guard !text.isEmpty || !attached.media.isEmpty || !attached.unreadable.isEmpty else { continue }
                 let senderName = meta?["senderName"]?.string
                 if let name = senderName, text.hasPrefix(name + ": ") { text.removeFirst(name.count + 2) }
                 // A turn the system wrote does not end the run it nudges along.
@@ -31,7 +36,14 @@ enum HistoryMapper {
                 if text.hasPrefix(voiceFollowUp), let said = text.components(separatedBy: "\n\n").dropFirst().first {
                     text = said
                 }
-                let parsed = MessageParser.user(text)
+                var parsed = MessageParser.user(text)
+                // The same file can be named in the text (by its path) and in the facts.
+                let named = Set(parsed.media.map(\.fileKey))
+                parsed.media.append(contentsOf: attached.media.filter { !named.contains($0.fileKey) })
+                if parsed.text.isEmpty, parsed.media.isEmpty {
+                    // V cannot hand the file over, but something was sent: say what.
+                    parsed.text = attached.unreadable.joined(separator: " ")
+                }
                 guard !parsed.text.isEmpty || !parsed.media.isEmpty else { continue }
                 let isOwner = meta?["senderIsOwner"]?.bool ?? (meta?["senderId"] == nil)
                 let sender: ChatItem.Sender = isOwner || sessionKind != .group
@@ -78,6 +90,54 @@ enum HistoryMapper {
             guard case .reply(let work) = item.content else { return true }
             return !work.visibleAnswer.isEmpty || !work.media.isEmpty || !work.tools.isEmpty || work.phase != .done
         }
+    }
+
+    /// What `chat.history` keeps of a user turn's files: one fact each under
+    /// `__openclaw.media`, beside a text that no longer names them. A fact V can
+    /// serve has a `url` or `path` (a picture sent with `chat.send` is
+    /// `media://inbound/<id>`); one without (the Gateway leaves out paths outside
+    /// its own store) can only be named.
+    static func attachments(_ message: JSONValue) -> (media: [MediaRef], unreadable: [String]) {
+        var media: [MediaRef] = []
+        var unreadable: [String] = []
+        for fact in message["__openclaw"]?["media"]?.array ?? [] {
+            let mime = fact["contentType"]?.string
+            let name = fact["fileName"]?.string.flatMap { $0.isEmpty ? nil : $0 }
+            let kind: MediaRef.Kind? = switch fact["kind"]?.string {
+            case "image": .image
+            case "video": .video
+            case "audio": .audio
+            default: nil
+            }
+            // The Gateway's own store first: its media route serves that for certain.
+            let named = [fact["path"]?.string, fact["url"]?.string]
+                .compactMap { $0?.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            let source = named.first { $0.hasPrefix("media://") } ?? named.first ?? ""
+            var ref = MediaRef(source: source.isEmpty ? name ?? "" : source, mimeType: mime, name: name)
+            // A stored file's name can lack an extension; the fact still says what it is.
+            if ref.kind == .file, let kind { ref.kind = kind }
+            if source.isEmpty {
+                if mime != nil || kind != nil || name != nil {
+                    unreadable.append(ref.previewLabel.trimmingCharacters(in: .whitespaces))
+                }
+            } else if !media.contains(where: { $0.source == source }) {
+                media.append(ref)
+            }
+        }
+        return (media, unreadable)
+    }
+
+    /// Messages this app sent through `chat.send` (`<runId>:user`), by the id
+    /// their bubble has here, with the files V stored for them.
+    static func sentAttachments(in messages: [JSONValue]) -> [String: [MediaRef]] {
+        var sent: [String: [MediaRef]] = [:]
+        for message in messages where message["role"]?.string == "user" && message["__openclaw"]?["lateMedia"]?.bool != true {
+            let key = message["idempotencyKey"]?.string ?? message["__openclaw"]?["idempotencyKey"]?.string ?? ""
+            guard key.hasSuffix(":user") else { continue }
+            let media = attachments(message).media
+            if !media.isEmpty { sent["send:\(key.dropLast(":user".count))"] = media }
+        }
+        return sent
     }
 
     static func apply(_ message: JSONValue, to work: inout WorkState, time: Date) {

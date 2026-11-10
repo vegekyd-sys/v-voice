@@ -178,6 +178,12 @@ enum MediaThumbnails {
         UserDefaults.standard.set(shapes, forKey: shapesKey)
     }
 
+    /// The same picture under another name (V's, once it has stored what this
+    /// phone sent): drawn at once and at the same size.
+    static func alias(_ source: String, as other: String) {
+        if let image = image(source) { keep(image, for: other) }
+    }
+
     /// Height over width of a picture drawn before, kept across launches so
     /// its tile can be laid out before the picture is back.
     static func shape(_ source: String) -> CGFloat? { shapes[source].map { CGFloat($0) } }

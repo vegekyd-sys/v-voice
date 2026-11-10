@@ -126,6 +126,28 @@ final class GatewayTests: XCTestCase {
         XCTAssertEqual(first.phase, .aborted, "a stop the transcript did not record survives a refresh")
     }
 
+    /// Sent with a picture: once V has answered, the transcript's copy takes the
+    /// place of the bubble shown while sending. The picture must still be on it.
+    func testASentPictureSurvivesTheTranscriptTakingOver() {
+        let now = Date(timeIntervalSince1970: 1)
+        var sent = ChatItem(id: "send:r1", sender: .user, time: now, content: .text(""))
+        sent.media = [MediaRef(source: "local:0B1C9E0C-7C1D-4A51-9F5B-0A5C6E3D2F11", mimeType: "image/jpeg", name: "photo.jpg")]
+        let transcript: [JSONValue] = [
+            ["role": "user", "content": "", "timestamp": 1_000, "idempotencyKey": "r1:user",
+             "__openclaw": ["id": "u1", "senderIsOwner": true, "idempotencyKey": "r1:user",
+                            "media": [["url": "media://inbound/3f2a.jpg", "contentType": "image/jpeg", "kind": "image"]],
+                            "mediaImageLayout": ["slots": [["kind": "inline", "factIndex": 0]]]]],
+            ["role": "assistant", "content": [["type": "text", "text": "是一只猫。"]], "timestamp": 2_000,
+             "__openclaw": ["id": "a1", "runId": "r1"]],
+        ]
+        let history = HistoryMapper.items(from: transcript, sessionKind: .direct)
+        let merged = LiveTransport.merge(history: history, local: [sent])
+        XCTAssertEqual(merged.map(\.id), ["m:u1", "run:r1"], "one bubble for the message, then the reply")
+        XCTAssertEqual(merged[0].sender, .user)
+        XCTAssertEqual(merged[0].media.map(\.kind), [.image], "the picture did not go with the sending copy")
+        XCTAssertEqual(HistoryMapper.sentAttachments(in: transcript)["send:r1"]?.map(\.source), ["media://inbound/3f2a.jpg"])
+    }
+
     func testSessionTitlesFollowFeishu() {
         let dm = LiveTransport.session(from: ["key": "agent:makaron:feishu:direct:ou_1", "channel": "feishu", "chatType": "direct", "displayName": "V probe"])
         XCTAssertEqual(dm?.title, "V")
