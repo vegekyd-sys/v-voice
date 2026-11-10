@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rules>
+    <service block="true" log="true">
+        <component-filter name="com.xiaomi.voicecontrol/.VoiceControlService"/>
+        <sender-package name="com.mi.bluetooth"/>
+        <or>
+            <action equals="com.xiaomi.mitv.voice.KEYDOWN"/>
+            <action equals="com.xiaomi.mitv.voice.KEYUP"/>
+            <action equals="com.xiaomi.mitv.voice.SHORTPRESS"/>
+        </or>
+    </service>
+</rules>
