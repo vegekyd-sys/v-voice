@@ -4,9 +4,43 @@ import Foundation
 /// scripted run for every message you send. Nothing leaves the device.
 @MainActor
 final class FixtureTransport: VTransport {
+    /// `VCLIENT_DEMO_REAL=1`: the chat behaves the way a phone meets it on V. It opens
+    /// from a cache, the transcript arrives a moment later and in pages of stored
+    /// messages (most of which are tool calls, not replies), pictures take time to
+    /// load, and a load can fail. Nothing in the plain demo does any of that, which
+    /// is how a broken chat screen once passed every check.
+    ///
+    /// `VCLIENT_DEMO_TRANSCRIPT=<file>`: the same, replaying a `chat.history` answer
+    /// saved from a Gateway.
+    private var stored: [JSONValue] = []
+    private var kind: ChatSession.Kind = .direct
+    private var failEarlier = ProcessInfo.processInfo.environment["VCLIENT_DEMO_EARLIER_FAILS"] == "1"
+    private lazy var pager = HistoryPager { [weak self] params in
+        guard let self else { throw CancellationError() }
+        return try await self.page(params)
+    }
+
     func start(model: AppModel) async {
         model.status = .demo
-        model.sessions = Self.sessions()
+        var sessions = Self.sessions()
+        let environment = ProcessInfo.processInfo.environment
+        if let path = environment["VCLIENT_DEMO_TRANSCRIPT"],
+           let data = FileManager.default.contents(atPath: path),
+           let json = try? JSONDecoder().decode(JSONValue.self, from: data)
+        {
+            stored = json["messages"]?.array ?? []
+            kind = .group
+        } else if environment["VCLIENT_DEMO_REAL"] == "1" {
+            stored = Self.transcript(turns: 120)
+        }
+        if !stored.isEmpty {
+            // What the phone kept from last time: the chat as it was a few messages ago.
+            let cached = HistoryMapper.items(from: Array(stored.dropLast(4).suffix(240)), sessionKind: kind)
+            sessions[0].kind = kind
+            sessions[0].items = Array(cached.suffix(60))
+            sessions[0].historyLoaded = false
+        }
+        model.sessions = sessions
     }
 
     func stop() {}
@@ -15,8 +49,89 @@ final class FixtureTransport: VTransport {
     func markRead(session: String) async {}
     func refreshSessions() async {}
     func reconnect() {}
-    func open(session: String, model: AppModel) async {}
-    func loadEarlier(session: String, model: AppModel) async {}
+
+    func open(session: String, model: AppModel) async {
+        guard !stored.isEmpty, session == "dm" else { return }
+        await pager.loadNewest(session, model: model)
+    }
+
+    func loadEarlier(session: String, model: AppModel) async -> Bool {
+        guard !stored.isEmpty, session == "dm" else { return true }
+        return await pager.loadEarlier(session, model: model)
+    }
+
+    /// `chat.history` as the Gateway answers it: `limit` stored messages ending
+    /// `offset` back from the newest, over a link as slow as V's.
+    private func page(_ params: [String: JSONValue]) async throws -> JSONValue {
+        let limit = params["limit"]?.int ?? 30
+        let offset = params["offset"]?.int ?? 0
+        try? await Task.sleep(for: .milliseconds(offset == 0 ? 700 : 900))
+        if offset > 0, failEarlier {
+            failEarlier = false
+            throw URLError(.networkConnectionLost)
+        }
+        let end = max(0, stored.count - offset)
+        let start = max(0, end - limit)
+        return [
+            "messages": .array(Array(stored[start..<end])),
+            "nextOffset": .number(Double(offset + limit)),
+            "hasMore": .bool(start > 0),
+            "totalMessages": .number(Double(stored.count)),
+            "sessionId": "fixture",
+        ]
+    }
+
+    /// A stored transcript with the shapes a real one has. A turn is the question
+    /// and then V's run: often several stored messages (tool calls and their
+    /// results) that show as one reply, so a page of thirty is a handful of rows.
+    static func transcript(turns: Int) -> [JSONValue] {
+        var messages: [JSONValue] = []
+        let start = Date.now.addingTimeInterval(-Double(turns) * 480)
+        var seq = 0.0
+        func add(_ role: String, _ content: JSONValue, at time: Date, run: String? = nil, extra: [String: JSONValue] = [:]) {
+            seq += 1
+            var meta: [String: JSONValue] = ["id": .string("fx-\(Int(seq))"), "seq": .number(seq)]
+            if let run { meta["runId"] = .string(run) }
+            var message: [String: JSONValue] = [
+                "role": .string(role), "content": content,
+                "timestamp": .number((time.timeIntervalSince1970 * 1000).rounded()),
+                "__openclaw": .object(meta),
+            ]
+            message.merge(extra) { _, new in new }
+            messages.append(.object(message))
+        }
+        func text(_ string: String) -> JSONValue { [["type": "text", "text": .string(string)]] }
+        for turn in 0..<turns {
+            let time = start.addingTimeInterval(Double(turn) * 480)
+            let run = "fx-run-\(turn)"
+            add("user", .string("第 \(turn) 问：帮我看看这个问题"), at: time)
+            switch turn % 6 {
+            case 1:
+                // A working run: a dozen stored messages, one reply.
+                for step in 0..<6 {
+                    let call = "call-\(turn)-\(step)"
+                    add("assistant", [[
+                        "type": "toolCall", "id": .string(call), "name": step.isMultiple(of: 2) ? "read" : "exec",
+                        "arguments": step.isMultiple(of: 2) ? ["path": "openclaw.json"] : ["command": "systemctl status openclaw"],
+                    ]], at: time.addingTimeInterval(Double(step) * 6 + 2), run: run)
+                    add("toolResult", text("ok"), at: time.addingTimeInterval(Double(step) * 6 + 5), run: run, extra: ["toolCallId": .string(call)])
+                }
+                add("assistant", text("第 \(turn) 答：查完了，**结论**是配置没有生效。\n\n- 主配置改了\n- worker 那份没有改"),
+                    at: time.addingTimeInterval(42), run: run)
+            case 2:
+                add("assistant", text(markdownSample), at: time.addingTimeInterval(20), run: run)
+            case 3:
+                let size = turn.isMultiple(of: 4) ? "900x1600" : "1600x900"
+                add("assistant", text("第 \(turn) 答：截图在这里。\nMEDIA:fixture:\(size)-\(turn).png"), at: time.addingTimeInterval(15), run: run)
+            case 4:
+                add("assistant", text(String(repeating: "第 \(turn) 答：这一段比较长，用来看多行文字的排版和行高是否稳定。", count: 4)),
+                    at: time.addingTimeInterval(12), run: run)
+            default:
+                add("assistant", text("第 \(turn) 答，**要点**如下：\n\n- 一\n- 二"), at: time.addingTimeInterval(8), run: run)
+            }
+        }
+        return messages
+    }
 
     func abort(session: String, model: AppModel) async {
         guard let runId = model.session(session)?.activeRun else { return }
@@ -213,8 +328,12 @@ final class FixtureTransport: VTransport {
         2. 回答逐段出现
         3. 完成后工作区收起，只留答案和用时
         """
+        // "长文" in the message asks for an answer taller than the screen.
+        let full = text.contains("长文")
+            ? answer + (1...14).map { "\n\n第 \($0) 段：这一段用来把回答撑到一屏以上，看列表在回答变长时是不是一直稳稳地跟在最后一行。" }.joined()
+            : answer
         var shown = ""
-        for character in answer {
+        for character in full {
             guard model.session(session)?.activeRun == runId else { return }
             shown.append(character)
             if character == "\n" || shown.count % 6 == 0 {
@@ -225,7 +344,7 @@ final class FixtureTransport: VTransport {
         }
 
         model.updateWork(id, in: session) { work in
-            work.answer = answer
+            work.answer = full
             work.plan[2].status = .done
             work.commentary = nil
             work.phase = .done

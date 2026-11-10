@@ -4,226 +4,71 @@ import SwiftUI
 struct ChatScreen: View {
     let sessionID: String
     @Environment(AppModel.self) private var model
-    /// Local, so the field never sees a binding rebuilt mid-typing (that drops
-    /// keystrokes); copied to the model's drafts as it changes.
-    @State private var draft = ""
-    @State private var quote: String?
-    @State private var attachments: [Attachment] = []
+    /// What is being typed. Its own object, so typing redraws the composer
+    /// and nothing else.
+    @State private var draft = ChatDraft()
     @State private var selecting: String?
     @State private var filePreview: URL?
     @State private var markdownFile: MarkdownFile?
-    /// Follow new messages only while the reader is at the bottom, like Feishu.
-    @State private var atBottom = true
-    /// Following the newest message. Only the reader's own scrolling changes it:
-    /// content growing above (a card filling in) must not stop the follow.
-    @State private var pinned = true
-    /// Messages that arrived while the reader was further up.
-    @State private var unseen = 0
-
-
-    private var session: ChatSession? { model.session(sessionID) }
 
     var body: some View {
-        if let session {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
-                        if session.hasMoreHistory {
-                            Button("查看更早的消息") { model.loadEarlier(sessionID) }
-                                .font(.footnote.weight(.medium))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 6)
-                        }
-                        if !session.historyLoaded, session.items.isEmpty, model.mode == .live {
-                            ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
-                        }
-                        ForEach(Array(session.items.enumerated()), id: \.element.id) { index, item in
-                            let previous = index > 0 ? session.items[index - 1] : nil
-                            if previous.map({ item.time.timeIntervalSince($0.time) > 600 }) ?? true {
-                                TimeSeparator(date: item.time)
-                            }
-                            MessageRow(
-                                item: item,
-                                showsSender: previous?.sender != item.sender
-                                    || item.time.timeIntervalSince(previous?.time ?? .distantPast) > 600,
-                                sessionID: sessionID,
-                                canReact: sessionID == model.vappSessionID)
-                                .equatable()
-                                .environment(\.messageActions, MessageActions(quote: { quote = $0 }, select: { selecting = $0 }))
-                                .id(item.id)
-                        }
+        if let session = model.session(sessionID) {
+            ChatList(
+                model: model, session: session, draft: draft,
+                loadingEarlier: model.loadingEarlier.contains(sessionID),
+                earlierFailed: model.earlierFailed.contains(sessionID),
+                actions: MessageActions(quote: { draft.quote = $0 }, select: { selecting = $0 }),
+                openURL: open)
+                .ignoresSafeArea()
+                .overlay {
+                    if !session.historyLoaded, session.items.isEmpty, model.mode == .live {
+                        ProgressView().allowsHitTesting(false)
                     }
-                    .padding(.horizontal, VTheme.pagePadding)
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
-                    .frame(maxWidth: 820)
-                    .frame(maxWidth: .infinity)
                 }
-                .defaultScrollAnchor(.bottom, for: .initialOffset)
-                // Rows above grow as pictures and cards load; only stay pinned to
-                // the bottom while the reader is there.
-                .defaultScrollAnchor(pinned ? .bottom : nil, for: .sizeChanges)
-                .scrollDismissesKeyboard(.interactively)
                 .background(VTheme.page)
-                .onScrollGeometryChange(for: Bool.self) { geometry in
-                    // containerSize leaves out the insets (navigation bar above, composer
-                    // below); the visible bottom in content terms is offset + size + top inset.
-                    geometry.contentOffset.y + geometry.containerSize.height + geometry.contentInsets.top
-                        >= geometry.contentSize.height - 120
-                } action: { _, isAtBottom in
-                    atBottom = isAtBottom
-                    if isAtBottom { unseen = 0 }
-                }
-                .onScrollPhaseChange { _, phase in
-                    // The reader's hand is on the list: stop holding it to the bottom, or rows
-                    // measured during a fling pull it back down. Where it comes to rest decides.
-                    switch phase {
-                    case .interacting: pinned = false
-                    case .idle: pinned = atBottom
-                    default: break
-                    }
-                }
-                // Any change at the end (a new message, a card growing) keeps a
-                // following reader at the newest line.
-                .onChange(of: Self.tail(session.items)) {
-                    guard pinned, let last = session.items.last else { return }
-                    proxy.scrollTo(last.id, anchor: .bottom)
-                }
-                .onChange(of: session.items.last?.id) { old, _ in
-                    guard let last = session.items.last else { return }
-                    if pinned || last.sender == .user {
-                        pinned = true
-                        withAnimation(.snappy) { proxy.scrollTo(last.id, anchor: .bottom) }
-                    } else if old != nil {
-                        unseen += 1
-                    }
-                }
-                .overlay(alignment: .bottomTrailing) {
-                    if !pinned {
-                        Button {
-                            jumpToLatest(proxy)
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "chevron.down")
-                                if unseen > 0 { Text("\(unseen)").monospacedDigit() }
+                .quickLookPreview($filePreview)
+                .sheet(item: $markdownFile) { MarkdownFileSheet(file: $0) }
+                .sheet(item: Binding(get: { selecting.map(SelectableText.init) }, set: { selecting = $0?.text })) { SelectableTextSheet(text: $0.text) }
+                .navigationTitle(session.title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        VStack(spacing: 1) {
+                            Text(session.title).font(.headline).lineLimit(1)
+                            Group {
+                                if session.isWorking {
+                                    Text("V 正在处理…").foregroundStyle(VTheme.purple)
+                                } else {
+                                    Text([session.channel, session.model].compactMap { $0 }.joined(separator: " · "))
+                                        .foregroundStyle(VTheme.muted)
+                                }
                             }
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(unseen > 0 ? VTheme.purple : VTheme.soft)
-                            .padding(.horizontal, unseen > 0 ? 12 : 0)
-                            .frame(minWidth: 44, minHeight: 44)
-                            .contentShape(Capsule())
+                            .font(.caption2)
                         }
-                        .buttonStyle(.plain)
-                        .glassEffect(.regular.interactive(), in: Capsule())
-                        .padding(.trailing, 14)
-                        .padding(.bottom, 8)
-                        .transition(.scale(scale: 0.8).combined(with: .opacity))
-                        .accessibilityLabel(unseen > 0 ? "回到最新，\(unseen) 条新消息" : "回到最新")
-                        .accessibilityIdentifier("jumpToLatest")
                     }
                 }
-                .animation(.snappy(duration: 0.2), value: pinned)
-                // The keyboard takes the bottom of the screen: whoever was reading
-                // the newest message still sees it, as in Feishu.
-                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-                    guard pinned, let last = session.items.last else { return }
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(30))
-                        withAnimation(.snappy) { proxy.scrollTo(last.id, anchor: .bottom) }
-                    }
-                }
-                .onChange(of: session.historyLoaded) { _, loaded in
-                    // First page in: jump to the newest message without animating through history.
-                    guard loaded, let last = session.items.last else { return }
-                    // Wait one layout pass so the lazy stack knows where the last row is.
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(80))
-                        proxy.scrollTo(last.id, anchor: .bottom)
-                    }
-                }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                VStack(spacing: 6) {
-                    if let notice = model.notice {
-                        NoticeBanner(text: notice).transition(.move(edge: .bottom).combined(with: .opacity))
-                    } else if !model.status.isConnected, model.mode == .live {
-                        NoticeBanner(text: model.status.label, tone: .quiet)
-                    }
-                    Composer(text: $draft, quote: $quote, attachments: $attachments, isWorking: session.isWorking, onSend: {
-                        model.send(draft, quote: quote, attachments: attachments, in: sessionID)
-                        draft = ""
-                        quote = nil
-                        attachments = []
-                    }, onStop: {
-                        model.abort(sessionID)
-                    })
-                }
-                .animation(.snappy, value: model.notice)
-            }
-            .onAppear { draft = model.drafts[sessionID] ?? "" }
-            .onChange(of: draft) { _, text in model.drafts[sessionID] = text }
-            .quickLookPreview($filePreview)
-            .sheet(item: $markdownFile) { MarkdownFileSheet(file: $0) }
-            .environment(\.openURL, OpenURLAction { url in
-                guard let source = FeishuMarkdown.fileSource(url) else { return .systemAction }
-                Task {
-                    guard let loader = model.media else { return model.showNotice("还没连上 V") }
-                    do {
-                        let file = try await loader.file(MediaRef(source: source))
-                        if ["md", "markdown"].contains(file.pathExtension.lowercased()),
-                           let text = await Task.detached(operation: { try? String(contentsOf: file, encoding: .utf8) }).value
-                        {
-                            markdownFile = MarkdownFile(url: file, text: text)
-                        } else {
-                            filePreview = file
-                        }
-                    } catch {
-                        model.showNotice("打不开这个文件：\(error.localizedDescription)")
-                    }
-                }
-                return .handled
-            })
-            .sheet(item: Binding(get: { selecting.map(SelectableText.init) }, set: { selecting = $0?.text })) { SelectableTextSheet(text: $0.text) }
-            .navigationTitle(session.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    VStack(spacing: 1) {
-                        Text(session.title).font(.headline).lineLimit(1)
-                        Group {
-                            if session.isWorking {
-                                Text("V 正在处理…").foregroundStyle(VTheme.purple)
-                            } else {
-                                Text([session.channel, session.model].compactMap { $0 }.joined(separator: " · "))
-                                    .foregroundStyle(VTheme.muted)
-                            }
-                        }
-                        .font(.caption2)
-                    }
-                }
-            }
         }
     }
 
-    /// Cheap fingerprint of the end of the chat: how many messages, the last one, and its size.
-    private static func tail(_ items: [ChatItem]) -> String {
-        guard let last = items.last else { return "" }
-        return "\(items.count)|\(last.id)|\(last.plainText.count)|\(last.media.count)|\(last.live)"
-    }
-
-    /// From far up, a lazy stack only knows row heights it has drawn, so one
-    /// jump lands short; jump again until the newest row is really in view.
-    private func jumpToLatest(_ proxy: ScrollViewProxy) {
+    /// A link in a message. Files V attached open here; the rest go to the system.
+    private func open(_ url: URL) -> OpenURLAction.Result {
+        guard let source = FeishuMarkdown.fileSource(url) else { return .systemAction }
         Task {
-            for _ in 0..<8 {
-                guard let last = session?.items.last else { return }
-                proxy.scrollTo(last.id, anchor: .bottom)
-                try? await Task.sleep(for: .milliseconds(50))
-                if atBottom { break }
+            guard let loader = model.media else { return model.showNotice("还没连上 V") }
+            do {
+                let file = try await loader.file(MediaRef(source: source))
+                if ["md", "markdown"].contains(file.pathExtension.lowercased()),
+                   let text = await Task.detached(operation: { try? String(contentsOf: file, encoding: .utf8) }).value
+                {
+                    markdownFile = MarkdownFile(url: file, text: text)
+                } else {
+                    filePreview = file
+                }
+            } catch {
+                model.showNotice("打不开这个文件：\(error.localizedDescription)")
             }
-            unseen = 0
-            pinned = true
         }
+        return .handled
     }
 }
 

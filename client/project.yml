@@ -42,6 +42,8 @@ targets:
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Animations at the display's full rate on ProMotion phones, not capped at 60.
+        CADisableMinimumFrameDurationOnPhone: true
         # Media comes over plain HTTP only through a local SSH tunnel (127.0.0.1).
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true

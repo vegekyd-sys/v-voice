@@ -197,6 +197,23 @@ extension FeishuCard {
             fill: json["width"]?.string == "fill", submitsForm: json["form_action_type"]?.string == "submit")
     }
 
+    /// The element with its callback buttons switched off; links still open.
+    static func withoutCallbacks(_ element: Element) -> Element {
+        switch element {
+        case .button(var button):
+            if case .callback = button.action { button.disabled = true }
+            return .button(button)
+        case .columns(let columns, let flow):
+            return .columns(columns.map { Column(weight: $0.weight, elements: $0.elements.map(withoutCallbacks)) }, flow: flow)
+        case .panel(let title, let expanded, let elements):
+            return .panel(title: title, expanded: expanded, elements: elements.map(withoutCallbacks))
+        case .form(let elements):
+            return .form(elements.map(withoutCallbacks))
+        default:
+            return element
+        }
+    }
+
     /// The card's readable text, without Feishu's inline tags.
     /// The card's words without the small print (the Agent/Model footer), for list previews.
     var previewText: String { text(notation: false) }

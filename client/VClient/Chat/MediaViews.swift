@@ -35,6 +35,15 @@ private struct MediaTile: View {
     @State private var failure: String?
     @State private var viewing = false
 
+    init(media: MediaRef, single: Bool) {
+        self.media = media
+        self.single = single
+        // A tile scrolled back into view starts as it was left: same picture,
+        // same size, nothing for the list to re-measure.
+        _image = State(initialValue: MediaThumbnails.image(media.source))
+        _duration = State(initialValue: MediaThumbnails.durations[media.source])
+    }
+
     var body: some View {
         Button { viewing = true } label: {
             ZStack {
@@ -81,13 +90,22 @@ private struct MediaTile: View {
     /// One picture keeps its shape within 220×260; a grid uses squares.
     private var size: CGSize {
         guard single else { return CGSize(width: 118, height: 118) }
-        guard let image, image.size.width > 0 else { return CGSize(width: 200, height: 150) }
-        let ratio = image.size.height / image.size.width
+        // A picture seen before keeps its place while it loads again, so the
+        // row is the right height from the start and nothing moves when it lands.
+        let known = image.flatMap { $0.size.width > 0 ? $0.size.height / $0.size.width : nil } ?? MediaThumbnails.shape(media.source)
+        guard let ratio = known else { return CGSize(width: 200, height: 150) }
         let width: CGFloat = min(220, 260 / max(ratio, 0.01))
         return CGSize(width: width, height: min(260, max(90, width * ratio)))
     }
 
     private func load() async {
+        if image != nil { return }
+        await fetch()
+        if let image { MediaThumbnails.keep(image, for: media.source) }
+        if let duration { MediaThumbnails.durations[media.source] = duration }
+    }
+
+    private func fetch() async {
         // Sent from this phone and not yet on V: shown from the copy kept for sending.
         if let local = OutboxStore.localURL(media.source) {
             if media.kind == .video {
@@ -99,6 +117,12 @@ private struct MediaTile: View {
             } else {
                 image = await Task.detached { UIImage(contentsOfFile: local.path)?.preparingThumbnail(of: CGSize(width: 600, height: 600)) }.value
             }
+            return
+        }
+        if media.source.hasPrefix("fixture:") {
+            // The demo's pictures arrive late, as real ones do.
+            try? await Task.sleep(for: .milliseconds(500))
+            image = FixtureMedia.picture(media.source)
             return
         }
         guard let loader = model.media else { failure = "未连接 V"; return }
@@ -133,6 +157,34 @@ private struct MediaTile: View {
     static func clock(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
+}
+
+/// Thumbnails already drawn, by where they came from.
+@MainActor
+enum MediaThumbnails {
+    private static let images: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 300
+        return cache
+    }()
+    static var durations: [String: String] = [:]
+
+    static func image(_ source: String) -> UIImage? { images.object(forKey: source as NSString) }
+
+    static func keep(_ image: UIImage, for source: String) {
+        images.setObject(image, forKey: source as NSString)
+        guard image.size.width > 0, shapes[source] == nil else { return }
+        if shapes.count >= 600 { shapes.removeAll() }
+        shapes[source] = Double(image.size.height / image.size.width)
+        UserDefaults.standard.set(shapes, forKey: shapesKey)
+    }
+
+    /// Height over width of a picture drawn before, kept across launches so
+    /// its tile can be laid out before the picture is back.
+    static func shape(_ source: String) -> CGFloat? { shapes[source].map { CGFloat($0) } }
+
+    private static let shapesKey = "media.shapes"
+    private static var shapes: [String: Double] = UserDefaults.standard.dictionary(forKey: shapesKey) as? [String: Double] ?? [:]
 }
 
 /// Full screen: a zoomable picture or the video player.
@@ -279,5 +331,18 @@ struct QuoteLine: View {
         }
         .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 4)
+    }
+}
+
+/// Demo pictures drawn on the phone: `fixture:<width>x<height>-<n>`.
+enum FixtureMedia {
+    static func picture(_ source: String) -> UIImage {
+        let numbers = source.dropFirst("fixture:".count).split(whereSeparator: { !$0.isNumber }).compactMap { Double($0) }
+        let size = CGSize(width: (numbers.first ?? 800) / 4, height: (numbers.dropFirst().first ?? 600) / 4)
+        return UIGraphicsImageRenderer(size: size).image { context in
+            let colors = [UIColor(red: 0.43, green: 0.31, blue: 0.56, alpha: 1).cgColor, UIColor(red: 0.84, green: 0.29, blue: 0.44, alpha: 1).cgColor]
+            let gradient = CGGradient(colorsSpace: nil, colors: colors as CFArray, locations: nil)!
+            context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: size.width, y: size.height), options: [])
+        }
     }
 }

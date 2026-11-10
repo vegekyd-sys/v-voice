@@ -11,14 +11,12 @@ struct Composer: View {
     let isWorking: Bool
     let onSend: () -> Void
     let onStop: () -> Void
-    @FocusState private var focused: Bool
+    @State private var field = ComposerField.Handle()
     @State private var picking = false
     @State private var importing = false
     @State private var picked: [PhotosPickerItem] = []
     @State private var preparing = 0
     @State private var problem: String?
-    /// Shift-Return on a hardware keyboard adds a line; plain Return sends.
-    @State private var keepNewline = false
 
     private var canSend: Bool {
         preparing == 0 && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
@@ -32,7 +30,7 @@ struct Composer: View {
         VStack(alignment: .leading, spacing: 6) {
             if let quote { quoteBar(quote) }
             if !attachments.isEmpty || preparing > 0 { attachmentBar }
-            field
+            bar
         }
         .photosPicker(isPresented: $picking, selection: $picked, maxSelectionCount: 9, matching: .any(of: [.images, .videos]))
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
@@ -135,7 +133,7 @@ struct Composer: View {
         }
     }
 
-    private var field: some View {
+    private var bar: some View {
         GlassEffectContainer(spacing: 10) {
             HStack(alignment: .bottom, spacing: 10) {
                 HStack(alignment: .bottom, spacing: 6) {
@@ -151,35 +149,17 @@ struct Composer: View {
                     .padding(.leading, 5)
                     .padding(.vertical, 5)
                     .accessibilityLabel("添加附件")
-                    TextField(isWorking ? "补充一句，V 会接着处理" : "给 V 发消息", text: $text, axis: .vertical)
-                        .lineLimit(1...6)
-                        .focused($focused)
-                        .accessibilityIdentifier("composer")
-                        .font(.body)
-                        .padding(.vertical, 11)
+                    ComposerField(
+                        text: $text,
+                        hint: isWorking ? "补充一句，V 会接着处理" : "给 V 发消息",
+                        handle: field,
+                        onReturn: { if canSend { onSend() } })
                         .padding(.leading, 2)
-                        .submitLabel(.send)
-                        // A hardware keyboard's Return submits a vertical field (after any
-                        // input method composition is confirmed); the on-screen one adds a line.
-                        .onSubmit { if canSend { onSend() } }
-                        .onKeyPress(.return, phases: .down) { press in
-                            if press.modifiers.contains(.shift) { keepNewline = true }
-                            return .ignored
-                        }
-                        // Return sends, as in Feishu. The keyboard's Return arrives as a new
-                        // line in the text; while an input method is composing, Return
-                        // confirms the composition and adds no line, so nothing is sent early.
-                        .onChange(of: text) { old, new in
-                            guard let typed = typedReturn(old: old, new: new) else { return }
-                            if keepNewline { keepNewline = false; return }
-                            text = typed
-                            if canSend { onSend() }
-                        }
                     Button {
                         switch trailing {
                         case .send: onSend()
                         case .stop: onStop()
-                        case .idle: focused = true
+                        case .idle: field.focus()
                         }
                     } label: {
                         Image(systemName: trailing == .send ? "arrow.up" : trailing == .stop ? "stop.fill" : "arrow.up")
@@ -211,18 +191,115 @@ struct Composer: View {
     }
 }
 
-/// When Return was typed, the text without that line break. SwiftUI can hand
-/// over several keystrokes at once (an input method commits a word, then
-/// Return), so this looks at what was inserted, not at how much: a short
-/// insertion ending in its only line break is Return; a pasted paragraph is not.
-func typedReturn(old: String, new: String) -> String? {
-    let prefix = zip(old, new).prefix { $0 == $1 }.count
-    let oldRest = old.dropFirst(prefix), newRest = new.dropFirst(prefix)
-    let suffix = zip(oldRest.reversed(), newRest.reversed()).prefix { $0 == $1 }.count
-    guard oldRest.count == suffix else { return nil } // something was replaced or deleted
-    let inserted = newRest.dropLast(suffix)
-    guard inserted.last == "\n", inserted.count <= 12, inserted.filter({ $0 == "\n" }).count == 1 else { return nil }
-    return String(new.prefix(prefix)) + String(inserted.dropLast()) + String(newRest.suffix(suffix))
+/// The text field: a text view, so Return can send before a line break is
+/// ever drawn, an input method's composition is never interrupted, and the
+/// field grows by whole lines with nothing flickering.
+struct ComposerField: UIViewRepresentable {
+    @Binding var text: String
+    let hint: String
+    let handle: Handle
+    let onReturn: () -> Void
+
+    /// Lets the composer put the cursor in the field.
+    @MainActor final class Handle {
+        fileprivate weak var view: UITextView?
+        func focus() { view?.becomeFirstResponder() }
+    }
+
+    final class Field: UITextView {
+        let hint = UILabel()
+        /// Shift-Return on a hardware keyboard adds a line; plain Return sends.
+        fileprivate var addingLine = false
+
+        override var keyCommands: [UIKeyCommand]? {
+            let command = UIKeyCommand(input: "\r", modifierFlags: .shift, action: #selector(addLine))
+            command.wantsPriorityOverSystemBehavior = true
+            return [command]
+        }
+
+        @objc private func addLine() {
+            addingLine = true
+            insertText("\n")
+            addingLine = false
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            hint.frame = CGRect(
+                x: textContainerInset.left, y: textContainerInset.top,
+                width: max(0, bounds.width - textContainerInset.left - textContainerInset.right),
+                height: font?.lineHeight ?? 22)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIView(context: Context) -> Field {
+        let view = Field()
+        view.delegate = context.coordinator
+        view.font = .preferredFont(forTextStyle: .body)
+        view.adjustsFontForContentSizeCategory = true
+        view.backgroundColor = .clear
+        view.textColor = UIColor(VTheme.ink)
+        view.textContainerInset = UIEdgeInsets(top: 11, left: 0, bottom: 11, right: 0)
+        view.textContainer.lineFragmentPadding = 0
+        view.returnKeyType = .send
+        view.isScrollEnabled = false
+        view.showsVerticalScrollIndicator = false
+        view.accessibilityIdentifier = "composer"
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        view.hint.font = view.font
+        view.hint.adjustsFontForContentSizeCategory = true
+        view.hint.textColor = .placeholderText
+        view.hint.isAccessibilityElement = false
+        view.addSubview(view.hint)
+        handle.view = view
+        return view
+    }
+
+    func updateUIView(_ view: Field, context: Context) {
+        context.coordinator.parent = self
+        // Only when it really differs: assigning mid-composition would break an
+        // input method's marked text.
+        if view.text != text {
+            view.text = text
+            view.invalidateIntrinsicContentSize()
+        }
+        view.hint.text = hint
+        view.hint.isHidden = !view.text.isEmpty
+        view.accessibilityLabel = hint
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView view: Field, context: Context) -> CGSize? {
+        let width = proposal.width ?? (view.bounds.width > 0 ? view.bounds.width : 240)
+        guard width.isFinite, width > 0 else { return nil }
+        let line = view.font?.lineHeight ?? 22
+        let insets = view.textContainerInset.top + view.textContainerInset.bottom
+        let most = (line * 6 + insets).rounded(.up)
+        let fitted = view.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height.rounded(.up)
+        let scrolls = fitted > most
+        if view.isScrollEnabled != scrolls { view.isScrollEnabled = scrolls }
+        return CGSize(width: width, height: min(max(fitted, line + insets), most))
+    }
+
+    @MainActor final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: ComposerField
+
+        init(_ parent: ComposerField) { self.parent = parent }
+
+        func textViewDidChange(_ view: UITextView) {
+            parent.text = view.text
+            (view as? Field)?.hint.isHidden = !view.text.isEmpty
+        }
+
+        func textView(_ view: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            // Return sends, as in Feishu. While an input method is composing,
+            // Return confirms the composition instead, so nothing is sent early.
+            guard text == "\n", view.markedTextRange == nil, (view as? Field)?.addingLine != true else { return true }
+            parent.onReturn()
+            return false
+        }
+    }
 }
 
 /// A picked video as a file in our temporary folder.

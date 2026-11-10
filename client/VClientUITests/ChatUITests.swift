@@ -4,10 +4,12 @@ import XCTest
 final class ChatUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
-    private func launch(long: Int? = nil) -> XCUIApplication {
+    private func launch(long: Int? = nil, real: Bool = false, earlierFails: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-demo", "-freshState"]
         if let long { app.launchEnvironment["VCLIENT_DEMO_LONG"] = String(long) }
+        if real { app.launchEnvironment["VCLIENT_DEMO_REAL"] = "1" }
+        if earlierFails { app.launchEnvironment["VCLIENT_DEMO_EARLIER_FAILS"] = "1" }
         app.launch()
         return app
     }
@@ -33,6 +35,32 @@ final class ChatUITests: XCTestCase {
 
     private func composer(_ app: XCUIApplication) -> XCUIElement {
         app.textViews["composer"].exists ? app.textViews["composer"] : app.textFields["composer"]
+    }
+
+    /// How far an element moves over a few seconds, sampled as fast as the UI answers.
+    private func drift(of element: XCUIElement, seconds: TimeInterval) -> CGFloat {
+        var ys: [CGFloat] = []
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end {
+            if element.exists { ys.append(element.frame.minY) }
+            usleep(60_000)
+        }
+        print("drift samples:", ys.map { Int($0) })
+        return (ys.max() ?? 0) - (ys.min() ?? 0)
+    }
+
+    /// D1: a chat opens at the newest message and stays there while the transcript and pictures arrive.
+    func testAChatOpensAtTheNewestAndStaysStill() {
+        let app = launch(real: true)
+        openChat(app, "dm")
+        let newest = message(app, "第 240 条：帮我看看这个问题")
+        XCTAssertTrue(newest.waitForExistence(timeout: 2), "the newest message is on screen")
+        snap(app, "opened")
+        let moved = drift(of: newest, seconds: 3)
+        snap(app, "settled")
+        XCTAssertLessThan(moved, 1, "the page moved \(moved) pt on its own")
+        XCTAssertTrue(message(app, "第 230 条：帮我看看这个问题").exists || message(app, "第 238 条：帮我看看这个问题").exists,
+                      "what was on screen from the cache is still there")
     }
 
     /// B3: what was typed stays with the chat.

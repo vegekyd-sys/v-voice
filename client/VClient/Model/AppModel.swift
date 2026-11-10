@@ -9,7 +9,8 @@ protocol VTransport: AnyObject {
     func stop()
     func reconnect()
     func open(session: String, model: AppModel) async
-    func loadEarlier(session: String, model: AppModel) async
+    /// - Returns: false when the page could not be read; the chat shows a retry.
+    func loadEarlier(session: String, model: AppModel) async -> Bool
     /// One attempt at one queued message; the model keeps it until V has it.
     func send(_ entry: OutboxEntry, attachments: [Attachment], model: AppModel) async -> SendOutcome
     func abort(session: String, model: AppModel) async
@@ -114,6 +115,9 @@ final class AppModel {
     @ObservationIgnored var media: MediaLoader?
     /// Transient error shown above the composer, e.g. a failed send.
     var notice: String?
+    /// Chats reading an older page right now, and those whose last try failed.
+    var loadingEarlier: Set<String> = []
+    var earlierFailed: Set<String> = []
 
     /// Saved in the Keychain, but held here so a Keychain failure never
     /// silently drops the user back to pairing.
@@ -177,6 +181,16 @@ final class AppModel {
             let current = sessions
             sessions = current
         }
+        #if DEBUG
+        // `VCLIENT_DEMO_SAY=<text>`: sends it in the open chat a few seconds after
+        // launch, for recording how a reply arrives without typing on the simulator.
+        if mode == .demo, let text = ProcessInfo.processInfo.environment["VCLIENT_DEMO_SAY"] {
+            Task {
+                try? await Task.sleep(for: .seconds(5))
+                if let open = selectedSessionID { send(text, in: open) }
+            }
+        }
+        #endif
     }
 
     #if DEBUG
@@ -284,8 +298,17 @@ final class AppModel {
         await transport?.refreshSessions()
     }
 
+    /// Read the page before the oldest message shown. One page at a time: the
+    /// list asks again whenever its top comes near.
     func loadEarlier(_ sessionID: String) {
-        Task { await transport?.loadEarlier(session: sessionID, model: self) }
+        guard !loadingEarlier.contains(sessionID), session(sessionID)?.hasMoreHistory == true else { return }
+        loadingEarlier.insert(sessionID)
+        earlierFailed.remove(sessionID)
+        Task {
+            let loaded = await transport?.loadEarlier(session: sessionID, model: self) ?? false
+            loadingEarlier.remove(sessionID)
+            if !loaded { earlierFailed.insert(sessionID) }
+        }
     }
 
     /// The message shows at once; the outbox gets it to V, now or after reconnecting.

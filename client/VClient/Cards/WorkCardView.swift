@@ -44,11 +44,14 @@ struct WorkCardView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface()
-        // Animate structure (phase, plan, tool), not every streamed character.
-        .animation(.snappy(duration: 0.25), value: work.phase)
-        .animation(.snappy(duration: 0.25), value: work.plan)
-        .animation(.snappy(duration: 0.25), value: work.tools)
+        // Only the fold at the end is animated, on the spring the list uses to
+        // follow it. While V works the card grows with no animation of its own:
+        // the list keeps its end still, and a card easing into its new height
+        // inside a row that already has it reads as a bounce.
+        .animation(.smooth(duration: Self.foldDuration), value: work.isActive)
     }
+
+    static let foldDuration = 0.3
 
     private var isFailed: Bool {
         if case .failed = work.phase { return true }

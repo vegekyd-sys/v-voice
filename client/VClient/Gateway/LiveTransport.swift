@@ -11,7 +11,10 @@ final class LiveTransport: VTransport {
     private var subscribedMessages: Set<String> = []
     /// runId → session key, for runs this client has seen start.
     private var runs: [String: String] = [:]
-    private var historyLimit: [String: Int] = [:]
+    private lazy var pager = HistoryPager { [weak self] params in
+        guard let connection = self?.connection else { throw CancellationError() }
+        return try await connection.request("chat.history", .object(params), timeout: .seconds(120))
+    }
     private var refreshes: [String: Task<Void, Never>] = [:]
     private var sessionsReload: Task<Void, Never>?
     private var lastSessionsReload: ContinuousClock.Instant?
@@ -28,8 +31,6 @@ final class LiveTransport: VTransport {
     /// Log id of the oldest entry shown, where "earlier" continues from.
     private var vappOldest: String?
 
-    /// `VCLIENT_HISTORY_LIMIT` (launch environment) loads a deeper first page for testing.
-    private static let pageSize = ProcessInfo.processInfo.environment["VCLIENT_HISTORY_LIMIT"].flatMap(Int.init) ?? 20
     private let endpoint: GatewayEndpoint
 
     init(endpoint: GatewayEndpoint) {
@@ -89,7 +90,8 @@ final class LiveTransport: VTransport {
         await helloVapp()
         // Queued messages go before anything is loaded: they were typed first.
         model.flushOutbox()
-        await loadVappHistory()
+        // Opening the chat reads the same page, so not twice.
+        if openSession != vappSession { await loadVappHistory() }
         // One socket, so a long list would hold up an open chat. The chat goes first.
         if let open = openSession {
             await self.open(session: open, model: model)
@@ -269,47 +271,34 @@ final class LiveTransport: VTransport {
         await reloadSessions()
     }
 
-    func loadEarlier(session key: String, model: AppModel) async {
-        if key == vappSession {
-            await loadVappHistory(before: vappOldest)
-            return
-        }
-        historyLimit[key] = min((historyLimit[key] ?? Self.pageSize) + Self.pageSize, 1000)
-        await loadHistory(key)
+    func loadEarlier(session key: String, model: AppModel) async -> Bool {
+        if key == vappSession { return await loadVappHistory(before: vappOldest) }
+        return await pager.loadEarlier(key, model: model)
     }
 
     private func loadHistory(_ key: String) async {
         if key == vappSession {
             await loadVappHistory()
-            return
-        }
-        guard let connection, let model, let session = model.session(key) else { return }
-        let limit = historyLimit[key] ?? Self.pageSize
-        do {
-                let result = try await connection.request(
-                "chat.history", ["sessionKey": .string(key), "limit": .number(Double(limit))], timeout: .seconds(120))
-            let kind = session.kind
-            let history = await Task.detached(priority: .userInitiated) {
-                HistoryMapper.items(from: result["messages"]?.array ?? [], sessionKind: kind)
-            }.value
-            let modelName = result["defaults"]?["model"]?.string.map(HistoryMapper.modelLabel)
-            model.update(key) { session in
-                session.items = Self.merge(history: history, local: session.items)
-                session.historyLoaded = true
-                session.hasMoreHistory = result["hasMore"]?.bool ?? false
-                if let modelName { session.model = modelName }
-            }
-            model.saveCache()
-        } catch {
-            model.showNotice("聊天记录加载失败：\(error.localizedDescription)")
+        } else if let model {
+            await pager.loadNewest(key, model: model)
         }
     }
 
     /// History is the truth; keep what it cannot know yet: unconfirmed sends,
     /// runs still streaming, and cards for approvals and questions.
-    nonisolated static func merge(history: [ChatItem], local: [ChatItem]) -> [ChatItem] {
-        var merged = history
+    ///
+    /// `keepEarlier`: the pages read so far do not reach the start of the chat, so
+    /// what the phone already shows from before them (the cache) stays where it is
+    /// instead of vanishing until those pages are read. It only stays when the two
+    /// join: a chat that was reset shares nothing with its cache.
+    nonisolated static func merge(history: [ChatItem], local: [ChatItem], keepEarlier: Bool = false) -> [ChatItem] {
         let historyIds = Set(history.map(\.id))
+        var merged = history
+        if keepEarlier, let oldest = history.first?.time, local.contains(where: { historyIds.contains($0.id) }) {
+            let earlier = local.filter { $0.time < oldest && !historyIds.contains($0.id) && !$0.pending && !$0.failed }
+            merged = earlier + history
+        }
+        let mergedIds = Set(merged.map(\.id))
         for item in local {
             let isActiveRun: Bool = { if case .reply(let work) = item.content { return work.isActive } else { return false } }()
             if let index = merged.firstIndex(where: { $0.id == item.id }) {
@@ -328,7 +317,7 @@ final class LiveTransport: VTransport {
             let keep = item.pending || item.failed || isActiveRun
                 || item.id.hasPrefix("approval:") || item.id.hasPrefix("question:")
                 || (isVapp && item.time > (history.last?.time ?? .distantPast))
-            if keep, !historyIds.contains(item.id) { merged.append(item) }
+            if keep, !mergedIds.contains(item.id) { merged.append(item) }
         }
         return merged.enumerated().sorted { lhs, rhs in
             lhs.element.time == rhs.element.time ? lhs.offset < rhs.offset : lhs.element.time < rhs.element.time
@@ -716,9 +705,10 @@ final class LiveTransport: VTransport {
     }
 
     /// The chat as V's plugin logged it, with the cards that are still changing.
-    private func loadVappHistory(before: String? = nil) async {
-        guard let connection, let model, let key = vappSession else { return }
-        var params: [String: JSONValue] = ["limit": .number(Double(Self.pageSize))]
+    @discardableResult
+    private func loadVappHistory(before: String? = nil) async -> Bool {
+        guard let connection, let model, let key = vappSession else { return false }
+        var params: [String: JSONValue] = ["limit": .number(Double(HistoryPager.firstPage))]
         if let before { params["before"] = .string(before) }
         do {
             let result = try await connection.request("vapp.history", .object(params))
@@ -733,9 +723,11 @@ final class LiveTransport: VTransport {
                 session.hasMoreHistory = result["hasMore"]?.bool ?? false
             }
             for card in live { handleVappCard(card) }
+            return true
         } catch {
             model.update(key) { $0.historyLoaded = true }
-            model.showNotice("聊天记录加载失败：\(error.localizedDescription)")
+            if before == nil { model.showNotice("聊天记录加载失败：\(error.localizedDescription)") }
+            return false
         }
     }
 

@@ -8,6 +8,7 @@ enum HistoryMapper {
         var items: [ChatItem] = []
         var currentRun: (key: String, index: Int)?
         var lastUserTime: Date?
+        var seenRuns: Set<String> = []
 
         for message in messages {
             let meta = message["__openclaw"]
@@ -15,12 +16,21 @@ enum HistoryMapper {
             let time = date(message["timestamp"]) ?? date(meta?["recordTimestampMs"]) ?? .now
             switch message["role"]?.string {
             case "user":
-                currentRun = nil
-                lastUserTime = time
                 guard var text = plainText(message["content"]), !text.isEmpty else { continue }
                 let senderName = meta?["senderName"]?.string
                 if let name = senderName, text.hasPrefix(name + ": ") { text.removeFirst(name.count + 2) }
+                // A turn the system wrote does not end the run it nudges along.
                 if isInternal(text) { continue }
+                currentRun = nil
+                lastUserTime = time
+                if text.hasPrefix(voiceRequest) {
+                    // The words spoken are past the point where history clips the turn.
+                    items.append(ChatItem(id: "m:\(id)", sender: .system, time: time, content: .notice("语音通话里说了一句")))
+                    continue
+                }
+                if text.hasPrefix(voiceFollowUp), let said = text.components(separatedBy: "\n\n").dropFirst().first {
+                    text = said
+                }
                 let parsed = MessageParser.user(text)
                 guard !parsed.text.isEmpty || !parsed.media.isEmpty else { continue }
                 let isOwner = meta?["senderIsOwner"]?.bool ?? (meta?["senderId"] == nil)
@@ -32,6 +42,13 @@ enum HistoryMapper {
                 items.append(item)
 
             case "assistant", "toolResult", "tool":
+                // A card V sent to Feishu is stored as the card's JSON. It is one
+                // message of its own there, so it is one here.
+                if message["role"]?.string == "assistant", let card = mirroredCard(message) {
+                    currentRun = nil
+                    items.append(ChatItem(id: "m:\(id)", sender: .v, time: time, content: .card(card)))
+                    continue
+                }
                 let runKey = meta?["runId"]?.string ?? "solo:\(id)"
                 let index: Int
                 if let current = currentRun, current.key == runKey {
@@ -40,7 +57,10 @@ enum HistoryMapper {
                     // A run's clock starts at the message that triggered it.
                     let start = lastUserTime.map { min($0, time) } ?? time
                     lastUserTime = nil
-                    items.append(ChatItem(id: "run:\(runKey)", sender: .v, time: time, content: .reply(
+                    // A message sent while V works splits the run in two; the first
+                    // part keeps the run's id (the live reply has it), later parts add theirs.
+                    let itemId = seenRuns.insert(runKey).inserted ? "run:\(runKey)" : "run:\(runKey)@\(id)"
+                    items.append(ChatItem(id: itemId, sender: .v, time: time, content: .reply(
                         WorkState(runId: meta?["runId"]?.string, phase: .done, startedAt: start, finishedAt: time))))
                     index = items.count - 1
                     currentRun = (runKey, index)
@@ -105,6 +125,22 @@ enum HistoryMapper {
         }
     }
 
+    /// The card inside a message whose whole text is Feishu card JSON. Its
+    /// callback buttons belong to the Feishu message, so here they only show.
+    static func mirroredCard(_ message: JSONValue) -> FeishuCard? {
+        guard let text = plainText(message["content"]), text.hasPrefix("{"), text.hasSuffix("}"),
+              text.contains("\"elements\""),
+              let data = text.data(using: .utf8),
+              let json = try? JSONDecoder().decode(JSONValue.self, from: data),
+              json["schema"] != nil || json["header"] != nil,
+              (json["body"]?["elements"] ?? json["elements"])?.array != nil
+        else { return nil }
+        var card = FeishuCard(json: json)
+        guard card.header != nil || !card.elements.isEmpty else { return nil }
+        card.elements = card.elements.map(FeishuCard.withoutCallbacks)
+        return card
+    }
+
     /// Text of a message `content`, which is either a string or text blocks.
     static func plainText(_ content: JSONValue?) -> String? {
         guard let content else { return nil }
@@ -123,7 +159,12 @@ enum HistoryMapper {
     /// System-injected turns (heartbeats, inter-session envelopes) are not chat.
     static func isInternal(_ text: String) -> Bool {
         text.hasPrefix("[Inter-session message]") || text.hasPrefix("Read HEARTBEAT.md") || text.hasPrefix("[System")
+            || text.hasPrefix("The previous assistant turn completed its tool calls")
     }
+
+    /// How a browser Talk call hands V what was said.
+    static let voiceRequest = "Live voice request from the user"
+    static let voiceFollowUp = "Spoken follow-up for the current voice call."
 
     static func modelLabel(_ model: String) -> String {
         let name = model.split(separator: "/").last.map(String.init) ?? model

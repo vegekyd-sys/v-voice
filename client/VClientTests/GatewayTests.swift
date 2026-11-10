@@ -86,6 +86,26 @@ final class GatewayTests: XCTestCase {
         XCTAssertEqual(items[2].sender, .user, "everyone in a DM is the owner side")
     }
 
+    func testACardSentToFeishuShowsAsACard() throws {
+        let json = #"{"schema":"2.0","header":{"title":{"tag":"plain_text","content":"今日安排"},"template":"blue"},"body":{"elements":[{"tag":"markdown","content":"上午写方案"},{"tag":"button","text":{"tag":"plain_text","content":"完成"},"behaviors":[{"type":"callback","value":{"k":"done"}}]},{"tag":"button","text":{"tag":"plain_text","content":"打开"},"behaviors":[{"type":"open_url","default_url":"https://example.com"}]}]}}"#
+        let messages: [JSONValue] = [
+            ["role": "assistant", "model": "delivery-mirror", "content": [["type": "text", "text": .string(json)]],
+             "timestamp": 1_000_000, "__openclaw": ["id": "c1"]],
+            ["role": "assistant", "content": [["type": "text", "text": "{\"a\": 1} 这是在讲 JSON"]], "timestamp": 1_001_000,
+             "__openclaw": ["id": "a1", "runId": "r1"]],
+        ]
+        let items = HistoryMapper.items(from: messages, sessionKind: .direct)
+        XCTAssertEqual(items.map(\.id), ["m:c1", "run:r1"])
+        guard case .card(let card) = items[0].content else { return XCTFail("expected a card, not its JSON as text") }
+        XCTAssertEqual(card.header?.title, "今日安排")
+        let buttons = card.elements.compactMap { element -> FeishuCard.Button? in
+            if case .button(let button) = element { button } else { nil }
+        }
+        XCTAssertEqual(buttons.map(\.disabled), [true, false], "a callback belongs to the Feishu message; a link still opens")
+        guard case .reply(let work) = items[1].content else { return XCTFail("JSON inside a sentence stays text") }
+        XCTAssertTrue(work.answer.contains("这是在讲 JSON"))
+    }
+
     func testGroupMembersAreNamedAndOwnerIsMe() {
         let items = HistoryMapper.items(from: history, sessionKind: .group)
         XCTAssertEqual(items[0].sender, .user)

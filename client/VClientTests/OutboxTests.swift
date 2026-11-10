@@ -16,7 +16,7 @@ private final class ScriptedTransport: VTransport {
     func stop() {}
     func reconnect() {}
     func open(session: String, model: AppModel) async {}
-    func loadEarlier(session: String, model: AppModel) async {}
+    func loadEarlier(session: String, model: AppModel) async -> Bool { true }
     func abort(session: String, model: AppModel) async {}
     func perform(_ action: FeishuCard.Action, form: [String: String], item: String, session: String, model: AppModel) async {}
     func react(item: ChatItem, emoji: String, remove: Bool, session: String, model: AppModel) async {}
@@ -90,15 +90,6 @@ final class OutboxTests: XCTestCase {
         XCTAssertEqual(transport.attempts.count, 3)
         XCTAssertEqual(transport.attempts[2], transport.attempts[0], "a retry keeps the message id")
         XCTAssertFalse(model.session("s1")!.items[0].failed)
-    }
-
-    func testReturnSendsOnlyWhenALineBreakWasTyped() {
-        XCTAssertEqual(typedReturn(old: "你好", new: "你好\n"), "你好")
-        XCTAssertEqual(typedReturn(old: "你好", new: "你\n好"), "你好", "the cursor can be mid-text")
-        XCTAssertEqual(typedReturn(old: "第一", new: "第一句\n"), "第一句", "a committed word and Return in one update")
-        XCTAssertNil(typedReturn(old: "ni", new: "nih"))
-        XCTAssertNil(typedReturn(old: "", new: "第一段很长的内容复制进来了\n第二段"), "a pasted paragraph")
-        XCTAssertNil(typedReturn(old: "a\nb", new: "a\n"), "deleting is not Return")
     }
 
     func testTheTranscriptCopyOfASentMessageMatchesDespiteVsNotes() {

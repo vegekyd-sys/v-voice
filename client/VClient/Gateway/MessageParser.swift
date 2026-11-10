@@ -21,6 +21,8 @@ enum MessageParser {
         lines.removeAll { line in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("[message_id:") && trimmed.hasSuffix("]") { return true }
+            // What the Feishu channel tells the model about mention tags.
+            if trimmed.hasPrefix("[System: ") && trimmed.hasSuffix("]") { return true }
             if let ref = mediaAttached(trimmed) {
                 media.append(ref)
                 return true
@@ -29,6 +31,7 @@ enum MessageParser {
         }
         var text = lines.joined(separator: "\n")
         text = text.replacingOccurrences(of: #"<media:[a-z]+>"#, with: "", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"<at user_id="[^"]*">([^<]*)</at>"#, with: "@$1", options: .regularExpression)
         let understood = understoodText(text)
         text = understood.text
 
