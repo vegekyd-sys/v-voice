@@ -24,11 +24,11 @@ extension EnvironmentValues {
 
 extension FeishuCard.Template {
     /// The header's accent. Feishu's template names keep their meaning, in
-    /// V's palette: green and turquoise are her teal, purple is her coat.
+    /// V's palette has no green: Feishu's green and turquoise become her blue.
     var tint: Color? {
         switch self {
         case .plain: nil
-        case .purple: VTheme.coat
+        case .purple: VTheme.dusk
         default: Color.feishu(named: rawValue)
         }
     }
@@ -278,7 +278,7 @@ struct CardButtonView: View {
     private var foreground: Color {
         switch button.style {
         case .primaryFilled, .dangerFilled: .white
-        case .primary, .text: VTheme.coat
+        case .primary, .text: VTheme.dusk
         case .danger: VTheme.lobster
         case .plain: VTheme.ink
         }
@@ -287,7 +287,7 @@ struct CardButtonView: View {
     /// Fills only, no outlines: weight comes from how dark the fill is.
     private var background: Color {
         switch button.style {
-        case .primaryFilled: VTheme.coatFill
+        case .primaryFilled: VTheme.duskFill
         case .dangerFilled: VTheme.lobster
         case .primary: VTheme.lavender
         case .danger, .plain: VTheme.sunken

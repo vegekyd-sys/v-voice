@@ -36,7 +36,7 @@ struct ChatScreen: View {
                         VStack(spacing: 1) {
                             Text(session.title).font(.headline).foregroundStyle(VTheme.ink).lineLimit(1)
                             if session.isWorking {
-                                Text("V 正在处理").font(.caption2).foregroundStyle(VTheme.coat)
+                                Text("V 正在处理").font(.caption2).foregroundStyle(VTheme.dusk)
                             } else if let channel = Self.channelName(session.channel) {
                                 Text(channel).font(.caption2).foregroundStyle(VTheme.muted)
                             }
@@ -347,7 +347,7 @@ struct MessageRow: View, Equatable {
                         .foregroundStyle(.white)
                         .padding(.horizontal, Self.bubbleInsetX)
                         .padding(.vertical, Self.bubbleInsetY)
-                        .background(VTheme.coatFill, in: Self.bubble)
+                        .background(VTheme.duskFill, in: Self.bubble)
                         .contentShape(.contextMenuPreview, Self.bubble)
                         .opacity(item.pending ? 0.75 : 1)
                         .textSelection(.enabled)
@@ -436,7 +436,7 @@ private struct UploadRing: View {
         ZStack {
             Circle().stroke(VTheme.hairline, lineWidth: 2)
             Circle().trim(from: 0, to: max(0.04, progress))
-                .stroke(VTheme.coat, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .stroke(VTheme.dusk, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(.linear(duration: 0.2), value: progress)
         }

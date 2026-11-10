@@ -423,7 +423,7 @@ private struct MarkdownBlocksView: View {
         if let checked = item.checked {
             Image(systemName: checked ? "checkmark.square.fill" : "square")
                 .font(.footnote)
-                .foregroundStyle(checked ? VTheme.coat : VTheme.muted)
+                .foregroundStyle(checked ? VTheme.dusk : VTheme.muted)
         } else if ordered {
             Text("\(number).").font(bodyFont.monospacedDigit()).foregroundStyle(VTheme.muted)
         } else {

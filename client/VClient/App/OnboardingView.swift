@@ -86,7 +86,7 @@ struct OnboardingView: View {
                 }
                 .labelStyle(.iconOnly)
                 .buttonBorderShape(.circle)
-                .tint(VTheme.coatFill)
+                .tint(VTheme.duskFill)
             }
             .padding(12)
             .background(VTheme.sunken, in: RoundedRectangle(cornerRadius: VTheme.controlRadius, style: .continuous))
@@ -184,7 +184,7 @@ struct SettingsView: View {
                             model.disconnect()
                             dismiss()
                         }
-                        .foregroundStyle(VTheme.coat)
+                        .foregroundStyle(VTheme.dusk)
                     } footer: {
                         Text("现在看到的是示例数据。连接后这里会换成你和 V 的会话。")
                     }
@@ -241,7 +241,7 @@ struct StatusLine: View {
 
     private var color: Color {
         switch status {
-        case .connected: VTheme.coat
+        case .connected: VTheme.dusk
         case .offline: VTheme.lobster
         default: VTheme.muted
         }

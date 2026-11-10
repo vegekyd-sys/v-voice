@@ -50,7 +50,7 @@ struct QuestionCardView: View {
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .foregroundStyle(.white)
-                        .background(VTheme.coatFill, in: RoundedRectangle(cornerRadius: VTheme.controlRadius, style: .continuous))
+                        .background(VTheme.duskFill, in: RoundedRectangle(cornerRadius: VTheme.controlRadius, style: .continuous))
                 }
                 .buttonStyle(PressableStyle())
                 .disabled(!canSubmit)
@@ -103,7 +103,7 @@ struct QuestionCardView: View {
                     .font(.footnote.weight(.semibold).monospacedDigit())
                     .frame(width: 24, height: 24)
                     .foregroundStyle(chosen ? .white : answered ? VTheme.muted : VTheme.soft)
-                    .background(chosen ? VTheme.coatFill : VTheme.surface, in: Circle())
+                    .background(chosen ? VTheme.duskFill : VTheme.surface, in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text(option)
                         .font(.subheadline.weight(chosen ? .medium : .regular))
@@ -115,14 +115,14 @@ struct QuestionCardView: View {
                 .multilineTextAlignment(.leading)
                 Spacer(minLength: 4)
                 if chosen {
-                    Image(systemName: "checkmark").font(.footnote.weight(.bold)).foregroundStyle(VTheme.coat)
+                    Image(systemName: "checkmark").font(.footnote.weight(.bold)).foregroundStyle(VTheme.dusk)
                 }
             }
             .padding(.horizontal, 10)
             .frame(minHeight: 44)
             .padding(.vertical, 4)
             .background(
-                chosen ? VTheme.coat.opacity(0.12) : VTheme.sunken,
+                chosen ? VTheme.dusk.opacity(0.12) : VTheme.sunken,
                 in: RoundedRectangle(cornerRadius: VTheme.controlRadius, style: .continuous))
             .contentShape(Rectangle())
         }
@@ -138,7 +138,7 @@ struct FileCardView: View {
         HStack(spacing: 12) {
             Image(systemName: file.symbol)
                 .font(.title3)
-                .foregroundStyle(VTheme.coat)
+                .foregroundStyle(VTheme.dusk)
                 .frame(width: 44, height: 44)
                 .background(VTheme.lavender, in: RoundedRectangle(cornerRadius: VTheme.controlRadius, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {

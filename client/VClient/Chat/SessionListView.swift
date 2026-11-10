@@ -372,7 +372,7 @@ extension VEmptyState where Actions == EmptyView {
     }
 }
 
-/// The one filled button: her coat, white words.
+/// The one filled button: dusk, white words.
 struct VFilledButtonStyle: ButtonStyle {
     /// Fills the width it is given, for the button a form ends in.
     var wide = false
@@ -392,7 +392,7 @@ struct VFilledButtonStyle: ButtonStyle {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 24)
                 .frame(maxWidth: wide ? .infinity : nil, minHeight: wide ? 50 : 42)
-                .background(VTheme.coatFill, in: RoundedRectangle(cornerRadius: wide ? 14 : 21, style: .continuous))
+                .background(VTheme.duskFill, in: RoundedRectangle(cornerRadius: wide ? 14 : 21, style: .continuous))
                 .opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1) : 0.4)
                 .animation(.snappy(duration: 0.2), value: configuration.isPressed)
         }
@@ -460,7 +460,7 @@ private struct HomeStatus: View {
         case .connected where working > 0:
             HStack(spacing: 7) {
                 WorkingDot()
-                Text("正在处理 \(working) 个会话").foregroundStyle(VTheme.coat)
+                Text("正在处理 \(working) 个会话").foregroundStyle(VTheme.dusk)
             }
         case .connected:
             EmptyView()
@@ -479,7 +479,7 @@ private struct HomeStatus: View {
 /// "On it", said once and still: nothing on the home screen moves by itself.
 private struct WorkingDot: View {
     var body: some View {
-        Circle().fill(VTheme.coat).frame(width: 6, height: 6)
+        Circle().fill(VTheme.dusk).frame(width: 6, height: 6)
     }
 }
 
@@ -530,7 +530,7 @@ struct SessionRow: View {
                 HStack(spacing: 6) {
                     if session.isWorking {
                         WorkingDot()
-                        Text("正在处理").font(.subheadline).foregroundStyle(VTheme.coat).lineLimit(1)
+                        Text("正在处理").font(.subheadline).foregroundStyle(VTheme.dusk).lineLimit(1)
                     } else if !session.displayPreview.isEmpty {
                         Text(session.displayPreview)
                             .font(.subheadline)
@@ -581,7 +581,7 @@ struct SessionAvatar: View {
                 // The initial stays underneath until the picture arrives, and if it never does.
                 Text(initial)
                     .font(.system(size: size * 0.4, weight: .medium))
-                    .foregroundStyle(VTheme.coat)
+                    .foregroundStyle(VTheme.dusk)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(VTheme.lavender)
                     .overlay {
@@ -596,8 +596,8 @@ struct SessionAvatar: View {
     }
 
     static func palette(_ seed: String) -> [Color] {
-        // Her own colours: lavender, coat blue, the warm grey of her lapel, rose grey, dusk.
-        let palettes: [[UInt32]] = [[0x8A72A6, 0xB39CCB], [0x2F566F, 0x6A93AB], [0x9A8576, 0xC4B1A3], [0x94707F, 0xC29CA9], [0x4A3F6E, 0x7C6DA3]]
+        // Her own colours: lavender, periwinkle, the warm grey of her lapel, rose grey, dusk. No greens or teals.
+        let palettes: [[UInt32]] = [[0x8A72A6, 0xB39CCB], [0x4F5FA8, 0x8C9BD6], [0x9A8576, 0xC4B1A3], [0x94707F, 0xC29CA9], [0x4A3F6E, 0x7C6DA3]]
         // Stable across launches, unlike hashValue.
         let pick = palettes[seed.unicodeScalars.reduce(0) { $0 &+ Int($1.value) } % palettes.count]
         return pick.map { Color(hex: $0) }

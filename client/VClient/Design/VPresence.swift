@@ -163,7 +163,7 @@ struct VStepsView: View {
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(VTheme.muted)
         case .running:
-            Circle().fill(VTheme.coat).frame(width: 7, height: 7)
+            Circle().fill(VTheme.dusk).frame(width: 7, height: 7)
         case .pending:
             Circle().strokeBorder(VTheme.muted.opacity(0.7), lineWidth: 1.2).frame(width: 8, height: 8)
         }

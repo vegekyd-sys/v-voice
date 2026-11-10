@@ -16,7 +16,7 @@ struct VClientApp: App {
                 }
             }
             .environment(model)
-            .tint(VTheme.coat)
+            .tint(VTheme.dusk)
             .task {
                 PushDelegate.model = model
                 await model.boot()

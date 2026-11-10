@@ -1,9 +1,10 @@
 import SwiftUI
 
 /// V's world, sampled from her portrait: the lavender she stands in front of,
-/// the deep teal-blue of her coat, the lobster pin on her lapel, and the cyan
-/// glow of her sprite. Neutrals lean toward the lavender so nothing reads as
-/// plain grey. Feishu colour names keep their meaning for V's existing cards.
+/// that lavender at dusk for ink and fills, and the lobster pin on her lapel.
+/// Neutrals lean toward the lavender so nothing reads as plain grey. Nothing
+/// here is green or leans toward it (her coat's teal was tried and read as
+/// green on a phone). Feishu colour names keep their meaning for V's cards.
 enum VTheme {
     static let pagePadding: CGFloat = 16
     static let cardRadius: CGFloat = 18
@@ -29,18 +30,19 @@ enum VTheme {
     static let onStageSoft = Color(hex: 0x231B36, opacity: 0.66)
     /// A whisper of the stage, for quiet fills.
     static let lavender = Color(light: 0xEBE5F5, dark: 0x2B2536)
-    /// Her coat. Foreground use: tint, links to actions, "working" text.
-    static let coat = Color(light: 0x24465C, dark: 0x9CC3D9)
-    /// Her coat as a fill that carries white text: your bubbles, primary buttons.
-    static let coatFill = Color(light: 0x24465C, dark: 0x2F566F)
+    /// The stage at dusk: a deep indigo-violet. Foreground use: tint, text you
+    /// can act on, "working" text.
+    static let dusk = Color(light: 0x3D3A80, dark: 0xB9B6F2)
+    /// The same as a fill that carries white text: your bubbles, primary buttons.
+    static let duskFill = Color(light: 0x3D3A80, dark: 0x4B4796)
     /// The lobster pin. The one loud colour: unread counts and failures only.
     static let lobster = Color(light: 0xD2472A, dark: 0xF0694A)
-    /// Her sprite's light. Used once: around V while she works.
-    static let glow = Color(light: 0x8FE3EC, dark: 0xBFF6FB)
+    /// The light around V while she works. Used once.
+    static let glow = Color(light: 0xB9A8F2, dark: 0xCFC4FF)
     static let cream = Color(hex: 0xEADCD2)
 
     // Meaning
-    static let positive = Color(light: 0x2B6F8E, dark: 0x8CC4DE)
+    static let positive = Color(light: 0x4459B8, dark: 0x9FB0F2)
     static let orange = Color(light: 0xC8690A, dark: 0xF59A3D)
     static let red = lobster
     static let blue = Color(light: 0x245BDB, dark: 0x5B8CF5)

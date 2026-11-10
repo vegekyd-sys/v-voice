@@ -256,7 +256,7 @@ struct ToolRow: View {
     private var marker: some View {
         switch tool.status {
         case .running:
-            Circle().fill(VTheme.coat).frame(width: 6, height: 6)
+            Circle().fill(VTheme.dusk).frame(width: 6, height: 6)
         case .done:
             Image(systemName: "checkmark")
                 .font(.caption2.weight(.semibold))
