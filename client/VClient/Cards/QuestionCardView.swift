@@ -167,7 +167,7 @@ struct FixtureImage: View {
                 endPoint: .bottomTrailing)
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 5) {
-                    ForEach([0xFF5F57, 0xFEBC2E, 0x28C840], id: \.self) { Circle().fill(Color(hex: UInt32($0))).frame(width: 7, height: 7) }
+                    ForEach(0..<3, id: \.self) { _ in Circle().fill(Color(hex: 0xCFCAD9)).frame(width: 7, height: 7) }
                     Spacer()
                     Capsule().fill(.white.opacity(0.85)).frame(width: 120, height: 10)
                     Spacer()

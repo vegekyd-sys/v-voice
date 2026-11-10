@@ -48,7 +48,9 @@ struct WorkCardView: View {
         // follow it. While V works the reply grows with no animation of its own:
         // the list keeps its end still, and a reply easing into its new height
         // inside a row that already has it reads as a bounce.
-        .animation(.smooth(duration: Self.foldDuration), value: work.isActive)
+        // No implicit animation here: the list eases its offset over `foldDuration`
+        // when the reply shortens; animating the layout inside the row as well made
+        // the words slide against V's name line for a few frames.
     }
 
     static let foldDuration = 0.3

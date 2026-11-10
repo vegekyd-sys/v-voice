@@ -132,8 +132,19 @@ final class ChatListController: UIViewController, UITableViewDelegate {
         composer.view.backgroundColor = .clear
         composer.view.translatesAutoresizingMaskIntoConstraints = false
         addChild(composer)
+        // Rows pass under the bar and used to show again below it, beside the
+        // home indicator. They now fade into the page behind the bar instead.
+        let fade = BottomFadeView()
+        fade.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(fade)
         view.addSubview(composer.view)
         composer.didMove(toParent: self)
+        NSLayoutConstraint.activate([
+            fade.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            fade.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            fade.topAnchor.constraint(equalTo: composer.view.topAnchor, constant: -BottomFadeView.lead),
+            fade.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
         composerHeight = composer.view.heightAnchor.constraint(equalToConstant: 60)
 
         var look = UIButton.Configuration.glass()
@@ -820,6 +831,39 @@ final class ChatListController: UIViewController, UITableViewDelegate {
 
 /// One message as a table row: the time above it when a while has passed, and
 /// the distance to the row before it.
+/// Page colour rising from nothing, so the list ends softly behind the composer.
+final class BottomFadeView: UIView {
+    /// How far above the composer the fade starts.
+    static let lead: CGFloat = 16
+    /// Where it is fully the page: about the middle of the input capsule.
+    private static let ramp: CGFloat = 50
+
+    override class var layerClass: AnyClass { CAGradientLayer.self }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: BottomFadeView, _) in view.paint() }
+        paint()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        paint()
+    }
+
+    private func paint() {
+        guard let gradient = layer as? CAGradientLayer else { return }
+        let page = UIColor(VTheme.page).resolvedColor(with: traitCollection)
+        gradient.colors = [page.withAlphaComponent(0).cgColor, page.cgColor, page.cgColor]
+        let stop = bounds.height > 0 ? min(1, Self.ramp / bounds.height) : 1
+        gradient.locations = [0, NSNumber(value: stop), 1]
+    }
+}
+
 struct ChatRowView: View {
     let row: ChatListController.Row
     let sessionID: String

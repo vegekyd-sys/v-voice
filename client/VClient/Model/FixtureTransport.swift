@@ -201,7 +201,7 @@ final class FixtureTransport: VTransport {
 
                     - 主线程最长停顿 **11.2 s**，与整理开始时间完全对上
                     - 同时段飞书消息全部排队，没有丢失
-                    - 已按官方配置关掉整理，<font color='green'>热生效，无需重启</font>
+                    - 已按官方配置关掉整理，**热生效，无需重启**
 
                     > 下次如果再卡，先看 `liveness` 日志里的 eventLoopDelay。
                     """,
