@@ -92,7 +92,16 @@ extension FeishuCard {
             self.header = nil
         }
         let elements = json["body"]?["elements"] ?? json["elements"] ?? .array([])
-        self.elements = elements.array.compactMap(Self.element)
+        self.elements = elements.array.compactMap(Self.element).filter { !Self.isRunFooter($0) }
+    }
+
+    /// V's replies end with "Agent: … | Model: … | Provider: … | Runtime: …" in small
+    /// print. Useful in Feishu for debugging, noise in the app, so it is not shown.
+    static func isRunFooter(_ element: Element) -> Bool {
+        guard case .markdown(let text, .notation) = element else { return false }
+        let plain = text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return plain.hasPrefix("Agent:") || (plain.hasPrefix("Model:") && plain.contains("|"))
     }
 
     private static func element(_ json: JSONValue) -> Element? {

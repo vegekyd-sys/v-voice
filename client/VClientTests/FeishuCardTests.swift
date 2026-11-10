@@ -28,6 +28,21 @@ final class FeishuCardTests: XCTestCase {
         XCTAssertEqual(button.action, .callback(.object(["approvalId": .string("a1"), "decision": .string("allow-once")])))
     }
 
+    /// The Agent/Model/Provider/Runtime line under V's replies is not shown; other small print is.
+    func testDropsRunFooter() throws {
+        let json = """
+        {"body":{"elements":[
+          {"tag":"markdown","content":"好的"},
+          {"tag":"markdown","content":"Agent: V × Makaron | Model: deepseek-flash | Provider: deepseek | Runtime: vlab-worker","text_size":"notation"},
+          {"tag":"markdown","content":"<font color='grey'>agent：main · 来自飞书私聊</font>","text_size":"notation"}]}}
+        """
+        let card = try FeishuCard(data: Data(json.utf8))
+        XCTAssertEqual(card.elements, [
+            .markdown("好的", size: .normal),
+            .markdown("<font color='grey'>agent：main · 来自飞书私聊</font>", size: .notation),
+        ])
+    }
+
     func testSchemaOneAndUnknownElements() throws {
         let json = """
         {"header":{"title":{"content":"旧卡片"},"template":"nope"},

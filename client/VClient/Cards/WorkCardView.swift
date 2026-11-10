@@ -203,9 +203,6 @@ struct WorkCardView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                if let model = work.model {
-                    Label(model, systemImage: "cpu")
-                }
             }
             .lineLimit(1)
             if stepsOpen {
