@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Turns Gateway transcript messages into chat items: one V reply per run
 /// (its tool calls folded into the reply's work view), user messages as
@@ -140,6 +141,44 @@ enum HistoryMapper {
         return sent
     }
 
+    /// What this stretch of transcript, and the session row that came with it,
+    /// prove about runs. A reply whose end this phone never heard (it was
+    /// suspended, the socket was gone) is closed from this and from nothing else.
+    static func runEvidence(in messages: [JSONValue], sessionInfo: JSONValue?) -> RunEvidence {
+        var evidence = RunEvidence(sessionInfo: sessionInfo)
+        var seen: [String] = []
+        var userSince = false
+        for message in messages {
+            let meta = message["__openclaw"]
+            switch message["role"]?.string {
+            case "user":
+                // A turn the system wrote, or one steering the run, is not the next turn.
+                if let text = plainText(message["content"]), !isInternal(text) { userSince = true }
+            case "assistant", "toolResult", "tool":
+                guard let run = meta?["runId"]?.string else { continue }
+                if meta?["runTerminal"]?.bool == true { evidence.ended.insert(run) }
+                // Only the model's own words answer a turn; a delivery the Gateway
+                // mirrored into the transcript can land in the middle of a run.
+                let answers = message["role"]?.string == "assistant"
+                    && !["delivery-mirror", "gateway-injected"].contains(message["model"]?.string ?? "")
+                if run != seen.last {
+                    // Someone spoke and another run answered: a session runs one at a
+                    // time, so every run before that turn is over. (A message sent
+                    // while V works is taken up by the same run and proves nothing.)
+                    if userSince, answers { evidence.ended.formUnion(seen.filter { $0 != run }) }
+                    seen.removeAll { $0 == run }
+                    seen.append(run)
+                }
+                if answers { userSince = false }
+            default:
+                continue
+            }
+        }
+        // The Gateway saying a run is going on outweighs anything read from the transcript.
+        evidence.ended.subtract(evidence.active)
+        return evidence
+    }
+
     static func apply(_ message: JSONValue, to work: inout WorkState, time: Date) {
         work.finishedAt = time
         if message["role"]?.string == "assistant" {
@@ -243,6 +282,78 @@ enum HistoryMapper {
         guard let ms = value?.double, ms > 0 else { return nil }
         return Date(timeIntervalSince1970: ms / 1000)
     }
+}
+
+/// What V's side says about which runs of a chat are over. The transcript alone
+/// cannot tell a reply still being written from one that ended while this phone
+/// was not listening, so nothing is closed on a guess: each field is something
+/// the Gateway said.
+struct RunEvidence: Hashable, Sendable {
+    /// Runs shown to be over: their closing message (`runTerminal`), a later turn
+    /// answered by another run, or the session row naming them as its finished last run.
+    var ended: Set<String> = []
+    /// Runs the Gateway lists as going on right now. These are never closed here.
+    var active: Set<String> = []
+    /// Ended runs the Gateway marks as stopped rather than finished.
+    var aborted: Set<String> = []
+    /// The session row says nothing is running. On its own this closes a reply
+    /// only after `quietBeforeIdleCloses` without a word from its run.
+    var idle = false
+    /// When the session's last run ended, while it is idle.
+    var lastEndedAt: Date?
+
+    static let none = RunEvidence()
+
+    /// How long a reply must have been silent before "nothing is running" closes it.
+    static let quietBeforeIdleCloses: TimeInterval = 60
+    /// A reply this young may not have reached V's records yet.
+    static let justSent: TimeInterval = 15
+
+    private static let finished: Set<String> = ["done", "completed", "error", "failed", "aborted", "timeout", "killed", "cancelled", "canceled"]
+
+    init() {}
+
+    /// From a session row: `chat.history`'s `sessionInfo`, a `sessions.list` row
+    /// or the snapshot in `sessions.changed`. A row without these fields proves nothing.
+    init(sessionInfo info: JSONValue?) {
+        guard let info, !info.isNull else { return }
+        active = Set(info["activeRunIds"]?.array.compactMap(\.string) ?? [])
+        let running = info["hasActiveRun"]?.bool
+        idle = running == false && active.isEmpty
+        guard running != true else { return }
+        if let last = info["lastRunId"]?.string, !active.contains(last),
+           let status = info["status"]?.string, Self.finished.contains(status)
+        {
+            ended.insert(last)
+            if info["abortedLastRun"]?.bool == true || status == "aborted" { aborted.insert(last) }
+        }
+        if idle { lastEndedAt = HistoryMapper.date(info["endedAt"]) }
+    }
+
+    /// Why the reply of `run` is over, or nil while nothing says so.
+    /// - Parameter lastHeard: the last live event of that run this phone got.
+    func closes(_ run: String, startedAt: Date, lastHeard: Date?, now: Date) -> String? {
+        if active.contains(run) { return nil }
+        if ended.contains(run) { return aborted.contains(run) ? "aborted" : "ended" }
+        guard idle else { return nil }
+        let quiet = now.timeIntervalSince(lastHeard ?? startedAt)
+        // The session's last run ended well after this one began: with one run at
+        // a time, that was this one or one after it. The margin covers the two
+        // clocks. (A run queued behind another can be closed early by this; its
+        // next live event opens it again, see `LiveTransport.reopen`.)
+        if let lastEndedAt, lastEndedAt.timeIntervalSince(startedAt) > 10, quiet > Self.justSent {
+            return "idle-ended-after"
+        }
+        return quiet > Self.quietBeforeIdleCloses ? "idle-quiet" : nil
+    }
+}
+
+/// One place for what this app writes to the unified log. Never message text,
+/// addresses or tokens: run ids cut to eight characters, decisions and counts.
+enum Log {
+    static let transport = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.versa.vclient", category: "transport")
+
+    static func short(_ runId: String?) -> String { String((runId ?? "-").prefix(8)) }
 }
 
 /// Short Chinese line for a tool call, like the ⚙️ row in the Feishu card.

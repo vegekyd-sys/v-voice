@@ -12,6 +12,13 @@ final class FixtureTransport: VTransport {
     ///
     /// `VCLIENT_DEMO_TRANSCRIPT=<file>`: the same, replaying a `chat.history` answer
     /// saved from a Gateway.
+    ///
+    /// `VCLIENT_DEMO_DROP_FINAL=1` (DEBUG; turns `VCLIENT_DEMO_REAL` on): the end of
+    /// a reply never arrives, as when the phone was locked while V finished. The
+    /// reply stays at "正在回答" with the stop button up; V's transcript has the
+    /// finished run, and three seconds later it is read again, as reconnecting
+    /// does. The answer has to take the open reply's place and the stop button
+    /// has to go. Before that read, 停止 has to clear it as well.
     private var stored: [JSONValue] = []
     private var kind: ChatSession.Kind = .direct
     private var failEarlier = ProcessInfo.processInfo.environment["VCLIENT_DEMO_EARLIER_FAILS"] == "1"
@@ -30,7 +37,7 @@ final class FixtureTransport: VTransport {
         {
             stored = json["messages"]?.array ?? []
             kind = .group
-        } else if environment["VCLIENT_DEMO_REAL"] == "1" {
+        } else if environment["VCLIENT_DEMO_REAL"] == "1" || dropsFinal {
             stored = Self.transcript(turns: 120)
         }
         if !stored.isEmpty {
@@ -72,13 +79,48 @@ final class FixtureTransport: VTransport {
         }
         let end = max(0, stored.count - offset)
         let start = max(0, end - limit)
-        return [
+        var answer: [String: JSONValue] = [
             "messages": .array(Array(stored[start..<end])),
             "nextOffset": .number(Double(offset + limit)),
             "hasMore": .bool(start > 0),
             "totalMessages": .number(Double(stored.count)),
             "sessionId": "fixture",
         ]
+        // Only where the demo keeps V's side honest; a reply held on screen for a
+        // screenshot is not something "nothing is running" should close.
+        if dropsFinal { answer["sessionInfo"] = ["hasActiveRun": false, "activeRunIds": [], "status": "done"] }
+        return .object(answer)
+    }
+
+    private var dropsFinal: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["VCLIENT_DEMO_DROP_FINAL"] == "1"
+        #else
+        false
+        #endif
+    }
+
+    /// The turn as V's transcript has it once the run is over: the question, a
+    /// tool call with its result, and the answer marked as the run's last message.
+    private func record(question: String, answer: String, run: String, at start: Date) {
+        var seq = stored.last?["__openclaw"]?["seq"]?.double ?? Double(stored.count)
+        func add(_ role: String, _ content: JSONValue, after seconds: Double, run: String? = nil, extra: [String: JSONValue] = [:], meta more: [String: JSONValue] = [:]) {
+            seq += 1
+            var meta: [String: JSONValue] = ["id": .string("fx-\(Int(seq))"), "seq": .number(seq)]
+            if let run { meta["runId"] = .string(run) }
+            meta.merge(more) { _, new in new }
+            var message: [String: JSONValue] = [
+                "role": .string(role), "content": content,
+                "timestamp": .number((start.addingTimeInterval(seconds).timeIntervalSince1970 * 1000).rounded()),
+                "__openclaw": .object(meta),
+            ]
+            message.merge(extra) { _, new in new }
+            stored.append(.object(message))
+        }
+        add("user", .string(question), after: 0)
+        add("assistant", [["type": "toolCall", "id": "call-dropped", "name": "memory_search", "arguments": ["query": .string(String(question.prefix(16)))]]], after: 1, run: run)
+        add("toolResult", [["type": "text", "text": "ok"]], after: 2, run: run, extra: ["toolCallId": "call-dropped"])
+        add("assistant", [["type": "text", "text": .string(answer)]], after: 3, run: run, extra: ["stopReason": "stop"], meta: ["runTerminal": true])
     }
 
     /// A stored transcript with the shapes a real one has. A turn is the question
@@ -145,6 +187,11 @@ final class FixtureTransport: VTransport {
         }
         #endif
         guard let runId = model.session(session)?.activeRun else { return }
+        if dropsFinal, stored.contains(where: { $0["__openclaw"]?["runId"]?.string == runId && $0["__openclaw"]?["runTerminal"]?.bool == true }) {
+            // The run is over on V and there is nothing to stop: what V recorded takes the reply's place.
+            await pager.reconcile(session, model: model, ended: [runId])
+            return
+        }
         model.updateWork("run:\(runId)", in: session) { work in
             work.phase = .aborted
             work.finishedAt = .now
@@ -379,6 +426,15 @@ final class FixtureTransport: VTransport {
                 if holds("streaming"), shown.count * 2 > full.count { return }
                 await pace(45)
             }
+        }
+
+        if dropsFinal, session == "dm" {
+            // V finished; this phone never hears it. Reading the transcript again is
+            // all that can close the reply (unless 停止 did first).
+            record(question: text, answer: full, run: runId, at: start)
+            try? await Task.sleep(for: .seconds(3))
+            await pager.reconcile(session, model: model)
+            return
         }
 
         model.updateWork(id, in: session) { work in

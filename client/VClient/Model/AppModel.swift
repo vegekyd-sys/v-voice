@@ -21,7 +21,13 @@ protocol VTransport: AnyObject {
     /// Tells V the chat was read, so Feishu, the Control UI and this app agree.
     func markRead(session: String) async
     func refreshSessions() async
+    /// The app is in front again: check the link, and read what was missed.
+    func foregrounded()
     func answer(_ question: QuestionState, choices: Set<Int>, other: String?, item: String, session: String, model: AppModel) async
+}
+
+extension VTransport {
+    func foregrounded() {}
 }
 
 enum ConnectionStatus: Equatable {
@@ -245,7 +251,10 @@ final class AppModel {
         mode = .onboarding
     }
 
-    func becameActive() { transport?.reconnect() }
+    func becameActive() {
+        transport?.reconnect()
+        transport?.foregrounded()
+    }
 
     func pushTokenChanged() {
         Task { await transport?.registerPush() }

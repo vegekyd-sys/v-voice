@@ -1,4 +1,5 @@
 import Foundation
+import os
 import UIKit
 
 struct GatewayError: LocalizedError, Sendable {
@@ -87,11 +88,74 @@ final class GatewayConnection {
         state = .idle
     }
 
-    /// Reconnect now (app came to the foreground, network came back).
+    /// Reconnect now (app came to the foreground, network came back). A socket
+    /// that says it is connected is asked to prove it: after the app was
+    /// suspended it can be dead with nothing here having noticed, and then every
+    /// request waits out its timeout and no event arrives.
     func reconnectIfNeeded() {
-        guard !stopped, state != .connected, state != .connecting else { return }
+        guard !stopped, state != .connecting else { return }
+        if state == .connected {
+            Task { await checkAlive() }
+            return
+        }
         reconnectTask?.cancel()
         open()
+    }
+
+    /// When any frame last came in.
+    private var lastFrame: Date = .distantPast
+    private var probe: Task<Bool, Never>?
+    /// How long V has to answer a ping (or send anything at all).
+    static let pongWait: Duration = .seconds(4)
+
+    /// Whether V still answers on this socket. One that does not is dropped,
+    /// which reconnects. False as well while not connected.
+    @discardableResult
+    func checkAlive() async -> Bool {
+        guard state == .connected, let socket else { return false }
+        if let probe { return await probe.value }
+        let current = generation
+        let asked = Date.now
+        let task = Task { [weak self] in
+            let pong = await Self.pong(from: socket, within: Self.pongWait)
+            guard let self, self.generation == current, self.state == .connected else { return false }
+            // A proxy on the way may answer pings itself or swallow them; a frame
+            // from V since the question is as good as a pong.
+            let alive = pong || self.lastFrame > asked
+            Log.transport.info("probe: \(alive ? "alive" : "no answer, reconnecting", privacy: .public)")
+            if !alive { self.dropped(error: GatewayError.timeout) }
+            return alive
+        }
+        probe = task
+        let alive = await task.value
+        probe = nil
+        return alive
+    }
+
+    nonisolated private static func pong(from socket: URLSessionWebSocketTask, within limit: Duration) async -> Bool {
+        let once = Once()
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            socket.sendPing { error in
+                if once.claim() { continuation.resume(returning: error == nil) }
+            }
+            Task {
+                try? await Task.sleep(for: limit)
+                if once.claim() { continuation.resume(returning: false) }
+            }
+        }
+    }
+
+    /// The pong and the timeout race; whichever is first answers.
+    private final class Once: @unchecked Sendable {
+        private let lock = NSLock()
+        private var claimed = false
+        func claim() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            if claimed { return false }
+            claimed = true
+            return true
+        }
     }
 
     func supports(_ method: String) -> Bool { hello?.methods.contains(method) ?? false }
@@ -144,6 +208,7 @@ final class GatewayConnection {
                 return
             }
             guard current == generation else { return }
+            lastFrame = .now
             let data: Data
             switch message {
             case .string(let text): data = Data(text.utf8)
@@ -164,10 +229,14 @@ final class GatewayConnection {
     private var failures = 0
 
     private func dropped(error: Error) {
+        let wasConnected = state == .connected
         close(error: .disconnected)
         hello = nil
         guard !stopped else { return }
         failures += 1
+        // Only what kind of failure: an error's text can carry the address.
+        let kind = (error as? URLError).map { "url \($0.code.rawValue)" } ?? (error as? GatewayError)?.code ?? "\((error as NSError).domain) \((error as NSError).code)"
+        Log.transport.info("socket dropped: \(kind, privacy: .public), was connected=\(wasConnected), failures=\(self.failures)")
         if state != .awaitingApproval {
             state = failures >= 2 ? .failed(Self.explain(error, host: endpoint.url.host() ?? "")) : .connecting
         }
@@ -309,6 +378,7 @@ final class GatewayConnection {
             scopes: auth?["scopes"]?.array.compactMap(\.string) ?? [])
         retryDelay = .seconds(1)
         failures = 0
+        Log.transport.info("socket connected")
         state = .connected
         onConnected?()
     }

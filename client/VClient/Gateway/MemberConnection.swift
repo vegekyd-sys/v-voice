@@ -14,6 +14,8 @@ protocol VConnection: AnyObject {
     func start()
     func stop()
     func reconnectIfNeeded()
+    /// Whether V still answers on this link; one that does not reconnects.
+    func checkAlive() async -> Bool
     func supports(_ method: String) -> Bool
     func request(_ method: String, _ params: JSONValue, timeout: Duration) async throws -> JSONValue
 }
@@ -81,6 +83,9 @@ final class MemberConnection: VConnection {
     }
 
     func supports(_ method: String) -> Bool { hello != nil && Self.methods.contains(method) }
+
+    /// The event stream's own heartbeat notices a dead link within a minute.
+    func checkAlive() async -> Bool { state == .connected }
 
     func request(_ method: String, _ params: JSONValue, timeout: Duration) async throws -> JSONValue {
         guard state == .connected, let credential = endpoint.memberCredential else { throw GatewayError.disconnected }

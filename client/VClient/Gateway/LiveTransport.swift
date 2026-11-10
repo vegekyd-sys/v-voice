@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// V over the Gateway operator protocol: sessions, transcripts, live runs,
 /// approvals and questions. Replies stay in the app (`deliver: false`);
@@ -11,11 +12,26 @@ final class LiveTransport: VTransport {
     private var subscribedMessages: Set<String> = []
     /// runId → session key, for runs this client has seen start.
     private var runs: [String: String] = [:]
-    private lazy var pager = HistoryPager { [weak self] params in
-        guard let connection = self?.connection else { throw CancellationError() }
-        return try await connection.request("chat.history", .object(params), timeout: .seconds(120))
-    }
+    private lazy var pager: HistoryPager = {
+        let pager = HistoryPager { [weak self] params in
+            guard let connection = self?.connection else { throw CancellationError() }
+            return try await connection.request("chat.history", .object(params), timeout: .seconds(120))
+        }
+        pager.lastHeard = { [weak self] run in self?.lastHeard[run] }
+        return pager
+    }()
     private var refreshes: [String: Task<Void, Never>] = [:]
+    /// When a live event of a run last arrived here.
+    private var lastHeard: [String: Date] = [:]
+    /// Runs whose reply was closed from V's records, not by their own end event.
+    /// One that speaks again was not over after all, and opens again.
+    private var reconciled: Set<String> = []
+    /// Checks the open chat's open reply against V when its run has gone quiet.
+    private var watchdog: Task<Void, Never>?
+    private var quietChecks = 0
+    private var lastQuietCheck: Date?
+    private var lastVappRead: Date?
+    private var sessionsReading: Task<Void, Never>?
     private var sessionsReload: Task<Void, Never>?
     private var lastSessionsReload: ContinuousClock.Instant?
     /// `sessions.list` walks every session on the Gateway's main thread (about 3 s
@@ -49,12 +65,18 @@ final class LiveTransport: VTransport {
         let connection: VConnection = endpoint.isMember
             ? MemberConnection(endpoint: endpoint)
             : GatewayConnection(endpoint: endpoint, identity: identity)
+        attach(connection, model: model)
+        connection.start()
+    }
+
+    /// Takes a link to V as its own. `start` makes the real one; tests script one.
+    func attach(_ connection: VConnection, model: AppModel) {
+        self.model = model
         connection.onState = { [weak self] state in self?.stateChanged(state) }
         connection.onEndpointChange = { [weak model] endpoint in model?.endpoint = endpoint }
         connection.onEvent = { [weak self] name, payload in self?.handle(name, payload) }
         connection.onConnected = { [weak self] in Task { await self?.didConnect() } }
         self.connection = connection
-        connection.start()
     }
 
     func stop() {
@@ -63,9 +85,35 @@ final class LiveTransport: VTransport {
         refreshes.values.forEach { $0.cancel() }
         sessionsReload?.cancel()
         sessionsReload = nil
+        watchdog?.cancel()
+        watchdog = nil
     }
 
     func reconnect() { connection?.reconnectIfNeeded() }
+
+    /// Back in front. iOS suspends the app soon after it leaves the screen, and
+    /// what V sent meanwhile is gone: a run's end is one event, sent once. A
+    /// socket that died reconnects and connecting reads the chat; one that
+    /// survived says nothing about what was missed, so the open chat is read too.
+    func foregrounded() {
+        guard let connection else { return }
+        Task { [weak self] in
+            guard await connection.checkAlive(), let self, let model = self.model, let key = self.openSession else { return }
+            if key == self.vappSession {
+                if self.lastVappRead.map({ Date.now.timeIntervalSince($0) > Self.staleAfter }) ?? true { await self.loadVappHistory() }
+                return
+            }
+            guard let session = model.session(key), session.historyLoaded else { return }
+            let age = self.pager.lastRead(key).map { Date.now.timeIntervalSince($0) } ?? .infinity
+            guard age > Self.staleAfter || session.activeRun != nil else { return }
+            Log.transport.info("foreground: reading the open chat, open reply=\(session.activeRun != nil)")
+            await self.reconcile(key)
+            self.armWatchdog()
+        }
+    }
+
+    /// A chat read longer ago than this is read again on coming back to the front.
+    private static let staleAfter: TimeInterval = 30
 
     private var host: String { connection?.endpoint.displayHost ?? "V" }
 
@@ -85,6 +133,7 @@ final class LiveTransport: VTransport {
         model.serverVersion = connection.hello?.serverVersion
         model.media = MediaLoader(endpoint: connection.endpoint)
         subscribedMessages.removeAll()
+        Log.transport.info("connected: chat open=\(self.openSession != nil) runs in flight=\(self.runs.count)")
         // No `sessions.subscribe`: it also sends every session's tool events, which
         // this app does not use and which can fill a slow link (25 KB/s measured on V).
         await helloVapp()
@@ -99,12 +148,143 @@ final class LiveTransport: VTransport {
         if !model.sessionsAreFresh { await reloadSessions() } else { model.sessionsLoaded = true }
     }
 
+    // MARK: Replies whose end was missed
+
+    /// A reply is closed by its run's end event, and that event can be missed:
+    /// the phone was locked, the socket dropped, the run was started elsewhere.
+    /// Then only V's records can close it. They are read on connecting and on
+    /// coming to the front, when V has nothing to stop, and here: when the open
+    /// chat's run has said nothing for a while.
+    ///
+    /// Not a poll: one `chat.history` page (under 50 ms on V) for the chat on
+    /// screen only, 45 s after the last event and then 90 s apart, eight times
+    /// at most. Any event of the run starts the count again.
+    nonisolated static let quietBeforeCheck: TimeInterval = 45
+    nonisolated static let quietBetweenChecks: TimeInterval = 90
+    nonisolated static let quietChecksAtMost = 8
+
+    private func openReplies(in key: String) -> [WorkState] {
+        (model?.session(key)?.items ?? []).compactMap { item in
+            if case .reply(let work) = item.content, work.isActive { work } else { nil }
+        }
+    }
+
+    /// Seconds until the open chat's open reply is due a look; nil with nothing to watch.
+    private func quietCheckDue() -> TimeInterval? {
+        guard let connection, connection.state == .connected, let key = openSession, key != vappSession,
+              model?.session(key)?.historyLoaded == true,
+              let work = openReplies(in: key).last, let run = work.runId
+        else { return nil }
+        return Self.quietCheckTime(lastHeard: lastHeard[run] ?? work.startedAt, lastCheck: lastQuietCheck, checks: quietChecks)?
+            .timeIntervalSinceNow
+    }
+
+    /// When a run last heard from at `lastHeard` is next due a look; nil once it
+    /// has had all the looks it gets without saying anything.
+    nonisolated static func quietCheckTime(lastHeard: Date, lastCheck: Date?, checks: Int) -> Date? {
+        guard checks < quietChecksAtMost else { return nil }
+        if checks == 0 { return lastHeard.addingTimeInterval(quietBeforeCheck) }
+        return max(lastHeard, lastCheck ?? lastHeard).addingTimeInterval(quietBetweenChecks)
+    }
+
+    private func armWatchdog() {
+        guard watchdog == nil, quietCheckDue() != nil else { return }
+        watchdog = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let due = self?.quietCheckDue() else { break }
+                if due > 0 {
+                    try? await Task.sleep(for: .seconds(due + 0.2))
+                    continue
+                }
+                await self?.quietCheck()
+            }
+            if !Task.isCancelled { self?.watchdog = nil }
+        }
+    }
+
+    private func quietCheck() async {
+        guard let key = openSession else { return }
+        quietChecks += 1
+        lastQuietCheck = .now
+        Log.transport.info("quiet run: reading the open chat, check \(self.quietChecks) of \(Self.quietChecksAtMost)")
+        await reconcile(key)
+    }
+
+    /// Reads the chat's newest page once and closes what V's records close.
+    /// - Parameter ended: runs known to be over from elsewhere.
+    @discardableResult
+    private func reconcile(_ key: String, ended: Set<String> = []) async -> Bool {
+        guard let model, key != vappSession, connection?.state == .connected else { return false }
+        let read = await pager.reconcile(key, model: model, ended: ended)
+        pruneRuns(key)
+        return read
+    }
+
+    /// After V's records were merged in: a run whose reply is no longer open is done with.
+    private func pruneRuns(_ key: String) {
+        let open = Set(openReplies(in: key).compactMap(\.runId))
+        let closed = runs.filter { $0.value == key && !open.contains($0.key) }.map(\.key)
+        guard !closed.isEmpty else { return }
+        for run in closed {
+            runs[run] = nil
+            lastHeard[run] = nil
+        }
+        if reconciled.count > 64 { reconciled.removeAll() }
+        reconciled.formUnion(closed)
+        Log.transport.info("closed without an end event: \(closed.map { Log.short($0) }.joined(separator: ","), privacy: .public)")
+    }
+
+    /// A live event of a run. A reply closed from V's records on thin evidence
+    /// (a run queued behind another looks idle for a moment) opens again.
+    private func heard(_ runId: String, in key: String, alive: Bool) {
+        lastHeard[runId] = .now
+        quietChecks = 0
+        if reconciled.remove(runId) != nil, alive {
+            model?.updateWork("run:\(runId)", in: key) { work in
+                guard !work.isActive else { return }
+                work.phase = .working
+                work.finishedAt = nil
+            }
+            Log.transport.info("run=\(Log.short(runId), privacy: .public) spoke after it was closed: open again")
+        }
+        if key == openSession { armWatchdog() }
+    }
+
+    /// V had nothing to stop, so whatever still shows as going on in this chat is
+    /// not. What V recorded takes its place; the rest ends as stopped.
+    private func closeOpenReplies(in key: String) async {
+        guard let model else { return }
+        let open = Set(openReplies(in: key).compactMap(\.runId))
+        await reconcile(key, ended: open)
+        model.update(key) { session in
+            for index in session.items.indices {
+                guard case .reply(let work) = session.items[index].content, work.isActive,
+                      let stopped = Self.settled(work, aborted: true, at: .now)
+                else { continue }
+                session.items[index].content = .reply(stopped)
+            }
+        }
+        pruneRuns(key)
+    }
+
     // MARK: Sessions
 
     /// Night-shift sub-agents fill most of the newest rows on V and the list has no
     /// filter for them, so ask for enough rows to still reach the chats. The cost
     /// is the same full walk either way.
     private func reloadSessions() async {
+        // One walk at a time: a second asker waits for the one under way.
+        if let sessionsReading {
+            Log.transport.info("sessions: joined the read under way")
+            return await sessionsReading.value
+        }
+        let reading = Task { await self.readSessions() }
+        sessionsReading = reading
+        await reading.value
+        sessionsReading = nil
+    }
+
+    private func readSessions() async {
         guard let connection, let model else { return }
         lastSessionsReload = .now
         do {
@@ -118,11 +298,23 @@ final class LiveTransport: VTransport {
                 let limit = model.sessions.count > 1 ? 100 : 300
                 result = try await connection.request("sessions.list", ["limit": .number(Double(limit)), "includeLastMessage": true], timeout: .seconds(120))
             }
-            let fresh = result["sessions"]?.array.compactMap(Self.session(from:)) ?? []
+            let rows = result["sessions"]?.array ?? []
             var merged: [ChatSession] = []
-            for var session in fresh {
+            var openChatClosed = false
+            for row in rows {
+                guard var session = Self.session(from: row) else { continue }
                 if let existing = model.session(session.id) {
                     session.items = existing.items
+                    // A reply left open in a chat that is not on screen closes from its row;
+                    // the one on screen is read from V instead, which also brings the answer.
+                    if existing.activeRun != nil {
+                        let runs = RunEvidence(sessionInfo: row)
+                        if session.id != openSession {
+                            session.items = Self.settle(items: existing.items, runs: runs, lastHeard: lastHeard)
+                        } else if Self.settle(items: existing.items, runs: runs, lastHeard: lastHeard) != existing.items {
+                            openChatClosed = true
+                        }
+                    }
                     session.historyLoaded = existing.historyLoaded
                     session.hasMoreHistory = existing.hasMoreHistory
                     session.unread = existing.id == model.selectedSessionID ? 0 : max(existing.unread, session.unread)
@@ -148,6 +340,8 @@ final class LiveTransport: VTransport {
             model.sessionsLoaded = true
             model.sessionsLoadedAt = .now
             model.saveCache()
+            for key in Set(runs.values) where key != openSession { pruneRuns(key) }
+            if openChatClosed, let open = openSession { scheduleHistoryRefresh(open) }
         } catch {
             model.sessionsLoaded = true
             model.showNotice("会话列表加载失败：\(error.localizedDescription)")
@@ -156,11 +350,15 @@ final class LiveTransport: VTransport {
 
     private func scheduleSessionsReload() {
         guard sessionsReload == nil else { return }
+        let asked = ContinuousClock.now
         let due = lastSessionsReload.map { $0 + Self.sessionsReloadInterval } ?? .now
         sessionsReload = Task { [weak self] in
             try? await Task.sleep(until: max(due, .now + .seconds(1.5)))
             guard !Task.isCancelled else { return }
             self?.sessionsReload = nil
+            // A list read since this was asked for already has what it wanted
+            // (connecting reads one, and so does pulling the list down).
+            if let last = self?.lastSessionsReload, last >= asked { return }
             await self?.reloadSessions()
         }
     }
@@ -173,11 +371,23 @@ final class LiveTransport: VTransport {
         else { return scheduleSessionsReload() }
         row["key"] = .string(key)
         guard let fresh = Self.session(from: .object(row)) else { return }
-        guard model.session(key) != nil else { return scheduleSessionsReload() }
+        guard let known = model.session(key) else { return scheduleSessionsReload() }
         model.update(key) { session in
             if !fresh.preview.isEmpty { session.preview = fresh.preview }
             session.lastActivity = max(session.lastActivity, fresh.lastActivity)
             if fresh.unread > 0, key != model.selectedSessionID { session.unread = max(session.unread, 1) }
+        }
+        // The row also says whether anything is still running there.
+        guard known.activeRun != nil else { return }
+        let closed = Self.settle(items: known.items, runs: RunEvidence(sessionInfo: .object(row)), lastHeard: lastHeard)
+        guard closed != known.items else { return }
+        if key == openSession {
+            // On screen: read what V recorded, which has the answer too. Not again
+            // for every row of a busy session.
+            if pager.lastRead(key).map({ Date.now.timeIntervalSince($0) > 5 }) ?? true { scheduleHistoryRefresh(key) }
+        } else {
+            model.update(key) { $0.items = closed }
+            pruneRuns(key)
         }
     }
 
@@ -187,8 +397,14 @@ final class LiveTransport: VTransport {
         if key.contains(":subagent:") || key.contains(":cron:") || key.contains(":hook:") { return nil }
         // Heartbeat runs and Feishu sidecar supervisors are V's own bookkeeping.
         if key.hasSuffix(":heartbeat") || key.contains(":sidecar-") { return nil }
-        let channel = json["channel"]?.string ?? json["origin"]?["provider"]?.string
-        let chatType = json["chatType"]?.string ?? json["kind"]?.string
+        // The key says where a session really lives ("agent:<id>:feishu:group:…").
+        // The row's `chatType` and `origin` do not: one `chat.send` from this app
+        // rewrites them to a webchat direct chat, and a Feishu group then showed
+        // up here as a private chat with V named after the phone.
+        let parts = key.split(separator: ":").map(String.init)
+        let keyed = parts.count >= 5 && parts[0] == "agent" && ["group", "direct"].contains(parts[3])
+        let channel = keyed ? parts[2] : json["channel"]?.string ?? json["origin"]?["provider"]?.string
+        let chatType = keyed ? parts[3] : json["chatType"]?.string ?? json["kind"]?.string
         let isMain = json["isMain"]?.bool == true || key.hasSuffix(":main")
         let kind: ChatSession.Kind = isMain ? .main : chatType == "group" ? .group : chatType == "direct" ? .direct : .other
         let channelName = switch channel {
@@ -234,12 +450,15 @@ final class LiveTransport: VTransport {
     func open(session key: String, model: AppModel) async {
         if let previous = openSession, previous != key { await close(session: previous) }
         openSession = key
+        quietChecks = 0
+        lastQuietCheck = nil
         guard let connection, connection.state == .connected else { return }
         // Together: the subscription needs no answer before the history can be asked for.
         async let subscribed: Void = subscribe(key)
         await loadHistory(key)
         await subscribed
         await refreshProgressCard(key)
+        armWatchdog()
     }
 
     private func subscribe(_ key: String) async {
@@ -260,7 +479,11 @@ final class LiveTransport: VTransport {
 
     /// Back on the list: stop that chat's events and bring the list up to date.
     func close(session key: String) async {
-        if openSession == key { openSession = nil }
+        if openSession == key {
+            openSession = nil
+            watchdog?.cancel()
+            watchdog = nil
+        }
         if subscribedMessages.remove(key) != nil {
             _ = try? await connection?.request("sessions.messages.unsubscribe", ["key": .string(key)])
         }
@@ -281,6 +504,7 @@ final class LiveTransport: VTransport {
             await loadVappHistory()
         } else if let model {
             await pager.loadNewest(key, model: model)
+            pruneRuns(key)
         }
     }
 
@@ -291,7 +515,16 @@ final class LiveTransport: VTransport {
     /// what the phone already shows from before them (the cache) stays where it is
     /// instead of vanishing until those pages are read. It only stays when the two
     /// join: a chat that was reset shares nothing with its cache.
-    nonisolated static func merge(history: [ChatItem], local: [ChatItem], keepEarlier: Bool = false) -> [ChatItem] {
+    ///
+    /// `runs`: a reply still open here stays as it is only while nothing says its
+    /// run is over. The end of a run is one event, and a phone that was locked or
+    /// in another app when it was sent never gets it; kept unconditionally, such a
+    /// reply said "正在回答" for good while V's finished answer sat in the history
+    /// under the same id.
+    nonisolated static func merge(
+        history: [ChatItem], local: [ChatItem], keepEarlier: Bool = false,
+        runs: RunEvidence = .none, lastHeard: [String: Date] = [:], now: Date = .now
+    ) -> [ChatItem] {
         let historyIds = Set(history.map(\.id))
         var merged = history
         if keepEarlier, let oldest = history.first?.time, local.contains(where: { historyIds.contains($0.id) }) {
@@ -300,16 +533,42 @@ final class LiveTransport: VTransport {
         }
         let mergedIds = Set(merged.map(\.id))
         for item in local {
-            let isActiveRun: Bool = { if case .reply(let work) = item.content { return work.isActive } else { return false } }()
+            let open: WorkState? = { if case .reply(let work) = item.content, work.isActive { return work } else { return nil } }()
+            let isActiveRun = open != nil
+            // Why this reply, open here, is in fact over; nil while nothing says so.
+            let closed = open.flatMap { work in
+                work.runId.flatMap { runs.closes($0, startedAt: work.startedAt, lastHeard: lastHeard[$0], now: now) }
+            }
             if let index = merged.firstIndex(where: { $0.id == item.id }) {
-                if isActiveRun {
-                    merged[index] = item
+                if let mine = open {
+                    if let closed, case .reply(var theirs) = merged[index].content {
+                        // Its end never reached this phone: what V recorded is the reply.
+                        if theirs.finishedAt.map({ $0 >= mine.startedAt }) ?? true { theirs.startedAt = mine.startedAt }
+                        if closed == "aborted", theirs.phase == .done { theirs.phase = .aborted }
+                        merged[index].content = .reply(theirs)
+                        Log.transport.info("reconcile run=\(Log.short(mine.runId), privacy: .public) took=history why=\(closed, privacy: .public)")
+                    } else {
+                        merged[index] = item
+                    }
                 } else if case .reply(let mine) = item.content, case .reply(var theirs) = merged[index].content,
                           theirs.phase == .done, mine.phase != .done
                 {
                     // The transcript does not record a stop or a failure; keep what we saw.
                     theirs.phase = mine.phase
                     merged[index].content = .reply(theirs)
+                }
+                continue
+            }
+            if let mine = open, let closed, now.timeIntervalSince(mine.startedAt) > RunEvidence.justSent {
+                // Over, and V recorded nothing under its id: it ends as it stands here.
+                let run = Log.short(mine.runId)
+                if let settled = Self.settled(mine, aborted: closed == "aborted", at: lastHeard[mine.runId ?? ""] ?? now) {
+                    var item = item
+                    item.content = .reply(settled)
+                    if !mergedIds.contains(item.id) { merged.append(item) }
+                    Log.transport.info("reconcile run=\(run, privacy: .public) took=local why=\(closed, privacy: .public)")
+                } else {
+                    Log.transport.info("reconcile run=\(run, privacy: .public) took=nothing why=\(closed, privacy: .public)")
                 }
                 continue
             }
@@ -322,6 +581,36 @@ final class LiveTransport: VTransport {
         return merged.enumerated().sorted { lhs, rhs in
             lhs.element.time == rhs.element.time ? lhs.offset < rhs.offset : lhs.element.time < rhs.element.time
         }.map(\.element)
+    }
+
+    /// An open reply whose run is over, closed as it stands; nil when it finished
+    /// with nothing to show.
+    nonisolated static func settled(_ work: WorkState, aborted: Bool, at time: Date) -> WorkState? {
+        var work = work
+        work.phase = aborted ? .aborted : .done
+        work.stage = nil
+        work.commentary = nil
+        work.finishedAt = max(time, work.startedAt)
+        for index in work.tools.indices where work.tools[index].status == .running { work.tools[index].status = .done }
+        if !aborted, work.visibleAnswer.isEmpty, work.media.isEmpty, work.tools.isEmpty { return nil }
+        return work
+    }
+
+    /// The same for a chat that is not open, from its row in the session list:
+    /// its replies close as they stand, and opening it reads what V recorded.
+    nonisolated static func settle(items: [ChatItem], runs: RunEvidence, lastHeard: [String: Date] = [:], now: Date = .now) -> [ChatItem] {
+        guard runs != .none else { return items }
+        return items.compactMap { item in
+            guard case .reply(let work) = item.content, work.isActive, let run = work.runId,
+                  now.timeIntervalSince(work.startedAt) > RunEvidence.justSent,
+                  let closed = runs.closes(run, startedAt: work.startedAt, lastHeard: lastHeard[run], now: now)
+            else { return item }
+            Log.transport.info("reconcile run=\(Log.short(run), privacy: .public) took=row why=\(closed, privacy: .public)")
+            guard let settled = settled(work, aborted: closed == "aborted", at: lastHeard[run] ?? now) else { return nil }
+            var item = item
+            item.content = .reply(settled)
+            return item
+        }
     }
 
     private func scheduleHistoryRefresh(_ key: String, delay: Duration = .milliseconds(900)) {
@@ -449,12 +738,18 @@ final class LiveTransport: VTransport {
             return
         }
         var params: JSONValue = ["sessionKey": .string(key)]
-        if let runId = model.session(key)?.activeRun, case .object(var object) = params {
+        let runId = model.session(key)?.activeRun
+        if let runId, case .object(var object) = params {
             object["runId"] = .string(runId)
             params = .object(object)
         }
         do {
-            _ = try await connection.request("chat.abort", params)
+            let result = try await connection.request("chat.abort", params)
+            let stopped = result["aborted"]?.bool == true || !(result["runIds"]?.array.isEmpty ?? true)
+            Log.transport.info("stop run=\(Log.short(runId), privacy: .public): V stopped something=\(stopped)")
+            // Nothing was running: the reply on screen is one whose end never arrived.
+            // 停止 must always clear it, or there is no way out of it but restarting the app.
+            if !stopped { await closeOpenReplies(in: key) }
         } catch let error as GatewayError where error.message.lowercased().contains("unauthorized") {
             // Non-admin devices may only stop runs they started themselves.
             model.showNotice("这次是在其他设备上发起的，只能在那里停止")
@@ -493,6 +788,9 @@ final class LiveTransport: VTransport {
         if model.session(key)?.items.contains(where: { $0.id == itemId }) != true {
             model.append(ChatItem(id: itemId, sender: .v, time: time,
                                   content: .reply(WorkState(runId: runId, phase: .thinking, startedAt: time))), to: key)
+            // Watched from the start: its first event may be the one that never comes.
+            quietChecks = 0
+            if key == openSession { armWatchdog() }
         }
         return itemId
     }
@@ -508,6 +806,7 @@ final class LiveTransport: VTransport {
             return
         }
         guard let itemId = ensureRun(runId, in: key, at: .now) else { return }
+        heard(runId, in: key, alive: state == "delta" || state == "status")
         let snapshot = HistoryMapper.plainText(payload["message"]?["content"])
         switch state {
         case "status":
@@ -552,6 +851,8 @@ final class LiveTransport: VTransport {
 
     private func finish(_ runId: String, _ key: String) {
         runs[runId] = nil
+        lastHeard[runId] = nil
+        reconciled.remove(runId)
         scheduleHistoryRefresh(key)
     }
 
@@ -564,6 +865,7 @@ final class LiveTransport: VTransport {
         let stream = payload["stream"]?.string
         guard stream == "tool" || stream == "plan" || stream == "item" || stream == "run_status" else { return }
         guard let itemId = ensureRun(runId, in: key, at: .now) else { return }
+        heard(runId, in: key, alive: true)
         model.updateWork(itemId, in: key) { work in
             guard work.isActive else { return }
             switch stream {
@@ -671,7 +973,14 @@ final class LiveTransport: VTransport {
                 model.append(item, to: key)
             }
         } else if let runId = message["__openclaw"]?["runId"]?.string, runs[runId] != nil {
-            return // streaming already shows it
+            // Streaming already shows it. The run's closing message is different:
+            // if the end event does not follow, this is the only word that it is over.
+            lastHeard[runId] = .now
+            if message["__openclaw"]?["runTerminal"]?.bool == true {
+                Log.transport.info("run=\(Log.short(runId), privacy: .public) wrote its closing message: reading the chat")
+                scheduleHistoryRefresh(key, delay: .seconds(2))
+            }
+            return
         } else {
             scheduleHistoryRefresh(key)
         }
@@ -714,6 +1023,7 @@ final class LiveTransport: VTransport {
             let result = try await connection.request("vapp.history", .object(params))
             let entries = result["items"]?.array ?? []
             let live = result["live"]?.array ?? []
+            if before == nil { lastVappRead = .now }
             let firstEntry = entries.first(where: { $0["kind"]?.string != "reaction" })?["id"]?.string
             if before == nil || firstEntry != nil { vappOldest = firstEntry ?? vappOldest }
             let liveIds = Set(live.compactMap { $0["cardId"]?.string })
