@@ -23,21 +23,13 @@ extension EnvironmentValues {
 }
 
 extension FeishuCard.Template {
+    /// The header's accent. Feishu's template names keep their meaning, in
+    /// V's palette: green and turquoise are her teal, purple is her coat.
     var tint: Color? {
         switch self {
-        case .blue: Color(light: 0x245BDB, dark: 0x5B8CF5)
-        case .wathet: Color(light: 0x1C8CE0, dark: 0x5AB0F2)
-        case .turquoise: Color(light: 0x0E9A8F, dark: 0x3CC6B9)
-        case .green: VTheme.positive
-        case .yellow: Color(light: 0xC58A00, dark: 0xF2C94C)
-        case .orange: VTheme.orange
-        case .red: VTheme.red
-        case .carmine: Color(light: 0xC71E64, dark: 0xF06A9E)
-        case .violet: Color(light: 0x9C35C4, dark: 0xD08AF0)
-        case .purple: VTheme.coat
-        case .indigo: Color(light: 0x4954E6, dark: 0x8C94F5)
-        case .grey: Color(light: 0x646A73, dark: 0xA3A8B0)
         case .plain: nil
+        case .purple: VTheme.coat
+        default: Color.feishu(named: rawValue)
         }
     }
 }
@@ -56,9 +48,9 @@ struct FeishuCardView: View {
                         CardElementView(element: element)
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, card.header == nil ? 14 : 12)
-                .padding(.bottom, 14)
+                .padding(.horizontal, 16)
+                .padding(.top, card.header == nil ? 16 : 12)
+                .padding(.bottom, 16)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -66,39 +58,37 @@ struct FeishuCardView: View {
     }
 }
 
+/// A card's title. The template colour is a thin bar beside it, not a wash
+/// behind it: the title stays ink and the card stays one quiet surface.
 struct CardHeaderView: View {
     let header: FeishuCard.Header
 
     var body: some View {
-        let tint = header.template.tint
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(FeishuMarkdown.inline(header.title, base: tint ?? VTheme.ink))
-                    .font(.headline)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let subtitle = header.subtitle, !subtitle.isEmpty {
-                    Text(subtitle).font(.footnote).foregroundStyle(VTheme.muted)
+        HStack(alignment: .top, spacing: 8) {
+            HStack(spacing: 10) {
+                if let tint = header.template.tint {
+                    Capsule().fill(tint).frame(width: 3)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(FeishuMarkdown.inline(header.title, base: VTheme.ink))
+                        .font(.body.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let subtitle = header.subtitle, !subtitle.isEmpty {
+                        Text(subtitle).font(.footnote).foregroundStyle(VTheme.muted)
+                    }
                 }
             }
+            // The bar is as tall as the words beside it, however they wrap.
+            .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
             ForEach(Array(header.tags.enumerated()), id: \.offset) { _, tag in
                 CardTagView(text: tag.text, color: Color.feishu(named: tag.color) ?? VTheme.muted)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            if let tint {
-                LinearGradient(
-                    colors: [tint.opacity(0.16), tint.opacity(0.05)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing)
-            }
-        }
-        .overlay(alignment: .bottom) {
-            if tint == nil { Divider().overlay(VTheme.hairline) }
-        }
     }
 }
 
@@ -108,11 +98,11 @@ struct CardTagView: View {
 
     var body: some View {
         Text(text)
-            .font(.caption.weight(.semibold))
+            .font(.caption.weight(.medium))
             .foregroundStyle(color)
-            .padding(.horizontal, 7)
+            .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(color.opacity(0.13), in: Capsule())
+            .background(color.opacity(0.12), in: Capsule())
     }
 }
 
@@ -197,7 +187,7 @@ struct CardElementView: View {
         case .input(let name, let placeholder, let password):
             CardInputView(name: name, placeholder: placeholder, password: password)
         case .unsupported(let tag):
-            Label("此卡片包含暂不支持的内容（\(tag)），请在飞书查看", systemImage: "rectangle.dashed")
+            Text("这里有一块暂不支持的内容（\(tag)），可以在飞书里看")
                 .font(.footnote)
                 .foregroundStyle(VTheme.muted)
         }
@@ -237,8 +227,9 @@ private struct CardInputView: View {
         .textInputAutocapitalization(.never)
         .autocorrectionDisabled()
         .padding(.horizontal, 12)
-        .frame(minHeight: 40)
-        .background(VTheme.sunken, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .padding(.vertical, 10)
+        .frame(minHeight: 44)
+        .background(VTheme.sunken, in: RoundedRectangle(cornerRadius: VTheme.controlRadius, style: .continuous))
     }
 }
 
@@ -272,14 +263,10 @@ struct CardButtonView: View {
                 }
             }
             .font(.subheadline.weight(.semibold))
-            .padding(.horizontal, 14)
-            .frame(maxWidth: button.fill ? .infinity : nil, minHeight: 36)
+            .padding(.horizontal, button.style == .text ? 4 : 16)
+            .frame(maxWidth: button.fill ? .infinity : nil, minHeight: 40)
             .foregroundStyle(foreground)
-            .background(background, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(border, lineWidth: 1)
-            }
+            .background(background, in: RoundedRectangle(cornerRadius: VTheme.controlRadius, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableStyle())
@@ -292,28 +279,19 @@ struct CardButtonView: View {
         switch button.style {
         case .primaryFilled, .dangerFilled: .white
         case .primary, .text: VTheme.coat
-        case .danger: VTheme.red
+        case .danger: VTheme.lobster
         case .plain: VTheme.ink
         }
     }
 
+    /// Fills only, no outlines: weight comes from how dark the fill is.
     private var background: Color {
         switch button.style {
-        case .primaryFilled: VTheme.coat
-        case .dangerFilled: VTheme.red
-        case .primary: VTheme.coat.opacity(0.08)
-        case .danger: VTheme.red.opacity(0.06)
-        case .plain: VTheme.surface
+        case .primaryFilled: VTheme.coatFill
+        case .dangerFilled: VTheme.lobster
+        case .primary: VTheme.lavender
+        case .danger, .plain: VTheme.sunken
         case .text: .clear
-        }
-    }
-
-    private var border: Color {
-        switch button.style {
-        case .primaryFilled, .dangerFilled, .text: .clear
-        case .primary: VTheme.coat.opacity(0.35)
-        case .danger: VTheme.red.opacity(0.35)
-        case .plain: VTheme.hairline
         }
     }
 }
@@ -419,15 +397,11 @@ struct FlowRow: Layout {
 }
 
 extension View {
-    /// Quiet opaque card surface. Content never sits on Liquid Glass.
+    /// The frame for things that are objects (a card, a question, a file):
+    /// one flat fill, no outline, no shadow. Content never sits on Liquid Glass.
     func cardSurface() -> some View {
         self
             .background(VTheme.surface)
             .clipShape(RoundedRectangle(cornerRadius: VTheme.cardRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: VTheme.cardRadius, style: .continuous)
-                    .strokeBorder(VTheme.hairline, lineWidth: 0.75)
-            }
-            .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
     }
 }

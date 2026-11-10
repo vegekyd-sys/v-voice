@@ -26,8 +26,11 @@ enum VMood: String, Hashable, Sendable, CaseIterable {
     static func forTool(_ label: String) -> VMood {
         let text = label.lowercased()
         func has(_ words: String...) -> Bool { words.contains { text.contains($0) } }
-        if has("搜索", "网页", "浏览器", "电脑", "search", "fetch", "browser", "computer") { return .web }
-        if has("记忆", "读取", "memory", "read") { return .read }
+        if has("网页", "浏览器", "电脑", "browser", "computer", "web") { return .web }
+        // Before "search": memory_search is V remembering, not V on the web.
+        if has("记忆", "memory") { return .read }
+        if has("搜索", "search", "fetch") { return .web }
+        if has("读取", "read") { return .read }
         if has("定时", "cron", "schedule") { return .schedule }
         if has("子 agent", "后台", "spawn", "subagent") { return .background }
         if has("提问", "凭据", "ask", "question") { return .ask }
@@ -41,19 +44,26 @@ struct VPortrait: View {
     let mood: VMood
     var size: CGFloat = 48
 
+    /// The frame on screen. It trails `mood` by one explicit animation so only
+    /// the picture cross-fades; an `.animation(value:)` here would also drag
+    /// the portrait's position along whenever the reply above it grew.
+    @State private var shown: VMood?
+
     var body: some View {
         ZStack {
-            Image(mood.asset)
+            Image((shown ?? mood).asset)
                 .resizable()
                 .scaledToFill()
                 .frame(width: size, height: size)
-                .id(mood)
+                .id(shown ?? mood)
                 .transition(.opacity)
         }
         .frame(width: size, height: size)
         .background(VTheme.stage)
         .clipShape(RoundedRectangle(cornerRadius: size * 0.3, style: .continuous))
-        .animation(.smooth(duration: 0.25), value: mood)
+        .onChange(of: mood) { _, next in
+            withAnimation(.smooth(duration: 0.25)) { shown = next }
+        }
         .accessibilityHidden(true)
     }
 }
@@ -155,7 +165,7 @@ struct VStepsView: View {
         case .running:
             Circle().fill(VTheme.coat).frame(width: 7, height: 7)
         case .pending:
-            Circle().strokeBorder(VTheme.hairline, lineWidth: 1.5).frame(width: 8, height: 8)
+            Circle().strokeBorder(VTheme.muted.opacity(0.7), lineWidth: 1.2).frame(width: 8, height: 8)
         }
     }
 }
@@ -271,6 +281,12 @@ struct VReplyView: View {
     var live = false
     var since: Date?
 
+    /// Background work can outlive the turn; once the presence row is gone
+    /// its line joins the small print rather than vanishing.
+    private var smallPrint: [String] {
+        (reply.background.map { [$0] } ?? []) + reply.notes
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(reply.blocks.enumerated()), id: \.offset) { index, block in
@@ -290,9 +306,13 @@ struct VReplyView: View {
                     detail: reply.background
                 )
                 .transition(.opacity)
-            } else if !reply.notes.isEmpty {
-                Text(reply.notes.joined(separator: "　"))
+            } else if !smallPrint.isEmpty {
+                Text(smallPrint.joined(separator: "　"))
                     .font(.caption)
+                    .foregroundStyle(VTheme.muted)
+            } else if reply.blocks.isEmpty, reply.steps.isEmpty {
+                Text("V 处理完了，没有需要回复的内容。")
+                    .font(.subheadline)
                     .foregroundStyle(VTheme.muted)
             }
         }

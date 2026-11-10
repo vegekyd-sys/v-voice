@@ -8,8 +8,6 @@ enum VTheme {
     static let pagePadding: CGFloat = 16
     static let cardRadius: CGFloat = 18
     static let controlRadius: CGFloat = 12
-    static let avatarSize: CGFloat = 34
-    static let bubbleMaxWidth: CGFloat = 560
     /// Widest V's unframed text runs before it stops being comfortable to read.
     static let readingWidth: CGFloat = 680
 

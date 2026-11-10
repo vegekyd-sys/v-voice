@@ -1,135 +1,221 @@
 import SwiftUI
 
-/// V's reply card. While V works it shows the answer so far, then a rule and
-/// the live work view; once finished only the answer and a quiet footer stay,
-/// like the Feishu reply card.
+/// V's reply from a live run, laid on the page the same way `VReplyView` lays
+/// out her app-channel card: her words, then while she is on it her plan, the
+/// last few things she did, and V herself underneath. Once the run ends that
+/// folds away and one line of small print stays.
 struct WorkCardView: View {
     let work: WorkState
-    @State private var planOpen = false
     @State private var stepsOpen = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if work.isActive || isFailed || work.phase == .aborted {
-                statusStrip
+        VStack(alignment: .leading, spacing: 12) {
+            if !work.visibleAnswer.isEmpty {
+                FeishuMarkdownView(markdown: work.isActive ? FeishuMarkdown.closingOpenMarks(work.visibleAnswer) : work.visibleAnswer)
             }
-            VStack(alignment: .leading, spacing: 12) {
-                if !work.visibleAnswer.isEmpty {
-                    FeishuMarkdownView(markdown: work.isActive ? FeishuMarkdown.closingOpenMarks(work.visibleAnswer) : work.visibleAnswer)
-                }
-                if !work.media.isEmpty {
-                    MediaGallery(media: work.media)
-                }
-                if work.visibleAnswer.isEmpty, work.media.isEmpty {
-                    if work.phase == .thinking {
-                        HStack(spacing: 10) {
-                            TypingDots()
-                            if let stage = work.stage { Text(Self.stageLabel(stage)).font(.footnote).foregroundStyle(VTheme.muted) }
-                        }
-                        .padding(.vertical, 4)
-                    } else if !work.isActive {
-                        Text(work.phase == .aborted ? "这一轮已停止。" : work.phase == .done ? "V 处理完了，没有需要回复的内容。" : "这一轮没有完成。")
-                            .font(.subheadline).foregroundStyle(VTheme.muted)
+            if !work.media.isEmpty {
+                MediaGallery(media: work.media)
+            }
+            if work.isActive {
+                if let commentary = work.commentary {
+                    if work.visibleAnswer.isEmpty {
+                        // Until the answer starts this is all V has said, and
+                        // on her card it is the body text. Drawn the same.
+                        FeishuMarkdownView(markdown: commentary)
+                    } else {
+                        Text(FeishuMarkdown.inline(commentary, base: VTheme.soft))
+                            .font(.subheadline)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                if work.isActive, hasWorkView {
-                    if !work.visibleAnswer.isEmpty || !work.media.isEmpty { Divider().overlay(VTheme.hairline) }
-                    workView
+                if !work.plan.isEmpty {
+                    VStepsView(steps: Self.steps(work.plan, active: true))
                 }
-                if !work.isActive {
-                    footer
+                if !finishedTools.isEmpty {
+                    recentTools
+                }
+                VPresenceRow(mood: mood, label: label, since: work.startedAt, detail: detail)
+                    .transition(.opacity)
+            } else {
+                outcome
+                if !notes.isEmpty {
+                    summary
                 }
             }
-            .padding(14)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .cardSurface()
         // Only the fold at the end is animated, on the spring the list uses to
-        // follow it. While V works the card grows with no animation of its own:
-        // the list keeps its end still, and a card easing into its new height
+        // follow it. While V works the reply grows with no animation of its own:
+        // the list keeps its end still, and a reply easing into its new height
         // inside a row that already has it reads as a bounce.
         .animation(.smooth(duration: Self.foldDuration), value: work.isActive)
     }
 
     static let foldDuration = 0.3
 
-    private var isFailed: Bool {
-        if case .failed = work.phase { return true }
-        return false
-    }
+    // MARK: While V works
 
-    private var hasWorkView: Bool {
-        work.commentary != nil || !work.plan.isEmpty || !work.tools.isEmpty || work.phase == .waiting
-    }
-
-    private var statusStrip: some View {
-        let (label, color): (String, Color) = switch work.phase {
-        case .thinking: ("正在思考", VTheme.coat)
-        case .working: ("正在处理", VTheme.coat)
-        case .waiting: ("等你回答", VTheme.orange)
-        case .failed(let reason): ("没有完成 · \(reason)", VTheme.red)
-        case .aborted: ("已停止", VTheme.muted)
-        case .done: ("已完成", VTheme.positive)
+    private var mood: VMood {
+        switch work.phase {
+        case .thinking: return .think
+        case .waiting: return .ask
+        default: break
         }
-        return HStack(spacing: 8) {
-            if work.isActive {
-                PulseDot(color: color)
-            } else {
-                Image(systemName: work.phase == .aborted ? "stop.circle.fill" : "exclamationmark.circle.fill")
-                    .foregroundStyle(color).font(.caption)
-            }
-            Text(label).font(.footnote.weight(.semibold)).foregroundStyle(color)
-            Spacer()
-            if work.isActive {
-                Text(work.startedAt, style: .timer)
-                    .font(.footnote.monospacedDigit())
+        guard let tool = work.currentTool else { return .work }
+        // The summary leads with what the tool does in words; the raw name is
+        // the fallback (and "memory_search" alone would read as a web search).
+        let byWords = VMood.forTool(Self.toolLabel(tool.summary))
+        return byWords == .work ? VMood.forTool(tool.name) : byWords
+    }
+
+    private var label: String {
+        switch work.phase {
+        case .thinking: return "正在思考"
+        case .waiting: return "等你回答"
+        default: break
+        }
+        guard let tool = work.currentTool else {
+            return work.visibleAnswer.isEmpty ? "正在处理" : "正在回答"
+        }
+        let words = Self.toolLabel(tool.summary)
+        // A tool this client has no words for shows its raw name.
+        return words.first?.isASCII == true ? "正在运行 \(words)" : "正在\(words)"
+    }
+
+    private var detail: String? {
+        if let background = work.background, background.running > 0 {
+            return background.line.components(separatedBy: " · ").first
+        }
+        if work.phase == .thinking, let stage = work.stage {
+            return Self.stageLabel(stage)
+        }
+        return nil
+    }
+
+    /// The running tool is the line under V; the rows above are what she has done.
+    private var finishedTools: [ToolStep] { work.tools.filter { $0.status != .running } }
+
+    private var recentTools: some View {
+        let finished = finishedTools
+        return VStack(alignment: .leading, spacing: 6) {
+            if finished.count > 3 {
+                Text("前面还有 \(finished.count - 3) 步")
+                    .font(.caption)
                     .foregroundStyle(VTheme.muted)
+                    .padding(.leading, 23)
             }
+            ForEach(finished.suffix(3), id: \.id) { ToolRow(tool: $0) }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .background(color.opacity(0.07))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    // MARK: After the run
 
     @ViewBuilder
-    private var workView: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if let commentary = work.commentary {
-                Text(FeishuMarkdown.inline(commentary, base: VTheme.soft))
-                    .font(.subheadline)
-                    .foregroundStyle(VTheme.soft)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .transition(.opacity)
+    private var outcome: some View {
+        switch work.phase {
+        case .failed(let reason):
+            HStack(alignment: .center, spacing: 10) {
+                VPortrait(mood: .fail, size: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("没有完成")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(VTheme.lobster)
+                    if !reason.isEmpty {
+                        Text(reason)
+                            .font(.footnote)
+                            .foregroundStyle(VTheme.soft)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
-            if !work.plan.isEmpty {
-                planView
-            }
-            if !work.tools.isEmpty {
-                toolsView
-            }
-            if work.phase == .waiting {
-                Label("等你在下面的问题里选一下", systemImage: "questionmark.bubble")
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(VTheme.orange)
-            }
+        case .done where work.visibleAnswer.isEmpty && work.media.isEmpty:
+            Text("V 处理完了，没有需要回复的内容。")
+                .font(.subheadline)
+                .foregroundStyle(VTheme.muted)
+        default:
+            EmptyView()
         }
     }
 
-    /// The last few tool calls, newest at the bottom, the running one spinning.
-    private var toolsView: some View {
-        let recent = work.tools.suffix(3)
-        return VStack(alignment: .leading, spacing: 6) {
-            if work.tools.count > 3 {
-                Text("已完成 \(work.tools.count - 3) 步…").font(.caption).foregroundStyle(VTheme.muted)
-            }
-            ForEach(recent, id: \.id) { tool in
-                ToolRow(tool: tool)
-            }
+    private var notes: [String] {
+        var notes: [String] = []
+        if work.phase == .aborted { notes.append("已停止") }
+        if let finished = work.finishedAt, finished.timeIntervalSince(work.startedAt) >= 1 {
+            notes.append(Self.duration(finished.timeIntervalSince(work.startedAt)))
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(VTheme.sunken, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        if !work.plan.isEmpty { notes.append("\(work.plan.count) 步") }
+        if !work.tools.isEmpty { notes.append("\(work.tools.count) 个操作") }
+        if let background = work.background {
+            notes.append(background.line.components(separatedBy: " · ").first ?? background.line)
+        }
+        return notes
+    }
+
+    private var hasSteps: Bool { !work.plan.isEmpty || !work.tools.isEmpty }
+
+    /// One line of small print, as `VReplyView` ends a finished card. When the
+    /// run left steps behind, the line opens them.
+    @ViewBuilder
+    private var summary: some View {
+        let line = Text(notes.joined(separator: "　"))
+            .font(.caption)
+            .foregroundStyle(VTheme.muted)
+            .lineLimit(1)
+        if hasSteps {
+            VStack(alignment: .leading, spacing: 10) {
+                Button {
+                    withAnimation(.snappy(duration: 0.22)) { stepsOpen.toggle() }
+                } label: {
+                    HStack(spacing: 5) {
+                        line
+                        Image(systemName: "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(VTheme.muted)
+                            .rotationEffect(.degrees(stepsOpen ? 180 : 0))
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(stepsOpen ? "收起步骤" : "展开全部步骤")
+                if stepsOpen {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if !work.plan.isEmpty {
+                            VStepsView(steps: Self.steps(work.plan, active: false))
+                        }
+                        if !work.tools.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(work.tools, id: \.id) { ToolRow(tool: $0) }
+                            }
+                        }
+                    }
+                    .transition(.opacity)
+                }
+            }
+        } else {
+            line
+        }
+    }
+
+    // MARK: Words
+
+    static func steps(_ plan: [PlanStep], active: Bool) -> [VStep] {
+        plan.map { step in
+            let status: VStep.Status = switch step.status {
+            case .done: .done
+            // Nothing is still running in a run that has ended.
+            case .running: active ? .running : .pending
+            case .pending: .pending
+            }
+            return VStep(status: status, text: step.text)
+        }
+    }
+
+    /// `ToolLabel` summaries read "标签 参数"; the line under V only has room
+    /// for the label.
+    static func toolLabel(_ summary: String) -> String {
+        if summary.hasPrefix("启动子 agent") { return "启动子 agent" }
+        return summary.split(separator: " ", maxSplits: 1).first.map(String.init) ?? summary
     }
 
     static func stageLabel(_ stage: String) -> String {
@@ -142,189 +228,51 @@ struct WorkCardView: View {
         }
     }
 
-    private var planView: some View {
-        let done = work.plan.count { $0.status == .done }
-        let current = work.plan.first { $0.status == .running } ?? work.plan.first { $0.status == .pending }
-        return VStack(alignment: .leading, spacing: 8) {
-            Button {
-                withAnimation(.snappy(duration: 0.22)) { planOpen.toggle() }
-            } label: {
-                HStack(spacing: 8) {
-                    if !planOpen, let current {
-                        PlanMarker(status: current.status)
-                        Text(current.text).font(.subheadline.weight(.medium)).lineLimit(1)
-                    } else {
-                        Text("计划").font(.subheadline.weight(.semibold))
-                    }
-                    Spacer(minLength: 6)
-                    Text("\(done)/\(work.plan.count)").font(.caption.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(VTheme.muted)
-                    Image(systemName: "chevron.down")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(VTheme.muted)
-                        .rotationEffect(.degrees(planOpen ? 180 : 0))
-                }
-                .foregroundStyle(VTheme.ink)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            ProgressView(value: Double(done), total: Double(max(work.plan.count, 1)))
-                .tint(VTheme.coat)
-                .scaleEffect(y: 0.6)
-            if planOpen {
-                VStack(alignment: .leading, spacing: 7) {
-                    ForEach(Array(work.plan.enumerated()), id: \.offset) { _, step in
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            PlanMarker(status: step.status)
-                            Text(step.text)
-                                .font(.subheadline)
-                                .foregroundStyle(step.status == .pending ? VTheme.muted : VTheme.ink)
-                                .strikethrough(false)
-                        }
-                    }
-                }
-                .transition(.opacity)
-            }
-        }
-        .padding(10)
-        .background(VTheme.sunken, in: RoundedRectangle(cornerRadius: VTheme.controlRadius, style: .continuous))
-    }
-
-    private var footer: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            FlowRow(spacing: 12) {
-                if let finished = work.finishedAt, finished.timeIntervalSince(work.startedAt) >= 1 {
-                    Label(Self.duration(finished.timeIntervalSince(work.startedAt)), systemImage: "clock")
-                }
-                if !work.plan.isEmpty {
-                    Label("完成 \(work.plan.count) 步", systemImage: "checklist")
-                } else if !work.tools.isEmpty {
-                    Button {
-                        withAnimation(.snappy(duration: 0.22)) { stepsOpen.toggle() }
-                    } label: {
-                        Label("\(work.tools.count) 个操作", systemImage: stepsOpen ? "chevron.up" : "chevron.down")
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .lineLimit(1)
-            if stepsOpen {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(work.tools, id: \.id) { ToolRow(tool: $0) }
-                }
-                .transition(.opacity)
-            }
-            if let background = work.background {
-                BackgroundPill(summary: background)
-            }
-        }
-        .font(.caption)
-        .foregroundStyle(VTheme.muted)
-        .labelStyle(CompactLabelStyle())
-        .padding(.top, 2)
-    }
-
     static func duration(_ seconds: TimeInterval) -> String {
         let total = Int(seconds.rounded())
         return total < 60 ? "用时 \(total) 秒" : "用时 \(total / 60) 分 \(total % 60) 秒"
     }
 }
 
+/// One thing V did, in the same quiet line as a plan step but smaller: the
+/// plan is what she means to do, these are the hands.
 struct ToolRow: View {
     let tool: ToolStep
 
     var body: some View {
-        HStack(spacing: 8) {
-            Group {
-                switch tool.status {
-                case .running: ProgressView().controlSize(.mini)
-                case .done: Image(systemName: "checkmark").foregroundStyle(VTheme.positive)
-                case .failed: Image(systemName: "xmark").foregroundStyle(VTheme.red)
-                }
-            }
-            .font(.caption2.weight(.bold))
-            .frame(width: 14)
+        HStack(alignment: .firstTextBaseline, spacing: 9) {
+            marker.frame(width: 14, alignment: .center)
             Text(tool.summary)
                 .font(.footnote)
-                .foregroundStyle(tool.status == .running ? VTheme.ink : VTheme.soft)
+                .foregroundStyle(tool.status == .running ? VTheme.ink : VTheme.muted)
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
     }
-}
 
-struct PlanMarker: View {
-    let status: PlanStep.Status
-
-    var body: some View {
-        switch status {
-        case .done:
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(VTheme.positive).font(.footnote)
+    @ViewBuilder
+    private var marker: some View {
+        switch tool.status {
         case .running:
-            Image(systemName: "circle.dotted.circle").foregroundStyle(VTheme.coat).font(.footnote)
-                .symbolEffect(.rotate, options: .repeating)
-        case .pending:
-            Image(systemName: "circle").foregroundStyle(VTheme.hairline).font(.footnote)
+            Circle().fill(VTheme.coat).frame(width: 6, height: 6)
+        case .done:
+            Image(systemName: "checkmark")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(VTheme.muted)
+        case .failed:
+            Image(systemName: "xmark")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(VTheme.lobster)
         }
     }
 }
 
-struct BackgroundPill: View {
-    let summary: BackgroundSummary
-
-    var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: summary.running > 0 ? "hourglass" : "checkmark.square")
-                .symbolEffect(.pulse, isActive: summary.running > 0)
-            Text(summary.line).lineLimit(1)
-        }
-        .fixedSize()
-        .font(.caption.weight(.medium))
-        .foregroundStyle(summary.running > 0 ? VTheme.coat : VTheme.muted)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 4)
-        .background((summary.running > 0 ? VTheme.coat : VTheme.muted).opacity(0.1), in: Capsule())
-    }
-}
-
+/// A still dot. It used to pulse; the only thing that moves on its own now is
+/// V's presence row, and the name stays for the session list.
 struct PulseDot: View {
     let color: Color
-    @State private var on = false
 
     var body: some View {
         Circle().fill(color).frame(width: 7, height: 7)
-            .overlay {
-                Circle().stroke(color.opacity(0.5), lineWidth: 2)
-                    .scaleEffect(on ? 2.2 : 1)
-                    .opacity(on ? 0 : 1)
-            }
-            .onAppear {
-                withAnimation(.easeOut(duration: 1.2).repeatForever(autoreverses: false)) { on = true }
-            }
-    }
-}
-
-struct TypingDots: View {
-    var body: some View {
-        TimelineView(.animation) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 5) {
-                ForEach(0..<3) { index in
-                    Circle()
-                        .fill(VTheme.muted)
-                        .frame(width: 6, height: 6)
-                        .opacity(0.35 + 0.65 * max(0, sin((t * 4) - Double(index) * 0.7)))
-                }
-            }
-        }
-    }
-}
-
-struct CompactLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 3) {
-            configuration.icon
-            configuration.title
-        }
     }
 }

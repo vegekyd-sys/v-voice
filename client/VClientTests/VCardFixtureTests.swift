@@ -66,4 +66,84 @@ final class VCardFixtureTests: XCTestCase {
         XCTAssertEqual(buttons[1].action, .callback(["kind": "command", "command": "/v-handback h_1a2b"]))
         XCTAssertEqual(try card("link-secret").header?.title, "🔑 V 需要凭据 GITHUB_TOKEN")
     }
+
+    // MARK: V's own reply, read out of the progress card
+
+    func testAThinkingCardIsVThinkingWithNoWords() throws {
+        let reply = try XCTUnwrap(VReply(card: card("work-thinking")))
+        XCTAssertEqual(reply.mood, .think)
+        XCTAssertEqual(reply.status, "正在思考")
+        XCTAssertTrue(reply.blocks.isEmpty)
+        XCTAssertTrue(reply.steps.isEmpty)
+    }
+
+    func testAWorkingCardSplitsIntoWordsPlanStateAndBackground() throws {
+        let reply = try XCTUnwrap(VReply(card: card("work-working")))
+        XCTAssertEqual(reply.blocks.map(\.text), ["先看一下上周的停顿记录，再按原因归类。"])
+        XCTAssertEqual(reply.steps, [
+            VStep(status: .done, text: "读取上周的停顿记录"),
+            VStep(status: .running, text: "按原因归类"),
+            VStep(status: .pending, text: "写成报告"),
+        ])
+        XCTAssertEqual(reply.mood, .work)
+        XCTAssertEqual(reply.status, "正在运行命令")
+        XCTAssertEqual(reply.background, "后台 2 项进行中")
+        XCTAssertTrue(reply.notes.isEmpty)
+    }
+
+    func testAStreamingCardKeepsItsPlanOutOfTheWords() throws {
+        let reply = try XCTUnwrap(VReply(card: card("work-streaming")))
+        XCTAssertEqual(reply.blocks.count, 1)
+        XCTAssertFalse(reply.steps.isEmpty)
+        XCTAssertNil(reply.mood)
+        XCTAssertFalse(reply.blocks[0].text.contains("☑️"))
+    }
+
+    func testAWaitingCardIsVListening() throws {
+        let reply = try XCTUnwrap(VReply(card: card("work-waiting")))
+        XCTAssertEqual(reply.mood, .ask)
+        XCTAssertEqual(reply.status, "等你回答")
+    }
+
+    func testAFinishedCardLeavesWordsAndSmallPrintWithoutMiddots() throws {
+        let reply = try XCTUnwrap(VReply(card: card("work-done")))
+        XCTAssertEqual(reply.blocks.count, 1)
+        XCTAssertNil(reply.mood)
+        XCTAssertEqual(reply.notes, ["后台任务已结束", "用时 42 秒", "6 个操作", "DeepSeek flash"])
+    }
+
+    func testAStoppedCardIsOneQuietLine() throws {
+        let reply = try XCTUnwrap(VReply(card: card("work-aborted")))
+        XCTAssertTrue(reply.blocks.isEmpty)
+        XCTAssertNil(reply.mood)
+        XCTAssertEqual(reply.notes, ["这一轮已停止。"])
+    }
+
+    func testCardsWithButtonsOrHeadersKeepTheirFrame() throws {
+        for name in ["question-multi", "question-two", "question-answered", "link-secret", "link-handoff"] {
+            XCTAssertNil(VReply(card: try card(name)), name)
+        }
+    }
+
+    func testToolLabelsPickTheMatchingPortrait() {
+        let expected: [String: VMood] = [
+            "运行命令": .work, "修改文件": .work,
+            "读取文件": .read, "查记忆": .read,
+            "搜索网页": .web, "读取网页": .web, "操作浏览器/电脑": .web,
+            "设置定时任务": .schedule,
+            "启动子 agent": .background,
+            "向你提问": .ask, "索取凭据": .ask,
+            "生成图片": .show, "生成视频": .show, "发送消息": .show,
+            "某个没见过的工具": .work,
+        ]
+        for (label, mood) in expected {
+            XCTAssertEqual(VMood.forTool(label), mood, label)
+        }
+    }
+
+    func testAPlanIsOnlyAPlanWhenEveryLineIsAStep() {
+        XCTAssertNil(VReply.plan("☑️ 第一步\n这行是正文"))
+        XCTAssertNil(VReply.plan("普通的一段话"))
+        XCTAssertEqual(VReply.plan("◻️ 还没开始"), [VStep(status: .pending, text: "还没开始")])
+    }
 }

@@ -34,20 +34,24 @@ struct ChatScreen: View {
                 .toolbar {
                     ToolbarItem(placement: .principal) {
                         VStack(spacing: 1) {
-                            Text(session.title).font(.headline).lineLimit(1)
-                            Group {
-                                if session.isWorking {
-                                    Text("V 正在处理…").foregroundStyle(VTheme.coat)
-                                } else {
-                                    Text([session.channel, session.model].compactMap { $0 }.joined(separator: " · "))
-                                        .foregroundStyle(VTheme.muted)
-                                }
+                            Text(session.title).font(.headline).foregroundStyle(VTheme.ink).lineLimit(1)
+                            if session.isWorking {
+                                Text("V 正在处理").font(.caption2).foregroundStyle(VTheme.coat)
+                            } else if let channel = Self.channelName(session.channel) {
+                                Text(channel).font(.caption2).foregroundStyle(VTheme.muted)
                             }
-                            .font(.caption2)
                         }
+                        .animation(.smooth(duration: 0.2), value: session.isWorking)
                     }
                 }
         }
+    }
+
+    /// Where this chat lives, without whatever else the channel line carries
+    /// ("飞书群 · 6 人" is "飞书群" here).
+    private static func channelName(_ channel: String?) -> String? {
+        guard let name = channel?.components(separatedBy: " · ").first?.trimmingCharacters(in: .whitespaces), !name.isEmpty else { return nil }
+        return name
     }
 
     /// A link in a message. Files V attached open here; the rest go to the system.
@@ -192,12 +196,14 @@ struct MessageRow: View, Equatable {
     let showsSender: Bool
     let sessionID: String
     var canReact = false
+    /// The time beside V's name. Off under a time separator, which has just said it.
+    var showsClock = true
     @Environment(AppModel.self) private var model
     @Environment(\.messageActions) private var actions
 
     /// Only a changed message redraws; rewriting one card leaves the rest of a long chat alone.
     nonisolated static func == (lhs: MessageRow, rhs: MessageRow) -> Bool {
-        lhs.showsSender == rhs.showsSender && lhs.canReact == rhs.canReact && lhs.sessionID == rhs.sessionID && lhs.item == rhs.item
+        lhs.showsSender == rhs.showsSender && lhs.showsClock == rhs.showsClock && lhs.canReact == rhs.canReact && lhs.sessionID == rhs.sessionID && lhs.item == rhs.item
     }
 
     @ViewBuilder
@@ -230,9 +236,8 @@ struct MessageRow: View, Equatable {
                 Text(text)
                     .font(.caption)
                     .foregroundStyle(VTheme.muted)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(VTheme.sunken, in: Capsule())
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
                     .frame(maxWidth: .infinity)
             }
         case .user:
@@ -243,7 +248,7 @@ struct MessageRow: View, Equatable {
                         Button("重新发送", systemImage: "arrow.clockwise") { model.retry(item, in: sessionID) }
                         Button("删除", systemImage: "trash", role: .destructive) { model.discard(item, in: sessionID) }
                     } label: {
-                        Image(systemName: "exclamationmark.circle.fill").foregroundStyle(VTheme.red)
+                        Image(systemName: "exclamationmark.circle.fill").foregroundStyle(VTheme.lobster)
                     }
                     .accessibilityLabel("没有发出")
                 } else if item.queued {
@@ -255,7 +260,7 @@ struct MessageRow: View, Equatable {
                     UploadRing(progress: progress)
                         .accessibilityLabel("正在上传 \(Int(progress * 100))%")
                 } else if item.pending {
-                    ProgressView().controlSize(.mini)
+                    ProgressView().controlSize(.mini).tint(VTheme.muted)
                 }
                 VStack(alignment: .trailing, spacing: 4) {
                     userContent.contextMenu { menu }
@@ -263,15 +268,15 @@ struct MessageRow: View, Equatable {
                 }
             }
         case .member(let name):
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
                 if showsSender {
                     MemberAvatar(name: name)
                 } else {
-                    Color.clear.frame(width: VTheme.avatarSize, height: 1)
+                    Color.clear.frame(width: MemberAvatar.size, height: 1)
                 }
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 4) {
                     if showsSender {
-                        Text(name).font(.caption).foregroundStyle(VTheme.muted)
+                        Text(name).font(.caption).foregroundStyle(VTheme.muted).lineLimit(1)
                     }
                     if let quote = item.quote { QuoteLine(text: quote) }
                     if !item.media.isEmpty { MediaGallery(media: item.media) }
@@ -279,45 +284,55 @@ struct MessageRow: View, Equatable {
                         Text(text)
                             .font(.callout)
                             .foregroundStyle(VTheme.ink)
-                            .padding(.horizontal, 13)
-                            .padding(.vertical, 9)
-                            .background(VTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(VTheme.hairline, lineWidth: 0.75) }
+                            .padding(.horizontal, Self.bubbleInsetX)
+                            .padding(.vertical, Self.bubbleInsetY)
+                            .background(VTheme.surface, in: Self.bubble)
                             .textSelection(.enabled)
                     }
                 }
                 Spacer(minLength: 56)
             }
         case .v:
-            HStack(alignment: .top, spacing: 10) {
+            // V is not a bubble: her words start at the page margin and run the
+            // width of the page, under one line that says it is her.
+            VStack(alignment: .leading, spacing: Self.headerGap) {
                 if showsSender {
-                    Image("VAvatar").resizable().scaledToFill()
-                        .frame(width: VTheme.avatarSize, height: VTheme.avatarSize)
-                        .clipShape(Circle())
-                } else {
-                    Color.clear.frame(width: VTheme.avatarSize, height: 1)
-                }
-                VStack(alignment: .leading, spacing: 5) {
-                    if showsSender {
-                        HStack(spacing: 6) {
-                            Text("V").font(.subheadline.weight(.semibold)).foregroundStyle(VTheme.ink)
+                    HStack(spacing: 8) {
+                        Image("VAvatar").resizable().scaledToFill()
+                            .frame(width: Self.vAvatar, height: Self.vAvatar)
+                            .clipShape(Circle())
+                            .accessibilityHidden(true)
+                        Text("V").font(.subheadline.weight(.semibold)).foregroundStyle(VTheme.ink)
+                        if showsClock {
                             Text(item.time, format: .dateTime.hour().minute())
                                 .font(.caption)
                                 .foregroundStyle(VTheme.muted)
                         }
                     }
-                    vContent
-                        .frame(maxWidth: VTheme.bubbleMaxWidth, alignment: .leading)
-                        .contextMenu { menu }
-                    if !item.reactions.isEmpty { ReactionsRow(reactions: item.reactions, onTap: tapped) }
                 }
-                Spacer(minLength: 0)
+                vContent
+                    .frame(maxWidth: VTheme.readingWidth, alignment: .leading)
+                    // Unframed text lifts with a little air around it, not cut at the glyphs.
+                    .padding(Self.liftInset)
+                    .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: VTheme.controlRadius, style: .continuous))
+                    .contextMenu { menu }
+                    .padding(-Self.liftInset)
+                if !item.reactions.isEmpty { ReactionsRow(reactions: item.reactions, onTap: tapped) }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .environment(\.cardAction, CardActionHandler { action, form in
                 await model.perform(action, form: form, item: item.id, in: sessionID)
             })
         }
     }
+
+    /// Layout numbers `ChatListController.estimate` mirrors; change both together.
+    static let vAvatar: CGFloat = 26
+    static let headerGap: CGFloat = 8
+    static let bubbleInsetX: CGFloat = 13
+    static let bubbleInsetY: CGFloat = 9
+    private static let liftInset: CGFloat = 8
+    private static let bubble = RoundedRectangle(cornerRadius: 18, style: .continuous)
 
     @ViewBuilder
     private var userContent: some View {
@@ -330,9 +345,10 @@ struct MessageRow: View, Equatable {
                     Text(text)
                         .font(.callout)
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 9)
-                        .background(VTheme.coatFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .padding(.horizontal, Self.bubbleInsetX)
+                        .padding(.vertical, Self.bubbleInsetY)
+                        .background(VTheme.coatFill, in: Self.bubble)
+                        .contentShape(.contextMenuPreview, Self.bubble)
                         .opacity(item.pending ? 0.75 : 1)
                         .textSelection(.enabled)
                 }
@@ -350,8 +366,14 @@ struct MessageRow: View, Equatable {
         case .reply(let work):
             WorkCardView(work: work)
         case .card(let card):
-            VStack(alignment: .leading, spacing: 6) {
-                FeishuCardView(card: card)
+            VStack(alignment: .leading, spacing: 10) {
+                // V's own replies arrive as headerless text cards: drawn on the
+                // page as V. Anything richer keeps its frame.
+                if let reply = VReply(card: card) {
+                    VReplyView(reply: reply, live: item.live, since: item.time)
+                } else {
+                    FeishuCardView(card: card)
+                }
                 if !item.media.isEmpty { MediaGallery(media: item.media) }
             }
             .transition(.opacity)
@@ -362,13 +384,9 @@ struct MessageRow: View, Equatable {
         case .file(let file):
             FileCardView(file: file)
         case .text(let text):
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 10) {
                 if !item.media.isEmpty { MediaGallery(media: item.media) }
-                if !text.isEmpty {
-                    FeishuMarkdownView(markdown: text)
-                        .padding(12)
-                        .cardSurface()
-                }
+                if !text.isEmpty { FeishuMarkdownView(markdown: text) }
             }
         case .notice(let text):
             Text(text).font(.footnote).foregroundStyle(VTheme.muted)
@@ -377,15 +395,17 @@ struct MessageRow: View, Equatable {
 }
 
 struct MemberAvatar: View {
+    static let size: CGFloat = 30
     let name: String
 
     var body: some View {
         Text(String(name.prefix(1)))
-            .font(.subheadline.weight(.semibold))
+            .font(.footnote.weight(.semibold))
             .foregroundStyle(.white)
-            .frame(width: VTheme.avatarSize, height: VTheme.avatarSize)
+            .frame(width: Self.size, height: Self.size)
             .background(LinearGradient(colors: SessionAvatar.palette(name), startPoint: .topLeading, endPoint: .bottomTrailing),
                         in: Circle())
+            .accessibilityHidden(true)
     }
 }
 
@@ -397,7 +417,6 @@ struct TimeSeparator: View {
             .font(.caption)
             .foregroundStyle(VTheme.muted)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 2)
     }
 
     private var label: String {

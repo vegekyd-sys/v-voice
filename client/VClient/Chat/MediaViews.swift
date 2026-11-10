@@ -77,8 +77,7 @@ private struct MediaTile: View {
                 }
             }
             .frame(width: size.width, height: size.height)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(VTheme.hairline, lineWidth: 0.5) }
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(failure != nil)
@@ -287,7 +286,7 @@ private struct MediaFileRow: View {
             }
             .padding(10)
             .frame(width: 236)
-            .cardSurface()
+            .background(VTheme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(loading)
@@ -323,7 +322,7 @@ struct QuoteLine: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 1).fill(VTheme.muted.opacity(0.5)).frame(width: 2)
+            RoundedRectangle(cornerRadius: 1.5).fill(VTheme.muted.opacity(0.45)).frame(width: 3)
             Text(text.replacingOccurrences(of: "\n", with: " "))
                 .font(.caption)
                 .foregroundStyle(VTheme.muted)

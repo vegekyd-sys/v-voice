@@ -13,57 +13,77 @@ struct QuestionCardView: View {
     private var canSubmit: Bool { !selection.isEmpty || !other.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            CardHeaderView(header: .init(
-                title: question.expired ? "问题已失效" : answered ? "已回答" : (question.header ?? "V 想确认一下"),
-                subtitle: answered ? nil : question.allowsMultiple ? "可多选" : nil,
-                template: answered ? .grey : .wathet,
-                tags: []))
-            VStack(alignment: .leading, spacing: 10) {
-                FeishuMarkdownView(markdown: question.prompt)
-                if !question.options.isEmpty {
-                    VStack(spacing: 8) {
-                        ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
-                            optionRow(index: index, option: option)
-                        }
+        VStack(alignment: .leading, spacing: 12) {
+            header
+            FeishuMarkdownView(markdown: question.prompt, color: answered ? VTheme.soft : VTheme.ink)
+            if !question.options.isEmpty {
+                VStack(spacing: 8) {
+                    ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
+                        optionRow(index: index, option: option)
                     }
-                }
-                if let otherAnswer = question.otherAnswer, answered {
-                    Label(question.isSecret ? "已提交（内容不显示）" : otherAnswer, systemImage: "text.bubble")
-                        .font(.subheadline)
-                        .foregroundStyle(VTheme.soft)
-                } else if !answered, question.allowsOther || question.isSecret || question.options.isEmpty {
-                    Group {
-                        if question.isSecret {
-                            SecureField("在这里填写，只发给 V", text: $other)
-                        } else {
-                            TextField(question.options.isEmpty ? "输入你的回答" : "其他（自己写）", text: $other, axis: .vertical)
-                                .lineLimit(1...4)
-                        }
-                    }
-                    .font(.subheadline)
-                    .padding(10)
-                    .background(VTheme.sunken, in: RoundedRectangle(cornerRadius: VTheme.controlRadius, style: .continuous))
-                }
-                if !answered, needsSubmit || question.options.isEmpty {
-                    Button {
-                        let text = other.trimmingCharacters(in: .whitespacesAndNewlines)
-                        onAnswer(selection, text.isEmpty ? nil : text)
-                    } label: {
-                        Text(selection.count > 1 ? "提交 \(selection.count) 项" : "提交")
-                            .font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity, minHeight: 40)
-                            .foregroundStyle(.white)
-                            .background(VTheme.coat, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    .buttonStyle(PressableStyle())
-                    .disabled(!canSubmit)
-                    .opacity(canSubmit ? 1 : 0.5)
                 }
             }
-            .padding(14)
+            if let otherAnswer = question.otherAnswer, answered {
+                Label(question.isSecret ? "已提交（内容不显示）" : otherAnswer, systemImage: "text.bubble")
+                    .font(.subheadline)
+                    .foregroundStyle(VTheme.soft)
+            } else if !answered, question.allowsOther || question.isSecret || question.options.isEmpty {
+                Group {
+                    if question.isSecret {
+                        SecureField("在这里填写，只发给 V", text: $other)
+                    } else {
+                        TextField(question.options.isEmpty ? "输入你的回答" : "其他（自己写）", text: $other, axis: .vertical)
+                            .lineLimit(1...4)
+                    }
+                }
+                .font(.subheadline)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 11)
+                .background(VTheme.sunken, in: RoundedRectangle(cornerRadius: VTheme.controlRadius, style: .continuous))
+            }
+            if !answered, needsSubmit || question.options.isEmpty {
+                Button {
+                    let text = other.trimmingCharacters(in: .whitespacesAndNewlines)
+                    onAnswer(selection, text.isEmpty ? nil : text)
+                } label: {
+                    Text(selection.count > 1 ? "提交 \(selection.count) 项" : "提交")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .foregroundStyle(.white)
+                        .background(VTheme.coatFill, in: RoundedRectangle(cornerRadius: VTheme.controlRadius, style: .continuous))
+                }
+                .buttonStyle(PressableStyle())
+                .disabled(!canSubmit)
+                .opacity(canSubmit ? 1 : 0.4)
+            }
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface()
+    }
+
+    /// V asking, with V beside the question. Once it is answered or has lapsed
+    /// she steps back and one small line says so.
+    @ViewBuilder
+    private var header: some View {
+        if answered {
+            Text(question.expired ? "问题已失效" : "已回答")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(VTheme.muted)
+        } else {
+            HStack(spacing: 10) {
+                VPortrait(mood: .ask, size: 36)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(question.header ?? "V 想确认一下")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(VTheme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if question.allowsMultiple {
+                        Text("可多选").font(.footnote).foregroundStyle(VTheme.muted)
+                    }
+                }
+            }
+        }
     }
 
     private func optionRow(index: Int, option: String) -> some View {
@@ -80,13 +100,13 @@ struct QuestionCardView: View {
         } label: {
             HStack(spacing: 10) {
                 Text("\(index + 1)")
-                    .font(.footnote.weight(.bold).monospacedDigit())
+                    .font(.footnote.weight(.semibold).monospacedDigit())
                     .frame(width: 24, height: 24)
-                    .foregroundStyle(chosen ? .white : VTheme.coat)
-                    .background(chosen ? VTheme.coat : VTheme.lavender, in: Circle())
+                    .foregroundStyle(chosen ? .white : answered ? VTheme.muted : VTheme.soft)
+                    .background(chosen ? VTheme.coatFill : VTheme.surface, in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text(option)
-                        .font(.subheadline)
+                        .font(.subheadline.weight(chosen ? .medium : .regular))
                         .foregroundStyle(answered && !chosen ? VTheme.muted : VTheme.ink)
                     if let detail, !detail.isEmpty {
                         Text(detail).font(.caption).foregroundStyle(VTheme.muted)
@@ -99,9 +119,10 @@ struct QuestionCardView: View {
                 }
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 9)
+            .frame(minHeight: 44)
+            .padding(.vertical, 4)
             .background(
-                chosen ? VTheme.coat.opacity(0.08) : VTheme.sunken,
+                chosen ? VTheme.coat.opacity(0.12) : VTheme.sunken,
                 in: RoundedRectangle(cornerRadius: VTheme.controlRadius, style: .continuous))
             .contentShape(Rectangle())
         }
@@ -116,18 +137,19 @@ struct FileCardView: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: file.symbol)
-                .font(.title2)
+                .font(.title3)
                 .foregroundStyle(VTheme.coat)
                 .frame(width: 44, height: 44)
-                .background(VTheme.lavender, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(VTheme.lavender, in: RoundedRectangle(cornerRadius: VTheme.controlRadius, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
                 Text(file.name).font(.subheadline.weight(.medium)).foregroundStyle(VTheme.ink).lineLimit(2)
                 Text(file.size).font(.caption).foregroundStyle(VTheme.muted)
             }
             Spacer(minLength: 0)
-            Image(systemName: "arrow.down.circle").font(.title3).foregroundStyle(VTheme.muted)
+            Image(systemName: "arrow.down.to.line").font(.subheadline.weight(.medium)).foregroundStyle(VTheme.muted)
         }
         .padding(12)
+        .padding(.trailing, 4)
         .frame(maxWidth: 320)
         .cardSurface()
     }

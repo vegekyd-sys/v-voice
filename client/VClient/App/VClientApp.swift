@@ -55,8 +55,8 @@ struct RootView: View {
                 ChatScreen(sessionID: id)
                     .id(id)
             } else {
-                ContentUnavailableView("选择一个会话", systemImage: "bubble.left.and.text.bubble.right",
-                                       description: Text("和 V 的私聊、群聊都在左侧"))
+                VEmptyState(mood: .wave, title: "选择一个会话", message: "和 V 的私聊、群聊都在左侧")
+                    .background(VTheme.page)
             }
         }
     }

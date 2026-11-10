@@ -142,6 +142,7 @@ final class ChatListController: UIViewController, UITableViewDelegate {
                              withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
         look.imagePadding = 4
         look.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12)
+        look.baseForegroundColor = UIColor(VTheme.soft)
         jump.configuration = look
         jump.translatesAutoresizingMaskIntoConstraints = false
         jump.accessibilityIdentifier = "jumpToLatest"
@@ -195,6 +196,7 @@ final class ChatListController: UIViewController, UITableViewDelegate {
         settleAtBottom()
         loadEarlierIfNear()
     }
+
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
@@ -628,32 +630,191 @@ final class ChatListController: UIViewController, UITableViewDelegate {
 
     /// A guess at a row's height before it is drawn, close enough that the
     /// scroll bar and the reader's place do not lurch when the real one is known.
+    /// The numbers are `ChatRowView`'s and `MessageRow`'s own, and what the views
+    /// they hold measure at the default text size; change them together.
     static func estimate(_ row: Row, width: CGFloat) -> CGFloat {
         let item = row.item
-        var height: CGFloat = row.showsTime ? 44 : row.showsSender ? 16 : 6
-        let text = item.plainText
-        let visual = item.media.filter { $0.kind == .image || $0.kind == .video }.count
-        let files = item.media.count - visual
-        var media: CGFloat = 0
-        if visual == 1 { media += 190 } else if visual > 1 { media += CGFloat((visual + 1) / 2) * 122 }
-        media += CGFloat(files) * 64
+        // The time above a row is one caption line and the gap under it.
+        var height = ChatRowView.topGap(row) + (row.showsTime ? 14 + ChatRowView.timeGap : 0)
+        let page = min(width, ChatRowView.maxWidth) - 2 * VTheme.pagePadding
         switch item.sender {
         case .system:
-            return height + 28
+            return height + plain(item.plainText, width: page - 48, glyph: 12, first: 14, next: 14)
         case .user, .member:
-            let perLine = max(8, (min(width, 820) - 110) / 16)
-            let lines = text.isEmpty ? 0 : text.split(separator: "\n", omittingEmptySubsequences: false)
-                .reduce(0) { $0 + max(1, Int((CGFloat($1.count) / perLine).rounded(.up))) }
-            if lines > 0 { height += CGFloat(lines) * 21 + 18 }
-            if case .member = item.sender, row.showsSender { height += 20 }
-            return height + media
+            if case .file = item.content { return height + 74 }
+            // Beside the bubble: the spacer's 56 and its gap of 8. Inside it: 13 a side.
+            var room = page - 64 - 2 * MessageRow.bubbleInsetX
+            var gap: CGFloat = 5
+            if case .member = item.sender {
+                room -= MemberAvatar.size + 8
+                gap = 4
+                // Name line and the gap under it.
+                if row.showsSender { height += 14 + gap }
+            }
+            var parts: [CGFloat] = []
+            if item.quote != nil { parts.append(14) }
+            if !item.media.isEmpty { parts.append(gallery(item.media)) }
+            let text = item.plainText
+            if !text.isEmpty { parts.append(plain(text, width: room, glyph: 16, first: 19.5, next: 21.7) + 2 * MessageRow.bubbleInsetY) }
+            if !item.reactions.isEmpty { parts.append(22) }
+            return height + parts.reduce(0, +) + CGFloat(max(0, parts.count - 1)) * gap
         case .v:
-            if row.showsSender { height += 24 }
-            let perLine = max(8, (min(width, VTheme.bubbleMaxWidth + 76) - 104) / 16)
-            let lines = text.isEmpty ? 1 : text.split(separator: "\n", omittingEmptySubsequences: false)
-                .reduce(0) { $0 + max(1, Int((CGFloat($1.count) / perLine).rounded(.up))) }
-            return height + min(1400, CGFloat(lines) * 24 + 40) + media
+            if row.showsSender { height += MessageRow.vAvatar + MessageRow.headerGap }
+            if !item.reactions.isEmpty { height += 22 + MessageRow.headerGap }
+            // No indent and no frame: her words have the page's width.
+            let room = min(page, VTheme.readingWidth)
+            var media = item.media.isEmpty ? 0 : gallery(item.media) + 10
+            var body: CGFloat
+            switch item.content {
+            case .file:
+                return height + 74
+            case .notice(let text):
+                return height + plain(text, width: room, glyph: 13, first: 16, next: 16)
+            case .question(let question):
+                // A framed card: 16 of padding, V's small portrait, the prompt,
+                // then a row of 52 and a gap of 8 for each choice.
+                body = 80 + prose(question.prompt, width: room - 32)
+                if !question.options.isEmpty { body += 4 + CGFloat(question.options.count) * 60 }
+                if question.answer == nil, question.allowsOther || question.isSecret || question.options.isEmpty { body += 56 }
+                if question.answer == nil, question.allowsMultiple || question.allowsOther || question.options.isEmpty { body += 56 }
+            case .card(let card) where keepsFrame(card):
+                // A framed card: 16 of padding, the title line, then its parts.
+                body = 32 + framed(card.elements, width: room - 32)
+                if let header = card.header { body += header.subtitle == nil ? 35 : 53 }
+            case .reply(let work):
+                body = prose(work.visibleAnswer, width: room)
+                if !work.media.isEmpty { media += gallery(work.media) + 12 }
+                if work.isActive {
+                    if let commentary = work.commentary { body += 12 + plain(commentary, width: room, glyph: 15, first: 18, next: 20) }
+                    // Plan lines of 18 with 7 between; the last three tools, and
+                    // a line saying how many came before; then V herself at 52.
+                    // Each group has 12 above it.
+                    if !work.plan.isEmpty { body += 5 + CGFloat(work.plan.count) * 25 }
+                    let finished = work.tools.count - (work.currentTool == nil ? 0 : 1)
+                    if finished > 0 { body += 6 + CGFloat(min(finished, 4)) * 24 }
+                    body += body > 0 ? 64 : 52
+                } else if case .failed = work.phase {
+                    body += 76
+                } else {
+                    // One line of small print under a finished reply.
+                    body += body > 0 || media > 0 ? 27 : 20
+                }
+            default:
+                // V's own card, or plain text. Its small print is the last line
+                // of the text; while she is on it that line is V herself instead.
+                body = prose(item.plainText, width: room)
+                if item.live { body += 40 }
+            }
+            return height + min(1600, max(20, body)) + media
         }
+    }
+
+    /// V's markdown at callout size: a block's first line is 19.5 tall and
+    /// each wrapped line adds 22; blocks sit 8 apart, list items 5.
+    private static func prose(_ text: String, width: CGFloat) -> CGFloat {
+        guard !text.isEmpty else { return 0 }
+        var height: CGFloat = -5
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.isEmpty {
+                height += 3
+            } else if line.hasPrefix("```") {
+                // A fence is not a line of its own, only the code block's padding.
+                height += 10
+            } else if line.hasPrefix("|") {
+                // A table row keeps to itself however much is in its cells; the
+                // rule under the header is not a row.
+                height += line.hasPrefix("|-") || line.hasPrefix("|:") ? 0 : 32
+            } else {
+                height += 25 + CGFloat(wrapped(line, width: width, glyph: 16) - 1) * 22
+            }
+        }
+        return max(20, height)
+    }
+
+    /// One `Text`: `first` for its first line, `next` for every line after.
+    private static func plain(_ text: String, width: CGFloat, glyph: CGFloat, first: CGFloat, next: CGFloat) -> CGFloat {
+        guard !text.isEmpty else { return 0 }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+            .reduce(0) { $0 + wrapped($1, width: width, glyph: glyph) }
+        return first + CGFloat(lines - 1) * next
+    }
+
+    /// Latin letters and digits are about half as wide as a Chinese character
+    /// and a space a quarter; counted as one each, mixed text came out at
+    /// nearly twice its height. Markdown's own marks take no room. Text that
+    /// wraps gets a little more, for line ends a word could not be split to fill.
+    private static func wrapped(_ line: Substring, width: CGFloat, glyph: CGFloat) -> Int {
+        var units: CGFloat = 0
+        // Where a `<font …>` tag opened: its letters are taken back when it closes.
+        var tag: CGFloat?
+        for scalar in line.unicodeScalars {
+            switch scalar.value {
+            case 0x2A, 0x60, 0x23, 0x7E: continue // * ` # ~
+            case 0x3C: tag = units
+            case 0x3E where tag != nil:
+                units = tag ?? units
+                tag = nil
+            case 0x20: units += 0.28
+            case ..<0x2E80: units += 0.56
+            default: units += 1
+            }
+        }
+        let lines = units * glyph / max(width, glyph * 8)
+        return lines <= 1 ? 1 : Int((lines * 1.04).rounded(.up))
+    }
+
+    /// `MediaGallery`: one picture at its own shape (`MediaTile.size`), more
+    /// as a grid of 118 squares 4 apart, files as rows of 58; 6 between them.
+    private static func gallery(_ media: [MediaRef]) -> CGFloat {
+        let visual = media.filter { $0.kind == .image || $0.kind == .video }
+        var parts = Array(repeating: CGFloat(58), count: media.count - visual.count)
+        if visual.count == 1 {
+            // A picture seen before is laid out at its shape from the start.
+            if let ratio = MediaThumbnails.shape(visual[0].source) {
+                let wide: CGFloat = min(220, 260 / max(ratio, 0.01))
+                parts.append(min(260, max(90, wide * ratio)))
+            } else {
+                parts.append(150)
+            }
+        } else if visual.count > 1 {
+            let rows = CGFloat((visual.count + 1) / 2)
+            parts.append(rows * 118 + (rows - 1) * 4)
+        }
+        return parts.reduce(0, +) + CGFloat(max(0, parts.count - 1)) * 6
+    }
+
+    /// Whether `MessageRow` draws this card in its frame: the cards `VReply`
+    /// turns down, told apart here without reading their text.
+    private static func keepsFrame(_ card: FeishuCard) -> Bool {
+        card.header != nil || card.elements.isEmpty || card.elements.contains {
+            switch $0 {
+            case .markdown, .divider: false
+            default: true
+            }
+        }
+    }
+
+    /// The parts of a framed card, 10 apart.
+    private static func framed(_ elements: [FeishuCard.Element], width: CGFloat) -> CGFloat {
+        var height: CGFloat = 0
+        for element in elements {
+            switch element {
+            case .markdown(let text, _): height += prose(text, width: width)
+            case .divider: height += 1
+            case .button, .input: height += 40
+            case .image: height += 210
+            case .columns(let columns, let flow):
+                // Buttons side by side are one row; columns are as tall as the tallest.
+                let each = width / CGFloat(max(1, columns.count))
+                height += flow ? 40 : columns.map { framed($0.elements, width: each) }.max() ?? 0
+            case .fields(let fields): height += CGFloat((fields.count + 1) / 2) * 50
+            case .panel(_, let expanded, let inner): height += 42 + (expanded ? 10 + framed(inner, width: width - 24) : 0)
+            case .form(let inner): height += framed(inner, width: width)
+            case .unsupported: height += 20
+            }
+            height += 10
+        }
+        return max(0, height - 10)
     }
 }
 
@@ -664,15 +825,27 @@ struct ChatRowView: View {
     let sessionID: String
     let canReact: Bool
 
+    static let maxWidth: CGFloat = 820
+    static let timeGap: CGFloat = 14
+
+    /// A new speaker gets air. Under the same speaker, bubbles sit close and V's
+    /// next block follows like the next paragraph.
+    static func topGap(_ row: ChatListController.Row) -> CGFloat {
+        if row.showsTime || row.showsSender { return 20 }
+        if case .v = row.item.sender { return 12 }
+        return 4
+    }
+
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Self.timeGap) {
             if row.showsTime { TimeSeparator(date: row.item.time) }
-            MessageRow(item: row.item, showsSender: row.showsSender, sessionID: sessionID, canReact: canReact)
+            // The time is right above; V's own line need not say it again.
+            MessageRow(item: row.item, showsSender: row.showsSender, sessionID: sessionID, canReact: canReact, showsClock: !row.showsTime)
                 .equatable()
         }
-        .padding(.top, row.showsTime ? 14 : row.showsSender ? 16 : 6)
+        .padding(.top, Self.topGap(row))
         .padding(.horizontal, VTheme.pagePadding)
-        .frame(maxWidth: 820)
+        .frame(maxWidth: Self.maxWidth)
         .frame(maxWidth: .infinity)
     }
 }
@@ -686,12 +859,21 @@ struct EarlierRow: View {
     var body: some View {
         Group {
             if state == .failed {
-                Button("没有加载出来，点这里重试", action: retry)
-                    .font(.footnote.weight(.medium))
-                    .accessibilityIdentifier("earlierRetry")
+                Button(action: retry) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.clockwise").font(.caption2.weight(.semibold))
+                        Text("没有加载出来，点这里重试").font(.caption)
+                    }
+                    .foregroundStyle(VTheme.soft)
+                    .frame(height: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("earlierRetry")
             } else {
                 ProgressView()
                     .controlSize(.small)
+                    .tint(VTheme.muted)
                     .accessibilityLabel("正在加载更早的消息")
                     .accessibilityIdentifier("earlierLoading")
             }

@@ -81,7 +81,7 @@ struct Composer: View {
 
     private func quoteBar(_ quote: String) -> some View {
         HStack(spacing: 8) {
-            RoundedRectangle(cornerRadius: 1.5).fill(VTheme.hairline).frame(width: 3, height: 18)
+            RoundedRectangle(cornerRadius: 1.5).fill(VTheme.muted.opacity(0.45)).frame(width: 3, height: 16)
             Text(quote).font(.footnote).foregroundStyle(VTheme.muted).lineLimit(1)
             Spacer(minLength: 4)
             Button { self.quote = nil } label: {
@@ -164,7 +164,7 @@ struct Composer: View {
                     } label: {
                         Image(systemName: trailing == .send ? "arrow.up" : trailing == .stop ? "stop.fill" : "arrow.up")
                             .font(.system(size: trailing == .stop ? 12 : 15, weight: .bold))
-                            .foregroundStyle(trailing == .idle ? VTheme.muted : .white)
+                            .foregroundStyle(glyph)
                             .frame(width: 34, height: 34)
                             .background(background, in: Circle())
                             .contentTransition(.symbolEffect(.replace))
@@ -184,9 +184,18 @@ struct Composer: View {
 
     private var background: Color {
         switch trailing {
-        case .send: VTheme.coat
+        case .send: VTheme.coatFill
         case .stop: VTheme.ink
         case .idle: VTheme.sunken
+        }
+    }
+
+    private var glyph: Color {
+        switch trailing {
+        case .send: .white
+        // `ink` turns light in dark mode; the square on it has to turn with it.
+        case .stop: VTheme.page
+        case .idle: VTheme.muted
         }
     }
 }

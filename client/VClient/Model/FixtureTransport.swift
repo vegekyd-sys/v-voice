@@ -134,6 +134,16 @@ final class FixtureTransport: VTransport {
     }
 
     func abort(session: String, model: AppModel) async {
+        #if DEBUG
+        if let card = liveCard, card.session == session {
+            liveCard = nil
+            model.updateItem(card.item, in: session) { item in
+                item.content = .card(FeishuCard(header: nil, elements: [.markdown("这一轮已停止。", size: .notation)]))
+                item.live = false
+            }
+            return
+        }
+        #endif
         guard let runId = model.session(session)?.activeRun else { return }
         model.updateWork("run:\(runId)", in: session) { work in
             work.phase = .aborted
@@ -292,13 +302,37 @@ final class FixtureTransport: VTransport {
         return .sent
     }
 
+    /// `VCLIENT_DEMO_HOLD=thinking|working|working2|streaming|done` (DEBUG): the
+    /// scripted reply goes straight to that stage and stays there, so a
+    /// screenshot can look at a state that otherwise lasts a second.
+    private var hold: String? {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["VCLIENT_DEMO_HOLD"]
+        #else
+        nil
+        #endif
+    }
+
+    private func holds(_ stage: String) -> Bool { hold == stage }
+
+    private func pace(_ milliseconds: Int) async {
+        guard hold == nil else { return }
+        try? await Task.sleep(for: .milliseconds(milliseconds))
+    }
+
     private func play(_ text: String, session: String, model: AppModel) async {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["VCLIENT_DEMO_VCARD"] == "1" {
+            return await playCard(text, session: session, model: model)
+        }
+        #endif
         let runId = UUID().uuidString
         let id = "run:\(runId)"
         let start = Date.now
         model.append(ChatItem(id: id, sender: .v, time: start, content: .reply(WorkState(runId: runId, startedAt: start))), to: session)
+        if holds("thinking") { return }
 
-        try? await Task.sleep(for: .milliseconds(900))
+        await pace(900)
         model.updateWork(id, in: session) { work in
             work.phase = .working
             work.commentary = "我先看一下相关记录，再给你结论。"
@@ -310,7 +344,9 @@ final class FixtureTransport: VTransport {
             work.tools = [ToolStep(id: "t1", name: "memory_search", summary: "查找记忆 \(text.prefix(16))", status: .running)]
         }
 
-        try? await Task.sleep(for: .milliseconds(1600))
+        if holds("working") { return }
+
+        await pace(1600)
         model.updateWork(id, in: session) { work in
             guard work.isActive else { return }
             work.plan[1].status = .done
@@ -332,6 +368,7 @@ final class FixtureTransport: VTransport {
         let full = text.contains("长文")
             ? answer + (1...14).map { "\n\n第 \($0) 段：这一段用来把回答撑到一屏以上，看列表在回答变长时是不是一直稳稳地跟在最后一行。" }.joined()
             : answer
+        if holds("working2") { return }
         var shown = ""
         for character in full {
             guard model.session(session)?.activeRun == runId else { return }
@@ -339,7 +376,8 @@ final class FixtureTransport: VTransport {
             if character == "\n" || shown.count % 6 == 0 {
                 let snapshot = shown
                 model.updateWork(id, in: session) { $0.answer = snapshot }
-                try? await Task.sleep(for: .milliseconds(45))
+                if holds("streaming"), shown.count * 2 > full.count { return }
+                await pace(45)
             }
         }
 
@@ -353,6 +391,88 @@ final class FixtureTransport: VTransport {
             work.finishedAt = .now
         }
     }
+
+    #if DEBUG
+    /// The card `playCard` is rewriting, so 停止 can end it.
+    private var liveCard: (item: String, session: String)?
+
+    /// `VCLIENT_DEMO_VCARD=1`: the reply arrives the way it does from V on the app
+    /// channel. Not a run with events, but one headerless card V rewrites as
+    /// she goes (💭, then 🛠️ with her plan, then the answer growing) and
+    /// settles at the end. The plain demo only ever exercised `.reply`, so the
+    /// path every real reply takes was never on screen.
+    private func playCard(_ text: String, session: String, model: AppModel) async {
+        let id = "vcard:demo-\(UUID().uuidString)"
+        let start = Date.now
+        liveCard = (id, session)
+        /// False once the turn was stopped; nothing is written after that.
+        func show(_ elements: [FeishuCard.Element], live: Bool = true) -> Bool {
+            guard liveCard?.item == id else { return false }
+            model.updateItem(id, in: session) { item in
+                item.content = .card(FeishuCard(header: nil, elements: elements))
+                item.live = live
+            }
+            return true
+        }
+        func plan(running: Int) -> FeishuCard.Element {
+            let steps = ["理解你的问题", "查找相关记录", "整理回复"]
+            return .markdown(steps.enumerated().map { index, step in
+                index < running ? "☑️ \(step)" : index == running ? "▶️ **\(step)**　进行中" : "◻️ \(step)"
+            }.joined(separator: "\n"), size: .normal)
+        }
+
+        var item = ChatItem(id: id, sender: .v, time: start, content: .card(FeishuCard(
+            header: nil, elements: [.markdown("💭 正在思考", size: .notation)])))
+        item.live = true
+        model.append(item, to: session)
+        if holds("thinking") { return }
+        await pace(2000)
+
+        // The tool label changes while the plan stands still, as it does on V:
+        // each one is a different portrait under the reply.
+        let tools: [(label: String, hold: Int)] = [("搜索网页", 1500), ("运行命令", 1300), ("读取文件", 1100), ("生成图片", 1100)]
+        for tool in tools {
+            guard show([
+                .markdown("我先看一下相关记录，再给你结论。", size: .normal),
+                .divider,
+                .markdown("🛠️ \(tool.label)", size: .notation),
+                plan(running: 1),
+                .markdown("⏳ 后台 2 项进行中 · 子 agent 1 · 后台命令 1", size: .notation),
+            ]) else { return }
+            if holds("working") || (holds("working2") && tool.label == tools.last?.label) { return }
+            await pace(tool.hold)
+        }
+
+        let answer = """
+        收到：**\(text)**
+
+        这是原型客户端里的模拟回复，走的是 V 在 app 渠道的真实形态，一张不断改写的卡片：
+        1. 处理中卡片里写着计划、当前工具和后台任务
+        2. 回答逐段出现
+        3. 完成后只留答案和一行用时
+        """
+        let full = text.contains("长文")
+            ? answer + (1...14).map { "\n\n第 \($0) 段：这一段用来把回答撑到一屏以上，看列表在回答变长时是不是一直稳稳地跟在最后一行。" }.joined()
+            : answer
+        var shown = ""
+        for character in full {
+            shown.append(character)
+            // V rewrites the card a few times a second, not once per token.
+            if character == "\n" || shown.count % 12 == 0 {
+                guard show([.markdown(shown, size: .normal), .divider, plan(running: 2)]) else { return }
+                if holds("streaming"), shown.count * 2 > full.count { return }
+                await pace(character == "\n" ? 320 : 240)
+            }
+        }
+
+        let seconds = max(1, Int(Date.now.timeIntervalSince(start).rounded()))
+        _ = show([
+            .markdown(full, size: .normal),
+            .markdown("用时 \(seconds) 秒 · 6 个操作 · DeepSeek flash", size: .notation),
+        ], live: false)
+        liveCard = nil
+    }
+    #endif
 
     func perform(_ action: FeishuCard.Action, form: [String: String], item: String, session: String, model: AppModel) async {
         guard case .callback(let value) = action else { return }
