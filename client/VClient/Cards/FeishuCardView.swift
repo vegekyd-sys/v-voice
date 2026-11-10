@@ -28,13 +28,13 @@ extension FeishuCard.Template {
         case .blue: Color(light: 0x245BDB, dark: 0x5B8CF5)
         case .wathet: Color(light: 0x1C8CE0, dark: 0x5AB0F2)
         case .turquoise: Color(light: 0x0E9A8F, dark: 0x3CC6B9)
-        case .green: VTheme.green
+        case .green: VTheme.positive
         case .yellow: Color(light: 0xC58A00, dark: 0xF2C94C)
         case .orange: VTheme.orange
         case .red: VTheme.red
         case .carmine: Color(light: 0xC71E64, dark: 0xF06A9E)
         case .violet: Color(light: 0x9C35C4, dark: 0xD08AF0)
-        case .purple: VTheme.purple
+        case .purple: VTheme.coat
         case .indigo: Color(light: 0x4954E6, dark: 0x8C94F5)
         case .grey: Color(light: 0x646A73, dark: 0xA3A8B0)
         case .plain: nil
@@ -291,7 +291,7 @@ struct CardButtonView: View {
     private var foreground: Color {
         switch button.style {
         case .primaryFilled, .dangerFilled: .white
-        case .primary, .text: VTheme.purple
+        case .primary, .text: VTheme.coat
         case .danger: VTheme.red
         case .plain: VTheme.ink
         }
@@ -299,9 +299,9 @@ struct CardButtonView: View {
 
     private var background: Color {
         switch button.style {
-        case .primaryFilled: VTheme.purple
+        case .primaryFilled: VTheme.coat
         case .dangerFilled: VTheme.red
-        case .primary: VTheme.purple.opacity(0.08)
+        case .primary: VTheme.coat.opacity(0.08)
         case .danger: VTheme.red.opacity(0.06)
         case .plain: VTheme.surface
         case .text: .clear
@@ -311,7 +311,7 @@ struct CardButtonView: View {
     private var border: Color {
         switch button.style {
         case .primaryFilled, .dangerFilled, .text: .clear
-        case .primary: VTheme.purple.opacity(0.35)
+        case .primary: VTheme.coat.opacity(0.35)
         case .danger: VTheme.red.opacity(0.35)
         case .plain: VTheme.hairline
         }

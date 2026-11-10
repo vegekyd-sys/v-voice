@@ -46,6 +46,7 @@
 		98B4A3ECA808885789D302B3 /* Media.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFD3D324FE3D89F45C024EAB /* Media.swift */; };
 		9969EDB2705E67D3C97F2127 /* ChatCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBCC8F9FFF162D9408E7E611 /* ChatCache.swift */; };
 		9EA008F2FE27DA6B2E00A70D /* FixtureTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E07B5905A7DEA306FA5072F5 /* FixtureTransport.swift */; };
+		A0C16D914CBEE96A4E805A82 /* VPresence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8421BD49C3A00DFB9BC7DBE3 /* VPresence.swift */; };
 		A2B50D56B4888A5FD6563067 /* work-streaming.json in Resources */ = {isa = PBXBuildFile; fileRef = FE3B83A41CB47BE31439B3C6 /* work-streaming.json */; };
 		A8E7C1EC4B5EB44A5FC770BE /* MessageParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A17491A30BC2D1914D5FBFD /* MessageParser.swift */; };
 		AB9672B195F31CCFBDE80A62 /* approval-pending.json in Resources */ = {isa = PBXBuildFile; fileRef = 32E2DFE84806EAEEEA483679 /* approval-pending.json */; };
@@ -109,6 +110,7 @@
 		71D6F412DC93EE5E125CE54E /* question-two.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "question-two.json"; sourceTree = "<group>"; };
 		71FC9D79B825F27879DBDC6F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		7A4977BA2DE8A607CA34E38F /* FeishuCardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeishuCardTests.swift; sourceTree = "<group>"; };
+		8421BD49C3A00DFB9BC7DBE3 /* VPresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VPresence.swift; sourceTree = "<group>"; };
 		8A17491A30BC2D1914D5FBFD /* MessageParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageParser.swift; sourceTree = "<group>"; };
 		8E7143286BF3FC1DDB66568D /* GatewayConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayConnection.swift; sourceTree = "<group>"; };
 		90F92A13B0898867C4CD3DFC /* VClient.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VClient.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -212,6 +214,7 @@
 		69EE02E94E7195EC6FCEB089 /* Design */ = {
 			isa = PBXGroup;
 			children = (
+				8421BD49C3A00DFB9BC7DBE3 /* VPresence.swift */,
 				DDCEB1633BBF3100A9BCE3B3 /* VTheme.swift */,
 			);
 			path = Design;
@@ -516,6 +519,7 @@
 				525721676D652A539437404D /* QuestionCardView.swift in Sources */,
 				6B4099645A3A45140E7F623D /* SessionListView.swift in Sources */,
 				5C3B2B1B1FEB940E7E64F18B /* VClientApp.swift in Sources */,
+				A0C16D914CBEE96A4E805A82 /* VPresence.swift in Sources */,
 				6C68A1280068B54789C1F8B3 /* VTheme.swift in Sources */,
 				07D47C0400A0E9A83BADB27A /* WorkCardView.swift in Sources */,
 			);

@@ -37,7 +37,7 @@ struct ChatScreen: View {
                             Text(session.title).font(.headline).lineLimit(1)
                             Group {
                                 if session.isWorking {
-                                    Text("V 正在处理…").foregroundStyle(VTheme.purple)
+                                    Text("V 正在处理…").foregroundStyle(VTheme.coat)
                                 } else {
                                     Text([session.channel, session.model].compactMap { $0 }.joined(separator: " · "))
                                         .foregroundStyle(VTheme.muted)
@@ -332,7 +332,7 @@ struct MessageRow: View, Equatable {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 13)
                         .padding(.vertical, 9)
-                        .background(VTheme.userBubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .background(VTheme.coatFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .opacity(item.pending ? 0.75 : 1)
                         .textSelection(.enabled)
                 }
@@ -417,7 +417,7 @@ private struct UploadRing: View {
         ZStack {
             Circle().stroke(VTheme.hairline, lineWidth: 2)
             Circle().trim(from: 0, to: max(0.04, progress))
-                .stroke(VTheme.purple, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .stroke(VTheme.coat, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(.linear(duration: 0.2), value: progress)
         }

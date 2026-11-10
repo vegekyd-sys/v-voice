@@ -184,7 +184,7 @@ struct Composer: View {
 
     private var background: Color {
         switch trailing {
-        case .send: VTheme.purple
+        case .send: VTheme.coat
         case .stop: VTheme.ink
         case .idle: VTheme.sunken
         }

@@ -18,7 +18,7 @@ struct OnboardingView: View {
                     Image("VAvatar").resizable().scaledToFill()
                         .frame(width: 96, height: 96)
                         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                        .shadow(color: VTheme.purple.opacity(0.25), radius: 18, y: 8)
+                        .shadow(color: VTheme.coat.opacity(0.25), radius: 18, y: 8)
                     Text("连接你的 V").font(.largeTitle.weight(.bold)).foregroundStyle(VTheme.ink)
                     Text("和飞书里同一个 V：同样的会话、进度卡、审批和问答，换一个更顺手的地方用。")
                         .font(.callout)
@@ -114,7 +114,7 @@ struct OnboardingView: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text("\(number)")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(VTheme.purple)
+                .foregroundStyle(VTheme.coat)
                 .frame(width: 20, height: 20)
                 .background(VTheme.lavender, in: Circle())
             Text(text).font(.footnote).foregroundStyle(VTheme.soft).fixedSize(horizontal: false, vertical: true)
@@ -208,7 +208,7 @@ struct StatusLine: View {
 
     private var color: Color {
         switch status {
-        case .connected: VTheme.purple
+        case .connected: VTheme.coat
         case .demo: VTheme.orange
         case .offline: VTheme.red
         default: VTheme.muted

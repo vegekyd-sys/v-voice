@@ -270,7 +270,7 @@ private struct MediaFileRow: View {
             HStack(spacing: 10) {
                 Image(systemName: media.kind == .audio ? "waveform" : symbol)
                     .font(.title3)
-                    .foregroundStyle(VTheme.purple)
+                    .foregroundStyle(VTheme.coat)
                     .frame(width: 38, height: 38)
                     .background(VTheme.lavender, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {

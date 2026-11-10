@@ -125,7 +125,7 @@ final class ChatListController: UIViewController, UITableViewDelegate {
 
         let bar = ComposerBar(sessionID: sessionID, draft: draft)
             .environment(model)
-            .tint(VTheme.purple)
+            .tint(VTheme.coat)
         composer = UIHostingController(rootView: AnyView(bar))
         composer.safeAreaRegions = []
         composer.sizingOptions = [.intrinsicContentSize]
@@ -225,7 +225,7 @@ final class ChatListController: UIViewController, UITableViewDelegate {
                     guard let self else { return }
                     model.loadEarlier(sessionID)
                 }
-                .tint(VTheme.purple)
+                .tint(VTheme.coat)
             }
             .margins(.all, 0)
             .minSize(width: 0, height: 0)
@@ -239,7 +239,7 @@ final class ChatListController: UIViewController, UITableViewDelegate {
                     quote: { [weak self] in self?.actions.quote($0) },
                     select: { [weak self] in self?.actions.select($0) }))
                 .environment(\.openURL, OpenURLAction { [weak self] url in self?.openURL(url) ?? .systemAction })
-                .tint(VTheme.purple)
+                .tint(VTheme.coat)
         }
         .margins(.all, 0)
         .minSize(width: 0, height: 0)
@@ -552,7 +552,7 @@ final class ChatListController: UIViewController, UITableViewDelegate {
         let title = unseen > 0 ? "\(unseen)" : nil
         if look?.title != title {
             look?.title = title
-            look?.baseForegroundColor = UIColor(unseen > 0 ? VTheme.purple : VTheme.soft)
+            look?.baseForegroundColor = UIColor(unseen > 0 ? VTheme.coat : VTheme.soft)
             look?.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
                 var attributes = attributes
                 attributes.font = UIFont.monospacedDigitSystemFont(ofSize: 13, weight: .semibold)

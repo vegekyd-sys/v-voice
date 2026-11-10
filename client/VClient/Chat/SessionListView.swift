@@ -159,8 +159,8 @@ private struct HomeStatus: View {
         switch status {
         case .connected where working > 0:
             HStack(spacing: 8) {
-                PulseDot(color: VTheme.purple)
-                Text("正在处理 \(working) 个会话").foregroundStyle(VTheme.purple)
+                PulseDot(color: VTheme.coat)
+                Text("正在处理 \(working) 个会话").foregroundStyle(VTheme.coat)
             }
             .font(.subheadline)
         case .connected:
@@ -205,7 +205,7 @@ private struct OwnChatRow: View {
                 HStack(spacing: 6) {
                     Text(session.isWorking ? "正在处理" : line)
                         .font(.subheadline)
-                        .foregroundStyle(session.isWorking ? VTheme.purple : VTheme.soft)
+                        .foregroundStyle(session.isWorking ? VTheme.coat : VTheme.soft)
                         .lineLimit(1)
                     Spacer(minLength: 4)
                     UnreadBadge(count: session.unread)
@@ -224,7 +224,7 @@ private struct BreathingRing: View {
 
     var body: some View {
         Circle()
-            .stroke(VTheme.purple.opacity(0.45), lineWidth: 2)
+            .stroke(VTheme.coat.opacity(0.45), lineWidth: 2)
             .frame(width: size, height: size)
             .scaleEffect(on && !reduceMotion ? 1.18 : 1.06)
             .opacity(on && !reduceMotion ? 0 : 1)
@@ -279,8 +279,8 @@ struct SessionRow: View {
                 }
                 HStack(spacing: 6) {
                     if session.isWorking {
-                        PulseDot(color: VTheme.purple)
-                        Text("正在处理").font(.subheadline).foregroundStyle(VTheme.purple).lineLimit(1)
+                        PulseDot(color: VTheme.coat)
+                        Text("正在处理").font(.subheadline).foregroundStyle(VTheme.coat).lineLimit(1)
                     } else if !session.displayPreview.isEmpty {
                         Text(session.displayPreview)
                             .font(.subheadline)
@@ -331,7 +331,7 @@ struct SessionAvatar: View {
                 // The initial stays underneath until the picture arrives, and if it never does.
                 Text(initial)
                     .font(.system(size: size * 0.4, weight: .medium))
-                    .foregroundStyle(VTheme.purple)
+                    .foregroundStyle(VTheme.coat)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(VTheme.lavender)
                     .overlay {

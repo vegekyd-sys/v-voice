@@ -64,12 +64,12 @@ struct WorkCardView: View {
 
     private var statusStrip: some View {
         let (label, color): (String, Color) = switch work.phase {
-        case .thinking: ("正在思考", VTheme.purple)
-        case .working: ("正在处理", VTheme.purple)
+        case .thinking: ("正在思考", VTheme.coat)
+        case .working: ("正在处理", VTheme.coat)
         case .waiting: ("等你回答", VTheme.orange)
         case .failed(let reason): ("没有完成 · \(reason)", VTheme.red)
         case .aborted: ("已停止", VTheme.muted)
-        case .done: ("已完成", VTheme.green)
+        case .done: ("已完成", VTheme.positive)
         }
         return HStack(spacing: 8) {
             if work.isActive {
@@ -169,7 +169,7 @@ struct WorkCardView: View {
             }
             .buttonStyle(.plain)
             ProgressView(value: Double(done), total: Double(max(work.plan.count, 1)))
-                .tint(VTheme.purple)
+                .tint(VTheme.coat)
                 .scaleEffect(y: 0.6)
             if planOpen {
                 VStack(alignment: .leading, spacing: 7) {
@@ -238,7 +238,7 @@ struct ToolRow: View {
             Group {
                 switch tool.status {
                 case .running: ProgressView().controlSize(.mini)
-                case .done: Image(systemName: "checkmark").foregroundStyle(VTheme.green)
+                case .done: Image(systemName: "checkmark").foregroundStyle(VTheme.positive)
                 case .failed: Image(systemName: "xmark").foregroundStyle(VTheme.red)
                 }
             }
@@ -259,9 +259,9 @@ struct PlanMarker: View {
     var body: some View {
         switch status {
         case .done:
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(VTheme.green).font(.footnote)
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(VTheme.positive).font(.footnote)
         case .running:
-            Image(systemName: "circle.dotted.circle").foregroundStyle(VTheme.purple).font(.footnote)
+            Image(systemName: "circle.dotted.circle").foregroundStyle(VTheme.coat).font(.footnote)
                 .symbolEffect(.rotate, options: .repeating)
         case .pending:
             Image(systemName: "circle").foregroundStyle(VTheme.hairline).font(.footnote)
@@ -280,10 +280,10 @@ struct BackgroundPill: View {
         }
         .fixedSize()
         .font(.caption.weight(.medium))
-        .foregroundStyle(summary.running > 0 ? VTheme.purple : VTheme.muted)
+        .foregroundStyle(summary.running > 0 ? VTheme.coat : VTheme.muted)
         .padding(.horizontal, 9)
         .padding(.vertical, 4)
-        .background((summary.running > 0 ? VTheme.purple : VTheme.muted).opacity(0.1), in: Capsule())
+        .background((summary.running > 0 ? VTheme.coat : VTheme.muted).opacity(0.1), in: Capsule())
     }
 }
 
