@@ -302,8 +302,8 @@ struct VReply: Hashable, Sendable {
     }
 }
 
-/// V's reply laid straight on the page: her words, and while she is still on
-/// it, V herself underneath.
+/// V's reply laid straight on the page: her words, her plan, and while she is
+/// still on it, V herself underneath.
 struct VReplyView: View {
     let reply: VReply
     var live = false
@@ -323,21 +323,22 @@ struct VReplyView: View {
                     size: block.size
                 )
             }
+            if !reply.steps.isEmpty {
+                VStepsView(steps: reply.steps)
+            }
             if live {
                 VPresenceRow(
                     mood: reply.mood ?? .work,
                     label: reply.status ?? (reply.blocks.isEmpty ? "正在处理" : "正在回答"),
                     since: since,
-                    // Her plan is not a checklist on screen; the step she is on
-                    // is simply what she says she is doing.
-                    detail: reply.steps.first { $0.status == .running }?.text ?? reply.background
+                    detail: reply.background
                 )
                 .transition(.opacity)
             } else if !smallPrint.isEmpty {
                 Text(smallPrint.joined(separator: "　"))
                     .font(.footnote)
                     .foregroundStyle(VTheme.muted)
-            } else if reply.blocks.isEmpty {
+            } else if reply.blocks.isEmpty, reply.steps.isEmpty {
                 Text("V 处理完了，没有需要回复的内容。")
                     .font(.subheadline)
                     .foregroundStyle(VTheme.muted)

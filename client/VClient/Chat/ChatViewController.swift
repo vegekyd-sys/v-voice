@@ -699,6 +699,8 @@ final class ChatListController: UIViewController, UITableViewDelegate {
                 body = prose(words, width: room)
                 if !work.media.isEmpty { media += gallery(work.media) + 12 }
                 if work.isActive {
+                    // Plan lines of 18 with 7 between, 12 above the group.
+                    if !work.plan.isEmpty { body += (body > 0 ? 12 : 0) + CGFloat(work.plan.count) * 25 - 7 }
                     body += body > 0 ? 64 : 52
                 } else if case .failed = work.phase {
                     body += body > 0 ? 60 : 48
@@ -712,6 +714,7 @@ final class ChatListController: UIViewController, UITableViewDelegate {
                 // are not shown; while she is on it V herself is underneath.
                 if let reply = VReply(card: card) {
                     body = reply.blocks.reduce(0) { $0 + ($0 > 0 ? 12 : 0) + prose($1.text, width: room) }
+                    if !reply.steps.isEmpty { body += (body > 0 ? 12 : 0) + CGFloat(reply.steps.count) * 25 - 7 }
                     if item.live {
                         body += body > 0 ? 64 : 52
                     } else if !reply.notes.isEmpty || reply.background != nil {

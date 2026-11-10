@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// V's reply from a live run, drawn the way one person answers another: her
-/// words, and while she is still on it, V herself underneath saying in plain
-/// words what she is doing. No commands, no checklists, no run statistics —
-/// those belong to a tool, and this is a conversation.
+/// words, and while she is still on it her plan and V herself underneath,
+/// saying in plain words what she is doing. No commands and no run statistics
+/// — those belong to a tool, and this is a conversation.
 struct WorkCardView: View {
     let work: WorkState
 
@@ -16,6 +16,9 @@ struct WorkCardView: View {
                 MediaGallery(media: work.media)
             }
             if work.isActive {
+                if !work.plan.isEmpty {
+                    VStepsView(steps: work.plan.map { VStep(status: Self.status($0.status), text: $0.text) })
+                }
                 VPresenceRow(mood: mood, label: label, since: work.startedAt, detail: detail)
                     .transition(.opacity)
             } else {
@@ -66,12 +69,16 @@ struct WorkCardView: View {
         return VMood.phrase(forTool: "\(tool.summary) \(tool.name)")
     }
 
-    /// The step of her plan V is on, in her own words; else what is still
-    /// running behind the turn.
-    private var detail: String? {
-        if let step = work.plan.first(where: { $0.status == .running }) {
-            return FeishuMarkdown.plain(step.text)
+    private static func status(_ status: PlanStep.Status) -> VStep.Status {
+        switch status {
+        case .done: .done
+        case .running: .running
+        case .pending: .pending
         }
+    }
+
+    /// What is still running behind the turn.
+    private var detail: String? {
         if let background = work.background, background.running > 0 {
             return background.line.components(separatedBy: " · ").first
         }
