@@ -19,7 +19,7 @@ final class ChatUITests: XCTestCase {
 
     private func launch(
         long: Int? = nil, real: Bool = false, earlierFails: Bool = false,
-        open: String? = nil, say: String? = nil, asCard: Bool = false
+        open: String? = nil, say: String? = nil, asCard: Bool = false, dropFinal: Bool = false
     ) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-demo", "-freshState"]
@@ -29,6 +29,7 @@ final class ChatUITests: XCTestCase {
         if let open { app.launchEnvironment["VCLIENT_OPEN_SESSION"] = open }
         if let say { app.launchEnvironment["VCLIENT_DEMO_SAY"] = say }
         if asCard { app.launchEnvironment["VCLIENT_DEMO_VCARD"] = "1" }
+        if dropFinal { app.launchEnvironment["VCLIENT_DEMO_DROP_FINAL"] = "1" }
         app.launch()
         if open != nil { waitForChat(app) }
         return app
@@ -64,10 +65,9 @@ final class ChatUITests: XCTestCase {
 
     private func composer(_ app: XCUIApplication) -> XCUIElement { app.textViews["composer"] }
 
-    /// The composer's own send button. The keyboard's Return key is also a button called 发送.
-    private func sendButton(_ app: XCUIApplication) -> XCUIElement {
-        app.buttons.matching(NSPredicate(format: "label == %@ AND identifier != %@", "发送", "Send")).firstMatch
-    }
+    /// The button beside the field: 发送, or 停止 while V works and nothing is typed.
+    /// (The keyboard's Return key is also a button called 发送.)
+    private func sendButton(_ app: XCUIApplication) -> XCUIElement { app.buttons["composerSend"] }
 
     private func keyboardIsUp(_ app: XCUIApplication) -> Bool {
         let keyboard = app.keyboards.firstMatch
@@ -171,6 +171,102 @@ final class ChatUITests: XCTestCase {
         XCTAssertLessThanOrEqual(tail.frame.maxY, top + 0.5, "\(what): the last line (\(tail.label)) is under the composer", file: file, line: line)
         XCTAssertGreaterThan(tail.frame.maxY, top - 48, "\(what): the last line (\(tail.label)) is \(top - tail.frame.maxY) pt above the composer, the list is not at its end", file: file, line: line)
     }
+
+    // MARK: What the screen shows
+
+    /// The screen as pixels. Asking the app where its messages are is not a
+    /// harmless question after a page of history has arrived: to answer, the table
+    /// builds and measures every row, the ones above the screen change from their
+    /// estimated height to their real one, and the list moves by the difference.
+    /// Nobody reading the chat causes that. A picture of the screen asks the app nothing.
+    private struct Picture {
+        let width: Int
+        let height: Int
+        /// Pixels per point.
+        let scale: CGFloat
+        let gray: [UInt8]
+
+        /// Each pixel row between two heights (points) as sums of 16 pixels at a time, left to right.
+        func stripes(_ ys: ClosedRange<CGFloat>, columns xs: ClosedRange<CGFloat>) -> (first: Int, count: Int, each: Int, sums: [Int32]) {
+            let top = max(0, Int(ys.lowerBound * scale)), bottom = min(height, Int(ys.upperBound * scale))
+            let left = max(0, Int(xs.lowerBound * scale)), each = max(1, (min(width, Int(xs.upperBound * scale)) - left) / 16)
+            var sums = [Int32](repeating: 0, count: max(0, bottom - top) * each)
+            gray.withUnsafeBufferPointer { pixels in
+                for row in top..<max(top, bottom) {
+                    for stripe in 0..<each {
+                        var sum: Int32 = 0
+                        let start = row * width + left + stripe * 16
+                        for pixel in start..<start + 16 { sum += Int32(pixels[pixel]) }
+                        sums[(row - top) * each + stripe] = sum
+                    }
+                }
+            }
+            return (top, max(0, bottom - top), each, sums)
+        }
+    }
+
+    private func picture() -> Picture {
+        let image = XCUIScreen.main.screenshot().image
+        guard let source = image.cgImage else { XCTFail("no picture of the screen"); return Picture(width: 0, height: 0, scale: 1, gray: []) }
+        let width = source.width, height = source.height
+        var gray = [UInt8](repeating: 0, count: width * height)
+        gray.withUnsafeMutableBytes { bytes in
+            let context = CGContext(data: bytes.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
+                                    space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
+            context?.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        return Picture(width: width, height: height, scale: CGFloat(height) / image.size.height, gray: gray)
+    }
+
+    /// How far down the screen (points) what was between two heights in one picture
+    /// is in a later one, looking as far as `reach` either side of `near`.
+    /// - Returns: the distance, and how unlike the best match is: 0 is the same pixels,
+    ///   the same text a fraction of a pixel off is about 2, other text is 14 and more.
+    private func movement(of band: ClosedRange<CGFloat>, from before: Picture, to after: Picture, columns: ClosedRange<CGFloat>,
+                          near: CGFloat = 0, reach: CGFloat) -> (points: CGFloat, unlike: Double) {
+        let was = before.stripes(band, columns: columns)
+        let now = after.stripes(0...CGFloat(after.height), columns: columns)
+        guard was.count > 0, was.each == now.each else { return (0, .infinity) }
+        func unlike(_ shift: Int, every step: Int) -> Double {
+            guard was.first + shift >= 0, was.first + shift + was.count <= now.count else { return .infinity }
+            var total: Int64 = 0
+            var rows = 0
+            was.sums.withUnsafeBufferPointer { a in
+                now.sums.withUnsafeBufferPointer { b in
+                    var row = 0
+                    while row < was.count {
+                        let here = row * was.each, there = (was.first + shift + row) * now.each
+                        for stripe in 0..<was.each { total += Int64(abs(a[here + stripe] - b[there + stripe])) }
+                        rows += 1
+                        row += step
+                    }
+                }
+            }
+            return Double(total) / Double(rows * was.each * 16)
+        }
+        let centre = Int(near * before.scale), most = Int(reach * before.scale)
+        var best = (shift: centre, unlike: Double.infinity)
+        for shift in stride(from: centre - most, through: centre + most, by: 2) {
+            let score = unlike(shift, every: 3)
+            if score < best.unlike { best = (shift, score) }
+        }
+        for shift in best.shift - 2...best.shift + 2 {
+            let score = unlike(shift, every: 1)
+            if score < best.unlike { best = (shift, score) }
+        }
+        return (CGFloat(best.shift) / before.scale, unlike(best.shift, every: 1))
+    }
+
+    /// As unlike as a match may be and still be the same messages.
+    private static let unlike = 6.0
+
+    /// The same pixels between two heights.
+    private func same(_ band: ClosedRange<CGFloat>, _ one: Picture, _ other: Picture, columns: ClosedRange<CGFloat>) -> Bool {
+        one.stripes(band, columns: columns).sums == other.stripes(band, columns: columns).sums
+    }
+
+    /// The columns messages are drawn in, without the scroll indicator and the button that jumps to the newest.
+    private func messageColumns(_ stage: CGRect) -> ClosedRange<CGFloat> { 12...(stage.maxX - 90) }
 
     // MARK: Waiting
 
@@ -418,53 +514,61 @@ final class ChatUITests: XCTestCase {
     /// A page arrives about a second after the reader gets near the top, which is
     /// sooner than a UI test gets its next look at the screen after a gesture. So the
     /// finger stays down: the list is dragged a fixed distance and held there while
-    /// the page lands, and the messages have to end up exactly as far along as they
-    /// do after the same drag with nothing arriving.
+    /// the page lands (the list holds a page back until the finger lifts), and the
+    /// messages have to end up as far along as they do after the same drag with
+    /// nothing arriving, with one page more above them and not several. Where they
+    /// are is read off pictures of the screen.
+    ///
+    /// Not to the point, as the check at rest is: a list follows a finger from where
+    /// the drag is recognised, and on a busy simulator that is a few points further
+    /// along one time than another (up to 13 pt was seen). What this is here to catch
+    /// is larger: the list leaping to the page that arrived, which it did when rows
+    /// went in under a moving finger, and every page before it arriving in turn.
     func testEarlierMessagesArriveUnderAFingerWithoutMovingTheMessages() {
         let app = openLongChat()
         let stage = stage(app)
+        let columns = messageColumns(stage)
         let distance: CGFloat = 400
+        // What is here before a drag is still on screen after it, clear of the bars' edges.
+        let band = (stage.minY + 40)...(stage.minY + 220)
         /// How far the messages went under a drag: with nothing arriving, and with earlier pages arriving.
         var plain: [CGFloat] = []
-        var arrival: (moved: CGFloat, screens: Int)?
-        for step in 0..<30 where arrival == nil || plain.isEmpty {
+        var arrivals: [(moved: CGFloat, screens: Int)] = []
+        for step in 0..<30 where arrivals.isEmpty || plain.isEmpty {
             let before = look(app)
             // Far from the oldest loaded message: get nearer quickly. A page is asked for within about a screen of it.
-            if arrival == nil, before.screensAbove > 4 {
+            if arrivals.isEmpty, before.screensAbove > 4 {
                 list(app).swipeDown(velocity: before.screensAbove > 9 ? 6000 : 2000)
                 continue
             }
             // Near it: drag and hold, long enough for a page asked for on the way to land.
+            let was = picture()
             pullDown(app, by: distance, hold: 2.4)
+            // The page goes in when the finger lifts.
+            usleep(600_000)
+            let now = picture()
+            let moved = movement(of: band, from: was, to: now, columns: columns, near: distance, reach: 150)
             let after = look(app)
-            let moved = shifts(from: before.lines, to: after.lines, stage)
-            print("history: step \(step), messages went \(moved) pt; \(before.screens) screens at \(before.percent)% -> \(after.screens) at \(after.percent)%")
+            print("history: step \(step), messages went \(moved.points) pt (unlike \(moved.unlike)); \(before.screens) screens at \(before.percent)% -> \(after.screens) at \(after.percent)%")
             // A page is several screens of messages; rows measured as they come into view change the count by one at most.
             let arrived = after.screens >= before.screens + 2
-            if arrived || moved.isEmpty {
-                func numbered(_ look: Look) -> [String] {
-                    look.lines.filter { $0.label.hasPrefix("第 ") && !$0.frame.isEmpty }.map { "\($0.label.prefix(7)) \(Int($0.frame.minY))...\(Int($0.frame.maxY))" }
-                }
-                print("history: before the drag", numbered(before), "after it", numbered(after))
-            }
             if arrived {
-                guard !moved.isEmpty else {
-                    return XCTFail("none of the messages on screen before the drag is on it after \(after.screens - before.screens) screens of earlier messages arrived: the list jumped")
-                }
-                arrival = (moved[moved.count / 2], after.screens - before.screens)
-            } else if !moved.isEmpty {
-                plain.append(moved[moved.count / 2])
+                snap(app, "earlier-arrived")
+                XCTAssertLessThan(moved.unlike, Self.unlike, "the messages that were under the finger are not where a drag of \(distance) pt leaves them, give or take 150 pt, after \(after.screens - before.screens) screens of earlier messages arrived: the list jumped")
+                XCTAssertLessThanOrEqual(after.screens - before.screens, 9, "one page of earlier messages at a time, not \(after.screens - before.screens) screens of them")
+                arrivals.append((moved.points, after.screens - before.screens))
+            } else if moved.unlike < Self.unlike {
+                plain.append(moved.points)
             }
         }
-        snap(app, "earlier-arrived")
-        guard let arrival else {
+        guard let arrival = arrivals.first else {
             let end = look(app)
             return XCTFail("no earlier page arrived under a held drag: the list is \(end.screens) screens long, at \(end.percent)%")
         }
         guard !plain.isEmpty else { return XCTFail("no drag without an arriving page to compare with") }
         let usual = plain.sorted()[plain.count / 2]
         XCTAssertEqual(usual, distance, accuracy: 20, "a slow drag moves the list with the finger")
-        XCTAssertEqual(arrival.moved, usual, accuracy: 3,
+        XCTAssertEqual(arrival.moved, usual, accuracy: 20,
                        "the messages ended \(arrival.moved - usual) pt from where the finger left them when \(arrival.screens) screens of earlier messages arrived above")
     }
 
@@ -523,25 +627,34 @@ final class ChatUITests: XCTestCase {
 
     /// D2: the message being read stays where it is when an earlier page arrives above it.
     /// Measured with no finger on the list: at the top after a failed read, where a tap
-    /// on the retry line is all that happens before the page lands.
+    /// on the retry line is all that happens before the page lands. Where the messages
+    /// are is read off pictures of the screen, before and after.
     func testEarlierMessagesArriveWithoutMovingTheMessageBeingRead() {
         let (app, stage, oldest) = openLongChatWhereEarlierFailed()
-        let before = look(app)
+        let columns = messageColumns(stage)
+        // Under the oldest message, whose time line goes when there are older ones; clear of the composer's fade.
+        let band = (stage.minY + 140)...(stage.maxY - 70)
+        let top = stage.minY...(stage.minY + 100)
+        let before = picture()
         app.buttons["earlierRetry"].tap()
-        XCTAssertTrue(until(10) { questions(lines(app)).contains { $0.turn < oldest } }, "after the tap the earlier messages load")
-        // A moment more: a row that changes height does it over a few frames.
-        var last = look(app)
-        until(3) {
-            let now = look(app)
-            defer { last = now }
-            let moved = shifts(from: last.lines, to: now.lines, stage)
-            return !moved.isEmpty && moved.allSatisfy { abs($0) < 0.5 }
-        }
+        // While it loads the row at the top turns; when the page is in, the top of the screen is other messages, and still.
+        var last = picture()
+        var still = 0
+        XCTAssertTrue(until(12) {
+            usleep(250_000)
+            let now = picture()
+            still = same(top, now, last, columns: columns) && !same(top, now, before, columns: columns) ? still + 1 : 0
+            last = now
+            return still >= 3
+        }, "after the tap the top of the screen changes to the earlier messages and comes to rest")
+        let moved = movement(of: band, from: before, to: last, columns: columns, reach: 150)
         snap(app, "earlier-arrived-at-rest")
-        let moved = shifts(from: before.lines, to: last.lines, stage)
-        print("history: at rest, messages went \(moved) pt when turns before \(oldest) arrived")
-        guard let most = moved.max(by: { abs($0) < abs($1) }) else { return XCTFail("none of the messages that were on screen is still there") }
-        XCTAssertEqual(most, 0, accuracy: 3, "the messages on screen moved \(most) pt when the earlier messages arrived above them")
+        print("history: at rest, messages went \(moved.points) pt (unlike \(moved.unlike)) when turns before \(oldest) arrived")
+        XCTAssertLessThan(moved.unlike, Self.unlike, "the messages that were on screen are not within 150 pt of where they were: the list jumped")
+        XCTAssertEqual(moved.points, 0, accuracy: 3, "the messages on screen moved \(moved.points) pt when the earlier messages arrived above them")
+        // Only now is the app asked: it was the earlier page that changed the top of the screen.
+        XCTAssertTrue(questions(lines(app)).contains { $0.turn < oldest }, "the earlier messages are loaded")
+        XCTAssertFalse(app.buttons["earlierRetry"].exists, "the retry line is gone")
     }
 
     /// D4: reading further up is not interrupted, and one tap goes back to the newest.
@@ -585,7 +698,7 @@ final class ChatUITests: XCTestCase {
         XCTAssertTrue(presence.waitForExistence(timeout: 5), "V shows she is on it")
         XCTAssertTrue(until(3) { isOnStage(presence, app) }, "her presence line is on screen, above the composer")
         XCTAssertTrue(presence.label.hasPrefix("V "), "the line says what V is doing: \(presence.label)")
-        XCTAssertTrue(app.buttons["停止"].exists, "while V works the turn can be stopped")
+        XCTAssertEqual(sendButton(app).label, "停止", "while V works the turn can be stopped")
         snap(app, "working")
 
         let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: presence)
@@ -595,8 +708,66 @@ final class ChatUITests: XCTestCase {
         snap(app, "done")
         XCTAssertTrue(isOnStage(line(app, "这是原型客户端里的模拟回复"), app), "the body of the answer is on screen")
         XCTAssertFalse(presence.exists, "the presence line does not come back")
-        XCTAssertTrue(until(3) { !app.buttons["停止"].exists }, "nothing left to stop")
+        XCTAssertTrue(until(3) { sendButton(app).label == "发送" }, "nothing left to stop")
         assertAtTheEnd(app, "after the reply")
+    }
+
+    /// The demo's reply whose end never reaches the phone (`VCLIENT_DEMO_DROP_FINAL=1`):
+    /// written out in full and still open, with 停止 beside the field.
+    /// - Returns: when it was seen to be all there. Three seconds after it really was,
+    ///   the demo reads V's transcript again, as reconnecting does.
+    private func openChatWhereTheEndOfTheReplyIsMissed() -> (app: XCUIApplication, written: Date) {
+        let app = launch(open: "dm", say: "ping", dropFinal: true)
+        XCTAssertTrue(list(app).staticTexts["ping"].waitForExistence(timeout: 15), "the message was sent")
+        XCTAssertTrue(presence(app).waitForExistence(timeout: 5), "V shows she is on it")
+        // Looked for as fast as the screen can be read: what follows is counted from here.
+        let last = line(app, "完成后工作区收起")
+        XCTAssertTrue(until(20) { last.exists }, "the answer is written out to its last line")
+        return (app, Date())
+    }
+
+    private func assertTheReplyIsFinished(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(until(3) { sendButton(app).label == "发送" }, "停止 turned back into 发送", file: file, line: line)
+        XCTAssertNotNil(rest(self.line(app, "收到：ping"), app, within: 4), "the answer is still on screen", file: file, line: line)
+        XCTAssertTrue(isOnStage(self.line(app, "完成后工作区收起"), app), "down to its last line", file: file, line: line)
+        XCTAssertEqual(list(app).staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "收到：ping")).count, 1, "the answer is there once", file: file, line: line)
+        XCTAssertEqual(list(app).staticTexts.matching(NSPredicate(format: "label == %@", "ping")).count, 1, "and so is the question", file: file, line: line)
+        XCTAssertFalse(presence(app).exists, "V is no longer shown working", file: file, line: line)
+        assertAtTheEnd(app, "after the reply", file: file, line: line)
+    }
+
+    /// C3: the end of a reply was missed (the phone was locked while V finished). The
+    /// reply stays open until V's transcript is read again, and then it is finished.
+    func testAReplyWhoseEndWasMissedSettlesFromHistory() {
+        let (app, _) = openChatWhereTheEndOfTheReplyIsMissed()
+        XCTAssertTrue(presence(app).exists, "with its end missed the reply is still open")
+        XCTAssertEqual(sendButton(app).label, "停止", "and can still be stopped")
+        snap(app, "end-missed")
+
+        let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: presence(app))
+        wait(for: [closed], timeout: 12)
+        snap(app, "settled")
+        assertTheReplyIsFinished(app)
+    }
+
+    /// C3: before that read, 停止 closes the open reply at once, and the answer V wrote is what is left.
+    func testStopSettlesAReplyWhoseEndWasMissed() throws {
+        let (app, written) = openChatWhereTheEndOfTheReplyIsMissed()
+        let stop = sendButton(app)
+        XCTAssertEqual(stop.label, "停止", "with its end missed the reply can still be stopped")
+        stop.tap()
+        let tapped = Date().timeIntervalSince(written)
+        let presence = presence(app)
+        XCTAssertTrue(until(6) { !presence.exists }, "the reply is closed")
+        let closed = Date().timeIntervalSince(written)
+        print("stop: tapped \(tapped) s after the answer was seen written out, closed \(closed) s after it")
+        snap(app, "stopped")
+        // Left alone the reply closes too, a little over three seconds after it was written
+        // (three, and the time the read takes). A tap that came as late as that proves nothing.
+        try XCTSkipIf(tapped > 2.2, "the tap on 停止 came \(tapped) s after the answer was written, too late to tell it from the transcript being read again")
+        XCTAssertLessThan(closed, 3, "停止 closes the reply at once, before the transcript is read again by itself")
+        assertTheReplyIsFinished(app)
+        XCTAssertFalse(line(app, "这一轮已停止").exists, "V had finished: there was nothing to stop, and the reply does not say it was stopped")
     }
 
     // MARK: Performance

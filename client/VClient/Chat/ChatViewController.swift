@@ -81,6 +81,8 @@ final class ChatListController: UIViewController, UITableViewDelegate {
     private var glideSpeed: CGFloat = 0
     private var glideTime: CFTimeInterval = 0
     private var askedForEarlier = false
+    /// The chat as it is to be shown once the finger is off the list.
+    private var held: (session: ChatSession, loadingEarlier: Bool, earlierFailed: Bool)?
     private var laidOutWidth: CGFloat = 0
 
     init(model: AppModel, sessionID: String, draft: ChatDraft) {
@@ -329,6 +331,22 @@ final class ChatListController: UIViewController, UITableViewDelegate {
         }
         let newEarlier: Earlier = !session.hasMoreHistory ? .none : earlierFailed ? .failed : loadingEarlier ? .loading : .idle
 
+        // Rows do not go in above a finger that is on the list. A drag puts the
+        // list where the finger says, counted from where the touch began: a
+        // place put back under it is undone by the finger's next move, the
+        // reader is suddenly looking at the page that just arrived, and being
+        // near its top, that asks for the page before it as well. The chat as it
+        // is by then is shown when the finger lifts (a list gliding on after
+        // that keeps a place put back under it); until then the row above the
+        // oldest message goes on saying that it is loading.
+        let above = order.first.map { newOrder.first != $0 && newRows[$0] != nil } ?? false
+        if placed, table.isTracking, above || held != nil {
+            if held == nil { showHeldWhenLifted() }
+            held = (session, loadingEarlier, earlierFailed)
+            return
+        }
+        held = nil
+
         let changed = newOrder.filter { id in rows[id].map { $0 != newRows[id] } ?? false }
         let orderChanged = newOrder != order || (newEarlier == .none) != (earlier == .none)
         let earlierChanged = newEarlier != earlier
@@ -356,8 +374,23 @@ final class ChatListController: UIViewController, UITableViewDelegate {
                 applySnapshot()
                 reconfigure(changed)
                 if earlierChanged { reconfigure([Self.earlierID]) }
+                // A row that changed with this (the one that was the oldest has
+                // lost the time above it) is as tall as it will be before the
+                // reader's place is put back. Off screen, the table keeps the
+                // height it had until the next time it asks, and moves the list
+                // then, with nobody to put the place back.
+                if !changed.isEmpty { table.performBatchUpdates(nil) }
                 table.layoutIfNeeded()
-                if let anchor { restore(anchor) }
+                if let anchor {
+                    // The rows above the place that are now in view are drawn,
+                    // and measured, only once the list is there, which moves the
+                    // place again. So this repeats until it holds.
+                    for _ in 0..<6 {
+                        restore(anchor)
+                        table.layoutIfNeeded()
+                        guard let now = place(of: anchor.id), abs(now.bottom - anchor.bottom) > 0.05 else { break }
+                    }
+                }
             }
             applying = false
         } else {
@@ -383,6 +416,22 @@ final class ChatListController: UIViewController, UITableViewDelegate {
         }
         updateJump()
         loadEarlierIfNear()
+    }
+
+    /// Shows the chat that waited for the finger to lift.
+    private func showHeld() {
+        guard let held, !table.isTracking else { return }
+        self.held = nil
+        show(held.session, loadingEarlier: held.loadingEarlier, earlierFailed: held.earlierFailed)
+    }
+
+    /// A touch that never became a drag ends without a word to the delegate, so
+    /// the lift is also looked for.
+    private func showHeldWhenLifted() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self, held != nil else { return }
+            if table.isTracking { showHeldWhenLifted() } else { showHeld() }
+        }
     }
 
     // MARK: Position
@@ -585,7 +634,10 @@ final class ChatListController: UIViewController, UITableViewDelegate {
     }
 
     private func loadEarlierIfNear() {
-        guard placed, earlier == .idle, historyLoaded, !askedForEarlier else { return }
+        // Not while rows are going in: the table reports scrolling in the middle
+        // of that, with the list still where it was before the rows above it
+        // arrived, which reads as "near the top" and asks for the next page too.
+        guard placed, !applying, earlier == .idle, historyLoaded, !askedForEarlier else { return }
         guard table.contentOffset.y - minOffsetY < 700 else { return }
         askedForEarlier = true
         // Not from inside a view update.
@@ -618,6 +670,11 @@ final class ChatListController: UIViewController, UITableViewDelegate {
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         stopGlide()
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        // The list still counts as touched in here.
+        DispatchQueue.main.async { [weak self] in self?.showHeld() }
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {

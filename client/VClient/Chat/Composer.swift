@@ -172,6 +172,7 @@ struct Composer: View {
                     .buttonStyle(.plain)
                     .padding(5)
                     .accessibilityLabel(trailing == .stop ? "停止" : "发送")
+                    .accessibilityIdentifier("composerSend")
                 }
                 .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             }
