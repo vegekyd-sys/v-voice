@@ -29,12 +29,12 @@ struct ChatScreen: View {
                 .quickLookPreview($filePreview)
                 .sheet(item: $markdownFile) { MarkdownFileSheet(file: $0) }
                 .sheet(item: Binding(get: { selecting.map(SelectableText.init) }, set: { selecting = $0?.text })) { SelectableTextSheet(text: $0.text) }
-                .navigationTitle(session.title)
+                .navigationTitle(Self.title(session, own: model.vappSessionID))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .principal) {
                         VStack(spacing: 1) {
-                            Text(session.title).font(.headline).foregroundStyle(VTheme.ink).lineLimit(1)
+                            Text(Self.title(session, own: model.vappSessionID)).font(.headline).foregroundStyle(VTheme.ink).lineLimit(1)
                             if session.isWorking {
                                 Text("V 正在处理").font(.caption2).foregroundStyle(VTheme.dusk)
                             } else if let channel = Self.channelName(session.channel) {
@@ -49,6 +49,12 @@ struct ChatScreen: View {
 
     /// Where this chat lives, without whatever else the channel line carries
     /// ("飞书群 · 6 人" is "飞书群" here).
+    /// Your own chat with V is simply "V". The server labels it per device
+    /// ("V · iPhone") to tell phones apart, which means nothing inside one.
+    private static func title(_ session: ChatSession, own: String?) -> String {
+        session.id == own ? "V" : session.title
+    }
+
     private static func channelName(_ channel: String?) -> String? {
         guard let name = channel?.components(separatedBy: " · ").first?.trimmingCharacters(in: .whitespaces), !name.isEmpty else { return nil }
         return name

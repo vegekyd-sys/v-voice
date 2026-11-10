@@ -37,6 +37,27 @@ enum VMood: String, Hashable, Sendable, CaseIterable {
         if has("图片", "视频", "发送", "image", "video", "send") { return .show }
         return .work
     }
+
+    /// What V is doing, said the way a person would say it. Tool names and
+    /// commands never reach the screen.
+    static func phrase(forTool label: String) -> String {
+        let text = label.lowercased()
+        func has(_ words: String...) -> Bool { words.contains { text.contains($0) } }
+        if has("图片", "image") { return "正在画图" }
+        if has("视频", "video") { return "正在做视频" }
+        if has("浏览器", "电脑", "browser", "computer") { return "正在操作电脑" }
+        if has("网页", "web") { return "正在查资料" }
+        if has("记忆", "memory") { return "正在回忆" }
+        if has("搜索", "search", "fetch") { return "正在查资料" }
+        if has("读取", "read") { return "正在看资料" }
+        if has("定时", "cron", "schedule") { return "正在安排时间" }
+        if has("子 agent", "spawn", "subagent") { return "正在找帮手" }
+        if has("提问", "凭据", "ask", "question") { return "等你回答" }
+        if has("发送", "send") { return "正在发消息" }
+        if has("修改", "edit", "write") { return "正在动手改" }
+        if has("命令", "exec", "bash", "shell") { return "正在动手处理" }
+        return "正在处理"
+    }
 }
 
 /// V herself, cut square on the lavender she is always drawn against.
@@ -187,8 +208,11 @@ struct VReply: Hashable, Sendable {
     var status: String?
     /// "后台 2 项进行中", without the breakdown.
     var background: String?
-    /// Finished small print, split where the card used " · ".
+    /// Small print worth saying, such as "这一轮已停止。".
     var notes: [String] = []
+    /// Run statistics ("用时 42 秒", "6 个操作", the model). Read but not shown:
+    /// nobody ends a chat message with how long it took them to write it.
+    var stats: [String] = []
 
     /// `nil` when the card is anything richer than text: a header, buttons,
     /// forms, pictures, columns. Those keep their frame.
@@ -222,7 +246,7 @@ struct VReply: Hashable, Sendable {
             status = rest.isEmpty ? "正在思考" : rest
         case 0x1F6E0: // 🛠️
             mood = VMood.forTool(rest)
-            status = rest.isEmpty ? "正在处理" : (rest.hasPrefix("正在") ? rest : "正在\(rest)")
+            status = VMood.phrase(forTool: rest)
         case 0x2753: // ❓
             mood = .ask
             status = "等你回答"
@@ -237,7 +261,11 @@ struct VReply: Hashable, Sendable {
                 .components(separatedBy: " · ")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
-            notes.append(contentsOf: parts)
+            if first.value == 0x2611 || line.hasPrefix("用时") {
+                stats.append(contentsOf: parts)
+            } else {
+                notes.append(contentsOf: parts)
+            }
         }
     }
 
@@ -274,8 +302,8 @@ struct VReply: Hashable, Sendable {
     }
 }
 
-/// V's reply laid straight on the page: her words, her plan, and while she is
-/// still on it, V herself underneath.
+/// V's reply laid straight on the page: her words, and while she is still on
+/// it, V herself underneath.
 struct VReplyView: View {
     let reply: VReply
     var live = false
@@ -295,22 +323,21 @@ struct VReplyView: View {
                     size: block.size
                 )
             }
-            if !reply.steps.isEmpty {
-                VStepsView(steps: reply.steps)
-            }
             if live {
                 VPresenceRow(
                     mood: reply.mood ?? .work,
                     label: reply.status ?? (reply.blocks.isEmpty ? "正在处理" : "正在回答"),
                     since: since,
-                    detail: reply.background
+                    // Her plan is not a checklist on screen; the step she is on
+                    // is simply what she says she is doing.
+                    detail: reply.steps.first { $0.status == .running }?.text ?? reply.background
                 )
                 .transition(.opacity)
             } else if !smallPrint.isEmpty {
                 Text(smallPrint.joined(separator: "　"))
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(VTheme.muted)
-            } else if reply.blocks.isEmpty, reply.steps.isEmpty {
+            } else if reply.blocks.isEmpty {
                 Text("V 处理完了，没有需要回复的内容。")
                     .font(.subheadline)
                     .foregroundStyle(VTheme.muted)

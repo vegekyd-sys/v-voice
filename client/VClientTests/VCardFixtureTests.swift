@@ -86,7 +86,7 @@ final class VCardFixtureTests: XCTestCase {
             VStep(status: .pending, text: "写成报告"),
         ])
         XCTAssertEqual(reply.mood, .work)
-        XCTAssertEqual(reply.status, "正在运行命令")
+        XCTAssertEqual(reply.status, "正在动手处理")
         XCTAssertEqual(reply.background, "后台 2 项进行中")
         XCTAssertTrue(reply.notes.isEmpty)
     }
@@ -105,11 +105,21 @@ final class VCardFixtureTests: XCTestCase {
         XCTAssertEqual(reply.status, "等你回答")
     }
 
-    func testAFinishedCardLeavesWordsAndSmallPrintWithoutMiddots() throws {
+    func testAFinishedCardLeavesOnlyHerWords() throws {
         let reply = try XCTUnwrap(VReply(card: card("work-done")))
         XCTAssertEqual(reply.blocks.count, 1)
         XCTAssertNil(reply.mood)
-        XCTAssertEqual(reply.notes, ["后台任务已结束", "用时 42 秒", "6 个操作", "DeepSeek flash"])
+        // Run statistics are read but kept off the screen.
+        XCTAssertTrue(reply.notes.isEmpty)
+        XCTAssertEqual(reply.stats, ["后台任务已结束", "用时 42 秒", "6 个操作", "DeepSeek flash"])
+    }
+
+    func testToolsAreSaidInPlainWordsNeverAsCommands() {
+        XCTAssertEqual(VMood.phrase(forTool: "执行命令 /bin/bash -lc 'cd /tmp && curl …' exec"), "正在动手处理")
+        XCTAssertEqual(VMood.phrase(forTool: "搜索网页"), "正在查资料")
+        XCTAssertEqual(VMood.phrase(forTool: "memory_search"), "正在回忆")
+        XCTAssertEqual(VMood.phrase(forTool: "生成图片"), "正在画图")
+        XCTAssertEqual(VMood.phrase(forTool: "some_new_tool"), "正在处理")
     }
 
     func testAStoppedCardIsOneQuietLine() throws {

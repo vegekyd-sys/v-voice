@@ -33,10 +33,10 @@ enum ConnectionStatus: Equatable {
 
     var label: String {
         switch self {
-        case .demo: "示例数据 · 未连接 V"
-        case .connecting(let host): "正在连接 \(host)"
+        case .demo: "示例数据，没有连接 V"
+        case .connecting: "正在连接 V…"
         case .awaitingApproval: "等待批准这台设备"
-        case .connected(let host): "已连接 · \(host)"
+        case .connected: "已连接"
         case .offline(let reason): reason
         }
     }

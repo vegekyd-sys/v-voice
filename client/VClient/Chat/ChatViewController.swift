@@ -693,28 +693,35 @@ final class ChatListController: UIViewController, UITableViewDelegate {
                 body = 32 + framed(card.elements, width: room - 32)
                 if let header = card.header { body += header.subtitle == nil ? 35 : 53 }
             case .reply(let work):
-                body = prose(work.visibleAnswer, width: room)
+                // Her words (the answer, or before it starts her commentary),
+                // then V herself at 52 while she works, 12 under the words.
+                let words = !work.visibleAnswer.isEmpty ? work.visibleAnswer : (work.isActive ? work.commentary ?? "" : "")
+                body = prose(words, width: room)
                 if !work.media.isEmpty { media += gallery(work.media) + 12 }
                 if work.isActive {
-                    if let commentary = work.commentary { body += 12 + plain(commentary, width: room, glyph: 15, first: 18, next: 20) }
-                    // Plan lines of 18 with 7 between; the last three tools, and
-                    // a line saying how many came before; then V herself at 52.
-                    // Each group has 12 above it.
-                    if !work.plan.isEmpty { body += 5 + CGFloat(work.plan.count) * 25 }
-                    let finished = work.tools.count - (work.currentTool == nil ? 0 : 1)
-                    if finished > 0 { body += 6 + CGFloat(min(finished, 4)) * 24 }
                     body += body > 0 ? 64 : 52
                 } else if case .failed = work.phase {
-                    body += 76
+                    body += body > 0 ? 60 : 48
+                } else if case .aborted = work.phase {
+                    body += body > 0 ? 28 : 18
+                } else if body == 0, media == 0 {
+                    body = 20
+                }
+            case .card(let card):
+                // V's own card, drawn as words on the page. Its run statistics
+                // are not shown; while she is on it V herself is underneath.
+                if let reply = VReply(card: card) {
+                    body = reply.blocks.reduce(0) { $0 + ($0 > 0 ? 12 : 0) + prose($1.text, width: room) }
+                    if item.live {
+                        body += body > 0 ? 64 : 52
+                    } else if !reply.notes.isEmpty || reply.background != nil {
+                        body += body > 0 ? 28 : 18
+                    }
                 } else {
-                    // One line of small print under a finished reply.
-                    body += body > 0 || media > 0 ? 27 : 20
+                    body = prose(item.plainText, width: room)
                 }
             default:
-                // V's own card, or plain text. Its small print is the last line
-                // of the text; while she is on it that line is V herself instead.
                 body = prose(item.plainText, width: room)
-                if item.live { body += 40 }
             }
             return height + min(1600, max(20, body)) + media
         }
