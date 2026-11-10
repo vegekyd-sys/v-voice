@@ -4,6 +4,8 @@
 
 负责阵列麦克风桥、单 WebView 前台服务、跨应用浮层、遥控焦点及屏幕关闭清理。共享页面在 `../../lab/gpt-live-h5`，本地 fixture 为 `../../scripts/candidate/tv-island.mjs`。首页由独立 family-tv 仓库维护。
 
+麦克风键与小爱声唤醒分流的实验条件、模拟器结果和原厂固件限制见[系统集成说明](firmware/xiaomi/README.md)。
+
 ## 本地构建
 
 JDK 17/21、Android SDK 34：
