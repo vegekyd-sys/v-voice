@@ -11,7 +11,7 @@ test('the lead picture of the best match is fetched from Wikimedia and cached', 
   const calls = [];
   const finder = createPhotoFinder({fetchImpl: async (url, init) => {
     calls.push({url, agent: init.headers['user-agent']});
-    return url.includes('api.php') ? json(pages({title: '无图条目', index: 1}, {title: '艾菲尔铁塔', index: 2, thumbnail: {source: thumb}})) : image(new Uint8Array([1, 2, 3]).buffer);
+    return url.includes('api.php') ? json(pages({title: '别的条目', index: 2, thumbnail: {source: 'https://upload.wikimedia.org/other.jpg'}}, {title: '艾菲尔铁塔', index: 1, thumbnail: {source: thumb}})) : image(new Uint8Array([1, 2, 3]).buffer);
   }});
   const found = await finder.find('  埃菲尔  铁塔 ');
   assert.deepEqual([found.title, found.type, found.source, [...found.bytes]], ['艾菲尔铁塔', 'image/jpeg', '维基百科', [1, 2, 3]]);
@@ -38,6 +38,8 @@ test('nothing in Chinese falls back to English; unsafe or unusable pictures are 
   assert.equal(await refuse(thumb, image(new Uint8Array(4).buffer, 'image/svg+xml')), null, 'raster images only');
   assert.equal(await refuse(thumb, image(new Uint8Array(800000).buffer)), null, 'too large');
   assert.equal(await createPhotoFinder().find('   '), null);
+  const second = createPhotoFinder({languages: ['zh'], fetchImpl: async url => url.includes('api.php') ? json(pages({title: '噴火龍', index: 1}, {title: '火龙果', index: 3, thumbnail: {source: thumb}})) : image(new Uint8Array(4).buffer)});
+  assert.equal(await second.find('喷火龙'), null, 'a lower-ranked page with a picture is not the thing asked for');
 });
 
 test('a failing source yields no picture and is tried again next time', async () => {

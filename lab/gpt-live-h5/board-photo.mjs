@@ -21,8 +21,10 @@ export function createPhotoFinder({fetchImpl = fetch, now = Date.now, maxBytes =
       const url = `https://${language}.wikipedia.org/w/api.php?action=query&format=json&generator=search&gsrlimit=3&gsrsearch=${encodeURIComponent(query)}&prop=pageimages&piprop=thumbnail&pithumbsize=480&redirects=1`;
       let pages;
       try { pages = Object.values((await (await request(url, signal)).json())?.query?.pages ?? {}); } catch { failed = true; continue; }
-      const page = pages.sort((a, b) => (a.index ?? 99) - (b.index ?? 99)).find(item => typeof item?.thumbnail?.source === 'string');
-      if (!page) continue;
+      // Only the best match counts. Taking the first result that happens to
+      // have a picture put a dragon fruit on the board for 喷火龙.
+      const page = pages.sort((a, b) => (a.index ?? 99) - (b.index ?? 99))[0];
+      if (typeof page?.thumbnail?.source !== 'string') continue;
       let source;
       try { source = new URL(page.thumbnail.source); } catch { continue; }
       if (source.protocol !== 'https:' || !HOSTS.test(source.hostname)) continue;
