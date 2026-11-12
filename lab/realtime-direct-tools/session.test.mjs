@@ -1723,3 +1723,17 @@ test('call c6c68774: asked to explain, a hand-off to the backend becomes a lesso
  assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
  assert.equal(prepared.length,1);
 });
+
+test('call c2c47e58: a second request for the lesson being given writes no second lesson',async t=>{
+ let prepared=0;
+ const lesson={available:true,prepare:async()=>{prepared++;await delay(20);return {say:'盖欧卡喷大水。'};}};
+ const f=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson});t.after(()=>f.service.dispose());
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'用传说级的宝可梦再给十二讲解一下'});
+ f.call('explain_on_board',{topic:'用传说宝可梦讲属性相克'},'first');f.call('explain_on_board',{topic:'用传说级宝可梦讲解'},'second');
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='first')));
+ assert.equal(prepared,1);
+ assert(f.audit.some(e=>e.type==='lesson.duplicate'&&e.callId==='second'));
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'再讲讲超梦'});
+ f.call('explain_on_board',{topic:'超梦'},'third');
+ assert(await until(()=>prepared===2),'a new request gets its own lesson');
+});

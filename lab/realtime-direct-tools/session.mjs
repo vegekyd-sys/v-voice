@@ -574,13 +574,19 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         // says the script word for word (the same hand-over a backend result uses).
         if(call.name==='explain_on_board'){
           if(!lesson?.available)throw Error('讲解画面尚未就绪');
-          ownerBridge.beginBackgroundTool(call.callId,call.args.topic);lessonHandled=true;
-          const script=await lesson.prepare({owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,signal:controller.signal});
-          if(current(s)&&s.epoch===epoch){
-            const say=script?.say??'画面这次没准备好，我直接跟你说吧。';
-            ownerBridge.completeBackgroundTool(call.callId,{result:say},{spokenText:say,displayedFullResult:true});
+          // The voice model sometimes asks twice for one request (call c2c47e58:
+          // the second lesson replaced the first while V was reading it).
+          if(s.lessonFor&&s.lessonFor===(s.latestUserTurn??s)){audit({type:'lesson.duplicate',voiceSessionId:s.id,callId:call.callId});result={alreadyExplaining:true,instruction:'这段讲解已经在准备或正在讲。不要再调用，也不要自己再讲一遍。'};}
+          else{
+            s.lessonFor=s.latestUserTurn??s;
+            ownerBridge.beginBackgroundTool(call.callId,call.args.topic);lessonHandled=true;
+            const script=await lesson.prepare({owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,signal:controller.signal});
+            if(current(s)&&s.epoch===epoch){
+              const say=script?.say??'画面这次没准备好，我直接跟你说吧。';
+              ownerBridge.completeBackgroundTool(call.callId,{result:say},{spokenText:say,displayedFullResult:true});
+            }
+            result={lessonDelivered:Boolean(script)};
           }
-          result={lessonDelivered:Boolean(script)};
         }
         if(!['send_task_updates','openclaw_agent_control','get_current_location','explain_on_board'].includes(call.name))result=await execute(call.name,call.args,call.callId,controller.signal);
         if(call.name==='delegate_to_v'&&current(s)&&s.epoch===epoch){

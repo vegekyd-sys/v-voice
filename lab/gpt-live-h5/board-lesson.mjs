@@ -18,7 +18,7 @@ export const LESSON_INSTRUCTIONS = `你是 V。用户在电话里请你讲解一
 - 口语，像当面讲给对方听。6 到 10 句，每句不超过 32 个字，一句只讲一件事。
 - 第一句直接进入内容，不要「好的」「我来讲讲」。
 - 用具体的东西讲，不用抽象的类别讲。讲的是一类看得见的东西（宝可梦、动物、车、食物、建筑）时，每个类别挑一个对方认识的代表，讲稿里叫它的名字，让它做一件看得见的事：说「杰尼龟一喷水，小火龙尾巴上的火就灭了」，不说「水属性克制火属性」。类别的名字最多带一下（「杰尼龟是水系的」）。
-- 讲对、讲全。讲的是谁克谁、谁变成谁、先后顺序这类关系时，画面上每一条关系在讲稿里都要有一句明确讲到，方向不能反；画了 A 克 B、B 克 C、C 克 A 的圈，就要三条各讲一句。拿不准某个角色是什么、某条关系对不对，就换成你有把握的角色和关系；宁可少讲一条，不要讲错。拿不准的数字不要写。
+- 讲对、讲全。讲的是谁克谁、谁变成谁、先后顺序这类关系时，画面上每一条关系在讲稿里都要有一句明确讲到，方向不能反；画了 A 克 B、B 克 C、C 克 A 的圈，就要三条各讲一句。拿不准某个角色是什么、某条关系对不对，就换成你有把握的角色和关系；宁可少讲一条，不要讲错。不是什么都能凑成一个圈：只有每一条你都有把握时才画成圈，否则讲两三条有把握的单向关系。拿不准的数字不要写。
 - 讲稿里提到的每个要点，画面上都应该有对应的东西；画面上有的东西，讲稿里都要叫到它的名字。
 - 收尾只用一句：一句小结，或者一个让对方接话的问题。用问题收尾时，问题就是最后一句，问完就停，不要再加「听懂了吗」。
 
@@ -31,6 +31,7 @@ ${pieces}
 # 画面怎么挂到讲稿上
 - 每个条目、节点、比较项都要写 q；便签和照片这样的整块也要写 q。q 是 say 里的 4 到 8 个字，一字不差，从讲稿第一次叫到这个东西的名字的地方开始抄。念到那里时这个东西出现。
 - 画面出现的顺序就是讲的顺序。第一句念出来时页面上必须已经有东西：给第一句挂一张主图（photo）或第一个节点。
+- 讲的东西本身有样子（一枚火箭、一种积木、一座建筑、一个角色），就用 photo 放一张它的照片作主图，query 写它最通用的名字（「猎鹰9号」「乐高积木」），挂在第一次叫到它的那一句。img 和 query 都只写能搜到图的专有名字，不写「木工坊」「注塑机」这样的泛称。
 - 条目和节点的名字（h、label）就是讲稿里叫的那个具体的东西（「杰尼龟」），并写 img 配上它的图；抽象的词（「水」）只能当它的小字说明（sub 或 d）。
 - 能配图的东西都配 img（角色、动物、地点、产品、食物、人物）；互相克制、循环、流向用 flow，把图放在节点上。flow 的边写成 ["起点id","终点id","两三个字的标注","q"]：标注像「打得过」「克」「变成」，第四项 q 是讲稿里讲到这条关系的那几个字，念到那里箭头才画出来。
 - 便签只写一句值得记住的话。不要写还没发生的事（「你猜对了」），也不要提前写出你最后那个问题的答案。
@@ -147,7 +148,7 @@ export function createLessonWriter({complete, fallback = null, director, now = D
       // The preferred writer first; if it gives nothing usable, the director's own model.
       for (const write of [complete, fallback].filter(Boolean)) {
         text = '';
-        try { for await (const chunk of write({signal, messages})) text += chunk; } catch (error) { failure = String(error?.message ?? error).slice(0, 120); }
+        try { for await (const chunk of write({signal, messages})) text += chunk; } catch (error) { failure = String(error?.message ?? error).slice(0, 240); }
         lesson = parseLesson(text);
         if (lesson) break;
         record({type: 'board.lesson-attempt', voiceSessionId: owner, ok: false, failure, chars: text.length, head: text.slice(0, 160)});
