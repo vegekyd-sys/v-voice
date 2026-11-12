@@ -170,3 +170,15 @@ test('a picture is not replaced while V is still mid-sentence', async () => {
   const end = await director.run({owner: 'call-1', trigger: 'assistant_end', turns, clientRev: 3});
   assert.deepEqual([end.reason, director.scene('call-1').title], ['drawn', '另一个话题']);
 });
+
+test('a new question starts without the last question\'s lookup results', async () => {
+  const {complete, calls} = scripted();
+  const director = createBoardDirector({complete});
+  director.observe({type: 'tool.delivered', voiceSessionId: 'call-1', name: 'web_search', result: '大熊猫的资料'});
+  await director.run({owner: 'call-1', trigger: 'assistant_end', turns});
+  await director.run({owner: 'call-1', trigger: 'user', turns: [{role: 'user', text: '换个话题，讲讲 HTTPS'}]});
+  director.observe({type: 'tool.delivered', voiceSessionId: 'call-1', name: 'web_search', result: 'HTTPS 的资料'});
+  await director.run({owner: 'call-1', trigger: 'evidence', turns});
+  const evidence = calls.map(call => JSON.parse(call.messages[1].content).evidence?.map(item => item.result));
+  assert.deepEqual(evidence, [['大熊猫的资料'], undefined, ['HTTPS 的资料']]);
+});

@@ -117,6 +117,9 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       if (now() - row.window > 15 * 60000) { row.window = now(); row.count = 0; }
       if (++row.count > 400) return report('rate_limited');
       row.controller?.abort();
+      // Lookups answer one question. What was found for the last one must not
+      // be drawn again as if it answered this one.
+      if (trigger === 'user') row.evidence = [];
       const controller = row.controller = new AbortController();
       const abort = () => controller.abort();
       if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, {once: true});
