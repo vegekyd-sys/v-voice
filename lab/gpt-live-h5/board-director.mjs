@@ -228,7 +228,7 @@ export function createChatCompletionStream({apiKey, model, endpoint, extra = {},
         headers: {authorization: `Bearer ${apiKey}`, 'content-type': 'application/json'},
         body: JSON.stringify({model, messages, stream: true, temperature: 0.3, max_tokens: maxTokens, ...extra})});
       // The provider's reason goes to the private log only (a refused parameter is otherwise a mystery).
-      if (!response.ok || !response.body) throw Error(`board model HTTP ${response.status} ${(await response.text().catch(() => '')).replace(/\s+/gu, ' ').slice(0, 200)}`.trim());
+      if (!response.ok || !response.body) throw Error(`board model HTTP ${response.status} ${String(await Promise.resolve(response.text?.()).catch(() => '') ?? '').replace(/\s+/gu, ' ').slice(0, 200)}`.trim());
       const decoder = new TextDecoder();
       let buffer = '';
       for await (const bytes of response.body) {
