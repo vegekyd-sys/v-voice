@@ -22,7 +22,8 @@ if [ "${1:-}" = "--update" ]; then
   # tunnel and entry link stay as they are. The unit must have no call in progress.
   ssh v "sudo -n test -f $root/environment.private.json && systemctl is-active --quiet voice-board-20261112"
   upload
-  ssh v "sudo -n sh -c 'chown -R openclaw:openclaw $root/voice && systemctl restart voice-board-20261112 && sleep 2 && systemctl is-active voice-board-20261112 && grep -o \"\\\"commit\\\": *\\\"[0-9a-f]*\\\"\" $root/voice/manifest.json'"
+  ssh v "sudo -n sh -c 'chown -R openclaw:openclaw $root/voice && systemctl restart voice-board-20261112 && sleep 2 && systemctl is-active voice-board-20261112'"
+  ssh v "sudo -n python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))[\"commit\"])' $root/voice/manifest.json"
   exit 0
 fi
 ssh v sudo -n python3 - --stop < scripts/candidate/start-board.py >/dev/null
