@@ -68,7 +68,7 @@ const urlsIn = value => { const seen = new Set(); for (const [, url] of JSON.str
  * `search(query)` is V's web search (any shape that carries result "url"s);
  * without it only Wikipedia is used. `observe` receives one line per lookup.
  */
-export function createPhotoFinder({fetchImpl = fetch, search = null, lookup = dnsLookup, now = Date.now, observe = () => {}, maxBytes = 1500000, timeoutMs = 9000, ttlMs = 30 * 60000, maxEntries = 96,
+export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = '', braveGapMs = 1100, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), lookup = dnsLookup, now = Date.now, observe = () => {}, maxBytes = 1500000, timeoutMs = 9000, ttlMs = 30 * 60000, maxEntries = 96,
   // Wikimedia refuses data-centre clients whose agent names no contact page.
   languages = ['zh', 'en'], userAgent = 'VVoiceBoard/0.1 (https://github.com/vegekyd-sys/v-voice)'} = {}) {
   const cache = new Map(), flights = new Map(), prints = new Map();
@@ -85,6 +85,28 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, lookup = dn
     // Under a few kilobytes it is an icon, not a picture of anything.
     if (bytes.length < 4000 || bytes.length > maxBytes) return null;
     return {bytes, type, title: String(title ?? '').slice(0, 80), source};
+  }
+  // An image search, when a key is provisioned: the first result whose title
+  // names the thing (else the first result), as the search's own thumbnail.
+  // The plan allows about one request a second, so lookups queue.
+  let braveTurn = Promise.resolve(), braveLast = -Infinity;
+  async function brave(query, signal) {
+    if (!braveKey) return null;
+    const turn = braveTurn.then(async () => { const gap = braveLast + braveGapMs - now(); if (gap > 0) await wait(gap); braveLast = now(); });
+    braveTurn = turn.catch(() => {});
+    await turn;
+    const response = await fetchImpl(`https://api.search.brave.com/res/v1/images/search?q=${encodeURIComponent(query)}&count=6&safesearch=strict`,
+      {signal, headers: {'x-subscription-token': braveKey, accept: 'application/json'}});
+    if (!response.ok) throw Error('image search HTTP ' + response.status);
+    const results = ((await response.json())?.results ?? []).filter(item => typeof item?.thumbnail?.src === 'string');
+    const wanted = squeeze(query);
+    for (const item of [...results.filter(item => squeeze(item.title).includes(wanted)), ...results].slice(0, 3)) {
+      let source;
+      try { source = new URL(item.thumbnail.src); } catch { continue; }
+      if (source.protocol !== 'https:' || source.hostname !== 'imgs.search.brave.com') continue;
+      try { const found = await picture(source.href, signal, 'Brave 图片搜索', item.title); if (found) return found; } catch { /* next result */ }
+    }
+    return null;
   }
   // The article with exactly this name (or a redirect from it), never a search
   // guess: a search for 小火龙 once returned a person and 喷火龙 a dragon fruit.
@@ -129,7 +151,8 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, lookup = dn
   async function find(key, signal, searchNow) {
     const started = now();
     let value = null, failed = false;
-    try { value = await wikipedia(key, signal); } catch { failed = true; }
+    try { value = await brave(key, signal); } catch { failed = true; }
+    if (!value) { try { value = await wikipedia(key, signal); } catch { failed = true; } }
     if (!value) { try { value = await web(key, signal, searchNow); } catch { failed = true; } }
     observe({type: 'board.photo', query: key, found: Boolean(value), source: value?.source ?? null, bytes: value?.bytes.length ?? 0, durationMs: now() - started});
     // "No such picture" is worth remembering; "could not ask" is not.

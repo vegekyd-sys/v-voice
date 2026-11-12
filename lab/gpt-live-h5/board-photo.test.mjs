@@ -108,3 +108,22 @@ test('the same file for two different things is not a picture of either', async 
   assert.equal((await finder.find('皮卡丘')).source, 'portal.example');
   assert.equal(await finder.find('妙蛙种子'), null);
 });
+
+test('with an image-search key the titled result is used, one request at a time', async () => {
+  const calls = [], waits = [];
+  let time = 0;
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', now: () => time, wait: async ms => { waits.push(ms); time += ms; },
+    fetchImpl: async (url, init) => {
+      calls.push(url);
+      if (url.startsWith('https://api.search.brave.com/')) {
+        assert.equal(init.headers['x-subscription-token'], 'test-key');
+        return json({results: [{title: '宝可梦大全', thumbnail: {src: 'https://imgs.search.brave.com/all'}}, {title: '杰尼龟 官方画像', thumbnail: {src: 'https://imgs.search.brave.com/squirtle'}}, {title: '别处', thumbnail: {src: 'https://evil.example/x'}}]});
+      }
+      return image(big(30000), 'image/png');
+    }});
+  const [a, b] = await Promise.all([finder.find('杰尼龟'), finder.find('小火龙')]);
+  assert.deepEqual([a.source, a.title, b.source], ['Brave 图片搜索', '杰尼龟 官方画像', 'Brave 图片搜索']);
+  assert.equal(calls[1], 'https://imgs.search.brave.com/squirtle');
+  assert.deepEqual(waits, [1100], 'the second lookup waited its turn');
+  assert.equal(calls.some(url => url.includes('wikipedia') || url.includes('evil')), false);
+});
