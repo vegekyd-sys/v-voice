@@ -200,7 +200,7 @@ function Flow({block, view}) {
   // reason), a chain is one row, and layers share a fixed height.
   const row = pictured ? 150 : 96;
   const height = shape === 'ring' ? (pictured ? 300 + block.nodes.length * 60 : 220 + block.nodes.length * 40)
-    : shape === 'row' ? row + 20 : Math.min(layers.length * row, pictured ? 540 : 420);
+    : shape === 'row' ? row + 20 : layers.length * row;
   const pad = {x: shape === 'row' ? 0 : pictured ? 62 : 56, y: pictured ? 76 : 34};
   const at = id => ({x: shape === 'row' ? position[id].x / 100 * width : pad.x + (width - pad.x * 2) * position[id].x / 100,
     y: pad.y + (height - pad.y * 2) * position[id].y / 100});

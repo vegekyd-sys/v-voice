@@ -256,8 +256,8 @@ export function createLineParser(onValue) {
 
 /**
  * Positions for a flow block, in percent of its box, and the shape they make:
- *   ring   - the edges lead round through every node and back (water beats
- *            fire beats grass beats water): the nodes sit on a circle;
+ *   ring   - some edges lead round and back (water beats fire beats grass
+ *            beats water): all the nodes sit on a circle, the loop first;
  *   row    - a single chain: left to right (top to bottom when `narrow`);
  *   layers - anything else: sources on top, each edge pointing downward. An
  *            edge that would close a cycle does not push its target.
@@ -267,9 +267,18 @@ export function flowLayout(nodes, edges, {narrow = false} = {}) {
   // Follow the first way out of each node; a ring visits everything once and returns.
   const next = new Map();
   for (const [from, to] of edges) if (!next.has(from)) next.set(from, to);
-  const round = [];
-  for (let at = ids[0]; at !== undefined && !round.includes(at); at = next.get(at)) round.push(at);
-  if (ids.length >= 3 && round.length === ids.length && next.get(round.at(-1)) === round[0]) {
+  let round = [];
+  for (const start of ids) {
+    const walk = [];
+    let at = start;
+    while (at !== undefined && !walk.includes(at)) { walk.push(at); at = next.get(at); }
+    const loop = at === undefined ? [] : walk.slice(walk.indexOf(at));
+    if (loop.length > round.length) round = loop;
+  }
+  if (round.length >= 3 && ids.length <= 6) {
+    // Things that only point into the ring (electric beats water) join the
+    // circle after it, so the whole picture still fits one screen.
+    round = [...round, ...ids.filter(id => !round.includes(id))];
     round.forEach((id, index) => {
       const angle = -Math.PI / 2 + index * Math.PI * 2 / round.length;
       position[id] = {x: 50 + Math.cos(angle) * 44, y: 50 + Math.sin(angle) * 44, layer: 0};
