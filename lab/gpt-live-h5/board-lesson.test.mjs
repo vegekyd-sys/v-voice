@@ -99,3 +99,15 @@ test('the writer is told the caller\'s words and what it said before, and the di
   assert.match(seen[1].before.say, /^这就像石头剪刀布/u);
   assert.deepEqual(events, ['hold c', 'present c', 'hold c', 'release c']);
 });
+
+test('a topic with facts the models get wrong comes with a reference', async () => {
+  const {lessonReference} = await import('./board-lesson.mjs');
+  assert.match(lessonReference('用传说级的宝可梦讲属性相克'), /冰：草、地面、飞行、龙/u);
+  assert.equal(lessonReference('火箭怎么飞上去'), '');
+  const seen = [];
+  const writer = createLessonWriter({director: {present() {}}, complete: async function* ({messages}) { seen.push(JSON.parse(messages[1].content)); yield reply; }});
+  await writer.prepare({owner: 'c', topic: '属性相克', ask: '给十二讲讲宝可梦'});
+  await writer.prepare({owner: 'd', topic: '乐高是怎么来的'});
+  assert.match(seen[0].reference, /电打地面/u);
+  assert.equal('reference' in seen[1], false);
+});

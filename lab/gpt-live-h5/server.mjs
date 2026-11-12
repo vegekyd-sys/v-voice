@@ -1169,9 +1169,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const voiceAudit=productionSpeaker?.audit??transcriptLog.audit;
     // Timing and outcome only; the picture's content is not written to the call log.
     const board=boardDirectorFromEnv(process.env,{audit:voiceAudit});
-    // Lesson mode (experiment): its own flag and, by default, a stronger model than the director's.
-    const lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,fallback:boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'1600'}),
-      complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MODEL:process.env.VOICE_BOARD_LESSON_MODEL??'anthropic/claude-haiku-5.5',VOICE_BOARD_MAX_TOKENS:'1600'})}):null;
+    // Lesson mode (experiment): its own flag. The director's model writes it
+    // (in real calls it was as good as the others tried and answers in three
+    // seconds); another may be named, with the director's as the fallback.
+    const lessonModel=process.env.VOICE_BOARD_LESSON_MODEL,directorWriter=boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'1600'});
+    const lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,
+      ...(lessonModel?{complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MODEL:lessonModel,VOICE_BOARD_MAX_TOKENS:'1600'}),fallback:directorWriter}:{complete:directorWriter})}):null;
     const directVoice=createDirectVoiceService({gateway,wsModule,lesson,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',

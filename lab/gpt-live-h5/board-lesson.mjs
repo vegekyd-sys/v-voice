@@ -9,7 +9,7 @@ import {applyOp, emptyScene, loose, normalizeOp} from './board-scene.mjs';
 const pieces = BOARD_INSTRUCTIONS.slice(BOARD_INSTRUCTIONS.indexOf('# 区块（block.t）'), BOARD_INSTRUCTIONS.indexOf('# 怎么画'));
 export const LESSON_INSTRUCTIONS = `你是 V。用户在电话里请你讲解一个东西，你要一次写出「讲稿」和「讲稿每一句对应的画面」。讲稿会由你的声音一字不差地念出来；画面在一页手账上，念到哪里，挂在那里的东西就出现在页面上。
 
-输入是一个 JSON：topic 是要讲什么；audience 是讲给谁听；ask 是用户的原话（语音识别，可能夹着旁人的话，只取和 topic 有关的要求）；before 是这通电话里你刚讲过的一段（有的话）：这次要接着它讲新的东西，或者按用户的要求换个讲法，不要原样重复，例子、比方和最后的问题都换新的。
+输入是一个 JSON：topic 是要讲什么；audience 是讲给谁听；ask 是用户的原话（语音识别，可能夹着旁人的话，只取和 topic 有关的要求）；reference 是可靠的参考资料（有的话），和它冲突的不要讲；before 是这通电话里你刚讲过的一段（有的话）：这次要接着它讲新的东西，或者按用户的要求换个讲法，不要原样重复，例子、比方和最后的问题都换新的。
 
 只输出一个 JSON 对象，不要任何别的文字：
 {"title":"画面标题，不超过 12 个字","say":["第一句","第二句",…],"blocks":[区块,…]}
@@ -36,6 +36,15 @@ ${pieces}
 - 能配图的东西都配 img（角色、动物、地点、产品、食物、人物）；互相克制、循环、流向用 flow，把图放在节点上。flow 的边写成 ["起点id","终点id","两三个字的标注","q"]：标注像「打得过」「克」「变成」，第四项 q 是讲稿里讲到这条关系的那几个字，念到那里箭头才画出来。
 - 便签只写一句值得记住的话。不要写还没发生的事（「你猜对了」），也不要提前写出你最后那个问题的答案。
 - 字要少：h 不超过 8 个字，d 不超过 16 个字，能不写 d 就不写。整页 1 到 3 个区块。`;
+
+// Facts the quick models get wrong often enough to matter, handed over when
+// the topic calls for them. (Asked for legendary birds, one had ice beating
+// fire, another made up a ring of three.)
+const REFERENCES = [{match: /宝可梦|神奇宝贝|宠物小精灵|pok[eé]mon/iu, text: `宝可梦属性克制表（攻击方：打它们效果拔群）。只讲表里有的关系，表里没有就不是克制。
+火：草、冰、虫、钢｜水：火、地面、岩石｜电：水、飞行｜草：水、地面、岩石｜冰：草、地面、飞行、龙｜格斗：一般、冰、岩石、恶、钢｜毒：草、妖精｜地面：火、电、毒、岩石、钢｜飞行：草、格斗、虫｜超能力：格斗、毒｜虫：草、超能力、恶｜岩石：火、冰、飞行、虫｜幽灵：超能力、幽灵｜龙：龙｜恶：超能力、幽灵｜钢：冰、岩石、妖精｜妖精：格斗、龙、恶｜一般：没有
+完全无效：一般和格斗打幽灵、电打地面、地面打飞行、幽灵打一般、超能力打恶、毒打钢、龙打妖精。
+先确认每只宝可梦自己的属性（有两个属性的两个都算），再查表。`}];
+export const lessonReference = text => REFERENCES.filter(item => item.match.test(String(text ?? ''))).map(item => item.text).join('\n');
 
 const sentences = value => (Array.isArray(value) ? value : []).map(line => String(line ?? '').replace(/\s+/gu, ' ').trim()).filter(Boolean).slice(0, 12).map(line => Array.from(line).slice(0, 60).join(''));
 const asks = line => /[？?]\s*$/u.test(line);
@@ -143,7 +152,8 @@ export function createLessonWriter({complete, fallback = null, director, now = D
       const before = told.get(owner);
       const messages = [{role: 'system', content: LESSON_INSTRUCTIONS},
         {role: 'user', content: JSON.stringify({topic: String(topic ?? '').slice(0, 400), audience: String(audience ?? '').slice(0, 80) || '成年人',
-          ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(before ? {before} : {})})}];
+          ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(before ? {before} : {}),
+          ...(lessonReference(`${topic} ${ask}`) ? {reference: lessonReference(`${topic} ${ask}`)} : {})})}];
       let lesson = null, text = '', failure = '';
       // The preferred writer first; if it gives nothing usable, the director's own model.
       for (const write of [complete, fallback].filter(Boolean)) {
