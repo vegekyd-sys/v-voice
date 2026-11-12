@@ -198,9 +198,9 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
-    version:'voice-relay-small.20261113.1',date:'2026-11-13',
-    title:'小号订阅组件统一显示剩余额度',
-    items:['iPhone build 44 的小号组件现在和中号、大号显示相同的剩余百分比。剩余越少，进度条越短。'],
+    version:'voice-relay-medium.20261113.1',date:'2026-11-13',
+    title:'中号订阅组件增加已用进度条',
+    items:['左侧大字显示最低剩余额度；右侧和小号组件一样显示各套餐的已用进度，重置时间用小字标在下方。'],
   },
   {
     version:'voice-relay-usage.20261112.1',date:'2026-11-12',

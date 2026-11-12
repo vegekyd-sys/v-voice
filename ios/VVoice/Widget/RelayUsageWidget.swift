@@ -7,7 +7,6 @@ struct RelayUsageSnapshot: Decodable {
         let label: String
         let used: Double
         let reset: TimeInterval?
-        var remainingFraction: Double { min(1, max(0, (100 - used) / 100)) }
     }
     struct Provider: Decodable {
         let name: String
@@ -143,12 +142,15 @@ private struct UsageCard: View {
         if row.state == "unconfigured" { return "待接入" }
         return !fresh || row.state == "ready" ? "待更新" : "暂不可用"
     }
+    private func percent(_ window: Window) -> String {
+        (window.used / 100).formatted(.percent.precision(.fractionLength(0)))
+    }
     private func time(_ stamp: TimeInterval) -> String {
         Date(timeIntervalSince1970: stamp).formatted(.dateTime.month(.defaultDigits).day().hour().minute())
     }
 
     private func remaining(_ w: Window) -> String {
-        w.remainingFraction.formatted(.percent.precision(.fractionLength(0...1)))
+        ((100 - w.used) / 100).formatted(.percent.precision(.fractionLength(0...1)))
     }
 
     private func resetCaption(_ stamp: TimeInterval) -> String {
@@ -188,16 +190,25 @@ private struct UsageCard: View {
     }
 
     private var header: some View {
-        HStack(spacing: 6) {
-            Image("VAppIcon").resizable().scaledToFill().frame(width: 20, height: 20)
-                .clipShape(RoundedRectangle(cornerRadius: 6)).accessibilityHidden(true)
-            Text("订阅余量").font(VoiceStyle.font(14, weight: .semibold))
-            Spacer(minLength: 0)
-            if entry.preview { Text("示例").font(.caption2).foregroundStyle(secondary) }
-            else if !small, let snapshot = entry.snapshot {
-                Text("更新 \(Date(timeIntervalSince1970: snapshot.updated), format: .dateTime.hour().minute())")
-                    .font(.caption2).foregroundStyle(secondary)
+        HStack(spacing: family == .systemMedium ? 15 : 6) {
+            HStack(spacing: 6) {
+                Image("VAppIcon").resizable().scaledToFill().frame(width: 20, height: 20)
+                    .clipShape(RoundedRectangle(cornerRadius: 6)).accessibilityHidden(true)
+                Text(family == .systemLarge ? "订阅余量" : "订阅用量").font(VoiceStyle.font(14, weight: .semibold))
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 4) {
+                if family == .systemMedium, entry.snapshot != nil {
+                    Text("已用").font(.system(size: 10, weight: .medium))
+                }
+                Spacer(minLength: 0)
+                if entry.preview { Text("示例") }
+                else if !small, let snapshot = entry.snapshot {
+                    Text("更新 \(Date(timeIntervalSince1970: snapshot.updated), format: .dateTime.hour().minute())")
+                }
             }
+            .font(.caption2).foregroundStyle(secondary)
+            .frame(maxWidth: family == .systemMedium ? .infinity : nil, alignment: .trailing)
+            .fixedSize(horizontal: family != .systemMedium, vertical: false)
         }
     }
 
@@ -230,13 +241,7 @@ private struct UsageCard: View {
                 ForEach(subscriptions.filter { $0.name != highest?.0.name }, id: \.name) { row in
                     let window = limiting(row)
                     VStack(alignment: .trailing, spacing: 0) {
-                        HStack(spacing: 4) {
-                            Text(shortName(row)).font(.system(size: 12, weight: .medium))
-                            Spacer(minLength: 0)
-                            Text(window.map(remaining) ?? status(row))
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                .monospacedDigit()
-                        }
+                        compactRow(row)
                         if let window { mediumReset(window) }
                     }.accessibilityElement(children: .combine)
                 }
@@ -313,28 +318,28 @@ private struct UsageCard: View {
     private func compactRow(_ row: Provider) -> some View {
         let value = limiting(row)
         return HStack(spacing: 4) {
-            Text(shortName(row)).font(.system(size: 11, weight: .medium))
-                .frame(width: 41, alignment: .leading)
+            Text(shortName(row)).font(.system(size: small ? 11 : 12, weight: .medium))
+                .frame(width: small ? 41 : 43, alignment: .leading)
             if let value {
                 meter(value)
-                Text(remaining(value)).font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .monospacedDigit().frame(minWidth: 38, alignment: .trailing)
+                Text(percent(value)).font(.system(size: small ? 12 : 13, weight: .semibold, design: .rounded))
+                    .monospacedDigit().frame(minWidth: small ? 30 : 35, alignment: .trailing)
             } else {
                 Spacer(minLength: 0)
                 Text(status(row)).font(.caption2).foregroundStyle(secondary)
             }
         }.lineLimit(1).accessibilityElement(children: .ignore)
          .accessibilityLabel(row.name)
-         .accessibilityValue(value.map { w in w.label + "剩余" + remaining(w) + (w.reset.map { "，" + time($0) + "重置" } ?? "") } ?? status(row))
+         .accessibilityValue(value.map { w in w.label + "已用" + percent(w) + (w.reset.map { "，" + time($0) + "重置" } ?? "") } ?? status(row))
     }
 
     private func meter(_ value: Window) -> some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 Capsule().fill(track)
-                Capsule().fill(accent).frame(width: proxy.size.width * value.remainingFraction)
+                Capsule().fill(accent).frame(width: proxy.size.width * min(1, max(0, value.used / 100)))
                     .widgetAccentable()
             }
-        }.frame(height: 4).accessibilityHidden(true)
+        }.frame(height: small ? 4 : 5).accessibilityHidden(true)
     }
 }
