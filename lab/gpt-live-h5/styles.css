@@ -1589,7 +1589,10 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-thumb[data-ready="false"] { background: linear-gradient(110deg, #ece4f3 30%, #f7f2fb 50%, #ece4f3 70%) 0 0 / 220% 100%; animation: board-develop 1.3s linear infinite; }
 .board-thumb img { display: block; width: 100%; height: 100%; object-fit: contain; animation: board-in .5s ease-out both; }
 [data-ink="false"] .board-thumb { filter: grayscale(1); opacity: .5; }
-:is(.board-list, .board-steps) li:has(> .board-thumb) { grid-template-columns: 30px minmax(0, 1fr) auto; }
+/* In a list the picture leads: the thing first, then its few words. */
+:is(.board-list, .board-steps) li:has(> .board-thumb) { grid-template-columns: 30px 96px minmax(0, 1fr); align-items: center; }
+:is(.board-list, .board-steps) li > .board-thumb { grid-column: 2; grid-row: 1; width: 96px; height: 96px; }
+:is(.board-list, .board-steps) li:has(> .board-thumb) > .board-item { grid-column: 3; }
 .board-compare .board-thumb { width: 100%; height: 118px; margin-bottom: 10px; }
 .board-node .board-thumb { width: 66px; height: 66px; margin-bottom: 4px; }
 [data-now] > .board-thumb, .board-node[data-now] .board-thumb { transform: rotate(var(--tilt, 0deg)) scale(1.08); }

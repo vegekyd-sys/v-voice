@@ -41,6 +41,27 @@ export function sharePicture(html, base) {
   if (!found || /logo|favicon|sprite|placeholder|default[-_]?(?:share|og|image)|\.svg(?:[?#]|$)/iu.test(found)) return '';
   try { return new URL(found, base).href; } catch { return ''; }
 }
+const squeeze = value => String(value ?? '').toLowerCase().replace(/[\s·・\-_—()（）]/gu, '');
+const attribute = (tag, name) => { const found = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'iu').exec(tag); return found ? (found[1] ?? found[2]).replace(/&amp;/gu, '&').trim() : ''; };
+/**
+ * The picture of `query` on a page: an <img> the page itself labels with that
+ * name (alt or title). A share picture is only a fallback, and only on a page
+ * whose own title is about the thing; otherwise it is usually the site's logo.
+ */
+export function pagePicture(html, base, query) {
+  const wanted = squeeze(query);
+  if (!wanted) return '';
+  for (const tag of html.match(/<img\b[^>]*>/giu) ?? []) {
+    const label = squeeze(attribute(tag, 'alt') || attribute(tag, 'title'));
+    if (!label || !label.includes(wanted) || label.length > wanted.length + 24) continue;
+    const source = attribute(tag, 'data-src') || attribute(tag, 'data-original') || attribute(tag, 'src');
+    const width = Number(attribute(tag, 'width')) || 0;
+    if (!source || source.startsWith('data:') || width && width < 80 || /logo|favicon|sprite|icon|avatar|\.svg(?:[?#]|$)/iu.test(source)) continue;
+    try { return new URL(source, base).href; } catch { /* next image */ }
+  }
+  const title = squeeze(/<title[^>]*>([^<]*)<\/title>/iu.exec(html)?.[1]);
+  return title.includes(wanted) ? sharePicture(html, base) : '';
+}
 const urlsIn = value => { const seen = new Set(); for (const [, url] of JSON.stringify(value ?? '').matchAll(/"url"\s*:\s*"(https:\/\/[^"\\]+)"/gu)) seen.add(url); return [...seen]; };
 
 /**
@@ -50,7 +71,7 @@ const urlsIn = value => { const seen = new Set(); for (const [, url] of JSON.str
 export function createPhotoFinder({fetchImpl = fetch, search = null, lookup = dnsLookup, now = Date.now, observe = () => {}, maxBytes = 1500000, timeoutMs = 9000, ttlMs = 30 * 60000, maxEntries = 96,
   // Wikimedia refuses data-centre clients whose agent names no contact page.
   languages = ['zh', 'en'], userAgent = 'VVoiceBoard/0.1 (https://github.com/vegekyd-sys/v-voice)'} = {}) {
-  const cache = new Map(), flights = new Map();
+  const cache = new Map(), flights = new Map(), prints = new Map();
   const get = async (url, signal, accept = '*/*') => {
     const response = await fetchImpl(url, {signal, headers: {'user-agent': userAgent, accept}, redirect: 'follow', credentials: 'omit'});
     if (!response.ok) throw Error('HTTP ' + response.status);
@@ -65,16 +86,16 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, lookup = dn
     if (bytes.length < 4000 || bytes.length > maxBytes) return null;
     return {bytes, type, title: String(title ?? '').slice(0, 80), source};
   }
+  // The article with exactly this name (or a redirect from it), never a search
+  // guess: a search for 小火龙 once returned a person and 喷火龙 a dragon fruit.
   async function wikipedia(query, signal) {
     let failed = false;
     for (const language of languages) {
-      const url = `https://${language}.wikipedia.org/w/api.php?action=query&format=json&generator=search&gsrlimit=3&gsrsearch=${encodeURIComponent(query)}&prop=pageimages&piprop=thumbnail&pithumbsize=480&redirects=1`;
+      const url = `https://${language}.wikipedia.org/w/api.php?action=query&format=json&titles=${encodeURIComponent(query)}&redirects=1&converttitles=1&prop=pageimages&piprop=thumbnail&pithumbsize=480`;
       let pages;
       try { pages = Object.values((await (await get(url, signal)).json())?.query?.pages ?? {}); } catch { failed = true; continue; }
-      // Only the best match counts. Taking the first result that happens to
-      // have a picture put a dragon fruit on the board for 喷火龙.
-      const page = pages.sort((a, b) => (a.index ?? 99) - (b.index ?? 99))[0];
-      if (typeof page?.thumbnail?.source !== 'string') continue;
+      const page = pages.find(item => typeof item?.thumbnail?.source === 'string');
+      if (!page) continue;
       let source;
       try { source = new URL(page.thumbnail.source); } catch { continue; }
       if (source.protocol !== 'https:' || !WIKIMEDIA.test(source.hostname)) continue;
@@ -95,9 +116,12 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, lookup = dn
       if (!address) return null;
       const response = await get(address.href, signal, 'text/html');
       if (!/html/iu.test(response.headers.get('content-type') ?? '')) return null;
-      const share = sharePicture((await response.text()).slice(0, 400000), address.href);
-      const image = share && await publicHttps(share, {lookup});
-      return image ? picture(image.href, signal, address.hostname, query) : null;
+      const found = pagePicture((await response.text()).slice(0, 600000), address.href, query);
+      const image = found && await publicHttps(found, {lookup});
+      const result = image ? await picture(image.href, signal, address.hostname, query) : null;
+      // The same file for two different things is a site picture, not either thing.
+      if (result) { const print = result.bytes.length + ':' + result.bytes.subarray(0, 64).toString('hex'), owner = prints.get(print); if (owner && owner !== query) return null; prints.set(print, query); if (prints.size > 200) prints.delete(prints.keys().next().value); }
+      return result;
     })().catch(() => null));
     for (const attempt of tried) { const found = await attempt; if (found) return found; }
     return null;
