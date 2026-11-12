@@ -18,17 +18,23 @@ const signature = row => row ? row.key + '\u0000' + row.text : '';
  * of its received text that has been heard. Byte counts are cumulative for the
  * call (relay-audio stats); a new reply starts a new baseline.
  */
-export function createSpokenCursor() {
-  let key = null, base = 0, reached = 0;
+export const SPOKEN_CHARS_PER_SECOND = 6.4;
+export function createSpokenCursor({now = () => performance.now()} = {}) {
+  let key = null, base = 0, reached = 0, startedAt = null;
   return {
     index({key: turn, textLength, outputBytes, queuedBytes}) {
       const played = outputBytes - queuedBytes;
-      if (turn !== key) { key = turn; base = played; reached = 0; }
+      if (turn !== key) { key = turn; base = played; reached = 0; startedAt = null; }
       const received = outputBytes - base;
       if (!(received > 0)) return reached;
+      if (played > base) startedAt ??= now();
+      // A script V is made to read arrives as text all at once while its audio
+      // streams about as fast as it plays, so the played share is near 1 from
+      // the start. Nobody speaks faster than this, whatever the share says.
+      const pace = startedAt === null ? 0 : Math.ceil((now() - startedAt) / 1000 * SPOKEN_CHARS_PER_SECOND) + 2;
       // Early in a reply the ratio is noisy (little audio received yet); what
       // has been heard is never un-heard.
-      reached = Math.max(reached, Math.floor(textLength * Math.min(1, Math.max(0, (played - base) / received))));
+      reached = Math.max(reached, Math.min(pace, Math.floor(textLength * Math.min(1, Math.max(0, (played - base) / received)))));
       return reached;
     },
   };

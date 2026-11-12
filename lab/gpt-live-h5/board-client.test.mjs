@@ -143,17 +143,25 @@ test('the event stream is parsed across chunk boundaries', async () => {
   assert.deepEqual(seen, ['scene', 'focus', 'done']);
 });
 
-test('the spoken position is the played share of the reply\'s own audio', () => {
-  const cursor = createSpokenCursor();
-  // An earlier reply played out completely: 96 kB received, nothing queued.
+test('the spoken position is the played share of the reply\'s own audio, never ahead of a speaking pace', () => {
+  let time = 0;
+  const cursor = createSpokenCursor({now: () => time});
+  // An earlier reply played out completely.
   assert.equal(cursor.index({key: 'turn-1', textLength: 10, outputBytes: 96000, queuedBytes: 0}), 0);
-  // The next reply: text and audio arrive far ahead of playback.
-  assert.equal(cursor.index({key: 'turn-2', textLength: 40, outputBytes: 96000, queuedBytes: 0}), 0);
+  // A model reply: text and audio arrive far ahead of playback; the share governs.
   assert.equal(cursor.index({key: 'turn-2', textLength: 40, outputBytes: 96000 + 480000, queuedBytes: 480000}), 0);
+  time = 20000;
+  assert.equal(cursor.index({key: 'turn-2', textLength: 100, outputBytes: 96000 + 960000, queuedBytes: 720000}), 2, 'playback only starts now');
+  time = 30000;
   assert.equal(cursor.index({key: 'turn-2', textLength: 100, outputBytes: 96000 + 960000, queuedBytes: 720000}), 25);
   assert.equal(cursor.index({key: 'turn-2', textLength: 100, outputBytes: 96000 + 1920000, queuedBytes: 1680000}), 25, 'more audio arriving never moves the position back');
+  time = 60000;
   assert.equal(cursor.index({key: 'turn-2', textLength: 100, outputBytes: 96000 + 1920000, queuedBytes: 0}), 100);
-  // A barge-in flushes the queue; the following reply starts from zero again.
-  assert.equal(cursor.index({key: 'turn-3', textLength: 20, outputBytes: 96000 + 1920000, queuedBytes: 0}), 0);
-  assert.equal(cursor.index({key: 'turn-3', textLength: 20, outputBytes: 96000 + 1920000 + 48000, queuedBytes: 24000}), 10);
+  // A script read aloud: the whole text is there and the audio streams as it plays, so the share says "all of it".
+  const base = 96000 + 1920000;
+  assert.equal(cursor.index({key: 'turn-3', textLength: 120, outputBytes: base, queuedBytes: 0}), 0);
+  time = 61000;
+  assert.equal(cursor.index({key: 'turn-3', textLength: 120, outputBytes: base + 48000, queuedBytes: 4000}), 2, 'first audio');
+  time = 63000;
+  assert.equal(cursor.index({key: 'turn-3', textLength: 120, outputBytes: base + 144000, queuedBytes: 4000}), 15, 'about two seconds of speech, not 97% of the script');
 });
