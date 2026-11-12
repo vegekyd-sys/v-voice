@@ -202,7 +202,12 @@ function useWidth() {
 function Flow({block, view}) {
   const [ref, width] = useWidth();
   const pictured = block.nodes.some(node => node.img), narrow = width > 0 && width < 430;
-  const {shape, layers, position} = flowLayout(block.nodes, block.edges, {narrow});
+  let {shape, layers, position} = flowLayout(block.nodes, block.edges, {narrow});
+  // In a very narrow column a row of nodes would sit on top of one another: they stand in a column instead.
+  if (shape === 'row' && width > 0 && width < 300) {
+    layers = layers.map(layer => [layer[0]]); shape = 'layers';
+    position = Object.fromEntries(layers.map(([id], index) => [id, {x: 50, y: layers.length === 1 ? 50 : index / (layers.length - 1) * 100, layer: index}]));
+  }
   // The whole diagram fits one screen: a ring is as tall as it is wide (within
   // reason), a chain is one row, and layers share a fixed height.
   const row = pictured ? 150 : 96;
