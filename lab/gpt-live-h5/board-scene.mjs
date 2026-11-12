@@ -136,6 +136,18 @@ export function focusExists(scene, id) {
 }
 
 const loose = value => value.replace(/[\s，。！？、；：,.!?;:"'“”‘’（）()]/gu, '');
+// The words in V's reply that an item hangs on: the director's quote when it
+// is really there, else the item's own wording where V used the same words
+// (its heading, a leading part of it, or its number with unit).
+function anchorOf(item, all) {
+  const quote = item.q ? loose(item.q) : '';
+  if (quote && all.includes(quote)) return quote;
+  const name = loose(String(item.h ?? item.label ?? ''));
+  for (let length = name.length; length >= 3; length--) if (all.includes(name.slice(0, length))) return name.slice(0, length);
+  const figure = item.value === undefined ? '' : loose(String(item.value));
+  if (figure.length >= 2) for (const text of [figure + loose(String(item.unit ?? '')), figure]) if (all.includes(text)) return text;
+  return '';
+}
 /**
  * Where V's voice is on the board once `index` characters of `spoken` have
  * been said aloud. `focus` is the item being talked about (the one whose quote
@@ -148,9 +160,9 @@ export function spokenProgress(scene, spoken, index) {
   let focus = '', at = -1;
   const ahead = [];
   for (const block of scene.blocks) for (const item of focusTargets(block)) {
-    const quote = item.q && loose(item.q);
-    // A quote V never said (miscopied) cannot hold an item back.
-    if (!quote || !all.includes(quote)) continue;
+    const quote = anchorOf(item, all);
+    // No words of V's to tie the item to (or a miscopied quote): it is never held back.
+    if (!quote) continue;
     // The quote counts once V has started saying it, not only when finished.
     // First occurrence: a later mention of the same words ("Server Hello
     // Done") must not pull the mark back to an item V has left.

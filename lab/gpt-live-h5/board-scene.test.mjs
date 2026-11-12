@@ -139,6 +139,13 @@ test('items V has written about but not yet said are reported as ahead', () => {
   const said = '在产十二张卡，今晚已经交付三十一条，有两条在等你确认。';
   const scene = run({op: 'put', block: {id: 'k', t: 'stats', items: [{id: 'a', label: '在产', value: 12, q: '在产十二张卡'}, {id: 'b', label: '已交付', value: 31, q: '已经交付三十一条'}, {id: 'c', label: '等确认', value: 2, q: '有两条在等你'}, {id: 'd', label: '没讲', value: 0}, {id: 'e', label: '抄错', value: 1, q: '并不存在的话'}]}});
   assert.deepEqual(spokenProgress(scene, said, 0), {focus: '', ahead: ['k/a', 'k/b', 'k/c']});
+  // Without quotes the items still follow the voice where V used their own words.
+  const bare = run({op: 'put', block: {id: 's', t: 'steps', items: [{id: 'a', h: 'Client Hello'}, {id: 'b', h: '验证证书，发预主密钥'}, {id: 'c', h: '画面上才有的词'}]}},
+    {op: 'put', block: {id: 'k', t: 'stats', items: [{id: 'n', label: '咖啡因', value: 96, unit: '毫克'}, {id: 'm', label: '杯', value: 1}]}});
+  const reply = '首先客户端发Client Hello，然后客户端验证证书真假，冲泡咖啡平均96毫克。';
+  assert.deepEqual(spokenProgress(bare, reply, 0), {focus: '', ahead: ['s/a', 's/b', 'k/n']});
+  assert.deepEqual(spokenProgress(bare, reply, 22), {focus: 's/a', ahead: ['s/b', 'k/n']});
+  assert.deepEqual(spokenProgress(bare, reply, 999), {focus: 'k/n', ahead: []});
   assert.deepEqual(spokenProgress(scene, said, 6), {focus: 'k/a', ahead: ['k/b', 'k/c']});
   assert.deepEqual(spokenProgress(scene, said, said.indexOf('已经') + 5), {focus: 'k/b', ahead: ['k/c']});
   assert.deepEqual(spokenProgress(scene, said, 999), {focus: 'k/c', ahead: []});
