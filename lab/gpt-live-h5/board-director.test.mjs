@@ -269,3 +269,20 @@ test('streaming: the same comparison continued grows the one table; a fifth bloc
   assert.deepEqual(scene.blocks.map(block => block.t), ['versus', 'sticky', 'sticky', 'sticky']);
   assert.deepEqual(scene.blocks[0].items.map(item => item.h), ['动力', '补能']);
 });
+
+test('streaming: the author\'s notes reach the illustrator with their script only, and it is told what the last pages looked like', async () => {
+  const {STREAM_INSTRUCTIONS, refineStreamOp} = await import('./board-lesson.mjs');
+  const requests = [];
+  const pages = ['{"op":"scene","title":"摆正方形"}\n{"op":"put","block":{"id":"t","t":"tiles","items":[{"id":"a","rows":4,"cols":4,"q":"四个一排"}]}}\n', '{"op":"scene","title":"别的"}\n{"op":"put","block":{"id":"l","t":"list","items":[{"id":"a","h":"电池","q":"电池是关键"}]}}\n'];
+  const director = createBoardDirector({stream: {instructions: STREAM_INSTRUCTIONS, refine: refineStreamOp}, complete: async function* ({messages}) { requests.push(JSON.parse(messages[1].content)); yield pages[requests.length - 1]; }});
+  assert.equal(director.streams, true);
+  const script = '十二，我们用积木摆正方形。四个一排，摆四排，正好十六个。';
+  director.note('c', {title: '摆正方形', script, lines: [{say: '十二，我们用积木摆正方形。', show: ''}, {say: '四个一排，摆四排，正好十六个。', show: 'tiles：4 排每排 4 个'}]});
+  await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '讲讲平方'}, {role: 'assistant', text: script}]});
+  assert.equal(requests[0].notes.lines[1].show, 'tiles：4 排每排 4 个');
+  assert.equal(director.scene('c').blocks[0].t, 'tiles');
+  await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '那电动车呢'}, {role: 'assistant', text: '电动车最要紧的是电池，电池是关键，决定能跑多远。'}]});
+  assert.equal('notes' in requests[1], false, 'a later answer is not drawn from an earlier script\'s notes');
+  await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '再说说'}, {role: 'assistant', text: '电动车最要紧的是电池，电池是关键，决定能跑多远，也决定价格。'}]}).catch(() => {});
+  assert.deepEqual(requests[2].recent, ['tiles']);
+});

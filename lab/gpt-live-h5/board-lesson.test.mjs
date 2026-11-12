@@ -213,3 +213,26 @@ test('the streaming illustrator: a print before V speaks, then only what V has s
   assert.equal(refineStreamOp(put({id: 'x', t: 'list', items: [{h: '钟表馆', q: '钟表馆也值得'}]}), {said, trigger: 'assistant_progress'}), null);
   assert.match(STREAM_INSTRUCTIONS, /只能在后面追加/u);
 });
+
+test('with the streaming illustrator a lesson is a script with a note per sentence; the page is the illustrator\'s', async () => {
+  const {parseScript, SCRIPT_INSTRUCTIONS, STREAM_INSTRUCTIONS} = await import('./board-lesson.mjs');
+  const written = JSON.stringify({title: '摆正方形', say: ['十二，我们用积木摆正方形。', '四个一排，摆四排，正好十六个。', '所以四乘四等于十六。', '那五个一排摆五排，是几个呀？', '听懂了吗？'], show: ['photo：积木', 'tiles：4 排每排 4 个，标“16 个”', 'formula：4 × 4 = 16，16 圈出', 'tiles：5 排每排 5 个，空格子', '']});
+  const script = parseScript('```json\n' + written + '\n```');
+  assert.equal(script.say.length, 4, 'one closing question');
+  assert.deepEqual(script.show, ['photo：积木', 'tiles：4 排每排 4 个，标“16 个”', 'formula：4 × 4 = 16，16 圈出', 'tiles：5 排每排 5 个，空格子']);
+  assert.equal(parseScript('{"say":["只有一句"]}'), null);
+  for (const kind of ['tiles', 'formula', 'timeline', 'versus', 'overlap', 'stack', 'scale', 'flow']) assert.match(SCRIPT_INSTRUCTIONS, new RegExp(kind, 'u'));
+  assert.match(STREAM_INSTRUCTIONS, /notes 是这段话的作者留的画面提示/u);
+  // The writer hands over the script and leaves its notes with the director; it puts up no page and holds nothing.
+  const events = [];
+  const director = {streams: true, note: (id, notes) => events.push(['note', id, notes.title, notes.lines.length, notes.lines[1]]), hold: () => events.push(['hold']), present: () => events.push(['present'])};
+  const asked = [];
+  const writer = createLessonWriter({director, complete: async function* ({messages}) { asked.push(messages[0].content === SCRIPT_INSTRUCTIONS); yield written; }});
+  const prepared = await writer.prepare({owner: 'c', topic: '平方', audience: '5岁小朋友十二'});
+  assert.equal(prepared.say, '十二，我们用积木摆正方形。四个一排，摆四排，正好十六个。所以四乘四等于十六。那五个一排摆五排，是几个呀？');
+  assert.deepEqual(events, [['note', 'c', '摆正方形', 4, {say: '四个一排，摆四排，正好十六个。', show: 'tiles：4 排每排 4 个，标“16 个”'}]]);
+  assert.deepEqual(asked, [true]);
+  assert.match(writer.brief({topic: 't'}), /"show":\[/u);
+  assert.equal(writer.accept({owner: 'd', topic: 't', text: written}).sentences.length, 4);
+  assert.equal(events.at(-1)[1], 'd');
+});

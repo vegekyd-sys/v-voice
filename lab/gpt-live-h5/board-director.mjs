@@ -73,9 +73,11 @@ const evidenceText = result => {
 };
 
 /** Build the user message for one run. Everything in it is conversation data. */
-export function boardRequest({trigger, scene, turns, evidence}) {
+export function boardRequest({trigger, scene, turns, evidence, notes = null, recent = []}) {
   return JSON.stringify({
     trigger,
+    ...(notes ? {notes} : {}),
+    ...(recent.length ? {recent} : {}),
     screen: sceneDigest(scene) ?? '（画面现在是空的）',
     ...(evidence.length ? {evidence: evidence.map(item => ({tool: item.name, result: item.text}))} : {}),
     conversation: turns,
@@ -132,6 +134,10 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       while (row.evidence.length > MAX_EVIDENCE) row.evidence.shift();
     },
     scene(id) { return owners.get(id)?.scene ?? emptyScene(); },
+    /** Whether pages are drawn by the streaming illustrator (then a lesson is a script with notes, not a page). */
+    streams: Boolean(stream),
+    /** The author's notes for a script V is about to speak: {title, script, lines: [{say, show}]}. */
+    note(id, notes) { owner(id).notes = notes; },
     /**
      * A lesson is being written for this call: stop drawing (a run in flight
      * is dropped) until it is presented or released. What is on the page stays.
@@ -238,6 +244,8 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
           const next = applyOp(row.scene, op);
           if (next === row.scene) return;
           // The page is a lesson's page whoever opened it: pieces wait for the voice.
+          // What kinds of picture the last pages were made of, so the next can differ.
+          if (next.serial !== row.scene.serial && row.scene.blocks.length) row.recent = [...(row.recent ?? []), ...new Set(row.scene.blocks.map(block => block.t).filter(type => !['photo', 'sticky', 'note'].includes(type)))].slice(-6);
           row.scene = next.blocks.length ? {...next, lesson: true, late: true} : next;
           ops++; firstOpMs ??= now() - started; drawn.push(op);
           onOp({op: 'sync', scene: row.scene});
@@ -254,7 +262,10 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       });
       try {
         const messages = [{role: 'system', content: stream?.instructions ?? BOARD_INSTRUCTIONS},
-          {role: 'user', content: boardRequest({trigger, scene: row.scene, turns, evidence: row.evidence})}];
+          {role: 'user', content: boardRequest({trigger, scene: row.scene, turns, evidence: row.evidence,
+            // The author's notes go with the script they were written for, and with nothing else.
+            ...(stream && row.notes && said && said.replace(/\s+/gu, '').startsWith(row.notes.script.replace(/\s+/gu, '').slice(0, 24)) ? {notes: {title: row.notes.title, lines: row.notes.lines}} : {}),
+            ...(stream ? {recent: row.recent ?? []} : {})})}];
         for await (const chunk of complete({messages, signal: controller.signal})) {
           if (controller.signal.aborted) break;
           parser.feed(chunk);

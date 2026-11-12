@@ -84,6 +84,41 @@ ${pieces}
 ${KIT}
 ${HANGING}`;
 
+// What the author of a script writes when the page is drawn by the one
+// illustrator: what V says, and for each sentence a note on what to show.
+const speaking = LESSON_INSTRUCTIONS.slice(LESSON_INSTRUCTIONS.indexOf('# 语言'), LESSON_INSTRUCTIONS.indexOf('# 区块（block.t）'));
+export const SCRIPT_INSTRUCTIONS = `你是 V。用户在电话里请你讲解一个东西。你写「讲稿」，并给每一句配一条「画面提示」。讲稿会由你的声音一字不差地念出来；屏幕上有一页手账，由画面作者按你的讲稿和提示来画，念到哪一句，那一句的东西就出现。
+
+输入是一个 JSON：topic 是要讲什么；audience 是讲给谁听；ask 是用户的原话（语音识别，可能夹着旁人的话，只取和 topic 有关的要求）；reference 是可靠的参考资料（有的话），和它冲突的不要讲；before 是这通电话里你刚讲过的一段（有的话）：这次要接着它讲新的东西，或者按用户的要求换个讲法，不要原样重复，例子、比方和最后的问题都换新的。
+
+只输出一个 JSON 对象，不要任何别的文字：
+{"title":"画面标题，不超过 12 个字","say":["第一句","第二句",…],"show":["第一句的画面提示","第二句的画面提示",…]}
+
+${speaking}# 画面提示 show
+- show 和 say 一样长，show 的第 i 条说第 i 句念出来时屏幕上该出现什么；这一句不需要新东西就写空字符串 ""。
+- 用一句大白话写清楚「用哪种图示、放什么」，不用写 JSON。可以用的图示：照片 photo、方块阵列 tiles（数得清的东西摆成几排几列）、式子 formula（一段一段的算式或「A = B + C」）、时间线 timeline、逐项对比 versus（两三样东西一项一项比）、两圈重叠 overlap（各有什么、共有什么）、分层 stack（谁托着谁）、数轴 scale（按数值排在一条线上）、关系图 flow（谁克谁、谁影响谁，节点可带图）、步骤 steps、带图列表 list、大数字 stats、柱状 bars、便签 sticky。
+- 例子：「photo：猎鹰9号」「versus：电车/油车，加一行“补能”：家里慢充 / 三分钟加满，油车占优」「tiles：4 排每排 4 个方块，标“16 个”」「formula：4 × 4 = 16」「timeline：加一项 1958，凸点定型」「flow：加节点 小火龙（配图），箭头 杰尼龟→小火龙 标“打得过”」「sticky：先看有没有充电桩」。
+- 先想清楚这件事的形状再挑图示，整页 2 到 3 种图示互相配合，不要全是步骤和列表。同一个图示可以跨好几句一点点长出来（每句加一行、一个节点、一组方块）。
+- 提示里的名字、数字要和这一句讲稿里说的一样；讲稿没说的东西不要让画面出现。
+- 第一句就要有东西：给它配一张照片或第一个图示。最要紧的一两处写明「圈出」「打星」或「荧光笔标出某几个字」。
+- 一屏放得下：整页最多 3 个图示加一张便签。`;
+
+/** Read a script and its notes: {title, say, show}; null when unusable. */
+export function parseScript(text) {
+  const start = text.indexOf('{'), end = text.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  let value;
+  try { value = JSON.parse(text.slice(start, end + 1)); } catch { return null; }
+  const raw = Array.isArray(value?.say) ? value.say : [], say = sentences(raw);
+  if (say.length < 2) return null;
+  // Notes stay beside the sentence they belong to, even where a sentence was dropped as empty.
+  const show = raw.map((line, index) => String(line ?? '').trim() ? String((Array.isArray(value?.show) ? value.show : [])[index] ?? '').replace(/\s+/gu, ' ').trim().slice(0, 200) : null).filter(note => note !== null).slice(0, say.length);
+  while (!fixedClose(say)) say.pop();
+  return {title: String(value?.title ?? '').replace(/\s+/gu, ' ').trim().slice(0, 40), say, show: say.map((_, index) => show[index] ?? '')};
+}
+// One closing line: a question followed by "did you get it?" loses the second.
+const fixedClose = say => !(say.length > 3 && asks(say.at(-1)) && asks(say.at(-2)));
+
 // Facts the quick models get wrong often enough to matter, handed over when
 // the topic calls for them. (Asked for legendary birds, one had ice beating
 // fire, another made up a ring of three.)
@@ -218,7 +253,7 @@ export function parseLesson(text) {
  */
 export const STREAM_INSTRUCTIONS = `你是 V 的画面作者。V 正在电话里回答用户，你给这段回答配一页手账画面。V 的回答文字是一段一段到的，比声音先到几秒；你会被反复叫到，每次看到更长的回答，把新说到的东西画上去。画面上的每样东西会在声音念到对应的字时才显示出来。
 
-输入是一个 JSON：trigger 说明现在是哪一步；conversation 是最近的对话，最后一条 assistant 是 V 目前已经说出的话（一个字都不能改）；evidence 是 V 回答前查到的资料（有的话）；screen 是屏幕上现在的画面（没有就是空的）。
+输入是一个 JSON：trigger 说明现在是哪一步；conversation 是最近的对话，最后一条 assistant 是 V 目前已经说出的话（一个字都不能改）；evidence 是 V 回答前查到的资料（有的话）；screen 是屏幕上现在的画面（没有就是空的）；notes 是这段话的作者留的画面提示（有的话）：每条是一句话（say）和这句话该配的画面（show）。有 notes 就照着画：用它点名的图示类型和内容，标题用 notes 的 title；每样东西仍然挂在它那一句 say 的字上。recent 是这通电话前几页用过的图示类型（有的话）：两种图示都合适时，挑最近没用过的那种，不要每一页都长一个样。
 
 输出：每行一个 JSON 操作，不要任何别的文字。
 {"op":"scene","title":"不超过 12 个字"}   开一页新的（换话题时）。旧页会被换掉。
@@ -315,17 +350,28 @@ export function createLessonWriter({complete, fallback = null, director, now = D
     /** Returns the script to speak, or null when no lesson could be written. `ask` is the caller's own words. */
     async prepare({owner, topic, audience = '', ask = '', reference = '', signal} = {}) {
       const started = now();
-      // The director stops at once: a picture it was about to draw for the
-      // same question would flash by before the lesson arrives.
-      director.hold?.(owner);
+      // With the streaming illustrator the writer only writes the script and
+      // its notes; the page is the illustrator's, as for any answer of V's.
+      const scripted = director.streams === true;
+      // (Otherwise the director stops at once: a picture it was about to draw
+      // for the same question would flash by before the lesson arrives.)
+      if (!scripted) director.hold?.(owner);
       const before = told.get(owner);
-      const messages = [{role: 'system', content: LESSON_INSTRUCTIONS},
+      const messages = [{role: 'system', content: scripted ? SCRIPT_INSTRUCTIONS : LESSON_INSTRUCTIONS},
         {role: 'user', content: JSON.stringify({topic: String(topic ?? '').slice(0, 400), audience: String(audience ?? '').slice(0, 80) || '成年人',
           ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(before ? {before} : {}),
           // What was looked up for this lesson (a search, V's memory), then the standing references.
           ...([reference && Array.from(String(reference)).slice(0, 6000).join(''), lessonReference(`${topic} ${ask}`)].filter(Boolean).length ? {reference: [reference && Array.from(String(reference)).slice(0, 6000).join(''), lessonReference(`${topic} ${ask}`)].filter(Boolean).join('\n\n')} : {})})}];
-      const lesson = await race({owner, messages, signal, started, first: complete, second: fallback, parse: parseLesson, preferMs, totalMs});
+      const lesson = await race({owner, messages, signal, started, first: complete, second: fallback, parse: scripted ? parseScript : parseLesson, preferMs, totalMs});
       const say = lesson ? spokenScript(lesson.say) : '';
+      if (scripted) {
+        record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ask, ok: Boolean(lesson), writer: lesson?.writer ?? null, scripted: true, durationMs: now() - started, say: lesson?.say ?? null, show: lesson?.show ?? null});
+        if (!lesson) return null;
+        told.delete(owner); told.set(owner, {title: lesson.title, say});
+        while (told.size > 200) told.delete(told.keys().next().value);
+        director.note(owner, {title: lesson.title, script: say, lines: lesson.say.map((line, index) => ({say: line, show: lesson.show[index]}))});
+        return {say, sentences: lesson.say};
+      }
       record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ask, ok: Boolean(lesson), writer: lesson?.writer ?? null, durationMs: now() - started, say: lesson?.say ?? null, drawn: lesson?.ops ?? null});
       if (!lesson) { director.release?.(owner); return null; }
       told.delete(owner); told.set(owner, {title: lesson.title, say});
@@ -340,9 +386,17 @@ export function createLessonWriter({complete, fallback = null, director, now = D
      * answers with the lesson. `brief` is what to ask it; `accept` takes its reply.
      */
     brief({topic, audience = '', ask = ''} = {}) {
-      return `电话里用户请你讲解一件事，屏幕上有一页手账画面会跟着你的讲解出现。需要今天的信息、用户自己的项目或记录时，先用你自己的工具查清楚（查不到就如实少讲），再按下面的规范写。你的最终回复只能是规范里的那个 JSON 对象本身，前后不要任何别的文字，也不要另写口头摘要。\n\n这次的输入：${JSON.stringify({topic: String(topic ?? '').slice(0, 400), audience: String(audience ?? '').slice(0, 80) || '成年人', ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(lessonReference(`${topic} ${ask}`) ? {reference: lessonReference(`${topic} ${ask}`)} : {})})}\n\n===== 规范 =====\n${LESSON_INSTRUCTIONS}`;
+      return `电话里用户请你讲解一件事，屏幕上有一页手账画面会跟着你的讲解出现。需要今天的信息、用户自己的项目或记录时，先用你自己的工具查清楚（查不到就如实少讲），再按下面的规范写。你的最终回复只能是规范里的那个 JSON 对象本身，前后不要任何别的文字，也不要另写口头摘要。\n\n这次的输入：${JSON.stringify({topic: String(topic ?? '').slice(0, 400), audience: String(audience ?? '').slice(0, 80) || '成年人', ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(lessonReference(`${topic} ${ask}`) ? {reference: lessonReference(`${topic} ${ask}`)} : {})})}\n\n===== 规范 =====\n${director.streams === true ? SCRIPT_INSTRUCTIONS : LESSON_INSTRUCTIONS}`;
     },
     accept({owner, text, topic, audience = '', ask = '', startedAt = now()} = {}) {
+      if (director.streams === true) {
+        const script = parseScript(String(text ?? '')), words = script ? spokenScript(script.say) : '';
+        record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ask, ok: Boolean(script), writer: 'backend', scripted: true, durationMs: now() - startedAt, say: script?.say ?? null, show: script?.show ?? null, ...(script ? {} : {head: String(text ?? '').slice(0, 200)})});
+        if (!script) return null;
+        told.delete(owner); told.set(owner, {title: script.title, say: words});
+        director.note(owner, {title: script.title, script: words, lines: script.say.map((line, index) => ({say: line, show: script.show[index]}))});
+        return {say: words, sentences: script.say};
+      }
       const lesson = parseLesson(String(text ?? ''));
       const say = lesson ? spokenScript(lesson.say) : '';
       record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ask, ok: Boolean(lesson), writer: 'backend', durationMs: now() - startedAt, say: lesson?.say ?? null, drawn: lesson?.ops ?? null, ...(lesson ? {} : {head: String(text ?? '').slice(0, 200)})});
