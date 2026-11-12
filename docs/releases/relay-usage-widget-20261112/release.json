@@ -1,0 +1,38 @@
+{
+  "version": "voice-relay-usage.20261112.1",
+  "sourceCommit": "71e1d5d97bf2eebcbb539a74f330060e61b02412",
+  "mergePR": 209,
+  "filesSha256": "791c484dddc655deeace15833aac2e541b2899b8d85eabb74e677ef0d7d29a86",
+  "previousRunningCommit": "3ff302807427a76fc1d9fec006173a643f9f7262",
+  "verifiedAt": "2026-11-12T23:59:36+08:00",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/43252573760",
+  "nodes": {
+    "web": {
+      "commit": "71e1d5d97bf2eebcbb539a74f330060e61b02412",
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "commit": "71e1d5d97bf2eebcbb539a74f330060e61b02412",
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "firstAttempt": "Both nodes restored previous release because the runtime account could not read the artifact manifest. Set artifact manifests to their existing release mode and retried through release-fleet.",
+  "gatewayIdentityPreserved": true,
+  "collector": {
+    "timer": "active",
+    "initialProviderCount": 5,
+    "initialReadyCount": 5
+  },
+  "ios": {
+    "version": "1.0.0",
+    "build": 43,
+    "installedBuildReadBack": 43,
+    "previousInstalledBuild": 42,
+    "shareExtensionIncluded": false,
+    "signed": true,
+    "sharedKeychainEntitlementsVerified": true,
+    "homeScreenVerification": "Physical iPhone widgets displayed production subscription data. The large widget matched the collector for four subscriptions, reset times and the account balance."
+  }
+}
