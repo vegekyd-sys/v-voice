@@ -111,3 +111,11 @@ test('a topic with facts the models get wrong comes with a reference', async () 
   assert.match(seen[0].reference, /电打地面/u);
   assert.equal('reference' in seen[1], false);
 });
+
+test('a slow writer is given up on and the fallback writes the lesson', async () => {
+  const order = [];
+  const slow = async function* ({signal}) { order.push('slow'); await new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(Error('aborted')), {once: true})); };
+  const writer = createLessonWriter({director: {present() {}}, attemptMs: 30, totalMs: 2000, complete: slow, fallback: async function* () { order.push('fallback'); yield reply; }});
+  assert.ok(await writer.prepare({owner: 'c', topic: 't'}));
+  assert.deepEqual(order, ['slow', 'fallback']);
+});
