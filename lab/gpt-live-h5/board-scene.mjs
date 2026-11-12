@@ -136,7 +136,9 @@ export function spokenFocus(scene, spoken, index) {
     const quote = item.q && loose(item.q);
     if (!quote) continue;
     // The quote counts once V has started saying it, not only when finished.
-    const found = heard.lastIndexOf(quote.slice(0, Math.min(quote.length, 4)));
+    // First occurrence: a later mention of the same words ("Server Hello
+    // Done") must not pull the mark back to an item V has left.
+    const found = heard.indexOf(quote.slice(0, Math.min(quote.length, 4)));
     if (found > at && loose(spoken).includes(quote)) { at = found; best = `${block.id}/${item.id}`; }
   }
   return best;

@@ -118,6 +118,8 @@ test('the focus mark follows what V has said aloud, by each item\'s quote', () =
   assert.equal(spokenFocus(scene, said, at('第二步') + 5), 's/b', 'punctuation and spaces in a quote do not matter');
   assert.equal(spokenFocus(scene, said, 999), 's/c');
   assert.equal(spokenFocus(emptyScene(), said, 999), '');
+  const repeated = run({op: 'put', block: {id: 's', t: 'steps', items: [{id: 'a', h: 'Server Hello', q: 'Server Hello本身'}, {id: 'b', h: '证书链', q: '然后发证书链'}]}});
+  assert.equal(spokenFocus(repeated, '第一，Server Hello本身。然后发证书链。最后是Server Hello Done。', 999), 's/b', 'a later mention does not pull the mark back');
   const columns = run({op: 'put', block: {id: 'c', t: 'compare', cols: [{id: 'l', h: 'A', q: '第一步是拨号', points: []}, {id: 'r', h: 'B', points: []}]}});
   assert.equal(spokenFocus(columns, said, 999), 'c/l');
 });
