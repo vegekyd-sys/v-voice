@@ -9,7 +9,7 @@ import { createAvatarTasks } from "./avatar-state.mjs";
 import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { createAvatarTelemetry } from "./avatar-telemetry.mjs";
 import { createBoardClient, createSpokenCursor, readEventStream } from "./board-client.mjs";
-import { spokenFocus } from "./board-scene.mjs";
+import { spokenProgress } from "./board-scene.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
 import { createContentView } from "./content-view.mjs";
@@ -39,6 +39,7 @@ const renderAssistant = (target, item) => {
 };
 if (document.querySelector) mountCallUi(document, view, {
   renderAssistant, onDocumentShown: callId => documentShown(callId),
+  loadBoardPhoto: query => loadBoardPhoto(query),
   actions: {
     openBinding: () => void openIosBinding(),
     connectIdentity: () => { guestDialAllowed=false;void confirmation.start(); },
@@ -434,6 +435,17 @@ function receiveDocument(active,value){
   if(call!==active||value.voiceSessionId!==active.voiceSessionId)return;
   renderTranscript(presentation.consume(value));
 }
+// A photograph on the board: fetched once per call through the Voice service
+// and handed to the page as a local object URL (null when there is none).
+function loadBoardPhoto(query) {
+  const active = call;
+  if (!active?.board || typeof query !== 'string') return Promise.resolve(null);
+  active.boardPhotos ??= new Map();
+  if (!active.boardPhotos.has(query)) active.boardPhotos.set(query, fetch(apiUrl('board-image'), { method: 'POST',
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ voiceSessionId: active.voiceSessionId, query }) })
+    .then(async response => response.ok ? URL.createObjectURL(await response.blob()) : null).catch(() => null));
+  return active.boardPhotos.get(query);
+}
 // The UI reports a document row once it is actually on screen.
 function documentShown(callId){
   const active=call;
@@ -583,7 +595,8 @@ async function stopCall({failure}={}) {
   if (active) {
     active.avatarTelemetry?.close();
     active.avatarReactions?.dispose();
-    active.board?.dispose(); clearInterval(active.boardFocusTimer); view.set({ board: null, boardFocus: '' });
+    active.board?.dispose(); clearInterval(active.boardFocusTimer); view.set({ board: null, boardSpoken: null });
+    for (const pending of active.boardPhotos?.values() ?? []) void pending.then(url => { if (url) URL.revokeObjectURL(url); });
     active.relay?.dispose();
     active.dialConnection?.dispose();
     active.callerContext?.close();active.deviceAdapter?.close();
@@ -726,13 +739,13 @@ async function startCall() {
         // audio such as a progress cue is not the earlier reply being re-read.
         const last = [...snapshot.history, ...snapshot.current].filter(item => !item.document && item.text?.trim()).sort((a, b) => a.at - b.at).at(-1);
         const row = last?.role === 'assistant' ? last : null;
-        let focus = '';
+        let spoken = null;
         if (row && scene.blocks.length && view.get().voice === 'speaking') {
           const stats = active.relay?.stats, textLength = Array.from(row.text).length;
           const index = stats ? cursor.index({ key: row.key, textLength, outputBytes: stats.outputBytes, queuedBytes: stats.queuedOutputBytes }) : textLength;
-          focus = spokenFocus(scene, row.text, index);
+          spoken = spokenProgress(scene, row.text, index);
         }
-        view.set({ boardFocus: focus });
+        if (JSON.stringify(view.get().boardSpoken) !== JSON.stringify(spoken)) view.set({ boardSpoken: spoken });
       }, 400);
     }
     if (avatar) active.avatarReactions = createAvatarReactions({

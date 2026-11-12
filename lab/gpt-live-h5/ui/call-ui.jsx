@@ -446,10 +446,7 @@ function CallPage({view, actions, options}) {
   const width = Math.min(viewport.width, 560), {height} = viewport;
   const compact = inCall && !wide && (overflow || height < 560 || state.composer.open && height < 700);
   const scene = inCall && !state.tvHost && state.board?.blocks.length ? state.board : null;
-  const shown = scene && boardHidden !== scene.serial && !(history && !wide);
-  // While V speaks, the mark follows the audio; otherwise it stays where the
-  // director last put it.
-  const board = !shown ? null : state.boardFocus && state.boardFocus !== scene.focus ? {...scene, focus: state.boardFocus} : scene;
+  const board = scene && boardHidden !== scene.serial && !(history && !wide) ? scene : null;
   // With a picture up, the picture is the subject and V sits beside it.
   const size = !inCall ? Math.min(width * .72, height * .4, 300)
     : board ? (wide ? Math.min(92, height * .13) : 48)
@@ -510,7 +507,7 @@ function CallPage({view, actions, options}) {
           )}
           {inCall && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
         </section>
-        {board && <Board scene={board} onClose={() => setBoardHidden(board.serial)} />}
+        {board && <Board scene={board} spoken={state.boardSpoken} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(board.serial)} />}
         {inCall && (
           <aside className="chat-panel" aria-label="聊天内容">
             <Conversation state={state} options={options} history={wide || history} setHistory={setHistory} onOverflow={latchOverflow} wide={wide} />
@@ -525,8 +522,8 @@ function CallPage({view, actions, options}) {
 }
 
 /** Renders synchronously so the call engine can bind its elements right after. */
-export function mountCallUi(document, view, {actions, renderAssistant, onDocumentShown}) {
+export function mountCallUi(document, view, {actions, renderAssistant, onDocumentShown, loadBoardPhoto}) {
   const root = createRoot(document.getElementById('app'));
-  flushSync(() => root.render(<CallPage view={view} actions={actions} options={{renderAssistant, onDocumentShown}} />));
+  flushSync(() => root.render(<CallPage view={view} actions={actions} options={{renderAssistant, onDocumentShown, loadBoardPhoto}} />));
   return root;
 }

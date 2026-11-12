@@ -121,8 +121,8 @@ export const INITIAL_VIEW = Object.freeze({
   reading: false,
   // The call board (board-scene.mjs); null until the director draws something.
   board: null,
-  // The item V's voice has reached (board-scene.mjs spokenFocus); '' when none.
-  boardFocus: '',
+  // Where V's voice is on the board (board-scene.mjs spokenProgress); null when V is not speaking.
+  boardSpoken: null,
 });
 
 export function createCallView(initial = {}) {

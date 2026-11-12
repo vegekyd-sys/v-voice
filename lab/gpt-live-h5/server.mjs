@@ -35,12 +35,13 @@ import {VOICE_CONTEXT_HISTORY_REQUEST,voiceConversationContext} from '../realtim
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 import {idleHangupFromEnv} from '../realtime-direct-tools/idle-hangup.mjs';
 import {boardDirectorFromEnv,boundedBoardRequest} from './board-director.mjs';
+import {createPhotoFinder} from './board-photo.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Dialing is how a known caller retries; only anonymous callers keep the tight limit.
 export const callAttemptLimit = binding => binding.permissionProfile === 'unidentified' ? 6 : 30;
 
-export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, board = null, enableGrok = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, board = null, boardPhotos = null, enableGrok = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
   let agentControl = null;
   if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
   if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
@@ -650,7 +651,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
         ["/speaker-routing.mjs", [join(here, "../speaker-native/client.mjs"), "text/javascript; charset=utf-8"]],
-        ...["device-location.mjs", "caller-context.mjs", "ui-bundle.mjs", "call-view.mjs", "board-client.mjs", "board-scene.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
+        ...["device-location.mjs", "caller-context.mjs", "ui-bundle.mjs", "call-view.mjs", "board-client.mjs", "board-scene.mjs", "board-sketch.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
         ["/changelog.mjs", [join(here, "changelog.mjs"), "text/javascript; charset=utf-8"]],
         ["/assets/v-voice-icon.svg", [join(here, "assets/v-voice-icon.svg"), "image/svg+xml"]],
@@ -869,6 +870,16 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           onOp:op=>{ if (context.active === active) send(op); }});
         send({op:'done',reason:result.reason,rev:result.rev??board.scene(params.voiceSessionId).rev,durationMs:result.durationMs,firstOpMs:result.firstOpMs??null});
         res.end();return;
+      }
+      if (pathname === '/api/board-image') {
+        if (!boardAllowed(binding) || !boardPhotos) return json(res,404,{error:'没有这个入口'});
+        // Only a photograph the director has put on this call's board.
+        const query = typeof params.query === 'string' ? params.query : '';
+        if (!board.scene(params.voiceSessionId).blocks.some(block => block.t === 'photo' && block.query === query)) return json(res,404,{error:'画面上没有这张照片'});
+        const found = await boardPhotos.find(query);
+        if (!found) return json(res,404,{error:'没有找到照片'});
+        res.writeHead(200,{'content-type':found.type,'cache-control':'no-store','content-length':found.bytes.length});
+        res.end(found.bytes);return;
       }
       if (context.active.direct) {
         if (pathname === '/api/close') { await close(context); return json(res,200,{ok:true}); }
@@ -1198,7 +1209,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     bridge = createLiveH5Server({ gateway, deviceEndpoint,backendDeviceEndpoint:process.env.VOICE_BACKEND_DEVICE_ENDPOINT??'',
       candidateRelease:process.env.VOICE_CANDIDATE_RELEASE_FILE?JSON.parse(await readFile(process.env.VOICE_CANDIDATE_RELEASE_FILE,'utf8')):undefined,
       listening:process.env.VOICE_LISTENING_DIR ? await (await import('./listening.mjs')).loadVoiceListening(process.env.VOICE_LISTENING_DIR) : undefined,
-      directVoice, speakerRouting, avatarLog,board,callControlAudit:transcriptLog.audit,
+      directVoice, speakerRouting, avatarLog,board,boardPhotos:board?createPhotoFinder():null,callControlAudit:transcriptLog.audit,
       phoneInputPolicy:process.env.VOICE_PHONE_INPUT_POLICY ?? 'speaker',
       enableGrok: process.env.VOICE_ENABLE_GROK === '1',
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",

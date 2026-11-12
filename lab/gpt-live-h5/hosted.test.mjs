@@ -268,3 +268,21 @@ test('without a board director the page is told nothing and the endpoint does no
   const call = await (await f.request('/voice/api/session?entry=tianyi', cookie, {})).json();
   assert.equal((await f.request('/voice/api/board?entry=tianyi', cookie, {trigger: 'user', rev: 0, turns: [{role: 'user', text: 'x'}], voiceSessionId: call.voiceSessionId})).status, 404);
 });
+
+test('a board photograph is served only for a picture the director put on this call\'s board', async t => {
+  const {createBoardDirector} = await import('./board-director.mjs');
+  const board = createBoardDirector({complete: async function* () { yield '{"op":"put","block":{"id":"p","t":"photo","query":"埃菲尔铁塔","caption":"巴黎"}}\n'; }});
+  const asked = [];
+  const boardPhotos = {find: async query => { asked.push(query); return query === '埃菲尔铁塔' ? {bytes: Buffer.from([255, 216, 255]), type: 'image/jpeg', title: query, source: 'test'} : null; }};
+  const f = await fixture(t, {board, boardPhotos});
+  const cookie = await f.visitor(), other = await f.visitor();
+  const call = await (await f.request('/voice/api/session?entry=tianyi', cookie, {})).json();
+  const ask = (who, query) => f.request('/voice/api/board-image?entry=tianyi', who, {voiceSessionId: call.voiceSessionId, query});
+  assert.equal((await ask(cookie, '埃菲尔铁塔')).status, 404, 'not on the board yet');
+  await (await f.request('/voice/api/board?entry=tianyi', cookie, {voiceSessionId: call.voiceSessionId, trigger: 'user', rev: 0, turns: [{role: 'user', text: '讲讲埃菲尔铁塔'}]})).text();
+  const response = await ask(cookie, '埃菲尔铁塔');
+  assert.deepEqual([response.status, response.headers.get('content-type'), response.headers.get('cache-control'), [...new Uint8Array(await response.arrayBuffer())]], [200, 'image/jpeg', 'no-store', [255, 216, 255]]);
+  assert.equal((await ask(cookie, '别的东西')).status, 404, 'arbitrary lookups are refused');
+  assert.equal((await ask(other, '埃菲尔铁塔')).status, 409, 'another visitor');
+  assert.deepEqual(asked, ['埃菲尔铁塔']);
+});

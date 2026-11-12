@@ -4,7 +4,10 @@
 // the page (which applies and renders it). Pure data: no DOM, no network.
 
 export const BOARD_LIMITS = Object.freeze({blocks: 6, items: 8, columns: 4, rows: 8, nodes: 10, edges: 16});
-export const BOARD_BLOCK_TYPES = Object.freeze(['note', 'list', 'steps', 'compare', 'stats', 'bars', 'table', 'flow']);
+export const BOARD_BLOCK_TYPES = Object.freeze(['note', 'sticky', 'photo', 'list', 'steps', 'compare', 'stats', 'bars', 'table', 'flow']);
+// Paper colours a block may sit on, and the marks V's pen may leave on an item.
+export const BOARD_TONES = Object.freeze(['butter', 'peach', 'sky', 'lilac', 'blush']);
+export const BOARD_MARKS = Object.freeze(['ring', 'underline', 'check', 'cross', 'star']);
 
 // `pending` is the title of a new picture the director has announced but not
 // yet drawn; the picture on screen stays until its first block arrives.
@@ -21,6 +24,9 @@ const optional = (target, key, value) => { if (value) target[key] = value; retur
 // `q`: a few of V's own words marking where V talks about this item, so the
 // page can move the focus mark with the audio (see spokenFocus).
 const quoted = (target, source) => optional(target, 'q', text(source.q, 24));
+// One emoji (or two joined ones) in front of an item; anything longer is not an icon.
+const icon = value => { const glyphs = typeof value === 'string' ? Array.from(value.trim()) : []; return glyphs.length && glyphs.length <= 4 && !/[\p{L}\p{N}]/u.test(value) ? glyphs.join('') : ''; };
+const dressed = (target, source) => optional(optional(quoted(target, source), 'mark', BOARD_MARKS.includes(source.mark) ? source.mark : ''), 'icon', icon(source.icon));
 // Model-written ids may repeat; later duplicates get a positional id instead.
 const unique = (items, prefix) => {
   const seen = new Set();
@@ -33,13 +39,19 @@ const unique = (items, prefix) => {
 const entries = (raw, prefix) => unique(list(raw, BOARD_LIMITS.items).map((item, index) => {
   const entry = typeof item === 'string' ? {h: item} : item && typeof item === 'object' ? item : {};
   const h = text(entry.h ?? entry.label ?? entry.title, 60);
-  return h ? quoted(optional({id: ident(entry.id, `${prefix}${index + 1}`), h}, 'd', text(entry.d ?? entry.detail, 160)), entry) : null;
+  return h ? dressed(optional({id: ident(entry.id, `${prefix}${index + 1}`), h}, 'd', text(entry.d ?? entry.detail, 160)), entry) : null;
 }).filter(Boolean), prefix);
 
 const BLOCKS = {
   note(raw) {
     const value = text(raw.text ?? raw.h, 120);
     return value ? {text: value} : null;
+  },
+  sticky(raw) { return BLOCKS.note(raw); },
+  // A real photograph of a public thing, found by the service from `query`.
+  photo(raw) {
+    const query = text(raw.query, 60);
+    return query ? optional({query}, 'caption', text(raw.caption, 40)) : null;
   },
   list(raw) {
     const items = entries(raw.items, 'i');
@@ -51,7 +63,7 @@ const BLOCKS = {
       if (!col || typeof col !== 'object') return null;
       const h = text(col.h ?? col.label, 30);
       const points = list(col.points, 6).map(point => text(point, 80)).filter(Boolean);
-      return h ? quoted(optional({id: ident(col.id, `c${index + 1}`), h, points}, 'tag', text(col.tag, 10)), col) : null;
+      return h ? dressed(optional({id: ident(col.id, `c${index + 1}`), h, points}, 'tag', text(col.tag, 10)), col) : null;
     }).filter(Boolean), 'c');
     return cols.length >= 2 ? optional({cols}, 'h', text(raw.h, 40)) : null;
   },
@@ -60,7 +72,7 @@ const BLOCKS = {
       if (!item || typeof item !== 'object') return null;
       const label = text(item.label ?? item.h, 30), value = text(item.value, 20);
       if (!label || !value) return null;
-      return quoted(optional(optional({id: ident(item.id, `n${index + 1}`), label, value}, 'unit', text(item.unit, 10)), 'note', text(item.note, 60)), item);
+      return dressed(optional(optional({id: ident(item.id, `n${index + 1}`), label, value}, 'unit', text(item.unit, 10)), 'note', text(item.note, 60)), item);
     }).filter(Boolean), 'n');
     return items.length ? {items} : null;
   },
@@ -83,7 +95,7 @@ const BLOCKS = {
     const nodes = unique(list(raw.nodes, BOARD_LIMITS.nodes).map((node, index) => {
       if (!node || typeof node !== 'object') return null;
       const label = text(node.label ?? node.h, 30);
-      return label ? quoted(optional({id: ident(node.id, `f${index + 1}`), label}, 'sub', text(node.sub ?? node.d, 50)), node) : null;
+      return label ? dressed(optional({id: ident(node.id, `f${index + 1}`), label}, 'sub', text(node.sub ?? node.d, 50)), node) : null;
     }).filter(Boolean), 'f');
     const known = new Set(nodes.map(node => node.id));
     const edges = list(raw.edges, BOARD_LIMITS.edges).map(edge => {
@@ -110,7 +122,7 @@ export function normalizeOp(raw) {
       const source = raw.block;
       if (!source || typeof source !== 'object' || !BOARD_BLOCK_TYPES.includes(source.t)) return null;
       const id = ident(source.id, ''), body = BLOCKS[source.t](source);
-      return id && body ? {op: 'put', block: {id, t: source.t, ...body}} : null;
+      return id && body ? {op: 'put', block: optional({id, t: source.t, ...body}, 'tone', BOARD_TONES.includes(source.tone) ? source.tone : '')} : null;
     }
     default: return null;
   }
@@ -125,24 +137,30 @@ export function focusExists(scene, id) {
 
 const loose = value => value.replace(/[\s，。！？、；：,.!?;:"'“”‘’（）()]/gu, '');
 /**
- * Which item V is talking about once `index` characters of `spoken` have been
- * said aloud: the item whose quote starts latest at or before that point.
- * Returns a focus id, or '' when V has not reached any quoted item yet.
+ * Where V's voice is on the board once `index` characters of `spoken` have
+ * been said aloud. `focus` is the item being talked about (the one whose quote
+ * starts latest at or before that point, '' before any). `ahead` lists the
+ * quoted items V has written about but not yet reached: the page keeps those
+ * in pencil until the voice gets there.
  */
-export function spokenFocus(scene, spoken, index) {
-  const heard = loose(Array.from(spoken).slice(0, Math.max(0, index)).join(''));
-  let best = '', at = -1;
+export function spokenProgress(scene, spoken, index) {
+  const all = loose(spoken), heard = loose(Array.from(spoken).slice(0, Math.max(0, index)).join(''));
+  let focus = '', at = -1;
+  const ahead = [];
   for (const block of scene.blocks) for (const item of focusTargets(block)) {
     const quote = item.q && loose(item.q);
-    if (!quote) continue;
+    // A quote V never said (miscopied) cannot hold an item back.
+    if (!quote || !all.includes(quote)) continue;
     // The quote counts once V has started saying it, not only when finished.
     // First occurrence: a later mention of the same words ("Server Hello
     // Done") must not pull the mark back to an item V has left.
     const found = heard.indexOf(quote.slice(0, Math.min(quote.length, 4)));
-    if (found > at && loose(spoken).includes(quote)) { at = found; best = `${block.id}/${item.id}`; }
+    if (found < 0) ahead.push(`${block.id}/${item.id}`);
+    else if (found > at) { at = found; focus = `${block.id}/${item.id}`; }
   }
-  return best;
+  return {focus, ahead};
 }
+export const spokenFocus = (scene, spoken, index) => spokenProgress(scene, spoken, index).focus;
 
 /** Apply a normalized operation. Returns the same object when nothing changes. */
 export function applyOp(scene, op) {

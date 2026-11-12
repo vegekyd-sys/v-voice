@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {applyOp, createLineParser, emptyScene, flowLayout, focusExists, normalizeOp, normalizeScene, sceneDigest, spokenFocus} from './board-scene.mjs';
+import {applyOp, createLineParser, emptyScene, flowLayout, focusExists, normalizeOp, normalizeScene, sceneDigest, spokenFocus, spokenProgress} from './board-scene.mjs';
 
 const put = block => normalizeOp({op: 'put', block});
 const run = (...ops) => ops.reduce((scene, op) => applyOp(scene, normalizeOp(op)), emptyScene());
@@ -122,4 +122,24 @@ test('the focus mark follows what V has said aloud, by each item\'s quote', () =
   assert.equal(spokenFocus(repeated, '第一，Server Hello本身。然后发证书链。最后是Server Hello Done。', 999), 's/b', 'a later mention does not pull the mark back');
   const columns = run({op: 'put', block: {id: 'c', t: 'compare', cols: [{id: 'l', h: 'A', q: '第一步是拨号', points: []}, {id: 'r', h: 'B', points: []}]}});
   assert.equal(spokenFocus(columns, said, 999), 'c/l');
+});
+
+test('icons, marks, paper colours, notes and photographs are kept only in their allowed forms', () => {
+  const block = put({id: 'l', t: 'list', tone: 'butter', items: [{id: 'a', h: '塔高', icon: '📏', mark: 'ring'}, {id: 'b', h: '字不是图标', icon: 'abc', mark: 'explode'}, {id: 'c', h: '太长', icon: '🎡🎡🎡🎡🎡'}]}).block;
+  assert.deepEqual(block.items, [{id: 'a', h: '塔高', mark: 'ring', icon: '📏'}, {id: 'b', h: '字不是图标'}, {id: 'c', h: '太长'}]);
+  assert.equal(block.tone, 'butter');
+  assert.equal('tone' in put({id: 'l', t: 'list', tone: 'green', items: [{h: 'x'}]}).block, false);
+  assert.deepEqual(put({id: 'n', t: 'sticky', tone: 'blush', text: '先做讲解画面', html: '<b>'}).block, {id: 'n', t: 'sticky', text: '先做讲解画面', tone: 'blush'});
+  assert.deepEqual(put({id: 'p', t: 'photo', query: ' 埃菲尔铁塔 ', caption: '巴黎', src: 'https://evil.example/x.jpg'}).block, {id: 'p', t: 'photo', query: '埃菲尔铁塔', caption: '巴黎'});
+  assert.equal(put({id: 'p', t: 'photo', caption: '没有查询词'}), null);
+  assert.deepEqual(put({id: 'k', t: 'stats', items: [{label: '等你确认', value: 2, mark: 'ring'}]}).block.items, [{id: 'n1', label: '等你确认', value: '2', mark: 'ring'}]);
+});
+
+test('items V has written about but not yet said are reported as ahead', () => {
+  const said = '在产十二张卡，今晚已经交付三十一条，有两条在等你确认。';
+  const scene = run({op: 'put', block: {id: 'k', t: 'stats', items: [{id: 'a', label: '在产', value: 12, q: '在产十二张卡'}, {id: 'b', label: '已交付', value: 31, q: '已经交付三十一条'}, {id: 'c', label: '等确认', value: 2, q: '有两条在等你'}, {id: 'd', label: '没讲', value: 0}, {id: 'e', label: '抄错', value: 1, q: '并不存在的话'}]}});
+  assert.deepEqual(spokenProgress(scene, said, 0), {focus: '', ahead: ['k/a', 'k/b', 'k/c']});
+  assert.deepEqual(spokenProgress(scene, said, 6), {focus: 'k/a', ahead: ['k/b', 'k/c']});
+  assert.deepEqual(spokenProgress(scene, said, said.indexOf('已经') + 5), {focus: 'k/b', ahead: ['k/c']});
+  assert.deepEqual(spokenProgress(scene, said, 999), {focus: 'k/c', ahead: []});
 });
