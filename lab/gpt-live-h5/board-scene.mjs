@@ -254,10 +254,29 @@ export function createLineParser(onValue) {
   };
 }
 
-/** Layered positions for a flow block, in percent of its box. Sources sit in
- * the first layer; an edge that would close a cycle does not push its target. */
-export function flowLayout(nodes, edges) {
-  const depth = new Map(nodes.map(node => [node.id, 0]));
+/**
+ * Positions for a flow block, in percent of its box, and the shape they make:
+ *   ring   - the edges lead round through every node and back (water beats
+ *            fire beats grass beats water): the nodes sit on a circle;
+ *   row    - a single chain: left to right (top to bottom when `narrow`);
+ *   layers - anything else: sources on top, each edge pointing downward. An
+ *            edge that would close a cycle does not push its target.
+ */
+export function flowLayout(nodes, edges, {narrow = false} = {}) {
+  const ids = nodes.map(node => node.id), position = {};
+  // Follow the first way out of each node; a ring visits everything once and returns.
+  const next = new Map();
+  for (const [from, to] of edges) if (!next.has(from)) next.set(from, to);
+  const round = [];
+  for (let at = ids[0]; at !== undefined && !round.includes(at); at = next.get(at)) round.push(at);
+  if (ids.length >= 3 && round.length === ids.length && next.get(round.at(-1)) === round[0]) {
+    round.forEach((id, index) => {
+      const angle = -Math.PI / 2 + index * Math.PI * 2 / round.length;
+      position[id] = {x: 50 + Math.cos(angle) * 44, y: 50 + Math.sin(angle) * 44, layer: 0};
+    });
+    return {shape: 'ring', layers: [round], position};
+  }
+  const depth = new Map(ids.map(id => [id, 0]));
   const forward = [], reaches = (from, to, seen = new Set()) => from === to
     || forward.some(([a, b]) => a === from && !seen.has(b) && (seen.add(b), reaches(b, to, seen)));
   for (const edge of edges) if (!reaches(edge[1], edge[0])) forward.push(edge);
@@ -267,10 +286,14 @@ export function flowLayout(nodes, edges) {
     if (!moved) break;
   }
   const layers = [];
-  for (const node of nodes) (layers[depth.get(node.id)] ??= []).push(node.id);
-  const rows = layers.filter(Boolean), position = {};
+  for (const id of ids) (layers[depth.get(id)] ??= []).push(id);
+  const rows = layers.filter(Boolean);
+  if (rows.length > 1 && rows.every(row => row.length === 1) && !(narrow && rows.length > 3)) {
+    rows.forEach((row, index) => { position[row[0]] = {x: (index + .5) / rows.length * 100, y: 50, layer: index}; });
+    return {shape: 'row', layers: rows, position};
+  }
   rows.forEach((row, y) => row.forEach((id, x) => {
     position[id] = {x: (x + 1) / (row.length + 1) * 100, y: rows.length === 1 ? 50 : y / (rows.length - 1) * 100, layer: y};
   }));
-  return {layers: rows, position};
+  return {shape: 'layers', layers: rows, position};
 }

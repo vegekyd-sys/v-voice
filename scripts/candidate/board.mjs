@@ -23,6 +23,7 @@ const ANSWERS = [
   [/对比|比较|哪个/u, ['这两种方案我帮你并排看。', '实时视频的画面最有感染力，但是首帧要等十几秒，还按秒计费。', '讲解画面一秒内就能出来，适合承载准确的信息。', '所以我建议先做讲解画面，实时视频留给陪伴的场景。']],
   [/夜班|状态|怎么样/u, ['夜班现在一切正常。', '在产十二张卡，今晚已经交付三十一条，有两条在等你确认。', '并发上限是十五，现在用了八个。']],
   [/铁塔|埃菲尔/u, ['埃菲尔铁塔在巴黎的战神广场。', '它一八八九年为世博会建成，当时很多人嫌它丑。', '塔高三百三十米，曾经是世界最高的建筑。', '现在每年有大约七百万人登塔。']],
+  [/宝可梦|相克/u, ['就像石头剪刀布。', '杰尼龟喷水，浇灭小火龙的火，水赢。', '小火龙吐火，烧掉妙蛙种子的叶子，火赢。', '妙蛙种子把杰尼龟的水喝光，草赢。']],
   [/数据|流|架构/u, ['语音和画面是两条并行的线。', '你的声音进语音模型，它负责又快又自然地回答。', '同一段对话的文字同时交给画面导演，它只管屏幕上放什么。', '两边都不等对方，所以说话不会因为画面变慢。']],
 ];
 const sentences = text => ANSWERS.find(([pattern]) => pattern.test(text))?.[1] ?? ['嗯，我在，你说。'];
@@ -86,6 +87,7 @@ const SCENES = [
   [/对比|比较/u, '两种画面方案', [{id: 'c', t: 'compare', cols: [{id: 'v', h: '实时视频', icon: '🎬', points: ['画面最有感染力', '首帧十几秒', '按秒计费'], q: '实时视频的画面'}, {id: 'e', h: '讲解画面', icon: '✏️', tag: '先做', mark: 'ring', points: ['一秒内出现', '信息准确', '成本很低'], q: '讲解画面一秒内'}]}], {id: 'n', t: 'sticky', tone: 'blush', text: '先做讲解画面，实时视频留给陪伴'}],
   [/夜班/u, '夜班现在', [{id: 'k', t: 'stats', items: [{id: 'a', label: '在产', value: '12', unit: '张', q: '在产十二张卡'}, {id: 'b', label: '今晚已交付', value: '31', unit: '条', mark: 'check', q: '已经交付三十一条'}, {id: 'c', label: '等你确认', value: '2', unit: '条', mark: 'ring', q: '有两条在等你'}]}, {id: 'b', t: 'bars', h: '并发', items: [{id: 'u', label: '已用', value: 8, q: '现在用了八个'}, {id: 'm', label: '上限', value: 15, q: '并发上限是十五'}]}], null],
   [/铁塔|埃菲尔/u, '埃菲尔铁塔', [{id: 'p', t: 'photo', query: '埃菲尔铁塔', caption: '巴黎 · 战神广场'}, {id: 'l', t: 'list', items: [{id: 'a', h: '1889 年世博会', d: '建成时很多人嫌它丑', icon: '🎡', q: '一八八九年为世博会'}, {id: 'b', h: '高 330 米', d: '曾是世界最高建筑', icon: '📏', mark: 'ring', q: '塔高三百三十米'}, {id: 'c', h: '每年约 700 万人登塔', icon: '🧗', mark: 'underline', q: '现在每年有大约'}]}], {id: 'n', t: 'sticky', tone: 'sky', text: '一开始是临时建筑，差点被拆'}],
+  [/宝可梦|相克/u, '谁打得过谁', [{id: 'f', t: 'flow', nodes: [{id: 'w', label: '杰尼龟', sub: '水', img: '杰尼龟', q: '杰尼龟喷水'}, {id: 'h', label: '小火龙', sub: '火', img: '小火龙', q: '小火龙吐火'}, {id: 'g', label: '妙蛙种子', sub: '草', img: '妙蛙种子', q: '妙蛙种子把'}], edges: [['w', 'h', '水灭火'], ['h', 'g', '火烧草'], ['g', 'w', '草吸水']]}], {id: 'n', t: 'sticky', text: '像石头剪刀布'}],
   [/数据|流|架构/u, '语音和画面两条线', [{id: 'f', t: 'flow', nodes: [{id: 'u', label: '你说的话', icon: '🗣️'}, {id: 'v', label: '语音模型', sub: '又快又自然', q: '你的声音进语音模型'}, {id: 'd', label: '画面导演', sub: '只管屏幕', icon: '✏️', q: '交给画面导演'}, {id: 'a', label: '你听到的回答', icon: '👂'}, {id: 'b', label: '你看到的画面', icon: '👀', q: '屏幕上放什么'}], edges: [['u', 'v', '声音'], ['u', 'd', '文字'], ['v', 'a'], ['d', 'b'], ['v', 'd', 'V 说的话']]}], {id: 'n', t: 'sticky', text: '两边都不等对方'}],
 ];
 async function* scriptedDirector({messages, signal}) {
@@ -104,7 +106,7 @@ const board = real ?? createBoardDirector({complete: scriptedDirector, audit: ev
 const service = createDirectVoiceService({gateway, wsModule: {WebSocket: Model, WebSocketServer}, apiKeys: {grok: 'LOCAL_FIXTURE_ONLY'},
   audit: event => { board.observe(event); if (/^call\./u.test(event.type)) console.log(JSON.stringify({type: event.type, voiceSessionId: event.voiceSessionId, model: event.model, message: event.message})); }, loadContext: async () => '', searchAcknowledgment: 'off'});
 // Real pictures when Wikipedia is reachable; otherwise a bundled image, so the print is never missing in a layout check.
-const wikipedia = createPhotoFinder();
+const wikipedia = createPhotoFinder({braveKey: process.env.VOICE_BOARD_BRAVE_KEY ?? ''});
 const boardPhotos = {find: async query => await wikipedia.find(query) ?? {bytes: await readFile(new URL('../../lab/gpt-live-h5/assets/v-operator-home-1024.webp', import.meta.url)), type: 'image/webp', title: query, source: '本地替身'}};
 const bridge = createLiveH5Server({gateway, directVoice: service, board, boardPhotos, defaultModel: 'grok', enableGrok: true,
   conversationEntries: [{id: 'board_fixture', agentId: 'makaron', callerId: 'tianyi', permissionProfile: 'personal-tianyi', sessionKey: 'agent:makaron:feishu:group:board_fixture',

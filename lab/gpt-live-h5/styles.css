@@ -1594,7 +1594,9 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 :is(.board-list, .board-steps) li > .board-thumb { grid-column: 2; grid-row: 1; width: 96px; height: 96px; }
 :is(.board-list, .board-steps) li:has(> .board-thumb) > .board-item { grid-column: 3; }
 .board-compare .board-thumb { width: 100%; height: 118px; margin-bottom: 10px; }
-.board-node .board-thumb { width: 66px; height: 66px; margin-bottom: 4px; }
+.board-node .board-thumb { width: 84px; height: 84px; margin-bottom: 5px; }
+.board-flow[data-pictured] .board-node { padding: 7px 9px 8px; }
+.board-flow[data-shape="ring"] .board-flow-label { transform: translate(-50%, -50%); }
 [data-now] > .board-thumb, .board-node[data-now] .board-thumb { transform: rotate(var(--tilt, 0deg)) scale(1.08); }
 
 /* a sticky note, and a print taped to the page */

@@ -178,35 +178,55 @@ function Table({block}) {
   );
 }
 
-const LAYER = 108, PAD = 36;
+// How wide an element is on screen, so a diagram can be laid out in real pixels.
+function useWidth() {
+  const ref = useRef(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const element = ref.current, read = () => setWidth(Math.round(element.clientWidth));
+    read();
+    if (typeof ResizeObserver !== 'function') return;
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width];
+}
 function Flow({block, view}) {
-  const {layers, position} = flowLayout(block.nodes, block.edges);
-  // Nodes that carry pictures need taller rows.
-  const height = Math.max(1, layers.length) * (block.nodes.some(node => node.img) ? LAYER + 70 : LAYER);
-  // Arrows live in a 100 x 100 box stretched over the diagram; nodes use the
-  // same percentages, so an arrow stops just short of the node it points at.
-  const y = id => (PAD + (height - PAD * 2) * position[id].y / 100) / height * 100;
-  const short = (from, to, by) => { const dx = to[0] - from[0], dy = to[1] - from[1], length = Math.hypot(dx, dy) || 1; return [to[0] - dx / length * by, to[1] - dy / length * by]; };
+  const [ref, width] = useWidth();
+  const pictured = block.nodes.some(node => node.img), narrow = width > 0 && width < 430;
+  const {shape, layers, position} = flowLayout(block.nodes, block.edges, {narrow});
+  // The whole diagram fits one screen: a ring is as tall as it is wide (within
+  // reason), a chain is one row, and layers share a fixed height.
+  const row = pictured ? 150 : 96;
+  const height = shape === 'ring' ? (pictured ? 300 + block.nodes.length * 60 : 220 + block.nodes.length * 40)
+    : shape === 'row' ? row + 20 : Math.min(layers.length * row, pictured ? 540 : 420);
+  const pad = {x: shape === 'row' ? 0 : pictured ? 62 : 56, y: pictured ? 76 : 34};
+  const at = id => ({x: shape === 'row' ? position[id].x / 100 * width : pad.x + (width - pad.x * 2) * position[id].x / 100,
+    y: pad.y + (height - pad.y * 2) * position[id].y / 100});
+  // An arrow stops short of the node at each end, by about the node's size.
+  const reach = pictured ? 62 : 30;
+  const short = (from, to) => { const dx = to.x - from.x, dy = to.y - from.y, length = Math.hypot(dx, dy) || 1, by = Math.min(reach, length * .3); return [(to.x - dx / length * by) / (width || 1) * 100, (to.y - dy / length * by) / height * 100]; };
   return (
     <>
       <Heading block={block} />
-      <div className="board-flow" style={{height}}>
-        {block.edges.map(([from, to, label], index) => {
-          const a = [position[from].x, y(from)], b = [position[to].x, y(to)], gap = 26 / height * 100;
+      <div className="board-flow" data-shape={shape} data-pictured={pictured || undefined} ref={ref} style={{height}}>
+        {width > 0 && block.edges.map(([from, to, label], index) => {
+          const a = at(from), b = at(to);
           return (
             <React.Fragment key={index}>
-              <Stroke className="board-arrow" d={arrow(`${block.id}:${from}:${to}`, short(b, a, gap), short(a, b, gap))} />
-              {label && <span className="board-flow-label" style={{left: (a[0] + b[0]) / 2 + '%', top: (a[1] + b[1]) / 2 + '%'}}>{label}</span>}
+              <Stroke className="board-arrow" d={arrow(`${block.id}:${from}:${to}`, short(b, a), short(a, b))} />
+              {label && <span className="board-flow-label" style={{left: (a.x + b.x) / 2, top: (a.y + b.y) / 2}}>{label}</span>}
             </React.Fragment>
           );
         })}
-        {block.nodes.map(node => {
-          const state = itemState(view, block, node);
+        {width > 0 && block.nodes.map(node => {
+          const state = itemState(view, block, node), point = at(node.id);
           return (
             <div key={node.id} className="board-node" {...state.props}
-              style={{left: position[node.id].x + '%', top: y(node.id) + '%', maxWidth: `calc(${100 / layers[position[node.id].layer].length}% - 10px)`, '--tilt': tilt(state.id, 1.6) + 'deg'}}>
+              style={{left: point.x, top: point.y, maxWidth: shape === 'layers' ? `calc(${100 / layers[position[node.id].layer].length}% - 10px)` : shape === 'row' ? `calc(${100 / layers.length}% - 18px)` : '38%', '--tilt': tilt(state.id, 1.6) + 'deg'}}>
               {node.img && <Thumb query={node.img} view={view} seed={state.id} />}
-              <strong>{node.icon ? node.icon + ' ' : ''}{node.label}</strong>{node.sub && <span>{node.sub}</span>}
+              <strong>{node.icon && !node.img ? node.icon + ' ' : ''}{node.label}</strong>{node.sub && <span>{node.sub}</span>}
             </div>
           );
         })}

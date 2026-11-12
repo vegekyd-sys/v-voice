@@ -97,14 +97,21 @@ test('streamed lines apply as they complete; fences and prose are ignored', () =
   assert.deepEqual(seen.at(-1), {op: 'none'});
 });
 
-test('flow layout layers a graph and survives cycles', () => {
-  const nodes = ['a', 'b', 'c', 'd'].map(id => ({id, label: id}));
-  const {layers, position} = flowLayout(nodes, [['a', 'b'], ['a', 'c'], ['b', 'd'], ['c', 'd'], ['d', 'a']]);
-  assert.deepEqual(layers, [['a'], ['b', 'c'], ['d']]);
-  assert.deepEqual([position.a.y, position.d.y], [0, 100]);
-  assert.equal(position.b.x < position.c.x, true);
-  assert.deepEqual(flowLayout(nodes.slice(0, 2), []).layers, [['a', 'b']]);
+test('a flow is laid out as a ring, a row or layers, whichever its edges describe', () => {
+  const n = (...ids) => ids.map(id => ({id, label: id}));
+  const ring = flowLayout(n('w', 'f', 'g'), [['w', 'f'], ['f', 'g'], ['g', 'w']]);
+  assert.equal(ring.shape, 'ring');
+  assert.deepEqual([Math.round(ring.position.w.x), Math.round(ring.position.w.y)], [50, 6], 'the first node is at the top');
+  assert.equal(ring.position.f.x > 50 && ring.position.g.x < 50, true, 'going round clockwise');
+  const chain = flowLayout(n('a', 'b', 'c'), [['a', 'b'], ['b', 'c']]);
+  assert.deepEqual([chain.shape, chain.position.a.y, chain.position.a.x < chain.position.b.x], ['row', 50, true]);
+  assert.equal(flowLayout(n('a', 'b', 'c', 'd'), [['a', 'b'], ['b', 'c'], ['c', 'd']], {narrow: true}).shape, 'layers', 'a long chain stands up on a phone');
+  const {shape, layers, position} = flowLayout(n('a', 'b', 'c', 'd'), [['a', 'b'], ['a', 'c'], ['b', 'd'], ['c', 'd'], ['d', 'a']]);
+  assert.deepEqual([shape, layers], ['layers', [['a'], ['b', 'c'], ['d']]]);
+  assert.deepEqual([position.a.y, position.d.y, position.b.x < position.c.x], [0, 100, true]);
+  assert.deepEqual(flowLayout(n('a', 'b'), []).layers, [['a', 'b']]);
 });
+
 
 test('the focus mark follows what V has said aloud, by each item\'s quote', () => {
   const said = '好，分三步。第一步是拨号，页面要一个名额。第二步是建立连接，声音转给模型。第三步直接说话。';
