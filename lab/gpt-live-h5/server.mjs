@@ -36,7 +36,7 @@ import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 import {idleHangupFromEnv} from '../realtime-direct-tools/idle-hangup.mjs';
 import {boardCompletionFromEnv,boardDirectorFromEnv,boundedBoardRequest} from './board-director.mjs';
 import {createPhotoFinder} from './board-photo.mjs';
-import {createLessonWriter} from './board-lesson.mjs';
+import {STREAM_INSTRUCTIONS,createLessonWriter,refineStreamOp} from './board-lesson.mjs';
 import {scenePictures} from './board-scene.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -1171,7 +1171,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     // With lessons on, the board has one way of drawing: V's own answers are
     // illustrated by the lesson writer too (VOICE_BOARD_UNIFIED=0 keeps the old line-by-line director for them).
     let lesson=null;
-    const board=boardDirectorFromEnv(process.env,{audit:voiceAudit,...(process.env.VOICE_BOARD_UNIFIED==='0'?{}:{illustrate:args=>lesson?.illustrate(args)??null})});
+    // V's own answers are drawn by the streaming illustrator, as they are spoken (VOICE_BOARD_STREAM=0: one page once the answer is complete).
+    // In parallel mode there is no lesson to wait for, so nothing is deferred.
+    const board=boardDirectorFromEnv(process.env,{audit:voiceAudit,defer:process.env.VOICE_BOARD_LESSON_SOURCE!=='parallel',...(process.env.VOICE_BOARD_UNIFIED==='0'?{}:{illustrate:args=>lesson?.illustrate(args)??null,
+      ...(process.env.VOICE_BOARD_STREAM==='0'?{}:{stream:{instructions:STREAM_INSTRUCTIONS,refine:refineStreamOp}})})});
     // Lesson mode (experiment): its own flag. Through OpenRouter the writer is
     // a stronger model thinking briefly: on real calls it was the only one
     // tried that kept its facts straight (which Pokemon beats which), in about

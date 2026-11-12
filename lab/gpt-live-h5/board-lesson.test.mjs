@@ -193,3 +193,23 @@ test('V\'s backend can write the lesson: it is briefed with the writer\'s rules,
   assert.equal(shown.length, 1);
   assert.equal(writer.accept({owner: 'c', topic: 't', text: '我查不到。'}), null);
 });
+
+test('the streaming illustrator: a print before V speaks, then only what V has said, hung on V\'s words', async () => {
+  const {refineStreamOp, STREAM_INSTRUCTIONS} = await import('./board-lesson.mjs');
+  const put = block => normalizeOp({op: 'put', block});
+  const {normalizeOp} = await import('./board-scene.mjs');
+  // Before V has answered: the page may be opened and a print of the thing put up. No facts.
+  assert.deepEqual(refineStreamOp(normalizeOp({op: 'scene', title: '故宫'}), {trigger: 'user'}), {op: 'scene', title: '故宫', lesson: true, late: true});
+  assert.equal(refineStreamOp(put({id: 'p', t: 'photo', query: '故宫', q: '随便'}), {trigger: 'user'}).block.q, undefined);
+  assert.equal(refineStreamOp(put({id: 'l', t: 'list', items: [{h: '太和殿'}]}), {trigger: 'user'}), null);
+  // Half-way through: the item V has named stays, the one V has not said is left out for now.
+  const said = '先顺着中轴线走：午门进去就是太和殿，皇帝登基都在这。';
+  const list = {id: 'l', t: 'list', items: [{id: 'a', h: '太和殿', d: '登基的地方', q: '午门进去就是太和殿'}, {id: 'b', h: '珍宝馆', d: '金瓯永固杯', q: '一定要去珍宝馆'}]};
+  const half = refineStreamOp(put(list), {said, trigger: 'assistant_progress'});
+  assert.deepEqual(half.block.items.map(item => [item.id, item.q]), [['a', '太和殿皇帝登基都']]);
+  const more = refineStreamOp(put(list), {said: said + '别只走中间，一定要去珍宝馆看金瓯永固杯。', trigger: 'assistant_end'});
+  assert.deepEqual(more.block.items.map(item => item.id), ['a', 'b'], 'and comes when V gets to it');
+  // A block with nothing V has said is not put up at all.
+  assert.equal(refineStreamOp(put({id: 'x', t: 'list', items: [{h: '钟表馆', q: '钟表馆也值得'}]}), {said, trigger: 'assistant_progress'}), null);
+  assert.match(STREAM_INSTRUCTIONS, /只能在后面追加/u);
+});

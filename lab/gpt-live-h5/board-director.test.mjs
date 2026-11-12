@@ -230,3 +230,28 @@ test('with an illustrator the board draws one way: nothing before V has answered
   const weather = await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '明天天气'}, {role: 'assistant', text: '上海明天阴转小雨，气温16到20度。'}]});
   assert.deepEqual([weather.reason, calls.at(-1).evidence.length], ['drawn', 1]);
 });
+
+test('streaming: the page opens when the caller has asked, grows while V speaks, and every step reaches the page whole', async () => {
+  const {STREAM_INSTRUCTIONS, refineStreamOp} = await import('./board-lesson.mjs');
+  const replies = [
+    '{"op":"scene","title":"故宫看什么"}\n{"op":"put","block":{"id":"p","t":"photo","query":"故宫"}}\n{"op":"put","block":{"id":"l","t":"list","items":[{"h":"编的"}]}}\n',
+    '{"op":"put","block":{"id":"l","t":"list","items":[{"id":"a","h":"太和殿","q":"午门进去就是太和殿"},{"id":"b","h":"珍宝馆","q":"一定要去珍宝馆"}]}}\n',
+    '{"op":"put","block":{"id":"l","t":"list","items":[{"id":"a","h":"太和殿","q":"午门进去就是太和殿"},{"id":"b","h":"珍宝馆","q":"一定要去珍宝馆"}]}}\n{"op":"put","block":{"id":"n","t":"sticky","text":"别只走中间"}}\n',
+  ];
+  let asked = 0;
+  const director = createBoardDirector({stream: {instructions: STREAM_INSTRUCTIONS, refine: refineStreamOp}, complete: async function* ({messages}) { assert.equal(messages[0].content, STREAM_INSTRUCTIONS); yield replies[asked++]; }});
+  const seen = [];
+  const run = (trigger, turns) => director.run({owner: 'c', trigger, turns, clientRev: director.scene('c').rev, onOp: op => seen.push([op.op, op.scene.blocks.map(block => block.t + ':' + (block.items?.length ?? 1)).join(' '), op.scene.late])});
+  const user = {role: 'user', text: '介绍一下故宫，有什么好玩的'};
+  assert.equal((await run('user', [user])).reason, 'drawn');
+  assert.deepEqual(seen.at(-1), ['sync', 'photo:1', true], 'a title and a print; the made-up item is refused');
+  const half = '先顺着中轴线走：午门进去就是太和殿，皇帝登基都在这。';
+  await run('assistant_progress', [user, {role: 'assistant', text: half}]);
+  assert.deepEqual(seen.at(-1), ['sync', 'photo:1 list:1', true]);
+  await run('assistant_end', [user, {role: 'assistant', text: half + '别只走中间，一定要去珍宝馆看金瓯永固杯。'}]);
+  assert.deepEqual(seen.at(-1), ['sync', 'photo:1 list:2 sticky:1', true]);
+  // Lookup results alone draw nothing, and a few words are not an answer.
+  assert.equal((await run('evidence', [user])).reason, 'waiting');
+  assert.equal((await run('assistant_end', [user, {role: 'assistant', text: '好，我查一下。'}])).reason, 'waiting');
+  assert.equal(asked, 3);
+});

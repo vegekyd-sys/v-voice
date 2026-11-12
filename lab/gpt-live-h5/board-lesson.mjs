@@ -112,7 +112,7 @@ const sameThing = (name, picture) => name.includes(picture) || name.length >= 3 
  * about something else. Also puts the named thing, not its category, in the
  * heading when the model did it the other way round.
  */
-export function settleLesson({say: lines, ops}, {fixed = false} = {}) {
+export function settleLesson({say: lines, ops}, {fixed = false, strict = false} = {}) {
   const say = lines.slice();
   // One closing line: a question followed by "did you get it?" loses the second.
   // (Not when the words are V's own, already spoken: `fixed`.)
@@ -154,11 +154,21 @@ export function settleLesson({say: lines, ops}, {fixed = false} = {}) {
       if (at >= 0) item.q = quoteAt(at); else delete item.q;
       whereOf.set(`${block.id}/${item.id}`, at);
     }
+    // Drawn while V speaks (`strict`): what V has not said is not on the page.
+    // (A formula's signs take their neighbour's place just below, so they are judged after that.)
+    const unsaid = item => strict && !item.q;
     // A sign between two terms ("×", "=") has no words of its own: it comes
     // with the term before it (or, at the very start, the one after).
     if (block.t === 'formula') {
       let last = block.items.find(item => item.q)?.q;
       for (const item of block.items) { if (item.q) last = item.q; else if (last) item.q = last; }
+    }
+    if (strict) {
+      const key = block.t === 'compare' ? 'cols' : block.t === 'flow' ? 'nodes' : 'items';
+      if (Array.isArray(block[key]) && block.t !== 'overlap') {
+        block[key] = block[key].filter(item => !unsaid(item));
+        if (block.t === 'flow') { const kept = new Set(block.nodes.map(node => node.id)); block.edges = block.edges.filter(([from, to]) => kept.has(from) && kept.has(to)); }
+      }
     }
     if (block.t === 'flow') block.edges = block.edges.map(([from, to, label, said]) => {
       const after = Math.max(whereOf.get(`${block.id}/${from}`) ?? -1, whereOf.get(`${block.id}/${to}`) ?? -1, 0);
@@ -197,6 +207,51 @@ export function parseLesson(text) {
   const title = String(value?.title ?? '').trim();
   const ops = [normalizeOp({op: 'scene', title, lesson: true}), ...(Array.isArray(value?.blocks) ? value.blocks : []).map(block => normalizeOp({op: 'put', block}))].filter(Boolean);
   return say.length >= 2 && ops.length >= 2 ? {title, ...settleLesson({say, ops})} : null;
+}
+
+/**
+ * The illustrator, streaming (the one way a page is drawn for words that
+ * already exist). It writes one operation a line and is asked again as V's
+ * answer grows, so the page is built while V is still speaking: a title and a
+ * print as soon as the caller has asked, then each piece as V's text reaches
+ * it (the text runs seconds ahead of the audio), then the finished page.
+ */
+export const STREAM_INSTRUCTIONS = `你是 V 的画面作者。V 正在电话里回答用户，你给这段回答配一页手账画面。V 的回答文字是一段一段到的，比声音先到几秒；你会被反复叫到，每次看到更长的回答，把新说到的东西画上去。画面上的每样东西会在声音念到对应的字时才显示出来。
+
+输入是一个 JSON：trigger 说明现在是哪一步；conversation 是最近的对话，最后一条 assistant 是 V 目前已经说出的话（一个字都不能改）；evidence 是 V 回答前查到的资料（有的话）；screen 是屏幕上现在的画面（没有就是空的）。
+
+输出：每行一个 JSON 操作，不要任何别的文字。
+{"op":"scene","title":"不超过 12 个字"}   开一页新的（换话题时）。旧页会被换掉。
+{"op":"put","block":{区块}}              放一个区块；id 和屏幕上已有的相同就是更新那一个。
+{"op":"none"}                            这次没有要画的。
+
+# 按 trigger 做事
+- user：用户刚说完，V 还没开口。只有当用户明显在问一件新的、具体的东西（一个地方、一个人、一件产品、一个概念）时，输出 scene（标题），再加最多一个 photo 区块（这件东西本身的照片）；不写任何条目、数字、结论，那些等 V 说了再画。闲聊、应答、接着当前这页追问、看不出要讲什么：none。
+- assistant_progress：V 说到一半。把 V 已经说出来的内容画上去。屏幕是空的或者是别的话题：先 scene 再 put。屏幕就是这个话题：只 put。可以先放一个只有头两项的区块，下次再把同一个 id 的区块整块重发、在后面接着加。V 这次没有说出新的可画的东西：none。
+- assistant_end：V 的话到齐了。把整页补全：补上没画到的条目，需要的话加一张便签（V 的结论或提醒）。
+- 更新已有区块时，已经在屏幕上的条目不许改：id、顺序、文字都保持原样，只能在后面追加。也不要删除或挪动已有的区块。画面只能长，不能变。
+
+# 画什么
+- 只画 V 说了的。V 没说的条目、数字、结论一律不写（evidence 只用来核对写法，比如名字和数字的准确写法）。
+- 画面是这段话的图解，不是抄写：把结构画出来（谁和谁比、先后、数量、关系），字只留关键词。
+- V 只是寒暄、确认、反问、说正在查：none。
+- 画面上的字用 V 说话的语言。
+
+${pieces}
+${KIT}
+${HANGING.replaceAll('讲稿', 'V 的话').replaceAll('say 里', 'V 的话里')}`;
+/** Fit one streamed operation to what V has said so far: anchors on V's real words, nothing V has not said. */
+export function refineStreamOp(op, {said = '', trigger = ''} = {}) {
+  if (!op) return null;
+  if (op.op === 'scene') return {op: 'scene', title: op.title, lesson: true, late: true};
+  if (op.op !== 'put') return op;
+  // Before V has spoken there is nothing to hang a fact on: a print of the thing asked about, nothing else.
+  if (trigger === 'user') return op.block.t === 'photo' ? {op: 'put', block: (({q, ...block}) => block)(op.block)} : null;
+  const say = spokenSentences(said);
+  if (!say.length) return null;
+  const [settled] = settleLesson({say, ops: [op]}, {fixed: true, strict: true}).ops;
+  // What is left must still be a block (a list needs an item, a comparison two sides).
+  return normalizeOp(settled);
 }
 
 /** V's own answer as the sentences a picture can hang on. */

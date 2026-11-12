@@ -99,7 +99,13 @@ export const mayAskForLesson = text => /讲解|解释|讲讲|讲一|科普|再�
  * audio ends) the answer is illustrated in the lesson's own vocabulary, and
  * shown as V's voice reaches each piece. Returns {ops, add} or null.
  */
-export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false, illustrate = null} = {}) {
+/**
+ * `stream: {instructions, refine(op, {said, trigger})}`: the streaming
+ * illustrator (board-lesson.mjs). The same line-by-line loop as below, but in
+ * the lesson's vocabulary, hung on V's real words, and shown as the voice
+ * reaches each piece. Takes precedence over `illustrate` (its one-shot form).
+ */
+export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false, illustrate = null, stream = null} = {}) {
   const owners = new Map();
   const owner = id => {
     let row = owners.get(id);
@@ -182,7 +188,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       const abort = () => controller.abort();
       if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, {once: true});
       if (clientRev !== row.scene.rev) onOp({op: 'sync', scene: row.scene});
-      if (illustrate) {
+      if (illustrate && !stream) {
         try {
           // Nothing is guessed before V has answered, and nothing is redrawn mid-sentence.
           if (trigger !== 'assistant_end') return report('waiting', {rev: row.scene.rev});
@@ -203,11 +209,26 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         } catch (error) { return report(controller.signal.aborted ? 'superseded' : 'error', {error: String(error?.message ?? error).slice(0, 120)}); }
         finally { signal?.removeEventListener('abort', abort); if (row.controller === controller) row.controller = null; }
       }
+      const words = turn => typeof turn === 'string' ? turn : String(turn?.text ?? '');
+      const said = stream && turns?.at(-1)?.role === 'assistant' ? words(turns.at(-1)) : '';
+      if (stream) {
+        // Lookup results alone draw nothing: V's words about them do.
+        if (trigger === 'evidence' || trigger !== 'user' && Array.from(said).length < 12) { signal?.removeEventListener('abort', abort); if (row.controller === controller) row.controller = null; return report('waiting', {rev: row.scene.rev}); }
+      }
       let ops = 0, firstOpMs = null, none = false, retired = false;
       const parser = createLineParser(raw => {
         if (controller.signal.aborted || ops >= MAX_OPS) return;
-        const op = normalizeOp(raw);
+        const op = stream ? stream.refine(normalizeOp(raw), {said, trigger}) : normalizeOp(raw);
         if (!op || retired) return;
+        if (stream && op.op !== 'none') {
+          const next = applyOp(row.scene, op);
+          if (next === row.scene) return;
+          // The page is a lesson's page whoever opened it: pieces wait for the voice.
+          row.scene = next.blocks.length ? {...next, lesson: true, late: true} : next;
+          ops++; firstOpMs ??= now() - started; drawn.push(op);
+          onOp({op: 'sync', scene: row.scene});
+          return;
+        }
         if (op.op === 'none') { none = true; return; }
         // A half-finished sentence is not grounds for replacing the picture;
         // whatever the model meant to draw on the new one is dropped with it.
@@ -218,7 +239,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         onOp({...op, rev: next.rev});
       });
       try {
-        const messages = [{role: 'system', content: BOARD_INSTRUCTIONS},
+        const messages = [{role: 'system', content: stream?.instructions ?? BOARD_INSTRUCTIONS},
           {role: 'user', content: boardRequest({trigger, scene: row.scene, turns, evidence: row.evidence})}];
         for await (const chunk of complete({messages, signal: controller.signal})) {
           if (controller.signal.aborted) break;
@@ -300,7 +321,7 @@ export function boardCompletionFromEnv(env = process.env, {fetchImpl} = {}) {
       : null;
   return provider ? createChatCompletionStream({...provider, fetchImpl, ...(Number(env.VOICE_BOARD_MAX_TOKENS) > 0 ? {maxTokens: Number(env.VOICE_BOARD_MAX_TOKENS)} : {})}) : null;
 }
-export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl, illustrate = null} = {}) {
+export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl, illustrate = null, stream = null, defer = true} = {}) {
   const complete = boardCompletionFromEnv(env, {fetchImpl});
   // A private day file beside the Candidate's own call records, when it has such a directory.
   const directory = env.VOICE_BOARD_LOG_DIR ?? env.RTC_H5_TRANSCRIPT_DIR;
@@ -308,5 +329,5 @@ export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl, illus
     const at = new Date(), file = join(directory, `board-${at.toISOString().slice(0, 10)}.jsonl`);
     void mkdir(directory, {recursive: true, mode: 0o700}).then(() => appendFile(file, JSON.stringify({at: at.toISOString(), ...event}) + '\n', {mode: 0o600})).catch(() => {});
   } : undefined;
-  return complete ? createBoardDirector({audit, complete, record, ...(env.VOICE_BOARD_LESSON === '1' ? {defers: mayAskForLesson, ...(illustrate ? {illustrate} : {})} : {})}) : null;
+  return complete ? createBoardDirector({audit, complete, record, ...(env.VOICE_BOARD_LESSON === '1' ? {...(defer ? {defers: mayAskForLesson} : {}), ...(illustrate ? {illustrate} : {}), ...(stream ? {stream} : {})} : {})}) : null;
 }
