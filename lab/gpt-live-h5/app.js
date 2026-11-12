@@ -715,7 +715,9 @@ async function startCall() {
     // call; nothing in the call waits for it.
     if (boardAvailable) active.board = createBoardClient({
       isCurrent: () => call === active,
-      onScene: scene => { if (call === active) view.set({ board: scene }); },
+      // A new picture goes up together with where the voice is on it: set a
+      // moment apart, a lesson showed whole for one frame before hiding.
+      onScene: scene => { if (call === active) view.set({ board: scene, boardSpoken: active.boardFollow?.(scene) ?? view.get().boardSpoken }); },
       observe: event => {
         const trace = JSON.parse(document.body.dataset.boardTimeline ?? '[]');
         trace.push({ ...event, at: Math.round(performance.now()) });
@@ -732,9 +734,8 @@ async function startCall() {
       // Move the focus mark with V's voice. Relay calls know how much of the
       // reply's audio has played; elsewhere the caption itself is the clock.
       const cursor = createSpokenCursor(), lessonGate = createLessonGate();
-      active.boardFocusTimer = setInterval(() => {
-        if (call !== active) return;
-        const scene = active.board.scene, snapshot = presentation.snapshot();
+      active.boardFollow = (scene = active.board.scene) => {
+        const snapshot = presentation.snapshot();
         // Only the reply V is giving now: after the caller has spoken again,
         // audio such as a progress cue is not the earlier reply being re-read.
         const last = [...snapshot.history, ...snapshot.current].filter(item => !item.document && item.text?.trim()).sort((a, b) => a.at - b.at).at(-1);
@@ -745,6 +746,11 @@ async function startCall() {
             const index = stats ? cursor.index({ key: row.key, textLength, outputBytes: stats.outputBytes, queuedBytes: stats.queuedOutputBytes }) : textLength;
             return spokenProgress(scene, row.text, index);
           } });
+        return spoken;
+      };
+      active.boardFocusTimer = setInterval(() => {
+        if (call !== active) return;
+        const spoken = active.boardFollow();
         if (JSON.stringify(view.get().boardSpoken) !== JSON.stringify(spoken)) view.set({ boardSpoken: spoken });
       }, 400);
     }
