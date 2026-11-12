@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-12 — Call images use Nano Banana 2.1; no empty minutes card
+
+- Images made in the call now use Makaron `gemini-2.1` (Nano Banana 2.1) instead of `gpt-image-2.6-flare`. The voice instructions name the new model and the executor guard only accepts it.
+- A call that ends with no saved turns and no pending tasks no longer sends a Feishu minutes card. The status card is still edited to ended; the report is saved with `summaryState: 'empty'` and audit `call.summary-skipped`.
+
 ## 2026-11-12 — Dial overlaps admission, reads and the Doubao connect
 
 - A dial starts the tool catalog read, the history read and the Doubao socket while Gateway admission is still in flight, using the conversation this identity was last admitted to as a non-authorizing hint. The reads are adopted only if admission returns the same session and agent; otherwise they are discarded. Admission, per-request membership checks and the one-second handoff window are unchanged.
