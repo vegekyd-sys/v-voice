@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "relay-usage-widget-20261112",
-  "version": "voice-relay-usage.20261112.1",
-  "entryCommit": "71e1d5d97bf2eebcbb539a74f330060e61b02412",
-  "deviceEntryCommit": "71e1d5d97bf2eebcbb539a74f330060e61b02412",
-  "filesSha256": "791c484dddc655deeace15833aac2e541b2899b8d85eabb74e677ef0d7d29a86",
-  "registration": "relay-usage-widget-20261112/release.json",
-  "previousEntryCommit": "3ff302807427a76fc1d9fec006173a643f9f7262",
+  "release": "relay-usage-medium-20261113",
+  "version": "voice-relay-medium.20261113.1",
+  "entryCommit": "af068e9ce97077aa044bcb7c51c06f16c89a0df6",
+  "deviceEntryCommit": "af068e9ce97077aa044bcb7c51c06f16c89a0df6",
+  "filesSha256": "c531bcf7b1d9e8e0023806c786b2c75344c3fe29a4ba7f3555ab751162b2e5f0",
+  "registration": "relay-usage-medium-20261113/release.json",
+  "previousEntryCommit": "71e1d5d97bf2eebcbb539a74f330060e61b02412",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-12T23:59:36+08:00",
-  "runtimeDifference": "Personal iOS home screen widget reports subscription windows and DeepSeek balance from the read-only quota collector."
+  "validatedAt": "2026-11-13T00:12:05+08:00",
+  "runtimeDifference": "Build 44 aligns the medium widget’s secondary meters with the small widget and preserves each reset time."
 }
