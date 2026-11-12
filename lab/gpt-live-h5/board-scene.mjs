@@ -194,6 +194,11 @@ export function spokenProgress(scene, spoken, index) {
   }
   return {focus, ahead};
 }
+const quotesOf = scene => scene.blocks.flatMap(block => [block.q, ...focusTargets(block).map(item => item.q), ...(block.t === 'flow' ? block.edges.map(edge => edge[3]) : [])]).filter(Boolean);
+/** Whether `text` is (part of) the script this scene's pieces hang on. */
+export const speaksOf = (scene, text) => { const all = loose(String(text ?? '')); return quotesOf(scene).some(quote => all.includes(loose(quote))); };
+/** A lesson before its first word: every piece that hangs on the script is still to come. */
+export const unspoken = scene => spokenProgress(scene, quotesOf(scene).join('。'), 0);
 export const edgeId = (block, from, to) => `${block.id}/${from}>${to}`;
 export const spokenFocus = (scene, spoken, index) => spokenProgress(scene, spoken, index).focus;
 

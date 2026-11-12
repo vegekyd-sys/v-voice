@@ -67,14 +67,14 @@ test('a picture hangs on where the script names each thing, whatever the model c
   // Each arrow waits for the words that state it: grass beats water is said a sentence after both are on the page.
   // (The first arrow has no words of its own after its far end: it comes with 小火龙.)
   assert.deepEqual(flow.edges.map(edge => edge[3]), [undefined, '火火一烧叶子就蔫', '杰尼龟草会把水喝']);
-  assert.equal(sticky.q, '你来猜一猜皮卡丘', 'a quote that is gone falls back to the last sentence');
+  assert.equal(sticky.q, '可是妙蛙种子不怕', 'a quote that is gone falls back to the closing sentence, not to the question after it');
   const scene = lesson.ops.reduce(applyOp, emptyScene()), said = lesson.say.join('');
   const upTo = words => spokenProgress(scene, said, said.indexOf(words) + words.length).ahead;
   assert.deepEqual(upTo('十二，我们'), ['b2', 'b1/n1', 'b1/n2', 'b1/n3', 'b1/n1>n2', 'b1/n2>n3', 'b1/n3>n1']);
   assert.deepEqual(upTo('火属性的小火龙会'), ['b2', 'b1/n3', 'b1/n2>n3', 'b1/n3>n1']);
   assert.deepEqual(upTo('草属性的妙蛙种子'), ['b2', 'b1/n2>n3', 'b1/n3>n1']);
   assert.deepEqual(upTo('妙蛙种子怕火，火一烧'), ['b2', 'b1/n3>n1']);
-  assert.deepEqual(upTo('不怕杰尼龟，草会'), ['b2']);
+  assert.deepEqual(upTo('不怕杰尼龟，草会'), []);
 });
 
 test('a lesson that needs no repair is left as written', () => {

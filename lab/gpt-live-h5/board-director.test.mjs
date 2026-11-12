@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {BOARD_INSTRUCTIONS, boardDirectorFromEnv, boundedBoardRequest, createBoardDirector, createChatCompletionStream} from './board-director.mjs';
+import {BOARD_INSTRUCTIONS, boardDirectorFromEnv, boundedBoardRequest, createBoardDirector, mayAskForLesson, createChatCompletionStream} from './board-director.mjs';
 
 const lines = (...ops) => ops.map(op => JSON.stringify(op)).join('\n');
 const scripted = (...replies) => {
@@ -195,4 +195,14 @@ test('while a lesson is being written the director draws nothing, and a run in f
   assert.equal((await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'assistant', text: '好，我想想怎么讲'}]})).reason, 'lesson');
   director.release('c');
   assert.equal((await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'assistant', text: 'x'}]})).reason, 'drawn');
+});
+
+test('with lessons on, a request to explain is not guessed at; what V then says is drawn as usual', async () => {
+  let models = 0;
+  const director = createBoardDirector({defers: mayAskForLesson, complete: async function* () { models++; yield '{"op":"scene","title":"t"}\n{"op":"put","block":{"id":"z","t":"sticky","text":"x"}}\n'; }});
+  assert.equal((await director.run({owner: 'c', trigger: 'user', turns: [{role: 'user', text: '那你用传说级的宝可梦再给十二讲解一下'}]})).reason, 'deferred');
+  assert.equal(models, 0);
+  assert.equal((await director.run({owner: 'c', trigger: 'user', turns: [{role: 'user', text: '明天天气怎么样'}]})).reason, 'drawn');
+  assert.notEqual((await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '给我讲讲火箭'}, {role: 'assistant', text: '火箭靠往下喷气飞上去。'}]})).reason, 'deferred');
+  assert.equal(models, 2);
 });

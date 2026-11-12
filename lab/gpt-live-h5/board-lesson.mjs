@@ -9,7 +9,7 @@ import {applyOp, emptyScene, loose, normalizeOp} from './board-scene.mjs';
 const pieces = BOARD_INSTRUCTIONS.slice(BOARD_INSTRUCTIONS.indexOf('# 区块（block.t）'), BOARD_INSTRUCTIONS.indexOf('# 怎么画'));
 export const LESSON_INSTRUCTIONS = `你是 V。用户在电话里请你讲解一个东西，你要一次写出「讲稿」和「讲稿每一句对应的画面」。讲稿会由你的声音一字不差地念出来；画面在一页手账上，念到哪里，挂在那里的东西就出现在页面上。
 
-输入是一个 JSON：topic 是要讲什么；audience 是讲给谁听；ask 是用户的原话（语音识别，可能夹着旁人的话，只取和 topic 有关的要求）；before 是这通电话里你刚讲过的一段（有的话）：这次要接着它讲新的东西，或者按用户的要求换个讲法，不要原样重复。
+输入是一个 JSON：topic 是要讲什么；audience 是讲给谁听；ask 是用户的原话（语音识别，可能夹着旁人的话，只取和 topic 有关的要求）；before 是这通电话里你刚讲过的一段（有的话）：这次要接着它讲新的东西，或者按用户的要求换个讲法，不要原样重复，例子、比方和最后的问题都换新的。
 
 只输出一个 JSON 对象，不要任何别的文字：
 {"title":"画面标题，不超过 12 个字","say":["第一句","第二句",…],"blocks":[区块,…]}
@@ -18,7 +18,7 @@ export const LESSON_INSTRUCTIONS = `你是 V。用户在电话里请你讲解一
 - 口语，像当面讲给对方听。6 到 10 句，每句不超过 32 个字，一句只讲一件事。
 - 第一句直接进入内容，不要「好的」「我来讲讲」。
 - 用具体的东西讲，不用抽象的类别讲。讲的是一类看得见的东西（宝可梦、动物、车、食物、建筑）时，每个类别挑一个对方认识的代表，讲稿里叫它的名字，让它做一件看得见的事：说「杰尼龟一喷水，小火龙尾巴上的火就灭了」，不说「水属性克制火属性」。类别的名字最多带一下（「杰尼龟是水系的」）。
-- 讲对、讲全。讲的是谁克谁、谁变成谁、先后顺序这类关系时，画面上每一条关系在讲稿里都要有一句明确讲到，方向不能反；画了 A 克 B、B 克 C、C 克 A 的圈，就要三条各讲一句。拿不准的事实和数字不要写。
+- 讲对、讲全。讲的是谁克谁、谁变成谁、先后顺序这类关系时，画面上每一条关系在讲稿里都要有一句明确讲到，方向不能反；画了 A 克 B、B 克 C、C 克 A 的圈，就要三条各讲一句。拿不准某个角色是什么、某条关系对不对，就换成你有把握的角色和关系；宁可少讲一条，不要讲错。拿不准的数字不要写。
 - 讲稿里提到的每个要点，画面上都应该有对应的东西；画面上有的东西，讲稿里都要叫到它的名字。
 - 收尾只用一句：一句小结，或者一个让对方接话的问题。用问题收尾时，问题就是最后一句，问完就停，不要再加「听懂了吗」。
 
@@ -100,10 +100,12 @@ export function settleLesson({say: lines, ops}) {
       return at >= 0 && at > after ? [from, to, label, quoteAt(at)] : [from, to, label];
     });
     // A whole block (photo, sticky) keeps a quote that is really there; else a
-    // photo comes with the first sentence and a sticky with the last.
+    // photo comes with the first sentence and a sticky with the closing one.
     if ('q' in block || block.t === 'photo' || block.t === 'sticky' || block.t === 'note') {
       const at = find(block.q);
-      block.q = quoteAt(at >= 0 ? at : block.t === 'photo' ? 0 : starts.at(-1));
+      // (Not on a closing question: a note beside it reads as the answer.)
+      const closing = say.findLastIndex(line => !asks(line));
+      block.q = quoteAt(at >= 0 ? at : block.t === 'photo' ? 0 : starts[closing >= 0 ? closing : say.length - 1]);
     }
     return {op: 'put', block};
   });

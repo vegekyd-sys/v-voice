@@ -165,3 +165,30 @@ test('the spoken position is the played share of the reply\'s own audio, never a
   time = 63000;
   assert.equal(cursor.index({key: 'turn-3', textLength: 120, outputBytes: base + 144000, queuedBytes: 4000}), 15, 'about two seconds of speech, not 97% of the script');
 });
+
+test('a lesson shows nothing until V starts reading its script, follows the voice, then shows it all', async () => {
+  const {createLessonGate} = await import('./board-client.mjs');
+  const {applyOp, emptyScene, speaksOf, spokenProgress, unspoken} = await import('./board-scene.mjs');
+  let time = 0;
+  const gate = createLessonGate({now: () => time});
+  const script = '杰尼龟喷水。小火龙怕水。';
+  const lesson = [{op: 'scene', title: '谁怕谁', lesson: true}, {op: 'put', block: {id: 'f', t: 'flow', nodes: [{id: 'a', label: '杰尼龟', q: '杰尼龟喷水'}, {id: 'b', label: '小火龙', q: '小火龙怕水'}], edges: [['a', 'b', '打得过']]}}].reduce(applyOp, emptyScene());
+  const view = (text, speaking, index = 0) => gate.view({scene: lesson, text, speaking, speaksOf, unspoken, progress: () => spokenProgress(lesson, text, index)});
+  const all = ['f/a', 'f/b', 'f/a>b'];
+  assert.deepEqual(view('好，我想想怎么讲', true).ahead, all, 'V is still saying it will explain');
+  assert.deepEqual(view('好，我想想怎么讲', false).ahead, all, 'and in the pause before the script');
+  assert.deepEqual(view(script, false).ahead, all, 'the script has arrived but not a sound of it');
+  assert.deepEqual(view(script, true, 4), {focus: 'f/a', ahead: ['f/b', 'f/a>b']});
+  assert.deepEqual(view(script, true, 11).ahead, []);
+  assert.equal(view(script, false), null, 'said: everything stays');
+  assert.deepEqual(view('对啦，小火龙怕水', true, 3).ahead, [], 'a later reply hides nothing that was shown');
+  // A lesson whose script is never spoken does not stay blank for ever.
+  const stuck = createLessonGate({now: () => time});
+  assert.deepEqual(stuck.view({scene: lesson, text: '', speaking: false, speaksOf, unspoken, progress: () => null}).ahead, all);
+  time += 16000;
+  assert.equal(stuck.view({scene: lesson, text: '', speaking: false, speaksOf, unspoken, progress: () => null}), null);
+  // A drawn (not lesson) scene is untouched: nothing held back unless V is speaking.
+  const drawn = [{op: 'scene', title: 'x'}, {op: 'put', block: {id: 'l', t: 'list', items: [{id: 'a', h: '杰尼龟', q: '杰尼龟喷水'}]}}].reduce(applyOp, emptyScene());
+  assert.equal(createLessonGate().view({scene: drawn, text: script, speaking: false, speaksOf, unspoken, progress: () => 'p'}), null);
+  assert.equal(createLessonGate().view({scene: drawn, text: script, speaking: true, speaksOf, unspoken, progress: () => 'p'}), 'p');
+});

@@ -8,8 +8,8 @@ import { entryStartup, startVoiceEntry, markVoiceTiming } from "./entry-startup.
 import { createAvatarTasks } from "./avatar-state.mjs";
 import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { createAvatarTelemetry } from "./avatar-telemetry.mjs";
-import { createBoardClient, createSpokenCursor, readEventStream } from "./board-client.mjs";
-import { spokenProgress } from "./board-scene.mjs";
+import { createBoardClient, createLessonGate, createSpokenCursor, readEventStream } from "./board-client.mjs";
+import { speaksOf, spokenProgress, unspoken } from "./board-scene.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
 import { createContentView } from "./content-view.mjs";
@@ -731,7 +731,7 @@ async function startCall() {
     if (active.board) {
       // Move the focus mark with V's voice. Relay calls know how much of the
       // reply's audio has played; elsewhere the caption itself is the clock.
-      const cursor = createSpokenCursor();
+      const cursor = createSpokenCursor(), lessonGate = createLessonGate();
       active.boardFocusTimer = setInterval(() => {
         if (call !== active) return;
         const scene = active.board.scene, snapshot = presentation.snapshot();
@@ -739,12 +739,12 @@ async function startCall() {
         // audio such as a progress cue is not the earlier reply being re-read.
         const last = [...snapshot.history, ...snapshot.current].filter(item => !item.document && item.text?.trim()).sort((a, b) => a.at - b.at).at(-1);
         const row = last?.role === 'assistant' ? last : null;
-        let spoken = null;
-        if (row && scene.blocks.length && view.get().voice === 'speaking') {
-          const stats = active.relay?.stats, textLength = Array.from(row.text).length;
-          const index = stats ? cursor.index({ key: row.key, textLength, outputBytes: stats.outputBytes, queuedBytes: stats.queuedOutputBytes }) : textLength;
-          spoken = spokenProgress(scene, row.text, index);
-        }
+        const spoken = lessonGate.view({ scene, text: row?.text ?? '', speaking: Boolean(row) && view.get().voice === 'speaking', speaksOf, unspoken,
+          progress: () => {
+            const stats = active.relay?.stats, textLength = Array.from(row.text).length;
+            const index = stats ? cursor.index({ key: row.key, textLength, outputBytes: stats.outputBytes, queuedBytes: stats.queuedOutputBytes }) : textLength;
+            return spokenProgress(scene, row.text, index);
+          } });
         if (JSON.stringify(view.get().boardSpoken) !== JSON.stringify(spoken)) view.set({ boardSpoken: spoken });
       }, 400);
     }

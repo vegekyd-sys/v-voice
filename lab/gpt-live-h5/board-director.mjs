@@ -85,7 +85,10 @@ export function boardRequest({trigger, scene, turns, evidence}) {
  * Each owner (a voice session) has its own scene; a new run for the same owner
  * retires the one still writing.
  */
-export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64} = {}) {
+// Words that usually bring a lesson (board-lesson.mjs) rather than a picture drawn after the fact.
+export const mayAskForLesson = text => /讲解|解释|讲讲|讲一|科普|再讲|再说一遍|搞不懂|听不懂|没听懂|没懂/u.test(String(text ?? ''));
+/** `defers(text)`: the caller's words for which the first guess is left to someone else (lesson mode). */
+export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false} = {}) {
   const owners = new Map();
   const owner = id => {
     let row = owners.get(id);
@@ -153,6 +156,11 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       // Lookups answer one question. What was found for the last one must not
       // be drawn again as if it answered this one.
       if (trigger === 'user') row.evidence = [];
+      // A request to explain is usually answered with a prepared lesson within
+      // a few seconds; a picture guessed now would only flash by before it. If
+      // no lesson comes, V's own words bring the picture as usual.
+      const last = turns?.at(-1);
+      if (trigger === 'user' && defers(typeof last === 'string' ? last : last?.text)) return report('deferred');
       // During a lesson the page only needs the prepared picture. The caller
       // speaking again (after the lesson has started) ends the hold.
       if (row.heldUntil > now()) {
@@ -265,5 +273,5 @@ export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl} = {})
     const at = new Date(), file = join(directory, `board-${at.toISOString().slice(0, 10)}.jsonl`);
     void mkdir(directory, {recursive: true, mode: 0o700}).then(() => appendFile(file, JSON.stringify({at: at.toISOString(), ...event}) + '\n', {mode: 0o600})).catch(() => {});
   } : undefined;
-  return complete ? createBoardDirector({audit, complete, record}) : null;
+  return complete ? createBoardDirector({audit, complete, record, ...(env.VOICE_BOARD_LESSON === '1' ? {defers: mayAskForLesson} : {})}) : null;
 }

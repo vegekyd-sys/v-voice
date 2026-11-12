@@ -40,6 +40,37 @@ export function createSpokenCursor({now = () => performance.now()} = {}) {
   };
 }
 
+/**
+ * What of a lesson is on the page. A lesson's picture arrives a moment before
+ * V starts reading its script (often while V is still saying "let me think"),
+ * and with nothing said yet the page used to show all of it for half a second.
+ * Until the script has been heard being spoken, everything waits; afterwards
+ * the page follows the voice, and shows everything once V has finished.
+ * `progress(text, index)` is spokenProgress for this scene.
+ */
+export function createLessonGate({now = () => Date.now(), patienceMs = 15000} = {}) {
+  let serial = null, spoke = false, since = 0, shown = new Set();
+  return {
+    view({scene, text, speaking, progress, speaksOf, unspoken}) {
+      if (!scene.lesson || !scene.blocks.length) return speaking && scene.blocks.length ? progress() : null;
+      if (scene.serial !== serial) { serial = scene.serial; spoke = false; since = now(); shown = new Set(); }
+      const pieces = unspoken(scene).ahead;
+      // What has appeared stays: a later reply that happens to use a piece's
+      // words again ("对啦，小火龙怕水") must not take it off the page.
+      const following = () => {
+        const at = progress(), ahead = at.ahead.filter(id => !shown.has(id));
+        for (const id of pieces) if (!ahead.includes(id)) shown.add(id);
+        return {...at, ahead};
+      };
+      if (speaking && (spoke || speaksOf(scene, text))) { spoke = true; return following(); }
+      // Not begun (and not given up on): nothing is shown yet.
+      if (!spoke && now() - since < patienceMs) return unspoken(scene);
+      for (const id of pieces) shown.add(id);
+      return speaking ? following() : null;
+    },
+  };
+}
+
 /** Read `data:` events from a streamed response body. */
 export async function readEventStream(response, onEvent) {
   const reader = response.body.getReader(), decoder = new TextDecoder();
