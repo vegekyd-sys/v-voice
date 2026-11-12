@@ -164,7 +164,7 @@ private struct UsageCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: small ? 5 : 8) {
+        VStack(alignment: .leading, spacing: family == .systemLarge ? 8 : 5) {
             header
             if entry.snapshot == nil {
                 Spacer()
@@ -223,26 +223,33 @@ private struct UsageCard: View {
                         .font(.system(size: 49, weight: .bold, design: .rounded))
                         .foregroundStyle(accent).monospacedDigit()
                         .lineLimit(1).minimumScaleFactor(0.67)
-                    if let reset = w.reset {
-                        Text(resetCaption(reset)).font(.system(size: 10)).foregroundStyle(secondary)
-                            .lineLimit(1).minimumScaleFactor(0.85)
-                    }
+                    mediumReset(w)
                 } else { Text("等待读数").font(.subheadline).foregroundStyle(secondary) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
-            VStack(spacing: 8) {
+            VStack(spacing: 4) {
                 ForEach(subscriptions.filter { $0.name != highest?.0.name }, id: \.name) { row in
-                    HStack(spacing: 4) {
-                        Text(shortName(row)).font(.system(size: 12, weight: .medium))
-                        Spacer(minLength: 0)
-                        Text(limiting(row).map(remaining) ?? status(row))
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .foregroundStyle(secondary).monospacedDigit()
+                    let window = limiting(row)
+                    VStack(alignment: .trailing, spacing: 0) {
+                        HStack(spacing: 4) {
+                            Text(shortName(row)).font(.system(size: 12, weight: .medium))
+                            Spacer(minLength: 0)
+                            Text(window.map(remaining) ?? status(row))
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                        }
+                        if let window { mediumReset(window) }
                     }.accessibilityElement(children: .combine)
                 }
             }.frame(maxWidth: .infinity).lineLimit(1)
         }.frame(maxHeight: .infinity)
+    }
+
+    private func mediumReset(_ window: Window) -> some View {
+        Text(window.reset.map(resetCaption) ?? "重置时间未知")
+            .font(.system(size: 10)).foregroundStyle(secondary)
+            .lineLimit(1).minimumScaleFactor(0.85)
     }
 
     private var largeContent: some View {
