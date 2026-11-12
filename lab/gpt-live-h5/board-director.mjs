@@ -3,6 +3,8 @@
 // audio path, and has no tools, permissions or say in what V does. Its output
 // is validated line by line (board-scene.mjs) before anything reaches a page.
 import {applyOp, createLineParser, emptyScene, normalizeOp, sceneDigest} from './board-scene.mjs';
+import {appendFile, mkdir} from 'node:fs/promises';
+import {join} from 'node:path';
 
 export const BOARD_TRIGGERS = Object.freeze(['user', 'assistant_progress', 'assistant_end', 'evidence']);
 // Results of these lookups are facts the picture may show. Command output,
@@ -33,14 +35,18 @@ flow    {"id","t":"flow","h"?,"nodes":[{"id","label","sub"?,"icon"?,"q"?}],"edge
 sticky  {"id","t":"sticky","text","tone"?} 贴在页边的便签：一句结论、提醒，或 V 的一句小评语，不超过 30 个字
 photo   {"id","t":"photo","query","caption"?} 一张真实照片，贴在页边
 
-条目是 {"id","h","d"?,"icon"?,"mark"?,"q"?}。
+条目是 {"id","h","d"?,"icon"?,"img"?,"mark"?,"q"?}。compare 的每个选项和 flow 的每个节点也可以带 img。
+
+img：这一条讲的那个东西的图。写它的通用名称（如「皮卡丘」「杰尼龟」「iPhone 17」「故宫」），系统会去找一张它的图贴在这一条旁边。讲的是看得见、叫得出名字的东西时就配：角色、动物、地点、人物（公众人物）、产品、食物、作品。一张画面里几个东西各配各的图，最多 6 张。有 img 就不用再写 icon。
 
 icon：一个贴切的 emoji，放在条目前面。具体的事物、动作、类别适合配；配不出贴切的就不写，不要拿 ✅📌💡 这类万能符号凑数。
 mark：V 的笔在这一条上留下的记号。ring 圈出最关键的那一个（结论、最大的数字、推荐的选项）；underline 划重点；check 表示对的、推荐的、已完成的；cross 表示错的、不推荐的、没完成的；star 特别值得注意。一张画面里 mark 最多 3 个，圈得多就没有重点了。
 tone：给区块换一张彩色纸，butter、peach、sky、lilac、blush 之一。sticky 默认是 butter。
 q：条目的「讲到这里」标记。从 V 的原话里原样抄 4 到 10 个连续的字，取 V 开始讲这一条的那几个字。V 的声音播到这几个字时，这一条会从铅笔变成墨水，笔迹也在这时画上去。只有 V 确实讲到的条目才写 q，必须一字不差地抄自 conversation 里 V 的话；V 还没讲到的条目先不写，等讲到了再用 put 补上。
 
-photo 只用于大家都认识、百科里查得到的具体事物：地标、城市、公众人物、动物、名画、产品、历史事件。query 写它的通用名称（如「埃菲尔铁塔」「大熊猫」）。抽象概念、流程、软件里的东西、用户身边的人和私事不要配照片。一张画面最多一张，话题就是这个事物时才配。
+photo 是整张画面的主图：话题就是某一个看得见的东西（一座塔、一种动物、一个角色）时贴一张，query 写它的通用名称。抽象概念、流程、用户身边的人和私事不要配图。
+
+给小朋友讲、或者用户说「看不懂」「配点图」的时候，少写字、多配图：每条 h 只留名字或三五个字，d 能省就省，能配 img 的都配上；互相克制、循环、谁赢谁这类关系用 flow，把每个东西的图放在节点上。
 
 # 怎么画
 1. 画面是给眼睛的，要像 V 随手记在本子上的：有重点，有一点俏皮，不是汇报材料。用词和短语，不抄 V 说的话。h 不超过 12 个字，d 不超过 30 个字。一张画面 1 到 3 个区块，条目加起来不超过 12 条；追问展开时超出了，就 del 掉已经讲完、不再需要的区块。
@@ -79,7 +85,7 @@ export function boardRequest({trigger, scene, turns, evidence}) {
  * Each owner (a voice session) has its own scene; a new run for the same owner
  * retires the one still writing.
  */
-export function createBoardDirector({complete, now = Date.now, audit = () => {}, maxOwners = 64} = {}) {
+export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64} = {}) {
   const owners = new Map();
   const owner = id => {
     let row = owners.get(id);
@@ -95,6 +101,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
   };
   return {
     available: Boolean(complete),
+    log: record,
     /** Tap on the service audit stream; keeps the latest lookup results per call. */
     observe(event) {
       if (event?.type !== 'tool.delivered' || !EVIDENCE_TOOLS.has(event.name) || typeof event.voiceSessionId !== 'string') return;
@@ -112,7 +119,14 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
      */
     async run({owner: id, trigger, turns, clientRev = 0, onOp = () => {}, signal} = {}) {
       const started = now(), row = owner(id);
-      const report = (reason, extra = {}) => { const result = {reason, durationMs: now() - started, ...extra}; audit({type: 'board.run', voiceSessionId: id, trigger, ...result}); return result; };
+      const drawn = [];
+      const report = (reason, extra = {}) => {
+        const result = {reason, durationMs: now() - started, ...extra};
+        audit({type: 'board.run', voiceSessionId: id, trigger, ...result});
+        // What was asked and what was drawn, for looking back at a call. Private; not the call log.
+        record({type: 'board.run', voiceSessionId: id, trigger, ...result, heard: turns?.at(-1) ?? null, drawn});
+        return result;
+      };
       if (!complete) return report('unavailable');
       if (now() - row.window > 15 * 60000) { row.window = now(); row.count = 0; }
       if (++row.count > 400) return report('rate_limited');
@@ -135,7 +149,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         if (trigger === 'assistant_progress' && op.op === 'scene' && row.scene.blocks.length && op.title !== row.scene.title) { retired = true; none = true; return; }
         const next = applyOp(row.scene, op);
         if (next === row.scene) return;
-        row.scene = next; ops++; firstOpMs ??= now() - started;
+        row.scene = next; ops++; firstOpMs ??= now() - started; drawn.push(op);
         onOp({...op, rev: next.rev});
       });
       try {
@@ -220,5 +234,11 @@ export function boardCompletionFromEnv(env = process.env, {fetchImpl} = {}) {
 }
 export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl} = {}) {
   const complete = boardCompletionFromEnv(env, {fetchImpl});
-  return complete ? createBoardDirector({audit, complete}) : null;
+  // A private day file beside the Candidate's own call records, when it has such a directory.
+  const directory = env.VOICE_BOARD_LOG_DIR ?? env.RTC_H5_TRANSCRIPT_DIR;
+  const record = directory ? event => {
+    const at = new Date(), file = join(directory, `board-${at.toISOString().slice(0, 10)}.jsonl`);
+    void mkdir(directory, {recursive: true, mode: 0o700}).then(() => appendFile(file, JSON.stringify({at: at.toISOString(), ...event}) + '\n', {mode: 0o600})).catch(() => {});
+  } : undefined;
+  return complete ? createBoardDirector({audit, complete, record}) : null;
 }

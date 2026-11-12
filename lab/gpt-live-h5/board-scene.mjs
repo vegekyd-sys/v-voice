@@ -26,7 +26,8 @@ const optional = (target, key, value) => { if (value) target[key] = value; retur
 const quoted = (target, source) => optional(target, 'q', text(source.q, 24));
 // One emoji (or two joined ones) in front of an item; anything longer is not an icon.
 const icon = value => { const glyphs = typeof value === 'string' ? Array.from(value.trim()) : []; return glyphs.length && glyphs.length <= 4 && !/[\p{L}\p{N}]/u.test(value) ? glyphs.join('') : ''; };
-const dressed = (target, source) => optional(optional(quoted(target, source), 'mark', BOARD_MARKS.includes(source.mark) ? source.mark : ''), 'icon', icon(source.icon));
+// `img`: the name of a thing whose picture goes on the item (found by the service, like a photo block).
+const dressed = (target, source) => optional(optional(optional(quoted(target, source), 'mark', BOARD_MARKS.includes(source.mark) ? source.mark : ''), 'icon', icon(source.icon)), 'img', text(source.img, 40));
 // Model-written ids may repeat; later duplicates get a positional id instead.
 const unique = (items, prefix) => {
   const seen = new Set();
@@ -167,8 +168,12 @@ export function spokenProgress(scene, spoken, index) {
     // First occurrence: a later mention of the same words ("Server Hello
     // Done") must not pull the mark back to an item V has left.
     const found = heard.indexOf(quote.slice(0, Math.min(quote.length, 4)));
-    if (found < 0) ahead.push(`${block.id}/${item.id}`);
-    else if (found > at) { at = found; focus = `${block.id}/${item.id}`; }
+    if (found < 0) { ahead.push(`${block.id}/${item.id}`); continue; }
+    // When V comes back to an item and says its words again in full, the mark
+    // comes back too. Only the full words count for a return, so "Server
+    // Hello Done" does not return to the item quoted as "Server Hello本身".
+    const latest = Math.max(found, heard.lastIndexOf(quote));
+    if (latest > at) { at = latest; focus = `${block.id}/${item.id}`; }
   }
   return {focus, ahead};
 }
@@ -205,6 +210,16 @@ export function applyOp(scene, op) {
       return next({focus: op.id});
     default: return scene;
   }
+}
+
+/** Every picture query on the board: photo blocks and items that carry one. */
+export function scenePictures(scene) {
+  const queries = new Set();
+  for (const block of scene.blocks) {
+    if (block.t === 'photo') queries.add(block.query);
+    for (const item of focusTargets(block)) if (item.img) queries.add(item.img);
+  }
+  return queries;
 }
 
 /** A full scene received from the service replaces the page's copy. */

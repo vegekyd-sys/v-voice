@@ -1574,6 +1574,26 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   white-space: nowrap;
 }
 
+/* the picture of the thing an item is about: a small print beside it */
+.board-thumb {
+  flex: 0 0 auto;
+  display: block;
+  width: 76px;
+  height: 76px;
+  padding: 4px;
+  background: #fffdfb;
+  box-shadow: 0 10px 18px -12px #4d356073;
+  transform: rotate(var(--tilt, 0deg));
+  transition: filter .5s, opacity .5s;
+}
+.board-thumb[data-ready="false"] { background: linear-gradient(110deg, #ece4f3 30%, #f7f2fb 50%, #ece4f3 70%) 0 0 / 220% 100%; animation: board-develop 1.3s linear infinite; }
+.board-thumb img { display: block; width: 100%; height: 100%; object-fit: contain; animation: board-in .5s ease-out both; }
+[data-ink="false"] .board-thumb { filter: grayscale(1); opacity: .5; }
+:is(.board-list, .board-steps) li:has(> .board-thumb) { grid-template-columns: 30px minmax(0, 1fr) auto; }
+.board-compare .board-thumb { width: 100%; height: 118px; margin-bottom: 10px; }
+.board-node .board-thumb { width: 66px; height: 66px; margin-bottom: 4px; }
+[data-now] > .board-thumb, .board-node[data-now] .board-thumb { transform: rotate(var(--tilt, 0deg)) scale(1.08); }
+
 /* a sticky note, and a print taped to the page */
 .board-sticky-text { font-family: var(--hand); font-size: 18px; line-height: 1.5; font-weight: 500; color: #4a3a2c; overflow-wrap: anywhere; }
 .board-photo { margin: 0; padding: 9px 9px 8px; background: #fffdfb; box-shadow: 0 16px 28px -16px #4d356073; }

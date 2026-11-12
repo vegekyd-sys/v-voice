@@ -36,6 +36,7 @@ import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 import {idleHangupFromEnv} from '../realtime-direct-tools/idle-hangup.mjs';
 import {boardDirectorFromEnv,boundedBoardRequest} from './board-director.mjs';
 import {createPhotoFinder} from './board-photo.mjs';
+import {scenePictures} from './board-scene.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Dialing is how a known caller retries; only anonymous callers keep the tight limit.
@@ -875,8 +876,11 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if (!boardAllowed(binding) || !boardPhotos) return json(res,404,{error:'没有这个入口'});
         // Only a photograph the director has put on this call's board.
         const query = typeof params.query === 'string' ? params.query : '';
-        if (!board.scene(params.voiceSessionId).blocks.some(block => block.t === 'photo' && block.query === query)) return json(res,404,{error:'画面上没有这张照片'});
-        const found = await boardPhotos.find(query);
+        if (!scenePictures(board.scene(params.voiceSessionId)).has(query)) return json(res,404,{error:'画面上没有这张照片'});
+        // V's own web search, in this call's session, for things Wikipedia has no picture of.
+        const active = context.active;
+        const search = text => (active.gateway??gateway).request('tools.invoke',{agentId:binding.agentId??'makaron',sessionKey:active.sessionKey,name:'web_search',args:{query:text,count:5}},{timeoutMs:12000});
+        const found = await boardPhotos.find(query,{search});
         if (!found) return json(res,404,{error:'没有找到照片'});
         res.writeHead(200,{'content-type':found.type,'cache-control':'no-store','content-length':found.bytes.length});
         res.end(found.bytes);return;
@@ -1209,7 +1213,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     bridge = createLiveH5Server({ gateway, deviceEndpoint,backendDeviceEndpoint:process.env.VOICE_BACKEND_DEVICE_ENDPOINT??'',
       candidateRelease:process.env.VOICE_CANDIDATE_RELEASE_FILE?JSON.parse(await readFile(process.env.VOICE_CANDIDATE_RELEASE_FILE,'utf8')):undefined,
       listening:process.env.VOICE_LISTENING_DIR ? await (await import('./listening.mjs')).loadVoiceListening(process.env.VOICE_LISTENING_DIR) : undefined,
-      directVoice, speakerRouting, avatarLog,board,boardPhotos:board?createPhotoFinder():null,callControlAudit:transcriptLog.audit,
+      directVoice, speakerRouting, avatarLog,board,boardPhotos:board?createPhotoFinder({observe:event=>board.log?.(event)}):null,callControlAudit:transcriptLog.audit,
       phoneInputPolicy:process.env.VOICE_PHONE_INPUT_POLICY ?? 'speaker',
       enableGrok: process.env.VOICE_ENABLE_GROK === '1',
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",

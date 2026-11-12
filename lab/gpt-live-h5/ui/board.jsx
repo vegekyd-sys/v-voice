@@ -52,6 +52,20 @@ function Key({item, seed, children}) {
     </strong>
   );
 }
+// The picture of the thing an item is about, fetched through the Voice
+// service like a photo block. Nothing is shown when none is found.
+function Thumb({query, view, seed}) {
+  const [src, setSrc] = useState(null);
+  const [gone, setGone] = useState(false);
+  useEffect(() => {
+    let live = true;
+    setSrc(null); setGone(false);
+    Promise.resolve(view.loadPhoto?.(query)).then(url => { if (live) url ? setSrc(url) : setGone(true); }, () => { if (live) setGone(true); });
+    return () => { live = false; };
+  }, [query]);
+  if (gone) return null;
+  return <span className="board-thumb" data-ready={String(Boolean(src))} style={{'--tilt': tilt(seed + ':img', 3) + 'deg'}}>{src && <img src={src} alt={query} decoding="async" />}</span>;
+}
 const Heading = ({block}) => block.h ? <h3 className="board-h">{block.h}</h3> : null;
 
 function List({block, view, ordered}) {
@@ -74,6 +88,7 @@ function List({block, view, ordered}) {
                 <Key item={item} seed={state.id}>{ordered && item.icon ? item.icon + ' ' : ''}{item.h}</Key>
                 {item.d && <span>{item.d}</span>}
               </div>
+              {item.img && <Thumb query={item.img} view={view} seed={state.id} />}
             </li>
           );
         })}
@@ -92,6 +107,7 @@ function Compare({block, view}) {
           const state = itemState(view, block, col);
           return (
             <section key={col.id} {...state.props} data-tone={CARD_TONES[index % CARD_TONES.length]} style={{'--tilt': tilt(state.id, 1.4) + 'deg'}}>
+              {col.img && <Thumb query={col.img} view={view} seed={state.id} />}
               <header>
                 {leads(col.mark) && <span className="board-lead"><Mark kind={col.mark} seed={state.id} /></span>}
                 <Key item={col} seed={state.id}>{col.icon ? col.icon + ' ' : ''}{col.h}</Key>
@@ -165,7 +181,8 @@ function Table({block}) {
 const LAYER = 108, PAD = 36;
 function Flow({block, view}) {
   const {layers, position} = flowLayout(block.nodes, block.edges);
-  const height = Math.max(1, layers.length) * LAYER;
+  // Nodes that carry pictures need taller rows.
+  const height = Math.max(1, layers.length) * (block.nodes.some(node => node.img) ? LAYER + 70 : LAYER);
   // Arrows live in a 100 x 100 box stretched over the diagram; nodes use the
   // same percentages, so an arrow stops just short of the node it points at.
   const y = id => (PAD + (height - PAD * 2) * position[id].y / 100) / height * 100;
@@ -188,6 +205,7 @@ function Flow({block, view}) {
           return (
             <div key={node.id} className="board-node" {...state.props}
               style={{left: position[node.id].x + '%', top: y(node.id) + '%', maxWidth: `calc(${100 / layers[position[node.id].layer].length}% - 10px)`, '--tilt': tilt(state.id, 1.6) + 'deg'}}>
+              {node.img && <Thumb query={node.img} view={view} seed={state.id} />}
               <strong>{node.icon ? node.icon + ' ' : ''}{node.label}</strong>{node.sub && <span>{node.sub}</span>}
             </div>
           );
@@ -226,7 +244,7 @@ export function Board({scene, spoken, loadPhoto, onClose}) {
   const box = useRef(null);
   const [missing, setMissing] = useState(() => new Set());
   // While V speaks the mark follows the voice; otherwise it stays where the director put it.
-  const view = {focus: spoken?.focus || scene.focus, ahead: new Set(spoken?.ahead ?? [])};
+  const view = {focus: spoken?.focus || scene.focus, ahead: new Set(spoken?.ahead ?? []), loadPhoto};
   useEffect(() => {
     if (!view.focus) return;
     box.current?.querySelector('[data-now]')?.scrollIntoView?.({block: 'nearest', behavior: 'smooth'});
