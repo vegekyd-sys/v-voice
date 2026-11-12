@@ -1497,11 +1497,12 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-compare li::before { content: ""; position: absolute; left: 1px; top: .7em; width: 7px; height: 2.5px; border-radius: 2px; background: #4f405980; transform: rotate(-9deg); }
 
 /* numbers, written large */
-.board-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(116px, 1fr)); gap: 22px 16px; }
-.board-stats > div { min-width: 0; }
+/* Each figure takes the room its number needs; a number is never broken. */
+.board-stats { display: flex; flex-wrap: wrap; gap: 22px 38px; }
+.board-stats > div { min-width: 96px; max-width: 100%; }
 .board-stats dd { margin: 0; display: flex; align-items: baseline; gap: 5px; }
 .board-figure { position: relative; display: inline-block; }
-.board-stats b { font-family: var(--hand); font-size: 40px; line-height: 1.1; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); transition: color .5s; overflow-wrap: anywhere; }
+.board-stats b { font-family: var(--hand); font-size: 40px; line-height: 1.1; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); transition: color .5s; white-space: nowrap; }
 .board-stats dd i { font-size: 14px; font-style: normal; color: var(--muted); transition: color .5s; }
 .board-stats dt { margin-top: 5px; font-size: 14px; color: var(--ink-soft); overflow-wrap: anywhere; transition: color .5s; }
 .board-stats small { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.5; color: var(--faint); overflow-wrap: anywhere; }
@@ -1597,7 +1598,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 }
 .call-page[data-board="true"] .status { margin-top: 0; }
 .call-page[data-board="true"] .avatar-aura { inset: -22%; }
-.call-page[data-board="true"] .conversation { flex: 0 1 auto; max-height: 30%; margin-top: 0; }
+.call-page[data-board="true"] .conversation { flex: 0 1 auto; max-height: 30%; margin-top: 8px; }
 .call-page[data-board="true"] .earlier { display: none; }
 /* Room for the "全部" toggle, which the hidden earlier turns used to give. */
 .call-page[data-board="true"] .turns { padding-top: 30px; }
