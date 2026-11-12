@@ -143,7 +143,7 @@ private struct UsageCard: View {
         return !fresh || row.state == "ready" ? "待更新" : "暂不可用"
     }
     private func percent(_ window: Window) -> String {
-        (window.used / 100).formatted(.percent.precision(.fractionLength(small ? 0...0 : 0...1)))
+        (window.used / 100).formatted(.percent.precision(.fractionLength(0)))
     }
     private func time(_ stamp: TimeInterval) -> String {
         Date(timeIntervalSince1970: stamp).formatted(.dateTime.month(.defaultDigits).day().hour().minute())
@@ -190,16 +190,25 @@ private struct UsageCard: View {
     }
 
     private var header: some View {
-        HStack(spacing: 6) {
-            Image("VAppIcon").resizable().scaledToFill().frame(width: 20, height: 20)
-                .clipShape(RoundedRectangle(cornerRadius: 6)).accessibilityHidden(true)
-            Text(small ? "订阅用量" : "订阅余量").font(VoiceStyle.font(14, weight: .semibold))
-            Spacer(minLength: 0)
-            if entry.preview { Text("示例").font(.caption2).foregroundStyle(secondary) }
-            else if !small, let snapshot = entry.snapshot {
-                Text("更新 \(Date(timeIntervalSince1970: snapshot.updated), format: .dateTime.hour().minute())")
-                    .font(.caption2).foregroundStyle(secondary)
+        HStack(spacing: family == .systemMedium ? 15 : 6) {
+            HStack(spacing: 6) {
+                Image("VAppIcon").resizable().scaledToFill().frame(width: 20, height: 20)
+                    .clipShape(RoundedRectangle(cornerRadius: 6)).accessibilityHidden(true)
+                Text(family == .systemLarge ? "订阅余量" : "订阅用量").font(VoiceStyle.font(14, weight: .semibold))
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 4) {
+                if family == .systemMedium, entry.snapshot != nil {
+                    Text("已用").font(.system(size: 10, weight: .medium))
+                }
+                Spacer(minLength: 0)
+                if entry.preview { Text("示例") }
+                else if !small, let snapshot = entry.snapshot {
+                    Text("更新 \(Date(timeIntervalSince1970: snapshot.updated), format: .dateTime.hour().minute())")
+                }
             }
+            .font(.caption2).foregroundStyle(secondary)
+            .frame(maxWidth: family == .systemMedium ? .infinity : nil, alignment: .trailing)
+            .fixedSize(horizontal: family != .systemMedium, vertical: false)
         }
     }
 
@@ -232,13 +241,7 @@ private struct UsageCard: View {
                 ForEach(subscriptions.filter { $0.name != highest?.0.name }, id: \.name) { row in
                     let window = limiting(row)
                     VStack(alignment: .trailing, spacing: 0) {
-                        HStack(spacing: 4) {
-                            Text(shortName(row)).font(.system(size: 12, weight: .medium))
-                            Spacer(minLength: 0)
-                            Text(window.map(remaining) ?? status(row))
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                .monospacedDigit()
-                        }
+                        compactRow(row)
                         if let window { mediumReset(window) }
                     }.accessibilityElement(children: .combine)
                 }
