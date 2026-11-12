@@ -1,5 +1,7 @@
 import Foundation
 import Security
+import CryptoKit
+import WidgetKit
 import VVoiceCore
 
 struct BoundConversation: Codable, Equatable {
@@ -74,6 +76,23 @@ private struct BindingLibrary: Codable {
     init(service: String = "com.versa.vvoice.personal-entry") {
         query = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "binding"]
     }
+    private func syncUsageWidget(_ library: BindingLibrary) {
+        guard query[kSecAttrService as String] as? String == "com.versa.vvoice.personal-entry" else { return }
+        let personal = ([library.active].compactMap { $0 } + library.bindings).first {
+            $0.binding.phone == nil && $0.binding.baseURL.scheme == "https" && $0.isPublic != true &&
+            $0.binding.credentialKind != .exchange
+        }
+        let access = personal.map { record in
+            func digest(_ text: String) -> String {
+                SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+            }
+            return UsageWidgetAccess(endpoint: record.binding.endpoint("relay-usage"),
+                                     bearer: digest("vvoice-usage-v1:" + digest(record.binding.access)))
+        }
+        if UsageWidgetAccess.replace(with: access) {
+            WidgetCenter.shared.reloadTimelines(ofKind: "com.versa.vvoice.relay-usage")
+        }
+    }
     private func library() -> BindingLibrary {
         var q = query; q[kSecReturnData as String] = true; q[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
@@ -87,7 +106,11 @@ private struct BindingLibrary: Codable {
         }
         return .init(bindings: [])
     }
-    func load() -> StoredBinding? { library().active }
+    func load() -> StoredBinding? {
+        let saved = library()
+        syncUsageWidget(saved)
+        return saved.active
+    }
     func savedBindings() -> [StoredBinding] { library().bindings }
     func save(_ value: StoredBinding, select: Bool = true) throws {
         var library = library()
@@ -133,8 +156,12 @@ private struct BindingLibrary: Codable {
             var q = query; attrs.forEach { q[$0] = $1 }
             guard SecItemAdd(q as CFDictionary, nil) == errSecSuccess else { throw VoiceError.secureStorage }
         } else if status != errSecSuccess { throw VoiceError.secureStorage }
+        syncUsageWidget(library)
     }
-    func remove() { SecItemDelete(query as CFDictionary) }
+    func remove() {
+        let status = SecItemDelete(query as CFDictionary)
+        if status == errSecSuccess || status == errSecItemNotFound { syncUsageWidget(.init(bindings: [])) }
+    }
 }
 
 /// Never follow a redirect while carrying a personal entry or authenticated cookie.
