@@ -445,7 +445,7 @@ function CallPage({view, actions, options}) {
   const wide = viewport.width >= 701;
   const width = Math.min(viewport.width, 560), {height} = viewport;
   const compact = inCall && !wide && (overflow || height < 560 || state.composer.open && height < 700);
-  const scene = inCall && !state.tvHost && state.board?.blocks.length ? state.board : null;
+  const scene = inCall && !state.tvHost && (state.board?.blocks.length || state.board?.title) ? state.board : null;
   const board = scene && boardHidden !== scene.serial && !(history && !wide) ? scene : null;
   // With a picture up, the picture is the subject and V sits beside it.
   const size = !inCall ? Math.min(width * .72, height * .4, 300)
