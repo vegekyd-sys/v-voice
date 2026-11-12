@@ -1642,6 +1642,8 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   }
   .board-compare section { scroll-snap-align: start; padding: 12px 12px 14px; }
   .board-stats b { font-size: 34px; }
+  /* On a phone a diagram whose nodes carry pictures needs the screen; the big print would push it off. */
+  .board-body:has(.board-flow[data-pictured]) .board-photo { display: none; }
 }
 
 /* desktop: the page on the left, V above a narrower chat panel on the right.
