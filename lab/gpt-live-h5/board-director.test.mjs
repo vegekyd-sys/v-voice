@@ -157,3 +157,16 @@ test('the board is off unless the flag and a credential are both present', async
     ['openrouter.ai', 'vendor/other', 'Bearer router']]);
   assert.deepEqual([requests[0].body.thinking, requests[1].body.reasoning], [{type: 'disabled'}, {enabled: false}]);
 });
+
+test('a picture is not replaced while V is still mid-sentence', async () => {
+  const other = [{op: 'scene', title: '另一个话题'}, {op: 'put', block: {id: 'n', t: 'note', text: '不该出现'}}];
+  const {complete} = scripted(lines({op: 'scene', title: '通话接通'}, steps), lines(...other), lines({op: 'scene', title: '通话接通'}, {op: 'focus', id: 's/b'}), lines(...other));
+  const director = createBoardDirector({complete}), seen = [];
+  await director.run({owner: 'call-1', trigger: 'user', turns});
+  const progress = await director.run({owner: 'call-1', trigger: 'assistant_progress', turns, clientRev: 2, onOp: op => seen.push(op.op)});
+  assert.deepEqual([progress.reason, seen, director.scene('call-1').title, director.scene('call-1').blocks.length], ['none', [], '通话接通', 1]);
+  await director.run({owner: 'call-1', trigger: 'assistant_progress', turns, clientRev: 2, onOp: op => seen.push(op.op)});
+  assert.deepEqual(seen, ['focus'], 'naming the current picture again is harmless');
+  const end = await director.run({owner: 'call-1', trigger: 'assistant_end', turns, clientRev: 3});
+  assert.deepEqual([end.reason, director.scene('call-1').title], ['drawn', '另一个话题']);
+});

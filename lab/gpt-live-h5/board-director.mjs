@@ -36,13 +36,13 @@ q 是条目的「讲到这里」标记：从 V 的原话里原样抄 4 到 10 �
 
 # 怎么画
 1. 画面是给眼睛的。用词和短语，不抄 V 说的话。h 不超过 12 个字，d 不超过 30 个字。一张画面 1 到 3 个区块，条目加起来不超过 12 条；追问展开时超出了，就 del 掉已经讲完、不再需要的区块。
-2. 选最贴合内容形状的区块：过程用 steps，取舍用 compare，数字用 stats 或 bars，关系用 flow。不要什么都用 list。用户问「哪个更好」「选哪个」「A 还是 B」，而 V 讲了两边各自的理由时，新开一张 compare，V 倾向的一边加 tag。
+2. 选最贴合内容形状的区块：有先后的过程用 steps，取舍用 compare，数字用 stats 或 bars；flow 只用于有分叉、汇合或回路的关系，一条直线的顺序用 steps。不要什么都用 list。用户问「哪个更好」「选哪个」「A 还是 B」，而 V 讲了两边各自的理由时，新开一张 compare，V 倾向的一边加 tag。
 3. 具体事实（日程、数字、人名、状态、搜索到的信息）只能来自对话、evidence 和 V 说出的话，没有依据就不画，绝不编造。事实还没到就输出 none，不要画「查询中」「稍等」这类占位。讲通用知识（原理、概念）时，可以用你自己的知识搭结构。V 的看法、建议和取舍理由以 V 说的为准，不要替 V 补它没说过的理由。
 4. 同一话题里优先小改：用 put 同一个 id 改写区块，用 focus 跟着 V 讲到的位置走，不要每次重画。用户说「第二步」「左边那个」「这个」时，对应到画面上已有的 id。
 5. id 用短的英文或数字，如 "s1"、"a"，一张画面内不重复。
 6. trigger 说明你为什么被叫起来：
-   user：用户刚说完。如果问题本身就能看出要讲什么结构，可以先把骨架搭好，V 马上开始讲；拿不准就 none，等 V 开口。
-   assistant_progress：V 正在讲（文字比声音先到）。画面还空着就按 V 已经讲出的内容搭；已有画面就按 V 的话修正条目并补上 q。
+   user：用户刚说完，V 还没开口。只有问的是通用知识的讲解（原理、流程、概念），才可以先把骨架搭好。问 V 的看法、建议、怎么选，或者问的是用户自己的事（日程、项目、状态），一律 none，等 V 说了再画，不要替 V 先下结论。
+   assistant_progress：V 正在讲，话还不完整（文字比声音先到）。画面空着就按 V 已经讲出的内容搭；已有画面就只修正当前这张的条目、补上 q。这时不要 scene 换画面：V 可能只是顺口举了个例子。
    assistant_end：V 的话已经完整。核对画面和 V 实际说的是否一致，有出入就改成 V 说的，给讲到的条目补齐 q；都对就 none。
    evidence：工具结果或后台结果刚到，把里面值得看的事实放上去。`;
 
@@ -113,12 +113,15 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       const abort = () => controller.abort();
       if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, {once: true});
       if (clientRev !== row.scene.rev) onOp({op: 'sync', scene: row.scene});
-      let ops = 0, firstOpMs = null, none = false;
+      let ops = 0, firstOpMs = null, none = false, retired = false;
       const parser = createLineParser(raw => {
         if (controller.signal.aborted || ops >= MAX_OPS) return;
         const op = normalizeOp(raw);
-        if (!op) return;
+        if (!op || retired) return;
         if (op.op === 'none') { none = true; return; }
+        // A half-finished sentence is not grounds for replacing the picture;
+        // whatever the model meant to draw on the new one is dropped with it.
+        if (trigger === 'assistant_progress' && op.op === 'scene' && row.scene.blocks.length && op.title !== row.scene.title) { retired = true; none = true; return; }
         const next = applyOp(row.scene, op);
         if (next === row.scene) return;
         row.scene = next; ops++; firstOpMs ??= now() - started;
