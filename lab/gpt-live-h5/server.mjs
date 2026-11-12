@@ -1174,7 +1174,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     // seconds); another may be named, with the director's as the fallback.
     const lessonModel=process.env.VOICE_BOARD_LESSON_MODEL,directorWriter=boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'1600'});
     const lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,
-      ...(lessonModel?{complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MODEL:lessonModel,VOICE_BOARD_MAX_TOKENS:'1600'}),fallback:directorWriter}:{complete:directorWriter})}):null;
+      ...(lessonModel?{complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MODEL:lessonModel,VOICE_BOARD_REASONING:process.env.VOICE_BOARD_LESSON_REASONING,VOICE_BOARD_MAX_TOKENS:process.env.VOICE_BOARD_LESSON_REASONING?'4000':'1600'}),fallback:directorWriter}:{complete:directorWriter})}):null;
     const directVoice=createDirectVoiceService({gateway,wsModule,lesson,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',

@@ -262,7 +262,9 @@ export function boardCompletionFromEnv(env = process.env, {fetchImpl} = {}) {
       model: env.VOICE_BOARD_MODEL ?? 'deepseek-flash', extra: {thinking: {type: 'disabled'}}}
     : env.OPENROUTER_API_KEY
       ? {apiKey: env.OPENROUTER_API_KEY, endpoint: 'https://openrouter.ai/api/v1/chat/completions',
-        model: env.VOICE_BOARD_MODEL ?? 'deepseek/deepseek-v4.1-flash', extra: {reasoning: {enabled: false}}}
+        model: env.VOICE_BOARD_MODEL ?? 'deepseek/deepseek-v4.1-flash',
+        // Thinking is off for speed; a writer that may take longer names an effort (some models refuse to run without).
+        extra: {reasoning: ['low', 'medium', 'high'].includes(env.VOICE_BOARD_REASONING) ? {effort: env.VOICE_BOARD_REASONING} : {enabled: false}}}
       : null;
   return provider ? createChatCompletionStream({...provider, fetchImpl, ...(Number(env.VOICE_BOARD_MAX_TOKENS) > 0 ? {maxTokens: Number(env.VOICE_BOARD_MAX_TOKENS)} : {})}) : null;
 }
