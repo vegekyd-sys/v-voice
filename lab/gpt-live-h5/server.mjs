@@ -72,7 +72,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   // One inbound request may reuse its own just-verified dynamic route. This is
   // never an identity cache across requests; slow request bodies must recheck.
   const requestAdmissions=new WeakMap();
-  const resolveBinding=async(req,url)=>{
+  const resolveBinding=async(req,url,admission)=>{
     const startedAt=performance.now();
     const requestedPhone=new URL(req.url??url.href,'http://voice.invalid').searchParams.get('phone');
     if(requestedPhone?.startsWith('cli_')){
@@ -95,7 +95,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     }
     try {
       const device=parseFeishuConversationPhone(url.searchParams.get('phone'))&&iosBindings?.principalFor(req,url.searchParams.get('phone'),req.iosExchangeBody);
-      const binding=phoneLogin?.read(req)?await phoneLogin.resolve(req,url):device?.type==='guest'?guestBinding(req,url.searchParams.get('phone'),{id:device.visitorId}):device?await phoneLogin?.resolveDevice(device,url.searchParams.get('phone')):phoneLogin?await phoneLogin.resolve(req,url):entries.resolve(url);
+      const binding=phoneLogin?.read(req)?await phoneLogin.resolve(req,url,admission):device?.type==='guest'?guestBinding(req,url.searchParams.get('phone'),{id:device.visitorId}):device?await phoneLogin?.resolveDevice(device,url.searchParams.get('phone'),admission):phoneLogin?await phoneLogin.resolve(req,url,admission):entries.resolve(url);
       if(binding){
         if(binding.permissionProfile==='feishu-current')requestAdmissions.set(req,{binding,startedAt,at:performance.now()});
         return binding;
@@ -236,7 +236,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   deviceEndpoint?.setAdmissionGate?.(() => releaseGate.blocked());
   // HTTP and one-connection native dialing share admission, exact-session
   // verification, limits, ownership and reservation. A transport never selects identity.
-  const reservePhoneCall = async ({context,binding,params,req,ip,cancelled=()=>false}) => {
+  const reservePhoneCall = async ({context,binding,params,req,ip,cancelled=()=>false,prefetched=null}) => {
     const reply=(status,body)=>({status,body});
     // An old cached native preference must not silently start another model or
     // end an existing call. The existing options refresh selects the new default.
@@ -303,7 +303,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         // the deployment selects the phone default, not browser heuristics.
         // Clients opt in only after implementing native response ownership and reversible pause.
         const inputPolicy = params.inputPolicy ?? 'speaker';
-        const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(unidentified?{unidentified:true}:{}),...(binding.callerIdentity?{callerIdentity:binding.callerIdentity}:{}),...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId,toolIdentity:binding.actorPrincipal}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(params.nativeDeviceActions?{nativeDeviceActions:params.nativeDeviceActions,terminalKind:iosBindings?.read(req,binding)?'ios':'web',backendDeviceURL:backendDeviceEndpoint||`${hosted?publicOrigin:`http://127.0.0.1:${server.address().port}`}${basePath}/internal/device-request`}:{}),...(params.nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId,reportOptions)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...(speakerRouting||unidentified)?{inputPolicy}:{}});
+        const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(unidentified?{unidentified:true}:{}),...(binding.callerIdentity?{callerIdentity:binding.callerIdentity}:{}),...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId,toolIdentity:binding.actorPrincipal}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(params.nativeDeviceActions?{nativeDeviceActions:params.nativeDeviceActions,terminalKind:iosBindings?.read(req,binding)?'ios':'web',backendDeviceURL:backendDeviceEndpoint||`${hosted?publicOrigin:`http://127.0.0.1:${server.address().port}`}${basePath}/internal/device-request`}:{}),...(params.nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId,reportOptions)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...(speakerRouting||unidentified)?{inputPolicy}:{},...(prefetched?{prefetched}:{})});
         context.active={sessionKey,gateway:callGateway,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
         if(cancelled()){await close(context);return reply(499,{error:"拨号已取消"});}
         rememberAvatarCall(context,context.active,params.model);
@@ -1000,7 +1000,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     if(!directVoice||(hosted?host!==origin.host:!/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host))||req.headers.origin!==expectedOrigin){socket.destroy();return;}
     const url=new URL(req.url,expectedOrigin);
     if(url.pathname===`${basePath}/api/dial`){
-      const reject=status=>socket.end(`HTTP/1.1 ${status} Rejected\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+      // While this dial's live admission is in flight, the reads it will need
+      // may start for the conversation the caller was last admitted to.
+      let prefetched=null;
+      const reject=status=>{prefetched?.discard();socket.end(`HTTP/1.1 ${status} Rejected\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);};
       if(stopping||releaseGate.blocked()||!backendReady())return reject(503);
       if(typeof directVoice.attach!=='function')return reject(404);
       const dialVersion=url.searchParams.get('dialVersion');
@@ -1010,7 +1013,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ||(dialVersion==='1'?url.searchParams.get('nativeRuntimeVersion')!=='1':url.searchParams.has('nativeRuntimeVersion'))
         ||url.searchParams.has('inputPolicy')&&!['native','speaker'].includes(url.searchParams.get('inputPolicy'))
         ||!['seeduplex','grok'].includes(url.searchParams.get('model')))return reject(400);
-      const binding=await resolveBinding(req,url).catch(()=>null);if(!binding)return reject(404);
+      const dialModel=url.searchParams.get('model');
+      const binding=await resolveBinding(req,url,typeof directVoice.prefetch==='function'?{speculate:hint=>{if(!prefetched)prefetched=directVoice.prefetch({...hint,model:dialModel});}}:undefined).catch(()=>null);if(!binding)return reject(404);
       if(phoneLogin?.protects(binding)&&!phoneLogin.permits(req,binding)&&!iosBindings?.read(req,binding))return reject(401);
       const visitor=hosted?readVisitor(req,binding):null;
       if(hosted?!visitor:!String(req.headers.cookie??'').split(/;\s*/u).includes(`v_live_experiment=${cookie}`))return reject(401);
@@ -1035,7 +1039,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         void (async()=>{
           let reservation;
           try{
-            const result=await reservePhoneCall({context,binding,params,req,ip,cancelled});
+            const result=await reservePhoneCall({context,binding,params,req,ip,cancelled,prefetched}).finally(()=>{if(!prefetched?.adopted)prefetched?.discard();});
             if(result.status!==200){if(!cancelled()){client.send(JSON.stringify({type:'dial.error',status:result.status}));client.close(1008);}return;}
             reservation=result.body;
             if(cancelled()){if(context.active?.reservation===reservation)await close(context);return;}

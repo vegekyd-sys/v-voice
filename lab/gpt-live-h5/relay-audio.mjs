@@ -291,6 +291,10 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
     socket.onclose=()=>{reject(Error('实时语音连接已关闭'));if(!closed)onClosed();};
   });void promise.catch(()=>{});
   connection?.adopt();
+  // Received PCM is retained until the speaker node exists, so a dial that
+  // already owns its socket asks for the greeting now; the server speaks it at
+  // ready. The ready handler repeats the request for a server that ignored this.
+  if(connection&&greeting)send({type:'greeting'});
   async function capture(){
     if(prepareCapture){
       const input=await prepareCapture();

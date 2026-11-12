@@ -606,6 +606,14 @@ async function stopCall({failure}={}) {
     if (active.voiceSessionId) await api("close", { voiceSessionId: active.voiceSessionId }).catch(() => {});
   }
 }
+// A stalled permission query must never hold a dial: treat it as not granted.
+async function microphoneGranted() {
+  try {
+    const query=navigator.permissions?.query({name:"microphone"});
+    if(!query)return false;
+    return (await Promise.race([query,new Promise(resolve=>setTimeout(resolve,150))]))?.state==="granted";
+  } catch { return false; }
+}
 async function startCall() {
   if (starting || call || view.get().confirmation) return;
   if (view.get().confirmOnDial) { await confirmation.start(); return; }
@@ -667,8 +675,17 @@ async function startCall() {
     // The TV already has a native microphone grant. Prepare its local DSP and
     // the remote model concurrently, but begin capture only when both are ready.
     if(parallelTvCapture){active.capturePreparation=Promise.resolve(capturePreparation).then(acceptCapture);void active.capturePreparation.catch(error=>{if(call===active)void stopCall({failure:error});});}
-    else await Promise.resolve(capturePreparation).then(acceptCapture);
+    // With the grant already given there is no prompt to wait for, so the
+    // microphone opens while the call is being admitted. A page that may still
+    // prompt keeps the old order: no call exists until the caller allows it.
+    let captureReady=null,captureError=null;
+    if(!parallelTvCapture){
+      const opening=Promise.resolve(capturePreparation).then(acceptCapture);
+      if(!fixtureId&&await microphoneGranted())captureReady=opening.catch(error=>{captureError=error;});
+      else await opening;
+    }
     if(call!==active)return;
+    const withCapture=async pending=>captureReady?(await Promise.all([pending,captureReady]))[0]:pending;
     const selectedModel = ['seeduplex','grok'].includes(chosenModel)?chosenModel:'gpt-live';
     const inputPolicy = speakerCandidate() ? (new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy) : null;
     const nativeDeviceActions=await browserDeviceActions();
@@ -678,10 +695,11 @@ async function startCall() {
       const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
       endpoint.search=new URLSearchParams({phone:phoneEntry,model:selectedModel,dialVersion:'2',...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
       active.dialConnection=createDialConnection({url:endpoint,signal:active.captureAbort.signal});
-      reservation=await active.dialConnection.reservation;
-    }else reservation=await api('session',params);
+      reservation=await withCapture(active.dialConnection.reservation);
+    }else reservation=await withCapture(api('session',params));
     active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
+    if(captureError)throw captureError;
     const diagnosticOwner=avatarDiagnosticOwner=Symbol('avatar-call');
     document.body.dataset.avatarReactionRequests='0';
     document.body.dataset.avatarReactionApplied='0';
