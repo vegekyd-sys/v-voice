@@ -93,72 +93,188 @@ struct RelayUsageWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "com.versa.vvoice.relay-usage", provider: UsageTimeline()) { entry in
             UsageCard(entry: entry)
-                .containerBackground(.background, for: .widget)
                 .privacySensitive()
         }
         .configurationDisplayName("Relay 用量")
         .description("查看订阅已用比例、重置时间和 DeepSeek 余额。")
-        .supportedFamilies([.systemMedium, .systemLarge])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
 
 private struct UsageCard: View {
+    typealias Provider = RelayUsageSnapshot.Provider
+    typealias Window = RelayUsageSnapshot.Window
+
     let entry: UsageEntry
     @Environment(\.widgetFamily) private var family
-    private var expanded: Bool { family == .systemLarge }
-    var body: some View {
-        VStack(alignment: .leading, spacing: expanded ? 12 : 5) {
-            HStack {
-                Label("Relay 用量", systemImage: "chart.bar.fill").font(.headline)
-                Spacer()
-                if entry.preview { Text("示例").font(.caption2) }
-                else if let snapshot = entry.snapshot {
-                    let time = Date(timeIntervalSince1970: snapshot.updated)
-                    HStack(spacing: 3) {
-                        Text(entry.date.timeIntervalSince(time) >= 3600 ? "上次更新" : "更新")
-                        Text(time, format: .dateTime.hour().minute())
-                    }.font(.caption2).foregroundStyle(.secondary)
-                }
+    @Environment(\.colorScheme) private var scheme
+    private var small: Bool { family == .systemSmall }
+    private var dark: Bool { scheme == .dark }
+    private var ink: Color { dark ? .white : VoiceStyle.ink }
+    private var secondary: Color { dark ? VoiceStyle.lavender : VoiceStyle.soft }
+    private var track: Color { dark ? VoiceStyle.soft : VoiceStyle.line }
+    private var accent: Color { dark ? Color(hex: 0xd6c2ed) : VoiceStyle.purple }
+    private var fresh: Bool {
+        guard let snapshot = entry.snapshot else { return false }
+        return entry.date.timeIntervalSince1970 < snapshot.updated + 3600
+    }
+    private var subscriptions: [Provider] { entry.snapshot?.providers.filter { $0.name != "DeepSeek" } ?? [] }
+    private var balance: Provider? { entry.snapshot?.providers.first { $0.name == "DeepSeek" } }
+
+    private func windows(_ row: Provider) -> [Window] {
+        guard fresh, row.state == "ready" else { return [] }
+        return (row.windows ?? []).filter { ($0.reset ?? .infinity) > entry.date.timeIntervalSince1970 }
+    }
+    private func limiting(_ row: Provider) -> Window? { windows(row).max { $0.used < $1.used } }
+    private var highest: (Provider, Window)? {
+        subscriptions.compactMap { row in limiting(row).map { (row, $0) } }.max { $0.1.used < $1.1.used }
+    }
+    private var nextReset: (label: String, date: TimeInterval)? {
+        subscriptions.flatMap { row in
+            windows(row).compactMap { w in
+                let period = w.label == "5 小时" ? "5h" : w.label
+                return w.reset.map { (label: shortName(row) + " " + period, date: $0) }
             }
-            if let snapshot = entry.snapshot {
-                ForEach(snapshot.providers, id: \.name) { row in
-                    rowView(row, stale: entry.date.timeIntervalSince1970 - snapshot.updated >= 3600)
-                }
-            } else {
-                Spacer()
-                Text(entry.message ?? "等待读取用量").font(.subheadline).foregroundStyle(.secondary)
-                Spacer()
-            }
-        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }.min { $0.date < $1.date }
+    }
+    private func shortName(_ row: Provider) -> String { row.name == "Claude Code" ? "Claude" : row.name }
+    private func status(_ row: Provider) -> String {
+        if row.state == "unconfigured" { return "待接入" }
+        return !fresh || row.state == "ready" ? "待更新" : "暂不可用"
+    }
+    private func percent(_ window: Window) -> String {
+        (window.used / 100).formatted(.percent.precision(.fractionLength(small ? 0...0 : 0...1)))
+    }
+    private func time(_ stamp: TimeInterval) -> String {
+        Date(timeIntervalSince1970: stamp).formatted(.dateTime.month(.defaultDigits).day().hour().minute())
     }
 
-    @ViewBuilder private func rowView(_ row: RelayUsageSnapshot.Provider, stale: Bool) -> some View {
-        let valid = (row.windows ?? []).filter { ($0.reset ?? .infinity) > entry.date.timeIntervalSince1970 }
-        let visible = expanded ? valid : Array(valid.sorted { $0.used > $1.used }.prefix(1))
-        if row.state == "ready", !stale, !visible.isEmpty {
-            ForEach(visible.indices, id: \.self) { i in
-                HStack(spacing: 5) {
-                    Text(row.name).fontWeight(.medium)
-                    Text(visible[i].label).font(.caption2).foregroundStyle(.secondary)
-                    Spacer(minLength: 3)
-                    Text("已用 \(visible[i].used / 100, format: .percent.precision(.fractionLength(0...1)))").bold()
-                    if let reset = visible[i].reset {
-                        Text(Date(timeIntervalSince1970: reset), format: .dateTime.month(.defaultDigits).day().hour().minute())
-                        Text("重置")
-                    } else { Text("重置时间未知") }
-                }.font(.caption).monospacedDigit().lineLimit(1).minimumScaleFactor(0.8)
-            }
-        } else {
-            HStack {
-                Text(row.name).fontWeight(.medium)
+    var body: some View {
+        VStack(alignment: .leading, spacing: small ? 5 : 8) {
+            header
+            if entry.snapshot == nil {
                 Spacer()
-                if row.state == "ready", !stale, let balance = row.balance, let currency = row.currency {
-                    Text("余额 \(balance, format: .currency(code: currency))")
-                } else {
-                    Text(row.state == "unconfigured" ? "待接入" :
-                         stale || row.state == "ready" ? "待更新" : "暂不可用").foregroundStyle(.secondary)
+                Text(entry.message ?? "等待读取用量").font(.caption).foregroundStyle(secondary)
+                Spacer()
+            } else {
+                switch family {
+                case .systemSmall: smallContent
+                case .systemMedium:
+                    mediumContent
+                    balanceLine
+                default: largeContent
                 }
-            }.font(.caption).lineLimit(1)
+            }
         }
+        .foregroundStyle(ink)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .containerBackground(for: .widget) {
+            LinearGradient(colors: dark ? [Color(hex: 0x302639), Color(hex: 0x1e1725)]
+                                         : [VoiceStyle.background, VoiceStyle.lavender],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 6) {
+            Image("VAppIcon").resizable().scaledToFill().frame(width: 20, height: 20)
+                .clipShape(RoundedRectangle(cornerRadius: 6)).accessibilityHidden(true)
+            Text("订阅用量").font(VoiceStyle.font(14, weight: .semibold))
+            Spacer(minLength: 0)
+            if entry.preview { Text("示例").font(.caption2).foregroundStyle(secondary) }
+            else if !small, let snapshot = entry.snapshot {
+                Text("更新 \(Date(timeIntervalSince1970: snapshot.updated), format: .dateTime.hour().minute())")
+                    .font(.caption2).foregroundStyle(secondary)
+            }
+        }
+    }
+
+    @ViewBuilder private var smallContent: some View {
+        Spacer(minLength: 0)
+        ForEach(subscriptions, id: \.name) { compactRow($0) }
+        Spacer(minLength: 0)
+        if let nextReset {
+            Text("\(nextReset.label) \(time(nextReset.date)) 重置").font(.system(size: 10))
+                .foregroundStyle(secondary).lineLimit(1).minimumScaleFactor(0.75)
+        }
+    }
+
+    private var mediumContent: some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 1) {
+                if let (row, w) = highest {
+                    Text("\(shortName(row)) · \(w.label)已用").font(.caption).foregroundStyle(secondary)
+                    Text(percent(w)).font(.system(size: 32, weight: .semibold, design: .rounded))
+                        .monospacedDigit().lineLimit(1).minimumScaleFactor(0.75)
+                    if let reset = w.reset { Text("\(time(reset)) 重置").font(.system(size: 10)).foregroundStyle(secondary) }
+                } else { Text("等待读数").font(.subheadline).foregroundStyle(secondary) }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            VStack(spacing: 5) { ForEach(subscriptions, id: \.name) { compactRow($0) } }
+                .frame(maxWidth: .infinity)
+        }.frame(maxHeight: .infinity)
+    }
+
+    @ViewBuilder private var largeContent: some View {
+        ForEach(subscriptions, id: \.name) { row in
+            let values = windows(row)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(row.name).font(VoiceStyle.font(15, weight: .semibold))
+                    Spacer()
+                    if values.isEmpty { Text(status(row)).font(.caption).foregroundStyle(secondary) }
+                }
+                ForEach(values.indices, id: \.self) { index in
+                    let w = values[index]
+                    HStack(spacing: 7) {
+                        Text(w.label).foregroundStyle(secondary).frame(width: 38, alignment: .leading)
+                        meter(w)
+                        Text(percent(w)).fontWeight(.semibold).monospacedDigit()
+                        Text(w.reset.map { time($0) + " 重置" } ?? "重置时间未知").foregroundStyle(secondary)
+                    }.font(.caption).lineLimit(1).minimumScaleFactor(0.8)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        balanceLine
+    }
+
+    @ViewBuilder private var balanceLine: some View {
+        if let row = balance {
+            HStack {
+                Text("DeepSeek 余额").foregroundStyle(secondary)
+                Spacer()
+                if fresh, row.state == "ready", let amount = row.balance, let currency = row.currency {
+                    Text(amount, format: .currency(code: currency)).fontWeight(.semibold).monospacedDigit()
+                } else { Text(status(row)).foregroundStyle(secondary) }
+            }.font(.caption)
+        }
+    }
+
+    private func compactRow(_ row: Provider) -> some View {
+        let value = limiting(row)
+        return HStack(spacing: 4) {
+            Text(shortName(row)).font(.system(size: small ? 11 : 12, weight: .medium))
+                .frame(width: small ? 41 : 43, alignment: .leading)
+            if let value {
+                meter(value)
+                Text(percent(value)).font(.system(size: small ? 12 : 13, weight: .semibold, design: .rounded))
+                    .monospacedDigit().frame(minWidth: small ? 30 : 35, alignment: .trailing)
+            } else {
+                Spacer(minLength: 0)
+                Text(status(row)).font(.caption2).foregroundStyle(secondary)
+            }
+        }.lineLimit(1).accessibilityElement(children: .ignore)
+         .accessibilityLabel(row.name)
+         .accessibilityValue(value.map { w in w.label + "已用" + percent(w) + (w.reset.map { "，" + time($0) + "重置" } ?? "") } ?? status(row))
+    }
+
+    private func meter(_ value: Window) -> some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule().fill(track)
+                Capsule().fill(accent).frame(width: proxy.size.width * min(1, max(0, value.used / 100)))
+                    .widgetAccentable()
+            }
+        }.frame(height: small ? 4 : 5).accessibilityHidden(true)
     }
 }

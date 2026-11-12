@@ -59,7 +59,13 @@ def cli_environment():
             "OPENCLAW_STATE_DIR", "OPENCLAW_CONFIG_PATH", "CLAUDE_CONFIG_DIR") if key in os.environ}
 
 
-def subscription(provider):
+def gateway_providers():
+    result = subprocess.run(["openclaw", "gateway", "call", "usage.status", "--timeout", "20000", "--json"],
+                            capture_output=True, text=True, env=cli_environment(), timeout=25, check=True)
+    return {p["provider"]: p for p in json.loads(result.stdout)["providers"]}
+
+
+def subscription(provider, gateway):
     env = os.environ
     if provider == "Gemini":
         if not env.get("SCENE_GEMINI_RELAY_SECRET"):
@@ -88,15 +94,22 @@ def subscription(provider):
         limits = reply["rate_limits"] or {}
         windows = [window(label, limits[key]["utilization"], limits[key]["resets_at"])
                    for key, label in (("five_hour", "5 小时"), ("seven_day", "周")) if limits.get(key)]
+    elif provider == "Grok":
+        # Same source as V's usage display. Gateway resetAt is epoch milliseconds.
+        xai = gateway()["xai"]
+        if xai.get("error"):
+            raise ValueError("xAI usage unavailable")
+        labels = {"weekly": "周", "168h": "周", "5h": "5 小时"}
+        windows = [window(labels.get(w["label"].lower(), "本期"), w["usedPercent"],
+                          w["resetAt"] / 1000 if w.get("resetAt") is not None else None)
+                   for w in xai["windows"]]
     else:
-        prefix = provider.upper() + "_SUBSCRIPTION_"
+        prefix = "CODEX_SUBSCRIPTION_"
         if not env.get(prefix + "RELAY_SECRET"):
             return {"state": "unconfigured"}
-        codex = provider == "Codex"
-        raw = signed(provider, "POST" if codex else "GET", "/v1/usage",
-                     env.get("VOICE_USAGE_"+provider.upper()+"_PORT", 25984 if codex else 25985),
+        raw = signed(provider, "POST", "/v1/usage", env.get("VOICE_USAGE_CODEX_PORT", 25984),
                      env[prefix+"OWNER_USER_ID"], env[prefix+"RELAY_SECRET"])
-        item = raw["weekly" if codex else "usage"]
+        item = raw["weekly"]
         minutes = item.get("windowDurationMins")
         label = {300: "5 小时", 10080: "周"}.get(minutes, "本期")
         windows = [window(label, item["usedPercent"], item.get("resetsAt"))]
@@ -105,7 +118,7 @@ def subscription(provider):
     return {"state": "ready", "windows": windows}
 
 
-def deepseek():
+def deepseek(gateway):
     key = os.environ.get("DEEPSEEK_API_KEY")
     if key:
         conn = HTTPSConnection("api.deepseek.com", timeout=15)
@@ -122,9 +135,7 @@ def deepseek():
             return {"state": "ready", "balance": amount, "currency": item["currency"]}
         finally:
             conn.close()
-    result = subprocess.run(["openclaw", "gateway", "call", "usage.status", "--json"],
-                            capture_output=True, text=True, env=cli_environment(), timeout=25, check=True)
-    provider = next(p for p in json.loads(result.stdout)["providers"] if p["provider"] == "deepseek")
+    provider = gateway()["deepseek"]
     item = next(b for b in provider["billing"] if b["type"] == "balance" and b["unit"] in ("CNY", "USD"))
     amount = item["amount"]
     if type(amount) not in (float, int) or not math.isfinite(amount):
@@ -132,9 +143,9 @@ def deepseek():
     return {"state": "ready", "balance": amount, "currency": item["unit"]}
 
 
-def read(name):
+def read(name, gateway=gateway_providers):
     try:
-        data = deepseek() if name == "DeepSeek" else subscription(name)
+        data = deepseek(gateway) if name == "DeepSeek" else subscription(name, gateway)
     except Exception:
         # A failure in one provider must not suppress other providers or disclose raw responses.
         data = {"state": "unavailable"}
@@ -143,7 +154,9 @@ def read(name):
 
 def main(target):
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
-        rows = list(pool.map(read, ("Codex", "Claude Code", "Grok", "Gemini", "DeepSeek")))
+        gateway = pool.submit(gateway_providers)
+        rows = list(pool.map(lambda name: read(name, gateway.result),
+                             ("Codex", "Claude Code", "Grok", "Gemini", "DeepSeek")))
     snapshot = {"version": 1, "updated": int(time.time()), "providers": rows}
     with tempfile.NamedTemporaryFile(mode="w", dir=target.parent, delete=False) as f:
         try:
