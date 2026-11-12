@@ -5,8 +5,10 @@
 //
 //   node scripts/candidate/board.mjs            http://127.0.0.1:26327/
 //
-// Dial, open the text field and type one of: 电话是怎么接通的 / 对比一下两种方案 /
-// 夜班现在怎么样 / 语音和画面的数据怎么流 / 你好
+// Dial with Grok Voice (the only model with a stand-in here; 豆包 is disabled and
+// GPT Live reports an error), open the text field and type one of: 电话是怎么接通的 /
+// 对比一下两种方案 / 夜班现在怎么样 / 语音和画面的数据怎么流 / 你好.
+// The stand-in does not listen: speaking into the microphone does nothing.
 import {EventEmitter} from 'node:events';
 import {WebSocketServer} from 'ws';
 import {createLiveH5Server} from '../../lab/gpt-live-h5/server.mjs';
@@ -27,6 +29,7 @@ const gateway = {ready: true, request: async (method, args) => {
   if (method === 'sessions.resolve') return {key: args.key};
   if (method === 'sessions.describe') return {session: {key: args.key, agentId: 'makaron'}};
   if (method === 'chat.history') return {messages: []};
+  if (method === 'talk.client.create') throw Error('本地替身只支持 Grok Voice');
   throw Error('Local fixture RPC unavailable: ' + method);
 }};
 
@@ -98,8 +101,8 @@ async function* scriptedDirector({messages, signal}) {
 
 const real = boardDirectorFromEnv({...process.env, VOICE_BOARD: '1'}, {audit: event => console.log(JSON.stringify(event))});
 const board = real ?? createBoardDirector({complete: scriptedDirector, audit: event => console.log(JSON.stringify(event))});
-const service = createDirectVoiceService({gateway, wsModule: {WebSocket: Model, WebSocketServer}, apiKeys: {grok: 'LOCAL_FIXTURE_ONLY', seeduplex: 'LOCAL_FIXTURE_ONLY'},
-  audit: event => board.observe(event), loadContext: async () => '', searchAcknowledgment: 'off'});
+const service = createDirectVoiceService({gateway, wsModule: {WebSocket: Model, WebSocketServer}, apiKeys: {grok: 'LOCAL_FIXTURE_ONLY'},
+  audit: event => { board.observe(event); if (/^call\./u.test(event.type)) console.log(JSON.stringify({type: event.type, voiceSessionId: event.voiceSessionId, model: event.model, message: event.message})); }, loadContext: async () => '', searchAcknowledgment: 'off'});
 const bridge = createLiveH5Server({gateway, directVoice: service, board, defaultModel: 'grok', enableGrok: true,
   conversationEntries: [{id: 'board_fixture', agentId: 'makaron', callerId: 'tianyi', permissionProfile: 'personal-tianyi', sessionKey: 'agent:makaron:feishu:group:board_fixture',
     accountId: 'fixture', kind: 'group', accountLabel: '本地演示账号', displayName: '画面替身 · 非真实身份', accessToken: 'LOCAL_FIXTURE_NOT_A_REAL_SECRET_0000'}],
