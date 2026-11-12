@@ -88,7 +88,7 @@ export function boardRequest({trigger, scene, turns, evidence}) {
  * retires the one still writing.
  */
 // Words that usually bring a lesson (board-lesson.mjs) rather than a picture drawn after the fact.
-export const mayAskForLesson = text => /讲解|解释|讲讲|讲一|科普|再讲|再说一遍|搞不懂|听不懂|没听懂|没懂/u.test(String(text ?? ''));
+export const mayAskForLesson = text => /讲解|解释|讲讲|讲一|科普|再讲|再说一遍|搞不懂|听不懂|没听懂|没懂|给我看|\bexplain\b/iu.test(String(text ?? ''));
 /** `defers(text)`: the caller's words for which the first guess is left to someone else (lesson mode). */
 export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false} = {}) {
   const owners = new Map();

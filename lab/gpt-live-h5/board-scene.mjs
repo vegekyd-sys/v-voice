@@ -134,7 +134,7 @@ const BLOCKS = {
   // A line read part by part: "x × x = 9", "price = cost + margin". Each part
   // is a few characters, with an optional caption under it.
   formula(raw) {
-    const items = unique(list(raw.items ?? raw.parts, 9).map((item, index) => {
+    const items = unique(list(raw.items ?? raw.parts, 13).map((item, index) => {
       const part = typeof item === 'string' || typeof item === 'number' ? {h: item} : item && typeof item === 'object' ? item : {};
       const h = text(part.h ?? part.text, 14);
       return h ? dressed(optional(optional({id: ident(part.id, `p${index + 1}`), h}, 'd', text(part.d ?? part.sub, 24)), 'tone', BOARD_TONES.includes(part.tone) ? part.tone : ''), part) : null;

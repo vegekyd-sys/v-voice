@@ -152,5 +152,5 @@ test('the writer is given the diagram kit, and a diagram\'s piece appears where 
       {id: 'f', t: 'formula', items: [{id: 'x', h: '4', q: '所以四乘四'}, '×', {id: 'y', h: '4', q: '所以四乘四'}, '=', {id: 'r', h: '16', q: '等于十六'}]}]}));
   const [tiles, formula] = lesson.ops.filter(op => op.op === 'put').map(op => op.block);
   assert.equal(tiles.items[0].q, '先拿四块积木每边', 'not on the first passing mention of 积木');
-  assert.deepEqual(formula.items.map(item => item.q), ['所以四乘四等于十', undefined, '所以四乘四等于十', undefined, '等于十六']);
+  assert.deepEqual(formula.items.map(item => item.q), ['所以四乘四等于十', '所以四乘四等于十', '所以四乘四等于十', '所以四乘四等于十', '等于十六'], 'a sign comes with the term before it');
 });

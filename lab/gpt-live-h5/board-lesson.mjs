@@ -12,7 +12,7 @@ const pieces = BOARD_INSTRUCTIONS.slice(BOARD_INSTRUCTIONS.indexOf('# 区块（b
 const KIT = `# 图示组件（讲解专用，优先用它们）
 先想清楚这件事是什么「形状」，再挑组件；一页用 2 到 3 个组件互相配合（一个讲结构，一个摆例子或数字，再加一张便签），不要整页都是 steps 或 list。
 tiles     {"id","t":"tiles","h"?,"items":[{"id","rows","cols","h"?,"icon"?,"tone"?,"lit"?,"q"}]} 数得清的东西摆成几排几列：4×4 的积木、12 个苹果分 3 堆。也可以只写 "n"（总数）和 "per"（一排几个）。icon 写一个表情就用它当每一格（🍎）；lit 是其中涂上色的个数（分数、一部分），lit:0 是空格子（留给对方猜）。讲数量、乘法、平方、分数、比例时，摆出来比写出来好懂。
-formula   {"id","t":"formula","h"?,"items":[{"id","h","d"?,"tone"?,"mark"?,"q"}]} 一行式子，一段一段念：["x","×","x","=","9"]、["售价","=","成本","+","利润"]。h 是一小段（不超过 6 个字，符号单独一段），d 是它下面的小字解释，tone 给关键的一段涂色。讲公式、换算、句子结构、「A 加 B 等于 C」时用。
+formula   {"id","t":"formula","h"?,"items":[{"id","h","d"?,"tone"?,"mark"?,"q"}]} 一行式子（一个 formula 只写一条，两条式子就用两个 formula），一段一段念：["x","×","x","=","9"]、["售价","=","成本","+","利润"]。h 是一小段（不超过 6 个字，符号单独一段），d 是它下面的小字解释，tone 给关键的一段涂色。讲公式、换算、句子结构、「A 加 B 等于 C」时用。
 timeline  {"id","t":"timeline","h"?,"items":[{"id","when","h","d"?,"img"?,"icon"?,"mark"?,"q"}]} 按时间排的几件事，when 写年份或时段（「1958」「上午」「第 2 天」）。讲来历、发展史、一天的行程用它，不要用 steps。
 versus    {"id","t":"versus","h"?,"sides":[{"h","img"?},{"h","img"?}],"items":[{"id","h","cells":["甲这一项","乙这一项"],"win"?,"icon"?,"q"}]} 两三样东西一项一项比：h 是比的那一项（「补能」「价格」，不超过 5 个字），cells 按 sides 的顺序各写几个字，win 是这一项占优的那边（从 0 数），没有明显优劣就不写。讲「A 和 B 的区别」「选哪个」时用它，一行对应讲稿里的一句。
 overlap   {"id","t":"overlap","h"?,"a":{"h","points":[…],"img"?,"q"},"b":{"h","points":[…],"img"?,"q"},"both":{"h"?,"points":[…],"q"}} 两个圈和它们重叠的部分：a、b 各有什么，both 是两边共有的。讲「A 和 B 是什么关系」「有什么相同不同」时用。每边 points 不超过 3 条，每条不超过 8 个字。
@@ -133,6 +133,12 @@ export function settleLesson({say: lines, ops}) {
       const at = DIAGRAMS.has(block.t) && quoted >= 0 ? quoted : named >= 0 ? named : quoted >= 0 ? quoted : pictured;
       if (at >= 0) item.q = quoteAt(at); else delete item.q;
       whereOf.set(`${block.id}/${item.id}`, at);
+    }
+    // A sign between two terms ("×", "=") has no words of its own: it comes
+    // with the term before it (or, at the very start, the one after).
+    if (block.t === 'formula') {
+      let last = block.items.find(item => item.q)?.q;
+      for (const item of block.items) { if (item.q) last = item.q; else if (last) item.q = last; }
     }
     if (block.t === 'flow') block.edges = block.edges.map(([from, to, label, said]) => {
       const after = Math.max(whereOf.get(`${block.id}/${from}`) ?? -1, whereOf.get(`${block.id}/${to}`) ?? -1, 0);

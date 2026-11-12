@@ -1644,7 +1644,8 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-tiles figure[data-tone="peach"] i { background: var(--peach); }
 .board-tiles figure[data-tone="lilac"] i { background: var(--lilac); }
 .board-tiles figure[data-tone="blush"] i { background: var(--blush); }
-.board-tile-grid[data-glyph] i { background: none; box-shadow: none; }
+.board-tile-grid[data-glyph] { --tile: 34px; gap: 4px; }
+.board-tile-grid[data-glyph] i { background: none; box-shadow: none; font-size: calc(var(--tile) * .86); }
 .board-tile-grid i[data-lit="false"] { background: none; box-shadow: none; outline: 2px dashed #cbbfd6; outline-offset: -2px; }
 .board-tile-grid[data-glyph] i[data-lit="false"] { outline: 0; filter: grayscale(1) opacity(.35); }
 .board-tiles figcaption { font-family: var(--hand); font-size: 17px; line-height: 1.3; color: var(--ink); text-align: center; }
