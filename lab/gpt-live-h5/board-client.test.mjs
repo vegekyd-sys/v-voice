@@ -151,8 +151,9 @@ test('the spoken position is the played share of the reply\'s own audio', () => 
   assert.equal(cursor.index({key: 'turn-2', textLength: 40, outputBytes: 96000, queuedBytes: 0}), 0);
   assert.equal(cursor.index({key: 'turn-2', textLength: 40, outputBytes: 96000 + 480000, queuedBytes: 480000}), 0);
   assert.equal(cursor.index({key: 'turn-2', textLength: 100, outputBytes: 96000 + 960000, queuedBytes: 720000}), 25);
-  assert.equal(cursor.index({key: 'turn-2', textLength: 100, outputBytes: 96000 + 960000, queuedBytes: 0}), 100);
+  assert.equal(cursor.index({key: 'turn-2', textLength: 100, outputBytes: 96000 + 1920000, queuedBytes: 1680000}), 25, 'more audio arriving never moves the position back');
+  assert.equal(cursor.index({key: 'turn-2', textLength: 100, outputBytes: 96000 + 1920000, queuedBytes: 0}), 100);
   // A barge-in flushes the queue; the following reply starts from zero again.
-  assert.equal(cursor.index({key: 'turn-3', textLength: 20, outputBytes: 96000 + 960000, queuedBytes: 0}), 0);
-  assert.equal(cursor.index({key: 'turn-3', textLength: 20, outputBytes: 96000 + 960000 + 48000, queuedBytes: 24000}), 10);
+  assert.equal(cursor.index({key: 'turn-3', textLength: 20, outputBytes: 96000 + 1920000, queuedBytes: 0}), 0);
+  assert.equal(cursor.index({key: 'turn-3', textLength: 20, outputBytes: 96000 + 1920000 + 48000, queuedBytes: 24000}), 10);
 });

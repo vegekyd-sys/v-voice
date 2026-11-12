@@ -19,14 +19,17 @@ const signature = row => row ? row.key + '\u0000' + row.text : '';
  * call (relay-audio stats); a new reply starts a new baseline.
  */
 export function createSpokenCursor() {
-  let key = null, base = 0;
+  let key = null, base = 0, reached = 0;
   return {
     index({key: turn, textLength, outputBytes, queuedBytes}) {
       const played = outputBytes - queuedBytes;
-      if (turn !== key) { key = turn; base = played; }
+      if (turn !== key) { key = turn; base = played; reached = 0; }
       const received = outputBytes - base;
-      if (!(received > 0)) return 0;
-      return Math.floor(textLength * Math.min(1, Math.max(0, (played - base) / received)));
+      if (!(received > 0)) return reached;
+      // Early in a reply the ratio is noisy (little audio received yet); what
+      // has been heard is never un-heard.
+      reached = Math.max(reached, Math.floor(textLength * Math.min(1, Math.max(0, (played - base) / received))));
+      return reached;
     },
   };
 }

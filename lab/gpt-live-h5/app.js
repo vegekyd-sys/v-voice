@@ -722,7 +722,10 @@ async function startCall() {
       active.boardFocusTimer = setInterval(() => {
         if (call !== active) return;
         const scene = active.board.scene, snapshot = presentation.snapshot();
-        const row = [...snapshot.history, ...snapshot.current].filter(item => item.role === 'assistant' && !item.document && item.text?.trim()).sort((a, b) => a.at - b.at).at(-1);
+        // Only the reply V is giving now: after the caller has spoken again,
+        // audio such as a progress cue is not the earlier reply being re-read.
+        const last = [...snapshot.history, ...snapshot.current].filter(item => !item.document && item.text?.trim()).sort((a, b) => a.at - b.at).at(-1);
+        const row = last?.role === 'assistant' ? last : null;
         let focus = '';
         if (row && scene.blocks.length && view.get().voice === 'speaking') {
           const stats = active.relay?.stats, textLength = Array.from(row.text).length;
