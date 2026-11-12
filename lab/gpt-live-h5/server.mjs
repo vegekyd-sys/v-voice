@@ -34,8 +34,9 @@ import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-lo
 import {VOICE_CONTEXT_HISTORY_REQUEST,voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 import {idleHangupFromEnv} from '../realtime-direct-tools/idle-hangup.mjs';
-import {boardDirectorFromEnv,boundedBoardRequest} from './board-director.mjs';
+import {boardCompletionFromEnv,boardDirectorFromEnv,boundedBoardRequest} from './board-director.mjs';
 import {createPhotoFinder} from './board-photo.mjs';
+import {createLessonWriter} from './board-lesson.mjs';
 import {scenePictures} from './board-scene.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -1168,7 +1169,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const voiceAudit=productionSpeaker?.audit??transcriptLog.audit;
     // Timing and outcome only; the picture's content is not written to the call log.
     const board=boardDirectorFromEnv(process.env,{audit:voiceAudit});
-    const directVoice=createDirectVoiceService({gateway,wsModule,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
+    // Lesson mode (experiment): its own flag and, by default, a stronger model than the director's.
+    const lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,
+      complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MODEL:process.env.VOICE_BOARD_LESSON_MODEL??'anthropic/claude-haiku-5.5',VOICE_BOARD_MAX_TOKENS:'1600'})}):null;
+    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
       mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({environment:process.env}):null,

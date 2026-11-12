@@ -271,7 +271,7 @@ export function Board({scene, spoken, loadPhoto, onClose}) {
   }, [view.focus, scene.rev]);
   const blocks = scene.blocks.filter(block => !(block.t === 'photo' && missing.has(block.query)));
   return (
-    <section className="board" aria-label={scene.title ? `画面：${scene.title}` : '画面'}>
+    <section className="board" data-lesson={scene.lesson || undefined} aria-label={scene.title ? `画面：${scene.title}` : '画面'}>
       <header className="board-top">
         {scene.title ? <h2 key={scene.serial} className="board-title"><span>{scene.title}</span><Stroke className="board-title-line" d={underline(scene.title)} /></h2> : <span />}
         <button type="button" className="board-close" aria-label="收起画面" onClick={onClose}>
@@ -284,14 +284,14 @@ export function Board({scene, spoken, loadPhoto, onClose}) {
           const key = `${scene.serial}:${block.id}`, small = SMALL.has(block.t);
           const paper = block.tone ?? PAPER[block.t];
           if (block.t === 'photo') return (
-            <figure key={key} className="board-block board-photo" data-type="photo" data-size="small" style={{'--tilt': tilt(key, 3) + 'deg'}}>
+            <figure key={key} className="board-block board-photo" data-type="photo" data-size="small" data-ink={String(!view.ahead.has(block.id))} style={{'--tilt': tilt(key, 3) + 'deg'}}>
               <Photo block={block} loadPhoto={loadPhoto} onMissing={() => setMissing(old => new Set(old).add(block.query))} />
             </figure>
           );
           const View = RENDER[block.t];
           if (!View) return null;
           return (
-            <div key={key} className="board-block" data-type={block.t} data-size={small ? 'small' : 'wide'} data-paper={paper}
+            <div key={key} className="board-block" data-type={block.t} data-size={small ? 'small' : 'wide'} data-paper={paper} data-ink={view.ahead.has(block.id) ? 'false' : undefined}
               data-held={view.focus.split('/')[0] === block.id || undefined} style={{'--tilt': tilt(key, small ? 2.6 : paper ? .6 : 0) + 'deg'}}>
               <View block={block} view={view} />
             </div>

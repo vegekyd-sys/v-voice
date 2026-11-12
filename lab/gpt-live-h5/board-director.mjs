@@ -93,7 +93,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       const drop = key => { owners.get(key).controller?.abort(); owners.delete(key); };
       for (const [key, old] of owners) if (now() - old.touched >= OWNER_TTL_MS) drop(key);
       while (owners.size >= maxOwners) drop(owners.keys().next().value);
-      row = {scene: emptyScene(), evidence: [], controller: null, window: now(), count: 0, touched: now()};
+      row = {scene: emptyScene(), evidence: [], controller: null, window: now(), count: 0, touched: now(), heldUntil: 0, heldAt: 0};
       owners.set(id, row);
     }
     row.touched = now();
@@ -112,6 +112,15 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       while (row.evidence.length > MAX_EVIDENCE) row.evidence.shift();
     },
     scene(id) { return owners.get(id)?.scene ?? emptyScene(); },
+    /** Put a prepared picture (a lesson) on a call's board and keep the director's hands off it for `holdMs`. */
+    present(id, ops, holdMs = 0) {
+      const row = owner(id);
+      row.controller?.abort();
+      // A lesson replaces whatever is up at once: its first piece is already there.
+      row.scene = {...row.scene, blocks: [], pending: null, title: ''};
+      for (const op of ops) row.scene = applyOp(row.scene, op);
+      row.heldUntil = now() + holdMs; row.heldAt = now();
+    },
     /**
      * Run the director once. `onOp` receives each applied operation with the
      * scene revision it produced; a page whose revision differs from the
@@ -134,6 +143,12 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       // Lookups answer one question. What was found for the last one must not
       // be drawn again as if it answered this one.
       if (trigger === 'user') row.evidence = [];
+      // During a lesson the page only needs the prepared picture. The caller
+      // speaking again (after the lesson has started) ends the hold.
+      if (row.heldUntil > now()) {
+        if (trigger === 'user' && now() - row.heldAt > 4000) row.heldUntil = 0;
+        else { if (clientRev !== row.scene.rev) onOp({op: 'sync', scene: row.scene}); return report('lesson', {rev: row.scene.rev}); }
+      }
       const controller = row.controller = new AbortController();
       const abort = () => controller.abort();
       if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, {once: true});
@@ -230,7 +245,7 @@ export function boardCompletionFromEnv(env = process.env, {fetchImpl} = {}) {
       ? {apiKey: env.OPENROUTER_API_KEY, endpoint: 'https://openrouter.ai/api/v1/chat/completions',
         model: env.VOICE_BOARD_MODEL ?? 'deepseek/deepseek-v4.1-flash', extra: {reasoning: {enabled: false}}}
       : null;
-  return provider ? createChatCompletionStream({...provider, fetchImpl}) : null;
+  return provider ? createChatCompletionStream({...provider, fetchImpl, ...(Number(env.VOICE_BOARD_MAX_TOKENS) > 0 ? {maxTokens: Number(env.VOICE_BOARD_MAX_TOKENS)} : {})}) : null;
 }
 export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl} = {}) {
   const complete = boardCompletionFromEnv(env, {fetchImpl});

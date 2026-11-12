@@ -21,6 +21,8 @@ export const TOOLS=[
  {type:'function',name:'openclaw_tool',description:'直接执行 OpenClaw 工具，不调用另一个语言模型。可用工具和用法以本次会话提供的目录为准。飞书日历用 feishu_calendar，其他飞书只读查询用本地 lark_read；不要经 Gateway exec 执行 lark-cli。写操作交 delegate_to_v 且外部写入遵守用户授权，禁止自行确认。arguments 是原工具参数的 JSON 字符串。',parameters:object({tool:str,arguments:str},['tool','arguments'])},
  {type:'function',name:'end_call',description:'只结束当前电话，不取消已启动的后台任务。需要取消任务时必须另外调用 cancel_task。用户向你告别，例如“好了，那我们就聊到这里”“拜拜啦”“今天先这样，下次再聊”，立即调用本工具，不只口头告别，也不等用户再次要求挂断。先理解上下文：讨论挂断功能、引用别人的告别、转话题继续提问或取消一个任务都不要挂断。调用成功后简短告别，系统等待真实告别音频播完才关闭。',parameters:object({})}
 ];
+// Declared only where the call board's lesson mode is on (experiment).
+export const LESSON_TOOL={type:'function',name:'explain_on_board',description:'用户要你讲解、解释、介绍一个东西时调用：原理、流程、是什么、怎么回事、谁克谁、有什么区别。讲稿和屏幕上的画面会一起准备好，由你的声音逐句讲出来，画面跟着出现。调用后只说一句很短的话（比如“好，我想想怎么讲”），不要自己先讲一遍，也不要在讲完后重复。topic 写清要讲什么，保留用户的具体要求（比如“用宝可梦举例”）；audience 写讲给谁听（比如“5岁小朋友”“成年人”）。闲聊、查日程、查事实、让你做事不要用。',parameters:object({topic:str,audience:str},['topic'])};
 // Only negotiated native location calls see this extended task schema.
 const delegateTool=TOOLS.find(t=>t.name==='delegate_to_v');
 export const LOCATION_DELEGATE_TOOL={...delegateTool,description:delegateTool.description+'需要手机当前位置的任务，先调用 get_current_location 成功，再传 use_current_location=true；服务端会附入当前通话的新鲜定位，勿自行编造/抄写坐标。',parameters:object({...delegateTool.parameters.properties,use_current_location:{type:'boolean'}},delegateTool.parameters.required)};
@@ -39,7 +41,7 @@ export function withExecutionLines(tool) {
   }}};
 }
 export function validateTool(name,args){
- const tool=name==='exec'&&(Object.hasOwn(args??{},'completionLine')||Object.hasOwn(args??{},'failureLine'))?withExecutionLines(TOOLS.find(t=>t.name==='exec')):Object.hasOwn(args??{},'use_current_location')&&['delegate_to_v','openclaw_agent_control'].includes(name)?(name==='delegate_to_v'?LOCATION_DELEGATE_TOOL:LOCATION_CONTROL_TOOL):[...TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,LOCATION_TOOL].find(t=>t.name===name);if(!tool)throw Error('不支持这个工具');
+ const tool=name==='exec'&&(Object.hasOwn(args??{},'completionLine')||Object.hasOwn(args??{},'failureLine'))?withExecutionLines(TOOLS.find(t=>t.name==='exec')):Object.hasOwn(args??{},'use_current_location')&&['delegate_to_v','openclaw_agent_control'].includes(name)?(name==='delegate_to_v'?LOCATION_DELEGATE_TOOL:LOCATION_CONTROL_TOOL):[...TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,LOCATION_TOOL,LESSON_TOOL].find(t=>t.name===name);if(!tool)throw Error('不支持这个工具');
  if(!args||typeof args!=='object'||Array.isArray(args))throw Error('工具参数必须是对象');
  for(const key of Object.keys(args))if(!(key in tool.parameters.properties))throw Error('未知工具参数');
  for(const key of tool.parameters.required)if(!(key in args))throw Error('缺少工具参数');

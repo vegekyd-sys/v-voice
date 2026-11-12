@@ -11,7 +11,8 @@ export const BOARD_MARKS = Object.freeze(['ring', 'underline', 'check', 'cross',
 
 // `pending` is the title of a new picture the director has announced but not
 // yet drawn; the picture on screen stays until its first block arrives.
-export const emptyScene = () => ({rev: 0, serial: 0, title: '', blocks: [], focus: '', pending: null});
+// `lesson`: the picture was written together with what V says (board-lesson.mjs); its pieces appear as they are spoken.
+export const emptyScene = () => ({rev: 0, serial: 0, title: '', blocks: [], focus: '', pending: null, lesson: false});
 
 const text = (value, limit) => typeof value === 'string' || typeof value === 'number'
   ? Array.from(String(value).replace(/\s+/gu, ' ').trim()).slice(0, limit).join('') : '';
@@ -113,7 +114,7 @@ export function normalizeOp(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   switch (raw.op) {
     case 'none': case 'clear': return {op: raw.op};
-    case 'scene': return {op: 'scene', title: text(raw.title, 40)};
+    case 'scene': return raw.lesson === true ? {op: 'scene', title: text(raw.title, 40), lesson: true} : {op: 'scene', title: text(raw.title, 40)};
     case 'del': { const id = ident(raw.id, ''); return id ? {op: 'del', id} : null; }
     case 'focus': {
       const id = typeof raw.id === 'string' ? raw.id : '';
@@ -123,7 +124,8 @@ export function normalizeOp(raw) {
       const source = raw.block;
       if (!source || typeof source !== 'object' || !BOARD_BLOCK_TYPES.includes(source.t)) return null;
       const id = ident(source.id, ''), body = BLOCKS[source.t](source);
-      return id && body ? {op: 'put', block: optional({id, t: source.t, ...body}, 'tone', BOARD_TONES.includes(source.tone) ? source.tone : '')} : null;
+      // A whole block may hang on V's words too (a note, a print): `q` as on items.
+      return id && body ? {op: 'put', block: quoted(optional({id, t: source.t, ...body}, 'tone', BOARD_TONES.includes(source.tone) ? source.tone : ''), source)} : null;
     }
     default: return null;
   }
@@ -160,6 +162,11 @@ export function spokenProgress(scene, spoken, index) {
   const all = loose(spoken), heard = loose(Array.from(spoken).slice(0, Math.max(0, index)).join(''));
   let focus = '', at = -1;
   const ahead = [];
+  // Whole blocks that hang on a sentence wait for it like items do, but never take the mark.
+  for (const block of scene.blocks) {
+    const quote = block.q ? loose(block.q) : '';
+    if (quote && all.includes(quote) && heard.indexOf(quote.slice(0, Math.min(quote.length, 4))) < 0) ahead.push(block.id);
+  }
   for (const block of scene.blocks) for (const item of focusTargets(block)) {
     const quote = anchorOf(item, all);
     // No words of V's to tie the item to (or a miscopied quote): it is never held back.
@@ -187,10 +194,10 @@ export function applyOp(scene, op) {
       // Announcing the picture already on screen is not a new picture.
       if (scene.blocks.length && scene.pending === null && op.title === scene.title) return scene;
       if (scene.blocks.length) return scene.pending === op.title ? scene : next({pending: op.title});
-      return next({serial: scene.serial + 1, title: op.title, blocks: [], focus: '', pending: null});
+      return next({serial: scene.serial + 1, title: op.title, blocks: [], focus: '', pending: null, lesson: op.lesson === true});
     case 'clear': return scene.blocks.length || scene.title || scene.pending !== null ? next({title: '', blocks: [], focus: '', pending: null}) : scene;
     case 'put': {
-      if (scene.pending !== null) return next({serial: scene.serial + 1, title: scene.pending, blocks: [op.block], focus: '', pending: null});
+      if (scene.pending !== null) return next({serial: scene.serial + 1, title: scene.pending, blocks: [op.block], focus: '', pending: null, lesson: false});
       const index = scene.blocks.findIndex(block => block.id === op.block.id);
       if (index >= 0) {
         if (JSON.stringify(scene.blocks[index]) === JSON.stringify(op.block)) return scene;
@@ -228,7 +235,7 @@ export function normalizeScene(raw) {
   let scene = {...emptyScene(), serial: Number.isSafeInteger(raw.serial) ? raw.serial : 0, title: text(raw.title, 40)};
   for (const block of raw.blocks) { const op = normalizeOp({op: 'put', block}); if (op) scene = applyOp(scene, op); }
   const focus = typeof raw.focus === 'string' && focusExists(scene, raw.focus) ? raw.focus : '';
-  return {...scene, focus, pending: typeof raw.pending === 'string' ? text(raw.pending, 40) : null, rev: raw.rev};
+  return {...scene, focus, pending: typeof raw.pending === 'string' ? text(raw.pending, 40) : null, lesson: raw.lesson === true, rev: raw.rev};
 }
 
 /** The scene as the director model reads it back: compact, ids first. */
