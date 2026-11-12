@@ -181,3 +181,15 @@ test('V\'s own answer is illustrated in the lesson\'s vocabulary, hung on the wo
   const request = asked.find(item => typeof item === 'object');
   assert.deepEqual([request.said, request.screen, request.evidence], [said, {title: '相机史', blocks: [{id: 't', t: 'timeline'}]}, '【web_search】胶卷是银盐']);
 });
+
+test('V\'s backend can write the lesson: it is briefed with the writer\'s rules, and its reply is read like any lesson', () => {
+  const shown = [];
+  const writer = createLessonWriter({director: {present: (id, ops) => shown.push(ops.length), release() {}}, complete: async function* () {}});
+  const brief = writer.brief({topic: '我们的夜班模式', audience: '成年人', ask: '讲解一下我们的夜班模式'});
+  assert.match(brief, /先用你自己的工具查清楚/u);
+  assert.match(brief, /"t":"versus"/u);
+  const script = writer.accept({owner: 'c', topic: 't', text: '好的，这是讲稿：\n' + JSON.stringify({title: '电车和油车', say: ['电车每公里只要**几分钱**。', '油车每公里要几毛。'], blocks: [{id: 'n', t: 'sticky', text: '电车每公里**几分钱**'}]})});
+  assert.equal(script.say, '电车每公里只要几分钱。油车每公里要几毛。', 'highlighter marks stay on the page, not in what is said');
+  assert.equal(shown.length, 1);
+  assert.equal(writer.accept({owner: 'c', topic: 't', text: '我查不到。'}), null);
+});

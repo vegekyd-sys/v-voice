@@ -95,7 +95,8 @@ export const lessonReference = text => REFERENCES.filter(item => item.match.test
 
 const latin = text => { const letters = text.replace(/[^\p{L}]/gu, ''); return letters.length > 0 && letters.replace(/[^A-Za-z]/gu, '').length / letters.length > .6; };
 // A sentence is cut at 60 characters, or 200 where it is written in Latin letters.
-const sentences = value => (Array.isArray(value) ? value : []).map(line => String(line ?? '').replace(/\s+/gu, ' ').trim()).filter(Boolean).slice(0, 12).map(line => Array.from(line).slice(0, latin(line) ? 200 : 60).join(''));
+// (What is said aloud carries no highlighter marks: V's backend once wrote **几分钱** into the script.)
+const sentences = value => (Array.isArray(value) ? value : []).map(line => String(line ?? '').replaceAll('*', '').replace(/\s+/gu, ' ').trim()).filter(Boolean).slice(0, 12).map(line => Array.from(line).slice(0, latin(line) ? 200 : 60).join(''));
 /** The script as V is given it: sentences in Latin letters need a space between them. */
 export const spokenScript = lines => lines.reduce((all, line) => all + (all && /[A-Za-z0-9.,!?'")]$/u.test(all) && /^[A-Za-z0-9"'(]/u.test(line) ? ' ' : '') + line, '');
 const asks = line => /[？?]\s*$/u.test(line);
