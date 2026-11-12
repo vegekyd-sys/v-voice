@@ -20,9 +20,9 @@ upload() {
 if [ "${1:-}" = "--update" ]; then
   # Only this Candidate's own code and unit are touched; its environment file,
   # tunnel and entry link stay as they are. The unit must have no call in progress.
-  ssh v "sudo -n test -f $root/environment.private.json && systemctl is-active --quiet voice-board-20261112"
+  ssh v "sudo -n test -f $root/environment.private.json && systemctl cat voice-board-20261112 >/dev/null"
   upload
-  ssh v "sudo -n sh -c 'chown -R openclaw:openclaw $root/voice && systemctl restart voice-board-20261112 && sleep 2 && systemctl is-active voice-board-20261112'"
+  ssh v "sudo -n sh -c 'chown -R openclaw:openclaw $root/voice && systemctl reset-failed voice-board-20261112 2>/dev/null; systemctl restart voice-board-20261112 && sleep 2 && systemctl is-active voice-board-20261112'"
   ssh v "sudo -n python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))[\"commit\"])' $root/voice/manifest.json"
   exit 0
 fi

@@ -71,3 +71,22 @@ test('only public https addresses are fetched; share pictures are read from eith
   assert.equal(sharePicture('<meta property="og:image" content="/site-logo.png">', 'https://a.example/x'), '');
   assert.equal(sharePicture('<p>no meta</p>', 'https://a.example/x'), '');
 });
+
+test('a page that fails after another page already gave the picture is not an unhandled rejection', async () => {
+  const unhandled = [];
+  const onUnhandled = reason => unhandled.push(reason);
+  process.on('unhandledRejection', onUnhandled);
+  const finder = createPhotoFinder({lookup, languages: ['zh'],
+    search: async () => ({results: [{url: 'https://good.example/a'}, {url: 'https://slow-forbidden.example/b'}]}),
+    fetchImpl: async url => {
+      if (url.includes('api.php')) return json(pages({title: 'x', index: 1}));
+      if (url === 'https://good.example/a') return html('<meta property="og:image" content="https://good.example/p.jpg">');
+      if (url === 'https://good.example/p.jpg') return image(big(9000));
+      await new Promise(resolve => setTimeout(resolve, 20));
+      return {ok: false, status: 403};
+    }});
+  assert.equal((await finder.find('x')).source, 'good.example');
+  await new Promise(resolve => setTimeout(resolve, 60));
+  process.off('unhandledRejection', onUnhandled);
+  assert.deepEqual(unhandled, []);
+});

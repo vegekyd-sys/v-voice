@@ -87,7 +87,10 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, lookup = dn
     if (!searchNow) return null;
     const pages = urlsIn(await searchNow(query)).slice(0, 5);
     // Every page is tried at once; the best-ranked one that has a usable picture wins.
-    const tried = pages.map(async page => {
+    // Each attempt settles to a picture or null: one that fails after another
+    // has already won must not become an unhandled rejection (that ended the
+    // Voice process on the Candidate).
+    const tried = pages.map(page => (async () => {
       const address = await publicHttps(page, {lookup});
       if (!address) return null;
       const response = await get(address.href, signal, 'text/html');
@@ -95,8 +98,8 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, lookup = dn
       const share = sharePicture((await response.text()).slice(0, 400000), address.href);
       const image = share && await publicHttps(share, {lookup});
       return image ? picture(image.href, signal, address.hostname, query) : null;
-    });
-    for (const attempt of tried) { try { const found = await attempt; if (found) return found; } catch { /* next page */ } }
+    })().catch(() => null));
+    for (const attempt of tried) { const found = await attempt; if (found) return found; }
     return null;
   }
   async function find(key, signal, searchNow) {
