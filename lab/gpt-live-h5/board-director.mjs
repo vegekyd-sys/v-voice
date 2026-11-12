@@ -221,6 +221,8 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         const op = stream ? stream.refine(normalizeOp(raw), {said, trigger}) : normalizeOp(raw);
         if (!op || retired) return;
         if (stream && op.op !== 'none') {
+          // One screen: a page holds four blocks. More would only shrink it or make it scroll.
+          if (op.op === 'put' && row.scene.pending === null && row.scene.blocks.length >= 4 && !row.scene.blocks.some(block => block.id === op.block.id)) return;
           const next = applyOp(row.scene, op);
           if (next === row.scene) return;
           // The page is a lesson's page whoever opened it: pieces wait for the voice.
