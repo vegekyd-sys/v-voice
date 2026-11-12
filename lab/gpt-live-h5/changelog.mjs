@@ -198,6 +198,24 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-connect-speed.20261112.1',date:'2026-11-12',
+    title:'拨号后更快接通',
+    items:[
+      '拨出小何电话后，核验身份、读取会话记录和连接模型同时进行，不再一个等一个。服务器上对照实测，从拨号到可以说话的中位时间由约 2.4 秒降到约 1.1 秒。',
+      '问候语在接通那一刻就开始说，不再多等一个来回；浏览器已授权麦克风时，取麦克风和拨号也同时开始。',
+      '每通电话的身份和权限检查不变。偶尔的长等待来自群成员核验，这次只是缩短，没有消除。',
+      'iOS App 不更新也会变快，问候提前要等后续 App 版本。GPT Live 这次只有取麦克风与拨号并行。手机真机上的接通时间还没有实测。',
+    ],
+  },
+  {
+    version:'voice-image-gpt26.20261112.1',date:'2026-11-12',
+    title:'通话里出图改用 GPT Image 2.6',
+    items:[
+      '通话里让 V 画图或改图，现在用 GPT Image 2.6 Flare，不再用 Wan 2.7。',
+      '短视频模型不变，出图方式和结果展示也不变。',
+    ],
+  },
+  {
     version:'voice-idle-hangup.20261106.1',date:'2026-11-06',
     title:'没人说话时 V 会自己挂断',
     items:[
