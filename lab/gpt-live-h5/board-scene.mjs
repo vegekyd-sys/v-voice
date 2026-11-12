@@ -322,7 +322,8 @@ export function flowLayout(nodes, edges, {narrow = false} = {}) {
   const rows = layers.filter(Boolean);
   // A chain too long for a phone's width would be a column several screens
   // tall; set round a circle, in order, all of it is in view at once.
-  if (narrow && rows.length > 3 && rows.length <= 6 && rows.every(row => row.length === 1)) return circle(rows.map(row => row[0]));
+  // The same for layers with three abreast, which overlap at that width.
+  if (narrow && ids.length >= 4 && ids.length <= 6 && (rows.length > 3 || rows.some(row => row.length > 2))) return circle(rows.flat());
   if (rows.length > 1 && rows.every(row => row.length === 1) && !(narrow && rows.length > 3)) {
     rows.forEach((row, index) => { position[row[0]] = {x: (index + .5) / rows.length * 100, y: 50, layer: index}; });
     return {shape: 'row', layers: rows, position};

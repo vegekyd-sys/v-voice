@@ -4,6 +4,9 @@ import {createPhotoFinder, pagePicture, publicHttps, sharePicture} from './board
 
 const json = value => ({ok: true, status: 200, json: async () => value});
 const big = (size = 5000) => new Uint8Array(size).buffer;
+let serial = 0;
+// A different file each time, as different pictures are.
+const distinct = () => { const bytes = new Uint8Array(30000); new DataView(bytes.buffer).setUint32(0, ++serial); return bytes.buffer; };
 const image = (bytes = big(), type = 'image/jpeg') => ({ok: true, status: 200, headers: new Headers({'content-type': type}), arrayBuffer: async () => bytes});
 const html = text => ({ok: true, status: 200, headers: new Headers({'content-type': 'text/html; charset=utf-8'}), text: async () => text});
 const pages = (...list) => ({query: {pages: Object.fromEntries(list.map((page, index) => [index, page]))}});
@@ -119,7 +122,7 @@ test('with an image-search key the titled result is used, one request at a time'
         assert.equal(init.headers['x-subscription-token'], 'test-key');
         return json({results: [{title: '宝可梦大全', thumbnail: {src: 'https://imgs.search.brave.com/all'}}, {title: '杰尼龟 官方画像', thumbnail: {src: 'https://imgs.search.brave.com/squirtle'}}, {title: '别处', thumbnail: {src: 'https://evil.example/x'}}]});
       }
-      return image(big(30000), 'image/png');
+      return image(distinct(), 'image/png');
     }});
   const [a, b] = await Promise.all([finder.find('杰尼龟'), finder.find('小火龙')]);
   assert.deepEqual([a.source, a.title, b.source], ['Brave 图片搜索', '杰尼龟 官方画像', 'Brave 图片搜索']);
@@ -136,11 +139,19 @@ test('a page of pictures: with a queue for the image search the encyclopedia is 
       if (init?.signal?.aborted) throw Error('aborted');
       if (url.includes('wikipedia.org')) { const title = decodeURIComponent(/titles=([^&]+)/u.exec(url)[1]); asked.push('wiki ' + title); return json(title === '急冻鸟' ? {query: {pages: {1: {title, thumbnail: {source: 'https://upload.wikimedia.org/a.png'}}}}} : {query: {pages: {}}}); }
       if (url.startsWith('https://api.search.brave.com/')) { asked.push('search ' + decodeURIComponent(/q=([^&]+)/u.exec(url)[1])); return json({results: [{title: 'x', thumbnail: {src: 'https://imgs.search.brave.com/x'}}]}); }
-      return image(big(30000), 'image/png');
+      return image(distinct(), 'image/png');
     }});
   const names = ['皮卡丘', '杰尼龟', '急冻鸟', '闪电鸟', '火焰鸟', '超梦'];
   const found = await Promise.all(names.map(name => finder.find(name)));
   assert.deepEqual(found.map(item => item?.source), ['Brave 图片搜索', 'Brave 图片搜索', '维基百科', 'Brave 图片搜索', 'Brave 图片搜索', 'Brave 图片搜索'], 'none timed out in the queue');
   assert.equal(asked.includes('search 急冻鸟'), false, 'the one the encyclopedia had never took a turn');
   assert.equal(asked.includes('wiki 皮卡丘'), false, 'with no queue the image search is asked directly');
+});
+
+test('the same file offered for two different things is a site picture: neither keeps it', async () => {
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', braveGapMs: 0, languages: [],
+    fetchImpl: async url => url.startsWith('https://api.search.brave.com/') ? json({results: [{title: 'Pokemon', thumbnail: {src: 'https://imgs.search.brave.com/logo'}}]}) : image(big(30000), 'image/png')});
+  assert.ok(await finder.find('帕路奇亚'), 'alone, it is taken for a picture of the thing');
+  assert.equal(await finder.find('快龙'), null, 'the second thing with the very same file gets nothing');
+  assert.equal(await finder.find('帕路奇亚'), null, 'and the first does not keep it');
 });

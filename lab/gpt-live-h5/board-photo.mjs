@@ -103,13 +103,23 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     if (!response.ok) throw Error('image search HTTP ' + response.status);
     const results = ((await response.json())?.results ?? []).filter(item => typeof item?.thumbnail?.src === 'string');
     const wanted = squeeze(query);
-    for (const item of [...results.filter(item => squeeze(item.title).includes(wanted)), ...results].slice(0, 3)) {
-      let source;
-      try { source = new URL(item.thumbnail.src); } catch { continue; }
-      if (source.protocol !== 'https:' || source.hostname !== 'imgs.search.brave.com') continue;
-      try { const found = await picture(source.href, signal, 'Brave 图片搜索', item.title); if (found) return found; } catch { /* next result */ }
-    }
+    // The three best are fetched at once (one slow thumbnail used to hold the
+    // others up for seven seconds); the best-ranked usable one wins.
+    const tried = [...new Set([...results.filter(item => squeeze(item.title).includes(wanted)), ...results])].slice(0, 3).map(item => (async () => {
+      const source = new URL(item.thumbnail.src);
+      if (source.protocol !== 'https:' || source.hostname !== 'imgs.search.brave.com') return null;
+      return picture(source.href, signal, 'Brave 图片搜索', item.title);
+    })().catch(() => null));
+    for (const attempt of tried) { const found = await attempt; if (found && own(found, query)) return found; }
     return null;
+  }
+  // The same file for two different things is a site picture (a franchise
+  // logo came back for two different Pokemon), not a picture of either.
+  function own(result, query) {
+    const print = result.bytes.length + ':' + result.bytes.subarray(0, 64).toString('hex'), owner = prints.get(print);
+    if (owner && owner !== query) { prints.set(print, '*'); cache.delete(owner); return false; }
+    prints.set(print, query); if (prints.size > 200) prints.delete(prints.keys().next().value);
+    return true;
   }
   // The article with exactly this name (or a redirect from it), never a search
   // guess: a search for 小火龙 once returned a person and 喷火龙 a dragon fruit.
@@ -144,9 +154,7 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
       const found = pagePicture((await response.text()).slice(0, 600000), address.href, query);
       const image = found && await publicHttps(found, {lookup});
       const result = image ? await picture(image.href, signal, address.hostname, query) : null;
-      // The same file for two different things is a site picture, not either thing.
-      if (result) { const print = result.bytes.length + ':' + result.bytes.subarray(0, 64).toString('hex'), owner = prints.get(print); if (owner && owner !== query) return null; prints.set(print, query); if (prints.size > 200) prints.delete(prints.keys().next().value); }
-      return result;
+      return result && own(result, query) ? result : null;
     })().catch(() => null));
     for (const attempt of tried) { const found = await attempt; if (found) return found; }
     return null;
