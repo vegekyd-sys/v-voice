@@ -307,8 +307,11 @@ export function createLessonWriter({complete, fallback = null, director, now = D
         {role: 'user', content: JSON.stringify({asked: Array.from(String(asked)).slice(-300).join(''), said: Array.from(String(said)).slice(0, 2400).join(''),
           ...(looked ? {evidence: looked} : {}), ...(lessonReference(`${asked} ${said}`) ? {reference: lessonReference(`${asked} ${said}`)} : {}),
           screen: screen ? {title: screen.title, blocks: screen.blocks.map(block => ({id: block.id, t: block.t, ...(block.h ? {h: block.h} : {})}))} : null})}];
-      const made = await race({owner, messages, signal, started, first: fallback ?? complete, second: fallback ? complete : null,
-        parse: text => parseIllustration(text, said, taken), preferMs: 5000, totalMs: 10000, kind: 'board.illustrate-attempt'});
+      const parse = text => parseIllustration(text, said, taken), quick = fallback ?? complete;
+      let made = await race({owner, messages, signal, started, first: quick, second: fallback ? complete : null, parse, preferMs: 5000, totalMs: fallback ? 10000 : 5000, kind: 'board.illustrate-attempt'});
+      // With a single writer, one that has not answered in five seconds is asked once more
+      // (it usually answers in three; twice it hung for the whole ten and no page came).
+      if (!made && !fallback && !signal?.aborted) made = await race({owner, messages, signal, started: now(), first: quick, second: null, parse, preferMs: 6000, totalMs: 6000, kind: 'board.illustrate-attempt'});
       record({type: 'board.illustrate', voiceSessionId: owner, ok: Boolean(made?.ops.length), none: made?.none === true, add: made?.add === true, writer: made?.writer ?? null, durationMs: now() - started, asked, said: Array.from(String(said)).slice(0, 400).join(''), drawn: made?.ops ?? null});
       return made?.ops.length ? made : null;
     },

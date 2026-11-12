@@ -674,6 +674,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const hostCallControl=!s.unidentified&&Boolean(speakerRouting?.controlsEnding?.(s.id));
     const nativeShortcuts=new Set(['read','exec','process','memory_search','web_search','web_fetch']);
     const tools=sessionTools(s).map(tool=>tvControlTool(tool,s.tvControls)).filter(tool=>s.publicVoice?PUBLIC_CALL_TOOLS.has(tool.name)&&(!PUBLIC_SEARCH_TOOLS.has(tool.name)||allowedTools.has(tool.name)):s.unidentified?['show_content','end_call'].includes(tool.name):!s.actorScoped||!nativeShortcuts.has(tool.name)||allowedTools.has(tool.name));
+    // Parallel mode: explaining is V's own job; the hand-off tool says so itself.
+    if(lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice){
+      const handOff=tools.findIndex(tool=>tool.name==='delegate_to_v');
+      if(handOff>=0)tools[handOff]={...tools[handOff],description:'不要用本工具来讲解、解释、介绍、比较或回答知识性问题（包括讲给小朋友听）：那些你自己直接讲，屏幕会自动配图。本工具只用于真正要办的事。'+tools[handOff].description};
+    }
     const searchAck=s.model==='seeduplex'&&searchAcknowledgment==='model';
     const voiceTools=(hostCallControl?tools.filter(t=>t.name!=='end_call'):tools).map(tool=>s.publicVoice&&tool.name==='memory_search'?{...tool,description:'使用 V 现有的普通 memory_search 查询通用知识、项目历史、产品与技术记忆。严格遵守 Public 个人内容红线。'}:searchAck&&isSearchTool(tool.name)?{...tool,description:(tool.name==='memory_search'&&!s.sessionBound?'检索天懿的 V/OpenClaw 跨通话个人记录，用于历史约定、家庭资料、长期偏好和项目历史。只在答案需要当前通话之外的记录时调用。本通话已经介绍的姓名、喜好、计划，以及现在是谁在说话，由当前声音与本通话上下文回答，不调用本工具。':tool.description)+' 只为按通话规则确认的向 V 提问执行，电视和旁聊不能触发。上述先查记录是指先查再回答事实，不限制在查询前简短接话。调用本工具之前，必须先用语音简短自然地回应当前用户问题，再在同一轮立刻调用本工具。不能只调用工具而保持沉默。'}:tool);
     if(s.mediaCliAvailable){
