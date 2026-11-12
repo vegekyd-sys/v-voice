@@ -9,6 +9,9 @@
 // from public https hosts only, with size and time limits.
 import {lookup as dnsLookup} from 'node:dns/promises';
 import {isIP} from 'node:net';
+import {createHash} from 'node:crypto';
+import {mkdir, readFile, rm, writeFile} from 'node:fs/promises';
+import {join} from 'node:path';
 
 const WIKIMEDIA = /^(?:upload|thumb)\.wikimedia\.org$/u;
 const TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
@@ -68,10 +71,27 @@ const urlsIn = value => { const seen = new Set(); for (const [, url] of JSON.str
  * `search(query)` is V's web search (any shape that carries result "url"s);
  * without it only Wikipedia is used. `observe` receives one line per lookup.
  */
-export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = '', braveGapMs = 1100, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), lookup = dnsLookup, now = Date.now, observe = () => {}, maxBytes = 1500000, timeoutMs = 9000, ttlMs = 30 * 60000, maxEntries = 96,
+export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = '', braveGapMs = 1100, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), lookup = dnsLookup, now = Date.now, observe = () => {}, maxBytes = 1500000, timeoutMs = 9000, ttlMs = 30 * 60000, maxEntries = 96, directory = '', keepMs = 30 * 86400000,
   // Wikimedia refuses data-centre clients whose agent names no contact page.
   languages = ['zh', 'en'], userAgent = 'VVoiceBoard/0.1 (https://github.com/vegekyd-sys/v-voice)'} = {}) {
   const cache = new Map(), flights = new Map(), prints = new Map();
+  // Pictures already found are kept on disk when a directory is given: the
+  // same few characters are asked for call after call, and a lookup from the
+  // server can take eight seconds. Only what a lookup returned is stored.
+  const fileOf = key => join(directory, createHash('sha256').update(key).digest('hex').slice(0, 32));
+  const kept = async key => {
+    if (!directory) return null;
+    try {
+      const [meta, bytes] = await Promise.all([readFile(fileOf(key) + '.json', 'utf8'), readFile(fileOf(key) + '.bin')]);
+      const {type, title, source, at} = JSON.parse(meta);
+      return TYPES.has(type) && bytes.length <= maxBytes && now() - at < keepMs ? {bytes, type, title, source} : null;
+    } catch { return null; }
+  };
+  const keep = (key, value) => {
+    if (!directory) return;
+    void mkdir(directory, {recursive: true, mode: 0o700}).then(() => Promise.all([writeFile(fileOf(key) + '.bin', value.bytes, {mode: 0o600}),
+      writeFile(fileOf(key) + '.json', JSON.stringify({query: key, type: value.type, title: value.title, source: value.source, at: now()}), {mode: 0o600})])).catch(() => {});
+  };
   const get = async (url, signal, accept = '*/*') => {
     const response = await fetchImpl(url, {signal, headers: {'user-agent': userAgent, accept}, redirect: 'follow', credentials: 'omit'});
     if (!response.ok) throw Error('HTTP ' + response.status);
@@ -120,7 +140,7 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
   // logo came back for two different Pokemon), not a picture of either.
   function own(result, query) {
     const print = result.bytes.length + ':' + result.bytes.subarray(0, 64).toString('hex'), owner = prints.get(print);
-    if (owner && owner !== query) { prints.set(print, '*'); cache.delete(owner); return false; }
+    if (owner && owner !== query) { prints.set(print, '*'); cache.delete(owner); if (directory && owner !== '*') for (const end of ['.bin', '.json']) void rm(fileOf(owner) + end, {force: true}).catch(() => {}); return false; }
     prints.set(print, query); if (prints.size > 200) prints.delete(prints.keys().next().value);
     return true;
   }
@@ -164,7 +184,8 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
   }
   async function find(key, signal, searchNow, begin) {
     const started = now();
-    let value = null, failed = false, why = '';
+    let value = await kept(key), failed = false, why = '';
+    if (value) { cache.set(key, {at: now(), value}); observe({type: 'board.photo', query: key, found: true, source: value.source, kept: true, bytes: value.bytes.length, durationMs: now() - started}); return value; }
     // A page of a dozen pictures would queue for the image search one a
     // second (the last ones used to time out waiting). With a queue ahead,
     // the encyclopedia, which needs no turn, is asked first.
@@ -177,6 +198,7 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     if (!value) { try { value = await web(key, signal, searchNow); } catch { failed = true; } }
     observe({type: 'board.photo', query: key, found: Boolean(value), ...(why && !value ? {why} : {}), source: value?.source ?? null, bytes: value?.bytes.length ?? 0, durationMs: now() - started});
     // "No such picture" is worth remembering; "could not ask" is not.
+    if (value) keep(key, value);
     if (value || !failed) { cache.delete(key); cache.set(key, {at: now(), value}); while (cache.size > maxEntries) cache.delete(cache.keys().next().value); }
     return value;
   }

@@ -155,3 +155,20 @@ test('the same file offered for two different things is a site picture: neither 
   assert.equal(await finder.find('快龙'), null, 'the second thing with the very same file gets nothing');
   assert.equal(await finder.find('帕路奇亚'), null, 'and the first does not keep it');
 });
+
+test('a picture found once is kept on disk and served without asking anyone again', async t => {
+  const {mkdtemp, rm, readdir} = await import('node:fs/promises');
+  const {tmpdir} = await import('node:os');
+  const {join} = await import('node:path');
+  const directory = await mkdtemp(join(tmpdir(), 'board-photos-'));
+  t.after(() => rm(directory, {recursive: true, force: true}));
+  let asked = 0;
+  const make = () => createPhotoFinder({lookup, braveKey: 'k', braveGapMs: 0, directory,
+    fetchImpl: async url => { asked++; return url.startsWith('https://api.search.brave.com/') ? json({results: [{title: '小火龙', thumbnail: {src: 'https://imgs.search.brave.com/c'}}]}) : image(distinct(), 'image/png'); }});
+  const first = await make().find('小火龙');
+  for (let tries = 0; tries < 50 && (await readdir(directory)).length < 2; tries++) await new Promise(resolve => setTimeout(resolve, 5));
+  const before = asked, seen = [];
+  const again = await createPhotoFinder({lookup, directory, observe: event => seen.push(event), fetchImpl: async () => { asked++; throw Error('offline'); }}).find('小火龙');
+  assert.deepEqual([Buffer.compare(Buffer.from(first.bytes), again.bytes), again.type, again.source, asked - before, seen[0].kept], [0, 'image/png', 'Brave 图片搜索', 0, true]);
+  assert.equal(await createPhotoFinder({lookup, directory, languages: [], fetchImpl: async () => { throw Error('offline'); }}).find('杰尼龟'), null);
+});
