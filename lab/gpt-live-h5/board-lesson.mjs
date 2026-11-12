@@ -355,7 +355,7 @@ export function createLessonWriter({complete, fallback = null, director, now = D
       const scripted = director.streams === true;
       // (Otherwise the director stops at once: a picture it was about to draw
       // for the same question would flash by before the lesson arrives.)
-      if (!scripted) director.hold?.(owner);
+      if (!scripted) director.hold?.(owner); else director.expect?.(owner);
       const before = told.get(owner);
       const messages = [{role: 'system', content: scripted ? SCRIPT_INSTRUCTIONS : LESSON_INSTRUCTIONS},
         {role: 'user', content: JSON.stringify({topic: String(topic ?? '').slice(0, 400), audience: String(audience ?? '').slice(0, 80) || '成年人',
@@ -366,7 +366,7 @@ export function createLessonWriter({complete, fallback = null, director, now = D
       const say = lesson ? spokenScript(lesson.say) : '';
       if (scripted) {
         record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ask, ok: Boolean(lesson), writer: lesson?.writer ?? null, scripted: true, durationMs: now() - started, say: lesson?.say ?? null, show: lesson?.show ?? null});
-        if (!lesson) return null;
+        if (!lesson) { director.expect?.(owner, 0); return null; }
         told.delete(owner); told.set(owner, {title: lesson.title, say});
         while (told.size > 200) told.delete(told.keys().next().value);
         director.note(owner, {title: lesson.title, script: say, lines: lesson.say.map((line, index) => ({say: line, show: lesson.show[index]}))});
@@ -385,14 +385,15 @@ export function createLessonWriter({complete, fallback = null, director, now = D
      * its memory and tools, is handed the writer's instructions as a brief and
      * answers with the lesson. `brief` is what to ask it; `accept` takes its reply.
      */
-    brief({topic, audience = '', ask = ''} = {}) {
+    brief({owner, topic, audience = '', ask = ''} = {}) {
+      if (owner && director.streams === true) director.expect?.(owner, 60000);
       return `电话里用户请你讲解一件事，屏幕上有一页手账画面会跟着你的讲解出现。需要今天的信息、用户自己的项目或记录时，先用你自己的工具查清楚（查不到就如实少讲），再按下面的规范写。你的最终回复只能是规范里的那个 JSON 对象本身，前后不要任何别的文字，也不要另写口头摘要。\n\n这次的输入：${JSON.stringify({topic: String(topic ?? '').slice(0, 400), audience: String(audience ?? '').slice(0, 80) || '成年人', ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(lessonReference(`${topic} ${ask}`) ? {reference: lessonReference(`${topic} ${ask}`)} : {})})}\n\n===== 规范 =====\n${director.streams === true ? SCRIPT_INSTRUCTIONS : LESSON_INSTRUCTIONS}`;
     },
     accept({owner, text, topic, audience = '', ask = '', startedAt = now()} = {}) {
       if (director.streams === true) {
         const script = parseScript(String(text ?? '')), words = script ? spokenScript(script.say) : '';
         record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ask, ok: Boolean(script), writer: 'backend', scripted: true, durationMs: now() - startedAt, say: script?.say ?? null, show: script?.show ?? null, ...(script ? {} : {head: String(text ?? '').slice(0, 200)})});
-        if (!script) return null;
+        if (!script) { director.expect?.(owner, 0); return null; }
         told.delete(owner); told.set(owner, {title: script.title, say: words});
         director.note(owner, {title: script.title, script: words, lines: script.say.map((line, index) => ({say: line, show: script.show[index]}))});
         return {say: words, sentences: script.say};

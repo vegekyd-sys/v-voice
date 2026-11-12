@@ -472,6 +472,8 @@ function useFit(scroller, page, key) {
       const wide = outer.clientWidth >= 640, least = wide ? .62 : .78, room = outer.clientHeight;
       let zoom = 1;
       inner.style.setProperty('--zoom', '1'); inner.style.zoom = '1';
+      // Three main blocks in one column leave half a wide panel empty: they go two abreast from the start.
+      if (wide && !(dense.key === key && dense.on) && inner.querySelectorAll(':scope > .board-block[data-size="wide"]').length >= 3) { setDense({key, on: true}); return; }
       for (let pass = 0; pass < 4; pass++) {
         const height = inner.getBoundingClientRect().height;
         if (height <= room + 1 || zoom <= least) break;

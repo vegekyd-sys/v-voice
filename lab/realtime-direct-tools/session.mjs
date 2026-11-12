@@ -599,7 +599,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
             // (experiment) V's backend agent writes the lesson itself, with its own memory and tools.
             if(lesson.source==='backend'&&!s.backend.snapshot()){
               const startedAt=Date.now();let script=null;
-              try{const reply=await s.backend.run({question:lesson.brief({topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text}),context:'',callId:call.callId,signal:controller.signal});
+              try{const reply=await s.backend.run({question:lesson.brief({owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text}),context:'',callId:call.callId,signal:controller.signal});
                 script=lesson.accept({owner:s.id,text:reply?.result,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,startedAt});}
               catch(error){audit({type:'lesson.backend-failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});lesson.accept({owner:s.id,text:'',topic:call.args.topic,startedAt});}
               if(s.lessonPending===call.callId)s.lessonPending=null;

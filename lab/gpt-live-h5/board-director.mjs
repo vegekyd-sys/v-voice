@@ -137,7 +137,9 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
     /** Whether pages are drawn by the streaming illustrator (then a lesson is a script with notes, not a page). */
     streams: Boolean(stream),
     /** The author's notes for a script V is about to speak: {title, script, lines: [{say, show}]}. */
-    note(id, notes) { owner(id).notes = notes; },
+    note(id, notes) { const row = owner(id); row.notes = notes; row.expectUntil = 0; },
+    /** A script is being written for the caller's question: what V says meanwhile is not the answer. */
+    expect(id, ms = 20000) { owner(id).expectUntil = ms > 0 ? now() + ms : 0; },
     /**
      * A lesson is being written for this call: stop drawing (a run in flight
      * is dropped) until it is presented or released. What is on the page stays.
@@ -219,7 +221,9 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       const said = stream && turns?.at(-1)?.role === 'assistant' ? words(turns.at(-1)) : '';
       if (stream) {
         // Lookup results alone draw nothing: V's words about them do.
-        if (trigger === 'evidence' || trigger !== 'user' && Array.from(said).length < 12) { signal?.removeEventListener('abort', abort); if (row.controller === controller) row.controller = null; return report('waiting', {rev: row.scene.rev}); }
+        // Nor do a few words ("好，我想想怎么讲"), nor anything said while a script is being written for this very question.
+        const expecting = (row.expectUntil ?? 0) > now();
+        if (trigger === 'evidence' || trigger !== 'user' && (expecting || Array.from(said).length < (/^[\x00-\x7f]*$/u.test(said.slice(0, 40)) ? 60 : 24) && !row.notes?.script.startsWith(said.slice(0, 12)))) { signal?.removeEventListener('abort', abort); if (row.controller === controller) row.controller = null; return report('waiting', {rev: row.scene.rev}); }
       }
       let ops = 0, firstOpMs = null, none = false, retired = false;
       const parser = createLineParser(raw => {
