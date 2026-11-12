@@ -522,9 +522,10 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if(!current(s))return;
       // Asked to explain, the voice model sometimes hands the question to the
       // backend (a minute's wait, no picture). The caller's words decide.
-      if(call.name==='delegate_to_v'&&lessonTools(s).length&&!s.backend.snapshot()&&asksForLesson(s.latestUserTurn?.text)){
+      if((call.name==='delegate_to_v'&&!s.backend.snapshot()||call.name==='web_search')&&lessonTools(s).length&&s.lessonFor!==s.latestUserTurn&&asksForLesson(s.latestUserTurn?.text)){
         audit({type:'lesson.rerouted',voiceSessionId:s.id,callId:call.callId});
         call={...call,name:'explain_on_board',args:{topic:[call.args?.question,call.args?.context].filter(value=>typeof value==='string'&&value.trim()).join('；').slice(0,400)||s.latestUserTurn.text.slice(-200)}};
+        audit({type:'tool.rerouted',voiceSessionId:s.id,callId:call.callId,to:'explain_on_board'});
       }
       const signature=JSON.stringify([call.name,call.args]),old=s.seen.get(call.callId);
       if(old){if(old!==signature)emit(s,{type:'error',message:'工具身份冲突'});return;}

@@ -32,3 +32,11 @@ test('speaker volume takes exactly one of an absolute level or a step, and needs
  await assert.rejects(createToolExecutor({invoke:()=>{throw Error('must not reach OpenClaw');}})('look',{question:'这是什么'},'v'),/没有摄像头/);
  assert.deepEqual(await createToolExecutor({look:async a=>({description:a.question})})('look',{question:'这是什么'},'v'),{description:'这是什么'});
 });
+
+test('the caller\'s own words decide whether a hand-off or a search becomes a lesson', async () => {
+  const {asksForLesson} = await import('./tools.mjs');
+  for (const yes of ['你给十二讲解一下宝可梦', '再给我说说电动车跟现在这个低空经济的关系', '怎么摆呀？你摆给我看看', 'Could you explain how rockets land', '介绍一下它们的区别'])
+    assert.equal(asksForLesson(yes), true, yes);
+  for (const no of ['明天上海天气怎么样', '给我介绍一下巴黎的景点', '讲解完帮我生成一份文档', '说说今天的新闻有什么关系', '帮我查一下日程', undefined])
+    assert.equal(asksForLesson(no), false, String(no));
+});
