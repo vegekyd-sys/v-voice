@@ -31,7 +31,7 @@
     "candidateCommit": "128bb63",
     "readyMedianMs": {"baseline": 2363, "candidate": 1063},
     "readyRangeMs": {"baseline": [1880, 9584], "candidate": [1020, 2753]},
-    "greetingAudioMedianMs": {"baseline": 2837, "candidate": 1496},
+    "greetingAudioMedianMs": {"baseline": 2837, "candidate": 1494},
     "greetingAudioRangeMs": {"baseline": [2294, 10789], "candidate": [1421, 3119]}
   },
   "userConfirmed": [],
