@@ -1616,7 +1616,9 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 /* blocks that ask for part of the width stand side by side */
 .board-row { display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: 22px 18px; align-items: start; min-width: 0; }
 .board-row[data-n="3"] { --cols: 3; }
-.board-row .board-block { max-width: none; }
+.board .board-body .board-row .board-block[data-size] { max-width: none; grid-column: auto; width: auto; justify-self: stretch; }
+/* beside a margin of notes and prints, a row still takes the page's full width */
+.board .board-body[data-side] .board-row { grid-column: 1 / -1; }
 
 /* tiles: things one can count */
 .board-tiles { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 22px 26px; }
@@ -1767,6 +1769,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-scale[data-dir="up"]::before { content: ""; position: absolute; left: 89px; top: 6px; bottom: 6px; border-left: 2.5px solid #a895b8; border-radius: 2px; }
 .board-scale[data-dir="up"] .board-notch { left: 0; right: 0; transform: translateY(50%); }
 .board-scale[data-dir="up"] .board-notch b { flex: 0 0 76px; text-align: right; }
+.board-scale[data-dir="up"] .board-notch-label { flex: 1 1 auto; }
 .board-scale[data-dir="up"] .board-tick { width: 14px; height: 2.5px; margin: 0 4px 0 -1px; }
 
 .board-vs-side .board-thumb { width: 100%; height: 96px; }
