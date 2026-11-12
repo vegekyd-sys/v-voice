@@ -17,7 +17,7 @@ test('the lead picture of the best match is fetched from Wikimedia and cached', 
   assert.deepEqual([found.title, found.type, found.source, [...found.bytes]], ['艾菲尔铁塔', 'image/jpeg', '维基百科', [1, 2, 3]]);
   assert.match(calls[0].url, /^https:\/\/zh\.wikipedia\.org\/w\/api\.php\?.*gsrsearch=%E5%9F%83%E8%8F%B2%E5%B0%94%20%E9%93%81%E5%A1%94/u);
   assert.equal(calls[1].url, thumb);
-  assert.match(calls[0].agent, /v-voice-board/u);
+  assert.match(calls[0].agent, /^VVoiceBoard\/[\d.]+ \(https:\/\//u);
   await finder.find('埃菲尔 铁塔');
   assert.equal(calls.length, 2, 'the second lookup is served from memory');
 });

@@ -38,7 +38,7 @@ const leads = kind => kind === 'check' || kind === 'cross' || kind === 'star';
 // pen pointing at the one V is on now. (A plain function, safe inside loops.)
 function itemState(view, block, item) {
   const id = `${block.id}/${item.id}`;
-  return {id, now: view.focus === id, props: {'data-ink': String(!view.ahead.has(id)), 'data-now': view.focus === id || undefined}};
+  return {id, now: view.focus === id, props: {'data-ink': String(!view.ahead.has(id)), 'data-now': view.focus === id || undefined, 'data-anchored': item.q ? 'true' : undefined}};
 }
 const Pen = ({seed}) => <Stroke className="board-pen" d={pointer(seed)} />;
 // The words that carry an item, with the marker swipe behind them while V is

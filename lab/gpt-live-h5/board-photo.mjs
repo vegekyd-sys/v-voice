@@ -7,7 +7,8 @@ const TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const clean = query => String(query ?? '').replace(/\s+/gu, ' ').trim().slice(0, 60);
 
 export function createPhotoFinder({fetchImpl = fetch, now = Date.now, maxBytes = 700000, timeoutMs = 6000, ttlMs = 30 * 60000, maxEntries = 64,
-  languages = ['zh', 'en'], userAgent = 'v-voice-board/0.1 (call board photo lookup)'} = {}) {
+  // Wikimedia refuses data-centre clients whose agent names no contact page.
+  languages = ['zh', 'en'], userAgent = 'VVoiceBoard/0.1 (https://github.com/vegekyd-sys/v-voice)'} = {}) {
   const cache = new Map();
   async function request(url, signal) {
     const response = await fetchImpl(url, {signal, headers: {'user-agent': userAgent, accept: '*/*'}, redirect: 'follow'});
