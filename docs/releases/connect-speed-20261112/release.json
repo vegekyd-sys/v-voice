@@ -1,0 +1,46 @@
+{
+  "schema": "v-voice-production-release-v1",
+  "version": "voice-connect-speed.20261112.1",
+  "status": "DEPLOYED_SERVER_NODES_VERIFIED_NO_REAL_CALL_YET",
+  "releasePR": 206,
+  "entryCommit": "4d6835d3781d8eee2cfb32f548459a1f40f6b1f0",
+  "deviceEntryCommit": "4d6835d3781d8eee2cfb32f548459a1f40f6b1f0",
+  "filesSha256": "2ccf06083561251997ec607fc7ec4f4df0c290a9bc03552680c7ac73d9cba97c",
+  "iosShellRevision": "67218edffb62aa92ba82bc79de43238ebc3e5778d26e787d43e9dc06e435c381",
+  "rollbackServiceCommit": "0cd2679065c290b689ab5429fb50f8c9abe0411c",
+  "serverNodesSynchronized": true,
+  "homepageChangelogVerified": false,
+  "gatewayRestarted": false,
+  "deployedAt": "2026-11-12T20:38:49+08:00",
+  "validatedAt": "2026-11-12T20:40:00+08:00",
+  "tests": {
+    "voice": 1174,
+    "speaker": 95,
+    "releaseFleet": 11
+  },
+  "native": {
+    "changed": false,
+    "acceptedBuild": 32
+  },
+  "preReleaseComparison": {
+    "measuredAt": "2026-11-12T18:48:00+08:00",
+    "where": "on the web node, below the HTTP entry, one bound Feishu identity",
+    "model": "seeduplex",
+    "callsPerTree": 6,
+    "baselineCommit": "9eb75eb",
+    "candidateCommit": "128bb63",
+    "readyMedianMs": {"baseline": 2363, "candidate": 1063},
+    "readyRangeMs": {"baseline": [1880, 9584], "candidate": [1020, 2753]},
+    "greetingAudioMedianMs": {"baseline": 2837, "candidate": 1496},
+    "greetingAudioRangeMs": {"baseline": [2294, 10789], "candidate": [1421, 3119]}
+  },
+  "userConfirmed": [],
+  "pending": [
+    "No real call since the release; confirm the admitted stage in the call audit after the first one",
+    "Connect time on real phones and on the web page has not been measured",
+    "The homepage changelog entry is in the released files but was not fetched over HTTPS",
+    "GPT Live, speakers and the robot were not measured",
+    "The early greeting on iOS native dialing needs a new native build",
+    "The floor and the tail are one platform membership check; coalescing it belongs in v-openclaw-platform"
+  ]
+}
