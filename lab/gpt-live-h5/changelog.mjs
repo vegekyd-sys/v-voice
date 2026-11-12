@@ -198,6 +198,14 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-image-nb21.20261112.1',date:'2026-11-12',
+    title:'通话出图改用 Nano Banana 2.1；没说话不再发电话纪要',
+    items:[
+      '通话里让 V 画图或改图，现在用 Nano Banana 2.1，不再用 GPT Image 2.6。',
+      '接通后一句话都没说就挂断，飞书里不再弹一张空的电话纪要；通话状态卡照常显示已结束。',
+    ],
+  },
+  {
     version:'voice-connect-speed.20261112.1',date:'2026-11-12',
     title:'拨号后更快接通',
     items:[
