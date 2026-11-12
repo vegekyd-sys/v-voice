@@ -198,6 +198,14 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-relay-usage.20261112.1',date:'2026-11-12',
+    title:'在 iPhone 主屏查看订阅余量',
+    items:[
+      '更新 V Voice 后，打开一次已绑定个人入口的 App，即可在主屏添加「Relay 用量」小组件。',
+      '中号突出剩余额度最低的套餐，各套餐旁显示重置时间。大号可查看多个额度窗口，中号和大号均显示 DeepSeek 余额。',
+    ],
+  },
+  {
     version:'voice-image-nb21.20261112.1',date:'2026-11-12',
     title:'通话出图改用 Nano Banana 2.1；没说话不再发电话纪要',
     items:[

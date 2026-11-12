@@ -6,7 +6,7 @@ import VVoiceCore
 
 private let lilac = Color(hex: 0xd6c2ed)
 @main struct VoiceWidgetBundle: WidgetBundle {
-    var body: some Widget { VoiceLiveActivity(); VoiceControl() }
+    var body: some Widget { VoiceLiveActivity(); VoiceControl(); RelayUsageWidget() }
 }
 struct VoiceLiveActivity: Widget {
     var body: some WidgetConfiguration {

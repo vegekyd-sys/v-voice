@@ -19,6 +19,7 @@ import { createAvatarReactionSelector, avatarEvaluatorFromEnv } from "./avatar-d
 import { AVATAR_FILES, taskActivity } from "./avatar-state.mjs";
 import { createVoiceAccess } from "./access.mjs";
 import {createConversationCalls,callIdValid,callSummarizerFromEnv} from '../../lib/conversation-calls.mjs';
+import {readRelayUsage} from '../../lib/relay-usage.mjs';
 import {createIosBindings,iosAppDownload,IosBindingAuthorizationError} from '../../lib/ios-bindings.mjs';
 import { createConversationEntries } from "../../lib/conversation-entries.mjs";
 import { verifyPhoneSession } from "../../lib/phone-provisioning.mjs";
@@ -39,7 +40,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 // Dialing is how a known caller retries; only anonymous callers keep the tight limit.
 export const callAttemptLimit = binding => binding.permissionProfile === 'unidentified' ? 6 : 30;
 
-export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, enableGrok = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, enableGrok = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), relayUsageFile = process.env.VOICE_RELAY_USAGE_FILE || '/var/lib/v-voice-usage/snapshot.json', conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
   let agentControl = null;
   if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
   if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
@@ -433,6 +434,14 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       }
       if(pathname==='/public'&&req.method==='GET'){
         res.writeHead(302,{location:`${basePath}/?phone=public`,'cache-control':'no-store'});res.end();return;
+      }
+      if (pathname === '/api/relay-usage') {
+        const bearer = /^Bearer ([a-f0-9]{64})$/u.exec(req.headers.authorization ?? '')?.[1];
+        const personal = entries.resolve(new URL('/', 'http://voice.invalid'));
+        if (req.method !== 'GET' || url.search || !hosted || !iosBindings?.allowsUsageWidget(personal, bearer))
+          return json(res, 403, {error:'此小组件需要本人的个人入口。'});
+        try { return json(res, 200, await readRelayUsage(relayUsageFile)); }
+        catch { return json(res, 503, {error:'用量暂未更新。'}); }
       }
       if(pathname==='/api/ios-public'&&req.method==='POST'){
         if(!iosPublicEntry||!guestAccess||!iosBindingsFile||!backendReady()||!phoneModels().some(m=>m.id!=='gpt-live'&&m.available))return json(res,503,{error:'Public 暂不可用，请稍后重试。'});

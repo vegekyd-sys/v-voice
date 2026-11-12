@@ -1,0 +1,16 @@
+[Unit]
+Description=Read subscription allowances for the personal V Voice widget
+
+[Service]
+Type=oneshot
+User=openclaw
+StateDirectory=v-voice-usage
+StateDirectoryMode=0700
+UMask=0077
+EnvironmentFile=-/srv/vlab/makaron-codex-relay/state/relay.env
+EnvironmentFile=-/srv/vlab/scene-gemini-relay/state/relay.env
+EnvironmentFile=-/etc/v-voice-usage.env
+Environment=VOICE_USAGE_CLAUDE_CLI=/home/openclaw/.npm-global/bin/claude
+ExecStart=/usr/bin/python3 /usr/local/lib/v-voice-usage/collect.py /var/lib/v-voice-usage/snapshot.json
+TimeoutStartSec=45
+NoNewPrivileges=true
