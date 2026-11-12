@@ -6,7 +6,9 @@
 export const BOARD_LIMITS = Object.freeze({blocks: 6, items: 8, columns: 4, rows: 8, nodes: 10, edges: 16});
 export const BOARD_BLOCK_TYPES = Object.freeze(['note', 'list', 'steps', 'compare', 'stats', 'bars', 'table', 'flow']);
 
-export const emptyScene = () => ({rev: 0, serial: 0, title: '', blocks: [], focus: ''});
+// `pending` is the title of a new picture the director has announced but not
+// yet drawn; the picture on screen stays until its first block arrives.
+export const emptyScene = () => ({rev: 0, serial: 0, title: '', blocks: [], focus: '', pending: null});
 
 const text = (value, limit) => typeof value === 'string' || typeof value === 'number'
   ? Array.from(String(value).replace(/\s+/gu, ' ').trim()).slice(0, limit).join('') : '';
@@ -144,9 +146,14 @@ export function spokenFocus(scene, spoken, index) {
 export function applyOp(scene, op) {
   const next = change => ({...scene, ...change, rev: scene.rev + 1});
   switch (op?.op) {
-    case 'scene': return next({serial: scene.serial + 1, title: op.title, blocks: [], focus: ''});
-    case 'clear': return scene.blocks.length || scene.title ? next({title: '', blocks: [], focus: ''}) : scene;
+    case 'scene':
+      // Announcing the picture already on screen is not a new picture.
+      if (scene.blocks.length && scene.pending === null && op.title === scene.title) return scene;
+      if (scene.blocks.length) return scene.pending === op.title ? scene : next({pending: op.title});
+      return next({serial: scene.serial + 1, title: op.title, blocks: [], focus: '', pending: null});
+    case 'clear': return scene.blocks.length || scene.title || scene.pending !== null ? next({title: '', blocks: [], focus: '', pending: null}) : scene;
     case 'put': {
+      if (scene.pending !== null) return next({serial: scene.serial + 1, title: scene.pending, blocks: [op.block], focus: '', pending: null});
       const index = scene.blocks.findIndex(block => block.id === op.block.id);
       if (index >= 0) {
         if (JSON.stringify(scene.blocks[index]) === JSON.stringify(op.block)) return scene;
@@ -174,12 +181,13 @@ export function normalizeScene(raw) {
   let scene = {...emptyScene(), serial: Number.isSafeInteger(raw.serial) ? raw.serial : 0, title: text(raw.title, 40)};
   for (const block of raw.blocks) { const op = normalizeOp({op: 'put', block}); if (op) scene = applyOp(scene, op); }
   const focus = typeof raw.focus === 'string' && focusExists(scene, raw.focus) ? raw.focus : '';
-  return {...scene, focus, rev: raw.rev};
+  return {...scene, focus, pending: typeof raw.pending === 'string' ? text(raw.pending, 40) : null, rev: raw.rev};
 }
 
 /** The scene as the director model reads it back: compact, ids first. */
-export const sceneDigest = scene => scene.blocks.length || scene.title
-  ? {title: scene.title, focus: scene.focus, blocks: scene.blocks} : null;
+export const sceneDigest = scene => scene.pending !== null
+  ? {title: scene.pending, focus: '', blocks: [], note: '新画面已开，还没有内容；放入第一个区块后屏幕才会换过去'}
+  : scene.blocks.length || scene.title ? {title: scene.title, focus: scene.focus, blocks: scene.blocks} : null;
 
 /** Split a streamed model reply into JSON lines. Fences and prose are skipped. */
 export function createLineParser(onValue) {

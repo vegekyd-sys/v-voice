@@ -59,8 +59,16 @@ test('a scene is edited in place, and only real changes advance the revision', (
   assert.equal(scene.focus, '', 'focus on a removed item is cleared');
   scene = applyOp(scene, normalizeOp({op: 'del', id: 'n'}));
   assert.deepEqual(scene.blocks.map(block => block.id), ['s']);
+  // A new picture is only announced: the old one stays until a block arrives.
+  const before = scene;
+  assert.equal(applyOp(scene, normalizeOp({op: 'scene', title: '夜班'})), scene, 're-announcing the picture on screen changes nothing');
   scene = applyOp(scene, normalizeOp({op: 'scene', title: '新话题'}));
-  assert.deepEqual([scene.title, scene.blocks.length, scene.serial], ['新话题', 0, 2]);
+  assert.deepEqual([scene.title, scene.blocks, scene.serial, scene.pending, scene.rev], ['夜班', before.blocks, 1, '新话题', before.rev + 1]);
+  assert.deepEqual(sceneDigest(scene), {title: '新话题', focus: '', blocks: [], note: '新画面已开，还没有内容；放入第一个区块后屏幕才会换过去'});
+  scene = applyOp(scene, put({id: 'n', t: 'note', text: '第一块'}));
+  assert.deepEqual([scene.title, scene.blocks.map(block => block.id), scene.serial, scene.pending, scene.focus], ['新话题', ['n'], 2, null, '']);
+  scene = applyOp(applyOp(scene, normalizeOp({op: 'scene', title: '又一张'})), normalizeOp({op: 'clear'}));
+  assert.deepEqual([scene.title, scene.blocks.length, scene.pending], ['', 0, null]);
 });
 
 test('a board never grows past its block limit', () => {
