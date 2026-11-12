@@ -119,6 +119,8 @@ export const INITIAL_VIEW = Object.freeze({
   models: [], model: 'seeduplex', modelDisabled: false,
   grok: {voices: [], voice: null, hint: '', listenHref: './compare', listenAvailable: false},
   reading: false,
+  // The call board (board-scene.mjs); null until the director draws something.
+  board: null,
 });
 
 export function createCallView(initial = {}) {

@@ -8,6 +8,7 @@ import { entryStartup, startVoiceEntry, markVoiceTiming } from "./entry-startup.
 import { createAvatarTasks } from "./avatar-state.mjs";
 import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { createAvatarTelemetry } from "./avatar-telemetry.mjs";
+import { createBoardClient, readEventStream } from "./board-client.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
 import { createContentView } from "./content-view.mjs";
@@ -62,6 +63,7 @@ let call = null;
 let starting = null;
 let avatarDiagnosticOwner = null;
 let liveReady = false;
+let boardAvailable = false;
 let entryError = null;
 let callerEntry = "tianyi";
 let preferredPhoneInputPolicy = null;
@@ -471,6 +473,7 @@ function renderTranscript(snapshot) {
   document.body.dataset.conversation = all.some(item => item.text?.trim()) ? "started" : "empty";
   view.set({ transcript: snapshot });
   avatarContext(snapshot);
+  call?.board?.update({ snapshot });
 }
 function resetTranscript() {
   contentView?.reset(); presentation.reset();
@@ -577,6 +580,7 @@ async function stopCall({failure}={}) {
   if (active) {
     active.avatarTelemetry?.close();
     active.avatarReactions?.dispose();
+    active.board?.dispose(); view.set({ board: null });
     active.relay?.dispose();
     active.dialConnection?.dispose();
     active.callerContext?.close();active.deviceAdapter?.close();
@@ -691,6 +695,23 @@ async function startCall() {
       send:payload=>api('avatar-events',{voiceSessionId:active.voiceSessionId,...payload},{keepalive:true,signal:AbortSignal.timeout(5000)}),
     });
     document.body.dataset.avatarImageTimeline='[]';
+    // The picture beside the conversation. Like the avatar it only follows the
+    // call; nothing in the call waits for it.
+    if (boardAvailable) active.board = createBoardClient({
+      isCurrent: () => call === active,
+      onScene: scene => { if (call === active) view.set({ board: scene }); },
+      observe: event => {
+        const trace = JSON.parse(document.body.dataset.boardTimeline ?? '[]');
+        trace.push({ ...event, at: Math.round(performance.now()) });
+        document.body.dataset.boardTimeline = JSON.stringify(trace.slice(-30));
+      },
+      request: async (payload, { signal, onEvent }) => {
+        const response = await fetch(apiUrl('board'), { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ voiceSessionId: active.voiceSessionId, ...payload }), signal });
+        if (!response.ok || !response.body) throw new Error('board unavailable');
+        await readEventStream(response, onEvent);
+      },
+    });
     if (avatar) active.avatarReactions = createAvatarReactions({
       observe:event=>{
         if(event.type==='applied')active.avatarTelemetry?.decision(event);
@@ -739,6 +760,7 @@ async function startCall() {
       tasks.consume(value);
           if(value.type==='backend.result')receiveDocument(active,value);
           if(value.type.startsWith('tool.'))taskState();
+          if(value.type==='tool.result')active.board?.evidence();
           if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
           if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
           if(value.type==='reply.sync'&&value.status==='failed')setStatus(value.message,{tone:'problem'});
@@ -970,6 +992,7 @@ function applyEntryStatus(status) {
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     webDialVersion = status.webDialVersion;
     liveReady = status.ready === true;
+    boardAvailable = status.board === true && !tvHost;
     const phoneOptions = phoneModelOptions(status, view.get().model);
     const models = phoneOptions.models.map(choice => ({...choice, available:choice.available&&(!tvHost||!hasTvArrayCapture()||tvArraySupportsModel(choice.id))}));
     const model = tvHost ? tvDefaultModel(models).model : phoneOptions.model;
