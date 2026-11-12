@@ -20,9 +20,11 @@ upload() {
 if [ "${1:-}" = "--update" ]; then
   # Only this Candidate's own code and unit are touched; its environment file,
   # tunnel and entry link stay as they are. The unit must have no call in progress.
-  ssh v "sudo -n test -f $root/environment.private.json && systemctl cat voice-board-20261112 >/dev/null"
+  ssh v "sudo -n test -f $root/environment.private.json"
   upload
-  ssh v "sudo -n sh -c 'chown -R openclaw:openclaw $root/voice && systemctl reset-failed voice-board-20261112 2>/dev/null; systemctl restart voice-board-20261112 && sleep 2 && systemctl is-active voice-board-20261112'"
+  # The unit is transient: after a crash it no longer exists, so it is started
+  # again from the Candidate's own launcher and private environment file.
+  ssh v "sudo -n sh -c 'chown -R openclaw:openclaw $root/voice; systemctl stop voice-board-20261112 2>/dev/null; systemctl reset-failed voice-board-20261112 2>/dev/null; systemd-run --quiet --unit=voice-board-20261112 --property=User=openclaw --property=WorkingDirectory=$root/voice --property=UMask=0077 --property=KillMode=control-group --property=MemoryMax=1G --property=CPUQuota=100% --property=Nice=10 --property=Restart=on-failure --property=RestartSec=2 /opt/node-v22.23.1/bin/node $root/launch.private.cjs $root/environment.private.json /opt/node-v22.23.1/bin/node $root/voice/lab/gpt-live-h5/server.mjs && sleep 3 && systemctl is-active voice-board-20261112 voice-board-20261112-tunnel'"
   ssh v "sudo -n python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))[\"commit\"])' $root/voice/manifest.json"
   exit 0
 fi
