@@ -96,7 +96,7 @@ struct RelayUsageWidget: Widget {
                 .privacySensitive()
         }
         .configurationDisplayName("Relay 用量")
-        .description("查看订阅已用比例、重置时间和 DeepSeek 余额。")
+        .description("查看订阅额度、重置时间和 DeepSeek 余额。")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
@@ -149,6 +149,20 @@ private struct UsageCard: View {
         Date(timeIntervalSince1970: stamp).formatted(.dateTime.month(.defaultDigits).day().hour().minute())
     }
 
+    private func remaining(_ w: Window) -> String {
+        ((100 - w.used) / 100).formatted(.percent.precision(.fractionLength(0...1)))
+    }
+
+    private func resetCaption(_ stamp: TimeInterval) -> String {
+        let date = Date(timeIntervalSince1970: stamp)
+        let calendar = Calendar.current
+        let clock = date.formatted(.dateTime.hour().minute())
+        if calendar.isDate(date, inSameDayAs: entry.date) { return "今天 " + clock + " 重置" }
+        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: entry.date),
+           calendar.isDate(date, inSameDayAs: tomorrow) { return "明天 " + clock + " 重置" }
+        return time(stamp) + " 重置"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: small ? 5 : 8) {
             header
@@ -179,7 +193,7 @@ private struct UsageCard: View {
         HStack(spacing: 6) {
             Image("VAppIcon").resizable().scaledToFill().frame(width: 20, height: 20)
                 .clipShape(RoundedRectangle(cornerRadius: 6)).accessibilityHidden(true)
-            Text("订阅用量").font(VoiceStyle.font(14, weight: .semibold))
+            Text(small ? "订阅用量" : "订阅余量").font(VoiceStyle.font(14, weight: .semibold))
             Spacer(minLength: 0)
             if entry.preview { Text("示例").font(.caption2).foregroundStyle(secondary) }
             else if !small, let snapshot = entry.snapshot {
@@ -200,42 +214,83 @@ private struct UsageCard: View {
     }
 
     private var mediumContent: some View {
-        HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 1) {
+        HStack(alignment: .center, spacing: 15) {
+            VStack(alignment: .leading, spacing: 2) {
                 if let (row, w) = highest {
-                    Text("\(shortName(row)) · \(w.label)已用").font(.caption).foregroundStyle(secondary)
-                    Text(percent(w)).font(.system(size: 32, weight: .semibold, design: .rounded))
-                        .monospacedDigit().lineLimit(1).minimumScaleFactor(0.75)
-                    if let reset = w.reset { Text("\(time(reset)) 重置").font(.system(size: 10)).foregroundStyle(secondary) }
+                    Text("\(shortName(row)) · \(w.label)剩余")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(remaining(w))
+                        .font(.system(size: 49, weight: .bold, design: .rounded))
+                        .foregroundStyle(accent).monospacedDigit()
+                        .lineLimit(1).minimumScaleFactor(0.67)
+                    if let reset = w.reset {
+                        Text(resetCaption(reset)).font(.system(size: 10)).foregroundStyle(secondary)
+                            .lineLimit(1).minimumScaleFactor(0.85)
+                    }
                 } else { Text("等待读数").font(.subheadline).foregroundStyle(secondary) }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            VStack(spacing: 5) { ForEach(subscriptions, id: \.name) { compactRow($0) } }
-                .frame(maxWidth: .infinity)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            VStack(spacing: 8) {
+                ForEach(subscriptions.filter { $0.name != highest?.0.name }, id: \.name) { row in
+                    HStack(spacing: 4) {
+                        Text(shortName(row)).font(.system(size: 12, weight: .medium))
+                        Spacer(minLength: 0)
+                        Text(limiting(row).map(remaining) ?? status(row))
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .foregroundStyle(secondary).monospacedDigit()
+                    }.accessibilityElement(children: .combine)
+                }
+            }.frame(maxWidth: .infinity).lineLimit(1)
         }.frame(maxHeight: .infinity)
     }
 
-    @ViewBuilder private var largeContent: some View {
-        ForEach(subscriptions, id: \.name) { row in
-            let values = windows(row)
-            VStack(alignment: .leading, spacing: 3) {
-                HStack {
-                    Text(row.name).font(VoiceStyle.font(15, weight: .semibold))
-                    Spacer()
-                    if values.isEmpty { Text(status(row)).font(.caption).foregroundStyle(secondary) }
+    private var largeContent: some View {
+        let columns = [GridItem(.flexible(), spacing: 14), GridItem(.flexible())]
+        return VStack(spacing: 8) {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
+                ForEach(subscriptions, id: \.name) { row in
+                    providerTile(row)
                 }
-                ForEach(values.indices, id: \.self) { index in
-                    let w = values[index]
-                    HStack(spacing: 7) {
-                        Text(w.label).foregroundStyle(secondary).frame(width: 38, alignment: .leading)
-                        meter(w)
-                        Text(percent(w)).fontWeight(.semibold).monospacedDigit()
-                        Text(w.reset.map { time($0) + " 重置" } ?? "重置时间未知").foregroundStyle(secondary)
-                    }.font(.caption).lineLimit(1).minimumScaleFactor(0.8)
-                }
-            }
-            Spacer(minLength: 0)
+            }.frame(maxHeight: .infinity)
+            Divider()
+            balanceLine
         }
-        balanceLine
+    }
+
+    private func providerTile(_ row: Provider) -> some View {
+        let values = windows(row).sorted { $0.used > $1.used }
+        let isFocus = highest?.0.name == row.name
+        return VStack(alignment: .leading, spacing: 3) {
+            Text(shortName(row)).font(.system(size: 14, weight: .semibold))
+            if let w = values.first {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(remaining(w)).font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(isFocus ? accent : ink).monospacedDigit()
+                    Text(w.label).font(.system(size: 10)).foregroundStyle(secondary)
+                }
+                Text(w.reset.map(resetCaption) ?? "重置时间未知")
+                    .font(.system(size: 10)).foregroundStyle(secondary)
+                if values.count > 1 {
+                    let other = values[1]
+                    HStack(spacing: 4) {
+                        Text(other.label)
+                        Text(remaining(other)).fontWeight(.semibold)
+                    }.font(.system(size: 11)).foregroundStyle(secondary)
+                    Text(other.reset.map(resetCaption) ?? "重置时间未知")
+                        .font(.system(size: 10)).foregroundStyle(secondary)
+                }
+            } else {
+                Text(status(row)).font(.caption).foregroundStyle(secondary)
+            }
+        }
+        .lineLimit(1).minimumScaleFactor(0.8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+        .background((isFocus ? accent : ink).opacity(isFocus ? 0.10 : 0.035),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder private var balanceLine: some View {
