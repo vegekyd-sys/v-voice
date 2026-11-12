@@ -89,12 +89,15 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
   // An image search, when a key is provisioned: the first result whose title
   // names the thing (else the first result), as the search's own thumbnail.
   // The plan allows about one request a second, so lookups queue.
-  let braveTurn = Promise.resolve(), braveLast = -Infinity;
-  async function brave(query, signal) {
+  let braveTurn = Promise.resolve(), braveLast = -Infinity, braveWaiting = 0;
+  async function brave(query, signal, begin = () => {}) {
     if (!braveKey) return null;
+    braveWaiting++; begin.stop?.();
     const turn = braveTurn.then(async () => { const gap = braveLast + braveGapMs - now(); if (gap > 0) await wait(gap); braveLast = now(); });
     braveTurn = turn.catch(() => {});
-    await turn;
+    try { await turn; } finally { braveWaiting--; }
+    // Time spent queueing is not time spent looking.
+    begin();
     const response = await fetchImpl(`https://api.search.brave.com/res/v1/images/search?q=${encodeURIComponent(query)}&count=6&safesearch=strict`,
       {signal, headers: {'x-subscription-token': braveKey, accept: 'application/json'}});
     if (!response.ok) throw Error('image search HTTP ' + response.status);
@@ -148,11 +151,18 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     for (const attempt of tried) { const found = await attempt; if (found) return found; }
     return null;
   }
-  async function find(key, signal, searchNow) {
+  async function find(key, signal, searchNow, begin) {
     const started = now();
     let value = null, failed = false;
-    try { value = await brave(key, signal); } catch { failed = true; }
-    if (!value) { try { value = await wikipedia(key, signal); } catch { failed = true; } }
+    // A page of a dozen pictures would queue for the image search one a
+    // second (the last ones used to time out waiting). With a queue ahead,
+    // the encyclopedia, which needs no turn, is asked first.
+    const encyclopedia = async () => { try { value = await wikipedia(key, signal); } catch { failed = true; } };
+    const crowded = Boolean(braveKey) && braveWaiting >= 2;
+    if (crowded) { begin(); await encyclopedia(); }
+    if (!value) { try { value = await brave(key, signal, begin); } catch { failed = true; } }
+    begin();
+    if (!value && !crowded) await encyclopedia();
     if (!value) { try { value = await web(key, signal, searchNow); } catch { failed = true; } }
     observe({type: 'board.photo', query: key, found: Boolean(value), source: value?.source ?? null, bytes: value?.bytes.length ?? 0, durationMs: now() - started});
     // "No such picture" is worth remembering; "could not ask" is not.
@@ -168,9 +178,13 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
       if (hit && now() - hit.at < ttlMs) return hit.value;
       // Several items asking for the same thing share one lookup.
       if (!flights.has(key)) {
-        const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs);
+        const controller = new AbortController();
+        let timer = null;
+        // The limit runs while a source is being asked; each start (after a queue) renews it.
+        const begin = () => { clearTimeout(timer); timer = setTimeout(() => controller.abort(), timeoutMs); };
+        begin.stop = () => clearTimeout(timer);
         signal?.addEventListener('abort', () => controller.abort(), {once: true});
-        flights.set(key, find(key, controller.signal, searchNow).catch(() => null).finally(() => { clearTimeout(timer); flights.delete(key); }));
+        flights.set(key, find(key, controller.signal, searchNow, begin).catch(() => null).finally(() => { clearTimeout(timer); flights.delete(key); }));
       }
       return flights.get(key);
     },

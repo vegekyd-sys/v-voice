@@ -4,12 +4,12 @@
 // stay in pencil. Renders a scene from board-scene.mjs. Every string is plain
 // text; nothing written by the director model is interpreted as markup.
 import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
-import {flowLayout} from '../board-scene.mjs';
+import {edgeId, flowLayout} from '../board-scene.mjs';
 import {MARK_PATHS, arrow, fitPath, pointer, ring, tilt, underline} from '../board-sketch.mjs';
 
 // One pen stroke over its target. CSS sizes the box; the path is fitted to the
 // box's real size once it is known, and `pathLength` lets CSS draw it on.
-function Stroke({d, className}) {
+function Stroke({d, className, ...rest}) {
   const ref = useRef(null);
   const [size, setSize] = useState(null);
   useLayoutEffect(() => {
@@ -25,7 +25,7 @@ function Stroke({d, className}) {
     return () => observer.disconnect();
   }, []);
   return (
-    <svg ref={ref} className={className} viewBox={size ? `0 0 ${size.width} ${size.height}` : '0 0 100 100'} aria-hidden="true">
+    <svg ref={ref} className={className} {...rest} viewBox={size ? `0 0 ${size.width} ${size.height}` : '0 0 100 100'} aria-hidden="true">
       {size && <path d={fitPath(d, size.width, size.height)} pathLength="1" />}
     </svg>
   );
@@ -212,11 +212,12 @@ function Flow({block, view}) {
       <Heading block={block} />
       <div className="board-flow" data-shape={shape} data-pictured={pictured || undefined} ref={ref} style={{height}}>
         {width > 0 && block.edges.map(([from, to, label], index) => {
-          const a = at(from), b = at(to);
+          const a = at(from), b = at(to), ink = !view.ahead.has(edgeId(block, from, to));
+          // Keyed on its state, so the arrow is drawn afresh when V gets to it.
           return (
-            <React.Fragment key={index}>
-              <Stroke className="board-arrow" d={arrow(`${block.id}:${from}:${to}`, short(b, a), short(a, b))} />
-              {label && <span className="board-flow-label" style={{left: (a.x + b.x) / 2, top: (a.y + b.y) / 2}}>{label}</span>}
+            <React.Fragment key={`${index}:${ink}`}>
+              <Stroke className="board-arrow" data-ink={String(ink)} d={arrow(`${block.id}:${from}:${to}`, short(b, a), short(a, b))} />
+              {label && <span className="board-flow-label" data-ink={String(ink)} style={{left: (a.x + b.x) / 2, top: (a.y + b.y) / 2}}>{label}</span>}
             </React.Fragment>
           );
         })}

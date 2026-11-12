@@ -1704,3 +1704,22 @@ test('a client that never reports drained playback is still hung up after the fa
  assert(await until(()=>hostEnded(f,'silence')));nativeFarewellAudio(f);
  assert(await until(()=>f.client.readyState===3,35000));
 });
+
+test('call c6c68774: asked to explain, a hand-off to the backend becomes a lesson; a request to make something does not',async t=>{
+ const prepared=[];
+ const lesson={available:true,prepare:async args=>{prepared.push({topic:args.topic,ask:args.ask});return {say:'急冻鸟是冰做的鸟。'};}};
+ const f=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson});t.after(()=>f.service.dispose());
+ const tools=f.upstream.sent.find(e=>e.type==='session.update').session;
+ assert(tools.tools.some(tool=>tool.name==='explain_on_board'));
+ assert.match(tools.instructions,/调用 explain_on_board/u,'the model is told when to use it');
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'你给十二讲解一下哈，就是用那个传说级的宝可梦来讲解。'});
+ f.call('delegate_to_v',{question:'用传说宝可梦讲属性相克',context:'讲给十二听'},'explain');
+ assert(await until(()=>prepared.length===1));
+ assert.deepEqual(prepared[0],{topic:'用传说宝可梦讲属性相克；讲给十二听',ask:'你给十二讲解一下哈，就是用那个传说级的宝可梦来讲解。'});
+ assert(f.audit.some(e=>e.type==='lesson.rerouted'&&e.callId==='explain'));
+ assert(!f.audit.some(e=>e.type==='backend.started'),'no backend task was started');
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'讲解完了帮我生成一份文档发到飞书'});
+ f.call('delegate_to_v',{question:'把属性相克整理成文档发飞书'},'make');
+ assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ assert.equal(prepared.length,1);
+});

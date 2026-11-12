@@ -1542,6 +1542,9 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-flow { position: relative; }
 .board-arrow { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .board .board-arrow path { stroke: #a895b8; stroke-width: 2; stroke-dasharray: 1; animation: board-draw .7s ease-out .25s both; }
+/* an arrow V has not reached yet is only pencilled in */
+.board .board-arrow[data-ink="false"] path { stroke: var(--pencil); opacity: .55; }
+.board-flow-label[data-ink="false"] { color: var(--pencil); }
 .board-node {
   position: absolute;
   z-index: 1;
@@ -1614,6 +1617,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board[data-lesson] :is(li, dl > div)[data-ink="false"] { transform: translateY(10px); }
 .board[data-lesson] .board-block[data-ink="false"] { transform: translateY(-12px) rotate(calc(var(--tilt, 0deg) + 4deg)) scale(1.04); }
 .board[data-lesson] .board-node { transition: opacity .45s ease-out; }
+.board[data-lesson] :is(.board-arrow, .board-flow-label)[data-ink="false"] { opacity: 0; }
 .board[data-lesson] .board-steps li:not(:last-child)::after { transition: opacity .45s; }
 .board[data-lesson] .board-steps li[data-ink="false"]::after { opacity: 0; }
 

@@ -112,6 +112,16 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       while (row.evidence.length > MAX_EVIDENCE) row.evidence.shift();
     },
     scene(id) { return owners.get(id)?.scene ?? emptyScene(); },
+    /**
+     * A lesson is being written for this call: stop drawing (a run in flight
+     * is dropped) until it is presented or released. What is on the page stays.
+     */
+    hold(id, holdMs = 20000) {
+      const row = owner(id);
+      row.controller?.abort();
+      row.heldUntil = now() + holdMs; row.heldAt = now();
+    },
+    release(id) { const row = owners.get(id); if (row) row.heldUntil = 0; },
     /** Put a prepared picture (a lesson) on a call's board and keep the director's hands off it for `holdMs`. */
     present(id, ops, holdMs = 0) {
       const row = owner(id);

@@ -127,3 +127,20 @@ test('with an image-search key the titled result is used, one request at a time'
   assert.deepEqual(waits, [1100], 'the second lookup waited its turn');
   assert.equal(calls.some(url => url.includes('wikipedia') || url.includes('evil')), false);
 });
+
+test('a page of pictures: with a queue for the image search the encyclopedia is asked first, and waiting a turn is not timed', async () => {
+  // Real timers: the queue is 30 ms a turn and the limit 50 ms, so the last of six waits three limits.
+  const asked = [];
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', braveGapMs: 30, timeoutMs: 50,
+    fetchImpl: async (url, init) => {
+      if (init?.signal?.aborted) throw Error('aborted');
+      if (url.includes('wikipedia.org')) { const title = decodeURIComponent(/titles=([^&]+)/u.exec(url)[1]); asked.push('wiki ' + title); return json(title === '急冻鸟' ? {query: {pages: {1: {title, thumbnail: {source: 'https://upload.wikimedia.org/a.png'}}}}} : {query: {pages: {}}}); }
+      if (url.startsWith('https://api.search.brave.com/')) { asked.push('search ' + decodeURIComponent(/q=([^&]+)/u.exec(url)[1])); return json({results: [{title: 'x', thumbnail: {src: 'https://imgs.search.brave.com/x'}}]}); }
+      return image(big(30000), 'image/png');
+    }});
+  const names = ['皮卡丘', '杰尼龟', '急冻鸟', '闪电鸟', '火焰鸟', '超梦'];
+  const found = await Promise.all(names.map(name => finder.find(name)));
+  assert.deepEqual(found.map(item => item?.source), ['Brave 图片搜索', 'Brave 图片搜索', '维基百科', 'Brave 图片搜索', 'Brave 图片搜索', 'Brave 图片搜索'], 'none timed out in the queue');
+  assert.equal(asked.includes('search 急冻鸟'), false, 'the one the encyclopedia had never took a turn');
+  assert.equal(asked.includes('wiki 皮卡丘'), false, 'with no queue the image search is asked directly');
+});

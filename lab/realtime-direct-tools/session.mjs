@@ -19,7 +19,7 @@ import {SeeduplexRealtimeVoiceBridge} from '../seeduplex-realtime-provider.mjs';
 import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
 import {V_ONE_VOICE_POLICY} from '../gpt-live-h5/one-voice-policy.mjs';
 import {TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,LOCATION_DELEGATE_TOOL,LOCATION_CONTROL_TOOL,createToolExecutor,validateTool,processExited,withExecutionLines} from './tools.mjs';
-import {LESSON_TOOL} from './tools.mjs';
+import {LESSON_ROUTING,LESSON_TOOL,asksForLesson} from './tools.mjs';
 import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICES,grokVoice,grokVoiceModel,grokVoiceLabel,grokVoiceSpeed} from './grok-provider.mjs';
 import {createTaskDelivery} from './task-delivery.mjs';
 import {createConversationReplyDelivery} from '../../lib/conversation-replies.mjs';
@@ -520,6 +520,12 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       audit:event=>audit({...event,voiceSessionId:s.id})});
     const onToolCall=async call=>{
       if(!current(s))return;
+      // Asked to explain, the voice model sometimes hands the question to the
+      // backend (a minute's wait, no picture). The caller's words decide.
+      if(call.name==='delegate_to_v'&&lessonTools(s).length&&!s.backend.snapshot()&&asksForLesson(s.latestUserTurn?.text)){
+        audit({type:'lesson.rerouted',voiceSessionId:s.id,callId:call.callId});
+        call={...call,name:'explain_on_board',args:{topic:[call.args?.question,call.args?.context].filter(value=>typeof value==='string'&&value.trim()).join('；').slice(0,400)||s.latestUserTurn.text.slice(-200)}};
+      }
       const signature=JSON.stringify([call.name,call.args]),old=s.seen.get(call.callId);
       if(old){if(old!==signature)emit(s,{type:'error',message:'工具身份冲突'});return;}
       if(s.pending.size>=100){emit(s,{type:'error',message:'待处理的工具调用过多，请稍后再试'});void close(s.id).catch(()=>{});return;}
@@ -569,7 +575,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(call.name==='explain_on_board'){
           if(!lesson?.available)throw Error('讲解画面尚未就绪');
           ownerBridge.beginBackgroundTool(call.callId,call.args.topic);lessonHandled=true;
-          const script=await lesson.prepare({owner:s.id,topic:call.args.topic,audience:call.args.audience,signal:controller.signal});
+          const script=await lesson.prepare({owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,signal:controller.signal});
           if(current(s)&&s.epoch===epoch){
             const say=script?.say??'画面这次没准备好，我直接跟你说吧。';
             ownerBridge.completeBackgroundTool(call.callId,{result:say},{spokenText:say,displayedFullResult:true});
@@ -638,7 +644,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const baseInstructions=s.publicVoice?PUBLIC_VOICE_INSTRUCTIONS+'\n'+PUBLIC_PRESENTATION_INSTRUCTIONS+'\n'+V_FRONTEND_PERSONA+'\n'+V_ONE_VOICE_POLICY+'\n'+VOICE_TASK_ROUTING.replaceAll('个人 V','V')+'\n'+VOICE_TASK_CONTROL_POLICY+'\n'+CALL_ENDING:(!s.unidentified?terminalInstructions(s.terminalContext()):'')+(!s.unidentified&&s.terminalContext().terminal.kind==='robot'?ROBOT_PRESENTATION_INSTRUCTIONS:'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader),mediaCliAvailable:s.mediaCliAvailable});
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
-      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
+      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
       withoutContext:text=>text.replace(voiceConversationBlock(context,{sessionBound:s.sessionBound}),()=>voiceConversationBlock('',{sessionBound:s.sessionBound})),
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
       onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),

@@ -182,3 +182,17 @@ test('a new question starts without the last question\'s lookup results', async 
   const evidence = calls.map(call => JSON.parse(call.messages[1].content).evidence?.map(item => item.result));
   assert.deepEqual(evidence, [['大熊猫的资料'], undefined, ['HTTPS 的资料']]);
 });
+
+test('while a lesson is being written the director draws nothing, and a run in flight is dropped', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const director = createBoardDirector({complete: async function* () { await gate; yield '{"op":"scene","title":"抢先画的"}\n{"op":"put","block":{"id":"z","t":"sticky","text":"导演画的"}}\n'; }});
+  const early = director.run({owner: 'c', trigger: 'user', turns: [{role: 'user', text: '给十二讲讲属性相克'}]});
+  director.hold('c');
+  release();
+  await early;
+  assert.equal(director.scene('c').blocks.length, 0, 'the picture guessed for the same question never shows');
+  assert.equal((await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'assistant', text: '好，我想想怎么讲'}]})).reason, 'lesson');
+  director.release('c');
+  assert.equal((await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'assistant', text: 'x'}]})).reason, 'drawn');
+});

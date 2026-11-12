@@ -101,8 +101,11 @@ const BLOCKS = {
     }).filter(Boolean), 'f');
     const known = new Set(nodes.map(node => node.id));
     const edges = list(raw.edges, BOARD_LIMITS.edges).map(edge => {
-      const [from, to, label] = Array.isArray(edge) ? edge : [edge?.from, edge?.to, edge?.label];
-      return known.has(from) && known.has(to) && from !== to ? [from, to, text(label, 16)] : null;
+      const [from, to, label, said] = Array.isArray(edge) ? edge : [edge?.from, edge?.to, edge?.label, edge?.q];
+      if (!known.has(from) || !known.has(to) || from === to) return null;
+      // An optional fourth entry: the words of V's the arrow itself hangs on.
+      const q = text(said, 40);
+      return q ? [from, to, text(label, 16), q] : [from, to, text(label, 16)];
     }).filter(Boolean);
     return nodes.length >= 2 ? optional({nodes, edges}, 'h', text(raw.h, 40)) : null;
   },
@@ -138,7 +141,7 @@ export function focusExists(scene, id) {
   return Boolean(block) && (itemId === undefined || focusTargets(block).some(item => item.id === itemId));
 }
 
-const loose = value => value.replace(/[\s，。！？、；：,.!?;:"'“”‘’（）()]/gu, '');
+export const loose = value => value.replace(/[\s，。！？、；：,.!?;:"'“”‘’（）()]/gu, '');
 // The words in V's reply that an item hangs on: the director's quote when it
 // is really there, else the item's own wording where V used the same words
 // (its heading, a leading part of it, or its number with unit).
@@ -182,8 +185,16 @@ export function spokenProgress(scene, spoken, index) {
     const latest = Math.max(found, heard.lastIndexOf(quote));
     if (latest > at) { at = latest; focus = `${block.id}/${item.id}`; }
   }
+  // An arrow waits for both of its ends, and for its own words when it has some
+  // ("grass beats water" is often said after both have been introduced).
+  for (const block of scene.blocks) if (block.t === 'flow') for (const [from, to, , said] of block.edges) {
+    const quote = said ? loose(said) : '';
+    if (ahead.includes(`${block.id}/${from}`) || ahead.includes(`${block.id}/${to}`)
+      || quote && all.includes(quote) && heard.indexOf(quote.slice(0, Math.min(quote.length, 4))) < 0) ahead.push(edgeId(block, from, to));
+  }
   return {focus, ahead};
 }
+export const edgeId = (block, from, to) => `${block.id}/${from}>${to}`;
 export const spokenFocus = (scene, spoken, index) => spokenProgress(scene, spoken, index).focus;
 
 /** Apply a normalized operation. Returns the same object when nothing changes. */
