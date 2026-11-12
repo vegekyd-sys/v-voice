@@ -138,7 +138,7 @@ export function parseLesson(text) {
  * `complete({messages, signal})` yields text chunks (the director's client).
  * `director.present(owner, ops, holdMs)` puts the lesson on the call's board.
  */
-export function createLessonWriter({complete, fallback = null, director, now = Date.now, record = () => {}, attemptMs = 10000, totalMs = 16000} = {}) {
+export function createLessonWriter({complete, fallback = null, director, now = Date.now, record = () => {}, attemptMs = 7000, totalMs = 12000} = {}) {
   // What each call was last told, so a second lesson builds on the first.
   const told = new Map();
   return {
@@ -156,12 +156,12 @@ export function createLessonWriter({complete, fallback = null, director, now = D
           ...(lessonReference(`${topic} ${ask}`) ? {reference: lessonReference(`${topic} ${ask}`)} : {})})}];
       let lesson = null, text = '', failure = '';
       // The preferred writer first; if it gives nothing usable, the director's own model.
-      // The caller is waiting in silence: one writer gets ten seconds, both
-      // together sixteen (a slow one once kept a call waiting for thirty-three).
+      // The caller is waiting in silence: one writer gets seven seconds, both
+      // together twelve (a slow one once kept a call waiting for thirty-three).
       for (const write of [complete, fallback].filter(Boolean)) {
         text = ''; failure = '';
         const left = Math.min(attemptMs, totalMs - (now() - started));
-        if (left < 1500) break;
+        if (left < Math.min(1500, attemptMs)) break;
         const limit = new AbortController(), stop = () => limit.abort(), timer = setTimeout(stop, left);
         if (signal?.aborted) stop(); else signal?.addEventListener('abort', stop, {once: true});
         try { for await (const chunk of write({signal: limit.signal, messages})) text += chunk; } catch (error) { failure = String(error?.message ?? error).slice(0, 240); }
