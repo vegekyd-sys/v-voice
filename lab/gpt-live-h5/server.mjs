@@ -1182,6 +1182,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const directorWriter=boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'1600'});
     lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,
       ...(lessonModel?{complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MODEL:lessonModel,VOICE_BOARD_REASONING:lessonReasoning,VOICE_BOARD_MAX_TOKENS:lessonReasoning?'4000':'1600'}),fallback:directorWriter}:{complete:directorWriter})}):null;
+    // How a lesson is made (to compare): "service" - written here, with what is looked up first;
+    // "backend" - V's own agent writes it with its tools; "parallel" - no lesson tool at all,
+    // V answers in its own words and the answer is illustrated as it is spoken.
+    if(lesson)lesson.source=['backend','parallel'].includes(process.env.VOICE_BOARD_LESSON_SOURCE)?process.env.VOICE_BOARD_LESSON_SOURCE:'service';
     const directVoice=createDirectVoiceService({gateway,wsModule,lesson,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',

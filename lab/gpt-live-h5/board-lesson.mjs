@@ -277,6 +277,23 @@ export function createLessonWriter({complete, fallback = null, director, now = D
       return {say, sentences: lesson.say};
     },
     /**
+     * The other way to write a lesson (experiment): V's own backend agent, with
+     * its memory and tools, is handed the writer's instructions as a brief and
+     * answers with the lesson. `brief` is what to ask it; `accept` takes its reply.
+     */
+    brief({topic, audience = '', ask = ''} = {}) {
+      return `电话里用户请你讲解一件事，屏幕上有一页手账画面会跟着你的讲解出现。需要今天的信息、用户自己的项目或记录时，先用你自己的工具查清楚（查不到就如实少讲），再按下面的规范写。你的最终回复只能是规范里的那个 JSON 对象本身，前后不要任何别的文字，也不要另写口头摘要。\n\n这次的输入：${JSON.stringify({topic: String(topic ?? '').slice(0, 400), audience: String(audience ?? '').slice(0, 80) || '成年人', ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(lessonReference(`${topic} ${ask}`) ? {reference: lessonReference(`${topic} ${ask}`)} : {})})}\n\n===== 规范 =====\n${LESSON_INSTRUCTIONS}`;
+    },
+    accept({owner, text, topic, audience = '', ask = '', startedAt = now()} = {}) {
+      const lesson = parseLesson(String(text ?? ''));
+      const say = lesson ? spokenScript(lesson.say) : '';
+      record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ask, ok: Boolean(lesson), writer: 'backend', durationMs: now() - startedAt, say: lesson?.say ?? null, drawn: lesson?.ops ?? null, ...(lesson ? {} : {head: String(text ?? '').slice(0, 200)})});
+      if (!lesson) { director.release?.(owner); return null; }
+      told.delete(owner); told.set(owner, {title: lesson.title, say});
+      director.present(owner, lesson.ops, Math.round(Array.from(say).length / (latin(say) ? 13 : 5) * 1000) + 8000);
+      return {say, sentences: lesson.say};
+    },
+    /**
      * A page for an answer V gave in its own words (after a search, from
      * memory, or simply unprompted). The quick writer goes first: V is
      * already speaking. Returns {ops, add, writer} or null.

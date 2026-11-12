@@ -268,7 +268,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // Local Feishu reads are declared only when this service has them configured.
   if(!['courtesy','provider','assisted'].includes(nativePlaybackPolicy))throw Error('Unsupported native playback policy');
   const localTools=TOOLS.filter(t=>(calendar||larkForActor||t.name!=='feishu_calendar')&&(larkRead||larkForActor||t.name!=='lark_read'));
-  const lessonTools=s=>lesson?.available&&s.display&&!s.unidentified&&!s.publicVoice&&!s.actorScoped?[LESSON_TOOL]:[];
+  const lessonTools=s=>lesson?.available&&lesson.source!=='parallel'&&s.display&&!s.unidentified&&!s.publicVoice&&!s.actorScoped?[LESSON_TOOL]:[];
   const sessionTools=s=>[...lessonTools(s),...localTools.filter(t=>(s.display||t.name!=='show_content')&&(!['feishu_calendar','lark_read'].includes(t.name)||Boolean(s.actorReader)||!s.sessionBound&&Boolean(t.name==='feishu_calendar'?calendar:larkRead))).map(t=>s.actorReader&&t.name==='feishu_calendar'?{...t,description:t.description.replace('天懿本人','当前已验证来电账号本人')}:s.actorReader&&t.name==='lark_read'?{...t,description:t.description.replace('本人的飞书资料','当前已验证来电账号本人的飞书资料')}:s.sessionBound&&t.name==='memory_search'?{...t,description:'查询当前会话可用的记忆，权限沿用会话已有边界。'}:s.sessionBound&&t.name==='delegate_to_v'?{...t,description:t.description.replace('个人 V','当前会话的 V')}:s.sessionBound&&t.name==='openclaw_tool'?{...t,description:'执行当前会话可用的 OpenClaw 原生工具，遵守会话既有权限；arguments 传工具参数的 JSON。复杂任务或需要后台模型时使用 delegate_to_v。外部操作遵守当前用户授权。'}:t),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[]),...(s.location?[LOCATION_TOOL]:[])].map(t=>s.location?({delegate_to_v:LOCATION_DELEGATE_TOOL,openclaw_agent_control:LOCATION_CONTROL_TOOL}[t.name]??t):t);
   // A successful native end_call can return no further speech at all. It is
   // already the model's semantic decision; never infer ending from keywords.
@@ -596,6 +596,16 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
             // Today's news, or the caller's own projects: looked up first, with the tool
             // the model asked for or the one the words call for.
             s.lessonPending=call.callId;
+            // (experiment) V's backend agent writes the lesson itself, with its own memory and tools.
+            if(lesson.source==='backend'&&!s.backend.snapshot()){
+              const startedAt=Date.now();let script=null;
+              try{const reply=await s.backend.run({question:lesson.brief({topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text}),context:'',callId:call.callId,signal:controller.signal});
+                script=lesson.accept({owner:s.id,text:reply?.result,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,startedAt});}
+              catch(error){audit({type:'lesson.backend-failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});lesson.accept({owner:s.id,text:'',topic:call.args.topic,startedAt});}
+              if(s.lessonPending===call.callId)s.lessonPending=null;
+              if(current(s)&&s.epoch===epoch){const say=script?.say??'画面这次没准备好，我直接跟你说吧。';ownerBridge.completeBackgroundTool(call.callId,{result:say},{spokenText:say,displayedFullResult:true});}
+              result={lessonDelivered:Boolean(script),writer:'backend'};
+            }else{
             const lookup=call.research??(name=>name&&allowedTools.has(name)?{name,args:{query:String(call.args.topic).slice(0,200)}}:null)(lessonResearch(`${call.args.topic} ${s.latestUserTurn?.text??''}`));
             let reference='';
             if(lookup){
@@ -609,6 +619,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
               ownerBridge.completeBackgroundTool(call.callId,{result:say},{spokenText:say,displayedFullResult:true});
             }
             result={lessonDelivered:Boolean(script)};
+            }
           }
         }
         if(!['send_task_updates','openclaw_agent_control','get_current_location','explain_on_board'].includes(call.name))result=await execute(call.name,call.args,call.callId,controller.signal);
