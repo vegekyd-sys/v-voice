@@ -206,3 +206,27 @@ test('with lessons on, a request to explain is not guessed at; what V then says 
   assert.notEqual((await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '给我讲讲火箭'}, {role: 'assistant', text: '火箭靠往下喷气飞上去。'}]})).reason, 'deferred');
   assert.equal(models, 2);
 });
+
+test('with an illustrator the board draws one way: nothing before V has answered, then a page for the answer', async () => {
+  const calls = [];
+  const page = [{op: 'scene', title: '胶卷 vs 数码', lesson: true, late: true}, {op: 'put', block: {id: 'n', t: 'sticky', text: '差别在存影像的东西', q: '存影像的东西'}}];
+  let models = 0;
+  const director = createBoardDirector({complete: async function* () { models++; }, illustrate: async args => { calls.push(args); return args.said.includes('不知道') ? null : {ops: page, add: false, writer: 'preferred'}; }});
+  const long = '最核心的是存影像的东西不一样：胶卷相机靠涂了银盐的胶卷感光，拍一张耗一格，要洗出来才能看到；数码相机靠电子传感器，拍了马上能看。';
+  const turns = [{role: 'user', text: '数码相机和胶卷相机的区别'}, {role: 'assistant', text: long}];
+  assert.equal((await director.run({owner: 'c', trigger: 'user', turns: turns.slice(0, 1)})).reason, 'waiting');
+  assert.equal((await director.run({owner: 'c', trigger: 'assistant_progress', turns})).reason, 'waiting');
+  const seen = [];
+  const drawn = await director.run({owner: 'c', trigger: 'assistant_end', turns, onOp: op => seen.push(op.op)});
+  assert.deepEqual([drawn.reason, seen, models, calls.length], ['drawn', ['sync'], 0, 1]);
+  assert.deepEqual([calls[0].asked, calls[0].said, calls[0].screen], ['数码相机和胶卷相机的区别', long, null]);
+  assert.deepEqual([director.scene('c').title, director.scene('c').late], ['胶卷 vs 数码', true]);
+  // The same answer is not drawn twice; a short reply leaves the page alone.
+  assert.equal((await director.run({owner: 'c', trigger: 'assistant_end', turns, clientRev: director.scene('c').rev})).reason, 'same');
+  assert.equal((await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '好的'}, {role: 'assistant', text: '好，有需要再叫我。'}]})).reason, 'none');
+  assert.equal(calls.length, 1);
+  // A lookup makes even a short answer worth a page.
+  director.observe({type: 'tool.delivered', name: 'web_search', voiceSessionId: 'c', result: {results: [{title: '上海明天阴转小雨'}]}});
+  const weather = await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '明天天气'}, {role: 'assistant', text: '上海明天阴转小雨，气温16到20度。'}]});
+  assert.deepEqual([weather.reason, calls.at(-1).evidence.length], ['drawn', 1]);
+});

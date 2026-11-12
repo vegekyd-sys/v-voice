@@ -16,7 +16,9 @@ export const BOARD_MARKS = Object.freeze(['ring', 'underline', 'check', 'cross',
 // `pending` is the title of a new picture the director has announced but not
 // yet drawn; the picture on screen stays until its first block arrives.
 // `lesson`: the picture was written together with what V says (board-lesson.mjs); its pieces appear as they are spoken.
-export const emptyScene = () => ({rev: 0, serial: 0, title: '', blocks: [], focus: '', pending: null, lesson: false});
+// `late`: a lesson-style picture drawn for words V had already begun to say
+// (an illustration of V's own answer); what has been said is shown at once.
+export const emptyScene = () => ({rev: 0, serial: 0, title: '', blocks: [], focus: '', pending: null, lesson: false, late: false});
 
 const text = (value, limit) => typeof value === 'string' || typeof value === 'number'
   ? Array.from(String(value).replace(/\s+/gu, ' ').trim()).slice(0, limit).join('') : '';
@@ -221,7 +223,7 @@ export function normalizeOp(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   switch (raw.op) {
     case 'none': case 'clear': return {op: raw.op};
-    case 'scene': return raw.lesson === true ? {op: 'scene', title: text(raw.title, 40), lesson: true} : {op: 'scene', title: text(raw.title, 40)};
+    case 'scene': return raw.lesson === true ? {op: 'scene', title: text(raw.title, 40), lesson: true, ...(raw.late === true ? {late: true} : {})} : {op: 'scene', title: text(raw.title, 40)};
     case 'del': { const id = ident(raw.id, ''); return id ? {op: 'del', id} : null; }
     case 'focus': {
       const id = typeof raw.id === 'string' ? raw.id : '';
@@ -245,7 +247,7 @@ export function focusExists(scene, id) {
   return Boolean(block) && (itemId === undefined || focusTargets(block).some(item => item.id === itemId));
 }
 
-export const loose = value => value.replace(/[\s，。！？、；：,.!?;:"'“”‘’（）()\-—]/gu, '').toLowerCase();
+export const loose = value => value.replace(/[\s，。！？、；：,.!?;:"'“”‘’（）()\-—*]/gu, '').toLowerCase();
 // The start of a quote that counts as "V has begun saying it". Four Chinese
 // characters are distinctive; four Latin letters ("ther") are not.
 export const quoteHead = quote => quote.slice(0, Math.min(quote.length, /^[\x00-\x7f]*$/u.test(quote) ? 10 : 4));
@@ -317,10 +319,10 @@ export function applyOp(scene, op) {
       // Announcing the picture already on screen is not a new picture.
       if (scene.blocks.length && scene.pending === null && op.title === scene.title) return scene;
       if (scene.blocks.length) return scene.pending === op.title ? scene : next({pending: op.title});
-      return next({serial: scene.serial + 1, title: op.title, blocks: [], focus: '', pending: null, lesson: op.lesson === true});
+      return next({serial: scene.serial + 1, title: op.title, blocks: [], focus: '', pending: null, lesson: op.lesson === true, late: op.late === true});
     case 'clear': return scene.blocks.length || scene.title || scene.pending !== null ? next({title: '', blocks: [], focus: '', pending: null}) : scene;
     case 'put': {
-      if (scene.pending !== null) return next({serial: scene.serial + 1, title: scene.pending, blocks: [op.block], focus: '', pending: null, lesson: false});
+      if (scene.pending !== null) return next({serial: scene.serial + 1, title: scene.pending, blocks: [op.block], focus: '', pending: null, lesson: false, late: false});
       const index = scene.blocks.findIndex(block => block.id === op.block.id);
       if (index >= 0) {
         if (JSON.stringify(scene.blocks[index]) === JSON.stringify(op.block)) return scene;
@@ -358,7 +360,7 @@ export function normalizeScene(raw) {
   let scene = {...emptyScene(), serial: Number.isSafeInteger(raw.serial) ? raw.serial : 0, title: text(raw.title, 40)};
   for (const block of raw.blocks) { const op = normalizeOp({op: 'put', block}); if (op) scene = applyOp(scene, op); }
   const focus = typeof raw.focus === 'string' && focusExists(scene, raw.focus) ? raw.focus : '';
-  return {...scene, focus, pending: typeof raw.pending === 'string' ? text(raw.pending, 40) : null, lesson: raw.lesson === true, rev: raw.rev};
+  return {...scene, focus, pending: typeof raw.pending === 'string' ? text(raw.pending, 40) : null, lesson: raw.lesson === true, late: raw.late === true, rev: raw.rev};
 }
 
 /** The scene as the director model reads it back: compact, ids first. */

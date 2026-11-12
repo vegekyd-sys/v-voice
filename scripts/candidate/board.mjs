@@ -96,7 +96,7 @@ const KIT = [
     {id: 't', t: 'tiles', h: '摆一摆', items: [{id: 'a', rows: 2, cols: 2, h: '4 块', tone: 'butter', q: '先拿四块积木'}, {id: 'b', rows: 3, cols: 3, h: '9 块', tone: 'peach', q: '再拿九块积木'}, {id: 'c', rows: 4, cols: 4, h: '16 块', tone: 'sky', q: '十六块积木'}, {id: 'd', n: 25, per: 5, lit: 0, h: '25 块？', q: '那二十五块'}]},
     {id: 'f', t: 'formula', items: [{id: 'x', h: '4', d: '每边几块', tone: 'sky', q: '所以四乘四'}, {id: 'm', h: '×', q: '所以四乘四'}, {id: 'y', h: '4', d: '有几排', tone: 'sky', q: '所以四乘四'}, {id: 'e', h: '=', q: '等于十六'}, {id: 'r', h: '16', d: '一共', tone: 'butter', mark: 'ring', q: '等于十六'}]}]],
   [/电动车|油车/u, '电动车和油车', [
-    {id: 'v', t: 'versus', sides: [{h: '特斯拉 Model 3', img: '特斯拉 Model 3'}, {h: '丰田卡罗拉', img: '丰田卡罗拉'}], items: [{id: 'a', h: '动力', icon: '⚙️', cells: ['电池 + 电机', '汽油发动机'], q: '动力上'}, {id: 'b', h: '补能', icon: '🔌', cells: ['在家过夜充', '几分钟加满'], win: 1, q: '补能'}, {id: 'c', h: '每公里', icon: '💰', cells: ['便宜不少', '油费更高'], win: 0, q: '每公里花费'}, {id: 'd', h: '长途', icon: '🛣️', cells: ['要规划充电', '更省心'], win: 1, q: '跑长途'}]},
+    {id: 'v', t: 'versus', sides: [{h: '特斯拉 Model 3', img: '特斯拉 Model 3'}, {h: '丰田卡罗拉', img: '丰田卡罗拉'}], items: [{id: 'a', h: '动力', icon: '⚙️', cells: ['电池 + 电机', '汽油发动机'], q: '动力上'}, {id: 'b', h: '补能', icon: '🔌', cells: ['在家过夜充', '几分钟加满'], win: 1, q: '补能'}, {id: 'c', h: '每公里', icon: '💰', cells: ['**便宜**不少', '油费更高'], win: 0, q: '每公里花费'}, {id: 'd', h: '长途', icon: '🛣️', cells: ['要规划充电', '更省心'], win: 1, q: '跑长途'}]},
     {id: 'o', t: 'overlap', a: {h: '电动车', points: ['电机', '充电桩'], q: '特斯拉靠电机'}, b: {h: '油车', points: ['发动机', '加油站'], q: '卡罗拉靠发动机'}, both: {h: '都有', points: ['四个轮子', '要上保险'], q: '都有四个轮子'}}]],
   [/旧金山|行程/u, '旧金山三日', [
     {id: 'd1', t: 'timeline', w: 'third', h: '第一天', items: [{id: 'a', when: '上午', h: '渔人码头', img: '渔人码头', q: '渔人码头'}, {id: 'b', when: '下午', h: '恶魔岛', d: '提前订票', img: '恶魔岛', q: '恶魔岛'}]},
@@ -108,7 +108,7 @@ const KIT = [
     {id: 'n', t: 'sticky', text: '三百米以下的生意', q: '低空经济是三百米'}]],
   [/关系/u, '电动车和低空经济', [
     {id: 'o', t: 'overlap', a: {h: '电动车', points: ['地上跑', '载人拉货'], img: '比亚迪', q: '电动车在地上跑'}, b: {h: '飞行器', points: ['天上飞', '送外卖、载人'], img: '亿航EH216', q: '飞行器在天上飞'}, both: {h: '共用', points: ['电池', '电机', '电控'], q: '它们共用电池'}},
-    {id: 'n', t: 'sticky', text: '电动车先把路修好了', q: '所以电动车先把路'}]],
+    {id: 'n', t: 'sticky', text: '电动车先把**路**修好了', q: '所以电动车先把路'}]],
   [/乐高/u, '乐高怎么来的', [
     {id: 'h', t: 'timeline', items: [{id: 'a', when: '1932', h: '木工坊', icon: '🪵', q: '一九三二年'}, {id: 'b', when: '1949', h: '塑料积木', icon: '🧱', q: '一九四九年'}, {id: 'c', when: '1958', h: '凸点定型', icon: '🔩', mark: 'ring', q: '一九五八年'}, {id: 'd', when: '1978', h: '小人仔', img: '乐高小人', q: '一九七八年'}]}]],
 ];

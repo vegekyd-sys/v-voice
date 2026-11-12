@@ -1737,3 +1737,42 @@ test('call c2c47e58: a second request for the lesson being given writes no secon
  f.call('explain_on_board',{topic:'超梦'},'third');
  assert(await until(()=>prepared===2),'a new request gets its own lesson');
 });
+
+test('call 649709d0: a lesson about today looks it up first; a search made for a request to explain becomes the lesson\'s research',async t=>{
+ const prepared=[],searched=[];
+ const lesson={available:true,prepare:async args=>{prepared.push({topic:args.topic,reference:args.reference});return {say:'黄仁勋今天辞任了。'};}};
+ const f=await fixture(async args=>{if(args.name==='web_search')searched.push(args.args?.query);return {ok:true,output:{results:[{title:'英伟达公告',url:'https://example.com/n'}]}};},'grok',{lesson});t.after(()=>f.service.dispose());
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'讲解一下今天黄仁勋的事情'});
+ f.call('explain_on_board',{topic:'今天黄仁勋的事情'},'direct');
+ assert(await until(()=>prepared.length===1));
+ assert.deepEqual(searched,['今天黄仁勋的事情'],'the lesson searched before it was written');
+ assert.match(prepared[0].reference,/英伟达公告/u);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'你先网上查一查，再给我讲解一下苹果折叠屏和竞品的比较'});
+ f.call('web_search',{query:'苹果折叠屏 竞品 对比'},'searching');
+ assert(await until(()=>prepared.length===2));
+ assert.deepEqual(searched.at(-1),'苹果折叠屏 竞品 对比','the search the model asked for was the one made');
+ assert.match(prepared[1].reference,/英伟达公告/u);
+ assert(f.audit.some(e=>e.type==='lesson.rerouted'&&e.from==='web_search'));
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'具体的讲解一下'});
+ f.call('end_call',{},'hangup');
+ assert(await until(()=>prepared.length===3),'asked to explain, V does not hang up');
+ assert(!f.client.sent.some(e=>e.type==='end.accepted'));
+});
+
+test('call 4132718f: while a lesson is being written V may say one short line, not answer the question itself',async t=>{
+ let release;const gate=new Promise(resolve=>{release=resolve;});
+ const lesson={available:true,prepare:async()=>{await gate;return {say:'电动车靠电池和电机跑。'};}};
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{lesson});t.after(()=>f.service.dispose());
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'给我讲解一下电动汽车和普通汽车的区别'});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'lesson',name:'explain_on_board',arguments:JSON.stringify({topic:'电动汽车和燃油车的区别'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.call'&&e.name==='explain_on_board')));
+ f.event({type:'response.output_audio.started',response_id:'ack',tts_type:'default'});
+ modelSays(f,'ack','好，我从最实际的角度讲。');
+ await delay(10);
+ assert(!f.audit.some(e=>e.type==='speech.lesson-preempt-cut'),'a short line is let through');
+ f.event({type:'response.output_audio.started',response_id:'own',tts_type:'default'});
+ modelSays(f,'own','简单说最核心的：普通车靠烧汽油或者柴油，有发动机，要加油；','电动车靠电池供电，有电机，要充电。加油几分钟满，充电快则半小时慢则几小时；油车跑远了随便找加油站。');
+ assert(await until(()=>f.audit.some(e=>e.type==='speech.lesson-preempt-cut')),'its own full answer is stopped before it is heard');
+ release();
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.name==='explain_on_board')));
+});

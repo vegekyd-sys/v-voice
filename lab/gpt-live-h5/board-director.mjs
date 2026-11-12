@@ -87,10 +87,19 @@ export function boardRequest({trigger, scene, turns, evidence}) {
  * Each owner (a voice session) has its own scene; a new run for the same owner
  * retires the one still writing.
  */
+// An answer worth a picture: a few sentences, or anything that follows a lookup.
+const worthDrawing = (said, looked) => { const length = Array.from(said.replace(/\s+/gu, /[A-Za-z]{4}/u.test(said) ? ' ' : '')).length, latin = /^[\x00-\x7f]*$/u.test(said.slice(0, 40)); return length >= (looked ? 16 : latin ? 150 : 56); };
 // Words that usually bring a lesson (board-lesson.mjs) rather than a picture drawn after the fact.
 export const mayAskForLesson = text => /讲解|解释|讲讲|讲一|科普|再讲|再说一遍|搞不懂|听不懂|没听懂|没懂|给我看|\bexplain\b/iu.test(String(text ?? ''));
 /** `defers(text)`: the caller's words for which the first guess is left to someone else (lesson mode). */
-export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false} = {}) {
+/**
+ * `illustrate({owner, asked, said, evidence, screen, signal})`: with it the
+ * board has one way of drawing (board-lesson.mjs). The line-by-line director
+ * below is not used: once V's answer is complete as text (seconds before its
+ * audio ends) the answer is illustrated in the lesson's own vocabulary, and
+ * shown as V's voice reaches each piece. Returns {ops, add} or null.
+ */
+export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false, illustrate = null} = {}) {
   const owners = new Map();
   const owner = id => {
     let row = owners.get(id);
@@ -173,6 +182,27 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       const abort = () => controller.abort();
       if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, {once: true});
       if (clientRev !== row.scene.rev) onOp({op: 'sync', scene: row.scene});
+      if (illustrate) {
+        try {
+          // Nothing is guessed before V has answered, and nothing is redrawn mid-sentence.
+          if (trigger !== 'assistant_end') return report('waiting', {rev: row.scene.rev});
+          const text = turn => typeof turn === 'string' ? turn : String(turn?.text ?? '');
+          const said = text(turns?.findLast(turn => turn?.role === 'assistant')), asked = text(turns?.findLast(turn => turn?.role === 'user'));
+          // A short reply (a greeting, "let me look") leaves the page as it is, unless a lookup just answered.
+          if (!worthDrawing(said, row.evidence.length > 0)) return report('none', {rev: row.scene.rev});
+          if (row.illustrated === said) return report('same', {rev: row.scene.rev});
+          const made = await illustrate({owner: id, asked, said, evidence: row.evidence, screen: sceneDigest(row.scene), signal: controller.signal});
+          if (controller.signal.aborted) return report('superseded');
+          if (!made?.ops?.length) return report('none', {rev: row.scene.rev});
+          row.illustrated = said;
+          // A new page, or more pieces on the page already up (which then follows V's voice like the rest).
+          row.scene = made.add ? {...row.scene, lesson: true, late: true, rev: row.scene.rev + 1} : {...row.scene, blocks: [], pending: null, title: ''};
+          for (const op of made.ops) { const next = applyOp(row.scene, op); if (next !== row.scene) { row.scene = next; drawn.push(op); } }
+          onOp({op: 'sync', scene: row.scene});
+          return report('drawn', {ops: drawn.length, rev: row.scene.rev, writer: made.writer});
+        } catch (error) { return report(controller.signal.aborted ? 'superseded' : 'error', {error: String(error?.message ?? error).slice(0, 120)}); }
+        finally { signal?.removeEventListener('abort', abort); if (row.controller === controller) row.controller = null; }
+      }
       let ops = 0, firstOpMs = null, none = false, retired = false;
       const parser = createLineParser(raw => {
         if (controller.signal.aborted || ops >= MAX_OPS) return;
@@ -270,7 +300,7 @@ export function boardCompletionFromEnv(env = process.env, {fetchImpl} = {}) {
       : null;
   return provider ? createChatCompletionStream({...provider, fetchImpl, ...(Number(env.VOICE_BOARD_MAX_TOKENS) > 0 ? {maxTokens: Number(env.VOICE_BOARD_MAX_TOKENS)} : {})}) : null;
 }
-export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl} = {}) {
+export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl, illustrate = null} = {}) {
   const complete = boardCompletionFromEnv(env, {fetchImpl});
   // A private day file beside the Candidate's own call records, when it has such a directory.
   const directory = env.VOICE_BOARD_LOG_DIR ?? env.RTC_H5_TRANSCRIPT_DIR;
@@ -278,5 +308,5 @@ export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl} = {})
     const at = new Date(), file = join(directory, `board-${at.toISOString().slice(0, 10)}.jsonl`);
     void mkdir(directory, {recursive: true, mode: 0o700}).then(() => appendFile(file, JSON.stringify({at: at.toISOString(), ...event}) + '\n', {mode: 0o600})).catch(() => {});
   } : undefined;
-  return complete ? createBoardDirector({audit, complete, record, ...(env.VOICE_BOARD_LESSON === '1' ? {defers: mayAskForLesson} : {})}) : null;
+  return complete ? createBoardDirector({audit, complete, record, ...(env.VOICE_BOARD_LESSON === '1' ? {defers: mayAskForLesson, ...(illustrate ? {illustrate} : {})} : {})}) : null;
 }

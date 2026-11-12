@@ -154,3 +154,30 @@ test('the writer is given the diagram kit, and a diagram\'s piece appears where 
   assert.equal(tiles.items[0].q, '先拿四块积木每边', 'not on the first passing mention of 积木');
   assert.deepEqual(formula.items.map(item => item.q), ['所以四乘四等于十', '所以四乘四等于十', '所以四乘四等于十', '所以四乘四等于十', '等于十六'], 'a sign comes with the term before it');
 });
+
+test('V\'s own answer is illustrated in the lesson\'s vocabulary, hung on the words V said', async () => {
+  const {parseIllustration, ILLUSTRATE_INSTRUCTIONS} = await import('./board-lesson.mjs');
+  const said = '最核心的是存影像的东西不一样：胶卷相机靠胶卷感光，拍一张耗一格。数码相机靠电子传感器，拍了马上能看。你更想用哪种？';
+  const reply = JSON.stringify({mode: 'new', title: '胶卷 vs 数码', blocks: [{id: 'v', t: 'versus', sides: ['胶卷相机', '数码相机'], items: [{id: 'a', h: '感光', cells: ['胶卷', '**电子传感器**'], q: '胶卷相机靠胶卷感光'}, {id: 'b', h: '看照片', cells: ['洗出来', '马上能看'], win: 1, q: '拍了马上能看'}]}, {id: 'n', t: 'sticky', text: '差别在存影像的东西'}]});
+  const made = parseIllustration(reply, said);
+  assert.deepEqual([made.add, made.ops[0].lesson, made.ops[0].late, made.ops.map(op => op.block?.t ?? op.op)], [false, true, true, ['scene', 'versus', 'sticky']]);
+  const scene = made.ops.reduce(applyOp, emptyScene());
+  assert.equal(scene.late, true);
+  const upTo = words => spokenProgress(scene, said, said.indexOf(words) + words.length).ahead;
+  assert.deepEqual(upTo('不一样：胶卷相机靠'), ['n', 'v/b']);
+  assert.deepEqual(upTo('拍了马上能看'), []);
+  // Added to the page already up: only new pieces, under ids of their own.
+  const added = parseIllustration(JSON.stringify({mode: 'add', blocks: [{id: 'v', t: 'sticky', text: '还要有充电位'}]}), '唯一要提前搞定的就是固定充电位，不然天天找桩反而麻烦。', ['v', 'n']);
+  assert.deepEqual([added.add, added.ops.map(op => [op.op, op.block.id])], [true, [['put', 'x3']]]);
+  assert.equal(parseIllustration(JSON.stringify({mode: 'add', blocks: [{id: 'q', t: 'sticky', text: 'x'}]}), 'x', []).add, false, 'nothing to add to: a new page');
+  assert.deepEqual(parseIllustration('{"none":true}', said), {ops: [], add: false, none: true});
+  assert.equal(parseIllustration('不会', said), null);
+  assert.match(ILLUSTRATE_INSTRUCTIONS, /"t":"versus"/u);
+  // The quick writer goes first; the page is described to it.
+  const asked = [];
+  const writer = createLessonWriter({director: {present() {}}, complete: async function* () { asked.push('slow'); yield reply; }, fallback: async function* ({messages}) { asked.push(JSON.parse(messages[1].content)); yield reply; }});
+  const drawn = await writer.illustrate({owner: 'c', asked: '区别是什么', said, evidence: [{name: 'web_search', text: '胶卷是银盐'}], screen: {title: '相机史', blocks: [{id: 't', t: 'timeline', items: []}]}});
+  assert.equal(drawn.writer, 'preferred');
+  const request = asked.find(item => typeof item === 'object');
+  assert.deepEqual([request.said, request.screen, request.evidence], [said, {title: '相机史', blocks: [{id: 't', t: 'timeline'}]}, '【web_search】胶卷是银盐']);
+});

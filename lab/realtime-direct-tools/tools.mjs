@@ -22,13 +22,16 @@ export const TOOLS=[
  {type:'function',name:'end_call',description:'只结束当前电话，不取消已启动的后台任务。需要取消任务时必须另外调用 cancel_task。用户向你告别，例如“好了，那我们就聊到这里”“拜拜啦”“今天先这样，下次再聊”，立即调用本工具，不只口头告别，也不等用户再次要求挂断。先理解上下文：讨论挂断功能、引用别人的告别、转话题继续提问或取消一个任务都不要挂断。调用成功后简短告别，系统等待真实告别音频播完才关闭。',parameters:object({})}
 ];
 // Declared only where the call board's lesson mode is on (experiment).
-export const LESSON_TOOL={type:'function',name:'explain_on_board',description:'讲解画面。用户要你讲解、解释、讲讲、介绍、科普一个东西时调用：原理、流程、来历、是什么、为什么、谁克谁、有什么区别；用户说没听懂、搞不懂、让你换个简单的说法、换个例子、用某样东西来讲、再讲一遍，或者说“摆给我看”“画给我看”“演示一下”时也调用；问两样东西的关系、区别时也调用。讲稿和屏幕上的画面（带图片）会一起准备好，由你的声音逐句讲出来，画面跟着出现，所以讲解时不要另外去生成图片。调用后只说一句很短的话（比如“好，我想想怎么讲”），不要自己先讲一遍，也不要在讲完后重复。topic 写清要讲什么，保留用户的具体要求（比如“用传说宝可梦举例”“讲得更简单”）；audience 写讲给谁听（比如“5岁小朋友十二”“成年人”）。一两句话就能答完的问题、闲聊、要最新信息的查询（天气、新闻、价格、日程）、让你做事或生成文件不要用。',parameters:object({topic:str,audience:str},['topic'])};
+export const LESSON_TOOL={type:'function',name:'explain_on_board',description:'讲解画面。用户要你讲解、解释、讲讲、介绍、科普一个东西时调用：原理、流程、来历、是什么、为什么、谁克谁、有什么区别；用户说没听懂、搞不懂、让你换个简单的说法、换个例子、用某样东西来讲、再讲一遍，或者说“摆给我看”“画给我看”“演示一下”时也调用；问两样东西的关系、区别时也调用。讲稿和屏幕上的画面（带图片）会一起准备好，由你的声音逐句讲出来，画面跟着出现，所以讲解时不要另外去生成图片。调用后只说一句很短的话（比如“好，我想想怎么讲”），不要自己先讲一遍，也不要在讲完后重复。topic 写清要讲什么，保留用户的具体要求（比如“用传说宝可梦举例”“讲得更简单”）；audience 写讲给谁听（比如“5岁小朋友十二”“成年人”）。一两句话就能答完的问题、要讲的是今天的新闻、最新的产品、或者用户自己的项目和记录时也直接调用它：它会先去查，再讲，你不用自己先搜。一两句话就能答完的问题、闲聊、单纯查个事实（天气、日程、几点了）、让你做事或生成文件不要用。',parameters:object({topic:str,audience:str},['topic'])};
 // With the lesson tool on offer the model is told when to prefer it; and a
 // request to explain that it hands to the backend anyway is turned into a lesson.
-export const LESSON_ROUTING='讲解画面：用户请你讲解、解释、讲讲、介绍一个东西，问两样东西有什么关系或区别，或者说没听懂、要你换个简单的说法、换个例子再讲、要你摆给他看或画给他看时，调用 explain_on_board，由它准备讲稿和画面，你照着讲。这类请求不要自己直接讲一大段，不要交给 delegate_to_v，不要用 exec 生成图片，也不要先 web_search。用户明确要一张生成的图、一个文件，或者要最新信息时，才用别的工具。讲解之后用户接着问的小问题（一两句能答完）直接回答。';
-const EXPLAINS=/讲解|解释|讲讲|讲一讲|讲一下|讲一遍|科普|(?:说说|说一下|介绍|聊聊).{0,40}(?:关系|区别|原理|来历|怎么来|为什么|是什么)|(?:摆|画|演示|示范)给我看|\bexplain\b|walk me through|teach me/iu,MAKES=/后台|生成|画[一几]?[张个幅]|做[一几]?[张个份段]|视频|文档|报告|表格|发[给到送]|飞书|日程|提醒|天气|新闻|股价|最新/u;
+export const LESSON_ROUTING='讲解画面：用户请你讲解、解释、讲讲、介绍一个东西，问两样东西有什么关系或区别，或者说没听懂、要你换个简单的说法、换个例子再讲、要你摆给他看或画给他看时，调用 explain_on_board，由它准备讲稿和画面，你照着讲。这类请求不要自己直接讲一大段，不要交给 delegate_to_v，不要用 exec 生成图片，也不要自己先 web_search 或 memory_search（需要查资料时讲解工具会自己去查）。调用之后只说一句很短的话，然后等讲稿，不要自己先回答一遍。用户明确要一张生成的图、一个文件、要你去办一件事，或者只是问一个事实时，才用别的工具。讲解之后用户接着问的小问题（一两句能答完）直接回答。';
+const EXPLAINS=/讲解|解释|讲讲|讲一讲|讲一下|讲一遍|科普|(?:说说|说一下|介绍|聊聊|分析).{0,40}(?:关系|区别|比较|对比|原理|来历|怎么来|为什么|是什么|怎么回事|历程|历史)|(?:摆|画|演示|示范|图示|图表|图标)(?:出来)?(?:给我看|展示|的方式|的那种)|\bexplain\b|walk me through|teach me/iu,MAKES=/后台|生成|画[一几]?[张个幅]|做[一几]?[张个份段]|视频|文档|报告|表格|发[给到送]|飞书|日程|提醒/u;
 /** Whether the caller's own words ask for an explanation and for nothing to be made or sent. */
 export const asksForLesson=text=>typeof text==='string'&&EXPLAINS.test(text)&&!MAKES.test(text);
+// What a lesson must look up first: today's world, or the caller's own world.
+const FRESH=/今天|昨天|最新|最近|新闻|刚刚|刚发布|今年|本周|这周|上周|这个月|现在的|目前|发布的|股价|多少钱|价格|\b20(?:2[5-9]|3\d)\b|\btoday\b|\blatest\b|\bnews\b/iu,OWN=/我们的|我们公司|咱们|我的|你自己|夜班|项目进展|记忆里|之前(?:说|聊|定)/u;
+export const lessonResearch=text=>typeof text!=='string'?null:OWN.test(text)?'memory_search':FRESH.test(text)?'web_search':null;
 // Only negotiated native location calls see this extended task schema.
 const delegateTool=TOOLS.find(t=>t.name==='delegate_to_v');
 export const LOCATION_DELEGATE_TOOL={...delegateTool,description:delegateTool.description+'需要手机当前位置的任务，先调用 get_current_location 成功，再传 use_current_location=true；服务端会附入当前通话的新鲜定位，勿自行编造/抄写坐标。',parameters:object({...delegateTool.parameters.properties,use_current_location:{type:'boolean'}},delegateTool.parameters.required)};

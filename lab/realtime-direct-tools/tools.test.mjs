@@ -37,6 +37,13 @@ test('the caller\'s own words decide whether a hand-off or a search becomes a le
   const {asksForLesson} = await import('./tools.mjs');
   for (const yes of ['你给十二讲解一下宝可梦', '再给我说说电动车跟现在这个低空经济的关系', '怎么摆呀？你摆给我看看', 'Could you explain how rockets land', '介绍一下它们的区别'])
     assert.equal(asksForLesson(yes), true, yes);
-  for (const no of ['明天上海天气怎么样', '给我介绍一下巴黎的景点', '讲解完帮我生成一份文档', '说说今天的新闻有什么关系', '帮我查一下日程', undefined])
+  for (const no of ['明天上海天气怎么样', '给我介绍一下巴黎的景点', '讲解完帮我生成一份文档', '帮我查一下日程', '有没有人可以坐的那种飞机', undefined])
     assert.equal(asksForLesson(no), false, String(no));
+  // Calls 649709d0 and 4132718f: asked in these words, no lesson came.
+  for (const yes of ['你可以网上先查一查今天的新闻，然后再给我讲解一下今天的事情', '那你说一下那个数码相机和以前的胶卷相机的区别', '是要有这种图标展示的那种', '具体的讲解一下', '你说一下今年发布的那个苹果的折叠屏和它的竞品的比较'])
+    assert.equal(asksForLesson(yes), true, yes);
+  const {lessonResearch} = await import('./tools.mjs');
+  assert.equal(lessonResearch('讲解一下今天黄仁勋的事情'), 'web_search');
+  assert.equal(lessonResearch('讲解一下我们的夜班模式'), 'memory_search');
+  assert.equal(lessonResearch('讲解一下宝可梦的属性相克'), null);
 });

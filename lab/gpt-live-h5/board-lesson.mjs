@@ -32,6 +32,31 @@ scale     {"id","t":"scale","h"?,"unit"?,"dir"?,"items":[{"id","at","h","d"?,"ic
 - 一个流程的先后步骤 → steps；几个并列的东西 → list（带 img）
 - 最后那句要记住的话 → sticky；这件东西长什么样 → photo
 `;
+const HANGING = `# 画面怎么挂到讲稿上
+- 每个条目、节点、比较项、每一格、每一行都要写 q；便签和照片这样的整块也要写 q。q 是 say 里的 4 到 8 个字，一字不差，从讲稿第一次叫到这个东西的名字的地方开始抄。念到那里时这个东西出现。
+- 画面出现的顺序就是讲的顺序。第一句念出来时页面上必须已经有东西：给第一句挂一张主图（photo）或第一个节点。
+- 讲的东西本身有样子（一枚火箭、一种积木、一座建筑、一个角色），就用 photo 放一张它的照片作主图，query 写它最通用的名字（「猎鹰9号」「乐高积木」），挂在第一次叫到它的那一句。img 和 query 都只写能搜到图的专有名字，不写「木工坊」「注塑机」这样的泛称。
+- 条目和节点的名字（h、label）就是讲稿里叫的那个具体的东西（「杰尼龟」），并写 img 配上它的图；抽象的词（「水」）只能当它的小字说明（sub 或 d）。
+- 能配图的东西都配 img（角色、动物、地点、产品、食物、人物）；互相克制、循环、流向用 flow，把图放在节点上。flow 的边写成 ["起点id","终点id","两三个字的标注","q"]：标注像「打得过」「克」「变成」，第四项 q 是讲稿里讲到这条关系的那几个字，念到那里箭头才画出来。
+- 便签只写一句值得记住的话。不要写还没发生的事（「你猜对了」），也不要提前写出你最后那个问题的答案。
+- 强调重点：这一页最要紧的一两个数字、名字或结论，用 mark（ring 圈出、underline 划线、star 打星）标出来；一句话里最关键的几个字用 **两个星号** 包起来（「充电要 **半小时**」），页面会用荧光笔涂上。一页最多强调三处，处处强调等于没强调。
+- 一屏放得下：整页 2 到 3 个区块（最多 4 个），所有条目加起来不超过 12 个。h 不超过 8 个字，d 不超过 16 个字，能不写 d 就不写。内容多就挑最要紧的，或者用 "w":"half" 把两个区块并排。`;
+/** For an answer V has already given in its own words: the same page, drawn to fit those words. */
+export const ILLUSTRATE_INSTRUCTIONS = `你是 V 的画面作者。V 在电话里刚回答了用户，你要给这段回答配一页手账画面。V 的声音正在念这段话，画面上的每样东西会在念到对应的字时出现。
+
+输入是一个 JSON：asked 是用户的话（语音识别，可能夹着旁人的话）；said 是 V 的回答，一个字都不能改，也不由你来写；evidence 是 V 回答前查到的资料（有的话），画面上的事实以 said 和 evidence 为准，不要添 V 没说、资料里也没有的事实和数字；screen 是屏幕上现在的画面（可能为空）。
+
+只输出一个 JSON 对象，不要任何别的文字：
+{"mode":"new","title":"画面标题，不超过 12 个字","blocks":[区块,…]}
+- mode 一般是 "new"（换一页）。只有当 said 是在接着讲 screen 上那一页的同一件事、而且那一页不超过 2 个区块时，才用 "add"：这时只写要添上的 1 到 2 个新区块（id 不要和屏幕上的重复），不写 title。
+- said 只是寒暄、确认、反问、说正在查、或者一两句话就完的回答，没有值得画的东西：输出 {"none":true}。
+- 画面是 said 的图解，不是 said 的抄写：把结构画出来（谁和谁比、先后、数量、关系），字只留关键词。
+- 画面上的字用 said 的语言。
+
+${pieces}
+${KIT}
+${HANGING.replaceAll('讲稿', 'said').replaceAll('say 里', 'said 里')}`;
+
 export const LESSON_INSTRUCTIONS = `你是 V。用户在电话里请你讲解一个东西，你要一次写出「讲稿」和「讲稿每一句对应的画面」。讲稿会由你的声音一字不差地念出来；画面在一页手账上，念到哪里，挂在那里的东西就出现在页面上。
 
 输入是一个 JSON：topic 是要讲什么；audience 是讲给谁听；ask 是用户的原话（语音识别，可能夹着旁人的话，只取和 topic 有关的要求）；reference 是可靠的参考资料（有的话），和它冲突的不要讲；before 是这通电话里你刚讲过的一段（有的话）：这次要接着它讲新的东西，或者按用户的要求换个讲法，不要原样重复，例子、比方和最后的问题都换新的。
@@ -57,14 +82,7 @@ export const LESSON_INSTRUCTIONS = `你是 V。用户在电话里请你讲解一
 
 ${pieces}
 ${KIT}
-# 画面怎么挂到讲稿上
-- 每个条目、节点、比较项、每一格、每一行都要写 q；便签和照片这样的整块也要写 q。q 是 say 里的 4 到 8 个字，一字不差，从讲稿第一次叫到这个东西的名字的地方开始抄。念到那里时这个东西出现。
-- 画面出现的顺序就是讲的顺序。第一句念出来时页面上必须已经有东西：给第一句挂一张主图（photo）或第一个节点。
-- 讲的东西本身有样子（一枚火箭、一种积木、一座建筑、一个角色），就用 photo 放一张它的照片作主图，query 写它最通用的名字（「猎鹰9号」「乐高积木」），挂在第一次叫到它的那一句。img 和 query 都只写能搜到图的专有名字，不写「木工坊」「注塑机」这样的泛称。
-- 条目和节点的名字（h、label）就是讲稿里叫的那个具体的东西（「杰尼龟」），并写 img 配上它的图；抽象的词（「水」）只能当它的小字说明（sub 或 d）。
-- 能配图的东西都配 img（角色、动物、地点、产品、食物、人物）；互相克制、循环、流向用 flow，把图放在节点上。flow 的边写成 ["起点id","终点id","两三个字的标注","q"]：标注像「打得过」「克」「变成」，第四项 q 是讲稿里讲到这条关系的那几个字，念到那里箭头才画出来。
-- 便签只写一句值得记住的话。不要写还没发生的事（「你猜对了」），也不要提前写出你最后那个问题的答案。
-- 字要少：h 不超过 8 个字，d 不超过 16 个字，能不写 d 就不写。整页 2 到 4 个区块。`;
+${HANGING}`;
 
 // Facts the quick models get wrong often enough to matter, handed over when
 // the topic calls for them. (Asked for legendary birds, one had ice beating
@@ -93,10 +111,11 @@ const sameThing = (name, picture) => name.includes(picture) || name.length >= 3 
  * about something else. Also puts the named thing, not its category, in the
  * heading when the model did it the other way round.
  */
-export function settleLesson({say: lines, ops}) {
+export function settleLesson({say: lines, ops}, {fixed = false} = {}) {
   const say = lines.slice();
   // One closing line: a question followed by "did you get it?" loses the second.
-  while (say.length > 3 && asks(say.at(-1)) && asks(say.at(-2))) say.pop();
+  // (Not when the words are V's own, already spoken: `fixed`.)
+  while (!fixed && say.length > 3 && asks(say.at(-1)) && asks(say.at(-2))) say.pop();
   // Positions are counted in the letters the page compares (no spaces or punctuation).
   const starts = [];
   let script = '';
@@ -179,6 +198,32 @@ export function parseLesson(text) {
   return say.length >= 2 && ops.length >= 2 ? {title, ...settleLesson({say, ops})} : null;
 }
 
+/** V's own answer as the sentences a picture can hang on. */
+const spokenSentences = said => (String(said ?? '').match(/[^。！？!?\n]+[。！？!?]*|[。！？!?]+/gu) ?? []).map(line => line.trim()).filter(Boolean).slice(0, 60);
+/**
+ * Read an illustration of words V has already said: {ops, add} or null.
+ * `taken` are the block ids on the page it may be added to.
+ */
+export function parseIllustration(text, said, taken = []) {
+  const start = text.indexOf('{'), end = text.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  let value;
+  try { value = JSON.parse(text.slice(start, end + 1)); } catch { return null; }
+  if (value?.none === true) return {ops: [], add: false, none: true};
+  const add = value?.mode === 'add' && taken.length > 0 && taken.length <= 2, used = new Set(add ? taken : []);
+  const puts = (Array.isArray(value?.blocks) ? value.blocks : []).slice(0, add ? 2 : 4).map((block, index) => {
+    // A piece added to a page must not replace one that is there.
+    let id = typeof block?.id === 'string' ? block.id : '';
+    if (!id || used.has(id)) id = `x${taken.length + index + 1}`;
+    used.add(id);
+    return normalizeOp({op: 'put', block: {...block, id}});
+  }).filter(Boolean);
+  if (!puts.length) return null;
+  const title = String(value?.title ?? '').trim();
+  const settled = settleLesson({say: spokenSentences(said), ops: [...(add ? [] : [normalizeOp({op: 'scene', title, lesson: true, late: true})]), ...puts]}, {fixed: true});
+  return {ops: settled.ops, add};
+}
+
 /**
  * `complete({messages, signal})` yields text chunks (the director's client).
  * `director.present(owner, ops, holdMs)` puts the lesson on the call's board.
@@ -186,10 +231,31 @@ export function parseLesson(text) {
 export function createLessonWriter({complete, fallback = null, director, now = Date.now, record = () => {}, preferMs = 8000, totalMs = 13000} = {}) {
   // What each call was last told, so a second lesson builds on the first.
   const told = new Map();
+  // The caller is waiting, so both writers start at once. The first one's
+  // work is used if it arrives within `preferMs`; after that whichever has
+  // something usable. Nothing by `totalMs`: nothing.
+  async function race({owner, messages, signal, started, first: one, second: two, parse, preferMs: prefer, totalMs: total, kind = 'board.lesson-attempt'}) {
+    const limit = new AbortController(), stop = () => limit.abort();
+    if (signal?.aborted) stop(); else signal?.addEventListener('abort', stop, {once: true});
+    const attempt = (write, name) => (async () => {
+      let text = '', failure = '';
+      try { for await (const chunk of write({signal: limit.signal, messages})) text += chunk; } catch (error) { failure = String(error?.message ?? error).slice(0, 240); }
+      const made = parse(text);
+      if (!made && !limit.signal.aborted) record({type: kind, voiceSessionId: owner, writer: name, ok: false, failure, chars: text.length, head: text.slice(0, 160)});
+      return made ? {...made, writer: name} : null;
+    })();
+    const after = ms => new Promise(resolve => { const timer = setTimeout(resolve, ms, null); limit.signal.addEventListener('abort', () => { clearTimeout(timer); resolve(null); }, {once: true}); });
+    const first = attempt(one, 'preferred'), second = two ? attempt(two, 'fallback') : Promise.resolve(null);
+    const either = Promise.race([first.then(found => found ?? second), second.then(found => found ?? first)]);
+    let made = await Promise.race([first.then(found => found ?? second), after(prefer)]);
+    made ??= await Promise.race([either, after(Math.max(0, total - (now() - started)))]);
+    stop(); signal?.removeEventListener('abort', stop);
+    return made;
+  }
   return {
     available: Boolean(complete && director),
     /** Returns the script to speak, or null when no lesson could be written. `ask` is the caller's own words. */
-    async prepare({owner, topic, audience = '', ask = '', signal} = {}) {
+    async prepare({owner, topic, audience = '', ask = '', reference = '', signal} = {}) {
       const started = now();
       // The director stops at once: a picture it was about to draw for the
       // same question would flash by before the lesson arrives.
@@ -198,27 +264,9 @@ export function createLessonWriter({complete, fallback = null, director, now = D
       const messages = [{role: 'system', content: LESSON_INSTRUCTIONS},
         {role: 'user', content: JSON.stringify({topic: String(topic ?? '').slice(0, 400), audience: String(audience ?? '').slice(0, 80) || '成年人',
           ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(before ? {before} : {}),
-          ...(lessonReference(`${topic} ${ask}`) ? {reference: lessonReference(`${topic} ${ask}`)} : {})})}];
-      // The caller is waiting in silence, so both writers start at once. The
-      // preferred one's lesson is used if it arrives within `preferMs`
-      // (it usually takes four seconds, sometimes more than ten); after that
-      // whichever has one. Nothing by `totalMs`: no lesson.
-      const limit = new AbortController(), stop = () => limit.abort();
-      if (signal?.aborted) stop(); else signal?.addEventListener('abort', stop, {once: true});
-      const attempt = (write, name) => (async () => {
-        let text = '', failure = '';
-        try { for await (const chunk of write({signal: limit.signal, messages})) text += chunk; } catch (error) { failure = String(error?.message ?? error).slice(0, 240); }
-        const lesson = parseLesson(text);
-        if (!lesson && !limit.signal.aborted) record({type: 'board.lesson-attempt', voiceSessionId: owner, writer: name, ok: false, failure, chars: text.length, head: text.slice(0, 160)});
-        return lesson ? {...lesson, writer: name} : null;
-      })();
-      const after = ms => new Promise(resolve => { const timer = setTimeout(resolve, ms, null); limit.signal.addEventListener('abort', () => { clearTimeout(timer); resolve(null); }, {once: true}); });
-      const first = attempt(complete, 'preferred'), second = fallback ? attempt(fallback, 'fallback') : Promise.resolve(null);
-      // A usable lesson from either, ignoring a writer that came back empty.
-      const either = Promise.race([first.then(found => found ?? second), second.then(found => found ?? first)]);
-      let lesson = await Promise.race([first.then(found => found ?? second), after(preferMs)]);
-      lesson ??= await Promise.race([either, after(Math.max(0, totalMs - (now() - started)))]);
-      stop(); signal?.removeEventListener('abort', stop);
+          // What was looked up for this lesson (a search, V's memory), then the standing references.
+          ...([reference && Array.from(String(reference)).slice(0, 6000).join(''), lessonReference(`${topic} ${ask}`)].filter(Boolean).length ? {reference: [reference && Array.from(String(reference)).slice(0, 6000).join(''), lessonReference(`${topic} ${ask}`)].filter(Boolean).join('\n\n')} : {})})}];
+      const lesson = await race({owner, messages, signal, started, first: complete, second: fallback, parse: parseLesson, preferMs, totalMs});
       const say = lesson ? spokenScript(lesson.say) : '';
       record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ask, ok: Boolean(lesson), writer: lesson?.writer ?? null, durationMs: now() - started, say: lesson?.say ?? null, drawn: lesson?.ops ?? null});
       if (!lesson) { director.release?.(owner); return null; }
@@ -227,6 +275,24 @@ export function createLessonWriter({complete, fallback = null, director, now = D
       // Held for as long as the script takes to say (about five characters a second), plus a margin.
       director.present(owner, lesson.ops, Math.round(Array.from(say).length / (latin(say) ? 13 : 5) * 1000) + 8000);
       return {say, sentences: lesson.say};
+    },
+    /**
+     * A page for an answer V gave in its own words (after a search, from
+     * memory, or simply unprompted). The quick writer goes first: V is
+     * already speaking. Returns {ops, add, writer} or null.
+     */
+    async illustrate({owner, asked = '', said = '', evidence = [], screen = null, signal} = {}) {
+      const started = now();
+      const taken = (screen?.blocks ?? []).map(block => block.id);
+      const looked = evidence.map(item => `【${item.name}】${item.text}`).join('\n').slice(0, 5000);
+      const messages = [{role: 'system', content: ILLUSTRATE_INSTRUCTIONS},
+        {role: 'user', content: JSON.stringify({asked: Array.from(String(asked)).slice(-300).join(''), said: Array.from(String(said)).slice(0, 2400).join(''),
+          ...(looked ? {evidence: looked} : {}), ...(lessonReference(`${asked} ${said}`) ? {reference: lessonReference(`${asked} ${said}`)} : {}),
+          screen: screen ? {title: screen.title, blocks: screen.blocks.map(block => ({id: block.id, t: block.t, ...(block.h ? {h: block.h} : {})}))} : null})}];
+      const made = await race({owner, messages, signal, started, first: fallback ?? complete, second: fallback ? complete : null,
+        parse: text => parseIllustration(text, said, taken), preferMs: 5000, totalMs: 10000, kind: 'board.illustrate-attempt'});
+      record({type: 'board.illustrate', voiceSessionId: owner, ok: Boolean(made?.ops.length), none: made?.none === true, add: made?.add === true, writer: made?.writer ?? null, durationMs: now() - started, asked, said: Array.from(String(said)).slice(0, 400).join(''), drawn: made?.ops ?? null});
+      return made?.ops.length ? made : null;
     },
   };
 }

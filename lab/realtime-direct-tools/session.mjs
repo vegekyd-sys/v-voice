@@ -19,7 +19,7 @@ import {SeeduplexRealtimeVoiceBridge} from '../seeduplex-realtime-provider.mjs';
 import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
 import {V_ONE_VOICE_POLICY} from '../gpt-live-h5/one-voice-policy.mjs';
 import {TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,LOCATION_DELEGATE_TOOL,LOCATION_CONTROL_TOOL,createToolExecutor,validateTool,processExited,withExecutionLines} from './tools.mjs';
-import {LESSON_ROUTING,LESSON_TOOL,asksForLesson} from './tools.mjs';
+import {LESSON_ROUTING,LESSON_TOOL,asksForLesson,lessonResearch} from './tools.mjs';
 import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICES,grokVoice,grokVoiceModel,grokVoiceLabel,grokVoiceSpeed} from './grok-provider.mjs';
 import {createTaskDelivery} from './task-delivery.mjs';
 import {createConversationReplyDelivery} from '../../lib/conversation-replies.mjs';
@@ -124,7 +124,16 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(s.droppedReply&&s.droppedReply===responseId){if(final)s.droppedReply=null;return true;}
     if(s.replyId!==responseId){s.replyId=responseId;s.replyHead='';}
     const head=final?text:(s.replyHead+text);
-    s.replyHead=final?'':head.slice(0,60);
+    s.replyHead=final?'':head.slice(0,200);
+    // A lesson is being written for this request. One short line while it is
+    // (“好，我想想怎么讲”) is welcome; answering the whole question meanwhile is
+    // not: the lesson would cut in half a minute of talk later (call 4132718f at 223 s).
+    if(s.lessonPending&&s.pending.has(s.lessonPending)&&Array.from(head).length>=(/^[\x00-\x7f]*$/u.test(head.slice(0,40))?170:64)){
+      s.droppedReply=final?null:responseId??null;
+      audit({type:'speech.lesson-preempt-cut',voiceSessionId:s.id,callId:s.lessonPending,responseId});
+      s.bridge.handleBargeIn({confirmed:true});
+      return true;
+    }
     const working=Boolean(s.backgroundCallId)&&s.pending.has(s.backgroundCallId)&&Boolean(s.backend.stage());
     if(!working||s.correctionAt&&Date.now()-s.correctionAt<NARRATION.idleMs||Date.now()-(s.nativeResultAt??0)<20000)return false;
     if(!claimsCompletion(head.slice(0,60)))return false;
@@ -522,10 +531,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if(!current(s))return;
       // Asked to explain, the voice model sometimes hands the question to the
       // backend (a minute's wait, no picture). The caller's words decide.
-      if((call.name==='delegate_to_v'&&!s.backend.snapshot()||call.name==='web_search')&&lessonTools(s).length&&s.lessonFor!==s.latestUserTurn&&asksForLesson(s.latestUserTurn?.text)){
-        audit({type:'lesson.rerouted',voiceSessionId:s.id,callId:call.callId});
-        call={...call,name:'explain_on_board',args:{topic:[call.args?.question,call.args?.context].filter(value=>typeof value==='string'&&value.trim()).join('；').slice(0,400)||s.latestUserTurn.text.slice(-200)}};
-        audit({type:'tool.rerouted',voiceSessionId:s.id,callId:call.callId,to:'explain_on_board'});
+      // The caller's words decide. Sometimes the model searches, asks its memory, hands the
+      // question to the backend or even hangs up instead (calls 4132718f, 649709d0).
+      // A lookup it wanted is still made, as the lesson's own research.
+      if(['delegate_to_v','web_search','memory_search','end_call'].includes(call.name)&&!(call.name==='delegate_to_v'&&s.backend.snapshot())&&lessonTools(s).length&&s.lessonFor!==s.latestUserTurn&&asksForLesson(s.latestUserTurn?.text)){
+        audit({type:'lesson.rerouted',voiceSessionId:s.id,callId:call.callId,from:call.name});
+        const research=['web_search','memory_search'].includes(call.name)?{name:call.name,args:call.args}:null;
+        call={...call,name:'explain_on_board',research,args:{topic:[call.args?.question,call.args?.context,call.args?.query].filter(value=>typeof value==='string'&&value.trim()).join('；').slice(0,400)||s.latestUserTurn.text.slice(-200)}};
       }
       const signature=JSON.stringify([call.name,call.args]),old=s.seen.get(call.callId);
       if(old){if(old!==signature)emit(s,{type:'error',message:'工具身份冲突'});return;}
@@ -581,7 +593,17 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           else{
             s.lessonFor=s.latestUserTurn??s;
             ownerBridge.beginBackgroundTool(call.callId,call.args.topic);lessonHandled=true;
-            const script=await lesson.prepare({owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,signal:controller.signal});
+            // Today's news, or the caller's own projects: looked up first, with the tool
+            // the model asked for or the one the words call for.
+            s.lessonPending=call.callId;
+            const lookup=call.research??(name=>name&&allowedTools.has(name)?{name,args:{query:String(call.args.topic).slice(0,200)}}:null)(lessonResearch(`${call.args.topic} ${s.latestUserTurn?.text??''}`));
+            let reference='';
+            if(lookup){
+              try{const found=await execute(lookup.name,lookup.args,call.callId+':research',controller.signal);reference=(typeof found==='string'?found:JSON.stringify(found)).slice(0,8000);audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId+':research',name:lookup.name,status:'ok',result:found});}
+              catch(error){audit({type:'lesson.research-failed',voiceSessionId:s.id,callId:call.callId,name:lookup.name,message:String(error?.message??error).slice(0,120)});}
+            }
+            const script=await lesson.prepare({owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal});
+            if(s.lessonPending===call.callId)s.lessonPending=null;
             if(current(s)&&s.epoch===epoch){
               const say=script?.say??'画面这次没准备好，我直接跟你说吧。';
               ownerBridge.completeBackgroundTool(call.callId,{result:say},{spokenText:say,displayedFullResult:true});

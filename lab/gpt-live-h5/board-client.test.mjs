@@ -192,3 +192,13 @@ test('a lesson shows nothing until V starts reading its script, follows the voic
   assert.equal(createLessonGate().view({scene: drawn, text: script, speaking: false, speaksOf, unspoken, progress: () => 'p'}), null);
   assert.equal(createLessonGate().view({scene: drawn, text: script, speaking: true, speaksOf, unspoken, progress: () => 'p'}), 'p');
 });
+
+test('a page drawn for words V is already saying shows what has been said at once', async () => {
+  const {createLessonGate} = await import('./board-client.mjs');
+  const {applyOp, emptyScene, speaksOf, spokenProgress, unspoken} = await import('./board-scene.mjs');
+  const said = '胶卷相机靠胶卷感光。数码相机靠电子传感器。';
+  const scene = [{op: 'scene', title: 't', lesson: true, late: true}, {op: 'put', block: {id: 'l', t: 'list', items: [{id: 'a', h: '胶卷', q: '胶卷相机靠'}, {id: 'b', h: '传感器', q: '数码相机靠'}]}}].reduce(applyOp, emptyScene());
+  const view = (gate, speaking, index) => gate.view({scene, text: said, speaking, speaksOf, unspoken, progress: () => spokenProgress(scene, said, index)});
+  assert.deepEqual(view(createLessonGate(), true, 8).ahead, ['l/b'], 'V is on the first sentence');
+  assert.equal(view(createLessonGate(), false, 0), null, 'V had already finished: all of it is there');
+});

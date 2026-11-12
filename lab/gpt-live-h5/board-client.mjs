@@ -56,7 +56,9 @@ export function createLessonGate({now = () => Date.now(), patienceMs = 15000} = 
   return {
     view({scene, text, speaking, progress, speaksOf, unspoken}) {
       if (!scene.lesson || !scene.blocks.length) return speaking && scene.blocks.length ? progress() : null;
-      if (scene.serial !== serial) { serial = scene.serial; spoke = false; since = now(); shown = new Set(); }
+      // A picture drawn for words V is already saying has nothing to wait for:
+      // what has been said shows at once, the rest as the voice gets there.
+      if (scene.serial !== serial) { serial = scene.serial; spoke = scene.late === true; since = now(); shown = new Set(); }
       const pieces = unspoken(scene).ahead;
       // What has appeared stays: a later reply that happens to use a piece's
       // words again ("对啦，小火龙怕水") must not take it off the page.

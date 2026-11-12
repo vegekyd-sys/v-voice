@@ -40,6 +40,13 @@ function itemState(view, block, item) {
   const id = `${block.id}/${item.id}`;
   return {id, now: view.focus === id, props: {'data-ink': String(!view.ahead.has(id)), 'data-now': view.focus === id || undefined, 'data-anchored': item.q ? 'true' : undefined}};
 }
+// A few words V wants to stand out are written between two asterisks; the page
+// goes over them with the highlighter. A stray asterisk is not shown.
+function em(value) {
+  const text = String(value ?? '');
+  if (!text.includes('*')) return text;
+  return text.split(/\*\*(.+?)\*\*/u).map((part, index) => index % 2 ? <mark key={index} className="board-em">{part}</mark> : part.replaceAll('*', ''));
+}
 const Pen = ({seed}) => <Stroke className="board-pen" d={pointer(seed)} />;
 // The words that carry an item, with the marker swipe behind them while V is
 // on it and any mark the director asked for.
@@ -85,8 +92,8 @@ function List({block, view, ordered}) {
                   : item.icon ? <span className="board-icon">{item.icon}</span> : <i className="board-dash" />}
               </span>
               <div className="board-item">
-                <Key item={item} seed={state.id}>{ordered && item.icon ? item.icon + ' ' : ''}{item.h}</Key>
-                {item.d && <span>{item.d}</span>}
+                <Key item={item} seed={state.id}>{ordered && item.icon ? item.icon + ' ' : ''}{em(item.h)}</Key>
+                {item.d && <span>{em(item.d)}</span>}
               </div>
               {item.img && <Thumb query={item.img} view={view} seed={state.id} />}
             </li>
@@ -110,10 +117,10 @@ function Compare({block, view}) {
               {col.img && <Thumb query={col.img} view={view} seed={state.id} />}
               <header>
                 {leads(col.mark) && <span className="board-lead"><Mark kind={col.mark} seed={state.id} /></span>}
-                <Key item={col} seed={state.id}>{col.icon ? col.icon + ' ' : ''}{col.h}</Key>
+                <Key item={col} seed={state.id}>{col.icon ? col.icon + ' ' : ''}{em(col.h)}</Key>
                 {col.tag && <em style={{'--tilt': tilt(state.id + ':tag', 5) - 4 + 'deg'}}>{col.tag}</em>}
               </header>
-              <ul>{col.points.map((point, at) => <li key={at}>{point}</li>)}</ul>
+              <ul>{col.points.map((point, at) => <li key={at}>{em(point)}</li>)}</ul>
             </section>
           );
         })}
@@ -134,8 +141,8 @@ function Stats({block, view}) {
               <span className="board-figure"><b>{item.value}</b>{wraps(item.mark) && <Mark kind={item.mark} seed={state.id} />}{leads(item.mark) && <span className="board-lead"><Mark kind={item.mark} seed={state.id} /></span>}</span>
               {item.unit && <i>{item.unit}</i>}
             </dd>
-            <dt>{item.icon ? item.icon + ' ' : ''}{item.label}</dt>
-            {item.note && <small>{item.note}</small>}
+            <dt>{item.icon ? item.icon + ' ' : ''}{em(item.label)}</dt>
+            {item.note && <small>{em(item.note)}</small>}
           </div>
         );
       })}
@@ -153,7 +160,7 @@ function Bars({block, view}) {
           const state = itemState(view, block, item);
           return (
             <li key={item.id} {...state.props} data-top={item.value === top || undefined}>
-              <span className="board-bar-label">{item.label}</span>
+              <span className="board-bar-label">{em(item.label)}</span>
               <span className="board-bar-track"><i style={{width: Math.max(3, item.value / top * 100) + '%', '--tilt': tilt(state.id, .8) + 'deg'}} /></span>
               <span className="board-bar-value">{item.value}{block.unit ?? ''}</span>
             </li>
@@ -227,7 +234,7 @@ function Flow({block, view}) {
             <div key={node.id} className="board-node" {...state.props}
               style={{left: point.x, top: point.y, maxWidth: shape === 'layers' ? `calc(${100 / layers[position[node.id].layer].length}% - 10px)` : shape === 'row' ? `calc(${100 / layers.length}% - 18px)` : '38%', '--tilt': tilt(state.id, 1.6) + 'deg'}}>
               {node.img && <Thumb query={node.img} view={view} seed={state.id} />}
-              <strong>{node.icon && !node.img ? node.icon + ' ' : ''}{node.label}</strong>{node.sub && <span>{node.sub}</span>}
+              <strong>{node.icon && !node.img ? node.icon + ' ' : ''}{em(node.label)}</strong>{node.sub && <span>{em(node.sub)}</span>}
             </div>
           );
         })}
@@ -240,7 +247,7 @@ function Flow({block, view}) {
 // Every piece of a kit block is a `.board-piece`: pencil until V reaches it
 // (unseen in a lesson), like the items of a list.
 const pieceTone = (item, index) => item.tone ?? CARD_TONES[index % CARD_TONES.length];
-const Label = ({item, state}) => <Key item={item} seed={state.id}>{item.icon && !item.img ? item.icon + ' ' : ''}{item.h}</Key>;
+const Label = ({item, state}) => <Key item={item} seed={state.id}>{item.icon && !item.img ? item.icon + ' ' : ''}{em(item.h)}</Key>;
 
 // Countable things in rows. Remounted when V reaches the group, so the tiles
 // are set down one after another at that moment.
@@ -256,7 +263,7 @@ function Tiles({block, view}) {
               <div key={String(shown)} className="board-tile-grid" data-glyph={item.icon ? 'true' : undefined} style={{'--per': item.per}}>
                 {Array.from({length: item.n}, (_, index) => <i key={index} data-lit={String(item.lit === undefined || index < item.lit)} style={{'--i': index}}>{item.icon ?? ''}</i>)}
               </div>
-              {item.h && <figcaption><Key item={item} seed={state.id}>{item.h}</Key></figcaption>}
+              {item.h && <figcaption><Key item={item} seed={state.id}>{em(item.h)}</Key></figcaption>}
             </figure>
           );
         })}
@@ -275,8 +282,8 @@ function Formula({block, view}) {
           const state = itemState(view, block, item);
           return (
             <span key={item.id} className="board-piece board-term" {...state.props} data-tone={item.tone} data-op={OPERATOR.test(item.h) || undefined}>
-              <Key item={item} seed={state.id}>{item.h}</Key>
-              {item.d && <small>{item.d}</small>}
+              <Key item={item} seed={state.id}>{em(item.h)}</Key>
+              {item.d && <small>{em(item.d)}</small>}
             </span>
           );
         })}
@@ -302,7 +309,7 @@ function Timeline({block, view}) {
               <div className="board-moment">
                 {item.img && <Thumb query={item.img} view={view} seed={state.id} />}
                 <Label item={item} state={state} />
-                {item.d && <span>{item.d}</span>}
+                {item.d && <span>{em(item.d)}</span>}
               </div>
             </li>
           );
@@ -317,12 +324,12 @@ function Versus({block, view}) {
   const side = (value, index) => (
     <div key={index} className="board-vs-side" data-tone={CARD_TONES[index % CARD_TONES.length]} style={{'--tilt': tilt(block.id + ':side' + index, 1.4) + 'deg'}}>
       {value.img && <Thumb query={value.img} view={view} seed={block.id + ':side' + index} />}
-      <strong>{value.icon && !value.img ? value.icon + ' ' : ''}{value.h}</strong>
+      <strong>{value.icon && !value.img ? value.icon + ' ' : ''}{em(value.h)}</strong>
     </div>
   );
   const cell = (row, index) => (
     <span key={index} className="board-vs-cell" data-win={row.win === index || undefined} data-lose={row.win !== undefined && row.win !== index || undefined}>
-      <span>{row.cells[index]}</span>
+      <span>{em(row.cells[index])}</span>
       {row.win === index && <Mark kind="check" seed={`${block.id}/${row.id}:win`} />}
     </span>
   );
@@ -334,7 +341,7 @@ function Versus({block, view}) {
           {count === 2 ? <>{side(block.sides[0], 0)}<em>vs</em>{side(block.sides[1], 1)}</> : <><span />{block.sides.map(side)}</>}
         </header>
         {block.items.map(row => {
-          const state = itemState(view, block, row), key = <b className="board-vs-key"><Key item={row} seed={state.id}>{row.icon ? row.icon + ' ' : ''}{row.h}</Key></b>;
+          const state = itemState(view, block, row), key = <b className="board-vs-key"><Key item={row} seed={state.id}>{row.icon ? row.icon + ' ' : ''}{em(row.h)}</Key></b>;
           return (
             <div key={row.id} className="board-piece board-vs-row" {...state.props}>
               {count === 2 ? <>{cell(row, 0)}{key}{cell(row, 1)}</> : <>{key}{row.cells.map((_, index) => cell(row, index))}</>}
@@ -356,8 +363,8 @@ function Overlap({block, view}) {
           return (
             <div key={item.id} className="board-piece" data-part={item.id} {...state.props}>
               {item.img && <Thumb query={item.img} view={view} seed={state.id} />}
-              {(item.h || item.id === 'both') && <Key item={item} seed={state.id}>{item.icon && !item.img ? item.icon + ' ' : ''}{item.h ?? '都有'}</Key>}
-              <ul>{item.points.map((point, at) => <li key={at}>{point}</li>)}</ul>
+              {(item.h || item.id === 'both') && <Key item={item} seed={state.id}>{item.icon && !item.img ? item.icon + ' ' : ''}{em(item.h ?? '都有')}</Key>}
+              <ul>{item.points.map((point, at) => <li key={at}>{em(point)}</li>)}</ul>
             </div>
           );
         })}
@@ -378,7 +385,7 @@ function Stack({block, view}) {
             <div key={item.id} className="board-piece board-layer" {...state.props} data-tone={pieceTone(item, index)}
               style={{'--tilt': tilt(state.id, .9) + 'deg', '--wide': block.shape === 'pyramid' ? 46 + 54 * (index + 1) / count + '%' : '100%'}}>
               {item.img && <Thumb query={item.img} view={view} seed={state.id} />}
-              <div><Label item={item} state={state} />{item.d && <span>{item.d}</span>}</div>
+              <div><Label item={item} state={state} />{item.d && <span>{em(item.d)}</span>}</div>
             </div>
           );
         })}
@@ -416,7 +423,7 @@ function Scale({block, view}) {
               <span className="board-tick" aria-hidden="true" />
               <div className="board-notch-label">
                 {item.img && <Thumb query={item.img} view={view} seed={state.id} />}
-                <div><Label item={item} state={state} />{item.d && <span>{item.d}</span>}</div>
+                <div><Label item={item} state={state} />{item.d && <span>{em(item.d)}</span>}</div>
               </div>
             </div>
           );
@@ -427,7 +434,7 @@ function Scale({block, view}) {
 }
 
 const Tape = () => <i className="board-tape" aria-hidden="true" />;
-const Sticky = ({block}) => <><Tape /><p className="board-sticky-text">{block.text}</p></>;
+const Sticky = ({block}) => <><Tape /><p className="board-sticky-text">{em(block.text)}</p></>;
 
 // A real photograph, fetched through the Voice service. Until it arrives the
 // print is still developing; if nothing is found the print is taken away.
@@ -452,9 +459,41 @@ const RENDER = {note: Sticky, sticky: Sticky, list: props => <List {...props} />
 const SMALL = new Set(['note', 'sticky', 'photo']);
 const PAPER = {note: 'butter', sticky: 'butter'};
 
+// The whole page in one view: when it is taller than the panel it is first
+// set in two columns (on a wide panel) and then drawn smaller, down to a
+// limit; below that the page scrolls as before. Pieces V has not reached yet
+// keep their place, so the layout does not move while V speaks.
+function useFit(scroller, page, key) {
+  const [dense, setDense] = useState({key: null, on: false});
+  useLayoutEffect(() => {
+    const outer = scroller.current, inner = page.current;
+    if (!outer || !inner) return;
+    const fit = () => {
+      const wide = outer.clientWidth >= 640, least = wide ? .62 : .78, room = outer.clientHeight;
+      let zoom = 1;
+      inner.style.setProperty('--zoom', '1'); inner.style.zoom = '1';
+      for (let pass = 0; pass < 4; pass++) {
+        const height = inner.getBoundingClientRect().height;
+        if (height <= room + 1 || zoom <= least) break;
+        // Two columns before small print.
+        if (pass === 0 && wide && height > room * 1.25 && !(dense.key === key && dense.on) && inner.querySelectorAll(':scope > .board-block[data-size="wide"]').length >= 2) { setDense({key, on: true}); return; }
+        zoom = Math.max(least, zoom * Math.max(.72, Math.sqrt(room / height) * .99));
+        inner.style.zoom = String(zoom); inner.style.setProperty('--zoom', String(zoom));
+      }
+    };
+    fit();
+    if (typeof ResizeObserver !== 'function') return;
+    const observer = new ResizeObserver(fit);
+    observer.observe(outer);
+    return () => observer.disconnect();
+  });
+  return dense.key === key && dense.on;
+}
+
 export function Board({scene, spoken, loadPhoto, onClose}) {
-  const box = useRef(null);
+  const box = useRef(null), sheet = useRef(null);
   const [missing, setMissing] = useState(() => new Set());
+  const dense = useFit(box, sheet, scene.serial);
   // While V speaks the mark follows the voice; otherwise it stays where the director put it.
   const view = {focus: spoken?.focus || scene.focus, ahead: new Set(spoken?.ahead ?? []), loadPhoto};
   useEffect(() => {
@@ -466,7 +505,9 @@ export function Board({scene, spoken, loadPhoto, onClose}) {
   const rows = [];
   for (const block of blocks) {
     const last = rows.at(-1);
-    if (block.w && last?.[0].w && last.length < (last[0].w === 'third' ? 3 : 2)) last.push(block); else rows.push([block]);
+    // (When the page would not fit, its main blocks pair up as if each had asked for half.)
+    const width = block.w ?? (dense && !SMALL.has(block.t) ? 'half' : undefined), ahead = last?.[0].w ?? (dense && last && !SMALL.has(last[0].t) ? 'half' : undefined);
+    if (width && ahead && last.length < (ahead === 'third' ? 3 : 2)) last.push(block); else rows.push([block]);
   }
   return (
     <section className="board" data-lesson={scene.lesson || undefined} aria-label={scene.title ? `画面：${scene.title}` : '画面'}>
@@ -476,11 +517,13 @@ export function Board({scene, spoken, loadPhoto, onClose}) {
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
         </button>
       </header>
-      <div className="board-body" ref={box} role="region" aria-live="polite" aria-label="画面内容" tabIndex={0}
+      <div className="board-scroll" ref={box} role="region" aria-live="polite" aria-label="画面内容" tabIndex={0}>
+      <div className="board-body" ref={sheet}
         data-side={blocks.some(block => SMALL.has(block.t)) && blocks.some(block => !SMALL.has(block.t)) || undefined}>
         {rows.map(row => row.length > 1
-          ? <div key={`${scene.serial}:row:${row[0].id}`} className="board-row" data-n={Math.min(3, row.length)} data-w={row[0].w}>{row.map(piece)}</div>
+          ? <div key={`${scene.serial}:row:${row[0].id}`} className="board-row" data-n={Math.min(3, row.length)} data-w={row[0].w ?? 'half'}>{row.map(piece)}</div>
           : piece(row[0]))}
+      </div>
       </div>
     </section>
   );
