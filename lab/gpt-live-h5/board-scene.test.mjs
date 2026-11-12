@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {applyOp, createLineParser, emptyScene, flowLayout, focusExists, normalizeOp, normalizeScene, sceneDigest} from './board-scene.mjs';
+import {applyOp, createLineParser, emptyScene, flowLayout, focusExists, normalizeOp, normalizeScene, sceneDigest, spokenFocus} from './board-scene.mjs';
 
 const put = block => normalizeOp({op: 'put', block});
 const run = (...ops) => ops.reduce((scene, op) => applyOp(scene, normalizeOp(op)), emptyScene());
@@ -96,4 +96,20 @@ test('flow layout layers a graph and survives cycles', () => {
   assert.deepEqual([position.a.y, position.d.y], [0, 100]);
   assert.equal(position.b.x < position.c.x, true);
   assert.deepEqual(flowLayout(nodes.slice(0, 2), []).layers, [['a', 'b']]);
+});
+
+test('the focus mark follows what V has said aloud, by each item\'s quote', () => {
+  const said = '好，分三步。第一步是拨号，页面要一个名额。第二步是建立连接，声音转给模型。第三步直接说话。';
+  const scene = run({op: 'scene', title: '接通'}, {op: 'put', block: {id: 's', t: 'steps', items: [
+    {id: 'a', h: '拨号', q: '第一步是拨号'}, {id: 'b', h: '建立连接', q: '第二步是 建立连接，'}, {id: 'c', h: '直接说话', q: '第三步直接说话'}, {id: 'd', h: '没讲到'}, {id: 'e', h: '抄错了', q: '第四步是挂断'}]}});
+  assert.equal(scene.blocks[0].items[1].q, '第二步是 建立连接，');
+  const at = phrase => Array.from(said).join('').indexOf(phrase);
+  assert.equal(spokenFocus(scene, said, 3), '', 'V has not reached any item');
+  assert.equal(spokenFocus(scene, said, at('第一步') + 4), 's/a', 'counts as soon as V starts the quote');
+  assert.equal(spokenFocus(scene, said, at('第二步') - 1), 's/a');
+  assert.equal(spokenFocus(scene, said, at('第二步') + 5), 's/b', 'punctuation and spaces in a quote do not matter');
+  assert.equal(spokenFocus(scene, said, 999), 's/c');
+  assert.equal(spokenFocus(emptyScene(), said, 999), '');
+  const columns = run({op: 'put', block: {id: 'c', t: 'compare', cols: [{id: 'l', h: 'A', q: '第一步是拨号', points: []}, {id: 'r', h: 'B', points: []}]}});
+  assert.equal(spokenFocus(columns, said, 999), 'c/l');
 });

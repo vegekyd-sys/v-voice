@@ -8,7 +8,8 @@ import { entryStartup, startVoiceEntry, markVoiceTiming } from "./entry-startup.
 import { createAvatarTasks } from "./avatar-state.mjs";
 import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { createAvatarTelemetry } from "./avatar-telemetry.mjs";
-import { createBoardClient, readEventStream } from "./board-client.mjs";
+import { createBoardClient, createSpokenCursor, readEventStream } from "./board-client.mjs";
+import { spokenFocus } from "./board-scene.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
 import { createContentView } from "./content-view.mjs";
@@ -31,7 +32,9 @@ const view = createCallView();
 const tvHost=installTvHost({view,window,actions:{dial:()=>startCall(),end:()=>stopCall(),mute:()=>setMuted(!view.get().muted),speaker:()=>setOutputMuted(!view.get().outputMuted)},onError:error=>setStatus(error.message,{tone:'error'})});
 const contentView = document.querySelector ? createContentView(document, window, { onReading: reading => view.set({ reading }) }) : null;
 const renderAssistant = (target, item) => {
-  if (contentView) contentView.render(target, item, { auto: item.document === true && (!tvHost || view.get().tvLayout==='full'), inline: !tvHost });
+  // With the call board on, a delivered document stays a card in the
+  // conversation: the reader would cover the picture V is talking over.
+  if (contentView) contentView.render(target, item, { auto: item.document === true && !call?.board && (!tvHost || view.get().tvLayout==='full'), inline: !tvHost });
   else renderMarkdown(target, item.text, document);
 };
 if (document.querySelector) mountCallUi(document, view, {
@@ -580,7 +583,7 @@ async function stopCall({failure}={}) {
   if (active) {
     active.avatarTelemetry?.close();
     active.avatarReactions?.dispose();
-    active.board?.dispose(); view.set({ board: null });
+    active.board?.dispose(); clearInterval(active.boardFocusTimer); view.set({ board: null, boardFocus: '' });
     active.relay?.dispose();
     active.dialConnection?.dispose();
     active.callerContext?.close();active.deviceAdapter?.close();
@@ -703,7 +706,7 @@ async function startCall() {
       observe: event => {
         const trace = JSON.parse(document.body.dataset.boardTimeline ?? '[]');
         trace.push({ ...event, at: Math.round(performance.now()) });
-        document.body.dataset.boardTimeline = JSON.stringify(trace.slice(-30));
+        document.body.dataset.boardTimeline = JSON.stringify(trace.slice(-80));
       },
       request: async (payload, { signal, onEvent }) => {
         const response = await fetch(apiUrl('board'), { method: 'POST', headers: { 'content-type': 'application/json' },
@@ -712,6 +715,23 @@ async function startCall() {
         await readEventStream(response, onEvent);
       },
     });
+    if (active.board) {
+      // Move the focus mark with V's voice. Relay calls know how much of the
+      // reply's audio has played; elsewhere the caption itself is the clock.
+      const cursor = createSpokenCursor();
+      active.boardFocusTimer = setInterval(() => {
+        if (call !== active) return;
+        const scene = active.board.scene, snapshot = presentation.snapshot();
+        const row = [...snapshot.history, ...snapshot.current].filter(item => item.role === 'assistant' && !item.document && item.text?.trim()).sort((a, b) => a.at - b.at).at(-1);
+        let focus = '';
+        if (row && scene.blocks.length && view.get().voice === 'speaking') {
+          const stats = active.relay?.stats, textLength = Array.from(row.text).length;
+          const index = stats ? cursor.index({ key: row.key, textLength, outputBytes: stats.outputBytes, queuedBytes: stats.queuedOutputBytes }) : textLength;
+          focus = spokenFocus(scene, row.text, index);
+        }
+        view.set({ boardFocus: focus });
+      }, 400);
+    }
     if (avatar) active.avatarReactions = createAvatarReactions({
       observe:event=>{
         if(event.type==='applied')active.avatarTelemetry?.decision(event);

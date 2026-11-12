@@ -79,24 +79,20 @@ class Model extends EventEmitter {
 // per fixture topic, built block by block, then focus following V's phrases.
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const SCENES = [
-  [/接通/u, '电话怎么接通', [{id: 's', t: 'steps', items: [{id: 'a', h: '拨号', d: '要一个通话名额，打开麦克风'}, {id: 'b', h: '建立连接', d: '声音转给语音模型，再传回来'}, {id: 'c', h: '直接说话', d: '随时可以打断'}]}], ['s/a', 's/b', 's/c'], {id: 'n', t: 'note', text: '整个过程一般两三秒'}],
-  [/对比|比较/u, '两种画面方案', [{id: 'c', t: 'compare', cols: [{id: 'v', h: '实时视频', points: ['画面最有感染力', '首帧十几秒', '按秒计费']}, {id: 'e', h: '讲解画面', tag: '先做', points: ['一秒内出现', '信息准确', '成本很低']}]}], ['c/v', 'c/e', 'c/e'], {id: 'n', t: 'note', text: '先做讲解画面，实时视频留给陪伴'}],
-  [/夜班/u, '夜班现在', [{id: 'k', t: 'stats', items: [{id: 'a', label: '在产', value: '12', unit: '张'}, {id: 'b', label: '今晚已交付', value: '31', unit: '条'}, {id: 'c', label: '等你确认', value: '2', unit: '条'}]}, {id: 'b', t: 'bars', h: '并发', items: [{id: 'u', label: '已用', value: 8}, {id: 'm', label: '上限', value: 15}]}], ['k/a', 'k/c', 'b/u'], null],
-  [/数据|流|架构/u, '语音和画面两条线', [{id: 'f', t: 'flow', nodes: [{id: 'u', label: '你说的话'}, {id: 'v', label: '语音模型', sub: '又快又自然'}, {id: 'd', label: '画面导演', sub: '只管屏幕'}, {id: 'a', label: '你听到的回答'}, {id: 'b', label: '你看到的画面'}], edges: [['u', 'v', '声音'], ['u', 'd', '文字'], ['v', 'a'], ['d', 'b'], ['v', 'd', 'V 说的话']]}], ['f/v', 'f/d', 'f/b'], {id: 'n', t: 'note', text: '两边都不等对方'}],
+  [/接通/u, '电话怎么接通', [{id: 's', t: 'steps', items: [{id: 'a', h: '拨号', d: '要一个通话名额，打开麦克风', q: '第一步是拨号'}, {id: 'b', h: '建立连接', d: '声音转给语音模型，再传回来', q: '第二步是建立连接'}, {id: 'c', h: '直接说话', d: '随时可以打断', q: '第三步就是直接说话'}]}], {id: 'n', t: 'note', text: '整个过程一般两三秒'}],
+  [/对比|比较/u, '两种画面方案', [{id: 'c', t: 'compare', cols: [{id: 'v', h: '实时视频', points: ['画面最有感染力', '首帧十几秒', '按秒计费'], q: '实时视频的画面'}, {id: 'e', h: '讲解画面', tag: '先做', points: ['一秒内出现', '信息准确', '成本很低'], q: '讲解画面一秒内'}]}], {id: 'n', t: 'note', text: '先做讲解画面，实时视频留给陪伴'}],
+  [/夜班/u, '夜班现在', [{id: 'k', t: 'stats', items: [{id: 'a', label: '在产', value: '12', unit: '张', q: '在产十二张卡'}, {id: 'b', label: '今晚已交付', value: '31', unit: '条', q: '已经交付三十一条'}, {id: 'c', label: '等你确认', value: '2', unit: '条', q: '有两条在等你'}]}, {id: 'b', t: 'bars', h: '并发', items: [{id: 'u', label: '已用', value: 8, q: '现在用了八个'}, {id: 'm', label: '上限', value: 15, q: '并发上限是十五'}]}], null],
+  [/数据|流|架构/u, '语音和画面两条线', [{id: 'f', t: 'flow', nodes: [{id: 'u', label: '你说的话'}, {id: 'v', label: '语音模型', sub: '又快又自然', q: '你的声音进语音模型'}, {id: 'd', label: '画面导演', sub: '只管屏幕', q: '交给画面导演'}, {id: 'a', label: '你听到的回答'}, {id: 'b', label: '你看到的画面', q: '屏幕上放什么'}], edges: [['u', 'v', '声音'], ['u', 'd', '文字'], ['v', 'a'], ['d', 'b'], ['v', 'd', 'V 说的话']]}], {id: 'n', t: 'note', text: '两边都不等对方'}],
 ];
 async function* scriptedDirector({messages, signal}) {
-  const request = JSON.parse(messages[1].content), said = request.conversation.map(turn => turn.text).join('\n');
+  const request = JSON.parse(messages[1].content);
   const topic = SCENES.find(([pattern]) => pattern.test(request.conversation.filter(turn => turn.role === 'user').at(-1)?.text ?? ''));
   const line = async (op, wait = 260) => { await pause(wait); return signal?.aborted ? '' : JSON.stringify(op) + '\n'; };
   if (!topic) { yield await line({op: 'none'}, 300); return; }
-  const [, title, blocks, focus, note] = topic, empty = typeof request.screen === 'string' || request.screen.title !== title;
+  const [, title, blocks, note] = topic, empty = typeof request.screen === 'string' || request.screen.title !== title;
   if (empty) { yield await line({op: 'scene', title}, 500); for (const block of blocks) yield await line({op: 'put', block}); }
-  if (request.trigger === 'assistant_progress') {
-    const spoken = (request.conversation.at(-1)?.text.match(/[。！？]/gu) ?? []).length;
-    yield await line({op: 'focus', id: focus[Math.min(focus.length - 1, Math.max(0, spoken - 2))]});
-  }
-  if (request.trigger === 'assistant_end') { if (note) yield await line({op: 'put', block: note}); yield await line({op: 'focus', id: ''}); }
-  void said;
+  if (request.trigger === 'assistant_end' && note) yield await line({op: 'put', block: note});
+  if (!empty && request.trigger !== 'assistant_end') yield await line({op: 'none'}, 200);
 }
 
 const real = boardDirectorFromEnv({...process.env, VOICE_BOARD: '1'}, {audit: event => console.log(JSON.stringify(event))});

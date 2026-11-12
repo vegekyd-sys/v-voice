@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {BOARD_PROGRESS_INTERVAL_MS, createBoardClient, readEventStream} from './board-client.mjs';
+import {BOARD_PROGRESS_INTERVAL_MS, createBoardClient, createSpokenCursor, readEventStream} from './board-client.mjs';
 
 // Manual clock: timers fire only when the test advances time.
 function harness(reply = () => []) {
@@ -141,4 +141,18 @@ test('the event stream is parsed across chunk boundaries', async () => {
   const seen = [];
   await readEventStream({body}, value => seen.push(value.op));
   assert.deepEqual(seen, ['scene', 'focus', 'done']);
+});
+
+test('the spoken position is the played share of the reply\'s own audio', () => {
+  const cursor = createSpokenCursor();
+  // An earlier reply played out completely: 96 kB received, nothing queued.
+  assert.equal(cursor.index({key: 'turn-1', textLength: 10, outputBytes: 96000, queuedBytes: 0}), 0);
+  // The next reply: text and audio arrive far ahead of playback.
+  assert.equal(cursor.index({key: 'turn-2', textLength: 40, outputBytes: 96000, queuedBytes: 0}), 0);
+  assert.equal(cursor.index({key: 'turn-2', textLength: 40, outputBytes: 96000 + 480000, queuedBytes: 480000}), 0);
+  assert.equal(cursor.index({key: 'turn-2', textLength: 100, outputBytes: 96000 + 960000, queuedBytes: 720000}), 25);
+  assert.equal(cursor.index({key: 'turn-2', textLength: 100, outputBytes: 96000 + 960000, queuedBytes: 0}), 100);
+  // A barge-in flushes the queue; the following reply starts from zero again.
+  assert.equal(cursor.index({key: 'turn-3', textLength: 20, outputBytes: 96000 + 960000, queuedBytes: 0}), 0);
+  assert.equal(cursor.index({key: 'turn-3', textLength: 20, outputBytes: 96000 + 960000 + 48000, queuedBytes: 24000}), 10);
 });

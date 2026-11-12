@@ -16,6 +16,9 @@ const ident = (value, fallback) => {
 };
 const list = (value, limit) => Array.isArray(value) ? value.slice(0, limit) : [];
 const optional = (target, key, value) => { if (value) target[key] = value; return target; };
+// `q`: a few of V's own words marking where V talks about this item, so the
+// page can move the focus mark with the audio (see spokenFocus).
+const quoted = (target, source) => optional(target, 'q', text(source.q, 24));
 // Model-written ids may repeat; later duplicates get a positional id instead.
 const unique = (items, prefix) => {
   const seen = new Set();
@@ -28,7 +31,7 @@ const unique = (items, prefix) => {
 const entries = (raw, prefix) => unique(list(raw, BOARD_LIMITS.items).map((item, index) => {
   const entry = typeof item === 'string' ? {h: item} : item && typeof item === 'object' ? item : {};
   const h = text(entry.h ?? entry.label ?? entry.title, 60);
-  return h ? optional({id: ident(entry.id, `${prefix}${index + 1}`), h}, 'd', text(entry.d ?? entry.detail, 160)) : null;
+  return h ? quoted(optional({id: ident(entry.id, `${prefix}${index + 1}`), h}, 'd', text(entry.d ?? entry.detail, 160)), entry) : null;
 }).filter(Boolean), prefix);
 
 const BLOCKS = {
@@ -46,7 +49,7 @@ const BLOCKS = {
       if (!col || typeof col !== 'object') return null;
       const h = text(col.h ?? col.label, 30);
       const points = list(col.points, 6).map(point => text(point, 80)).filter(Boolean);
-      return h ? optional({id: ident(col.id, `c${index + 1}`), h, points}, 'tag', text(col.tag, 10)) : null;
+      return h ? quoted(optional({id: ident(col.id, `c${index + 1}`), h, points}, 'tag', text(col.tag, 10)), col) : null;
     }).filter(Boolean), 'c');
     return cols.length >= 2 ? optional({cols}, 'h', text(raw.h, 40)) : null;
   },
@@ -55,7 +58,7 @@ const BLOCKS = {
       if (!item || typeof item !== 'object') return null;
       const label = text(item.label ?? item.h, 30), value = text(item.value, 20);
       if (!label || !value) return null;
-      return optional(optional({id: ident(item.id, `n${index + 1}`), label, value}, 'unit', text(item.unit, 10)), 'note', text(item.note, 60));
+      return quoted(optional(optional({id: ident(item.id, `n${index + 1}`), label, value}, 'unit', text(item.unit, 10)), 'note', text(item.note, 60)), item);
     }).filter(Boolean), 'n');
     return items.length ? {items} : null;
   },
@@ -63,7 +66,7 @@ const BLOCKS = {
     const items = unique(list(raw.items, BOARD_LIMITS.items).map((item, index) => {
       if (!item || typeof item !== 'object') return null;
       const label = text(item.label ?? item.h, 30), value = Number(item.value);
-      return label && Number.isFinite(value) && value >= 0 ? {id: ident(item.id, `b${index + 1}`), label, value} : null;
+      return label && Number.isFinite(value) && value >= 0 ? quoted({id: ident(item.id, `b${index + 1}`), label, value}, item) : null;
     }).filter(Boolean), 'b');
     return items.length >= 2 ? optional(optional({items}, 'h', text(raw.h, 40)), 'unit', text(raw.unit, 10)) : null;
   },
@@ -78,7 +81,7 @@ const BLOCKS = {
     const nodes = unique(list(raw.nodes, BOARD_LIMITS.nodes).map((node, index) => {
       if (!node || typeof node !== 'object') return null;
       const label = text(node.label ?? node.h, 30);
-      return label ? optional({id: ident(node.id, `f${index + 1}`), label}, 'sub', text(node.sub ?? node.d, 50)) : null;
+      return label ? quoted(optional({id: ident(node.id, `f${index + 1}`), label}, 'sub', text(node.sub ?? node.d, 50)), node) : null;
     }).filter(Boolean), 'f');
     const known = new Set(nodes.map(node => node.id));
     const edges = list(raw.edges, BOARD_LIMITS.edges).map(edge => {
@@ -116,6 +119,25 @@ const focusTargets = block => block.t === 'compare' ? block.cols : block.t === '
 export function focusExists(scene, id) {
   const [blockId, itemId] = id.split('/'), block = scene.blocks.find(b => b.id === blockId);
   return Boolean(block) && (itemId === undefined || focusTargets(block).some(item => item.id === itemId));
+}
+
+const loose = value => value.replace(/[\s，。！？、；：,.!?;:"'“”‘’（）()]/gu, '');
+/**
+ * Which item V is talking about once `index` characters of `spoken` have been
+ * said aloud: the item whose quote starts latest at or before that point.
+ * Returns a focus id, or '' when V has not reached any quoted item yet.
+ */
+export function spokenFocus(scene, spoken, index) {
+  const heard = loose(Array.from(spoken).slice(0, Math.max(0, index)).join(''));
+  let best = '', at = -1;
+  for (const block of scene.blocks) for (const item of focusTargets(block)) {
+    const quote = item.q && loose(item.q);
+    if (!quote) continue;
+    // The quote counts once V has started saying it, not only when finished.
+    const found = heard.lastIndexOf(quote.slice(0, Math.min(quote.length, 4)));
+    if (found > at && loose(spoken).includes(quote)) { at = found; best = `${block.id}/${item.id}`; }
+  }
+  return best;
 }
 
 /** Apply a normalized operation. Returns the same object when nothing changes. */

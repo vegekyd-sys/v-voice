@@ -11,6 +11,26 @@ const SETTLE_MS = 350;
 const sentences = text => text.match(/[^。！？.!?\n]+[。！？.!?\n]+/gu)?.join('').trim() ?? '';
 const signature = row => row ? row.key + '\u0000' + row.text : '';
 
+/**
+ * How far into V's current reply the audio has got, in characters. A realtime
+ * model sends a reply's text and audio together, far ahead of playback, so the
+ * share of this reply's received audio that has been played is also the share
+ * of its received text that has been heard. Byte counts are cumulative for the
+ * call (relay-audio stats); a new reply starts a new baseline.
+ */
+export function createSpokenCursor() {
+  let key = null, base = 0;
+  return {
+    index({key: turn, textLength, outputBytes, queuedBytes}) {
+      const played = outputBytes - queuedBytes;
+      if (turn !== key) { key = turn; base = played; }
+      const received = outputBytes - base;
+      if (!(received > 0)) return 0;
+      return Math.floor(textLength * Math.min(1, Math.max(0, (played - base) / received)));
+    },
+  };
+}
+
 /** Read `data:` events from a streamed response body. */
 export async function readEventStream(response, onEvent) {
   const reader = response.body.getReader(), decoder = new TextDecoder();
@@ -46,7 +66,7 @@ export function createBoardClient({request, onScene = () => {}, isCurrent = () =
     // The caption of the caller's turn must have stopped changing: it is
     // final, or V has already started answering it.
     if (user && signature(user) !== lastUser && (user.complete || rows.at(-1) !== user))
-      return {trigger: 'user', mark: () => { lastUser = signature(user); }};
+      return {trigger: 'user', wait: 0, mark: () => { lastUser = signature(user); }};
     const documentCount = rows.filter(row => row.document).length;
     if (evidence || documentCount > documents)
       return {trigger: 'evidence', mark: () => { evidence = false; documents = documentCount; }};
@@ -74,7 +94,7 @@ export function createBoardClient({request, onScene = () => {}, isCurrent = () =
     timer = null;
     if (closed || busy || !isCurrent()) return;
     const next = candidate();
-    if (!next?.trigger) { if (next?.wait) schedule(next.wait); return; }
+    if (!next?.trigger) { if (next?.wait > 0) schedule(next.wait); return; }
     next.mark();
     const turns = latest.rows.slice(-8).map((row, index, all) => ({
       role: row.document ? 'document' : row.role,
