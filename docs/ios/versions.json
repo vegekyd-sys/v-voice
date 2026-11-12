@@ -35,7 +35,7 @@
     "build": 8,
     "ipaSHA256": "a3393b1a9227f1472d50140b5948e714bd3614a41f70e1a551897387ae3f0bab"
   },
-  "deviceReportedBuild": "40",
+  "deviceReportedBuild": "43",
   "savedH5Baseline": {
     "build": 10,
     "sourceCommit": "3ffeb94",
@@ -728,9 +728,9 @@
     "installedViaTestFlight": "user_reported"
   },
   "pendingRelease": null,
-  "currentInstalledBuild": 40,
+  "currentInstalledBuild": 43,
   "currentInstalledVersion": "1.0.0",
-  "currentInstalledSourceCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",
+  "currentInstalledSourceCommit": "71e1d5d97bf2eebcbb539a74f330060e61b02412",
   "testFlightCandidate40": {
     "version": "1.0.0",
     "build": 40,
@@ -757,10 +757,22 @@
   "relayUsageWidgetRelease": {
     "version": "1.0.0",
     "build": 43,
-    "widgetFamilies": ["small", "medium", "large"],
+    "widgetFamilies": [
+      "small",
+      "medium",
+      "large"
+    ],
     "stableAudioBaselineBuild": 32
   },
   "currentNativeRelease": {
+    "version": "1.0.0",
+    "build": 43,
+    "sourceCommit": "71e1d5d97bf2eebcbb539a74f330060e61b02412",
+    "record": "../releases/relay-usage-widget-20261112/release.json",
+    "installedOnRequestedIPhone": true,
+    "stableAudioBaselineBuild": 32
+  },
+  "previousNativeReleaseBeforeWidget": {
     "version": "1.0.0",
     "build": 40,
     "sourceCommit": "a1146b30cf4b16ed3fcf8a77ed57f5eec55c81b9",

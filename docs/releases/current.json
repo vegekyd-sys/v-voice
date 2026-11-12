@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "calendar-dial-20261102",
-  "version": "voice-calendar-dial.20261102.1",
-  "entryCommit": "61e7ef6ddbdf983e05ae7c3c7841d0fe25ea5dfa",
-  "deviceEntryCommit": "61e7ef6ddbdf983e05ae7c3c7841d0fe25ea5dfa",
-  "filesSha256": "c28f5ce5ca2a87076b828737b831428ff10b31b86cf6a08c3c466f704cb7bb22",
-  "registration": "calendar-dial-20261102/release.json",
-  "previousEntryCommit": "9bdf5a89425b4fabd847ed8950d1bbb30d52a796",
+  "release": "relay-usage-widget-20261112",
+  "version": "voice-relay-usage.20261112.1",
+  "entryCommit": "71e1d5d97bf2eebcbb539a74f330060e61b02412",
+  "deviceEntryCommit": "71e1d5d97bf2eebcbb539a74f330060e61b02412",
+  "filesSha256": "791c484dddc655deeace15833aac2e541b2899b8d85eabb74e677ef0d7d29a86",
+  "registration": "relay-usage-widget-20261112/release.json",
+  "previousEntryCommit": "3ff302807427a76fc1d9fec006173a643f9f7262",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-02T02:30:00+08:00",
-  "runtimeDifference": "Personal entry Feishu reads use the verified owner identity. Identified entries allow 30 dials per 10 minutes. H5 saves media through iOS build 41 and keeps the share link for older binaries."
+  "validatedAt": "2026-11-12T23:59:36+08:00",
+  "runtimeDifference": "Personal iOS home screen widget reports subscription windows and DeepSeek balance from the read-only quota collector."
 }
