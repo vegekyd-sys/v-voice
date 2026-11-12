@@ -754,6 +754,12 @@
     "externalVerifiedAt": "2026-10-28T22:20:52+08:00",
     "externalReceipt": "../releases/ios-testflight40-external-20261028/release.json"
   },
+  "relayUsageWidgetRelease": {
+    "version": "1.0.0",
+    "build": 43,
+    "widgetFamilies": ["small", "medium", "large"],
+    "stableAudioBaselineBuild": 32
+  },
   "currentNativeRelease": {
     "version": "1.0.0",
     "build": 40,

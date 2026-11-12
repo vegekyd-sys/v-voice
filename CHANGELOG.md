@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-12 — iPhone 主屏订阅用量
+
+- V Voice 1.0.0 build 43 可在主屏查看个人套餐用量和重置时间。中号突出余量最低的套餐，大号显示各套餐的有效窗口，中号和大号也显示 DeepSeek 余额。
+
 ## 2026-11-12 — Call images use Nano Banana 2.1; no empty minutes card
 
 - Images made in the call now use Makaron `gemini-2.1` (Nano Banana 2.1) instead of `gpt-image-2.6-flare`. The voice instructions name the new model and the executor guard only accepts it.
