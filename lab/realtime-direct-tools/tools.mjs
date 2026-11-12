@@ -26,6 +26,8 @@ export const LESSON_TOOL={type:'function',name:'explain_on_board',description:'�
 // With the lesson tool on offer the model is told when to prefer it; and a
 // request to explain that it hands to the backend anyway is turned into a lesson.
 export const LESSON_ROUTING='讲解画面：用户请你讲解、解释、讲讲、介绍一个东西，问两样东西有什么关系或区别，或者说没听懂、要你换个简单的说法、换个例子再讲、要你摆给他看或画给他看时，调用 explain_on_board，由它准备讲稿和画面，你照着讲。这类请求不要自己直接讲一大段，不要交给 delegate_to_v，不要用 exec 生成图片，也不要自己先 web_search 或 memory_search（需要查资料时讲解工具会自己去查）。调用之后只说一句很短的话，然后等讲稿，不要自己先回答一遍。用户明确要一张生成的图、一个文件、要你去办一件事，或者只是问一个事实时，才用别的工具。讲解之后用户接着问的小问题（一两句能答完）直接回答。';
+// Parallel mode: there is no lesson tool. V explains in its own words and the screen draws along.
+export const PARALLEL_ROUTING='画面：你说的话会被自动配成屏幕上的图示，说到哪里画到哪里，你不需要调用任何工具来出画面。用户请你讲解、解释、介绍、比较一件事时，你自己直接讲，不要交给 delegate_to_v，也不要说“详细的放屏幕上了”。只有需要今天的信息才先 web_search，需要用户自己的项目和记录才先 memory_search，查完自己讲。讲的时候像当面讲课：先一句话说结论，再一条一条讲，一句只讲一件事，用具体的名字和数字，六到十句讲完；给小朋友讲就直接对他说，用他认识的东西打比方。真正要办的事（发消息、改日程、做文件、多步调研）才交给 delegate_to_v。';
 const EXPLAINS=/讲解|解释|讲讲|讲一讲|讲一下|讲一遍|科普|(?:说说|说一下|介绍|聊聊|分析).{0,40}(?:关系|区别|比较|对比|原理|来历|怎么来|为什么|是什么|怎么回事|历程|历史)|(?:摆|画|演示|示范|图示|图表|图标)(?:出来)?(?:给我看|展示|的方式|的那种)|\bexplain\b|walk me through|teach me/iu,MAKES=/后台|生成|画[一几]?[张个幅]|做[一几]?[张个份段]|视频|文档|报告|表格|发[给到送]|飞书|日程|提醒/u;
 /** Whether the caller's own words ask for an explanation and for nothing to be made or sent. */
 export const asksForLesson=text=>typeof text==='string'&&EXPLAINS.test(text)&&!MAKES.test(text);
