@@ -255,3 +255,17 @@ test('streaming: the page opens when the caller has asked, grows while V speaks,
   assert.equal((await run('assistant_end', [user, {role: 'assistant', text: '好，我查一下。'}])).reason, 'waiting');
   assert.equal(asked, 3);
 });
+
+test('streaming: the same comparison continued grows the one table; a fifth block is not added', async () => {
+  const {STREAM_INSTRUCTIONS, refineStreamOp} = await import('./board-lesson.mjs');
+  const said = '动力上电车靠电机，油车靠发动机。补能上电车要充电，油车三分钟加满。保养上电车项目少。冬天电车续航打折。卖车时油车更保值。';
+  const row = (id, h, q) => ({id, h, cells: ['甲', '乙'], q});
+  const table = (id, items) => JSON.stringify({op: 'put', block: {id, t: 'versus', sides: ['电车', '油车'], items}});
+  const note = id => JSON.stringify({op: 'put', block: {id, t: 'sticky', text: '备注', q: '卖车时油车更保值'}});
+  const lines = [table('v1', [row('a', '动力', '动力上电车靠电机')]), table('v2', [row('a', '补能', '补能上电车要充电'), row('b', '动力', '动力上电车靠电机')]), note('n1'), note('n2'), note('n3'), note('n4')];
+  const director = createBoardDirector({stream: {instructions: STREAM_INSTRUCTIONS, refine: refineStreamOp}, complete: async function* () { yield lines.join('\n') + '\n'; }});
+  await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '区别'}, {role: 'assistant', text: said}]});
+  const scene = director.scene('c');
+  assert.deepEqual(scene.blocks.map(block => block.t), ['versus', 'sticky', 'sticky', 'sticky']);
+  assert.deepEqual(scene.blocks[0].items.map(item => item.h), ['动力', '补能']);
+});

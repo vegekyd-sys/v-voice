@@ -218,8 +218,20 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       let ops = 0, firstOpMs = null, none = false, retired = false;
       const parser = createLineParser(raw => {
         if (controller.signal.aborted || ops >= MAX_OPS) return;
-        const op = stream ? stream.refine(normalizeOp(raw), {said, trigger}) : normalizeOp(raw);
+        let op = stream ? stream.refine(normalizeOp(raw), {said, trigger}) : normalizeOp(raw);
         if (!op || retired) return;
+        if (stream && op.op === 'put' && op.block.t === 'versus' && row.scene.pending === null) {
+          // The same two things compared further is the same table growing, not a second table
+          // (three tables with the same two headers came of one answer about cars).
+          const sides = block => block.sides.map(side => side.h).join('|');
+          const table = row.scene.blocks.find(block => block.t === 'versus' && block.id !== op.block.id && sides(block) === sides(op.block));
+          if (table) {
+            const have = new Set(table.items.map(item => item.h));
+            const more = op.block.items.filter(item => !have.has(item.h)).map((item, index) => ({...item, id: `${op.block.id}-${item.id}`.slice(0, 24) || `m${index}`}));
+            if (!more.length) return;
+            op = {op: 'put', block: {...table, items: [...table.items, ...more].slice(0, 8)}};
+          }
+        }
         if (stream && op.op !== 'none') {
           // One screen: a page holds four blocks. More would only shrink it or make it scroll.
           if (op.op === 'put' && row.scene.pending === null && row.scene.blocks.length >= 4 && !row.scene.blocks.some(block => block.id === op.block.id)) return;
