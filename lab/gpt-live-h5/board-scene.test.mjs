@@ -107,7 +107,10 @@ test('a flow is laid out as a ring, a row or layers, whichever its edges describ
   assert.deepEqual([extra.shape, extra.layers], ['ring', [['w', 'f', 'g', 'e']]], 'a node that only points into the loop joins the circle after it');
   const chain = flowLayout(n('a', 'b', 'c'), [['a', 'b'], ['b', 'c']]);
   assert.deepEqual([chain.shape, chain.position.a.y, chain.position.a.x < chain.position.b.x], ['row', 50, true]);
-  assert.equal(flowLayout(n('a', 'b', 'c', 'd'), [['a', 'b'], ['b', 'c'], ['c', 'd']], {narrow: true}).shape, 'layers', 'a long chain stands up on a phone');
+  const phone = flowLayout(n('a', 'b', 'c', 'd'), [['a', 'b'], ['b', 'c'], ['c', 'd']], {narrow: true});
+  assert.deepEqual([phone.shape, phone.layers], ['ring', [['a', 'b', 'c', 'd']]], 'on a phone a long chain goes round a circle, in order, so all of it is in view');
+  const seven = n('a', 'b', 'c', 'd', 'e', 'f', 'g');
+  assert.equal(flowLayout(seven, seven.slice(1).map((node, index) => [seven[index].id, node.id]), {narrow: true}).shape, 'layers', 'too many for a circle: it stands up');
   const {shape, layers, position} = flowLayout(n('a', 'b', 'c', 'd'), [['a', 'b'], ['a', 'c'], ['b', 'd'], ['c', 'd']]);
   assert.deepEqual([shape, layers], ['layers', [['a'], ['b', 'c'], ['d']]]);
   assert.deepEqual([position.a.y, position.d.y, position.b.x < position.c.x], [0, 100, true]);

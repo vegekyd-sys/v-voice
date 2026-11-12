@@ -298,16 +298,16 @@ export function flowLayout(nodes, edges, {narrow = false} = {}) {
     const loop = at === undefined ? [] : walk.slice(walk.indexOf(at));
     if (loop.length > round.length) round = loop;
   }
-  if (round.length >= 3 && ids.length <= 6) {
-    // Things that only point into the ring (electric beats water) join the
-    // circle after it, so the whole picture still fits one screen.
-    round = [...round, ...ids.filter(id => !round.includes(id))];
-    round.forEach((id, index) => {
-      const angle = -Math.PI / 2 + index * Math.PI * 2 / round.length;
+  const circle = order => {
+    order.forEach((id, index) => {
+      const angle = -Math.PI / 2 + index * Math.PI * 2 / order.length;
       position[id] = {x: 50 + Math.cos(angle) * 44, y: 50 + Math.sin(angle) * 44, layer: 0};
     });
-    return {shape: 'ring', layers: [round], position};
-  }
+    return {shape: 'ring', layers: [order], position};
+  };
+  // Things that only point into the ring (electric beats water) join the
+  // circle after it, so the whole picture still fits one screen.
+  if (round.length >= 3 && ids.length <= 6) return circle([...round, ...ids.filter(id => !round.includes(id))]);
   const depth = new Map(ids.map(id => [id, 0]));
   const forward = [], reaches = (from, to, seen = new Set()) => from === to
     || forward.some(([a, b]) => a === from && !seen.has(b) && (seen.add(b), reaches(b, to, seen)));
@@ -320,6 +320,9 @@ export function flowLayout(nodes, edges, {narrow = false} = {}) {
   const layers = [];
   for (const id of ids) (layers[depth.get(id)] ??= []).push(id);
   const rows = layers.filter(Boolean);
+  // A chain too long for a phone's width would be a column several screens
+  // tall; set round a circle, in order, all of it is in view at once.
+  if (narrow && rows.length > 3 && rows.length <= 6 && rows.every(row => row.length === 1)) return circle(rows.map(row => row[0]));
   if (rows.length > 1 && rows.every(row => row.length === 1) && !(narrow && rows.length > 3)) {
     rows.forEach((row, index) => { position[row[0]] = {x: (index + .5) / rows.length * 100, y: 50, layer: index}; });
     return {shape: 'row', layers: rows, position};

@@ -138,7 +138,7 @@ export function parseLesson(text) {
  * `complete({messages, signal})` yields text chunks (the director's client).
  * `director.present(owner, ops, holdMs)` puts the lesson on the call's board.
  */
-export function createLessonWriter({complete, fallback = null, director, now = Date.now, record = () => {}, attemptMs = 7000, totalMs = 12000} = {}) {
+export function createLessonWriter({complete, fallback = null, director, now = Date.now, record = () => {}, preferMs = 6500, totalMs = 12000} = {}) {
   // What each call was last told, so a second lesson builds on the first.
   const told = new Map();
   return {
@@ -154,24 +154,28 @@ export function createLessonWriter({complete, fallback = null, director, now = D
         {role: 'user', content: JSON.stringify({topic: String(topic ?? '').slice(0, 400), audience: String(audience ?? '').slice(0, 80) || '成年人',
           ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(before ? {before} : {}),
           ...(lessonReference(`${topic} ${ask}`) ? {reference: lessonReference(`${topic} ${ask}`)} : {})})}];
-      let lesson = null, text = '', failure = '';
-      // The preferred writer first; if it gives nothing usable, the director's own model.
-      // The caller is waiting in silence: one writer gets seven seconds, both
-      // together twelve (a slow one once kept a call waiting for thirty-three).
-      for (const write of [complete, fallback].filter(Boolean)) {
-        text = ''; failure = '';
-        const left = Math.min(attemptMs, totalMs - (now() - started));
-        if (left < Math.min(1500, attemptMs)) break;
-        const limit = new AbortController(), stop = () => limit.abort(), timer = setTimeout(stop, left);
-        if (signal?.aborted) stop(); else signal?.addEventListener('abort', stop, {once: true});
+      // The caller is waiting in silence, so both writers start at once. The
+      // preferred one's lesson is used if it arrives within `preferMs`
+      // (it usually takes four seconds, sometimes more than ten); after that
+      // whichever has one. Nothing by `totalMs`: no lesson.
+      const limit = new AbortController(), stop = () => limit.abort();
+      if (signal?.aborted) stop(); else signal?.addEventListener('abort', stop, {once: true});
+      const attempt = (write, name) => (async () => {
+        let text = '', failure = '';
         try { for await (const chunk of write({signal: limit.signal, messages})) text += chunk; } catch (error) { failure = String(error?.message ?? error).slice(0, 240); }
-        finally { clearTimeout(timer); signal?.removeEventListener('abort', stop); }
-        lesson = parseLesson(text);
-        if (lesson) break;
-        record({type: 'board.lesson-attempt', voiceSessionId: owner, ok: false, failure, chars: text.length, head: text.slice(0, 160)});
-      }
+        const lesson = parseLesson(text);
+        if (!lesson && !limit.signal.aborted) record({type: 'board.lesson-attempt', voiceSessionId: owner, writer: name, ok: false, failure, chars: text.length, head: text.slice(0, 160)});
+        return lesson ? {...lesson, writer: name} : null;
+      })();
+      const after = ms => new Promise(resolve => { const timer = setTimeout(resolve, ms, null); limit.signal.addEventListener('abort', () => { clearTimeout(timer); resolve(null); }, {once: true}); });
+      const first = attempt(complete, 'preferred'), second = fallback ? attempt(fallback, 'fallback') : Promise.resolve(null);
+      // A usable lesson from either, ignoring a writer that came back empty.
+      const either = Promise.race([first.then(found => found ?? second), second.then(found => found ?? first)]);
+      let lesson = await Promise.race([first.then(found => found ?? second), after(preferMs)]);
+      lesson ??= await Promise.race([either, after(Math.max(0, totalMs - (now() - started)))]);
+      stop(); signal?.removeEventListener('abort', stop);
       const say = lesson?.say.join('');
-      record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ask, ok: Boolean(lesson), durationMs: now() - started, say: lesson?.say ?? null, drawn: lesson?.ops ?? null});
+      record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ask, ok: Boolean(lesson), writer: lesson?.writer ?? null, durationMs: now() - started, say: lesson?.say ?? null, drawn: lesson?.ops ?? null});
       if (!lesson) { director.release?.(owner); return null; }
       told.delete(owner); told.set(owner, {title: lesson.title, say});
       while (told.size > 200) told.delete(told.keys().next().value);

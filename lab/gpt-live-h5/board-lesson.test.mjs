@@ -112,10 +112,17 @@ test('a topic with facts the models get wrong comes with a reference', async () 
   assert.equal('reference' in seen[1], false);
 });
 
-test('a slow writer is given up on and the fallback writes the lesson', async () => {
-  const order = [];
-  const slow = async function* ({signal}) { order.push('slow'); await new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(Error('aborted')), {once: true})); };
-  const writer = createLessonWriter({director: {present() {}}, attemptMs: 30, totalMs: 2000, complete: slow, fallback: async function* () { order.push('fallback'); yield reply; }});
-  assert.ok(await writer.prepare({owner: 'c', topic: 't'}));
-  assert.deepEqual(order, ['slow', 'fallback']);
+test('both writers start at once: the preferred one wins if it is quick, the other is used when it is not', async () => {
+  const other = JSON.stringify({title: '备用', say: ['第一句话。', '第二句话。'], blocks: [{id: 'n', t: 'sticky', text: '备用的'}]});
+  const timed = (text, ms) => async function* ({signal}) { await new Promise((resolve, reject) => { const timer = setTimeout(resolve, ms); signal.addEventListener('abort', () => { clearTimeout(timer); reject(Error('aborted')); }, {once: true}); }); yield text; };
+  const run = async (preferredMs, fallbackMs, preferredText = reply) => {
+    const shown = [];
+    const writer = createLessonWriter({director: {present: (id, ops) => shown.push(ops[0].title)}, preferMs: 60, totalMs: 200, complete: timed(preferredText, preferredMs), fallback: timed(other, fallbackMs)});
+    const script = await writer.prepare({owner: 'c', topic: 't'});
+    return script ? shown[0] : null;
+  };
+  assert.equal(await run(30, 5), '谁打得过谁', 'the fallback was ready first, but the preferred lesson came in time');
+  assert.equal(await run(120, 5), '备用', 'the preferred writer was slow');
+  assert.equal(await run(5, 20, 'no'), '备用', 'the preferred writer came back with nothing usable');
+  assert.equal(await run(500, 500), null, 'neither in time: no lesson');
 });
