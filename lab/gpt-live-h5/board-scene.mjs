@@ -350,6 +350,8 @@ export function scenePictures(scene) {
   for (const block of scene.blocks) {
     if (block.t === 'photo') queries.add(block.query);
     for (const item of focusTargets(block)) if (item.img) queries.add(item.img);
+    // The things a comparison is between carry pictures too (they were refused: "not on the board").
+    for (const side of block.sides ?? []) if (side.img) queries.add(side.img);
   }
   return queries;
 }

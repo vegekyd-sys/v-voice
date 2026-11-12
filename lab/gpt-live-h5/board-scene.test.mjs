@@ -192,3 +192,10 @@ test('the diagram kit: every shape keeps its form, bounded, and survives being r
   const scene = [{op: 'scene', title: 't'}, {op: 'put', block: kit[0]}, {op: 'put', block: kit[1]}].reduce(applyOp, emptyScene());
   assert.deepEqual(spokenProgress(scene, '先摆十六块。四乘四等于九。', 2).ahead, ['t/a', 'f/p5']);
 });
+
+test('every picture a page asks for may be fetched, the sides of a comparison included', async () => {
+  const {scenePictures} = await import('./board-scene.mjs');
+  const scene = [{op: 'scene', title: 't'}, {op: 'put', block: {id: 'v', t: 'versus', sides: [{h: '胶卷相机', img: '胶卷相机'}, {h: '数码相机', img: '数码相机'}], items: [{h: '感光', cells: ['胶卷', '传感器']}]}},
+    {op: 'put', block: {id: 'm', t: 'timeline', items: [{when: '1888', h: '柯达', img: '柯达相机'}, {when: '1975', h: '数码'}]}}].reduce(applyOp, emptyScene());
+  assert.deepEqual([...scenePictures(scene)].sort(), ['数码相机', '柯达相机', '胶卷相机']);
+});
