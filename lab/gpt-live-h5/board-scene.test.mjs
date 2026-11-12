@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {applyOp, createLineParser, emptyScene, flowLayout, focusExists, normalizeOp, normalizeScene, sceneDigest, spokenFocus, spokenProgress} from './board-scene.mjs';
+import {applyOp, createLineParser, emptyScene, flowLayout, focusExists, normalizeOp, normalizeScene, scalePositions, sceneDigest, spokenFocus, spokenProgress} from './board-scene.mjs';
 
 const put = block => normalizeOp({op: 'put', block});
 const run = (...ops) => ops.reduce((scene, op) => applyOp(scene, normalizeOp(op)), emptyScene());
@@ -161,4 +161,34 @@ test('items V has written about but not yet said are reported as ahead', () => {
   assert.deepEqual(spokenProgress(scene, said, 6), {focus: 'k/a', ahead: ['k/b', 'k/c']});
   assert.deepEqual(spokenProgress(scene, said, said.indexOf('已经') + 5), {focus: 'k/b', ahead: ['k/c']});
   assert.deepEqual(spokenProgress(scene, said, 999), {focus: 'k/c', ahead: []});
+});
+
+test('the diagram kit: every shape keeps its form, bounded, and survives being read back', () => {
+  const put = block => normalizeOp({op: 'put', block})?.block;
+  const kit = [
+    {id: 't', t: 'tiles', items: [{id: 'a', rows: 4, cols: 4, h: '16 块', tone: 'sky', q: '十六块'}, {n: 25, lit: 0}, {n: 500, per: 99}, {n: 0}]},
+    {id: 'f', t: 'formula', parts: ['x', '×', {h: 'x', d: '藏起来的数', tone: 'butter'}, '=', {h: '9', mark: 'ring', q: '等于九'}]},
+    {id: 'm', t: 'timeline', w: 'third', items: [{when: '1932', h: '木工坊'}, {when: '1949', h: '塑料积木', img: '乐高积木'}]},
+    {id: 'v', t: 'versus', sides: ['电动车', {h: '油车', img: '丰田卡罗拉'}], items: [{h: '补能', cells: ['过夜充', '几分钟'], win: 1, q: '补能'}, {h: '长途', cells: ['要规划'], win: 7}, {h: '', cells: ['x', 'y']}]},
+    {id: 'o', t: 'overlap', a: {h: '电动车', points: ['地上跑']}, b: {h: '飞行器', points: ['天上飞']}, both: ['电池', '电机']},
+    {id: 's', t: 'stack', shape: 'pyramid', layers: ['飞行器', {h: '电控'}, {h: '电池和电机', d: '最底下'}]},
+    {id: 'k', t: 'scale', unit: '米', dir: 'up', marks: [{at: 120, h: '无人机'}, {at: 10000, h: '客机'}, {at: 'x', h: '不算'}]},
+  ].map(put);
+  assert.deepEqual(kit.map(block => block?.t), ['tiles', 'formula', 'timeline', 'versus', 'overlap', 'stack', 'scale']);
+  assert.deepEqual(kit[0].items.map(item => [item.n, item.per, item.lit]), [[16, 4, undefined], [25, 5, 0], [60, 10, undefined]]);
+  assert.deepEqual(kit[1].items.map(item => item.h).join(' '), 'x × x = 9');
+  assert.equal(kit[2].w, 'third');
+  assert.deepEqual(kit[3].items.map(item => [item.h, item.cells, item.win]), [['补能', ['过夜充', '几分钟'], 1], ['长途', ['要规划', ''], undefined]]);
+  assert.deepEqual(kit[4].items.map(item => [item.id, item.h, item.points]), [['a', '电动车', ['地上跑']], ['both', undefined, ['电池', '电机']], ['b', '飞行器', ['天上飞']]]);
+  assert.equal(kit[5].shape, 'pyramid');
+  assert.deepEqual(kit[6].items.map(item => item.at), [120, 10000]);
+  // The page validates what the service sends again: the stored form must read back unchanged.
+  for (const block of kit) assert.deepEqual(put(block), block);
+  for (const bad of [{id: 'x', t: 'formula', parts: ['x']}, {id: 'x', t: 'versus', sides: ['只有一边'], items: []}, {id: 'x', t: 'overlap', a: {h: 'a'}, b: {h: 'b'}}, {id: 'x', t: 'scale', items: [{at: 1, h: 'a'}]}]) assert.equal(put(bad), undefined);
+  // Marks far apart in magnitude are spaced by their logarithm.
+  assert.deepEqual(scalePositions([{at: 100}, {at: 1000}, {at: 10000}, {at: 1000000}]), [0, 25, 50, 100]);
+  assert.deepEqual(scalePositions([{at: 0}, {at: 5}, {at: 10}]), [0, 50, 100]);
+  // The pieces of a kit block wait for V's words like any item.
+  const scene = [{op: 'scene', title: 't'}, {op: 'put', block: kit[0]}, {op: 'put', block: kit[1]}].reduce(applyOp, emptyScene());
+  assert.deepEqual(spokenProgress(scene, '先摆十六块。四乘四等于九。', 2).ahead, ['t/a', 'f/p5']);
 });

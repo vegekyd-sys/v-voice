@@ -26,6 +26,15 @@ const ANSWERS = [
   [/宝可梦|相克/u, ['就像石头剪刀布。', '杰尼龟喷水，浇灭小火龙的火，水赢。', '小火龙吐火，烧掉妙蛙种子的叶子，火赢。', '妙蛙种子把杰尼龟的水喝光，草赢。']],
   [/数据|流|架构/u, ['语音和画面是两条并行的线。', '你的声音进语音模型，它负责又快又自然地回答。', '同一段对话的文字同时交给画面导演，它只管屏幕上放什么。', '两边都不等对方，所以说话不会因为画面变慢。']],
 ];
+// The diagram kit, one topic per shape (for layout work).
+ANSWERS.unshift(
+  [/积木|方程/u, ['十二，我们来摆正方形积木。', '先拿四块积木，摆成一个正方形，每边两块。', '再拿九块积木，每边三块。', '十六块积木摆成正方形，每边刚好四块。', '所以四乘四等于十六。', '那二十五块，每边几块呀？']],
+  [/电动车|油车/u, ['电动车和油车，我一项一项比。', '动力上，特斯拉靠电机，卡罗拉靠发动机。', '补能，电车在家过夜充，油车几分钟加满。', '每公里花费，电车便宜不少。', '跑长途，油车更省心。', '它们也有一样的地方：都有四个轮子，都要上保险。']],
+  [/旧金山|行程/u, ['旧金山三天，一天一区。', '第一天上午去渔人码头，下午坐船去恶魔岛。', '第二天早上走金门大桥，中午到索萨利托。', '第三天上双子峰，最后去渡轮大厦。']],
+  [/低空/u, ['低空经济是三百米以下的生意。', '送外卖的无人机飞在一百二十米。', '载人飞行器飞到三百米。', '民航客机在一万米。', '最底下是电池和电机，往上是电控，再往上才是飞行器。']],
+  [/关系/u, ['电动车和低空飞行器是两样东西。', '电动车在地上跑，载人、拉货。', '飞行器在天上飞，送外卖、载人。', '它们共用电池、电机和电控。', '所以电动车先把路修好了。']],
+  [/乐高/u, ['乐高是这样一步步来的。', '一九三二年，木匠开了木工坊。', '一九四九年，第一块塑料积木。', '一九五八年，凸点加圆管定型。', '一九七八年，小人仔诞生。']],
+);
 const sentences = text => ANSWERS.find(([pattern]) => pattern.test(text))?.[1] ?? ['嗯，我在，你说。'];
 
 const gateway = {ready: true, request: async (method, args) => {
@@ -82,7 +91,28 @@ class Model extends EventEmitter {
 // Scripted director for layout work without a model credential: one picture
 // per fixture topic, built block by block, then focus following V's phrases.
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+const KIT = [
+  [/积木|方程/u, '摆正方形', [
+    {id: 't', t: 'tiles', h: '摆一摆', items: [{id: 'a', rows: 2, cols: 2, h: '4 块', tone: 'butter', q: '先拿四块积木'}, {id: 'b', rows: 3, cols: 3, h: '9 块', tone: 'peach', q: '再拿九块积木'}, {id: 'c', rows: 4, cols: 4, h: '16 块', tone: 'sky', q: '十六块积木'}, {id: 'd', n: 25, per: 5, lit: 0, h: '25 块？', q: '那二十五块'}]},
+    {id: 'f', t: 'formula', items: [{id: 'x', h: '4', d: '每边几块', tone: 'sky', q: '所以四乘四'}, {id: 'm', h: '×', q: '所以四乘四'}, {id: 'y', h: '4', d: '有几排', tone: 'sky', q: '所以四乘四'}, {id: 'e', h: '=', q: '等于十六'}, {id: 'r', h: '16', d: '一共', tone: 'butter', mark: 'ring', q: '等于十六'}]}]],
+  [/电动车|油车/u, '电动车和油车', [
+    {id: 'v', t: 'versus', sides: [{h: '特斯拉 Model 3', img: '特斯拉 Model 3'}, {h: '丰田卡罗拉', img: '丰田卡罗拉'}], items: [{id: 'a', h: '动力', icon: '⚙️', cells: ['电池 + 电机', '汽油发动机'], q: '动力上'}, {id: 'b', h: '补能', icon: '🔌', cells: ['在家过夜充', '几分钟加满'], win: 1, q: '补能'}, {id: 'c', h: '每公里', icon: '💰', cells: ['便宜不少', '油费更高'], win: 0, q: '每公里花费'}, {id: 'd', h: '长途', icon: '🛣️', cells: ['要规划充电', '更省心'], win: 1, q: '跑长途'}]},
+    {id: 'o', t: 'overlap', a: {h: '电动车', points: ['电机', '充电桩'], q: '特斯拉靠电机'}, b: {h: '油车', points: ['发动机', '加油站'], q: '卡罗拉靠发动机'}, both: {h: '都有', points: ['四个轮子', '要上保险'], q: '都有四个轮子'}}]],
+  [/旧金山|行程/u, '旧金山三日', [
+    {id: 'd1', t: 'timeline', w: 'third', h: '第一天', items: [{id: 'a', when: '上午', h: '渔人码头', img: '渔人码头', q: '渔人码头'}, {id: 'b', when: '下午', h: '恶魔岛', d: '提前订票', img: '恶魔岛', q: '恶魔岛'}]},
+    {id: 'd2', t: 'timeline', w: 'third', h: '第二天', items: [{id: 'a', when: '早上', h: '金门大桥', img: '金门大桥', q: '金门大桥'}, {id: 'b', when: '中午', h: '索萨利托', img: '索萨利托', q: '索萨利托'}]},
+    {id: 'd3', t: 'timeline', w: 'third', h: '第三天', items: [{id: 'a', when: '上午', h: '双子峰', img: '双子峰', q: '双子峰'}, {id: 'b', when: '傍晚', h: '渡轮大厦', img: '旧金山渡轮大厦', q: '渡轮大厦'}]}]],
+  [/低空/u, '低空经济', [
+    {id: 's', t: 'scale', w: 'half', h: '飞多高', unit: '米', dir: 'up', items: [{id: 'a', at: 120, h: '外卖无人机', icon: '🚁', q: '一百二十米'}, {id: 'b', at: 300, h: '载人飞行器', icon: '🛸', q: '飞到三百米'}, {id: 'c', at: 10000, h: '民航客机', icon: '✈️', q: '一万米'}]},
+    {id: 'k', t: 'stack', w: 'half', h: '谁托着谁', items: [{id: 'a', h: '飞行器', d: '无人机、载人机', icon: '🚁', q: '再往上才是飞行器'}, {id: 'b', h: '电控', icon: '🎛️', q: '往上是电控'}, {id: 'c', h: '电池和电机', d: '电动车先做成熟', icon: '🔋', q: '最底下是电池'}]}]],
+  [/关系/u, '电动车和低空经济', [
+    {id: 'o', t: 'overlap', a: {h: '电动车', points: ['地上跑', '载人拉货'], img: '比亚迪', q: '电动车在地上跑'}, b: {h: '飞行器', points: ['天上飞', '送外卖、载人'], img: '亿航EH216', q: '飞行器在天上飞'}, both: {h: '共用', points: ['电池', '电机', '电控'], q: '它们共用电池'}},
+    {id: 'n', t: 'sticky', text: '电动车先把路修好了', q: '所以电动车先把路'}]],
+  [/乐高/u, '乐高怎么来的', [
+    {id: 'h', t: 'timeline', items: [{id: 'a', when: '1932', h: '木工坊', icon: '🪵', q: '一九三二年'}, {id: 'b', when: '1949', h: '塑料积木', icon: '🧱', q: '一九四九年'}, {id: 'c', when: '1958', h: '凸点定型', icon: '🔩', mark: 'ring', q: '一九五八年'}, {id: 'd', when: '1978', h: '小人仔', img: '乐高小人', q: '一九七八年'}]}]],
+];
 const SCENES = [
+  ...KIT,
   [/接通/u, '电话怎么接通', [{id: 's', t: 'steps', items: [{id: 'a', h: '拨号', d: '要一个通话名额，打开麦克风', icon: '📞', q: '第一步是拨号'}, {id: 'b', h: '建立连接', d: '声音转给语音模型，再传回来', icon: '🔌', q: '第二步是建立连接'}, {id: 'c', h: '直接说话', d: '随时可以打断', icon: '🗣️', mark: 'underline', q: '第三步就是直接说话'}]}], {id: 'n', t: 'sticky', text: '整个过程一般两三秒'}],
   [/对比|比较/u, '两种画面方案', [{id: 'c', t: 'compare', cols: [{id: 'v', h: '实时视频', icon: '🎬', points: ['画面最有感染力', '首帧十几秒', '按秒计费'], q: '实时视频的画面'}, {id: 'e', h: '讲解画面', icon: '✏️', tag: '先做', mark: 'ring', points: ['一秒内出现', '信息准确', '成本很低'], q: '讲解画面一秒内'}]}], {id: 'n', t: 'sticky', tone: 'blush', text: '先做讲解画面，实时视频留给陪伴'}],
   [/夜班/u, '夜班现在', [{id: 'k', t: 'stats', items: [{id: 'a', label: '在产', value: '12', unit: '张', q: '在产十二张卡'}, {id: 'b', label: '今晚已交付', value: '31', unit: '条', mark: 'check', q: '已经交付三十一条'}, {id: 'c', label: '等你确认', value: '2', unit: '条', mark: 'ring', q: '有两条在等你'}]}, {id: 'b', t: 'bars', h: '并发', items: [{id: 'u', label: '已用', value: 8, q: '现在用了八个'}, {id: 'm', label: '上限', value: 15, q: '并发上限是十五'}]}], null],
@@ -96,7 +126,7 @@ async function* scriptedDirector({messages, signal}) {
   const line = async (op, wait = 260) => { await pause(wait); return signal?.aborted ? '' : JSON.stringify(op) + '\n'; };
   if (!topic) { yield await line({op: 'none'}, 300); return; }
   const [, title, blocks, note] = topic, empty = typeof request.screen === 'string' || request.screen.title !== title;
-  if (empty) { yield await line({op: 'scene', title}, 500); for (const block of blocks) yield await line({op: 'put', block}); }
+  if (empty) { yield await line({op: 'scene', title, ...(process.env.BOARD_FIXTURE_LESSON === '1' && KIT.includes(topic) ? {lesson: true} : {})}, 500); for (const block of blocks) yield await line({op: 'put', block}); }
   if (request.trigger === 'assistant_end' && note) yield await line({op: 'put', block: note});
   if (!empty && request.trigger !== 'assistant_end') yield await line({op: 'none'}, 200);
 }

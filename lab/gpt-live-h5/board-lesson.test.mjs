@@ -126,3 +126,31 @@ test('both writers start at once: the preferred one wins if it is quick, the oth
   assert.equal(await run(5, 20, 'no'), '备用', 'the preferred writer came back with nothing usable');
   assert.equal(await run(500, 500), null, 'neither in time: no lesson');
 });
+
+test('a lesson in English: sentences keep their length and their spaces, and pieces hang on enough letters', async () => {
+  const {spokenScript} = await import('./board-lesson.mjs');
+  const english = {title: 'Three days in San Francisco', say: ['Three days, one neighbourhood a day, so you never backtrack.', 'Day one starts at Fisherman\'s Wharf, where the sea lions nap in the sun.', 'In the afternoon take the boat to Alcatraz; book that ticket first.'],
+    blocks: [{id: 'd1', t: 'timeline', items: [{id: 'a', when: 'Morning', h: 'Fisherman\'s Wharf', img: 'Fisherman\'s Wharf', q: 'Day one starts at'}, {id: 'b', when: 'Afternoon', h: 'Alcatraz', img: 'Alcatraz Island', q: 'take the boat to Alcatraz'}]}]};
+  const lesson = parseLesson(JSON.stringify(english));
+  assert.equal(lesson.say[1].length, 72, 'not cut at the sixty characters a Chinese sentence gets');
+  const said = spokenScript(lesson.say);
+  assert.match(said, /backtrack\. Day one starts/u);
+  const timeline = lesson.ops[1].block;
+  assert.ok(timeline.items.every(item => item.q.length >= 16));
+  const scene = lesson.ops.reduce(applyOp, emptyScene());
+  const upTo = words => spokenProgress(scene, said, said.indexOf(words) + words.length).ahead;
+  assert.deepEqual(upTo('never backtrack.'), ['d1/a', 'd1/b']);
+  assert.deepEqual(upTo('Day one starts at Fisherman'), ['d1/b']);
+  assert.deepEqual(upTo('take the boat to Alcatraz'), []);
+  assert.match(LESSON_INSTRUCTIONS, /全部写英文/u);
+});
+
+test('the writer is given the diagram kit, and a diagram\'s piece appears where the writer put it', () => {
+  for (const type of ['tiles', 'formula', 'timeline', 'versus', 'overlap', 'stack', 'scale']) assert.match(LESSON_INSTRUCTIONS, new RegExp(`"t":"${type}"`, 'u'));
+  const lesson = parseLesson(JSON.stringify({title: '摆正方形', say: ['十二，我们用积木摆正方形。', '先拿四块积木，每边两块。', '十六块积木摆成正方形，每边四块。', '所以四乘四等于十六。'],
+    blocks: [{id: 't', t: 'tiles', items: [{id: 'a', rows: 2, cols: 2, h: '积木', q: '先拿四块积木'}, {id: 'b', rows: 4, cols: 4, h: '16 块', q: '十六块积木'}]},
+      {id: 'f', t: 'formula', items: [{id: 'x', h: '4', q: '所以四乘四'}, '×', {id: 'y', h: '4', q: '所以四乘四'}, '=', {id: 'r', h: '16', q: '等于十六'}]}]}));
+  const [tiles, formula] = lesson.ops.filter(op => op.op === 'put').map(op => op.block);
+  assert.equal(tiles.items[0].q, '先拿四块积木每边', 'not on the first passing mention of 积木');
+  assert.deepEqual(formula.items.map(item => item.q), ['所以四乘四等于十', undefined, '所以四乘四等于十', undefined, '等于十六']);
+});

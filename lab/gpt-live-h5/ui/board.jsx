@@ -4,7 +4,7 @@
 // stay in pencil. Renders a scene from board-scene.mjs. Every string is plain
 // text; nothing written by the director model is interpreted as markup.
 import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
-import {edgeId, flowLayout} from '../board-scene.mjs';
+import {edgeId, flowLayout, scalePositions} from '../board-scene.mjs';
 import {MARK_PATHS, arrow, fitPath, pointer, ring, tilt, underline} from '../board-sketch.mjs';
 
 // One pen stroke over its target. CSS sizes the box; the path is fitted to the
@@ -236,6 +236,196 @@ function Flow({block, view}) {
   );
 }
 
+// ---------- the diagram kit: shapes an explanation is built from ----------
+// Every piece of a kit block is a `.board-piece`: pencil until V reaches it
+// (unseen in a lesson), like the items of a list.
+const pieceTone = (item, index) => item.tone ?? CARD_TONES[index % CARD_TONES.length];
+const Label = ({item, state}) => <Key item={item} seed={state.id}>{item.icon && !item.img ? item.icon + ' ' : ''}{item.h}</Key>;
+
+// Countable things in rows. Remounted when V reaches the group, so the tiles
+// are set down one after another at that moment.
+function Tiles({block, view}) {
+  return (
+    <>
+      <Heading block={block} />
+      <div className="board-tiles">
+        {block.items.map(item => {
+          const state = itemState(view, block, item), shown = !view.ahead.has(state.id);
+          return (
+            <figure key={item.id} className="board-piece" {...state.props} data-tone={item.tone ?? 'sky'} style={{'--tilt': tilt(state.id, 1.6) + 'deg'}}>
+              <div key={String(shown)} className="board-tile-grid" data-glyph={item.icon ? 'true' : undefined} style={{'--per': item.per}}>
+                {Array.from({length: item.n}, (_, index) => <i key={index} data-lit={String(item.lit === undefined || index < item.lit)} style={{'--i': index}}>{item.icon ?? ''}</i>)}
+              </div>
+              {item.h && <figcaption><Key item={item} seed={state.id}>{item.h}</Key></figcaption>}
+            </figure>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+const OPERATOR = /^[=+\-−×÷*/<>≤≥≈≠→←↔()（）·:：]+$/u;
+function Formula({block, view}) {
+  return (
+    <>
+      <Heading block={block} />
+      <div className="board-formula">
+        {block.items.map(item => {
+          const state = itemState(view, block, item);
+          return (
+            <span key={item.id} className="board-piece board-term" {...state.props} data-tone={item.tone} data-op={OPERATOR.test(item.h) || undefined}>
+              <Key item={item} seed={state.id}>{item.h}</Key>
+              {item.d && <small>{item.d}</small>}
+            </span>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function Timeline({block, view}) {
+  const [ref, width] = useWidth();
+  // A short history reads left to right when there is room; otherwise down a rail.
+  const across = width >= 560 && block.items.length <= 5;
+  return (
+    <>
+      <Heading block={block} />
+      <ol className="board-timeline" data-dir={across ? 'row' : 'col'} ref={ref} style={{'--n': block.items.length}}>
+        {block.items.map(item => {
+          const state = itemState(view, block, item);
+          return (
+            <li key={item.id} className="board-piece" {...state.props}>
+              <span className="board-when">{item.when ?? ''}</span>
+              <span className="board-dot" aria-hidden="true"><Stroke className="board-badge-ring" d={ring(state.id + ':dot')} /></span>
+              <div className="board-moment">
+                {item.img && <Thumb query={item.img} view={view} seed={state.id} />}
+                <Label item={item} state={state} />
+                {item.d && <span>{item.d}</span>}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </>
+  );
+}
+
+function Versus({block, view}) {
+  const count = block.sides.length;
+  const side = (value, index) => (
+    <div key={index} className="board-vs-side" data-tone={CARD_TONES[index % CARD_TONES.length]} style={{'--tilt': tilt(block.id + ':side' + index, 1.4) + 'deg'}}>
+      {value.img && <Thumb query={value.img} view={view} seed={block.id + ':side' + index} />}
+      <strong>{value.icon && !value.img ? value.icon + ' ' : ''}{value.h}</strong>
+    </div>
+  );
+  const cell = (row, index) => (
+    <span key={index} className="board-vs-cell" data-win={row.win === index || undefined} data-lose={row.win !== undefined && row.win !== index || undefined}>
+      <span>{row.cells[index]}</span>
+      {row.win === index && <Mark kind="check" seed={`${block.id}/${row.id}:win`} />}
+    </span>
+  );
+  return (
+    <>
+      <Heading block={block} />
+      <div className="board-versus" data-sides={count}>
+        <header>
+          {count === 2 ? <>{side(block.sides[0], 0)}<em>vs</em>{side(block.sides[1], 1)}</> : <><span />{block.sides.map(side)}</>}
+        </header>
+        {block.items.map(row => {
+          const state = itemState(view, block, row), key = <b className="board-vs-key"><Key item={row} seed={state.id}>{row.icon ? row.icon + ' ' : ''}{row.h}</Key></b>;
+          return (
+            <div key={row.id} className="board-piece board-vs-row" {...state.props}>
+              {count === 2 ? <>{cell(row, 0)}{key}{cell(row, 1)}</> : <>{key}{row.cells.map((_, index) => cell(row, index))}</>}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function Overlap({block, view}) {
+  return (
+    <>
+      <Heading block={block} />
+      <div className="board-overlap">
+        {block.items.map(item => {
+          const state = itemState(view, block, item);
+          return (
+            <div key={item.id} className="board-piece" data-part={item.id} {...state.props}>
+              {item.img && <Thumb query={item.img} view={view} seed={state.id} />}
+              {(item.h || item.id === 'both') && <Key item={item} seed={state.id}>{item.icon && !item.img ? item.icon + ' ' : ''}{item.h ?? '都有'}</Key>}
+              <ul>{item.points.map((point, at) => <li key={at}>{point}</li>)}</ul>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function Stack({block, view}) {
+  const count = block.items.length;
+  return (
+    <>
+      <Heading block={block} />
+      <div className="board-stack" data-shape={block.shape}>
+        {block.items.map((item, index) => {
+          const state = itemState(view, block, item);
+          return (
+            <div key={item.id} className="board-piece board-layer" {...state.props} data-tone={pieceTone(item, index)}
+              style={{'--tilt': tilt(state.id, .9) + 'deg', '--wide': block.shape === 'pyramid' ? 46 + 54 * (index + 1) / count + '%' : '100%'}}>
+              {item.img && <Thumb query={item.img} view={view} seed={state.id} />}
+              <div><Label item={item} state={state} />{item.d && <span>{item.d}</span>}</div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// Marks kept at least `gap` apart along a 0-100 line, moved as little as possible.
+function spread(positions, gap) {
+  const order = positions.map((at, index) => ({at, index})).sort((a, b) => a.at - b.at);
+  for (let index = 1; index < order.length; index++) order[index].at = Math.max(order[index].at, order[index - 1].at + gap);
+  const over = Math.max(0, order.at(-1).at - 100);
+  for (let index = order.length - 1; index >= 0; index--) order[index].at = Math.min(order[index].at - over, index === order.length - 1 ? 100 : order[index + 1].at - gap);
+  const placed = [];
+  for (const item of order) placed[item.index] = Math.max(0, item.at);
+  return placed;
+}
+const figure = value => Math.abs(value) >= 10000 ? value.toLocaleString('en-US') : String(value);
+function Scale({block, view}) {
+  const [ref, width] = useWidth();
+  const upright = block.dir === 'up' || block.items.length > 4 || width > 0 && width < 520;
+  const places = spread(scalePositions(block.items), upright ? Math.min(22, 100 / Math.max(1, block.items.length - 1)) : 24);
+  return (
+    <>
+      <Heading block={block} />
+      <div className="board-scale" data-dir={upright ? 'up' : 'across'} ref={ref} style={upright ? {height: 70 + block.items.length * 62} : undefined}>
+        <Stroke className="board-axis" d={underline(block.id + ':axis')} />
+        {block.items.map((item, index) => {
+          const state = itemState(view, block, item);
+          return (
+            <div key={item.id} className="board-piece board-notch" {...state.props} data-side={index % 2 ? 'b' : 'a'}
+              style={upright ? {bottom: `calc(${places[index]}% * .86 + 4%)`} : {left: `calc(${places[index]}% * .84 + 8%)`}}>
+              <b>{figure(item.at)}{block.unit && <i>{block.unit}</i>}</b>
+              <span className="board-tick" aria-hidden="true" />
+              <div className="board-notch-label">
+                {item.img && <Thumb query={item.img} view={view} seed={state.id} />}
+                <div><Label item={item} state={state} />{item.d && <span>{item.d}</span>}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 const Tape = () => <i className="board-tape" aria-hidden="true" />;
 const Sticky = ({block}) => <><Tape /><p className="board-sticky-text">{block.text}</p></>;
 
@@ -257,7 +447,8 @@ function Photo({block, loadPhoto, onMissing}) {
   );
 }
 
-const RENDER = {note: Sticky, sticky: Sticky, list: props => <List {...props} />, steps: props => <List {...props} ordered />, compare: Compare, stats: Stats, bars: Bars, table: Table, flow: Flow};
+const RENDER = {note: Sticky, sticky: Sticky, list: props => <List {...props} />, steps: props => <List {...props} ordered />, compare: Compare, stats: Stats, bars: Bars, table: Table, flow: Flow,
+  tiles: Tiles, formula: Formula, timeline: Timeline, versus: Versus, overlap: Overlap, stack: Stack, scale: Scale};
 const SMALL = new Set(['note', 'sticky', 'photo']);
 const PAPER = {note: 'butter', sticky: 'butter'};
 
@@ -271,6 +462,12 @@ export function Board({scene, spoken, loadPhoto, onClose}) {
     box.current?.querySelector('[data-now]')?.scrollIntoView?.({block: 'nearest', behavior: 'smooth'});
   }, [view.focus, scene.rev]);
   const blocks = scene.blocks.filter(block => !(block.t === 'photo' && missing.has(block.query)));
+  // Neighbours that each ask for part of the width (`w`) stand side by side.
+  const rows = [];
+  for (const block of blocks) {
+    const last = rows.at(-1);
+    if (block.w && last?.[0].w && last.length < (last[0].w === 'third' ? 3 : 2)) last.push(block); else rows.push([block]);
+  }
   return (
     <section className="board" data-lesson={scene.lesson || undefined} aria-label={scene.title ? `画面：${scene.title}` : '画面'}>
       <header className="board-top">
@@ -281,24 +478,27 @@ export function Board({scene, spoken, loadPhoto, onClose}) {
       </header>
       <div className="board-body" ref={box} role="region" aria-live="polite" aria-label="画面内容" tabIndex={0}
         data-side={blocks.some(block => SMALL.has(block.t)) && blocks.some(block => !SMALL.has(block.t)) || undefined}>
-        {blocks.map(block => {
-          const key = `${scene.serial}:${block.id}`, small = SMALL.has(block.t);
-          const paper = block.tone ?? PAPER[block.t];
-          if (block.t === 'photo') return (
-            <figure key={key} className="board-block board-photo" data-type="photo" data-size="small" data-ink={String(!view.ahead.has(block.id))} style={{'--tilt': tilt(key, 3) + 'deg'}}>
-              <Photo block={block} loadPhoto={loadPhoto} onMissing={() => setMissing(old => new Set(old).add(block.query))} />
-            </figure>
-          );
-          const View = RENDER[block.t];
-          if (!View) return null;
-          return (
-            <div key={key} className="board-block" data-type={block.t} data-size={small ? 'small' : 'wide'} data-paper={paper} data-ink={view.ahead.has(block.id) ? 'false' : undefined}
-              data-held={view.focus.split('/')[0] === block.id || undefined} style={{'--tilt': tilt(key, small ? 2.6 : paper ? .6 : 0) + 'deg'}}>
-              <View block={block} view={view} />
-            </div>
-          );
-        })}
+        {rows.map(row => row.length > 1
+          ? <div key={`${scene.serial}:row:${row[0].id}`} className="board-row" data-n={Math.min(3, row.length)} data-w={row[0].w}>{row.map(piece)}</div>
+          : piece(row[0]))}
       </div>
     </section>
   );
+  function piece(block) {
+    const key = `${scene.serial}:${block.id}`, small = SMALL.has(block.t);
+    const paper = block.tone ?? PAPER[block.t];
+    if (block.t === 'photo') return (
+      <figure key={key} className="board-block board-photo" data-type="photo" data-size="small" data-ink={String(!view.ahead.has(block.id))} style={{'--tilt': tilt(key, 3) + 'deg'}}>
+        <Photo block={block} loadPhoto={loadPhoto} onMissing={() => setMissing(old => new Set(old).add(block.query))} />
+      </figure>
+    );
+    const View = RENDER[block.t];
+    if (!View) return null;
+    return (
+      <div key={key} className="board-block" data-type={block.t} data-size={small ? 'small' : 'wide'} data-paper={paper} data-ink={view.ahead.has(block.id) ? 'false' : undefined}
+        data-held={view.focus.split('/')[0] === block.id || undefined} style={{'--tilt': tilt(key, small ? 2.6 : paper ? .6 : 0) + 'deg'}}>
+        <View block={block} view={view} />
+      </div>
+    );
+  }
 }

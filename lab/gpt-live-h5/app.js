@@ -8,7 +8,7 @@ import { entryStartup, startVoiceEntry, markVoiceTiming } from "./entry-startup.
 import { createAvatarTasks } from "./avatar-state.mjs";
 import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { createAvatarTelemetry } from "./avatar-telemetry.mjs";
-import { createBoardClient, createLessonGate, createSpokenCursor, readEventStream } from "./board-client.mjs";
+import { createBoardClient, createLessonGate, createSpokenCursor, readEventStream, spokenRate } from "./board-client.mjs";
 import { speaksOf, spokenProgress, unspoken } from "./board-scene.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
@@ -743,7 +743,7 @@ async function startCall() {
         const spoken = lessonGate.view({ scene, text: row?.text ?? '', speaking: Boolean(row) && view.get().voice === 'speaking', speaksOf, unspoken,
           progress: () => {
             const stats = active.relay?.stats, textLength = Array.from(row.text).length;
-            const index = stats ? cursor.index({ key: row.key, textLength, outputBytes: stats.outputBytes, queuedBytes: stats.queuedOutputBytes }) : textLength;
+            const index = stats ? cursor.index({ key: row.key, textLength, outputBytes: stats.outputBytes, queuedBytes: stats.queuedOutputBytes, charsPerSecond: spokenRate(row.text) }) : textLength;
             return spokenProgress(scene, row.text, index);
           } });
         return spoken;

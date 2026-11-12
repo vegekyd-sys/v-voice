@@ -19,10 +19,13 @@ const signature = row => row ? row.key + '\u0000' + row.text : '';
  * call (relay-audio stats); a new reply starts a new baseline.
  */
 export const SPOKEN_CHARS_PER_SECOND = 6.4;
+// English is counted in letters and spaces, about eighteen a second at a quick pace.
+export const SPOKEN_LATIN_CHARS_PER_SECOND = 18;
+export const spokenRate = text => { const letters = String(text ?? '').replace(/[^\p{L}]/gu, ''); return letters.length > 0 && letters.replace(/[^A-Za-z]/gu, '').length / letters.length > .6 ? SPOKEN_LATIN_CHARS_PER_SECOND : SPOKEN_CHARS_PER_SECOND; };
 export function createSpokenCursor({now = () => performance.now()} = {}) {
   let key = null, base = 0, reached = 0, startedAt = null;
   return {
-    index({key: turn, textLength, outputBytes, queuedBytes}) {
+    index({key: turn, textLength, outputBytes, queuedBytes, charsPerSecond = SPOKEN_CHARS_PER_SECOND}) {
       const played = outputBytes - queuedBytes;
       if (turn !== key) { key = turn; base = played; reached = 0; startedAt = null; }
       const received = outputBytes - base;
@@ -31,7 +34,7 @@ export function createSpokenCursor({now = () => performance.now()} = {}) {
       // A script V is made to read arrives as text all at once while its audio
       // streams about as fast as it plays, so the played share is near 1 from
       // the start. Nobody speaks faster than this, whatever the share says.
-      const pace = startedAt === null ? 0 : Math.ceil((now() - startedAt) / 1000 * SPOKEN_CHARS_PER_SECOND) + 2;
+      const pace = startedAt === null ? 0 : Math.ceil((now() - startedAt) / 1000 * charsPerSecond) + 2;
       // Early in a reply the ratio is noisy (little audio received yet); what
       // has been heard is never un-heard.
       reached = Math.max(reached, Math.min(pace, Math.floor(textLength * Math.min(1, Math.max(0, (played - base) / received)))));

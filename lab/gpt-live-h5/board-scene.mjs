@@ -4,7 +4,11 @@
 // the page (which applies and renders it). Pure data: no DOM, no network.
 
 export const BOARD_LIMITS = Object.freeze({blocks: 6, items: 8, columns: 4, rows: 8, nodes: 10, edges: 16});
-export const BOARD_BLOCK_TYPES = Object.freeze(['note', 'sticky', 'photo', 'list', 'steps', 'compare', 'stats', 'bars', 'table', 'flow']);
+export const BOARD_BLOCK_TYPES = Object.freeze(['note', 'sticky', 'photo', 'list', 'steps', 'compare', 'stats', 'bars', 'table', 'flow',
+  // The diagram kit: shapes an explanation is built from (see BLOCKS below).
+  'tiles', 'formula', 'timeline', 'versus', 'overlap', 'stack', 'scale']);
+// How much of the page's width a block asks for; neighbours that ask stand side by side.
+export const BOARD_WIDTHS = Object.freeze(['half', 'third']);
 // Paper colours a block may sit on, and the marks V's pen may leave on an item.
 export const BOARD_TONES = Object.freeze(['butter', 'peach', 'sky', 'lilac', 'blush']);
 export const BOARD_MARKS = Object.freeze(['ring', 'underline', 'check', 'cross', 'star']);
@@ -24,7 +28,7 @@ const list = (value, limit) => Array.isArray(value) ? value.slice(0, limit) : []
 const optional = (target, key, value) => { if (value) target[key] = value; return target; };
 // `q`: a few of V's own words marking where V talks about this item, so the
 // page can move the focus mark with the audio (see spokenFocus).
-const quoted = (target, source) => optional(target, 'q', text(source.q, 24));
+const quoted = (target, source) => optional(target, 'q', text(source.q, 40));
 // One emoji (or two joined ones) in front of an item; anything longer is not an icon.
 const icon = value => { const glyphs = typeof value === 'string' ? Array.from(value.trim()) : []; return glyphs.length && glyphs.length <= 4 && !/[\p{L}\p{N}]/u.test(value) ? glyphs.join('') : ''; };
 // `img`: the name of a thing whose picture goes on the item (found by the service, like a photo block).
@@ -109,7 +113,107 @@ const BLOCKS = {
     }).filter(Boolean);
     return nodes.length >= 2 ? optional({nodes, edges}, 'h', text(raw.h, 40)) : null;
   },
+  // Things one can count, laid out in rows: "16 blocks make a 4 by 4 square".
+  // Each group is `n` tiles, `per` to a row, the first `lit` of them filled in.
+  tiles(raw) {
+    const items = unique(list(raw.items ?? raw.groups, 6).map((item, index) => {
+      if (!item || typeof item !== 'object') return null;
+      const whole = value => { const number = Math.floor(Number(value)); return Number.isFinite(number) && number > 0 ? number : 0; };
+      const rows = whole(item.rows), cols = whole(item.cols ?? item.per);
+      const n = Math.min(60, whole(item.n) || rows * cols);
+      if (!n) return null;
+      const per = Math.min(10, cols || Math.ceil(Math.sqrt(n)));
+      const group = {id: ident(item.id, `t${index + 1}`), n, per};
+      const lit = Math.floor(Number(item.lit));
+      if (Number.isFinite(lit) && lit >= 0 && lit < n && item.lit !== undefined && item.lit !== null) group.lit = lit;
+      optional(group, 'h', text(item.h ?? item.label, 24));
+      return dressed(optional(group, 'tone', BOARD_TONES.includes(item.tone) ? item.tone : ''), item);
+    }).filter(Boolean), 't');
+    return items.length ? optional({items}, 'h', text(raw.h, 40)) : null;
+  },
+  // A line read part by part: "x × x = 9", "price = cost + margin". Each part
+  // is a few characters, with an optional caption under it.
+  formula(raw) {
+    const items = unique(list(raw.items ?? raw.parts, 9).map((item, index) => {
+      const part = typeof item === 'string' || typeof item === 'number' ? {h: item} : item && typeof item === 'object' ? item : {};
+      const h = text(part.h ?? part.text, 14);
+      return h ? dressed(optional(optional({id: ident(part.id, `p${index + 1}`), h}, 'd', text(part.d ?? part.sub, 24)), 'tone', BOARD_TONES.includes(part.tone) ? part.tone : ''), part) : null;
+    }).filter(Boolean), 'p');
+    return items.length >= 2 ? optional({items}, 'h', text(raw.h, 40)) : null;
+  },
+  // Moments in order, each with when it happens: a history, a day's plan.
+  timeline(raw) {
+    const items = unique(list(raw.items, BOARD_LIMITS.items).map((item, index) => {
+      if (!item || typeof item !== 'object') return null;
+      const h = text(item.h ?? item.label, 40);
+      return h ? dressed(optional(optional({id: ident(item.id, `m${index + 1}`), h}, 'when', text(item.when ?? item.at, 14)), 'd', text(item.d, 80)), item) : null;
+    }).filter(Boolean), 'm');
+    return items.length >= 2 ? optional({items}, 'h', text(raw.h, 40)) : null;
+  },
+  // Two or three things compared one aspect at a time; `win` is the side
+  // (counted from 0) that comes out ahead on that aspect.
+  versus(raw) {
+    const sides = list(raw.sides, 3).map(side => {
+      const value = typeof side === 'string' ? {h: side} : side && typeof side === 'object' ? side : {};
+      const h = text(value.h ?? value.label, 24);
+      return h ? optional(optional({h}, 'icon', icon(value.icon)), 'img', text(value.img, 40)) : null;
+    }).filter(Boolean);
+    if (sides.length < 2) return null;
+    const items = unique(list(raw.items ?? raw.rows, BOARD_LIMITS.rows).map((item, index) => {
+      if (!item || typeof item !== 'object') return null;
+      const h = text(item.h ?? item.k, 16), cells = sides.map((_, at) => text(list(item.cells, 3)[at], 40));
+      if (!h || cells.every(cell => !cell)) return null;
+      const row = {id: ident(item.id, `r${index + 1}`), h, cells}, win = Number(item.win);
+      if (Number.isInteger(win) && win >= 0 && win < sides.length && item.win !== null && item.win !== '') row.win = win;
+      return quoted(optional(row, 'icon', icon(item.icon)), item);
+    }).filter(Boolean), 'r');
+    return items.length ? optional({sides, items}, 'h', text(raw.h, 40)) : null;
+  },
+  // Two things and what they share: `a`, `b`, and `both` in the middle.
+  overlap(raw) {
+    const part = (value, id) => {
+      const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {points: value};
+      const h = text(source.h ?? source.label, 20), points = list(typeof source.points === 'string' ? [source.points] : source.points, 4).map(point => text(point, 24)).filter(Boolean);
+      return h || points.length ? dressed(optional({id, points}, 'h', h), source) : null;
+    };
+    // (Also read back in its stored form, where the three are `items`.)
+    const stored = id => list(raw.items, 3).find(item => item?.id === id);
+    const a = part(raw.a ?? stored('a'), 'a'), b = part(raw.b ?? stored('b'), 'b'), both = part(raw.both ?? stored('both'), 'both');
+    return a?.h && b?.h && both ? optional({items: [a, both, b]}, 'h', text(raw.h, 40)) : null;
+  },
+  // Layers resting on one another, written from the top down: the last is the
+  // ground the others stand on. `shape: "pyramid"` narrows towards the top.
+  stack(raw) {
+    const items = unique(list(raw.items ?? raw.layers, 6).map((item, index) => {
+      const layer = typeof item === 'string' ? {h: item} : item && typeof item === 'object' ? item : {};
+      const h = text(layer.h ?? layer.label, 30);
+      return h ? dressed(optional(optional({id: ident(layer.id, `y${index + 1}`), h}, 'd', text(layer.d, 60)), 'tone', BOARD_TONES.includes(layer.tone) ? layer.tone : ''), layer) : null;
+    }).filter(Boolean), 'y');
+    return items.length >= 2 ? optional(optional({items}, 'h', text(raw.h, 40)), 'shape', raw.shape === 'pyramid' ? 'pyramid' : '') : null;
+  },
+  // Things placed by a number along one line: heights, sizes, prices, years.
+  // `dir: "up"` stands the line upright (heights, depths).
+  scale(raw) {
+    const items = unique(list(raw.items ?? raw.marks, 7).map((item, index) => {
+      if (!item || typeof item !== 'object') return null;
+      const h = text(item.h ?? item.label, 24), at = Number(item.at ?? item.value);
+      return h && Number.isFinite(at) ? dressed(optional({id: ident(item.id, `k${index + 1}`), h, at}, 'd', text(item.d, 40)), item) : null;
+    }).filter(Boolean), 'k');
+    return items.length >= 2 ? optional(optional(optional({items}, 'h', text(raw.h, 40)), 'unit', text(raw.unit, 10)), 'dir', raw.dir === 'up' ? 'up' : '') : null;
+  },
 };
+
+/**
+ * Where each mark of a scale sits along its line, from 0 to 100. Values that
+ * span more than two orders of magnitude are spaced by their logarithm, so a
+ * drone at 120 m and an airliner at 10 000 m both stay readable.
+ */
+export function scalePositions(items) {
+  const values = items.map(item => item.at), low = Math.min(...values), high = Math.max(...values);
+  if (high === low) return items.map(() => 50);
+  const log = low > 0 && high / low > 100, place = value => log ? Math.log(value) : value;
+  return values.map(value => Math.round((place(value) - place(low)) / (place(high) - place(low)) * 1000) / 10);
+}
 
 /** Validate one operation written by the director model. Unknown or empty
  * operations return null; everything kept is bounded plain text. */
@@ -128,7 +232,7 @@ export function normalizeOp(raw) {
       if (!source || typeof source !== 'object' || !BOARD_BLOCK_TYPES.includes(source.t)) return null;
       const id = ident(source.id, ''), body = BLOCKS[source.t](source);
       // A whole block may hang on V's words too (a note, a print): `q` as on items.
-      return id && body ? {op: 'put', block: quoted(optional({id, t: source.t, ...body}, 'tone', BOARD_TONES.includes(source.tone) ? source.tone : ''), source)} : null;
+      return id && body ? {op: 'put', block: quoted(optional(optional({id, t: source.t, ...body}, 'tone', BOARD_TONES.includes(source.tone) ? source.tone : ''), 'w', BOARD_WIDTHS.includes(source.w) ? source.w : ''), source)} : null;
     }
     default: return null;
   }
@@ -141,7 +245,10 @@ export function focusExists(scene, id) {
   return Boolean(block) && (itemId === undefined || focusTargets(block).some(item => item.id === itemId));
 }
 
-export const loose = value => value.replace(/[\s，。！？、；：,.!?;:"'“”‘’（）()]/gu, '');
+export const loose = value => value.replace(/[\s，。！？、；：,.!?;:"'“”‘’（）()\-—]/gu, '').toLowerCase();
+// The start of a quote that counts as "V has begun saying it". Four Chinese
+// characters are distinctive; four Latin letters ("ther") are not.
+export const quoteHead = quote => quote.slice(0, Math.min(quote.length, /^[\x00-\x7f]*$/u.test(quote) ? 10 : 4));
 // The words in V's reply that an item hangs on: the director's quote when it
 // is really there, else the item's own wording where V used the same words
 // (its heading, a leading part of it, or its number with unit).
@@ -168,7 +275,7 @@ export function spokenProgress(scene, spoken, index) {
   // Whole blocks that hang on a sentence wait for it like items do, but never take the mark.
   for (const block of scene.blocks) {
     const quote = block.q ? loose(block.q) : '';
-    if (quote && all.includes(quote) && heard.indexOf(quote.slice(0, Math.min(quote.length, 4))) < 0) ahead.push(block.id);
+    if (quote && all.includes(quote) && heard.indexOf(quoteHead(quote)) < 0) ahead.push(block.id);
   }
   for (const block of scene.blocks) for (const item of focusTargets(block)) {
     const quote = anchorOf(item, all);
@@ -177,7 +284,7 @@ export function spokenProgress(scene, spoken, index) {
     // The quote counts once V has started saying it, not only when finished.
     // First occurrence: a later mention of the same words ("Server Hello
     // Done") must not pull the mark back to an item V has left.
-    const found = heard.indexOf(quote.slice(0, Math.min(quote.length, 4)));
+    const found = heard.indexOf(quoteHead(quote));
     if (found < 0) { ahead.push(`${block.id}/${item.id}`); continue; }
     // When V comes back to an item and says its words again in full, the mark
     // comes back too. Only the full words count for a return, so "Server
@@ -190,7 +297,7 @@ export function spokenProgress(scene, spoken, index) {
   for (const block of scene.blocks) if (block.t === 'flow') for (const [from, to, , said] of block.edges) {
     const quote = said ? loose(said) : '';
     if (ahead.includes(`${block.id}/${from}`) || ahead.includes(`${block.id}/${to}`)
-      || quote && all.includes(quote) && heard.indexOf(quote.slice(0, Math.min(quote.length, 4))) < 0) ahead.push(edgeId(block, from, to));
+      || quote && all.includes(quote) && heard.indexOf(quoteHead(quote)) < 0) ahead.push(edgeId(block, from, to));
   }
   return {focus, ahead};
 }
