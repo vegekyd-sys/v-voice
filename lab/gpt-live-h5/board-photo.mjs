@@ -98,8 +98,11 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     try { await turn; } finally { braveWaiting--; }
     // Time spent queueing is not time spent looking.
     begin();
-    const response = await fetchImpl(`https://api.search.brave.com/res/v1/images/search?q=${encodeURIComponent(query)}&count=6&safesearch=strict`,
+    const ask = () => fetchImpl(`https://api.search.brave.com/res/v1/images/search?q=${encodeURIComponent(query)}&count=6&safesearch=strict`,
       {signal, headers: {'x-subscription-token': braveKey, accept: 'application/json'}});
+    let response = await ask();
+    // "Too many requests" despite the queue (the service counts its own seconds): once more, after a pause.
+    if (response.status === 429) { await wait(braveGapMs); braveLast = now(); response = await ask(); }
     if (!response.ok) throw Error('image search HTTP ' + response.status);
     const results = ((await response.json())?.results ?? []).filter(item => typeof item?.thumbnail?.src === 'string');
     const wanted = squeeze(query);
@@ -161,18 +164,18 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
   }
   async function find(key, signal, searchNow, begin) {
     const started = now();
-    let value = null, failed = false;
+    let value = null, failed = false, why = '';
     // A page of a dozen pictures would queue for the image search one a
     // second (the last ones used to time out waiting). With a queue ahead,
     // the encyclopedia, which needs no turn, is asked first.
     const encyclopedia = async () => { try { value = await wikipedia(key, signal); } catch { failed = true; } };
     const crowded = Boolean(braveKey) && braveWaiting >= 2;
     if (crowded) { begin(); await encyclopedia(); }
-    if (!value) { try { value = await brave(key, signal, begin); } catch { failed = true; } }
+    if (!value) { try { value = await brave(key, signal, begin); } catch (error) { failed = true; why = String(error?.message ?? error).slice(0, 80); } }
     begin();
     if (!value && !crowded) await encyclopedia();
     if (!value) { try { value = await web(key, signal, searchNow); } catch { failed = true; } }
-    observe({type: 'board.photo', query: key, found: Boolean(value), source: value?.source ?? null, bytes: value?.bytes.length ?? 0, durationMs: now() - started});
+    observe({type: 'board.photo', query: key, found: Boolean(value), ...(why && !value ? {why} : {}), source: value?.source ?? null, bytes: value?.bytes.length ?? 0, durationMs: now() - started});
     // "No such picture" is worth remembering; "could not ask" is not.
     if (value || !failed) { cache.delete(key); cache.set(key, {at: now(), value}); while (cache.size > maxEntries) cache.delete(cache.keys().next().value); }
     return value;
