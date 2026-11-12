@@ -1859,7 +1859,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   .board-overlap li { font-size: 13px; }
   .board-overlap .board-key { font-size: 16px; }
   /* On a phone a diagram whose nodes carry pictures needs the screen; the big print would push it off. */
-  .board-body:has(.board-flow[data-pictured]) .board-photo { display: none; }
+  .board-body:has(.board-flow[data-pictured], .board-versus .board-thumb, .board-timeline .board-thumb) .board-photo { display: none; }
 }
 
 /* desktop: the page on the left, V above a narrower chat panel on the right.
