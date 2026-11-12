@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-12 — Call images use GPT Image 2.6
+
+- Images made in the call now use Makaron `gpt-image-2.6-flare` instead of `wan2.7-image`. The voice instructions name the new model, and the executor's model guard only accepts it, so Wan 2.7 requests are refused.
+- Video (fal-h3-max), the exec/process flow, timeouts and presentation are unchanged.
+
 ## 2026-11-05 — StackChan back on the Shanghai node; natural reactions
 
 - StackChan moves from the private V candidate (trycloudflare, Singapore) back to the Shanghai devices node. Over the international tunnel the xiaozhi handshake took about 9.6 s against the firmware's 10 s server-hello timeout, and some wakes dropped about 1 s after `ready`.

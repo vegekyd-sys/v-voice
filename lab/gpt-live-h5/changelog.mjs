@@ -198,6 +198,14 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-image-gpt26.20261112.1',date:'2026-11-12',
+    title:'通话里出图改用 GPT Image 2.6',
+    items:[
+      '通话里让 V 画图或改图，现在用 GPT Image 2.6 Flare，不再用 Wan 2.7。',
+      '短视频模型不变，出图方式和结果展示也不变。',
+    ],
+  },
+  {
     version:'voice-idle-hangup.20261106.1',date:'2026-11-06',
     title:'没人说话时 V 会自己挂断',
     items:[
