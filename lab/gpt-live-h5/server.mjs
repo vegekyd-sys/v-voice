@@ -1170,7 +1170,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     // Timing and outcome only; the picture's content is not written to the call log.
     const board=boardDirectorFromEnv(process.env,{audit:voiceAudit});
     // Lesson mode (experiment): its own flag and, by default, a stronger model than the director's.
-    const lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,
+    const lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,fallback:boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'1600'}),
       complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MODEL:process.env.VOICE_BOARD_LESSON_MODEL??'anthropic/claude-haiku-5.5',VOICE_BOARD_MAX_TOKENS:'1600'})}):null;
     const directVoice=createDirectVoiceService({gateway,wsModule,lesson,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
       // Shared phone policy; explicit off remains available for rollback.

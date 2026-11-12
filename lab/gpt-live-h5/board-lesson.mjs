@@ -42,18 +42,23 @@ export function parseLesson(text) {
  * `complete({messages, signal})` yields text chunks (the director's client).
  * `director.present(owner, ops, holdMs)` puts the lesson on the call's board.
  */
-export function createLessonWriter({complete, director, now = Date.now, record = () => {}} = {}) {
+export function createLessonWriter({complete, fallback = null, director, now = Date.now, record = () => {}} = {}) {
   return {
     available: Boolean(complete && director),
     /** Returns the script to speak, or null when no lesson could be written. */
     async prepare({owner, topic, audience = '', signal} = {}) {
       const started = now();
-      let text = '';
-      try {
-        for await (const chunk of complete({signal, messages: [{role: 'system', content: LESSON_INSTRUCTIONS},
-          {role: 'user', content: JSON.stringify({topic: String(topic ?? '').slice(0, 200), audience: String(audience ?? '').slice(0, 80) || '成年人'})}]})) text += chunk;
-      } catch { text = ''; }
-      const lesson = parseLesson(text);
+      const messages = [{role: 'system', content: LESSON_INSTRUCTIONS},
+        {role: 'user', content: JSON.stringify({topic: String(topic ?? '').slice(0, 200), audience: String(audience ?? '').slice(0, 80) || '成年人'})}];
+      let lesson = null, text = '', failure = '';
+      // The preferred writer first; if it gives nothing usable, the director's own model.
+      for (const write of [complete, fallback].filter(Boolean)) {
+        text = '';
+        try { for await (const chunk of write({signal, messages})) text += chunk; } catch (error) { failure = String(error?.message ?? error).slice(0, 120); }
+        lesson = parseLesson(text);
+        if (lesson) break;
+        record({type: 'board.lesson-attempt', voiceSessionId: owner, ok: false, failure, chars: text.length, head: text.slice(0, 160)});
+      }
       const say = lesson?.say.join('');
       record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ok: Boolean(lesson), durationMs: now() - started, say: lesson?.say ?? null, drawn: lesson?.ops ?? null});
       if (!lesson) return null;
