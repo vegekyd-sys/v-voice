@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-12 — Dial overlaps admission, reads and the Doubao connect
+
+- A dial starts the tool catalog read, the history read and the Doubao socket while Gateway admission is still in flight, using the conversation this identity was last admitted to as a non-authorizing hint. The reads are adopted only if admission returns the same session and agent; otherwise they are discarded. Admission, per-request membership checks and the one-second handoff window are unchanged.
+- The greeting is requested when the page owns the dial connection and spoken at ready. With microphone permission already granted, capture starts alongside the dial; GPT Live session creation gets the same overlap.
+- Stage audit adds `admitted` and `prefetch-failed`. With overlap, `elapsedMs` counts from the dial, so it includes admission.
+- Measured on V below the HTTP entry, 6 alternating real Doubao dials per tree against `9eb75eb`: ready median 2.36 s → 1.06 s, first greeting audio 2.84 s → 1.49 s. Not measured: real phones, the web page, GPT Live, speakers. The remaining floor and the tail are one platform membership check. See `docs/experiments/dial-overlap-20261112.md`.
+
 ## 2026-11-12 — Call images use GPT Image 2.6
 
 - Images made in the call now use Makaron `gpt-image-2.6-flare` instead of `wan2.7-image`. The voice instructions name the new model, and the executor's model guard only accepts it, so Wan 2.7 requests are refused.
