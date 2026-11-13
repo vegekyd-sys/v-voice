@@ -226,8 +226,10 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
      * scene revision it produced; a page whose revision differs from the
      * service's first receives the whole scene.
      */
-    async run({owner: id, trigger, turns, clientRev = 0, onOp = () => {}, signal, ahead = false} = {}) {
+    async run({owner: id, trigger, turns, clientRev = 0, onOp = () => {}, signal, ahead = false, quiet = false} = {}) {
       const started = now(), row = owner(id);
+      // (`quiet`: not the owner's call. Its words and its picture are not kept.)
+      if (quiet) row.quiet = true;
       const listeners = new Set(), out = onOp;
       onOp = value => { out(value); for (const listener of listeners) listener(value); };
       const drawn = [];
@@ -235,7 +237,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         const result = {reason, durationMs: now() - started, ...extra};
         audit({type: 'board.run', voiceSessionId: id, trigger, ...result});
         // What was asked and what was drawn, for looking back at a call. Private; not the call log.
-        record({type: 'board.run', voiceSessionId: id, trigger, ...result, heard: turns?.at(-1) ?? null, drawn});
+        record({type: 'board.run', voiceSessionId: id, trigger, ...result, ...(row.quiet ? {} : {heard: turns?.at(-1) ?? null, drawn})});
         return result;
       };
       if (!complete) return report('unavailable');

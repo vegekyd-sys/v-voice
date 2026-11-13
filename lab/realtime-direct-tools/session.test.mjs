@@ -1707,7 +1707,7 @@ test('a client that never reports drained playback is still hung up after the fa
 
 test('call c6c68774: asked to explain, a hand-off to the backend becomes a lesson; a request to make something does not',async t=>{
  const prepared=[];
- const lesson={available:true,prepare:async args=>{prepared.push({topic:args.topic,ask:args.ask});return {say:'急冻鸟是冰做的鸟。'};}};
+ const lesson={available:true,reroute:true,prepare:async args=>{prepared.push({topic:args.topic,ask:args.ask});return {say:'急冻鸟是冰做的鸟。'};}};
  const f=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson});t.after(()=>f.service.dispose());
  const tools=f.upstream.sent.find(e=>e.type==='session.update').session;
  assert(tools.tools.some(tool=>tool.name==='explain_on_board'));
@@ -1740,7 +1740,7 @@ test('call c2c47e58: a second request for the lesson being given writes no secon
 
 test('call 649709d0: a lesson about today looks it up first; a search made for a request to explain becomes the lesson\'s research',async t=>{
  const prepared=[],searched=[];
- const lesson={available:true,prepare:async args=>{prepared.push({topic:args.topic,reference:args.reference});return {say:'黄仁勋今天辞任了。'};}};
+ const lesson={available:true,reroute:true,prepare:async args=>{prepared.push({topic:args.topic,reference:args.reference});return {say:'黄仁勋今天辞任了。'};}};
  const f=await fixture(async args=>{if(args.name==='web_search')searched.push(args.args?.query);return {ok:true,output:{results:[{title:'英伟达公告',url:'https://example.com/n'}]}};},'grok',{lesson});t.after(()=>f.service.dispose());
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'讲解一下今天黄仁勋的事情'});
  f.call('explain_on_board',{topic:'今天黄仁勋的事情'},'direct');
@@ -1788,4 +1788,12 @@ test('call 83315f5d: when no script can be written V answers the question itself
  assert(!f.client.sent.some(e=>e.type==='transcript'&&/没准备好/u.test(e.text??'')),'nothing is said about a script or a picture');
  f.call('explain_on_board',{topic:'翠玉白菜'},'again');
  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='again'&&e.result?.lessonUnavailable===true)),'asked for the tool again, it is told to answer itself');
+});
+
+test('the board for everyone: a guest caller gets the lesson tool only where the audience is all, and a lesson looks nothing up with a tool that caller was not given',async t=>{
+ const lessonFor=audience=>({available:true,audience,prepare:async()=>({say:'好。'})});
+ const closed=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson:lessonFor('owner'),unidentified:true});t.after(()=>closed.service.dispose());
+ assert.equal(closed.upstream.sent.find(e=>e.type==='session.update').session.tools.some(tool=>tool.name==='explain_on_board'),false);
+ const open=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson:lessonFor('all'),unidentified:true});t.after(()=>open.service.dispose());
+ assert.equal(open.upstream.sent.find(e=>e.type==='session.update').session.tools.some(tool=>tool.name==='explain_on_board'),true);
 });

@@ -332,7 +332,10 @@ export function parseIllustration(text, said, taken = []) {
  * `complete({messages, signal})` yields text chunks (the director's client).
  * `director.present(owner, ops, holdMs)` puts the lesson on the call's board.
  */
-export function createLessonWriter({complete, fallback = null, director, now = Date.now, record = () => {}, preferMs = 8000, totalMs = 13000} = {}) {
+export function createLessonWriter({complete, fallback = null, director, now = Date.now, record: keep = () => {}, preferMs = 8000, totalMs = 13000} = {}) {
+  // Callers who are not the owner (`quiet`): how a lesson went is kept, what was asked and said is not.
+  const hushed = new Set();
+  const record = event => keep(hushed.has(event?.voiceSessionId) ? Object.fromEntries(['type', 'voiceSessionId', 'ok', 'writer', 'scripted', 'durationMs', 'failure', 'none', 'add'].filter(key => key in event).map(key => [key, event[key]])) : event);
   // What each call was last told, so a second lesson builds on the first.
   const told = new Map();
   // The caller is waiting, so both writers start at once. The first one's
@@ -359,8 +362,9 @@ export function createLessonWriter({complete, fallback = null, director, now = D
   return {
     available: Boolean(complete && director),
     /** Returns the script to speak, or null when no lesson could be written. `ask` is the caller's own words. */
-    async prepare({owner, topic, audience = '', ask = '', reference = '', signal} = {}) {
+    async prepare({owner, topic, audience = '', ask = '', reference = '', signal, quiet = false} = {}) {
       const started = now();
+      if (quiet) { hushed.add(owner); if (hushed.size > 500) hushed.delete(hushed.values().next().value); }
       // With the streaming illustrator the writer only writes the script and
       // its notes; the page is the illustrator's, as for any answer of V's.
       const scripted = director.streams === true;
