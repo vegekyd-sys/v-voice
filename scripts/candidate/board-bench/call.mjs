@@ -1,9 +1,10 @@
 // One real call on the Candidate, driven by synthesized speech injected as the microphone.
 import fs from 'node:fs';
-const {chromium}=await import(process.env.PLAYWRIGHT_MODULE);
+// ENGINE=webkit runs the call in WebKit, the engine of the iOS app's page (and of Feishu on iPhone).
+const playwright=await import(process.env.PLAYWRIGHT_MODULE),engine=process.env.ENGINE??'chromium',chromium=playwright[engine];
 const out=process.env.OUT, questions=process.argv.slice(2);
-const browser=await chromium.launch({args:['--use-fake-ui-for-media-stream','--autoplay-policy=no-user-gesture-required']});
-const [vw,vh]=(process.env.VIEW??'1440x900').split('x').map(Number);const context=await browser.newContext({viewport:{width:vw,height:vh},deviceScaleFactor:vw<600?2:1,isMobile:vw<600,hasTouch:vw<600,permissions:['microphone']});
+const browser=await chromium.launch(engine==='chromium'?{args:['--use-fake-ui-for-media-stream','--autoplay-policy=no-user-gesture-required']}:{});
+const [vw,vh]=(process.env.VIEW??'1440x900').split('x').map(Number);const context=await browser.newContext({viewport:{width:vw,height:vh},deviceScaleFactor:vw<600?2:1,...(engine==='firefox'?{}:{isMobile:vw<600}),hasTouch:vw<600,...(engine==='chromium'?{permissions:['microphone']}:{}),...(process.env.USER_AGENT?{userAgent:process.env.USER_AGENT}:{})});
 const page=await context.newPage();
 const errors=[];page.on('pageerror',e=>errors.push('PAGEERROR '+e.message.slice(0,200)));
 page.on('response',async r=>{if(r.url().includes('/api/')&&r.status()>=400)errors.push(r.status()+' '+r.url().replace(/^.*\/api\//,'').replace(/\?.*/,''));});

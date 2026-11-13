@@ -241,7 +241,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         const result = {reason, durationMs: now() - started, ...extra};
         audit({type: 'board.run', voiceSessionId: id, trigger, ...result});
         // What was asked and what was drawn, for looking back at a call. Private; not the call log.
-        record({type: 'board.run', voiceSessionId: id, trigger, ...result, ...(row.quiet ? {} : {heard: turns?.at(-1) ?? null, drawn})});
+        record({type: 'board.run', voiceSessionId: id, trigger, ...result, ...(row.quiet ? {shapes: drawn.map(op => op.op === 'put' ? 'put:' + op.block.t : op.op)} : {heard: turns?.at(-1) ?? null, drawn})});
         return result;
       };
       if (!complete) return report('unavailable');

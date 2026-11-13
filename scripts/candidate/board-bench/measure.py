@@ -32,6 +32,10 @@ for key in ids:
         lesson = first(lambda e: e["type"] == "board.lesson")
         told = lesson and first(lambda e: e["type"] == "audio.delivery" and e.get("phase") == "first" and e["at"] >= lesson["at"])
         runs = [e for e in span if e["type"] == "board.run" and "heard" in e or e["type"] == "board.run" and e.get("reason") in ("drawn", "joined")]
+        # (A caller who is not the owner leaves only the shapes drawn, not the words.)
+        for e in span:
+            if e["type"] == "board.run" and e.get("shapes") and not e.get("drawn"):
+                e["drawn"] = [{"op": "put", "block": {"t": k[4:], "id": str(i)}} if k.startswith("put:") else {"op": k} for i, k in enumerate(e["shapes"])]
         drawn = [e for e in span if e["type"] == "board.run" and e.get("drawn")]
         start = lambda e: e["at"] - e.get("durationMs", 0)
         paint = min((start(e) + (e.get("firstOpMs") or e.get("durationMs", 0)) - ask["at"] for e in drawn), default=None)
