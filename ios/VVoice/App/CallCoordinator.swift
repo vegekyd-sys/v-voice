@@ -1311,6 +1311,12 @@ import VVoiceCore
         guard state.generation == generation, presentationID == owner else { throw CancellationError() }
         return result
     }
+    /// How far the voice has got, in the units the web page's relay reports (PCM16 bytes): all
+    /// audio received this call, and what of it is still waiting to be heard. For the page that owns the call.
+    func audioProgress(owner: String) throws -> [String: Any] {
+        guard presentationID == owner, active else { throw CancellationError() }
+        return ["outputBytes": audio.outputFrames * 2, "queuedBytes": audio.queuedFrames * 2]
+    }
     var h5Outcome: String { tasks.isEmpty ? avatarOutcome : "pending" }
     var activityState: CallAttributes.ContentState {
         let caption = IslandCaption.current(conversation, phase: phase)

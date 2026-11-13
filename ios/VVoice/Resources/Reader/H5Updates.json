@@ -1,5 +1,13 @@
 [
   {
+    "version": "voice-board-follow.20261114.1",
+    "date": "2026-11-14",
+    "title": "iPhone 上的画面跟着声音走",
+    "items": [
+      "V Voice build 46 起，iPhone 上的画面和网页一样，讲到哪一项哪一项才出现、才被标出来。"
+    ]
+  },
+  {
     "version": "voice-board.20261113.1",
     "date": "2026-11-13",
     "title": "通话时，V 边讲边画",

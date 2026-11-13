@@ -8,7 +8,7 @@ import {mountChangelog} from '../../lab/gpt-live-h5/changelog.mjs';
 import {mountAvatar} from '../../lab/gpt-live-h5/avatar.mjs';
 import {createAvatarReactions} from '../../lab/gpt-live-h5/avatar-reactions.mjs';
 import {createAvatarTelemetry} from '../../lab/gpt-live-h5/avatar-telemetry.mjs';
-import {createBoardClient,createLessonGate} from '../../lab/gpt-live-h5/board-client.mjs';
+import {createBoardClient,createLessonGate,createSpokenCursor,spokenRate} from '../../lab/gpt-live-h5/board-client.mjs';
 import {speaksOf,spokenProgress,unspoken} from '../../lab/gpt-live-h5/board-scene.mjs';
 
 let current, owner, reactions, telemetry, board, boardTimer, boardPhotos = new Map(), boardFollow, opened = new Set(), pendingDocument, openingDocument=false, idleCatalogOwner;
@@ -60,12 +60,22 @@ function startBoard(callID){
   stopBoard();
   // Only an App that relays page features (build 45 on) can show the board; older ones carry on without it.
   if(!pageRequests())return;
-  const gate=createLessonGate();let failures=0;
+  const gate=createLessonGate();let failures=0,spokenKey=null,spokenSince=null,audio=null;const cursor=createSpokenCursor();
   boardFollow=(scene=board?.scene)=>{
     const rows=[...view.get().transcript.history,...view.get().transcript.current].filter(row=>!row.document&&row.text?.trim()).sort((a,b)=>a.at-b.at);
     const row=rows.at(-1)?.role==='assistant'?rows.at(-1):null;
-    // No audio clock here: the caption is the clock, as on the web where there is no relay.
-    return gate.view({scene,text:row?.text??'',speaking:Boolean(row)&&view.get().voice==='speaking',speaksOf,unspoken,progress:()=>spokenProgress(scene,row.text,Array.from(row.text).length)});
+    const speaking=Boolean(row)&&view.get().voice==='speaking';
+    // The App plays the audio itself and tells the page only that V is speaking, so the voice's
+    // place is reckoned from when V began this reply, at the speed people speak (the same cap the
+    // web uses). The caption alone arrives seconds ahead of the voice: every piece would show at once.
+    // An App that reports its audio (capabilities.audioProgress) is followed exactly as the web page
+    // follows its relay: the share of this reply's audio that has been heard. An older one, by time.
+    if(row?.key!==spokenKey){spokenKey=row?.key??null;spokenSince=null;}
+    if(speaking)spokenSince??=performance.now();
+    const reached=()=>{const length=Array.from(row.text).length;
+      if(audio)return cursor.index({key:row.key,textLength:length,outputBytes:audio.outputBytes,queuedBytes:audio.queuedBytes,charsPerSecond:spokenRate(row.text)});
+      return spokenSince===null?0:Math.min(length,Math.ceil((performance.now()-spokenSince)/1000*spokenRate(row.text))+2);};
+    return gate.view({scene,text:row?.text??'',speaking,speaksOf,unspoken,progress:()=>spokenProgress(scene,row.text,reached())});
   };
   board=createBoardClient({
     isCurrent:()=>owner===callID&&current?.active,
@@ -78,7 +88,8 @@ function startBoard(callID){
       for(const op of Array.isArray(reply?.ops)?reply.ops:[])onEvent(op);
     },
   });
-  boardTimer=setInterval(()=>{if(!boardFollow||owner!==callID)return;const spoken=boardFollow();if(JSON.stringify(view.get().boardSpoken)!==JSON.stringify(spoken))view.set({boardSpoken:spoken});},400);
+  boardTimer=setInterval(()=>{if(!boardFollow||owner!==callID)return;
+    if(current?.capabilities?.audioProgress>=1&&view.get().voice==='speaking')void post('audioProgress',{},callID).then(value=>{if(Number.isFinite(value?.outputBytes)&&Number.isFinite(value?.queuedBytes))audio=value;}).catch(()=>{});const spoken=boardFollow();if(JSON.stringify(view.get().boardSpoken)!==JSON.stringify(spoken))view.set({boardSpoken:spoken});},400);
 }
 function startVisuals(id){
   stopVisuals();const callID=id;startBoard(callID);
