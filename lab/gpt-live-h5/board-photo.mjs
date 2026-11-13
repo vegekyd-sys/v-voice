@@ -108,7 +108,8 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
   // Pictures already found are kept on disk when a directory is given: the
   // same few characters are asked for call after call, and a lookup from the
   // server can take eight seconds. Only what a lookup returned is stored.
-  const fileOf = key => join(directory, createHash('sha256').update(key).digest('hex').slice(0, 32));
+  // ("r2": pictures chosen before results were ranked are not carried over.)
+  const fileOf = key => join(directory, createHash('sha256').update('r2:' + key).digest('hex').slice(0, 32));
   const kept = async key => {
     if (!directory) return null;
     try {
