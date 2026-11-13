@@ -1580,6 +1580,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-flow-label[data-ink="false"] { color: var(--pencil); }
 .board-node {
   position: absolute;
+  box-sizing: border-box;
   z-index: 1;
   transform: translate(-50%, -50%) rotate(var(--tilt, 0deg));
   display: flex;
@@ -1646,7 +1647,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-draw-piece[data-tone="lilac"] :is(rect, circle, polygon) { fill: var(--lilac); }
 .board-draw-piece[data-tone="blush"] :is(rect, circle, polygon) { fill: var(--blush); }
 .board-draw-piece[data-tone] .board-draw-line { stroke: var(--pen); }
-.board-draw-piece text { font-family: var(--hand); font-size: 3.5px; font-weight: 600; fill: var(--ink); text-anchor: middle; paint-order: stroke; stroke: #fbf8fd; stroke-width: 1.1px; stroke-linejoin: round; }
+.board-draw-piece text { font-family: var(--hand); font-size: 4.2px; font-weight: 600; fill: var(--ink); text-anchor: middle; paint-order: stroke; stroke: #fbf8fd; stroke-width: 1.1px; stroke-linejoin: round; }
 .board-draw-piece { transition: opacity .45s ease-out; }
 .board-draw-piece[data-ink="true"] { animation: board-in .5s ease-out both; }
 .board-draw-piece[data-now] :is(rect, circle, polygon, path) { stroke: var(--pen); stroke-width: 3; }
