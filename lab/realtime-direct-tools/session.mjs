@@ -589,7 +589,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           if(!lesson?.available)throw Error('讲解画面尚未就绪');
           // The voice model sometimes asks twice for one request (call c2c47e58:
           // the second lesson replaced the first while V was reading it).
-          if(s.lessonFor&&s.lessonFor===(s.latestUserTurn??s)){audit({type:'lesson.duplicate',voiceSessionId:s.id,callId:call.callId});result={alreadyExplaining:true,instruction:'这段讲解已经在准备或正在讲。不要再调用，也不要自己再讲一遍。'};}
+          if(s.lessonFor&&s.lessonFor===(s.latestUserTurn??s)){audit({type:'lesson.duplicate',voiceSessionId:s.id,callId:call.callId});result=s.lessonFailedFor===s.lessonFor?{lessonUnavailable:true,instruction:'讲稿这次没有准备好。请你现在自己直接把这个问题讲清楚，不要再调用本工具，也不要提讲稿或画面。'}:{alreadyExplaining:true,instruction:'这段讲解已经在准备或正在讲。不要再调用，也不要自己再讲一遍。'};}
           else{
             s.lessonFor=s.latestUserTurn??s;
             ownerBridge.beginBackgroundTool(call.callId,call.args.topic);lessonHandled=true;
@@ -612,11 +612,19 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
               try{const found=await execute(lookup.name,lookup.args,call.callId+':research',controller.signal);reference=(typeof found==='string'?found:JSON.stringify(found)).slice(0,8000);audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId+':research',name:lookup.name,status:'ok',result:found});}
               catch(error){audit({type:'lesson.research-failed',voiceSessionId:s.id,callId:call.callId,name:lookup.name,message:String(error?.message??error).slice(0,120)});}
             }
-            const script=await lesson.prepare({owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal});
-            if(s.lessonPending===call.callId)s.lessonPending=null;
+            let script=null;
+            try{script=await lesson.prepare({owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal});}
+            catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
+            finally{if(s.lessonPending===call.callId)s.lessonPending=null;}
             if(current(s)&&s.epoch===epoch){
-              const say=script?.say??'画面这次没准备好，我直接跟你说吧。';
-              ownerBridge.completeBackgroundTool(call.callId,{result:say},{spokenText:say,displayedFullResult:true});
+              if(script)ownerBridge.completeBackgroundTool(call.callId,{result:script.say},{spokenText:script.say,displayedFullResult:true});
+              else{
+                // No script: V answers the question itself (it used to say "the picture is not ready" and stop,
+                // and the caller had to ask again: call 83315f5d). The page is drawn from what it then says.
+                s.lessonFailedFor=s.lessonFor;audit({type:'lesson.unavailable',voiceSessionId:s.id,callId:call.callId});
+                ownerBridge.completeBackgroundTool(call.callId,{cancelled:true});
+                ownerBridge.sendUserMessage?.(`（讲解工具这次没有准备好讲稿。请你现在自己直接回答我刚才的问题，讲清楚，不要再调用讲解工具，也不要提讲稿或画面：${String(s.latestUserTurn?.text??call.args.topic).slice(-200)}）`);
+              }
             }
             result={lessonDelivered:Boolean(script)};
             }

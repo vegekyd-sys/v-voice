@@ -1279,6 +1279,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
    on. Items V has written but not yet said stay in pencil. Rendered by
    ui/board.jsx; strokes come from board-sketch.mjs. */
 .board {
+  position: relative;
   --pen: var(--accent);
   --pencil: #b9aec4;
   --marker: #ffe169;
@@ -1352,40 +1353,19 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   background: #fffdfecc;
   border: 1px solid #fff;
 }
-/* The canvas: every page of the call side by side; the panel looks at one, and
-   the view slides to the page V is on (ui/board.jsx Board). */
-.board-track { flex: 1 1 auto; min-height: 0; display: flex; overflow: hidden; }
-.board-page {
-  flex: 0 0 100%;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  transform: translateX(calc(var(--at, 0) * -100%));
-  transition: transform .6s cubic-bezier(.3, .9, .3, 1), opacity .45s;
-  opacity: .25;
-}
-.board-page[data-current] { opacity: 1; }
-.board-tabs { display: flex; flex-wrap: nowrap; gap: 6px; padding: 8px 20px 0 40px; overflow-x: auto; scrollbar-width: none; }
-.board-tabs::-webkit-scrollbar { display: none; }
-.board-tabs button {
-  flex: 0 0 auto;
-  max-width: 9em;
-  padding: 2px 10px;
-  border: 1.5px solid #cbbfd6;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink-soft);
-  font-family: var(--hand);
-  font-size: 13px;
-  line-height: 1.5;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-.board-tabs button[data-current] { border-color: var(--pen); color: var(--ink); background: #fffdfa; }
-.board-tabs button[data-live]:not([data-current])::after { content: " ●"; color: var(--pen); font-size: 9px; vertical-align: middle; }
+/* The canvas: every page of the call side by side in a snapping strip. The
+   panel looks at one; the view slides to the page V is on, and a swipe looks
+   back (ui/board.jsx Board). No controls: a row of dots says where one is. */
+.board-track { flex: 1 1 auto; min-height: 0; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; }
+.board-track::-webkit-scrollbar { display: none; }
+.board-page { flex: 0 0 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; scroll-snap-align: start; scroll-snap-stop: always; }
+.board-dots { position: absolute; left: 50%; bottom: 6px; display: flex; gap: 5px; transform: translateX(-50%); pointer-events: none; }
+.board-dots b { width: 5px; height: 5px; border-radius: 50%; background: #cbbfd6; transition: background .3s, transform .3s; }
+.board-dots b[data-current] { background: var(--pen); transform: scale(1.3); }
+.board-title small { margin-right: 8px; font-size: .5em; font-weight: 500; color: var(--pen); white-space: nowrap; }
+/* A block none of whose pieces V has reached shows nothing yet, its heading included. */
+.board-page[data-lesson] .board-block:has([data-ink="false"]):not(:has([data-ink="true"])) > .board-h { opacity: 0; }
+.board-h { transition: opacity .45s; }
 
 /* The panel scrolls only when a page cannot be made to fit (ui/board.jsx useFit);
    a page shorter than the panel sits in its middle, not at its top. */
@@ -1884,6 +1864,11 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   .board-compare section { scroll-snap-align: start; padding: 12px 12px 14px; }
   .board-stats b { font-size: 34px; }
   .board-row { grid-template-columns: minmax(0, 1fr); }
+  /* A phone has no room to hold a place for what V has not reached: a block
+     appears when its first piece does, and so do the items of a list. */
+  .board-page[data-lesson] .board-block:has([data-ink="false"]):not(:has([data-ink="true"])):not([data-type="photo"]), .board-page[data-lesson] .board-block[data-ink="false"] { display: none; }
+  .board-page[data-lesson] :is(.board-list, .board-steps, .board-timeline, .board-stack) > [data-ink="false"], .board-page[data-lesson] .board-vs-row[data-ink="false"] { display: none; }
+  .board-page[data-lesson] .board-body { align-content: start; }
   .board-term .board-key { font-size: 30px; }
   .board-term { padding: 4px 8px 6px; }
   .board-formula { gap: 10px 6px; }
@@ -1919,7 +1904,6 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   .call-page[data-board="true"] .conversation { flex: 1 1 0; max-height: none; }
   .call-page[data-board="true"] .turns { padding-top: 28px; }
   .board-top { padding: 22px 10px 0 44px; }
-  .board-tabs { padding: 10px 30px 0 60px; }
   .board-title { font-size: 34px; }
   .board-body { padding: 34px 30px 34px 60px; gap: 34px 30px; }
   .board-body[data-side] { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); grid-auto-flow: row dense; }

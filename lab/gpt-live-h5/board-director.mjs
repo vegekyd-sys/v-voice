@@ -73,9 +73,10 @@ const evidenceText = result => {
 };
 
 /** Build the user message for one run. Everything in it is conversation data. */
-export function boardRequest({trigger, scene, turns, evidence, notes = null, recent = [], canvas = []}) {
+export function boardRequest({trigger, scene, turns, evidence, notes = null, recent = [], canvas = [], page = null}) {
   return JSON.stringify({
     trigger,
+    ...(page ? {page} : {}),
     ...(canvas.length ? {canvas} : {}),
     ...(notes ? {notes} : {}),
     ...(recent.length ? {recent} : {}),
@@ -277,13 +278,22 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             row.zones = row.zones.filter(zone => zone !== back);
             row.scene = {...back, rev: Math.max(back.rev, row.scene.rev) + 1, focus: ''};
           } else if (op.op === 'scene') {
-            // (The page already up under this title, or one opened a moment ago and still empty, is the page.)
+            // (The page already up under this title is the page; one opened a moment ago and still empty is only renamed.)
             if (row.scene.title === op.title && row.scene.blocks.length) return;
+            if (!row.scene.blocks.length && row.scene.serial > 0) {
+              if (row.scene.title === op.title && (row.scene.from ?? '') === (op.from ?? '')) return;
+              row.scene = {...row.scene, title: op.title, ...(op.from && op.from !== zoneId(row.scene) ? {from: op.from} : {}), rev: row.scene.rev + 1};
+              ops++; firstOpMs ??= now() - started; drawn.push(op);
+              onOp({op: 'sync', scene: row.scene, canvas: canvasOf(row)});
+              return;
+            }
             // What kinds of picture the last pages were made of, so the next can differ.
             if (row.scene.blocks.length) row.recent = [...(row.recent ?? []), ...new Set(row.scene.blocks.map(block => block.t).filter(type => !['photo', 'sticky', 'note'].includes(type)))].slice(-6);
             shelve();
             row.pages = Math.max(row.pages ?? 0, row.scene.serial, ...row.zones.map(zone => zone.serial)) + 1;
-            row.scene = {...emptyScene(), rev: row.scene.rev + 1, serial: row.pages, title: op.title, lesson: true, late: true};
+            // (`from` must be a page that is on the canvas.)
+            const origin = op.from && [...row.zones, row.scene].some(zone => zoneId(zone) === op.from) ? {from: op.from} : {};
+            row.scene = {...emptyScene(), rev: row.scene.rev + 1, serial: row.pages, title: op.title, lesson: true, late: true, ...origin};
           } else {
             if (op.op === 'put') {
               // A block may grow; it may not become something else. One that would replace what is
@@ -322,7 +332,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
           {role: 'user', content: boardRequest({trigger, scene: row.scene, turns, evidence: row.evidence,
             // The author's notes go with the script they were written for, and with nothing else.
             ...(stream && row.notes && said && said.replace(/\s+/gu, '').startsWith(row.notes.script.replace(/\s+/gu, '').slice(0, 24)) ? {notes: {title: row.notes.title, lines: row.notes.lines}} : {}),
-            ...(stream ? {recent: row.recent ?? [], canvas: (row.zones ?? []).filter(zone => zone.serial !== row.scene.serial).map(zoneDigest)} : {})})}];
+            ...(stream ? {recent: row.recent ?? [], page: {id: zoneId(row.scene), room: Math.max(0, 4 - row.scene.blocks.length)}, canvas: (row.zones ?? []).filter(zone => zone.serial !== row.scene.serial).map(zoneDigest)} : {})})}];
         for await (const chunk of complete({messages, signal: controller.signal})) {
           if (controller.signal.aborted) break;
           parser.feed(chunk);

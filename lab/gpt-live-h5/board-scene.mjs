@@ -18,6 +18,7 @@ export const BOARD_MARKS = Object.freeze(['ring', 'underline', 'check', 'cross',
 // `lesson`: the picture was written together with what V says (board-lesson.mjs); its pieces appear as they are spoken.
 // `late`: a lesson-style picture drawn for words V had already begun to say
 // (an illustration of V's own answer); what has been said is shown at once.
+// `from`: the earlier page (its zone id) this page goes further into.
 export const emptyScene = () => ({rev: 0, serial: 0, title: '', blocks: [], focus: '', pending: null, lesson: false, late: false});
 
 const text = (value, limit) => typeof value === 'string' || typeof value === 'number'
@@ -223,7 +224,7 @@ export function normalizeOp(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   switch (raw.op) {
     case 'none': case 'clear': return {op: raw.op};
-    case 'scene': return raw.lesson === true ? {op: 'scene', title: text(raw.title, 40), lesson: true, ...(raw.late === true ? {late: true} : {})} : {op: 'scene', title: text(raw.title, 40)};
+    case 'scene': { const from = typeof raw.from === 'string' && /^z\d{1,6}$/u.test(raw.from) ? {from: raw.from} : {}; return raw.lesson === true ? {op: 'scene', title: text(raw.title, 40), lesson: true, ...(raw.late === true ? {late: true} : {}), ...from} : {op: 'scene', title: text(raw.title, 40), ...from}; }
     case 'del': { const id = ident(raw.id, ''); return id ? {op: 'del', id} : null; }
     // Back to an earlier page of the canvas (its id is "z" and its number).
     case 'zone': return typeof raw.id === 'string' && /^z\d{1,6}$/u.test(raw.id) ? {op: 'zone', id: raw.id} : null;
@@ -364,7 +365,7 @@ export function normalizeScene(raw) {
   let scene = {...emptyScene(), serial: Number.isSafeInteger(raw.serial) ? raw.serial : 0, title: text(raw.title, 40)};
   for (const block of raw.blocks) { const op = normalizeOp({op: 'put', block}); if (op) scene = applyOp(scene, op); }
   const focus = typeof raw.focus === 'string' && focusExists(scene, raw.focus) ? raw.focus : '';
-  return {...scene, focus, pending: typeof raw.pending === 'string' ? text(raw.pending, 40) : null, lesson: raw.lesson === true, late: raw.late === true, rev: raw.rev};
+  return {...scene, focus, pending: typeof raw.pending === 'string' ? text(raw.pending, 40) : null, lesson: raw.lesson === true, late: raw.late === true, ...(typeof raw.from === 'string' && /^z\d{1,6}$/u.test(raw.from) ? {from: raw.from} : {}), rev: raw.rev};
 }
 
 /** The scene as the director model reads it back: compact, ids first. */

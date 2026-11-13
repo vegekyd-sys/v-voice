@@ -548,42 +548,44 @@ function Sheet({scene, spoken, loadPhoto}) {
 
 /**
  * The canvas. Every page drawn in the call stays on it, side by side; the
- * panel looks at one of them. The view goes to the page V is drawing on, and
- * the caller can look back at an earlier page (the tabs under the title)
- * until V draws again.
+ * panel looks at one of them. The view slides to the page V is drawing on.
+ * To look back the caller swipes (or scrolls sideways): the pages are a
+ * snapping strip, with nothing on screen to operate. V drawing again brings
+ * the view back to where V is.
  */
 export function Board({scene, canvas, spoken, loadPhoto, onClose}) {
   const pages = canvas?.zones?.length ? canvas.zones.map(zone => zone.serial === scene.serial ? scene : zone) : [scene];
   const active = Math.max(0, pages.findIndex(page => page.serial === scene.serial));
-  const [peek, setPeek] = useState(null);
-  // V drawing anything, anywhere, brings the view back to where V is.
-  useEffect(() => { setPeek(null); }, [scene.serial, scene.rev]);
-  const shown = peek !== null && pages.some(page => page.serial === peek) ? pages.findIndex(page => page.serial === peek) : active;
-  const page = pages[shown];
+  const track = useRef(null);
+  const [inView, setInView] = useState(active);
+  // V drawing anything, anywhere, brings the view to V's page.
+  useLayoutEffect(() => {
+    const strip = track.current;
+    if (!strip) return;
+    const left = strip.clientWidth * active;
+    if (Math.abs(strip.scrollLeft - left) > 2) strip.scrollTo?.({left, behavior: 'smooth'});
+    setInView(active);
+  }, [active, pages.length, scene.rev]);
+  const onScroll = () => { const strip = track.current; if (strip?.clientWidth) setInView(Math.max(0, Math.min(pages.length - 1, Math.round(strip.scrollLeft / strip.clientWidth)))); };
+  const page = pages[Math.min(inView, pages.length - 1)];
+  // A page that goes further into something on an earlier page is titled with where it came from.
+  const parent = page.from ? pages.find(item => `z${item.serial}` === page.from) : null;
   return (
     <section className="board" data-pages={pages.length} aria-label={page.title ? `画面：${page.title}` : '画面'}>
       <header className="board-top">
-        {page.title ? <h2 key={page.serial} className="board-title"><span>{page.title}</span><Stroke className="board-title-line" d={underline(page.title)} /></h2> : <span />}
+        {page.title ? <h2 key={page.serial} className="board-title">{parent?.title && <small>{parent.title} ›</small>}<span>{page.title}</span><Stroke className="board-title-line" d={underline(page.title)} /></h2> : <span />}
         <button type="button" className="board-close" aria-label="收起画面" onClick={onClose}>
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
         </button>
       </header>
-      {pages.length > 1 && (
-        <nav className="board-tabs" aria-label="画布上的页">
-          {pages.map((item, index) => (
-            <button key={item.serial} type="button" data-current={index === shown || undefined} data-live={index === active || undefined}
-              onClick={() => setPeek(index === active ? null : item.serial)}>{item.title || `第 ${index + 1} 页`}</button>
-          ))}
-        </nav>
-      )}
-      <div className="board-track" style={{'--at': shown, '--pages': pages.length}}>
+      <div className="board-track" ref={track} onScroll={onScroll}>
         {pages.map((item, index) => (
-          <div key={item.serial} className="board-page" data-lesson={item.lesson || undefined} data-current={index === shown || undefined} aria-hidden={index !== shown || undefined}>
-            {/* Pages far from view are not laid out; the neighbours are, so the move between them has both in it. */}
-            {Math.abs(index - shown) <= 1 && <Sheet scene={item} spoken={index === active ? spoken : null} loadPhoto={loadPhoto} />}
+          <div key={item.serial} className="board-page" data-lesson={item.lesson || undefined} data-current={index === inView || undefined} aria-hidden={index !== inView || undefined}>
+            <Sheet scene={item} spoken={index === active ? spoken : null} loadPhoto={loadPhoto} />
           </div>
         ))}
       </div>
+      {pages.length > 1 && <i className="board-dots" aria-hidden="true">{pages.map((item, index) => <b key={item.serial} data-current={index === inView || undefined} />)}</i>}
     </section>
   );
 }

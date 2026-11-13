@@ -1776,3 +1776,16 @@ test('call 4132718f: while a lesson is being written V may say one short line, n
  release();
  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.name==='explain_on_board')));
 });
+
+test('call 83315f5d: when no script can be written V answers the question itself instead of stopping',async t=>{
+ const lesson={available:true,prepare:async()=>null};
+ const f=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson});t.after(()=>f.service.dispose());
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'我想看翠玉白菜，给我介绍一下吧'});
+ f.call('explain_on_board',{topic:'翠玉白菜'},'lesson');
+ assert(await until(()=>f.audit.some(e=>e.type==='lesson.unavailable')));
+ const asked=f.upstream.sent.filter(e=>e.type==='conversation.item.create'&&e.item?.role==='user').map(e=>e.item.content[0].text);
+ assert(asked.some(text=>/自己直接回答/u.test(text)&&text.includes('翠玉白菜')),'the question goes back to V to answer in its own words');
+ assert(!f.client.sent.some(e=>e.type==='transcript'&&/没准备好/u.test(e.text??'')),'nothing is said about a script or a picture');
+ f.call('explain_on_board',{topic:'翠玉白菜'},'again');
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='again'&&e.result?.lessonUnavailable===true)),'asked for the tool again, it is told to answer itself');
+});

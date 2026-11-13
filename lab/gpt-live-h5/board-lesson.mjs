@@ -254,18 +254,19 @@ export function parseLesson(text) {
  */
 export const STREAM_INSTRUCTIONS = `你是 V 的画面作者。V 正在电话里回答用户，你给这段回答配一页手账画面。V 的回答文字是一段一段到的，比声音先到几秒；你会被反复叫到，每次看到更长的回答，把新说到的东西画上去。画面上的每样东西会在声音念到对应的字时才显示出来。
 
-输入是一个 JSON：trigger 说明现在是哪一步；conversation 是最近的对话，最后一条 assistant 是 V 目前已经说出的话（一个字都不能改）；evidence 是 V 回答前查到的资料（有的话）；screen 是屏幕上现在的画面（没有就是空的）；notes 是这段话的作者留的画面提示（有的话）：每条是一句话（say）和这句话该配的画面（show）。有 notes 就照着画：用它点名的图示类型和内容，标题用 notes 的 title；每样东西仍然挂在它那一句 say 的字上。recent 是这通电话前几页用过的图示类型（有的话）：两种图示都合适时，挑最近没用过的那种，不要每一页都长一个样。
+输入是一个 JSON：trigger 说明现在是哪一步；conversation 是最近的对话，最后一条 assistant 是 V 目前已经说出的话（一个字都不能改）；evidence 是 V 回答前查到的资料（有的话）；screen 是屏幕上现在的画面（没有就是空的）；notes 是这段话的作者留的画面提示（有的话）：每条是一句话（say）和这句话该配的画面（show）。有 notes 就照着画：用它点名的图示类型和内容；需要开新页时标题用 notes 的 title（是展开某一页上的东西就带 from），屏幕上这一页刚开、还是空的就不要再开一次；每样东西仍然挂在它那一句 say 的字上。recent 是这通电话前几页用过的图示类型（有的话）：两种图示都合适时，挑最近没用过的那种，不要每一页都长一个样。
 
-画面是一块画布，上面有好几页，每个话题一页，页不会消失：screen 是 V 现在所在的这一页，canvas 列出画布上之前的页（id、标题、上面有什么）。
+画面是一块画布，上面有好几页，每个话题一页，页不会消失：screen 是 V 现在所在的这一页（page 是它的 id 和剩几个空位），canvas 列出画布上之前的页（id、标题、剩几个空位、上面有什么）。
 
 输出：每行一个 JSON 操作，不要任何别的文字。
 {"op":"scene","title":"不超过 12 个字"}   在画布上开一页新的（换了话题时）。之前的页还留在画布上。
+{"op":"scene","title":"…","from":"z2"}    开一页新的，专门展开之前某一页（这里是 z2，也可以是 screen 这一页的 id）上的一样东西。标题只写被展开的那样东西。
 {"op":"zone","id":"z2"}                  回到画布上之前的某一页（用户回头问那一页上的东西时），之后的 put 加在那一页上。
 {"op":"put","block":{区块}}              放一个区块；id 和屏幕上已有的相同就是更新那一个。
 {"op":"none"}                            这次没有要画的。
 
 # 按 trigger 做事
-- 先判断这句话落在哪：接着 screen 这一页的话题往下讲 → 不开新页，直接往这一页加（这一页已经有 4 个区块了就开新页）；换了话题 → scene 开新页；回头问 canvas 里某一页上的东西（「刚才那个第二点」「回到故宫」「再说说前面那个对比」）→ 那一页还有空位（room 大于 0）就 zone 回到那一页再加；没有空位了（room 是 0）就 scene 开一页新的，标题带上出处（「故宫 · 珍宝馆」）。zone 和 scene 只选一个，不要两个都发。
+- 先判断这句话落在哪，这一步最要紧，不要每句话都开新页。① 用户在追问 screen 这一页上已经有的一样东西（页上有「翠玉白菜」，用户说「我想看翠玉白菜」；页上是属性相克，用户说「我队伍里有哲尔尼亚斯」）：这是往下展开。这一页还有空位就直接往这一页加；没有空位就 scene 开新页并写 from（screen 的 id），表示从那一页展开出来。② 接着同一件事补充、换个说法再讲：往这一页加，没空位才开新页（带 from）。③ 完全换了话题：scene 开新页，不写 from。④ 回头问 canvas 里更早某一页上的东西（「刚才那个第二点」「回到故宫」）：那一页还有空位（room 大于 0）就 zone 回去再加；没有空位就 scene 开新页并写 from 那一页的 id。zone 和 scene 只选一个。
 - user：用户刚说完，V 还没开口。回头问之前某一页、而那一页还有空位时，这一步就可以先 zone 回去。只有当用户明显在问一件新的、具体的东西（一个地方、一个人、一件产品、一个概念）时，输出 scene（标题）；如果问的是一件拍得出照片的具体东西（一个地方、一栋建筑、一个人、一个角色、一件产品、一种动物或食物），再加一个 photo 区块，query 写它的名字。抽象的概念、数学、规则、天气、「A 和 B 的区别」这类问题不放 photo，只开页。不写任何条目、数字、结论，那些等 V 说了再画。闲聊、应答、接着当前这页追问、看不出要讲什么：none。
 - assistant_progress：V 说到一半。把 V 已经说出来的内容画上去。屏幕是空的或者是别的话题：先 scene 再 put。屏幕就是这个话题：只 put。可以先放一个只有头两项的区块，下次再把同一个 id 的区块整块重发、在后面接着加。V 这次没有说出新的可画的东西：none。
 - assistant_end：V 的话到齐了。把整页补全：补上没画到的条目，需要的话加一张便签（V 的结论或提醒）。
@@ -285,7 +286,7 @@ ${HANGING.replaceAll('讲稿', 'V 的话').replaceAll('say 里', 'V 的话里')}
 /** Fit one streamed operation to what V has said so far: anchors on V's real words, nothing V has not said. */
 export function refineStreamOp(op, {said = '', trigger = ''} = {}) {
   if (!op) return null;
-  if (op.op === 'scene') return {op: 'scene', title: op.title, lesson: true, late: true};
+  if (op.op === 'scene') return {op: 'scene', title: op.title, lesson: true, late: true, ...(op.from ? {from: op.from} : {})};
   if (op.op === 'zone') return op;
   if (op.op !== 'put') return op;
   // Before V has spoken there is nothing to hang a fact on: a print of the thing asked about, nothing else.
@@ -368,7 +369,9 @@ export function createLessonWriter({complete, fallback = null, director, now = D
           ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(before ? {before} : {}),
           // What was looked up for this lesson (a search, V's memory), then the standing references.
           ...([reference && Array.from(String(reference)).slice(0, 6000).join(''), lessonReference(`${topic} ${ask}`)].filter(Boolean).length ? {reference: [reference && Array.from(String(reference)).slice(0, 6000).join(''), lessonReference(`${topic} ${ask}`)].filter(Boolean).join('\n\n')} : {})})}];
-      const lesson = await race({owner, messages, signal, started, first: complete, second: fallback, parse: scripted ? parseScript : parseLesson, preferMs, totalMs});
+      let lesson = await race({owner, messages, signal, started, first: complete, second: fallback, parse: scripted ? parseScript : parseLesson, preferMs, totalMs});
+      // A single writer that came back with something unusable (a reply cut short, as in call 83315f5d) is asked once more.
+      if (!lesson && !fallback && !signal?.aborted && now() - started < preferMs) lesson = await race({owner, messages, signal, started: now(), first: complete, second: null, parse: scripted ? parseScript : parseLesson, preferMs, totalMs: preferMs});
       const say = lesson ? spokenScript(lesson.say) : '';
       if (scripted) {
         record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ask, ok: Boolean(lesson), writer: lesson?.writer ?? null, scripted: true, durationMs: now() - started, say: lesson?.say ?? null, show: lesson?.show ?? null});
