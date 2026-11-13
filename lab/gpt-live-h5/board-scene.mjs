@@ -232,6 +232,13 @@ export function normalizeOp(raw) {
       const id = typeof raw.id === 'string' ? raw.id : '';
       return id === '' || /^[A-Za-z0-9_-]{1,24}(\/[A-Za-z0-9_-]{1,24})?$/u.test(id) ? {op: 'focus', id} : null;
     }
+    // A pen mark made on something already on the page, at the moment V says `q`
+    // (the tick on the side V ends up recommending, the ring round the number V comes back to).
+    case 'mark': {
+      const id = typeof raw.id === 'string' && /^[A-Za-z0-9_-]{1,24}\/[A-Za-z0-9_-]{1,24}$/u.test(raw.id) ? raw.id : '';
+      const q = text(raw.q, 40);
+      return id && BOARD_MARKS.includes(raw.kind) && q ? {op: 'mark', id, kind: raw.kind, q} : null;
+    }
     case 'put': {
       const source = raw.block;
       if (!source || typeof source !== 'object' || !BOARD_BLOCK_TYPES.includes(source.t)) return null;
@@ -297,6 +304,11 @@ export function spokenProgress(scene, spoken, index) {
     const latest = Math.max(found, heard.lastIndexOf(quote));
     if (latest > at) { at = latest; focus = `${block.id}/${item.id}`; }
   }
+  // A pen mark waits for its words too.
+  (scene.marks ?? []).forEach((mark, index) => {
+    const quote = loose(mark.q);
+    if (quote && all.includes(quote) && heard.indexOf(quoteHead(quote)) < 0) ahead.push(`mark:${index}`);
+  });
   // An arrow waits for both of its ends, and for its own words when it has some
   // ("grass beats water" is often said after both have been introduced).
   for (const block of scene.blocks) if (block.t === 'flow') for (const [from, to, , said] of block.edges) {
@@ -335,6 +347,11 @@ export function applyOp(scene, op) {
       if (scene.blocks.length >= BOARD_LIMITS.blocks) return scene;
       return next({blocks: [...scene.blocks, op.block]});
     }
+    case 'mark': {
+      const marks = scene.marks ?? [];
+      if (!focusExists(scene, op.id) || marks.length >= 10 || marks.some(mark => mark.id === op.id)) return scene;
+      return next({marks: [...marks, {id: op.id, kind: op.kind, q: op.q}]});
+    }
     case 'del': {
       if (!scene.blocks.some(block => block.id === op.id)) return scene;
       const blocks = scene.blocks.filter(block => block.id !== op.id);
@@ -364,6 +381,7 @@ export function normalizeScene(raw) {
   if (!raw || typeof raw !== 'object' || !Number.isSafeInteger(raw.rev) || !Array.isArray(raw.blocks)) return null;
   let scene = {...emptyScene(), serial: Number.isSafeInteger(raw.serial) ? raw.serial : 0, title: text(raw.title, 40)};
   for (const block of raw.blocks) { const op = normalizeOp({op: 'put', block}); if (op) scene = applyOp(scene, op); }
+  for (const mark of Array.isArray(raw.marks) ? raw.marks.slice(0, 10) : []) { const op = normalizeOp({op: 'mark', ...mark}); if (op) scene = applyOp(scene, op); }
   const focus = typeof raw.focus === 'string' && focusExists(scene, raw.focus) ? raw.focus : '';
   return {...scene, focus, pending: typeof raw.pending === 'string' ? text(raw.pending, 40) : null, lesson: raw.lesson === true, late: raw.late === true, ...(typeof raw.from === 'string' && /^z\d{1,6}$/u.test(raw.from) ? {from: raw.from} : {}), rev: raw.rev};
 }
@@ -373,6 +391,20 @@ export const sceneDigest = scene => scene.pending !== null
   ? {title: scene.pending, focus: '', blocks: [], note: '新画面已开，还没有内容；放入第一个区块后屏幕才会换过去'}
   : scene.blocks.length || scene.title ? {title: scene.title, focus: scene.focus, blocks: scene.blocks} : null;
 
+/**
+ * The page's blocks with its pen marks made: each mark V has reached (not in
+ * `ahead`) is put on its item, where every block already knows how to draw one.
+ */
+export function markedBlocks(scene, ahead = new Set()) {
+  const made = new Map();
+  (scene.marks ?? []).forEach((mark, index) => { if (!ahead.has(`mark:${index}`)) made.set(mark.id, mark.kind); });
+  if (!made.size) return scene.blocks;
+  return scene.blocks.map(block => {
+    const key = block.t === 'compare' ? 'cols' : block.t === 'flow' ? 'nodes' : 'items';
+    if (!Array.isArray(block[key]) || !block[key].some(item => made.has(`${block.id}/${item.id}`))) return block;
+    return {...block, [key]: block[key].map(item => made.has(`${block.id}/${item.id}`) ? {...item, mark: made.get(`${block.id}/${item.id}`)} : item)};
+  });
+}
 /** The id a page goes by on the canvas. */
 export const zoneId = scene => `z${scene.serial}`;
 /**

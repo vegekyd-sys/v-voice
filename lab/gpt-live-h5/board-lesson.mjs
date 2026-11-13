@@ -263,6 +263,7 @@ export const STREAM_INSTRUCTIONS = `你是 V 的画面作者。V 正在电话里
 {"op":"scene","title":"…","from":"z2"}    开一页新的，专门展开之前某一页（这里是 z2，也可以是 screen 这一页的 id）上的一样东西。标题只写被展开的那样东西。
 {"op":"zone","id":"z2"}                  回到画布上之前的某一页（用户回头问那一页上的东西时），之后的 put 加在那一页上。
 {"op":"put","block":{区块}}              放一个区块；id 和屏幕上已有的相同就是更新那一个。
+{"op":"mark","id":"区块id/条目id","kind":"ring","q":"V 的原话里的几个字"}  在页上已有的一样东西上落一笔：ring 圈出、underline 划线、check 打勾、cross 打叉、star 打星。V 念到 q 的那一刻才画上去。用在 V 回头强调、下结论、做选择的时候（「所以选电车」→ 给电车那一项打勾；「最要紧的是 33 年」→ 把 33 圈出来）。一页最多三四笔。
 {"op":"none"}                            这次没有要画的。
 
 # 按 trigger 做事
@@ -272,6 +273,7 @@ export const STREAM_INSTRUCTIONS = `你是 V 的画面作者。V 正在电话里
 - assistant_end：V 的话到齐了。把整页补全：补上没画到的条目，需要的话加一张便签（V 的结论或提醒）。
 - 一页只有一屏：整页最多 3 个区块，外加一张便签。V 讲得多，就把内容归进这几个区块里（同一类的并成一个区块、每个区块挑最要紧的 3 到 5 项），不要 V 每讲一段就新开一个区块。照片算一个区块。
 - 快一点让第一样东西上屏：一个区块会有 3 项以上时，先发只含头两项的版本，紧接着再发一行完整的（同一个 id）。
+- 让每一句话在页面上都有动静：这句话引入了新东西就 put 上去；这句话是在回头说页上已有的东西、比较、下结论，就用 mark 在那样东西上落一笔。不要让 V 连着讲三四句而页面一动不动。
 - 更新已有区块时，已经在屏幕上的条目不许改：id、顺序、文字都保持原样，只能在后面追加。也不要删除或挪动已有的区块。画面只能长，不能变。
 
 # 画什么
@@ -288,6 +290,8 @@ export function refineStreamOp(op, {said = '', trigger = ''} = {}) {
   if (!op) return null;
   if (op.op === 'scene') return {op: 'scene', title: op.title, lesson: true, late: true, ...(op.from ? {from: op.from} : {})};
   if (op.op === 'zone') return op;
+  // A pen mark is made on words V has really said (and never before V has spoken).
+  if (op.op === 'mark') { const at = trigger === 'user' ? -1 : loose(said).indexOf(loose(op.q)); return at >= 0 ? op : null; }
   if (op.op !== 'put') return op;
   // Before V has spoken there is nothing to hang a fact on: a print of the thing asked about, nothing else.
   if (trigger === 'user') return op.block.t === 'photo' ? {op: 'put', block: (({q, ...block}) => block)(op.block)} : null;

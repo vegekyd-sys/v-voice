@@ -4,7 +4,7 @@
 // stay in pencil. Renders a scene from board-scene.mjs. Every string is plain
 // text; nothing written by the director model is interpreted as markup.
 import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
-import {edgeId, flowLayout, scalePositions} from '../board-scene.mjs';
+import {edgeId, flowLayout, markedBlocks, scalePositions} from '../board-scene.mjs';
 import {MARK_PATHS, arrow, fitPath, pointer, ring, tilt, underline} from '../board-sketch.mjs';
 
 // One pen stroke over its target. CSS sizes the box; the path is fitted to the
@@ -73,6 +73,20 @@ function Thumb({query, view, seed}) {
   if (gone) return null;
   return <span className="board-thumb" data-ready={String(Boolean(src))} style={{'--tilt': tilt(seed + ':img', 3) + 'deg'}}>{src && <img src={src} alt={query} decoding="async" />}</span>;
 }
+// A number that is counted up to as it appears (whole numbers only; anything else is shown as written).
+function Figure({value, on}) {
+  const whole = /^\d{1,7}$/u.test(String(value)), goal = whole ? Number(value) : 0;
+  const [shown, setShown] = useState(whole && on ? goal : 0);
+  useEffect(() => {
+    if (!whole || !on) return;
+    if (typeof requestAnimationFrame !== 'function') { setShown(goal); return; }
+    let frame, start = null;
+    const step = time => { start ??= time; const part = Math.min(1, (time - start) / 650); setShown(Math.round(goal * (1 - (1 - part) ** 3))); if (part < 1) frame = requestAnimationFrame(step); };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [whole, on, goal]);
+  return whole ? shown : em(value);
+}
 const Heading = ({block}) => block.h ? <h3 className="board-h">{block.h}</h3> : null;
 
 function List({block, view, ordered}) {
@@ -85,7 +99,6 @@ function List({block, view, ordered}) {
           const state = itemState(view, block, item);
           return (
             <li key={item.id} {...state.props}>
-              {state.now && <Pen seed={state.id} />}
               <span className="board-lead" aria-hidden={!ordered || undefined}>
                 {ordered ? <><Stroke className="board-badge-ring" d={ring(state.id + ':n')} /><b>{index + 1}</b></>
                   : leads(item.mark) ? <Mark kind={item.mark} seed={state.id} />
@@ -136,9 +149,8 @@ function Stats({block, view}) {
         const state = itemState(view, block, item);
         return (
           <div key={item.id} {...state.props}>
-            {state.now && <Pen seed={state.id} />}
             <dd>
-              <span className="board-figure"><b>{item.value}</b>{wraps(item.mark) && <Mark kind={item.mark} seed={state.id} />}{leads(item.mark) && <span className="board-lead"><Mark kind={item.mark} seed={state.id} /></span>}</span>
+              <span className="board-figure"><b><Figure value={item.value} on={!view.ahead.has(state.id)} /></b>{wraps(item.mark) && <Mark kind={item.mark} seed={state.id} />}{leads(item.mark) && <span className="board-lead"><Mark kind={item.mark} seed={state.id} /></span>}</span>
               {item.unit && <i>{item.unit}</i>}
             </dd>
             <dt>{item.icon ? item.icon + ' ' : ''}{em(item.label)}</dt>
@@ -508,7 +520,21 @@ function Sheet({scene, spoken, loadPhoto}) {
     if (!view.focus) return;
     box.current?.querySelector('[data-now]')?.scrollIntoView?.({block: 'nearest', inline: 'nearest', behavior: 'smooth'});
   }, [view.focus, scene.rev]);
-  const blocks = scene.blocks.filter(block => !(block.t === 'photo' && missing.has(block.query)));
+  // Pen marks V has reached are on their items; the others are still to come.
+  const blocks = markedBlocks(scene, view.ahead).filter(block => !(block.t === 'photo' && missing.has(block.query)));
+  // The pen: one hand on the page, which goes to whatever V is talking about.
+  // It is placed by where that thing really is on screen, after every render.
+  const pen = useRef(null);
+  useLayoutEffect(() => {
+    const nib = pen.current, host = box.current;
+    if (!nib || !host) return;
+    const target = spoken ? host.querySelector('[data-now]') : null;
+    if (!target) { nib.dataset.on = 'false'; return; }
+    const at = target.getBoundingClientRect(), frame = host.getBoundingClientRect();
+    const x = Math.max(2, at.left - frame.left + host.scrollLeft - 30), y = at.top - frame.top + host.scrollTop + Math.min(at.height / 2, 24) - 13;
+    nib.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    nib.dataset.on = 'true';
+  });
   // Neighbours that each ask for part of the width (`w`) stand side by side.
   const rows = [];
   for (const block of blocks) {
@@ -519,6 +545,7 @@ function Sheet({scene, spoken, loadPhoto}) {
   }
   return (
     <div className="board-scroll" ref={box} role="region" aria-live="polite" aria-label="画面内容" tabIndex={0}>
+      <svg className="board-hand" ref={pen} data-on="false" viewBox="0 0 28 28" aria-hidden="true"><path d="M4 24 L7 16 L19 4 L24 9 L12 21 Z" /><path d="M4 24 L12 21" /><path d="M17 6 L22 11" /></svg>
       <div className="board-body" ref={sheet}
         data-side={blocks.some(block => SMALL.has(block.t)) && blocks.some(block => !SMALL.has(block.t)) || undefined}>
         {rows.map(row => row.length > 1

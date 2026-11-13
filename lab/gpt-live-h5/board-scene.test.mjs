@@ -199,3 +199,21 @@ test('every picture a page asks for may be fetched, the sides of a comparison in
     {op: 'put', block: {id: 'm', t: 'timeline', items: [{when: '1888', h: '柯达', img: '柯达相机'}, {when: '1975', h: '数码'}]}}].reduce(applyOp, emptyScene());
   assert.deepEqual([...scenePictures(scene)].sort(), ['数码相机', '柯达相机', '胶卷相机']);
 });
+
+test('a pen mark is made on something already on the page when V says its words', async () => {
+  const {markedBlocks} = await import('./board-scene.mjs');
+  const versus = {id: 'v', t: 'versus', sides: ['电车', '油车'], items: [{id: 'a', h: '补能', cells: ['慢充', '三分钟'], q: '补能上'}]};
+  let scene = [{op: 'scene', title: 't'}, {op: 'put', block: versus}].map(normalizeOp).reduce(applyOp, emptyScene());
+  const mark = normalizeOp({op: 'mark', id: 'v/a', kind: 'check', q: '所以选油车'});
+  assert.deepEqual(mark, {op: 'mark', id: 'v/a', kind: 'check', q: '所以选油车'});
+  scene = applyOp(scene, mark);
+  assert.equal(applyOp(scene, mark), scene, 'one mark on a thing');
+  assert.equal(applyOp(scene, normalizeOp({op: 'mark', id: 'v/zz', kind: 'ring', q: 'x'})), scene, 'only on what is there');
+  for (const bad of [{op: 'mark', id: 'v', kind: 'ring', q: 'x'}, {op: 'mark', id: 'v/a', kind: 'blob', q: 'x'}, {op: 'mark', id: 'v/a', kind: 'ring'}]) assert.equal(normalizeOp(bad), null);
+  const said = '补能上油车快。所以选油车。';
+  const before = spokenProgress(scene, said, 7), after = spokenProgress(scene, said, said.length);
+  assert.deepEqual([before.ahead, after.ahead], [['mark:0'], []]);
+  assert.equal(markedBlocks(scene, new Set(before.ahead))[0].items[0].mark, undefined);
+  assert.equal(markedBlocks(scene, new Set(after.ahead))[0].items[0].mark, 'check');
+  assert.deepEqual(normalizeScene(JSON.parse(JSON.stringify(scene))).marks, scene.marks, 'and survives being sent to the page');
+});
