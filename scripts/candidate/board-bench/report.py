@@ -2,15 +2,20 @@
 #   speed   reply (caller done -> V's first sound), picture (-> first thing on the page, -> first content),
 #           lesson (-> the lesson being spoken; how long the script took)
 #   effect  what kinds of picture the pages were made of, and how alike the pages are
-import json, sys, glob, os, statistics, collections, math
+import json, sys, glob, os, statistics, collections, math, difflib
 root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'artifacts', 'board-bench')
 questions = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'questions.json')))['questions']
+asked = []
 def load(label):
-    turns = []
+    turns = []; asked.clear()
     for name in sorted(glob.glob(os.path.join(root, label, '*.json'))):
+        if name.endswith('report.json'): continue
         call = json.load(open(name))
+        asked.extend(call['ids'])
         for index, turn in enumerate(call['turns']):
-            key = call['ids'][index] if call.get('matched') and index < len(call['ids']) else None
+            # (By what was heard, not by order: a question the recogniser missed must not shift the rest.)
+            score, key = max((difflib.SequenceMatcher(None, turn['ask'], questions[k]['say']).ratio(), k) for k in call['ids'])
+            if score < .5: key = None
             turns.append({**turn, 'id': key, 'kind': questions.get(key, {}).get('kind', '?'), 'expect': questions.get(key, {}).get('tools'), 'group': call['group'], 'call': call['call']})
     return turns
 def med(values):
@@ -27,7 +32,7 @@ def summary(turns):
     legacy = [t for t in turns if t['kind'] == 'legacy' and t['expect'] is not None]
     right = [t for t in legacy if (not t['expect'] and not [x for x in t['tools'] if x != 'explain_on_board'] and 'explain_on_board' not in t['tools']) or (t['expect'] and any(x in t['expect'] for x in t['tools']))]
     return {
-        'turns': len(turns),
+        'turns': len(turns), 'questionsNotHeard': [k for k in asked if k not in [t['id'] for t in turns]],
         'speed': {'replyMs': med(t['replyMs'] for t in turns), 'paintMs': med(t['paintMs'] for t in board), 'contentMs': med(t['contentMs'] for t in board),
                   'lessonSpokenMs': med(t['lessonSpokenMs'] for t in lessons), 'lessonWriteMs': med(t['lessonWriteMs'] for t in lessons),
                   'legacyReplyMs': med(t['replyMs'] for t in legacy)},

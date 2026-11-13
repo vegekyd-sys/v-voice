@@ -49,7 +49,7 @@ for(const [index,name] of questions.entries()){
   log.push({t:now(),event:'ask',name});
   await page.evaluate(n=>window.__speak(n),name);
   log.push({t:now(),event:'asked',name});
-  await watch(name,{maxMs:75000});
+  await watch(name,{maxMs:110000});
 }
 const final=await sample();
 log.push({t:now(),event:'final',timeline:final.timeline,rows:final.rows.map(r=>({role:r.role,doc:r.doc,text:r.text})),board:final.board,errors:[...new Set(errors)]});

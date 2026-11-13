@@ -6,7 +6,7 @@ root = "/var/lib/v-voice-candidates/%s/transcripts/" % sys.argv[1]
 count = int(sys.argv[2]) if len(sys.argv) > 2 else 1
 def rows(pattern, board=False):
     for name in sorted(glob.glob(root + pattern))[-3:]:
-        if not board and "board-" in name: continue
+        if not board and "board-" in name.rsplit("/", 1)[-1]: continue
         for line in open(name):
             try: event = json.loads(line)
             except Exception: continue
@@ -15,6 +15,7 @@ def rows(pattern, board=False):
 calls = {}
 for event in rows("20*.jsonl"): calls.setdefault(event.get("voiceSessionId"), []).append(event)
 for event in rows("board-20*.jsonl", True): calls.setdefault(event.get("voiceSessionId"), []).append(event)
+loose = calls.get(None, [])
 ids = sorted([key for key in calls if key and any(e["type"] == "call.created" for e in calls[key])], key=lambda key: min(e["at"] for e in calls[key]))[-count:]
 out = []
 for key in ids:
@@ -45,7 +46,7 @@ for key in ids:
                     if page is None: page = {"title": "", "blocks": {}}; pages.append(page)
                     block = op["block"]; page["blocks"][block.get("id")] = block.get("t")
                 elif op.get("op") == "mark" and page is not None: page["marks"] = page.get("marks", 0) + 1
-        photos = [e for e in span if e["type"] == "board.photo"]
+        photos = [e for e in loose if e["type"] == "board.photo" and ask["at"] <= e["at"] < end]
         turns.append({"ask": ask["text"].strip(), "tools": tools, "replyMs": audio and after(audio), "lessonWriteMs": lesson and lesson.get("durationMs"), "lessonOk": lesson and lesson.get("ok"),
             "lessonSpokenMs": told and after(told), "paintMs": paint and round(paint), "contentMs": content and round(content),
             "boardRuns": [[e["trigger"], e.get("reason"), e.get("durationMs"), e.get("firstOpMs")] for e in span if e["type"] == "board.run"],
