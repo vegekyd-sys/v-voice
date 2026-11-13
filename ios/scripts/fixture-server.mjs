@@ -20,7 +20,7 @@ let shellDelayMS=0;
 let lastOffer=null,offerReply=null;const eventClients=new Set();
 let limitNextSession=false,slowClose=false,slowCloseMS=250,failClose=false,closeRequests=0;
 let documents=[],pending=[],acknowledgements=[],supplements=[];
-let boardRequests=[],boardImages=[],avatarRequests=[],avatarEvents=[],avatarReply="reaction-0",avatarContinuations=["reaction-1","listen-5"],slowAvatar=false;
+let boardMode=false,boardRequests=[],boardImages=[],avatarRequests=[],avatarEvents=[],avatarReply="reaction-0",avatarContinuations=["reaction-1","listen-5"],slowAvatar=false;
 let shellVariant='none',shellRequests=[],shellRedirects=0;
 let inputFrames=0,inputActiveFrames=0,peakInputRMS=0;
 async function shellRelease(variant){
@@ -74,7 +74,8 @@ const server=createServer(async(req,res)=>{
    }
    if(body.command==='location-frame'){client?.send(JSON.stringify({...body.frame,voiceSessionId:body.frame?.voiceSessionId??active}));return send(200,{});}
    if(body.command==='gpt-answer'&&offerReply){const reply=offerReply;offerReply=null;reply(200,{sdp:body.sdp});}
-   if(body.command==='reset'){boardRequests=[];boardImages=[];lastOffer=null;offerReply?.(409,{error:'Reset'});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();}
+   if(body.command==='board-mode'){boardMode=true;return send(200,{ok:true});}
+   if(body.command==='reset'){boardMode=false;boardRequests=[];boardImages=[];lastOffer=null;offerReply?.(409,{error:'Reset'});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();}
    if(body.command==='shell-delay')shellDelayMS=Math.max(0,Math.min(2000,Number(body.ms)||0));
    if(body.command==='shell-release')shellVariant=body.variant??'none';
    if(body.command==='reset'){shellDelayMS=0;shellVariant='none';shellRequests=[];shellRedirects=0;inputFrames=0;inputActiveFrames=0;peakInputRMS=0;}
@@ -154,6 +155,7 @@ const server=createServer(async(req,res)=>{
  }
  // The call board through the native bridge: one JSON reply per run, a photograph as base64.
  if(path==='/voice/api/board'){
+   if(!boardMode)return send(404,{error:'没有这个入口'});
    if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
    if(body.collect!==true||!Array.isArray(body.turns))return send(400,{error:'Invalid board request'});
    boardRequests.push({trigger:body.trigger,turns:body.turns.length});

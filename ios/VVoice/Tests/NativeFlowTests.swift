@@ -233,6 +233,7 @@ import VVoiceCore
     }
     func testCallBoardReachesThePageThroughTheBridge() async throws {
         let call = try await client()
+        try await fixture("board-mode")
         try await call.startOrContinue()
         let host = H5WebHost(call:call,onError:{ XCTFail($0) })
         host.latest = H5Snapshot.make(call,visible:true)

@@ -25,8 +25,8 @@ const cards=new Map();
 mountCallUi(document,view,{
   loadBoardPhoto:query=>loadBoardPhoto(query),
   renderAssistant(target,row){
-    // (With the board on, a delivered report stays a card: the reader would cover the picture V is talking over.)
-    content.render(target,row,{auto:row.document===true&&!board,inline:true});
+    // (While a picture is up, a delivered report stays a card: the reader would cover the picture V is talking over.)
+    content.render(target,row,{auto:row.document===true&&!view.get().board,inline:true});
     if(row.callId){const card=target.querySelector('.content-card,[data-open-content]');if(card)cards.set(row.callId,card);}
     if(pendingDocument)requestAnimationFrame(openPending);
   },
