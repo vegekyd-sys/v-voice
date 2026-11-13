@@ -386,7 +386,7 @@ export function normalizeCanvas(raw) {
   return {zones, active};
 }
 /** What an earlier page holds, in a few words, for whoever draws next. */
-export const zoneDigest = scene => ({id: zoneId(scene), title: scene.title, blocks: scene.blocks.map(block => ({t: block.t, ...(block.h ? {h: block.h} : {}),
+export const zoneDigest = scene => ({id: zoneId(scene), title: scene.title, room: Math.max(0, 4 - scene.blocks.length), blocks: scene.blocks.map(block => ({t: block.t, ...(block.h ? {h: block.h} : {}),
   has: (block.t === 'compare' ? block.cols : block.t === 'flow' ? block.nodes : block.items ?? []).map(item => item.h ?? item.label).filter(Boolean).slice(0, 8)}))});
 
 /** Split a streamed model reply into JSON lines. Fences and prose are skipped. */

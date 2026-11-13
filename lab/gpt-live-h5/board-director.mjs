@@ -90,6 +90,21 @@ export function boardRequest({trigger, scene, turns, evidence, notes = null, rec
  * Each owner (a voice session) has its own scene; a new run for the same owner
  * retires the one still writing.
  */
+const itemsOf = block => block.t === 'compare' ? block.cols : block.t === 'flow' ? block.nodes : block.items ?? [];
+// Whether `next` is `old` with more on it: same kind, same photograph, the same items in the same order first.
+const growsFrom = (old, next) => old.t === next.t && (old.t !== 'photo' || old.query === next.query)
+  && itemsOf(old).every((item, index) => itemsOf(next)[index]?.id === item.id);
+// `block` without pictures the page already shows (another block's, or its own twice); a second large print is dropped (null).
+function picturedOnce(block, scene) {
+  const others = scene.blocks.filter(other => other.id !== block.id), used = new Set();
+  for (const other of others) { if (other.t === 'photo') used.add(other.query); for (const item of [...itemsOf(other), ...(other.sides ?? [])]) if (item.img) used.add(item.img); }
+  if (block.t === 'photo') return used.has(block.query) || others.some(other => other.t === 'photo') ? null : block;
+  const once = item => { if (!item.img) return item; if (used.has(item.img)) { const {img, ...rest} = item; return rest; } used.add(item.img); return item; };
+  const next = {...block};
+  if (next.sides) next.sides = next.sides.map(once);
+  for (const key of ['cols', 'nodes', 'items']) if (Array.isArray(next[key])) next[key] = next[key].map(once);
+  return next;
+}
 // An answer worth a picture: a few sentences, or anything that follows a lookup.
 const worthDrawing = (said, looked) => { const length = Array.from(said.replace(/\s+/gu, /[A-Za-z]{4}/u.test(said) ? ' ' : '')).length, latin = /^[\x00-\x7f]*$/u.test(said.slice(0, 40)); return length >= (looked ? 16 : latin ? 150 : 56); };
 // Words that usually bring a lesson (board-lesson.mjs) rather than a picture drawn after the fact.
@@ -270,6 +285,15 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             row.pages = Math.max(row.pages ?? 0, row.scene.serial, ...row.zones.map(zone => zone.serial)) + 1;
             row.scene = {...emptyScene(), rev: row.scene.rev + 1, serial: row.pages, title: op.title, lesson: true, late: true};
           } else {
+            if (op.op === 'put') {
+              // A block may grow; it may not become something else. One that would replace what is
+              // on the page (another type, another photograph, other items) is a new block instead.
+              const old = row.scene.blocks.find(block => block.id === op.block.id);
+              if (old && !growsFrom(old, op.block)) op = {op: 'put', block: {...op.block, id: `${op.block.id}${row.scene.blocks.length + 1}`.slice(-24)}};
+              // Each thing is pictured once on a page, and a page has one large print.
+              op = {op: 'put', block: picturedOnce(op.block, row.scene)};
+              if (!op.block) return;
+            }
             // One screen: a page holds four blocks. More would only shrink it or make it scroll.
             if (op.op === 'put' && row.scene.blocks.length >= 4 && !row.scene.blocks.some(block => block.id === op.block.id)) return;
             // A page that was never opened by name (the first thing drawn in a call) is opened by its first block.

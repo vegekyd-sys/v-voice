@@ -286,3 +286,28 @@ test('streaming: the author\'s notes reach the illustrator with their script onl
   await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '再说说'}, {role: 'assistant', text: '电动车最要紧的是电池，电池是关键，决定能跑多远，也决定价格。'}]}).catch(() => {});
   assert.deepEqual(requests[2].recent, ['tiles']);
 });
+
+test('the canvas: pages stay; a new topic opens a page, V can go back to one, and nothing on a page is replaced or pictured twice', async () => {
+  const {STREAM_INSTRUCTIONS, refineStreamOp} = await import('./board-lesson.mjs');
+  const line = value => JSON.stringify(value) + '\n';
+  const replies = [
+    line({op: 'scene', title: '故宫'}) + line({op: 'put', block: {id: 'p1', t: 'photo', query: '故宫'}}) + line({op: 'put', block: {id: 'l', t: 'list', items: [{id: 'a', h: '太和殿', img: '太和殿', q: '午门进去就是太和殿'}, {id: 'b', h: '故宫全景', img: '故宫', q: '午门进去就是太和殿'}]}}),
+    line({op: 'scene', title: '电车和油车'}) + line({op: 'put', block: {id: 'p1', t: 'photo', query: '特斯拉 Model 3'}}) + line({op: 'put', block: {id: 'p2', t: 'photo', query: '丰田卡罗拉'}}),
+    line({op: 'zone', id: 'z1'}) + line({op: 'put', block: {id: 'p1', t: 'photo', query: '故宫珍宝馆'}}) + line({op: 'put', block: {id: 'n', t: 'sticky', text: '珍宝馆要另买票', q: '珍宝馆要另买票'}}),
+  ];
+  let asked = 0;
+  const requests = [];
+  const director = createBoardDirector({stream: {instructions: STREAM_INSTRUCTIONS, refine: refineStreamOp}, complete: async function* ({messages}) { requests.push(JSON.parse(messages[1].content)); yield replies[asked++]; }});
+  const say = (asking, answer) => director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: asking}, {role: 'assistant', text: answer}]});
+  await say('介绍故宫', '先顺着中轴线走：午门进去就是太和殿，皇帝登基都在这，很值得看。');
+  await say('电车和油车的区别', '特斯拉 Model 3 靠电池和电机，丰田卡罗拉靠发动机烧汽油，这是最大的不同。');
+  let canvas = director.canvas('c');
+  assert.deepEqual([canvas.zones.map(zone => zone.title), canvas.active], [['故宫', '电车和油车'], 'z2']);
+  assert.deepEqual(canvas.zones[1].blocks.map(block => block.query), ['特斯拉 Model 3'], 'a page has one large print');
+  assert.deepEqual(canvas.zones[0].blocks[1].items.map(item => item.img), ['太和殿', undefined], 'the thing in the print is not pictured again');
+  await say('回到故宫那一页，珍宝馆呢', '珍宝馆在东北角，珍宝馆要另买票，里面是金银玉器，值得专门去看一趟。');
+  canvas = director.canvas('c');
+  assert.deepEqual([canvas.zones.map(zone => zone.title), canvas.active], [['故宫', '电车和油车'], 'z1']);
+  assert.deepEqual(canvas.zones[0].blocks.map(block => [block.t, block.query ?? block.text ?? block.items.length]), [['photo', '故宫'], ['list', 2], ['sticky', '珍宝馆要另买票']], 'the first print stays; another print for the page is not added');
+  assert.deepEqual(requests[2].canvas.map(zone => [zone.id, zone.title, zone.room]), [['z1', '故宫', 2]], 'the illustrator is shown the other pages and how much room each has');
+});
