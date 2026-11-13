@@ -159,7 +159,9 @@ const server=createServer(async(req,res)=>{
    if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
    if(body.collect!==true||!Array.isArray(body.turns))return send(400,{error:'Invalid board request'});
    boardRequests.push({trigger:body.trigger,turns:body.turns.length});
-   return send(200,{ops:[{op:'sync',scene:{serial:1,rev:boardRequests.length,title:'Fixture 画面',blocks:[{id:'p',t:'photo',query:'fixture-print'},{id:'l',t:'list',items:[{id:'a',h:'第一点'}]}]}},{op:'done',reason:'drawn',rev:boardRequests.length}]});
+   return send(200,{ops:[{op:'sync',scene:{serial:1,rev:boardRequests.length,title:'Fixture 画面',blocks:[{id:'p',t:'photo',query:'fixture-print',caption:'本地照片'},{id:'l',t:'list',items:[{id:'a',h:'第一点'}]},
+     {id:'v',t:'versus',sides:[{h:'电车'},{h:'油车'}],items:[{id:'a',h:'补能',cells:['家里慢充','三分钟加满'],win:1},{id:'b',h:'花费',cells:['每公里几分钱','五六毛'],win:0}]},
+     {id:'g',t:'draw',h:'勾股定理',items:[{id:'t',k:'poly',p:[40,40,40,25,60,40],h:'3-4-5'},{id:'a',k:'rect',p:[25,25,15,15],h:'9',tone:'sky'},{id:'b',k:'rect',p:[40,40,20,20],h:'16',tone:'peach'},{id:'c',k:'poly',p:[40,25,60,40,75,20,55,5],h:'25',tone:'butter'}]}]}},{op:'done',reason:'drawn',rev:boardRequests.length}]});
  }
  if(path==='/voice/api/board-image'){
    if(body.voiceSessionId!==active||body.inline!==true||body.query!=='fixture-print')return send(404,{error:'No photograph'});

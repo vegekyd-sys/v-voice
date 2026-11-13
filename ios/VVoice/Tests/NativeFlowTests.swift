@@ -253,6 +253,12 @@ import VVoiceCore
             let photo = try? await web.evaluateJavaScript("Boolean(document.querySelector('.board-print img')?.naturalWidth)") as? Bool
             return title == "Fixture 画面" && photo == true
         }, timeout:15)
+        // What the board looks like in the app's own WebKit (opt-in, for review).
+        if ProcessInfo.processInfo.environment["VVOICE_BOARD_SNAPSHOT"] == "1" {
+            try await Task.sleep(for:.seconds(2))
+            let image = try await web.takeSnapshot(configuration:nil)
+            try image.pngData()?.write(to:FileManager.default.urls(for:.cachesDirectory,in:.userDomainMask)[0].appendingPathComponent("board.png"))
+        }
         let state = try await stats()
         XCTAssertGreaterThan((state["boardRequests"] as? [[String: Any]])?.count ?? 0, 0)
         XCTAssertEqual(state["boardImages"] as? [String], ["fixture-print"])
