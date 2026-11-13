@@ -345,16 +345,7 @@ export class SeeduplexRealtimeVoiceBridge {
       const createWebSocket = this.options.createWebSocket ?? createDefaultWebSocket;
       const socket = await createWebSocket(
         this.options.upstream ?? SEEDUPLEX_UPSTREAM,
-        {
-          headers: {
-            "X-Api-Key": apiKey,
-            "X-Api-Resource-Id": SEEDUPLEX_RESOURCE_ID,
-            "X-Api-Connect-Id": randomUUID(),
-          },
-          handshakeTimeout: 15_000,
-          maxPayload: MAX_UPSTREAM_MESSAGE_BYTES,
-          perMessageDeflate: false,
-        },
+        seeduplexSocketOptions(apiKey),
       );
       if (this.terminal) {
         socket.close();
@@ -365,8 +356,10 @@ export class SeeduplexRealtimeVoiceBridge {
         () => this.#recover({category:"setup-timeout",recoverable:true}),
         this.options.connectTimeoutMs ?? 20_000,
       );
-      socket.on("open", () => {
-        if (this.terminal || socket !== this.socket) return;
+      let opened = false;
+      const onOpen = () => {
+        if (opened || this.terminal || socket !== this.socket) return;
+        opened = true;
         this.connected = true;
         try {
           const event = buildSeeduplexSession(this.request.providerConfig, this.request);
@@ -377,7 +370,8 @@ export class SeeduplexRealtimeVoiceBridge {
         } catch (error) {
           this.#fail(error instanceof Error ? error : new Error("Invalid Seeduplex session"));
         }
-      });
+      };
+      socket.on("open", onOpen);
       socket.on("message", (data, binary) => { if (socket === this.socket) this.#onMessage(data, binary); });
       socket.on("unexpected-response", (_request, response) => {
         if (socket !== this.socket || this.terminal) return;
@@ -400,6 +394,8 @@ export class SeeduplexRealtimeVoiceBridge {
         if (!this.terminal) this.#recover({category:"network",recoverable:true});
         else this.#notifyClose("completed");
       });
+      // A socket opened ahead of the call has already emitted "open".
+      if (socket.readyState === 1) onOpen();
     } catch {
       this.#recover({category:"network",recoverable:true});
     }
@@ -1255,6 +1251,46 @@ export class SeeduplexRealtimeVoiceBridge {
     this.closeNotified = true;
     this.request.onClose?.(reason);
   }
+}
+
+const seeduplexSocketOptions = apiKey => ({
+  headers: {
+    "X-Api-Key": apiKey,
+    "X-Api-Resource-Id": SEEDUPLEX_RESOURCE_ID,
+    "X-Api-Connect-Id": randomUUID(),
+  },
+  handshakeTimeout: 15_000,
+  maxPayload: MAX_UPSTREAM_MESSAGE_BYTES,
+  perMessageDeflate: false,
+});
+
+// Open the upstream transport before the call's session is known. No session
+// is created and nothing is sent; take() hands a still-usable socket to the
+// bridge once, and close() drops one that was never needed.
+export function preconnectSeeduplex({ apiKey, createWebSocket = createDefaultWebSocket, upstream = SEEDUPLEX_UPSTREAM }) {
+  let socket = null, dead = false, taken = false;
+  const fail = () => { dead = true; };
+  const drop = () => { try { if (socket.terminate) socket.terminate(); else socket.close(); } catch {} };
+  Promise.resolve().then(() => createWebSocket(upstream, seeduplexSocketOptions(apiKey))).then(value => {
+    socket = value;
+    // These listeners stay for the socket's life so an early failure is never unhandled.
+    socket.on("error", fail);
+    socket.on("close", fail);
+    socket.on("unexpected-response", (_request, response) => { fail(); response?.resume?.(); });
+    if (dead) drop();
+  }, fail);
+  return {
+    take() {
+      if (taken || dead || !socket || socket.readyState > 1) return null;
+      taken = true;
+      return socket;
+    },
+    close() {
+      if (taken || dead) return;
+      dead = true;
+      if (socket) drop();
+    },
+  };
 }
 
 export function buildSeeduplexRealtimeVoiceProvider(options = {}) {

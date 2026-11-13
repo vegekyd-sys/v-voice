@@ -1,0 +1,31 @@
+{
+  "version": "voice-relay-medium.20261113.1",
+  "sourceCommit": "af068e9ce97077aa044bcb7c51c06f16c89a0df6",
+  "mergePR": 211,
+  "filesSha256": "c531bcf7b1d9e8e0023806c786b2c75344c3fe29a4ba7f3555ab751162b2e5f0",
+  "previousRunningCommit": "71e1d5d97bf2eebcbb539a74f330060e61b02412",
+  "verifiedAt": "2026-11-13T00:12:05+08:00",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/43255460927",
+  "nodes": {
+    "web": {
+      "commit": "af068e9ce97077aa044bcb7c51c06f16c89a0df6",
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "commit": "af068e9ce97077aa044bcb7c51c06f16c89a0df6",
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "gatewayIdentityPreserved": true,
+  "ios": {
+    "version": "1.0.0",
+    "build": 44,
+    "installedBuildReadBack": 44,
+    "previousInstalledBuild": 43,
+    "signed": true,
+    "sharedKeychainEntitlementsVerified": true,
+    "mediumLayout": "Lowest remaining quota on the left, other providers show used percentage, meter and reset time on the right."
+  }
+}

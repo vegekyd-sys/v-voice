@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh V Voice subscription allowances
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=15min
+
+[Install]
+WantedBy=timers.target

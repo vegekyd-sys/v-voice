@@ -64,6 +64,8 @@ def verify_artifact(directory):
         name = item['path']
         require((re.fullmatch(r'(lab|lib|plugins)/[A-Za-z0-9_@./-]+|package(?:-lock)?\.json', name)
                  or name in {'scripts/phone.mjs', 'scripts/feishu-menu.mjs',
+                             'scripts/relay-usage/collect.py', 'scripts/relay-usage/v-voice-usage.service',
+                             'scripts/relay-usage/v-voice-usage.timer',
                              'scripts/device-call.mjs', 'scripts/install-backend-device-bundle.mjs',
                              'skills/device-use/SKILL.md', 'skills/voice-cli/SKILL.md',
                              'bin/v-voice.mjs', 'backend-device-bundle.json'})

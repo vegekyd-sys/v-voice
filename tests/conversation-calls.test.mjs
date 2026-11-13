@@ -39,8 +39,14 @@ test('summary request is bounded, has no tools and rejects truncated completion'
 test('same status receipt updates after a delayed start; close never posts a second status',async()=>{
  let finishSend;const edits=[],sent=[],errors=[];
  const gateway={request:async(method,a)=>{if(method==='send'){sent.push(a);if(sent.length===1)return new Promise(r=>finishSend=r);return {messageId:'summary'};}edits.push(a);return {ok:true,output:{details:{ok:true,messageId:a.args.messageId}}};}};
- const calls=createConversationCalls({gateway,publicOrigin:'https://phone.example',audit:e=>errors.push(e)}),call=calls.begin(binding,target,'fast');call.ready();call.close();finishSend({messageId:'original'});await calls.flush();
+ const calls=createConversationCalls({gateway,publicOrigin:'https://phone.example',audit:e=>errors.push(e)}),call=calls.begin(binding,target,'fast');call.ready();call.user('你好');call.close();finishSend({messageId:'original'});await calls.flush();
  assert.equal(sent.length,2);assert.equal(edits.length,1);assert.equal(edits[0].args.messageId,'original');assert.match(edits[0].args.card.body.elements[0].content,/V电话通话已结束/);assert.equal(errors.filter(e=>e.type==='call.report-error'&&e.stage.startsWith('status')).length,0);
+});
+test('a call with no conversation ends its status card without sending empty minutes',async()=>{
+ const sent=[],edits=[],audit=[];const calls=createConversationCalls({gateway:{request:async(m,a)=>{if(m==='send'){sent.push(a);return {messageId:'status'};}edits.push(a);return {ok:true,output:{details:{ok:true,messageId:a.args.messageId}}};}},publicOrigin:'https://phone.example',audit:e=>audit.push(e)});
+ const call=calls.begin(binding,target,'empty');call.ready();call.close();await calls.flush();
+ assert.equal(sent.length,1);assert.doesNotMatch(sent[0].message,/电话纪要/);assert.equal(edits.length,1);assert.match(edits[0].args.card.body.elements[0].content,/V电话通话已结束/);
+ const saved=await calls.read(binding,call.id);assert.equal(saved.summaryState,'empty');assert.equal(saved.summaryDelivery.state,'skipped-empty');assert.ok(audit.some(e=>e.type==='call.summary-skipped'));
 });
 test('failed status edit is recorded without duplicate notification or losing the summary',async()=>{
  const sent=[],audit=[];const calls=createConversationCalls({gateway:{request:async(m,a)=>{if(m==='send'){sent.push(a);return {messageId:'owned'};}return {ok:false,error:{message:'denied'}};}},publicOrigin:'https://phone.example',audit:e=>audit.push(e)});
@@ -51,7 +57,7 @@ test('connected status uses the same receipt for styling and hangup, including a
  const gateway={request:async(method,a)=>{if(method==='send'){sent.push(a);return {messageId:'owned-card'};}edits.push(a);if(first){first=false;throw Object.assign(Error('request timed out'),{code:'TIMEOUT'});}return {ok:true,output:{details:{ok:true,messageId:a.args.messageId}}};}};
  const calls=createConversationCalls({gateway,publicOrigin:'https://phone.example'}),call=calls.begin(binding,target,'connected');call.ready();await calls.flush();
  assert.equal(edits.length,2);assert.deepEqual(edits[0],edits[1]);assert.match(edits[1].args.card.body.elements[0].content,/V正在电话通话/);assert.equal(edits[1].args.card.body.elements[0].text_size,'notation');
- call.close();await calls.flush();assert.equal(sent.length,2);assert.equal(edits.length,3);assert.ok(edits.every(a=>a.args.messageId==='owned-card'));assert.match(edits[2].args.card.body.elements[0].content,/V电话通话已结束/);
+ call.user('你好');call.close();await calls.flush();assert.equal(sent.length,2);assert.equal(edits.length,3);assert.ok(edits.every(a=>a.args.messageId==='owned-card'));assert.match(edits[2].args.card.body.elements[0].content,/V电话通话已结束/);
 });
 test('live counter uses elapsed time; a slow tick cannot overwrite ended duration or leave a timer',async()=>{
  let at=1000,slow=false,release;const edits=[],scheduled=new Map();let timerId=0;
@@ -93,7 +99,7 @@ test('DM edits follow the native chat ID from its exact send receipt, through ti
    return {ok:true,output:{details:{ok:true,messageId:'owned'}}};
   }};
   const calls=createConversationCalls({gateway,publicOrigin:'https://phone.example',now:()=>at,setTimer:fn=>{timers.push(fn);return 1;},clearTimer:()=>{}}),call=calls.begin(dm,to,'dm');
-  call.ready();await calls.flush();at=6000;await timers.pop()();call.close();await calls.flush();
+  call.ready();await calls.flush();at=6000;await timers.pop()();call.user('你好');call.close();await calls.flush();
   assert.match(edits[1],/00:05/);assert.match(edits.at(-1),/已结束 · 5 秒/);assert.equal(sends.length,2);assert.ok(sends.every(s=>s.to==='ou_alice'));
  }
 });
@@ -125,7 +131,7 @@ test('actor sends and metadata stay scoped while owned lifecycle edits use the h
   throw Error('Actor message edits are not supported');
  }}};
  const calls=createConversationCalls({gateway:{request:async(m,a)=>{assert.equal(m,'tools.invoke');assert.equal(a.args.action,'edit');assert.equal(a.args.target,'oc_alice');assert.equal(a.args.messageId,'owned');methods.push('host-edit');return {ok:true,output:{details:{ok:true,messageId:'owned'}}};}},publicOrigin:'https://phone.example'});
- const call=calls.begin(dm,{...target,agentId:'makaron',sessionKey:dm.sessionKey,to:'ou_alice',accountId:'bot'},'scoped');call.ready();call.close();await calls.flush();
+ const call=calls.begin(dm,{...target,agentId:'makaron',sessionKey:dm.sessionKey,to:'ou_alice',accountId:'bot'},'scoped');call.ready();call.user('你好');call.close();await calls.flush();
  assert.deepEqual(methods,['send','sessions.describe','host-edit','send']);
 });
 

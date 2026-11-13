@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "calendar-dial-20261102",
-  "version": "voice-calendar-dial.20261102.1",
-  "entryCommit": "61e7ef6ddbdf983e05ae7c3c7841d0fe25ea5dfa",
-  "deviceEntryCommit": "61e7ef6ddbdf983e05ae7c3c7841d0fe25ea5dfa",
-  "filesSha256": "c28f5ce5ca2a87076b828737b831428ff10b31b86cf6a08c3c466f704cb7bb22",
-  "registration": "calendar-dial-20261102/release.json",
-  "previousEntryCommit": "9bdf5a89425b4fabd847ed8950d1bbb30d52a796",
+  "release": "relay-usage-medium-20261113",
+  "version": "voice-relay-medium.20261113.1",
+  "entryCommit": "af068e9ce97077aa044bcb7c51c06f16c89a0df6",
+  "deviceEntryCommit": "af068e9ce97077aa044bcb7c51c06f16c89a0df6",
+  "filesSha256": "c531bcf7b1d9e8e0023806c786b2c75344c3fe29a4ba7f3555ab751162b2e5f0",
+  "registration": "relay-usage-medium-20261113/release.json",
+  "previousEntryCommit": "71e1d5d97bf2eebcbb539a74f330060e61b02412",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-02T02:30:00+08:00",
-  "runtimeDifference": "Personal entry Feishu reads use the verified owner identity. Identified entries allow 30 dials per 10 minutes. H5 saves media through iOS build 41 and keeps the share link for older binaries."
+  "validatedAt": "2026-11-13T00:12:05+08:00",
+  "runtimeDifference": "Build 44 aligns the medium widget’s secondary meters with the small widget and preserves each reset time."
 }

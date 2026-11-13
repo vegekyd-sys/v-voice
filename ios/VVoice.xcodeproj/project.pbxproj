@@ -18,6 +18,7 @@
 		16F9BBAC1806652BF0570FF9 /* VoiceFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBF1ACCF9EA74D03B4EC7B54 /* VoiceFixture.swift */; };
 		1BC8BA8E4DCFF883FD007379 /* IslandPreviewGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E34791F59508FFC82578CBD /* IslandPreviewGallery.swift */; };
 		206A2D9E237C1639E053CB31 /* RelaySignalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC68CB218040B5DF93D95B7D /* RelaySignalTests.swift */; };
+		229E81C0BE28F2CB7E61499A /* UsageWidgetAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46F27FF020605DC8719BB2EE /* UsageWidgetAccess.swift */; };
 		23EBB12D206A5170CB9689D9 /* GPTLiveTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13760D7F18C1D0CA48444844 /* GPTLiveTransportTests.swift */; };
 		2A878C373EA3DEC48CADE370 /* BindingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 581754E3A730420284362EA3 /* BindingStore.swift */; };
 		2F42B2799C934DF23FE34978 /* CaptureConverterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0EA4F9C7B5FA6877BC49EB0 /* CaptureConverterTests.swift */; };
@@ -29,6 +30,7 @@
 		432E10AAC22974C8FD2262C1 /* CallCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D650C3BEF748AF2B061E3A8 /* CallCoordinator.swift */; };
 		47F424CF0720D006C216514F /* CallActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C694805A7F537814758189E7 /* CallActivity.swift */; };
 		4D480DD5A361537E08A726AD /* BindingJourney.swift in Sources */ = {isa = PBXBuildFile; fileRef = C288F3A2531966C955A6EEF3 /* BindingJourney.swift */; };
+		4ECF450EF2037A24F463A95E /* UsageWidgetAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46F27FF020605DC8719BB2EE /* UsageWidgetAccess.swift */; };
 		532DA0962BC1E763270EECE0 /* VoiceAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CDD0899EF980DA00A5FD8F5 /* VoiceAvatar.swift */; };
 		5D82361E565AEEDA584509D4 /* AvatarCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB7DC0E277A785098CD0EB2 /* AvatarCatalogTests.swift */; };
 		5F9CB05A3A70A74F01D0C38D /* DeviceLocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D4D345BC789E025A5392879 /* DeviceLocationTests.swift */; };
@@ -45,6 +47,7 @@
 		86E0D28CB20237D88346B3CE /* CallSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7793FA9355C2CE185FE89524 /* CallSettings.swift */; };
 		8B9B09CD2C03DF5A31F015B2 /* H5Shell in Resources */ = {isa = PBXBuildFile; fileRef = 1BD7A9E9F549C0BC8FEE308B /* H5Shell */; };
 		8E4C6BA1932EA200ADE9F440 /* NativeFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6DC401CBC28DC4E5E00D8B4 /* NativeFlowTests.swift */; };
+		9590B03E41BD745CE31C5942 /* RelayUsageWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06FC16E6A330AEEED4E4EDCE /* RelayUsageWidget.swift */; };
 		9E4C76775E9C12F4BCCCCEA2 /* VoiceWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D7BA1CED3B5C99A8E33694C /* VoiceWidget.swift */; };
 		A091D643A8C19C5D2BDBA51C /* CallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FA57ABCE44F7870BD8DE61 /* CallView.swift */; };
 		AE1747E1C86A804A73A542C2 /* H5Updates.json in Resources */ = {isa = PBXBuildFile; fileRef = 74F2FE640D58B26E022A9943 /* H5Updates.json */; };
@@ -108,6 +111,7 @@
 /* Begin PBXFileReference section */
 		022BFA08A2C95FBF90410F34 /* NativeDocumentBody.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeDocumentBody.swift; sourceTree = "<group>"; };
 		0582410618A5CE2BB9858BD2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		06FC16E6A330AEEED4E4EDCE /* RelayUsageWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayUsageWidget.swift; sourceTree = "<group>"; };
 		08A624E6F16469B2F4941AB0 /* VoiceComparison.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceComparison.swift; sourceTree = "<group>"; };
 		0B6BED748F7975AB4F3EFE80 /* VVoice-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "VVoice-Bridging-Header.h"; sourceTree = "<group>"; };
 		0FDD9298C38842CD63B747AF /* DocumentReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentReaderTests.swift; sourceTree = "<group>"; };
@@ -126,6 +130,7 @@
 		445925F85326700CF3C4BA73 /* VVoiceActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = VVoiceActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		45619E039B8DBD8B3AD20743 /* IslandAssets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = IslandAssets.xcassets; sourceTree = "<group>"; };
 		4624DC67397DA3829CD1438F /* RelayTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayTransport.swift; sourceTree = "<group>"; };
+		46F27FF020605DC8719BB2EE /* UsageWidgetAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageWidgetAccess.swift; sourceTree = "<group>"; };
 		4CDD0899EF980DA00A5FD8F5 /* VoiceAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAvatar.swift; sourceTree = "<group>"; };
 		4F6592CE77AB072C3F353CD6 /* DeviceLocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLocation.swift; sourceTree = "<group>"; };
 		581754E3A730420284362EA3 /* BindingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BindingStore.swift; sourceTree = "<group>"; };
@@ -212,6 +217,7 @@
 			children = (
 				D7D2EE17BE9D48F5FA66CA14 /* IslandAssets.manifest.json */,
 				45619E039B8DBD8B3AD20743 /* IslandAssets.xcassets */,
+				06FC16E6A330AEEED4E4EDCE /* RelayUsageWidget.swift */,
 				7D7BA1CED3B5C99A8E33694C /* VoiceWidget.swift */,
 			);
 			name = Widget;
@@ -258,6 +264,7 @@
 			children = (
 				C694805A7F537814758189E7 /* CallActivity.swift */,
 				D37141DC53B720B7B96CC90F /* IslandCallSurface.swift */,
+				46F27FF020605DC8719BB2EE /* UsageWidgetAccess.swift */,
 				857F5E8922957A5BB87318B1 /* VoiceIntents.swift */,
 				82BCD1E278CA030F4584C6D0 /* VoiceStyle.swift */,
 			);
@@ -487,6 +494,8 @@
 			files = (
 				BF1EC256D6D01B21B6B51AE8 /* CallActivity.swift in Sources */,
 				66ED269A523F7BFADCC1CB9B /* IslandCallSurface.swift in Sources */,
+				9590B03E41BD745CE31C5942 /* RelayUsageWidget.swift in Sources */,
+				229E81C0BE28F2CB7E61499A /* UsageWidgetAccess.swift in Sources */,
 				7DAE8DA919F336ACE7DAFEA6 /* VoiceIntents.swift in Sources */,
 				B3DF34667002BAE96598431F /* VoiceStyle.swift in Sources */,
 				9E4C76775E9C12F4BCCCCEA2 /* VoiceWidget.swift in Sources */,
@@ -542,6 +551,7 @@
 				40DE5A3CDF8284543835C80A /* NativeDocumentBody.swift in Sources */,
 				BD6ED4FE95DF160F7B18AAE5 /* PublicEntryConfiguration.swift in Sources */,
 				FEBE3CEFE457C6F635CF202C /* RelayTransport.swift in Sources */,
+				4ECF450EF2037A24F463A95E /* UsageWidgetAccess.swift in Sources */,
 				1433F687232744B21D4A6640 /* VVCaptureSink.mm in Sources */,
 				08A65DFD1AD70465414178B6 /* VVoiceApp.swift in Sources */,
 				C1CDDF961E988F8F12C3E96B /* VoiceAudio.swift in Sources */,
@@ -574,6 +584,7 @@
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = VVoiceSystemPortrait;
 				ASSETCATALOG_COMPILER_APPICON_NAME = VVoiceAppIcon;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = VVoice/Usage.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = VVoice/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -592,6 +603,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = VVoice/Usage.entitlements;
 				INFOPLIST_FILE = VVoice/WidgetInfo.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -629,6 +641,7 @@
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = VVoiceSystemPortrait;
 				ASSETCATALOG_COMPILER_APPICON_NAME = VVoiceAppIcon;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = VVoice/Usage.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = VVoice/DebugInfo.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -678,7 +691,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 44;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = E6YTL27QWA;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -716,6 +729,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = VVoice/Usage.entitlements;
 				INFOPLIST_FILE = VVoice/WidgetInfo.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -765,7 +779,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 44;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = E6YTL27QWA;
 				ENABLE_NS_ASSERTIONS = NO;

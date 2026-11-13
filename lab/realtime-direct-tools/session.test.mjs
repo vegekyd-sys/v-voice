@@ -1515,7 +1515,7 @@ for (const model of ['grok','seeduplex']) test(`${model} direct CLI media uses l
  const f=await fixture(async()=>{throw Error('Gateway exec must not run');},model,{mediaCli:{forCall:async()=>({execute:async command=>(await invokeMedia({name:'exec',args:{command}})).output})}});
  t.after(()=>f.service.dispose());
  const config=f.upstream.sent.find(e=>['session.create','session.update'].includes(e.type)).session;
- assert(config.instructions.includes('makaron edit --image-model wan2.7-image'));
+ assert(config.instructions.includes('makaron edit --image-model gemini-2.1'));
  assert(config.instructions.includes('makaron video create --video-model fal-h3-max'));
  assert(!config.instructions.includes('图片、视频生成也用 delegate_to_v'));
  assert(!config.tools.some(tool=>/^(generate_image|generate_video|makaron_)/.test(tool.name)));
@@ -1525,7 +1525,7 @@ for (const model of ['grok','seeduplex']) test(`${model} direct CLI media uses l
    for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId===id);i++)await delay(5);
    const delivered=f.audit.find(e=>e.type==='tool.delivered'&&e.callId===id);assert(delivered,`missing ${id}`);return delivered.result;
  };
- await invoke('exec',{command:"makaron edit --image-model wan2.7-image 'a small blue moon'",timeoutSeconds:120},'image-submit');
+ await invoke('exec',{command:"makaron edit --image-model gemini-2.1 'a small blue moon'",timeoutSeconds:120},'image-submit');
  await invoke('exec',{command:"makaron create --image 'makaron-output-fixture.webp' --title '月亮'",timeoutSeconds:120},'image-save');
  const image='![月亮](https://cdn.test/generated.webp)';
  assert.equal((await invoke('show_content',{markdown:image},'image-show')).shown,true);
@@ -1548,13 +1548,13 @@ for(const options of [{sessionBound:true},{actorScoped:true},{unidentified:true}
  let local=0;const f=await fixture(async()=>({ok:false,error:{message:'denied'}}),'grok',{...options,mediaCli:{forCall:async()=>{local++;throw Error('must not run');}}});t.after(()=>f.service.dispose());
  const config=f.upstream.sent.find(e=>e.type==='session.update').session;
  assert(!config.instructions.includes('makaron edit --image-model'));
- f.call('exec',{command:"makaron edit --image-model wan2.7-image 'x'"},'isolated-media');
+ f.call('exec',{command:"makaron edit --image-model gemini-2.1 'x'"},'isolated-media');
  await delay(20);assert.equal(local,0);
 });
 test('media catalog revocation stops local execution without attempting Gateway fallback',async t=>{
  let local=0;const catalog=['exec','process'];
  const f=await fixture(async()=>{throw Error('must not call Gateway tool');},'grok',{catalog,mediaCli:{forCall:async()=>({execute:async()=>{local++;return {};}})}});t.after(()=>f.service.dispose());
- catalog.splice(0);f.call('exec',{command:"makaron edit --image-model wan2.7-image 'x'"},'revoked-media');
+ catalog.splice(0);f.call('exec',{command:"makaron edit --image-model gemini-2.1 'x'"},'revoked-media');
  await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='revoked-media'));
  assert.equal(local,0);assert.equal(f.invocations.length,0);assert.match(f.audit.find(e=>e.type==='tool.delivered').result.error,/撤回/);
 });
@@ -1619,7 +1619,7 @@ test('a model still following its execution answers it itself; the service says 
  t.after(()=>{finish({});return f.service.dispose();});
  const call=(id,name,args)=>f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'画一只小猫'});
- call('followed','exec',{command:"makaron edit --image-model wan2.7-image 'cat'",completionLine:'小猫画好了'});
+ call('followed','exec',{command:"makaron edit --image-model gemini-2.1 'cat'",completionLine:'小猫画好了'});
  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='followed')));
  const {sessionId}=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='followed').result.details;
  finish({isError:false,media:{kind:'image',url:'https://cdn.test/followed.webp'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
@@ -1636,7 +1636,7 @@ test('a turn the provider opened and abandoned does not hold back a finished exe
  t.after(()=>{finish({});return f.service.dispose();});
  const said=()=>f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').map(e=>e.text);
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'画一只小猫'});
- f.event({type:'response.function_call_arguments.done',items:[{call_id:'abandoned',name:'exec',arguments:JSON.stringify({command:"makaron edit --image-model wan2.7-image 'cat'",completionLine:'小猫画好了'})}]});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'abandoned',name:'exec',arguments:JSON.stringify({command:"makaron edit --image-model gemini-2.1 'cat'",completionLine:'小猫画好了'})}]});
  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='abandoned')));
  f.event({type:'response.created',response:{id:'never-finished'}});
  finish({isError:false,media:{kind:'image',url:'https://cdn.test/abandoned.webp'},content:[{type:'text',text:'done'}],details:{status:'completed'}});

@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-11-13 — The call board: V draws as it explains
+
+- With `VOICE_BOARD=1` a call has a board beside the conversation: a canvas of pages drawn by one streaming illustrator (DeepSeek, `DEEPSEEK_API_KEY` directly or through OpenRouter), each piece shown when V's voice reaches it. Blocks: photo, list, steps, compare, stats, bars, table, flow, tiles, formula, timeline, versus, overlap, stack, scale and `draw` (a sketch of plain shapes). Pages stay for the whole call; a follow-up opens a page from the one it came from, or returns to it.
+- With `VOICE_BOARD_LESSON=1` the voice model has `explain_on_board`: a script is written for the request (after a search or memory lookup when the request needs one), V says it once, and the page is drawn from it. V finishes the line it is on before the lesson starts.
+- A finished background task is told the same way: one script written from its result, drawn as it is said, with the full report one tap away on the board. `VOICE_BOARD_RESULT_LESSON=0` keeps the old read-out.
+- `VOICE_BOARD_AUDIENCE=all` opens the board to Feishu, public and guest callers (default: the owner's entry). A lesson looks things up only with a tool that caller was given, and calls that are not the owner's keep no words or pictures in the board record.
+- Photographs: `VOICE_BOARD_BRAVE_KEY` for image search, a disk library under `VOICE_BOARD_PHOTO_DIR`.
+- Old functions are unchanged with the board off, and with it on the model's own choice of tool stands (`VOICE_BOARD_REROUTE=1` restores rerouting other tools into a lesson). `scripts/candidate/board-bench/` measures reply, picture and lesson times, the kinds of picture drawn, and whether the old functions still go where they went.
+- Seeduplex input pacing: a frame whose timer fired late used to move the schedule back for good; on a busy process the model heard the caller up to ten seconds late and the call ended with "pending input audio overflow". Lateness is now made up, and a backlog is worked off faster.
+
+## 2026-11-13 — 中号小组件显示套餐已用进度
+
+- iPhone build 44 的 4×2 左侧显示最低剩余额度，右侧用和 2×2 相同的已用数字和进度条显示其他套餐，每项下方保留重置时间。
+
+## 2026-11-12 — iPhone 主屏订阅用量
+
+- V Voice 1.0.0 build 43 可在主屏查看个人套餐用量和重置时间。中号突出余量最低的套餐，大号显示各套餐的有效窗口，中号和大号也显示 DeepSeek 余额。
+
+## 2026-11-12 — Call images use Nano Banana 2.1; no empty minutes card
+
+- Images made in the call now use Makaron `gemini-2.1` (Nano Banana 2.1) instead of `gpt-image-2.6-flare`. The voice instructions name the new model and the executor guard only accepts it.
+- A call that ends with no saved turns and no pending tasks no longer sends a Feishu minutes card. The status card is still edited to ended; the report is saved with `summaryState: 'empty'` and audit `call.summary-skipped`.
+
+## 2026-11-12 — Dial overlaps admission, reads and the Doubao connect
+
+- A dial starts the tool catalog read, the history read and the Doubao socket while Gateway admission is still in flight, using the conversation this identity was last admitted to as a non-authorizing hint. The reads are adopted only if admission returns the same session and agent; otherwise they are discarded. Admission, per-request membership checks and the one-second handoff window are unchanged.
+- The greeting is requested when the page owns the dial connection and spoken at ready. With microphone permission already granted, capture starts alongside the dial; GPT Live session creation gets the same overlap.
+- Stage audit adds `admitted` and `prefetch-failed`. With overlap, `elapsedMs` counts from the dial, so it includes admission.
+- Measured on V below the HTTP entry, 6 alternating real Doubao dials per tree against `9eb75eb`: ready median 2.36 s → 1.06 s, first greeting audio 2.84 s → 1.49 s. Not measured: real phones, the web page, GPT Live, speakers. The remaining floor and the tail are one platform membership check. See `docs/experiments/dial-overlap-20261112.md`.
+
+## 2026-11-12 — Call images use GPT Image 2.6
+
+- Images made in the call now use Makaron `gpt-image-2.6-flare` instead of `wan2.7-image`. The voice instructions name the new model, and the executor's model guard only accepts it, so Wan 2.7 requests are refused.
+- Video (fal-h3-max), the exec/process flow, timeouts and presentation are unchanged.
+
 ## 2026-11-05 — StackChan back on the Shanghai node; natural reactions
 
 - StackChan moves from the private V candidate (trycloudflare, Singapore) back to the Shanghai devices node. Over the international tunnel the xiaozhi handshake took about 9.6 s against the firmware's 10 s server-hello timeout, and some wakes dropped about 1 s after `ready`.

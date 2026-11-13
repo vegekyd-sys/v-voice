@@ -15,7 +15,7 @@ import {createDeviceLocation,LOCATION_TOOL,locationOperation} from './device-loc
 import {createNativeRuntime,DEFAULT_NATIVE_RUNTIME_POLICY} from './native-runtime.mjs';
 import { taskActivity } from '../gpt-live-h5/avatar-state.mjs';
 import {randomBytes,randomUUID} from 'node:crypto';
-import {SeeduplexRealtimeVoiceBridge} from '../seeduplex-realtime-provider.mjs';
+import {SeeduplexRealtimeVoiceBridge,preconnectSeeduplex} from '../seeduplex-realtime-provider.mjs';
 import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
 import {V_ONE_VOICE_POLICY} from '../gpt-live-h5/one-voice-policy.mjs';
 import {TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,LOCATION_DELEGATE_TOOL,LOCATION_CONTROL_TOOL,createToolExecutor,validateTool,processExited,withExecutionLines} from './tools.mjs';
@@ -48,6 +48,8 @@ export const DIRECT_MODELS = [
 // A household speaker has no screen. Keep the shared policy, but never offer a
 // display it cannot provide; long results stay spoken summaries.
 export const SPEAKER_SURFACE = '回答要简短口语化。不能把内容放到屏幕，也不要说“屏幕上”；长结果只说两三句要点，需要完整内容时提出整理成文档发到飞书，用户同意后再实际发送。';
+// How long an overlapped read may wait for its own dial's admission.
+const PREFETCH_VALID_MS=10000;
 const SPEAKER_LONG_RESULT_NOTICE = '完整内容比较长，需要的话我可以整理成文档发到飞书。';
 const HELD_RESULT_NOTICE='刚才交代的那个任务已经有结果了，等会儿再细说。';
 export function speakerSpokenText(presentation) {
@@ -248,7 +250,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(s.closePromise)return s.closePromise;
     if(s.closed&&!s.cleanupFailed)return;
     s.closePromise=(async()=>{
-      s.closed=true;s.audioDelivery?.finish('closed');s.closeDeviceChannel?.();
+      s.closed=true;s.audioDelivery?.finish('closed');s.closeDeviceChannel?.();s.preconnect?.close();s.preconnect=null;
       await s.replyDelivery?.close();
       for(const finish of [...s.contentWaiters.values()])finish(false);
       s.delivery?.close();
@@ -358,7 +360,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     }
     return e.type==='device.result'?s.deviceRequests?.receive(e)??false:false;
   }
-  async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false,replyTarget=null,callReportFactory=null,nativeRuntimeVersion,nativeLocationVersion,nativeDeviceActions,terminalKind,terminalAdapter,backendDeviceURL,gateway:callGateway=gateway,actorScoped=false,agentId='makaron',unidentified=false,callerIdentity,toolIdentity}) {
+  async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false,replyTarget=null,callReportFactory=null,nativeRuntimeVersion,nativeLocationVersion,nativeDeviceActions,terminalKind,terminalAdapter,backendDeviceURL,gateway:callGateway=gateway,actorScoped=false,agentId='makaron',unidentified=false,callerIdentity,toolIdentity,prefetched=null}) {
     if(nativeRuntimeVersion!==undefined&&(nativeRuntimeVersion!==1||surface!=='phone'))throw Error('Unsupported native runtime');
     const deviceActions=normalizeDeviceActions(terminalAdapter?{version:1,capabilities:terminalAdapter.capabilities()}:nativeDeviceActions??(nativeLocationVersion===1?{version:1,capabilities:{'location.current':{status:'prompt'}}}:undefined));
     if(nativeLocationVersion!==undefined&&(nativeLocationVersion!==1||surface!=='phone'||nativeRuntimeVersion!==1))throw Error('Unsupported native location');
@@ -395,7 +397,14 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(nativeRuntimeVersion===1)s.nativeRuntime=createNativeRuntime({voiceSessionId:s.id,duplex:s.nativeDuplex,assisted:s.nativeDuplex&&nativePlaybackPolicy==='assisted',speakerRouted:Boolean(route),policy:nativeRuntimePolicy});
     // An admitted call can load its environment while the HTTP response and
     // authenticated relay handshake travel. No provider or microphone is opened.
-    if(s.actorScoped&&s.sessionBound&&!s.unidentified)s.preparation=prepareConnectionEnvironment(s);
+    if(s.actorScoped&&s.sessionBound&&!s.unidentified){
+      // Reads the entry began for this dial while admission was still in flight
+      // serve this call only when admission named the same conversation.
+      const adopted=prefetched&&!prefetched.adopted&&prefetched.model===model&&prefetched.sessionKey===sessionKey&&prefetched.agentId===agentId&&performance.now()-prefetched.startedAt<PREFETCH_VALID_MS?prefetched:null;
+      if(adopted){adopted.adopted=true;s.preconnect=adopted.preconnect;}
+      s.preparation=prepareConnectionEnvironment(s,adopted);
+      if(adopted)recordConnectionStage(s,'admitted');
+    }
     return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket,...(deviceActions?{nativeDeviceActions:{version:1,capabilities:s.terminalContext().capabilities},terminalContext:s.terminalContext()}:{}),...(nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(s.nativeRuntime?{nativeRuntime:s.nativeRuntime.descriptor}:{}),...(s.nativeDuplex?{nativeDuplex:true,nativePlaybackPolicy}:{}),...route?{speakerRouting:route}:{}};
   }
   function attachClient(s,client){
@@ -403,17 +412,45 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     void start(s,client).catch(()=>{emit(s,{type:'error',message:'语音或工具环境尚未就绪'});void close(s.id).catch(()=>{});});
   }
   const recordConnectionStage=(s,stage)=>audit({type:'call.connection-stage',voiceSessionId:s.id,model:s.model,stage,elapsedMs:Math.round(performance.now()-s.connectionStartedAt)});
-  function prepareConnectionEnvironment(s){
-    s.connectionStartedAt??=performance.now();
+  // One dial may overlap its environment reads with its own live admission.
+  // The entry names the conversation it expects; Gateway authorizes each read
+  // itself. Nothing here admits a call: reserve() adopts the result only after
+  // admission names the same conversation, and otherwise it is discarded.
+  function prefetch({gateway:callGateway,sessionKey,agentId,model}){
+    const startedAt=performance.now(),stages=[];let observer=null;
+    const mark=stage=>{const row={stage,elapsedMs:Math.round(performance.now()-startedAt)};stages.push(row);observer?.(row);};
+    mark('catalog-requested');mark('context-requested');
+    const promise=Promise.all([
+      Promise.resolve().then(()=>callGateway.request('tools.catalog',{agentId,includePlugins:true},{timeoutMs:20000})).then(value=>{mark('catalog-ready');return value;}),
+      Promise.resolve().then(()=>loadContext(sessionKey,{gateway:callGateway})).then(value=>{mark('context-ready');return value;}),
+    ]);
+    promise.catch(()=>{});
+    // An upstream socket without a session carries no audio and no instructions.
+    const preconnect=model==='seeduplex'&&apiKeys.seeduplex?preconnectSeeduplex({apiKey:apiKeys.seeduplex,createWebSocket:async(url,options)=>new wsModule.WebSocket(url,options)}):null;
+    return {model,sessionKey,agentId,startedAt,promise,preconnect,adopted:false,
+      observe(listener){observer=listener;for(const row of stages)listener(row);},
+      discard(){observer=null;preconnect?.close();}};
+  }
+  function prepareConnectionEnvironment(s,prefetched=null){
+    s.connectionStartedAt??=prefetched?.startedAt??performance.now();
     const preparation={pending:true,succeeded:false,startedAt:performance.now()};
     preparation.promise=Promise.resolve().then(async()=>{
       if(!current(s))throw Error('Call preparation retired');
       const connectionStage=stage=>recordConnectionStage(s,stage);
+      const actorReader=()=>s.toolIdentity&&larkForActor?Promise.resolve().then(()=>{connectionStage('actor-reader-requested');return larkForActor(s.toolIdentity);}).then(value=>{if(current(s))connectionStage('actor-reader-ready');return value;}).catch(()=>null):null;
+      if(prefetched){
+        prefetched.observe(row=>{if(current(s))audit({type:'call.connection-stage',voiceSessionId:s.id,model:s.model,stage:row.stage,elapsedMs:row.elapsedMs});});
+        const [environment,reader]=await Promise.all([prefetched.promise.catch(()=>null),actorReader()]);
+        if(environment)return [...environment,reader];
+        // A failed overlap is not a failed call: read again as this admitted call.
+        if(!current(s))throw Error('Call preparation retired');
+        connectionStage('prefetch-failed');
+      }
       connectionStage('catalog-requested');connectionStage('context-requested');
       return s.publicVoice?[await s.gateway.request('tools.catalog',{}),'',null]:s.unidentified?[{groups:[]},'']:await Promise.all([
         s.gateway.request('tools.catalog',{agentId:s.agentId,includePlugins:true},{timeoutMs:20000}).then(value=>{if(current(s))connectionStage('catalog-ready');return value;}),
         Promise.resolve().then(()=>loadContext(s.sessionKey,{gateway:s.gateway})).then(value=>{if(current(s))connectionStage('context-ready');return value;}),
-        s.toolIdentity&&larkForActor?Promise.resolve().then(()=>{connectionStage('actor-reader-requested');return larkForActor(s.toolIdentity);}).then(value=>{if(current(s))connectionStage('actor-reader-ready');return value;}).catch(()=>null):null,
+        actorReader(),
       ]);
     });
     // Observe both outcomes even if a cancelled/delayed client never attaches.
@@ -426,6 +463,10 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   async function start(s,client) {
     s.client=client;
     client.on('close',()=>void close(s.id).catch(()=>{}));
+    // A client that can already play may ask for the greeting while the model
+    // is still connecting; it is spoken at ready, without another round trip.
+    const earlyGreeting=data=>{try{if(JSON.parse(data.toString()).type==='greeting')s.greetingWanted=true;}catch{}};
+    client.on('message',earlyGreeting);
     const connectionStage=stage=>recordConnectionStage(s,stage);
     const preparation=s.preparation&&(s.preparation.pending||s.preparation.succeeded)&&performance.now()-s.preparation.startedAt<1000?s.preparation:prepareConnectionEnvironment(s);s.preparation=null;
     const [catalog,context,actorReader]=await preparation.promise;
@@ -752,7 +793,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       onClose:()=>{if(current(s))void close(s.id).catch(()=>{});},
     };
     if(!current(s))return;
-    const createWebSocket=async(url,options)=>new wsModule.WebSocket(url,options);
+    // The first upstream connection may reuse the socket opened during admission.
+    const createWebSocket=async(url,options)=>{const warm=s.preconnect?.take();s.preconnect=null;return warm??new wsModule.WebSocket(url,options);};
     const makeBridge=(instructions=request.instructions,wrap)=>{
       const generation=wrap?null:s.providerGeneration=(s.providerGeneration??0)+1;
       const owned={...request,instructions};
@@ -770,6 +812,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       s.bridge.updateTerminalContext(next,deviceContextText);deviceContextText=next;
       emit(s,{type:'device.context',terminalContext:s.terminalContext()});
     };
+    const greet=()=>{if(s.greeted)return;s.greeted=true;if(s.speakerRouting&&speakerRouting.greet)void speakerRouting.greet(s.id);else s.bridge.triggerGreeting(s.sessionBound?'电话已接通。请用中文向当前会话的通话者简短打个招呼，然后听对方说话。':'电话已接通。请用中文向天懿简短打个招呼，然后听他说话。');};
+    client.removeListener('message',earlyGreeting);
     client.on('message',(data,binary)=>{
       if(!current(s))return;
       if(binary){
@@ -780,7 +824,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         }catch(error){emit(s,{type:'error',message:error.message});void close(s.id).catch(()=>{});}
         return;
       }
-      try{const e=JSON.parse(data.toString());if(e.type==='device.capabilities'||e.type==='device.result'){receiveDeviceFrame(s,e);return;}if(e.type==='greeting'&&!s.greeted){s.greeted=true;if(s.speakerRouting&&speakerRouting.greet)void speakerRouting.greet(s.id);else s.bridge.triggerGreeting(s.sessionBound?'电话已接通。请用中文向当前会话的通话者简短打个招呼，然后听对方说话。':'电话已接通。请用中文向天懿简短打个招呼，然后听他说话。');}
+      try{const e=JSON.parse(data.toString());if(e.type==='device.capabilities'||e.type==='device.result'){receiveDeviceFrame(s,e);return;}if(e.type==='greeting'){if(s.readyAnnounced)greet();else s.greetingWanted=true;}
       else if(e.type==='barge-in') {
         // Only a speaker endpoint can mark a barge-in as confirmed speech (device echo cancellation).
         const device=s.surface==='speaker'&&typeof e.deviceId==='string'?e.deviceId:null,confirmed=Boolean(device&&e.confirmed===true);
@@ -875,10 +919,10 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       audit({type:'transcript',voiceSessionId:s.id,role:'user',text,final:true,source:'speaker-asr'});
       if(s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));
     }emit(s,value);if(value.type==='error')void close(s.id).catch(()=>{});});
-    if(current(s)){connectionStage('provider-ready');s.replyDelivery?.ready();emit(s,{type:'ready',model:s.model,tools:voiceTools.map(t=>t.name)});}
+    if(current(s)){connectionStage('provider-ready');s.replyDelivery?.ready();s.readyAnnounced=true;emit(s,{type:'ready',model:s.model,tools:voiceTools.map(t=>t.name)});if(s.greetingWanted)greet();}
   }
   return {
-    models,reserve,close,
+    models,reserve,prefetch,close,
     openDeviceChannel({voiceSessionId,nativeDeviceActions,terminalKind='web',unidentified=false,callerIdentity,gateway:callGateway=gateway,agentId='makaron',sessionKey,backendDeviceURL,send,isCurrent,onContext=()=>{}}){
       if(unidentified||!nativeDeviceActions||typeof voiceSessionId!=='string'||!voiceSessionId||voiceSessionId.length>160||typeof isCurrent!=='function'||typeof send!=='function')return null;
       const s={id:voiceSessionId,unidentified,gateway:callGateway,agentId,sessionKey,closed:false};
