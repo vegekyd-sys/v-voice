@@ -42,6 +42,12 @@ import {scenePictures} from './board-scene.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Dialing is how a known caller retries; only anonymous callers keep the tight limit.
+// Page features reachable as /api/page/<name> (see the request handler). Each maps to the route the web
+// page uses, answered as JSON: the board's whole run at once, a photograph as base64.
+const PAGE_FEATURES = Object.freeze({
+  board: params => ({pathname: '/api/board', params: {...params, collect: true}}),
+  'board-image': params => ({pathname: '/api/board-image', params: {...params, inline: true}}),
+});
 export const callAttemptLimit = binding => binding.permissionProfile === 'unidentified' ? 6 : 30;
 
 export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, board = null, boardPhotos = null, boardAudience = 'owner', enableGrok = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), relayUsageFile = process.env.VOICE_RELAY_USAGE_FILE || '/var/lib/v-voice-usage/snapshot.json', conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
@@ -723,7 +729,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         }
         res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/tv-aec/webrtcaec3-0.3.0.") ? "public, max-age=31536000, immutable" : bundled && url.searchParams.get("v") === bundled.revision ? "private, max-age=31536000, immutable" : pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
       }
-      if(binding.permissionProfile==='unidentified'&&!new Set(['/api/board','/api/board-image','/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke',...(binding.cliManaged?['/api/access']:[])]).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
+      if(binding.permissionProfile==='unidentified'&&!pathname.startsWith('/api/page/')&&!new Set(['/api/board','/api/board-image','/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke',...(binding.cliManaged?['/api/access']:[])]).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
       const readBody = async () => {
         const chunks = []; let size = 0;
         for await (const chunk of req) { size += chunk.length; if (size > 70000) throw new Error("Request too large"); chunks.push(chunk); }
@@ -831,13 +837,13 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       }
       if (req.method !== "POST") return json(res, 404, { error: "没有这个入口" });
       let params = await readBody();
-      // An iOS App without the board's own bridge commands (build 44 and before) can still show the
-      // board: its page sends the board request inside an avatar request, and a photograph request
-      // inside avatar events, which that App already relays. They are then the same requests.
-      if (pathname === '/api/avatar' && params.board && typeof params.board === 'object' && !Array.isArray(params.board)) {
-        params = {...params.board, voiceSessionId: params.voiceSessionId, collect: true, echoRevision: params.revision}; pathname = '/api/board';
-      } else if (pathname === '/api/avatar-events' && typeof params.boardImage === 'string') {
-        params = {query: params.boardImage, voiceSessionId: params.voiceSessionId, inline: true}; pathname = '/api/board-image';
+      // Page features (`/api/page/<name>`): what a page may ask the service for, beside the call itself.
+      // The iOS App relays any of them through one bridge command, so a new one ships with the service
+      // and the page alone. Each is the same request as the web page's own route; access is decided there.
+      if (pathname.startsWith('/api/page/')) {
+        const name = pathname.slice('/api/page/'.length), feature = Object.hasOwn(PAGE_FEATURES, name) ? PAGE_FEATURES[name] : null;
+        if (!feature) return json(res,404,{error:'没有这个入口'});
+        ({pathname, params} = feature(params));
       }
       if (pathname === "/api/session") {
         const result=await reservePhoneCall({context,binding,params,req,ip});
@@ -892,7 +898,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const result = await board.run({owner:params.voiceSessionId,...request,signal:gone.signal,quiet:binding?.permissionProfile!=='personal-tianyi',
           onOp:op=>{ if (context.active === active) send(op); }});
         send({op:'done',reason:result.reason,rev:result.rev??board.scene(params.voiceSessionId).rev,durationMs:result.durationMs,firstOpMs:result.firstOpMs??null});
-        if (collected) return json(res,200,{ops:collected,...(Number.isSafeInteger(params.echoRevision)?{revision:params.echoRevision}:{})});
+        if (collected) return json(res,200,{ops:collected});
         res.end();return;
       }
       if (pathname === '/api/board-image') {

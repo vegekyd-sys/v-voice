@@ -260,8 +260,12 @@ struct H5WebSurface: UIViewRepresentable {
             onReading(reading)
             return [:]
         case "avatar", "avatarEvents": return try await call.h5Cosmetic(action == "avatar" ? "avatar" : "avatar-events", body: payload, owner: owner)
-        // The call board: the page asks for a picture of what is being said, and for a photograph on it.
-        case "board", "boardImage": return try await call.h5Cosmetic(action == "board" ? "board" : "board-image", body: payload, owner: owner)
+        // Page features (the call board and whatever comes after it): the page asks the service for
+        // `/api/page/<name>` with a JSON body. The service decides what exists and who may use it; the App
+        // only relays, for the page that owns the call. New features need no App update.
+        case "service":
+            guard let route = payload["route"] as? String, let body = payload["body"] as? [String: Any] else { throw VoiceError.protocolMismatch }
+            return try await call.pageRequest(route, body: body, owner: owner)
         case "saveMedia":
             guard owned, let text = payload["url"] as? String, let url = URL(string: text), let kind = payload["kind"] as? String else { throw VoiceError.protocolMismatch }
             try await MediaLibrarySaver.save(url: url, kind: kind)

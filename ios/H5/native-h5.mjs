@@ -11,7 +11,7 @@ import {createAvatarTelemetry} from '../../lab/gpt-live-h5/avatar-telemetry.mjs'
 import {createBoardClient,createLessonGate} from '../../lab/gpt-live-h5/board-client.mjs';
 import {speaksOf,spokenProgress,unspoken} from '../../lab/gpt-live-h5/board-scene.mjs';
 
-let current, owner, reactions, telemetry, boardChannel = 'board', boardRevision = 0, board, boardTimer, boardPhotos = new Map(), boardFollow, opened = new Set(), pendingDocument, openingDocument=false, idleCatalogOwner;
+let current, owner, reactions, telemetry, board, boardTimer, boardPhotos = new Map(), boardFollow, opened = new Set(), pendingDocument, openingDocument=false, idleCatalogOwner;
 const hiddenDocument=document.createElement('div');hiddenDocument.hidden=true;document.body.append(hiddenDocument);
 const view = createCallView();
 const post = (action, payload = {}, callID = current?.callID ?? '') => window.webkit.messageHandlers.voice.postMessage({action,payload,callID,pageID:window.__VVoicePageID});
@@ -44,18 +44,22 @@ mountCallUi(document,view,{
 mountChangelog(document,window);
 const avatar=mountAvatar(document,window,{owner:()=>owner,onDisplayed:event=>{if(current?.visible){telemetry?.display(event);void post('avatarDisplayed',{pictureID:event.picture}).catch(()=>{});}}});
 function stopVisuals(){reactions?.dispose();reactions=null;telemetry?.close();telemetry=null;stopBoard();}
-// The call board, through the native bridge (an App without it answers protocolMismatch and the board stays off).
+// Page features: /api/page/<name> on the service, relayed by the App's one `service` command. A new
+// feature needs a service route and this page, not an App update.
+const pageRequests=()=>current?.capabilities?.pageRequests>=1;
+const page=(name,body,callID)=>post('service',{route:'page/'+name,body},callID);
+// The call board.
 function stopBoard(){board?.dispose();board=null;clearInterval(boardTimer);boardTimer=null;boardFollow=null;boardPhotos.clear();view.set({board:null,boardCanvas:null,boardSpoken:null});}
 function loadBoardPhoto(query){
   const callID=owner;
   if(!board||typeof query!=='string')return Promise.resolve(null);
-  // (An App without the board's commands relays the request inside avatar events: see startBoard.)
-  const ask=()=>boardChannel==='avatar'?post('avatarEvents',{boardImage:query},callID):post('boardImage',{query},callID);
-  if(!boardPhotos.has(query))boardPhotos.set(query,ask().then(r=>r?.data&&typeof r.type==='string'&&r.type.startsWith('image/')?`data:${r.type};base64,${r.data}`:null).catch(()=>null));
+  if(!boardPhotos.has(query))boardPhotos.set(query,page('board-image',{query},callID).then(r=>r?.data&&typeof r.type==='string'&&r.type.startsWith('image/')?`data:${r.type};base64,${r.data}`:null).catch(()=>null));
   return boardPhotos.get(query);
 }
 function startBoard(callID){
   stopBoard();
+  // Only an App that relays page features (build 45 on) can show the board; older ones carry on without it.
+  if(!pageRequests())return;
   const gate=createLessonGate();let failures=0;
   boardFollow=(scene=board?.scene)=>{
     const rows=[...view.get().transcript.history,...view.get().transcript.current].filter(row=>!row.document&&row.text?.trim()).sort((a,b)=>a.at-b.at);
@@ -68,10 +72,7 @@ function startBoard(callID){
     onScene:(scene,canvas)=>{if(owner===callID)view.set({board:scene,boardCanvas:canvas??null,boardSpoken:boardFollow?.(scene)??view.get().boardSpoken});},
     request:async(payload,{onEvent})=>{
       let reply;
-      // The board's own bridge command first; an App that does not know it (build 44 and before)
-      // carries the same request inside an avatar request, which it already relays.
-      const viaAvatar=()=>post('avatar',{revision:++boardRevision,turns:[],board:payload},callID).then(value=>{boardChannel='avatar';return value;});
-      try{reply=boardChannel==='avatar'?await viaAvatar():await post('board',payload,callID).catch(viaAvatar);failures=0;}
+      try{reply=await page('board',payload,callID);failures=0;}
       // Not offered to this caller, or an App that does not know the board: after two refusals in a row, no board for this call.
       catch(error){if(owner===callID&&++failures>=2)queueMicrotask(stopBoard);throw error;}
       for(const op of Array.isArray(reply?.ops)?reply.ops:[])onEvent(op);

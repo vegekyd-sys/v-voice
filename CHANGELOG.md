@@ -8,6 +8,7 @@
 - `VOICE_BOARD_AUDIENCE=all` opens the board to Feishu, public and guest callers (default: the owner's entry). A lesson looks things up only with a tool that caller was given, and calls that are not the owner's keep no words or pictures in the board record.
 - Photographs: `VOICE_BOARD_BRAVE_KEY` for image search, a disk library under `VOICE_BOARD_PHOTO_DIR`.
 - Old functions are unchanged with the board off, and with it on the model's own choice of tool stands (`VOICE_BOARD_REROUTE=1` restores rerouting other tools into a lesson). `scripts/candidate/board-bench/` measures reply, picture and lesson times, the kinds of picture drawn, and whether the old functions still go where they went.
+- iOS: the App relays page features through one bridge command, `service` → `/api/page/<name>` (build 45, `capabilities.pageRequests`). The board is the first; later page features ship with the service and the page, without an App update. Older Apps keep working without the board.
 - Seeduplex input pacing: a frame whose timer fired late used to move the schedule back for good; on a busy process the model heard the caller up to ten seconds late and the call ended with "pending input audio overflow". Lateness is now made up, and a backlog is worked off faster.
 
 ## 2026-11-13 — 中号小组件显示套餐已用进度

@@ -151,8 +151,6 @@ const server=createServer(async(req,res)=>{
  if(path==='/voice/api/call-control-input')return send(200,{ok:true});
  if(path==='/voice/api/avatar'){
    if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
-   // (An App without the board's commands carries the board request inside this one: answered like /api/board.)
-   if(body.board&&typeof body.board==='object'){if(!boardMode)return send(404,{error:'没有这个入口'});boardRequests.push({trigger:body.board.trigger,turns:body.board.turns?.length,via:'avatar'});return send(200,{revision:body.revision,ops:boardOps()});}
    if(!Number.isSafeInteger(body.revision)||body.revision<1||!Array.isArray(body.turns)||body.turns.length>6||body.turns.some(t=>typeof t.text!=='string'||t.text.length>600))return send(400,{error:'Invalid context'});
    avatarRequests.push(body);
    const reply={picture:avatarReply,continuations:avatarContinuations,revision:body.revision};
@@ -160,20 +158,20 @@ const server=createServer(async(req,res)=>{
    return send(200,reply);
  }
  // The call board through the native bridge: one JSON reply per run, a photograph as base64.
- if(path==='/voice/api/board'){
+ // Page features, as the App relays them (`service` → /api/page/<name>).
+ if(path==='/voice/api/page/board'){
    if(!boardMode)return send(404,{error:'没有这个入口'});
    if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
-   if(body.collect!==true||!Array.isArray(body.turns))return send(400,{error:'Invalid board request'});
+   if(!Array.isArray(body.turns))return send(400,{error:'Invalid board request'});
    boardRequests.push({trigger:body.trigger,turns:body.turns.length});
    return send(200,{ops:boardOps()});
  }
- if(path==='/voice/api/board-image'){
-   if(body.voiceSessionId!==active||body.inline!==true||body.query!=='fixture-print')return send(404,{error:'No photograph'});
+ if(path==='/voice/api/page/board-image'){
+   if(body.voiceSessionId!==active||body.query!=='fixture-print')return send(404,{error:'No photograph'});
    boardImages.push(body.query);
    return send(200,boardPhoto);
  }
  if(path==='/voice/api/avatar-events'){
-   if(typeof body.boardImage==='string'){if(body.boardImage!=='fixture-print')return send(404,{error:'No photograph'});boardImages.push(body.boardImage);return send(200,boardPhoto);}
    try{avatarEvents.push(...body.events.map(normalizeAvatarEvent));return send(200,{ok:true});}catch{return send(400,{error:'Invalid telemetry'});}
  }
  if(path==='/voice/api/comparison')return send(200,{schema:'voice-listening-v1',scenes:[{id:'greeting',title:'打个招呼',context:'本地声音试听',text:'你好'}],variants:[{id:'plain',title:'自然表达',description:'本地合成测试波形'}],clips:[{id:'sample-a',scene:'greeting',engine:'realtime',variant:'plain',requestedScript:'你好',renderedScript:'你好',seconds:0.24,inspection:{valid:true}}]});

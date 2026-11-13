@@ -51,24 +51,21 @@ for(const audience of ['owner','all'])for(const [name,open] of Object.entries(en
  assert.equal((await f.send('/api/board?phone='+phone,{cookie:'',body:drawRequest(call.json().voiceSessionId)})).status===200,false);
 });
 
-test('the iOS app\'s bridge gets a run\'s operations and a photograph as JSON',async t=>{
+test('page features: the iOS App asks /api/page/<name> and gets the board\'s run and a photograph as JSON',async t=>{
  const f=await fixture(t,'all'),{phone,cookie}=await entries.Public(f);
  const call=await f.send('/api/session?phone='+phone,{cookie,body:{model:'seeduplex'}});
- const drawn=await f.send('/api/board?phone='+phone,{cookie,body:{...drawRequest(call.json().voiceSessionId),collect:true}});
+ const drawn=await f.send('/api/page/board?phone='+phone,{cookie,body:drawRequest(call.json().voiceSessionId)});
  assert.equal(drawn.status,200);assert.deepEqual(drawn.json().ops.map(op=>op.op),['sync','done']);
- const photo=await f.send('/api/board-image?phone='+phone,{cookie,body:{voiceSessionId:call.json().voiceSessionId,query:'故宫',inline:true}});
+ const photo=await f.send('/api/page/board-image?phone='+phone,{cookie,body:{voiceSessionId:call.json().voiceSessionId,query:'故宫'}});
  assert.equal(photo.status,200);assert.deepEqual(photo.json(),{type:'image/jpeg',data:Buffer.from('fixture').toString('base64')});
 });
 
-test('an iOS App without the board\'s bridge commands carries them inside the avatar requests',async t=>{
- const f=await fixture(t,'all'),{phone,cookie}=await entries.Public(f);
- const call=await f.send('/api/session?phone='+phone,{cookie,body:{model:'seeduplex'}});const id=call.json().voiceSessionId;
- const drawn=await f.send('/api/avatar?phone='+phone,{cookie,body:{voiceSessionId:id,revision:7,turns:[],board:{trigger:'user',rev:0,turns:[{role:'user',text:'给我讲讲故宫'}]}}});
- assert.equal(drawn.status,200,drawn.text);assert.equal(drawn.json().revision,7,'the App checks its revision comes back');
- assert.deepEqual(drawn.json().ops.map(op=>op.op),['sync','done']);assert.equal(drawn.json().picture,undefined,'no avatar decision is made');
- const photo=await f.send('/api/avatar-events?phone='+phone,{cookie,body:{voiceSessionId:id,boardImage:'故宫'}});
- assert.equal(photo.status,200);assert.equal(photo.json().type,'image/jpeg');
- // Where the board is not offered, the carried request is refused like the board's own.
- const closed=await fixture(t,'owner'),pub=await entries.Public(closed),other=await closed.send('/api/session?phone=public',{cookie:pub.cookie,body:{model:'seeduplex'}});
- assert.equal((await closed.send('/api/avatar?phone=public',{cookie:pub.cookie,body:{voiceSessionId:other.json().voiceSessionId,revision:1,turns:[],board:{trigger:'user',rev:0,turns:[{role:'user',text:'x'}]}}})).status,404);
+test('page features: only the ones the service names exist, and each keeps its own access rule',async t=>{
+ const f=await fixture(t,'owner'),{phone,cookie}=await entries.Public(f);
+ const call=await f.send('/api/session?phone='+phone,{cookie,body:{model:'seeduplex'}});
+ for(const name of ['nothing','__proto__','constructor','session'])assert.equal((await f.send('/api/page/'+name+'?phone='+phone,{cookie,body:{voiceSessionId:call.json().voiceSessionId}})).status,404,name);
+ assert.equal((await f.send('/api/page/board?phone='+phone,{cookie,body:drawRequest(call.json().voiceSessionId)})).status,404,'the board is not open to Public here');
+ // An avatar request is an avatar request: nothing rides on it.
+ const avatar=await f.send('/api/avatar?phone='+phone,{cookie,body:{voiceSessionId:call.json().voiceSessionId,revision:1,turns:[],board:drawRequest('x')}});
+ assert.equal(avatar.json().ops,undefined);
 });
