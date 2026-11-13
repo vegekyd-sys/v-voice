@@ -186,7 +186,8 @@ export function settleLesson({say: lines, ops}, {fixed = false, strict = false} 
       // A character appears when it is first named. A row, a term or a mark
       // of a diagram appears where the writer put it (its words may well
       // have been said earlier in passing), if that place is real.
-      const at = DIAGRAMS.has(block.t) && quoted >= 0 ? quoted : named >= 0 ? named : quoted >= 0 ? quoted : pictured;
+      // (The quote, when it is in an earlier sentence and V's own words are being drawn: a closing line that names every item again is not where they were told.)
+      const at = DIAGRAMS.has(block.t) && quoted >= 0 ? quoted : named >= 0 ? (strict && quoted >= 0 && sentenceOf(quoted) < sentenceOf(named) ? quoted : named) : quoted >= 0 ? quoted : pictured;
       if (at >= 0) item.q = quoteAt(at); else delete item.q;
       whereOf.set(`${block.id}/${item.id}`, at);
     }
@@ -270,6 +271,7 @@ export const STREAM_INSTRUCTIONS = `你是 V 的画面作者。V 正在电话里
 - 先判断这句话落在哪，这一步最要紧，不要每句话都开新页。① 用户在追问 screen 这一页上已经有的一样东西（页上有「翠玉白菜」，用户说「我想看翠玉白菜」；页上是属性相克，用户说「我队伍里有哲尔尼亚斯」）：这是往下展开。这一页还有空位就直接往这一页加；没有空位就 scene 开新页并写 from（screen 的 id），表示从那一页展开出来。② 接着同一件事补充、换个说法再讲：往这一页加，没空位才开新页（带 from）。③ 完全换了话题：scene 开新页，不写 from。④ 回头问 canvas 里更早某一页上的东西（「刚才那个第二点」「回到故宫」）：那一页还有空位（room 大于 0）就 zone 回去再加；没有空位就 scene 开新页并写 from 那一页的 id。zone 和 scene 只选一个。
 - user：用户刚说完，V 还没开口。回头问之前某一页、而那一页还有空位时，这一步就可以先 zone 回去。只有当用户明显在问一件新的、具体的东西（一个地方、一个人、一件产品、一个概念）时，输出 scene（标题）；如果问的是一件拍得出照片的具体东西（一个地方、一栋建筑、一个人、一个角色、一件产品、一种动物或食物），再加一个 photo 区块，query 写它的名字。抽象的概念、数学、规则、天气、「A 和 B 的区别」这类问题不放 photo，只开页。不写任何条目、数字、结论，那些等 V 说了再画。用户点名要把这一页上的某一样东西展开讲（页上是罗马三天行程，用户说「梵蒂冈你再展开说说」）：也是一件具体的东西，scene 开新页并写 from（这一页的 id），拍得出照片就加 photo，让用户在 V 开口前就看到要讲的是什么。闲聊、应答、只是顺着当前这页随口追问一句、看不出要讲什么：none。
 - assistant_progress：V 说到一半。把 V 已经说出来的内容画上去。屏幕是空的或者是别的话题：先 scene 再 put。屏幕就是这个话题：只 put。可以先放一个只有头两项的区块，下次再把同一个 id 的区块整块重发、在后面接着加。V 这次没有说出新的可画的东西：none。
+- 每一项的 q 抄 V **第一次讲到这一项**的那句话里的字（有 notes 时就是对应那一行 say 的开头），不要抄结尾那句把所有项再点一遍名的总结（「一句话：A、B、C…」）：那样整页要等到最后才出现。
 - assistant_end：V 的话到齐了。把整页补全：补上没画到的条目，需要的话加一张便签（V 的结论或提醒）。V 最后如果下了结论、给了建议或做了选择（「所以…」「更适合…」「选…」「最要紧的是…」），用 mark 在页上对应的那一项落一笔（建议选的打勾或圈出，最要紧的打星），q 抄那句结论里的字。
 - 一页只有一屏：整页最多 3 个区块，外加一张便签。V 讲得多，就把内容归进这几个区块里（同一类的并成一个区块、每个区块挑最要紧的 3 到 5 项），不要 V 每讲一段就新开一个区块。照片算一个区块。
 - 快一点让第一样东西上屏：一个区块会有 3 项以上时，先发只含头两项的版本，紧接着再发一行完整的（同一个 id）。
@@ -297,6 +299,22 @@ export function refineStreamOp(op, {said = '', trigger = ''} = {}) {
   if (trigger === 'user') return op.block.t === 'photo' ? {op: 'put', block: (({q, ...block}) => block)(op.block)} : null;
   const say = spokenSentences(said);
   if (!say.length) return null;
+  // An item appears when V first tells it, not at the closing line that names everything again
+  // (call of 11/13: five steps all hung on "一句话：借钱买房、打包转卖…", so the page stood empty
+  // for the whole story). Where V used the item's own words earlier than its quote, it hangs there.
+  const all = loose(said);
+  const starts = []; { let at = 0; for (const line of say) { const found = all.indexOf(loose(line), at); starts.push(found < 0 ? at : found); at = (found < 0 ? at : found) + loose(line).length; } }
+  const earlier = item => {
+    const quoted = item?.q ? all.indexOf(loose(item.q)) : -1;
+    if (quoted < 0) return item;
+    const words = [item.h, item.d, item.label, item.text].filter(value => typeof value === 'string').flatMap(value => [loose(value), Array.from(loose(value)).slice(0, 4).join('')]).filter(value => Array.from(value).length >= 4);
+    const first = Math.min(...words.map(word => all.indexOf(word)).filter(at => at >= 0), Infinity);
+    const line = starts.findLastIndex(start => start <= first), mine = starts.findLastIndex(start => start <= quoted);
+    if (!(first < quoted) || line < 0 || line >= mine) return item;
+    return {...item, q: Array.from(say[line].replace(/[\s，。！？、；：,.!?;:"'“”‘’（）()\-—*]/gu, '')).slice(0, 8).join('')};
+  };
+  const block = op.block, list = Array.isArray(block.items) ? 'items' : Array.isArray(block.nodes) ? 'nodes' : Array.isArray(block.cols) ? 'cols' : null;
+  if (list && block[list].length >= 2) op = {op: 'put', block: {...block, [list]: block[list].map(earlier)}};
   const [settled] = settleLesson({say, ops: [op]}, {fixed: true, strict: true}).ops;
   // What is left must still be a block (a list needs an item, a comparison two sides).
   return normalizeOp(settled);

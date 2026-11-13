@@ -236,3 +236,12 @@ test('with the streaming illustrator a lesson is a script with a note per senten
   assert.equal(writer.accept({owner: 'd', topic: 't', text: written}).sentences.length, 4);
   assert.equal(events.at(-1)[1], 'd');
 });
+
+test('an item hangs on the sentence that first tells it, not on a closing line that names them all again', async () => {
+  const {refineStreamOp} = await import('./board-lesson.mjs');
+  const said = '先从一笔房贷说起：银行把钱借给收入不高的人，这叫次级贷款。银行不想自己扛风险，就把几千笔房贷打包成一份债券卖出去。评级机构给这些打包债券打了 AAA，养老基金就放心买了。房价一跌，第一批人还不上钱。一句话：借钱买房、打包转卖、评级放行、房价一跌，整条链就断了。';
+  const op = refineStreamOp({op: 'put', block: {id: 'b1', t: 'steps', items: [
+    {id: 's1', h: '借钱买房', d: '次级贷款', q: '借钱买房打包转卖'}, {id: 's2', h: '打包转卖', d: '几千笔房贷做成债券', q: '打包转卖评级放行'},
+    {id: 's3', h: '评级放行', d: 'AAA，养老基金买入', q: '评级放行房价一跌'}, {id: 's4', h: '房价一跌', d: '第一批人还不上钱', q: '房价一跌第一批人'}]}}, {said, trigger: 'assistant_end'});
+  assert.deepEqual(op.block.items.map(item => item.q.slice(0, 4)), ['先从一笔', '银行不想', '评级机构', '房价一跌']);
+});

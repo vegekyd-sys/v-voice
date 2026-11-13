@@ -269,6 +269,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   if(!['courtesy','provider','assisted'].includes(nativePlaybackPolicy))throw Error('Unsupported native playback policy');
   const localTools=TOOLS.filter(t=>(calendar||larkForActor||t.name!=='feishu_calendar')&&(larkRead||larkForActor||t.name!=='lark_read'));
   // Everyone with a screen, where the board is open to everyone (`lesson.audience`); otherwise the owner's own calls.
+  // Resolves when V is not speaking (nothing being generated or played), or after `maxMs`.
+  const quiet=async(s,maxMs)=>{const until=Date.now()+maxMs,pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));await pause(150);while(current(s)&&(s.responseActive||s.playing)&&Date.now()<until)await pause(100);};
   const lessonTools=s=>lesson?.available&&lesson.source!=='parallel'&&s.display&&(lesson.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped)?[LESSON_TOOL]:[];
   const sessionTools=s=>[...lessonTools(s),...localTools.filter(t=>(s.display||t.name!=='show_content')&&(!['feishu_calendar','lark_read'].includes(t.name)||Boolean(s.actorReader)||!s.sessionBound&&Boolean(t.name==='feishu_calendar'?calendar:larkRead))).map(t=>s.actorReader&&t.name==='feishu_calendar'?{...t,description:t.description.replace('天懿本人','当前已验证来电账号本人')}:s.actorReader&&t.name==='lark_read'?{...t,description:t.description.replace('本人的飞书资料','当前已验证来电账号本人的飞书资料')}:s.sessionBound&&t.name==='memory_search'?{...t,description:'查询当前会话可用的记忆，权限沿用会话已有边界。'}:s.sessionBound&&t.name==='delegate_to_v'?{...t,description:t.description.replace('个人 V','当前会话的 V')}:s.sessionBound&&t.name==='openclaw_tool'?{...t,description:'执行当前会话可用的 OpenClaw 原生工具，遵守会话既有权限；arguments 传工具参数的 JSON。复杂任务或需要后台模型时使用 delegate_to_v。外部操作遵守当前用户授权。'}:t),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[]),...(s.location?[LOCATION_TOOL]:[])].map(t=>s.location?({delegate_to_v:LOCATION_DELEGATE_TOOL,openclaw_agent_control:LOCATION_CONTROL_TOOL}[t.name]??t):t);
   // A successful native end_call can return no further speech at all. It is
@@ -615,7 +617,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
               catch(error){audit({type:'lesson.research-failed',voiceSessionId:s.id,callId:call.callId,name:lookup.name,message:String(error?.message??error).slice(0,120)});}
             }
             let script=null;
-            try{script=await lesson.prepare({quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal});}
+            try{script=await lesson.prepare({quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal});
+              // V finishes the line it is on ("好，我想想怎么讲") before the lesson starts: cut off mid-sentence it sounded like two people.
+              if(script)await quiet(s,8000);}
             catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
             finally{if(s.lessonPending===call.callId)s.lessonPending=null;}
             if(current(s)&&s.epoch===epoch){

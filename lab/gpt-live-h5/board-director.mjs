@@ -201,7 +201,11 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         turns: [...(notes.ask ? [{role: 'user', text: String(notes.ask)}] : []), {role: 'assistant', text: notes.script}]}).catch(() => {});
     },
     /** A script is being written for the caller's question: what V says meanwhile is not the answer. */
-    expect(id, ms = 20000) { owner(id).expectUntil = ms > 0 ? now() + ms : 0; },
+    expect(id, ms = 20000) {
+      const row = owner(id); row.expectUntil = ms > 0 ? now() + ms : 0;
+      // (A page being drawn from V's "let me think how to put it" is dropped: that line is not the answer.)
+      if (ms > 0 && !row.ahead) row.controller?.abort();
+    },
     /**
      * A lesson is being written for this call: stop drawing (a run in flight
      * is dropped) until it is presented or released. What is on the page stays.
