@@ -830,7 +830,15 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         res.on("close", () => { clearInterval(keepalive); context.listeners.delete(res); }); return;
       }
       if (req.method !== "POST") return json(res, 404, { error: "没有这个入口" });
-      const params = await readBody();
+      let params = await readBody();
+      // An iOS App without the board's own bridge commands (build 44 and before) can still show the
+      // board: its page sends the board request inside an avatar request, and a photograph request
+      // inside avatar events, which that App already relays. They are then the same requests.
+      if (pathname === '/api/avatar' && params.board && typeof params.board === 'object' && !Array.isArray(params.board)) {
+        params = {...params.board, voiceSessionId: params.voiceSessionId, collect: true, echoRevision: params.revision}; pathname = '/api/board';
+      } else if (pathname === '/api/avatar-events' && typeof params.boardImage === 'string') {
+        params = {query: params.boardImage, voiceSessionId: params.voiceSessionId, inline: true}; pathname = '/api/board-image';
+      }
       if (pathname === "/api/session") {
         const result=await reservePhoneCall({context,binding,params,req,ip});
         return json(res,result.status,result.body);
@@ -884,7 +892,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const result = await board.run({owner:params.voiceSessionId,...request,signal:gone.signal,quiet:binding?.permissionProfile!=='personal-tianyi',
           onOp:op=>{ if (context.active === active) send(op); }});
         send({op:'done',reason:result.reason,rev:result.rev??board.scene(params.voiceSessionId).rev,durationMs:result.durationMs,firstOpMs:result.firstOpMs??null});
-        if (collected) return json(res,200,{ops:collected});
+        if (collected) return json(res,200,{ops:collected,...(Number.isSafeInteger(params.echoRevision)?{revision:params.echoRevision}:{})});
         res.end();return;
       }
       if (pathname === '/api/board-image') {

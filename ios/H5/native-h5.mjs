@@ -11,7 +11,7 @@ import {createAvatarTelemetry} from '../../lab/gpt-live-h5/avatar-telemetry.mjs'
 import {createBoardClient,createLessonGate} from '../../lab/gpt-live-h5/board-client.mjs';
 import {speaksOf,spokenProgress,unspoken} from '../../lab/gpt-live-h5/board-scene.mjs';
 
-let current, owner, reactions, telemetry, board, boardTimer, boardPhotos = new Map(), boardFollow, opened = new Set(), pendingDocument, openingDocument=false, idleCatalogOwner;
+let current, owner, reactions, telemetry, boardChannel = 'board', boardRevision = 0, board, boardTimer, boardPhotos = new Map(), boardFollow, opened = new Set(), pendingDocument, openingDocument=false, idleCatalogOwner;
 const hiddenDocument=document.createElement('div');hiddenDocument.hidden=true;document.body.append(hiddenDocument);
 const view = createCallView();
 const post = (action, payload = {}, callID = current?.callID ?? '') => window.webkit.messageHandlers.voice.postMessage({action,payload,callID,pageID:window.__VVoicePageID});
@@ -49,7 +49,9 @@ function stopBoard(){board?.dispose();board=null;clearInterval(boardTimer);board
 function loadBoardPhoto(query){
   const callID=owner;
   if(!board||typeof query!=='string')return Promise.resolve(null);
-  if(!boardPhotos.has(query))boardPhotos.set(query,post('boardImage',{query},callID).then(r=>r?.data&&typeof r.type==='string'&&r.type.startsWith('image/')?`data:${r.type};base64,${r.data}`:null).catch(()=>null));
+  // (An App without the board's commands relays the request inside avatar events: see startBoard.)
+  const ask=()=>boardChannel==='avatar'?post('avatarEvents',{boardImage:query},callID):post('boardImage',{query},callID);
+  if(!boardPhotos.has(query))boardPhotos.set(query,ask().then(r=>r?.data&&typeof r.type==='string'&&r.type.startsWith('image/')?`data:${r.type};base64,${r.data}`:null).catch(()=>null));
   return boardPhotos.get(query);
 }
 function startBoard(callID){
@@ -66,7 +68,10 @@ function startBoard(callID){
     onScene:(scene,canvas)=>{if(owner===callID)view.set({board:scene,boardCanvas:canvas??null,boardSpoken:boardFollow?.(scene)??view.get().boardSpoken});},
     request:async(payload,{onEvent})=>{
       let reply;
-      try{reply=await post('board',payload,callID);failures=0;}
+      // The board's own bridge command first; an App that does not know it (build 44 and before)
+      // carries the same request inside an avatar request, which it already relays.
+      const viaAvatar=()=>post('avatar',{revision:++boardRevision,turns:[],board:payload},callID).then(value=>{boardChannel='avatar';return value;});
+      try{reply=boardChannel==='avatar'?await viaAvatar():await post('board',payload,callID).catch(viaAvatar);failures=0;}
       // Not offered to this caller, or an App that does not know the board: after two refusals in a row, no board for this call.
       catch(error){if(owner===callID&&++failures>=2)queueMicrotask(stopBoard);throw error;}
       for(const op of Array.isArray(reply?.ops)?reply.ops:[])onEvent(op);
