@@ -50,7 +50,10 @@ await watch('greeting',{maxMs:15000,quietMs:2500,minMs:2500});
 const plan=questions.map(entry=>{const [name,after]=entry.split('@');return {name,after:after?Number(after):null};});
 for(const [index,{name}] of plan.entries()){
   log.push({t:now(),event:'ask',name});
-  await page.evaluate(n=>window.__speak(n),name);
+  // INPUT=text types the question into the call's text box instead (WebKit cannot take the injected microphone).
+  if(process.env.INPUT==='text'){const say=JSON.parse(fs.readFileSync(new URL('./questions.json',import.meta.url))).questions[name]?.say??name;
+    if(!(await page.isVisible('#steerText').catch(()=>false)))await page.click('#textToggle');await page.fill('#steerText',say);await page.press('#steerText','Enter');}
+  else await page.evaluate(n=>window.__speak(n),name);
   log.push({t:now(),event:'asked',name});
   const cut=plan[index+1]?.after;
   await watch(name,cut?{maxMs:cut,minMs:cut,quietMs:cut}:{maxMs:index===plan.length-1&&plan[index].after?150000:110000});
