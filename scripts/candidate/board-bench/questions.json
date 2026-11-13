@@ -1,0 +1,24 @@
+{
+  "groups": {
+    "lesson": ["l1", "l2", "l3"],
+    "talk": ["t1", "t2", "t3"],
+    "follow": ["f1", "f2", "f3"],
+    "legacy": ["o1", "o2", "o3", "o4", "o5"]
+  },
+  "questions": {
+    "l1": {"say": "给我讲解一下电动车和油车的区别。", "kind": "lesson"},
+    "l2": {"say": "给我介绍一下故宫，里面有什么好玩的。", "kind": "lesson"},
+    "l3": {"say": "给我讲讲光合作用的原理，是怎么回事。", "kind": "lesson"},
+    "t1": {"say": "二宝怎么带比较好？你说得详细一点。", "kind": "talk"},
+    "t2": {"say": "咖啡和茶哪个更提神？", "kind": "talk"},
+    "t3": {"say": "跑步和游泳哪个更适合减肥？", "kind": "talk"},
+    "f1": {"say": "罗马三天怎么玩比较好？", "kind": "talk"},
+    "f2": {"say": "梵蒂冈你再展开说说。", "kind": "follow"},
+    "f3": {"say": "那回到刚才罗马的第一天，再说细一点。", "kind": "follow"},
+    "o1": {"say": "你好，今天过得怎么样？", "kind": "legacy", "tools": []},
+    "o2": {"say": "今天上海的天气怎么样？", "kind": "legacy", "tools": ["web_search"]},
+    "o3": {"say": "我们夜班项目最近的进展你还记得吗？", "kind": "legacy", "tools": ["memory_search", "delegate_to_v"]},
+    "o4": {"say": "在后台帮我算一下二的二十次方，算好告诉我。", "kind": "legacy", "tools": ["delegate_to_v", "exec"]},
+    "o5": {"say": "好的，没别的事了，挂了吧，再见。", "kind": "legacy", "tools": ["end_call"]}
+  }
+}
