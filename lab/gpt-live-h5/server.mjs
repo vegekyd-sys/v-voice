@@ -1170,10 +1170,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     // Timing and outcome only; the picture's content is not written to the call log.
     // With lessons on, the board has one way of drawing: V's own answers are
     // illustrated by the lesson writer too (VOICE_BOARD_UNIFIED=0 keeps the old line-by-line director for them).
-    let lesson=null;
+    let lesson=null,photos=null;
     // V's own answers are drawn by the streaming illustrator, as they are spoken (VOICE_BOARD_STREAM=0: one page once the answer is complete).
     // In parallel mode there is no lesson to wait for, so nothing is deferred.
-    const board=boardDirectorFromEnv(process.env,{audit:voiceAudit,defer:process.env.VOICE_BOARD_STREAM==='0'&&process.env.VOICE_BOARD_LESSON_SOURCE!=='parallel',...(process.env.VOICE_BOARD_UNIFIED==='0'?{}:{illustrate:args=>lesson?.illustrate(args)??null,
+    const board=boardDirectorFromEnv(process.env,{audit:voiceAudit,prefetch:query=>photos?.find(query),defer:process.env.VOICE_BOARD_STREAM==='0'&&process.env.VOICE_BOARD_LESSON_SOURCE!=='parallel',...(process.env.VOICE_BOARD_UNIFIED==='0'?{}:{illustrate:args=>lesson?.illustrate(args)??null,
       ...(process.env.VOICE_BOARD_STREAM==='0'?{}:{stream:{instructions:STREAM_INSTRUCTIONS,refine:refineStreamOp}})})});
     // Lesson mode (experiment): its own flag. Through OpenRouter the writer is
     // a stronger model thinking briefly: on real calls it was the only one
@@ -1235,7 +1235,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     bridge = createLiveH5Server({ gateway, deviceEndpoint,backendDeviceEndpoint:process.env.VOICE_BACKEND_DEVICE_ENDPOINT??'',
       candidateRelease:process.env.VOICE_CANDIDATE_RELEASE_FILE?JSON.parse(await readFile(process.env.VOICE_CANDIDATE_RELEASE_FILE,'utf8')):undefined,
       listening:process.env.VOICE_LISTENING_DIR ? await (await import('./listening.mjs')).loadVoiceListening(process.env.VOICE_LISTENING_DIR) : undefined,
-      directVoice, speakerRouting, avatarLog,board,boardPhotos:board?createPhotoFinder({braveKey:process.env.VOICE_BOARD_BRAVE_KEY??'',directory:process.env.VOICE_BOARD_PHOTO_DIR??(process.env.RTC_H5_TRANSCRIPT_DIR?join(process.env.RTC_H5_TRANSCRIPT_DIR,'board-photos'):''),observe:event=>board.log?.(event)}):null,callControlAudit:transcriptLog.audit,
+      directVoice, speakerRouting, avatarLog,board,boardPhotos:board?photos=createPhotoFinder({braveKey:process.env.VOICE_BOARD_BRAVE_KEY??'',directory:process.env.VOICE_BOARD_PHOTO_DIR??(process.env.RTC_H5_TRANSCRIPT_DIR?join(process.env.RTC_H5_TRANSCRIPT_DIR,'board-photos'):''),observe:event=>board.log?.(event)}):null,callControlAudit:transcriptLog.audit,
       phoneInputPolicy:process.env.VOICE_PHONE_INPUT_POLICY ?? 'speaker',
       enableGrok: process.env.VOICE_ENABLE_GROK === '1',
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",

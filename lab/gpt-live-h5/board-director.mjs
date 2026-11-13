@@ -2,7 +2,7 @@
 // it on the caller's screen. It runs beside the voice model, never in its
 // audio path, and has no tools, permissions or say in what V does. Its output
 // is validated line by line (board-scene.mjs) before anything reaches a page.
-import {applyOp, createLineParser, emptyScene, normalizeOp, sceneDigest} from './board-scene.mjs';
+import {applyOp, createLineParser, emptyScene, normalizeOp, sceneDigest, scenePictures} from './board-scene.mjs';
 import {appendFile, mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
 
@@ -107,7 +107,10 @@ export const mayAskForLesson = text => /讲解|解释|讲讲|讲一|科普|再�
  * the lesson's vocabulary, hung on V's real words, and shown as the voice
  * reaches each piece. Takes precedence over `illustrate` (its one-shot form).
  */
-export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false, illustrate = null, stream = null} = {}) {
+export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false, illustrate = null, stream = null, prefetch = null} = {}) {
+  // Pictures a page will need are asked for the moment the page knows of them, not when the page gets round to showing them.
+  const wanted = new Set();
+  const fetchAhead = scene => { if (!prefetch) return; for (const query of scenePictures(scene)) if (!wanted.has(query)) { wanted.add(query); if (wanted.size > 400) wanted.delete(wanted.values().next().value); Promise.resolve().then(() => prefetch(query)).catch(() => {}); } };
   const owners = new Map();
   const owner = id => {
     let row = owners.get(id);
@@ -252,6 +255,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
           if (next.serial !== row.scene.serial && row.scene.blocks.length) row.recent = [...(row.recent ?? []), ...new Set(row.scene.blocks.map(block => block.t).filter(type => !['photo', 'sticky', 'note'].includes(type)))].slice(-6);
           row.scene = next.blocks.length ? {...next, lesson: true, late: true} : next;
           ops++; firstOpMs ??= now() - started; drawn.push(op);
+          fetchAhead(row.scene);
           onOp({op: 'sync', scene: row.scene});
           return;
         }
@@ -350,7 +354,7 @@ export function boardCompletionFromEnv(env = process.env, {fetchImpl} = {}) {
       : null;
   return provider ? createChatCompletionStream({...provider, fetchImpl, ...(Number(env.VOICE_BOARD_MAX_TOKENS) > 0 ? {maxTokens: Number(env.VOICE_BOARD_MAX_TOKENS)} : {})}) : null;
 }
-export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl, illustrate = null, stream = null, defer = true} = {}) {
+export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl, illustrate = null, stream = null, defer = true, prefetch = null} = {}) {
   const complete = boardCompletionFromEnv(env, {fetchImpl});
   // A private day file beside the Candidate's own call records, when it has such a directory.
   const directory = env.VOICE_BOARD_LOG_DIR ?? env.RTC_H5_TRANSCRIPT_DIR;
@@ -358,5 +362,5 @@ export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl, illus
     const at = new Date(), file = join(directory, `board-${at.toISOString().slice(0, 10)}.jsonl`);
     void mkdir(directory, {recursive: true, mode: 0o700}).then(() => appendFile(file, JSON.stringify({at: at.toISOString(), ...event}) + '\n', {mode: 0o600})).catch(() => {});
   } : undefined;
-  return complete ? createBoardDirector({audit, complete, record, ...(env.VOICE_BOARD_LESSON === '1' ? {...(defer ? {defers: mayAskForLesson} : {}), ...(illustrate ? {illustrate} : {}), ...(stream ? {stream} : {})} : {})}) : null;
+  return complete ? createBoardDirector({audit, complete, record, ...(prefetch ? {prefetch} : {}), ...(env.VOICE_BOARD_LESSON === '1' ? {...(defer ? {defers: mayAskForLesson} : {}), ...(illustrate ? {illustrate} : {}), ...(stream ? {stream} : {})} : {})}) : null;
 }

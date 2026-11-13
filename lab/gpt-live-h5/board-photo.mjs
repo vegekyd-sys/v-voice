@@ -65,13 +65,43 @@ export function pagePicture(html, base, query) {
   const title = squeeze(/<title[^>]*>([^<]*)<\/title>/iu.exec(html)?.[1]);
   return title.includes(wanted) ? sharePicture(html, base) : '';
 }
+// The first of several fetches to give a picture; null when none does.
+const firstPicture = ways => new Promise(resolve => {
+  let left = ways.length;
+  if (!left) resolve(null);
+  for (const way of ways) way.then(found => { if (found) resolve(found); else if (--left === 0) resolve(null); }, () => { if (--left === 0) resolve(null); });
+});
+const STOCK = /(?:^|\.)(?:pixabay|699pic|kuaipng|shutterstock|alamy|istockphoto|gettyimages|dreamstime|123rf|depositphotos|freepik|vecteezy|pngtree|nipic|58pic|ibaotu|tukuppt|51yuansu|huaban|duitang|pinterest)\./iu;
+const REFERENCE = /(?:^|\.)(?:wikipedia|wikimedia|baike\.baidu|baike\.sogou|moegirl|pokemon|portal-pokemon|pokedex|52poke|nasa|britannica|dpm\.org|gov)\b/iu;
+const OFF = /简笔画|怎样画|怎么画|教程|壁纸|表情包|头像|涂色|折纸|闪光|shiny|超级进化|mega|同人|手办|周边|logo|icon|图标|矢量|素材|模板|海报|高清图片/iu;
+/**
+ * How well one image-search result suits a query: is it titled with the name,
+ * does it come from somewhere that shows the thing itself rather than stock
+ * art, is it a picture of a usable size. Zero or less: not used.
+ */
+export function rankPicture(item, query) {
+  const wanted = squeeze(query), title = squeeze(item?.title), source = String(item?.source ?? '');
+  // Every word of the query counts ("特斯拉 Model 3 汽车": the car, not the company's logo).
+  const words = String(query).split(/\s+/u).map(squeeze).filter(Boolean);
+  let score = 1;
+  if (title && title.includes(wanted)) score += 3;
+  else if (title) score += words.filter(word => title.includes(word)).length / words.length * 2;
+  if (title === wanted) score += 1;
+  if (REFERENCE.test(source)) score += 2;
+  if (STOCK.test(source)) score -= 3;
+  if (OFF.test(String(item?.title ?? '')) || /logo|icon|sprite|banner/iu.test(String(item?.properties?.url ?? ''))) score -= 3;
+  const width = Number(item?.thumbnail?.width) || 0, height = Number(item?.thumbnail?.height) || 0;
+  if (width && height) { if (Math.min(width, height) < 160) score -= 2; if (width / height > 2.2 || height / width > 2.2) score -= 1; }
+  if (item?.confidence && item.confidence !== 'high') score -= 1;
+  return score;
+}
 const urlsIn = value => { const seen = new Set(); for (const [, url] of JSON.stringify(value ?? '').matchAll(/"url"\s*:\s*"(https:\/\/[^"\\]+)"/gu)) seen.add(url); return [...seen]; };
 
 /**
  * `search(query)` is V's web search (any shape that carries result "url"s);
  * without it only Wikipedia is used. `observe` receives one line per lookup.
  */
-export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = '', braveGapMs = 1100, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), lookup = dnsLookup, now = Date.now, observe = () => {}, maxBytes = 1500000, timeoutMs = 9000, ttlMs = 30 * 60000, maxEntries = 96, directory = '', keepMs = 30 * 86400000,
+export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = '', braveGapMs = 1100, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), lookup = dnsLookup, now = Date.now, observe = () => {}, maxBytes = 1500000, timeoutMs = 9000, ttlMs = 30 * 60000, maxEntries = 96, directory = '', keepMs = 365 * 86400000,
   // Wikimedia refuses data-centre clients whose agent names no contact page.
   languages = ['zh', 'en'], userAgent = 'VVoiceBoard/0.1 (https://github.com/vegekyd-sys/v-voice)'} = {}) {
   const cache = new Map(), flights = new Map(), prints = new Map();
@@ -118,20 +148,24 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     try { await turn; } finally { braveWaiting--; }
     // Time spent queueing is not time spent looking.
     begin();
-    const ask = () => fetchImpl(`https://api.search.brave.com/res/v1/images/search?q=${encodeURIComponent(query)}&count=6&safesearch=strict`,
+    const ask = () => fetchImpl(`https://api.search.brave.com/res/v1/images/search?q=${encodeURIComponent(query)}&count=10&safesearch=strict`,
       {signal, headers: {'x-subscription-token': braveKey, accept: 'application/json'}});
     let response = await ask();
     // "Too many requests" despite the queue (the service counts its own seconds): once more, after a pause.
     if (response.status === 429) { await wait(braveGapMs); braveLast = now(); response = await ask(); }
     if (!response.ok) throw Error('image search HTTP ' + response.status);
     const results = ((await response.json())?.results ?? []).filter(item => typeof item?.thumbnail?.src === 'string');
-    const wanted = squeeze(query);
-    // The three best are fetched at once (one slow thumbnail used to hold the
-    // others up for seven seconds); the best-ranked usable one wins.
-    const tried = [...new Set([...results.filter(item => squeeze(item.title).includes(wanted)), ...results])].slice(0, 3).map(item => (async () => {
-      const source = new URL(item.thumbnail.src);
-      if (source.protocol !== 'https:' || source.hostname !== 'imgs.search.brave.com') return null;
-      return picture(source.href, signal, 'Brave 图片搜索', item.title);
+    // The best three by `rankPicture` are fetched at once (one slow file used
+    // to hold the others up for seven seconds); the best-ranked usable one wins.
+    const ranked = results.map((item, index) => ({item, score: rankPicture(item, query) - index * .2})).filter(entry => entry.score > 0).sort((a, b) => b.score - a.score).slice(0, 3);
+    const tried = ranked.map(({item}) => (async () => {
+      const thumbnail = new URL(item.thumbnail.src);
+      if (thumbnail.protocol !== 'https:' || thumbnail.hostname !== 'imgs.search.brave.com') return null;
+      // The search's own thumbnail and the picture where it lives are asked
+      // together: from this server one of the two is often seconds faster.
+      const original = typeof item.properties?.url === 'string' ? await publicHttps(item.properties.url, {lookup}) : null;
+      const ways = [picture(thumbnail.href, signal, 'Brave 图片搜索', item.title), ...(original ? [picture(original.href, signal, item.source || original.hostname, item.title)] : [])];
+      return firstPicture(ways);
     })().catch(() => null));
     for (const attempt of tried) { const found = await attempt; if (found && own(found, query)) return found; }
     return null;
@@ -195,7 +229,9 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     if (!value) { try { value = await brave(key, signal, begin); } catch (error) { failed = true; why = String(error?.message ?? error).slice(0, 80); } }
     begin();
     if (!value && !crowded) await encyclopedia();
-    if (!value) { try { value = await web(key, signal, searchNow); } catch { failed = true; } }
+    // Scraping the pages V's search finds is the last resort of a service without an image search:
+    // it is slow, and it is where site logos and unrelated pictures came from.
+    if (!value && !braveKey) { try { value = await web(key, signal, searchNow); } catch { failed = true; } }
     observe({type: 'board.photo', query: key, found: Boolean(value), ...(why && !value ? {why} : {}), source: value?.source ?? null, bytes: value?.bytes.length ?? 0, durationMs: now() - started});
     // "No such picture" is worth remembering; "could not ask" is not.
     if (value) keep(key, value);

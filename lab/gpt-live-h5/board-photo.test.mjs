@@ -172,3 +172,15 @@ test('a picture found once is kept on disk and served without asking anyone agai
   assert.deepEqual([Buffer.compare(Buffer.from(first.bytes), again.bytes), again.type, again.source, asked - before, seen[0].kept], [0, 'image/png', 'Brave 图片搜索', 0, true]);
   assert.equal(await createPhotoFinder({lookup, directory, languages: [], fetchImpl: async () => { throw Error('offline'); }}).find('杰尼龟'), null);
 });
+
+test('image-search results are ranked: titled with the name, from a reference, not stock art or a how-to-draw', async () => {
+  const {rankPicture} = await import('./board-photo.mjs');
+  const result = (title, source, extra = {}) => ({title, source, confidence: 'high', thumbnail: {src: 'https://imgs.search.brave.com/x', width: 400, height: 400}, properties: {url: 'https://example.com/a.png'}, ...extra});
+  const order = (query, items) => items.map(item => [item.title + '@' + item.source, rankPicture(item, query)]).sort((a, b) => b[1] - a[1]).map(([name]) => name);
+  assert.deepEqual(order('小火龙', [result('怎样画简笔画——小火龙', 'jingyan.baidu.com'), result('小火龙', 'kuaipng.com'), result('小火龙的官方画像', 'pokemongjd.com'), result('小火龙', 'baike.baidu.com')]),
+    ['小火龙@baike.baidu.com', '小火龙的官方画像@pokemongjd.com', '小火龙@kuaipng.com', '怎样画简笔画——小火龙@jingyan.baidu.com']);
+  assert.ok(rankPicture(result('怎样画简笔画——小火龙', 'jingyan.baidu.com'), '小火龙') <= 1);
+  assert.ok(rankPicture(result('快龙（超级进化）', 'pokedex.wiki'), '快龙') < rankPicture(result('快龙 雄性', 'pokedex.wiki'), '快龙'));
+  assert.ok(rankPicture(result('2025 Tesla Model 3', 'cars.com'), '特斯拉 Model 3') > rankPicture(result('Tesla logo', 'cars.com'), '特斯拉 Model 3'), 'every word of the query counts');
+  assert.ok(rankPicture(result('电车', 'pixabay.com', {thumbnail: {src: 'https://imgs.search.brave.com/x', width: 500, height: 120}}), '电车') < rankPicture(result('电车', 'baike.baidu.com'), '电车'));
+});
