@@ -651,7 +651,18 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         const target=resultBridge(s,ownerBridge,requester),moved=!target;
         const receipt=(moved||displayFullResult)?await publishContent(s,call.callId,presentation?.text??JSON.stringify(result)):null;
         if(receipt&&(!current(s)||s.epoch!==epoch))return;
-        const spokenText=!s.display?speakerSpokenText(presentation):receipt?.shown?presentation.spokenText:presentation?.spokenText.replace(LONG_RESULT_NOTICE,'完整结果已准备好，屏幕正在同步。');
+        let spokenText=!s.display?speakerSpokenText(presentation):receipt?.shown?presentation.spokenText:presentation?.spokenText.replace(LONG_RESULT_NOTICE,'完整结果已准备好，屏幕正在同步。');
+        // With the board, a finished task is told the way a lesson is: one script written from the
+        // result, said once, drawn as it is said (calls 9427aac1, 10cb6831: a summary read out beside
+        // a page about something else, and a report nobody was shown). The report itself stays on screen.
+        // No script: the result is said as it always was.
+        let told=false;
+        if(lesson?.available&&lesson.results!==false&&lessonTools(s).length&&target&&presentation&&!presentation.media&&!result?.cancelled&&typeof result?.error!=='string'&&Array.from(String(presentation.text)).length>=120){
+          try{const script=await lesson.prepare({result:true,quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.question??'',ask:s.latestUserTurn?.text,reference:String(presentation.text),signal:AbortSignal.timeout(9000)});
+            if(script?.say){spokenText=script.say;told=true;audit({type:'backend.result-lesson',voiceSessionId:s.id,callId:call.callId});}}
+          catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
+          if(!current(s)||s.epoch!==epoch)return;
+        }
         const payload=displayFullResult?{...result,result:presentation.text}:result;
         if(!result?.cancelled)s.lastBackgroundResult={question:call.args.question??'',result:String(presentation?.text??result?.error??'').slice(0,2000)};
         // A task belongs to the person who asked for it. After a switch to someone
@@ -664,7 +675,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           if(target!==ownerBridge)target.adoptBackgroundTool(call.callId,call.args.question??"");
           // The whole result stays on screen and in the model's context; what is
           // said aloud has no process opening, and a failure is said plainly.
-          const options=displayFullResult?{spokenText,displayedFullResult:true}:typeof result?.error==='string'&&!controller.signal.aborted?{spokenText:TASK_FAILED_LINE}:presentation?{spokenText}:{};
+          const options=displayFullResult||told?{spokenText,displayedFullResult:true}:typeof result?.error==='string'&&!controller.signal.aborted?{spokenText:TASK_FAILED_LINE}:presentation?{spokenText}:{};
           // The host output gate belongs to whichever turn is in flight; a result
           // spoken outside a host turn is queued or dropped with that turn.
           if(s.speakerRouting&&speakerRouting?.hostSpeech)options.speak=text=>void speakerRouting.hostSpeech(s.id,text).then(spoken=>{if(!spoken)audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId:call.callId});},()=>audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId:call.callId}));

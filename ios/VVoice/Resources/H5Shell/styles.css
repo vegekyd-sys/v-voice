@@ -1340,6 +1340,18 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   border-radius: 50%;
   color: var(--faint);
 }
+.board-report {
+  flex: 0 0 auto;
+  margin-left: auto;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 15px;
+  font-family: var(--hand);
+  font-size: 14px;
+  color: var(--ink-soft);
+  background: #fffdfecc;
+  box-shadow: 0 1px 4px #4d356026;
+}
 .board-close svg { width: 16px; height: 16px; }
 .board .board-close svg path { stroke: currentColor; stroke-width: 1.5; }
 .board-close:hover { color: var(--ink-soft); background: #fffdfe99; }

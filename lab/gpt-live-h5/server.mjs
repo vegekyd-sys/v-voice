@@ -1193,6 +1193,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     // "backend" - V's own agent writes it with its tools; "parallel" - no lesson tool at all,
     // V answers in its own words and the answer is illustrated as it is spoken.
     if(lesson)lesson.audience=process.env.VOICE_BOARD_AUDIENCE==='all'?'all':'owner';
+    if(lesson)lesson.results=process.env.VOICE_BOARD_RESULT_LESSON!=='0';
     if(lesson)lesson.reroute=process.env.VOICE_BOARD_REROUTE==='1';
     if(lesson)lesson.source=['backend','parallel'].includes(process.env.VOICE_BOARD_LESSON_SOURCE)?process.env.VOICE_BOARD_LESSON_SOURCE:'service';
     const directVoice=createDirectVoiceService({gateway,wsModule,lesson,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',

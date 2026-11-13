@@ -566,7 +566,7 @@ function Sheet({scene, spoken, loadPhoto}) {
  * snapping strip, with nothing on screen to operate. V drawing again brings
  * the view back to where V is.
  */
-export function Board({scene, canvas, spoken, loadPhoto, onClose}) {
+export function Board({scene, canvas, spoken, loadPhoto, onClose, onReport = null}) {
   const pages = canvas?.zones?.length ? canvas.zones.map(zone => zone.serial === scene.serial ? scene : zone) : [scene];
   const active = Math.max(0, pages.findIndex(page => page.serial === scene.serial));
   const track = useRef(null);
@@ -587,6 +587,7 @@ export function Board({scene, canvas, spoken, loadPhoto, onClose}) {
     <section className="board" data-pages={pages.length} aria-label={page.title ? `画面：${page.title}` : '画面'}>
       <header className="board-top">
         {page.title ? <h2 key={page.serial} className="board-title">{parent?.title && <small>{parent.title} ›</small>}<span>{page.title}</span><Stroke className="board-title-line" d={underline(page.title)} /></h2> : <span />}
+        {onReport && <button type="button" className="board-report" onClick={onReport}>完整报告</button>}
         <button type="button" className="board-close" aria-label="收起画面" onClick={onClose}>
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
         </button>

@@ -1797,3 +1797,19 @@ test('the board for everyone: a guest caller gets the lesson tool only where the
  const open=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson:lessonFor('all'),unidentified:true});t.after(()=>open.service.dispose());
  assert.equal(open.upstream.sent.find(e=>e.type==='session.update').session.tools.some(tool=>tool.name==='explain_on_board'),true);
 });
+
+test('call 9427aac1: with the board, a finished background task is told as one lesson written from its result; without a script it is said as before',async()=>{
+ for(const works of [true,false]){
+  const prepared=[];
+  const lesson={available:true,prepare:async args=>{prepared.push(args);return works?{say:'大奇山在闭园，这次不去。第一天住芦茨村。'}:null;}};
+  const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}),'grok',{lesson});
+  f.call('delegate_to_v',{question:'排一个桐庐两天亲子行程'});await delay(5);const started=f.audit.find(x=>x.type==='backend.started'),text='## 桐庐两天\n'+'第一天芦茨村，第二天通天河。'.repeat(60);
+  f.completeBackend(text);f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text}]}}});await delay(250);
+  assert.equal(prepared.length,1);assert.equal(prepared[0].result,true);assert.equal(prepared[0].reference,text);
+  assert.equal(f.client.sent.filter(x=>x.type==='backend.result').length,1,'the report is still on screen');
+  const speech=f.upstream.sent.filter(x=>x.item?.type==='force_message');assert.equal(speech.length,1);
+  if(works){assert.equal(speech[0].item.content[0].text,'大奇山在闭园，这次不去。第一天住芦茨村。');assert(f.audit.some(e=>e.type==='backend.result-lesson'));}
+  else assert(speech[0].item.content[0].text.includes('屏幕'));
+  await f.service.dispose();
+ }
+});

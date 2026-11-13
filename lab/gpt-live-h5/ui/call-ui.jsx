@@ -507,7 +507,8 @@ function CallPage({view, actions, options}) {
           )}
           {inCall && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
         </section>
-        {board && <Board scene={board} canvas={state.boardCanvas} spoken={state.boardSpoken} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)} />}
+        {board && <Board scene={board} canvas={state.boardCanvas} spoken={state.boardSpoken} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
+          onReport={[...state.transcript.history, ...state.transcript.current].some(row => row.document) ? () => [...document.querySelectorAll('.content-card')].at(-1)?.click() : null} />}
         {inCall && (
           <aside className="chat-panel" aria-label="聊天内容">
             <Conversation state={state} options={options} history={wide || history} setHistory={setHistory} onOverflow={latchOverflow} wide={wide} />

@@ -59,7 +59,7 @@ ${HANGING.replaceAll('讲稿', 'said').replaceAll('say 里', 'said 里')}`;
 
 export const LESSON_INSTRUCTIONS = `你是 V。用户在电话里请你讲解一个东西，你要一次写出「讲稿」和「讲稿每一句对应的画面」。讲稿会由你的声音一字不差地念出来；画面在一页手账上，念到哪里，挂在那里的东西就出现在页面上。
 
-输入是一个 JSON：topic 是要讲什么；audience 是讲给谁听；ask 是用户的原话（语音识别，可能夹着旁人的话，只取和 topic 有关的要求）；reference 是可靠的参考资料（有的话），和它冲突的不要讲；before 是这通电话里你刚讲过的一段（有的话）：这次要接着它讲新的东西，或者按用户的要求换个讲法，不要原样重复，例子、比方和最后的问题都换新的。
+输入是一个 JSON：topic 是要讲什么；audience 是讲给谁听；ask 是用户的原话（语音识别，可能夹着旁人的话，只取和 topic 有关的要求）；reference 是可靠的参考资料（有的话），和它冲突的不要讲；before 是这通电话里你刚讲过的一段（有的话）：这次要接着它讲新的东西，或者按用户的要求换个讲法，不要原样重复；source 为 "result" 时，reference 是你在后台刚替用户办完、查完的结果全文：这次就是把这份结果讲给用户听，先一句话说结论，再挑最要紧的几点讲，只讲结果里有的，不加结果里没有的事实，不念链接和文件名，before 里已经讲过的一句带过，完整内容用户可以在屏幕上打开，不用提醒他，例子、比方和最后的问题都换新的。
 
 只输出一个 JSON 对象，不要任何别的文字：
 {"title":"画面标题，不超过 12 个字","say":["第一句","第二句",…],"blocks":[区块,…]}
@@ -362,7 +362,7 @@ export function createLessonWriter({complete, fallback = null, director, now = D
   return {
     available: Boolean(complete && director),
     /** Returns the script to speak, or null when no lesson could be written. `ask` is the caller's own words. */
-    async prepare({owner, topic, audience = '', ask = '', reference = '', signal, quiet = false} = {}) {
+    async prepare({owner, topic, audience = '', ask = '', reference = '', signal, quiet = false, result = false} = {}) {
       const started = now();
       if (quiet) { hushed.add(owner); if (hushed.size > 500) hushed.delete(hushed.values().next().value); }
       // With the streaming illustrator the writer only writes the script and
@@ -374,7 +374,7 @@ export function createLessonWriter({complete, fallback = null, director, now = D
       const before = told.get(owner);
       const messages = [{role: 'system', content: scripted ? SCRIPT_INSTRUCTIONS : LESSON_INSTRUCTIONS},
         {role: 'user', content: JSON.stringify({topic: String(topic ?? '').slice(0, 400), audience: String(audience ?? '').slice(0, 80) || '成年人',
-          ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(before ? {before} : {}),
+          ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(before ? {before} : {}), ...(result ? {source: 'result'} : {}),
           // What was looked up for this lesson (a search, V's memory), then the standing references.
           ...([reference && Array.from(String(reference)).slice(0, 6000).join(''), lessonReference(`${topic} ${ask}`)].filter(Boolean).length ? {reference: [reference && Array.from(String(reference)).slice(0, 6000).join(''), lessonReference(`${topic} ${ask}`)].filter(Boolean).join('\n\n')} : {})})}];
       let lesson = await race({owner, messages, signal, started, first: complete, second: fallback, parse: scripted ? parseScript : parseLesson, preferMs, totalMs});
