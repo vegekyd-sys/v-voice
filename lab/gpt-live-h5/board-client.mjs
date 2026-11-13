@@ -8,7 +8,15 @@ import {orderedTranscriptRows} from './transcript-presentation.mjs';
 export const BOARD_REQUEST_TIMEOUT_MS = 25000;
 export const BOARD_PROGRESS_INTERVAL_MS = 2500;
 const SETTLE_MS = 350;
-const sentences = text => text.match(/[^。！？.!?\n]+[。！？.!?\n]+/gu)?.join('').trim() ?? '';
+// What V has said so far that is worth drawing from: whole sentences, or, when
+// the first sentence is a long one, its clauses up to the last comma (a first
+// sentence can take seven seconds to say, and the page stood empty for all of them).
+const sentences = text => {
+  const whole = text.match(/[^。！？.!?\n]+[。！？.!?\n]+/gu)?.join('').trim() ?? '';
+  if (whole) return whole;
+  const clauses = text.match(/^[\s\S]*[，、：；,:;]/u)?.[0].trim() ?? '';
+  return Array.from(clauses).length >= 14 ? clauses : '';
+};
 const signature = row => row ? row.key + '\u0000' + row.text : '';
 
 /**

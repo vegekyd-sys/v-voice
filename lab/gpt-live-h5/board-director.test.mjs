@@ -311,3 +311,44 @@ test('the canvas: pages stay; a new topic opens a page, V can go back to one, an
   assert.deepEqual(canvas.zones[0].blocks.map(block => [block.t, block.query ?? block.text ?? block.items.length]), [['photo', '故宫'], ['list', 2], ['sticky', '珍宝馆要另买票']], 'the first print stays; another print for the page is not added');
   assert.deepEqual(requests[2].canvas.map(zone => [zone.id, zone.title, zone.room]), [['z1', '故宫', 2]], 'the illustrator is shown the other pages and how much room each has');
 });
+
+test('a script\'s page is started when the script arrives; the caller\'s screen joins that run instead of starting another (call 8686df57)', async () => {
+  const {STREAM_INSTRUCTIONS, refineStreamOp} = await import('./board-lesson.mjs');
+  let calls = 0, release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const director = createBoardDirector({stream: {instructions: STREAM_INSTRUCTIONS, refine: refineStreamOp}, complete: async function* () {
+    calls++;
+    yield '{"op":"scene","title":"罗马三天"}\n';
+    await gate;
+    yield '{"op":"put","block":{"id":"l","t":"list","items":[{"id":"a","h":"斗兽场","q":"第一天从斗兽场开始"}]}}\n';
+  }});
+  const script = '罗马景点散，先按三天排。第一天从斗兽场开始，票和古罗马广场是同一张。';
+  director.note('c', {title: '罗马三天', ask: '那罗马怎么玩', script, lines: [{say: script, show: ''}]});
+  const seen = [];
+  const joined = director.run({owner: 'c', trigger: 'assistant_end', clientRev: 0, onOp: op => seen.push(op), turns: [{role: 'user', text: '那罗马怎么玩'}, {role: 'assistant', text: script}]});
+  await new Promise(resolve => setTimeout(resolve, 5));
+  release();
+  assert.equal((await joined).reason, 'joined');
+  assert.equal(calls, 1);
+  assert.equal(seen.at(-1).scene.blocks[0].t, 'list');
+  assert.equal((await director.run({owner: 'c', trigger: 'assistant_end', clientRev: director.scene('c').rev, turns: [{role: 'assistant', text: script}]})).reason, 'same');
+  assert.equal(calls, 1);
+});
+
+test('hedged: a reply that has not started in time is raced by a second request', async () => {
+  const {hedged} = await import('./board-director.mjs');
+  let calls = 0;
+  const complete = async function* ({signal}) {
+    const mine = ++calls;
+    if (mine === 1) await new Promise(resolve => { const timer = setTimeout(resolve, 500); signal.addEventListener('abort', () => { clearTimeout(timer); resolve(); }); });
+    yield `reply ${mine}`;
+  };
+  const chunks = [];
+  for await (const chunk of hedged(complete, {messages: []}, 20)) chunks.push(chunk);
+  assert.deepEqual(chunks, ['reply 2']);
+  calls = 5;
+  const quick = [];
+  for await (const chunk of hedged(async function* () { calls++; yield 'a'; yield 'b'; }, {messages: []}, 20)) quick.push(chunk);
+  assert.deepEqual(quick, ['a', 'b']);
+  assert.equal(calls, 6);
+});

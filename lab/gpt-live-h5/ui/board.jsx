@@ -522,19 +522,6 @@ function Sheet({scene, spoken, loadPhoto}) {
   }, [view.focus, scene.rev]);
   // Pen marks V has reached are on their items; the others are still to come.
   const blocks = markedBlocks(scene, view.ahead).filter(block => !(block.t === 'photo' && missing.has(block.query)));
-  // The pen: one hand on the page, which goes to whatever V is talking about.
-  // It is placed by where that thing really is on screen, after every render.
-  const pen = useRef(null);
-  useLayoutEffect(() => {
-    const nib = pen.current, host = box.current;
-    if (!nib || !host) return;
-    const target = spoken ? host.querySelector('[data-now]') : null;
-    if (!target) { nib.dataset.on = 'false'; return; }
-    const at = target.getBoundingClientRect(), frame = host.getBoundingClientRect();
-    const x = Math.max(2, at.left - frame.left + host.scrollLeft - 30), y = at.top - frame.top + host.scrollTop + Math.min(at.height / 2, 24) - 13;
-    nib.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
-    nib.dataset.on = 'true';
-  });
   // Neighbours that each ask for part of the width (`w`) stand side by side.
   const rows = [];
   for (const block of blocks) {
@@ -545,7 +532,6 @@ function Sheet({scene, spoken, loadPhoto}) {
   }
   return (
     <div className="board-scroll" ref={box} role="region" aria-live="polite" aria-label="画面内容" tabIndex={0}>
-      <svg className="board-hand" ref={pen} data-on="false" viewBox="0 0 28 28" aria-hidden="true"><path d="M4 24 L7 16 L19 4 L24 9 L12 21 Z" /><path d="M4 24 L12 21" /><path d="M17 6 L22 11" /></svg>
       <div className="board-body" ref={sheet}
         data-side={blocks.some(block => SMALL.has(block.t)) && blocks.some(block => !SMALL.has(block.t)) || undefined}>
         {rows.map(row => row.length > 1

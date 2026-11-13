@@ -125,7 +125,38 @@ export const mayAskForLesson = text => /讲解|解释|讲讲|讲一|科普|再�
  * the lesson's vocabulary, hung on V's real words, and shown as the voice
  * reaches each piece. Takes precedence over `illustrate` (its one-shot form).
  */
-export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false, illustrate = null, stream = null, prefetch = null} = {}) {
+/**
+ * The model's reply, or a second request's when the first has said nothing
+ * within `afterMs` (one answer in a call took 9.5 s to start while the caller
+ * looked at an empty page). Whichever speaks first is used; the other is dropped.
+ */
+export async function* hedged(complete, {messages, signal}, afterMs = 2500, setTimer = setTimeout, clearTimer = clearTimeout) {
+  const runs = [];
+  const start = () => {
+    const controller = new AbortController(), stop = () => controller.abort();
+    if (signal?.aborted) stop(); else signal?.addEventListener('abort', stop, {once: true});
+    const iterator = complete({messages, signal: controller.signal})[Symbol.asyncIterator]();
+    const run = {controller, iterator};
+    run.first = iterator.next().then(result => ({run, result}), error => ({run, error}));
+    runs.push(run);
+  };
+  start();
+  let timer = null;
+  const late = new Promise(resolve => { timer = setTimer(() => resolve(null), afterMs); });
+  let won = await Promise.race([runs[0].first, late]);
+  if (!won && !signal?.aborted) {
+    start();
+    won = await Promise.race(runs.map(run => run.first));
+    if (won.error) won = await runs.find(run => run !== won.run).first;
+  } else if (!won) won = await runs[0].first;
+  clearTimer(timer);
+  for (const run of runs) if (run !== won.run) { run.controller.abort(); Promise.resolve(run.iterator.return?.()).catch(() => {}); }
+  if (won.error) throw won.error;
+  let result = won.result;
+  while (!result.done) { yield result.value; result = await won.run.iterator.next(); }
+}
+
+export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false, illustrate = null, stream = null, prefetch = null, hedgeMs = 2500} = {}) {
   // Pictures a page will need are asked for the moment the page knows of them, not when the page gets round to showing them.
   const wanted = new Set();
   const fetchAhead = scene => { if (!prefetch) return; for (const query of scenePictures(scene)) if (!wanted.has(query)) { wanted.add(query); if (wanted.size > 400) wanted.delete(wanted.values().next().value); Promise.resolve().then(() => prefetch(query)).catch(() => {}); } };
@@ -144,7 +175,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
   };
   // Every page of a call's canvas, oldest first, and the one V is on.
   const canvasOf = row => ({zones: [...(row.zones ?? []).filter(zone => zone.serial !== row.scene.serial), row.scene].sort((a, b) => a.serial - b.serial), active: zoneId(row.scene)});
-  return {
+  const api = {
     available: Boolean(complete),
     log: record,
     /** The whole canvas of a call (see board-scene.mjs normalizeCanvas). */
@@ -162,7 +193,13 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
     /** Whether pages are drawn by the streaming illustrator (then a lesson is a script with notes, not a page). */
     streams: Boolean(stream),
     /** The author's notes for a script V is about to speak: {title, script, lines: [{say, show}]}. */
-    note(id, notes) { const row = owner(id); row.notes = notes; row.expectUntil = 0; },
+    note(id, notes) {
+      const row = owner(id); row.notes = notes; row.expectUntil = 0;
+      // The script is known before V has said a word of it: its page is started now,
+      // not when the caller's screen comes back to ask (about a second and a half later).
+      if (stream && complete && notes?.script) void api.run({owner: id, trigger: 'assistant_end', ahead: true, clientRev: row.scene.rev,
+        turns: [...(notes.ask ? [{role: 'user', text: String(notes.ask)}] : []), {role: 'assistant', text: notes.script}]}).catch(() => {});
+    },
     /** A script is being written for the caller's question: what V says meanwhile is not the answer. */
     expect(id, ms = 20000) { owner(id).expectUntil = ms > 0 ? now() + ms : 0; },
     /**
@@ -189,8 +226,10 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
      * scene revision it produced; a page whose revision differs from the
      * service's first receives the whole scene.
      */
-    async run({owner: id, trigger, turns, clientRev = 0, onOp = () => {}, signal} = {}) {
+    async run({owner: id, trigger, turns, clientRev = 0, onOp = () => {}, signal, ahead = false} = {}) {
       const started = now(), row = owner(id);
+      const listeners = new Set(), out = onOp;
+      onOp = value => { out(value); for (const listener of listeners) listener(value); };
       const drawn = [];
       const report = (reason, extra = {}) => {
         const result = {reason, durationMs: now() - started, ...extra};
@@ -202,6 +241,25 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       if (!complete) return report('unavailable');
       if (now() - row.window > 15 * 60000) { row.window = now(); row.count = 0; }
       if (++row.count > 400) return report('rate_limited');
+      // A script's page is already being drawn (see `note`): the caller's screen watches that
+      // run instead of starting another. Only the caller speaking again ends it.
+      const script = text => String(text ?? '').replace(/\s+/gu, '').slice(0, 24);
+      if (!ahead && trigger !== 'user' && (row.ahead || row.aheadFor)) {
+        const latest = turns?.findLast?.(turn => turn?.role === 'assistant');
+        const same = row.notes?.script && script(latest?.text ?? latest) === script(row.notes.script);
+        if (row.ahead) {
+          if (clientRev !== row.scene.rev) out({op: 'sync', scene: row.scene, canvas: canvasOf(row)});
+          const watching = row.ahead;
+          watching.listeners.add(out);
+          await watching.done;
+          return report('joined', {rev: row.scene.rev});
+        }
+        if (same && row.aheadFor === script(row.notes.script)) {
+          if (clientRev !== row.scene.rev) out({op: 'sync', scene: row.scene, canvas: canvasOf(row)});
+          return report('same', {rev: row.scene.rev});
+        }
+      }
+      if (trigger === 'user') row.aheadFor = '';
       row.controller?.abort();
       // Lookups answer one question. What was found for the last one must not
       // be drawn again as if it answered this one.
@@ -248,7 +306,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         // Lookup results alone draw nothing: V's words about them do.
         // Nor do a few words ("好，我想想怎么讲"), nor anything said while a script is being written for this very question.
         const expecting = (row.expectUntil ?? 0) > now();
-        if (trigger === 'evidence' || trigger !== 'user' && (expecting || Array.from(said).length < (/^[\x00-\x7f]*$/u.test(said.slice(0, 40)) ? 60 : 24) && !row.notes?.script.startsWith(said.slice(0, 12)))) { signal?.removeEventListener('abort', abort); if (row.controller === controller) row.controller = null; return report('waiting', {rev: row.scene.rev}); }
+        if (trigger === 'evidence' || trigger !== 'user' && (expecting || Array.from(said).length < (/^[\x00-\x7f]*$/u.test(said.slice(0, 40)) ? 40 : 14) && !row.notes?.script.startsWith(said.slice(0, 12)))) { signal?.removeEventListener('abort', abort); if (row.controller === controller) row.controller = null; return report('waiting', {rev: row.scene.rev}); }
       }
       let ops = 0, firstOpMs = null, none = false, retired = false;
       const parser = createLineParser(raw => {
@@ -328,27 +386,33 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         row.scene = next; ops++; firstOpMs ??= now() - started; drawn.push(op);
         onOp({...op, rev: next.rev});
       });
+      let finish = () => {};
+      if (ahead) row.ahead = {listeners, done: new Promise(resolve => { finish = resolve; })};
       try {
         const messages = [{role: 'system', content: stream?.instructions ?? BOARD_INSTRUCTIONS},
           {role: 'user', content: boardRequest({trigger, scene: row.scene, turns, evidence: row.evidence,
             // The author's notes go with the script they were written for, and with nothing else.
             ...(stream && row.notes && said && said.replace(/\s+/gu, '').startsWith(row.notes.script.replace(/\s+/gu, '').slice(0, 24)) ? {notes: {title: row.notes.title, lines: row.notes.lines}} : {}),
             ...(stream ? {recent: row.recent ?? [], page: {id: zoneId(row.scene), room: Math.max(0, 4 - row.scene.blocks.length)}, canvas: (row.zones ?? []).filter(zone => zone.serial !== row.scene.serial).map(zoneDigest)} : {})})}];
-        for await (const chunk of complete({messages, signal: controller.signal})) {
+        for await (const chunk of (stream ? hedged(complete, {messages, signal: controller.signal}, hedgeMs) : complete({messages, signal: controller.signal}))) {
           if (controller.signal.aborted) break;
           parser.feed(chunk);
         }
         if (!controller.signal.aborted) parser.end();
+        if (ahead && !controller.signal.aborted && ops) row.aheadFor = script(row.notes?.script);
         return report(controller.signal.aborted ? 'superseded' : ops ? 'drawn' : none ? 'none' : 'empty', {ops, firstOpMs, rev: row.scene.rev});
       } catch {
         return report(controller.signal.aborted ? 'superseded' : 'provider_failed', {ops, firstOpMs, rev: row.scene.rev});
       } finally {
         signal?.removeEventListener('abort', abort);
         if (row.controller === controller) row.controller = null;
+        if (row.ahead?.listeners === listeners) row.ahead = null;
+        finish();
       }
     },
     forget(id) { owners.get(id)?.controller?.abort(); owners.delete(id); },
   };
+  return api;
 }
 
 /** Validate a page's board request. Returns bounded context or null. */
