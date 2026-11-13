@@ -1,0 +1,64 @@
+{
+  "version": "voice-board.20261113.1",
+  "sourceCommit": "cad1b68e9d33f689dd1afa2b0d76ef2bc0a846d8",
+  "mergePR": 213,
+  "filesSha256": "76abe17072965d8885c358206991f2977ac6c28926e046851272f381e2acfbe7",
+  "previousRunningCommit": "af068e9ce97077aa044bcb7c51c06f16c89a0df6",
+  "verifiedAt": "2026-11-14T01:14:09+08:00",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/43469893371",
+  "nodes": {
+    "web": {
+      "commit": "cad1b68e9d33f689dd1afa2b0d76ef2bc0a846d8",
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "commit": "cad1b68e9d33f689dd1afa2b0d76ef2bc0a846d8",
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "gatewayIdentityPreserved": true,
+  "webConfiguration": {
+    "dropIn": "openclaw-rtc-h5.service.d/97-voice-board.conf",
+    "environment": [
+      "VOICE_BOARD=1",
+      "VOICE_BOARD_LESSON=1",
+      "VOICE_BOARD_AUDIENCE=all"
+    ],
+    "privateEnvironmentFile": "/etc/openclaw-voice-board.env (root 0600: VOICE_BOARD_API_KEY, VOICE_BOARD_BRAVE_KEY)",
+    "devicesNode": "board off (no screen)"
+  },
+  "ios": {
+    "version": "1.0.0",
+    "build": 45,
+    "sourceCommit": "a76dcb224165b9dc9cc6815fe1be9f70d3f7217a",
+    "sourcePRs": [
+      213,
+      214
+    ],
+    "installedBuildReadBack": 45,
+    "previousInstalledBuild": 44,
+    "signed": true,
+    "sharedKeychainEntitlementsVerified": true,
+    "bridge": "service → /api/page/<name>, capabilities.pageRequests=1; older builds run without the board",
+    "laterBuild": {
+      "build": 46,
+      "sourceCommit": "e6491853923ac0305bee61e7c6aa9fa43aa45c2c",
+      "sourcePR": 215,
+      "installedBuildReadBack": 46,
+      "change": "audioProgress bridge reading; the board follows the App's own audio as on the web"
+    }
+  },
+  "acceptance": {
+    "feishuDesktopInApp": "Feishu client sign-in (Tianyi · V Backup), call connected, explain_on_board lesson spoken and the board drawn in the Feishu web view (sketch of 3-4-5 and 6-8-10 triangles, 3²+4²=5², a²+b²=c²).",
+    "publicWeb": "Production Public entry reports board on; a Public call connects without upstream errors.",
+    "iphone": "Build 45 installed; Tianyi's own call: lesson pictures and content show, but the follow-the-voice highlighting did not work (the iOS page used the caption as its clock). Fixed in PR #215 (build 46, installed and read back 46); the page side of that fix reaches the App with the next web release, which is not yet published.",
+    "openIssue": "Since this release, calls in V Backup (oc_ede0fdc8…) are refused by Seeduplex three times at start (55000000) and connect without the conversation record; earlier V Backup calls had none, Public and the candidate's owner entry have none. Cause not yet isolated (content of the record vs the added lesson prompt)."
+  },
+  "pendingRelease": {
+    "commit": "e6491853923ac0305bee61e7c6aa9fa43aa45c2c",
+    "artifactFilesSha256": "7c1cf82215554b6fa2662b0dca841fc75fd13c20f7fbf65bb9392bbdde8e33b9",
+    "state": "packaged and verified, both nodes idle; publish awaits Tianyi's approval"
+  }
+}

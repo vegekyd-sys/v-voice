@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "relay-usage-medium-20261113",
-  "version": "voice-relay-medium.20261113.1",
-  "entryCommit": "af068e9ce97077aa044bcb7c51c06f16c89a0df6",
-  "deviceEntryCommit": "af068e9ce97077aa044bcb7c51c06f16c89a0df6",
-  "filesSha256": "c531bcf7b1d9e8e0023806c786b2c75344c3fe29a4ba7f3555ab751162b2e5f0",
-  "registration": "relay-usage-medium-20261113/release.json",
-  "previousEntryCommit": "71e1d5d97bf2eebcbb539a74f330060e61b02412",
+  "release": "board-20261114",
+  "version": "voice-board.20261113.1",
+  "entryCommit": "cad1b68e9d33f689dd1afa2b0d76ef2bc0a846d8",
+  "deviceEntryCommit": "cad1b68e9d33f689dd1afa2b0d76ef2bc0a846d8",
+  "filesSha256": "76abe17072965d8885c358206991f2977ac6c28926e046851272f381e2acfbe7",
+  "registration": "board-20261114/release.json",
+  "previousEntryCommit": "af068e9ce97077aa044bcb7c51c06f16c89a0df6",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-13T00:12:05+08:00",
-  "runtimeDifference": "Build 44 aligns the medium widget’s secondary meters with the small widget and preserves each reset time."
+  "validatedAt": "2026-11-14T01:14:09+08:00",
+  "runtimeDifference": "The call board for every caller (V draws as it explains; finished background tasks told as lessons), Seeduplex input pacing fix, and iOS build 45 with the page-feature bridge."
 }
