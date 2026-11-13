@@ -723,7 +723,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         }
         res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/tv-aec/webrtcaec3-0.3.0.") ? "public, max-age=31536000, immutable" : bundled && url.searchParams.get("v") === bundled.revision ? "private, max-age=31536000, immutable" : pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
       }
-      if(binding.permissionProfile==='unidentified'&&!new Set(['/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke',...(binding.cliManaged?['/api/access']:[])]).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
+      if(binding.permissionProfile==='unidentified'&&!new Set(['/api/board','/api/board-image','/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke',...(binding.cliManaged?['/api/access']:[])]).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
       const readBody = async () => {
         const chunks = []; let size = 0;
         for await (const chunk of req) { size += chunk.length; if (size > 70000) throw new Error("Request too large"); chunks.push(chunk); }

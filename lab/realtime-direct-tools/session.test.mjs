@@ -1813,3 +1813,24 @@ test('call 9427aac1: with the board, a finished background task is told as one l
   await f.service.dispose();
  }
 });
+
+test('the board for everyone: a Public caller and a signed-in Feishu account both get the lesson tool, and a lesson looks things up only with tools the caller has',async t=>{
+ const lessonFor=audience=>{const prepared=[];return {prepared,available:true,audience,prepare:async args=>{prepared.push(args);return {say:'好。'};}};};
+ // Public: only web_search and memory_search exist on its gateway.
+ const invoked=[];
+ const publicGateway={publicVoice:true,async request(method,params){if(method==='tools.invoke')invoked.push(params.name);
+  if(method==='tools.catalog')return {groups:[{tools:[{id:'memory_search'},{id:'web_search'}]}]};return {ok:true,output:{content:[{type:'text',text:'结果'}]}};}};
+ const lesson=lessonFor('all');
+ const pub=await fixture(undefined,'grok',{lesson,unidentified:true,publicGateway,sessionKey:'voice:guest:'+'b'.repeat(64)});t.after(()=>pub.service.dispose());
+ const session=pub.upstream.sent.find(e=>e.type==='session.update').session;
+ assert(session.tools.some(tool=>tool.name==='explain_on_board'));
+ pub.event({type:'conversation.item.input_audio_transcription.completed',transcript:'讲解一下今天英伟达的新闻'});
+ pub.call('explain_on_board',{topic:'今天英伟达的新闻'},'lesson-public');
+ assert(await until(()=>lesson.prepared.length===1));
+ assert.deepEqual(invoked,['web_search'],'a lesson about today searches with the Public search tool');
+ // A signed-in Feishu account (actor-scoped): the tool is offered under "all", not under "owner".
+ for(const audience of ['owner','all']){
+  const f=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson:lessonFor(audience),actorScoped:true});t.after(()=>f.service.dispose());
+  assert.equal(f.upstream.sent.find(e=>e.type==='session.update').session.tools.some(tool=>tool.name==='explain_on_board'),audience==='all',audience);
+ }
+});
