@@ -6,6 +6,7 @@ import {createRoot} from 'react-dom/client';
 import {createPortal, flushSync} from 'react-dom';
 import {clock, resolveStatus, splitTurns} from '../call-view.mjs';
 import {openAppWithFallback, refreshBindingOnExpiry} from '../app-handoff.mjs';
+import {Board} from './board.jsx';
 
 const Icon = ({d, children}) => <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">{d ? <path d={d} /> : children}</svg>;
 const PHONE = 'm8.5 3.5 2.1 4.4-2.3 2.3a15.5 15.5 0 0 0 5.5 5.5l2.3-2.3 4.4 2.1v3a2 2 0 0 1-2.2 2C10.4 20 4 13.6 3.5 5.7a2 2 0 0 1 2-2.2h3Z';
@@ -429,11 +430,13 @@ function CallPage({view, actions, options}) {
   const [sheet, setSheet] = useState(false);
   const [accessOpen,setAccessOpen]=useState(false);
   const [controlsHeight, setControlsHeight] = useState(0);
+  // The caller can put one picture away; the next new picture comes back.
+  const [boardHidden, setBoardHidden] = useState(null);
   const main = useRef(null);
   const status = resolveStatus(state, now);
   const working = state.tasks.length > 0;
   const firstNow = splitTurns(state.transcript).now[0]?.key;
-  useEffect(() => { if (!active) { setHistory(false); setSheet(false); } }, [active]);
+  useEffect(() => { if (!active) { setHistory(false); setSheet(false); setBoardHidden(null); } }, [active]);
   useEffect(() => { setOverflow(false); }, [firstNow]);
   useEffect(() => { if (main.current) main.current.inert = state.reading; }, [state.reading]);
   // Long replies borrow room from the portrait; the keyboard does the same.
@@ -442,7 +445,11 @@ function CallPage({view, actions, options}) {
   const wide = viewport.width >= 701;
   const width = Math.min(viewport.width, 560), {height} = viewport;
   const compact = inCall && !wide && (overflow || height < 560 || state.composer.open && height < 700);
+  const scene = inCall && !state.tvHost && (state.board?.blocks.length || state.board?.title) ? state.board : null;
+  const board = scene && !boardHidden && !(history && !wide) ? scene : null;
+  // With a picture up, the picture is the subject and V sits beside it.
   const size = !inCall ? Math.min(width * .72, height * .4, 300)
+    : board ? (wide ? Math.min(92, height * .13) : 48)
     : wide ? Math.min(viewport.width * .26, height * .48, 360)
     : history ? 52 : compact ? Math.min(width * .38, height * .2, 150) : Math.min(width * .62, height * .3, 250);
   const openTasks = working ? () => setSheet(true) : undefined;
@@ -465,9 +472,11 @@ function CallPage({view, actions, options}) {
       </button>
       <main ref={main} className="call-page" data-call={state.call} data-confirmation={Boolean(state.confirmation)} data-voice={voice} data-work={String(working)}
         data-alert={status && ['error', 'warn'].includes(status.key) ? status.key : undefined} data-history={String(!wide && history)} data-compact={String(compact)}
+        data-board={board ? 'true' : undefined}
         style={{'--avatar-size': Math.round(size) + 'px', '--controls-height': Math.ceil(controlsHeight) + 'px'}}>
         <header className="topbar" aria-live="off">
           {state.call === 'connected' || state.call === 'ending' ? <time className="call-clock">{state.callStartedAt ? clock(now - state.callStartedAt) : ''}</time> : null}
+          {scene && !board && !history && <button type="button" className="board-open" onClick={() => setBoardHidden(null)}>看画面</button>}
         </header>
         <section className="stage" aria-label="V">
           <Avatar onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? state.tasks.every(task=>task.execution==='foreground')?'查看当前任务':'查看后台任务' : 'V'} />
@@ -498,6 +507,8 @@ function CallPage({view, actions, options}) {
           )}
           {inCall && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
         </section>
+        {board && <Board scene={board} canvas={state.boardCanvas} spoken={state.boardSpoken} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
+          onReport={[...state.transcript.history, ...state.transcript.current].some(row => row.document) ? () => [...document.querySelectorAll('.content-card')].at(-1)?.click() : null} />}
         {inCall && (
           <aside className="chat-panel" aria-label="聊天内容">
             <Conversation state={state} options={options} history={wide || history} setHistory={setHistory} onOverflow={latchOverflow} wide={wide} />
@@ -512,8 +523,8 @@ function CallPage({view, actions, options}) {
 }
 
 /** Renders synchronously so the call engine can bind its elements right after. */
-export function mountCallUi(document, view, {actions, renderAssistant, onDocumentShown}) {
+export function mountCallUi(document, view, {actions, renderAssistant, onDocumentShown, loadBoardPhoto}) {
   const root = createRoot(document.getElementById('app'));
-  flushSync(() => root.render(<CallPage view={view} actions={actions} options={{renderAssistant, onDocumentShown}} />));
+  flushSync(() => root.render(<CallPage view={view} actions={actions} options={{renderAssistant, onDocumentShown, loadBoardPhoto}} />));
   return root;
 }

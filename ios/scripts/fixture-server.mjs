@@ -20,7 +20,11 @@ let shellDelayMS=0;
 let lastOffer=null,offerReply=null;const eventClients=new Set();
 let limitNextSession=false,slowClose=false,slowCloseMS=250,failClose=false,closeRequests=0;
 let documents=[],pending=[],acknowledgements=[],supplements=[];
-let avatarRequests=[],avatarEvents=[],avatarReply="reaction-0",avatarContinuations=["reaction-1","listen-5"],slowAvatar=false;
+const boardOps=()=>[{op:'sync',scene:{serial:1,rev:boardRequests.length,title:'Fixture 画面',blocks:[{id:'p',t:'photo',query:'fixture-print',caption:'本地照片'},{id:'l',t:'list',items:[{id:'a',h:'第一点'}]},
+     {id:'v',t:'versus',sides:[{h:'电车'},{h:'油车'}],items:[{id:'a',h:'补能',cells:['家里慢充','三分钟加满'],win:1},{id:'b',h:'花费',cells:['每公里几分钱','五六毛'],win:0}]},
+     {id:'g',t:'draw',h:'勾股定理',items:[{id:'t',k:'poly',p:[40,40,40,25,60,40],h:'3-4-5'},{id:'a',k:'rect',p:[25,25,15,15],h:'9',tone:'sky'},{id:'b',k:'rect',p:[40,40,20,20],h:'16',tone:'peach'},{id:'c',k:'poly',p:[40,25,60,40,75,20,55,5],h:'25',tone:'butter'}]}]}},{op:'done',reason:'drawn',rev:boardRequests.length}];
+const boardPhoto={type:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='};
+let boardMode=false,boardRequests=[],boardImages=[],avatarRequests=[],avatarEvents=[],avatarReply="reaction-0",avatarContinuations=["reaction-1","listen-5"],slowAvatar=false;
 let shellVariant='none',shellRequests=[],shellRedirects=0;
 let inputFrames=0,inputActiveFrames=0,peakInputRMS=0;
 async function shellRelease(variant){
@@ -53,7 +57,7 @@ const server=createServer(async(req,res)=>{
  const path=new URL(req.url,'http://127.0.0.1').pathname;
  const body=await new Promise(resolve=>{const chunks=[];req.on('data',b=>chunks.push(b));req.on('end',()=>{try{resolve(JSON.parse(Buffer.concat(chunks).toString()||'{}'));}catch{resolve({});}});});
  const send=(status,value)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
- if(path==='/fixture/state')return send(200,{fastDials,statusRequests,sessionRequests,active,sessions,inputBytes,zeroBytes,inputFrames,inputActiveFrames,peakInputRMS,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,presentationRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects,lastOffer,locationResults,systemBackgroundReady});
+ if(path==='/fixture/state')return send(200,{boardRequests,boardImages,fastDials,statusRequests,sessionRequests,active,sessions,inputBytes,zeroBytes,inputFrames,inputActiveFrames,peakInputRMS,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,presentationRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects,lastOffer,locationResults,systemBackgroundReady});
  if(path==='/fixture/redirect-target'){shellRedirects++;return send(200,{});}
  if(path==='/voice/ios-shell-release.json'){
    shellRequests.push({cookie:!!req.headers.cookie,authorization:!!req.headers.authorization});
@@ -74,7 +78,8 @@ const server=createServer(async(req,res)=>{
    }
    if(body.command==='location-frame'){client?.send(JSON.stringify({...body.frame,voiceSessionId:body.frame?.voiceSessionId??active}));return send(200,{});}
    if(body.command==='gpt-answer'&&offerReply){const reply=offerReply;offerReply=null;reply(200,{sdp:body.sdp});}
-   if(body.command==='reset'){lastOffer=null;offerReply?.(409,{error:'Reset'});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();}
+   if(body.command==='board-mode'){boardMode=true;return send(200,{ok:true});}
+   if(body.command==='reset'){boardMode=false;boardRequests=[];boardImages=[];lastOffer=null;offerReply?.(409,{error:'Reset'});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();}
    if(body.command==='shell-delay')shellDelayMS=Math.max(0,Math.min(2000,Number(body.ms)||0));
    if(body.command==='shell-release')shellVariant=body.variant??'none';
    if(body.command==='reset'){shellDelayMS=0;shellVariant='none';shellRequests=[];shellRedirects=0;inputFrames=0;inputActiveFrames=0;peakInputRMS=0;}
@@ -151,6 +156,20 @@ const server=createServer(async(req,res)=>{
    const reply={picture:avatarReply,continuations:avatarContinuations,revision:body.revision};
    if(slowAvatar){slowAvatar=false;setTimeout(()=>send(200,reply),1200);return;}
    return send(200,reply);
+ }
+ // The call board through the native bridge: one JSON reply per run, a photograph as base64.
+ // Page features, as the App relays them (`service` → /api/page/<name>).
+ if(path==='/voice/api/page/board'){
+   if(!boardMode)return send(404,{error:'没有这个入口'});
+   if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
+   if(!Array.isArray(body.turns))return send(400,{error:'Invalid board request'});
+   boardRequests.push({trigger:body.trigger,turns:body.turns.length});
+   return send(200,{ops:boardOps()});
+ }
+ if(path==='/voice/api/page/board-image'){
+   if(body.voiceSessionId!==active||body.query!=='fixture-print')return send(404,{error:'No photograph'});
+   boardImages.push(body.query);
+   return send(200,boardPhoto);
  }
  if(path==='/voice/api/avatar-events'){
    try{avatarEvents.push(...body.events.map(normalizeAvatarEvent));return send(200,{ok:true});}catch{return send(400,{error:'Invalid telemetry'});}

@@ -1704,3 +1704,133 @@ test('a client that never reports drained playback is still hung up after the fa
  assert(await until(()=>hostEnded(f,'silence')));nativeFarewellAudio(f);
  assert(await until(()=>f.client.readyState===3,35000));
 });
+
+test('call c6c68774: asked to explain, a hand-off to the backend becomes a lesson; a request to make something does not',async t=>{
+ const prepared=[];
+ const lesson={available:true,reroute:true,prepare:async args=>{prepared.push({topic:args.topic,ask:args.ask});return {say:'急冻鸟是冰做的鸟。'};}};
+ const f=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson});t.after(()=>f.service.dispose());
+ const tools=f.upstream.sent.find(e=>e.type==='session.update').session;
+ assert(tools.tools.some(tool=>tool.name==='explain_on_board'));
+ assert.match(tools.instructions,/调用 explain_on_board/u,'the model is told when to use it');
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'你给十二讲解一下哈，就是用那个传说级的宝可梦来讲解。'});
+ f.call('delegate_to_v',{question:'用传说宝可梦讲属性相克',context:'讲给十二听'},'explain');
+ assert(await until(()=>prepared.length===1));
+ assert.deepEqual(prepared[0],{topic:'用传说宝可梦讲属性相克；讲给十二听',ask:'你给十二讲解一下哈，就是用那个传说级的宝可梦来讲解。'});
+ assert(f.audit.some(e=>e.type==='lesson.rerouted'&&e.callId==='explain'));
+ assert(!f.audit.some(e=>e.type==='backend.started'),'no backend task was started');
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'讲解完了帮我生成一份文档发到飞书'});
+ f.call('delegate_to_v',{question:'把属性相克整理成文档发飞书'},'make');
+ assert(await until(()=>f.audit.some(e=>e.type==='backend.started')));
+ assert.equal(prepared.length,1);
+});
+
+test('call c2c47e58: a second request for the lesson being given writes no second lesson',async t=>{
+ let prepared=0;
+ const lesson={available:true,prepare:async()=>{prepared++;await delay(20);return {say:'盖欧卡喷大水。'};}};
+ const f=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson});t.after(()=>f.service.dispose());
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'用传说级的宝可梦再给十二讲解一下'});
+ f.call('explain_on_board',{topic:'用传说宝可梦讲属性相克'},'first');f.call('explain_on_board',{topic:'用传说级宝可梦讲解'},'second');
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='first')));
+ assert.equal(prepared,1);
+ assert(f.audit.some(e=>e.type==='lesson.duplicate'&&e.callId==='second'));
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'再讲讲超梦'});
+ f.call('explain_on_board',{topic:'超梦'},'third');
+ assert(await until(()=>prepared===2),'a new request gets its own lesson');
+});
+
+test('call 649709d0: a lesson about today looks it up first; a search made for a request to explain becomes the lesson\'s research',async t=>{
+ const prepared=[],searched=[];
+ const lesson={available:true,reroute:true,prepare:async args=>{prepared.push({topic:args.topic,reference:args.reference});return {say:'黄仁勋今天辞任了。'};}};
+ const f=await fixture(async args=>{if(args.name==='web_search')searched.push(args.args?.query);return {ok:true,output:{results:[{title:'英伟达公告',url:'https://example.com/n'}]}};},'grok',{lesson});t.after(()=>f.service.dispose());
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'讲解一下今天黄仁勋的事情'});
+ f.call('explain_on_board',{topic:'今天黄仁勋的事情'},'direct');
+ assert(await until(()=>prepared.length===1));
+ assert.deepEqual(searched,['今天黄仁勋的事情'],'the lesson searched before it was written');
+ assert.match(prepared[0].reference,/英伟达公告/u);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'你先网上查一查，再给我讲解一下苹果折叠屏和竞品的比较'});
+ f.call('web_search',{query:'苹果折叠屏 竞品 对比'},'searching');
+ assert(await until(()=>prepared.length===2));
+ assert.deepEqual(searched.at(-1),'苹果折叠屏 竞品 对比','the search the model asked for was the one made');
+ assert.match(prepared[1].reference,/英伟达公告/u);
+ assert(f.audit.some(e=>e.type==='lesson.rerouted'&&e.from==='web_search'));
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'具体的讲解一下'});
+ f.call('end_call',{},'hangup');
+ assert(await until(()=>prepared.length===3),'asked to explain, V does not hang up');
+ assert(!f.client.sent.some(e=>e.type==='end.accepted'));
+});
+
+test('call 4132718f: while a lesson is being written V may say one short line, not answer the question itself',async t=>{
+ let release;const gate=new Promise(resolve=>{release=resolve;});
+ const lesson={available:true,prepare:async()=>{await gate;return {say:'电动车靠电池和电机跑。'};}};
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{lesson});t.after(()=>f.service.dispose());
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'给我讲解一下电动汽车和普通汽车的区别'});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'lesson',name:'explain_on_board',arguments:JSON.stringify({topic:'电动汽车和燃油车的区别'})}]});
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.call'&&e.name==='explain_on_board')));
+ f.event({type:'response.output_audio.started',response_id:'ack',tts_type:'default'});
+ modelSays(f,'ack','好，我从最实际的角度讲。');
+ await delay(10);
+ assert(!f.audit.some(e=>e.type==='speech.lesson-preempt-cut'),'a short line is let through');
+ f.event({type:'response.output_audio.started',response_id:'own',tts_type:'default'});
+ modelSays(f,'own','简单说最核心的：普通车靠烧汽油或者柴油，有发动机，要加油；','电动车靠电池供电，有电机，要充电。加油几分钟满，充电快则半小时慢则几小时；油车跑远了随便找加油站。');
+ assert(await until(()=>f.audit.some(e=>e.type==='speech.lesson-preempt-cut')),'its own full answer is stopped before it is heard');
+ release();
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.name==='explain_on_board')));
+});
+
+test('call 83315f5d: when no script can be written V answers the question itself instead of stopping',async t=>{
+ const lesson={available:true,prepare:async()=>null};
+ const f=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson});t.after(()=>f.service.dispose());
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'我想看翠玉白菜，给我介绍一下吧'});
+ f.call('explain_on_board',{topic:'翠玉白菜'},'lesson');
+ assert(await until(()=>f.audit.some(e=>e.type==='lesson.unavailable')));
+ const asked=f.upstream.sent.filter(e=>e.type==='conversation.item.create'&&e.item?.role==='user').map(e=>e.item.content[0].text);
+ assert(asked.some(text=>/自己直接回答/u.test(text)&&text.includes('翠玉白菜')),'the question goes back to V to answer in its own words');
+ assert(!f.client.sent.some(e=>e.type==='transcript'&&/没准备好/u.test(e.text??'')),'nothing is said about a script or a picture');
+ f.call('explain_on_board',{topic:'翠玉白菜'},'again');
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='again'&&e.result?.lessonUnavailable===true)),'asked for the tool again, it is told to answer itself');
+});
+
+test('the board for everyone: a guest caller gets the lesson tool only where the audience is all, and a lesson looks nothing up with a tool that caller was not given',async t=>{
+ const lessonFor=audience=>({available:true,audience,prepare:async()=>({say:'好。'})});
+ const closed=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson:lessonFor('owner'),unidentified:true});t.after(()=>closed.service.dispose());
+ assert.equal(closed.upstream.sent.find(e=>e.type==='session.update').session.tools.some(tool=>tool.name==='explain_on_board'),false);
+ const open=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson:lessonFor('all'),unidentified:true});t.after(()=>open.service.dispose());
+ assert.equal(open.upstream.sent.find(e=>e.type==='session.update').session.tools.some(tool=>tool.name==='explain_on_board'),true);
+});
+
+test('call 9427aac1: with the board, a finished background task is told as one lesson written from its result; without a script it is said as before',async()=>{
+ for(const works of [true,false]){
+  const prepared=[];
+  const lesson={available:true,prepare:async args=>{prepared.push(args);return works?{say:'大奇山在闭园，这次不去。第一天住芦茨村。'}:null;}};
+  const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}),'grok',{lesson});
+  f.call('delegate_to_v',{question:'排一个桐庐两天亲子行程'});await delay(5);const started=f.audit.find(x=>x.type==='backend.started'),text='## 桐庐两天\n'+'第一天芦茨村，第二天通天河。'.repeat(60);
+  f.completeBackend(text);f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text}]}}});await delay(250);
+  assert.equal(prepared.length,1);assert.equal(prepared[0].result,true);assert.equal(prepared[0].reference,text);
+  assert.equal(f.client.sent.filter(x=>x.type==='backend.result').length,1,'the report is still on screen');
+  const speech=f.upstream.sent.filter(x=>x.item?.type==='force_message');assert.equal(speech.length,1);
+  if(works){assert.equal(speech[0].item.content[0].text,'大奇山在闭园，这次不去。第一天住芦茨村。');assert(f.audit.some(e=>e.type==='backend.result-lesson'));}
+  else assert(speech[0].item.content[0].text.includes('屏幕'));
+  await f.service.dispose();
+ }
+});
+
+test('the board for everyone: a Public caller and a signed-in Feishu account both get the lesson tool, and a lesson looks things up only with tools the caller has',async t=>{
+ const lessonFor=audience=>{const prepared=[];return {prepared,available:true,audience,prepare:async args=>{prepared.push(args);return {say:'好。'};}};};
+ // Public: only web_search and memory_search exist on its gateway.
+ const invoked=[];
+ const publicGateway={publicVoice:true,async request(method,params){if(method==='tools.invoke')invoked.push(params.name);
+  if(method==='tools.catalog')return {groups:[{tools:[{id:'memory_search'},{id:'web_search'}]}]};return {ok:true,output:{content:[{type:'text',text:'结果'}]}};}};
+ const lesson=lessonFor('all');
+ const pub=await fixture(undefined,'grok',{lesson,unidentified:true,publicGateway,sessionKey:'voice:guest:'+'b'.repeat(64)});t.after(()=>pub.service.dispose());
+ const session=pub.upstream.sent.find(e=>e.type==='session.update').session;
+ assert(session.tools.some(tool=>tool.name==='explain_on_board'));
+ pub.event({type:'conversation.item.input_audio_transcription.completed',transcript:'讲解一下今天英伟达的新闻'});
+ pub.call('explain_on_board',{topic:'今天英伟达的新闻'},'lesson-public');
+ assert(await until(()=>lesson.prepared.length===1));
+ assert.deepEqual(invoked,['web_search'],'a lesson about today searches with the Public search tool');
+ // A signed-in Feishu account (actor-scoped): the tool is offered under "all", not under "owner".
+ for(const audience of ['owner','all']){
+  const f=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson:lessonFor(audience),actorScoped:true});t.after(()=>f.service.dispose());
+  assert.equal(f.upstream.sent.find(e=>e.type==='session.update').session.tools.some(tool=>tool.name==='explain_on_board'),audience==='all',audience);
+ }
+});

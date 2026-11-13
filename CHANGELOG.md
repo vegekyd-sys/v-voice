@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-13 — The call board: V draws as it explains
+
+- With `VOICE_BOARD=1` a call has a board beside the conversation: a canvas of pages drawn by one streaming illustrator (DeepSeek, `DEEPSEEK_API_KEY` directly or through OpenRouter), each piece shown when V's voice reaches it. Blocks: photo, list, steps, compare, stats, bars, table, flow, tiles, formula, timeline, versus, overlap, stack, scale and `draw` (a sketch of plain shapes). Pages stay for the whole call; a follow-up opens a page from the one it came from, or returns to it.
+- With `VOICE_BOARD_LESSON=1` the voice model has `explain_on_board`: a script is written for the request (after a search or memory lookup when the request needs one), V says it once, and the page is drawn from it. V finishes the line it is on before the lesson starts.
+- A finished background task is told the same way: one script written from its result, drawn as it is said, with the full report one tap away on the board. `VOICE_BOARD_RESULT_LESSON=0` keeps the old read-out.
+- `VOICE_BOARD_AUDIENCE=all` opens the board to Feishu, public and guest callers (default: the owner's entry). A lesson looks things up only with a tool that caller was given, and calls that are not the owner's keep no words or pictures in the board record.
+- Photographs: `VOICE_BOARD_BRAVE_KEY` for image search, a disk library under `VOICE_BOARD_PHOTO_DIR`.
+- Old functions are unchanged with the board off, and with it on the model's own choice of tool stands (`VOICE_BOARD_REROUTE=1` restores rerouting other tools into a lesson). `scripts/candidate/board-bench/` measures reply, picture and lesson times, the kinds of picture drawn, and whether the old functions still go where they went.
+- iOS: the App relays page features through one bridge command, `service` → `/api/page/<name>` (build 45, `capabilities.pageRequests`). The board is the first; later page features ship with the service and the page, without an App update. Older Apps keep working without the board.
+- Seeduplex input pacing: a frame whose timer fired late used to move the schedule back for good; on a busy process the model heard the caller up to ten seconds late and the call ended with "pending input audio overflow". Lateness is now made up, and a backlog is worked off faster.
+
 ## 2026-11-13 — 中号小组件显示套餐已用进度
 
 - iPhone build 44 的 4×2 左侧显示最低剩余额度，右侧用和 2×2 相同的已用数字和进度条显示其他套餐，每项下方保留重置时间。

@@ -19,6 +19,7 @@ import {SeeduplexRealtimeVoiceBridge,preconnectSeeduplex} from '../seeduplex-rea
 import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
 import {V_ONE_VOICE_POLICY} from '../gpt-live-h5/one-voice-policy.mjs';
 import {TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,LOCATION_DELEGATE_TOOL,LOCATION_CONTROL_TOOL,createToolExecutor,validateTool,processExited,withExecutionLines} from './tools.mjs';
+import {LESSON_ROUTING,LESSON_TOOL,PARALLEL_ROUTING,asksForLesson,lessonResearch} from './tools.mjs';
 import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICES,grokVoice,grokVoiceModel,grokVoiceLabel,grokVoiceSpeed} from './grok-provider.mjs';
 import {createTaskDelivery} from './task-delivery.mjs';
 import {createConversationReplyDelivery} from '../../lib/conversation-replies.mjs';
@@ -71,7 +72,7 @@ export function directInstructions(catalog,context='',model='',options={}) {
 // announced, so a burst of quick tool calls becomes one line.
 export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageGapMs:15000,factGapMs:6000,idleMs:45000,idleMax:2,quietAfterUserMs:4000,startMs:2500,max:12,correctionDelayMs:400,abandonedResponseMs:8000});
 
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -125,7 +126,16 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(s.droppedReply&&s.droppedReply===responseId){if(final)s.droppedReply=null;return true;}
     if(s.replyId!==responseId){s.replyId=responseId;s.replyHead='';}
     const head=final?text:(s.replyHead+text);
-    s.replyHead=final?'':head.slice(0,60);
+    s.replyHead=final?'':head.slice(0,200);
+    // A lesson is being written for this request. One short line while it is
+    // (“好，我想想怎么讲”) is welcome; answering the whole question meanwhile is
+    // not: the lesson would cut in half a minute of talk later (call 4132718f at 223 s).
+    if(s.lessonPending&&s.pending.has(s.lessonPending)&&Array.from(head).length>=(/^[\x00-\x7f]*$/u.test(head.slice(0,40))?170:64)){
+      s.droppedReply=final?null:responseId??null;
+      audit({type:'speech.lesson-preempt-cut',voiceSessionId:s.id,callId:s.lessonPending,responseId});
+      s.bridge.handleBargeIn({confirmed:true});
+      return true;
+    }
     const working=Boolean(s.backgroundCallId)&&s.pending.has(s.backgroundCallId)&&Boolean(s.backend.stage());
     if(!working||s.correctionAt&&Date.now()-s.correctionAt<NARRATION.idleMs||Date.now()-(s.nativeResultAt??0)<20000)return false;
     if(!claimsCompletion(head.slice(0,60)))return false;
@@ -260,7 +270,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // Local Feishu reads are declared only when this service has them configured.
   if(!['courtesy','provider','assisted'].includes(nativePlaybackPolicy))throw Error('Unsupported native playback policy');
   const localTools=TOOLS.filter(t=>(calendar||larkForActor||t.name!=='feishu_calendar')&&(larkRead||larkForActor||t.name!=='lark_read'));
-  const sessionTools=s=>[...localTools.filter(t=>(s.display||t.name!=='show_content')&&(!['feishu_calendar','lark_read'].includes(t.name)||Boolean(s.actorReader)||!s.sessionBound&&Boolean(t.name==='feishu_calendar'?calendar:larkRead))).map(t=>s.actorReader&&t.name==='feishu_calendar'?{...t,description:t.description.replace('天懿本人','当前已验证来电账号本人')}:s.actorReader&&t.name==='lark_read'?{...t,description:t.description.replace('本人的飞书资料','当前已验证来电账号本人的飞书资料')}:s.sessionBound&&t.name==='memory_search'?{...t,description:'查询当前会话可用的记忆，权限沿用会话已有边界。'}:s.sessionBound&&t.name==='delegate_to_v'?{...t,description:t.description.replace('个人 V','当前会话的 V')}:s.sessionBound&&t.name==='openclaw_tool'?{...t,description:'执行当前会话可用的 OpenClaw 原生工具，遵守会话既有权限；arguments 传工具参数的 JSON。复杂任务或需要后台模型时使用 delegate_to_v。外部操作遵守当前用户授权。'}:t),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[]),...(s.location?[LOCATION_TOOL]:[])].map(t=>s.location?({delegate_to_v:LOCATION_DELEGATE_TOOL,openclaw_agent_control:LOCATION_CONTROL_TOOL}[t.name]??t):t);
+  // Everyone with a screen, where the board is open to everyone (`lesson.audience`); otherwise the owner's own calls.
+  // Resolves when V is not speaking (nothing being generated or played), or after `maxMs`.
+  const quiet=async(s,maxMs)=>{const until=Date.now()+maxMs,pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));await pause(150);while(current(s)&&(s.responseActive||s.playing)&&Date.now()<until)await pause(100);};
+  const lessonTools=s=>lesson?.available&&lesson.source!=='parallel'&&s.display&&(lesson.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped)?[LESSON_TOOL]:[];
+  const sessionTools=s=>[...lessonTools(s),...localTools.filter(t=>(s.display||t.name!=='show_content')&&(!['feishu_calendar','lark_read'].includes(t.name)||Boolean(s.actorReader)||!s.sessionBound&&Boolean(t.name==='feishu_calendar'?calendar:larkRead))).map(t=>s.actorReader&&t.name==='feishu_calendar'?{...t,description:t.description.replace('天懿本人','当前已验证来电账号本人')}:s.actorReader&&t.name==='lark_read'?{...t,description:t.description.replace('本人的飞书资料','当前已验证来电账号本人的飞书资料')}:s.sessionBound&&t.name==='memory_search'?{...t,description:'查询当前会话可用的记忆，权限沿用会话已有边界。'}:s.sessionBound&&t.name==='delegate_to_v'?{...t,description:t.description.replace('个人 V','当前会话的 V')}:s.sessionBound&&t.name==='openclaw_tool'?{...t,description:'执行当前会话可用的 OpenClaw 原生工具，遵守会话既有权限；arguments 传工具参数的 JSON。复杂任务或需要后台模型时使用 delegate_to_v。外部操作遵守当前用户授权。'}:t),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[]),...(s.location?[LOCATION_TOOL]:[])].map(t=>s.location?({delegate_to_v:LOCATION_DELEGATE_TOOL,openclaw_agent_control:LOCATION_CONTROL_TOOL}[t.name]??t):t);
   // A successful native end_call can return no further speech at all. It is
   // already the model's semantic decision; never infer ending from keywords.
   const acceptEnding=(s,callId)=>{
@@ -559,6 +573,17 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       audit:event=>audit({...event,voiceSessionId:s.id})});
     const onToolCall=async call=>{
       if(!current(s))return;
+      // Asked to explain, the voice model sometimes hands the question to the
+      // backend (a minute's wait, no picture). The caller's words decide.
+      // The caller's words decide. Sometimes the model searches, asks its memory, hands the
+      // question to the backend or even hangs up instead (calls 4132718f, 649709d0).
+      // A lookup it wanted is still made, as the lesson's own research.
+      // (Off unless asked for: the model's own choice of tool stands, as it did before there was a board.)
+      if(lesson?.reroute===true&&['delegate_to_v','web_search','memory_search','end_call'].includes(call.name)&&!(call.name==='delegate_to_v'&&s.backend.snapshot())&&lessonTools(s).length&&s.lessonFor!==s.latestUserTurn&&asksForLesson(s.latestUserTurn?.text)){
+        audit({type:'lesson.rerouted',voiceSessionId:s.id,callId:call.callId,from:call.name});
+        const research=['web_search','memory_search'].includes(call.name)?{name:call.name,args:call.args}:null;
+        call={...call,name:'explain_on_board',research,args:{topic:[call.args?.question,call.args?.context,call.args?.query].filter(value=>typeof value==='string'&&value.trim()).join('；').slice(0,400)||s.latestUserTurn.text.slice(-200)}};
+      }
       const signature=JSON.stringify([call.name,call.args]),old=s.seen.get(call.callId);
       if(old){if(old!==signature)emit(s,{type:'error',message:'工具身份冲突'});return;}
       if(s.pending.size>=100){emit(s,{type:'error',message:'待处理的工具调用过多，请稍后再试'});void close(s.id).catch(()=>{});return;}
@@ -574,9 +599,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       const stage=localProcess?s.localExecutions.metadata(call.args.sessionId).stage:call.name==='show_content'?'展示内容':/\bvideo\s+status\b/u.test(call.args?.command??'')?'等待视频':/\bvideo\s+create\b/u.test(call.args?.command??'')?'生成视频':/\bedit\b/u.test(call.args?.command??'')?'生成图片':'保存图片';
       audit({type:'tool.call',voiceSessionId:s.id,...call});emit(s,{type:'tool.call',callId:call.callId,name:call.name,activity:taskActivity(call.name,call.args),...(foreground?{execution:'foreground',stage}:{})});
       s.lookup.started(call);
-      let result,backgroundAck=false;
+      let result,backgroundAck=false,lessonHandled=false;
       try {
-        if(s.unidentified&&!(s.publicVoice?PUBLIC_CALL_TOOLS.has(call.name):['show_content','end_call'].includes(call.name)))throw Error('当前通话没有账号工具权限');
+        if(s.unidentified&&!(call.name==='explain_on_board'&&lessonTools(s).length)&&!(s.publicVoice?PUBLIC_CALL_TOOLS.has(call.name):['show_content','end_call'].includes(call.name)))throw Error('当前通话没有账号工具权限');
         if(s.sessionBound&&!s.actorReader&&['feishu_calendar','lark_read'].includes(call.name))throw Error('请使用当前会话的工具或委派给当前会话的 V');
         validateTool(call.name,call.args);
         if(call.name==='get_current_location'){if(!s.location)throw Error('当前终端不支持定位');result=await s.location.request(controller.signal);}
@@ -603,7 +628,56 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           if(s.heldResult){audit({type:'backend.result-superseded',voiceSessionId:s.id,callId:s.heldResult.callId});s.heldResult=null;}
           s.backgroundCallId=call.callId;s.backgroundBridge=ownerBridge;s.backgroundRequester=audienceOf(audienceKeys.get(ownerBridge));s.narrations=0;s.narrationIdles=0;ownerBridge.beginBackgroundTool(call.callId,call.args.question);backgroundAck=true;
         }
-        if(!['send_task_updates','openclaw_agent_control','get_current_location'].includes(call.name))result=await execute(call.name,call.args,call.callId,controller.signal);
+        // Lesson mode: the script and its picture are written together, then V
+        // says the script word for word (the same hand-over a backend result uses).
+        if(call.name==='explain_on_board'){
+          if(!lesson?.available)throw Error('讲解画面尚未就绪');
+          // The voice model sometimes asks twice for one request (call c2c47e58:
+          // the second lesson replaced the first while V was reading it).
+          if(s.lessonFor&&s.lessonFor===(s.latestUserTurn??s)){audit({type:'lesson.duplicate',voiceSessionId:s.id,callId:call.callId});result=s.lessonFailedFor===s.lessonFor?{lessonUnavailable:true,instruction:'讲稿这次没有准备好。请你现在自己直接把这个问题讲清楚，不要再调用本工具，也不要提讲稿或画面。'}:{alreadyExplaining:true,instruction:'这段讲解已经在准备或正在讲。不要再调用，也不要自己再讲一遍。'};}
+          else{
+            s.lessonFor=s.latestUserTurn??s;
+            ownerBridge.beginBackgroundTool(call.callId,call.args.topic);lessonHandled=true;
+            // Today's news, or the caller's own projects: looked up first, with the tool
+            // the model asked for or the one the words call for.
+            s.lessonPending=call.callId;
+            // (experiment) V's backend agent writes the lesson itself, with its own memory and tools.
+            if(lesson.source==='backend'&&!s.backend.snapshot()){
+              const startedAt=Date.now();let script=null;
+              try{const reply=await s.backend.run({question:lesson.brief({owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text}),context:'',callId:call.callId,signal:controller.signal});
+                script=lesson.accept({owner:s.id,text:reply?.result,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,startedAt});}
+              catch(error){audit({type:'lesson.backend-failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});lesson.accept({owner:s.id,text:'',topic:call.args.topic,startedAt});}
+              if(s.lessonPending===call.callId)s.lessonPending=null;
+              if(current(s)&&s.epoch===epoch){const say=script?.say??'画面这次没准备好，我直接跟你说吧。';ownerBridge.completeBackgroundTool(call.callId,{result:say},{spokenText:say,displayedFullResult:true});}
+              result={lessonDelivered:Boolean(script),writer:'backend'};
+            }else{
+            const lookup=call.research??(name=>name&&allowedTools.has(name)&&s.toolNames?.has(name)?{name,args:{query:String(call.args.topic).slice(0,200)}}:null)(lessonResearch(`${call.args.topic} ${s.latestUserTurn?.text??''}`));
+            let reference='';
+            if(lookup){
+              try{const found=await execute(lookup.name,lookup.args,call.callId+':research',controller.signal);reference=(typeof found==='string'?found:JSON.stringify(found)).slice(0,8000);audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId+':research',name:lookup.name,status:'ok',result:found});}
+              catch(error){audit({type:'lesson.research-failed',voiceSessionId:s.id,callId:call.callId,name:lookup.name,message:String(error?.message??error).slice(0,120)});}
+            }
+            let script=null;
+            try{script=await lesson.prepare({quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal});
+              // V finishes the line it is on ("好，我想想怎么讲") before the lesson starts: cut off mid-sentence it sounded like two people.
+              if(script)await quiet(s,8000);}
+            catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
+            finally{if(s.lessonPending===call.callId)s.lessonPending=null;}
+            if(current(s)&&s.epoch===epoch){
+              if(script)ownerBridge.completeBackgroundTool(call.callId,{result:script.say},{spokenText:script.say,displayedFullResult:true});
+              else{
+                // No script: V answers the question itself (it used to say "the picture is not ready" and stop,
+                // and the caller had to ask again: call 83315f5d). The page is drawn from what it then says.
+                s.lessonFailedFor=s.lessonFor;audit({type:'lesson.unavailable',voiceSessionId:s.id,callId:call.callId});
+                ownerBridge.completeBackgroundTool(call.callId,{cancelled:true});
+                ownerBridge.sendUserMessage?.(`（讲解工具这次没有准备好讲稿。请你现在自己直接回答我刚才的问题，讲清楚，不要再调用讲解工具，也不要提讲稿或画面：${String(s.latestUserTurn?.text??call.args.topic).slice(-200)}）`);
+              }
+            }
+            result={lessonDelivered:Boolean(script)};
+            }
+          }
+        }
+        if(!['send_task_updates','openclaw_agent_control','get_current_location','explain_on_board'].includes(call.name))result=await execute(call.name,call.args,call.callId,controller.signal);
         if(call.name==='delegate_to_v'&&current(s)&&s.epoch===epoch){
           s.progress=null;await new Promise(resolve=>{s.backendResult={resolve};deferred(s);});
         }
@@ -622,7 +696,18 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         const target=resultBridge(s,ownerBridge,requester),moved=!target;
         const receipt=(moved||displayFullResult)?await publishContent(s,call.callId,presentation?.text??JSON.stringify(result)):null;
         if(receipt&&(!current(s)||s.epoch!==epoch))return;
-        const spokenText=!s.display?speakerSpokenText(presentation):receipt?.shown?presentation.spokenText:presentation?.spokenText.replace(LONG_RESULT_NOTICE,'完整结果已准备好，屏幕正在同步。');
+        let spokenText=!s.display?speakerSpokenText(presentation):receipt?.shown?presentation.spokenText:presentation?.spokenText.replace(LONG_RESULT_NOTICE,'完整结果已准备好，屏幕正在同步。');
+        // With the board, a finished task is told the way a lesson is: one script written from the
+        // result, said once, drawn as it is said (calls 9427aac1, 10cb6831: a summary read out beside
+        // a page about something else, and a report nobody was shown). The report itself stays on screen.
+        // No script: the result is said as it always was.
+        let told=false;
+        if(lesson?.available&&lesson.results!==false&&lessonTools(s).length&&target&&presentation&&!presentation.media&&!result?.cancelled&&typeof result?.error!=='string'&&Array.from(String(presentation.text)).length>=120){
+          try{const script=await lesson.prepare({result:true,quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.question??'',ask:s.latestUserTurn?.text,reference:String(presentation.text),signal:AbortSignal.timeout(9000)});
+            if(script?.say){spokenText=script.say;told=true;audit({type:'backend.result-lesson',voiceSessionId:s.id,callId:call.callId});}}
+          catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
+          if(!current(s)||s.epoch!==epoch)return;
+        }
         const payload=displayFullResult?{...result,result:presentation.text}:result;
         if(!result?.cancelled)s.lastBackgroundResult={question:call.args.question??'',result:String(presentation?.text??result?.error??'').slice(0,2000)};
         // A task belongs to the person who asked for it. After a switch to someone
@@ -635,13 +720,14 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           if(target!==ownerBridge)target.adoptBackgroundTool(call.callId,call.args.question??"");
           // The whole result stays on screen and in the model's context; what is
           // said aloud has no process opening, and a failure is said plainly.
-          const options=displayFullResult?{spokenText,displayedFullResult:true}:typeof result?.error==='string'&&!controller.signal.aborted?{spokenText:TASK_FAILED_LINE}:presentation?{spokenText}:{};
+          const options=displayFullResult||told?{spokenText,displayedFullResult:true}:typeof result?.error==='string'&&!controller.signal.aborted?{spokenText:TASK_FAILED_LINE}:presentation?{spokenText}:{};
           // The host output gate belongs to whichever turn is in flight; a result
           // spoken outside a host turn is queued or dropped with that turn.
           if(s.speakerRouting&&speakerRouting?.hostSpeech)options.speak=text=>void speakerRouting.hostSpeech(s.id,text).then(spoken=>{if(!spoken)audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId:call.callId});},()=>audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId:call.callId}));
           target.completeBackgroundTool(call.callId,payload,options);
         }
-      }else if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
+      }else if(lessonHandled){/* already answered through the background hand-over */}
+      else if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
       catch {result={error:'工具结果过大或无法续传，请缩小范围并分页读取。'};if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
       audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId,name:call.name,...(call.name==='get_current_location'?{ok:result?.ok===true,reason:result?.reason}:{result})});
       if(call.name!=='delegate_to_v')s.nativeResultAt=Date.now();
@@ -653,7 +739,14 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const routeOutput=(kind,value,deliver)=>{if(!current(s))return;if(s.unidentified||!speakerRouting?.dispatch?.(s.id,kind,value,deliver))deliver();};
     const hostCallControl=!s.unidentified&&Boolean(speakerRouting?.controlsEnding?.(s.id));
     const nativeShortcuts=new Set(['read','exec','process','memory_search','web_search','web_fetch']);
-    const tools=sessionTools(s).map(tool=>tvControlTool(tool,s.tvControls)).filter(tool=>s.publicVoice?PUBLIC_CALL_TOOLS.has(tool.name)&&(!PUBLIC_SEARCH_TOOLS.has(tool.name)||allowedTools.has(tool.name)):s.unidentified?['show_content','end_call'].includes(tool.name):!s.actorScoped||!nativeShortcuts.has(tool.name)||allowedTools.has(tool.name));
+    const tools=sessionTools(s).map(tool=>tvControlTool(tool,s.tvControls)).filter(tool=>tool.name===LESSON_TOOL.name?true:s.publicVoice?PUBLIC_CALL_TOOLS.has(tool.name)&&(!PUBLIC_SEARCH_TOOLS.has(tool.name)||allowedTools.has(tool.name)):s.unidentified?['show_content','end_call'].includes(tool.name):!s.actorScoped||!nativeShortcuts.has(tool.name)||allowedTools.has(tool.name));
+    // (A lesson looks things up only with a tool this caller was given.)
+    s.toolNames=new Set(tools.map(tool=>tool.name));
+    // Parallel mode: explaining is V's own job; the hand-off tool says so itself.
+    if(lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice){
+      const handOff=tools.findIndex(tool=>tool.name==='delegate_to_v');
+      if(handOff>=0)tools[handOff]={...tools[handOff],description:'不要用本工具来讲解、解释、介绍、比较或回答知识性问题（包括讲给小朋友听）：那些你自己直接讲，屏幕会自动配图。本工具只用于真正要办的事。'+tools[handOff].description};
+    }
     const searchAck=s.model==='seeduplex'&&searchAcknowledgment==='model';
     const voiceTools=(hostCallControl?tools.filter(t=>t.name!=='end_call'):tools).map(tool=>s.publicVoice&&tool.name==='memory_search'?{...tool,description:'使用 V 现有的普通 memory_search 查询通用知识、项目历史、产品与技术记忆。严格遵守 Public 个人内容红线。'}:searchAck&&isSearchTool(tool.name)?{...tool,description:(tool.name==='memory_search'&&!s.sessionBound?'检索天懿的 V/OpenClaw 跨通话个人记录，用于历史约定、家庭资料、长期偏好和项目历史。只在答案需要当前通话之外的记录时调用。本通话已经介绍的姓名、喜好、计划，以及现在是谁在说话，由当前声音与本通话上下文回答，不调用本工具。':tool.description)+' 只为按通话规则确认的向 V 提问执行，电视和旁聊不能触发。上述先查记录是指先查再回答事实，不限制在查询前简短接话。调用本工具之前，必须先用语音简短自然地回应当前用户问题，再在同一轮立刻调用本工具。不能只调用工具而保持沉默。'}:tool);
     if(s.mediaCliAvailable){
@@ -664,7 +757,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const baseInstructions=s.publicVoice?PUBLIC_VOICE_INSTRUCTIONS+'\n'+PUBLIC_PRESENTATION_INSTRUCTIONS+'\n'+V_FRONTEND_PERSONA+'\n'+V_ONE_VOICE_POLICY+'\n'+VOICE_TASK_ROUTING.replaceAll('个人 V','V')+'\n'+VOICE_TASK_CONTROL_POLICY+'\n'+CALL_ENDING:(!s.unidentified?terminalInstructions(s.terminalContext()):'')+(!s.unidentified&&s.terminalContext().terminal.kind==='robot'?ROBOT_PRESENTATION_INSTRUCTIONS:'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader),mediaCliAvailable:s.mediaCliAvailable});
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
-      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
+      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
       withoutContext:text=>text.replace(voiceConversationBlock(context,{sessionBound:s.sessionBound}),()=>voiceConversationBlock('',{sessionBound:s.sessionBound})),
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
       onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),

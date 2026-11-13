@@ -8,6 +8,8 @@ import { entryStartup, startVoiceEntry, markVoiceTiming } from "./entry-startup.
 import { createAvatarTasks } from "./avatar-state.mjs";
 import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { createAvatarTelemetry } from "./avatar-telemetry.mjs";
+import { createBoardClient, createLessonGate, createSpokenCursor, readEventStream, spokenRate } from "./board-client.mjs";
+import { speaksOf, spokenProgress, unspoken } from "./board-scene.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
 import { createContentView } from "./content-view.mjs";
@@ -30,11 +32,14 @@ const view = createCallView();
 const tvHost=installTvHost({view,window,actions:{dial:()=>startCall(),end:()=>stopCall(),mute:()=>setMuted(!view.get().muted),speaker:()=>setOutputMuted(!view.get().outputMuted)},onError:error=>setStatus(error.message,{tone:'error'})});
 const contentView = document.querySelector ? createContentView(document, window, { onReading: reading => view.set({ reading }) }) : null;
 const renderAssistant = (target, item) => {
-  if (contentView) contentView.render(target, item, { auto: item.document === true && (!tvHost || view.get().tvLayout==='full'), inline: !tvHost });
+  // With the call board on, a delivered document stays a card in the
+  // conversation: the reader would cover the picture V is talking over.
+  if (contentView) contentView.render(target, item, { auto: item.document === true && !call?.board && (!tvHost || view.get().tvLayout==='full'), inline: !tvHost });
   else renderMarkdown(target, item.text, document);
 };
 if (document.querySelector) mountCallUi(document, view, {
   renderAssistant, onDocumentShown: callId => documentShown(callId),
+  loadBoardPhoto: query => loadBoardPhoto(query),
   actions: {
     openBinding: () => void openIosBinding(),
     connectIdentity: () => { guestDialAllowed=false;void confirmation.start(); },
@@ -62,6 +67,7 @@ let call = null;
 let starting = null;
 let avatarDiagnosticOwner = null;
 let liveReady = false;
+let boardAvailable = false;
 let entryError = null;
 let callerEntry = "tianyi";
 let preferredPhoneInputPolicy = null;
@@ -429,6 +435,17 @@ function receiveDocument(active,value){
   if(call!==active||value.voiceSessionId!==active.voiceSessionId)return;
   renderTranscript(presentation.consume(value));
 }
+// A photograph on the board: fetched once per call through the Voice service
+// and handed to the page as a local object URL (null when there is none).
+function loadBoardPhoto(query) {
+  const active = call;
+  if (!active?.board || typeof query !== 'string') return Promise.resolve(null);
+  active.boardPhotos ??= new Map();
+  if (!active.boardPhotos.has(query)) active.boardPhotos.set(query, fetch(apiUrl('board-image'), { method: 'POST',
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ voiceSessionId: active.voiceSessionId, query }) })
+    .then(async response => response.ok ? URL.createObjectURL(await response.blob()) : null).catch(() => null));
+  return active.boardPhotos.get(query);
+}
 // The UI reports a document row once it is actually on screen.
 function documentShown(callId){
   const active=call;
@@ -471,6 +488,7 @@ function renderTranscript(snapshot) {
   document.body.dataset.conversation = all.some(item => item.text?.trim()) ? "started" : "empty";
   view.set({ transcript: snapshot });
   avatarContext(snapshot);
+  call?.board?.update({ snapshot });
 }
 function resetTranscript() {
   contentView?.reset(); presentation.reset();
@@ -577,6 +595,8 @@ async function stopCall({failure}={}) {
   if (active) {
     active.avatarTelemetry?.close();
     active.avatarReactions?.dispose();
+    active.board?.dispose(); clearInterval(active.boardFocusTimer); view.set({ board: null, boardCanvas: null, boardSpoken: null });
+    for (const pending of active.boardPhotos?.values() ?? []) void pending.then(url => { if (url) URL.revokeObjectURL(url); });
     active.relay?.dispose();
     active.dialConnection?.dispose();
     active.callerContext?.close();active.deviceAdapter?.close();
@@ -709,6 +729,49 @@ async function startCall() {
       send:payload=>api('avatar-events',{voiceSessionId:active.voiceSessionId,...payload},{keepalive:true,signal:AbortSignal.timeout(5000)}),
     });
     document.body.dataset.avatarImageTimeline='[]';
+    // The picture beside the conversation. Like the avatar it only follows the
+    // call; nothing in the call waits for it.
+    if (boardAvailable) active.board = createBoardClient({
+      isCurrent: () => call === active,
+      // A new picture goes up together with where the voice is on it: set a
+      // moment apart, a lesson showed whole for one frame before hiding.
+      onScene: (scene, canvas) => { if (call === active) view.set({ board: scene, boardCanvas: canvas ?? null, boardSpoken: active.boardFollow?.(scene) ?? view.get().boardSpoken }); },
+      observe: event => {
+        const trace = JSON.parse(document.body.dataset.boardTimeline ?? '[]');
+        trace.push({ ...event, at: Math.round(performance.now()) });
+        document.body.dataset.boardTimeline = JSON.stringify(trace.slice(-80));
+      },
+      request: async (payload, { signal, onEvent }) => {
+        const response = await fetch(apiUrl('board'), { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ voiceSessionId: active.voiceSessionId, ...payload }), signal });
+        if (!response.ok || !response.body) throw new Error('board unavailable');
+        await readEventStream(response, onEvent);
+      },
+    });
+    if (active.board) {
+      // Move the focus mark with V's voice. Relay calls know how much of the
+      // reply's audio has played; elsewhere the caption itself is the clock.
+      const cursor = createSpokenCursor(), lessonGate = createLessonGate();
+      active.boardFollow = (scene = active.board.scene) => {
+        const snapshot = presentation.snapshot();
+        // Only the reply V is giving now: after the caller has spoken again,
+        // audio such as a progress cue is not the earlier reply being re-read.
+        const last = [...snapshot.history, ...snapshot.current].filter(item => !item.document && item.text?.trim()).sort((a, b) => a.at - b.at).at(-1);
+        const row = last?.role === 'assistant' ? last : null;
+        const spoken = lessonGate.view({ scene, text: row?.text ?? '', speaking: Boolean(row) && view.get().voice === 'speaking', speaksOf, unspoken,
+          progress: () => {
+            const stats = active.relay?.stats, textLength = Array.from(row.text).length;
+            const index = stats ? cursor.index({ key: row.key, textLength, outputBytes: stats.outputBytes, queuedBytes: stats.queuedOutputBytes, charsPerSecond: spokenRate(row.text) }) : textLength;
+            return spokenProgress(scene, row.text, index);
+          } });
+        return spoken;
+      };
+      active.boardFocusTimer = setInterval(() => {
+        if (call !== active) return;
+        const spoken = active.boardFollow();
+        if (JSON.stringify(view.get().boardSpoken) !== JSON.stringify(spoken)) view.set({ boardSpoken: spoken });
+      }, 400);
+    }
     if (avatar) active.avatarReactions = createAvatarReactions({
       observe:event=>{
         if(event.type==='applied')active.avatarTelemetry?.decision(event);
@@ -757,6 +820,7 @@ async function startCall() {
       tasks.consume(value);
           if(value.type==='backend.result')receiveDocument(active,value);
           if(value.type.startsWith('tool.'))taskState();
+          if(value.type==='tool.result')active.board?.evidence();
           if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
           if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
           if(value.type==='reply.sync'&&value.status==='failed')setStatus(value.message,{tone:'problem'});
@@ -988,6 +1052,7 @@ function applyEntryStatus(status) {
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     webDialVersion = status.webDialVersion;
     liveReady = status.ready === true;
+    boardAvailable = status.board === true && !tvHost;
     const phoneOptions = phoneModelOptions(status, view.get().model);
     const models = phoneOptions.models.map(choice => ({...choice, available:choice.available&&(!tvHost||!hasTvArrayCapture()||tvArraySupportsModel(choice.id))}));
     const model = tvHost ? tvDefaultModel(models).model : phoneOptions.model;

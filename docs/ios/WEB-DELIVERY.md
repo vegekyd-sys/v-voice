@@ -36,6 +36,7 @@ V Voice 当前的 `CallCoordinator` / `VoiceAudio` 和 AudioRecordingIntent / Li
 | --- | --- |
 | 共享页面 DOM/CSS/React、文案、既有控件交互、Markdown/全文阅读、资源与 Reaction 的网页呈现 | Swift/原生设置页、通话传输与音频引擎、AudioRecordingIntent/LiveActivityIntent、Widget/灵动岛扩展、权限/entitlements、图标、签名与最低系统版本 |
 | `native-h5.mjs` 在现有 bridge 1 能力内的适配 | 新增原生 bridge 命令或改变 snapshot/权限合同，先升级兼容壳，随后才发布依赖该版本的网页资源 |
+| 经 `service` 页面功能通道（build 45 起）调用服务端新增的 `/api/page/<名字>` | 需要流式、二进制大文件、后台或新系统权限的页面功能 |
 
 Reaction 新图片可以进入网页，但原生灵动岛自己的图片目录仍在 binary 内；不能把网页资源更新等同于更新 Widget 资源。需要新桥接时提升兼容范围；不兼容的旧壳保留最后可用界面，不能扩大权限或静默改换通话模型。
 

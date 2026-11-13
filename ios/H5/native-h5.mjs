@@ -8,8 +8,10 @@ import {mountChangelog} from '../../lab/gpt-live-h5/changelog.mjs';
 import {mountAvatar} from '../../lab/gpt-live-h5/avatar.mjs';
 import {createAvatarReactions} from '../../lab/gpt-live-h5/avatar-reactions.mjs';
 import {createAvatarTelemetry} from '../../lab/gpt-live-h5/avatar-telemetry.mjs';
+import {createBoardClient,createLessonGate} from '../../lab/gpt-live-h5/board-client.mjs';
+import {speaksOf,spokenProgress,unspoken} from '../../lab/gpt-live-h5/board-scene.mjs';
 
-let current, owner, reactions, telemetry, opened = new Set(), pendingDocument, openingDocument=false, idleCatalogOwner;
+let current, owner, reactions, telemetry, board, boardTimer, boardPhotos = new Map(), boardFollow, opened = new Set(), pendingDocument, openingDocument=false, idleCatalogOwner;
 const hiddenDocument=document.createElement('div');hiddenDocument.hidden=true;document.body.append(hiddenDocument);
 const view = createCallView();
 const post = (action, payload = {}, callID = current?.callID ?? '') => window.webkit.messageHandlers.voice.postMessage({action,payload,callID,pageID:window.__VVoicePageID});
@@ -21,8 +23,10 @@ const readerWindow={get location(){return {href:current?.baseURL??'https://voice
 const content = createContentView(document,readerWindow,{mediaSaveLabel:()=>current?.capabilities?.mediaSave?'保存':'分享链接',onSaveMedia:async entry=>{if(current?.capabilities?.mediaSave){view.set({message:null});try{await post('saveMedia',{url:entry.url,kind:entry.kind});}catch(error){view.message(String(error.message??error),'problem');throw error;}return '已存到相册';}await send('share',{text:entry.url,title:entry.title}).catch(()=>{});},onReading:reading=>{view.set({reading});void post('reading',{reading}).catch(()=>{});if(!reading){reactions?.resume();if(pendingDocument)requestAnimationFrame(openPending);}}});
 const cards=new Map();
 mountCallUi(document,view,{
+  loadBoardPhoto:query=>loadBoardPhoto(query),
   renderAssistant(target,row){
-    content.render(target,row,{auto:row.document===true,inline:true});
+    // (While a picture is up, a delivered report stays a card: the reader would cover the picture V is talking over.)
+    content.render(target,row,{auto:row.document===true&&!view.get().board,inline:true});
     if(row.callId){const card=target.querySelector('.content-card,[data-open-content]');if(card)cards.set(row.callId,card);}
     if(pendingDocument)requestAnimationFrame(openPending);
   },
@@ -39,9 +43,45 @@ mountCallUi(document,view,{
 });
 mountChangelog(document,window);
 const avatar=mountAvatar(document,window,{owner:()=>owner,onDisplayed:event=>{if(current?.visible){telemetry?.display(event);void post('avatarDisplayed',{pictureID:event.picture}).catch(()=>{});}}});
-function stopVisuals(){reactions?.dispose();reactions=null;telemetry?.close();telemetry=null;}
+function stopVisuals(){reactions?.dispose();reactions=null;telemetry?.close();telemetry=null;stopBoard();}
+// Page features: /api/page/<name> on the service, relayed by the App's one `service` command. A new
+// feature needs a service route and this page, not an App update.
+const pageRequests=()=>current?.capabilities?.pageRequests>=1;
+const page=(name,body,callID)=>post('service',{route:'page/'+name,body},callID);
+// The call board.
+function stopBoard(){board?.dispose();board=null;clearInterval(boardTimer);boardTimer=null;boardFollow=null;boardPhotos.clear();view.set({board:null,boardCanvas:null,boardSpoken:null});}
+function loadBoardPhoto(query){
+  const callID=owner;
+  if(!board||typeof query!=='string')return Promise.resolve(null);
+  if(!boardPhotos.has(query))boardPhotos.set(query,page('board-image',{query},callID).then(r=>r?.data&&typeof r.type==='string'&&r.type.startsWith('image/')?`data:${r.type};base64,${r.data}`:null).catch(()=>null));
+  return boardPhotos.get(query);
+}
+function startBoard(callID){
+  stopBoard();
+  // Only an App that relays page features (build 45 on) can show the board; older ones carry on without it.
+  if(!pageRequests())return;
+  const gate=createLessonGate();let failures=0;
+  boardFollow=(scene=board?.scene)=>{
+    const rows=[...view.get().transcript.history,...view.get().transcript.current].filter(row=>!row.document&&row.text?.trim()).sort((a,b)=>a.at-b.at);
+    const row=rows.at(-1)?.role==='assistant'?rows.at(-1):null;
+    // No audio clock here: the caption is the clock, as on the web where there is no relay.
+    return gate.view({scene,text:row?.text??'',speaking:Boolean(row)&&view.get().voice==='speaking',speaksOf,unspoken,progress:()=>spokenProgress(scene,row.text,Array.from(row.text).length)});
+  };
+  board=createBoardClient({
+    isCurrent:()=>owner===callID&&current?.active,
+    onScene:(scene,canvas)=>{if(owner===callID)view.set({board:scene,boardCanvas:canvas??null,boardSpoken:boardFollow?.(scene)??view.get().boardSpoken});},
+    request:async(payload,{onEvent})=>{
+      let reply;
+      try{reply=await page('board',payload,callID);failures=0;}
+      // Not offered to this caller, or an App that does not know the board: after two refusals in a row, no board for this call.
+      catch(error){if(owner===callID&&++failures>=2)queueMicrotask(stopBoard);throw error;}
+      for(const op of Array.isArray(reply?.ops)?reply.ops:[])onEvent(op);
+    },
+  });
+  boardTimer=setInterval(()=>{if(!boardFollow||owner!==callID)return;const spoken=boardFollow();if(JSON.stringify(view.get().boardSpoken)!==JSON.stringify(spoken))view.set({boardSpoken:spoken});},400);
+}
 function startVisuals(id){
-  stopVisuals();const callID=id;
+  stopVisuals();const callID=id;startBoard(callID);
   telemetry=createAvatarTelemetry({snapshot:()=>view.get().transcript,send:body=>post('avatarEvents',body,callID)});
   reactions=createAvatarReactions({
     request:body=>post('avatar',body,callID),current:()=>avatar.context(),apply:value=>{avatar.select(value);telemetry?.decision(value);},attend:()=>avatar.attend(),
@@ -80,6 +120,7 @@ function receive(snapshot){
   if(snapshot.active&&call!=='dialing'&&!reactions)startVisuals(snapshot.callID);
   if(!snapshot.active){pendingDocument=null;openingDocument=false;stopVisuals();content.reset();cards.clear();hiddenDocument.replaceChildren();}
   avatar.show(snapshot.tasks.at(-1)?.activity??'idle');
+  board?.update({snapshot:snapshot.transcript});
   reactions?.update({snapshot:snapshot.transcript,activity:snapshot.tasks.at(-1)?.activity??'idle',taskOutcome:snapshot.tasks.length?'pending':snapshot.outcome});
   document.body.dataset.nativeOwner=snapshot.callID;
   document.body.dataset.nativeReady='true';

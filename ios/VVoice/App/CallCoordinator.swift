@@ -1297,6 +1297,20 @@ import VVoiceCore
         if route == "avatar", fromH5 { response["revision"] = body["revision"] }
         return response
     }
+    /// One page feature, `/api/page/<name>` on the bound service, for the page that owns this call (or the idle page).
+    /// Bounded: a short lowercase name, a JSON body under 256 KB; the reply is limited by the API client (2 MB).
+    func pageRequest(_ route: String, body: [String: Any], owner: String) async throws -> [String: Any] {
+        guard presentationID == owner, route.range(of: #"^page/[a-z][a-z0-9-]{0,39}$"#, options: .regularExpression) != nil,
+              JSONSerialization.isValidJSONObject(body), (try? JSONSerialization.data(withJSONObject: body).count) ?? .max <= 256 * 1024 else { throw VoiceError.protocolMismatch }
+        var payload = body
+        payload.removeValue(forKey: "voiceSessionId")
+        if active, let voiceID { payload["voiceSessionId"] = voiceID }
+        let generation = state.generation
+        let result = try await api.call(route, body: payload, refresh: false)
+        // (A call that started or ended meanwhile is another page's business.)
+        guard state.generation == generation, presentationID == owner else { throw CancellationError() }
+        return result
+    }
     var h5Outcome: String { tasks.isEmpty ? avatarOutcome : "pending" }
     var activityState: CallAttributes.ContentState {
         let caption = IslandCaption.current(conversation, phase: phase)

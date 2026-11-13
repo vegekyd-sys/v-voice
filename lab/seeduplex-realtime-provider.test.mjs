@@ -867,3 +867,26 @@ test('native old anonymous usage or cancel receipt cannot finish or clear a newe
  socket.message({type:'response.output_audio.done'});
  assert.equal(done.at(-1).responseId,'next');assert.equal(clears.length,1);bridge.close();
 });
+
+test("call e4ce15bb: late timers do not leave the caller's audio further and further behind", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const socket = new FakeSocket();
+  const errors = [];
+  const bridge = buildSeeduplexRealtimeVoiceProvider({ env: { VOLCENGINE_REALTIME_API_KEY: "k" }, createWebSocket: async () => socket })
+    .createBridge({ providerConfig: { voice: "xiaohe" }, instructions: "", tools: [], onError: (error) => errors.push(error.message) });
+  const connecting = bridge.connect();
+  await Promise.resolve(); await Promise.resolve();
+  socket.open(); socket.message({ type: "session.created" });
+  await connecting;
+  const frames = () => socket.sent.filter((event) => event.type === "input_audio_buffer.append").length;
+  // Six minutes of microphone, 20 ms at a time (24 kHz in, 16 kHz out), on a process whose
+  // timers fire in steps of 27 ms: every frame's timer is 7 ms late.
+  const chunk = Buffer.alloc(960);
+  let fed = 0;
+  for (let now = 0; now < 360_000; now += 27) {
+    while (fed * 20 <= now) { bridge.sendAudio(chunk); fed++; }
+    t.mock.timers.tick(27);
+  }
+  assert.deepEqual(errors, []);
+  assert.ok(fed - frames() < 25, `${fed - frames()} frames (20 ms each) are still waiting`);
+});

@@ -35,12 +35,22 @@ import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-lo
 import {VOICE_CONTEXT_HISTORY_REQUEST,voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 import {idleHangupFromEnv} from '../realtime-direct-tools/idle-hangup.mjs';
+import {boardCompletionFromEnv,boardDirectorFromEnv,boundedBoardRequest} from './board-director.mjs';
+import {createPhotoFinder} from './board-photo.mjs';
+import {STREAM_INSTRUCTIONS,createLessonWriter,refineStreamOp} from './board-lesson.mjs';
+import {scenePictures} from './board-scene.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Dialing is how a known caller retries; only anonymous callers keep the tight limit.
+// Page features reachable as /api/page/<name> (see the request handler). Each maps to the route the web
+// page uses, answered as JSON: the board's whole run at once, a photograph as base64.
+const PAGE_FEATURES = Object.freeze({
+  board: params => ({pathname: '/api/board', params: {...params, collect: true}}),
+  'board-image': params => ({pathname: '/api/board-image', params: {...params, inline: true}}),
+});
 export const callAttemptLimit = binding => binding.permissionProfile === 'unidentified' ? 6 : 30;
 
-export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, enableGrok = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), relayUsageFile = process.env.VOICE_RELAY_USAGE_FILE || '/var/lib/v-voice-usage/snapshot.json', conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, board = null, boardPhotos = null, boardAudience = 'owner', enableGrok = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), relayUsageFile = process.env.VOICE_RELAY_USAGE_FILE || '/var/lib/v-voice-usage/snapshot.json', conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
   let agentControl = null;
   if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
   if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
@@ -164,8 +174,13 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   const entrySnapshot=(binding,req)=>({ready:backendReady(),preview,defaultModel,
     ...(directVoice?.attach?{nativeDialVersion:1,webDialVersion:2}:{}),conversation:conversationPresentation(binding),iosBindingAvailable:hosted,
     ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}),...(listening?{comparisonAvailable:true}:{}),
-    models:phoneModels(),...entryPresentation(binding,req)});
+    models:phoneModels(),...entryPresentation(binding,req),...(boardAllowed(binding)?{board:true}:{})});
   const visual = createAvatarReactionSelector({evaluate:avatarEvaluate});
+  // The board sends lookup results to its own text model, so it stays on the
+  // owner's fixed entry until other callers have agreed to that.
+  // (VOICE_BOARD_AUDIENCE=all opens it to every caller, Feishu and public; their words then go to the board's text model
+  // as they already go to the voice model, and are not kept in the board's own record.)
+  function boardAllowed(binding) { return Boolean(board?.available) && (boardAudience === 'all' || binding?.permissionProfile === 'personal-tianyi'); }
   const contexts = new Map(),nativeTasks=new Map(),nativeTaskOwners=new Set();let stopping=false;
   const local = { active: null, creatingSession: false, listeners: new Set(), touchedAt: Date.now(), entry: "tianyi" };
   const attempts = new Map();
@@ -207,6 +222,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     old?.callControl?.close();
     if(old)speakerRouting?.close(old.reservation.voiceSessionId);
     if (old) visual.forget(old.reservation.voiceSessionId);
+    if (old) board?.forget(old.reservation.voiceSessionId);
     if (old?.direct) await directVoice.close(old.reservation.voiceSessionId);
     else if (old) await (old.gateway??gateway).request("talk.client.close", { sessionKey: old.sessionKey, voiceSessionId: old.reservation.voiceSessionId });
     if(old)rememberClosedCall(context,old.reservation.voiceSessionId);
@@ -220,7 +236,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       // Reserved, live and cleanup-pending sessions remain owned. Only a
       // fully retired native session can release another device's lock.
       if(!old?.direct||directVoice.hasSession(old.reservation.voiceSessionId))continue;
-      visual.forget(old.reservation.voiceSessionId);
+      visual.forget(old.reservation.voiceSessionId);board?.forget(old.reservation.voiceSessionId);
       rememberClosedCall(context,old.reservation.voiceSessionId);
       context.active=null;
       const owner=context.avatarOwners?.get(old.reservation.voiceSessionId);if(owner)owner.endedAt=Date.now();
@@ -654,7 +670,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
         ["/speaker-routing.mjs", [join(here, "../speaker-native/client.mjs"), "text/javascript; charset=utf-8"]],
-        ...["device-location.mjs", "caller-context.mjs", "ui-bundle.mjs", "call-view.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
+        ...["device-location.mjs", "caller-context.mjs", "ui-bundle.mjs", "call-view.mjs", "board-client.mjs", "board-scene.mjs", "board-sketch.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
         ["/changelog.mjs", [join(here, "changelog.mjs"), "text/javascript; charset=utf-8"]],
         ["/assets/v-voice-icon.svg", [join(here, "assets/v-voice-icon.svg"), "image/svg+xml"]],
@@ -713,7 +729,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         }
         res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/tv-aec/webrtcaec3-0.3.0.") ? "public, max-age=31536000, immutable" : bundled && url.searchParams.get("v") === bundled.revision ? "private, max-age=31536000, immutable" : pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
       }
-      if(binding.permissionProfile==='unidentified'&&!new Set(['/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke',...(binding.cliManaged?['/api/access']:[])]).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
+      if(binding.permissionProfile==='unidentified'&&!pathname.startsWith('/api/page/')&&!new Set(['/api/board','/api/board-image','/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke',...(binding.cliManaged?['/api/access']:[])]).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
       const readBody = async () => {
         const chunks = []; let size = 0;
         for await (const chunk of req) { size += chunk.length; if (size > 70000) throw new Error("Request too large"); chunks.push(chunk); }
@@ -780,6 +796,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         releaseReadiness: releaseReadiness(),
         ...(listening?{comparisonAvailable:true}:{}), model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
         models:phoneModels(),...entryPresentation(binding,req),
+        ...(boardAllowed(binding)?{board:true}:{}),
       });
       if(req.method==='GET'&&pathname==='/api/comparison')return listening?json(res,200,listening.manifest):json(res,404,{error:'当前没有试听样本'});
       if(req.method==='GET'&&pathname==='/api/speaker-fixture'){
@@ -819,7 +836,15 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         res.on("close", () => { clearInterval(keepalive); context.listeners.delete(res); }); return;
       }
       if (req.method !== "POST") return json(res, 404, { error: "没有这个入口" });
-      const params = await readBody();
+      let params = await readBody();
+      // Page features (`/api/page/<name>`): what a page may ask the service for, beside the call itself.
+      // The iOS App relays any of them through one bridge command, so a new one ships with the service
+      // and the page alone. Each is the same request as the web page's own route; access is decided there.
+      if (pathname.startsWith('/api/page/')) {
+        const name = pathname.slice('/api/page/'.length), feature = Object.hasOwn(PAGE_FEATURES, name) ? PAGE_FEATURES[name] : null;
+        if (!feature) return json(res,404,{error:'没有这个入口'});
+        ({pathname, params} = feature(params));
+      }
       if (pathname === "/api/session") {
         const result=await reservePhoneCall({context,binding,params,req,ip});
         return json(res,result.status,result.body);
@@ -856,6 +881,41 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           onOutcome:value=>{outcome=value;},
           isCurrent:()=>context.active===active && active.avatarRevision===params.revision});
         return json(res,200,{picture:null,...reaction,revision:params.revision,reason:outcome?.reason??'unknown',durationMs:outcome?.durationMs});
+      }
+      if (pathname === '/api/board') {
+        if (!boardAllowed(binding)) return json(res,404,{error:'没有这个入口'});
+        const request = boundedBoardRequest(params), active = context.active;
+        if (!request) return json(res,400,{error:'画面上下文无效'});
+        // One operation per event, flushed as the model writes it. The page
+        // going away (hang-up, newer request) stops the model call.
+        // (`collect`: the iOS app's native bridge cannot pass a stream. It gets every operation of
+        // the run in one JSON reply instead, the same operations in the same order.)
+        const collected = params.collect === true ? [] : null;
+        if (!collected) { res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-store, no-transform','x-accel-buffering':'no'}); res.flushHeaders(); }
+        const gone = new AbortController();
+        res.on('close',()=>{ if (!res.writableEnded) gone.abort(); });
+        const send = value => { if (collected) { if (collected.length < 200) collected.push(value); return; } if (!res.writableEnded && !gone.signal.aborted) res.write(`data: ${JSON.stringify(value)}\n\n`); };
+        const result = await board.run({owner:params.voiceSessionId,...request,signal:gone.signal,quiet:binding?.permissionProfile!=='personal-tianyi',
+          onOp:op=>{ if (context.active === active) send(op); }});
+        send({op:'done',reason:result.reason,rev:result.rev??board.scene(params.voiceSessionId).rev,durationMs:result.durationMs,firstOpMs:result.firstOpMs??null});
+        if (collected) return json(res,200,{ops:collected});
+        res.end();return;
+      }
+      if (pathname === '/api/board-image') {
+        if (!boardAllowed(binding) || !boardPhotos) return json(res,404,{error:'没有这个入口'});
+        // Only a photograph the director has put on this call's board.
+        const query = typeof params.query === 'string' ? params.query : '';
+        // (Any page of this call's canvas: earlier pages stay on it.)
+        if (!scenePictures(board.scene(params.voiceSessionId)).has(query)&&!(board.canvas?.(params.voiceSessionId).zones??[]).some(zone=>scenePictures(zone).has(query))) return json(res,404,{error:'画面上没有这张照片'});
+        // V's own web search, in this call's session, for things Wikipedia has no picture of.
+        const active = context.active;
+        const search = text => (active.gateway??gateway).request('tools.invoke',{agentId:binding.agentId??'makaron',sessionKey:active.sessionKey,name:'web_search',args:{query:text,count:5}},{timeoutMs:12000});
+        const found = await boardPhotos.find(query,{search});
+        if (!found) return json(res,404,{error:'没有找到照片'});
+        // (`inline`: for the iOS app's native bridge, which passes JSON only.)
+        if (params.inline === true) return found.bytes.length <= 1400*1024 ? json(res,200,{type:found.type,data:Buffer.from(found.bytes).toString('base64')}) : json(res,404,{error:'照片太大'});
+        res.writeHead(200,{'content-type':found.type,'cache-control':'no-store','content-length':found.bytes.length});
+        res.end(found.bytes);return;
       }
       if (context.active.direct) {
         if (pathname === '/api/close') { await close(context); return json(res,200,{ok:true}); }
@@ -1141,7 +1201,34 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const nativeInterruptModule=process.env.VOICE_NATIVE_INTERRUPT_ASR==='1'?await import('../realtime-direct-tools/native-interrupt.mjs'):null;
     const nativeInterrupt=nativeInterruptModule
       ? ({inputSampleRate,...callbacks})=>new nativeInterruptModule.NativeInterruptAsr({apiKey:process.env.VOLCENGINE_ASR_API_KEY,inputSampleRate,...callbacks}):undefined;
-    const directVoice=createDirectVoiceService({gateway,wsModule,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
+    const voiceAudit=productionSpeaker?.audit??transcriptLog.audit;
+    // Timing and outcome only; the picture's content is not written to the call log.
+    // With lessons on, the board has one way of drawing: V's own answers are
+    // illustrated by the lesson writer too (VOICE_BOARD_UNIFIED=0 keeps the old line-by-line director for them).
+    let lesson=null,photos=null;
+    // V's own answers are drawn by the streaming illustrator, as they are spoken (VOICE_BOARD_STREAM=0: one page once the answer is complete).
+    // In parallel mode there is no lesson to wait for, so nothing is deferred.
+    const board=boardDirectorFromEnv(process.env,{audit:voiceAudit,prefetch:query=>photos?.find(query),defer:process.env.VOICE_BOARD_STREAM==='0'&&process.env.VOICE_BOARD_LESSON_SOURCE!=='parallel',...(process.env.VOICE_BOARD_UNIFIED==='0'?{}:{illustrate:args=>lesson?.illustrate(args)??null,
+      ...(process.env.VOICE_BOARD_STREAM==='0'?{}:{stream:{instructions:STREAM_INSTRUCTIONS,refine:refineStreamOp}})})});
+    // Lesson mode (experiment): its own flag. Through OpenRouter the writer is
+    // a stronger model thinking briefly: on real calls it was the only one
+    // tried that kept its facts straight (which Pokemon beats which), in about
+    // four seconds. The director's model is the fallback, and the writer where
+    // only a direct key is provisioned.
+    const routed=!(process.env.VOICE_BOARD_API_KEY??process.env.DEEPSEEK_API_KEY)&&Boolean(process.env.OPENROUTER_API_KEY);
+    const lessonModel=process.env.VOICE_BOARD_LESSON_MODEL??(routed?'anthropic/claude-sonnet-5.5':''),lessonReasoning=process.env.VOICE_BOARD_LESSON_REASONING??(process.env.VOICE_BOARD_LESSON_MODEL?'':'low');
+    const directorWriter=boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'1600'});
+    lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,
+      // (Naming the director's own model as the lesson model means one writer, not two racing.)
+      ...(lessonModel&&lessonModel!==(process.env.VOICE_BOARD_MODEL??'deepseek/deepseek-v4.1-flash')?{complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MODEL:lessonModel,VOICE_BOARD_REASONING:lessonReasoning,VOICE_BOARD_MAX_TOKENS:lessonReasoning?'4000':'1600'}),fallback:directorWriter}:{complete:directorWriter})}):null;
+    // How a lesson is made (to compare): "service" - written here, with what is looked up first;
+    // "backend" - V's own agent writes it with its tools; "parallel" - no lesson tool at all,
+    // V answers in its own words and the answer is illustrated as it is spoken.
+    if(lesson)lesson.audience=process.env.VOICE_BOARD_AUDIENCE==='all'?'all':'owner';
+    if(lesson)lesson.results=process.env.VOICE_BOARD_RESULT_LESSON!=='0';
+    if(lesson)lesson.reroute=process.env.VOICE_BOARD_REROUTE==='1';
+    if(lesson)lesson.source=['backend','parallel'].includes(process.env.VOICE_BOARD_LESSON_SOURCE)?process.env.VOICE_BOARD_LESSON_SOURCE:'service';
+    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
       mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({environment:process.env}):null,
@@ -1149,7 +1236,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),
       grokExpressiveTags:process.env.XAI_VOICE_EXPRESSIVE_TAGS === '1',
-      audit:productionSpeaker?.audit??transcriptLog.audit,
+      audit:board?event=>{board.observe(event);voiceAudit(event);}:voiceAudit,
       toolEnvironment:Object.fromEntries(["LARKSUITE_CLI_CONFIG_DIR","LARKSUITE_CLI_DATA_DIR"].filter(key=>process.env[key]).map(key=>[key,process.env[key]])),
       apiKeys:{
       seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY??process.env.DOUBAO_SPEECH_API_KEY,
@@ -1186,7 +1273,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     bridge = createLiveH5Server({ gateway, deviceEndpoint,backendDeviceEndpoint:process.env.VOICE_BACKEND_DEVICE_ENDPOINT??'',
       candidateRelease:process.env.VOICE_CANDIDATE_RELEASE_FILE?JSON.parse(await readFile(process.env.VOICE_CANDIDATE_RELEASE_FILE,'utf8')):undefined,
       listening:process.env.VOICE_LISTENING_DIR ? await (await import('./listening.mjs')).loadVoiceListening(process.env.VOICE_LISTENING_DIR) : undefined,
-      directVoice, speakerRouting, avatarLog,callControlAudit:transcriptLog.audit,
+      directVoice, speakerRouting, avatarLog,board,boardAudience:process.env.VOICE_BOARD_AUDIENCE==='all'?'all':'owner',boardPhotos:board?photos=createPhotoFinder({braveKey:process.env.VOICE_BOARD_BRAVE_KEY??'',directory:process.env.VOICE_BOARD_PHOTO_DIR??(process.env.RTC_H5_TRANSCRIPT_DIR?join(process.env.RTC_H5_TRANSCRIPT_DIR,'board-photos'):''),observe:event=>board.log?.(event)}):null,callControlAudit:transcriptLog.audit,
       phoneInputPolicy:process.env.VOICE_PHONE_INPUT_POLICY ?? 'speaker',
       enableGrok: process.env.VOICE_ENABLE_GROK === '1',
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",
