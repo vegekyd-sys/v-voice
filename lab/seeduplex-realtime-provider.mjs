@@ -11,6 +11,8 @@ export const SEEDUPLEX_VOICES = Object.freeze({
 
 const INPUT_FRAME_BYTES = 640;
 const MAX_PENDING_INPUT_BYTES = 16_000 * 2 * 10;
+// A fifth of a second of audio waiting to be sent is a backlog.
+const INPUT_BACKLOG_BYTES = 16_000 * 2 / 5;
 const MAX_TOOL_CALLS = 100;
 const MAX_TOOL_RESULT_BYTES = 32_000;
 const MAX_CONSULT_RESULT_CHARS = 8_000;
@@ -428,7 +430,10 @@ export class SeeduplexRealtimeVoiceBridge {
 
   #pumpInput() {
     if (!this.ready || this.terminal || this.pendingInput.length < INPUT_FRAME_BYTES) return;
-    const wait = 20 - (Date.now() - this.lastFrameAt);
+    // One frame every 20 ms; a backlog (the process was busy, a timer was late) is worked off
+    // a quarter faster, so what the caller says never reaches the model seconds late.
+    const every = this.pendingInput.length > INPUT_BACKLOG_BYTES ? 16 : 20;
+    const wait = every - (Date.now() - this.lastFrameAt);
     if (wait > 0) {
       this.pacingTimer ??= setTimeout(() => {this.pacingTimer = null;this.#pumpInput();}, wait);
       this.pacingTimer.unref?.();
@@ -442,10 +447,12 @@ export class SeeduplexRealtimeVoiceBridge {
     const frame = this.pendingInput.subarray(0, INPUT_FRAME_BYTES);
     this.pendingInput = this.pendingInput.subarray(INPUT_FRAME_BYTES);
     this.#send({ type: "input_audio_buffer.append", audio: frame.toString("base64") });
-    const now = Date.now(), deadline = this.lastFrameAt + 20;
-    // Compensate small timer jitter instead of accumulating one millisecond of
-    // backlog per packet over hours. A large stall never emits a catch-up burst.
-    this.lastFrameAt = Math.abs(now-deadline) <= 5 ? deadline : now;
+    const now = Date.now(), deadline = this.lastFrameAt + every;
+    // A late timer is made up for by the frames after it. (Only lateness of 5 ms or less
+    // used to be: every later one was lost for good, about 3% of a busy call. After five
+    // minutes the model heard the caller ten seconds late, then "pending input audio
+    // overflow" ended the call: e4ce15bb.) A long stall still never emits a burst.
+    this.lastFrameAt = Math.abs(now-deadline) <= 120 ? deadline : now;
     if (this.pendingInput.length >= INPUT_FRAME_BYTES) this.#pumpInput();
   }
 
