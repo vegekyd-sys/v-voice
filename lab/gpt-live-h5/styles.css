@@ -1873,7 +1873,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   .board-row { grid-template-columns: minmax(0, 1fr); }
   /* A phone has no room to hold a place for what V has not reached: a block
      appears when its first piece does, and so do the items of a list. */
-  .board-page[data-lesson] .board-block:has([data-ink="false"]):not(:has([data-ink="true"])):not([data-type="photo"]), .board-page[data-lesson] .board-block[data-ink="false"] { display: none; }
+  .board-page[data-lesson] .board-block:has([data-ink="false"]):not(:has([data-ink="true"])):not([data-type="photo"]):not([data-type="versus"]), .board-page[data-lesson] .board-block[data-ink="false"] { display: none; }
   .board-page[data-lesson] :is(.board-list, .board-steps, .board-timeline, .board-stack) > [data-ink="false"], .board-page[data-lesson] .board-vs-row[data-ink="false"] { display: none; }
   .board-page[data-lesson] .board-body { align-content: start; }
   .board-term .board-key { font-size: 30px; }
@@ -1886,7 +1886,10 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   .board-overlap li { font-size: 13px; }
   .board-overlap .board-key { font-size: 16px; }
   /* On a phone a diagram whose nodes carry pictures needs the screen; the big print would push it off. */
-  .board-body:has(.board-flow[data-pictured], .board-versus .board-thumb, .board-timeline .board-thumb) .board-photo { display: none; }
+  /* (Only once that diagram has something showing: until then the print is all there is to look at.) */
+  .board-body:has(:is(.board-flow[data-pictured], .board-versus:has(.board-thumb), .board-timeline:has(.board-thumb)):has([data-ink="true"])) .board-photo { display: none; }
+  /* The page runs under the controls; its last line stops above them. */
+  .call-page[data-board="true"] .board-scroll { padding-bottom: calc(var(--controls-height, 76px) + 10px); }
 }
 
 /* desktop: the page on the left, V above a narrower chat panel on the right.

@@ -486,7 +486,7 @@ function useFit(scroller, page, key) {
     const outer = scroller.current, inner = page.current;
     if (!outer || !inner) return;
     const fit = () => {
-      const wide = outer.clientWidth >= 640, least = wide ? .62 : .78, room = outer.clientHeight;
+      const wide = outer.clientWidth >= 640, least = wide ? .62 : .78, edge = getComputedStyle(outer), room = outer.clientHeight - (parseFloat(edge.paddingTop) || 0) - (parseFloat(edge.paddingBottom) || 0);
       let zoom = 1;
       inner.style.setProperty('--zoom', '1'); inner.style.zoom = '1';
       // Three main blocks in one column leave half a wide panel empty: they go two abreast from the start.
