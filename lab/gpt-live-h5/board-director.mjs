@@ -102,7 +102,8 @@ function picturedOnce(block, scene) {
   if (block.t === 'photo') return used.has(block.query) || others.some(other => other.t === 'photo') ? null : block;
   const once = item => { if (!item.img) return item; if (used.has(item.img)) { const {img, ...rest} = item; return rest; } used.add(item.img); return item; };
   const next = {...block};
-  if (next.sides) next.sides = next.sides.map(once);
+  // (The two or three things a comparison is between keep their pictures: a header with one picture missing reads as broken.)
+  for (const side of next.sides ?? []) if (side.img) used.add(side.img);
   for (const key of ['cols', 'nodes', 'items']) if (Array.isArray(next[key])) next[key] = next[key].map(once);
   return next;
 }
