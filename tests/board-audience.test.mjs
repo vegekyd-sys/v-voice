@@ -50,3 +50,12 @@ for(const audience of ['owner','all'])for(const [name,open] of Object.entries(en
  // Another call's board is not readable from here.
  assert.equal((await f.send('/api/board?phone='+phone,{cookie:'',body:drawRequest(call.json().voiceSessionId)})).status===200,false);
 });
+
+test('the iOS app\'s bridge gets a run\'s operations and a photograph as JSON',async t=>{
+ const f=await fixture(t,'all'),{phone,cookie}=await entries.Public(f);
+ const call=await f.send('/api/session?phone='+phone,{cookie,body:{model:'seeduplex'}});
+ const drawn=await f.send('/api/board?phone='+phone,{cookie,body:{...drawRequest(call.json().voiceSessionId),collect:true}});
+ assert.equal(drawn.status,200);assert.deepEqual(drawn.json().ops.map(op=>op.op),['sync','done']);
+ const photo=await f.send('/api/board-image?phone='+phone,{cookie,body:{voiceSessionId:call.json().voiceSessionId,query:'故宫',inline:true}});
+ assert.equal(photo.status,200);assert.deepEqual(photo.json(),{type:'image/jpeg',data:Buffer.from('fixture').toString('base64')});
+});

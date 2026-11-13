@@ -231,6 +231,32 @@ import VVoiceCore
         XCTAssertEqual((snapshot["acknowledgements"] as? [String])?.count, 0)
         await call.end()
     }
+    func testCallBoardReachesThePageThroughTheBridge() async throws {
+        let call = try await client()
+        try await call.startOrContinue()
+        let host = H5WebHost(call:call,onError:{ XCTFail($0) })
+        host.latest = H5Snapshot.make(call,visible:true)
+        let web = host.makeWebView()
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene:scene); window.rootViewController = UIViewController(); window.makeKeyAndVisible()
+        window.rootViewController!.view.addSubview(web); web.frame = window.rootViewController!.view.bounds
+        defer { window.isHidden = true; previous?.makeKeyAndVisible(); host.dispose(); web.configuration.userContentController.removeScriptMessageHandler(forName:"voice",contentWorld:.page) }
+        try await until { host.ready }
+        try await fixture("event", ["event":["type":"transcript","role":"user","text":"给我讲讲故宫","final":true]])
+        try await fixture("event", ["event":["type":"transcript","role":"assistant","text":"故宫在北京中轴线上，先看太和殿。","final":true]])
+        // The page asks over the bridge, the native client relays it, and the picture and its photograph are shown.
+        try await until({
+            host.update(H5Snapshot.make(call,visible:true),foreground:true)
+            let title = try? await web.evaluateJavaScript("document.querySelector('.board-title')?.textContent ?? ''") as? String
+            let photo = try? await web.evaluateJavaScript("Boolean(document.querySelector('.board-print img')?.naturalWidth)") as? Bool
+            return title == "Fixture 画面" && photo == true
+        }, timeout:15)
+        let state = try await stats()
+        XCTAssertGreaterThan((state["boardRequests"] as? [[String: Any]])?.count ?? 0, 0)
+        XCTAssertEqual(state["boardImages"] as? [String], ["fixture-print"])
+        await call.end()
+    }
     func testPendingDialPublishesCallingBeforeAudioIsReady() async throws {
         let call = try await client()
         try await fixture("slow-session", ["ms":1200])

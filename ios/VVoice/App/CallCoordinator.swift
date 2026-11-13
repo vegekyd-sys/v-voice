@@ -1274,7 +1274,15 @@ import VVoiceCore
     // Only cosmetic H5 calls use this narrow bridge. The native owner supplies
     // the real voiceSessionId; JavaScript never receives a cookie or relay ticket.
     func h5Cosmetic(_ route: String, body: [String: Any], owner: String, fromH5: Bool = true) async throws -> [String: Any] {
-        guard active, presentationID == owner, let voiceID, ["avatar", "avatar-events"].contains(route) else { throw VoiceError.connection }
+        guard active, presentationID == owner, let voiceID, ["avatar", "avatar-events", "board", "board-image"].contains(route) else { throw VoiceError.connection }
+        // (The board answers in JSON over the bridge: every operation of a run, or a photograph as base64.)
+        if route == "board" || route == "board-image" {
+            var payload = body; payload["voiceSessionId"] = voiceID; payload[route == "board" ? "collect" : "inline"] = true
+            let generation = state.generation
+            let result = try await api.call(route, body: payload, refresh: false)
+            guard owned(generation), presentationID == owner else { throw CancellationError() }
+            return result
+        }
         if route == "avatar", fromH5, !appIsActive { throw CancellationError() }
         let generation = state.generation
         let tracksH5 = route == "avatar" && fromH5

@@ -874,14 +874,17 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if (!request) return json(res,400,{error:'画面上下文无效'});
         // One operation per event, flushed as the model writes it. The page
         // going away (hang-up, newer request) stops the model call.
-        res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-store, no-transform','x-accel-buffering':'no'});
-        res.flushHeaders();
+        // (`collect`: the iOS app's native bridge cannot pass a stream. It gets every operation of
+        // the run in one JSON reply instead, the same operations in the same order.)
+        const collected = params.collect === true ? [] : null;
+        if (!collected) { res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-store, no-transform','x-accel-buffering':'no'}); res.flushHeaders(); }
         const gone = new AbortController();
-        res.on('close',()=>gone.abort());
-        const send = value => { if (!res.writableEnded && !gone.signal.aborted) res.write(`data: ${JSON.stringify(value)}\n\n`); };
+        res.on('close',()=>{ if (!res.writableEnded) gone.abort(); });
+        const send = value => { if (collected) { if (collected.length < 200) collected.push(value); return; } if (!res.writableEnded && !gone.signal.aborted) res.write(`data: ${JSON.stringify(value)}\n\n`); };
         const result = await board.run({owner:params.voiceSessionId,...request,signal:gone.signal,quiet:binding?.permissionProfile!=='personal-tianyi',
           onOp:op=>{ if (context.active === active) send(op); }});
         send({op:'done',reason:result.reason,rev:result.rev??board.scene(params.voiceSessionId).rev,durationMs:result.durationMs,firstOpMs:result.firstOpMs??null});
+        if (collected) return json(res,200,{ops:collected});
         res.end();return;
       }
       if (pathname === '/api/board-image') {
@@ -895,6 +898,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const search = text => (active.gateway??gateway).request('tools.invoke',{agentId:binding.agentId??'makaron',sessionKey:active.sessionKey,name:'web_search',args:{query:text,count:5}},{timeoutMs:12000});
         const found = await boardPhotos.find(query,{search});
         if (!found) return json(res,404,{error:'没有找到照片'});
+        // (`inline`: for the iOS app's native bridge, which passes JSON only.)
+        if (params.inline === true) return found.bytes.length <= 1400*1024 ? json(res,200,{type:found.type,data:Buffer.from(found.bytes).toString('base64')}) : json(res,404,{error:'照片太大'});
         res.writeHead(200,{'content-type':found.type,'cache-control':'no-store','content-length':found.bytes.length});
         res.end(found.bytes);return;
       }

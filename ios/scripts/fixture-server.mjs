@@ -20,7 +20,7 @@ let shellDelayMS=0;
 let lastOffer=null,offerReply=null;const eventClients=new Set();
 let limitNextSession=false,slowClose=false,slowCloseMS=250,failClose=false,closeRequests=0;
 let documents=[],pending=[],acknowledgements=[],supplements=[];
-let avatarRequests=[],avatarEvents=[],avatarReply="reaction-0",avatarContinuations=["reaction-1","listen-5"],slowAvatar=false;
+let boardRequests=[],boardImages=[],avatarRequests=[],avatarEvents=[],avatarReply="reaction-0",avatarContinuations=["reaction-1","listen-5"],slowAvatar=false;
 let shellVariant='none',shellRequests=[],shellRedirects=0;
 let inputFrames=0,inputActiveFrames=0,peakInputRMS=0;
 async function shellRelease(variant){
@@ -53,7 +53,7 @@ const server=createServer(async(req,res)=>{
  const path=new URL(req.url,'http://127.0.0.1').pathname;
  const body=await new Promise(resolve=>{const chunks=[];req.on('data',b=>chunks.push(b));req.on('end',()=>{try{resolve(JSON.parse(Buffer.concat(chunks).toString()||'{}'));}catch{resolve({});}});});
  const send=(status,value)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
- if(path==='/fixture/state')return send(200,{fastDials,statusRequests,sessionRequests,active,sessions,inputBytes,zeroBytes,inputFrames,inputActiveFrames,peakInputRMS,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,presentationRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects,lastOffer,locationResults,systemBackgroundReady});
+ if(path==='/fixture/state')return send(200,{boardRequests,boardImages,fastDials,statusRequests,sessionRequests,active,sessions,inputBytes,zeroBytes,inputFrames,inputActiveFrames,peakInputRMS,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,presentationRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects,lastOffer,locationResults,systemBackgroundReady});
  if(path==='/fixture/redirect-target'){shellRedirects++;return send(200,{});}
  if(path==='/voice/ios-shell-release.json'){
    shellRequests.push({cookie:!!req.headers.cookie,authorization:!!req.headers.authorization});
@@ -74,7 +74,7 @@ const server=createServer(async(req,res)=>{
    }
    if(body.command==='location-frame'){client?.send(JSON.stringify({...body.frame,voiceSessionId:body.frame?.voiceSessionId??active}));return send(200,{});}
    if(body.command==='gpt-answer'&&offerReply){const reply=offerReply;offerReply=null;reply(200,{sdp:body.sdp});}
-   if(body.command==='reset'){lastOffer=null;offerReply?.(409,{error:'Reset'});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();}
+   if(body.command==='reset'){boardRequests=[];boardImages=[];lastOffer=null;offerReply?.(409,{error:'Reset'});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();}
    if(body.command==='shell-delay')shellDelayMS=Math.max(0,Math.min(2000,Number(body.ms)||0));
    if(body.command==='shell-release')shellVariant=body.variant??'none';
    if(body.command==='reset'){shellDelayMS=0;shellVariant='none';shellRequests=[];shellRedirects=0;inputFrames=0;inputActiveFrames=0;peakInputRMS=0;}
@@ -151,6 +151,18 @@ const server=createServer(async(req,res)=>{
    const reply={picture:avatarReply,continuations:avatarContinuations,revision:body.revision};
    if(slowAvatar){slowAvatar=false;setTimeout(()=>send(200,reply),1200);return;}
    return send(200,reply);
+ }
+ // The call board through the native bridge: one JSON reply per run, a photograph as base64.
+ if(path==='/voice/api/board'){
+   if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
+   if(body.collect!==true||!Array.isArray(body.turns))return send(400,{error:'Invalid board request'});
+   boardRequests.push({trigger:body.trigger,turns:body.turns.length});
+   return send(200,{ops:[{op:'sync',scene:{serial:1,rev:boardRequests.length,title:'Fixture 画面',blocks:[{id:'p',t:'photo',query:'fixture-print'},{id:'l',t:'list',items:[{id:'a',h:'第一点'}]}]}},{op:'done',reason:'drawn',rev:boardRequests.length}]});
+ }
+ if(path==='/voice/api/board-image'){
+   if(body.voiceSessionId!==active||body.inline!==true||body.query!=='fixture-print')return send(404,{error:'No photograph'});
+   boardImages.push(body.query);
+   return send(200,{type:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='});
  }
  if(path==='/voice/api/avatar-events'){
    try{avatarEvents.push(...body.events.map(normalizeAvatarEvent));return send(200,{ok:true});}catch{return send(400,{error:'Invalid telemetry'});}

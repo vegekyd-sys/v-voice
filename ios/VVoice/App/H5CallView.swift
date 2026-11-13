@@ -260,6 +260,8 @@ struct H5WebSurface: UIViewRepresentable {
             onReading(reading)
             return [:]
         case "avatar", "avatarEvents": return try await call.h5Cosmetic(action == "avatar" ? "avatar" : "avatar-events", body: payload, owner: owner)
+        // The call board: the page asks for a picture of what is being said, and for a photograph on it.
+        case "board", "boardImage": return try await call.h5Cosmetic(action == "board" ? "board" : "board-image", body: payload, owner: owner)
         case "saveMedia":
             guard owned, let text = payload["url"] as? String, let url = URL(string: text), let kind = payload["kind"] as? String else { throw VoiceError.protocolMismatch }
             try await MediaLibrarySaver.save(url: url, kind: kind)
