@@ -77,6 +77,8 @@ private final class CaptureHandoff: @unchecked Sendable {
     private var captureMaxDeliveryMS = 0.0
     private var previousCaptureTime: Double?
     private var outputFirstAt: Double?
+    /// Every frame accepted for playback this call (with `queuedFrames`, how far the voice has got).
+    private(set) var outputFrames = 0
     private var outputStartedOnce = false
     private var started = false
     private var outputFinished = false
@@ -205,6 +207,7 @@ private final class CaptureHandoff: @unchecked Sendable {
         guard !data.isEmpty, data.count % 2 == 0, data.count <= 480_000 else { throw VoiceError.protocolMismatch }
         let count = data.count / 2
         guard try ledger.accept(frames: count, sequence: sequence) else { return }
+        outputFrames += count
         if outputFirstAt == nil {
             outputFirstAt = ProcessInfo.processInfo.systemUptime
             CallDiagnostics.record("audio.output-first", code: "ms=\(count / 24) paused=\(playbackPaused)")

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-14 — iPhone: the board follows the voice as on the web
+
+- The iOS App reports how far its own audio has got (`audioProgress`: received and still-queued PCM bytes, build 46, `capabilities.audioProgress`), and the page follows the voice with the web page's cursor. An App without it (build 45) follows the voice by time from when V began the reply, instead of showing every piece at once.
+
 ## 2026-11-13 — The call board: V draws as it explains
 
 - With `VOICE_BOARD=1` a call has a board beside the conversation: a canvas of pages drawn by one streaming illustrator (DeepSeek, `DEEPSEEK_API_KEY` directly or through OpenRouter), each piece shown when V's voice reaches it. Blocks: photo, list, steps, compare, stats, bars, table, flow, tiles, formula, timeline, versus, overlap, stack, scale and `draw` (a sketch of plain shapes). Pages stay for the whole call; a follow-up opens a page from the one it came from, or returns to it.

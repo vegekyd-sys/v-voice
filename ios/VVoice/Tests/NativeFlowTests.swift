@@ -362,6 +362,17 @@ import VVoiceCore
         XCTAssertTrue(call.active)
         await call.end()
     }
+    func testAudioProgressReportsHeardAndWaitingAudioToThePage() async throws {
+        let call = try await client()
+        try await call.startOrContinue()
+        try await fixture("audio", ["ms":5000])
+        try await until { ((try? call.audioProgress(owner: call.presentationID))?["outputBytes"] as? Int ?? 0) > 0 }
+        let progress = try call.audioProgress(owner: call.presentationID)
+        let received = try XCTUnwrap(progress["outputBytes"] as? Int), waiting = try XCTUnwrap(progress["queuedBytes"] as? Int)
+        XCTAssertGreaterThan(received, 0); XCTAssertLessThanOrEqual(waiting, received)
+        XCTAssertThrowsError(try call.audioProgress(owner: "another page"))
+        await call.end()
+    }
     func testNativeDuplexReplacesOnlyOldResponseAndKeepsCaptureAndHangup() async throws {
         let call = try await client()
         try await fixture("native-mode"); call.model = .seeduplex
