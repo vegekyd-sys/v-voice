@@ -595,7 +595,7 @@ async function stopCall({failure}={}) {
   if (active) {
     active.avatarTelemetry?.close();
     active.avatarReactions?.dispose();
-    active.board?.dispose(); clearInterval(active.boardFocusTimer); view.set({ board: null, boardSpoken: null });
+    active.board?.dispose(); clearInterval(active.boardFocusTimer); view.set({ board: null, boardCanvas: null, boardSpoken: null });
     for (const pending of active.boardPhotos?.values() ?? []) void pending.then(url => { if (url) URL.revokeObjectURL(url); });
     active.relay?.dispose();
     active.dialConnection?.dispose();
@@ -717,7 +717,7 @@ async function startCall() {
       isCurrent: () => call === active,
       // A new picture goes up together with where the voice is on it: set a
       // moment apart, a lesson showed whole for one frame before hiding.
-      onScene: scene => { if (call === active) view.set({ board: scene, boardSpoken: active.boardFollow?.(scene) ?? view.get().boardSpoken }); },
+      onScene: (scene, canvas) => { if (call === active) view.set({ board: scene, boardCanvas: canvas ?? null, boardSpoken: active.boardFollow?.(scene) ?? view.get().boardSpoken }); },
       observe: event => {
         const trace = JSON.parse(document.body.dataset.boardTimeline ?? '[]');
         trace.push({ ...event, at: Math.round(performance.now()) });

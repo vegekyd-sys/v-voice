@@ -497,7 +497,8 @@ function useFit(scroller, page, key) {
   return dense.key === key && dense.on;
 }
 
-export function Board({scene, spoken, loadPhoto, onClose}) {
+// One page of the canvas: its blocks, fitted to the panel.
+function Sheet({scene, spoken, loadPhoto}) {
   const box = useRef(null), sheet = useRef(null);
   const [missing, setMissing] = useState(() => new Set());
   const dense = useFit(box, sheet, scene.serial);
@@ -505,7 +506,7 @@ export function Board({scene, spoken, loadPhoto, onClose}) {
   const view = {focus: spoken?.focus || scene.focus, ahead: new Set(spoken?.ahead ?? []), loadPhoto};
   useEffect(() => {
     if (!view.focus) return;
-    box.current?.querySelector('[data-now]')?.scrollIntoView?.({block: 'nearest', behavior: 'smooth'});
+    box.current?.querySelector('[data-now]')?.scrollIntoView?.({block: 'nearest', inline: 'nearest', behavior: 'smooth'});
   }, [view.focus, scene.rev]);
   const blocks = scene.blocks.filter(block => !(block.t === 'photo' && missing.has(block.query)));
   // Neighbours that each ask for part of the width (`w`) stand side by side.
@@ -517,22 +518,14 @@ export function Board({scene, spoken, loadPhoto, onClose}) {
     if (width && ahead && last.length < (ahead === 'third' ? 3 : 2)) last.push(block); else rows.push([block]);
   }
   return (
-    <section className="board" data-lesson={scene.lesson || undefined} aria-label={scene.title ? `画面：${scene.title}` : '画面'}>
-      <header className="board-top">
-        {scene.title ? <h2 key={scene.serial} className="board-title"><span>{scene.title}</span><Stroke className="board-title-line" d={underline(scene.title)} /></h2> : <span />}
-        <button type="button" className="board-close" aria-label="收起画面" onClick={onClose}>
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
-        </button>
-      </header>
-      <div className="board-scroll" ref={box} role="region" aria-live="polite" aria-label="画面内容" tabIndex={0}>
+    <div className="board-scroll" ref={box} role="region" aria-live="polite" aria-label="画面内容" tabIndex={0}>
       <div className="board-body" ref={sheet}
         data-side={blocks.some(block => SMALL.has(block.t)) && blocks.some(block => !SMALL.has(block.t)) || undefined}>
         {rows.map(row => row.length > 1
           ? <div key={`${scene.serial}:row:${row[0].id}`} className="board-row" data-n={Math.min(3, row.length)} data-w={row[0].w ?? 'half'}>{row.map(piece)}</div>
           : piece(row[0]))}
       </div>
-      </div>
-    </section>
+    </div>
   );
   function piece(block) {
     const key = `${scene.serial}:${block.id}`, small = SMALL.has(block.t);
@@ -551,4 +544,46 @@ export function Board({scene, spoken, loadPhoto, onClose}) {
       </div>
     );
   }
+}
+
+/**
+ * The canvas. Every page drawn in the call stays on it, side by side; the
+ * panel looks at one of them. The view goes to the page V is drawing on, and
+ * the caller can look back at an earlier page (the tabs under the title)
+ * until V draws again.
+ */
+export function Board({scene, canvas, spoken, loadPhoto, onClose}) {
+  const pages = canvas?.zones?.length ? canvas.zones.map(zone => zone.serial === scene.serial ? scene : zone) : [scene];
+  const active = Math.max(0, pages.findIndex(page => page.serial === scene.serial));
+  const [peek, setPeek] = useState(null);
+  // V drawing anything, anywhere, brings the view back to where V is.
+  useEffect(() => { setPeek(null); }, [scene.serial, scene.rev]);
+  const shown = peek !== null && pages.some(page => page.serial === peek) ? pages.findIndex(page => page.serial === peek) : active;
+  const page = pages[shown];
+  return (
+    <section className="board" data-pages={pages.length} aria-label={page.title ? `画面：${page.title}` : '画面'}>
+      <header className="board-top">
+        {page.title ? <h2 key={page.serial} className="board-title"><span>{page.title}</span><Stroke className="board-title-line" d={underline(page.title)} /></h2> : <span />}
+        <button type="button" className="board-close" aria-label="收起画面" onClick={onClose}>
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+        </button>
+      </header>
+      {pages.length > 1 && (
+        <nav className="board-tabs" aria-label="画布上的页">
+          {pages.map((item, index) => (
+            <button key={item.serial} type="button" data-current={index === shown || undefined} data-live={index === active || undefined}
+              onClick={() => setPeek(index === active ? null : item.serial)}>{item.title || `第 ${index + 1} 页`}</button>
+          ))}
+        </nav>
+      )}
+      <div className="board-track" style={{'--at': shown, '--pages': pages.length}}>
+        {pages.map((item, index) => (
+          <div key={item.serial} className="board-page" data-lesson={item.lesson || undefined} data-current={index === shown || undefined} aria-hidden={index !== shown || undefined}>
+            {/* Pages far from view are not laid out; the neighbours are, so the move between them has both in it. */}
+            {Math.abs(index - shown) <= 1 && <Sheet scene={item} spoken={index === active ? spoken : null} loadPhoto={loadPhoto} />}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }

@@ -122,6 +122,8 @@ export const INITIAL_VIEW = Object.freeze({
   // The call board (board-scene.mjs); null until the director draws something.
   board: null,
   // Where V's voice is on the board (board-scene.mjs spokenProgress); null when V is not speaking.
+  // Every page of the call's canvas ({zones, active}); null where there is only the one page.
+  boardCanvas: null,
   boardSpoken: null,
 });
 

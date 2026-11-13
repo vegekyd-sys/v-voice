@@ -507,7 +507,7 @@ function CallPage({view, actions, options}) {
           )}
           {inCall && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
         </section>
-        {board && <Board scene={board} spoken={state.boardSpoken} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(board.serial)} />}
+        {board && <Board scene={board} canvas={state.boardCanvas} spoken={state.boardSpoken} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(board.serial)} />}
         {inCall && (
           <aside className="chat-panel" aria-label="聊天内容">
             <Conversation state={state} options={options} history={wide || history} setHistory={setHistory} onOverflow={latchOverflow} wide={wide} />

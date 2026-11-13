@@ -256,13 +256,17 @@ export const STREAM_INSTRUCTIONS = `你是 V 的画面作者。V 正在电话里
 
 输入是一个 JSON：trigger 说明现在是哪一步；conversation 是最近的对话，最后一条 assistant 是 V 目前已经说出的话（一个字都不能改）；evidence 是 V 回答前查到的资料（有的话）；screen 是屏幕上现在的画面（没有就是空的）；notes 是这段话的作者留的画面提示（有的话）：每条是一句话（say）和这句话该配的画面（show）。有 notes 就照着画：用它点名的图示类型和内容，标题用 notes 的 title；每样东西仍然挂在它那一句 say 的字上。recent 是这通电话前几页用过的图示类型（有的话）：两种图示都合适时，挑最近没用过的那种，不要每一页都长一个样。
 
+画面是一块画布，上面有好几页，每个话题一页，页不会消失：screen 是 V 现在所在的这一页，canvas 列出画布上之前的页（id、标题、上面有什么）。
+
 输出：每行一个 JSON 操作，不要任何别的文字。
-{"op":"scene","title":"不超过 12 个字"}   开一页新的（换话题时）。旧页会被换掉。
+{"op":"scene","title":"不超过 12 个字"}   在画布上开一页新的（换了话题时）。之前的页还留在画布上。
+{"op":"zone","id":"z2"}                  回到画布上之前的某一页（用户回头问那一页上的东西时），之后的 put 加在那一页上。
 {"op":"put","block":{区块}}              放一个区块；id 和屏幕上已有的相同就是更新那一个。
 {"op":"none"}                            这次没有要画的。
 
 # 按 trigger 做事
-- user：用户刚说完，V 还没开口。只有当用户明显在问一件新的、具体的东西（一个地方、一个人、一件产品、一个概念）时，输出 scene（标题）；如果问的是一件拍得出照片的具体东西（一个地方、一栋建筑、一个人、一个角色、一件产品、一种动物或食物），再加一个 photo 区块，query 写它的名字。抽象的概念、数学、规则、天气、「A 和 B 的区别」这类问题不放 photo，只开页。不写任何条目、数字、结论，那些等 V 说了再画。闲聊、应答、接着当前这页追问、看不出要讲什么：none。
+- 先判断这句话落在哪：接着 screen 这一页的话题往下讲 → 不开新页，直接往这一页加（这一页已经有 4 个区块了就开新页）；换了话题 → scene 开新页；回头问 canvas 里某一页上的东西（「刚才那个第二点」「回到故宫」「再说说前面那个对比」）→ zone 回到那一页再加。
+- user：用户刚说完，V 还没开口。回头问之前某一页时，这一步就可以先 zone 回去。只有当用户明显在问一件新的、具体的东西（一个地方、一个人、一件产品、一个概念）时，输出 scene（标题）；如果问的是一件拍得出照片的具体东西（一个地方、一栋建筑、一个人、一个角色、一件产品、一种动物或食物），再加一个 photo 区块，query 写它的名字。抽象的概念、数学、规则、天气、「A 和 B 的区别」这类问题不放 photo，只开页。不写任何条目、数字、结论，那些等 V 说了再画。闲聊、应答、接着当前这页追问、看不出要讲什么：none。
 - assistant_progress：V 说到一半。把 V 已经说出来的内容画上去。屏幕是空的或者是别的话题：先 scene 再 put。屏幕就是这个话题：只 put。可以先放一个只有头两项的区块，下次再把同一个 id 的区块整块重发、在后面接着加。V 这次没有说出新的可画的东西：none。
 - assistant_end：V 的话到齐了。把整页补全：补上没画到的条目，需要的话加一张便签（V 的结论或提醒）。
 - 一页只有一屏：整页最多 3 个区块，外加一张便签。V 讲得多，就把内容归进这几个区块里（同一类的并成一个区块、每个区块挑最要紧的 3 到 5 项），不要 V 每讲一段就新开一个区块。照片算一个区块。
@@ -282,6 +286,7 @@ ${HANGING.replaceAll('讲稿', 'V 的话').replaceAll('say 里', 'V 的话里')}
 export function refineStreamOp(op, {said = '', trigger = ''} = {}) {
   if (!op) return null;
   if (op.op === 'scene') return {op: 'scene', title: op.title, lesson: true, late: true};
+  if (op.op === 'zone') return op;
   if (op.op !== 'put') return op;
   // Before V has spoken there is nothing to hang a fact on: a print of the thing asked about, nothing else.
   if (trigger === 'user') return op.block.t === 'photo' ? {op: 'put', block: (({q, ...block}) => block)(op.block)} : null;

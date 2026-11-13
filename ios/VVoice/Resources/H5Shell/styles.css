@@ -1352,6 +1352,41 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   background: #fffdfecc;
   border: 1px solid #fff;
 }
+/* The canvas: every page of the call side by side; the panel looks at one, and
+   the view slides to the page V is on (ui/board.jsx Board). */
+.board-track { flex: 1 1 auto; min-height: 0; display: flex; overflow: hidden; }
+.board-page {
+  flex: 0 0 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(calc(var(--at, 0) * -100%));
+  transition: transform .6s cubic-bezier(.3, .9, .3, 1), opacity .45s;
+  opacity: .25;
+}
+.board-page[data-current] { opacity: 1; }
+.board-tabs { display: flex; flex-wrap: nowrap; gap: 6px; padding: 8px 20px 0 40px; overflow-x: auto; scrollbar-width: none; }
+.board-tabs::-webkit-scrollbar { display: none; }
+.board-tabs button {
+  flex: 0 0 auto;
+  max-width: 9em;
+  padding: 2px 10px;
+  border: 1.5px solid #cbbfd6;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--hand);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.board-tabs button[data-current] { border-color: var(--pen); color: var(--ink); background: #fffdfa; }
+.board-tabs button[data-live]:not([data-current])::after { content: " ●"; color: var(--pen); font-size: 9px; vertical-align: middle; }
+
 /* The panel scrolls only when a page cannot be made to fit (ui/board.jsx useFit);
    a page shorter than the panel sits in its middle, not at its top. */
 .board-scroll {
@@ -1627,7 +1662,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 }
 [data-ink="false"] .board-em { background-size: 0% 100%; }
 /* While V is on one piece of a lesson, the others step back a little. */
-.board[data-lesson]:has([data-now]) :is(li, .board-piece, .board-node, .board-compare section, .board-stats > div)[data-ink="true"]:not([data-now]) { opacity: .66; }
+.board-page[data-lesson]:has([data-now]) :is(li, .board-piece, .board-node, .board-compare section, .board-stats > div)[data-ink="true"]:not([data-now]) { opacity: .66; }
 .board-piece[data-now] { scale: 1.035; }
 .board-piece { transition: opacity .45s ease-out, transform .5s cubic-bezier(.2, 1.3, .35, 1), filter .5s, scale .4s cubic-bezier(.2, 1.3, .35, 1); }
 :is(.board-list, .board-steps) li[data-now] { transform: translateX(4px); }
@@ -1803,15 +1838,15 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 
 /* lesson mode: nothing is on the page before V says it. A piece waits unseen
    and lands when the voice reaches the sentence it hangs on. */
-.board[data-lesson] :is(li, section, dl > div, .board-node, .board-block, .board-piece)[data-ink="false"] { opacity: 0; }
-.board[data-lesson] .board-piece[data-ink="false"] { transform: translateY(8px) scale(.96); }
-.board[data-lesson] :is(li, section, dl > div, .board-block) { transition: opacity .45s ease-out, transform .5s cubic-bezier(.2, 1.3, .35, 1); }
-.board[data-lesson] :is(li, dl > div)[data-ink="false"] { transform: translateY(10px); }
-.board[data-lesson] .board-block[data-ink="false"] { transform: translateY(-12px) rotate(calc(var(--tilt, 0deg) + 4deg)) scale(1.04); }
-.board[data-lesson] .board-node { transition: opacity .45s ease-out; }
-.board[data-lesson] :is(.board-arrow, .board-flow-label)[data-ink="false"] { opacity: 0; }
-.board[data-lesson] .board-steps li:not(:last-child)::after { transition: opacity .45s; }
-.board[data-lesson] .board-steps li[data-ink="false"]::after { opacity: 0; }
+.board-page[data-lesson] :is(li, section, dl > div, .board-node, .board-block, .board-piece)[data-ink="false"] { opacity: 0; }
+.board-page[data-lesson] .board-piece[data-ink="false"] { transform: translateY(8px) scale(.96); }
+.board-page[data-lesson] :is(li, section, dl > div, .board-block) { transition: opacity .45s ease-out, transform .5s cubic-bezier(.2, 1.3, .35, 1); }
+.board-page[data-lesson] :is(li, dl > div)[data-ink="false"] { transform: translateY(10px); }
+.board-page[data-lesson] .board-block[data-ink="false"] { transform: translateY(-12px) rotate(calc(var(--tilt, 0deg) + 4deg)) scale(1.04); }
+.board-page[data-lesson] .board-node { transition: opacity .45s ease-out; }
+.board-page[data-lesson] :is(.board-arrow, .board-flow-label)[data-ink="false"] { opacity: 0; }
+.board-page[data-lesson] .board-steps li:not(:last-child)::after { transition: opacity .45s; }
+.board-page[data-lesson] .board-steps li[data-ink="false"]::after { opacity: 0; }
 
 @keyframes board-in { from { opacity: 0; } }
 @keyframes board-drop { from { opacity: 0; transform: translateY(-14px) rotate(calc(var(--tilt, 0deg) + 4deg)) scale(1.04); } }
@@ -1884,6 +1919,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   .call-page[data-board="true"] .conversation { flex: 1 1 0; max-height: none; }
   .call-page[data-board="true"] .turns { padding-top: 28px; }
   .board-top { padding: 22px 10px 0 44px; }
+  .board-tabs { padding: 10px 30px 0 60px; }
   .board-title { font-size: 34px; }
   .board-body { padding: 34px 30px 34px 60px; gap: 34px 30px; }
   .board-body[data-side] { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); grid-auto-flow: row dense; }

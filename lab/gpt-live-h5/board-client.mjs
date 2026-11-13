@@ -2,7 +2,7 @@
 // to ask the director for a picture, and applies the operations it streams
 // back. Cosmetic like the avatar reactions: nothing here is awaited by speech,
 // tools or the call itself, and a failed request only leaves the board as it was.
-import {applyOp, emptyScene, normalizeOp, normalizeScene} from './board-scene.mjs';
+import {applyOp, emptyScene, normalizeOp, normalizeScene, normalizeCanvas} from './board-scene.mjs';
 import {orderedTranscriptRows} from './transcript-presentation.mjs';
 
 export const BOARD_REQUEST_TIMEOUT_MS = 25000;
@@ -98,7 +98,7 @@ export async function readEventStream(response, onEvent) {
 
 export function createBoardClient({request, onScene = () => {}, isCurrent = () => true, now = Date.now, observe = () => {},
   setTimer = setTimeout, clearTimer = clearTimeout} = {}) {
-  let scene = emptyScene(), closed = false, busy = false, timer = null, controller = null, latest = null, runs = 0;
+  let scene = emptyScene(), canvas = null, closed = false, busy = false, timer = null, controller = null, latest = null, runs = 0;
   let lastUser = '', lastAssistantKey = '', lastAssistantText = '', lastAssistantAt = -Infinity, lastEnd = '', documents = 0, evidence = false;
   const schedule = (wait = SETTLE_MS) => {
     if (closed || busy || !latest) return;
@@ -130,10 +130,11 @@ export function createBoardClient({request, onScene = () => {}, isCurrent = () =
   function apply(value) {
     if (value?.op === 'done') { observe({type: 'done', reason: value.reason, durationMs: value.durationMs, firstOpMs: value.firstOpMs}); return; }
     let next = scene;
-    if (value?.op === 'sync') next = normalizeScene(value.scene) ?? scene;
+    let pages = canvas;
+    if (value?.op === 'sync') { next = normalizeScene(value.scene) ?? scene; pages = value.canvas ? normalizeCanvas(value.canvas) ?? canvas : null; }
     else { const op = normalizeOp(value); if (op) next = applyOp(scene, op); }
-    if (next === scene) return;
-    scene = next; onScene(scene);
+    if (next === scene && pages === canvas) return;
+    scene = next; canvas = pages; onScene(scene, canvas);
   }
   async function run() {
     timer = null;
@@ -164,6 +165,8 @@ export function createBoardClient({request, onScene = () => {}, isCurrent = () =
   }
   return {
     get scene() { return scene; },
+    /** Every page drawn in this call and which one V is on; null where the service keeps a single page. */
+    get canvas() { return canvas; },
     /** Called with every transcript snapshot the page renders. */
     update({snapshot}) {
       if (closed) return;

@@ -2,7 +2,7 @@
 // it on the caller's screen. It runs beside the voice model, never in its
 // audio path, and has no tools, permissions or say in what V does. Its output
 // is validated line by line (board-scene.mjs) before anything reaches a page.
-import {applyOp, createLineParser, emptyScene, normalizeOp, sceneDigest, scenePictures} from './board-scene.mjs';
+import {applyOp, createLineParser, emptyScene, normalizeOp, sceneDigest, scenePictures, zoneDigest, zoneId} from './board-scene.mjs';
 import {appendFile, mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
 
@@ -73,9 +73,10 @@ const evidenceText = result => {
 };
 
 /** Build the user message for one run. Everything in it is conversation data. */
-export function boardRequest({trigger, scene, turns, evidence, notes = null, recent = []}) {
+export function boardRequest({trigger, scene, turns, evidence, notes = null, recent = [], canvas = []}) {
   return JSON.stringify({
     trigger,
+    ...(canvas.length ? {canvas} : {}),
     ...(notes ? {notes} : {}),
     ...(recent.length ? {recent} : {}),
     screen: sceneDigest(scene) ?? '（画面现在是空的）',
@@ -124,9 +125,13 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
     row.touched = now();
     return row;
   };
+  // Every page of a call's canvas, oldest first, and the one V is on.
+  const canvasOf = row => ({zones: [...(row.zones ?? []).filter(zone => zone.serial !== row.scene.serial), row.scene].sort((a, b) => a.serial - b.serial), active: zoneId(row.scene)});
   return {
     available: Boolean(complete),
     log: record,
+    /** The whole canvas of a call (see board-scene.mjs normalizeCanvas). */
+    canvas(id) { const row = owners.get(id); return row ? canvasOf(row) : {zones: [], active: ''}; },
     /** Tap on the service audit stream; keeps the latest lookup results per call. */
     observe(event) {
       if (event?.type !== 'tool.delivered' || !EVIDENCE_TOOLS.has(event.name) || typeof event.voiceSessionId !== 'string') return;
@@ -198,7 +203,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       const controller = row.controller = new AbortController();
       const abort = () => controller.abort();
       if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, {once: true});
-      if (clientRev !== row.scene.rev) onOp({op: 'sync', scene: row.scene});
+      if (clientRev !== row.scene.rev) onOp({op: 'sync', scene: row.scene, ...(stream ? {canvas: canvasOf(row)} : {})});
       if (illustrate && !stream) {
         try {
           // Nothing is guessed before V has answered, and nothing is redrawn mid-sentence.
@@ -246,17 +251,37 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
           }
         }
         if (stream && op.op !== 'none') {
-          // One screen: a page holds four blocks. More would only shrink it or make it scroll.
-          if (op.op === 'put' && row.scene.pending === null && row.scene.blocks.length >= 4 && !row.scene.blocks.some(block => block.id === op.block.id)) return;
-          const next = applyOp(row.scene, op);
-          if (next === row.scene) return;
-          // The page is a lesson's page whoever opened it: pieces wait for the voice.
-          // What kinds of picture the last pages were made of, so the next can differ.
-          if (next.serial !== row.scene.serial && row.scene.blocks.length) row.recent = [...(row.recent ?? []), ...new Set(row.scene.blocks.map(block => block.t).filter(type => !['photo', 'sticky', 'note'].includes(type)))].slice(-6);
-          row.scene = next.blocks.length ? {...next, lesson: true, late: true} : next;
+          // The canvas: pages are kept, not replaced. `row.scene` is the page V is on;
+          // `row.zones` the others. A new topic opens a page beside them, and V can go back to one.
+          row.zones ??= [];
+          const shelve = () => { if (row.scene.blocks.length) { row.zones = [...row.zones.filter(zone => zone.serial !== row.scene.serial), row.scene].sort((a, b) => a.serial - b.serial).slice(-7); } };
+          if (op.op === 'zone') {
+            const back = row.zones.find(zone => zoneId(zone) === op.id);
+            if (!back || back.serial === row.scene.serial) return;
+            shelve();
+            row.zones = row.zones.filter(zone => zone !== back);
+            row.scene = {...back, rev: Math.max(back.rev, row.scene.rev) + 1, focus: ''};
+          } else if (op.op === 'scene') {
+            // (The page already up under this title, or one opened a moment ago and still empty, is the page.)
+            if (row.scene.title === op.title && row.scene.blocks.length) return;
+            // What kinds of picture the last pages were made of, so the next can differ.
+            if (row.scene.blocks.length) row.recent = [...(row.recent ?? []), ...new Set(row.scene.blocks.map(block => block.t).filter(type => !['photo', 'sticky', 'note'].includes(type)))].slice(-6);
+            shelve();
+            row.pages = Math.max(row.pages ?? 0, row.scene.serial, ...row.zones.map(zone => zone.serial)) + 1;
+            row.scene = {...emptyScene(), rev: row.scene.rev + 1, serial: row.pages, title: op.title, lesson: true, late: true};
+          } else {
+            // One screen: a page holds four blocks. More would only shrink it or make it scroll.
+            if (op.op === 'put' && row.scene.blocks.length >= 4 && !row.scene.blocks.some(block => block.id === op.block.id)) return;
+            // A page that was never opened by name (the first thing drawn in a call) is opened by its first block.
+            if (op.op === 'put' && row.scene.serial === 0) { row.pages = (row.pages ?? 0) + 1; row.scene = {...row.scene, serial: row.pages}; }
+            const next = applyOp({...row.scene, pending: null}, op);
+            if (next === row.scene) return;
+            // The page is a lesson's page whoever opened it: pieces wait for the voice.
+            row.scene = {...next, lesson: true, late: true};
+          }
           ops++; firstOpMs ??= now() - started; drawn.push(op);
           fetchAhead(row.scene);
-          onOp({op: 'sync', scene: row.scene});
+          onOp({op: 'sync', scene: row.scene, canvas: canvasOf(row)});
           return;
         }
         if (op.op === 'none') { none = true; return; }
@@ -273,7 +298,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
           {role: 'user', content: boardRequest({trigger, scene: row.scene, turns, evidence: row.evidence,
             // The author's notes go with the script they were written for, and with nothing else.
             ...(stream && row.notes && said && said.replace(/\s+/gu, '').startsWith(row.notes.script.replace(/\s+/gu, '').slice(0, 24)) ? {notes: {title: row.notes.title, lines: row.notes.lines}} : {}),
-            ...(stream ? {recent: row.recent ?? []} : {})})}];
+            ...(stream ? {recent: row.recent ?? [], canvas: (row.zones ?? []).filter(zone => zone.serial !== row.scene.serial).map(zoneDigest)} : {})})}];
         for await (const chunk of complete({messages, signal: controller.signal})) {
           if (controller.signal.aborted) break;
           parser.feed(chunk);

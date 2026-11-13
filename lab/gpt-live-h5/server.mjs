@@ -877,7 +877,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if (!boardAllowed(binding) || !boardPhotos) return json(res,404,{error:'没有这个入口'});
         // Only a photograph the director has put on this call's board.
         const query = typeof params.query === 'string' ? params.query : '';
-        if (!scenePictures(board.scene(params.voiceSessionId)).has(query)) return json(res,404,{error:'画面上没有这张照片'});
+        // (Any page of this call's canvas: earlier pages stay on it.)
+        if (!scenePictures(board.scene(params.voiceSessionId)).has(query)&&!(board.canvas?.(params.voiceSessionId).zones??[]).some(zone=>scenePictures(zone).has(query))) return json(res,404,{error:'画面上没有这张照片'});
         // V's own web search, in this call's session, for things Wikipedia has no picture of.
         const active = context.active;
         const search = text => (active.gateway??gateway).request('tools.invoke',{agentId:binding.agentId??'makaron',sessionKey:active.sessionKey,name:'web_search',args:{query:text,count:5}},{timeoutMs:12000});

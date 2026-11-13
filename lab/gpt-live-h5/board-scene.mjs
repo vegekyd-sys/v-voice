@@ -225,6 +225,8 @@ export function normalizeOp(raw) {
     case 'none': case 'clear': return {op: raw.op};
     case 'scene': return raw.lesson === true ? {op: 'scene', title: text(raw.title, 40), lesson: true, ...(raw.late === true ? {late: true} : {})} : {op: 'scene', title: text(raw.title, 40)};
     case 'del': { const id = ident(raw.id, ''); return id ? {op: 'del', id} : null; }
+    // Back to an earlier page of the canvas (its id is "z" and its number).
+    case 'zone': return typeof raw.id === 'string' && /^z\d{1,6}$/u.test(raw.id) ? {op: 'zone', id: raw.id} : null;
     case 'focus': {
       const id = typeof raw.id === 'string' ? raw.id : '';
       return id === '' || /^[A-Za-z0-9_-]{1,24}(\/[A-Za-z0-9_-]{1,24})?$/u.test(id) ? {op: 'focus', id} : null;
@@ -369,6 +371,23 @@ export function normalizeScene(raw) {
 export const sceneDigest = scene => scene.pending !== null
   ? {title: scene.pending, focus: '', blocks: [], note: '新画面已开，还没有内容；放入第一个区块后屏幕才会换过去'}
   : scene.blocks.length || scene.title ? {title: scene.title, focus: scene.focus, blocks: scene.blocks} : null;
+
+/** The id a page goes by on the canvas. */
+export const zoneId = scene => `z${scene.serial}`;
+/**
+ * The canvas of a call: the pages drawn so far, oldest first, and which one V
+ * is on. A page validated like any scene; `active` must be one of them.
+ */
+export function normalizeCanvas(raw) {
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.zones)) return null;
+  const zones = raw.zones.slice(-8).map(normalizeScene).filter(Boolean);
+  if (!zones.length) return null;
+  const active = zones.some(zone => zoneId(zone) === raw.active) ? raw.active : zoneId(zones.at(-1));
+  return {zones, active};
+}
+/** What an earlier page holds, in a few words, for whoever draws next. */
+export const zoneDigest = scene => ({id: zoneId(scene), title: scene.title, blocks: scene.blocks.map(block => ({t: block.t, ...(block.h ? {h: block.h} : {}),
+  has: (block.t === 'compare' ? block.cols : block.t === 'flow' ? block.nodes : block.items ?? []).map(item => item.h ?? item.label).filter(Boolean).slice(0, 8)}))});
 
 /** Split a streamed model reply into JSON lines. Fences and prose are skipped. */
 export function createLineParser(onValue) {
