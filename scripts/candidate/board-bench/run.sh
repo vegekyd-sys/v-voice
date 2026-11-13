@@ -20,7 +20,7 @@ for group in "${groups[@]}"; do
   sleep 3
   ssh v sudo python3 - "$candidate" 1 < "$here/measure.py" | python3 -c "
 import json,sys
-call=json.load(sys.stdin)[0]; ids='$ids'.split()
+call=json.load(sys.stdin)[0]; ids=[i.split('@')[0] for i in '$ids'.split()]
 call['group']='$group'; call['ids']=ids; call['matched']=len(call['turns'])==len(ids)
 json.dump(call,open('$out.json','w'),ensure_ascii=False,indent=1)
 print('$group',call['call'],'turns',len(call['turns']),'of',len(ids))"

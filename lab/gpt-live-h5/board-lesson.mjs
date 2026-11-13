@@ -19,6 +19,10 @@ overlap   {"id","t":"overlap","h"?,"a":{"h","points":[…],"img"?,"q"},"b":{"h",
 stack     {"id","t":"stack","h"?,"shape"?,"items":[{"id","h","d"?,"icon"?,"img"?,"tone"?,"q"}]} 一层压一层，从上往下写，最后一个是最底下托着大家的那层。讲「谁是谁的基础」、分层的系统、大气层、金字塔式的结构（"shape":"pyramid" 上窄下宽）时用。
 scale     {"id","t":"scale","h"?,"unit"?,"dir"?,"items":[{"id","at","h","d"?,"icon"?,"img"?,"q"}]} 按一个数排在一条线上：at 是数值（只写数字），unit 是单位。高度、深度用 "dir":"up" 竖着排。讲多高、多远、多贵、多大、谁先谁后差多少时用，2 到 6 个。数字只写有把握的。
 
+draw      {"id","t":"draw","h"?,"items":[{"id","k","p":[…],"h"?,"tone"?,"q"}]} 一张示意图，你自己用几何图形画出来。画布宽 100、高 60，左上角是 (0,0)，x 向右，y 向下。k 和 p：line、arrow 是 [x1,y1,x2,y2]；rect 是 [x,y,宽,高]；circle 是 [圆心x,圆心y,半径]；poly 是 [x1,y1,x2,y2,x3,y3,…]（多边形，三角形就是 3 个点）；wave 是 [x1,y1,x2,y2]（一条波浪线）；text 是 [x,y]（只写字）。h 是标在图形上的字（不超过 8 个字），tone 给图形涂色。每个图形带自己的 q：V 讲到它时它才被画出来，所以按讲的顺序一个个写，3 到 12 个。几何（三角形、面积、角度）、物理装置和光路（双缝、杠杆、电路、透镜）、位置关系（太阳地球月亮、路线示意、户型）、一个东西的构造（剖面、零件）这些「要画出来才看得懂」的事用它，不要拿 list、flow、tiles 硬凑。图形之间留开距离，字不要压在线上，整张图占满画布。
+          例（勾股定理，直角边 3 和 4）：poly [40,40,40,25,60,40] 是三角形；rect [25,25,15,15] h "3²=9" 立在竖边上；rect [40,40,20,20] h "4²=16" 立在横边上；poly [40,25,60,40,75,20,55,5] h "5²=25" 立在斜边上。
+          例（双缝实验）：circle [8,30,3] h "光源"；line [40,0,40,22]、line [40,27,40,33]、line [40,38,40,60] 是开了两条缝的挡板；wave [11,30,39,25]、wave [11,30,39,36] 是到缝的波；wave [41,25,88,30]、wave [41,36,88,30] 是过缝后的两路波；rect [90,5,4,50] h "屏" ；rect [91,12,2,5]、rect [91,27,2,6]、rect [91,43,2,5] tone "butter" 是亮条纹。
+
 任何区块都可以写 "w":"half" 或 "w":"third"：相邻的两个 half（或三个 third）会并排放。三天行程就是三个并排的 timeline；一边数轴一边分层就是两个 half。
 
 怎么挑：
@@ -28,6 +32,7 @@ scale     {"id","t":"scale","h"?,"unit"?,"dir"?,"items":[{"id","at","h","d"?,"ic
 - A 和 B 有什么区别、选哪个 → versus
 - A 和 B 是什么关系、有什么共同点 → overlap，或者 stack（一个托着另一个）
 - 多高多大多贵、差多少 → scale
+- 形状、装置、光路、位置、构造，要画出来才看得懂 → draw（配一个 formula 或便签写结论）
 - 谁克谁、谁影响谁、循环 → flow（把图放在节点上）
 - 一个流程的先后步骤 → steps；几个并列的东西 → list（带 img）
 - 最后那句要记住的话 → sticky；这件东西长什么样 → photo
@@ -96,7 +101,7 @@ export const SCRIPT_INSTRUCTIONS = `你是 V。用户在电话里请你讲解一
 
 ${speaking}# 画面提示 show
 - show 和 say 一样长，show 的第 i 条说第 i 句念出来时屏幕上该出现什么；这一句不需要新东西就写空字符串 ""。
-- 用一句大白话写清楚「用哪种图示、放什么」，不用写 JSON。可以用的图示：照片 photo、方块阵列 tiles（数得清的东西摆成几排几列）、式子 formula（一段一段的算式或「A = B + C」）、时间线 timeline、逐项对比 versus（两三样东西一项一项比）、两圈重叠 overlap（各有什么、共有什么）、分层 stack（谁托着谁）、数轴 scale（按数值排在一条线上）、关系图 flow（谁克谁、谁影响谁，节点可带图）、步骤 steps、带图列表 list、大数字 stats、柱状 bars、便签 sticky。
+- 用一句大白话写清楚「用哪种图示、放什么」，不用写 JSON。可以用的图示：照片 photo、方块阵列 tiles（数得清的东西摆成几排几列）、式子 formula（一段一段的算式或「A = B + C」）、时间线 timeline、逐项对比 versus（两三样东西一项一项比）、两圈重叠 overlap（各有什么、共有什么）、分层 stack（谁托着谁）、示意图 draw（用线、方框、圆、多边形、波浪线自己画：几何图形、实验装置、位置关系、构造，写清楚画哪几样、各在什么位置）、数轴 scale（按数值排在一条线上）、关系图 flow（谁克谁、谁影响谁，节点可带图）、步骤 steps、带图列表 list、大数字 stats、柱状 bars、便签 sticky。
 - 例子：「photo：猎鹰9号」「versus：电车/油车，加一行“补能”：家里慢充 / 三分钟加满，油车占优」「tiles：4 排每排 4 个方块，标“16 个”」「formula：4 × 4 = 16」「timeline：加一项 1958，凸点定型」「flow：加节点 小火龙（配图），箭头 杰尼龟→小火龙 标“打得过”」「sticky：先看有没有充电桩」。
 - 先想清楚这件事的形状再挑图示，整页 2 到 3 种图示互相配合，不要全是步骤和列表。同一个图示可以跨好几句一点点长出来（每句加一行、一个节点、一组方块）。
 - 画面只能往上加东西，已经出现的不会再变。所以不要写「把空格子涂上色」「把便签换成…」「盒子打开」这种改动；要表现变化，就并排再放一组（先一组 3×3，再一组 4×4），或者在式子后面接着写。
@@ -136,7 +141,7 @@ const sentences = value => (Array.isArray(value) ? value : []).map(line => Strin
 /** The script as V is given it: sentences in Latin letters need a space between them. */
 export const spokenScript = lines => lines.reduce((all, line) => all + (all && /[A-Za-z0-9.,!?'")]$/u.test(all) && /^[A-Za-z0-9"'(]/u.test(line) ? ' ' : '') + line, '');
 const asks = line => /[？?]\s*$/u.test(line);
-const DIAGRAMS = new Set(['tiles', 'formula', 'timeline', 'versus', 'overlap', 'stack', 'scale']);
+const DIAGRAMS = new Set(['tiles', 'formula', 'timeline', 'versus', 'overlap', 'stack', 'scale', 'draw']);
 const targets = block => block.t === 'compare' ? block.cols : block.t === 'flow' ? block.nodes : block.items ?? [];
 // 凯旋门 is 巴黎凯旋门 under a shorter name; 火 is not 小火龙.
 const sameThing = (name, picture) => name.includes(picture) || name.length >= 3 && picture.includes(name);

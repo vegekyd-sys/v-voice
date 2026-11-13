@@ -30,6 +30,57 @@
       "h1",
       "h2",
       "h3"
+    ],
+    "ch1": [
+      "c1a",
+      "c1b",
+      "c1c",
+      "c1d"
+    ],
+    "ch2": [
+      "c2a",
+      "c2b",
+      "c2c",
+      "c2d"
+    ],
+    "ch3": [
+      "c3a",
+      "c3b",
+      "c3c"
+    ],
+    "ch4": [
+      "c4a",
+      "c4b",
+      "c4c"
+    ],
+    "ch5": [
+      "c5a",
+      "c5b@9000"
+    ],
+    "ch6": [
+      "c6a"
+    ],
+    "ch7": [
+      "c7a",
+      "c7b@12000"
+    ],
+    "ch8": [
+      "c8a",
+      "c8b",
+      "c8c",
+      "c8d@14000"
+    ],
+    "ch9": [
+      "c9a",
+      "c9b",
+      "c9c"
+    ],
+    "ch10": [
+      "c10a",
+      "c10b",
+      "c10c",
+      "c10d",
+      "c10e"
     ]
   },
   "questions": {
@@ -126,6 +177,130 @@
     "h3": {
       "say": "你一口气告诉我十个减肥的方法。",
       "kind": "talk"
+    },
+    "c1a": {
+      "say": "你给我讲讲二零零八年的金融危机是怎么一步步发生的。",
+      "kind": "challenge"
+    },
+    "c1b": {
+      "say": "你一口气告诉我十个减肥的方法。",
+      "kind": "challenge"
+    },
+    "c1c": {
+      "say": "讲讲量子纠缠，但是别用比喻。",
+      "kind": "challenge"
+    },
+    "c1d": {
+      "say": "等一下，刚才第二点我没听懂。",
+      "kind": "challenge"
+    },
+    "c2a": {
+      "say": "一杯奶茶的钱都花在哪了？成本是怎么分的？",
+      "kind": "challenge"
+    },
+    "c2b": {
+      "say": "苹果手机这十几年，每一代最大的变化是什么？",
+      "kind": "challenge"
+    },
+    "c2c": {
+      "say": "地铁、公交、打车、骑车，上班五公里哪个最划算？",
+      "kind": "challenge"
+    },
+    "c2d": {
+      "say": "勾股定理为什么成立？摆给我看。",
+      "kind": "challenge"
+    },
+    "c3a": {
+      "say": "日本关西五天怎么玩？",
+      "kind": "challenge"
+    },
+    "c3b": {
+      "say": "京都那天你再展开说说。",
+      "kind": "challenge"
+    },
+    "c3c": {
+      "say": "回到刚才整体的行程，把大阪换成奈良。",
+      "kind": "challenge"
+    },
+    "c4a": {
+      "say": "给我看看朱鹮长什么样，和白鹭怎么区分？",
+      "kind": "challenge"
+    },
+    "c4b": {
+      "say": "介绍一下我们公司楼下那家店。",
+      "kind": "challenge"
+    },
+    "c4c": {
+      "say": "讲讲今天的头条新闻。",
+      "kind": "challenge"
+    },
+    "c5a": {
+      "say": "在后台帮我查一下这周末上海有什么适合带孩子的展览，整理好告诉我。",
+      "kind": "challenge"
+    },
+    "c5b": {
+      "say": "对了，光合作用是怎么回事？",
+      "kind": "challenge"
+    },
+    "c6a": {
+      "say": "讲讲特斯拉和比亚迪的区别，另外在后台帮我做一份对比文档。",
+      "kind": "challenge"
+    },
+    "c7a": {
+      "say": "在后台帮我查一下明天北京的天气和穿衣建议。",
+      "kind": "challenge"
+    },
+    "c7b": {
+      "say": "算了，不用查了。",
+      "kind": "challenge"
+    },
+    "c8a": {
+      "say": "讲个笑话。",
+      "kind": "challenge"
+    },
+    "c8b": {
+      "say": "你今天心情怎么样？",
+      "kind": "challenge"
+    },
+    "c8c": {
+      "say": "给我讲讲黑洞是怎么形成的。",
+      "kind": "challenge"
+    },
+    "c8d": {
+      "say": "好了，挂了吧，再见。",
+      "kind": "challenge"
+    },
+    "c9a": {
+      "say": "用十二能听懂的话，讲讲为什么天是蓝的。",
+      "kind": "challenge"
+    },
+    "c9b": {
+      "say": "Explain how a jet engine works, in English.",
+      "kind": "challenge"
+    },
+    "c9c": {
+      "say": "双缝实验到底怪在哪里？讲给我听。",
+      "kind": "challenge"
+    },
+    "c10a": {
+      "say": "咖啡是怎么从豆子变成一杯的？",
+      "kind": "challenge"
+    },
+    "c10b": {
+      "say": "长城有多长？",
+      "kind": "challenge"
+    },
+    "c10c": {
+      "say": "为什么会有潮汐？",
+      "kind": "challenge"
+    },
+    "c10d": {
+      "say": "钢琴和吉他哪个好学？",
+      "kind": "challenge"
+    },
+    "c10e": {
+      "say": "回到最开始那个，再说说烘焙那一步。",
+      "kind": "challenge"
     }
   }
 }

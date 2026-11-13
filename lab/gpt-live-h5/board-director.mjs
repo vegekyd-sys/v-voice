@@ -60,7 +60,7 @@ photo 是整张画面的主图：话题就是某一个看得见的东西（一�
    assistant_end：V 的话已经完整。核对画面和 V 实际说的是否一致，有出入就改成 V 说的。这时画面上每个 V 讲到的条目都应该带 q，缺的用 put 整块补上；内容和 q 都对就 none。
    evidence：工具结果或后台结果刚到，把里面值得看的事实放上去。
 
-屏幕上如果已经有 tiles、formula、timeline、versus、overlap、stack、scale 这几种区块，那是讲解时留下的图示：原样保留，不要重画、改写或删除它们；要补充就另加一个你会用的区块。`;
+屏幕上如果已经有 tiles、formula、timeline、versus、overlap、stack、scale、draw 这几种区块，那是讲解时留下的图示：原样保留，不要重画、改写或删除它们；要补充就另加一个你会用的区块。`;
 
 const bounded = (value, limit) => Array.from(String(value ?? '')).slice(-limit).join('');
 const evidenceText = result => {

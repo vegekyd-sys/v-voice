@@ -94,7 +94,7 @@ function List({block, view, ordered}) {
   return (
     <>
       <Heading block={block} />
-      <Tag className={ordered ? 'board-steps' : 'board-list'}>
+      <Tag className={ordered ? 'board-steps' : 'board-list'} data-many={block.items.length > 6 || undefined} style={{'--half': Math.ceil(block.items.length / 2)}}>
         {block.items.map((item, index) => {
           const state = itemState(view, block, item);
           return (
@@ -216,7 +216,7 @@ function Flow({block, view}) {
   const pictured = block.nodes.some(node => node.img), narrow = width > 0 && width < 430;
   let {shape, layers, position} = flowLayout(block.nodes, block.edges, {narrow});
   // In a very narrow column a row of nodes would sit on top of one another: they stand in a column instead.
-  if (shape === 'row' && width > 0 && width < 300) {
+  if (shape === 'row' && width > 0 && width / layers.length < 120) {
     layers = layers.map(layer => [layer[0]]); shape = 'layers';
     position = Object.fromEntries(layers.map(([id], index) => [id, {x: 50, y: layers.length === 1 ? 50 : index / (layers.length - 1) * 100, layer: index}]));
   }
@@ -241,7 +241,7 @@ function Flow({block, view}) {
           return (
             <React.Fragment key={`${index}:${ink}`}>
               <Stroke className="board-arrow" data-ink={String(ink)} d={arrow(`${block.id}:${from}:${to}`, short(b, a), short(a, b))} />
-              {label && <span className="board-flow-label" data-ink={String(ink)} style={{left: (a.x + b.x) / 2, top: (a.y + b.y) / 2}}>{label}</span>}
+              {label && <span className="board-flow-label" data-ink={String(ink)} style={{left: a.x + (b.x - a.x) * (shape === 'ring' ? .5 : .42), top: a.y + (b.y - a.y) * (shape === 'ring' ? .5 : .42)}}>{label}</span>}
             </React.Fragment>
           );
         })}
@@ -312,11 +312,12 @@ function Formula({block, view}) {
 function Timeline({block, view}) {
   const [ref, width] = useWidth();
   // A short history reads left to right when there is room; otherwise down a rail.
-  const across = width >= 560 && block.items.length <= 5;
+  // (A long one goes across in two rows: ten years down one rail is a strip nobody can read.)
+  const across = width >= 560 && block.items.length <= 5, wrap = width >= 560 && block.items.length > 5;
   return (
     <>
       <Heading block={block} />
-      <ol className="board-timeline" data-dir={across ? 'row' : 'col'} ref={ref} style={{'--n': block.items.length}}>
+      <ol className="board-timeline" data-dir={across || wrap ? 'row' : 'col'} data-wrap={wrap || undefined} ref={ref} style={{'--n': block.items.length, '--per': Math.ceil(block.items.length / 2)}}>
         {block.items.map(item => {
           const state = itemState(view, block, item);
           return (
@@ -450,6 +451,51 @@ function Scale({block, view}) {
   );
 }
 
+// A sketch on a 100 x 60 sheet: each shape is drawn when V gets to it.
+function Draw({block, view}) {
+  const number = value => Math.round(value * 100) / 100;
+  const outline = item => {
+    const p = item.p;
+    if (item.k === 'rect') return <rect x={p[0]} y={p[1]} width={Math.max(.5, p[2])} height={Math.max(.5, p[3])} rx=".8" />;
+    if (item.k === 'circle') return <circle cx={p[0]} cy={p[1]} r={Math.max(.8, p[2])} />;
+    if (item.k === 'poly') return <polygon points={p.join(' ')} />;
+    if (item.k === 'text') return null;
+    const dx = p[2] - p[0], dy = p[3] - p[1], length = Math.hypot(dx, dy) || 1, ux = dx / length, uy = dy / length;
+    if (item.k === 'wave') {
+      const turns = Math.max(1.5, Math.round(length / 7) + .5), points = [];
+      for (let step = 0; step <= 40; step++) { const t = step / 40, swing = Math.sin(t * Math.PI * 2 * turns) * 1.5; points.push(`${number(p[0] + dx * t - uy * swing)} ${number(p[1] + dy * t + ux * swing)}`); }
+      return <path className="board-draw-line" d={'M' + points.join(' L')} />;
+    }
+    const head = item.k === 'arrow' ? ` M${number(p[2] - ux * 3 - uy * 1.6)} ${number(p[3] - uy * 3 + ux * 1.6)} L${p[2]} ${p[3]} L${number(p[2] - ux * 3 + uy * 1.6)} ${number(p[3] - uy * 3 - ux * 1.6)}` : '';
+    return <path className="board-draw-line" d={`M${p[0]} ${p[1]} L${p[2]} ${p[3]}${head}`} />;
+  };
+  // Where a shape's words go: inside a shape with room, above a small one, beside a line.
+  const words = item => {
+    const p = item.p;
+    if (item.k === 'rect') return p[2] >= 9 && p[3] >= 6 ? [p[0] + p[2] / 2, p[1] + p[3] / 2 + 1.2] : [p[0] + p[2] / 2, p[1] - 1.6];
+    if (item.k === 'circle') return p[2] >= 7 ? [p[0], p[1] + 1.2] : [p[0], p[1] + p[2] + 4.2];
+    if (item.k === 'poly') { let x = 0, y = 0; for (let at = 0; at < p.length; at += 2) { x += p[at]; y += p[at + 1]; } return [x / (p.length / 2), y / (p.length / 2) + 1.2]; }
+    if (item.k === 'text') return [p[0], p[1]];
+    return [(p[0] + p[2]) / 2, (p[1] + p[3]) / 2 - 2.4];
+  };
+  return (
+    <>
+      <Heading block={block} />
+      <svg className="board-draw" viewBox="-2 -3 104 66" role="img" aria-label={block.h ?? '示意图'}>
+        {block.items.map(item => {
+          const state = itemState(view, block, item), at = item.h ? words(item) : null;
+          return (
+            <g key={item.id} className="board-draw-piece" data-k={item.k} data-tone={item.tone} {...state.props}>
+              {outline(item)}
+              {at && <text x={number(Math.max(4, Math.min(96, at[0])))} y={number(Math.max(2, Math.min(60, at[1])))}>{item.h}</text>}
+            </g>
+          );
+        })}
+      </svg>
+    </>
+  );
+}
+
 const Tape = () => <i className="board-tape" aria-hidden="true" />;
 const Sticky = ({block}) => <><Tape /><p className="board-sticky-text">{em(block.text)}</p></>;
 
@@ -472,7 +518,7 @@ function Photo({block, loadPhoto, onMissing}) {
 }
 
 const RENDER = {note: Sticky, sticky: Sticky, list: props => <List {...props} />, steps: props => <List {...props} ordered />, compare: Compare, stats: Stats, bars: Bars, table: Table, flow: Flow,
-  tiles: Tiles, formula: Formula, timeline: Timeline, versus: Versus, overlap: Overlap, stack: Stack, scale: Scale};
+  draw: Draw, tiles: Tiles, formula: Formula, timeline: Timeline, versus: Versus, overlap: Overlap, stack: Stack, scale: Scale};
 const SMALL = new Set(['note', 'sticky', 'photo']);
 const PAPER = {note: 'butter', sticky: 'butter'};
 

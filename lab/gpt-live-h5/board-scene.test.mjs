@@ -217,3 +217,13 @@ test('a pen mark is made on something already on the page when V says its words'
   assert.equal(markedBlocks(scene, new Set(after.ahead))[0].items[0].mark, 'check');
   assert.deepEqual(normalizeScene(JSON.parse(JSON.stringify(scene))).marks, scene.marks, 'and survives being sent to the page');
 });
+
+test('draw: a sketch of plain shapes, each with its numbers checked', async () => {
+  const {normalizeOp} = await import('./board-scene.mjs');
+  const op = normalizeOp({op: 'put', block: {id: 'g', t: 'draw', h: '勾股', items: [
+    {id: 'a', k: 'poly', p: [40, 40, 40, 25, 60, 40], q: '直角三角形'}, {id: 'b', k: 'rect', p: [25, 25, 15, 15], h: '3²=9', tone: 'butter'},
+    {id: 'c', k: 'circle', p: [8, 30]}, {id: 'd', k: 'blob', p: [1, 2, 3, 4]}, {id: 'e', k: 'text', p: [5, 5]}, {id: 'f', k: 'wave', p: [0, 0, 500, 'x']}, {id: 'h', k: 'arrow', p: [0, 0, 500, 30]}]}});
+  assert.deepEqual(op.block.items.map(item => item.id), ['a', 'b', 'h']);
+  assert.deepEqual(op.block.items[2].p, [0, 0, 105, 30]);
+  assert.equal(op.block.items[1].tone, 'butter');
+});

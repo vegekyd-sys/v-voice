@@ -3,10 +3,12 @@
 // Shared by the service (which validates what the director model wrote) and
 // the page (which applies and renders it). Pure data: no DOM, no network.
 
-export const BOARD_LIMITS = Object.freeze({blocks: 6, items: 8, columns: 4, rows: 8, nodes: 10, edges: 16});
+export const BOARD_LIMITS = Object.freeze({blocks: 6, items: 10, columns: 4, rows: 8, nodes: 10, edges: 16});
 export const BOARD_BLOCK_TYPES = Object.freeze(['note', 'sticky', 'photo', 'list', 'steps', 'compare', 'stats', 'bars', 'table', 'flow',
   // The diagram kit: shapes an explanation is built from (see BLOCKS below).
-  'tiles', 'formula', 'timeline', 'versus', 'overlap', 'stack', 'scale']);
+  'tiles', 'formula', 'timeline', 'versus', 'overlap', 'stack', 'scale', 'draw']);
+// What a drawing is made of, and how many numbers each takes (`poly`: three to eight points).
+export const BOARD_SHAPES = Object.freeze({line: 4, arrow: 4, rect: 4, circle: 3, wave: 4, text: 2, poly: 0});
 // How much of the page's width a block asks for; neighbours that ask stand side by side.
 export const BOARD_WIDTHS = Object.freeze(['half', 'third']);
 // Paper colours a block may sit on, and the marks V's pen may leave on an item.
@@ -193,6 +195,22 @@ const BLOCKS = {
       return h ? dressed(optional(optional({id: ident(layer.id, `y${index + 1}`), h}, 'd', text(layer.d, 60)), 'tone', BOARD_TONES.includes(layer.tone) ? layer.tone : ''), layer) : null;
     }).filter(Boolean), 'y');
     return items.length >= 2 ? optional(optional({items}, 'h', text(raw.h, 40)), 'shape', raw.shape === 'pyramid' ? 'pyramid' : '') : null;
+  },
+  // A sketch: plain shapes on a 100 x 60 sheet, each drawn when V gets to it.
+  // For what has to be seen to be understood (a triangle with a square on each side, two slits and a screen).
+  draw(raw) {
+    const items = unique(list(raw.items ?? raw.shapes, 14).map((item, index) => {
+      if (!item || typeof item !== 'object' || !Object.hasOwn(BOARD_SHAPES, item.k)) return null;
+      const numbers = Array.isArray(item.p) ? item.p.map(Number) : [];
+      if (!numbers.length || numbers.some(value => !Number.isFinite(value))) return null;
+      const need = BOARD_SHAPES[item.k];
+      if (need ? numbers.length < need : numbers.length < 6 || numbers.length % 2) return null;
+      const p = numbers.slice(0, need || 16).map((value, at) => Math.round(Math.max(-5, Math.min(at % 2 || item.k === 'circle' && at === 2 ? 65 : 105, value)) * 10) / 10);
+      const h = text(item.h ?? item.label, 16);
+      if (item.k === 'text' && !h) return null;
+      return quoted(optional(optional({id: ident(item.id, `d${index + 1}`), k: item.k, p}, 'h', h), 'tone', BOARD_TONES.includes(item.tone) ? item.tone : ''), item);
+    }).filter(Boolean), 'd');
+    return items.length ? optional({items}, 'h', text(raw.h, 40)) : null;
   },
   // Things placed by a number along one line: heights, sizes, prices, years.
   // `dir: "up"` stands the line upright (heights, depths).
@@ -483,6 +501,12 @@ export function flowLayout(nodes, edges, {narrow = false} = {}) {
   const layers = [];
   for (const id of ids) (layers[depth.get(id)] ??= []).push(id);
   const rows = layers.filter(Boolean);
+  // Each node stands under what points to it, so arrows cross as little as they can.
+  const place = new Map();
+  rows.forEach((row, level) => {
+    if (level) row.sort((a, b) => { const mean = id => { const from = forward.filter(edge => edge[1] === id && place.has(edge[0])).map(edge => place.get(edge[0])); return from.length ? from.reduce((sum, x) => sum + x, 0) / from.length : .5; }; return mean(a) - mean(b); });
+    row.forEach((id, index) => place.set(id, (index + .5) / row.length));
+  });
   // A chain too long for a phone's width would be a column several screens
   // tall; set round a circle, in order, all of it is in view at once.
   // The same for layers with three abreast, which overlap at that width.
@@ -492,7 +516,7 @@ export function flowLayout(nodes, edges, {narrow = false} = {}) {
     return {shape: 'row', layers: rows, position};
   }
   rows.forEach((row, y) => row.forEach((id, x) => {
-    position[id] = {x: (x + 1) / (row.length + 1) * 100, y: rows.length === 1 ? 50 : y / (rows.length - 1) * 100, layer: y};
+    position[id] = {x: (x + .5) / row.length * 100, y: rows.length === 1 ? 50 : y / (rows.length - 1) * 100, layer: y};
   }));
   return {shape: 'layers', layers: rows, position};
 }

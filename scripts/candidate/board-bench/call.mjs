@@ -45,11 +45,14 @@ const watch=async(label,{maxMs,quietMs=5000,minMs=4000})=>{
   }
 };
 await watch('greeting',{maxMs:15000,quietMs:2500,minMs:2500});
-for(const [index,name] of questions.entries()){
+// "id@ms": this question is asked `ms` after the one before it, whatever V is doing (an interruption).
+const plan=questions.map(entry=>{const [name,after]=entry.split('@');return {name,after:after?Number(after):null};});
+for(const [index,{name}] of plan.entries()){
   log.push({t:now(),event:'ask',name});
   await page.evaluate(n=>window.__speak(n),name);
   log.push({t:now(),event:'asked',name});
-  await watch(name,{maxMs:110000});
+  const cut=plan[index+1]?.after;
+  await watch(name,cut?{maxMs:cut,minMs:cut,quietMs:cut}:{maxMs:index===plan.length-1&&plan[index].after?150000:110000});
 }
 const final=await sample();
 log.push({t:now(),event:'final',timeline:final.timeline,rows:final.rows.map(r=>({role:r.role,doc:r.doc,text:r.text})),board:final.board,errors:[...new Set(errors)]});
