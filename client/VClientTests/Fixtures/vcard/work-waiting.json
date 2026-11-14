@@ -1,0 +1,13 @@
+{
+  "schema": "2.0",
+  "v_card": 1,
+  "body": {
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "❓ 请在下方卡片中回答",
+        "text_size": "notation"
+      }
+    ]
+  }
+}

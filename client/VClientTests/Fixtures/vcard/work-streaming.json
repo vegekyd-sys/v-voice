@@ -1,0 +1,19 @@
+{
+  "schema": "2.0",
+  "v_card": 1,
+  "body": {
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "报告整理好了，共 **7 次**停顿"
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "markdown",
+        "content": "☑️ 读取上周的停顿记录\n▶️ **按原因归类**　进行中\n◻️ 写成报告"
+      }
+    ]
+  }
+}

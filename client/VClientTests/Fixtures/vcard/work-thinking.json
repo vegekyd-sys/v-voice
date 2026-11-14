@@ -1,0 +1,13 @@
+{
+  "schema": "2.0",
+  "v_card": 1,
+  "body": {
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "💭 正在思考",
+        "text_size": "notation"
+      }
+    ]
+  }
+}
