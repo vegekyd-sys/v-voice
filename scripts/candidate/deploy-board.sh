@@ -31,6 +31,8 @@ if mode == 'cue': env['VOICE_BOARD_FOLLOW'] = 'cue'
 else: env.pop('VOICE_BOARD_FOLLOW', None)
 tmp = path + '.next'
 with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as out: json.dump(env, out)
+# (The Candidate reads it as its own user: keep the owner.)
+stat = os.stat(path); os.chown(tmp, stat.st_uid, stat.st_gid)
 os.replace(tmp, path)
 print('VOICE_BOARD_FOLLOW', env.get('VOICE_BOARD_FOLLOW', '(word)'))
 PY
