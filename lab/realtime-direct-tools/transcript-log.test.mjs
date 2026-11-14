@@ -186,3 +186,11 @@ test('summary styling diagnostics survive closure and do not retain card content
  assert(f.log.audit({...fields,type:'call.summary-styled',messageId:'om_owned',receipt:'SECRET'}));
  await f.log.close();const rows=await f.rows();assert.equal(rows.at(-2).error,'call-card-target-unconfirmed');assert.equal(rows.at(-1).messageId,'om_owned');assert(!JSON.stringify(rows).includes('SECRET'));
 });
+
+test('a dropped or skipped conversation record is logged by name only',async t=>{
+  const f=await fixture(t);f.created();
+  f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'context-dropped',text:'SECRET'});
+  f.log.audit({type:'call.record-skipped',voiceSessionId:'v1',reason:'refused-earlier',context:'SECRET'});
+  await f.log.close();const rows=await f.rows();assert(!JSON.stringify(rows).includes('SECRET'));
+  assert.deepEqual(rows.slice(1).map(row=>[row.type,row.stage??row.reason]),[['call.provider-status','context-dropped'],['call.record-skipped','refused-earlier']]);
+});
