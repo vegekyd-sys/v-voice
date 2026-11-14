@@ -1651,7 +1651,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-draw-piece { transition: opacity .45s ease-out; }
 .board-draw-piece[data-ink="true"] { animation: board-in .5s ease-out both; }
 .board-draw-piece[data-now] :is(rect, circle, polygon, path) { stroke: var(--pen); stroke-width: 3; }
-.board-page[data-lesson] .board-draw-piece[data-ink="false"] { opacity: 0; }
+.board-page[data-lesson] .board-draw-piece[data-ink="false"] { opacity: .22; }
 .board-draw-piece[data-ink="false"] { opacity: .28; }
 
 /* a long list stands in two columns; a long timeline goes across in two rows */
@@ -1663,6 +1663,13 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-timeline[data-wrap]::before { display: none; }
 
 /* a sticky note, and a print taped to the page */
+.board-caption {
+  padding: 26px 24px 10px; font-size: 22px; line-height: 1.6; font-weight: 500; color: var(--ink);
+  overflow-wrap: anywhere; animation: board-in .3s ease-out both;
+}
+.board-caption mark { background: none; color: var(--ink); }
+.board-caption span { color: var(--faint); }
+@media (max-width: 700px) { .board-caption { padding: 18px 20px 8px; font-size: 20px; } }
 .board-sticky-text { font-family: var(--hand); font-size: 18px; line-height: 1.5; font-weight: 500; color: #4a3a2c; overflow-wrap: anywhere; }
 .board-photo { margin: 0; padding: 9px 9px 8px; background: #fffdfb; box-shadow: 0 16px 28px -16px #4d356073; }
 .board-print { aspect-ratio: 4 / 3; overflow: hidden; background: linear-gradient(110deg, #ece4f3 30%, #f7f2fb 50%, #ece4f3 70%) 0 0 / 220% 100%; animation: board-develop 1.3s linear infinite; }
@@ -1855,15 +1862,16 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-overlap .board-thumb { width: 64px; height: 64px; }
 .board-timeline[data-dir="row"] .board-thumb { width: 92px; height: 92px; }
 
-/* lesson mode: nothing is on the page before V says it. A piece waits unseen
-   and lands when the voice reaches the sentence it hangs on. */
-.board-page[data-lesson] :is(li, section, dl > div, .board-node, .board-block, .board-piece)[data-ink="false"] { opacity: 0; }
+/* lesson mode: what V has not said yet is already on the page, pale, and inks in
+   when the voice reaches the sentence it hangs on (11/14: an unseen page left the
+   screen empty while V talked; the caller should have something to look at at once). */
+.board-page[data-lesson] :is(li, section, dl > div, .board-node, .board-block, .board-piece)[data-ink="false"] { opacity: .3; }
 .board-page[data-lesson] .board-piece[data-ink="false"] { transform: translateY(8px) scale(.96); }
 .board-page[data-lesson] :is(li, section, dl > div, .board-block) { transition: opacity .45s ease-out, transform .5s cubic-bezier(.2, 1.3, .35, 1); }
 .board-page[data-lesson] :is(li, dl > div)[data-ink="false"] { transform: translateY(10px); }
 .board-page[data-lesson] .board-block[data-ink="false"] { transform: translateY(-12px) rotate(calc(var(--tilt, 0deg) + 4deg)) scale(1.04); }
 .board-page[data-lesson] .board-node { transition: opacity .45s ease-out; }
-.board-page[data-lesson] :is(.board-arrow, .board-flow-label)[data-ink="false"] { opacity: 0; }
+.board-page[data-lesson] :is(.board-arrow, .board-flow-label)[data-ink="false"] { opacity: .25; }
 .board-page[data-lesson] .board-steps li:not(:last-child)::after { transition: opacity .45s; }
 .board-page[data-lesson] .board-steps li[data-ink="false"]::after { opacity: 0; }
 
@@ -1892,7 +1900,8 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   .board-title { font-size: 21px; }
   /* A phone gives the page most of the screen; under it a strip keeps the last
      few lines of the conversation in view. The way out is a full-size button. */
-  .call-page[data-board="true"] .conversation { flex: 0 0 auto; max-height: 27vh; margin-top: 4px;
+  /* (The controls float over the bottom of the list, which keeps their height free: the strip is that plus about four lines.) */
+  .call-page[data-board="true"] .conversation { flex: 0 0 auto; max-height: calc(var(--controls-height, 76px) + 21vh); margin-top: 4px;
     -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10px); mask-image: linear-gradient(to bottom, transparent 0, #000 10px); }
   .call-page[data-board="true"] .conversation .turn, .call-page[data-board="true"] .conversation .turn-text { font-size: 16px; line-height: 1.6; }
   .call-page[data-board="true"] .conversation .turns { padding-top: 14px; }
@@ -1913,10 +1922,6 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   .board-compare section { scroll-snap-align: start; padding: 12px 12px 14px; }
   .board-stats b { font-size: 34px; }
   .board-row { grid-template-columns: minmax(0, 1fr); }
-  /* A phone has no room to hold a place for what V has not reached: a block
-     appears when its first piece does, and so do the items of a list. */
-  .board-page[data-lesson] .board-block:has([data-ink="false"]):not(:has([data-ink="true"])):not([data-type="photo"]):not([data-type="versus"]), .board-page[data-lesson] .board-block[data-ink="false"] { display: none; }
-  .board-page[data-lesson] :is(.board-list, .board-steps, .board-timeline, .board-stack) > [data-ink="false"], .board-page[data-lesson] .board-vs-row[data-ink="false"] { display: none; }
   .board-page[data-lesson] .board-body { align-content: start; }
   .board-term .board-key { font-size: 30px; }
   .board-term { padding: 4px 8px 6px; }

@@ -6,7 +6,7 @@ import {applyOp, emptyScene, normalizeOp, normalizeScene, normalizeCanvas} from 
 import {orderedTranscriptRows} from './transcript-presentation.mjs';
 
 export const BOARD_REQUEST_TIMEOUT_MS = 25000;
-export const BOARD_PROGRESS_INTERVAL_MS = 2500;
+export const BOARD_PROGRESS_INTERVAL_MS = 1500;
 const SETTLE_MS = 350;
 // What V has said so far that is worth drawing from: whole sentences, or, when
 // the first sentence is a long one, its clauses up to the last comma (a first
@@ -131,7 +131,9 @@ export function createBoardClient({request, onScene = () => {}, isCurrent = () =
     }
     const spoken = sentences(assistant.text);
     if (!spoken || assistant.key === lastAssistantKey && spoken === lastAssistantText) return null;
-    const wait = assistant.key === lastAssistantKey ? BOARD_PROGRESS_INTERVAL_MS - (now() - lastAssistantAt) : 0;
+    // (A reply that arrives in one piece, as after a search, is drawn at once rather than at the next tick.)
+    const grew = Array.from(spoken).length - Array.from(lastAssistantText).length >= 40;
+    const wait = assistant.key === lastAssistantKey && !grew ? BOARD_PROGRESS_INTERVAL_MS - (now() - lastAssistantAt) : 0;
     if (wait > 0) return {wait};
     return {trigger: 'assistant_progress', spoken, mark: () => { lastAssistantKey = assistant.key; lastAssistantText = spoken; lastAssistantAt = now(); }};
   }

@@ -447,6 +447,10 @@ function CallPage({view, actions, options}) {
   const compact = inCall && !wide && (overflow || height < 560 || state.composer.open && height < 700);
   const scene = inCall && !state.tvHost && (state.board?.blocks.length || state.board?.title) ? state.board : null;
   const board = scene && !boardHidden && !(history && !wide) ? scene : null;
+  // What V is saying in answer to the caller's latest words: shown on a page that has nothing on it yet.
+  const replyRows = [...state.transcript.history, ...state.transcript.current].filter(row => !row.document && row.text?.trim()).sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+  const lastUser = replyRows.findLastIndex(row => row.role === 'user');
+  const caption = replyRows.slice(lastUser + 1).filter(row => row.role === 'assistant').map(row => row.text.trim()).join(' ');
   // With a picture up, the picture is the subject and V sits beside it.
   const size = !inCall ? Math.min(width * .72, height * .4, 300)
     : board ? (wide ? Math.min(92, height * .13) : 48)
@@ -507,7 +511,7 @@ function CallPage({view, actions, options}) {
           )}
           {inCall && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
         </section>
-        {board && <Board scene={board} canvas={state.boardCanvas} spoken={state.boardSpoken} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
+        {board && <Board scene={board} canvas={state.boardCanvas} spoken={state.boardSpoken} caption={caption} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
           onReport={[...state.transcript.history, ...state.transcript.current].some(row => row.document) ? () => [...document.querySelectorAll('.content-card')].at(-1)?.click() : null} />}
         {inCall && (
           <aside className="chat-panel" aria-label="聊天内容">
