@@ -352,3 +352,21 @@ test('hedged: a reply that has not started in time is raced by a second request'
   assert.deepEqual(quick, ['a', 'b']);
   assert.equal(calls, 6);
 });
+
+test('a page opened under the title of a page already on the canvas goes back to that page (two runs for one answer, 11/14)', async () => {
+  const {STREAM_INSTRUCTIONS, refineStreamOp} = await import('./board-lesson.mjs');
+  const line = value => JSON.stringify(value) + '\n';
+  const replies = [
+    line({op: 'scene', title: '属性克制'}) + line({op: 'put', block: {id: 'p', t: 'photo', query: '皮卡丘'}}),
+    line({op: 'scene', title: '电车和油车'}) + line({op: 'put', block: {id: 'p', t: 'photo', query: '特斯拉 Model 3'}}),
+    line({op: 'scene', title: '属性克制'}) + line({op: 'put', block: {id: 'q', t: 'photo', query: '杰尼龟'}}),
+  ];
+  let asked = 0;
+  const director = createBoardDirector({stream: {instructions: STREAM_INSTRUCTIONS, refine: refineStreamOp}, complete: async function* () { yield replies[asked++]; }});
+  for (const text of ['讲讲属性克制', '电车和油车', '再说属性克制']) await director.run({owner: 'c', trigger: 'user', turns: [{role: 'user', text}]});
+  const canvas = director.canvas('c');
+  assert.deepEqual(canvas.zones.map(zone => zone.title), ['属性克制', '电车和油车']);
+  assert.equal(director.scene('c').title, '属性克制');
+  assert.equal(director.scene('c').serial, canvas.zones[0].serial, 'the same page, not a new one');
+  assert.deepEqual(director.scene('c').blocks.map(block => block.query), ['皮卡丘'], 'with what it had');
+});
