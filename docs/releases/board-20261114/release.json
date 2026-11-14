@@ -105,5 +105,19 @@
     "gatewayIdentityPreserved": true,
     "change": "Phone real-time feel: an empty page shows V's current words until the picture comes; on a lesson page unspoken items are drawn pale and ink in as spoken (were hidden on phones); a reply that arrives in one piece (>=40 chars) is drawn at once, drawing ticks every 1.5 s; the caption strip is the controls' height plus 21vh (about four lines).",
     "acceptance": "Production Public call at 390x844 (call 57e45245): the empty page showed '好，我来讲讲。' at 0:12, the whole comparison drawn pale at 0:16 and inked as spoken, the Forbidden City list likewise, a four-line caption strip. The bench report did not match the call log (turns 0), screenshots only. iPhone awaits Tianyi."
+  },
+  "cueRelease": {
+    "commit": "e08a9f2b50b280dba97d3eb390afab574096c38b",
+    "mergePR": 222,
+    "filesSha256": "534f5caf69589ad25ae246006f4d4a211b932798a62170ffd0076fb74465ea6c",
+    "previousRunningCommit": "47ac4795695ad764b9ccd108bc3f0627d78c7b18",
+    "publishedAt": "2026-11-15T01:39:39+08:00",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "gatewayIdentityPreserved": true,
+    "change": "The illustrator writes which clause each piece hangs on (cue); the old word matching is off by default (VOICE_BOARD_FOLLOW=word keeps it). Cue pages hide what V has not reached and put no reply text on an empty page (#220's pale pieces and caption withdrawn there). Every listed thing told; things that can be seen pictured. Phone: one line of what V is saying now under a cue page; the report button opens the report there.",
+    "acceptance": "Tianyi accepted the Candidate (calls b101ecc7 and 11/15 01:13). Production Public call at 390x844 after publish: European cities each with its own photo as told, EV vs petrol car versus and sketch, one-line strip following the voice. Report button verified on the local fixture at 390x844 (did nothing before, opens the report and returns to the page after)."
   }
 }

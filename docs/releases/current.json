@@ -2,12 +2,12 @@
   "schema": "v-voice-current-release-v1",
   "release": "board-20261114",
   "version": "voice-board.20261113.1",
-  "entryCommit": "47ac4795695ad764b9ccd108bc3f0627d78c7b18",
-  "deviceEntryCommit": "47ac4795695ad764b9ccd108bc3f0627d78c7b18",
-  "filesSha256": "db443925b2536b8c3edf2622ba91869e599540938334912a9aa77b15e0ca3430",
+  "entryCommit": "e08a9f2b50b280dba97d3eb390afab574096c38b",
+  "deviceEntryCommit": "e08a9f2b50b280dba97d3eb390afab574096c38b",
+  "filesSha256": "534f5caf69589ad25ae246006f4d4a211b932798a62170ffd0076fb74465ea6c",
   "registration": "board-20261114/release.json",
-  "previousEntryCommit": "5e1994ba10cdf18e2a555b4503e34340cb1df112",
+  "previousEntryCommit": "47ac4795695ad764b9ccd108bc3f0627d78c7b18",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-14T21:18:41+08:00",
-  "runtimeDifference": "The call board for every caller; iPhone board follows the App's own audio (build 46); a refused conversation record is dropped at once and remembered; phone board keeps the last lines of the conversation. Phone board no longer swings between pages; one page per title; a four-line caption strip. Phone real-time feel: V's words on an empty page, the lesson page drawn pale and inked as spoken, earlier drawing, a caption strip that really shows four lines."
+  "validatedAt": "2026-11-15T01:39:39+08:00",
+  "runtimeDifference": "The call board for every caller; iPhone board follows the App's own audio (build 46); a refused conversation record is dropped at once and remembered; phone board keeps the last lines of the conversation. Phone board no longer swings between pages; one page per title; a four-line caption strip. Phone real-time feel: V's words on an empty page, the lesson page drawn pale and inked as spoken, earlier drawing, a caption strip that really shows four lines. The board follows cues the illustrator writes (clause numbers), not word matching; one line under a phone's page; pictures for things that can be seen."
 }
