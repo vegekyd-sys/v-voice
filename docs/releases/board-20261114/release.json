@@ -1,0 +1,95 @@
+{
+  "version": "voice-board.20261113.1",
+  "sourceCommit": "cad1b68e9d33f689dd1afa2b0d76ef2bc0a846d8",
+  "mergePR": 213,
+  "filesSha256": "76abe17072965d8885c358206991f2977ac6c28926e046851272f381e2acfbe7",
+  "previousRunningCommit": "af068e9ce97077aa044bcb7c51c06f16c89a0df6",
+  "verifiedAt": "2026-11-14T01:14:09+08:00",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/43469893371",
+  "nodes": {
+    "web": {
+      "commit": "cad1b68e9d33f689dd1afa2b0d76ef2bc0a846d8",
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "commit": "cad1b68e9d33f689dd1afa2b0d76ef2bc0a846d8",
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "gatewayIdentityPreserved": true,
+  "webConfiguration": {
+    "dropIn": "openclaw-rtc-h5.service.d/97-voice-board.conf",
+    "environment": [
+      "VOICE_BOARD=1",
+      "VOICE_BOARD_LESSON=1",
+      "VOICE_BOARD_AUDIENCE=all"
+    ],
+    "privateEnvironmentFile": "/etc/openclaw-voice-board.env (root 0600: VOICE_BOARD_API_KEY, VOICE_BOARD_BRAVE_KEY)",
+    "devicesNode": "board off (no screen)"
+  },
+  "ios": {
+    "version": "1.0.0",
+    "build": 45,
+    "sourceCommit": "a76dcb224165b9dc9cc6815fe1be9f70d3f7217a",
+    "sourcePRs": [
+      213,
+      214
+    ],
+    "installedBuildReadBack": 45,
+    "previousInstalledBuild": 44,
+    "signed": true,
+    "sharedKeychainEntitlementsVerified": true,
+    "bridge": "service → /api/page/<name>, capabilities.pageRequests=1; older builds run without the board",
+    "laterBuild": {
+      "build": 46,
+      "sourceCommit": "e6491853923ac0305bee61e7c6aa9fa43aa45c2c",
+      "sourcePR": 215,
+      "installedBuildReadBack": 46,
+      "change": "audioProgress bridge reading; the board follows the App's own audio as on the web"
+    }
+  },
+  "acceptance": {
+    "feishuDesktopInApp": "Feishu client sign-in (Tianyi · V Backup), call connected, explain_on_board lesson spoken and the board drawn in the Feishu web view (sketch of 3-4-5 and 6-8-10 triangles, 3²+4²=5², a²+b²=c²).",
+    "publicWeb": "Production Public entry reports board on; a Public call connects without upstream errors.",
+    "iphone": "Build 45 installed; Tianyi's own call: lesson pictures and content show, but the follow-the-voice highlighting did not work (the iOS page used the caption as its clock). Fixed in PR #215 (build 46, installed and read back 46); the page side of that fix reaches the App with the next web release, which is not yet published. Follow-up release 336559e carries the page side; the App picks it up when idle in the foreground.",
+    "openIssue": "Since this release, calls in V Backup (oc_ede0fdc8…) are refused by Seeduplex three times at start (55000000) and connect without the conversation record; earlier V Backup calls had none, Public and the candidate's owner entry have none. Cause not yet isolated (content of the record vs the added lesson prompt). Since 336559e a refused record is dropped at once and remembered (PR #217); Feishu V Backup calls connected in 1.0 s and 0.8 s. A separate session is researching which records Seeduplex refuses: 25 synthetic probes, none refused so far."
+  },
+  "followUpRelease": {
+    "commit": "336559e1079de6cbb3afe24d2f82e50042af38e3",
+    "mergePRs": [
+      215,
+      217
+    ],
+    "filesSha256": "d6c23046301cd1fa1cc1c61772d060cfd0666fffaa2c26036bf3c7c7e1157eb0",
+    "publishedAt": "2026-11-14T11:08:37+08:00",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "gatewayIdentityPreserved": true,
+    "ios": "build 46 rebuilt from 336559e (native code identical to e649185) and installed; read back 46",
+    "acceptance": "Feishu desktop, V Backup group: first call refused once and V greeted at 1.5 s (was 4.9 s); second call not refused, greeted at 0.8 s. The log did not show whether the record was dropped or skipped: its allowlist omits those events (fixed in PR #218, not merged)."
+  },
+  "mobileRelease": {
+    "commit": "87d527385b23f2427fad9a5e34f3fc1566ea9619",
+    "mergePR": 219,
+    "filesSha256": "cb8bbdb5c5c32c0cc2b523fdf5dbd995160b8b04ef97eeaa54231b1ea628b18a",
+    "publishedAt": "2026-11-14T11:48:31+08:00",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "gatewayIdentityPreserved": true,
+    "change": "Phone: the view no longer swings between two pages (scrollIntoView scrolled the page strip sideways); one page per title; a four-line caption strip.",
+    "acceptance": "Production Public call at 390x844: lesson and board drawn, caption strip legible. The page swing awaits Tianyi on the iPhone."
+  },
+  "pendingRelease": {
+    "commit": "5e1994ba10cdf18e2a555b4503e34340cb1df112",
+    "mergePR": 218,
+    "filesSha256": "fe378a38d9598a3cb59c08b6e711fd70cb38b151f7a66ea074167ea4c03a59b6",
+    "change": "The call log keeps context-dropped and call.record-skipped (names only).",
+    "state": "packaged and verified; a call was active on the web node; publish awaits Tianyi's go-ahead"
+  }
+}

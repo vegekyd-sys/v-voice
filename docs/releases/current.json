@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "relay-usage-medium-20261113",
-  "version": "voice-relay-medium.20261113.1",
-  "entryCommit": "af068e9ce97077aa044bcb7c51c06f16c89a0df6",
-  "deviceEntryCommit": "af068e9ce97077aa044bcb7c51c06f16c89a0df6",
-  "filesSha256": "c531bcf7b1d9e8e0023806c786b2c75344c3fe29a4ba7f3555ab751162b2e5f0",
-  "registration": "relay-usage-medium-20261113/release.json",
-  "previousEntryCommit": "71e1d5d97bf2eebcbb539a74f330060e61b02412",
+  "release": "board-20261114",
+  "version": "voice-board.20261113.1",
+  "entryCommit": "87d527385b23f2427fad9a5e34f3fc1566ea9619",
+  "deviceEntryCommit": "87d527385b23f2427fad9a5e34f3fc1566ea9619",
+  "filesSha256": "cb8bbdb5c5c32c0cc2b523fdf5dbd995160b8b04ef97eeaa54231b1ea628b18a",
+  "registration": "board-20261114/release.json",
+  "previousEntryCommit": "336559e1079de6cbb3afe24d2f82e50042af38e3",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-13T00:12:05+08:00",
-  "runtimeDifference": "Build 44 aligns the medium widget’s secondary meters with the small widget and preserves each reset time."
+  "validatedAt": "2026-11-14T11:48:31+08:00",
+  "runtimeDifference": "The call board for every caller; iPhone board follows the App's own audio (build 46); a refused conversation record is dropped at once and remembered; phone board keeps the last lines of the conversation. Phone board no longer swings between pages; one page per title; a four-line caption strip."
 }
