@@ -2,12 +2,12 @@
   "schema": "v-voice-current-release-v1",
   "release": "board-20261114",
   "version": "voice-board.20261113.1",
-  "entryCommit": "336559e1079de6cbb3afe24d2f82e50042af38e3",
-  "deviceEntryCommit": "336559e1079de6cbb3afe24d2f82e50042af38e3",
-  "filesSha256": "d6c23046301cd1fa1cc1c61772d060cfd0666fffaa2c26036bf3c7c7e1157eb0",
+  "entryCommit": "87d527385b23f2427fad9a5e34f3fc1566ea9619",
+  "deviceEntryCommit": "87d527385b23f2427fad9a5e34f3fc1566ea9619",
+  "filesSha256": "cb8bbdb5c5c32c0cc2b523fdf5dbd995160b8b04ef97eeaa54231b1ea628b18a",
   "registration": "board-20261114/release.json",
-  "previousEntryCommit": "cad1b68e9d33f689dd1afa2b0d76ef2bc0a846d8",
+  "previousEntryCommit": "336559e1079de6cbb3afe24d2f82e50042af38e3",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-14T11:08:37+08:00",
-  "runtimeDifference": "The call board for every caller; iPhone board follows the App's own audio (build 46); a refused conversation record is dropped at once and remembered; phone board keeps the last lines of the conversation."
+  "validatedAt": "2026-11-14T11:48:31+08:00",
+  "runtimeDifference": "The call board for every caller; iPhone board follows the App's own audio (build 46); a refused conversation record is dropped at once and remembered; phone board keeps the last lines of the conversation. Phone board no longer swings between pages; one page per title; a four-line caption strip."
 }
