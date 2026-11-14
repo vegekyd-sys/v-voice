@@ -401,7 +401,7 @@ export function normalizeScene(raw) {
   for (const block of raw.blocks) { const op = normalizeOp({op: 'put', block}); if (op) scene = applyOp(scene, op); }
   for (const mark of Array.isArray(raw.marks) ? raw.marks.slice(0, 10) : []) { const op = normalizeOp({op: 'mark', ...mark}); if (op) scene = applyOp(scene, op); }
   const focus = typeof raw.focus === 'string' && focusExists(scene, raw.focus) ? raw.focus : '';
-  return {...scene, focus, pending: typeof raw.pending === 'string' ? text(raw.pending, 40) : null, lesson: raw.lesson === true, late: raw.late === true, ...(typeof raw.from === 'string' && /^z\d{1,6}$/u.test(raw.from) ? {from: raw.from} : {}), rev: raw.rev};
+  return {...scene, focus, pending: typeof raw.pending === 'string' ? text(raw.pending, 40) : null, lesson: raw.lesson === true, late: raw.late === true, ...(raw.cue === true ? {cue: true} : {}), ...(typeof raw.from === 'string' && /^z\d{1,6}$/u.test(raw.from) ? {from: raw.from} : {}), rev: raw.rev};
 }
 
 /** The scene as the director model reads it back: compact, ids first. */

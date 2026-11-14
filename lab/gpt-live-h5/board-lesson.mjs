@@ -355,7 +355,7 @@ export function parseIllustration(text, said, taken = []) {
  * `complete({messages, signal})` yields text chunks (the director's client).
  * `director.present(owner, ops, holdMs)` puts the lesson on the call's board.
  */
-export function createLessonWriter({complete, fallback = null, director, now = Date.now, record: keep = () => {}, preferMs = 8000, totalMs = 13000} = {}) {
+export function createLessonWriter({complete, fallback = null, director, now = Date.now, record: keep = () => {}, preferMs = 8000, totalMs = 13000, scriptInstructions = SCRIPT_INSTRUCTIONS} = {}) {
   // Callers who are not the owner (`quiet`): how a lesson went is kept, what was asked and said is not.
   const hushed = new Set();
   const record = event => keep(hushed.has(event?.voiceSessionId) ? Object.fromEntries(['type', 'voiceSessionId', 'ok', 'writer', 'scripted', 'durationMs', 'failure', 'none', 'add'].filter(key => key in event).map(key => [key, event[key]])) : event);
@@ -395,7 +395,7 @@ export function createLessonWriter({complete, fallback = null, director, now = D
       // for the same question would flash by before the lesson arrives.)
       if (!scripted) director.hold?.(owner); else director.expect?.(owner);
       const before = told.get(owner);
-      const messages = [{role: 'system', content: scripted ? SCRIPT_INSTRUCTIONS : LESSON_INSTRUCTIONS},
+      const messages = [{role: 'system', content: scripted ? scriptInstructions : LESSON_INSTRUCTIONS},
         {role: 'user', content: JSON.stringify({topic: String(topic ?? '').slice(0, 400), audience: String(audience ?? '').slice(0, 80) || '成年人',
           ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(before ? {before} : {}), ...(result ? {source: 'result'} : {}),
           // What was looked up for this lesson (a search, V's memory), then the standing references.
@@ -427,7 +427,7 @@ export function createLessonWriter({complete, fallback = null, director, now = D
      */
     brief({owner, topic, audience = '', ask = ''} = {}) {
       if (owner && director.streams === true) director.expect?.(owner, 60000);
-      return `电话里用户请你讲解一件事，屏幕上有一页手账画面会跟着你的讲解出现。需要今天的信息、用户自己的项目或记录时，先用你自己的工具查清楚（查不到就如实少讲），再按下面的规范写。你的最终回复只能是规范里的那个 JSON 对象本身，前后不要任何别的文字，也不要另写口头摘要。\n\n这次的输入：${JSON.stringify({topic: String(topic ?? '').slice(0, 400), audience: String(audience ?? '').slice(0, 80) || '成年人', ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(lessonReference(`${topic} ${ask}`) ? {reference: lessonReference(`${topic} ${ask}`)} : {})})}\n\n===== 规范 =====\n${director.streams === true ? SCRIPT_INSTRUCTIONS : LESSON_INSTRUCTIONS}`;
+      return `电话里用户请你讲解一件事，屏幕上有一页手账画面会跟着你的讲解出现。需要今天的信息、用户自己的项目或记录时，先用你自己的工具查清楚（查不到就如实少讲），再按下面的规范写。你的最终回复只能是规范里的那个 JSON 对象本身，前后不要任何别的文字，也不要另写口头摘要。\n\n这次的输入：${JSON.stringify({topic: String(topic ?? '').slice(0, 400), audience: String(audience ?? '').slice(0, 80) || '成年人', ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(lessonReference(`${topic} ${ask}`) ? {reference: lessonReference(`${topic} ${ask}`)} : {})})}\n\n===== 规范 =====\n${director.streams === true ? scriptInstructions : LESSON_INSTRUCTIONS}`;
     },
     accept({owner, text, topic, audience = '', ask = '', startedAt = now()} = {}) {
       if (director.streams === true) {

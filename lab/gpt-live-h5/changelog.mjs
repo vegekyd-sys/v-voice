@@ -198,6 +198,16 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-board-cue.20261115.1',date:'2026-11-15',
+    title:'讲解画面更跟得上声音',
+    items:[
+      '画面上每样东西什么时候出现，由画画面的模型按讲到哪一段来决定；没讲到的不提前出现。',
+      '刚问完就先出要讲的东西（照片、对比表的两边），不再对着空白等。',
+      '讲几个地方、景点、人物时，每一样配自己的照片，每一样都讲到。',
+      '手机上画面更大，下面只留一行 V 正在说的话，点一下看全部对话。',
+    ],
+  },
+  {
     version:'voice-board-follow.20261114.1',date:'2026-11-14',
     title:'iPhone 上的画面跟着声音走',
     items:['V Voice build 46 起，iPhone 上的画面和网页一样，讲到哪一项哪一项才出现、才被标出来。'],

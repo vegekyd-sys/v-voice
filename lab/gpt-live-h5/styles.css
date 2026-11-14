@@ -1982,3 +1982,15 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   .board, .board * { animation: none !important; transition: none !important; }
   .board svg path { stroke-dashoffset: 0 !important; }
 }
+/* Cue pages (VOICE_BOARD_FOLLOW=cue): what V has not reached is not on the page yet,
+   not even in pencil; its place is kept so nothing moves when it appears. */
+.board-body[data-cue] [data-ink="false"] { opacity: 0 !important; }
+/* Under a cue page on a phone: one line of what V is saying now (tap: the whole conversation).
+   The page takes the rest of the screen. */
+.board-now { display: none; }
+@media (max-width: 700px) {
+  .call-page[data-board="true"] .board-now { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+    flex: 0 0 auto; width: 100%; margin: 0; padding: 10px 22px calc(var(--controls-height, 76px) + 8px); border: 0; background: none;
+    font: inherit; font-size: 17px; line-height: 1.55; text-align: left; color: var(--ink); cursor: pointer; }
+  .call-page[data-board="true"] .board-now[data-who="user"] { color: var(--faint); }
+}

@@ -75,7 +75,7 @@ function startBoard(callID){
     const reached=()=>{const length=Array.from(row.text).length;
       if(audio)return cursor.index({key:row.key,textLength:length,outputBytes:audio.outputBytes,queuedBytes:audio.queuedBytes,charsPerSecond:spokenRate(row.text)});
       return spokenSince===null?0:Math.min(length,Math.ceil((performance.now()-spokenSince)/1000*spokenRate(row.text))+2);};
-    return gate.view({scene,text:row?.text??'',speaking,speaksOf,unspoken,progress:()=>spokenProgress(scene,row.text,reached())});
+    return gate.view({scene,text:row?.text??'',speaking,speaksOf,unspoken,progress:()=>{const said=reached();return{...spokenProgress(scene,row.text,said),said,reply:row.key};}});
   };
   board=createBoardClient({
     isCurrent:()=>owner===callID&&current?.active,

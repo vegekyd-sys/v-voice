@@ -762,7 +762,8 @@ async function startCall() {
           progress: () => {
             const stats = active.relay?.stats, textLength = Array.from(row.text).length;
             const index = stats ? cursor.index({ key: row.key, textLength, outputBytes: stats.outputBytes, queuedBytes: stats.queuedOutputBytes, charsPerSecond: spokenRate(row.text) }) : textLength;
-            return spokenProgress(scene, row.text, index);
+            // (`said`: how far into this reply the voice is, for the line under a phone's page.)
+            return { ...spokenProgress(scene, row.text, index), said: index, reply: row.key };
           } });
         return spoken;
       };

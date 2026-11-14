@@ -21,6 +21,22 @@ if [ "${1:-}" = "--update" ]; then
   # Only this Candidate's own code and unit are touched; its environment file,
   # tunnel and entry link stay as they are. The unit must have no call in progress.
   ssh v "sudo -n test -f $root/environment.private.json"
+  # VOICE_BOARD_FOLLOW=cue|word: how pieces follow the voice (docs/research/board-follow-by-model). Only that key is changed.
+  if [ -n "${VOICE_BOARD_FOLLOW:-}" ]; then
+    ssh v sudo -n python3 - "$root/environment.private.json" "$VOICE_BOARD_FOLLOW" <<'PY'
+import json, os, sys
+path, mode = sys.argv[1], sys.argv[2]
+env = json.load(open(path))
+if mode == 'cue': env['VOICE_BOARD_FOLLOW'] = 'cue'
+else: env.pop('VOICE_BOARD_FOLLOW', None)
+tmp = path + '.next'
+with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as out: json.dump(env, out)
+# (The Candidate reads it as its own user: keep the owner.)
+stat = os.stat(path); os.chown(tmp, stat.st_uid, stat.st_gid)
+os.replace(tmp, path)
+print('VOICE_BOARD_FOLLOW', env.get('VOICE_BOARD_FOLLOW', '(word)'))
+PY
+  fi
   upload
   # The unit is transient: after a crash it no longer exists, so it is started
   # again from the Candidate's own launcher and private environment file.

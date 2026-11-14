@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-15 — The board follows cues the illustrator writes
+
+- V's words reach the streaming illustrator cut into numbered clauses at punctuation, and every piece, arrow and pen mark it draws says which clause it hangs on (`cue`; -1: shown at once, while V is still saying it will explain). The service turns a cue into that clause's own words, so the page shows each piece when the voice gets there; nothing is moved by name matching any more (`board-cue.mjs`). `VOICE_BOARD_FOLLOW=word` keeps the old way. Offline comparison and call measurements: `docs/research/board-follow-by-model/`.
+- On a cue page what V has not reached is hidden rather than drawn pale, and V's text is not put on an empty page.
+- The lesson writer tells every listed thing as fully as the others, and things that can be seen get their own pictures (a list with images) rather than drawings.
+- Phone: under a cue page one line of what V is saying at this moment (from the voice cursor; the caller's question until V answers); a tap opens the whole conversation, and the board's report button opens it there.
+
 ## 2026-11-14 — iPhone: the board follows the voice as on the web
 
 - The iOS App reports how far its own audio has got (`audioProgress`: received and still-queued PCM bytes, build 46, `capabilities.audioProgress`), and the page follows the voice with the web page's cursor. An App without it (build 45) follows the voice by time from when V began the reply, instead of showing every piece at once.

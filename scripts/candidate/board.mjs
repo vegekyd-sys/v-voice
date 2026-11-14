@@ -133,7 +133,9 @@ async function* scriptedDirector({messages, signal}) {
 }
 
 const real = boardDirectorFromEnv({...process.env, VOICE_BOARD: '1'}, {audit: event => console.log(JSON.stringify(event))});
-const board = real ?? createBoardDirector({complete: scriptedDirector, audit: event => console.log(JSON.stringify(event))});
+// BOARD_FIXTURE_CUE=1: the scripted pictures drawn as cue pages (the streaming illustrator's pages; their quotes stand for cues).
+const board = real ?? createBoardDirector({complete: scriptedDirector, audit: event => console.log(JSON.stringify(event)),
+  ...(process.env.BOARD_FIXTURE_CUE === '1' ? {stream: {instructions: '', refine: op => op, cue: true}} : {})});
 const service = createDirectVoiceService({gateway, wsModule: {WebSocket: Model, WebSocketServer}, apiKeys: {grok: 'LOCAL_FIXTURE_ONLY'},
   audit: event => { board.observe(event); if (/^call\./u.test(event.type)) console.log(JSON.stringify({type: event.type, voiceSessionId: event.voiceSessionId, model: event.model, message: event.message})); }, loadContext: async () => '', searchAcknowledgment: 'off'});
 // Real pictures when Wikipedia is reachable; otherwise a bundled image, so the print is never missing in a layout check.
