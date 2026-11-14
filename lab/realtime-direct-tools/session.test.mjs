@@ -1834,3 +1834,17 @@ test('the board for everyone: a Public caller and a signed-in Feishu account bot
   assert.equal(f.upstream.sent.find(e=>e.type==='session.update').session.tools.some(tool=>tool.name==='explain_on_board'),audience==='all',audience);
  }
 });
+
+test('call 8a67bd27: a record Seeduplex refused is left out of the next call in the same session until it changes',async t=>{
+ const record=async()=>'一条群消息';
+ const make=async()=>{const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{loadContext:record,sessionKey:'agent:makaron:feishu:group:oc_refused'});t.after(()=>f.service.dispose());return f;};
+ const first=await make();
+ const created=first.upstream.sent.find(e=>e.type==='session.create'||e.type==='session.update');
+ assert.match(JSON.stringify(created),/一条群消息/);
+ first.upstream.emit('message',Buffer.from(JSON.stringify({type:'error',error:{code:'55000000'}})),false);
+ assert(await until(()=>first.audit.some(e=>e.type==='call.provider-status'&&e.stage==='context-dropped')));
+ const second=await make();
+ assert(second.audit.some(e=>e.type==='call.record-skipped'));
+ const opened=second.upstream.sent.find(e=>e.type==='session.create'||e.type==='session.update');
+ assert.doesNotMatch(JSON.stringify(opened),/一条群消息/);
+});

@@ -469,7 +469,14 @@ export class SeeduplexRealtimeVoiceBridge {
     if (!reason.recoverable) return this.#fail(new Error("豆包语音连接未完成，请重新拨号。"));
     const now = Date.now();
     this.reconnectAttempts = this.reconnectAttempts.filter(at => now-at < 60_000);
-    if (this.reconnectAttempts.length >= (this.options.maxReconnectAttempts ?? 3) && !this.#dropContext(reason)) return this.#fail(new Error("语音连接暂时无法恢复，请重新拨号。"));
+    // Refused before V has said a word: that is Seeduplex refusing the conversation record, not a
+    // flaky network (calls in one Feishu group, 11/14: refused three times running, then fine without
+    // it). Go without the record at once instead of trying it twice more.
+    const refusedAtStart = reason.upstreamCode === "55000000" && !this.producedAudio && now - this.startedAt < 15_000;
+    if (refusedAtStart && this.#dropContext(reason)) { /* reconnect below, without the record */ }
+    else if (this.reconnectAttempts.length >= (this.options.maxReconnectAttempts ?? 3) && !this.#dropContext(reason)) return this.#fail(new Error("语音连接暂时无法恢复，请重新拨号。"));
+    // A greeting asked for but not yet heard is asked for again on the next session.
+    if (!this.producedAudio && this.greetingRequested) { this.greetAfterReconnect = true; this.greetingRequested = false; }
     this.reconnectAttempts.push(now);
     this.reconnecting = true;
     this.ready = false;

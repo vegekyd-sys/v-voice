@@ -383,16 +383,21 @@ test("a record upstream keeps refusing is dropped before V has spoken", async ()
 
   const call = await start();
   await call.refuse();
+  // Refused before V has spoken: the record goes at once, not after two more refusals (11/14).
+  assert.deepEqual(call.stages.filter((stage) => stage === "context-dropped").length, 1);
   call.bridge.triggerGreeting();
-  await call.refuse();await call.refuse();await call.refuse();
+  // Without the record, ordinary retries still apply.
+  await call.refuse();await call.refuse();
   assert.deepEqual(call.errors, []);
   assert.equal(call.stages.filter((stage) => stage === "context-dropped").length, 1);
   const socket = call.sockets.at(-1);
   socket.open();
   const created = socket.sent.find((event) => event.type === "session.create");
   assert.match(created.session.instructions, /记录：暂无/);
-  assert.equal(created.session.id, undefined, "a resumed session would keep the refused record");
-  socket.message({ type: "session.created", session: { id: "s2" } });
+  const firstWithout = call.sockets[1].sent.find((event) => event.type === "session.create");
+  assert.equal(firstWithout.session.id, undefined, "a resumed session would keep the refused record");
+  assert.match(firstWithout.session.instructions, /记录：暂无/);
+  socket.message({ type: "session.created", session: { id: created.session.id ?? "s2" } });
   assert.equal(socket.sent.filter((event) => event.type === "speech_text_buffer.commit").length, 1, "the greeting still plays");
   assert.equal(call.stages.at(-1), "recovered");
   call.bridge.close();

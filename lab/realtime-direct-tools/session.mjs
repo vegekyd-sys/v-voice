@@ -14,7 +14,7 @@ import {createDeviceRequests} from '../../lib/device-requests.mjs';
 import {createDeviceLocation,LOCATION_TOOL,locationOperation} from './device-location.mjs';
 import {createNativeRuntime,DEFAULT_NATIVE_RUNTIME_POLICY} from './native-runtime.mjs';
 import { taskActivity } from '../gpt-live-h5/avatar-state.mjs';
-import {randomBytes,randomUUID} from 'node:crypto';
+import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {SeeduplexRealtimeVoiceBridge,preconnectSeeduplex} from '../seeduplex-realtime-provider.mjs';
 import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
 import {V_ONE_VOICE_POLICY} from '../gpt-live-h5/one-voice-policy.mjs';
@@ -72,6 +72,8 @@ export function directInstructions(catalog,context='',model='',options={}) {
 // announced, so a burst of quick tool calls becomes one line.
 export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageGapMs:15000,factGapMs:6000,idleMs:45000,idleMax:2,quietAfterUserMs:4000,startMs:2500,max:12,correctionDelayMs:400,abandonedResponseMs:8000});
 
+// Conversation records Seeduplex refused, by session: {hash, until}.
+const refusedRecords=new Map();
 export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
@@ -469,8 +471,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     client.on('message',earlyGreeting);
     const connectionStage=stage=>recordConnectionStage(s,stage);
     const preparation=s.preparation&&(s.preparation.pending||s.preparation.succeeded)&&performance.now()-s.preparation.startedAt<1000?s.preparation:prepareConnectionEnvironment(s);s.preparation=null;
-    const [catalog,context,actorReader]=await preparation.promise;
+    let [catalog,context,actorReader]=await preparation.promise;
     if(!current(s))return;
+    // A conversation record Seeduplex refused on an earlier call is left out from the start, until
+    // the record changes (a new message) or six hours pass: no failed attempts first.
+    const recordHash=context?createHash('sha256').update(context).digest('hex'):'';
+    const refused=recordHash&&refusedRecords.get(s.sessionKey);
+    if(refused&&refused.hash===recordHash&&refused.until>Date.now()){context='';audit({type:'call.record-skipped',voiceSessionId:s.id,reason:'refused-earlier'});}
     const entries=(catalog.groups??[]).flatMap(g=>g.tools??[]),allowedTools=new Set(entries.map(t=>t.id));
     s.tvControls=!s.unidentified&&hasTvControls(entries);
     s.actorReader=allowedTools.has('exec')?actorReader:null;
@@ -787,7 +794,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         audit({type:'provider.event',voiceSessionId:s.id,providerEventType:e.type,responseId:e.responseId});},
       onProtocolEvent:e=>{if(['response.created','response.output_text.delta','response.output_audio.started'].includes(e.type))s.replyDelivery?.begin(e.response_id??e.response?.id);audit({type:'provider.protocol',voiceSessionId:s.id,event:{...e,...(e.delta&&e.type?.includes('audio')?{delta:'[audio retained separately]'}:{})}});},
       onDiagnostic:e=>{if(!current(s))return;audit({type:'call.provider-status',voiceSessionId:s.id,...e});
-        if(e.stage==='context-dropped')request.instructions=request.withoutContext(request.instructions);
+        if(e.stage==='context-dropped'){request.instructions=request.withoutContext(request.instructions);
+          if(recordHash){refusedRecords.set(s.sessionKey,{hash:recordHash,until:Date.now()+6*3600_000});while(refusedRecords.size>500)refusedRecords.delete(refusedRecords.keys().next().value);}}
         if(['reconnecting','recovered'].includes(e.stage))emit(s,{type:`provider.${e.stage}`});},
       onError:e=>{audit({type:'call.connection-error',voiceSessionId:s.id,model:s.model,message:e.message});emit(s,{type:'error',message:e.message});void close(s.id).catch(()=>{});},
       onClose:()=>{if(current(s))void close(s.id).catch(()=>{});},
