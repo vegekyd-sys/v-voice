@@ -562,10 +562,17 @@ function Sheet({scene, spoken, loadPhoto}) {
   const dense = useFit(box, sheet, scene.serial);
   // While V speaks the mark follows the voice; otherwise it stays where the director put it.
   const view = {focus: spoken?.focus || scene.focus, ahead: new Set(spoken?.ahead ?? []), loadPhoto};
+  // Only the page V is on follows the voice, and only up and down inside the page: scrollIntoView
+  // also scrolled the strip of pages sideways, to whichever page last had a focus, while the board
+  // brought the view back to V's page; on a phone the view swung between two pages (11/14).
   useEffect(() => {
-    if (!view.focus) return;
-    box.current?.querySelector('[data-now]')?.scrollIntoView?.({block: 'nearest', inline: 'nearest', behavior: 'smooth'});
-  }, [view.focus, scene.rev]);
+    const host = box.current, target = spoken && view.focus ? host?.querySelector('[data-now]') : null;
+    if (!host || !target) return;
+    const at = target.getBoundingClientRect(), frame = host.getBoundingClientRect();
+    if (at.top >= frame.top && at.bottom <= frame.bottom) return;
+    const top = host.scrollTop + (at.top < frame.top ? at.top - frame.top - 12 : at.bottom - frame.bottom + 12);
+    host.scrollTo?.({top, behavior: 'smooth'});
+  }, [view.focus, scene.rev, Boolean(spoken)]);
   // Pen marks V has reached are on their items; the others are still to come.
   const blocks = markedBlocks(scene, view.ahead).filter(block => !(block.t === 'photo' && missing.has(block.query)));
   // Neighbours that each ask for part of the width (`w`) stand side by side.

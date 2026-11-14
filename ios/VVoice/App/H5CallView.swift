@@ -254,6 +254,8 @@ struct H5WebSurface: UIViewRepresentable {
                   let id = payload["pictureID"] as? String, VoiceAvatar.pictures[id] != nil else { throw CancellationError() }
             call.islandDidDisplayReaction(id, owner: owner)
             return [:]
+        // How far the voice has got (the page follows it on the call board, as the web page does).
+        case "audioProgress": return try call.audioProgress(owner: owner)
         case "reading":
             guard owned, let reading = payload["reading"] as? Bool else { throw CancellationError() }
             self.reading = reading

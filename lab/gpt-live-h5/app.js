@@ -824,8 +824,10 @@ async function startCall() {
           if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
           if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
           if(value.type==='reply.sync'&&value.status==='failed')setStatus(value.message,{tone:'problem'});
-          if(value.type==='provider.reconnecting')setStatus('正在恢复语音连接…');
+          // (Before V has said anything this is still connecting: a refused conversation record, retried without it.)
+          if(value.type==='provider.reconnecting')setStatus(active.vSpoke?'正在恢复语音连接…':'正在连接 V…');
           if(value.type==='provider.recovered')setStatus('V 正在听，直接说话就好');
+          if(value.type==='transcript'&&value.role==='assistant')active.vSpoke=true;
           if(value.type==='transcript'&&!(reservation.speakerRouting&&value.role==='user')) {
             active.relayTurns??={};
             const id=active.relayTurns[value.role]??=crypto.randomUUID();

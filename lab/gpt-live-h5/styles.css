@@ -1890,9 +1890,12 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 @media (max-width: 700px) {
   .board-top { padding: 14px 10px 0 18px; }
   .board-title { font-size: 21px; }
-  /* A phone gives the page the whole screen down to the controls; the words
-     are in V's voice. The way out is a full-size button. */
-  .call-page[data-board="true"] .conversation { display: none; }
+  /* A phone gives the page most of the screen; under it a strip keeps the last
+     few lines of the conversation in view. The way out is a full-size button. */
+  .call-page[data-board="true"] .conversation { flex: 0 0 auto; max-height: 27vh; margin-top: 4px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10px); mask-image: linear-gradient(to bottom, transparent 0, #000 10px); }
+  .call-page[data-board="true"] .conversation .turn, .call-page[data-board="true"] .conversation .turn-text { font-size: 16px; line-height: 1.6; }
+  .call-page[data-board="true"] .conversation .turns { padding-top: 14px; }
   .call-page[data-board="true"] .board { flex: 1 1 0; min-height: 0; }
   .board-close { width: 44px; height: 44px; color: var(--ink-soft); background: #fffdfecc; box-shadow: 0 1px 4px #4d356026; }
   .board-close svg { width: 20px; height: 20px; }
@@ -1927,8 +1930,6 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   /* On a phone a diagram whose nodes carry pictures needs the screen; the big print would push it off. */
   /* (Only once that diagram has something showing: until then the print is all there is to look at.) */
   .board-body:has(:is(.board-flow[data-pictured], .board-versus:has(.board-thumb), .board-timeline:has(.board-thumb)):has([data-ink="true"])) .board-photo { display: none; }
-  /* The page runs under the controls; its last line stops above them. */
-  .call-page[data-board="true"] .board-scroll { padding-bottom: calc(var(--controls-height, 76px) + 10px); }
 }
 
 /* desktop: the page on the left, V above a narrower chat panel on the right.

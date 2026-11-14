@@ -61,6 +61,8 @@
 - 有哪些功能、谁能用，全由服务端 `/api/page/<名字>` 决定（`lab/gpt-live-h5/server.mjs` 的 `PAGE_FEATURES`）；它和网页自己的路由是同一个请求、同样的权限判断，只是回复改成一次性 JSON（没有流，二进制用 base64）。
 - App 在快照的 `capabilities.pageRequests` 声明支持（当前为 1）。页面没看到这个能力就不启用依赖它的功能，不报错。
 
+另有一个通用读数 `audioProgress`（build 46 起，`capabilities.audioProgress`）：返回本通话累计收到的音频和还没播完的部分（PCM16 字节，与网页 relay 的 `outputBytes` / `queuedOutputBytes` 同口径）。页面据此知道声音讲到哪，用的是网页同一个 `createSpokenCursor`；画面「讲到哪亮到哪」靠它。没有这个能力的 App 按语速估算。
+
 **以后新增页面功能：服务端加一个 `page/<名字>`，`ios/H5/native-h5.mjs` 去调它，随网页发布即可，不需要新 App。** 需要流式推送、二进制大文件、后台执行或新系统权限的，仍要原生改动。
 
 ## 开发与验证约定
