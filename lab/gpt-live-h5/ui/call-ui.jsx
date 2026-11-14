@@ -453,6 +453,15 @@ function CallPage({view, actions, options}) {
   const lastUser = replyRows.findLastIndex(row => row.role === 'user');
   const caption = replyRows.slice(lastUser + 1).filter(row => row.role === 'assistant').map(row => row.text.trim()).join(' ');
   const nowLine = board?.cue && !wide ? boardNowLine(replyRows, state.boardSpoken) : null;
+  // The report's card is in the conversation; under a cue page on a phone the conversation is one line,
+  // so it is opened first (11/15: the button did nothing).
+  const openReport = () => {
+    const card = () => [...document.querySelectorAll('.content-card')].at(-1);
+    if (card()) { card().click(); return; }
+    setHistory(true);
+    // (Back to the page once the report is open: closing it returns to the picture, not the list.)
+    requestAnimationFrame(() => requestAnimationFrame(() => { card()?.click(); setHistory(false); }));
+  };
   // With a picture up, the picture is the subject and V sits beside it.
   const size = !inCall ? Math.min(width * .72, height * .4, 300)
     : board ? (wide ? Math.min(92, height * .13) : 48)
@@ -514,7 +523,7 @@ function CallPage({view, actions, options}) {
           {inCall && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
         </section>
         {board && <Board scene={board} canvas={state.boardCanvas} spoken={state.boardSpoken} caption={caption} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
-          onReport={[...state.transcript.history, ...state.transcript.current].some(row => row.document) ? () => [...document.querySelectorAll('.content-card')].at(-1)?.click() : null} />}
+          onReport={[...state.transcript.history, ...state.transcript.current].some(row => row.document) ? openReport : null} />}
         {inCall && (
           <aside className="chat-panel" aria-label="聊天内容">
             {nowLine
