@@ -556,7 +556,7 @@ function useFit(scroller, page, key) {
 }
 
 // One page of the canvas: its blocks, fitted to the panel.
-function Sheet({scene, spoken, loadPhoto}) {
+function Sheet({scene, spoken, loadPhoto, caption = ''}) {
   const box = useRef(null), sheet = useRef(null);
   const [missing, setMissing] = useState(() => new Set());
   const dense = useFit(box, sheet, scene.serial);
@@ -587,6 +587,8 @@ function Sheet({scene, spoken, loadPhoto}) {
     <div className="board-scroll" ref={box} role="region" aria-live="polite" aria-label="画面内容" tabIndex={0}>
       <div className="board-body" ref={sheet}
         data-side={blocks.some(block => SMALL.has(block.t)) && blocks.some(block => !SMALL.has(block.t)) || undefined}>
+        {/* Nothing drawn yet: V's words, so the page is not empty while the picture is on its way. */}
+        {!blocks.length && caption && <p className="board-caption">{caption}</p>}
         {rows.map(row => row.length > 1
           ? <div key={`${scene.serial}:row:${row[0].id}`} className="board-row" data-n={Math.min(3, row.length)} data-w={row[0].w ?? 'half'}>{row.map(piece)}</div>
           : piece(row[0]))}
@@ -619,7 +621,7 @@ function Sheet({scene, spoken, loadPhoto}) {
  * snapping strip, with nothing on screen to operate. V drawing again brings
  * the view back to where V is.
  */
-export function Board({scene, canvas, spoken, loadPhoto, onClose, onReport = null}) {
+export function Board({scene, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null}) {
   const pages = canvas?.zones?.length ? canvas.zones.map(zone => zone.serial === scene.serial ? scene : zone) : [scene];
   const active = Math.max(0, pages.findIndex(page => page.serial === scene.serial));
   const track = useRef(null);
@@ -648,7 +650,7 @@ export function Board({scene, canvas, spoken, loadPhoto, onClose, onReport = nul
       <div className="board-track" ref={track} onScroll={onScroll}>
         {pages.map((item, index) => (
           <div key={item.serial} className="board-page" data-lesson={item.lesson || undefined} data-current={index === inView || undefined} aria-hidden={index !== inView || undefined}>
-            <Sheet scene={item} spoken={index === active ? spoken : null} loadPhoto={loadPhoto} />
+            <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} />
           </div>
         ))}
       </div>
