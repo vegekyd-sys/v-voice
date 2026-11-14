@@ -13,7 +13,7 @@ import {readFileSync} from 'node:fs';
 import {boardCompletionFromEnv, boardRequest, createBoardDirector} from '../../lab/gpt-live-h5/board-director.mjs';
 import {SCRIPT_INSTRUCTIONS, STREAM_INSTRUCTIONS, parseScript, refineStreamOp, spokenScript} from '../../lab/gpt-live-h5/board-lesson.mjs';
 import {createLineParser, normalizeOp, spokenProgress, edgeId} from '../../lab/gpt-live-h5/board-scene.mjs';
-import {CUE_INSTRUCTIONS, clauses, numbered} from './follow-cue.mjs';
+import {CUE_INSTRUCTIONS, clauses, numbered} from '../../lab/gpt-live-h5/board-cue.mjs';
 
 const CHARS_PER_SECOND = 6.4;
 const DEFAULT_IDS = ['l1', 'l2', 'l3', 'c1a', 'c1b', 'c1c', 'c2a', 'c2b', 'c2c', 'c2d', 'c3a', 'c4a', 'c8c', 'c9a', 'c9b', 'c9c', 'c10a', 'c10c', 'c10d'];

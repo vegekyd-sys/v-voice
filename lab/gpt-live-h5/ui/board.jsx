@@ -586,9 +586,10 @@ function Sheet({scene, spoken, loadPhoto, caption = ''}) {
   return (
     <div className="board-scroll" ref={box} role="region" aria-live="polite" aria-label="画面内容" tabIndex={0}>
       <div className="board-body" ref={sheet}
-        data-side={blocks.some(block => SMALL.has(block.t)) && blocks.some(block => !SMALL.has(block.t)) || undefined}>
+        data-side={blocks.some(block => SMALL.has(block.t)) && blocks.some(block => !SMALL.has(block.t)) || undefined} data-cue={scene.cue || undefined}>
         {/* Nothing drawn yet: V's words, so the page is not empty while the picture is on its way. */}
-        {!blocks.length && caption && <p className="board-caption">{caption}</p>}
+        {/* (Not where the picture follows cues the model wrote: there it decides what shows first.) */}
+        {!blocks.length && caption && !scene.cue && <p className="board-caption">{caption}</p>}
         {rows.map(row => row.length > 1
           ? <div key={`${scene.serial}:row:${row[0].id}`} className="board-row" data-n={Math.min(3, row.length)} data-w={row[0].w ?? 'half'}>{row.map(piece)}</div>
           : piece(row[0]))}

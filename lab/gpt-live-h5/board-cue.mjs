@@ -1,8 +1,9 @@
-// The cue illustrator for the follow research (docs/research/board-follow-by-model):
+// The cue illustrator (VOICE_BOARD_FOLLOW=cue; research (docs/research/board-follow-by-model):
 // today's streaming illustrator's instructions, with every "copy V's words (q)"
 // replaced by "write the clause number this hangs on (cue)". Nothing else in
 // the instructions changes, so a difference in the eval is the cue's.
-import {STREAM_INSTRUCTIONS} from '../../lab/gpt-live-h5/board-lesson.mjs';
+import {STREAM_INSTRUCTIONS} from './board-lesson.mjs';
+import {loose, normalizeOp} from './board-scene.mjs';
 
 /** V's words cut at punctuation into clauses; joined they are the words again. Very short clauses join the next. */
 export function clauses(words) {
@@ -24,7 +25,8 @@ conversation 最后一条 assistant 的话已经按标点切成编号小段：�
 - cue：挂在第几段（整数）。每个条目、节点、比较项、每一格、每一行、每个图形要写 cue；照片、便签这样的整块也写 cue；flow 的每条边第四项写 cue；每个 mark、每个 focus 也写 cue。
 - 每一项都要有自己的 cue，不能只给整个区块写一个：式子的每一段（数字、符号）、示意图的每个图形、对比的每一行、时间线的每一项，各自挂在讲到它的那一段。整块写 cue 只管这个区块的框和标题。
 - cue 写**第一次真正讲到这样东西**的那一段：念到那一段，用户刚好听到它，眼睛也刚好看到它。不要挂在后面总结时再点一遍名的那段（「一句话：A、B、C…」），那样它要等到最后才出现；也不要挂在还没讲到它的段，那样画面就剧透了。
-- cue 写 -1 是开场画面：V 刚开口、还没讲到正题时就出现。只放让人知道「要讲什么」的东西，比如要讲的那样东西的照片；不放答案、数字、结论。可以没有开场画面。
+- cue 写 -1 是开场画面：用户刚问完、V 还在说「好，我讲讲」时就出现，让用户马上知道要讲什么，不对着空白等。只放「要讲的是什么」：那样东西的照片、一张对比表的两边（versus 的 sides，行还没有）、一张示意图的底子（地球、两条缝的挡板），不放答案、数字、结论。例：问故宫 → 故宫的照片 cue -1；问电车和油车的区别 → versus 区块 cue -1（两边 Model 3 / 卡罗拉，行各挂各的段）；问勾股定理 → 直角三角形那个图形 cue -1。能放就放一样，最多两样。
+- 讲到哪画到哪：每个新东西挂在讲它的那一段，不要等到结尾总结时才一起出来；结尾的总结只用 mark 在已有的东西上落笔（打勾、圈出），或加一张便签。
 - 第 0 段念出来时页面上就该有东西，不要让用户对着空白听好几句。
 - {"op":"focus","id":"区块id/条目id","cue":段号}：声音念到这一段时，目光（荧光笔）移到这一条。V 从一项讲到下一项、或回头又讲某一项时写一个；一段最多一个。`;
 
@@ -57,3 +59,55 @@ function build() {
   return text;
 }
 export const CUE_INSTRUCTIONS = build();
+
+/** The request's conversation with V's last words numbered by clause (what the cues count). */
+export const cueTurns = turns => {
+  const last = turns?.findLastIndex?.(turn => turn?.role === 'assistant') ?? -1;
+  return last < 0 ? turns : turns.map((turn, index) => index === last ? {...turn, text: numbered(clauses(turn.text))} : turn);
+};
+
+/**
+ * The words a cue stands for, as the page finds them: the clause's own letters
+ * from its start, moved forward within the clause until their head is the
+ * first such in the whole text (the page looks the head up in what was heard).
+ */
+export function cueQuote(said, cue) {
+  const parts = clauses(said);
+  if (!Number.isInteger(cue) || cue < 0 || !parts.length) return '';
+  const index = Math.min(cue, parts.length - 1), all = loose(said);
+  const start = loose(parts.slice(0, index).join('')).length, length = loose(parts[index]).length;
+  const latin = /^[\x00-\x7f]*$/u.test(all.slice(start, start + 12)), head = latin ? 10 : 4, size = latin ? 20 : 8;
+  for (let at = start; at < start + Math.max(1, length - head + 1); at++) if (all.indexOf(all.slice(at, at + head)) === at) return all.slice(at, at + size);
+  return all.slice(start, start + size);
+}
+
+/**
+ * One streamed operation with its cues turned into the words they stand for
+ * (`q`), so the page shows each piece when the voice reaches that clause. The
+ * model decides where; nothing is matched by name. A piece with cue -1 (or a
+ * photo before V has spoken) has no words and is shown at once.
+ */
+export function refineCueOp(op, {said = '', trigger = '', raw = null} = {}) {
+  if (!op) return null;
+  if (op.op === 'scene') return {op: 'scene', title: op.title, lesson: true, late: true, ...(op.from ? {from: op.from} : {})};
+  if (op.op === 'zone' || op.op === 'none') return op;
+  // The page's eye follows the voice through the cues; a fixed focus would fight it.
+  if (op.op === 'focus' || op.op === 'del' || op.op === 'clear') return null;
+  const quote = cue => cueQuote(said, cue);
+  if (op.op === 'mark') { const q = trigger === 'user' ? '' : quote(raw?.cue); return q ? normalizeOp({...raw, q}) : null; }
+  if (op.op !== 'put' || !raw?.block) return op;
+  // Before V has spoken: the print of the thing asked about, nothing else.
+  if (trigger === 'user') return op.block.t === 'photo' ? {op: 'put', block: (({q, ...block}) => block)(op.block)} : null;
+  const source = raw.block, own = Number.isInteger(source.cue) ? source.cue : null;
+  const hang = (item, inherit = own) => {
+    const {cue, q, ...rest} = item ?? {};
+    const at = Number.isInteger(cue) ? cue : inherit;
+    const words = at === null ? '' : quote(at);
+    return words ? {...rest, q: words} : rest;
+  };
+  const block = hang(source, null);
+  for (const key of ['items', 'nodes', 'cols']) if (Array.isArray(source[key])) block[key] = source[key].map(item => hang(item));
+  for (const key of ['a', 'b', 'both']) if (source[key] && typeof source[key] === 'object') block[key] = hang(source[key]);
+  if (Array.isArray(source.edges)) block.edges = source.edges.map(edge => Array.isArray(edge) ? [edge[0], edge[1], edge[2] ?? '', ...(Number.isInteger(edge[3]) && quote(edge[3]) ? [quote(edge[3])] : [])] : edge);
+  return normalizeOp({op: 'put', block});
+}

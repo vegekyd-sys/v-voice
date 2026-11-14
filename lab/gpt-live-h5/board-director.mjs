@@ -317,7 +317,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       let ops = 0, firstOpMs = null, none = false, retired = false;
       const parser = createLineParser(raw => {
         if (controller.signal.aborted || ops >= MAX_OPS) return;
-        let op = stream ? stream.refine(normalizeOp(raw), {said, trigger}) : normalizeOp(raw);
+        let op = stream ? stream.refine(normalizeOp(raw), {said, trigger, raw}) : normalizeOp(raw);
         if (!op || retired) return;
         if (stream && op.op === 'put' && op.block.t === 'versus' && row.scene.pending === null) {
           // The same two things compared further is the same table growing, not a second table
@@ -361,7 +361,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             row.pages = Math.max(row.pages ?? 0, row.scene.serial, ...row.zones.map(zone => zone.serial)) + 1;
             // (`from` must be a page that is on the canvas.)
             const origin = op.from && [...row.zones, row.scene].some(zone => zoneId(zone) === op.from) ? {from: op.from} : {};
-            row.scene = {...emptyScene(), rev: row.scene.rev + 1, serial: row.pages, title: op.title, lesson: true, late: true, ...origin};
+            row.scene = {...emptyScene(), rev: row.scene.rev + 1, serial: row.pages, title: op.title, lesson: true, late: true, ...(stream.cue ? {cue: true} : {}), ...origin};
           } else {
             if (op.op === 'put') {
               // A block may grow; it may not become something else. One that would replace what is
@@ -379,7 +379,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             const next = applyOp({...row.scene, pending: null}, op);
             if (next === row.scene) return;
             // The page is a lesson's page whoever opened it: pieces wait for the voice.
-            row.scene = {...next, lesson: true, late: true};
+            row.scene = {...next, lesson: true, late: true, ...(stream.cue ? {cue: true} : {})};
           }
           ops++; firstOpMs ??= now() - started; drawn.push(op);
           fetchAhead(row.scene);
@@ -399,7 +399,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       if (ahead) row.ahead = {listeners, done: new Promise(resolve => { finish = resolve; })};
       try {
         const messages = [{role: 'system', content: stream?.instructions ?? BOARD_INSTRUCTIONS},
-          {role: 'user', content: boardRequest({trigger, scene: row.scene, turns, evidence: row.evidence,
+          {role: 'user', content: boardRequest({trigger, scene: row.scene, turns: stream?.turns ? stream.turns(turns) : turns, evidence: row.evidence,
             // The author's notes go with the script they were written for, and with nothing else.
             ...(stream && row.notes && said && said.replace(/\s+/gu, '').startsWith(row.notes.script.replace(/\s+/gu, '').slice(0, 24)) ? {notes: {title: row.notes.title, lines: row.notes.lines}} : {}),
             ...(stream ? {recent: row.recent ?? [], page: {id: zoneId(row.scene), room: Math.max(0, 4 - row.scene.blocks.length)}, canvas: (row.zones ?? []).filter(zone => zone.serial !== row.scene.serial).map(zoneDigest)} : {})})}];

@@ -1982,3 +1982,6 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   .board, .board * { animation: none !important; transition: none !important; }
   .board svg path { stroke-dashoffset: 0 !important; }
 }
+/* Cue pages (VOICE_BOARD_FOLLOW=cue): what V has not reached is not on the page yet,
+   not even in pencil; its place is kept so nothing moves when it appears. */
+.board-body[data-cue] [data-ink="false"] { opacity: 0 !important; }

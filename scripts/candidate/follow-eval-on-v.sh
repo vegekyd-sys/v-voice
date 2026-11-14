@@ -8,8 +8,8 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 stamp=$(date +%Y%m%d-%H%M%S)
 mkdir -p artifacts/follow-eval
-tar czf - scripts/candidate/follow-eval.mjs scripts/candidate/follow-cue.mjs scripts/candidate/board-bench/questions.json \
-  lab/gpt-live-h5/board-director.mjs lab/gpt-live-h5/board-scene.mjs lab/gpt-live-h5/board-lesson.mjs \
+tar czf - scripts/candidate/follow-eval.mjs scripts/candidate/board-bench/questions.json \
+  lab/gpt-live-h5/board-director.mjs lab/gpt-live-h5/board-scene.mjs lab/gpt-live-h5/board-lesson.mjs lab/gpt-live-h5/board-cue.mjs \
   | ssh v 'rm -rf /tmp/follow-eval && mkdir -m 755 /tmp/follow-eval && tar xzf - -C /tmp/follow-eval && chmod -R a+rX /tmp/follow-eval && install -d -m 777 /tmp/follow-eval/out'
 ssh v sudo -n python3 - "$@" <<'PY' 2>&1 | tee "artifacts/follow-eval/$stamp.txt"
 import json, subprocess, sys
