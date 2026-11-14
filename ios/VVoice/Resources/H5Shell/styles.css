@@ -1892,8 +1892,9 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   .board-title { font-size: 21px; }
   /* A phone gives the page most of the screen; under it a strip keeps the last
      few lines of the conversation in view. The way out is a full-size button. */
-  .call-page[data-board="true"] .conversation { flex: 0 0 auto; max-height: 20vh; margin-top: 4px;
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px); mask-image: linear-gradient(to bottom, transparent 0, #000 22px); }
+  .call-page[data-board="true"] .conversation { flex: 0 0 auto; max-height: 27vh; margin-top: 4px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10px); mask-image: linear-gradient(to bottom, transparent 0, #000 10px); }
+  .call-page[data-board="true"] .conversation .turn, .call-page[data-board="true"] .conversation .turn-text { font-size: 16px; line-height: 1.6; }
   .call-page[data-board="true"] .conversation .turns { padding-top: 14px; }
   .call-page[data-board="true"] .board { flex: 1 1 0; min-height: 0; }
   .board-close { width: 44px; height: 44px; color: var(--ink-soft); background: #fffdfecc; box-shadow: 0 1px 4px #4d356026; }

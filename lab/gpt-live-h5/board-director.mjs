@@ -345,6 +345,9 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
           } else if (op.op === 'scene') {
             // (The page already up under this title is the page; one opened a moment ago and still empty is only renamed.)
             if (row.scene.title === op.title && row.scene.blocks.length) return;
+            // A page of this title already on the canvas (two runs for one answer, 11/14): go back to it, not a second one.
+            const same = (row.zones ?? []).find(zone => zone.serial !== row.scene.serial && zone.title === op.title && zone.blocks.length);
+            if (same) { shelve(); row.zones = row.zones.filter(zone => zone !== same); row.scene = {...same, rev: Math.max(same.rev, row.scene.rev) + 1, focus: ''}; ops++; firstOpMs ??= now() - started; drawn.push({op: 'zone', id: zoneId(same)}); fetchAhead(row.scene); onOp({op: 'sync', scene: row.scene, canvas: canvasOf(row)}); return; }
             if (!row.scene.blocks.length && row.scene.serial > 0) {
               if (row.scene.title === op.title && (row.scene.from ?? '') === (op.from ?? '')) return;
               row.scene = {...row.scene, title: op.title, ...(op.from && op.from !== zoneId(row.scene) ? {from: op.from} : {}), rev: row.scene.rev + 1};
