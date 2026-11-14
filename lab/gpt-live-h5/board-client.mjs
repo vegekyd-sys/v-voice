@@ -196,3 +196,23 @@ export function createBoardClient({request, onScene = () => {}, isCurrent = () =
     dispose() { closed = true; clearTimer(timer); controller?.abort('call_closed'); latest = null; },
   };
 }
+
+/**
+ * The one line under a phone's page (cue pages): what V is saying at this
+ * moment, not the whole reply, whose text arrives long before its voice.
+ * `rows` are the call's spoken rows in order; `spoken` the board's follow
+ * state ({said, reply}: characters of reply `reply` heard so far). Before V
+ * answers it is the caller's question. Returns {who, text} or null.
+ */
+export function boardNowLine(rows, spoken) {
+  const list = (rows ?? []).filter(row => !row.document && row.text?.trim());
+  const lastUser = list.findLastIndex(row => row.role === 'user');
+  const reply = list.slice(lastUser + 1).filter(row => row.role === 'assistant').at(-1);
+  if (!reply) return lastUser >= 0 ? {who: 'user', text: list[lastUser].text.trim()} : null;
+  const text = reply.text.trim(), parts = text.match(/[^。！？!?]+[。！？!?]*|[。！？!?]+/gu) ?? [text];
+  if (spoken?.reply !== reply.key || !Number.isFinite(spoken?.said)) return {who: 'v', text: parts.length > 2 ? parts.at(-1).trim() : text};
+  // The sentence the voice is in (its first while nothing has been heard yet).
+  let at = 0;
+  for (const part of parts) { at += Array.from(part).length; if (spoken.said <= at) return {who: 'v', text: part.trim()}; }
+  return {who: 'v', text: parts.at(-1).trim()};
+}

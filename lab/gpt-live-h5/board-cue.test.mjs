@@ -71,3 +71,23 @@ test('the director numbers V’s words for the model and marks its pages as cue 
   assert.equal(scene.cue, true);
   assert.ok(scene.blocks[0].items[0].q);
 });
+
+test('the line under a phone page is the sentence V is saying, or the question before V answers', async () => {
+  const {boardNowLine} = await import('./board-client.mjs');
+  const rows = [{key: 'u', role: 'user', text: '故宫怎么逛？'}];
+  assert.deepEqual(boardNowLine(rows, null), {who: 'user', text: '故宫怎么逛？'});
+  rows.push({key: 'a', role: 'assistant', text: '好，我整理下。'});
+  assert.deepEqual(boardNowLine(rows, null), {who: 'v', text: '好，我整理下。'});
+  rows.push({key: 'b', role: 'assistant', text: '从午门进去。抬头看铜狮子。最后从神武门出去。'});
+  assert.equal(boardNowLine(rows, {reply: 'b', said: 0}).text, '从午门进去。');
+  assert.equal(boardNowLine(rows, {reply: 'b', said: 8}).text, '抬头看铜狮子。');
+  assert.equal(boardNowLine(rows, {reply: 'b', said: 99}).text, '最后从神武门出去。');
+  // Not followed (no audio cursor for this reply): its last sentence, not the whole reply.
+  assert.equal(boardNowLine(rows, null).text, '最后从神武门出去。');
+});
+
+test('the cue writer is told to picture things that can be seen and to tell every listed thing', async () => {
+  const {CUE_SCRIPT_INSTRUCTIONS} = await import('./board-cue.mjs');
+  assert.match(CUE_SCRIPT_INSTRUCTIONS, /list 带图/u);
+  assert.match(CUE_INSTRUCTIONS, /看得见的东西用照片/u);
+});

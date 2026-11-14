@@ -2,7 +2,7 @@
 // today's streaming illustrator's instructions, with every "copy V's words (q)"
 // replaced by "write the clause number this hangs on (cue)". Nothing else in
 // the instructions changes, so a difference in the eval is the cue's.
-import {STREAM_INSTRUCTIONS} from './board-lesson.mjs';
+import {SCRIPT_INSTRUCTIONS, STREAM_INSTRUCTIONS} from './board-lesson.mjs';
 import {loose, normalizeOp} from './board-scene.mjs';
 
 /** V's words cut at punctuation into clauses; joined they are the words again. Very short clauses join the next. */
@@ -27,6 +27,8 @@ conversation 最后一条 assistant 的话已经按标点切成编号小段：�
 - cue 写**第一次真正讲到这样东西**的那一段：念到那一段，用户刚好听到它，眼睛也刚好看到它。不要挂在后面总结时再点一遍名的那段（「一句话：A、B、C…」），那样它要等到最后才出现；也不要挂在还没讲到它的段，那样画面就剧透了。
 - cue 写 -1 是开场画面：用户刚问完、V 还在说「好，我讲讲」时就出现，让用户马上知道要讲什么，不对着空白等。只放「要讲的是什么」：那样东西的照片、一张对比表的两边（versus 的 sides，行还没有）、一张示意图的底子（地球、两条缝的挡板），不放答案、数字、结论。例：问故宫 → 故宫的照片 cue -1；问电车和油车的区别 → versus 区块 cue -1（两边 Model 3 / 卡罗拉，行各挂各的段）；问勾股定理 → 直角三角形那个图形 cue -1。能放就放一样，最多两样。
 - 讲到哪画到哪：每个新东西挂在讲它的那一段，不要等到结尾总结时才一起出来；结尾的总结只用 mark 在已有的东西上落笔（打勾、圈出），或加一张便签。
+- 看得见的东西用照片，不用画：地方、城市、景点、建筑、人物、角色、动物、食物、产品、作品。讲到几个这样的东西，就用一个 list（或 timeline），每一项写 img（它自己的照片），各挂在讲它的那一段；不要只放一张大照片然后用 draw 去画其余的城市和建筑。draw 只用来画原理、构造、位置关系、几何。
+- 讲稿里列举了几样东西，页面上每一样都要有（一项或一张图），不能讲到后面几样时画面不动。
 - 第 0 段念出来时页面上就该有东西，不要让用户对着空白听好几句。
 - {"op":"focus","id":"区块id/条目id","cue":段号}：声音念到这一段时，目光（荧光笔）移到这一条。V 从一项讲到下一项、或回头又讲某一项时写一个；一段最多一个。`;
 
@@ -59,6 +61,14 @@ function build() {
   return text;
 }
 export const CUE_INSTRUCTIONS = build();
+
+/** The lesson writer's instructions with cues: pictures for things that can be seen, and every listed thing told in full. */
+const SCRIPT_MORE = `
+# 列举和配图
+- 讲几样东西（几个城市、几个景点、几种做法）时，每一样都讲得一样细，各一到两句，说出它最值得看、最特别的一点；讲不完就少讲几样，三样讲透好过五样后面一句带过。最后的问题之前，每一样都已经讲到。
+- 看得见的东西（地方、建筑、人物、角色、动物、食物、产品、作品）的画面提示写「list 带图：加一项 布拉格（配图 查理大桥）」这样，每样配它自己的照片；不要用 draw 去画城市和建筑。`;
+if (!SCRIPT_INSTRUCTIONS.includes('# 画面提示 show')) throw Error('cue script instructions: no show section');
+export const CUE_SCRIPT_INSTRUCTIONS = SCRIPT_INSTRUCTIONS + SCRIPT_MORE;
 
 /** The request's conversation with V's last words numbered by clause (what the cues count). */
 export const cueTurns = turns => {

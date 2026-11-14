@@ -7,6 +7,7 @@ import {createPortal, flushSync} from 'react-dom';
 import {clock, resolveStatus, splitTurns} from '../call-view.mjs';
 import {openAppWithFallback, refreshBindingOnExpiry} from '../app-handoff.mjs';
 import {Board} from './board.jsx';
+import {boardNowLine} from '../board-client.mjs';
 
 const Icon = ({d, children}) => <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">{d ? <path d={d} /> : children}</svg>;
 const PHONE = 'm8.5 3.5 2.1 4.4-2.3 2.3a15.5 15.5 0 0 0 5.5 5.5l2.3-2.3 4.4 2.1v3a2 2 0 0 1-2.2 2C10.4 20 4 13.6 3.5 5.7a2 2 0 0 1 2-2.2h3Z';
@@ -451,6 +452,7 @@ function CallPage({view, actions, options}) {
   const replyRows = [...state.transcript.history, ...state.transcript.current].filter(row => !row.document && row.text?.trim()).sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
   const lastUser = replyRows.findLastIndex(row => row.role === 'user');
   const caption = replyRows.slice(lastUser + 1).filter(row => row.role === 'assistant').map(row => row.text.trim()).join(' ');
+  const nowLine = board?.cue && !wide ? boardNowLine(replyRows, state.boardSpoken) : null;
   // With a picture up, the picture is the subject and V sits beside it.
   const size = !inCall ? Math.min(width * .72, height * .4, 300)
     : board ? (wide ? Math.min(92, height * .13) : 48)
@@ -515,7 +517,10 @@ function CallPage({view, actions, options}) {
           onReport={[...state.transcript.history, ...state.transcript.current].some(row => row.document) ? () => [...document.querySelectorAll('.content-card')].at(-1)?.click() : null} />}
         {inCall && (
           <aside className="chat-panel" aria-label="聊天内容">
-            <Conversation state={state} options={options} history={wide || history} setHistory={setHistory} onOverflow={latchOverflow} wide={wide} />
+            {nowLine
+              // A phone with a cue page: the page is the subject; under it only what V is saying now. Tap for the whole conversation.
+              ? <button type="button" className="board-now" data-who={nowLine.who} onClick={() => setHistory(true)} aria-label="查看全部对话">{nowLine.text}</button>
+              : <Conversation state={state} options={options} history={wide || history} setHistory={setHistory} onOverflow={latchOverflow} wide={wide} />}
             {!state.reading && <Controls state={state} actions={actions} onHeight={setControlsHeight} />}
           </aside>
         )}
