@@ -85,11 +85,25 @@
     "change": "Phone: the view no longer swings between two pages (scrollIntoView scrolled the page strip sideways); one page per title; a four-line caption strip.",
     "acceptance": "Production Public call at 390x844: lesson and board drawn, caption strip legible. The page swing awaits Tianyi on the iPhone."
   },
-  "pendingRelease": {
+  "callLogRelease": {
     "commit": "5e1994ba10cdf18e2a555b4503e34340cb1df112",
     "mergePR": 218,
     "filesSha256": "fe378a38d9598a3cb59c08b6e711fd70cb38b151f7a66ea074167ea4c03a59b6",
     "change": "The call log keeps context-dropped and call.record-skipped (names only).",
-    "state": "packaged and verified; a call was active on the web node; publish awaits Tianyi's go-ahead"
+    "state": "published (was running on web and devices before 47ac479)"
+  },
+  "realtimeRelease": {
+    "commit": "47ac4795695ad764b9ccd108bc3f0627d78c7b18",
+    "mergePR": 220,
+    "filesSha256": "db443925b2536b8c3edf2622ba91869e599540938334912a9aa77b15e0ca3430",
+    "previousRunningCommit": "5e1994ba10cdf18e2a555b4503e34340cb1df112",
+    "publishedAt": "2026-11-14T21:18:41+08:00",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "gatewayIdentityPreserved": true,
+    "change": "Phone real-time feel: an empty page shows V's current words until the picture comes; on a lesson page unspoken items are drawn pale and ink in as spoken (were hidden on phones); a reply that arrives in one piece (>=40 chars) is drawn at once, drawing ticks every 1.5 s; the caption strip is the controls' height plus 21vh (about four lines).",
+    "acceptance": "Production Public call at 390x844 (call 57e45245): the empty page showed '好，我来讲讲。' at 0:12, the whole comparison drawn pale at 0:16 and inked as spoken, the Forbidden City list likewise, a four-line caption strip. The bench report did not match the call log (turns 0), screenshots only. iPhone awaits Tianyi."
   }
 }
