@@ -2,12 +2,12 @@
   "schema": "v-voice-current-release-v1",
   "release": "board-20261114",
   "version": "voice-board.20261113.1",
-  "entryCommit": "cad1b68e9d33f689dd1afa2b0d76ef2bc0a846d8",
-  "deviceEntryCommit": "cad1b68e9d33f689dd1afa2b0d76ef2bc0a846d8",
-  "filesSha256": "76abe17072965d8885c358206991f2977ac6c28926e046851272f381e2acfbe7",
+  "entryCommit": "336559e1079de6cbb3afe24d2f82e50042af38e3",
+  "deviceEntryCommit": "336559e1079de6cbb3afe24d2f82e50042af38e3",
+  "filesSha256": "d6c23046301cd1fa1cc1c61772d060cfd0666fffaa2c26036bf3c7c7e1157eb0",
   "registration": "board-20261114/release.json",
-  "previousEntryCommit": "af068e9ce97077aa044bcb7c51c06f16c89a0df6",
+  "previousEntryCommit": "cad1b68e9d33f689dd1afa2b0d76ef2bc0a846d8",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-14T01:14:09+08:00",
-  "runtimeDifference": "The call board for every caller (V draws as it explains; finished background tasks told as lessons), Seeduplex input pacing fix, and iOS build 45 with the page-feature bridge."
+  "validatedAt": "2026-11-14T11:08:37+08:00",
+  "runtimeDifference": "The call board for every caller; iPhone board follows the App's own audio (build 46); a refused conversation record is dropped at once and remembered; phone board keeps the last lines of the conversation."
 }

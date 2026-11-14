@@ -53,12 +53,23 @@
   "acceptance": {
     "feishuDesktopInApp": "Feishu client sign-in (Tianyi · V Backup), call connected, explain_on_board lesson spoken and the board drawn in the Feishu web view (sketch of 3-4-5 and 6-8-10 triangles, 3²+4²=5², a²+b²=c²).",
     "publicWeb": "Production Public entry reports board on; a Public call connects without upstream errors.",
-    "iphone": "Build 45 installed; Tianyi's own call: lesson pictures and content show, but the follow-the-voice highlighting did not work (the iOS page used the caption as its clock). Fixed in PR #215 (build 46, installed and read back 46); the page side of that fix reaches the App with the next web release, which is not yet published.",
+    "iphone": "Build 45 installed; Tianyi's own call: lesson pictures and content show, but the follow-the-voice highlighting did not work (the iOS page used the caption as its clock). Fixed in PR #215 (build 46, installed and read back 46); the page side of that fix reaches the App with the next web release, which is not yet published. Follow-up release 336559e carries the page side; the App picks it up when idle in the foreground.",
     "openIssue": "Since this release, calls in V Backup (oc_ede0fdc8…) are refused by Seeduplex three times at start (55000000) and connect without the conversation record; earlier V Backup calls had none, Public and the candidate's owner entry have none. Cause not yet isolated (content of the record vs the added lesson prompt)."
   },
-  "pendingRelease": {
-    "commit": "e6491853923ac0305bee61e7c6aa9fa43aa45c2c",
-    "artifactFilesSha256": "7c1cf82215554b6fa2662b0dca841fc75fd13c20f7fbf65bb9392bbdde8e33b9",
-    "state": "packaged and verified, both nodes idle; publish awaits Tianyi's approval"
+  "followUpRelease": {
+    "commit": "336559e1079de6cbb3afe24d2f82e50042af38e3",
+    "mergePRs": [
+      215,
+      217
+    ],
+    "filesSha256": "d6c23046301cd1fa1cc1c61772d060cfd0666fffaa2c26036bf3c7c7e1157eb0",
+    "publishedAt": "2026-11-14T11:08:37+08:00",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "gatewayIdentityPreserved": true,
+    "ios": "build 46 rebuilt from 336559e (native code identical to e649185) and installed; read back 46",
+    "acceptance": "Feishu desktop, V Backup group: first call refused once and V greeted at 1.5 s (was 4.9 s); second call not refused, greeted at 0.8 s. The log did not show whether the record was dropped or skipped: its allowlist omits those events (fixed in PR #218, not merged)."
   }
 }
