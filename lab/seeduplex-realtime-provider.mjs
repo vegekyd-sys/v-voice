@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from "node:crypto";
+import { NarrationResume } from "./seeduplex-narration-resume.mjs";
 
 export const SEEDUPLEX_MODEL = "1.2.6.1";
 export const SEEDUPLEX_UPSTREAM =
@@ -324,6 +325,12 @@ export class SeeduplexRealtimeVoiceBridge {
     this.lastFrameAt = 0;
     this.pacingTimer = null;
     this.cancelEventId = null;
+    // A lesson stopped by a sound goes on from where it was cut (seeduplex-narration-resume.mjs).
+    this.narration = new NarrationResume({
+      speak: piece => this.#commitInjectedSpeech(piece, { caption: false }),
+      diagnostic: value => this.#diagnostic(value),
+      options: options.narrationResume,
+    });
   }
 
   connect() {
@@ -548,10 +555,18 @@ export class SeeduplexRealtimeVoiceBridge {
     // A host-provided speaker captions the line when its audio starts.
     if (options.speak) return void options.speak(spoken);
     if (!options.displayedFullResult) this.request.onTranscript?.("assistant", spoken, true, "V-backend");
-    this.speakProgress(spoken, { caption: options.displayedFullResult === true });
+    this.speakProgress(spoken, { caption: options.displayedFullResult === true, resumable: options.resumable === true });
   }
 
-  speakProgress(text, { caption = false, source = "V-backend-summary" } = {}) {
+  /** `resumable`: a lesson's script, which goes on after a sound that was nobody speaking stops it. */
+  speakProgress(text, { caption = false, source = "V-backend-summary", resumable = false } = {}) {
+    if (this.terminal || (!this.ready && !this.reconnecting)) return;
+    this.narration.end("superseded");
+    if (resumable) this.narration.start(text);
+    this.#commitInjectedSpeech(text, { caption, source });
+  }
+
+  #commitInjectedSpeech(text, { caption = false, source = "V-backend-summary" } = {}) {
     if (this.terminal || (!this.ready && !this.reconnecting)) return;
     this.pendingSpeechCaption = caption ? { text, source, started: false, responseId: null } : null;
     this.injectedSpeech = true;
@@ -607,6 +622,7 @@ export class SeeduplexRealtimeVoiceBridge {
     // untouched. The upstream response is cancelled only once the user is
     // confirmed to have actually said something, in #cancelUpstreamResponse.
     this.request.onClearAudio?.("barge-in",retiredResponseId?{retiredResponseId}:undefined);
+    this.narration.cleared({ confirmed });
     this.pendingGreeting = null;
     this.bargeInPending = true;
     // Host-injected backend speech may postpone native ASR until its TTS ends.
@@ -711,6 +727,7 @@ export class SeeduplexRealtimeVoiceBridge {
 
   close() {
     this.nativeAsideCandidates.clear();
+    this.narration.close();
     if (this.terminal) return;
     this.terminal = true;
     this.ready = false;
@@ -840,6 +857,7 @@ export class SeeduplexRealtimeVoiceBridge {
         }
       }
       if (event.tts_type === "default") this.injectedSpeech = false;
+      this.narration.speechStarted(responseId, event.tts_type);
     }
 
     if (type === "error" && this.cancelledOutputPending &&
@@ -907,6 +925,8 @@ export class SeeduplexRealtimeVoiceBridge {
       this.bargeInPending = false;
     }
     if(type === "conversation.item.input_audio_transcription.failed" && this.request.nativeDuplex)this.request.onInputSpeech?.(false,{recognized:false});
+    if (type === "conversation.item.input_audio_transcription.completed") this.narration.inputFinished(optionalString(event.transcript) ?? optionalString(event.text));
+    if (type === "conversation.item.input_audio_transcription.failed") this.narration.inputFinished("");
     const continuingBatch = this.toolBatches.find((batch) => batch.continuing);
     const internalContinuationResponse =
       type === "response.created" &&
@@ -963,7 +983,9 @@ export class SeeduplexRealtimeVoiceBridge {
       type === "response.canceled"
     ) {
       this.request.onClearAudio?.("barge-in");
+      if (type !== "response.canceled") this.narration.cleared();
     }
+    if (type === "conversation.item.input_audio_transcription.started") this.narration.inputStarted();
     if (type === "conversation.item.input_audio_transcription.completed") {
       const text = optionalString(event.transcript) ?? optionalString(event.text);
       if (text) {
@@ -1017,7 +1039,7 @@ export class SeeduplexRealtimeVoiceBridge {
         // most recent TTS start, not a new answer's earlier text event.
         const deliveredId=responseId??(this.request.nativeDuplex?this.nativeTtsResponseId:this.audioResponseId);
         if(this.request.nativeDuplex&&(!deliveredId||this.retiredResponses.has(deliveredId)))return;
-        if(audio.length){this.deliveredAudioResponseId=deliveredId;this.producedAudio=true;}
+        if(audio.length){this.deliveredAudioResponseId=deliveredId;this.producedAudio=true;this.narration.audio(deliveredId,audio.length);}
         this.request.onAudio(audio, { ...(this.injectedSpeech ? {source:"injected-speech"} : {}), responseId: deliveredId });
         this.request.onMark?.(`seeduplex-audio-${randomUUID()}`);
       } catch {
@@ -1025,6 +1047,7 @@ export class SeeduplexRealtimeVoiceBridge {
       }
     }
     if (type === "response.output_audio.done") {
+      this.narration.audioDone(responseId);
       this.pendingGreeting = null;
       this.pendingSpeechCaption = null;
       this.request.onAudioSegmentDone?.();

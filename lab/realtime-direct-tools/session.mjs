@@ -655,7 +655,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
                 script=lesson.accept({owner:s.id,text:reply?.result,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,startedAt});}
               catch(error){audit({type:'lesson.backend-failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});lesson.accept({owner:s.id,text:'',topic:call.args.topic,startedAt});}
               if(s.lessonPending===call.callId)s.lessonPending=null;
-              if(current(s)&&s.epoch===epoch){const say=script?.say??'画面这次没准备好，我直接跟你说吧。';ownerBridge.completeBackgroundTool(call.callId,{result:say},{spokenText:say,displayedFullResult:true});}
+              if(current(s)&&s.epoch===epoch){const say=script?.say??'画面这次没准备好，我直接跟你说吧。';ownerBridge.completeBackgroundTool(call.callId,{result:say},{spokenText:say,displayedFullResult:true,resumable:Boolean(script)});}
               result={lessonDelivered:Boolean(script),writer:'backend'};
             }else{
             const lookup=call.research??(name=>name&&allowedTools.has(name)&&s.toolNames?.has(name)?{name,args:{query:String(call.args.topic).slice(0,200)}}:null)(lessonResearch(`${call.args.topic} ${s.latestUserTurn?.text??''}`));
@@ -671,7 +671,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
             catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
             finally{if(s.lessonPending===call.callId)s.lessonPending=null;}
             if(current(s)&&s.epoch===epoch){
-              if(script)ownerBridge.completeBackgroundTool(call.callId,{result:script.say},{spokenText:script.say,displayedFullResult:true});
+              if(script)ownerBridge.completeBackgroundTool(call.callId,{result:script.say},{spokenText:script.say,displayedFullResult:true,resumable:true});
               else{
                 // No script: V answers the question itself (it used to say "the picture is not ready" and stop,
                 // and the caller had to ask again: call 83315f5d). The page is drawn from what it then says.

@@ -79,8 +79,11 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     // A conversation record left out because Seeduplex refused it on an earlier call (no content).
     if(event.type==='call.record-skipped')return enqueue({...owner,type:event.type,reason:event.reason==='refused-earlier'?'refused-earlier':'unknown'});
     if(event.type==='call.provider-status'){
-      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed','context-dropped'].includes(event.stage))return false;
+      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed','context-dropped','narration-interrupted','narration-resumed','narration-not-resumed'].includes(event.stage))return false;
       const safe={stage:event.stage};
+      // A lesson stopped by a sound: where, and whether it went on (counts only, never its text).
+      if(['confirmed-speech','nearly-done','resume-limit','user-spoke','model-replied','superseded'].includes(event.reason))safe.reason=event.reason;
+      for(const key of ['fromChar','totalChars','restChars','heardChars','playedMs','resumes'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
       if(['configuration','input-timeout','upstream-transient','upstream-rejected','network','setup-timeout'].includes(event.category))safe.category=event.category;
       if(typeof event.upstreamCode==='string'&&/^\d{3,8}$/.test(event.upstreamCode))safe.upstreamCode=event.upstreamCode;
       for(const key of ['sessionAgeMs','attempt'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
