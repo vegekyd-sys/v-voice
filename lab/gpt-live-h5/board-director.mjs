@@ -197,8 +197,12 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       const row = owner(id); row.notes = notes; row.expectUntil = 0;
       // The script is known before V has said a word of it: its page is started now,
       // not when the caller's screen comes back to ask (about a second and a half later).
-      if (stream && complete && notes?.script) void api.run({owner: id, trigger: 'assistant_end', ahead: true, clientRev: row.scene.rev,
+      // Its first lines (`partial`) start the page while the rest is written; the whole
+      // script then adds to that page, after the first run has finished, never cutting it off.
+      if (!(stream && complete && notes?.script)) return;
+      const draw = () => api.run({owner: id, trigger: notes.partial ? 'assistant_progress' : 'assistant_end', ahead: true, clientRev: row.scene.rev,
         turns: [...(notes.ask ? [{role: 'user', text: String(notes.ask)}] : []), {role: 'assistant', text: notes.script}]}).catch(() => {});
+      const chain = row.aheadChain = (row.aheadChain ?? Promise.resolve()).then(draw).finally(() => { if (row.aheadChain === chain) row.aheadChain = null; });
     },
     /** A script is being written for the caller's question: what V says meanwhile is not the answer. */
     expect(id, ms = 20000) {
@@ -236,7 +240,8 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       const started = now(), row = owner(id);
       // (`quiet`: not the owner's call. Its words and its picture are not kept.)
       if (quiet) row.quiet = true;
-      const listeners = new Set(), out = onOp;
+      // (A script's runs share their watchers: a screen that joined the first lines' run sees the whole script's too.)
+      const listeners = ahead ? (row.watchers ??= new Set()) : new Set(), out = onOp;
       onOp = value => { out(value); for (const listener of listeners) listener(value); };
       const drawn = [];
       const report = (reason, extra = {}) => {
@@ -252,14 +257,13 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       // A script's page is already being drawn (see `note`): the caller's screen watches that
       // run instead of starting another. Only the caller speaking again ends it.
       const script = text => String(text ?? '').replace(/\s+/gu, '').slice(0, 24);
-      if (!ahead && trigger !== 'user' && (row.ahead || row.aheadFor)) {
+      if (!ahead && trigger !== 'user' && (row.aheadChain || row.aheadFor)) {
         const latest = turns?.findLast?.(turn => turn?.role === 'assistant');
         const same = row.notes?.script && script(latest?.text ?? latest) === script(row.notes.script);
-        if (row.ahead) {
+        if (row.aheadChain) {
           if (clientRev !== row.scene.rev) out({op: 'sync', scene: row.scene, canvas: canvasOf(row)});
-          const watching = row.ahead;
-          watching.listeners.add(out);
-          await watching.done;
+          (row.watchers ??= new Set()).add(out);
+          try { while (row.aheadChain) await row.aheadChain; } finally { row.watchers.delete(out); }
           return report('joined', {rev: row.scene.rev});
         }
         if (same && row.aheadFor === script(row.notes.script)) {

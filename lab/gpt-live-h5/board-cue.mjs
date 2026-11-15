@@ -68,7 +68,17 @@ const SCRIPT_MORE = `
 - 讲几样东西（几个城市、几个景点、几种做法）时，每一样都讲得一样细，各一到两句，说出它最值得看、最特别的一点；讲不完就少讲几样，三样讲透好过五样后面一句带过。最后的问题之前，每一样都已经讲到。
 - 看得见的东西（地方、建筑、人物、角色、动物、食物、产品、作品）的画面提示写「list 带图：加一项 布拉格（配图 查理大桥）」这样，每样配它自己的照片；不要用 draw 去画城市和建筑。`;
 if (!SCRIPT_INSTRUCTIONS.includes('# 画面提示 show')) throw Error('cue script instructions: no show section');
-export const CUE_SCRIPT_INSTRUCTIONS = SCRIPT_INSTRUCTIONS + SCRIPT_MORE;
+// The script and its notes are written a line at a time, each sentence with its note, so the
+// page can be started from the first lines while the rest is still being written.
+const SCRIPT_LINES = [
+  ['{"title":"画面标题，不超过 12 个字","say":["第一句","第二句",…],"show":["第一句的画面提示","第二句的画面提示",…]}',
+    '{"title":"画面标题，不超过 12 个字","lines":[{"say":"第一句","show":"第一句的画面提示"},{"say":"第二句","show":"第二句的画面提示"},…]}\ntitle 写在最前面；lines 一句一项，每一项先写 say 再写 show。'],
+  ['- show 和 say 一样长，show 的第 i 条说第 i 句念出来时屏幕上该出现什么；', '- 每一项的 show 说这一句 say 念出来时屏幕上该出现什么；'],
+];
+export const CUE_SCRIPT_INSTRUCTIONS = SCRIPT_LINES.reduce((text, [from, to]) => {
+  if (!text.includes(from)) throw Error(`cue script instructions: missing ${from.slice(0, 30)}`);
+  return text.replace(from, to);
+}, SCRIPT_INSTRUCTIONS) + SCRIPT_MORE;
 
 /** The request's conversation with V's last words numbered by clause (what the cues count). */
 export const cueTurns = turns => {

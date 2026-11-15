@@ -115,12 +115,28 @@ export function parseScript(text) {
   if (start < 0 || end <= start) return null;
   let value;
   try { value = JSON.parse(text.slice(start, end + 1)); } catch { return null; }
+  // (Written a line at a time, {say, show} each: the cue writer.)
+  if (Array.isArray(value?.lines)) value = {...value, say: value.lines.map(line => line?.say), show: value.lines.map(line => line?.show)};
   const raw = Array.isArray(value?.say) ? value.say : [], say = sentences(raw);
   if (say.length < 2) return null;
   // Notes stay beside the sentence they belong to, even where a sentence was dropped as empty.
-  const show = raw.map((line, index) => String(line ?? '').trim() ? String((Array.isArray(value?.show) ? value.show : [])[index] ?? '').replace(/\s+/gu, ' ').trim().slice(0, 200) : null).filter(note => note !== null).slice(0, say.length);
+  const show = raw.map((line, index) => String(line ?? '').trim() ? note((Array.isArray(value?.show) ? value.show : [])[index]) : null).filter(line => line !== null).slice(0, say.length);
   while (!fixedClose(say)) say.pop();
   return {title: String(value?.title ?? '').replace(/\s+/gu, ' ').trim().slice(0, 40), say, show: say.map((_, index) => show[index] ?? '')};
+}
+const note = value => String(value ?? '').replace(/\s+/gu, ' ').trim().slice(0, 200);
+const QUOTED = '"((?:[^"\\\\]|\\\\.)*)"';
+/**
+ * The lines of a script still being written ({"title", "lines": [{say, show}, …]}):
+ * its title and every line whose say and show are both complete. Null before the title.
+ */
+export function partialScript(text) {
+  const title = new RegExp(`"title"\\s*:\\s*${QUOTED}`, 'u').exec(text);
+  if (!title) return null;
+  const read = quoted => { try { return JSON.parse(`"${quoted}"`); } catch { return ''; } };
+  const pairs = [...text.matchAll(new RegExp(`\\{\\s*"say"\\s*:\\s*${QUOTED}\\s*,\\s*"show"\\s*:\\s*${QUOTED}\\s*\\}`, 'gu'))].map(match => [read(match[1]), read(match[2])]).filter(([say]) => say.trim());
+  const say = sentences(pairs.map(([line]) => line));
+  return {title: read(title[1]).replace(/\s+/gu, ' ').trim().slice(0, 40), say, show: pairs.slice(0, say.length).map(([, line]) => note(line))};
 }
 // One closing line: a question followed by "did you get it?" loses the second.
 const fixedClose = say => !(say.length > 3 && asks(say.at(-1)) && asks(say.at(-2)));
@@ -355,21 +371,21 @@ export function parseIllustration(text, said, taken = []) {
  * `complete({messages, signal})` yields text chunks (the director's client).
  * `director.present(owner, ops, holdMs)` puts the lesson on the call's board.
  */
-export function createLessonWriter({complete, fallback = null, director, now = Date.now, record: keep = () => {}, preferMs = 8000, totalMs = 13000, scriptInstructions = SCRIPT_INSTRUCTIONS} = {}) {
+export function createLessonWriter({complete, fallback = null, director, now = Date.now, record: keep = () => {}, preferMs = 8000, totalMs = 13000, scriptInstructions = SCRIPT_INSTRUCTIONS, early = 0} = {}) {
   // Callers who are not the owner (`quiet`): how a lesson went is kept, what was asked and said is not.
   const hushed = new Set();
-  const record = event => keep(hushed.has(event?.voiceSessionId) ? Object.fromEntries(['type', 'voiceSessionId', 'ok', 'writer', 'scripted', 'durationMs', 'failure', 'none', 'add'].filter(key => key in event).map(key => [key, event[key]])) : event);
+  const record = event => keep(hushed.has(event?.voiceSessionId) ? Object.fromEntries(['type', 'voiceSessionId', 'ok', 'writer', 'scripted', 'durationMs', 'failure', 'none', 'add', 'earlyMs', 'earlyKept'].filter(key => key in event).map(key => [key, event[key]])) : event);
   // What each call was last told, so a second lesson builds on the first.
   const told = new Map();
   // The caller is waiting, so both writers start at once. The first one's
   // work is used if it arrives within `preferMs`; after that whichever has
   // something usable. Nothing by `totalMs`: nothing.
-  async function race({owner, messages, signal, started, first: one, second: two, parse, preferMs: prefer, totalMs: total, kind = 'board.lesson-attempt'}) {
+  async function race({owner, messages, signal, started, first: one, second: two, parse, preferMs: prefer, totalMs: total, kind = 'board.lesson-attempt', onText = null}) {
     const limit = new AbortController(), stop = () => limit.abort();
     if (signal?.aborted) stop(); else signal?.addEventListener('abort', stop, {once: true});
     const attempt = (write, name) => (async () => {
       let text = '', failure = '';
-      try { for await (const chunk of write({signal: limit.signal, messages})) text += chunk; } catch (error) { failure = String(error?.message ?? error).slice(0, 240); }
+      try { for await (const chunk of write({signal: limit.signal, messages})) { text += chunk; if (name === 'preferred') onText?.(text); } } catch (error) { failure = String(error?.message ?? error).slice(0, 240); }
       const made = parse(text);
       if (!made && !limit.signal.aborted) record({type: kind, voiceSessionId: owner, writer: name, ok: false, failure, chars: text.length, head: text.slice(0, 160)});
       return made ? {...made, writer: name} : null;
@@ -400,12 +416,24 @@ export function createLessonWriter({complete, fallback = null, director, now = D
           ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(before ? {before} : {}), ...(result ? {source: 'result'} : {}),
           // What was looked up for this lesson (a search, V's memory), then the standing references.
           ...([reference && Array.from(String(reference)).slice(0, 6000).join(''), lessonReference(`${topic} ${ask}`)].filter(Boolean).length ? {reference: [reference && Array.from(String(reference)).slice(0, 6000).join(''), lessonReference(`${topic} ${ask}`)].filter(Boolean).join('\n\n')} : {})})}];
-      let lesson = await race({owner, messages, signal, started, first: complete, second: fallback, parse: scripted ? parseScript : parseLesson, preferMs, totalMs});
+      // (`early`: once the script's first lines are written, its page is started from them while
+      // the rest is still being written; then V's voice does not wait for a page. One writer only:
+      // with two racing, the lines might be from the script that is not used.)
+      let sent = null;
+      const onText = scripted && early > 0 && !fallback ? text => {
+        if (sent || signal?.aborted) return;
+        const part = partialScript(text);
+        if (!part || part.say.length < early) return;
+        sent = {script: spokenScript(part.say), ms: now() - started};
+        director.note(owner, {title: part.title, ask, script: sent.script, lines: part.say.map((line, index) => ({say: line, show: part.show[index]})), partial: true});
+      } : null;
+      let lesson = await race({owner, messages, signal, started, first: complete, second: fallback, parse: scripted ? parseScript : parseLesson, preferMs, totalMs, onText});
       // A single writer that came back with something unusable (a reply cut short, as in call 83315f5d) is asked once more.
       if (!lesson && !fallback && !signal?.aborted && now() - started < preferMs) lesson = await race({owner, messages, signal, started: now(), first: complete, second: null, parse: scripted ? parseScript : parseLesson, preferMs, totalMs: preferMs});
       const say = lesson ? spokenScript(lesson.say) : '';
       if (scripted) {
-        record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ask, ok: Boolean(lesson), writer: lesson?.writer ?? null, scripted: true, durationMs: now() - started, say: lesson?.say ?? null, show: lesson?.show ?? null});
+        record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ask, ok: Boolean(lesson), writer: lesson?.writer ?? null, scripted: true, durationMs: now() - started, say: lesson?.say ?? null, show: lesson?.show ?? null,
+          ...(sent ? {earlyMs: sent.ms, earlyKept: Boolean(lesson) && say.startsWith(sent.script)} : {})});
         if (!lesson) { director.expect?.(owner, 0); return null; }
         told.delete(owner); told.set(owner, {title: lesson.title, say});
         while (told.size > 200) told.delete(told.keys().next().value);
