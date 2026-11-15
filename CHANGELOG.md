@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-15 — Lessons start sooner; the phone's line shows nothing ahead of the voice
+
+- The lesson's holding line is "好，我讲讲。": the script waits for it to be said, and Doubao's longer lines took 2-3 s. A lesson starting no longer cancels the title and print being drawn for the question. The cue writer writes a line at a time ({say, show}) and its first two lines start the page while the rest is written (`VOICE_BOARD_EARLY=0` turns it off). Candidate: V starts 4.3-5.1 s after the question (was 5.1-6.7 s), the page is ready before V speaks in 4 of 5 lessons. Timing per lesson: `scripts/candidate/first-content.py` (#225).
+- The line under a phone's cue page shows the caller's question until V's voice reaches the reply, stays on the last sentence heard when the voice stops, and shows a long sentence in pieces cut at semicolons and commas (#226).
+
 ## 2026-11-15 — The board follows cues the illustrator writes
 
 - V's words reach the streaming illustrator cut into numbered clauses at punctuation, and every piece, arrow and pen mark it draws says which clause it hangs on (`cue`; -1: shown at once, while V is still saying it will explain). The service turns a cue into that clause's own words, so the page shows each piece when the voice gets there; nothing is moved by name matching any more (`board-cue.mjs`). `VOICE_BOARD_FOLLOW=word` keeps the old way. Offline comparison and call measurements: `docs/research/board-follow-by-model/`.
