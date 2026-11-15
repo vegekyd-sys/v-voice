@@ -100,3 +100,66 @@ test('the cue writer is told to picture things that can be seen and to tell ever
   assert.match(CUE_SCRIPT_INSTRUCTIONS, /list 带图/u);
   assert.match(CUE_INSTRUCTIONS, /看得见的东西用照片/u);
 });
+
+test('the cue writer writes a line at a time; a script still being written is read line by line', async () => {
+  const {CUE_SCRIPT_INSTRUCTIONS} = await import('./board-cue.mjs');
+  const {partialScript, parseScript} = await import('./board-lesson.mjs');
+  assert.match(CUE_SCRIPT_INSTRUCTIONS, /"lines":\[\{"say"/u);
+  const full = JSON.stringify({title: '欧洲城市', lines: [{say: '先看布拉格，桥上有三十尊雕像。', show: 'list 带图：布拉格'}, {say: '再说威尼斯，"水城"。', show: 'list 加一项 威尼斯'}, {say: '你想去哪座？', show: ''}]});
+  assert.equal(partialScript(full.slice(0, 10)), null);
+  assert.deepEqual(partialScript(full.slice(0, full.indexOf('再说'))).say, ['先看布拉格，桥上有三十尊雕像。']);
+  // (A line counts once its note is complete too.)
+  assert.equal(partialScript(full.slice(0, full.indexOf('加一项'))).say.length, 1);
+  assert.deepEqual(partialScript(full.slice(0, full.indexOf('你想'))).show, ['list 带图：布拉格', 'list 加一项 威尼斯']);
+  assert.deepEqual(parseScript(full).say.length, 3);
+});
+
+test('the writer hands its first lines to the illustrator while it is still writing (early)', async () => {
+  const {createLessonWriter} = await import('./board-lesson.mjs');
+  const text = JSON.stringify({title: '电车和油车', lines: [{say: '电车在家充一晚就满。', show: 'versus：电车/油车'}, {say: '油车三分钟加满。', show: '加一行 补能'}, {say: '冬天电车续航缩水。', show: '加一行 冬天'}, {say: '你平时市区开吗？', show: ''}]});
+  const notes = [], records = [];
+  let wrote = 0;
+  const complete = async function* () { for (const piece of text.match(/[\s\S]{1,9}/gu)) { wrote += piece.length; yield piece; await new Promise(resolve => setTimeout(resolve, 1)); } };
+  const director = {streams: true, expect() {}, note(owner, value) { notes.push({...value, at: wrote}); }};
+  const writer = createLessonWriter({complete, director, record: event => records.push(event), early: 2});
+  const made = await writer.prepare({owner: 'o', topic: '电车和油车', ask: '电车和油车有什么区别'});
+  assert.equal(made.sentences.length, 4);
+  assert.equal(notes.length, 2);
+  assert.equal(notes[0].partial, true);
+  assert.deepEqual(notes[0].lines.map(line => line.say), ['电车在家充一晚就满。', '油车三分钟加满。']);
+  assert.ok(notes[0].at < text.length, 'before the script was finished');
+  assert.equal(notes[1].partial, undefined);
+  assert.equal(notes[1].lines.length, 4);
+  const lesson = records.find(event => event.type === 'board.lesson');
+  assert.equal(lesson.earlyKept, true);
+  assert.ok(Number.isFinite(lesson.earlyMs));
+});
+
+test('a script\'s first lines and then the whole script are drawn one after the other on one page; a screen that joined sees both', async () => {
+  const requests = [];
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const complete = async function* ({messages}) {
+    const request = JSON.parse(messages[1].content);
+    requests.push(request.trigger);
+    if (requests.length === 1) {
+      yield '{"op":"scene","title":"电车和油车","cue":-1}\n';
+      await gate;
+      yield '{"op":"put","block":{"id":"v","t":"versus","cue":-1,"sides":[{"h":"电车"},{"h":"油车"}],"items":[{"id":"a","h":"补能","cells":["一晚","三分钟"],"cue":0}]}}\n';
+    } else yield '{"op":"put","block":{"id":"v","t":"versus","cue":-1,"sides":[{"h":"电车"},{"h":"油车"}],"items":[{"id":"a","h":"补能","cells":["一晚","三分钟"],"cue":0},{"id":"b","h":"冬天","cells":["缩水","不变"],"cue":2}]}}\n';
+  };
+  const director = createBoardDirector({complete, stream: {instructions: CUE_INSTRUCTIONS, refine: refineCueOp, turns: cueTurns, cue: true}});
+  const first = '电车在家充一晚就满。油车三分钟加满。', whole = first + '冬天电车续航缩水。你平时市区开吗？';
+  director.note('o', {title: '电车和油车', ask: '电车和油车', script: first, lines: [], partial: true});
+  await new Promise(resolve => setTimeout(resolve, 5));
+  director.note('o', {title: '电车和油车', ask: '电车和油车', script: whole, lines: []});
+  const seen = [];
+  const joined = director.run({owner: 'o', trigger: 'assistant_end', turns: [{role: 'assistant', text: whole}], onOp: op => seen.push(op)});
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.deepEqual(requests, ['assistant_progress'], 'the whole script waits for the first lines\' run');
+  release();
+  assert.equal((await joined).reason, 'joined');
+  assert.deepEqual(requests, ['assistant_progress', 'assistant_end']);
+  assert.deepEqual(director.scene('o').blocks[0].items.map(item => item.id), ['a', 'b']);
+  assert.ok(seen.some(op => op.scene?.blocks?.[0]?.items?.length === 2), 'the joined screen got the whole script\'s piece');
+});
