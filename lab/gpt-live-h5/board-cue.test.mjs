@@ -88,6 +88,11 @@ test('the line under a phone page is the sentence V is saying, or the question u
   // A long sentence is shown a clause at a time, cut at its semicolons.
   rows.push({key: 'u2', role: 'user', text: '我爸身体怎么样？'}, {key: 'c', role: 'assistant', text: '他69岁，做过搭桥；现在在康复里；体重125斤。不过以复查为准。'});
   assert.equal(boardNowLine(rows, {reply: 'c', said: 12}).text, '现在在康复里；');
+  // And one of more than two lines, at its commas.
+  rows.push({key: 'u3', role: 'user', text: '跑步和游泳哪个更减肥？'}, {key: 'd', role: 'assistant', text: '同等心率下游泳消耗热量略高，水的阻力和散热会多烧能量，还能护关节，特别适合大体重、膝盖不好的人。'});
+  const pieces = [0, 20, 40].map(said => boardNowLine(rows, {reply: 'd', said}).text);
+  assert.ok(pieces.every(piece => Array.from(piece).length <= 30), pieces.join(' | '));
+  assert.equal(pieces.join(''), '同等心率下游泳消耗热量略高，水的阻力和散热会多烧能量，还能护关节，特别适合大体重、膝盖不好的人。');
 });
 
 test('the cue writer is told to picture things that can be seen and to tell every listed thing', async () => {

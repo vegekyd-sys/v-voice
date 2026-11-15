@@ -204,6 +204,16 @@ export function createBoardClient({request, onScene = () => {}, isCurrent = () =
  * state ({said, reply}: characters of reply `reply` heard so far). Before V
  * answers it is the caller's question. Returns {who, text} or null.
  */
+// A sentence of more than two lines on a phone is cut at its commas, into pieces of at least a dozen characters.
+const shorter = part => {
+  if (Array.from(part).length <= 40) return [part];
+  const pieces = [];
+  for (const clause of part.match(/[^，,、]+[，,、]*|[，,、]+/gu) ?? [part]) {
+    if (pieces.length && Array.from(pieces.at(-1)).length < 12) pieces[pieces.length - 1] += clause; else pieces.push(clause);
+  }
+  if (pieces.length > 1 && Array.from(pieces.at(-1)).length < 12) pieces[pieces.length - 2] += pieces.pop();
+  return pieces;
+};
 export function boardNowLine(rows, spoken, heard = null) {
   const list = (rows ?? []).filter(row => !row.document && row.text?.trim());
   const lastUser = list.findLastIndex(row => row.role === 'user');
@@ -212,7 +222,7 @@ export function boardNowLine(rows, spoken, heard = null) {
   if (!reply) return asked;
   // A sentence at a time, and a long one cut at its semicolons too (call of 11/15: one
   // "sentence" of memory notes ran to six lines).
-  const text = reply.text.trim(), parts = text.match(/[^。！？!?；;\n]+[。！？!?；;\n]*|[。！？!?；;\n]+/gu) ?? [text];
+  const text = reply.text.trim(), parts = (text.match(/[^。！？!?；;\n]+[。！？!?；;\n]*|[。！？!?；;\n]+/gu) ?? [text]).flatMap(shorter);
   const at = said => { let end = 0; for (const part of parts) { end += Array.from(part).length; if (said <= end) return part.trim(); } return parts.at(-1).trim(); };
   if (spoken?.reply === reply.key && Number.isFinite(spoken?.said)) return {who: 'v', text: at(spoken.said)};
   // Not being followed now: where the voice last was in this reply (it has stopped there),
