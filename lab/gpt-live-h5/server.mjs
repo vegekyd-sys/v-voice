@@ -1219,7 +1219,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const routed=!(process.env.VOICE_BOARD_API_KEY??process.env.DEEPSEEK_API_KEY)&&Boolean(process.env.OPENROUTER_API_KEY);
     const lessonModel=process.env.VOICE_BOARD_LESSON_MODEL??(routed?'anthropic/claude-sonnet-5.5':''),lessonReasoning=process.env.VOICE_BOARD_LESSON_REASONING??(process.env.VOICE_BOARD_LESSON_MODEL?'':'low');
     const directorWriter=boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'1600'});
-    lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,...(process.env.VOICE_BOARD_FOLLOW!=='word'?{scriptInstructions:CUE_SCRIPT_INSTRUCTIONS}:{}),
+    lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,...(process.env.VOICE_BOARD_FOLLOW!=='word'?{scriptInstructions:CUE_SCRIPT_INSTRUCTIONS,early:Number(process.env.VOICE_BOARD_EARLY??2)||0}:{}),
       // (Naming the director's own model as the lesson model means one writer, not two racing.)
       ...(lessonModel&&lessonModel!==(process.env.VOICE_BOARD_MODEL??'deepseek/deepseek-v4.1-flash')?{complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MODEL:lessonModel,VOICE_BOARD_REASONING:lessonReasoning,VOICE_BOARD_MAX_TOKENS:lessonReasoning?'4000':'1600'}),fallback:directorWriter}:{complete:directorWriter})}):null;
     // How a lesson is made (to compare): "service" - written here, with what is looked up first;

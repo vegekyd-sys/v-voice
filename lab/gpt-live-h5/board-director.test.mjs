@@ -370,3 +370,21 @@ test('a page opened under the title of a page already on the canvas goes back to
   assert.equal(director.scene('c').serial, canvas.zones[0].serial, 'the same page, not a new one');
   assert.deepEqual(director.scene('c').blocks.map(block => block.query), ['皮卡丘'], 'with what it had');
 });
+
+test('a lesson starting keeps the title and print being drawn for the question; it drops a page drawn from V\'s holding line (call b101ecc7)', async () => {
+  const {STREAM_INSTRUCTIONS, refineStreamOp} = await import('./board-lesson.mjs');
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const director = createBoardDirector({stream: {instructions: STREAM_INSTRUCTIONS, refine: refineStreamOp}, complete: async function* () {
+    yield '{"op":"scene","title":"故宫"}\n';
+    await gate;
+    yield '{"op":"put","block":{"id":"p","t":"photo","query":"故宫"}}\n';
+  }});
+  const run = director.run({owner: 'q', trigger: 'user', turns: [{role: 'user', text: '故宫怎么逛'}]});
+  await new Promise(resolve => setTimeout(resolve, 5));
+  director.expect('q');
+  release();
+  const result = await run;
+  assert.equal(result.reason, 'drawn');
+  assert.deepEqual(director.scene('q').blocks.map(block => block.t), ['photo']);
+});
