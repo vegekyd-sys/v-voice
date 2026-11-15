@@ -203,8 +203,10 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
     /** A script is being written for the caller's question: what V says meanwhile is not the answer. */
     expect(id, ms = 20000) {
       const row = owner(id); row.expectUntil = ms > 0 ? now() + ms : 0;
-      // (A page being drawn from V's "let me think how to put it" is dropped: that line is not the answer.)
-      if (ms > 0 && !row.ahead) row.controller?.abort();
+      // (A page being drawn from V's "let me think how to put it" is dropped: that line is not the answer.
+      // The title and print drawn for the caller's question are kept: in call b101ecc7 the lesson
+      // tool arrived while they were being drawn, and two of five questions got no title at all.)
+      if (ms > 0 && !row.ahead && row.controllerTrigger !== 'user') row.controller?.abort();
     },
     /**
      * A lesson is being written for this call: stop drawing (a run in flight
@@ -282,6 +284,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         else { if (clientRev !== row.scene.rev) onOp({op: 'sync', scene: row.scene}); return report('lesson', {rev: row.scene.rev}); }
       }
       const controller = row.controller = new AbortController();
+      row.controllerTrigger = trigger;
       const abort = () => controller.abort();
       if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, {once: true});
       if (clientRev !== row.scene.rev) onOp({op: 'sync', scene: row.scene, ...(stream ? {canvas: canvasOf(row)} : {})});
