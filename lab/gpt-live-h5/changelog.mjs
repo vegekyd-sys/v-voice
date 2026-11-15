@@ -198,6 +198,15 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-board-fast.20261115.1',date:'2026-11-15',
+    title:'讲解开口更快，下面那行不剧透',
+    items:[
+      '问完到开始讲解快了约一秒半，画面在 V 开口前就准备好。',
+      '刚问完先出这一页的标题和照片，不会再被跳过。',
+      '手机下面那一行只跟着声音走：V 还没念到的话不提前出现，长句子分小段显示。',
+    ],
+  },
+  {
     version:'voice-board-cue.20261115.1',date:'2026-11-15',
     title:'讲解画面更跟得上声音',
     items:[
