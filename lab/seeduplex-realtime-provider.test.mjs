@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
+import { hasWords } from "./seeduplex-narration-resume.mjs";
 import {
   Pcm24To16Resampler,
   nativeListeningAside,
@@ -1042,4 +1043,20 @@ test('a phone call (native full duplex): a sound while the script is still being
   const before=bridge.deliveredAudioResponseId;socket.message({type:'response.output_audio.delta',response_id:'lesson-2',delta:floatAudio([.1])});
   assert.equal(bridge.deliveredAudioResponseId,'lesson-2');assert.notEqual(before,'lesson-2');
   bridge.close();
+});
+
+test('a hum, a laugh or a cough transcribed is not words; anything else is',()=>{
+  for(const sound of ['','  ','嗯','嗯。','啊？','哈哈哈','咳咳','呃……'])assert.equal(hasWords(sound),false,sound);
+  for(const words of ['等一下','嗯，c 是哪条边？','喂','好','wait'])assert.equal(hasWords(words),true,words);
+});
+
+test('a lesson stopped by a laugh transcribed as only "哈哈" goes on',async()=>{
+  const call=await lessonCall();
+  call.bridge.completeBackgroundTool('lesson-1',{result:LESSON},{spokenText:LESSON,displayedFullResult:true,resumable:true});
+  call.read('lesson',20);call.advance(7_000);
+  call.socket.message({type:'conversation.item.input_audio_transcription.started'});
+  call.socket.message({type:'conversation.item.input_audio_transcription.completed',transcript:'哈哈哈。'});
+  await call.wait(80);
+  assert.equal(call.commits().length,2);
+  call.bridge.close();
 });

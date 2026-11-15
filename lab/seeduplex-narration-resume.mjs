@@ -20,9 +20,10 @@
 export const NARRATION_RESUME = Object.freeze({
   // How long a stopped lesson waits for a finished utterance before going on.
   waitMs: 2_500,
-  // Someone still talking when that is up is not talked over. A transcription that has
-  // started and never finishes (Seeduplex does that with noise) stops the wait here.
-  maxWaitMs: 6_000,
+  // Someone still talking when that is up is not talked over: the wait goes on until their
+  // utterance is finished (a voice through a wall took 8 s: Candidate call 6b84c932). Only a
+  // transcription that started and never finishes ends the wait here.
+  maxWaitMs: 12_000,
   // Each lesson goes on at most this many times; a room that keeps talking wins.
   maxResumes: 2,
   // The voice reads a script at about 5.5 characters a second (call b101ecc7: 140 in 25.2 s).
@@ -34,6 +35,10 @@ export const NARRATION_RESUME = Object.freeze({
   // Stopped this close to its end: it was heard.
   endSlackMs: 600,
 });
+
+// A finished utterance of nothing but a hum, a laugh or a cough is a sound, not words for V.
+const NO_WORDS = /^[\s嗯啊哦噢呃额唉哎咳哈呵嘿呀诶欸唔嗯哼。，、！？!?,.…~～-]*$/u;
+export const hasWords = text => !NO_WORDS.test(String(text ?? ''));
 
 const SENTENCE_END = /[。！？!?；;…\n]/u;
 
@@ -132,7 +137,7 @@ export class NarrationResume {
   inputFinished(text) {
     const pending = this.current?.pending;
     if (!pending) return;
-    if (String(text ?? '').trim()) return this.end('user-spoke');
+    if (hasWords(text)) return this.end('user-spoke');
     pending.transcribing = false;
     if (pending.waited) this.#resume();
   }
