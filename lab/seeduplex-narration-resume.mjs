@@ -96,26 +96,32 @@ export class NarrationResume {
   /**
    * Local playback was cleared because a sound was heard. `confirmed` is a clear that is
    * not a guess (a speaker's echo cancellation heard someone, or the host cut V on purpose).
+   * `playing`: only the script's generation was stopped and what was already sent still
+   * plays (a phone call in native full duplex), so where to go on from is decided when it does.
    */
-  cleared({ confirmed = false } = {}) {
+  cleared({ confirmed = false, playing = false } = {}) {
     const current = this.current;
     if (!current || current.pending) return;
-    const o = this.options, chars = Array.from(current.piece).length;
-    const playedMs = current.firstAudioAt === null ? 0 : Math.max(0, Math.min(current.audioMs, this.now() - current.firstAudioAt - o.playbackLagMs));
-    if (current.sent && playedMs >= current.audioMs - o.endSlackMs) { this.current = null; return; }
-    const totalMs = current.sent ? current.audioMs : Math.max(current.audioMs, chars / o.charsPerSecond * 1000);
-    const heard = totalMs > 0 ? Math.min(chars, chars * playedMs / totalMs, playedMs / 1000 * o.charsPerSecond + 2) : 0;
-    const from = current.from + narrationResumeIndex(current.piece, heard);
-    const rest = Array.from(current.script).length - from;
-    const counts = { ...this.#counts(current, from), heardChars: Math.floor(heard), playedMs: Math.round(playedMs) };
+    const o = this.options, at = this.#position(current);
+    if (current.sent && at.playedMs >= current.audioMs - o.endSlackMs) { this.current = null; return; }
+    const counts = { ...this.#counts(current, at.from), heardChars: Math.floor(at.heard), playedMs: Math.round(at.playedMs), audioMs: Math.round(current.audioMs) };
     this.diagnostic({ stage: 'narration-interrupted', ...counts });
     if (confirmed) return this.#drop('confirmed-speech', counts);
-    if (rest < o.minRestChars) return this.#drop('nearly-done', counts);
+    if (!playing && Array.from(current.script).length - at.from < o.minRestChars) return this.#drop('nearly-done', counts);
     if (current.resumes >= o.maxResumes) return this.#drop('resume-limit', counts);
-    const pending = current.pending = { from, waited: false, transcribing: false, timer: null, deadline: null };
+    const pending = current.pending = { from: at.from, playing, waited: false, transcribing: false, timer: null, deadline: null };
     pending.timer = setTimeout(() => { pending.timer = null; pending.waited = true; if (!pending.transcribing) this.#resume(); }, o.waitMs);
     pending.deadline = setTimeout(() => { pending.deadline = null; this.#resume(); }, o.maxWaitMs);
     pending.timer.unref?.(); pending.deadline.unref?.();
+  }
+
+  /** How much of the current piece has been heard by now, and the sentence to go on from. */
+  #position(current) {
+    const o = this.options, chars = Array.from(current.piece).length;
+    const playedMs = current.firstAudioAt === null ? 0 : Math.max(0, Math.min(current.audioMs, this.now() - current.firstAudioAt - o.playbackLagMs));
+    const totalMs = current.sent ? current.audioMs : Math.max(current.audioMs, chars / o.charsPerSecond * 1000);
+    const heard = totalMs > 0 ? Math.min(chars, chars * playedMs / totalMs, playedMs / 1000 * o.charsPerSecond + 2) : 0;
+    return { playedMs, heard, from: current.from + narrationResumeIndex(current.piece, heard) };
   }
 
   inputStarted() {
@@ -139,7 +145,12 @@ export class NarrationResume {
   #resume() {
     const current = this.current;
     if (!current?.pending) return;
-    const { from } = current.pending;
+    let { from } = current.pending;
+    // What was sent before the stop has kept playing meanwhile: go on after it.
+    if (current.pending.playing) {
+      from = Math.max(from, this.#position(current).from);
+      if (Array.from(current.script).length - from < this.options.minRestChars) return this.#drop('nearly-done', this.#counts(current, from));
+    }
     const resumes = current.resumes + 1;
     this.diagnostic({ stage: 'narration-resumed', ...this.#counts(current, from), resumes });
     const piece = this.start(current.script, { from, resumes, script: current.script });

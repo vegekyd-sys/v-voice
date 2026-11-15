@@ -1014,3 +1014,32 @@ test('other host speech (a task result, progress) is stopped by a sound as befor
   assert.equal(call.stages.filter(s=>s.stage.startsWith('narration')).length,0);
   call.bridge.close();
 });
+
+test('a phone call (native full duplex): a sound while the script is still being generated stops it, and it goes on',async()=>{
+  const socket=new FakeSocket(),stages=[],clears=[];let clock=5_000_000;
+  const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},nativeDuplex:true,onAudio(){},onInputSpeech(){},onClearAudio:r=>clears.push(r),onTranscript(){},onResponseDone(){},onDiagnostic:e=>stages.push(e),onError:e=>assert.fail(e.message),onClose(){}},
+    {createWebSocket:async()=>socket,narrationResume:{waitMs:30,maxWaitMs:400,now:()=>clock}});
+  const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+  bridge.adoptBackgroundTool('lesson-1','勾股定理');
+  bridge.completeBackgroundTool('lesson-1',{result:LESSON},{spokenText:LESSON,displayedFullResult:true,resumable:true});
+  socket.message({type:'response.output_audio.started',response_id:'lesson',tts_type:'chat_tts_text'});
+  for(let i=0;i<4;i++)socket.message({type:'response.output_audio.delta',response_id:'lesson',delta:floatAudio(new Array(24_000).fill(.1))});
+  // 1.5 s in, still generating: someone in the room makes a sound.
+  clock+=1_500;
+  socket.message({type:'conversation.item.input_audio_transcription.started'});
+  assert.equal(socket.sent.filter(e=>e.type==='response.cancel').length,1,'the script is still stopped at once');
+  // Its cancel receipt is retired, so the page keeps playing the 4 s it was already sent.
+  socket.message({type:'response.canceled',response_id:'lesson'});
+  assert(!clears.includes('barge-in'));
+  socket.message({type:'conversation.item.input_audio_transcription.completed',transcript:''});
+  // By the time it goes on, those 4 s have played (to character 22 of 60, in the second sentence).
+  clock+=3_000;
+  await new Promise(r=>setTimeout(r,80));
+  assert.deepEqual(socket.sent.filter(e=>e.type==='speech_text_buffer.commit').map(e=>e.text),[LESSON,LESSON.slice(LESSON.indexOf('第二句'))]);
+  assert.deepEqual(stages.filter(s=>s.stage.startsWith('narration')).map(s=>s.stage),['narration-interrupted','narration-resumed']);
+  // The script going on plays: the cancelled one's id is retired, the new one is not.
+  socket.message({type:'response.output_audio.started',response_id:'lesson-2',tts_type:'chat_tts_text'});
+  const before=bridge.deliveredAudioResponseId;socket.message({type:'response.output_audio.delta',response_id:'lesson-2',delta:floatAudio([.1])});
+  assert.equal(bridge.deliveredAudioResponseId,'lesson-2');assert.notEqual(before,'lesson-2');
+  bridge.close();
+});

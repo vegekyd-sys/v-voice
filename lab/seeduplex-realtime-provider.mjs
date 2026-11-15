@@ -905,7 +905,10 @@ export class SeeduplexRealtimeVoiceBridge {
     }
     if (type === "conversation.item.input_audio_transcription.started") {
       if(this.request.nativeDuplex)this.request.onInputSpeech?.(true);
-      if (this.injectedSpeech && this.responseActive) this.#cancelUpstreamResponse(true);
+      // Phone calls run native full duplex, where a sound only pauses playback, except while
+      // injected speech is still being generated: cancelling it then clears what was sent too.
+      // That is how a lesson used to vanish in its first seconds (ab35cca0).
+      if (this.injectedSpeech && this.responseActive) { this.#cancelUpstreamResponse(true); this.narration.cleared({ playing: Boolean(this.request.nativeDuplex) }); }
       this.responseOwnerAnnounced = false;
       this.responseOwnerId = undefined;
     }
