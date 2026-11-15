@@ -204,15 +204,20 @@ export function createBoardClient({request, onScene = () => {}, isCurrent = () =
  * state ({said, reply}: characters of reply `reply` heard so far). Before V
  * answers it is the caller's question. Returns {who, text} or null.
  */
-export function boardNowLine(rows, spoken) {
+export function boardNowLine(rows, spoken, heard = null) {
   const list = (rows ?? []).filter(row => !row.document && row.text?.trim());
   const lastUser = list.findLastIndex(row => row.role === 'user');
   const reply = list.slice(lastUser + 1).filter(row => row.role === 'assistant').at(-1);
-  if (!reply) return lastUser >= 0 ? {who: 'user', text: list[lastUser].text.trim()} : null;
-  const text = reply.text.trim(), parts = text.match(/[^。！？!?]+[。！？!?]*|[。！？!?]+/gu) ?? [text];
-  if (spoken?.reply !== reply.key || !Number.isFinite(spoken?.said)) return {who: 'v', text: parts.length > 2 ? parts.at(-1).trim() : text};
-  // The sentence the voice is in (its first while nothing has been heard yet).
-  let at = 0;
-  for (const part of parts) { at += Array.from(part).length; if (spoken.said <= at) return {who: 'v', text: part.trim()}; }
-  return {who: 'v', text: parts.at(-1).trim()};
+  const asked = lastUser >= 0 ? {who: 'user', text: list[lastUser].text.trim()} : null;
+  if (!reply) return asked;
+  // A sentence at a time, and a long one cut at its semicolons too (call of 11/15: one
+  // "sentence" of memory notes ran to six lines).
+  const text = reply.text.trim(), parts = text.match(/[^。！？!?；;\n]+[。！？!?；;\n]*|[。！？!?；;\n]+/gu) ?? [text];
+  const at = said => { let end = 0; for (const part of parts) { end += Array.from(part).length; if (said <= end) return part.trim(); } return parts.at(-1).trim(); };
+  if (spoken?.reply === reply.key && Number.isFinite(spoken?.said)) return {who: 'v', text: at(spoken.said)};
+  // Not being followed now: where the voice last was in this reply (it has stopped there),
+  // or, if the voice has not reached this reply yet, the question still: its text arrives
+  // seconds ahead of the audio, and showing it was showing what V had not said (11/15).
+  if (heard?.reply === reply.key && Number.isFinite(heard?.said)) return {who: 'v', text: at(heard.said)};
+  return asked ?? {who: 'v', text: ''};
 }

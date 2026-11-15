@@ -72,18 +72,22 @@ test('the director numbers V’s words for the model and marks its pages as cue 
   assert.ok(scene.blocks[0].items[0].q);
 });
 
-test('the line under a phone page is the sentence V is saying, or the question before V answers', async () => {
+test('the line under a phone page is the sentence V is saying, or the question until V\'s voice reaches the reply', async () => {
   const {boardNowLine} = await import('./board-client.mjs');
   const rows = [{key: 'u', role: 'user', text: '故宫怎么逛？'}];
   assert.deepEqual(boardNowLine(rows, null), {who: 'user', text: '故宫怎么逛？'});
-  rows.push({key: 'a', role: 'assistant', text: '好，我整理下。'});
-  assert.deepEqual(boardNowLine(rows, null), {who: 'v', text: '好，我整理下。'});
   rows.push({key: 'b', role: 'assistant', text: '从午门进去。抬头看铜狮子。最后从神武门出去。'});
+  // The text is here, the voice is not: nothing of it is shown yet (11/15: two sentences showed whole).
+  assert.deepEqual(boardNowLine(rows, null), {who: 'user', text: '故宫怎么逛？'});
+  assert.deepEqual(boardNowLine(rows, {reply: 'a-older', said: 3}), {who: 'user', text: '故宫怎么逛？'});
   assert.equal(boardNowLine(rows, {reply: 'b', said: 0}).text, '从午门进去。');
   assert.equal(boardNowLine(rows, {reply: 'b', said: 8}).text, '抬头看铜狮子。');
   assert.equal(boardNowLine(rows, {reply: 'b', said: 99}).text, '最后从神武门出去。');
-  // Not followed (no audio cursor for this reply): its last sentence, not the whole reply.
-  assert.equal(boardNowLine(rows, null).text, '最后从神武门出去。');
+  // The voice stopped: the line stays where it was.
+  assert.equal(boardNowLine(rows, null, {reply: 'b', said: 8}).text, '抬头看铜狮子。');
+  // A long sentence is shown a clause at a time, cut at its semicolons.
+  rows.push({key: 'u2', role: 'user', text: '我爸身体怎么样？'}, {key: 'c', role: 'assistant', text: '他69岁，做过搭桥；现在在康复里；体重125斤。不过以复查为准。'});
+  assert.equal(boardNowLine(rows, {reply: 'c', said: 12}).text, '现在在康复里；');
 });
 
 test('the cue writer is told to picture things that can be seen and to tell every listed thing', async () => {

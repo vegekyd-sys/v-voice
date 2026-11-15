@@ -452,7 +452,10 @@ function CallPage({view, actions, options}) {
   const replyRows = [...state.transcript.history, ...state.transcript.current].filter(row => !row.document && row.text?.trim()).sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
   const lastUser = replyRows.findLastIndex(row => row.role === 'user');
   const caption = replyRows.slice(lastUser + 1).filter(row => row.role === 'assistant').map(row => row.text.trim()).join(' ');
-  const nowLine = board?.cue && !wide ? boardNowLine(replyRows, state.boardSpoken) : null;
+  // Where the voice last was in a reply (the line stays there once V stops speaking).
+  const heard = useRef(null);
+  if (state.boardSpoken?.reply && Number.isFinite(state.boardSpoken.said)) heard.current = {reply: state.boardSpoken.reply, said: state.boardSpoken.said};
+  const nowLine = board?.cue && !wide ? boardNowLine(replyRows, state.boardSpoken, heard.current) : null;
   // The report's card is in the conversation; under a cue page on a phone the conversation is one line,
   // so it is opened first (11/15: the button did nothing).
   const openReport = () => {
