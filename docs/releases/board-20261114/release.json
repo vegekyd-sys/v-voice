@@ -119,5 +119,22 @@
     "gatewayIdentityPreserved": true,
     "change": "The illustrator writes which clause each piece hangs on (cue); the old word matching is off by default (VOICE_BOARD_FOLLOW=word keeps it). Cue pages hide what V has not reached and put no reply text on an empty page (#220's pale pieces and caption withdrawn there). Every listed thing told; things that can be seen pictured. Phone: one line of what V is saying now under a cue page; the report button opens the report there.",
     "acceptance": "Tianyi accepted the Candidate (calls b101ecc7 and 11/15 01:13). Production Public call at 390x844 after publish: European cities each with its own photo as told, EV vs petrol car versus and sketch, one-line strip following the voice. Report button verified on the local fixture at 390x844 (did nothing before, opens the report and returns to the page after)."
+  },
+  "fastRelease": {
+    "commit": "09ed92d3217e930c2326822d8bc0a6008344a269",
+    "mergePRs": [
+      225,
+      226
+    ],
+    "filesSha256": "4f2933c0cfc1bebfaea2a1ff5bc45420741df93ff723344d21c46fbb1dcc1ee8",
+    "previousRunningCommit": "e08a9f2b50b280dba97d3eb390afab574096c38b",
+    "publishedAt": "2026-11-15T22:14:23+08:00",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "gatewayIdentityPreserved": true,
+    "change": "Lessons start sooner: a short holding line, the question's title kept, the page started from the script's first two lines (#225). The phone's line under a cue page shows nothing of a reply before the voice reaches it, and long sentences in pieces (#226).",
+    "acceptance": "Tianyi tried the Candidate (aa3c791, #225+#226) and accepted it. Production Public call fd3db667 at 390x844 after publish: V started 4.4 s and 5.2 s after the question, the page ready before (3.5 s, 3.2 s); the line under the page showed the question, then each sentence as spoken."
   }
 }
