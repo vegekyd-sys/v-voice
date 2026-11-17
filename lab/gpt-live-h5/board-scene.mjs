@@ -520,3 +520,24 @@ export function flowLayout(nodes, edges, {narrow = false} = {}) {
   }));
   return {shape: 'layers', layers: rows, position};
 }
+
+/**
+ * The page as the iPhone's Dynamic Island shows it: for each block its items
+ * with a name, a short line, a picture query and the words they hang on. The
+ * App follows V's voice through these itself (in the background the web page
+ * does not run). Nothing else of the page: no pen marks, edges or layout.
+ */
+export function sceneOutline(scene) {
+  const text = (value, max) => typeof value === 'string' ? Array.from(value.replaceAll('*', '').trim()).slice(0, max).join('') : '';
+  const blocks = scene.blocks.filter(block => block.t !== 'sticky' && block.t !== 'note').slice(0, 4).map(block => {
+    const items = (block.t === 'photo' ? [{id: 'photo', h: block.caption ?? block.query, img: block.query, q: block.q}] : focusTargets(block)).slice(0, 12).map(item => ({
+      id: String(item.id ?? ''),
+      h: text(item.h ?? item.label ?? item.text ?? '', 16),
+      d: text(item.d ?? item.sub ?? (Array.isArray(item.cells) ? item.cells.join(' / ') : '') ?? '', 28) || text(item.when ?? '', 12),
+      ...(item.img ? {img: text(item.img, 60)} : {}),
+      ...(item.q ? {q: text(item.q, 40)} : {}),
+    })).filter(item => item.h);
+    return {id: block.id, t: block.t, h: text(block.h ?? '', 16), ...(Array.isArray(block.sides) ? {sides: block.sides.map(side => text(side.h, 10))} : {}), items};
+  }).filter(block => block.items.length);
+  return {serial: scene.serial ?? 0, rev: scene.rev ?? 0, title: text(scene.title ?? '', 16), cue: scene.cue === true, blocks};
+}

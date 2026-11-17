@@ -14,12 +14,14 @@ struct CallAttributes: ActivityAttributes {
         var documentID: String?
         var taskLabel: String?
         var island: IslandSnapshot
-        init(phase: VoicePhase, muted: Bool, startedAt: Date, detail: String, caption: String = "", captionSpeaker: String = "V", documentTitle: String? = nil, documentID: String? = nil, taskLabel: String? = nil, island: IslandSnapshot = .init()) {
+        /// The lesson V is telling, followed by its voice (nil outside a lesson).
+        var lesson: IslandLesson?
+        init(phase: VoicePhase, muted: Bool, startedAt: Date, detail: String, caption: String = "", captionSpeaker: String = "V", documentTitle: String? = nil, documentID: String? = nil, taskLabel: String? = nil, island: IslandSnapshot = .init(), lesson: IslandLesson? = nil) {
             self.phase = phase; self.muted = muted; self.startedAt = startedAt; self.detail = detail
             self.caption = caption; self.captionSpeaker = captionSpeaker; self.documentTitle = documentTitle
-            self.documentID = documentID; self.taskLabel = taskLabel; self.island = island
+            self.documentID = documentID; self.taskLabel = taskLabel; self.island = island; self.lesson = lesson
         }
-        private enum CodingKeys: String, CodingKey { case phase, muted, startedAt, detail, caption, captionSpeaker, documentTitle, documentID, taskLabel, island }
+        private enum CodingKeys: String, CodingKey { case phase, muted, startedAt, detail, caption, captionSpeaker, documentTitle, documentID, taskLabel, island, lesson }
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             phase = try c.decode(VoicePhase.self, forKey: .phase); muted = try c.decode(Bool.self, forKey: .muted)
@@ -30,6 +32,7 @@ struct CallAttributes: ActivityAttributes {
             documentID = try c.decodeIfPresent(String.self, forKey: .documentID)
             taskLabel = try c.decodeIfPresent(String.self, forKey: .taskLabel)
             island = try c.decodeIfPresent(IslandSnapshot.self, forKey: .island) ?? .init()
+            lesson = try c.decodeIfPresent(IslandLesson.self, forKey: .lesson)
         }
     }
     var callID: String

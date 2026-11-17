@@ -60,6 +60,17 @@ test('page features: the iOS App asks /api/page/<name> and gets the board\'s run
  assert.equal(photo.status,200);assert.deepEqual(photo.json(),{type:'image/jpeg',data:Buffer.from('fixture').toString('base64')});
 });
 
+test('page features: the Dynamic Island reads the page as an outline, and an unchanged page as {same}',async t=>{
+ const f=await fixture(t,'all'),{phone,cookie}=await entries.Public(f);
+ const call=await f.send('/api/session?phone='+phone,{cookie,body:{model:'seeduplex'}});
+ const now=await f.send('/api/page/board-now?phone='+phone,{cookie,body:{voiceSessionId:call.json().voiceSessionId}});
+ assert.equal(now.status,200,now.text);
+ assert.deepEqual(now.json(),{serial:1,rev:1,title:'t',cue:false,blocks:[{id:'p',t:'photo',h:'',items:[{id:'photo',h:'故宫',d:'',img:'故宫'}]}]});
+ assert.deepEqual((await f.send('/api/page/board-now?phone='+phone,{cookie,body:{voiceSessionId:call.json().voiceSessionId,rev:1,serial:1}})).json(),{same:true,rev:1});
+ assert.equal(f.runs.length,0,'no model run');
+ assert.equal((await f.send('/api/page/board-now?phone='+phone,{cookie,body:{voiceSessionId:'someone-else'}})).status,409,'only this call\'s page');
+});
+
 test('page features: only the ones the service names exist, and each keeps its own access rule',async t=>{
  const f=await fixture(t,'owner'),{phone,cookie}=await entries.Public(f);
  const call=await f.send('/api/session?phone='+phone,{cookie,body:{model:'seeduplex'}});

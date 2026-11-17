@@ -8,6 +8,10 @@ const [vw,vh]=(process.env.VIEW??'1440x900').split('x').map(Number);const contex
 const page=await context.newPage();
 const errors=[];page.on('pageerror',e=>errors.push('PAGEERROR '+e.message.slice(0,200)));
 page.on('response',async r=>{if(r.url().includes('/api/')&&r.status()>=400)errors.push(r.status()+' '+r.url().replace(/^.*\/api\//,'').replace(/\?.*/,''));});
+// BOARD_NOW=1: also read the page as the iPhone's Dynamic Island does (/api/page/board-now), once a second.
+let voiceSessionId=null;page.on('request',r=>{if(!voiceSessionId&&r.url().includes('/api/board')&&r.method()==='POST'){try{voiceSessionId=JSON.parse(r.postData()??'{}').voiceSessionId??null;}catch{}}});
+const boardNow=async()=>!process.env.BOARD_NOW||!voiceSessionId?null:page.evaluate(async id=>{const r=await fetch(new URL('api/page/board-now'+location.search,location.href),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({voiceSessionId:id})});return r.ok?r.json():{status:r.status};},voiceSessionId).catch(e=>({error:String(e).slice(0,80)}));
+let lastNow='';
 await page.exposeFunction('__wav',name=>fs.readFileSync(`${process.env.VOICE_DIR}/${name}.wav`).toString('base64'));
 await page.addInitScript(()=>{
   let ctx,dest;
@@ -35,6 +39,7 @@ const watch=async(label,{maxMs,quietMs=5000,minMs=4000})=>{
   const start=Date.now();let quietSince=null,spoke=false;
   for(;;){
     const s=await sample();
+    const outline=await boardNow();if(outline&&JSON.stringify(outline)!==lastNow){lastNow=JSON.stringify(outline);log.push({t:now(),event:'board-now',label,outline});}
     const boardKey=JSON.stringify(s.board), last=s.rows.at(-1);
     if(boardKey!==lastBoard){lastBoard=boardKey;log.push({t:now(),event:'board',label,board:s.board});if(shots<40)await page.screenshot({path:`${out}/shot-${String(++shots).padStart(2,'0')}-${label}.png`});}
     const rowsKey=JSON.stringify(s.rows.map(r=>[r.role,r.text.length,r.streaming]));

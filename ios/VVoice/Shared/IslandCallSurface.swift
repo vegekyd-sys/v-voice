@@ -22,6 +22,14 @@ struct IslandCallSurface: View {
     private var destination: URL { CallDestination.url(callID: callID, documentID: stale ? nil : state.documentID) }
     private var status: String { stale ? "连接状态未知，请返回检查" : state.phase == .interrupted ? "声音暂停，返回通话恢复" : state.phase.title }
     var body: some View {
+        // A lesson being told replaces the waveform card with the thing V is telling (IslandLessonSurface).
+        if let lesson = state.lesson, !quiet {
+            IslandLessonSurface(lesson: lesson, state: state, callID: callID, expanded: state.island.layout == .conversation, lockScreen: lockScreen)
+        } else {
+            standard
+        }
+    }
+    private var standard: some View {
         VStack(spacing: 4) {
             HStack(spacing: 13) {
                 if !typeSize.isAccessibilitySize {

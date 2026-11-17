@@ -157,6 +157,16 @@ import VVoiceCore
     @ObservationIgnored private var h5AvatarInFlight = 0
     @ObservationIgnored private var activity: Activity<CallAttributes>?
     @ObservationIgnored private var activityUpdates: Task<Void, Never>?
+    // The lesson the Dynamic Island follows (CallCoordinator+Lesson.swift).
+    @ObservationIgnored var lessonFollow: Task<Void, Never>?
+    @ObservationIgnored var boardOutline: BoardOutline?
+    @ObservationIgnored var islandLesson: IslandLesson?
+    @ObservationIgnored var lessonCursor = SpokenCursor()
+    @ObservationIgnored var lessonPictures: Set<String> = []
+    @ObservationIgnored var lessonPicturesPending: Set<String> = []
+    var lessonVoiceSessionID: String? { voiceID }
+    /// Audio received this call and still waiting to be heard, in PCM16 bytes (as `audioProgress`).
+    var lessonPlayback: (output: Int, queued: Int) { (audio.outputFrames * 2, audio.queuedFrames * 2) }
     @ObservationIgnored private var activityWatch: Task<Void, Never>?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private let path = NWPathMonitor()
@@ -1263,6 +1273,7 @@ import VVoiceCore
             let a = try Activity.request(attributes: CallAttributes(callID: presentationID), content: ActivityContent(state: activityState, staleDate: Date().addingTimeInterval(25)), pushType: nil)
             activity = a
             CallDiagnostics.record("island.request.created")
+            startLessonFollow()
             activityWatch = Task { [weak self] in
                 for await s in a.activityStateUpdates {
                     guard let self, self.activity?.id == a.id else { return }
@@ -1325,7 +1336,8 @@ import VVoiceCore
                      caption: islandCaptions ? caption.text : "",
                      captionSpeaker: islandCaptions ? caption.speaker : "",
                      documentTitle: unread.map { islandCaptions ? $0.title : "完整方案已就绪" },
-                     documentID: unread?.id, taskLabel: tasks.last?.title, island: islandSnapshot(documentID: unread?.id))
+                     documentID: unread?.id, taskLabel: tasks.last?.title, island: islandSnapshot(documentID: unread?.id),
+                     lesson: islandLesson.map { lesson in islandCaptions ? lesson : IslandLesson(title: "", name: "", detail: "", index: lesson.index, total: lesson.total, others: [], picture: lesson.picture) })
     }
     func publishIslandActivity(immediate: Bool = false) { publish(immediate: immediate) }
     private func publish(resultID: String? = nil, connected: Bool = false, immediate: Bool = false) {
@@ -1357,6 +1369,7 @@ import VVoiceCore
         }
     }
     private func finishActivity(phase: VoicePhase) {
+        stopLessonFollow()
         guard let a = activity else { return }; activity = nil; activityWatch?.cancel(); activityWatch = nil
         let content = ActivityContent(state: CallAttributes.ContentState(phase: phase, muted: true, startedAt: startedAt, detail: detail), staleDate: nil)
         let previous = activityUpdates

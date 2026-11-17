@@ -23,9 +23,17 @@ struct VoiceLiveActivity: Widget {
             } compactLeading: {
                 Text("V").font(.system(size: 16, weight: .semibold, design: .rounded)).foregroundStyle(lilac).accessibilityLabel("V 通话")
             } compactTrailing: {
-                IslandCompactStatus(state: context.state, stale: context.isStale)
+                if let lesson = context.state.lesson, !context.isStale, context.state.phase.isActive {
+                    IslandLessonRing(index: lesson.index, total: lesson.total)
+                } else {
+                    IslandCompactStatus(state: context.state, stale: context.isStale)
+                }
             } minimal: {
-                Image(systemName: symbol(context)).foregroundStyle(lilac).accessibilityLabel("V 通话")
+                if let lesson = context.state.lesson, !context.isStale, context.state.phase.isActive {
+                    IslandLessonRing(index: lesson.index, total: lesson.total)
+                } else {
+                    Image(systemName: symbol(context)).foregroundStyle(lilac).accessibilityLabel("V 通话")
+                }
             }.widgetURL(destination(context)).keylineTint(lilac)
         }
     }
