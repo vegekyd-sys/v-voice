@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — The Dynamic Island follows the lesson V is telling
+
+- `/api/page/board-now` outlines the call's current board page (named items with a line, a picture query and the words they hang on; no model call). The iOS App follows V's voice through it itself (`BoardFollow`, `SpokenCursor` in VVoiceCore, the web page's rules), since the page does not run in the background. The island shows the item V is on with its picture (150 px, kept in the keychain group the widget already shares), its name, a line and where it is among the rest; the small island shows a progress ring; the lock screen shows no words, only the picture and progress. App build needed; not installed yet.
+
 ## 2026-11-15 — Lessons start sooner; the phone's line shows nothing ahead of the voice
 
 - The lesson's holding line is "好，我讲讲。": the script waits for it to be said, and Doubao's longer lines took 2-3 s. A lesson starting no longer cancels the title and print being drawn for the question. The cue writer writes a line at a time ({say, show}) and its first two lines start the page while the rest is written (`VOICE_BOARD_EARLY=0` turns it off). Candidate: V starts 4.3-5.1 s after the question (was 5.1-6.7 s), the page is ready before V speaks in 4 of 5 lessons. Timing per lesson: `scripts/candidate/first-content.py` (#225).

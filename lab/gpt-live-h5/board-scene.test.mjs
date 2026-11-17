@@ -227,3 +227,18 @@ test('draw: a sketch of plain shapes, each with its numbers checked', async () =
   assert.deepEqual(op.block.items[2].p, [0, 0, 105, 30]);
   assert.equal(op.block.items[1].tone, 'butter');
 });
+
+test('the island\'s outline keeps blocks of named things and drops drawings, formulas and charts', async () => {
+  const {sceneOutline} = await import('./board-scene.mjs');
+  const outline = sceneOutline({serial: 2, rev: 7, title: '欧洲最美城市', cue: true, blocks: [
+    {id: 'p', t: 'photo', query: '巴黎'},
+    {id: 'c', t: 'list', items: [{id: 'a', h: '布拉格', d: '查理大桥', img: '布拉格', q: '先看布拉格查理'}]},
+    {id: 'd', t: 'draw', items: [{id: 's', k: 'rect', p: [1, 1, 2, 2], h: '钟楼', q: '爬上乔托钟楼'}]},
+    {id: 'v', t: 'versus', sides: [{h: '电车'}, {h: '油车'}], items: [{id: 'r', h: '补能', cells: ['一晚', '三分钟'], q: '电车在家'}]},
+    {id: 'n', t: 'sticky', text: '记住'},
+  ]});
+  assert.deepEqual(outline.blocks.map(block => block.t), ['photo', 'list', 'versus']);
+  assert.deepEqual(outline.blocks[1].items[0], {id: 'a', h: '布拉格', d: '查理大桥', img: '布拉格', q: '先看布拉格查理'});
+  assert.deepEqual(outline.blocks[2], {id: 'v', t: 'versus', h: '', sides: ['电车', '油车'], items: [{id: 'r', h: '补能', d: '一晚 / 三分钟', q: '电车在家'}]});
+  assert.equal(outline.cue, true);
+});

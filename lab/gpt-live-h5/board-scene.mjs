@@ -529,7 +529,10 @@ export function flowLayout(nodes, edges, {narrow = false} = {}) {
  */
 export function sceneOutline(scene) {
   const text = (value, max) => typeof value === 'string' ? Array.from(value.replaceAll('*', '').trim()).slice(0, max).join('') : '';
-  const blocks = scene.blocks.filter(block => block.t !== 'sticky' && block.t !== 'note').slice(0, 4).map(block => {
+  // Only blocks whose items are things with names: a drawing's shapes, a formula's terms or a chart's
+  // bars are not what the island names ("钟楼" is a shape on the drawing of Florence, not the city).
+  const named = new Set(['photo', 'list', 'timeline', 'versus', 'steps', 'compare', 'flow', 'stack']);
+  const blocks = scene.blocks.filter(block => named.has(block.t)).slice(0, 4).map(block => {
     const items = (block.t === 'photo' ? [{id: 'photo', h: block.caption ?? block.query, img: block.query, q: block.q}] : focusTargets(block)).slice(0, 12).map(item => ({
       id: String(item.id ?? ''),
       h: text(item.h ?? item.label ?? item.text ?? '', 16),
