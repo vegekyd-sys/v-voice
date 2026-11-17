@@ -4,16 +4,28 @@ import Foundation
 import VVoiceCore
 
 final class IslandActivityTests: XCTestCase {
+    func testALessonThumbnailFitsTheSharedKeychainItem() throws {
+        let side = 900, image = UIGraphicsImageRenderer(size: CGSize(width: side, height: side / 2)).image { context in
+            for x in stride(from: 0, to: side, by: 3) { UIColor(hue: CGFloat(x) / CGFloat(side), saturation: 0.8, brightness: 0.9, alpha: 1).setFill(); context.fill(CGRect(x: x, y: 0, width: 3, height: side / 2)) }
+        }
+        let thumbnail = try XCTUnwrap(CallCoordinator.islandThumbnail(try XCTUnwrap(image.jpegData(compressionQuality: 0.95))))
+        XCTAssertLessThanOrEqual(thumbnail.count, 24 * 1024)
+        XCTAssertEqual(UIImage(data: thumbnail)?.size, CGSize(width: 150, height: 150))
+    }
     func testOldActivitiesDecodeWithoutNewIslandFields() throws {
         let old = #"{"phase":"listening","muted":false,"startedAt":0,"detail":"我在听","caption":"旧短句"}"#
         let value = try JSONDecoder().decode(CallAttributes.ContentState.self, from: Data(old.utf8))
+        XCTAssertNil(value.lesson)
         XCTAssertEqual(value.island.layout, .audio)
         XCTAssertEqual(value.caption, "旧短句")
     }
     func testWorstBoundedCaptionFitsAppleCombinedPayloadBudget() throws {
         let state = CallAttributes.ContentState(phase: .speaking, muted: false, startedAt: Date(), detail: "V 正在回答",
             caption: String(repeating: "🧑🏽‍💻", count: 84), captionSpeaker: String(repeating: "人", count: 32), documentTitle: String(repeating: "方", count: 32),
-            documentID: String(repeating: "i", count: 160), island: .init(layout: .conversation, reactionID: "reaction-10", levels: Array(repeating: 100, count: 24), audioSource: .output, sampledAt: Date()))
+            documentID: String(repeating: "i", count: 160), island: .init(layout: .conversation, reactionID: "reaction-10", levels: Array(repeating: 100, count: 24), audioSource: .output, sampledAt: Date()),
+            // The longest lesson the service outlines (sceneOutline: names 16, lines 28, pictures 60, six neighbours).
+            lesson: .init(title: String(repeating: "题", count: 16), name: String(repeating: "名", count: 16), detail: String(repeating: "说", count: 28),
+                          index: 6, total: 12, others: Array(repeating: String(repeating: "邻", count: 16), count: 6), picture: String(repeating: "图", count: 60)))
         let payload = try JSONEncoder().encode(state)
         let attributes = try JSONEncoder().encode(CallAttributes(callID: UUID().uuidString))
         XCTAssertLessThan(payload.count + attributes.count, 4096)

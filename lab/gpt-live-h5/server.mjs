@@ -39,7 +39,7 @@ import {boardCompletionFromEnv,boardDirectorFromEnv,boundedBoardRequest} from '.
 import {createPhotoFinder} from './board-photo.mjs';
 import {STREAM_INSTRUCTIONS,createLessonWriter,refineStreamOp} from './board-lesson.mjs';
 import {CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
-import {scenePictures} from './board-scene.mjs';
+import {sceneOutline,scenePictures} from './board-scene.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Dialing is how a known caller retries; only anonymous callers keep the tight limit.
@@ -48,6 +48,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const PAGE_FEATURES = Object.freeze({
   board: params => ({pathname: '/api/board', params: {...params, collect: true}}),
   'board-image': params => ({pathname: '/api/board-image', params: {...params, inline: true}}),
+  'board-now': params => ({pathname: '/api/board-now', params}),
 });
 export const callAttemptLimit = binding => binding.permissionProfile === 'unidentified' ? 6 : 30;
 
@@ -730,7 +731,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         }
         res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/tv-aec/webrtcaec3-0.3.0.") ? "public, max-age=31536000, immutable" : bundled && url.searchParams.get("v") === bundled.revision ? "private, max-age=31536000, immutable" : pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
       }
-      if(binding.permissionProfile==='unidentified'&&!pathname.startsWith('/api/page/')&&!new Set(['/api/board','/api/board-image','/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke',...(binding.cliManaged?['/api/access']:[])]).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
+      if(binding.permissionProfile==='unidentified'&&!pathname.startsWith('/api/page/')&&!new Set(['/api/board','/api/board-image','/api/board-now','/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke',...(binding.cliManaged?['/api/access']:[])]).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
       const readBody = async () => {
         const chunks = []; let size = 0;
         for await (const chunk of req) { size += chunk.length; if (size > 70000) throw new Error("Request too large"); chunks.push(chunk); }
@@ -901,6 +902,14 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         send({op:'done',reason:result.reason,rev:result.rev??board.scene(params.voiceSessionId).rev,durationMs:result.durationMs,firstOpMs:result.firstOpMs??null});
         if (collected) return json(res,200,{ops:collected});
         res.end();return;
+      }
+      // The page this call is on, as an outline (the iPhone's Dynamic Island follows it). No model call.
+      // `rev`: the revision the caller has; an unchanged page answers {same:true}.
+      if (pathname === '/api/board-now') {
+        if (!boardAllowed(binding)) return json(res,404,{error:'没有这个入口'});
+        const scene = board.scene(params.voiceSessionId);
+        if (Number.isSafeInteger(params.rev) && params.rev === (scene.rev ?? 0) && Number.isSafeInteger(params.serial) && params.serial === (scene.serial ?? 0)) return json(res,200,{same:true,rev:scene.rev??0});
+        return json(res,200,sceneOutline(scene));
       }
       if (pathname === '/api/board-image') {
         if (!boardAllowed(binding) || !boardPhotos) return json(res,404,{error:'没有这个入口'});
