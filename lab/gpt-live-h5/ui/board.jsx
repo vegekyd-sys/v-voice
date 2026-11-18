@@ -90,6 +90,7 @@ function Figure({value, on}) {
 const Heading = ({block}) => block.h ? <h3 className="board-h">{block.h}</h3> : null;
 
 function List({block, view, ordered}) {
+  if (block.look === 'gallery' && !ordered) return <Gallery block={block} view={view} />;
   const Tag = ordered ? 'ol' : 'ul';
   return (
     <>
@@ -113,6 +114,29 @@ function List({block, view, ordered}) {
           );
         })}
       </Tag>
+    </>
+  );
+}
+
+// The pictures the caller asked to see: large, two to a row, each named under it.
+function Gallery({block, view}) {
+  return (
+    <>
+      <Heading block={block} />
+      <ul className="board-gallery">
+        {block.items.map(item => {
+          const state = itemState(view, block, item);
+          return (
+            <li key={item.id} {...state.props}>
+              {item.img ? <Thumb query={item.img} view={view} seed={state.id} /> : <span className="board-thumb" data-empty />}
+              <div className="board-item">
+                <Key item={item} seed={state.id}>{em(item.h)}</Key>
+                {item.d && <span>{em(item.d)}</span>}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </>
   );
 }

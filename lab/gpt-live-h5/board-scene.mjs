@@ -66,7 +66,8 @@ const BLOCKS = {
   },
   list(raw) {
     const items = entries(raw.items, 'i');
-    return items.length ? optional({items}, 'h', text(raw.h, 40)) : null;
+    // `look: "gallery"`: the list is the pictures themselves (the caller asked to see some), drawn large.
+    return items.length ? optional(optional({items}, 'h', text(raw.h, 40)), 'look', raw.look === 'gallery' && items.filter(item => item.img).length >= 2 ? 'gallery' : '') : null;
   },
   steps(raw) { return BLOCKS.list(raw); },
   compare(raw) {
