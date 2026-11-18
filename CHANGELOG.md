@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-18 — "Show me some pictures" is a gallery of real photos
+
+- Picture requests go to the lesson tool (real photos), not to the backend (which generated one in call 7f8f18da); V does not say it is finding something without calling a tool. The lesson writer shows the pictures instead of explaining where to find them and, since it cannot see them, says only what each is of. The illustrator draws a list with `look: "gallery"`: 4-6 pictures, each its own specific search, large, two to a row, appearing as the voice reaches them; a picture not found is removed with its name (#229).
+- `scripts/candidate/photo-compare.mjs` compares the board's picture sources on the same queries (Brave image search vs Wikipedia plus web_search share pictures).
+
 ## 2026-11-15 — Lessons start sooner; the phone's line shows nothing ahead of the voice
 
 - The lesson's holding line is "好，我讲讲。": the script waits for it to be said, and Doubao's longer lines took 2-3 s. A lesson starting no longer cancels the title and print being drawn for the question. The cue writer writes a line at a time ({say, show}) and its first two lines start the page while the rest is written (`VOICE_BOARD_EARLY=0` turns it off). Candidate: V starts 4.3-5.1 s after the question (was 5.1-6.7 s), the page is ready before V speaks in 4 of 5 lessons. Timing per lesson: `scripts/candidate/first-content.py` (#225).
