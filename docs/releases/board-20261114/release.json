@@ -136,5 +136,19 @@
     "gatewayIdentityPreserved": true,
     "change": "Lessons start sooner: a short holding line, the question's title kept, the page started from the script's first two lines (#225). The phone's line under a cue page shows nothing of a reply before the voice reaches it, and long sentences in pieces (#226).",
     "acceptance": "Tianyi tried the Candidate (aa3c791, #225+#226) and accepted it. Production Public call fd3db667 at 390x844 after publish: V started 4.4 s and 5.2 s after the question, the page ready before (3.5 s, 3.2 s); the line under the page showed the question, then each sentence as spoken."
+  },
+  "galleryRelease": {
+    "commit": "5c4a01cf1324b8eb969eba826b2904b6e91d1fc4",
+    "mergePR": 229,
+    "filesSha256": "f2712afbc077de9ac00d4ad6b3c485e7364ece7b07c19d1b060eebc8c08feea6",
+    "previousRunningCommit": "09ed92d3217e930c2326822d8bc0a6008344a269",
+    "publishedAt": "2026-11-18T15:54:50+08:00",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "gatewayIdentityPreserved": true,
+    "change": "Picture requests go to the lesson as a gallery of real photos (list look gallery), not to the backend; no promise without a tool call; the writer does not describe pictures it cannot see; a picture not found is removed with its name.",
+    "acceptance": "Tianyi asked to release after comparing picture sources. Production Public calls at 390x844 after publish: '给我找几张影之刃零的图看看' and '我要动作战斗的图' each went to explain_on_board and drew a gallery of real pictures (5 of 6 and 3 of 4 found; Brave image search, Baidu Baike, 3dmgame), no delegation, no empty promise."
   }
 }
