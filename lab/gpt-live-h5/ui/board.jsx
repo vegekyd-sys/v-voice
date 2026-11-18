@@ -61,13 +61,14 @@ function Key({item, seed, children}) {
 }
 // The picture of the thing an item is about, fetched through the Voice
 // service like a photo block. Nothing is shown when none is found.
-function Thumb({query, view, seed}) {
+function Thumb({query, view, seed, onGone}) {
   const [src, setSrc] = useState(null);
   const [gone, setGone] = useState(false);
   useEffect(() => {
     let live = true;
     setSrc(null); setGone(false);
-    Promise.resolve(view.loadPhoto?.(query)).then(url => { if (live) url ? setSrc(url) : setGone(true); }, () => { if (live) setGone(true); });
+    const lost = () => { if (live) { setGone(true); onGone?.(); } };
+    Promise.resolve(view.loadPhoto?.(query)).then(url => { if (live) { if (url) setSrc(url); else lost(); } }, lost);
     return () => { live = false; };
   }, [query]);
   if (gone) return null;
@@ -90,6 +91,7 @@ function Figure({value, on}) {
 const Heading = ({block}) => block.h ? <h3 className="board-h">{block.h}</h3> : null;
 
 function List({block, view, ordered}) {
+  if (block.look === 'gallery' && !ordered) return <Gallery block={block} view={view} />;
   const Tag = ordered ? 'ol' : 'ul';
   return (
     <>
@@ -113,6 +115,31 @@ function List({block, view, ordered}) {
           );
         })}
       </Tag>
+    </>
+  );
+}
+
+// The pictures the caller asked to see: large, two to a row, each named under it.
+function Gallery({block, view}) {
+  // A picture that could not be found takes its name with it: no empty frame in the grid.
+  const [missing, setMissing] = useState(() => new Set());
+  return (
+    <>
+      <Heading block={block} />
+      <ul className="board-gallery">
+        {block.items.filter(item => item.img && !missing.has(item.id)).map(item => {
+          const state = itemState(view, block, item);
+          return (
+            <li key={item.id} {...state.props}>
+              <Thumb query={item.img} view={view} seed={state.id} onGone={() => setMissing(gone => new Set(gone).add(item.id))} />
+              <div className="board-item">
+                <Key item={item} seed={state.id}>{em(item.h)}</Key>
+                {item.d && <span>{em(item.d)}</span>}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </>
   );
 }

@@ -163,3 +163,18 @@ test('a script\'s first lines and then the whole script are drawn one after the 
   assert.deepEqual(director.scene('o').blocks[0].items.map(item => item.id), ['a', 'b']);
   assert.ok(seen.some(op => op.scene?.blocks?.[0]?.items?.length === 2), 'the joined screen got the whole script\'s piece');
 });
+
+test('a request to see pictures is a gallery: a list of real pictures, each with its own search; never a lesson on where to find them', async () => {
+  const {CUE_SCRIPT_INSTRUCTIONS} = await import('./board-cue.mjs');
+  const {LESSON_TOOL, LESSON_ROUTING} = await import('../realtime-direct-tools/tools.mjs');
+  assert.match(CUE_INSTRUCTIONS, /"look":"gallery"/u);
+  assert.match(CUE_SCRIPT_INSTRUCTIONS, /不是教他去哪里找图/u);
+  assert.match(LESSON_TOOL.description, /找图/u);
+  assert.match(LESSON_ROUTING, /不要交给 delegate_to_v/u);
+  assert.match(LESSON_ROUTING, /没有真的调用工具，就不要说“我去找”/u);
+  const gallery = normalizeOp({op: 'put', block: {id: 'g', t: 'list', look: 'gallery', items: [
+    {id: 'a', h: '雨夜剑客', img: '影之刃零 雨夜剑客 战斗截图', cue: 0}, {id: 'b', h: 'Boss 战', img: '影之刃零 Boss战 截图', cue: 1}]}});
+  assert.equal(gallery.block.look, 'gallery');
+  // Without pictures it is an ordinary list.
+  assert.equal(normalizeOp({op: 'put', block: {id: 'l', t: 'list', look: 'gallery', items: [{id: 'a', h: '一'}, {id: 'b', h: '二'}]}}).block.look, undefined);
+});
