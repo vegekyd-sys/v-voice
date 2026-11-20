@@ -225,6 +225,7 @@ test('what the search asks for is not held against a title: a poster for "…海
   assert.ok(rankPicture(result('神奇宝贝：可以mega进化的神兽'), '超梦 Mega进化 立绘') <= 0, 'a Chinese title that does not name the thing');
   assert.ok(rankPicture(result('全国图鉴截图'), '超梦 宝可梦 全身 图鉴') <= 0);
   assert.ok(rankPicture(result('航海王1199話，喬巴覺醒森林之神形態'), '航海王1199话 全图漫画') > 0, 'traditional characters and a chapter number aside');
+  assert.ok(rankPicture(result('Pokemon GO超夢'), '超梦 尾巴') > rankPicture(result('全国图鉴截图'), '超梦 尾巴'), '超夢 is 超梦');
   assert.ok(rankPicture(result('Jason and Lucia GTA 6'), 'GTA6 杰森 露西娅') > 0, 'an English title for a Chinese search is not held to it');
 });
 
