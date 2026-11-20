@@ -7,6 +7,7 @@ import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {createPortal} from 'react-dom';
 import {edgeId, flowLayout, galleryLayout, markedBlocks, scalePositions} from '../board-scene.mjs';
 import {MARK_PATHS, arrow, fitPath, pointer, ring, tilt, underline} from '../board-sketch.mjs';
+import {Work} from './board-work.jsx';
 
 // One pen stroke over its target. CSS sizes the box; the path is fitted to the
 // box's real size once it is known, and `pathLength` lets CSS draw it on.
@@ -619,7 +620,9 @@ function Photo({block, loadPhoto, onMissing, enlarge}) {
 }
 
 const RENDER = {note: Sticky, sticky: Sticky, list: props => <List {...props} />, steps: props => <List {...props} ordered />, compare: Compare, stats: Stats, bars: Bars, table: Table, flow: Flow,
-  draw: Draw, tiles: Tiles, formula: Formula, timeline: Timeline, versus: Versus, overlap: Overlap, stack: Stack, scale: Scale};
+  draw: Draw, tiles: Tiles, formula: Formula, timeline: Timeline, versus: Versus, overlap: Overlap, stack: Stack, scale: Scale,
+  // A thing V made in this call (board-work.jsx).
+  work: Work};
 const SMALL = new Set(['note', 'sticky', 'photo']);
 const PAPER = {note: 'butter', sticky: 'butter'};
 
@@ -667,12 +670,14 @@ function useFit(scroller, page, key) {
 }
 
 // One page of the canvas: its blocks, fitted to the panel.
-function Sheet({scene, spoken, loadPhoto, enlarge, caption = ''}) {
+function Sheet({scene, spoken, loadPhoto, enlarge, caption = '', works = null}) {
   const box = useRef(null), sheet = useRef(null);
   const [missing, setMissing] = useState(() => new Set());
   const dense = useFit(box, sheet, scene.serial);
   // While V speaks the mark follows the voice; otherwise it stays where the director put it.
-  const view = {focus: spoken?.focus || scene.focus, ahead: new Set(spoken?.ahead ?? []), loadPhoto, enlarge};
+  // (`works`: the call's shelf of made things: what each id is, the one the caller has picked, and how to pick, report and act.)
+  const view = {focus: spoken?.focus || scene.focus, ahead: new Set(spoken?.ahead ?? []), loadPhoto, enlarge,
+    assets: works?.assets ?? null, picked: works?.picked ?? '', pick: works?.pick, shown: works?.shown, act: works?.act};
   // Only the page V is on follows the voice, and only up and down inside the page: scrollIntoView
   // also scrolled the strip of pages sideways, to whichever page last had a focus, while the board
   // brought the view back to V's page; on a phone the view swung between two pages (11/14).
@@ -766,7 +771,7 @@ function Enlarged({picture, onClose}) {
  * snapping strip, with nothing on screen to operate. V drawing again brings
  * the view back to where V is.
  */
-export function Board({scene, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null}) {
+export function Board({scene, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null, works = null}) {
   const pages = canvas?.zones?.length ? canvas.zones.map(zone => zone.serial === scene.serial ? scene : zone) : [scene];
   const active = Math.max(0, pages.findIndex(page => page.serial === scene.serial));
   const track = useRef(null);
@@ -796,7 +801,7 @@ export function Board({scene, canvas, spoken, caption = '', loadPhoto, onClose, 
       <div className="board-track" ref={track} onScroll={onScroll}>
         {pages.map((item, index) => (
           <div key={item.serial} className="board-page" data-lesson={item.lesson || undefined} data-current={index === inView || undefined} aria-hidden={index !== inView || undefined}>
-            <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={setEnlarged} />
+            <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={setEnlarged} works={works} />
           </div>
         ))}
       </div>

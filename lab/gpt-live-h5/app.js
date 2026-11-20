@@ -9,6 +9,7 @@ import { createAvatarTasks } from "./avatar-state.mjs";
 import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { createAvatarTelemetry } from "./avatar-telemetry.mjs";
 import { createBoardClient, createLessonGate, createSpokenCursor, readEventStream, spokenRate } from "./board-client.mjs";
+import { createAssetsClient } from "./board-assets-client.mjs";
 import { speaksOf, spokenProgress, unspoken } from "./board-scene.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
@@ -40,6 +41,8 @@ const renderAssistant = (target, item) => {
 if (document.querySelector) mountCallUi(document, view, {
   renderAssistant, onDocumentShown: callId => documentShown(callId),
   loadBoardPhoto: Object.assign(query => loadBoardPhoto(query), {missing: query => loadBoardPhoto.missing(query)}),
+  // The call's shelf of made things: the caller's tap on one, and a picture reported as on screen.
+  boardWorks: {pick: id => call?.boardAssets?.pick(id), shown: id => call?.boardAssets?.shown(id)},
   actions: {
     openBinding: () => void openIosBinding(),
     connectIdentity: () => { guestDialAllowed=false;void confirmation.start(); },
@@ -615,7 +618,7 @@ async function stopCall({failure}={}) {
   if (active) {
     active.avatarTelemetry?.close();
     active.avatarReactions?.dispose();
-    active.board?.dispose(); clearInterval(active.boardFocusTimer); view.set({ board: null, boardCanvas: null, boardSpoken: null });
+    active.board?.dispose(); active.boardAssets?.dispose(); clearInterval(active.boardFocusTimer); view.set({ board: null, boardCanvas: null, boardSpoken: null, boardAssets: null });
     for (const pending of active.boardPhotos?.values() ?? []) void pending.then(url => { if (url) URL.revokeObjectURL(url); });
     active.relay?.dispose();
     active.dialConnection?.dispose();
@@ -755,7 +758,7 @@ async function startCall() {
       isCurrent: () => call === active,
       // A new picture goes up together with where the voice is on it: set a
       // moment apart, a lesson showed whole for one frame before hiding.
-      onScene: (scene, canvas) => { if (call === active) view.set({ board: scene, boardCanvas: canvas ?? null, boardSpoken: active.boardFollow?.(scene) ?? view.get().boardSpoken }); },
+      onScene: (scene, canvas) => { if (call === active) { view.set({ board: scene, boardCanvas: canvas ?? null, boardSpoken: active.boardFollow?.(scene) ?? view.get().boardSpoken }); active.boardAssets?.scene(scene); } },
       observe: event => {
         const trace = JSON.parse(document.body.dataset.boardTimeline ?? '[]');
         trace.push({ ...event, at: Math.round(performance.now()) });
@@ -766,6 +769,18 @@ async function startCall() {
           body: JSON.stringify({ voiceSessionId: active.voiceSessionId, ...payload }), signal });
         if (!response.ok || !response.body) throw new Error('board unavailable');
         await readEventStream(response, onEvent);
+      },
+    });
+    // The shelf of made things beside it (board-assets.mjs): asked for when a tool starts or ends
+    // and while anything is still being made. A service without one refuses, and the page stops asking.
+    if (active.board) active.boardAssets = createAssetsClient({
+      isCurrent: () => call === active, rev: () => active.board.scene.rev,
+      onChange: shelf => { if (call === active) view.set({ boardAssets: shelf }); },
+      onSync: value => active.board.sync(value),
+      request: async body => {
+        const response = await fetch(apiUrl('board-assets'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ voiceSessionId: active.voiceSessionId, ...body }) });
+        if (!response.ok) throw new Error('board assets unavailable');
+        return response.json();
       },
     });
     if (active.board) {
@@ -842,6 +857,7 @@ async function startCall() {
           if(value.type==='backend.result')receiveDocument(active,value);
           if(value.type.startsWith('tool.'))taskState();
           if(value.type==='tool.result')active.board?.evidence();
+          if(value.type.startsWith('tool.')||value.type==='backend.result')active.boardAssets?.poke();
           if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
           if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
           if(value.type==='reply.sync'&&value.status==='failed')setStatus(value.message,{tone:'problem'});

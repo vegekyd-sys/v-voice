@@ -73,9 +73,11 @@ const evidenceText = result => {
 };
 
 /** Build the user message for one run. Everything in it is conversation data. */
-export function boardRequest({trigger, scene, turns, evidence, notes = null, recent = [], canvas = [], page = null}) {
+export function boardRequest({trigger, scene, turns, evidence, notes = null, recent = [], canvas = [], page = null, assets = [], make = false}) {
   return JSON.stringify({
     trigger,
+    ...(assets.length ? {assets} : {}),
+    ...(make ? {make: true} : {}),
     ...(page ? {page} : {}),
     ...(canvas.length ? {canvas} : {}),
     ...(notes ? {notes} : {}),
@@ -99,7 +101,9 @@ const growsFrom = (old, next) => old.t === next.t && (old.t !== 'photo' || old.q
 function picturedOnce(block, scene) {
   const others = scene.blocks.filter(other => other.id !== block.id), used = new Set();
   for (const other of others) { if (other.t === 'photo') used.add(other.query); for (const item of [...itemsOf(other), ...(other.sides ?? [])]) if (item.img) used.add(item.img); }
-  if (block.t === 'photo') return used.has(block.query) || others.some(other => other.t === 'photo') ? null : block;
+  // (A made thing is the page's large print: no photograph is hung beside it.)
+  if (block.t === 'photo') return used.has(block.query) || others.some(other => other.t === 'photo' || other.t === 'work') ? null : block;
+  if (block.t === 'work') return others.some(other => other.t === 'work') ? null : block;
   const once = item => { if (!item.img) return item; if (used.has(item.img)) { const {img, ...rest} = item; return rest; } used.add(item.img); return item; };
   const next = {...block};
   // (The two or three things a comparison is between keep their pictures: a header with one picture missing reads as broken.)
@@ -157,6 +161,8 @@ export async function* hedged(complete, {messages, signal}, afterMs = 2500, setT
 }
 
 export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false, illustrate = null, stream = null, prefetch = null, hedgeMs = 2500} = {}) {
+  // The call's shelf of made things (board-assets.mjs), set by the service once both exist.
+  let shelf = null;
   // Pictures a page will need are asked for the moment the page knows of them, not when the page gets round to showing them.
   const wanted = new Set();
   const fetchAhead = scene => { if (!prefetch) return; for (const query of scenePictures(scene)) if (!wanted.has(query)) { wanted.add(query); if (wanted.size > 400) wanted.delete(wanted.values().next().value); Promise.resolve().then(() => prefetch(query)).catch(() => {}); } };
@@ -175,9 +181,60 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
   };
   // Every page of a call's canvas, oldest first, and the one V is on.
   const canvasOf = row => ({zones: [...(row.zones ?? []).filter(zone => zone.serial !== row.scene.serial), row.scene].sort((a, b) => a.serial - b.serial), active: zoneId(row.scene)});
+  // A page with something on it goes onto the canvas beside the others when V moves to another.
+  const shelvePage = row => { row.zones ??= []; if (row.scene.blocks.length) row.zones = [...row.zones.filter(zone => zone.serial !== row.scene.serial), row.scene].sort((a, b) => a.serial - b.serial).slice(-7); };
+  const lessonPage = scene => ({...scene, lesson: true, late: true, ...(stream?.cue ? {cue: true} : {})});
   const api = {
     available: Boolean(complete),
     log: record,
+    /** The call's shelf of made things: the illustrator may hang them, and may ask for one to be made. */
+    set shelf(value) { shelf = value ?? null; },
+    /**
+     * Hang a made thing (board-assets.mjs) on the call's canvas, whoever asked for it and whatever
+     * the illustrator is doing. A new version of a thing already up (a picture changed, or made to
+     * move) takes that thing's frame; otherwise it gets the page opened for this very request, or one of its own.
+     */
+    place(id, {asset, family = [], title = ''} = {}) {
+      if (typeof asset !== 'string' || !/^a[1-9]\d{0,2}$/u.test(asset)) return false;
+      const row = owner(id), pages = [row.scene, ...(row.zones ?? []).filter(zone => zone.serial !== row.scene.serial)];
+      const holds = (page, which) => page.blocks.some(block => block.t === 'work' && which.includes(block.asset));
+      if (pages.some(page => holds(page, [asset]))) return false;
+      // (`family`: the other versions of the same thing. Whichever of them is up gives its frame to the new one.)
+      const home = family.length ? pages.find(page => holds(page, family)) : null;
+      if (home) {
+        const blocks = home.blocks.map(block => block.t === 'work' && family.includes(block.asset) ? {...block, asset} : block);
+        if (home !== row.scene) { shelvePage(row); row.zones = row.zones.filter(zone => zone.serial !== home.serial); }
+        row.scene = {...home, blocks, rev: Math.max(home.rev, row.scene.rev) + 1, focus: ''};
+      } else {
+        const block = {id: `w${asset.slice(1)}`, t: 'work', asset};
+        // (The page the illustrator opened for this request: its title stays, a photograph of the subject gives way.)
+        const mine = row.scene.serial > 0 && (row.openedAt ?? -1) >= (row.askedAt ?? Infinity) && row.scene.blocks.every(other => other.t === 'photo');
+        if (mine) row.scene = lessonPage({...row.scene, blocks: [block], pending: null, focus: '', rev: row.scene.rev + 1});
+        else {
+          shelvePage(row);
+          row.pages = Math.max(row.pages ?? 0, row.scene.serial, ...(row.zones ?? []).map(zone => zone.serial)) + 1;
+          row.scene = lessonPage({...emptyScene(), rev: row.scene.rev + 1, serial: row.pages, title: Array.from(String(title ?? '')).slice(0, 14).join(''), blocks: [block]});
+          row.openedAt = now();
+        }
+      }
+      row.workAt = now();
+      record({type: 'board.place', voiceSessionId: id, asset, version: Boolean(home), page: zoneId(row.scene), rev: row.scene.rev});
+      return true;
+    },
+    /** A made thing has been looked at and named: its page, if it has no title yet, takes the name. */
+    retitle(id, asset, title) {
+      const row = owners.get(id), name = Array.from(String(title ?? '').trim()).slice(0, 14).join('');
+      if (!row || !name) return false;
+      const holds = page => !page.title && page.blocks.some(block => block.t === 'work' && block.asset === asset);
+      if (holds(row.scene)) { row.scene = {...row.scene, title: name, rev: row.scene.rev + 1}; return true; }
+      const zone = (row.zones ?? []).find(holds);
+      if (!zone) return false;
+      row.zones = row.zones.map(page => page === zone ? {...zone, title: name, rev: zone.rev + 1} : page);
+      row.scene = {...row.scene, rev: row.scene.rev + 1};
+      return true;
+    },
+    /** A page's whole view of the call's board, for a page that asks outside a run. */
+    state(id) { const row = owners.get(id); return row ? {scene: row.scene, ...(stream ? {canvas: canvasOf(row)} : {})} : {scene: emptyScene()}; },
     /** The whole canvas of a call (see board-scene.mjs normalizeCanvas). */
     canvas(id) { const row = owners.get(id); return row ? canvasOf(row) : {zones: [], active: ''}; },
     /** Tap on the service audit stream; keeps the latest lookup results per call. */
@@ -271,7 +328,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
           return report('same', {rev: row.scene.rev});
         }
       }
-      if (trigger === 'user') row.aheadFor = '';
+      if (trigger === 'user') { row.aheadFor = ''; row.askedAt = now(); }
       row.controller?.abort();
       // Lookups answer one question. What was found for the last one must not
       // be drawn again as if it answered this one.
@@ -350,6 +407,15 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             row.zones = row.zones.filter(zone => zone !== back);
             row.scene = {...back, rev: Math.max(back.rev, row.scene.rev) + 1, focus: ''};
           } else if (op.op === 'scene') {
+            // The page a made thing was hung on for this very request is this request's page: it takes
+            // the title, and no second page is opened beside it.
+            if ((row.workAt ?? -1) >= (row.askedAt ?? Infinity) && row.scene.blocks.some(block => block.t === 'work')) {
+              if (row.scene.title || !op.title) return;
+              row.scene = {...row.scene, title: op.title, rev: row.scene.rev + 1};
+              ops++; firstOpMs ??= now() - started; drawn.push(op);
+              onOp({op: 'sync', scene: row.scene, canvas: canvasOf(row)});
+              return;
+            }
             // (The page already up under this title is the page; one opened a moment ago and still empty is only renamed.)
             if (row.scene.title === op.title && row.scene.blocks.length) return;
             // A page of this title already on the canvas (two runs for one answer, 11/14): go back to it, not a second one.
@@ -369,7 +435,37 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             // (`from` must be a page that is on the canvas.)
             const origin = op.from && [...row.zones, row.scene].some(zone => zoneId(zone) === op.from) ? {from: op.from} : {};
             row.scene = {...emptyScene(), rev: row.scene.rev + 1, serial: row.pages, title: op.title, lesson: true, late: true, ...(stream.cue ? {cue: true} : {}), ...origin};
+            row.openedAt = now();
           } else {
+            if (op.op === 'put' && op.block.t === 'work') {
+              // A made thing on a page is one the call's shelf holds. Asked for anew (`make`), it is
+              // made by the call's own executor, once per answer and only where the call has one;
+              // the same block written again (the illustrator is called as V's words arrive) keeps its picture.
+              const held = row.scene.blocks.find(block => block.id === op.block.id && block.t === 'work');
+              const {make, ...rest} = op.block;
+              if (held) op = {op: 'put', block: {...rest, asset: held.asset}};
+              else if (make) {
+                if (!shelf?.canMake?.(id) || row.madeFor === (row.askedAt ?? 0)) return;
+                const made = shelf.make(id, {prompt: make, caption: rest.caption});
+                if (!made) return;
+                row.madeFor = row.askedAt ?? 0;
+                op = {op: 'put', block: {...rest, asset: made}};
+              } else {
+                if (!shelf?.has?.(id, op.block.asset)) return;
+                // A thing hangs once on the canvas. Asked for on a page just opened and still empty, the
+                // page it is on is gone back to instead (the caller asked about that very thing); on a
+                // page that already has something, it is simply not hung again.
+                const home = (row.zones ?? []).find(zone => zone.serial !== row.scene.serial && zone.blocks.some(block => block.t === 'work' && block.asset === op.block.asset));
+                if (home) {
+                  if (row.scene.blocks.length) return;
+                  row.zones = row.zones.filter(zone => zone !== home);
+                  row.scene = {...home, rev: Math.max(home.rev, row.scene.rev) + 1, focus: ''};
+                  ops++; firstOpMs ??= now() - started; drawn.push({op: 'zone', id: zoneId(home)});
+                  onOp({op: 'sync', scene: row.scene, canvas: canvasOf(row)});
+                  return;
+                }
+              }
+            }
             if (op.op === 'put') {
               // A block may grow; it may not become something else. One that would replace what is
               // on the page (another type, another photograph, other items) is a new block instead.
@@ -382,7 +478,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             // One screen: a page holds four blocks. More would only shrink it or make it scroll.
             if (op.op === 'put' && row.scene.blocks.length >= 4 && !row.scene.blocks.some(block => block.id === op.block.id)) return;
             // A page that was never opened by name (the first thing drawn in a call) is opened by its first block.
-            if (op.op === 'put' && row.scene.serial === 0) { row.pages = (row.pages ?? 0) + 1; row.scene = {...row.scene, serial: row.pages}; }
+            if (op.op === 'put' && row.scene.serial === 0) { row.pages = (row.pages ?? 0) + 1; row.scene = {...row.scene, serial: row.pages}; row.openedAt = now(); }
             const next = applyOp({...row.scene, pending: null}, op);
             if (next === row.scene) return;
             // The page is a lesson's page whoever opened it: pieces wait for the voice.
@@ -409,6 +505,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
           {role: 'user', content: boardRequest({trigger, scene: row.scene, turns: stream?.turns ? stream.turns(turns) : turns, evidence: row.evidence,
             // The author's notes go with the script they were written for, and with nothing else.
             ...(stream && row.notes && said && said.replace(/\s+/gu, '').startsWith(row.notes.script.replace(/\s+/gu, '').slice(0, 24)) ? {notes: {title: row.notes.title, lines: row.notes.lines}} : {}),
+            ...(stream && shelf ? {assets: shelf.digest(id), make: trigger !== 'user' && Boolean(shelf.canMake?.(id)) && row.madeFor !== (row.askedAt ?? 0)} : {}),
             ...(stream ? {recent: row.recent ?? [], page: {id: zoneId(row.scene), room: Math.max(0, 4 - row.scene.blocks.length)}, canvas: (row.zones ?? []).filter(zone => zone.serial !== row.scene.serial).map(zoneDigest)} : {})})}];
         for await (const chunk of (stream ? hedged(complete, {messages, signal: controller.signal}, hedgeMs) : complete({messages, signal: controller.signal}))) {
           if (controller.signal.aborted) break;
@@ -426,7 +523,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         finish();
       }
     },
-    forget(id) { owners.get(id)?.controller?.abort(); owners.delete(id); },
+    forget(id) { owners.get(id)?.controller?.abort(); owners.delete(id); shelf?.forget?.(id); },
   };
   return api;
 }

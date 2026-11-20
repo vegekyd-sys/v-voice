@@ -6,7 +6,9 @@
 export const BOARD_LIMITS = Object.freeze({blocks: 6, items: 10, columns: 4, rows: 8, nodes: 10, edges: 16});
 export const BOARD_BLOCK_TYPES = Object.freeze(['note', 'sticky', 'photo', 'list', 'steps', 'compare', 'stats', 'bars', 'table', 'flow',
   // The diagram kit: shapes an explanation is built from (see BLOCKS below).
-  'tiles', 'formula', 'timeline', 'versus', 'overlap', 'stack', 'scale', 'draw']);
+  'tiles', 'formula', 'timeline', 'versus', 'overlap', 'stack', 'scale', 'draw',
+  // A thing V made in this call (board-assets.mjs): a picture or a video, by its id on the call's shelf.
+  'work']);
 // What a drawing is made of, and how many numbers each takes (`poly`: three to eight points).
 export const BOARD_SHAPES = Object.freeze({line: 4, arrow: 4, rect: 4, circle: 3, wave: 4, text: 2, poly: 0});
 // How much of the page's width a block asks for; neighbours that ask stand side by side.
@@ -212,6 +214,15 @@ const BLOCKS = {
       return quoted(optional(optional({id: ident(item.id, `d${index + 1}`), k: item.k, p}, 'h', h), 'tone', BOARD_TONES.includes(item.tone) ? item.tone : ''), item);
     }).filter(Boolean), 'd');
     return items.length ? optional({items}, 'h', text(raw.h, 40)) : null;
+  },
+  // Something V made in this call, shown large: `asset` is its id on the call's shelf (board-assets.mjs),
+  // where the page finds what it is, how far along it is and where it came from. `make` (the
+  // illustrator asking for a picture to be drawn) never reaches a page: the service makes the
+  // thing and writes its id here instead.
+  work(raw) {
+    const asset = typeof raw.asset === 'string' && /^a[1-9]\d{0,2}$/u.test(raw.asset) ? raw.asset : '';
+    const make = asset ? '' : text(raw.make, 300);
+    return asset || make ? optional(optional(optional({}, 'asset', asset), 'make', make), 'caption', text(raw.caption, 20)) : null;
   },
   // Things placed by a number along one line: heights, sizes, prices, years.
   // `dir: "up"` stands the line upright (heights, depths).
@@ -438,6 +449,9 @@ export function scenePictures(scene) {
   }
   return queries;
 }
+
+/** The ids of the made things (work blocks) on a page. */
+export const sceneWorks = scene => scene.blocks.filter(block => block.t === 'work' && block.asset).map(block => block.asset);
 
 /** A full scene received from the service replaces the page's copy. */
 export function normalizeScene(raw) {

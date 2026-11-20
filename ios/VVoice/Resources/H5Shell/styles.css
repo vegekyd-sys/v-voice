@@ -1763,6 +1763,76 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-print img { display: block; width: 100%; height: 100%; object-fit: cover; animation: board-in .6s ease-out both; }
 .board-photo figcaption { padding-top: 7px; font-family: var(--hand); font-size: 15px; line-height: 1.35; text-align: center; color: #5a4a66; overflow-wrap: anywhere; }
 
+/* A made thing (ui/board-work.jsx): the picture or video V generated in this call, in one frame.
+   A sketch while it is made, the picture developing into it, the video taking the picture's place. */
+.board-block[data-type="work"] { display: flex; justify-content: center; }
+.board-work { margin: 0; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 9px; }
+.board-work-frame {
+  position: relative; width: min(100%, calc(var(--work-cap, 420px) * var(--shape, 1.33))); aspect-ratio: var(--shape, 1.33);
+  box-sizing: border-box; padding: 9px; background: #fffdfb; border-radius: 3px;
+  box-shadow: 0 22px 36px -20px #4d356080, 0 0 0 1px #4d35600d;
+  transform: rotate(var(--tilt, 0deg)); transition: aspect-ratio .5s ease, width .5s ease, box-shadow .25s, transform .25s;
+  -webkit-tap-highlight-color: transparent; outline: none;
+}
+.board-work-frame[role="button"] { cursor: pointer; }
+.board-work-frame > :is(img, video, .board-work-sketch, .board-work-failed) { position: absolute; inset: 9px; width: calc(100% - 18px); height: calc(100% - 18px); border-radius: 2px; }
+.board-work-frame > :is(img, video) { display: block; object-fit: cover; background: #ece4f3; }
+/* The picture develops: out of the grey of a print just pulled, into its colours. */
+.board-work-print { animation: board-work-develop 1.5s cubic-bezier(.2, .7, .2, 1) both; }
+video.board-work-print { animation: board-in .7s ease-out both; }
+.board-work-under { filter: saturate(.85); animation: board-work-drift 7s ease-in-out infinite alternate; }
+/* Being made: pencil lines hatched across the sheet, again and again, with what was asked for written over them. */
+.board-work-sketch { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; overflow: hidden; padding: 14px; box-sizing: border-box; text-align: center;
+  background: #f6f1fa repeating-linear-gradient(-52deg, transparent 0 9px, #b9aec433 9px 10.5px); }
+.board-work-sketch[data-over] { background: linear-gradient(#2a203000, #2a203099); justify-content: flex-end; padding-bottom: 16px; }
+.board-work-sketch > i { position: absolute; left: -30%; width: 160%; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--pencil) 20%, var(--pencil) 80%, transparent); transform: rotate(-52deg) scaleX(0); transform-origin: left center; animation: board-work-stroke 2.4s ease-in-out infinite; }
+.board-work-sketch > i:nth-child(1) { top: 30%; }
+.board-work-sketch > i:nth-child(2) { top: 62%; animation-delay: .5s; }
+.board-work-sketch > i:nth-child(3) { top: 94%; animation-delay: 1s; }
+.board-work-sketch[data-over] > i { display: none; }
+.board-work-sketch p { position: relative; margin: 0; font-family: var(--hand); font-size: 19px; font-weight: 600; color: #5a4a66; }
+.board-work-sketch p span { font-weight: 500; color: var(--faint, #8b7f99); font-variant-numeric: tabular-nums; }
+.board-work-sketch p b { font-weight: 600; }
+.board-work-sketch q { position: relative; max-width: 30em; font-family: var(--hand); font-size: 14px; line-height: 1.5; color: #8b7f99; quotes: none; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.board-work-sketch[data-over] p { color: #fff; text-shadow: 0 1px 8px #0008; }
+.board-work-sketch[data-over] p span { color: #ffffffcc; }
+.board-work-failed { display: grid; place-items: center; background: #f6f1fa; }
+.board-work-failed p { margin: 0; font-family: var(--hand); font-size: 17px; color: var(--faint, #8b7f99); }
+/* Picked by the caller: "this one" for V. The pen's colour round the print, and its name on a tag. */
+.board-work[data-picked] .board-work-frame { box-shadow: 0 0 0 3px var(--pen), 0 24px 38px -20px #4d356099; transform: rotate(0deg) scale(1.012); }
+.board-work-frame:focus-visible { box-shadow: 0 0 0 3px #7c5cff88, 0 22px 36px -20px #4d356080; }
+.board-work-this { position: absolute; left: -8px; top: -12px; padding: 3px 10px 4px; border-radius: 4px; background: var(--pen); color: #fff; font-family: var(--hand); font-size: 14px; font-weight: 600; transform: rotate(-5deg); box-shadow: 0 6px 12px -6px #4d3560aa; animation: board-pop .28s cubic-bezier(.3, 1.5, .5, 1) both; }
+.board-work-large { position: absolute; right: 16px; bottom: 16px; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: #2a2030aa; color: #fff; cursor: pointer; opacity: .85; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.board-work-large svg { width: 18px; height: 18px; }
+.board-work-large path { stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.board-work figcaption { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 4px 10px; font-family: var(--hand); text-align: center; overflow-wrap: anywhere; }
+.board-work-name { font-size: 19px; font-weight: 600; color: #4a3a56; animation: board-in .5s ease-out both; }
+.board-work figcaption small { font-size: 12.5px; color: var(--faint, #8b7f99); }
+/* Its versions, oldest first: the picture, the picture changed, the video made of it. */
+.board-work-line { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: 8px; }
+.board-work-line li + li::before { content: "→"; margin-right: 8px; color: var(--pencil); font-size: 13px; }
+.board-work-line li { display: flex; align-items: center; }
+.board-work-line button { position: relative; width: 46px; height: 46px; padding: 3px; border: 0; border-radius: 4px; background: #fffdfb; box-shadow: 0 0 0 1px #4d35601f, 0 8px 12px -8px #4d356066; cursor: pointer; overflow: hidden; }
+.board-work-line button[data-current] { box-shadow: 0 0 0 2px var(--pen), 0 8px 12px -8px #4d356066; }
+.board-work-line button :is(img, i) { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 2px; background: #ece4f3; }
+.board-work-line button[data-state="making"] :is(img, i) { opacity: .5; animation: board-work-breathe 1.4s ease-in-out infinite alternate; }
+.board-work-line button svg { position: absolute; inset: 0; margin: auto; width: 20px; height: 20px; fill: #fff; filter: drop-shadow(0 1px 3px #0009); }
+/* What V can be asked to do with the picked thing. */
+.board-work-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; animation: board-in .3s ease-out both; }
+.board-work-acts button { min-height: 44px; padding: 0 18px; border: 1.5px solid var(--pen); border-radius: 22px; background: #fffdfb; color: var(--pen); font-family: var(--hand); font-size: 16px; font-weight: 600; cursor: pointer; }
+.board-work-acts button:active { background: var(--pen); color: #fff; }
+.board-work-acts span { font-family: var(--hand); font-size: 13.5px; color: var(--faint, #8b7f99); }
+@media (max-width: 700px) {
+  .board-work-frame { width: min(100%, calc(var(--work-cap, 46vh) * var(--shape, 1.33))); padding: 7px; }
+  .board-work-frame > :is(img, video, .board-work-sketch, .board-work-failed) { inset: 7px; width: calc(100% - 14px); height: calc(100% - 14px); }
+  .board-work-name { font-size: 17px; }
+}
+@keyframes board-work-develop { from { opacity: 0; filter: blur(16px) saturate(.1) brightness(1.25); } 55% { opacity: 1; filter: blur(5px) saturate(.5) brightness(1.1); } to { filter: none; } }
+@keyframes board-work-stroke { 0% { transform: rotate(-52deg) scaleX(0); opacity: .9; } 60% { transform: rotate(-52deg) scaleX(1); opacity: .9; } 100% { transform: rotate(-52deg) scaleX(1); opacity: 0; } }
+@keyframes board-work-drift { from { transform: scale(1); } to { transform: scale(1.045) translate(-.6%, -.5%); } }
+@keyframes board-work-breathe { to { opacity: .9; } }
+@media (prefers-reduced-motion: reduce) { .board-work-print, .board-work-under, .board-work-sketch > i, .board-work-this { animation: none; } }
+
 /* emphasis: the words V marks, and the piece V is on */
 .board-em {
   padding: 0 2px;

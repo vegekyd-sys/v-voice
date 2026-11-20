@@ -1,5 +1,6 @@
 import {ROBOT_PRESENTATION_INSTRUCTIONS} from '../robot/robot-semantics.mjs';
 import {mediaCliInstructions,MEDIA_CLI_START_NOTICE,mediaStatusQuestion} from './media-cli-policy.mjs';
+import {ASSET_POLICY,ASSET_CONTEXT_EMPTY} from '../gpt-live-h5/board-assets.mjs';
 import {createMediaTurnRecovery} from './media-turn-recovery.mjs';
 import {createLocalExecutions,LOCAL_EXECUTION_POLICY,executionFinishedLine,executionResultFacts} from './local-executions.mjs';
 import {VOICE_OPERATION_CONSENT_POLICY,VOICE_CALENDAR_SERVICE_POLICY} from '../../lib/voice-operation-policy.mjs';
@@ -74,7 +75,7 @@ export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageG
 
 // Conversation records Seeduplex refused, by session: {hash, until}.
 const refusedRecords=new Map();
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -252,7 +253,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(s.closePromise)return s.closePromise;
     if(s.closed&&!s.cleanupFailed)return;
     s.closePromise=(async()=>{
-      s.closed=true;s.audioDelivery?.finish('closed');s.closeDeviceChannel?.();s.preconnect?.close();s.preconnect=null;
+      s.closed=true;s.audioDelivery?.finish('closed');s.closeDeviceChannel?.();s.closeAssets?.();s.preconnect?.close();s.preconnect=null;
       await s.replyDelivery?.close();
       for(const finish of [...s.contentWaiters.values()])finish(false);
       s.delivery?.close();
@@ -276,6 +277,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // Resolves when V is not speaking (nothing being generated or played), or after `maxMs`.
   const quiet=async(s,maxMs)=>{const until=Date.now()+maxMs,pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));await pause(150);while(current(s)&&(s.responseActive||s.playing)&&Date.now()<until)await pause(100);};
   const lessonTools=s=>lesson?.available&&lesson.source!=='parallel'&&s.display&&(lesson.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped)?[LESSON_TOOL]:[];
+  // The call's shelf of made things (board-assets.mjs) is kept wherever the board is shown.
+  const shelfFor=s=>Boolean(assets?.available&&s.display&&(assets.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped));
   const sessionTools=s=>[...lessonTools(s),...localTools.filter(t=>(s.display||t.name!=='show_content')&&(!['feishu_calendar','lark_read'].includes(t.name)||Boolean(s.actorReader)||!s.sessionBound&&Boolean(t.name==='feishu_calendar'?calendar:larkRead))).map(t=>s.actorReader&&t.name==='feishu_calendar'?{...t,description:t.description.replace('天懿本人','当前已验证来电账号本人')}:s.actorReader&&t.name==='lark_read'?{...t,description:t.description.replace('本人的飞书资料','当前已验证来电账号本人的飞书资料')}:s.sessionBound&&t.name==='memory_search'?{...t,description:'查询当前会话可用的记忆，权限沿用会话已有边界。'}:s.sessionBound&&t.name==='delegate_to_v'?{...t,description:t.description.replace('个人 V','当前会话的 V')}:s.sessionBound&&t.name==='openclaw_tool'?{...t,description:'执行当前会话可用的 OpenClaw 原生工具，遵守会话既有权限；arguments 传工具参数的 JSON。复杂任务或需要后台模型时使用 delegate_to_v。外部操作遵守当前用户授权。'}:t),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[]),...(s.location?[LOCATION_TOOL]:[])].map(t=>s.location?({delegate_to_v:LOCATION_DELEGATE_TOOL,openclaw_agent_control:LOCATION_CONTROL_TOOL}[t.name]??t):t);
   // A successful native end_call can return no further speech at all. It is
   // already the model's semantic decision; never infer ending from keywords.
@@ -510,9 +513,14 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(signal.aborted||!current(s))throw Error('本次任务已取消');
         s.localExecutions??=createLocalExecutions();
         const stage=/\bvideo\s/u.test(args.command)?'等待视频':'生成图片';
+        // Ids of things on the caller's screen become their links, and a new thing takes its
+        // place on the board before it exists (board-assets.mjs). A question about progress makes nothing.
+        const shelved=shelfFor(s)&&!mediaStatusQuestion(requestToken.text)?assets.begin(s.id,{command:args.command,turn:requestToken}):{command:args.command};
+        if(shelved.error)throw Error(shelved.error);
         return s.localExecutions.start(async executionSignal=>{
           s.mediaRunner??=Promise.resolve().then(()=>mediaCli.forCall());
-          const work=s.mediaRunner.then(runner=>runner.execute(args.command,executionSignal,{reuseExisting:mediaStatusQuestion(requestToken.text),requestToken}));
+          const work=s.mediaRunner.then(runner=>runner.execute(shelved.command,executionSignal,{reuseExisting:mediaStatusQuestion(requestToken.text),requestToken}));
+          if(shelved.id)work.catch(()=>void assets.finish(s.id,shelved.id,{isError:true}));
           const cleanup=work.then(()=>{},()=>{});s.localCleanups.add(cleanup);
           cleanup.then(()=>s.localCleanups.delete(cleanup));
           audit({type:'tool.media-cli',voiceSessionId:s.id,callId,phase:'start'});
@@ -524,8 +532,14 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
             s.mediaDeliveries??=new Map();
             if(!s.mediaDeliveries.has(url))s.mediaDeliveries.set(url,publishContent(s,callId,kind==='image'?`![生成图片](${url})`:`[生成视频](${url})`));
             const presentation=await s.mediaDeliveries.get(url);
+            // On the board the thing is already where the caller is looking; V is told its id and what is really in it.
+            const fact=shelfFor(s)?await assets.finish(s.id,shelved.id,output):null;
+            if(executionSignal.aborted||!current(s))throw Error('本次任务已取消');
+            if(fact)return {...output,media:{...output.media,id:fact.id,...(fact.name?{name:fact.name}:{}),...(fact.from?{from:fact.from}:{}),...(fact.see?{see:fact.see}:{})},presentation:{...presentation,shown:presentation.shown||assets.shown(s.id,fact.id)},
+              instruction:'作品已经在用户屏幕的画面上（编号 '+fact.id+'）。用一两句话自然地告诉用户做好了'+(fact.see?'，并按 media.see 挑一两处图里真实画出来的东西说给用户听（谁在哪边、在做什么）':'')+'；不念编号和链接。不再保存、轮询或重复 show_content；追问进度不重新生成。之后用户说“这张”“让它动起来”，创作命令里写 --image '+(fact.kind==='video'&&fact.from?fact.from:fact.id)+'。'};
             return {...output,presentation,instruction:'媒体已经自动提交显示。根据 presentation 回执简短说明结果，不再保存、轮询或重复 show_content；追问进度不重新生成。'};
           }
+          if(shelved.id)await assets.finish(s.id,shelved.id,output);
           return output;
         },{signal,metadata:{stage,epoch:s.epoch,owner:s.bridge,requester:audienceOf(audienceKeys.get(s.bridge)),question:requestToken.text??args.command,completionLine:args.completionLine,failureLine:args.failureLine}});
       }
@@ -564,8 +578,28 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       return work.then(result=>{audit({type:'tool.local-result',voiceSessionId:s.id,callId,name,result});return result;});
     });
     const admittedUserTurns=new Map();
-    const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',s.sessionBound?s.actorReader?.calendar:calendar),larkRead:localRead('lark_read',s.sessionBound?s.actorReader?.read:larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,look:s.speaker?.look,delegate:async args=>{await s.ensureBackendDeviceBundle();return s.backend.run({...args,context:(args.context??'')+s.backendDeviceContext()+(args.use_current_location?s.location.context():''),callerTurn:admittedUserTurns.get(args.callId)});}});
+    const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',s.sessionBound?s.actorReader?.calendar:calendar),larkRead:localRead('lark_read',s.sessionBound?s.actorReader?.read:larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,look:s.speaker?.look,delegate:async args=>{await s.ensureBackendDeviceBundle();return s.backend.run({...args,context:(args.context??'')+s.backendDeviceContext()+(shelfFor(s)?assets.backendContext(s.id):'')+(args.use_current_location?s.location.context():''),callerTurn:admittedUserTurns.get(args.callId)});}});
     s.progressTimer=setInterval(()=>{idleTick(s);deferred(s);},200);s.progressTimer.unref?.();
+    // A lesson may ask for one picture to be drawn (board-assets.mjs): made by this call's own
+    // creation executor, under the same live permission as a picture the caller asks for.
+    if(s.mediaCliAvailable&&shelfFor(s)){
+      const makers=new Set();
+      s.closeAssetMakers=()=>{for(const controller of makers)controller.abort();makers.clear();};
+      assets.attach(s.id,async({prompt,aspect})=>{
+        if(!current(s))throw Error('通话已结束');
+        const latest=await s.gateway.request('tools.catalog',{agentId:s.agentId,includePlugins:true},{timeoutMs:20000});
+        if(!current(s)||!['exec','process'].every(id=>(latest.groups??[]).some(g=>(g.tools??[]).some(t=>t.id===id))))throw Error('当前会话创作权限已撤回');
+        const controller=new AbortController();makers.add(controller);
+        s.mediaRunner??=Promise.resolve().then(()=>mediaCli.forCall());
+        const work=s.mediaRunner.then(runner=>runner.execute(`makaron edit --image-model gemini-2.1 --aspect ${/^\d{1,2}:\d{1,2}$/u.test(aspect)?aspect:'4:3'} '${String(prompt).replace(/[\0\r\n]/gu,' ').replaceAll("'","'\\''")}'`,controller.signal,{requestToken:{}}));
+        const cleanup=work.then(()=>{},()=>{});s.localCleanups.add(cleanup);
+        cleanup.then(()=>{s.localCleanups.delete(cleanup);makers.delete(controller);});
+        audit({type:'tool.media-cli',voiceSessionId:s.id,callId:'lesson-picture',phase:'start'});
+        const output=await work;
+        audit({type:'tool.media-cli',voiceSessionId:s.id,callId:'lesson-picture',phase:'result',ok:!output.isError,exitCode:output.details?.exitCode});
+        return output;
+      });
+    }
     if(s.mediaCliAvailable)s.mediaRecovery=createMediaTurnRecovery({
       state:()=>({current:current(s),ending:s.ending,routed:s.speakerRouting,pending:s.pending.size,playing:s.playing,responseActive:s.responseActive,userSpeaking:s.userSpeaking}),
       resume:text=>s.bridge?.sendUserMessage(text),audit:event=>audit({...event,voiceSessionId:s.id}),
@@ -665,7 +699,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
               catch(error){audit({type:'lesson.research-failed',voiceSessionId:s.id,callId:call.callId,name:lookup.name,message:String(error?.message??error).slice(0,120)});}
             }
             let script=null;
-            try{script=await lesson.prepare({quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal});
+            try{script=await lesson.prepare({quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal,...(shelfFor(s)?{assets:assets.digest(s.id),make:assets.canMake(s.id)}:{})});
               // V finishes the line it is on ("好，我想想怎么讲") before the lesson starts: cut off mid-sentence it sounded like two people.
               if(script)await quiet(s,8000);}
             catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
@@ -764,7 +798,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const baseInstructions=s.publicVoice?PUBLIC_VOICE_INSTRUCTIONS+'\n'+PUBLIC_PRESENTATION_INSTRUCTIONS+'\n'+V_FRONTEND_PERSONA+'\n'+V_ONE_VOICE_POLICY+'\n'+VOICE_TASK_ROUTING.replaceAll('个人 V','V')+'\n'+VOICE_TASK_CONTROL_POLICY+'\n'+CALL_ENDING:(!s.unidentified?terminalInstructions(s.terminalContext()):'')+(!s.unidentified&&s.terminalContext().terminal.kind==='robot'?ROBOT_PRESENTATION_INSTRUCTIONS:'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader),mediaCliAvailable:s.mediaCliAvailable});
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
-      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
+      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+'\n'+ASSET_CONTEXT_EMPTY:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
       withoutContext:text=>text.replace(voiceConversationBlock(context,{sessionBound:s.sessionBound}),()=>voiceConversationBlock('',{sessionBound:s.sessionBound})),
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
       onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),
@@ -820,6 +854,21 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       s.bridge.updateTerminalContext(next,deviceContextText);deviceContextText=next;
       emit(s,{type:'device.context',terminalContext:s.terminalContext()});
     };
+    // What is on the caller's screen, kept current for the voice model the way the device's state is:
+    // the lines in its instructions are replaced, and it is told without being asked to speak.
+    if(shelfFor(s)){
+      let screenText=ASSET_CONTEXT_EMPTY,screenTimer=null;
+      const refreshScreen=()=>{
+        screenTimer=null;if(!current(s))return;
+        const next=assets.context(s.id);if(next===screenText)return;
+        request.instructions=request.instructions.replace(screenText,next);
+        for(const lane of s.stagedBridges??[])lane.discard();
+        s.bridge.updateTerminalContext?.(next,screenText,{notice:'屏幕素材通知',reply:'好，之后提到屏幕上的图片和视频，以这份为准。'});screenText=next;
+        audit({type:'board.asset-context',voiceSessionId:s.id,chars:next.length});
+      };
+      const unwatch=assets.watch(s.id,()=>{clearTimeout(screenTimer);screenTimer=setTimeout(refreshScreen,400);});
+      s.closeAssets=()=>{unwatch();clearTimeout(screenTimer);s.closeAssetMakers?.();};
+    }
     const greet=()=>{if(s.greeted)return;s.greeted=true;if(s.speakerRouting&&speakerRouting.greet)void speakerRouting.greet(s.id);else s.bridge.triggerGreeting(s.sessionBound?'电话已接通。请用中文向当前会话的通话者简短打个招呼，然后听对方说话。':'电话已接通。请用中文向天懿简短打个招呼，然后听他说话。');};
     client.removeListener('message',earlyGreeting);
     client.on('message',(data,binary)=>{
