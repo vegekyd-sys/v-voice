@@ -198,6 +198,13 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-board-gallery.20261121.2',date:'2026-11-21',
+    title:'找图更不容易落空',
+    items:[
+      '排在前面的图片打不开时，会接着试后面的结果。',
+    ],
+  },
+  {
     version:'voice-board-gallery.20261121.1',date:'2026-11-21',
     title:'找图找得更全',
     items:[

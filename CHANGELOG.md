@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-21 — The call record keeps why a call ended
+
+- The call record (transcript log) kept only the call's identity on call.closed and dropped provider-status stages it did not know: the reason added in #239 and the voice service's own "upstream-closed" never reached production records. They are now kept: `why` (one of the service's own words) and up to six short fields of what the service said (#240).
+
+## 2026-11-21 — A call records why it ended; picture search tries past dead links
+
+- call.closed records which way the call ended (client-closed:<code>, provider-upstream-closed, provider-error, host-ending, …); a SeeDuplex session.closed we did not ask for is reported as call.provider-status "upstream-closed" with what the service said. (Call 9caf5e1b ended 0.14 s after the caller's turn with no record of why.)
+- When the three best image-search results cannot be fetched (a site that refuses other sites), the next ones are tried, up to nine (轰鸣月, 波荡水) (#239).
+
 ## 2026-11-21 — Picture searches the image search answered are no longer thrown away
 
 - Results qualify on their own score (their place in the list only orders them); words the search asks for (海报, 同人, mega) are not held against a title; guide, data and download pages are; a Chinese title must name the thing (half its characters: 超夢 for 超梦), and an English title sharing no word with a several-word search for a Chinese name does not count for it.
