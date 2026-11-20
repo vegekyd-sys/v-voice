@@ -4,6 +4,7 @@
 // stay in pencil. Renders a scene from board-scene.mjs. Every string is plain
 // text; nothing written by the director model is interpreted as markup.
 import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
+import {createPortal} from 'react-dom';
 import {edgeId, flowLayout, galleryLayout, markedBlocks, scalePositions} from '../board-scene.mjs';
 import {MARK_PATHS, arrow, fitPath, pointer, ring, tilt, underline} from '../board-sketch.mjs';
 
@@ -59,9 +60,18 @@ function Key({item, seed, children}) {
     </strong>
   );
 }
+// A picture on the page opens large when tapped or clicked (view.enlarge):
+// pictures in a crowded page can be small. Its name is the item's words.
+const plain = value => String(value ?? '').replaceAll('*', '');
+function opener(enlarge, src, name) {
+  if (!enlarge || !src) return {};
+  const open = () => enlarge({src, name: plain(name)});
+  return {role: 'button', tabIndex: 0, 'aria-label': `放大：${plain(name)}`, 'data-enlarge': 'true', onClick: open,
+    onKeyDown: event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } }};
+}
 // The picture of the thing an item is about, fetched through the Voice
 // service like a photo block. Nothing is shown when none is found.
-function Thumb({query, view, seed, onGone, onShape}) {
+function Thumb({query, name, view, seed, onGone, onShape}) {
   const [src, setSrc] = useState(null);
   const [gone, setGone] = useState(false);
   useEffect(() => {
@@ -72,7 +82,7 @@ function Thumb({query, view, seed, onGone, onShape}) {
     return () => { live = false; };
   }, [query]);
   if (gone) return null;
-  return <span className="board-thumb" data-ready={String(Boolean(src))} style={{'--tilt': tilt(seed + ':img', 3) + 'deg'}}>{src && <img src={src} alt={query} decoding="async" onLoad={onShape && (event => { const {naturalWidth: width, naturalHeight: height} = event.currentTarget; if (width && height) onShape(width / height); })} />}</span>;
+  return <span className="board-thumb" data-ready={String(Boolean(src))} style={{'--tilt': tilt(seed + ':img', 3) + 'deg'}} {...opener(view.enlarge, src, name ?? query)}>{src && <img src={src} alt={query} decoding="async" onLoad={onShape && (event => { const {naturalWidth: width, naturalHeight: height} = event.currentTarget; if (width && height) onShape(width / height); })} />}</span>;
 }
 // A number that is counted up to as it appears (whole numbers only; anything else is shown as written).
 function Figure({value, on}) {
@@ -110,7 +120,7 @@ function List({block, view, ordered}) {
                 <Key item={item} seed={state.id}>{ordered && item.icon ? item.icon + ' ' : ''}{em(item.h)}</Key>
                 {item.d && <span>{em(item.d)}</span>}
               </div>
-              {item.img && <Thumb query={item.img} view={view} seed={state.id} />}
+              {item.img && <Thumb query={item.img} name={item.h} view={view} seed={state.id} />}
             </li>
           );
         })}
@@ -182,7 +192,7 @@ function Gallery({block, view}) {
           const state = itemState(view, block, item);
           const picture = (
             <li key={item.id} {...state.props} style={{'--shape': shapeOf(shapes[item.id])}}>
-              <Thumb query={item.img} view={view} seed={state.id} onGone={() => setMissing(gone => new Set(gone).add(item.id))}
+              <Thumb query={item.img} name={item.h} view={view} seed={state.id} onGone={() => setMissing(gone => new Set(gone).add(item.id))}
                 onShape={ratio => setShapes(old => old[item.id] === ratio ? old : {...old, [item.id]: ratio})} />
               <div className="board-item">
                 <Key item={item} seed={state.id}>{em(item.h)}</Key>
@@ -207,7 +217,7 @@ function Compare({block, view}) {
           const state = itemState(view, block, col);
           return (
             <section key={col.id} {...state.props} data-tone={CARD_TONES[index % CARD_TONES.length]} style={{'--tilt': tilt(state.id, 1.4) + 'deg'}}>
-              {col.img && <Thumb query={col.img} view={view} seed={state.id} />}
+              {col.img && <Thumb query={col.img} name={col.h} view={view} seed={state.id} />}
               <header>
                 {leads(col.mark) && <span className="board-lead"><Mark kind={col.mark} seed={state.id} /></span>}
                 <Key item={col} seed={state.id}>{col.icon ? col.icon + ' ' : ''}{em(col.h)}</Key>
@@ -330,7 +340,7 @@ function Flow({block, view}) {
           return (
             <div key={node.id} className="board-node" {...state.props}
               style={{left: point.x, top: point.y, maxWidth: shape === 'layers' ? `calc(${100 / layers[position[node.id].layer].length}% - 10px)` : shape === 'row' ? `calc(${100 / layers.length}% - 18px)` : '38%', '--tilt': tilt(state.id, 1.6) + 'deg'}}>
-              {node.img && <Thumb query={node.img} view={view} seed={state.id} />}
+              {node.img && <Thumb query={node.img} name={node.label} view={view} seed={state.id} />}
               <strong>{node.icon && !node.img ? node.icon + ' ' : ''}{em(node.label)}</strong>{node.sub && <span>{em(node.sub)}</span>}
             </div>
           );
@@ -405,7 +415,7 @@ function Timeline({block, view}) {
               <span className="board-when">{item.when ?? ''}</span>
               <span className="board-dot" aria-hidden="true"><Stroke className="board-badge-ring" d={ring(state.id + ':dot')} /></span>
               <div className="board-moment">
-                {item.img && <Thumb query={item.img} view={view} seed={state.id} />}
+                {item.img && <Thumb query={item.img} name={item.h} view={view} seed={state.id} />}
                 <Label item={item} state={state} />
                 {item.d && <span>{em(item.d)}</span>}
               </div>
@@ -421,7 +431,7 @@ function Versus({block, view}) {
   const count = block.sides.length;
   const side = (value, index) => (
     <div key={index} className="board-vs-side" data-tone={CARD_TONES[index % CARD_TONES.length]} style={{'--tilt': tilt(block.id + ':side' + index, 1.4) + 'deg'}}>
-      {value.img && <Thumb query={value.img} view={view} seed={block.id + ':side' + index} />}
+      {value.img && <Thumb query={value.img} name={value.h} view={view} seed={block.id + ':side' + index} />}
       <strong>{value.icon && !value.img ? value.icon + ' ' : ''}{em(value.h)}</strong>
     </div>
   );
@@ -460,7 +470,7 @@ function Overlap({block, view}) {
           const state = itemState(view, block, item);
           return (
             <div key={item.id} className="board-piece" data-part={item.id} {...state.props}>
-              {item.img && <Thumb query={item.img} view={view} seed={state.id} />}
+              {item.img && <Thumb query={item.img} name={item.h} view={view} seed={state.id} />}
               {(item.h || item.id === 'both') && <Key item={item} seed={state.id}>{item.icon && !item.img ? item.icon + ' ' : ''}{em(item.h ?? '都有')}</Key>}
               <ul>{item.points.map((point, at) => <li key={at}>{em(point)}</li>)}</ul>
             </div>
@@ -482,7 +492,7 @@ function Stack({block, view}) {
           return (
             <div key={item.id} className="board-piece board-layer" {...state.props} data-tone={pieceTone(item, index)}
               style={{'--tilt': tilt(state.id, .9) + 'deg', '--wide': block.shape === 'pyramid' ? 46 + 54 * (index + 1) / count + '%' : '100%'}}>
-              {item.img && <Thumb query={item.img} view={view} seed={state.id} />}
+              {item.img && <Thumb query={item.img} name={item.h} view={view} seed={state.id} />}
               <div><Label item={item} state={state} />{item.d && <span>{em(item.d)}</span>}</div>
             </div>
           );
@@ -520,7 +530,7 @@ function Scale({block, view}) {
               <b>{figure(item.at)}{block.unit && <i>{block.unit}</i>}</b>
               <span className="board-tick" aria-hidden="true" />
               <div className="board-notch-label">
-                {item.img && <Thumb query={item.img} view={view} seed={state.id} />}
+                {item.img && <Thumb query={item.img} name={item.h} view={view} seed={state.id} />}
                 <div><Label item={item} state={state} />{item.d && <span>{em(item.d)}</span>}</div>
               </div>
             </div>
@@ -581,7 +591,7 @@ const Sticky = ({block}) => <><Tape /><p className="board-sticky-text">{em(block
 
 // A real photograph, fetched through the Voice service. Until it arrives the
 // print is still developing; if nothing is found the print is taken away.
-function Photo({block, loadPhoto, onMissing}) {
+function Photo({block, loadPhoto, onMissing, enlarge}) {
   const [src, setSrc] = useState(null);
   useEffect(() => {
     let live = true;
@@ -591,7 +601,7 @@ function Photo({block, loadPhoto, onMissing}) {
   return (
     <>
       <Tape />
-      <div className="board-print" data-ready={String(Boolean(src))}>{src && <img src={src} alt={block.caption ?? block.query} decoding="async" />}</div>
+      <div className="board-print" data-ready={String(Boolean(src))} {...opener(enlarge, src, block.caption ?? block.query)}>{src && <img src={src} alt={block.caption ?? block.query} decoding="async" />}</div>
       <figcaption>{block.caption ?? block.query}</figcaption>
     </>
   );
@@ -614,6 +624,10 @@ function useFit(scroller, page, key) {
     const fit = () => {
       const wide = outer.clientWidth >= 640, least = wide ? .62 : .78, edge = getComputedStyle(outer), room = outer.clientHeight - (parseFloat(edge.paddingTop) || 0) - (parseFloat(edge.paddingBottom) || 0);
       let zoom = 1;
+      // The page is at least as tall as the panel, at any zoom. (In px: a length is drawn at the
+      // page's zoom, while a percentage is of the panel as it is; `100% / zoom` made a page drawn
+      // smaller taller than the panel, so its content sat low and the bottom was cut off.)
+      inner.style.setProperty('--room', room + 'px');
       inner.style.setProperty('--zoom', '1'); inner.style.zoom = '1';
       // Three main blocks in one column leave half a wide panel empty: they go two abreast from the start.
       if (wide && !(dense.key === key && dense.on) && inner.querySelectorAll(':scope > .board-block[data-size="wide"]').length >= 3) { setDense({key, on: true}); return; }
@@ -629,21 +643,25 @@ function useFit(scroller, page, key) {
     fit();
     if (typeof ResizeObserver !== 'function') return;
     // Also when a piece changes size by itself (a gallery picture loads and takes its own shape).
-    const observer = new ResizeObserver(fit);
+    // Fitted in the next frame: fitting resizes the pieces being watched, which inside the
+    // observer's own callback is a resize loop (WebKit reports it as a page error).
+    let frame = 0;
+    const later = () => { if (frame) return; frame = requestAnimationFrame(() => { frame = 0; fit(); }); };
+    const observer = new ResizeObserver(later);
     observer.observe(outer);
     for (const child of inner.children) observer.observe(child);
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); if (frame) cancelAnimationFrame(frame); };
   });
   return dense.key === key && dense.on;
 }
 
 // One page of the canvas: its blocks, fitted to the panel.
-function Sheet({scene, spoken, loadPhoto, caption = ''}) {
+function Sheet({scene, spoken, loadPhoto, enlarge, caption = ''}) {
   const box = useRef(null), sheet = useRef(null);
   const [missing, setMissing] = useState(() => new Set());
   const dense = useFit(box, sheet, scene.serial);
   // While V speaks the mark follows the voice; otherwise it stays where the director put it.
-  const view = {focus: spoken?.focus || scene.focus, ahead: new Set(spoken?.ahead ?? []), loadPhoto};
+  const view = {focus: spoken?.focus || scene.focus, ahead: new Set(spoken?.ahead ?? []), loadPhoto, enlarge};
   // Only the page V is on follows the voice, and only up and down inside the page: scrollIntoView
   // also scrolled the strip of pages sideways, to whichever page last had a focus, while the board
   // brought the view back to V's page; on a phone the view swung between two pages (11/14).
@@ -685,7 +703,7 @@ function Sheet({scene, spoken, loadPhoto, caption = ''}) {
     const paper = block.tone ?? PAPER[block.t];
     if (block.t === 'photo') return (
       <figure key={key} className="board-block board-photo" data-type="photo" data-size="small" data-ink={String(!view.ahead.has(block.id))} style={{'--tilt': tilt(key, 3) + 'deg'}}>
-        <Photo block={block} loadPhoto={loadPhoto} onMissing={() => setMissing(old => new Set(old).add(block.query))} />
+        <Photo block={block} loadPhoto={loadPhoto} enlarge={enlarge} onMissing={() => setMissing(old => new Set(old).add(block.query))} />
       </figure>
     );
     const View = RENDER[block.t];
@@ -697,6 +715,32 @@ function Sheet({scene, spoken, loadPhoto, caption = ''}) {
       </div>
     );
   }
+}
+
+// A picture taken up off the page: as large as the screen allows, its name
+// under it. A tap anywhere, the close button or Escape puts it back. (Over the
+// whole window, outside the board: the board fades its edges with a mask.)
+function Enlarged({picture, onClose}) {
+  const close = useRef(null);
+  useEffect(() => {
+    const back = document.activeElement;
+    close.current?.focus({preventScroll: true});
+    const key = event => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', key);
+    return () => { document.removeEventListener('keydown', key); back?.focus?.({preventScroll: true}); };
+  }, []);
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="board-enlarged" role="dialog" aria-modal="true" aria-label={picture.name ? `图片：${picture.name}` : '图片'} onClick={onClose}>
+      <figure>
+        <img src={picture.src} alt={picture.name} />
+        {picture.name && <figcaption>{picture.name}</figcaption>}
+      </figure>
+      <button ref={close} type="button" className="board-enlarged-close" aria-label="关闭图片" onClick={onClose}>
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+      </button>
+    </div>,
+    document.body);
 }
 
 /**
@@ -711,6 +755,7 @@ export function Board({scene, canvas, spoken, caption = '', loadPhoto, onClose, 
   const active = Math.max(0, pages.findIndex(page => page.serial === scene.serial));
   const track = useRef(null);
   const [inView, setInView] = useState(active);
+  const [enlarged, setEnlarged] = useState(null);
   // V drawing anything, anywhere, brings the view to V's page.
   useLayoutEffect(() => {
     const strip = track.current;
@@ -735,11 +780,12 @@ export function Board({scene, canvas, spoken, caption = '', loadPhoto, onClose, 
       <div className="board-track" ref={track} onScroll={onScroll}>
         {pages.map((item, index) => (
           <div key={item.serial} className="board-page" data-lesson={item.lesson || undefined} data-current={index === inView || undefined} aria-hidden={index !== inView || undefined}>
-            <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} />
+            <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={setEnlarged} />
           </div>
         ))}
       </div>
       {pages.length > 1 && <i className="board-dots" aria-hidden="true">{pages.map((item, index) => <b key={item.serial} data-current={index === inView || undefined} />)}</i>}
+      {enlarged && <Enlarged picture={enlarged} onClose={() => setEnlarged(null)} />}
     </section>
   );
 }

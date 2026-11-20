@@ -1392,7 +1392,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-scroll::-webkit-scrollbar { display: none; }
 .board-body {
   box-sizing: border-box;
-  min-height: calc(100% / var(--zoom, 1));
+  min-height: calc(var(--room, 100%) / var(--zoom, 1));
   padding: 26px 20px 28px 40px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1645,6 +1645,65 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-gallery [data-now] > .board-thumb { transform: rotate(calc(var(--tilt, 0deg) * .4)) scale(1.03); }
 /* on a phone a name under a narrow picture stays on one or two short lines */
 @media (max-width: 700px) { .board-gallery .board-item .board-key { font-size: 15px; line-height: 1.35; } }
+/* A picture opens large when tapped (board.jsx Enlarged): over the whole window, on the
+   page's paper colour, the picture as a print with its name under it. */
+.board [data-enlarge] { cursor: zoom-in; -webkit-tap-highlight-color: transparent; }
+.board [data-enlarge]:focus-visible { outline: 2px solid var(--pen); outline-offset: 3px; }
+.board-body[data-cue] [data-ink="false"] [data-enlarge] { pointer-events: none; }
+.board-enlarged {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: max(56px, env(safe-area-inset-top)) 18px max(28px, env(safe-area-inset-bottom));
+  background: #f7f3faeb;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  cursor: zoom-out;
+  animation: board-enlarged-in .22s ease-out both;
+}
+.board-enlarged figure { margin: 0; min-width: 0; min-height: 0; max-width: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.board-enlarged img {
+  display: block;
+  max-width: min(100%, 1400px);
+  max-height: calc(var(--voice-height, 100dvh) - 150px);
+  object-fit: contain;
+  padding: 8px;
+  background: #fffdfb;
+  border-radius: 6px;
+  box-shadow: 0 28px 60px -28px #4d356099;
+  transform: rotate(-.5deg);
+  animation: board-enlarged-print .3s cubic-bezier(.2, 1.2, .35, 1) both;
+}
+.board-enlarged figcaption {
+  max-width: 34em;
+  font-family: "Hannotate SC", "HanziPen SC", "Yuanti SC", "Kaiti SC", "STKaiti", "KaiTi", "Avenir Next", "PingFang SC", system-ui, sans-serif;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--ink);
+}
+.board-enlarged-close {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top));
+  right: max(14px, env(safe-area-inset-right));
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--ink-soft);
+  background: #fffdfecc;
+  box-shadow: 0 1px 4px #4d356026;
+  cursor: pointer;
+}
+.board-enlarged-close svg { width: 20px; height: 20px; }
+.board-enlarged-close path { stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+@keyframes board-enlarged-in { from { opacity: 0; } }
+@keyframes board-enlarged-print { from { opacity: 0; transform: translateY(14px) scale(.96) rotate(-.5deg); } }
+@media (prefers-reduced-motion: reduce) { .board-enlarged, .board-enlarged img { animation: none; } }
 /* Once a gallery has a picture showing, the page's lead print steps aside: the gallery is the
    pictures the caller asked to see, and the print would take the height they need. */
 .board-body:has(.board-gallery [data-ink="true"]) .board-photo { display: none; }
