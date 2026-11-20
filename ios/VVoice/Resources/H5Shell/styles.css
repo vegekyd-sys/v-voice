@@ -1392,7 +1392,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-scroll::-webkit-scrollbar { display: none; }
 .board-body {
   box-sizing: border-box;
-  min-height: calc(100% / var(--zoom, 1));
+  min-height: calc(var(--room, 100%) / var(--zoom, 1));
   padding: 26px 20px 28px 40px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1632,10 +1632,90 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 :is(.board-list, .board-steps) li > .board-thumb { grid-column: 2; grid-row: 1; width: 96px; height: 96px; }
 :is(.board-list, .board-steps) li:has(> .board-thumb) > .board-item { grid-column: 3; }
 .board-compare .board-thumb { width: 100%; height: 118px; margin-bottom: 10px; }
-.board-gallery { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
-.board-gallery li { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.board-gallery .board-thumb { width: 100%; height: auto; aspect-ratio: 4 / 3; border-radius: 10px; overflow: hidden; }
-.board-gallery .board-thumb img { object-fit: cover; }
+/* a gallery: whole pictures in rows of one height. A picture's share of its row is its
+   shape (width / height), so the row stands level; rows end at the empty break items
+   the page places, and a row holding too little stops at --cap tall. Nothing is cropped.
+   Its height follows its width, so when the page is drawn smaller to fit (useFit) the
+   width it may take is made smaller with it. */
+.board-gallery { list-style: none; margin: 0; padding: 0; max-width: calc(100% * var(--zoom, 1)); display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; column-gap: var(--gap, 14px); row-gap: 0; }
+.board-gallery li { flex: var(--shape, 1.33) 1 0px; min-width: 0; max-width: calc(var(--shape, 1.33) * var(--cap, 230px)); display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+.board-gallery li.board-gallery-break { flex: 0 0 100%; max-width: none; height: 0; margin: 0; }
+.board-gallery .board-thumb { width: 100%; height: auto; aspect-ratio: var(--shape, 1.33); padding: 5px; border-radius: 8px; overflow: hidden; transform: rotate(calc(var(--tilt, 0deg) * .4)); }
+.board-gallery .board-thumb img { border-radius: 4px; }
+.board-gallery [data-now] > .board-thumb { transform: rotate(calc(var(--tilt, 0deg) * .4)) scale(1.03); }
+/* on a phone a name under a narrow picture stays on one or two short lines */
+@media (max-width: 700px) { .board-gallery .board-item .board-key { font-size: 15px; line-height: 1.35; } }
+/* A picture opens large when tapped (board.jsx Enlarged): over the whole window, on the
+   page's paper colour, the picture as a print with its name under it. */
+.board [data-enlarge] { cursor: zoom-in; -webkit-tap-highlight-color: transparent; }
+.board [data-enlarge]:focus-visible { outline: 2px solid var(--pen); outline-offset: 3px; }
+.board-body[data-cue] [data-ink="false"] [data-enlarge] { pointer-events: none; }
+.board-enlarged {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: max(56px, env(safe-area-inset-top)) 18px max(28px, env(safe-area-inset-bottom));
+  background: #f7f3faeb;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  cursor: zoom-out;
+  animation: board-enlarged-in .22s ease-out both;
+}
+.board-enlarged figure { margin: 0; min-width: 0; min-height: 0; max-width: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.board-enlarged img {
+  display: block;
+  max-width: min(100%, 1400px);
+  max-height: calc(var(--voice-height, 100dvh) - 150px);
+  object-fit: contain;
+  padding: 8px;
+  background: #fffdfb;
+  border-radius: 6px;
+  box-shadow: 0 28px 60px -28px #4d356099;
+  transform: rotate(-.5deg);
+  animation: board-enlarged-print .3s cubic-bezier(.2, 1.2, .35, 1) both;
+}
+/* (Sized by the window, not the figure: the figure's own width comes from the picture.) */
+.board-enlarged img[data-shaped] {
+  box-sizing: content-box;
+  width: min(100vw - 52px, 1400px, var(--most), (var(--voice-height, 100dvh) - 150px) * var(--ratio));
+  height: auto;
+  max-width: none;
+  max-height: none;
+  aspect-ratio: var(--ratio);
+}
+.board-enlarged figcaption {
+  max-width: 34em;
+  font-family: "Hannotate SC", "HanziPen SC", "Yuanti SC", "Kaiti SC", "STKaiti", "KaiTi", "Avenir Next", "PingFang SC", system-ui, sans-serif;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--ink);
+}
+.board-enlarged-close {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top));
+  right: max(14px, env(safe-area-inset-right));
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--ink-soft);
+  background: #fffdfecc;
+  box-shadow: 0 1px 4px #4d356026;
+  cursor: pointer;
+}
+.board-enlarged-close svg { width: 20px; height: 20px; }
+.board-enlarged-close path { stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+@keyframes board-enlarged-in { from { opacity: 0; } }
+@keyframes board-enlarged-print { from { opacity: 0; transform: translateY(14px) scale(.96) rotate(-.5deg); } }
+@media (prefers-reduced-motion: reduce) { .board-enlarged, .board-enlarged img { animation: none; } }
+/* Once a gallery has a picture showing, the page's lead print steps aside: the gallery is the
+   pictures the caller asked to see, and the print would take the height they need. */
+.board-body:has(.board-gallery [data-ink="true"]) .board-photo { display: none; }
 .board-gallery .board-item { display: flex; flex-direction: column; gap: 2px; font-size: 14px; line-height: 1.35; }
 .board-gallery .board-item > span { font-size: 12px; color: var(--board-faint, #8b7f99); }
 .board-node .board-thumb { width: 84px; height: 84px; margin-bottom: 5px; }
@@ -1972,6 +2052,11 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   .board-body[data-side] .board-block[data-size="small"] { grid-column: 2; width: 100%; max-width: 250px; justify-self: center; align-self: start; }
   .board-body:not([data-side]) .board-block { max-width: 720px; }
   .board-body:not([data-side]) .board-block[data-size="small"] { max-width: 300px; justify-self: start; }
+  /* a gallery takes the page's whole width; the notes beside it go under it, side by side */
+  .board-body[data-side]:has(> .board-block[data-look="gallery"]) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .board-body[data-side]:has(> .board-block[data-look="gallery"]) > .board-block[data-size="wide"] { grid-column: 1 / -1; }
+  .board-body[data-side]:has(> .board-block[data-look="gallery"]) > .board-block[data-size="small"] { grid-column: auto; }
+  .board-body .board-block[data-look="gallery"] { max-width: none; }
   .board-item .board-key { font-size: 21px; }
   .board-item > span { font-size: 16px; }
   .board-list, .board-steps { gap: 16px; }

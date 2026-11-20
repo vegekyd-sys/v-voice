@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-20 — Gallery pictures whole and large; pages drawn smaller fit; pictures open large
+
+- Gallery pages (`look: "gallery"`) show each picture whole, at its own shape, in rows of one height that fill the page's width (`galleryLayout`: the breaks that make the pictures largest within the height the page has, none made tiny for another). On a wide page the gallery takes the whole width and the notes go under it side by side; once a picture shows, the page's lead print steps aside. Wide page, 4 pictures: ~245 px tall, whole (were ~160 px, cropped to 4:3, in the left half).
+- A page drawn smaller to fit (`useFit`) no longer grows taller than the panel: its min-height was `100% / zoom`, which in Chromium and WebKit made a page at 0.62 1.6 panels tall, its content low and its bottom cut off. A long page on a wide panel now fits at ~0.83.
+- Every picture on the page opens over the whole window when tapped or clicked, with its name under it; a tap, the close button or Escape puts it back (#232).
+
 ## 2026-11-18 — "Show me some pictures" is a gallery of real photos
 
 - Picture requests go to the lesson tool (real photos), not to the backend (which generated one in call 7f8f18da); V does not say it is finding something without calling a tool. The lesson writer shows the pictures instead of explaining where to find them and, since it cannot see them, says only what each is of. The illustrator draws a list with `look: "gallery"`: 4-6 pictures, each its own specific search, large, two to a row, appearing as the voice reaches them; a picture not found is removed with its name (#229).

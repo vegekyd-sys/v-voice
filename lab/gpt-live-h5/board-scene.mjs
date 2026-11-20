@@ -237,6 +237,50 @@ export function scalePositions(items) {
   return values.map(value => Math.round((place(value) - place(low)) / (place(high) - place(low)) * 1000) / 10);
 }
 
+/**
+ * How the pictures of a gallery are set in rows: each picture keeps its own
+ * shape (width / height), the pictures of a row stand at one height and fill
+ * the width (a row that would be taller than `height` stops there and leaves
+ * part of the width free), and the order is kept. The rows and their names
+ * (`label` tall each) share `budget`, the height the page has for them.
+ * Of every way to break the sequence into rows, the one where the pictures
+ * are largest is taken (by the product of their heights, so that no picture is
+ * made tiny to make another huge); width left empty counts against it, and a
+ * row lower than `floor` far more. When the budget is short every row is made
+ * lower alike, though not below `floor` (the page then scrolls or is drawn
+ * smaller). Returns the rows as lists of indices and the row height to stop at.
+ */
+export function galleryLayout(ratios, width, {height = 260, floor = 90, gap = 12, budget = Infinity, label = 0} = {}) {
+  const count = ratios.length;
+  if (!count) return {rows: [], height};
+  if (!(width > 0) || count > 12) return {rows: Array.from({length: Math.ceil(count / 2)}, (_, row) => [row * 2, row * 2 + 1].filter(index => index < count)), height};
+  let best = null;
+  // Bit i of `breaks` set: a new row starts after picture i.
+  for (let breaks = 0; breaks < 1 << (count - 1); breaks++) {
+    const rows = [[0]];
+    for (let index = 1; index < count; index++) (breaks >> (index - 1) & 1 ? rows.push([index]) : rows.at(-1).push(index));
+    const shapes = rows.map(row => row.reduce((sum, index) => sum + ratios[index], 0));
+    const fills = rows.map((row, at) => (width - gap * (row.length - 1)) / shapes[at]);
+    const room = budget - label * rows.length, tall = top => fills.reduce((sum, fill) => sum + Math.min(top, fill), 0);
+    // The highest row height that keeps all rows within the room.
+    let top = Math.min(height, Math.max(...fills));
+    if (tall(top) > room) {
+      let low = 0;
+      for (let step = 0; step < 30; step++) { const mid = (low + top) / 2; if (tall(mid) > room) top = mid; else low = mid; }
+      top = Math.max(floor, low);
+    }
+    let score = -Math.max(0, tall(top) - room) / 20;
+    rows.forEach((row, at) => {
+      const tallness = Math.min(top, fills[at]), used = tallness * shapes[at] + gap * (row.length - 1);
+      score += row.length * Math.log(tallness) - Math.max(0, 1 - used / width) * 2;
+      // A row so full that its pictures come out lower than `floor` is as bad as a page that does not fit.
+      if (tallness < floor) score -= row.length * Math.log(floor / tallness) * 4;
+    });
+    if (!best || score > best.score + 1e-6) best = {score, rows, height: Math.round(top)};
+  }
+  return {rows: best.rows, height: best.height};
+}
+
 /** Validate one operation written by the director model. Unknown or empty
  * operations return null; everything kept is bounded plain text. */
 export function normalizeOp(raw) {

@@ -198,6 +198,15 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-board-gallery.20261120.1',date:'2026-11-20',
+    title:'图片完整、更大，点一下就能放大',
+    items:[
+      '找图时每张图按原比例完整显示，不再裁掉头和脚；电脑上铺满整个讲解区。',
+      '画面上的图片都可以点一下放大看，点任意处或右上角就收起。',
+      '内容多的讲解页缩小后不再往下沉、底部被截。',
+    ],
+  },
+  {
     version:'voice-board-gallery.20261118.1',date:'2026-11-18',
     title:'说「找几张图给我看」就直接给你看图',
     items:[
