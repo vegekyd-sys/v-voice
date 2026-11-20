@@ -1637,7 +1637,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
    the page places, and a row holding too little stops at --cap tall. Nothing is cropped.
    Its height follows its width, so when the page is drawn smaller to fit (useFit) the
    width it may take is made smaller with it. */
-.board-gallery { list-style: none; margin: 0; padding: 0; max-width: calc(100% * var(--zoom, 1)); display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: var(--gap, 14px); row-gap: 0; }
+.board-gallery { list-style: none; margin: 0; padding: 0; max-width: calc(100% * var(--zoom, 1)); display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; column-gap: var(--gap, 14px); row-gap: 0; }
 .board-gallery li { flex: var(--shape, 1.33) 1 0px; min-width: 0; max-width: calc(var(--shape, 1.33) * var(--cap, 230px)); display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
 .board-gallery li.board-gallery-break { flex: 0 0 100%; max-width: none; height: 0; margin: 0; }
 .board-gallery .board-thumb { width: 100%; height: auto; aspect-ratio: var(--shape, 1.33); padding: 5px; border-radius: 8px; overflow: hidden; transform: rotate(calc(var(--tilt, 0deg) * .4)); }
@@ -1645,6 +1645,9 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-gallery [data-now] > .board-thumb { transform: rotate(calc(var(--tilt, 0deg) * .4)) scale(1.03); }
 /* on a phone a name under a narrow picture stays on one or two short lines */
 @media (max-width: 700px) { .board-gallery .board-item .board-key { font-size: 15px; line-height: 1.35; } }
+/* Once a gallery has a picture showing, the page's lead print steps aside: the gallery is the
+   pictures the caller asked to see, and the print would take the height they need. */
+.board-body:has(.board-gallery [data-ink="true"]) .board-photo { display: none; }
 .board-gallery .board-item { display: flex; flex-direction: column; gap: 2px; font-size: 14px; line-height: 1.35; }
 .board-gallery .board-item > span { font-size: 12px; color: var(--board-faint, #8b7f99); }
 .board-node .board-thumb { width: 84px; height: 84px; margin-bottom: 5px; }

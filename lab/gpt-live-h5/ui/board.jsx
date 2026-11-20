@@ -136,7 +136,7 @@ function useGalleryRoom() {
     let budget = Infinity, label = 0;
     if (scroller && page && typeof getComputedStyle === 'function') {
       const style = getComputedStyle(page), gap = parseFloat(style.rowGap) || 0;
-      const others = [...page.children].filter(child => child !== block).reduce((sum, child) => sum + child.offsetHeight + gap, 0);
+      const others = [...page.children].filter(child => child !== block && child.offsetHeight).reduce((sum, child) => sum + child.offsetHeight + gap, 0);
       budget = Math.round(scroller.clientHeight - (parseFloat(style.paddingTop) || 0) - (parseFloat(style.paddingBottom) || 0) - list.offsetTop - others);
       for (const item of list.querySelectorAll(':scope > li:not(.board-gallery-break)')) {
         label = Math.max(label, item.offsetHeight - (item.querySelector('.board-thumb')?.offsetHeight ?? 0) + (parseFloat(getComputedStyle(item).marginBottom) || 0));
