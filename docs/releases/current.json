@@ -2,12 +2,12 @@
   "schema": "v-voice-current-release-v1",
   "release": "board-20261114",
   "version": "voice-board.20261113.1",
-  "entryCommit": "1f9a28f7748ed4049f31e0ba7f9b2653346eac76",
-  "deviceEntryCommit": "1f9a28f7748ed4049f31e0ba7f9b2653346eac76",
-  "filesSha256": "10360dbc6205ce2fc21b608b771f7090b7e8a1ab75a4b9fceb67f720cce97fcc",
+  "entryCommit": "1f6b332dd86a11d8d729893abfd626c341a7feaa",
+  "deviceEntryCommit": "1f6b332dd86a11d8d729893abfd626c341a7feaa",
+  "filesSha256": "af092eb578cc55272ec61443215e5781f350b6f9a328e4109b11a989c12188f2",
   "registration": "board-20261114/release.json",
-  "previousEntryCommit": "9efad3540e128b45a161404be22d41580dab643c",
+  "previousEntryCommit": "1f9a28f7748ed4049f31e0ba7f9b2653346eac76",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-20T22:57:00+08:00",
-  "runtimeDifference": "The call board for every caller; iPhone board follows the App's own audio (build 46); a refused conversation record is dropped at once and remembered; phone board keeps the last lines of the conversation. Phone board no longer swings between pages; one page per title; a four-line caption strip. Phone real-time feel: V's words on an empty page, the lesson page drawn pale and inked as spoken, earlier drawing, a caption strip that really shows four lines. The board follows cues the illustrator writes (clause numbers), not word matching; one line under a phone's page; pictures for things that can be seen. Gallery pictures whole and large across the page; pages drawn smaller fit the panel; pictures open large on tap. A gallery drawn again keeps the pictures that were found; a refused picture search is asked again."
+  "validatedAt": "2026-11-21T00:36:00+08:00",
+  "runtimeDifference": "The call board for every caller; iPhone board follows the App's own audio (build 46); a refused conversation record is dropped at once and remembered; phone board keeps the last lines of the conversation. Phone board no longer swings between pages; one page per title; a four-line caption strip. Phone real-time feel: V's words on an empty page, the lesson page drawn pale and inked as spoken, earlier drawing, a caption strip that really shows four lines. The board follows cues the illustrator writes (clause numbers), not word matching; one line under a phone's page; pictures for things that can be seen. Gallery pictures whole and large across the page; pages drawn smaller fit the panel; pictures open large on tap. A gallery drawn again keeps the pictures that were found; a refused picture search is asked again. Picture searches the image search answered are no longer thrown away; no Pokemon logo from a list article."
 }
