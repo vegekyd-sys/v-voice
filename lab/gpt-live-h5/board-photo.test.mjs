@@ -215,3 +215,65 @@ test('a request the image search refused (429) is asked again through the queue,
   assert.ok(times.every((at, index) => index === 0 || at - times[index - 1] >= 1100), `one request a gap apart: ${times}`);
   assert.ok(times.at(-1) - times.at(-2) >= 2200, 'slower after a refusal');
 });
+
+test('what the search asks for is not held against a title: a poster for "…海报", fan art for "…同人图"', async () => {
+  const {rankPicture} = await import('./board-photo.mjs');
+  const result = title => ({title, source: 'example.com', confidence: 'high', thumbnail: {src: 'https://imgs.search.brave.com/x', width: 400, height: 400}});
+  assert.ok(rankPicture(result('GTA6 杰森 海报'), 'GTA6 杰森 海报') > rankPicture(result('GTA6 杰森 海报'), 'GTA6 杰森'));
+  assert.ok(rankPicture(result('梦幻 超梦 同人图'), '梦幻 超梦 同人图') > 0);
+  assert.ok(rankPicture(result('超级超梦X Mega'), '超级超梦X mega') > rankPicture(result('超级超梦X Mega'), '超梦'), 'case aside');
+  assert.ok(rankPicture(result('神奇宝贝：可以mega进化的神兽'), '超梦 Mega进化 立绘') <= 0, 'a Chinese title that does not name the thing');
+  assert.ok(rankPicture(result('全国图鉴截图'), '超梦 宝可梦 全身 图鉴') <= 0);
+  assert.ok(rankPicture(result('航海王1199話，喬巴覺醒森林之神形態'), '航海王1199话 全图漫画') > 0, 'traditional characters and a chapter number aside');
+  assert.ok(rankPicture(result('Pokemon GO超夢'), '超梦 尾巴') > rankPicture(result('全国图鉴截图'), '超梦 尾巴'), '超夢 is 超梦');
+  assert.ok(rankPicture({...result('Mega Beedrill'), confidence: 'high'}, '超梦 Mega进化 立绘') <= 0, 'an English title that cannot be told to be about a Chinese name');
+  assert.ok(rankPicture({...result('Mewtwo'), source: 'pokemon.com'}, '超梦 立绘') > 0, 'from a reference it still counts');
+  assert.ok(rankPicture(result('Jason and Lucia GTA 6'), 'GTA6 杰森 露西娅') > 0, 'an English title for a Chinese search is not held to it');
+});
+
+test('an image search: a good result low in the list is fetched; one with nothing for it is not; with nothing found, a plainer search', async () => {
+  const {plainerSearches} = await import('./board-photo.mjs');
+  assert.deepEqual(plainerSearches('GTA6 预告片 露西娅 杰森 同框 截图'), ['GTA6 预告片 露西娅 杰森', 'GTA6 预告片 露西娅']);
+  assert.deepEqual(plainerSearches('GTA6 Jason Lucia fan art'), ['GTA6 Jason Lucia', 'GTA6 Jason']);
+  assert.deepEqual(plainerSearches('宝可梦 图鉴'), [], 'a word that only contains a kind-of-picture character is kept');
+  assert.deepEqual(plainerSearches('埃菲尔铁塔'), []);
+  const searched = [];
+  const answers = {
+    // (the 11/20 GTA6 lookups, reduced) four results, the only one counted for is fourth
+    'GTA6 杰森 官方宣传图 海报': [{title: '游民星空', source: 'gamersky.com', confidence: 'medium'}, {title: '游民星空', source: 'gamersky.com', confidence: 'medium'}, {title: 'etsy banner', source: 'etsy.com', confidence: 'medium', properties: {url: 'https://etsy.com/banner.png'}}, {title: 'Official character key art GTA6 杰森', source: 'rockstarintel.com', confidence: 'medium', id: 'jason'}],
+    // a title with nothing for it (a site's name): not taken, and the search is not plainer
+    'GTA6 雷奥尼达州': [{title: '游侠网22', source: 'ali213.net', confidence: 'medium', id: 'site'}],
+    // a guide's data table, for a search that did not ask for one
+    '超梦 Mega进化 立绘': [{title: '口袋妖怪Mega超梦X配招 性格及对战玩法', source: 'gamersky.com', confidence: 'high', id: 'guide'}],
+    // too specific: nothing at all, until plainer
+    'GTA6 预告片 露西娅 杰森 同框 截图': [], 'GTA6 预告片 露西娅 杰森': [{title: '杰森与露西娅', source: 'gta6news.net', confidence: 'high', id: 'pair'}],
+  };
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', braveGapMs: 0, languages: [], wait: async () => {},
+    fetchImpl: async url => {
+      if (url.startsWith('https://api.search.brave.com/')) {
+        const query = decodeURIComponent(/q=([^&]+)/u.exec(url)[1]);
+        searched.push(query);
+        return json({results: (answers[query] ?? []).map((item, index) => ({thumbnail: {src: `https://imgs.search.brave.com/${item.id ?? 'n' + index}`, width: 500, height: 500}, ...item}))});
+      }
+      return image(distinct(), 'image/png');
+    }});
+  assert.equal((await finder.find('GTA6 杰森 官方宣传图 海报'))?.title, 'Official character key art GTA6 杰森');
+  assert.equal(await finder.find('GTA6 雷奥尼达州'), null);
+  assert.equal(await finder.find('超梦 Mega进化 立绘'), null);
+  assert.equal((await finder.find('GTA6 预告片 露西娅 杰森 同框 截图'))?.title, '杰森与露西娅');
+  assert.deepEqual(searched, ['GTA6 杰森 官方宣传图 海报', 'GTA6 雷奥尼达州', '超梦 Mega进化 立绘', '超梦 Mega进化', 'GTA6 预告片 露西娅 杰森 同框 截图', 'GTA6 预告片 露西娅 杰森']);
+});
+
+test('an encyclopedia article a name redirects to that is about something else is not its picture', async () => {
+  const finder = createPhotoFinder({lookup, languages: ['zh'],
+    fetchImpl: async url => {
+      if (url.includes('wikipedia.org')) {
+        const title = decodeURIComponent(/titles=([^&]+)/u.exec(url)[1]);
+        const to = {凯路迪欧: '第五世代寶可夢列表', 超梦: '超夢'}[title] ?? title;
+        return json({query: {pages: {1: {title: to, thumbnail: {source: `https://upload.wikimedia.org/${encodeURIComponent(to)}.png`}}}}});
+      }
+      return image(distinct(), 'image/png');
+    }});
+  assert.equal(await finder.find('凯路迪欧'), null, 'a list of a whole generation, with the franchise logo');
+  assert.equal((await finder.find('超梦'))?.title, '超夢', 'traditional characters: the same article');
+});

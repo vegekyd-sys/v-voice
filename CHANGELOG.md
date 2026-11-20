@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-21 — Picture searches the image search answered are no longer thrown away
+
+- Results qualify on their own score (their place in the list only orders them); words the search asks for (海报, 同人, mega) are not held against a title; guide, data and download pages are; a Chinese title must name the thing (half its characters: 超夢 for 超梦), and an English title sharing no word with a several-word search for a Chinese name does not count for it.
+- A search that finds nothing worth fetching is tried without its kind-of-picture words (截图, 官方宣传图, fan art…), then without its last word (GTA6 searches like "GTA6 预告片 露西娅 杰森 同框 截图" found nothing at all).
+- An encyclopedia redirect to an article about something else is not the thing's picture (凯路迪欧 → 第五世代寶可夢列表 gave the Pokemon logo).
+- Rerun of the 77 searches made in production on 11/20: 77 found (was 65), none of the 65 lost (#237).
+
 ## 2026-11-20 — A gallery drawn again keeps the pictures that were found
 
 - Asked for "more pictures", the director redraws the gallery under the same item ids; the gallery remembered failed pictures by id and hid new pictures that had been found (production call dfbb0ead: V described six, the page showed two). Failed pictures are now remembered by search, and tried again when the gallery is drawn with other searches.
