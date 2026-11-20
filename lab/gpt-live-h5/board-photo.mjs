@@ -211,7 +211,7 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
   // they were tables and adverts.)
   function worth(results, query) {
     return results.map((item, index) => ({item, score: rankPicture(item, query), index})).filter(entry => entry.score > 0)
-      .sort((a, b) => (b.score - b.index * .2) - (a.score - a.index * .2)).slice(0, 3);
+      .sort((a, b) => (b.score - b.index * .2) - (a.score - a.index * .2)).slice(0, 9);
   }
   async function brave(query, signal, begin = () => {}) {
     if (!braveKey) return null;
@@ -219,18 +219,24 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     for (const words of [query, ...plainerSearches(query)]) {
       const ranked = worth(await braveSearch(words, signal, begin), query);
       if (!ranked.length) continue;
-      // The best three are fetched at once (one slow file used to hold the others up for
-      // seven seconds); the best-ranked usable one wins.
-      const tried = ranked.map(({item}) => (async () => {
-        const thumbnail = new URL(item.thumbnail.src);
-        if (thumbnail.protocol !== 'https:' || thumbnail.hostname !== 'imgs.search.brave.com') return null;
-        // The search's own thumbnail and the picture where it lives are asked
-        // together: from this server one of the two is often seconds faster.
-        const original = typeof item.properties?.url === 'string' ? await publicHttps(item.properties.url, {lookup}) : null;
-        const ways = [picture(thumbnail.href, signal, 'Brave 图片搜索', item.title), ...(original ? [picture(original.href, signal, item.source || original.hostname, item.title)] : [])];
-        return firstPicture(ways);
-      })().catch(() => null));
-      for (const attempt of tried) { const found = await attempt; if (found && own(found, query)) return found; }
+      // Three at a time are fetched at once (one slow file used to hold the others up for seven
+      // seconds); the best-ranked usable one wins. When none of three can be fetched, the next
+      // three are tried (轰鸣月: the three best were on a site that refuses other sites, 11/21).
+      for (let start = 0; start < ranked.length; start += 3) {
+        const tried = ranked.slice(start, start + 3).map(({item}) => (async () => {
+          const thumbnail = new URL(item.thumbnail.src);
+          if (thumbnail.protocol !== 'https:' || thumbnail.hostname !== 'imgs.search.brave.com') return null;
+          // The search's own thumbnail and the picture where it lives are asked
+          // together: from this server one of the two is often seconds faster.
+          const original = typeof item.properties?.url === 'string' ? await publicHttps(item.properties.url, {lookup}) : null;
+          const ways = [picture(thumbnail.href, signal, 'Brave 图片搜索', item.title), ...(original ? [picture(original.href, signal, item.source || original.hostname, item.title)] : [])];
+          return firstPicture(ways);
+        })().catch(() => null));
+        let fetched = false;
+        for (const attempt of tried) { const found = await attempt; if (found) fetched = true; if (found && own(found, query)) return found; }
+        // (A picture fetched but taken by another thing: the next three would be the same site's.)
+        if (fetched) return null;
+      }
       return null;
     }
     return null;

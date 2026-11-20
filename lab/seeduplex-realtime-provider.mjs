@@ -951,11 +951,16 @@ export class SeeduplexRealtimeVoiceBridge {
       return;
     }
     if (type === "session.closed") {
+      // The service ending the session itself (not after our session.close) ends the call: what it
+      // said is kept, so the next one can be told apart (11/21: a call cut 0.14 s after a turn, no record).
+      const ours = this.terminal;
+      if (!ours) this.#diagnostic({stage: "upstream-closed", ...closedDetail(event)});
       this.terminal = true;
       this.ready = false;
       clearInterval(this.inputTimer);clearTimeout(this.pacingTimer);
+      // (Said before the socket closes: its own close handler reports an ordinary end.)
+      this.#notifyClose(ours ? "completed" : "upstream-closed");
       this.socket?.close();
-      this.#notifyClose("completed");
       return;
     }
     if (
@@ -1258,6 +1263,21 @@ export class SeeduplexRealtimeVoiceBridge {
     this.closeNotified = true;
     this.request.onClose?.(reason);
   }
+}
+
+// A few short scalar fields of an upstream close (reason, code, message…), never audio or text.
+function closedDetail(event) {
+  const detail = {};
+  const pick = (source, prefix = '') => {
+    for (const [key, value] of Object.entries(source ?? {})) {
+      if (Object.keys(detail).length >= 8) return;
+      if (['type', 'event_id', 'audio', 'delta', 'transcript', 'text', 'instructions'].includes(key)) continue;
+      if (['string', 'number', 'boolean'].includes(typeof value)) detail[prefix + key] = String(value).slice(0, 160);
+      else if (value && typeof value === 'object' && !Array.isArray(value) && !prefix) pick(value, key + '.');
+    }
+  };
+  pick(event);
+  return detail;
 }
 
 const seeduplexSocketOptions = apiKey => ({

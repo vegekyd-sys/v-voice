@@ -277,3 +277,15 @@ test('an encyclopedia article a name redirects to that is about something else i
   assert.equal(await finder.find('凯路迪欧'), null, 'a list of a whole generation, with the franchise logo');
   assert.equal((await finder.find('超梦'))?.title, '超夢', 'traditional characters: the same article');
 });
+
+test('when none of the three best results can be fetched, the next three are tried', async () => {
+  const fetched = [];
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', braveGapMs: 0, languages: [], wait: async () => {},
+    fetchImpl: async url => {
+      if (url.startsWith('https://api.search.brave.com/')) return json({results: [1, 2, 3, 4, 5].map(n => ({title: '轰鸣月', source: 'site' + n + '.com', confidence: 'high', thumbnail: {src: 'https://imgs.search.brave.com/' + n, width: 500, height: 500}}))});
+      fetched.push(url);
+      return url.endsWith('/4') ? image(distinct(), 'image/png') : {ok: false, status: 404, headers: new Headers({'content-type': 'text/plain'})};
+    }});
+  assert.equal((await finder.find('轰鸣月'))?.source, 'Brave 图片搜索');
+  assert.deepEqual(fetched.map(url => url.slice(-1)).slice(0, 4), ['1', '2', '3', '4']);
+});

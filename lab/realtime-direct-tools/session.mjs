@@ -247,8 +247,10 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const failures=results.filter(r=>r.status==='rejected').length;
     s.cancelCleanupFailed=failures>0;
     return {cancelled:failures===0,cancelRequested:true,processCleanupFailures:failures};};
-  const close=async id=>{
+  // `why`: which way the call ended, kept on call.closed (11/21: a call cut short left no reason).
+  const close=async(id,why='requested')=>{
     const s=sessions.get(id);if(!s)return;
+    s.closeWhy??=why;
     if(s.closePromise)return s.closePromise;
     if(s.closed&&!s.cleanupFailed)return;
     s.closePromise=(async()=>{
@@ -263,7 +265,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       clearInterval(s.progressTimer);s.interruptDetector?.close();if(!s.unidentified)speakerRouting?.close(id);for(const lane of s.stagedBridges??[])lane.discard();s.bridge?.close();for(const old of s.retiredBridges??[])old.close();s.retiredBridges?.clear();s.client?.close();
       s.cleanupFailed=result.processCleanupFailures>0;
       if(s.cleanupFailed){audit({type:'call.cleanup-unconfirmed',voiceSessionId:id,result});throw Error('电话已结束，后台任务退出尚未确认');}
-      sessions.delete(id);audit({type:'call.closed',voiceSessionId:id});
+      sessions.delete(id);audit({type:'call.closed',voiceSessionId:id,why:s.closeWhy});
     })();
     try{return await s.closePromise;}finally{s.closePromise=null;}
   };
@@ -288,7 +290,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if(!valid()||ending.hasAudio)return;
       if(s.userSpeaking){ending.noAudioTimer=setTimeout(finishSilent,250);ending.noAudioTimer.unref?.();return;}
       audit({type:'call.ending',voiceSessionId:s.id,stage:'farewell-unavailable'});
-      void close(s.id).catch(()=>{});
+      void close(s.id,'farewell-unavailable').catch(()=>{});
     };
     const fallback=()=>{
       if(!valid()||ending.hasAudio)return;
@@ -308,7 +310,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     audit({type:'call.ending',voiceSessionId:s.id,stage:'host-'+reason});
     emit(s,{type:'end.accepted',callId:ending.callId});
     s.bridge.speakProgress(IDLE_FAREWELL[reason],{caption:true,source:'call-farewell'});
-    const finish=()=>{if(current(s)&&s.ending===ending)void close(s.id).catch(()=>{});};
+    const finish=()=>{if(current(s)&&s.ending===ending)void close(s.id,'host-ending').catch(()=>{});};
     ending.noAudioTimer=setTimeout(()=>{if(!ending.hasAudio)finish();},nativeFarewellTimeoutMs);ending.noAudioTimer.unref?.();
     // A client that never reports playback drained still gets hung up.
     ending.backstopTimer=setTimeout(finish,nativeFarewellTimeoutMs+30000);ending.backstopTimer.unref?.();
@@ -410,8 +412,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket,...(deviceActions?{nativeDeviceActions:{version:1,capabilities:s.terminalContext().capabilities},terminalContext:s.terminalContext()}:{}),...(nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(s.nativeRuntime?{nativeRuntime:s.nativeRuntime.descriptor}:{}),...(s.nativeDuplex?{nativeDuplex:true,nativePlaybackPolicy}:{}),...route?{speakerRouting:route}:{}};
   }
   function attachClient(s,client){
-    client.on('error',()=>void close(s.id).catch(()=>{}));
-    void start(s,client).catch(()=>{emit(s,{type:'error',message:'语音或工具环境尚未就绪'});void close(s.id).catch(()=>{});});
+    client.on('error',()=>void close(s.id,'client-error').catch(()=>{}));
+    void start(s,client).catch(()=>{emit(s,{type:'error',message:'语音或工具环境尚未就绪'});void close(s.id,'start-failed').catch(()=>{});});
   }
   const recordConnectionStage=(s,stage)=>audit({type:'call.connection-stage',voiceSessionId:s.id,model:s.model,stage,elapsedMs:Math.round(performance.now()-s.connectionStartedAt)});
   // One dial may overlap its environment reads with its own live admission.
@@ -464,7 +466,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   }
   async function start(s,client) {
     s.client=client;
-    client.on('close',()=>void close(s.id).catch(()=>{}));
+    client.on('close',code=>void close(s.id,'client-closed'+(code?':'+code:'')).catch(()=>{}));
     // A client that can already play may ask for the greeting while the model
     // is still connecting; it is spoken at ready, without another round trip.
     const earlyGreeting=data=>{try{if(JSON.parse(data.toString()).type==='greeting')s.greetingWanted=true;}catch{}};
@@ -593,7 +595,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       }
       const signature=JSON.stringify([call.name,call.args]),old=s.seen.get(call.callId);
       if(old){if(old!==signature)emit(s,{type:'error',message:'工具身份冲突'});return;}
-      if(s.pending.size>=100){emit(s,{type:'error',message:'待处理的工具调用过多，请稍后再试'});void close(s.id).catch(()=>{});return;}
+      if(s.pending.size>=100){emit(s,{type:'error',message:'待处理的工具调用过多，请稍后再试'});void close(s.id,'too-many-tools').catch(()=>{});return;}
       s.seen.set(call.callId,signature);
       if(s.seen.size>2048)for(const id of s.seen.keys()){if(s.seen.size<=2048)break;if(!s.pending.has(id))s.seen.delete(id);}
       const controller=new AbortController(),epoch=s.epoch;
@@ -797,8 +799,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(e.stage==='context-dropped'){request.instructions=request.withoutContext(request.instructions);
           if(recordHash){refusedRecords.set(s.sessionKey,{hash:recordHash,until:Date.now()+6*3600_000});while(refusedRecords.size>500)refusedRecords.delete(refusedRecords.keys().next().value);}}
         if(['reconnecting','recovered'].includes(e.stage))emit(s,{type:`provider.${e.stage}`});},
-      onError:e=>{audit({type:'call.connection-error',voiceSessionId:s.id,model:s.model,message:e.message});emit(s,{type:'error',message:e.message});void close(s.id).catch(()=>{});},
-      onClose:()=>{if(current(s))void close(s.id).catch(()=>{});},
+      onError:e=>{audit({type:'call.connection-error',voiceSessionId:s.id,model:s.model,message:e.message});emit(s,{type:'error',message:e.message});void close(s.id,'provider-error').catch(()=>{});},
+      onClose:reason=>{if(current(s))void close(s.id,'provider-'+(reason||'closed')).catch(()=>{});},
     };
     if(!current(s))return;
     // The first upstream connection may reuse the socket opened during admission.
@@ -829,7 +831,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           if(data.length%2||data.length>24000){client.close(1008);return;}
           if(s.speakerRouting){if(!speakerRouting.has(s.id))throw Error('说话人识别已中断，请结束后重拨');speakerRouting.audio(s.id,Buffer.from(data));}
           else {s.bridge.sendAudio(data);s.interruptDetector?.append(data);}
-        }catch(error){emit(s,{type:'error',message:error.message});void close(s.id).catch(()=>{});}
+        }catch(error){emit(s,{type:'error',message:error.message});void close(s.id,'input-error').catch(()=>{});}
         return;
       }
       try{const e=JSON.parse(data.toString());if(e.type==='device.capabilities'||e.type==='device.result'){receiveDeviceFrame(s,e);return;}if(e.type==='greeting'){if(s.readyAnnounced)greet();else s.greetingWanted=true;}
@@ -846,7 +848,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(['running','suspended','interrupted','closed'].includes(e.contextState))stats.contextState=e.contextState;
         audit({type:'client.playback-stats',voiceSessionId:s.id,stats});
       }
-      else if(e.type==='playback.drained'&&s.ending?.callId===e.callId&&s.ending.hasAudio&&s.ending.completed){audit({type:'speaker.end-played',voiceSessionId:s.id});void close(s.id).catch(()=>{});}
+      else if(e.type==='playback.drained'&&s.ending?.callId===e.callId&&s.ending.hasAudio&&s.ending.completed){audit({type:'speaker.end-played',voiceSessionId:s.id});void close(s.id,'end-played').catch(()=>{});}
       }catch{client.close(1008);}
     });
     connectionStage('provider-connecting');
@@ -926,7 +928,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       s.replyDelivery?.user(text);
       audit({type:'transcript',voiceSessionId:s.id,role:'user',text,final:true,source:'speaker-asr'});
       if(s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));
-    }emit(s,value);if(value.type==='error')void close(s.id).catch(()=>{});});
+    }emit(s,value);if(value.type==='error')void close(s.id,'event-error').catch(()=>{});});
     if(current(s)){connectionStage('provider-ready');s.replyDelivery?.ready();s.readyAnnounced=true;emit(s,{type:'ready',model:s.model,tools:voiceTools.map(t=>t.name)});if(s.greetingWanted)greet();}
   }
   return {

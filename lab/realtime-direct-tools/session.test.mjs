@@ -1848,3 +1848,15 @@ test('call 8a67bd27: a record Seeduplex refused is left out of the next call in 
  const opened=second.upstream.sent.find(e=>e.type==='session.create'||e.type==='session.update');
  assert.doesNotMatch(JSON.stringify(opened),/一条群消息/);
 });
+
+test('a call says which way it ended: the voice service closing it, or the page going away', async t => {
+ const f = await fixture(undefined, 'seeduplex'); t.after(() => f.service.dispose());
+ f.event({type: 'session.closed', reason: 'max_duration'});
+ for (let attempt = 0; attempt < 100 && !f.audit.some(e => e.type === 'call.closed'); attempt++) await delay(5);
+ assert.equal(f.audit.find(e => e.type === 'call.closed')?.why, 'provider-upstream-closed');
+ assert.equal(f.audit.find(e => e.type === 'call.provider-status' && e.stage === 'upstream-closed')?.reason, 'max_duration');
+ const g = await fixture(undefined, 'seeduplex'); t.after(() => g.service.dispose());
+ g.client.emit('close', 1006);
+ for (let attempt = 0; attempt < 100 && !g.audit.some(e => e.type === 'call.closed'); attempt++) await delay(5);
+ assert.equal(g.audit.find(e => e.type === 'call.closed')?.why, 'client-closed:1006');
+});
