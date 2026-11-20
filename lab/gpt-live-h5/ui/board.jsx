@@ -4,7 +4,7 @@
 // stay in pencil. Renders a scene from board-scene.mjs. Every string is plain
 // text; nothing written by the director model is interpreted as markup.
 import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
-import {edgeId, flowLayout, markedBlocks, scalePositions} from '../board-scene.mjs';
+import {edgeId, flowLayout, galleryLayout, markedBlocks, scalePositions} from '../board-scene.mjs';
 import {MARK_PATHS, arrow, fitPath, pointer, ring, tilt, underline} from '../board-sketch.mjs';
 
 // One pen stroke over its target. CSS sizes the box; the path is fitted to the
@@ -61,7 +61,7 @@ function Key({item, seed, children}) {
 }
 // The picture of the thing an item is about, fetched through the Voice
 // service like a photo block. Nothing is shown when none is found.
-function Thumb({query, view, seed, onGone}) {
+function Thumb({query, view, seed, onGone, onShape}) {
   const [src, setSrc] = useState(null);
   const [gone, setGone] = useState(false);
   useEffect(() => {
@@ -72,7 +72,7 @@ function Thumb({query, view, seed, onGone}) {
     return () => { live = false; };
   }, [query]);
   if (gone) return null;
-  return <span className="board-thumb" data-ready={String(Boolean(src))} style={{'--tilt': tilt(seed + ':img', 3) + 'deg'}}>{src && <img src={src} alt={query} decoding="async" />}</span>;
+  return <span className="board-thumb" data-ready={String(Boolean(src))} style={{'--tilt': tilt(seed + ':img', 3) + 'deg'}}>{src && <img src={src} alt={query} decoding="async" onLoad={onShape && (event => { const {naturalWidth: width, naturalHeight: height} = event.currentTarget; if (width && height) onShape(width / height); })} />}</span>;
 }
 // A number that is counted up to as it appears (whole numbers only; anything else is shown as written).
 function Figure({value, on}) {
@@ -119,25 +119,72 @@ function List({block, view, ordered}) {
   );
 }
 
-// The pictures the caller asked to see: large, two to a row, each named under it.
+// The pictures the caller asked to see, large and whole: each keeps its own
+// shape, set in rows of one height that fill the width (galleryLayout), each
+// named under it. A row break is an empty item, so a picture whose row
+// changes keeps its place in the list and is not loaded again.
+const GALLERY_GAP = 14;
+const shapeOf = ratio => Math.min(2.4, Math.max(.5, ratio || 4 / 3));
+// The room a gallery has: its width, and the height of the panel less the
+// page's margins, its heading and the other pieces on the page.
+function useGalleryRoom() {
+  const ref = useRef(null);
+  const [room, setRoom] = useState({width: 0, budget: Infinity, label: 0});
+  const read = () => {
+    const list = ref.current, block = list?.closest('.board-block'), page = block?.parentElement, scroller = list?.closest('.board-scroll');
+    if (!list) return;
+    let budget = Infinity, label = 0;
+    if (scroller && page && typeof getComputedStyle === 'function') {
+      const style = getComputedStyle(page), gap = parseFloat(style.rowGap) || 0;
+      const others = [...page.children].filter(child => child !== block).reduce((sum, child) => sum + child.offsetHeight + gap, 0);
+      budget = Math.round(scroller.clientHeight - (parseFloat(style.paddingTop) || 0) - (parseFloat(style.paddingBottom) || 0) - list.offsetTop - others);
+      for (const item of list.querySelectorAll(':scope > li:not(.board-gallery-break)')) {
+        label = Math.max(label, item.offsetHeight - (item.querySelector('.board-thumb')?.offsetHeight ?? 0) + (parseFloat(getComputedStyle(item).marginBottom) || 0));
+      }
+    }
+    const next = {width: Math.round(list.clientWidth), budget, label: Math.round(label)};
+    setRoom(old => old.width === next.width && old.budget === next.budget && old.label === next.label ? old : next);
+  };
+  // Read after every drawing of the page (pieces come and go), and when the panel changes size.
+  useLayoutEffect(read);
+  useLayoutEffect(() => {
+    const list = ref.current, scroller = list?.closest('.board-scroll');
+    if (!list || typeof ResizeObserver !== 'function') return;
+    const observer = new ResizeObserver(() => read());
+    observer.observe(list);
+    if (scroller) observer.observe(scroller);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, room];
+}
 function Gallery({block, view}) {
   // A picture that could not be found takes its name with it: no empty frame in the grid.
   const [missing, setMissing] = useState(() => new Set());
+  // Each picture's shape once it has loaded; until then it is held as 4:3.
+  const [shapes, setShapes] = useState({});
+  const [ref, room] = useGalleryRoom();
+  const shown = block.items.filter(item => item.img && !missing.has(item.id));
+  const roomy = room.width >= 560;
+  const {rows, height} = galleryLayout(shown.map(item => shapeOf(shapes[item.id])), room.width,
+    {height: roomy ? 380 : 260, floor: roomy ? 150 : 110, gap: GALLERY_GAP, budget: room.budget, label: room.label || (roomy ? 56 : 44)});
+  const breaks = new Set(rows.slice(0, -1).map(row => row.at(-1)));
   return (
     <>
       <Heading block={block} />
-      <ul className="board-gallery">
-        {block.items.filter(item => item.img && !missing.has(item.id)).map(item => {
+      <ul className="board-gallery" ref={ref} style={{'--gap': GALLERY_GAP + 'px', '--cap': height + 'px'}}>
+        {shown.flatMap((item, index) => {
           const state = itemState(view, block, item);
-          return (
-            <li key={item.id} {...state.props}>
-              <Thumb query={item.img} view={view} seed={state.id} onGone={() => setMissing(gone => new Set(gone).add(item.id))} />
+          const picture = (
+            <li key={item.id} {...state.props} style={{'--shape': shapeOf(shapes[item.id])}}>
+              <Thumb query={item.img} view={view} seed={state.id} onGone={() => setMissing(gone => new Set(gone).add(item.id))}
+                onShape={ratio => setShapes(old => old[item.id] === ratio ? old : {...old, [item.id]: ratio})} />
               <div className="board-item">
                 <Key item={item} seed={state.id}>{em(item.h)}</Key>
                 {item.d && <span>{em(item.d)}</span>}
               </div>
             </li>
           );
+          return breaks.has(index) ? [picture, <li key={`${item.id}:break`} className="board-gallery-break" aria-hidden="true" />] : [picture];
         })}
       </ul>
     </>
@@ -575,8 +622,10 @@ function useFit(scroller, page, key) {
     };
     fit();
     if (typeof ResizeObserver !== 'function') return;
+    // Also when a piece changes size by itself (a gallery picture loads and takes its own shape).
     const observer = new ResizeObserver(fit);
     observer.observe(outer);
+    for (const child of inner.children) observer.observe(child);
     return () => observer.disconnect();
   });
   return dense.key === key && dense.on;
@@ -607,7 +656,9 @@ function Sheet({scene, spoken, loadPhoto, caption = ''}) {
   for (const block of blocks) {
     const last = rows.at(-1);
     // (When the page would not fit, its main blocks pair up as if each had asked for half.)
-    const width = block.w ?? (dense && !SMALL.has(block.t) ? 'half' : undefined), ahead = last?.[0].w ?? (dense && last && !SMALL.has(last[0].t) ? 'half' : undefined);
+    // (A gallery keeps the whole width: its pictures are what the caller asked to see.)
+    const halves = piece => dense && !SMALL.has(piece.t) && piece.look !== 'gallery';
+    const width = block.w ?? (halves(block) ? 'half' : undefined), ahead = last?.[0].w ?? (last && halves(last[0]) ? 'half' : undefined);
     if (width && ahead && last.length < (ahead === 'third' ? 3 : 2)) last.push(block); else rows.push([block]);
   }
   return (
@@ -634,7 +685,7 @@ function Sheet({scene, spoken, loadPhoto, caption = ''}) {
     const View = RENDER[block.t];
     if (!View) return null;
     return (
-      <div key={key} className="board-block" data-type={block.t} data-size={small ? 'small' : 'wide'} data-paper={paper} data-ink={view.ahead.has(block.id) ? 'false' : undefined}
+      <div key={key} className="board-block" data-type={block.t} data-look={block.look} data-size={small ? 'small' : 'wide'} data-paper={paper} data-ink={view.ahead.has(block.id) ? 'false' : undefined}
         data-held={view.focus.split('/')[0] === block.id || undefined} style={{'--tilt': tilt(key, small ? 2.6 : paper ? .6 : 0) + 'deg'}}>
         <View block={block} view={view} />
       </div>

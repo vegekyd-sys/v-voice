@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {applyOp, createLineParser, emptyScene, flowLayout, focusExists, normalizeOp, normalizeScene, scalePositions, sceneDigest, spokenFocus, spokenProgress} from './board-scene.mjs';
+import {applyOp, createLineParser, emptyScene, flowLayout, focusExists, galleryLayout, normalizeOp, normalizeScene, scalePositions, sceneDigest, spokenFocus, spokenProgress} from './board-scene.mjs';
 
 const put = block => normalizeOp({op: 'put', block});
 const run = (...ops) => ops.reduce((scene, op) => applyOp(scene, normalizeOp(op)), emptyScene());
@@ -226,4 +226,25 @@ test('draw: a sketch of plain shapes, each with its numbers checked', async () =
   assert.deepEqual(op.block.items.map(item => item.id), ['a', 'b', 'h']);
   assert.deepEqual(op.block.items[2].p, [0, 0, 105, 30]);
   assert.equal(op.block.items[1].tone, 'butter');
+});
+
+test('gallery pictures keep their shape in level rows that fit the room', () => {
+  const room = {height: 380, floor: 150, gap: 14, label: 56};
+  const flat = rows => rows.flat();
+  // Two wide shots, a tall one and a film still (Tianyi's 超梦 page, 11/20): two rows of two, order kept.
+  const mewtwo = galleryLayout([4 / 3, 4 / 3, 7 / 11, 16 / 9], 710, {...room, budget: 583});
+  assert.deepEqual(mewtwo.rows, [[0, 1], [2, 3]]);
+  // Within the budget: every row at its own fill height or the cap, names included.
+  const fills = [[4 / 3, 4 / 3], [7 / 11, 16 / 9]].map(row => (710 - 14 * (row.length - 1)) / row.reduce((sum, shape) => sum + shape, 0));
+  assert.ok(fills.reduce((sum, fill) => sum + Math.min(mewtwo.height, fill), 0) + 2 * 56 <= 583 + 1);
+  assert.ok(mewtwo.height >= 230, 'large pictures on a wide page');
+  // No picture is made tiny to make another huge (a 6-picture page on a phone).
+  const phone = galleryLayout([1.5, 2 / 3, 0.56, 2.34, 1, 0.75], 336, {height: 260, floor: 90, gap: 14, label: 44, budget: 440});
+  assert.deepEqual(flat(phone.rows), [0, 1, 2, 3, 4, 5]);
+  assert.ok(phone.rows.every(row => (336 - 14 * (row.length - 1)) / row.reduce((sum, at) => sum + [1.5, 2 / 3, 0.56, 2.34, 1, 0.75][at], 0) >= 90));
+  // With room to spare a row stops at the cap rather than growing without end.
+  assert.deepEqual(galleryLayout([0.7, 1.5], 1400, {...room}).height, 380);
+  // Before the width is known: two to a row.
+  assert.deepEqual(galleryLayout([1, 1, 1], 0).rows, [[0, 1], [2]]);
+  assert.deepEqual(galleryLayout([], 500).rows, []);
 });

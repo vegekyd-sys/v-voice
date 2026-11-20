@@ -1632,10 +1632,19 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 :is(.board-list, .board-steps) li > .board-thumb { grid-column: 2; grid-row: 1; width: 96px; height: 96px; }
 :is(.board-list, .board-steps) li:has(> .board-thumb) > .board-item { grid-column: 3; }
 .board-compare .board-thumb { width: 100%; height: 118px; margin-bottom: 10px; }
-.board-gallery { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
-.board-gallery li { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.board-gallery .board-thumb { width: 100%; height: auto; aspect-ratio: 4 / 3; border-radius: 10px; overflow: hidden; }
-.board-gallery .board-thumb img { object-fit: cover; }
+/* a gallery: whole pictures in rows of one height. A picture's share of its row is its
+   shape (width / height), so the row stands level; rows end at the empty break items
+   the page places, and a row holding too little stops at --cap tall. Nothing is cropped.
+   Its height follows its width, so when the page is drawn smaller to fit (useFit) the
+   width it may take is made smaller with it. */
+.board-gallery { list-style: none; margin: 0; padding: 0; max-width: calc(100% * var(--zoom, 1)); display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: var(--gap, 14px); row-gap: 0; }
+.board-gallery li { flex: var(--shape, 1.33) 1 0px; min-width: 0; max-width: calc(var(--shape, 1.33) * var(--cap, 230px)); display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+.board-gallery li.board-gallery-break { flex: 0 0 100%; max-width: none; height: 0; margin: 0; }
+.board-gallery .board-thumb { width: 100%; height: auto; aspect-ratio: var(--shape, 1.33); padding: 5px; border-radius: 8px; overflow: hidden; transform: rotate(calc(var(--tilt, 0deg) * .4)); }
+.board-gallery .board-thumb img { border-radius: 4px; }
+.board-gallery [data-now] > .board-thumb { transform: rotate(calc(var(--tilt, 0deg) * .4)) scale(1.03); }
+/* on a phone a name under a narrow picture stays on one or two short lines */
+@media (max-width: 700px) { .board-gallery .board-item .board-key { font-size: 15px; line-height: 1.35; } }
 .board-gallery .board-item { display: flex; flex-direction: column; gap: 2px; font-size: 14px; line-height: 1.35; }
 .board-gallery .board-item > span { font-size: 12px; color: var(--board-faint, #8b7f99); }
 .board-node .board-thumb { width: 84px; height: 84px; margin-bottom: 5px; }
@@ -1972,6 +1981,9 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   .board-body[data-side] .board-block[data-size="small"] { grid-column: 2; width: 100%; max-width: 250px; justify-self: center; align-self: start; }
   .board-body:not([data-side]) .board-block { max-width: 720px; }
   .board-body:not([data-side]) .board-block[data-size="small"] { max-width: 300px; justify-self: start; }
+  /* a gallery takes the page's whole width; notes beside it go under it */
+  .board-body[data-side] .board-block[data-look="gallery"] { grid-column: 1 / -1; }
+  .board-body .board-block[data-look="gallery"] { max-width: none; }
   .board-item .board-key { font-size: 21px; }
   .board-item > span { font-size: 16px; }
   .board-list, .board-steps { gap: 16px; }
