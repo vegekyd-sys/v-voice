@@ -515,6 +515,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         const stage=/\bvideo\s/u.test(args.command)?'等待视频':'生成图片';
         // Ids of things on the caller's screen become their links, and a new thing takes its
         // place on the board before it exists (board-assets.mjs). A question about progress makes nothing.
+        // (A photograph found for the board and named in the command is first given an address the generator can fetch.)
+        if(shelfFor(s))await assets.lend(s.id,args.command);
+        if(signal.aborted||!current(s))throw Error('本次任务已取消');
         const shelved=shelfFor(s)&&!mediaStatusQuestion(requestToken.text)?assets.begin(s.id,{command:args.command,turn:requestToken}):{command:args.command};
         if(shelved.error)throw Error(shelved.error);
         return s.localExecutions.start(async executionSignal=>{
@@ -578,7 +581,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       return work.then(result=>{audit({type:'tool.local-result',voiceSessionId:s.id,callId,name,result});return result;});
     });
     const admittedUserTurns=new Map();
-    const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',s.sessionBound?s.actorReader?.calendar:calendar),larkRead:localRead('lark_read',s.sessionBound?s.actorReader?.read:larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,look:s.speaker?.look,delegate:async args=>{await s.ensureBackendDeviceBundle();return s.backend.run({...args,context:(args.context??'')+s.backendDeviceContext()+(shelfFor(s)?assets.backendContext(s.id):'')+(args.use_current_location?s.location.context():''),callerTurn:admittedUserTurns.get(args.callId)});}});
+    const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',s.sessionBound?s.actorReader?.calendar:calendar),larkRead:localRead('lark_read',s.sessionBound?s.actorReader?.read:larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,look:s.speaker?.look,delegate:async args=>{await s.ensureBackendDeviceBundle();if(shelfFor(s))await assets.lend(s.id);return s.backend.run({...args,context:(args.context??'')+s.backendDeviceContext()+(shelfFor(s)?assets.backendContext(s.id):'')+(args.use_current_location?s.location.context():''),callerTurn:admittedUserTurns.get(args.callId)});}});
     s.progressTimer=setInterval(()=>{idleTick(s);deferred(s);},200);s.progressTimer.unref?.();
     // A lesson may ask for one picture to be drawn (board-assets.mjs): made by this call's own
     // creation executor, under the same live permission as a picture the caller asks for.

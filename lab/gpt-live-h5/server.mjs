@@ -40,7 +40,7 @@ import {createPhotoFinder} from './board-photo.mjs';
 import {STREAM_INSTRUCTIONS,createLessonWriter,refineStreamOp} from './board-lesson.mjs';
 import {CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
 import {scenePictures} from './board-scene.mjs';
-import {ASSET_ID,ASSET_MAKE_NOTES,ASSET_NOTES,ASSET_SCRIPT_NOTES,createAssetEye,createAssetShelf} from './board-assets.mjs';
+import {ASSET_ID,ASSET_MAKE_NOTES,ASSET_NOTES,ASSET_SCRIPT_NOTES,createAssetEye,createAssetShelf,pictureName} from './board-assets.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Dialing is how a known caller retries; only anonymous callers keep the tight limit.
@@ -75,6 +75,20 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   if (hosted && (origin.protocol !== "https:" || origin.origin !== publicOrigin || !basePath)) throw new Error("Hosted voice requires an HTTPS origin and base path");
   if (!Number.isInteger(maxActiveSessions) || maxActiveSessions < 1 || maxActiveSessions > 50 || !Number.isInteger(maxActiveSessionsPerIp) || maxActiveSessionsPerIp < 1 || maxActiveSessionsPerIp > maxActiveSessions) throw new Error("Invalid voice call limits");
   const entries = createConversationEntries(conversationEntries, accessToken, personalReply);
+  // Photographs found for a call's board, lent out for half an hour under private addresses so that
+  // one can be the reference of something V makes (board-assets.mjs `lend`): a generator fetches the
+  // picture from here. Only where the service has a public HTTPS origin; the address is the whole permission.
+  const lentPictures = new Map(), LEND_MS = 30 * 60000;
+  if (boardAssets && boardPhotos && hosted) boardAssets.share = async query => {
+    const picture = await boardPhotos.find(query);
+    const kind = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'}[picture?.type];
+    if (!picture?.bytes?.length || !kind) return null;
+    for (const [key, lent] of lentPictures) if (lent.until < Date.now()) lentPictures.delete(key);
+    while (lentPictures.size >= 40) lentPictures.delete(lentPictures.keys().next().value);
+    const token = randomBytes(16).toString('hex'), until = Date.now() + LEND_MS;
+    lentPictures.set(token, {bytes: picture.bytes, type: picture.type, until});
+    return {url: `${publicOrigin}${basePath}/board-shared/${token}.${kind}`, until};
+  };
   const replyTargets=new Map(entries.replyBindings().map(e=>[e.id,conversationReplyTarget(e,feishuAccounts)]));
   const appDownload=iosAppDownload(iosAppDownloadUrl);
   const phoneLogin = feishuLogin ? createFeishuPhoneLogin({...feishuLogin, publicOrigin, basePath, entries,
@@ -433,6 +447,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (basePath && url.pathname === basePath && req.method === "GET") { res.writeHead(308, { location: `${basePath}/${url.search}`, "cache-control": "no-store" }); res.end(); return; }
       if (basePath && !url.pathname.startsWith(`${basePath}/`)) return json(res, 404, { error: "没有这个入口" });
       let pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
+      if ((req.method === 'GET' || req.method === 'HEAD') && pathname.startsWith('/board-shared/')) {
+        const lent = lentPictures.get(/^\/board-shared\/([a-f0-9]{32})\.(?:jpg|png|webp)$/u.exec(pathname)?.[1]);
+        if (!lent || lent.until < Date.now()) return json(res, 404, {error: '没有这张图'});
+        res.writeHead(200, {'content-type': lent.type, 'content-length': lent.bytes.length, 'cache-control': 'private, max-age=600', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer'});
+        res.end(req.method === 'HEAD' ? undefined : lent.bytes); return;
+      }
       if(req.method==='GET'&&/^\/invite\/[a-f0-9]{32}$/u.test(pathname)){
         const location=agentControl?.invitation(pathname.slice('/invite/'.length));
         if(!location)return json(res,410,{error:'这个邀请已撤销、过期或不存在。'});
@@ -918,6 +938,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         // search refused or timed out), so the page may ask again (11/20: a "show me more"
         // gallery lost pictures that were found the second time).
         if (!found) return boardPhotos.settled?.(query) === false ? json(res,503,{error:'暂时找不到照片'}) : json(res,404,{error:'没有找到照片'});
+        // On the caller's screen from now on: V can name it as the picture to work from (board-assets.mjs).
+        if (boardAssets) { const state = board.state?.(params.voiceSessionId); boardAssets.found(params.voiceSessionId, {query, name: pictureName([state?.scene, ...(state?.canvas?.zones ?? [])], query)}); }
         // (`inline`: for the iOS app's native bridge, which passes JSON only.)
         if (params.inline === true) return found.bytes.length <= 1400*1024 ? json(res,200,{type:found.type,data:Buffer.from(found.bytes).toString('base64')}) : json(res,404,{error:'照片太大'});
         res.writeHead(200,{'content-type':found.type,'cache-control':'no-store','content-length':found.bytes.length});

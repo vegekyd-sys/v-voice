@@ -83,7 +83,8 @@ export function createAssetsClient({request, onChange = () => {}, onSync = () =>
 export function assetFamily(assets, id) {
   let root = assets?.get?.(id);
   if (!root) return [];
-  for (let step = 0; step < 12 && root.from && assets.get(root.from); step++) root = assets.get(root.from);
+  // (A found photograph a thing was made from is its source, not a version of it.)
+  for (let step = 0; step < 12 && root.from && assets.get(root.from) && assets.get(root.from).source !== 'search'; step++) root = assets.get(root.from);
   const family = [root];
   for (let grew = true; grew && family.length < 12;) {
     grew = false;

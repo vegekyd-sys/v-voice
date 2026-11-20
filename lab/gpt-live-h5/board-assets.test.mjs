@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ASSET_CONTEXT_EMPTY, createAssetEye, createAssetShelf, readCreation} from './board-assets.mjs';
+import {ASSET_CONTEXT_EMPTY, createAssetEye, createAssetShelf, pictureName, readCreation} from './board-assets.mjs';
 import {assetFamily, createAssetsClient} from './board-assets-client.mjs';
 import {createBoardDirector} from './board-director.mjs';
 import {normalizeOp, normalizeScene, sceneWorks} from './board-scene.mjs';
@@ -274,4 +274,42 @@ test('every version of a thing is one family, oldest first', () => {
   assert.deepEqual(assetFamily(assets, 'a2').map(item => item.id), ['a1', 'a2', 'a4']);
   assert.deepEqual(assetFamily(assets, 'a3').map(item => item.id), ['a3']);
   assert.deepEqual(assetFamily(assets, 'a9'), []);
+});
+
+test('a photograph found for the board can be the picture a thing is made from', async () => {
+  const board = director(), shelf = shelfOn(board), lent = [];
+  shelf.share = async query => { lent.push(query); return query.includes('取不到') ? null : {url: `https://voice.example/voice/board-shared/${lent.length}.jpg`, until: Date.now() + 60000}; };
+  shelf.found('call', {query: '航海王 强者天下 上映海报', name: '上映海报'});
+  shelf.found('call', {query: '航海王 强者天下 复古风 海报', name: '复古风海报'});
+  shelf.found('call', {query: '航海王 强者天下 上映海报', name: '上映海报'});
+  shelf.found('call', {query: '取不到的图', name: '取不到'});
+  assert.match(shelf.context('call'), /还没有生成的图片或视频。搜到的照片（可当参考图）：p1「上映海报」、p2「复古风海报」、p3「取不到」。/u);
+  // Only the photograph the command names is lent out, and only then.
+  const command = "makaron edit --image-model gemini-2.1 --image p2 '把这张海报改成全员Q版'";
+  assert.match(shelf.begin('other', {command, turn: {}}).error, /没有可用的图片 p2/u);
+  await shelf.lend('call', command);
+  assert.deepEqual(lent, ['航海王 强者天下 复古风 海报']);
+  const begun = shelf.begin('call', {command, turn: {}});
+  assert.equal(begun.command, "makaron edit --image-model gemini-2.1 --image 'https://voice.example/voice/board-shared/1.jpg' '把这张海报改成全员Q版'");
+  assert.equal(shelf.get('call', begun.id).from, 'p2');
+  // The page is given the photograph too, so the frame can show what the thing is being made of.
+  assert.deepEqual(shelf.page('call').assets.map(({id, source, from}) => [id, source, from]), [['p2', 'search', undefined], ['a1', 'made', 'p2']]);
+  // One that cannot be fetched is said to be so; nothing is submitted with a made-up picture.
+  await shelf.lend('call', "makaron edit --image-model gemini-2.1 --image p3 'x'");
+  assert.match(shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 --image p3 'x'", turn: {}}).error, /p3 这次没能取到/u);
+  // For V's backend the latest few are lent together, with their addresses.
+  await shelf.lend('call');
+  assert.match(shelf.backendContext('call'), /p1「上映海报」 链接 https:\/\/voice\.example\/voice\/board-shared\/\d\.jpg；p2「复古风海报」/u);
+  // On the page, the photograph is the thing's source, not one of its versions.
+  const page = new Map(shelf.page('call').assets.map(item => [item.id, item]));
+  assert.deepEqual(assetFamily(page, 'a1').map(item => item.id), ['a1']);
+});
+
+test('a photograph is called on the shelf what it is called on the board', () => {
+  const pages = [{blocks: [{id: 'p', t: 'photo', query: '故宫', caption: '紫禁城'}, {id: 'l', t: 'list', items: [{id: 'i1', h: '**复古风**海报', img: '强者天下 复古风'}]},
+    {id: 'v', t: 'versus', sides: [{h: 'Model 3', img: '特斯拉 Model 3'}], items: []}]}, null];
+  assert.equal(pictureName(pages, '故宫'), '紫禁城');
+  assert.equal(pictureName(pages, '强者天下 复古风'), '复古风海报');
+  assert.equal(pictureName(pages, '特斯拉 Model 3'), 'Model 3');
+  assert.equal(pictureName(pages, '没在页上'), '没在页上');
 });

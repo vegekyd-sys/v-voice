@@ -15,11 +15,13 @@ import {mediaReferences} from './media-references.mjs';
 
 const OWNER_TTL_MS = 30 * 60000, MAX_ASSETS = 24;
 export const ASSET_ID = /^a[1-9]\d{0,2}$/u;
+// A photograph found for the board ("p3"): on the shelf so that V can name it as the picture to work from.
+const SHELF_ID = /^[ap][1-9]\d{0,2}$/u, MAX_PHOTOS = 16;
 const bounded = (value, limit) => Array.from(String(value ?? '').replace(/\s+/gu, ' ').trim()).slice(0, limit).join('');
 const https = value => { try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : ''; } catch { return ''; } };
 
 // What the voice model is told once, wherever a shelf exists for the call.
-export const ASSET_POLICY = '屏幕素材：用户屏幕的画面上摆着本通话生成的图片和视频，每个有编号（a1、a2…）。下面「屏幕素材现状」会随时更新，里面写的是图里真实看得到的东西。用户说“这张”“它”“刚才那张”“那个视频”，指用户正点着的那个；没有点着的就是最新的那个；仍然分不清再问。用户问图里有什么、谁在哪边，按现状里的描述回答，不编造没写的细节。要改图、换风格、让图动起来、拿它当参考时，创作命令里 --image 和 --ref 直接写编号（例如 --image a1），系统会换成真实链接；不要抄写、朗读或编造链接。编号只写在命令和交给后台的 context 里：对用户说话、写给用户的消息里不说编号，说它的名字，或者“第一张”“刚才那个视频”。交给后台处理屏幕上的东西时，在 context 里写清它的编号。生成中的东西已经显示在画面上，做好会自己显影，不用另外展示。';
+export const ASSET_POLICY = '屏幕素材：用户屏幕的画面上摆着本通话生成的图片和视频，每个有编号（a1、a2…）。下面「屏幕素材现状」会随时更新，里面写的是图里真实看得到的东西。用户说“这张”“它”“刚才那张”“那个视频”，指用户正点着的那个；没有点着的就是最新的那个；仍然分不清再问。用户问图里有什么、谁在哪边，按现状里的描述回答，不编造没写的细节。屏幕上搜到的照片也有编号（p1、p2…，见现状里的「搜到的照片」），可以当参考图：用户说“把那张海报改成 Q 版”“照这张画一个”，指的是搜到的照片时就用它的 p 编号。要改图、换风格、让图动起来、拿它当参考时，创作命令里 --image 和 --ref 直接写编号（例如 --image a1 或 --image p2），系统会换成真实链接；不要抄写、朗读或编造链接。编号只写在命令和交给后台的 context 里：对用户说话、写给用户的消息里不说编号，说它的名字，或者“第一张”“刚才那个视频”。交给后台处理屏幕上的东西时，在 context 里写清它的编号。生成中的东西已经显示在画面上，做好会自己显影，不用另外展示。';
 export const ASSET_CONTEXT_EMPTY = '屏幕素材现状：画面上还没有生成的图片或视频。';
 // What the illustrator is told (appended to its instructions by the service).
 export const ASSET_NOTES = `
@@ -38,6 +40,15 @@ export const ASSET_SCRIPT_NOTES = `
 # 现画的图和已有的作品
 - 输入里 make 为 true 时，可以请 V 现画一张图：那一句的画面提示写「现画：要画的画面」，写清主体、动作、构图和风格。只用在拍不到、搜不到的画面上：想象的场景、比喻、故事里的一幕、两个不同作品的角色同框、给小朋友看的示意画；真实存在的东西仍然用照片。现画一张要十秒左右，所以放在第三句以后；一次讲解最多一张，可画可不画时不画。讲稿里只说这幅画要表达的意思，不描述图里的细节（你看不到它最后画成什么样）。
 - 输入里的 assets 是这通电话里已经生成的作品（编号、名字、画面里有什么）。用户要你讲这张作品、或者讲解正好用得上它时，画面提示写「作品 a1」把它放上来，并按 see 里写的讲它画了什么；不要为它另外找照片。`;
+
+/** What a photograph on the board is called there: its caption, or the words of the item it stands beside. */
+export function pictureName(pages, query) {
+  for (const page of pages ?? []) for (const block of page?.blocks ?? []) {
+    if (block.t === 'photo' && block.query === query) return block.caption ?? query;
+    for (const item of [...(block.items ?? []), ...(block.nodes ?? []), ...(block.cols ?? []), ...(block.sides ?? [])]) if (item?.img === query) return String(item.h ?? item.label ?? query).replaceAll('*', '');
+  }
+  return query;
+}
 
 const parseOutput = result => {
   if (result == null || result?.cancelled === true || typeof result?.error === 'string') return '';
@@ -135,7 +146,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     if (!value) {
       for (const [key, old] of owners) if (now() - old.touched >= OWNER_TTL_MS) owners.delete(key);
       while (owners.size >= maxOwners) owners.delete(owners.keys().next().value);
-      value = {assets: [], count: 0, picked: '', watchers: new Set(), turns: new Map(), maker: null, made: 0, making: Promise.resolve(), touched: now(), stamp: 0};
+      value = {assets: [], photos: [], shots: 0, count: 0, picked: '', watchers: new Set(), turns: new Map(), maker: null, made: 0, making: Promise.resolve(), touched: now(), stamp: 0};
       owners.set(id, value);
     }
     value.touched = now();
@@ -147,9 +158,9 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
   };
   const find = (value, ref) => {
     const text = String(ref ?? '').trim().replace(/^@/u, '');
-    if (ASSET_ID.test(text)) return value.assets.find(asset => asset.id === text) ?? null;
+    if (SHELF_ID.test(text)) return value.assets.find(asset => asset.id === text) ?? value.photos.find(photo => photo.id === text) ?? null;
     const url = https(text);
-    return url ? value.assets.find(asset => asset.url === url) ?? null : null;
+    return url ? value.assets.find(asset => asset.url === url) ?? value.photos.find(photo => photo.url === url) ?? null : null;
   };
   const add = (value, asset) => {
     value.assets.push(asset);
@@ -190,22 +201,53 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     const what = asset.see || (asset.prompt ? `按这段要求生成：${bounded(asset.prompt, 90)}` : '');
     return `${asset.id} ${kind}${asset.name ? `「${asset.name}」` : ''}${origin}${asset.source === 'backend' ? '（后台做的）' : ''}${what ? `：${what}` : ''}`;
   };
+  // The photographs found for the board lately, as V is told of them (by name, in the order they went up).
+  const photosLine = value => value.photos.length ? `搜到的照片（可当参考图）：${value.photos.slice(-8).map(photo => `${photo.id}「${photo.name}」`).join('、')}。` : '';
   const api = {
     available: true,
     canLook: Boolean(see),
+    /**
+     * Lends a found photograph out under a private address for a while (set by the service: it
+     * holds the pictures). `share(query)` resolves the address, or '' where none can be given.
+     */
+    share: null,
+    /** The page has been given a photograph the board asked for: it is something V can now work from. */
+    found(owner, {query, name = ''} = {}) {
+      const value = row(owner), key = bounded(query, 60);
+      if (!key || value.photos.some(photo => photo.query === key)) return;
+      value.photos.push({id: `p${++value.shots}`, kind: 'image', state: 'ready', query: key, name: bounded(name || key, 24), url: '', source: 'search'});
+      while (value.photos.length > MAX_PHOTOS) value.photos.shift();
+      changed(owner, value);
+    },
+    /**
+     * Before a creation command is read: the photographs it names (or, with no command, the latest
+     * few, for V's backend) are given addresses a generator can fetch them from.
+     */
+    async lend(owner, command = null) {
+      const value = owners.get(owner);
+      if (!value || !api.share) return;
+      const named = command === null ? value.photos.slice(-6) : [...String(command).matchAll(/--(?:image|ref)\s+['"]?@?(p[1-9]\d{0,2})/gu)].map(match => value.photos.find(photo => photo.id === match[1])).filter(Boolean);
+      await Promise.all(named.filter(photo => !photo.url || photo.until < now()).map(async photo => {
+        let ok = false;
+        try { const lent = await api.share(photo.query); if (lent?.url) { photo.url = lent.url; photo.until = lent.until ?? Infinity; ok = true; } } catch { /* It stays without an address. */ }
+        audit({type: 'board.asset-lend', voiceSessionId: owner, photo: photo.id, ok});
+      }));
+    },
     /** A creation command is about to run. Ids in it become links; a new thing gets its place on the board. */
     begin(owner, {command, turn = null} = {}) {
       const value = row(owner), text = String(command ?? '');
       // (--image a1 / --ref 'a1' / --image @a1: the id of something on the shelf.)
       let missing = '';
-      const resolved = text.replace(/(--(?:image|ref)\s+)(['"]?)@?(a[1-9]\d{0,2})\2(?=\s|$)/gu, (whole, lead, quote, id) => {
-        const asset = value.assets.find(item => item.id === id);
+      const resolved = text.replace(/(--(?:image|ref)\s+)(['"]?)@?([ap][1-9]\d{0,2})\2(?=\s|$)/gu, (whole, lead, quote, id) => {
+        const asset = value.assets.find(item => item.id === id) ?? value.photos.find(item => item.id === id);
         // A video is not a reference picture; the picture it was made from is.
         const source = asset?.kind === 'video' && asset.from ? value.assets.find(item => item.id === asset.from) : asset;
         if (!source?.url || source.kind !== 'image') { missing ||= id; return whole; }
         return `${lead}'${source.url}'`;
       });
-      if (missing) return {command: text, error: `屏幕素材里没有可用的图片 ${missing}；本次没有提交。请按「屏幕素材现状」里的编号重写命令。`};
+      if (missing) return {command: text, error: missing.startsWith('p') && value.photos.some(item => item.id === missing)
+        ? `搜到的照片 ${missing} 这次没能取到，不能当参考图；本次没有提交。可以换一张照片，或者告诉用户后只按文字来画。`
+        : `屏幕素材里没有可用的图片 ${missing}；本次没有提交。请按「屏幕素材现状」里的编号重写命令。`};
       const creation = readCreation(resolved);
       if (!creation) return {command: resolved};
       // One request of the caller's makes one thing of a kind (the executor answers a repeat with
@@ -280,14 +322,17 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     /** The few lines the voice model keeps about the caller's screen. */
     context(owner) {
       const value = owners.get(owner), ready = (value?.assets ?? []).filter(asset => asset.state === 'ready').slice(-8);
-      if (!ready.length) return ASSET_CONTEXT_EMPTY;
+      if (!ready.length) return value?.photos.length ? `屏幕素材现状：还没有生成的图片或视频。${photosLine(value)}` : ASSET_CONTEXT_EMPTY;
       const picked = ready.find(asset => asset.id === value.picked);
-      return `屏幕素材现状：${ready.map(describe).join('；')}。${picked ? `用户正点着 ${picked.id}。` : `最新的是 ${ready.at(-1).id}。`}`;
+      return `屏幕素材现状：${ready.map(describe).join('；')}。${picked ? `用户正点着 ${picked.id}。` : `最新的是 ${ready.at(-1).id}。`}${photosLine(value)}`;
     },
     /** For V's backend: the same things with their links (it has no screen to look at). */
     backendContext(owner) {
       const ready = (owners.get(owner)?.assets ?? []).filter(asset => asset.state === 'ready').slice(-6);
-      return ready.length ? `\n通话屏幕上的素材（用户用编号或“这张”指它们）：${ready.map(asset => `${describe(asset)} 链接 ${asset.url}`).join('；')}。${owners.get(owner).picked ? `用户正点着 ${owners.get(owner).picked}。` : ''}` : '';
+      const lent = (owners.get(owner)?.photos ?? []).filter(photo => photo.url && photo.until >= now()).slice(-6);
+      const made = ready.length ? `通话屏幕上的素材（用户用编号或“这张”指它们）：${ready.map(asset => `${describe(asset)} 链接 ${asset.url}`).join('；')}。${owners.get(owner).picked ? `用户正点着 ${owners.get(owner).picked}。` : ''}` : '';
+      const found = lent.length ? `屏幕上搜到的照片（用户说“那张海报”“第二张”可能指它们，可当参考图，链接半小时内有效）：${lent.map(photo => `${photo.id}「${photo.name}」 链接 ${photo.url}`).join('；')}。` : '';
+      return made || found ? `\n${made}${found}` : '';
     },
     /** What the illustrator is told is there to use. */
     digest(owner) {
@@ -301,7 +346,9 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     page(owner) {
       const value = owners.get(owner);
       if (!value) return {assets: [], picked: '', busy: false, stamp: 0};
-      return {assets: value.assets.map(card), picked: value.picked, busy: value.assets.some(asset => asset.state === 'making'), stamp: value.stamp};
+      // (With the found photographs things were made from, so a frame can show what it is being made of.)
+      const sources = value.photos.filter(photo => photo.url && value.assets.some(asset => asset.from === photo.id)).map(photo => ({id: photo.id, kind: 'image', state: 'ready', url: photo.url, name: photo.name, source: 'search', at: 0}));
+      return {assets: [...sources, ...value.assets.map(card)], picked: value.picked, busy: value.assets.some(asset => asset.state === 'making'), stamp: value.stamp};
     },
     /** The caller tapped a thing: "this one" is that one until another is tapped. */
     pick(owner, id) {
