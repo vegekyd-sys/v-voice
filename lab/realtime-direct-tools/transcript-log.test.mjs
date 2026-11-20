@@ -194,3 +194,14 @@ test('a dropped or skipped conversation record is logged by name only',async t=>
   await f.log.close();const rows=await f.rows();assert(!JSON.stringify(rows).includes('SECRET'));
   assert.deepEqual(rows.slice(1).map(row=>[row.type,row.stage??row.reason]),[['call.provider-status','context-dropped'],['call.record-skipped','refused-earlier']]);
 });
+
+test('a lesson stopped by a sound is logged by counts and reason, never its text',async t=>{
+  const f=await fixture(t);f.created();
+  f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'narration-interrupted',fromChar:12,totalChars:60,restChars:48,heardChars:20,playedMs:6750,resumes:0,text:'SECRET'});
+  f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'narration-resumed',fromChar:12,totalChars:60,restChars:48,resumes:1});
+  f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'narration-not-resumed',reason:'user-spoke',fromChar:12,resumes:1});
+  f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'narration-not-resumed',reason:'SECRET'});
+  await f.log.close();const rows=(await f.rows()).slice(1);assert(!JSON.stringify(rows).includes('SECRET'));
+  assert.deepEqual(rows.map(row=>[row.stage,row.reason,row.fromChar,row.resumes]),[['narration-interrupted',undefined,12,0],['narration-resumed',undefined,12,1],['narration-not-resumed','user-spoke',12,1],['narration-not-resumed',undefined,undefined,undefined]]);
+  assert.equal(rows[0].playedMs,6750);
+});

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
+import { hasWords } from "./seeduplex-narration-resume.mjs";
 import {
   Pcm24To16Resampler,
   nativeListeningAside,
@@ -894,4 +895,168 @@ test("call e4ce15bb: late timers do not leave the caller's audio further and fur
   }
   assert.deepEqual(errors, []);
   assert.ok(fed - frames() < 25, `${fed - frames()} frames (20 ms each) are still waiting`);
+});
+
+// A lesson's script stopped by a sound that was nobody speaking goes on (call ab35cca0).
+const LESSON='第一句讲勾股定理是什么。第二句画一个直角三角形。第三句把三条边标上a、b、c。第四句写出a方加b方等于c方。';
+async function lessonCall({waitMs=30,maxWaitMs=400,maxResumes}={}){
+  const socket=new FakeSocket(),stages=[],clears=[],texts=[];let clock=1_000_000;
+  const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},onAudio(){},onClearAudio:r=>clears.push(r),onTranscript:(...a)=>texts.push(a),onResponseDone(){},onDiagnostic:e=>stages.push(e),onError:e=>assert.fail(e.message),onClose(){}},
+    {createWebSocket:async()=>socket,narrationResume:{waitMs,maxWaitMs,...(maxResumes?{maxResumes}:{}),now:()=>clock}});
+  const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+  bridge.adoptBackgroundTool('lesson-1','勾股定理');
+  const commits=()=>socket.sent.filter(e=>e.type==='speech_text_buffer.commit').map(e=>e.text);
+  // Seeduplex sends all of a script's audio far faster than it plays: here 20 s of it at once.
+  const read=(id,seconds)=>{socket.message({type:'response.output_audio.started',response_id:id,tts_type:'chat_tts_text'});
+    for(let i=0;i<seconds;i++)socket.message({type:'response.output_audio.delta',response_id:id,delta:floatAudio(new Array(24_000).fill(.1))});
+    socket.message({type:'response.output_audio.done',response_id:id});socket.message({type:'response.done',response_id:id});};
+  return {socket,bridge,stages,clears,texts,commits,read,advance:ms=>{clock+=ms;},wait:ms=>new Promise(r=>setTimeout(r,ms))};
+}
+
+test('a lesson stopped by noise goes on from the sentence it was cut in, once the noise turns out to be nobody speaking',async()=>{
+  const call=await lessonCall();
+  call.bridge.completeBackgroundTool('lesson-1',{result:LESSON},{spokenText:LESSON,displayedFullResult:true,resumable:true});
+  assert.deepEqual(call.commits(),[LESSON]);
+  call.read('lesson',20);
+  assert.deepEqual(call.texts.filter(t=>t[3]==='V-backend-summary').map(t=>t[1]),[LESSON],'the whole script is shown once, when its audio starts');
+  // 7 s into 20 s of audio: inside the second sentence (characters 12-24 of 60).
+  call.advance(7_000);
+  call.socket.message({type:'conversation.item.input_audio_transcription.started'});
+  assert(call.clears.includes('barge-in'),'the sound still stops V at once (the barge-in feel is unchanged)');
+  // The sound was nobody speaking: an empty transcription, then nothing.
+  call.socket.message({type:'conversation.item.input_audio_transcription.completed',transcript:''});
+  await call.wait(80);
+  const rest=LESSON.slice(LESSON.indexOf('第二句'));
+  assert.deepEqual(call.commits(),[LESSON,rest]);
+  assert.deepEqual(call.stages.filter(s=>s.stage.startsWith('narration')).map(s=>[s.stage,s.fromChar,s.resumes]),[['narration-interrupted',12,0],['narration-resumed',12,1]]);
+  assert.equal(call.texts.filter(t=>t[3]==='V-backend-summary').length,1,'going on adds no second copy of the script to the conversation');
+  // The rest is heard to the end: a later sound after it finished is nothing to go back to.
+  call.read('lesson-rest',15);call.advance(20_000);
+  call.socket.message({type:'conversation.item.input_audio_transcription.started'});
+  await call.wait(80);
+  assert.equal(call.commits().length,2);
+  call.bridge.close();
+});
+
+test('a lesson stopped by the client voice detector with no transcription at all also goes on',async()=>{
+  const call=await lessonCall();
+  call.bridge.completeBackgroundTool('lesson-1',{result:LESSON},{spokenText:LESSON,displayedFullResult:true,resumable:true});
+  call.read('lesson',20);call.advance(2_500);
+  call.bridge.handleBargeIn();
+  await call.wait(80);
+  assert.deepEqual(call.commits(),[LESSON,LESSON],'cut in the first sentence: it starts again from the beginning');
+  call.bridge.close();
+});
+
+test('a caller who really speaks over a lesson is answered, and the lesson does not go on',async()=>{
+  const call=await lessonCall();
+  call.bridge.completeBackgroundTool('lesson-1',{result:LESSON},{spokenText:LESSON,displayedFullResult:true,resumable:true});
+  call.read('lesson',20);call.advance(7_000);
+  call.socket.message({type:'conversation.item.input_audio_transcription.started'});
+  call.socket.message({type:'conversation.item.input_audio_transcription.completed',transcript:'等一下，c 是哪条边？'});
+  await call.wait(80);
+  assert.deepEqual(call.commits(),[LESSON]);
+  assert.deepEqual(call.stages.filter(s=>s.stage.startsWith('narration')).map(s=>[s.stage,s.reason]),[['narration-interrupted',undefined],['narration-not-resumed','user-spoke']]);
+  call.bridge.close();
+});
+
+test('someone still talking when the wait is up is not talked over until they finish',async()=>{
+  const call=await lessonCall({waitMs:20,maxWaitMs:2_000});
+  call.bridge.completeBackgroundTool('lesson-1',{result:LESSON},{spokenText:LESSON,displayedFullResult:true,resumable:true});
+  call.read('lesson',20);call.advance(7_000);
+  call.socket.message({type:'conversation.item.input_audio_transcription.started'});
+  await call.wait(60);
+  assert.deepEqual(call.commits(),[LESSON],'still transcribing: wait');
+  call.socket.message({type:'conversation.item.input_audio_transcription.completed',transcript:'你看这个题'});
+  await call.wait(40);
+  assert.deepEqual(call.commits(),[LESSON]);
+  call.bridge.close();
+});
+
+test('a lesson goes on at most twice; a confirmed barge-in and V answering end it',async()=>{
+  const call=await lessonCall();
+  call.bridge.completeBackgroundTool('lesson-1',{result:LESSON},{spokenText:LESSON,displayedFullResult:true,resumable:true});
+  for(const id of ['a','b','c']){
+    call.read(id,10);call.advance(5_000);
+    call.socket.message({type:'conversation.item.input_audio_transcription.started'});
+    call.socket.message({type:'conversation.item.input_audio_transcription.failed'});
+    await call.wait(80);
+  }
+  assert.equal(call.commits().length,3,'the script and two more goes');
+  assert.deepEqual(call.stages.filter(s=>s.stage==='narration-not-resumed').map(s=>s.reason),['resume-limit']);
+
+  const confirmed=await lessonCall();
+  confirmed.bridge.completeBackgroundTool('lesson-1',{result:LESSON},{spokenText:LESSON,displayedFullResult:true,resumable:true});
+  confirmed.read('lesson',20);confirmed.advance(7_000);confirmed.bridge.handleBargeIn({confirmed:true});
+  await confirmed.wait(80);
+  assert.equal(confirmed.commits().length,1);
+  assert.equal(confirmed.stages.find(s=>s.stage==='narration-not-resumed').reason,'confirmed-speech');
+  confirmed.bridge.close();
+
+  const answered=await lessonCall();
+  answered.bridge.completeBackgroundTool('lesson-1',{result:LESSON},{spokenText:LESSON,displayedFullResult:true,resumable:true});
+  answered.read('lesson',20);answered.advance(7_000);
+  answered.socket.message({type:'conversation.item.input_audio_transcription.started'});
+  answered.socket.message({type:'response.output_audio.started',response_id:'reply',tts_type:'default'});
+  await answered.wait(80);
+  assert.equal(answered.commits().length,1);
+  assert.equal(answered.stages.find(s=>s.stage==='narration-not-resumed').reason,'model-replied');
+  answered.bridge.close();
+  call.bridge.close();
+});
+
+test('other host speech (a task result, progress) is stopped by a sound as before and never goes on',async()=>{
+  const call=await lessonCall();
+  call.bridge.completeBackgroundTool('lesson-1',{result:'后台查完了。'+LESSON},{spokenText:'后台查完了。'+LESSON,displayedFullResult:true});
+  call.read('result',20);call.advance(7_000);
+  call.socket.message({type:'conversation.item.input_audio_transcription.started'});
+  await call.wait(80);
+  assert.equal(call.commits().length,1);
+  assert.equal(call.stages.filter(s=>s.stage.startsWith('narration')).length,0);
+  call.bridge.close();
+});
+
+test('a phone call (native full duplex): a sound while the script is still being generated stops it, and it goes on',async()=>{
+  const socket=new FakeSocket(),stages=[],clears=[];let clock=5_000_000;
+  const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},nativeDuplex:true,onAudio(){},onInputSpeech(){},onClearAudio:r=>clears.push(r),onTranscript(){},onResponseDone(){},onDiagnostic:e=>stages.push(e),onError:e=>assert.fail(e.message),onClose(){}},
+    {createWebSocket:async()=>socket,narrationResume:{waitMs:30,maxWaitMs:400,now:()=>clock}});
+  const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+  bridge.adoptBackgroundTool('lesson-1','勾股定理');
+  bridge.completeBackgroundTool('lesson-1',{result:LESSON},{spokenText:LESSON,displayedFullResult:true,resumable:true});
+  socket.message({type:'response.output_audio.started',response_id:'lesson',tts_type:'chat_tts_text'});
+  for(let i=0;i<4;i++)socket.message({type:'response.output_audio.delta',response_id:'lesson',delta:floatAudio(new Array(24_000).fill(.1))});
+  // 1.5 s in, still generating: someone in the room makes a sound.
+  clock+=1_500;
+  socket.message({type:'conversation.item.input_audio_transcription.started'});
+  assert.equal(socket.sent.filter(e=>e.type==='response.cancel').length,1,'the script is still stopped at once');
+  // Its cancel receipt is retired, so the page keeps playing the 4 s it was already sent.
+  socket.message({type:'response.canceled',response_id:'lesson'});
+  assert(!clears.includes('barge-in'));
+  socket.message({type:'conversation.item.input_audio_transcription.completed',transcript:''});
+  // By the time it goes on, those 4 s have played (to character 22 of 60, in the second sentence).
+  clock+=3_000;
+  await new Promise(r=>setTimeout(r,80));
+  assert.deepEqual(socket.sent.filter(e=>e.type==='speech_text_buffer.commit').map(e=>e.text),[LESSON,LESSON.slice(LESSON.indexOf('第二句'))]);
+  assert.deepEqual(stages.filter(s=>s.stage.startsWith('narration')).map(s=>s.stage),['narration-interrupted','narration-resumed']);
+  // The script going on plays: the cancelled one's id is retired, the new one is not.
+  socket.message({type:'response.output_audio.started',response_id:'lesson-2',tts_type:'chat_tts_text'});
+  const before=bridge.deliveredAudioResponseId;socket.message({type:'response.output_audio.delta',response_id:'lesson-2',delta:floatAudio([.1])});
+  assert.equal(bridge.deliveredAudioResponseId,'lesson-2');assert.notEqual(before,'lesson-2');
+  bridge.close();
+});
+
+test('a hum, a laugh or a cough transcribed is not words; anything else is',()=>{
+  for(const sound of ['','  ','嗯','嗯。','啊？','哈哈哈','咳咳','呃……'])assert.equal(hasWords(sound),false,sound);
+  for(const words of ['等一下','嗯，c 是哪条边？','喂','好','wait'])assert.equal(hasWords(words),true,words);
+});
+
+test('a lesson stopped by a laugh transcribed as only "哈哈" goes on',async()=>{
+  const call=await lessonCall();
+  call.bridge.completeBackgroundTool('lesson-1',{result:LESSON},{spokenText:LESSON,displayedFullResult:true,resumable:true});
+  call.read('lesson',20);call.advance(7_000);
+  call.socket.message({type:'conversation.item.input_audio_transcription.started'});
+  call.socket.message({type:'conversation.item.input_audio_transcription.completed',transcript:'哈哈哈。'});
+  await call.wait(80);
+  assert.equal(call.commits().length,2);
+  call.bridge.close();
 });

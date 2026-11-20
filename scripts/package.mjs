@@ -16,6 +16,7 @@ names.push('lib/voice-operation-policy.mjs','lib/release-control.mjs','plugins/v
  ...['production.mjs','diagnostics.mjs','stream-service.mjs','service.mjs','online-speaker.mjs','embedding-worker.py','requirements-stream.txt','decision.mjs'].map(n=>'lab/speaker-native/'+n),
  ...['volc-asr.mjs','utterances.mjs'].map(n=>'lab/volc-speaker/'+n),
  'lab/voice-decision-router.mjs');
+names.push('lab/seeduplex-narration-resume.mjs');
 names.push('lab/realtime-direct-tools/device-endpoint.mjs','lab/realtime-direct-tools/device-playout.mjs','lab/realtime-direct-tools/device-volume.mjs','lab/realtime-direct-tools/near-field-gate.mjs');
 // Generated progress clips ship once scripts/generate-notice-clips.mjs has made them.
 if(existsSync(join(root,'lab/realtime-direct-tools/assets/tool-progress-provenance.json')))names.push(...['tool-progress-provenance.json','tool-progress-1.pcm','tool-progress-2.pcm','tool-progress-3.pcm'].map(n=>'lab/realtime-direct-tools/assets/'+n));
