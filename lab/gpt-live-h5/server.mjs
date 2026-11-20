@@ -38,7 +38,8 @@ import {idleHangupFromEnv} from '../realtime-direct-tools/idle-hangup.mjs';
 import {boardCompletionFromEnv,boardDirectorFromEnv,boundedBoardRequest} from './board-director.mjs';
 import {createPhotoFinder} from './board-photo.mjs';
 import {STREAM_INSTRUCTIONS,createLessonWriter,refineStreamOp} from './board-lesson.mjs';
-import {CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
+import {CANVAS_CUE_INSTRUCTIONS,CANVAS_SCRIPT_INSTRUCTIONS,CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
+import {createBoardEye} from './board-eye.mjs';
 import {scenePictures} from './board-scene.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -1212,8 +1213,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     let lesson=null,photos=null;
     // V's own answers are drawn by the streaming illustrator, as they are spoken (VOICE_BOARD_STREAM=0: one page once the answer is complete).
     // In parallel mode there is no lesson to wait for, so nothing is deferred.
-    const board=boardDirectorFromEnv(process.env,{audit:voiceAudit,prefetch:query=>photos?.find(query),defer:process.env.VOICE_BOARD_STREAM==='0'&&process.env.VOICE_BOARD_LESSON_SOURCE!=='parallel',...(process.env.VOICE_BOARD_UNIFIED==='0'?{}:{illustrate:args=>lesson?.illustrate(args)??null,
-      ...(process.env.VOICE_BOARD_STREAM==='0'?{}:{stream:process.env.VOICE_BOARD_FOLLOW!=='word'?{instructions:CUE_INSTRUCTIONS,refine:refineCueOp,turns:cueTurns,cue:true}:{instructions:STREAM_INSTRUCTIONS,refine:refineStreamOp}})})});
+    // VOICE_BOARD_CANVAS=1 (cue pages only): what can be seen goes up large on a stage, and the places V
+    // talks about are ringed on its photographs by a model that has seen them (docs/research/board-canvas).
+    const canvas=process.env.VOICE_BOARD_CANVAS==='1'&&process.env.VOICE_BOARD_FOLLOW!=='word';
+    const board=boardDirectorFromEnv(process.env,{audit:voiceAudit,prefetch:query=>photos?.find(query),...(canvas?{eye:complete=>createBoardEye({complete,find:query=>photos?.find(query)})}:{}),defer:process.env.VOICE_BOARD_STREAM==='0'&&process.env.VOICE_BOARD_LESSON_SOURCE!=='parallel',...(process.env.VOICE_BOARD_UNIFIED==='0'?{}:{illustrate:args=>lesson?.illustrate(args)??null,
+      ...(process.env.VOICE_BOARD_STREAM==='0'?{}:{stream:process.env.VOICE_BOARD_FOLLOW!=='word'?{instructions:canvas?CANVAS_CUE_INSTRUCTIONS:CUE_INSTRUCTIONS,refine:refineCueOp,turns:cueTurns,cue:true}:{instructions:STREAM_INSTRUCTIONS,refine:refineStreamOp}})})});
     // Lesson mode (experiment): its own flag. Through OpenRouter the writer is
     // a stronger model thinking briefly: on real calls it was the only one
     // tried that kept its facts straight (which Pokemon beats which), in about
@@ -1222,7 +1226,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const routed=!(process.env.VOICE_BOARD_API_KEY??process.env.DEEPSEEK_API_KEY)&&Boolean(process.env.OPENROUTER_API_KEY);
     const lessonModel=process.env.VOICE_BOARD_LESSON_MODEL??(routed?'anthropic/claude-sonnet-5.5':''),lessonReasoning=process.env.VOICE_BOARD_LESSON_REASONING??(process.env.VOICE_BOARD_LESSON_MODEL?'':'low');
     const directorWriter=boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'1600'});
-    lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,...(process.env.VOICE_BOARD_FOLLOW!=='word'?{scriptInstructions:CUE_SCRIPT_INSTRUCTIONS,early:Number(process.env.VOICE_BOARD_EARLY??2)||0}:{}),
+    lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,...(process.env.VOICE_BOARD_FOLLOW!=='word'?{scriptInstructions:canvas?CANVAS_SCRIPT_INSTRUCTIONS:CUE_SCRIPT_INSTRUCTIONS,early:Number(process.env.VOICE_BOARD_EARLY??2)||0}:{}),
       // (Naming the director's own model as the lesson model means one writer, not two racing.)
       ...(lessonModel&&lessonModel!==(process.env.VOICE_BOARD_MODEL??'deepseek/deepseek-v4.1-flash')?{complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MODEL:lessonModel,VOICE_BOARD_REASONING:lessonReasoning,VOICE_BOARD_MAX_TOKENS:lessonReasoning?'4000':'1600'}),fallback:directorWriter}:{complete:directorWriter})}):null;
     // How a lesson is made (to compare): "service" - written here, with what is looked up first;

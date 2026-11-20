@@ -6,7 +6,11 @@
 export const BOARD_LIMITS = Object.freeze({blocks: 6, items: 10, columns: 4, rows: 8, nodes: 10, edges: 16});
 export const BOARD_BLOCK_TYPES = Object.freeze(['note', 'sticky', 'photo', 'list', 'steps', 'compare', 'stats', 'bars', 'table', 'flow',
   // The diagram kit: shapes an explanation is built from (see BLOCKS below).
-  'tiles', 'formula', 'timeline', 'versus', 'overlap', 'stack', 'scale', 'draw']);
+  'tiles', 'formula', 'timeline', 'versus', 'overlap', 'stack', 'scale', 'draw',
+  // The canvas (VOICE_BOARD_CANVAS): real photographs, or a pitch, that V's pointer goes round as V speaks.
+  'stage']);
+// How a stage's photographs are laid out: one, two or three in a row, three in a triangle, or a pitch with names on it.
+export const STAGE_BASES = Object.freeze(['photo', 'row', 'triangle', 'pitch']);
 // What a drawing is made of, and how many numbers each takes (`poly`: three to eight points).
 export const BOARD_SHAPES = Object.freeze({line: 4, arrow: 4, rect: 4, circle: 3, wave: 4, text: 2, poly: 0});
 // How much of the page's width a block asks for; neighbours that ask stand side by side.
@@ -223,6 +227,44 @@ const BLOCKS = {
     }).filter(Boolean), 'k');
     return items.length >= 2 ? optional(optional(optional({items}, 'h', text(raw.h, 40)), 'unit', text(raw.unit, 10)), 'dir', raw.dir === 'up' ? 'up' : '') : null;
   },
+  // The canvas: what can be seen, shown large, with V's pointer going round it.
+  // Items are of three kinds (`k`): `pic`, a photograph found by `img` like any other;
+  // `chip`, a name placed at `at` ([x, y], 0-1000, on the pitch or the sheet);
+  // `pin`, a place on a photograph (`on` its id, `box` [x1, y1, x2, y2] 0-1000 of that
+  // photograph) that the pointer goes to and rings while V talks about it - written
+  // by a model that has seen the photograph (board-eye.mjs), not guessed.
+  // `edges` are arrows between photographs or names, as on a flow.
+  stage(raw) {
+    const base = STAGE_BASES.includes(raw.base) ? raw.base : 'photo';
+    const point = (value, size) => Array.isArray(value) && value.length === size && value.every(number => Number.isFinite(Number(number)))
+      ? value.map(number => Math.round(Math.max(0, Math.min(1000, Number(number))))) : null;
+    const source = list(raw.items, 24).filter(item => item && typeof item === 'object');
+    const pics = source.filter(item => item.k === 'pic').slice(0, 3).map((item, index) => {
+      const img = text(item.img, 40);
+      return img ? quoted(optional({id: ident(item.id, `p${index + 1}`), k: 'pic', img}, 'h', text(item.h ?? item.caption, 20)), item) : null;
+    }).filter(Boolean);
+    const chips = source.filter(item => item.k === 'chip').slice(0, 14).map((item, index) => {
+      const h = text(item.h ?? item.text, 16), at = point(item.at, 2);
+      return h && at ? quoted(optional({id: ident(item.id, `c${index + 1}`), k: 'chip', h, at}, 'd', text(item.d ?? item.sub, 20)), item) : null;
+    }).filter(Boolean);
+    const known = new Set(pics.map(pic => pic.id));
+    const pins = source.filter(item => item.k === 'pin').slice(0, 10).map((item, index) => {
+      const box = point(item.box, 4);
+      if (!known.has(item.on) || !box) return null;
+      const [x1, y1, x2, y2] = box, sorted = [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)];
+      return quoted(optional({id: ident(item.id, `n${index + 1}`), k: 'pin', on: item.on, box: sorted, kind: item.kind === 'point' ? 'point' : 'ring'}, 'h', text(item.h ?? item.label, 12)), item);
+    }).filter(Boolean);
+    const items = unique([...pics, ...chips, ...pins], 's');
+    if (!pics.length && chips.length < 2) return null;
+    const ends = new Set(items.filter(item => item.k !== 'pin').map(item => item.id));
+    const edges = list(raw.edges, 6).map(edge => {
+      const [from, to, label, said] = Array.isArray(edge) ? edge : [edge?.from, edge?.to, edge?.label, edge?.q];
+      if (!ends.has(from) || !ends.has(to) || from === to) return null;
+      const q = text(said, 40);
+      return q ? [from, to, text(label, 12), q] : [from, to, text(label, 12)];
+    }).filter(Boolean);
+    return optional({base: base === 'pitch' || pics.length ? base : 'pitch', items, edges}, 'h', text(raw.h, 40));
+  },
 };
 
 /**
@@ -330,6 +372,8 @@ export const quoteHead = quote => quote.slice(0, Math.min(quote.length, /^[\x00-
 function anchorOf(item, all) {
   const quote = item.q ? loose(item.q) : '';
   if (quote && all.includes(quote)) return quote;
+  // (A stage's photograph without words of its own is up from the start: it is what is talked about.)
+  if (item.k === 'pic') return '';
   const name = loose(String(item.h ?? item.label ?? ''));
   for (let length = name.length; length >= 3; length--) if (all.includes(name.slice(0, length))) return name.slice(0, length);
   const figure = item.value === undefined ? '' : loose(String(item.value));
@@ -374,14 +418,14 @@ export function spokenProgress(scene, spoken, index) {
   });
   // An arrow waits for both of its ends, and for its own words when it has some
   // ("grass beats water" is often said after both have been introduced).
-  for (const block of scene.blocks) if (block.t === 'flow') for (const [from, to, , said] of block.edges) {
+  for (const block of scene.blocks) if (block.t === 'flow' || block.t === 'stage') for (const [from, to, , said] of block.edges) {
     const quote = said ? loose(said) : '';
     if (ahead.includes(`${block.id}/${from}`) || ahead.includes(`${block.id}/${to}`)
       || quote && all.includes(quote) && heard.indexOf(quoteHead(quote)) < 0) ahead.push(edgeId(block, from, to));
   }
   return {focus, ahead};
 }
-const quotesOf = scene => scene.blocks.flatMap(block => [block.q, ...focusTargets(block).map(item => item.q), ...(block.t === 'flow' ? block.edges.map(edge => edge[3]) : [])]).filter(Boolean);
+const quotesOf = scene => scene.blocks.flatMap(block => [block.q, ...focusTargets(block).map(item => item.q), ...(block.t === 'flow' || block.t === 'stage' ? block.edges.map(edge => edge[3]) : [])]).filter(Boolean);
 /** Whether `text` is (part of) the script this scene's pieces hang on. */
 export const speaksOf = (scene, text) => { const all = loose(String(text ?? '')); return quotesOf(scene).some(quote => all.includes(loose(quote))); };
 /** A lesson before its first word: every piece that hangs on the script is still to come. */
@@ -564,4 +608,10 @@ export function flowLayout(nodes, edges, {narrow = false} = {}) {
     position[id] = {x: (x + .5) / row.length * 100, y: rows.length === 1 ? 50 : y / (rows.length - 1) * 100, layer: y};
   }));
   return {shape: 'layers', layers: rows, position};
+}
+
+/** A stage with these pins in place of the ones it had (its photographs and names kept). */
+export function pinned(stage, pins) {
+  const op = normalizeOp({op: 'put', block: {...stage, items: [...stage.items.filter(item => item.k !== 'pin'), ...pins]}});
+  return op?.block ?? null;
 }

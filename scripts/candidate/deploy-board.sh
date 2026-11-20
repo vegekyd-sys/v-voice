@@ -9,8 +9,12 @@
 #   scripts/candidate/deploy-board.sh --stop    # stop the Candidate
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-root=/var/lib/v-voice-candidates/board-20261112
-if [ "${1:-}" = "--stop" ]; then ssh v sudo -n python3 - --stop < scripts/candidate/start-board.py; exit 0; fi
+# VOICE_BOARD_CANDIDATE=<name> VOICE_BOARD_CANDIDATE_PORT=<port>: a second board Candidate (its own directory, unit, tunnel and link).
+# VOICE_BOARD_CANVAS=1: the canvas (docs/research/board-canvas) on in it.
+name="${VOICE_BOARD_CANDIDATE:-board-20261112}"
+root=/var/lib/v-voice-candidates/$name
+pass="VOICE_BOARD_CANDIDATE=$name ${VOICE_BOARD_CANDIDATE_PORT:+VOICE_BOARD_CANDIDATE_PORT=$VOICE_BOARD_CANDIDATE_PORT} ${VOICE_BOARD_CANVAS:+VOICE_BOARD_CANVAS=$VOICE_BOARD_CANVAS}"
+if [ "${1:-}" = "--stop" ]; then ssh v sudo -n $pass python3 - --stop < scripts/candidate/start-board.py; exit 0; fi
 commit="$(git rev-parse HEAD)"
 [ -d "artifacts/$commit" ] || npm run package
 node scripts/verify-package.mjs "artifacts/$commit"
@@ -40,13 +44,13 @@ PY
   upload
   # The unit is transient: after a crash it no longer exists, so it is started
   # again from the Candidate's own launcher and private environment file.
-  ssh v "sudo -n sh -c 'chown -R openclaw:openclaw $root/voice; systemctl stop voice-board-20261112 2>/dev/null; systemctl reset-failed voice-board-20261112 2>/dev/null; systemd-run --quiet --unit=voice-board-20261112 --property=User=openclaw --property=WorkingDirectory=$root/voice --property=UMask=0077 --property=KillMode=control-group --property=MemoryMax=1G --property=CPUQuota=100% --property=Nice=10 --property=Restart=on-failure --property=RestartSec=2 /opt/node-v22.23.1/bin/node $root/launch.private.cjs $root/environment.private.json /opt/node-v22.23.1/bin/node $root/voice/lab/gpt-live-h5/server.mjs && sleep 3 && systemctl is-active voice-board-20261112 voice-board-20261112-tunnel'"
+  ssh v "sudo -n sh -c 'chown -R openclaw:openclaw $root/voice; systemctl stop voice-$name 2>/dev/null; systemctl reset-failed voice-$name 2>/dev/null; systemd-run --quiet --unit=voice-$name --property=User=openclaw --property=WorkingDirectory=$root/voice --property=UMask=0077 --property=KillMode=control-group --property=MemoryMax=1G --property=CPUQuota=100% --property=Nice=10 --property=Restart=on-failure --property=RestartSec=2 /opt/node-v22.23.1/bin/node $root/launch.private.cjs $root/environment.private.json /opt/node-v22.23.1/bin/node $root/voice/lab/gpt-live-h5/server.mjs && sleep 3 && systemctl is-active voice-$name voice-$name-tunnel'"
   ssh v "sudo -n python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))[\"commit\"])' $root/voice/manifest.json"
   exit 0
 fi
-ssh v sudo -n python3 - --stop < scripts/candidate/start-board.py >/dev/null
+ssh v sudo -n $pass python3 - --stop < scripts/candidate/start-board.py >/dev/null
 upload
-ssh v sudo -n ${VOICE_BOARD_MODEL:+VOICE_BOARD_MODEL="$VOICE_BOARD_MODEL"} python3 - < scripts/candidate/start-board.py
+ssh v sudo -n $pass ${VOICE_BOARD_MODEL:+VOICE_BOARD_MODEL="$VOICE_BOARD_MODEL"} python3 - < scripts/candidate/start-board.py
 echo
 echo "Entry link (keep private):"
 ssh v sudo -n cat "$root/entry-link.private"

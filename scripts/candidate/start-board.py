@@ -10,9 +10,10 @@ No call is placed and no model is called here.
 """
 import hashlib, json, os, pathlib, pwd, re, secrets, socket, subprocess, sys, time
 
-NAME = 'board-20261112'
+# (VOICE_BOARD_CANDIDATE / _PORT: a second board Candidate beside the first, e.g. for the canvas.)
+NAME = os.environ.get('VOICE_BOARD_CANDIDATE') or 'board-20261112'
 root = pathlib.Path('/var/lib/v-voice-candidates') / NAME
-unit, tunnel, port, source_unit = 'voice-' + NAME, 'voice-' + NAME + '-tunnel', 29631, 'openclaw-rtc-h5.service'
+unit, tunnel, port, source_unit = 'voice-' + NAME, 'voice-' + NAME + '-tunnel', int(os.environ.get('VOICE_BOARD_CANDIDATE_PORT') or 29631), 'openclaw-rtc-h5.service'
 run = lambda *args: subprocess.run(args, check=True, capture_output=True, text=True).stdout.strip()
 active = lambda name: subprocess.run(['systemctl', 'is-active', name], capture_output=True, text=True).stdout.strip() == 'active'
 
@@ -68,10 +69,11 @@ for key in ['VOICE_RELEASE_SOCKET', 'VOICE_RELEASE_BOOT_HOLD_UNTIL', 'VOICE_DEVI
 env.update({'GPT_LIVE_H5_PORT': str(port), 'RTC_H5_PORT': str(port), 'GPT_LIVE_H5_BASE_PATH': '/voice', 'RTC_H5_BASE_PATH': '/voice',
             'GPT_LIVE_H5_PUBLIC_ORIGIN': origin, 'RTC_H5_PUBLIC_ORIGIN': origin, 'GPT_LIVE_H5_ACCESS_TOKEN': access, 'RTC_H5_ACCESS_TOKEN': access,
             'VOICE_STREAM_SPEAKER': '0', 'VOICE_BOARD': '1', **({'VOICE_BOARD_MODEL': os.environ['VOICE_BOARD_MODEL']} if os.environ.get('VOICE_BOARD_MODEL') else {}),
+            **({'VOICE_BOARD_CANVAS': '1'} if os.environ.get('VOICE_BOARD_CANVAS') == '1' else {}),
             'RTC_H5_TRANSCRIPT_DIR': str(root / 'transcripts'), 'RTC_H5_AVATAR_LOG_DIR': str(root / 'avatars'), 'VOICE_CALL_REPORTS_DIR': str(root / 'reports'),
             'VOICE_IOS_BINDINGS_FILE': str(root / 'state/ios-grants.private.json'), 'VOICE_CANDIDATE_RELEASE_FILE': str(root / 'release.json'), 'TMPDIR': str(root / 'tmp')})
 launcher = "const fs=require('node:fs'),cp=require('node:child_process');const env=JSON.parse(fs.readFileSync(process.argv[2]));const p=cp.spawn(process.argv[3],process.argv.slice(4),{env,stdio:'inherit'});p.on('error',()=>{process.exitCode=1;});p.on('exit',code=>{process.exitCode=code??1;});"
-release = {'version': NAME, 'label': '画面 Candidate', 'summary': 'V 边说边把讲解、比较和数字画在通话页上。只在这个候选入口生效，未上线。', 'sourceCommit': manifest['commit']}
+release = {'version': NAME, 'label': '画面 Candidate', 'summary': ('看得见的东西放成大照片，V 讲到哪里指针就圈到哪里；看不见的写成文字条目。' if os.environ.get('VOICE_BOARD_CANVAS') == '1' else 'V 边说边把讲解、比较和数字画在通话页上。') + '只在这个候选入口生效，未上线。', 'sourceCommit': manifest['commit']}
 for name, value, mode in [('environment.private.json', json.dumps(env), 0o600), ('release.json', json.dumps(release, ensure_ascii=False), 0o600),
                           ('launch.private.cjs', launcher, 0o700), ('entry-link.private', f'{origin}/voice/#access={access}\n', 0o600)]:
     (root / name).write_text(value)

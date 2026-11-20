@@ -2,7 +2,7 @@
 // it on the caller's screen. It runs beside the voice model, never in its
 // audio path, and has no tools, permissions or say in what V does. Its output
 // is validated line by line (board-scene.mjs) before anything reaches a page.
-import {applyOp, createLineParser, emptyScene, normalizeOp, sceneDigest, scenePictures, zoneDigest, zoneId} from './board-scene.mjs';
+import {applyOp, createLineParser, emptyScene, normalizeOp, pinned, sceneDigest, scenePictures, zoneDigest, zoneId} from './board-scene.mjs';
 import {appendFile, mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
 
@@ -93,11 +93,15 @@ export function boardRequest({trigger, scene, turns, evidence, notes = null, rec
  */
 const itemsOf = block => block.t === 'compare' ? block.cols : block.t === 'flow' ? block.nodes : block.items ?? [];
 // Whether `next` is `old` with more on it: same kind, same photograph, the same items in the same order first.
-const growsFrom = (old, next) => old.t === next.t && (old.t !== 'photo' || old.query === next.query)
-  && itemsOf(old).every((item, index) => itemsOf(next)[index]?.id === item.id);
+// (A stage is the page's one canvas: written again, it is the same canvas with other things on it.)
+const growsFrom = (old, next) => old.t === next.t && (old.t === 'stage' || (old.t !== 'photo' || old.query === next.query)
+  && itemsOf(old).every((item, index) => itemsOf(next)[index]?.id === item.id));
 // `block` without pictures the page already shows (another block's, or its own twice); a second large print is dropped (null).
 function picturedOnce(block, scene) {
   const others = scene.blocks.filter(other => other.id !== block.id), used = new Set();
+  // A stage is the page's large print: it keeps its photographs, and no other print goes beside it.
+  if (block.t === 'stage') return block;
+  if (block.t === 'photo' && others.some(other => other.t === 'stage')) return null;
   for (const other of others) { if (other.t === 'photo') used.add(other.query); for (const item of [...itemsOf(other), ...(other.sides ?? [])]) if (item.img) used.add(item.img); }
   if (block.t === 'photo') return used.has(block.query) || others.some(other => other.t === 'photo') ? null : block;
   const once = item => { if (!item.img) return item; if (used.has(item.img)) { const {img, ...rest} = item; return rest; } used.add(item.img); return item; };
@@ -156,7 +160,11 @@ export async function* hedged(complete, {messages, signal}, afterMs = 2500, setT
   while (!result.done) { yield result.value; result = await won.run.iterator.next(); }
 }
 
-export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false, illustrate = null, stream = null, prefetch = null, hedgeMs = 2500} = {}) {
+/**
+ * `eye: {find(query), see({shots, said, signal})}` (board-eye.mjs): after a streamed run that leaves a
+ * stage on the page, its photographs are looked at and the places V talks about are pinned on them.
+ */
+export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false, illustrate = null, stream = null, prefetch = null, hedgeMs = 2500, eye = null} = {}) {
   // Pictures a page will need are asked for the moment the page knows of them, not when the page gets round to showing them.
   const wanted = new Set();
   const fetchAhead = scene => { if (!prefetch) return; for (const query of scenePictures(scene)) if (!wanted.has(query)) { wanted.add(query); if (wanted.size > 400) wanted.delete(wanted.values().next().value); Promise.resolve().then(() => prefetch(query)).catch(() => {}); } };
@@ -322,6 +330,30 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         if (trigger === 'evidence' || trigger !== 'user' && (expecting || Array.from(said).length < (/^[\x00-\x7f]*$/u.test(said.slice(0, 40)) ? 40 : 14) && !row.notes?.script.startsWith(said.slice(0, 12)))) { signal?.removeEventListener('abort', abort); if (row.controller === controller) row.controller = null; return report('waiting', {rev: row.scene.rev}); }
       }
       let ops = 0, firstOpMs = null, none = false, retired = false;
+      // The stage's photographs looked at with V's words (see `eye`): once for a stage while V's words
+      // are still coming, and again when they are complete. The run's screens get the pins.
+      const look = async () => {
+        const stage = row.scene.blocks.find(block => block.t === 'stage'), pics = stage?.items.filter(item => item.k === 'pic') ?? [];
+        if (!pics.length) return null;
+        const key = `${row.scene.serial}:${stage.id}:${pics.map(pic => pic.img).join('|')}`;
+        if (row.eye?.key === key && (row.eye.said === said || trigger !== 'assistant_end')) return null;
+        row.eye = {key, said};
+        const begun = now();
+        try {
+          const shots = (await Promise.all(pics.map(async pic => { const found = await eye.find(pic.img); return found?.bytes ? {...pic, bytes: found.bytes, type: found.type} : null; }))).filter(Boolean);
+          if (controller.signal.aborted || !shots.length) return {pins: 0, shots: shots.length, ms: now() - begun};
+          const pins = await eye.see({shots, said, signal: controller.signal});
+          const current = row.scene.blocks.find(block => block.t === 'stage');
+          if (controller.signal.aborted || !current) return {pins: 0, shots: shots.length, ms: now() - begun};
+          const block = pinned(current, pins.filter(pin => current.items.some(item => item.k === 'pic' && item.id === pin.on)));
+          const next = block ? applyOp({...row.scene, pending: null}, {op: 'put', block}) : row.scene;
+          if (next !== row.scene) { row.scene = {...next, lesson: true, late: true, ...(stream.cue ? {cue: true} : {})}; drawn.push({op: 'put', block}); onOp({op: 'sync', scene: row.scene, canvas: canvasOf(row)}); }
+          return {pins: pins.length, shots: shots.length, ms: now() - begun};
+        } catch (error) {
+          if (row.eye?.key === key) row.eye = null;
+          return {pins: 0, error: String(error?.message ?? error).slice(0, 80), ms: now() - begun};
+        }
+      };
       const parser = createLineParser(raw => {
         if (controller.signal.aborted || ops >= MAX_OPS) return;
         let op = stream ? stream.refine(normalizeOp(raw), {said, trigger, raw}) : normalizeOp(raw);
@@ -373,6 +405,17 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             if (op.op === 'put') {
               // A block may grow; it may not become something else. One that would replace what is
               // on the page (another type, another photograph, other items) is a new block instead.
+              // One stage on a page: written again (under any id) it is that stage, with the places
+              // already pinned on photographs it still shows. Prints it replaces are taken off.
+              if (op.block.t === 'stage') {
+                const stage = row.scene.blocks.find(block => block.t === 'stage');
+                if (stage) {
+                  const shown = new Map(stage.items.filter(item => item.k === 'pic').map(item => [item.id, item.img]));
+                  const kept = stage.items.filter(item => item.k === 'pin' && op.block.items.some(pic => pic.k === 'pic' && pic.id === item.on && shown.get(item.on) === pic.img));
+                  op = {op: 'put', block: {...op.block, id: stage.id, items: [...op.block.items.filter(item => item.k !== 'pin'), ...kept].slice(0, 24)}};
+                }
+                if (row.scene.blocks.some(block => block.t === 'photo')) row.scene = {...row.scene, blocks: row.scene.blocks.filter(block => block.t !== 'photo')};
+              }
               const old = row.scene.blocks.find(block => block.id === op.block.id);
               if (old && !growsFrom(old, op.block)) op = {op: 'put', block: {...op.block, id: `${op.block.id}${row.scene.blocks.length + 1}`.slice(-24)}};
               // Each thing is pictured once on a page, and a page has one large print.
@@ -416,7 +459,8 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         }
         if (!controller.signal.aborted) parser.end();
         if (ahead && !controller.signal.aborted && ops) row.aheadFor = script(row.notes?.script);
-        return report(controller.signal.aborted ? 'superseded' : ops ? 'drawn' : none ? 'none' : 'empty', {ops, firstOpMs, rev: row.scene.rev});
+        const looked = eye && stream && said && !controller.signal.aborted ? await look() : null;
+        return report(controller.signal.aborted ? 'superseded' : ops || looked?.pins ? 'drawn' : none ? 'none' : 'empty', {ops, firstOpMs, rev: row.scene.rev, ...(looked ? {eye: looked} : {})});
       } catch {
         return report(controller.signal.aborted ? 'superseded' : 'provider_failed', {ops, firstOpMs, rev: row.scene.rev});
       } finally {
@@ -494,7 +538,7 @@ export function boardCompletionFromEnv(env = process.env, {fetchImpl} = {}) {
       : null;
   return provider ? createChatCompletionStream({...provider, fetchImpl, ...(Number(env.VOICE_BOARD_MAX_TOKENS) > 0 ? {maxTokens: Number(env.VOICE_BOARD_MAX_TOKENS)} : {})}) : null;
 }
-export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl, illustrate = null, stream = null, defer = true, prefetch = null} = {}) {
+export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl, illustrate = null, stream = null, defer = true, prefetch = null, eye = null} = {}) {
   const complete = boardCompletionFromEnv(env, {fetchImpl});
   // A private day file beside the Candidate's own call records, when it has such a directory.
   const directory = env.VOICE_BOARD_LOG_DIR ?? env.RTC_H5_TRANSCRIPT_DIR;
@@ -502,5 +546,5 @@ export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl, illus
     const at = new Date(), file = join(directory, `board-${at.toISOString().slice(0, 10)}.jsonl`);
     void mkdir(directory, {recursive: true, mode: 0o700}).then(() => appendFile(file, JSON.stringify({at: at.toISOString(), ...event}) + '\n', {mode: 0o600})).catch(() => {});
   } : undefined;
-  return complete ? createBoardDirector({audit, complete, record, ...(prefetch ? {prefetch} : {}), ...(env.VOICE_BOARD_LESSON === '1' ? {...(defer ? {defers: mayAskForLesson} : {}), ...(illustrate ? {illustrate} : {}), ...(stream ? {stream} : {})} : {})}) : null;
+  return complete ? createBoardDirector({audit, complete, record, ...(prefetch ? {prefetch} : {}), ...(eye && stream ? {eye: eye(complete)} : {}), ...(env.VOICE_BOARD_LESSON === '1' ? {...(defer ? {defers: mayAskForLesson} : {}), ...(illustrate ? {illustrate} : {}), ...(stream ? {stream} : {})} : {})}) : null;
 }

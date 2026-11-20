@@ -118,8 +118,12 @@ export function refineCueOp(op, {said = '', trigger = '', raw = null} = {}) {
   const quote = cue => cueQuote(said, cue);
   if (op.op === 'mark') { const q = trigger === 'user' ? '' : quote(raw?.cue); return q ? normalizeOp({...raw, q}) : null; }
   if (op.op !== 'put' || !raw?.block) return op;
-  // Before V has spoken: the print of the thing asked about, nothing else.
-  if (trigger === 'user') return op.block.t === 'photo' ? {op: 'put', block: (({q, ...block}) => block)(op.block)} : null;
+  // Before V has spoken: the print of the thing asked about, nothing else (on a stage: its photographs).
+  if (trigger === 'user') {
+    if (op.block.t === 'photo') return {op: 'put', block: (({q, ...block}) => block)(op.block)};
+    const pics = op.block.t === 'stage' ? op.block.items.filter(item => item.k === 'pic').map(({q, ...item}) => item) : [];
+    return pics.length ? normalizeOp({op: 'put', block: {id: op.block.id, t: 'stage', base: op.block.base, items: pics, edges: []}}) : null;
+  }
   const source = raw.block, own = Number.isInteger(source.cue) ? source.cue : null;
   const hang = (item, inherit = own) => {
     const {cue, q, ...rest} = item ?? {};
@@ -133,3 +137,33 @@ export function refineCueOp(op, {said = '', trigger = '', raw = null} = {}) {
   if (Array.isArray(source.edges)) block.edges = source.edges.map(edge => Array.isArray(edge) ? [edge[0], edge[1], edge[2] ?? '', ...(Number.isInteger(edge[3]) && quote(edge[3]) ? [quote(edge[3])] : [])] : edge);
   return normalizeOp({op: 'put', block});
 }
+
+// The canvas (VOICE_BOARD_CANVAS=1; docs/research/board-canvas): what can be seen goes up large on a
+// stage - photographs, or a pitch - and V's pointer goes round it; what cannot be seen is written in the
+// blocks above. The illustrator only chooses the photographs: the places on them are ringed later by a
+// model that has seen them (board-eye.mjs).
+const STAGE = `# 画布 stage：看得见的东西放大，指针在上面走
+页面上可以有一块画布：一两三张大照片（或一块球场），V 讲到哪里，指针就飞到哪里、圈出来，讲过的圈会自己消失。
+stage     {"id":"s","t":"stage","base":"photo|row|triangle|pitch","cue":-1,"items":[…],"edges":[["起点id","终点id","两三个字",cue],…]}
+  照片：{"id":"a","k":"pic","img":"搜索词","h":"不超过 8 个字的名字","cue":-1}
+  名字牌（只在球场上用）：{"id":"英文小写","k":"chip","h":"名字，不超过 6 个字","d":"位置，可省","at":[x,y],"cue":段号}
+- 照片上的部位你不用写，也不要写：照片找到后，会有一双看得见照片的眼睛按 V 的话把讲到的部位一处处圈出来。你要做的是选对照片：img 写能清楚拍到要讲的那些部位的照片（「超梦 全身 官方立绘」「太和殿 正面 全景」「太和殿 屋脊兽 特写」「特斯拉 Model 3 正面」）。
+- 讲一样东西长什么样、有哪些部位（宝可梦、角色、建筑、车、动物、产品）→ base photo，一张照片。
+- 两三样东西比外观、讲进化 → base row，两三张，按讲的顺序从左到右；进化、先后用 edges 箭头（「16级」「变成」）。
+- 三样东西互相克制、转一圈 → base triangle，三张，第一张在上、第二张右下、第三张左下，edges 三条箭头。
+- 球队阵容、站位、阵型 → base pitch，不放照片，每个球员一个 chip，各挂在讲到他的那一段。球场竖着放，下边是自己的球门：x 从左边线 0 到右边线 1000，y 从对方球门线 0 到自己球门线 1000，按 V 说的位置摆（左路就在左边）。
+- 一页最多一个 stage，放在最前面；有 stage 就不再放 photo 区块，也不再用带 img 的 list 放同样的东西。
+- 画布和文字怎么分：看得见的（长相、部位、外观、站位）交给 stage；看不见的（步骤、时间、规则、原因、数字、价格、对比的结论）写成 steps、timeline、list、versus、sticky 里的条目，各挂在讲它的那一段。同一样东西只出现在一个地方：画布上会圈出来的部位，文字区块里不再写一遍。stage 之外最多再放 2 个区块，每块 2 到 5 条。
+- 看不见实物的话题（流程、制度、原理、日程、新闻、建议）不要 stage，照旧只用文字区块。用户要看几张图（图集）照旧用 list gallery。四样以上的东西照旧用带 img 的 list。`;
+const STAGE_SWAP = ['- 看得见的东西用照片，不用画：地方、城市、景点、建筑、人物、角色、动物、食物、产品、作品。讲到几个这样的东西，就用一个 list（或 timeline），每一项写 img（它自己的照片），各挂在讲它的那一段；不要只放一张大照片然后用 draw 去画其余的城市和建筑。',
+  '- 看得见的东西用照片，不用画：地方、城市、景点、建筑、人物、角色、动物、食物、产品、作品。一到三样、要讲它长什么样的，用 stage（见「画布 stage」）；四样以上，用一个 list（或 timeline），每一项写 img，各挂在讲它的那一段。不要用 draw 去画城市和建筑。'];
+if (!CUE_INSTRUCTIONS.includes(STAGE_SWAP[0])) throw Error('canvas instructions: no photo rule to replace');
+export const CANVAS_CUE_INSTRUCTIONS = CUE_INSTRUCTIONS.replace(STAGE_SWAP[0], STAGE_SWAP[1]).replace('\n输出：每行一个 JSON 操作', `\n${STAGE}\n\n输出：每行一个 JSON 操作`);
+if (CANVAS_CUE_INSTRUCTIONS === CUE_INSTRUCTIONS || !CANVAS_CUE_INSTRUCTIONS.includes('# 画布 stage')) throw Error('canvas instructions: not placed');
+
+/** The lesson writer's instructions for a canvas: a script that goes round what can be seen, a part at a time. */
+const SCRIPT_STAGE = `
+# 画布
+- 讲一两三样看得见的东西长什么样时，屏幕上会放它们的大照片，指针跟着你的话在照片上一处处圈。讲稿就一句讲一个照片上看得见的部位（「你看它脑袋后面，有一根管子连到后背」「它的尾巴又粗又长，是紫色的」），按从显眼到细节的顺序；画面提示写「画布：超梦 全身照，圈 脑后的管子」这样。
+- 看不见的东西（能力、来历、步骤、数字）照常讲，画面提示写成文字条目。`;
+export const CANVAS_SCRIPT_INSTRUCTIONS = CUE_SCRIPT_INSTRUCTIONS + SCRIPT_STAGE;

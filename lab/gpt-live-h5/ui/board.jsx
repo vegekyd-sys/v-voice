@@ -618,8 +618,136 @@ function Photo({block, loadPhoto, onMissing, enlarge}) {
   );
 }
 
+// The canvas (VOICE_BOARD_CANVAS): what V talks about, large - one to three photographs taped to the
+// page, or a pitch with names on it - and one pointer that goes where V's voice is. A place on a
+// photograph (a pin) is ringed while V talks about it and fades when V moves on, so the page never
+// fills with old circles. Coordinates are the model's: 0-1000 of a photograph, of the pitch, or of the sheet.
+const PITCH = {x: 70, y: 30, w: 860, h: 940};
+// Where the photographs go on a 1000-wide sheet `height` tall.
+function stageSlots(base, ratios, height) {
+  const n = ratios.length;
+  if (base === 'triangle' && n === 3) return [{x: 290, y: 24, w: 420, h: height * .4}, {x: 570, y: height * .53, w: 410, h: height * .4}, {x: 20, y: height * .53, w: 410, h: height * .4}];
+  if (n === 1) return [{x: 30, y: 24, w: 940, h: height - 48}];
+  // Two wide photographs side by side come out small: staggered like two prints on a page.
+  if (n === 2 && ratios.every(ratio => ratio > 1.25)) return [{x: 20, y: 18, w: 620, h: height * .47}, {x: 360, y: height * .51, w: 620, h: height * .47}];
+  const width = (1000 - 30 * (n + 1)) / n;
+  return ratios.map((_, index) => ({x: 30 + index * (width + 30), y: 30, w: width, h: height - 60}));
+}
+// A photograph as large as its slot allows, its own shape, centred.
+function fitIn(slot, ratio) {
+  if (!ratio) return slot;
+  const w = Math.min(slot.w, slot.h * ratio), h = w / ratio;
+  return {x: slot.x + (slot.w - w) / 2, y: slot.y + (slot.h - h) / 2, w, h};
+}
+// A hand-drawn ring round a box: a little wobbly, overshooting where it began.
+function handRing(cx, cy, rx, ry, seed) {
+  let random = 0;
+  for (const char of seed) random = (random * 31 + char.charCodeAt(0)) % 997;
+  const wob = index => Math.sin(random + index * 1.7) * .05, start = -2.3, points = [];
+  for (let step = 0; step <= 26; step++) {
+    const t = step / 26, angle = start + t * Math.PI * 2.12, grow = 1 + wob(step) + t * .04;
+    points.push(`${Math.round(cx + Math.cos(angle) * rx * grow)} ${Math.round(cy + Math.sin(angle) * ry * grow)}`);
+  }
+  return 'M' + points.join(' L');
+}
+const Cursor = () => <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 2l15 9-6.5 1.6L8.6 19z" /></svg>;
+
+function Stage({block, view}) {
+  const pics = block.items.filter(item => item.k === 'pic'), chips = block.items.filter(item => item.k === 'chip'), pins = block.items.filter(item => item.k === 'pin');
+  const [shots, setShots] = useState({});
+  useEffect(() => {
+    let live = true;
+    for (const pic of pics) if (!shots[pic.img]) Promise.resolve(view.loadPhoto?.(pic.img)).then(src => {
+      if (!live || !src) return;
+      const image = new Image();
+      image.onload = () => { if (live) setShots(old => ({...old, [pic.img]: {src, ratio: image.naturalWidth / image.naturalHeight || 4 / 3}})); };
+      image.src = src;
+    }, () => {});
+    return () => { live = false; };
+  }, [pics.map(pic => pic.img).join('|')]);
+  const shown = pics.filter(pic => shots[pic.img]);
+  // One photograph: the sheet takes the photograph's own shape (within reason). A pitch stands upright.
+  const lone = block.base !== 'pitch' && pics.length === 1 ? shots[pics[0].img]?.ratio : 0;
+  const height = block.base === 'pitch' ? 1000 : lone ? Math.round(1000 / Math.min(1.7, Math.max(.75, lone))) : pics.length === 3 && block.base === 'triangle' ? 900 : 720;
+  const slots = stageSlots(block.base, pics.map(pic => shots[pic.img]?.ratio ?? 4 / 3), height);
+  const rects = Object.fromEntries(pics.map((pic, index) => [pic.id, fitIn(slots[index], shots[pic.img]?.ratio)]));
+  const place = chip => block.base === 'pitch' ? {x: PITCH.x + chip.at[0] / 1000 * PITCH.w, y: PITCH.y + chip.at[1] / 1000 * PITCH.h} : {x: chip.at[0], y: chip.at[1] / 1000 * height};
+  const box = pin => { const r = rects[pin.on], [x1, y1, x2, y2] = pin.box; return {x1: r.x + x1 / 1000 * r.w, y1: r.y + y1 / 1000 * r.h, x2: r.x + x2 / 1000 * r.w, y2: r.y + y2 / 1000 * r.h}; };
+  const pct = (value, of) => `${(value / of * 100).toFixed(2)}%`;
+  const id = item => `${block.id}/${item.id}`;
+  // Where the pointer is: the place, name or photograph V is on (nothing when V is elsewhere).
+  const now = block.items.find(item => view.focus === id(item));
+  let aim = null;
+  if (now?.k === 'pin' && rects[now.on] && shots[pics.find(pic => pic.id === now.on)?.img]) { const b = box(now); aim = now.kind === 'point' ? {x: (b.x1 + b.x2) / 2, y: (b.y1 + b.y2) / 2} : {x: (b.x1 + b.x2) / 2 + (b.x2 - b.x1) * .36 + 8, y: (b.y1 + b.y2) / 2 + (b.y2 - b.y1) * .36 + 8}; }
+  else if (now?.k === 'chip') { const at = place(now); aim = {x: at.x + 18, y: at.y + 22}; }
+  else if (now?.k === 'pic' && rects[now.id]) { const r = rects[now.id]; aim = {x: r.x + r.w - 14, y: r.y + r.h - 10}; }
+  const centre = end => { const r = rects[end]; if (r) return {x: r.x + r.w / 2, y: r.y + r.h / 2, w: r.w, h: r.h}; const chip = chips.find(item => item.id === end); if (!chip) return null; const at = place(chip); return {...at, w: 120, h: 60}; };
+  const arrows = block.edges.map(([from, to, label]) => {
+    const a = centre(from), b = centre(to);
+    if (!a || !b) return null;
+    const leave = (p, q) => { const dx = q.x - p.x, dy = q.y - p.y, t = Math.min(dx ? (p.w / 2 + 12) / Math.abs(dx) : 9, dy ? (p.h / 2 + 12) / Math.abs(dy) : 9, .45); return {x: p.x + dx * t, y: p.y + dy * t}; };
+    const p0 = leave(a, b), p2 = leave(b, a), dx = p2.x - p0.x, dy = p2.y - p0.y, length = Math.hypot(dx, dy) || 1, bend = .16 * length;
+    const c = {x: (p0.x + p2.x) / 2 - dy / length * bend, y: (p0.y + p2.y) / 2 + dx / length * bend};
+    const back = {x: .06 * c.x + .94 * p2.x, y: .06 * c.y + .94 * p2.y}, angle = Math.atan2(p2.y - back.y, p2.x - back.x);
+    const head = side => `${Math.round(p2.x - 22 * Math.cos(angle + side))} ${Math.round(p2.y - 22 * Math.sin(angle + side))}`;
+    return {key: `${from}>${to}`, ahead: view.ahead.has(edgeId(block, from, to)), d: `M${Math.round(p0.x)} ${Math.round(p0.y)} Q${Math.round(c.x)} ${Math.round(c.y)} ${Math.round(p2.x)} ${Math.round(p2.y)} M${head(-.45)} L${Math.round(p2.x)} ${Math.round(p2.y)} L${head(.45)}`, label, mid: {x: .25 * p0.x + .5 * c.x + .25 * p2.x, y: .25 * p0.y + .5 * c.y + .25 * p2.y}};
+  }).filter(Boolean);
+  return (
+    <>
+      <Heading block={block} />
+      <div className="board-stage-sheet" data-base={block.base} style={{aspectRatio: `1000 / ${height}`, '--sheet-h': height}}>
+        {block.base === 'pitch' && (
+          <svg className="board-stage-pitch" viewBox={`0 0 1000 ${height}`} aria-hidden="true">
+            <rect x={PITCH.x} y={PITCH.y} width={PITCH.w} height={PITCH.h} rx="10" />
+            <line x1={PITCH.x} y1={PITCH.y + PITCH.h / 2} x2={PITCH.x + PITCH.w} y2={PITCH.y + PITCH.h / 2} />
+            <circle cx={PITCH.x + PITCH.w / 2} cy={PITCH.y + PITCH.h / 2} r="80" />
+            <rect x={PITCH.x + PITCH.w * .22} y={PITCH.y} width={PITCH.w * .56} height="140" />
+            <rect x={PITCH.x + PITCH.w * .22} y={PITCH.y + PITCH.h - 140} width={PITCH.w * .56} height="140" />
+          </svg>
+        )}
+        {pics.map(pic => {
+          const r = rects[pic.id], shot = shots[pic.img];
+          return (
+            <figure key={pic.id} className="board-stage-pic" data-ready={String(Boolean(shot))} data-ink={String(!view.ahead.has(id(pic)))}
+              style={{left: pct(r.x, 1000), top: pct(r.y, height), width: pct(r.w, 1000), height: pct(r.h, height)}} {...opener(view.enlarge, shot?.src, pic.h ?? pic.img)}>
+              <Tape />
+              {shot && <img src={shot.src} alt={pic.h ?? pic.img} decoding="async" />}
+              {pic.h && <figcaption>{pic.h}</figcaption>}
+            </figure>
+          );
+        })}
+        <svg className="board-stage-ink" viewBox={`0 0 1000 ${height}`} aria-hidden="true">
+          {arrows.map(item => <path key={item.key} className="board-stage-arrow" data-ink={String(!item.ahead)} d={item.d} />)}
+          {pins.filter(pin => pin.kind === 'ring' && rects[pin.on] && shown.some(pic => pic.id === pin.on)).map(pin => {
+            const b = box(pin), rx = Math.max(22, (b.x2 - b.x1) / 2 + 12), ry = Math.max(22, (b.y2 - b.y1) / 2 + 12);
+            return <path key={pin.id} className="board-stage-ring" pathLength="1" data-on={view.focus === id(pin) || undefined} d={handRing((b.x1 + b.x2) / 2, (b.y1 + b.y2) / 2, rx, ry, pin.id)} />;
+          })}
+        </svg>
+        {arrows.filter(item => item.label).map(item => (
+          <span key={item.key} className="board-stage-say" data-ink={String(!item.ahead)} style={{left: pct(item.mid.x, 1000), top: pct(item.mid.y, height)}}>{item.label}</span>
+        ))}
+        {chips.map(chip => {
+          const at = place(chip);
+          return (
+            <span key={chip.id} className="board-stage-chip" data-pitch={block.base === 'pitch' || undefined} data-ink={String(!view.ahead.has(id(chip)))} data-now={view.focus === id(chip) || undefined}
+              style={{left: pct(at.x, 1000), top: pct(at.y, height)}}>
+              <b>{chip.h}</b>{chip.d && <small>{chip.d}</small>}
+            </span>
+          );
+        })}
+        {pins.filter(pin => pin.h && rects[pin.on] && shown.some(pic => pic.id === pin.on)).map(pin => {
+          const b = box(pin), above = b.y1 > height * .1;
+          return <span key={pin.id} className="board-stage-tag" data-on={view.focus === id(pin) || undefined} data-below={!above || undefined}
+            style={{left: pct(Math.min(900, Math.max(100, (b.x1 + b.x2) / 2)), 1000), top: pct(above ? b.y1 - 14 : b.y2 + 14, height)}}>{pin.h}</span>;
+        })}
+        <i className="board-stage-pointer" data-on={aim ? true : undefined} style={aim ? {left: pct(aim.x, 1000), top: pct(aim.y, height)} : undefined}><Cursor /></i>
+      </div>
+    </>
+  );
+}
+
 const RENDER = {note: Sticky, sticky: Sticky, list: props => <List {...props} />, steps: props => <List {...props} ordered />, compare: Compare, stats: Stats, bars: Bars, table: Table, flow: Flow,
-  draw: Draw, tiles: Tiles, formula: Formula, timeline: Timeline, versus: Versus, overlap: Overlap, stack: Stack, scale: Scale};
+  draw: Draw, tiles: Tiles, formula: Formula, timeline: Timeline, versus: Versus, overlap: Overlap, stack: Stack, scale: Scale, stage: Stage};
 const SMALL = new Set(['note', 'sticky', 'photo']);
 const PAPER = {note: 'butter', sticky: 'butter'};
 
