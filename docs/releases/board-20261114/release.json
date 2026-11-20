@@ -166,5 +166,21 @@
     "gatewayIdentityPreserved": true,
     "change": "Gallery pictures whole at their own shape in level rows filling the page width (galleryLayout); notes under a gallery side by side; the lead print steps aside once a gallery picture shows. A page drawn smaller to fit (useFit) no longer grows taller than the panel (min-height in px over zoom). Every picture on the page opens over the window on tap or click.",
     "acceptance": "Tianyi accepted the Candidate (8c23e14) and asked to release. Production Public calls after publish, '给我找几张超梦的图看看': 1440x900 drew a gallery of 4 (pictures ~240 px tall, whole, rows centred) and opened one at 773 px; 390x844 drew a gallery and opened one; a second 1440x900 call loaded all 4 pictures in 1.4-3.6 s. In the first 1440x900 call two pictures the service had found in 2-4 s were still loading at hang-up (35 s); not seen again."
+  },
+  "galleryLostRelease": {
+    "commit": "1f9a28f7748ed4049f31e0ba7f9b2653346eac76",
+    "mergePR": 234,
+    "filesSha256": "10360dbc6205ce2fc21b608b771f7090b7e8a1ab75a4b9fceb67f720cce97fcc",
+    "previousRunningCommit": "9efad3540e128b45a161404be22d41580dab643c",
+    "publishedAt": "2026-11-20T22:53:57+08:00",
+    "mainCI": "Voice push run 44757258816: test, android-tv success",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "iosShellRevision": "04c81bf427197213e88820adaff1ceccda2b7339f34a85964e9718de2cf86956",
+    "gatewayIdentityPreserved": true,
+    "change": "A gallery remembers failed pictures by search, not by item id: a gallery redrawn under the same ids hid pictures that were found (production call dfbb0ead). board-image answers 503 for a lookup that could not be made (image search 429 or timeout) and 404 for no picture; the page retries a 503 once after 2.5 s and does not keep it. A 429 from the image search is retried through the queue, twice at most, with twice the gap for a minute.",
+    "acceptance": "Tianyi reported call dfbb0ead (V described six pictures, the page showed two) and asked to release the fix. Production Public call after publish, 1440x900, the same two questions ('梦幻和超梦的图片…打斗的图片' then '再多找一点'): the second gallery showed 5 of the 6 pictures V described; the sixth ('宝可梦 动画 梦幻 出场') was not found by the image search. No 429 in the call."
   }
 }
