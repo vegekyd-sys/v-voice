@@ -196,3 +196,22 @@ test('"no picture" is settled; an image search that refused or failed is not, so
   assert.equal(finder.settled('梦幻 剧场版'), true, 'nothing found: an answer');
   assert.equal(finder.settled('从没问过'), false);
 });
+
+test('a request the image search refused (429) is asked again through the queue, never beside another request', async () => {
+  const sent = [];
+  let time = 0, refusals = 2;
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', languages: [], now: () => time, wait: async ms => { time += ms; },
+    fetchImpl: async url => {
+      if (!url.startsWith('https://api.search.brave.com/')) return image(distinct(), 'image/png');
+      const query = decodeURIComponent(/q=([^&]+)/u.exec(url)[1]);
+      sent.push([query, time]);
+      if (query === '梦幻 剧场版' && refusals-- > 0) return {ok: false, status: 429};
+      return json({results: [{title: query, thumbnail: {src: 'https://imgs.search.brave.com/' + encodeURIComponent(query)}}]});
+    }});
+  const found = await Promise.all(['梦幻 剧场版', '超梦 剧场版', '梦幻 超梦 对峙'].map(query => finder.find(query)));
+  assert.ok(found.every(Boolean), 'all three found, the refused one on its third try');
+  assert.equal(sent.filter(([query]) => query === '梦幻 剧场版').length, 3);
+  const times = sent.map(([, at]) => at);
+  assert.ok(times.every((at, index) => index === 0 || at - times[index - 1] >= 1100), `one request a gap apart: ${times}`);
+  assert.ok(times.at(-1) - times.at(-2) >= 2200, 'slower after a refusal');
+});

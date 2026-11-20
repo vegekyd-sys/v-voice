@@ -140,20 +140,31 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
   // An image search, when a key is provisioned: the first result whose title
   // names the thing (else the first result), as the search's own thumbnail.
   // The plan allows about one request a second, so lookups queue.
-  let braveTurn = Promise.resolve(), braveLast = -Infinity, braveWaiting = 0;
+  let braveTurn = Promise.resolve(), braveLast = -Infinity, braveWaiting = 0, braveSlowUntil = -Infinity;
+  // One request to the image search at a time, a gap apart; for a minute after
+  // the service has refused one, twice the gap.
+  const braveSlot = () => {
+    const turn = braveTurn.then(async () => { const gap = braveLast + (now() < braveSlowUntil ? 2 : 1) * braveGapMs - now(); if (gap > 0) await wait(gap); braveLast = now(); });
+    braveTurn = turn.catch(() => {});
+    return turn;
+  };
   async function brave(query, signal, begin = () => {}) {
     if (!braveKey) return null;
     braveWaiting++; begin.stop?.();
-    const turn = braveTurn.then(async () => { const gap = braveLast + braveGapMs - now(); if (gap > 0) await wait(gap); braveLast = now(); });
-    braveTurn = turn.catch(() => {});
-    try { await turn; } finally { braveWaiting--; }
+    try { await braveSlot(); } finally { braveWaiting--; }
     // Time spent queueing is not time spent looking.
     begin();
     const ask = () => fetchImpl(`https://api.search.brave.com/res/v1/images/search?q=${encodeURIComponent(query)}&count=10&safesearch=strict`,
       {signal, headers: {'x-subscription-token': braveKey, accept: 'application/json'}});
     let response = await ask();
-    // "Too many requests" despite the queue (the service counts its own seconds): once more, after a pause.
-    if (response.status === 429) { await wait(braveGapMs); braveLast = now(); response = await ask(); }
+    // "Too many requests" despite the queue (the service counts its own seconds): asked again
+    // through the queue, twice at most. (A retry after a plain pause went out beside the next
+    // request in the queue and was refused again: two to three pictures of every gallery, 11/20.)
+    for (let again = 0; response.status === 429 && again < 2; again++) {
+      braveSlowUntil = now() + 60000;
+      begin.stop?.(); await braveSlot(); begin();
+      response = await ask();
+    }
     if (!response.ok) throw Error('image search HTTP ' + response.status);
     const results = ((await response.json())?.results ?? []).filter(item => typeof item?.thumbnail?.src === 'string');
     // The best three by `rankPicture` are fetched at once (one slow file used
