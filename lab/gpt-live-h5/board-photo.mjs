@@ -73,7 +73,8 @@ const firstPicture = ways => new Promise(resolve => {
 });
 const STOCK = /(?:^|\.)(?:pixabay|699pic|kuaipng|shutterstock|alamy|istockphoto|gettyimages|dreamstime|123rf|depositphotos|freepik|vecteezy|pngtree|nipic|58pic|ibaotu|tukuppt|51yuansu|huaban|duitang|pinterest)\./iu;
 const REFERENCE = /(?:^|\.)(?:wikipedia|wikimedia|baike\.baidu|baike\.sogou|moegirl|pokemon|portal-pokemon|pokedex|52poke|nasa|britannica|dpm\.org|gov)\b/iu;
-const OFF = /简笔画|怎样画|怎么画|教程|壁纸|表情包|头像|涂色|折纸|闪光|shiny|超级进化|mega|同人|手办|周边|logo|icon|图标|矢量|素材|模板|海报|高清图片/iu;
+// (Guides, data pages and app downloads too: their pictures are tables and adverts, 11/20.)
+const OFF = /简笔画|怎样画|怎么画|教程|壁纸|表情包|头像|涂色|折纸|闪光|shiny|超级进化|mega|同人|手办|周边|logo|icon|图标|矢量|素材|模板|海报|高清图片|配招|攻略|玩法|种族值|招式|技能|性格|努力值|下载|官方版|安卓|手游|一览|排行/iu;
 const OFF_ALL = new RegExp(OFF.source, 'giu');
 // Words that say what kind of picture is wanted, not what it is of. A search
 // written with many of them ("GTA6 预告片 露西娅 杰森 同框 截图") can find
@@ -188,14 +189,13 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     if (!response.ok) throw Error('image search HTTP ' + response.status);
     return ((await response.json())?.results ?? []).filter(item => typeof item?.thumbnail?.src === 'string');
   }
-  // The results worth fetching: those `rankPicture` counts for (its own score, not lowered by
-  // their place in the list: a good fourth result used to fall below the line); when none
-  // does, those it has nothing against, in the search's own order (a Chinese search and
-  // English titles share no words: every GTA6 result scored 0, 11/20).
+  // The results worth fetching: those `rankPicture` counts for, by its own score; their place
+  // in the list only orders them (a good fourth result used to fall below the line, 11/20).
+  // (Results it has nothing for or against are not taken: titled only with a site's name,
+  // they were tables and adverts.)
   function worth(results, query) {
-    const scored = results.map((item, index) => ({item, score: rankPicture(item, query), index}));
-    const good = scored.filter(entry => entry.score > 0);
-    return (good.length ? good.sort((a, b) => (b.score - b.index * .2) - (a.score - a.index * .2)) : scored.filter(entry => entry.score >= 0)).slice(0, 3);
+    return results.map((item, index) => ({item, score: rankPicture(item, query), index})).filter(entry => entry.score > 0)
+      .sort((a, b) => (b.score - b.index * .2) - (a.score - a.index * .2)).slice(0, 3);
   }
   async function brave(query, signal, begin = () => {}) {
     if (!braveKey) return null;

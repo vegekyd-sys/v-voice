@@ -224,7 +224,7 @@ test('what the search asks for is not held against a title: a poster for "…海
   assert.ok(rankPicture(result('超级超梦X Mega'), '超级超梦X mega') > rankPicture(result('超级超梦X Mega'), '超梦'), 'case aside');
 });
 
-test('an image search: a good result low in the list is fetched; with none counted for, a neutral one; with nothing found, a plainer search', async () => {
+test('an image search: a good result low in the list is fetched; one with nothing for it is not; with nothing found, a plainer search', async () => {
   const {plainerSearches} = await import('./board-photo.mjs');
   assert.deepEqual(plainerSearches('GTA6 预告片 露西娅 杰森 同框 截图'), ['GTA6 预告片 露西娅 杰森', 'GTA6 预告片 露西娅']);
   assert.deepEqual(plainerSearches('GTA6 Jason Lucia fan art'), ['GTA6 Jason Lucia', 'GTA6 Jason']);
@@ -234,8 +234,10 @@ test('an image search: a good result low in the list is fetched; with none count
   const answers = {
     // (the 11/20 GTA6 lookups, reduced) four results, the only one counted for is fourth
     'GTA6 杰森 官方宣传图 海报': [{title: '游民星空', source: 'gamersky.com', confidence: 'medium'}, {title: '游民星空', source: 'gamersky.com', confidence: 'medium'}, {title: 'etsy banner', source: 'etsy.com', confidence: 'medium', properties: {url: 'https://etsy.com/banner.png'}}, {title: 'Official character key art GTA6 杰森', source: 'rockstarintel.com', confidence: 'medium', id: 'jason'}],
-    // English titles for a Chinese search: nothing counted for or against
-    'GTA6 雷奥尼达州': [{title: 'Leonida swamp', source: 'vice.com', confidence: 'medium', id: 'swamp'}],
+    // a title with nothing for it (a site's name): not taken, and the search is not plainer
+    'GTA6 雷奥尼达州': [{title: '游侠网22', source: 'ali213.net', confidence: 'medium', id: 'site'}],
+    // a guide's data table, for a search that did not ask for one
+    '超梦 Mega进化 立绘': [{title: '口袋妖怪Mega超梦X配招 性格及对战玩法', source: 'gamersky.com', confidence: 'high', id: 'guide'}],
     // too specific: nothing at all, until plainer
     'GTA6 预告片 露西娅 杰森 同框 截图': [], 'GTA6 预告片 露西娅 杰森': [{title: '杰森与露西娅', source: 'gta6news.net', confidence: 'high', id: 'pair'}],
   };
@@ -249,7 +251,8 @@ test('an image search: a good result low in the list is fetched; with none count
       return image(distinct(), 'image/png');
     }});
   assert.equal((await finder.find('GTA6 杰森 官方宣传图 海报'))?.title, 'Official character key art GTA6 杰森');
-  assert.equal((await finder.find('GTA6 雷奥尼达州'))?.title, 'Leonida swamp');
+  assert.equal(await finder.find('GTA6 雷奥尼达州'), null);
+  assert.equal(await finder.find('超梦 Mega进化 立绘'), null);
   assert.equal((await finder.find('GTA6 预告片 露西娅 杰森 同框 截图'))?.title, '杰森与露西娅');
-  assert.deepEqual(searched, ['GTA6 杰森 官方宣传图 海报', 'GTA6 雷奥尼达州', 'GTA6 预告片 露西娅 杰森 同框 截图', 'GTA6 预告片 露西娅 杰森']);
+  assert.deepEqual(searched, ['GTA6 杰森 官方宣传图 海报', 'GTA6 雷奥尼达州', '超梦 Mega进化 立绘', '超梦 Mega进化', 'GTA6 预告片 露西娅 杰森 同框 截图', 'GTA6 预告片 露西娅 杰森']);
 });
