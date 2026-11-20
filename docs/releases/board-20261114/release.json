@@ -199,5 +199,30 @@
     "gatewayNote": "The Gateway had been restarted at 2026-11-20 23:28:56 CST, before this release and not by it (PID 869872 before and after publishing).",
     "change": "Picture searches: results qualify on their own score (their place only orders them); words the search asks for are not held against a title; guide, data and download pages are; a Chinese title must name the thing (half its characters), and an English title sharing no word with a several-word search for a Chinese name does not count for it. A search that finds nothing worth fetching is tried without its kind-of-picture words, then without its last word. An encyclopedia redirect to another article (a list with the Pokemon logo) is not the thing.",
     "acceptance": "Tianyi reported GTA6 pictures missing on 11/20 and asked to release after the rerun of the day's 77 production searches on the Candidate (77 found, was 65; none lost). Production Public call after publish, 1440x900, '给我找几张GTA6的图看看，主角杰森和露西娅的': V described 5 pictures and all 5 were on the page; 5 of 5 lookups found."
+  },
+  "closeReasonRelease": {
+    "commit": "5d953b4bf7d7a91ce6407ac5894ceac51a2a2558",
+    "mergePRs": [
+      239,
+      240
+    ],
+    "filesSha256": "8110c6376f1a99492673a221df9f24840ad0f3e24757120023663221cb122d28",
+    "previousRunningCommit": "1f6b332dd86a11d8d729893abfd626c341a7feaa",
+    "intermediate": {
+      "commit": "85c8f27d2f4b7f0bcd0adc55da454a8358548bb8",
+      "filesSha256": "d62c54b6f0ffff8242734547553f4df579f97d06acb0eb33b92e4d0b35aece01",
+      "publishedAt": "2026-11-21T01:28:45+08:00",
+      "note": "#239 alone: the call record still dropped the reason (fixed by #240)."
+    },
+    "publishedAt": "2026-11-21T01:39:57+08:00",
+    "mainCI": "Voice push runs for 85c8f27 and 44785046652 for 5d953b4: test, android-tv success",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "iosShellRevision": "a6e03ef3ffc4ff1687d86cf2e790f13344ba02f42a1f0b4417b08fa9ebfa2c72",
+    "gatewayIdentityPreserved": true,
+    "change": "call.closed records which way the call ended (why), kept in the call record; a SeeDuplex session.closed we did not ask for is reported as provider-status upstream-closed with up to six short fields of what the service said. Picture search tries up to nine results, three at a time, when the best three cannot be fetched.",
+    "acceptance": "Tianyi's call 9caf5e1b (00:44) ended 0.14 s after a turn with no reason recorded; she asked to release the diagnostics and the picture fix. Production Public calls after publish ('给我找几张悖谬宝可梦古代种的图，比如轰鸣月和波荡水'): 1440x900 on 85c8f27 showed 4 of 4 pictures (轰鸣月 and 波荡水 found) but its call.closed had no reason; 390x844 on 5d953b4 showed 轰鸣月 and 波荡水 and its call.closed has why=client-closed:1005 (the page hung up)."
   }
 }
