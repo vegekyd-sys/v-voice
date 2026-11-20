@@ -182,5 +182,22 @@
     "gatewayIdentityPreserved": true,
     "change": "A gallery remembers failed pictures by search, not by item id: a gallery redrawn under the same ids hid pictures that were found (production call dfbb0ead). board-image answers 503 for a lookup that could not be made (image search 429 or timeout) and 404 for no picture; the page retries a 503 once after 2.5 s and does not keep it. A 429 from the image search is retried through the queue, twice at most, with twice the gap for a minute.",
     "acceptance": "Tianyi reported call dfbb0ead (V described six pictures, the page showed two) and asked to release the fix. Production Public call after publish, 1440x900, the same two questions ('梦幻和超梦的图片…打斗的图片' then '再多找一点'): the second gallery showed 5 of the 6 pictures V described; the sixth ('宝可梦 动画 梦幻 出场') was not found by the image search. No 429 in the call."
+  },
+  "searchWordsRelease": {
+    "commit": "1f6b332dd86a11d8d729893abfd626c341a7feaa",
+    "mergePR": 237,
+    "filesSha256": "af092eb578cc55272ec61443215e5781f350b6f9a328e4109b11a989c12188f2",
+    "previousRunningCommit": "1f9a28f7748ed4049f31e0ba7f9b2653346eac76",
+    "publishedAt": "2026-11-21T00:32:24+08:00",
+    "mainCI": "Voice push run 44773801657: test, android-tv success",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "iosShellRevision": "9728f8346bae8f8566500c3e83af4cf745756eddbd3029de6f616cbab879fa40",
+    "gatewayIdentityPreserved": true,
+    "gatewayNote": "The Gateway had been restarted at 2026-11-20 23:28:56 CST, before this release and not by it (PID 869872 before and after publishing).",
+    "change": "Picture searches: results qualify on their own score (their place only orders them); words the search asks for are not held against a title; guide, data and download pages are; a Chinese title must name the thing (half its characters), and an English title sharing no word with a several-word search for a Chinese name does not count for it. A search that finds nothing worth fetching is tried without its kind-of-picture words, then without its last word. An encyclopedia redirect to another article (a list with the Pokemon logo) is not the thing.",
+    "acceptance": "Tianyi reported GTA6 pictures missing on 11/20 and asked to release after the rerun of the day's 77 production searches on the Candidate (77 found, was 65; none lost). Production Public call after publish, 1440x900, '给我找几张GTA6的图看看，主角杰森和露西娅的': V described 5 pictures and all 5 were on the page; 5 of 5 lookups found."
   }
 }
