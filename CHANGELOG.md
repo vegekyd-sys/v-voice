@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-20 — A gallery drawn again keeps the pictures that were found
+
+- Asked for "more pictures", the director redraws the gallery under the same item ids; the gallery remembered failed pictures by id and hid new pictures that had been found (production call dfbb0ead: V described six, the page showed two). Failed pictures are now remembered by search, and tried again when the gallery is drawn with other searches.
+- The service answers 503 for a picture it could not look for just now (the image search refused or timed out) and 404 for one there is none of; the page tries a 503 once more after 2.5 s and does not keep it.
+- A request the image search refused (429) is asked again through the one-a-second queue, twice at most, with twice the gap for a minute: the retry used to go out beside the next queued request and be refused again (#234).
+
 ## 2026-11-20 — Gallery pictures whole and large; pages drawn smaller fit; pictures open large
 
 - Gallery pages (`look: "gallery"`) show each picture whole, at its own shape, in rows of one height that fill the page's width (`galleryLayout`: the breaks that make the pictures largest within the height the page has, none made tiny for another). On a wide page the gallery takes the whole width and the notes go under it side by side; once a picture shows, the page's lead print steps aside. Wide page, 4 pictures: ~245 px tall, whole (were ~160 px, cropped to 4:3, in the left half).

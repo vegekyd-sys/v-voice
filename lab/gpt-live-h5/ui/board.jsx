@@ -177,11 +177,19 @@ function useGalleryRoom() {
 }
 function Gallery({block, view}) {
   // A picture that could not be found takes its name with it: no empty frame in the grid.
-  const [missing, setMissing] = useState(() => new Set());
+  // Kept by what was searched for, not by the item's id: the director redraws a gallery
+  // ("show me more") and reuses ids, and a new picture under an old id that had failed was
+  // hidden although it was found (11/20). When the gallery is drawn again with other
+  // searches, the ones that failed are tried again; those the service has said have no
+  // picture (loadPhoto.missing) are left out at once, with no frame appearing first.
+  const searches = block.items.map(item => item.img ?? '').join('\n');
+  const [missing, setMissing] = useState(() => ({searches, failed: new Set()}));
+  const failed = missing.searches === searches ? missing.failed : new Set();
+  const gone = item => failed.has(item.img) || Boolean(view.loadPhoto?.missing?.(item.img));
   // Each picture's shape once it has loaded; until then it is held as 4:3.
   const [shapes, setShapes] = useState({});
   const [ref, room] = useGalleryRoom();
-  const shown = block.items.filter(item => item.img && !missing.has(item.id));
+  const shown = block.items.filter(item => item.img && !gone(item));
   const roomy = room.width >= 560;
   const {rows, height} = galleryLayout(shown.map(item => shapeOf(shapes[item.id])), room.width,
     {height: roomy ? 380 : 260, floor: roomy ? 150 : 110, gap: GALLERY_GAP, budget: room.budget, label: room.label || (roomy ? 56 : 44)});
@@ -194,7 +202,8 @@ function Gallery({block, view}) {
           const state = itemState(view, block, item);
           const picture = (
             <li key={item.id} {...state.props} style={{'--shape': shapeOf(shapes[item.id])}}>
-              <Thumb query={item.img} name={item.h} view={view} seed={state.id} onGone={() => setMissing(gone => new Set(gone).add(item.id))}
+              <Thumb query={item.img} name={item.h} view={view} seed={state.id}
+                onGone={() => setMissing(old => ({searches, failed: new Set(old.searches === searches ? old.failed : []).add(item.img)}))}
                 onShape={ratio => setShapes(old => old[item.id] === ratio ? old : {...old, [item.id]: ratio})} />
               <div className="board-item">
                 <Key item={item} seed={state.id}>{em(item.h)}</Key>

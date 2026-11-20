@@ -912,7 +912,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const active = context.active;
         const search = text => (active.gateway??gateway).request('tools.invoke',{agentId:binding.agentId??'makaron',sessionKey:active.sessionKey,name:'web_search',args:{query:text,count:5}},{timeoutMs:12000});
         const found = await boardPhotos.find(query,{search});
-        if (!found) return json(res,404,{error:'没有找到照片'});
+        // 404: there is no such picture. 503: it could not be looked for just now (the image
+        // search refused or timed out), so the page may ask again (11/20: a "show me more"
+        // gallery lost pictures that were found the second time).
+        if (!found) return boardPhotos.settled?.(query) === false ? json(res,503,{error:'暂时找不到照片'}) : json(res,404,{error:'没有找到照片'});
         // (`inline`: for the iOS app's native bridge, which passes JSON only.)
         if (params.inline === true) return found.bytes.length <= 1400*1024 ? json(res,200,{type:found.type,data:Buffer.from(found.bytes).toString('base64')}) : json(res,404,{error:'照片太大'});
         res.writeHead(200,{'content-type':found.type,'cache-control':'no-store','content-length':found.bytes.length});

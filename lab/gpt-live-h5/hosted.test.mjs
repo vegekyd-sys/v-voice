@@ -269,6 +269,19 @@ test('without a board director the page is told nothing and the endpoint does no
   assert.equal((await f.request('/voice/api/board?entry=tianyi', cookie, {trigger: 'user', rev: 0, turns: [{role: 'user', text: 'x'}], voiceSessionId: call.voiceSessionId})).status, 404);
 });
 
+test('a board photograph that could not be looked for just now is 503, one there is none of is 404', async t => {
+  const {createBoardDirector} = await import('./board-director.mjs');
+  const board = createBoardDirector({complete: async function* () { yield '{"op":"put","block":{"id":"g","t":"list","look":"gallery","items":[{"id":"a","h":"甲","img":"没有这张"},{"id":"b","h":"乙","img":"搜索被拒"}]}}\n'; }});
+  const boardPhotos = {find: async () => null, settled: query => query === '没有这张'};
+  const f = await fixture(t, {board, boardPhotos});
+  const cookie = await f.visitor();
+  const call = await (await f.request('/voice/api/session?entry=tianyi', cookie, {})).json();
+  await (await f.request('/voice/api/board?entry=tianyi', cookie, {voiceSessionId: call.voiceSessionId, trigger: 'user', rev: 0, turns: [{role: 'user', text: '找几张图'}]})).text();
+  const ask = query => f.request('/voice/api/board-image?entry=tianyi', cookie, {voiceSessionId: call.voiceSessionId, query});
+  assert.equal((await ask('没有这张')).status, 404);
+  assert.equal((await ask('搜索被拒')).status, 503);
+});
+
 test('a board photograph is served only for a picture the director put on this call\'s board', async t => {
   const {createBoardDirector} = await import('./board-director.mjs');
   const board = createBoardDirector({complete: async function* () { yield '{"op":"put","block":{"id":"p","t":"photo","query":"埃菲尔铁塔","caption":"巴黎"}}\n'; }});

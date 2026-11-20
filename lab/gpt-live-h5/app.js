@@ -39,7 +39,7 @@ const renderAssistant = (target, item) => {
 };
 if (document.querySelector) mountCallUi(document, view, {
   renderAssistant, onDocumentShown: callId => documentShown(callId),
-  loadBoardPhoto: query => loadBoardPhoto(query),
+  loadBoardPhoto: Object.assign(query => loadBoardPhoto(query), {missing: query => loadBoardPhoto.missing(query)}),
   actions: {
     openBinding: () => void openIosBinding(),
     connectIdentity: () => { guestDialAllowed=false;void confirmation.start(); },
@@ -437,15 +437,35 @@ function receiveDocument(active,value){
 }
 // A photograph on the board: fetched once per call through the Voice service
 // and handed to the page as a local object URL (null when there is none).
+// "There is none" (404) is kept for the call. A lookup that could not be made
+// (503: the image search refused or timed out; or the network) is tried once
+// more after a pause, and if it still fails it is not kept, so the next time
+// the page asks for it (a gallery drawn again) it is looked for again.
+const BOARD_PHOTO_RETRY_MS = 2500;
 function loadBoardPhoto(query) {
   const active = call;
   if (!active?.board || typeof query !== 'string') return Promise.resolve(null);
   active.boardPhotos ??= new Map();
-  if (!active.boardPhotos.has(query)) active.boardPhotos.set(query, fetch(apiUrl('board-image'), { method: 'POST',
-    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ voiceSessionId: active.voiceSessionId, query }) })
-    .then(async response => response.ok ? URL.createObjectURL(await response.blob()) : null).catch(() => null));
+  active.boardPhotosMissing ??= new Set();
+  if (!active.boardPhotos.has(query)) {
+    const ask = () => fetch(apiUrl('board-image'), { method: 'POST',
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ voiceSessionId: active.voiceSessionId, query }) })
+      .then(async response => response.ok ? {url: URL.createObjectURL(await response.blob())} : {none: response.status === 404})
+      .catch(() => ({none: false}));
+    const pending = ask()
+      .then(result => result.url || result.none || call !== active ? result : new Promise(resolve => setTimeout(resolve, BOARD_PHOTO_RETRY_MS)).then(() => call === active ? ask() : result))
+      .then(result => {
+        if (result.url) return result.url;
+        if (result.none) active.boardPhotosMissing.add(query);
+        else if (active.boardPhotos.get(query) === pending) active.boardPhotos.delete(query);
+        return null;
+      });
+    active.boardPhotos.set(query, pending);
+  }
   return active.boardPhotos.get(query);
 }
+// Whether the service has said there is no picture for this query in this call.
+loadBoardPhoto.missing = query => Boolean(call?.boardPhotosMissing?.has(query));
 // The UI reports a document row once it is actually on screen.
 function documentShown(callId){
   const active=call;
