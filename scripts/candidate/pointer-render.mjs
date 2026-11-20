@@ -5,7 +5,7 @@ import {readFileSync, writeFileSync} from 'node:fs';
 import {relative, dirname, join} from 'node:path';
 
 const esc = value => String(value ?? '').replace(/[&<>"]/gu, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
-const NAMES = {see: '看图 · 不思考', blind: '不看图（基线）', think: '看图 · 开思考'};
+const NAMES = {see: '看图 · 不思考', where: '看图 · 先说位置 · 不思考', refine: '先说位置 + 放大校正 · 不思考', coarse: '校正前（粗框）', blind: '不看图（基线）', think: '看图 · 开思考'};
 
 export function marksOverlay(marks) {
   // Percent-positioned so rings stay round-ish and labels unstretched whatever the photo's shape.

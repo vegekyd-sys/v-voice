@@ -7,6 +7,7 @@
 //   DEEPSEEK_API_KEY=… node scripts/candidate/pointer-eval.mjs photos/ out.json [case ids…]
 import {readFile, writeFile} from 'node:fs/promises';
 import {extname, join} from 'node:path';
+import {execFile} from 'node:child_process';
 import {createChatCompletionStream} from '../../lab/gpt-live-h5/board-director.mjs';
 import {clauses, numbered} from '../../lab/gpt-live-h5/board-cue.mjs';
 
@@ -20,6 +21,45 @@ export const POINTER_INSTRUCTIONS = `你是 V 的指针。V 正在电话里讲�
 - kind：ring（圈出一个部位，最常用）、point（只停住不圈，用于讲整体或很大的东西）、arrow（东西很小或很细时，从旁边指过去）。
 - label 写这个部位的名字（「尾巴」「电气袋」「屋脊兽」），会贴在圈旁边。
 - 每一段最多一个 mark；没有讲到照片上具体地方的段（开场、总结、提问）不标。照片上看不到 V 讲的东西就不标，不要猜一个位置。`;
+
+// Variant "where": the same, but each mark first says in words where the thing is in the photo (which
+// part of the picture, next to what), then gives the box - a cheap way to make it look before it guesses.
+export const WHERE_INSTRUCTIONS = POINTER_INSTRUCTIONS
+  .replace('{"marks":[{"cue":段号,"kind":"ring","box":[x1,y1,x2,y2],"label":"不超过 6 个字"},…]}',
+    '{"marks":[{"cue":段号,"where":"它在照片里的位置","kind":"ring","box":[x1,y1,x2,y2],"label":"不超过 6 个字"},…]}')
+  .replace('- box 框住', '- where 先用一句话说清这个东西在照片的哪一块、挨着什么（「画面右下，身体后面垂下来的那条」「左边那辆车的车头正中」），box 再照着它写。\n- box 框住');
+
+// Variant "refine": after "where", every ring is checked again on a zoomed-in crop around it (all rings
+// in parallel, one more no-thinking call each), and the corrected box is mapped back to the whole photo.
+export const REFINE_INSTRUCTIONS = `你会看到一张照片的局部（从整张照片里放大裁出来的一块）。在这块局部里框出要找的那个东西，紧贴着它的边。
+只输出一个 JSON 对象：{"box":[x1,y1,x2,y2]}，坐标是这块局部上的位置，左上角 [0,0]，右下角 [1000,1000]。局部里看不到它就输出 {"box":null}。`;
+
+/** The crop around a box: the box grown to at least 1.8 times (and 30% of the photo) each way, kept inside the photo. */
+export function cropAround([x1, y1, x2, y2]) {
+  const grow = (a, b) => { const size = Math.min(1000, Math.max(300, (b - a) * 1.8)), mid = (a + b) / 2; const start = Math.max(0, Math.min(1000 - size, mid - size / 2)); return [start, start + size]; };
+  const [cx1, cx2] = grow(Math.min(x1, x2), Math.max(x1, x2)), [cy1, cy2] = grow(Math.min(y1, y2), Math.max(y1, y2));
+  return [cx1, cy1, cx2, cy2].map(Math.round);
+}
+export const uncrop = ([cx1, cy1, cx2, cy2], [x1, y1, x2, y2]) => [cx1 + x1 * (cx2 - cx1) / 1000, cy1 + y1 * (cy2 - cy1) / 1000, cx1 + x2 * (cx2 - cx1) / 1000, cy1 + y2 * (cy2 - cy1) / 1000].map(Math.round);
+
+const cropPhoto = (path, crop) => new Promise((resolve, reject) => {
+  const code = 'import sys,io,base64\nfrom PIL import Image\nim=Image.open(sys.argv[1]).convert("RGB");w,h=im.size\nc=[int(v) for v in sys.argv[2:6]]\nim=im.crop((c[0]*w//1000,c[1]*h//1000,c[2]*w//1000,c[3]*h//1000));b=io.BytesIO();im.save(b,"JPEG",quality=88);print(base64.b64encode(b.getvalue()).decode())';
+  execFile('python3', ['-c', code, path, ...crop.map(String)], {maxBuffer: 1 << 24}, (error, out) => error ? reject(error) : resolve(`data:image/jpeg;base64,${out.trim()}`));
+});
+
+export async function refineMarks(marks, path, complete) {
+  return Promise.all((marks ?? []).map(async mark => {
+    if (mark.kind === 'point' || !Array.isArray(mark.box) || mark.box.length !== 4) return mark;
+    const crop = cropAround(mark.box.map(Number));
+    let text = '';
+    try {
+      const url = await cropPhoto(path, crop);
+      for await (const chunk of complete({messages: [{role: 'system', content: REFINE_INSTRUCTIONS}, {role: 'user', content: [{type: 'image_url', image_url: {url}}, {type: 'text', text: `要找的：${mark.label}（${mark.where ?? ''}）`}]}]})) text += chunk;
+    } catch { return mark; }
+    const box = parse(text)?.box;
+    return Array.isArray(box) && box.length === 4 && box.every(Number.isFinite) ? {...mark, coarse: mark.box, box: uncrop(crop, box)} : mark;
+  }));
+}
 
 export const CASES = {
   mewtwo: {photo: 'mewtwo', topic: '超梦长什么样', say: '这就是超梦，是用梦幻的基因造出来的宝可梦。你看它脑袋后面，有一根管子一直连到后背。它的尾巴又粗又长，是紫色的。手只有三根圆圆的手指。它最厉害的不是力气，是念力。'},
@@ -43,7 +83,9 @@ if (process.argv[1]?.endsWith('pointer-eval.mjs')) {
   const key = process.env.VOICE_BOARD_API_KEY ?? process.env.DEEPSEEK_API_KEY;
   const call = (thinking, maxTokens) => createChatCompletionStream({apiKey: key, endpoint: 'https://api.deepseek.com/chat/completions', model: 'deepseek-flash',
     maxTokens, timeoutMs: thinking ? 180000 : 60000, extra: {thinking: {type: thinking ? 'enabled' : 'disabled'}}});
-  const variants = {see: call(false, 1500), blind: call(false, 1500), think: call(true, 12000)};
+  const all = {see: call(false, 1500), where: call(false, 2500), refine: call(false, 2500), blind: call(false, 1500), think: call(true, 12000)};
+  const pick = (process.env.VARIANTS ?? 'see,where,blind,think').split(',');
+  const variants = Object.fromEntries(Object.entries(all).filter(([name]) => pick.includes(name)));
   const files = (await import('node:fs')).readdirSync(dir);
   const results = [];
   await Promise.all(Object.entries(CASES).filter(([id]) => !only.length || only.includes(id)).map(async ([id, item]) => {
@@ -54,10 +96,11 @@ if (process.argv[1]?.endsWith('pointer-eval.mjs')) {
       const text = `主题：${item.topic}\nV 要念的话：${words}`;
       const content = variant === 'blind' ? `${text}\n（你看不到照片，只能按这类照片通常的构图估计位置。）` : [{type: 'image_url', image_url: {url}}, {type: 'text', text}];
       const started = Date.now(); let out = '', error = '', first = 0;
-      try { for await (const chunk of complete({messages: [{role: 'system', content: POINTER_INSTRUCTIONS}, {role: 'user', content}]})) { first ||= Date.now() - started; out += chunk; } }
+      try { for await (const chunk of complete({messages: [{role: 'system', content: variant === 'where' || variant === 'refine' ? WHERE_INSTRUCTIONS : POINTER_INSTRUCTIONS}, {role: 'user', content}]})) { first ||= Date.now() - started; out += chunk; } }
       catch (e) { error = String(e?.message ?? e).slice(0, 300); }
-      const result = parse(out);
-      results.push({id, variant, file, clauses: parts, ms: Date.now() - started, firstMs: first, ok: Array.isArray(result?.marks), error, marks: result?.marks ?? null, raw: result ? undefined : out.slice(0, 400)});
+      let result = parse(out); const coarseMs = Date.now() - started;
+      if (variant === 'refine' && Array.isArray(result?.marks)) result = {marks: await refineMarks(result.marks, join(dir, file), call(false, 300))};
+      results.push({id, variant, file, clauses: parts, ms: Date.now() - started, coarseMs, firstMs: first, ok: Array.isArray(result?.marks), error, marks: result?.marks ?? null, raw: result ? undefined : out.slice(0, 400)});
       console.log(variant, id, Date.now() - started, 'ms', result?.marks?.length ?? 0, 'marks', error);
     }));
   }));
