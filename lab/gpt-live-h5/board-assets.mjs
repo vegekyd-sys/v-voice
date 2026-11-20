@@ -195,7 +195,8 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     for (let grew = true; grew;) { grew = false; for (const item of value.assets) if (item.from && ids.includes(item.from) && !ids.includes(item.id)) { ids.push(item.id); grew = true; } }
     return ids.filter(id => id !== asset.id);
   };
-  const place = (owner, asset, extra = {}) => { try { director?.place?.(owner, {asset: asset.id, family: family(owners.get(owner), asset), title: asset.name, ...extra}); } catch { /* The shelf still holds it. */ } };
+  // (`gone`: things that were not made. Their empty frames leave the page when the next thing goes up.)
+  const place = (owner, asset, extra = {}) => { try { director?.place?.(owner, {asset: asset.id, family: family(owners.get(owner), asset), title: asset.name, gone: owners.get(owner).assets.filter(item => item.state === 'failed').map(item => item.id), ...extra}); } catch { /* The shelf still holds it. */ } };
   const describe = asset => {
     const kind = asset.kind === 'video' ? '视频' : '图片', origin = asset.from ? `，由 ${asset.from} 做成` : '';
     const what = asset.see || (asset.prompt ? `按这段要求生成：${bounded(asset.prompt, 90)}` : '');

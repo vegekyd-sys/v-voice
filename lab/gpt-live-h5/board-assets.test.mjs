@@ -313,3 +313,17 @@ test('a photograph is called on the shelf what it is called on the board', () =>
   assert.equal(pictureName(pages, '特斯拉 Model 3'), 'Model 3');
   assert.equal(pictureName(pages, '没在页上'), '没在页上');
 });
+
+test('the frame of a thing that was not made leaves the page when the next thing goes up', async () => {
+  const board = director(), shelf = shelfOn(board), make = words => shelf.begin('call', {command: `makaron edit --image-model gemini-2.1 '${words}'`, turn: {}});
+  await shelf.finish('call', make('海报').id, image(POSTER));
+  await shelf.finish('call', make('电影海报版').id, {isError: true});
+  assert.deepEqual(board.scene('call').blocks.map(block => [block.asset, block.w]), [['a1', 'half'], ['a2', 'half']], 'it says so while nothing else has come');
+  make('纯电影海报');
+  assert.deepEqual(board.scene('call').blocks.map(block => [block.asset, block.w]), [['a1', 'half'], ['a3', 'half']]);
+  // Alone again, a thing has the page's width.
+  const one = director(), single = shelfOn(one), again = words => single.begin('call', {command: `makaron edit --image-model gemini-2.1 '${words}'`, turn: {}});
+  await single.finish('call', again('一').id, {isError: true});
+  again('二');
+  assert.deepEqual(one.scene('call').blocks.map(block => [block.asset, block.w]), [['a2', undefined]]);
+});

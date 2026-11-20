@@ -195,7 +195,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
      * the illustrator is doing. A new version of a thing already up (a picture changed, or made to
      * move) takes that thing's frame; otherwise it gets the page opened for this very request, or one of its own.
      */
-    place(id, {asset, family = [], title = '', turn = false} = {}) {
+    place(id, {asset, family = [], title = '', turn = false, gone = []} = {}) {
       if (typeof asset !== 'string' || !/^a[1-9]\d{0,2}$/u.test(asset)) return false;
       const row = owner(id);
       // `turn`: the caller has just asked for this very thing. The turn's picture is then the made
@@ -208,6 +208,13 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         row.controller?.abort();
         if (row.scene !== row.turn.scene) { row.zones = row.turn.zones; row.scene = {...row.turn.scene, rev: row.scene.rev + 1}; }
         row.makingTurn = row.turnNo;
+      }
+      // The frame of a thing that was not made (call of 11/21: an edit the provider refused) has said so
+      // long enough: it leaves the page V is on as the next thing goes up. A thing left alone has the width again.
+      if (gone.length && row.scene.blocks.some(block => block.t === 'work' && gone.includes(block.asset))) {
+        const kept = row.scene.blocks.filter(block => !(block.t === 'work' && gone.includes(block.asset)));
+        const alone = kept.filter(block => block.t === 'work').length < 2;
+        row.scene = {...row.scene, blocks: kept.map(block => { if (block.t !== 'work' || !alone || !block.w) return block; const {w, ...rest} = block; return rest; }), rev: row.scene.rev + 1};
       }
       const pages = [row.scene, ...(row.zones ?? []).filter(zone => zone.serial !== row.scene.serial)];
       const holds = (page, which) => page.blocks.some(block => block.t === 'work' && which.includes(block.asset));
