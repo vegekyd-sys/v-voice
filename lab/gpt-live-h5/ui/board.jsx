@@ -677,7 +677,7 @@ function Sheet({scene, spoken, loadPhoto, enlarge, caption = '', works = null}) 
   // While V speaks the mark follows the voice; otherwise it stays where the director put it.
   // (`works`: the call's shelf of made things: what each id is, the one the caller has picked, and how to pick, report and act.)
   const view = {focus: spoken?.focus || scene.focus, ahead: new Set(spoken?.ahead ?? []), loadPhoto, enlarge,
-    assets: works?.assets ?? null, picked: works?.picked ?? '', pick: works?.pick, shown: works?.shown, act: works?.act};
+    assets: works?.assets ?? null, picked: works?.picked ?? '', pick: works?.pick, shown: works?.shown, act: works?.act, title: scene.title};
   // Only the page V is on follows the voice, and only up and down inside the page: scrollIntoView
   // also scrolled the strip of pages sideways, to whichever page last had a focus, while the board
   // brought the view back to V's page; on a phone the view swung between two pages (11/14).
@@ -793,7 +793,8 @@ export function Board({scene, canvas, spoken, caption = '', loadPhoto, onClose, 
     <section className="board" data-pages={pages.length} aria-label={page.title ? `画面：${page.title}` : '画面'}>
       <header className="board-top">
         {page.title ? <h2 key={page.serial} className="board-title">{parent?.title && <small>{parent.title} ›</small>}<span>{page.title}</span><Stroke className="board-title-line" d={underline(page.title)} /></h2> : <span />}
-        {onReport && <button type="button" className="board-report" onClick={onReport}>完整报告</button>}
+        {/* (A made thing's own card in the conversation is not a report to open: the thing is here on the page.) */}
+        {onReport && !page.blocks.some(block => block.t === 'work') && <button type="button" className="board-report" onClick={onReport}>完整报告</button>}
         <button type="button" className="board-close" aria-label="收起画面" onClick={onClose}>
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
         </button>

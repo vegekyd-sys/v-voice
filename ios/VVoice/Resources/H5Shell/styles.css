@@ -1768,7 +1768,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-block[data-type="work"] { display: flex; justify-content: center; }
 .board-work { margin: 0; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 9px; }
 .board-work-frame {
-  position: relative; width: min(100%, calc(var(--work-cap, 420px) * var(--shape, 1.33))); aspect-ratio: var(--shape, 1.33);
+  position: relative; width: min(100%, calc(var(--work-cap, min(56vh, 560px)) * var(--shape, 1.33))); aspect-ratio: var(--shape, 1.33);
   box-sizing: border-box; padding: 9px; background: #fffdfb; border-radius: 3px;
   box-shadow: 0 22px 36px -20px #4d356080, 0 0 0 1px #4d35600d;
   transform: rotate(var(--tilt, 0deg)); transition: aspect-ratio .5s ease, width .5s ease, box-shadow .25s, transform .25s;
@@ -1778,9 +1778,13 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-work-frame > :is(img, video, .board-work-sketch, .board-work-failed) { position: absolute; inset: 9px; width: calc(100% - 18px); height: calc(100% - 18px); border-radius: 2px; }
 .board-work-frame > :is(img, video) { display: block; object-fit: cover; background: #ece4f3; }
 /* The picture develops: out of the grey of a print just pulled, into its colours. */
-.board-work-print { animation: board-work-develop 1.5s cubic-bezier(.2, .7, .2, 1) both; }
-video.board-work-print { animation: board-in .7s ease-out both; }
-.board-work-under { filter: saturate(.85); animation: board-work-drift 7s ease-in-out infinite alternate; }
+.board-work-print { opacity: 0; }
+.board-work-print[data-loaded] { opacity: 1; animation: board-work-develop 1.5s cubic-bezier(.2, .7, .2, 1) both; }
+video.board-work-print[data-loaded] { animation: board-in .7s ease-out both; }
+.board-work-frame > .board-work-sketch { z-index: 1; }
+.board-work-frame > .board-work-print { z-index: 2; }
+.board-work-large, .board-work-this { z-index: 3; }
+.board-work-under { animation: board-work-drift 2.6s ease-in-out infinite alternate; }
 /* Being made: pencil lines hatched across the sheet, again and again, with what was asked for written over them. */
 .board-work-sketch { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; overflow: hidden; padding: 14px; box-sizing: border-box; text-align: center;
   background: #f6f1fa repeating-linear-gradient(-52deg, transparent 0 9px, #b9aec433 9px 10.5px); }
@@ -1829,7 +1833,7 @@ video.board-work-print { animation: board-in .7s ease-out both; }
 }
 @keyframes board-work-develop { from { opacity: 0; filter: blur(16px) saturate(.1) brightness(1.25); } 55% { opacity: 1; filter: blur(5px) saturate(.5) brightness(1.1); } to { filter: none; } }
 @keyframes board-work-stroke { 0% { transform: rotate(-52deg) scaleX(0); opacity: .9; } 60% { transform: rotate(-52deg) scaleX(1); opacity: .9; } 100% { transform: rotate(-52deg) scaleX(1); opacity: 0; } }
-@keyframes board-work-drift { from { transform: scale(1); } to { transform: scale(1.045) translate(-.6%, -.5%); } }
+@keyframes board-work-drift { from { filter: saturate(.9) brightness(.96); } to { filter: saturate(1.1) brightness(1.06); } }
 @keyframes board-work-breathe { to { opacity: .9; } }
 @media (prefers-reduced-motion: reduce) { .board-work-print, .board-work-under, .board-work-sketch > i, .board-work-this { animation: none; } }
 

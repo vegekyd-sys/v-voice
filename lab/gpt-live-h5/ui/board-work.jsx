@@ -23,8 +23,9 @@ function Elapsed({since}) {
 
 // What V can be asked to do with the picked thing, in the caller's own words (sent as typed text).
 const ACTIONS = {
-  image: [{label: '动起来', say: id => `把 ${id} 这张图动起来`}, {label: '再来一版', say: id => `${id} 这张图再来一版，换个构图`}],
-  video: [{label: '再来一版', say: id => `${id} 这个视频再做一版`}],
+  // (No ids in the words: the picked thing is "this one" for V, which is told which one the caller has picked.)
+  image: [{label: '动起来', say: '把这张图动起来'}, {label: '再来一版', say: '这张图再来一版，换个构图'}],
+  video: [{label: '再来一版', say: '这个视频再做一版'}],
 };
 
 export function Work({block, view}) {
@@ -36,6 +37,8 @@ export function Work({block, view}) {
   const shown = family.find(item => item.id === back) ?? latest;
   // The frame keeps the shape of what it last held until the next thing reports its own.
   const [shape, setShape] = useState(0);
+  // The picture or video the browser has actually fetched: until then the frame keeps what it held.
+  const [fetched, setFetched] = useState('');
   const film = useRef(null);
   const settle = (width, height) => { if (width > 0 && height > 0) setShape(Math.min(2.4, Math.max(.5, width / height))); };
   if (!shown) {
@@ -48,10 +51,11 @@ export function Work({block, view}) {
   }
   // What the frame shows under a thing still being made: the picture it is made from.
   const source = shown.from ? assets.get(shown.from) : null;
-  const under = shown.state === 'making' && source?.kind === 'image' && source.url ? source.url : '';
-  const poster = shown.kind === 'video' && source?.kind === 'image' ? source.url : undefined;
+  const ready = shown.state === 'ready', loaded = ready && fetched === shown.id;
+  const under = !loaded && shown.state !== 'failed' && source?.kind === 'image' && source.url ? source.url : '';
   const picked = view.picked === shown.id && shown.state === 'ready';
-  const name = shown.name || block.caption || (shown.state === 'making' ? '' : shown.kind === 'video' ? '视频' : '作品');
+  // A version goes by the name the thing was given when it was first looked at.
+  const name = shown.name || family.find(item => item.name)?.name || block.caption || (shown.state === 'making' ? '' : shown.kind === 'video' ? '视频' : '作品');
   const pick = () => { if (shown.state === 'ready') view.pick?.(shown.id); };
   const large = event => {
     event.stopPropagation();
@@ -65,24 +69,26 @@ export function Work({block, view}) {
         aria-pressed={shown.state === 'ready' ? picked : undefined} aria-label={shown.state === 'ready' ? `${picked ? '已选中' : '选中'}：${name}` : undefined}
         onClick={pick} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pick(); } }}>
         {under && <img className="board-work-under" src={under} alt="" decoding="async" onLoad={event => settle(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />}
-        {shown.state === 'making' && (
+        {(shown.state === 'making' || ready && !loaded) && (
           <div className="board-work-sketch" data-over={under ? 'true' : undefined}>
             <i /><i /><i />
-            <p>{shown.kind === 'video' ? '正在让它动起来' : '正在画'}<span> · <Elapsed since={shown.at} /> 秒</span></p>
-            {shown.prompt && !under && <q>{shown.prompt}</q>}
+            {/* (Made, and on its way to this screen: the sketch stays until the picture itself has arrived.) */}
+            {ready ? <p>{shown.kind === 'video' ? '马上就动' : '正在显影'}</p>
+              : <p>{shown.kind === 'video' ? '正在让它动起来' : '正在画'}<span> · <Elapsed since={shown.at} /> 秒</span></p>}
+            {shown.prompt && !under && !ready && <q>{shown.prompt}</q>}
           </div>
         )}
-        {shown.state === 'ready' && shown.kind === 'image' && (
-          <img key={shown.id} className="board-work-print" src={shown.url} alt={name} decoding="async"
-            onLoad={event => { settle(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight); view.shown?.(shown.id); }} />
+        {ready && shown.kind === 'image' && (
+          <img key={shown.id} className="board-work-print" data-loaded={loaded || undefined} src={shown.url} alt={name} decoding="async"
+            onLoad={event => { settle(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight); setFetched(shown.id); view.shown?.(shown.id); }} />
         )}
-        {shown.state === 'ready' && shown.kind === 'video' && (
-          <video key={shown.id} ref={film} className="board-work-print" src={shown.url} poster={poster} muted loop autoPlay playsInline preload="auto"
+        {ready && shown.kind === 'video' && (
+          <video key={shown.id} ref={film} className="board-work-print" data-loaded={loaded || undefined} src={shown.url} muted loop autoPlay playsInline preload="auto"
             onLoadedMetadata={event => settle(event.currentTarget.videoWidth, event.currentTarget.videoHeight)}
-            onLoadedData={() => view.shown?.(shown.id)} />
+            onLoadedData={() => { setFetched(shown.id); view.shown?.(shown.id); }} />
         )}
         {shown.state === 'failed' && <div className="board-work-failed"><p>{shown.kind === 'video' ? '这段没做成' : '这张没画成'}</p></div>}
-        {shown.state === 'ready' && (
+        {loaded && (
           <button type="button" className="board-work-large" aria-label={shown.kind === 'video' ? '全屏看视频' : '放大图片'} onClick={large}>
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" /></svg>
           </button>
@@ -90,7 +96,8 @@ export function Work({block, view}) {
         {picked && <span className="board-work-this" aria-hidden="true">这张</span>}
       </div>
       <figcaption>
-        {name && <span className="board-work-name">{name}</span>}
+        {/* (The page already carries the name as its title when the page is this thing's own.) */}
+        {name && name !== view.title && <span className="board-work-name">{name}</span>}
         {shown.state === 'ready' && <small>{shown.source === 'backend' ? '后台生成' : shown.source === 'lesson' ? '讲解时现画' : 'V 生成'}{shown.kind === 'video' ? ' · 视频' : ''}</small>}
       </figcaption>
       {family.length > 1 && (
@@ -108,7 +115,7 @@ export function Work({block, view}) {
       )}
       {picked && view.act && (
         <div className="board-work-acts" role="group" aria-label="对这件作品">
-          {(ACTIONS[shown.kind] ?? []).map(action => <button key={action.label} type="button" onClick={() => view.act(action.say(shown.id))}>{action.label}</button>)}
+          {(ACTIONS[shown.kind] ?? []).map(action => <button key={action.label} type="button" onClick={() => view.act(action.say)}>{action.label}</button>)}
           <span>或者直接说：把它……</span>
         </div>
       )}

@@ -212,7 +212,9 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       // (A command refused before it was submitted and written again starts the same thing anew.)
       if (known) { if (known.state === 'failed') { known.state = 'making'; known.prompt = creation.prompt; known.at = now(); changed(owner, value, {quiet: true}); } return {command: resolved, id: known.id}; }
       const origin = find(value, creation.reference);
-      const asset = add(value, fresh(value, {kind: creation.kind, state: 'making', prompt: creation.prompt, from: origin ? (origin.kind === 'video' && origin.from ? origin.from : origin.id) : '', ...(creation.aspect ? {aspect: creation.aspect} : origin?.aspect ? {aspect: origin.aspect} : {})}));
+      const parent = origin ? (origin.kind === 'video' && origin.from ? value.assets.find(item => item.id === origin.from) ?? origin : origin) : null;
+      // (A version goes by the name its picture was given: "the video of X", not a nameless video.)
+      const asset = add(value, fresh(value, {kind: creation.kind, state: 'making', prompt: creation.prompt, from: parent?.id ?? '', ...(parent?.name ? {name: parent.name, named: creation.kind === 'video'} : {}), ...(creation.aspect ? {aspect: creation.aspect} : parent?.aspect ? {aspect: parent.aspect} : {})}));
       value.turns.set(key, {...kinds, [creation.kind]: asset.id});
       if (value.turns.size > 64) value.turns.delete(value.turns.keys().next().value);
       audit({type: 'board.asset', voiceSessionId: owner, asset: asset.id, kind: asset.kind, state: 'making', from: asset.from || null});
