@@ -198,7 +198,7 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 // Candidate only: the model is off in production until its login is configured and the switch is set.
 export const GPT_LIVE_11_CANDIDATE_UPDATE = {
-  version:'voice-gpt-live-11.20261120.3',date:'2026-11-20',
+  version:'voice-gpt-live-11.20261120.4',date:'2026-11-20',
   title:'GPT Live 1.1：是 V 本人，查东西当场答，讲解有画面（Candidate）',status:'candidate-validation',
   items:[
     '模型列表新增 GPT Live 1.1，走 Codex 套餐登录，不另外按量付费。',
@@ -206,6 +206,7 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
     '查时间、上网搜索、查记忆和日程这类短任务当场办完；追问「再看一下」会接着刚才那件事查，不会查偏。',
     '讲解和讲故事：V 按讲稿讲，画面和图片跟着声音一块一块出现；后台任务办完也按同样的方式讲给你听。',
     '修复：你说到一半的话不再出现在 V 的气泡里，也不会被画到画面上。',
+    '修复：V 不再说“我想想、等我一下”然后没有下文；说了再见就真的挂断。',
     '仅候选验证：真实手机收音、打断、锁屏和长时间通话还没验收，机器人和音箱暂未接入。',
   ],
 };
