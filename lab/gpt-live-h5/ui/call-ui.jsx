@@ -258,6 +258,21 @@ function GrokPicker({state, actions}) {
   );
 }
 
+// GPT Live's voices: the timbre is half of V's character, and only the listener can pick it.
+function LiveVoicePicker({state, actions}) {
+  const {live11} = state;
+  if (state.model !== 'gpt-live-11' || !live11?.voices.length) return null;
+  return (
+    <label id="liveVoicePicker" className="grok-voice-picker">
+      <span>V 的声音</span>
+      <select id="liveVoice" aria-label="选择 GPT Live 的声音" aria-describedby="liveVoiceHint" value={live11.voice ?? ''} onChange={event => actions.chooseLiveVoice(event.target.value)}>
+        {live11.voices.map(voice => <option key={voice.id} value={voice.id}>{voice.label}</option>)}
+      </select>
+      <small id="liveVoiceHint">选好声音再拨号，下次还用这个</small>
+    </label>
+  );
+}
+
 function EntryNotice({entry}) {
   return (
     <section id="entryNotice" className="entry-notice" data-kind={entry.kind} role="status" aria-live="polite" aria-atomic="true">
@@ -509,7 +524,7 @@ function CallPage({view, actions, options}) {
                 </>
               ) : state.entry&&!state.confirmation ? <EntryNotice entry={state.entry} /> : (
                 <>
-                  {state.confirmation?<InlineConfirmation value={state.confirmation} actions={actions}/>:<GrokPicker state={state} actions={actions} />}
+                  {state.confirmation?<InlineConfirmation value={state.confirmation} actions={actions}/>:<><GrokPicker state={state} actions={actions} /><LiveVoicePicker state={state} actions={actions} /></>}
                   <button id="start" className={`dial${state.confirmation?' confirmation-dial':''}`} type="button" disabled={state.confirmation?state.confirmation.phase!=='failed':state.dial.disabled} aria-label={state.confirmation?(state.confirmation.phase==='failed'?'重试身份确认':'等待飞书确认'):state.dial.label} title={state.dial.label} onClick={state.confirmation?actions.connectIdentity:actions.dial}><Icon d={PHONE} /></button>
                   {state.confirmation?<div className="confirmation-actions"><button type="button" disabled={state.confirmation.phase==='cancelling'} onClick={actions.skipConfirmation}>访客通话</button></div>:<>
                   <ModelPicker state={state} actions={actions} />

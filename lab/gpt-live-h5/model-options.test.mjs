@@ -13,3 +13,10 @@ test('explicit test catalog keeps Grok selectable and visitors never inherit GPT
  assert.equal(phoneModelOptions({models,unidentified:true},'grok').models.some(m=>m.id==='gpt-live'),false);
  assert.deepEqual(phoneModelOptions({models:[]},'grok'),{models:[],model:null});
 });
+test('GPT Live 1.1 is selectable only when the service advertises it',()=>{
+ const models=[...ordinary,{id:'gpt-live-11',available:true}];
+ assert.equal(phoneModelOptions({models,defaultModel:'gpt-live-11'},'seeduplex').model,'gpt-live-11');
+ assert.equal(phoneModelOptions({models},'gpt-live-11').model,'gpt-live-11');
+ assert.equal(phoneModelOptions({models:ordinary},'gpt-live-11').model,'seeduplex');
+ assert.equal(phoneModelOptions({models:[{id:'gpt-live-11',available:false},{id:'seeduplex',available:true}]},'gpt-live-11').model,'seeduplex');
+});

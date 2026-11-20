@@ -257,9 +257,13 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       // A script's page is already being drawn (see `note`): the caller's screen watches that
       // run instead of starting another. Only the caller speaking again ends it.
       const script = text => String(text ?? '').replace(/\s+/gu, '').slice(0, 24);
+      // V is reading the script: from its first words, or (a reading that was interrupted and picks up
+      // again, a voice whose captions arrive a clause at a time) from somewhere inside it.
+      const letters = text => String(text ?? '').replace(/[\s\p{P}\p{S}]/gu, '').toLowerCase();
+      const reads = (heard, written) => { const said = letters(heard).slice(0, 24), script = letters(written); return said.length >= 6 ? script.includes(said) : said.length >= 2 && script.startsWith(said); };
       if (!ahead && trigger !== 'user' && (row.aheadChain || row.aheadFor)) {
         const latest = turns?.findLast?.(turn => turn?.role === 'assistant');
-        const same = row.notes?.script && script(latest?.text ?? latest) === script(row.notes.script);
+        const same = row.notes?.script && reads(latest?.text ?? latest, row.notes.script);
         if (row.aheadChain) {
           if (clientRev !== row.scene.rev) out({op: 'sync', scene: row.scene, canvas: canvasOf(row)});
           (row.watchers ??= new Set()).add(out);
@@ -408,7 +412,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         const messages = [{role: 'system', content: stream?.instructions ?? BOARD_INSTRUCTIONS},
           {role: 'user', content: boardRequest({trigger, scene: row.scene, turns: stream?.turns ? stream.turns(turns) : turns, evidence: row.evidence,
             // The author's notes go with the script they were written for, and with nothing else.
-            ...(stream && row.notes && said && said.replace(/\s+/gu, '').startsWith(row.notes.script.replace(/\s+/gu, '').slice(0, 24)) ? {notes: {title: row.notes.title, lines: row.notes.lines}} : {}),
+            ...(stream && row.notes && said && reads(said, row.notes.script) ? {notes: {title: row.notes.title, lines: row.notes.lines}} : {}),
             ...(stream ? {recent: row.recent ?? [], page: {id: zoneId(row.scene), room: Math.max(0, 4 - row.scene.blocks.length)}, canvas: (row.zones ?? []).filter(zone => zone.serial !== row.scene.serial).map(zoneDigest)} : {})})}];
         for await (const chunk of (stream ? hedged(complete, {messages, signal: controller.signal}, hedgeMs) : complete({messages, signal: controller.signal}))) {
           if (controller.signal.aborted) break;

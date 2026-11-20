@@ -34,6 +34,7 @@ import {createVoiceLarkReader,personalLarkReader} from '../realtime-direct-tools
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
 import {VOICE_CONTEXT_HISTORY_REQUEST,voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
+import {gptLiveVoice} from '../realtime-direct-tools/gpt-live-provider.mjs';
 import {idleHangupFromEnv} from '../realtime-direct-tools/idle-hangup.mjs';
 import {boardCompletionFromEnv,boardDirectorFromEnv,boundedBoardRequest} from './board-director.mjs';
 import {createPhotoFinder} from './board-photo.mjs';
@@ -51,13 +52,15 @@ const PAGE_FEATURES = Object.freeze({
 });
 export const callAttemptLimit = binding => binding.permissionProfile === 'unidentified' ? 6 : 30;
 
-export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, board = null, boardPhotos = null, boardAudience = 'owner', enableGrok = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), relayUsageFile = process.env.VOICE_RELAY_USAGE_FILE || '/var/lib/v-voice-usage/snapshot.json', conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, board = null, boardPhotos = null, boardAudience = 'owner', enableGrok = false, enableGptLive11 = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), relayUsageFile = process.env.VOICE_RELAY_USAGE_FILE || '/var/lib/v-voice-usage/snapshot.json', conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
   let agentControl = null;
   if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
-  if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
+  if (!["gpt-live","seeduplex","grok","gpt-live-11"].includes(defaultModel)) throw new Error("Invalid default voice model");
+  if (typeof enableGptLive11 !== 'boolean') throw new Error('Invalid GPT Live 1.1 visibility setting');
   if (typeof enableGrok !== 'boolean') throw new Error('Invalid Grok visibility setting');
   // Visibility belongs to the phone product catalog, not provider/device capability.
-  const phoneModels = () => [{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'},...(directVoice?.models?.() ?? [])].filter(m => enableGrok || m.id !== 'grok');
+  const phoneModels = () => [{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'},...(directVoice?.models?.() ?? [])].filter(m => (enableGrok || m.id !== 'grok') && (enableGptLive11 || m.id !== 'gpt-live-11'));
+  if (defaultModel === 'gpt-live-11' && !enableGptLive11) defaultModel = 'gpt-live';
   if (defaultModel === 'grok' && !enableGrok) defaultModel = phoneModels().find(m => m.id === 'seeduplex' && m.available)?.id ?? 'gpt-live';
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
@@ -258,6 +261,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     const reply=(status,body)=>({status,body});
     // An old cached native preference must not silently start another model or
     // end an existing call. The existing options refresh selects the new default.
+    if (params.model === 'gpt-live-11' && !enableGptLive11) return reply(409,{error:'GPT Live 1.1 尚未开放，请返回首页刷新后选择可用模型。',code:'model_hidden',fallbackModel:defaultModel});
     if (params.model === 'grok' && !enableGrok) return reply(409,{error:'Grok 目前仅供测试，请返回首页刷新后选择可用模型。',code:'model_hidden',fallbackModel:defaultModel});
     const externalCancelled=cancelled;
     cancelled=()=>externalCancelled()||Boolean(binding.cliManaged&&!agentControl?.active(binding.id));
@@ -271,9 +275,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     if(speakerRouting&&params.inputPolicy!==undefined&&!['native','speaker'].includes(params.inputPolicy))return reply(400,{error:'没有这个输入策略'});
     try{normalizeDeviceActions(params.nativeDeviceActions);}catch{return reply(400,{error:'不支持的设备能力协议'});}
     if(params.nativeRuntimeVersion!==undefined&&params.nativeRuntimeVersion!==1)return reply(400,{error:'不支持的原生能力协议'});
-    if (params.model && !['gpt-live','seeduplex','grok'].includes(params.model)) return reply(400,{error:'没有这个语音模型'});
+    if (params.model && !['gpt-live','seeduplex','grok','gpt-live-11'].includes(params.model)) return reply(400,{error:'没有这个语音模型'});
     if (params.model === 'grok') {
       try { grokVoice(params.voice); } catch (error) { return reply(400,{error:error.message}); }
+    }
+    if (params.model === 'gpt-live-11' && params.voice !== undefined) {
+      try { gptLiveVoice(params.voice); } catch (error) { return reply(400,{error:error.message}); }
     }
     if (params.model && params.model !== 'gpt-live' && !directVoice) return reply(503,{error:'这个语音模型尚未接入'});
     if (context.creatingSession) return reply( 409, { error: "正在连接 V，请稍等。" });
@@ -1082,7 +1089,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ||!['1','2'].includes(dialVersion)
         ||(dialVersion==='1'?url.searchParams.get('nativeRuntimeVersion')!=='1':url.searchParams.has('nativeRuntimeVersion'))
         ||url.searchParams.has('inputPolicy')&&!['native','speaker'].includes(url.searchParams.get('inputPolicy'))
-        ||!['seeduplex','grok'].includes(url.searchParams.get('model')))return reject(400);
+        ||!['seeduplex','grok','gpt-live-11'].includes(url.searchParams.get('model')))return reject(400);
       const dialModel=url.searchParams.get('model');
       const binding=await resolveBinding(req,url,typeof directVoice.prefetch==='function'?{speculate:hint=>{if(!prefetched)prefetched=directVoice.prefetch({...hint,model:dialModel});}}:undefined).catch(()=>null);if(!binding)return reject(404);
       if(phoneLogin?.protects(binding)&&!phoneLogin.permits(req,binding)&&!iosBindings?.read(req,binding))return reject(401);
@@ -1185,6 +1192,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       scopes:["operator.read","operator.write","operator.admin"],caps:["voice-direct-tools","tool-events","voice-feishu-actor-v1"],subscribeSessions:true,onEvent:event=>bridge?.emit(event),
     },{onConnectError:error=>console.warn(JSON.stringify({type:"voice.gateway-connection-error",code:/^[A-Z0-9_]{1,80}$/.test(error.code??"")?error.code:"CONNECT_ERROR"}))});
     const {createDirectVoiceService}=await import('../realtime-direct-tools/session.mjs');
+    const {gptLiveFromEnv}=await import('../realtime-direct-tools/gpt-live-auth.mjs');
     const wsModule=await import('ws');
     transcriptLog=createVoiceTranscriptLog({
       directory:process.env.RTC_H5_TRANSCRIPT_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-transcripts'),
@@ -1234,6 +1242,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
       mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({environment:process.env}):null,
       calendar:personalLark.calendar,larkRead:personalLark.read,larkForActor:lark.forActor,
+      gptLive:gptLiveFromEnv(process.env),
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),
       grokExpressiveTags:process.env.XAI_VOICE_EXPRESSIVE_TAGS === '1',
@@ -1277,6 +1286,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       directVoice, speakerRouting, avatarLog,board,boardAudience:process.env.VOICE_BOARD_AUDIENCE==='all'?'all':'owner',boardPhotos:board?photos=createPhotoFinder({braveKey:process.env.VOICE_BOARD_BRAVE_KEY??'',directory:process.env.VOICE_BOARD_PHOTO_DIR??(process.env.RTC_H5_TRANSCRIPT_DIR?join(process.env.RTC_H5_TRANSCRIPT_DIR,'board-photos'):''),observe:event=>board.log?.(event)}):null,callControlAudit:transcriptLog.audit,
       phoneInputPolicy:process.env.VOICE_PHONE_INPUT_POLICY ?? 'speaker',
       enableGrok: process.env.VOICE_ENABLE_GROK === '1',
+      enableGptLive11: process.env.VOICE_ENABLE_GPT_LIVE_11 === '1',
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",
       feishuAccounts:process.env.VOICE_FEISHU_ACCOUNTS_FILE?JSON.parse(await readFile(process.env.VOICE_FEISHU_ACCOUNTS_FILE,'utf8')):config.channels?.feishu??{},
       personalReply: {replySync:!!process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID,accountId:process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID},

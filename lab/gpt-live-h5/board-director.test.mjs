@@ -333,6 +333,13 @@ test('a script\'s page is started when the script arrives; the caller\'s screen 
   assert.equal(seen.at(-1).scene.blocks[0].t, 'list');
   assert.equal((await director.run({owner: 'c', trigger: 'assistant_end', clientRev: director.scene('c').rev, turns: [{role: 'assistant', text: script}]})).reason, 'same');
   assert.equal(calls, 1);
+  // A voice whose captions arrive a clause at a time, in its own punctuation, and a reading that
+  // was interrupted and picks up in the middle: still this script's page, never drawn again.
+  for (const text of ['罗马景点散,', '罗马景点散,先按三天排。', '第一天从斗兽场开始,票和古罗马广场是同一张。'])
+    assert.equal((await director.run({owner: 'c', trigger: 'assistant_progress', clientRev: director.scene('c').rev, turns: [{role: 'assistant', text}]})).reason, 'same');
+  assert.equal(calls, 1);
+  // Words that are not in the script are a new reply.
+  assert.notEqual((await director.run({owner: 'c', trigger: 'assistant_end', clientRev: director.scene('c').rev, turns: [{role: 'assistant', text: '佛罗伦萨其实更适合慢慢逛，两天就够了。'}]})).reason, 'same');
 });
 
 test('hedged: a reply that has not started in time is raced by a second request', async () => {
