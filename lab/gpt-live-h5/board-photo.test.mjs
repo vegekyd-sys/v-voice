@@ -222,6 +222,9 @@ test('what the search asks for is not held against a title: a poster for "…海
   assert.ok(rankPicture(result('GTA6 杰森 海报'), 'GTA6 杰森 海报') > rankPicture(result('GTA6 杰森 海报'), 'GTA6 杰森'));
   assert.ok(rankPicture(result('梦幻 超梦 同人图'), '梦幻 超梦 同人图') > 0);
   assert.ok(rankPicture(result('超级超梦X Mega'), '超级超梦X mega') > rankPicture(result('超级超梦X Mega'), '超梦'), 'case aside');
+  assert.ok(rankPicture(result('神奇宝贝：可以mega进化的神兽'), '超梦 Mega进化 立绘') <= 0, 'a Chinese title that does not name the thing');
+  assert.ok(rankPicture(result('全国图鉴截图'), '超梦 宝可梦 全身 图鉴') <= 0);
+  assert.ok(rankPicture(result('Jason and Lucia GTA 6'), 'GTA6 杰森 露西娅') > 0, 'an English title for a Chinese search is not held to it');
 });
 
 test('an image search: a good result low in the list is fetched; one with nothing for it is not; with nothing found, a plainer search', async () => {
