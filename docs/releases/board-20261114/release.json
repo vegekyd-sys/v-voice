@@ -150,5 +150,21 @@
     "gatewayIdentityPreserved": true,
     "change": "Picture requests go to the lesson as a gallery of real photos (list look gallery), not to the backend; no promise without a tool call; the writer does not describe pictures it cannot see; a picture not found is removed with its name.",
     "acceptance": "Tianyi asked to release after comparing picture sources. Production Public calls at 390x844 after publish: '给我找几张影之刃零的图看看' and '我要动作战斗的图' each went to explain_on_board and drew a gallery of real pictures (5 of 6 and 3 of 4 found; Brave image search, Baidu Baike, 3dmgame), no delegation, no empty promise."
+  },
+  "galleryLayoutRelease": {
+    "commit": "9efad3540e128b45a161404be22d41580dab643c",
+    "mergePR": 232,
+    "filesSha256": "f9fce2f73df2968b685944772b531c53d01c7096a0ae043a9232dad85fbbd39d",
+    "previousRunningCommit": "5c4a01cf1324b8eb969eba826b2904b6e91d1fc4",
+    "publishedAt": "2026-11-20T21:29:05+08:00",
+    "mainCI": "Voice push run 44744246739: test, android-tv success",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "iosShellRevision": "e8109170a25d7abb6b4d1d300017ed4c8148231a4c50e2c78cec229745cbfcff",
+    "gatewayIdentityPreserved": true,
+    "change": "Gallery pictures whole at their own shape in level rows filling the page width (galleryLayout); notes under a gallery side by side; the lead print steps aside once a gallery picture shows. A page drawn smaller to fit (useFit) no longer grows taller than the panel (min-height in px over zoom). Every picture on the page opens over the window on tap or click.",
+    "acceptance": "Tianyi accepted the Candidate (8c23e14) and asked to release. Production Public calls after publish, '给我找几张超梦的图看看': 1440x900 drew a gallery of 4 (pictures ~240 px tall, whole, rows centred) and opened one at 773 px; 390x844 drew a gallery and opened one; a second 1440x900 call loaded all 4 pictures in 1.4-3.6 s. In the first 1440x900 call two pictures the service had found in 2-4 s were still loading at hang-up (35 s); not seen again."
   }
 }
