@@ -33,7 +33,7 @@ import {voiceCapabilityInstructions} from '../gpt-live-h5/capability-policy.mjs'
 import {VOICE_TASK_CONTROL_POLICY} from '../../lib/voice-task-control.mjs';
 import {NATIVE_DUPLEX_POLICY} from './native-duplex-policy.mjs';
 import {createLookupRecovery} from './lookup-recovery.mjs';
-import {compactSearchResult,isSearchTool,searchMetrics} from './search-result.mjs';
+import {compactSearchResult,isSearchTool,searchMetrics,searchResultText,datedQuery,shanghaiDate} from './search-result.mjs';
 import {createAudioDeliveryMetrics} from './audio-delivery-metrics.mjs';
 import {IDLE_FAREWELL,IDLE_HANGUP_DEFAULTS,idleHangupDue,idleHangupExempt} from './idle-hangup.mjs';
 
@@ -671,10 +671,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
               if(current(s)&&s.epoch===epoch){const say=script?.say??'画面这次没准备好，我直接跟你说吧。';ownerBridge.completeBackgroundTool(call.callId,{result:say},{spokenText:say,displayedFullResult:true});}
               result={lessonDelivered:Boolean(script),writer:'backend'};
             }else{
-            const lookup=call.research??(name=>name&&allowedTools.has(name)&&s.toolNames?.has(name)?{name,args:{query:String(call.args.topic).slice(0,200)}}:null)(lessonResearch(`${call.args.topic} ${s.latestUserTurn?.text??''}`));
+            const lookup=call.research??(name=>name&&allowedTools.has(name)&&s.toolNames?.has(name)?{name,args:{query:name==='web_search'?datedQuery(String(call.args.topic).slice(0,160)):String(call.args.topic).slice(0,200)}}:null)(lessonResearch(`${call.args.topic} ${s.latestUserTurn?.text??''}`));
             let reference='';
             if(lookup){
-              try{const found=await execute(lookup.name,lookup.args,call.callId+':research',controller.signal);reference=(typeof found==='string'?found:JSON.stringify(found)).slice(0,8000);audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId+':research',name:lookup.name,status:'ok',result:found});}
+              try{const found=await execute(lookup.name,lookup.args,call.callId+':research',controller.signal);// (As a few dated lines, not as wrapped JSON cut at 8,000 characters: two results' worth of markup reached the writer, which filled the rest from what it remembered.)
+                reference=(typeof found==='string'?found:searchResultText(lookup.name,found,{today:shanghaiDate()})??JSON.stringify(found)).slice(0,8000);audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId+':research',name:lookup.name,status:'ok',result:found});}
               catch(error){audit({type:'lesson.research-failed',voiceSessionId:s.id,callId:call.callId,name:lookup.name,message:String(error?.message??error).slice(0,120)});}
             }
             let script=null;

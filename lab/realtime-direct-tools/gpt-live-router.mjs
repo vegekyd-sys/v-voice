@@ -38,7 +38,7 @@ export function quickRoute(text,names,{userText}={}){
     if(has('memory_search')&&OWN.test(said)&&!LOOKUP.test(said))return {name:'memory_search',args:{query:said},via:'quick'};
     if(has('web_search')&&LOOKUP.test(said)&&!OWN.test(said)&&!AGENDA.test(said)){
       const query=said.replace(ASKING,'').replace(/[。？！?!.]+$/u,'').trim()||said;
-      return {name:'web_search',args:{query:/今天|现在|最新|目前|today|now|latest/iu.test(query)?`${query} ${today()}`:query},via:'quick'};
+      return {name:'web_search',args:{query:/今天|现在|今年|本赛季|这赛季|最新|目前|today|now|latest|this (?:year|season)/iu.test(query)?`${query} ${today()}`:query},via:'quick'};
     }
   }
   return null;
@@ -55,7 +55,7 @@ export function fallbackRoute(text,names,{userText}={}){
 const ROUTER_PROMPT=`你是语音助手 V 的工具调度器。前台语音模型把用户刚说的一件要办的事交给你（通常就是用户的原话），你只选一个工具并填好参数，不回答问题、不解释。
 规则：
 - 能用一步直接工具办完的事（上网搜索、读一个网页、查时间、查个人记忆、查飞书日程或资料、把已有内容放到屏幕、讲解一个东西、结束通话、取消任务），选对应的直接工具。问到用户自己的事（家人、偏好、以前说过或定过的事、项目历史）先查个人记忆。
-- web_search 的 query 写成适合搜索引擎的关键词，保留人名、公司名、日期和用户指定的条件；问“今天、现在、最新”的事时带上当天日期。
+- web_search 的 query 写成适合搜索引擎的关键词，保留人名、公司名、日期和用户指定的条件；问“今天、现在、今年、本赛季、最新”的事时带上当天日期，并把“今年”写成具体年份。
 - 这句话是对刚才那件事的追问、纠正或补充（再看一下、具体多少、另一场呢、不对是……、查得怎么样了）时，结合“最近对话”把对象补全，沿用上一次用的工具并写出更具体的参数；绝不能改去查无关的东西（例如时间）。
 - memory_search 的 query 写成几个关键词（项目名、人名、事情的名字），去掉“帮我查一下”“呃”这类口头语；问的是某件事“现在怎么样、进展如何”，关键词里带上“进展 现状”。
 - 用户话里的称呼照原样保留：语音转写可能把名字写成数字或同音字，不要把它改写成年龄、数量或别的意思。

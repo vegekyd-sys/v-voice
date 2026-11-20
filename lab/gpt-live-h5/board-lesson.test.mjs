@@ -94,7 +94,8 @@ test('the writer is told the caller\'s words and what it said before, and the di
   await writer.prepare({owner: 'c', topic: '属性相克', audience: '5岁小朋友十二', ask: '你给十二讲解一下'});
   good = false;
   await writer.prepare({owner: 'c', topic: '用传说宝可梦再讲', ask: '用传说级的宝可梦来讲解'});
-  assert.deepEqual(seen[0], {topic: '属性相克', audience: '5岁小朋友十二', ask: '你给十二讲解一下'});
+  // (`today`: what the writer remembers of "this year" may be a year or two old.)
+  assert.deepEqual(seen[0], {topic: '属性相克', audience: '5岁小朋友十二', today: new Date().toLocaleDateString('sv-SE', {timeZone: 'Asia/Shanghai'}), ask: '你给十二讲解一下'});
   assert.equal(seen[1].before.title, '谁打得过谁');
   assert.match(seen[1].before.say, /^这就像石头剪刀布/u);
   assert.deepEqual(events, ['hold c', 'present c', 'hold c', 'release c']);

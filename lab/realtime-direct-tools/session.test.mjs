@@ -1746,7 +1746,7 @@ test('call 649709d0: a lesson about today looks it up first; a search made for a
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'讲解一下今天黄仁勋的事情'});
  f.call('explain_on_board',{topic:'今天黄仁勋的事情'},'direct');
  assert(await until(()=>prepared.length===1));
- assert.deepEqual(searched,['今天黄仁勋的事情'],'the lesson searched before it was written');
+ assert.equal(searched.length,1,'the lesson searched before it was written');assert.match(searched[0],/^今天黄仁勋的事情 20\d\d年\d{1,2}月 最新$/u,'with the year and month a search engine cannot guess');
  assert.match(prepared[0].reference,/英伟达公告/u);
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'你先网上查一查，再给我讲解一下苹果折叠屏和竞品的比较'});
  f.call('web_search',{query:'苹果折叠屏 竞品 对比'},'searching');

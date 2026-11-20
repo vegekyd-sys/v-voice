@@ -76,7 +76,7 @@ test('an explanation is prepared in the background and its script is given to be
   const script='天空为什么是蓝的呢？'+'太阳光里有七种颜色，蓝光最容易被空气分子撞得四处乱飞。'.repeat(12);
   f.bridge.completeBackgroundTool(idOf(3),{result:script},{spokenText:script,displayedFullResult:true});
   const said=appends(f);
-  const first=said.find(e=>e.channel==='speakable');assert.match(first.content[0].text,/^下面是写好的讲稿[^<]*从第一句开始[^<]*原样念出 <say> 里的内容[^<]*<say>天空/u);assert.equal(said.at(-1).channel,'speakable');assert.match(said.at(-1).content[0].text,/<\/say>$/u);
+  const spoken=said.filter(e=>e.channel==='speakable').map(e=>e.content[0].text).join('');assert.match(spoken,/^下面是写好的讲稿[^<]*从第一句开始[^<]*讲稿要一口气完整讲完[^<]*原样念出 <say> 里的内容[^<]*<say>天空/u);assert.equal(said.at(-1).channel,'speakable');assert.match(said.at(-1).content[0].text,/<\/say>$/u);
   assert.match(said.at(-1).content[0].text,/蓝光/u); // the script is not a result the model should paraphrase
   f.bridge.completeBackgroundTool(idOf(3),{cancelled:true});
   assert.equal(appends(f).length,said.length);
@@ -321,11 +321,11 @@ test('a reply that is not the script is shown as an ordinary reply while a scrip
   f.bridge.receive({type:'turn.delta',turn_id:'a1',delta:'等一下,'});assert.deepEqual(assistant(f),[]);
   // Held while it could still turn out to be the script with its opening put differently.
   f.bridge.receive({type:'turn.delta',turn_id:'a1',delta:'你刚才说什么来着?我没听清,'});assert.deepEqual(assistant(f),[]);
-  f.bridge.receive({type:'turn.delta',turn_id:'a1',delta:'是想问晚霞为什么是红色的吗'});
-  assert.deepEqual(assistant(f),[['等一下,你刚才说什么来着?我没听清,是想问晚霞为什么是红色的吗',false,undefined]]);
+  f.bridge.receive({type:'turn.delta',turn_id:'a1',delta:'是想问晚霞为什么是红色的吗,还是想问白天为什么是蓝的'});
+  assert.deepEqual(assistant(f),[['等一下,你刚才说什么来着?我没听清,是想问晚霞为什么是红色的吗,还是想问白天为什么是蓝的',false,undefined]]);
   f.bridge.receive({type:'turn.delta',turn_id:'a1',delta:'?'});
-  f.bridge.receive({type:'turn.done',turn:{id:'a1',role:'assistant',transcript:'等一下,你刚才说什么来着?我没听清,是想问晚霞为什么是红色的吗?'}});
-  assert.deepEqual(assistant(f).slice(1),[['?',false,undefined],['等一下,你刚才说什么来着?我没听清,是想问晚霞为什么是红色的吗?',true,undefined]]);
+  f.bridge.receive({type:'turn.done',turn:{id:'a1',role:'assistant',transcript:'等一下,你刚才说什么来着?我没听清,是想问晚霞为什么是红色的吗,还是想问白天为什么是蓝的?'}});
+  assert.deepEqual(assistant(f).slice(1),[['?',false,undefined],['等一下,你刚才说什么来着?我没听清,是想问晚霞为什么是红色的吗,还是想问白天为什么是蓝的?',true,undefined]]);
   // A reply too short to tell is shown whole when it ends.
   f.text.length=0;
   f.bridge.receive({type:'turn.created',turn:{id:'a2',role:'assistant'}});f.bridge.receive({type:'turn.delta',turn_id:'a2',delta:'嗯。'});
@@ -344,7 +344,7 @@ test('a finished task told as a script is read as written, and the model knows t
   f.bridge.completeBackgroundTool(idOf(4),{result:'# 完整报告\n很长的正文'},{spokenText:script,displayedFullResult:true,script:true});
   const said=appends(f).slice(before+1);
   assert.match(said[0].content[0].text,/^完整结果，供回答追问时参考，不要念出来/u);assert.equal(said[0].channel,'commentary');
-  assert.equal(said.at(-1).channel,'speakable');assert.match(said.at(-1).content[0].text,/^下面是写好的讲稿，屏幕上的画面是按它准备的[^<]*原样念出 <say> 里的内容[^<]*<say>先说结论：没有一台全能冠军。大面上就三款值得看。<\/say>$/u);
+  assert.equal(said.at(-1).channel,'speakable');assert.match(said.filter(e=>e.channel==='speakable').map(e=>e.content[0].text).join(''),/^下面是写好的讲稿，屏幕上的画面是按它准备的[^<]*原样念出 <say> 里的内容[^<]*<say>先说结论：没有一台全能冠军。大面上就三款值得看。<\/say>$/u);
   f.text.length=0;
   f.bridge.receive({type:'turn.created',turn:{id:'a1',role:'assistant'}});f.bridge.receive({type:'turn.delta',turn_id:'a1',delta:'先说结论:没有一台'});
   assert.deepEqual(assistant(f),[['先说结论：没有一台',false,'V-backend-summary']]);
@@ -364,16 +364,16 @@ test('a script read with its opening put differently is still followed, and one 
   // The first sentence skipped and a phrase changed: held until the script is found in it.
   f.bridge.receive({type:'turn.created',turn:{id:'a1',role:'assistant'}});
   f.bridge.receive({type:'turn.delta',turn_id:'a1',delta:'日常省心不折腾,选石头 Saros二十。'});assert.deepEqual(assistant(f),[]);
-  f.bridge.receive({type:'turn.delta',turn_id:'a1',delta:'它吸力三万六千帕,机身只有'});
-  assert.equal(assistant(f).length,1);assert.equal(assistant(f)[0][2],'V-backend-summary');assert.match(assistant(f)[0][0],/它吸力三万六千帕，机身只有$/u);
+  f.bridge.receive({type:'turn.delta',turn_id:'a1',delta:'它吸力三万六千帕,机身只有七点九八厘米,沙发底'});
+  assert.equal(assistant(f).length,1);assert.equal(assistant(f)[0][2],'V-backend-summary');assert.match(assistant(f)[0][0],/它吸力三万六千帕，机身只有七点九八厘米，沙发底$/u);
   f.bridge.receive({type:'turn.done',turn:{id:'a1',role:'assistant',transcript:'日常省心不折腾,选石头 Saros二十。它吸力三万六千帕,机身只有七点九八厘米,沙发底能钻进去。'}});
   assert.equal(assistant(f).at(-1)[1],true);assert.match(assistant(f).at(-1)[0],/沙发底能钻进去。$/u);
   // The model answers in its own words instead, twice: captions stop waiting for the script.
   const g=await start();g.bridge.completeBackgroundTool(idOf(6),{result:script},{spokenText:script,displayedFullResult:true,script:true});
   for(const id of ['b1','b2']){
     g.bridge.receive({type:'turn.created',turn:{id,role:'assistant'}});
-    g.bridge.receive({type:'turn.delta',turn_id:id,delta:'这个嘛，我觉得你家的情况其实不用想太多，随便挑一台中档的就很够用了呀'});
-    g.bridge.receive({type:'turn.done',turn:{id,role:'assistant',transcript:'这个嘛，我觉得你家的情况其实不用想太多，随便挑一台中档的就很够用了呀'}});
+    g.bridge.receive({type:'turn.delta',turn_id:id,delta:'这个嘛，我觉得你家的情况其实不用想太多，随便挑一台中档的就很够用了呀，真的不用纠结那么多参数'});
+    g.bridge.receive({type:'turn.done',turn:{id,role:'assistant',transcript:'这个嘛，我觉得你家的情况其实不用想太多，随便挑一台中档的就很够用了呀，真的不用纠结那么多参数'}});
   }
   g.text.length=0;
   g.bridge.receive({type:'turn.created',turn:{id:'b3',role:'assistant'}});g.bridge.receive({type:'turn.delta',turn_id:'b3',delta:'嗯'});
