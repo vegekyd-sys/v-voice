@@ -202,3 +202,23 @@ test('a page drawn for words V is already saying shows what has been said at onc
   assert.deepEqual(view(createLessonGate(), true, 8).ahead, ['l/b'], 'V is on the first sentence');
   assert.equal(view(createLessonGate(), false, 0), null, 'V had already finished: all of it is there');
 });
+
+test('a script captioned piece by piece as it is read shows each part of the page when its words arrive', async () => {
+  // GPT Live reads the script itself: the relay sends the script's own text as far as the voice
+  // has got, and the page takes each unfinished transcript as more of V's current reply.
+  const {createLessonGate} = await import('./board-client.mjs');
+  const {createTranscriptPresentation} = await import('./transcript-presentation.mjs');
+  const {applyOp, emptyScene, speaksOf, spokenProgress, unspoken, withCuesToCome} = await import('./board-scene.mjs');
+  const lesson = [{op: 'scene', title: '谁怕谁', lesson: true}, {op: 'put', block: {id: 'f', t: 'flow', nodes: [{id: 'a', label: '杰尼龟', q: '杰尼龟喷水'}, {id: 'b', label: '小火龙', q: '小火龙怕水'}], edges: [['a', 'b', '打得过']]}}].reduce(applyOp, emptyScene());
+  const presentation = createTranscriptPresentation(), gate = createLessonGate({now: () => 0});
+  const all = ['f/a', 'f/b', 'f/a>b'];
+  const hear = delta => {
+    const snapshot = presentation.consume({type: 'output_transcript.delta', turn_id: 'reply', delta}, 1);
+    const row = [...snapshot.history, ...snapshot.current].at(-1);
+    return gate.view({scene: lesson, text: row.text, speaking: true, speaksOf, unspoken, progress: () => spokenProgress(lesson, row.complete ? row.text : withCuesToCome(lesson, row.text), Array.from(row.text).length)});
+  };
+  assert.deepEqual(hear('杰尼').ahead, all, 'not a cue of the page has been said yet');
+  assert.deepEqual(hear('龟喷水。'), {focus: 'f/a', ahead: ['f/b', 'f/a>b']});
+  assert.deepEqual(hear('小火龙').ahead, ['f/b', 'f/a>b']);
+  assert.deepEqual(hear('怕水。').ahead, []);
+});

@@ -4,7 +4,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {setTimeout as delay} from 'node:timers/promises';
-import {createDirectVoiceService} from './session.mjs';
+import {createDirectVoiceService,directInstructions} from './session.mjs';
+import {GPT_LIVE_VOICE_CHOICES} from './gpt-live-provider.mjs';
 import {speakerProfile} from '../speaker-native/stream-service.mjs';
 import {VOICE_CAPABILITY_POLICY} from '../gpt-live-h5/capability-policy.mjs';
 
@@ -1847,4 +1848,17 @@ test('call 8a67bd27: a record Seeduplex refused is left out of the next call in 
  assert(second.audit.some(e=>e.type==='call.record-skipped'));
  const opened=second.upstream.sent.find(e=>e.type==='session.create'||e.type==='session.update');
  assert.doesNotMatch(JSON.stringify(opened),/一条群消息/);
+});
+
+test('GPT Live 1.1 is offered only with a login and media stack, and is told nothing about tool schemas',async t=>{
+ const wsModule={WebSocket:class{},WebSocketServer:class{on(){}handleUpgrade(){}close(){}}},gateway={request:async()=>({})};
+ const off=createDirectVoiceService({gateway,wsModule,apiKeys:{seeduplex:'k'}});t.after(()=>off.dispose?.());
+ assert.deepEqual(off.models().find(m=>m.id==='gpt-live-11'),{id:'gpt-live-11',label:'GPT Live 1.1',model:'gpt-live-1.1-codex',voice:'sol',voices:GPT_LIVE_VOICE_CHOICES,available:false,billing:'subscription',nativeTransport:'gateway-relay'});
+ const on=createDirectVoiceService({gateway,wsModule,apiKeys:{},gptLive:{resolveAuth:async()=>({token:'t',accountId:'a'}),loadMedia:async()=>({}),voice:'maple'}});t.after(()=>on.dispose?.());
+ const model=on.models().find(m=>m.id==='gpt-live-11');assert.equal(model.available,true);assert.equal(model.voice,'maple');
+ assert.equal(on.models().find(m=>m.id==='seeduplex').available,false);
+ assert.throws(()=>createDirectVoiceService({gateway,wsModule,gptLive:{resolveAuth:async()=>({}),loadMedia:async()=>({}),voice:'xiaohe'}}),/音色/u);
+ const text=directInstructions([{id:'web_search',description:'搜索'}],'[00:01:00] 用户: 之前聊过扫地机器人','gpt-live-11',{surface:'phone'});
+ assert.match(text,/^你是 V，/u);assert.match(text,/不说自己是 ChatGPT/u);assert.match(text,/电话接通时的上海时间：[^（]+（只表示接通那一刻/u);assert.match(text,/不提下面记录里的旧话题/u);assert.match(text,/之前聊过扫地机器人/u);
+ assert.doesNotMatch(text,/timeoutSeconds|show_content\(|可直接执行的原生工具目录/u);
 });

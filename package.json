@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "opusscript": "0.1.1",
+    "werift": "0.28.0",
     "ws": "8.18.3"
   },
   "devDependencies": {

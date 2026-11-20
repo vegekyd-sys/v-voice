@@ -34,7 +34,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     if(closed||!event||typeof event.voiceSessionId!=='string')return false;
     const id=event.voiceSessionId;
     if(event.type==='call.created'){
-      if(!['seeduplex','grok','openai'].includes(event.provider)||typeof event.sessionKey!=='string'||typeof event.model!=='string')return false;
+      if(!['seeduplex','grok','openai','gpt-live-11'].includes(event.provider)||typeof event.sessionKey!=='string'||typeof event.model!=='string')return false;
       owners.set(id,{voiceSessionId:id,sessionKey:event.sessionKey,provider:event.provider,model:event.model,modelSource:'voice_reservation'});
       return enqueue({...owners.get(id),type:'call.created'});
     }
@@ -79,13 +79,15 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     // A conversation record left out because Seeduplex refused it on an earlier call (no content).
     if(event.type==='call.record-skipped')return enqueue({...owner,type:event.type,reason:event.reason==='refused-earlier'?'refused-earlier':'unknown'});
     if(event.type==='call.provider-status'){
-      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed','context-dropped'].includes(event.stage))return false;
+      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed','context-dropped','greeting-requested','lesson-unprompted'].includes(event.stage)&&!/^media-(?:ice-)?[a-z]{1,20}$/u.test(String(event.stage)))return false;
       const safe={stage:event.stage};
       if(['configuration','input-timeout','upstream-transient','upstream-rejected','network','setup-timeout'].includes(event.category))safe.category=event.category;
       if(typeof event.upstreamCode==='string'&&/^\d{3,8}$/.test(event.upstreamCode))safe.upstreamCode=event.upstreamCode;
-      for(const key of ['sessionAgeMs','attempt'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      for(const key of ['sessionAgeMs','attempt','elapsedMs','rtpIn','rtpOut','pcmOut','peak','sources'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
     }
+    // Which tool a GPT Live delegation became and how it was decided; never the words.
+    if(event.type==='gpt-live.routed')return enqueue({...owner,type:event.type,name:typeof event.name==='string'?event.name.slice(0,80):null,via:['quick','model','fallback','none'].includes(event.via)?event.via:'none',...(Number.isSafeInteger(event.elapsedMs)&&event.elapsedMs>=0?{elapsedMs:event.elapsedMs}:{}),...(event.ahead===true?{ahead:true}:{})});
     if(event.type==='tool.search-metrics'){
       if(!['web_search','memory_search'].includes(event.name)||typeof event.callId!=='string')return false;
       const safe={name:event.name,callId:event.callId.slice(0,160)};

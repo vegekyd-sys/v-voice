@@ -340,6 +340,12 @@ export function spokenProgress(scene, spoken, index) {
 const quotesOf = scene => scene.blocks.flatMap(block => [block.q, ...focusTargets(block).map(item => item.q), ...(block.t === 'flow' ? block.edges.map(edge => edge[3]) : [])]).filter(Boolean);
 /** Whether `text` is (part of) the script this scene's pieces hang on. */
 export const speaksOf = (scene, text) => { const all = loose(String(text ?? '')); return quotesOf(scene).some(quote => all.includes(loose(quote))); };
+/**
+ * A script captioned as far as the voice has got (a model that reads it itself): the cues it has
+ * not reached are not in the caption yet. They are put after it, so those pieces wait for the
+ * voice like the rest instead of counting as tied to nothing V says.
+ */
+export const withCuesToCome = (scene, text) => `${text ?? ''}\n${quotesOf(scene).join('。')}`;
 /** A lesson before its first word: every piece that hangs on the script is still to come. */
 export const unspoken = scene => spokenProgress(scene, quotesOf(scene).join('。'), 0);
 export const edgeId = (block, from, to) => `${block.id}/${from}>${to}`;

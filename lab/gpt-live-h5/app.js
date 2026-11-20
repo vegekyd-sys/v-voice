@@ -9,7 +9,7 @@ import { createAvatarTasks } from "./avatar-state.mjs";
 import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { createAvatarTelemetry } from "./avatar-telemetry.mjs";
 import { createBoardClient, createLessonGate, createSpokenCursor, readEventStream, spokenRate } from "./board-client.mjs";
-import { speaksOf, spokenProgress, unspoken } from "./board-scene.mjs";
+import { speaksOf, spokenProgress, unspoken, withCuesToCome } from "./board-scene.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
 import { createContentView } from "./content-view.mjs";
@@ -59,6 +59,7 @@ if (document.querySelector) mountCallUi(document, view, {
     composerOpen: () => view.get().composer.open,
     chooseModel: id => { if (view.get().models.some(model => model.id === id && model.available)) view.set({ model: id }); },
     chooseGrokVoice: id => view.set(state => ({ grok: { ...state.grok, voice: id } })),
+    chooseLiveVoice: id => { try { localStorage.setItem('v.gptLive11.voice', id); } catch {} view.set(state => ({ live11: { ...state.live11, voice: id } })); },
   },
 });
 if (document.querySelector) mountChangelog(document, window);
@@ -647,7 +648,7 @@ async function startCall() {
   resetTranscript();view.set({failureCode:null});
   const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController(), dialStartedAt:performance.now() }; call = active; starting = active;
   const chosenModel = view.get().model;
-  if (speakerCandidate()||['seeduplex','grok'].includes(chosenModel)) {
+  if (speakerCandidate()||['seeduplex','grok','gpt-live-11'].includes(chosenModel)) {
     // Create/resume in the dial gesture, before microphone and network awaits.
     active.context = new AudioContext({latencyHint:"interactive"});
     active.contextResume = active.context.resume();
@@ -706,12 +707,12 @@ async function startCall() {
     }
     if(call!==active)return;
     const withCapture=async pending=>captureReady?(await Promise.all([pending,captureReady]))[0]:pending;
-    const selectedModel = ['seeduplex','grok'].includes(chosenModel)?chosenModel:'gpt-live';
+    const selectedModel = ['seeduplex','grok','gpt-live-11'].includes(chosenModel)?chosenModel:'gpt-live';
     const inputPolicy = speakerCandidate() ? (new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy) : null;
     const nativeDeviceActions=await browserDeviceActions();
-    const params={model:selectedModel,nativeDeviceActions,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:{})};
+    const params={model:selectedModel,nativeDeviceActions,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:selectedModel==='gpt-live-11'&&view.get().live11.voice?{voice:view.get().live11.voice}:{})};
     let reservation;
-    if(webDialVersion===2&&phoneEntry&&['seeduplex','grok'].includes(selectedModel)){
+    if(webDialVersion===2&&phoneEntry&&['seeduplex','grok','gpt-live-11'].includes(selectedModel)){
       const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
       endpoint.search=new URLSearchParams({phone:phoneEntry,model:selectedModel,dialVersion:'2',...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
       active.dialConnection=createDialConnection({url:endpoint,signal:active.captureAbort.signal});
@@ -763,7 +764,7 @@ async function startCall() {
             const stats = active.relay?.stats, textLength = Array.from(row.text).length;
             const index = stats ? cursor.index({ key: row.key, textLength, outputBytes: stats.outputBytes, queuedBytes: stats.queuedOutputBytes, charsPerSecond: spokenRate(row.text) }) : textLength;
             // (`said`: how far into this reply the voice is, for the line under a phone's page.)
-            return { ...spokenProgress(scene, row.text, index), said: index, reply: row.key };
+            return { ...spokenProgress(scene, scene.lesson && !row.complete ? withCuesToCome(scene, row.text) : row.text, index), said: index, reply: row.key };
           } });
         return spoken;
       };
@@ -1062,11 +1063,16 @@ function applyEntryStatus(status) {
     if(tvHost&&!tvDefaultModel(models).available){liveReady=false;entryError='豆包暂不可用，请稍后重试。';}
     const grok = status.models?.find(item => item.id === "grok");
     const grokVoices = grok?.voices ?? [];
+    const live11 = status.models?.find(item => item.id === "gpt-live-11"), liveVoices = live11?.voices ?? [];
+    let liveVoice = null; try { liveVoice = localStorage.getItem('v.gptLive11.voice'); } catch {}
     view.set({ models, model, confirmOnDial:status.confirmationAvailable===true&&status.unidentified===true&&!guestDialAllowed, confirmationAvailable:status.confirmationAvailable===true, accessContext:status.accessContext??null, publicHref:status.publicHref??null, accountLoginHref: status.accountLoginHref??null, accountLabel: status.accountLabel??null, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, unidentified:status.unidentified===true, grok: {
       voices: grokVoices.map(voice => ({ id: voice.id, label: voice.label })),
       voice: grokVoices.some(voice => voice.id === "iris") ? "iris" : grokVoices[0]?.id ?? null,
       hint: [grok?.speed && grok.speed !== 1 ? `${grok.speed}× 语速` : "", grok?.expressiveTags ? "自主表达试用" : ""].filter(Boolean).join(" · "),
       listenHref: `./compare${window.location.search}`, listenAvailable: status.comparisonAvailable === true,
+    }, live11: {
+      voices: liveVoices.map(voice => ({ id: voice.id, label: voice.label })),
+      voice: liveVoices.some(voice => voice.id === liveVoice) ? liveVoice : liveVoices.some(voice => voice.id === live11?.voice) ? live11.voice : liveVoices[0]?.id ?? null,
     } });
     view.set(state => ({ badge: liveReady ? "可以拨号" : status.preview === false ? "后端重连中" : "页面预览", dial: { ...state.dial, disabled: !liveReady || Boolean(state.confirmation) } }));
     if (liveReady) {

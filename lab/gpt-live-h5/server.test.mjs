@@ -16,7 +16,7 @@ async function fixture(t, overrides = {}) {
   } };
   if (overrides.gatewayReady !== undefined) gateway.ready = overrides.gatewayReady;
   const offers = [];
-  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, enableGrok: overrides.enableGrok ?? true, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, gptProvider:overrides.gptProvider, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate });
+  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, enableGrok: overrides.enableGrok ?? true, enableGptLive11: overrides.enableGptLive11 ?? false, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, gptProvider:overrides.gptProvider, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate });
   await new Promise((resolve) => bridge.server.listen(0, "127.0.0.1", resolve));
   t.after(() => bridge.dispose());
   const url = `http://127.0.0.1:${bridge.server.address().port}`;
@@ -512,4 +512,18 @@ test('only anonymous callers keep the tight dial limit',()=>{
   assert.equal(callAttemptLimit({permissionProfile:'unidentified'}),6);
   assert.equal(callAttemptLimit({permissionProfile:'personal-tianyi'}),30);
   assert.equal(callAttemptLimit({permissionProfile:'feishu-current'}),30);
+});
+
+test('GPT Live 1.1 stays out of the catalog until the service enables it, then reserves through the relay',async t=>{
+ const reserved=[];const directVoice={models:()=>[{id:'seeduplex',available:true},{id:'gpt-live-11',available:true}],reserve:async p=>{reserved.push(p);return {voiceSessionId:'test-gpt-live-11',transport:'gateway-relay'};},close:async()=>{},dispose:async()=>{}};
+ const hidden=await fixture(t,{defaultModel:'gpt-live-11',directVoice});
+ const status=await(await fetch(hidden.url+'/api/status',{headers:{cookie:hidden.cookie}})).json();
+ assert.deepEqual(status.models.map(m=>m.id),['gpt-live','seeduplex']);assert.notEqual(status.defaultModel,'gpt-live-11');
+ const blocked=await hidden.request('session',{model:'gpt-live-11'});assert.equal(blocked.status,409);assert.equal((await blocked.json()).code,'model_hidden');
+ const shown=await fixture(t,{enableGptLive11:true,defaultModel:'gpt-live-11',directVoice});
+ const open=await(await fetch(shown.url+'/api/status',{headers:{cookie:shown.cookie}})).json();
+ assert.equal(open.models.at(-1).id,'gpt-live-11');assert.equal(open.defaultModel,'gpt-live-11');
+ // The caller's choice of voice is one of the model's own, or the call is not made.
+ assert.equal((await shown.request('session',{model:'gpt-live-11',voice:'xiaohe'})).status,400);assert.equal(reserved.length,0);
+ assert.equal((await shown.request('session',{model:'gpt-live-11',voice:'maple'})).status,200);assert.equal(reserved[0].model,'gpt-live-11');assert.equal(reserved[0].voice,'maple');
 });

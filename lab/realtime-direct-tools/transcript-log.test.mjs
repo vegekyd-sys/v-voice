@@ -194,3 +194,11 @@ test('a dropped or skipped conversation record is logged by name only',async t=>
   await f.log.close();const rows=await f.rows();assert(!JSON.stringify(rows).includes('SECRET'));
   assert.deepEqual(rows.slice(1).map(row=>[row.type,row.stage??row.reason]),[['call.provider-status','context-dropped'],['call.record-skipped','refused-earlier']]);
 });
+
+test('GPT Live media connection stages are recorded as bare state names',async t=>{
+ const f=await fixture(t);assert(f.created('v1','gpt-live-11'));
+ for(const stage of ['media-connecting','media-ice-checking','media-connected','media-CONNECTED; token=SECRET'])f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage,elapsedMs:812,candidate:'SECRET'});
+ await f.log.close();const rows=(await f.rows()).filter(e=>e.type==='call.provider-status');
+ assert.deepEqual(rows.map(e=>e.stage),['media-connecting','media-ice-checking','media-connected']);assert.equal(rows[2].elapsedMs,812);
+ assert(!JSON.stringify(rows).includes('SECRET'));
+});

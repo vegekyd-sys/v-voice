@@ -118,6 +118,7 @@ export const INITIAL_VIEW = Object.freeze({
   composer: {enabled: false, open: false}, muted: false, outputMuted: false,
   models: [], model: 'seeduplex', modelDisabled: false,
   grok: {voices: [], voice: null, hint: '', listenHref: './compare', listenAvailable: false},
+  live11: {voices: [], voice: null},
   reading: false,
   // The call board (board-scene.mjs); null until the director draws something.
   board: null,
