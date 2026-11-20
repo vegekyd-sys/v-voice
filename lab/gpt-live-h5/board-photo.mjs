@@ -81,6 +81,12 @@ const OFF_ALL = new RegExp(OFF.source, 'giu');
 // nothing at all; without them it finds the thing (11/20).
 const KIND = /截图|截屏|官方|宣传图|宣传|海报|图片|照片|剧照|高清|壁纸|插画|同框|合照|立绘|画面|配图|大图/gu;
 const KIND_WORDS = new Set(['fan', 'art', 'fanart', 'official', 'poster', 'wallpaper', 'screenshot', 'image', 'photo', 'picture', 'hd', 'artwork', 'key']);
+// Whether a title names the thing: at least half the Chinese characters of its name (titles
+// write 超夢 for 超梦, 航海王1199話 for 航海王1199话). A name with none says nothing either way.
+function names(title, name) {
+  const chars = [...new Set(String(name).match(/\p{Script=Han}/gu) ?? [])];
+  return !chars.length || chars.filter(char => String(title).includes(char)).length >= Math.ceil(chars.length / 2);
+}
 /** Plainer searches to try when one finds nothing: without the kind-of-picture words, then
  * without its last word too (the thing searched for is written first). */
 export function plainerSearches(query) {
@@ -110,8 +116,11 @@ export function rankPicture(item, query) {
   // Half its characters are enough: titles write 超夢 for 超梦, 航海王1199話 for 航海王1199话,
   // 露西亚 for 露西娅. (Only for a thing with a Chinese name: a Chinese title often leaves
   // out "GTA6", and an English title names a Chinese thing in other words.)
-  const named = [...new Set(words[0]?.match(/\p{Script=Han}/gu) ?? [])];
-  if (words.length > 1 && named.length && /\p{Script=Han}/u.test(title) && named.filter(char => title.includes(char)).length < Math.ceil(named.length / 2)) score -= 2;
+  if (words.length > 1 && /\p{Script=Han}/u.test(words[0]) && /\p{Script=Han}/u.test(title) && !names(title, words[0])) score -= 2;
+  // An English title that shares no word with a search for a thing with a Chinese name cannot
+  // be told to be about it (Mega Beedrill for "超梦 Mega进化 立绘", 11/21): nothing counts for it.
+  // (Only for a search of several words: for a bare name the search's own results are sound.)
+  if (words.length > 1 && /\p{Script=Han}/u.test(words[0]) && title && !/\p{Script=Han}/u.test(title) && !words.some(word => title.includes(word))) score -= 1;
   if (REFERENCE.test(source)) score += 2;
   if (STOCK.test(source)) score -= 3;
   // What the query itself asks for ("…海报", "…同人图", "超级超梦") is not held against a title.
@@ -244,6 +253,9 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
       try { pages = Object.values((await (await get(url, signal)).json())?.query?.pages ?? {}); } catch { failed = true; continue; }
       const page = pages.find(item => typeof item?.thumbnail?.source === 'string');
       if (!page) continue;
+      // A redirect to an article about something else is not this thing: 凯路迪欧 leads to
+      // 第五世代寶可夢列表, whose picture is the Pokemon logo (11/21). (超梦 → 超夢 is the same.)
+      if (!names(page.title, query)) continue;
       let source;
       try { source = new URL(page.thumbnail.source); } catch { continue; }
       if (source.protocol !== 'https:' || !WIKIMEDIA.test(source.hostname)) continue;

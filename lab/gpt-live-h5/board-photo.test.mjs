@@ -226,6 +226,8 @@ test('what the search asks for is not held against a title: a poster for "…海
   assert.ok(rankPicture(result('全国图鉴截图'), '超梦 宝可梦 全身 图鉴') <= 0);
   assert.ok(rankPicture(result('航海王1199話，喬巴覺醒森林之神形態'), '航海王1199话 全图漫画') > 0, 'traditional characters and a chapter number aside');
   assert.ok(rankPicture(result('Pokemon GO超夢'), '超梦 尾巴') > rankPicture(result('全国图鉴截图'), '超梦 尾巴'), '超夢 is 超梦');
+  assert.ok(rankPicture({...result('Mega Beedrill'), confidence: 'high'}, '超梦 Mega进化 立绘') <= 0, 'an English title that cannot be told to be about a Chinese name');
+  assert.ok(rankPicture({...result('Mewtwo'), source: 'pokemon.com'}, '超梦 立绘') > 0, 'from a reference it still counts');
   assert.ok(rankPicture(result('Jason and Lucia GTA 6'), 'GTA6 杰森 露西娅') > 0, 'an English title for a Chinese search is not held to it');
 });
 
@@ -260,4 +262,18 @@ test('an image search: a good result low in the list is fetched; one with nothin
   assert.equal(await finder.find('超梦 Mega进化 立绘'), null);
   assert.equal((await finder.find('GTA6 预告片 露西娅 杰森 同框 截图'))?.title, '杰森与露西娅');
   assert.deepEqual(searched, ['GTA6 杰森 官方宣传图 海报', 'GTA6 雷奥尼达州', '超梦 Mega进化 立绘', '超梦 Mega进化', 'GTA6 预告片 露西娅 杰森 同框 截图', 'GTA6 预告片 露西娅 杰森']);
+});
+
+test('an encyclopedia article a name redirects to that is about something else is not its picture', async () => {
+  const finder = createPhotoFinder({lookup, languages: ['zh'],
+    fetchImpl: async url => {
+      if (url.includes('wikipedia.org')) {
+        const title = decodeURIComponent(/titles=([^&]+)/u.exec(url)[1]);
+        const to = {凯路迪欧: '第五世代寶可夢列表', 超梦: '超夢'}[title] ?? title;
+        return json({query: {pages: {1: {title: to, thumbnail: {source: `https://upload.wikimedia.org/${encodeURIComponent(to)}.png`}}}}});
+      }
+      return image(distinct(), 'image/png');
+    }});
+  assert.equal(await finder.find('凯路迪欧'), null, 'a list of a whole generation, with the franchise logo');
+  assert.equal((await finder.find('超梦'))?.title, '超夢', 'traditional characters: the same article');
 });
