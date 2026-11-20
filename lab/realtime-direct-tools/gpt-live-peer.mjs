@@ -58,7 +58,7 @@ export class GptLivePeer {
     this.input=new PcmResampler(inputSampleRate,WIRE_RATE);
     this.pending=Buffer.alloc(0);this.sequence=randomInt(65536);this.timestamp=randomInt(4294967296);
     this.closed=false;this.connected=false;this.tracks=new Set();this.streams=new Map();this.current=null;
-    this.stats={rtpIn:0,rtpOut:0,pcmOut:0,peak:0,sources:0};
+    this.stats={rtpIn:0,rtpOut:0,pcmOut:0,peak:0,sources:0,lost:0};
     this.peer.onTrack.subscribe(track=>this.attach(track));
     this.peer.connectionStateChange.subscribe(state=>{
       if(this.closed)return;
@@ -144,7 +144,10 @@ export class GptLivePeer {
   // Give up on the missing packets before the nearest one that did arrive.
   skip(state){
     if(!state.packets.size)return;
-    state.next=[...state.packets.keys()].sort((a,b)=>forward(state.next,a)-forward(state.next,b))[0];this.drain(state);
+    const nearest=[...state.packets.keys()].sort((a,b)=>forward(state.next,a)-forward(state.next,b))[0];
+    // (Counted so a call that sounds broken can be told from one whose packets never arrived.)
+    this.stats.lost+=forward(state.next,nearest);
+    state.next=nearest;this.drain(state);
   }
   drain(state){
     for(let packet;(packet=state.packets.get(state.next));){state.packets.delete(state.next);state.next=state.next+1&65535;this.decode(state,packet);}

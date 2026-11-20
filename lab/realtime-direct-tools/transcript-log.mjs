@@ -83,7 +83,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       const safe={stage:event.stage};
       if(['configuration','input-timeout','upstream-transient','upstream-rejected','network','setup-timeout'].includes(event.category))safe.category=event.category;
       if(typeof event.upstreamCode==='string'&&/^\d{3,8}$/.test(event.upstreamCode))safe.upstreamCode=event.upstreamCode;
-      for(const key of ['sessionAgeMs','attempt','elapsedMs','rtpIn','rtpOut','pcmOut','peak','sources'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      for(const key of ['sessionAgeMs','attempt','elapsedMs','rtpIn','rtpOut','pcmOut','peak','sources','lost'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
     }
     // Which tool a GPT Live delegation became and how it was decided; never the words.

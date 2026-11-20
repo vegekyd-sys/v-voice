@@ -3,9 +3,13 @@
 // Runs inside the audio rendering thread. A consumed sample is never replayed
 // during starvation: silence and a short rebuffer replace the old waveform.
 export class PcmPlaybackQueue {
-  constructor(rate, prefillMs=120, maxFrames=8*1024*1024) {
-    this.rate=rate;this.prefill=Math.ceil(rate*prefillMs/1000);this.maxFrames=maxFrames;this.clear();
+  // `growMs` / `maxMs`: a voice that arrives no faster than it plays (GPT Live) never gets ahead of
+  // the network, so the window it starts with is all it has. Each time the queue runs dry in the
+  // middle of a reply the window grows, up to `maxMs`, and stays grown for the call.
+  constructor(rate, prefillMs=120, maxFrames=8*1024*1024, {growMs=0,maxMs=prefillMs}={}) {
+    this.rate=rate;this.prefill=Math.ceil(rate*prefillMs/1000);this.grow=Math.ceil(rate*growMs/1000);this.maxPrefill=Math.ceil(rate*Math.max(prefillMs,maxMs)/1000);this.maxFrames=maxFrames;this.clear();
   }
+  starved(){this.underflows++;if(this.grow)this.prefill=Math.min(this.maxPrefill,this.prefill+this.grow);}
   clear(){this.chunks=[];this.head=0;this.offset=0;this.frames=0;this.phase=0;this.wait=0;this.playing=false;this.consumed=0;this.underflows=0;this.lastPlayedAt=null;this.complete=false;this.holdUntilComplete=false;this.paused=false;}
   hold(){this.holdUntilComplete=true;}
   end(){this.complete=true;this.holdUntilComplete=false;}
@@ -16,14 +20,14 @@ export class PcmPlaybackQueue {
     out.fill(0);
     if(this.paused)return;
     if(this.holdUntilComplete&&!this.complete)return;
-    if(!this.frames){if(this.playing){if(!this.complete)this.underflows++;this.playing=false;this.wait=0;}return;}
+    if(!this.frames){if(this.playing){if(!this.complete)this.starved();this.playing=false;this.wait=0;}return;}
     // Even a large first packet needs a real jitter window. Previously a
     // 244ms packet bypassed prefill and a next packet at 300ms caused a hole.
     // A complete response can start immediately: no more network frames await.
     if(!this.playing){this.wait+=out.length;if(!this.complete&&this.wait<this.prefill)return;this.playing=true;this.wait=0;}
     const step=24000/this.rate;
     for(let i=0;i<out.length;i++){
-      if(!this.frames){if(!this.complete)this.underflows++;this.playing=false;this.wait=0;break;}
+      if(!this.frames){if(!this.complete)this.starved();this.playing=false;this.wait=0;break;}
       const a=this.peek(0),b=this.peek(1);out[i]=(a+(b-a)*this.phase)/32768;this.lastPlayedAt=at+(i+1)/this.rate;
       this.phase+=step;while(this.phase>=1&&this.frames){this.phase-=1;this.advance();}
       if(!this.frames)this.phase=0;
@@ -34,9 +38,9 @@ export class PcmPlaybackQueue {
 // Give the worklet its own stable binding instead of relying on the outer name.
 export function relayWorkletSource(){return `const PcmPlaybackQueue = ${PcmPlaybackQueue.toString()};
 class Speaker extends AudioWorkletProcessor {
- constructor(options){super();const prefill=options?.processorOptions?.prefillMs??120;this.reference=options?.processorOptions?.renderReference===true;this.ref=new Float32Array(Math.round(sampleRate/50));this.refPos=0;
- if(!Number.isFinite(prefill)||prefill<0||prefill>1000)throw Error('Invalid playback buffer');
- this.outputMuted=false;this.queue=new PcmPlaybackQueue(sampleRate,prefill);this.epoch=0;this.tick=0;this.firstNonzeroAt=null;
+ constructor(options){super();const prefill=options?.processorOptions?.prefillMs??120,growMs=options?.processorOptions?.prefillGrowMs??0,maxMs=options?.processorOptions?.prefillMaxMs??prefill;this.reference=options?.processorOptions?.renderReference===true;this.ref=new Float32Array(Math.round(sampleRate/50));this.refPos=0;
+ if(!Number.isFinite(prefill)||prefill<0||prefill>1000||!Number.isFinite(growMs)||growMs<0||!Number.isFinite(maxMs)||maxMs>1000)throw Error('Invalid playback buffer');
+ this.outputMuted=false;this.queue=new PcmPlaybackQueue(sampleRate,prefill,undefined,{growMs,maxMs});this.epoch=0;this.tick=0;this.firstNonzeroAt=null;
  this.port.onmessage=({data:e})=>{if(e.type==='clear'){this.epoch=e.epoch;this.queue.clear();}
  else if(e.type==='output-mute')this.outputMuted=e.muted===true;
  else if(e.type==='hold'&&e.epoch===this.epoch)this.queue.hold();
@@ -60,7 +64,7 @@ registerProcessor('v-direct-speaker',Speaker);registerProcessor('v-direct-mic',M
 // wall time. AudioBufferSource uses the browser's native renderer instead.
 // Schedule only a short horizon; reclaim precisely the unplayed samples on
 // pause/hold. Policy (turns, interruption, mute) remains in the shared relay.
-export function createBufferedPcmSpeaker(context,{prefillMs=120}={}){
+export function createBufferedPcmSpeaker(context,{prefillMs=120,growMs=0,maxMs=prefillMs}={}){
   const output=context.createGain(),disconnect=output.disconnect.bind(output);
   let chunks=[],offset=0,frames=0,scheduled=[],consumed=0,epoch=0,nextAt=null,firstAt=null;
   let paused=false,held=false,complete=false,muted=false,closed=false,underflows=0,starved=false,lastPlayedAt=null;
@@ -95,7 +99,7 @@ export function createBufferedPcmSpeaker(context,{prefillMs=120}={}){
     for(const b of scheduled){const left=futureFrames(b,now);pending+=left;if(now>=b.at&&left>0)playing=true;if(now>=b.at)lastPlayedAt=Math.min(now,b.at+b.pcm.length/rate);}
     trim(now);
     if(playing)starved=false;
-    if(nextAt!==null&&now>nextAt+.005&&!paused&&!held&&(frames>0||!complete)&&!starved){underflows++;starved=true;}
+    if(nextAt!==null&&now>nextAt+.005&&!paused&&!held&&(frames>0||!complete)&&!starved){underflows++;starved=true;if(growMs)prefillMs=Math.min(Math.max(prefillMs,maxMs),prefillMs+growMs);}
     if(!paused&&!held&&context.state==='running'&&frames){
       if(nextAt===null||nextAt<now){nextAt=Math.max(now+.02,(firstAt??now)+(complete?0:prefillMs/1000));}
       while(frames&&nextAt<now+lead){
@@ -193,7 +197,11 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
   const timing=name=>{try{onTiming(name);}catch{}};
   // Recorded Grok packets: 245ms of speech, then a 595ms arrival gap.
   // 400ms protects that real startup cadence; Xiaohe retains its smaller lead.
-  const startBufferMs=reservation.provider==='grok'?400:120;
+  // GPT Live's voice arrives at the speed it plays (20 ms at a time, over the relay): with 120 ms in
+  // hand the queue ran dry about every three seconds on a real call (61 times in 167 s of speech, packets
+  // up to 0.6 s apart). It starts with more and widens when the network asks for it.
+  const realtimeVoice=reservation.provider==='gpt-live-11';
+  const startBufferMs=reservation.provider==='grok'?400:realtimeVoice?320:120,bufferGrowMs=realtimeVoice?120:0,bufferMaxMs=realtimeVoice?680:startBufferMs;
   // Grok's short greeting can arrive as two sentences with a multi-second
   // network gap. Hold only that first response to its native completion;
   // later answers keep streaming with their normal lead, and the mic stays on.
@@ -309,12 +317,12 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
     if(context.state!=='running')throw Error('麦克风和声音已暂停，请轻点页面后重新拨号。');
     const buffered=bufferedOutput&&typeof subscribePcm==='function'&&typeof renderReference!=='function';
     stats.bufferedOutput=buffered?1:0;
-    if(buffered)speaker=createBufferedPcmSpeaker(context,{prefillMs:startBufferMs});
+    if(buffered)speaker=createBufferedPcmSpeaker(context,{prefillMs:startBufferMs,growMs:bufferGrowMs,maxMs:bufferMaxMs});
     else {
       const url=URL.createObjectURL(new Blob([relayWorkletSource()],{type:'text/javascript'}));
       try{await context.audioWorklet.addModule(url);}finally{URL.revokeObjectURL(url);}
       if(closed)return;
-      speaker=new AudioWorkletNode(context,'v-direct-speaker',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1],processorOptions:{prefillMs:startBufferMs,renderReference:typeof renderReference==='function'}});
+      speaker=new AudioWorkletNode(context,'v-direct-speaker',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1],processorOptions:{prefillMs:startBufferMs,prefillGrowMs:bufferGrowMs,prefillMaxMs:bufferMaxMs,renderReference:typeof renderReference==='function'}});
     }
     speaker.port.postMessage({type:'output-mute',muted:outputMuted});speaker.port.postMessage({type:'clear',epoch});if(nativePaused)speaker.port.postMessage({type:'pause',paused:true,epoch});if(greetingHeld)speaker.port.postMessage({type:'hold',epoch});speaker.connect(context.destination);
     speaker.port.onmessage=({data:e})=>{

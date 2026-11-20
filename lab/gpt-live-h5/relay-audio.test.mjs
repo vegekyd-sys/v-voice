@@ -104,6 +104,20 @@ async function fixture(t,provider,deferReady=false,options={}){
 test('actual serialized worklet receives only the selected Grok buffer; Xiaohe stays at 120ms',async t=>{
  const f=await fixture(t,'grok');assert.equal(f.relay.stats.startBufferMs,400);assert.equal(f.speaker.processor.queue.prefill,19200);
 });
+test('a voice that arrives at the speed it plays starts with a wider window, which grows when the queue runs dry mid-reply',async t=>{
+ const f=await fixture(t,'gpt-live-11');assert.equal(f.relay.stats.startBufferMs,320);
+ const q=f.speaker.processor.queue;assert.equal(q.prefill,15360);assert.equal(q.maxPrefill,32640);
+ // Run dry in the middle of a reply: the next start waits for more.
+ const dry=new PcmPlaybackQueue(48000,320,undefined,{growMs:120,maxMs:680});
+ dry.push(pcm(24000));for(let i=0;i<2000&&dry.underflows===0;i++)render(dry,128);
+ assert.equal(dry.underflows,1);assert.equal(dry.prefill,Math.ceil(48000*.44));
+ for(let n=0;n<8;n++){dry.push(pcm(24000));for(let i=0;i<2000&&dry.underflows===n+1;i++)render(dry,128);}
+ assert.equal(dry.prefill,dry.maxPrefill,'never beyond the ceiling');
+ // The end of a finished reply is not the network: nothing grows; nor does anything for the other voices.
+ const done=new PcmPlaybackQueue(48000,320,undefined,{growMs:120,maxMs:680});done.push(pcm(24000));done.end();for(let i=0;i<2000;i++)render(done,128);
+ assert.equal(done.prefill,15360);assert.equal(done.underflows,0);
+ const plain=queue();plain.push(pcm(24000));for(let i=0;i<2000;i++)render(plain,128);assert.equal(plain.underflows,1);assert.equal(plain.prefill,5760);
+});
 test('real Grok bridge audio identity matches its completion and releases the held greeting',async t=>{
  const f=await fixture(t,'grok');let sequence=0;
  const bridge=new GrokVoiceBridge({onAudio:(bytes,metadata)=>f.event({type:'audio',sequence:++sequence,sampleRate:24000,audio:bytes.toString('base64'),...metadata}),
