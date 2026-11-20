@@ -1984,8 +1984,10 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   .board-body[data-side] .board-block[data-size="small"] { grid-column: 2; width: 100%; max-width: 250px; justify-self: center; align-self: start; }
   .board-body:not([data-side]) .board-block { max-width: 720px; }
   .board-body:not([data-side]) .board-block[data-size="small"] { max-width: 300px; justify-self: start; }
-  /* a gallery takes the page's whole width; notes beside it go under it */
-  .board-body[data-side] .board-block[data-look="gallery"] { grid-column: 1 / -1; }
+  /* a gallery takes the page's whole width; the notes beside it go under it, side by side */
+  .board-body[data-side]:has(> .board-block[data-look="gallery"]) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .board-body[data-side]:has(> .board-block[data-look="gallery"]) > .board-block[data-size="wide"] { grid-column: 1 / -1; }
+  .board-body[data-side]:has(> .board-block[data-look="gallery"]) > .board-block[data-size="small"] { grid-column: auto; }
   .board-body .board-block[data-look="gallery"] { max-width: none; }
   .board-item .board-key { font-size: 21px; }
   .board-item > span { font-size: 16px; }
