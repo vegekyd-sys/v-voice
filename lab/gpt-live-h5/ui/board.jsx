@@ -820,8 +820,9 @@ function Sheet({scene, spoken, loadPhoto, enlarge, caption = ''}) {
     const last = rows.at(-1);
     // (When the page would not fit, its main blocks pair up as if each had asked for half.)
     // (A gallery keeps the whole width: its pictures are what the caller asked to see.)
-    const halves = piece => dense && !SMALL.has(piece.t) && piece.look !== 'gallery';
-    const width = block.w ?? (halves(block) ? 'half' : undefined), ahead = last?.[0].w ?? (last && halves(last[0]) ? 'half' : undefined);
+    // (A canvas is never paired: on a wide panel it has the left column to itself, see styles.css.)
+    const halves = piece => dense && !SMALL.has(piece.t) && piece.look !== 'gallery' && piece.t !== 'stage';
+    const width = block.t === 'stage' ? undefined : block.w ?? (halves(block) ? 'half' : undefined), ahead = last?.[0].t === 'stage' ? undefined : last?.[0].w ?? (last && halves(last[0]) ? 'half' : undefined);
     if (width && ahead && last.length < (ahead === 'third' ? 3 : 2)) last.push(block); else rows.push([block]);
   }
   return (
