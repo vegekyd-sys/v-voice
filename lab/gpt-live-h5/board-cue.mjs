@@ -154,11 +154,12 @@ stage     {"id":"s","t":"stage","base":"photo|row|triangle|pitch","cue":-1,"item
 - 球队阵容、站位、阵型 → base pitch，不放照片，每个球员一个 chip，各挂在讲到他的那一段。球场竖着放，下边是自己的球门：x 从左边线 0 到右边线 1000，y 从对方球门线 0 到自己球门线 1000，按 V 说的位置摆（左路就在左边）。
 - 一页最多一个 stage，放在最前面；有 stage 就不再放 photo 区块，也不再用带 img 的 list 放同样的东西。
 - 画布和文字怎么分：看得见的（长相、部位、外观、站位）交给 stage；看不见的（步骤、时间、规则、原因、数字、价格、对比的结论）写成 steps、timeline、list、versus、sticky 里的条目，各挂在讲它的那一段。同一样东西只出现在一个地方：画布上会圈出来的部位，文字区块里不再写一遍。stage 之外最多再放 2 个区块，每块 2 到 5 条。
+- 建筑的屋顶、构件、装饰，车的外观，角色和动物的身体部位，都是照片上看得见的：用 stage，让指针在照片上圈，不要用 draw 画。有 stage 的页面不放 draw。
 - 看不见实物的话题（流程、制度、原理、日程、新闻、建议）不要 stage，照旧只用文字区块。用户要看几张图（图集）照旧用 list gallery。四样以上的东西照旧用带 img 的 list。`;
 const STAGE_SWAP = ['- 看得见的东西用照片，不用画：地方、城市、景点、建筑、人物、角色、动物、食物、产品、作品。讲到几个这样的东西，就用一个 list（或 timeline），每一项写 img（它自己的照片），各挂在讲它的那一段；不要只放一张大照片然后用 draw 去画其余的城市和建筑。',
-  '- 看得见的东西用照片，不用画：地方、城市、景点、建筑、人物、角色、动物、食物、产品、作品。一到三样、要讲它长什么样的，用 stage（见「画布 stage」）；四样以上，用一个 list（或 timeline），每一项写 img，各挂在讲它的那一段。不要用 draw 去画城市和建筑。'];
+  '- 看得见的东西用照片，不用画：地方、城市、景点、建筑、人物、角色、动物、食物、产品、作品。一到三样、要讲它长什么样的，用 stage（见「画布 stage」）；四样以上，用一个 list（或 timeline），每一项写 img，各挂在讲它的那一段。不要用 draw 去画城市和建筑。draw 只用来画照片拍不出来的：原理、几何、位置关系、内部结构（剖面）。'];
 if (!CUE_INSTRUCTIONS.includes(STAGE_SWAP[0])) throw Error('canvas instructions: no photo rule to replace');
-export const CANVAS_CUE_INSTRUCTIONS = CUE_INSTRUCTIONS.replace(STAGE_SWAP[0], STAGE_SWAP[1]).replace('\n输出：每行一个 JSON 操作', `\n${STAGE}\n\n输出：每行一个 JSON 操作`);
+export const CANVAS_CUE_INSTRUCTIONS = CUE_INSTRUCTIONS.replace(STAGE_SWAP[0], STAGE_SWAP[1]).replace('- 形状、装置、光路、位置、构造，要画出来才看得懂 → draw', '- 装置、光路、位置关系、内部结构，照片拍不出来、要画出来才看得懂 → draw').replace('\n输出：每行一个 JSON 操作', `\n${STAGE}\n\n输出：每行一个 JSON 操作`);
 if (CANVAS_CUE_INSTRUCTIONS === CUE_INSTRUCTIONS || !CANVAS_CUE_INSTRUCTIONS.includes('# 画布 stage')) throw Error('canvas instructions: not placed');
 
 /** The lesson writer's instructions for a canvas: a script that goes round what can be seen, a part at a time. */

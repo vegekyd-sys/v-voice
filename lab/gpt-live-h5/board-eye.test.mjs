@@ -105,3 +105,14 @@ test('beside a stage the other blocks are words: no second set of pictures, no s
   assert.deepEqual(scene.blocks.map(block => block.t), ['versus', 'stage']);
   assert.deepEqual(scene.blocks[0].sides.map(side => side.img), [undefined, undefined]);
 });
+
+test('with the canvas on, a print becomes a canvas of one photograph and is looked at', async () => {
+  const pages = [[{op: 'scene', title: '太和殿'}, {op: 'put', block: {id: 'p', t: 'photo', query: '太和殿 正面', caption: '太和殿', cue: -1}}]];
+  const complete = async function* () { yield pages.shift().map(op => JSON.stringify(op)).join('\n') + '\n'; };
+  let looked = 0;
+  const eye = {find: async () => ({bytes: Buffer.from('x'), type: 'image/jpeg'}), see: async () => { looked++; return []; }};
+  const director = createBoardDirector({complete, eye, stream: {instructions: CANVAS_CUE_INSTRUCTIONS, refine: refineCueOp, turns: cueTurns, cue: true}});
+  await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '太和殿有什么好看的'}, {role: 'assistant', text: '这是太和殿，故宫里最大的一座殿。它的屋顶有两层，叫重檐庑殿顶。'}]});
+  const [stage] = director.scene('c').blocks;
+  assert.deepEqual([stage.t, stage.base, stage.items[0].img, stage.items[0].h, looked], ['stage', 'photo', '太和殿 正面', '太和殿', 1]);
+});

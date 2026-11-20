@@ -416,6 +416,11 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
               // on the page (another type, another photograph, other items) is a new block instead.
               // One stage on a page: written again (under any id) it is that stage, with the places
               // already pinned on photographs it still shows. Prints it replaces are taken off.
+              // With the canvas on, a print is a canvas of one photograph: the pointer goes round it too.
+              if (eye && op.block.t === 'photo' && !row.scene.blocks.some(block => block.t === 'stage')) {
+                const {query, caption, q} = op.block;
+                op = normalizeOp({op: 'put', block: {id: op.block.id, t: 'stage', base: 'photo', items: [{id: 'a', k: 'pic', img: query, ...(caption ? {h: caption} : {}), ...(q ? {q} : {})}], edges: []}}) ?? op;
+              }
               if (op.block.t === 'stage') {
                 const stage = row.scene.blocks.find(block => block.t === 'stage');
                 if (stage) {
