@@ -79,8 +79,12 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     // A conversation record left out because Seeduplex refused it on an earlier call (no content).
     if(event.type==='call.record-skipped')return enqueue({...owner,type:event.type,reason:event.reason==='refused-earlier'?'refused-earlier':'unknown'});
     if(event.type==='call.provider-status'){
-      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed','context-dropped'].includes(event.stage))return false;
+      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed','context-dropped','upstream-closed'].includes(event.stage))return false;
       const safe={stage:event.stage};
+      // What the voice service said when it ended the session itself: a few short fields
+      // (reason, code, message), by plain keys, never audio or text of the call.
+      if(event.stage==='upstream-closed')for(const [key,value] of Object.entries(event).filter(([key])=>/^[a-z][a-z0-9_.]{0,39}$/iu.test(key)&&!['type','stage','voiceSessionId','sessionAgeMs','attempt'].includes(key)).slice(0,6))
+        if(['string','number','boolean'].includes(typeof value))safe['closed.'+key]=String(value).replace(/[\u0000-\u001f\u007f]/gu,' ').slice(0,120);
       if(['configuration','input-timeout','upstream-transient','upstream-rejected','network','setup-timeout'].includes(event.category))safe.category=event.category;
       if(typeof event.upstreamCode==='string'&&/^\d{3,8}$/.test(event.upstreamCode))safe.upstreamCode=event.upstreamCode;
       for(const key of ['sessionAgeMs','attempt'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
@@ -173,7 +177,8 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     }
     if(event.type==='call.closed'){
       closedOwners.set(id,owner);if(closedOwners.size>256)closedOwners.delete(closedOwners.keys().next().value);
-      owners.delete(id);return enqueue({...owner,type:'call.closed'});
+      // (`why`: which way the call ended, one of the service's own words.)
+      owners.delete(id);return enqueue({...owner,type:'call.closed',...(typeof event.why==='string'&&/^[a-z0-9:_-]{1,80}$/u.test(event.why)?{why:event.why}:{})});
     }
     return false;
   };
