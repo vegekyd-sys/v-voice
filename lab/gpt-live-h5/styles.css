@@ -2086,20 +2086,44 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   .call-page[data-board="true"] .board-now[data-who="user"] { color: var(--faint); }
 }
 
-/* The canvas (stage): photographs taped to the page like the sticky notes, one pointer, rings that fade once V moves on. */
+/* The canvas (VOICE_BOARD_CANVAS): a pointer laid over the page's own blocks. */
+/* One pointer on the page: at the place on a picture, or on the written item, that V is on. */
+.board-body { position: relative; }
+.board-pointer { position: absolute; z-index: 6; left: 92%; top: 92%; width: clamp(20px, 2.6vw, 30px); opacity: 0; pointer-events: none; filter: drop-shadow(0 2px 3px #3c348959);
+  transition: left .7s cubic-bezier(.22, .9, .25, 1), top .7s cubic-bezier(.22, .9, .25, 1), opacity .4s; }
+.board-pointer[data-on] { opacity: 1; }
+.board-pointer svg { display: block; width: 100%; height: auto; }
+.board-pointer path { fill: #4b3d82; stroke: #fffdfb; stroke-width: 1.6; stroke-linejoin: round; }
+/* The places pinned on a picture: only the one V is on is ringed and named; it fades when V moves on. */
+.board-thumb, .board-print { position: relative; }
+.board-pins { position: absolute; inset: 4px; pointer-events: none; }
+.board-print > .board-pins { inset: 0; }
+.board-pins svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.board-pin-ring { fill: none; stroke: var(--pen); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; opacity: 0; transition: opacity .6s; }
+.board-pin-ring[data-on] { opacity: 1; animation: board-draw .7s .5s ease-out both; }
+.board-pin-tag { position: absolute; z-index: 2; transform: translate(-50%, -100%); padding: 0 .25em; font-family: var(--hand); font-size: clamp(14px, 1.7vw, 19px); font-weight: 600; line-height: 1.3; color: #4b3d82; white-space: nowrap;
+  background: linear-gradient(transparent 52%, var(--butter) 52%, var(--butter) 92%, transparent 92%); opacity: 0; transition: opacity .5s; }
+.board-pin-tag[data-below] { transform: translate(-50%, 0); }
+.board-pin-tag[data-on] { opacity: 1; transition-delay: .7s; }
+.board-pin-aim { position: absolute; width: 0; height: 0; }
+/* A list's picture shown large where it is: the one V is on (board.jsx useOpenPicture). Taped like a note. */
+:is(.board-list, .board-steps) li[data-open]:has(> .board-thumb) { grid-template-columns: 30px minmax(0, 1fr); align-items: start; }
+:is(.board-list, .board-steps) li[data-open] > .board-thumb { grid-column: 2; grid-row: 1; width: min(100%, calc(var(--open, 250px) * var(--shape, 1.33))); height: auto; aspect-ratio: var(--shape, 1.33); padding: 6px; background: #fbf1cf; --tilt: 0deg; margin: 2px 0 6px; }
+:is(.board-list, .board-steps) li[data-open]:has(> .board-thumb) > .board-item { grid-column: 2; grid-row: 2; }
+:is(.board-list, .board-steps) li[data-open] > .board-thumb > .board-pins { inset: 6px; }
+:is(.board-list, .board-steps) li[data-open] > .board-thumb::before { content: ""; position: absolute; z-index: 1; top: -9px; left: 50%; width: 54px; height: 17px; transform: translateX(-50%) rotate(-3deg); background: repeating-linear-gradient(90deg, #fffaf0c9 0 5px, #fff4dfc9 5px 10px); box-shadow: 0 2px 5px -2px #4d356052; }
+.board-body[data-cue] :is(.board-list, .board-steps) li > .board-thumb { cursor: pointer; }
+/* The two things of a comparison stand taller when places are pinned on them. */
+.board-versus:has(.board-thumb[data-pinned]) .board-vs-side .board-thumb { height: clamp(110px, 16vw, 200px); }
+/* A print that is the page's only picture is shown large (the hero): its own shape, whole, on butter paper. */
+.board-photo[data-hero] { width: min(100%, 620px); max-width: none; justify-self: center; background: #fbf1cf; padding: 8px 8px 6px; }
+.board-photo[data-hero] .board-print { aspect-ratio: var(--shape, 1.33); max-height: calc(var(--room, 100vh) * .58); margin: 0 auto; background: #fbf1cf; }
+.board-photo[data-hero] .board-print img { object-fit: contain; }
+/* A pitch with names placed on it (stage). */
 .board-block[data-type="stage"] { container-type: inline-size; }
-.board-stage-sheet { position: relative; width: min(100%, calc(var(--room, 100vh) * .66 * 1000 / var(--sheet-h, 750))); margin: 4px auto 0; }
-.board-stage-pic { position: absolute; margin: 0; padding: 0; background: #fbf1cf; border-radius: 2px; box-shadow: 0 0 0 clamp(4px, 1.1cqw, 8px) #fbf1cf, 0 12px 20px -12px #4d356073; transition: opacity .4s; }
-.board-stage-pic[data-ready="false"] { background: linear-gradient(110deg, #f4ead0 30%, #fbf4de 50%, #f4ead0 70%) 0 0 / 220% 100%; animation: board-develop 1.3s linear infinite; }
-.board-stage-pic img { display: block; width: 100%; height: 100%; object-fit: contain; animation: board-in .6s ease-out both; }
-.board-stage-pic .board-tape { top: clamp(-14px, -1.6cqw, -8px); width: clamp(36px, 9cqw, 62px); height: clamp(12px, 2.4cqw, 20px); }
-.board-stage-pic figcaption { position: absolute; left: 50%; top: 100%; transform: translate(-50%, clamp(6px, 1.4cqw, 11px)); font-family: var(--hand); font-size: clamp(14px, 3.8cqw, 19px); color: #5a4a66; white-space: nowrap; }
-.board-stage-pic[data-ink="false"] { opacity: .25; }
+.board-stage-sheet { position: relative; width: min(100%, calc(var(--room, 100vh) * .7 * 1000 / var(--sheet-h, 1000))); margin: 4px auto 0; }
 .board-stage-pitch { position: absolute; inset: 0; width: 100%; height: 100%; }
 .board-stage-pitch :is(rect, line, circle) { fill: none; stroke: #d9cfe6; stroke-width: 4; }
-.board-stage-ink { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; overflow: visible; pointer-events: none; }
-.board-stage-ring { fill: none; stroke: var(--pen); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; opacity: 0; transition: opacity .6s; }
-.board-stage-ring[data-on] { opacity: 1; animation: board-draw .7s .45s ease-out both; }
 .board-stage-arrow { fill: none; stroke: #4b3d82; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; transition: opacity .5s; }
 .board-stage-arrow[data-ink="false"] { opacity: 0; }
 .board-stage-say { position: absolute; z-index: 3; transform: translate(-50%, -50%); padding: 0 .3em; border-radius: 6px; background: #fffdfb; font-family: var(--hand); font-size: clamp(12px, 3.2cqw, 18px); color: #4b3d82; white-space: nowrap; transition: opacity .5s; }
@@ -2107,46 +2131,22 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-stage-chip { position: absolute; z-index: 3; display: grid; justify-items: center; transform: translate(-50%, -50%); text-align: center; white-space: nowrap; transition: opacity .5s; }
 .board-stage-chip b { padding: 0 .2em; font-family: var(--hand); font-size: clamp(12px, 3.3cqw, 19px); font-weight: 600; color: #4b3d82; background: linear-gradient(transparent 55%, var(--butter) 55%, var(--butter) 95%, transparent 95%); transition: background .4s; }
 .board-stage-chip small { font-size: clamp(10px, 2.4cqw, 13px); color: #7a7298; }
-.board-stage-chip[data-pitch]::before { content: ""; width: clamp(8px, 1.8cqw, 13px); aspect-ratio: 1; border-radius: 50%; background: #4b3d82; box-shadow: 0 0 0 3px #fffdfb; }
+.board-stage-chip::before { content: ""; width: clamp(8px, 1.8cqw, 13px); aspect-ratio: 1; border-radius: 50%; background: #4b3d82; box-shadow: 0 0 0 3px #fffdfb; }
 .board-stage-chip[data-now] b { background: linear-gradient(transparent 50%, var(--marker) 50%, var(--marker) 95%, transparent 95%); }
 .board-stage-chip[data-ink="false"] { opacity: .22; }
-.board-page[data-lesson] .board-stage-chip[data-ink="false"] { opacity: 0; }
-.board-stage-tag { position: absolute; z-index: 4; transform: translate(-50%, -100%); padding: 0 .25em; font-family: var(--hand); font-size: clamp(15px, 4.2cqw, 23px); font-weight: 600; color: #4b3d82; white-space: nowrap; pointer-events: none;
-  background: linear-gradient(transparent 52%, var(--butter) 52%, var(--butter) 92%, transparent 92%); opacity: 0; transition: opacity .5s; }
-.board-stage-tag[data-below] { transform: translate(-50%, 0); }
-.board-stage-tag[data-on] { opacity: 1; transition-delay: .7s; }
-/* One pointer on the page: at the place on a photograph, or on the written item, that V is on. */
-.board-body { position: relative; }
-.board-stage-aim { position: absolute; width: 0; height: 0; pointer-events: none; }
-.board-pointer { position: absolute; z-index: 6; left: 92%; top: 92%; width: clamp(20px, 2.6vw, 30px); opacity: 0; pointer-events: none; filter: drop-shadow(0 2px 3px #3c348959);
-  transition: left .7s cubic-bezier(.22, .9, .25, 1), top .7s cubic-bezier(.22, .9, .25, 1), opacity .4s; }
-.board-pointer[data-on] { opacity: 1; }
-.board-pointer svg { display: block; width: 100%; height: auto; }
-.board-pointer path { fill: #4b3d82; stroke: #fffdfb; stroke-width: 1.6; stroke-linejoin: round; }
-/* A tour: the photograph V is on, large; the others in a strip under it. */
-.board-stage-cap { margin: 0 0 6px; min-height: 1.4em; font-family: var(--hand); font-size: clamp(14px, 3.8cqw, 19px); line-height: 1.4; text-align: center; color: #5a4a66; transition: opacity .4s; }
-.board-stage-cap small { font-size: .9em; color: #8b7f99; }
-.board-stage-strip { display: flex; justify-content: center; gap: clamp(6px, 1.6cqw, 12px); margin: 2px auto 0; width: min(100%, calc(var(--room, 100vh) * .66 * 1000 / var(--sheet-h, 750))); }
-.board-stage-thumb { flex: 0 1 clamp(48px, 15cqw, 104px); min-width: 0; display: grid; gap: 3px; padding: 0; border: 0; background: none; cursor: pointer; font: inherit; color: inherit; transition: opacity .5s, transform .3s; }
-.board-stage-thumb-pic { display: block; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 2px; background: #f4ead0; box-shadow: 0 0 0 3px #fbf1cf, 0 6px 10px -8px #4d356073; opacity: .62; transition: opacity .3s; }
-.board-stage-thumb-pic img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.board-stage-thumb-name { font-family: var(--hand); font-size: clamp(10px, 2.5cqw, 13px); line-height: 1.25; color: #8b7f99; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
-.board-stage-thumb[data-cur] { transform: translateY(-2px); }
-.board-stage-thumb[data-cur] .board-stage-thumb-pic { opacity: 1; box-shadow: 0 0 0 3px #fbf1cf, 0 0 0 5px var(--pen), 0 6px 10px -8px #4d356073; }
-.board-stage-thumb[data-cur] .board-stage-thumb-name { color: #4b3d82; }
-@media (prefers-reduced-motion: reduce) { .board-pointer { transition: opacity .2s; } .board-stage-ring[data-on] { animation: none; stroke-dashoffset: 0; } }
-/* The canvas has the page's whole width (a note beside it took a third of a middling panel, 11/21). */
-.board-body:has(> .board-block[data-type="stage"]) > .board-block[data-type="stage"] { grid-column: 1 / -1; max-width: none; }
-/* A page with a canvas on a wide panel (data-lay, set from the panel's own shape in board.jsx useFit).
-   Lying on its side: the canvas on the left, the written blocks beside it, one under another (two abreast in
-   that narrow column broke their words a character a line, 11/21). */
-.board-body[data-lay="side"]:has(> .board-block[data-type="stage"]) { grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); grid-auto-flow: row dense; align-items: start; }
-.board-body[data-lay="side"]:has(> .board-block[data-type="stage"]) > .board-block[data-type="stage"] { grid-column: 1; grid-row: 1 / span 6; max-width: none; }
-.board-body[data-lay="side"]:has(> .board-block[data-type="stage"]) > :not([data-type="stage"], .board-pointer) { grid-column: 2; max-width: 100%; width: auto; justify-self: stretch; }
-.board-body[data-lay="side"]:has(> .board-block[data-type="stage"]) > .board-row { grid-template-columns: minmax(0, 1fr); }
-.board-body[data-lay="side"]:has(> .board-block[data-type="stage"]) :is(.board-stage-sheet, .board-stage-strip) { width: min(100%, calc(var(--room, 100vh) * .8 * 1000 / var(--sheet-h, 750))); }
-/* Wide but upright: the canvas takes the top, and the written blocks stand two abreast under it. */
-.board-body[data-lay="top"]:has(> .board-block[data-type="stage"]) { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
-.board-body[data-lay="top"]:has(> .board-block[data-type="stage"]) > :is(.board-block[data-type="stage"], .board-row) { grid-column: 1 / -1; max-width: none; }
-.board-body[data-lay="top"]:has(> .board-block[data-type="stage"]) > .board-block:not([data-type="stage"]) { grid-column: auto; max-width: 100%; width: auto; justify-self: stretch; }
-.board-body[data-lay="top"]:has(> .board-block[data-type="stage"]) :is(.board-stage-sheet, .board-stage-strip) { width: min(100%, calc(var(--room, 100vh) * .56 * 1000 / var(--sheet-h, 750))); }
+@media (prefers-reduced-motion: reduce) { .board-pointer { transition: opacity .2s; } .board-pin-ring[data-on] { animation: none; stroke-dashoffset: 0; } }
+/* A page led by one large picture (the hero print, a pitch) on a wide panel (data-lay, set from the panel's own
+   shape in board.jsx useFit). Lying on its side: the picture on the left, the written blocks beside it, one under
+   another (two abreast in that narrow column broke their words a character a line, 11/21). */
+.board-body:is([data-lead], :has(> .board-block[data-type="stage"])) > :is(.board-block[data-type="stage"], .board-photo[data-hero]) { grid-column: 1 / -1; }
+.board-body[data-lay="side"]:is([data-lead], :has(> .board-block[data-type="stage"])) { grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); grid-auto-flow: row dense; align-items: start; }
+.board-body[data-lay="side"]:is([data-lead], :has(> .board-block[data-type="stage"])) > :is(.board-block[data-type="stage"], .board-photo[data-hero]) { grid-column: 1; grid-row: 1 / span 6; }
+.board-body[data-lay="side"]:is([data-lead], :has(> .board-block[data-type="stage"])) > :not([data-type="stage"], [data-hero], .board-pointer) { grid-column: 2; max-width: 100%; width: auto; justify-self: stretch; }
+.board-body[data-lay="side"]:is([data-lead], :has(> .board-block[data-type="stage"])) > .board-row { grid-template-columns: minmax(0, 1fr); }
+.board-body[data-lay="side"] .board-photo[data-hero] .board-print { max-height: calc(var(--room, 100vh) * .74); }
+/* Wide but upright: the picture takes the top, and the written blocks stand two abreast under it. */
+.board-body[data-lay="top"]:is([data-lead], :has(> .board-block[data-type="stage"])) { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.board-body[data-lay="top"]:is([data-lead], :has(> .board-block[data-type="stage"])) > :is(.board-block[data-type="stage"], .board-photo[data-hero], .board-row) { grid-column: 1 / -1; }
+.board-body[data-lay="top"]:is([data-lead], :has(> .board-block[data-type="stage"])) > .board-block:not([data-type="stage"], [data-hero]) { grid-column: auto; max-width: 100%; width: auto; justify-self: stretch; }
+/* The large picture of a list is larger on a wide panel. */
+.board-body[data-lay] :is(.board-list, .board-steps) { --open: 320px; }

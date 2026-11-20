@@ -2,7 +2,7 @@
 // it on the caller's screen. It runs beside the voice model, never in its
 // audio path, and has no tools, permissions or say in what V does. Its output
 // is validated line by line (board-scene.mjs) before anything reaches a page.
-import {applyOp, createLineParser, emptyScene, normalizeOp, pinned, sceneDigest, scenePictures, zoneDigest, zoneId} from './board-scene.mjs';
+import {applyOp, createLineParser, emptyScene, normalizeOp, pictureSubjects, sceneDigest, scenePictures, zoneDigest, zoneId} from './board-scene.mjs';
 import {clauseOf, clauses} from './board-clause.mjs';
 import {appendFile, mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -94,18 +94,11 @@ export function boardRequest({trigger, scene, turns, evidence, notes = null, rec
  */
 const itemsOf = block => block.t === 'compare' ? block.cols : block.t === 'flow' ? block.nodes : block.items ?? [];
 // Whether `next` is `old` with more on it: same kind, same photograph, the same items in the same order first.
-// (A stage is the page's one canvas: written again, it is the same canvas with other things on it.)
-const growsFrom = (old, next) => old.t === next.t && (old.t === 'stage' || (old.t !== 'photo' || old.query === next.query)
-  && itemsOf(old).every((item, index) => itemsOf(next)[index]?.id === item.id));
+const growsFrom = (old, next) => old.t === next.t && (old.t !== 'photo' || old.query === next.query)
+  && itemsOf(old).every((item, index) => itemsOf(next)[index]?.id === item.id);
 // `block` without pictures the page already shows (another block's, or its own twice); a second large print is dropped (null).
 function picturedOnce(block, scene) {
   const others = scene.blocks.filter(other => other.id !== block.id), used = new Set();
-  // A stage is the page's large print: it keeps its photographs, and no other print goes beside it;
-  // the blocks beside it are words (the cars again at the head of a comparison, 11/20), and what can
-  // be seen is shown by the photographs, not drawn (a sketch of a car body beside two photos of cars).
-  if (block.t === 'stage') return block;
-  // (Nor a chart of the same things in boxes: a flow of the halls beside their photographs, 11/21.)
-  if (others.some(other => other.t === 'stage')) return block.t === 'photo' || block.t === 'draw' || block.t === 'flow' ? null : unpictured(block);
   for (const other of others) { if (other.t === 'photo') used.add(other.query); for (const item of [...itemsOf(other), ...(other.sides ?? [])]) if (item.img) used.add(item.img); }
   if (block.t === 'photo') return used.has(block.query) || others.some(other => other.t === 'photo') ? null : block;
   const once = item => { if (!item.img) return item; if (used.has(item.img)) { const {img, ...rest} = item; return rest; } used.add(item.img); return item; };
@@ -113,13 +106,6 @@ function picturedOnce(block, scene) {
   // (The two or three things a comparison is between keep their pictures: a header with one picture missing reads as broken.)
   for (const side of next.sides ?? []) if (side.img) used.add(side.img);
   for (const key of ['cols', 'nodes', 'items']) if (Array.isArray(next[key])) next[key] = next[key].map(once);
-  return next;
-}
-// A block without its pictures (beside a stage).
-function unpictured(block) {
-  const bare = item => { if (!item?.img) return item; const {img, ...rest} = item; return rest; };
-  const next = {...block};
-  for (const key of ['cols', 'nodes', 'items', 'sides']) if (Array.isArray(next[key])) next[key] = next[key].map(bare);
   return next;
 }
 // An answer worth a picture: a few sentences, or anything that follows a lookup.
@@ -172,8 +158,8 @@ export async function* hedged(complete, {messages, signal}, afterMs = 2500, setT
 }
 
 /**
- * `eye: {find(query), see({shots, said, signal})}` (board-eye.mjs): after a streamed run that leaves a
- * stage on the page, its photographs are looked at and the places V talks about are pinned on them.
+ * `eye: {find(query), see({shots, said, signal, from, to})}` (board-eye.mjs): after a streamed run the
+ * page's pictures are looked at and the places V talks about are pinned on them (scene.pins).
  */
 export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false, illustrate = null, stream = null, prefetch = null, hedgeMs = 2500, eye = null} = {}) {
   // Pictures a page will need are asked for the moment the page knows of them, not when the page gets round to showing them.
@@ -343,56 +329,54 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         if (trigger === 'evidence' || trigger !== 'user' && (expecting || Array.from(said).length < (/^[\x00-\x7f]*$/u.test(said.slice(0, 40)) ? 40 : 14) && !row.notes?.script.startsWith(said.slice(0, 12)))) { signal?.removeEventListener('abort', abort); if (row.controller === controller) row.controller = null; return report('waiting', {rev: row.scene.rev}); }
       }
       let ops = 0, firstOpMs = null, none = false, retired = false;
-      // The stage's photographs looked at with V's words (see `eye`), and the places V talks about pinned
-      // on them; the run's screens get the pins as they come. A tour's photographs are each looked at by
-      // themselves, with the clauses that are about them, all at once: a place is on the photograph of the
-      // thing being told, and six photographs take no longer than one. The others are looked at together
-      // (V goes back and forth between two cars). Nothing is looked at twice for the same words.
+      // The page's pictures looked at with V's words (see `eye`), and the places V talks about pinned on
+      // them; the run's screens get the pins as they come. Each picture is looked at by itself, with the
+      // clauses from where V gets to its thing up to where V gets to the next pictured thing, all at once:
+      // a place is on the picture of the thing being told, and six pictures take no longer than one. The
+      // two or three of a comparison are looked at together (V goes back and forth between them).
+      // Nothing is looked at twice for the same words.
       const look = async () => {
-        const stage = row.scene.blocks.find(block => block.t === 'stage'), pics = stage?.items.filter(item => item.k === 'pic') ?? [];
-        if (!pics.length) return null;
-        const begun = now(), serial = row.scene.serial;
-        const put = (on, pins) => {
-          const current = row.scene.serial === serial ? row.scene.blocks.find(block => block.t === 'stage') : null;
-          if (controller.signal.aborted || !current) return 0;
-          const live = pins.filter(pin => current.items.some(item => item.k === 'pic' && item.id === pin.on));
-          const block = pinned(current, live, on);
-          const next = block ? applyOp({...row.scene, pending: null}, {op: 'put', block}) : row.scene;
-          if (next !== row.scene) { row.scene = {...next, lesson: true, late: true, ...flags}; drawn.push({op: 'put', block}); onOp({op: 'sync', scene: row.scene, canvas: canvasOf(row)}); }
-          return live.length;
+        const subjects = pictureSubjects(row.scene);
+        if (!subjects.length) return null;
+        const begun = now(), serial = row.scene.serial, parts = clauses(said);
+        const put = (img, places) => {
+          if (controller.signal.aborted || row.scene.serial !== serial || !scenePictures(row.scene).has(img)) return 0;
+          const op = normalizeOp({op: 'pin', img, items: places}), next = op ? applyOp(row.scene, op) : row.scene;
+          if (next !== row.scene) { row.scene = next; drawn.push(op); onOp({op: 'sync', scene: row.scene, canvas: canvasOf(row)}); }
+          return op?.items.length ?? 0;
         };
-        const shot = async pic => { const found = await eye.find(pic.img); return found?.bytes ? {...pic, bytes: found.bytes, type: found.type} : null; };
+        const shot = async (subject, id) => { const found = await eye.find(subject.img); return found?.bytes ? {id, img: subject.img, h: subject.name, bytes: found.bytes, type: found.type} : null; };
         row.eyes ??= new Map();
-        if (row.eyes.size > 60) row.eyes.clear();
-        if (stage.base === 'tour') {
-          const parts = clauses(said), starts = pics.map(pic => pic.q ? clauseOf(said, pic.q) : 0);
-          const seen = await Promise.all(pics.map(async (pic, index) => {
+        if (row.eyes.size > 80) row.eyes.clear();
+        const alone = subjects.filter(subject => !subject.group), starts = alone.map(subject => subject.q ? clauseOf(said, subject.q) : 0);
+        const groups = [...new Set(subjects.filter(subject => subject.group).map(subject => subject.group))];
+        const seen = await Promise.all([
+          ...alone.map(async (subject, index) => {
             const from = starts[index], later = starts.filter(start => start > from), to = later.length ? Math.min(...later) : parts.length;
-            const words = parts.slice(from, to).join(''), key = `${serial}:${pic.id}:${pic.img}`;
+            const words = parts.slice(from, to).join(''), key = `${serial}:${subject.img}`;
             if (!words || row.eyes.get(key) === words) return null;
             row.eyes.set(key, words);
             try {
-              const found = await shot(pic);
-              const pins = found && !controller.signal.aborted ? await eye.see({shots: [found], said, from, to, signal: controller.signal}) : null;
+              const found = await shot(subject, 'a');
+              const places = found && !controller.signal.aborted ? await eye.see({shots: [found], said, from, to, signal: controller.signal}) : null;
               if (controller.signal.aborted) { row.eyes.delete(key); return null; }
-              return {shots: found ? 1 : 0, pins: pins ? put([pic.id], pins.slice(0, 3).map((pin, at) => ({...pin, id: `${pic.id}-${at + 1}`.slice(0, 24)}))) : 0};
+              return {shots: found ? 1 : 0, pins: places ? put(subject.img, places.slice(0, alone.length > 1 ? 3 : 8)) : 0};
             } catch { row.eyes.delete(key); return {shots: 0, pins: 0, failed: 1}; }
-          }));
-          const done = seen.filter(Boolean);
-          return done.length ? {pins: done.reduce((sum, item) => sum + item.pins, 0), shots: done.reduce((sum, item) => sum + item.shots, 0), ...(done.some(item => item.failed) ? {failed: done.filter(item => item.failed).length} : {}), ms: now() - begun} : null;
-        }
-        const key = `${serial}:${stage.id}:${pics.map(pic => pic.img).join('|')}`;
-        if (row.eyes.get(key) === said || row.eyes.has(key) && trigger !== 'assistant_end') return null;
-        row.eyes.set(key, said);
-        try {
-          const shots = (await Promise.all(pics.map(shot))).filter(Boolean);
-          const pins = shots.length && !controller.signal.aborted ? await eye.see({shots, said, signal: controller.signal}) : null;
-          if (controller.signal.aborted) { row.eyes.delete(key); return null; }
-          return {pins: pins ? put(null, pins) : 0, shots: shots.length, ms: now() - begun};
-        } catch (error) {
-          row.eyes.delete(key);
-          return {pins: 0, error: String(error?.message ?? error).slice(0, 80), ms: now() - begun};
-        }
+          }),
+          ...groups.map(async group => {
+            const members = subjects.filter(subject => subject.group === group), key = `${serial}:${members.map(member => member.img).join('|')}`;
+            if (row.eyes.get(key) === said || row.eyes.has(key) && trigger !== 'assistant_end') return null;
+            row.eyes.set(key, said);
+            try {
+              const shots = (await Promise.all(members.map((member, index) => shot(member, 'abc'[index])))).filter(Boolean);
+              const places = shots.length && !controller.signal.aborted ? await eye.see({shots, said, signal: controller.signal}) : null;
+              if (controller.signal.aborted) { row.eyes.delete(key); return null; }
+              return {shots: shots.length, pins: places ? shots.reduce((sum, item) => sum + put(item.img, places.filter(place => place.on === item.id).slice(0, 4)), 0) : 0};
+            } catch { row.eyes.delete(key); return {shots: 0, pins: 0, failed: 1}; }
+          }),
+        ]);
+        const done = seen.filter(Boolean);
+        return done.length ? {pins: done.reduce((sum, item) => sum + item.pins, 0), shots: done.reduce((sum, item) => sum + item.shots, 0), ...(done.some(item => item.failed) ? {failed: done.filter(item => item.failed).length} : {}), ms: now() - begun} : null;
       };
       const parser = createLineParser(raw => {
         if (controller.signal.aborted || ops >= MAX_OPS) return;
@@ -445,22 +429,6 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             if (op.op === 'put') {
               // A block may grow; it may not become something else. One that would replace what is
               // on the page (another type, another photograph, other items) is a new block instead.
-              // One stage on a page: written again (under any id) it is that stage, with the places
-              // already pinned on photographs it still shows. Prints it replaces are taken off.
-              // With the canvas on, a print is a canvas of one photograph: the pointer goes round it too.
-              if (eye && op.block.t === 'photo' && !row.scene.blocks.some(block => block.t === 'stage')) {
-                const {query, caption, q} = op.block;
-                op = normalizeOp({op: 'put', block: {id: op.block.id, t: 'stage', base: 'photo', items: [{id: 'a', k: 'pic', img: query, ...(caption ? {h: caption} : {}), ...(q ? {q} : {})}], edges: []}}) ?? op;
-              }
-              if (op.block.t === 'stage') {
-                const stage = row.scene.blocks.find(block => block.t === 'stage');
-                if (stage) {
-                  const shown = new Map(stage.items.filter(item => item.k === 'pic').map(item => [item.id, item.img]));
-                  const kept = stage.items.filter(item => item.k === 'pin' && op.block.items.some(pic => pic.k === 'pic' && pic.id === item.on && shown.get(item.on) === pic.img));
-                  op = {op: 'put', block: {...op.block, id: stage.id, items: [...op.block.items.filter(item => item.k !== 'pin'), ...kept].slice(0, 24)}};
-                }
-                if (row.scene.blocks.some(block => block.t === 'photo' || block.t === 'draw' || block.t === 'flow' || scenePictures({blocks: [block]}).size)) row.scene = {...row.scene, blocks: row.scene.blocks.filter(block => !['photo', 'draw', 'flow'].includes(block.t)).map(unpictured)};
-              }
               const old = row.scene.blocks.find(block => block.id === op.block.id);
               if (old && !growsFrom(old, op.block)) op = {op: 'put', block: {...op.block, id: `${op.block.id}${row.scene.blocks.length + 1}`.slice(-24)}};
               // Each thing is pictured once on a page, and a page has one large print.
@@ -476,6 +444,8 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             // The page is a lesson's page whoever opened it: pieces wait for the voice.
             row.scene = {...next, lesson: true, late: true, ...flags};
           }
+          // (The places pinned on a picture go when the picture does.)
+          if (row.scene.pins?.length) { const shown = scenePictures(row.scene), kept = row.scene.pins.filter(item => shown.has(item.img)); if (kept.length !== row.scene.pins.length) row.scene = {...row.scene, pins: kept}; }
           ops++; firstOpMs ??= now() - started; drawn.push(op);
           fetchAhead(row.scene);
           onOp({op: 'sync', scene: row.scene, canvas: canvasOf(row)});

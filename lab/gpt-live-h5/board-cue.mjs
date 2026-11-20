@@ -106,12 +106,8 @@ export function refineCueOp(op, {said = '', trigger = '', raw = null} = {}) {
   const quote = cue => cueQuote(said, cue);
   if (op.op === 'mark') { const q = trigger === 'user' ? '' : quote(raw?.cue); return q ? normalizeOp({...raw, q}) : null; }
   if (op.op !== 'put' || !raw?.block) return op;
-  // Before V has spoken: the print of the thing asked about, nothing else (on a stage: its photographs).
-  if (trigger === 'user') {
-    if (op.block.t === 'photo') return {op: 'put', block: (({q, ...block}) => block)(op.block)};
-    const pics = op.block.t === 'stage' ? op.block.items.filter(item => item.k === 'pic').map(({q, ...item}) => item) : [];
-    return pics.length ? normalizeOp({op: 'put', block: {id: op.block.id, t: 'stage', base: op.block.base, items: pics, edges: []}}) : null;
-  }
+  // Before V has spoken: the print of the thing asked about, nothing else.
+  if (trigger === 'user') return op.block.t === 'photo' ? {op: 'put', block: (({q, ...block}) => block)(op.block)} : null;
   const source = raw.block, own = Number.isInteger(source.cue) ? source.cue : null;
   const hang = (item, inherit = own) => {
     const {cue, q, ...rest} = item ?? {};
@@ -126,39 +122,28 @@ export function refineCueOp(op, {said = '', trigger = '', raw = null} = {}) {
   return normalizeOp({op: 'put', block});
 }
 
-// The canvas (VOICE_BOARD_CANVAS=1; docs/research/board-canvas): what can be seen goes up large on a
-// stage - photographs, or a pitch - and V's pointer goes round it; what cannot be seen is written in the
-// blocks above. The illustrator only chooses the photographs: the places on them are ringed later by a
-// model that has seen them (board-eye.mjs).
-const STAGE = `# 画布 stage：看得见的东西放大，指针在上面走
-页面上有一个指针，像坐在用户旁边的老师：V 讲到哪里，它就飞到哪里。讲到文字条目，它停在那一条上；讲到看得见的东西，它飞到画布上那样东西的大照片上，把讲到的部位圈出来，讲过的圈自己消失。所以只要 V 讲的东西看得见，就给它一块画布。
-stage     {"id":"s","t":"stage","base":"photo|tour|row|triangle|pitch","cue":-1,"items":[…],"edges":[["起点id","终点id","两三个字",cue],…]}
-  照片：{"id":"a","k":"pic","img":"搜索词","h":"名字，不超过 8 个字","d":"一句看点，不超过 12 个字，可省","cue":段号}
-  名字牌（只在球场上用）：{"id":"英文小写","k":"chip","h":"名字，不超过 6 个字","d":"位置，可省","at":[x,y],"cue":段号}
-- 照片上的部位你不用写，也不要写：照片找到后，会有一双看得见照片的眼睛按 V 的话把讲到的部位一处处圈出来。你要做的是选对照片：img 写能清楚拍到要讲的那样东西的照片（「超梦 全身 官方立绘」「太和殿 正面 全景」「翠玉白菜 台北故宫 特写」「圣母百花大教堂 圆顶」「特斯拉 Model 3 正面」），每张的搜索词各不相同。
-- base tour（最常用）：V 一样一样讲几样看得见的东西：几件展品、几个景点、几座建筑、几个角色、几位球员或人物、几道菜、几款产品。两到六样，每样一张照片，按讲的顺序写。屏幕上正在讲的那一张放大，指针在上面圈，讲过的排成一排小图。每张的 cue 写 V **开始讲这样东西**的那一段；d 写它最值得看的一点（「只有 18 厘米高」「红色大圆顶」）。V 提到了但没有展开讲的，不放。介绍一个大地方（故宫、一座城市、一个博物馆、一个国家）时，V 讲到里面几处具体的殿、馆、景点、展品，就是 tour：每处一张自己的照片，不要只放这个大地方的一张总图。
-- base photo：从头到尾只讲一样东西长什么样、有哪些部位（一只宝可梦、一座殿、一辆车、一个产品），没有讲到别的看得见的东西。一张照片，cue -1。
-- base row：两三样东西放在一起比外观，或者进化、前后变化：V 会在几张之间来回讲。按顺序从左到右，cue -1；进化、先后用 edges 箭头（「16级」「变成」）。
-- base triangle：三样东西互相克制、转一圈。三张，第一张在上、第二张右下、第三张左下，edges 三条箭头。
-- base pitch：只用于足球：V 按位置讲一套首发阵型（门将、后卫、中场、前锋各站哪）。不放照片，每个球员一个 chip，各挂在讲到他的那一段。球场竖着放，下边是自己的球门：x 从左边线 0 到右边线 1000，y 从对方球门线 0 到自己球门线 1000，按 V 说的位置摆（左路就在左边）。篮球等其他运动、不分位置的大名单、排名、数据榜，不用 pitch：讲到几位球员就用 tour 放他们的照片，名单和数字写成文字区块。
-- screen 里已经有一块只放了一张总图的 stage（用户刚问完时先贴上去的），而 V 接着讲到几处具体的东西：把这块 stage 重写成 tour（同一个 id，总图可以留作第一张，cue -1），每处一张照片。
-- 一页最多一个 stage，放在最前面。有 stage 的页面不再放 photo 区块，其他区块的条目不写 img，也不放 draw 和 flow。
-- 画布和文字怎么分：看得见的（长相、部位、外观、展品、景点、站位）交给 stage；看不见的（年代、来历、步骤、路线、规则、原因、数字、价格、对比的结论、提醒）写成 steps、timeline、list、versus、stats、sticky 里的条目，各挂在讲它的那一段。同一样东西只出现在一个地方：已经是画布上一张照片的东西（它的名字和看点已经在照片下面），文字区块里不再列一遍；文字区块只写照片上没有的；不要再建一个区块把每张照片的看点逐条写一遍。stage 之外最多再放 2 个区块，每块 2 到 5 条。
-- 例：「介绍台北故宫」，V 先讲它在哪、什么时候建的，再讲翠玉白菜、肉形石、毛公鼎 → stage tour 三张（翠玉白菜、肉形石、毛公鼎，各挂在讲它的那一段），加一个 list 写「在外双溪」「1965 年落成」「藏品来自北京故宫」。
-- 例：「介绍故宫」，V 讲了哪年建的、中轴线，再讲太和殿、中和殿、保和殿、珍宝馆、九龙壁 → stage tour 五张（每处一张），加一个 timeline 写「1406 开工」「1420 建成」，一张便签写「提前预约，周一闭馆」。
-- 例：「佛罗伦萨怎么玩」，V 讲了大教堂、钟楼、领主广场、米开朗琪罗广场、乌菲兹 → stage tour 五张，加一个 steps 或 timeline 只写「第一天 / 第二天」怎么排，不把景点名再列一遍。
-- 看不见实物的话题（流程、制度、原理、日程、新闻事件的经过、排名、建议）不要 stage，照旧只用文字区块，指针会在条目之间走。用户明说要看几张图（「多来几张图」「找几张图给我」）照旧用 list gallery。`;
-const STAGE_SWAP = ['- 看得见的东西用照片，不用画：地方、城市、景点、建筑、人物、角色、动物、食物、产品、作品。讲到几个这样的东西，就用一个 list（或 timeline），每一项写 img（它自己的照片），各挂在讲它的那一段；不要只放一张大照片然后用 draw 去画其余的城市和建筑。',
-  '- 看得见的东西用照片，不用画：地方、城市、景点、建筑、人物、角色、动物、食物、产品、作品。讲到一样或几样（最多六样）这样的东西，用 stage 给它们大照片（见「画布 stage」），不要用带 img 的 list 把它们缩成小图；超过六样才用 list（每一项写 img）。不要用 draw 去画城市和建筑。draw 只用来画照片拍不出来的：原理、几何、位置关系、内部结构（剖面）。'];
-if (!CUE_INSTRUCTIONS.includes(STAGE_SWAP[0])) throw Error('canvas instructions: no photo rule to replace');
-export const CANVAS_CUE_INSTRUCTIONS = CUE_INSTRUCTIONS.replace(STAGE_SWAP[0], STAGE_SWAP[1]).replace('- 形状、装置、光路、位置、构造，要画出来才看得懂 → draw', '- 装置、光路、位置关系、内部结构，照片拍不出来、要画出来才看得懂 → draw').replace('\n输出：每行一个 JSON 操作', `\n${STAGE}\n\n输出：每行一个 JSON 操作`);
-if (CANVAS_CUE_INSTRUCTIONS === CUE_INSTRUCTIONS || !CANVAS_CUE_INSTRUCTIONS.includes('# 画布 stage')) throw Error('canvas instructions: not placed');
+// The canvas (VOICE_BOARD_CANVAS=1; docs/research/board-canvas). Not another kind of page: the same
+// blocks, with a pointer laid over them. The pointer goes to the written item V is on; a picture on the
+// page (a print, the picture of a list's item, the two things of a comparison) grows when V gets to it,
+// and the places V talks about are ringed on it by a model that has seen it (board-eye.mjs). So the
+// illustrator's instructions stay today's, with a section on choosing pictures worth pointing at, and
+// one more shape: a pitch with names placed on it.
+const POINTER = `# 指针：讲到哪，指到哪
+页面上有一个指针，像坐在用户旁边的老师。V 讲到一条文字，它停在那一条上；V 讲到一样有照片的东西，那张照片会在原地放大，指针飞上去，把讲到的部位圈出来（圈的位置由一双看得见照片的眼睛来定，你不用写，也不要写），讲过的圈自己消失，讲到下一样时这张缩回去、下一张放大。你照常用上面这些区块，只需要做对三件事：
+- 讲到看得见的东西，就给它照片：一样东西（一只宝可梦、一座殿、一辆车）用 photo；几样东西一样一样讲（几件展品、几个景点、几座建筑、几个角色、几道菜）用一个 list 或 steps，每一项写 img，挂在 V **开始讲这一样**的那一段，d 写它最值得看的一点；两三样东西比外观用 versus，sides 写 img。不要只放一张总图就把里面的几样东西写成纯文字：介绍故宫讲到太和殿、中和殿、九龙壁，每处一项、每项一张自己的照片。
+- 照片要拍得到 V 讲的部位：img、query 写具体的搜索词（「翠玉白菜 台北故宫 特写」「太和殿 正面 全景」「圣母百花大教堂 圆顶」「特斯拉 Model 3 正面」「超梦 全身 官方立绘」），每张各不相同。
+- 带照片的条目只列 V 展开讲了的那几样（最多六样）；只是顺口提到的名字，不必配图。
+
+pitch     {"id":"s","t":"stage","items":[{"id":"英文小写","h":"名字，不超过 6 个字","d":"位置，可省","at":[x,y],"cue":段号},…]}
+只用于足球：V 按位置讲一套首发阵型（门将、后卫、中场、前锋各站哪）。每个球员一项，各挂在讲到他的那一段。球场竖着放，下边是自己的球门：x 从左边线 0 到右边线 1000，y 从对方球门线 0 到自己球门线 1000，按 V 说的位置摆（左路就在左边）。篮球等其他运动、不分位置的大名单、排名、数据榜不用它。`;
+export const CANVAS_CUE_INSTRUCTIONS = CUE_INSTRUCTIONS.replace('\n输出：每行一个 JSON 操作', `\n${POINTER}\n\n输出：每行一个 JSON 操作`);
+if (CANVAS_CUE_INSTRUCTIONS === CUE_INSTRUCTIONS || !CANVAS_CUE_INSTRUCTIONS.includes('# 指针：讲到哪，指到哪')) throw Error('canvas instructions: not placed');
 
 /** The lesson writer's instructions for a canvas: a script that goes round what can be seen, a part at a time. */
 const SCRIPT_STAGE = `
-# 画布
-- 屏幕上有一个指针跟着你的话走。讲看得见的东西时，屏幕上会放它的大照片，指针在照片上把你讲到的地方圈出来。
-- 讲一样东西长什么样：一句讲一个照片上看得见的部位（「你看它脑袋后面，有一根管子连到后背」「它的尾巴又粗又长，是紫色的」），从显眼的讲到细节。画面提示写「画布：超梦 全身照，圈 脑后的管子」。
-- 讲几样东西（几件展品、几个景点、几座建筑、几位球员）：一样一样讲，每样两三句连着讲完再讲下一样，不要穿插；每样至少有一句说它看起来什么样、照片上该看哪里（「菜叶上停着两只小虫」「红色的大圆顶」「广场是斜的，像一只贝壳」）。画面提示写「画布：换到 肉形石 的照片，圈 一层层的纹路」。最多六样。
+# 指针
+- 屏幕上有一个指针跟着你的话走。讲到一样有照片的东西，它的照片会放大，指针在上面把你讲到的地方圈出来。
+- 讲一样东西长什么样：一句讲一个照片上看得见的部位（「你看它脑袋后面，有一根管子连到后背」「它的尾巴又粗又长，是紫色的」），从显眼的讲到细节。画面提示写「照片：超梦 全身照」。
+- 讲几样东西（几件展品、几个景点、几座建筑）：一样一样讲，每样两三句连着讲完再讲下一样，不要穿插；每样至少有一句说它看起来什么样、照片上该看哪里（「菜叶上停着两只小虫」「红色的大圆顶」「广场是斜的，像一只贝壳」）。画面提示写「list 带图：加一项 肉形石（配图 肉形石 特写）」。最多六样。
 - 看不见的东西（年代、来历、路线、数字、提醒）照常讲，画面提示写成文字条目。`;
 export const CANVAS_SCRIPT_INSTRUCTIONS = CUE_SCRIPT_INSTRUCTIONS + SCRIPT_STAGE;

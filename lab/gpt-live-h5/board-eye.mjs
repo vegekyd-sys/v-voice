@@ -1,8 +1,9 @@
-// The canvas's eye (VOICE_BOARD_CANVAS=1; docs/research/board-canvas): the illustrator chooses the
-// photographs of a stage without seeing them; once they are found, this looks at them with V's words
-// cut into numbered clauses, and says which place on which photograph each clause talks about. Each
-// place becomes a `pin` on the stage, hung on that clause's words, so the page's pointer goes to it and
-// rings it as the voice gets there. One text-and-image call, no thinking (about 1.5 s in the research).
+// The canvas's eye (VOICE_BOARD_CANVAS=1; docs/research/board-canvas): the illustrator puts pictures on
+// the page without seeing them (a print, the picture of a list's item, the two cars of a comparison);
+// once they are found, this looks at them with V's words cut into numbered clauses, and says which
+// place on which picture each clause talks about. Each place is a pin on that picture (board-scene.mjs),
+// hung on the clause's words, so the page's pointer goes to it and rings it as the voice gets there.
+// One text-and-image call a picture, no thinking (about 1.5 s in the research).
 import {cueQuote} from './board-cue.mjs';
 import {clauses} from './board-clause.mjs';
 
@@ -28,11 +29,11 @@ const json = text => {
 };
 
 /**
- * Look at a stage's photographs (`shots`: [{id, h, bytes, type}]) with what V says (`said`) and
- * return its pins, each hung on the words of the clause it talks about. `complete` is the board's
+ * Look at pictures (`shots`: [{id, h, bytes, type}]) with what V says (`said`) and return the
+ * places on them ([{on, box, kind, h, q}]), each hung on the words of the clause it talks about. `complete` is the board's
  * own streaming completion (thinking off). Pins on a photograph not given, without a box, or on a
  * clause V has not said are dropped.
- * With `from` and `to` only those clauses are given and pinned (a tour: the clauses about this photograph).
+ * With `from` and `to` only those clauses are given and pinned (the clauses about this picture, when V tells several things one after another).
  */
 export async function lookAt({complete, shots, said, signal, from = 0, to = Infinity}) {
   const parts = clauses(said), last = Math.min(to, parts.length);
@@ -43,12 +44,12 @@ export async function lookAt({complete, shots, said, signal, from = 0, to = Infi
   let text = '';
   for await (const chunk of complete({messages: [{role: 'system', content: EYE_INSTRUCTIONS}, {role: 'user', content}], signal})) text += chunk;
   const known = new Set(shots.map(shot => shot.id)), seen = new Set();
-  return (json(text)?.pins ?? []).slice(0, 8).map((pin, index) => {
+  return (json(text)?.pins ?? []).slice(0, 8).map(pin => {
     const cue = Number(pin?.cue), q = Number.isInteger(cue) && cue >= from && cue < last ? cueQuote(said, cue) : '';
     // ("无", "没有排气管": what is not there is not pointed at.)
     if (!q || !known.has(pin.on) || seen.has(cue) || /^(无|没有|不)/u.test(String(pin.label ?? '').trim())) return null;
     seen.add(cue);
-    return {id: `n${index + 1}`, k: 'pin', on: pin.on, box: pin.box, kind: pin.kind === 'point' ? 'point' : 'ring', h: pin.label, q};
+    return {on: pin.on, box: pin.box, kind: pin.kind === 'point' ? 'point' : 'ring', h: pin.label, q};
   }).filter(Boolean);
 }
 
