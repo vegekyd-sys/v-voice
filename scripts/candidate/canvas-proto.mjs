@@ -38,12 +38,34 @@ export const PROTO_INSTRUCTIONS = `你是 V 的讲解画面。V 正在电话里�
 - 白纸：宽 1000、高 750，名字牌之间留出距离，按讲的顺序从左到右或从上到下摆，箭头连起来。
 - 名字牌、圈、箭头加起来 12 个以内；少而准比多更好。`;
 
+// The combined page (round 2b, after Tianyi: "today's text pages are better for some, e.g. the night
+// shift - take the best of both"): the same canvas, plus up to two text blocks drawn like today's board
+// (steps, timeline, list, versus, sticky). What can be seen goes on the canvas; what cannot, in text.
+export const MIX_INSTRUCTIONS = PROTO_INSTRUCTIONS
+  .replace('你来决定：每一段念出来的时候，画布上发生什么。画布上有一个指针，像坐在用户旁边的老师，讲到哪里就指到哪里。',
+    '你来决定：每一段念出来的时候，页面上发生什么。页面上半是画布（底图写「无」时没有画布），下半是文字块，和现在的讲解画面一样手写在纸上。页面上有一个指针，像坐在用户旁边的老师，讲到哪里就指到哪里：画布上的部位，或者文字块里的某一条。')
+  .replace('- {"cue":段号,"do":"note","text":"不超过 16 个字"}  画布下方手写一行字：最后的结论、口诀、阵型。整页最多一个。',
+    `- {"cue":段号,"do":"block","id":"b1","t":"steps|timeline|list|versus|sticky","h":"不超过 8 个字的小标题","sides":["左边","右边"],"text":"…"}
+  在文字区放一个块。steps：有先后的步骤；timeline：按时间或阶段（白天/晚上/早上、第一代/第二代）；list：几个并列的点；versus：两样东西一项项比（写 sides）；sticky：一句结论或口诀，写 text，不超过 20 个字，整页最多一个。
+- {"cue":段号,"do":"item","in":"块 id","id":"英文小写","h":"不超过 8 个字","d":"不超过 14 个字，可省","when":"timeline 才写，不超过 4 个字","cells":["左边这一格","右边这一格"]}
+  在块里加一条（versus 写 cells，每格不超过 8 个字）。念到这一段时这一条出现，指针移到它。
+- {"cue":段号,"do":"point","on":"块id/条目id"}  回头再讲已经写出来的某一条时，指针回到它。`)
+  .replace('- 名字牌、圈、箭头加起来 12 个以内；少而准比多更好。', `- 名字牌、圈、箭头加起来 12 个以内；少而准比多更好。
+
+画布和文字怎么分：
+- 每一段先想：它讲的东西看不看得见？能在照片、球场上指出来的（长相、部位、建筑构件、车的外观、站位、阵型）放画布，用 ring、point、chip。看不见的（步骤、流程、时间、规则、原因、数字、价格、好处坏处）写成文字块里的条目。
+- 同一样东西只出现在一个地方：画布上圈过、贴了名字的，文字块里不再写一遍。
+- 文字块最多 2 个，每块 2 到 5 条；条目要短，像笔记，不抄原话。
+- 底图写「无」：只用文字块，指针在条目之间走。
+- 一句结论或口诀用 sticky，不用 note。`);
+
 const BASES = {
   photo: '底图：一张照片（图A）。',
   row: count => `底图：${count} 张照片从左到右排成一行（${'ABC'.slice(0, count).split('').map(id => `图${id}`).join('、')}）。`,
   triangle: '底图：三张照片摆成三角形：图A 在上，图B 在右下，图C 在左下。',
   pitch: '底图：一块竖着放的足球场（白纸上画的线），下边是自己的球门。',
   sketch: '底图：一张白纸（宽 1000、高 750）。',
+  none: '底图：无（这一页只有文字块）。',
 };
 
 export const TOPICS = {
@@ -59,7 +81,7 @@ export const TOPICS = {
     say: '我们把两台车放在一起看。左边是丰田卡罗拉，烧油的；右边是特斯拉 Model 3，用电的。先看车头，油车这一大块进气格栅，是给发动机散热的。电车的车头是封住的，因为没有发动机要散热。电车的轮毂做得很平，是为了少点风阻、多跑点路。补能上，油车加油五分钟就满，电车在家充一晚上，每公里的电费只有油费的三分之一左右。所以能在家充电、主要在市区开，选电车更省钱。'},
   psg: {ask: '把巴黎圣日耳曼今年的阵容按位置排给我看。', base: 'pitch', photos: [],
     say: '先看门将，站在最里面的是舍瓦利耶。他身前四个人排成一条线，从左到右是努诺·门德斯、扎巴尔尼、马尔基尼奥斯、阿什拉夫。马尔基尼奥斯居中，扎巴尔尼在他右边，两人一起守中路。门德斯和阿什拉夫站两边，往前压上去就是边路。中间三个人，维蒂尼亚拖在后面接球。法比安·鲁伊斯在他左边，扎伊尔-埃梅里在右边。最前面三个人，登贝莱顶在中间。克瓦拉茨赫利亚在左路，杜埃在右路。这就是一套 4-3-3，后场四人、中场三人、前场三人。'},
-  nightshift: {ask: '我们的夜班模式是怎么回事？', base: 'sketch', photos: [],
+  nightshift: {ask: '我们的夜班模式是怎么回事？', base: 'sketch', mixBase: 'none', photos: [],
     say: '夜班模式就是：白天人来判断，晚上 V 接着干，早上人来验收。白天，你和 V 一起把要做的事定好，写进 Base。晚上，V 只看 Base 里的任务，一件一件往前推。每一件都一样：先查条件够不够，够了就做，做完自己质检，再写回 Base。条件不够，就停在那里，等人来补。早上你打开 Base 看成果，再定下一轮。'},
 };
 
@@ -68,6 +90,8 @@ const parse = text => { const s = text.indexOf('{'), e = text.lastIndexOf('}'); 
 
 if (process.argv[1]?.endsWith('canvas-proto.mjs')) {
   const [dir = 'photos', out = 'canvas-proto.json', ...only] = process.argv.slice(2);
+  // MIX=1: the combined page; the night shift has no canvas there, only text.
+  const mix = process.env.MIX === '1', instructions = mix ? MIX_INSTRUCTIONS : PROTO_INSTRUCTIONS;
   const key = process.env.VOICE_BOARD_API_KEY ?? process.env.DEEPSEEK_API_KEY;
   const call = maxTokens => createChatCompletionStream({apiKey: key, endpoint: 'https://api.deepseek.com/chat/completions', model: 'deepseek-flash',
     maxTokens, timeoutMs: 60000, extra: {thinking: {type: 'disabled'}}});
@@ -77,10 +101,11 @@ if (process.argv[1]?.endsWith('canvas-proto.mjs')) {
     const photos = topic.photos.map(([name, caption], index) => ({id: 'ABC'[index], name, caption, file: files.find(file => file.startsWith(name + '.'))}));
     const content = [];
     for (const photo of photos) content.push({type: 'text', text: `图${photo.id}：${photo.caption}`}, {type: 'image_url', image_url: {url: `data:${TYPES[extname(photo.file)]};base64,${(await readFile(join(dir, photo.file))).toString('base64')}`}});
+    if (mix && topic.mixBase) topic.base = topic.mixBase;
     const base = typeof BASES[topic.base] === 'function' ? BASES[topic.base](photos.length) : BASES[topic.base];
     content.push({type: 'text', text: `用户问：${topic.ask}\n${base}\nV 要念的话：${numbered(parts)}`});
     const started = Date.now(); let text = '', first = 0, error = '';
-    try { for await (const chunk of call(3000)({messages: [{role: 'system', content: PROTO_INSTRUCTIONS}, {role: 'user', content: photos.length ? content : content.at(-1).text}]})) { first ||= Date.now() - started; text += chunk; } }
+    try { for await (const chunk of call(3000)({messages: [{role: 'system', content: instructions}, {role: 'user', content: photos.length ? content : content.at(-1).text}]})) { first ||= Date.now() - started; text += chunk; } }
     catch (e) { error = String(e?.message ?? e).slice(0, 300); }
     const page = parse(text), directMs = Date.now() - started;
     let steps = Array.isArray(page?.steps) ? page.steps : [];

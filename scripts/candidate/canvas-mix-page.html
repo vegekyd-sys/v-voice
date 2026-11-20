@@ -1,0 +1,359 @@
+<title>讲到哪指到哪 结合版</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap">
+<style>
+/* Layout: one paper canvas (4:3, the board) with a teacher's pointer on it, the spoken line under it, questions above. */
+:root {
+  --bg: #f6f3fa; --fg: #2b2550; --muted: #7a7298; --line: #e2dcee;
+  --paper: #fffdfb; --ink: #3c3489; --accent: #c96385; --hi: #f9e6a8; --sky: #dfeaf7; --soft: #cfc5e3;
+  --hand: "ZCOOL KuaiLe", "Hannotate SC", "Kaiti SC", "STKaiti", "KaiTi", cursive;
+  --sans: -apple-system, "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #1b1830; --fg: #ece8f7; --muted: #a59dc4; --line: #34305a; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #1b1830; --fg: #ece8f7; --muted: #a59dc4; --line: #34305a; color-scheme: dark }
+html, body { background: var(--bg); color: var(--fg) }
+body { font-family: var(--sans); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 14px 28px }
+main { max-width: 760px; margin: 0 auto; display: grid; gap: 12px }
+header { display: grid; gap: 4px }
+h1 { font-family: var(--hand); font-weight: 400; font-size: 26px; margin: 0; color: var(--fg); text-wrap: balance }
+.lede { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6 }
+.topics { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none }
+.topics button { flex: none; font: 13px var(--sans); color: var(--muted); background: none; border: 0; border-radius: 999px; padding: 6px 11px; cursor: pointer }
+.topics button[aria-pressed="true"] { color: var(--ink); background: var(--hi); font-weight: 600 }
+:root:not([data-theme="light"]) .topics button[aria-pressed="true"] { color: #3c3489 }
+.ask { font-size: 15px; margin: 0; color: var(--fg) }
+.ask b { color: var(--accent); font-weight: 600; margin-right: 6px }
+.board { position: relative; display: grid; gap: 10px 18px; background: var(--paper); border-radius: 14px; padding: 12px 12px 16px; box-shadow: 0 1px 0 var(--line), 0 10px 30px -18px rgba(60, 52, 137, .35); container-type: inline-size; min-height: 360px; align-content: start }
+.board > h2 { grid-column: 1 / -1; margin: 2px 4px 0; font-family: var(--hand); font-weight: 400; font-size: clamp(18px, 4.4cqw, 26px); color: #3c3489; background: linear-gradient(transparent 62%, #f2b8c855 62%); justify-self: start; padding: 0 .15em }
+@container (min-width: 640px) { .board.has-stage { grid-template-columns: 3fr 2fr } }
+.stage { position: relative; width: 100%; max-width: 100%; aspect-ratio: 4 / 3; container-type: inline-size }
+.stage[hidden] { display: none }
+.paper { display: grid; gap: 14px; align-content: start; min-width: 0; padding: 4px 4px 0 }
+.board:not(.has-stage) .paper { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); font-size: 1.08em }
+.blk { display: grid; gap: 6px; animation: pop .35s ease-out both; min-width: 0 }
+.blk > h4 { margin: 0; font-size: 12px; font-weight: 500; color: #7a7298; letter-spacing: .04em }
+.blk ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px }
+.it { display: grid; grid-template-columns: auto 1fr; gap: 2px 9px; align-items: baseline; animation: pop .35s ease-out both }
+.it .k { grid-row: span 2; font-size: 12px; color: #c96385; font-weight: 600; min-width: 1.4em; text-align: center; font-variant-numeric: tabular-nums }
+.blk-steps .it .k { width: 1.45em; height: 1.45em; line-height: 1.35em; border: 1.5px solid #c96385; border-radius: 50%; font-size: 11px; align-self: start; margin-top: .15em }
+.blk-list .it .k::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #3c3489; vertical-align: middle }
+.blk-timeline .it .k { font-family: var(--hand); font-size: 14px; font-weight: 400; min-width: 2.6em; text-align: left }
+.it .h { font-family: var(--hand); font-size: 17px; color: #3c3489; justify-self: start; padding: 0 .15em; transition: background .4s }
+.it .d { font-size: 12.5px; color: #7a7298; line-height: 1.45 }
+.it.now .h { background: linear-gradient(transparent 50%, #f9e6a8 50%, #f9e6a8 92%, transparent 92%) }
+.vs { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px 10px; align-items: center; text-align: center }
+.vs .side { font-family: var(--hand); font-size: 16px; color: #3c3489 }
+.vs .c { font-size: 13.5px; color: #2b2550; animation: pop .35s ease-out both }
+.vs .rh { font-size: 11.5px; color: #7a7298; padding: 1px 8px; border-radius: 999px; background: #efe9f8; animation: pop .35s ease-out both }
+.vs .rh.now { background: #f9e6a8; color: #3c3489 }
+.sticky { position: relative; background: #f9e6a8; padding: 14px 14px 12px; font-family: var(--hand); font-size: 18px; color: #3c3489; line-height: 1.45; rotate: -1.2deg; justify-self: start; max-width: 100%; animation: pop .35s ease-out both; box-shadow: 0 6px 14px -10px rgba(60, 52, 137, .5) }
+.sticky::before { content: ""; position: absolute; top: -7px; left: 50%; translate: -50% 0; width: 46px; height: 14px; background: #fffdfb99; rotate: 2deg }
+.sticky.now { outline: 2px solid #c96385; outline-offset: 3px }
+.stage .title { display: none; position: absolute; left: 3.5%; top: 2.5%; font-family: var(--hand); font-size: clamp(14px, 3.4cqw, 24px); color: #3c3489; z-index: 3 }
+.stage img { position: absolute; display: block; max-width: none; border-radius: 6px; object-fit: contain }
+.stage svg.ink { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; overflow: visible }
+.ring { fill: none; stroke: #c96385; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; transition: opacity .5s, stroke .5s }
+.ring.past { stroke: #b9aecb; opacity: .55 }
+.arrow { fill: none; stroke: #3c3489; stroke-width: 3.5; stroke-linecap: round }
+.pitch { fill: none; stroke: #cfc5e3; stroke-width: 3 }
+.pulse { fill: #c96385; opacity: .9 }
+.tag, .chip, .arrow-label, .note { position: absolute; z-index: 4; white-space: nowrap; pointer-events: none }
+.tag { font-family: var(--hand); font-size: clamp(12px, 2.9cqw, 20px); color: #3c3489; background: linear-gradient(transparent 52%, #f9e6a8 52%, #f9e6a8 92%, transparent 92%); padding: 0 .25em; transform: translate(-50%, -100%); animation: pop .35s ease-out both }
+.tag.past { color: #8d84ad; background: none; opacity: .75 }
+.chip { transform: translate(-50%, -50%); text-align: center; animation: pop .35s ease-out both; display: grid; justify-items: center; gap: .1em }
+.chip .name { font-family: var(--hand); font-size: clamp(12px, 2.8cqw, 19px); color: #3c3489; background: linear-gradient(transparent 55%, #f9e6a8 55%, #f9e6a8 95%, transparent 95%); padding: 0 .2em }
+.chip .sub { font-size: clamp(9px, 1.8cqw, 12px); color: #7a7298 }
+.chip.player .name { font-size: clamp(10px, 2.3cqw, 16px) }
+.chip.player::before { content: ""; width: clamp(8px, 1.8cqw, 13px); aspect-ratio: 1; border-radius: 50%; background: #3c3489; box-shadow: 0 0 0 3px #fffdfb }
+.arrow-label { transform: translate(-50%, -50%); font-family: var(--hand); font-size: clamp(11px, 2.4cqw, 16px); color: #3c3489; background: #fffdfb; padding: 0 .3em; border-radius: 6px; animation: pop .35s ease-out both }
+.note { left: 50%; bottom: 3.5%; transform: translateX(-50%); font-family: var(--hand); font-size: clamp(14px, 3.6cqw, 25px); color: #3c3489; animation: rise .5s ease-out both }
+.note span { background: linear-gradient(transparent 50%, #f9e6a8 50%, #f9e6a8 92%, transparent 92%); padding: 0 .3em }
+.pointer { position: absolute; z-index: 6; width: 24px; left: 90%; top: 90%; transition: left .7s cubic-bezier(.22, .9, .25, 1), top .7s cubic-bezier(.22, .9, .25, 1), opacity .3s; filter: drop-shadow(0 2px 3px rgba(60, 52, 137, .35)) }
+.pointer.drive { transition: opacity .3s }
+.pointer.idle { opacity: 0 }
+.pointer svg { display: block; width: 100%; height: auto }
+@keyframes pop { from { opacity: 0; scale: .7 } to { opacity: 1; scale: 1 } }
+@keyframes rise { from { opacity: 0; translate: 0 8px } to { opacity: 1; translate: 0 0 } }
+.line { min-height: 3.2em; margin: 0; font-size: 16px; line-height: 1.6; color: var(--fg) }
+.line .done { color: var(--muted) }
+.line .now { background: linear-gradient(transparent 60%, var(--hi) 60%); color: var(--fg) }
+:root:not([data-theme="light"]) .line .now { color: inherit }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
+.controls button { font: 600 14px var(--sans); border: 0; border-radius: 999px; padding: 9px 16px; cursor: pointer; color: var(--fg); background: var(--line) }
+.controls button.primary { background: #3c3489; color: #fff }
+.controls label { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); margin-left: auto }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.meta { font-size: 12px; color: var(--muted); margin: 0; font-variant-numeric: tabular-nums }
+details { font-size: 13px; color: var(--muted) }
+details summary { cursor: pointer }
+details ol { padding-left: 1.4em; line-height: 1.7; margin: 6px 0 }
+details code { font-size: 12px; color: var(--fg) }
+.today-box img { display: block; width: min(100%, 360px); margin-top: 8px; border-radius: 14px; box-shadow: 0 8px 24px -16px rgba(60, 52, 137, .5) }
+@media (prefers-reduced-motion: reduce) { .pointer { transition: none } .tag, .chip, .arrow-label, .note { animation: none } }
+</style>
+
+<main>
+  <header>
+    <h1>讲到哪，指到哪 · 结合版</h1>
+    <p class="lede">看得见的（长相、部位、站位）放在照片或球场上，用指针圈；看不见的（步骤、时间、对比、结论）写成文字条目，指针也走过去。画面全部由 DeepSeek Flash 看着照片、不开思考一次生成。点「播放」听 V 讲。</p>
+  </header>
+  <nav class="topics" id="topics" aria-label="问题"></nav>
+  <p class="ask" id="ask"></p>
+  <div class="board" id="board" aria-live="polite"><h2 id="title"></h2><div class="stage" id="stage"></div><div class="paper" id="paper"></div></div>
+  <p class="line" id="line"></p>
+  <div class="controls">
+    <button class="primary" id="play" type="button">▶ 播放</button>
+    <button id="next" type="button">下一句</button>
+    <button id="restart" type="button">从头</button>
+    <label><input type="checkbox" id="voice" checked> 朗读</label>
+  </div>
+  <p class="meta" id="meta"></p>
+  <details class="today-box"><summary>对比：现在线上的画面（同一段讲稿）</summary><img id="today" alt="现在线上的讲解画面"></details>
+  <details><summary>这一页模型写了什么</summary><ol id="steps" start="0"></ol></details>
+</main>
+
+<script type="application/json" id="data">/*DATA*/</script>
+<script>
+const DATA = JSON.parse(document.getElementById('data').textContent);
+const W = 1000, H = 750, NS = 'http://www.w3.org/2000/svg';
+const $ = id => document.getElementById(id);
+const stage = $('stage'), board = $('board'), paper = $('paper');
+const CURSOR = '<svg viewBox="0 0 24 30"><path d="M2 2 L2 24 L8 18.5 L12 28 L16 26.3 L12 17 L20 17 Z" fill="#3c3489" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg>';
+
+let topic = null, view = null, clause = -1, playing = false, run = 0, timer = 0;
+
+function cells(base, n) {
+  if (base === 'photo') return [{x: 70, y: 60, w: 860, h: 570}];
+  if (base === 'row' && n === 2) return [{x: 25, y: 90, w: 460, h: 520}, {x: 515, y: 90, w: 460, h: 520}];
+  if (base === 'row') return [{x: 20, y: 150, w: 290, h: 400}, {x: 355, y: 150, w: 290, h: 400}, {x: 690, y: 150, w: 290, h: 400}];
+  if (base === 'triangle') return [{x: 370, y: 40, w: 260, h: 260}, {x: 640, y: 350, w: 260, h: 260}, {x: 100, y: 350, w: 260, h: 260}];
+  return [];
+}
+const PITCH = {x: 210, y: 50, w: 580, h: 620};
+const fit = (cell, ratio) => { let w = cell.w, h = w / ratio; if (h > cell.h) { h = cell.h; w = h * ratio; } return {x: cell.x + (cell.w - w) / 2, y: cell.y + (cell.h - h) / 2, w, h}; };
+const pct = (v, of) => `${(v / of * 100).toFixed(3)}%`;
+const place = (el, x, y) => { el.style.left = pct(x, W); el.style.top = pct(y, H); };
+const svg = (name, attrs) => { const el = document.createElementNS(NS, name); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); return el; };
+
+function stageBox(el) {
+  const s = stage.getBoundingClientRect(), r = el.getBoundingClientRect();
+  return {x: (r.left - s.left) / s.width * W, y: (r.top - s.top) / s.height * H, w: r.width / s.width * W, h: r.height / s.height * H};
+}
+
+async function build(id) {
+  run++; clearTimeout(timer); speechSynthesis?.cancel?.();
+  topic = DATA.topics.find(t => t.id === id); clause = -1;
+  stage.replaceChildren(); paper.replaceChildren(); board.querySelector('.pointer')?.remove();
+  $('title').textContent = topic.title;
+  const hasStage = topic.base !== 'none'; stage.hidden = !hasStage; board.classList.toggle('has-stage', hasStage);
+  const ink = svg('svg', {class: 'ink', viewBox: `0 0 ${W} ${H}`}); stage.append(ink);
+  view = {ink, photos: {}, chips: {}, rings: [], tags: [], marks: [], blocks: {}, items: {}, pointer: null};
+  const imgs = await Promise.all(topic.photos.map(photo => new Promise(resolve => {
+    const img = new Image(); img.alt = photo.caption; img.src = photo.src;
+    img.onload = img.onerror = () => resolve(img); stage.insertBefore(img, ink);
+  })));
+  const ratios = imgs.map(img => (img.naturalWidth || 4) / (img.naturalHeight || 3));
+  // Two wide photos side by side come out small: lay them out staggered, like two prints on a page.
+  const slots = topic.base === 'row' && ratios.length === 2 && ratios.every(r => r > 1.25)
+    ? [{x: 40, y: 58, w: 540, h: 305}, {x: 420, y: 378, w: 540, h: 300}] : cells(topic.base, imgs.length);
+  imgs.forEach((img, index) => { const r = fit(slots[index], ratios[index]); Object.assign(img.style, {left: pct(r.x, W), top: pct(r.y, H), width: pct(r.w, W), height: pct(r.h, H)}); if (index === 1 && slots[0].y === 58) img.style.zIndex = 1; view.photos[topic.photos[index].id] = r; });
+  if (topic.base === 'pitch') drawPitch(ink);
+  const pointer = document.createElement('div'); pointer.className = 'pointer idle'; pointer.innerHTML = CURSOR; board.append(pointer); view.pointer = pointer;
+  $('ask').innerHTML = `<b>问</b>${escape(topic.ask)}`;
+  $('meta').textContent = `结合版画面生成 ${(topic.ms.total / 1000).toFixed(1)} 秒（首字 ${(topic.ms.first / 1000).toFixed(1)} 秒；其中放大校正 ${((topic.ms.total - topic.ms.direct) / 1000).toFixed(1)} 秒）· DeepSeek Flash · 看图 · 不思考`;
+  $('steps').replaceChildren(...topic.clauses.map((text, i) => {
+    const li = document.createElement('li');
+    const steps = topic.steps.filter(s => s.cue === i).map(s => `<code>${escape(describe(s))}</code>`).join(' ');
+    li.innerHTML = `${escape(text)} ${steps || ''}`; return li;
+  }));
+  if (topic.today) $('today').src = topic.today;
+  showLine();
+  for (const b of document.querySelectorAll('.topics button')) b.setAttribute('aria-pressed', String(b.dataset.id === id));
+}
+const escape = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
+const describe = s => s.do === 'block' ? `块 ${s.t}${s.h ? '「' + s.h + '」' : ''}` : s.do === 'item' ? `条目「${s.h}」` : s.do === 'sticky' ? `便签「${s.text}」` : s.do === 'ring' ? `圈 ${s.label ?? s.on}` : s.do === 'point' ? `指 ${s.label ?? ''}` : s.do === 'chip' ? `放「${s.text}」` : s.do === 'arrow' ? `箭头 ${s.label ?? ''}` : s.do === 'note' ? `写「${s.text}」` : s.do;
+
+function drawPitch(ink) {
+  const {x, y, w, h} = PITCH, g = svg('g', {class: 'pitch'});
+  const box = (bx, by, bw, bh) => g.append(svg('rect', {x: bx, y: by, width: bw, height: bh, rx: 4}));
+  box(x, y, w, h);
+  g.append(svg('line', {x1: x, y1: y + h / 2, x2: x + w, y2: y + h / 2}));
+  g.append(svg('circle', {cx: x + w / 2, cy: y + h / 2, r: w * .14}));
+  box(x + w * .2, y, w * .6, h * .15); box(x + w * .2, y + h * .85, w * .6, h * .15);
+  box(x + w * .36, y, w * .28, h * .055); box(x + w * .36, y + h * .945, w * .28, h * .055);
+  ink.append(g);
+}
+
+/** A ring drawn by hand: a slightly wobbly ellipse that overshoots its start. */
+function handRing(cx, cy, rx, ry) {
+  const seed = Math.random() * 6, start = -2.2 + Math.random() * .4, pts = [];
+  for (let i = 0; i <= 70; i++) {
+    const a = start + i / 70 * (Math.PI * 2 + .45), k = 1 + .035 * Math.sin(a * 2 + seed) + (i > 60 ? .06 * (i - 60) / 10 : 0);
+    pts.push(`${(cx + Math.cos(a) * rx * k).toFixed(1)} ${(cy + Math.sin(a) * ry * k).toFixed(1)}`);
+  }
+  return `M${pts.join(' L')}`;
+}
+function drawIn(path, ms) {
+  const len = path.getTotalLength(); path.style.strokeDasharray = len; path.style.strokeDashoffset = len;
+  path.getBoundingClientRect(); path.style.transition = `stroke-dashoffset ${ms}ms ease-in-out, opacity .5s, stroke .5s`; path.style.strokeDashoffset = 0;
+}
+// The one pointer moves over the whole page: canvas points (in canvas units) and text items alike.
+function pointerAt(x, y) { const s = stage.getBoundingClientRect(), b = board.getBoundingClientRect(); view.pointer.style.left = `${s.left - b.left + x / W * s.width}px`; view.pointer.style.top = `${s.top - b.top + y / H * s.height}px`; }
+function fly(x, y) { view.pointer.classList.remove('idle', 'drive'); pointerAt(x, y); }
+function flyEl(el) { const r = el.getBoundingClientRect(), b = board.getBoundingClientRect(); view.pointer.classList.remove('idle', 'drive'); view.pointer.style.left = `${r.left - b.left + Math.min(r.width * .5, 40)}px`; view.pointer.style.top = `${r.top - b.top + r.height * .7}px`; }
+function nowItem(el) { for (const other of board.querySelectorAll('.now')) other.classList.remove('now'); el?.classList.add('now'); pastRings(); for (const t of view.tags) t.classList.add('past'); }
+
+const KINDS = ['steps', 'timeline', 'list', 'versus', 'sticky'];
+function blockOf(id, t = 'list', h = '') {
+  if (view.blocks[id]) return view.blocks[id];
+  const el = document.createElement('section'); el.className = `blk blk-${t}`;
+  if (h && t !== 'sticky') { const head = document.createElement('h4'); head.textContent = h; el.append(head); }
+  const body = t === 'versus' ? document.createElement('div') : document.createElement('ol'); body.className = t === 'versus' ? 'vs' : '';
+  el.append(body); paper.append(el);
+  return view.blocks[id] = {el, body, t, n: 0};
+}
+function putBlock(step) {
+  const t = KINDS.includes(step.t) ? step.t : step.do === 'sticky' ? 'sticky' : 'list', id = step.id ?? `b${Object.keys(view.blocks).length + 1}`;
+  if (t === 'sticky') { const el = document.createElement('div'); el.className = 'sticky'; el.textContent = step.text ?? step.h ?? ''; paper.append(el); view.blocks[id] = {el, t}; view.items[id] = el; nowItem(el); flyEl(el); return; }
+  const block = blockOf(id, t, step.h ?? '');
+  if (t === 'versus' && Array.isArray(step.sides) && step.sides.length === 2 && !block.sides) { block.sides = true; block.body.innerHTML = `<span class="side">${escape(step.sides[0])}</span><span></span><span class="side">${escape(step.sides[1])}</span>`; }
+}
+function putItem(step) {
+  const block = view.blocks[step.in] ?? blockOf(step.in ?? 'b0'), n = ++block.n;
+  if (block.t === 'versus') {
+    const [left = '', right = ''] = Array.isArray(step.cells) ? step.cells : [];
+    const rh = document.createElement('span'); rh.className = 'rh'; rh.textContent = step.h ?? '';
+    const a = document.createElement('span'), b = document.createElement('span'); a.className = b.className = 'c'; a.textContent = left; b.textContent = right;
+    block.body.append(a, rh, b); view.items[step.id] = rh; view.items[`${step.in}/${step.id}`] = rh; nowItem(rh); flyEl(rh); return;
+  }
+  // A timeline item whose name is only its time ("白天" / "白天") reads its note instead.
+  const when = block.t === 'timeline' ? (step.when ?? '') : '', main = when && step.h === when && step.d ? step.d : step.h, sub = when && step.h === when ? '' : step.d;
+  const li = document.createElement('li'); li.className = 'it';
+  li.innerHTML = `<span class="k">${block.t === 'steps' ? n : block.t === 'timeline' ? escape(when) : ''}</span><span class="h">${escape(main ?? '')}</span>${sub ? `<span class="d">${escape(sub)}</span>` : ''}`;
+  block.body.append(li); view.items[step.id] = li; view.items[`${step.in}/${step.id}`] = li; nowItem(li); flyEl(li);
+}
+
+function tagAt(text, cx, top, bottom, under = false) {
+  const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = text; stage.append(tag);
+  const tryAt = (y, below) => { place(tag, Math.min(930, Math.max(70, cx)), y); tag.style.transform = below ? 'translate(-50%, 0)' : 'translate(-50%, -100%)'; const b = stageBox(tag); return view.tags.every(o => { const r = stageBox(o); return b.x + b.w < r.x || r.x + r.w < b.x || b.y + b.h < r.y || r.y + r.h < b.y; }) && b.y > 0 && b.y + b.h < H; };
+  if (under) tryAt(bottom, true);
+  else if (!(top > 40 && tryAt(top - 6, false)) && !tryAt(bottom + 6, true)) tryAt(top > 40 ? top - 6 : bottom + 6, top <= 40);
+  for (const old of view.tags) old.classList.add('past');
+  view.tags.push(tag); return tag;
+}
+const pastRings = () => { for (const r of view.rings) r.classList.add('past'); };
+
+function target(ref) {
+  if (view.photos[ref]) { const r = view.photos[ref]; return {x: r.x, y: r.y, w: r.w, h: r.h}; }
+  if (view.chips[ref]) return stageBox(view.chips[ref]);
+  return null;
+}
+const center = b => ({x: b.x + b.w / 2, y: b.y + b.h / 2});
+function edge(b, from, to) { // where the line from→to leaves box b (b around `from`)
+  const dx = to.x - from.x, dy = to.y - from.y, hw = b.w / 2 + 8, hh = b.h / 2 + 8;
+  const t = Math.min(dx ? hw / Math.abs(dx) : Infinity, dy ? hh / Math.abs(dy) : Infinity, 1);
+  return {x: from.x + dx * t, y: from.y + dy * t};
+}
+
+function doStep(step, mine) {
+  if (mine !== run) return;
+  if (step.do === 'block' || step.do === 'sticky') return putBlock(step);
+  if (step.do === 'item') return putItem(step);
+  if (step.do === 'point' && view.items[step.on]) { nowItem(view.items[step.on]); return flyEl(view.items[step.on]); }
+  if (step.do === 'point' && !view.photos[step.on] && !view.chips[step.on] && view.blocks[step.on]) { nowItem(view.blocks[step.on].el); return flyEl(view.blocks[step.on].el); }
+  if (step.do === 'arrow' && step.from === step.to) return;
+  if ((step.do === 'ring' || step.do === 'point') && view.photos[step.on] && Array.isArray(step.box)) {
+    const r = view.photos[step.on], [x1, y1, x2, y2] = step.box.map(Number);
+    const bx1 = r.x + Math.min(x1, x2) / 1000 * r.w, bx2 = r.x + Math.max(x1, x2) / 1000 * r.w, by1 = r.y + Math.min(y1, y2) / 1000 * r.h, by2 = r.y + Math.max(y1, y2) / 1000 * r.h;
+    const cx = (bx1 + bx2) / 2, cy = (by1 + by2) / 2, rx = Math.max(18, (bx2 - bx1) / 2 + 10), ry = Math.max(18, (by2 - by1) / 2 + 10);
+    // The same place again (the tail, then "it's purple"): bring that ring back instead of drawing another.
+    const area = (bx2 - bx1) * (by2 - by1), same = view.marks.find(m => { const ix = Math.max(0, Math.min(m.x2, bx2) - Math.max(m.x1, bx1)), iy = Math.max(0, Math.min(m.y2, by2) - Math.max(m.y1, by1)); return ix * iy / (area + (m.x2 - m.x1) * (m.y2 - m.y1) - ix * iy) > .5; });
+    if (same) { pastRings(); same.ring?.classList.remove('past'); for (const t of view.tags) t.classList.add('past'); same.tag?.classList.remove('past'); fly(same.px, same.py); return; }
+    pastRings(); for (const other of board.querySelectorAll('.now')) other.classList.remove('now');
+    // Pointing at the whole photo: stop at its corner and write the name under it, not across the middle.
+    if (step.do === 'point' && area > .45 * r.w * r.h) {
+      fly(r.x + r.w - 10, r.y + r.h - 6);
+      setTimeout(() => { if (mine !== run) return; tagAt(step.label ?? '', r.x + r.w / 2, r.y + r.h + 4, r.y + r.h + 4, true); }, 500);
+      return;
+    }
+    if (step.do === 'ring') {
+      const mark = {x1: bx1, x2: bx2, y1: by1, y2: by2, px: cx + rx * .72, py: cy + ry * .72}; view.marks.push(mark);
+      fly(mark.px, mark.py);
+      setTimeout(() => { if (mine !== run) return; const p = svg('path', {class: 'ring', d: handRing(cx, cy, rx, ry)}); view.ink.append(p); view.rings.push(p); mark.ring = p; drawIn(p, 650); mark.tag = tagAt(step.label ?? '', cx, cy - ry, cy + ry); }, 520);
+    } else {
+      fly(cx, cy);
+      setTimeout(() => { if (mine !== run) return; const dot = svg('circle', {class: 'pulse', cx, cy, r: 9}); view.ink.append(dot); view.rings.push(dot); tagAt(step.label ?? '', cx, cy - 22, cy + 22); }, 600);
+    }
+  } else if (step.do === 'ring' && view.chips[step.on]) {
+    const b = stageBox(view.chips[step.on]), c = center(b), rx = b.w / 2 + 16, ry = b.h / 2 + 12;
+    pastRings(); fly(c.x + rx * .72, c.y + ry * .72);
+    setTimeout(() => { if (mine !== run) return; const p = svg('path', {class: 'ring', d: handRing(c.x, c.y, rx, ry)}); view.ink.append(p); view.rings.push(p); drawIn(p, 600); }, 520);
+  } else if (step.do === 'chip' && Array.isArray(step.at)) {
+    const [ax, ay] = step.at.map(Number);
+    const x = topic.base === 'pitch' ? PITCH.x + ax / 1000 * PITCH.w : Math.min(940, Math.max(60, ax));
+    const y = topic.base === 'pitch' ? PITCH.y + ay / 1000 * PITCH.h : Math.min(640, Math.max(70, ay * .92 + 30));
+    const chip = document.createElement('div'); chip.className = `chip${topic.base === 'pitch' ? ' player' : ''}`;
+    chip.innerHTML = `<span class="name">${escape(step.text)}</span>${step.sub ? `<span class="sub">${escape(step.sub)}</span>` : ''}`;
+    place(chip, x, y); stage.append(chip); view.chips[step.id] = chip;
+    fly(x + 30, y + 26);
+  } else if (step.do === 'arrow') {
+    const a = target(step.from), b = target(step.to); if (!a || !b) return;
+    const ca = center(a), cb = center(b), p0 = edge(a, ca, cb), p2 = edge(b, cb, ca);
+    const dx = p2.x - p0.x, dy = p2.y - p0.y, len = Math.hypot(dx, dy) || 1, bend = .16 * len;
+    const c = {x: (p0.x + p2.x) / 2 - dy / len * bend, y: (p0.y + p2.y) / 2 + dx / len * bend};
+    const path = svg('path', {class: 'arrow', d: `M${p0.x} ${p0.y} Q${c.x} ${c.y} ${p2.x} ${p2.y}`}); view.ink.append(path); drawIn(path, 800);
+    const at = t => ({x: (1 - t) ** 2 * p0.x + 2 * (1 - t) * t * c.x + t * t * p2.x, y: (1 - t) ** 2 * p0.y + 2 * (1 - t) * t * c.y + t * t * p2.y});
+    const end = at(1), back = at(.94), ang = Math.atan2(end.y - back.y, end.x - back.x), hl = 16;
+    const head = svg('path', {class: 'arrow', d: `M${end.x - hl * Math.cos(ang - .45)} ${end.y - hl * Math.sin(ang - .45)} L${end.x} ${end.y} L${end.x - hl * Math.cos(ang + .45)} ${end.y - hl * Math.sin(ang + .45)}`, opacity: 0});
+    view.ink.append(head);
+    const pointer = view.pointer; pointer.classList.remove('idle'); pointer.classList.add('drive');
+    const t0 = performance.now();
+    const tick = now => { if (mine !== run) return; const t = Math.min(1, (now - t0) / 800), p = at(t); pointerAt(p.x + 4, p.y + 4); if (t < 1) requestAnimationFrame(tick); else { head.setAttribute('opacity', 1); pointer.classList.remove('drive'); } };
+    requestAnimationFrame(tick);
+    if (step.label) { const mid = at(.5), label = document.createElement('span'); label.className = 'arrow-label'; label.textContent = step.label; place(label, mid.x, mid.y); stage.append(label); }
+  } else if (step.do === 'note' && step.text) {
+    const note = document.createElement('div'); note.className = 'note'; note.innerHTML = `<span>${escape(step.text)}</span>`; stage.append(note);
+    fly(640, 712);
+  }
+}
+
+function showLine() {
+  const i = clause, parts = topic.clauses;
+  if (i < 0) { $('line').innerHTML = `<span class="done">${escape(parts.join(''))}</span>`; return; }
+  $('line').innerHTML = `${i > 0 ? `<span class="done">…${escape(parts[i - 1])}</span>` : ''}<span class="now">${escape(parts[i])}</span>`;
+}
+
+const voice = () => (speechSynthesis.getVoices?.() ?? []).find(v => /zh[-_]CN/i.test(v.lang)) ?? (speechSynthesis.getVoices?.() ?? []).find(v => /^zh/i.test(v.lang));
+function sayClause(i, mine) {
+  clause = i; showLine();
+  topic.steps.filter(s => s.cue === i).forEach((step, n) => setTimeout(() => doStep(step, mine), n * 650));
+  if (!playing) return;
+  const text = topic.clauses[i], fallback = Math.max(1300, [...text].length * 245);
+  const next = () => { if (mine !== run || !playing) return; clearTimeout(timer); if (i + 1 < topic.clauses.length) sayClause(i + 1, mine); else finish(); };
+  if ($('voice').checked && window.speechSynthesis && voice()) {
+    const u = new SpeechSynthesisUtterance(text); u.voice = voice(); u.lang = u.voice.lang; u.rate = 1.08;
+    u.onend = () => setTimeout(next, 120); u.onerror = () => setTimeout(next, 120);
+    speechSynthesis.speak(u); timer = setTimeout(next, fallback * 2 + 2500);
+  } else timer = setTimeout(next, fallback);
+}
+function finish() { playing = false; $('play').textContent = '▶ 再听一遍'; view.pointer.classList.add('idle'); }
+
+async function start() {
+  await build(topic.id); playing = true; $('play').textContent = '❚❚ 暂停';
+  const mine = run; setTimeout(() => sayClause(0, mine), 500);
+}
+$('play').onclick = () => {
+  if (playing) { playing = false; run++; clearTimeout(timer); speechSynthesis?.cancel?.(); $('play').textContent = '▶ 继续'; return; }
+  if (clause >= 0 && clause + 1 < topic.clauses.length && $('play').textContent.includes('继续')) { playing = true; $('play').textContent = '❚❚ 暂停'; const mine = run; sayClause(clause + 1, mine); return; }
+  start();
+};
+$('restart').onclick = () => start();
+$('next').onclick = () => { if (playing) { playing = false; clearTimeout(timer); speechSynthesis?.cancel?.(); $('play').textContent = '▶ 继续'; run++; } if (clause + 1 < topic.clauses.length) sayClause(clause + 1, run); };
+
+const nav = $('topics');
+for (const t of DATA.topics) { const b = document.createElement('button'); b.type = 'button'; b.dataset.id = t.id; b.textContent = t.tab; b.onclick = () => { playing = false; $('play').textContent = '▶ 播放'; build(t.id); }; nav.append(b); }
+speechSynthesis?.getVoices?.();
+// At rest: the first question with its whole page drawn, so the still frame shows what it does.
+build(DATA.topics[0].id).then(() => { const mine = run; topic.clauses.forEach((_, i) => topic.steps.filter(s => s.cue === i).forEach(step => doStep(step, mine))); clause = -1; showLine(); });
+</script>

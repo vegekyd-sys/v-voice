@@ -10,10 +10,10 @@ mkdir -p artifacts/canvas-proto
 tar czf - scripts/candidate/canvas-proto.mjs scripts/candidate/pointer-eval.mjs lab/gpt-live-h5/board-director.mjs lab/gpt-live-h5/board-cue.mjs \
   lab/gpt-live-h5/board-lesson.mjs lab/gpt-live-h5/board-scene.mjs \
   | ssh v 'rm -rf /tmp/pointer-eval/code && mkdir -m 755 -p /tmp/pointer-eval/code && tar xzf - -C /tmp/pointer-eval/code && chmod -R a+rX /tmp/pointer-eval/code && install -d -m 777 /tmp/pointer-eval/out'
-ssh v sudo -n python3 - "$@" <<'PY' 2>&1 | tee "artifacts/canvas-proto/$stamp.txt"
-import json, subprocess, sys
+ssh v sudo -n MIX="${MIX:-}" python3 - "$@" <<'PY' 2>&1 | tee "artifacts/canvas-proto/$stamp.txt"
+import json, os, subprocess, sys
 source = json.load(open('/var/lib/v-voice-candidates/board-20261112/environment.private.json'))
-env = {'PATH': '/opt/node-v22.23.1/bin:/usr/bin:/bin', 'HOME': '/tmp', 'VOICE_BOARD': '1', 'DEEPSEEK_API_KEY': source['DEEPSEEK_API_KEY']}
+env = {'PATH': '/opt/node-v22.23.1/bin:/usr/bin:/bin', 'HOME': '/tmp', 'VOICE_BOARD': '1', 'DEEPSEEK_API_KEY': source['DEEPSEEK_API_KEY'], 'MIX': os.environ.get('MIX', '')}
 sys.exit(subprocess.run(['/opt/node-v22.23.1/bin/node', 'scripts/candidate/canvas-proto.mjs', '/tmp/pointer-eval/photos', '/tmp/pointer-eval/out/proto.json', *sys.argv[1:]],
                         env=env, user='nobody', group='nogroup', cwd='/tmp/pointer-eval/code').returncode)
 PY
