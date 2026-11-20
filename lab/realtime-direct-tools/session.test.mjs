@@ -1859,6 +1859,8 @@ test('GPT Live 1.1 is offered only with a login and media stack, and is told not
  assert.equal(on.models().find(m=>m.id==='seeduplex').available,false);
  assert.throws(()=>createDirectVoiceService({gateway,wsModule,gptLive:{resolveAuth:async()=>({}),loadMedia:async()=>({}),voice:'xiaohe'}}),/音色/u);
  const text=directInstructions([{id:'web_search',description:'搜索'}],'[00:01:00] 用户: 之前聊过扫地机器人','gpt-live-11',{surface:'phone'});
- assert.match(text,/^你是 V，/u);assert.match(text,/不说自己是 ChatGPT/u);assert.match(text,/电话接通时的上海时间：[^（]+（只表示接通那一刻/u);assert.match(text,/不提下面记录里的旧话题/u);assert.match(text,/之前聊过扫地机器人/u);
+ assert.match(text,/^Delivery \(highest priority\): This is a live phone call[^\n]*Keep each turn short[^\n]*\n你是 V，/u);assert.match(text,/不说自己是 ChatGPT/u);assert.match(text,/电话接通时的上海时间：[^（]+（只表示接通那一刻/u);assert.match(text,/不提下面记录里的旧话题/u);assert.match(text,/之前聊过扫地机器人/u);
  assert.doesNotMatch(text,/timeoutSeconds|show_content\(|可直接执行的原生工具目录/u);
+ // Who V is and how V thinks come from the shared persona; how to speak is this model's own, and short.
+ assert.match(text,/\nIdentity:\nYou are a self-evolving AI partner/u);assert.match(text,/\nAgency and judgment:/u);assert.doesNotMatch(text,/Pacing policy|Human presence policy|Conversation style:|我想一下/u);
 });

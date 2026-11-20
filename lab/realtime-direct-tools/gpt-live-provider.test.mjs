@@ -123,7 +123,7 @@ test('policy text names only what this call may do, and voices are a closed set'
   const policy=gptLiveDelegationPolicy(new Set(['web_search','current_time','delegate_to_v','end_call']),{display:false});
   assert.match(policy,/^Backchannel policy:[^\n]+\nInterruption policy:[^\n]+\nDelegation policy:\nBackend tools:\n- 搜索：/u);assert.match(policy,/\nDelegate to the backend when:\n/u);assert.match(policy,/\nDo not delegate when:\n/u);
   assert.match(policy,/结束这通电话/u);assert.doesNotMatch(policy,/屏幕上/u);assert.doesNotMatch(policy,/讲解稿/u);assert.doesNotMatch(policy,/web_search|delegate_to_v/u);
-  assert.match(GPT_LIVE_IDENTITY,/^你是 V，/u);assert.match(GPT_LIVE_IDENTITY,/不说自己是 ChatGPT/u);
+  assert.match(GPT_LIVE_IDENTITY,/^Delivery \(highest priority\): This is a live phone call[^\n]*Keep each turn short[^\n]*\n你是 V，/u);assert.match(GPT_LIVE_IDENTITY,/不说自己是 ChatGPT/u);
   assert.equal(gptLiveVoice('maple'),'maple');assert.throws(()=>gptLiveVoice('xiaohe'),/音色/u);assert.throws(()=>gptLiveVoice('marin'),/音色/u);assert.equal(GPT_LIVE_MODEL,'gpt-live-1.1-codex');
 });
 
@@ -352,7 +352,7 @@ test('a finished task told as a script is read as written, and the model knows t
   const g=await fixture({tools:LESSON,route:async()=>({name:'delegate_to_v',args:{question:'查一下'}})});
   await ready(g);say(g,idOf(5),'帮我查一下那件事');await new Promise(r=>setTimeout(r,5));
   g.bridge.beginBackgroundTool(idOf(5),'查');g.bridge.completeBackgroundTool(idOf(5),{result:'查到了，一切正常。'},{spokenText:'查到了，一切正常。'});
-  assert.match(appends(g).at(-1).content[0].text,/^后台任务有结果了。请把下面的内容用口语告诉用户/u);
+  assert.match(appends(g).at(-1).content[0].text,/^后台任务有结果了。请像聊天一样把下面的内容告诉用户/u);
   g.bridge.backgroundResultReady(idOf(5));assert.match(appends(g).at(-1).content[0].text,/^后台任务有结果了/u); // nothing more once it is told
   f.bridge.close();g.bridge.close();
 });
