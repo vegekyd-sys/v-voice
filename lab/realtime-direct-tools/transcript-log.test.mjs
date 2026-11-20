@@ -194,3 +194,20 @@ test('a dropped or skipped conversation record is logged by name only',async t=>
   await f.log.close();const rows=await f.rows();assert(!JSON.stringify(rows).includes('SECRET'));
   assert.deepEqual(rows.slice(1).map(row=>[row.type,row.stage??row.reason]),[['call.provider-status','context-dropped'],['call.record-skipped','refused-earlier']]);
 });
+
+test('the record keeps which way a call ended and what the voice service said when it ended it', async t => {
+ const f = await fixture(t); f.created();
+ f.log.audit({type: 'call.provider-status', voiceSessionId: 'v1', stage: 'upstream-closed', sessionAgeMs: 263000, reason: 'max_duration', 'error.code': 'E1001', 'error.message': 'limit\nreached', 'bad key!': 'x', audio: {x: 1}});
+ f.log.audit({type: 'call.closed', voiceSessionId: 'v1', why: 'provider-upstream-closed'});
+ await f.log.close(); const rows = await f.rows();
+ const said = rows.find(r => r.type === 'call.provider-status' && r.stage === 'upstream-closed');
+ assert.deepEqual([said['closed.reason'], said['closed.error.code'], said['closed.error.message'], said.sessionAgeMs, 'closed.bad key!' in said, 'closed.audio' in said], ['max_duration', 'E1001', 'limit reached', 263000, false, false]);
+ assert.equal(rows.find(r => r.type === 'call.closed').why, 'provider-upstream-closed');
+});
+
+test('a reason for ending that is not one of the service\'s own words is not kept', async t => {
+ const f = await fixture(t); f.created();
+ f.log.audit({type: 'call.closed', voiceSessionId: 'v1', why: '用户说了 SECRET'});
+ await f.log.close(); const rows = await f.rows();
+ assert.equal(rows.find(r => r.type === 'call.closed').why, undefined);
+});
