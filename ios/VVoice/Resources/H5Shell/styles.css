@@ -1676,6 +1676,15 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   transform: rotate(-.5deg);
   animation: board-enlarged-print .3s cubic-bezier(.2, 1.2, .35, 1) both;
 }
+/* (Sized by the window, not the figure: the figure's own width comes from the picture.) */
+.board-enlarged img[data-shaped] {
+  box-sizing: content-box;
+  width: min(100vw - 52px, 1400px, var(--most), (var(--voice-height, 100dvh) - 150px) * var(--ratio));
+  height: auto;
+  max-width: none;
+  max-height: none;
+  aspect-ratio: var(--ratio);
+}
 .board-enlarged figcaption {
   max-width: 34em;
   font-family: "Hannotate SC", "HanziPen SC", "Yuanti SC", "Kaiti SC", "STKaiti", "KaiTi", "Avenir Next", "PingFang SC", system-ui, sans-serif;

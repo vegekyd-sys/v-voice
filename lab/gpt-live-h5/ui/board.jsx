@@ -159,7 +159,9 @@ function useGalleryRoom() {
       }
     }
     const next = {width: Math.round(list.clientWidth), budget, label: Math.round(label)};
-    setRoom(old => old.width === next.width && old.budget === next.budget && old.label === next.label ? old : next);
+    // A pixel or two of width is ignored: drawing the page smaller (useFit) moves the width by
+    // that much, and a gallery set again for it can tip the fit back, over and over (11/20).
+    setRoom(old => Math.abs(old.width - next.width) <= 3 && old.budget === next.budget && old.label === next.label ? old : next);
   };
   // Read after every drawing of the page (pieces come and go), and when the panel changes size.
   useLayoutEffect(read);
@@ -722,6 +724,9 @@ function Sheet({scene, spoken, loadPhoto, enlarge, caption = ''}) {
 // whole window, outside the board: the board fades its edges with a mask.)
 function Enlarged({picture, onClose}) {
   const close = useRef(null);
+  // Pictures found for the page are often small (~500 px): drawn up to fill the screen, though
+  // not past twice their own size.
+  const [shape, setShape] = useState(null);
   useEffect(() => {
     const back = document.activeElement;
     close.current?.focus({preventScroll: true});
@@ -733,7 +738,9 @@ function Enlarged({picture, onClose}) {
   return createPortal(
     <div className="board-enlarged" role="dialog" aria-modal="true" aria-label={picture.name ? `图片：${picture.name}` : '图片'} onClick={onClose}>
       <figure>
-        <img src={picture.src} alt={picture.name} />
+        <img src={picture.src} alt={picture.name} data-shaped={shape ? 'true' : undefined}
+          style={shape ? {'--ratio': shape.ratio, '--most': shape.most + 'px'} : undefined}
+          onLoad={event => { const {naturalWidth: width, naturalHeight: height} = event.currentTarget; if (width && height) setShape({ratio: width / height, most: width * 2}); }} />
         {picture.name && <figcaption>{picture.name}</figcaption>}
       </figure>
       <button ref={close} type="button" className="board-enlarged-close" aria-label="关闭图片" onClick={onClose}>
