@@ -128,20 +128,46 @@ test('the caller taps a thing: it is "this one" until another is tapped', async 
   assert.equal(shelf.shown('call', 'a2'), false);
 });
 
-test('a made thing takes the page opened for the same request, and keeps it from being replaced', async () => {
-  // The illustrator opens a page with a photograph of the subject when the caller has only just asked...
-  const board = director(['{"op":"scene","title":"鸣人和路飞"}\n{"op":"put","block":{"id":"p1","t":"photo","query":"漩涡鸣人","cue":-1}}',
-    // ...and names a page again once V has spoken.
-    '{"op":"scene","title":"海报做好了"}\n{"op":"put","block":{"id":"p2","t":"photo","query":"路飞","cue":0}}']);
-  const shelf = shelfOn(board);
-  await board.run({owner: 'call', trigger: 'user', turns: [{role: 'user', text: '帮我生成一张鸣人大战路飞的海报'}]});
-  assert.equal(board.scene('call').title, '鸣人和路飞');
-  shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 '海报'", turn: {}});
-  assert.equal(board.scene('call').title, '鸣人和路飞');
-  assert.deepEqual(board.scene('call').blocks.map(block => block.t), ['work'], 'the made thing is the page\'s print; the photograph gives way');
-  await board.run({owner: 'call', trigger: 'assistant_end', turns: [{role: 'user', text: '帮我生成一张鸣人大战路飞的海报'}, {role: 'assistant', text: '海报做好啦，左边是鸣人，右边是路飞，两个人正冲向对方，气势特别足，你看看喜不喜欢，要不要我让它动起来。'}]});
-  assert.equal(board.canvas('call').zones.length, 1, 'no second page beside the work');
-  assert.deepEqual(board.scene('call').blocks.map(block => block.t), ['work'], 'and no photograph hung beside it');
+test('what the caller asks V to make is the turn\'s picture: what was drawn for the turn is taken back, and nothing more is drawn', async () => {
+  // (Call of 11/21: the illustrator opened a page under the request's words, with a photograph, then
+  // listed V's "on it"; the made thing went up on a second page and the view went back and forth.)
+  const board = director(['{"op":"scene","title":"海贼王海报"}\n{"op":"put","block":{"id":"l0","t":"list","items":[{"id":"i1","h":"强者天下","cue":0}]}}',
+    '{"op":"scene","title":"Q版海报"}\n{"op":"put","block":{"id":"p1","t":"photo","query":"路飞","cue":-1}}',
+    '{"op":"none"}', '{"op":"put","block":{"id":"l2","t":"list","items":[{"id":"i1","h":"圆乎乎","cue":0}]}}']);
+  const shelf = shelfOn(board), long = '最近能查到海报的是强者天下，它是系列第十部剧场版，尾田荣一郎第一次当总制作，上映海报上草帽一伙全员集结，整张海报走复古风。';
+  await board.run({owner: 'call', trigger: 'assistant_end', turns: [{role: 'user', text: '查一下海贼王剧场版的海报'}, {role: 'assistant', text: long}]});
+  const before = board.scene('call');
+  assert.equal(before.title, '海贼王海报');
+  await board.run({owner: 'call', trigger: 'user', turns: [{role: 'user', text: '把那个海报变成Q版的'}]});
+  assert.equal(board.scene('call').title, 'Q版海报');
+  shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 'Q版海贼王海报'", turn: {}});
+  // The page drawn for the request is gone; the thing has a page of its own, further on from the one V was on.
+  const pages = board.canvas('call').zones;
+  assert.deepEqual(pages.map(page => [page.title, page.blocks.map(block => block.t)]), [['海贼王海报', ['list']], ['', ['work']]]);
+  assert.equal(board.scene('call').from, 'z1');
+  assert.ok(board.scene('call').rev > before.rev);
+  // V's words about making it are not drawn, this turn or while it is still being made.
+  const said = [{role: 'user', text: '把那个海报变成Q版的'}, {role: 'assistant', text: '好，把海贼王剧场版海报改成全员Q版卡通风格。正在调整，会保留原海报的构图，把所有人都改成圆乎乎的Q版样子，稍等一下就好。'}];
+  assert.equal((await board.run({owner: 'call', trigger: 'assistant_end', turns: said})).reason, 'making');
+  assert.equal((await board.run({owner: 'call', trigger: 'user', turns: [{role: 'user', text: '继续呀'}]})).reason, 'making');
+  assert.equal(board.canvas('call').zones.length, 2);
+  // Made, and the caller has moved on: the board is drawn as ever.
+  await shelf.finish('call', 'a1', image(POSTER));
+  await board.run({owner: 'call', trigger: 'user', turns: [{role: 'user', text: '这张图好在哪'}]});
+  assert.equal((await board.run({owner: 'call', trigger: 'assistant_end', turns: [{role: 'user', text: '这张图好在哪'}, {role: 'assistant', text: '这张图好在全员都变成了圆乎乎的Q版，构图和原来的海报一样，颜色更亮，看起来特别热闹，很适合做成贴纸或者头像。'}]})).reason, 'drawn');
+});
+
+test('things made one after another share a page; the video of one takes its frame without leaving the page', async () => {
+  const board = director(), shelf = shelfOn(board), make = words => shelf.begin('call', {command: `makaron edit --image-model gemini-2.1 '${words}'`, turn: {}});
+  await shelf.finish('call', make('Q版海报').id, image(POSTER));
+  const page = board.scene('call').serial;
+  shelf.begin('call', {command: "makaron video create --video-model fal-h3-max --image a1 --script '<<<media_1>>> 搞怪'", turn: {}});
+  await shelf.finish('call', 'a2', video(FILM));
+  await shelf.finish('call', make('路飞单人海报').id, image('https://cdn.example/luffy.png'));
+  await shelf.finish('call', make('索隆单人海报').id, image('https://cdn.example/zoro.png'));
+  assert.equal(board.scene('call').serial, page);
+  assert.equal(board.canvas('call').zones.length, 1);
+  assert.deepEqual(board.scene('call').blocks.map(block => [block.asset, block.w]), [['a2', 'half'], ['a3', 'half'], ['a4', 'half']]);
 });
 
 test('the illustrator may hang a thing the shelf holds, and nothing else', async () => {
@@ -166,25 +192,39 @@ test('the illustrator may hang a thing the shelf holds, and nothing else', async
   assert.deepEqual(works(third), [['a1', 'sticky']]);
 });
 
-test('a lesson may ask for one picture to be drawn, where the call can make one', async () => {
+test('a lesson\'s script may ask for one picture to be drawn, where the call can make one; nothing else may', async () => {
   const made = [];
   const reply = '{"op":"scene","title":"光合作用"}\n{"op":"put","block":{"id":"l1","t":"list","items":[{"id":"i1","h":"阳光","cue":0}]}}\n{"op":"put","block":{"id":"w1","t":"work","make":"一片叶子里的小工厂，水彩","caption":"叶子工厂","cue":2}}';
-  const said = [{role: 'user', text: '给十二讲讲光合作用'}, {role: 'assistant', text: '叶子要吃阳光。它还要喝水。你可以把叶子想成一座小工厂，阳光是电，水和空气是原料，做出来的是糖。'}];
-  const board = director([reply, reply]);
-  const shelf = shelfOn(board);
-  // No executor: the block is dropped, the rest of the page is drawn.
-  await board.run({owner: 'plain', trigger: 'assistant_end', turns: said});
-  assert.deepEqual(board.scene('plain').blocks.map(block => block.t), ['list']);
+  const script = '叶子要吃阳光。它还要喝水。你可以把叶子想成一座小工厂，阳光是电，水和空气是原料，做出来的是糖。';
+  const said = [{role: 'user', text: '给十二讲讲光合作用'}, {role: 'assistant', text: script}];
+  const notes = {title: '光合作用', ask: '给十二讲讲光合作用', script, lines: [{say: '叶子要吃阳光。', show: 'list：阳光'}, {say: '你可以把叶子想成一座小工厂', show: '现画：一片叶子里的小工厂，水彩'}]};
+  const types = (board, owner) => board.scene(owner).blocks.map(block => block.t);
+  // V's own answer (no script): the illustrator's wish for a picture is not a request to make one.
+  const plain = director([reply]), free = shelfOn(plain);
+  free.attach('call', async () => { made.push('unasked'); return image(POSTER); });
+  await plain.run({owner: 'call', trigger: 'assistant_end', turns: said});
+  assert.deepEqual(types(plain, 'call'), ['list']);
+  // A script, but a call with no executor of its own: the picture is left out, the rest is drawn.
+  const bound = director([reply]);
+  shelfOn(bound);
+  bound.note('call', notes);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.deepEqual(types(bound, 'call'), ['list']);
+  // A script on a call that can make one: the sketch is on the page at once, the picture follows.
+  const board = director([reply, reply]), shelf = shelfOn(board);
   shelf.attach('call', async ({prompt, aspect}) => { made.push([prompt, aspect]); return image(POSTER); });
-  await board.run({owner: 'call', trigger: 'assistant_end', turns: said});
+  board.note('call', notes);
+  await new Promise(resolve => setTimeout(resolve, 20));
   const work = board.scene('call').blocks.find(block => block.t === 'work');
   assert.equal(work.asset, 'a1');
   assert.equal(work.make, undefined);
   assert.ok(work.q, 'it appears when the voice reaches its clause');
-  await new Promise(resolve => setTimeout(resolve, 20));
   assert.deepEqual(made, [['一片叶子里的小工厂，水彩', '4:3']]);
   assert.equal(shelf.get('call', 'a1').state, 'ready');
   assert.equal(shelf.get('call', 'a1').name, '叶子工厂');
+  // The page asking again for the same script keeps the picture; no second one is made.
+  await board.run({owner: 'call', trigger: 'assistant_end', turns: said});
+  assert.equal(made.length, 1);
 });
 
 test('a work block is an id on the shelf or words to draw from, and nothing else', () => {

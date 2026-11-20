@@ -39,8 +39,38 @@ export function Work({block, view}) {
   const [shape, setShape] = useState(0);
   // The picture or video the browser has actually fetched: until then the frame keeps what it held.
   const [fetched, setFetched] = useState('');
-  const film = useRef(null);
+  const film = useRef(null), frame = useRef(null);
+  // A video is played once with its sound when it arrives, then goes on moving without it; the
+  // sound button plays it again from the start. (`quiet`: it is playing without sound.)
+  const [quiet, setQuiet] = useState(false);
   const settle = (width, height) => { if (width > 0 && height > 0) setShape(Math.min(2.4, Math.max(.5, width / height))); };
+  const playing = shown?.kind === 'video' && shown.state === 'ready' ? shown.id : '';
+  useEffect(() => {
+    const video = film.current;
+    if (!playing || !video) return;
+    const hush = () => { video.muted = true; video.loop = true; setQuiet(true); video.play().catch(() => {}); };
+    // Where the page may not start sound by itself (no tap yet), it plays without and the button offers the sound.
+    video.muted = false; video.loop = false; setQuiet(false);
+    Promise.resolve(video.play()).then(() => { if (video.paused) hush(); }, hush);
+    video.addEventListener('ended', hush);
+    return () => video.removeEventListener('ended', hush);
+  }, [playing]);
+  // A thing just asked for is brought into view on its page (up and down only: the strip of pages is the board's to move).
+  const making = shown?.state === 'making' ? shown.id : '';
+  useEffect(() => {
+    const host = frame.current?.closest('.board-scroll'), target = frame.current;
+    if (!making || !host || !target) return;
+    const at = target.getBoundingClientRect(), box = host.getBoundingClientRect();
+    if (at.top >= box.top && at.bottom <= box.bottom) return;
+    host.scrollTo?.({top: host.scrollTop + (at.top < box.top ? at.top - box.top - 12 : at.bottom - box.bottom + 12), behavior: 'smooth'});
+  }, [making]);
+  const sound = event => {
+    event.stopPropagation();
+    const video = film.current;
+    if (!video) return;
+    if (quiet) { video.muted = false; video.loop = false; video.currentTime = 0; setQuiet(false); video.play().catch(() => { video.muted = true; setQuiet(true); }); }
+    else { video.muted = true; video.loop = true; setQuiet(true); }
+  };
   if (!shown) {
     return (
       <figure className="board-work" data-state="making">
@@ -64,7 +94,7 @@ export function Work({block, view}) {
   };
   return (
     <figure className="board-work" data-state={shown.state} data-kind={shown.kind} data-picked={picked || undefined}>
-      <div className="board-work-frame" style={{'--shape': shape || ratio(shown.aspect) || (shown.kind === 'video' ? 16 / 9 : 4 / 3)}}
+      <div className="board-work-frame" ref={frame} style={{'--shape': shape || ratio(shown.aspect) || (shown.kind === 'video' ? 16 / 9 : 4 / 3)}}
         role={shown.state === 'ready' ? 'button' : undefined} tabIndex={shown.state === 'ready' ? 0 : undefined}
         aria-pressed={shown.state === 'ready' ? picked : undefined} aria-label={shown.state === 'ready' ? `${picked ? '已选中' : '选中'}：${name}` : undefined}
         onClick={pick} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pick(); } }}>
@@ -93,7 +123,12 @@ export function Work({block, view}) {
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" /></svg>
           </button>
         )}
-        {picked && <span className="board-work-this" aria-hidden="true">这张</span>}
+        {loaded && shown.kind === 'video' && (
+          <button type="button" className="board-work-sound" data-quiet={quiet || undefined} aria-label={quiet ? '带声音再放一遍' : '关掉声音'} aria-pressed={!quiet} onClick={sound}>
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" />{quiet ? <path d="m16 9.5 5 5M21 9.5l-5 5" /> : <path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11" />}</svg>
+          </button>
+        )}
+        {picked && <span className="board-work-this" aria-hidden="true">{shown.kind === 'video' ? '这个' : '这张'}</span>}
       </div>
       <figcaption>
         {/* (The page already carries the name as its title when the page is this thing's own.) */}

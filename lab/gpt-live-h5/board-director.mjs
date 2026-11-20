@@ -2,7 +2,7 @@
 // it on the caller's screen. It runs beside the voice model, never in its
 // audio path, and has no tools, permissions or say in what V does. Its output
 // is validated line by line (board-scene.mjs) before anything reaches a page.
-import {applyOp, createLineParser, emptyScene, normalizeOp, sceneDigest, scenePictures, zoneDigest, zoneId} from './board-scene.mjs';
+import {BOARD_LIMITS, applyOp, createLineParser, emptyScene, normalizeOp, sceneDigest, scenePictures, zoneDigest, zoneId} from './board-scene.mjs';
 import {appendFile, mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
 
@@ -103,7 +103,8 @@ function picturedOnce(block, scene) {
   for (const other of others) { if (other.t === 'photo') used.add(other.query); for (const item of [...itemsOf(other), ...(other.sides ?? [])]) if (item.img) used.add(item.img); }
   // (A made thing is the page's large print: no photograph is hung beside it.)
   if (block.t === 'photo') return used.has(block.query) || others.some(other => other.t === 'photo' || other.t === 'work') ? null : block;
-  if (block.t === 'work') return others.some(other => other.t === 'work') ? null : block;
+  // (Made things may share a page: a set of pictures made one after another. Four at most.)
+  if (block.t === 'work') return others.filter(other => other.t === 'work').length >= 4 ? null : block;
   const once = item => { if (!item.img) return item; if (used.has(item.img)) { const {img, ...rest} = item; return rest; } used.add(item.img); return item; };
   const next = {...block};
   // (The two or three things a comparison is between keep their pictures: a header with one picture missing reads as broken.)
@@ -194,31 +195,54 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
      * the illustrator is doing. A new version of a thing already up (a picture changed, or made to
      * move) takes that thing's frame; otherwise it gets the page opened for this very request, or one of its own.
      */
-    place(id, {asset, family = [], title = ''} = {}) {
+    place(id, {asset, family = [], title = '', turn = false} = {}) {
       if (typeof asset !== 'string' || !/^a[1-9]\d{0,2}$/u.test(asset)) return false;
-      const row = owner(id), pages = [row.scene, ...(row.zones ?? []).filter(zone => zone.serial !== row.scene.serial)];
+      const row = owner(id);
+      // `turn`: the caller has just asked for this very thing. The turn's picture is then the made
+      // thing and nothing else: whatever the illustrator drew for the turn so far (a page opened
+      // under the request's words, a photograph of its subject, a list of V's "on it") is taken
+      // back, and it draws no more this turn. In call of 11/21 each request left two pages, one
+      // drawn and one made, and the view went back and forth between them. (A lesson told in the
+      // same turn keeps its page: it has its own script.)
+      if (turn && row.turn && row.turn.no === row.turnNo && row.lessonTurn !== row.turnNo) {
+        row.controller?.abort();
+        if (row.scene !== row.turn.scene) { row.zones = row.turn.zones; row.scene = {...row.turn.scene, rev: row.scene.rev + 1}; }
+        row.makingTurn = row.turnNo;
+      }
+      const pages = [row.scene, ...(row.zones ?? []).filter(zone => zone.serial !== row.scene.serial)];
       const holds = (page, which) => page.blocks.some(block => block.t === 'work' && which.includes(block.asset));
       if (pages.some(page => holds(page, [asset]))) return false;
       // (`family`: the other versions of the same thing. Whichever of them is up gives its frame to the new one.)
       const home = family.length ? pages.find(page => holds(page, family)) : null;
+      const block = {id: `w${asset.slice(1)}`, t: 'work', asset};
+      let how = 'page';
       if (home) {
-        const blocks = home.blocks.map(block => block.t === 'work' && family.includes(block.asset) ? {...block, asset} : block);
+        const blocks = home.blocks.map(other => other.t === 'work' && family.includes(other.asset) ? {...other, asset} : other);
         if (home !== row.scene) { shelvePage(row); row.zones = row.zones.filter(zone => zone.serial !== home.serial); }
         row.scene = {...home, blocks, rev: Math.max(home.rev, row.scene.rev) + 1, focus: ''};
+        how = 'version';
+      } else if (row.scene.blocks.some(other => other.t === 'work') && row.scene.blocks.filter(other => other.t === 'work').length < 4 && row.scene.blocks.length < BOARD_LIMITS.blocks) {
+        // The page V is on already holds made things: the next one joins them (a set of pictures
+        // made one after another is one page, not a page each). Side by side from the second on.
+        const blocks = [...row.scene.blocks, block].map(other => other.t === 'work' ? {...other, w: 'half'} : other);
+        row.scene = lessonPage({...row.scene, blocks, pending: null, focus: '', rev: row.scene.rev + 1});
+        how = 'joined';
+      } else if (!row.scene.blocks.length) {
+        // Nothing on the page V is on (the start of a call, or a page only just named): the thing takes it.
+        row.pages = Math.max(row.pages ?? 0, row.scene.serial, ...(row.zones ?? []).map(zone => zone.serial));
+        const serial = row.scene.serial || ++row.pages;
+        row.scene = lessonPage({...row.scene, serial, title: row.scene.title || Array.from(String(title ?? '')).slice(0, 14).join(''), blocks: [block], pending: null, focus: '', rev: row.scene.rev + 1});
+        row.openedAt = now();
       } else {
-        const block = {id: `w${asset.slice(1)}`, t: 'work', asset};
-        // (The page the illustrator opened for this request: its title stays, a photograph of the subject gives way.)
-        const mine = row.scene.serial > 0 && (row.openedAt ?? -1) >= (row.askedAt ?? Infinity) && row.scene.blocks.every(other => other.t === 'photo');
-        if (mine) row.scene = lessonPage({...row.scene, blocks: [block], pending: null, focus: '', rev: row.scene.rev + 1});
-        else {
-          shelvePage(row);
-          row.pages = Math.max(row.pages ?? 0, row.scene.serial, ...(row.zones ?? []).map(zone => zone.serial)) + 1;
-          row.scene = lessonPage({...emptyScene(), rev: row.scene.rev + 1, serial: row.pages, title: Array.from(String(title ?? '')).slice(0, 14).join(''), blocks: [block]});
-          row.openedAt = now();
-        }
+        // A page of its own, beside the one V was on and further on from it: the view only ever moves forward.
+        const before = row.scene.title ? {from: zoneId(row.scene)} : {};
+        shelvePage(row);
+        row.pages = Math.max(row.pages ?? 0, row.scene.serial, ...(row.zones ?? []).map(zone => zone.serial)) + 1;
+        row.scene = lessonPage({...emptyScene(), rev: row.scene.rev + 1, serial: row.pages, title: Array.from(String(title ?? '')).slice(0, 14).join(''), blocks: [block], ...before});
+        row.openedAt = now();
       }
-      row.workAt = now();
-      record({type: 'board.place', voiceSessionId: id, asset, version: Boolean(home), page: zoneId(row.scene), rev: row.scene.rev});
+      row.workTurn = row.turnNo;
+      record({type: 'board.place', voiceSessionId: id, asset, how, page: zoneId(row.scene), rev: row.scene.rev});
       return true;
     },
     /** A made thing has been looked at and named: its page, if it has no title yet, takes the name. */
@@ -251,7 +275,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
     streams: Boolean(stream),
     /** The author's notes for a script V is about to speak: {title, script, lines: [{say, show}]}. */
     note(id, notes) {
-      const row = owner(id); row.notes = notes; row.expectUntil = 0;
+      const row = owner(id); row.notes = notes; row.expectUntil = 0; row.lessonTurn = row.turnNo ?? 0;
       // The script is known before V has said a word of it: its page is started now,
       // not when the caller's screen comes back to ask (about a second and a half later).
       // Its first lines (`partial`) start the page while the rest is written; the whole
@@ -264,6 +288,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
     /** A script is being written for the caller's question: what V says meanwhile is not the answer. */
     expect(id, ms = 20000) {
       const row = owner(id); row.expectUntil = ms > 0 ? now() + ms : 0;
+      if (ms > 0) row.lessonTurn = row.turnNo ?? 0;
       // (A page being drawn from V's "let me think how to put it" is dropped: that line is not the answer.
       // The title and print drawn for the caller's question are kept: in call b101ecc7 the lesson
       // tool arrived while they were being drawn, and two of five questions got no title at all.)
@@ -328,7 +353,9 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
           return report('same', {rev: row.scene.rev});
         }
       }
-      if (trigger === 'user') { row.aheadFor = ''; row.askedAt = now(); }
+      // (The board as it stood when the caller spoke: what a made thing takes the turn back to, see `place`.)
+      // (Turns are counted: a made thing, a lesson and a drawn picture each belong to the turn they were asked in.)
+      if (trigger === 'user') { row.aheadFor = ''; row.turnNo = (row.turnNo ?? 0) + 1; row.turn = {no: row.turnNo, scene: row.scene, zones: row.zones ?? []}; }
       row.controller?.abort();
       // Lookups answer one question. What was found for the last one must not
       // be drawn again as if it answered this one.
@@ -343,6 +370,13 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       if (row.heldUntil > now()) {
         if (trigger === 'user' && now() - row.heldAt > 4000) row.heldUntil = 0;
         else { if (clientRev !== row.scene.rev) onOp({op: 'sync', scene: row.scene}); return report('lesson', {rev: row.scene.rev}); }
+      }
+      // While a thing is being made (asked for this turn, or earlier and not yet done) the made
+      // thing is the picture: V's words about making it are not drawn, and no page is opened
+      // beside it. A lesson is still drawn (it has its script; `ahead` runs are the script's own).
+      if (stream && !ahead && row.lessonTurn !== (row.turnNo ?? 0) && (row.makingTurn !== undefined && row.makingTurn === row.turnNo || shelf?.busy?.(id))) {
+        if (clientRev !== row.scene.rev) onOp({op: 'sync', scene: row.scene, canvas: canvasOf(row)});
+        return report('making', {rev: row.scene.rev});
       }
       const controller = row.controller = new AbortController();
       row.controllerTrigger = trigger;
@@ -372,6 +406,8 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       }
       const words = turn => typeof turn === 'string' ? turn : String(turn?.text ?? '');
       const said = stream && turns?.at(-1)?.role === 'assistant' ? words(turns.at(-1)) : '';
+      // Whether what is being drawn is a lesson's script (its author's notes go with it; only a script may ask for a picture to be drawn).
+      const scripted = Boolean(stream && row.notes && said && said.replace(/\s+/gu, '').startsWith(row.notes.script.replace(/\s+/gu, '').slice(0, 24)));
       if (stream) {
         // Lookup results alone draw nothing: V's words about them do.
         // Nor do a few words ("好，我想想怎么讲"), nor anything said while a script is being written for this very question.
@@ -409,7 +445,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
           } else if (op.op === 'scene') {
             // The page a made thing was hung on for this very request is this request's page: it takes
             // the title, and no second page is opened beside it.
-            if ((row.workAt ?? -1) >= (row.askedAt ?? Infinity) && row.scene.blocks.some(block => block.t === 'work')) {
+            if (row.workTurn !== undefined && row.workTurn === row.turnNo && row.scene.blocks.some(block => block.t === 'work')) {
               if (row.scene.title || !op.title) return;
               row.scene = {...row.scene, title: op.title, rev: row.scene.rev + 1};
               ops++; firstOpMs ??= now() - started; drawn.push(op);
@@ -445,13 +481,16 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
               const {make, ...rest} = op.block;
               if (held) op = {op: 'put', block: {...rest, asset: held.asset}};
               else if (make) {
-                if (!shelf?.canMake?.(id) || row.madeFor === (row.askedAt ?? 0)) return;
+                // (Only a lesson's script asks: in call of 11/21 the illustrator asked for the very picture the
+                // caller had asked V for, a moment before V's own command, and the two were made as one.)
+                if (!scripted || !shelf?.canMake?.(id) || row.madeFor === (row.turnNo ?? 0)) return;
                 const made = shelf.make(id, {prompt: make, caption: rest.caption});
                 if (!made) return;
-                row.madeFor = row.askedAt ?? 0;
+                row.madeFor = row.turnNo ?? 0;
                 op = {op: 'put', block: {...rest, asset: made}};
               } else {
-                if (!shelf?.has?.(id, op.block.asset)) return;
+                // (Nor twice on one page under another block's id.)
+                if (!shelf?.has?.(id, op.block.asset) || row.scene.blocks.some(block => block.t === 'work' && block.asset === op.block.asset)) return;
                 // A thing hangs once on the canvas. Asked for on a page just opened and still empty, the
                 // page it is on is gone back to instead (the caller asked about that very thing); on a
                 // page that already has something, it is simply not hung again.
@@ -504,8 +543,8 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         const messages = [{role: 'system', content: stream?.instructions ?? BOARD_INSTRUCTIONS},
           {role: 'user', content: boardRequest({trigger, scene: row.scene, turns: stream?.turns ? stream.turns(turns) : turns, evidence: row.evidence,
             // The author's notes go with the script they were written for, and with nothing else.
-            ...(stream && row.notes && said && said.replace(/\s+/gu, '').startsWith(row.notes.script.replace(/\s+/gu, '').slice(0, 24)) ? {notes: {title: row.notes.title, lines: row.notes.lines}} : {}),
-            ...(stream && shelf ? {assets: shelf.digest(id), make: trigger !== 'user' && Boolean(shelf.canMake?.(id)) && row.madeFor !== (row.askedAt ?? 0)} : {}),
+            ...(scripted ? {notes: {title: row.notes.title, lines: row.notes.lines}} : {}),
+            ...(stream && shelf ? {assets: shelf.digest(id), ...(scripted && shelf.canMake?.(id) && row.madeFor !== (row.turnNo ?? 0) ? {make: true} : {}), ...(row.scene.blocks.some(block => block.t === 'work') ? {workshop: true} : {})} : {}),
             ...(stream ? {recent: row.recent ?? [], page: {id: zoneId(row.scene), room: Math.max(0, 4 - row.scene.blocks.length)}, canvas: (row.zones ?? []).filter(zone => zone.serial !== row.scene.serial).map(zoneDigest)} : {})})}];
         for await (const chunk of (stream ? hedged(complete, {messages, signal: controller.signal}, hedgeMs) : complete({messages, signal: controller.signal}))) {
           if (controller.signal.aborted) break;

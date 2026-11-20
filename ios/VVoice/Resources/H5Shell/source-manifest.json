@@ -1,9 +1,9 @@
 {
   "sources": {
     "index.html": "ec12729a0da0ef472fc977e37bb75c413eb66bbcde725b1aa47a5fdf7f450105",
-    "styles.css": "98dd60c292525272fcfe7bcdd22da9743ede2ed9da21224a79ea09425a7b3de2",
+    "styles.css": "476c8a4b9fe3378466b250481da799b2de6f15fa49e7a32fa3152408dc322535",
     "ui/call-ui.jsx": "ca461947037bd4379f6d8951484980e061e9e4ca39d299995fae76185ecb26c7",
-    "ui-bundle.mjs": "8aa92699cdba61fabb4fde08ff4d32ef9c8efbd6de5c20b71fd3b91fd52e6e92",
+    "ui-bundle.mjs": "e4811f8b97dd95371acc3ba60e3129903273b3cca47f0cee753d0990b8ffbeac",
     "app-handoff.mjs": "31705d0424c9043e64844ac047ef090fe4582f475b74d78e4b5dec04ebca3465",
     "call-view.mjs": "4c823a063a119e798752af42f577471425ee579085151e85d14bc06587e52665",
     "content-view.mjs": "b0b3fd358d3c3343b6f9bd7d78a5c3d08d7d3c4b934679142037435b4493b415",
@@ -132,9 +132,9 @@
   },
   "outputs": {
     "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
-    "native-h5.js": "ea25115eb2b16a56b4d8428dededaf2cee5fadf4858a9f1af6d8bcd8b8c8df9b",
+    "native-h5.js": "5bab12130a32796e31aa46bda3c39f6058475d62f3e646251a962461bb57d1c6",
     "comparison.html": "7beb6c5d3e5933b5c020ddf23e200679318faa98568904f927d0553ea3d33076",
-    "styles.css": "98dd60c292525272fcfe7bcdd22da9743ede2ed9da21224a79ea09425a7b3de2",
+    "styles.css": "476c8a4b9fe3378466b250481da799b2de6f15fa49e7a32fa3152408dc322535",
     "comparison.css": "ae9fbcffb322e32737e2ce0ed830c1b86f9f27406b4ce8b686dc8cac9f36ba16",
     "comparison.mjs": "8fc7a4bd3323e4ff2aaab383103b950015f4fb3c05ca327ba09790fbc6f7113b",
     "assets/v-operator-home-1024.webp": "5cf1ddc6b9b9abd06c1ac15be325f9b86cbaa4db8363daeec0da6040e128d319",

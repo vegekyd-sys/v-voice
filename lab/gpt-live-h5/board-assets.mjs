@@ -19,17 +19,18 @@ const bounded = (value, limit) => Array.from(String(value ?? '').replace(/\s+/gu
 const https = value => { try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : ''; } catch { return ''; } };
 
 // What the voice model is told once, wherever a shelf exists for the call.
-export const ASSET_POLICY = '屏幕素材：用户屏幕的画面上摆着本通话生成的图片和视频，每个有编号（a1、a2…）。下面「屏幕素材现状」会随时更新，里面写的是图里真实看得到的东西。用户说“这张”“它”“刚才那张”“那个视频”，指用户正点着的那个；没有点着的就是最新的那个；仍然分不清再问。用户问图里有什么、谁在哪边，按现状里的描述回答，不编造没写的细节。要改图、换风格、让图动起来、拿它当参考时，创作命令里 --image 和 --ref 直接写编号（例如 --image a1），系统会换成真实链接；不要抄写、朗读或编造链接。交给后台处理屏幕上的东西时，在 context 里写清它的编号。生成中的东西已经显示在画面上，做好会自己显影，不用另外展示。';
+export const ASSET_POLICY = '屏幕素材：用户屏幕的画面上摆着本通话生成的图片和视频，每个有编号（a1、a2…）。下面「屏幕素材现状」会随时更新，里面写的是图里真实看得到的东西。用户说“这张”“它”“刚才那张”“那个视频”，指用户正点着的那个；没有点着的就是最新的那个；仍然分不清再问。用户问图里有什么、谁在哪边，按现状里的描述回答，不编造没写的细节。要改图、换风格、让图动起来、拿它当参考时，创作命令里 --image 和 --ref 直接写编号（例如 --image a1），系统会换成真实链接；不要抄写、朗读或编造链接。编号只写在命令和交给后台的 context 里：对用户说话、写给用户的消息里不说编号，说它的名字，或者“第一张”“刚才那个视频”。交给后台处理屏幕上的东西时，在 context 里写清它的编号。生成中的东西已经显示在画面上，做好会自己显影，不用另外展示。';
 export const ASSET_CONTEXT_EMPTY = '屏幕素材现状：画面上还没有生成的图片或视频。';
 // What the illustrator is told (appended to its instructions by the service).
 export const ASSET_NOTES = `
 # 生成的作品（work）
 - 屏幕上的 work 区块是用户让 V 生成的图片或视频（{"id","t":"work","asset":"a1"}），它自己会显影、会动。原样保留：不重画、不改写、不删除，也不要再为同一样东西去找照片。
 - 用户这一句是在要 V 画一张、生成一张、做个视频、改图、让图动起来时：输出 none。作品会自己上画面，不要为它开新页、配照片或写「生成中」。
+- request 里 workshop 为 true：用户和 V 正在这一页上做作品。他们商量做什么、做哪几张、怎么改、什么风格，V 说「正在弄」「接着做下一张」时，都输出 none：不开新页，不把要做的东西列成清单，不为它们找照片。只有用户明显换了话题、去问一件别的事时才 scene 开新页。
 - V 介绍一张作品时（「左边是…，右边是…」），可以在同一页加一个区块写它讲到的要点，挂在讲到的那一段上；不要把作品换成别的图。
 - request 里的 assets 列出了本通话已有的作品（编号、名字、画面里有什么）。讲解正好要用到其中一张、而它还不在任何一页上时，可以把它放上来：{"id":"w1","t":"work","asset":"a1"}，像照片一样挂在讲到它的那一段。只能写 assets 里有的编号。它已经在 canvas 的某一页上时，用户再问起它，就用 zone 回到那一页接着画，不要再放一遍。`;
 export const ASSET_MAKE_NOTES = `
-- request 里 make 为 true 时，你可以请 V 现画一张图：{"id":"w1","t":"work","make":"要画的画面，一两句话写清主体、动作、构图和风格","caption":"不超过 10 个字"}。只用在拍不到、搜不到的画面上：想象的场景、比喻、故事里的一幕、两个不同作品的角色同框、给小朋友看的示意画。真实存在的东西（地方、人物、产品、角色本人）仍然用照片。
+- request 里 make 为 true（这是一段讲解的讲稿，并且 notes 里有一句的画面提示写了「现画：…」）时，照那条提示请 V 现画一张图：{"id":"w1","t":"work","make":"要画的画面，一两句话写清主体、动作、构图和风格","caption":"不超过 10 个字"}。只用在拍不到、搜不到的画面上：想象的场景、比喻、故事里的一幕、两个不同作品的角色同框、给小朋友看的示意画。真实存在的东西（地方、人物、产品、角色本人）仍然用照片。
 - 现画一张要十秒左右：把它挂在第三段以后才讲到的内容上，前面几段先用别的东西。一页最多一张，一次回答最多一张；可画可不画时不画。`;
 
 // What the lesson's script writer is told (appended to its instructions by the service).
@@ -68,11 +69,13 @@ export function readCreation(command) {
   return {kind: video ? 'video' : 'image', prompt: bounded(words, 300), reference: flag('image') || flag('ref'), ...(aspect ? {aspect} : {})};
 }
 
-const LOOK_INSTRUCTIONS = `你是 V 的眼睛。V 正在和用户通话，下面这张图刚刚出现在用户的屏幕上。你替 V 看一眼，让 V 之后能说出图里真实有什么。
-只输出一个 JSON 对象，不要任何别的文字：
-{"name":"这张图的名字，不超过 10 个字","see":"两到三句话：画面里有什么、谁在左谁在右、各自在做什么、什么风格和色调、有没有文字（有就抄下来）","parts":[{"h":"部位或角色的名字，不超过 6 个字","box":[x1,y1,x2,y2]},…]}
-- 只写看得见的。认不出是谁就按样子说（「橙色衣服的金发少年」），不要猜画面外的事。
-- parts 是图里最值得指给用户看的 2 到 5 处（每个角色、最显眼的道具或文字）。box 是它在图上的位置：左上角 [0,0]，右下角 [1000,1000]，按图的宽和高各自换算成千分比，紧贴着它的边。
+// (`parts`: where things are in the picture, for a pointer to go round them. Asked for only where
+// something draws them (the canvas's stage): in the call of 11/21 five boxes made the look take
+// four to five seconds, and V had announced the picture before it had been seen.)
+const lookInstructions = parts => `你是 V 的眼睛。V 正在和用户通话，下面这张图刚刚出现在用户的屏幕上。你替 V 看一眼，让 V 之后能说出图里真实有什么。
+只输出一个 JSON 对象，不要任何别的文字，先写 name 再写 see：
+{"name":"这张图的名字，不超过 10 个字","see":"两句话：画面里有什么、谁在左谁在右、各自在做什么、什么风格；有文字就抄下来"${parts ? ',"parts":[{"h":"部位或角色的名字，不超过 6 个字","box":[x1,y1,x2,y2]},…]' : ''}}
+- 只写看得见的。认不出是谁就按样子说（「橙色衣服的金发少年」），不要猜画面外的事。${parts ? '\n- parts 是图里最值得指给用户看的 2 到 5 处（每个角色、最显眼的道具或文字）。box 是它在图上的位置：左上角 [0,0]，右下角 [1000,1000]，按图的宽和高各自换算成千分比，紧贴着它的边。' : ''}
 - name 像给作品起的名字（「鸣人大战路飞海报」「雪夜角楼」），不带标点。`;
 
 const json = text => {
@@ -89,7 +92,7 @@ const box = value => Array.isArray(value) && value.length === 4 && value.every(n
  * one look at one picture and can share a call when both are on).
  * `see({url, prompt, signal})` resolves {name, see, parts} or null.
  */
-export function createAssetEye({complete, fetchImpl = fetch, maxBytes = 4 * 1024 * 1024, timeoutMs = 12000} = {}) {
+export function createAssetEye({complete, fetchImpl = fetch, maxBytes = 4 * 1024 * 1024, timeoutMs = 12000, parts: wanted = false} = {}) {
   if (!complete) return null;
   return async function see({url, prompt = '', signal} = {}) {
     const controller = new AbortController(), abort = () => controller.abort();
@@ -109,7 +112,7 @@ export function createAssetEye({complete, fetchImpl = fetch, maxBytes = 4 * 1024
       const content = [{type: 'image_url', image_url: {url: image}},
         {type: 'text', text: prompt ? `这张图是按这段要求生成的（图里实际画成什么样，以你看到的为准）：${bounded(prompt, 300)}` : '这张图是 V 的后台刚做出来的。'}];
       let text = '';
-      for await (const chunk of complete({messages: [{role: 'system', content: LOOK_INSTRUCTIONS}, {role: 'user', content}], signal: controller.signal})) text += chunk;
+      for await (const chunk of complete({messages: [{role: 'system', content: lookInstructions(wanted)}, {role: 'user', content}], signal: controller.signal})) text += chunk;
       const value = json(text);
       const name = bounded(value?.name, 14).replace(/[，。！？、；：,.!?;:"'“”‘’《》]/gu, ''), seen = bounded(value?.see, 220);
       if (!seen) return null;
@@ -125,7 +128,7 @@ export function createAssetEye({complete, fetchImpl = fetch, maxBytes = 4 * 1024
  * the call's canvas. `see`: createAssetEye. `watch`ers are told whenever what
  * the voice model should know has changed.
  */
-export function createAssetShelf({director = null, see = null, now = Date.now, audit = () => {}, maxOwners = 64, lookWaitMs = 2500, makeLimit = 3, setTimer = setTimeout} = {}) {
+export function createAssetShelf({director = null, see = null, now = Date.now, audit = () => {}, maxOwners = 64, lookWaitMs = 3500, makeLimit = 3, setTimer = setTimeout} = {}) {
   const owners = new Map();
   const row = id => {
     let value = owners.get(id);
@@ -218,7 +221,8 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       value.turns.set(key, {...kinds, [creation.kind]: asset.id});
       if (value.turns.size > 64) value.turns.delete(value.turns.keys().next().value);
       audit({type: 'board.asset', voiceSessionId: owner, asset: asset.id, kind: asset.kind, state: 'making', from: asset.from || null});
-      place(owner, asset);
+      // (`turn`: asked for by the caller just now. The turn's picture is this thing.)
+      place(owner, asset, {turn: true});
       changed(owner, value, {quiet: true});
       return {command: resolved, id: asset.id};
     },
@@ -289,6 +293,8 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     digest(owner) {
       return (owners.get(owner)?.assets ?? []).filter(asset => asset.state !== 'failed').slice(-8).map(asset => ({id: asset.id, kind: asset.kind, ...(asset.name ? {name: asset.name} : {}), ...(asset.see ? {see: bounded(asset.see, 100)} : asset.prompt ? {asked: bounded(asset.prompt, 60)} : {}), ...(asset.state === 'making' ? {making: true} : {})}));
     },
+    /** Whether something the caller asked for is still being made. */
+    busy(owner) { return Boolean(owners.get(owner)?.assets.some(asset => asset.state === 'making' && asset.source === 'made')); },
     has(owner, id) { return Boolean(owners.get(owner)?.assets.some(asset => asset.id === id && asset.state !== 'failed')); },
     get(owner, id) { return owners.get(owner)?.assets.find(asset => asset.id === id) ?? null; },
     /** The page's view: every thing, the one picked, and whether anything is still coming. */
