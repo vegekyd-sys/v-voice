@@ -1217,7 +1217,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     // talks about are ringed on its photographs by a model that has seen them (docs/research/board-canvas).
     const canvas=process.env.VOICE_BOARD_CANVAS==='1'&&process.env.VOICE_BOARD_FOLLOW!=='word';
     const board=boardDirectorFromEnv(process.env,{audit:voiceAudit,prefetch:query=>photos?.find(query),...(canvas?{eye:complete=>createBoardEye({complete,find:query=>photos?.find(query)})}:{}),defer:process.env.VOICE_BOARD_STREAM==='0'&&process.env.VOICE_BOARD_LESSON_SOURCE!=='parallel',...(process.env.VOICE_BOARD_UNIFIED==='0'?{}:{illustrate:args=>lesson?.illustrate(args)??null,
-      ...(process.env.VOICE_BOARD_STREAM==='0'?{}:{stream:process.env.VOICE_BOARD_FOLLOW!=='word'?{instructions:canvas?CANVAS_CUE_INSTRUCTIONS:CUE_INSTRUCTIONS,refine:refineCueOp,turns:cueTurns,cue:true}:{instructions:STREAM_INSTRUCTIONS,refine:refineStreamOp}})})});
+      ...(process.env.VOICE_BOARD_STREAM==='0'?{}:{stream:process.env.VOICE_BOARD_FOLLOW!=='word'?{instructions:canvas?CANVAS_CUE_INSTRUCTIONS:CUE_INSTRUCTIONS,refine:refineCueOp,turns:cueTurns,cue:true,...(canvas?{canvas:true}:{})}:{instructions:STREAM_INSTRUCTIONS,refine:refineStreamOp}})})});
     // Lesson mode (experiment): its own flag. Through OpenRouter the writer is
     // a stronger model thinking briefly: on real calls it was the only one
     // tried that kept its facts straight (which Pokemon beats which), in about

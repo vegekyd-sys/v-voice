@@ -2093,7 +2093,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-stage-pic[data-ready="false"] { background: linear-gradient(110deg, #f4ead0 30%, #fbf4de 50%, #f4ead0 70%) 0 0 / 220% 100%; animation: board-develop 1.3s linear infinite; }
 .board-stage-pic img { display: block; width: 100%; height: 100%; object-fit: contain; animation: board-in .6s ease-out both; }
 .board-stage-pic .board-tape { top: clamp(-14px, -1.6cqw, -8px); width: clamp(36px, 9cqw, 62px); height: clamp(12px, 2.4cqw, 20px); }
-.board-stage-pic figcaption { position: absolute; left: 50%; top: 100%; transform: translate(-50%, clamp(6px, 1.4cqw, 11px)); font-family: var(--hand); font-size: clamp(13px, 3.4cqw, 19px); color: #5a4a66; white-space: nowrap; }
+.board-stage-pic figcaption { position: absolute; left: 50%; top: 100%; transform: translate(-50%, clamp(6px, 1.4cqw, 11px)); font-family: var(--hand); font-size: clamp(14px, 3.8cqw, 19px); color: #5a4a66; white-space: nowrap; }
 .board-stage-pic[data-ink="false"] { opacity: .25; }
 .board-stage-pitch { position: absolute; inset: 0; width: 100%; height: 100%; }
 .board-stage-pitch :is(rect, line, circle) { fill: none; stroke: #d9cfe6; stroke-width: 4; }
@@ -2115,16 +2115,35 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   background: linear-gradient(transparent 52%, var(--butter) 52%, var(--butter) 92%, transparent 92%); opacity: 0; transition: opacity .5s; }
 .board-stage-tag[data-below] { transform: translate(-50%, 0); }
 .board-stage-tag[data-on] { opacity: 1; transition-delay: .7s; }
-.board-stage-pointer { position: absolute; z-index: 5; left: 92%; top: 92%; width: clamp(20px, 5cqw, 30px); opacity: 0; pointer-events: none; filter: drop-shadow(0 2px 3px #3c348959);
+/* One pointer on the page: at the place on a photograph, or on the written item, that V is on. */
+.board-body { position: relative; }
+.board-stage-aim { position: absolute; width: 0; height: 0; pointer-events: none; }
+.board-pointer { position: absolute; z-index: 6; left: 92%; top: 92%; width: clamp(20px, 2.6vw, 30px); opacity: 0; pointer-events: none; filter: drop-shadow(0 2px 3px #3c348959);
   transition: left .7s cubic-bezier(.22, .9, .25, 1), top .7s cubic-bezier(.22, .9, .25, 1), opacity .4s; }
-.board-stage-pointer[data-on] { opacity: 1; }
-.board-stage-pointer svg { display: block; width: 100%; height: auto; }
-.board-stage-pointer path { fill: #4b3d82; stroke: #fffdfb; stroke-width: 1.6; stroke-linejoin: round; }
-@media (prefers-reduced-motion: reduce) { .board-stage-pointer { transition: opacity .2s; } .board-stage-ring[data-on] { animation: none; stroke-dashoffset: 0; } }
-/* On a wide panel the canvas stands on the left and the written blocks beside it. */
-@media (min-width: 900px) {
-  .board-body:has(> .board-block[data-type="stage"]) { grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); grid-auto-flow: row dense; align-items: start; }
-  .board-body:has(> .board-block[data-type="stage"]) > .board-block[data-type="stage"] { grid-column: 1; grid-row: 1 / span 6; max-width: none; }
-  .board-body:has(> .board-block[data-type="stage"]) > :not([data-type="stage"]) { grid-column: 2; max-width: 100%; justify-self: stretch; }
-  .board-body:has(> .board-block[data-type="stage"]) .board-stage-sheet { width: min(100%, calc(var(--room, 100vh) * .9 * 1000 / var(--sheet-h, 750))); }
-}
+.board-pointer[data-on] { opacity: 1; }
+.board-pointer svg { display: block; width: 100%; height: auto; }
+.board-pointer path { fill: #4b3d82; stroke: #fffdfb; stroke-width: 1.6; stroke-linejoin: round; }
+/* A tour: the photograph V is on, large; the others in a strip under it. */
+.board-stage-pic figcaption small { font-size: .9em; color: #8b7f99; }
+.board-stage-strip { display: flex; justify-content: center; gap: clamp(6px, 1.6cqw, 12px); margin: 2px auto 0; width: min(100%, calc(var(--room, 100vh) * .66 * 1000 / var(--sheet-h, 750))); }
+.board-stage-thumb { flex: 0 1 clamp(48px, 15cqw, 104px); min-width: 0; display: grid; gap: 3px; padding: 0; border: 0; background: none; cursor: pointer; font: inherit; color: inherit; transition: opacity .5s, transform .3s; }
+.board-stage-thumb-pic { display: block; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 2px; background: #f4ead0; box-shadow: 0 0 0 3px #fbf1cf, 0 6px 10px -8px #4d356073; opacity: .62; transition: opacity .3s; }
+.board-stage-thumb-pic img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.board-stage-thumb-name { font-family: var(--hand); font-size: clamp(10px, 2.5cqw, 13px); line-height: 1.25; color: #8b7f99; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+.board-stage-thumb[data-cur] { transform: translateY(-2px); }
+.board-stage-thumb[data-cur] .board-stage-thumb-pic { opacity: 1; box-shadow: 0 0 0 3px #fbf1cf, 0 0 0 5px var(--pen), 0 6px 10px -8px #4d356073; }
+.board-stage-thumb[data-cur] .board-stage-thumb-name { color: #4b3d82; }
+@media (prefers-reduced-motion: reduce) { .board-pointer { transition: opacity .2s; } .board-stage-ring[data-on] { animation: none; stroke-dashoffset: 0; } }
+/* A page with a canvas on a wide panel (data-lay, set from the panel's own shape in board.jsx useFit).
+   Lying on its side: the canvas on the left, the written blocks beside it, one under another (two abreast in
+   that narrow column broke their words a character a line, 11/21). */
+.board-body[data-lay="side"]:has(> .board-block[data-type="stage"]) { grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); grid-auto-flow: row dense; align-items: start; }
+.board-body[data-lay="side"]:has(> .board-block[data-type="stage"]) > .board-block[data-type="stage"] { grid-column: 1; grid-row: 1 / span 6; max-width: none; }
+.board-body[data-lay="side"]:has(> .board-block[data-type="stage"]) > :not([data-type="stage"], .board-pointer) { grid-column: 2; max-width: 100%; width: auto; justify-self: stretch; }
+.board-body[data-lay="side"]:has(> .board-block[data-type="stage"]) > .board-row { grid-template-columns: minmax(0, 1fr); }
+.board-body[data-lay="side"]:has(> .board-block[data-type="stage"]) :is(.board-stage-sheet, .board-stage-strip) { width: min(100%, calc(var(--room, 100vh) * .8 * 1000 / var(--sheet-h, 750))); }
+/* Wide but upright: the canvas takes the top, and the written blocks stand two abreast under it. */
+.board-body[data-lay="top"]:has(> .board-block[data-type="stage"]) { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.board-body[data-lay="top"]:has(> .board-block[data-type="stage"]) > :is(.board-block[data-type="stage"], .board-row) { grid-column: 1 / -1; max-width: none; }
+.board-body[data-lay="top"]:has(> .board-block[data-type="stage"]) > .board-block:not([data-type="stage"]) { grid-column: auto; max-width: 100%; width: auto; justify-self: stretch; }
+.board-body[data-lay="top"]:has(> .board-block[data-type="stage"]) :is(.board-stage-sheet, .board-stage-strip) { width: min(100%, calc(var(--room, 100vh) * .56 * 1000 / var(--sheet-h, 750))); }

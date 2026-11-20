@@ -116,3 +116,25 @@ test('with the canvas on, a print becomes a canvas of one photograph and is look
   const [stage] = director.scene('c').blocks;
   assert.deepEqual([stage.t, stage.base, stage.items[0].img, stage.items[0].h, looked], ['stage', 'photo', '太和殿 正面', '太和殿', 1]);
 });
+
+test('a tour: each photograph is looked at by itself with the clauses about it, and written items lose their pictures', async () => {
+  const words = '台北故宫在外双溪的山脚下。最有名的是翠玉白菜，菜叶上停着两只小虫。还有肉形石，一块石头雕得像块红烧肉。毛公鼎上刻了五百多个字。';
+  const tour = {id: 's', t: 'stage', base: 'row', items: [{id: 'a', k: 'pic', img: '翠玉白菜', h: '翠玉白菜', d: '玉雕的菜叶', cue: 1}, {id: 'b', k: 'pic', img: '肉形石', h: '肉形石', cue: 3},
+    {id: 'c', k: 'pic', img: '毛公鼎', h: '毛公鼎', cue: 5}, {id: 'd', k: 'pic', img: '主楼', h: '主楼', cue: -1}]};
+  const complete = async function* () { yield [{op: 'scene', title: '台北故宫'}, {op: 'put', block: tour}, {op: 'put', block: {id: 'l', t: 'list', items: [{id: 'x', h: '外双溪', img: '外双溪', cue: 0}]}}].map(op => JSON.stringify(op)).join('\n') + '\n'; };
+  const asked = [];
+  const eye = {find: async query => query === '毛公鼎' ? null : {bytes: Buffer.from(query), type: 'image/png'},
+    see: async ({shots, from, to}) => { asked.push([shots.map(shot => shot.id).join(), from, to]); return [{id: 'n1', k: 'pin', on: shots[0].id, box: [1, 1, 500, 500], kind: 'ring', h: '看这里', q: shots[0].id === 'a' ? '菜叶上停着两只' : '一块石头雕得像'}]; }};
+  const director = createBoardDirector({complete, eye, stream: {instructions: CANVAS_CUE_INSTRUCTIONS, refine: refineCueOp, turns: cueTurns, cue: true, canvas: true}});
+  const turns = [{role: 'user', text: '介绍一下台北故宫'}, {role: 'assistant', text: words}];
+  const run = await director.run({owner: 'c', trigger: 'assistant_end', turns});
+  const scene = director.scene('c'), stage = scene.blocks[0];
+  assert.deepEqual([scene.canvas, stage.base, stage.items.filter(item => item.k === 'pic').map(pic => pic.id).join(), stage.items[0].d], [true, 'tour', 'a,b,c,d', '玉雕的菜叶']);
+  // (The main building is told from the start to the first exhibit; the bronze was not found and is not looked at.)
+  assert.deepEqual(asked.sort(), [['a', 1, 3], ['b', 3, 5], ['d', 0, 1]]);
+  assert.deepEqual(stage.items.filter(item => item.k === 'pin').map(pin => [pin.id, pin.on]).sort(), [['a-1', 'a'], ['b-1', 'b'], ['d-1', 'd']]);
+  assert.deepEqual([run.eye.pins, run.eye.shots, scene.blocks[1].items[0].img], [3, 3, undefined]);
+  // The same words again: nothing is looked at twice.
+  await director.run({owner: 'c', trigger: 'assistant_end', turns});
+  assert.equal(asked.length, 3);
+});

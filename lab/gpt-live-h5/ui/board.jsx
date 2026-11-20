@@ -665,18 +665,27 @@ function Stage({block, view}) {
     }, () => {});
     return () => { live = false; };
   }, [pics.map(pic => pic.img).join('|')]);
-  const shown = pics.filter(pic => shots[pic.img]);
+  const id = item => `${block.id}/${item.id}`;
+  // Where V is on the canvas: the place, name or photograph being talked about (none when V is elsewhere).
+  const now = block.items.find(item => view.focus === id(item));
+  // A tour shows one photograph large: the one V is on, or was last on; once V has moved on, any the
+  // caller taps in the strip under it.
+  const tour = block.base === 'tour', led = now?.k === 'pin' ? now.on : now?.k === 'pic' ? now.id : null;
+  const [held, setHeld] = useState(null), [picked, setPicked] = useState(null);
+  useEffect(() => { if (led) { setHeld(led); setPicked(null); } }, [led]);
+  const told = pics.filter(pic => !view.ahead.has(id(pic)));
+  const current = tour ? pics.find(pic => pic.id === (picked ?? led ?? held)) ?? told.at(-1) ?? pics[0] : null;
+  const large = tour ? [current] : pics;
+  const shown = large.filter(pic => shots[pic.img]);
   // One photograph: the sheet takes the photograph's own shape (within reason). A pitch stands upright.
   const lone = block.base !== 'pitch' && pics.length === 1 ? shots[pics[0].img]?.ratio : 0;
-  const height = block.base === 'pitch' ? 1000 : lone ? Math.round(1000 / Math.min(1.7, Math.max(.75, lone))) : pics.length === 3 && block.base === 'triangle' ? 900 : 720;
-  const slots = stageSlots(block.base, pics.map(pic => shots[pic.img]?.ratio ?? 4 / 3), height);
-  const rects = Object.fromEntries(pics.map((pic, index) => [pic.id, fitIn(slots[index], shots[pic.img]?.ratio)]));
+  const height = block.base === 'pitch' ? 1000 : tour ? 760 : lone ? Math.round(1000 / Math.min(1.7, Math.max(.75, lone))) : pics.length === 3 && block.base === 'triangle' ? 900 : 720;
+  const slots = tour ? [{x: 30, y: 24, w: 940, h: height - 100}] : stageSlots(block.base, pics.map(pic => shots[pic.img]?.ratio ?? 4 / 3), height);
+  const rects = Object.fromEntries(large.map((pic, index) => [pic.id, fitIn(slots[index], shots[pic.img]?.ratio)]));
   const place = chip => block.base === 'pitch' ? {x: PITCH.x + chip.at[0] / 1000 * PITCH.w, y: PITCH.y + chip.at[1] / 1000 * PITCH.h} : {x: chip.at[0], y: chip.at[1] / 1000 * height};
   const box = pin => { const r = rects[pin.on], [x1, y1, x2, y2] = pin.box; return {x1: r.x + x1 / 1000 * r.w, y1: r.y + y1 / 1000 * r.h, x2: r.x + x2 / 1000 * r.w, y2: r.y + y2 / 1000 * r.h}; };
   const pct = (value, of) => `${(value / of * 100).toFixed(2)}%`;
-  const id = item => `${block.id}/${item.id}`;
-  // Where the pointer is: the place, name or photograph V is on (nothing when V is elsewhere).
-  const now = block.items.find(item => view.focus === id(item));
+  // Where the page's pointer goes (see Sheet): marked for it with an element at that point.
   let aim = null;
   if (now?.k === 'pin' && rects[now.on] && shots[pics.find(pic => pic.id === now.on)?.img]) { const b = box(now); aim = now.kind === 'point' ? {x: (b.x1 + b.x2) / 2, y: (b.y1 + b.y2) / 2} : {x: (b.x1 + b.x2) / 2 + (b.x2 - b.x1) * .36 + 8, y: (b.y1 + b.y2) / 2 + (b.y2 - b.y1) * .36 + 8}; }
   else if (now?.k === 'chip') { const at = place(now); aim = {x: at.x + 18, y: at.y + 22}; }
@@ -705,14 +714,14 @@ function Stage({block, view}) {
             <rect x={PITCH.x + PITCH.w * .22} y={PITCH.y + PITCH.h - 140} width={PITCH.w * .56} height="140" />
           </svg>
         )}
-        {pics.map(pic => {
+        {large.map(pic => {
           const r = rects[pic.id], shot = shots[pic.img];
           return (
-            <figure key={pic.id} className="board-stage-pic" data-ready={String(Boolean(shot))} data-ink={String(!view.ahead.has(id(pic)))}
+            <figure key={pic.id} className="board-stage-pic" data-ready={String(Boolean(shot))} data-ink={String(tour ? told.length > 0 || Boolean(picked) : !view.ahead.has(id(pic)))}
               style={{left: pct(r.x, 1000), top: pct(r.y, height), width: pct(r.w, 1000), height: pct(r.h, height)}} {...opener(view.enlarge, shot?.src, pic.h ?? pic.img)}>
               <Tape />
               {shot && <img src={shot.src} alt={pic.h ?? pic.img} decoding="async" />}
-              {pic.h && <figcaption>{pic.h}</figcaption>}
+              {pic.h && <figcaption>{pic.h}{tour && pic.d && <small> · {pic.d}</small>}</figcaption>}
             </figure>
           );
         })}
@@ -740,8 +749,18 @@ function Stage({block, view}) {
           return <span key={pin.id} className="board-stage-tag" data-on={view.focus === id(pin) || undefined} data-below={!above || undefined}
             style={{left: pct(Math.min(900, Math.max(100, (b.x1 + b.x2) / 2)), 1000), top: pct(above ? b.y1 - 14 : b.y2 + 14, height)}}>{pin.h}</span>;
         })}
-        <i className="board-stage-pointer" data-on={aim ? true : undefined} style={aim ? {left: pct(aim.x, 1000), top: pct(aim.y, height)} : undefined}><Cursor /></i>
+        {aim && <i className="board-stage-aim" data-aim="true" style={{left: pct(aim.x, 1000), top: pct(aim.y, height)}} />}
       </div>
+      {tour && (
+        <div className="board-stage-strip">
+          {pics.map(pic => (
+            <button type="button" key={pic.id} className="board-stage-thumb" data-ink={String(!view.ahead.has(id(pic)))} data-cur={pic.id === current.id || undefined} aria-label={pic.h ?? pic.img} onClick={() => setPicked(pic.id)}>
+              <span className="board-stage-thumb-pic">{shots[pic.img] && <img src={shots[pic.img].src} alt="" decoding="async" />}</span>
+              {pic.h && <span className="board-stage-thumb-name">{pic.h}</span>}
+            </button>
+          ))}
+        </div>
+      )}
     </>
   );
 }
@@ -763,6 +782,11 @@ function useFit(scroller, page, key) {
     const fit = () => {
       const wide = outer.clientWidth >= 640, least = wide ? .62 : .78, edge = getComputedStyle(outer), room = outer.clientHeight - (parseFloat(edge.paddingTop) || 0) - (parseFloat(edge.paddingBottom) || 0);
       let zoom = 1;
+      // How a page with a canvas is laid out, by the panel's own shape (not the window's: on a desktop the
+      // panel is half the window): lying on its side, the canvas on the left and the written blocks beside it;
+      // wide but upright, the canvas on top and the blocks two abreast under it; narrow, one under another.
+      const lay = outer.clientWidth >= 760 && outer.clientWidth >= outer.clientHeight ? 'side' : outer.clientWidth >= 640 ? 'top' : '';
+      if (lay) inner.dataset.lay = lay; else delete inner.dataset.lay;
       // The page is at least as tall as the panel, at any zoom. (In px: a length is drawn at the
       // page's zoom, while a percentage is of the panel as it is; `100% / zoom` made a page drawn
       // smaller taller than the panel, so its content sat low and the bottom was cut off.)
@@ -812,6 +836,29 @@ function Sheet({scene, spoken, loadPhoto, enlarge, caption = ''}) {
     const top = host.scrollTop + (at.top < frame.top ? at.top - frame.top - 12 : at.bottom - frame.bottom + 12);
     host.scrollTo?.({top, behavior: 'smooth'});
   }, [view.focus, scene.rev, Boolean(spoken)]);
+  // The canvas's pointer (scene.canvas): one on the page, where V's voice is - at the place on a
+  // photograph the stage marks for it ([data-aim]), else on the written item V is on. It is placed by
+  // looking at where that is on the page as laid out (a photograph may arrive, the page may be refitted),
+  // and goes away when V stops speaking.
+  const pointer = useRef(null);
+  useEffect(() => {
+    const body = sheet.current, hand = pointer.current;
+    if (!body || !hand) return;
+    if (!spoken) { hand.removeAttribute('data-on'); return; }
+    const place = () => {
+      const aim = body.querySelector('[data-aim]'), item = aim ? null : body.querySelector('[data-now]');
+      const target = aim ?? item?.querySelector('.board-key-text') ?? item;
+      const frame = body.getBoundingClientRect(), at = target?.getBoundingClientRect();
+      if (!at || !frame.width || !frame.height || !aim && !at.width) { hand.removeAttribute('data-on'); return; }
+      const x = aim ? at.left : at.left + Math.min(at.width * .5, 46), y = aim ? at.top : at.top + at.height * .72;
+      hand.style.left = `${((x - frame.left) / frame.width * 100).toFixed(2)}%`;
+      hand.style.top = `${((y - frame.top) / frame.height * 100).toFixed(2)}%`;
+      hand.setAttribute('data-on', 'true');
+    };
+    place();
+    const timer = setInterval(place, 300);
+    return () => clearInterval(timer);
+  }, [view.focus, scene.rev, Boolean(spoken), Boolean(scene.canvas)]);
   // Pen marks V has reached are on their items; the others are still to come.
   const blocks = markedBlocks(scene, view.ahead).filter(block => !(block.t === 'photo' && missing.has(block.query)));
   // Neighbours that each ask for part of the width (`w`) stand side by side.
@@ -835,6 +882,7 @@ function Sheet({scene, spoken, loadPhoto, enlarge, caption = ''}) {
         {rows.map(row => row.length > 1
           ? <div key={`${scene.serial}:row:${row[0].id}`} className="board-row" data-n={Math.min(3, row.length)} data-w={row[0].w ?? 'half'}>{row.map(piece)}</div>
           : piece(row[0]))}
+        {scene.canvas && <i className="board-pointer" ref={pointer} aria-hidden="true"><Cursor /></i>}
       </div>
     </div>
   );

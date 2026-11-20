@@ -3,6 +3,7 @@
 // audio path, and has no tools, permissions or say in what V does. Its output
 // is validated line by line (board-scene.mjs) before anything reaches a page.
 import {applyOp, createLineParser, emptyScene, normalizeOp, pinned, sceneDigest, scenePictures, zoneDigest, zoneId} from './board-scene.mjs';
+import {clauseOf, clauses} from './board-clause.mjs';
 import {appendFile, mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
 
@@ -177,6 +178,8 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
   // Pictures a page will need are asked for the moment the page knows of them, not when the page gets round to showing them.
   const wanted = new Set();
   const fetchAhead = scene => { if (!prefetch) return; for (const query of scenePictures(scene)) if (!wanted.has(query)) { wanted.add(query); if (wanted.size > 400) wanted.delete(wanted.values().next().value); Promise.resolve().then(() => prefetch(query)).catch(() => {}); } };
+  // How a page drawn by the stream follows the voice (cues the model wrote) and whether it has the canvas's pointer.
+  const flags = {...(stream?.cue ? {cue: true} : {}), ...(stream?.canvas ? {canvas: true} : {})};
   const owners = new Map();
   const owner = id => {
     let row = owners.get(id);
@@ -339,27 +342,54 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         if (trigger === 'evidence' || trigger !== 'user' && (expecting || Array.from(said).length < (/^[\x00-\x7f]*$/u.test(said.slice(0, 40)) ? 40 : 14) && !row.notes?.script.startsWith(said.slice(0, 12)))) { signal?.removeEventListener('abort', abort); if (row.controller === controller) row.controller = null; return report('waiting', {rev: row.scene.rev}); }
       }
       let ops = 0, firstOpMs = null, none = false, retired = false;
-      // The stage's photographs looked at with V's words (see `eye`): once for a stage while V's words
-      // are still coming, and again when they are complete. The run's screens get the pins.
+      // The stage's photographs looked at with V's words (see `eye`), and the places V talks about pinned
+      // on them; the run's screens get the pins as they come. A tour's photographs are each looked at by
+      // themselves, with the clauses that are about them, all at once: a place is on the photograph of the
+      // thing being told, and six photographs take no longer than one. The others are looked at together
+      // (V goes back and forth between two cars). Nothing is looked at twice for the same words.
       const look = async () => {
         const stage = row.scene.blocks.find(block => block.t === 'stage'), pics = stage?.items.filter(item => item.k === 'pic') ?? [];
         if (!pics.length) return null;
-        const key = `${row.scene.serial}:${stage.id}:${pics.map(pic => pic.img).join('|')}`;
-        if (row.eye?.key === key && (row.eye.said === said || trigger !== 'assistant_end')) return null;
-        row.eye = {key, said};
-        const begun = now();
-        try {
-          const shots = (await Promise.all(pics.map(async pic => { const found = await eye.find(pic.img); return found?.bytes ? {...pic, bytes: found.bytes, type: found.type} : null; }))).filter(Boolean);
-          if (controller.signal.aborted || !shots.length) return {pins: 0, shots: shots.length, ms: now() - begun};
-          const pins = await eye.see({shots, said, signal: controller.signal});
-          const current = row.scene.blocks.find(block => block.t === 'stage');
-          if (controller.signal.aborted || !current) return {pins: 0, shots: shots.length, ms: now() - begun};
-          const block = pinned(current, pins.filter(pin => current.items.some(item => item.k === 'pic' && item.id === pin.on)));
+        const begun = now(), serial = row.scene.serial;
+        const put = (on, pins) => {
+          const current = row.scene.serial === serial ? row.scene.blocks.find(block => block.t === 'stage') : null;
+          if (controller.signal.aborted || !current) return 0;
+          const live = pins.filter(pin => current.items.some(item => item.k === 'pic' && item.id === pin.on));
+          const block = pinned(current, live, on);
           const next = block ? applyOp({...row.scene, pending: null}, {op: 'put', block}) : row.scene;
-          if (next !== row.scene) { row.scene = {...next, lesson: true, late: true, ...(stream.cue ? {cue: true} : {})}; drawn.push({op: 'put', block}); onOp({op: 'sync', scene: row.scene, canvas: canvasOf(row)}); }
-          return {pins: pins.length, shots: shots.length, ms: now() - begun};
+          if (next !== row.scene) { row.scene = {...next, lesson: true, late: true, ...flags}; drawn.push({op: 'put', block}); onOp({op: 'sync', scene: row.scene, canvas: canvasOf(row)}); }
+          return live.length;
+        };
+        const shot = async pic => { const found = await eye.find(pic.img); return found?.bytes ? {...pic, bytes: found.bytes, type: found.type} : null; };
+        row.eyes ??= new Map();
+        if (row.eyes.size > 60) row.eyes.clear();
+        if (stage.base === 'tour') {
+          const parts = clauses(said), starts = pics.map(pic => pic.q ? clauseOf(said, pic.q) : 0);
+          const seen = await Promise.all(pics.map(async (pic, index) => {
+            const from = starts[index], later = starts.filter(start => start > from), to = later.length ? Math.min(...later) : parts.length;
+            const words = parts.slice(from, to).join(''), key = `${serial}:${pic.id}:${pic.img}`;
+            if (!words || row.eyes.get(key) === words) return null;
+            row.eyes.set(key, words);
+            try {
+              const found = await shot(pic);
+              const pins = found && !controller.signal.aborted ? await eye.see({shots: [found], said, from, to, signal: controller.signal}) : null;
+              if (controller.signal.aborted) { row.eyes.delete(key); return null; }
+              return {shots: found ? 1 : 0, pins: pins ? put([pic.id], pins.slice(0, 3).map((pin, at) => ({...pin, id: `${pic.id}-${at + 1}`.slice(0, 24)}))) : 0};
+            } catch { row.eyes.delete(key); return {shots: 0, pins: 0, failed: 1}; }
+          }));
+          const done = seen.filter(Boolean);
+          return done.length ? {pins: done.reduce((sum, item) => sum + item.pins, 0), shots: done.reduce((sum, item) => sum + item.shots, 0), ...(done.some(item => item.failed) ? {failed: done.filter(item => item.failed).length} : {}), ms: now() - begun} : null;
+        }
+        const key = `${serial}:${stage.id}:${pics.map(pic => pic.img).join('|')}`;
+        if (row.eyes.get(key) === said || row.eyes.has(key) && trigger !== 'assistant_end') return null;
+        row.eyes.set(key, said);
+        try {
+          const shots = (await Promise.all(pics.map(shot))).filter(Boolean);
+          const pins = shots.length && !controller.signal.aborted ? await eye.see({shots, said, signal: controller.signal}) : null;
+          if (controller.signal.aborted) { row.eyes.delete(key); return null; }
+          return {pins: pins ? put(null, pins) : 0, shots: shots.length, ms: now() - begun};
         } catch (error) {
-          if (row.eye?.key === key) row.eye = null;
+          row.eyes.delete(key);
           return {pins: 0, error: String(error?.message ?? error).slice(0, 80), ms: now() - begun};
         }
       };
@@ -409,7 +439,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             row.pages = Math.max(row.pages ?? 0, row.scene.serial, ...row.zones.map(zone => zone.serial)) + 1;
             // (`from` must be a page that is on the canvas.)
             const origin = op.from && [...row.zones, row.scene].some(zone => zoneId(zone) === op.from) ? {from: op.from} : {};
-            row.scene = {...emptyScene(), rev: row.scene.rev + 1, serial: row.pages, title: op.title, lesson: true, late: true, ...(stream.cue ? {cue: true} : {}), ...origin};
+            row.scene = {...emptyScene(), rev: row.scene.rev + 1, serial: row.pages, title: op.title, lesson: true, late: true, ...flags, ...origin};
           } else {
             if (op.op === 'put') {
               // A block may grow; it may not become something else. One that would replace what is
@@ -443,7 +473,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             const next = applyOp({...row.scene, pending: null}, op);
             if (next === row.scene) return;
             // The page is a lesson's page whoever opened it: pieces wait for the voice.
-            row.scene = {...next, lesson: true, late: true, ...(stream.cue ? {cue: true} : {})};
+            row.scene = {...next, lesson: true, late: true, ...flags};
           }
           ops++; firstOpMs ??= now() - started; drawn.push(op);
           fetchAhead(row.scene);

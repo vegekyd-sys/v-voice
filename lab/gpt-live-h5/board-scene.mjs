@@ -9,8 +9,9 @@ export const BOARD_BLOCK_TYPES = Object.freeze(['note', 'sticky', 'photo', 'list
   'tiles', 'formula', 'timeline', 'versus', 'overlap', 'stack', 'scale', 'draw',
   // The canvas (VOICE_BOARD_CANVAS): real photographs, or a pitch, that V's pointer goes round as V speaks.
   'stage']);
-// How a stage's photographs are laid out: one, two or three in a row, three in a triangle, or a pitch with names on it.
-export const STAGE_BASES = Object.freeze(['photo', 'row', 'triangle', 'pitch']);
+// How a stage's photographs are laid out: one; two or three in a row; three in a triangle; a tour (two to six things told one
+// after another: the one V is on is shown large, the others stand in a strip under it); or a pitch with names on it.
+export const STAGE_BASES = Object.freeze(['photo', 'row', 'triangle', 'tour', 'pitch']);
 // What a drawing is made of, and how many numbers each takes (`poly`: three to eight points).
 export const BOARD_SHAPES = Object.freeze({line: 4, arrow: 4, rect: 4, circle: 3, wave: 4, text: 2, poly: 0});
 // How much of the page's width a block asks for; neighbours that ask stand side by side.
@@ -239,16 +240,17 @@ const BLOCKS = {
     const point = (value, size) => Array.isArray(value) && value.length === size && value.every(number => Number.isFinite(Number(number)))
       ? value.map(number => Math.round(Math.max(0, Math.min(1000, Number(number))))) : null;
     const source = list(raw.items, 24).filter(item => item && typeof item === 'object');
-    const pics = source.filter(item => item.k === 'pic').slice(0, 3).map((item, index) => {
+    // (`d`: a few words under a photograph's name - what to look at in it.)
+    const pics = source.filter(item => item.k === 'pic').slice(0, 6).map((item, index) => {
       const img = text(item.img, 40);
-      return img ? quoted(optional({id: ident(item.id, `p${index + 1}`), k: 'pic', img}, 'h', text(item.h ?? item.caption, 20)), item) : null;
+      return img ? quoted(optional(optional({id: ident(item.id, `p${index + 1}`), k: 'pic', img}, 'h', text(item.h ?? item.caption, 20)), 'd', text(item.d, 24)), item) : null;
     }).filter(Boolean);
     const chips = source.filter(item => item.k === 'chip').slice(0, 14).map((item, index) => {
       const h = text(item.h ?? item.text, 16), at = point(item.at, 2);
       return h && at ? quoted(optional({id: ident(item.id, `c${index + 1}`), k: 'chip', h, at}, 'd', text(item.d ?? item.sub, 20)), item) : null;
     }).filter(Boolean);
     const known = new Set(pics.map(pic => pic.id));
-    const pins = source.filter(item => item.k === 'pin').slice(0, 10).map((item, index) => {
+    const pins = source.filter(item => item.k === 'pin').slice(0, 18).map((item, index) => {
       const box = point(item.box, 4);
       if (!known.has(item.on) || !box) return null;
       const [x1, y1, x2, y2] = box, sorted = [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)];
@@ -263,7 +265,9 @@ const BLOCKS = {
       const q = text(said, 40);
       return q ? [from, to, text(label, 12), q] : [from, to, text(label, 12)];
     }).filter(Boolean);
-    return optional({base: base === 'pitch' || pics.length ? base : 'pitch', items, edges}, 'h', text(raw.h, 40));
+    // The layout is the one its photographs allow: more than three are a tour, three may be a triangle, one is a photo.
+    const count = pics.length, shape = !count ? 'pitch' : count === 1 ? 'photo' : count > 3 || base === 'tour' ? 'tour' : base === 'triangle' && count === 3 ? 'triangle' : 'row';
+    return optional({base: shape, items, edges}, 'h', text(raw.h, 40));
   },
 };
 
@@ -490,7 +494,7 @@ export function normalizeScene(raw) {
   for (const block of raw.blocks) { const op = normalizeOp({op: 'put', block}); if (op) scene = applyOp(scene, op); }
   for (const mark of Array.isArray(raw.marks) ? raw.marks.slice(0, 10) : []) { const op = normalizeOp({op: 'mark', ...mark}); if (op) scene = applyOp(scene, op); }
   const focus = typeof raw.focus === 'string' && focusExists(scene, raw.focus) ? raw.focus : '';
-  return {...scene, focus, pending: typeof raw.pending === 'string' ? text(raw.pending, 40) : null, lesson: raw.lesson === true, late: raw.late === true, ...(raw.cue === true ? {cue: true} : {}), ...(typeof raw.from === 'string' && /^z\d{1,6}$/u.test(raw.from) ? {from: raw.from} : {}), rev: raw.rev};
+  return {...scene, focus, pending: typeof raw.pending === 'string' ? text(raw.pending, 40) : null, lesson: raw.lesson === true, late: raw.late === true, ...(raw.cue === true ? {cue: true} : {}), ...(raw.canvas === true ? {canvas: true} : {}), ...(typeof raw.from === 'string' && /^z\d{1,6}$/u.test(raw.from) ? {from: raw.from} : {}), rev: raw.rev};
 }
 
 /** The scene as the director model reads it back: compact, ids first. */
@@ -610,8 +614,8 @@ export function flowLayout(nodes, edges, {narrow = false} = {}) {
   return {shape: 'layers', layers: rows, position};
 }
 
-/** A stage with these pins in place of the ones it had (its photographs and names kept). */
-export function pinned(stage, pins) {
-  const op = normalizeOp({op: 'put', block: {...stage, items: [...stage.items.filter(item => item.k !== 'pin'), ...pins]}});
+/** A stage with these pins in place of the ones it had (its photographs and names kept); with `on`, only in place of those on these photographs. */
+export function pinned(stage, pins, on = null) {
+  const op = normalizeOp({op: 'put', block: {...stage, items: [...stage.items.filter(item => item.k !== 'pin' || on && !on.includes(item.on)), ...pins]}});
   return op?.block ?? null;
 }
