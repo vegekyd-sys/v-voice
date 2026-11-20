@@ -2124,7 +2124,8 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-pointer svg { display: block; width: 100%; height: auto; }
 .board-pointer path { fill: #4b3d82; stroke: #fffdfb; stroke-width: 1.6; stroke-linejoin: round; }
 /* A tour: the photograph V is on, large; the others in a strip under it. */
-.board-stage-pic figcaption small { font-size: .9em; color: #8b7f99; }
+.board-stage-cap { margin: 0 0 6px; min-height: 1.4em; font-family: var(--hand); font-size: clamp(14px, 3.8cqw, 19px); line-height: 1.4; text-align: center; color: #5a4a66; transition: opacity .4s; }
+.board-stage-cap small { font-size: .9em; color: #8b7f99; }
 .board-stage-strip { display: flex; justify-content: center; gap: clamp(6px, 1.6cqw, 12px); margin: 2px auto 0; width: min(100%, calc(var(--room, 100vh) * .66 * 1000 / var(--sheet-h, 750))); }
 .board-stage-thumb { flex: 0 1 clamp(48px, 15cqw, 104px); min-width: 0; display: grid; gap: 3px; padding: 0; border: 0; background: none; cursor: pointer; font: inherit; color: inherit; transition: opacity .5s, transform .3s; }
 .board-stage-thumb-pic { display: block; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 2px; background: #f4ead0; box-shadow: 0 0 0 3px #fbf1cf, 0 6px 10px -8px #4d356073; opacity: .62; transition: opacity .3s; }
@@ -2134,6 +2135,8 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-stage-thumb[data-cur] .board-stage-thumb-pic { opacity: 1; box-shadow: 0 0 0 3px #fbf1cf, 0 0 0 5px var(--pen), 0 6px 10px -8px #4d356073; }
 .board-stage-thumb[data-cur] .board-stage-thumb-name { color: #4b3d82; }
 @media (prefers-reduced-motion: reduce) { .board-pointer { transition: opacity .2s; } .board-stage-ring[data-on] { animation: none; stroke-dashoffset: 0; } }
+/* The canvas has the page's whole width (a note beside it took a third of a middling panel, 11/21). */
+.board-body:has(> .board-block[data-type="stage"]) > .board-block[data-type="stage"] { grid-column: 1 / -1; max-width: none; }
 /* A page with a canvas on a wide panel (data-lay, set from the panel's own shape in board.jsx useFit).
    Lying on its side: the canvas on the left, the written blocks beside it, one under another (two abreast in
    that narrow column broke their words a character a line, 11/21). */

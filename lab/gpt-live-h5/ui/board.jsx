@@ -679,8 +679,8 @@ function Stage({block, view}) {
   const shown = large.filter(pic => shots[pic.img]);
   // One photograph: the sheet takes the photograph's own shape (within reason). A pitch stands upright.
   const lone = block.base !== 'pitch' && pics.length === 1 ? shots[pics[0].img]?.ratio : 0;
-  const height = block.base === 'pitch' ? 1000 : tour ? 760 : lone ? Math.round(1000 / Math.min(1.7, Math.max(.75, lone))) : pics.length === 3 && block.base === 'triangle' ? 900 : 720;
-  const slots = tour ? [{x: 30, y: 24, w: 940, h: height - 100}] : stageSlots(block.base, pics.map(pic => shots[pic.img]?.ratio ?? 4 / 3), height);
+  const height = block.base === 'pitch' ? 1000 : tour ? 700 : lone ? Math.round(1000 / Math.min(1.7, Math.max(.75, lone))) : pics.length === 3 && block.base === 'triangle' ? 900 : 720;
+  const slots = tour ? [{x: 30, y: 24, w: 940, h: height - 48}] : stageSlots(block.base, pics.map(pic => shots[pic.img]?.ratio ?? 4 / 3), height);
   const rects = Object.fromEntries(large.map((pic, index) => [pic.id, fitIn(slots[index], shots[pic.img]?.ratio)]));
   const place = chip => block.base === 'pitch' ? {x: PITCH.x + chip.at[0] / 1000 * PITCH.w, y: PITCH.y + chip.at[1] / 1000 * PITCH.h} : {x: chip.at[0], y: chip.at[1] / 1000 * height};
   const box = pin => { const r = rects[pin.on], [x1, y1, x2, y2] = pin.box; return {x1: r.x + x1 / 1000 * r.w, y1: r.y + y1 / 1000 * r.h, x2: r.x + x2 / 1000 * r.w, y2: r.y + y2 / 1000 * r.h}; };
@@ -721,7 +721,7 @@ function Stage({block, view}) {
               style={{left: pct(r.x, 1000), top: pct(r.y, height), width: pct(r.w, 1000), height: pct(r.h, height)}} {...opener(view.enlarge, shot?.src, pic.h ?? pic.img)}>
               <Tape />
               {shot && <img src={shot.src} alt={pic.h ?? pic.img} decoding="async" />}
-              {pic.h && <figcaption>{pic.h}{tour && pic.d && <small> · {pic.d}</small>}</figcaption>}
+              {pic.h && !tour && <figcaption>{pic.h}</figcaption>}
             </figure>
           );
         })}
@@ -751,6 +751,8 @@ function Stage({block, view}) {
         })}
         {aim && <i className="board-stage-aim" data-aim="true" style={{left: pct(aim.x, 1000), top: pct(aim.y, height)}} />}
       </div>
+      {/* (A tour's caption is a line of its own under the sheet: on a small sheet it ran into the strip.) */}
+      {tour && <p className="board-stage-cap" data-ink={String(told.length > 0 || Boolean(picked))}>{current.h ?? ''}{current.d && <small> · {current.d}</small>}</p>}
       {tour && (
         <div className="board-stage-strip">
           {pics.map(pic => (

@@ -104,7 +104,8 @@ function picturedOnce(block, scene) {
   // the blocks beside it are words (the cars again at the head of a comparison, 11/20), and what can
   // be seen is shown by the photographs, not drawn (a sketch of a car body beside two photos of cars).
   if (block.t === 'stage') return block;
-  if (others.some(other => other.t === 'stage')) return block.t === 'photo' || block.t === 'draw' ? null : unpictured(block);
+  // (Nor a chart of the same things in boxes: a flow of the halls beside their photographs, 11/21.)
+  if (others.some(other => other.t === 'stage')) return block.t === 'photo' || block.t === 'draw' || block.t === 'flow' ? null : unpictured(block);
   for (const other of others) { if (other.t === 'photo') used.add(other.query); for (const item of [...itemsOf(other), ...(other.sides ?? [])]) if (item.img) used.add(item.img); }
   if (block.t === 'photo') return used.has(block.query) || others.some(other => other.t === 'photo') ? null : block;
   const once = item => { if (!item.img) return item; if (used.has(item.img)) { const {img, ...rest} = item; return rest; } used.add(item.img); return item; };
@@ -458,7 +459,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
                   const kept = stage.items.filter(item => item.k === 'pin' && op.block.items.some(pic => pic.k === 'pic' && pic.id === item.on && shown.get(item.on) === pic.img));
                   op = {op: 'put', block: {...op.block, id: stage.id, items: [...op.block.items.filter(item => item.k !== 'pin'), ...kept].slice(0, 24)}};
                 }
-                if (row.scene.blocks.some(block => block.t === 'photo' || block.t === 'draw' || scenePictures({blocks: [block]}).size)) row.scene = {...row.scene, blocks: row.scene.blocks.filter(block => block.t !== 'photo' && block.t !== 'draw').map(unpictured)};
+                if (row.scene.blocks.some(block => block.t === 'photo' || block.t === 'draw' || block.t === 'flow' || scenePictures({blocks: [block]}).size)) row.scene = {...row.scene, blocks: row.scene.blocks.filter(block => !['photo', 'draw', 'flow'].includes(block.t)).map(unpictured)};
               }
               const old = row.scene.blocks.find(block => block.id === op.block.id);
               if (old && !growsFrom(old, op.block)) op = {op: 'put', block: {...op.block, id: `${op.block.id}${row.scene.blocks.length + 1}`.slice(-24)}};
