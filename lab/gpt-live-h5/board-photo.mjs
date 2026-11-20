@@ -107,9 +107,11 @@ export function rankPicture(item, query) {
   if (title === wanted) score += 1;
   // The thing searched for is written first. A Chinese title that does not name it is about
   // something else (Mega 烈空坐 for "超梦 Mega进化", a list of the whole Pokedex, 11/20).
-  // (Only for a thing with a Chinese name: a Chinese title often leaves out "GTA6"; and an
-  // English title names a Chinese thing in other words.)
-  if (words.length > 1 && /\p{Script=Han}/u.test(words[0]) && /\p{Script=Han}/u.test(title) && !title.includes(words[0])) score -= 2;
+  // Its first two characters are enough: titles write 航海王1199話 for 航海王1199话, 露西亚
+  // for 露西娅. (Only for a thing with a Chinese name: a Chinese title often leaves out
+  // "GTA6", and an English title names a Chinese thing in other words.)
+  const named = (words[0]?.match(/\p{Script=Han}/gu) ?? []).slice(0, 2).join('');
+  if (words.length > 1 && named && /\p{Script=Han}/u.test(title) && !title.includes(named)) score -= 2;
   if (REFERENCE.test(source)) score += 2;
   if (STOCK.test(source)) score -= 3;
   // What the query itself asks for ("…海报", "…同人图", "超级超梦") is not held against a title.
