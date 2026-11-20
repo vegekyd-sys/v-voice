@@ -240,6 +240,9 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     return value;
   }
   return {
+    /** Whether "no picture" for this query is an answer worth keeping, not a lookup that could
+     * not be made (the image search refused or timed out): the page may ask again for those. */
+    settled(query) { const hit = cache.get(clean(query)); return Boolean(hit && now() - hit.at < ttlMs); },
     /** The picture for a query, or null when nothing suitable is found. */
     async find(query, {signal, search: searchNow = search} = {}) {
       const key = clean(query);

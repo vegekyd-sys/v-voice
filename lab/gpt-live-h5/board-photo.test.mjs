@@ -184,3 +184,15 @@ test('image-search results are ranked: titled with the name, from a reference, n
   assert.ok(rankPicture(result('2025 Tesla Model 3', 'cars.com'), '特斯拉 Model 3') > rankPicture(result('Tesla logo', 'cars.com'), '特斯拉 Model 3'), 'every word of the query counts');
   assert.ok(rankPicture(result('电车', 'pixabay.com', {thumbnail: {src: 'https://imgs.search.brave.com/x', width: 500, height: 120}}), '电车') < rankPicture(result('电车', 'baike.baidu.com'), '电车'));
 });
+
+test('"no picture" is settled; an image search that refused or failed is not, so it can be asked again', async () => {
+  let refuse = true;
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', braveGapMs: 0, languages: [], wait: async () => {},
+    fetchImpl: async url => url.startsWith('https://api.search.brave.com/') ? (refuse ? {ok: false, status: 429} : json({results: []})) : image()});
+  assert.equal(await finder.find('梦幻 剧场版'), null);
+  assert.equal(finder.settled('梦幻 剧场版'), false, 'refused twice (429): not an answer');
+  refuse = false;
+  assert.equal(await finder.find('梦幻 剧场版'), null, 'asked again');
+  assert.equal(finder.settled('梦幻 剧场版'), true, 'nothing found: an answer');
+  assert.equal(finder.settled('从没问过'), false);
+});
