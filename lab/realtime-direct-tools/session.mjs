@@ -76,6 +76,7 @@ export function directInstructions(catalog,context='',model='',options={}) {
 /** One real provider connection per dial; tool authorization stays in OpenClaw. */
 // Pacing of task narration (ms). A stage must hold for settleMs before it is
 // announced, so a burst of quick tool calls becomes one line.
+const FAREWELL_ONLY=/^[\s嗯好呀啊哦喔那行的，,。.!！~、]*(?:(?:拜拜|再见|晚安|回头见|下次(?:再)?聊|挂了|bye(?:[\s-]?bye)?)[\s啊呀啦哦喔咯，,。.!！~]*)+$/iu;
 export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageGapMs:15000,factGapMs:6000,idleMs:45000,idleMax:2,quietAfterUserMs:4000,startMs:2500,max:12,correctionDelayMs:400,abandonedResponseMs:8000});
 
 // Conversation records Seeduplex refused, by session: {hash, until}.
@@ -791,7 +792,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(role==='assistant')s.replyDelivery?.transcript(text,{final,source,responseId:metadata.responseId});
         if(role==='assistant'&&final){if(!s.unidentified)speakerRouting?.assistant(s.id,text);if(!source){s.mediaRecovery?.assistant(text);s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
         if(role==='user'){if(final){s.lookup.answered();s.mediaRecovery?.user();}if(final)s.replyDelivery?.user(text,{turnId:metadata.turnId});if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
-        if(role==='user'&&final&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}
+        // (The caller's own goodbye over V's is not a change of mind.)
+        if(role==='user'&&final&&s.ending&&!FAREWELL_ONLY.test(text)){clearEnding(s);emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{}),responseId:metadata.responseId,turnId:metadata.turnId});
         };
         if(role==='assistant')routeOutput('transcript',{role,text,final,source},deliver);else deliver();

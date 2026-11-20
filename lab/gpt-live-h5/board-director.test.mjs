@@ -395,3 +395,23 @@ test('a lesson starting keeps the title and print being drawn for the question; 
   assert.equal(result.reason, 'drawn');
   assert.deepEqual(director.scene('q').blocks.map(block => block.t), ['photo']);
 });
+
+test('a caller\'s turn that draws nothing leaves the script\'s page in place for the rest of the reading', async () => {
+  const {STREAM_INSTRUCTIONS, refineStreamOp} = await import('./board-lesson.mjs');
+  let calls = 0, next = null;
+  const director = createBoardDirector({stream: {instructions: STREAM_INSTRUCTIONS, refine: refineStreamOp}, complete: async function* () {
+    calls++;
+    if (next) { yield next; return; }
+    yield '{"op":"scene","title":"罗马三天"}\n{"op":"put","block":{"id":"l","t":"list","items":[{"id":"a","h":"斗兽场","q":"第一天从斗兽场开始"}]}}\n';
+  }});
+  const script = '罗马景点散，先按三天排。第一天从斗兽场开始，票和古罗马广场是同一张。';
+  director.note('c', {title: '罗马三天', ask: '那罗马怎么玩', script, lines: [{say: script, show: ''}]});
+  assert.equal((await director.run({owner: 'c', trigger: 'assistant_end', clientRev: 0, turns: [{role: 'assistant', text: script}]})).reason, 'joined');
+  // A cough, heard as a turn of the caller's: the director draws nothing for it.
+  next = '{"op":"none"}\n';
+  const cough = await director.run({owner: 'c', trigger: 'user', clientRev: director.scene('c').rev, turns: [{role: 'assistant', text: '罗马景点散，先按三天排。'}, {role: 'user', text: '嗯'}]});
+  assert.notEqual(cough.reason, 'drawn');
+  const before = calls;
+  assert.equal((await director.run({owner: 'c', trigger: 'assistant_progress', clientRev: director.scene('c').rev, turns: [{role: 'user', text: '嗯'}, {role: 'assistant', text: '第一天从斗兽场开始，票和古罗马广场是同一张。'}]})).reason, 'same');
+  assert.equal(calls, before);
+});

@@ -275,6 +275,9 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
           return report('same', {rev: row.scene.rev});
         }
       }
+      // (A caller's turn that turns out to draw nothing, a cough or "嗯", leaves the script's page the
+      // script's: put back in `report` below. Otherwise the rest of the reading was drawn as a new page.)
+      const scriptPage = row.aheadFor;
       if (trigger === 'user') row.aheadFor = '';
       row.controller?.abort();
       // Lookups answer one question. What was found for the last one must not
@@ -284,7 +287,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       // a few seconds; a picture guessed now would only flash by before it. If
       // no lesson comes, V's own words bring the picture as usual.
       const last = turns?.at(-1);
-      if (trigger === 'user' && defers(typeof last === 'string' ? last : last?.text)) return report('deferred');
+      if (trigger === 'user' && defers(typeof last === 'string' ? last : last?.text)) { row.aheadFor ||= scriptPage; return report('deferred'); }
       // During a lesson the page only needs the prepared picture. The caller
       // speaking again (after the lesson has started) ends the hold.
       if (row.heldUntil > now()) {
@@ -420,6 +423,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         }
         if (!controller.signal.aborted) parser.end();
         if (ahead && !controller.signal.aborted && ops) row.aheadFor = script(row.notes?.script);
+        if (trigger === 'user' && !ops && !controller.signal.aborted && !row.aheadFor) row.aheadFor = scriptPage;
         return report(controller.signal.aborted ? 'superseded' : ops ? 'drawn' : none ? 'none' : 'empty', {ops, firstOpMs, rev: row.scene.rev});
       } catch {
         return report(controller.signal.aborted ? 'superseded' : 'provider_failed', {ops, firstOpMs, rev: row.scene.rev});
