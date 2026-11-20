@@ -92,3 +92,16 @@ test('a stage takes the place of the print put up while the caller was asking', 
   await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '超梦长什么样'}, {role: 'assistant', text: said}]});
   assert.deepEqual(director.scene('c').blocks.map(block => block.t), ['stage']);
 });
+
+test('beside a stage the other blocks are words: no second set of pictures, no sketch', async () => {
+  const cars = {id: 's', t: 'stage', base: 'row', items: [{id: 'a', k: 'pic', img: 'Model 3', cue: -1}, {id: 'b', k: 'pic', img: '卡罗拉', cue: -1}]};
+  const versus = {id: 'v', t: 'versus', sides: [{h: '电车', img: 'Model 3'}, {h: '油车', img: '卡罗拉'}], items: [{id: 'r', h: '格栅', cells: ['没有', '有'], cue: 2}]};
+  const draw = {id: 'd', t: 'draw', items: [{id: 'x', k: 'rect', p: [10, 10, 20, 20], cue: 3}]};
+  const pages = [[{op: 'scene', title: '电车油车'}, {op: 'put', block: versus}, {op: 'put', block: cars}, {op: 'put', block: draw}]];
+  const complete = async function* () { yield pages.shift().map(op => JSON.stringify(op)).join('\n') + '\n'; };
+  const director = createBoardDirector({complete, stream: {instructions: CANVAS_CUE_INSTRUCTIONS, refine: refineCueOp, turns: cueTurns, cue: true}});
+  await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '电车和油车外观有什么区别'}, {role: 'assistant', text: '左边是电车 Model 3，右边是油车卡罗拉。电车车头没有格栅，油车有。再看车尾，电车没有排气管。'}]});
+  const scene = director.scene('c');
+  assert.deepEqual(scene.blocks.map(block => block.t), ['versus', 'stage']);
+  assert.deepEqual(scene.blocks[0].sides.map(side => side.img), [undefined, undefined]);
+});

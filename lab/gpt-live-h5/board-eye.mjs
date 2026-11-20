@@ -15,7 +15,7 @@ export const EYE_INSTRUCTIONS = `你是 V 的指针。V 正在电话里讲解，
 - kind：ring（圈出一个部位，最常用）；point（只停住不圈：讲整只、整个、很大的东西时）。
 - label 写这个部位的名字（「尾巴」「进气格栅」「屋脊兽」），贴在圈旁边。
 - 每一段最多一个；没有讲到照片上具体地方的段（开场、能力、来历、数字、总结、提问）不标。
-- 照片上看不到 V 讲的东西就不标，不要猜一个位置（照片里没有充电口，就不要圈「充电口」）。
+- 照片上看不到 V 讲的东西就不标，不要猜一个位置（照片里没有充电口，就不要圈「充电口」）。V 说某样东西「没有」（没有格栅、没有排气管）时也不标。
 - 最多 8 个，少而准。`;
 
 const json = text => {
@@ -41,7 +41,8 @@ export async function lookAt({complete, shots, said, signal}) {
   const known = new Set(shots.map(shot => shot.id)), seen = new Set();
   return (json(text)?.pins ?? []).slice(0, 8).map((pin, index) => {
     const cue = Number(pin?.cue), q = Number.isInteger(cue) && cue >= 0 && cue < parts.length ? cueQuote(said, cue) : '';
-    if (!q || !known.has(pin.on) || seen.has(cue)) return null;
+    // ("无", "没有排气管": what is not there is not pointed at.)
+    if (!q || !known.has(pin.on) || seen.has(cue) || /^(无|没有|不)/u.test(String(pin.label ?? '').trim())) return null;
     seen.add(cue);
     return {id: `n${index + 1}`, k: 'pin', on: pin.on, box: pin.box, kind: pin.kind === 'point' ? 'point' : 'ring', h: pin.label, q};
   }).filter(Boolean);

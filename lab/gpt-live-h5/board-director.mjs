@@ -99,9 +99,11 @@ const growsFrom = (old, next) => old.t === next.t && (old.t === 'stage' || (old.
 // `block` without pictures the page already shows (another block's, or its own twice); a second large print is dropped (null).
 function picturedOnce(block, scene) {
   const others = scene.blocks.filter(other => other.id !== block.id), used = new Set();
-  // A stage is the page's large print: it keeps its photographs, and no other print goes beside it.
+  // A stage is the page's large print: it keeps its photographs, and no other print goes beside it;
+  // the blocks beside it are words (the cars again at the head of a comparison, 11/20), and what can
+  // be seen is shown by the photographs, not drawn (a sketch of a car body beside two photos of cars).
   if (block.t === 'stage') return block;
-  if (block.t === 'photo' && others.some(other => other.t === 'stage')) return null;
+  if (others.some(other => other.t === 'stage')) return block.t === 'photo' || block.t === 'draw' ? null : unpictured(block);
   for (const other of others) { if (other.t === 'photo') used.add(other.query); for (const item of [...itemsOf(other), ...(other.sides ?? [])]) if (item.img) used.add(item.img); }
   if (block.t === 'photo') return used.has(block.query) || others.some(other => other.t === 'photo') ? null : block;
   const once = item => { if (!item.img) return item; if (used.has(item.img)) { const {img, ...rest} = item; return rest; } used.add(item.img); return item; };
@@ -109,6 +111,13 @@ function picturedOnce(block, scene) {
   // (The two or three things a comparison is between keep their pictures: a header with one picture missing reads as broken.)
   for (const side of next.sides ?? []) if (side.img) used.add(side.img);
   for (const key of ['cols', 'nodes', 'items']) if (Array.isArray(next[key])) next[key] = next[key].map(once);
+  return next;
+}
+// A block without its pictures (beside a stage).
+function unpictured(block) {
+  const bare = item => { if (!item?.img) return item; const {img, ...rest} = item; return rest; };
+  const next = {...block};
+  for (const key of ['cols', 'nodes', 'items', 'sides']) if (Array.isArray(next[key])) next[key] = next[key].map(bare);
   return next;
 }
 // An answer worth a picture: a few sentences, or anything that follows a lookup.
@@ -414,7 +423,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
                   const kept = stage.items.filter(item => item.k === 'pin' && op.block.items.some(pic => pic.k === 'pic' && pic.id === item.on && shown.get(item.on) === pic.img));
                   op = {op: 'put', block: {...op.block, id: stage.id, items: [...op.block.items.filter(item => item.k !== 'pin'), ...kept].slice(0, 24)}};
                 }
-                if (row.scene.blocks.some(block => block.t === 'photo')) row.scene = {...row.scene, blocks: row.scene.blocks.filter(block => block.t !== 'photo')};
+                if (row.scene.blocks.some(block => block.t === 'photo' || block.t === 'draw' || scenePictures({blocks: [block]}).size)) row.scene = {...row.scene, blocks: row.scene.blocks.filter(block => block.t !== 'photo' && block.t !== 'draw').map(unpictured)};
               }
               const old = row.scene.blocks.find(block => block.id === op.block.id);
               if (old && !growsFrom(old, op.block)) op = {op: 'put', block: {...op.block, id: `${op.block.id}${row.scene.blocks.length + 1}`.slice(-24)}};
