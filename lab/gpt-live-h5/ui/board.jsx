@@ -132,7 +132,7 @@ function Thumb({query, name, view, seed, onGone, onShape, open = false, onOpen =
   const pins = (view.pins ?? []).filter(pin => pin.img === query);
   const act = onOpen && !open && src ? {role: 'button', tabIndex: 0, 'aria-label': `放大：${plain(name ?? query)}`, 'data-enlarge': 'true', onClick: onOpen, onKeyDown: event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen(); } }} : opener(view.enlarge, src, name ?? query);
   return (
-    <span className="board-thumb" data-ready={String(Boolean(src))} data-open={open || undefined} data-pinned={pins.length ? 'true' : undefined} style={{'--tilt': tilt(seed + ':img', 3) + 'deg', ...(ratio ? {'--shape': Math.min(2.2, Math.max(.6, ratio))} : {})}} {...act}>
+    <span className="board-thumb" data-ready={String(Boolean(src))} data-open={open || undefined} data-pinned={pins.length ? 'true' : undefined} style={{'--tilt': open ? '0deg' : tilt(seed + ':img', 3) + 'deg', ...(ratio ? {'--shape': Math.min(2.2, Math.max(.6, ratio))} : {})}} {...act}>
       {src && <img src={src} alt={query} decoding="async" onLoad={event => { const {naturalWidth: width, naturalHeight: height} = event.currentTarget; if (width && height) { setRatio(width / height); onShape?.(width / height); } }} />}
       {src && ratio > 0 && pins.length > 0 && <Pins pins={pins} ratio={ratio} view={view} />}
     </span>
