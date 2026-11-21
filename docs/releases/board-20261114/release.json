@@ -254,5 +254,27 @@
     "gatewayNote": "The Gateway had been restarted at 2026-11-21 02:00:48 CST, before these releases and not by them (PID 992785 throughout).",
     "change": "Picture searches: queued by arrival on the free plan, at once on a fast plan (rate read from x-ratelimit-limit); a refused search takes the next turn; small pictures preferred; 3.5 s a file. Gallery: the names height only grows for one set of pictures (it looped 87<->56 and blanked the page); at most four size changes a frame; BoardGuard error boundaries keep the call page when a block, page or the board fails to draw.",
     "acceptance": "Tianyi asked to fix the blank page at the root and to merge and release. Production Public calls after publish, '给我找几张塞尔达王国之泪的图看看，林克、塞尔达公主和天空岛的', at 1440x944 (a size that reproduced the loop locally) and 1440x900: no page errors, the gallery and note on the page at hang-up, 6 of 6 pictures each; server lookups 1.0-3.6 s, concurrent."
+  },
+  "boardWorksRelease": {
+    "commit": "1fa9471d505b6691a32272eac548f8a082d65d1b",
+    "mergePRs": [
+      246
+    ],
+    "filesSha256": "09dd47fea99e2373a4b08d7d06603d2cb011b62dc4b28c745b2261f1a3446bfe",
+    "previousRunningCommit": "48f1722d4d16af9bbb668ba4f8e1d928a8c5fff8",
+    "publishedAt": "2026-11-21T23:13:02+08:00",
+    "mainCI": "Voice push run 44917114792: success",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "publishNote": "The web node was busy (a call in progress) from 23:06; the release tool waited and switched it when idle, 23:12:25. The devices node switched at once.",
+    "iosShellRevision": "17a7a71da06caa954a43fae70c9e7cca6769d0d3e7a1c25c1bf6947d54aaf8b3",
+    "gatewayIdentityPreserved": true,
+    "gatewayNote": "openclaw-gateway.service PID 992785 before and after (running since 2026-11-21 02:00:48 CST).",
+    "configuration": "No change to production's private configuration: the shelf of made things and the canvas are on wherever the call board is on (VOICE_BOARD_ASSETS=0 / VOICE_BOARD_CANVAS=0 turn one off). V's own image is the copy of V's canonical avatar packaged with the release.",
+    "change": "The shelf of made things (pictures and videos V makes go up on the board; the voice model is told what is on the caller's screen; found photographs and V's own image as references; a viewer with save; a director's pass over a video's script); one rule for what the voice model does itself and what goes to the backend, with four checks in code (a named thing not at hand, a reference not on the screen, a lookup refused for lack of access, a video over fifteen seconds); the canvas from claude/board-canvas-live (places ringed on photographs).",
+    "acceptance": "Tianyi: merge and release it yourself, both switches on, all of it; verify after release. Before release, on Candidate board-assets-20261121 at the pull request's head with neither switch set: a picture made from V's own image (37.8 s) and a lesson with places ringed. Routing: 62 cases on the real voice model with stand-in tools, 104/124 before and 125/130 after (docs/research/voice-routing/handbook.md). After release: both nodes report 1fa9471d and filesSha256 09dd47fe…, ready, no calls; the production page serves the new bundle and the changelog's first entry is this release; a production Public call (synthesized speech): a lesson on the Eiffel Tower with a photograph (the eye pinned places: 2 pins on 1 picture) and a request to find pictures (first picture 5.3 s; 7 photographs found and checked; nothing drawn that was not asked for); no page errors.",
+    "notVerifiedInProduction": "Creation on the personal entry (a picture or video made in a production call, V's own image as the reference) was verified on the Candidate only: the production personal entry needs Tianyi's own link. A real voice, a noisy room, saving in the iOS shell and a long call on a narrow phone are not verified."
   }
 }
