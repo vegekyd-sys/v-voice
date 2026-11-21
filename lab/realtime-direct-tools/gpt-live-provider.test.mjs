@@ -9,6 +9,14 @@ function media(state){
   class OpusScript{static Application={VOIP:1};constructor(){}encode(){return Buffer.from([1,2]);}decode(packet){const b=Buffer.alloc(3840);for(let i=0;i<b.length;i+=2)b.writeInt16LE((packet?.[0]??1)*1000,i);return b;}delete(){}}
   return {werift:{RTCPeerConnection,useOPUS:o=>o,RtpHeader:class{constructor(o){Object.assign(this,o);}},RtpPacket:class{constructor(h,p){this.header=h;this.payload=p;}}},OpusScript};
 }
+// Stands in for the routing model: which tool is its judgement, here a fixed one per kind of sentence.
+const judge=async({tools,user})=>{
+  const said=user.match(/要办的事：(.*)/u)?.[1]??'',has=name=>tools.some(tool=>tool.name===name);
+  if(has('explain_on_board')&&/讲解|讲讲/u.test(said))return {name:'explain_on_board',args:{topic:said}};
+  if(has('end_call')&&/拜拜|挂电话/u.test(said))return {name:'end_call',args:{}};
+  if(has('web_search')&&/查|搜|股价|新闻/u.test(said))return {name:'web_search',args:{query:said}};
+  return null;
+};
 class Socket extends EventEmitter{constructor(){super();this.readyState=1;this.sent=[];}send(s){this.sent.push(JSON.parse(s));}close(){this.readyState=3;this.emit('close');}}
 async function fixture({tools,route,resolveAuth,model,now}={}){
   const events=[],calls=[],audio=[],text=[],closes=[],ws=new Socket();
@@ -18,7 +26,7 @@ async function fixture({tools,route,resolveAuth,model,now}={}){
   const fetches=[];
   const fetchImpl=async(url,init)=>{fetches.push({url,init});return {ok:true,status:201,headers:new Headers({location:'/v1/realtime/calls/rtc_u23_Em7Mvp3oMOyinaFyEylD7nKHGz6ZmT38'}),text:async()=>'v=0\r\nanswer'};};
   const bridge=new GptLiveBridge(request,{createWebSocket:async(url,options)=>{ws.url=url;ws.options=options;return ws;},resolveAuth:resolveAuth??(async()=>({token:'tok',accountId:'acct'})),loadMedia:async()=>media(ws),fetchImpl,model,
-    route:route??createDelegationRouter({audit:e=>events.push(e)}),notes:'媒体说明',...(now?{now}:{})});
+    route:route??createDelegationRouter({audit:e=>events.push(e),complete:judge}),notes:'媒体说明',...(now?{now}:{})});
   return {bridge,ws,events,calls,audio,text,closes,fetches,request};
 }
 const item=(id,textValue)=>({type:'delegation.created',item:{id,type:'delegation',target:'client',content:[{type:'input_text',text:textValue}]},offset_ms:5000});

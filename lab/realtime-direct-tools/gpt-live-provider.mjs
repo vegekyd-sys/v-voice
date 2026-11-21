@@ -448,7 +448,7 @@ export class GptLiveBridge {
     // The model sometimes answers "好，我讲讲" and never delegates. When the caller's own words ask for an
     // explanation, the lesson is prepared anyway; a delegation that still comes for them is already served.
     void guess.choice.then(choice=>{
-      if(choice?.name!=='explain_on_board'||choice.via!=='quick')return;
+      if(choice?.name!=='explain_on_board'||choice.via==='fallback')return;
       const timer=setTimeout(()=>{
         if(this.closed||this.guess!==guess)return;
         this.guess=null;this.served={text,at:this.now()};
