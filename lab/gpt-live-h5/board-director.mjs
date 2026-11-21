@@ -2,7 +2,7 @@
 // it on the caller's screen. It runs beside the voice model, never in its
 // audio path, and has no tools, permissions or say in what V does. Its output
 // is validated line by line (board-scene.mjs) before anything reaches a page.
-import {applyOp, createLineParser, emptyScene, normalizeOp, pictureSubjects, sceneDigest, scenePictures, zoneDigest, zoneId} from './board-scene.mjs';
+import {applyOp, createLineParser, emptyScene, loose, normalizeOp, pictureSubjects, sceneDigest, scenePictures, zoneDigest, zoneId} from './board-scene.mjs';
 import {clauseOf, clauses} from './board-clause.mjs';
 import {appendFile, mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -336,7 +336,17 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       // two or three of a comparison are looked at together (V goes back and forth between them).
       // Nothing is looked at twice for the same words.
       const look = async () => {
-        const subjects = pictureSubjects(row.scene);
+        // Only the pictures these words are about: a page keeps its pictures over several answers, and a
+        // short reply about one thing had every picture of the page looked at with it (eleven, 11/21).
+        // A picture belongs to these words when its item hangs on them, or they name it (the caller asks
+        // about one of the things on the page, and V says more of it); one that is up from the start (the
+        // page's print) or the head of a comparison, when the page was drawn for them or is about them.
+        const heard = loose(said), hangs = q => Boolean(q) && heard.includes(loose(q));
+        const about = block => block.q ? hangs(block.q) : (block.items ?? []).some(item => hangs(item.q));
+        const fresh = drawn.some(op => op.op === 'put' || op.op === 'scene');
+        const named = subject => loose(String(subject.name ?? '')).length >= 2 && heard.includes(loose(subject.name));
+        const subjects = pictureSubjects(row.scene).filter(subject => subject.group ? about(row.scene.blocks.find(block => block.id === subject.group) ?? {})
+          : subject.q ? hangs(subject.q) || named(subject) : fresh || row.scene.blocks.some(about));
         if (!subjects.length) return null;
         const begun = now(), serial = row.scene.serial, parts = clauses(said);
         const put = (img, places) => {
@@ -348,7 +358,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         const shot = async (subject, id) => { const found = await eye.find(subject.img); return found?.bytes ? {id, img: subject.img, h: subject.name, bytes: found.bytes, type: found.type} : null; };
         row.eyes ??= new Map();
         if (row.eyes.size > 80) row.eyes.clear();
-        const alone = subjects.filter(subject => !subject.group), starts = alone.map(subject => subject.q ? clauseOf(said, subject.q) : 0);
+        const alone = subjects.filter(subject => !subject.group), starts = alone.map(subject => !subject.q ? 0 : clauseOf(said, hangs(subject.q) ? subject.q : subject.name));
         const groups = [...new Set(subjects.filter(subject => subject.group).map(subject => subject.group))];
         const seen = await Promise.all([
           ...alone.map(async (subject, index) => {

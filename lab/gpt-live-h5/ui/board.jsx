@@ -109,7 +109,7 @@ function Pins({pins, ratio, view}) {
         <svg viewBox={`0 0 ${size.width} ${size.height}`} aria-hidden="true">
           {pins.filter(pin => pin.kind === 'ring').map((pin, index) => { const b = box(pin); return <path key={index} className="board-pin-ring" pathLength="1" data-on={pin === on || undefined} d={handRing((b.x1 + b.x2) / 2, (b.y1 + b.y2) / 2, Math.max(12, (b.x2 - b.x1) / 2 + 5), Math.max(12, (b.y2 - b.y1) / 2 + 5), pin.q)} />; })}
         </svg>
-        {pins.filter(pin => pin.h).map((pin, index) => { const b = box(pin), above = b.y1 > 30; return <span key={index} className="board-pin-tag" data-on={pin === on || undefined} data-below={!above || undefined} style={{left: Math.min(size.width - 40, Math.max(40, (b.x1 + b.x2) / 2)), top: above ? b.y1 - 6 : b.y2 + 6}}>{pin.h}</span>; })}
+        {pins.filter(pin => pin.h).map((pin, index) => { const b = box(pin), above = b.y1 > 44; return <span key={index} className="board-pin-tag" data-on={pin === on || undefined} data-below={!above || undefined} style={{left: Math.min(size.width - 40, Math.max(40, (b.x1 + b.x2) / 2)), top: above ? b.y1 - 12 : b.y2 + 12}}>{pin.h}</span>; })}
         {at && <i className="board-pin-aim" data-aim="true" style={on.kind === 'point' ? {left: (at.x1 + at.x2) / 2, top: (at.y1 + at.y2) / 2} : {left: (at.x1 + at.x2) / 2 + (at.x2 - at.x1) * .36 + 4, top: (at.y1 + at.y2) / 2 + (at.y2 - at.y1) * .36 + 4}} />}
       </>
     );

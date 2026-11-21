@@ -132,3 +132,20 @@ test('the places pinned on a picture go when the picture does', async () => {
   await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '展品'}, {role: 'assistant', text: words}]});
   assert.deepEqual(director.scene('c').pins.map(item => item.img), ['肉形石']);
 });
+
+test('a later answer on the same page looks only at the pictures it is about', async () => {
+  const first = '先看翠玉白菜，它只有十八厘米高。再看肉形石，像一块红烧肉。', second = '肉形石确实有意思，一层层的纹路是石头自己长出来的。', third = '好的，没问题，下次想看别的再告诉我，我随时都在。';
+  const list = {id: 'l', t: 'list', items: [{id: 'a', h: '翠玉白菜', img: '翠玉白菜', cue: 0}, {id: 'b', h: '肉形石', img: '肉形石', cue: 2}]};
+  const pages = [lines({op: 'scene', title: '展品'}, {op: 'put', block: list}), lines({op: 'none'}), lines({op: 'none'})];
+  const complete = async function* () { yield pages.shift(); };
+  const asked = [];
+  const eye = {find: async query => ({bytes: Buffer.from(query), type: 'image/png'}), see: async ({shots}) => { asked.push(shots[0].img); return []; }};
+  const director = createBoardDirector({complete, eye, stream});
+  await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '有哪些展品'}, {role: 'assistant', text: first}]});
+  assert.deepEqual(asked.sort(), ['翠玉白菜', '肉形石']);
+  // The next answer is about one of them: only that picture is looked at. The one after is about neither.
+  const turns = [{role: 'user', text: '有哪些展品'}, {role: 'assistant', text: first}, {role: 'user', text: '肉形石'}];
+  const again = await director.run({owner: 'c', trigger: 'assistant_end', turns: [...turns, {role: 'assistant', text: second}]});
+  await director.run({owner: 'c', trigger: 'assistant_end', turns: [...turns, {role: 'assistant', text: second}, {role: 'user', text: '谢谢'}, {role: 'assistant', text: third}]});
+  assert.deepEqual([asked, again.eye.shots], [['翠玉白菜', '肉形石', '肉形石'], 1]);
+});
