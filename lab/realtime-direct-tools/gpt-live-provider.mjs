@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {compactSearchResult,plainText as plain,searchDigest,memoryDigest,shanghaiDate} from './search-result.mjs';
 import {processExited} from './tools.mjs';
 import {GptLivePeer} from './gpt-live-peer.mjs';
+import {GPT_LIVE_RESEARCH_TOOL} from './gpt-live-research.mjs';
 
 // GPT Live 1.1 through the ChatGPT (Codex) login. That login is admitted over
 // WebRTC only, so this service is the media peer; events travel on the call's
@@ -161,8 +162,8 @@ export function gptLiveInitialItems(instructions){
 const verbatim=text=>`原样念出 <say> 里的内容，不加开场白，不解释，不改写，不省略：<say>${text}</say>`;
 
 export class GptLiveBridge {
-  constructor(request,{createWebSocket,resolveAuth,route,loadMedia,fetchImpl=fetch,model=GPT_LIVE_MODEL,voice=GPT_LIVE_VOICE,notes='',display=true,connectTimeoutMs=25000,pollGapMs=1500,now=()=>Date.now()}){
-    Object.assign(this,{request,createWebSocket,resolveAuth,route,loadMedia,fetchImpl,model,voice:gptLiveVoice(voice),notes,display,connectTimeoutMs,pollGapMs,now});
+  constructor(request,{createWebSocket,resolveAuth,route,loadMedia,fetchImpl=fetch,model=GPT_LIVE_MODEL,voice=GPT_LIVE_VOICE,notes='',research=null,display=true,connectTimeoutMs=25000,pollGapMs=1500,now=()=>Date.now()}){
+    Object.assign(this,{request,createWebSocket,resolveAuth,route,loadMedia,fetchImpl,model,voice:gptLiveVoice(voice),notes,research,display,connectTimeoutMs,pollGapMs,now});
     this.delegations=new Map();this.background=new Set();this.follows=new Map();this.abort=new AbortController();
     this.closed=false;this.ready=false;this.muted=false;this.bargeAt=0;this.turnOpen=false;this.turnLoud=false;this.turnDoneAt=0;this.turnId=null;this.userText='';this.replyText='';this.script=null;this.reading=false;this.heldBack=false;this.ending=false;this.nudged=false;this.delegated_=0;this.lastChoice=null;
     this.history=[];this.spoke=false;this.heard=false;this.greeting=null;this.ownCalls=0;
@@ -430,7 +431,7 @@ export class GptLiveBridge {
     if(this.history.length>HISTORY_TURNS)this.history.splice(0,this.history.length-HISTORY_TURNS);
   }
   // Controls of a running task are offered only while one is running.
-  offered(working){return (this.request.tools??[]).filter(tool=>working||!['openclaw_agent_control','cancel_task','process'].includes(tool.name));}
+  offered(working){return [...(this.request.tools??[]).filter(tool=>working||!['openclaw_agent_control','cancel_task','process'].includes(tool.name)),...(this.research?[GPT_LIVE_RESEARCH_TOOL]:[])];}
   // The delegation for what the caller just said arrives up to a second after their words do.
   // Choosing the tool starts with the words; nothing is executed until the model delegates.
   speculate(text){
@@ -485,7 +486,29 @@ export class GptLiveBridge {
     if(choice.name==='end_call'){if(this.ending){entry.state='done';return;}this.ending=true;}
     entry.name=choice.name;entry.state='running';
     this.remember('tool','',{name:choice.name,query:String(choice.args?.query??choice.args?.topic??choice.args?.question??choice.args?.url??'')});
+    if(choice.name===GPT_LIVE_RESEARCH_TOOL.name&&this.research){void this.lookInto(id,entry,String(choice.args?.question??text));return;}
     this.request.onToolCall?.({callId:id,name:choice.name,args:choice.args});
+  }
+  // Something that takes reading the pages: asked of the stronger model behind this one. It answers in
+  // about ten seconds; the passages of an ordinary search are the fallback when it does not.
+  async lookInto(id,entry,question){
+    const startedAt=this.now();
+    this.request.onDiagnostic?.({stage:'research-started',elapsedMs:Math.round(startedAt-this.startedAt)});
+    this.append('这件事要读网页原文才能查清，大约十秒。现在只说一句很短的话（比如“我去查清楚，等我几秒”），然后安静地等结果；结果回来之前不要凭印象回答，也不用再说话。',{...this.on(id),channel:'commentary'});
+    try{
+      const context=this.history.slice(-6).filter(turn=>turn.role!=='tool'&&turn.text).map(turn=>`${turn.role==='user'?'用户':'V'}：${turn.text}`).join('\n');
+      const found=await this.research({question,context,signal:this.abort.signal});
+      if(this.closed||entry.state==='done')return;
+      entry.state='done';this.resultAt=this.now();
+      this.request.onDiagnostic?.({stage:'research-done',elapsedMs:Math.round(this.now()-startedAt),attempt:found.searches});
+      this.append(`查清楚了（已经读过网页原文，按今天的情况）：\n${found.answer}${this.answerNow()}`,{...this.on(id),channel:'speakable',whole:true});
+    }catch{
+      if(this.closed||entry.state==='done')return;
+      this.request.onDiagnostic?.({stage:'research-failed',elapsedMs:Math.round(this.now()-startedAt)});
+      // The ordinary search still answers, from its passages.
+      if((this.request.tools??[]).some(tool=>tool.name==='web_search')){entry.name='web_search';this.request.onToolCall?.({callId:id,name:'web_search',args:{query:question.slice(0,200)}});}
+      else{entry.state='done';this.append('这次没能查清。如实告诉用户没查到，不要编。',{...this.on(id),channel:'speakable'});}
+    }
   }
   get busy(){return this.working||Boolean(this.script)||[...this.delegations.values()].some(entry=>entry.state==='routing'||entry.state==='running');}
   // After an ordinary reply: two things the model says and does not do.

@@ -453,3 +453,27 @@ test('everything a search returned reaches the model: six passages, the last as 
   for(let i=1;i<=6;i++)assert.match(text,new RegExp(`\\n${i}\\. 第${i}场比赛（示例站，2026-11-20）：第${i}场的比分`,'u'));
   assert.match(text,/今天是 \d{4}-\d{2}-\d{2}/u);
 });
+
+test('what takes reading the pages is asked of the stronger model; the ordinary search is the fallback',async()=>{
+  const tools=[{type:'function',name:'web_search',parameters:{type:'object',properties:{query:{type:'string'}},required:['query']}}];
+  const make=async research=>{
+    const seen=[];
+    const f=await fixture({tools,route:async({tools:offered})=>{seen.push(offered.map(t=>t.name));return {name:'web_answer',args:{question:'甲队本赛季的阵容和每人数据'}};}});
+    f.bridge.research=research;f.seen=seen;await ready(f);return f;
+  };
+  const asked=[];
+  const f=await make(async request=>{asked.push(request);return {answer:'甲队十一胜四负，首发是 A、B、C。',searches:2,elapsedMs:9000};});
+  userSays(f,'u1','甲队今年阵容怎么样');say(f,idOf(12),'甲队今年阵容怎么样');await pause(20);
+  assert(f.seen.at(-1).includes('web_answer'),'offered to the router only when there is a backend');
+  assert.equal(f.calls.length,0,'not one of the session\'s tools');assert.equal(asked[0].question,'甲队本赛季的阵容和每人数据');assert.match(asked[0].context,/用户：甲队今年阵容怎么样/u);
+  const sent=appends(f);assert.equal(sent[0].channel,'commentary');assert.match(sent[0].content[0].text,/要读网页原文才能查清，大约十秒/u);
+  assert.equal(sent.at(-1).channel,'speakable');assert.match(sent.slice(1).map(e=>e.content[0].text).join(''),/^查清楚了（已经读过网页原文，按今天的情况）：\n甲队十一胜四负，首发是 A、B、C。\n（资料到此为止/u);
+  assert.deepEqual(f.events.filter(e=>e.diag?.stage?.startsWith('research-')).map(e=>e.diag.stage),['research-started','research-done']);
+  // It fails: the passages of an ordinary search answer instead, on the same delegation.
+  const g=await make(async()=>{throw Error('research HTTP 429');});
+  say(g,idOf(13),'甲队今年阵容怎么样');await pause(20);
+  assert.deepEqual(g.calls,[{callId:idOf(13),name:'web_search',args:{query:'甲队本赛季的阵容和每人数据'}}]);
+  // Without a backend the tool does not exist.
+  const h=await fixture({tools,route:async({tools:offered})=>{assert(!offered.some(t=>t.name==='web_answer'));return {name:'web_search',args:{query:'x'}};}});await ready(h);say(h,idOf(14),'查一下');await pause(20);assert.equal(h.calls[0].name,'web_search');
+  f.bridge.close();g.bridge.close();h.bridge.close();
+});

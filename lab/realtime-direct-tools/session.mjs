@@ -825,7 +825,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       const generation=wrap?null:s.providerGeneration=(s.providerGeneration??0)+1;
       const owned={...request,instructions};
       for(const [key,value]of Object.entries(owned))if(key.startsWith('on')&&typeof value==='function')owned[key]=wrap?wrap(key,value):(...args)=>{if(current(s)&&generation===s.providerGeneration)return value(...args);};
-      if(s.model==='gpt-live-11')return new GptLiveBridge(owned,{createWebSocket,resolveAuth:gptLive.resolveAuth,loadMedia:gptLive.loadMedia,model:gptLive.model,voice:s.voice,display:s.display,
+      if(s.model==='gpt-live-11')return new GptLiveBridge(owned,{createWebSocket,resolveAuth:gptLive.resolveAuth,loadMedia:gptLive.loadMedia,model:gptLive.model,voice:s.voice,display:s.display,research:gptLive.research??null,
         notes:s.mediaCliAvailable?mediaCliInstructions(instructionCatalog,{surface:s.surface}):'',
         route:createDelegationRouter({complete:gptLive.complete??null,audit:event=>audit({...event,voiceSessionId:s.id})})});
       return s.model==='seeduplex'?new SeeduplexRealtimeVoiceBridge(owned,{createWebSocket})
