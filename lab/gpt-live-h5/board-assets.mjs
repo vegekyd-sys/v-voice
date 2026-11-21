@@ -19,6 +19,11 @@ export const ASSET_ID = /^a[1-9]\d{0,2}$/u;
 // A photograph found for the board ("p3"): on the shelf so that V can name it as the picture to work from.
 export const SHELF_ID = /^[ap][1-9]\d{0,2}$/u;
 const MAX_PHOTOS = 16;
+// A picture the call always has ("v": V's own image).
+export const STANDING_ID = /^[b-oq-z]$/u;
+/** V's own image as the shelf holds it. `see`: what is in the picture, for the voice model and the script writer. */
+export const SELF_IMAGE = {id: 'v', name: 'V 自己的形象', query: 'standing:v', aliases: ['V', '你自己', '你的形象', '自己的形象', 'V的形象', '你的头像', 'V的头像'],
+  see: '银白色长发、齐刘海、深蓝色外套的 3D 卡通女孩，戴着发光的耳机，身边飘着一只发光的白色小精灵'};
 const bounded = (value, limit) => Array.from(String(value ?? '').replace(/\s+/gu, ' ').trim()).slice(0, limit).join('');
 const https = value => { try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : ''; } catch { return ''; } };
 
@@ -190,14 +195,18 @@ function nameFit(wanted, name) {
  * the call's canvas. `see`: createAssetEye. `watch`ers are told whenever what
  * the voice model should know has changed.
  */
-export function createAssetShelf({director = null, see = null, now = Date.now, audit = () => {}, maxOwners = 64, lookWaitMs = 0, makeLimit = 3, setTimer = setTimeout} = {}) {
+export function createAssetShelf({director = null, see = null, now = Date.now, audit = () => {}, maxOwners = 64, lookWaitMs = 0, makeLimit = 3, setTimer = setTimeout, standing = []} = {}) {
   const owners = new Map();
+  // Pictures every call has at hand from its first moment (V's own image): named in a command like a
+  // found photograph ("--image v"), lent out the same way, never crowded off the shelf.
+  const kept = (Array.isArray(standing) ? standing : []).filter(item => STANDING_ID.test(item?.id ?? '') && item.name).slice(0, 4);
+  const pictures = value => [...value.standing, ...value.photos];
   const row = id => {
     let value = owners.get(id);
     if (!value) {
       for (const [key, old] of owners) if (now() - old.touched >= OWNER_TTL_MS) owners.delete(key);
       while (owners.size >= maxOwners) owners.delete(owners.keys().next().value);
-      value = {assets: [], photos: [], shots: 0, checks: 0, lanes: [Promise.resolve(), Promise.resolve()], count: 0, picked: '', watchers: new Set(), turns: new Map(), maker: null, made: 0, making: Promise.resolve(), touched: now(), stamp: 0};
+      value = {standing: kept.map(item => ({id: item.id, kind: 'image', state: 'ready', query: item.query ?? `standing:${item.id}`, name: bounded(item.name, 24), aliases: item.aliases ?? [], see: bounded(item.see, 160), url: '', source: 'search', standing: true})), assets: [], photos: [], shots: 0, checks: 0, lanes: [Promise.resolve(), Promise.resolve()], count: 0, picked: '', watchers: new Set(), turns: new Map(), maker: null, made: 0, making: Promise.resolve(), touched: now(), stamp: 0};
       owners.set(id, value);
     }
     value.touched = now();
@@ -209,9 +218,10 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
   };
   const find = (value, ref) => {
     const text = String(ref ?? '').trim().replace(/^@/u, '');
+    if (STANDING_ID.test(text.toLowerCase())) return value.standing.find(item => item.id === text.toLowerCase()) ?? null;
     if (SHELF_ID.test(text)) return value.assets.find(asset => asset.id === text) ?? value.photos.find(photo => photo.id === text) ?? null;
     const url = https(text);
-    return url ? value.assets.find(asset => asset.url === url) ?? value.photos.find(photo => photo.url === url) ?? null : null;
+    return url ? value.assets.find(asset => asset.url === url) ?? pictures(value).find(photo => photo.url === url) ?? null : null;
   };
   const add = (value, asset) => {
     value.assets.push(asset);
@@ -260,10 +270,11 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
   const meant = (value, token) => {
     const text = String(token ?? '').trim().replace(/^@/u, '');
     if (https(text)) return {link: true};
+    if (STANDING_ID.test(text.toLowerCase())) return {id: text.toLowerCase(), item: value.standing.find(item => item.id === text.toLowerCase()) ?? null};
     if (SHELF_ID.test(text)) return {id: text, item: value.assets.find(item => item.id === text) ?? value.photos.find(item => item.id === text) ?? null};
     let best = null, fit = 0;
-    for (const item of [...value.photos, ...value.assets.filter(asset => asset.kind === 'image' && asset.state === 'ready')]) {
-      const score = Math.max(nameFit(text, item.name), item.query ? nameFit(text, item.query) : 0);
+    for (const item of [...value.standing, ...value.photos, ...value.assets.filter(asset => asset.kind === 'image' && asset.state === 'ready')]) {
+      const score = Math.max(nameFit(text, item.name), item.query && !item.standing ? nameFit(text, item.query) : 0, ...(item.aliases ?? []).map(alias => plainName(alias) === plainName(text) ? 2 : 0));
       // (Of two that fit alike, the later one: the one last put before the caller.)
       if (score >= fit && score > 0) { best = item; fit = score; }
     }
@@ -320,7 +331,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     async lend(owner, command = null) {
       const value = owners.get(owner);
       if (!value || !api.share) return;
-      const named = command === null ? value.photos.slice(-6) : [...new Set([...String(command).matchAll(REFERENCE)].map(match => meant(value, match[2] ?? match[3] ?? match[4]).item).filter(item => item && value.photos.includes(item)))];
+      const named = command === null ? value.photos.slice(-6) : [...new Set([...String(command).matchAll(REFERENCE)].map(match => meant(value, match[2] ?? match[3] ?? match[4]).item).filter(item => item && pictures(value).includes(item)))];
       await Promise.all(named.filter(photo => !photo.url || photo.until < now()).map(async photo => {
         let ok = false;
         try { const lent = await api.share(photo.query); if (lent?.url) { photo.url = lent.url; photo.until = lent.until ?? Infinity; ok = true; } } catch { /* It stays without an address. */ }
@@ -349,7 +360,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
         if (missing.wrong) return {command: text, error: `「${missing.wrong.name}」这张搜到的图不对：图里其实是${missing.wrong.see}。本次没有提交。换一张对的当参考；屏幕上没有对的就重新找一张，或者告诉用户后只按文字来画。${have ? `现有：${have}。` : ''}`};
         return {command: text, error: missing.held
           ? `「${missing.item.name || missing.id}」这张这次没能取到，不能当参考图；本次没有提交。可以换一张，或者告诉用户后只按文字来画。`
-          : `屏幕上没有${missing.name ? `叫「${bounded(missing.name, 20)}」的图片` : `可用的图片 ${missing.id}`}；本次没有提交。${have ? `现有：${have}。` : ''}请对着名字重写命令。`};
+          : `屏幕上没有${missing.name ? `叫「${bounded(missing.name, 20)}」的图片` : `可用的图片 ${missing.id}`}；本次没有提交。${have ? `现有：${have}。` : ''}用户指的是其中一张就对着名字重写命令；用户要的那张本来就不在屏幕上（他以前发的照片、文件里的图、以前做的作品），就用 delegate_to_v 交后台，不要换一张顶替。`};
       }
       const creation = readCreation(resolved);
       if (!creation) return {command: resolved};
@@ -443,6 +454,11 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     },
     /** The few lines the voice model keeps about the caller's screen. */
     context(owner) {
+      const text = api.shelfContext(owner);
+      // (What the call always has at hand is said with it: "用你的形象" is a picture V has.)
+      return kept.length ? `${text}常驻素材（随时可当参考图，不在画面上）：${kept.map(item => `${item.id}「${item.name}」${item.see ? `（${bounded(item.see, 60)}）` : ''}`).join('、')}。用户说“用你的形象”“你自己”“把你放进去”，创作命令里写 --image v（要它和别的图一起出现就写 --ref v）。` : text;
+    },
+    shelfContext(owner) {
       const value = owners.get(owner), ready = (value?.assets ?? []).filter(asset => asset.state === 'ready').slice(-8);
       const coming = (value?.assets ?? []).filter(asset => asset.state === 'making').map(asset => `${asset.kind === 'video' ? '视频' : '图片'}${asset.from ? `（由 ${asset.from} 做成）` : ''}`);
       const making = coming.length ? `正在做、还没好：${coming.join('、')}。` : '';
@@ -450,6 +466,11 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       if (!ready.length) return value?.photos.length || making ? `屏幕素材现状：还没有做好的图片或视频。${making}${photo ? `用户正点着 ${photo.id}「${photo.name}」。` : ''}${photosLine(value, owner)}` : ASSET_CONTEXT_EMPTY;
       const picked = ready.find(asset => asset.id === value.picked);
       return `屏幕素材现状：${ready.map(describe).join('；')}。${making}${picked ? `用户正点着 ${picked.id}。` : photo ? `用户正点着 ${photo.id}「${photo.name}」。` : `最新的是 ${ready.at(-1).id}。`}${photosLine(value, owner)}`;
+    },
+    /** What V has at hand to make things from, by name: what was made, what was found, what it always has. */
+    names(owner) {
+      const value = owners.get(owner);
+      return [...kept.map(item => item.name), ...(value?.assets ?? []).filter(asset => asset.state === 'ready').slice(-8).map(asset => `${asset.name || (asset.kind === 'video' ? '视频' : '图片')}（${asset.kind === 'video' ? '做好的视频' : '做好的图'}）`), ...(value?.photos ?? []).filter(photo => photo.fits !== false).slice(-8).map(photo => `${photo.name}（搜到的照片）`)];
     },
     /** For V's backend: the same things with their links (it has no screen to look at). */
     backendContext(owner) {
@@ -472,7 +493,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       const value = owners.get(owner);
       if (!value) return {assets: [], photos: [], picked: '', busy: false, stamp: 0};
       // (With the found photographs things were made from, so a frame can show what it is being made of.)
-      const sources = value.photos.filter(photo => photo.url && value.assets.some(asset => asset.from === photo.id || asset.refs?.includes(photo.id))).map(photo => ({id: photo.id, kind: 'image', state: 'ready', url: photo.url, name: photo.name, source: 'search', at: 0}));
+      const sources = pictures(value).filter(photo => photo.url && value.assets.some(asset => asset.from === photo.id || asset.refs?.includes(photo.id))).map(photo => ({id: photo.id, kind: 'image', state: 'ready', url: photo.url, name: photo.name, source: 'search', at: 0}));
       // (`photos`: every found photograph by what the board calls for it, so the page can say which one was tapped.)
       return {assets: [...sources, ...value.assets.map(card)], photos: value.photos.map(photo => ({id: photo.id, query: photo.query, name: photo.name})), picked: value.picked, busy: value.assets.some(asset => asset.state === 'making'), stamp: value.stamp};
     },

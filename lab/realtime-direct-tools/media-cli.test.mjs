@@ -132,7 +132,7 @@ test('a thing may be made from several pictures: one of each character',()=>{
  assert.throws(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model gemini-2.1 --ref '${A}' --ref 'http://plain.example/b.png' 'x'`)),/HTTPS/u);
  // A video: several pictures, each named in the script by its place; a forgotten marker is put in.
  // A length it cannot make is refused in words the caller can be told.
- assert.throws(()=>validateMediaArgv(mediaArgv(`makaron video create --video-model fal-h3-max --duration 30 --script 'a cat'`)),/最长 15 秒/u);
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron video create --video-model fal-h3-max --duration 30 --script 'a cat'`)),/最长 15 秒[^]*delegate_to_v/u);
  assert.throws(()=>validateMediaArgv(mediaArgv(`makaron video create --video-model fal-h3-max --duration 3 --script 'a cat'`)),/5 到 15/u);
  const argv=mediaArgv(`makaron video create --video-model fal-h3-max --duration 5 --image '${A}' --image '${B}' --script '<<<media_1>>> 的路飞和 <<<media_2>>> 的基格尔德对战'`);
  assert.equal(validateMediaArgv(argv).flags.image,A+' '+B);

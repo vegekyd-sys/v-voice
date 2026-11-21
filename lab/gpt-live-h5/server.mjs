@@ -16,7 +16,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createAvatarReactionSelector, avatarEvaluatorFromEnv } from "./avatar-decision.mjs";
-import { AVATAR_FILES, taskActivity } from "./avatar-state.mjs";
+import { AVATAR_FILES, HOME_AVATAR_FILE, taskActivity } from "./avatar-state.mjs";
 import { createVoiceAccess } from "./access.mjs";
 import {createConversationCalls,callIdValid,callSummarizerFromEnv} from '../../lib/conversation-calls.mjs';
 import {readRelayUsage} from '../../lib/relay-usage.mjs';
@@ -40,9 +40,10 @@ import {createPhotoFinder} from './board-photo.mjs';
 import {STREAM_INSTRUCTIONS,createLessonWriter,refineStreamOp} from './board-lesson.mjs';
 import {CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
 import {scenePictures} from './board-scene.mjs';
-import {ASSET_ID,ASSET_MAKE_NOTES,ASSET_NOTES,ASSET_SCRIPT_NOTES,SHELF_ID,createAssetEye,createAssetShelf,pictureName} from './board-assets.mjs';
+import {ASSET_ID,ASSET_MAKE_NOTES,ASSET_NOTES,ASSET_SCRIPT_NOTES,SELF_IMAGE,SHELF_ID,createAssetEye,createAssetShelf,pictureName} from './board-assets.mjs';
 import {roomyPicture} from './board-picture-size.mjs';
 import {createVideoScriptWriter} from '../realtime-direct-tools/media-script.mjs';
+import {createMaterialCheck} from '../realtime-direct-tools/material-check.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Dialing is how a known caller retries; only anonymous callers keep the tight limit.
@@ -82,10 +83,15 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   // picture from here. Only where the service has a public HTTPS origin; the address is the whole permission.
   const lentPictures = new Map(), LEND_MS = 30 * 60000;
   // (And the pictures themselves, for the shelf's eye to check that each is the thing it was searched for.)
-  if (boardAssets && boardPhotos) boardAssets.picture = query => boardPhotos.find(query);
-  if (boardAssets && boardPhotos && hosted) boardAssets.share = async query => {
+  // (V's own image is a picture the call always has: the home portrait the call page shows, or the file VOICE_SELF_IMAGE names.)
+  let selfPicture = null;
+  const pictureType = bytes => bytes.subarray(0, 4).toString('latin1') === 'RIFF' ? 'image/webp' : bytes[0] === 0x89 ? 'image/png' : 'image/jpeg';
+  const standingPicture = query => query === SELF_IMAGE.query ? (selfPicture ??= readFile(process.env.VOICE_SELF_IMAGE || new URL('./assets/' + HOME_AVATAR_FILE, import.meta.url)).then(bytes => ({bytes, type: pictureType(bytes), title: SELF_IMAGE.name, source: 'V'}), () => null)) : null;
+  const heldPicture = query => standingPicture(query) ?? boardPhotos?.find(query) ?? null;
+  if (boardAssets) boardAssets.picture = heldPicture;
+  if (boardAssets && hosted) boardAssets.share = async query => {
     // (A thumbnail is lent out larger: a video model refuses a reference under 256 px a side.)
-    const found = await boardPhotos.find(query), picture = found?.bytes?.length ? await roomyPicture(found, {least: 512}) : found;
+    const found = await heldPicture(query), picture = found?.bytes?.length ? await roomyPicture(found, {least: 512}) : found;
     const kind = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'}[picture?.type];
     if (!picture?.bytes?.length || !kind) return null;
     for (const [key, lent] of lentPictures) if (lent.until < Date.now()) lentPictures.delete(key);
@@ -1258,7 +1264,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const assetsOn=process.env.VOICE_BOARD_ASSETS==='1'&&process.env.VOICE_BOARD_STREAM!=='0';
     const board=boardDirectorFromEnv(process.env,{audit:voiceAudit,prefetch:query=>photos?.find(query),defer:process.env.VOICE_BOARD_STREAM==='0'&&process.env.VOICE_BOARD_LESSON_SOURCE!=='parallel',...(process.env.VOICE_BOARD_UNIFIED==='0'?{}:{illustrate:args=>lesson?.illustrate(args)??null,
       ...(process.env.VOICE_BOARD_STREAM==='0'?{}:{stream:process.env.VOICE_BOARD_FOLLOW!=='word'?{instructions:CUE_INSTRUCTIONS+(assetsOn?ASSET_NOTES+ASSET_MAKE_NOTES:''),refine:refineCueOp,turns:cueTurns,cue:true}:{instructions:STREAM_INSTRUCTIONS+(assetsOn?ASSET_NOTES:''),refine:refineStreamOp}})})});
-    const assets=board&&assetsOn?createAssetShelf({director:board,audit:event=>board.log?.(event),lookWaitMs:Math.max(0,Math.min(6000,Number(process.env.VOICE_BOARD_LOOK_WAIT_MS??0)||0)),makeLimit:Math.max(0,Math.min(6,Number(process.env.VOICE_BOARD_MAKE_MAX??3)||0)),
+    const assets=board&&assetsOn?createAssetShelf({director:board,...(process.env.VOICE_SELF_IMAGE==='0'?{}:{standing:[SELF_IMAGE]}),audit:event=>board.log?.(event),lookWaitMs:Math.max(0,Math.min(6000,Number(process.env.VOICE_BOARD_LOOK_WAIT_MS??0)||0)),makeLimit:Math.max(0,Math.min(6,Number(process.env.VOICE_BOARD_MAKE_MAX??3)||0)),
       // One look at each thing made, on the board's own model, so V can say what is really in it (VOICE_BOARD_LOOK=0: no look).
       see:process.env.VOICE_BOARD_LOOK==='0'?null:createAssetEye({complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'700'})})}):null;
     if(assets){board.shelf=assets;assets.audience=process.env.VOICE_BOARD_AUDIENCE==='all'?'all':'owner';}
@@ -1285,7 +1291,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if(lesson)lesson.results=process.env.VOICE_BOARD_RESULT_LESSON!=='0';
     if(lesson)lesson.reroute=process.env.VOICE_BOARD_REROUTE==='1';
     if(lesson)lesson.source=['backend','parallel'].includes(process.env.VOICE_BOARD_LESSON_SOURCE)?process.env.VOICE_BOARD_LESSON_SOURCE:'service';
-    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,assets,videoScript,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
+    // (VOICE_MATERIAL_CHECK=0: nothing is looked at before a creation is submitted.)
+    const materialCheck=assets&&process.env.VOICE_MATERIAL_CHECK!=='0'?createMaterialCheck({complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'120'}),audit:event=>board.log?.(event)}):null;
+    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,assets,videoScript,materialCheck,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
       mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({environment:process.env}):null,

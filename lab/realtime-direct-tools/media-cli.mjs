@@ -45,7 +45,7 @@ export function validateMediaArgv(argv) {
   if(verb==='edit'&&flags['image-model']!=='gemini-2.1'||verb==='video create'&&flags['video-model']!=='fal-h3-max')throw Error('必须使用本次指定的创作模型');
   if(flags.aspect&&!/^\d{1,2}:\d{1,2}$/u.test(flags.aspect))throw Error('无效画幅');
   // (A length it cannot make is said so, so the caller can be told what it can: "三十秒" is asked for often.)
-  if(verb==='video create'&&flags.script&&!/^([5-9]|1[0-5])$/u.test(flags.duration??'5'))throw Error('本地校验未提交、未扣费：视频时长只支持 5 到 15 的整数秒。用最接近用户要求的时长重新提交（超过 15 秒就做 15 秒），并告诉用户一条最长 15 秒。');
+  if(verb==='video create'&&flags.script&&!/^([5-9]|1[0-5])$/u.test(flags.duration??'5'))throw Error('本地校验未提交、未扣费：这里一条视频只能做 5 到 15 的整数秒，最长 15 秒。用户要更长的，用 delegate_to_v 交后台去拼（告诉用户要多等一会儿）；用户同意先看 15 秒的，再按 15 秒重新提交。不到 5 秒的按 5 秒做。');
   if(verb==='video create'&&(!flags.script||!/^([5-9]|1[0-5])$/u.test(flags.duration??'5')||flags['video-resolution']&&flags['video-resolution']!=='768p'))throw Error('无效视频参数');
   if(verb==='video create'){
     const images=lists.image??[],references=[...flags.script.matchAll(/<<<media_(\d+)>>>/gu)].map(m=>Number(m[1]));

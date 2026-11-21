@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ASSET_CONTEXT_EMPTY, createAssetEye, createAssetShelf, pictureName, readCreation, asksOnlyToFind} from './board-assets.mjs';
+import {ASSET_CONTEXT_EMPTY, SELF_IMAGE, createAssetEye, createAssetShelf, pictureName, readCreation, asksOnlyToFind} from './board-assets.mjs';
 import {assetFamily, createAssetsClient} from './board-assets-client.mjs';
 import {createBoardDirector} from './board-director.mjs';
 import {normalizeOp, normalizeScene, sceneWorks} from './board-scene.mjs';
@@ -420,4 +420,39 @@ test('the eye checks a found photograph against the name it was searched under',
 test('a request only to find pictures is not one to draw any', () => {
   for (const said of ['V 帮我找几张皮卡丘和路飞的图片。', '搜一下布道石的照片', '有没有海贼王剧场版的海报', '查几张埃菲尔铁塔的壁纸给我看']) assert.equal(asksOnlyToFind(said), true, said);
   for (const said of ['给十二讲讲光合作用', '找几张图，再画一张他们同框的', '帮我生成一张海报', '为什么天是蓝的，找图给我讲讲', '', '好的']) assert.equal(asksOnlyToFind(said), false, said);
+});
+
+test('V\'s own image is always at hand: named in a command, lent like a found photograph, never taken for a version', async () => {
+  const board = director(), shelf = createAssetShelf({director: board, standing: [SELF_IMAGE]});
+  board.shelf = shelf;
+  const lent = [];
+  shelf.share = async query => { lent.push(query); return {url: 'https://voice.example/board-shared/00000000000000000000000000000000.webp', until: Date.now() + 60000}; };
+  // It is told to the voice model from the first moment, on an empty shelf too.
+  assert.match(shelf.context('call'), /常驻素材[^]*v「V 自己的形象」[^]*--image v/u);
+  assert.ok(shelf.context('call').startsWith(ASSET_CONTEXT_EMPTY));
+  assert.deepEqual(shelf.names('call'), ['V 自己的形象']);
+  // Not lent yet: it cannot be the reference, and nothing is submitted.
+  assert.match(shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 --image v '打电话的 V'", turn: {}}).error, /没能取到/u);
+  // By its id, or by what the caller calls it.
+  for (const [index, token] of ['v', 'V', "'你自己'", '"V 的形象"'].entries()) {
+    const command = `makaron edit --image-model gemini-2.1 --image ${token} '打电话的 V，第 ${index} 张'`;
+    await shelf.lend('call', command);
+    const begun = shelf.begin('call', {command, turn: {}});
+    assert.equal(begun.error, undefined, token);
+    assert.match(begun.command, /--image 'https:\/\/voice\.example\/board-shared\//u, token);
+  }
+  assert.deepEqual(lent, [SELF_IMAGE.query]);
+  // What was made from it says so; the portrait is its source, not one of its versions.
+  const made = shelf.page('call').assets;
+  assert.equal(made.find(item => item.id === 'v').source, 'search');
+  assert.deepEqual(made.find(item => item.id === 'a1').refs, ['v']);
+  // As a second picture beside one on the shelf.
+  const poster = await shelf.finish('call', 'a1', image(POSTER));
+  const both = shelf.begin('call', {command: `makaron edit --image-model gemini-2.1 --image ${poster.id} --ref v '把 V 放进海报'`, turn: {}});
+  assert.equal(both.error, undefined);
+  assert.equal((both.command.match(/https:/gu) ?? []).length, 2);
+  // A shelf without one says nothing of it and knows no "v".
+  const plain = createAssetShelf({director: director()});
+  assert.equal(plain.context('call'), ASSET_CONTEXT_EMPTY);
+  assert.match(plain.begin('call', {command: "makaron edit --image-model gemini-2.1 --image v 'x'", turn: {}}).error, /屏幕上没有/u);
 });

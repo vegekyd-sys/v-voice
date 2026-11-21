@@ -38,7 +38,14 @@ import {compactSearchResult,isSearchTool,searchMetrics} from './search-result.mj
 import {createAudioDeliveryMetrics} from './audio-delivery-metrics.mjs';
 import {IDLE_FAREWELL,IDLE_HANGUP_DEFAULTS,idleHangupDue,idleHangupExempt} from './idle-hangup.mjs';
 
-export const VOICE_TASK_ROUTING = '当前入口已启用前台快速创作时，简单图片和短视频按前台快速创作规则直接调用 Makaron CLI；无获准直接工具或需要完整创作编排时才委派后台。工具错误按返回的真实执行状态解释：明确未提交时说明尚未启动，提交结果未知时说明无法确认，不猜测正在做、已经排队或马上完成，不盲目重提。用户明确取消仍在执行的当前后台任务并改做新任务时，先实际 cancel_task，确认取消后再按直接工具或后台分工实际执行新目标。已完成的旧任务不能通过取消另一个无关任务来代替。任务分工：简单查询、日历和一两步明确操作直接调用原生工具。多步比较、跨资料调研、复杂规划或前台快速创作之外需要持续等待/反复轮询的任务，用 delegate_to_v 将完整目标及用户条件一次交给个人 V 后端语言模型。用户要求交给后端模型、交给 V 或交给后台处理时必须调用 delegate_to_v，即使已经给出完整命令，也不能自行用 exec/process/openclaw_tool 代做。这里的后端指另一个语言模型；exec/process 只是执行工具，命令的 background 参数也不是模型委派。只说‘交给后端’却自己执行不算委派。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，等待时正常聊天。只有真实的新事实才简短汇报，不反复播报等待、倒计时或轮询状态。只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
+// The one line between what the voice model does itself and what goes to V's backend, for every kind
+// of request (docs/research/voice-routing/handbook.md). It was a rule per kind of task, each added
+// after a call went wrong; a request of a new shape ("use your own image") then fell between them.
+export const VOICE_HANDOFF_RULE = '任务分工：自己做还是交后台，任何请求都按同一顺序问三件事，有一件答“否”就用 delegate_to_v 交后台。① 东西都在手上吗：要用的素材和工具你此刻都有——用户这句话、屏幕素材现状和常驻素材里列着的图、你自己的查询工具（记忆、联网、日历、讲解找图）；没有能办这件事的直接工具，也算不在手上。用户点名的照片、文件、以前的作品、品牌资料不在这些里面，就是不在手上。② 一口气能做完吗：一两步、中间不用看结果再做判断、半分钟左右有结果；要规划、反复试、比较取舍、成套成系列的不算。③ 只影响这通电话吗：结果只是说给用户听、放到屏幕上；要发出去、写进去、改掉别处的东西（消息、日程、提醒、文档、下单）不算。三件都是“是”就自己做，不交后台：查一件事、讲一件事、找图、聊天、出一张图或一条短视频都属于这种。前台可以快，但不能“差不多”：缺一样东西时不凭文字硬做、不拿别的顶替、不猜；工具回复查不了、没权限、没有这张图时，交后台接着办，不是说一句“查不了”就停。用户没说清要办什么（“帮我安排一下”）先问一句，不派任务。';
+// A lookup the voice model's own tool cannot make (no permission, not set up) is not the end of the
+// request: the backend has its own access. Said with the refusal itself, where the model reads it.
+export const handoffHint=(name,message,tools=[])=>['feishu_calendar','lark_read','memory_search','read','web_fetch','openclaw_tool'].includes(name)&&/permission|denied|forbidden|unauthori[sz]ed|scope|权限|未授权|未配置|没有这个|not granted/iu.test(String(message??''))&&tools.some(tool=>tool.name==='delegate_to_v')?'（这是你这里查不了，不是这件事办不成：用 delegate_to_v 把用户的原话交给后台去查，并告诉用户交给后台了。）':'';
+export const VOICE_TASK_ROUTING = VOICE_HANDOFF_RULE+'工具错误按返回的真实执行状态解释：明确未提交时说明尚未启动，提交结果未知时说明无法确认，不猜测正在做、已经排队或马上完成，不盲目重提。用户明确取消仍在执行的当前后台任务并改做新任务时，先实际 cancel_task，确认取消后再按直接工具或后台分工实际执行新目标。已完成的旧任务不能通过取消另一个无关任务来代替。交后台时用 delegate_to_v 将完整目标及用户条件一次交给个人 V 后端语言模型。用户要求交给后端模型、交给 V 或交给后台处理时必须调用 delegate_to_v，即使已经给出完整命令，也不能自行用 exec/process/openclaw_tool 代做。这里的后端指另一个语言模型；exec/process 只是执行工具，命令的 background 参数也不是模型委派。只说‘交给后端’却自己执行不算委派。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，等待时正常聊天。只有真实的新事实才简短汇报，不反复播报等待、倒计时或轮询状态。只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
 
 export const SELF_START_NOTICE='\n语音查询接话规则：仅对明确向 V 发起、需要 web_search 或 memory_search 的请求，用自己组织的一句极短口语回应查找目标，同一轮立即调用工具，不等待接话音频播放结束。先查记录约束的是事实回答，不禁止简短接话；结果回来前不能编造答案或声称查到。同一请求后续查询不重复接话。旁聊、电视、未说完的话、姓名介绍和普通聊天不触发本规则。该规则不能改变声音与姓名的绑定。每次问到当前身份都重新根据当前这句话的声音匹配已确认的姓名，不能沿用上一轮助手回答的名字。';
 const CALL_ENDING = '通话控制：用户对你说“好了，那我们就聊到这里”“今天先这样，下次再聊”“拜拜啦”等结束这通电话的告别，是 end_call 工具请求，不是普通闲聊。必须在当前这一轮调用 end_call({})，收到成功结果后简短告别，系统等真实告别音频播放完再关闭。只说“拜拜”“随时叫我”而不调用工具不算完成；不要等待用户再说一句“挂断”。“你能挂断吗”的功能讨论、转述别人说拜拜、结束一个话题但继续问问题、仅取消后台任务，都不表示结束电话。';
@@ -77,7 +84,7 @@ export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageG
 
 // Conversation records Seeduplex refused, by session: {hash, until}.
 const refusedRecords=new Map();
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null,videoScript=null}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null,videoScript=null,materialCheck=null}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -530,6 +537,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         // (A photograph found for the board and named in the command is first given an address the generator can fetch.)
         if(shelfFor(s))await assets.lend(s.id,args.command);
         if(signal.aborted||!current(s))throw Error('本次任务已取消');
+        // What the caller named and V does not have is not made from words: it goes to the backend
+        // (material-check.mjs; most requests name nothing and are not looked at).
+        if(materialCheck&&shelfFor(s)&&!mediaStatusQuestion(requestToken.text)&&/^\s*makaron\s+(?:edit|video\s+create)\b/u.test(args.command)){
+          const missing=await materialCheck.check({ask:requestToken.text??'',have:assets.names?.(s.id)??[],signal});
+          if(signal.aborted||!current(s))throw Error('本次任务已取消');
+          if(missing){audit({type:'tool.media-cli',voiceSessionId:s.id,callId,phase:'missing-material'});throw Error(`本地校验未提交、未扣费：用户说的「${missing}」不在你手上（屏幕素材和常驻素材里都没有）。不要凭文字硬画一个，也不要拿别的图顶替：用 delegate_to_v 把用户的原话完整交给后台，它能取到这样东西；并告诉用户这件事交给后台了，要多等一会儿。如果用户其实指的是屏幕上的某张图，对着名字重写命令。`);}
+        }
         const shelved=shelfFor(s)&&!mediaStatusQuestion(requestToken.text)?assets.begin(s.id,{command:args.command,turn:requestToken}):{command:args.command};
         if(shelved.error)throw Error(shelved.error);
         return s.localExecutions.start(async executionSignal=>{
@@ -754,7 +768,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         }
         if(call.name==='cancel_task')result=await cancel(s);
         if(call.name==='end_call'&&current(s)&&s.epoch===epoch)acceptEnding(s,call.callId);
-      } catch(error){result={error:controller.signal.aborted?'任务已取消。不要继续旧任务。':error.message};}
+      } catch(error){result={error:controller.signal.aborted?'任务已取消。不要继续旧任务。':error.message+(s.unidentified||s.publicVoice?'':handoffHint(call.name,error.message,[...(s.toolNames??[])].map(name=>({name}))))};}
       finally{admittedUserTurns.delete(call.callId);s.pending.delete(call.callId);s.toolOwners.delete(call.callId);if(s.retiredBridges.has(ownerBridge)&&![...s.toolOwners.values()].includes(ownerBridge)){ownerBridge.close();s.retiredBridges.delete(ownerBridge);}if(call.callId===s.backgroundCallId){s.backgroundCallId=null;s.backgroundBridge=null;if(!s.backend.snapshot())detached.delete(s);}}
       if(!current(s))return;
       // Explicit cancellation retires results, while ordinary conversational
@@ -828,7 +842,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const baseInstructions=s.publicVoice?PUBLIC_VOICE_INSTRUCTIONS+'\n'+PUBLIC_PRESENTATION_INSTRUCTIONS+'\n'+V_FRONTEND_PERSONA+'\n'+V_ONE_VOICE_POLICY+'\n'+VOICE_TASK_ROUTING.replaceAll('个人 V','V')+'\n'+VOICE_TASK_CONTROL_POLICY+'\n'+CALL_ENDING:(!s.unidentified?terminalInstructions(s.terminalContext()):'')+(!s.unidentified&&s.terminalContext().terminal.kind==='robot'?ROBOT_PRESENTATION_INSTRUCTIONS:'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader),mediaCliAvailable:s.mediaCliAvailable});
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
-      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+'\n'+ASSET_CONTEXT_EMPTY:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
+      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
       withoutContext:text=>text.replace(voiceConversationBlock(context,{sessionBound:s.sessionBound}),()=>voiceConversationBlock('',{sessionBound:s.sessionBound})),
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
       onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),
@@ -887,7 +901,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     // What is on the caller's screen, kept current for the voice model the way the device's state is:
     // the lines in its instructions are replaced, and it is told without being asked to speak.
     if(shelfFor(s)){
-      let screenText=ASSET_CONTEXT_EMPTY,screenTimer=null;
+      let screenText=s.screenStart??ASSET_CONTEXT_EMPTY,screenTimer=null;
       const refreshScreen=()=>{
         screenTimer=null;if(!current(s))return;
         const next=assets.context(s.id);if(next===screenText)return;

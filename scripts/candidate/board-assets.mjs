@@ -21,7 +21,7 @@ import {createLiveH5Server} from '../../lab/gpt-live-h5/server.mjs';
 import {createDirectVoiceService} from '../../lab/realtime-direct-tools/session.mjs';
 import {createVoiceMediaCli} from '../../lab/realtime-direct-tools/media-cli.mjs';
 import {createBoardDirector} from '../../lab/gpt-live-h5/board-director.mjs';
-import {createAssetShelf} from '../../lab/gpt-live-h5/board-assets.mjs';
+import {SELF_IMAGE, createAssetShelf} from '../../lab/gpt-live-h5/board-assets.mjs';
 
 const PORT = Number(process.env.BOARD_FIXTURE_PORT ?? 26329);
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -139,7 +139,7 @@ const board = createBoardDirector({complete: scriptedIllustrator, audit: log, re
 // The eye's stand-in: a moment's look, then what it "saw".
 const SEEN = [{name: '河谷晨光', see: '画面中间是一条蜿蜒的河，两边是陡峭的山谷，左边山坡有阳光，右边还在阴影里。'}, {name: '林间小鹿', see: '一只小鹿站在画面中间偏右，正回头看，背景是虚化的树林。'}, {name: '山间公路', see: '一条公路从画面下方伸向远处的雪山。'}];
 let looks = 0;
-const assets = createAssetShelf({director: board, audit: log, see: process.env.BOARD_FIXTURE_LOOK === '0' ? null : async () => { await pause(1300); return {...SEEN[looks++ % SEEN.length], parts: []}; }});
+const assets = createAssetShelf({director: board, audit: log, standing: [SELF_IMAGE], see: process.env.BOARD_FIXTURE_LOOK === '0' ? null : async () => { await pause(1300); return {...SEEN[looks++ % SEEN.length], parts: []}; }});
 board.shelf = assets; assets.audience = 'all';
 // Found photographs' stand-in: public sample pictures, and their own addresses as the ones they are "lent" under.
 const sample = query => `https://picsum.photos/id/${PHOTOS.find(([name]) => name === query)?.[2] ?? 1015}/900/600.jpg`;
