@@ -1,0 +1,332 @@
+[
+ {
+  "name": "fight-5",
+  "ask": "然后做一个很帅的 5 秒的打斗视频。",
+  "draft": "<<<media_1>>> 二档路飞和皮卡丘激烈打斗，热血动漫风",
+  "seconds": 5,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/41ead836-fb1f-493f-b290-bc05acc1aa47/snapshot-6ff6de93-9bf0-4af9-8841-7f6cc5b84620.jpg"
+  ]
+ },
+ {
+  "name": "fight-10-winner",
+  "ask": "做一个 10 秒的打斗，最后要皮卡丘赢。",
+  "draft": "<<<media_1>>> 路飞和皮卡丘打斗，最后皮卡丘获胜",
+  "seconds": 10,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/41ead836-fb1f-493f-b290-bc05acc1aa47/snapshot-6ff6de93-9bf0-4af9-8841-7f6cc5b84620.jpg"
+  ],
+  "must": [
+   "皮卡丘"
+  ],
+  "film": true
+ },
+ {
+  "name": "fight-13-odd",
+  "ask": "做一个 13 秒的打斗视频。",
+  "draft": "<<<media_1>>> 尼卡路飞和基格尔德打斗",
+  "seconds": 13,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/f64125d8-a1db-4bbf-901f-3338fcdd3101/snapshot-3561980b-2fc2-455d-abae-9733fa6ecaed.jpg"
+  ]
+ },
+ {
+  "name": "fight-15-demands",
+  "ask": "做一个 15 秒的，要有很多切镜、很多招数，路飞先被打飞，然后变出大拳头反击，最后两个人握手言和。",
+  "draft": "<<<media_1>>> 尼卡路飞和基格尔德打斗，路飞先被打飞再用大拳头反击，最后握手言和",
+  "seconds": 15,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/f64125d8-a1db-4bbf-901f-3338fcdd3101/snapshot-3561980b-2fc2-455d-abae-9733fa6ecaed.jpg"
+  ],
+  "must": [
+   "握",
+   "飞出去|打飞|击飞|轰飞|震飞|掀飞|砸飞|撞飞"
+  ]
+ },
+ {
+  "name": "fight-10-onetake",
+  "ask": "做一个 10 秒的一镜到底，不要切镜头。",
+  "draft": "<<<media_1>>> 尼卡路飞和基格尔德打斗，一镜到底不切镜头",
+  "seconds": 10,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/f64125d8-a1db-4bbf-901f-3338fcdd3101/snapshot-3561980b-2fc2-455d-abae-9733fa6ecaed.jpg"
+  ],
+  "oneTake": true,
+  "film": true
+ },
+ {
+  "name": "ad-5",
+  "ask": "把这个做成一个 5 秒的广告。",
+  "draft": "<<<media_1>>> 做成高级感广告",
+  "seconds": 5,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/41786c03-8b6a-485f-90c5-380ae390ffa0/snapshot-c5200f69-f33a-43db-848e-faf12d8535f5.jpg"
+  ],
+  "film": true
+ },
+ {
+  "name": "ad-15-slogan",
+  "ask": "做成 15 秒的广告大片，最后出现一句口号：好眠，从这一滴开始。",
+  "draft": "<<<media_1>>> 高级感广告大片，结尾出现口号",
+  "seconds": 15,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/41786c03-8b6a-485f-90c5-380ae390ffa0/snapshot-c5200f69-f33a-43db-848e-faf12d8535f5.jpg"
+  ],
+  "must": [
+   "好眠，?从这一滴开始"
+  ],
+  "film": true
+ },
+ {
+  "name": "ad-7-odd",
+  "ask": "做一个 7 秒的广告片。",
+  "draft": "<<<media_1>>> 广告片",
+  "seconds": 7,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/41786c03-8b6a-485f-90c5-380ae390ffa0/snapshot-c5200f69-f33a-43db-848e-faf12d8535f5.jpg"
+  ]
+ },
+ {
+  "name": "product-only",
+  "ask": "只拍瓶子，不要出现人，做 10 秒。",
+  "draft": "<<<media_1>>> 只拍瓶子的产品展示，不出现人物",
+  "seconds": 10,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/7f217436-472c-45ee-8493-279cb09ae206/snapshot-b719ec7b-6dee-437d-bf3a-707fe02c460c.jpg"
+  ],
+  "must": [
+   "瓶"
+  ]
+ },
+ {
+  "name": "calm-landscape-5",
+  "ask": "让这张风景动起来。",
+  "draft": "<<<media_1>>> 风景动起来",
+  "seconds": 5,
+  "images": [
+   "https://picsum.photos/id/1015/1280/720.jpg"
+  ],
+  "film": true,
+  "oneTake": true
+ },
+ {
+  "name": "calm-dog-5",
+  "ask": "让小狗动起来，可爱一点。",
+  "draft": "<<<media_1>>> 小狗动起来，可爱",
+  "seconds": 5,
+  "images": [
+   "https://picsum.photos/id/237/1024/768.jpg"
+  ],
+  "film": true,
+  "oneTake": true
+ },
+ {
+  "name": "minimal-ask",
+  "ask": "动起来。",
+  "draft": "<<<media_1>>> 动起来",
+  "seconds": 5,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/5b2b928b-942c-48f0-afd2-2c7e9369ab26/snapshot-40983e2c-5b2f-4b31-86d4-440afb3d752b.jpg"
+  ],
+  "oneTake": true
+ },
+ {
+  "name": "drone-8-english",
+  "ask": "make it a cinematic 8 second drone shot",
+  "draft": "<<<media_1>>> cinematic drone shot",
+  "seconds": 8,
+  "images": [
+   "https://picsum.photos/id/1015/1280/720.jpg"
+  ],
+  "must": [
+   "^[^\\u4e00-\\u9fff]*$"
+  ]
+ },
+ {
+  "name": "speak-5",
+  "ask": "让她开口说一句：你好，我是 V。",
+  "draft": "<<<media_1>>> 她开口说：你好，我是 V",
+  "seconds": 5,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/e75bdd0f-238e-4aa0-b7d8-e2301456e032/snapshot-6f4e1159-cc8a-4992-9ca8-4b05d5e1c74e.jpg"
+  ],
+  "must": [
+   "你好，?我是 ?V",
+   "（[^）]*）[:：]“你好"
+  ],
+  "film": true,
+  "oneTake": true
+ },
+ {
+  "name": "dance-15",
+  "ask": "让她跳一段舞，15 秒，节奏感强一点。",
+  "draft": "<<<media_1>>> 她跳舞，节奏感强",
+  "seconds": 15,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/e75bdd0f-238e-4aa0-b7d8-e2301456e032/snapshot-6f4e1159-cc8a-4992-9ca8-4b05d5e1c74e.jpg"
+  ]
+ },
+ {
+  "name": "funny-10",
+  "ask": "把这个做成 10 秒的搞笑视频。",
+  "draft": "<<<media_1>>> 搞笑视频",
+  "seconds": 10,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/5b2b928b-942c-48f0-afd2-2c7e9369ab26/snapshot-40983e2c-5b2f-4b31-86d4-440afb3d752b.jpg"
+  ]
+ },
+ {
+  "name": "kids-story-10",
+  "ask": "给小朋友做一个 10 秒的小故事，柴犬和猫咪一起去冒险。",
+  "draft": "<<<media_1>>> 柴犬和猫咪一起去冒险的小故事，适合小朋友",
+  "seconds": 10,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/5b2b928b-942c-48f0-afd2-2c7e9369ab26/snapshot-40983e2c-5b2f-4b31-86d4-440afb3d752b.jpg"
+  ]
+ },
+ {
+  "name": "two-refs-10",
+  "ask": "让 V 和这两只宠物一起跳舞，10 秒。",
+  "draft": "<<<media_1>>> 的 V 和 <<<media_2>>> 的柴犬布偶猫一起跳舞",
+  "seconds": 10,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/e75bdd0f-238e-4aa0-b7d8-e2301456e032/snapshot-6f4e1159-cc8a-4992-9ca8-4b05d5e1c74e.jpg",
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/5b2b928b-942c-48f0-afd2-2c7e9369ab26/snapshot-40983e2c-5b2f-4b31-86d4-440afb3d752b.jpg"
+  ],
+  "film": true
+ },
+ {
+  "name": "four-refs-10",
+  "ask": "让 V 牵着这只小狗在峡湾边散步，手里拿着那个小棕瓶，10 秒。",
+  "draft": "V 牵着小狗在峡湾边散步，手里拿着小棕瓶",
+  "seconds": 10,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/e75bdd0f-238e-4aa0-b7d8-e2301456e032/snapshot-6f4e1159-cc8a-4992-9ca8-4b05d5e1c74e.jpg",
+   "https://picsum.photos/id/237/1024/768.jpg",
+   "https://picsum.photos/id/1015/1280/720.jpg",
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/41786c03-8b6a-485f-90c5-380ae390ffa0/snapshot-c5200f69-f33a-43db-848e-faf12d8535f5.jpg"
+  ]
+ },
+ {
+  "name": "two-refs-fight-5",
+  "ask": "让这两张图里的角色打一架，5 秒。",
+  "draft": "两张图里的角色打斗",
+  "seconds": 5,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/41ead836-fb1f-493f-b290-bc05acc1aa47/snapshot-6ff6de93-9bf0-4af9-8841-7f6cc5b84620.jpg",
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/f64125d8-a1db-4bbf-901f-3338fcdd3101/snapshot-3561980b-2fc2-455d-abae-9733fa6ecaed.jpg"
+  ]
+ },
+ {
+  "name": "text-only-5",
+  "ask": "做一个 5 秒的视频：一只橘猫在雨夜的霓虹街头跳上屋顶。",
+  "draft": "一只橘猫在雨夜的霓虹街头跳上屋顶",
+  "seconds": 5,
+  "images": [],
+  "mustNot": [
+   "<<<media"
+  ],
+  "film": true
+ },
+ {
+  "name": "text-only-10",
+  "ask": "做一个 10 秒的视频，一架纸飞机飞过整座城市。",
+  "draft": "一架纸飞机飞过整座城市",
+  "seconds": 10,
+  "images": [],
+  "mustNot": [
+   "<<<media"
+  ]
+ },
+ {
+  "name": "draft-with-shots",
+  "ask": "做成 10 秒的打斗。",
+  "draft": "<<<media_1>>> Shot 1 (5s): 路飞出拳。Shot 2 (5s): 皮卡丘放电。",
+  "seconds": 10,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/41ead836-fb1f-493f-b290-bc05acc1aa47/snapshot-6ff6de93-9bf0-4af9-8841-7f6cc5b84620.jpg"
+  ]
+ },
+ {
+  "name": "draft-timecoded",
+  "ask": "做成一个 15 秒的打斗视频吧。",
+  "draft": "以a1的热血动漫画面为基础：0-3s 二档路飞冒蒸汽高速突进；3-8s 皮卡丘爆金色闪电正面碰撞；8-12s 两人在空中来回攻防；12-15s 最后一击碰撞出强光",
+  "seconds": 15,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/41ead836-fb1f-493f-b290-bc05acc1aa47/snapshot-6ff6de93-9bf0-4af9-8841-7f6cc5b84620.jpg"
+  ]
+ },
+ {
+  "name": "draft-quotes",
+  "ask": "让路飞喊一声“我要成为海贼王！”然后出拳，5 秒。",
+  "draft": "<<<media_1>>> 路飞大喊'我要成为海贼王'然后出拳，花费$0，100%热血",
+  "seconds": 5,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/41ead836-fb1f-493f-b290-bc05acc1aa47/snapshot-6ff6de93-9bf0-4af9-8841-7f6cc5b84620.jpg"
+  ],
+  "must": [
+   "我要成为海贼王"
+  ]
+ },
+ {
+  "name": "no-additions",
+  "ask": "做成 10 秒的广告。",
+  "draft": "<<<media_1>>> 广告",
+  "seconds": 10,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/7f217436-472c-45ee-8493-279cb09ae206/snapshot-b719ec7b-6dee-437d-bf3a-707fe02c460c.jpg"
+  ],
+  "mustNot": [
+   "Nike|可口可乐|Apple|苹果手机"
+  ]
+ },
+ {
+  "name": "overloaded-5",
+  "seconds": 5,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/41ead836-fb1f-493f-b290-bc05acc1aa47/snapshot-6ff6de93-9bf0-4af9-8841-7f6cc5b84620.jpg"
+  ],
+  "ask": "5 秒里路飞先出拳，再被电到，再变大，再飞起来，最后两个人握手。",
+  "draft": "<<<media_1>>> 路飞出拳、被电、变大、飞起来、握手"
+ },
+ {
+  "name": "ask-beats-draft",
+  "seconds": 10,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/41ead836-fb1f-493f-b290-bc05acc1aa47/snapshot-6ff6de93-9bf0-4af9-8841-7f6cc5b84620.jpg"
+  ],
+  "ask": "做 10 秒，最后一定要皮卡丘赢，路飞倒在地上。",
+  "draft": "<<<media_1>>> 路飞和皮卡丘打斗，最后路飞获胜",
+  "must": [
+   "路飞[^。]*(倒|趴|躺|瘫)"
+  ],
+  "film": true
+ },
+ {
+  "name": "again-different",
+  "seconds": 10,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/f64125d8-a1db-4bbf-901f-3338fcdd3101/snapshot-3561980b-2fc2-455d-abae-9733fa6ecaed.jpg"
+  ],
+  "ask": "再做一版，这次不要打了，让他们俩坐下来一起吃肉。",
+  "draft": "<<<media_1>>> 两人坐下来一起吃肉",
+  "must": [
+   "吃"
+  ],
+  "mustNot": [
+   "出拳|对撞|轰在"
+  ]
+ },
+ {
+  "name": "english-fight-5",
+  "seconds": 5,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/41ead836-fb1f-493f-b290-bc05acc1aa47/snapshot-6ff6de93-9bf0-4af9-8841-7f6cc5b84620.jpg"
+  ],
+  "ask": "Make them fight, five seconds, super intense.",
+  "draft": "<<<media_1>>> intense fight",
+  "must": [
+   "^[^\\u4e00-\\u9fff]*$"
+  ]
+ }
+]

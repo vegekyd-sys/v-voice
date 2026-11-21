@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createVideoScriptWriter,fitScript,scriptOf,usableScript,withScript} from './media-script.mjs';
+import {asksInEnglish,createVideoScriptWriter,fitScript,scriptOf,usableScript,withScript} from './media-script.mjs';
 import {mediaArgv,validateMediaArgv} from './media-cli.mjs';
 
 const SHOTS='<<<media_1>>>（尼卡路飞）在左，<<<media_2>>>（基格尔德）在右。\nShot 1 (2s): 中景，推镜。路飞出拳。\nShot 2 (3s): 近景，环绕。基格尔德格挡。\nStyle: 热血动漫。';
@@ -17,6 +17,15 @@ test('a rewritten script is used only if it still names every picture and its sh
  const fitted=fitScript(seven,{media:1,seconds:15});
  assert.equal([...fitted.script.matchAll(/Shot \d+ \((\d+)s\)/gu)].reduce((sum,m)=>sum+Number(m[1]),0),15);
  assert.equal(fitScript(seven,{media:1,seconds:5}).why,'shots 7 in 5s');
+ // Halves of seconds are made whole, still adding up.
+ const halves=fitScript('<<<media_1>>>（瓶子）。 Shot 1 (2s): a动作一。 Shot 2 (2.5s): b动作二。 Shot 3 (2.5s): c动作三。 Shot 4 (3s): d动作四。 Style: 干净。',{media:1,seconds:10});
+ assert.equal([...halves.script.matchAll(/Shot \d+ \((\d+)s\)/gu)].reduce((sum,m)=>sum+Number(m[1]),0),10);
+ assert.deepEqual(halves.mended,['whole seconds']);
+ // A script without its style line is given a plain one, in the language of the request.
+ const bare=fitScript('<<<media_1>>>（小狗）。 Shot 1 (5s): 俯拍中景，小狗歪头摇尾巴。',{media:1,seconds:5});
+ assert.match(bare.script,/ Style: 电影感/u); assert.deepEqual(bare.mended,['style']);
+ assert.match(fitScript('<<<media_1>>> (the fjord). Shot 1 (5s): slow push in over the cliff.',{media:1,seconds:5,english:true}).script,/ Style: cinematic/u);
+ assert.equal(fitScript(SHOTS,{media:2,seconds:5}).mended.includes('style'),false);
  // A picture given and not named is reported (the writer names it at the head); one named that was not given is unnamed.
  assert.deepEqual(fitScript(SHOTS,{media:3,seconds:5}).missing,[3]);
  assert.equal(usableScript(SHOTS,{media:3,seconds:5}),'');
@@ -58,4 +67,19 @@ test('the script is put back into the very command it came from, and the executo
  assert.deepEqual(again.filter((_,index)=>again[index-1]!=='--script'),argv.filter((_,index)=>argv[index-1]!=='--script'));
  assert.equal(scriptOf(mediaArgv("makaron edit --image-model gemini-2.1 '一只猫'")),null);
  assert.equal(withScript(mediaArgv("makaron edit --image-model gemini-2.1 '一只猫'"),'x'),null);
+});
+
+test('a request in English is written in English',async()=>{
+ assert.equal(asksInEnglish('make it a cinematic 8 second drone shot'),true);
+ assert.equal(asksInEnglish('做成 cinematic 的 drone shot 吧'),false);
+ assert.equal(asksInEnglish('OK'),false); assert.equal(asksInEnglish(''),false);
+ const asked=[];
+ const writer=createVideoScriptWriter({complete:async function*(request){asked.push(request);yield '<<<media_1>>> (the fjord). Shot 1 (5s): slow push in over the cliff, clouds drifting.';}});
+ const script=await writer.write({ask:'make it a cinematic drone shot',draft:'<<<media_1>>> 航拍',seconds:5,media:[{name:'峡湾',see:''}]});
+ assert.match(script,/Style: cinematic/u);
+ const sent=asked[0].messages[1].content;
+ assert.match(sent,/"language":"English"/u); assert.match(sent,/Write the whole script in English\.$/u);
+ asked.length=0;
+ await writer.write({ask:'让它动起来',draft:'<<<media_1>>> 动起来',seconds:5,media:[{name:'峡湾',see:''}]});
+ assert.doesNotMatch(asked[0].messages[1].content,/language|English/u);
 });
