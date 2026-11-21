@@ -191,6 +191,8 @@ export function createBoardClient({request, onScene = () => {}, isCurrent = () =
       const next = candidate();
       if (next) schedule(next.wait ?? SETTLE_MS);
     },
+    /** The whole board as the service has it, received outside a run (with the shelf of made things). */
+    sync(value) { if (!closed && value?.scene) apply({op: 'sync', scene: value.scene, canvas: value.canvas}); },
     /** A lookup finished on the service; its result may be worth showing. */
     evidence() { if (closed) return; evidence = true; if (latest) schedule(); },
     dispose() { closed = true; clearTimer(timer); controller?.abort('call_closed'); latest = null; },
