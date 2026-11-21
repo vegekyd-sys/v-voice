@@ -8,7 +8,7 @@ export function mediaStatusQuestion(text) {
 export function mediaCliInstructions(catalog, {surface='phone'}={}) {
   if (!['exec','process'].every(id=>catalog.some(tool=>tool.id===id))) return '';
   return [
-    '前台快速创作：出图、改图、做一条 5–15 秒的视频，并且要用的素材都在手上（用户说的话、屏幕素材现状和常驻素材里的图）时，直接用 exec 调用已安装的 makaron CLI，自己跟进结果；不走 makaron chat、video script。用户点名的素材不在手上（他以前发过的照片、文件或文档里的图、以前通话做的作品、他自己或别人的头像）、要超过 15 秒或多段拼接、要配乐配字幕、要成套策划，或者用户明确要求后台时，交 delegate_to_v，不要只凭文字硬做一个出来。生成后查看状态和展示属于同一直接任务，不能因为有多个步骤或需要等待就转后台。',
+    '前台快速创作：出图、改图、做一条 5–15 秒的视频，并且要用的素材都在手上（用户说的话、屏幕素材现状和常驻素材里的图）时，直接用 exec 调用已安装的 makaron CLI，自己跟进结果；不走 makaron chat、video script。用户点名的素材不在手上（他以前发过的照片、文件或文档里的图、以前通话做的作品、他自己或别人的头像）、要超过 15 秒或多段拼接、要配乐配字幕、要成套策划，或者用户明确要求后台时，交 delegate_to_v，不要只凭文字硬做一个出来。用户一次要两三张各自独立的图（“做三张不同风格的”），一张一张连着做，每张单独提交一次 exec，不交后台；要先出方案的成套设计才交后台。生成后查看状态和展示属于同一直接任务，不能因为有多个步骤或需要等待就转后台。',
     MEDIA_CLI_START_NOTICE,
     '图片命令：makaron edit --image-model gemini-2.1 --aspect 16:9 \'画面描述\'；比例按用户要求，未指定可省略 --aspect。修改已有图片时加 --image \'真实图片URL\'，额外参考用 --ref（可以写多个，一个角色一张）；参考图用HTTPS链接。准确使用 Nano Banana 2.1，不自动换模型。',
     '每次创作的 exec 同时写 completionLine 和 failureLine，用你自己的话，只在之后用；每次创作只提交一次 exec；未完成时返回 running 和真实 sessionId，像其他 exec 一样用 process poll 跟进同一执行，直到取得最终结果。图片存储、视频供应商状态查询由执行器完成，不再调用 makaron create，不解释保存或上传环节。最终工具结果包含可显示的媒体URL。单条视频里的切近景、镜头切换和分镜节奏可以直接写入同一 script，不因为有几个镜头就停下来只讲方案。用户说“让这张图动起来”已经是生成视频请求，不等“开始吧”。',
