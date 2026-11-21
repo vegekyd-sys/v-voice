@@ -33,7 +33,7 @@ import {NATIVE_DUPLEX_POLICY} from './native-duplex-policy.mjs';
 import {createLookupRecovery} from './lookup-recovery.mjs';
 import {compactSearchResult,isSearchTool,searchMetrics} from './search-result.mjs';
 import {createAudioDeliveryMetrics} from './audio-delivery-metrics.mjs';
-import {playbackEchoLike} from './playback-echo.mjs';
+import {createPlaybackText,playbackEchoLike} from './playback-echo.mjs';
 import {IDLE_FAREWELL,IDLE_HANGUP_DEFAULTS,idleHangupDue,idleHangupExempt} from './idle-hangup.mjs';
 
 export const VOICE_TASK_ROUTING = '当前入口已启用前台快速创作时，简单图片和短视频按前台快速创作规则直接调用 Makaron CLI；无获准直接工具或需要完整创作编排时才委派后台。工具错误按返回的真实执行状态解释：明确未提交时说明尚未启动，提交结果未知时说明无法确认，不猜测正在做、已经排队或马上完成，不盲目重提。用户明确取消仍在执行的当前后台任务并改做新任务时，先实际 cancel_task，确认取消后再按直接工具或后台分工实际执行新目标。已完成的旧任务不能通过取消另一个无关任务来代替。任务分工：简单查询、日历和一两步明确操作直接调用原生工具。多步比较、跨资料调研、复杂规划或前台快速创作之外需要持续等待/反复轮询的任务，用 delegate_to_v 将完整目标及用户条件一次交给个人 V 后端语言模型。用户要求交给后端模型、交给 V 或交给后台处理时必须调用 delegate_to_v，即使已经给出完整命令，也不能自行用 exec/process/openclaw_tool 代做。这里的后端指另一个语言模型；exec/process 只是执行工具，命令的 background 参数也不是模型委派。只说‘交给后端’却自己执行不算委派。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，等待时正常聊天。只有真实的新事实才简短汇报，不反复播报等待、倒计时或轮询状态。只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
@@ -384,6 +384,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,narrationBusyUntil:0,narrations:0,progress:null,toolOwners:new Map(),retiredBridges:new Set()});
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
+    s.playbackText=createPlaybackText();
     s.replyDelivery=createConversationReplyDelivery({gateway:callGateway,target:replyTarget,ownerId:s.id,audit,callReport:callReportFactory?.(s.id),onStatus:value=>emit(s,{type:'reply.sync',...value})});
     s.delivery=createTaskDelivery({gateway:callGateway,sessionKey,ownerId:s.id,replyDelivery:s.replyDelivery,audit});
     s.backend=createBackendDelegation({gateway:callGateway,sessionKey,sessionBound,ownerId:s.id,publicVoice:s.publicVoice,audit,taskDelivery:s.delivery,pollMs:backendPollMs,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}},
@@ -769,7 +770,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
       instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
       withoutContext:text=>text.replace(voiceConversationBlock(context,{sessionBound:s.sessionBound}),()=>voiceConversationBlock('',{sessionBound:s.sessionBound})),
-      isPlaybackEcho:text=>playbackEchoGuard&&s.surface==='phone'&&s.playing===true&&playbackEchoLike(text,s.playbackReply?.text),
+      isPlaybackEcho:text=>playbackEchoGuard&&s.surface==='phone'&&s.playing===true&&playbackEchoLike(text,s.playbackText.text),
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
       onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),
       onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.lookup.answered();s.responseActive=true;s.responseActivityAt=Date.now();s.narrationBusyUntil=0;if(s.ending&&(!s.nativeDuplex||metadata?.responseId&&metadata.responseId!==s.ending.priorResponseId)){s.ending.hasAudio=true;s.ending.responseId=metadata?.responseId;clearTimeout(s.ending.fallbackTimer);clearTimeout(s.ending.noAudioTimer);}deliverAudio(audio,metadata);}),
@@ -778,10 +779,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         // V's own voice heard again (playback-echo.mjs): kept in the log, never a turn of the caller's.
         if(role==='user'&&metadata.playbackEcho){s.userSpeaking=false;audit({type:'transcript',voiceSessionId:s.id,role,text,final,playbackEcho:true,turnId:metadata.turnId});return;}
         s.activityAt=Date.now();
-        if(role==='assistant'&&!source){
-          if(!s.playbackReply||s.playbackReply.responseId!==metadata.responseId)s.playbackReply={responseId:metadata.responseId,text:''};
-          s.playbackReply.text=final?text:(s.playbackReply.text+text).slice(-8000);
-        }
+        if(role==='assistant')s.playbackText.observe(text,{final,source,responseId:metadata.responseId});
         if(role==='assistant'&&!source&&guardReply(s,text,final,metadata.responseId))return;
         if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
         const deliver=()=>{

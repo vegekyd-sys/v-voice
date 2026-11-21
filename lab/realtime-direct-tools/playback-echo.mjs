@@ -25,3 +25,17 @@ export function playbackEchoLike(heard, playing, {maxUnits = PLAYBACK_ECHO_MAX_U
   if (!reply.size) return false;
   return said.filter(unit => reply.has(unit)).length / said.length >= minShare;
 }
+
+/** What V is saying now: a reply as it streams, or the whole caption of speech the service
+ * speaks for us (a board lesson, a progress line), which comes with a source and no response id. */
+export function createPlaybackText() {
+  let current = {responseId: undefined, text: ''};
+  return {
+    observe(text, {final = false, source, responseId} = {}) {
+      if (typeof text !== 'string' || !final && source) return;
+      if (source || current.responseId !== responseId) current = {responseId, text: ''};
+      current.text = final ? text : (current.text + text).slice(-8000);
+    },
+    get text() { return current.text; },
+  };
+}

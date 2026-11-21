@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {playbackEchoLike} from './playback-echo.mjs';
+import {createPlaybackText,playbackEchoLike} from './playback-echo.mjs';
 
 // Invented replies and utterances; no words from real calls.
 const reply = '海边的灯塔晚上会一闪一闪地亮，给远处的船指路。';
@@ -29,4 +29,18 @@ test('Latin words are compared as words, not letters', () => {
   const english = 'The lighthouse blinks at night to guide the ships.';
   assert.equal(playbackEchoLike('guide the ships', english), true);
   assert.equal(playbackEchoLike('play some music', english), false);
+});
+
+test('what V is saying now follows a streamed reply and a lesson caption', () => {
+  const playing = createPlaybackText();
+  playing.observe('好，', {responseId: 'ack'}); playing.observe('我讲讲。', {responseId: 'ack'});
+  assert.equal(playing.text, '好，我讲讲。');
+  // The lesson is spoken by the service: one caption, a source, no response id.
+  playing.observe('悬崖上有一座白灯塔，守塔人每晚点灯。', {final: true, source: 'V-backend-summary'});
+  assert.equal(playing.text, '悬崖上有一座白灯塔，守塔人每晚点灯。');
+  assert.equal(playbackEchoLike('好，悬崖上。', playing.text), true, 'the first words of the lesson, heard back');
+  playing.observe('部分字幕', {source: 'task-progress'});
+  assert.equal(playing.text, '悬崖上有一座白灯塔，守塔人每晚点灯。', 'a partial caption is not what is playing');
+  playing.observe('新的回答', {responseId: 'next'});
+  assert.equal(playing.text, '新的回答');
 });
