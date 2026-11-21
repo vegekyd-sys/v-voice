@@ -1,6 +1,5 @@
 import {readFile} from 'node:fs/promises';
 import {routerCompletionFromEnv} from './gpt-live-router.mjs';
-import {createGptLiveResearch} from './gpt-live-research.mjs';
 
 // The ChatGPT (Codex) login this service may call GPT Live with. The file is
 // private and maintained outside this process (never committed, never logged);
@@ -28,8 +27,6 @@ export function gptLiveFromEnv(env=process.env,{fetchImpl}={}){
     // Loaded on the first call only; a service that never offers the model never loads a WebRTC stack.
     loadMedia:async()=>{const [werift,opus]=await Promise.all([import('werift'),import('opusscript')]);return {werift,OpusScript:opus.default??opus};},
     complete:routerCompletionFromEnv(env,{fetchImpl}),
-    // The stronger model behind the voice (same login), for what takes reading the pages. Off unless a model is named.
-    ...(env.VOICE_GPT_LIVE_RESEARCH_MODEL?{research:createGptLiveResearch({resolveAuth:createGptLiveAuth({file:env.VOICE_GPT_LIVE_AUTH_FILE}),model:env.VOICE_GPT_LIVE_RESEARCH_MODEL,...(env.VOICE_GPT_LIVE_RESEARCH_EFFORT?{effort:env.VOICE_GPT_LIVE_RESEARCH_EFFORT}:{}),...(fetchImpl?{fetchImpl}:{})})}:{}),
     ...(env.VOICE_GPT_LIVE_SCRIPTED_LESSONS==='1'?{scriptedLessons:true}:{}),
     ...(env.VOICE_GPT_LIVE_MODEL?{model:env.VOICE_GPT_LIVE_MODEL}:{}),
     ...(env.VOICE_GPT_LIVE_VOICE?{voice:env.VOICE_GPT_LIVE_VOICE}:{}),

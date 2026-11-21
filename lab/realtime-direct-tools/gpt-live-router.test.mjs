@@ -87,10 +87,9 @@ test('a story is told like a lesson, with pictures, unless something new is to b
 
 test('an explanation or a story with no lesson tool: said by the voice model, looked up first only when it must be',async()=>{
   const {quickRoute}=await import('./gpt-live-router.mjs');
-  const names=new Set(['answer_directly','web_answer','web_search','memory_search','delegate_to_v']);
+  const names=new Set(['answer_directly','web_search','memory_search','delegate_to_v']);
   assert.deepEqual(quickRoute('给我讲解一下为什么天空是蓝色的',names),{name:'answer_directly',args:{},via:'quick'});
   assert.deepEqual(quickRoute('给小朋友讲一个恐龙的故事',names),{name:'answer_directly',args:{},via:'quick'});
-  assert.deepEqual(quickRoute('给我讲讲今年这支球队的阵容',names),{name:'web_answer',args:{question:'给我讲讲今年这支球队的阵容'},via:'quick'});
   assert.equal(quickRoute('给我讲讲今年这支球队的阵容',new Set(['answer_directly','web_search'])).name,'web_search');
   assert.match(quickRoute('给我讲讲今年这支球队的阵容',new Set(['answer_directly','web_search'])).args.query,/^给我讲讲20\d\d年这支球队的阵容 20\d\d年\d{1,2}月 最新$/u);
   assert.deepEqual(quickRoute('讲解一下我们的项目计划',names),{name:'memory_search',args:{query:'讲解一下我们的项目计划'},via:'quick'});

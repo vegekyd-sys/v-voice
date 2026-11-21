@@ -79,7 +79,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     // A conversation record left out because Seeduplex refused it on an earlier call (no content).
     if(event.type==='call.record-skipped')return enqueue({...owner,type:event.type,reason:event.reason==='refused-earlier'?'refused-earlier':'unknown'});
     if(event.type==='call.provider-status'){
-      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed','context-dropped','greeting-requested','lesson-unprompted','promise-unkept','farewell-unprompted','research-started','research-done','research-failed'].includes(event.stage)&&!/^media-(?:ice-)?[a-z]{1,20}$/u.test(String(event.stage)))return false;
+      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed','context-dropped','greeting-requested','lesson-unprompted','promise-unkept','farewell-unprompted'].includes(event.stage)&&!/^media-(?:ice-)?[a-z]{1,20}$/u.test(String(event.stage)))return false;
       const safe={stage:event.stage};
       if(['configuration','input-timeout','upstream-transient','upstream-rejected','network','setup-timeout'].includes(event.category))safe.category=event.category;
       if(typeof event.upstreamCode==='string'&&/^\d{3,8}$/.test(event.upstreamCode))safe.upstreamCode=event.upstreamCode;
