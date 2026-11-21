@@ -87,7 +87,8 @@ export function Work({block, view}) {
   const picked = view.picked === shown.id && shown.state === 'ready';
   // A version goes by the name the thing was given when it was first looked at.
   const name = shown.name || family.find(item => item.name)?.name || block.caption || (shown.state === 'making' ? '' : shown.kind === 'video' ? '视频' : '作品');
-  const references = (shown.refs ?? []).map(id => assets.get(id)?.name).filter(Boolean);
+  // (Not the picture a video is the moving version of: that one is in this very frame.)
+  const references = (shown.refs ?? []).filter(id => !(id === shown.from && family.some(item => item.id === id))).map(id => assets.get(id)?.name).filter(Boolean);
   // A tap looks at it large, like any picture on the page; looked at is picked (board-viewer.jsx).
   const open = event => { if (loaded) view.enlarge?.(event.currentTarget); };
   return (
