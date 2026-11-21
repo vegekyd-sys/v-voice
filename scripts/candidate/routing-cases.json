@@ -187,7 +187,7 @@
     "back"
    ]
   },
-  "note": "线上曾交后台，等了很久"
+  "note": "线上曾交后台，等了很久。评测里的替身搜索结果没有真实名单，这条要在真实通话里看（11/21 真实通话：前台查完直接讲）"
  },
  {
   "id": "explain-tips",
@@ -516,7 +516,8 @@
    "route": [
     "back",
     "talk",
-    "lookup"
+    "lookup",
+    "control"
    ],
    "never": [
     "make"
@@ -887,7 +888,8 @@
   ],
   "expect": {
    "route": [
-    "talk"
+    "talk",
+    "lookup"
    ],
    "never": [
     "back",

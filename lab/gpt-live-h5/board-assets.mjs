@@ -453,12 +453,14 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       return asset ? {id: asset.id, kind: asset.kind, ...(asset.name ? {name: asset.name} : {}), ...(asset.from ? {from: asset.from} : {}), ...(asset.refs?.length ? {references: asset.refs.map(called)} : {}), ...(asset.see ? {see: asset.see} : {}), onBoard: Boolean(director)} : null;
     },
     /** The few lines the voice model keeps about the caller's screen. */
-    context(owner) {
-      const text = api.shelfContext(owner);
-      // (What the call always has at hand is said with it: "用你的形象" is a picture V has.)
-      return kept.length ? `${text}常驻素材（随时可当参考图，不在画面上）：${kept.map(item => `${item.id}「${item.name}」${item.see ? `（${bounded(item.see, 60)}）` : ''}`).join('、')}。用户说“用你的形象”“你自己”“把你放进去”，创作命令里写 --image v（要它和别的图一起出现就写 --ref v）。` : text;
+    /**
+     * What the call always has at hand, said once beside the policy (not with every change of the
+     * screen: said with each, "…不在画面上" was read as nothing being on the screen).
+     */
+    standingNote() {
+      return kept.length ? `常驻素材（一直在你手上，随时可当参考图）：${kept.map(item => `${item.id}「${item.name}」${item.see ? `（${bounded(item.see, 60)}）` : ''}`).join('、')}。用户说“用你的形象”“你自己”“把你放进去”，创作命令里写 --image v（要它和别的图一起出现就写 --ref v）。` : '';
     },
-    shelfContext(owner) {
+    context(owner) {
       const value = owners.get(owner), ready = (value?.assets ?? []).filter(asset => asset.state === 'ready').slice(-8);
       const coming = (value?.assets ?? []).filter(asset => asset.state === 'making').map(asset => `${asset.kind === 'video' ? '视频' : '图片'}${asset.from ? `（由 ${asset.from} 做成）` : ''}`);
       const making = coming.length ? `正在做、还没好：${coming.join('、')}。` : '';
