@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-21 — Pictures of a page arrive sooner and in order
+
+- The image search (free plan: one request a second, 2000 a month) is queued by arrival: the next request waits for the answer to the one before; a single refusal no longer doubles the gap for a minute, and the refused search takes the next turn so pictures come in the order V speaks of them.
+- A small picture (the search's own thumbnail) is taken over a large original that arrived a moment before it (1-2.5 MB originals took seconds more to reach a phone); each file has 3.5 s before the next results are tried.
+- Candidate probe, six searches of one page: last picture 16.6 s → 7.7 s, files 15-170 KB (#242).
+
 ## 2026-11-21 — The call record keeps why a call ended
 
 - The call record (transcript log) kept only the call's identity on call.closed and dropped provider-status stages it did not know: the reason added in #239 and the voice service's own "upstream-closed" never reached production records. They are now kept: `why` (one of the service's own words) and up to six short fields of what the service said (#240).
