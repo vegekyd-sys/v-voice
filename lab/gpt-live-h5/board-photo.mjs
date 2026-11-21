@@ -187,16 +187,23 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
   // An image search, when a key is provisioned: the first result whose title
   // names the thing (else the first result), as the search's own thumbnail.
   // The plan allows about one request a second, so lookups queue.
-  let braveSent = -Infinity, braveAnswered = -Infinity, braveSlowUntil = -Infinity, bravePumping = false;
+  let braveSent = -Infinity, braveAnswered = -Infinity, braveSlowUntil = -Infinity, bravePumping = false, bravePerSecond = 1;
   const braveQueue = [];
+  // The plan's rate, as each answer states it (x-ratelimit-limit: "1, 2000" on the free plan,
+  // "50, …" on Search): with several a second there is no queue, a page's searches go at once.
+  const learnRate = response => {
+    const perSecond = Number(String(response?.headers?.get?.('x-ratelimit-limit') ?? '').split(',')[0]);
+    if (Number.isFinite(perSecond) && perSecond >= 1) bravePerSecond = perSecond;
+    return response;
+  };
   // One request to the image search at a time: sent a gap after the one before was sent, and
   // a moment after its answer came back (the service counts requests as they arrive). When a
   // retry is refused too, twice the gap for ten seconds. (A single refusal no longer slows the
   // queue: it happens on most pages however the requests are spaced, and slowing down for it
   // spread a page of six over 12 s, 11/21.) `first`: a retry takes the next turn, so the
   // pictures still come in the order V speaks of them.
-  const braveRequest = (ask, begin, first = false) => new Promise((resolve, reject) => {
-    const job = {ask, begin, resolve, reject};
+  const braveRequest = (ask, begin, first = false) => bravePerSecond >= 5 ? (begin(), ask().then(learnRate)) : new Promise((resolve, reject) => {
+    const job = {ask: () => ask().then(learnRate), begin, resolve, reject};
     if (first) braveQueue.unshift(job); else braveQueue.push(job);
     if (!bravePumping) void bravePump();
   });
@@ -327,7 +334,7 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     // second (the last ones used to time out waiting). With a queue ahead,
     // the encyclopedia, which needs no turn, is asked first.
     const encyclopedia = async () => { try { value = await wikipedia(key, signal); } catch { failed = true; } };
-    const crowded = Boolean(braveKey) && braveQueue.length + (bravePumping ? 1 : 0) >= 2;
+    const crowded = Boolean(braveKey) && bravePerSecond < 5 && braveQueue.length + (bravePumping ? 1 : 0) >= 2;
     if (crowded) { begin(); await encyclopedia(); }
     if (!value) { try { value = await brave(key, signal, begin); } catch (error) { failed = true; why = String(error?.message ?? error).slice(0, 80); } }
     begin();

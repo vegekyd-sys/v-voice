@@ -345,3 +345,20 @@ test('a file that does not arrive in time gives way to the next results', async 
   assert.ok(await finder.find('拉妮'));
   assert.ok(Date.now() - started < 1000, 'the hanging three were given up after their time');
 });
+
+test('on a plan of many searches a second (as its answers say), a page\'s searches go at once', async () => {
+  const sent = [];
+  let time = 0;
+  const answer = query => ({...json({results: [{title: query, thumbnail: {src: 'https://imgs.search.brave.com/' + encodeURIComponent(query)}}]}), headers: new Headers({'x-ratelimit-limit': '50, 0'})});
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', languages: [], now: () => time, wait: async ms => { time += ms; },
+    fetchImpl: async url => {
+      if (!url.startsWith('https://api.search.brave.com/')) return image(distinct(), 'image/png');
+      const query = decodeURIComponent(/q=([^&]+)/u.exec(url)[1]);
+      sent.push([query, time]);
+      return answer(query);
+    }});
+  assert.ok(await finder.find('甲 一'), 'the first answer tells the rate');
+  const before = time;
+  await Promise.all(['乙 二', '丙 三', '丁 四', '戊 五'].map(query => finder.find(query)));
+  assert.deepEqual(sent.slice(1).map(([, at]) => at), [before, before, before, before], 'no queue');
+});
