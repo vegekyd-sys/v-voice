@@ -1260,12 +1260,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     let lesson=null,photos=null;
     // V's own answers are drawn by the streaming illustrator, as they are spoken (VOICE_BOARD_STREAM=0: one page once the answer is complete).
     // In parallel mode there is no lesson to wait for, so nothing is deferred.
-    // VOICE_BOARD_CANVAS=1 (cue pages only): what can be seen goes up large on a stage, and the places V
+    // The canvas (cue pages only; VOICE_BOARD_CANVAS=0 turns it off): what can be seen goes up large on a stage, and the places V
     // talks about are ringed on its photographs by a model that has seen them (docs/research/board-canvas).
-    const canvas=process.env.VOICE_BOARD_CANVAS==='1'&&process.env.VOICE_BOARD_FOLLOW!=='word';
+    const canvas=process.env.VOICE_BOARD_CANVAS!=='0'&&process.env.VOICE_BOARD_FOLLOW!=='word';
     // The shelf of made things (board-assets.mjs): what V generates in a call goes up on the board,
-    // and the voice model is told what is on the caller's screen. Off unless VOICE_BOARD_ASSETS=1.
-    const assetsOn=process.env.VOICE_BOARD_ASSETS==='1'&&process.env.VOICE_BOARD_STREAM!=='0';
+    // and the voice model is told what is on the caller's screen. On wherever the board streams (VOICE_BOARD_ASSETS=0 turns it off).
+    const assetsOn=process.env.VOICE_BOARD_ASSETS!=='0'&&process.env.VOICE_BOARD_STREAM!=='0';
     const board=boardDirectorFromEnv(process.env,{audit:voiceAudit,prefetch:query=>photos?.find(query),...(canvas?{eye:complete=>createBoardEye({complete,find:query=>photos?.find(query)})}:{}),defer:process.env.VOICE_BOARD_STREAM==='0'&&process.env.VOICE_BOARD_LESSON_SOURCE!=='parallel',...(process.env.VOICE_BOARD_UNIFIED==='0'?{}:{illustrate:args=>lesson?.illustrate(args)??null,
       ...(process.env.VOICE_BOARD_STREAM==='0'?{}:{stream:process.env.VOICE_BOARD_FOLLOW!=='word'?{instructions:(canvas?CANVAS_CUE_INSTRUCTIONS:CUE_INSTRUCTIONS)+(assetsOn?ASSET_NOTES+ASSET_MAKE_NOTES:''),refine:refineCueOp,turns:cueTurns,cue:true,...(canvas?{canvas:true}:{})}:{instructions:STREAM_INSTRUCTIONS+(assetsOn?ASSET_NOTES:''),refine:refineStreamOp}})})});
     const assets=board&&assetsOn?createAssetShelf({director:board,...(process.env.VOICE_SELF_IMAGE==='0'?{}:{standing:[SELF_IMAGE]}),audit:event=>board.log?.(event),lookWaitMs:Math.max(0,Math.min(6000,Number(process.env.VOICE_BOARD_LOOK_WAIT_MS??0)||0)),makeLimit:Math.max(0,Math.min(6,Number(process.env.VOICE_BOARD_MAKE_MAX??3)||0)),
