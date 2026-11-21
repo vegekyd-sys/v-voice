@@ -16,7 +16,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createAvatarReactionSelector, avatarEvaluatorFromEnv } from "./avatar-decision.mjs";
-import { AVATAR_FILES, HOME_AVATAR_FILE, taskActivity } from "./avatar-state.mjs";
+import { AVATAR_FILES, taskActivity } from "./avatar-state.mjs";
 import { createVoiceAccess } from "./access.mjs";
 import {createConversationCalls,callIdValid,callSummarizerFromEnv} from '../../lib/conversation-calls.mjs';
 import {readRelayUsage} from '../../lib/relay-usage.mjs';
@@ -41,7 +41,7 @@ import {STREAM_INSTRUCTIONS,createLessonWriter,refineStreamOp} from './board-les
 import {CANVAS_CUE_INSTRUCTIONS,CANVAS_SCRIPT_INSTRUCTIONS,CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
 import {createBoardEye} from './board-eye.mjs';
 import {scenePictures} from './board-scene.mjs';
-import {ASSET_ID,ASSET_MAKE_NOTES,ASSET_NOTES,ASSET_SCRIPT_NOTES,SELF_IMAGE,SHELF_ID,createAssetEye,createAssetShelf,pictureName} from './board-assets.mjs';
+import {ASSET_ID,ASSET_MAKE_NOTES,ASSET_NOTES,ASSET_SCRIPT_NOTES,SELF_IMAGE,SELF_IMAGE_FILE,SHELF_ID,createAssetEye,createAssetShelf,pictureName} from './board-assets.mjs';
 import {roomyPicture} from './board-picture-size.mjs';
 import {createVideoScriptWriter} from '../realtime-direct-tools/media-script.mjs';
 import {createMaterialCheck} from '../realtime-direct-tools/material-check.mjs';
@@ -84,10 +84,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   // picture from here. Only where the service has a public HTTPS origin; the address is the whole permission.
   const lentPictures = new Map(), LEND_MS = 30 * 60000;
   // (And the pictures themselves, for the shelf's eye to check that each is the thing it was searched for.)
-  // (V's own image is a picture the call always has: the home portrait the call page shows, or the file VOICE_SELF_IMAGE names.)
+  // (V's own image is a picture the call always has: V's canonical avatar, or the file VOICE_SELF_IMAGE names.)
   let selfPicture = null;
   const pictureType = bytes => bytes.subarray(0, 4).toString('latin1') === 'RIFF' ? 'image/webp' : bytes[0] === 0x89 ? 'image/png' : 'image/jpeg';
-  const standingPicture = query => query === SELF_IMAGE.query ? (selfPicture ??= readFile(process.env.VOICE_SELF_IMAGE || new URL('./assets/' + HOME_AVATAR_FILE, import.meta.url)).then(bytes => ({bytes, type: pictureType(bytes), title: SELF_IMAGE.name, source: 'V'}), () => null)) : null;
+  const standingPicture = query => query === SELF_IMAGE.query ? (selfPicture ??= readFile(process.env.VOICE_SELF_IMAGE || new URL('./assets/' + SELF_IMAGE_FILE, import.meta.url)).then(bytes => ({bytes, type: pictureType(bytes), title: SELF_IMAGE.name, source: 'V'}), () => null)) : null;
   const heldPicture = query => standingPicture(query) ?? boardPhotos?.find(query) ?? null;
   if (boardAssets) boardAssets.picture = heldPicture;
   if (boardAssets && hosted) boardAssets.share = async query => {

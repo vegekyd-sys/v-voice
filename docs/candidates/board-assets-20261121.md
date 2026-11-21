@@ -225,7 +225,7 @@
 Tianyi：「用你的形象做一张图」语音里做不到；这类场景不想一个个补，保底应该是后台；想要一条整体的分界线。讨论后定下三问（东西都在手上吗、一口气能做完吗、只影响这通电话吗），并要一份回归手册和修改前后的对比，最后把生成、保底规则、图片讲解合成一个 candidate。
 
 - 规则、四处代码兜底、评测方法、62 条用例和前后对比表：`docs/research/voice-routing/handbook.md`。修改前 104/124，修改后 125/130。
-- V 的形象：素材架常驻 `v`（`SELF_IMAGE`，默认是通话页的 V 头像 `assets/v-operator-home-1024.webp`；`VOICE_SELF_IMAGE=<文件>` 可换，`=0` 关）。后台 V 的 IDENTITY.md 里没有登记头像，所以用的是通话页这张。
+- V 的形象：素材架常驻 `v`（`SELF_IMAGE`）。用的是 V 自己身份里登记的正式头像（V 工作区 `assets/v-avatar.jpg`，Tianyi 10/07 选定的 B 版，sha256 `ffee37c8…`），仓库里放了一份副本 `lab/gpt-live-h5/assets/v-avatar.jpg`；`VOICE_SELF_IMAGE=<文件>` 可换，`=0` 关。第一版误用了通话页的头像（v-operator-home），Tianyi 指出后改正；V 的工作区在 `makaron-openclaw/.openclaw-local/workspace`，不是 `~/.openclaw/workspace`。
 - 缺素材检查：`VOICE_MATERIAL_CHECK=0` 关。
 - 集成分支 `candidate/board-assets-canvas-20261121`（工作区 `~/v-voice-worktrees/combined-20261121`）= 本分支 + `claude/board-canvas-live`（d41e8d2e）+ main。candidate `board-assets-20261121` 现在跑的是集成分支 `e5283f0b`，开着 `VOICE_BOARD_ASSETS=1` 和 `VOICE_BOARD_CANVAS=1`，入口链接不变。
 - 合并时的冲突：区块类型同时有 `work` 和 `stage`；缩略图保留画布的原地放大和圈注，加上素材架的「正点着」标记和查看器；director 同时带 eye 和 shelf；提示词是画布的指令后面接素材架的说明。合并后 1363 个测试通过，本地夹具整套通过。

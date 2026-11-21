@@ -21,9 +21,14 @@ export const SHELF_ID = /^[ap][1-9]\d{0,2}$/u;
 const MAX_PHOTOS = 16;
 // A picture the call always has ("v": V's own image).
 export const STANDING_ID = /^[b-oq-z]$/u;
-/** V's own image as the shelf holds it. `see`: what is in the picture, for the voice model and the script writer. */
+/**
+ * V's own image as the shelf holds it: the avatar V's identity names as its canonical reference
+ * (V's workspace, assets/v-avatar.jpg; chosen by Tianyi 2026-10-07, sha256 ffee37c8…; a copy is
+ * kept in assets/). `see`: what is in the picture, for the voice model and the script writer.
+ */
+export const SELF_IMAGE_FILE = 'v-avatar.jpg';
 export const SELF_IMAGE = {id: 'v', name: 'V 自己的形象', query: 'standing:v', aliases: ['V', '你自己', '你的形象', '自己的形象', 'V的形象', '你的头像', 'V的头像'],
-  see: '银白色长发、齐刘海、深蓝色外套的 3D 卡通女孩，戴着发光的耳机，身边飘着一只发光的白色小精灵'};
+  see: '银白长发、齐刘海、黑色发圈扎的低马尾，灰蓝色大眼睛，冰蓝色无袖立领上衣，衣领上别着一只橙色小龙虾，3D 动画角色'};
 const bounded = (value, limit) => Array.from(String(value ?? '').replace(/\s+/gu, ' ').trim()).slice(0, limit).join('');
 const https = value => { try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : ''; } catch { return ''; } };
 
