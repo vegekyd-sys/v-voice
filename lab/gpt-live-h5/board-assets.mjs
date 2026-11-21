@@ -52,9 +52,17 @@ export const asksOnlyToFind = text => { const said = String(text ?? ''); return 
 
 /** What a photograph on the board is called there: its caption, or the words of the item it stands beside. */
 export function pictureName(pages, query) {
+  const plain = item => String(item.h ?? item.label ?? item.img).replaceAll('*', '');
+  const pictures = block => [...(block.items ?? []), ...(block.nodes ?? []), ...(block.cols ?? []), ...(block.sides ?? [])].filter(item => item?.img);
   for (const page of pages ?? []) for (const block of page?.blocks ?? []) {
     if (block.t === 'photo' && block.query === query) return block.caption ?? query;
-    for (const item of [...(block.items ?? []), ...(block.nodes ?? []), ...(block.cols ?? []), ...(block.sides ?? [])]) if (item?.img === query) return String(item.h ?? item.label ?? query).replaceAll('*', '');
+    for (const item of pictures(block)) if (item.img === query) {
+      const name = plain(item);
+      // (Two rows each with an "官方立绘": the row's own heading tells them apart — 11/21, 皮卡丘 and 路飞.)
+      const twin = (pages ?? []).some(other => (other?.blocks ?? []).some(row => pictures(row).some(peer => peer.img !== query && plain(peer) === name)));
+      const head = String(block.h ?? '').replaceAll('*', '').trim();
+      return twin && head && !name.includes(head) ? `${head} ${name}` : name;
+    }
   }
   return query;
 }

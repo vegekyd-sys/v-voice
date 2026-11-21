@@ -9,7 +9,9 @@
 // Dial with Grok Voice, open the text field and type, in order:
 //   帮我生成一张海报        a sketch on the board, then the picture develops
 //   把它动起来              the video takes the picture's frame
-//   给我讲讲光合作用        a lesson page that asks for one picture to be drawn
+//   给我讲讲光合作用        a lesson page (no picture is drawn for it here: only a lesson's written script may ask
+//                           for one, and this fixture has no script writer; board-assets.test.mjs covers that)
+//   找几张山谷和湖同框的图片  two rows of found photographs on one page (the layout that looped on 11/21)
 //   找几张山的图片          a page of found photographs; tap one to look at it large, turn, save
 //   把这张改成卡通版        the photograph looked at last is what the picture is made from
 import {EventEmitter} from 'node:events';

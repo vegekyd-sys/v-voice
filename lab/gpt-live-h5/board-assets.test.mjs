@@ -329,6 +329,11 @@ test('a photograph is called on the shelf what it is called on the board', () =>
   assert.equal(pictureName(pages, '强者天下 复古风'), '复古风海报');
   assert.equal(pictureName(pages, '特斯拉 Model 3'), 'Model 3');
   assert.equal(pictureName(pages, '没在页上'), '没在页上');
+  // Two rows each with a picture of the same name: the row's heading tells them apart.
+  const rows = [{blocks: [{id: 'g1', t: 'list', h: '皮卡丘', items: [{id: 'a', h: '官方立绘', img: '皮卡丘 官方立绘'}, {id: 'b', h: '动画放电', img: '皮卡丘 动画'}]}, {id: 'g2', t: 'list', h: '路飞', items: [{id: 'c', h: '官方立绘', img: '路飞 官方立绘'}]}]}];
+  assert.equal(pictureName(rows, '皮卡丘 官方立绘'), '皮卡丘 官方立绘');
+  assert.equal(pictureName(rows, '路飞 官方立绘'), '路飞 官方立绘');
+  assert.equal(pictureName(rows, '皮卡丘 动画'), '动画放电');
 });
 
 test('the frame of a thing that was not made leaves the page when the next thing goes up', async () => {
