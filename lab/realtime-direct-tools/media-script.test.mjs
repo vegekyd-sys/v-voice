@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createVideoScriptWriter,scriptOf,usableScript,withScript} from './media-script.mjs';
+import {createVideoScriptWriter,fitScript,scriptOf,usableScript,withScript} from './media-script.mjs';
 import {mediaArgv,validateMediaArgv} from './media-cli.mjs';
 
 const SHOTS='<<<media_1>>>（尼卡路飞）在左，<<<media_2>>>（基格尔德）在右。\nShot 1 (2s): 中景，推镜。路飞出拳。\nShot 2 (3s): 近景，环绕。基格尔德格挡。\nStyle: 热血动漫。';
@@ -8,9 +8,19 @@ const SHOTS='<<<media_1>>>（尼卡路飞）在左，<<<media_2>>>（基格尔�
 test('a rewritten script is used only if it still names every picture and its shots add up',()=>{
  assert.equal(usableScript(SHOTS,{media:2,seconds:5}),'<<<media_1>>>（尼卡路飞）在左，<<<media_2>>>（基格尔德）在右。 Shot 1 (2s): 中景，推镜。路飞出拳。 Shot 2 (3s): 近景，环绕。基格尔德格挡。 Style: 热血动漫。');
  assert.equal(usableScript('```\n'+SHOTS+'\n```',{media:2,seconds:5}).startsWith('<<<media_1>>>'),true);
- assert.equal(usableScript(SHOTS,{media:2,seconds:10}),'','the shots are five seconds of a ten-second film');
- assert.equal(usableScript(SHOTS,{media:3,seconds:5}),'','the third picture is not used');
- assert.equal(usableScript(SHOTS,{media:1,seconds:5}),'','a picture that was not given is named');
+ // Its seconds do not add up: the shots are re-timed in proportion, not the script thrown away
+ // (call of 11/21: a fifteen-second script was refused for a second's difference and the draft was filmed).
+ const long=fitScript(SHOTS,{media:2,seconds:10});
+ assert.deepEqual([...long.script.matchAll(/Shot \d+ \((\d+)s\)/gu)].map(m=>Number(m[1])),[4,6]);
+ assert.deepEqual(long.mended,['timing 5→10']);
+ const seven='<<<media_1>>>（海报）。'+[2,2,2,3,2,2,3].map((n,i)=>`Shot ${i+1} (${n}s): 镜头${i+1}，动作。`).join(' ')+' Style: 热血。';
+ const fitted=fitScript(seven,{media:1,seconds:15});
+ assert.equal([...fitted.script.matchAll(/Shot \d+ \((\d+)s\)/gu)].reduce((sum,m)=>sum+Number(m[1]),0),15);
+ assert.equal(fitScript(seven,{media:1,seconds:5}).why,'shots 7 in 5s');
+ // A picture given and not named is reported (the writer names it at the head); one named that was not given is unnamed.
+ assert.deepEqual(fitScript(SHOTS,{media:3,seconds:5}).missing,[3]);
+ assert.equal(usableScript(SHOTS,{media:3,seconds:5}),'');
+ assert.equal(fitScript(SHOTS,{media:1,seconds:5}).script.includes('<<<media_2>>>'),false);
  assert.equal(usableScript('好的',{media:0,seconds:5}),'');
  // One continuous take needs no shots.
  assert.ok(usableScript('以 <<<media_1>>>（这张海报）的画面为开场，小猫竖起耳朵，猛地扑向镜头。Style: 温暖。',{media:1,seconds:5}));
@@ -27,8 +37,11 @@ test('the director writes over the draft; a slow, silent or careless writer leav
  assert.deepEqual(JSON.parse(request.at(-1).text).media,[{n:1,name:'尼卡海报',shows:'白发的路飞'},{n:2,name:'基格尔德 完全体形态',shows:'黑色巨人'}]);
  assert.equal(JSON.parse(request.at(-1).text).ask,'让他们打起来，要很激烈');
  assert.deepEqual(audits.map(({ok,vision,media})=>[ok,vision,media]),[[true,true,2]]);
- // Its shots do not add up to the ten seconds asked for: the draft stays.
- assert.equal(await writer.write({ask:'x',draft:'y',seconds:10,media}),'');
+ // Its shots add up to five of the ten seconds asked for: re-timed and used.
+ assert.match(await writer.write({ask:'x',draft:'y',seconds:10,media}),/Shot 1 \(4s\).*Shot 2 \(6s\)/u);
+ assert.equal(audits.at(-1).mended,'timing 5→10');
+ // A picture left out is named at the head rather than lost.
+ assert.match(await writer.write({ask:'x',draft:'y',seconds:5,media:[...media,{name:'皮卡丘',url:''}]}),/^<<<media_3>>>（皮卡丘）也要出现在画面里。/u);
  const slow=createVideoScriptWriter({timeoutMs:20,complete:async function*({signal}){await new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(Error('aborted'))));yield SHOTS;}});
  assert.equal(await slow.write({ask:'x',draft:'y',seconds:5,media:[]}),'');
  assert.equal(createVideoScriptWriter({complete:null}),null);
