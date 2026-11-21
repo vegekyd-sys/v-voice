@@ -834,7 +834,7 @@ function Sheet({scene, spoken, loadPhoto, enlarge, caption = '', works = null}) 
   // (`works`: the call's shelf of made things: what each id is, the one the caller has picked, and how to pick, report and act.)
   // (`pin`: the place on a picture V is on, when it is on one; the mark is then on what the picture belongs to.)
   const view = {focus: spoken?.focus || scene.focus, ahead: new Set(spoken?.ahead ?? []), loadPhoto, enlarge,
-    assets: works?.assets ?? null, photos: works?.photos ?? null, picked: works?.picked ?? '', pick: works?.pick, shown: works?.shown, act: works?.act, title: scene.title,
+    assets: works?.assets ?? null, photos: works?.photos ?? null, picked: works?.picked ?? '', pick: works?.pick, shown: works?.shown, act: works?.act, autoSound: works?.autoSound, title: scene.title,
     canvas: scene.canvas === true, pins: scene.canvas ? scene.pins ?? [] : [], pin: scene.canvas && spoken && spoken.pin >= 0 ? scene.pins?.[spoken.pin] ?? null : null};
   // With the canvas, a print that is the page's only picture is shown large: it is what V is talking about.
   const hero = scene.canvas ? heroPhoto(scene) : null;

@@ -22,7 +22,7 @@ export function Viewer({items, start, onClose, works = null}) {
   const [index, setIndex] = useState(Math.max(0, Math.min(items.length - 1, start)));
   const [shape, setShape] = useState(null);
   const [saved, setSaved] = useState('');
-  const close = useRef(null), touch = useRef(null);
+  const close = useRef(null), touch = useRef(null), film = useRef(null);
   const item = items[index], many = items.length > 1;
   // (The id it goes by on the call's shelf: a made thing's own, a found photograph's by what was searched for.)
   const id = item.asset || works?.photos?.get?.(item.query)?.id || '';
@@ -38,6 +38,12 @@ export function Viewer({items, start, onClose, works = null}) {
     document.addEventListener('keydown', key);
     return () => { document.removeEventListener('keydown', key); back?.focus?.({preventScroll: true}); };
   }, []);
+  // The shell is told while something is being looked at large (the iOS App lays its own settings
+  // button over this corner of the page: it takes it away, so the only button there is this view's own).
+  useEffect(() => { works?.viewing?.(true); return () => works?.viewing?.(false); }, []);
+  // A video is started as it comes up: the tap that opened it (or turned to it) is what lets it play
+  // where nothing plays by itself. Refused, its own controls are there to start it.
+  useEffect(() => { const video = film.current; if (video) Promise.resolve(video.play()).catch(() => {}); }, [index]);
   // Looked at is picked: "this one" for V is the one on screen.
   useEffect(() => { if (id) works?.pick?.(id, true); }, [id]);
   if (typeof document === 'undefined') return null;
@@ -64,7 +70,7 @@ export function Viewer({items, start, onClose, works = null}) {
     <div className="board-enlarged board-viewer" role="dialog" aria-modal="true" aria-label={item.name ? `看图：${item.name}` : '看图'} onClick={onClose} onTouchStart={down} onTouchEnd={up}>
       <figure onClick={event => event.stopPropagation()}>
         {item.kind === 'video'
-          ? <video key={item.src} src={item.src} controls autoPlay loop playsInline onLoadedMetadata={event => { const {videoWidth: width, videoHeight: height} = event.currentTarget; if (width && height) setShape({ratio: width / height, most: width * 2}); }}
+          ? <video key={item.src} ref={film} src={item.src} controls autoPlay loop playsInline onLoadedMetadata={event => { const {videoWidth: width, videoHeight: height} = event.currentTarget; if (width && height) setShape({ratio: width / height, most: width * 2}); }}
               data-shaped={shape ? 'true' : undefined} style={shape ? {'--ratio': shape.ratio, '--most': shape.most + 'px'} : undefined} />
           : <img key={item.src} src={item.src} alt={item.name} data-shaped={shape ? 'true' : undefined} onClick={onClose}
               style={shape ? {'--ratio': shape.ratio, '--most': shape.most + 'px'} : undefined}

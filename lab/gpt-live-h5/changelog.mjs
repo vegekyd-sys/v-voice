@@ -198,6 +198,14 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-board-works.20261122.1',date:'2026-11-22',
+    title:'iPhone 上做好的视频能显示了，看大图时右上角只有一个关闭',
+    items:[
+      'iPhone App 里视频做好后会直接出现在画面上，点一下就播放（之前会一直停在“马上就动”）。',
+      '看大图、看视频时，右上角不再和设置按钮叠在一起。',
+    ],
+  },
+  {
     version:'voice-phone-echo-uplink.20261122.1',date:'2026-11-22',
     title:'手机外放时 V 不再被自己的声音打断',
     items:[

@@ -26,7 +26,10 @@ const cards=new Map();
 mountCallUi(document,view,{
   loadBoardPhoto:query=>loadBoardPhoto(query),
   // (Saved by the App from an address: a made thing's own, or the one a found photograph is lent out under.)
-  boardWorks:{pick:(id,hold)=>boardAssets?.pick(id,hold),shown:id=>boardAssets?.shown(id),save:async item=>{
+  // (`viewing`: a picture or video is being looked at large. The App is told the way it is told of a document
+  // being read, and takes its settings button off the corner the view's own close button is in.
+  // `autoSound`: nothing starts with sound by itself here; the call's audio is the App's own.)
+  boardWorks:{pick:(id,hold)=>boardAssets?.pick(id,hold),shown:id=>boardAssets?.shown(id),autoSound:false,viewing:open=>{try{Promise.resolve(post('reading',{reading:Boolean(open)})).catch(()=>{});}catch{}},save:async item=>{
     const url=/^https:/u.test(item.src)?item.src:item.id?await boardAssets?.address(item.id):'';
     if(!url)return '这张暂时存不了';
     if(current?.capabilities?.mediaSave){await post('saveMedia',{url,kind:item.kind});return '已存到相册';}
