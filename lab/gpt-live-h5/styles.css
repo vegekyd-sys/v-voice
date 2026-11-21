@@ -1806,6 +1806,11 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 video.board-work-print[data-loaded] { animation: board-in .7s ease-out both; }
 .board-work-frame > .board-work-sketch { z-index: 1; }
 .board-work-frame > .board-work-print { z-index: 2; }
+/* A video that waits for the caller's tap: the picture it was made from, a play mark over it. */
+.board-work-frame > .board-work-play { position: absolute; inset: 9px; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border-radius: 2px; background: #2a203040; pointer-events: none; }
+.board-work-play svg { width: 56px; height: 56px; padding: 14px; box-sizing: border-box; border-radius: 50%; background: #fffdfee6; box-shadow: 0 2px 10px #2a203040; }
+.board-work-play path { fill: var(--ink); }
+.board-work-play p { margin: 0; padding: 3px 10px; border-radius: 999px; font-size: 13px; color: #fff; background: #2a203099; }
 .board-work-large, .board-work-this { z-index: 3; }
 .board-work-under { animation: board-work-drift 2.6s ease-in-out infinite alternate; }
 /* Being made: pencil lines hatched across the sheet, again and again, with what was asked for written over them. */
