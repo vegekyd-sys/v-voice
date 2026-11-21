@@ -362,3 +362,18 @@ test('on a plan of many searches a second (as its answers say), a page\'s search
   await Promise.all(['乙 二', '丙 三', '丁 四', '戊 五'].map(query => finder.find(query)));
   assert.deepEqual(sent.slice(1).map(([, at]) => at), [before, before, before, before], 'no queue');
 });
+
+test('a page asked before the rate is known: once the first answer tells it, the rest go at once', async () => {
+  const sent = [];
+  let time = 0;
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', languages: [], now: () => time, wait: async ms => { time += ms; },
+    fetchImpl: async url => {
+      if (!url.startsWith('https://api.search.brave.com/')) return image(distinct(), 'image/png');
+      const query = decodeURIComponent(/q=([^&]+)/u.exec(url)[1]);
+      sent.push(time);
+      if (sent.length === 1) time += 600;
+      return {...json({results: [{title: query, thumbnail: {src: 'https://imgs.search.brave.com/' + encodeURIComponent(query)}}]}), headers: new Headers({'x-ratelimit-limit': '50, 0'})};
+    }});
+  await Promise.all(['甲 一', '乙 二', '丙 三', '丁 四', '戊 五', '己 六'].map(query => finder.find(query)));
+  assert.ok(sent.slice(1).every(at => at <= 600 + 300), `sent at ${sent}`);
+});

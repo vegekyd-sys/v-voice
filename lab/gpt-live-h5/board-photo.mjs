@@ -211,6 +211,11 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     bravePumping = true;
     try {
       while (braveQueue.length) {
+        // The first answer of a page tells the plan's rate: on a fast plan the rest go at once.
+        if (bravePerSecond >= 5) {
+          for (const job of braveQueue.splice(0)) { job.begin(); job.ask().then(job.resolve, job.reject); }
+          break;
+        }
         const gap = Math.max(braveSent + (now() < braveSlowUntil ? 2 : 1) * braveGapMs, braveAnswered + braveSettleMs) - now();
         if (gap > 0) await wait(gap);
         const job = braveQueue.shift();
