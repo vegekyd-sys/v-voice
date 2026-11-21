@@ -148,7 +148,7 @@ const urlsIn = value => { const seen = new Set(); for (const [, url] of JSON.str
  * `search(query)` is V's web search (any shape that carries result "url"s);
  * without it only Wikipedia is used. `observe` receives one line per lookup.
  */
-export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = '', braveGapMs = 1100, braveSettleMs = 300, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), lookup = dnsLookup, now = Date.now, observe = () => {}, maxBytes = 1500000, timeoutMs = 9000, ttlMs = 30 * 60000, maxEntries = 96, directory = '', keepMs = 365 * 86400000,
+export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = '', braveGapMs = 1100, braveSettleMs = 300, pictureTimeoutMs = 3500, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), lookup = dnsLookup, now = Date.now, observe = () => {}, maxBytes = 1500000, timeoutMs = 9000, ttlMs = 30 * 60000, maxEntries = 96, directory = '', keepMs = 365 * 86400000,
   // Wikimedia refuses data-centre clients whose agent names no contact page.
   languages = ['zh', 'en'], userAgent = 'VVoiceBoard/0.1 (https://github.com/vegekyd-sys/v-voice)'} = {}) {
   const cache = new Map(), flights = new Map(), prints = new Map();
@@ -248,7 +248,11 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
       // seconds); the best-ranked usable one wins. When none of three can be fetched, the next
       // three are tried (轰鸣月: the three best were on a site that refuses other sites, 11/21).
       for (let start = 0; start < ranked.length; start += 3) {
+        // Each file has 3.5 s: a thumbnail the search could not fetch answered 504 after 5 s,
+        // and the next three waited for it (a picture ready at 13.7 s, its search at 7.5 s, 11/21).
+        const fileSignal = typeof AbortSignal.any === 'function' && typeof AbortSignal.timeout === 'function' ? AbortSignal.any([signal, AbortSignal.timeout(pictureTimeoutMs)]) : signal;
         const tried = ranked.slice(start, start + 3).map(({item}) => (async () => {
+          const signal = fileSignal;
           const thumbnail = new URL(item.thumbnail.src);
           if (thumbnail.protocol !== 'https:' || thumbnail.hostname !== 'imgs.search.brave.com') return null;
           // The search's own thumbnail and the picture where it lives are asked

@@ -333,3 +333,15 @@ test('a refused search takes the next turn, so pictures come in the order they w
   await Promise.all(['甲 一', '乙 二', '丙 三', '丁 四'].map(query => finder.find(query)));
   assert.deepEqual(sent, ['甲 一', '乙 二', '乙 二', '丙 三', '丁 四']);
 });
+
+test('a file that does not arrive in time gives way to the next results', async () => {
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', braveGapMs: 0, languages: [], pictureTimeoutMs: 50,
+    fetchImpl: async (url, init) => {
+      if (url.startsWith('https://api.search.brave.com/')) return json({results: [1, 2, 3, 4].map(n => ({title: '拉妮', source: 'site' + n + '.com', confidence: 'high', thumbnail: {src: 'https://imgs.search.brave.com/' + n}}))});
+      if (!url.endsWith('/4')) return new Promise((resolve, reject) => init?.signal?.addEventListener('abort', () => reject(Error('aborted')), {once: true}));
+      return image(distinct(), 'image/png');
+    }});
+  const started = Date.now();
+  assert.ok(await finder.find('拉妮'));
+  assert.ok(Date.now() - started < 1000, 'the hanging three were given up after their time');
+});
