@@ -130,6 +130,8 @@
     "assets/v-voice-apple-touch.png": "643f67cd7d67bb2563f79ec2938d01e869cd2634bd9f78e7597f98afe525763c",
     "ios/H5/native-h5.mjs": "d501e36e8fa2ae278a94d1e113a7321cc52c54a8e36104801ae33a442daf32d8"
   },
+  "build": "572f44999394",
+  "updated": "2026-11-21",
   "outputs": {
     "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
     "native-h5.js": "d9205cd67556d9978fc368ef0f6773fa2b90335a60a86b0d3a2e7760e91e5add",

@@ -223,4 +223,32 @@ import VVoiceCore
         try await reopened.fetch()
         XCTAssertEqual(reopened.preferred()?.revision, fresh.revision)
     }
+    func testSettingsSaysWhichPageThisIsAndWhetherItIsTheOneServedNow() async throws {
+        let (call, root, delivery) = try await setup()
+        let (_, web, _) = surface(call, root: root, delivery: delivery)
+        try await until { try await self.marker(web) != nil && call.page != nil }
+        let bundled = try H5Release.bundled()
+        XCTAssertEqual(call.page, .init(build: bundled.build, updated: bundled.updated, bundled: true))
+        XCTAssertNotNil(bundled.build); XCTAssertNotNil(bundled.updated)
+        await call.checkPageFreshness()
+        XCTAssertEqual(call.pageFreshness, .latest)
+        try await shoot(call, "settings-latest")
+        // The service serves a newer page: said so, and it is fetched at once (shown once idle on the home page).
+        try await command("served-page", variant: "other"); try await command("shell-release", variant: "a")
+        await call.checkPageFreshness()
+        XCTAssertEqual(call.pageFreshness, .newer(updated: "2026-12-01"))
+        try await until { (try await self.stats()["shellRequests"] as? [Any])?.isEmpty == false }
+        try await shoot(call, "settings-newer")
+    }
+    /// The settings sheet as it is drawn, for a person to look at (TEST_RUNNER_VVOICE_SHOT_DIR).
+    private func shoot(_ call: CallCoordinator, _ name: String) async throws {
+        guard let dir = ProcessInfo.processInfo.environment["VVOICE_SHOT_DIR"] else { return }
+        let scene = UIApplication.shared.connectedScenes.first as! UIWindowScene
+        let window = UIWindow(windowScene: scene); window.frame = CGRect(x: 0, y: 0, width: 393, height: 1100)
+        window.rootViewController = UIHostingController(rootView: SettingsView(call: call)); window.makeKeyAndVisible()
+        try await Task.sleep(for: .seconds(1.2))
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        try image.pngData()!.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + ".png"))
+        window.isHidden = true
+    }
 }

@@ -120,6 +120,7 @@ struct H5WebSurface: UIViewRepresentable {
         web.navigationDelegate = self; web.uiDelegate = self; web.isInspectable = false
         webView = web
         configureDelivery()
+        call.fetchServedPage = { [weak self] in self?.checkForUpdates(force: true) }
         scheme.select(delivery?.preferred() ?? (try? H5Release.bundled()))
         reload(); return web
     }
@@ -233,7 +234,11 @@ struct H5WebSurface: UIViewRepresentable {
         case "ready":
             guard payload["bridgeVersion"] as? Int == H5Release.bridgeVersion else { failedPage(); throw VoiceError.protocolMismatch }
             ready = true; watchdog?.cancel(); watchdog = nil; pageFailures = 0; startInForeground = false
-            if let release = scheme.release { delivery?.confirm(release); CallDiagnostics.record("h5.page-ready", code: "rev=\(release.revision.prefix(12))") }
+            if let release = scheme.release {
+                delivery?.confirm(release); CallDiagnostics.record("h5.page-ready", code: "rev=\(release.revision.prefix(12)) build=\(release.build ?? "-")")
+                let page = CallCoordinator.PageVersion(build: release.build, updated: release.updated, bundled: release.revision == "bundled")
+                if call.page != page { call.page = page; call.pageFreshness = .unknown }
+            }
             await call.refreshOptions(); latest = H5Snapshot.make(call, visible: foreground); push()
             checkForUpdates()
         case "dial":

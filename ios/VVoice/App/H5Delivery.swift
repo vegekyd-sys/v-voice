@@ -15,6 +15,14 @@ struct H5Release {
     static let maximumArchiveBytes = 12 * 1024 * 1024
     let revision: String
     let files: [String: Data]
+    /// Labels beside the signed files: the page's build and the date of its latest update ("2026-11-22").
+    var build: String? = nil
+    var updated: String? = nil
+    static func label(build: Any?, updated: Any?) -> (String?, String?) {
+        let b = (build as? String).flatMap { $0.range(of: #"^[a-f0-9]{12}$"#, options: .regularExpression) != nil ? $0 : nil }
+        let u = (updated as? String).flatMap { $0.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil ? $0 : nil }
+        return (b, u)
+    }
 
     static func hash(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
     static func validPath(_ path: String) -> Bool {
@@ -23,7 +31,7 @@ struct H5Release {
         ["html", "js", "mjs", "css", "webp", "png", "svg"].contains(URL(fileURLWithPath: path).pathExtension)
     }
     private struct File: Decodable { let path: String; let sha256: String; let bytes: Int; let data: Data }
-    private struct Archive: Decodable { let schema: Int; let minimumBridge: Int; let maximumBridge: Int; let revision: String; let files: [File] }
+    private struct Archive: Decodable { let schema: Int; let minimumBridge: Int; let maximumBridge: Int; let revision: String; let files: [File]; let build: String?; let updated: String? }
     static func decode(_ bytes: Data) throws -> H5Release {
         guard bytes.count <= maximumArchiveBytes else { throw DeliveryError.invalid }
         let archive = try JSONDecoder().decode(Archive.self, from: bytes)
@@ -43,7 +51,8 @@ struct H5Release {
         }
         guard ["index.html", "native-h5.js", "styles.css", "comparison.html"].allSatisfy({ files[$0] != nil }),
               hash(Data(signature.utf8)) == archive.revision else { throw DeliveryError.invalid }
-        return .init(revision: archive.revision, files: files)
+        let (build, updated) = label(build: archive.build, updated: archive.updated)
+        return .init(revision: archive.revision, files: files, build: build, updated: updated)
     }
     static func bundled() throws -> H5Release {
         guard let root = Bundle.main.url(forResource: "H5Shell", withExtension: nil),
@@ -56,7 +65,8 @@ struct H5Release {
             guard Self.hash(bytes) == hash else { throw DeliveryError.invalid }
             files[path] = bytes
         }
-        return .init(revision: "bundled", files: files)
+        let (build, updated) = label(build: manifest["build"], updated: manifest["updated"])
+        return .init(revision: "bundled", files: files, build: build, updated: updated)
     }
     enum DeliveryError: Error { case invalid }
 }

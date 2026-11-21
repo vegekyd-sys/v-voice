@@ -86,6 +86,23 @@ import VVoiceCore
     private(set) var documents: [CallDocument] = []
     private(set) var tasks: [CallTask] = []
     private(set) var presentationID = UUID().uuidString
+    /// The call page this App shows (H5Delivery), and whether it is the one the service serves now.
+    struct PageVersion: Equatable, Hashable { let build: String?; let updated: String?; let bundled: Bool }
+    enum PageFreshness: Equatable { case unknown, checking, latest, newer(updated: String?) }
+    var page: PageVersion?
+    var pageFreshness = PageFreshness.unknown
+    /// Set by the page host: download the served page now (it is shown once the App is idle on its home page).
+    @ObservationIgnored var fetchServedPage: (() -> Void)?
+    func checkPageFreshness() async {
+        guard let build = page?.build, api.record != nil else { pageFreshness = .unknown; return }
+        pageFreshness = .checking
+        do {
+            let served = try await api.call("page/version", body: [:], refresh: false)
+            guard let current = served["build"] as? String, !current.isEmpty, page?.build == build else { pageFreshness = .unknown; return }
+            if current == build { pageFreshness = .latest }
+            else { pageFreshness = .newer(updated: H5Release.label(build: nil, updated: served["updated"]).1); fetchServedPage?() }
+        } catch { pageFreshness = .unknown }
+    }
     var islandCaptions = UserDefaults.standard.object(forKey: "islandCaptions") as? Bool ?? true {
         didSet { UserDefaults.standard.set(islandCaptions, forKey: "islandCaptions"); publish() }
     }

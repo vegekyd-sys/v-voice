@@ -50,10 +50,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 // Dialing is how a known caller retries; only anonymous callers keep the tight limit.
 // Page features reachable as /api/page/<name> (see the request handler). Each maps to the route the web
 // page uses, answered as JSON: the board's whole run at once, a photograph as base64.
+// The served App page's build and the date of its latest update (ios-shell-release.json), read once.
+let servedPageBuild;
 const PAGE_FEATURES = Object.freeze({
   board: params => ({pathname: '/api/board', params: {...params, collect: true}}),
   'board-image': params => ({pathname: '/api/board-image', params: {...params, inline: true}}),
   'board-assets': params => ({pathname: '/api/board-assets', params}),
+  // Which page the service serves the App now (its build), so the page can say whether it is the latest.
+  version: () => ({pathname: '/api/page-version', params: {}}),
 });
 export const callAttemptLimit = binding => binding.permissionProfile === 'unidentified' ? 6 : 30;
 
@@ -879,6 +883,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const name = pathname.slice('/api/page/'.length), feature = Object.hasOwn(PAGE_FEATURES, name) ? PAGE_FEATURES[name] : null;
         if (!feature) return json(res,404,{error:'没有这个入口'});
         ({pathname, params} = feature(params));
+      }
+      if (pathname === "/api/page-version") {
+        servedPageBuild ??= readFile(join(here, "ios-shell-release.json"), "utf8").then(text => {const {build = null, updated = null} = JSON.parse(text);return {build, updated};}).catch(() => ({build: null, updated: null}));
+        return json(res, 200, await servedPageBuild);
       }
       if (pathname === "/api/session") {
         const result=await reservePhoneCall({context,binding,params,req,ip});
