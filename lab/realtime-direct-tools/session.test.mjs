@@ -1860,3 +1860,31 @@ test('a call says which way it ended: the voice service closing it, or the page 
  for (let attempt = 0; attempt < 100 && !g.audit.some(e => e.type === 'call.closed'); attempt++) await delay(5);
  assert.equal(g.audit.find(e => e.type === 'call.closed')?.why, 'client-closed:1006');
 });
+
+// Invented words; a loud phone speaker leaking V's reply back into the microphone.
+for(const [name,options,playing,expectEcho] of [
+ ['on the phone, while its reply still plays, V\'s own voice heard back is not the caller',{},true,true],
+ ['once the reply has finished playing, the same words are the caller\'s',{},false,false],
+ ['the echo guard can be switched off',{playbackEchoGuard:false},true,false],
+])test(name,async t=>{
+ const f=await fixture(undefined,'seeduplex',options);t.after(()=>f.service.dispose());
+ const pcm=Buffer.alloc(8);pcm.writeFloatLE(.1,0);pcm.writeFloatLE(.2,4);
+ f.event({type:'response.output_text.delta',response_id:'story',delta:'小船慢慢划到了对岸。'});
+ f.event({type:'response.output_text.done',response_id:'story',text:'小船慢慢划到了对岸。'});
+ f.event({type:'response.output_audio.started',response_id:'story'});f.event({type:'response.output_audio.delta',response_id:'story',delta:pcm.toString('base64')});
+ f.event({type:'response.done',response:{id:'story',status:'completed'}});
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:playing})),false);
+ f.event({type:'conversation.item.input_audio_transcription.started'});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'划到对岸'});
+ f.event({type:'response.output_text.delta',response_id:'echo-answer',delta:'是的。'});
+ f.event({type:'response.output_audio.started',response_id:'echo-answer'});f.event({type:'response.output_audio.delta',response_id:'echo-answer',delta:pcm.toString('base64')});
+ const sent=f.client.sent;
+ assert.equal(sent.some(e=>e.type==='input.speech.ignored'&&e.preservedResponseId==='story'),expectEcho);
+ assert.equal(sent.some(e=>e.type==='audio.clear'),!expectEcho);
+ assert.equal(sent.some(e=>e.type==='transcript'&&e.role==='user'),!expectEcho,'an echo is not shown as the caller speaking');
+ assert.equal(sent.filter(e=>e.type==='audio').length,expectEcho?1:2);
+ const userRows=f.audit.filter(e=>e.type==='transcript'&&e.role==='user');
+ assert.equal(userRows.length,1,'the recognised words stay in the call log either way');assert.equal(userRows[0].playbackEcho===true,expectEcho);
+ assert.equal(f.audit.some(e=>e.type==='input.playback-echo'),expectEcho);
+ assert.equal(f.audit.some(e=>e.type==='input.playback-echo-reply'&&e.responseId==='echo-answer'),expectEcho);
+});

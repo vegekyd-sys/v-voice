@@ -10,7 +10,14 @@ export const SEEDUPLEX_VOICES = Object.freeze({
 });
 
 const INPUT_FRAME_BYTES = 640;
-const MAX_PENDING_INPUT_BYTES = 16_000 * 2 * 10;
+// Input held back by a stalled uplink (the phone's TCP connection over a lossy route) arrives
+// in one burst when the route recovers. What is older than this is stale: the model would hear
+// the caller seconds late for half a minute. Keep the newest part and drop the rest, instead of
+// ending the call (11/21: a 13 s stall arrived at once, passed the old 10 s limit, call closed).
+const MAX_PENDING_INPUT_BYTES = 16_000 * 2 * 4;
+// After a recognised utterance taken for V's own voice, the model's answer to it starts within
+// a few hundred milliseconds. Only a response that begins inside this window is that answer.
+const PLAYBACK_ECHO_REPLY_MS = 4_000;
 // A fifth of a second of audio waiting to be sent is a backlog.
 const INPUT_BACKLOG_BYTES = 16_000 * 2 / 5;
 const MAX_TOOL_CALLS = 100;
@@ -301,6 +308,11 @@ export class SeeduplexRealtimeVoiceBridge {
     this.greetingRequested = false;
     this.pendingGreeting = null;
     this.retiredResponses = new Set();
+    this.inputStall = null;
+    this.droppedInputMs = 0;
+    this.droppedReportedAt = 0;
+    this.playbackEchoAt = null;
+    this.injectedCancelPending = false;
     this.audioResponseId = null;
     this.deliveredAudioResponseId = null;
     this.nativeAsideCandidates = new Map();
@@ -403,16 +415,33 @@ export class SeeduplexRealtimeVoiceBridge {
 
   sendAudio(audio) {
     if (this.terminal) return;
-    this.lastInputAt = Date.now();
+    const now = Date.now(), stalledMs = now - this.lastInputAt;
+    // An uplink that was silent for a while: record how long, and how much audio then arrives
+    // within a second. About as much as the silence means the phone kept recording and the
+    // network held it; a second's worth means the phone itself stopped sending.
+    if (this.inputStall && now - this.inputStall.at >= 1_000) {
+      this.#diagnostic({stage: "input-burst", stalledMs: this.inputStall.stalledMs, arrivedMs: Math.round(this.inputStall.bytes / 32), droppedMs: this.droppedInputMs});
+      this.inputStall = null; this.droppedInputMs = 0;
+    }
+    if (this.ready && stalledMs >= (this.options.inputIdleMs ?? 2_000)) this.inputStall = {stalledMs, at: now, bytes: 0};
+    this.lastInputAt = now;
     // Audio received while reconnecting belongs to an unavailable input stream.
     // Do not replay seconds of stale speech as a burst into the resumed session.
     if (this.reconnecting) return;
     const converted = this.resampler.push(audio);
     if (!converted.length) return;
+    if (this.inputStall) this.inputStall.bytes += converted.length;
     this.pendingInput = Buffer.concat([this.pendingInput, converted]);
     if (this.pendingInput.length > MAX_PENDING_INPUT_BYTES) {
-      this.#fail(new Error("Seeduplex pending input audio overflow"));
-      return;
+      const keep = MAX_PENDING_INPUT_BYTES - MAX_PENDING_INPUT_BYTES % INPUT_FRAME_BYTES;
+      const droppedMs = Math.round((this.pendingInput.length - keep) / 32);
+      this.pendingInput = this.pendingInput.subarray(this.pendingInput.length - keep);
+      this.droppedInputMs += droppedMs;
+      // Reported with the burst it belongs to; otherwise at most once a second.
+      if (!this.inputStall && now - this.droppedReportedAt >= 1_000) {
+        this.#diagnostic({stage: "input-backlog-dropped", droppedMs: this.droppedInputMs});
+        this.droppedInputMs = 0; this.droppedReportedAt = now;
+      }
     }
     this.#pumpInput();
   }
@@ -454,6 +483,10 @@ export class SeeduplexRealtimeVoiceBridge {
 
   #watchInput() {
     if (!this.ready || this.terminal || this.inputMuted || Date.now() - this.lastInputAt < (this.options.inputIdleMs ?? 2_000)) return;
+    // A burst after a stall is still being fed at frame pace. Muting now and unmuting on the
+    // next frame, four times a second, cut the caller's utterance into pieces that were never
+    // completed (11/21: two utterances started recognition and were never answered).
+    if (this.pendingInput.length >= INPUT_FRAME_BYTES) return;
     this.inputMuted = true;
     this.#send({type:"input_audio_mute.commit"});
     this.#diagnostic({stage:"input-paused"});
@@ -778,6 +811,14 @@ export class SeeduplexRealtimeVoiceBridge {
         if(!owner||this.retiredResponses.has(owner))return;
       }
     }
+    if(this.request.nativeDuplex&&responseId&&!replay&&this.playbackEchoAt!==null&&type?.startsWith('response.')&&!this.#knownNativeResponse(responseId)){
+      const echoReply=Date.now()-this.playbackEchoAt<=PLAYBACK_ECHO_REPLY_MS;
+      this.playbackEchoAt=null;
+      if(echoReply){
+        this.retiredResponses.add(responseId);if(this.retiredResponses.size>256)this.retiredResponses.delete(this.retiredResponses.values().next().value);
+        this.request.onEvent?.({direction:'server',type:'native.playback-echo-reply',responseId});return;
+      }
+    }
     if(this.request.nativeDuplex&&responseId&&!replay){
       let candidate=this.nativeAsideCandidates.get(responseId);
       if(type==='response.output_text.delta'&&typeof event.delta==='string'){
@@ -886,8 +927,17 @@ export class SeeduplexRealtimeVoiceBridge {
       this.outputClosed = false;
     }
     if (type === "conversation.item.input_audio_transcription.started") {
+      this.playbackEchoAt = null;
       if(this.request.nativeDuplex)this.request.onInputSpeech?.(true);
-      if (this.injectedSpeech && this.responseActive) this.#cancelUpstreamResponse(true);
+      // Speech the service speaks for us (a board lesson) does not stop for the caller by
+      // itself. On a native duplex call the phone already holds playback while someone talks;
+      // the speech is cancelled only once the utterance is recognised and is not V's own voice
+      // coming back. Cancelling at the first sound cut lessons off after a few seconds whenever
+      // a loud speaker's echo started recognition (11/21: 8 s and 11 s of 40 s and 30 s lessons).
+      if (this.injectedSpeech && this.responseActive) {
+        if (this.request.nativeDuplex) this.injectedCancelPending = true;
+        else this.#cancelUpstreamResponse(true);
+      }
       this.responseOwnerAnnounced = false;
       this.responseOwnerId = undefined;
     }
@@ -898,14 +948,25 @@ export class SeeduplexRealtimeVoiceBridge {
       // above so the fresh suppression is not immediately cleared.
       const spoken = optionalString(event.transcript) ?? optionalString(event.text);
       if(this.request.nativeDuplex)this.request.onInputSpeech?.(false,{recognized:Boolean(spoken?.trim())});
+      // V's own voice, heard again from a loud phone speaker while its reply still plays: the
+      // reply goes on, and the model's answer to the echo is never played.
+      if(this.request.nativeDuplex&&spoken&&this.request.isPlaybackEcho?.(spoken)){
+        this.playbackEchoAt=Date.now();
+        this.request.onEvent?.({direction:'server',type:'native.playback-echo',preservedResponseId:this.audioResponseId});
+      }
+      if (this.injectedCancelPending) {
+        this.injectedCancelPending = false;
+        if (spoken?.trim() && this.playbackEchoAt === null && this.injectedSpeech && this.responseActive) this.#cancelUpstreamResponse(true);
+      }
       if(this.request.nativeDuplex)this.nativeLiteralRead=/朗读|复述|念出|读出|原样|逐字/u.test(spoken??'');
       // A finished utterance after an earlier cancel opens the next turn, whose
       // reply text arrives before its first audio. Retired response ids still
       // filter the cancelled tail.
       if (spoken && this.cancelledOutputPending) this.cancelledOutputPending = false;
-      if (spoken && this.bargeInPending) this.#cancelUpstreamResponse();
+      if (spoken && this.bargeInPending && this.playbackEchoAt === null) this.#cancelUpstreamResponse();
       this.bargeInPending = false;
     }
+    if(type === "conversation.item.input_audio_transcription.failed")this.injectedCancelPending = false;
     if(type === "conversation.item.input_audio_transcription.failed" && this.request.nativeDuplex)this.request.onInputSpeech?.(false,{recognized:false});
     const continuingBatch = this.toolBatches.find((batch) => batch.continuing);
     const internalContinuationResponse =
@@ -973,7 +1034,7 @@ export class SeeduplexRealtimeVoiceBridge {
       const text = optionalString(event.transcript) ?? optionalString(event.text);
       if (text) {
         this.toolNoticeUsed = false;
-        this.request.onTranscript?.("user", text, true, undefined, {turnId: event.item_id ?? event.turn_id});
+        this.request.onTranscript?.("user", text, true, undefined, {turnId: event.item_id ?? event.turn_id, ...(this.playbackEchoAt !== null ? {playbackEcho: true} : {})});
       }
     }
     const workingBatch = continuingBatch;
@@ -1214,6 +1275,10 @@ export class SeeduplexRealtimeVoiceBridge {
         error: "The OpenClaw agent consult failed. Tell the user it did not complete.",
       });
     }
+  }
+
+  #knownNativeResponse(responseId) {
+    return [this.nativeResponseId,this.audioResponseId,this.deliveredAudioResponseId,this.nativeTtsResponseId].includes(responseId)||this.nativeTextResponses.has(responseId)||this.nativeAsideCandidates.has(responseId);
   }
 
   #acceptNativeResponse(responseId) {
