@@ -489,28 +489,32 @@ export class GptLiveBridge {
     if(choice.name===GPT_LIVE_RESEARCH_TOOL.name&&this.research){void this.lookInto(id,entry,String(choice.args?.question??text));return;}
     this.request.onToolCall?.({callId:id,name:choice.name,args:choice.args});
   }
-  // Something that takes reading the pages: asked of the stronger model behind this one. It answers in
-  // about ten seconds; the passages of an ordinary search are the fallback when it does not.
+  // Something that takes reading the pages. Two answers, the way a person does it: at once, what the
+  // search passages say, told as a first look; then, some twenty seconds later, what the stronger
+  // model behind this one found by reading the pages, as a correction or the missing detail. (Waiting
+  // for the second alone was twenty silent seconds; the first alone is where the wrong answers were.)
   async lookInto(id,entry,question){
-    const startedAt=this.now();
+    const startedAt=this.now(),quick=(this.request.tools??[]).some(tool=>tool.name==='web_search');
     this.request.onDiagnostic?.({stage:'research-started',elapsedMs:Math.round(startedAt-this.startedAt)});
-    this.append('这件事要读网页原文才能查清，大约十秒。现在只说一句很短的话（比如“我去查清楚，等我几秒”），然后安静地等结果；结果回来之前不要凭印象回答，也不用再说话。',{...this.on(id),channel:'commentary'});
-    try{
-      const context=this.history.slice(-6).filter(turn=>turn.role!=='tool'&&turn.text).map(turn=>`${turn.role==='user'?'用户':'V'}：${turn.text}`).join('\n');
-      const found=await this.research({question,context,signal:this.abort.signal});
-      if(this.closed||entry.state==='done')return;
-      entry.state='done';this.resultAt=this.now();
-      this.request.onDiagnostic?.({stage:'research-done',elapsedMs:Math.round(this.now()-startedAt),attempt:found.searches});
-      this.append(`查清楚了（已经读过网页原文，按今天的情况）：\n${found.answer}${this.answerNow()}`,{...this.on(id),channel:'speakable',whole:true});
-    }catch{
-      if(this.closed||entry.state==='done')return;
+    const context=this.history.slice(-6).filter(turn=>turn.role!=='tool'&&turn.text).map(turn=>`${turn.role==='user'?'用户':'V'}：${turn.text}`).join('\n');
+    this.researching=(this.researching??0)+1;
+    const pending=this.research({question,context,signal:this.abort.signal}).then(found=>({found}),()=>({}));
+    if(quick){entry.name='web_search';entry.checking=true;this.request.onToolCall?.({callId:id,name:'web_search',args:{query:question.slice(0,200)}});}
+    else this.append('这件事要读网页原文才能查清，大约二十秒。现在只说一句很短的话（比如“我去查清楚，等我一会儿”），然后安静地等结果；结果回来之前不要凭印象回答。',{...this.on(id),channel:'commentary'});
+    const {found}=await pending;this.researching--;
+    if(this.closed)return;
+    if(!found){
       this.request.onDiagnostic?.({stage:'research-failed',elapsedMs:Math.round(this.now()-startedAt)});
-      // The ordinary search still answers, from its passages.
-      if((this.request.tools??[]).some(tool=>tool.name==='web_search')){entry.name='web_search';this.request.onToolCall?.({callId:id,name:'web_search',args:{query:question.slice(0,200)}});}
-      else{entry.state='done';this.append('这次没能查清。如实告诉用户没查到，不要编。',{...this.on(id),channel:'speakable'});}
+      if(quick)this.append('刚才那件事没能读到网页原文核对。用户再问细节时如实说只有搜索摘要，没核对过。',{channel:'commentary'});
+      else if(entry.state!=='done'){entry.state='done';this.append('这次没能查清。如实告诉用户没查到，不要编。',{...this.on(id),channel:'speakable'});}
+      return;
     }
+    this.request.onDiagnostic?.({stage:'research-done',elapsedMs:Math.round(this.now()-startedAt),attempt:found.searches});
+    this.resultAt=this.now();
+    if(!quick){entry.state='done';this.append(`查清楚了（已经读过网页原文，按今天的情况）：\n${found.answer}${this.answerNow()}`,{...this.on(id),channel:'speakable',whole:true});return;}
+    this.append(`刚才“${bound(question,80)}”这件事，我读了网页原文核对过了（按今天的情况）：\n${found.answer}\n（现在接着刚才的话告诉用户，像聊天一样：先说一句“我又核对了一下”；和你刚才说的不一样的地方直接更正，刚才没说到的细节补上，已经说对的不要重复。对方正在说别的事，就等他说完再用一两句带过。）`,{channel:'speakable',whole:true});
   }
-  get busy(){return this.working||Boolean(this.script)||[...this.delegations.values()].some(entry=>entry.state==='routing'||entry.state==='running');}
+  get busy(){return this.working||Boolean(this.script)||(this.researching??0)>0||[...this.delegations.values()].some(entry=>entry.state==='routing'||entry.state==='running');}
   // After an ordinary reply: two things the model says and does not do.
   afterReply(text){
     clearTimeout(this.netTimer);
@@ -566,7 +570,8 @@ export class GptLiveBridge {
       return;
     }
     const text=gptLiveResultText(entry.name,result);
-    this.append(`${entry.name}：${text}${Array.from(text).length>=200?this.answerNow():''}`,{...this.on(id),channel:'speakable',whole:true});
+    // (`checking`: the pages themselves are being read meanwhile; this is the first look.)
+    this.append(`${entry.name}：${text}${entry.checking?`\n（这是搜索摘要，可能不全、也可能过时；网页原文我正在核对，二十秒左右有结果。现在先把摘要里确定的几点告诉用户，说明这是初步看到的、细节还在核对；摘要里没有的不要补。）`:Array.from(text).length>=200?this.answerNow():''}`,{...this.on(id),channel:'speakable',whole:true});
   }
   fail(message){if(this.closed)return;this.reject?.(Error(message));this.request.onError?.(Error(message));this.close();}
   close(){

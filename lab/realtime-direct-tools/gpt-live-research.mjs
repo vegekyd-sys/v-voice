@@ -6,7 +6,7 @@
 const RESPONSES_URL='https://chatgpt.com/backend-api/codex/responses';
 const ANSWER_MAX_CHARS=1800;
 export const GPT_LIVE_RESEARCH_TOOL=Object.freeze({type:'function',name:'web_answer',
-  description:'读网页原文查清一件事并给出答案（约十秒）。用于需要具体数据、名单、逐项细节、比较、核实的当前信息：阵容和每人数据、每场比分和得分、产品参数和价格对比、一件事的来龙去脉，或者用户说“不对”“查清楚”“详细说说”。只要一句话的近况（天气、股价、新闻标题、一个比分）用 web_search。',
+  description:'先给搜索摘要里的初步答案，同时读网页原文核对，约二十秒后补充或更正。用于需要具体数据、名单、逐项细节、比较、核实的当前信息：阵容和每人数据、每场比分和得分、产品参数和价格对比、一件事的来龙去脉，或者用户说“不对”“查清楚”“详细说说”。只要一句话的近况（天气、股价、新闻标题、一个比分）用 web_search。',
   parameters:{type:'object',properties:{question:{type:'string',description:'要查清的完整问题：保留对象、时间和用户要的那几项；“今年”“现在”写成具体日期。'}},required:['question'],additionalProperties:false}});
 const today=now=>new Date(now).toLocaleDateString('sv-SE',{timeZone:'Asia/Shanghai'});
 const instructions=now=>`You are the research backend of a Chinese voice assistant on a phone call. Today is ${today(now)} (Asia/Shanghai). Search the web and read the pages before answering; for anything current, trust the newest dated source over what you remember, and say plainly when a result is not out yet or could not be found. Answer in Chinese, in plain spoken sentences: the direct answer first, then every item that was asked for with its key names, numbers and dates, each in one sentence. At most ten sentences. No headings, no bullet marks, no links, no source names in brackets.`;
@@ -14,7 +14,7 @@ const instructions=now=>`You are the research backend of a Chinese voice assista
 export const spokenAnswer=text=>String(text??'').replace(/\(\[[^\]]*\]\([^)]*\)\)/gu,'').replace(/\[([^\]]*)\]\([^)]*\)/gu,'$1').replace(/[*_`#>]+/gu,'').replace(/[ \t]+\n/gu,'\n').replace(/\n{2,}/gu,'\n').replace(/[ \t]{2,}/gu,' ').trim();
 
 /** `research({question, context, signal})` -> {answer, searches, elapsedMs}; throws when nothing usable came back. */
-export function createGptLiveResearch({resolveAuth,model,effort='low',fetchImpl=fetch,timeoutMs=28000,now=()=>Date.now(),newId=()=>globalThis.crypto.randomUUID()}){
+export function createGptLiveResearch({resolveAuth,model,effort='low',fetchImpl=fetch,timeoutMs=45000,now=()=>Date.now(),newId=()=>globalThis.crypto.randomUUID()}){
   if(typeof resolveAuth!=='function'||!model)throw Error('GPT Live research needs a login and a model');
   return async function research({question,context='',signal}={}){
     const asked=String(question??'').trim();if(!asked)throw Error('没有要查的问题');

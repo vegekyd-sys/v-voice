@@ -454,26 +454,39 @@ test('everything a search returned reaches the model: six passages, the last as 
   assert.match(text,/今天是 \d{4}-\d{2}-\d{2}/u);
 });
 
-test('what takes reading the pages is asked of the stronger model; the ordinary search is the fallback',async()=>{
+test('what takes reading the pages gets two answers: the passages at once, then what the pages say',async()=>{
   const tools=[{type:'function',name:'web_search',parameters:{type:'object',properties:{query:{type:'string'}},required:['query']}}];
-  const make=async research=>{
+  const make=async(research,offeredTools=tools)=>{
     const seen=[];
-    const f=await fixture({tools,route:async({tools:offered})=>{seen.push(offered.map(t=>t.name));return {name:'web_answer',args:{question:'甲队本赛季的阵容和每人数据'}};}});
+    const f=await fixture({tools:offeredTools,route:async({tools:offered})=>{seen.push(offered.map(t=>t.name));return {name:'web_answer',args:{question:'甲队本赛季的阵容和每人数据'}};}});
     f.bridge.research=research;f.seen=seen;await ready(f);return f;
   };
-  const asked=[];
-  const f=await make(async request=>{asked.push(request);return {answer:'甲队十一胜四负，首发是 A、B、C。',searches:2,elapsedMs:9000};});
+  let finish;const asked=[];
+  const f=await make(request=>{asked.push(request);return new Promise(resolve=>{finish=resolve;});});
   userSays(f,'u1','甲队今年阵容怎么样');say(f,idOf(12),'甲队今年阵容怎么样');await pause(20);
   assert(f.seen.at(-1).includes('web_answer'),'offered to the router only when there is a backend');
-  assert.equal(f.calls.length,0,'not one of the session\'s tools');assert.equal(asked[0].question,'甲队本赛季的阵容和每人数据');assert.match(asked[0].context,/用户：甲队今年阵容怎么样/u);
-  const sent=appends(f);assert.equal(sent[0].channel,'commentary');assert.match(sent[0].content[0].text,/要读网页原文才能查清，大约十秒/u);
-  assert.equal(sent.at(-1).channel,'speakable');assert.match(sent.slice(1).map(e=>e.content[0].text).join(''),/^查清楚了（已经读过网页原文，按今天的情况）：\n甲队十一胜四负，首发是 A、B、C。\n（资料到此为止/u);
+  // At once: the ordinary search, told as a first look.
+  assert.deepEqual(f.calls,[{callId:idOf(12),name:'web_search',args:{query:'甲队本赛季的阵容和每人数据'}}]);
+  assert.equal(asked[0].question,'甲队本赛季的阵容和每人数据');assert.match(asked[0].context,/用户：甲队今年阵容怎么样/u);
+  f.bridge.submitToolResult(idOf(12),{details:{query:'q',results:[{title:'甲队',snippet:'上赛季名单',published:'2025-11-01',siteName:'站'}]},content:[{type:'text',text:'{}'}]});
+  assert.match(appends(f).map(e=>e.content[0].text).join(''),/web_search：搜索“q”的结果[\s\S]*这是搜索摘要，可能不全、也可能过时；网页原文我正在核对[\s\S]*细节还在核对/u);
+  // While the pages are read, "I am still checking" is true: nothing is called out.
+  vSays(f,'a1','初步看是这样,细节我还在核对。');await pause(2400);assert(!f.events.some(e=>e.diag?.stage==='promise-unkept'));
+  // Then what the pages say, as a correction or the missing detail, on the session.
+  const before=appends(f).length;
+  finish({answer:'甲队十一胜四负，首发是 A、B、C。',searches:2,elapsedMs:18000});await pause(20);
+  const added=appends(f).slice(before);assert.equal(added.at(-1).channel,'speakable');assert(added.every(e=>e.delegation_item_id===undefined));
+  assert.match(added.map(e=>e.content[0].text).join(''),/^刚才“甲队本赛季的阵容和每人数据”这件事，我读了网页原文核对过了[\s\S]*甲队十一胜四负，首发是 A、B、C。[\s\S]*不一样的地方直接更正[\s\S]*已经说对的不要重复/u);
   assert.deepEqual(f.events.filter(e=>e.diag?.stage?.startsWith('research-')).map(e=>e.diag.stage),['research-started','research-done']);
-  // It fails: the passages of an ordinary search answer instead, on the same delegation.
+  // The pages could not be read: the first look stands, and the model knows it was never checked.
   const g=await make(async()=>{throw Error('research HTTP 429');});
   say(g,idOf(13),'甲队今年阵容怎么样');await pause(20);
-  assert.deepEqual(g.calls,[{callId:idOf(13),name:'web_search',args:{query:'甲队本赛季的阵容和每人数据'}}]);
+  assert.deepEqual(g.calls.map(c=>c.name),['web_search']);assert.equal(appends(g).at(-1).channel,'commentary');assert.match(appends(g).at(-1).content[0].text,/没能读到网页原文核对/u);
+  // No ordinary search in this call: one answer, after the wait.
+  const k=await make(async()=>({answer:'查到了。',searches:1,elapsedMs:9000}),[{type:'function',name:'delegate_to_v',parameters:{type:'object',properties:{question:{type:'string'}},required:['question']}}]);
+  say(k,idOf(15),'甲队今年阵容怎么样');await pause(20);
+  assert.equal(k.calls.length,0);assert.match(appends(k)[0].content[0].text,/要读网页原文才能查清，大约二十秒/u);assert.match(appends(k).slice(1).map(e=>e.content[0].text).join(''),/^查清楚了（已经读过网页原文，按今天的情况）：\n查到了。/u);assert.equal(appends(k).at(-1).delegation_item_id,idOf(15));
   // Without a backend the tool does not exist.
   const h=await fixture({tools,route:async({tools:offered})=>{assert(!offered.some(t=>t.name==='web_answer'));return {name:'web_search',args:{query:'x'}};}});await ready(h);say(h,idOf(14),'查一下');await pause(20);assert.equal(h.calls[0].name,'web_search');
-  f.bridge.close();g.bridge.close();h.bridge.close();
+  f.bridge.close();g.bridge.close();k.bridge.close();h.bridge.close();
 });
