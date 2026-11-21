@@ -28,7 +28,8 @@ test('a picture asked for is on the board before it exists, and develops in plac
   assert.equal(begun.id, 'a1');
   assert.deepEqual(sceneWorks(board.scene('call')), ['a1']);
   assert.equal(shelf.page('call').busy, true);
-  assert.equal(shelf.context('call'), ASSET_CONTEXT_EMPTY, 'a thing still being made is not yet something V can speak of');
+  assert.equal(shelf.context('call'), '屏幕素材现状：还没有做好的图片或视频。正在做、还没好：图片。', 'V knows it is on its way, and that it is not there yet');
+  assert.equal(shelf.context('nobody'), ASSET_CONTEXT_EMPTY);
   const fact = await shelf.finish('call', 'a1', image(POSTER));
   assert.deepEqual(fact, {id: 'a1', kind: 'image', onBoard: true});
   assert.deepEqual(shelf.page('call').assets.map(({id, state, url}) => ({id, state, url})), [{id: 'a1', state: 'ready', url: POSTER}]);
@@ -283,14 +284,23 @@ test('a photograph found for the board can be the picture a thing is made from',
   shelf.found('call', {query: '航海王 强者天下 复古风 海报', name: '复古风海报'});
   shelf.found('call', {query: '航海王 强者天下 上映海报', name: '上映海报'});
   shelf.found('call', {query: '取不到的图', name: '取不到'});
-  assert.match(shelf.context('call'), /还没有生成的图片或视频。搜到的照片（可当参考图）：p1「上映海报」、p2「复古风海报」、p3「取不到」。/u);
+  assert.match(shelf.context('call'), /还没有做好的图片或视频。搜到的照片（可当参考图）：p1「上映海报」、p2「复古风海报」、p3「取不到」。/u);
+  // Tapped on the page, a photograph is "this one" like a made thing; it can be fetched to be saved.
+  assert.equal(shelf.pick('call', 'p2'), true);
+  assert.match(shelf.context('call'), /用户正点着 p2「复古风海报」。/u);
+  assert.equal(shelf.pick('call', 'p9'), false);
+  assert.deepEqual(shelf.page('call').photos.map(({id, query}) => [id, query]), [['p1', '航海王 强者天下 上映海报'], ['p2', '航海王 强者天下 复古风 海报'], ['p3', '取不到的图']]);
+  assert.equal(await shelf.address('call', 'p1'), 'https://voice.example/voice/board-shared/1.jpg');
+  assert.equal(await shelf.address('call', 'p3'), '');
+  assert.equal(await shelf.address('call', 'p8'), '');
+  shelf.pick('call', '');
   // Only the photograph the command names is lent out, and only then.
   const command = "makaron edit --image-model gemini-2.1 --image p2 '把这张海报改成全员Q版'";
   assert.match(shelf.begin('other', {command, turn: {}}).error, /没有可用的图片 p2/u);
   await shelf.lend('call', command);
-  assert.deepEqual(lent, ['航海王 强者天下 复古风 海报']);
+  assert.deepEqual(lent, ['航海王 强者天下 上映海报', '取不到的图', '航海王 强者天下 复古风 海报']);
   const begun = shelf.begin('call', {command, turn: {}});
-  assert.equal(begun.command, "makaron edit --image-model gemini-2.1 --image 'https://voice.example/voice/board-shared/1.jpg' '把这张海报改成全员Q版'");
+  assert.equal(begun.command, "makaron edit --image-model gemini-2.1 --image 'https://voice.example/voice/board-shared/3.jpg' '把这张海报改成全员Q版'");
   assert.equal(shelf.get('call', begun.id).from, 'p2');
   // The page is given the photograph too, so the frame can show what the thing is being made of.
   assert.deepEqual(shelf.page('call').assets.map(({id, source, from}) => [id, source, from]), [['p2', 'search', undefined], ['a1', 'made', 'p2']]);
@@ -326,4 +336,13 @@ test('the frame of a thing that was not made leaves the page when the next thing
   await single.finish('call', again('一').id, {isError: true});
   again('二');
   assert.deepEqual(one.scene('call').blocks.map(block => [block.asset, block.w]), [['a2', undefined]]);
+});
+
+test('V is told of the photographs on the page in the order they stand there, whatever order they arrived in', async () => {
+  const board = director(['{"op":"scene","title":"山里的照片"}\n{"op":"put","block":{"id":"g","t":"list","look":"gallery","items":[{"id":"i1","h":"清晨的山谷","img":"清晨 山谷"},{"id":"i2","h":"林间小路","img":"林间 小路"},{"id":"i3","h":"雪山下的湖","img":"雪山 湖"}]}}']);
+  const shelf = shelfOn(board);
+  await board.run({owner: 'call', trigger: 'assistant_end', turns: [{role: 'user', text: '找几张山的图片'}, {role: 'assistant', text: '这张是清晨的山谷，这张是林子里的小路，这张是雪山下的湖，三张都是实拍，挑一张你喜欢的，我可以照着它再画一张。'}]});
+  shelf.found('call', {query: '城市 夜景', name: '城市夜景'});
+  for (const [query, name] of [['雪山 湖', '雪山下的湖'], ['清晨 山谷', '清晨的山谷'], ['林间 小路', '林间小路']]) shelf.found('call', {query, name});
+  assert.match(shelf.context('call'), /这一页上搜到的照片（按画面上的先后，可当参考图）：p3「清晨的山谷」、p4「林间小路」、p2「雪山下的湖」。之前页上的：p1「城市夜景」。/u);
 });

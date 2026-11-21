@@ -10,6 +10,8 @@
 //   帮我生成一张海报        a sketch on the board, then the picture develops
 //   把它动起来              the video takes the picture's frame
 //   给我讲讲光合作用        a lesson page that asks for one picture to be drawn
+//   找几张山的图片          a page of found photographs; tap one to look at it large, turn, save
+//   把这张改成卡通版        the photograph looked at last is what the picture is made from
 import {EventEmitter} from 'node:events';
 import {fileURLToPath} from 'node:url';
 import {WebSocketServer} from 'ws';
@@ -21,6 +23,8 @@ import {createAssetShelf} from '../../lab/gpt-live-h5/board-assets.mjs';
 
 const PORT = Number(process.env.BOARD_FIXTURE_PORT ?? 26329);
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+const FOUND = ['这张是清晨的山谷。', '这张是林子里的小路。', '这张是雪山下的湖。', '这张是傍晚的山脊。'];
+const PHOTOS = [['清晨 山谷 实拍', '清晨的山谷', 1018], ['林间 小路 实拍', '林间小路', 1043], ['雪山 湖 实拍', '雪山下的湖', 1036], ['傍晚 山脊 实拍', '傍晚的山脊', 1039]];
 const LESSON = ['叶子其实是一座小工厂。', '它白天张开小嘴，吸进空气里的二氧化碳。', '根把水从土里送上来。', '阳光一照，工厂就开工了，把水和二氧化碳做成糖。', '多出来的氧气，就从叶子上吐给我们呼吸。'];
 
 const gateway = {ready: true, request: async (method, args) => {
@@ -89,6 +93,11 @@ class Model extends EventEmitter {
       const at = this.instructions.match(/用户正点着 (a\d+)/u)?.[1] ?? text.match(/a\d+/u)?.[0] ?? this.instructions.match(/最新的是 (a\d+)/u)?.[1] ?? 'a1';
       return this.say(['好，我让它动起来。'], {heard: text, tool: {name: 'exec', args: {command: `makaron video create --video-model fal-h3-max --duration 5 --video-resolution 768p --image ${at} --script '<<<media_1>>> 画面里的景物动起来，镜头缓缓推进'`, timeoutSeconds: 120, completionLine: '视频好了。', failureLine: '视频没做成。'}}});
     }
+    if (/找几张|图片给我看/u.test(text)) return this.say(FOUND, {heard: text});
+    if (/改成|卡通|照这张/u.test(text)) {
+      const at = this.instructions.match(/用户正点着 ([ap]\d+)/u)?.[1] ?? 'p1';
+      return this.say(['好，照这张来画。'], {heard: text, tool: {name: 'exec', args: {command: `makaron edit --image-model gemini-2.1 --image ${at} '${text.replace(/['\\]/gu, '')}'`, timeoutSeconds: 120, completionLine: '画好了。', failureLine: '没画成。'}}});
+    }
     if (/生成|画一张|海报|再来一版/u.test(text)) return this.say(['好，我来画。'], {heard: text, tool: {name: 'exec', args: {command: `makaron edit --image-model gemini-2.1 --aspect 16:9 '${text.replace(/['\\]/gu, '')}，电影海报，热血对决构图'`, timeoutSeconds: 120, completionLine: '图好了。', failureLine: '图没画成。'}}});
     if (/光合/u.test(text)) return this.say(LESSON, {heard: text});
     return this.say(['嗯，我在，你说。'], {heard: text});
@@ -101,6 +110,11 @@ class Model extends EventEmitter {
 async function* scriptedIllustrator({messages, signal}) {
   const request = JSON.parse(messages[1].content), asked = request.conversation.filter(turn => turn.role === 'user').at(-1)?.text ?? '';
   const line = async (op, wait = 240) => { await pause(wait); return signal?.aborted ? '' : JSON.stringify(op) + '\n'; };
+  if (/找几张|图片给我看/u.test(asked) && request.trigger !== 'user') {
+    yield await line({op: 'scene', title: '山里的照片'});
+    yield await line({op: 'put', block: {id: 'g1', t: 'list', look: 'gallery', items: PHOTOS.map(([img, h], index) => ({id: `i${index + 1}`, h, img}))}});
+    return;
+  }
   if (!/光合/u.test(asked) || request.trigger === 'user') { yield await line({op: 'none'}); return; }
   yield await line({op: 'scene', title: '叶子的小工厂'});
   yield await line({op: 'put', block: {id: 'l1', t: 'list', h: '工厂要的东西', items: [{id: 'a', h: '二氧化碳', d: '叶子的小嘴吸进来', icon: '💨', q: '吸进空气里的'}, {id: 'b', h: '水', d: '根从土里送上来', icon: '💧', q: '根把水从土里'}, {id: 'c', h: '阳光', d: '工厂的电', icon: '☀️', q: '阳光一照'}]}});
@@ -115,10 +129,15 @@ const SEEN = [{name: '河谷晨光', see: '画面中间是一条蜿蜒的河，�
 let looks = 0;
 const assets = createAssetShelf({director: board, audit: log, see: process.env.BOARD_FIXTURE_LOOK === '0' ? null : async () => { await pause(1300); return {...SEEN[looks++ % SEEN.length], parts: []}; }});
 board.shelf = assets; assets.audience = 'all';
+// Found photographs' stand-in: public sample pictures, and their own addresses as the ones they are "lent" under.
+const sample = query => `https://picsum.photos/id/${PHOTOS.find(([name]) => name === query)?.[2] ?? 1015}/900/600.jpg`;
+const kept = new Map();
+const boardPhotos = {find: query => { if (!kept.has(query)) kept.set(query, fetch(sample(query)).then(async response => response.ok ? {bytes: Buffer.from(await response.arrayBuffer()), type: 'image/jpeg', title: query, source: '本地替身'} : null, () => null)); return kept.get(query); }};
+assets.share = async query => ({url: sample(query), until: Date.now() + 30 * 60000});
 const mediaCli = createVoiceMediaCli({environment: {PATH: process.env.PATH, MAKARON_API_KEY: 'LOCAL_FIXTURE_ONLY'}, binary: fileURLToPath(new URL('./fixtures/makaron-standin.mjs', import.meta.url)), pollIntervalMs: 1500});
 const service = createDirectVoiceService({gateway, wsModule: {WebSocket: Model, WebSocketServer}, apiKeys: {grok: 'LOCAL_FIXTURE_ONLY'}, mediaCli, assets,
   audit: event => { board.observe(event); assets.observe(event); if (/^(call\.|tool\.media|board\.)/u.test(event.type)) log({type: event.type, phase: event.phase, ok: event.ok, chars: event.chars, message: event.message}); if (event.type === 'tool.delivered') log({type: event.type, name: event.name, result: JSON.stringify(event.result ?? null).slice(0, 400)}); }, loadContext: async () => '', searchAcknowledgment: 'off'});
-const bridge = createLiveH5Server({gateway, directVoice: service, board, boardAssets: assets, boardPhotos: {find: async () => null}, defaultModel: 'grok', enableGrok: true,
+const bridge = createLiveH5Server({gateway, directVoice: service, board, boardAssets: assets, boardPhotos, defaultModel: 'grok', enableGrok: true,
   conversationEntries: [{id: 'board_fixture', agentId: 'makaron', callerId: 'tianyi', permissionProfile: 'personal-tianyi', sessionKey: 'agent:makaron:feishu:group:board_fixture',
     accountId: 'fixture', kind: 'group', accountLabel: '本地演示账号', displayName: '作品替身 · 非真实身份', accessToken: 'LOCAL_FIXTURE_NOT_A_REAL_SECRET_0000'}],
   callSummarize: async () => '', avatarEvaluate: async () => ({}), callControlEvaluate: async () => ({})});

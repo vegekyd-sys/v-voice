@@ -1,9 +1,9 @@
 {
   "sources": {
     "index.html": "ec12729a0da0ef472fc977e37bb75c413eb66bbcde725b1aa47a5fdf7f450105",
-    "styles.css": "476c8a4b9fe3378466b250481da799b2de6f15fa49e7a32fa3152408dc322535",
-    "ui/call-ui.jsx": "ca461947037bd4379f6d8951484980e061e9e4ca39d299995fae76185ecb26c7",
-    "ui-bundle.mjs": "af1780c671d2b3bb14ee03698e10685f7e46d67a8f82dd65313f0b20e082eeaf",
+    "styles.css": "b4984fe45a59c9c770b5750fc334c0711ba1fa68121534ce57b7b7ae8567d514",
+    "ui/call-ui.jsx": "17e28993384e5644f88475e7367c12eff98438e2202a7ee8f4484d01742a66c4",
+    "ui-bundle.mjs": "d9a6e6bf59c409bbbd4163ab4418a774fda387b7731948ba70bee395987861a6",
     "app-handoff.mjs": "31705d0424c9043e64844ac047ef090fe4582f475b74d78e4b5dec04ebca3465",
     "call-view.mjs": "4c823a063a119e798752af42f577471425ee579085151e85d14bc06587e52665",
     "content-view.mjs": "b0b3fd358d3c3343b6f9bd7d78a5c3d08d7d3c4b934679142037435b4493b415",
@@ -128,13 +128,13 @@
     "assets/v-voice-icon.svg": "2b578443cc70bc8eb78ff9877be5e70473d61ed6713ea6f538bd1fa665d27c66",
     "assets/v-voice-icon-32.png": "7bae67ea83c9c7cf81afd9786a18b94c73f9d3643372467e7d331532d1d5555b",
     "assets/v-voice-apple-touch.png": "643f67cd7d67bb2563f79ec2938d01e869cd2634bd9f78e7597f98afe525763c",
-    "ios/H5/native-h5.mjs": "d07b9bc72a3433853d00691c8ba39317ff3d9bce61931ee62230bcf36e13f15a"
+    "ios/H5/native-h5.mjs": "d501e36e8fa2ae278a94d1e113a7321cc52c54a8e36104801ae33a442daf32d8"
   },
   "outputs": {
     "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
-    "native-h5.js": "81f64d0cf6093dd652df74f291574c172fe4589501ee2f95083fc0646c41a955",
+    "native-h5.js": "c269df40204f2fb3ee34f2c92ef00188a86fb49494e35e6917662419f89133eb",
     "comparison.html": "7beb6c5d3e5933b5c020ddf23e200679318faa98568904f927d0553ea3d33076",
-    "styles.css": "476c8a4b9fe3378466b250481da799b2de6f15fa49e7a32fa3152408dc322535",
+    "styles.css": "b4984fe45a59c9c770b5750fc334c0711ba1fa68121534ce57b7b7ae8567d514",
     "comparison.css": "ae9fbcffb322e32737e2ce0ed830c1b86f9f27406b4ce8b686dc8cac9f36ba16",
     "comparison.mjs": "8fc7a4bd3323e4ff2aaab383103b950015f4fb3c05ca327ba09790fbc6f7113b",
     "assets/v-operator-home-1024.webp": "5cf1ddc6b9b9abd06c1ac15be325f9b86cbaa4db8363daeec0da6040e128d319",

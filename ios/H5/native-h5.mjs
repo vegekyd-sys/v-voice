@@ -25,7 +25,13 @@ const content = createContentView(document,readerWindow,{mediaSaveLabel:()=>curr
 const cards=new Map();
 mountCallUi(document,view,{
   loadBoardPhoto:query=>loadBoardPhoto(query),
-  boardWorks:{pick:id=>boardAssets?.pick(id),shown:id=>boardAssets?.shown(id)},
+  // (Saved by the App from an address: a made thing's own, or the one a found photograph is lent out under.)
+  boardWorks:{pick:(id,hold)=>boardAssets?.pick(id,hold),shown:id=>boardAssets?.shown(id),save:async item=>{
+    const url=/^https:/u.test(item.src)?item.src:item.id?await boardAssets?.address(item.id):'';
+    if(!url)return '这张暂时存不了';
+    if(current?.capabilities?.mediaSave){await post('saveMedia',{url,kind:item.kind});return '已存到相册';}
+    await send('share',{text:url,title:item.name}).catch(()=>{});return '已打开分享';
+  }},
   renderAssistant(target,row){
     // (While a picture is up, a delivered report stays a card: the reader would cover the picture V is talking over.)
     content.render(target,row,{auto:row.document===true&&!view.get().board,inline:true});
@@ -55,7 +61,7 @@ function stopBoard(){board?.dispose();board=null;boardAssets?.dispose();boardAss
 function loadBoardPhoto(query){
   const callID=owner;
   if(!board||typeof query!=='string')return Promise.resolve(null);
-  if(!boardPhotos.has(query))boardPhotos.set(query,page('board-image',{query},callID).then(r=>r?.data&&typeof r.type==='string'&&r.type.startsWith('image/')?`data:${r.type};base64,${r.data}`:null).catch(()=>null));
+  if(!boardPhotos.has(query))boardPhotos.set(query,page('board-image',{query},callID).then(r=>{if(!(r?.data&&typeof r.type==='string'&&r.type.startsWith('image/')))return null;boardAssets?.poke();return `data:${r.type};base64,${r.data}`;}).catch(()=>null));
   return boardPhotos.get(query);
 }
 function startBoard(callID){

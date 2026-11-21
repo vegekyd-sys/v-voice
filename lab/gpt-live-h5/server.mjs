@@ -40,7 +40,7 @@ import {createPhotoFinder} from './board-photo.mjs';
 import {STREAM_INSTRUCTIONS,createLessonWriter,refineStreamOp} from './board-lesson.mjs';
 import {CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
 import {scenePictures} from './board-scene.mjs';
-import {ASSET_ID,ASSET_MAKE_NOTES,ASSET_NOTES,ASSET_SCRIPT_NOTES,createAssetEye,createAssetShelf,pictureName} from './board-assets.mjs';
+import {ASSET_ID,ASSET_MAKE_NOTES,ASSET_NOTES,ASSET_SCRIPT_NOTES,SHELF_ID,createAssetEye,createAssetShelf,pictureName} from './board-assets.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Dialing is how a known caller retries; only anonymous callers keep the tight limit.
@@ -950,10 +950,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         // one the caller has tapped, and the whole board when the page's copy is behind.
         if (!boardAllowed(binding) || !boardAssets) return json(res,404,{error:'没有这个入口'});
         const owner = params.voiceSessionId;
-        if (typeof params.pick === 'string' && (params.pick === '' || ASSET_ID.test(params.pick))) boardAssets.pick(owner, params.pick);
+        if (typeof params.pick === 'string' && (params.pick === '' || SHELF_ID.test(params.pick))) boardAssets.pick(owner, params.pick);
+        // (`address`: where the thing can be saved from. A found photograph is lent out for it.)
+        const address = typeof params.address === 'string' && SHELF_ID.test(params.address) ? {id: params.address, url: await boardAssets.address(owner, params.address)} : null;
         if (Array.isArray(params.seen)) boardAssets.seen(owner, params.seen.filter(id => typeof id === 'string' && ASSET_ID.test(id)));
         const state = board.state(owner);
-        return json(res,200,{...boardAssets.page(owner),rev:state.scene.rev,...(Number.isSafeInteger(params.rev)&&params.rev!==state.scene.rev?{sync:state}:{})});
+        return json(res,200,{...boardAssets.page(owner),rev:state.scene.rev,...(address?{address}:{}),...(Number.isSafeInteger(params.rev)&&params.rev!==state.scene.rev?{sync:state}:{})});
       }
       if (context.active.direct) {
         if (pathname === '/api/close') { await close(context); return json(res,200,{ok:true}); }
@@ -1251,7 +1253,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const assetsOn=process.env.VOICE_BOARD_ASSETS==='1'&&process.env.VOICE_BOARD_STREAM!=='0';
     const board=boardDirectorFromEnv(process.env,{audit:voiceAudit,prefetch:query=>photos?.find(query),defer:process.env.VOICE_BOARD_STREAM==='0'&&process.env.VOICE_BOARD_LESSON_SOURCE!=='parallel',...(process.env.VOICE_BOARD_UNIFIED==='0'?{}:{illustrate:args=>lesson?.illustrate(args)??null,
       ...(process.env.VOICE_BOARD_STREAM==='0'?{}:{stream:process.env.VOICE_BOARD_FOLLOW!=='word'?{instructions:CUE_INSTRUCTIONS+(assetsOn?ASSET_NOTES+ASSET_MAKE_NOTES:''),refine:refineCueOp,turns:cueTurns,cue:true}:{instructions:STREAM_INSTRUCTIONS+(assetsOn?ASSET_NOTES:''),refine:refineStreamOp}})})});
-    const assets=board&&assetsOn?createAssetShelf({director:board,audit:event=>board.log?.(event),makeLimit:Math.max(0,Math.min(6,Number(process.env.VOICE_BOARD_MAKE_MAX??3)||0)),
+    const assets=board&&assetsOn?createAssetShelf({director:board,audit:event=>board.log?.(event),lookWaitMs:Math.max(0,Math.min(6000,Number(process.env.VOICE_BOARD_LOOK_WAIT_MS??0)||0)),makeLimit:Math.max(0,Math.min(6,Number(process.env.VOICE_BOARD_MAKE_MAX??3)||0)),
       // One look at each thing made, on the board's own model, so V can say what is really in it (VOICE_BOARD_LOOK=0: no look).
       see:process.env.VOICE_BOARD_LOOK==='0'?null:createAssetEye({complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'700'})})}):null;
     if(assets){board.shelf=assets;assets.audience=process.env.VOICE_BOARD_AUDIENCE==='all'?'all':'owner';}

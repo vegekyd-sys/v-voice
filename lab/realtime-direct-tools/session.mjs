@@ -153,6 +153,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     },NARRATION.correctionDelayMs);timer.unref?.();
     return true;
   };
+  const ROOM_SPEECH_MS=8000;
   // Only while no native lookup waits: injected speech costs it its result (#28/#34).
   const tellFinishedExecution=s=>{
     if(!s.localExecutions||!s.bridge.adoptBackgroundTool||[...s.pending.keys()].some(id=>id!==s.backgroundCallId))return false;
@@ -178,7 +179,12 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     }
     if(speakerRouting?.pending?.(s.id))return;
     // A turn let through but not yet answered: host speech would cancel it.
-    if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking||Date.now()-s.lastUserAt<1200||Date.now()<s.narrationBusyUntil||speakerRouting?.awaitingResponse?.(s.id))return;
+    // Someone has been "speaking" for a long while without a word recognised: a room with people in it, not a
+    // turn. A thing V was asked to make and has made is still told (call of 11/21: every picture was announced
+    // only after the caller's next words, up to a minute late, while the family talked). Nothing else speaks over it.
+    const room=s.userSpeaking&&Date.now()-s.lastUserAt>ROOM_SPEECH_MS&&shelfFor(s)&&!s.speakerRouting;
+    if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking&&!room||Date.now()-s.lastUserAt<1200||Date.now()<s.narrationBusyUntil||speakerRouting?.awaitingResponse?.(s.id))return;
+    if(room){tellFinishedExecution(s);return;}
     if(s.backendResult){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;resolve();return;}
     if(tellFinishedExecution(s))return;
     const h=s.heldResult;
@@ -511,7 +517,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         const latest=await s.gateway.request('tools.catalog',{agentId:s.agentId,includePlugins:true},{timeoutMs:20000});
         if(!['exec','process'].every(id=>(latest.groups??[]).some(g=>(g.tools??[]).some(t=>t.id===id))))throw Error('当前会话创作权限已撤回');
         if(signal.aborted||!current(s))throw Error('本次任务已取消');
-        s.localExecutions??=createLocalExecutions();
+        // (With the board's shelf the thing is on the caller's screen the moment it is made: V says so at once
+        // unless the model is itself following the execution. Call of 11/21: said only after the caller spoke.)
+        s.localExecutions??=createLocalExecutions(shelfFor(s)?{unfollowedSettleMs:400}:{});
         const stage=/\bvideo\s/u.test(args.command)?'等待视频':'生成图片';
         // Ids of things on the caller's screen become their links, and a new thing takes its
         // place on the board before it exists (board-assets.mjs). A question about progress makes nothing.
@@ -523,7 +531,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         return s.localExecutions.start(async executionSignal=>{
           s.mediaRunner??=Promise.resolve().then(()=>mediaCli.forCall());
           const work=s.mediaRunner.then(runner=>runner.execute(shelved.command,executionSignal,{reuseExisting:mediaStatusQuestion(requestToken.text),requestToken}));
-          if(shelved.id)work.catch(()=>void assets.finish(s.id,shelved.id,{isError:true}));
+          if(shelved.id)work.catch(error=>void assets.finish(s.id,shelved.id,{isError:true,why:String(error?.message??error)}));
           const cleanup=work.then(()=>{},()=>{});s.localCleanups.add(cleanup);
           cleanup.then(()=>s.localCleanups.delete(cleanup));
           audit({type:'tool.media-cli',voiceSessionId:s.id,callId,phase:'start'});

@@ -1710,6 +1710,29 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 }
 .board-enlarged-close svg { width: 20px; height: 20px; }
 .board-enlarged-close path { stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+/* The viewer (ui/board-viewer.jsx): the one way to look closer at anything on the board, found or
+   made. The others of the page are a swipe or an arrow away; it can be saved and worked on from here. */
+.board-viewer figure { cursor: default; gap: 12px; }
+.board-viewer img { cursor: zoom-out; }
+.board-viewer :is(img, video) { max-height: calc(var(--voice-height, 100dvh) - 220px); }
+.board-viewer video { display: block; max-width: min(100%, 1400px); padding: 8px; background: #fffdfb; border-radius: 6px; box-shadow: 0 28px 60px -28px #4d356099; animation: board-enlarged-print .3s cubic-bezier(.2, 1.2, .35, 1) both; }
+.board-viewer :is(img, video)[data-shaped] { box-sizing: content-box; width: min(100vw - 52px, 1400px, var(--most), (var(--voice-height, 100dvh) - 220px) * var(--ratio)); height: auto; max-width: none; max-height: none; aspect-ratio: var(--ratio); }
+.board-viewer figcaption { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 4px 12px; }
+.board-viewer figcaption small { font-size: 13px; font-weight: 500; color: var(--faint, #8b7f99); font-variant-numeric: tabular-nums; }
+.board-viewer-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; }
+.board-viewer-bar button { min-height: 44px; padding: 0 20px; border: 1.5px solid var(--accent); border-radius: 22px; background: #fffdfb; color: var(--accent); font-family: "Hannotate SC", "HanziPen SC", "Yuanti SC", "Kaiti SC", "STKaiti", "KaiTi", "Avenir Next", "PingFang SC", system-ui, sans-serif; font-size: 16px; font-weight: 600; cursor: pointer; }
+.board-viewer-bar button:active { background: var(--accent); color: #fff; }
+.board-viewer-bar .board-viewer-save { border-color: #4d356033; color: var(--ink); }
+.board-viewer-bar .board-viewer-save[aria-busy] { opacity: .6; }
+.board-viewer-turn { position: absolute; top: 50%; width: 44px; height: 44px; margin-top: -40px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: var(--ink-soft); background: #fffdfecc; box-shadow: 0 1px 4px #4d356026; cursor: pointer; }
+.board-viewer-turn[data-way="back"] { left: max(10px, env(safe-area-inset-left)); }
+.board-viewer-turn[data-way="on"] { right: max(10px, env(safe-area-inset-right)); }
+.board-viewer-turn svg { width: 20px; height: 20px; }
+.board-viewer-turn path { stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+/* (On a phone the picture has the width; the arrows stand over its lower edge, and a swipe turns too.) */
+@media (max-width: 700px) { .board-viewer-turn { top: auto; bottom: max(96px, env(safe-area-inset-bottom) + 84px); margin-top: 0; } }
+/* A photograph the caller has picked: the one V takes "this one" to be. */
+.board-thumb[data-picked] { box-shadow: 0 0 0 3px var(--pen), 0 10px 18px -10px #4d356099; }
 @keyframes board-enlarged-in { from { opacity: 0; } }
 @keyframes board-enlarged-print { from { opacity: 0; transform: translateY(14px) scale(.96) rotate(-.5deg); } }
 @media (prefers-reduced-motion: reduce) { .board-enlarged, .board-enlarged img { animation: none; } }

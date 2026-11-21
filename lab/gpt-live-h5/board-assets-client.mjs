@@ -19,10 +19,11 @@ const worksOf = scene => (scene?.blocks ?? []).filter(block => block?.t === 'wor
  */
 export function createAssetsClient({request, onChange = () => {}, onSync = () => {}, rev = () => 0, isCurrent = () => true, now = Date.now,
   setTimer = setTimeout, clearTimer = clearTimeout} = {}) {
-  let assets = new Map(), picked = '', stamp = -1, busy = false, closed = false, timer = null, asking = false, again = false, changedAt = -Infinity, refusals = 0;
+  let assets = new Map(), photos = new Map(), picked = '', stamp = -1, busy = false, closed = false, timer = null, asking = false, again = false, changedAt = -Infinity, refusals = 0;
   let wantPick = null;
   const seen = new Set(), told = new Set();
-  const view = () => ({assets, picked});
+  // (`photos`: the photographs the board found, by what was searched for: {id, name}.)
+  const view = () => ({assets, photos, picked});
   const schedule = wait => { if (closed || timer !== null) return; timer = setTimer(ask, wait); };
   async function ask() {
     timer = null;
@@ -43,6 +44,7 @@ export function createAssetsClient({request, onChange = () => {}, onSync = () =>
       if (reply.stamp !== stamp || reply.picked !== picked) {
         stamp = reply.stamp; changedAt = now();
         assets = new Map(reply.assets.filter(item => item && typeof item.id === 'string').map(item => [item.id, item]));
+        photos = new Map((Array.isArray(reply.photos) ? reply.photos : []).filter(item => item && typeof item.query === 'string' && typeof item.id === 'string').map(item => [item.query, {id: item.id, name: item.name ?? ''}]));
         picked = typeof reply.picked === 'string' ? reply.picked : '';
         onChange(view());
       }
@@ -63,12 +65,18 @@ export function createAssetsClient({request, onChange = () => {}, onSync = () =>
     poke() { if (closed) return; changedAt = Math.max(changedAt, now() - ASSET_SETTLE_MS + 3 * ASSET_POLL_MS); if (asking) again = true; else { clearTimer(timer); timer = null; schedule(150); } },
     /** A page of the board arrived: a made thing on it that is not known yet is asked for. */
     scene(scene) { if (!closed && worksOf(scene).some(id => !assets.has(id))) this.poke(); },
-    /** The caller tapped a thing (or tapped it again to let go: ''). Shown at once; the service is told. */
-    pick(id) {
-      if (closed || id !== '' && !assets.has(id)) return;
+    /** The caller tapped a thing (or tapped it again to let go: ''; `hold`: looking at it, never letting go). Shown at once; the service is told. */
+    pick(id, hold = false) {
+      if (closed || id !== '' && !assets.has(id) && ![...photos.values()].some(photo => photo.id === id)) return;
+      if (hold && picked === id) return;
       picked = picked === id ? '' : id; wantPick = picked;
       onChange(view());
       if (asking) again = true; else { clearTimer(timer); timer = null; schedule(0); }
+    },
+    /** Where a thing can be fetched from to be saved (a found photograph is lent out for it). '' when it cannot. */
+    async address(id) {
+      if (closed) return '';
+      try { const reply = await request({rev: rev(), address: id}); return reply?.address?.id === id && typeof reply.address.url === 'string' ? reply.address.url : ''; } catch { return ''; }
     },
     /** A thing's picture is on screen. */
     shown(id) { if (closed || seen.has(id)) return; seen.add(id); if (!asking && timer === null) schedule(300); },

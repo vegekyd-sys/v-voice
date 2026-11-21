@@ -3,8 +3,9 @@
 // a pencil sketch of what was asked for; the picture develops into it; and when
 // the picture is made to move, the video takes the same frame, so the print on
 // the page starts moving where it hangs. Every version stays one tap away
-// under the frame. A tap on the frame picks it: "this one" is then that one
-// for V, and what can be done with it is offered beside it.
+// under the frame. A tap looks at it large, as with any picture on the board;
+// what has been looked at is "this one" for V, and what can be done with it
+// is offered beside it.
 import React, {useEffect, useRef, useState} from 'react';
 import {assetFamily} from '../board-assets-client.mjs';
 
@@ -86,18 +87,14 @@ export function Work({block, view}) {
   const picked = view.picked === shown.id && shown.state === 'ready';
   // A version goes by the name the thing was given when it was first looked at.
   const name = shown.name || family.find(item => item.name)?.name || block.caption || (shown.state === 'making' ? '' : shown.kind === 'video' ? '视频' : '作品');
-  const pick = () => { if (shown.state === 'ready') view.pick?.(shown.id); };
-  const large = event => {
-    event.stopPropagation();
-    if (shown.kind === 'video') { const video = film.current; (video?.requestFullscreen ?? video?.webkitEnterFullscreen)?.call(video); return; }
-    view.enlarge?.({src: shown.url, name});
-  };
+  // A tap looks at it large, like any picture on the page; looked at is picked (board-viewer.jsx).
+  const open = event => { if (loaded) view.enlarge?.(event.currentTarget); };
   return (
     <figure className="board-work" data-state={shown.state} data-kind={shown.kind} data-picked={picked || undefined}>
       <div className="board-work-frame" ref={frame} style={{'--shape': shape || ratio(shown.aspect) || (shown.kind === 'video' ? 16 / 9 : 4 / 3)}}
-        role={shown.state === 'ready' ? 'button' : undefined} tabIndex={shown.state === 'ready' ? 0 : undefined}
-        aria-pressed={shown.state === 'ready' ? picked : undefined} aria-label={shown.state === 'ready' ? `${picked ? '已选中' : '选中'}：${name}` : undefined}
-        onClick={pick} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pick(); } }}>
+        role={loaded ? 'button' : undefined} tabIndex={loaded ? 0 : undefined} aria-label={loaded ? `放大：${name}` : undefined}
+        data-enlarge={loaded ? 'true' : undefined} data-kind={shown.kind} data-asset={shown.id} data-name={name}
+        onClick={open} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(event); } }}>
         {under && <img className="board-work-under" src={under} alt="" decoding="async" onLoad={event => settle(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />}
         {(shown.state === 'making' || ready && !loaded) && (
           <div className="board-work-sketch" data-over={under ? 'true' : undefined}>
@@ -118,11 +115,6 @@ export function Work({block, view}) {
             onLoadedData={() => { setFetched(shown.id); view.shown?.(shown.id); }} />
         )}
         {shown.state === 'failed' && <div className="board-work-failed"><p>{shown.kind === 'video' ? '这段没做成' : '这张没画成'}</p></div>}
-        {loaded && (
-          <button type="button" className="board-work-large" aria-label={shown.kind === 'video' ? '全屏看视频' : '放大图片'} onClick={large}>
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" /></svg>
-          </button>
-        )}
         {loaded && shown.kind === 'video' && (
           <button type="button" className="board-work-sound" data-quiet={quiet || undefined} aria-label={quiet ? '带声音再放一遍' : '关掉声音'} aria-pressed={!quiet} onClick={sound}>
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" />{quiet ? <path d="m16 9.5 5 5M21 9.5l-5 5" /> : <path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11" />}</svg>

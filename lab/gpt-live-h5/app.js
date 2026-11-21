@@ -42,7 +42,7 @@ if (document.querySelector) mountCallUi(document, view, {
   renderAssistant, onDocumentShown: callId => documentShown(callId),
   loadBoardPhoto: Object.assign(query => loadBoardPhoto(query), {missing: query => loadBoardPhoto.missing(query)}),
   // The call's shelf of made things: the caller's tap on one, and a picture reported as on screen.
-  boardWorks: {pick: id => call?.boardAssets?.pick(id), shown: id => call?.boardAssets?.shown(id)},
+  boardWorks: {pick: (id, hold) => call?.boardAssets?.pick(id, hold), shown: id => call?.boardAssets?.shown(id), save: item => saveBoardPicture(item)},
   actions: {
     openBinding: () => void openIosBinding(),
     connectIdentity: () => { guestDialAllowed=false;void confirmation.start(); },
@@ -438,6 +438,29 @@ function receiveDocument(active,value){
   if(call!==active||value.voiceSessionId!==active.voiceSessionId)return;
   renderTranscript(presentation.consume(value));
 }
+// Saving what is being looked at on the board (ui/board-viewer.jsx): a made thing from its own link, a
+// found photograph from the copy the page already holds. Where the browser will not hand the file over,
+// the original is opened instead, as for a picture in the conversation.
+async function saveBoardPicture(item) {
+  const title = String(item.name || '作品').replace(/[\\/:*?"<>|]/gu, '-').slice(0, 80) || '作品';
+  let url = item.src, made = null, type = '';
+  try {
+    const response = await fetch(item.src, /^https:/u.test(item.src) ? { credentials: 'omit', referrerPolicy: 'no-referrer' } : undefined);
+    if (!response.ok) throw new Error('download failed');
+    const blob = await response.blob();
+    type = blob.type; made = url = URL.createObjectURL(blob);
+  } catch {
+    if (!/^https:/u.test(item.src)) return '没存成';
+    window.open(item.src, '_blank', 'noopener,noreferrer');
+    return '已打开原文件';
+  }
+  const kind = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif', 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov' })[type.split(';')[0]] ?? (item.kind === 'video' ? 'mp4' : 'jpg');
+  const link = document.createElement('a');
+  link.href = url; link.download = `${title}.${kind}`; link.hidden = true;
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(made), 60000);
+  return '已保存';
+}
 // A photograph on the board: fetched once per call through the Voice service
 // and handed to the page as a local object URL (null when there is none).
 // "There is none" (404) is kept for the call. A lookup that could not be made
@@ -458,7 +481,8 @@ function loadBoardPhoto(query) {
     const pending = ask()
       .then(result => result.url || result.none || call !== active ? result : new Promise(resolve => setTimeout(resolve, BOARD_PHOTO_RETRY_MS)).then(() => call === active ? ask() : result))
       .then(result => {
-        if (result.url) return result.url;
+        // (A photograph the page now has is on the call's shelf: the shelf is asked again so it can be picked and saved.)
+        if (result.url) { active.boardAssets?.poke(); return result.url; }
         if (result.none) active.boardPhotosMissing.add(query);
         else if (active.boardPhotos.get(query) === pending) active.boardPhotos.delete(query);
         return null;

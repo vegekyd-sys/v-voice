@@ -26,7 +26,9 @@ export function executionFailureResult(error) {
 
 // The same exec -> running/sessionId -> process contract used by Gateway exec.
 // Entries are execution handles, not model memory or conversation instructions.
-export function createLocalExecutions({yieldMs=1000,maxJobs=128,settleMs=2500,now=Date.now}={}) {
+// `unfollowedSettleMs`: how soon an execution the model has not asked after (no poll while it ran, or none
+// lately) may be told. The wait is for a model about to read the result itself; one that is not following has nothing to wait for.
+export function createLocalExecutions({yieldMs=1000,maxJobs=128,settleMs=2500,unfollowedSettleMs=settleMs,followWindowMs=8000,now=Date.now}={}) {
   const jobs=new Map();
   const running=job=>({status:'running',sessionId:job.id,content:[{type:'text',text:'执行仍在进行。用 process(action="poll", sessionId="'+job.id+'", timeout=5000) 继续读取原执行结果；不要重新执行命令。'}],details:{status:'running',sessionId:job.id}});
   const result=job=>{if(job.done){job.readFinal=true;return job.announced?{...job.result,instruction:'这个结果已经告诉过用户，不要再通报一次，直接回应用户当前的话。'}:job.result;}return running(job);};
@@ -50,7 +52,7 @@ export function createLocalExecutions({yieldMs=1000,maxJobs=128,settleMs=2500,no
     // A finished execution nobody is following. Taken at most once; process can still read it.
     takeUnread(accept=()=>true) {
       for(const job of jobs.values()){
-        if(!job.done||job.readFinal||job.announced||job.controller.signal.aborted||now()-job.doneAt<settleMs||!accept(job.metadata))continue;
+        if(!job.done||job.readFinal||job.announced||job.controller.signal.aborted||now()-job.doneAt<(job.polledAt!==undefined&&job.doneAt-job.polledAt<followWindowMs?settleMs:unfollowedSettleMs)||!accept(job.metadata))continue;
         job.announced=true;
         return {id:job.id,result:job.result,metadata:job.metadata};
       }
@@ -73,6 +75,7 @@ export function createLocalExecutions({yieldMs=1000,maxJobs=128,settleMs=2500,no
     },
     poll(id,{timeout=1000,signal,action='poll'}={}) {
       const job=jobs.get(id);if(!job)throw Error('只能查询本通话返回的执行 sessionId');
+      job.polledAt=now();
       return read(job,action==='log'?0:timeout,signal);
     },
     async cancelAll(){for(const job of jobs.values())if(!job.done)job.controller.abort(Error('本通话执行等待已结束；供应商状态未确认，不重新生成'));await Promise.all([...jobs.values()].map(job=>job.completion));},
