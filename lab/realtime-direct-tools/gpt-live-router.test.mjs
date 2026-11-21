@@ -51,3 +51,31 @@ test('the routing model is given the conversation so far and whether a task is r
   await route({text:'查得怎么样了',tools,running:true});assert.match(seen[1].user,/^后台任务：有一件正在执行\n要办的事：查得怎么样了$/u);
 });
 
+
+test('the quick choice settles a tool that takes no arguments; everything else waits for the arguments',async()=>{
+  const {createDecisionsChooser,decisionsChooserFromEnv}=await import('./gpt-live-router.mjs');
+  const bare=name=>({type:'function',name,description:name,parameters:{type:'object',properties:{}}});
+  const tools=[bare('current_time'),bare('end_call'),tool('web_search'),tool('delegate_to_v')];
+  const events=[];let aborted=false,filled=0;
+  const slow=({signal})=>new Promise((resolve,reject)=>{filled++;const timer=setTimeout(()=>resolve({name:'web_search',args:{query:'今天 新闻'}}),40);signal?.addEventListener('abort',()=>{aborted=true;clearTimeout(timer);reject(Error('aborted'));});});
+  const make=choose=>createDelegationRouter({complete:slow,choose,audit:e=>events.push(e)});
+  // No arguments to wait for: decided at once, and the other request is given up.
+  assert.deepEqual(await make(async()=>({name:'end_call',confidence:.9}))({text:'今天先这样',tools}),{name:'end_call',args:{},via:'decision'});
+  assert.equal(aborted,true);assert.equal(events.at(-1).via,'decision');
+  // A tool with arguments, an unsure choice, a tool this call does not have, a failure: the arguments decide.
+  for(const choose of [async()=>({name:'web_search',confidence:.99}),async()=>({name:'end_call',confidence:.3}),async()=>({name:'exec',confidence:.99}),async()=>{throw Error('decisions HTTP 500');},async()=>null]){
+    aborted=false;assert.deepEqual(await make(choose)({text:'今天有什么新闻',tools}),{name:'web_search',args:{query:'今天 新闻'},via:'model'});assert.equal(aborted,false);
+  }
+  // Both are asked at the same moment, with the same words.
+  const order=[];
+  await createDelegationRouter({complete:async request=>{order.push(['model',request.user]);return {name:'web_search',args:{query:'x'}};},choose:async request=>{order.push(['decision',request.user]);await new Promise(r=>setTimeout(r,10));return {name:'web_search',confidence:1};}})({text:'查一下',tools});
+  assert.deepEqual(order.map(([who])=>who),['model','decision']);assert.equal(order[0][1],order[1][1]);
+  // The request and its answer on the wire.
+  let sent;const choose=createDecisionsChooser({apiKey:'k',fetchImpl:async(url,init)=>{sent={url,init,body:JSON.parse(init.body)};return {ok:true,json:async()=>({answers:[{type:'choice',name:'tool',choice:'end_call',confidence:.73}]})};}});
+  assert.deepEqual(await choose({system:'规则',user:'要办的事：拜拜',tools}),{name:'end_call',confidence:.73});
+  assert.equal(sent.url,'https://api.openai.com/v1/decisions');assert.equal(sent.init.headers.authorization,'Bearer k');assert.equal(sent.body.model,'gpt-6-luna');
+  assert.deepEqual(sent.body.input.map(item=>[item.role,item.content[0].text]),[['developer','规则'],['user','要办的事：拜拜']]);
+  assert.deepEqual(sent.body.questions[0].choices.map(c=>c.value),['current_time','end_call','web_search','delegate_to_v']);assert.equal(sent.body.questions[0].type,'choice');
+  await assert.rejects(createDecisionsChooser({apiKey:'k',fetchImpl:async()=>({ok:false,status:401})})({system:'',user:'',tools}),/decisions HTTP 401/u);
+  assert.equal(decisionsChooserFromEnv({}),null);assert.equal(typeof decisionsChooserFromEnv({VOICE_GPT_LIVE_DECISIONS_API_KEY:'k'}),'function');
+});
