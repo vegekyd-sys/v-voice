@@ -301,5 +301,26 @@
     "change": "Phone speaker echo: a final utterance of at most four characters or words, most of them in the reply or lesson still playing, is V's own voice; the reply goes on and the model's answer to it is not played. A board lesson on a native duplex call is cancelled by a recognised utterance that is not echo, not by the first sound. Seeduplex input: a burst after an uplink stall keeps its newest 4 s instead of ending the call; no mute/unmute while a backlog is fed; input-burst diagnostic. The App is sent the web page's rule for a stalled uplink (native runtime policy `upload`). The served App page carries its build and latest-update date, and a page feature `version` says which page is served now.",
     "acceptance": "Tianyi asked to fix both problems and release after the board release was verified. Before release: npm test 1381, speaker-native 95, release-fleet, Swift package 50, simulator H5DeliveryTests 9/9. Cloud PCM against the real model on a Candidate (synthetic loudspeaker echo): a four-character echo 1.9 s into a reply was treated as echo and the reply played to its end; an explicit interruption still interrupted; a 13 s uplink stall then burst kept the call (input-burst 13.0/14.0/9.0 s), three runs. After release: both nodes at a9630f4, ready, no calls; served changelog and iOS shell over HTTPS carry the new entry, build and date.",
     "notVerifiedInProduction": "A real iPhone call on loudspeaker after release (Tianyi's own call). The native parts (uplink shedding, web pages no longer dropped, Settings version row) need App build 48+; builds 47 and 48 are development installs on Tianyi's iPhone only, not TestFlight. Echo that reaches the model at a lesson's start can still hold the lesson; longer echo is not treated as echo by design."
+  },
+  "iosVideoViewerRelease": {
+    "commit": "6f7babc44377ff1b1758a1844e7ea5ffe1f92d52",
+    "mergePRs": [
+      251
+    ],
+    "filesSha256": "e631ac8fa72b841f02924c32686507ea528748b37dc2d05d9ddfb1c5b4e35a79",
+    "previousRunningCommit": "a9630f497d05c9b4785fde15b70261c8ed71a0f2",
+    "publishedAt": "2026-11-22T01:29:18+08:00",
+    "mainCI": "Voice push run 44930060622: success",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "publishNote": "Both nodes idle; the release tool switched them at once (receipt 20261122-012837).",
+    "iosShellRevision": "01393529a75a8c05ff13f5ecbbe7fb0ed31ed140b8c5c8c1deb30f053b16cdde",
+    "gatewayIdentityPreserved": true,
+    "gatewayNote": "openclaw-gateway.service PID 992785 before and after.",
+    "change": "The iOS App's web view lets nothing play before a tap (mediaTypesRequiringUserActionForPlayback = .all, a silent video too): a made video's frame waited for the video's first frame before it showed or could be tapped, and stayed on '马上就动' (production 11/22 00:44). A refused video now shows the picture it was made from with a play mark and is started inside the caller's tap; the viewer starts its video as it comes up; sound is taken only once the video is moving, and not in the App. The viewer tells the App it is open through the existing 'reading' message, so the App's settings button leaves the corner the viewer's close button is in (both showed, and a tap there opened the settings).",
+    "acceptance": "Tianyi reported both in the iOS App after #246 and said to release the fix. Before release: a local fixture made to allow playback only inside a tap on the picture reproduced the stuck frame and, with the fix, showed the play mark and played on a tap; a real web call on Candidate board-assets-20261121 (a picture 26.5 s, a video 21.7 s) unchanged. After release: both nodes report 6f7babc4, ready; the production page serves the new bundle with the changelog entry; the served App page package (ios-shell-release.json revision above) is byte-for-byte the released native-h5.js, which carries the fix.",
+    "notVerifiedInProduction": "Neither fix has been seen in the iOS App itself: both can only be confirmed on a phone."
   }
 }
