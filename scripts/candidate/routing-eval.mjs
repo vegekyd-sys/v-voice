@@ -17,6 +17,7 @@ import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
+import {routeOf, verdict} from './routing-verdict.mjs';
 
 const [casesFile, out, repeats = '1'] = process.argv.slice(2);
 if (!casesFile || !out) throw Error('Usage: routing-eval.mjs cases.json out-dir [repeats]');
@@ -68,7 +69,9 @@ async function run(item, round) {
     if (method === 'tools.invoke') {
       effect('lookup', `${args.name} ${JSON.stringify(args.args ?? {})}`);
       if (fail(args.name)) return {ok: false, error: {code: 'tool_error', message: fail(args.name)}};
-      const details = FOUND[args.name] ?? {ok: true};
+      // (A search answers what was asked: results beside the point read as "nothing found" and send the request on.)
+      const query = String(args.args?.query ?? '').slice(0, 60);
+      const details = args.name === 'web_search' && query ? {results: [{title: `${query}（替身结果一）`, url: 'https://example.com/a', snippet: `关于「${query}」：这是评测用的替身搜索结果，查到三条要点——第一条是最新进展，第二条是关键数字 31 和 112 比 105，第三条是按位置排列的完整名单。`}, {title: `${query}（替身结果二）`, url: 'https://example.com/b', snippet: `「${query}」的补充说明：以上内容来自今天的公开报道。`}]} : FOUND[args.name] ?? {ok: true};
       return {ok: true, output: {content: [{type: 'text', text: JSON.stringify(details)}], details}};
     }
     throw Error('Routing evaluation: no such Gateway method ' + method);
@@ -131,7 +134,7 @@ async function run(item, round) {
     await delay(1500);
     for (const thing of item.setup?.assets ?? []) assets.add(id, {kind: thing.kind ?? 'image', url: thing.url ?? `https://cdn.example.com/eval/${encodeURIComponent(thing.name)}.${thing.kind === 'video' ? 'mp4' : 'png'}`, name: thing.name, source: 'made'});
     for (const photo of item.setup?.photos ?? []) assets.found(id, {query: photo.query ?? photo.name, name: photo.name});
-    if (item.setup?.assets?.length || item.setup?.photos?.length) await delay(1400);
+    if (item.setup?.assets?.length || item.setup?.photos?.length) await delay(2600);
     const said = Array.isArray(item.say) ? item.say : [item.say];
     for (const [index, text] of said.entries()) {
       const last = index === said.length - 1;
@@ -142,7 +145,7 @@ async function run(item, round) {
       // Until the answer has ended and nothing more has been set going for a while.
       for (const deadline = asked + (last ? 22000 : 16000); Date.now() < deadline && client.readyState === 1;) {
         await delay(100);
-        if (lastDone && Date.now() - lastDone > (last ? 2600 : 1500) && Date.now() - busyAt > 1500 && (!lastActivity || Date.now() - lastActivity > 2600)) break;
+        if (lastDone && Date.now() - lastDone > (last ? item.settleMs ?? 2600 : 1500) && Date.now() - busyAt > 1500 && (!lastActivity || Date.now() - lastActivity > 2600)) break;
       }
     }
   } catch (error) { record.errors.push(String(error?.message ?? error).slice(0, 200)); }
@@ -150,28 +153,6 @@ async function run(item, round) {
   record.instructionChars = instructionChars; record.tools = toolCount; record.ms = stamp();
   if (process.env.ROUTING_DEBUG === '1') record.seen = seen;
   return record;
-}
-
-/** What the last thing said set going, in the order it happened: make / back / lookup / lesson / control / talk. */
-export function routeOf(record) {
-  const kinds = [];
-  for (const row of record.effects.filter(row => row.turn)) if (!kinds.includes(row.kind)) kinds.push(row.kind);
-  for (const call of record.calls.filter(call => call.turn)) {
-    const kind = call.name === 'delegate_to_v' ? 'back' : ['end_call', 'cancel_task', 'openclaw_agent_control'].includes(call.name) ? 'control' : call.name === 'current_time' ? 'lookup' : call.name === 'show_content' ? 'show' : '';
-    if (kind && !kinds.includes(kind)) kinds.push(kind);
-  }
-  return kinds.length ? kinds : ['talk'];
-}
-/** A case's verdict: {ok, why}. `expect.route` lists the acceptable routes (each a kind, or kinds joined with "+", all of which must be there); `expect.never` lists kinds that must not be there. */
-export function verdict(item, record) {
-  if (record.errors.some(error => /did not become ready|credential/u.test(error))) return {ok: false, why: 'not run: ' + record.errors[0]};
-  const kinds = routeOf(record), expect = item.expect ?? {};
-  const fits = (expect.route ?? []).some(route => route.split('+').every(kind => kinds.includes(kind)));
-  if (expect.route && !fits) return {ok: false, why: `went ${kinds.join('+')}, wanted ${expect.route.join(' or ')}`};
-  for (const kind of expect.never ?? []) if (kinds.includes(kind)) return {ok: false, why: `went ${kind}, which it must not`};
-  const made = record.effects.filter(row => row.turn && row.kind === 'make').map(row => row.detail).join('\n'), asked = record.calls.filter(call => call.turn && call.name === 'exec').map(call => call.args).join('\n');
-  if (expect.command && kinds.includes('make') && !new RegExp(expect.command, 'u').test(asked + '\n' + made)) return {ok: false, why: `made without ${expect.command}`};
-  return {ok: true, why: kinds.join('+')};
 }
 
 const results = [], queue = [];
