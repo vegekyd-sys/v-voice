@@ -14,7 +14,7 @@ ssh v "mkdir -m 755 $work $work/code && mkdir -m 777 $work/out"
 # (The service's own source only: no iOS project, documents or built packages.)
 if [ -n "$ref" ]; then git archive "$ref" -- . ':!ios' ':!docs' ':!tests' ':!lab/gpt-live-h5/assets' | gzip | ssh v "tar xzf - -C $work/code"
 else git ls-files -- . ':!ios' ':!docs' ':!tests' ':!lab/gpt-live-h5/assets' | tar czf - -T - | ssh v "tar xzf - -C $work/code"; fi
-tar cf - scripts/candidate/routing-eval.mjs scripts/candidate/fixtures/makaron-standin.mjs | ssh v "tar xf - -C $work/code && ln -s $root/voice/node_modules $work/code/node_modules"
+tar cf - scripts/candidate/routing-eval.mjs scripts/candidate/routing-verdict.mjs scripts/candidate/fixtures/makaron-standin.mjs | ssh v "tar xf - -C $work/code && ln -s $root/voice/node_modules $work/code/node_modules"
 # What is said, as speech (the voice model takes no typed turn): one 16 kHz PCM file a sentence, kept between runs.
 mkdir -p artifacts/routing-audio
 python3 - "$cases" <<'PY'

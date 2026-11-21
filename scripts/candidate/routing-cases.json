@@ -42,7 +42,7 @@
  {
   "id": "look-score",
   "group": "查事情",
-  "say": "昨天那场比赛谁得分最高？",
+  "say": "昨天湖人那场比赛，谁得分最高？",
   "expect": {
    "route": [
     "lookup",
@@ -389,7 +389,7 @@
     "back"
    ]
   },
-  "note": "三张各自都是一步能做的"
+  "note": "三张各自独立，一张一张做；不是要先出方案的一套"
  },
  {
   "id": "make-noisy",
@@ -514,13 +514,14 @@
   "expect": {
    "route": [
     "back",
-    "talk"
+    "talk",
+    "lookup"
    ],
    "never": [
     "make"
    ]
   },
-  "note": "昨天的作品不在这通电话里"
+  "note": "昨天的作品不在这通电话里：交后台去找，或者先问清是哪个；不能重新做一个"
  },
  {
   "id": "back-doc-picture",
@@ -542,12 +543,13 @@
   "expect": {
    "route": [
     "back",
+    "talk",
     "lookup",
     "lookup+make",
     "lookup+back"
    ]
   },
-  "note": "品牌规范要查：不能不查就直接画"
+  "note": "品牌规范要先拿到：查、问或交后台都行；不能不查就直接画"
  },
  {
   "id": "back-long-film",
@@ -738,7 +740,10 @@
  {
   "id": "plan-recheck",
   "group": "多步·边缘",
-  "say": "我觉得你刚才的数据不对，重新核实一遍。",
+  "say": [
+   "昨天湖人那场比赛，谁得分最高？",
+   "我觉得你刚才的数据不对，重新核实一遍。"
+  ],
   "expect": {
    "route": [
     "back",
@@ -846,13 +851,15 @@
   "say": "你觉得周末带孩子去爬山还是去海边好？",
   "expect": {
    "route": [
-    "talk"
+    "talk",
+    "lesson"
    ],
    "never": [
     "back",
     "make"
    ]
-  }
+  },
+  "note": "前台自己的事（直接说，或者用讲解工具配着画面说）"
  },
  {
   "id": "talk-joke",
@@ -860,13 +867,15 @@
   "say": "给我讲个笑话。",
   "expect": {
    "route": [
-    "talk"
+    "talk",
+    "lesson"
    ],
    "never": [
     "back",
     "make"
    ]
-  }
+  },
+  "note": "前台自己的事（直接说，或者用讲解工具配着画面说）"
  },
  {
   "id": "talk-recap",
@@ -947,7 +956,8 @@
    "never": [
     "make"
    ]
-  }
+  },
+  "settleMs": 9000
  },
  {
   "id": "mix-make-send",
@@ -968,6 +978,7 @@
     }
    ]
   },
-  "note": "做可以前台，发必须后台"
+  "note": "做可以前台，发必须后台",
+  "settleMs": 9000
  }
 ]
