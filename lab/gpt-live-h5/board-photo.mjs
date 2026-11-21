@@ -66,10 +66,20 @@ export function pagePicture(html, base, query) {
   return title.includes(wanted) ? sharePicture(html, base) : '';
 }
 // The first of several fetches to give a picture; null when none does.
-const firstPicture = ways => new Promise(resolve => {
-  let left = ways.length;
-  if (!left) resolve(null);
-  for (const way of ways) way.then(found => { if (found) resolve(found); else if (--left === 0) resolve(null); }, () => { if (--left === 0) resolve(null); });
+// The first of several ways to a picture that arrives, preferring a small file: a large one
+// (an original of 1-2.5 MB) waits up to `graceMs` for a small one (the search's own thumbnail),
+// as it would take seconds more to reach a phone across the border (11/21).
+const SMALL_PICTURE = 400 * 1024;
+const firstPicture = (ways, graceMs = 1200) => new Promise(resolve => {
+  let left = ways.length, best = null, timer = null;
+  if (!left) return resolve(null);
+  const done = value => { clearTimeout(timer); resolve(value); };
+  const settle = () => { if (--left === 0) done(best); };
+  for (const way of ways) way.then(found => {
+    if (found && found.bytes.length <= SMALL_PICTURE) return done(found);
+    if (found && (!best || found.bytes.length < best.bytes.length)) { best = found; timer ??= setTimeout(() => done(best), graceMs); }
+    settle();
+  }, settle);
 });
 const STOCK = /(?:^|\.)(?:pixabay|699pic|kuaipng|shutterstock|alamy|istockphoto|gettyimages|dreamstime|123rf|depositphotos|freepik|vecteezy|pngtree|nipic|58pic|ibaotu|tukuppt|51yuansu|huaban|duitang|pinterest)\./iu;
 const REFERENCE = /(?:^|\.)(?:wikipedia|wikimedia|baike\.baidu|baike\.sogou|moegirl|pokemon|portal-pokemon|pokedex|52poke|nasa|britannica|dpm\.org|gov)\b/iu;
@@ -138,7 +148,7 @@ const urlsIn = value => { const seen = new Set(); for (const [, url] of JSON.str
  * `search(query)` is V's web search (any shape that carries result "url"s);
  * without it only Wikipedia is used. `observe` receives one line per lookup.
  */
-export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = '', braveGapMs = 1100, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), lookup = dnsLookup, now = Date.now, observe = () => {}, maxBytes = 1500000, timeoutMs = 9000, ttlMs = 30 * 60000, maxEntries = 96, directory = '', keepMs = 365 * 86400000,
+export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = '', braveGapMs = 1100, braveSettleMs = 300, pictureTimeoutMs = 3500, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), lookup = dnsLookup, now = Date.now, observe = () => {}, maxBytes = 1500000, timeoutMs = 9000, ttlMs = 30 * 60000, maxEntries = 96, directory = '', keepMs = 365 * 86400000,
   // Wikimedia refuses data-centre clients whose agent names no contact page.
   languages = ['zh', 'en'], userAgent = 'VVoiceBoard/0.1 (https://github.com/vegekyd-sys/v-voice)'} = {}) {
   const cache = new Map(), flights = new Map(), prints = new Map();
@@ -177,30 +187,57 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
   // An image search, when a key is provisioned: the first result whose title
   // names the thing (else the first result), as the search's own thumbnail.
   // The plan allows about one request a second, so lookups queue.
-  let braveTurn = Promise.resolve(), braveLast = -Infinity, braveWaiting = 0, braveSlowUntil = -Infinity;
-  // One request to the image search at a time, a gap apart; for a minute after
-  // the service has refused one, twice the gap.
-  const braveSlot = () => {
-    const turn = braveTurn.then(async () => { const gap = braveLast + (now() < braveSlowUntil ? 2 : 1) * braveGapMs - now(); if (gap > 0) await wait(gap); braveLast = now(); });
-    braveTurn = turn.catch(() => {});
-    return turn;
+  let braveSent = -Infinity, braveAnswered = -Infinity, braveSlowUntil = -Infinity, bravePumping = false, bravePerSecond = 1;
+  const braveQueue = [];
+  // The plan's rate, as each answer states it (x-ratelimit-limit: "1, 2000" on the free plan,
+  // "50, …" on Search): with several a second there is no queue, a page's searches go at once.
+  const learnRate = response => {
+    const perSecond = Number(String(response?.headers?.get?.('x-ratelimit-limit') ?? '').split(',')[0]);
+    if (Number.isFinite(perSecond) && perSecond >= 1) bravePerSecond = perSecond;
+    return response;
   };
+  // One request to the image search at a time: sent a gap after the one before was sent, and
+  // a moment after its answer came back (the service counts requests as they arrive). When a
+  // retry is refused too, twice the gap for ten seconds. (A single refusal no longer slows the
+  // queue: it happens on most pages however the requests are spaced, and slowing down for it
+  // spread a page of six over 12 s, 11/21.) `first`: a retry takes the next turn, so the
+  // pictures still come in the order V speaks of them.
+  const braveRequest = (ask, begin, first = false) => bravePerSecond >= 5 ? (begin(), ask().then(learnRate)) : new Promise((resolve, reject) => {
+    const job = {ask: () => ask().then(learnRate), begin, resolve, reject};
+    if (first) braveQueue.unshift(job); else braveQueue.push(job);
+    if (!bravePumping) void bravePump();
+  });
+  async function bravePump() {
+    bravePumping = true;
+    try {
+      while (braveQueue.length) {
+        // The first answer of a page tells the plan's rate: on a fast plan the rest go at once.
+        if (bravePerSecond >= 5) {
+          for (const job of braveQueue.splice(0)) { job.begin(); job.ask().then(job.resolve, job.reject); }
+          break;
+        }
+        const gap = Math.max(braveSent + (now() < braveSlowUntil ? 2 : 1) * braveGapMs, braveAnswered + braveSettleMs) - now();
+        if (gap > 0) await wait(gap);
+        const job = braveQueue.shift();
+        braveSent = now();
+        // Time spent queueing is not time spent looking.
+        job.begin();
+        try { job.resolve(await job.ask()); } catch (error) { job.reject(error); } finally { braveAnswered = now(); }
+      }
+    } finally { bravePumping = false; }
+  }
   // One image search, through the queue.
   async function braveSearch(words, signal, begin) {
-    braveWaiting++; begin.stop?.();
-    try { await braveSlot(); } finally { braveWaiting--; }
-    // Time spent queueing is not time spent looking.
-    begin();
     const ask = () => fetchImpl(`https://api.search.brave.com/res/v1/images/search?q=${encodeURIComponent(words)}&count=10&safesearch=strict`,
       {signal, headers: {'x-subscription-token': braveKey, accept: 'application/json'}});
-    let response = await ask();
-    // "Too many requests" despite the queue (the service counts its own seconds): asked again
-    // through the queue, twice at most. (A retry after a plain pause went out beside the next
-    // request in the queue and was refused again: two to three pictures of every gallery, 11/20.)
+    begin.stop?.();
+    let response = await braveRequest(ask, begin);
+    // "Too many requests" despite the queue: asked again through the queue, twice at most.
+    // (A retry after a plain pause went out beside the next request in the queue and was
+    // refused again: two to three pictures of every gallery, 11/20.)
     for (let again = 0; response.status === 429 && again < 2; again++) {
-      braveSlowUntil = now() + 60000;
-      begin.stop?.(); await braveSlot(); begin();
-      response = await ask();
+      if (again) braveSlowUntil = now() + 10000;
+      begin.stop?.(); response = await braveRequest(ask, begin, true);
     }
     if (!response.ok) throw Error('image search HTTP ' + response.status);
     return ((await response.json())?.results ?? []).filter(item => typeof item?.thumbnail?.src === 'string');
@@ -211,7 +248,7 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
   // they were tables and adverts.)
   function worth(results, query) {
     return results.map((item, index) => ({item, score: rankPicture(item, query), index})).filter(entry => entry.score > 0)
-      .sort((a, b) => (b.score - b.index * .2) - (a.score - a.index * .2)).slice(0, 3);
+      .sort((a, b) => (b.score - b.index * .2) - (a.score - a.index * .2)).slice(0, 9);
   }
   async function brave(query, signal, begin = () => {}) {
     if (!braveKey) return null;
@@ -219,18 +256,28 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     for (const words of [query, ...plainerSearches(query)]) {
       const ranked = worth(await braveSearch(words, signal, begin), query);
       if (!ranked.length) continue;
-      // The best three are fetched at once (one slow file used to hold the others up for
-      // seven seconds); the best-ranked usable one wins.
-      const tried = ranked.map(({item}) => (async () => {
-        const thumbnail = new URL(item.thumbnail.src);
-        if (thumbnail.protocol !== 'https:' || thumbnail.hostname !== 'imgs.search.brave.com') return null;
-        // The search's own thumbnail and the picture where it lives are asked
-        // together: from this server one of the two is often seconds faster.
-        const original = typeof item.properties?.url === 'string' ? await publicHttps(item.properties.url, {lookup}) : null;
-        const ways = [picture(thumbnail.href, signal, 'Brave 图片搜索', item.title), ...(original ? [picture(original.href, signal, item.source || original.hostname, item.title)] : [])];
-        return firstPicture(ways);
-      })().catch(() => null));
-      for (const attempt of tried) { const found = await attempt; if (found && own(found, query)) return found; }
+      // Three at a time are fetched at once (one slow file used to hold the others up for seven
+      // seconds); the best-ranked usable one wins. When none of three can be fetched, the next
+      // three are tried (轰鸣月: the three best were on a site that refuses other sites, 11/21).
+      for (let start = 0; start < ranked.length; start += 3) {
+        // Each file has 3.5 s: a thumbnail the search could not fetch answered 504 after 5 s,
+        // and the next three waited for it (a picture ready at 13.7 s, its search at 7.5 s, 11/21).
+        const fileSignal = typeof AbortSignal.any === 'function' && typeof AbortSignal.timeout === 'function' ? AbortSignal.any([signal, AbortSignal.timeout(pictureTimeoutMs)]) : signal;
+        const tried = ranked.slice(start, start + 3).map(({item}) => (async () => {
+          const signal = fileSignal;
+          const thumbnail = new URL(item.thumbnail.src);
+          if (thumbnail.protocol !== 'https:' || thumbnail.hostname !== 'imgs.search.brave.com') return null;
+          // The search's own thumbnail and the picture where it lives are asked
+          // together: from this server one of the two is often seconds faster.
+          const original = typeof item.properties?.url === 'string' ? await publicHttps(item.properties.url, {lookup}) : null;
+          const ways = [picture(thumbnail.href, signal, 'Brave 图片搜索', item.title), ...(original ? [picture(original.href, signal, item.source || original.hostname, item.title)] : [])];
+          return firstPicture(ways);
+        })().catch(() => null));
+        let fetched = false;
+        for (const attempt of tried) { const found = await attempt; if (found) fetched = true; if (found && own(found, query)) return found; }
+        // (A picture fetched but taken by another thing: the next three would be the same site's.)
+        if (fetched) return null;
+      }
       return null;
     }
     return null;
@@ -292,7 +339,7 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     // second (the last ones used to time out waiting). With a queue ahead,
     // the encyclopedia, which needs no turn, is asked first.
     const encyclopedia = async () => { try { value = await wikipedia(key, signal); } catch { failed = true; } };
-    const crowded = Boolean(braveKey) && braveWaiting >= 2;
+    const crowded = Boolean(braveKey) && bravePerSecond < 5 && braveQueue.length + (bravePumping ? 1 : 0) >= 2;
     if (crowded) { begin(); await encyclopedia(); }
     if (!value) { try { value = await brave(key, signal, begin); } catch (error) { failed = true; why = String(error?.message ?? error).slice(0, 80); } }
     begin();

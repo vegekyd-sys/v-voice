@@ -895,3 +895,22 @@ test("call e4ce15bb: late timers do not leave the caller's audio further and fur
   assert.deepEqual(errors, []);
   assert.ok(fed - frames() < 25, `${fed - frames()} frames (20 ms each) are still waiting`);
 });
+
+test('the service ending the session itself is told apart from our own close, with what it said', async () => {
+ const socket = new FakeSocket(), closes = [], diagnostics = [];
+ const bridge = new SeeduplexRealtimeVoiceBridge({providerConfig: {apiKey: 'fixture-key'}, onAudio() {}, onError: e => assert.fail(e.message), onClose: reason => closes.push(reason), onDiagnostic: e => diagnostics.push(e)}, {createWebSocket: async () => socket});
+ const connecting = bridge.connect(); await new Promise(resolve => setImmediate(resolve)); socket.open(); socket.message({type: 'session.created'}); await connecting;
+ socket.message({type: 'session.closed', reason: 'max_duration', error: {code: 'E1001', message: 'limit'}, audio: 'x'.repeat(50)});
+ assert.deepEqual(closes, ['upstream-closed']);
+ const said = diagnostics.find(e => e.stage === 'upstream-closed');
+ assert.deepEqual([said.reason, said['error.code'], said['error.message'], 'audio' in said], ['max_duration', 'E1001', 'limit', false]);
+});
+
+test('a session.closed answering our own close is an ordinary end', async () => {
+ const socket = new FakeSocket(), closes = [], diagnostics = [];
+ const bridge = new SeeduplexRealtimeVoiceBridge({providerConfig: {apiKey: 'fixture-key'}, onAudio() {}, onError: e => assert.fail(e.message), onClose: reason => closes.push(reason), onDiagnostic: e => diagnostics.push(e)}, {createWebSocket: async () => socket});
+ const connecting = bridge.connect(); await new Promise(resolve => setImmediate(resolve)); socket.open(); socket.message({type: 'session.created'}); await connecting;
+ bridge.close(); socket.message({type: 'session.closed'});
+ assert.equal(closes.includes('upstream-closed'), false);
+ assert.equal(diagnostics.some(e => e.stage === 'upstream-closed'), false);
+});

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-11-21 — No more blank call page from a gallery
+
+- A gallery measured its names' height from the page as drawn and set its rows from it: a narrow picture's name went to two lines with smaller pictures and back to one with larger ones, every render, until React stopped ("Maximum update depth exceeded") and the whole call page went blank (production 11/21 15:28, after #242 made pictures arrive together; Tianyi had seen it before). The names' height now only grows for one set of pictures, and a gallery takes at most a few size changes a frame.
+- The board is guarded: a piece that fails to draw takes only itself away (then the page, then the board), and is tried again on the next change; the call page, conversation and controls stay (#243).
+
+## 2026-11-21 — Pictures of a page arrive sooner and in order
+
+- The image search (free plan: one request a second, 2000 a month) is queued by arrival: the next request waits for the answer to the one before; a single refusal no longer doubles the gap for a minute, and the refused search takes the next turn so pictures come in the order V speaks of them.
+- A small picture (the search's own thumbnail) is taken over a large original that arrived a moment before it (1-2.5 MB originals took seconds more to reach a phone); each file has 3.5 s before the next results are tried.
+- Candidate probe, six searches of one page: last picture 16.6 s → 7.7 s, files 15-170 KB (#242).
+
+## 2026-11-21 — The call record keeps why a call ended
+
+- The call record (transcript log) kept only the call's identity on call.closed and dropped provider-status stages it did not know: the reason added in #239 and the voice service's own "upstream-closed" never reached production records. They are now kept: `why` (one of the service's own words) and up to six short fields of what the service said (#240).
+
+## 2026-11-21 — A call records why it ended; picture search tries past dead links
+
+- call.closed records which way the call ended (client-closed:<code>, provider-upstream-closed, provider-error, host-ending, …); a SeeDuplex session.closed we did not ask for is reported as call.provider-status "upstream-closed" with what the service said. (Call 9caf5e1b ended 0.14 s after the caller's turn with no record of why.)
+- When the three best image-search results cannot be fetched (a site that refuses other sites), the next ones are tried, up to nine (轰鸣月, 波荡水) (#239).
+
 ## 2026-11-21 — Picture searches the image search answered are no longer thrown away
 
 - Results qualify on their own score (their place in the list only orders them); words the search asks for (海报, 同人, mega) are not held against a title; guide, data and download pages are; a Chinese title must name the thing (half its characters: 超夢 for 超梦), and an English title sharing no word with a several-word search for a Chinese name does not count for it.
