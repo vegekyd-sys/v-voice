@@ -23,7 +23,7 @@ const bounded = (value, limit) => Array.from(String(value ?? '').replace(/\s+/gu
 const https = value => { try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : ''; } catch { return ''; } };
 
 // What the voice model is told once, wherever a shelf exists for the call.
-export const ASSET_POLICY = '屏幕素材：用户屏幕的画面上摆着本通话生成的图片和视频，每个有编号（a1、a2…）。下面「屏幕素材现状」会随时更新，里面写的是图里真实看得到的东西。现状里列出的作品都已经做好、用户已经在屏幕上看到了，不用再查询进度或说“我看看好了没”；写着“正在做”的才是还没好的。用户说“这张”“它”“刚才那张”“那个视频”，指用户正点着的那个；没有点着的就是最新的那个；仍然分不清再问。用户问图里有什么、谁在哪边，按现状里的描述回答，不编造没写的细节。屏幕上搜到的照片也有编号（p1、p2…，见现状里的「搜到的照片」），可以当参考图：用户说“把那张海报改成 Q 版”“照这张画一个”，指的是搜到的照片时就用它的 p 编号。要改图、换风格、让图动起来、拿它当参考时，创作命令里 --image 和 --ref 直接写编号（例如 --image a1 或 --image p2），系统会换成真实链接；不要抄写、朗读或编造链接。编号只写在命令和交给后台的 context 里：对用户说话、写给用户的消息里不说编号，说它的名字，或者“第一张”“刚才那个视频”。交给后台处理屏幕上的东西时，在 context 里写清它的编号。生成中的东西已经显示在画面上，做好会自己显影，不用另外展示。';
+export const ASSET_POLICY = '屏幕素材：用户屏幕的画面上摆着本通话生成的图片和视频，每个有编号（a1、a2…）。下面「屏幕素材现状」会随时更新，里面写的是图里真实看得到的东西。现状里列出的作品都已经做好、用户已经在屏幕上看到了，不用再查询进度或说“我看看好了没”；写着“正在做”的才是还没好的。用户说“这张”“它”“刚才那张”“那个视频”，指用户正点着的那个；没有点着的就是最新的那个；仍然分不清再问。用户问图里有什么、谁在哪边，按现状里的描述回答，不编造没写的细节。屏幕上搜到的照片也可以当参考图，现状里列着它们的编号和名字（p1「名字」…）。用户说“把那张海报改成 Q 版”“照这张画一个”，指的是搜到的照片时就用它；写的时候对着名字选，也可以直接写名字（--ref "基格尔德 完全体形态"），不要凭印象写编号。要改图、换风格、让图动起来、拿它当参考时，创作命令里 --image 和 --ref 直接写编号（例如 --image a1 或 --image p2），系统会换成真实链接；不要抄写、朗读或编造链接。编号只写在命令和交给后台的 context 里：对用户说话、写给用户的消息里不说编号，说它的名字，或者“第一张”“刚才那个视频”。交给后台处理屏幕上的东西时，在 context 里写清它的编号。两个以上的角色或东西同框时，每一个都带上它自己的参考图：出图用 --image 写主图、其余每张各写一个 --ref；做视频最稳的是先出一张同框的图，用户认可后让这张图动起来（--image 写这张图），也可以带多个 --image，脚本里用 <<<media_1>>>、<<<media_2>>> 分别指它们。用户认可了一张图后说“做成视频”“动起来”，就是让这张图动：--image 写它。用户说造型不像、不对，就换上或加上屏幕上那张对的照片当参考重做，不要只改文字描述；屏幕上没有对的照片就先找。completionLine 是事先写的，只说做好了，不说“样子对了”“造型全对”这类你还没看到的话。生成中的东西已经显示在画面上，做好会自己显影，不用另外展示。';
 export const ASSET_CONTEXT_EMPTY = '屏幕素材现状：画面上还没有生成的图片或视频。';
 // What the illustrator is told (appended to its instructions by the service).
 export const ASSET_NOTES = `
@@ -136,6 +136,21 @@ export function createAssetEye({complete, fetchImpl = fetch, maxBytes = 4 * 1024
   };
 }
 
+// The pictures a creation command names after --image / --ref, as written.
+const REFERENCE = /(--(?:image|ref)\s+)(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|(\S+))/gu;
+const plainName = value => String(value ?? '').replace(/[\s，。！？、；：,.!?;:"'“”‘’（）()\-—*·「」《》]/gu, '').toLowerCase();
+// How well a name written in a command fits the name a picture goes by: one within the other, or shared pairs of characters.
+function nameFit(wanted, name) {
+  const want = plainName(wanted), have = plainName(name);
+  if (want.length < 2 || !have) return 0;
+  if (have.includes(want) || want.includes(have)) return 1 + Math.min(want.length, have.length) / 100;
+  const pairs = text => new Set(Array.from({length: text.length - 1}, (_, index) => text.slice(index, index + 2)));
+  const a = pairs(want), b = pairs(have);
+  let both = 0;
+  for (const pair of a) if (b.has(pair)) both++;
+  return a.size ? both / a.size : 0;
+}
+
 /**
  * `director`: the board (board-director.mjs), asked to hang a made thing on
  * the call's canvas. `see`: createAssetEye. `watch`ers are told whenever what
@@ -170,10 +185,10 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     while (value.assets.length > MAX_ASSETS) value.assets.splice(value.assets.findIndex(item => item.state !== 'making') >= 0 ? value.assets.findIndex(item => item.state !== 'making') : 0, 1);
     return asset;
   };
-  const fresh = (value, fields) => ({id: `a${++value.count}`, kind: 'image', state: 'ready', url: '', name: '', prompt: '', from: '', source: 'made', see: '', parts: [], shown: false, at: now(), readyAt: 0, ...fields});
+  const fresh = (value, fields) => ({id: `a${++value.count}`, kind: 'image', state: 'ready', url: '', name: '', prompt: '', from: '', refs: [], source: 'made', see: '', parts: [], shown: false, at: now(), readyAt: 0, ...fields});
   // What the page shows of a thing.
   const card = asset => ({id: asset.id, kind: asset.kind, state: asset.state, ...(asset.url ? {url: asset.url} : {}), ...(asset.name ? {name: asset.name} : {}),
-    ...(asset.prompt ? {prompt: bounded(asset.prompt, 80)} : {}), ...(asset.from ? {from: asset.from} : {}), source: asset.source, ...(asset.aspect ? {aspect: asset.aspect} : {}), at: asset.at});
+    ...(asset.prompt ? {prompt: bounded(asset.prompt, 80)} : {}), ...(asset.from ? {from: asset.from} : {}), ...(asset.refs?.length ? {refs: asset.refs} : {}), source: asset.source, ...(asset.aspect ? {aspect: asset.aspect} : {}), at: asset.at});
   const look = (owner, value, asset) => {
     if (!see || asset.kind !== 'image' || !asset.url) return Promise.resolve(null);
     const started = now();
@@ -205,6 +220,21 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     return `${asset.id} ${kind}${asset.name ? `「${asset.name}」` : ''}${origin}${asset.source === 'backend' ? '（后台做的）' : ''}${what ? `：${what}` : ''}`;
   };
   // The photographs found for the board lately, as V is told of them (by name, in the order they went up).
+  // Which thing on the shelf a picture named in a command is: by its id, or by the name it goes by
+  // on the board ("基格尔德 完全体形态"). A name is what V means; an id is easily the wrong one (call of
+  // 11/21: "after p10's Zygarde", and p10 was a photograph of Luffy). `link`: already an address.
+  const meant = (value, token) => {
+    const text = String(token ?? '').trim().replace(/^@/u, '');
+    if (https(text)) return {link: true};
+    if (SHELF_ID.test(text)) return {id: text, item: value.assets.find(item => item.id === text) ?? value.photos.find(item => item.id === text) ?? null};
+    let best = null, fit = 0;
+    for (const item of [...value.photos, ...value.assets.filter(asset => asset.kind === 'image' && asset.state === 'ready')]) {
+      const score = Math.max(nameFit(text, item.name), item.query ? nameFit(text, item.query) : 0);
+      // (Of two that fit alike, the later one: the one last put before the caller.)
+      if (score >= fit && score > 0) { best = item; fit = score; }
+    }
+    return {name: text, item: fit >= .5 ? best : null};
+  };
   // Those on the page V is on come first and in the order they stand there, so "the second one" is the
   // second in the line (ids go by when each photograph arrived, which is no order the caller can see).
   const photosLine = (value, owner) => {
@@ -239,7 +269,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     async lend(owner, command = null) {
       const value = owners.get(owner);
       if (!value || !api.share) return;
-      const named = command === null ? value.photos.slice(-6) : [...String(command).matchAll(/--(?:image|ref)\s+['"]?@?(p[1-9]\d{0,2})/gu)].map(match => value.photos.find(photo => photo.id === match[1])).filter(Boolean);
+      const named = command === null ? value.photos.slice(-6) : [...new Set([...String(command).matchAll(REFERENCE)].map(match => meant(value, match[2] ?? match[3] ?? match[4]).item).filter(item => item && value.photos.includes(item)))];
       await Promise.all(named.filter(photo => !photo.url || photo.until < now()).map(async photo => {
         let ok = false;
         try { const lent = await api.share(photo.query); if (lent?.url) { photo.url = lent.url; photo.until = lent.until ?? Infinity; ok = true; } } catch { /* It stays without an address. */ }
@@ -249,18 +279,24 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     /** A creation command is about to run. Ids in it become links; a new thing gets its place on the board. */
     begin(owner, {command, turn = null} = {}) {
       const value = row(owner), text = String(command ?? '');
-      // (--image a1 / --ref 'a1' / --image @a1: the id of something on the shelf.)
-      let missing = '';
-      const resolved = text.replace(/(--(?:image|ref)\s+)(['"]?)@?([ap][1-9]\d{0,2})\2(?=\s|$)/gu, (whole, lead, quote, id) => {
-        const asset = value.assets.find(item => item.id === id) ?? value.photos.find(item => item.id === id);
+      // (--image a1 / --ref p3 / --ref '基格尔德 完全体形态': something on the shelf, by id or by name.)
+      let missing = null;
+      const used = [];
+      const resolved = text.replace(REFERENCE, (whole, lead, single, double, bare) => {
+        const found = meant(value, single ?? double ?? bare);
+        if (found.link) return whole;
         // A video is not a reference picture; the picture it was made from is.
-        const source = asset?.kind === 'video' && asset.from ? value.assets.find(item => item.id === asset.from) : asset;
-        if (!source?.url || source.kind !== 'image') { missing ||= id; return whole; }
+        const source = found.item?.kind === 'video' && found.item.from ? value.assets.find(item => item.id === found.item.from) : found.item;
+        if (!source?.url || source.kind !== 'image' || source.until !== undefined && source.until < now()) { missing ??= {...found, held: Boolean(source)}; return whole; }
+        if (!used.includes(source.id)) used.push(source.id);
         return `${lead}'${source.url}'`;
       });
-      if (missing) return {command: text, error: missing.startsWith('p') && value.photos.some(item => item.id === missing)
-        ? `搜到的照片 ${missing} 这次没能取到，不能当参考图；本次没有提交。可以换一张照片，或者告诉用户后只按文字来画。`
-        : `屏幕素材里没有可用的图片 ${missing}；本次没有提交。请按「屏幕素材现状」里的编号重写命令。`};
+      if (missing) {
+        const have = [...value.photos.slice(-8), ...value.assets.filter(asset => asset.kind === 'image' && asset.state === 'ready').slice(-4)].map(item => `${item.id}「${item.name || item.id}」`).join('、');
+        return {command: text, error: missing.held
+          ? `「${missing.item.name || missing.id}」这张这次没能取到，不能当参考图；本次没有提交。可以换一张，或者告诉用户后只按文字来画。`
+          : `屏幕上没有${missing.name ? `叫「${bounded(missing.name, 20)}」的图片` : `可用的图片 ${missing.id}`}；本次没有提交。${have ? `现有：${have}。` : ''}请对着名字重写命令。`};
+      }
       const creation = readCreation(resolved);
       if (!creation) return {command: resolved};
       // One request of the caller's makes one thing of a kind (the executor answers a repeat with
@@ -268,14 +304,14 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       const key = turn ?? value, kinds = value.turns.get(key) ?? {};
       const known = kinds[creation.kind] && value.assets.find(asset => asset.id === kinds[creation.kind]);
       // (A command refused before it was submitted and written again starts the same thing anew.)
-      if (known) { if (known.state === 'failed') { known.state = 'making'; known.prompt = creation.prompt; known.at = now(); changed(owner, value, {quiet: true}); } return {command: resolved, id: known.id}; }
+      if (known) { if (known.state === 'failed') { known.state = 'making'; known.prompt = creation.prompt; known.refs = used; known.at = now(); changed(owner, value, {quiet: true}); } return {command: resolved, id: known.id}; }
       const origin = find(value, creation.reference);
       const parent = origin ? (origin.kind === 'video' && origin.from ? value.assets.find(item => item.id === origin.from) ?? origin : origin) : null;
       // (A version goes by the name its picture was given: "the video of X", not a nameless video.)
-      const asset = add(value, fresh(value, {kind: creation.kind, state: 'making', prompt: creation.prompt, from: parent?.id ?? '', ...(parent?.name ? {name: parent.name, named: creation.kind === 'video'} : {}), ...(creation.aspect ? {aspect: creation.aspect} : parent?.aspect ? {aspect: parent.aspect} : {})}));
+      const asset = add(value, fresh(value, {kind: creation.kind, state: 'making', prompt: creation.prompt, from: parent?.id ?? '', refs: used, ...(parent?.name ? {name: parent.name, named: creation.kind === 'video'} : {}), ...(creation.aspect ? {aspect: creation.aspect} : parent?.aspect ? {aspect: parent.aspect} : {})}));
       value.turns.set(key, {...kinds, [creation.kind]: asset.id});
       if (value.turns.size > 64) value.turns.delete(value.turns.keys().next().value);
-      audit({type: 'board.asset', voiceSessionId: owner, asset: asset.id, kind: asset.kind, state: 'making', from: asset.from || null});
+      audit({type: 'board.asset', voiceSessionId: owner, asset: asset.id, kind: asset.kind, state: 'making', from: asset.from || null, ...(used.length ? {refs: used} : {})});
       // (`turn`: asked for by the caller just now. The turn's picture is this thing.)
       place(owner, asset, {turn: true});
       changed(owner, value, {quiet: true});
@@ -331,7 +367,9 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     /** What the voice model is given back with a tool result. */
     facts(owner, id) {
       const asset = owners.get(owner)?.assets.find(item => item.id === id);
-      return asset ? {id: asset.id, kind: asset.kind, ...(asset.name ? {name: asset.name} : {}), ...(asset.from ? {from: asset.from} : {}), ...(asset.see ? {see: asset.see} : {}), onBoard: Boolean(director)} : null;
+      const value = owners.get(owner), called = id => { const item = value.assets.find(other => other.id === id) ?? value.photos.find(other => other.id === id); return item?.name || id; };
+      // (`references`: what it was really made from, by name, so a wrong picture is noticed and not repeated.)
+      return asset ? {id: asset.id, kind: asset.kind, ...(asset.name ? {name: asset.name} : {}), ...(asset.from ? {from: asset.from} : {}), ...(asset.refs?.length ? {references: asset.refs.map(called)} : {}), ...(asset.see ? {see: asset.see} : {}), onBoard: Boolean(director)} : null;
     },
     /** The few lines the voice model keeps about the caller's screen. */
     context(owner) {
@@ -364,7 +402,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       const value = owners.get(owner);
       if (!value) return {assets: [], photos: [], picked: '', busy: false, stamp: 0};
       // (With the found photographs things were made from, so a frame can show what it is being made of.)
-      const sources = value.photos.filter(photo => photo.url && value.assets.some(asset => asset.from === photo.id)).map(photo => ({id: photo.id, kind: 'image', state: 'ready', url: photo.url, name: photo.name, source: 'search', at: 0}));
+      const sources = value.photos.filter(photo => photo.url && value.assets.some(asset => asset.from === photo.id || asset.refs?.includes(photo.id))).map(photo => ({id: photo.id, kind: 'image', state: 'ready', url: photo.url, name: photo.name, source: 'search', at: 0}));
       // (`photos`: every found photograph by what the board calls for it, so the page can say which one was tapped.)
       return {assets: [...sources, ...value.assets.map(card)], photos: value.photos.map(photo => ({id: photo.id, query: photo.query, name: photo.name})), picked: value.picked, busy: value.assets.some(asset => asset.state === 'making'), stamp: value.stamp};
     },

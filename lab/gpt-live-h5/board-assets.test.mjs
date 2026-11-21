@@ -48,7 +48,7 @@ test('"animate it": the id becomes the link, and the video takes the picture\'s 
   assert.deepEqual(board.scene('call').blocks.map(block => [block.id, block.asset]), [['w1', 'a2']]);
   assert.ok(board.scene('call').rev > rev);
   const fact = await shelf.finish('call', 'a2', video(FILM));
-  assert.deepEqual(fact, {id: 'a2', kind: 'video', from: 'a1', onBoard: true});
+  assert.deepEqual(fact, {id: 'a2', kind: 'video', from: 'a1', references: ['a1'], onBoard: true});
   // A second video of the same picture is another version in the same frame, not a new page.
   shelf.begin('call', {command: "makaron video create --video-model fal-h3-max --image a2 --script '<<<media_1>>> 再来一版'", turn: {}});
   assert.equal(shelf.get('call', 'a3').from, 'a1', 'a video is not a reference picture; the picture it came from is');
@@ -306,7 +306,7 @@ test('a photograph found for the board can be the picture a thing is made from',
   assert.deepEqual(shelf.page('call').assets.map(({id, source, from}) => [id, source, from]), [['p2', 'search', undefined], ['a1', 'made', 'p2']]);
   // One that cannot be fetched is said to be so; nothing is submitted with a made-up picture.
   await shelf.lend('call', "makaron edit --image-model gemini-2.1 --image p3 'x'");
-  assert.match(shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 --image p3 'x'", turn: {}}).error, /p3 这次没能取到/u);
+  assert.match(shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 --image p3 'x'", turn: {}}).error, /「取不到」这张这次没能取到/u);
   // For V's backend the latest few are lent together, with their addresses.
   await shelf.lend('call');
   assert.match(shelf.backendContext('call'), /p1「上映海报」 链接 https:\/\/voice\.example\/voice\/board-shared\/\d\.jpg；p2「复古风海报」/u);
@@ -345,4 +345,31 @@ test('V is told of the photographs on the page in the order they stand there, wh
   shelf.found('call', {query: '城市 夜景', name: '城市夜景'});
   for (const [query, name] of [['雪山 湖', '雪山下的湖'], ['清晨 山谷', '清晨的山谷'], ['林间 小路', '林间小路']]) shelf.found('call', {query, name});
   assert.match(shelf.context('call'), /这一页上搜到的照片（按画面上的先后，可当参考图）：p3「清晨的山谷」、p4「林间小路」、p2「雪山下的湖」。之前页上的：p1「城市夜景」。/u);
+});
+
+test('a thing is made from a picture of each character, each named by what it is called on the board', async () => {
+  // (Call of 11/21: "after p10's Zygarde", and p10 was a photograph of Luffy; and a command with two pictures was refused.)
+  const board = director(), shelf = shelfOn(board, {see: async () => ({name: '尼卡海报', see: '白发的尼卡路飞在画面中间。', parts: []})});
+  shelf.share = async query => ({url: `https://voice.example/voice/board-shared/${encodeURIComponent(query)}.jpg`, until: Date.now() + 60000});
+  for (const [query, name] of [['路飞 齿轮四 弹跳人', '四档 弹跳人'], ['路飞 五档 太阳神尼卡 官方图', '五档 尼卡'], ['基格尔德 10%形态 官方图', '10%形态'], ['基格尔德 完全体形态', '基格尔德 完全体形态']]) shelf.found('call', {query, name});
+  await shelf.finish('call', shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 '尼卡路飞电影海报'", turn: {}}).id, image(POSTER));
+  await new Promise(resolve => setTimeout(resolve, 5));
+  // Two characters, two pictures: the made poster as the base, the photograph of the other by its name.
+  const command = "makaron edit --image-model gemini-2.1 --image 尼卡海报 --ref '基格尔德完全体' '两人正面对战'";
+  await shelf.lend('call', command);
+  const begun = shelf.begin('call', {command, turn: {}});
+  assert.equal(begun.command, `makaron edit --image-model gemini-2.1 --image '${POSTER}' --ref 'https://voice.example/voice/board-shared/${encodeURIComponent('基格尔德 完全体形态')}.jpg' '两人正面对战'`);
+  assert.deepEqual(shelf.get('call', begun.id).refs, ['a1', 'p4']);
+  assert.equal(shelf.get('call', begun.id).from, 'a1');
+  // V is told what the thing was really made from, by name; the page is given those pictures to show.
+  const fact = await shelf.finish('call', begun.id, image('https://cdn.example/battle.png'));
+  assert.deepEqual(fact.references, ['尼卡海报', '基格尔德 完全体形态']);
+  assert.deepEqual(shelf.page('call').assets.map(({id, refs}) => [id, refs]), [['p4', undefined], ['a1', undefined], ['a2', ['a1', 'p4']]]);
+  // A video with a picture of each, named in the script by its place.
+  const film = "makaron video create --video-model fal-h3-max --image '五档尼卡' --image p4 --script '<<<media_1>>> 的路飞对战 <<<media_2>>> 的基格尔德'";
+  await shelf.lend('call', film);
+  assert.deepEqual(shelf.get('call', shelf.begin('call', {command: film, turn: {}}).id).refs, ['p2', 'p4']);
+  // A name nothing on the screen goes by is said to be so, with what there is; nothing is submitted with a wrong picture.
+  const wrong = shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 --ref '皮卡丘' 'x'", turn: {}});
+  assert.match(wrong.error, /屏幕上没有叫「皮卡丘」的图片；本次没有提交。现有：p1「四档 弹跳人」、p2「五档 尼卡」、p3「10%形态」、p4「基格尔德 完全体形态」、a1「尼卡海报」/u);
 });

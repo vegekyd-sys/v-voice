@@ -546,8 +546,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
             // On the board the thing is already where the caller is looking; V is told its id and what is really in it.
             const fact=shelfFor(s)?await assets.finish(s.id,shelved.id,output):null;
             if(executionSignal.aborted||!current(s))throw Error('本次任务已取消');
-            if(fact)return {...output,media:{...output.media,id:fact.id,...(fact.name?{name:fact.name}:{}),...(fact.from?{from:fact.from}:{}),...(fact.see?{see:fact.see}:{})},presentation:{...presentation,shown:presentation.shown||assets.shown(s.id,fact.id)},
-              instruction:'作品已经在用户屏幕的画面上（编号 '+fact.id+'）。用一两句话自然地告诉用户做好了'+(fact.see?'，并按 media.see 挑一两处图里真实画出来的东西说给用户听（谁在哪边、在做什么）':'')+'；不念编号和链接。不再保存、轮询或重复 show_content；追问进度不重新生成。之后用户说“这张”“让它动起来”，创作命令里写 --image '+(fact.kind==='video'&&fact.from?fact.from:fact.id)+'。'};
+            if(fact)return {...output,media:{...output.media,id:fact.id,...(fact.name?{name:fact.name}:{}),...(fact.from?{from:fact.from}:{}),...(fact.references?{references:fact.references}:{}),...(fact.see?{see:fact.see}:{})},presentation:{...presentation,shown:presentation.shown||assets.shown(s.id,fact.id)},
+              instruction:'作品已经在用户屏幕的画面上（编号 '+fact.id+'）。用一两句话自然地告诉用户做好了'+(fact.see?'，并按 media.see 挑一两处图里真实画出来的东西说给用户听（谁在哪边、在做什么）':'')+'；不念编号和链接。'+(fact.references?'这次实际照着的参考图是：'+fact.references.map(name=>'「'+name+'」').join('、')+'；如果用户要的不是这些，换成对的那张重做。':'')+'不再保存、轮询或重复 show_content；追问进度不重新生成。之后用户说“这张”“让它动起来”，创作命令里写 --image '+(fact.kind==='video'&&fact.from?fact.from:fact.id)+'。'};
             return {...output,presentation,instruction:'媒体已经自动提交显示。根据 presentation 回执简短说明结果，不再保存、轮询或重复 show_content；追问进度不重新生成。'};
           }
           if(shelved.id)await assets.finish(s.id,shelved.id,output);
@@ -602,7 +602,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(!current(s)||!['exec','process'].every(id=>(latest.groups??[]).some(g=>(g.tools??[]).some(t=>t.id===id))))throw Error('当前会话创作权限已撤回');
         const controller=new AbortController();makers.add(controller);
         s.mediaRunner??=Promise.resolve().then(()=>mediaCli.forCall());
-        const work=s.mediaRunner.then(runner=>runner.execute(`makaron edit --image-model gemini-2.1 --aspect ${/^\d{1,2}:\d{1,2}$/u.test(aspect)?aspect:'4:3'} '${String(prompt).replace(/[\0\r\n]/gu,' ').replaceAll("'","'\\''")}'`,controller.signal,{requestToken:{}}));
+        const work=s.mediaRunner.then(runner=>runner.execute(`makaron edit --image-model gemini-2.1 --aspect ${/^\d{1,2}:\d{1,2}$/u.test(aspect)?aspect:'4:3'} '${String(prompt).replace(/[\0\r\n]/gu,' ').replaceAll("'","'\\''")}'`,controller.signal,{requestToken:{},separate:true}));
         const cleanup=work.then(()=>{},()=>{});s.localCleanups.add(cleanup);
         cleanup.then(()=>{s.localCleanups.delete(cleanup);makers.delete(controller);});
         audit({type:'tool.media-cli',voiceSessionId:s.id,callId:'lesson-picture',phase:'start'});

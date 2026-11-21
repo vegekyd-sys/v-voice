@@ -87,6 +87,7 @@ export function Work({block, view}) {
   const picked = view.picked === shown.id && shown.state === 'ready';
   // A version goes by the name the thing was given when it was first looked at.
   const name = shown.name || family.find(item => item.name)?.name || block.caption || (shown.state === 'making' ? '' : shown.kind === 'video' ? '视频' : '作品');
+  const references = (shown.refs ?? []).map(id => assets.get(id)?.name).filter(Boolean);
   // A tap looks at it large, like any picture on the page; looked at is picked (board-viewer.jsx).
   const open = event => { if (loaded) view.enlarge?.(event.currentTarget); };
   return (
@@ -126,6 +127,8 @@ export function Work({block, view}) {
         {/* (The page already carries the name as its title when the page is this thing's own.) */}
         {name && name !== view.title && <span className="board-work-name">{name}</span>}
         {shown.state === 'ready' && <small>{shown.source === 'backend' ? '后台生成' : shown.source === 'lesson' ? '讲解时现画' : 'V 生成'}{shown.kind === 'video' ? ' · 视频' : ''}</small>}
+        {/* What it was (or is being) made from, by name: a wrong picture is seen at once. */}
+        {references.length > 0 && <small className="board-work-refs">照着：{references.join('、')}</small>}
       </figcaption>
       {family.length > 1 && (
         <ol className="board-work-line" aria-label="这件作品的各个版本">
