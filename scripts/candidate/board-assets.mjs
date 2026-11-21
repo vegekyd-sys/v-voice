@@ -25,6 +25,8 @@ const PORT = Number(process.env.BOARD_FIXTURE_PORT ?? 26329);
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const FOUND = ['这张是清晨的山谷。', '这张是林子里的小路。', '这张是雪山下的湖。', '这张是傍晚的山脊。'];
 const PHOTOS = [['清晨 山谷 实拍', '清晨的山谷', 1018], ['林间 小路 实拍', '林间小路', 1043], ['雪山 湖 实拍', '雪山下的湖', 1036], ['傍晚 山脊 实拍', '傍晚的山脊', 1039]];
+// (Call of 11/21 16:19: two rows of found photographs and a picture drawn for the same page.)
+const TOGETHER = ['这张是清晨的山谷，雾还没散。', '这张是林子里的小路。', '这张是雪山下的湖，水很蓝。', '这张是傍晚的山脊。', '最后这张是现画的，把山谷和湖画在了一起。'];
 const LESSON = ['叶子其实是一座小工厂。', '它白天张开小嘴，吸进空气里的二氧化碳。', '根把水从土里送上来。', '阳光一照，工厂就开工了，把水和二氧化碳做成糖。', '多出来的氧气，就从叶子上吐给我们呼吸。'];
 
 const gateway = {ready: true, request: async (method, args) => {
@@ -93,6 +95,7 @@ class Model extends EventEmitter {
       const at = this.instructions.match(/用户正点着 (a\d+)/u)?.[1] ?? text.match(/a\d+/u)?.[0] ?? this.instructions.match(/最新的是 (a\d+)/u)?.[1] ?? 'a1';
       return this.say(['好，我让它动起来。'], {heard: text, tool: {name: 'exec', args: {command: `makaron video create --video-model fal-h3-max --duration 5 --video-resolution 768p --image ${at} --script '<<<media_1>>> 画面里的景物动起来，镜头缓缓推进'`, timeoutSeconds: 120, completionLine: '视频好了。', failureLine: '视频没做成。'}}});
     }
+    if (/同框/u.test(text)) return this.say(TOGETHER, {heard: text});
     if (/找几张|图片给我看/u.test(text)) return this.say(FOUND, {heard: text});
     if (/改成|卡通|照这张/u.test(text)) {
       const at = this.instructions.match(/用户正点着 ([ap]\d+)/u)?.[1] ?? 'p1';
@@ -110,6 +113,13 @@ class Model extends EventEmitter {
 async function* scriptedIllustrator({messages, signal}) {
   const request = JSON.parse(messages[1].content), asked = request.conversation.filter(turn => turn.role === 'user').at(-1)?.text ?? '';
   const line = async (op, wait = 240) => { await pause(wait); return signal?.aborted ? '' : JSON.stringify(op) + '\n'; };
+  if (/同框/u.test(asked) && request.trigger !== 'user') {
+    yield await line({op: 'scene', title: '山谷和湖'});
+    yield await line({op: 'put', block: {id: 'g1', t: 'list', look: 'gallery', h: '山谷', items: [{id: 'g1-1', h: PHOTOS[0][1], img: PHOTOS[0][0], q: '这张是清晨的山谷'}, {id: 'g1-2', h: PHOTOS[1][1], img: PHOTOS[1][0], q: '这张是林子里的'}]}});
+    yield await line({op: 'put', block: {id: 'g2', t: 'list', look: 'gallery', h: '湖', items: [{id: 'g2-1', h: PHOTOS[2][1], img: PHOTOS[2][0], q: '这张是雪山下的湖'}, {id: 'g2-2', h: PHOTOS[3][1], img: PHOTOS[3][0], q: '这张是傍晚的山脊'}]}});
+    if (request.make) yield await line({op: 'put', block: {id: 'w1', t: 'work', make: '清晨的山谷和雪山下的湖画在同一个画面里，水彩风景', caption: '山谷和湖同框', q: '最后这张是现画的'}});
+    return;
+  }
   if (/找几张|图片给我看/u.test(asked) && request.trigger !== 'user') {
     yield await line({op: 'scene', title: '山里的照片'});
     yield await line({op: 'put', block: {id: 'g1', t: 'list', look: 'gallery', items: PHOTOS.map(([img, h], index) => ({id: `i${index + 1}`, h, img}))}});

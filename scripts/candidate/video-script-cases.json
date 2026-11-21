@@ -328,5 +328,30 @@
   "must": [
    "^[^\\u4e00-\\u9fff]*$"
   ]
+ },
+ {
+  "name": "ask-is-fragment",
+  "seconds": 10,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/41ead836-fb1f-493f-b290-bc05acc1aa47/snapshot-6ff6de93-9bf0-4af9-8841-7f6cc5b84620.jpg"
+  ],
+  "ask": "十秒吧。",
+  "draft": "<<<media_1>>> 路飞和皮卡丘打斗，最后皮卡丘赢，路飞倒在地上",
+  "must": [
+   "路飞[^。]*(倒|趴|躺|瘫|摔)"
+  ]
+ },
+ {
+  "name": "ask-is-yes",
+  "seconds": 5,
+  "images": [
+   "https://cdn.makaron.app/storage/v1/object/public/images/8725d1da-a11b-4948-b38e-524dd64b2440/41786c03-8b6a-485f-90c5-380ae390ffa0/snapshot-c5200f69-f33a-43db-848e-faf12d8535f5.jpg"
+  ],
+  "ask": "好的，就这么做。",
+  "draft": "<<<media_1>>> 女郎摘下墨镜对镜头眨眼，瓶子在旁边发光",
+  "must": [
+   "墨镜",
+   "眨"
+  ]
  }
 ]
