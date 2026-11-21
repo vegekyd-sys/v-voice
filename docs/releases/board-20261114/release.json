@@ -277,5 +277,29 @@
     "acceptance": "Tianyi: merge and release it yourself, both switches on, all of it; verify after release. Before release, on Candidate board-assets-20261121 at the pull request's head with neither switch set: a picture made from V's own image (37.8 s) and a lesson with places ringed. Routing: 62 cases on the real voice model with stand-in tools, 104/124 before and 125/130 after (docs/research/voice-routing/handbook.md). After release: both nodes report 1fa9471d and filesSha256 09dd47fe…, ready, no calls; the production page serves the new bundle and the changelog's first entry is this release; a production Public call (synthesized speech): a lesson on the Eiffel Tower with a photograph (the eye pinned places: 2 pins on 1 picture) and a request to find pictures (first picture 5.3 s; 7 photographs found and checked; nothing drawn that was not asked for); no page errors.",
     "notVerifiedInProduction": "A real voice, a noisy room, saving in the iOS shell and a long call on a narrow phone are not verified.",
     "productionPersonalEntry": "2026-11-21 23:56-23:59 CST, a production call on the fixed personal entry (synthesized speech; Tianyi allowed the test and handed over the link himself): a poster made (on the board 27.3 s after the request; 18.6 s to make), made to move (5 s video, 24.9 s; the script rewritten by the director's pass in 2.4 s, shown the picture), and a picture made from V's own image (29 s; the avatar lent to the generator, the material check passed in 0.45 s, reference recorded as v). V said each was ready the moment it was on the board; no page errors."
+  },
+  "echoUplinkRelease": {
+    "commit": "a9630f497d05c9b4785fde15b70261c8ed71a0f2",
+    "mergePRs": [
+      245
+    ],
+    "filesSha256": "0734c49b47f2f70bfe8e7bdefcd9784f717ca0a0a1cd269af79249085eb28ccd",
+    "previousRunningCommit": "1fa9471d505b6691a32272eac548f8a082d65d1b",
+    "publishedAt": "2026-11-22T00:09:44+08:00",
+    "mainCI": "Voice push run 44922591519: success",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "publishNote": "Both nodes idle; the release tool switched them at once (receipt 20261122-000855, 00:08:55-00:10:00).",
+    "iosShellRevision": "40b738d4e72f2645076876e8ae91232db11bc25bb64e8d8ee1b7237f548b74cf",
+    "iosShellBuild": "00eda17199fd",
+    "iosShellUpdated": "2026-11-22",
+    "gatewayIdentityPreserved": true,
+    "gatewayNote": "openclaw-gateway.service PID 992785 before and after (running since 2026-11-21 02:00:48 CST).",
+    "configuration": "No change to production's private configuration. The playback-echo guard is on for phone calls (VOICE_PLAYBACK_ECHO_GUARD=0 turns it off).",
+    "change": "Phone speaker echo: a final utterance of at most four characters or words, most of them in the reply or lesson still playing, is V's own voice; the reply goes on and the model's answer to it is not played. A board lesson on a native duplex call is cancelled by a recognised utterance that is not echo, not by the first sound. Seeduplex input: a burst after an uplink stall keeps its newest 4 s instead of ending the call; no mute/unmute while a backlog is fed; input-burst diagnostic. The App is sent the web page's rule for a stalled uplink (native runtime policy `upload`). The served App page carries its build and latest-update date, and a page feature `version` says which page is served now.",
+    "acceptance": "Tianyi asked to fix both problems and release after the board release was verified. Before release: npm test 1381, speaker-native 95, release-fleet, Swift package 50, simulator H5DeliveryTests 9/9. Cloud PCM against the real model on a Candidate (synthetic loudspeaker echo): a four-character echo 1.9 s into a reply was treated as echo and the reply played to its end; an explicit interruption still interrupted; a 13 s uplink stall then burst kept the call (input-burst 13.0/14.0/9.0 s), three runs. After release: both nodes at a9630f4, ready, no calls; served changelog and iOS shell over HTTPS carry the new entry, build and date.",
+    "notVerifiedInProduction": "A real iPhone call on loudspeaker after release (Tianyi's own call). The native parts (uplink shedding, web pages no longer dropped, Settings version row) need App build 48+; builds 47 and 48 are development installs on Tianyi's iPhone only, not TestFlight. Echo that reaches the model at a lesson's start can still hold the lesson; longer echo is not treated as echo by design."
   }
 }
