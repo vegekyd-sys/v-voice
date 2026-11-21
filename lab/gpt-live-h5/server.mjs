@@ -41,6 +41,8 @@ import {STREAM_INSTRUCTIONS,createLessonWriter,refineStreamOp} from './board-les
 import {CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
 import {scenePictures} from './board-scene.mjs';
 import {ASSET_ID,ASSET_MAKE_NOTES,ASSET_NOTES,ASSET_SCRIPT_NOTES,SHELF_ID,createAssetEye,createAssetShelf,pictureName} from './board-assets.mjs';
+import {roomyPicture} from './board-picture-size.mjs';
+import {createVideoScriptWriter} from '../realtime-direct-tools/media-script.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Dialing is how a known caller retries; only anonymous callers keep the tight limit.
@@ -82,7 +84,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   // (And the pictures themselves, for the shelf's eye to check that each is the thing it was searched for.)
   if (boardAssets && boardPhotos) boardAssets.picture = query => boardPhotos.find(query);
   if (boardAssets && boardPhotos && hosted) boardAssets.share = async query => {
-    const picture = await boardPhotos.find(query);
+    // (A thumbnail is lent out larger: a video model refuses a reference under 256 px a side.)
+    const found = await boardPhotos.find(query), picture = found?.bytes?.length ? await roomyPicture(found, {least: 512}) : found;
     const kind = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'}[picture?.type];
     if (!picture?.bytes?.length || !kind) return null;
     for (const [key, lent] of lentPictures) if (lent.until < Date.now()) lentPictures.delete(key);
@@ -1259,6 +1262,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       // One look at each thing made, on the board's own model, so V can say what is really in it (VOICE_BOARD_LOOK=0: no look).
       see:process.env.VOICE_BOARD_LOOK==='0'?null:createAssetEye({complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'700'})})}):null;
     if(assets){board.shelf=assets;assets.audience=process.env.VOICE_BOARD_AUDIENCE==='all'?'all':'owner';}
+    // The director's pass over a video's script (media-script.mjs), on the board's own model and shown the
+    // reference pictures. On with the shelf; VOICE_MEDIA_SCRIPT=text (not shown the pictures) or off.
+    const scriptMode=process.env.VOICE_MEDIA_SCRIPT??(assets?'vision':'off');
+    const pictureData=async(url,signal)=>{const response=await fetch(url,{signal});const type=String(response.headers.get('content-type')??'').split(';')[0].trim();if(!response.ok||!/^image\/(png|jpe?g|webp)$/u.test(type))return '';const bytes=Buffer.from(await response.arrayBuffer());return bytes.length&&bytes.length<=4*1024*1024?`data:${type};base64,${bytes.toString('base64')}`:'';};
+    const videoScript=assets&&['text','vision'].includes(scriptMode)?createVideoScriptWriter({complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'1400'}),vision:scriptMode==='vision',look:pictureData,audit:event=>board.log?.(event)}):null;
     // Lesson mode (experiment): its own flag. Through OpenRouter the writer is
     // a stronger model thinking briefly: on real calls it was the only one
     // tried that kept its facts straight (which Pokemon beats which), in about
@@ -1277,7 +1285,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if(lesson)lesson.results=process.env.VOICE_BOARD_RESULT_LESSON!=='0';
     if(lesson)lesson.reroute=process.env.VOICE_BOARD_REROUTE==='1';
     if(lesson)lesson.source=['backend','parallel'].includes(process.env.VOICE_BOARD_LESSON_SOURCE)?process.env.VOICE_BOARD_LESSON_SOURCE:'service';
-    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,assets,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
+    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,assets,videoScript,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
       mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({environment:process.env}):null,

@@ -23,7 +23,7 @@ const bounded = (value, limit) => Array.from(String(value ?? '').replace(/\s+/gu
 const https = value => { try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : ''; } catch { return ''; } };
 
 // What the voice model is told once, wherever a shelf exists for the call.
-export const ASSET_POLICY = '屏幕素材：用户屏幕的画面上摆着本通话生成的图片和视频，每个有编号（a1、a2…）。下面「屏幕素材现状」会随时更新，里面写的是图里真实看得到的东西。现状里列出的作品都已经做好、用户已经在屏幕上看到了，不用再查询进度或说“我看看好了没”；写着“正在做”的才是还没好的。用户说“这张”“它”“刚才那张”“那个视频”，指用户正点着的那个；没有点着的就是最新的那个；仍然分不清再问。用户问图里有什么、谁在哪边，按现状里的描述回答，不编造没写的细节。屏幕上搜到的照片也可以当参考图，现状里列着它们的编号和名字（p1「名字」…）。用户说“把那张海报改成 Q 版”“照这张画一个”，指的是搜到的照片时就用它；写的时候对着名字选，也可以直接写名字（--ref "基格尔德 完全体形态"），不要凭印象写编号。标着“搜错了”的照片不是那样东西，不能当参考：告诉用户这张搜得不对，换一张或者重新找。要改图、换风格、让图动起来、拿它当参考时，创作命令里 --image 和 --ref 直接写编号（例如 --image a1 或 --image p2），系统会换成真实链接；不要抄写、朗读或编造链接。编号只写在命令和交给后台的 context 里：对用户说话、写给用户的消息里不说编号，说它的名字，或者“第一张”“刚才那个视频”。交给后台处理屏幕上的东西时，在 context 里写清它的编号。两个以上的角色或东西同框时，每一个都带上它自己的参考图：出图用 --image 写主图、其余每张各写一个 --ref；做视频最稳的是先出一张同框的图，用户认可后让这张图动起来（--image 写这张图），也可以带多个 --image，脚本里用 <<<media_1>>>、<<<media_2>>> 分别指它们。用户认可了一张图后说“做成视频”“动起来”，就是让这张图动：--image 写它。用户说造型不像、不对，就换上或加上屏幕上那张对的照片当参考重做，不要只改文字描述；屏幕上没有对的照片就先找。completionLine 是事先写的，只说做好了，不说“样子对了”“造型全对”这类你还没看到的话。生成中的东西已经显示在画面上，做好会自己显影，不用另外展示。';
+export const ASSET_POLICY = '屏幕素材：用户屏幕的画面上摆着本通话生成的图片和视频，每个有编号（a1、a2…）。下面「屏幕素材现状」会随时更新，里面写的是图里真实看得到的东西。现状里列出的作品都已经做好、用户已经在屏幕上看到了，不用再查询进度或说“我看看好了没”；写着“正在做”的才是还没好的。用户说“这张”“它”“刚才那张”“那个视频”，指用户正点着的那个；没有点着的就是最新的那个；仍然分不清再问。用户问图里有什么、谁在哪边，按现状里的描述回答，不编造没写的细节。屏幕上搜到的照片也可以当参考图，现状里列着它们的编号和名字（p1「名字」…）。用户说“把那张海报改成 Q 版”“照这张画一个”，指的是搜到的照片时就用它；写的时候对着名字选，也可以直接写名字（--ref "基格尔德 完全体形态"），不要凭印象写编号。标着“搜错了”的照片不是那样东西，不能当参考：告诉用户这张搜得不对，换一张或者重新找。要改图、换风格、让图动起来、拿它当参考时，创作命令里 --image 和 --ref 直接写编号（例如 --image a1 或 --image p2），系统会换成真实链接；不要抄写、朗读或编造链接。编号只写在命令和交给后台的 context 里：对用户说话、写给用户的消息里不说编号，说它的名字，或者“第一张”“刚才那个视频”。交给后台处理屏幕上的东西时，在 context 里写清它的编号。两个以上的角色或东西同框时，每一个都带上它自己的参考图：出图用 --image 写主图、其余每张各写一个 --ref；做视频最稳的是先出一张同框的图，用户认可后让这张图动起来（--image 写这张图），也可以带多个 --image，脚本里用 <<<media_1>>>、<<<media_2>>> 分别指它们。用户认可了一张图后说“做成视频”“动起来”，就是让这张图动：--image 写它。用户说造型不像、不对，就换上或加上屏幕上那张对的照片当参考重做，不要只改文字描述；屏幕上没有对的照片就先找。做视频时 --script 把用户的要求写全就行（谁、发生什么、什么风格、谁赢），分镜和运镜会由导演补写，不用自己编镜头。completionLine 是事先写的，只说做好了，不说“样子对了”“造型全对”这类你还没看到的话。生成中的东西已经显示在画面上，做好会自己显影，不用另外展示。';
 export const ASSET_CONTEXT_EMPTY = '屏幕素材现状：画面上还没有生成的图片或视频。';
 // What the illustrator is told (appended to its instructions by the service).
 export const ASSET_NOTES = `
@@ -371,7 +371,8 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       if (!url) {
         if (output?.details?.status === 'pending' || asset.state !== 'making') return null;
         // (Why, in the executor's own words without any address: a refusal by the generator and a command written wrongly are different things to fix.)
-        asset.state = 'failed'; audit({type: 'board.asset', voiceSessionId: owner, asset: asset.id, kind: asset.kind, state: 'failed', ...(output?.why ? {why: bounded(String(output.why).replace(/https?:\/\/\S+/gu, '<链接>'), 160)} : {})});
+        const said = output?.why ?? (output?.isError ? parseOutput(output) || output?.error : '');
+        asset.state = 'failed'; audit({type: 'board.asset', voiceSessionId: owner, asset: asset.id, kind: asset.kind, state: 'failed', ...(said ? {why: bounded(String(said).replace(/https?:\/\/\S+/gu, '<链接>'), 240)} : {})});
         changed(owner, value, {quiet: true});
         return null;
       }
@@ -402,6 +403,21 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       if (!text) return;
       // (Not the media host's own page links or avatars: only files that are pictures or videos.)
       for (const item of mediaReferences(text).slice(0, 4)) api.add(event.voiceSessionId, {kind: item.kind, url: item.url, name: /^(图片|视频|生成图片|生成视频)$/u.test(item.title) ? '' : item.title, source: 'backend'});
+    },
+    /**
+     * What the pictures a command is made from are, in the command's order, for whoever writes its
+     * script (media-script.mjs): [{name, see, url}]. A link the shelf does not know is only its link.
+     */
+    sources(owner, urls) {
+      const value = owners.get(owner);
+      return (Array.isArray(urls) ? urls : []).slice(0, 9).map(url => { const item = value ? find(value, url) : null; return {url, name: item?.name ?? '', see: item?.see ?? ''}; });
+    },
+    /** The script a video was really made from (the director's pass over the voice model's draft). */
+    scripted(owner, id, {draft = '', script = ''} = {}) {
+      const asset = owners.get(owner)?.assets.find(item => item.id === id);
+      if (!asset || !script) return;
+      asset.prompt = bounded(script.replace(/<<<media_\d+>>>/gu, ''), 300);
+      audit({type: 'board.asset-script', voiceSessionId: owner, asset: asset.id, draft: bounded(draft, 240), script: bounded(script, 1200)});
     },
     /** What the voice model is given back with a tool result. */
     facts(owner, id) {

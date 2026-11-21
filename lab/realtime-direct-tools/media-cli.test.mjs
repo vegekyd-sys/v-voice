@@ -128,7 +128,7 @@ test('a thing may be made from several pictures: one of each character',()=>{
  const edit=validateMediaArgv(mediaArgv(`makaron edit --image-model gemini-2.1 --image '${C}' --ref '${A}' --ref '${B}' '两人对战'`));
  assert.equal(edit.flags.image,C);assert.equal(edit.flags.ref,A+' '+B);
  assert.throws(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model gemini-2.1 --image '${C}' --image '${A}' 'x'`)),/--image 只能写一次/u);
- assert.throws(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model gemini-2.1 ${Array(6).fill(`--ref '${A}'`).join(' ')} 'x'`)),/最多 5 个/u);
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model gemini-2.1 ${Array(14).fill(`--ref '${A}'`).join(' ')} 'x'`)),/最多 13 个/u);
  assert.throws(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model gemini-2.1 --ref '${A}' --ref 'http://plain.example/b.png' 'x'`)),/HTTPS/u);
  // A video: several pictures, each named in the script by its place; a forgotten marker is put in.
  const argv=mediaArgv(`makaron video create --video-model fal-h3-max --duration 5 --image '${A}' --image '${B}' --script '<<<media_1>>> 的路飞和 <<<media_2>>> 的基格尔德对战'`);

@@ -26,7 +26,8 @@ export function mediaArgv(command) {
 const specs={edit:['image-model','aspect','image','ref'],create:['image','title'],'video create':['video-model','duration','video-resolution','script','image'], 'video status':[]};
 // The pictures a thing is made from may be several (two characters in one frame need a picture of each):
 // one base picture and further references for an image, several pictures for a reference video.
-const repeats={edit:{ref:5},'video create':{image:4}};
+// (As many as the models take: Nano Banana 2.1 takes fourteen pictures in all, FAL H3 Max nine images.)
+const repeats={edit:{ref:13},'video create':{image:9}};
 const https=value=>{try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password;}catch{return false;}};
 export function validateMediaArgv(argv) {
   const verb=argv[0]==='video'?argv.slice(0,2).join(' '):argv[0];
@@ -34,7 +35,7 @@ export function validateMediaArgv(argv) {
   const flags={},lists={},positionals=[];
   for(let i=verb.startsWith('video ')?2:1;i<argv.length;i++){
     const v=argv[i];if(v.startsWith('-')){const key=v.slice(2),many=repeats[verb]?.[key]??1;
-      if(!v.startsWith('--')||!specs[verb].includes(key)||!argv[i+1]||argv[i+1].startsWith('--'))throw Error('不支持的创作选项');
+      if(!v.startsWith('--')||!specs[verb].includes(key)||!argv[i+1]||argv[i+1].startsWith('--'))throw Error('不支持的创作选项：'+v.slice(0,30)+'（这里只能用 '+specs[verb].map(name=>'--'+name).join('、')+'）');
       if(Object.hasOwn(flags,key)&&many===1)throw Error('不支持的创作选项：--'+key+' 只能写一次');
       if((lists[key]?.length??0)>=many)throw Error('参考图太多：--'+key+' 最多 '+many+' 个');
       (lists[key]??=[]).push(argv[++i]);flags[key]??=lists[key][0];

@@ -1,6 +1,8 @@
 import {ROBOT_PRESENTATION_INSTRUCTIONS} from '../robot/robot-semantics.mjs';
 import {mediaCliInstructions,MEDIA_CLI_START_NOTICE,mediaStatusQuestion} from './media-cli-policy.mjs';
 import {ASSET_POLICY,ASSET_CONTEXT_EMPTY} from '../gpt-live-h5/board-assets.mjs';
+import {mediaArgv} from './media-cli.mjs';
+import {scriptOf,withScript} from './media-script.mjs';
 import {createMediaTurnRecovery} from './media-turn-recovery.mjs';
 import {createLocalExecutions,LOCAL_EXECUTION_POLICY,executionFinishedLine,executionResultFacts} from './local-executions.mjs';
 import {VOICE_OPERATION_CONSENT_POLICY,VOICE_CALENDAR_SERVICE_POLICY} from '../../lib/voice-operation-policy.mjs';
@@ -75,7 +77,7 @@ export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageG
 
 // Conversation records Seeduplex refused, by session: {hash, until}.
 const refusedRecords=new Map();
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null,videoScript=null}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -530,7 +532,22 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(shelved.error)throw Error(shelved.error);
         return s.localExecutions.start(async executionSignal=>{
           s.mediaRunner??=Promise.resolve().then(()=>mediaCli.forCall());
-          const work=s.mediaRunner.then(runner=>runner.execute(shelved.command,executionSignal,{reuseExisting:mediaStatusQuestion(requestToken.text),requestToken}));
+          // A video's script is written over by a director before it is submitted (media-script.mjs): the
+          // voice model writes one line of what was asked for, and a video made from that barely moves.
+          // Only the script's words change; a writer that is slow or says nothing usable leaves the draft.
+          let command=shelved.command;
+          if(videoScript&&shelved.id&&!mediaStatusQuestion(requestToken.text)){
+            try{
+              const argv=mediaArgv(command),parts=scriptOf(argv);
+              if(parts){
+                const script=await videoScript.write({ask:requestToken.text??'',draft:parts.draft,seconds:parts.seconds,media:assets.sources(s.id,parts.images),signal:executionSignal});
+                const rewritten=script&&withScript(argv,script);
+                if(rewritten){command=rewritten;assets.scripted(s.id,shelved.id,{draft:parts.draft,script});}
+              }
+            }catch{/* The draft is what is submitted. */}
+            if(executionSignal.aborted||!current(s))throw Error('本次任务已取消');
+          }
+          const work=s.mediaRunner.then(runner=>runner.execute(command,executionSignal,{reuseExisting:mediaStatusQuestion(requestToken.text),requestToken}));
           if(shelved.id)work.catch(error=>void assets.finish(s.id,shelved.id,{isError:true,why:String(error?.message??error)}));
           const cleanup=work.then(()=>{},()=>{});s.localCleanups.add(cleanup);
           cleanup.then(()=>s.localCleanups.delete(cleanup));
