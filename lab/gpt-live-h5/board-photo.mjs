@@ -66,10 +66,20 @@ export function pagePicture(html, base, query) {
   return title.includes(wanted) ? sharePicture(html, base) : '';
 }
 // The first of several fetches to give a picture; null when none does.
-const firstPicture = ways => new Promise(resolve => {
-  let left = ways.length;
-  if (!left) resolve(null);
-  for (const way of ways) way.then(found => { if (found) resolve(found); else if (--left === 0) resolve(null); }, () => { if (--left === 0) resolve(null); });
+// The first of several ways to a picture that arrives, preferring a small file: a large one
+// (an original of 1-2.5 MB) waits up to `graceMs` for a small one (the search's own thumbnail),
+// as it would take seconds more to reach a phone across the border (11/21).
+const SMALL_PICTURE = 400 * 1024;
+const firstPicture = (ways, graceMs = 1200) => new Promise(resolve => {
+  let left = ways.length, best = null, timer = null;
+  if (!left) return resolve(null);
+  const done = value => { clearTimeout(timer); resolve(value); };
+  const settle = () => { if (--left === 0) done(best); };
+  for (const way of ways) way.then(found => {
+    if (found && found.bytes.length <= SMALL_PICTURE) return done(found);
+    if (found && (!best || found.bytes.length < best.bytes.length)) { best = found; timer ??= setTimeout(() => done(best), graceMs); }
+    settle();
+  }, settle);
 });
 const STOCK = /(?:^|\.)(?:pixabay|699pic|kuaipng|shutterstock|alamy|istockphoto|gettyimages|dreamstime|123rf|depositphotos|freepik|vecteezy|pngtree|nipic|58pic|ibaotu|tukuppt|51yuansu|huaban|duitang|pinterest)\./iu;
 const REFERENCE = /(?:^|\.)(?:wikipedia|wikimedia|baike\.baidu|baike\.sogou|moegirl|pokemon|portal-pokemon|pokedex|52poke|nasa|britannica|dpm\.org|gov)\b/iu;
@@ -138,7 +148,7 @@ const urlsIn = value => { const seen = new Set(); for (const [, url] of JSON.str
  * `search(query)` is V's web search (any shape that carries result "url"s);
  * without it only Wikipedia is used. `observe` receives one line per lookup.
  */
-export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = '', braveGapMs = 1100, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), lookup = dnsLookup, now = Date.now, observe = () => {}, maxBytes = 1500000, timeoutMs = 9000, ttlMs = 30 * 60000, maxEntries = 96, directory = '', keepMs = 365 * 86400000,
+export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = '', braveGapMs = 1100, braveSettleMs = 300, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), lookup = dnsLookup, now = Date.now, observe = () => {}, maxBytes = 1500000, timeoutMs = 9000, ttlMs = 30 * 60000, maxEntries = 96, directory = '', keepMs = 365 * 86400000,
   // Wikimedia refuses data-centre clients whose agent names no contact page.
   languages = ['zh', 'en'], userAgent = 'VVoiceBoard/0.1 (https://github.com/vegekyd-sys/v-voice)'} = {}) {
   const cache = new Map(), flights = new Map(), prints = new Map();
@@ -177,30 +187,37 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
   // An image search, when a key is provisioned: the first result whose title
   // names the thing (else the first result), as the search's own thumbnail.
   // The plan allows about one request a second, so lookups queue.
-  let braveTurn = Promise.resolve(), braveLast = -Infinity, braveWaiting = 0, braveSlowUntil = -Infinity;
-  // One request to the image search at a time, a gap apart; for a minute after
-  // the service has refused one, twice the gap.
-  const braveSlot = () => {
-    const turn = braveTurn.then(async () => { const gap = braveLast + (now() < braveSlowUntil ? 2 : 1) * braveGapMs - now(); if (gap > 0) await wait(gap); braveLast = now(); });
+  let braveTurn = Promise.resolve(), braveSent = -Infinity, braveAnswered = -Infinity, braveWaiting = 0, braveSlowUntil = -Infinity;
+  // One request to the image search at a time: sent a gap after the one before was sent, and
+  // a moment after its answer came back. The service counts requests as they arrive: a slow
+  // first request (a new connection, 1 s) and the next one 1.1 s after it landed in the same
+  // second and were refused, and the refusal made the whole page queue at twice the gap (11/21).
+  // For ten seconds after a refusal, twice the gap.
+  const braveRequest = (ask, begin) => {
+    const turn = braveTurn.then(async () => {
+      const gap = Math.max(braveSent + (now() < braveSlowUntil ? 2 : 1) * braveGapMs, braveAnswered + braveSettleMs) - now();
+      if (gap > 0) await wait(gap);
+      braveSent = now();
+      // Time spent queueing is not time spent looking.
+      begin();
+      try { return await ask(); } finally { braveAnswered = now(); }
+    });
     braveTurn = turn.catch(() => {});
     return turn;
   };
   // One image search, through the queue.
   async function braveSearch(words, signal, begin) {
-    braveWaiting++; begin.stop?.();
-    try { await braveSlot(); } finally { braveWaiting--; }
-    // Time spent queueing is not time spent looking.
-    begin();
     const ask = () => fetchImpl(`https://api.search.brave.com/res/v1/images/search?q=${encodeURIComponent(words)}&count=10&safesearch=strict`,
       {signal, headers: {'x-subscription-token': braveKey, accept: 'application/json'}});
-    let response = await ask();
-    // "Too many requests" despite the queue (the service counts its own seconds): asked again
-    // through the queue, twice at most. (A retry after a plain pause went out beside the next
-    // request in the queue and was refused again: two to three pictures of every gallery, 11/20.)
+    braveWaiting++; begin.stop?.();
+    let response;
+    try { response = await braveRequest(() => { braveWaiting--; return ask(); }, begin); } catch (error) { throw error; }
+    // "Too many requests" despite the queue: asked again through the queue, twice at most.
+    // (A retry after a plain pause went out beside the next request in the queue and was
+    // refused again: two to three pictures of every gallery, 11/20.)
     for (let again = 0; response.status === 429 && again < 2; again++) {
-      braveSlowUntil = now() + 60000;
-      begin.stop?.(); await braveSlot(); begin();
-      response = await ask();
+      braveSlowUntil = now() + 10000;
+      begin.stop?.(); response = await braveRequest(ask, begin);
     }
     if (!response.ok) throw Error('image search HTTP ' + response.status);
     return ((await response.json())?.results ?? []).filter(item => typeof item?.thumbnail?.src === 'string');
