@@ -318,3 +318,18 @@ test('a small picture is taken over a large one that arrived a moment before it'
   const found = await finder.find('黄金树');
   assert.equal(found.bytes.length, small.length, 'the thumbnail, though the original came first');
 });
+
+test('a refused search takes the next turn, so pictures come in the order they were asked for', async () => {
+  const sent = [];
+  let time = 0, refused = false;
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', languages: [], now: () => time, wait: async ms => { time += ms; },
+    fetchImpl: async url => {
+      if (!url.startsWith('https://api.search.brave.com/')) return image(distinct(), 'image/png');
+      const query = decodeURIComponent(/q=([^&]+)/u.exec(url)[1]);
+      sent.push(query);
+      if (query === '乙 二' && !refused) { refused = true; return {ok: false, status: 429}; }
+      return json({results: [{title: query, thumbnail: {src: 'https://imgs.search.brave.com/' + encodeURIComponent(query)}}]});
+    }});
+  await Promise.all(['甲 一', '乙 二', '丙 三', '丁 四'].map(query => finder.find(query)));
+  assert.deepEqual(sent, ['甲 一', '乙 二', '乙 二', '丙 三', '丁 四']);
+});

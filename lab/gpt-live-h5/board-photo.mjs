@@ -187,39 +187,45 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
   // An image search, when a key is provisioned: the first result whose title
   // names the thing (else the first result), as the search's own thumbnail.
   // The plan allows about one request a second, so lookups queue.
-  let braveTurn = Promise.resolve(), braveSent = -Infinity, braveAnswered = -Infinity, braveWaiting = 0, braveSlowUntil = -Infinity;
+  let braveSent = -Infinity, braveAnswered = -Infinity, braveSlowUntil = -Infinity, bravePumping = false;
+  const braveQueue = [];
   // One request to the image search at a time: sent a gap after the one before was sent, and
-  // a moment after its answer came back. The service counts requests as they arrive: a slow
-  // first request (a new connection, 1 s) and the next one 1.1 s after it landed in the same
-  // second and were refused, and the refusal made the whole page queue at twice the gap (11/21).
-  // When a retry is refused too, twice the gap for ten seconds. (A single refusal no longer slows
-  // the queue: it happens on most pages however the requests are spaced, and slowing down for it
-  // spread a page of six over 12 s.)
-  const braveRequest = (ask, begin) => {
-    const turn = braveTurn.then(async () => {
-      const gap = Math.max(braveSent + (now() < braveSlowUntil ? 2 : 1) * braveGapMs, braveAnswered + braveSettleMs) - now();
-      if (gap > 0) await wait(gap);
-      braveSent = now();
-      // Time spent queueing is not time spent looking.
-      begin();
-      try { return await ask(); } finally { braveAnswered = now(); }
-    });
-    braveTurn = turn.catch(() => {});
-    return turn;
-  };
+  // a moment after its answer came back (the service counts requests as they arrive). When a
+  // retry is refused too, twice the gap for ten seconds. (A single refusal no longer slows the
+  // queue: it happens on most pages however the requests are spaced, and slowing down for it
+  // spread a page of six over 12 s, 11/21.) `first`: a retry takes the next turn, so the
+  // pictures still come in the order V speaks of them.
+  const braveRequest = (ask, begin, first = false) => new Promise((resolve, reject) => {
+    const job = {ask, begin, resolve, reject};
+    if (first) braveQueue.unshift(job); else braveQueue.push(job);
+    if (!bravePumping) void bravePump();
+  });
+  async function bravePump() {
+    bravePumping = true;
+    try {
+      while (braveQueue.length) {
+        const gap = Math.max(braveSent + (now() < braveSlowUntil ? 2 : 1) * braveGapMs, braveAnswered + braveSettleMs) - now();
+        if (gap > 0) await wait(gap);
+        const job = braveQueue.shift();
+        braveSent = now();
+        // Time spent queueing is not time spent looking.
+        job.begin();
+        try { job.resolve(await job.ask()); } catch (error) { job.reject(error); } finally { braveAnswered = now(); }
+      }
+    } finally { bravePumping = false; }
+  }
   // One image search, through the queue.
   async function braveSearch(words, signal, begin) {
     const ask = () => fetchImpl(`https://api.search.brave.com/res/v1/images/search?q=${encodeURIComponent(words)}&count=10&safesearch=strict`,
       {signal, headers: {'x-subscription-token': braveKey, accept: 'application/json'}});
-    braveWaiting++; begin.stop?.();
-    let response;
-    try { response = await braveRequest(() => { braveWaiting--; return ask(); }, begin); } catch (error) { throw error; }
+    begin.stop?.();
+    let response = await braveRequest(ask, begin);
     // "Too many requests" despite the queue: asked again through the queue, twice at most.
     // (A retry after a plain pause went out beside the next request in the queue and was
     // refused again: two to three pictures of every gallery, 11/20.)
     for (let again = 0; response.status === 429 && again < 2; again++) {
       if (again) braveSlowUntil = now() + 10000;
-      begin.stop?.(); response = await braveRequest(ask, begin);
+      begin.stop?.(); response = await braveRequest(ask, begin, true);
     }
     if (!response.ok) throw Error('image search HTTP ' + response.status);
     return ((await response.json())?.results ?? []).filter(item => typeof item?.thumbnail?.src === 'string');
@@ -317,7 +323,7 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     // second (the last ones used to time out waiting). With a queue ahead,
     // the encyclopedia, which needs no turn, is asked first.
     const encyclopedia = async () => { try { value = await wikipedia(key, signal); } catch { failed = true; } };
-    const crowded = Boolean(braveKey) && braveWaiting >= 2;
+    const crowded = Boolean(braveKey) && braveQueue.length + (bravePumping ? 1 : 0) >= 2;
     if (crowded) { begin(); await encyclopedia(); }
     if (!value) { try { value = await brave(key, signal, begin); } catch (error) { failed = true; why = String(error?.message ?? error).slice(0, 80); } }
     begin();
