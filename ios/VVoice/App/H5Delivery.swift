@@ -69,6 +69,8 @@ struct H5Release {
         var candidate: String?
         var attempting: String?
         var rejected: [String] = []
+        /// 2: a page that has started once is no longer dropped for failing to start again.
+        var schema: Int?
     }
     private let directory: URL
     let baseURL: URL
@@ -85,6 +87,10 @@ struct H5Release {
         let root = cacheRoot ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("VVoiceH5")
         directory = root.appendingPathComponent(H5Release.hash(Data(baseURL.absoluteString.utf8)))
         if let bytes = try? Data(contentsOf: directory.appendingPathComponent("state.json")), let saved = try? JSONDecoder().decode(State.self, from: bytes) { state = saved }
+        // Earlier builds dropped a page for good whenever iOS ended its web process (an App in the
+        // background on a call) or it was slow to start: every page the service published after 11/18
+        // was dropped on one iPhone, which kept an old page without later features. Forgive them once.
+        if state.schema != 2 { state.rejected.removeAll(); state.schema = 2; save() }
         // A candidate that killed the process before its handshake must not loop on launch.
         if let id = state.attempting { state.rejected.append(id); state.candidate = nil; state.attempting = nil; save() }
     }
@@ -143,6 +149,12 @@ struct H5Release {
         state.good = Array(state.good.prefix(2)); state.attempting = nil
         if state.candidate == release.revision { state.candidate = nil }
         save(); prune()
+    }
+    /// A page that failed to start or whose web process ended. One that has started before is kept
+    /// (the failure is the moment's, not the page's); a new one is dropped. Returns whether it was dropped.
+    @discardableResult func failed(_ release: H5Release) -> Bool {
+        guard release.revision != "bundled", !state.good.contains(release.revision) else { return false }
+        reject(release); return true
     }
     func reject(_ release: H5Release) {
         guard release.revision != "bundled" else { return }

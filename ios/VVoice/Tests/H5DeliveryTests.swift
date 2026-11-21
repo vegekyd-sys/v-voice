@@ -201,4 +201,26 @@ import VVoiceCore
         let reopened = H5DeliveryStore(baseURL: base.appendingPathComponent("voice/"), cacheRoot: root)
         XCTAssertEqual(reopened.preferred()?.revision, good.revision)
     }
+    func testAPageThatHasStartedIsKeptWhenItFailsLaterAndEarlierDropsAreForgivenOnce() async throws {
+        let (_, root, delivery) = try await setup()
+        try await command("shell-release", variant: "a"); try await delivery.fetch()
+        let good = try XCTUnwrap(delivery.preferred()); delivery.confirm(good)
+        // iOS ends the web process of an App in the background on a call: not the page's fault.
+        XCTAssertFalse(delivery.failed(good))
+        XCTAssertEqual(delivery.preferred()?.revision, good.revision)
+        try await command("shell-release", variant: "b"); try await delivery.fetch()
+        let fresh = try XCTUnwrap(delivery.preferred()); XCTAssertNotEqual(fresh.revision, good.revision)
+        // A new page that never started is still dropped.
+        XCTAssertTrue(delivery.failed(fresh))
+        XCTAssertEqual(delivery.preferred()?.revision, good.revision)
+        // A state written by an earlier build, which dropped pages for good, is forgiven once.
+        let state = root.appendingPathComponent(H5Release.hash(Data(base.appendingPathComponent("voice/").absoluteString.utf8))).appendingPathComponent("state.json")
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: state)) as? [String: Any])
+        XCTAssertEqual((legacy["rejected"] as? [String])?.contains(fresh.revision), true)
+        legacy.removeValue(forKey: "schema")
+        try JSONSerialization.data(withJSONObject: legacy).write(to: state)
+        let reopened = H5DeliveryStore(baseURL: base.appendingPathComponent("voice/"), cacheRoot: root)
+        try await reopened.fetch()
+        XCTAssertEqual(reopened.preferred()?.revision, fresh.revision)
+    }
 }
