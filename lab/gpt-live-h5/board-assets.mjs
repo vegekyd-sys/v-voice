@@ -43,6 +43,13 @@ export const ASSET_SCRIPT_NOTES = `
 - 输入里 make 为 true 时，可以请 V 现画一张图：那一句的画面提示写「现画：要画的画面」，写清主体、动作、构图和风格。只用在拍不到、搜不到的画面上：想象的场景、比喻、故事里的一幕、两个不同作品的角色同框、给小朋友看的示意画；真实存在的东西仍然用照片。现画一张要十秒左右，所以放在第三句以后；一次讲解最多一张，可画可不画时不画。讲稿里只说这幅画要表达的意思，不描述图里的细节（你看不到它最后画成什么样）。
 - 输入里的 assets 是这通电话里已经生成的作品（编号、名字、画面里有什么）。用户要你讲这张作品、或者讲解正好用得上它时，画面提示写「作品 a1」把它放上来，并按 see 里写的讲它画了什么；不要为它另外找照片。`;
 
+/**
+ * The caller only asked for pictures to be found ("找几张皮卡丘和路飞的图片"): nothing is drawn for
+ * that. Call of 11/21: the script for such a request added a drawn picture of the two together,
+ * which the caller had not asked for and which is paid for.
+ */
+export const asksOnlyToFind = text => { const said = String(text ?? ''); return /找|搜|查|来几张|看看有没有|有没有/u.test(said) && /图|照片|相片|海报|壁纸|截图/u.test(said) && !/画|生成|做一|做个|做张|设计|创作|合成|同框|讲|介绍|解释|为什么|怎么/u.test(said); };
+
 /** What a photograph on the board is called there: its caption, or the words of the item it stands beside. */
 export function pictureName(pages, query) {
   for (const page of pages ?? []) for (const block of page?.blocks ?? []) {

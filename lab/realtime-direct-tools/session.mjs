@@ -1,6 +1,6 @@
 import {ROBOT_PRESENTATION_INSTRUCTIONS} from '../robot/robot-semantics.mjs';
 import {mediaCliInstructions,MEDIA_CLI_START_NOTICE,mediaStatusQuestion} from './media-cli-policy.mjs';
-import {ASSET_POLICY,ASSET_CONTEXT_EMPTY} from '../gpt-live-h5/board-assets.mjs';
+import {ASSET_POLICY,ASSET_CONTEXT_EMPTY,asksOnlyToFind} from '../gpt-live-h5/board-assets.mjs';
 import {mediaArgv} from './media-cli.mjs';
 import {scriptOf,withScript} from './media-script.mjs';
 import {createMediaTurnRecovery} from './media-turn-recovery.mjs';
@@ -729,7 +729,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
               catch(error){audit({type:'lesson.research-failed',voiceSessionId:s.id,callId:call.callId,name:lookup.name,message:String(error?.message??error).slice(0,120)});}
             }
             let script=null;
-            try{script=await lesson.prepare({quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal,...(shelfFor(s)?{assets:assets.digest(s.id),make:assets.canMake(s.id)}:{})});
+            try{script=await lesson.prepare({quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal,...(shelfFor(s)?{assets:assets.digest(s.id),make:assets.canMake(s.id)&&!asksOnlyToFind(s.latestUserTurn?.text)}:{})});
               // V finishes the line it is on ("好，我想想怎么讲") before the lesson starts: cut off mid-sentence it sounded like two people.
               if(script)await quiet(s,8000);}
             catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}

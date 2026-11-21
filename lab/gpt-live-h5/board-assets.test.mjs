@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ASSET_CONTEXT_EMPTY, createAssetEye, createAssetShelf, pictureName, readCreation} from './board-assets.mjs';
+import {ASSET_CONTEXT_EMPTY, createAssetEye, createAssetShelf, pictureName, readCreation, asksOnlyToFind} from './board-assets.mjs';
 import {assetFamily, createAssetsClient} from './board-assets-client.mjs';
 import {createBoardDirector} from './board-director.mjs';
 import {normalizeOp, normalizeScene, sceneWorks} from './board-scene.mjs';
@@ -211,6 +211,13 @@ test('a lesson\'s script may ask for one picture to be drawn, where the call can
   bound.note('call', notes);
   await new Promise(resolve => setTimeout(resolve, 10));
   assert.deepEqual(types(bound, 'call'), ['list']);
+  // A script that does not itself ask for a drawn picture: the illustrator's wish is not enough (a picture is paid for).
+  const sober = director([reply]), still = shelfOn(sober);
+  still.attach('call', async () => { made.push('unscripted'); return image(POSTER); });
+  sober.note('call', {...notes, lines: [{say: '叶子要吃阳光。', show: 'list：阳光'}, {say: '你可以把叶子想成一座小工厂', show: '图集：加一张 叶子'}]});
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.deepEqual(types(sober, 'call'), ['list']);
+  assert.deepEqual(made, []);
   // A script on a call that can make one: the sketch is on the page at once, the picture follows.
   const board = director([reply, reply]), shelf = shelfOn(board);
   shelf.attach('call', async ({prompt, aspect}) => { made.push([prompt, aspect]); return image(POSTER); });
@@ -403,4 +410,9 @@ test('the eye checks a found photograph against the name it was searched under',
   assert.match(asked[0][1].content[1].text, /按「柴犬 站姿 全身」搜到的，页面上叫它「柴犬全身」/u);
   // No picture to look at, or nothing said: not checked (and so not held against the photograph).
   assert.equal(await see({check: {query: 'x', name: 'x'}}), null);
+});
+
+test('a request only to find pictures is not one to draw any', () => {
+  for (const said of ['V 帮我找几张皮卡丘和路飞的图片。', '搜一下布道石的照片', '有没有海贼王剧场版的海报', '查几张埃菲尔铁塔的壁纸给我看']) assert.equal(asksOnlyToFind(said), true, said);
+  for (const said of ['给十二讲讲光合作用', '找几张图，再画一张他们同框的', '帮我生成一张海报', '为什么天是蓝的，找图给我讲讲', '', '好的']) assert.equal(asksOnlyToFind(said), false, said);
 });

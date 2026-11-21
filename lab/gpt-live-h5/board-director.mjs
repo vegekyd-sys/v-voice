@@ -73,6 +73,9 @@ const evidenceText = result => {
 };
 
 /** Build the user message for one run. Everything in it is conversation data. */
+/** A lesson's script that asks for a picture to be drawn (a line's hint reads「现画：…」). */
+const drawsInNotes = notes => (notes?.lines ?? []).some(line => /现画/u.test(String(line?.show ?? '')));
+
 export function boardRequest({trigger, scene, turns, evidence, notes = null, recent = [], canvas = [], page = null, assets = [], make = false}) {
   return JSON.stringify({
     trigger,
@@ -490,7 +493,8 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
               else if (make) {
                 // (Only a lesson's script asks: in call of 11/21 the illustrator asked for the very picture the
                 // caller had asked V for, a moment before V's own command, and the two were made as one.)
-                if (!scripted || !shelf?.canMake?.(id) || row.madeFor === (row.turnNo ?? 0)) return;
+                // (And only where the script itself says so: a picture is paid for.)
+                if (!scripted || !drawsInNotes(row.notes) || !shelf?.canMake?.(id) || row.madeFor === (row.turnNo ?? 0)) return;
                 const made = shelf.make(id, {prompt: make, caption: rest.caption});
                 if (!made) return;
                 row.madeFor = row.turnNo ?? 0;
@@ -551,7 +555,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
           {role: 'user', content: boardRequest({trigger, scene: row.scene, turns: stream?.turns ? stream.turns(turns) : turns, evidence: row.evidence,
             // The author's notes go with the script they were written for, and with nothing else.
             ...(scripted ? {notes: {title: row.notes.title, lines: row.notes.lines}} : {}),
-            ...(stream && shelf ? {assets: shelf.digest(id), ...(scripted && shelf.canMake?.(id) && row.madeFor !== (row.turnNo ?? 0) ? {make: true} : {}), ...(row.scene.blocks.some(block => block.t === 'work') ? {workshop: true} : {})} : {}),
+            ...(stream && shelf ? {assets: shelf.digest(id), ...(scripted && drawsInNotes(row.notes) && shelf.canMake?.(id) && row.madeFor !== (row.turnNo ?? 0) ? {make: true} : {}), ...(row.scene.blocks.some(block => block.t === 'work') ? {workshop: true} : {})} : {}),
             ...(stream ? {recent: row.recent ?? [], page: {id: zoneId(row.scene), room: Math.max(0, 4 - row.scene.blocks.length)}, canvas: (row.zones ?? []).filter(zone => zone.serial !== row.scene.serial).map(zoneDigest)} : {})})}];
         for await (const chunk of (stream ? hedged(complete, {messages, signal: controller.signal}, hedgeMs) : complete({messages, signal: controller.signal}))) {
           if (controller.signal.aborted) break;
