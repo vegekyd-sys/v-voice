@@ -177,7 +177,7 @@ test('a follow-up is routed with the conversation so far and task controls only 
   turn('assistant','a1','马刺赢了快船。');turn('user','u2','再看一下，具体比分是多少');say(f,idOf(12),'再看一下，具体比分是多少');await new Promise(r=>setTimeout(r,5));
   assert.deepEqual(seen[1].history.map(e=>e.role),['user','tool','assistant','user']);
   assert.deepEqual(seen[1].history[1],{role:'tool',text:'',name:'web_search',query:'NBA 比分'});assert.equal(seen[1].history[0].text,'帮我查一下今天 NBA 的比赛结果');
-  assert.equal(seen[1].running,false);assert.deepEqual(seen[1].tools.map(t=>t.name),['web_search','delegate_to_v']);
+  assert.equal(seen[1].running,false);assert.deepEqual(seen[1].tools.map(t=>t.name),['web_search','delegate_to_v','answer_directly']);
   say(f,idOf(13),'帮我写一份报告');await new Promise(r=>setTimeout(r,5));f.bridge.beginBackgroundTool(idOf(13),'写报告');
   say(f,idOf(14),'查得怎么样了');await new Promise(r=>setTimeout(r,5));
   assert.equal(seen[3].running,true);assert(seen[3].tools.some(t=>t.name==='openclaw_agent_control')&&seen[3].tools.some(t=>t.name==='cancel_task'));
@@ -489,4 +489,24 @@ test('what takes reading the pages gets two answers: the passages at once, then 
   // Without a backend the tool does not exist.
   const h=await fixture({tools,route:async({tools:offered})=>{assert(!offered.some(t=>t.name==='web_answer'));return {name:'web_search',args:{query:'x'}};}});await ready(h);say(h,idOf(14),'查一下');await pause(20);assert.equal(h.calls[0].name,'web_search');
   f.bridge.close();g.bridge.close();k.bridge.close();h.bridge.close();
+});
+
+test('without a lesson tool the model explains and tells stories itself; a delegation for one is handed back to it',async()=>{
+  const names=new Set(['web_search','memory_search','delegate_to_v']);
+  const native=gptLiveDelegationPolicy(names),scripted=gptLiveDelegationPolicy(new Set([...names,'explain_on_board']));
+  assert.match(native,/Do not delegate when:[\s\S]*要你讲个故事：你自己讲，不要委派/u);assert.match(native,/讲解和讲故事（屏幕会跟着你说的话自动出现画面和图片/u);assert.doesNotMatch(native,/讲稿/u);
+  assert.match(gptLiveDelegationPolicy(names,{display:false}),/\n讲解和讲故事：这时可以多说/u);
+  assert.match(scripted,/委派给后台准备讲解稿/u);assert.doesNotMatch(scripted,/你自己讲，不要委派/u);
+  assert.match(GPT_LIVE_IDENTITY,/when you are asked to explain something or to tell a story, you tell it yourself/u);
+  // The model delegated "explain the sky" anyway: there is nothing to look up, and it is told so at once.
+  const offered=[];
+  const f=await fixture({tools:[{type:'function',name:'web_search',parameters:{type:'object',properties:{query:{type:'string'}},required:['query']}}],route:async({tools})=>{offered.push(tools.map(t=>t.name));return {name:'answer_directly',args:{}};}});
+  await ready(f);userSays(f,'u1','给我讲解一下为什么天空是蓝色的');say(f,idOf(16),'给我讲解一下为什么天空是蓝色的');await pause(20);
+  assert(offered.at(-1).includes('answer_directly'));assert.equal(f.calls.length,0);
+  const told=appends(f).at(-1);assert.deepEqual([told.channel,told.delegation_item_id],['speakable',idOf(16)]);
+  assert.match(told.content[0].text,/^这件事不用查，后台也没有在办的事：你自己现在就讲给用户听——“给我讲解一下为什么天空是蓝色的”/u);
+  // With a lesson tool in the call that way out is not offered: the script is the lesson.
+  const g=await fixture({tools:LESSON,route:async({tools})=>{offered.push(tools.map(t=>t.name));return {name:'explain_on_board',args:{topic:'天空'}};}});
+  await ready(g);say(g,idOf(17),'讲讲天空');await pause(20);assert(!offered.at(-1).includes('answer_directly'));assert.equal(g.calls[0].name,'explain_on_board');
+  f.bridge.close();g.bridge.close();
 });

@@ -1,4 +1,9 @@
-import {asksForLesson} from './tools.mjs';
+import {asksForLesson,lessonResearch} from './tools.mjs';
+import {datedQuery} from './search-result.mjs';
+
+// Not a tool: what the voice model can say by itself (an explanation, a story, an opinion). Offered to
+// the router when the call has no lesson tool, so a delegation for such a thing has somewhere to go.
+export const GPT_LIVE_SELF_TOOL=Object.freeze({type:'function',name:'answer_directly',description:'不需要任何工具：让前台语音模型自己回答。用于讲解、科普、讲故事、看法和建议、常识，以及复述刚才已经查到的结果。凡是需要实时信息、用户自己的资料或实际操作的，不选这个。',parameters:{type:'object',properties:{},additionalProperties:false}});
 
 // GPT Live has no function tools: it hands the backend one sentence in its own
 // words. The slow part of GPT Live One was answering every such sentence with
@@ -31,6 +36,15 @@ export function quickRoute(text,names,{userText}={}){
   if(has('end_call')&&ENDS.test(said)&&!DISCUSSES.test(said)&&Array.from(said).length<=24)return {name:'end_call',args:{},via:'quick'};
   if(has('current_time')&&TIME.test(said)&&!TIME_ONLY.test(said)&&Array.from(said).length<=24)return {name:'current_time',args:{},via:'quick'};
   if(has('feishu_calendar')&&AGENDA.test(said)&&!OTHER_DAY.test(said)&&!WRITES.test(said)&&Array.from(said).length<=24)return {name:'feishu_calendar',args:{},via:'quick'};
+  // No lesson tool: the voice model explains and tells stories itself. What it needs facts for (today's
+  // world, the caller's own) is looked up first; everything else it is simply told to say.
+  if(has('answer_directly')&&(asksForLesson(asked)||STORY.test(asked))&&!WRITES.test(said)&&!MAKES_NEW.test(said)&&Array.from(said).length<=120){
+    const needs=lessonResearch(asked);
+    if(needs==='memory_search'&&has('memory_search'))return {name:'memory_search',args:{query:said.slice(0,200)},via:'quick'};
+    if(needs==='web_search'&&has('web_answer'))return {name:'web_answer',args:{question:said.slice(0,400)},via:'quick'};
+    if(needs==='web_search'&&has('web_search'))return {name:'web_search',args:{query:datedQuery(said.slice(0,160))},via:'quick'};
+    if(!needs)return {name:'answer_directly',args:{},via:'quick'};
+  }
   if(has('explain_on_board')&&asksForLesson(asked)&&!WRITES.test(said)&&!MEDIA.test(said))return {name:'explain_on_board',args:{topic:said.slice(0,400)},via:'quick'};
   if(has('explain_on_board')&&STORY.test(asked)&&!WRITES.test(said)&&!MAKES_NEW.test(said)&&Array.from(said).length<=80)return {name:'explain_on_board',args:{topic:said.slice(0,400)},via:'quick'};
   const length=Array.from(said).length;
@@ -59,7 +73,8 @@ const ROUTER_PROMPT=`你是语音助手 V 的工具调度器。前台语音模�
 - 这句话是对刚才那件事的追问、纠正或补充（再看一下、具体多少、另一场呢、不对是……、查得怎么样了）时，结合“最近对话”把对象补全，沿用上一次用的工具并写出更具体的参数；绝不能改去查无关的东西（例如时间）。
 - memory_search 的 query 写成几个关键词（项目名、人名、事情的名字），去掉“帮我查一下”“呃”这类口头语；问的是某件事“现在怎么样、进展如何”，关键词里带上“进展 现状”。
 - 用户话里的称呼照原样保留：语音转写可能把名字写成数字或同音字，不要把它改写成年龄、数量或别的意思。
-- 讲故事、讲解、科普、找图给用户看（“配上图”“用图片讲”“给我看看”“发个图片”“多来几张”），选讲解工具：真实图片和画面会跟着声音出现，几秒就能开始；topic 里写清用户点名要的角色和东西。只有用户明确要“生成、画、做一张新图”或要把东西发到群里，才交给 delegate_to_v。
+- 有 answer_directly、没有讲解工具时：讲解、科普、讲故事、看法、常识由前台自己讲，选 answer_directly；要讲的是今天的事或用户自己的事，先选搜索或记忆工具查资料（它拿到资料后自己讲）。
+- 有讲解工具时：讲故事、讲解、科普、找图给用户看（“配上图”“用图片讲”“给我看看”“发个图片”“多来几张”），选讲解工具：真实图片和画面会跟着声音出现，几秒就能开始；topic 里写清用户点名要的角色和东西。只有用户明确要“生成、画、做一张新图”或要把东西发到群里，才交给 delegate_to_v。
 - 有 web_answer 时：当前信息里凡是要具体数据、名单、逐项细节、比较或核实的（一支球队的阵容和每人数据、每场谁得了多少分、几款产品的参数对比、一件事的来龙去脉，或者用户说“不对”“查清楚”“详细说说”），选 web_answer：先给摘要里的初步答案，同时读网页原文核对，二十秒左右补充或更正；只要一句话的近况（天气、股价、新闻标题、一个比分）选 web_search，一两秒。
 - 只有“后台任务”一栏写着正在执行时，才可以选查进度、补充要求或取消后台任务的工具。
 - 需要多步、反复查证、写操作（发消息、改日程、写文档、发到群里）、或者没有合适的直接工具时，选 delegate_to_v；question 保留用户的完整目标、对象、时间和条件，不要扩大用户没有要求的范围。

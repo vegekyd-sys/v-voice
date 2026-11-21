@@ -30,6 +30,7 @@ export function gptLiveFromEnv(env=process.env,{fetchImpl}={}){
     complete:routerCompletionFromEnv(env,{fetchImpl}),
     // The stronger model behind the voice (same login), for what takes reading the pages. Off unless a model is named.
     ...(env.VOICE_GPT_LIVE_RESEARCH_MODEL?{research:createGptLiveResearch({resolveAuth:createGptLiveAuth({file:env.VOICE_GPT_LIVE_AUTH_FILE}),model:env.VOICE_GPT_LIVE_RESEARCH_MODEL,...(env.VOICE_GPT_LIVE_RESEARCH_EFFORT?{effort:env.VOICE_GPT_LIVE_RESEARCH_EFFORT}:{}),...(fetchImpl?{fetchImpl}:{})})}:{}),
+    ...(env.VOICE_GPT_LIVE_SCRIPTED_LESSONS==='1'?{scriptedLessons:true}:{}),
     ...(env.VOICE_GPT_LIVE_MODEL?{model:env.VOICE_GPT_LIVE_MODEL}:{}),
     ...(env.VOICE_GPT_LIVE_VOICE?{voice:env.VOICE_GPT_LIVE_VOICE}:{}),
   };
