@@ -9,8 +9,13 @@
 #   scripts/candidate/deploy-board.sh --stop    # stop the Candidate
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-root=/var/lib/v-voice-candidates/board-20261112
-if [ "${1:-}" = "--stop" ]; then ssh v sudo -n python3 - --stop < scripts/candidate/start-board.py; exit 0; fi
+# VOICE_BOARD_CANDIDATE=<name> VOICE_BOARD_CANDIDATE_PORT=<port>: a second board Candidate (its own directory, unit, tunnel and link).
+# VOICE_BOARD_CANVAS=1: the canvas (docs/research/board-canvas) on in it.
+# VOICE_BOARD_ASSETS=1: the shelf of made things (docs/candidates/board-assets-20261121.md) on in it.
+name="${VOICE_BOARD_CANDIDATE:-board-20261112}"
+root=/var/lib/v-voice-candidates/$name
+pass="VOICE_BOARD_CANDIDATE=$name ${VOICE_BOARD_CANDIDATE_PORT:+VOICE_BOARD_CANDIDATE_PORT=$VOICE_BOARD_CANDIDATE_PORT} ${VOICE_BOARD_CANVAS:+VOICE_BOARD_CANVAS=$VOICE_BOARD_CANVAS} ${VOICE_BOARD_ASSETS:+VOICE_BOARD_ASSETS=$VOICE_BOARD_ASSETS}"
+if [ "${1:-}" = "--stop" ]; then ssh v sudo -n $pass python3 - --stop < scripts/candidate/start-board.py; exit 0; fi
 commit="$(git rev-parse HEAD)"
 [ -d "artifacts/$commit" ] || npm run package
 node scripts/verify-package.mjs "artifacts/$commit"
@@ -21,32 +26,37 @@ if [ "${1:-}" = "--update" ]; then
   # Only this Candidate's own code and unit are touched; its environment file,
   # tunnel and entry link stay as they are. The unit must have no call in progress.
   ssh v "sudo -n test -f $root/environment.private.json"
-  # VOICE_BOARD_FOLLOW=cue|word: how pieces follow the voice (docs/research/board-follow-by-model). Only that key is changed.
-  if [ -n "${VOICE_BOARD_FOLLOW:-}" ]; then
-    ssh v sudo -n python3 - "$root/environment.private.json" "$VOICE_BOARD_FOLLOW" <<'PY'
+  # VOICE_BOARD_FOLLOW=cue|word: how pieces follow the voice (docs/research/board-follow-by-model).
+  # VOICE_BOARD_CANVAS=1|0, VOICE_BOARD_ASSETS=1|0: the canvas and the shelf on or off in this Candidate.
+  # Only the keys named are changed.
+  if [ -n "${VOICE_BOARD_FOLLOW:-}${VOICE_BOARD_CANVAS:-}${VOICE_BOARD_ASSETS:-}" ]; then
+    ssh v sudo -n python3 - "$root/environment.private.json" "follow=${VOICE_BOARD_FOLLOW:-}" "canvas=${VOICE_BOARD_CANVAS:-}" "assets=${VOICE_BOARD_ASSETS:-}" <<'PY'
 import json, os, sys
-path, mode = sys.argv[1], sys.argv[2]
+path, asked = sys.argv[1], dict(item.split('=', 1) for item in sys.argv[2:])
 env = json.load(open(path))
-if mode == 'cue': env['VOICE_BOARD_FOLLOW'] = 'cue'
-else: env.pop('VOICE_BOARD_FOLLOW', None)
+if asked['follow'] == 'cue': env['VOICE_BOARD_FOLLOW'] = 'cue'
+elif asked['follow']: env.pop('VOICE_BOARD_FOLLOW', None)
+for name, key in (('canvas', 'VOICE_BOARD_CANVAS'), ('assets', 'VOICE_BOARD_ASSETS')):
+    if asked[name] == '1': env[key] = '1'
+    elif asked[name]: env.pop(key, None)
 tmp = path + '.next'
 with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as out: json.dump(env, out)
 # (The Candidate reads it as its own user: keep the owner.)
 stat = os.stat(path); os.chown(tmp, stat.st_uid, stat.st_gid)
 os.replace(tmp, path)
-print('VOICE_BOARD_FOLLOW', env.get('VOICE_BOARD_FOLLOW', '(word)'))
+print('VOICE_BOARD_FOLLOW', env.get('VOICE_BOARD_FOLLOW', '(word)'), 'VOICE_BOARD_CANVAS', env.get('VOICE_BOARD_CANVAS', '(off)'), 'VOICE_BOARD_ASSETS', env.get('VOICE_BOARD_ASSETS', '(off)'))
 PY
   fi
   upload
   # The unit is transient: after a crash it no longer exists, so it is started
   # again from the Candidate's own launcher and private environment file.
-  ssh v "sudo -n sh -c 'chown -R openclaw:openclaw $root/voice; systemctl stop voice-board-20261112 2>/dev/null; systemctl reset-failed voice-board-20261112 2>/dev/null; systemd-run --quiet --unit=voice-board-20261112 --property=User=openclaw --property=WorkingDirectory=$root/voice --property=UMask=0077 --property=KillMode=control-group --property=MemoryMax=1G --property=CPUQuota=100% --property=Nice=10 --property=Restart=on-failure --property=RestartSec=2 /opt/node-v22.23.1/bin/node $root/launch.private.cjs $root/environment.private.json /opt/node-v22.23.1/bin/node $root/voice/lab/gpt-live-h5/server.mjs && sleep 3 && systemctl is-active voice-board-20261112 voice-board-20261112-tunnel'"
+  ssh v "sudo -n sh -c 'chown -R openclaw:openclaw $root/voice; systemctl stop voice-$name 2>/dev/null; systemctl reset-failed voice-$name 2>/dev/null; systemd-run --quiet --unit=voice-$name --property=User=openclaw --property=WorkingDirectory=$root/voice --property=UMask=0077 --property=KillMode=control-group --property=MemoryMax=1G --property=CPUQuota=100% --property=Nice=10 --property=Restart=on-failure --property=RestartSec=2 /opt/node-v22.23.1/bin/node $root/launch.private.cjs $root/environment.private.json /opt/node-v22.23.1/bin/node $root/voice/lab/gpt-live-h5/server.mjs && sleep 3 && systemctl is-active voice-$name voice-$name-tunnel'"
   ssh v "sudo -n python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))[\"commit\"])' $root/voice/manifest.json"
   exit 0
 fi
-ssh v sudo -n python3 - --stop < scripts/candidate/start-board.py >/dev/null
+ssh v sudo -n $pass python3 - --stop < scripts/candidate/start-board.py >/dev/null
 upload
-ssh v sudo -n ${VOICE_BOARD_MODEL:+VOICE_BOARD_MODEL="$VOICE_BOARD_MODEL"} python3 - < scripts/candidate/start-board.py
+ssh v sudo -n $pass ${VOICE_BOARD_MODEL:+VOICE_BOARD_MODEL="$VOICE_BOARD_MODEL"} python3 - < scripts/candidate/start-board.py
 echo
 echo "Entry link (keep private):"
 ssh v sudo -n cat "$root/entry-link.private"

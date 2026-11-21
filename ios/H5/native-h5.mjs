@@ -9,9 +9,10 @@ import {mountAvatar} from '../../lab/gpt-live-h5/avatar.mjs';
 import {createAvatarReactions} from '../../lab/gpt-live-h5/avatar-reactions.mjs';
 import {createAvatarTelemetry} from '../../lab/gpt-live-h5/avatar-telemetry.mjs';
 import {createBoardClient,createLessonGate,createSpokenCursor,spokenRate} from '../../lab/gpt-live-h5/board-client.mjs';
+import {createAssetsClient} from '../../lab/gpt-live-h5/board-assets-client.mjs';
 import {speaksOf,spokenProgress,unspoken} from '../../lab/gpt-live-h5/board-scene.mjs';
 
-let current, owner, reactions, telemetry, board, boardTimer, boardPhotos = new Map(), boardFollow, opened = new Set(), pendingDocument, openingDocument=false, idleCatalogOwner;
+let current, owner, reactions, telemetry, board, boardAssets, boardTasks = '', boardTimer, boardPhotos = new Map(), boardFollow, opened = new Set(), pendingDocument, openingDocument=false, idleCatalogOwner;
 const hiddenDocument=document.createElement('div');hiddenDocument.hidden=true;document.body.append(hiddenDocument);
 const view = createCallView();
 const post = (action, payload = {}, callID = current?.callID ?? '') => window.webkit.messageHandlers.voice.postMessage({action,payload,callID,pageID:window.__VVoicePageID});
@@ -24,6 +25,13 @@ const content = createContentView(document,readerWindow,{mediaSaveLabel:()=>curr
 const cards=new Map();
 mountCallUi(document,view,{
   loadBoardPhoto:query=>loadBoardPhoto(query),
+  // (Saved by the App from an address: a made thing's own, or the one a found photograph is lent out under.)
+  boardWorks:{pick:(id,hold)=>boardAssets?.pick(id,hold),shown:id=>boardAssets?.shown(id),save:async item=>{
+    const url=/^https:/u.test(item.src)?item.src:item.id?await boardAssets?.address(item.id):'';
+    if(!url)return '这张暂时存不了';
+    if(current?.capabilities?.mediaSave){await post('saveMedia',{url,kind:item.kind});return '已存到相册';}
+    await send('share',{text:url,title:item.name}).catch(()=>{});return '已打开分享';
+  }},
   renderAssistant(target,row){
     // (While a picture is up, a delivered report stays a card: the reader would cover the picture V is talking over.)
     content.render(target,row,{auto:row.document===true&&!view.get().board,inline:true});
@@ -49,11 +57,11 @@ function stopVisuals(){reactions?.dispose();reactions=null;telemetry?.close();te
 const pageRequests=()=>current?.capabilities?.pageRequests>=1;
 const page=(name,body,callID)=>post('service',{route:'page/'+name,body},callID);
 // The call board.
-function stopBoard(){board?.dispose();board=null;clearInterval(boardTimer);boardTimer=null;boardFollow=null;boardPhotos.clear();view.set({board:null,boardCanvas:null,boardSpoken:null});}
+function stopBoard(){board?.dispose();board=null;boardAssets?.dispose();boardAssets=null;boardTasks='';clearInterval(boardTimer);boardTimer=null;boardFollow=null;boardPhotos.clear();view.set({board:null,boardCanvas:null,boardSpoken:null,boardAssets:null});}
 function loadBoardPhoto(query){
   const callID=owner;
   if(!board||typeof query!=='string')return Promise.resolve(null);
-  if(!boardPhotos.has(query))boardPhotos.set(query,page('board-image',{query},callID).then(r=>r?.data&&typeof r.type==='string'&&r.type.startsWith('image/')?`data:${r.type};base64,${r.data}`:null).catch(()=>null));
+  if(!boardPhotos.has(query))boardPhotos.set(query,page('board-image',{query},callID).then(r=>{if(!(r?.data&&typeof r.type==='string'&&r.type.startsWith('image/')))return null;boardAssets?.poke();return `data:${r.type};base64,${r.data}`;}).catch(()=>null));
   return boardPhotos.get(query);
 }
 function startBoard(callID){
@@ -79,7 +87,7 @@ function startBoard(callID){
   };
   board=createBoardClient({
     isCurrent:()=>owner===callID&&current?.active,
-    onScene:(scene,canvas)=>{if(owner===callID)view.set({board:scene,boardCanvas:canvas??null,boardSpoken:boardFollow?.(scene)??view.get().boardSpoken});},
+    onScene:(scene,canvas)=>{if(owner===callID){view.set({board:scene,boardCanvas:canvas??null,boardSpoken:boardFollow?.(scene)??view.get().boardSpoken});boardAssets?.scene(scene);}},
     request:async(payload,{onEvent})=>{
       let reply;
       try{reply=await page('board',payload,callID);failures=0;}
@@ -88,6 +96,9 @@ function startBoard(callID){
       for(const op of Array.isArray(reply?.ops)?reply.ops:[])onEvent(op);
     },
   });
+  // The call's shelf of made things (board-assets.mjs), through the same page-feature relay.
+  boardAssets=createAssetsClient({isCurrent:()=>owner===callID&&current?.active,rev:()=>board?.scene.rev??0,
+    onChange:shelf=>{if(owner===callID)view.set({boardAssets:shelf});},onSync:value=>board?.sync(value),request:body=>page('board-assets',body,callID)});
   boardTimer=setInterval(()=>{if(!boardFollow||owner!==callID)return;
     if(current?.capabilities?.audioProgress>=1&&view.get().voice==='speaking')void post('audioProgress',{},callID).then(value=>{if(Number.isFinite(value?.outputBytes)&&Number.isFinite(value?.queuedBytes))audio=value;}).catch(()=>{});const spoken=boardFollow();if(JSON.stringify(view.get().boardSpoken)!==JSON.stringify(spoken))view.set({boardSpoken:spoken});},400);
 }
@@ -132,6 +143,8 @@ function receive(snapshot){
   if(!snapshot.active){pendingDocument=null;openingDocument=false;stopVisuals();content.reset();cards.clear();hiddenDocument.replaceChildren();}
   avatar.show(snapshot.tasks.at(-1)?.activity??'idle');
   board?.update({snapshot:snapshot.transcript});
+  // A tool starting or ending may have put something on the shelf.
+  {const tasks=snapshot.tasks.map(task=>task.id??task.callId??task.activity??'').join('|')+'#'+snapshot.transcript.history.length;if(tasks!==boardTasks){boardTasks=tasks;boardAssets?.poke();}}
   reactions?.update({snapshot:snapshot.transcript,activity:snapshot.tasks.at(-1)?.activity??'idle',taskOutcome:snapshot.tasks.length?'pending':snapshot.outcome});
   document.body.dataset.nativeOwner=snapshot.callID;
   document.body.dataset.nativeReady='true';

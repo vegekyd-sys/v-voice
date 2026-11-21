@@ -1,0 +1,987 @@
+[
+ {
+  "id": "look-calendar",
+  "group": "查事情",
+  "say": "我今天下午有什么日程？",
+  "expect": {
+   "route": [
+    "lookup"
+   ],
+   "never": [
+    "back"
+   ]
+  }
+ },
+ {
+  "id": "look-memory",
+  "group": "查事情",
+  "say": "你查一下记忆，我们上次聊的那个周末行程是去哪儿？",
+  "expect": {
+   "route": [
+    "lookup"
+   ],
+   "never": [
+    "back"
+   ]
+  }
+ },
+ {
+  "id": "look-news",
+  "group": "查事情",
+  "say": "帮我查一下今天有什么科技新闻。",
+  "expect": {
+   "route": [
+    "lookup",
+    "lesson"
+   ],
+   "never": [
+    "back"
+   ]
+  }
+ },
+ {
+  "id": "look-score",
+  "group": "查事情",
+  "say": "昨天湖人那场比赛，谁得分最高？",
+  "expect": {
+   "route": [
+    "lookup",
+    "lesson"
+   ],
+   "never": [
+    "back"
+   ]
+  }
+ },
+ {
+  "id": "look-time",
+  "group": "查事情",
+  "say": "现在几点了？",
+  "expect": {
+   "route": [
+    "lookup",
+    "talk"
+   ],
+   "never": [
+    "back",
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "look-fact",
+  "group": "查事情",
+  "say": "珠穆朗玛峰有多高？",
+  "expect": {
+   "route": [
+    "talk",
+    "lookup",
+    "lesson"
+   ],
+   "never": [
+    "back",
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "look-calendar-refused",
+  "group": "查事情·边缘",
+  "say": "我今天下午有什么日程？",
+  "expect": {
+   "route": [
+    "lookup+back"
+   ]
+  },
+  "setup": {
+   "fail": {
+    "feishu_calendar": "permission denied: calendar scope not granted",
+    "lark_read": "permission denied"
+   }
+  },
+  "note": "前台的日历工具被拒：不能说一句查不了就停，要交后台",
+  "settleMs": 8000
+ },
+ {
+  "id": "look-then-write",
+  "group": "查事情·边缘",
+  "say": "查一下我明天的日程，然后把下午的会改到四点。",
+  "expect": {
+   "route": [
+    "back",
+    "lookup+back"
+   ]
+  },
+  "note": "读可以前台，改必须后台"
+ },
+ {
+  "id": "explain-kids",
+  "group": "讲解",
+  "say": "给小朋友讲讲恐龙是怎么灭绝的。",
+  "expect": {
+   "route": [
+    "lesson",
+    "talk"
+   ],
+   "never": [
+    "back",
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "explain-how",
+  "group": "讲解",
+  "say": "黑洞是怎么形成的？给我讲讲。",
+  "expect": {
+   "route": [
+    "lesson",
+    "talk"
+   ],
+   "never": [
+    "back",
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "find-pictures",
+  "group": "讲解",
+  "say": "找几张挪威布道石的照片给我看。",
+  "expect": {
+   "route": [
+    "lesson"
+   ],
+   "never": [
+    "back",
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "find-vs-make",
+  "group": "讲解·边缘",
+  "say": "给我看看路飞的图片。",
+  "expect": {
+   "route": [
+    "lesson"
+   ],
+   "never": [
+    "back",
+    "make"
+   ]
+  },
+  "note": "要看图不是要画图"
+ },
+ {
+  "id": "explain-lineup",
+  "group": "讲解·边缘",
+  "say": "把巴黎圣日耳曼现在的阵容按位置排给我看。",
+  "expect": {
+   "route": [
+    "lesson",
+    "lookup",
+    "lookup+lesson"
+   ],
+   "never": [
+    "back"
+   ]
+  },
+  "note": "线上曾交后台，等了很久。评测里的替身搜索结果没有真实名单，这条要在真实通话里看（11/21 真实通话：前台查完直接讲）"
+ },
+ {
+  "id": "explain-tips",
+  "group": "讲解·边缘",
+  "say": "你可以再给我说几个参观故宫的小提示吗？",
+  "expect": {
+   "route": [
+    "talk",
+    "lesson",
+    "lookup"
+   ],
+   "never": [
+    "back",
+    "make"
+   ]
+  },
+  "note": "线上曾交后台"
+ },
+ {
+  "id": "explain-howto",
+  "group": "讲解·边缘",
+  "say": "教我个技巧，怎么才能把魔方第一层拼好？",
+  "expect": {
+   "route": [
+    "talk",
+    "lesson"
+   ],
+   "never": [
+    "back",
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "make-poster",
+  "group": "创作·前台",
+  "say": "帮我生成一张海报：穿宇航服的柴犬站在月球上。",
+  "expect": {
+   "route": [
+    "make"
+   ],
+   "never": [
+    "back"
+   ]
+  }
+ },
+ {
+  "id": "make-animate-it",
+  "group": "创作·前台",
+  "say": "让它动起来。",
+  "expect": {
+   "route": [
+    "make"
+   ],
+   "never": [
+    "back"
+   ],
+   "command": "video create"
+  },
+  "setup": {
+   "assets": [
+    {
+     "name": "柴犬宇航员海报",
+     "kind": "image"
+    }
+   ]
+  }
+ },
+ {
+  "id": "make-video-10",
+  "group": "创作·前台",
+  "say": "把这张海报做成十秒的视频，柴犬跳起来接住一根骨头。",
+  "expect": {
+   "route": [
+    "make"
+   ],
+   "never": [
+    "back"
+   ],
+   "command": "video create"
+  },
+  "setup": {
+   "assets": [
+    {
+     "name": "柴犬宇航员海报",
+     "kind": "image"
+    }
+   ]
+  }
+ },
+ {
+  "id": "make-text-video",
+  "group": "创作·前台",
+  "say": "直接做一个五秒的视频，不用图：一只橘猫在雨夜的霓虹街头跳上屋顶。",
+  "expect": {
+   "route": [
+    "make"
+   ],
+   "never": [
+    "back"
+   ],
+   "command": "video create"
+  }
+ },
+ {
+  "id": "make-two-photos",
+  "group": "创作·前台",
+  "say": "用皮卡丘和路飞这两张图，做一张他们对战的海报。",
+  "expect": {
+   "route": [
+    "make"
+   ],
+   "never": [
+    "back"
+   ]
+  },
+  "setup": {
+   "photos": [
+    {
+     "name": "皮卡丘 官方立绘",
+     "query": "皮卡丘 官方立绘"
+    },
+    {
+     "name": "路飞 官方立绘",
+     "query": "路飞 官方立绘"
+    }
+   ]
+  }
+ },
+ {
+  "id": "make-from-photo",
+  "group": "创作·前台",
+  "say": "把皮卡丘那张图改成卡通Q版。",
+  "expect": {
+   "route": [
+    "make"
+   ],
+   "never": [
+    "back"
+   ]
+  },
+  "setup": {
+   "photos": [
+    {
+     "name": "皮卡丘 官方立绘",
+     "query": "皮卡丘 官方立绘"
+    },
+    {
+     "name": "路飞 官方立绘",
+     "query": "路飞 官方立绘"
+    }
+   ]
+  }
+ },
+ {
+  "id": "make-again",
+  "group": "创作·前台",
+  "say": "这张再来一版，换个构图。",
+  "expect": {
+   "route": [
+    "make"
+   ],
+   "never": [
+    "back"
+   ]
+  },
+  "setup": {
+   "assets": [
+    {
+     "name": "柴犬宇航员海报",
+     "kind": "image"
+    }
+   ]
+  }
+ },
+ {
+  "id": "make-draw-vs-find",
+  "group": "创作·边缘",
+  "say": "画一张路飞在海边吃肉的图。",
+  "expect": {
+   "route": [
+    "make"
+   ],
+   "never": [
+    "back",
+    "lesson"
+   ]
+  },
+  "note": "要画不是要找"
+ },
+ {
+  "id": "make-three",
+  "group": "创作·边缘",
+  "say": "帮我生成三张不同风格的柴犬海报。",
+  "expect": {
+   "route": [
+    "make"
+   ],
+   "never": [
+    "back"
+   ]
+  },
+  "note": "三张各自独立，一张一张做；不是要先出方案的一套"
+ },
+ {
+  "id": "make-noisy",
+  "group": "创作·边缘",
+  "say": "呃，那个，你可以，把那个，就是那张海报，嗯，变成一个Q版的吗？",
+  "expect": {
+   "route": [
+    "make"
+   ],
+   "never": [
+    "back"
+   ]
+  },
+  "setup": {
+   "assets": [
+    {
+     "name": "柴犬宇航员海报",
+     "kind": "image"
+    }
+   ]
+  },
+  "note": "口语、重复、语气词"
+ },
+ {
+  "id": "self-picture",
+  "group": "创作·V的形象",
+  "say": "用你自己的形象做一张打电话的有意思的图片。",
+  "expect": {
+   "route": [
+    "make"
+   ],
+   "never": [
+    "back"
+   ],
+   "command": "--(image|ref) '?(v\\b|https://\\S*(v-operator|avatar|board-shared))"
+  },
+  "note": "线上：直接凭文字画了一个不相干的形象"
+ },
+ {
+  "id": "self-into-poster",
+  "group": "创作·V的形象",
+  "say": "把你自己也放进这张海报里，站在柴犬旁边。",
+  "expect": {
+   "route": [
+    "make"
+   ],
+   "never": [
+    "back"
+   ],
+   "command": "--(image|ref) '?(v\\b|https://\\S*(v-operator|avatar|board-shared))"
+  },
+  "setup": {
+   "assets": [
+    {
+     "name": "柴犬宇航员海报",
+     "kind": "image"
+    }
+   ]
+  }
+ },
+ {
+  "id": "self-video",
+  "group": "创作·V的形象",
+  "say": "用你的形象做一个五秒的视频，你对着镜头挥手。",
+  "expect": {
+   "route": [
+    "make"
+   ],
+   "never": [
+    "back"
+   ],
+   "command": "--(image|ref) '?(v\\b|https://\\S*(v-operator|avatar|board-shared))"
+  }
+ },
+ {
+  "id": "back-my-photo",
+  "group": "创作·缺素材",
+  "say": "用我上周发你的那张全家福做一张新年海报。",
+  "expect": {
+   "route": [
+    "back"
+   ],
+   "never": [
+    "make"
+   ]
+  },
+  "note": "照片在后台的记忆里，前台没有"
+ },
+ {
+  "id": "back-my-dog",
+  "group": "创作·缺素材",
+  "say": "用我家狗的照片做一张海报。",
+  "expect": {
+   "route": [
+    "back",
+    "talk"
+   ],
+   "never": [
+    "make"
+   ]
+  },
+  "note": "没有这张照片：交后台去找，或者问用户要；不能凭空画一只狗"
+ },
+ {
+  "id": "back-my-avatar",
+  "group": "创作·缺素材",
+  "say": "用我的头像做一张卡通形象。",
+  "expect": {
+   "route": [
+    "back",
+    "talk"
+   ],
+   "never": [
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "back-yesterday-video",
+  "group": "创作·缺素材",
+  "say": "把昨天做的那个视频再加长一点。",
+  "expect": {
+   "route": [
+    "back",
+    "talk",
+    "lookup",
+    "control"
+   ],
+   "never": [
+    "make"
+   ]
+  },
+  "note": "昨天的作品不在这通电话里：交后台去找，或者先问清是哪个；不能重新做一个"
+ },
+ {
+  "id": "back-doc-picture",
+  "group": "创作·缺素材",
+  "say": "用飞书文档里那张产品图做个五秒的广告视频。",
+  "expect": {
+   "route": [
+    "back"
+   ],
+   "never": [
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "back-brand",
+  "group": "创作·缺素材",
+  "say": "按我们公司的品牌规范做一张活动海报。",
+  "expect": {
+   "route": [
+    "back",
+    "talk",
+    "lookup",
+    "lookup+make",
+    "lookup+back"
+   ]
+  },
+  "note": "品牌规范要先拿到：查、问或交后台都行；不能不查就直接画"
+ },
+ {
+  "id": "back-long-film",
+  "group": "创作·超出一条",
+  "say": "做一个一分钟的宣传片，要配音乐和字幕。",
+  "expect": {
+   "route": [
+    "back"
+   ],
+   "never": [
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "back-thirty",
+  "group": "创作·超出一条",
+  "say": "做一个三十秒的视频，柴犬在月球上探险。",
+  "expect": {
+   "route": [
+    "back"
+   ]
+  },
+  "setup": {
+   "assets": [
+    {
+     "name": "柴犬宇航员海报",
+     "kind": "image"
+    }
+   ]
+  },
+  "note": "一条最长 15 秒：更长的交后台拼"
+ },
+ {
+  "id": "back-series",
+  "group": "创作·超出一条",
+  "say": "帮我做一套九张的朋友圈海报，先出个方案再做。",
+  "expect": {
+   "route": [
+    "back"
+   ],
+   "never": [
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "back-says-so",
+  "group": "创作·用户指定",
+  "say": "交给后台，做一张柴犬宇航员的海报。",
+  "expect": {
+   "route": [
+    "back"
+   ],
+   "never": [
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "write-send-picture",
+  "group": "写操作",
+  "say": "把这张海报发到我的飞书私信。",
+  "expect": {
+   "route": [
+    "back"
+   ],
+   "never": [
+    "make"
+   ]
+  },
+  "setup": {
+   "assets": [
+    {
+     "name": "柴犬宇航员海报",
+     "kind": "image"
+    }
+   ]
+  }
+ },
+ {
+  "id": "write-event",
+  "group": "写操作",
+  "say": "帮我建个日程，明天下午两点到四点带孩子去科技馆。",
+  "expect": {
+   "route": [
+    "back"
+   ],
+   "never": [
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "write-doc",
+  "group": "写操作",
+  "say": "把刚才聊的整理成一个飞书文档。",
+  "expect": {
+   "route": [
+    "back"
+   ],
+   "never": [
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "write-message",
+  "group": "写操作",
+  "say": "给小王发条消息，说我晚十分钟到。",
+  "expect": {
+   "route": [
+    "back",
+    "talk"
+   ],
+   "never": [
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "write-remind",
+  "group": "写操作",
+  "say": "提醒我明天早上八点吃药。",
+  "expect": {
+   "route": [
+    "back"
+   ],
+   "never": [
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "write-order",
+  "group": "写操作",
+  "say": "帮我订一张周五去北京的高铁票。",
+  "expect": {
+   "route": [
+    "back",
+    "talk"
+   ],
+   "never": [
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "plan-research",
+  "group": "多步",
+  "say": "帮我调研一下最近三款扫地机器人，写一份对比报告。",
+  "expect": {
+   "route": [
+    "back"
+   ],
+   "never": [
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "plan-trip",
+  "group": "多步",
+  "say": "帮我规划一个五天的佛罗伦萨行程。",
+  "expect": {
+   "route": [
+    "back"
+   ],
+   "never": [
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "plan-analyze",
+  "group": "多步",
+  "say": "把我们上个季度和这个季度的数据对比一下，找找下滑的原因。",
+  "expect": {
+   "route": [
+    "back",
+    "lookup+back"
+   ],
+   "never": [
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "plan-recheck",
+  "group": "多步·边缘",
+  "say": [
+   "昨天湖人那场比赛，谁得分最高？",
+   "我觉得你刚才的数据不对，重新核实一遍。"
+  ],
+  "expect": {
+   "route": [
+    "back",
+    "lookup"
+   ],
+   "never": [
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "user-back",
+  "group": "用户指定",
+  "say": "用后台查一下现在哪款扫地机器人比较好用。",
+  "expect": {
+   "route": [
+    "back"
+   ]
+  }
+ },
+ {
+  "id": "user-front",
+  "group": "用户指定",
+  "say": "不用交后台，你直接告诉我就行：地球到月球有多远？",
+  "expect": {
+   "route": [
+    "talk",
+    "lookup",
+    "lesson"
+   ],
+   "never": [
+    "back"
+   ]
+  }
+ },
+ {
+  "id": "ctl-progress-back",
+  "group": "进度",
+  "say": [
+   "帮我调研一下最近三款扫地机器人，写一份对比报告。",
+   "做好了吗？"
+  ],
+  "expect": {
+   "route": [
+    "talk",
+    "control"
+   ],
+   "never": [
+    "make"
+   ]
+  },
+  "note": "问进度不再派一次"
+ },
+ {
+  "id": "ctl-cancel",
+  "group": "进度",
+  "say": [
+   "帮我调研一下最近三款扫地机器人，写一份对比报告。",
+   "算了，取消吧。"
+  ],
+  "expect": {
+   "route": [
+    "control"
+   ],
+   "never": [
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "ctl-progress-make",
+  "group": "进度",
+  "say": [
+   "帮我生成一张海报：穿宇航服的柴犬站在月球上。",
+   "好了没？"
+  ],
+  "expect": {
+   "route": [
+    "talk",
+    "lookup"
+   ],
+   "never": [
+    "back"
+   ]
+  },
+  "note": "问进度不重新生成、不转后台"
+ },
+ {
+  "id": "ctl-bye",
+  "group": "进度",
+  "say": "好了，先这样，拜拜。",
+  "expect": {
+   "route": [
+    "control"
+   ],
+   "never": [
+    "back",
+    "make"
+   ]
+  }
+ },
+ {
+  "id": "talk-opinion",
+  "group": "闲聊",
+  "say": "你觉得周末带孩子去爬山还是去海边好？",
+  "expect": {
+   "route": [
+    "talk",
+    "lesson"
+   ],
+   "never": [
+    "back",
+    "make"
+   ]
+  },
+  "note": "前台自己的事（直接说，或者用讲解工具配着画面说）"
+ },
+ {
+  "id": "talk-joke",
+  "group": "闲聊",
+  "say": "给我讲个笑话。",
+  "expect": {
+   "route": [
+    "talk",
+    "lesson"
+   ],
+   "never": [
+    "back",
+    "make"
+   ]
+  },
+  "note": "前台自己的事（直接说，或者用讲解工具配着画面说）"
+ },
+ {
+  "id": "talk-recap",
+  "group": "闲聊·边缘",
+  "say": [
+   "珠穆朗玛峰有多高？",
+   "把我们刚才聊的总结一下。"
+  ],
+  "expect": {
+   "route": [
+    "talk",
+    "lookup"
+   ],
+   "never": [
+    "back",
+    "make"
+   ]
+  },
+  "note": "刚说过的话就在手上"
+ },
+ {
+  "id": "talk-vague",
+  "group": "闲聊·边缘",
+  "say": "帮我安排一下。",
+  "expect": {
+   "route": [
+    "talk"
+   ],
+   "never": [
+    "make"
+   ]
+  },
+  "note": "没说安排什么：先问，不派"
+ },
+ {
+  "id": "entry-bound",
+  "group": "入口",
+  "say": "帮我生成一张海报：穿宇航服的柴犬站在月球上。",
+  "expect": {
+   "route": [
+    "back"
+   ],
+   "never": [
+    "make"
+   ]
+  },
+  "setup": {
+   "entry": "bound"
+  },
+  "note": "别的会话的入口没有前台创作"
+ },
+ {
+  "id": "entry-bound-explain",
+  "group": "入口",
+  "say": "黑洞是怎么形成的？给我讲讲。",
+  "expect": {
+   "route": [
+    "lesson",
+    "talk"
+   ],
+   "never": [
+    "make"
+   ]
+  },
+  "setup": {
+   "entry": "bound"
+  }
+ },
+ {
+  "id": "mix-explain-send",
+  "group": "混合",
+  "say": "给我讲讲光合作用，然后把要点发到我飞书。",
+  "expect": {
+   "route": [
+    "back",
+    "lesson+back",
+    "talk+back"
+   ],
+   "never": [
+    "make"
+   ]
+  },
+  "settleMs": 9000
+ },
+ {
+  "id": "mix-make-send",
+  "group": "混合",
+  "say": "把这张海报做成五秒的视频，做好了发我飞书私信。",
+  "expect": {
+   "route": [
+    "make+back",
+    "make",
+    "back"
+   ]
+  },
+  "setup": {
+   "assets": [
+    {
+     "name": "柴犬宇航员海报",
+     "kind": "image"
+    }
+   ]
+  },
+  "note": "做可以前台，发必须后台",
+  "settleMs": 9000
+ }
+]

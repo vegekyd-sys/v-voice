@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-21 — What V makes goes up on the board; one rule for what V does itself; places ringed on photographs
+
+- Both are on wherever the call board is on (`VOICE_BOARD_ASSETS=0` / `VOICE_BOARD_CANVAS=0` turn one off): no change to production's private configuration.
+- The shelf of made things: a picture or video V makes in a call is on the board from the moment it is asked for (a sketch, then the picture, then the video in the picture's own frame); the voice model is told what is on the caller's screen and names things by id or by name; found photographs can be the reference of what is made (lent under private half-hour addresses, small ones enlarged); several references; one viewer for found and made pictures, with save; V says a thing is ready the moment it is on the screen.
+- A video's script is rewritten by a director's pass on the board's model, shown the reference pictures (`VOICE_MEDIA_SCRIPT`): shots that add up, an ending the caller named, one take for a quiet picture; 32 cases run by rule and filmed.
+- V's own image is a standing picture of the shelf (`--image v`): V's canonical avatar.
+- One rule for what the voice model does itself and what goes to the backend, in place of a rule per kind of task: is everything at hand, can it be done in one go, does it touch only this call (`VOICE_HANDOFF_RULE`). Backed by code in four places: a request that names something not at hand is not drawn from words (`material-check.mjs`), a reference that is not on the screen, a lookup refused for lack of access, and a video over fifteen seconds all point to the backend. 62 routing cases on the real voice model with stand-in tools: 104/124 before, 125/130 after (`docs/research/voice-routing/handbook.md`).
+- The canvas (from `claude/board-canvas-live`): what can be seen goes up as a large photograph and the places V talks about are ringed on it as V reaches them.
+- Nothing is drawn for a request that only asks for pictures to be found; found photographs of the same name go by their row.
+
 ## 2026-11-21 — No more blank call page from a gallery
 
 - A gallery measured its names' height from the page as drawn and set its rows from it: a narrow picture's name went to two lines with smaller pictures and back to one with larger ones, every render, until React stopped ("Maximum update depth exceeded") and the whole call page went blank (production 11/21 15:28, after #242 made pictures arrive together; Tianyi had seen it before). The names' height now only grows for one set of pictures, and a gallery takes at most a few size changes a frame.

@@ -1,15 +1,15 @@
 {
   "sources": {
     "index.html": "ec12729a0da0ef472fc977e37bb75c413eb66bbcde725b1aa47a5fdf7f450105",
-    "styles.css": "269a5284e17e85a46ccc8328800e1b71d5099c7c5a2588274c000556846ec24c",
-    "ui/call-ui.jsx": "57a6cbdee4e746d858e006fd9d7ed6c241bd51ae95a3b3783ea91b381338e44c",
-    "ui-bundle.mjs": "34dbc4d044a732228fb7afe8226978c2edec399efccc879b609f19b11db5a0c4",
+    "styles.css": "d758f1f8ad87f481ae314baaf24d918741c51bc6c7e96f439e7e2658594d4c2d",
+    "ui/call-ui.jsx": "17e28993384e5644f88475e7367c12eff98438e2202a7ee8f4484d01742a66c4",
+    "ui-bundle.mjs": "213272fc605d7fcf14247302aafed2aebe3e3d2bdf5a82d87ddd937f2e420a06",
     "app-handoff.mjs": "31705d0424c9043e64844ac047ef090fe4582f475b74d78e4b5dec04ebca3465",
-    "call-view.mjs": "aec8280d20b5e4723577e42a223603968c3814b4739475f04d22f08d10a69990",
+    "call-view.mjs": "4c823a063a119e798752af42f577471425ee579085151e85d14bc06587e52665",
     "content-view.mjs": "b0b3fd358d3c3343b6f9bd7d78a5c3d08d7d3c4b934679142037435b4493b415",
     "markdown.mjs": "a556476a8a88b35aba790f993a8bde333150aebab9dc7fdce14aa2e3c586ace0",
     "media-references.mjs": "ca8509fad6ef83f83f9365432652058e1a364b5adb1a199508d3239521d581f8",
-    "changelog.mjs": "1518d50c6ff60814d3c2f6b1ea9a1d865fffa1d09bad39d39c3182a6ddde9604",
+    "changelog.mjs": "1fa36a95e38baaddc6cc66a120bae74f9f7d04f686e9b522d48e1707b6dd8fac",
     "avatar.mjs": "65ea1485a75d69816e2cb408b508716f151e7d33b9a8957af5a3d0f55e360df7",
     "avatar-reactions.mjs": "69880767130ffc0ff6adcecd6e4ea13b65073def959ce9a5189ab8806f9f1b1e",
     "avatar-telemetry.mjs": "236b9d6e5ad67009d83347f72002b69b01f3c5e7eb71bdde7d4166d59c9b254c",
@@ -128,13 +128,13 @@
     "assets/v-voice-icon.svg": "2b578443cc70bc8eb78ff9877be5e70473d61ed6713ea6f538bd1fa665d27c66",
     "assets/v-voice-icon-32.png": "7bae67ea83c9c7cf81afd9786a18b94c73f9d3643372467e7d331532d1d5555b",
     "assets/v-voice-apple-touch.png": "643f67cd7d67bb2563f79ec2938d01e869cd2634bd9f78e7597f98afe525763c",
-    "ios/H5/native-h5.mjs": "28f8b1dea1761722d6ca8a2294379432a67e2dff475b209427d0c3a3a1cef58e"
+    "ios/H5/native-h5.mjs": "d501e36e8fa2ae278a94d1e113a7321cc52c54a8e36104801ae33a442daf32d8"
   },
   "outputs": {
     "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
-    "native-h5.js": "284eaa113280fd26da566b8820976b8d09058414b32efec287e44206a25c2969",
+    "native-h5.js": "14a32b2266310631507784f7b565d2c7e2bf4514597dba32901f7228fa67147d",
     "comparison.html": "7beb6c5d3e5933b5c020ddf23e200679318faa98568904f927d0553ea3d33076",
-    "styles.css": "269a5284e17e85a46ccc8328800e1b71d5099c7c5a2588274c000556846ec24c",
+    "styles.css": "d758f1f8ad87f481ae314baaf24d918741c51bc6c7e96f439e7e2658594d4c2d",
     "comparison.css": "ae9fbcffb322e32737e2ce0ed830c1b86f9f27406b4ce8b686dc8cac9f36ba16",
     "comparison.mjs": "8fc7a4bd3323e4ff2aaab383103b950015f4fb3c05ca327ba09790fbc6f7113b",
     "assets/v-operator-home-1024.webp": "5cf1ddc6b9b9abd06c1ac15be325f9b86cbaa4db8363daeec0da6040e128d319",

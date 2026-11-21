@@ -4,9 +4,10 @@
 // stay in pencil. Renders a scene from board-scene.mjs. Every string is plain
 // text; nothing written by the director model is interpreted as markup.
 import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
-import {createPortal} from 'react-dom';
-import {edgeId, flowLayout, galleryLayout, markedBlocks, scalePositions} from '../board-scene.mjs';
+import {edgeId, flowLayout, galleryLayout, heroPhoto, markedBlocks, scalePositions} from '../board-scene.mjs';
 import {MARK_PATHS, arrow, fitPath, pointer, ring, tilt, underline} from '../board-sketch.mjs';
+import {Work} from './board-work.jsx';
+import {Viewer, pagePictures} from './board-viewer.jsx';
 
 // One pen stroke over its target. CSS sizes the box; the path is fitted to the
 // box's real size once it is known, and `pathLength` lets CSS draw it on.
@@ -63,26 +64,114 @@ function Key({item, seed, children}) {
 // A picture on the page opens large when tapped or clicked (view.enlarge):
 // pictures in a crowded page can be small. Its name is the item's words.
 const plain = value => String(value ?? '').replaceAll('*', '');
-function opener(enlarge, src, name) {
+// (`query`: what was searched for, for a photograph the board found: how the call's shelf knows it.)
+function opener(enlarge, src, name, {query = ''} = {}) {
   if (!enlarge || !src) return {};
-  const open = () => enlarge({src, name: plain(name)});
-  return {role: 'button', tabIndex: 0, 'aria-label': `放大：${plain(name)}`, 'data-enlarge': 'true', onClick: open,
-    onKeyDown: event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } }};
+  const open = event => enlarge(event.currentTarget);
+  return {role: 'button', tabIndex: 0, 'aria-label': `放大：${plain(name)}`, 'data-enlarge': 'true', 'data-name': plain(name), ...(query ? {'data-query': query} : {}), onClick: open,
+    onKeyDown: event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(event); } }};
 }
 // The picture of the thing an item is about, fetched through the Voice
 // service like a photo block. Nothing is shown when none is found.
-function Thumb({query, name, view, seed, onGone, onShape}) {
+// A hand-drawn ring round a box: a little wobbly, overshooting where it began.
+function handRing(cx, cy, rx, ry, seed) {
+  let random = 0;
+  for (const char of seed) random = (random * 31 + char.charCodeAt(0)) % 997;
+  const wob = index => Math.sin(random + index * 1.7) * .05, start = -2.3, points = [];
+  for (let step = 0; step <= 26; step++) {
+    const t = step / 26, angle = start + t * Math.PI * 2.12, grow = 1 + wob(step) + t * .04;
+    points.push(`${Math.round(cx + Math.cos(angle) * rx * grow)} ${Math.round(cy + Math.sin(angle) * ry * grow)}`);
+  }
+  return 'M' + points.join(' L');
+}
+// The places pinned on a picture (scene.pins; the canvas), laid over it: the one V is on is ringed and
+// named, and marked for the page's pointer ([data-aim], see Sheet); the others are not shown, so the
+// picture never fills with old circles. `ratio` is the picture's own shape: it is shown whole inside its
+// frame, and a place is a part of the picture, not of the frame. Nothing is drawn on a picture too
+// small to point at.
+function Pins({pins, ratio, view}) {
+  const ref = useRef(null);
+  const [size, setSize] = useState(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    const read = () => { const width = Math.round(element.clientWidth), height = Math.round(element.clientHeight); if (width && height) setSize(old => old && old.width === width && old.height === height ? old : {width, height}); };
+    read();
+    if (typeof ResizeObserver !== 'function') return;
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  let drawn = null;
+  if (size && size.width >= 100) {
+    const w = Math.min(size.width, size.height * ratio), h = w / ratio, x = (size.width - w) / 2, y = (size.height - h) / 2;
+    const box = pin => ({x1: x + pin.box[0] / 1000 * w, y1: y + pin.box[1] / 1000 * h, x2: x + pin.box[2] / 1000 * w, y2: y + pin.box[3] / 1000 * h});
+    const on = pins.includes(view.pin) ? view.pin : null, at = on && box(on);
+    drawn = (
+      <>
+        <svg viewBox={`0 0 ${size.width} ${size.height}`} aria-hidden="true">
+          {pins.filter(pin => pin.kind === 'ring').map((pin, index) => { const b = box(pin); return <path key={index} className="board-pin-ring" pathLength="1" data-on={pin === on || undefined} d={handRing((b.x1 + b.x2) / 2, (b.y1 + b.y2) / 2, Math.max(12, (b.x2 - b.x1) / 2 + 5), Math.max(12, (b.y2 - b.y1) / 2 + 5), pin.q)} />; })}
+        </svg>
+        {pins.filter(pin => pin.h).map((pin, index) => { const b = box(pin), above = b.y1 > 44; return <span key={index} className="board-pin-tag" data-on={pin === on || undefined} data-below={!above || undefined} style={{left: Math.min(size.width - 40, Math.max(40, (b.x1 + b.x2) / 2)), top: above ? b.y1 - 12 : b.y2 + 12}}>{pin.h}</span>; })}
+        {at && <i className="board-pin-aim" data-aim="true" style={on.kind === 'point' ? {left: (at.x1 + at.x2) / 2, top: (at.y1 + at.y2) / 2} : {left: (at.x1 + at.x2) / 2 + (at.x2 - at.x1) * .36 + 4, top: (at.y1 + at.y2) / 2 + (at.y2 - at.y1) * .36 + 4}} />}
+      </>
+    );
+  }
+  return <span className="board-pins" ref={ref}>{drawn}</span>;
+}
+// (`open`: shown large, where it is; `onOpen`: a tap on the small picture opens it there instead of over the page.)
+function Thumb({query, name, view, seed, onGone, onShape, open = false, onOpen = null}) {
   const [src, setSrc] = useState(null);
   const [gone, setGone] = useState(false);
+  const [ratio, setRatio] = useState(0);
   useEffect(() => {
     let live = true;
-    setSrc(null); setGone(false);
+    setSrc(null); setGone(false); setRatio(0);
     const lost = () => { if (live) { setGone(true); onGone?.(); } };
     Promise.resolve(view.loadPhoto?.(query)).then(url => { if (live) { if (url) setSrc(url); else lost(); } }, lost);
     return () => { live = false; };
   }, [query]);
   if (gone) return null;
-  return <span className="board-thumb" data-ready={String(Boolean(src))} style={{'--tilt': tilt(seed + ':img', 3) + 'deg'}} {...opener(view.enlarge, src, name ?? query)}>{src && <img src={src} alt={query} decoding="async" onLoad={onShape && (event => { const {naturalWidth: width, naturalHeight: height} = event.currentTarget; if (width && height) onShape(width / height); })} />}</span>;
+  // (Picked by the caller: the one V takes "this one" to be.)
+  const picked = Boolean(view.picked) && view.photos?.get?.(query)?.id === view.picked;
+  const pins = (view.pins ?? []).filter(pin => pin.img === query);
+  const act = onOpen && !open && src ? {role: 'button', tabIndex: 0, 'aria-label': `放大：${plain(name ?? query)}`, 'data-enlarge': 'true', onClick: onOpen, onKeyDown: event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen(); } }} : opener(view.enlarge, src, name ?? query, {query});
+  return (
+    <span className="board-thumb" data-ready={String(Boolean(src))} data-open={open || undefined} data-picked={picked || undefined} data-pinned={pins.length ? 'true' : undefined} style={{'--tilt': open ? '0deg' : tilt(seed + ':img', 3) + 'deg', ...(ratio ? {'--shape': Math.min(2.2, Math.max(.6, ratio))} : {})}} {...act}>
+      {src && <img src={src} alt={query} decoding="async" onLoad={event => { const {naturalWidth: width, naturalHeight: height} = event.currentTarget; if (width && height) { setRatio(width / height); onShape?.(width / height); } }} />}
+      {src && ratio > 0 && pins.length > 0 && <Pins pins={pins} ratio={ratio} view={view} />}
+    </span>
+  );
+}
+// The canvas: of a list's pictures, one is shown large, where it is in the list - the one V is on, or
+// was last on; once V has stopped, any the caller taps. One is always large (the first, before V has
+// got to any), so the page keeps its height while V goes from one to the next. Returns the id of
+// that item, a way to pick another, and a ref for the list: what moves when the large one changes
+// is carried there from where it was (the picture grows out of its small self, the others slide).
+function useOpenPicture(block, view) {
+  const pictured = view.canvas ? block.items.filter(item => item.img) : [];
+  const led = pictured.find(item => view.focus === `${block.id}/${item.id}`)?.id ?? null;
+  const [held, setHeld] = useState(null), [picked, setPicked] = useState(null);
+  useEffect(() => { if (led) { setHeld(led); setPicked(null); } }, [led]);
+  const open = pictured.find(item => item.id === (picked ?? led ?? held))?.id ?? pictured[0]?.id ?? null;
+  const ref = useRef(null), before = useRef(null);
+  useLayoutEffect(() => {
+    const host = ref.current;
+    if (!host || !pictured.length) return;
+    const rects = new Map([...host.children].map(row => { const r = row.getBoundingClientRect(), t = row.querySelector(':scope > .board-thumb')?.getBoundingClientRect(); return [row, {x: r.left, y: r.top, t: t ? {x: t.left - r.left, y: t.top - r.top, w: t.width, h: t.height} : null}]; }));
+    const old = before.current;
+    before.current = {open, rects};
+    if (!old || old.open === open || typeof host.animate !== 'function' || typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const zoom = Number(host.closest('.board-body')?.style.zoom) || 1, timing = {duration: 520, easing: 'cubic-bezier(.2, .9, .25, 1)'};
+    for (const [row, next] of rects) {
+      const was = old.rects.get(row);
+      if (!was) continue;
+      const dx = (was.x - next.x) / zoom, dy = (was.y - next.y) / zoom;
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) row.animate([{transform: `translate(${dx}px, ${dy}px)`}, {transform: 'none'}], timing);
+      const thumb = row.querySelector(':scope > .board-thumb');
+      if (thumb && was.t && next.t && next.t.w && next.t.h && Math.abs(was.t.w - next.t.w) > 2) thumb.animate([{transformOrigin: '0 0', transform: `translate(${(was.t.x - next.t.x) / zoom}px, ${(was.t.y - next.t.y) / zoom}px) scale(${was.t.w / next.t.w}, ${was.t.h / next.t.h})`}, {transformOrigin: '0 0', transform: 'none'}], timing);
+    }
+  });
+  return {open, pick: setPicked, ref};
 }
 // A number that is counted up to as it appears (whole numbers only; anything else is shown as written).
 function Figure({value, on}) {
@@ -103,14 +192,15 @@ const Heading = ({block}) => block.h ? <h3 className="board-h">{block.h}</h3> : 
 function List({block, view, ordered}) {
   if (block.look === 'gallery' && !ordered) return <Gallery block={block} view={view} />;
   const Tag = ordered ? 'ol' : 'ul';
+  const picture = useOpenPicture(block, view);
   return (
     <>
       <Heading block={block} />
-      <Tag className={ordered ? 'board-steps' : 'board-list'} data-many={block.items.length > 6 || undefined} style={{'--half': Math.ceil(block.items.length / 2)}}>
+      <Tag className={ordered ? 'board-steps' : 'board-list'} ref={picture.ref} data-many={block.items.length > 6 && !picture.open || undefined} style={{'--half': Math.ceil(block.items.length / 2)}}>
         {block.items.map((item, index) => {
           const state = itemState(view, block, item);
           return (
-            <li key={item.id} {...state.props}>
+            <li key={item.id} {...state.props} data-open={item.id === picture.open || undefined}>
               <span className="board-lead" aria-hidden={!ordered || undefined}>
                 {ordered ? <><Stroke className="board-badge-ring" d={ring(state.id + ':n')} /><b>{index + 1}</b></>
                   : leads(item.mark) ? <Mark kind={item.mark} seed={state.id} />
@@ -120,7 +210,7 @@ function List({block, view, ordered}) {
                 <Key item={item} seed={state.id}>{ordered && item.icon ? item.icon + ' ' : ''}{em(item.h)}</Key>
                 {item.d && <span>{em(item.d)}</span>}
               </div>
-              {item.img && <Thumb query={item.img} name={item.h} view={view} seed={state.id} />}
+              {item.img && <Thumb query={item.img} name={item.h} view={view} seed={state.id} open={item.id === picture.open} onOpen={picture.open ? () => picture.pick(item.id) : null} />}
             </li>
           );
         })}
@@ -618,8 +708,10 @@ const Sticky = ({block}) => <><Tape /><p className="board-sticky-text">{em(block
 
 // A real photograph, fetched through the Voice service. Until it arrives the
 // print is still developing; if nothing is found the print is taken away.
-function Photo({block, loadPhoto, onMissing, enlarge}) {
+function Photo({block, loadPhoto, onMissing, enlarge, view = null}) {
   const [src, setSrc] = useState(null);
+  const [ratio, setRatio] = useState(0);
+  const pins = (view?.pins ?? []).filter(pin => pin.img === block.query);
   useEffect(() => {
     let live = true;
     Promise.resolve(loadPhoto?.(block.query)).then(url => { if (!live) return; if (url) setSrc(url); else onMissing(); }, () => { if (live) onMissing(); });
@@ -628,14 +720,60 @@ function Photo({block, loadPhoto, onMissing, enlarge}) {
   return (
     <>
       <Tape />
-      <div className="board-print" data-ready={String(Boolean(src))} {...opener(enlarge, src, block.caption ?? block.query)}>{src && <img src={src} alt={block.caption ?? block.query} decoding="async" />}</div>
+      <div className="board-print" data-ready={String(Boolean(src))} style={ratio ? {'--shape': Math.min(2, Math.max(.7, ratio))} : undefined} {...opener(enlarge, src, block.caption ?? block.query, {query: block.query})}>
+        {src && <img src={src} alt={block.caption ?? block.query} decoding="async" onLoad={event => { const {naturalWidth: width, naturalHeight: height} = event.currentTarget; if (width && height) setRatio(width / height); }} />}
+        {src && ratio > 0 && view && pins.length > 0 && <Pins pins={pins} ratio={ratio} view={view} />}
+      </div>
       <figcaption>{block.caption ?? block.query}</figcaption>
     </>
   );
 }
 
+const Cursor = () => <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 2l15 9-6.5 1.6L8.6 19z" /></svg>;
+// A pitch with names placed where they stand (stage; VOICE_BOARD_CANVAS), each appearing when V
+// gets to it. Coordinates are the model's: 0-1000 across and down the pitch.
+const PITCH = {x: 70, y: 30, w: 860, h: 940};
+function Stage({block, view}) {
+  const height = 1000, chips = block.items;
+  const place = chip => ({x: PITCH.x + chip.at[0] / 1000 * PITCH.w, y: PITCH.y + chip.at[1] / 1000 * PITCH.h});
+  const pct = (value, of) => `${(value / of * 100).toFixed(2)}%`;
+  const arrows = block.edges.map(([from, to, label]) => {
+    const ends = [from, to].map(end => chips.find(chip => chip.id === end));
+    if (!ends[0] || !ends[1]) return null;
+    const a = place(ends[0]), b = place(ends[1]), dx = b.x - a.x, dy = b.y - a.y, length = Math.hypot(dx, dy) || 1, gap = Math.min(60, length * .3);
+    const p0 = {x: a.x + dx / length * gap, y: a.y + dy / length * gap}, p2 = {x: b.x - dx / length * gap, y: b.y - dy / length * gap}, angle = Math.atan2(dy, dx);
+    const head = side => `${Math.round(p2.x - 22 * Math.cos(angle + side))} ${Math.round(p2.y - 22 * Math.sin(angle + side))}`;
+    return {key: `${from}>${to}`, ahead: view.ahead.has(edgeId(block, from, to)), label, mid: {x: (p0.x + p2.x) / 2, y: (p0.y + p2.y) / 2},
+      d: `M${Math.round(p0.x)} ${Math.round(p0.y)} L${Math.round(p2.x)} ${Math.round(p2.y)} M${head(-.45)} L${Math.round(p2.x)} ${Math.round(p2.y)} L${head(.45)}`};
+  }).filter(Boolean);
+  return (
+    <>
+      <Heading block={block} />
+      <div className="board-stage-sheet" style={{aspectRatio: `1000 / ${height}`, '--sheet-h': height}}>
+        <svg className="board-stage-pitch" viewBox={`0 0 1000 ${height}`} aria-hidden="true">
+          <rect x={PITCH.x} y={PITCH.y} width={PITCH.w} height={PITCH.h} rx="10" />
+          <line x1={PITCH.x} y1={PITCH.y + PITCH.h / 2} x2={PITCH.x + PITCH.w} y2={PITCH.y + PITCH.h / 2} />
+          <circle cx={PITCH.x + PITCH.w / 2} cy={PITCH.y + PITCH.h / 2} r="80" />
+          <rect x={PITCH.x + PITCH.w * .22} y={PITCH.y} width={PITCH.w * .56} height="140" />
+          <rect x={PITCH.x + PITCH.w * .22} y={PITCH.y + PITCH.h - 140} width={PITCH.w * .56} height="140" />
+          {arrows.map(item => <path key={item.key} className="board-stage-arrow" data-ink={String(!item.ahead)} d={item.d} />)}
+        </svg>
+        {arrows.filter(item => item.label).map(item => (
+          <span key={item.key} className="board-stage-say" data-ink={String(!item.ahead)} style={{left: pct(item.mid.x, 1000), top: pct(item.mid.y, height)}}>{item.label}</span>
+        ))}
+        {chips.map(chip => {
+          const at = place(chip), state = itemState(view, block, chip);
+          return <span key={chip.id} className="board-stage-chip" {...state.props} style={{left: pct(at.x, 1000), top: pct(at.y, height)}}><b className="board-key-text">{chip.h}</b>{chip.d && <small>{chip.d}</small>}</span>;
+        })}
+      </div>
+    </>
+  );
+}
+
 const RENDER = {note: Sticky, sticky: Sticky, list: props => <List {...props} />, steps: props => <List {...props} ordered />, compare: Compare, stats: Stats, bars: Bars, table: Table, flow: Flow,
-  draw: Draw, tiles: Tiles, formula: Formula, timeline: Timeline, versus: Versus, overlap: Overlap, stack: Stack, scale: Scale};
+  draw: Draw, tiles: Tiles, formula: Formula, timeline: Timeline, versus: Versus, overlap: Overlap, stack: Stack, scale: Scale, stage: Stage,
+  // A thing V made in this call (board-work.jsx).
+  work: Work};
 const SMALL = new Set(['note', 'sticky', 'photo']);
 const PAPER = {note: 'butter', sticky: 'butter'};
 
@@ -651,6 +789,11 @@ function useFit(scroller, page, key) {
     const fit = () => {
       const wide = outer.clientWidth >= 640, least = wide ? .62 : .78, edge = getComputedStyle(outer), room = outer.clientHeight - (parseFloat(edge.paddingTop) || 0) - (parseFloat(edge.paddingBottom) || 0);
       let zoom = 1;
+      // How a page with a canvas is laid out, by the panel's own shape (not the window's: on a desktop the
+      // panel is half the window): lying on its side, the canvas on the left and the written blocks beside it;
+      // wide but upright, the canvas on top and the blocks two abreast under it; narrow, one under another.
+      const lay = outer.clientWidth >= 760 && outer.clientWidth >= outer.clientHeight ? 'side' : outer.clientWidth >= 640 ? 'top' : '';
+      if (lay) inner.dataset.lay = lay; else delete inner.dataset.lay;
       // The page is at least as tall as the panel, at any zoom. (In px: a length is drawn at the
       // page's zoom, while a percentage is of the panel as it is; `100% / zoom` made a page drawn
       // smaller taller than the panel, so its content sat low and the bottom was cut off.)
@@ -683,12 +826,18 @@ function useFit(scroller, page, key) {
 }
 
 // One page of the canvas: its blocks, fitted to the panel.
-function Sheet({scene, spoken, loadPhoto, enlarge, caption = ''}) {
+function Sheet({scene, spoken, loadPhoto, enlarge, caption = '', works = null}) {
   const box = useRef(null), sheet = useRef(null);
   const [missing, setMissing] = useState(() => new Set());
   const dense = useFit(box, sheet, scene.serial);
   // While V speaks the mark follows the voice; otherwise it stays where the director put it.
-  const view = {focus: spoken?.focus || scene.focus, ahead: new Set(spoken?.ahead ?? []), loadPhoto, enlarge};
+  // (`works`: the call's shelf of made things: what each id is, the one the caller has picked, and how to pick, report and act.)
+  // (`pin`: the place on a picture V is on, when it is on one; the mark is then on what the picture belongs to.)
+  const view = {focus: spoken?.focus || scene.focus, ahead: new Set(spoken?.ahead ?? []), loadPhoto, enlarge,
+    assets: works?.assets ?? null, photos: works?.photos ?? null, picked: works?.picked ?? '', pick: works?.pick, shown: works?.shown, act: works?.act, title: scene.title,
+    canvas: scene.canvas === true, pins: scene.canvas ? scene.pins ?? [] : [], pin: scene.canvas && spoken && spoken.pin >= 0 ? scene.pins?.[spoken.pin] ?? null : null};
+  // With the canvas, a print that is the page's only picture is shown large: it is what V is talking about.
+  const hero = scene.canvas ? heroPhoto(scene) : null;
   // Only the page V is on follows the voice, and only up and down inside the page: scrollIntoView
   // also scrolled the strip of pages sideways, to whichever page last had a focus, while the board
   // brought the view back to V's page; on a phone the view swung between two pages (11/14).
@@ -700,6 +849,29 @@ function Sheet({scene, spoken, loadPhoto, enlarge, caption = ''}) {
     const top = host.scrollTop + (at.top < frame.top ? at.top - frame.top - 12 : at.bottom - frame.bottom + 12);
     host.scrollTo?.({top, behavior: 'smooth'});
   }, [view.focus, scene.rev, Boolean(spoken)]);
+  // The canvas's pointer (scene.canvas): one on the page, where V's voice is - at the place on a
+  // photograph the stage marks for it ([data-aim]), else on the written item V is on. It is placed by
+  // looking at where that is on the page as laid out (a photograph may arrive, the page may be refitted),
+  // and goes away when V stops speaking.
+  const pointer = useRef(null);
+  useEffect(() => {
+    const body = sheet.current, hand = pointer.current;
+    if (!body || !hand) return;
+    if (!spoken) { hand.removeAttribute('data-on'); return; }
+    const place = () => {
+      const aim = body.querySelector('[data-aim]'), item = aim ? null : body.querySelector('[data-now]');
+      const target = aim ?? item?.querySelector('.board-key-text') ?? item;
+      const frame = body.getBoundingClientRect(), at = target?.getBoundingClientRect();
+      if (!at || !frame.width || !frame.height || !aim && !at.width) { hand.removeAttribute('data-on'); return; }
+      const x = aim ? at.left : at.left + Math.min(at.width * .5, 46), y = aim ? at.top : at.top + at.height * .72;
+      hand.style.left = `${((x - frame.left) / frame.width * 100).toFixed(2)}%`;
+      hand.style.top = `${((y - frame.top) / frame.height * 100).toFixed(2)}%`;
+      hand.setAttribute('data-on', 'true');
+    };
+    place();
+    const timer = setInterval(place, 300);
+    return () => clearInterval(timer);
+  }, [view.focus, scene.rev, Boolean(spoken), Boolean(scene.canvas)]);
   // Pen marks V has reached are on their items; the others are still to come.
   const blocks = markedBlocks(scene, view.ahead).filter(block => !(block.t === 'photo' && missing.has(block.query)));
   // Neighbours that each ask for part of the width (`w`) stand side by side.
@@ -708,20 +880,22 @@ function Sheet({scene, spoken, loadPhoto, enlarge, caption = ''}) {
     const last = rows.at(-1);
     // (When the page would not fit, its main blocks pair up as if each had asked for half.)
     // (A gallery keeps the whole width: its pictures are what the caller asked to see.)
-    const halves = piece => dense && !SMALL.has(piece.t) && piece.look !== 'gallery';
-    const width = block.w ?? (halves(block) ? 'half' : undefined), ahead = last?.[0].w ?? (last && halves(last[0]) ? 'half' : undefined);
+    // (A canvas is never paired: on a wide panel it has the left column to itself, see styles.css.)
+    const halves = piece => dense && !SMALL.has(piece.t) && piece.look !== 'gallery' && piece.t !== 'stage' && piece !== hero;
+    const width = block.t === 'stage' ? undefined : block.w ?? (halves(block) ? 'half' : undefined), ahead = last?.[0].t === 'stage' ? undefined : last?.[0].w ?? (last && halves(last[0]) ? 'half' : undefined);
     if (width && ahead && last.length < (ahead === 'third' ? 3 : 2)) last.push(block); else rows.push([block]);
   }
   return (
     <div className="board-scroll" ref={box} role="region" aria-live="polite" aria-label="画面内容" tabIndex={0}>
       <div className="board-body" ref={sheet}
-        data-side={blocks.some(block => SMALL.has(block.t)) && blocks.some(block => !SMALL.has(block.t)) || undefined} data-cue={scene.cue || undefined}>
+        data-side={blocks.some(block => SMALL.has(block.t) && block !== hero) && blocks.some(block => !SMALL.has(block.t) || block === hero) || undefined} data-lead={hero ? 'true' : undefined} data-cue={scene.cue || undefined}>
         {/* Nothing drawn yet: V's words, so the page is not empty while the picture is on its way. */}
         {/* (Not where the picture follows cues the model wrote: there it decides what shows first.) */}
         {!blocks.length && caption && !scene.cue && <p className="board-caption">{caption}</p>}
         {rows.map(row => row.length > 1
           ? <div key={`${scene.serial}:row:${row[0].id}`} className="board-row" data-n={Math.min(3, row.length)} data-w={row[0].w ?? 'half'}>{row.map(piece)}</div>
           : piece(row[0]))}
+        {scene.canvas && <i className="board-pointer" ref={pointer} aria-hidden="true"><Cursor /></i>}
       </div>
     </div>
   );
@@ -729,8 +903,8 @@ function Sheet({scene, spoken, loadPhoto, enlarge, caption = ''}) {
     const key = `${scene.serial}:${block.id}`, small = SMALL.has(block.t);
     const paper = block.tone ?? PAPER[block.t];
     if (block.t === 'photo') return (
-      <figure key={key} className="board-block board-photo" data-type="photo" data-size="small" data-ink={String(!view.ahead.has(block.id))} style={{'--tilt': tilt(key, 3) + 'deg'}}>
-        <Photo block={block} loadPhoto={loadPhoto} enlarge={enlarge} onMissing={() => setMissing(old => new Set(old).add(block.query))} />
+      <figure key={key} className="board-block board-photo" data-type="photo" data-size={block === hero ? 'wide' : 'small'} data-hero={block === hero || undefined} data-ink={String(!view.ahead.has(block.id))} style={{'--tilt': block === hero ? '0deg' : tilt(key, 3) + 'deg'}}>
+        <Photo block={block} loadPhoto={loadPhoto} enlarge={enlarge} view={block === hero ? view : null} onMissing={() => setMissing(old => new Set(old).add(block.query))} />
       </figure>
     );
     const View = RENDER[block.t];
@@ -742,37 +916,6 @@ function Sheet({scene, spoken, loadPhoto, enlarge, caption = ''}) {
       </div>
     );
   }
-}
-
-// A picture taken up off the page: as large as the screen allows, its name
-// under it. A tap anywhere, the close button or Escape puts it back. (Over the
-// whole window, outside the board: the board fades its edges with a mask.)
-function Enlarged({picture, onClose}) {
-  const close = useRef(null);
-  // Pictures found for the page are often small (~500 px): drawn up to fill the screen, though
-  // not past twice their own size.
-  const [shape, setShape] = useState(null);
-  useEffect(() => {
-    const back = document.activeElement;
-    close.current?.focus({preventScroll: true});
-    const key = event => { if (event.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', key);
-    return () => { document.removeEventListener('keydown', key); back?.focus?.({preventScroll: true}); };
-  }, []);
-  if (typeof document === 'undefined') return null;
-  return createPortal(
-    <div className="board-enlarged" role="dialog" aria-modal="true" aria-label={picture.name ? `图片：${picture.name}` : '图片'} onClick={onClose}>
-      <figure>
-        <img src={picture.src} alt={picture.name} data-shaped={shape ? 'true' : undefined}
-          style={shape ? {'--ratio': shape.ratio, '--most': shape.most + 'px'} : undefined}
-          onLoad={event => { const {naturalWidth: width, naturalHeight: height} = event.currentTarget; if (width && height) setShape({ratio: width / height, most: width * 2}); }} />
-        {picture.name && <figcaption>{picture.name}</figcaption>}
-      </figure>
-      <button ref={close} type="button" className="board-enlarged-close" aria-label="关闭图片" onClick={onClose}>
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
-      </button>
-    </div>,
-    document.body);
 }
 
 // A piece of the board that fails to draw takes only itself away: the call page, its
@@ -796,12 +939,17 @@ class BoardGuard extends React.Component {
 export function Board(props) {
   return <BoardGuard retry={`${props.scene?.serial}:${props.scene?.rev}`}><Canvas {...props} /></BoardGuard>;
 }
-function Canvas({scene, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null}) {
+function Canvas({scene, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null, works = null}) {
   const pages = canvas?.zones?.length ? canvas.zones.map(zone => zone.serial === scene.serial ? scene : zone) : [scene];
   const active = Math.max(0, pages.findIndex(page => page.serial === scene.serial));
   const track = useRef(null);
   const [inView, setInView] = useState(active);
-  const [enlarged, setEnlarged] = useState(null);
+  // The picture being looked at large, with the others of its page to turn to (board-viewer.jsx).
+  const [viewing, setViewing] = useState(null);
+  const look = element => {
+    const pictures = pagePictures(element?.closest?.('.board-page')), start = pictures.findIndex(item => item.element === element);
+    if (start >= 0) setViewing({items: pictures.map(({element: from, ...item}) => item), start});
+  };
   // V drawing anything, anywhere, brings the view to V's page.
   useLayoutEffect(() => {
     const strip = track.current;
@@ -818,7 +966,8 @@ function Canvas({scene, canvas, spoken, caption = '', loadPhoto, onClose, onRepo
     <section className="board" data-pages={pages.length} aria-label={page.title ? `画面：${page.title}` : '画面'}>
       <header className="board-top">
         {page.title ? <h2 key={page.serial} className="board-title">{parent?.title && <small>{parent.title} ›</small>}<span>{page.title}</span><Stroke className="board-title-line" d={underline(page.title)} /></h2> : <span />}
-        {onReport && <button type="button" className="board-report" onClick={onReport}>完整报告</button>}
+        {/* (A made thing's own card in the conversation is not a report to open: the thing is here on the page.) */}
+        {onReport && !page.blocks.some(block => block.t === 'work') && <button type="button" className="board-report" onClick={onReport}>完整报告</button>}
         <button type="button" className="board-close" aria-label="收起画面" onClick={onClose}>
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
         </button>
@@ -827,13 +976,13 @@ function Canvas({scene, canvas, spoken, caption = '', loadPhoto, onClose, onRepo
         {pages.map((item, index) => (
           <div key={item.serial} className="board-page" data-lesson={item.lesson || undefined} data-current={index === inView || undefined} aria-hidden={index !== inView || undefined}>
             <BoardGuard retry={`${item.serial}:${item.rev}`}>
-              <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={setEnlarged} />
+              <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={look} works={works} />
             </BoardGuard>
           </div>
         ))}
       </div>
       {pages.length > 1 && <i className="board-dots" aria-hidden="true">{pages.map((item, index) => <b key={item.serial} data-current={index === inView || undefined} />)}</i>}
-      {enlarged && <Enlarged picture={enlarged} onClose={() => setEnlarged(null)} />}
+      {viewing && <Viewer items={viewing.items} start={viewing.start} works={works} onClose={() => setViewing(null)} />}
     </section>
   );
 }

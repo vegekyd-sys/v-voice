@@ -71,3 +71,18 @@ test('result facts keep what later turns need and carry no raw output when media
  assert.deepEqual(facts,{status:'completed',media:{kind:'video',url:'https://cdn.test/a.mp4'},presentation:{shown:true}});
  assert.equal(JSON.parse(executionResultFacts({isError:true,status:'failed',submission:'unknown',error:'x',content:[{type:'text',text:'x'}]})).submission,'unknown');
 });
+
+test('an execution the model is not following may be told at once; one it is polling keeps the wait',async()=>{
+ let clock=0,finish;const jobs=createLocalExecutions({yieldMs:1,settleMs:2500,unfollowedSettleMs:400,now:()=>clock});
+ // Not asked after since it began: nothing is about to read the result itself.
+ const idle=await jobs.start(()=>new Promise(resolve=>{finish=resolve;}),{metadata:{completionLine:'海报好了'}});
+ finish({isError:false,content:[{type:'text',text:'ok'}]});await new Promise(resolve=>setImmediate(resolve));
+ clock=300;assert.equal(jobs.takeUnread(),null);
+ clock=450;assert.equal(jobs.takeUnread().metadata.completionLine,'海报好了');
+ // Polled a moment before it finished: the model may be about to read it, so the longer wait holds.
+ clock=10000;const followed=await jobs.start(()=>new Promise(resolve=>{finish=resolve;}),{metadata:{completionLine:'视频好了'}});
+ clock=12000;await jobs.poll(followed.sessionId,{timeout:1});
+ clock=13000;finish({isError:false,content:[{type:'text',text:'ok'}]});await new Promise(resolve=>setImmediate(resolve));
+ clock=13450;assert.equal(jobs.takeUnread(),null);
+ clock=15600;assert.equal(jobs.takeUnread().metadata.completionLine,'视频好了');
+});

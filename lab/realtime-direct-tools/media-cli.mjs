@@ -24,25 +24,39 @@ export function mediaArgv(command) {
   return out;
 }
 const specs={edit:['image-model','aspect','image','ref'],create:['image','title'],'video create':['video-model','duration','video-resolution','script','image'], 'video status':[]};
+// The pictures a thing is made from may be several (two characters in one frame need a picture of each):
+// one base picture and further references for an image, several pictures for a reference video.
+// (As many as the models take: Nano Banana 2.1 takes fourteen pictures in all, FAL H3 Max nine images.)
+const repeats={edit:{ref:13},'video create':{image:9}};
 const https=value=>{try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password;}catch{return false;}};
 export function validateMediaArgv(argv) {
   const verb=argv[0]==='video'?argv.slice(0,2).join(' '):argv[0];
   if(!Object.hasOwn(specs,verb))throw Error('仅支持图片生成/保存、视频生成/查询');
-  const flags={},positionals=[];
+  const flags={},lists={},positionals=[];
   for(let i=verb.startsWith('video ')?2:1;i<argv.length;i++){
-    const v=argv[i];if(v.startsWith('-')){const key=v.slice(2);if(!v.startsWith('--')||!specs[verb].includes(key)||Object.hasOwn(flags,key)||!argv[i+1]||argv[i+1].startsWith('--'))throw Error('不支持的创作选项');flags[key]=argv[++i];}else positionals.push(v);
+    const v=argv[i];if(v.startsWith('-')){const key=v.slice(2),many=repeats[verb]?.[key]??1;
+      if(!v.startsWith('--')||!specs[verb].includes(key)||!argv[i+1]||argv[i+1].startsWith('--'))throw Error('不支持的创作选项：'+v.slice(0,30)+'（这里只能用 '+specs[verb].map(name=>'--'+name).join('、')+'）');
+      if(Object.hasOwn(flags,key)&&many===1)throw Error('不支持的创作选项：--'+key+' 只能写一次');
+      if((lists[key]?.length??0)>=many)throw Error('参考图太多：--'+key+' 最多 '+many+' 个');
+      (lists[key]??=[]).push(argv[++i]);flags[key]??=lists[key][0];
+    }else positionals.push(v);
   }
   if(positionals.length!==(['edit','video status'].includes(verb)?1:0))throw Error('创作参数不完整');
   if(verb==='edit'&&flags['image-model']!=='gemini-2.1'||verb==='video create'&&flags['video-model']!=='fal-h3-max')throw Error('必须使用本次指定的创作模型');
   if(flags.aspect&&!/^\d{1,2}:\d{1,2}$/u.test(flags.aspect))throw Error('无效画幅');
+  // (A length it cannot make is said so, so the caller can be told what it can: "三十秒" is asked for often.)
+  if(verb==='video create'&&flags.script&&!/^([5-9]|1[0-5])$/u.test(flags.duration??'5'))throw Error('本地校验未提交、未扣费：这里一条视频只能做 5 到 15 的整数秒，最长 15 秒。用户要更长的，用 delegate_to_v 交后台去拼（告诉用户要多等一会儿）；用户同意先看 15 秒的，再按 15 秒重新提交。不到 5 秒的按 5 秒做。');
   if(verb==='video create'&&(!flags.script||!/^([5-9]|1[0-5])$/u.test(flags.duration??'5')||flags['video-resolution']&&flags['video-resolution']!=='768p'))throw Error('无效视频参数');
   if(verb==='video create'){
-    const references=[...flags.script.matchAll(/<<<media_(\d+)>>>/gu)].map(m=>m[1]);
-    // The image is what was asked for; a forgotten marker should not cost a turn.
-    if(flags.image&&!references.length){flags.script='<<<media_1>>> '+flags.script;argv[argv.indexOf('--script')+1]=flags.script;}
-    else if(flags.image&&!references.includes('1')||references.some(id=>!flags.image||id!=='1'))throw Error('本地校验未提交、未扣费：带 --image 的脚本必须用 <<<media_1>>> 引用图片；无图片时不写媒体标记。请修正参数后提交。');
+    const images=lists.image??[],references=[...flags.script.matchAll(/<<<media_(\d+)>>>/gu)].map(m=>Number(m[1]));
+    if(references.some(n=>n<1||n>images.length))throw Error('本地校验未提交、未扣费：带 --image 的脚本必须用 <<<media_1>>> 引用图片（第二张用 <<<media_2>>>，依此类推）；无图片时不写媒体标记。请修正参数后提交。');
+    // The pictures are what was asked for; a forgotten marker should not cost a turn.
+    const missing=images.map((_,index)=>index+1).filter(n=>!references.includes(n));
+    if(missing.length){flags.script=missing.map(n=>'<<<media_'+n+'>>>').join(' ')+' '+flags.script;argv[argv.indexOf('--script')+1]=flags.script;}
   }
-  for(const key of ['image','ref'])if(flags[key]&&verb!=='create'&&!https(flags[key]))throw Error('参考图必须是 HTTPS 媒体链接');
+  for(const key of ['image','ref'])for(const value of lists[key]??[])if(verb!=='create'&&!https(value))throw Error('参考图必须是 HTTPS 媒体链接');
+  // (Every picture given is part of what the command is: two commands that differ in a second picture are not the same request.)
+  for(const [key,values] of Object.entries(lists))if(values.length>1)flags[key]=values.join(' ');
   if(verb==='create'&&!flags.image)throw Error('只能保存本通话已生成图片');
   if(verb==='video status'&&!/^[\w:-]{1,200}$/u.test(positionals[0]))throw Error('无效任务 ID');
   return {verb,flags,positionals};
@@ -109,7 +123,10 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
       await fs.writeFile(path.join(directory,'receipt-'+randomUUID()+'.json'),JSON.stringify({operation:verb,model:flags['image-model']??flags['video-model'],result}),{mode:0o600}).catch(()=>{});
       return result;
     };
-    return {execute:(command,signal,{reuseExisting=false,requestToken}={})=>{
+    // `separate`: not the caller's own request (a picture a lesson asked for). It waits its turn like any
+    // other, but neither answers nor is answered by a request of the caller's for the same kind of thing
+    // (call of 11/21: the caller's poster came back as the lesson's picture, which was being made).
+    return {execute:(command,signal,{reuseExisting=false,requestToken,separate=false}={})=>{
       // Serialize requests and reuse even failed/unknown submissions, never spend twice.
       let argv,parsed;try{argv=mediaArgv(command);parsed=validateMediaArgv(argv);}catch(error){return Promise.reject(Object.assign(error,{code:'invalid_arguments',submission:'not-submitted'}));}
       const key=JSON.stringify([parsed.verb,Object.entries(parsed.flags).sort(),parsed.positionals]);
@@ -118,9 +135,9 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
       // One human request admits one submission per media kind. A rewritten
       // command (including dropping a failed reference image) is not new consent.
       // Local argv validation above may still be corrected before any submission.
-      if(creation&&requestToken&&turnRequests.get(requestToken)?.has(creation))return turnRequests.get(requestToken).get(creation);
-      if(creation&&active.has(creation))return active.get(creation);
-      if(creation&&reuseExisting){
+      if(!separate&&creation&&requestToken&&turnRequests.get(requestToken)?.has(creation))return turnRequests.get(requestToken).get(creation);
+      if(!separate&&creation&&active.has(creation))return active.get(creation);
+      if(!separate&&creation&&reuseExisting){
         if(latest.has(creation))return latest.get(creation);
         return Promise.resolve({isError:true,content:[{type:'text',text:'当前没有这类已提交任务；用户只在问进度，不能新建付费生成。'}],details:{status:'not-started'}});
       }
@@ -158,6 +175,7 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
         return result;
       });tail=pending.catch(()=>{});
       if(!query)requests.set(key,pending);
+      if(separate)return pending;
       if(creation&&requestToken){if(!turnRequests.has(requestToken))turnRequests.set(requestToken,new Map());turnRequests.get(requestToken).set(creation,pending);}
       if(creation){active.set(creation,pending);latest.set(creation,pending);pending.finally(()=>{if(active.get(creation)===pending)active.delete(creation);}).catch(()=>{});}
       return pending;

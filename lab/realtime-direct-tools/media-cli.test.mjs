@@ -121,3 +121,23 @@ test('a forgotten image marker is supplied, other marker mistakes still stop bef
  assert.throws(()=>validateMediaArgv(mediaArgv("makaron video create --video-model fal-h3-max --image 'https://cdn.example/a.jpg' --script 'animate <<<media_2>>>'")),/本地校验未提交/);
  assert.throws(()=>validateMediaArgv(mediaArgv("makaron video create --video-model fal-h3-max --script 'animate <<<media_1>>>'")),/本地校验未提交/);
 });
+
+test('a thing may be made from several pictures: one of each character',()=>{
+ const A='https://cdn.example/luffy.png',B='https://cdn.example/zygarde.jpg',C='https://cdn.example/poster.png';
+ // An image: the base picture and further references.
+ const edit=validateMediaArgv(mediaArgv(`makaron edit --image-model gemini-2.1 --image '${C}' --ref '${A}' --ref '${B}' '两人对战'`));
+ assert.equal(edit.flags.image,C);assert.equal(edit.flags.ref,A+' '+B);
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model gemini-2.1 --image '${C}' --image '${A}' 'x'`)),/--image 只能写一次/u);
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model gemini-2.1 ${Array(14).fill(`--ref '${A}'`).join(' ')} 'x'`)),/最多 13 个/u);
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model gemini-2.1 --ref '${A}' --ref 'http://plain.example/b.png' 'x'`)),/HTTPS/u);
+ // A video: several pictures, each named in the script by its place; a forgotten marker is put in.
+ // A length it cannot make is refused in words the caller can be told.
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron video create --video-model fal-h3-max --duration 30 --script 'a cat'`)),/最长 15 秒[^]*delegate_to_v/u);
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron video create --video-model fal-h3-max --duration 3 --script 'a cat'`)),/5 到 15/u);
+ const argv=mediaArgv(`makaron video create --video-model fal-h3-max --duration 5 --image '${A}' --image '${B}' --script '<<<media_1>>> 的路飞和 <<<media_2>>> 的基格尔德对战'`);
+ assert.equal(validateMediaArgv(argv).flags.image,A+' '+B);
+ const loose=mediaArgv(`makaron video create --video-model fal-h3-max --image '${A}' --image '${B}' --script '<<<media_2>>> 的基格尔德飞起来'`);
+ validateMediaArgv(loose);assert.equal(loose[loose.indexOf('--script')+1],'<<<media_1>>> <<<media_2>>> 的基格尔德飞起来');
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron video create --video-model fal-h3-max --image '${A}' --script '<<<media_2>>> 动起来'`)),/未提交、未扣费/u);
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron video create --video-model fal-h3-max --script '<<<media_1>>> 动起来'`)),/未提交、未扣费/u);
+});
