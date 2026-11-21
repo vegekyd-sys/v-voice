@@ -2,12 +2,12 @@
   "schema": "v-voice-current-release-v1",
   "release": "board-20261114",
   "version": "voice-board.20261113.1",
-  "entryCommit": "5d953b4bf7d7a91ce6407ac5894ceac51a2a2558",
-  "deviceEntryCommit": "5d953b4bf7d7a91ce6407ac5894ceac51a2a2558",
-  "filesSha256": "8110c6376f1a99492673a221df9f24840ad0f3e24757120023663221cb122d28",
+  "entryCommit": "48f1722d4d16af9bbb668ba4f8e1d928a8c5fff8",
+  "deviceEntryCommit": "48f1722d4d16af9bbb668ba4f8e1d928a8c5fff8",
+  "filesSha256": "283d91136392004b52785694e713683dcfb84201be8c869b898958323900bf9b",
   "registration": "board-20261114/release.json",
-  "previousEntryCommit": "1f6b332dd86a11d8d729893abfd626c341a7feaa",
+  "previousEntryCommit": "5d953b4bf7d7a91ce6407ac5894ceac51a2a2558",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-21T01:45:00+08:00",
-  "runtimeDifference": "The call board for every caller; iPhone board follows the App's own audio (build 46); a refused conversation record is dropped at once and remembered; phone board keeps the last lines of the conversation. Phone board no longer swings between pages; one page per title; a four-line caption strip. Phone real-time feel: V's words on an empty page, the lesson page drawn pale and inked as spoken, earlier drawing, a caption strip that really shows four lines. The board follows cues the illustrator writes (clause numbers), not word matching; one line under a phone's page; pictures for things that can be seen. Gallery pictures whole and large across the page; pages drawn smaller fit the panel; pictures open large on tap. A gallery drawn again keeps the pictures that were found; a refused picture search is asked again. Picture searches the image search answered are no longer thrown away; no Pokemon logo from a list article. A call records why it ended (and what the voice service said when it ended the session itself); picture search tries past dead links."
+  "validatedAt": "2026-11-21T16:12:00+08:00",
+  "runtimeDifference": "The call board for every caller; iPhone board follows the App's own audio (build 46); a refused conversation record is dropped at once and remembered; phone board keeps the last lines of the conversation. Phone board no longer swings between pages; one page per title; a four-line caption strip. Phone real-time feel: V's words on an empty page, the lesson page drawn pale and inked as spoken, earlier drawing, a caption strip that really shows four lines. The board follows cues the illustrator writes (clause numbers), not word matching; one line under a phone's page; pictures for things that can be seen. Gallery pictures whole and large across the page; pages drawn smaller fit the panel; pictures open large on tap. A gallery drawn again keeps the pictures that were found; a refused picture search is asked again. Picture searches the image search answered are no longer thrown away; no Pokemon logo from a list article. A call records why it ended (and what the voice service said when it ended the session itself); picture search tries past dead links. Pictures of a page are searched at once on the Brave Search plan; a gallery no longer loops its layout, and a board piece that fails to draw no longer blanks the call page."
 }

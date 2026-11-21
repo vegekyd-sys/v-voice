@@ -224,5 +224,35 @@
     "gatewayIdentityPreserved": true,
     "change": "call.closed records which way the call ended (why), kept in the call record; a SeeDuplex session.closed we did not ask for is reported as provider-status upstream-closed with up to six short fields of what the service said. Picture search tries up to nine results, three at a time, when the best three cannot be fetched.",
     "acceptance": "Tianyi's call 9caf5e1b (00:44) ended 0.14 s after a turn with no reason recorded; she asked to release the diagnostics and the picture fix. Production Public calls after publish ('给我找几张悖谬宝可梦古代种的图，比如轰鸣月和波荡水'): 1440x900 on 85c8f27 showed 4 of 4 pictures (轰鸣月 and 波荡水 found) but its call.closed had no reason; 390x844 on 5d953b4 showed 轰鸣月 and 波荡水 and its call.closed has why=client-closed:1005 (the page hung up)."
+  },
+  "photoSpeedRelease": {
+    "commit": "96ae9842fd3ef70b67138b339ce7406dd3a3fb78",
+    "mergePR": 242,
+    "filesSha256": "65b9bc163f0c74d9ee9b5a324a87197f186aa72d8425b7f2155148cfabec6126",
+    "publishedAt": "2026-11-21T15:28:17+08:00",
+    "rolledBackAt": "2026-11-21T15:31:54+08:00",
+    "rolledBackTo": "5d953b4bf7d7a91ce6407ac5894ceac51a2a2558",
+    "reason": "The production smoke call after publish ('给我找几张塞尔达王国之泪的图看看…', 1440x900) went blank right after the gallery's last picture loaded: React #185 (maximum update depth). The client was unchanged since 5d953b4; pictures arriving together exposed a gallery layout loop (fixed in #243).",
+    "braveKey": "On 11/21 Tianyi activated the Brave Search plan (prepaid, $5 free credits a month, 50 requests a second) and installed its key herself with /root/set-brave-key.py (production /etc/openclaw-voice-board.env, backed up first; Candidate too). The key itself is not recorded."
+  },
+  "boardGuardRelease": {
+    "commit": "48f1722d4d16af9bbb668ba4f8e1d928a8c5fff8",
+    "mergePRs": [
+      242,
+      243
+    ],
+    "filesSha256": "283d91136392004b52785694e713683dcfb84201be8c869b898958323900bf9b",
+    "previousRunningCommit": "5d953b4bf7d7a91ce6407ac5894ceac51a2a2558",
+    "publishedAt": "2026-11-21T16:08:12+08:00",
+    "mainCI": "Voice push run 44883218238: test, android-tv success",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "iosShellRevision": "418108792f8446ce90506a25e4ab6bd9dbce3b24b2f9c6cfab9bebe1d78fac5e",
+    "gatewayIdentityPreserved": true,
+    "gatewayNote": "The Gateway had been restarted at 2026-11-21 02:00:48 CST, before these releases and not by them (PID 992785 throughout).",
+    "change": "Picture searches: queued by arrival on the free plan, at once on a fast plan (rate read from x-ratelimit-limit); a refused search takes the next turn; small pictures preferred; 3.5 s a file. Gallery: the names height only grows for one set of pictures (it looped 87<->56 and blanked the page); at most four size changes a frame; BoardGuard error boundaries keep the call page when a block, page or the board fails to draw.",
+    "acceptance": "Tianyi asked to fix the blank page at the root and to merge and release. Production Public calls after publish, '给我找几张塞尔达王国之泪的图看看，林克、塞尔达公主和天空岛的', at 1440x944 (a size that reproduced the loop locally) and 1440x900: no page errors, the gallery and note on the page at hang-up, 6 of 6 pictures each; server lookups 1.0-3.6 s, concurrent."
   }
 }
