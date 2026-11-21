@@ -126,7 +126,7 @@ test('with an image-search key the titled result is used, one request at a time'
     }});
   const [a, b] = await Promise.all([finder.find('杰尼龟'), finder.find('小火龙')]);
   assert.deepEqual([a.source, a.title, b.source], ['Brave 图片搜索', '杰尼龟 官方画像', 'Brave 图片搜索']);
-  assert.equal(calls[1], 'https://imgs.search.brave.com/squirtle');
+  assert(calls.includes('https://imgs.search.brave.com/squirtle'));
   assert.deepEqual(waits, [1100], 'the second lookup waited its turn');
   assert.equal(calls.some(url => url.includes('wikipedia') || url.includes('evil')), false);
 });
@@ -288,4 +288,92 @@ test('when none of the three best results can be fetched, the next three are tri
     }});
   assert.equal((await finder.find('轰鸣月'))?.source, 'Brave 图片搜索');
   assert.deepEqual(fetched.map(url => url.slice(-1)).slice(0, 4), ['1', '2', '3', '4']);
+});
+
+test('the next image search waits for the answer to the one before, not only for the gap after it was sent', async () => {
+  const sent = [];
+  let time = 0;
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', languages: [], now: () => time, wait: async ms => { time += ms; },
+    fetchImpl: async url => {
+      if (!url.startsWith('https://api.search.brave.com/')) return image(distinct(), 'image/png');
+      sent.push(time);
+      if (sent.length === 1) time += 1000; // a new connection: the first answer takes a second
+      const query = decodeURIComponent(/q=([^&]+)/u.exec(url)[1]);
+      return json({results: [{title: query, thumbnail: {src: 'https://imgs.search.brave.com/' + encodeURIComponent(query)}}]});
+    }});
+  await Promise.all(['甲 乙', '丙 丁'].map(query => finder.find(query)));
+  assert.ok(sent[1] - sent[0] >= 1000 + 300, `sent at ${sent}`);
+});
+
+test('a small picture is taken over a large one that arrived a moment before it', async () => {
+  const big = new Uint8Array(900 * 1024), small = new Uint8Array(40 * 1024);
+  new DataView(big.buffer).setUint32(0, 7); new DataView(small.buffer).setUint32(0, 9);
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', braveGapMs: 0, languages: [], maxBytes: 2000000,
+    fetchImpl: async url => {
+      if (url.startsWith('https://api.search.brave.com/')) return json({results: [{title: '黄金树', source: 'example.com', thumbnail: {src: 'https://imgs.search.brave.com/thumb'}, properties: {url: 'https://example.com/original.png'}}]});
+      if (url.includes('original')) return image(big.buffer, 'image/png');
+      await new Promise(resolve => setTimeout(resolve, 60));
+      return image(small.buffer, 'image/png');
+    }});
+  const found = await finder.find('黄金树');
+  assert.equal(found.bytes.length, small.length, 'the thumbnail, though the original came first');
+});
+
+test('a refused search takes the next turn, so pictures come in the order they were asked for', async () => {
+  const sent = [];
+  let time = 0, refused = false;
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', languages: [], now: () => time, wait: async ms => { time += ms; },
+    fetchImpl: async url => {
+      if (!url.startsWith('https://api.search.brave.com/')) return image(distinct(), 'image/png');
+      const query = decodeURIComponent(/q=([^&]+)/u.exec(url)[1]);
+      sent.push(query);
+      if (query === '乙 二' && !refused) { refused = true; return {ok: false, status: 429}; }
+      return json({results: [{title: query, thumbnail: {src: 'https://imgs.search.brave.com/' + encodeURIComponent(query)}}]});
+    }});
+  await Promise.all(['甲 一', '乙 二', '丙 三', '丁 四'].map(query => finder.find(query)));
+  assert.deepEqual(sent, ['甲 一', '乙 二', '乙 二', '丙 三', '丁 四']);
+});
+
+test('a file that does not arrive in time gives way to the next results', async () => {
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', braveGapMs: 0, languages: [], pictureTimeoutMs: 50,
+    fetchImpl: async (url, init) => {
+      if (url.startsWith('https://api.search.brave.com/')) return json({results: [1, 2, 3, 4].map(n => ({title: '拉妮', source: 'site' + n + '.com', confidence: 'high', thumbnail: {src: 'https://imgs.search.brave.com/' + n}}))});
+      if (!url.endsWith('/4')) return new Promise((resolve, reject) => init?.signal?.addEventListener('abort', () => reject(Error('aborted')), {once: true}));
+      return image(distinct(), 'image/png');
+    }});
+  const started = Date.now();
+  assert.ok(await finder.find('拉妮'));
+  assert.ok(Date.now() - started < 1000, 'the hanging three were given up after their time');
+});
+
+test('on a plan of many searches a second (as its answers say), a page\'s searches go at once', async () => {
+  const sent = [];
+  let time = 0;
+  const answer = query => ({...json({results: [{title: query, thumbnail: {src: 'https://imgs.search.brave.com/' + encodeURIComponent(query)}}]}), headers: new Headers({'x-ratelimit-limit': '50, 0'})});
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', languages: [], now: () => time, wait: async ms => { time += ms; },
+    fetchImpl: async url => {
+      if (!url.startsWith('https://api.search.brave.com/')) return image(distinct(), 'image/png');
+      const query = decodeURIComponent(/q=([^&]+)/u.exec(url)[1]);
+      sent.push([query, time]);
+      return answer(query);
+    }});
+  assert.ok(await finder.find('甲 一'), 'the first answer tells the rate');
+  const before = time;
+  await Promise.all(['乙 二', '丙 三', '丁 四', '戊 五'].map(query => finder.find(query)));
+  assert.deepEqual(sent.slice(1).map(([, at]) => at), [before, before, before, before], 'no queue');
+});
+
+test('a page asked before the rate is known: once the first answer tells it, the rest go at once', async () => {
+  const sent = [];
+  let time = 0;
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', languages: [], now: () => time, wait: async ms => { time += ms; },
+    fetchImpl: async url => {
+      if (!url.startsWith('https://api.search.brave.com/')) return image(distinct(), 'image/png');
+      const query = decodeURIComponent(/q=([^&]+)/u.exec(url)[1]);
+      sent.push(time);
+      if (sent.length === 1) time += 600;
+      return {...json({results: [{title: query, thumbnail: {src: 'https://imgs.search.brave.com/' + encodeURIComponent(query)}}]}), headers: new Headers({'x-ratelimit-limit': '50, 0'})};
+    }});
+  await Promise.all(['甲 一', '乙 二', '丙 三', '丁 四', '戊 五', '己 六'].map(query => finder.find(query)));
+  assert.ok(sent.slice(1).every(at => at <= 600 + 300), `sent at ${sent}`);
 });
