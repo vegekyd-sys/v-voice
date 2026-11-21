@@ -198,7 +198,7 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
-    version:'voice-phone-echo-uplink.20261121.1',date:'2026-11-21',
+    version:'voice-phone-echo-uplink.20261122.1',date:'2026-11-22',
     title:'手机外放时 V 不再被自己的声音打断',
     items:[
       '手机外放音量较大时，V 的声音被话筒收回去会被当成你在插话，V 说一句就停。现在 V 的回答还在播放时，听回来的几个字不再打断它；“停”“等一下”“不对”等仍然立即打断。',
