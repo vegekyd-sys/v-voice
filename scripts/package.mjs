@@ -40,6 +40,7 @@ names.push('lib/terminal-context.mjs','lib/device-requests.mjs','lab/gpt-live-h5
 names.push('lab/robot/robot-semantics.mjs');
 names.push('lab/realtime-direct-tools/idle-hangup.mjs');
 names.push('lab/realtime-direct-tools/playback-echo.mjs');
+names.push('lab/gpt-live-h5/upload-backpressure.mjs');
 names.push('lab/gpt-live-h5/board-scene.mjs','lab/gpt-live-h5/board-director.mjs','lab/gpt-live-h5/board-client.mjs','lab/gpt-live-h5/board-sketch.mjs','lab/gpt-live-h5/board-photo.mjs','lab/gpt-live-h5/board-lesson.mjs','lab/gpt-live-h5/board-cue.mjs');
 // Every relative import of a packaged module must itself be packaged, so a
 // new file can never ship as a release that fails to start.

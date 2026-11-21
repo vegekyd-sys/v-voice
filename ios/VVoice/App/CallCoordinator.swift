@@ -423,6 +423,7 @@ import VVoiceCore
         if let raw = reservation["nativeRuntime"] {
             guard let value = raw as? [String: Any] else { throw VoiceError.protocolMismatch }
             nativeRuntime = try NativeRuntimePolicy.decode(value)
+            transport?.upload = UploadBackpressure(policy: nativeRuntime!.upload ?? .standard)
             let canonical = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
             let fingerprint = SHA256.hash(data: canonical).prefix(8).map { String(format: "%02x", $0) }.joined()
             CallDiagnostics.record("call.runtime", code: "v=1 policy=\(fingerprint) onsetMS=\(nativeRuntime!.pause.onsetMS) thinkingMS=\(nativeRuntime!.timing.thinkingMS)")
@@ -465,6 +466,7 @@ import VVoiceCore
     }
     private func makeRelay(owner: UUID, id: String? = nil) -> RelayTransport {
         let relay = RelayTransport(id: id); transport = relay
+        relay.upload = UploadBackpressure(policy: nativeRuntime?.upload ?? .standard)
         relay.onFailure = { [weak self] error in
             guard let self, self.owned(owner) else { return }
             if self.pendingEndID != nil { Task { await self.end() } }

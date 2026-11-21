@@ -61,3 +61,10 @@ test('document metadata, auto-open, limits and duplicate results stay on the ser
   const after=r.project({type:'speaker.utterance',turn:{speakerId:1,startMs:0,endMs:20,text:'仍可说话'}});
   assert(after.effects.every(e=>NATIVE_RUNTIME_OPERATIONS.includes(e.op)));
 });
+
+test('the App is told the web page\'s rule for a stalled uplink: shed microphone frames, end only after a long stall', async () => {
+  const {UPLOAD_BACKPRESSURE} = await import('../gpt-live-h5/upload-backpressure.mjs');
+  const runtime = createNativeRuntime({voiceSessionId: 'upload-fixture', duplex: true, assisted: true});
+  assert.deepEqual(runtime.descriptor.upload, UPLOAD_BACKPRESSURE);
+  assert(UPLOAD_BACKPRESSURE.resumeBytes < UPLOAD_BACKPRESSURE.shedBytes && UPLOAD_BACKPRESSURE.stallMS >= 10_000);
+});
