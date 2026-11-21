@@ -1232,7 +1232,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if(lesson)lesson.results=process.env.VOICE_BOARD_RESULT_LESSON!=='0';
     if(lesson)lesson.reroute=process.env.VOICE_BOARD_REROUTE==='1';
     if(lesson)lesson.source=['backend','parallel'].includes(process.env.VOICE_BOARD_LESSON_SOURCE)?process.env.VOICE_BOARD_LESSON_SOURCE:'service';
-    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
+    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',playbackEchoGuard:process.env.VOICE_PLAYBACK_ECHO_GUARD!=='0',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
       mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({environment:process.env}):null,

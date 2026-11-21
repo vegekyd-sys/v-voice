@@ -914,3 +914,86 @@ test('a session.closed answering our own close is an ordinary end', async () => 
  assert.equal(closes.includes('upstream-closed'), false);
  assert.equal(diagnostics.some(e => e.stage === 'upstream-closed'), false);
 });
+
+async function playbackEchoFixture(isPlaybackEcho){
+ const socket=new FakeSocket(),audio=[],texts=[],events=[],clears=[],speech=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},nativeDuplex:true,isPlaybackEcho,
+  onAudio:(b,m)=>audio.push(m.responseId),onTranscript:(...t)=>texts.push(t),onClearAudio:(reason,m)=>clears.push({reason,...m}),onEvent:e=>events.push(e),
+  onInputSpeech:(active,detail)=>speech.push(active?'started':detail.recognized?'recognized':'stopped'),onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+ const e=x=>socket.message(x);
+ // V's reply has been generated in full and is still playing on the phone.
+ e({type:'response.output_text.delta',response_id:'story',delta:'海边的灯塔晚上会一闪一闪地亮。'});
+ e({type:'response.output_audio.started',response_id:'story'});e({type:'response.output_audio.delta',response_id:'story',delta:floatAudio([.25])});
+ e({type:'response.done',response:{id:'story',status:'completed'}});
+ return {socket,bridge,audio,texts,events,clears,speech,e};
+}
+
+test('V\'s own voice heard back while its reply still plays neither replaces nor clears that reply',async t=>{
+ const heard=[];const f=await playbackEchoFixture(text=>{heard.push(text);return text==='一闪一闪';});t.after(()=>f.bridge.close());
+ f.e({type:'conversation.item.input_audio_transcription.started'});
+ f.e({type:'conversation.item.input_audio_transcription.completed',transcript:'一闪一闪'});
+ assert.deepEqual(heard,['一闪一闪']);assert.deepEqual(f.speech,['started','recognized']);
+ assert.deepEqual(f.events.filter(x=>x.type==='native.playback-echo').map(x=>x.preservedResponseId),['story']);
+ // The model answers the echo at once; that answer is never played and the story is not cleared.
+ f.e({type:'response.output_text.delta',response_id:'echo-answer',delta:'对，一闪一闪的。'});
+ f.e({type:'response.output_audio.started',response_id:'echo-answer'});f.e({type:'response.output_audio.delta',response_id:'echo-answer',delta:floatAudio([.5])});
+ f.e({type:'response.output_text.done',response_id:'echo-answer',text:'对，一闪一闪的。'});
+ assert.deepEqual(f.clears,[]);assert.deepEqual(f.audio,['story']);assert.equal(f.bridge.audioResponseId,'story');
+ assert(f.events.some(x=>x.type==='native.playback-echo-reply'&&x.responseId==='echo-answer'));
+ assert.deepEqual(f.texts.filter(([role])=>role==='user').map(([,text,,,meta])=>[text,meta.playbackEcho]),[['一闪一闪',true]]);
+ assert(!f.texts.some(([role,text])=>role==='assistant'&&text.includes('对，')),'the answer to the echo is not captioned');
+ assert(!f.socket.sent.some(x=>x.type==='response.cancel'));
+ // The next real utterance replaces the story as before.
+ f.e({type:'conversation.item.input_audio_transcription.started'});
+ f.e({type:'conversation.item.input_audio_transcription.completed',transcript:'灯塔是谁修的'});
+ f.e({type:'response.output_text.delta',response_id:'answer',delta:'是很久以前的人修的。'});
+ assert.deepEqual(f.clears,[{reason:'response-replaced',retiredResponseId:'story'}]);
+});
+
+test('an utterance that is not echo interrupts the reply exactly as before',async t=>{
+ const f=await playbackEchoFixture(()=>false);t.after(()=>f.bridge.close());
+ f.e({type:'conversation.item.input_audio_transcription.started'});
+ f.e({type:'conversation.item.input_audio_transcription.completed',transcript:'换个故事'});
+ f.e({type:'response.output_text.delta',response_id:'next',delta:'好，讲一个新的。'});
+ assert.deepEqual(f.clears,[{reason:'response-replaced',retiredResponseId:'story'}]);
+ assert(!f.events.some(x=>x.type.startsWith('native.playback-echo')));
+ assert.equal(f.texts.find(([role])=>role==='user')[4].playbackEcho,undefined);
+});
+
+test('a later answer is not mistaken for the answer to an earlier echo',async t=>{
+ t.mock.timers.enable({apis:['Date','setInterval','setTimeout']});
+ const f=await playbackEchoFixture(()=>true);t.after(()=>f.bridge.close());
+ f.e({type:'conversation.item.input_audio_transcription.started'});
+ f.e({type:'conversation.item.input_audio_transcription.completed',transcript:'灯塔'});
+ t.mock.timers.tick(5_000); // the model said nothing back to the echo
+ f.e({type:'response.output_text.delta',response_id:'later',delta:'还有一件事。'});
+ assert.deepEqual(f.clears,[{reason:'response-replaced',retiredResponseId:'story'}]);
+});
+
+test('a burst after an uplink stall is fed without pausing the input on and off, and stale audio is dropped instead of ending the call',async t=>{
+ t.mock.timers.enable({apis:['Date','setInterval','setTimeout']});
+ const socket=new FakeSocket(),diagnostics=[],errors=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},onAudio(){},onDiagnostic:e=>diagnostics.push(e),onError:e=>errors.push(e.message)},{createWebSocket:async()=>socket});
+ const connect=bridge.connect();await Promise.resolve();await Promise.resolve();socket.open();socket.message({type:'session.created'});await connect;
+ const frame=Buffer.alloc(960); // 20 ms of 24 kHz PCM16
+ for(let i=0;i<50;i++){bridge.sendAudio(frame);t.mock.timers.tick(20);}
+ // The phone's connection stalls for 13 s, then everything it recorded arrives at once.
+ t.mock.timers.tick(13_000);
+ assert.deepEqual(diagnostics.map(d=>d.stage),['input-paused']);
+ for(let i=0;i<650;i++)bridge.sendAudio(frame);
+ assert.deepEqual(errors,[],'the call goes on');
+ assert(diagnostics.some(d=>d.stage==='input-resumed'));
+ // While the kept backlog is fed, the input is not paused again; afterwards the stall is reported.
+ for(let ms=0;ms<6_000;ms+=20)t.mock.timers.tick(20);
+ bridge.sendAudio(frame);t.mock.timers.tick(1_000);bridge.sendAudio(frame);
+ // Paused once for the stall, resumed for the burst, paused once more only when the kept
+ // backlog had been fed and nothing new came (before: on and off four times a second).
+ assert.deepEqual(diagnostics.map(d=>d.stage).slice(0,4),['input-paused','input-resumed','input-paused','input-burst']);
+ const burst=diagnostics.find(d=>d.stage==='input-burst');
+ assert(burst.stalledMs>=13_000,'how long the uplink was silent');
+ assert(burst.arrivedMs>=12_000,'about as much audio as the silence arrived at once: recorded on the phone, held by the network');
+ assert(burst.droppedMs>=8_000,'audio older than the kept backlog was dropped');
+ const appended=socket.sent.filter(x=>x.type==='input_audio_buffer.append').length;
+ assert(appended<50+260,'the model was not fed the whole stale burst');
+});

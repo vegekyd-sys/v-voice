@@ -79,7 +79,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     // A conversation record left out because Seeduplex refused it on an earlier call (no content).
     if(event.type==='call.record-skipped')return enqueue({...owner,type:event.type,reason:event.reason==='refused-earlier'?'refused-earlier':'unknown'});
     if(event.type==='call.provider-status'){
-      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed','context-dropped','upstream-closed'].includes(event.stage))return false;
+      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed','input-burst','input-backlog-dropped','context-dropped','upstream-closed'].includes(event.stage))return false;
       const safe={stage:event.stage};
       // What the voice service said when it ended the session itself: a few short fields
       // (reason, code, message), by plain keys, never audio or text of the call.
@@ -87,7 +87,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
         if(['string','number','boolean'].includes(typeof value))safe['closed.'+key]=String(value).replace(/[\u0000-\u001f\u007f]/gu,' ').slice(0,120);
       if(['configuration','input-timeout','upstream-transient','upstream-rejected','network','setup-timeout'].includes(event.category))safe.category=event.category;
       if(typeof event.upstreamCode==='string'&&/^\d{3,8}$/.test(event.upstreamCode))safe.upstreamCode=event.upstreamCode;
-      for(const key of ['sessionAgeMs','attempt'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      for(const key of ['sessionAgeMs','attempt','stalledMs','arrivedMs','droppedMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
     }
     if(event.type==='tool.search-metrics'){
@@ -99,7 +99,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     }
     // Causal metadata only: never persist tool arguments, results, PCM or raw
     // provider frames. A received utterance without a reply must be diagnosable.
-    if(['tool.call','tool.delivered','backend.start-requested','backend.started','backend.completed','backend.child-run','speech.premature-completion-cut','backend.control','backend.cancel-observed','backend.cancel-unconfirmed','backend.read-retry','backend.result-held','backend.result-context','backend.result-notice','backend.result-spoken-late','backend.result-answered','backend.result-superseded','backend.result-unspoken','response.done','provider.event','audio.clear'].includes(event.type)){
+    if(['tool.call','tool.delivered','backend.start-requested','backend.started','backend.completed','backend.child-run','speech.premature-completion-cut','backend.control','backend.cancel-observed','backend.cancel-unconfirmed','backend.read-retry','backend.result-held','backend.result-context','backend.result-notice','backend.result-spoken-late','backend.result-answered','backend.result-superseded','backend.result-unspoken','response.done','provider.event','audio.clear','input.playback-echo','input.playback-echo-reply'].includes(event.type)){
       if(event.type==='provider.event'&&!['conversation.item.input_audio_transcription.started','response.created','response.output_audio.started','response.canceled','input_audio_buffer.speech_started','input_audio_buffer.speech_stopped','client.response.cancel','client.response.cancel.rejected','native.listening-aside','conversation.item.input_audio_transcription.completed'].includes(event.providerEventType))return false;
       if(event.type==='tool.call'&&(typeof event.name!=='string'||typeof event.callId!=='string'))return false;
       const safe={};
@@ -146,6 +146,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
         ...(typeof event.source==='string'?{source:event.source}:{}),
         ...(typeof event.responseId==='string'?{responseId:event.responseId.slice(0,160)}:{}),
         ...(typeof event.turnId==='string'?{turnId:event.turnId.slice(0,160)}:{}),
+        ...(event.playbackEcho===true?{playbackEcho:true}:{}),
         ...(typeof event.callId==='string'?{callId:event.callId}:{})});
     }
     if(['task.delivery-confirmed','task.delivery-failed'].includes(event.type)){
