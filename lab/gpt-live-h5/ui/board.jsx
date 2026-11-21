@@ -137,9 +137,17 @@ const GALLERY_GAP = 14;
 const shapeOf = ratio => Math.min(2.4, Math.max(.5, ratio || 4 / 3));
 // The room a gallery has: its width, and the height of the panel less the
 // page's margins, its heading and the other pieces on the page.
-function useGalleryRoom() {
+// `searches`: the gallery's pictures; the names' height is measured afresh when they change.
+function useGalleryRoom(searches) {
   const ref = useRef(null);
   const [room, setRoom] = useState({width: 0, budget: Infinity, label: 0});
+  // The names' height only grows for one set of pictures. Measured from the page as drawn, it
+  // fed back: names on one line → larger pictures → a narrow picture's name on two lines →
+  // smaller pictures → one line again, every render, until React gave up and the whole call
+  // page went blank (production 11/21; 1440x944: label 87 ↔ 56).
+  const tallest = useRef({searches, label: 0});
+  // At most a few changes a frame: any other measure that feeds back stops there, not in React.
+  const burst = useRef({frame: -1, count: 0});
   const read = () => {
     const list = ref.current, block = list?.closest('.board-block'), page = block?.parentElement, scroller = list?.closest('.board-scroll');
     if (!list) return;
@@ -158,10 +166,18 @@ function useGalleryRoom() {
         label = Math.max(label, item.offsetHeight - (item.querySelector('.board-thumb')?.offsetHeight ?? 0) + (parseFloat(getComputedStyle(item).marginBottom) || 0));
       }
     }
-    const next = {width: Math.round(list.clientWidth), budget, label: Math.round(label)};
+    if (tallest.current.searches !== searches) tallest.current = {searches, label: 0};
+    tallest.current.label = Math.max(tallest.current.label, Math.round(label));
+    const next = {width: Math.round(list.clientWidth), budget, label: tallest.current.label};
     // A pixel or two of width is ignored: drawing the page smaller (useFit) moves the width by
     // that much, and a gallery set again for it can tip the fit back, over and over (11/20).
-    setRoom(old => Math.abs(old.width - next.width) <= 3 && old.budget === next.budget && old.label === next.label ? old : next);
+    setRoom(old => {
+      if (Math.abs(old.width - next.width) <= 3 && old.budget === next.budget && old.label === next.label) return old;
+      const frame = typeof performance === 'object' ? Math.floor(performance.now() / 16) : 0;
+      if (burst.current.frame !== frame) burst.current = {frame, count: 0};
+      if (++burst.current.count > 4) return old;
+      return next;
+    });
   };
   // Read after every drawing of the page (pieces come and go), and when the panel changes size.
   useLayoutEffect(read);
@@ -188,7 +204,7 @@ function Gallery({block, view}) {
   const gone = item => failed.has(item.img) || Boolean(view.loadPhoto?.missing?.(item.img));
   // Each picture's shape once it has loaded; until then it is held as 4:3.
   const [shapes, setShapes] = useState({});
-  const [ref, room] = useGalleryRoom();
+  const [ref, room] = useGalleryRoom(block.items.map(item => item.img ?? '').join('\n'));
   const shown = block.items.filter(item => item.img && !gone(item));
   const roomy = room.width >= 560;
   const {rows, height} = galleryLayout(shown.map(item => shapeOf(shapes[item.id])), room.width,
@@ -722,7 +738,7 @@ function Sheet({scene, spoken, loadPhoto, enlarge, caption = ''}) {
     return (
       <div key={key} className="board-block" data-type={block.t} data-look={block.look} data-size={small ? 'small' : 'wide'} data-paper={paper} data-ink={view.ahead.has(block.id) ? 'false' : undefined}
         data-held={view.focus.split('/')[0] === block.id || undefined} style={{'--tilt': tilt(key, small ? 2.6 : paper ? .6 : 0) + 'deg'}}>
-        <View block={block} view={view} />
+        <BoardGuard retry={`${key}:${scene.rev}`}><View block={block} view={view} /></BoardGuard>
       </div>
     );
   }
@@ -759,6 +775,17 @@ function Enlarged({picture, onClose}) {
     document.body);
 }
 
+// A piece of the board that fails to draw takes only itself away: the call page, its
+// conversation and controls stay (11/21: a gallery's render loop blanked the whole page).
+// It is tried again when the page changes (`retry`).
+class BoardGuard extends React.Component {
+  constructor(props) { super(props); this.state = {failed: false, retry: props.retry}; }
+  static getDerivedStateFromError() { return {failed: true}; }
+  static getDerivedStateFromProps(props, state) { return props.retry !== state.retry ? {failed: false, retry: props.retry} : null; }
+  componentDidCatch(error) { try { console.error('[board] a piece could not be drawn', error); } catch {} }
+  render() { return this.state.failed ? (this.props.fallback ?? null) : this.props.children; }
+}
+
 /**
  * The canvas. Every page drawn in the call stays on it, side by side; the
  * panel looks at one of them. The view slides to the page V is drawing on.
@@ -766,7 +793,10 @@ function Enlarged({picture, onClose}) {
  * snapping strip, with nothing on screen to operate. V drawing again brings
  * the view back to where V is.
  */
-export function Board({scene, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null}) {
+export function Board(props) {
+  return <BoardGuard retry={`${props.scene?.serial}:${props.scene?.rev}`}><Canvas {...props} /></BoardGuard>;
+}
+function Canvas({scene, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null}) {
   const pages = canvas?.zones?.length ? canvas.zones.map(zone => zone.serial === scene.serial ? scene : zone) : [scene];
   const active = Math.max(0, pages.findIndex(page => page.serial === scene.serial));
   const track = useRef(null);
@@ -796,7 +826,9 @@ export function Board({scene, canvas, spoken, caption = '', loadPhoto, onClose, 
       <div className="board-track" ref={track} onScroll={onScroll}>
         {pages.map((item, index) => (
           <div key={item.serial} className="board-page" data-lesson={item.lesson || undefined} data-current={index === inView || undefined} aria-hidden={index !== inView || undefined}>
-            <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={setEnlarged} />
+            <BoardGuard retry={`${item.serial}:${item.rev}`}>
+              <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={setEnlarged} />
+            </BoardGuard>
           </div>
         ))}
       </div>
