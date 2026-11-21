@@ -192,7 +192,9 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
   // a moment after its answer came back. The service counts requests as they arrive: a slow
   // first request (a new connection, 1 s) and the next one 1.1 s after it landed in the same
   // second and were refused, and the refusal made the whole page queue at twice the gap (11/21).
-  // For ten seconds after a refusal, twice the gap.
+  // When a retry is refused too, twice the gap for ten seconds. (A single refusal no longer slows
+  // the queue: it happens on most pages however the requests are spaced, and slowing down for it
+  // spread a page of six over 12 s.)
   const braveRequest = (ask, begin) => {
     const turn = braveTurn.then(async () => {
       const gap = Math.max(braveSent + (now() < braveSlowUntil ? 2 : 1) * braveGapMs, braveAnswered + braveSettleMs) - now();
@@ -216,7 +218,7 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     // (A retry after a plain pause went out beside the next request in the queue and was
     // refused again: two to three pictures of every gallery, 11/20.)
     for (let again = 0; response.status === 429 && again < 2; again++) {
-      braveSlowUntil = now() + 10000;
+      if (again) braveSlowUntil = now() + 10000;
       begin.stop?.(); response = await braveRequest(ask, begin);
     }
     if (!response.ok) throw Error('image search HTTP ' + response.status);
