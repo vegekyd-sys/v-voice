@@ -445,3 +445,11 @@ test('a cough transcribed as a marker is not a turn of the caller\'s',async()=>{
   assert.deepEqual(f.text,[]);assert.deepEqual(f.events.filter(e=>e.speech===false).at(-1),{speech:false,recognized:false});
   f.bridge.close();
 });
+
+test('everything a search returned reaches the model: six passages, the last as whole as the first',()=>{
+  const results=Array.from({length:6},(_,i)=>({title:`第${i+1}场比赛`,url:'https://example.com/'+'x'.repeat(90),snippet:`第${i+1}场的比分和得分最高的球员。`+'赛况'.repeat(240),published:'2026-11-20',siteName:'示例站'}));
+  const text=gptLiveResultText('web_search',{details:{query:'今天的比赛结果',results},content:[{type:'text',text:'{}'}]});
+  assert(Array.from(text).length>3000);assert.doesNotMatch(text,/已截断/u);
+  for(let i=1;i<=6;i++)assert.match(text,new RegExp(`\\n${i}\\. 第${i}场比赛（示例站，2026-11-20）：第${i}场的比分`,'u'));
+  assert.match(text,/今天是 \d{4}-\d{2}-\d{2}/u);
+});
