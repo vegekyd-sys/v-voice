@@ -997,3 +997,41 @@ test('a burst after an uplink stall is fed without pausing the input on and off,
  const appended=socket.sent.filter(x=>x.type==='input_audio_buffer.append').length;
  assert(appended<50+260,'the model was not fed the whole stale burst');
 });
+
+async function lessonFixture(nativeDuplex,isPlaybackEcho=()=>false){
+ const socket=new FakeSocket(),audio=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},nativeDuplex,isPlaybackEcho,onAudio:(b,m)=>audio.push(m.responseId),onInputSpeech(){},onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+ bridge.speakProgress('灯塔每晚把光扫过海面，一圈又一圈。');
+ socket.message({type:'response.output_audio.started',response_id:'lesson',tts_type:'chat_tts_text'});
+ socket.message({type:'response.output_audio.delta',response_id:'lesson',delta:floatAudio([.5])});
+ const cancels=()=>socket.sent.filter(e=>e.type==='response.cancel').length;
+ const more=()=>socket.message({type:'response.output_audio.delta',response_id:'lesson',delta:floatAudio([.4])});
+ return {socket,bridge,audio,cancels,more,e:x=>socket.message(x)};
+}
+
+test('on a native duplex call a lesson is not cut off when recognition starts, only by a recognised utterance',async t=>{
+ const f=await lessonFixture(true);t.after(()=>f.bridge.close());
+ f.e({type:'conversation.item.input_audio_transcription.started'});
+ assert.equal(f.cancels(),0,'the first sound does not cancel the lesson');f.more();assert.equal(f.audio.length,2);
+ f.e({type:'conversation.item.input_audio_transcription.completed',transcript:'  '});
+ assert.equal(f.cancels(),0,'nothing recognised: the lesson goes on');f.more();assert.equal(f.audio.length,3);
+ f.e({type:'conversation.item.input_audio_transcription.started'});f.e({type:'conversation.item.input_audio_transcription.failed'});
+ assert.equal(f.cancels(),0);
+ f.e({type:'conversation.item.input_audio_transcription.started'});
+ f.e({type:'conversation.item.input_audio_transcription.completed',transcript:'等一下，那灯塔是谁修的？'});
+ assert.equal(f.cancels(),1,'a real utterance stops the lesson');f.more();assert.equal(f.audio.length,3,'and its tail');
+});
+
+test('V\'s own voice coming back during a lesson does not cancel it',async t=>{
+ const f=await lessonFixture(true,()=>true);t.after(()=>f.bridge.close());
+ f.e({type:'conversation.item.input_audio_transcription.started'});
+ f.e({type:'conversation.item.input_audio_transcription.completed',transcript:'一圈'});
+ assert.equal(f.cancels(),0);f.more();assert.equal(f.audio.length,2);
+});
+
+test('without native duplex a lesson still stops at the first sound, as before',async t=>{
+ const f=await lessonFixture(false);t.after(()=>f.bridge.close());
+ f.e({type:'conversation.item.input_audio_transcription.started'});
+ assert.equal(f.cancels(),1);
+});

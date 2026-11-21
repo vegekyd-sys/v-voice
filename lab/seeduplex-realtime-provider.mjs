@@ -312,6 +312,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.droppedInputMs = 0;
     this.droppedReportedAt = 0;
     this.playbackEchoAt = null;
+    this.injectedCancelPending = false;
     this.audioResponseId = null;
     this.deliveredAudioResponseId = null;
     this.nativeAsideCandidates = new Map();
@@ -928,7 +929,15 @@ export class SeeduplexRealtimeVoiceBridge {
     if (type === "conversation.item.input_audio_transcription.started") {
       this.playbackEchoAt = null;
       if(this.request.nativeDuplex)this.request.onInputSpeech?.(true);
-      if (this.injectedSpeech && this.responseActive) this.#cancelUpstreamResponse(true);
+      // Speech the service speaks for us (a board lesson) does not stop for the caller by
+      // itself. On a native duplex call the phone already holds playback while someone talks;
+      // the speech is cancelled only once the utterance is recognised and is not V's own voice
+      // coming back. Cancelling at the first sound cut lessons off after a few seconds whenever
+      // a loud speaker's echo started recognition (11/21: 8 s and 11 s of 40 s and 30 s lessons).
+      if (this.injectedSpeech && this.responseActive) {
+        if (this.request.nativeDuplex) this.injectedCancelPending = true;
+        else this.#cancelUpstreamResponse(true);
+      }
       this.responseOwnerAnnounced = false;
       this.responseOwnerId = undefined;
     }
@@ -945,6 +954,10 @@ export class SeeduplexRealtimeVoiceBridge {
         this.playbackEchoAt=Date.now();
         this.request.onEvent?.({direction:'server',type:'native.playback-echo',preservedResponseId:this.audioResponseId});
       }
+      if (this.injectedCancelPending) {
+        this.injectedCancelPending = false;
+        if (spoken?.trim() && this.playbackEchoAt === null && this.injectedSpeech && this.responseActive) this.#cancelUpstreamResponse(true);
+      }
       if(this.request.nativeDuplex)this.nativeLiteralRead=/朗读|复述|念出|读出|原样|逐字/u.test(spoken??'');
       // A finished utterance after an earlier cancel opens the next turn, whose
       // reply text arrives before its first audio. Retired response ids still
@@ -953,6 +966,7 @@ export class SeeduplexRealtimeVoiceBridge {
       if (spoken && this.bargeInPending && this.playbackEchoAt === null) this.#cancelUpstreamResponse();
       this.bargeInPending = false;
     }
+    if(type === "conversation.item.input_audio_transcription.failed")this.injectedCancelPending = false;
     if(type === "conversation.item.input_audio_transcription.failed" && this.request.nativeDuplex)this.request.onInputSpeech?.(false,{recognized:false});
     const continuingBatch = this.toolBatches.find((batch) => batch.continuing);
     const internalContinuationResponse =
