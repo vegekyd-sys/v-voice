@@ -2,7 +2,8 @@
 // it on the caller's screen. It runs beside the voice model, never in its
 // audio path, and has no tools, permissions or say in what V does. Its output
 // is validated line by line (board-scene.mjs) before anything reaches a page.
-import {BOARD_LIMITS, applyOp, createLineParser, emptyScene, normalizeOp, sceneDigest, scenePictures, zoneDigest, zoneId} from './board-scene.mjs';
+import {BOARD_LIMITS, applyOp, createLineParser, emptyScene, loose, normalizeOp, pictureSubjects, sceneDigest, scenePictures, zoneDigest, zoneId} from './board-scene.mjs';
+import {clauseOf, clauses} from './board-clause.mjs';
 import {appendFile, mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
 
@@ -164,12 +165,18 @@ export async function* hedged(complete, {messages, signal}, afterMs = 2500, setT
   while (!result.done) { yield result.value; result = await won.run.iterator.next(); }
 }
 
-export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false, illustrate = null, stream = null, prefetch = null, hedgeMs = 2500} = {}) {
+/**
+ * `eye: {find(query), see({shots, said, signal, from, to})}` (board-eye.mjs): after a streamed run the
+ * page's pictures are looked at and the places V talks about are pinned on them (scene.pins).
+ */
+export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false, illustrate = null, stream = null, prefetch = null, hedgeMs = 2500, eye = null} = {}) {
   // The call's shelf of made things (board-assets.mjs), set by the service once both exist.
   let shelf = null;
   // Pictures a page will need are asked for the moment the page knows of them, not when the page gets round to showing them.
   const wanted = new Set();
   const fetchAhead = scene => { if (!prefetch) return; for (const query of scenePictures(scene)) if (!wanted.has(query)) { wanted.add(query); if (wanted.size > 400) wanted.delete(wanted.values().next().value); Promise.resolve().then(() => prefetch(query)).catch(() => {}); } };
+  // How a page drawn by the stream follows the voice (cues the model wrote) and whether it has the canvas's pointer.
+  const flags = {...(stream?.cue ? {cue: true} : {}), ...(stream?.canvas ? {canvas: true} : {})};
   const owners = new Map();
   const owner = id => {
     let row = owners.get(id);
@@ -425,6 +432,65 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         if (trigger === 'evidence' || trigger !== 'user' && (expecting || Array.from(said).length < (/^[\x00-\x7f]*$/u.test(said.slice(0, 40)) ? 40 : 14) && !row.notes?.script.startsWith(said.slice(0, 12)))) { signal?.removeEventListener('abort', abort); if (row.controller === controller) row.controller = null; return report('waiting', {rev: row.scene.rev}); }
       }
       let ops = 0, firstOpMs = null, none = false, retired = false;
+      // The page's pictures looked at with V's words (see `eye`), and the places V talks about pinned on
+      // them; the run's screens get the pins as they come. Each picture is looked at by itself, with the
+      // clauses from where V gets to its thing up to where V gets to the next pictured thing, all at once:
+      // a place is on the picture of the thing being told, and six pictures take no longer than one. The
+      // two or three of a comparison are looked at together (V goes back and forth between them).
+      // Nothing is looked at twice for the same words.
+      const look = async () => {
+        // Only the pictures these words are about: a page keeps its pictures over several answers, and a
+        // short reply about one thing had every picture of the page looked at with it (eleven, 11/21).
+        // A picture belongs to these words when its item hangs on them, or they name it (the caller asks
+        // about one of the things on the page, and V says more of it); one that is up from the start (the
+        // page's print) or the head of a comparison, when the page was drawn for them or is about them.
+        const heard = loose(said), hangs = q => Boolean(q) && heard.includes(loose(q));
+        const about = block => block.q ? hangs(block.q) : (block.items ?? []).some(item => hangs(item.q));
+        const fresh = drawn.some(op => op.op === 'put' || op.op === 'scene');
+        const named = subject => loose(String(subject.name ?? '')).length >= 2 && heard.includes(loose(subject.name));
+        const subjects = pictureSubjects(row.scene).filter(subject => subject.group ? about(row.scene.blocks.find(block => block.id === subject.group) ?? {})
+          : subject.q ? hangs(subject.q) || named(subject) : fresh || row.scene.blocks.some(about));
+        if (!subjects.length) return null;
+        const begun = now(), serial = row.scene.serial, parts = clauses(said);
+        const put = (img, places) => {
+          if (controller.signal.aborted || row.scene.serial !== serial || !scenePictures(row.scene).has(img)) return 0;
+          const op = normalizeOp({op: 'pin', img, items: places}), next = op ? applyOp(row.scene, op) : row.scene;
+          if (next !== row.scene) { row.scene = next; drawn.push(op); onOp({op: 'sync', scene: row.scene, canvas: canvasOf(row)}); }
+          return op?.items.length ?? 0;
+        };
+        const shot = async (subject, id) => { const found = await eye.find(subject.img); return found?.bytes ? {id, img: subject.img, h: subject.name, bytes: found.bytes, type: found.type} : null; };
+        row.eyes ??= new Map();
+        if (row.eyes.size > 80) row.eyes.clear();
+        const alone = subjects.filter(subject => !subject.group), starts = alone.map(subject => !subject.q ? 0 : clauseOf(said, hangs(subject.q) ? subject.q : subject.name));
+        const groups = [...new Set(subjects.filter(subject => subject.group).map(subject => subject.group))];
+        const seen = await Promise.all([
+          ...alone.map(async (subject, index) => {
+            const from = starts[index], later = starts.filter(start => start > from), to = later.length ? Math.min(...later) : parts.length;
+            const words = parts.slice(from, to).join(''), key = `${serial}:${subject.img}`;
+            if (!words || row.eyes.get(key) === words) return null;
+            row.eyes.set(key, words);
+            try {
+              const found = await shot(subject, 'a');
+              const places = found && !controller.signal.aborted ? await eye.see({shots: [found], said, from, to, signal: controller.signal}) : null;
+              if (controller.signal.aborted) { row.eyes.delete(key); return null; }
+              return {shots: found ? 1 : 0, pins: places ? put(subject.img, places.slice(0, alone.length > 1 ? 3 : 8)) : 0};
+            } catch { row.eyes.delete(key); return {shots: 0, pins: 0, failed: 1}; }
+          }),
+          ...groups.map(async group => {
+            const members = subjects.filter(subject => subject.group === group), key = `${serial}:${members.map(member => member.img).join('|')}`;
+            if (row.eyes.get(key) === said || row.eyes.has(key) && trigger !== 'assistant_end') return null;
+            row.eyes.set(key, said);
+            try {
+              const shots = (await Promise.all(members.map((member, index) => shot(member, 'abc'[index])))).filter(Boolean);
+              const places = shots.length && !controller.signal.aborted ? await eye.see({shots, said, signal: controller.signal}) : null;
+              if (controller.signal.aborted) { row.eyes.delete(key); return null; }
+              return {shots: shots.length, pins: places ? shots.reduce((sum, item) => sum + put(item.img, places.filter(place => place.on === item.id).slice(0, 4)), 0) : 0};
+            } catch { row.eyes.delete(key); return {shots: 0, pins: 0, failed: 1}; }
+          }),
+        ]);
+        const done = seen.filter(Boolean);
+        return done.length ? {pins: done.reduce((sum, item) => sum + item.pins, 0), shots: done.reduce((sum, item) => sum + item.shots, 0), ...(done.some(item => item.failed) ? {failed: done.filter(item => item.failed).length} : {}), ms: now() - begun} : null;
+      };
       const parser = createLineParser(raw => {
         if (controller.signal.aborted || ops >= MAX_OPS) return;
         let op = stream ? stream.refine(normalizeOp(raw), {said, trigger, raw}) : normalizeOp(raw);
@@ -480,7 +546,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             row.pages = Math.max(row.pages ?? 0, row.scene.serial, ...row.zones.map(zone => zone.serial)) + 1;
             // (`from` must be a page that is on the canvas.)
             const origin = op.from && [...row.zones, row.scene].some(zone => zoneId(zone) === op.from) ? {from: op.from} : {};
-            row.scene = {...emptyScene(), rev: row.scene.rev + 1, serial: row.pages, title: op.title, lesson: true, late: true, ...(stream.cue ? {cue: true} : {}), ...origin};
+            row.scene = {...emptyScene(), rev: row.scene.rev + 1, serial: row.pages, title: op.title, lesson: true, late: true, ...flags, ...origin};
             row.openedAt = now();
           } else {
             if (op.op === 'put' && op.block.t === 'work') {
@@ -532,8 +598,10 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             const next = applyOp({...row.scene, pending: null}, op);
             if (next === row.scene) return;
             // The page is a lesson's page whoever opened it: pieces wait for the voice.
-            row.scene = {...next, lesson: true, late: true, ...(stream.cue ? {cue: true} : {})};
+            row.scene = {...next, lesson: true, late: true, ...flags};
           }
+          // (The places pinned on a picture go when the picture does.)
+          if (row.scene.pins?.length) { const shown = scenePictures(row.scene), kept = row.scene.pins.filter(item => shown.has(item.img)); if (kept.length !== row.scene.pins.length) row.scene = {...row.scene, pins: kept}; }
           ops++; firstOpMs ??= now() - started; drawn.push(op);
           fetchAhead(row.scene);
           onOp({op: 'sync', scene: row.scene, canvas: canvasOf(row)});
@@ -563,7 +631,8 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         }
         if (!controller.signal.aborted) parser.end();
         if (ahead && !controller.signal.aborted && ops) row.aheadFor = script(row.notes?.script);
-        return report(controller.signal.aborted ? 'superseded' : ops ? 'drawn' : none ? 'none' : 'empty', {ops, firstOpMs, rev: row.scene.rev});
+        const looked = eye && stream && said && !controller.signal.aborted ? await look() : null;
+        return report(controller.signal.aborted ? 'superseded' : ops || looked?.pins ? 'drawn' : none ? 'none' : 'empty', {ops, firstOpMs, rev: row.scene.rev, ...(looked ? {eye: looked} : {})});
       } catch {
         return report(controller.signal.aborted ? 'superseded' : 'provider_failed', {ops, firstOpMs, rev: row.scene.rev});
       } finally {
@@ -641,7 +710,7 @@ export function boardCompletionFromEnv(env = process.env, {fetchImpl} = {}) {
       : null;
   return provider ? createChatCompletionStream({...provider, fetchImpl, ...(Number(env.VOICE_BOARD_MAX_TOKENS) > 0 ? {maxTokens: Number(env.VOICE_BOARD_MAX_TOKENS)} : {})}) : null;
 }
-export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl, illustrate = null, stream = null, defer = true, prefetch = null} = {}) {
+export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl, illustrate = null, stream = null, defer = true, prefetch = null, eye = null} = {}) {
   const complete = boardCompletionFromEnv(env, {fetchImpl});
   // A private day file beside the Candidate's own call records, when it has such a directory.
   const directory = env.VOICE_BOARD_LOG_DIR ?? env.RTC_H5_TRANSCRIPT_DIR;
@@ -649,5 +718,5 @@ export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl, illus
     const at = new Date(), file = join(directory, `board-${at.toISOString().slice(0, 10)}.jsonl`);
     void mkdir(directory, {recursive: true, mode: 0o700}).then(() => appendFile(file, JSON.stringify({at: at.toISOString(), ...event}) + '\n', {mode: 0o600})).catch(() => {});
   } : undefined;
-  return complete ? createBoardDirector({audit, complete, record, ...(prefetch ? {prefetch} : {}), ...(env.VOICE_BOARD_LESSON === '1' ? {...(defer ? {defers: mayAskForLesson} : {}), ...(illustrate ? {illustrate} : {}), ...(stream ? {stream} : {})} : {})}) : null;
+  return complete ? createBoardDirector({audit, complete, record, ...(prefetch ? {prefetch} : {}), ...(eye && stream ? {eye: eye(complete)} : {}), ...(env.VOICE_BOARD_LESSON === '1' ? {...(defer ? {defers: mayAskForLesson} : {}), ...(illustrate ? {illustrate} : {}), ...(stream ? {stream} : {})} : {})}) : null;
 }

@@ -8,7 +8,10 @@ export const BOARD_BLOCK_TYPES = Object.freeze(['note', 'sticky', 'photo', 'list
   // The diagram kit: shapes an explanation is built from (see BLOCKS below).
   'tiles', 'formula', 'timeline', 'versus', 'overlap', 'stack', 'scale', 'draw',
   // A thing V made in this call (board-assets.mjs): a picture or a video, by its id on the call's shelf.
-  'work']);
+  'work',
+
+  // A pitch with names placed on it (VOICE_BOARD_CANVAS): a line-up by position.
+  'stage']);
 // What a drawing is made of, and how many numbers each takes (`poly`: three to eight points).
 export const BOARD_SHAPES = Object.freeze({line: 4, arrow: 4, rect: 4, circle: 3, wave: 4, text: 2, poly: 0});
 // How much of the page's width a block asks for; neighbours that ask stand side by side.
@@ -234,7 +237,38 @@ const BLOCKS = {
     }).filter(Boolean), 'k');
     return items.length >= 2 ? optional(optional(optional({items}, 'h', text(raw.h, 40)), 'unit', text(raw.unit, 10)), 'dir', raw.dir === 'up' ? 'up' : '') : null;
   },
+  // A pitch: names placed where they stand (`at`: [x, y], 0-1000 across and down the pitch),
+  // each appearing when V gets to it; `edges` are arrows between names, as on a flow.
+  stage(raw) {
+    const chips = unique(list(raw.items, 16).filter(item => item && typeof item === 'object').map((item, index) => {
+      const h = text(item.h ?? item.text, 16), at = point(item.at, 2);
+      return h && at ? quoted(optional({id: ident(item.id, `c${index + 1}`), k: 'chip', h, at}, 'd', text(item.d ?? item.sub, 20)), item) : null;
+    }).filter(Boolean), 'c');
+    if (chips.length < 2) return null;
+    const ends = new Set(chips.map(item => item.id));
+    const edges = list(raw.edges, 6).map(edge => {
+      const [from, to, label, said] = Array.isArray(edge) ? edge : [edge?.from, edge?.to, edge?.label, edge?.q];
+      if (!ends.has(from) || !ends.has(to) || from === to) return null;
+      const q = text(said, 40);
+      return q ? [from, to, text(label, 12), q] : [from, to, text(label, 12)];
+    }).filter(Boolean);
+    return optional({base: 'pitch', items: chips, edges}, 'h', text(raw.h, 40));
+  },
 };
+// Numbers from 0 to 1000 (a place on a picture or a pitch), or null.
+const point = (value, size) => Array.isArray(value) && value.length === size && value.every(number => Number.isFinite(Number(number)))
+  ? value.map(number => Math.round(Math.max(0, Math.min(1000, Number(number))))) : null;
+/**
+ * A place on a picture (VOICE_BOARD_CANVAS): `box` [x1, y1, x2, y2], 0-1000 of the picture, that the
+ * page's pointer goes to and rings (`kind: "point"`: only goes to) while V says `q`; `h` names it.
+ * Written by a model that has seen the picture (board-eye.mjs), never guessed.
+ */
+function pin(raw) {
+  const box = point(raw?.box, 4), q = text(raw?.q, 40);
+  if (!box || !q) return null;
+  const [x1, y1, x2, y2] = box;
+  return optional({box: [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)], kind: raw.kind === 'point' ? 'point' : 'ring', q}, 'h', text(raw.h ?? raw.label, 12));
+}
 
 /**
  * Where each mark of a scale sits along its line, from 0 to 100. Values that
@@ -313,6 +347,8 @@ export function normalizeOp(raw) {
       const q = text(raw.q, 40);
       return id && BOARD_MARKS.includes(raw.kind) && q ? {op: 'mark', id, kind: raw.kind, q} : null;
     }
+    // The places on one picture of the page (the picture as searched for), in place of those it had.
+    case 'pin': { const img = text(raw.img, 60); return img ? {op: 'pin', img, items: list(raw.items, 8).map(pin).filter(Boolean)} : null; }
     case 'put': {
       const source = raw.block;
       if (!source || typeof source !== 'object' || !BOARD_BLOCK_TYPES.includes(source.t)) return null;
@@ -378,6 +414,17 @@ export function spokenProgress(scene, spoken, index) {
     const latest = Math.max(found, heard.lastIndexOf(quote));
     if (latest > at) { at = latest; focus = `${block.id}/${item.id}`; }
   }
+  // A place on a picture: while V is on it, the mark is on what the picture belongs to (`pin` says
+  // which place; -1 when V is not on one). At the same words as its item, the place has the mark.
+  let place = -1;
+  (scene.pins ?? []).forEach((item, index) => {
+    const quote = loose(item.q), owner = pictureOwner(scene, item.img);
+    if (!quote || !owner || !all.includes(quote)) return;
+    const found = heard.indexOf(quoteHead(quote));
+    if (found < 0) { ahead.push(`pin:${index}`); return; }
+    const latest = Math.max(found, heard.lastIndexOf(quote));
+    if (latest >= at) { at = latest; focus = owner; place = index; }
+  });
   // A pen mark waits for its words too.
   (scene.marks ?? []).forEach((mark, index) => {
     const quote = loose(mark.q);
@@ -385,14 +432,15 @@ export function spokenProgress(scene, spoken, index) {
   });
   // An arrow waits for both of its ends, and for its own words when it has some
   // ("grass beats water" is often said after both have been introduced).
-  for (const block of scene.blocks) if (block.t === 'flow') for (const [from, to, , said] of block.edges) {
+  for (const block of scene.blocks) if (block.t === 'flow' || block.t === 'stage') for (const [from, to, , said] of block.edges) {
     const quote = said ? loose(said) : '';
     if (ahead.includes(`${block.id}/${from}`) || ahead.includes(`${block.id}/${to}`)
       || quote && all.includes(quote) && heard.indexOf(quoteHead(quote)) < 0) ahead.push(edgeId(block, from, to));
   }
-  return {focus, ahead};
+  // (A page without pinned places answers as it always has.)
+  return scene.pins?.length ? {focus, ahead, pin: place} : {focus, ahead};
 }
-const quotesOf = scene => scene.blocks.flatMap(block => [block.q, ...focusTargets(block).map(item => item.q), ...(block.t === 'flow' ? block.edges.map(edge => edge[3]) : [])]).filter(Boolean);
+const quotesOf = scene => scene.blocks.flatMap(block => [block.q, ...focusTargets(block).map(item => item.q), ...(block.t === 'flow' || block.t === 'stage' ? block.edges.map(edge => edge[3]) : [])]).filter(Boolean);
 /** Whether `text` is (part of) the script this scene's pieces hang on. */
 export const speaksOf = (scene, text) => { const all = loose(String(text ?? '')); return quotesOf(scene).some(quote => all.includes(loose(quote))); };
 /** A lesson before its first word: every piece that hangs on the script is still to come. */
@@ -426,6 +474,11 @@ export function applyOp(scene, op) {
       if (!focusExists(scene, op.id) || marks.length >= 10 || marks.some(mark => mark.id === op.id)) return scene;
       return next({marks: [...marks, {id: op.id, kind: op.kind, q: op.q}]});
     }
+    case 'pin': {
+      const old = scene.pins ?? [], mine = op.items.map(item => ({img: op.img, ...item}));
+      if (JSON.stringify(old.filter(item => item.img === op.img)) === JSON.stringify(mine)) return scene;
+      return next({pins: [...old.filter(item => item.img !== op.img), ...mine].slice(0, 30)});
+    }
     case 'del': {
       if (!scene.blocks.some(block => block.id === op.id)) return scene;
       const blocks = scene.blocks.filter(block => block.id !== op.id);
@@ -438,6 +491,33 @@ export function applyOp(scene, op) {
   }
 }
 
+/** What a picture on the page belongs to: "block" for a print or the head of a comparison, "block/item" for an item's. '' when it is not on the page. */
+export function pictureOwner(scene, img) {
+  for (const block of scene.blocks) {
+    if (block.t === 'photo' && block.query === img || (block.sides ?? []).some(side => side.img === img)) return block.id;
+    const item = focusTargets(block).find(entry => entry.img === img);
+    if (item) return `${block.id}/${item.id}`;
+  }
+  return '';
+}
+/** The print that is the page's one picture (nothing else on the page is pictured): the canvas shows it large. */
+export const heroPhoto = scene => { const prints = scene.blocks.filter(block => block.t === 'photo'); return prints.length === 1 && scenePictures(scene).size === 1 ? prints[0] : null; };
+/**
+ * The pictures of a page that the canvas's eye looks at, and what V says each belongs to
+ * (`q`, '' for one that is up from the start): the hero print; the pictures of a list's or
+ * steps' items (a gallery's too), each by itself; and the two or three a comparison is
+ * between, together (`group`: V goes back and forth between them).
+ */
+export function pictureSubjects(scene) {
+  const subjects = [], hero = heroPhoto(scene);
+  if (hero) subjects.push({img: hero.query, name: hero.caption ?? hero.query, q: hero.q ?? ''});
+  for (const block of scene.blocks) {
+    if (block.t === 'list' || block.t === 'steps') for (const item of block.items) if (item.img) subjects.push({img: item.img, name: item.h, q: item.q ?? ''});
+    if (block.t === 'versus' && block.sides.filter(side => side.img).length >= 2) for (const side of block.sides) if (side.img) subjects.push({img: side.img, name: side.h, q: '', group: block.id});
+  }
+  const seen = new Set();
+  return subjects.filter(subject => !seen.has(subject.img) && seen.add(subject.img));
+}
 /** Every picture query on the board: photo blocks and items that carry one. */
 export function scenePictures(scene) {
   const queries = new Set();
@@ -459,8 +539,11 @@ export function normalizeScene(raw) {
   let scene = {...emptyScene(), serial: Number.isSafeInteger(raw.serial) ? raw.serial : 0, title: text(raw.title, 40)};
   for (const block of raw.blocks) { const op = normalizeOp({op: 'put', block}); if (op) scene = applyOp(scene, op); }
   for (const mark of Array.isArray(raw.marks) ? raw.marks.slice(0, 10) : []) { const op = normalizeOp({op: 'mark', ...mark}); if (op) scene = applyOp(scene, op); }
+  const shown = scenePictures(scene), places = new Map();
+  for (const item of Array.isArray(raw.pins) ? raw.pins.slice(0, 30) : []) if (typeof item?.img === 'string' && shown.has(item.img)) places.set(item.img, [...(places.get(item.img) ?? []), item]);
+  for (const [img, items] of places) { const op = normalizeOp({op: 'pin', img, items}); if (op) scene = applyOp(scene, op); }
   const focus = typeof raw.focus === 'string' && focusExists(scene, raw.focus) ? raw.focus : '';
-  return {...scene, focus, pending: typeof raw.pending === 'string' ? text(raw.pending, 40) : null, lesson: raw.lesson === true, late: raw.late === true, ...(raw.cue === true ? {cue: true} : {}), ...(typeof raw.from === 'string' && /^z\d{1,6}$/u.test(raw.from) ? {from: raw.from} : {}), rev: raw.rev};
+  return {...scene, focus, pending: typeof raw.pending === 'string' ? text(raw.pending, 40) : null, lesson: raw.lesson === true, late: raw.late === true, ...(raw.cue === true ? {cue: true} : {}), ...(raw.canvas === true ? {canvas: true} : {}), ...(typeof raw.from === 'string' && /^z\d{1,6}$/u.test(raw.from) ? {from: raw.from} : {}), rev: raw.rev};
 }
 
 /** The scene as the director model reads it back: compact, ids first. */

@@ -38,7 +38,8 @@ import {idleHangupFromEnv} from '../realtime-direct-tools/idle-hangup.mjs';
 import {boardCompletionFromEnv,boardDirectorFromEnv,boundedBoardRequest} from './board-director.mjs';
 import {createPhotoFinder} from './board-photo.mjs';
 import {STREAM_INSTRUCTIONS,createLessonWriter,refineStreamOp} from './board-lesson.mjs';
-import {CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
+import {CANVAS_CUE_INSTRUCTIONS,CANVAS_SCRIPT_INSTRUCTIONS,CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
+import {createBoardEye} from './board-eye.mjs';
 import {scenePictures} from './board-scene.mjs';
 import {ASSET_ID,ASSET_MAKE_NOTES,ASSET_NOTES,ASSET_SCRIPT_NOTES,SELF_IMAGE,SHELF_ID,createAssetEye,createAssetShelf,pictureName} from './board-assets.mjs';
 import {roomyPicture} from './board-picture-size.mjs';
@@ -1259,11 +1260,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     let lesson=null,photos=null;
     // V's own answers are drawn by the streaming illustrator, as they are spoken (VOICE_BOARD_STREAM=0: one page once the answer is complete).
     // In parallel mode there is no lesson to wait for, so nothing is deferred.
+    // VOICE_BOARD_CANVAS=1 (cue pages only): what can be seen goes up large on a stage, and the places V
+    // talks about are ringed on its photographs by a model that has seen them (docs/research/board-canvas).
+    const canvas=process.env.VOICE_BOARD_CANVAS==='1'&&process.env.VOICE_BOARD_FOLLOW!=='word';
     // The shelf of made things (board-assets.mjs): what V generates in a call goes up on the board,
     // and the voice model is told what is on the caller's screen. Off unless VOICE_BOARD_ASSETS=1.
     const assetsOn=process.env.VOICE_BOARD_ASSETS==='1'&&process.env.VOICE_BOARD_STREAM!=='0';
-    const board=boardDirectorFromEnv(process.env,{audit:voiceAudit,prefetch:query=>photos?.find(query),defer:process.env.VOICE_BOARD_STREAM==='0'&&process.env.VOICE_BOARD_LESSON_SOURCE!=='parallel',...(process.env.VOICE_BOARD_UNIFIED==='0'?{}:{illustrate:args=>lesson?.illustrate(args)??null,
-      ...(process.env.VOICE_BOARD_STREAM==='0'?{}:{stream:process.env.VOICE_BOARD_FOLLOW!=='word'?{instructions:CUE_INSTRUCTIONS+(assetsOn?ASSET_NOTES+ASSET_MAKE_NOTES:''),refine:refineCueOp,turns:cueTurns,cue:true}:{instructions:STREAM_INSTRUCTIONS+(assetsOn?ASSET_NOTES:''),refine:refineStreamOp}})})});
+    const board=boardDirectorFromEnv(process.env,{audit:voiceAudit,prefetch:query=>photos?.find(query),...(canvas?{eye:complete=>createBoardEye({complete,find:query=>photos?.find(query)})}:{}),defer:process.env.VOICE_BOARD_STREAM==='0'&&process.env.VOICE_BOARD_LESSON_SOURCE!=='parallel',...(process.env.VOICE_BOARD_UNIFIED==='0'?{}:{illustrate:args=>lesson?.illustrate(args)??null,
+      ...(process.env.VOICE_BOARD_STREAM==='0'?{}:{stream:process.env.VOICE_BOARD_FOLLOW!=='word'?{instructions:(canvas?CANVAS_CUE_INSTRUCTIONS:CUE_INSTRUCTIONS)+(assetsOn?ASSET_NOTES+ASSET_MAKE_NOTES:''),refine:refineCueOp,turns:cueTurns,cue:true,...(canvas?{canvas:true}:{})}:{instructions:STREAM_INSTRUCTIONS+(assetsOn?ASSET_NOTES:''),refine:refineStreamOp}})})});
     const assets=board&&assetsOn?createAssetShelf({director:board,...(process.env.VOICE_SELF_IMAGE==='0'?{}:{standing:[SELF_IMAGE]}),audit:event=>board.log?.(event),lookWaitMs:Math.max(0,Math.min(6000,Number(process.env.VOICE_BOARD_LOOK_WAIT_MS??0)||0)),makeLimit:Math.max(0,Math.min(6,Number(process.env.VOICE_BOARD_MAKE_MAX??3)||0)),
       // One look at each thing made, on the board's own model, so V can say what is really in it (VOICE_BOARD_LOOK=0: no look).
       see:process.env.VOICE_BOARD_LOOK==='0'?null:createAssetEye({complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'700'})})}):null;
@@ -1281,7 +1285,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const routed=!(process.env.VOICE_BOARD_API_KEY??process.env.DEEPSEEK_API_KEY)&&Boolean(process.env.OPENROUTER_API_KEY);
     const lessonModel=process.env.VOICE_BOARD_LESSON_MODEL??(routed?'anthropic/claude-sonnet-5.5':''),lessonReasoning=process.env.VOICE_BOARD_LESSON_REASONING??(process.env.VOICE_BOARD_LESSON_MODEL?'':'low');
     const directorWriter=boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'1600'});
-    lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,...(process.env.VOICE_BOARD_FOLLOW!=='word'?{scriptInstructions:CUE_SCRIPT_INSTRUCTIONS+(assetsOn?ASSET_SCRIPT_NOTES:''),early:Number(process.env.VOICE_BOARD_EARLY??2)||0}:{}),
+    lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,...(process.env.VOICE_BOARD_FOLLOW!=='word'?{scriptInstructions:(canvas?CANVAS_SCRIPT_INSTRUCTIONS:CUE_SCRIPT_INSTRUCTIONS)+(assetsOn?ASSET_SCRIPT_NOTES:''),early:Number(process.env.VOICE_BOARD_EARLY??2)||0}:{}),
       // (Naming the director's own model as the lesson model means one writer, not two racing.)
       ...(lessonModel&&lessonModel!==(process.env.VOICE_BOARD_MODEL??'deepseek/deepseek-v4.1-flash')?{complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MODEL:lessonModel,VOICE_BOARD_REASONING:lessonReasoning,VOICE_BOARD_MAX_TOKENS:lessonReasoning?'4000':'1600'}),fallback:directorWriter}:{complete:directorWriter})}):null;
     // How a lesson is made (to compare): "service" - written here, with what is looked up first;

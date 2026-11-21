@@ -4,21 +4,9 @@
 // the instructions changes, so a difference in the eval is the cue's.
 import {SCRIPT_INSTRUCTIONS, STREAM_INSTRUCTIONS} from './board-lesson.mjs';
 import {loose, normalizeOp} from './board-scene.mjs';
+import {clauses, numbered} from './board-clause.mjs';
 
-/** V's words cut at punctuation into clauses; joined they are the words again. Very short clauses join the next. */
-export function clauses(words) {
-  const raw = String(words ?? '').match(/[^，。！？；：,.!?;:\n]+[，。！？；：,.!?;:\n]*|[，。！？；：,.!?;:\n]+/gu) ?? [];
-  const parts = [];
-  let carry = '';
-  for (const piece of raw) {
-    // ("但是，" is not a clause of its own: it goes with what follows.)
-    if ((carry + piece).replace(/[^\p{L}\p{N}]/gu, '').length < 4) { carry += piece; continue; }
-    parts.push(carry + piece); carry = '';
-  }
-  if (carry) { if (parts.length) parts[parts.length - 1] += carry; else parts.push(carry); }
-  return parts;
-}
-export const numbered = parts => parts.map((part, index) => `[${index}]${part}`).join('');
+export {clauseOf, clauses, numbered} from './board-clause.mjs';
 
 const CUE = `# 画面怎么跟着声音走
 conversation 最后一条 assistant 的话已经按标点切成编号小段：「[0]…[1]…[2]…」。编号只是给你看的，V 念的时候没有编号。页面上的东西不会一下子全出来：每样东西在声音念到它挂的那一段时才出现，没念到的不显示。所以每样东西挂在哪一段，由你决定。
@@ -133,3 +121,29 @@ export function refineCueOp(op, {said = '', trigger = '', raw = null} = {}) {
   if (Array.isArray(source.edges)) block.edges = source.edges.map(edge => Array.isArray(edge) ? [edge[0], edge[1], edge[2] ?? '', ...(Number.isInteger(edge[3]) && quote(edge[3]) ? [quote(edge[3])] : [])] : edge);
   return normalizeOp({op: 'put', block});
 }
+
+// The canvas (VOICE_BOARD_CANVAS=1; docs/research/board-canvas). Not another kind of page: the same
+// blocks, with a pointer laid over them. The pointer goes to the written item V is on; a picture on the
+// page (a print, the picture of a list's item, the two things of a comparison) grows when V gets to it,
+// and the places V talks about are ringed on it by a model that has seen it (board-eye.mjs). So the
+// illustrator's instructions stay today's, with a section on choosing pictures worth pointing at, and
+// one more shape: a pitch with names placed on it.
+const POINTER = `# 指针：讲到哪，指到哪
+页面上有一个指针，像坐在用户旁边的老师。V 讲到一条文字，它停在那一条上；V 讲到一样有照片的东西，那张照片会在原地放大，指针飞上去，把讲到的部位圈出来（圈的位置由一双看得见照片的眼睛来定，你不用写，也不要写），讲过的圈自己消失，讲到下一样时这张缩回去、下一张放大。你照常用上面这些区块，只需要做对三件事：
+- 讲到看得见的东西，就给它照片：一样东西（一只宝可梦、一座殿、一辆车）用 photo；几样东西一样一样讲（几件展品、几个景点、几座建筑、几个角色、几道菜）用一个 list 或 steps，每一项写 img，挂在 V **开始讲这一样**的那一段，d 写它最值得看的一点；两三样东西比外观用 versus，sides 写 img。不要只放一张总图就把里面的几样东西写成纯文字：介绍故宫讲到太和殿、中和殿、九龙壁，每处一项、每项一张自己的照片。
+- 照片要拍得到 V 讲的部位：img、query 写具体的搜索词（「翠玉白菜 台北故宫 特写」「太和殿 正面 全景」「圣母百花大教堂 圆顶」「特斯拉 Model 3 正面」「超梦 全身 官方立绘」），每张各不相同。
+- 带照片的条目只列 V 展开讲了的那几样（最多六样）；只是顺口提到的名字，不必配图。
+
+pitch     {"id":"s","t":"stage","items":[{"id":"英文小写","h":"名字，不超过 6 个字","d":"位置，可省","at":[x,y],"cue":段号},…]}
+只用于足球：V 按位置讲一套首发阵型（门将、后卫、中场、前锋各站哪）。每个球员一项，各挂在讲到他的那一段。球场竖着放，下边是自己的球门：x 从左边线 0 到右边线 1000，y 从对方球门线 0 到自己球门线 1000，按 V 说的位置摆（左路就在左边）。篮球等其他运动、不分位置的大名单、排名、数据榜不用它。`;
+export const CANVAS_CUE_INSTRUCTIONS = CUE_INSTRUCTIONS.replace('\n输出：每行一个 JSON 操作', `\n${POINTER}\n\n输出：每行一个 JSON 操作`);
+if (CANVAS_CUE_INSTRUCTIONS === CUE_INSTRUCTIONS || !CANVAS_CUE_INSTRUCTIONS.includes('# 指针：讲到哪，指到哪')) throw Error('canvas instructions: not placed');
+
+/** The lesson writer's instructions for a canvas: a script that goes round what can be seen, a part at a time. */
+const SCRIPT_STAGE = `
+# 指针
+- 屏幕上有一个指针跟着你的话走。讲到一样有照片的东西，它的照片会放大，指针在上面把你讲到的地方圈出来。
+- 讲一样东西长什么样：一句讲一个照片上看得见的部位（「你看它脑袋后面，有一根管子连到后背」「它的尾巴又粗又长，是紫色的」），从显眼的讲到细节。画面提示写「照片：超梦 全身照」。
+- 讲几样东西（几件展品、几个景点、几座建筑）：一样一样讲，每样两三句连着讲完再讲下一样，不要穿插；每样至少有一句说它看起来什么样、照片上该看哪里（「菜叶上停着两只小虫」「红色的大圆顶」「广场是斜的，像一只贝壳」）。画面提示写「list 带图：加一项 肉形石（配图 肉形石 特写）」。最多六样。
+- 看不见的东西（年代、来历、路线、数字、提醒）照常讲，画面提示写成文字条目。`;
+export const CANVAS_SCRIPT_INSTRUCTIONS = CUE_SCRIPT_INSTRUCTIONS + SCRIPT_STAGE;
