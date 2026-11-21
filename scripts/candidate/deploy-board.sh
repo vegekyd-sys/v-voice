@@ -26,20 +26,25 @@ if [ "${1:-}" = "--update" ]; then
   # Only this Candidate's own code and unit are touched; its environment file,
   # tunnel and entry link stay as they are. The unit must have no call in progress.
   ssh v "sudo -n test -f $root/environment.private.json"
-  # VOICE_BOARD_FOLLOW=cue|word: how pieces follow the voice (docs/research/board-follow-by-model). Only that key is changed.
-  if [ -n "${VOICE_BOARD_FOLLOW:-}" ]; then
-    ssh v sudo -n python3 - "$root/environment.private.json" "$VOICE_BOARD_FOLLOW" <<'PY'
+  # VOICE_BOARD_FOLLOW=cue|word: how pieces follow the voice (docs/research/board-follow-by-model).
+  # VOICE_BOARD_CANVAS=1|0, VOICE_BOARD_ASSETS=1|0: the canvas and the shelf on or off in this Candidate.
+  # Only the keys named are changed.
+  if [ -n "${VOICE_BOARD_FOLLOW:-}${VOICE_BOARD_CANVAS:-}${VOICE_BOARD_ASSETS:-}" ]; then
+    ssh v sudo -n python3 - "$root/environment.private.json" "follow=${VOICE_BOARD_FOLLOW:-}" "canvas=${VOICE_BOARD_CANVAS:-}" "assets=${VOICE_BOARD_ASSETS:-}" <<'PY'
 import json, os, sys
-path, mode = sys.argv[1], sys.argv[2]
+path, asked = sys.argv[1], dict(item.split('=', 1) for item in sys.argv[2:])
 env = json.load(open(path))
-if mode == 'cue': env['VOICE_BOARD_FOLLOW'] = 'cue'
-else: env.pop('VOICE_BOARD_FOLLOW', None)
+if asked['follow'] == 'cue': env['VOICE_BOARD_FOLLOW'] = 'cue'
+elif asked['follow']: env.pop('VOICE_BOARD_FOLLOW', None)
+for name, key in (('canvas', 'VOICE_BOARD_CANVAS'), ('assets', 'VOICE_BOARD_ASSETS')):
+    if asked[name] == '1': env[key] = '1'
+    elif asked[name]: env.pop(key, None)
 tmp = path + '.next'
 with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as out: json.dump(env, out)
 # (The Candidate reads it as its own user: keep the owner.)
 stat = os.stat(path); os.chown(tmp, stat.st_uid, stat.st_gid)
 os.replace(tmp, path)
-print('VOICE_BOARD_FOLLOW', env.get('VOICE_BOARD_FOLLOW', '(word)'))
+print('VOICE_BOARD_FOLLOW', env.get('VOICE_BOARD_FOLLOW', '(word)'), 'VOICE_BOARD_CANVAS', env.get('VOICE_BOARD_CANVAS', '(off)'), 'VOICE_BOARD_ASSETS', env.get('VOICE_BOARD_ASSETS', '(off)'))
 PY
   fi
   upload
