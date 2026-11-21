@@ -373,3 +373,34 @@ test('a thing is made from a picture of each character, each named by what it is
   const wrong = shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 --ref '皮卡丘' 'x'", turn: {}});
   assert.match(wrong.error, /屏幕上没有叫「皮卡丘」的图片；本次没有提交。现有：p1「四档 弹跳人」、p2「五档 尼卡」、p3「10%形态」、p4「基格尔德 完全体形态」、a1「尼卡海报」/u);
 });
+
+test('a found photograph is looked at: one that is not the thing it was searched for is said to be so, and is not a picture to work from', async () => {
+  // (My own test call of 11/21: "柴犬全身" was a photograph of a rubber stamp, and V gave it as the picture of the dog.)
+  const looked = [];
+  const shelf = shelfOn(director(), {see: async ({check, bytes}) => { looked.push([check.name, bytes.length]); return check.name === '柴犬全身' ? {see: '一枚印章和纸上的小狗线稿', fits: false} : {see: '一只趴着的布偶猫', fits: true}; }});
+  shelf.picture = async query => ({bytes: Buffer.from(query), type: 'image/jpeg'});
+  shelf.share = async query => ({url: `https://voice.example/s/${encodeURIComponent(query)}.jpg`, until: Date.now() + 60000});
+  shelf.found('call', {query: '柴犬 站姿 全身', name: '柴犬全身'});
+  shelf.found('call', {query: '柴犬 正脸 特写', name: '柴犬正脸'});
+  shelf.found('call', {query: '布偶猫 趴沙发', name: '布偶猫趴沙发'});
+  await Promise.all(shelf.page('call').photos.map(() => new Promise(resolve => setTimeout(resolve, 5))));
+  assert.deepEqual(looked.map(([name]) => name).sort(), ['布偶猫趴沙发', '柴犬全身', '柴犬正脸']);
+  assert.match(shelf.context('call'), /p1「柴犬全身」（搜错了，图里其实是：一枚印章和纸上的小狗线稿）、p2「柴犬正脸」、p3「布偶猫趴沙发」/u);
+  const command = "makaron edit --image-model gemini-2.1 --ref 柴犬全身 --ref 布偶猫趴沙发 '一起坐在沙发上'";
+  await shelf.lend('call', command);
+  const refused = shelf.begin('call', {command, turn: {}});
+  assert.match(refused.error, /「柴犬全身」这张搜到的图不对：图里其实是一枚印章和纸上的小狗线稿。本次没有提交。.*现有：p2「柴犬正脸」、p3「布偶猫趴沙发」/u);
+  const right = "makaron edit --image-model gemini-2.1 --ref 柴犬正脸 --ref 布偶猫趴沙发 '一起坐在沙发上'";
+  await shelf.lend('call', right);
+  assert.deepEqual(shelf.get('call', shelf.begin('call', {command: right, turn: {}}).id).refs, ['p2', 'p3']);
+});
+
+test('the eye checks a found photograph against the name it was searched under', async () => {
+  const asked = [];
+  const see = createAssetEye({complete: async function* ({messages}) { asked.push(messages); yield '{"see":"一枚方形印章，旁边纸上有小狗线稿","fits":false}'; }});
+  assert.deepEqual(await see({bytes: Buffer.from([1, 2, 3]), type: 'image/jpeg', check: {query: '柴犬 站姿 全身', name: '柴犬全身'}}), {see: '一枚方形印章，旁边纸上有小狗线稿', fits: false});
+  assert.equal(asked[0][1].content[0].image_url.url, 'data:image/jpeg;base64,AQID');
+  assert.match(asked[0][1].content[1].text, /按「柴犬 站姿 全身」搜到的，页面上叫它「柴犬全身」/u);
+  // No picture to look at, or nothing said: not checked (and so not held against the photograph).
+  assert.equal(await see({check: {query: 'x', name: 'x'}}), null);
+});

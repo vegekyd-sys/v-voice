@@ -79,6 +79,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   // one can be the reference of something V makes (board-assets.mjs `lend`): a generator fetches the
   // picture from here. Only where the service has a public HTTPS origin; the address is the whole permission.
   const lentPictures = new Map(), LEND_MS = 30 * 60000;
+  // (And the pictures themselves, for the shelf's eye to check that each is the thing it was searched for.)
+  if (boardAssets && boardPhotos) boardAssets.picture = query => boardPhotos.find(query);
   if (boardAssets && boardPhotos && hosted) boardAssets.share = async query => {
     const picture = await boardPhotos.find(query);
     const kind = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'}[picture?.type];

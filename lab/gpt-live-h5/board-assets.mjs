@@ -23,7 +23,7 @@ const bounded = (value, limit) => Array.from(String(value ?? '').replace(/\s+/gu
 const https = value => { try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : ''; } catch { return ''; } };
 
 // What the voice model is told once, wherever a shelf exists for the call.
-export const ASSET_POLICY = '屏幕素材：用户屏幕的画面上摆着本通话生成的图片和视频，每个有编号（a1、a2…）。下面「屏幕素材现状」会随时更新，里面写的是图里真实看得到的东西。现状里列出的作品都已经做好、用户已经在屏幕上看到了，不用再查询进度或说“我看看好了没”；写着“正在做”的才是还没好的。用户说“这张”“它”“刚才那张”“那个视频”，指用户正点着的那个；没有点着的就是最新的那个；仍然分不清再问。用户问图里有什么、谁在哪边，按现状里的描述回答，不编造没写的细节。屏幕上搜到的照片也可以当参考图，现状里列着它们的编号和名字（p1「名字」…）。用户说“把那张海报改成 Q 版”“照这张画一个”，指的是搜到的照片时就用它；写的时候对着名字选，也可以直接写名字（--ref "基格尔德 完全体形态"），不要凭印象写编号。要改图、换风格、让图动起来、拿它当参考时，创作命令里 --image 和 --ref 直接写编号（例如 --image a1 或 --image p2），系统会换成真实链接；不要抄写、朗读或编造链接。编号只写在命令和交给后台的 context 里：对用户说话、写给用户的消息里不说编号，说它的名字，或者“第一张”“刚才那个视频”。交给后台处理屏幕上的东西时，在 context 里写清它的编号。两个以上的角色或东西同框时，每一个都带上它自己的参考图：出图用 --image 写主图、其余每张各写一个 --ref；做视频最稳的是先出一张同框的图，用户认可后让这张图动起来（--image 写这张图），也可以带多个 --image，脚本里用 <<<media_1>>>、<<<media_2>>> 分别指它们。用户认可了一张图后说“做成视频”“动起来”，就是让这张图动：--image 写它。用户说造型不像、不对，就换上或加上屏幕上那张对的照片当参考重做，不要只改文字描述；屏幕上没有对的照片就先找。completionLine 是事先写的，只说做好了，不说“样子对了”“造型全对”这类你还没看到的话。生成中的东西已经显示在画面上，做好会自己显影，不用另外展示。';
+export const ASSET_POLICY = '屏幕素材：用户屏幕的画面上摆着本通话生成的图片和视频，每个有编号（a1、a2…）。下面「屏幕素材现状」会随时更新，里面写的是图里真实看得到的东西。现状里列出的作品都已经做好、用户已经在屏幕上看到了，不用再查询进度或说“我看看好了没”；写着“正在做”的才是还没好的。用户说“这张”“它”“刚才那张”“那个视频”，指用户正点着的那个；没有点着的就是最新的那个；仍然分不清再问。用户问图里有什么、谁在哪边，按现状里的描述回答，不编造没写的细节。屏幕上搜到的照片也可以当参考图，现状里列着它们的编号和名字（p1「名字」…）。用户说“把那张海报改成 Q 版”“照这张画一个”，指的是搜到的照片时就用它；写的时候对着名字选，也可以直接写名字（--ref "基格尔德 完全体形态"），不要凭印象写编号。标着“搜错了”的照片不是那样东西，不能当参考：告诉用户这张搜得不对，换一张或者重新找。要改图、换风格、让图动起来、拿它当参考时，创作命令里 --image 和 --ref 直接写编号（例如 --image a1 或 --image p2），系统会换成真实链接；不要抄写、朗读或编造链接。编号只写在命令和交给后台的 context 里：对用户说话、写给用户的消息里不说编号，说它的名字，或者“第一张”“刚才那个视频”。交给后台处理屏幕上的东西时，在 context 里写清它的编号。两个以上的角色或东西同框时，每一个都带上它自己的参考图：出图用 --image 写主图、其余每张各写一个 --ref；做视频最稳的是先出一张同框的图，用户认可后让这张图动起来（--image 写这张图），也可以带多个 --image，脚本里用 <<<media_1>>>、<<<media_2>>> 分别指它们。用户认可了一张图后说“做成视频”“动起来”，就是让这张图动：--image 写它。用户说造型不像、不对，就换上或加上屏幕上那张对的照片当参考重做，不要只改文字描述；屏幕上没有对的照片就先找。completionLine 是事先写的，只说做好了，不说“样子对了”“造型全对”这类你还没看到的话。生成中的东西已经显示在画面上，做好会自己显影，不用另外展示。';
 export const ASSET_CONTEXT_EMPTY = '屏幕素材现状：画面上还没有生成的图片或视频。';
 // What the illustrator is told (appended to its instructions by the service).
 export const ASSET_NOTES = `
@@ -91,6 +91,14 @@ const lookInstructions = parts => `你是 V 的眼睛。V 正在和用户通话�
 - 只写看得见的。认不出是谁就按样子说（「橙色衣服的金发少年」），不要猜画面外的事。${parts ? '\n- parts 是图里最值得指给用户看的 2 到 5 处（每个角色、最显眼的道具或文字）。box 是它在图上的位置：左上角 [0,0]，右下角 [1000,1000]，按图的宽和高各自换算成千分比，紧贴着它的边。' : ''}
 - name 像给作品起的名字（「鸣人大战路飞海报」「雪夜角楼」），不带标点。`;
 
+// A found photograph, checked: the board asked for it by name and nobody has looked at what came back
+// (call of 11/21: "柴犬全身" was a photograph of a rubber stamp, and V gave it as the picture of the dog).
+const CHECK_INSTRUCTIONS = `你替 V 核对一张搜来的图。V 按一个名字去搜图，搜回来的图没有人看过，可能根本不是那样东西。
+只输出一个 JSON 对象，不要任何别的文字：
+{"see":"图里实际是什么，一句话，不超过 30 个字","fits":true 或 false}
+- fits：图里的主体就是名字说的那样东西（那个角色、那种动物、那个地方、那件产品）时为 true。是别的东西、只是相关的周边（印章、玩具、文字截图、别的角色）、主体小到看不清、是另一个形态或版本而名字写明了形态时，为 false。
+- 认不出具体是谁时，按样子描述，fits 按你能判断的写；拿不准时写 true。`;
+
 const json = text => {
   const start = text.indexOf('{'), end = text.lastIndexOf('}');
   if (start < 0 || end <= start) return null;
@@ -107,21 +115,32 @@ const box = value => Array.isArray(value) && value.length === 4 && value.every(n
  */
 export function createAssetEye({complete, fetchImpl = fetch, maxBytes = 4 * 1024 * 1024, timeoutMs = 12000, parts: wanted = false} = {}) {
   if (!complete) return null;
-  return async function see({url, prompt = '', signal} = {}) {
+  // `check`: a photograph the board found under a name ({name, query}). The answer is short: what is
+  // really in it, and whether that is the thing it is named for. `bytes`/`type`: the picture itself, when held.
+  return async function see({url = '', bytes = null, type = '', prompt = '', check = null, signal} = {}) {
     const controller = new AbortController(), abort = () => controller.abort();
     if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, {once: true});
     const timer = setTimeout(abort, timeoutMs);
     try {
       // The picture is read here and handed over as bytes: the model's host may not reach the media host quickly.
       let image = url;
-      try {
+      if (bytes?.length && bytes.length <= maxBytes && /^image\/(png|jpe?g|webp|gif)$/u.test(type)) image = `data:${type};base64,${Buffer.from(bytes).toString('base64')}`;
+      else if (url) try {
         const response = await fetchImpl(url, {signal: controller.signal, redirect: 'follow'});
-        const type = String(response.headers?.get?.('content-type') ?? '').split(';')[0].trim();
-        if (response.ok && /^image\/(png|jpe?g|webp|gif)$/u.test(type)) {
-          const bytes = Buffer.from(await response.arrayBuffer());
-          if (bytes.length && bytes.length <= maxBytes) image = `data:${type};base64,${bytes.toString('base64')}`;
+        const kind = String(response.headers?.get?.('content-type') ?? '').split(';')[0].trim();
+        if (response.ok && /^image\/(png|jpe?g|webp|gif)$/u.test(kind)) {
+          const body = Buffer.from(await response.arrayBuffer());
+          if (body.length && body.length <= maxBytes) image = `data:${kind};base64,${body.toString('base64')}`;
         }
       } catch { /* The link itself is still worth a try. */ }
+      if (!image) return null;
+      if (check) {
+        let answer = '';
+        for await (const chunk of complete({messages: [{role: 'system', content: CHECK_INSTRUCTIONS}, {role: 'user', content: [{type: 'image_url', image_url: {url: image}},
+          {type: 'text', text: `这张图是按「${bounded(check.query, 60)}」搜到的，页面上叫它「${bounded(check.name, 24)}」。`}]}], signal: controller.signal})) answer += chunk;
+        const told = json(answer), shows = bounded(told?.see, 40);
+        return shows ? {see: shows, fits: told.fits !== false} : null;
+      }
       const content = [{type: 'image_url', image_url: {url: image}},
         {type: 'text', text: prompt ? `这张图是按这段要求生成的（图里实际画成什么样，以你看到的为准）：${bounded(prompt, 300)}` : '这张图是 V 的后台刚做出来的。'}];
       let text = '';
@@ -163,7 +182,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     if (!value) {
       for (const [key, old] of owners) if (now() - old.touched >= OWNER_TTL_MS) owners.delete(key);
       while (owners.size >= maxOwners) owners.delete(owners.keys().next().value);
-      value = {assets: [], photos: [], shots: 0, count: 0, picked: '', watchers: new Set(), turns: new Map(), maker: null, made: 0, making: Promise.resolve(), touched: now(), stamp: 0};
+      value = {assets: [], photos: [], shots: 0, checks: 0, lanes: [Promise.resolve(), Promise.resolve()], count: 0, picked: '', watchers: new Set(), turns: new Map(), maker: null, made: 0, making: Promise.resolve(), touched: now(), stamp: 0};
       owners.set(id, value);
     }
     value.touched = now();
@@ -241,7 +260,8 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     if (!value.photos.length) return '';
     let here = [];
     try { const scene = director?.state?.(owner)?.scene; here = scene ? [...scenePictures(scene)].map(query => value.photos.find(photo => photo.query === query)).filter(Boolean) : []; } catch { here = []; }
-    const others = value.photos.filter(photo => !here.includes(photo)).slice(-Math.max(0, 8 - here.length)), say = photo => `${photo.id}「${photo.name}」`;
+    // (One that is not what it was searched for is said to be so, with what it really shows: not a picture to work from.)
+    const others = value.photos.filter(photo => !here.includes(photo)).slice(-Math.max(0, 8 - here.length)), say = photo => `${photo.id}「${photo.name}」${photo.fits === false ? `（搜错了，图里其实是：${photo.see}）` : ''}`;
     return here.length
       ? `这一页上搜到的照片（按画面上的先后，可当参考图）：${here.map(say).join('、')}。${others.length ? `之前页上的：${others.map(say).join('、')}。` : ''}`
       : `搜到的照片（可当参考图）：${others.map(say).join('、')}。`;
@@ -254,13 +274,29 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
      * holds the pictures). `share(query)` resolves the address, or '' where none can be given.
      */
     share: null,
+    /** The picture itself, for looking at (set by the service): `picture(query)` resolves {bytes, type} or null. */
+    picture: null,
     /** The page has been given a photograph the board asked for: it is something V can now work from. */
     found(owner, {query, name = ''} = {}) {
       const value = row(owner), key = bounded(query, 60);
       if (!key || value.photos.some(photo => photo.query === key)) return;
-      value.photos.push({id: `p${++value.shots}`, kind: 'image', state: 'ready', query: key, name: bounded(name || key, 24), url: '', source: 'search'});
+      const photo = {id: `p${++value.shots}`, kind: 'image', state: 'ready', query: key, name: bounded(name || key, 24), url: '', source: 'search'};
+      value.photos.push(photo);
       while (value.photos.length > MAX_PHOTOS) value.photos.shift();
       changed(owner, value);
+      // Looked at once, two at a time: V is told when what came back is not the thing it was searched for.
+      if (see && api.picture && value.checks < 40) {
+        const lane = value.checks++ % 2, started = now();
+        const check = async () => {
+          let found = null;
+          try { const picture = await api.picture(key); if (picture?.bytes?.length) found = await see({bytes: picture.bytes, type: picture.type, check: {query: key, name: photo.name}}); } catch { found = null; }
+          audit({type: 'board.photo-check', voiceSessionId: owner, photo: photo.id, checked: Boolean(found), fits: found?.fits ?? null, durationMs: now() - started});
+          if (!found || !owners.get(owner)?.photos.includes(photo)) return;
+          photo.see = found.see; photo.fits = found.fits;
+          if (!found.fits) changed(owner, value);
+        };
+        photo.checking = value.lanes[lane] = value.lanes[lane].then(check, check);
+      }
     },
     /**
      * Before a creation command is read: the photographs it names (or, with no command, the latest
@@ -287,12 +323,15 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
         if (found.link) return whole;
         // A video is not a reference picture; the picture it was made from is.
         const source = found.item?.kind === 'video' && found.item.from ? value.assets.find(item => item.id === found.item.from) : found.item;
+        if (source?.fits === false) { missing ??= {...found, wrong: source}; return whole; }
         if (!source?.url || source.kind !== 'image' || source.until !== undefined && source.until < now()) { missing ??= {...found, held: Boolean(source)}; return whole; }
         if (!used.includes(source.id)) used.push(source.id);
         return `${lead}'${source.url}'`;
       });
       if (missing) {
-        const have = [...value.photos.slice(-8), ...value.assets.filter(asset => asset.kind === 'image' && asset.state === 'ready').slice(-4)].map(item => `${item.id}「${item.name || item.id}」`).join('、');
+        const have = [...value.photos.filter(photo => photo.fits !== false).slice(-8), ...value.assets.filter(asset => asset.kind === 'image' && asset.state === 'ready').slice(-4)].map(item => `${item.id}「${item.name || item.id}」`).join('、');
+        // (Looked at, and not the thing it is named for: used as the reference it would make the thing wrong again.)
+        if (missing.wrong) return {command: text, error: `「${missing.wrong.name}」这张搜到的图不对：图里其实是${missing.wrong.see}。本次没有提交。换一张对的当参考；屏幕上没有对的就重新找一张，或者告诉用户后只按文字来画。${have ? `现有：${have}。` : ''}`};
         return {command: text, error: missing.held
           ? `「${missing.item.name || missing.id}」这张这次没能取到，不能当参考图；本次没有提交。可以换一张，或者告诉用户后只按文字来画。`
           : `屏幕上没有${missing.name ? `叫「${bounded(missing.name, 20)}」的图片` : `可用的图片 ${missing.id}`}；本次没有提交。${have ? `现有：${have}。` : ''}请对着名字重写命令。`};
@@ -308,7 +347,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       const origin = find(value, creation.reference);
       const parent = origin ? (origin.kind === 'video' && origin.from ? value.assets.find(item => item.id === origin.from) ?? origin : origin) : null;
       // (A version goes by the name its picture was given: "the video of X", not a nameless video.)
-      const asset = add(value, fresh(value, {kind: creation.kind, state: 'making', prompt: creation.prompt, from: parent?.id ?? '', refs: used, ...(parent?.name ? {name: parent.name, named: creation.kind === 'video'} : {}), ...(creation.aspect ? {aspect: creation.aspect} : parent?.aspect ? {aspect: parent.aspect} : {})}));
+      const asset = add(value, fresh(value, {kind: creation.kind, state: 'making', prompt: creation.prompt, from: parent?.id ?? '', refs: used, ...(parent?.name && creation.kind === 'video' ? {name: parent.name, named: true} : {}), ...(creation.aspect ? {aspect: creation.aspect} : parent?.aspect ? {aspect: parent.aspect} : {})}));
       value.turns.set(key, {...kinds, [creation.kind]: asset.id});
       if (value.turns.size > 64) value.turns.delete(value.turns.keys().next().value);
       audit({type: 'board.asset', voiceSessionId: owner, asset: asset.id, kind: asset.kind, state: 'making', from: asset.from || null, ...(used.length ? {refs: used} : {})});
