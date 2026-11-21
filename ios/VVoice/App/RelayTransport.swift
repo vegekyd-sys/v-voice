@@ -27,6 +27,8 @@ final class RelayPingCompletion: @unchecked Sendable {
     private var uploadedBytes = 0
     private var maxSendMS = 0.0
     private var maxBufferedBytes = 0
+    /// Set from the call's runtime policy; the web page's rule when the service sends none.
+    var upload = UploadBackpressure()
     var onEvent: (([String: Any]) throws -> Void)?
     var onFailure: ((Error) -> Void)?
     var onClose: (() -> Void)?
@@ -86,14 +88,26 @@ final class RelayPingCompletion: @unchecked Sendable {
             }
         } onCancel: { Task { @MainActor [weak self] in self?.close() } }
     }
-    func sendAudio(_ data: Data) { enqueue(.data(data), bytes: data.count) }
+    func sendAudio(_ data: Data) {
+        guard !closed, socket != nil else { return }
+        switch upload.decide(waiting: bufferedBytes, nowMS: ProcessInfo.processInfo.systemUptime * 1000) {
+        case .send: break
+        case .resumed(let shedMS, let frames): CallDiagnostics.record("audio.upload-resumed", code: "shedMS=\(shedMS) frames=\(frames)")
+        case .shed(let first):
+            if first { CallDiagnostics.record("audio.upload-shed", code: "queued=\(bufferedBytes)") }
+            return
+        case .fail: CallDiagnostics.record("audio.upload-overflow"); fail(VoiceError.bufferOverflow); return
+        }
+        enqueue(.data(data), bytes: data.count)
+    }
     func send(_ value: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: value), let text = String(data: data, encoding: .utf8) else { return }
         enqueue(.string(text), bytes: data.count)
     }
     private func enqueue(_ message: URLSessionWebSocketTask.Message, bytes: Int) {
         guard !closed, socket != nil else { return }
-        guard bufferedBytes + bytes <= 96_000 else { CallDiagnostics.record("audio.upload-overflow"); fail(VoiceError.bufferOverflow); return }
+        // Audio is held back by `upload` above; this bounds what a control message may add on top.
+        guard bufferedBytes + bytes <= upload.policy.shedBytes + 256_000 else { CallDiagnostics.record("audio.upload-overflow"); fail(VoiceError.bufferOverflow); return }
         queue.append((message, bytes)); bufferedBytes += bytes
         maxBufferedBytes = max(maxBufferedBytes, bufferedBytes)
         guard sender == nil else { return }

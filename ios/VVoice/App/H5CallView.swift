@@ -98,6 +98,8 @@ struct H5WebSurface: UIViewRepresentable {
     private var delivery: H5DeliveryStore?
     private var fetching: Task<Void, Never>?
     private var watchdog: Task<Void, Never>?
+    /// Pages that failed this launch, and a page left unstarted while the App was in the background.
+    private var pageFailures = 0, startInForeground = false
     private var lastCheck = Date.distantPast
     private var reading = false
     private var disposed = false
@@ -118,12 +120,14 @@ struct H5WebSurface: UIViewRepresentable {
         web.navigationDelegate = self; web.uiDelegate = self; web.isInspectable = false
         webView = web
         configureDelivery()
+        call.fetchServedPage = { [weak self] in self?.checkForUpdates(force: true) }
         scheme.select(delivery?.preferred() ?? (try? H5Release.bundled()))
         reload(); return web
     }
     static func trusted(_ url: URL?, mainFrame: Bool) -> Bool { mainFrame && url?.user == nil && url?.password == nil && url?.port == nil && url?.scheme == "vvoice-h5" && url?.host == "app" && ["/index.html","/","/compare","/comparison.html"].contains(url?.path ?? "") }
     func update(_ value: [String: Any], foreground: Bool) {
         latest = value; self.foreground = foreground
+        if foreground, startInForeground, !ready { startInForeground = false; reload() }
         configureDelivery()
         if call.active { fetching?.cancel(); fetching = nil }
         if !foreground { pending?.cancel(); pending = nil; webView?.pauseAllMediaPlayback(completionHandler: nil); return }
@@ -190,16 +194,23 @@ struct H5WebSurface: UIViewRepresentable {
         watchdog = Task { [weak self] in
             try? await Task.sleep(for: .seconds(8))
             guard !Task.isCancelled, let self, !self.ready, !self.disposed else { return }
+            // A page cannot start while the App is in the background; that is not the page's failure.
+            guard self.foreground else { self.startInForeground = true; return }
             self.failedPage()
         }
     }
     private func failedPage() {
         watchdog?.cancel(); watchdog = nil
+        pageFailures += 1
         if let release = scheme.release, release.revision != "bundled" {
-            delivery?.reject(release)
-            scheme.select(delivery?.preferred() ?? (try? H5Release.bundled()))
+            let dropped = delivery?.failed(release) ?? true
+            CallDiagnostics.record("h5.page-failed", code: "rev=\(release.revision.prefix(12)) dropped=\(dropped) n=\(pageFailures) foreground=\(foreground)")
+            // A page that started before is loaded again; one that keeps failing gives way to the App's own for this launch.
+            if dropped { scheme.select(delivery?.preferred() ?? (try? H5Release.bundled())) }
+            else if pageFailures > 2 { scheme.select(try? H5Release.bundled()) }
             reload()
-        } else { onError("界面暂时无法载入，请重新加载。") }
+        } else if !foreground { startInForeground = true }
+        else { onError("界面暂时无法载入，请重新加载。") }
     }
     func dispose() { disposed = true; pending?.cancel(); fetching?.cancel(); watchdog?.cancel(); pending = nil; fetching = nil; watchdog = nil; ready = false }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage, replyHandler: @escaping @MainActor (Any?, String?) -> Void) {
@@ -222,8 +233,12 @@ struct H5WebSurface: UIViewRepresentable {
         switch action {
         case "ready":
             guard payload["bridgeVersion"] as? Int == H5Release.bridgeVersion else { failedPage(); throw VoiceError.protocolMismatch }
-            ready = true; watchdog?.cancel(); watchdog = nil
-            if let release = scheme.release { delivery?.confirm(release) }
+            ready = true; watchdog?.cancel(); watchdog = nil; pageFailures = 0; startInForeground = false
+            if let release = scheme.release {
+                delivery?.confirm(release); CallDiagnostics.record("h5.page-ready", code: "rev=\(release.revision.prefix(12)) build=\(release.build ?? "-")")
+                let page = CallCoordinator.PageVersion(build: release.build, updated: release.updated, bundled: release.revision == "bundled")
+                if call.page != page { call.page = page; call.pageFreshness = .unknown }
+            }
             await call.refreshOptions(); latest = H5Snapshot.make(call, visible: foreground); push()
             checkForUpdates()
         case "dial":

@@ -2,6 +2,8 @@
 // or arbitrary tool request is accepted from this browser audio channel.
 // Runs inside the audio rendering thread. A consumed sample is never replayed
 // during starvation: silence and a short rebuffer replace the old waveform.
+import {UPLOAD_BACKPRESSURE} from './upload-backpressure.mjs';
+
 export class PcmPlaybackQueue {
   constructor(rate, prefillMs=120, maxFrames=8*1024*1024) {
     this.rate=rate;this.prefill=Math.ceil(rate*prefillMs/1000);this.maxFrames=maxFrames;this.clear();
@@ -187,7 +189,7 @@ export function observeAudioMeters({context,input,output,onLevel,inputLevel}) {
   const timer=setInterval(()=>onLevel(context.state==='running'?{input:inputLevel?inputLevel():rms(mic,a),output:rms(speaker,b)}:{input:0,output:0}),100);
   return ()=>{clearInterval(timer);try{input?.disconnect(mic);output.disconnect(speaker);}catch{}mic.disconnect();speaker.disconnect();};
 }
-const UPLOAD_SHED_BYTES=96000,UPLOAD_RESUME_BYTES=24000,UPLOAD_STALL_MS=30000;
+const {shedBytes:UPLOAD_SHED_BYTES,resumeBytes:UPLOAD_RESUME_BYTES,stallMS:UPLOAD_STALL_MS}=UPLOAD_BACKPRESSURE;
 export function createRelayAudio({context,stream,reservation,connection,dialStartedAt=performance.now(),onTiming=()=>{},onEvent,onError,onClosed,onPlaybackActivity=()=>{},onAudioLevel,renderReference,startCapture,subscribePcm,prepareCapture,bufferedOutput=false,greeting=true,inputGated=false}) {
   let stopMeter,stopPcm,pcmLevel=0,pcmLevelAt=0,outputMuted=false;
   const timing=name=>{try{onTiming(name);}catch{}};

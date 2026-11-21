@@ -9,10 +9,21 @@ public struct NativeRuntimePolicy: Codable, Sendable {
     public let copy: Copy
     public let pause: Pause
     public let bargeIn: BargeIn
+    /// Absent from older services: the App then uses `Upload.standard`, the web page's numbers.
+    public let upload: Upload?
     public struct Playback: Codable, Sendable { public let replaceResponse: Bool; public let localPause: Bool }
     public struct Timing: Codable, Sendable { public let thinkingMS: Double; public let providerRecoveryMS: Double; public let endDrainMS: Double }
     public struct Copy: Codable, Sendable { public let connected: String; public let reconnected: String; public let recovering: String; public let recovered: String }
     public struct BargeIn: Codable, Sendable { public let rms: Double; public let frames: Int }
+    /// What a stalled uplink does (lab/gpt-live-h5/upload-backpressure.mjs): above `shedBytes`
+    /// waiting to be sent, new microphone frames are dropped; below `resumeBytes` they are sent
+    /// again; only an uplink that has not drained for `stallMS` ends the call.
+    public struct Upload: Codable, Sendable, Equatable {
+        public let shedBytes: Int, resumeBytes: Int, stallMS: Double
+        public init(shedBytes: Int, resumeBytes: Int, stallMS: Double) { self.shedBytes = shedBytes; self.resumeBytes = resumeBytes; self.stallMS = stallMS }
+        public static let standard = Upload(shedBytes: 96_000, resumeBytes: 24_000, stallMS: 30_000)
+        var valid: Bool { (24_000...480_000).contains(shedBytes) && (0..<shedBytes).contains(resumeBytes) && (2_000...120_000).contains(stallMS) }
+    }
     public struct Pause: Codable, Sendable {
         public let rms: Double, noiseMultiplier: Double, zcrMin: Double, zcrMax: Double
         public let onsetMS: Double, quietMS: Double, holdMS: Double, maxHoldMS: Double
@@ -36,7 +47,8 @@ public struct NativeRuntimePolicy: Codable, Sendable {
               (0.8...1).contains(p.pause.speechConfidence ?? 0.9),
               (0.001...0.1).contains(p.pause.speechRMS ?? 0.006),
               (20...500).contains(p.pause.speechOnsetMS ?? 60),
-              (100...30_000).contains(p.pause.nativeHoldMS), (0...2000).contains(p.pause.generationGraceMS), (0...2000).contains(p.pause.doneGraceMS)
+              (100...30_000).contains(p.pause.nativeHoldMS), (0...2000).contains(p.pause.generationGraceMS), (0...2000).contains(p.pause.doneGraceMS),
+              p.upload?.valid ?? true
         else { throw VoiceError.protocolMismatch }
         return p
     }

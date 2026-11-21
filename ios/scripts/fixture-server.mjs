@@ -25,7 +25,7 @@ const boardOps=()=>[{op:'sync',scene:{serial:1,rev:boardRequests.length,title:'F
      {id:'g',t:'draw',h:'勾股定理',items:[{id:'t',k:'poly',p:[40,40,40,25,60,40],h:'3-4-5'},{id:'a',k:'rect',p:[25,25,15,15],h:'9',tone:'sky'},{id:'b',k:'rect',p:[40,40,20,20],h:'16',tone:'peach'},{id:'c',k:'poly',p:[40,25,60,40,75,20,55,5],h:'25',tone:'butter'}]}]}},{op:'done',reason:'drawn',rev:boardRequests.length}];
 const boardPhoto={type:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='};
 let boardMode=false,boardRequests=[],boardImages=[],avatarRequests=[],avatarEvents=[],avatarReply="reaction-0",avatarContinuations=["reaction-1","listen-5"],slowAvatar=false;
-let shellVariant='none',shellRequests=[],shellRedirects=0;
+let shellVariant='none',shellRequests=[],shellRedirects=0,servedPage='same',pageVersionRequests=0;
 let inputFrames=0,inputActiveFrames=0,peakInputRMS=0;
 async function shellRelease(variant){
  const release=JSON.parse(await readFile(new URL('../../lab/gpt-live-h5/ios-shell-release.json',import.meta.url),'utf8'));
@@ -57,7 +57,7 @@ const server=createServer(async(req,res)=>{
  const path=new URL(req.url,'http://127.0.0.1').pathname;
  const body=await new Promise(resolve=>{const chunks=[];req.on('data',b=>chunks.push(b));req.on('end',()=>{try{resolve(JSON.parse(Buffer.concat(chunks).toString()||'{}'));}catch{resolve({});}});});
  const send=(status,value)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
- if(path==='/fixture/state')return send(200,{boardRequests,boardImages,fastDials,statusRequests,sessionRequests,active,sessions,inputBytes,zeroBytes,inputFrames,inputActiveFrames,peakInputRMS,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,presentationRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects,lastOffer,locationResults,systemBackgroundReady});
+ if(path==='/fixture/state')return send(200,{pageVersionRequests,boardRequests,boardImages,fastDials,statusRequests,sessionRequests,active,sessions,inputBytes,zeroBytes,inputFrames,inputActiveFrames,peakInputRMS,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,presentationRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects,lastOffer,locationResults,systemBackgroundReady});
  if(path==='/fixture/redirect-target'){shellRedirects++;return send(200,{});}
  if(path==='/voice/ios-shell-release.json'){
    shellRequests.push({cookie:!!req.headers.cookie,authorization:!!req.headers.authorization});
@@ -82,7 +82,8 @@ const server=createServer(async(req,res)=>{
    if(body.command==='reset'){boardMode=false;boardRequests=[];boardImages=[];lastOffer=null;offerReply?.(409,{error:'Reset'});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();}
    if(body.command==='shell-delay')shellDelayMS=Math.max(0,Math.min(2000,Number(body.ms)||0));
    if(body.command==='shell-release')shellVariant=body.variant??'none';
-   if(body.command==='reset'){shellDelayMS=0;shellVariant='none';shellRequests=[];shellRedirects=0;inputFrames=0;inputActiveFrames=0;peakInputRMS=0;}
+   if(body.command==='served-page')servedPage=body.variant??'same';
+   if(body.command==='reset'){shellDelayMS=0;shellVariant='none';shellRequests=[];shellRedirects=0;servedPage='same';pageVersionRequests=0;inputFrames=0;inputActiveFrames=0;peakInputRMS=0;}
    if(body.command==='fast-mode')fastMode=true;
    if(body.command==='fast-reject')fastReject=true;
    if(body.command==='fast-wrong-owner')fastWrongOwner=true;
@@ -159,6 +160,12 @@ const server=createServer(async(req,res)=>{
  }
  // The call board through the native bridge: one JSON reply per run, a photograph as base64.
  // Page features, as the App relays them (`service` → /api/page/<name>).
+ // Which page the service serves now: the real one, or (`served-page` other) a newer one.
+ if(path==='/voice/api/page/version'){
+   pageVersionRequests++;
+   const {build,updated}=JSON.parse(await readFile(new URL('../../lab/gpt-live-h5/ios-shell-release.json',import.meta.url),'utf8'));
+   return send(200,servedPage==='other'?{build:'0123456789ab',updated:'2026-12-01'}:{build,updated});
+ }
  if(path==='/voice/api/page/board'){
    if(!boardMode)return send(404,{error:'没有这个入口'});
    if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});

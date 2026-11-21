@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {speakerDisplay, TRANSIENT_MS, THINKING_MS, TASK_LABELS} from '../gpt-live-h5/call-view.mjs';
+import {UPLOAD_BACKPRESSURE} from '../gpt-live-h5/upload-backpressure.mjs';
 
 // Product policy belongs to the service, including calls whose WK page is asleep.
 // No tool execution, identity, URLs, JavaScript or credentials cross this contract.
@@ -20,6 +21,8 @@ export const DEFAULT_NATIVE_RUNTIME_POLICY = Object.freeze({
     onsetMS:140, quietMS:400, holdMS:1800, maxHoldMS:12000,
     confirmationMS:2000, speechConfidence:0.9, speechRMS:0.006, speechOnsetMS:60, nativeHoldMS:15000, generationGraceMS:600, doneGraceMS:250},
   bargeIn:{rms:0.025, frames:4},
+  // A stalled uplink sheds microphone frames instead of ending the call, as the web page does.
+  upload:{...UPLOAD_BACKPRESSURE},
 });
 const text=(value,limit=8000)=>typeof value==='string'?Array.from(value).slice(0,limit).join(''):'';
 const speakerID=id=>String(id).startsWith('speaker:')?String(id):'speaker:'+id;

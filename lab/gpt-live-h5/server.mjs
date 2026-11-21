@@ -50,10 +50,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 // Dialing is how a known caller retries; only anonymous callers keep the tight limit.
 // Page features reachable as /api/page/<name> (see the request handler). Each maps to the route the web
 // page uses, answered as JSON: the board's whole run at once, a photograph as base64.
+// The served App page's build and the date of its latest update (ios-shell-release.json), read once.
+let servedPageBuild;
 const PAGE_FEATURES = Object.freeze({
   board: params => ({pathname: '/api/board', params: {...params, collect: true}}),
   'board-image': params => ({pathname: '/api/board-image', params: {...params, inline: true}}),
   'board-assets': params => ({pathname: '/api/board-assets', params}),
+  // Which page the service serves the App now (its build), so the page can say whether it is the latest.
+  version: () => ({pathname: '/api/page-version', params: {}}),
 });
 export const callAttemptLimit = binding => binding.permissionProfile === 'unidentified' ? 6 : 30;
 
@@ -705,7 +709,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
         ["/speaker-routing.mjs", [join(here, "../speaker-native/client.mjs"), "text/javascript; charset=utf-8"]],
-        ...["device-location.mjs", "caller-context.mjs", "ui-bundle.mjs", "call-view.mjs", "board-client.mjs", "board-assets-client.mjs", "board-scene.mjs", "board-sketch.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
+        ...["device-location.mjs", "caller-context.mjs", "ui-bundle.mjs", "call-view.mjs", "board-client.mjs", "board-assets-client.mjs", "board-scene.mjs", "board-sketch.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "upload-backpressure.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
         ["/changelog.mjs", [join(here, "changelog.mjs"), "text/javascript; charset=utf-8"]],
         ["/assets/v-voice-icon.svg", [join(here, "assets/v-voice-icon.svg"), "image/svg+xml"]],
@@ -879,6 +883,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const name = pathname.slice('/api/page/'.length), feature = Object.hasOwn(PAGE_FEATURES, name) ? PAGE_FEATURES[name] : null;
         if (!feature) return json(res,404,{error:'没有这个入口'});
         ({pathname, params} = feature(params));
+      }
+      if (pathname === "/api/page-version") {
+        servedPageBuild ??= readFile(join(here, "ios-shell-release.json"), "utf8").then(text => {const {build = null, updated = null} = JSON.parse(text);return {build, updated};}).catch(() => ({build: null, updated: null}));
+        return json(res, 200, await servedPageBuild);
       }
       if (pathname === "/api/session") {
         const result=await reservePhoneCall({context,binding,params,req,ip});
@@ -1297,7 +1305,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if(lesson)lesson.source=['backend','parallel'].includes(process.env.VOICE_BOARD_LESSON_SOURCE)?process.env.VOICE_BOARD_LESSON_SOURCE:'service';
     // (VOICE_MATERIAL_CHECK=0: nothing is looked at before a creation is submitted.)
     const materialCheck=assets&&process.env.VOICE_MATERIAL_CHECK!=='0'?createMaterialCheck({complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'120'}),audit:event=>board.log?.(event)}):null;
-    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,assets,videoScript,materialCheck,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
+    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,assets,videoScript,materialCheck,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',playbackEchoGuard:process.env.VOICE_PLAYBACK_ECHO_GUARD!=='0',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
       mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({environment:process.env}):null,

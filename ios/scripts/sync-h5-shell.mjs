@@ -5,10 +5,15 @@ import {createHash} from 'node:crypto';
 import {build} from 'esbuild';
 import {AVATAR_FILES} from '../../lab/gpt-live-h5/avatar-state.mjs';
 import {createH5Release} from './h5-release.mjs';
+import {VOICE_UPDATES} from '../../lab/gpt-live-h5/changelog.mjs';
 const root=resolve(import.meta.dirname,'../..'),h5=resolve(root,'lab/gpt-live-h5'),dest=resolve(root,'ios/VVoice/Resources/H5Shell');
 const sources=['index.html','styles.css','ui/call-ui.jsx','ui-bundle.mjs','app-handoff.mjs','call-view.mjs','content-view.mjs','markdown.mjs','media-references.mjs','changelog.mjs','avatar.mjs','avatar-reactions.mjs','avatar-telemetry.mjs','avatar-catalog.mjs','avatar-state.mjs','avatar-approved-reactions.mjs','vendor/marked-18.0.5.mjs','comparison.html','comparison.css','comparison.mjs',...new Set(AVATAR_FILES.map(f=>'assets/'+f)),'assets/v-voice-icon.svg','assets/v-voice-icon-32.png','assets/v-voice-apple-touch.png'];
 const manifest={sources:{}};for(const name of sources)manifest.sources[name]=createHash('sha256').update(await readFile(resolve(h5,name))).digest('hex');
 manifest.sources['ios/H5/native-h5.mjs']=createHash('sha256').update(await readFile(resolve(root,'ios/H5/native-h5.mjs'))).digest('hex');
+// The page's build (one id from its sources) and the date of its latest update, beside the bundled page
+// and in the served shell, so the App can say which page it shows and whether it is the one served now.
+manifest.build=createHash('sha256').update(JSON.stringify(Object.entries(manifest.sources).sort())).digest('hex').slice(0,12);
+manifest.updated=VOICE_UPDATES[0].date;
 const bundle=await build({entryPoints:[resolve(root,'ios/H5/native-h5.mjs')],bundle:true,format:'iife',target:'safari16',minify:true,write:false,legalComments:'eof'});
 const csp=`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; media-src 'self' https: blob:; connect-src 'self' blob:; font-src 'self' data:; frame-src 'none'; base-uri 'self'; form-action 'none'">`;
 let html=(await readFile(resolve(h5,'index.html'),'utf8')).replace(/\s*<link rel="modulepreload"[^>]*>/gu,'').replace(/\s*<script[^>]*src="\.\/entry-startup.mjs"[^>]*><\/script>/gu,'').replace('<script type="module" src="./app.js"></script>','<script src="./native-h5.js"></script>').replace('<meta charset="utf-8" />','<meta charset="utf-8" />'+csp);
@@ -26,7 +31,7 @@ if(process.argv.includes('--check')){for(const [f,bytes]of expected)if(!Buffer.f
 else {for(const [f,bytes]of expected){await mkdir(resolve(dest,f,'..'),{recursive:true});await writeFile(resolve(dest,f),bytes);}console.log('Bundled original H5 page, styles, UI, reader, all Reaction assets and comparison.');}
 // The exact same UI ships with the web release. Production serves prebuilt bytes;
 // it never compiles an iOS project or invokes the browser's calling transport.
-const releaseBytes=JSON.stringify(await createH5Release(dest,manifest.outputs))+'\n';
+const releaseBytes=JSON.stringify(await createH5Release(dest,manifest.outputs,{build:manifest.build,updated:manifest.updated}))+'\n';
 const remote=resolve(h5,'ios-shell-release.json');
 if(process.argv.includes('--check')) { if(await readFile(remote,'utf8')!==releaseBytes)throw Error('iOS web release stale: run npm run build:ios-shell'); }
 else await writeFile(remote,releaseBytes);
