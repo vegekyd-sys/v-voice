@@ -99,7 +99,8 @@
     "lark_read": "permission denied"
    }
   },
-  "note": "前台的日历工具被拒：不能说一句查不了就停，要交后台"
+  "note": "前台的日历工具被拒：不能说一句查不了就停，要交后台",
+  "settleMs": 8000
  },
  {
   "id": "look-then-write",
