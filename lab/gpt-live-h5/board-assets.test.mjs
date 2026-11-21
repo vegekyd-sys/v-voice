@@ -428,8 +428,9 @@ test('V\'s own image is always at hand: named in a command, lent like a found ph
   const lent = [];
   shelf.share = async query => { lent.push(query); return {url: 'https://voice.example/board-shared/00000000000000000000000000000000.webp', until: Date.now() + 60000}; };
   // It is told to the voice model from the first moment, on an empty shelf too.
-  assert.match(shelf.context('call'), /常驻素材[^]*v「V 自己的形象」[^]*--image v/u);
-  assert.ok(shelf.context('call').startsWith(ASSET_CONTEXT_EMPTY));
+  assert.match(shelf.standingNote(), /常驻素材[^]*v「V 自己的形象」[^]*--image v/u);
+  // (Said once beside the policy, not with every change of the screen.)
+  assert.equal(shelf.context('call'), ASSET_CONTEXT_EMPTY);
   assert.deepEqual(shelf.names('call'), ['V 自己的形象']);
   // Not lent yet: it cannot be the reference, and nothing is submitted.
   assert.match(shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 --image v '打电话的 V'", turn: {}}).error, /没能取到/u);
@@ -454,5 +455,6 @@ test('V\'s own image is always at hand: named in a command, lent like a found ph
   // A shelf without one says nothing of it and knows no "v".
   const plain = createAssetShelf({director: director()});
   assert.equal(plain.context('call'), ASSET_CONTEXT_EMPTY);
+  assert.equal(plain.standingNote(), '');
   assert.match(plain.begin('call', {command: "makaron edit --image-model gemini-2.1 --image v 'x'", turn: {}}).error, /屏幕上没有/u);
 });
