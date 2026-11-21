@@ -198,6 +198,14 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-board-guard.20261121.1',date:'2026-11-21',
+    title:'讲解画面不会再让整个通话页白屏',
+    items:[
+      '修好了找图时偶尔整页变白的问题。',
+      '画面上某一块出错时只隐藏那一块，通话和聊天照常。',
+    ],
+  },
+  {
     version:'voice-board-gallery.20261121.3',date:'2026-11-21',
     title:'一页图片出来得更快',
     items:[

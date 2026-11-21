@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-21 — No more blank call page from a gallery
+
+- A gallery measured its names' height from the page as drawn and set its rows from it: a narrow picture's name went to two lines with smaller pictures and back to one with larger ones, every render, until React stopped ("Maximum update depth exceeded") and the whole call page went blank (production 11/21 15:28, after #242 made pictures arrive together; Tianyi had seen it before). The names' height now only grows for one set of pictures, and a gallery takes at most a few size changes a frame.
+- The board is guarded: a piece that fails to draw takes only itself away (then the page, then the board), and is tried again on the next change; the call page, conversation and controls stay (#243).
+
 ## 2026-11-21 — Pictures of a page arrive sooner and in order
 
 - The image search (free plan: one request a second, 2000 a month) is queued by arrival: the next request waits for the answer to the one before; a single refusal no longer doubles the gap for a minute, and the refused search takes the next turn so pictures come in the order V speaks of them.
