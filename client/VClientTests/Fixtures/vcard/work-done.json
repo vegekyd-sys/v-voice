@@ -1,0 +1,22 @@
+{
+  "schema": "2.0",
+  "v_card": 1,
+  "body": {
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "报告整理好了，共 **7 次**停顿，其中 5 次已修复。"
+      },
+      {
+        "tag": "markdown",
+        "content": "☑️ 后台任务已结束",
+        "text_size": "notation"
+      },
+      {
+        "tag": "markdown",
+        "content": "用时 42 秒 · 6 个操作 · DeepSeek flash",
+        "text_size": "notation"
+      }
+    ]
+  }
+}
