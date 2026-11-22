@@ -1922,13 +1922,13 @@ test('what a call was making when its connection was lost is finished where the 
  }
 });
 
-for(const model of ['grok','seeduplex'])test(model+' dispatches creation using the admitted Feishu scope and shows the billing action',async t=>{
+for(const model of ['grok','seeduplex'])test(model+' dispatches creation using the admitted Feishu scope and explains insufficient credits without opening checkout',async t=>{
   const scopes=[];
   const mediaCli={sessionAccounts:true,async forCall({scope,authorize}){
     scopes.push(scope);
     return {execute:async()=>{
       await authorize();
-      return {isError:true,accountIssue:{code:'insufficient_credits',message:'当前会话积分不足',link:'https://www.makaron.app/dashboard?tab=topup'},content:[{type:'text',text:'当前会话积分不足'}],details:{submission:'rejected'}};
+      return {isError:true,accountIssue:{code:'insufficient_credits',message:'当前会话积分不足'},content:[{type:'text',text:'当前会话积分不足'}],details:{submission:'rejected'}};
     }};
   }};
   const f=await fixture(undefined,model,{mediaCli,sessionKey:'agent:makaron:feishu:group:oc_test',actorScoped:true,sessionBound:true});
@@ -1938,7 +1938,8 @@ for(const model of ['grok','seeduplex'])test(model+' dispatches creation using t
   else f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name:'exec',arguments:JSON.stringify(args)}]});
   assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId===id)));
   assert.deepEqual(scopes,[{chat:'oc_test'}]);
-  assert(f.client.sent.some(e=>e.type==='backend.result'&&e.text.includes('dashboard?tab=topup')));
+  assert(!f.client.sent.some(e=>e.type==='backend.result'&&e.text.includes('topup')));
+  assert.equal(f.audit.find(e=>e.type==='tool.delivered'&&e.callId===id).result.error,'当前会话积分不足');
   const result=f.audit.find(e=>e.type==='tool.delivered'&&e.callId===id).result;
   assert.equal(result.submission,'rejected');assert.match(result.instruction,/不自动重提/);
   assert.equal(f.invocations.length,0);

@@ -616,7 +616,6 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
               instruction:'作品已经在用户屏幕的画面上（编号 '+fact.id+'）。用一两句话自然地告诉用户做好了'+(fact.see?'，并按 media.see 挑一两处图里真实画出来的东西说给用户听（谁在哪边、在做什么）':'')+'；不念编号和链接。'+(fact.references?'这次实际照着的参考图是：'+fact.references.map(name=>'「'+name+'」').join('、')+'；如果用户要的不是这些，换成对的那张重做。':'')+'不再保存、轮询或重复 show_content；追问进度不重新生成。之后用户说“这张”“让它动起来”，创作命令里写 --image '+(fact.kind==='video'&&fact.from?fact.from:fact.id)+'。'};
             return {...output,presentation,instruction:'媒体已经自动提交显示。根据 presentation 回执简短说明结果，不再保存、轮询或重复 show_content；追问进度不重新生成。'};
           }
-          if(output.accountIssue?.link)await publishContent(s,callId,output.accountIssue.message+'\n\n[打开 Makaron 充值页]('+output.accountIssue.link+')');
           if(shelved.id)await assets.finish(s.id,shelved.id,output);
           return output;
         },{signal,metadata:{stage,outlives:Boolean(shelved.id),lost:()=>Boolean(shelved.id&&s.lost),epoch:s.epoch,owner:s.bridge,requester:audienceOf(audienceKeys.get(s.bridge)),question:requestToken.text??args.command,completionLine:args.completionLine,failureLine:args.failureLine}});

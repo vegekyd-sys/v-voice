@@ -1,7 +1,6 @@
 import {constants} from 'node:fs';
 import {open} from 'node:fs/promises';
 
-const topup = 'https://www.makaron.app/dashboard?tab=topup';
 const blocked = message => Object.assign(new Error(message), {submission:'not-submitted', code:'account_unavailable'});
 
 // The session and native DM chat id come from the admitted server binding.
@@ -30,7 +29,8 @@ export function createMediaAccounts(storePath, companyKeyPath) {
     try {
       store = JSON.parse(await readPrivateFile(storePath));
       if (!store || typeof store !== 'object' || Array.isArray(store)) throw Error();
-    } catch {
+    } catch (error) {
+      if (error.code === 'ENOENT') return null;
       throw blocked('暂时读不到这个会话的 Makaron 账号，请在原飞书会话检查绑定后再试。');
     }
     const aliases = [`chat:${chat}`, chat];
@@ -70,12 +70,13 @@ export function createMediaAccounts(storePath, companyKeyPath) {
   }};
 }
 
-export function mediaAccountFailure(text, account) {
+export function mediaAccountFailure(text, account, scope) {
   if (/insufficient[ _-](?:credits?|balance)|not enough credits|(?:积分|点数|余额)不足|(?:MCP error|Error|HTTP) 402\b/iu.test(text)) {
-    const message = account.claimed === false
-      ? '这个会话的 Makaron 积分不足。请在原飞书会话认领这个账号，再为它充值。'
-      : '这个会话的 Makaron 积分不足。请登录该会话绑定的账号充值。';
-    return {code:'insufficient_credits', message, link:topup};
+    const chat = scope && !scope.user ? '原飞书群' : '原飞书会话';
+    const owner = scope && !scope.user ? '这个飞书群' : '这个会话';
+    const claim = account.claimed === false ? '先认领这个账号，再' : '';
+    const message = `${owner}绑定的 Makaron 账号积分不足。请回到${chat}，让 V 帮你${claim}给这个账号充值。到账后再告诉我继续生成。`;
+    return {code:'insufficient_credits', message};
   }
   if (/invalid[ _-]api[ _-]key|(?:MCP error|Error|HTTP) 401\b/iu.test(text))
     return {code:'invalid_account_key', message:'这个会话的 Makaron 密钥已失效，请在原飞书会话更新绑定。'};

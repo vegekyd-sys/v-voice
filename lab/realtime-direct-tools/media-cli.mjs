@@ -116,7 +116,7 @@ export function createVoiceMediaCli({environment=process.env,accounts,binary='ma
       });
       const text=result.content[0].text;
       if (result.isError && result.details.exitCode === 1 && !result.details.exitSignal && !/Task ID:|供应商状态未确认|状态未知|创作结果超限/u.test(text) && ['edit','video create'].includes(verb)) {
-        const issue=mediaAccountFailure(text,account);
+        const issue=mediaAccountFailure(text,account,scope);
         if (issue) {
           result.accountIssue=issue;
           result.details.code=issue.code;
