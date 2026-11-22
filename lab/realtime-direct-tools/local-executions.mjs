@@ -7,7 +7,7 @@ export const LOCAL_EXECUTION_POLICY='exec 返回 running/sessionId 后必须用 
 // So the model writes its own words up front and they are used only if needed.
 const EXECUTION_FINISHED_FALLBACK={done:'刚才那个弄好了。',failed:'刚才那个没弄成。'};
 const ownLine=value=>{const line=typeof value==='string'?value.trim():'';return line&&line.length<=120&&!/https?:|voice-exec-|[\r\n]/u.test(line)?line:'';};
-export const executionFinishedLine=(result,{completionLine,failureLine}={})=>result?.isError?ownLine(failureLine)||EXECUTION_FINISHED_FALLBACK.failed:ownLine(completionLine)||EXECUTION_FINISHED_FALLBACK.done;
+export const executionFinishedLine=(result,{completionLine,failureLine}={})=>result?.isError?result.accountIssue?.message||ownLine(failureLine)||EXECUTION_FINISHED_FALLBACK.failed:ownLine(completionLine)||EXECUTION_FINISHED_FALLBACK.done;
 // What the conversation needs to act on the result later; never spoken.
 export function executionResultFacts(result) {
   const text=result?.content?.filter(item=>item.type==='text').map(item=>item.text).join('\n')??result?.error??'';
@@ -17,6 +17,8 @@ export function executionResultFacts(result) {
 export function executionFailureResult(error) {
   const previous=error?.isError?error:{},details=previous.details??{};
   const message=String(previous.error??previous.content?.filter(item=>item.type==='text').map(item=>item.text).join('\n')??error?.message??error);
+  if(previous.accountIssue)return {...previous,status:'failed',submission:details.submission,error:message,
+    instruction:'直接告诉用户当前会话的账号问题和处理方法。等用户处理后明确要求继续，不自动重提，不换账号。'};
   const submission=previous.submission??details.submission??error?.submission??'unknown';
   const code=details.code??error?.code,notSubmitted=submission==='not-submitted';
   const status=notSubmitted?'not-started':'failed',retryable=notSubmitted&&code==='invalid_arguments';

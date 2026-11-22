@@ -2,11 +2,12 @@ import {spawn} from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import {mediaAccountFailure} from './media-accounts.mjs';
 import {randomUUID} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 
 // A bounded CLI adapter, not a shell and not a fallback for denied Gateway exec.
-// Only the server's private personal mapping may instantiate it.
+// Account selection is server-owned.
 export function mediaArgv(command) {
   if(typeof command!=='string'||command.length>16000||/[\0\r\n]/u.test(command))throw Error('无效创作命令');
   const out=[];let token='',quote='',started=false;
@@ -71,30 +72,37 @@ const mediaUrl=(result,kind)=>{
     }catch{}
   }return null;
 };
-export function createVoiceMediaCli({environment=process.env,binary='makaron',baseDirectory=environment.TMPDIR??os.tmpdir(),maxBytes=128*1024,timeoutMs=120000,pollIntervalMs=2000,completeMedia=true}={}) {
-  // Explicit deployment-owned key only: the default CLI login may belong to
-  // another account. Never fall back to it or the Gateway secret store.
-  if(!environment.MAKARON_API_KEY||environment.MAKARON_URL&&environment.MAKARON_URL!=='https://www.makaron.app')return null;
-  const env=Object.fromEntries(['PATH','LANG','LC_ALL','MAKARON_API_KEY'].filter(k=>environment[k]).map(k=>[k,environment[k]]));
+export function createVoiceMediaCli({environment=process.env,accounts,binary='makaron',baseDirectory=environment.TMPDIR??os.tmpdir(),maxBytes=128*1024,timeoutMs=120000,pollIntervalMs=2000,completeMedia=true}={}) {
+  if ((!accounts && !environment.MAKARON_API_KEY) || (environment.MAKARON_URL && environment.MAKARON_URL !== 'https://www.makaron.app')) return null;
+  const env=Object.fromEntries(['PATH','LANG','LC_ALL'].filter(k=>environment[k]).map(k=>[k,environment[k]]));
   env.PATH=[path.dirname(process.execPath),env.PATH].filter(Boolean).join(path.delimiter);
-  return {forCall:async()=>{
+  return {sessionAccounts:Boolean(accounts),forCall:async({scope,register,authorize}={})=>{
+    if (accounts && !scope) throw Error('通话没有已确认的 Makaron 会话绑定');
     const directory=await fs.realpath(await fs.mkdtemp(path.join(baseDirectory,'voice-media-')));await fs.chmod(directory,0o700);
-    const files=new Set(),tasks=new Set(),requests=new Map(),turnRequests=new Map(),lastPoll=new Map(),active=new Map(),latest=new Map(),savedFiles=new Map();let tail=Promise.resolve();
+    const files=new Map(),tasks=new Map(),requests=new Map(),turnRequests=new Map(),lastPoll=new Map(),active=new Map(),latest=new Map(),savedFiles=new Map();let tail=Promise.resolve();
     const execute=async(command,signal,remainingMs=timeoutMs)=>{
+      let account;
       signal?.throwIfAborted();const argv=mediaArgv(command),{verb,flags,positionals}=validateMediaArgv(argv);
       if(verb==='create'){
         const file=path.resolve(directory,flags.image);
         if(savedFiles.has(file))return savedFiles.get(file);
         if(!files.has(file)||await fs.realpath(file)!==file||(await fs.lstat(file)).isSymbolicLink())throw Error('只能保存本通话生成的文件');
+        account=files.get(file);
         argv[argv.indexOf('--image')+1]=file;
       }
       if(verb==='video status'&&!tasks.has(positionals[0]))throw Error('只能查询本通话提交的任务');
       if(verb==='video status'){const remaining=pollIntervalMs-(Date.now()-(lastPoll.get(positionals[0])??0));if(remaining>0)await delay(remaining,undefined,{signal});lastPoll.set(positionals[0],Date.now());}
+      if (verb==='video status') account=tasks.get(positionals[0]);
+      if (!account) {
+        account=accounts ? await accounts.resolve(scope,chat=>register(chat,signal)) : {key:environment.MAKARON_API_KEY};
+        await authorize?.();
+      }
+      signal?.throwIfAborted();
       const outputFile=verb==='edit'?path.join(directory,randomUUID()+'.png'):null;
       if(outputFile)argv.push('--out',outputFile);
       const result=await new Promise((resolve,reject)=>{
         let output='',bytes=0,failure,killTimer;
-        const child=spawn(binary,argv,{cwd:directory,env:{...env,HOME:directory,TMPDIR:directory},shell:false,detached:true,stdio:['ignore','pipe','pipe']});
+        const child=spawn(binary,argv,{cwd:directory,env:{...env,MAKARON_API_KEY:account.key,HOME:directory,TMPDIR:directory},shell:false,detached:true,stdio:['ignore','pipe','pipe']});
         const kill=()=>{try{process.kill(-child.pid,'SIGKILL');}catch{}};
         const stop=message=>{if(failure)return;failure=message;try{process.kill(-child.pid,'SIGTERM');}catch{}killTimer=setTimeout(kill,1000);};
         const abort=()=>stop('创作命令已中止；供应商状态未确认，不要重新生成');
@@ -103,11 +111,20 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
         child.stdout.on('data',collect);child.stderr.on('data',collect);
         const cleanup=()=>{clearTimeout(timer);clearTimeout(killTimer);signal?.removeEventListener('abort',abort);};
         child.once('error',()=>{cleanup();reject(Object.assign(Error('Makaron CLI 无法启动；本次未提交。'),{code:'executor_unavailable',submission:'not-submitted'}));});
-        child.once('close',(code,exitSignal)=>{cleanup();const text=output.split(environment.MAKARON_API_KEY).join('[redacted]');resolve({isError:Boolean(failure)||code!==0,content:[{type:'text',text:[text,failure].filter(Boolean).join('\n')}],details:{status:failure||code!==0?'failed':'completed',...(failure||code!==0?{submission:'unknown',retryable:false}:{}),exitCode:code,exitSignal,source:'voice-local-makaron'}});});
+        child.once('close',(code,exitSignal)=>{cleanup();const text=output.split(account.key).join('[redacted]');resolve({isError:Boolean(failure)||code!==0,content:[{type:'text',text:[text,failure].filter(Boolean).join('\n')}],details:{status:failure||code!==0?'failed':'completed',...(failure||code!==0?{submission:'unknown',retryable:false}:{}),exitCode:code,exitSignal,source:'voice-local-makaron'}});});
         signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
       });
       const text=result.content[0].text;
-      for(const match of text.matchAll(/Task ID:\s*([\w:-]+)/gu))tasks.add(match[1]);
+      if (result.isError && result.details.exitCode === 1 && !result.details.exitSignal && !/Task ID:|供应商状态未确认|状态未知|创作结果超限/u.test(text) && ['edit','video create'].includes(verb)) {
+        const issue=mediaAccountFailure(text,account);
+        if (issue) {
+          result.accountIssue=issue;
+          result.details.code=issue.code;
+          result.details.submission='rejected';
+          result.content=[{type:'text',text:issue.message}];
+        }
+      }
+      for(const match of text.matchAll(/Task ID:\s*([\w:-]+)/gu))tasks.set(match[1],account);
       if(outputFile&&!result.isError){
         // CLI chooses the extension from actual MIME bytes, regardless of --out.
         // Admit only this submission's random stem, never paths from tool text.
@@ -115,7 +132,7 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
         for(const name of await fs.readdir(directory)){
           if(!new RegExp('^'+stem+'(?:-[1-9][0-9]?)?\\.(?:png|jpg|jpeg|webp)$','u').test(name))continue;
           const file=path.join(directory,name),stat=await fs.lstat(file);
-          if(stat.isFile()&&!stat.isSymbolicLink()){files.add(file);result.content[0].text+='\nImage file: '+file;}
+          if(stat.isFile()&&!stat.isSymbolicLink()){files.set(file,account);result.content[0].text+='\nImage file: '+file;}
         }
       }
       // Private diagnostic receipts survive disconnects; never lose a completed
@@ -174,7 +191,13 @@ export function createVoiceMediaCli({environment=process.env,binary='makaron',ba
         if(completeMedia&&url)result={isError:false,media:{kind,url,...(taskId?{taskId}:{})},content:[{type:'text',text:`${kind==='video'?'视频':'图片'}已生成：${url}`}],details:{...result.details,status:'completed'}};
         return result;
       });tail=pending.catch(()=>{});
-      if(!query)requests.set(key,pending);
+      if(!query){
+        requests.set(key,pending);
+        // A new human turn may retry after topping up or binding an account.
+        // The original turn keeps its receipt, including an account rejection.
+        const forget=()=>{if(requests.get(key)===pending)requests.delete(key);};
+        pending.then(result=>{if(result.accountIssue)forget();},error=>{if(error.submission==='not-submitted')forget();});
+      }
       if(separate)return pending;
       if(creation&&requestToken){if(!turnRequests.has(requestToken))turnRequests.set(requestToken,new Map());turnRequests.get(requestToken).set(creation,pending);}
       if(creation){active.set(creation,pending);latest.set(creation,pending);pending.finally(()=>{if(active.get(creation)===pending)active.delete(creation);}).catch(()=>{});}

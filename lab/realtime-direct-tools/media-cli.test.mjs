@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {createMediaAccounts,mediaAccountScope} from './media-accounts.mjs';
 import {createVoiceMediaCli,mediaArgv,validateMediaArgv} from './media-cli.mjs';
 
 test('CLI arguments preserve quoted user content but cannot run shell or other commands',()=>{
@@ -140,4 +141,94 @@ test('a thing may be made from several pictures: one of each character',()=>{
  validateMediaArgv(loose);assert.equal(loose[loose.indexOf('--script')+1],'<<<media_1>>> <<<media_2>>> 的基格尔德飞起来');
  assert.throws(()=>validateMediaArgv(mediaArgv(`makaron video create --video-model fal-h3-max --image '${A}' --script '<<<media_2>>> 动起来'`)),/未提交、未扣费/u);
  assert.throws(()=>validateMediaArgv(mediaArgv(`makaron video create --video-model fal-h3-max --script '<<<media_1>>> 动起来'`)),/未提交、未扣费/u);
+});
+
+test('group and DM commands run with their own keys, including image save and video polling',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'voice-scope-'));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const store=path.join(root,'store.json'),binary=path.join(root,'makaron');
+  await fs.writeFile(store,JSON.stringify({'chat:oc_room':{api_key:'fixture-group'},'user:ou_peer':{api_key:'fixture-dm'}}),{mode:0o600});
+  await fs.writeFile(binary,`#!${process.execPath}
+import fs from 'node:fs';
+const args=process.argv.slice(2),key=process.env.MAKARON_API_KEY.replace(/^fixture-/,'');
+if(args[0]==='edit'){fs.writeFileSync(args[args.indexOf('--out')+1],key);}
+else if(args[0]==='create'){if(fs.readFileSync(args[args.indexOf('--image')+1],'utf8')!==key)process.exit(9);console.log('https://example.test/'+key+'.png');}
+else if(args[1]==='create')console.log('Task ID: '+key);
+else if(args[2]===key)console.log('https://example.test/'+key+'.mp4');
+else process.exit(8);
+`,{mode:0o700});
+  const accounts=createMediaAccounts(store);
+  const cli=createVoiceMediaCli({binary,baseDirectory:root,accounts,environment:{MAKARON_API_KEY:'owner'}});
+  const group=await cli.forCall({scope:mediaAccountScope('agent:makaron:feishu:group:oc_room')});
+  const dm=await cli.forCall({scope:mediaAccountScope('agent:makaron:feishu:direct:ou_peer','oc_verified')});
+  for(const [runner,name] of [[group,'group'],[dm,'dm']]){
+    const image=await runner.execute("makaron edit --image-model gemini-2.1 'moon'");
+    assert.equal(image.media.url,'https://example.test/'+name+'.png');
+    const video=await runner.execute("makaron video create --video-model fal-h3-max --script 'moon'");
+    assert.equal(video.media.url,'https://example.test/'+name+'.mp4');
+  }
+  await assert.rejects(dm.execute('makaron video status group'),/本通话/);
+  await assert.rejects(cli.forCall({scope:mediaAccountScope('voice:guest:abc')}),/绑定/);
+});
+
+test('new session registration is single-flight and must write a usable binding; damaged stores never register',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'voice-register-'));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const store=path.join(root,'store.json'),accounts=createMediaAccounts(store);
+  const scope=mediaAccountScope('agent:makaron:feishu:dm:ou_peer','oc_verified');
+  await fs.writeFile(store,'{}',{mode:0o600});
+  await assert.rejects(accounts.resolve(scope,async()=>({api_key:'ignored'})),/尚未确认/);
+  let calls=0;
+  const register=async chat=>{
+    assert.equal(chat,'oc_verified');calls++;
+    await new Promise(resolve=>setTimeout(resolve,30));
+    await fs.writeFile(store,JSON.stringify({'chat:oc_verified':{api_key:'new',claimed:false},ou_peer:{api_key:'other'}}));
+  };
+  const results=await Promise.all([accounts.resolve(scope,register),accounts.resolve(scope,register)]);
+  assert.equal(calls,1);assert.deepEqual(results,[{key:'new',claimed:false},{key:'new',claimed:false}]);
+  for(const contents of ['{','[]',JSON.stringify({'chat:oc_verified':{}})]){
+    await fs.writeFile(store,contents);
+    await assert.rejects(accounts.resolve(scope,register),error=>error.submission==='not-submitted');
+  }
+  await fs.chmod(store,0o644);
+  await assert.rejects(accounts.resolve(scope,register),/读不到/);
+  assert.equal(calls,1);
+});
+
+test('explicit billing rejection can resume only on a new request after recharge',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'voice-billing-'));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const binary=path.join(root,'makaron');
+  await fs.writeFile(binary,`#!${process.execPath}
+import fs from 'node:fs';
+fs.appendFileSync(${JSON.stringify(path.join(root,'submissions'))},'1');
+if(process.env.MAKARON_API_KEY==='empty'){
+  console.error('MCP tool failed: Insufficient credits. Need 100, have 2.');process.exit(1);
+}
+console.log('https://example.test/paid.png');
+`,{mode:0o700});
+  let account={key:'empty',claimed:false};
+  const cli=createVoiceMediaCli({binary,baseDirectory:root,accounts:{resolve:async()=>account},environment:{MAKARON_API_KEY:'owner'}});
+  const runner=await cli.forCall({scope:{chat:'oc_room'}});
+  const command="makaron edit --image-model gemini-2.1 'moon'";
+  const first=await runner.execute(command,undefined,{requestToken:'first'});
+  assert.equal(first.accountIssue.code,'insufficient_credits');
+  assert.match(first.accountIssue.message,/认领/);
+  assert.equal(first.accountIssue.link,'https://www.makaron.app/dashboard?tab=topup');
+  account={key:'recharged',claimed:true};
+  assert.equal(await runner.execute(command,undefined,{reuseExisting:true}),first);
+  assert.equal(await runner.execute(command,undefined,{requestToken:'first'}),first);
+  assert.equal((await runner.execute(command,undefined,{requestToken:'next'})).media.url,'https://example.test/paid.png');
+  assert.equal(await fs.readFile(path.join(root,'submissions'),'utf8'),'11');
+});
+
+test('an explicit company binding never silently bills the group key',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'voice-company-'));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const store=path.join(root,'store'),company=path.join(root,'company'),scope={chat:'oc_room'};
+  await fs.writeFile(store,JSON.stringify({'chat:oc_room':{api_key:'personal',agent_default:'company'}}),{mode:0o600});
+  const accounts=createMediaAccounts(store,company);
+  await assert.rejects(accounts.resolve(scope),/公司账号/);
+  await fs.writeFile(company,'company-key\n',{mode:0o600});
+  assert.equal((await accounts.resolve(scope)).key,'company-key');
 });

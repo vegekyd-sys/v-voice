@@ -1921,3 +1921,49 @@ test('what a call was making when its connection was lost is finished where the 
   assert.equal(told?.status,'completed');assert.equal(told.ownWords,true);
  }
 });
+
+for(const model of ['grok','seeduplex'])test(model+' dispatches creation using the admitted Feishu scope and shows the billing action',async t=>{
+  const scopes=[];
+  const mediaCli={sessionAccounts:true,async forCall({scope,authorize}){
+    scopes.push(scope);
+    return {execute:async()=>{
+      await authorize();
+      return {isError:true,accountIssue:{code:'insufficient_credits',message:'当前会话积分不足',link:'https://www.makaron.app/dashboard?tab=topup'},content:[{type:'text',text:'当前会话积分不足'}],details:{submission:'rejected'}};
+    }};
+  }};
+  const f=await fixture(undefined,model,{mediaCli,sessionKey:'agent:makaron:feishu:group:oc_test',actorScoped:true,sessionBound:true});
+  t.after(()=>f.service.dispose());
+  const args={command:"makaron edit --image-model gemini-2.1 'moon'"},id='session-credit';
+  if(model==='grok')f.call('exec',args,id);
+  else f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name:'exec',arguments:JSON.stringify(args)}]});
+  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId===id)));
+  assert.deepEqual(scopes,[{chat:'oc_test'}]);
+  assert(f.client.sent.some(e=>e.type==='backend.result'&&e.text.includes('dashboard?tab=topup')));
+  const result=f.audit.find(e=>e.type==='tool.delivered'&&e.callId===id).result;
+  assert.equal(result.submission,'rejected');assert.match(result.instruction,/不自动重提/);
+  assert.equal(f.invocations.length,0);
+});
+
+test('first media request provisions through the admitted session before using the new binding',async t=>{
+  const scopes=[];
+  const mediaCli={sessionAccounts:true,async forCall({scope,register,authorize}){
+    return {execute:async(_command,signal)=>{
+      await register(scope.chat,signal);
+      await authorize();
+      scopes.push(scope.chat);
+      return {media:{kind:'image',url:'https://example.test/registered.png'},content:[{type:'text',text:'已生成'}]};
+    }};
+  }};
+  const key='agent:makaron:feishu:direct:ou_new';
+  const f=await fixture(undefined,'grok',{sessionKey:key,sessionBound:true,actorScoped:true,mediaCli});
+  t.after(()=>f.service.dispose());
+  f.call('exec',{command:"makaron edit --image-model gemini-2.1 'moon'"},'first');
+  assert(await until(()=>f.invocations.some(x=>x.question)));
+  const request=f.invocations.find(x=>x.question);
+  assert.equal(request.sessionKey,key);assert.match(request.question,/只办理账号/);
+  assert.deepEqual(scopes,[]);
+  f.completeBackend('已完成会话账号绑定。');
+  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='first')));
+  assert.deepEqual(scopes,['ou_new']);
+  assert(f.client.sent.some(e=>e.type==='backend.result'&&e.text.includes('registered.png')));
+});
