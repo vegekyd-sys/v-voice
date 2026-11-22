@@ -1967,3 +1967,13 @@ test('first media request provisions through the admitted session before using t
   assert.deepEqual(scopes,['ou_new']);
   assert(f.client.sent.some(e=>e.type==='backend.result'&&e.text.includes('registered.png')));
 });
+
+test('a partial actor catalog cannot fall through to native Makaron exec',async t=>{
+  const f=await fixture(undefined,'grok',{sessionKey:'agent:makaron:feishu:group:oc_test',sessionBound:true,actorScoped:true,catalog:['exec'],
+    mediaCli:{sessionAccounts:true,forCall:()=>assert.fail('no media grant')}});
+  t.after(()=>f.service.dispose());
+  f.call('exec',{command:"makaron edit --image-model gemini-2.1 'moon'"},'denied');
+  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='denied')));
+  assert.equal(f.invocations.length,0);
+  assert.match(f.audit.find(e=>e.type==='tool.delivered').result.error,/未开放前台创作/);
+});

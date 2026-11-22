@@ -552,7 +552,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if(signal.aborted||!current(s))throw Error('本次任务已取消');
       if(!allowedTools.has(name))throw Error('OpenClaw 未开放这个工具');
       if(name==='process'&&s.localExecutions?.has(args.sessionId))return s.localExecutions.poll(args.sessionId,{...args,signal});
-      if(name==='exec'&&s.mediaCliAvailable&&/^\s*makaron(?:\s|$)/u.test(args.command??'')){
+      const mediaCommand=name==='exec'&&/^\s*makaron(?:\s|$)/u.test(args.command??'');
+      if(mediaCommand&&mediaCli?.sessionAccounts&&!s.mediaCliAvailable)throw Error('当前通话未开放前台创作，请使用已确认的会话入口');
+      if(mediaCommand&&s.mediaCliAvailable){
         // Use only the media runner selected for this admitted call.
         if(Object.keys(args).some(k=>!['command','timeoutSeconds','completionLine','failureLine'].includes(k)))throw Error('创作命令不接受环境、身份或执行配置覆盖');
         const requestToken=s.latestUserTurn??s;
