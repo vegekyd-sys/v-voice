@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-23 — The owner's own devices are remembered
+
+- The personal page removes the access token from its address as soon as it has been exchanged, and the cookie lasted seven days without renewal: a bookmark stopped working a week after the full link was opened, however often it was used. The owner's entry (only `tianyi`) now lasts a year and is renewed, same visitor, at most once a day while in use. An expired cookie is never renewed; rotating the entry's token ends every device. Guests, temporary grants and every other entry are unchanged.
+- A Feishu browser login lasts a year for the registered owner only (30 days for everyone else, as before, and still not extended by use). The long grant ends at once when the owner is taken off the private list; Gateway admission is still checked on every entry. Inside Feishu nothing is loosened: an ordinary login is still confirmed each time.
+- A failed in-Feishu login is logged with the step it failed at (script, sdk-missing, sdk-error, request, timeout).
+
 ## 2026-11-22 — 语音创作使用当前飞书会话的 Makaron 账号
 
 - 已核验的群聊和私聊使用各自绑定的账号生成图片和视频。首次使用时先注册并确认绑定，图片保存与视频查询沿用原提交账号。
