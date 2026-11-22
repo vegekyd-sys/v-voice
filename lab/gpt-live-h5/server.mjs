@@ -822,7 +822,11 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       let context = local;
       if (!hosted) { context = contexts.get(entry) ?? {...local,listeners:new Set(),entry,sessionKey:binding.sessionKey}; contexts.set(entry,context); }
       if (hosted) {
-        const visitor = readVisitor(req,binding);
+        // The owner's Feishu login outlasts the seven-day visit cookie: the page's own status request
+        // gets a new one, as opening /feishu does. (Not the document: a Strict cookie is absent from a
+        // navigation that began on another site, and would be replaced while still good.)
+        const visitor = readVisitor(req,binding) ?? (req.method==='GET'&&pathname==='/api/status'&&!binding.cliManaged
+          &&phoneLogin?.protects(binding)&&phoneLogin.ownerPermits(req,binding)?issueVisitor(res,binding):null);
         if (!visitor) return json(res, 401, { error: "请使用完整的本人入口链接打开" });
         const contextId = `${entry}:${visitor.id}`;
         context = contexts.get(contextId);

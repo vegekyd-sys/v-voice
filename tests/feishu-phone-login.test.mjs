@@ -202,3 +202,30 @@ test('only the registered owner is remembered for a year; another caller keeps 3
   at=PHONE_LOGIN_TTL_MS+1;
   assert.equal(guestLogin.read(req(guest)),null);assert.ok(make([actor],actor.openId).read(req(owner)));
 });
+test('a saved address of a protected phone opens while the owner is signed in, and gives nobody else a way in',async t=>{
+  let open=actor.openId;const f=fixture({fetchImpl:async url=>Response.json(url.includes('/token')
+    ?{code:0,access_token:'t',token_type:'Bearer'}:{code:0,data:{open_id:open,tenant_key:actor.tenantKey}})});
+  const bridge=createLiveH5Server({gateway:{request:async(m,p)=>({key:p.key,agentId:p.agentId})},
+    basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:records,feishuLogin:f.options});
+  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
+  const send=(path,jar='',body,from=origin)=>new Promise((resolve,reject)=>{
+    const req=request({host:'127.0.0.1',port:bridge.server.address().port,path,method:body?'POST':'GET',headers:{host:new URL(origin).host,...(from?{origin:from}:{}),cookie:jar}},
+      res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end(body?JSON.stringify(body):undefined);
+  });
+  const start=await send('/voice/feishu');
+  const finish=await send('/voice/feishu/callback?code=valid-code&state='+new URL(start.headers.get('location')).searchParams.get('state'),start.headers.get('set-cookie').split(';')[0]);
+  const login=finish.headers.get('set-cookie').split(';')[0],status='/voice/api/status?phone='+records[0].id;
+  // The saved page itself, then its own status request: signed in, seven-day visit cookie gone.
+  assert.equal((await send('/voice/?phone='+records[0].id,login)).status,200);
+  const opened=await send(status,login);assert.equal(opened.status,200);
+  assert.match(opened.headers.get('set-cookie'),/HttpOnly; SameSite=Strict; Max-Age=604800; Secure$/u);
+  const jar=login+'; '+opened.headers.get('set-cookie').split(';')[0];
+  const again=await send(status,jar);assert.equal(again.status,200);assert.equal(again.headers.get('set-cookie'),null,'a cookie that still works is kept');
+  // Only the page's status request does it: no other API, no other phone, no other site, nobody signed out.
+  assert.equal((await send('/voice/api/session?phone='+records[0].id,login,{})).status,401);
+  const otherPhone=await send('/voice/api/status?phone='+records[2].id,login);
+  assert.equal(otherPhone.status,401);assert.equal(otherPhone.headers.get('set-cookie'),null);
+  assert.equal((await send(status,login,undefined,'https://other.example')).status,403);
+  const visitOnly=await send(status,jar.split('; ')[1]);assert.equal(visitOnly.status,401);assert.equal(visitOnly.headers.get('set-cookie'),null);
+  const forged=await send(status,login.slice(0,-4)+'AAAA');assert.equal(forged.status,401);assert.equal(forged.headers.get('set-cookie'),null);
+});
