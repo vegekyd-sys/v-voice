@@ -1724,6 +1724,19 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-viewer-bar button:active { background: var(--accent); color: #fff; }
 .board-viewer-bar .board-viewer-save { border-color: #4d356033; color: var(--ink); }
 .board-viewer-bar .board-viewer-save[aria-busy] { opacity: .6; }
+.board-viewer-film { box-sizing: border-box; display: flex; align-items: center; gap: 4px; width: min(100%, 460px); padding: 0 6px; border-radius: 24px; background: #fffdfb; color: var(--ink); box-shadow: 0 1px 4px #4d356026; }
+.board-viewer figure:has(.board-viewer-film) video { max-height: calc(var(--voice-height, 100dvh) - 290px); }
+.board-viewer figure:has(.board-viewer-film) video[data-shaped] { width: min(100vw - 52px, 1400px, var(--most), (var(--voice-height, 100dvh) - 290px) * var(--ratio)); max-height: none; }
+.board-viewer-film button { flex: none; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; cursor: pointer; }
+.board-viewer-film button:active { background: #4d356014; }
+.board-viewer-film svg { width: 22px; height: 22px; }
+.board-viewer-film svg path { fill: currentColor; }
+.board-viewer-film svg[data-line] path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.board-viewer-film svg[data-line] path:first-child { fill: currentColor; }
+.board-viewer-film span { flex: none; font-size: 13px; font-weight: 500; color: var(--faint, #8b7f99); font-variant-numeric: tabular-nums; }
+.board-viewer-film input { -webkit-appearance: none; appearance: none; flex: 1; min-width: 60px; height: 44px; margin: 0; background: none; cursor: pointer; }
+.board-viewer-film input::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--accent) var(--done, 0%), #4d356026 var(--done, 0%)); }
+.board-viewer-film input::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -7px; border: 0; border-radius: 50%; background: var(--accent); box-shadow: 0 1px 3px #4d356059; }
 .board-viewer-turn { position: absolute; top: 50%; width: 44px; height: 44px; margin-top: -40px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: var(--ink-soft); background: #fffdfecc; box-shadow: 0 1px 4px #4d356026; cursor: pointer; }
 .board-viewer-turn[data-way="back"] { left: max(10px, env(safe-area-inset-left)); }
 .board-viewer-turn[data-way="on"] { right: max(10px, env(safe-area-inset-right)); }

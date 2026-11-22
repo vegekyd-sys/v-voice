@@ -1262,7 +1262,7 @@ import VVoiceCore
         guard active || voiceID != nil else { return }
         recovery?.cancel(); recovery = nil; recoveryDeadline?.cancel(); recoveryDeadline = nil
         avatar.end()
-        state.finish(.ended); stopMedia()
+        state.finish(.ended); stopMedia(); filmSound.clear()
         CallDiagnostics.record("call.end")
         let id = voiceID; voiceID = nil
         captionUpdate?.cancel(); captionUpdate = nil
@@ -1336,6 +1336,29 @@ import VVoiceCore
         guard presentationID == owner, active else { throw CancellationError() }
         return ["outputBytes": audio.outputFrames * 2, "queuedBytes": audio.queuedFrames * 2]
     }
+    /// The sound of a video the page is showing: the page plays the picture silent and the App the sound
+    /// (FilmSound.swift). For the page that owns the call, while its audio is up.
+    private let filmSound = FilmSound()
+    func film(_ payload: [String: Any], owner: String) async throws -> [String: Any] {
+        guard presentationID == owner, active, let operation = payload["op"] as? String else { throw CancellationError() }
+        func url() throws -> URL { guard let text = payload["url"] as? String, let url = URL(string: text) else { throw VoiceError.protocolMismatch }; return url }
+        switch operation {
+        case "load":
+            // (A call that connects anew goes on being the page's call, and so does what it was loading.)
+            let seconds = try await filmSound.load(try url())
+            guard presentationID == owner, active else { throw CancellationError() }
+            return ["seconds": seconds]
+        case "play":
+            guard let at = payload["at"] as? Double, at.isFinite, let file = filmSound.file(try url()) else { throw VoiceError.protocolMismatch }
+            try audio.playFilm(file, at: at)
+            return ["playing": true]
+        case "stop": audio.stopFilm(); return [:]
+        case "at": return ["at": audio.filmPosition as Any? ?? NSNull()]
+        default: throw VoiceError.protocolMismatch
+        }
+    }
+    /// The page is out of sight or gone: what it was showing is not heard either.
+    func silenceFilm() { audio.stopFilm() }
     var h5Outcome: String { tasks.isEmpty ? avatarOutcome : "pending" }
     var activityState: CallAttributes.ContentState {
         let caption = IslandCaption.current(conversation, phase: phase)

@@ -54,18 +54,32 @@ export function Work({block, view}) {
   // video plays in the viewer. It used to wait for the video here, and waited for ever: 11/22 01:49.)
   const still = view.inline === false;
   const playing = !still && shown?.kind === 'video' && shown.state === 'ready' ? shown.id : '';
+  // From the start, once, with its sound; without it again when it ends or another video is heard.
+  // (Not while it is going back to its start by itself: WebKit then stays at the end, and is over at once.)
+  const asked = useRef(false);
+  const aloud = video => {
+    asked.current = true; setQuiet(false);
+    if (video.seeking) { video.addEventListener('seeked', () => { if (video.isConnected && asked.current) aloud(video); }, {once: true}); return; }
+    const silent = () => { video.loop = true; setQuiet(true); };
+    video.loop = false; video.currentTime = 0;
+    void view.film.on(video, {lost: silent}).then(heard => { if (!heard) silent(); });
+    if (video.paused) Promise.resolve(video.play()).catch(silent);
+  };
   useEffect(() => {
     const video = film.current;
     if (!playing || !video) return;
     let live = true;
     setHeld('');
     // Moving without sound, over and over. Refused: it waits for the caller's tap.
-    const hush = () => { video.muted = true; video.loop = true; setQuiet(true); return Promise.resolve(video.play()).then(() => { if (live) setHeld(''); }, () => { if (live) { setHeld(playing); view.shown?.(playing); } }); };
+    const hush = () => { asked.current = false; view.film?.off(video); video.muted = true; video.loop = true; setQuiet(true); return Promise.resolve(video.play()).then(() => { if (live) setHeld(''); }, () => { if (live) { setHeld(playing); view.shown?.(playing); } }); };
     // Once it is really moving it is played once from the start with its sound, where the page may
-    // start sound by itself (`autoSound: false`: the App's own call audio is playing; the button offers it).
+    // start sound by itself (`autoSound: false`: an App that cannot play it; it stays silent).
+    // (`film`: the App plays a video's sound itself, in time with the picture, which stays silent here.)
     const sound = () => {
       video.removeEventListener('playing', sound);
-      if (!live || view.autoSound === false) return;
+      if (!live) return;
+      if (view.film) { void view.film.ready(video).then(has => { if (live && has) aloud(video); }); return; }
+      if (view.autoSound === false) return;
       video.muted = false; video.loop = false; video.currentTime = 0; setQuiet(false);
       Promise.resolve(video.play()).then(() => { if (video.paused) void hush(); }, () => void hush());
     };
@@ -73,7 +87,7 @@ export function Work({block, view}) {
     video.addEventListener('playing', sound);
     video.addEventListener('ended', again);
     void hush();
-    return () => { live = false; video.removeEventListener('playing', sound); video.removeEventListener('ended', again); };
+    return () => { live = false; asked.current = false; view.film?.off(video); video.removeEventListener('playing', sound); video.removeEventListener('ended', again); };
   }, [playing]);
   const stillReady = still && shown?.kind === 'video' && shown.state === 'ready' ? shown.id : '';
   useEffect(() => { if (stillReady) view.shown?.(stillReady); }, [stillReady]);
@@ -90,6 +104,7 @@ export function Work({block, view}) {
     event.stopPropagation();
     const video = film.current;
     if (!video) return;
+    if (view.film) { if (quiet) aloud(video); else { asked.current = false; view.film.off(video); video.loop = true; setQuiet(true); } return; }
     if (quiet) { video.muted = false; video.loop = false; video.currentTime = 0; setQuiet(false); video.play().catch(() => { video.muted = true; setQuiet(true); }); }
     else { video.muted = true; video.loop = true; setQuiet(true); }
   };

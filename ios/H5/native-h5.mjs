@@ -10,6 +10,7 @@ import {createAvatarReactions} from '../../lab/gpt-live-h5/avatar-reactions.mjs'
 import {createAvatarTelemetry} from '../../lab/gpt-live-h5/avatar-telemetry.mjs';
 import {createBoardClient,createLessonGate,createSpokenCursor,spokenRate} from '../../lab/gpt-live-h5/board-client.mjs';
 import {createAssetsClient} from '../../lab/gpt-live-h5/board-assets-client.mjs';
+import {createFilmSound} from './film-sound.mjs';
 import {speaksOf,spokenProgress,unspoken} from '../../lab/gpt-live-h5/board-scene.mjs';
 
 let current, owner, reactions, telemetry, board, boardAssets, boardTasks = '', boardTimer, boardPhotos = new Map(), boardFollow, opened = new Set(), pendingDocument, openingDocument=false, idleCatalogOwner;
@@ -28,8 +29,9 @@ mountCallUi(document,view,{
   // (Saved by the App from an address: a made thing's own, or the one a found photograph is lent out under.)
   // (`viewing`: a picture or video is being looked at large. The App is told the way it is told of a document
   // being read, and takes its settings button off the corner the view's own close button is in.
-  // `autoSound`: nothing starts with sound by itself here; the call's audio is the App's own.)
-  boardWorks:{pick:(id,hold)=>boardAssets?.pick(id,hold),shown:id=>boardAssets?.shown(id),autoSound:false,inline:false,viewing:open=>{try{Promise.resolve(post('reading',{reading:Boolean(open)})).catch(()=>{});}catch{}},save:async item=>{
+  // `film`: the sound of a video, which the App plays in time with the silent picture here; `autoSound: false`
+  // and `inline: false` are for an App that cannot yet, or lets no video start by itself: build 48 and before.)
+  boardWorks:{pick:(id,hold)=>boardAssets?.pick(id,hold),shown:id=>boardAssets?.shown(id),get film(){return films()?film:null;},get autoSound(){return films();},get inline(){return films();},viewing:open=>{try{Promise.resolve(post('reading',{reading:Boolean(open)})).catch(()=>{});}catch{}},save:async item=>{
     const url=/^https:/u.test(item.src)?item.src:item.id?await boardAssets?.address(item.id):'';
     if(!url)return '这张暂时存不了';
     if(current?.capabilities?.mediaSave){await post('saveMedia',{url,kind:item.kind});return '已存到相册';}
@@ -57,10 +59,25 @@ const avatar=mountAvatar(document,window,{owner:()=>owner,onDisplayed:event=>{if
 // During a call nothing on the page is heard. A page's sound takes the phone's audio from the call: the microphone
 // stops, or the call is interrupted and connected anew (production 11/22: 00:33:52 no more input after a video was
 // played with sound; 01:46:42 the call was cut eight seconds after one was). Whatever is played plays silent,
-// its own controls included.
-const hush=event=>{const media=event.target;if(media instanceof HTMLMediaElement&&current?.active&&!media.muted)media.muted=true;};
+// its own controls included, and the App plays its sound (film-sound.mjs) where it was to be heard: by its
+// page, or because its sound button was pressed (which, on an element that is always silent, turns it over).
+const films=()=>current?.capabilities?.film>=1;
+const film=createFilmSound({post:payload=>post('film',payload,owner),address:media=>{const src=media.currentSrc||media.src;if(/^https:/u.test(src))return src;const id=media.closest('[data-asset]')?.dataset.asset;return id?boardAssets?.address(id):'';}});
+const heard=new WeakSet();
+const hush=event=>{
+  const media=event.target;
+  if(!(media instanceof HTMLMediaElement)||!current?.active)return;
+  const starting=event.type==='play'||event.type==='playing';
+  if(!media.muted){
+    media.muted=true;
+    if(event.type==='volumechange'&&heard.has(media)){heard.delete(media);film.off(media);return;}
+    heard.add(media);
+    if(event.type==='volumechange'&&films()&&!media.paused){void film.on(media);return;}
+  }
+  if(starting&&films()&&heard.has(media)&&!film.heard(media))void film.on(media);
+};
 for(const type of ['play','playing','volumechange','loadedmetadata'])document.addEventListener(type,hush,true);
-function stopVisuals(){reactions?.dispose();reactions=null;telemetry?.close();telemetry=null;stopBoard();}
+function stopVisuals(){film.stop();reactions?.dispose();reactions=null;telemetry?.close();telemetry=null;stopBoard();}
 // Page features: /api/page/<name> on the service, relayed by the App's one `service` command. A new
 // feature needs a service route and this page, not an App update.
 const pageRequests=()=>current?.capabilities?.pageRequests>=1;

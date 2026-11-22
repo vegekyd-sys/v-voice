@@ -111,7 +111,8 @@ struct H5WebSurface: UIViewRepresentable {
     func makeWebView() -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent(); config.allowsInlineMediaPlayback = true
-        config.mediaTypesRequiringUserActionForPlayback = .all
+        // A silent video may start by itself, as on the web page. Nothing on the page is heard (FilmSound.swift).
+        config.mediaTypesRequiringUserActionForPlayback = .audio
         config.setURLSchemeHandler(scheme, forURLScheme: "vvoice-h5")
         config.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "voice")
         let web = WKWebView(frame: .zero, configuration: config)
@@ -130,7 +131,7 @@ struct H5WebSurface: UIViewRepresentable {
         if foreground, startInForeground, !ready { startInForeground = false; reload() }
         configureDelivery()
         if call.active { fetching?.cancel(); fetching = nil }
-        if !foreground { pending?.cancel(); pending = nil; webView?.pauseAllMediaPlayback(completionHandler: nil); return }
+        if !foreground { pending?.cancel(); pending = nil; call.silenceFilm(); webView?.pauseAllMediaPlayback(completionHandler: nil); return }
         applyStagedIfSafe()
         checkForUpdates()
         guard ready, pending == nil else { return }
@@ -180,7 +181,7 @@ struct H5WebSurface: UIViewRepresentable {
     }
     func reload() {
         guard !disposed else { return }
-        ready = false
+        ready = false; call.silenceFilm()
         if reading { reading = false; onReading(false) }
         if let release = scheme.release { delivery?.attempting(release) }
         pageID = UUID().uuidString
@@ -271,6 +272,7 @@ struct H5WebSurface: UIViewRepresentable {
             return [:]
         // How far the voice has got (the page follows it on the call board, as the web page does).
         case "audioProgress": return try call.audioProgress(owner: owner)
+        case "film": return try await call.film(payload, owner: owner)
         case "reading":
             guard owned, let reading = payload["reading"] as? Bool else { throw CancellationError() }
             self.reading = reading
