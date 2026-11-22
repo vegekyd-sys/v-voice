@@ -1,6 +1,7 @@
 import {ROBOT_PRESENTATION_INSTRUCTIONS} from '../robot/robot-semantics.mjs';
 import {mediaCliInstructions,MEDIA_CLI_START_NOTICE,mediaStatusQuestion} from './media-cli-policy.mjs';
 import {ASSET_POLICY,ASSET_CONTEXT_EMPTY,asksOnlyToFind} from '../gpt-live-h5/board-assets.mjs';
+import {mediaAccountScope} from './media-accounts.mjs';
 import {mediaArgv} from './media-cli.mjs';
 import {scriptOf,withScript} from './media-script.mjs';
 import {createMediaTurnRecovery} from './media-turn-recovery.mjs';
@@ -397,7 +398,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     }
     return e.type==='device.result'?s.deviceRequests?.receive(e)??false:false;
   }
-  async function reserve({model,sessionKey,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false,replyTarget=null,callReportFactory=null,nativeRuntimeVersion,nativeLocationVersion,nativeDeviceActions,terminalKind,terminalAdapter,backendDeviceURL,gateway:callGateway=gateway,actorScoped=false,agentId='makaron',unidentified=false,callerIdentity,toolIdentity,prefetched=null}) {
+  async function reserve({model,sessionKey,nativeChatId,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false,replyTarget=null,callReportFactory=null,nativeRuntimeVersion,nativeLocationVersion,nativeDeviceActions,terminalKind,terminalAdapter,backendDeviceURL,gateway:callGateway=gateway,actorScoped=false,agentId='makaron',unidentified=false,callerIdentity,toolIdentity,prefetched=null}) {
     if(nativeRuntimeVersion!==undefined&&(nativeRuntimeVersion!==1||surface!=='phone'))throw Error('Unsupported native runtime');
     const deviceActions=normalizeDeviceActions(terminalAdapter?{version:1,capabilities:terminalAdapter.capabilities()}:nativeDeviceActions??(nativeLocationVersion===1?{version:1,capabilities:{'location.current':{status:'prompt'}}}:undefined));
     if(nativeLocationVersion!==undefined&&(nativeLocationVersion!==1||surface!=='phone'||nativeRuntimeVersion!==1))throw Error('Unsupported native location');
@@ -412,7 +413,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       sessionBound=true;actorScoped=true;replyTarget=null;callReportFactory=null;inputPolicy='native';
       if(!publicVoice)callGateway={async request(){throw Error('当前通话没有账号工具权限');}};
     }
-    const s={unidentified,publicVoice,toolIdentity:!unidentified&&actorScoped&&sessionBound?toolIdentity:undefined,callerIdentity:unidentified?undefined:callerIdentity,id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,sessionBound,gateway:callGateway,actorScoped,agentId,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map(),surface,display:surface!=='speaker',inputSampleRate,speaker:surface==='speaker'?speaker:null};
+    const s={mediaScope:mediaAccountScope(sessionKey,nativeChatId),unidentified,publicVoice,toolIdentity:!unidentified&&actorScoped&&sessionBound?toolIdentity:undefined,callerIdentity:unidentified?undefined:callerIdentity,id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,sessionBound,gateway:callGateway,actorScoped,agentId,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map(),surface,display:surface!=='speaker',inputSampleRate,speaker:surface==='speaker'?speaker:null};
     Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,narrationBusyUntil:0,narrations:0,progress:null,toolOwners:new Map(),retiredBridges:new Set()});
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
@@ -517,7 +518,22 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const entries=(catalog.groups??[]).flatMap(g=>g.tools??[]),allowedTools=new Set(entries.map(t=>t.id));
     s.tvControls=!s.unidentified&&hasTvControls(entries);
     s.actorReader=allowedTools.has('exec')?actorReader:null;
-    s.mediaCliAvailable=Boolean(mediaCli&&!s.sessionBound&&!s.actorScoped&&!s.unidentified&&!s.speakerRouting&&allowedTools.has('exec')&&allowedTools.has('process'));
+    const mediaIdentity=mediaCli?.sessionAccounts ? s.mediaScope : !s.sessionBound&&!s.actorScoped;
+    s.mediaCliAvailable=Boolean(mediaCli&&mediaIdentity&&!s.unidentified&&!s.speakerRouting&&allowedTools.has('exec')&&allowedTools.has('process'));
+    const authorizeMedia=async()=>{
+      const latest=await s.gateway.request('tools.catalog',{agentId:s.agentId,includePlugins:true},{timeoutMs:20000});
+      if(!['exec','process'].every(id=>(latest.groups??[]).some(g=>(g.tools??[]).some(t=>t.id===id))))throw Error('当前会话创作权限已撤回');
+      if(!current(s))throw Error('本次任务已取消');
+    };
+    const mediaRunner=()=>s.mediaRunner??=Promise.resolve().then(()=>mediaCli.forCall({
+      scope:s.mediaScope,authorize:authorizeMedia,
+      register:async(chat,signal)=>{
+        await authorizeMedia();
+        signal?.throwIfAborted();
+        await s.backend.run({callId:'media-account-'+randomUUID(),signal,
+          question:`请为本飞书会话初始化 Makaron 账号。服务端核验的会话账号标识是 ${chat}。使用现有的会话自注册及绑定流程，先检查已有绑定，再按需注册并保存到这个标识。只办理账号，注册完成后由电话继续原请求。不执行媒体生成、不充值、不切换账号；密钥只经凭据存储流程处理，不得出现在工具输出或回复中。仅返回绑定是否完成。`});
+      },
+    }));
     // Lookup recovery is shared; cached PCM never interrupts the provider's pending function.
     const noticeClips=s.model==='seeduplex'?loadToolStartClips():null,progressClips=s.model==='seeduplex'?toolProgressClips??loadToolProgressClips():[];
     s.audioDelivery=createAudioDeliveryMetrics({report:event=>audit({...event,voiceSessionId:s.id})});
@@ -536,13 +552,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if(signal.aborted||!current(s))throw Error('本次任务已取消');
       if(!allowedTools.has(name))throw Error('OpenClaw 未开放这个工具');
       if(name==='process'&&s.localExecutions?.has(args.sessionId))return s.localExecutions.poll(args.sessionId,{...args,signal});
-      if(name==='exec'&&s.mediaCliAvailable&&/^\s*makaron(?:\s|$)/u.test(args.command??'')){
-        // Explicit, bounded personal CLI capability; never retry a denied Gateway
-        // call here and never use the owner's credentials for actor/group calls.
+      const mediaCommand=name==='exec'&&/^\s*makaron(?:\s|$)/u.test(args.command??'');
+      if(mediaCommand&&mediaCli?.sessionAccounts&&!s.mediaCliAvailable)throw Error('当前通话未开放前台创作，请使用已确认的会话入口');
+      if(mediaCommand&&s.mediaCliAvailable){
+        // Use only the media runner selected for this admitted call.
         if(Object.keys(args).some(k=>!['command','timeoutSeconds','completionLine','failureLine'].includes(k)))throw Error('创作命令不接受环境、身份或执行配置覆盖');
         const requestToken=s.latestUserTurn??s;
-        const latest=await s.gateway.request('tools.catalog',{agentId:s.agentId,includePlugins:true},{timeoutMs:20000});
-        if(!['exec','process'].every(id=>(latest.groups??[]).some(g=>(g.tools??[]).some(t=>t.id===id))))throw Error('当前会话创作权限已撤回');
+        await authorizeMedia();
         if(signal.aborted||!current(s))throw Error('本次任务已取消');
         // (With the board's shelf the thing is on the caller's screen the moment it is made: V says so at once
         // unless the model is itself following the execution. Call of 11/21: said only after the caller spoke.)
@@ -563,7 +579,6 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         const shelved=shelfFor(s)&&!mediaStatusQuestion(requestToken.text)?assets.begin(s.id,{command:args.command,turn:requestToken}):{command:args.command};
         if(shelved.error)throw Error(shelved.error);
         return s.localExecutions.start(async executionSignal=>{
-          s.mediaRunner??=Promise.resolve().then(()=>mediaCli.forCall());
           // A video's script is written over by a director before it is submitted (media-script.mjs): the
           // voice model writes one line of what was asked for, and a video made from that barely moves.
           // Only the script's words change; a writer that is slow or says nothing usable leaves the draft.
@@ -579,7 +594,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
             }catch{/* The draft is what is submitted. */}
             if(executionSignal.aborted||!current(s)&&!(s.lost&&shelved.id))throw Error('本次任务已取消');
           }
-          const work=s.mediaRunner.then(runner=>runner.execute(command,executionSignal,{reuseExisting:mediaStatusQuestion(requestToken.text),requestToken}));
+          const work=mediaRunner().then(runner=>runner.execute(command,executionSignal,{reuseExisting:mediaStatusQuestion(requestToken.text),requestToken}));
           if(shelved.id)work.catch(error=>void assets.finish(s.id,shelved.id,{isError:true,why:String(error?.message??error)}));
           const cleanup=work.then(()=>{},()=>{});cleanup.outlives=Boolean(shelved.id);s.localCleanups.add(cleanup);
           cleanup.then(()=>s.localCleanups.delete(cleanup));
@@ -649,11 +664,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       s.closeAssetMakers=()=>{for(const controller of makers)controller.abort();makers.clear();};
       assets.attach(s.id,async({prompt,aspect})=>{
         if(!current(s))throw Error('通话已结束');
-        const latest=await s.gateway.request('tools.catalog',{agentId:s.agentId,includePlugins:true},{timeoutMs:20000});
-        if(!current(s)||!['exec','process'].every(id=>(latest.groups??[]).some(g=>(g.tools??[]).some(t=>t.id===id))))throw Error('当前会话创作权限已撤回');
+        await authorizeMedia();
         const controller=new AbortController();makers.add(controller);
-        s.mediaRunner??=Promise.resolve().then(()=>mediaCli.forCall());
-        const work=s.mediaRunner.then(runner=>runner.execute(`makaron edit --image-model gemini-2.1 --aspect ${/^\d{1,2}:\d{1,2}$/u.test(aspect)?aspect:'4:3'} '${String(prompt).replace(/[\0\r\n]/gu,' ').replaceAll("'","'\\''")}'`,controller.signal,{requestToken:{},separate:true}));
+        const work=mediaRunner().then(runner=>runner.execute(`makaron edit --image-model gemini-2.1 --aspect ${/^\d{1,2}:\d{1,2}$/u.test(aspect)?aspect:'4:3'} '${String(prompt).replace(/[\0\r\n]/gu,' ').replaceAll("'","'\\''")}'`,controller.signal,{requestToken:{},separate:true}));
         const cleanup=work.then(()=>{},()=>{});s.localCleanups.add(cleanup);
         cleanup.then(()=>{s.localCleanups.delete(cleanup);makers.delete(controller);});
         audit({type:'tool.media-cli',voiceSessionId:s.id,callId:'lesson-picture',phase:'start'});

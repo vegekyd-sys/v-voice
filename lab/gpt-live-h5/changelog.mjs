@@ -198,6 +198,14 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-session-media.20261122.1',date:'2026-11-22',
+    title:'电话里生成图片和视频，使用当前飞书会话的 Makaron 积分',
+    items:[
+      '在已确认身份的飞书群或私聊里，电话使用这个会话绑定的 Makaron 账号生成图片和视频。',
+      '首次使用时，V 会为当前会话注册账号，再接着完成创作。积分不足时，V 会告诉你如何回原会话认领和充值。',
+    ],
+  },
+  {
     version:'voice-board-works.20261122.2',date:'2026-11-22',
     title:'iPhone 上看视频不再打断通话，断线重连后画面接着走',
     items:[
