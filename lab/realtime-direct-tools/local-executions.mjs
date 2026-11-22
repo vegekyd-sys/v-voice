@@ -65,7 +65,8 @@ export function createLocalExecutions({yieldMs=1000,maxJobs=128,settleMs=2500,un
       for(const [id,job] of jobs){if(jobs.size<maxJobs)break;if(job.done&&(job.readFinal||job.announced||job.controller.signal.aborted))jobs.delete(id);}
       if(jobs.size>=maxJobs)throw Error('本通话正在执行的任务过多');
       const controller=new AbortController(),job={id:'voice-exec-'+randomUUID(),controller,metadata,done:false};
-      const abort=()=>controller.abort(signal.reason);signal?.addEventListener('abort',abort,{once:true});
+      // (The call was lost, not ended: the execution goes on.)
+      const abort=()=>{if(!metadata?.lost?.())controller.abort(signal.reason);};signal?.addEventListener('abort',abort,{once:true});
       jobs.set(job.id,job);
       job.completion=Promise.resolve().then(()=>{controller.signal.throwIfAborted();return factory(controller.signal);}).then(
         result=>{job.result=result?.isError?executionFailureResult(result):result;},
@@ -73,11 +74,17 @@ export function createLocalExecutions({yieldMs=1000,maxJobs=128,settleMs=2500,un
       ).finally(()=>{job.done=true;job.doneAt=now();signal?.removeEventListener('abort',abort);});
       return read(job,yieldMs,signal);
     },
+    // One that finished elsewhere (begun before this session of the call): nobody has read it, so it is told.
+    finished(result,metadata) {
+      const job={id:'voice-exec-'+randomUUID(),controller:new AbortController(),metadata,done:true,doneAt:now(),result,completion:Promise.resolve()};
+      jobs.set(job.id,job);return job.id;
+    },
     poll(id,{timeout=1000,signal,action='poll'}={}) {
       const job=jobs.get(id);if(!job)throw Error('只能查询本通话返回的执行 sessionId');
       job.polledAt=now();
       return read(job,action==='log'?0:timeout,signal);
     },
-    async cancelAll(){for(const job of jobs.values())if(!job.done)job.controller.abort(Error('本通话执行等待已结束；供应商状态未确认，不重新生成'));await Promise.all([...jobs.values()].map(job=>job.completion));},
+    // (`keep(metadata)`: those that go on though the call's connection was lost.)
+    async cancelAll(keep=()=>false){const ended=[...jobs.values()].filter(job=>job.done||!keep(job.metadata));for(const job of ended)if(!job.done)job.controller.abort(Error('本通话执行等待已结束；供应商状态未确认，不重新生成'));await Promise.all(ended.map(job=>job.completion));},
   };
 }

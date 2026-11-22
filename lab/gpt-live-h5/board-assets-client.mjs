@@ -19,7 +19,7 @@ const worksOf = scene => (scene?.blocks ?? []).filter(block => block?.t === 'wor
  */
 export function createAssetsClient({request, onChange = () => {}, onSync = () => {}, rev = () => 0, isCurrent = () => true, now = Date.now,
   setTimer = setTimeout, clearTimer = clearTimeout} = {}) {
-  let assets = new Map(), photos = new Map(), picked = '', stamp = -1, busy = false, closed = false, timer = null, asking = false, again = false, changedAt = -Infinity, refusals = 0;
+  let assets = new Map(), photos = new Map(), picked = '', stamp = -1, busy = false, closed = false, timer = null, asking = false, again = false, changedAt = -Infinity, refusals = 0, had = false, call = '';
   let wantPick = null;
   const seen = new Set(), told = new Set();
   // (`photos`: the photographs the board found, by what was searched for: {id, name}.)
@@ -30,16 +30,18 @@ export function createAssetsClient({request, onChange = () => {}, onSync = () =>
     if (closed || !isCurrent()) return;
     if (asking) { again = true; return; }
     asking = true;
-    const body = {rev: rev()};
+    const body = {rev: rev(), ...(call ? {call} : {})};
     if (wantPick !== null) { body.pick = wantPick; wantPick = null; }
     const fresh = [...seen].filter(id => !told.has(id));
     if (fresh.length) body.seen = fresh;
     try {
       const reply = await request(body);
-      refusals = 0;
+      refusals = 0; had = true;
       for (const id of fresh) told.add(id);
       if (closed || !isCurrent() || !reply || !Array.isArray(reply.assets)) return;
       if (reply.sync) onSync(reply.sync);
+      // (The call went on as another session after its connection was lost: its shelf is taken whole.)
+      if (typeof reply.call === 'string' && reply.call !== call) { if (call) { stamp = -1; seen.clear(); told.clear(); } call = reply.call; }
       busy = reply.busy === true;
       if (reply.stamp !== stamp || reply.picked !== picked) {
         stamp = reply.stamp; changedAt = now();
@@ -50,11 +52,15 @@ export function createAssetsClient({request, onChange = () => {}, onSync = () =>
       }
     } catch {
       // Not offered to this caller (or an older service): after two refusals in a row, no shelf for this call.
-      if (++refusals >= 2) { closed = true; return; }
+      // Once there has been one it is only out of reach for now (the call is being connected again; production
+      // 11/22 01:46: two refusals in the gap, and the page showed nothing more for the rest of the call).
+      if (++refusals >= 2 && !had) { closed = true; return; }
+      changedAt = now();
     } finally {
       asking = false;
       if (!closed) {
         if (again) { again = false; schedule(0); }
+        else if (refusals) { if (refusals < 60) schedule(Math.min(5000, ASSET_POLL_MS * refusals)); }
         else if (busy || now() - changedAt < ASSET_SETTLE_MS) schedule(ASSET_POLL_MS);
       }
     }
@@ -62,7 +68,7 @@ export function createAssetsClient({request, onChange = () => {}, onSync = () =>
   return {
     get view() { return view(); },
     /** Something happened that may have changed the shelf (a tool started or ended, a result arrived). */
-    poke() { if (closed) return; changedAt = Math.max(changedAt, now() - ASSET_SETTLE_MS + 3 * ASSET_POLL_MS); if (asking) again = true; else { clearTimer(timer); timer = null; schedule(150); } },
+    poke() { if (closed) return; refusals = Math.min(refusals, 1); changedAt = Math.max(changedAt, now() - ASSET_SETTLE_MS + 3 * ASSET_POLL_MS); if (asking) again = true; else { clearTimer(timer); timer = null; schedule(150); } },
     /** A page of the board arrived: a made thing on it that is not known yet is asked for. */
     scene(scene) { if (!closed && worksOf(scene).some(id => !assets.has(id))) this.poke(); },
     /** The caller tapped a thing (or tapped it again to let go: ''; `hold`: looking at it, never letting go). Shown at once; the service is told. */

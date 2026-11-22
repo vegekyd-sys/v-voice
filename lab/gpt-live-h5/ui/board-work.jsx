@@ -50,7 +50,10 @@ export function Work({block, view}) {
   // video's first frame before it could be tapped, and the first frame waited for a tap.)
   const [held, setHeld] = useState('');
   const settle = (width, height) => { if (width > 0 && height > 0) setShape(Math.min(2.4, Math.max(.5, width / height))); };
-  const playing = shown?.kind === 'video' && shown.state === 'ready' ? shown.id : '';
+  // (`inline: false`: where no video may start by itself, the frame holds its picture with a play mark and the
+  // video plays in the viewer. It used to wait for the video here, and waited for ever: 11/22 01:49.)
+  const still = view.inline === false;
+  const playing = !still && shown?.kind === 'video' && shown.state === 'ready' ? shown.id : '';
   useEffect(() => {
     const video = film.current;
     if (!playing || !video) return;
@@ -72,6 +75,8 @@ export function Work({block, view}) {
     void hush();
     return () => { live = false; video.removeEventListener('playing', sound); video.removeEventListener('ended', again); };
   }, [playing]);
+  const stillReady = still && shown?.kind === 'video' && shown.state === 'ready' ? shown.id : '';
+  useEffect(() => { if (stillReady) view.shown?.(stillReady); }, [stillReady]);
   // A thing just asked for is brought into view on its page (up and down only: the strip of pages is the board's to move).
   const making = shown?.state === 'making' ? shown.id : '';
   useEffect(() => {
@@ -99,7 +104,7 @@ export function Work({block, view}) {
   // What the frame shows under a thing still being made: the picture it is made from.
   const source = shown.from ? assets.get(shown.from) : null;
   // (A video that waits for a tap counts as arrived: the frame can be tapped, and shows what it was made from.)
-  const waiting = shown.state === 'ready' && shown.kind === 'video' && held === shown.id;
+  const waiting = shown.state === 'ready' && shown.kind === 'video' && (still || held === shown.id);
   const ready = shown.state === 'ready', loaded = ready && (fetched === shown.id || waiting);
   const under = (!loaded || waiting) && shown.state !== 'failed' && source?.kind === 'image' && source.url ? source.url : '';
   const picked = view.picked === shown.id && shown.state === 'ready';
@@ -111,14 +116,14 @@ export function Work({block, view}) {
   // (The tap is also what lets a waiting video start: it is started here, silent, inside the tap itself.)
   const open = event => {
     if (!loaded) return;
-    if (waiting && film.current) { const video = film.current; video.muted = true; video.loop = true; Promise.resolve(video.play()).then(() => setHeld(''), () => {}); }
+    if (waiting && !still && film.current) { const video = film.current; video.muted = true; video.loop = true; Promise.resolve(video.play()).then(() => setHeld(''), () => {}); }
     view.enlarge?.(event.currentTarget);
   };
   return (
     <figure className="board-work" data-state={shown.state} data-kind={shown.kind} data-picked={picked || undefined}>
       <div className="board-work-frame" ref={frame} style={{'--shape': shape || ratio(shown.aspect) || (shown.kind === 'video' ? 16 / 9 : 4 / 3)}}
         role={loaded ? 'button' : undefined} tabIndex={loaded ? 0 : undefined} aria-label={loaded ? `放大：${name}` : undefined}
-        data-enlarge={loaded ? 'true' : undefined} data-kind={shown.kind} data-asset={shown.id} data-name={name}
+        data-enlarge={loaded ? 'true' : undefined} data-kind={shown.kind} data-src={still && shown.kind === 'video' ? shown.url : undefined} data-asset={shown.id} data-name={name}
         onClick={open} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(event); } }}>
         {under && <img className="board-work-under" src={under} alt="" decoding="async" onLoad={event => settle(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />}
         {waiting && <div className="board-work-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" /></svg><p>点一下播放</p></div>}
@@ -135,7 +140,7 @@ export function Work({block, view}) {
           <img key={shown.id} className="board-work-print" data-loaded={loaded || undefined} src={shown.url} alt={name} decoding="async"
             onLoad={event => { settle(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight); setFetched(shown.id); view.shown?.(shown.id); }} />
         )}
-        {ready && shown.kind === 'video' && (
+        {ready && shown.kind === 'video' && !still && (
           <video key={shown.id} ref={film} className="board-work-print" data-loaded={loaded && !waiting || undefined} src={shown.url} muted loop autoPlay playsInline preload="auto"
             onLoadedMetadata={event => settle(event.currentTarget.videoWidth, event.currentTarget.videoHeight)}
             onLoadedData={() => { setFetched(shown.id); view.shown?.(shown.id); }} />

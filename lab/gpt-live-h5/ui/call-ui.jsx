@@ -526,8 +526,8 @@ function CallPage({view, actions, options}) {
           {inCall && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
         </section>
         {board && <Board scene={board} canvas={state.boardCanvas} spoken={state.boardSpoken} caption={caption} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
-          works={state.boardAssets ? {...state.boardAssets, pick: options.boardWorks?.pick, shown: options.boardWorks?.shown, save: options.boardWorks?.save, viewing: options.boardWorks?.viewing, autoSound: options.boardWorks?.autoSound, act: state.composer.enabled ? text => void actions.steer(text) : null}
-            : options.boardWorks?.save ? {save: options.boardWorks.save, viewing: options.boardWorks.viewing} : null}
+          works={state.boardAssets ? {...state.boardAssets, pick: options.boardWorks?.pick, shown: options.boardWorks?.shown, save: options.boardWorks?.save, viewing: options.boardWorks?.viewing, autoSound: options.boardWorks?.autoSound, inline: options.boardWorks?.inline, act: state.composer.enabled ? text => void actions.steer(text) : null}
+            : options.boardWorks?.save ? {save: options.boardWorks.save, viewing: options.boardWorks.viewing, autoSound: options.boardWorks.autoSound} : null}
           onReport={[...state.transcript.history, ...state.transcript.current].some(row => row.document) ? openReport : null} />}
         {inCall && (
           <aside className="chat-panel" aria-label="聊天内容">

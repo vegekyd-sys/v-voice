@@ -418,7 +418,7 @@ test('the eye checks a found photograph against the name it was searched under',
 });
 
 test('a request only to find pictures is not one to draw any', () => {
-  for (const said of ['V 帮我找几张皮卡丘和路飞的图片。', '搜一下布道石的照片', '有没有海贼王剧场版的海报', '查几张埃菲尔铁塔的壁纸给我看']) assert.equal(asksOnlyToFind(said), true, said);
+  for (const said of ['V 帮我找几张皮卡丘和路飞的图片。', '搜一下布道石的照片', '有没有海贼王剧场版的海报', '查几张埃菲尔铁塔的壁纸给我看', '可以给我看一下现场的图片吗？']) assert.equal(asksOnlyToFind(said), true, said);
   for (const said of ['给十二讲讲光合作用', '找几张图，再画一张他们同框的', '帮我生成一张海报', '为什么天是蓝的，找图给我讲讲', '', '好的']) assert.equal(asksOnlyToFind(said), false, said);
 });
 
@@ -457,4 +457,67 @@ test('V\'s own image is always at hand: named in a command, lent like a found ph
   assert.equal(plain.context('call'), ASSET_CONTEXT_EMPTY);
   assert.equal(plain.standingNote(), '');
   assert.match(plain.begin('call', {command: "makaron edit --image-model gemini-2.1 --image v 'x'", turn: {}}).error, /屏幕上没有/u);
+});
+
+test('a call connected again as another session keeps its shelf and board, and what was begun before lands there', async () => {
+  const board = director(), shelf = shelfOn(board);
+  const begun = shelf.begin('first', {command: "makaron video create --video-model fal-h3-max --script 'a cat'", turn: {}});
+  shelf.found('first', {query: '烤鸡', name: '烤鸡和扭结面包'});
+  const told = []; shelf.watch('second', () => told.push(shelf.context('second')));
+  assert.equal(board.adopt('second', 'first'), true);
+  // The same things, under the new session; V there is told of them.
+  assert.match(told.at(-1), /正在做、还没好：视频/u);
+  assert.equal(shelf.page('second').assets[0].id, begun.id);
+  assert.equal(shelf.page('second').call, 'second');
+  assert.equal(shelf.page('first').assets.length, 0);
+  assert.ok(board.scene('second').blocks.some(block => block.t === 'work' && block.asset === begun.id));
+  // Finished under the old session's name: on the shelf where the call is now. A new thing gets a new id.
+  assert.equal(shelf.heir('first'), 'second');
+  const fact = await shelf.finish('first', begun.id, {media: {kind: 'video', url: 'https://cdn.example/cat.mp4'}});
+  assert.equal(fact.id, begun.id);
+  assert.equal(shelf.page('second').assets[0].state, 'ready');
+  assert.notEqual(shelf.begin('second', {command: "makaron edit --image-model gemini-2.1 'a dog'", turn: {}}).id, begun.id);
+  // A session with things of its own is not overwritten; the old board of one that never had any is nothing to carry.
+  shelf.begin('third', {command: "makaron edit --image-model gemini-2.1 'x'", turn: {}});
+  assert.equal(shelf.adopt('third', 'second'), false);
+  assert.equal(board.adopt('fourth', 'nobody'), false);
+});
+
+test('a picture the caller points at is what is worked from', async () => {
+  const shelf = shelfOn(director());
+  shelf.found('call', {query: 'Oktoberfest hendl brezn', name: '烤鸡和扭结面包'});
+  shelf.found('call', {query: 'Oktoberfest tent', name: '啤酒节大帐篷'});
+  const video = "makaron video create --video-model fal-h3-max --script '脆皮烤鸡转动'";
+  const begin = (said, command = video) => shelf.begin('call', {command, turn: {text: said}});
+  const refused = begin('那个烤鸡的图片，我希望你做个 5 秒的视频，让它变得特别好吃的感觉。');
+  assert.match(refused.error, /p1「烤鸡和扭结面包」[^]*--image p1[^]*<<<media_1>>>/u);
+  assert.equal(shelf.page('call').assets.length, 0);
+  shelf.pick('call', 'p2');
+  assert.match(begin('把这张图片动起来').error, /p2/u);
+  // Not pointed at, declined, or another thing altogether: made as asked.
+  for (const said of ['帮我生成一张海报：烤鸡骑自行车', '再直接做一个五秒的视频，不用任何图片：一只橘猫', '那个好玩的视频再做一个', '']) assert.equal(begin(said).error, undefined, said);
+});
+
+test('the page outlives a gap in the connection and takes the next session\'s shelf whole', async () => {
+  const {createAssetsClient} = await import('./board-assets-client.mjs');
+  const timers = [], views = [], asked = [], synced = [];
+  let clock = 0, reply = () => ({call: 'first', assets: [{id: 'a1', kind: 'video', state: 'ready'}], photos: [], picked: '', busy: false, stamp: 3});
+  const client = createAssetsClient({now: () => clock, rev: () => 4, onChange: view => views.push(view.assets.get('a1')?.kind), onSync: value => synced.push(value),
+    request: async body => { asked.push(body); return reply(); }, setTimer: (fn, ms) => { timers.push({fn, ms}); return timers.length; }, clearTimer: () => {}});
+  const turn = async () => { const timer = timers.shift(); clock += timer.ms; await timer.fn(); };
+  client.poke(); await turn();
+  assert.deepEqual(views, ['video']);
+  // The connection is gone for a while: refused again and again, and it goes on asking.
+  reply = () => { throw Error('409'); };
+  for (let times = 0; times < 6; times++) { assert.ok(timers.length, 'still asking'); await turn(); }
+  // Connected again as another session whose shelf happens to have the same stamp and an a1 of its own.
+  reply = () => ({call: 'second', assets: [{id: 'a1', kind: 'image', state: 'ready'}], photos: [], picked: '', busy: false, stamp: 3, sync: {scene: {}}});
+  await turn();
+  assert.deepEqual(views, ['video', 'image']);
+  assert.equal(asked.at(-1).call, 'first');
+  assert.equal(synced.length, 1);
+  // Where there never was one, two refusals end it.
+  const none = [], never = createAssetsClient({request: async () => { throw Error('404'); }, setTimer: fn => { none.push(fn); return none.length; }, clearTimer: () => {}});
+  never.poke(); for (let times = 0; none.length && times < 9; times++) await none.shift()();
+  assert.equal(none.length, 0);
 });

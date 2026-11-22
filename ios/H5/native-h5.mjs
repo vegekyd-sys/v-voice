@@ -29,7 +29,7 @@ mountCallUi(document,view,{
   // (`viewing`: a picture or video is being looked at large. The App is told the way it is told of a document
   // being read, and takes its settings button off the corner the view's own close button is in.
   // `autoSound`: nothing starts with sound by itself here; the call's audio is the App's own.)
-  boardWorks:{pick:(id,hold)=>boardAssets?.pick(id,hold),shown:id=>boardAssets?.shown(id),autoSound:false,viewing:open=>{try{Promise.resolve(post('reading',{reading:Boolean(open)})).catch(()=>{});}catch{}},save:async item=>{
+  boardWorks:{pick:(id,hold)=>boardAssets?.pick(id,hold),shown:id=>boardAssets?.shown(id),autoSound:false,inline:false,viewing:open=>{try{Promise.resolve(post('reading',{reading:Boolean(open)})).catch(()=>{});}catch{}},save:async item=>{
     const url=/^https:/u.test(item.src)?item.src:item.id?await boardAssets?.address(item.id):'';
     if(!url)return '这张暂时存不了';
     if(current?.capabilities?.mediaSave){await post('saveMedia',{url,kind:item.kind});return '已存到相册';}
@@ -54,6 +54,12 @@ mountCallUi(document,view,{
 });
 mountChangelog(document,window);
 const avatar=mountAvatar(document,window,{owner:()=>owner,onDisplayed:event=>{if(current?.visible){telemetry?.display(event);void post('avatarDisplayed',{pictureID:event.picture}).catch(()=>{});}}});
+// During a call nothing on the page is heard. A page's sound takes the phone's audio from the call: the microphone
+// stops, or the call is interrupted and connected anew (production 11/22: 00:33:52 no more input after a video was
+// played with sound; 01:46:42 the call was cut eight seconds after one was). Whatever is played plays silent,
+// its own controls included.
+const hush=event=>{const media=event.target;if(media instanceof HTMLMediaElement&&current?.active&&!media.muted)media.muted=true;};
+for(const type of ['play','playing','volumechange','loadedmetadata'])document.addEventListener(type,hush,true);
 function stopVisuals(){reactions?.dispose();reactions=null;telemetry?.close();telemetry=null;stopBoard();}
 // Page features: /api/page/<name> on the service, relayed by the App's one `service` command. A new
 // feature needs a service route and this page, not an App update.
@@ -71,7 +77,7 @@ function startBoard(callID){
   stopBoard();
   // Only an App that relays page features (build 45 on) can show the board; older ones carry on without it.
   if(!pageRequests())return;
-  const gate=createLessonGate();let failures=0,spokenKey=null,spokenSince=null,audio=null;const cursor=createSpokenCursor();
+  const gate=createLessonGate();let failures=0,boardHad=false,spokenKey=null,spokenSince=null,audio=null;const cursor=createSpokenCursor();
   boardFollow=(scene=board?.scene)=>{
     const rows=[...view.get().transcript.history,...view.get().transcript.current].filter(row=>!row.document&&row.text?.trim()).sort((a,b)=>a.at-b.at);
     const row=rows.at(-1)?.role==='assistant'?rows.at(-1):null;
@@ -93,9 +99,9 @@ function startBoard(callID){
     onScene:(scene,canvas)=>{if(owner===callID){view.set({board:scene,boardCanvas:canvas??null,boardSpoken:boardFollow?.(scene)??view.get().boardSpoken});boardAssets?.scene(scene);}},
     request:async(payload,{onEvent})=>{
       let reply;
-      try{reply=await page('board',payload,callID);failures=0;}
+      try{reply=await page('board',payload,callID);failures=0;boardHad=true;}
       // Not offered to this caller, or an App that does not know the board: after two refusals in a row, no board for this call.
-      catch(error){if(owner===callID&&++failures>=2)queueMicrotask(stopBoard);throw error;}
+      catch(error){if(owner===callID&&++failures>=2&&!boardHad)queueMicrotask(stopBoard);throw error;}
       for(const op of Array.isArray(reply?.ops)?reply.ops:[])onEvent(op);
     },
   });

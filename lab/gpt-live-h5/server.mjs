@@ -246,7 +246,24 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     if(Date.now()-at>300000){context.completedCalls.delete(id);return false;}
     return true;
   };
-  const close = async (context = local) => {
+  // A call whose connection was lost (not hung up) is connected again as another session: the iOS App when
+  // something takes its audio, a page whose network went. What it had on the board is kept for it a little
+  // while and goes on with the next session; a hang-up, or no redial in time, lets it go.
+  const CARRY_MS = 120000;
+  const letGo = (context, id) => { if (context.lost && (!id || context.lost.id === id)) { clearTimeout(context.lost.timer); board?.forget(context.lost.id); context.lost = null; } };
+  const keepForRedial = (context, id) => {
+    letGo(context);
+    const timer = setTimeout(() => letGo(context, id), CARRY_MS); timer.unref?.();
+    context.lost = {id, timer};
+  };
+  const carryOn = (context, id) => {
+    const lost = context.lost; if (!lost) return;
+    clearTimeout(lost.timer); context.lost = null;
+    const carried = board?.adopt?.(id, lost.id) === true;
+    if (!carried) board?.forget(lost.id);
+    callControlAudit({type:'call.carried',voiceSessionId:id,from:lost.id,board:carried});
+  };
+  const close = async (context = local, {redial = false} = {}) => {
     const old = context.active;
     old?.deviceChannel?.close();
     if(old?.deviceBound)await (old.gateway??gateway).request('voice.product.device-context',{clientSecret:old.reservation.clientSecret,voiceSessionId:old.reservation.voiceSessionId,mode:'close'},{timeoutMs:5000}).catch(()=>{});
@@ -255,8 +272,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     old?.callControl?.close();
     if(old)speakerRouting?.close(old.reservation.voiceSessionId);
     if (old) visual.forget(old.reservation.voiceSessionId);
-    if (old) board?.forget(old.reservation.voiceSessionId);
-    if (old?.direct) await directVoice.close(old.reservation.voiceSessionId);
+    // (A new dial while the last call was never hung up: that call is being connected again.)
+    if (old) { if (redial && old.direct && board?.adopt) keepForRedial(context, old.reservation.voiceSessionId); else { letGo(context); board?.forget(old.reservation.voiceSessionId); } }
+    if (old?.direct) await directVoice.close(old.reservation.voiceSessionId, redial ? 'redial' : 'requested');
     else if (old) await (old.gateway??gateway).request("talk.client.close", { sessionKey: old.sessionKey, voiceSessionId: old.reservation.voiceSessionId });
     if(old)rememberClosedCall(context,old.reservation.voiceSessionId);
     if(old&&!old.direct)callControlAudit({type:'call.closed',voiceSessionId:old.reservation.voiceSessionId});
@@ -269,7 +287,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       // Reserved, live and cleanup-pending sessions remain owned. Only a
       // fully retired native session can release another device's lock.
       if(!old?.direct||directVoice.hasSession(old.reservation.voiceSessionId))continue;
-      visual.forget(old.reservation.voiceSessionId);board?.forget(old.reservation.voiceSessionId);
+      visual.forget(old.reservation.voiceSessionId);
+      if(board?.adopt&&directVoice.lostCall?.(old.reservation.voiceSessionId))keepForRedial(context,old.reservation.voiceSessionId);else board?.forget(old.reservation.voiceSessionId);
       rememberClosedCall(context,old.reservation.voiceSessionId);
       context.active=null;
       const owner=context.avatarOwners?.get(old.reservation.voiceSessionId);if(owner)owner.endedAt=Date.now();
@@ -331,7 +350,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (binding.id !== 'tianyi'&&!unidentified&&!currentAdmission) await verifyPhoneSession(binding.gateway??gateway, binding);
       const verifiedAt=performance.now();
       if(cancelled())return reply(499,{error:"拨号已取消"});
-      await close(context);
+      await close(context,{redial:true});
       const closedAt=performance.now();
       if(cancelled())return reply(499,{error:"拨号已取消"});
       const recordAdmissionTiming=reservation=>{
@@ -355,6 +374,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const inputPolicy = params.inputPolicy ?? 'speaker';
         const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(unidentified?{unidentified:true}:{}),...(binding.callerIdentity?{callerIdentity:binding.callerIdentity}:{}),...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId,toolIdentity:binding.actorPrincipal}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(params.nativeDeviceActions?{nativeDeviceActions:params.nativeDeviceActions,terminalKind:iosBindings?.read(req,binding)?'ios':'web',backendDeviceURL:backendDeviceEndpoint||`${hosted?publicOrigin:`http://127.0.0.1:${server.address().port}`}${basePath}/internal/device-request`}:{}),...(params.nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId,reportOptions)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...(speakerRouting||unidentified)?{inputPolicy}:{},...(prefetched?{prefetched}:{})});
         context.active={sessionKey,gateway:callGateway,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
+        carryOn(context,reservation.voiceSessionId);
         if(cancelled()){await close(context);return reply(499,{error:"拨号已取消"});}
         rememberAvatarCall(context,context.active,params.model);
         recordAdmissionTiming(reservation);
@@ -902,7 +922,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         try{return json(res,200,await avatarLog.write({owner,clientCaptureId:params.captureId,events:params.events}));}
         catch{return json(res,503,{error:'头像记录暂未保存'});}
       }
-      if(pathname==='/api/close'&&params.voiceSessionId!==context.active?.reservation.voiceSessionId&&isClosedCall(context,params.voiceSessionId))return json(res,200,{ok:true});
+      // (Hung up after its connection had already gone: nothing is kept for a redial.)
+      if(pathname==='/api/close'&&params.voiceSessionId!==context.active?.reservation.voiceSessionId&&isClosedCall(context,params.voiceSessionId)){letGo(context,params.voiceSessionId);return json(res,200,{ok:true});}
       if (!context.active || params.voiceSessionId !== context.active.reservation.voiceSessionId) return json(res, 409, { error: "通话已结束，请重新开始" });
       context.active.touchedAt = Date.now();
       if(pathname==='/api/device-result'){
@@ -975,7 +996,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const address = typeof params.address === 'string' && SHELF_ID.test(params.address) ? {id: params.address, url: await boardAssets.address(owner, params.address)} : null;
         if (Array.isArray(params.seen)) boardAssets.seen(owner, params.seen.filter(id => typeof id === 'string' && ASSET_ID.test(id)));
         const state = board.state(owner);
-        return json(res,200,{...boardAssets.page(owner),rev:state.scene.rev,...(address?{address}:{}),...(Number.isSafeInteger(params.rev)&&params.rev!==state.scene.rev?{sync:state}:{})});
+        return json(res,200,{...boardAssets.page(owner),rev:state.scene.rev,...(address?{address}:{}),...(Number.isSafeInteger(params.rev)&&(params.rev!==state.scene.rev||typeof params.call==='string'&&params.call!==owner.slice(0,8))?{sync:state}:{})});
       }
       if (context.active.direct) {
         if (pathname === '/api/close') { await close(context); return json(res,200,{ok:true}); }

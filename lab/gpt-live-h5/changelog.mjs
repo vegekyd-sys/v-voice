@@ -198,6 +198,16 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-board-works.20261122.2',date:'2026-11-22',
+    title:'iPhone 上看视频不再打断通话，断线重连后画面接着走',
+    items:[
+      'iPhone App 通话中，视频一律静音播放，不会再抢走麦克风让 V 听不见你；想听声音可以保存后看。',
+      '通话断线重连后，画面和正在做的图、视频都接着走，不会卡住或白做。',
+      '说“那个烤鸡的图片做成视频”，用的就是那张图。',
+      'V 没真的开始做时，不会再说“正在做”。',
+    ],
+  },
+  {
     version:'voice-board-works.20261122.1',date:'2026-11-22',
     title:'iPhone 上做好的视频能显示了，看大图时右上角只有一个关闭',
     items:[

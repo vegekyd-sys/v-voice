@@ -58,7 +58,7 @@ export const ASSET_SCRIPT_NOTES = `
  * that. Call of 11/21: the script for such a request added a drawn picture of the two together,
  * which the caller had not asked for and which is paid for.
  */
-export const asksOnlyToFind = text => { const said = String(text ?? ''); return /找|搜|查|来几张|看看有没有|有没有/u.test(said) && /图|照片|相片|海报|壁纸|截图/u.test(said) && !/画|生成|做一|做个|做张|设计|创作|合成|同框|讲|介绍|解释|为什么|怎么/u.test(said); };
+export const asksOnlyToFind = text => { const said = String(text ?? ''); return /找|搜|查|来几张|看看有没有|有没有|看(?:一?下|看|一看)|给我看|看几张/u.test(said) && /图|照片|相片|海报|壁纸|截图/u.test(said) && !/画|生成|做一|做个|做张|设计|创作|合成|同框|讲|介绍|解释|为什么|怎么/u.test(said); };
 
 /** What a photograph on the board is called there: its caption, or the words of the item it stands beside. */
 export function pictureName(pages, query) {
@@ -202,6 +202,9 @@ function nameFit(wanted, name) {
  */
 export function createAssetShelf({director = null, see = null, now = Date.now, audit = () => {}, maxOwners = 64, lookWaitMs = 0, makeLimit = 3, setTimer = setTimeout, standing = []} = {}) {
   const owners = new Map();
+  // A call whose connection was lost goes on under another session (`adopt`): what was begun under the
+  // first finishes on the shelf where the call is now.
+  const heirs = new Map(), heirOf = id => { let at = id; for (let step = 0; step < 8 && heirs.has(at); step++) at = heirs.get(at); return at; };
   // Pictures every call has at hand from its first moment (V's own image): named in a command like a
   // found photograph ("--image v"), lent out the same way, never crowded off the shelf.
   const kept = (Array.isArray(standing) ? standing : []).filter(item => STANDING_ID.test(item?.id ?? '') && item.name).slice(0, 4);
@@ -244,6 +247,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     asset.looking = Promise.resolve().then(() => see({url: asset.url, prompt: asset.prompt})).then(found => {
       asset.looking = null;
       audit({type: 'board.asset-look', voiceSessionId: owner, asset: asset.id, found: Boolean(found), parts: found?.parts.length ?? 0, durationMs: now() - started});
+      owner = heirOf(owner);
       if (!found || !owners.get(owner)?.assets.includes(asset)) return null;
       asset.see = found.see; asset.parts = found.parts;
       if (found.name && !asset.named) { asset.name = found.name; director?.retitle?.(owner, asset.id, found.name); }
@@ -267,6 +271,19 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     const kind = asset.kind === 'video' ? '视频' : '图片', origin = asset.from ? `，由 ${asset.from} 做成` : '';
     const what = asset.see || (asset.prompt ? `按这段要求生成：${bounded(asset.prompt, 90)}` : '');
     return `${asset.id} ${kind}${asset.name ? `「${asset.name}」` : ''}${origin}${asset.source === 'backend' ? '（后台做的）' : ''}${what ? `：${what}` : ''}`;
+  };
+  // The picture the caller's words point at: "那个烤鸡的图片", "这张…". By the name it goes by, or the one picked.
+  const pointedAt = (value, said) => {
+    const words = String(said ?? '');
+    if (!words || /(?:不用|不要|别用|不需要)[^，。,.]{0,6}(?:图|照片)|重新(?:画|生成|做)一张|另外/u.test(words)) return null;
+    const usable = item => item.fits !== false && (item.kind === 'image' && item.state === 'ready');
+    const here = [...value.photos, ...value.assets].filter(usable);
+    for (const match of words.matchAll(/[那这]\s*(?:个|张|幅|只|份)?\s*([^，。,.！？!?、那这]{2,12}?)的?\s*(?:那张|这张)?\s*(?:图片|照片|图|海报)/gu)) {
+      const named = here.filter(item => nameFit(match[1], item.name) >= 1 || item.query && nameFit(match[1], item.query) >= 1).at(-1);
+      if (named) return named;
+    }
+    if (/这张|这个图|这幅/u.test(words) && value.picked) return here.find(item => item.id === value.picked) ?? null;
+    return null;
   };
   // The photographs found for the board lately, as V is told of them (by name, in the order they went up).
   // Which thing on the shelf a picture named in a command is: by its id, or by the name it goes by
@@ -322,6 +339,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
           let found = null;
           try { const picture = await api.picture(key); if (picture?.bytes?.length) found = await see({bytes: picture.bytes, type: picture.type, check: {query: key, name: photo.name}}); } catch { found = null; }
           audit({type: 'board.photo-check', voiceSessionId: owner, photo: photo.id, checked: Boolean(found), fits: found?.fits ?? null, durationMs: now() - started});
+          owner = heirOf(owner);
           if (!found || !owners.get(owner)?.photos.includes(photo)) return;
           photo.see = found.see; photo.fits = found.fits;
           if (!found.fits) changed(owner, value);
@@ -369,6 +387,12 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       }
       const creation = readCreation(resolved);
       if (!creation) return {command: resolved};
+      // The caller pointed at a picture that is here ("那个烤鸡的图片，做个视频") and the command works from
+      // none: what would be made is another thing (call of 11/22 01:53: a roast chicken made from words).
+      if (!used.length && !/--(?:image|ref)\s/u.test(resolved)) {
+        const pointed = pointedAt(value, turn?.text);
+        if (pointed) return {command: text, error: `用户指的是画面上的 ${pointed.id}「${pointed.name || pointed.id}」，这条命令没有用它；本次没有提交、未扣费。带上 --image ${pointed.id}${creation.kind === 'video' ? '，并在 --script 里用 <<<media_1>>> 指它' : ''}，重写命令再提交。`};
+      }
       // One request of the caller's makes one thing of a kind (the executor answers a repeat with
       // the first submission's result): the repeat shares the first one's place on the board.
       const key = turn ?? value, kinds = value.turns.get(key) ?? {};
@@ -392,6 +416,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
      * thing: its id, and (when the eye is quick enough) what is in the picture.
      */
     async finish(owner, id, output) {
+      owner = heirOf(owner);
       const value = owners.get(owner);
       const media = output?.media && !output.isError ? output.media : null, url = https(media?.url);
       if (!value) return url ? api.add(owner, {kind: media.kind, url, source: 'made'}) : null;
@@ -498,11 +523,12 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     /** The page's view: every thing, the one picked, and whether anything is still coming. */
     page(owner) {
       const value = owners.get(owner);
-      if (!value) return {assets: [], photos: [], picked: '', busy: false, stamp: 0};
+      // (`call`: which session's shelf this is, so a page whose call went on as another takes it anew.)
+      if (!value) return {call: String(owner).slice(0, 8), assets: [], photos: [], picked: '', busy: false, stamp: 0};
       // (With the found photographs things were made from, so a frame can show what it is being made of.)
       const sources = pictures(value).filter(photo => photo.url && value.assets.some(asset => asset.from === photo.id || asset.refs?.includes(photo.id))).map(photo => ({id: photo.id, kind: 'image', state: 'ready', url: photo.url, name: photo.name, source: 'search', at: 0}));
       // (`photos`: every found photograph by what the board calls for it, so the page can say which one was tapped.)
-      return {assets: [...sources, ...value.assets.map(card)], photos: value.photos.map(photo => ({id: photo.id, query: photo.query, name: photo.name})), picked: value.picked, busy: value.assets.some(asset => asset.state === 'making'), stamp: value.stamp};
+      return {call: String(owner).slice(0, 8), assets: [...sources, ...value.assets.map(card)], photos: value.photos.map(photo => ({id: photo.id, query: photo.query, name: photo.name})), picked: value.picked, busy: value.assets.some(asset => asset.state === 'making'), stamp: value.stamp};
     },
     /** The caller tapped a thing: "this one" is that one until another is tapped. */
     pick(owner, id) {
@@ -547,6 +573,22 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       value.making = value.making.then(() => maker({prompt: words, aspect})).then(output => api.finish(owner, asset.id, output), () => api.finish(owner, asset.id, {isError: true})).catch(() => {});
       return asset.id;
     },
+    /**
+     * The call of session `from` goes on as session `to`: its shelf with it, the things still being made
+     * included. Not when the new session already has things of its own. True when it was carried over.
+     */
+    adopt(to, from) {
+      const old = owners.get(from), fresh = owners.get(to);
+      if (!old || to === from || fresh && (fresh.assets.length || fresh.photos.length)) return false;
+      old.watchers = fresh?.watchers ?? new Set(); old.maker = fresh?.maker ?? null; old.turns = new Map(); old.touched = now();
+      owners.delete(from); owners.set(to, old);
+      heirs.set(from, to);
+      while (heirs.size > 64) heirs.delete(heirs.keys().next().value);
+      changed(to, old);
+      return true;
+    },
+    /** The session a call goes on as (itself, where it was not lost). */
+    heir: heirOf,
     forget(owner) { owners.delete(owner); },
   };
   return api;

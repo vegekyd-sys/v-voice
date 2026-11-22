@@ -70,7 +70,8 @@ export function Viewer({items, start, onClose, works = null}) {
     <div className="board-enlarged board-viewer" role="dialog" aria-modal="true" aria-label={item.name ? `看图：${item.name}` : '看图'} onClick={onClose} onTouchStart={down} onTouchEnd={up}>
       <figure onClick={event => event.stopPropagation()}>
         {item.kind === 'video'
-          ? <video key={item.src} ref={film} src={item.src} controls autoPlay loop playsInline onLoadedMetadata={event => { const {videoWidth: width, videoHeight: height} = event.currentTarget; if (width && height) setShape({ratio: width / height, most: width * 2}); }}
+          ? <video key={item.src} ref={film} src={item.src} controls={works?.autoSound !== false} muted={works?.autoSound === false} autoPlay loop playsInline
+              onClick={works?.autoSound === false ? event => { event.stopPropagation(); const video = event.currentTarget; if (video.paused) video.play().catch(() => {}); else video.pause(); } : undefined} onLoadedMetadata={event => { const {videoWidth: width, videoHeight: height} = event.currentTarget; if (width && height) setShape({ratio: width / height, most: width * 2}); }}
               data-shaped={shape ? 'true' : undefined} style={shape ? {'--ratio': shape.ratio, '--most': shape.most + 'px'} : undefined} />
           : <img key={item.src} src={item.src} alt={item.name} data-shaped={shape ? 'true' : undefined} onClick={onClose}
               style={shape ? {'--ratio': shape.ratio, '--most': shape.most + 'px'} : undefined}
@@ -78,6 +79,7 @@ export function Viewer({items, start, onClose, works = null}) {
         <figcaption>
           {item.name && <span>{item.name}</span>}
           {many && <small>{index + 1} / {items.length}</small>}
+          {item.kind === 'video' && works?.autoSound === false && <small>通话中静音播放，想听声音可以先保存</small>}
         </figcaption>
         {(works?.save || acts.length > 0) && (
           <div className="board-viewer-bar" role="group" aria-label="对这张图">
@@ -101,7 +103,7 @@ export function pagePictures(page) {
     // (Not one the voice has not reached yet on a lesson's page: it is not on show.)
     if (element.closest('[data-ink="false"]')) return null;
     const media = element.querySelector('.board-work-print') ?? element.querySelector('video, img');
-    const src = media?.currentSrc || media?.src || '';
+    const src = element.dataset.src || media?.currentSrc || media?.src || '';
     return src ? {element, src, kind: element.dataset.kind === 'video' ? 'video' : 'image', name: element.dataset.name ?? '', asset: element.dataset.asset ?? '', query: element.dataset.query ?? ''} : null;
   }).filter(Boolean);
 }
