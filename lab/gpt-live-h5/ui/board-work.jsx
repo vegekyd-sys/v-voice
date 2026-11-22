@@ -70,6 +70,8 @@ export function Work({block, view}) {
     if (!playing || !video) return;
     let live = true;
     setHeld('');
+    // (Its sound is fetched beside the picture, so that they start together.)
+    void view.film?.ready(video);
     // Moving without sound, over and over. Refused: it waits for the caller's tap.
     const hush = () => { asked.current = false; view.film?.off(video); video.muted = true; video.loop = true; setQuiet(true); return Promise.resolve(video.play()).then(() => { if (live) setHeld(''); }, () => { if (live) { setHeld(playing); view.shown?.(playing); } }); };
     // Once it is really moving it is played once from the start with its sound, where the page may
