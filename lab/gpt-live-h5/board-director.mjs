@@ -642,6 +642,15 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
         finish();
       }
     },
+    /** The call of session `from` goes on as session `to` (its connection was lost): its pages with it. */
+    adopt(to, from) {
+      const old = owners.get(from), fresh = owners.get(to);
+      if (!old || to === from || fresh?.scene.blocks.length) return false;
+      old.controller?.abort(); old.controller = null; old.evidence = []; old.ahead = null; old.notes = null; old.touched = now();
+      owners.delete(from); owners.set(to, old);
+      shelf?.adopt?.(to, from);
+      return true;
+    },
     forget(id) { owners.get(id)?.controller?.abort(); owners.delete(id); shelf?.forget?.(id); },
   };
   return api;

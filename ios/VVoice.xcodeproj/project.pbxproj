@@ -45,11 +45,14 @@
 		7F29D74444DB07C50CB95609 /* VoiceComparison.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08A624E6F16469B2F4941AB0 /* VoiceComparison.swift */; };
 		8159E2473B07C08167B0FD98 /* SharedDuplexFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E2B7ECB25AEFE948D49544B /* SharedDuplexFlowTests.swift */; };
 		86E0D28CB20237D88346B3CE /* CallSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7793FA9355C2CE185FE89524 /* CallSettings.swift */; };
+		897AF436C5D303D168A0CE59 /* film-silent.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = D18CE1FCEACD77F5B0E4E28C /* film-silent.mp4 */; };
 		8B9B09CD2C03DF5A31F015B2 /* H5Shell in Resources */ = {isa = PBXBuildFile; fileRef = 1BD7A9E9F549C0BC8FEE308B /* H5Shell */; };
 		8E4C6BA1932EA200ADE9F440 /* NativeFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6DC401CBC28DC4E5E00D8B4 /* NativeFlowTests.swift */; };
 		9590B03E41BD745CE31C5942 /* RelayUsageWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06FC16E6A330AEEED4E4EDCE /* RelayUsageWidget.swift */; };
+		9D55A107DFC4DC447B132125 /* film-sound.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = A9641684801BF84F4CCD3F4C /* film-sound.mp4 */; };
 		9E4C76775E9C12F4BCCCCEA2 /* VoiceWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D7BA1CED3B5C99A8E33694C /* VoiceWidget.swift */; };
 		A091D643A8C19C5D2BDBA51C /* CallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FA57ABCE44F7870BD8DE61 /* CallView.swift */; };
+		A56DEE6C5D36C4471E1F6586 /* FilmSoundTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AD0430ADCFD71759953BA27 /* FilmSoundTests.swift */; };
 		AE1747E1C86A804A73A542C2 /* H5Updates.json in Resources */ = {isa = PBXBuildFile; fileRef = 74F2FE640D58B26E022A9943 /* H5Updates.json */; };
 		AED8FBE10AC065C07DA6F92D /* IslandAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 45619E039B8DBD8B3AD20743 /* IslandAssets.xcassets */; };
 		B3DF34667002BAE96598431F /* VoiceStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82BCD1E278CA030F4584C6D0 /* VoiceStyle.swift */; };
@@ -57,6 +60,7 @@
 		B6B40DD773C97D5049C9C2DF /* H5Markdown.js in Resources */ = {isa = PBXBuildFile; fileRef = BFCDA98ECF8BCE22F93B58AD /* H5Markdown.js */; };
 		BD6ED4FE95DF160F7B18AAE5 /* PublicEntryConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4450FB32DC04BC75DD9CDCF /* PublicEntryConfiguration.swift */; };
 		BF1EC256D6D01B21B6B51AE8 /* CallActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C694805A7F537814758189E7 /* CallActivity.swift */; };
+		C13DE4CCBB96E368355C2BCC /* FilmSound.swift in Sources */ = {isa = PBXBuildFile; fileRef = F405B27F1A265A536FCF6510 /* FilmSound.swift */; };
 		C1CDDF961E988F8F12C3E96B /* VoiceAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D75530190661A3CE19BAA28 /* VoiceAudio.swift */; };
 		C498FBC76120554268E17002 /* DeviceAudioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC5B54FF48C5CC112EF20F95 /* DeviceAudioTests.swift */; };
 		CA4DDB15CA6F1597FF1F9406 /* H5AvatarCatalog.json in Resources */ = {isa = PBXBuildFile; fileRef = E292A32BB617F45942500127 /* H5AvatarCatalog.json */; };
@@ -125,6 +129,7 @@
 		2ECB48467FD3F45A94D790DE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		31B6D38F987CC05C91D9830F /* GPTLiveTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPTLiveTransport.swift; sourceTree = "<group>"; };
 		36869D72B5F5936A62B789D2 /* VVCaptureSink.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VVCaptureSink.h; sourceTree = "<group>"; };
+		3AD0430ADCFD71759953BA27 /* FilmSoundTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilmSoundTests.swift; sourceTree = "<group>"; };
 		3E2B7ECB25AEFE948D49544B /* SharedDuplexFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedDuplexFlowTests.swift; sourceTree = "<group>"; };
 		3EDEAC67D66165AD0E275FD2 /* VVoiceTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VVoiceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		445925F85326700CF3C4BA73 /* VVoiceActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = VVoiceActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -151,6 +156,7 @@
 		857F5E8922957A5BB87318B1 /* VoiceIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceIntents.swift; sourceTree = "<group>"; };
 		8D4D345BC789E025A5392879 /* DeviceLocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLocationTests.swift; sourceTree = "<group>"; };
 		A4450FB32DC04BC75DD9CDCF /* PublicEntryConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicEntryConfiguration.swift; sourceTree = "<group>"; };
+		A9641684801BF84F4CCD3F4C /* film-sound.mp4 */ = {isa = PBXFileReference; path = "film-sound.mp4"; sourceTree = "<group>"; };
 		AA44C040A9E6D25236282244 /* VVoiceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VVoiceApp.swift; sourceTree = "<group>"; };
 		AC68CB218040B5DF93D95B7D /* RelaySignalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelaySignalTests.swift; sourceTree = "<group>"; };
 		B8B9C9B99CE97D32679A3DDC /* marked-LICENSE */ = {isa = PBXFileReference; path = "marked-LICENSE"; sourceTree = "<group>"; };
@@ -163,6 +169,7 @@
 		C694805A7F537814758189E7 /* CallActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallActivity.swift; sourceTree = "<group>"; };
 		C967786B594C6900ED76BF8A /* H5ShellTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = H5ShellTests.swift; sourceTree = "<group>"; };
 		CBB7DC0E277A785098CD0EB2 /* AvatarCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarCatalogTests.swift; sourceTree = "<group>"; };
+		D18CE1FCEACD77F5B0E4E28C /* film-silent.mp4 */ = {isa = PBXFileReference; path = "film-silent.mp4"; sourceTree = "<group>"; };
 		D37141DC53B720B7B96CC90F /* IslandCallSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IslandCallSurface.swift; sourceTree = "<group>"; };
 		D7D2EE17BE9D48F5FA66CA14 /* IslandAssets.manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = IslandAssets.manifest.json; sourceTree = "<group>"; };
 		D7E71EDE5E203F685FAAA6F0 /* MediaLibrarySaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaLibrarySaver.swift; sourceTree = "<group>"; };
@@ -174,6 +181,7 @@
 		E44018070C4751C833BA02F4 /* VVoice.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VVoice.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E6DC401CBC28DC4E5E00D8B4 /* NativeFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeFlowTests.swift; sourceTree = "<group>"; };
 		F3AB743DE4EC6C48B772C72D /* H5ResourceScheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = H5ResourceScheme.swift; sourceTree = "<group>"; };
+		F405B27F1A265A536FCF6510 /* FilmSound.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilmSound.swift; sourceTree = "<group>"; };
 		F7D94233BC47BA8E4FB89642 /* VVoiceCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = VVoiceCore; path = VVoiceCore; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -272,6 +280,15 @@
 			path = VVoice/Shared;
 			sourceTree = "<group>";
 		};
+		AB47C83AC1E424490FEE301E /* Media */ = {
+			isa = PBXGroup;
+			children = (
+				D18CE1FCEACD77F5B0E4E28C /* film-silent.mp4 */,
+				A9641684801BF84F4CCD3F4C /* film-sound.mp4 */,
+			);
+			path = Media;
+			sourceTree = "<group>";
+		};
 		AE10E952BAF9893DD53B1272 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
@@ -281,6 +298,7 @@
 				BC5B54FF48C5CC112EF20F95 /* DeviceAudioTests.swift */,
 				8D4D345BC789E025A5392879 /* DeviceLocationTests.swift */,
 				0FDD9298C38842CD63B747AF /* DocumentReaderTests.swift */,
+				3AD0430ADCFD71759953BA27 /* FilmSoundTests.swift */,
 				13760D7F18C1D0CA48444844 /* GPTLiveTransportTests.swift */,
 				BA02392D095FEF5043B9AC46 /* H5DeliveryTests.swift */,
 				C967786B594C6900ED76BF8A /* H5ShellTests.swift */,
@@ -290,6 +308,7 @@
 				AC68CB218040B5DF93D95B7D /* RelaySignalTests.swift */,
 				3E2B7ECB25AEFE948D49544B /* SharedDuplexFlowTests.swift */,
 				DBF1ACCF9EA74D03B4EC7B54 /* VoiceFixture.swift */,
+				AB47C83AC1E424490FEE301E /* Media */,
 			);
 			name = Tests;
 			path = VVoice/Tests;
@@ -309,6 +328,7 @@
 				7793FA9355C2CE185FE89524 /* CallSettings.swift */,
 				C3FA57ABCE44F7870BD8DE61 /* CallView.swift */,
 				4F6592CE77AB072C3F353CD6 /* DeviceLocation.swift */,
+				F405B27F1A265A536FCF6510 /* FilmSound.swift */,
 				31B6D38F987CC05C91D9830F /* GPTLiveTransport.swift */,
 				E3D3F29E57D937B4843EFBA7 /* H5CallView.swift */,
 				6EEDBEC86D8EA3876D12E606 /* H5Delivery.swift */,
@@ -355,6 +375,7 @@
 			buildConfigurationList = FE38CBA40FCF25F66423B520 /* Build configuration list for PBXNativeTarget "VVoiceTests" */;
 			buildPhases = (
 				9EFF5BACC10A03487E556E20 /* Sources */,
+				5CAC61463E719F575899F0E0 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -460,6 +481,15 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		5CAC61463E719F575899F0E0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				897AF436C5D303D168A0CE59 /* film-silent.mp4 in Resources */,
+				9D55A107DFC4DC447B132125 /* film-sound.mp4 in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		60AD13A0C8815F8AF58019FB /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -512,6 +542,7 @@
 				C498FBC76120554268E17002 /* DeviceAudioTests.swift in Sources */,
 				5F9CB05A3A70A74F01D0C38D /* DeviceLocationTests.swift in Sources */,
 				E8256742D25677B4DA5835EE /* DocumentReaderTests.swift in Sources */,
+				A56DEE6C5D36C4471E1F6586 /* FilmSoundTests.swift in Sources */,
 				23EBB12D206A5170CB9689D9 /* GPTLiveTransportTests.swift in Sources */,
 				F5BE616F7245C22272C02F34 /* H5DeliveryTests.swift in Sources */,
 				E2A581DF60A17B15C14A7FF7 /* H5ShellTests.swift in Sources */,
@@ -540,6 +571,7 @@
 				86E0D28CB20237D88346B3CE /* CallSettings.swift in Sources */,
 				A091D643A8C19C5D2BDBA51C /* CallView.swift in Sources */,
 				35871CA514AFBF7716C64850 /* DeviceLocation.swift in Sources */,
+				C13DE4CCBB96E368355C2BCC /* FilmSound.swift in Sources */,
 				B5407957466F22564A656AED /* GPTLiveTransport.swift in Sources */,
 				EFBC64E0392EFC898C762802 /* H5CallView.swift in Sources */,
 				D5C10BBDE16185170D659D78 /* H5Delivery.swift in Sources */,
@@ -691,7 +723,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 48;
+				CURRENT_PROJECT_VERSION = 50;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = E6YTL27QWA;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -779,7 +811,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 48;
+				CURRENT_PROJECT_VERSION = 50;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = E6YTL27QWA;
 				ENABLE_NS_ASSERTIONS = NO;

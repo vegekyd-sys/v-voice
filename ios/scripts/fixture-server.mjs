@@ -24,6 +24,7 @@ const boardOps=()=>[{op:'sync',scene:{serial:1,rev:boardRequests.length,title:'F
      {id:'v',t:'versus',sides:[{h:'电车'},{h:'油车'}],items:[{id:'a',h:'补能',cells:['家里慢充','三分钟加满'],win:1},{id:'b',h:'花费',cells:['每公里几分钱','五六毛'],win:0}]},
      {id:'g',t:'draw',h:'勾股定理',items:[{id:'t',k:'poly',p:[40,40,40,25,60,40],h:'3-4-5'},{id:'a',k:'rect',p:[25,25,15,15],h:'9',tone:'sky'},{id:'b',k:'rect',p:[40,40,20,20],h:'16',tone:'peach'},{id:'c',k:'poly',p:[40,25,60,40,75,20,55,5],h:'25',tone:'butter'}]}]}},{op:'done',reason:'drawn',rev:boardRequests.length}];
 const boardPhoto={type:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='};
+let filmURL='',filmPicked='';
 let boardMode=false,boardRequests=[],boardImages=[],avatarRequests=[],avatarEvents=[],avatarReply="reaction-0",avatarContinuations=["reaction-1","listen-5"],slowAvatar=false;
 let shellVariant='none',shellRequests=[],shellRedirects=0,servedPage='same',pageVersionRequests=0;
 let inputFrames=0,inputActiveFrames=0,peakInputRMS=0;
@@ -69,6 +70,7 @@ const server=createServer(async(req,res)=>{
    return send(200,release);
  }
  if(path==='/fixture/command'){
+   if(body.command==='film'){filmURL=String(body.event?.url??'');filmPicked='';return send(200,{});}
    if(body.command==='system-background-ready'){systemBackgroundReady=true;return send(200,{});}
    if(body.command==='location'){
      if(!deviceLocation)return send(409,{error:'No location capability'});
@@ -79,7 +81,7 @@ const server=createServer(async(req,res)=>{
    if(body.command==='location-frame'){client?.send(JSON.stringify({...body.frame,voiceSessionId:body.frame?.voiceSessionId??active}));return send(200,{});}
    if(body.command==='gpt-answer'&&offerReply){const reply=offerReply;offerReply=null;reply(200,{sdp:body.sdp});}
    if(body.command==='board-mode'){boardMode=true;return send(200,{ok:true});}
-   if(body.command==='reset'){boardMode=false;boardRequests=[];boardImages=[];lastOffer=null;offerReply?.(409,{error:'Reset'});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();}
+   if(body.command==='reset'){filmURL='';boardMode=false;boardRequests=[];boardImages=[];lastOffer=null;offerReply?.(409,{error:'Reset'});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();}
    if(body.command==='shell-delay')shellDelayMS=Math.max(0,Math.min(2000,Number(body.ms)||0));
    if(body.command==='shell-release')shellVariant=body.variant??'none';
    if(body.command==='served-page')servedPage=body.variant??'same';
@@ -167,11 +169,19 @@ const server=createServer(async(req,res)=>{
    return send(200,servedPage==='other'?{build:'0123456789ab',updated:'2026-12-01'}:{build,updated});
  }
  if(path==='/voice/api/page/board'){
+   if(filmURL&&body.voiceSessionId===active)return send(200,{ops:[{op:'sync',scene:{serial:1,rev:1,title:'',blocks:[{id:'w1',t:'work',asset:'a1'}]}},{op:'done',reason:'making',rev:1}]});
    if(!boardMode)return send(404,{error:'没有这个入口'});
    if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
    if(!Array.isArray(body.turns))return send(400,{error:'Invalid board request'});
    boardRequests.push({trigger:body.trigger,turns:body.turns.length});
    return send(200,{ops:boardOps()});
+ }
+ // A video V made, on the call's shelf (`film` with its https address).
+ if(path==='/voice/api/page/board-assets'){
+   if(!filmURL)return send(404,{error:'没有这个入口'});
+   if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
+   if(typeof body.pick==='string')filmPicked=body.pick;
+   return send(200,{call:active,assets:[{id:'a1',kind:'video',state:'ready',url:filmURL,name:'本地视频',source:'made',at:1}],photos:[],picked:filmPicked,busy:false,stamp:1,rev:1});
  }
  if(path==='/voice/api/page/board-image'){
    if(body.voiceSessionId!==active||body.query!=='fixture-print')return send(404,{error:'No photograph'});

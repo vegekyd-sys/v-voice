@@ -44,6 +44,9 @@ export function Viewer({items, start, onClose, works = null}) {
   // A video is started as it comes up: the tap that opened it (or turned to it) is what lets it play
   // where nothing plays by itself. Refused, its own controls are there to start it.
   useEffect(() => { const video = film.current; if (video) Promise.resolve(video.play()).catch(() => {}); }, [index]);
+  // Where the App plays the sound (`film`), the picture here is silent and has controls of this page's own.
+  const sound = works?.film ?? null, silent = Boolean(sound) || works?.autoSound === false;
+  useEffect(() => { const video = film.current; if (!video || !sound) return; return () => sound.off(video); }, [index]);
   // Looked at is picked: "this one" for V is the one on screen.
   useEffect(() => { if (id) works?.pick?.(id, true); }, [id]);
   if (typeof document === 'undefined') return null;
@@ -70,14 +73,17 @@ export function Viewer({items, start, onClose, works = null}) {
     <div className="board-enlarged board-viewer" role="dialog" aria-modal="true" aria-label={item.name ? `看图：${item.name}` : '看图'} onClick={onClose} onTouchStart={down} onTouchEnd={up}>
       <figure onClick={event => event.stopPropagation()}>
         {item.kind === 'video'
-          ? <video key={item.src} ref={film} src={item.src} controls autoPlay loop playsInline onLoadedMetadata={event => { const {videoWidth: width, videoHeight: height} = event.currentTarget; if (width && height) setShape({ratio: width / height, most: width * 2}); }}
+          ? <video key={item.src} ref={film} src={item.src} data-asset={item.asset || undefined} controls={!silent} muted={silent} autoPlay loop playsInline
+              onClick={silent ? event => { event.stopPropagation(); const video = event.currentTarget; if (video.paused) video.play().catch(() => {}); else video.pause(); } : undefined} onLoadedMetadata={event => { const {videoWidth: width, videoHeight: height} = event.currentTarget; if (width && height) setShape({ratio: width / height, most: width * 2}); }}
               data-shaped={shape ? 'true' : undefined} style={shape ? {'--ratio': shape.ratio, '--most': shape.most + 'px'} : undefined} />
           : <img key={item.src} src={item.src} alt={item.name} data-shaped={shape ? 'true' : undefined} onClick={onClose}
               style={shape ? {'--ratio': shape.ratio, '--most': shape.most + 'px'} : undefined}
               onLoad={event => { const {naturalWidth: width, naturalHeight: height} = event.currentTarget; if (width && height) setShape({ratio: width / height, most: width * 2}); }} />}
+        {item.kind === 'video' && sound && <FilmBar key={'bar ' + item.src} film={film} sound={sound} />}
         <figcaption>
           {item.name && <span>{item.name}</span>}
           {many && <small>{index + 1} / {items.length}</small>}
+          {item.kind === 'video' && silent && !sound && <small>更新 App 后，通话中就能听到视频的声音</small>}
         </figcaption>
         {(works?.save || acts.length > 0) && (
           <div className="board-viewer-bar" role="group" aria-label="对这张图">
@@ -95,13 +101,50 @@ export function Viewer({items, start, onClose, works = null}) {
     document.body);
 }
 
+// The controls of a video whose sound the App plays: start and stop, where it is, sound on and off.
+const clock = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+function FilmBar({film, sound}) {
+  const [at, setAt] = useState({now: 0, all: 0, going: false});
+  const [heard, setHeard] = useState(true), [has, setHas] = useState(true);
+  const turn = on => {
+    setHeard(on);
+    if (!on) { sound.off(film.current); return; }
+    void sound.on(film.current, {lost: () => setHeard(false)}).then(done => { if (!done) { setHeard(false); void sound.ready(film.current).then(setHas); } });
+  };
+  useEffect(() => {
+    const video = film.current;
+    if (!video) return;
+    const look = () => setAt({now: video.currentTime || 0, all: Number.isFinite(video.duration) ? video.duration : 0, going: !video.paused});
+    const types = ['timeupdate', 'durationchange', 'loadedmetadata', 'play', 'pause', 'seeked'];
+    for (const type of types) video.addEventListener(type, look);
+    look(); turn(true);
+    return () => { for (const type of types) video.removeEventListener(type, look); };
+  }, []);
+  const toggle = () => { const video = film.current; if (video.paused) Promise.resolve(video.play()).catch(() => {}); else video.pause(); };
+  return (
+    <div className="board-viewer-film" role="group" aria-label="播放" onTouchStart={event => event.stopPropagation()} onTouchEnd={event => event.stopPropagation()}>
+      <button type="button" aria-label={at.going ? '暂停' : '播放'} onClick={toggle}>
+        <svg viewBox="0 0 24 24" aria-hidden="true">{at.going ? <path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" /> : <path d="M8 5.5v13l11-6.5z" />}</svg>
+      </button>
+      <input type="range" min="0" max={at.all || 1} step="0.05" value={Math.min(at.now, at.all || 1)} aria-label="进度" aria-valuetext={`${clock(at.now)}，共 ${clock(at.all)}`}
+        style={{'--done': `${at.all ? Math.min(100, at.now / at.all * 100) : 0}%`}} onChange={event => { film.current.currentTime = Number(event.target.value); }} />
+      <span>{clock(at.now)} / {clock(at.all)}</span>
+      {has && (
+        <button type="button" aria-label={heard ? '关掉声音' : '打开声音'} aria-pressed={heard} onClick={() => turn(!heard)}>
+          <svg viewBox="0 0 24 24" fill="none" data-line="true" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" />{heard ? <path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11" /> : <path d="m16 9.5 5 5M21 9.5l-5 5" />}</svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** The pictures of a page that can be looked at, in the order they stand: what `Viewer` turns through. */
 export function pagePictures(page) {
   return [...(page?.querySelectorAll?.('[data-enlarge="true"]') ?? [])].map(element => {
     // (Not one the voice has not reached yet on a lesson's page: it is not on show.)
     if (element.closest('[data-ink="false"]')) return null;
     const media = element.querySelector('.board-work-print') ?? element.querySelector('video, img');
-    const src = media?.currentSrc || media?.src || '';
+    const src = element.dataset.src || media?.currentSrc || media?.src || '';
     return src ? {element, src, kind: element.dataset.kind === 'video' ? 'video' : 'image', name: element.dataset.name ?? '', asset: element.dataset.asset ?? '', query: element.dataset.query ?? ''} : null;
   }).filter(Boolean);
 }

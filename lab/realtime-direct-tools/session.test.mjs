@@ -1888,3 +1888,36 @@ for(const [name,options,playing,expectEcho] of [
  assert.equal(f.audit.some(e=>e.type==='input.playback-echo'),expectEcho);
  assert.equal(f.audit.some(e=>e.type==='input.playback-echo-reply'&&e.responseId==='echo-answer'),expectEcho);
 });
+
+test('what a call was making when its connection was lost is finished where the call goes on; a hang-up ends it',async t=>{
+ const {createBoardDirector}=await import('../gpt-live-h5/board-director.mjs'),{createAssetShelf}=await import('../gpt-live-h5/board-assets.mjs');
+ for(const [why,lost] of [['redial',true],['requested',false]]){
+  const board=createBoardDirector({complete:async function*(){yield '{"op":"none"}\n';},stream:{instructions:'',refine:op=>op,cue:true}}),assets=createAssetShelf({director:board});
+  board.shelf=assets;
+  let finish,aborted=false;
+  const f=await fixture(async()=>{throw Error('must not use Gateway');},'grok',{assets,mediaCli:{forCall:async()=>({execute:(command,signal)=>new Promise((resolve,reject)=>{finish=resolve;signal.addEventListener('abort',()=>{aborted=true;reject(signal.reason);});})})}});
+  t.after(()=>f.service.dispose());
+  const first=f.reservation.voiceSessionId;
+  f.call('exec',{command:"makaron edit --image-model gemini-2.1 '一只猫'",completionLine:'猫画好了。'},'make-cat');
+  for(let i=0;i<200&&!finish;i++)await delay(5);
+  assert.equal(assets.page(first).busy,true);
+  await f.service.close(first,why);
+  assert.equal(f.service.lostCall(first),lost);
+  assert.equal(aborted,!lost,why);
+  if(!lost)continue;
+  // Connected again: another session, on the same board.
+  const again=await f.service.reserve({model:'grok',sessionKey:'agent:makaron:explicit:personal-fixture'}),second=again.voiceSessionId;
+  assert.equal(board.adopt(second,first),true);
+  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>client.sent.push(JSON.parse(raw));client.close=()=>{client.readyState=3;};
+  f.service.upgrade({},client,Buffer.alloc(0),second,again.relayTicket);
+  for(let i=0;i<200&&!client.sent.some(e=>e.type==='ready');i++)await delay(5);
+  finish({media:{kind:'image',url:'https://cdn.example/cat.png'},content:[{type:'text',text:'ok'}]});
+  for(let i=0;i<200&&assets.page(second).busy;i++)await delay(5);
+  const [cat]=assets.page(second).assets;
+  assert.equal(cat.state,'ready');assert.equal(cat.url,'https://cdn.example/cat.png');
+  // And V there says it is done, in the words it left for it.
+  for(let i=0;i<600&&!f.audit.some(e=>e.type==='execution.finished-told'&&e.voiceSessionId===second);i++)await delay(5);
+  const told=f.audit.find(e=>e.type==='execution.finished-told'&&e.voiceSessionId===second);
+  assert.equal(told?.status,'completed');assert.equal(told.ownWords,true);
+ }
+});

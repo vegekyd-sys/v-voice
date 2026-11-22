@@ -50,19 +50,38 @@ export function Work({block, view}) {
   // video's first frame before it could be tapped, and the first frame waited for a tap.)
   const [held, setHeld] = useState('');
   const settle = (width, height) => { if (width > 0 && height > 0) setShape(Math.min(2.4, Math.max(.5, width / height))); };
-  const playing = shown?.kind === 'video' && shown.state === 'ready' ? shown.id : '';
+  // (`inline: false`: where no video may start by itself, the frame holds its picture with a play mark and the
+  // video plays in the viewer. It used to wait for the video here, and waited for ever: 11/22 01:49.)
+  const still = view.inline === false;
+  const playing = !still && shown?.kind === 'video' && shown.state === 'ready' ? shown.id : '';
+  // From the start, once, with its sound; without it again when it ends or another video is heard.
+  // (Not while it is going back to its start by itself: WebKit then stays at the end, and is over at once.)
+  const asked = useRef(false);
+  const aloud = video => {
+    asked.current = true; setQuiet(false);
+    if (video.seeking) { video.addEventListener('seeked', () => { if (video.isConnected && asked.current) aloud(video); }, {once: true}); return; }
+    const silent = () => { video.loop = true; setQuiet(true); };
+    video.loop = false; video.currentTime = 0;
+    void view.film.on(video, {lost: silent}).then(heard => { if (!heard) silent(); });
+    if (video.paused) Promise.resolve(video.play()).catch(silent);
+  };
   useEffect(() => {
     const video = film.current;
     if (!playing || !video) return;
     let live = true;
     setHeld('');
+    // (Its sound is fetched beside the picture, so that they start together.)
+    void view.film?.ready(video);
     // Moving without sound, over and over. Refused: it waits for the caller's tap.
-    const hush = () => { video.muted = true; video.loop = true; setQuiet(true); return Promise.resolve(video.play()).then(() => { if (live) setHeld(''); }, () => { if (live) { setHeld(playing); view.shown?.(playing); } }); };
+    const hush = () => { asked.current = false; view.film?.off(video); video.muted = true; video.loop = true; setQuiet(true); return Promise.resolve(video.play()).then(() => { if (live) setHeld(''); }, () => { if (live) { setHeld(playing); view.shown?.(playing); } }); };
     // Once it is really moving it is played once from the start with its sound, where the page may
-    // start sound by itself (`autoSound: false`: the App's own call audio is playing; the button offers it).
+    // start sound by itself (`autoSound: false`: an App that cannot play it; it stays silent).
+    // (`film`: the App plays a video's sound itself, in time with the picture, which stays silent here.)
     const sound = () => {
       video.removeEventListener('playing', sound);
-      if (!live || view.autoSound === false) return;
+      if (!live) return;
+      if (view.film) { void view.film.ready(video).then(has => { if (live && has) aloud(video); }); return; }
+      if (view.autoSound === false) return;
       video.muted = false; video.loop = false; video.currentTime = 0; setQuiet(false);
       Promise.resolve(video.play()).then(() => { if (video.paused) void hush(); }, () => void hush());
     };
@@ -70,8 +89,10 @@ export function Work({block, view}) {
     video.addEventListener('playing', sound);
     video.addEventListener('ended', again);
     void hush();
-    return () => { live = false; video.removeEventListener('playing', sound); video.removeEventListener('ended', again); };
+    return () => { live = false; asked.current = false; view.film?.off(video); video.removeEventListener('playing', sound); video.removeEventListener('ended', again); };
   }, [playing]);
+  const stillReady = still && shown?.kind === 'video' && shown.state === 'ready' ? shown.id : '';
+  useEffect(() => { if (stillReady) view.shown?.(stillReady); }, [stillReady]);
   // A thing just asked for is brought into view on its page (up and down only: the strip of pages is the board's to move).
   const making = shown?.state === 'making' ? shown.id : '';
   useEffect(() => {
@@ -85,6 +106,7 @@ export function Work({block, view}) {
     event.stopPropagation();
     const video = film.current;
     if (!video) return;
+    if (view.film) { if (quiet) aloud(video); else { asked.current = false; view.film.off(video); video.loop = true; setQuiet(true); } return; }
     if (quiet) { video.muted = false; video.loop = false; video.currentTime = 0; setQuiet(false); video.play().catch(() => { video.muted = true; setQuiet(true); }); }
     else { video.muted = true; video.loop = true; setQuiet(true); }
   };
@@ -99,7 +121,7 @@ export function Work({block, view}) {
   // What the frame shows under a thing still being made: the picture it is made from.
   const source = shown.from ? assets.get(shown.from) : null;
   // (A video that waits for a tap counts as arrived: the frame can be tapped, and shows what it was made from.)
-  const waiting = shown.state === 'ready' && shown.kind === 'video' && held === shown.id;
+  const waiting = shown.state === 'ready' && shown.kind === 'video' && (still || held === shown.id);
   const ready = shown.state === 'ready', loaded = ready && (fetched === shown.id || waiting);
   const under = (!loaded || waiting) && shown.state !== 'failed' && source?.kind === 'image' && source.url ? source.url : '';
   const picked = view.picked === shown.id && shown.state === 'ready';
@@ -111,14 +133,14 @@ export function Work({block, view}) {
   // (The tap is also what lets a waiting video start: it is started here, silent, inside the tap itself.)
   const open = event => {
     if (!loaded) return;
-    if (waiting && film.current) { const video = film.current; video.muted = true; video.loop = true; Promise.resolve(video.play()).then(() => setHeld(''), () => {}); }
+    if (waiting && !still && film.current) { const video = film.current; video.muted = true; video.loop = true; Promise.resolve(video.play()).then(() => setHeld(''), () => {}); }
     view.enlarge?.(event.currentTarget);
   };
   return (
     <figure className="board-work" data-state={shown.state} data-kind={shown.kind} data-picked={picked || undefined}>
       <div className="board-work-frame" ref={frame} style={{'--shape': shape || ratio(shown.aspect) || (shown.kind === 'video' ? 16 / 9 : 4 / 3)}}
         role={loaded ? 'button' : undefined} tabIndex={loaded ? 0 : undefined} aria-label={loaded ? `放大：${name}` : undefined}
-        data-enlarge={loaded ? 'true' : undefined} data-kind={shown.kind} data-asset={shown.id} data-name={name}
+        data-enlarge={loaded ? 'true' : undefined} data-kind={shown.kind} data-src={still && shown.kind === 'video' ? shown.url : undefined} data-asset={shown.id} data-name={name}
         onClick={open} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(event); } }}>
         {under && <img className="board-work-under" src={under} alt="" decoding="async" onLoad={event => settle(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />}
         {waiting && <div className="board-work-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" /></svg><p>点一下播放</p></div>}
@@ -135,7 +157,7 @@ export function Work({block, view}) {
           <img key={shown.id} className="board-work-print" data-loaded={loaded || undefined} src={shown.url} alt={name} decoding="async"
             onLoad={event => { settle(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight); setFetched(shown.id); view.shown?.(shown.id); }} />
         )}
-        {ready && shown.kind === 'video' && (
+        {ready && shown.kind === 'video' && !still && (
           <video key={shown.id} ref={film} className="board-work-print" data-loaded={loaded && !waiting || undefined} src={shown.url} muted loop autoPlay playsInline preload="auto"
             onLoadedMetadata={event => settle(event.currentTarget.videoWidth, event.currentTarget.videoHeight)}
             onLoadedData={() => { setFetched(shown.id); view.shown?.(shown.id); }} />

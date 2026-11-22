@@ -256,18 +256,32 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   };
   const clearEnding=s=>{clearTimeout(s.ending?.fallbackTimer);clearTimeout(s.ending?.noAudioTimer);clearTimeout(s.ending?.backstopTimer);s.ending=null;};
   const cancel=async(s,{includeBackend=true}={})=>{s.epoch++;for(const [id,c] of s.pending)if(includeBackend||id!==s.backgroundCallId)c.abort();clearEnding(s);emit(s,{type:'end.cancelled'});
-    await s.localExecutions?.cancelAll();
+    // (A call that lost its connection and may be connected again: what it was making is made all the same.)
+    await s.localExecutions?.cancelAll(metadata=>Boolean(s.lost&&metadata?.outlives));
     s.progress=null;s.backendResult?.resolve();s.backendResult=null;
     const backend=await Promise.allSettled([includeBackend?s.backend?.cancel():undefined]);
-    const local=await Promise.allSettled([...s.localCleanups]);
+    const local=await Promise.allSettled([...s.localCleanups].filter(work=>!(s.lost&&work.outlives)));
     const results=[...backend,...local,...await Promise.allSettled([...s.processes].map(id=>killOwned(s,id)))];
     const failures=results.filter(r=>r.status==='rejected').length;
     s.cancelCleanupFailed=failures>0;
     return {cancelled:failures===0,cancelRequested:true,processCleanupFailures:failures};};
+  async function landOnHeir(s,assetId,output,callId,metadata) {
+    const fact=await assets.finish(s.id,assetId,output),next=sessions.get(assets.heir?.(s.id)??s.id);
+    if(!fact||!next||next===s||!current(next))return;
+    audit({type:'tool.media-cli',voiceSessionId:next.id,callId,phase:'carried',ok:true});
+    void publishContent(next,callId,fact.kind==='image'?`![生成图片](${output.media.url})`:`[生成视频](${output.media.url})`).catch(()=>{});
+    next.localExecutions??=createLocalExecutions({unfollowedSettleMs:400});
+    next.localExecutions.finished({...output,media:{...output.media,id:fact.id},instruction:'作品已经在用户屏幕的画面上（编号 '+fact.id+'），是断线前开始做的。用一句话告诉用户做好了。'},
+      {...metadata,epoch:next.epoch,owner:next.bridge,requester:audienceOf(audienceKeys.get(next.bridge))});
+  }
   // `why`: which way the call ended, kept on call.closed (11/21: a call cut short left no reason).
+  // Lost: the connection went, nobody hung up. (An App's hang-up closes the socket first too; its close request follows and settles it.)
+  const lostCalls=new Set(),lostReason=why=>/^(?:redial|client-closed(?::100[056])?|provider-)/u.test(String(why));
   const close=async(id,why='requested')=>{
     const s=sessions.get(id);if(!s)return;
     s.closeWhy??=why;
+    s.lost=lostReason(s.closeWhy);
+    if(s.lost){lostCalls.add(id);while(lostCalls.size>64)lostCalls.delete(lostCalls.values().next().value);}
     if(s.closePromise)return s.closePromise;
     if(s.closed&&!s.cleanupFailed)return;
     s.closePromise=(async()=>{
@@ -563,15 +577,17 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
                 if(rewritten){command=rewritten;assets.scripted(s.id,shelved.id,{draft:parts.draft,script});}
               }
             }catch{/* The draft is what is submitted. */}
-            if(executionSignal.aborted||!current(s))throw Error('本次任务已取消');
+            if(executionSignal.aborted||!current(s)&&!(s.lost&&shelved.id))throw Error('本次任务已取消');
           }
           const work=s.mediaRunner.then(runner=>runner.execute(command,executionSignal,{reuseExisting:mediaStatusQuestion(requestToken.text),requestToken}));
           if(shelved.id)work.catch(error=>void assets.finish(s.id,shelved.id,{isError:true,why:String(error?.message??error)}));
-          const cleanup=work.then(()=>{},()=>{});s.localCleanups.add(cleanup);
+          const cleanup=work.then(()=>{},()=>{});cleanup.outlives=Boolean(shelved.id);s.localCleanups.add(cleanup);
           cleanup.then(()=>s.localCleanups.delete(cleanup));
           audit({type:'tool.media-cli',voiceSessionId:s.id,callId,phase:'start'});
           const output=await work;
           audit({type:'tool.media-cli',voiceSessionId:s.id,callId,phase:'result',ok:!output.isError,exitCode:output.details?.exitCode});
+          // The call went on as another session meanwhile: the thing goes up where the call is now, and V there says so.
+          if(!executionSignal.aborted&&!current(s)&&s.lost&&shelved.id){await landOnHeir(s,shelved.id,output,callId,{question:requestToken.text??args.command,completionLine:args.completionLine,failureLine:args.failureLine,stage});throw Error('本次任务已取消');}
           if(executionSignal.aborted||!current(s))throw Error('本次任务已取消');
           if(output.media&&!output.isError){
             const {kind,url}=output.media;
@@ -587,7 +603,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           }
           if(shelved.id)await assets.finish(s.id,shelved.id,output);
           return output;
-        },{signal,metadata:{stage,epoch:s.epoch,owner:s.bridge,requester:audienceOf(audienceKeys.get(s.bridge)),question:requestToken.text??args.command,completionLine:args.completionLine,failureLine:args.failureLine}});
+        },{signal,metadata:{stage,outlives:Boolean(shelved.id),lost:()=>Boolean(shelved.id&&s.lost),epoch:s.epoch,owner:s.bridge,requester:audienceOf(audienceKeys.get(s.bridge)),question:requestToken.text??args.command,completionLine:args.completionLine,failureLine:args.failureLine}});
       }
       if(name==='process'&&args.action!=='list'&&!s.processes.has(args.sessionId))throw Error('只能管理本次电话发起的执行会话');
       if(name==='exec')args={...args,yieldMs:1000,...(!s.actorScoped&&Object.keys(toolEnvironment).length?{env:{...args.env,...toolEnvironment}}:{})};
@@ -647,8 +663,10 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       });
     }
     if(s.mediaCliAvailable)s.mediaRecovery=createMediaTurnRecovery({
-      state:()=>({current:current(s),ending:s.ending,routed:s.speakerRouting,pending:s.pending.size,playing:s.playing,responseActive:s.responseActive,userSpeaking:s.userSpeaking}),
-      resume:text=>s.bridge?.sendUserMessage(text),audit:event=>audit({...event,voiceSessionId:s.id}),
+      state:()=>({current:current(s),ending:s.ending,routed:s.speakerRouting,pending:s.pending.size,making:Boolean(shelfFor(s)&&assets.busy(s.id)),playing:s.playing,responseActive:s.responseActive,userSpeaking:s.userSpeaking}),
+      // (Doubao takes no typed turn: nothing sent to it can make it act. The caller is told the truth instead,
+      // and a word from them starts it. Call of 11/22 01:53: "刚启动，正在生成", and nothing had been.)
+      resume:text=>s.model==='seeduplex'?s.bridge?.speakProgress('刚才那个我其实还没开始做。你说一声“开始做”，我马上动手。',{caption:true}):s.bridge?.sendUserMessage(text),audit:event=>audit({...event,voiceSessionId:s.id}),
     });
     s.lookup=createLookupRecovery({...lookupRecovery,
       state:()=>({pending:s.pending.size,background:Boolean(s.backend.snapshot()),ending:Boolean(s.ending),
@@ -680,7 +698,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       const ownerBridge=s.bridge;s.toolOwners.set(call.callId,ownerBridge);
       s.pending.set(call.callId,controller);
       const mediaCommand=call.name==='exec'&&s.mediaCliAvailable&&/^\s*makaron(?:\s|$)/u.test(call.args?.command??'');
-      if(mediaCommand)s.mediaRecovery?.started();
+      if(mediaCommand||['delegate_to_v','explain_on_board'].includes(call.name))s.mediaRecovery?.started();
       const localProcess=call.name==='process'&&s.localExecutions?.has(call.args?.sessionId);
       const foreground=mediaCommand||localProcess||call.name==='show_content';
       const stage=localProcess?s.localExecutions.metadata(call.args.sessionId).stage:call.name==='show_content'?'展示内容':/\bvideo\s+status\b/u.test(call.args?.command??'')?'等待视频':/\bvideo\s+create\b/u.test(call.args?.command??'')?'生成视频':/\bedit\b/u.test(call.args?.command??'')?'生成图片':'保存图片';
@@ -1040,6 +1058,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       return {terminalContext:s.terminalContext,receive:frame=>receiveDeviceFrame(s,frame),async descriptor(){await s.ensureBackendDeviceBundle();return s.deviceCurrent()?s.backendDeviceDescriptor??null:null;},close(){s.closed=true;s.closeDeviceChannel();}};
     },
     hasSession:id=>sessions.has(id),
+    /** Whether a call that has ended lost its connection (it may be connected again as another session). */
+    lostCall:id=>lostCalls.has(id),
     // A disconnected client is not proof its cleanup or final reply delivery finished.
     backgroundTaskCount:()=>[...new Set([...sessions.values(),...detached])].filter(s=>s.backend.snapshot() || s.replyDelivery?.pending || s.delivery?.pending || s.closePromise || s.cleanupFailed || (s.closed && s.localCleanups.size)).length,
     presentation(id,after=0){const s=sessions.get(id);if(!current(s))return null;return {voiceSessionId:s.id,revision:s.presentation.revision,pending:[...s.presentation.pending.values()],documents:[...s.presentation.documents.values()].filter(x=>x.revision>after),controls:[]};},
