@@ -198,6 +198,14 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-remember-device.20261123.1',date:'2026-11-23',
+    title:'自己的手机和电脑，不用反复重新进入',
+    items:[
+      '本人入口在常用设备上会一直记住，收藏的页面过一周也能直接打开；超过一年没用才需要重新打开完整链接。',
+      '本人在浏览器里用飞书登录后保持一年，收藏的飞书会话页面也能直接打开；其他人仍是 30 天。每次进入会话仍会核对资格。飞书 App 里的登录方式不变。',
+    ],
+  },
+  {
     version:'voice-session-media.20261122.1',date:'2026-11-22',
     title:'电话里生成图片和视频，使用当前飞书会话的 Makaron 积分',
     items:[

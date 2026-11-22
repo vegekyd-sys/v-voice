@@ -25,12 +25,12 @@ export function connectFeishuClient({config,window,document,fetch=globalThis.fet
       finish(response.ok&&body.status&&typeof body.status.ready==='boolean'?body.status:null);
     } catch {finish(null);}
   };
-  const fallback=error=>{
+  const fallback=(error,step='request')=>{
     if(finished||exchanging)return;
     exchanging=true;clearTimer(timer);
     record('client.failed',{code:Number.isInteger(error?.errno)?error.errno:null});
     timer=setTimer(()=>{controller.abort();finish(null);},4000);
-    void exchange({failure:{code:Number.isInteger(error?.errno)?error.errno:null}});
+    void exchange({failure:{code:Number.isInteger(error?.errno)?error.errno:null,step}});
   };
   const success=result=>{
     if(finished||exchanging)return;
@@ -39,7 +39,7 @@ export function connectFeishuClient({config,window,document,fetch=globalThis.fet
     timer=setTimer(()=>{controller.abort();finish(null);},12000);
     void exchange({code:result.code});
   };
-  const legacy=()=>window.tt?.requestAuthCode?window.tt.requestAuthCode({appId:config.appId,success,fail:fallback}):fallback();
+  const legacy=()=>window.tt?.requestAuthCode?window.tt.requestAuthCode({appId:config.appId,success,fail:error=>fallback(error)}):fallback();
   const start=()=>{
     if(finished||exchanging)return;
     record('sdk.ready');
@@ -47,11 +47,11 @@ export function connectFeishuClient({config,window,document,fetch=globalThis.fet
     else legacy();
   };
   record('login.start');
-  timer=setTimer(()=>fallback({errno:null}),8000);
+  timer=setTimer(()=>fallback({errno:null},'timeout'),8000);
   const script=document.createElement('script');
   script.src='https://lf1-cdn-tos.bytegoofy.com/goofy/lark/op/h5-js-sdk-1.5.26.js';
-  script.onerror=fallback;
-  script.onload=()=>{if(finished||exchanging)return;record('sdk.loaded');if(!window.h5sdk)return fallback();window.h5sdk.error(fallback);window.h5sdk.ready(start);};
+  script.onerror=()=>fallback(null,'script');
+  script.onload=()=>{if(finished||exchanging)return;record('sdk.loaded');if(!window.h5sdk)return fallback(null,'sdk-missing');window.h5sdk.error(error=>fallback(error,'sdk-error'));window.h5sdk.ready(start);};
   document.head.append(script);
   return {ready,fallback};
 }

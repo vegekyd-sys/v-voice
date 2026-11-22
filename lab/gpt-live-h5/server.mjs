@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 import { createAvatarReactionSelector, avatarEvaluatorFromEnv } from "./avatar-decision.mjs";
 import { AVATAR_FILES, taskActivity } from "./avatar-state.mjs";
-import { createVoiceAccess } from "./access.mjs";
+import { createVoiceAccess, REMEMBERED_TTL_MS } from "./access.mjs";
 import {createConversationCalls,callIdValid,callSummarizerFromEnv} from '../../lib/conversation-calls.mjs';
 import {readRelayUsage} from '../../lib/relay-usage.mjs';
 import {createIosBindings,iosAppDownload,IosBindingAuthorizationError} from '../../lib/ios-bindings.mjs';
@@ -164,7 +164,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     if(binding.permissionProfile==='unidentified')return guestAccess;
     const key=binding.id+':'+binding.callerId;
     const entry=binding.permissionProfile==='feishu-current'?'feishu-'+createHash('sha256').update(key).digest('hex').slice(0,40):binding.id;
-    if (!accessors.has(key)) accessors.set(key, createVoiceAccess(binding.accessToken, basePath, Date.now, {entry}));
+    if (!accessors.has(key)) accessors.set(key, createVoiceAccess(binding.accessToken, basePath, Date.now, {entry,...(entry==='tianyi'?{ttlMs:REMEMBERED_TTL_MS,renews:true}:{})}));
     return accessors.get(key);
   };
   const access = entryAccess(entries.resolve(new URL("http://localhost")));
@@ -588,7 +588,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if(!pending)return json(res,401,{error:'请重新打开电话入口'});
         try {
           if(body.failure){
-            console.warn(JSON.stringify({type:'voice.feishu-client-error',stage:'sdk',providerCode:Number.isInteger(body.failure.code)?body.failure.code:null}));
+            console.warn(JSON.stringify({type:'voice.feishu-client-error',stage:'sdk',step:['script','sdk-missing','sdk-error','request','timeout'].includes(body.failure.step)?body.failure.step:'unknown',providerCode:Number.isInteger(body.failure.code)?body.failure.code:null}));
             const remembered=await phoneLogin.resumeConfirmedClient(req,body.state);
             if(remembered){
               issueVisitor(res,remembered);
@@ -822,7 +822,11 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       let context = local;
       if (!hosted) { context = contexts.get(entry) ?? {...local,listeners:new Set(),entry,sessionKey:binding.sessionKey}; contexts.set(entry,context); }
       if (hosted) {
-        const visitor = readVisitor(req,binding);
+        // The owner's Feishu login outlasts the seven-day visit cookie: the page's own status request
+        // gets a new one, as opening /feishu does. (Not the document: a Strict cookie is absent from a
+        // navigation that began on another site, and would be replaced while still good.)
+        const visitor = readVisitor(req,binding) ?? (req.method==='GET'&&pathname==='/api/status'&&!binding.cliManaged
+          &&phoneLogin?.protects(binding)&&phoneLogin.ownerPermits(req,binding)?issueVisitor(res,binding):null);
         if (!visitor) return json(res, 401, { error: "请使用完整的本人入口链接打开" });
         const contextId = `${entry}:${visitor.id}`;
         context = contexts.get(contextId);
@@ -852,6 +856,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const params=await readBody();const revoked=await iosBindings.revoke(binding,principal,params.deviceId);
         return json(res,revoked?200:404,revoked?{ok:true}:{error:'没有这个 App 绑定。'});
       }
+      if (hosted && req.method === "GET" && pathname === "/api/status") entryAccess(binding)?.renew?.(req, res);
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
         ready: backendReady(), preview, defaultModel, ...(directVoice?.attach?{nativeDialVersion:1,webDialVersion:2}:{}), conversation:conversationPresentation(binding),iosBindingAvailable:hosted, ...(speakerRouting&&binding.permissionProfile!=='unidentified'?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
         releaseReadiness: releaseReadiness(),

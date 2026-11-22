@@ -4,7 +4,8 @@ import {createHash} from 'node:crypto';
 import {request} from 'node:http';
 import {Readable} from 'node:stream';
 import {createConversationEntries} from '../lib/conversation-entries.mjs';
-import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure,PHONE_LOGIN_TTL_MS} from '../lib/feishu-phone-login.mjs';
+import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure,PHONE_LOGIN_TTL_MS,OWNER_LOGIN_TTL_MS} from '../lib/feishu-phone-login.mjs';
+import {feishuConversationPhone} from '../lib/feishu-conversation-directory.mjs';
 import {mkdtemp,writeFile,chmod,symlink,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {createLiveH5Server} from '../lab/gpt-live-h5/server.mjs';
@@ -79,7 +80,11 @@ test('forged identity, foreign tenant, browser state theft, denial and expiry ne
 test('login cookies expire and actor configuration cannot grant another caller or an unknown entry',async()=>{
   let at=0;const f=fixture({now:()=>at}),flow=f.begin(),res=response();
   await f.login.complete(flow.req,res,flow.callback);const req={headers:{cookie:cookie(res)}};
-  assert.ok(f.login.read(req));at=PHONE_LOGIN_TTL_MS+1;assert.equal(f.login.read(req),null);
+  assert.ok(f.login.read(req));assert.match(res.headers['set-cookie'],/Max-Age=31536000$/u);
+  // The registered owner's device is remembered past the ordinary 30 days, and only while registered.
+  at=PHONE_LOGIN_TTL_MS+1;assert.ok(f.login.read(req));
+  assert.equal(fixture({now:()=>at,actors:[{...actor,openId:'ou_replacement'}]}).login.read(req),null);
+  at=OWNER_LOGIN_TTL_MS+1;assert.equal(f.login.read(req),null);
   for(const change of [{callerId:'other'},{defaultPhoneId:records[1].id},{phoneIds:['missing-phone']}])assert.throws(()=>fixture({actors:[{...actor,...change}]}));
 });
 test('browser login survives restart but never forgery, a new host/key, or revoked actor access',async()=>{
@@ -177,4 +182,50 @@ test('browser alias migration requires a registered managed entry in this accoun
  for(const entry of old.slice(2))assert.equal(login.browserCanonicalPhone(entry.id),entry.id);
  assert.equal(login.browserCanonicalPhone('feishu-group-unknown'),'feishu-group-unknown');
  assert.equal(login.canonicalPhone(old[0].id),old[0].id);
+});
+
+test('only the registered owner is remembered for a year; another caller keeps 30 days, and a removed owner is out at once',async()=>{
+  let at=0;const phone=feishuConversationPhone('default','oc_'+'a'.repeat(32)),chat={id:phone,kind:'group',permissionProfile:'feishu-current'};
+  const make=(actors,open)=>createFeishuPhoneLogin({appId:'cli_test',appSecret:'secret-for-test',actors,accountId:'default',publicOrigin:origin,basePath:'/voice',
+    entries:createConversationEntries(records),now:()=>at,resolveConversation:async()=>chat,
+    fetchImpl:async url=>Response.json(url.includes('/token')?{code:0,access_token:'t',token_type:'Bearer'}:{code:0,data:{open_id:open,tenant_key:actor.tenantKey}})});
+  const enter=async(login)=>{
+    const start=response(),url=new URL(login.begin({headers:{}},start,phone)),done=response();
+    await login.complete({headers:{cookie:cookie(start)}},done,new URL(`${origin}/voice/feishu/callback?state=${url.searchParams.get('state')}&code=valid-code`));
+    return done.headers['set-cookie'];
+  };
+  const guestLogin=make([actor],'ou_someone_else'),guest=await enter(guestLogin),owner=await enter(make([actor],actor.openId));
+  assert.match(guest,/Max-Age=2592000$/u);assert.match(owner,/Max-Age=31536000$/u);
+  const req=value=>({headers:{cookie:value.split(';')[0]}});
+  assert.ok(guestLogin.read(req(guest)));assert.ok(make([actor],actor.openId).read(req(owner)));
+  assert.equal(make([],actor.openId).read(req(owner)),null,'removed from the private list: the long grant ends');
+  at=PHONE_LOGIN_TTL_MS+1;
+  assert.equal(guestLogin.read(req(guest)),null);assert.ok(make([actor],actor.openId).read(req(owner)));
+});
+test('a saved address of a protected phone opens while the owner is signed in, and gives nobody else a way in',async t=>{
+  let open=actor.openId;const f=fixture({fetchImpl:async url=>Response.json(url.includes('/token')
+    ?{code:0,access_token:'t',token_type:'Bearer'}:{code:0,data:{open_id:open,tenant_key:actor.tenantKey}})});
+  const bridge=createLiveH5Server({gateway:{request:async(m,p)=>({key:p.key,agentId:p.agentId})},
+    basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:records,feishuLogin:f.options});
+  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
+  const send=(path,jar='',body,from=origin)=>new Promise((resolve,reject)=>{
+    const req=request({host:'127.0.0.1',port:bridge.server.address().port,path,method:body?'POST':'GET',headers:{host:new URL(origin).host,...(from?{origin:from}:{}),cookie:jar}},
+      res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end(body?JSON.stringify(body):undefined);
+  });
+  const start=await send('/voice/feishu');
+  const finish=await send('/voice/feishu/callback?code=valid-code&state='+new URL(start.headers.get('location')).searchParams.get('state'),start.headers.get('set-cookie').split(';')[0]);
+  const login=finish.headers.get('set-cookie').split(';')[0],status='/voice/api/status?phone='+records[0].id;
+  // The saved page itself, then its own status request: signed in, seven-day visit cookie gone.
+  assert.equal((await send('/voice/?phone='+records[0].id,login)).status,200);
+  const opened=await send(status,login);assert.equal(opened.status,200);
+  assert.match(opened.headers.get('set-cookie'),/HttpOnly; SameSite=Strict; Max-Age=604800; Secure$/u);
+  const jar=login+'; '+opened.headers.get('set-cookie').split(';')[0];
+  const again=await send(status,jar);assert.equal(again.status,200);assert.equal(again.headers.get('set-cookie'),null,'a cookie that still works is kept');
+  // Only the page's status request does it: no other API, no other phone, no other site, nobody signed out.
+  assert.equal((await send('/voice/api/session?phone='+records[0].id,login,{})).status,401);
+  const otherPhone=await send('/voice/api/status?phone='+records[2].id,login);
+  assert.equal(otherPhone.status,401);assert.equal(otherPhone.headers.get('set-cookie'),null);
+  assert.equal((await send(status,login,undefined,'https://other.example')).status,403);
+  const visitOnly=await send(status,jar.split('; ')[1]);assert.equal(visitOnly.status,401);assert.equal(visitOnly.headers.get('set-cookie'),null);
+  const forged=await send(status,login.slice(0,-4)+'AAAA');assert.equal(forged.status,401);assert.equal(forged.headers.get('set-cookie'),null);
 });

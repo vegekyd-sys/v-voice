@@ -5,6 +5,7 @@ import { request as httpRequest } from "node:http";
 import { Readable } from "node:stream";
 import { createLiveH5Server } from "./server.mjs";
 import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
+import { createVoiceAccess, REMEMBERED_TTL_MS } from "./access.mjs";
 
 const token = "private-test-token-with-at-least-32-characters";
 const origin = "https://openclaw.tianyi.live";
@@ -30,7 +31,7 @@ async function fixture(t, options = {}) {
     const response = await request("/voice/api/access", "", { access: token });
     assert.equal(response.status, 200);
     const cookie = response.headers.get("set-cookie");
-    assert.match(cookie, /Path=\/voice\/; HttpOnly; SameSite=Strict; Max-Age=604800; Secure/u);
+    assert.match(cookie, /Path=\/voice\/; HttpOnly; SameSite=Strict; Max-Age=31536000; Secure/u);
     return cookie.split(";", 1)[0];
   };
   return { bridge, calls, request, visitor };
@@ -298,4 +299,38 @@ test('a board photograph is served only for a picture the director put on this c
   assert.equal((await ask(cookie, '别的东西')).status, 404, 'arbitrary lookups are refused');
   assert.equal((await ask(other, '埃菲尔铁塔')).status, 409, 'another visitor');
   assert.deepEqual(asked, ['埃菲尔铁塔']);
+});
+
+test("the owner's own device stays remembered while it is used; nothing else is renewed", async () => {
+  const DAY = 86400000; let at = 0;
+  const jar = () => ({ cookie: null, setHeader(name, value) { this.cookie = value; } });
+  const req = cookie => ({ headers: { cookie: cookie.split(";", 1)[0] } });
+  const own = createVoiceAccess(token, "/voice", () => at, { entry: "tianyi", ttlMs: REMEMBERED_TTL_MS, renews: true });
+  const first = jar(), visitor = own.issue(first);
+  assert.match(first.cookie, /Max-Age=31536000; Secure$/u);
+  assert.equal(own.renew(req(first.cookie), jar()), null, "not twice in a day");
+  at = 30 * DAY; const later = jar();
+  assert.equal(own.renew(req(first.cookie), later).id, visitor.id, "the same visitor");
+  at = 380 * DAY;
+  assert.equal(own.read(req(first.cookie)), null); assert.ok(own.read(req(later.cookie)));
+  at = 400 * DAY; const none = jar();
+  assert.equal(own.renew(req(later.cookie), none), null, "an expired cookie is never renewed"); assert.equal(none.cookie, null);
+  assert.equal(createVoiceAccess("r".repeat(40), "/voice", () => 0).read(req(later.cookie)), null, "a rotated token ends every device");
+  at = 0; const other = createVoiceAccess("o".repeat(40), "/voice", () => at, { entry: "phone-test-dm" }), seven = jar();
+  other.issue(seven); assert.match(seven.cookie, /Max-Age=604800; Secure$/u);
+  at = 5 * DAY; assert.equal(other.renew(req(seven.cookie), jar()), null);
+  at = 8 * DAY; assert.equal(other.read(req(seven.cookie)), null);
+});
+
+test("opening the personal page renews a cookie from before, through the real status route", async t => {
+  const f = await fixture(t);
+  const old = { cookie: null, setHeader(name, value) { this.cookie = value; } };
+  const before = createVoiceAccess(token, "/voice").issue(old), cookie = old.cookie.split(";", 1)[0];
+  const status = await f.request("/voice/api/status?entry=tianyi", cookie);
+  assert.equal(status.status, 200);
+  assert.match(status.headers.get("set-cookie"), /^v_voice_access=.*Max-Age=31536000; Secure$/u);
+  assert.equal(createVoiceAccess(token, "/voice").read({ headers: { cookie: status.headers.get("set-cookie").split(";", 1)[0] } }).id, before.id);
+  assert.equal((await f.request("/voice/api/status?entry=tianyi", status.headers.get("set-cookie").split(";", 1)[0])).headers.get("set-cookie"), null);
+  const refused = await f.request("/voice/api/status?entry=tianyi");
+  assert.equal(refused.status, 401); assert.equal(refused.headers.get("set-cookie"), null);
 });
