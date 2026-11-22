@@ -14,7 +14,7 @@ test('one invited live show owns its signaling, heartbeat and retirement',async 
   for (const text of ['生成一段视频','找一场直播','他说“给我们来场直播”','别开直播','怎么开直播']) {
     assert.throws(()=>show.command(start,{text},send));
   }
-  const invite = {text:'给我们搞场直播！'};
+  const invite = {text:'刚才那只猫挺有意思，给我们搞场直播什么的。'};
   show.command(start,invite,send);
   const {id} = event;
   const url = 'https://wma.fal.run/session', body = {app_id:'minimax/h3-max/director',type:'offer',sdp:'fixture'};

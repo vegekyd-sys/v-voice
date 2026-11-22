@@ -10,7 +10,16 @@ export const IMPROV_TOOL = {
 
 // A second admission check before a billable session. The model chooses the action;
 // a quoted example, a search for a broadcast, or an ordinary video request cannot open one.
-const invitation = /^(?:(?:小?[vV维]|好[呀啊的]?|那(?:就)?|请|你|能不能|可以|现在|帮我[们]?|给(?:我[们]?|大家|咱们))[，,、\s]*)*(?:来|开(?:启|始)?|搞|整|做|办|播)(?:个|一场|一段|场|一回|一次|一个|一期|点)?(?:[^“”「」。？！?]{1,24}的)?(?:即兴|娱乐|趣味|惊喜|互动)?直播(?:[吧啊呀呗嘛吗么啦！!。？?～~\s]*|[，,：:].{1,160})$/u;
+const invitation = /^(?:(?:小?[vV维]|好[呀啊的]?|那(?:就)?|请|你|能不能|能|可以|现在|帮我[们]?|给(?:我[们]?|大家|咱们))[，,、\s]*)*(?:来|开(?:启|始)?|搞|整|做|办|播)(?:个|一场|一段|场|一回|一次|一个|一期|点)?(?:[^“”「」。？！?]{1,24}的)?(?:即兴|娱乐|趣味|惊喜|互动)?直播(?:什么的|给我们看看)?(?:[吧啊呀呗嘛吗么啦！!。？?～~\s]*|[，,：:].{1,160})$/u;
+function invited(text) {
+  if (typeof text !== 'string') return false;
+  // A topic can precede the invitation in the same utterance. Quoted speech
+  // and questions about someone else's invitation are left to conversation.
+  const line = text.trim();
+  if (/[“”「」"‘’]|(?:他说|她说|比如说|举个例子|如果我说)/u.test(line)) return false;
+  return invitation.test(line) || invitation.test(line.split(/[，,。！!]/u).filter(Boolean).at(-1)?.trim() ?? '');
+}
+
 export function createImprovShow({key, fetcher = fetch}) {
   let show = null, lastStart = null, closed = false;
   const finish = () => {
@@ -24,7 +33,7 @@ export function createImprovShow({key, fetcher = fetch}) {
       if (['start','direct'].includes(action) && (typeof shot !== 'string' || !shot.trim() || shot.length > 600)) throw Error('需要一句简短的镜头描述');
       if (action === 'start') {
         if (show || turn === lastStart) throw Error('这次开场已经提交');
-        if (!invitation.test(turn?.text?.trim() ?? '')) throw Error('需要明确的开播邀请，例如「给我们来场直播」。');
+        if (!invited(turn?.text)) throw Error('需要明确的开播邀请，例如「给我们来场直播」。');
         lastStart = turn;
         show = {id:randomUUID(), cancel:new AbortController(), submitted:false, session:null,
           timer:setTimeout(finish,95000).unref()};
