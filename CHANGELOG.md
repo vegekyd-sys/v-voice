@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-22 — 语音创作使用当前飞书会话的 Makaron 账号
+
+- 已核验的群聊和私聊使用各自绑定的账号生成图片和视频。首次使用时先注册并确认绑定，图片保存与视频查询沿用原提交账号。
+- 积分不足时，V 在通话中说明回原群或私聊认领和充值，到账后由用户明确继续。
+
 ## 2026-11-22 — A video does not cut an iPhone call; a call connected again keeps its board
 
 - A page's sound takes the phone's audio from the call: production 11/22 00:33:52 the microphone stopped after a video was played with sound; after #251, which started the viewer's video with sound inside the tap, 01:46:42 and 01:48:15 the call was cut and connected again. In the App, nothing on the page is heard during a call: every media element is muted, its own controls included. The App plays a video's sound instead (build 50, `capabilities.film`: `FilmSound.swift`, the `film` bridge command, `ios/H5/film-sound.mjs`), through the call's own engine beside V's voice, following the silent picture: it starts, stops, jumps and goes round with it, and is put back within 0.12 s. A silent video may start by itself (`mediaTypesRequiringUserActionForPlayback = .audio`), so a made video moves and is heard once as on the web page; the viewer has its own controls. In the simulator's log the web view's GPU process activates a `MediaPlayback` audio session for a video with sound, and none through the whole of the new flow. An older App shows a play mark and plays it silent.
