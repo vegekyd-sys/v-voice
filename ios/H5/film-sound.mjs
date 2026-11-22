@@ -4,8 +4,12 @@
 // plays silent here, and the App plays the sound through the call's own engine, following the picture: it
 // starts, stops, jumps and goes round when the picture does. One video is heard at a time.
 
-// How far the sound may be from the picture before it is put back, in seconds; how often that is looked at.
-export const DRIFT = .12, CHECK_MS = 700;
+// How far the sound may be from the picture before it is put back, in seconds.
+export const DRIFT = .12;
+// It is looked at this often (ms); how many looks after the sound began the two are compared (then every so many):
+// a picture still being fetched may say it plays and stand still a moment longer.
+export const TICK_MS = 50;
+const EARLY = [4, 10, 18], EVERY = 14;
 const EVENTS = ['play', 'playing', 'pause', 'seeking', 'seeked', 'waiting', 'ended', 'emptied'];
 
 /**
@@ -26,33 +30,43 @@ export function createFilmSound({post, address, clock = globalThis}) {
     return loads.get(url);
   }
   const tell = payload => Promise.resolve(post(payload)).catch(() => null);
+  const moving = media => media.isConnected !== false && !media.paused && !media.ended && !media.seeking && media.readyState >= 3;
+  // What the picture does changed. The sound stops where it stops; where it goes on, it begins once the
+  // picture has really moved.
   function sync() {
     const it = current;
     if (!it?.url) return;
-    const {media} = it, going = media.isConnected !== false && !media.paused && !media.ended && !media.seeking && media.readyState >= 3;
-    if (!going) { if (it.going) { it.going = false; void tell({op: 'stop'}); } return; }
-    it.going = true;
-    void tell({op: 'play', url: it.url, at: media.currentTime});
+    if (it.going) { it.going = false; void tell({op: 'stop'}); }
+    it.from = moving(it.media) ? it.media.currentTime : null;
   }
-  // Looked at now and then: the two clocks drift, the App's audio may have been set up anew, and an element
-  // taken off the page says nothing.
-  async function check() {
+  function begin(it) {
+    it.from = null; it.going = true; it.ticks = 0;
+    void tell({op: 'play', url: it.url, at: it.media.currentTime});
+  }
+  async function tick() {
     const it = current;
     if (!it) return;
     if (it.media.isConnected === false) { off(it.media); return; }
-    if (!it.going || it.checking) return;
+    if (!it.url) return;
+    if (it.from !== null) { if (moving(it.media) && it.media.currentTime !== it.from) begin(it); return; }
+    if (!it.going) return;
+    it.ticks++;
+    if (!EARLY.includes(it.ticks) && it.ticks % EVERY || it.checking) return;
+    // (The two clocks drift, and the App's audio may have been set up anew.)
     it.checking = true;
     const heard = await tell({op: 'at'});
     it.checking = false;
-    if (current !== it || !it.going || it.media.paused || it.media.seeking) return;
-    const at = heard?.at;
-    if (Number.isFinite(at) ? Math.abs(at - it.media.currentTime) > DRIFT : it.media.currentTime < it.seconds - .4) sync();
+    if (current !== it || !it.going || !moving(it.media)) return;
+    const at = heard?.at, now = it.media.currentTime;
+    if (!(Number.isFinite(at) ? Math.abs(at - now) > DRIFT : now < it.seconds - .4)) return;
+    // Standing still: quiet until it moves. Else put back where the picture is.
+    if (now === it.last) sync(); else begin(it);
   }
   /** This video is heard (the one heard before it is not any more, and is told). Resolves false when it has no sound to play. */
   async function on(media, {lost} = {}) {
     if (current && current.media !== media) { const before = current; off(before.media); before.lost?.(); }
     if (current) { current.lost = lost ?? current.lost; sync(); return Boolean(current.url); }
-    const it = current = {media, lost, url: '', seconds: 0, going: false, timer: null};
+    const it = current = {media, lost, url: '', seconds: 0, going: false, from: null, ticks: 0, last: null, timer: null};
     it.listen = () => sync();
     for (const type of EVENTS) media.addEventListener(type, it.listen);
     let url = '', seconds = null;
@@ -60,7 +74,7 @@ export function createFilmSound({post, address, clock = globalThis}) {
     if (current !== it) return false;
     if (!seconds) { off(media); return false; }
     it.url = url; it.seconds = seconds;
-    it.timer = clock.setInterval(() => void check(), CHECK_MS);
+    it.timer = clock.setInterval(() => { const at = it.media.currentTime; void tick().finally(() => { it.last = at; }); }, TICK_MS);
     sync();
     return true;
   }
@@ -73,7 +87,7 @@ export function createFilmSound({post, address, clock = globalThis}) {
     if (it.going) void tell({op: 'stop'});
   }
   return {
-    on, off, check,
+    on, off, tick,
     /** Fetched ahead, so that the sound starts with the picture. */
     ready: async media => { try { return Boolean(await load(await address(media))); } catch { return false; } },
     heard: media => current?.media === media,
