@@ -1,3 +1,4 @@
+import {createImprovPlayer} from "./improv-player.mjs";
 import {phoneModelOptions} from "./model-options.mjs";
 import {installTvHost,tvDefaultModel} from "./tv-host.mjs";
 import {captureTvArray,hasTvArrayCapture,tvArraySupportsModel} from "./tv-array-capture.mjs";
@@ -44,6 +45,8 @@ if (document.querySelector) mountCallUi(document, view, {
   // The call's shelf of made things: the caller's tap on one, and a picture reported as on screen.
   boardWorks: {pick: (id, hold) => call?.boardAssets?.pick(id, hold), shown: id => call?.boardAssets?.shown(id), save: item => saveBoardPicture(item)},
   actions: {
+    endImprov: () => call?.improv?.finish(),
+    keepImprov: () => call?.improv?.keep(),
     openBinding: () => void openIosBinding(),
     connectIdentity: () => { guestDialAllowed=false;void confirmation.start(); },
     skipConfirmation: () => void skipConfirmation(),
@@ -70,7 +73,7 @@ let call = null;
 let starting = null;
 let avatarDiagnosticOwner = null;
 let liveReady = false;
-let boardAvailable = false;
+let boardAvailable = false, improvAvailable = false;
 let entryError = null;
 let callerEntry = "tianyi";
 let preferredPhoneInputPolicy = null;
@@ -640,6 +643,8 @@ async function stopCall({failure}={}) {
   const active = call; call = null;
   if (starting === active) starting = null;
   if (active) {
+    active.improv?.finish();
+    view.set({improv:null,improvStill:null});
     active.avatarTelemetry?.close();
     active.avatarReactions?.dispose();
     active.board?.dispose(); active.boardAssets?.dispose(); clearInterval(active.boardFocusTimer); view.set({ board: null, boardCanvas: null, boardSpoken: null, boardAssets: null });
@@ -756,17 +761,38 @@ async function startCall() {
     const selectedModel = ['seeduplex','grok'].includes(chosenModel)?chosenModel:'gpt-live';
     const inputPolicy = speakerCandidate() ? (new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy) : null;
     const nativeDeviceActions=await browserDeviceActions();
-    const params={model:selectedModel,nativeDeviceActions,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:{})};
+    const improvLive = improvAvailable && selectedModel !== 'gpt-live';
+    const params={model:selectedModel,...(improvLive?{improvLive:true}:{}),nativeDeviceActions,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:{})};
     let reservation;
     if(webDialVersion===2&&phoneEntry&&['seeduplex','grok'].includes(selectedModel)){
       const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
-      endpoint.search=new URLSearchParams({phone:phoneEntry,model:selectedModel,dialVersion:'2',...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
+      endpoint.search=new URLSearchParams({phone:phoneEntry,model:selectedModel,dialVersion:'2',...(improvLive?{improvLive:'1'}:{}),...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
       active.dialConnection=createDialConnection({url:endpoint,signal:active.captureAbort.signal});
       reservation=await withCapture(active.dialConnection.reservation);
     }else reservation=await withCapture(api('session',params));
     active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     if(captureError)throw captureError;
+    if (improvLive) active.improv = createImprovPlayer({
+      open: async (id, callbacks) => {
+        const {openDirector} = await import('./improv-transport.bundle.mjs');
+        if (call !== active || view.get().improv?.id !== id) throw Error('直播已结束');
+        return openDirector(apiUrl('improv-proxy') + '&call=' + encodeURIComponent(active.voiceSessionId) + '&show=' + encodeURIComponent(id), callbacks);
+      },
+      update: improv => { if (call === active) view.set({improv}); },
+      ended: id => { void api('improv-end',{voiceSessionId:active.voiceSessionId,id}).catch(()=>{}); },
+      notice: text => { if (call === active) setStatus(text,{tone:'success'}); },
+      keep: () => {
+        const video = $('improvVideo');
+        if (!video?.videoWidth || video.readyState < 2) return setStatus('画面还没到，稍后可以留一帧',{tone:'problem'});
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        try {
+          canvas.getContext('2d').drawImage(video,0,0);
+          view.set({improvStill:canvas.toDataURL('image/jpeg',0.92)});
+        } catch { setStatus('这一帧暂时留不下来',{tone:'problem'}); }
+      }
+    });
     const diagnosticOwner=avatarDiagnosticOwner=Symbol('avatar-call');
     document.body.dataset.avatarReactionRequests='0';
     document.body.dataset.avatarReactionApplied='0';
@@ -869,6 +895,7 @@ async function startCall() {
           if(value.type==='end.cancelled')active.remoteEnding=false;
           // An interrupted native reply may never send its final transcript.
           // Its caption row must not be reused for the answer to the next turn.
+          if(value.type==='improv.live'){void active.improv?.receive(value);return;}
           if(value.type==='input.speech.started'&&active.relayTurns?.assistant){
             // Close only the display row, preserving its received text in
             // history. This is not provider completion or playback proof.
@@ -1115,6 +1142,7 @@ function applyEntryStatus(status) {
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     webDialVersion = status.webDialVersion;
     liveReady = status.ready === true;
+    improvAvailable = status.improvLive === true && !tvHost && typeof RTCPeerConnection === 'function';
     boardAvailable = status.board === true && !tvHost;
     const phoneOptions = phoneModelOptions(status, view.get().model);
     const models = phoneOptions.models.map(choice => ({...choice, available:choice.available&&(!tvHost||!hasTvArrayCapture()||tvArraySupportsModel(choice.id))}));

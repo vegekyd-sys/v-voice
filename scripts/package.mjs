@@ -22,7 +22,7 @@ if(existsSync(join(root,'lab/realtime-direct-tools/assets/tool-progress-provenan
 names.push('lab/realtime-direct-tools/device-location.mjs','lab/realtime-direct-tools/lookup-recovery.mjs','lab/realtime-direct-tools/native-runtime.mjs','lab/realtime-direct-tools/task-progress.mjs','lab/realtime-direct-tools/search-result.mjs');
 names.push('lab/realtime-direct-tools/audio-delivery-metrics.mjs','lab/realtime-direct-tools/media-cli-policy.mjs','lab/realtime-direct-tools/media-cli.mjs','lab/realtime-direct-tools/media-turn-recovery.mjs','lab/realtime-direct-tools/local-executions.mjs');
 names.push('lab/realtime-direct-tools/native-interrupt.mjs','lab/realtime-direct-tools/native-duplex-policy.mjs');
-names.push('lab/gpt-live-h5/one-voice-policy.mjs');
+names.push('lab/gpt-live-h5/one-voice-policy.mjs','lab/gpt-live-h5/improv-player.mjs','lab/gpt-live-h5/improv-transport.bundle.mjs','lab/realtime-direct-tools/improv-live.mjs');
 names.push('lab/gpt-live-h5/ios-shell-release.json','lab/gpt-live-h5/app-bundle.mjs','lab/gpt-live-h5/entry-bootstrap.js');
 names.push('lab/realtime-direct-tools/tv-control-policy.mjs');
 names.push('lab/gpt-live-h5/tv-host.mjs','lab/gpt-live-h5/tv-entry.bundle.mjs','lab/gpt-live-h5/tv-startup.bundle.mjs');

@@ -16,6 +16,7 @@ export async function buildEntryBootstrap(){
 export async function buildBrowser(){
   const result=await build({entryPoints:[resolve(root,'lab/gpt-live-h5/app.js')],bundle:true,
     plugins:[{name:'server-static-alias',setup(context){
+      context.onResolve({filter:/improv-transport\.bundle\.mjs$/},args=>({path:args.path,external:true}));
       context.onResolve({filter:/^\.\/speaker-routing\.mjs$/},()=>({path:'speaker-routing.mjs',namespace:'voice-static'}));
       context.onLoad({filter:/.*/,namespace:'voice-static'},async()=>({
         contents:await readFile(resolve(root,'lab/speaker-native/client.mjs'),'utf8'),
@@ -27,6 +28,7 @@ export async function buildBrowser(){
   return result.outputFiles[0].contents;
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)){
+  await build({entryPoints:[resolve(root,'lab/gpt-live-h5/improv-transport.mjs')],bundle:true,platform:'browser',format:'esm',target:['safari17','chrome110'],minify:true,legalComments:'eof',outfile:resolve(root,'lab/gpt-live-h5/improv-transport.bundle.mjs')});
   const bytes=await buildBrowser();await writeFile(BROWSER_BUNDLE,bytes);
   await writeFile(ENTRY_BOOTSTRAP,await buildEntryBootstrap());
   console.log(JSON.stringify({bundle:'lab/gpt-live-h5/app-bundle.mjs',bytes:bytes.length}));

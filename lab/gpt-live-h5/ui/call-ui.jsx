@@ -419,6 +419,31 @@ function TvIsland({state,actions,status}) {
   </section>;
 }
 
+function ImprovStage({show, actions}) {
+  const video = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+  useEffect(() => {
+    const element = video.current;
+    let active = true;
+    setPlaying(false);
+    setBlocked(false);
+    element.srcObject = show.stream;
+    if (show.stream) element.play().catch(() => { if (active) setBlocked(true); });
+    return () => { active = false; element.srcObject = null; };
+  }, [show.stream]);
+  return <section className="improv-stage" aria-label="即兴直播">
+    <video ref={video} id="improvVideo" playsInline muted autoPlay onPlaying={() => {setPlaying(true); setBlocked(false);}} />
+    <div className="improv-toolbar">
+      <span className="improv-label" data-live={playing}>即兴直播</span>
+      <button type="button" onClick={actions.endImprov}>结束直播</button>
+    </div>
+    {blocked ? <button type="button" className="improv-center" onClick={() => video.current.play().catch(() => setBlocked(true))}>播放画面</button>
+      : !playing && <span className="improv-center" role="status">正在准备第一幕…</span>}
+    {playing && <div className="improv-footer"><span role="status">{show.note}</span><button type="button" onClick={actions.keepImprov}>留一帧</button></div>}
+  </section>;
+}
+
 function CallPage({view, actions, options}) {
   const state = useView(view);
   const active = state.call !== 'idle';
@@ -447,7 +472,7 @@ function CallPage({view, actions, options}) {
   const width = Math.min(viewport.width, 560), {height} = viewport;
   const compact = inCall && !wide && (overflow || height < 560 || state.composer.open && height < 700);
   const scene = inCall && !state.tvHost && (state.board?.blocks.length || state.board?.title) ? state.board : null;
-  const board = scene && !boardHidden && !(history && !wide) ? scene : null;
+  const board = !state.improv && scene && !boardHidden && !(history && !wide) ? scene : null;
   // What V is saying in answer to the caller's latest words: shown on a page that has nothing on it yet.
   const replyRows = [...state.transcript.history, ...state.transcript.current].filter(row => !row.document && row.text?.trim()).sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
   const lastUser = replyRows.findLastIndex(row => row.role === 'user');
@@ -494,10 +519,11 @@ function CallPage({view, actions, options}) {
         style={{'--avatar-size': Math.round(size) + 'px', '--controls-height': Math.ceil(controlsHeight) + 'px'}}>
         <header className="topbar" aria-live="off">
           {state.call === 'connected' || state.call === 'ending' ? <time className="call-clock">{state.callStartedAt ? clock(now - state.callStartedAt) : ''}</time> : null}
-          {scene && !board && !history && <button type="button" className="board-open" onClick={() => setBoardHidden(null)}>看画面</button>}
+          {!state.improv && scene && !board && !history && <button type="button" className="board-open" onClick={() => setBoardHidden(null)}>看画面</button>}
+          {inCall && state.improvStill && <a className="improv-download" href={state.improvStill} download="即兴直播.jpg"><img src={state.improvStill} alt="" />保存留影</a>}
         </header>
         <section className="stage" aria-label="V">
-          <Avatar onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? state.tasks.every(task=>task.execution==='foreground')?'查看当前任务':'查看后台任务' : 'V'} />
+          {inCall && state.improv ? <ImprovStage key={state.improv.id} show={state.improv} actions={actions}/> : <Avatar onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? state.tasks.every(task=>task.execution==='foreground')?'查看当前任务':'查看后台任务' : 'V'} />}
           {!inCall && (
             <div className="home">
               <a className="avatar-name" href={`./${window.location.search}`} aria-label="V 通话首页">V</a>

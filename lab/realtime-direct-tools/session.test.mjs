@@ -4,6 +4,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {setTimeout as delay} from 'node:timers/promises';
+import {createImprovShow} from './improv-live.mjs';
 import {createDirectVoiceService} from './session.mjs';
 import {speakerProfile} from '../speaker-native/stream-service.mjs';
 import {VOICE_CAPABILITY_POLICY} from '../gpt-live-h5/capability-policy.mjs';
@@ -23,7 +24,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,...(options.backendDeviceURL?{backendDeviceBundle:{root:'/fixture/backend-device-bundle',sha256:'a'.repeat(64)},backendDeviceBundleProbe:async()=>true}:{}),wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,gateway:options.publicGateway??options.gateway??gateway,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion,nativeDeviceActions:options.nativeDeviceActions,backendDeviceURL:options.backendDeviceURL,terminalAdapter:options.terminalAdapter});
+ const reservation=await service.reserve({model,improv:options.improv,gateway:options.publicGateway??options.gateway??gateway,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion,nativeDeviceActions:options.nativeDeviceActions,backendDeviceURL:options.backendDeviceURL,terminalAdapter:options.terminalAdapter});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  if(options.beforeAttach)await options.beforeAttach({service,reservation,client,peers});
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
@@ -1920,4 +1921,21 @@ test('what a call was making when its connection was lost is finished where the 
   const told=f.audit.find(e=>e.type==='execution.finished-told'&&e.voiceSessionId===second);
   assert.equal(told?.status,'completed');assert.equal(told.ownWords,true);
  }
+});
+
+test('improv tool joins a display call and steers its existing show without a gateway task',async t=>{
+ const improv=createImprovShow({key:'fixture'});
+ const f=await fixture(undefined,'grok',{improv});
+ t.after(()=>{improv.close();return f.service.dispose();});
+ assert(f.client.sent.find(v=>v.type==='ready').tools.includes('improv_live'));
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'给我们来场直播'})),false);
+ f.call('improv_live',{action:'start',shot:'橘猫推开便利店的门'},'start');
+ const show=f.client.sent.find(v=>v.type==='improv.live');
+ assert.equal(show.action,'start');
+ f.call('improv_live',{action:'direct',shot:'转向街角'},'steer');
+ assert.deepEqual(f.client.sent.filter(v=>v.type==='improv.live').map(v=>[v.id,v.action]),[[show.id,'start'],[show.id,'direct']]);
+ assert.equal(f.invocations.some(v=>v?.tool==='improv_live'),false);
+ const ordinary=await fixture();
+ t.after(()=>ordinary.service.dispose());
+ assert(!ordinary.client.sent.find(v=>v.type==='ready').tools.includes('improv_live'));
 });

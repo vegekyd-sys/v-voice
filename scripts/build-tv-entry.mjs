@@ -9,7 +9,7 @@ const root=resolve(import.meta.dirname,'..');
 export const TV_ENTRY_BUNDLE=resolve(root,'lab/gpt-live-h5/tv-entry.bundle.mjs');
 export const TV_STARTUP_BUNDLE=resolve(root,'lab/gpt-live-h5/tv-startup.bundle.mjs');
 export async function buildTvEntry(){
- const result=await build({entryPoints:[resolve(root,'lab/gpt-live-h5/app.js')],bundle:true,format:'esm',platform:'browser',target:['chrome100'],plugins:[{name:'browser-route-alias',setup(b){b.onResolve({filter:/^\.\/entry-startup\.mjs$/},()=>({path:'./tv-startup.bundle.mjs',external:true}));b.onResolve({filter:/^\.\/speaker-routing\.mjs$/},()=>({path:resolve(root,'lab/speaker-native/client.mjs')}));b.onResolve({filter:/^\.\/relay-audio\.mjs$/},()=>({path:resolve(root,'lab/gpt-live-h5/relay-audio.mjs')}));}}],minifyWhitespace:true,minifySyntax:true,minifyIdentifiers:false,legalComments:'eof',charset:'utf8',write:false,logLevel:'silent',absWorkingDir:root});
+ const result=await build({entryPoints:[resolve(root,'lab/gpt-live-h5/app.js')],bundle:true,format:'esm',platform:'browser',target:['chrome100'],external:['./improv-transport.bundle.mjs'],plugins:[{name:'browser-route-alias',setup(b){b.onResolve({filter:/^\.\/entry-startup\.mjs$/},()=>({path:'./tv-startup.bundle.mjs',external:true}));b.onResolve({filter:/^\.\/speaker-routing\.mjs$/},()=>({path:resolve(root,'lab/speaker-native/client.mjs')}));b.onResolve({filter:/^\.\/relay-audio\.mjs$/},()=>({path:resolve(root,'lab/gpt-live-h5/relay-audio.mjs')}));}}],minifyWhitespace:true,minifySyntax:true,minifyIdentifiers:false,legalComments:'eof',charset:'utf8',write:false,logLevel:'silent',absWorkingDir:root});
  return result.outputFiles[0].contents;
 }
 export async function buildTvStartup(){
