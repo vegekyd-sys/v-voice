@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "board-20261114",
-  "version": "voice-board.20261113.1",
-  "entryCommit": "6f7babc44377ff1b1758a1844e7ea5ffe1f92d52",
-  "deviceEntryCommit": "6f7babc44377ff1b1758a1844e7ea5ffe1f92d52",
-  "filesSha256": "e631ac8fa72b841f02924c32686507ea528748b37dc2d05d9ddfb1c5b4e35a79",
-  "registration": "board-20261114/release.json",
-  "previousEntryCommit": "a9630f497d05c9b4785fde15b70261c8ed71a0f2",
+  "release": "voice-session-media-20261122",
+  "version": "voice-session-media.20261122.1",
+  "entryCommit": "2961768c348f872e270e9e67f5df9949e1a477bc",
+  "deviceEntryCommit": "2961768c348f872e270e9e67f5df9949e1a477bc",
+  "filesSha256": "92bc285e6a6923a508faa42f7dd8d6833974105e7c20c546b304b608151d8c2c",
+  "registration": "voice-session-media-20261122/release.json",
+  "previousEntryCommit": "6f7babc44377ff1b1758a1844e7ea5ffe1f92d52",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-22T01:31:00+08:00",
-  "runtimeDifference": "A made video shows in the iOS App (a play mark, started by a tap) and the viewer has one close button there. Phone speaker echo no longer cuts V off; an uplink stall no longer ends the call; the App is sent the web page's rule for a stalled uplink and can tell which page it shows. The call board for every caller; iPhone board follows the App's own audio (build 46); a refused conversation record is dropped at once and remembered; phone board keeps the last lines of the conversation. Phone board no longer swings between pages; one page per title; a four-line caption strip. Phone real-time feel: V's words on an empty page, the lesson page drawn pale and inked as spoken, earlier drawing, a caption strip that really shows four lines. The board follows cues the illustrator writes (clause numbers), not word matching; one line under a phone's page; pictures for things that can be seen. Gallery pictures whole and large across the page; pages drawn smaller fit the panel; pictures open large on tap. A gallery drawn again keeps the pictures that were found; a refused picture search is asked again. Picture searches the image search answered are no longer thrown away; no Pokemon logo from a list article. A call records why it ended (and what the voice service said when it ended the session itself); picture search tries past dead links. Pictures of a page are searched at once on the Brave Search plan; a gallery no longer loops its layout, and a board piece that fails to draw no longer blanks the call page. What V makes in a call goes up on the board (a sketch, the picture, the video in the picture's frame) and V is told what is on the caller's screen; found photographs and V's own image can be the reference; a video's script is rewritten by a director's pass; places V talks about are ringed on the page's photographs; one rule for what V does itself and what goes to the backend."
+  "validatedAt": "2026-11-22T21:06:39+08:00",
+  "runtimeDifference": "飞书群和私聊通话使用当前会话绑定的 Makaron 账号创作，新会话按需注册，积分不足时提示回原飞书会话充值。本次也发布了 #253 的服务端及网页更新。"
 }
