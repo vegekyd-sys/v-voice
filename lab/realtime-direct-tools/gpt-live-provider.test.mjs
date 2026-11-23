@@ -409,7 +409,8 @@ test('a long result is given in pieces and asked about once, with nothing left t
 const judging=verdicts=>{const asked=[];const judge=async request=>{asked.push(request);const hit=verdicts.find(([said])=>(request.reply||request.userText).includes(said));return {farewell:0,promise:0,stays:0,...(hit?.[1]??{})};};judge.asked=asked;return judge;};
 test('a promise to think or look, with nothing delegated, is called out once; never while work is in flight',async()=>{
   const judge=judging([['还在想',{promise:.9}],['快好了',{promise:.9}],['想想看',{promise:.9}]]);
-  const f=await fixture({tools:END,route:async()=>({name:'memory_search',args:{query:'推广'}}),replyJudge:judge});await ready(f);
+  // (What the caller said calls for nothing to be looked up: the router's reading of it is "say it yourself".)
+  const f=await fixture({tools:END,route:async()=>({name:'answer_directly',args:{}}),replyJudge:judge});await ready(f);
   userSays(f,'u1','你有在做吗');vSays(f,'a1','有啊,还在想,再给我一点点时间。');await pause(5);
   // What V said is judged with what the caller said and the turns before it, never matched against words.
   assert.equal(judge.asked[0].reply,'有啊,还在想,再给我一点点时间。');assert.equal(judge.asked[0].userText,'你有在做吗');assert(judge.asked[0].history.some(turn=>turn.role==='user'));
@@ -508,4 +509,18 @@ test('while the call is being hung up, a caller who is audibly speaking is waite
   f.bridge.receive({type:'turn.done',turn:{id:'u2',role:'user',transcript:'等等,还有个事'}});
   assert.equal(await f.bridge.keepsEnding('等等,还有个事'),false);f.bridge.endingCancelled();await pause(200);assert.equal(released,true);
   assert.equal(f.bridge.endingHeld(),null);
+});
+
+test('a promise to look something up that nobody delegated is kept for the model: the lookup is made and its result told',async()=>{
+  const judge=judging([['去看下',{promise:.9}]]);
+  const f=await fixture({tools:END,route:async({text})=>/日程|记录/u.test(text)?{name:'memory_search',args:{query:'今天的安排'}}:{name:'answer_directly',args:{}},replyJudge:judge});await ready(f);
+  // The model says it will look and delegates nothing; the caller's words were already read as a memory lookup.
+  userSays(f,'u1','我今天有什么日程安排');await pause(10);vSays(f,'a1','嗯,我去看下你今天的日程。');await pause(2400);
+  assert.equal(f.calls.length,1);assert.deepEqual([f.calls[0].name,f.calls[0].args],['memory_search',{query:'今天的安排'}]);assert.match(f.calls[0].callId,/^host_/u);
+  assert(f.events.some(e=>e.diag?.stage==='promise-kept'));assert(!f.events.some(e=>e.diag?.stage==='promise-unkept'));
+  assert(!appends(f).some(e=>/后台并没有任何事在进行/u.test(e.content?.[0]?.text??'')),'it is not told off: the thing is done');
+  f.bridge.submitToolResult(f.calls[0].callId,{results:[{text:'下午三点和设计组过方案'}]});
+  const told=appends(f).at(-1);assert.equal(told.channel,'speakable');assert.equal(told.delegation_item_id,undefined);assert.match(told.content[0].text,/下午三点和设计组过方案/u);
+  // A delegation for the same words that still comes is already served.
+  say(f,idOf(3),'我今天有什么日程安排');await pause(20);assert.equal(f.calls.length,1);
 });

@@ -79,7 +79,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     // A conversation record left out because Seeduplex refused it on an earlier call (no content).
     if(event.type==='call.record-skipped')return enqueue({...owner,type:event.type,reason:event.reason==='refused-earlier'?'refused-earlier':'unknown'});
     if(event.type==='call.provider-status'){
-      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed','input-burst','input-backlog-dropped','context-dropped','upstream-closed','greeting-requested','lesson-unprompted','promise-unkept','farewell-unprompted','ending-held'].includes(event.stage)&&!/^media-(?:ice-)?[a-z]{1,20}$/u.test(String(event.stage)))return false;
+      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed','input-burst','input-backlog-dropped','context-dropped','upstream-closed','greeting-requested','lesson-unprompted','promise-unkept','promise-kept','farewell-unprompted','ending-held'].includes(event.stage)&&!/^media-(?:ice-)?[a-z]{1,20}$/u.test(String(event.stage)))return false;
       const safe={stage:event.stage};
       // What the voice service said when it ended the session itself: a few short fields
       // (reason, code, message), by plain keys, never audio or text of the call.

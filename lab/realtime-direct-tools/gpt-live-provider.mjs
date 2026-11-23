@@ -542,6 +542,22 @@ export class GptLiveBridge {
       }
       if(!canNudge||this.nudged||!(judged.promise>=SURE_PROMISE))return;
       this.nudged=true;
+      // What the caller's words call for was already worked out when they stopped speaking (`speculate`). If that
+      // is something to look up or do, it is done for the model now and the result given to it: told only that
+      // nothing was running, it answered "我这边没有在查，我看不到" where the lookup was one call away.
+      const guess=this.guess;let choice=null;
+      if(guess&&asked&&same(guess.text,asked)){try{choice=await guess.choice;}catch{}}
+      if(moot())return;
+      if(choice&&choice.via!=='fallback'&&choice.name!==GPT_LIVE_SELF_TOOL.name&&choice.name!=='end_call'){
+        if(this.guess===guess)this.guess=null;
+        this.served={text:guess.text,at:this.now()};
+        const id=`host_${++this.ownCalls}`;
+        this.delegations.set(id,{text:guess.text,state:'running',polls:0,name:choice.name,own:true});
+        this.remember('tool','',{name:choice.name,query:String(choice.args?.query??choice.args?.topic??choice.args?.question??choice.args?.url??'')});
+        this.request.onDiagnostic?.({stage:'promise-kept',elapsedMs:Math.round(this.now()-this.startedAt)});
+        this.request.onToolCall?.({callId:id,name:choice.name,args:choice.args});
+        return;
+      }
       this.request.onDiagnostic?.({stage:'promise-unkept',elapsedMs:Math.round(this.now()-this.startedAt)});
       this.append(`你刚才说要去想、去查或让用户等一下，但后台并没有任何事在进行，用户正在等你。你不能在后台思考：现在二选一——真的需要查资料或办事，就立刻委派给后台；否则马上把内容讲出来，直接回答用户刚才的话${asked?`：“${bound(asked,160)}”`:''}。不要再说“等一下”“还在想”“快好了”。`,{channel:'speakable'});
     };
