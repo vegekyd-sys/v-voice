@@ -287,11 +287,18 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // `why`: which way the call ended, kept on call.closed (11/21: a call cut short left no reason).
   // Lost: the connection went, nobody hung up. (An App's hang-up closes the socket first too; its close request follows and settles it.)
   const lostCalls=new Set(),lostReason=why=>/^(?:redial|client-closed(?::100[056])?|provider-)/u.test(String(why));
+  // What was being said when a call lost its connection, by conversation, for the call that follows it
+  // within two minutes (in memory only; read once).
+  const LOST_TAIL_MS=120000,lostTails=new Map();
   const close=async(id,why='requested')=>{
     const s=sessions.get(id);if(!s)return;
     s.closeWhy??=why;
     s.lost=lostReason(s.closeWhy);
     if(s.lost){lostCalls.add(id);while(lostCalls.size>64)lostCalls.delete(lostCalls.values().next().value);}
+    if(s.lost&&s.sessionKey&&typeof s.bridge?.lastWords==='function'){
+      const bridge=s.bridge;lostTails.set(s.sessionKey,{at:Date.now(),model:s.model,words:()=>bridge.lastWords()});
+      while(lostTails.size>64)lostTails.delete(lostTails.keys().next().value);
+    }
     if(s.closePromise)return s.closePromise;
     if(s.closed&&!s.cleanupFailed)return;
     s.closePromise=(async()=>{
@@ -410,7 +417,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     }
     return e.type==='device.result'?s.deviceRequests?.receive(e)??false:false;
   }
-  async function reserve({model,sessionKey,nativeChatId,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false,replyTarget=null,callReportFactory=null,nativeRuntimeVersion,nativeLocationVersion,nativeDeviceActions,terminalKind,terminalAdapter,backendDeviceURL,gateway:callGateway=gateway,actorScoped=false,agentId='makaron',unidentified=false,callerIdentity,toolIdentity,prefetched=null}) {
+  async function reserve({model,sessionKey,nativeChatId,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false,replyTarget=null,callReportFactory=null,nativeRuntimeVersion,nativeLocationVersion,nativeDeviceActions,terminalKind,terminalAdapter,backendDeviceURL,gateway:callGateway=gateway,actorScoped=false,agentId='makaron',unidentified=false,callerIdentity,toolIdentity,prefetched=null,resumed=null}) {
     if(nativeRuntimeVersion!==undefined&&(nativeRuntimeVersion!==1||surface!=='phone'))throw Error('Unsupported native runtime');
     const deviceActions=normalizeDeviceActions(terminalAdapter?{version:1,capabilities:terminalAdapter.capabilities()}:nativeDeviceActions??(nativeLocationVersion===1?{version:1,capabilities:{'location.current':{status:'prompt'}}}:undefined));
     if(nativeLocationVersion!==undefined&&(nativeLocationVersion!==1||surface!=='phone'||nativeRuntimeVersion!==1))throw Error('Unsupported native location');
@@ -437,6 +444,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     prepareDeviceChannel(s,{deviceActions,backendDeviceURL,terminalAdapter,terminalKind,surface,nativeRuntimeVersion,unidentified,callerIdentity});
     sessions.set(s.id,s);
     audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model,voice:s.voice,surface,...(model==='grok'?{speed:grokSpeed,expressiveTags:grokExpressiveTags}:{})});
+    // The page dialled again by itself after its connection was cut: what it saw is kept with this call, and
+    // the call that was lost in this conversation a moment ago (if there is one) is what V takes up again.
+    if(resumed){
+      audit({type:'call.resumed',voiceSessionId:s.id,...resumed});
+      const tail=lostTails.get(sessionKey);lostTails.delete(sessionKey);
+      if(tail&&Date.now()-tail.at<LOST_TAIL_MS&&tail.model===model)s.resume=tail.words();
+    }
     // Receivers choose microphone routing explicitly; conversation policy is shared.
     const route=!s.unidentified&&inputPolicy!=='native'?speakerRouting?.reserve(s.id,{model,policy:inputPolicy??'speaker',surface,inputSampleRate}):null;
     // A running background task counts as V being busy for repeat prompts.
@@ -953,7 +967,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       const generation=wrap?null:s.providerGeneration=(s.providerGeneration??0)+1;
       const owned={...request,instructions};
       for(const [key,value]of Object.entries(owned))if(key.startsWith('on')&&typeof value==='function')owned[key]=wrap?wrap(key,value):(...args)=>{if(current(s)&&generation===s.providerGeneration)return value(...args);};
-      if(s.model==='gpt-live-11')return new GptLiveBridge(owned,{createWebSocket,resolveAuth:gptLive.resolveAuth,loadMedia:gptLive.loadMedia,model:gptLive.model,voice:s.voice,display:s.display,judge:gptLive.judge??null,
+      if(s.model==='gpt-live-11')return new GptLiveBridge(owned,{createWebSocket,resolveAuth:gptLive.resolveAuth,loadMedia:gptLive.loadMedia,model:gptLive.model,voice:s.voice,display:s.display,judge:gptLive.judge??null,resume:s.resume??null,
         notes:s.mediaCliAvailable?mediaCliInstructions(instructionCatalog,{surface:s.surface}):'',
         route:createDelegationRouter({complete:gptLive.complete??null,choose:gptLive.choose??null,audit:event=>audit({...event,voiceSessionId:s.id})})});
       return s.model==='seeduplex'?new SeeduplexRealtimeVoiceBridge(owned,{createWebSocket})

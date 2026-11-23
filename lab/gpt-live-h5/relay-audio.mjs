@@ -298,7 +298,8 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
       onEvent(value);
     }catch(error){reject(error);onError(error);}};
     socket.onerror=()=>{const error=Error('实时语音连接失败');reject(error);onError(error);};
-    socket.onclose=()=>{reject(Error('实时语音连接已关闭'));if(!closed)onClosed();};
+    // (How it closed goes with the report: a call cut off is dialled again, and the next call's record says what the page saw.)
+    socket.onclose=event=>{reject(Error('实时语音连接已关闭'));if(!closed)onClosed({code:Number.isInteger(event?.code)?event.code:null,clean:event?.wasClean===true,quietMs:lastReceiveAt==null?null:Math.round(performance.now()-lastReceiveAt)});};
   });void promise.catch(()=>{});
   connection?.adopt();
   // Received PCM is retained until the speaker node exists, so a dial that

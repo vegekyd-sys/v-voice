@@ -310,6 +310,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   deviceEndpoint?.setAdmissionGate?.(() => releaseGate.blocked());
   // HTTP and one-connection native dialing share admission, exact-session
   // verification, limits, ownership and reservation. A transport never selects identity.
+  // What a page says about the call it lost before dialling again: numbers and flags only.
+  const lostCallReport = raw => {
+    const int = (value, max) => Number.isFinite(value) && value >= 0 ? Math.min(max, Math.round(value)) : null;
+    return {code: int(raw.code, 4999), clean: raw.clean === true, quietMs: int(raw.quietMs, 600000), heldMs: int(raw.heldMs, 86400000), online: raw.online !== false, hidden: raw.hidden === true,
+      net: typeof raw.net === 'string' && /^[a-z0-9-]{1,12}$/u.test(raw.net) ? raw.net : null};
+  };
   const reservePhoneCall = async ({context,binding,params,req,ip,cancelled=()=>false,prefetched=null}) => {
     const reply=(status,body)=>({status,body});
     // An old cached native preference must not silently start another model or
@@ -381,7 +387,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         // the deployment selects the phone default, not browser heuristics.
         // Clients opt in only after implementing native response ownership and reversible pause.
         const inputPolicy = params.inputPolicy ?? 'speaker';
-        const reservation = await directVoice.reserve({model:params.model,sessionKey,...(binding.nativeChatId?{nativeChatId:binding.nativeChatId}:{}),voice:params.voice,...(unidentified?{unidentified:true}:{}),...(binding.callerIdentity?{callerIdentity:binding.callerIdentity}:{}),...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId,toolIdentity:binding.actorPrincipal}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(params.nativeDeviceActions?{nativeDeviceActions:params.nativeDeviceActions,terminalKind:iosBindings?.read(req,binding)?'ios':'web',backendDeviceURL:backendDeviceEndpoint||`${hosted?publicOrigin:`http://127.0.0.1:${server.address().port}`}${basePath}/internal/device-request`}:{}),...(params.nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId,reportOptions)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...(speakerRouting||unidentified)?{inputPolicy}:{},...(prefetched?{prefetched}:{})});
+        const reservation = await directVoice.reserve({model:params.model,sessionKey,...(params.resumed&&typeof params.resumed==='object'?{resumed:lostCallReport(params.resumed)}:{}),...(binding.nativeChatId?{nativeChatId:binding.nativeChatId}:{}),voice:params.voice,...(unidentified?{unidentified:true}:{}),...(binding.callerIdentity?{callerIdentity:binding.callerIdentity}:{}),...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId,toolIdentity:binding.actorPrincipal}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(params.nativeDeviceActions?{nativeDeviceActions:params.nativeDeviceActions,terminalKind:iosBindings?.read(req,binding)?'ios':'web',backendDeviceURL:backendDeviceEndpoint||`${hosted?publicOrigin:`http://127.0.0.1:${server.address().port}`}${basePath}/internal/device-request`}:{}),...(params.nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId,reportOptions)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...(speakerRouting||unidentified)?{inputPolicy}:{},...(prefetched?{prefetched}:{})});
         context.active={sessionKey,gateway:callGateway,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
         carryOn(context,reservation.voiceSessionId);
         if(cancelled()){await close(context);return reply(499,{error:"拨号已取消"});}
@@ -1188,7 +1194,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       releaseClosedDirectCalls();context.touchedAt=Date.now();
       let actions;try{actions=url.searchParams.has('nativeDeviceActions')?JSON.parse(url.searchParams.get('nativeDeviceActions')):undefined;normalizeDeviceActions(actions);}catch{return reject(400);}
       const params={model:url.searchParams.get('model'),...(dialVersion==='1'?{nativeRuntimeVersion:1,inputPolicy:phoneInputPolicy}:url.searchParams.has('inputPolicy')?{inputPolicy:url.searchParams.get('inputPolicy')}:{}),...(actions?{nativeDeviceActions:actions}:{}),
-        ...(url.searchParams.has('voice')?{voice:url.searchParams.get('voice')}:{})};
+        ...(url.searchParams.has('voice')?{voice:url.searchParams.get('voice')}:{}),...(url.searchParams.has('resumed')?{resumed:(()=>{try{return JSON.parse(url.searchParams.get('resumed'));}catch{return {};}})()}:{})};
       dialSockets.handleUpgrade(req,socket,head,client=>{
         client.on('error',()=>{});
         // Until attach owns the socket, reject all input. No microphone data

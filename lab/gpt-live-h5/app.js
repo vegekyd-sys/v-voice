@@ -51,7 +51,7 @@ if (document.querySelector) mountCallUi(document, view, {
     copyBinding: () => void copyIosBinding(),
     revokeBinding: id => void revokeIosBinding(id),
     closeSessionSheet: () => { view.set({ sessionSheet:null }); const url=new URL(window.location.href);url.searchParams.delete('call');window.history.replaceState(null,'',url); },
-    dial: () => void startCall(), hangup: () => void stopCall(),
+    dial: () => { redials = 0; void startCall(); }, hangup: () => void stopCall(),
     redial: () => void stopCall().then(() => startCall()),
     resume: () => void recoverPlaybackGesture(),
     steer: text => sendSteer(text), cancelTasks: () => cancelTasks(),
@@ -668,7 +668,7 @@ async function stopCall({failure}={}) {
   view.set(state => ({ dial: { ...state.dial, disabled: false }, stopLabel: "结束通话", badge: liveReady ? "可以拨号" : "暂未连接",
     composer: { enabled: false, open: false }, modelDisabled: false }));
   view.set({failureCode:failure?.code??null});
-  setStatus(failure?.message??"拨号后，直接说话。",{tone:failure?"error":"info"});
+  setStatus(failure?.message??"拨号后，直接说话。",{tone:failure&&failure.code!=='RELAY_REDIALING'?"error":"info"});
   if (active) {
     await active.context?.close().catch(() => {});
     if (active.voiceSessionId) await api("close", { voiceSessionId: active.voiceSessionId }).catch(() => {});
@@ -682,7 +682,24 @@ async function microphoneGranted() {
     return (await Promise.race([query,new Promise(resolve=>setTimeout(resolve,150))]))?.state==="granted";
   } catch { return false; }
 }
-async function startCall() {
+// A call whose connection is cut (neither side hung up) is dialled again by itself: the service keeps
+// its board for the next call, and V is told to take up where it stopped. Twice in a row at most;
+// a call that held for half a minute starts the count again. What the page saw goes with the dial.
+let redials = 0;
+async function redialLostCall(active, failure, closed = {}) {
+  const heldMs = active.readyAt == null ? 0 : Math.round(performance.now() - active.readyAt);
+  if (active.provider !== 'gpt-live-11' || heldMs < 3000 || view.get().confirmation) return stopCall({failure});
+  if (heldMs > 30000) redials = 0;
+  if (redials >= 2) return stopCall({failure});
+  redials++;
+  const lost = {code: closed.code ?? null, clean: closed.clean === true, quietMs: closed.quietMs ?? null, heldMs, online: navigator.onLine !== false, hidden: document.hidden === true, net: String(navigator.connection?.effectiveType ?? '').slice(0, 12)};
+  // The audio context is kept: one made without a tap may never start on a phone.
+  const context = active.context; active.context = null;
+  await stopCall({failure: Object.assign(Error('连接断了一下，正在接回…'), {code: 'RELAY_REDIALING'})});
+  if (call || starting) { await context?.close().catch(() => {}); return; }
+  await startCall({context, resumed: lost});
+}
+async function startCall(options = {}) {
   if (starting || call || view.get().confirmation) return;
   if (view.get().confirmOnDial) { await confirmation.start(); return; }
   if(tvHost&&hasTvArrayCapture()&&!tvArraySupportsModel(view.get().model)){setStatus("当前电视阵列输入支持豆包和 Grok，请选择豆包。",{tone:"error"});return;}
@@ -691,13 +708,13 @@ async function startCall() {
     performance.clearMarks?.(name);
   markVoiceTiming("voice.dial.requested");
   view.set(state => ({ dial: { ...state.dial, disabled: true }, stopLabel: "取消拨号", badge: "连接中", modelDisabled: true }));
-  setCallState("dialing"); setStatus("正在连接 V…");
+  setCallState("dialing"); setStatus(options.resumed ? "连接断了一下，正在接回…" : "正在连接 V…");
   resetTranscript();view.set({failureCode:null});
   const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController(), dialStartedAt:performance.now() }; call = active; starting = active;
   const chosenModel = view.get().model;
   if (speakerCandidate()||['seeduplex','grok','gpt-live-11'].includes(chosenModel)) {
     // Create/resume in the dial gesture, before microphone and network awaits.
-    active.context = new AudioContext({latencyHint:"interactive"});
+    active.context = options.context ?? new AudioContext({latencyHint:"interactive"});
     active.contextResume = active.context.resume();
   }
   // Each call owns its sound element; a late play() from an older call cannot
@@ -708,7 +725,7 @@ async function startCall() {
   // before this shared call starts its normal ring; no native call policy.
   try { window.VTVStartupCue?.finish?.(); } catch {}
   active.sounds = createCallSounds({ audioElement: active.soundElement, sharedContext: active.context });
-  void active.sounds.dial();
+  if (!options.resumed) void active.sounds.dial();
   // Activity metadata stays in this page's memory only. It contains no audio,
   // transcript, session identifiers or claim that the model was interrupted.
   active.duplexDiagnostics = { kind: "duplex-playback", schemaVersion: 2, closed: false,
@@ -761,10 +778,11 @@ async function startCall() {
     let reservation;
     if(webDialVersion===2&&phoneEntry&&['seeduplex','grok','gpt-live-11'].includes(selectedModel)){
       const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
-      endpoint.search=new URLSearchParams({phone:phoneEntry,model:selectedModel,dialVersion:'2',...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
+      endpoint.search=new URLSearchParams({phone:phoneEntry,model:selectedModel,dialVersion:'2',...(options.resumed?{resumed:JSON.stringify(options.resumed)}:{}),...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
       active.dialConnection=createDialConnection({url:endpoint,signal:active.captureAbort.signal});
       reservation=await withCapture(active.dialConnection.reservation);
-    }else reservation=await withCapture(api('session',params));
+    }else reservation=await withCapture(api('session',options.resumed?{...params,resumed:options.resumed}:params));
+    active.provider=reservation.provider;
     active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     if(captureError)throw captureError;
@@ -861,7 +879,7 @@ async function startCall() {
         subscribePcm:active.capture?.subscribePcm,bufferedOutput:Boolean(tvHost&&hasTvArrayCapture()),
         onAudioLevel:tvHost?value=>{if(call===active)tvHost.observeAudio(value);}:undefined,
         onError:error=>{if(call===active)void stopCall({failure:error});},
-        onClosed:()=>{if(call===active)void stopCall({failure:active.remoteEnding?undefined:Object.assign(Error("连接已中断，请重新呼叫"),{code:"RELAY_CLOSED"})});},
+        onClosed:closed=>{if(call!==active)return;if(active.remoteEnding)void stopCall();else void redialLostCall(active,Object.assign(Error("连接已中断，请重新呼叫"),{code:"RELAY_CLOSED"}),closed);},
         onPlaybackActivity:speaking=>{if(call===active){setVoiceState(speaking?'speaking':'listening');if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
         onEvent:value=>{
           if(call!==active)return;
@@ -901,7 +919,7 @@ async function startCall() {
         }});
       await active.relay.start();if(call!==active)return;
       startPresentationRecovery(active);
-      setCallState('connected');view.set({badge:'通话中',stopLabel:'结束通话',composer:{enabled:true,open:false}});
+      active.readyAt=performance.now();setCallState('connected');view.set({badge:'通话中',stopLabel:'结束通话',composer:{enabled:true,open:false}});
       setStatus('V 正在听，直接说话就好');
       void active.sounds.connected();
       active.heartbeat=setInterval(()=>void api('heartbeat',{voiceSessionId:active.voiceSessionId}).catch(()=>{}),15000);

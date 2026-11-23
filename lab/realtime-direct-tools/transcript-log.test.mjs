@@ -195,6 +195,14 @@ test('a dropped or skipped conversation record is logged by name only',async t=>
   assert.deepEqual(rows.slice(1).map(row=>[row.type,row.stage??row.reason]),[['call.provider-status','context-dropped'],['call.record-skipped','refused-earlier']]);
 });
 
+test('a call dialled again after a cut connection records what the page saw, as numbers and flags only',async t=>{
+ const f=await fixture(t);f.created();
+ assert(f.log.audit({type:'call.resumed',voiceSessionId:'v1',code:1006,clean:false,quietMs:120,heldMs:147500,online:true,hidden:false,net:'4g',note:'SECRET',text:'SECRET'}));
+ assert(f.log.audit({type:'call.resumed',voiceSessionId:'v1',code:-1,quietMs:'SECRET',net:'SECRET words'}));
+ await f.log.close();const rows=(await f.rows()).filter(e=>e.type==='call.resumed');
+ assert.deepEqual([rows[0].code,rows[0].clean,rows[0].quietMs,rows[0].heldMs,rows[0].online,rows[0].hidden,rows[0].net],[1006,false,120,147500,true,false,'4g']);
+ assert.deepEqual([rows[1].code,rows[1].quietMs,rows[1].net],[undefined,undefined,undefined]);assert(!JSON.stringify(rows).includes('SECRET'));
+});
 test('GPT Live media connection stages are recorded as bare state names',async t=>{
  const f=await fixture(t);assert(f.created('v1','gpt-live-11'));
  for(const stage of ['media-connecting','media-ice-checking','media-connected','media-CONNECTED; token=SECRET'])f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage,elapsedMs:812,candidate:'SECRET'});

@@ -162,8 +162,8 @@ export function gptLiveInitialItems(instructions){
 const verbatim=text=>`原样念出 <say> 里的内容，不加开场白，不解释，不改写，不省略：<say>${text}</say>`;
 
 export class GptLiveBridge {
-  constructor(request,{createWebSocket,resolveAuth,route,loadMedia,fetchImpl=fetch,model=GPT_LIVE_MODEL,voice=GPT_LIVE_VOICE,notes='',judge=null,display=true,connectTimeoutMs=25000,pollGapMs=1500,now=()=>Date.now()}){
-    Object.assign(this,{request,createWebSocket,resolveAuth,route,loadMedia,fetchImpl,model,voice:gptLiveVoice(voice),notes,judge,display,connectTimeoutMs,pollGapMs,now});
+  constructor(request,{createWebSocket,resolveAuth,route,loadMedia,fetchImpl=fetch,model=GPT_LIVE_MODEL,voice=GPT_LIVE_VOICE,notes='',judge=null,resume=null,display=true,connectTimeoutMs=25000,pollGapMs=1500,now=()=>Date.now()}){
+    Object.assign(this,{request,createWebSocket,resolveAuth,route,loadMedia,fetchImpl,model,voice:gptLiveVoice(voice),notes,judge,resume,display,connectTimeoutMs,pollGapMs,now});
     this.delegations=new Map();this.background=new Set();this.follows=new Map();this.abort=new AbortController();
     this.closed=false;this.ready=false;this.muted=false;this.bargeAt=0;this.judging=0;this.loudMs=0;this.loudAt=-Infinity;this.callerLoudAt=-Infinity;this.userDoneAt=-Infinity;this.skippedReported=0;this.turnOpen=false;this.turnLoud=false;this.turnDoneAt=0;this.turnId=null;this.userText='';this.replyText='';this.script=null;this.reading=false;this.heldBack=false;this.ending=false;this.nudged=false;this.delegated_=0;
     this.history=[];this.spoke=false;this.heard=false;this.greeting=null;this.ownCalls=0;
@@ -257,7 +257,10 @@ export class GptLiveBridge {
     if(!this.ready||this.mediaState&&this.mediaState!=='connected'&&greeting.waits<15){greeting.waits=(greeting.waits??0)+1;this.greetingTimer=setTimeout(()=>this.greet(),200);this.greetingTimer.unref?.();return;}
     greeting.tries++;
     this.request.onDiagnostic?.({stage:'greeting-requested',attempt:greeting.tries,elapsedMs:Math.round(this.now()-this.startedAt)});
-    this.append(`${greeting.text}现在就开口，只说一句很短的问候（十个字以内，比如“嗨，我是 V，在呢”），说完就停下来听。不提问，不提以前聊过的事，不委派，不等对方先说话。`,{channel:'speakable'});
+    // A call dialled again after its connection was cut is not greeted: V says it is back and goes on.
+    const back=this.resume;
+    this.append(back?`电话刚才断了一下，现在接回来了，对方还在等你。现在就开口：先用半句话说接回来了（比如“刚才断了一下，接回来了”），不重新打招呼，然后${back.unfinished?'接着把刚才没讲完的内容讲下去，从断掉的地方往后讲，不要从头重讲':'问一句要不要接着刚才的说，然后停下来听'}。${back.user?`对方最后说的是：“${bound(back.user,200)}”。`:''}${back.reply?`你刚才讲到：“…${Array.from(back.reply).slice(-220).join('')}”${back.unfinished?'（话在这里断了）':''}。`:''}不委派，不等对方先说话。`
+      :`${greeting.text}现在就开口，只说一句很短的问候（十个字以内，比如“嗨，我是 V，在呢”），说完就停下来听。不提问，不提以前聊过的事，不委派，不等对方先说话。`,{channel:'speakable'});
     this.greetingTimer=setTimeout(()=>this.greet(),GREETING_RETRY_MS);this.greetingTimer.unref?.();
   }
   // A line the service wants said as it is (task progress, a notice).
@@ -443,6 +446,12 @@ export class GptLiveBridge {
     if(this.turnOpen||this.now()-this.turnDoneAt<TAIL_MS)this.request.onAudio?.(pcm,{responseId:this.turnId});
   }
   // What was just said and done: a follow-up ("再看一下") is routed with its subject.
+  // For the call that follows one whose connection was cut: what the caller last said and where V was.
+  lastWords(){
+    const last=role=>this.history.findLast?.(turn=>turn.role===role)?.text??'';
+    const open=this.turnOpen&&gptLiveText(this.replyText);
+    return {user:gptLiveText(this.userText)||last('user'),reply:open||this.cutReply||last('assistant'),unfinished:Boolean(open||this.cutReply)};
+  }
   remember(role,text,extra={}){
     const value=String(text??'').trim();
     if(!value&&role!=='tool')return;
@@ -609,6 +618,8 @@ export class GptLiveBridge {
   fail(message){if(this.closed)return;this.reject?.(Error(message));this.request.onError?.(Error(message));this.close();}
   close(){
     if(this.closed)return;
+    // (A reply still being said when the call closes: kept for `lastWords`, which is read after the close.)
+    if(this.turnOpen)this.cutReply=gptLiveText(this.replyText);
     if(this.peer)this.request.onDiagnostic?.({stage:'media-stats',elapsedMs:Math.round(this.now()-this.startedAt),...this.peer.stats});
     this.finishReply();
     this.closed=true;this.ready=false;clearInterval(this.statsTimer);clearTimeout(this.timer);clearTimeout(this.mediaTimer);clearTimeout(this.greetingTimer);clearTimeout(this.finishTimer);clearTimeout(this.netTimer);this.abort.abort();this.userTurn?.done();

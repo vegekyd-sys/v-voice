@@ -18,7 +18,7 @@ const judge=async({tools,user})=>{
   return null;
 };
 class Socket extends EventEmitter{constructor(){super();this.readyState=1;this.sent=[];}send(s){this.sent.push(JSON.parse(s));}close(){this.readyState=3;this.emit('close');}}
-async function fixture({tools,route,resolveAuth,model,now,replyJudge}={}){
+async function fixture({tools,route,resolveAuth,model,now,replyJudge,resume}={}){
   const events=[],calls=[],audio=[],text=[],closes=[],ws=new Socket();
   const request={instructions:'你是 V。',tools:tools??[{type:'function',name:'web_search',parameters:{type:'object',properties:{query:{type:'string'}},required:['query']}},{type:'function',name:'delegate_to_v',parameters:{type:'object',properties:{question:{type:'string'},context:{type:'string'}},required:['question']}},{type:'function',name:'exec',parameters:{type:'object',properties:{command:{type:'string'}},required:['command']}},{type:'function',name:'explain_on_board',parameters:{type:'object',properties:{topic:{type:'string'}},required:['topic']}},{type:'function',name:'end_call',parameters:{type:'object',properties:{},required:[]}}],inputSampleRate:24000,
     onToolCall:c=>calls.push(c),onAudio:(b,m)=>audio.push([b.length,m?.responseId]),onTranscript:(...a)=>text.push(a),onEvent:e=>events.push(e),onReady:()=>events.push({ready:true}),
@@ -26,7 +26,7 @@ async function fixture({tools,route,resolveAuth,model,now,replyJudge}={}){
   const fetches=[];
   const fetchImpl=async(url,init)=>{fetches.push({url,init});return {ok:true,status:201,headers:new Headers({location:'/v1/realtime/calls/rtc_u23_Em7Mvp3oMOyinaFyEylD7nKHGz6ZmT38'}),text:async()=>'v=0\r\nanswer'};};
   const bridge=new GptLiveBridge(request,{createWebSocket:async(url,options)=>{ws.url=url;ws.options=options;return ws;},resolveAuth:resolveAuth??(async()=>({token:'tok',accountId:'acct'})),loadMedia:async()=>media(ws),fetchImpl,model,
-    route:route??createDelegationRouter({audit:e=>events.push(e),complete:judge}),notes:'媒体说明',...(now?{now}:{}),...(replyJudge?{judge:replyJudge}:{})});
+    route:route??createDelegationRouter({audit:e=>events.push(e),complete:judge}),notes:'媒体说明',...(now?{now}:{}),...(replyJudge?{judge:replyJudge}:{}),...(resume?{resume}:{})});
   return {bridge,ws,events,calls,audio,text,closes,fetches,request};
 }
 const item=(id,textValue)=>({type:'delegation.created',item:{id,type:'delegation',target:'client',content:[{type:'input_text',text:textValue}]},offset_ms:5000});
@@ -535,4 +535,27 @@ test('a goodbye the caller plainly said is hung up on soon after V\'s own, not a
   const g=await fixture({tools:END,route:async()=>({name:'answer_directly',args:{}}),replyJudge:judge});await ready(g);
   userSays(g,'u1','好嘞我们先这样好吗');await pause(10);vSays(g,'a1','好啊,有需要再找我喔。');await pause(900);assert.equal(g.calls.length,0);
   await pause(1500);assert.equal(g.calls.length,1);
+});
+
+test('a call that follows one whose connection was cut is not greeted: V says it is back and goes on from where it stopped',async()=>{
+  // The call that is cut off: the caller asked, V was in the middle of answering.
+  const f=await fixture({tools:END});await ready(f);
+  userSays(f,'u1','给我讲讲这座桥是怎么建起来的');
+  f.bridge.receive({type:'turn.created',turn:{id:'a1',role:'assistant'}});f.bridge.receive({type:'turn.delta',turn_id:'a1',delta:'先打桥墩,再从两边往中间一段一段地架梁,最后'});
+  f.bridge.close();
+  const words=f.bridge.lastWords();assert.deepEqual(words,{user:'给我讲讲这座桥是怎么建起来的',reply:'先打桥墩,再从两边往中间一段一段地架梁,最后',unfinished:true});
+  // The call dialled again: its first words are asked for with what was cut off.
+  const g=await fixture({tools:END,resume:words});await ready(g);g.bridge.triggerGreeting('电话已接通。');await pause(10);
+  // (A long line goes as consecutive pieces of one append.)
+  const whole=f=>appends(f).map(e=>e.content[0].text).join('');assert.equal(appends(g).at(-1).channel,'speakable');
+  const first={content:[{text:whole(g)}]};
+  assert.match(first.content[0].text,/^电话刚才断了一下，现在接回来了[\s\S]*不重新打招呼[\s\S]*从断掉的地方往后讲[\s\S]*对方最后说的是：“给我讲讲这座桥是怎么建起来的”[\s\S]*最后”（话在这里断了）/u);
+  assert.doesNotMatch(first.content[0].text,/只说一句很短的问候/u);
+  // A reply that had been said to its end: V only says it is back and asks.
+  const h=await fixture({tools:END});await ready(h);userSays(h,'u1','今天星期几');vSays(h,'a1','今天星期一。');h.bridge.close();
+  assert.deepEqual(h.bridge.lastWords(),{user:'今天星期几',reply:'今天星期一。',unfinished:false});
+  const k=await fixture({tools:END,resume:h.bridge.lastWords()});await ready(k);k.bridge.triggerGreeting('电话已接通。');await pause(10);
+  assert.match(whole(k),/问一句要不要接着刚才的说，然后停下来听/u);
+  // An ordinary call is greeted as before.
+  const n=await fixture({tools:END});await ready(n);n.bridge.triggerGreeting('电话已接通。');await pause(10);assert.match(whole(n),/只说一句很短的问候/u);
 });

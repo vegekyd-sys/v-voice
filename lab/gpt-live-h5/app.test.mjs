@@ -1278,3 +1278,24 @@ test('authenticated GPT reservation installs account context before greeting and
  peer.channel.onmessage({data:JSON.stringify({type:'session.started'})});assert.equal(sent.length,1);
  await f.context.stopCall();assert.equal(peer.closed,true);
 });
+
+test('a GPT Live 1.1 call whose connection is cut is dialled again by itself with what the page saw; never a call that was hung up, another model, or a third time in a row',async t=>{
+ const relays=[],dials=[];let provider='gpt-live-11';
+ const f=await fixture(t,{api:(route,payload,result)=>{if(route==='session'){dials.push(payload);return {...result,transport:'gateway-relay',provider};}return result;},
+  relayFactory:values=>{relays.push(values);return {start:async()=>{},dispose(){}};}});
+ const settle=async()=>{for(let i=0;i<20;i++)await new Promise(r=>setImmediate(r));};
+ await f.context.startCall();await settle();assert.equal(dials.length,1);assert.equal(dials[0].resumed,undefined);
+ const contexts=f.contexts.length;
+ // Held for 40 s, then the socket closes without a close frame.
+ f.setNow(40000);relays[0].onClosed({code:1006,clean:false,quietMs:300});await settle();
+ assert.equal(dials.length,2,'dialled again');assert.deepEqual([dials[1].resumed.code,dials[1].resumed.clean,dials[1].resumed.quietMs,dials[1].resumed.heldMs>=39000],[1006,false,300,true]);
+ assert.equal(f.contexts.length,contexts,'the audio context made in the tap is kept: no new one');assert.equal(f.sounds.at(-1).dialing,0,'no ringing for a call that is coming back');
+ // Cut again within seconds of coming back, twice: the second is still tried, the third is left to the caller.
+ f.setNow(45000);relays[1].onClosed({code:1006,clean:false,quietMs:0});await settle();assert.equal(dials.length,3);
+ f.setNow(50000);relays[2].onClosed({code:1006,clean:false,quietMs:0});await settle();assert.equal(dials.length,3);
+ assert.equal(f.view.get().failureCode,'RELAY_CLOSED');
+ // A call the service is ending is not dialled again; nor is another model's.
+ f.context.actions?.dial?.();
+ provider='seeduplex';await f.context.startCall();await settle();const before=dials.length;
+ f.setNow(120000);relays.at(-1).onClosed({code:1006,clean:false,quietMs:0});await settle();assert.equal(dials.length,before);assert.equal(f.view.get().failureCode,'RELAY_CLOSED');
+});
