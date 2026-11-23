@@ -3,6 +3,7 @@
 // model call produces what V will say and what appears on the page for each
 // sentence, so the two cannot disagree. V then speaks the script verbatim and
 // the page reveals each piece when the audio reaches the words it hangs on.
+import {photoCount} from './board-photo.mjs';
 import {BOARD_INSTRUCTIONS} from './board-director.mjs';
 import {applyOp, emptyScene, loose, normalizeOp} from './board-scene.mjs';
 
@@ -371,7 +372,7 @@ export function parseIllustration(text, said, taken = []) {
  * `complete({messages, signal})` yields text chunks (the director's client).
  * `director.present(owner, ops, holdMs)` puts the lesson on the call's board.
  */
-export function createLessonWriter({complete, fallback = null, director, now = Date.now, record: keep = () => {}, preferMs = 8000, totalMs = 13000, scriptInstructions = SCRIPT_INSTRUCTIONS, early = 0} = {}) {
+export function createLessonWriter({complete, fallback = null, director, photoGallery=null, now = Date.now, record: keep = () => {}, preferMs = 8000, totalMs = 13000, scriptInstructions = SCRIPT_INSTRUCTIONS, early = 0} = {}) {
   // Callers who are not the owner (`quiet`): how a lesson went is kept, what was asked and said is not.
   const hushed = new Set();
   const record = event => keep(hushed.has(event?.voiceSessionId) ? Object.fromEntries(['type', 'voiceSessionId', 'ok', 'writer', 'scripted', 'durationMs', 'failure', 'none', 'add', 'earlyMs', 'earlyKept'].filter(key => key in event).map(key => [key, event[key]])) : event);
@@ -400,8 +401,10 @@ export function createLessonWriter({complete, fallback = null, director, now = D
   }
   return {
     available: Boolean(complete && director),
+    wantsPhotos: words=>Boolean(photoGallery && photoCount(words)),
     /** Returns the script to speak, or null when no lesson could be written. `ask` is the caller's own words. */
     async prepare({owner, topic, audience = '', ask = '', reference = '', signal, quiet = false, result = false, assets = [], make = false} = {}) {
+      if(photoGallery && !result && photoCount(ask))return photoGallery({owner,ask,topic,signal});
       const started = now();
       if (quiet) { hushed.add(owner); if (hushed.size > 500) hushed.delete(hushed.values().next().value); }
       // With the streaming illustrator the writer only writes the script and

@@ -744,6 +744,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       // question to the backend or even hangs up instead (calls 4132718f, 649709d0).
       // A lookup it wanted is still made, as the lesson's own research.
       // (Off unless asked for: the model's own choice of tool stands, as it did before there was a board.)
+      if(lessonTools(s).length && lesson.wantsPhotos?.(s.latestUserTurn?.text) && ['web_search','delegate_to_v'].includes(call.name) && !s.backend.snapshot())
+        call={...call,name:'explain_on_board',args:{topic:s.latestUserTurn.text}};
       if(lesson?.reroute===true&&['delegate_to_v','web_search','memory_search','end_call'].includes(call.name)&&!(call.name==='delegate_to_v'&&s.backend.snapshot())&&lessonTools(s).length&&s.lessonFor!==s.latestUserTurn&&asksForLesson(s.latestUserTurn?.text)){
         audit({type:'lesson.rerouted',voiceSessionId:s.id,callId:call.callId,from:call.name});
         const research=['web_search','memory_search'].includes(call.name)?{name:call.name,args:call.args}:null;

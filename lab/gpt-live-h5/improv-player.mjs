@@ -40,7 +40,8 @@ export function createImprovPlayer({context,update,ended,notice,archive=()=>{}})
   }
   function keep(show) {
     if(!show.stream && !show.recording)return;
-    archive({id:show.id, poster:show.poster || show.imageUrl, recording:show.recording, done:!!show.done, caption:show.cue?.text});
+    const video=show.frame.contentDocument?.querySelector('video');
+    archive({id:show.id,shape:video?.videoWidth/video?.videoHeight || show.shape, poster:show.poster || show.imageUrl, recording:show.recording, done:!!show.done, caption:show.cue?.text});
   }
   function detach(show) {
     disconnectSound(show);
@@ -72,7 +73,7 @@ export function createImprovPlayer({context,update,ended,notice,archive=()=>{}})
     const frame=document.createElement('iframe');frame.hidden=true;frame.title='Makaron Director 直播连接';frame.allow='autoplay';
     const show={id:event.id,imageUrl:event.imageUrl,frame,listener:e=>{
       if(e.source!==frame.contentWindow || e.origin!==location.origin || e.data?.source!=='makaron-director' || e.data.id!==event.id)return;
-      if(e.data.action==='stopped'){show.poster=e.data.poster;keep(show);disconnectSound(show);return;}
+      if(e.data.action==='stopped'){const v=frame.contentDocument?.querySelector('video');show.shape=v?.videoWidth/v?.videoHeight;show.poster=e.data.poster;keep(show);disconnectSound(show);return;}
       if(e.data.action==='recorded' && e.data.blob instanceof Blob && e.data.blob.size && !show.recording){
         show.recording=URL.createObjectURL(e.data.blob);keep(show);return;
       }

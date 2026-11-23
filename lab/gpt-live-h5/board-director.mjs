@@ -322,6 +322,13 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
     },
     release(id) { const row = owners.get(id); if (row) row.heldUntil = 0; },
     /** Put a prepared picture (a lesson) on a call's board and keep the director's hands off it for `holdMs`. */
+    gallery(id,title,items){
+      const row=owner(id);row.controller?.abort();shelvePage(row);
+      row.pages=Math.max(row.pages??0,row.scene.serial,...(row.zones??[]).map(z=>z.serial))+1;
+      const block=normalizeOp({op:'put',block:{id:'photos',t:'list',look:'gallery',items:items.map(p=>({h:p.name,img:p.query}))}}).block;
+      row.scene={...emptyScene(),serial:row.pages,rev:row.scene.rev+1,title,blocks:[block]};
+      row.heldAt=now();row.heldUntil=row.heldAt+12000;row.makingTurn=row.turnNo;
+    },
     present(id, ops, holdMs = 0) {
       const row = owner(id);
       row.controller?.abort();

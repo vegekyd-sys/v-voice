@@ -7,6 +7,7 @@
 //      (og:image), which for a page about the thing is a picture of the thing.
 // Lookups carry only the query. Pages and images are fetched without cookies,
 // from public https hosts only, with size and time limits.
+import {asksOnlyToFind} from './board-assets.mjs';
 import {lookup as dnsLookup} from 'node:dns/promises';
 import {isIP} from 'node:net';
 import {createHash} from 'node:crypto';
@@ -375,5 +376,42 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
       }
       return flights.get(key);
     },
+  };
+}
+
+// For an explicit request to look at photographs, collect the image bytes
+// before naming the pictures. The same finder serves those bytes to the canvas.
+export function photoCount(words='') {
+  if(!asksOnlyToFind(words) || /开播|直播|不要找|不用找|别找/u.test(words))return 0;
+  const n=/([1-9]\d*|[一两二三四五六七八九])\s*[张幅]/u.exec(words)?.[1];
+  return Math.min(8,Number(n)||('一二三四五六七八九'.indexOf(n?.replace('两','二'))+1)||3);
+}
+export function createPhotoGallery({complete,find,director}){
+  const prior=new Map();
+  return async ({owner,ask,topic,signal})=>{
+    const count=photoCount(ask), previous=prior.get(owner)??[];
+    const more=/再|其他|其它|另外|换一批|不同/u.test(ask);
+    const messages=[{role:'system',content:'为真实照片搜索列出具体拍摄对象。返回 JSON {"title":"简短中文主题","subjects":[{"name":"中文图名","query":"精确搜索词"}]}。按用户主题给出足量不同对象或视角，含两个备选。不要虚构。补充图片时避开上一批。仅输出 JSON。'},{role:'user',content:JSON.stringify({ask,topic,count,previous:more?previous.map(p=>p.name):[]})}];
+    let raw='';
+    for await(const part of complete({messages,signal}))raw+=part;
+    const plan=JSON.parse(raw.slice(raw.indexOf('{'),raw.lastIndexOf('}')+1));
+    const seen=new Set(more?previous.flatMap(p=>[p.name,p.query,p.hash]):[]), items=[];
+    const planned=Array.isArray(plan.subjects)?plan.subjects.slice(0,count+3):[];
+    while(items.length<count && planned.length){
+      signal?.throwIfAborted();
+      const batch=planned.splice(0,count-items.length);
+      const hits=await Promise.all(batch.map(async item=>{
+        const name=String(item?.name??'').trim().slice(0,40), query=clean(item?.query);
+        if(!name || !query || seen.has(name) || seen.has(query))return null;
+        const photo=await find(query,{signal});
+        return photo?.bytes?.length ? {name,query,hash:createHash('sha256').update(photo.bytes).digest('hex')} : null;
+      }));
+      for(const hit of hits)if(hit && ![hit.hash,hit.name,hit.query].some(k=>seen.has(k))){items.push(hit);[hit.hash,hit.name,hit.query].forEach(k=>seen.add(k));}
+    }
+    signal?.throwIfAborted();
+    if(!items.length)return {say:'这次没有找到能显示的照片。'};
+    prior.delete(owner);prior.set(owner,[...(more?previous:[]),...items].slice(-32));if(prior.size>64)prior.delete(prior.keys().next().value);
+    director.gallery(owner,String(plan.title||'照片').slice(0,30),items);
+    return {say:'找到了'+items.length+'张，按顺序是'+items.map(p=>p.name).join('、')+'。'};
   };
 }

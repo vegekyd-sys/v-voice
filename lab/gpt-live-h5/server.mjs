@@ -40,12 +40,12 @@ import {VOICE_CONTEXT_HISTORY_REQUEST,voiceConversationContext} from '../realtim
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 import {idleHangupFromEnv} from '../realtime-direct-tools/idle-hangup.mjs';
 import {boardCompletionFromEnv,boardDirectorFromEnv,boundedBoardRequest} from './board-director.mjs';
-import {createPhotoFinder} from './board-photo.mjs';
+import {createPhotoFinder,createPhotoGallery} from './board-photo.mjs';
 import {STREAM_INSTRUCTIONS,createLessonWriter,refineStreamOp} from './board-lesson.mjs';
 import {CANVAS_CUE_INSTRUCTIONS,CANVAS_SCRIPT_INSTRUCTIONS,CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
 import {createBoardEye} from './board-eye.mjs';
 import {scenePictures} from './board-scene.mjs';
-import {ASSET_ID,ASSET_MAKE_NOTES,ASSET_NOTES,ASSET_SCRIPT_NOTES,SELF_IMAGE,SELF_IMAGE_FILE,SHELF_ID,createAssetEye,createAssetShelf,pictureName} from './board-assets.mjs';
+import {ASSET_MAKE_NOTES,ASSET_NOTES,ASSET_SCRIPT_NOTES,SELF_IMAGE,SELF_IMAGE_FILE,SHELF_ID,createAssetEye,createAssetShelf,pictureName} from './board-assets.mjs';
 import {roomyPicture} from './board-picture-size.mjs';
 import {createVideoScriptWriter} from '../realtime-direct-tools/media-script.mjs';
 import {createMaterialCheck} from '../realtime-direct-tools/material-check.mjs';
@@ -1382,7 +1382,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const routed=!(process.env.VOICE_BOARD_API_KEY??process.env.DEEPSEEK_API_KEY)&&Boolean(process.env.OPENROUTER_API_KEY);
     const lessonModel=process.env.VOICE_BOARD_LESSON_MODEL??(routed?'anthropic/claude-sonnet-5.5':''),lessonReasoning=process.env.VOICE_BOARD_LESSON_REASONING??(process.env.VOICE_BOARD_LESSON_MODEL?'':'low');
     const directorWriter=boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'1600'});
-    lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,...(process.env.VOICE_BOARD_FOLLOW!=='word'?{scriptInstructions:(canvas?CANVAS_SCRIPT_INSTRUCTIONS:CUE_SCRIPT_INSTRUCTIONS)+(assetsOn?ASSET_SCRIPT_NOTES:''),early:Number(process.env.VOICE_BOARD_EARLY??2)||0}:{}),
+    lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,
+      photoGallery:assetsOn?createPhotoGallery({complete:directorWriter,find:(query,options)=>photos.find(query,options),director:board}):null,...(process.env.VOICE_BOARD_FOLLOW!=='word'?{scriptInstructions:(canvas?CANVAS_SCRIPT_INSTRUCTIONS:CUE_SCRIPT_INSTRUCTIONS)+(assetsOn?ASSET_SCRIPT_NOTES:''),early:Number(process.env.VOICE_BOARD_EARLY??2)||0}:{}),
       // (Naming the director's own model as the lesson model means one writer, not two racing.)
       ...(lessonModel&&lessonModel!==(process.env.VOICE_BOARD_MODEL??'deepseek/deepseek-v4.1-flash')?{complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MODEL:lessonModel,VOICE_BOARD_REASONING:lessonReasoning,VOICE_BOARD_MAX_TOKENS:lessonReasoning?'4000':'1600'}),fallback:directorWriter}:{complete:directorWriter})}):null;
     // How a lesson is made (to compare): "service" - written here, with what is looked up first;

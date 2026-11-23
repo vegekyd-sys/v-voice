@@ -942,8 +942,9 @@ export function Board(props) {
 function Recorded({clip,save}) {
   const [saved,setSaved]=useState('');
   return <div className="board-scroll board-live-media"><figure className="improv-stage">
+    <div className="board-work-frame improv-picture" data-playing="true" style={{'--shape':clip.shape || 16/9}}>
     {clip.recording ? <video className="improv-replay" src={clip.recording} poster={clip.poster} playsInline controls preload="metadata" aria-label="直播回放"/> :
-      clip.poster && <img className="improv-replay" src={clip.poster} alt="直播停下时的画面"/>}
+      clip.poster && <img className="improv-replay" src={clip.poster} alt="直播停下时的画面"/>}</div>
     <figcaption>{clip.caption && <p>{clip.caption}</p>}</figcaption>
     {clip.recording ? <button type="button" className="board-report" onClick={async()=>setSaved(await save({src:clip.recording,kind:'video',name:'直播回放'}))}>{saved || '保存录像'}</button> :
       <small>{clip.done?'本场没有可保存的录像':'正在整理录像…'}</small>}

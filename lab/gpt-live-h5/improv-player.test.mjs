@@ -110,3 +110,18 @@ test('late Director audio joins the call once, ducks under overlapping speech an
  signal('ended');assert.equal(soundOutput,null);assert.equal(disconnected,true);assert.equal(track.enabled,true);
  stream.dispatchEvent(new Event('addtrack'));assert.equal(sources,1);
 });
+
+test('a searched photograph is selected by the order on the visible lesson page',async()=>{
+ const {createAssetShelf}=await import('./board-assets.mjs');
+ const shelf=createAssetShelf();
+ shelf.share=async query=>({url:'https://photos.example/'+query,until:Infinity});
+ const upload=shelf.add('call',{url:'https://photos.example/upload',source:'upload'});
+ for(const query of ['louvre','orsay','tower'])shelf.found('call',{query});
+ shelf.visible('call',['p3','p1','p2']);shelf.seen('call',['p1'],{p1:.65});
+ assert.equal(await shelf.openingImage('call','current','用第二张图开场直播'),'https://photos.example/louvre');
+ assert.equal(shelf.openingAspect('call','https://photos.example/louvre'),'9:16');
+ assert.equal(await shelf.openingImage('call','current','用这张图开场直播'),'');
+ shelf.pick('call','p2');assert.equal(await shelf.openingImage('call','current','用这个开直播'),'https://photos.example/orsay');
+ shelf.visible('call',[upload.id]);assert.equal(await shelf.openingImage('call','current','用这个开直播'),'https://photos.example/upload');
+ shelf.visible('call',['p1']);assert.equal(await shelf.openingImage('call','current','用这张开直播'),'https://photos.example/louvre');
+});
