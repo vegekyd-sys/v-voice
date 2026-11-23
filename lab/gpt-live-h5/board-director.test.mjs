@@ -388,3 +388,9 @@ test('a lesson starting keeps the title and print being drawn for the question; 
   assert.equal(result.reason, 'drawn');
   assert.deepEqual(director.scene('q').blocks.map(block => block.t), ['photo']);
 });
+
+test('a shelf refresh retains both photo gallery pages without a streaming illustrator', () => {
+  const board = createBoardDirector(scripted());
+  for (const name of ['卢浮宫', '凯旋门']) board.gallery('call', name, [{name, query:name}]);
+  assert.deepEqual(board.state('call').canvas.zones.map(zone=>zone.title), ['卢浮宫','凯旋门']);
+});

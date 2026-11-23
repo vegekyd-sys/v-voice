@@ -192,6 +192,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
   };
   // Every page of a call's canvas, oldest first, and the one V is on.
   const canvasOf = row => ({zones: [...(row.zones ?? []).filter(zone => zone.serial !== row.scene.serial), row.scene].sort((a, b) => a.serial - b.serial), active: zoneId(row.scene)});
+  const stateOf = row => ({scene: row.scene, ...(stream || row.zones?.length ? {canvas: canvasOf(row)} : {})});
   // A page with something on it goes onto the canvas beside the others when V moves to another.
   const shelvePage = row => { row.zones ??= []; if (row.scene.blocks.length) row.zones = [...row.zones.filter(zone => zone.serial !== row.scene.serial), row.scene].sort((a, b) => a.serial - b.serial).slice(-7); };
   const lessonPage = scene => ({...scene, lesson: true, late: true, ...(stream?.cue ? {cue: true} : {})});
@@ -275,7 +276,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       return true;
     },
     /** A page's whole view of the call's board, for a page that asks outside a run. */
-    state(id) { const row = owners.get(id); return row ? {scene: row.scene, ...(stream ? {canvas: canvasOf(row)} : {})} : {scene: emptyScene()}; },
+    state(id) { const row = owners.get(id); return row ? stateOf(row) : {scene: emptyScene()}; },
     /** The whole canvas of a call (see board-scene.mjs normalizeCanvas). */
     canvas(id) { const row = owners.get(id); return row ? canvasOf(row) : {zones: [], active: ''}; },
     /** Tap on the service audit stream; keeps the latest lookup results per call. */
@@ -406,7 +407,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       row.controllerTrigger = trigger;
       const abort = () => controller.abort();
       if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, {once: true});
-      if (clientRev !== row.scene.rev) onOp({op: 'sync', scene: row.scene, ...(stream ? {canvas: canvasOf(row)} : {})});
+      if (clientRev !== row.scene.rev) onOp({op: 'sync', ...stateOf(row)});
       if (illustrate && !stream) {
         try {
           // Nothing is guessed before V has answered, and nothing is redrawn mid-sentence.
