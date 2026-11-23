@@ -77,26 +77,17 @@ test('voice on a second RTP source is heard while the first carries only silence
   clock+=500;peer.receive(rtp(333,8,3));assert.equal(audio.length,11);
   peer.close();
 });
-test('V\'s pauses are passed on as quiet of their own length; quiet put in for late packets is owed back',async()=>{
-  let clock=1000;const {state,werift,OpusScript}=fakes(),audio=[];
-  const peer=new GptLivePeer({werift,OpusScript,onAudio:b=>audio.push(b.readInt16LE(0)),now:()=>clock});await peer.offer();await peer.answer('a');
+test('time a sender leaves out of its timestamps is passed on as quiet of the same length; late packets add nothing',async()=>{
+  const {state,werift,OpusScript}=fakes(),audio=[];
+  const peer=new GptLivePeer({werift,OpusScript,onAudio:b=>audio.push([b.readInt16LE(0),b.length])});await peer.offer();await peer.answer('a');
   const rtp=(sequenceNumber,frame)=>({header:{sequenceNumber,timestamp:frame*960},payload:Buffer.from([10,0])});
   const track=state.peer.track;peer.attach(track);
-  const quiet=()=>audio.filter(sample=>sample===0).length,voice=()=>audio.filter(sample=>sample!==0).length;
-  // Packets one after the other: nothing is added.
-  track.onReceiveRtp.emit(rtp(1,1));clock+=20;track.onReceiveRtp.emit(rtp(2,2));peer.fill();assert.deepEqual([voice(),quiet()],[2,0]);
-  // A pause shorter than the wait (five frames left out): made up when the voice is back, before it.
-  clock+=100;peer.fill();assert.equal(quiet(),0);track.onReceiveRtp.emit(rtp(3,8));
-  assert.deepEqual(audio.slice(-6).map(sample=>sample===0),[true,true,true,true,true,false]);assert.equal(quiet(),5);
-  // A long pause (twenty frames) is passed on as it goes by, and completed to its true length.
-  clock+=200;peer.fill();assert.equal(quiet(),10);clock+=200;peer.fill();assert.equal(quiet(),20);
-  track.onReceiveRtp.emit(rtp(4,29));assert.equal(quiet(),25);assert.equal(voice(),4);
-  // Packets that were only late (no time left out): the quiet put in meanwhile is owed, and comes out of the next pause.
-  clock+=200;peer.fill();assert.equal(quiet(),30);track.onReceiveRtp.emit(rtp(5,30));assert.equal(quiet(),30);
-  clock+=220;peer.fill();assert.equal(quiet(),31,'five owed, one sent');track.onReceiveRtp.emit(rtp(6,41));assert.equal(quiet(),35);
-  assert.deepEqual([peer.stats.gapMs,peer.stats.filledMs],[700,700]);
-  // Nothing after the voice has been gone for seconds, and nothing without timestamps.
-  clock+=5000;peer.fill();assert.equal(quiet(),35);
+  track.onReceiveRtp.emit(rtp(1,1));track.onReceiveRtp.emit(rtp(2,2));assert.deepEqual(audio.map(a=>a[0]),[1000,1000]);
+  // Five frames left out before the third packet: one piece of quiet five frames long, then the packet.
+  const frame=audio[0][1];track.onReceiveRtp.emit(rtp(3,8));
+  assert.deepEqual(audio.slice(2),[[0,frame*5],[1000,frame]]);assert.deepEqual([peer.stats.gapMs,peer.stats.filledMs],[100,100]);
+  // The next packet in sequence and in time, however late it comes: nothing added.
+  track.onReceiveRtp.emit(rtp(4,9));assert.equal(audio.length,5);assert.equal(peer.stats.gapMs,100);
   peer.close();
 });
 test('inbound RTP is decoded in order, a short gap is skipped, late packets are dropped',async()=>{

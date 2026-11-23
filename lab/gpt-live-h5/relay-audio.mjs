@@ -9,10 +9,26 @@ export class PcmPlaybackQueue {
   // the network, so the window it starts with is all it has. Each time the queue runs dry in the
   // middle of a reply the window grows, up to `maxMs`, and stays grown for the call.
   constructor(rate, prefillMs=120, maxFrames=8*1024*1024, {growMs=0,maxMs=prefillMs}={}) {
-    this.rate=rate;this.prefill=Math.ceil(rate*prefillMs/1000);this.grow=Math.ceil(rate*growMs/1000);this.maxPrefill=Math.ceil(rate*Math.max(prefillMs,maxMs)/1000);this.maxFrames=maxFrames;this.clear();
+    this.rate=rate;this.prefill=Math.ceil(rate*prefillMs/1000);this.grow=Math.ceil(rate*growMs/1000);this.maxPrefill=Math.ceil(rate*Math.max(prefillMs,maxMs)/1000);this.maxFrames=maxFrames;
+    // A pause held for a voice that is behind (see `quietAhead`): what counts as quiet (about -42 dBFS), how
+    // much quiet must already have played before it counts as a pause, and how long one pause may be held.
+    // Kept on the instance: this class is also the source of the audio thread's copy.
+    this.quietSample=260;this.pauseMin=Math.ceil(rate*.12);this.holdMax=Math.ceil(rate*.5);this.stretched=0;this.clear();
   }
   starved(){this.underflows++;if(this.grow)this.prefill=Math.min(this.maxPrefill,this.prefill+this.grow);}
-  clear(){this.chunks=[];this.head=0;this.offset=0;this.frames=0;this.phase=0;this.wait=0;this.playing=false;this.consumed=0;this.underflows=0;this.lastPlayedAt=null;this.complete=false;this.holdUntilComplete=false;this.paused=false;}
+  // GPT Live's voice is sent a little slower than it plays (measured: 91 to 98 packets for every 100 due,
+  // none lost, nothing left out of its timestamps), so a queue played at full speed is eaten until it runs
+  // dry in the middle of a word and waits to fill again: one to three breaks in every long answer. A
+  // player made for this stretches the sound a little. Here the pauses V makes anyway are held a little
+  // longer instead: while less than the window is waiting, 120 ms of quiet have just played and what comes
+  // next is quiet too, nothing is taken from the queue (half a second at most for one pause). The 120 ms
+  // keep it out of words: the closure of a stop consonant is quiet as well, but shorter.
+  quietAhead(){
+    const span=Math.min(this.frames,240); // 10 ms of the 24 kHz stream
+    for(let i=0;i<span;i+=6)if(Math.abs(this.peek(i))>=this.quietSample)return false;
+    return span>0;
+  }
+  clear(){this.chunks=[];this.head=0;this.offset=0;this.frames=0;this.phase=0;this.wait=0;this.playing=false;this.consumed=0;this.underflows=0;this.lastPlayedAt=null;this.complete=false;this.holdUntilComplete=false;this.paused=false;this.held=0;this.quietRun=0;}
   hold(){this.holdUntilComplete=true;}
   end(){this.complete=true;this.holdUntilComplete=false;}
   push(pcm){this.complete=false;if(!(pcm instanceof Int16Array)||!pcm.length)throw Error('Invalid PCM');if(this.frames+pcm.length>this.maxFrames)throw Error('PCM queue overflow');this.chunks.push(pcm);this.frames+=pcm.length;}
@@ -28,9 +44,11 @@ export class PcmPlaybackQueue {
     // A complete response can start immediately: no more network frames await.
     if(!this.playing){this.wait+=out.length;if(!this.complete&&this.wait<this.prefill)return;this.playing=true;this.wait=0;}
     const step=24000/this.rate;
+    if(this.grow&&!this.complete&&this.quietRun>=this.pauseMin&&this.frames*this.rate/24000<this.prefill&&this.held<this.holdMax&&this.quietAhead()){this.held+=out.length;this.stretched+=out.length;return;}
+    if(this.held&&!this.quietAhead())this.held=0;
     for(let i=0;i<out.length;i++){
       if(!this.frames){if(!this.complete)this.starved();this.playing=false;this.wait=0;break;}
-      const a=this.peek(0),b=this.peek(1);out[i]=(a+(b-a)*this.phase)/32768;this.lastPlayedAt=at+(i+1)/this.rate;
+      const a=this.peek(0),b=this.peek(1);out[i]=(a+(b-a)*this.phase)/32768;this.quietRun=Math.abs(a)<this.quietSample?this.quietRun+1:0;this.lastPlayedAt=at+(i+1)/this.rate;
       this.phase+=step;while(this.phase>=1&&this.frames){this.phase-=1;this.advance();}
       if(!this.frames)this.phase=0;
     }
@@ -53,7 +71,7 @@ class Speaker extends AudioWorkletProcessor {
  const before=this.queue.frames;this.queue.render(out,currentTime);if(this.outputMuted)out.fill(0);
  if(this.firstNonzeroAt===null){const index=out.findIndex(value=>value!==0);if(index>=0){this.firstNonzeroAt=currentTime+index/sampleRate;this.port.postMessage({type:'first-render',epoch:this.epoch,contextTime:this.firstNonzeroAt});}}
  if(this.reference)for(const value of out){this.ref[this.refPos++]=value;if(this.refPos===this.ref.length){this.port.postMessage({type:'render-reference',epoch:this.epoch,sampleRate,buffer:this.ref.buffer},[this.ref.buffer]);this.ref=new Float32Array(Math.round(sampleRate/50));this.refPos=0;}}
- if(++this.tick%8===0||before>0&&this.queue.frames===0)this.port.postMessage({type:'playback',epoch:this.epoch,consumed:this.queue.consumed,underflows:this.queue.underflows,lastPlayedAt:this.queue.lastPlayedAt,playing:this.queue.playing&&!this.queue.paused&&!this.outputMuted});return true;}
+ if(++this.tick%8===0||before>0&&this.queue.frames===0)this.port.postMessage({type:'playback',epoch:this.epoch,consumed:this.queue.consumed,underflows:this.queue.underflows,stretchedMs:Math.round(this.queue.stretched*1000/sampleRate),lastPlayedAt:this.queue.lastPlayedAt,playing:this.queue.playing&&!this.queue.paused&&!this.outputMuted});return true;}
 }
 class Mic extends AudioWorkletProcessor {
  constructor(){super();this.sum=0;this.count=0;this.phase=0;this.frame=new Int16Array(480);this.index=0;}
@@ -337,7 +355,7 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
       if(e.type==='render-reference'){renderReference?.(e.buffer,e.sampleRate);return;}
       if(e.type==='error'){onError(Error('语音缓存过大，请重新拨号'));return;}
       if(e.type!=='playback')return;
-      stats.queuedOutputBytes=Math.max(0,written-e.consumed)*2;stats.underflows=e.underflows;lastPlayedAt=e.lastPlayedAt;
+      stats.queuedOutputBytes=Math.max(0,written-e.consumed)*2;stats.underflows=e.underflows;if(Number.isFinite(e.stretchedMs))stats.stretchedMs=e.stretchedMs;lastPlayedAt=e.lastPlayedAt;
       if(stats.queuedOutputBytes===0&&!e.playing)backendPlayback=false;
       activity(e.playing&&context.state==='running');reportBusy();
     };

@@ -118,6 +118,31 @@ test('a voice that arrives at the speed it plays starts with a wider window, whi
  assert.equal(done.prefill,15360);assert.equal(done.underflows,0);
  const plain=queue();plain.push(pcm(24000));for(let i=0;i<2000;i++)render(plain,128);assert.equal(plain.underflows,1);assert.equal(plain.prefill,5760);
 });
+test('a voice that falls behind has its own pauses held a little longer; a word is never broken for it',async t=>{
+ const slow=()=>new PcmPlaybackQueue(48000,320,undefined,{growMs:120,maxMs:680});
+ const speech=ms=>pcm(24*ms),quiet=ms=>pcm(24*ms,0);
+ const play=(q,ms)=>{let heard=0;for(let i=0;i<ms*48/128;i++)heard+=render(q,128).some(Boolean)?128:0;return heard;};
+ // A sentence, a pause, and the next sentence not here yet: the pause is held, nothing runs dry.
+ const q=slow();q.push(speech(400));q.push(quiet(300));play(q,320+400+100);
+ assert.equal(q.stretched,0,'120 ms of the pause play first');assert.equal(q.underflows,0);
+ play(q,40);const left=q.frames;assert.ok(left>=24*170&&left<=24*180,`left ${left/24} ms`);play(q,200);assert.equal(q.frames,left,'then nothing is taken while the next sentence is awaited');assert.ok(q.stretched>=48*210);
+ // The next sentence arrives and fills the window: the rest of the pause plays, then the sentence.
+ q.push(speech(400));play(q,700);assert.equal(q.frames,0);assert.equal(q.underflows,1);assert.ok(q.stretched<=48*230,`held ${q.stretched/48} ms`);
+ // One pause is held half a second at most.
+ const long=slow();long.push(speech(400));long.push(quiet(300));play(long,320+400+130+800);assert.equal(long.frames,0);assert.equal(long.stretched,24000+128-24000%128);
+ // The short quiet inside a word (a stop consonant) is played straight through.
+ const word=slow();word.push(speech(400));word.push(quiet(70));word.push(speech(100));play(word,320+400+70+100+50);assert.equal(word.stretched,0);assert.equal(word.frames,0);
+ // Enough waiting, or a reply that is complete: nothing to wait for.
+ const full=slow();full.push(speech(400));full.push(quiet(300));full.push(speech(600));play(full,320+400+300+300);assert.equal(full.stretched,0);
+ const done=slow();done.push(speech(400));done.push(quiet(300));done.end();play(done,900);assert.equal(done.stretched,0);assert.equal(done.frames,0);
+ // The other voices arrive ahead of time and are left alone.
+ const plain=queue(48000,320);plain.push(speech(400));plain.push(quiet(300));play(plain,1200);assert.equal(plain.stretched,0);assert.equal(plain.frames,0);
+ // The copy that runs in the audio thread is this class's own source and reports what it held.
+ assert.doesNotMatch(relayWorkletSource(),/QUIET_SAMPLE|HOLD_MAX_MS/);
+ const f=await fixture(t,'gpt-live-11');const bytes=a=>Buffer.from(a.buffer).toString('base64');
+ f.event({type:'audio',sequence:1,sampleRate:24000,audio:bytes(speech(400))});f.event({type:'audio',sequence:2,sampleRate:24000,audio:bytes(quiet(300))});
+ f.pump(48*1100);assert.ok(f.speaker.processor.queue.stretched>0);assert.ok(f.relay.stats.stretchedMs>0,`stats ${JSON.stringify(f.relay.stats.stretchedMs)}`);
+});
 test('real Grok bridge audio identity matches its completion and releases the held greeting',async t=>{
  const f=await fixture(t,'grok');let sequence=0;
  const bridge=new GrokVoiceBridge({onAudio:(bytes,metadata)=>f.event({type:'audio',sequence:++sequence,sampleRate:24000,audio:bytes.toString('base64'),...metadata}),

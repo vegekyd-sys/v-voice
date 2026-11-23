@@ -9,9 +9,8 @@ const REORDER_DEPTH=4,MAX_PENDING_INPUT_BYTES=WIRE_RATE*2*2; // two seconds of 4
 // Catching up after the caller's audio arrived late (see `catchUp`): what may wait, how long a pause
 // must be before any of it is skipped, and how quiet a pause is (about -35 dBFS at its loudest sample).
 const BACKLOG_BYTES=WIRE_RATE*2*.2,PAUSE_FRAMES=5,QUIET_PEAK=600;
-// V's pauses, kept (see `fill`): how long the voice's source may be silent before quiet is sent in its
-// place, and the longest pause that is filled.
-const FILL_AFTER_MS=120,FILL_MAX_MS=3000;
+// The longest stretch a sender may leave out of its timestamps and have passed on as quiet (see `decode`).
+const FILL_MAX_MS=3000;
 const quiet=(pcm,bytes)=>{for(let i=0;i<bytes;i+=4)if(Math.abs(pcm.readInt16LE(i))>=QUIET_PEAK)return false;return true;};
 // Digital silence still arrives as packets; only audible frames are V speaking.
 const AUDIBLE=200;
@@ -101,24 +100,7 @@ export class GptLivePeer {
     const due=Math.floor((this.now()-this.pumpAt)/FRAME_MS)+1;
     if(due-this.framesSent>25)this.framesSent=due-1; // stalled process: do not replay a backlog
     for(let burst=0;this.framesSent<due&&burst<4;burst++){this.frame();this.framesSent++;}
-    this.fill();
   }
-  // The model's side sends nothing while V pauses between sentences: the next packet's timestamp says how
-  // long the pause was. Only what arrived used to be passed on, so the pauses were cut out of V's voice
-  // while the time still went by: the caller's playback buffer was eaten a pause at a time (sentences ran
-  // together), ran dry, and V broke off for most of a second once or twice in a long answer. The pause is
-  // now passed on as quiet: as it happens once the source has been silent for a moment (so the buffer is
-  // not eaten meanwhile), and made up to the pause's true length when the voice comes back. Quiet put in
-  // for packets that were only late is owed back out of the next pause.
-  fill(){
-    const state=this.current;
-    if(!state||!state.frame||state.ts===undefined||this.closed)return;
-    const idle=this.now()-state.lastAt;
-    if(idle<FILL_AFTER_MS||idle>FILL_MAX_MS)return;
-    const due=Math.floor((idle-FILL_AFTER_MS)/FRAME_MS)+1;
-    while(state.due<due){state.due++;if(state.debt>0)state.debt--;else this.quiet(state);}
-  }
-  quiet(state){state.put++;this.stats.filledMs+=FRAME_MS;this.onAudio(Buffer.alloc(state.frame));}
   // The caller's audio comes over a connection that stalls and then delivers what it held in one
   // burst. The pump sent silence in its place while it was held, so the burst would be heard that much
   // late for the rest of the call, and every answer and interruption with it (up to two seconds, on a
@@ -156,7 +138,7 @@ export class GptLivePeer {
         clearTimeout(oldest.timer);try{oldest.decoder.delete();}catch{}
         this.streams.delete(oldest.ssrc);if(this.current===oldest)this.current=null;
       }
-      stream={ssrc,decoder:new this.OpusScript(WIRE_RATE,WIRE_CHANNELS,this.OpusScript.Application.VOIP),next:undefined,packets:new Map(),timer:null,lastAt:0,loudAt:0,ts:undefined,frame:0,due:0,put:0,debt:0};
+      stream={ssrc,decoder:new this.OpusScript(WIRE_RATE,WIRE_CHANNELS,this.OpusScript.Application.VOIP),next:undefined,packets:new Map(),timer:null,lastAt:0,loudAt:0,ts:undefined};
       this.streams.set(ssrc,stream);this.stats.sources++;
     }
     return stream;
@@ -205,20 +187,18 @@ export class GptLivePeer {
       if(current&&now-current.loudAt<400&&now-current.lastAt<400)return;
       this.current=state;state.ts=undefined;
     }
-    // (How much the sender left out before this packet, by its timestamp: see `fill`.)
+    // A sender that leaves time out of its timestamps (it sends nothing while its speaker pauses) has that
+    // pause passed on as quiet of the same length, so the pause stays where the speaker made it. (Measured on
+    // this model's side: its timestamps leave nothing out; what falls behind there is the sending itself,
+    // which the caller's playback makes up for. `gapMs` says if that ever changes.)
     const ts=packet.header?.timestamp;
     if(Number.isInteger(ts)){
       if(state.ts!==undefined){
         const left=Math.round(((ts-state.ts)>>>0)/FRAME_SAMPLES)-1;
-        if(left>0&&left<=FILL_MAX_MS/FRAME_MS){
-          this.stats.gapMs+=left*FRAME_MS;
-          for(let n=state.due;n<left;n++)this.quiet(state);
-          if(state.put>left)state.debt+=state.put-left;
-        }else if(left<=0)state.debt+=state.put;
+        if(left>0&&left<=FILL_MAX_MS/FRAME_MS){this.stats.gapMs+=left*FRAME_MS;this.stats.filledMs+=left*FRAME_MS;this.onAudio(Buffer.alloc(pcm.length*left));}
       }
       state.ts=ts>>>0;
     }
-    state.due=0;state.put=0;state.frame=pcm.length;
     this.onAudio(pcm);
   }
   close(){
