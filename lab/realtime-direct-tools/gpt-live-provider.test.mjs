@@ -559,3 +559,11 @@ test('a call that follows one whose connection was cut is not greeted: V says it
   // An ordinary call is greeted as before.
   const n=await fixture({tools:END});await ready(n);n.bridge.triggerGreeting('电话已接通。');await pause(10);assert.match(whole(n),/只说一句很短的问候/u);
 });
+
+test('without a lesson tool the model is told the page shows what it names, and what to do when asked for more pictures',()=>{
+  const native=gptLiveDelegationPolicy(new Set(['web_search','exec','end_call']),{display:true});
+  assert.match(native,/屏幕会自动配上你讲到的东西的真实照片[\s\S]*再点出四五样刚才没讲过[\s\S]*只有他明确要新做一张图或一个视频，才委派创作/u);
+  // Nothing to look at, or a lesson tool that brings its own pictures: not said.
+  assert.doesNotMatch(gptLiveDelegationPolicy(new Set(['web_search','exec']),{display:false}),/屏幕会自动配上/u);
+  assert.doesNotMatch(gptLiveDelegationPolicy(new Set(['web_search','explain_on_board']),{display:true}),/屏幕会自动配上/u);
+});

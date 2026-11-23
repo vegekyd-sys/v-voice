@@ -84,6 +84,8 @@ export function gptLiveDelegationPolicy(names,{display=true}={}){
     'Do not delegate when:',
     '- 打招呼、闲聊、谈感受、常识、你自己的看法和建议，或者复述刚才已经拿到、仍然有效的结果。',
     has('explain_on_board')?'':'- 用户要你讲解、解释、科普、介绍、比较一个东西，或者要你讲个故事：你自己讲，不要委派。只有要讲的是今天的事、最新的情况或用户自己的事，而你手里没有资料时，才先委派去查，拿到资料后自己讲。',
+    // (Without a lesson tool the page finds photographs for what is named aloud: asked for more pictures, the model had only told the same four things again.)
+    !has('explain_on_board')&&display?'- 用户的屏幕会自动配上你讲到的东西的真实照片（景点、藏品、菜、动物、人物、产品）：名字说具体，页面才找得到图。用户说想看图、想多看几张时，你自己接着讲：再点出四五样刚才没讲过、叫得出名字的东西，每样一句话，不要把讲过的再讲一遍，也不要委派去生成图片——只有他明确要新做一张图或一个视频，才委派创作。':'',
     '- 用户问你是谁、你能做什么：直接以 V 的身份回答。',
     '- 一件事已经委派出去还没回来：不重复委派，如实说还在查；真正的结果回来之前不能说查到了、办好了。',
     '- 请求确实听不清或有歧义：先用一句话澄清。',
