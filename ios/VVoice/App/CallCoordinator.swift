@@ -86,6 +86,23 @@ import VVoiceCore
     private(set) var documents: [CallDocument] = []
     private(set) var tasks: [CallTask] = []
     private(set) var presentationID = UUID().uuidString
+    /// The call page this App shows (H5Delivery), and whether it is the one the service serves now.
+    struct PageVersion: Equatable, Hashable { let build: String?; let updated: String?; let bundled: Bool }
+    enum PageFreshness: Equatable { case unknown, checking, latest, newer(updated: String?) }
+    var page: PageVersion?
+    var pageFreshness = PageFreshness.unknown
+    /// Set by the page host: download the served page now (it is shown once the App is idle on its home page).
+    @ObservationIgnored var fetchServedPage: (() -> Void)?
+    func checkPageFreshness() async {
+        guard let build = page?.build, api.record != nil else { pageFreshness = .unknown; return }
+        pageFreshness = .checking
+        do {
+            let served = try await api.call("page/version", body: [:], refresh: false)
+            guard let current = served["build"] as? String, !current.isEmpty, page?.build == build else { pageFreshness = .unknown; return }
+            if current == build { pageFreshness = .latest }
+            else { pageFreshness = .newer(updated: H5Release.label(build: nil, updated: served["updated"]).1); fetchServedPage?() }
+        } catch { pageFreshness = .unknown }
+    }
     var islandCaptions = UserDefaults.standard.object(forKey: "islandCaptions") as? Bool ?? true {
         didSet { UserDefaults.standard.set(islandCaptions, forKey: "islandCaptions"); publish() }
     }
@@ -423,6 +440,7 @@ import VVoiceCore
         if let raw = reservation["nativeRuntime"] {
             guard let value = raw as? [String: Any] else { throw VoiceError.protocolMismatch }
             nativeRuntime = try NativeRuntimePolicy.decode(value)
+            transport?.upload = UploadBackpressure(policy: nativeRuntime!.upload ?? .standard)
             let canonical = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
             let fingerprint = SHA256.hash(data: canonical).prefix(8).map { String(format: "%02x", $0) }.joined()
             CallDiagnostics.record("call.runtime", code: "v=1 policy=\(fingerprint) onsetMS=\(nativeRuntime!.pause.onsetMS) thinkingMS=\(nativeRuntime!.timing.thinkingMS)")
@@ -465,6 +483,7 @@ import VVoiceCore
     }
     private func makeRelay(owner: UUID, id: String? = nil) -> RelayTransport {
         let relay = RelayTransport(id: id); transport = relay
+        relay.upload = UploadBackpressure(policy: nativeRuntime?.upload ?? .standard)
         relay.onFailure = { [weak self] error in
             guard let self, self.owned(owner) else { return }
             if self.pendingEndID != nil { Task { await self.end() } }
@@ -1243,7 +1262,7 @@ import VVoiceCore
         guard active || voiceID != nil else { return }
         recovery?.cancel(); recovery = nil; recoveryDeadline?.cancel(); recoveryDeadline = nil
         avatar.end()
-        state.finish(.ended); stopMedia()
+        state.finish(.ended); stopMedia(); filmSound.clear()
         CallDiagnostics.record("call.end")
         let id = voiceID; voiceID = nil
         captionUpdate?.cancel(); captionUpdate = nil
@@ -1317,6 +1336,29 @@ import VVoiceCore
         guard presentationID == owner, active else { throw CancellationError() }
         return ["outputBytes": audio.outputFrames * 2, "queuedBytes": audio.queuedFrames * 2]
     }
+    /// The sound of a video the page is showing: the page plays the picture silent and the App the sound
+    /// (FilmSound.swift). For the page that owns the call, while its audio is up.
+    private let filmSound = FilmSound()
+    func film(_ payload: [String: Any], owner: String) async throws -> [String: Any] {
+        guard presentationID == owner, active, let operation = payload["op"] as? String else { throw CancellationError() }
+        func url() throws -> URL { guard let text = payload["url"] as? String, let url = URL(string: text) else { throw VoiceError.protocolMismatch }; return url }
+        switch operation {
+        case "load":
+            // (A call that connects anew goes on being the page's call, and so does what it was loading.)
+            let seconds = try await filmSound.load(try url())
+            guard presentationID == owner, active else { throw CancellationError() }
+            return ["seconds": seconds]
+        case "play":
+            guard let at = payload["at"] as? Double, at.isFinite, let file = filmSound.file(try url()) else { throw VoiceError.protocolMismatch }
+            try audio.playFilm(file, at: at)
+            return ["playing": true]
+        case "stop": audio.stopFilm(); return [:]
+        case "at": return ["at": audio.filmPosition as Any? ?? NSNull()]
+        default: throw VoiceError.protocolMismatch
+        }
+    }
+    /// The page is out of sight or gone: what it was showing is not heard either.
+    func silenceFilm() { audio.stopFilm() }
     var h5Outcome: String { tasks.isEmpty ? avatarOutcome : "pending" }
     var activityState: CallAttributes.ContentState {
         let caption = IslandCaption.current(conversation, phase: phase)

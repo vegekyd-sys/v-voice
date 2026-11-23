@@ -1392,7 +1392,7 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-scroll::-webkit-scrollbar { display: none; }
 .board-body {
   box-sizing: border-box;
-  min-height: calc(100% / var(--zoom, 1));
+  min-height: calc(var(--room, 100%) / var(--zoom, 1));
   padding: 26px 20px 28px 40px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1632,10 +1632,126 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 :is(.board-list, .board-steps) li > .board-thumb { grid-column: 2; grid-row: 1; width: 96px; height: 96px; }
 :is(.board-list, .board-steps) li:has(> .board-thumb) > .board-item { grid-column: 3; }
 .board-compare .board-thumb { width: 100%; height: 118px; margin-bottom: 10px; }
-.board-gallery { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
-.board-gallery li { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.board-gallery .board-thumb { width: 100%; height: auto; aspect-ratio: 4 / 3; border-radius: 10px; overflow: hidden; }
-.board-gallery .board-thumb img { object-fit: cover; }
+/* a gallery: whole pictures in rows of one height. A picture's share of its row is its
+   shape (width / height), so the row stands level; rows end at the empty break items
+   the page places, and a row holding too little stops at --cap tall. Nothing is cropped.
+   Its height follows its width, so when the page is drawn smaller to fit (useFit) the
+   width it may take is made smaller with it. */
+.board-gallery { list-style: none; margin: 0; padding: 0; max-width: calc(100% * var(--zoom, 1)); display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; column-gap: var(--gap, 14px); row-gap: 0; }
+.board-gallery li { flex: var(--shape, 1.33) 1 0px; min-width: 0; max-width: calc(var(--shape, 1.33) * var(--cap, 230px)); display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+.board-gallery li.board-gallery-break { flex: 0 0 100%; max-width: none; height: 0; margin: 0; }
+.board-gallery .board-thumb { width: 100%; height: auto; aspect-ratio: var(--shape, 1.33); padding: 5px; border-radius: 8px; overflow: hidden; transform: rotate(calc(var(--tilt, 0deg) * .4)); }
+.board-gallery .board-thumb img { border-radius: 4px; }
+.board-gallery [data-now] > .board-thumb { transform: rotate(calc(var(--tilt, 0deg) * .4)) scale(1.03); }
+/* on a phone a name under a narrow picture stays on one or two short lines */
+@media (max-width: 700px) { .board-gallery .board-item .board-key { font-size: 15px; line-height: 1.35; } }
+/* A picture opens large when tapped (board.jsx Enlarged): over the whole window, on the
+   page's paper colour, the picture as a print with its name under it. */
+.board [data-enlarge] { cursor: zoom-in; -webkit-tap-highlight-color: transparent; }
+.board [data-enlarge]:focus-visible { outline: 2px solid var(--pen); outline-offset: 3px; }
+.board-body[data-cue] [data-ink="false"] [data-enlarge] { pointer-events: none; }
+.board-enlarged {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: max(56px, env(safe-area-inset-top)) 18px max(28px, env(safe-area-inset-bottom));
+  background: #f7f3faeb;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  cursor: zoom-out;
+  animation: board-enlarged-in .22s ease-out both;
+}
+.board-enlarged figure { margin: 0; min-width: 0; min-height: 0; max-width: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.board-enlarged img {
+  display: block;
+  max-width: min(100%, 1400px);
+  max-height: calc(var(--voice-height, 100dvh) - 150px);
+  object-fit: contain;
+  padding: 8px;
+  background: #fffdfb;
+  border-radius: 6px;
+  box-shadow: 0 28px 60px -28px #4d356099;
+  transform: rotate(-.5deg);
+  animation: board-enlarged-print .3s cubic-bezier(.2, 1.2, .35, 1) both;
+}
+/* (Sized by the window, not the figure: the figure's own width comes from the picture.) */
+.board-enlarged img[data-shaped] {
+  box-sizing: content-box;
+  width: min(100vw - 52px, 1400px, var(--most), (var(--voice-height, 100dvh) - 150px) * var(--ratio));
+  height: auto;
+  max-width: none;
+  max-height: none;
+  aspect-ratio: var(--ratio);
+}
+.board-enlarged figcaption {
+  max-width: 34em;
+  font-family: "Hannotate SC", "HanziPen SC", "Yuanti SC", "Kaiti SC", "STKaiti", "KaiTi", "Avenir Next", "PingFang SC", system-ui, sans-serif;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--ink);
+}
+.board-enlarged-close {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top));
+  right: max(14px, env(safe-area-inset-right));
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--ink-soft);
+  background: #fffdfecc;
+  box-shadow: 0 1px 4px #4d356026;
+  cursor: pointer;
+}
+.board-enlarged-close svg { width: 20px; height: 20px; }
+.board-enlarged-close path { stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+/* The viewer (ui/board-viewer.jsx): the one way to look closer at anything on the board, found or
+   made. The others of the page are a swipe or an arrow away; it can be saved and worked on from here. */
+.board-viewer figure { cursor: default; gap: 12px; }
+.board-viewer img { cursor: zoom-out; }
+.board-viewer :is(img, video) { max-height: calc(var(--voice-height, 100dvh) - 220px); }
+.board-viewer video { display: block; max-width: min(100%, 1400px); padding: 8px; background: #fffdfb; border-radius: 6px; box-shadow: 0 28px 60px -28px #4d356099; animation: board-enlarged-print .3s cubic-bezier(.2, 1.2, .35, 1) both; }
+.board-viewer :is(img, video)[data-shaped] { box-sizing: content-box; width: min(100vw - 52px, 1400px, var(--most), (var(--voice-height, 100dvh) - 220px) * var(--ratio)); height: auto; max-width: none; max-height: none; aspect-ratio: var(--ratio); }
+.board-viewer figcaption { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 4px 12px; }
+.board-viewer figcaption small { font-size: 13px; font-weight: 500; color: var(--faint, #8b7f99); font-variant-numeric: tabular-nums; }
+.board-viewer-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; }
+.board-viewer-bar button { min-height: 44px; padding: 0 20px; border: 1.5px solid var(--accent); border-radius: 22px; background: #fffdfb; color: var(--accent); font-family: "Hannotate SC", "HanziPen SC", "Yuanti SC", "Kaiti SC", "STKaiti", "KaiTi", "Avenir Next", "PingFang SC", system-ui, sans-serif; font-size: 16px; font-weight: 600; cursor: pointer; }
+.board-viewer-bar button:active { background: var(--accent); color: #fff; }
+.board-viewer-bar .board-viewer-save { border-color: #4d356033; color: var(--ink); }
+.board-viewer-bar .board-viewer-save[aria-busy] { opacity: .6; }
+.board-viewer-film { box-sizing: border-box; display: flex; align-items: center; gap: 4px; width: min(100%, 460px); padding: 0 6px; border-radius: 24px; background: #fffdfb; color: var(--ink); box-shadow: 0 1px 4px #4d356026; }
+.board-viewer figure:has(.board-viewer-film) video { max-height: calc(var(--voice-height, 100dvh) - 290px); }
+.board-viewer figure:has(.board-viewer-film) video[data-shaped] { width: min(100vw - 52px, 1400px, var(--most), (var(--voice-height, 100dvh) - 290px) * var(--ratio)); max-height: none; }
+.board-viewer-film button { flex: none; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; cursor: pointer; }
+.board-viewer-film button:active { background: #4d356014; }
+.board-viewer-film svg { width: 22px; height: 22px; }
+.board-viewer-film svg path { fill: currentColor; }
+.board-viewer-film svg[data-line] path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.board-viewer-film svg[data-line] path:first-child { fill: currentColor; }
+.board-viewer-film span { flex: none; font-size: 13px; font-weight: 500; color: var(--faint, #8b7f99); font-variant-numeric: tabular-nums; }
+.board-viewer-film input { -webkit-appearance: none; appearance: none; flex: 1; min-width: 60px; height: 44px; margin: 0; background: none; cursor: pointer; }
+.board-viewer-film input::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--accent) var(--done, 0%), #4d356026 var(--done, 0%)); }
+.board-viewer-film input::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -7px; border: 0; border-radius: 50%; background: var(--accent); box-shadow: 0 1px 3px #4d356059; }
+.board-viewer-turn { position: absolute; top: 50%; width: 44px; height: 44px; margin-top: -40px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: var(--ink-soft); background: #fffdfecc; box-shadow: 0 1px 4px #4d356026; cursor: pointer; }
+.board-viewer-turn[data-way="back"] { left: max(10px, env(safe-area-inset-left)); }
+.board-viewer-turn[data-way="on"] { right: max(10px, env(safe-area-inset-right)); }
+.board-viewer-turn svg { width: 20px; height: 20px; }
+.board-viewer-turn path { stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+/* (On a phone the picture has the width; the arrows stand over its lower edge, and a swipe turns too.) */
+@media (max-width: 700px) { .board-viewer-turn { top: auto; bottom: max(96px, env(safe-area-inset-bottom) + 84px); margin-top: 0; } }
+/* A photograph the caller has picked: the one V takes "this one" to be. */
+.board-thumb[data-picked] { box-shadow: 0 0 0 3px var(--pen), 0 10px 18px -10px #4d356099; }
+@keyframes board-enlarged-in { from { opacity: 0; } }
+@keyframes board-enlarged-print { from { opacity: 0; transform: translateY(14px) scale(.96) rotate(-.5deg); } }
+@media (prefers-reduced-motion: reduce) { .board-enlarged, .board-enlarged img { animation: none; } }
+/* Once a gallery has a picture showing, the page's lead print steps aside: the gallery is the
+   pictures the caller asked to see, and the print would take the height they need. */
+.board-body:has(.board-gallery [data-ink="true"]) .board-photo { display: none; }
 .board-gallery .board-item { display: flex; flex-direction: column; gap: 2px; font-size: 14px; line-height: 1.35; }
 .board-gallery .board-item > span { font-size: 12px; color: var(--board-faint, #8b7f99); }
 .board-node .board-thumb { width: 84px; height: 84px; margin-bottom: 5px; }
@@ -1682,6 +1798,100 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
 .board-print[data-ready="true"] { animation: none; background: #ece4f3; }
 .board-print img { display: block; width: 100%; height: 100%; object-fit: cover; animation: board-in .6s ease-out both; }
 .board-photo figcaption { padding-top: 7px; font-family: var(--hand); font-size: 15px; line-height: 1.35; text-align: center; color: #5a4a66; overflow-wrap: anywhere; }
+
+/* A made thing (ui/board-work.jsx): the picture or video V generated in this call, in one frame.
+   A sketch while it is made, the picture developing into it, the video taking the picture's place. */
+.board-block[data-type="work"] { display: flex; justify-content: center; }
+.board-work { margin: 0; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 9px; }
+.board-work-frame {
+  position: relative; width: min(100%, calc(var(--work-cap, min(56vh, 560px)) * var(--shape, 1.33))); aspect-ratio: var(--shape, 1.33);
+  box-sizing: border-box; padding: 9px; background: #fffdfb; border-radius: 3px;
+  box-shadow: 0 22px 36px -20px #4d356080, 0 0 0 1px #4d35600d;
+  transform: rotate(var(--tilt, 0deg)); transition: aspect-ratio .5s ease, width .5s ease, box-shadow .25s, transform .25s;
+  -webkit-tap-highlight-color: transparent; outline: none;
+}
+.board-work-frame[role="button"] { cursor: pointer; }
+.board-work-frame > :is(img, video, .board-work-sketch, .board-work-failed) { position: absolute; inset: 9px; width: calc(100% - 18px); height: calc(100% - 18px); border-radius: 2px; }
+.board-work-frame > :is(img, video) { display: block; object-fit: cover; background: #ece4f3; }
+/* The picture develops: out of the grey of a print just pulled, into its colours. */
+.board-work-print { opacity: 0; }
+.board-work-print[data-loaded] { opacity: 1; animation: board-work-develop 1.5s cubic-bezier(.2, .7, .2, 1) both; }
+video.board-work-print[data-loaded] { animation: board-in .7s ease-out both; }
+.board-work-frame > .board-work-sketch { z-index: 1; }
+.board-work-frame > .board-work-print { z-index: 2; }
+/* A video that waits for the caller's tap: the picture it was made from, a play mark over it. */
+.board-work-frame > .board-work-play { position: absolute; inset: 9px; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border-radius: 2px; background: #2a203040; pointer-events: none; }
+.board-work-play svg { width: 56px; height: 56px; padding: 14px; box-sizing: border-box; border-radius: 50%; background: #fffdfee6; box-shadow: 0 2px 10px #2a203040; }
+.board-work-play path { fill: var(--ink); }
+.board-work-play p { margin: 0; padding: 3px 10px; border-radius: 999px; font-size: 13px; color: #fff; background: #2a203099; }
+.board-work-large, .board-work-this { z-index: 3; }
+.board-work-under { animation: board-work-drift 2.6s ease-in-out infinite alternate; }
+/* Being made: pencil lines hatched across the sheet, again and again, with what was asked for written over them. */
+.board-work-sketch { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; overflow: hidden; padding: 14px; box-sizing: border-box; text-align: center;
+  background: #f6f1fa repeating-linear-gradient(-52deg, transparent 0 9px, #b9aec433 9px 10.5px); }
+.board-work-sketch[data-over] { background: linear-gradient(#2a203000, #2a203099); justify-content: flex-end; padding-bottom: 16px; }
+.board-work-sketch > i { position: absolute; left: -30%; width: 160%; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--pencil) 20%, var(--pencil) 80%, transparent); transform: rotate(-52deg) scaleX(0); transform-origin: left center; animation: board-work-stroke 2.4s ease-in-out infinite; }
+.board-work-sketch > i:nth-child(1) { top: 30%; }
+.board-work-sketch > i:nth-child(2) { top: 62%; animation-delay: .5s; }
+.board-work-sketch > i:nth-child(3) { top: 94%; animation-delay: 1s; }
+.board-work-sketch[data-over] > i { display: none; }
+.board-work-sketch p { position: relative; margin: 0; font-family: var(--hand); font-size: 19px; font-weight: 600; color: #5a4a66; }
+.board-work-sketch p span { font-weight: 500; color: var(--faint, #8b7f99); font-variant-numeric: tabular-nums; }
+.board-work-sketch p b { font-weight: 600; }
+.board-work-sketch q { position: relative; max-width: 30em; font-family: var(--hand); font-size: 14px; line-height: 1.5; color: #8b7f99; quotes: none; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.board-work-sketch[data-over] p { color: #fff; text-shadow: 0 1px 8px #0008; }
+.board-work-sketch[data-over] p span { color: #ffffffcc; }
+.board-work-failed { display: grid; place-items: center; background: #f6f1fa; }
+.board-work-failed p { margin: 0; font-family: var(--hand); font-size: 17px; color: var(--faint, #8b7f99); }
+/* Picked by the caller: "this one" for V. The pen's colour round the print, and its name on a tag. */
+.board-work[data-picked] .board-work-frame { box-shadow: 0 0 0 3px var(--pen), 0 24px 38px -20px #4d356099; transform: rotate(0deg) scale(1.012); }
+.board-work-frame:focus-visible { box-shadow: 0 0 0 3px #7c5cff88, 0 22px 36px -20px #4d356080; }
+.board-work-this { position: absolute; left: -8px; top: -12px; padding: 3px 10px 4px; border-radius: 4px; background: var(--pen); color: #fff; font-family: var(--hand); font-size: 14px; font-weight: 600; transform: rotate(-5deg); box-shadow: 0 6px 12px -6px #4d3560aa; animation: board-pop .28s cubic-bezier(.3, 1.5, .5, 1) both; }
+.board-work-large { position: absolute; right: 16px; bottom: 16px; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: #2a2030aa; color: #fff; cursor: pointer; opacity: .85; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.board-work-large svg, .board-work-sound svg { width: 18px; height: 18px; }
+.board-work-large path, .board-work-sound path { stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.board-work-sound { position: absolute; left: 16px; bottom: 16px; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: #2a2030aa; color: #fff; cursor: pointer; opacity: .85; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); z-index: 3; }
+.board-work-sound path:first-child { fill: currentColor; }
+/* Several made things on one page stand two abreast, on a phone too, each smaller. */
+.board-row > .board-block[data-type="work"] .board-work-frame { --work-cap: min(34vh, 340px); padding: 6px; }
+.board-row > .board-block[data-type="work"] .board-work-frame > :is(img, video, .board-work-sketch, .board-work-failed) { inset: 6px; width: calc(100% - 12px); height: calc(100% - 12px); }
+.board-row > .board-block[data-type="work"] :is(.board-work-large, .board-work-sound) { width: 36px; height: 36px; bottom: 11px; }
+.board-row > .board-block[data-type="work"] .board-work-large { right: 11px; }
+.board-row > .board-block[data-type="work"] .board-work-sound { left: 11px; }
+.board-row > .board-block[data-type="work"] .board-work-sketch p { font-size: 15px; }
+.board-row > .board-block[data-type="work"] .board-work-sketch q { display: none; }
+.board-row > .board-block[data-type="work"] .board-work-name { font-size: 15px; }
+.board-row > .board-block[data-type="work"] .board-work-acts button { min-height: 38px; padding: 0 13px; font-size: 14px; }
+.board-row > .board-block[data-type="work"] .board-work-acts span { display: none; }
+.board-work figcaption { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 4px 10px; font-family: var(--hand); text-align: center; overflow-wrap: anywhere; }
+.board-work-name { font-size: 19px; font-weight: 600; color: #4a3a56; animation: board-in .5s ease-out both; }
+.board-work figcaption small { font-size: 12.5px; color: var(--faint, #8b7f99); }
+.board-work figcaption .board-work-refs { flex-basis: 100%; }
+/* Its versions, oldest first: the picture, the picture changed, the video made of it. */
+.board-work-line { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: 8px; }
+.board-work-line li + li::before { content: "→"; margin-right: 8px; color: var(--pencil); font-size: 13px; }
+.board-work-line li { display: flex; align-items: center; }
+.board-work-line button { position: relative; width: 46px; height: 46px; padding: 3px; border: 0; border-radius: 4px; background: #fffdfb; box-shadow: 0 0 0 1px #4d35601f, 0 8px 12px -8px #4d356066; cursor: pointer; overflow: hidden; }
+.board-work-line button[data-current] { box-shadow: 0 0 0 2px var(--pen), 0 8px 12px -8px #4d356066; }
+.board-work-line button :is(img, i) { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 2px; background: #ece4f3; }
+.board-work-line button[data-state="making"] :is(img, i) { opacity: .5; animation: board-work-breathe 1.4s ease-in-out infinite alternate; }
+.board-work-line button svg { position: absolute; inset: 0; margin: auto; width: 20px; height: 20px; fill: #fff; filter: drop-shadow(0 1px 3px #0009); }
+/* What V can be asked to do with the picked thing. */
+.board-work-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; animation: board-in .3s ease-out both; }
+.board-work-acts button { min-height: 44px; padding: 0 18px; border: 1.5px solid var(--pen); border-radius: 22px; background: #fffdfb; color: var(--pen); font-family: var(--hand); font-size: 16px; font-weight: 600; cursor: pointer; }
+.board-work-acts button:active { background: var(--pen); color: #fff; }
+.board-work-acts span { font-family: var(--hand); font-size: 13.5px; color: var(--faint, #8b7f99); }
+@media (max-width: 700px) {
+  .board-row:has(> .board-block[data-type="work"]) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 10px; }
+  .board-work-frame { width: min(100%, calc(var(--work-cap, 46vh) * var(--shape, 1.33))); padding: 7px; }
+  .board-work-frame > :is(img, video, .board-work-sketch, .board-work-failed) { inset: 7px; width: calc(100% - 14px); height: calc(100% - 14px); }
+  .board-work-name { font-size: 17px; }
+}
+@keyframes board-work-develop { from { opacity: 0; filter: blur(16px) saturate(.1) brightness(1.25); } 55% { opacity: 1; filter: blur(5px) saturate(.5) brightness(1.1); } to { filter: none; } }
+@keyframes board-work-stroke { 0% { transform: rotate(-52deg) scaleX(0); opacity: .9; } 60% { transform: rotate(-52deg) scaleX(1); opacity: .9; } 100% { transform: rotate(-52deg) scaleX(1); opacity: 0; } }
+@keyframes board-work-drift { from { filter: saturate(.9) brightness(.96); } to { filter: saturate(1.1) brightness(1.06); } }
+@keyframes board-work-breathe { to { opacity: .9; } }
+@media (prefers-reduced-motion: reduce) { .board-work-print, .board-work-under, .board-work-sketch > i, .board-work-this { animation: none; } }
 
 /* emphasis: the words V marks, and the piece V is on */
 .board-em {
@@ -1972,6 +2182,11 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
   .board-body[data-side] .board-block[data-size="small"] { grid-column: 2; width: 100%; max-width: 250px; justify-self: center; align-self: start; }
   .board-body:not([data-side]) .board-block { max-width: 720px; }
   .board-body:not([data-side]) .board-block[data-size="small"] { max-width: 300px; justify-self: start; }
+  /* a gallery takes the page's whole width; the notes beside it go under it, side by side */
+  .board-body[data-side]:has(> .board-block[data-look="gallery"]) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .board-body[data-side]:has(> .board-block[data-look="gallery"]) > .board-block[data-size="wide"] { grid-column: 1 / -1; }
+  .board-body[data-side]:has(> .board-block[data-look="gallery"]) > .board-block[data-size="small"] { grid-column: auto; }
+  .board-body .board-block[data-look="gallery"] { max-width: none; }
   .board-item .board-key { font-size: 21px; }
   .board-item > span { font-size: 16px; }
   .board-list, .board-steps { gap: 16px; }
@@ -2000,3 +2215,69 @@ html[data-tv-overlay="true"]:not([data-tv-layout="full"]) #app {background:trans
     font: inherit; font-size: 17px; line-height: 1.55; text-align: left; color: var(--ink); cursor: pointer; }
   .call-page[data-board="true"] .board-now[data-who="user"] { color: var(--faint); }
 }
+
+/* The canvas (VOICE_BOARD_CANVAS): a pointer laid over the page's own blocks. */
+/* One pointer on the page: at the place on a picture, or on the written item, that V is on. */
+.board-body { position: relative; }
+.board-pointer { position: absolute; z-index: 6; left: 92%; top: 92%; width: clamp(20px, 2.6vw, 30px); opacity: 0; pointer-events: none; filter: drop-shadow(0 2px 3px #3c348959);
+  transition: left .7s cubic-bezier(.22, .9, .25, 1), top .7s cubic-bezier(.22, .9, .25, 1), opacity .4s; }
+.board-pointer[data-on] { opacity: 1; }
+.board-pointer svg { display: block; width: 100%; height: auto; }
+.board-pointer path { fill: #4b3d82; stroke: #fffdfb; stroke-width: 1.6; stroke-linejoin: round; }
+/* The places pinned on a picture: only the one V is on is ringed and named; it fades when V moves on. */
+.board-thumb, .board-print { position: relative; }
+.board-pins { position: absolute; inset: 4px; pointer-events: none; }
+.board-print > .board-pins { inset: 0; }
+.board-pins svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.board-pin-ring { fill: none; stroke: var(--pen); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; opacity: 0; transition: opacity .6s; }
+.board-pin-ring[data-on] { opacity: 1; animation: board-draw .7s .5s ease-out both; }
+.board-pin-tag { position: absolute; z-index: 2; transform: translate(-50%, -100%) rotate(-1.5deg); padding: 3px 9px 2px; border-radius: 3px; font-family: var(--hand); font-size: clamp(14px, 1.7vw, 19px); font-weight: 600; line-height: 1.3; color: #3b2f6b; white-space: nowrap;
+  /* (A slip of the page's own note paper, so the words read on any picture: the highlighter alone was lost on a busy one, 11/21.) */
+  background: #ffe9a3; box-shadow: 0 0 0 1.5px #fffdfbd9, 0 6px 12px -5px #2a1f4a8c; opacity: 0; transition: opacity .5s; }
+.board-pin-tag[data-below] { transform: translate(-50%, 0) rotate(-1.5deg); }
+.board-pin-tag[data-on] { opacity: 1; transition-delay: .7s; }
+.board-pin-aim { position: absolute; width: 0; height: 0; }
+/* A list's picture shown large where it is: the one V is on (board.jsx useOpenPicture). Taped like a note. */
+:is(.board-list, .board-steps) li[data-open]:has(> .board-thumb) { grid-template-columns: 30px minmax(0, 1fr); align-items: start; }
+:is(.board-list, .board-steps) li[data-open] > .board-thumb { grid-column: 2; grid-row: 1; width: min(100%, calc(var(--open, 250px) * var(--shape, 1.33))); height: auto; aspect-ratio: var(--shape, 1.33); padding: 6px; background: #fbf1cf; --tilt: 0deg; margin: 2px 0 6px; }
+:is(.board-list, .board-steps) li[data-open]:has(> .board-thumb) > .board-item { grid-column: 2; grid-row: 2; }
+:is(.board-list, .board-steps) li[data-open] > .board-thumb > .board-pins { inset: 6px; }
+:is(.board-list, .board-steps) li[data-open] > .board-thumb::before { content: ""; position: absolute; z-index: 1; top: -9px; left: 50%; width: 54px; height: 17px; transform: translateX(-50%) rotate(-3deg); background: repeating-linear-gradient(90deg, #fffaf0c9 0 5px, #fff4dfc9 5px 10px); box-shadow: 0 2px 5px -2px #4d356052; }
+.board-body[data-cue] :is(.board-list, .board-steps) li > .board-thumb { cursor: pointer; }
+/* The two things of a comparison stand taller when places are pinned on them. */
+.board-versus:has(.board-thumb[data-pinned]) .board-vs-side .board-thumb { height: clamp(110px, 16vw, 200px); }
+/* A print that is the page's only picture is shown large (the hero): its own shape, whole, on butter paper. */
+.board-photo[data-hero] { width: min(100%, 620px); max-width: none; justify-self: center; background: #fbf1cf; padding: 8px 8px 6px; }
+.board-photo[data-hero] .board-print { aspect-ratio: var(--shape, 1.33); max-height: calc(var(--room, 100vh) * .58); margin: 0 auto; background: #fbf1cf; }
+.board-photo[data-hero] .board-print img { object-fit: contain; }
+/* A pitch with names placed on it (stage). */
+.board-block[data-type="stage"] { container-type: inline-size; }
+.board-stage-sheet { position: relative; width: min(100%, calc(var(--room, 100vh) * .7 * 1000 / var(--sheet-h, 1000))); margin: 4px auto 0; }
+.board-stage-pitch { position: absolute; inset: 0; width: 100%; height: 100%; }
+.board-stage-pitch :is(rect, line, circle) { fill: none; stroke: #d9cfe6; stroke-width: 4; }
+.board-stage-arrow { fill: none; stroke: #4b3d82; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; transition: opacity .5s; }
+.board-stage-arrow[data-ink="false"] { opacity: 0; }
+.board-stage-say { position: absolute; z-index: 3; transform: translate(-50%, -50%); padding: 0 .3em; border-radius: 6px; background: #fffdfb; font-family: var(--hand); font-size: clamp(12px, 3.2cqw, 18px); color: #4b3d82; white-space: nowrap; transition: opacity .5s; }
+.board-stage-say[data-ink="false"] { opacity: 0; }
+.board-stage-chip { position: absolute; z-index: 3; display: grid; justify-items: center; transform: translate(-50%, -50%); text-align: center; white-space: nowrap; transition: opacity .5s; }
+.board-stage-chip b { padding: 0 .2em; font-family: var(--hand); font-size: clamp(12px, 3.3cqw, 19px); font-weight: 600; color: #4b3d82; background: linear-gradient(transparent 55%, var(--butter) 55%, var(--butter) 95%, transparent 95%); transition: background .4s; }
+.board-stage-chip small { font-size: clamp(10px, 2.4cqw, 13px); color: #7a7298; }
+.board-stage-chip::before { content: ""; width: clamp(8px, 1.8cqw, 13px); aspect-ratio: 1; border-radius: 50%; background: #4b3d82; box-shadow: 0 0 0 3px #fffdfb; }
+.board-stage-chip[data-now] b { background: linear-gradient(transparent 50%, var(--marker) 50%, var(--marker) 95%, transparent 95%); }
+.board-stage-chip[data-ink="false"] { opacity: .22; }
+@media (prefers-reduced-motion: reduce) { .board-pointer { transition: opacity .2s; } .board-pin-ring[data-on] { animation: none; stroke-dashoffset: 0; } }
+/* A page led by one large picture (the hero print, a pitch) on a wide panel (data-lay, set from the panel's own
+   shape in board.jsx useFit). Lying on its side: the picture on the left, the written blocks beside it, one under
+   another (two abreast in that narrow column broke their words a character a line, 11/21). */
+.board-body:is([data-lead], :has(> .board-block[data-type="stage"])) > :is(.board-block[data-type="stage"], .board-photo[data-hero]) { grid-column: 1 / -1; }
+.board-body[data-lay="side"]:is([data-lead], :has(> .board-block[data-type="stage"])) { grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); grid-auto-flow: row dense; align-items: start; }
+.board-body[data-lay="side"]:is([data-lead], :has(> .board-block[data-type="stage"])) > :is(.board-block[data-type="stage"], .board-photo[data-hero]) { grid-column: 1; grid-row: 1 / span 6; }
+.board-body[data-lay="side"]:is([data-lead], :has(> .board-block[data-type="stage"])) > :not([data-type="stage"], [data-hero], .board-pointer) { grid-column: 2; max-width: 100%; width: auto; justify-self: stretch; }
+.board-body[data-lay="side"]:is([data-lead], :has(> .board-block[data-type="stage"])) > .board-row { grid-template-columns: minmax(0, 1fr); }
+.board-body[data-lay="side"] .board-photo[data-hero] .board-print { max-height: calc(var(--room, 100vh) * .74); }
+/* Wide but upright: the picture takes the top, and the written blocks stand two abreast under it. */
+.board-body[data-lay="top"]:is([data-lead], :has(> .board-block[data-type="stage"])) { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.board-body[data-lay="top"]:is([data-lead], :has(> .board-block[data-type="stage"])) > :is(.board-block[data-type="stage"], .board-photo[data-hero], .board-row) { grid-column: 1 / -1; }
+.board-body[data-lay="top"]:is([data-lead], :has(> .board-block[data-type="stage"])) > .board-block:not([data-type="stage"], [data-hero]) { grid-column: auto; max-width: 100%; width: auto; justify-self: stretch; }
+/* The large picture of a list is larger on a wide panel. */
+.board-body[data-lay] :is(.board-list, .board-steps) { --open: 320px; }

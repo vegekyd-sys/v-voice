@@ -541,6 +541,8 @@ function CallPage({view, actions, options}) {
           {inCall && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
         </section>
         {board && <Board scene={board} canvas={state.boardCanvas} spoken={state.boardSpoken} caption={caption} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
+          works={state.boardAssets ? {...state.boardAssets, pick: options.boardWorks?.pick, shown: options.boardWorks?.shown, save: options.boardWorks?.save, viewing: options.boardWorks?.viewing, autoSound: options.boardWorks?.autoSound, film: options.boardWorks?.film, inline: options.boardWorks?.inline, act: state.composer.enabled ? text => void actions.steer(text) : null}
+            : options.boardWorks?.save ? {save: options.boardWorks.save, viewing: options.boardWorks.viewing, autoSound: options.boardWorks.autoSound, film: options.boardWorks.film} : null}
           onReport={[...state.transcript.history, ...state.transcript.current].some(row => row.document) ? openReport : null} />}
         {inCall && (
           <aside className="chat-panel" aria-label="聊天内容">
@@ -559,8 +561,8 @@ function CallPage({view, actions, options}) {
 }
 
 /** Renders synchronously so the call engine can bind its elements right after. */
-export function mountCallUi(document, view, {actions, renderAssistant, onDocumentShown, loadBoardPhoto}) {
+export function mountCallUi(document, view, {actions, renderAssistant, onDocumentShown, loadBoardPhoto, boardWorks}) {
   const root = createRoot(document.getElementById('app'));
-  flushSync(() => root.render(<CallPage view={view} actions={actions} options={{renderAssistant, onDocumentShown, loadBoardPhoto}} />));
+  flushSync(() => root.render(<CallPage view={view} actions={actions} options={{renderAssistant, onDocumentShown, loadBoardPhoto, boardWorks}} />));
   return root;
 }

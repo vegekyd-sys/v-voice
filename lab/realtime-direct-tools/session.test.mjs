@@ -1878,3 +1878,133 @@ test('GPT Live 1.1 is offered only with a login and media stack, and is told not
  // Who V is and how V thinks come from the shared persona; how to speak is this model's own, and short.
  assert.match(text,/\nIdentity:\nYou are a self-evolving AI partner/u);assert.match(text,/\nAgency and judgment:/u);assert.doesNotMatch(text,/Pacing policy|Human presence policy|Conversation style:|我想一下/u);
 });
+
+test('a call says which way it ended: the voice service closing it, or the page going away', async t => {
+ const f = await fixture(undefined, 'seeduplex'); t.after(() => f.service.dispose());
+ f.event({type: 'session.closed', reason: 'max_duration'});
+ for (let attempt = 0; attempt < 100 && !f.audit.some(e => e.type === 'call.closed'); attempt++) await delay(5);
+ assert.equal(f.audit.find(e => e.type === 'call.closed')?.why, 'provider-upstream-closed');
+ assert.equal(f.audit.find(e => e.type === 'call.provider-status' && e.stage === 'upstream-closed')?.reason, 'max_duration');
+ const g = await fixture(undefined, 'seeduplex'); t.after(() => g.service.dispose());
+ g.client.emit('close', 1006);
+ for (let attempt = 0; attempt < 100 && !g.audit.some(e => e.type === 'call.closed'); attempt++) await delay(5);
+ assert.equal(g.audit.find(e => e.type === 'call.closed')?.why, 'client-closed:1006');
+});
+
+// Invented words; a loud phone speaker leaking V's reply back into the microphone.
+for(const [name,options,playing,expectEcho] of [
+ ['on the phone, while its reply still plays, V\'s own voice heard back is not the caller',{},true,true],
+ ['once the reply has finished playing, the same words are the caller\'s',{},false,false],
+ ['the echo guard can be switched off',{playbackEchoGuard:false},true,false],
+])test(name,async t=>{
+ const f=await fixture(undefined,'seeduplex',options);t.after(()=>f.service.dispose());
+ const pcm=Buffer.alloc(8);pcm.writeFloatLE(.1,0);pcm.writeFloatLE(.2,4);
+ f.event({type:'response.output_text.delta',response_id:'story',delta:'小船慢慢划到了对岸。'});
+ f.event({type:'response.output_text.done',response_id:'story',text:'小船慢慢划到了对岸。'});
+ f.event({type:'response.output_audio.started',response_id:'story'});f.event({type:'response.output_audio.delta',response_id:'story',delta:pcm.toString('base64')});
+ f.event({type:'response.done',response:{id:'story',status:'completed'}});
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:playing})),false);
+ f.event({type:'conversation.item.input_audio_transcription.started'});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'划到对岸'});
+ f.event({type:'response.output_text.delta',response_id:'echo-answer',delta:'是的。'});
+ f.event({type:'response.output_audio.started',response_id:'echo-answer'});f.event({type:'response.output_audio.delta',response_id:'echo-answer',delta:pcm.toString('base64')});
+ const sent=f.client.sent;
+ assert.equal(sent.some(e=>e.type==='input.speech.ignored'&&e.preservedResponseId==='story'),expectEcho);
+ assert.equal(sent.some(e=>e.type==='audio.clear'),!expectEcho);
+ assert.equal(sent.some(e=>e.type==='transcript'&&e.role==='user'),!expectEcho,'an echo is not shown as the caller speaking');
+ assert.equal(sent.filter(e=>e.type==='audio').length,expectEcho?1:2);
+ const userRows=f.audit.filter(e=>e.type==='transcript'&&e.role==='user');
+ assert.equal(userRows.length,1,'the recognised words stay in the call log either way');assert.equal(userRows[0].playbackEcho===true,expectEcho);
+ assert.equal(f.audit.some(e=>e.type==='input.playback-echo'),expectEcho);
+ assert.equal(f.audit.some(e=>e.type==='input.playback-echo-reply'&&e.responseId==='echo-answer'),expectEcho);
+});
+
+test('what a call was making when its connection was lost is finished where the call goes on; a hang-up ends it',async t=>{
+ const {createBoardDirector}=await import('../gpt-live-h5/board-director.mjs'),{createAssetShelf}=await import('../gpt-live-h5/board-assets.mjs');
+ for(const [why,lost] of [['redial',true],['requested',false]]){
+  const board=createBoardDirector({complete:async function*(){yield '{"op":"none"}\n';},stream:{instructions:'',refine:op=>op,cue:true}}),assets=createAssetShelf({director:board});
+  board.shelf=assets;
+  let finish,aborted=false;
+  const f=await fixture(async()=>{throw Error('must not use Gateway');},'grok',{assets,mediaCli:{forCall:async()=>({execute:(command,signal)=>new Promise((resolve,reject)=>{finish=resolve;signal.addEventListener('abort',()=>{aborted=true;reject(signal.reason);});})})}});
+  t.after(()=>f.service.dispose());
+  const first=f.reservation.voiceSessionId;
+  f.call('exec',{command:"makaron edit --image-model gemini-2.1 '一只猫'",completionLine:'猫画好了。'},'make-cat');
+  for(let i=0;i<200&&!finish;i++)await delay(5);
+  assert.equal(assets.page(first).busy,true);
+  await f.service.close(first,why);
+  assert.equal(f.service.lostCall(first),lost);
+  assert.equal(aborted,!lost,why);
+  if(!lost)continue;
+  // Connected again: another session, on the same board.
+  const again=await f.service.reserve({model:'grok',sessionKey:'agent:makaron:explicit:personal-fixture'}),second=again.voiceSessionId;
+  assert.equal(board.adopt(second,first),true);
+  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>client.sent.push(JSON.parse(raw));client.close=()=>{client.readyState=3;};
+  f.service.upgrade({},client,Buffer.alloc(0),second,again.relayTicket);
+  for(let i=0;i<200&&!client.sent.some(e=>e.type==='ready');i++)await delay(5);
+  finish({media:{kind:'image',url:'https://cdn.example/cat.png'},content:[{type:'text',text:'ok'}]});
+  for(let i=0;i<200&&assets.page(second).busy;i++)await delay(5);
+  const [cat]=assets.page(second).assets;
+  assert.equal(cat.state,'ready');assert.equal(cat.url,'https://cdn.example/cat.png');
+  // And V there says it is done, in the words it left for it.
+  for(let i=0;i<600&&!f.audit.some(e=>e.type==='execution.finished-told'&&e.voiceSessionId===second);i++)await delay(5);
+  const told=f.audit.find(e=>e.type==='execution.finished-told'&&e.voiceSessionId===second);
+  assert.equal(told?.status,'completed');assert.equal(told.ownWords,true);
+ }
+});
+
+for(const model of ['grok','seeduplex'])test(model+' dispatches creation using the admitted Feishu scope and explains insufficient credits without opening checkout',async t=>{
+  const scopes=[];
+  const mediaCli={sessionAccounts:true,async forCall({scope,authorize}){
+    scopes.push(scope);
+    return {execute:async()=>{
+      await authorize();
+      return {isError:true,accountIssue:{code:'insufficient_credits',message:'当前会话积分不足'},content:[{type:'text',text:'当前会话积分不足'}],details:{submission:'rejected'}};
+    }};
+  }};
+  const f=await fixture(undefined,model,{mediaCli,sessionKey:'agent:makaron:feishu:group:oc_test',actorScoped:true,sessionBound:true});
+  t.after(()=>f.service.dispose());
+  const args={command:"makaron edit --image-model gemini-2.1 'moon'"},id='session-credit';
+  if(model==='grok')f.call('exec',args,id);
+  else f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name:'exec',arguments:JSON.stringify(args)}]});
+  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId===id)));
+  assert.deepEqual(scopes,[{chat:'oc_test'}]);
+  assert(!f.client.sent.some(e=>e.type==='backend.result'&&e.text.includes('topup')));
+  assert.equal(f.audit.find(e=>e.type==='tool.delivered'&&e.callId===id).result.error,'当前会话积分不足');
+  const result=f.audit.find(e=>e.type==='tool.delivered'&&e.callId===id).result;
+  assert.equal(result.submission,'rejected');assert.match(result.instruction,/不自动重提/);
+  assert.equal(f.invocations.length,0);
+});
+
+test('first media request provisions through the admitted session before using the new binding',async t=>{
+  const scopes=[];
+  const mediaCli={sessionAccounts:true,async forCall({scope,register,authorize}){
+    return {execute:async(_command,signal)=>{
+      await register(scope.chat,signal);
+      await authorize();
+      scopes.push(scope.chat);
+      return {media:{kind:'image',url:'https://example.test/registered.png'},content:[{type:'text',text:'已生成'}]};
+    }};
+  }};
+  const key='agent:makaron:feishu:direct:ou_new';
+  const f=await fixture(undefined,'grok',{sessionKey:key,sessionBound:true,actorScoped:true,mediaCli});
+  t.after(()=>f.service.dispose());
+  f.call('exec',{command:"makaron edit --image-model gemini-2.1 'moon'"},'first');
+  assert(await until(()=>f.invocations.some(x=>x.question)));
+  const request=f.invocations.find(x=>x.question);
+  assert.equal(request.sessionKey,key);assert.match(request.question,/只办理账号/);
+  assert.deepEqual(scopes,[]);
+  f.completeBackend('已完成会话账号绑定。');
+  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='first')));
+  assert.deepEqual(scopes,['ou_new']);
+  assert(f.client.sent.some(e=>e.type==='backend.result'&&e.text.includes('registered.png')));
+});
+
+test('a partial actor catalog cannot fall through to native Makaron exec',async t=>{
+  const f=await fixture(undefined,'grok',{sessionKey:'agent:makaron:feishu:group:oc_test',sessionBound:true,actorScoped:true,catalog:['exec'],
+    mediaCli:{sessionAccounts:true,forCall:()=>assert.fail('no media grant')}});
+  t.after(()=>f.service.dispose());
+  f.call('exec',{command:"makaron edit --image-model gemini-2.1 'moon'"},'denied');
+  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='denied')));
+  assert.equal(f.invocations.length,0);
+  assert.match(f.audit.find(e=>e.type==='tool.delivered').result.error,/未开放前台创作/);
+});

@@ -150,5 +150,177 @@
     "gatewayIdentityPreserved": true,
     "change": "Picture requests go to the lesson as a gallery of real photos (list look gallery), not to the backend; no promise without a tool call; the writer does not describe pictures it cannot see; a picture not found is removed with its name.",
     "acceptance": "Tianyi asked to release after comparing picture sources. Production Public calls at 390x844 after publish: '给我找几张影之刃零的图看看' and '我要动作战斗的图' each went to explain_on_board and drew a gallery of real pictures (5 of 6 and 3 of 4 found; Brave image search, Baidu Baike, 3dmgame), no delegation, no empty promise."
+  },
+  "galleryLayoutRelease": {
+    "commit": "9efad3540e128b45a161404be22d41580dab643c",
+    "mergePR": 232,
+    "filesSha256": "f9fce2f73df2968b685944772b531c53d01c7096a0ae043a9232dad85fbbd39d",
+    "previousRunningCommit": "5c4a01cf1324b8eb969eba826b2904b6e91d1fc4",
+    "publishedAt": "2026-11-20T21:29:05+08:00",
+    "mainCI": "Voice push run 44744246739: test, android-tv success",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "iosShellRevision": "e8109170a25d7abb6b4d1d300017ed4c8148231a4c50e2c78cec229745cbfcff",
+    "gatewayIdentityPreserved": true,
+    "change": "Gallery pictures whole at their own shape in level rows filling the page width (galleryLayout); notes under a gallery side by side; the lead print steps aside once a gallery picture shows. A page drawn smaller to fit (useFit) no longer grows taller than the panel (min-height in px over zoom). Every picture on the page opens over the window on tap or click.",
+    "acceptance": "Tianyi accepted the Candidate (8c23e14) and asked to release. Production Public calls after publish, '给我找几张超梦的图看看': 1440x900 drew a gallery of 4 (pictures ~240 px tall, whole, rows centred) and opened one at 773 px; 390x844 drew a gallery and opened one; a second 1440x900 call loaded all 4 pictures in 1.4-3.6 s. In the first 1440x900 call two pictures the service had found in 2-4 s were still loading at hang-up (35 s); not seen again."
+  },
+  "galleryLostRelease": {
+    "commit": "1f9a28f7748ed4049f31e0ba7f9b2653346eac76",
+    "mergePR": 234,
+    "filesSha256": "10360dbc6205ce2fc21b608b771f7090b7e8a1ab75a4b9fceb67f720cce97fcc",
+    "previousRunningCommit": "9efad3540e128b45a161404be22d41580dab643c",
+    "publishedAt": "2026-11-20T22:53:57+08:00",
+    "mainCI": "Voice push run 44757258816: test, android-tv success",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "iosShellRevision": "04c81bf427197213e88820adaff1ceccda2b7339f34a85964e9718de2cf86956",
+    "gatewayIdentityPreserved": true,
+    "change": "A gallery remembers failed pictures by search, not by item id: a gallery redrawn under the same ids hid pictures that were found (production call dfbb0ead). board-image answers 503 for a lookup that could not be made (image search 429 or timeout) and 404 for no picture; the page retries a 503 once after 2.5 s and does not keep it. A 429 from the image search is retried through the queue, twice at most, with twice the gap for a minute.",
+    "acceptance": "Tianyi reported call dfbb0ead (V described six pictures, the page showed two) and asked to release the fix. Production Public call after publish, 1440x900, the same two questions ('梦幻和超梦的图片…打斗的图片' then '再多找一点'): the second gallery showed 5 of the 6 pictures V described; the sixth ('宝可梦 动画 梦幻 出场') was not found by the image search. No 429 in the call."
+  },
+  "searchWordsRelease": {
+    "commit": "1f6b332dd86a11d8d729893abfd626c341a7feaa",
+    "mergePR": 237,
+    "filesSha256": "af092eb578cc55272ec61443215e5781f350b6f9a328e4109b11a989c12188f2",
+    "previousRunningCommit": "1f9a28f7748ed4049f31e0ba7f9b2653346eac76",
+    "publishedAt": "2026-11-21T00:32:24+08:00",
+    "mainCI": "Voice push run 44773801657: test, android-tv success",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "iosShellRevision": "9728f8346bae8f8566500c3e83af4cf745756eddbd3029de6f616cbab879fa40",
+    "gatewayIdentityPreserved": true,
+    "gatewayNote": "The Gateway had been restarted at 2026-11-20 23:28:56 CST, before this release and not by it (PID 869872 before and after publishing).",
+    "change": "Picture searches: results qualify on their own score (their place only orders them); words the search asks for are not held against a title; guide, data and download pages are; a Chinese title must name the thing (half its characters), and an English title sharing no word with a several-word search for a Chinese name does not count for it. A search that finds nothing worth fetching is tried without its kind-of-picture words, then without its last word. An encyclopedia redirect to another article (a list with the Pokemon logo) is not the thing.",
+    "acceptance": "Tianyi reported GTA6 pictures missing on 11/20 and asked to release after the rerun of the day's 77 production searches on the Candidate (77 found, was 65; none lost). Production Public call after publish, 1440x900, '给我找几张GTA6的图看看，主角杰森和露西娅的': V described 5 pictures and all 5 were on the page; 5 of 5 lookups found."
+  },
+  "closeReasonRelease": {
+    "commit": "5d953b4bf7d7a91ce6407ac5894ceac51a2a2558",
+    "mergePRs": [
+      239,
+      240
+    ],
+    "filesSha256": "8110c6376f1a99492673a221df9f24840ad0f3e24757120023663221cb122d28",
+    "previousRunningCommit": "1f6b332dd86a11d8d729893abfd626c341a7feaa",
+    "intermediate": {
+      "commit": "85c8f27d2f4b7f0bcd0adc55da454a8358548bb8",
+      "filesSha256": "d62c54b6f0ffff8242734547553f4df579f97d06acb0eb33b92e4d0b35aece01",
+      "publishedAt": "2026-11-21T01:28:45+08:00",
+      "note": "#239 alone: the call record still dropped the reason (fixed by #240)."
+    },
+    "publishedAt": "2026-11-21T01:39:57+08:00",
+    "mainCI": "Voice push runs for 85c8f27 and 44785046652 for 5d953b4: test, android-tv success",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "iosShellRevision": "a6e03ef3ffc4ff1687d86cf2e790f13344ba02f42a1f0b4417b08fa9ebfa2c72",
+    "gatewayIdentityPreserved": true,
+    "change": "call.closed records which way the call ended (why), kept in the call record; a SeeDuplex session.closed we did not ask for is reported as provider-status upstream-closed with up to six short fields of what the service said. Picture search tries up to nine results, three at a time, when the best three cannot be fetched.",
+    "acceptance": "Tianyi's call 9caf5e1b (00:44) ended 0.14 s after a turn with no reason recorded; she asked to release the diagnostics and the picture fix. Production Public calls after publish ('给我找几张悖谬宝可梦古代种的图，比如轰鸣月和波荡水'): 1440x900 on 85c8f27 showed 4 of 4 pictures (轰鸣月 and 波荡水 found) but its call.closed had no reason; 390x844 on 5d953b4 showed 轰鸣月 and 波荡水 and its call.closed has why=client-closed:1005 (the page hung up)."
+  },
+  "photoSpeedRelease": {
+    "commit": "96ae9842fd3ef70b67138b339ce7406dd3a3fb78",
+    "mergePR": 242,
+    "filesSha256": "65b9bc163f0c74d9ee9b5a324a87197f186aa72d8425b7f2155148cfabec6126",
+    "publishedAt": "2026-11-21T15:28:17+08:00",
+    "rolledBackAt": "2026-11-21T15:31:54+08:00",
+    "rolledBackTo": "5d953b4bf7d7a91ce6407ac5894ceac51a2a2558",
+    "reason": "The production smoke call after publish ('给我找几张塞尔达王国之泪的图看看…', 1440x900) went blank right after the gallery's last picture loaded: React #185 (maximum update depth). The client was unchanged since 5d953b4; pictures arriving together exposed a gallery layout loop (fixed in #243).",
+    "braveKey": "On 11/21 Tianyi activated the Brave Search plan (prepaid, $5 free credits a month, 50 requests a second) and installed its key herself with /root/set-brave-key.py (production /etc/openclaw-voice-board.env, backed up first; Candidate too). The key itself is not recorded."
+  },
+  "boardGuardRelease": {
+    "commit": "48f1722d4d16af9bbb668ba4f8e1d928a8c5fff8",
+    "mergePRs": [
+      242,
+      243
+    ],
+    "filesSha256": "283d91136392004b52785694e713683dcfb84201be8c869b898958323900bf9b",
+    "previousRunningCommit": "5d953b4bf7d7a91ce6407ac5894ceac51a2a2558",
+    "publishedAt": "2026-11-21T16:08:12+08:00",
+    "mainCI": "Voice push run 44883218238: test, android-tv success",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "iosShellRevision": "418108792f8446ce90506a25e4ab6bd9dbce3b24b2f9c6cfab9bebe1d78fac5e",
+    "gatewayIdentityPreserved": true,
+    "gatewayNote": "The Gateway had been restarted at 2026-11-21 02:00:48 CST, before these releases and not by them (PID 992785 throughout).",
+    "change": "Picture searches: queued by arrival on the free plan, at once on a fast plan (rate read from x-ratelimit-limit); a refused search takes the next turn; small pictures preferred; 3.5 s a file. Gallery: the names height only grows for one set of pictures (it looped 87<->56 and blanked the page); at most four size changes a frame; BoardGuard error boundaries keep the call page when a block, page or the board fails to draw.",
+    "acceptance": "Tianyi asked to fix the blank page at the root and to merge and release. Production Public calls after publish, '给我找几张塞尔达王国之泪的图看看，林克、塞尔达公主和天空岛的', at 1440x944 (a size that reproduced the loop locally) and 1440x900: no page errors, the gallery and note on the page at hang-up, 6 of 6 pictures each; server lookups 1.0-3.6 s, concurrent."
+  },
+  "boardWorksRelease": {
+    "commit": "1fa9471d505b6691a32272eac548f8a082d65d1b",
+    "mergePRs": [
+      246
+    ],
+    "filesSha256": "09dd47fea99e2373a4b08d7d06603d2cb011b62dc4b28c745b2261f1a3446bfe",
+    "previousRunningCommit": "48f1722d4d16af9bbb668ba4f8e1d928a8c5fff8",
+    "publishedAt": "2026-11-21T23:13:02+08:00",
+    "mainCI": "Voice push run 44917114792: success",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "publishNote": "The web node was busy (a call in progress) from 23:06; the release tool waited and switched it when idle, 23:12:25. The devices node switched at once.",
+    "iosShellRevision": "17a7a71da06caa954a43fae70c9e7cca6769d0d3e7a1c25c1bf6947d54aaf8b3",
+    "gatewayIdentityPreserved": true,
+    "gatewayNote": "openclaw-gateway.service PID 992785 before and after (running since 2026-11-21 02:00:48 CST).",
+    "configuration": "No change to production's private configuration: the shelf of made things and the canvas are on wherever the call board is on (VOICE_BOARD_ASSETS=0 / VOICE_BOARD_CANVAS=0 turn one off). V's own image is the copy of V's canonical avatar packaged with the release.",
+    "change": "The shelf of made things (pictures and videos V makes go up on the board; the voice model is told what is on the caller's screen; found photographs and V's own image as references; a viewer with save; a director's pass over a video's script); one rule for what the voice model does itself and what goes to the backend, with four checks in code (a named thing not at hand, a reference not on the screen, a lookup refused for lack of access, a video over fifteen seconds); the canvas from claude/board-canvas-live (places ringed on photographs).",
+    "acceptance": "Tianyi: merge and release it yourself, both switches on, all of it; verify after release. Before release, on Candidate board-assets-20261121 at the pull request's head with neither switch set: a picture made from V's own image (37.8 s) and a lesson with places ringed. Routing: 62 cases on the real voice model with stand-in tools, 104/124 before and 125/130 after (docs/research/voice-routing/handbook.md). After release: both nodes report 1fa9471d and filesSha256 09dd47fe…, ready, no calls; the production page serves the new bundle and the changelog's first entry is this release; a production Public call (synthesized speech): a lesson on the Eiffel Tower with a photograph (the eye pinned places: 2 pins on 1 picture) and a request to find pictures (first picture 5.3 s; 7 photographs found and checked; nothing drawn that was not asked for); no page errors.",
+    "notVerifiedInProduction": "A real voice, a noisy room, saving in the iOS shell and a long call on a narrow phone are not verified.",
+    "productionPersonalEntry": "2026-11-21 23:56-23:59 CST, a production call on the fixed personal entry (synthesized speech; Tianyi allowed the test and handed over the link himself): a poster made (on the board 27.3 s after the request; 18.6 s to make), made to move (5 s video, 24.9 s; the script rewritten by the director's pass in 2.4 s, shown the picture), and a picture made from V's own image (29 s; the avatar lent to the generator, the material check passed in 0.45 s, reference recorded as v). V said each was ready the moment it was on the board; no page errors."
+  },
+  "echoUplinkRelease": {
+    "commit": "a9630f497d05c9b4785fde15b70261c8ed71a0f2",
+    "mergePRs": [
+      245
+    ],
+    "filesSha256": "0734c49b47f2f70bfe8e7bdefcd9784f717ca0a0a1cd269af79249085eb28ccd",
+    "previousRunningCommit": "1fa9471d505b6691a32272eac548f8a082d65d1b",
+    "publishedAt": "2026-11-22T00:09:44+08:00",
+    "mainCI": "Voice push run 44922591519: success",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "publishNote": "Both nodes idle; the release tool switched them at once (receipt 20261122-000855, 00:08:55-00:10:00).",
+    "iosShellRevision": "40b738d4e72f2645076876e8ae91232db11bc25bb64e8d8ee1b7237f548b74cf",
+    "iosShellBuild": "00eda17199fd",
+    "iosShellUpdated": "2026-11-22",
+    "gatewayIdentityPreserved": true,
+    "gatewayNote": "openclaw-gateway.service PID 992785 before and after (running since 2026-11-21 02:00:48 CST).",
+    "configuration": "No change to production's private configuration. The playback-echo guard is on for phone calls (VOICE_PLAYBACK_ECHO_GUARD=0 turns it off).",
+    "change": "Phone speaker echo: a final utterance of at most four characters or words, most of them in the reply or lesson still playing, is V's own voice; the reply goes on and the model's answer to it is not played. A board lesson on a native duplex call is cancelled by a recognised utterance that is not echo, not by the first sound. Seeduplex input: a burst after an uplink stall keeps its newest 4 s instead of ending the call; no mute/unmute while a backlog is fed; input-burst diagnostic. The App is sent the web page's rule for a stalled uplink (native runtime policy `upload`). The served App page carries its build and latest-update date, and a page feature `version` says which page is served now.",
+    "acceptance": "Tianyi asked to fix both problems and release after the board release was verified. Before release: npm test 1381, speaker-native 95, release-fleet, Swift package 50, simulator H5DeliveryTests 9/9. Cloud PCM against the real model on a Candidate (synthetic loudspeaker echo): a four-character echo 1.9 s into a reply was treated as echo and the reply played to its end; an explicit interruption still interrupted; a 13 s uplink stall then burst kept the call (input-burst 13.0/14.0/9.0 s), three runs. After release: both nodes at a9630f4, ready, no calls; served changelog and iOS shell over HTTPS carry the new entry, build and date.",
+    "notVerifiedInProduction": "A real iPhone call on loudspeaker after release (Tianyi's own call). The native parts (uplink shedding, web pages no longer dropped, Settings version row) need App build 48+; builds 47 and 48 are development installs on Tianyi's iPhone only, not TestFlight. Echo that reaches the model at a lesson's start can still hold the lesson; longer echo is not treated as echo by design."
+  },
+  "iosVideoViewerRelease": {
+    "commit": "6f7babc44377ff1b1758a1844e7ea5ffe1f92d52",
+    "mergePRs": [
+      251
+    ],
+    "filesSha256": "e631ac8fa72b841f02924c32686507ea528748b37dc2d05d9ddfb1c5b4e35a79",
+    "previousRunningCommit": "a9630f497d05c9b4785fde15b70261c8ed71a0f2",
+    "publishedAt": "2026-11-22T01:29:18+08:00",
+    "mainCI": "Voice push run 44930060622: success",
+    "nodes": {
+      "web": "ready",
+      "devices": "ready"
+    },
+    "publishNote": "Both nodes idle; the release tool switched them at once (receipt 20261122-012837).",
+    "iosShellRevision": "01393529a75a8c05ff13f5ecbbe7fb0ed31ed140b8c5c8c1deb30f053b16cdde",
+    "gatewayIdentityPreserved": true,
+    "gatewayNote": "openclaw-gateway.service PID 992785 before and after.",
+    "change": "The iOS App's web view lets nothing play before a tap (mediaTypesRequiringUserActionForPlayback = .all, a silent video too): a made video's frame waited for the video's first frame before it showed or could be tapped, and stayed on '马上就动' (production 11/22 00:44). A refused video now shows the picture it was made from with a play mark and is started inside the caller's tap; the viewer starts its video as it comes up; sound is taken only once the video is moving, and not in the App. The viewer tells the App it is open through the existing 'reading' message, so the App's settings button leaves the corner the viewer's close button is in (both showed, and a tap there opened the settings).",
+    "acceptance": "Tianyi reported both in the iOS App after #246 and said to release the fix. Before release: a local fixture made to allow playback only inside a tap on the picture reproduced the stuck frame and, with the fix, showed the play mark and played on a tap; a real web call on Candidate board-assets-20261121 (a picture 26.5 s, a video 21.7 s) unchanged. After release: both nodes report 6f7babc4, ready; the production page serves the new bundle with the changelog entry; the served App page package (ios-shell-release.json revision above) is byte-for-byte the released native-h5.js, which carries the fix.",
+    "notVerifiedInProduction": "Neither fix has been seen in the iOS App itself: both can only be confirmed on a phone."
   }
 }

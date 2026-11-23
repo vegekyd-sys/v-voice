@@ -66,14 +66,48 @@ export function pagePicture(html, base, query) {
   return title.includes(wanted) ? sharePicture(html, base) : '';
 }
 // The first of several fetches to give a picture; null when none does.
-const firstPicture = ways => new Promise(resolve => {
-  let left = ways.length;
-  if (!left) resolve(null);
-  for (const way of ways) way.then(found => { if (found) resolve(found); else if (--left === 0) resolve(null); }, () => { if (--left === 0) resolve(null); });
+// The first of several ways to a picture that arrives, preferring a small file: a large one
+// (an original of 1-2.5 MB) waits up to `graceMs` for a small one (the search's own thumbnail),
+// as it would take seconds more to reach a phone across the border (11/21).
+const SMALL_PICTURE = 400 * 1024;
+const firstPicture = (ways, graceMs = 1200) => new Promise(resolve => {
+  let left = ways.length, best = null, timer = null;
+  if (!left) return resolve(null);
+  const done = value => { clearTimeout(timer); resolve(value); };
+  const settle = () => { if (--left === 0) done(best); };
+  for (const way of ways) way.then(found => {
+    if (found && found.bytes.length <= SMALL_PICTURE) return done(found);
+    if (found && (!best || found.bytes.length < best.bytes.length)) { best = found; timer ??= setTimeout(() => done(best), graceMs); }
+    settle();
+  }, settle);
 });
 const STOCK = /(?:^|\.)(?:pixabay|699pic|kuaipng|shutterstock|alamy|istockphoto|gettyimages|dreamstime|123rf|depositphotos|freepik|vecteezy|pngtree|nipic|58pic|ibaotu|tukuppt|51yuansu|huaban|duitang|pinterest)\./iu;
 const REFERENCE = /(?:^|\.)(?:wikipedia|wikimedia|baike\.baidu|baike\.sogou|moegirl|pokemon|portal-pokemon|pokedex|52poke|nasa|britannica|dpm\.org|gov)\b/iu;
-const OFF = /简笔画|怎样画|怎么画|教程|壁纸|表情包|头像|涂色|折纸|闪光|shiny|超级进化|mega|同人|手办|周边|logo|icon|图标|矢量|素材|模板|海报|高清图片/iu;
+// (Guides, data pages and app downloads too: their pictures are tables and adverts, 11/20.)
+const OFF = /简笔画|怎样画|怎么画|教程|壁纸|表情包|头像|涂色|折纸|闪光|shiny|超级进化|mega|同人|手办|周边|logo|icon|图标|矢量|素材|模板|海报|高清图片|配招|攻略|玩法|种族值|招式|技能|性格|努力值|下载|官方版|安卓|手游|一览|排行/iu;
+const OFF_ALL = new RegExp(OFF.source, 'giu');
+// Words that say what kind of picture is wanted, not what it is of. A search
+// written with many of them ("GTA6 预告片 露西娅 杰森 同框 截图") can find
+// nothing at all; without them it finds the thing (11/20).
+const KIND = /截图|截屏|官方|宣传图|宣传|海报|图片|照片|剧照|高清|壁纸|插画|同框|合照|立绘|画面|配图|大图/gu;
+const KIND_WORDS = new Set(['fan', 'art', 'fanart', 'official', 'poster', 'wallpaper', 'screenshot', 'image', 'photo', 'picture', 'hd', 'artwork', 'key']);
+// Whether a title names the thing: at least half the Chinese characters of its name (titles
+// write 超夢 for 超梦, 航海王1199話 for 航海王1199话). A name with none says nothing either way.
+function names(title, name) {
+  const chars = [...new Set(String(name).match(/\p{Script=Han}/gu) ?? [])];
+  return !chars.length || chars.filter(char => String(title).includes(char)).length >= Math.ceil(chars.length / 2);
+}
+/** Plainer searches to try when one finds nothing: without the kind-of-picture words, then
+ * without its last word too (the thing searched for is written first). */
+export function plainerSearches(query) {
+  const words = String(query).split(/\s+/u).filter(Boolean);
+  const plain = words.map(word => /^[\x00-\x7f]+$/u.test(word) ? (KIND_WORDS.has(word.toLowerCase()) ? '' : word) : word.replace(KIND, '')).filter(Boolean);
+  const out = [];
+  const add = list => { const text = list.join(' '); if (list.length && text !== words.join(' ') && !out.includes(text)) out.push(text); };
+  add(plain);
+  if (plain.length > 2) add(plain.slice(0, -1));
+  return out;
+}
 /**
  * How well one image-search result suits a query: is it titled with the name,
  * does it come from somewhere that shows the thing itself rather than stock
@@ -87,9 +121,22 @@ export function rankPicture(item, query) {
   if (title && title.includes(wanted)) score += 3;
   else if (title) score += words.filter(word => title.includes(word)).length / words.length * 2;
   if (title === wanted) score += 1;
+  // The thing searched for is written first. A Chinese title that does not name it is about
+  // something else (Mega 烈空坐 for "超梦 Mega进化", a list of the whole Pokedex, 11/20).
+  // Half its characters are enough: titles write 超夢 for 超梦, 航海王1199話 for 航海王1199话,
+  // 露西亚 for 露西娅. (Only for a thing with a Chinese name: a Chinese title often leaves
+  // out "GTA6", and an English title names a Chinese thing in other words.)
+  if (words.length > 1 && /\p{Script=Han}/u.test(words[0]) && /\p{Script=Han}/u.test(title) && !names(title, words[0])) score -= 2;
+  // An English title that shares no word with a search for a thing with a Chinese name cannot
+  // be told to be about it (Mega Beedrill for "超梦 Mega进化 立绘", 11/21): nothing counts for it.
+  // (Only for a search of several words: for a bare name the search's own results are sound.)
+  if (words.length > 1 && /\p{Script=Han}/u.test(words[0]) && title && !/\p{Script=Han}/u.test(title) && !words.some(word => title.includes(word))) score -= 1;
   if (REFERENCE.test(source)) score += 2;
   if (STOCK.test(source)) score -= 3;
-  if (OFF.test(String(item?.title ?? '')) || /logo|icon|sprite|banner/iu.test(String(item?.properties?.url ?? ''))) score -= 3;
+  // What the query itself asks for ("…海报", "…同人图", "超级超梦") is not held against a title.
+  const asked = String(query).toLowerCase();
+  const off = [...String(item?.title ?? '').matchAll(OFF_ALL)].some(([term]) => !asked.includes(term.toLowerCase()));
+  if (off || /logo|icon|sprite|banner/iu.test(String(item?.properties?.url ?? ''))) score -= 3;
   const width = Number(item?.thumbnail?.width) || 0, height = Number(item?.thumbnail?.height) || 0;
   if (width && height) { if (Math.min(width, height) < 160) score -= 2; if (width / height > 2.2 || height / width > 2.2) score -= 1; }
   if (item?.confidence && item.confidence !== 'high') score -= 1;
@@ -101,7 +148,7 @@ const urlsIn = value => { const seen = new Set(); for (const [, url] of JSON.str
  * `search(query)` is V's web search (any shape that carries result "url"s);
  * without it only Wikipedia is used. `observe` receives one line per lookup.
  */
-export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = '', braveGapMs = 1100, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), lookup = dnsLookup, now = Date.now, observe = () => {}, maxBytes = 1500000, timeoutMs = 9000, ttlMs = 30 * 60000, maxEntries = 96, directory = '', keepMs = 365 * 86400000,
+export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = '', braveGapMs = 1100, braveSettleMs = 300, pictureTimeoutMs = 3500, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), lookup = dnsLookup, now = Date.now, observe = () => {}, maxBytes = 1500000, timeoutMs = 9000, ttlMs = 30 * 60000, maxEntries = 96, directory = '', keepMs = 365 * 86400000,
   // Wikimedia refuses data-centre clients whose agent names no contact page.
   languages = ['zh', 'en'], userAgent = 'VVoiceBoard/0.1 (https://github.com/vegekyd-sys/v-voice)'} = {}) {
   const cache = new Map(), flights = new Map(), prints = new Map();
@@ -140,35 +187,99 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
   // An image search, when a key is provisioned: the first result whose title
   // names the thing (else the first result), as the search's own thumbnail.
   // The plan allows about one request a second, so lookups queue.
-  let braveTurn = Promise.resolve(), braveLast = -Infinity, braveWaiting = 0;
+  let braveSent = -Infinity, braveAnswered = -Infinity, braveSlowUntil = -Infinity, bravePumping = false, bravePerSecond = 1;
+  const braveQueue = [];
+  // The plan's rate, as each answer states it (x-ratelimit-limit: "1, 2000" on the free plan,
+  // "50, …" on Search): with several a second there is no queue, a page's searches go at once.
+  const learnRate = response => {
+    const perSecond = Number(String(response?.headers?.get?.('x-ratelimit-limit') ?? '').split(',')[0]);
+    if (Number.isFinite(perSecond) && perSecond >= 1) bravePerSecond = perSecond;
+    return response;
+  };
+  // One request to the image search at a time: sent a gap after the one before was sent, and
+  // a moment after its answer came back (the service counts requests as they arrive). When a
+  // retry is refused too, twice the gap for ten seconds. (A single refusal no longer slows the
+  // queue: it happens on most pages however the requests are spaced, and slowing down for it
+  // spread a page of six over 12 s, 11/21.) `first`: a retry takes the next turn, so the
+  // pictures still come in the order V speaks of them.
+  const braveRequest = (ask, begin, first = false) => bravePerSecond >= 5 ? (begin(), ask().then(learnRate)) : new Promise((resolve, reject) => {
+    const job = {ask: () => ask().then(learnRate), begin, resolve, reject};
+    if (first) braveQueue.unshift(job); else braveQueue.push(job);
+    if (!bravePumping) void bravePump();
+  });
+  async function bravePump() {
+    bravePumping = true;
+    try {
+      while (braveQueue.length) {
+        // The first answer of a page tells the plan's rate: on a fast plan the rest go at once.
+        if (bravePerSecond >= 5) {
+          for (const job of braveQueue.splice(0)) { job.begin(); job.ask().then(job.resolve, job.reject); }
+          break;
+        }
+        const gap = Math.max(braveSent + (now() < braveSlowUntil ? 2 : 1) * braveGapMs, braveAnswered + braveSettleMs) - now();
+        if (gap > 0) await wait(gap);
+        const job = braveQueue.shift();
+        braveSent = now();
+        // Time spent queueing is not time spent looking.
+        job.begin();
+        try { job.resolve(await job.ask()); } catch (error) { job.reject(error); } finally { braveAnswered = now(); }
+      }
+    } finally { bravePumping = false; }
+  }
+  // One image search, through the queue.
+  async function braveSearch(words, signal, begin) {
+    const ask = () => fetchImpl(`https://api.search.brave.com/res/v1/images/search?q=${encodeURIComponent(words)}&count=10&safesearch=strict`,
+      {signal, headers: {'x-subscription-token': braveKey, accept: 'application/json'}});
+    begin.stop?.();
+    let response = await braveRequest(ask, begin);
+    // "Too many requests" despite the queue: asked again through the queue, twice at most.
+    // (A retry after a plain pause went out beside the next request in the queue and was
+    // refused again: two to three pictures of every gallery, 11/20.)
+    for (let again = 0; response.status === 429 && again < 2; again++) {
+      if (again) braveSlowUntil = now() + 10000;
+      begin.stop?.(); response = await braveRequest(ask, begin, true);
+    }
+    if (!response.ok) throw Error('image search HTTP ' + response.status);
+    return ((await response.json())?.results ?? []).filter(item => typeof item?.thumbnail?.src === 'string');
+  }
+  // The results worth fetching: those `rankPicture` counts for, by its own score; their place
+  // in the list only orders them (a good fourth result used to fall below the line, 11/20).
+  // (Results it has nothing for or against are not taken: titled only with a site's name,
+  // they were tables and adverts.)
+  function worth(results, query) {
+    return results.map((item, index) => ({item, score: rankPicture(item, query), index})).filter(entry => entry.score > 0)
+      .sort((a, b) => (b.score - b.index * .2) - (a.score - a.index * .2)).slice(0, 9);
+  }
   async function brave(query, signal, begin = () => {}) {
     if (!braveKey) return null;
-    braveWaiting++; begin.stop?.();
-    const turn = braveTurn.then(async () => { const gap = braveLast + braveGapMs - now(); if (gap > 0) await wait(gap); braveLast = now(); });
-    braveTurn = turn.catch(() => {});
-    try { await turn; } finally { braveWaiting--; }
-    // Time spent queueing is not time spent looking.
-    begin();
-    const ask = () => fetchImpl(`https://api.search.brave.com/res/v1/images/search?q=${encodeURIComponent(query)}&count=10&safesearch=strict`,
-      {signal, headers: {'x-subscription-token': braveKey, accept: 'application/json'}});
-    let response = await ask();
-    // "Too many requests" despite the queue (the service counts its own seconds): once more, after a pause.
-    if (response.status === 429) { await wait(braveGapMs); braveLast = now(); response = await ask(); }
-    if (!response.ok) throw Error('image search HTTP ' + response.status);
-    const results = ((await response.json())?.results ?? []).filter(item => typeof item?.thumbnail?.src === 'string');
-    // The best three by `rankPicture` are fetched at once (one slow file used
-    // to hold the others up for seven seconds); the best-ranked usable one wins.
-    const ranked = results.map((item, index) => ({item, score: rankPicture(item, query) - index * .2})).filter(entry => entry.score > 0).sort((a, b) => b.score - a.score).slice(0, 3);
-    const tried = ranked.map(({item}) => (async () => {
-      const thumbnail = new URL(item.thumbnail.src);
-      if (thumbnail.protocol !== 'https:' || thumbnail.hostname !== 'imgs.search.brave.com') return null;
-      // The search's own thumbnail and the picture where it lives are asked
-      // together: from this server one of the two is often seconds faster.
-      const original = typeof item.properties?.url === 'string' ? await publicHttps(item.properties.url, {lookup}) : null;
-      const ways = [picture(thumbnail.href, signal, 'Brave 图片搜索', item.title), ...(original ? [picture(original.href, signal, item.source || original.hostname, item.title)] : [])];
-      return firstPicture(ways);
-    })().catch(() => null));
-    for (const attempt of tried) { const found = await attempt; if (found && own(found, query)) return found; }
+    // A search that finds nothing worth fetching is tried plainer, twice at most.
+    for (const words of [query, ...plainerSearches(query)]) {
+      const ranked = worth(await braveSearch(words, signal, begin), query);
+      if (!ranked.length) continue;
+      // Three at a time are fetched at once (one slow file used to hold the others up for seven
+      // seconds); the best-ranked usable one wins. When none of three can be fetched, the next
+      // three are tried (轰鸣月: the three best were on a site that refuses other sites, 11/21).
+      for (let start = 0; start < ranked.length; start += 3) {
+        // Each file has 3.5 s: a thumbnail the search could not fetch answered 504 after 5 s,
+        // and the next three waited for it (a picture ready at 13.7 s, its search at 7.5 s, 11/21).
+        const fileSignal = typeof AbortSignal.any === 'function' && typeof AbortSignal.timeout === 'function' ? AbortSignal.any([signal, AbortSignal.timeout(pictureTimeoutMs)]) : signal;
+        const tried = ranked.slice(start, start + 3).map(({item}) => (async () => {
+          const signal = fileSignal;
+          const thumbnail = new URL(item.thumbnail.src);
+          if (thumbnail.protocol !== 'https:' || thumbnail.hostname !== 'imgs.search.brave.com') return null;
+          // The search's own thumbnail and the picture where it lives are asked
+          // together: from this server one of the two is often seconds faster.
+          const original = typeof item.properties?.url === 'string' ? await publicHttps(item.properties.url, {lookup}) : null;
+          const ways = [picture(thumbnail.href, signal, 'Brave 图片搜索', item.title), ...(original ? [picture(original.href, signal, item.source || original.hostname, item.title)] : [])];
+          return firstPicture(ways);
+        })().catch(() => null));
+        let fetched = false;
+        for (const attempt of tried) { const found = await attempt; if (found) fetched = true; if (found && own(found, query)) return found; }
+        // (A picture fetched but taken by another thing: the next three would be the same site's.)
+        if (fetched) return null;
+      }
+      return null;
+    }
     return null;
   }
   // The same file for two different things is a site picture (a franchise
@@ -189,6 +300,9 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
       try { pages = Object.values((await (await get(url, signal)).json())?.query?.pages ?? {}); } catch { failed = true; continue; }
       const page = pages.find(item => typeof item?.thumbnail?.source === 'string');
       if (!page) continue;
+      // A redirect to an article about something else is not this thing: 凯路迪欧 leads to
+      // 第五世代寶可夢列表, whose picture is the Pokemon logo (11/21). (超梦 → 超夢 is the same.)
+      if (!names(page.title, query)) continue;
       let source;
       try { source = new URL(page.thumbnail.source); } catch { continue; }
       if (source.protocol !== 'https:' || !WIKIMEDIA.test(source.hostname)) continue;
@@ -225,7 +339,7 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     // second (the last ones used to time out waiting). With a queue ahead,
     // the encyclopedia, which needs no turn, is asked first.
     const encyclopedia = async () => { try { value = await wikipedia(key, signal); } catch { failed = true; } };
-    const crowded = Boolean(braveKey) && braveWaiting >= 2;
+    const crowded = Boolean(braveKey) && bravePerSecond < 5 && braveQueue.length + (bravePumping ? 1 : 0) >= 2;
     if (crowded) { begin(); await encyclopedia(); }
     if (!value) { try { value = await brave(key, signal, begin); } catch (error) { failed = true; why = String(error?.message ?? error).slice(0, 80); } }
     begin();
@@ -240,6 +354,9 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     return value;
   }
   return {
+    /** Whether "no picture" for this query is an answer worth keeping, not a lookup that could
+     * not be made (the image search refused or timed out): the page may ask again for those. */
+    settled(query) { const hit = cache.get(clean(query)); return Boolean(hit && now() - hit.at < ttlMs); },
     /** The picture for a query, or null when nothing suitable is found. */
     async find(query, {signal, search: searchNow = search} = {}) {
       const key = clean(query);

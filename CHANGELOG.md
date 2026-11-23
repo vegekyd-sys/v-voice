@@ -27,6 +27,79 @@
 - Off unless `VOICE_ENABLE_GPT_LIVE_11=1` and `VOICE_GPT_LIVE_AUTH_FILE` are set. The service reads the access token from that private file and never refreshes it. Robot and speaker endpoints are not offered this model.
 - Candidate only; not released. Measurements and what is not verified: `docs/candidates/gpt-live-11-20261120.md`.
 
+## 2026-11-22 — 语音创作使用当前飞书会话的 Makaron 账号
+
+- 已核验的群聊和私聊使用各自绑定的账号生成图片和视频。首次使用时先注册并确认绑定，图片保存与视频查询沿用原提交账号。
+- 积分不足时，V 在通话中说明回原群或私聊认领和充值，到账后由用户明确继续。
+
+## 2026-11-22 — A video does not cut an iPhone call; a call connected again keeps its board
+
+- A page's sound takes the phone's audio from the call: production 11/22 00:33:52 the microphone stopped after a video was played with sound; after #251, which started the viewer's video with sound inside the tap, 01:46:42 and 01:48:15 the call was cut and connected again. In the App, nothing on the page is heard during a call: every media element is muted, its own controls included. The App plays a video's sound instead (build 50, `capabilities.film`: `FilmSound.swift`, the `film` bridge command, `ios/H5/film-sound.mjs`), through the call's own engine beside V's voice, following the silent picture: it starts, stops, jumps and goes round with it, and is put back within 0.12 s. A silent video may start by itself (`mediaTypesRequiringUserActionForPlayback = .audio`), so a made video moves and is heard once as on the web page; the viewer has its own controls. In the simulator's log the web view's GPU process activates a `MediaPlayback` audio session for a video with sound, and none through the whole of the new flow. An older App shows a play mark and plays it silent.
+- A call whose connection is lost (not hung up) goes on as another session with its board and its shelf (two minutes; a hang-up lets them go). What it was making is finished, not cancelled, goes up where the call is now, and V there says so.
+- The page gave up on the shelf for the whole call after two refusals in a gap; it now goes on asking, and takes another session's shelf whole (ids and stamps may coincide).
+- A picture the caller points at ("那个烤鸡的图片") must be what the command works from; a promise to make something that started nothing is caught in more words, and with Doubao (which takes no typed turn) the caller is told the truth; "给我看一下现场的图片" draws nothing.
+
+## 2026-11-22 — A video shows in the iOS App; one close button over the viewer
+
+- The iOS App's web view lets nothing play before a tap (`mediaTypesRequiringUserActionForPlayback = .all`: a silent video too). A made video's frame waited for the video's first frame before it showed or could be tapped, and the first frame waited for a tap: it stayed on "马上就动" (production 11/22 00:44, the first video of a call; a later one showed because the caller had tapped the page). A video that is refused now shows the picture it was made from with a play mark, can be tapped, and is started inside the tap; the viewer starts its video as it comes up. The video starts silent and takes its sound once it is moving, where the page may start sound by itself (not in the App, whose call audio is its own).
+- The App lays its settings button over the top right corner of the page, above the viewer's close button: both showed, and a tap there opened the settings. The viewer tells the App it is open the way a document being read does, and the App takes its button away.
+
+## 2026-11-22 — V is not cut off by its own voice on a loud phone speaker; an uplink stall no longer ends the call
+
+- Echo: on iOS speakerphone at high volume in a quiet room (11/21), a little of V's playback got past the phone's echo canceller. The reply had been generated 1–2 s earlier (it arrives about six times faster than it plays), so the duplex model took 2–4 recognised characters of what V was saying for a new utterance, answered it, and its answer replaced and cleared the reply still playing (five of the call's cuts). The iOS audio path is unchanged since build 32 and V's playback is the canceller's reference; this is residual echo, not a missing reference. Now, on the phone, while the client still reports V's reply playing, a final utterance of at most four characters (or words), most of which are in that reply, is V's own voice: the reply goes on, the client's local hold is released (`input.speech.ignored`), the model's answer to it is never played or captioned, and the words are kept in the call log as `playbackEcho`. Explicit requests to stop (停, 等一下, 不对, …) always interrupt. Replayed over a month of phone calls: 9 of 510 caller turns would have been treated as echo, all short scraps 2–5 s into a reply. `VOICE_PLAYBACK_ECHO_GUARD=0` turns it off.
+- Board lessons: on a native duplex call the lesson (speech the service speaks for us) was cancelled at the first sound the model heard, so a loud speaker's echo stopped lessons after 8 s and 11 s of 40 s and 30 s (11/21). It is now cancelled only when the utterance is recognised and is not V's own voice; the lesson's caption is what the echo guard compares with. The model itself still holds a lesson while it thinks someone is talking, so echo that reaches it at a lesson's start can still delay it: only less echo from the phone fixes that.
+- iOS App on a stalled uplink: the App ended the call once 96 KB (two seconds) of microphone audio waited to be sent; the web page sheds new frames instead and ends the call only after 30 s without draining. On 11/21 the App's connection (through the phone's proxy) stopped answering pings for up to 21 s and the App hung up (`audio.upload-overflow`, `call.failed`), while capture and the main thread were on time (frames every 23 ms, at most 36 ms late). The App now follows the web page's rule, and takes the numbers from the call's native runtime policy (`upload`, from `lab/gpt-live-h5/upload-backpressure.mjs`, shared with the web page), so they can be changed on the service for every client. Older Apps ignore the field. Takes effect with the next App build.
+- Uplink stalls: the gaps (`input-paused`, up to 14 s) were the phone's connection stalling on the route to V, not pictures, the page or the service (24 s of CPU in two hours; the phone's own 1.3 s capture and 2 s send limits never tripped, and the audio arrived afterwards in one burst). After a 13 s stall the burst passed the 10 s input limit and the call closed as provider-error; the input is now kept to its newest 4 s and older audio is dropped. While a burst is still being fed the input is no longer paused and resumed four times a second, which cut an utterance into pieces that were never answered. New `input-burst` (how long the uplink was silent, how much audio then arrived within a second, how much was dropped) tells a network stall from a phone that stopped sending.
+
+## 2026-11-21 — What V makes goes up on the board; one rule for what V does itself; places ringed on photographs
+
+- Both are on wherever the call board is on (`VOICE_BOARD_ASSETS=0` / `VOICE_BOARD_CANVAS=0` turn one off): no change to production's private configuration.
+- The shelf of made things: a picture or video V makes in a call is on the board from the moment it is asked for (a sketch, then the picture, then the video in the picture's own frame); the voice model is told what is on the caller's screen and names things by id or by name; found photographs can be the reference of what is made (lent under private half-hour addresses, small ones enlarged); several references; one viewer for found and made pictures, with save; V says a thing is ready the moment it is on the screen.
+- A video's script is rewritten by a director's pass on the board's model, shown the reference pictures (`VOICE_MEDIA_SCRIPT`): shots that add up, an ending the caller named, one take for a quiet picture; 32 cases run by rule and filmed.
+- V's own image is a standing picture of the shelf (`--image v`): V's canonical avatar.
+- One rule for what the voice model does itself and what goes to the backend, in place of a rule per kind of task: is everything at hand, can it be done in one go, does it touch only this call (`VOICE_HANDOFF_RULE`). Backed by code in four places: a request that names something not at hand is not drawn from words (`material-check.mjs`), a reference that is not on the screen, a lookup refused for lack of access, and a video over fifteen seconds all point to the backend. 62 routing cases on the real voice model with stand-in tools: 104/124 before, 125/130 after (`docs/research/voice-routing/handbook.md`).
+- The canvas (from `claude/board-canvas-live`): what can be seen goes up as a large photograph and the places V talks about are ringed on it as V reaches them.
+- Nothing is drawn for a request that only asks for pictures to be found; found photographs of the same name go by their row.
+
+## 2026-11-21 — No more blank call page from a gallery
+
+- A gallery measured its names' height from the page as drawn and set its rows from it: a narrow picture's name went to two lines with smaller pictures and back to one with larger ones, every render, until React stopped ("Maximum update depth exceeded") and the whole call page went blank (production 11/21 15:28, after #242 made pictures arrive together; Tianyi had seen it before). The names' height now only grows for one set of pictures, and a gallery takes at most a few size changes a frame.
+- The board is guarded: a piece that fails to draw takes only itself away (then the page, then the board), and is tried again on the next change; the call page, conversation and controls stay (#243).
+
+## 2026-11-21 — Pictures of a page arrive sooner and in order
+
+- The image search (free plan: one request a second, 2000 a month) is queued by arrival: the next request waits for the answer to the one before; a single refusal no longer doubles the gap for a minute, and the refused search takes the next turn so pictures come in the order V speaks of them.
+- A small picture (the search's own thumbnail) is taken over a large original that arrived a moment before it (1-2.5 MB originals took seconds more to reach a phone); each file has 3.5 s before the next results are tried.
+- Candidate probe, six searches of one page: last picture 16.6 s → 7.7 s, files 15-170 KB (#242).
+
+## 2026-11-21 — The call record keeps why a call ended
+
+- The call record (transcript log) kept only the call's identity on call.closed and dropped provider-status stages it did not know: the reason added in #239 and the voice service's own "upstream-closed" never reached production records. They are now kept: `why` (one of the service's own words) and up to six short fields of what the service said (#240).
+
+## 2026-11-21 — A call records why it ended; picture search tries past dead links
+
+- call.closed records which way the call ended (client-closed:<code>, provider-upstream-closed, provider-error, host-ending, …); a SeeDuplex session.closed we did not ask for is reported as call.provider-status "upstream-closed" with what the service said. (Call 9caf5e1b ended 0.14 s after the caller's turn with no record of why.)
+- When the three best image-search results cannot be fetched (a site that refuses other sites), the next ones are tried, up to nine (轰鸣月, 波荡水) (#239).
+
+## 2026-11-21 — Picture searches the image search answered are no longer thrown away
+
+- Results qualify on their own score (their place in the list only orders them); words the search asks for (海报, 同人, mega) are not held against a title; guide, data and download pages are; a Chinese title must name the thing (half its characters: 超夢 for 超梦), and an English title sharing no word with a several-word search for a Chinese name does not count for it.
+- A search that finds nothing worth fetching is tried without its kind-of-picture words (截图, 官方宣传图, fan art…), then without its last word (GTA6 searches like "GTA6 预告片 露西娅 杰森 同框 截图" found nothing at all).
+- An encyclopedia redirect to an article about something else is not the thing's picture (凯路迪欧 → 第五世代寶可夢列表 gave the Pokemon logo).
+- Rerun of the 77 searches made in production on 11/20: 77 found (was 65), none of the 65 lost (#237).
+
+## 2026-11-20 — A gallery drawn again keeps the pictures that were found
+
+- Asked for "more pictures", the director redraws the gallery under the same item ids; the gallery remembered failed pictures by id and hid new pictures that had been found (production call dfbb0ead: V described six, the page showed two). Failed pictures are now remembered by search, and tried again when the gallery is drawn with other searches.
+- The service answers 503 for a picture it could not look for just now (the image search refused or timed out) and 404 for one there is none of; the page tries a 503 once more after 2.5 s and does not keep it.
+- A request the image search refused (429) is asked again through the one-a-second queue, twice at most, with twice the gap for a minute: the retry used to go out beside the next queued request and be refused again (#234).
+
+## 2026-11-20 — Gallery pictures whole and large; pages drawn smaller fit; pictures open large
+
+- Gallery pages (`look: "gallery"`) show each picture whole, at its own shape, in rows of one height that fill the page's width (`galleryLayout`: the breaks that make the pictures largest within the height the page has, none made tiny for another). On a wide page the gallery takes the whole width and the notes go under it side by side; once a picture shows, the page's lead print steps aside. Wide page, 4 pictures: ~245 px tall, whole (were ~160 px, cropped to 4:3, in the left half).
+- A page drawn smaller to fit (`useFit`) no longer grows taller than the panel: its min-height was `100% / zoom`, which in Chromium and WebKit made a page at 0.62 1.6 panels tall, its content low and its bottom cut off. A long page on a wide panel now fits at ~0.83.
+- Every picture on the page opens over the whole window when tapped or clicked, with its name under it; a tap, the close button or Escape puts it back (#232).
+
 ## 2026-11-18 — "Show me some pictures" is a gallery of real photos
 
 - Picture requests go to the lesson tool (real photos), not to the backend (which generated one in call 7f8f18da); V does not say it is finding something without calling a tool. The lesson writer shows the pictures instead of explaining where to find them and, since it cannot see them, says only what each is of. The illustrator draws a list with `look: "gallery"`: 4-6 pictures, each its own specific search, large, two to a row, appearing as the voice reaches them; a picture not found is removed with its name (#229).

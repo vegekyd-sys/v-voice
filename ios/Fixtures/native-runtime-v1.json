@@ -1,6 +1,12 @@
 {
   "policy": {
     "version": 1,
+    "taskLabels": {
+      "memory": "查记忆",
+      "web": "查询网页",
+      "calendar": "查日程",
+      "background": "后台处理"
+    },
     "timing": {
       "thinkingMS": 12000,
       "providerRecoveryMS": 35000,
@@ -21,6 +27,10 @@
       "quietMS": 400,
       "holdMS": 1800,
       "maxHoldMS": 12000,
+      "confirmationMS": 2000,
+      "speechConfidence": 0.9,
+      "speechRMS": 0.006,
+      "speechOnsetMS": 60,
       "nativeHoldMS": 15000,
       "generationGraceMS": 600,
       "doneGraceMS": 250
@@ -28,6 +38,11 @@
     "bargeIn": {
       "rms": 0.025,
       "frames": 4
+    },
+    "upload": {
+      "shedBytes": 96000,
+      "resumeBytes": 24000,
+      "stallMS": 30000
     },
     "playback": {
       "replaceResponse": true,
@@ -44,7 +59,7 @@
         {
           "op": "conversation.row",
           "row": {
-            "id": "68ff107f-5f2a-497d-88fe-85d932db96ac",
+            "id": "5f9dfd18-50be-450a-a370-cdba6d5083fe",
             "role": "assistant",
             "text": "先自然接话",
             "complete": false
@@ -61,7 +76,7 @@
         {
           "op": "conversation.row",
           "row": {
-            "id": "68ff107f-5f2a-497d-88fe-85d932db96ac",
+            "id": "5f9dfd18-50be-450a-a370-cdba6d5083fe",
             "role": "assistant",
             "text": "先自然接话，再查询。",
             "complete": true
@@ -89,7 +104,7 @@
         {
           "op": "conversation.row",
           "row": {
-            "id": "d2f35d85-b261-4749-9227-2dce87052888",
+            "id": "17cbfc5c-390b-4f67-86fd-8bfabdd82402",
             "key": "speaker:0:300",
             "role": "user",
             "text": "我叫甲",
@@ -126,7 +141,7 @@
         {
           "op": "conversation.row",
           "row": {
-            "id": "d2f35d85-b261-4749-9227-2dce87052888",
+            "id": "17cbfc5c-390b-4f67-86fd-8bfabdd82402",
             "key": "speaker:0:300",
             "role": "user",
             "text": "我叫甲",
@@ -174,7 +189,7 @@
           "op": "task.upsert",
           "id": "search",
           "activity": "web",
-          "stage": "查资料"
+          "stage": "查询网页"
         },
         {
           "op": "surface.phase",
@@ -299,7 +314,7 @@
         {
           "op": "conversation.row",
           "row": {
-            "id": "0a85ec4b-8d9f-4331-9e9f-a84e14dc663b",
+            "id": "b1dc4842-dd3c-4fc2-88bf-6036d6bd6360",
             "key": "document:report",
             "role": "assistant",
             "text": "",

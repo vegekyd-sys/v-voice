@@ -7,7 +7,7 @@ export const LOCAL_EXECUTION_POLICY='exec 返回 running/sessionId 后必须用 
 // So the model writes its own words up front and they are used only if needed.
 const EXECUTION_FINISHED_FALLBACK={done:'刚才那个弄好了。',failed:'刚才那个没弄成。'};
 const ownLine=value=>{const line=typeof value==='string'?value.trim():'';return line&&line.length<=120&&!/https?:|voice-exec-|[\r\n]/u.test(line)?line:'';};
-export const executionFinishedLine=(result,{completionLine,failureLine}={})=>result?.isError?ownLine(failureLine)||EXECUTION_FINISHED_FALLBACK.failed:ownLine(completionLine)||EXECUTION_FINISHED_FALLBACK.done;
+export const executionFinishedLine=(result,{completionLine,failureLine}={})=>result?.isError?result.accountIssue?.message||ownLine(failureLine)||EXECUTION_FINISHED_FALLBACK.failed:ownLine(completionLine)||EXECUTION_FINISHED_FALLBACK.done;
 // What the conversation needs to act on the result later; never spoken.
 export function executionResultFacts(result) {
   const text=result?.content?.filter(item=>item.type==='text').map(item=>item.text).join('\n')??result?.error??'';
@@ -17,6 +17,8 @@ export function executionResultFacts(result) {
 export function executionFailureResult(error) {
   const previous=error?.isError?error:{},details=previous.details??{};
   const message=String(previous.error??previous.content?.filter(item=>item.type==='text').map(item=>item.text).join('\n')??error?.message??error);
+  if(previous.accountIssue)return {...previous,status:'failed',submission:details.submission,error:message,
+    instruction:'直接告诉用户当前会话的账号问题和处理方法。等用户处理后明确要求继续，不自动重提，不换账号。'};
   const submission=previous.submission??details.submission??error?.submission??'unknown';
   const code=details.code??error?.code,notSubmitted=submission==='not-submitted';
   const status=notSubmitted?'not-started':'failed',retryable=notSubmitted&&code==='invalid_arguments';
@@ -26,7 +28,9 @@ export function executionFailureResult(error) {
 
 // The same exec -> running/sessionId -> process contract used by Gateway exec.
 // Entries are execution handles, not model memory or conversation instructions.
-export function createLocalExecutions({yieldMs=1000,maxJobs=128,settleMs=2500,now=Date.now}={}) {
+// `unfollowedSettleMs`: how soon an execution the model has not asked after (no poll while it ran, or none
+// lately) may be told. The wait is for a model about to read the result itself; one that is not following has nothing to wait for.
+export function createLocalExecutions({yieldMs=1000,maxJobs=128,settleMs=2500,unfollowedSettleMs=settleMs,followWindowMs=8000,now=Date.now}={}) {
   const jobs=new Map();
   const running=job=>({status:'running',sessionId:job.id,content:[{type:'text',text:'执行仍在进行。用 process(action="poll", sessionId="'+job.id+'", timeout=5000) 继续读取原执行结果；不要重新执行命令。'}],details:{status:'running',sessionId:job.id}});
   const result=job=>{if(job.done){job.readFinal=true;return job.announced?{...job.result,instruction:'这个结果已经告诉过用户，不要再通报一次，直接回应用户当前的话。'}:job.result;}return running(job);};
@@ -50,7 +54,7 @@ export function createLocalExecutions({yieldMs=1000,maxJobs=128,settleMs=2500,no
     // A finished execution nobody is following. Taken at most once; process can still read it.
     takeUnread(accept=()=>true) {
       for(const job of jobs.values()){
-        if(!job.done||job.readFinal||job.announced||job.controller.signal.aborted||now()-job.doneAt<settleMs||!accept(job.metadata))continue;
+        if(!job.done||job.readFinal||job.announced||job.controller.signal.aborted||now()-job.doneAt<(job.polledAt!==undefined&&job.doneAt-job.polledAt<followWindowMs?settleMs:unfollowedSettleMs)||!accept(job.metadata))continue;
         job.announced=true;
         return {id:job.id,result:job.result,metadata:job.metadata};
       }
@@ -63,7 +67,8 @@ export function createLocalExecutions({yieldMs=1000,maxJobs=128,settleMs=2500,no
       for(const [id,job] of jobs){if(jobs.size<maxJobs)break;if(job.done&&(job.readFinal||job.announced||job.controller.signal.aborted))jobs.delete(id);}
       if(jobs.size>=maxJobs)throw Error('本通话正在执行的任务过多');
       const controller=new AbortController(),job={id:'voice-exec-'+randomUUID(),controller,metadata,done:false};
-      const abort=()=>controller.abort(signal.reason);signal?.addEventListener('abort',abort,{once:true});
+      // (The call was lost, not ended: the execution goes on.)
+      const abort=()=>{if(!metadata?.lost?.())controller.abort(signal.reason);};signal?.addEventListener('abort',abort,{once:true});
       jobs.set(job.id,job);
       job.completion=Promise.resolve().then(()=>{controller.signal.throwIfAborted();return factory(controller.signal);}).then(
         result=>{job.result=result?.isError?executionFailureResult(result):result;},
@@ -71,10 +76,17 @@ export function createLocalExecutions({yieldMs=1000,maxJobs=128,settleMs=2500,no
       ).finally(()=>{job.done=true;job.doneAt=now();signal?.removeEventListener('abort',abort);});
       return read(job,yieldMs,signal);
     },
+    // One that finished elsewhere (begun before this session of the call): nobody has read it, so it is told.
+    finished(result,metadata) {
+      const job={id:'voice-exec-'+randomUUID(),controller:new AbortController(),metadata,done:true,doneAt:now(),result,completion:Promise.resolve()};
+      jobs.set(job.id,job);return job.id;
+    },
     poll(id,{timeout=1000,signal,action='poll'}={}) {
       const job=jobs.get(id);if(!job)throw Error('只能查询本通话返回的执行 sessionId');
+      job.polledAt=now();
       return read(job,action==='log'?0:timeout,signal);
     },
-    async cancelAll(){for(const job of jobs.values())if(!job.done)job.controller.abort(Error('本通话执行等待已结束；供应商状态未确认，不重新生成'));await Promise.all([...jobs.values()].map(job=>job.completion));},
+    // (`keep(metadata)`: those that go on though the call's connection was lost.)
+    async cancelAll(keep=()=>false){const ended=[...jobs.values()].filter(job=>job.done||!keep(job.metadata));for(const job of ended)if(!job.done)job.controller.abort(Error('本通话执行等待已结束；供应商状态未确认，不重新生成'));await Promise.all(ended.map(job=>job.completion));},
   };
 }

@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "board-20261114",
-  "version": "voice-board.20261113.1",
-  "entryCommit": "5c4a01cf1324b8eb969eba826b2904b6e91d1fc4",
-  "deviceEntryCommit": "5c4a01cf1324b8eb969eba826b2904b6e91d1fc4",
-  "filesSha256": "f2712afbc077de9ac00d4ad6b3c485e7364ece7b07c19d1b060eebc8c08feea6",
-  "registration": "board-20261114/release.json",
-  "previousEntryCommit": "09ed92d3217e930c2326822d8bc0a6008344a269",
+  "release": "voice-session-media-20261122",
+  "version": "voice-session-media.20261122.1",
+  "entryCommit": "2961768c348f872e270e9e67f5df9949e1a477bc",
+  "deviceEntryCommit": "2961768c348f872e270e9e67f5df9949e1a477bc",
+  "filesSha256": "92bc285e6a6923a508faa42f7dd8d6833974105e7c20c546b304b608151d8c2c",
+  "registration": "voice-session-media-20261122/release.json",
+  "previousEntryCommit": "6f7babc44377ff1b1758a1844e7ea5ffe1f92d52",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-15T01:39:39+08:00",
-  "runtimeDifference": "The call board for every caller; iPhone board follows the App's own audio (build 46); a refused conversation record is dropped at once and remembered; phone board keeps the last lines of the conversation. Phone board no longer swings between pages; one page per title; a four-line caption strip. Phone real-time feel: V's words on an empty page, the lesson page drawn pale and inked as spoken, earlier drawing, a caption strip that really shows four lines. The board follows cues the illustrator writes (clause numbers), not word matching; one line under a phone's page; pictures for things that can be seen."
+  "validatedAt": "2026-11-22T21:06:39+08:00",
+  "runtimeDifference": "飞书群和私聊通话使用当前会话绑定的 Makaron 账号创作，新会话按需注册，积分不足时提示回原飞书会话充值。本次也发布了 #253 的服务端及网页更新。"
 }

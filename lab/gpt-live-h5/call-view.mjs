@@ -126,6 +126,8 @@ export const INITIAL_VIEW = Object.freeze({
   // Every page of the call's canvas ({zones, active}); null where there is only the one page.
   boardCanvas: null,
   boardSpoken: null,
+  // The call's shelf of made things ({assets: Map by id, picked}; board-assets-client.mjs); null until there is one.
+  boardAssets: null,
 });
 
 export function createCallView(initial = {}) {

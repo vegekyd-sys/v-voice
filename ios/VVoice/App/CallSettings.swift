@@ -127,13 +127,56 @@ struct SettingsView: View {
                         }
                     }.padding(17).background(.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 21))
                 }
-                Text("V Voice").font(VoiceStyle.font(11)).foregroundStyle(VoiceStyle.faint)
-                    .frame(maxWidth: .infinity).padding(.top, 2)
+                versionFooter
             }.frame(maxWidth: 520).padding(.horizontal, 24).padding(.bottom, 32).frame(maxWidth: .infinity)
         }.foregroundStyle(VoiceStyle.ink).background(VoiceStyle.background)
             .navigationTitle("设置").navigationBarTitleDisplayMode(.inline)
     }
 
+    /// Which App and which call page this is, and whether the page is the one the service serves now.
+    private var versionFooter: some View {
+        VStack(spacing: 10) {
+            if let status = pageStatus {
+                Button { Task { await call.checkPageFreshness() } } label: {
+                    HStack(spacing: 8) {
+                        if call.pageFreshness == .checking { ProgressView().controlSize(.mini).tint(VoiceStyle.faint) }
+                        else {
+                            Circle().fill(status.tint).frame(width: 6, height: 6)
+                                .background(Circle().fill(status.tint.opacity(0.16)).frame(width: 14, height: 14))
+                        }
+                        Text(status.text).font(VoiceStyle.font(12, weight: .medium)).foregroundStyle(VoiceStyle.soft)
+                    }.padding(.horizontal, 13).frame(height: 30)
+                        .background(.white.opacity(0.72), in: Capsule())
+                        .overlay { Capsule().strokeBorder(VoiceStyle.line.opacity(0.6), lineWidth: 0.5) }
+                }.buttonStyle(.plain).disabled(call.pageFreshness == .checking)
+                    .accessibilityIdentifier("pageFreshness").accessibilityHint("轻点再检查一次")
+                    .transition(.opacity)
+            }
+            Text(versionLine).font(VoiceStyle.font(11)).foregroundStyle(VoiceStyle.faint).monospacedDigit()
+                .accessibilityIdentifier("appVersion")
+        }.frame(maxWidth: .infinity).padding(.top, 4)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: call.pageFreshness)
+            // Asked again whenever the page changes (a newer one taken while this is open).
+            .task(id: call.page) { await call.checkPageFreshness() }
+    }
+    private var pageStatus: (text: String, tint: Color)? {
+        switch call.pageFreshness {
+        case .checking: return ("正在检查界面…", VoiceStyle.faint)
+        case .latest: return ("界面已是最新", VoiceStyle.speakerAccent(1))
+        case .newer(let updated): return ((updated.map { "有\(day($0))的新界面" } ?? "有新界面") + " · 回到首页即更新", VoiceStyle.speakerAccent(2))
+        case .unknown: return nil
+        }
+    }
+    private var versionLine: String {
+        let info = Bundle.main.infoDictionary
+        let app = "V Voice \(info?["CFBundleShortVersionString"] as? String ?? "") (\(info?["CFBundleVersion"] as? String ?? ""))"
+        guard let page = call.page else { return app }
+        return [app, "界面" + (page.updated.map { " " + day($0) } ?? ""), page.bundled ? "App 内置" : nil].compactMap { $0 }.joined(separator: "  ·  ")
+    }
+    private func day(_ iso: String) -> String {
+        let parts = iso.split(separator: "-").compactMap { Int($0) }
+        return parts.count == 3 ? "\(parts[1])月\(parts[2])日" : iso
+    }
     private var entriesLocked: Bool { call.active || selecting != nil || call.publicPreparing }
     private var entryDivider: some View { Divider().overlay(VoiceStyle.line.opacity(0.65)).padding(.leading, 71) }
     private func settingsIcon(_ name: String) -> some View {

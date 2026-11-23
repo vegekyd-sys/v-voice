@@ -29,6 +29,8 @@ import {createFeishuPhoneLogin,readFeishuPhoneLoginFile,feishuPhoneLoginFailure,
 import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
 import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
 import {createTaskDelivery} from '../realtime-direct-tools/task-delivery.mjs';
+import {homedir} from 'node:os';
+import {createMediaAccounts} from '../realtime-direct-tools/media-accounts.mjs';
 import {createVoiceMediaCli} from '../realtime-direct-tools/media-cli.mjs';
 import {createVoiceLarkReader,personalLarkReader} from '../realtime-direct-tools/lark-readonly.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
@@ -39,20 +41,30 @@ import {idleHangupFromEnv} from '../realtime-direct-tools/idle-hangup.mjs';
 import {boardCompletionFromEnv,boardDirectorFromEnv,boundedBoardRequest} from './board-director.mjs';
 import {createPhotoFinder} from './board-photo.mjs';
 import {STREAM_INSTRUCTIONS,createLessonWriter,refineStreamOp} from './board-lesson.mjs';
-import {CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
+import {CANVAS_CUE_INSTRUCTIONS,CANVAS_SCRIPT_INSTRUCTIONS,CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
+import {createBoardEye} from './board-eye.mjs';
 import {scenePictures} from './board-scene.mjs';
+import {ASSET_ID,ASSET_MAKE_NOTES,ASSET_NOTES,ASSET_SCRIPT_NOTES,SELF_IMAGE,SELF_IMAGE_FILE,SHELF_ID,createAssetEye,createAssetShelf,pictureName} from './board-assets.mjs';
+import {roomyPicture} from './board-picture-size.mjs';
+import {createVideoScriptWriter} from '../realtime-direct-tools/media-script.mjs';
+import {createMaterialCheck} from '../realtime-direct-tools/material-check.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Dialing is how a known caller retries; only anonymous callers keep the tight limit.
 // Page features reachable as /api/page/<name> (see the request handler). Each maps to the route the web
 // page uses, answered as JSON: the board's whole run at once, a photograph as base64.
+// The served App page's build and the date of its latest update (ios-shell-release.json), read once.
+let servedPageBuild;
 const PAGE_FEATURES = Object.freeze({
   board: params => ({pathname: '/api/board', params: {...params, collect: true}}),
   'board-image': params => ({pathname: '/api/board-image', params: {...params, inline: true}}),
+  'board-assets': params => ({pathname: '/api/board-assets', params}),
+  // Which page the service serves the App now (its build), so the page can say whether it is the latest.
+  version: () => ({pathname: '/api/page-version', params: {}}),
 });
 export const callAttemptLimit = binding => binding.permissionProfile === 'unidentified' ? 6 : 30;
 
-export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, board = null, boardPhotos = null, boardAudience = 'owner', enableGrok = false, enableGptLive11 = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), relayUsageFile = process.env.VOICE_RELAY_USAGE_FILE || '/var/lib/v-voice-usage/snapshot.json', conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, board = null, boardPhotos = null, boardAssets = null, boardAudience = 'owner', enableGrok = false, enableGptLive11 = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), relayUsageFile = process.env.VOICE_RELAY_USAGE_FILE || '/var/lib/v-voice-usage/snapshot.json', conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
   let agentControl = null;
   if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
   if (!["gpt-live","seeduplex","grok","gpt-live-11"].includes(defaultModel)) throw new Error("Invalid default voice model");
@@ -76,6 +88,28 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   if (hosted && (origin.protocol !== "https:" || origin.origin !== publicOrigin || !basePath)) throw new Error("Hosted voice requires an HTTPS origin and base path");
   if (!Number.isInteger(maxActiveSessions) || maxActiveSessions < 1 || maxActiveSessions > 50 || !Number.isInteger(maxActiveSessionsPerIp) || maxActiveSessionsPerIp < 1 || maxActiveSessionsPerIp > maxActiveSessions) throw new Error("Invalid voice call limits");
   const entries = createConversationEntries(conversationEntries, accessToken, personalReply);
+  // Photographs found for a call's board, lent out for half an hour under private addresses so that
+  // one can be the reference of something V makes (board-assets.mjs `lend`): a generator fetches the
+  // picture from here. Only where the service has a public HTTPS origin; the address is the whole permission.
+  const lentPictures = new Map(), LEND_MS = 30 * 60000;
+  // (And the pictures themselves, for the shelf's eye to check that each is the thing it was searched for.)
+  // (V's own image is a picture the call always has: V's canonical avatar, or the file VOICE_SELF_IMAGE names.)
+  let selfPicture = null;
+  const pictureType = bytes => bytes.subarray(0, 4).toString('latin1') === 'RIFF' ? 'image/webp' : bytes[0] === 0x89 ? 'image/png' : 'image/jpeg';
+  const standingPicture = query => query === SELF_IMAGE.query ? (selfPicture ??= readFile(process.env.VOICE_SELF_IMAGE || new URL('./assets/' + SELF_IMAGE_FILE, import.meta.url)).then(bytes => ({bytes, type: pictureType(bytes), title: SELF_IMAGE.name, source: 'V'}), () => null)) : null;
+  const heldPicture = query => standingPicture(query) ?? boardPhotos?.find(query) ?? null;
+  if (boardAssets) boardAssets.picture = heldPicture;
+  if (boardAssets && hosted) boardAssets.share = async query => {
+    // (A thumbnail is lent out larger: a video model refuses a reference under 256 px a side.)
+    const found = await heldPicture(query), picture = found?.bytes?.length ? await roomyPicture(found, {least: 512}) : found;
+    const kind = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'}[picture?.type];
+    if (!picture?.bytes?.length || !kind) return null;
+    for (const [key, lent] of lentPictures) if (lent.until < Date.now()) lentPictures.delete(key);
+    while (lentPictures.size >= 40) lentPictures.delete(lentPictures.keys().next().value);
+    const token = randomBytes(16).toString('hex'), until = Date.now() + LEND_MS;
+    lentPictures.set(token, {bytes: picture.bytes, type: picture.type, until});
+    return {url: `${publicOrigin}${basePath}/board-shared/${token}.${kind}`, until};
+  };
   const replyTargets=new Map(entries.replyBindings().map(e=>[e.id,conversationReplyTarget(e,feishuAccounts)]));
   const appDownload=iosAppDownload(iosAppDownloadUrl);
   const phoneLogin = feishuLogin ? createFeishuPhoneLogin({...feishuLogin, publicOrigin, basePath, entries,
@@ -217,7 +251,24 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     if(Date.now()-at>300000){context.completedCalls.delete(id);return false;}
     return true;
   };
-  const close = async (context = local) => {
+  // A call whose connection was lost (not hung up) is connected again as another session: the iOS App when
+  // something takes its audio, a page whose network went. What it had on the board is kept for it a little
+  // while and goes on with the next session; a hang-up, or no redial in time, lets it go.
+  const CARRY_MS = 120000;
+  const letGo = (context, id) => { if (context.lost && (!id || context.lost.id === id)) { clearTimeout(context.lost.timer); board?.forget(context.lost.id); context.lost = null; } };
+  const keepForRedial = (context, id) => {
+    letGo(context);
+    const timer = setTimeout(() => letGo(context, id), CARRY_MS); timer.unref?.();
+    context.lost = {id, timer};
+  };
+  const carryOn = (context, id) => {
+    const lost = context.lost; if (!lost) return;
+    clearTimeout(lost.timer); context.lost = null;
+    const carried = board?.adopt?.(id, lost.id) === true;
+    if (!carried) board?.forget(lost.id);
+    callControlAudit({type:'call.carried',voiceSessionId:id,from:lost.id,board:carried});
+  };
+  const close = async (context = local, {redial = false} = {}) => {
     const old = context.active;
     old?.deviceChannel?.close();
     if(old?.deviceBound)await (old.gateway??gateway).request('voice.product.device-context',{clientSecret:old.reservation.clientSecret,voiceSessionId:old.reservation.voiceSessionId,mode:'close'},{timeoutMs:5000}).catch(()=>{});
@@ -226,8 +277,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     old?.callControl?.close();
     if(old)speakerRouting?.close(old.reservation.voiceSessionId);
     if (old) visual.forget(old.reservation.voiceSessionId);
-    if (old) board?.forget(old.reservation.voiceSessionId);
-    if (old?.direct) await directVoice.close(old.reservation.voiceSessionId);
+    // (A new dial while the last call was never hung up: that call is being connected again.)
+    if (old) { if (redial && old.direct && board?.adopt) keepForRedial(context, old.reservation.voiceSessionId); else { letGo(context); board?.forget(old.reservation.voiceSessionId); } }
+    if (old?.direct) await directVoice.close(old.reservation.voiceSessionId, redial ? 'redial' : 'requested');
     else if (old) await (old.gateway??gateway).request("talk.client.close", { sessionKey: old.sessionKey, voiceSessionId: old.reservation.voiceSessionId });
     if(old)rememberClosedCall(context,old.reservation.voiceSessionId);
     if(old&&!old.direct)callControlAudit({type:'call.closed',voiceSessionId:old.reservation.voiceSessionId});
@@ -240,7 +292,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       // Reserved, live and cleanup-pending sessions remain owned. Only a
       // fully retired native session can release another device's lock.
       if(!old?.direct||directVoice.hasSession(old.reservation.voiceSessionId))continue;
-      visual.forget(old.reservation.voiceSessionId);board?.forget(old.reservation.voiceSessionId);
+      visual.forget(old.reservation.voiceSessionId);
+      if(board?.adopt&&directVoice.lostCall?.(old.reservation.voiceSessionId))keepForRedial(context,old.reservation.voiceSessionId);else board?.forget(old.reservation.voiceSessionId);
       rememberClosedCall(context,old.reservation.voiceSessionId);
       context.active=null;
       const owner=context.avatarOwners?.get(old.reservation.voiceSessionId);if(owner)owner.endedAt=Date.now();
@@ -306,7 +359,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (binding.id !== 'tianyi'&&!unidentified&&!currentAdmission) await verifyPhoneSession(binding.gateway??gateway, binding);
       const verifiedAt=performance.now();
       if(cancelled())return reply(499,{error:"拨号已取消"});
-      await close(context);
+      await close(context,{redial:true});
       const closedAt=performance.now();
       if(cancelled())return reply(499,{error:"拨号已取消"});
       const recordAdmissionTiming=reservation=>{
@@ -328,8 +381,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         // the deployment selects the phone default, not browser heuristics.
         // Clients opt in only after implementing native response ownership and reversible pause.
         const inputPolicy = params.inputPolicy ?? 'speaker';
-        const reservation = await directVoice.reserve({model:params.model,sessionKey,voice:params.voice,...(unidentified?{unidentified:true}:{}),...(binding.callerIdentity?{callerIdentity:binding.callerIdentity}:{}),...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId,toolIdentity:binding.actorPrincipal}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(params.nativeDeviceActions?{nativeDeviceActions:params.nativeDeviceActions,terminalKind:iosBindings?.read(req,binding)?'ios':'web',backendDeviceURL:backendDeviceEndpoint||`${hosted?publicOrigin:`http://127.0.0.1:${server.address().port}`}${basePath}/internal/device-request`}:{}),...(params.nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId,reportOptions)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...(speakerRouting||unidentified)?{inputPolicy}:{},...(prefetched?{prefetched}:{})});
+        const reservation = await directVoice.reserve({model:params.model,sessionKey,...(binding.nativeChatId?{nativeChatId:binding.nativeChatId}:{}),voice:params.voice,...(unidentified?{unidentified:true}:{}),...(binding.callerIdentity?{callerIdentity:binding.callerIdentity}:{}),...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId,toolIdentity:binding.actorPrincipal}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(params.nativeDeviceActions?{nativeDeviceActions:params.nativeDeviceActions,terminalKind:iosBindings?.read(req,binding)?'ios':'web',backendDeviceURL:backendDeviceEndpoint||`${hosted?publicOrigin:`http://127.0.0.1:${server.address().port}`}${basePath}/internal/device-request`}:{}),...(params.nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId,reportOptions)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...(speakerRouting||unidentified)?{inputPolicy}:{},...(prefetched?{prefetched}:{})});
         context.active={sessionKey,gateway:callGateway,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
+        carryOn(context,reservation.voiceSessionId);
         if(cancelled()){await close(context);return reply(499,{error:"拨号已取消"});}
         rememberAvatarCall(context,context.active,params.model);
         recordAdmissionTiming(reservation);
@@ -438,6 +492,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (basePath && url.pathname === basePath && req.method === "GET") { res.writeHead(308, { location: `${basePath}/${url.search}`, "cache-control": "no-store" }); res.end(); return; }
       if (basePath && !url.pathname.startsWith(`${basePath}/`)) return json(res, 404, { error: "没有这个入口" });
       let pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
+      if ((req.method === 'GET' || req.method === 'HEAD') && pathname.startsWith('/board-shared/')) {
+        const lent = lentPictures.get(/^\/board-shared\/([a-f0-9]{32})\.(?:jpg|png|webp)$/u.exec(pathname)?.[1]);
+        if (!lent || lent.until < Date.now()) return json(res, 404, {error: '没有这张图'});
+        res.writeHead(200, {'content-type': lent.type, 'content-length': lent.bytes.length, 'cache-control': 'private, max-age=600', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer'});
+        res.end(req.method === 'HEAD' ? undefined : lent.bytes); return;
+      }
       if(req.method==='GET'&&/^\/invite\/[a-f0-9]{32}$/u.test(pathname)){
         const location=agentControl?.invitation(pathname.slice('/invite/'.length));
         if(!location)return json(res,410,{error:'这个邀请已撤销、过期或不存在。'});
@@ -678,7 +738,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
         ["/speaker-routing.mjs", [join(here, "../speaker-native/client.mjs"), "text/javascript; charset=utf-8"]],
-        ...["device-location.mjs", "caller-context.mjs", "ui-bundle.mjs", "call-view.mjs", "board-client.mjs", "board-scene.mjs", "board-sketch.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
+        ...["device-location.mjs", "caller-context.mjs", "ui-bundle.mjs", "call-view.mjs", "board-client.mjs", "board-assets-client.mjs", "board-scene.mjs", "board-sketch.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "upload-backpressure.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
         ["/changelog.mjs", [join(here, "changelog.mjs"), "text/javascript; charset=utf-8"]],
         ["/assets/v-voice-icon.svg", [join(here, "assets/v-voice-icon.svg"), "image/svg+xml"]],
@@ -737,7 +797,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         }
         res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/tv-aec/webrtcaec3-0.3.0.") ? "public, max-age=31536000, immutable" : bundled && url.searchParams.get("v") === bundled.revision ? "private, max-age=31536000, immutable" : pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
       }
-      if(binding.permissionProfile==='unidentified'&&!pathname.startsWith('/api/page/')&&!new Set(['/api/board','/api/board-image','/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke',...(binding.cliManaged?['/api/access']:[])]).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
+      if(binding.permissionProfile==='unidentified'&&!pathname.startsWith('/api/page/')&&!new Set(['/api/board','/api/board-image','/api/board-assets','/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke',...(binding.cliManaged?['/api/access']:[])]).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
       const readBody = async () => {
         const chunks = []; let size = 0;
         for await (const chunk of req) { size += chunk.length; if (size > 70000) throw new Error("Request too large"); chunks.push(chunk); }
@@ -853,6 +913,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if (!feature) return json(res,404,{error:'没有这个入口'});
         ({pathname, params} = feature(params));
       }
+      if (pathname === "/api/page-version") {
+        servedPageBuild ??= readFile(join(here, "ios-shell-release.json"), "utf8").then(text => {const {build = null, updated = null} = JSON.parse(text);return {build, updated};}).catch(() => ({build: null, updated: null}));
+        return json(res, 200, await servedPageBuild);
+      }
       if (pathname === "/api/session") {
         const result=await reservePhoneCall({context,binding,params,req,ip});
         return json(res,result.status,result.body);
@@ -867,7 +931,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         try{return json(res,200,await avatarLog.write({owner,clientCaptureId:params.captureId,events:params.events}));}
         catch{return json(res,503,{error:'头像记录暂未保存'});}
       }
-      if(pathname==='/api/close'&&params.voiceSessionId!==context.active?.reservation.voiceSessionId&&isClosedCall(context,params.voiceSessionId))return json(res,200,{ok:true});
+      // (Hung up after its connection had already gone: nothing is kept for a redial.)
+      if(pathname==='/api/close'&&params.voiceSessionId!==context.active?.reservation.voiceSessionId&&isClosedCall(context,params.voiceSessionId)){letGo(context,params.voiceSessionId);return json(res,200,{ok:true});}
       if (!context.active || params.voiceSessionId !== context.active.reservation.voiceSessionId) return json(res, 409, { error: "通话已结束，请重新开始" });
       context.active.touchedAt = Date.now();
       if(pathname==='/api/device-result'){
@@ -919,11 +984,28 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const active = context.active;
         const search = text => (active.gateway??gateway).request('tools.invoke',{agentId:binding.agentId??'makaron',sessionKey:active.sessionKey,name:'web_search',args:{query:text,count:5}},{timeoutMs:12000});
         const found = await boardPhotos.find(query,{search});
-        if (!found) return json(res,404,{error:'没有找到照片'});
+        // 404: there is no such picture. 503: it could not be looked for just now (the image
+        // search refused or timed out), so the page may ask again (11/20: a "show me more"
+        // gallery lost pictures that were found the second time).
+        if (!found) return boardPhotos.settled?.(query) === false ? json(res,503,{error:'暂时找不到照片'}) : json(res,404,{error:'没有找到照片'});
+        // On the caller's screen from now on: V can name it as the picture to work from (board-assets.mjs).
+        if (boardAssets) { const state = board.state?.(params.voiceSessionId); boardAssets.found(params.voiceSessionId, {query, name: pictureName([state?.scene, ...(state?.canvas?.zones ?? [])], query)}); }
         // (`inline`: for the iOS app's native bridge, which passes JSON only.)
         if (params.inline === true) return found.bytes.length <= 1400*1024 ? json(res,200,{type:found.type,data:Buffer.from(found.bytes).toString('base64')}) : json(res,404,{error:'照片太大'});
         res.writeHead(200,{'content-type':found.type,'cache-control':'no-store','content-length':found.bytes.length});
         res.end(found.bytes);return;
+      }
+      if (pathname === '/api/board-assets') {
+        // The call's shelf of made things (board-assets.mjs): what each id on the board is, which
+        // one the caller has tapped, and the whole board when the page's copy is behind.
+        if (!boardAllowed(binding) || !boardAssets) return json(res,404,{error:'没有这个入口'});
+        const owner = params.voiceSessionId;
+        if (typeof params.pick === 'string' && (params.pick === '' || SHELF_ID.test(params.pick))) boardAssets.pick(owner, params.pick);
+        // (`address`: where the thing can be saved from. A found photograph is lent out for it.)
+        const address = typeof params.address === 'string' && SHELF_ID.test(params.address) ? {id: params.address, url: await boardAssets.address(owner, params.address)} : null;
+        if (Array.isArray(params.seen)) boardAssets.seen(owner, params.seen.filter(id => typeof id === 'string' && ASSET_ID.test(id)));
+        const state = board.state(owner);
+        return json(res,200,{...boardAssets.page(owner),rev:state.scene.rev,...(address?{address}:{}),...(Number.isSafeInteger(params.rev)&&(params.rev!==state.scene.rev||typeof params.call==='string'&&params.call!==owner.slice(0,8))?{sync:state}:{})});
       }
       if (context.active.direct) {
         if (pathname === '/api/close') { await close(context); return json(res,200,{ok:true}); }
@@ -1217,8 +1299,23 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     let lesson=null,photos=null;
     // V's own answers are drawn by the streaming illustrator, as they are spoken (VOICE_BOARD_STREAM=0: one page once the answer is complete).
     // In parallel mode there is no lesson to wait for, so nothing is deferred.
-    const board=boardDirectorFromEnv(process.env,{audit:voiceAudit,prefetch:query=>photos?.find(query),defer:process.env.VOICE_BOARD_STREAM==='0'&&process.env.VOICE_BOARD_LESSON_SOURCE!=='parallel',...(process.env.VOICE_BOARD_UNIFIED==='0'?{}:{illustrate:args=>lesson?.illustrate(args)??null,
-      ...(process.env.VOICE_BOARD_STREAM==='0'?{}:{stream:process.env.VOICE_BOARD_FOLLOW!=='word'?{instructions:CUE_INSTRUCTIONS,refine:refineCueOp,turns:cueTurns,cue:true}:{instructions:STREAM_INSTRUCTIONS,refine:refineStreamOp}})})});
+    // The canvas (cue pages only; VOICE_BOARD_CANVAS=0 turns it off): what can be seen goes up large on a stage, and the places V
+    // talks about are ringed on its photographs by a model that has seen them (docs/research/board-canvas).
+    const canvas=process.env.VOICE_BOARD_CANVAS!=='0'&&process.env.VOICE_BOARD_FOLLOW!=='word';
+    // The shelf of made things (board-assets.mjs): what V generates in a call goes up on the board,
+    // and the voice model is told what is on the caller's screen. On wherever the board streams (VOICE_BOARD_ASSETS=0 turns it off).
+    const assetsOn=process.env.VOICE_BOARD_ASSETS!=='0'&&process.env.VOICE_BOARD_STREAM!=='0';
+    const board=boardDirectorFromEnv(process.env,{audit:voiceAudit,prefetch:query=>photos?.find(query),...(canvas?{eye:complete=>createBoardEye({complete,find:query=>photos?.find(query)})}:{}),defer:process.env.VOICE_BOARD_STREAM==='0'&&process.env.VOICE_BOARD_LESSON_SOURCE!=='parallel',...(process.env.VOICE_BOARD_UNIFIED==='0'?{}:{illustrate:args=>lesson?.illustrate(args)??null,
+      ...(process.env.VOICE_BOARD_STREAM==='0'?{}:{stream:process.env.VOICE_BOARD_FOLLOW!=='word'?{instructions:(canvas?CANVAS_CUE_INSTRUCTIONS:CUE_INSTRUCTIONS)+(assetsOn?ASSET_NOTES+ASSET_MAKE_NOTES:''),refine:refineCueOp,turns:cueTurns,cue:true,...(canvas?{canvas:true}:{})}:{instructions:STREAM_INSTRUCTIONS+(assetsOn?ASSET_NOTES:''),refine:refineStreamOp}})})});
+    const assets=board&&assetsOn?createAssetShelf({director:board,...(process.env.VOICE_SELF_IMAGE==='0'?{}:{standing:[SELF_IMAGE]}),audit:event=>board.log?.(event),lookWaitMs:Math.max(0,Math.min(6000,Number(process.env.VOICE_BOARD_LOOK_WAIT_MS??0)||0)),makeLimit:Math.max(0,Math.min(6,Number(process.env.VOICE_BOARD_MAKE_MAX??3)||0)),
+      // One look at each thing made, on the board's own model, so V can say what is really in it (VOICE_BOARD_LOOK=0: no look).
+      see:process.env.VOICE_BOARD_LOOK==='0'?null:createAssetEye({complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'700'})})}):null;
+    if(assets){board.shelf=assets;assets.audience=process.env.VOICE_BOARD_AUDIENCE==='all'?'all':'owner';}
+    // The director's pass over a video's script (media-script.mjs), on the board's own model and shown the
+    // reference pictures. On with the shelf; VOICE_MEDIA_SCRIPT=text (not shown the pictures) or off.
+    const scriptMode=process.env.VOICE_MEDIA_SCRIPT??(assets?'vision':'off');
+    const pictureData=async(url,signal)=>{const response=await fetch(url,{signal});const type=String(response.headers.get('content-type')??'').split(';')[0].trim();if(!response.ok||!/^image\/(png|jpe?g|webp)$/u.test(type))return '';const bytes=Buffer.from(await response.arrayBuffer());return bytes.length&&bytes.length<=4*1024*1024?`data:${type};base64,${bytes.toString('base64')}`:'';};
+    const videoScript=assets&&['text','vision'].includes(scriptMode)?createVideoScriptWriter({complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'1400'}),vision:scriptMode==='vision',look:pictureData,audit:event=>board.log?.(event)}):null;
     // Lesson mode (experiment): its own flag. Through OpenRouter the writer is
     // a stronger model thinking briefly: on real calls it was the only one
     // tried that kept its facts straight (which Pokemon beats which), in about
@@ -1227,7 +1324,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const routed=!(process.env.VOICE_BOARD_API_KEY??process.env.DEEPSEEK_API_KEY)&&Boolean(process.env.OPENROUTER_API_KEY);
     const lessonModel=process.env.VOICE_BOARD_LESSON_MODEL??(routed?'anthropic/claude-sonnet-5.5':''),lessonReasoning=process.env.VOICE_BOARD_LESSON_REASONING??(process.env.VOICE_BOARD_LESSON_MODEL?'':'low');
     const directorWriter=boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'1600'});
-    lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,...(process.env.VOICE_BOARD_FOLLOW!=='word'?{scriptInstructions:CUE_SCRIPT_INSTRUCTIONS,early:Number(process.env.VOICE_BOARD_EARLY??2)||0}:{}),
+    lesson=board&&process.env.VOICE_BOARD_LESSON==='1'?createLessonWriter({director:board,record:board.log,...(process.env.VOICE_BOARD_FOLLOW!=='word'?{scriptInstructions:(canvas?CANVAS_SCRIPT_INSTRUCTIONS:CUE_SCRIPT_INSTRUCTIONS)+(assetsOn?ASSET_SCRIPT_NOTES:''),early:Number(process.env.VOICE_BOARD_EARLY??2)||0}:{}),
       // (Naming the director's own model as the lesson model means one writer, not two racing.)
       ...(lessonModel&&lessonModel!==(process.env.VOICE_BOARD_MODEL??'deepseek/deepseek-v4.1-flash')?{complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MODEL:lessonModel,VOICE_BOARD_REASONING:lessonReasoning,VOICE_BOARD_MAX_TOKENS:lessonReasoning?'4000':'1600'}),fallback:directorWriter}:{complete:directorWriter})}):null;
     // How a lesson is made (to compare): "service" - written here, with what is looked up first;
@@ -1237,16 +1334,19 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if(lesson)lesson.results=process.env.VOICE_BOARD_RESULT_LESSON!=='0';
     if(lesson)lesson.reroute=process.env.VOICE_BOARD_REROUTE==='1';
     if(lesson)lesson.source=['backend','parallel'].includes(process.env.VOICE_BOARD_LESSON_SOURCE)?process.env.VOICE_BOARD_LESSON_SOURCE:'service';
-    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',
+    // (VOICE_MATERIAL_CHECK=0: nothing is looked at before a creation is submitted.)
+    const materialCheck=assets&&process.env.VOICE_MATERIAL_CHECK!=='0'?createMaterialCheck({complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'120'}),audit:event=>board.log?.(event)}):null;
+    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,assets,videoScript,materialCheck,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',playbackEchoGuard:process.env.VOICE_PLAYBACK_ECHO_GUARD!=='0',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
-      mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({environment:process.env}):null,
+      mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({accounts:createMediaAccounts(
+        join(homedir(),'.makaron','chat-keys.json'),join(homedir(),'.openclaw','secrets','store','MAKARON_API_KEY'))}):null,
       calendar:personalLark.calendar,larkRead:personalLark.read,larkForActor:lark.forActor,
       gptLive:gptLiveFromEnv(process.env),
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),
       grokExpressiveTags:process.env.XAI_VOICE_EXPRESSIVE_TAGS === '1',
-      audit:board?event=>{board.observe(event);voiceAudit(event);}:voiceAudit,
+      audit:board?event=>{board.observe(event);assets?.observe(event);voiceAudit(event);}:voiceAudit,
       toolEnvironment:Object.fromEntries(["LARKSUITE_CLI_CONFIG_DIR","LARKSUITE_CLI_DATA_DIR"].filter(key=>process.env[key]).map(key=>[key,process.env[key]])),
       apiKeys:{
       seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY??process.env.DOUBAO_SPEECH_API_KEY,
@@ -1283,7 +1383,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     bridge = createLiveH5Server({ gateway, deviceEndpoint,backendDeviceEndpoint:process.env.VOICE_BACKEND_DEVICE_ENDPOINT??'',
       candidateRelease:process.env.VOICE_CANDIDATE_RELEASE_FILE?JSON.parse(await readFile(process.env.VOICE_CANDIDATE_RELEASE_FILE,'utf8')):undefined,
       listening:process.env.VOICE_LISTENING_DIR ? await (await import('./listening.mjs')).loadVoiceListening(process.env.VOICE_LISTENING_DIR) : undefined,
-      directVoice, speakerRouting, avatarLog,board,boardAudience:process.env.VOICE_BOARD_AUDIENCE==='all'?'all':'owner',boardPhotos:board?photos=createPhotoFinder({braveKey:process.env.VOICE_BOARD_BRAVE_KEY??'',directory:process.env.VOICE_BOARD_PHOTO_DIR??(process.env.RTC_H5_TRANSCRIPT_DIR?join(process.env.RTC_H5_TRANSCRIPT_DIR,'board-photos'):''),observe:event=>board.log?.(event)}):null,callControlAudit:transcriptLog.audit,
+      directVoice, speakerRouting, avatarLog,board,boardAssets:assets,boardAudience:process.env.VOICE_BOARD_AUDIENCE==='all'?'all':'owner',boardPhotos:board?photos=createPhotoFinder({braveKey:process.env.VOICE_BOARD_BRAVE_KEY??'',directory:process.env.VOICE_BOARD_PHOTO_DIR??(process.env.RTC_H5_TRANSCRIPT_DIR?join(process.env.RTC_H5_TRANSCRIPT_DIR,'board-photos'):''),observe:event=>board.log?.(event)}):null,callControlAudit:transcriptLog.audit,
       phoneInputPolicy:process.env.VOICE_PHONE_INPUT_POLICY ?? 'speaker',
       enableGrok: process.env.VOICE_ENABLE_GROK === '1',
       enableGptLive11: process.env.VOICE_ENABLE_GPT_LIVE_11 === '1',

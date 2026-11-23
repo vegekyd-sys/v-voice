@@ -59,6 +59,8 @@ private final class CaptureHandoff: @unchecked Sendable {
     private var engine: AVAudioEngine?
     private var captureSink: VVCaptureSink?
     private var player: AVAudioPlayerNode?
+    /// The sound of a video on the page (FilmSound.swift), beside the voice in the call's own engine.
+    private var film: AVAudioPlayerNode?, filmEngine: AVAudioEngine?, filmFrom = 0.0, filmEnds = 0.0
     private let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24_000, channels: 1, interleaved: false)!
     private var ledger = PlaybackLedger()
     private var outputEnvelope = PlaybackEnvelope()
@@ -142,6 +144,7 @@ private final class CaptureHandoff: @unchecked Sendable {
             let inputFormat = input.outputFormat(forBus: 0)
             guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else { throw VoiceError.audio }
             e.connect(p, to: e.mainMixerNode, format: format)
+            let f = AVAudioPlayerNode(); e.attach(f); e.connect(f, to: e.mainMixerNode, format: FilmSound.format)
             // Keep the 24 kHz network/player format upstream of the mixer; the
             // duplex I/O stream must use the microphone's negotiated format.
             e.connect(e.mainMixerNode, to: output, format: inputFormat)
@@ -179,7 +182,7 @@ private final class CaptureHandoff: @unchecked Sendable {
             }) else { throw VoiceError.audio }
             e.attach(sink.node); e.connect(input, to: sink.node, format: inputFormat)
             captureSink = sink
-            engine = e; player = p; stage = "engine-start"; e.prepare(); try e.start(); started = true
+            engine = e; player = p; film = f; stage = "engine-start"; e.prepare(); try e.start(); started = true
             CallDiagnostics.record("audio.hardware", code: "rate=\(Int(session.sampleRate)) ioMS=\(Int(session.ioBufferDuration * 1000)) inMS=\(Int(session.inputLatency * 1000)) outMS=\(Int(session.outputLatency * 1000))")
         } catch {
             let failure = "\(stage): \((error as NSError).domain) (\((error as NSError).code))"
@@ -292,10 +295,40 @@ private final class CaptureHandoff: @unchecked Sendable {
         captureFrames = 0; captureActiveFrames = 0; capturePeak = 0
         captureMaxGapMS = 0; captureMaxDeliveryMS = 0; previousCaptureTime = nil
         engine?.stop(); captureSink?.invalidate(); engine = nil; captureSink = nil; player = nil
+        stopFilm(); film = nil; filmEngine?.stop(); filmEngine = nil
         if ownsSessionActivation {
             ownsSessionActivation = false
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
+    }
+    /// Plays a video's sound from a point of it. Nothing of the call is touched: the microphone goes on and
+    /// V's voice is mixed with it, as a web page does.
+    func playFilm(_ file: AVAudioFile, at seconds: Double) throws {
+        guard isRunning else { throw VoiceError.audio }
+        // A WebRTC call's engine belongs to WebRTC; the film has a player of its own in the same session.
+        if film == nil {
+            let e = AVAudioEngine(), f = AVAudioPlayerNode(); e.attach(f); e.connect(f, to: e.mainMixerNode, format: FilmSound.format)
+            e.prepare(); try e.start(); filmEngine = e; film = f
+        }
+        if let filmEngine, !filmEngine.isRunning { try filmEngine.start() }
+        guard let film, file.processingFormat == FilmSound.format else { throw VoiceError.audio }
+        film.stop()
+        let session = AVAudioSession.sharedInstance(), rate = FilmSound.format.sampleRate
+        // (What is scheduled now is heard one buffer and the output's latency later, and the picture is ahead by that much.)
+        let from = max(0, seconds) + session.outputLatency + session.ioBufferDuration
+        let start = AVAudioFramePosition(from * rate)
+        filmFrom = from; filmEnds = Double(file.length) / rate
+        guard start < file.length else { return }
+        film.scheduleSegment(file, startingFrame: start, frameCount: AVAudioFrameCount(file.length - start), at: nil, completionHandler: nil)
+        film.play()
+    }
+    func stopFilm() { film?.stop() }
+    /// Where the film's sound is, as heard; nil when none is playing.
+    var filmPosition: Double? {
+        guard let film, film.isPlaying, let rendered = film.lastRenderTime, let cursor = film.playerTime(forNodeTime: rendered) else { return nil }
+        let session = AVAudioSession.sharedInstance()
+        let at = filmFrom + Double(cursor.sampleTime) / cursor.sampleRate
+        return at < filmEnds ? at - session.outputLatency - session.ioBufferDuration : nil
     }
     /// Only aggregate signal levels and system flags; never samples or device names.
     private func recordCapture() {

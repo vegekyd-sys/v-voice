@@ -4,7 +4,7 @@ import {join} from 'node:path';
 
 export const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export const releaseRevision = release => hash(`vvoice-h5-1\n${release.minimumBridge}:${release.maximumBridge}\n` + release.files.map(f=>`${f.path}:${f.sha256}:${f.bytes}\n`).join(''));
-export async function createH5Release(root, outputs) {
+export async function createH5Release(root, outputs, {build, updated} = {}) {
   const files = [];
   for(const path of Object.keys(outputs).sort()) {
     const bytes = await readFile(join(root,path));
@@ -12,5 +12,7 @@ export async function createH5Release(root, outputs) {
     files.push({path,sha256:outputs[path],bytes:bytes.length,data:bytes.toString('base64')});
   }
   const release={schema:1,minimumBridge:1,maximumBridge:1,files};
-  return {...release,revision:releaseRevision(release)};
+  // The page's build and the date of its latest update are labels outside the signed revision;
+  // Apps that do not know them ignore them.
+  return {...release,revision:releaseRevision(release),...(build?{build}:{}),...(updated?{updated}:{})};
 }

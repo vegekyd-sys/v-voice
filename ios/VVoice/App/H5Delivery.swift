@@ -15,6 +15,14 @@ struct H5Release {
     static let maximumArchiveBytes = 12 * 1024 * 1024
     let revision: String
     let files: [String: Data]
+    /// Labels beside the signed files: the page's build and the date of its latest update ("2026-11-22").
+    var build: String? = nil
+    var updated: String? = nil
+    static func label(build: Any?, updated: Any?) -> (String?, String?) {
+        let b = (build as? String).flatMap { $0.range(of: #"^[a-f0-9]{12}$"#, options: .regularExpression) != nil ? $0 : nil }
+        let u = (updated as? String).flatMap { $0.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil ? $0 : nil }
+        return (b, u)
+    }
 
     static func hash(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
     static func validPath(_ path: String) -> Bool {
@@ -23,7 +31,7 @@ struct H5Release {
         ["html", "js", "mjs", "css", "webp", "png", "svg"].contains(URL(fileURLWithPath: path).pathExtension)
     }
     private struct File: Decodable { let path: String; let sha256: String; let bytes: Int; let data: Data }
-    private struct Archive: Decodable { let schema: Int; let minimumBridge: Int; let maximumBridge: Int; let revision: String; let files: [File] }
+    private struct Archive: Decodable { let schema: Int; let minimumBridge: Int; let maximumBridge: Int; let revision: String; let files: [File]; let build: String?; let updated: String? }
     static func decode(_ bytes: Data) throws -> H5Release {
         guard bytes.count <= maximumArchiveBytes else { throw DeliveryError.invalid }
         let archive = try JSONDecoder().decode(Archive.self, from: bytes)
@@ -43,7 +51,8 @@ struct H5Release {
         }
         guard ["index.html", "native-h5.js", "styles.css", "comparison.html"].allSatisfy({ files[$0] != nil }),
               hash(Data(signature.utf8)) == archive.revision else { throw DeliveryError.invalid }
-        return .init(revision: archive.revision, files: files)
+        let (build, updated) = label(build: archive.build, updated: archive.updated)
+        return .init(revision: archive.revision, files: files, build: build, updated: updated)
     }
     static func bundled() throws -> H5Release {
         guard let root = Bundle.main.url(forResource: "H5Shell", withExtension: nil),
@@ -56,7 +65,8 @@ struct H5Release {
             guard Self.hash(bytes) == hash else { throw DeliveryError.invalid }
             files[path] = bytes
         }
-        return .init(revision: "bundled", files: files)
+        let (build, updated) = label(build: manifest["build"], updated: manifest["updated"])
+        return .init(revision: "bundled", files: files, build: build, updated: updated)
     }
     enum DeliveryError: Error { case invalid }
 }
@@ -69,6 +79,8 @@ struct H5Release {
         var candidate: String?
         var attempting: String?
         var rejected: [String] = []
+        /// 2: a page that has started once is no longer dropped for failing to start again.
+        var schema: Int?
     }
     private let directory: URL
     let baseURL: URL
@@ -85,6 +97,10 @@ struct H5Release {
         let root = cacheRoot ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("VVoiceH5")
         directory = root.appendingPathComponent(H5Release.hash(Data(baseURL.absoluteString.utf8)))
         if let bytes = try? Data(contentsOf: directory.appendingPathComponent("state.json")), let saved = try? JSONDecoder().decode(State.self, from: bytes) { state = saved }
+        // Earlier builds dropped a page for good whenever iOS ended its web process (an App in the
+        // background on a call) or it was slow to start: every page the service published after 11/18
+        // was dropped on one iPhone, which kept an old page without later features. Forgive them once.
+        if state.schema != 2 { state.rejected.removeAll(); state.schema = 2; save() }
         // A candidate that killed the process before its handshake must not loop on launch.
         if let id = state.attempting { state.rejected.append(id); state.candidate = nil; state.attempting = nil; save() }
     }
@@ -143,6 +159,12 @@ struct H5Release {
         state.good = Array(state.good.prefix(2)); state.attempting = nil
         if state.candidate == release.revision { state.candidate = nil }
         save(); prune()
+    }
+    /// A page that failed to start or whose web process ended. One that has started before is kept
+    /// (the failure is the moment's, not the page's); a new one is dropped. Returns whether it was dropped.
+    @discardableResult func failed(_ release: H5Release) -> Bool {
+        guard release.revision != "bundled", !state.good.contains(release.revision) else { return false }
+        reject(release); return true
     }
     func reject(_ release: H5Release) {
         guard release.revision != "bundled" else { return }

@@ -202,3 +202,36 @@ test('GPT Live media connection stages are recorded as bare state names',async t
  assert.deepEqual(rows.map(e=>e.stage),['media-connecting','media-ice-checking','media-connected']);assert.equal(rows[2].elapsedMs,812);
  assert(!JSON.stringify(rows).includes('SECRET'));
 });
+
+test('the record keeps which way a call ended and what the voice service said when it ended it', async t => {
+ const f = await fixture(t); f.created();
+ f.log.audit({type: 'call.provider-status', voiceSessionId: 'v1', stage: 'upstream-closed', sessionAgeMs: 263000, reason: 'max_duration', 'error.code': 'E1001', 'error.message': 'limit\nreached', 'bad key!': 'x', audio: {x: 1}});
+ f.log.audit({type: 'call.closed', voiceSessionId: 'v1', why: 'provider-upstream-closed'});
+ await f.log.close(); const rows = await f.rows();
+ const said = rows.find(r => r.type === 'call.provider-status' && r.stage === 'upstream-closed');
+ assert.deepEqual([said['closed.reason'], said['closed.error.code'], said['closed.error.message'], said.sessionAgeMs, 'closed.bad key!' in said, 'closed.audio' in said], ['max_duration', 'E1001', 'limit reached', 263000, false, false]);
+ assert.equal(rows.find(r => r.type === 'call.closed').why, 'provider-upstream-closed');
+});
+
+test('a reason for ending that is not one of the service\'s own words is not kept', async t => {
+ const f = await fixture(t); f.created();
+ f.log.audit({type: 'call.closed', voiceSessionId: 'v1', why: '用户说了 SECRET'});
+ await f.log.close(); const rows = await f.rows();
+ assert.equal(rows.find(r => r.type === 'call.closed').why, undefined);
+});
+
+test('uplink stalls and recognised playback echo keep only their timings, flags and response ids',async t=>{
+ const f=await fixture(t);f.created();
+ assert(f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'input-burst',stalledMs:13000,arrivedMs:12900,droppedMs:9000,audio:'SECRET'}));
+ assert(f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'input-backlog-dropped',droppedMs:-5}));
+ assert(f.log.audit({type:'input.playback-echo',voiceSessionId:'v1',responseId:'story',text:'SECRET'}));
+ assert(f.log.audit({type:'input.playback-echo-reply',voiceSessionId:'v1',responseId:'echo-answer'}));
+ assert(f.log.audit({type:'transcript',voiceSessionId:'v1',role:'user',text:'fixture',final:true,playbackEcho:true}));
+ assert(f.log.audit({type:'transcript',voiceSessionId:'v1',role:'user',text:'fixture',final:true,playbackEcho:'SECRET'}));
+ await f.log.close();const rows=await f.rows();
+ assert(!JSON.stringify(rows).includes('SECRET'));
+ assert.deepEqual([rows[1].stalledMs,rows[1].arrivedMs,rows[1].droppedMs],[13000,12900,9000]);
+ assert.equal(rows[2].stage,'input-backlog-dropped');assert.equal(rows[2].droppedMs,undefined);
+ assert.deepEqual([rows[3].type,rows[3].responseId,rows[4].responseId],['input.playback-echo','story','echo-answer']);
+ assert.equal(rows[5].playbackEcho,true);assert.equal(rows[6].playbackEcho,undefined);
+});

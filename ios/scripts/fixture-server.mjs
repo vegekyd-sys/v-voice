@@ -24,8 +24,9 @@ const boardOps=()=>[{op:'sync',scene:{serial:1,rev:boardRequests.length,title:'F
      {id:'v',t:'versus',sides:[{h:'电车'},{h:'油车'}],items:[{id:'a',h:'补能',cells:['家里慢充','三分钟加满'],win:1},{id:'b',h:'花费',cells:['每公里几分钱','五六毛'],win:0}]},
      {id:'g',t:'draw',h:'勾股定理',items:[{id:'t',k:'poly',p:[40,40,40,25,60,40],h:'3-4-5'},{id:'a',k:'rect',p:[25,25,15,15],h:'9',tone:'sky'},{id:'b',k:'rect',p:[40,40,20,20],h:'16',tone:'peach'},{id:'c',k:'poly',p:[40,25,60,40,75,20,55,5],h:'25',tone:'butter'}]}]}},{op:'done',reason:'drawn',rev:boardRequests.length}];
 const boardPhoto={type:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='};
+let filmURL='',filmPicked='';
 let boardMode=false,boardRequests=[],boardImages=[],avatarRequests=[],avatarEvents=[],avatarReply="reaction-0",avatarContinuations=["reaction-1","listen-5"],slowAvatar=false;
-let shellVariant='none',shellRequests=[],shellRedirects=0;
+let shellVariant='none',shellRequests=[],shellRedirects=0,servedPage='same',pageVersionRequests=0;
 let inputFrames=0,inputActiveFrames=0,peakInputRMS=0;
 async function shellRelease(variant){
  const release=JSON.parse(await readFile(new URL('../../lab/gpt-live-h5/ios-shell-release.json',import.meta.url),'utf8'));
@@ -57,7 +58,7 @@ const server=createServer(async(req,res)=>{
  const path=new URL(req.url,'http://127.0.0.1').pathname;
  const body=await new Promise(resolve=>{const chunks=[];req.on('data',b=>chunks.push(b));req.on('end',()=>{try{resolve(JSON.parse(Buffer.concat(chunks).toString()||'{}'));}catch{resolve({});}});});
  const send=(status,value)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
- if(path==='/fixture/state')return send(200,{boardRequests,boardImages,fastDials,statusRequests,sessionRequests,active,sessions,inputBytes,zeroBytes,inputFrames,inputActiveFrames,peakInputRMS,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,presentationRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects,lastOffer,locationResults,systemBackgroundReady});
+ if(path==='/fixture/state')return send(200,{pageVersionRequests,boardRequests,boardImages,fastDials,statusRequests,sessionRequests,active,sessions,inputBytes,zeroBytes,inputFrames,inputActiveFrames,peakInputRMS,playbackDrained,playbackStarts,greetings,heartbeats,closeRequests,presentationRequests,acknowledgements,supplements,avatarRequests,avatarEvents,lastSessionRequest,shellRequests,shellRedirects,lastOffer,locationResults,systemBackgroundReady});
  if(path==='/fixture/redirect-target'){shellRedirects++;return send(200,{});}
  if(path==='/voice/ios-shell-release.json'){
    shellRequests.push({cookie:!!req.headers.cookie,authorization:!!req.headers.authorization});
@@ -69,6 +70,7 @@ const server=createServer(async(req,res)=>{
    return send(200,release);
  }
  if(path==='/fixture/command'){
+   if(body.command==='film'){filmURL=String(body.event?.url??'');filmPicked='';return send(200,{});}
    if(body.command==='system-background-ready'){systemBackgroundReady=true;return send(200,{});}
    if(body.command==='location'){
      if(!deviceLocation)return send(409,{error:'No location capability'});
@@ -79,10 +81,11 @@ const server=createServer(async(req,res)=>{
    if(body.command==='location-frame'){client?.send(JSON.stringify({...body.frame,voiceSessionId:body.frame?.voiceSessionId??active}));return send(200,{});}
    if(body.command==='gpt-answer'&&offerReply){const reply=offerReply;offerReply=null;reply(200,{sdp:body.sdp});}
    if(body.command==='board-mode'){boardMode=true;return send(200,{ok:true});}
-   if(body.command==='reset'){boardMode=false;boardRequests=[];boardImages=[];lastOffer=null;offerReply?.(409,{error:'Reset'});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();}
+   if(body.command==='reset'){filmURL='';boardMode=false;boardRequests=[];boardImages=[];lastOffer=null;offerReply?.(409,{error:'Reset'});offerReply=null;for(const response of eventClients)response.end();eventClients.clear();}
    if(body.command==='shell-delay')shellDelayMS=Math.max(0,Math.min(2000,Number(body.ms)||0));
    if(body.command==='shell-release')shellVariant=body.variant??'none';
-   if(body.command==='reset'){shellDelayMS=0;shellVariant='none';shellRequests=[];shellRedirects=0;inputFrames=0;inputActiveFrames=0;peakInputRMS=0;}
+   if(body.command==='served-page')servedPage=body.variant??'same';
+   if(body.command==='reset'){shellDelayMS=0;shellVariant='none';shellRequests=[];shellRedirects=0;servedPage='same';pageVersionRequests=0;inputFrames=0;inputActiveFrames=0;peakInputRMS=0;}
    if(body.command==='fast-mode')fastMode=true;
    if(body.command==='fast-reject')fastReject=true;
    if(body.command==='fast-wrong-owner')fastWrongOwner=true;
@@ -159,12 +162,26 @@ const server=createServer(async(req,res)=>{
  }
  // The call board through the native bridge: one JSON reply per run, a photograph as base64.
  // Page features, as the App relays them (`service` → /api/page/<name>).
+ // Which page the service serves now: the real one, or (`served-page` other) a newer one.
+ if(path==='/voice/api/page/version'){
+   pageVersionRequests++;
+   const {build,updated}=JSON.parse(await readFile(new URL('../../lab/gpt-live-h5/ios-shell-release.json',import.meta.url),'utf8'));
+   return send(200,servedPage==='other'?{build:'0123456789ab',updated:'2026-12-01'}:{build,updated});
+ }
  if(path==='/voice/api/page/board'){
+   if(filmURL&&body.voiceSessionId===active)return send(200,{ops:[{op:'sync',scene:{serial:1,rev:1,title:'',blocks:[{id:'w1',t:'work',asset:'a1'}]}},{op:'done',reason:'making',rev:1}]});
    if(!boardMode)return send(404,{error:'没有这个入口'});
    if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
    if(!Array.isArray(body.turns))return send(400,{error:'Invalid board request'});
    boardRequests.push({trigger:body.trigger,turns:body.turns.length});
    return send(200,{ops:boardOps()});
+ }
+ // A video V made, on the call's shelf (`film` with its https address).
+ if(path==='/voice/api/page/board-assets'){
+   if(!filmURL)return send(404,{error:'没有这个入口'});
+   if(body.voiceSessionId!==active)return send(409,{error:'Stale owner'});
+   if(typeof body.pick==='string')filmPicked=body.pick;
+   return send(200,{call:active,assets:[{id:'a1',kind:'video',state:'ready',url:filmURL,name:'本地视频',source:'made',at:1}],photos:[],picked:filmPicked,busy:false,stamp:1,rev:1});
  }
  if(path==='/voice/api/page/board-image'){
    if(body.voiceSessionId!==active||body.query!=='fixture-print')return send(404,{error:'No photograph'});

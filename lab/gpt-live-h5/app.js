@@ -9,6 +9,7 @@ import { createAvatarTasks } from "./avatar-state.mjs";
 import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { createAvatarTelemetry } from "./avatar-telemetry.mjs";
 import { createBoardClient, createLessonGate, createSpokenCursor, readEventStream, spokenRate } from "./board-client.mjs";
+import { createAssetsClient } from "./board-assets-client.mjs";
 import { speaksOf, spokenProgress, unspoken, withCuesToCome } from "./board-scene.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
@@ -39,7 +40,9 @@ const renderAssistant = (target, item) => {
 };
 if (document.querySelector) mountCallUi(document, view, {
   renderAssistant, onDocumentShown: callId => documentShown(callId),
-  loadBoardPhoto: query => loadBoardPhoto(query),
+  loadBoardPhoto: Object.assign(query => loadBoardPhoto(query), {missing: query => loadBoardPhoto.missing(query)}),
+  // The call's shelf of made things: the caller's tap on one, and a picture reported as on screen.
+  boardWorks: {pick: (id, hold) => call?.boardAssets?.pick(id, hold), shown: id => call?.boardAssets?.shown(id), save: item => saveBoardPicture(item)},
   actions: {
     openBinding: () => void openIosBinding(),
     connectIdentity: () => { guestDialAllowed=false;void confirmation.start(); },
@@ -436,17 +439,61 @@ function receiveDocument(active,value){
   if(call!==active||value.voiceSessionId!==active.voiceSessionId)return;
   renderTranscript(presentation.consume(value));
 }
+// Saving what is being looked at on the board (ui/board-viewer.jsx): a made thing from its own link, a
+// found photograph from the copy the page already holds. Where the browser will not hand the file over,
+// the original is opened instead, as for a picture in the conversation.
+async function saveBoardPicture(item) {
+  const title = String(item.name || '作品').replace(/[\\/:*?"<>|]/gu, '-').slice(0, 80) || '作品';
+  let url = item.src, made = null, type = '';
+  try {
+    const response = await fetch(item.src, /^https:/u.test(item.src) ? { credentials: 'omit', referrerPolicy: 'no-referrer' } : undefined);
+    if (!response.ok) throw new Error('download failed');
+    const blob = await response.blob();
+    type = blob.type; made = url = URL.createObjectURL(blob);
+  } catch {
+    if (!/^https:/u.test(item.src)) return '没存成';
+    window.open(item.src, '_blank', 'noopener,noreferrer');
+    return '已打开原文件';
+  }
+  const kind = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif', 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov' })[type.split(';')[0]] ?? (item.kind === 'video' ? 'mp4' : 'jpg');
+  const link = document.createElement('a');
+  link.href = url; link.download = `${title}.${kind}`; link.hidden = true;
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(made), 60000);
+  return '已保存';
+}
 // A photograph on the board: fetched once per call through the Voice service
 // and handed to the page as a local object URL (null when there is none).
+// "There is none" (404) is kept for the call. A lookup that could not be made
+// (503: the image search refused or timed out; or the network) is tried once
+// more after a pause, and if it still fails it is not kept, so the next time
+// the page asks for it (a gallery drawn again) it is looked for again.
+const BOARD_PHOTO_RETRY_MS = 2500;
 function loadBoardPhoto(query) {
   const active = call;
   if (!active?.board || typeof query !== 'string') return Promise.resolve(null);
   active.boardPhotos ??= new Map();
-  if (!active.boardPhotos.has(query)) active.boardPhotos.set(query, fetch(apiUrl('board-image'), { method: 'POST',
-    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ voiceSessionId: active.voiceSessionId, query }) })
-    .then(async response => response.ok ? URL.createObjectURL(await response.blob()) : null).catch(() => null));
+  active.boardPhotosMissing ??= new Set();
+  if (!active.boardPhotos.has(query)) {
+    const ask = () => fetch(apiUrl('board-image'), { method: 'POST',
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ voiceSessionId: active.voiceSessionId, query }) })
+      .then(async response => response.ok ? {url: URL.createObjectURL(await response.blob())} : {none: response.status === 404})
+      .catch(() => ({none: false}));
+    const pending = ask()
+      .then(result => result.url || result.none || call !== active ? result : new Promise(resolve => setTimeout(resolve, BOARD_PHOTO_RETRY_MS)).then(() => call === active ? ask() : result))
+      .then(result => {
+        // (A photograph the page now has is on the call's shelf: the shelf is asked again so it can be picked and saved.)
+        if (result.url) { active.boardAssets?.poke(); return result.url; }
+        if (result.none) active.boardPhotosMissing.add(query);
+        else if (active.boardPhotos.get(query) === pending) active.boardPhotos.delete(query);
+        return null;
+      });
+    active.boardPhotos.set(query, pending);
+  }
   return active.boardPhotos.get(query);
 }
+// Whether the service has said there is no picture for this query in this call.
+loadBoardPhoto.missing = query => Boolean(call?.boardPhotosMissing?.has(query));
 // The UI reports a document row once it is actually on screen.
 function documentShown(callId){
   const active=call;
@@ -596,7 +643,7 @@ async function stopCall({failure}={}) {
   if (active) {
     active.avatarTelemetry?.close();
     active.avatarReactions?.dispose();
-    active.board?.dispose(); clearInterval(active.boardFocusTimer); view.set({ board: null, boardCanvas: null, boardSpoken: null });
+    active.board?.dispose(); active.boardAssets?.dispose(); clearInterval(active.boardFocusTimer); view.set({ board: null, boardCanvas: null, boardSpoken: null, boardAssets: null });
     for (const pending of active.boardPhotos?.values() ?? []) void pending.then(url => { if (url) URL.revokeObjectURL(url); });
     active.relay?.dispose();
     active.dialConnection?.dispose();
@@ -736,7 +783,7 @@ async function startCall() {
       isCurrent: () => call === active,
       // A new picture goes up together with where the voice is on it: set a
       // moment apart, a lesson showed whole for one frame before hiding.
-      onScene: (scene, canvas) => { if (call === active) view.set({ board: scene, boardCanvas: canvas ?? null, boardSpoken: active.boardFollow?.(scene) ?? view.get().boardSpoken }); },
+      onScene: (scene, canvas) => { if (call === active) { view.set({ board: scene, boardCanvas: canvas ?? null, boardSpoken: active.boardFollow?.(scene) ?? view.get().boardSpoken }); active.boardAssets?.scene(scene); } },
       observe: event => {
         const trace = JSON.parse(document.body.dataset.boardTimeline ?? '[]');
         trace.push({ ...event, at: Math.round(performance.now()) });
@@ -747,6 +794,18 @@ async function startCall() {
           body: JSON.stringify({ voiceSessionId: active.voiceSessionId, ...payload }), signal });
         if (!response.ok || !response.body) throw new Error('board unavailable');
         await readEventStream(response, onEvent);
+      },
+    });
+    // The shelf of made things beside it (board-assets.mjs): asked for when a tool starts or ends
+    // and while anything is still being made. A service without one refuses, and the page stops asking.
+    if (active.board) active.boardAssets = createAssetsClient({
+      isCurrent: () => call === active, rev: () => active.board.scene.rev,
+      onChange: shelf => { if (call === active) view.set({ boardAssets: shelf }); },
+      onSync: value => active.board.sync(value),
+      request: async body => {
+        const response = await fetch(apiUrl('board-assets'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ voiceSessionId: active.voiceSessionId, ...body }) });
+        if (!response.ok) throw new Error('board assets unavailable');
+        return response.json();
       },
     });
     if (active.board) {
@@ -823,6 +882,7 @@ async function startCall() {
           if(value.type==='backend.result')receiveDocument(active,value);
           if(value.type.startsWith('tool.'))taskState();
           if(value.type==='tool.result')active.board?.evidence();
+          if(value.type.startsWith('tool.')||value.type==='backend.result')active.boardAssets?.poke();
           if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
           if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
           if(value.type==='reply.sync'&&value.status==='failed')setStatus(value.message,{tone:'problem'});

@@ -401,7 +401,7 @@ export function createLessonWriter({complete, fallback = null, director, now = D
   return {
     available: Boolean(complete && director),
     /** Returns the script to speak, or null when no lesson could be written. `ask` is the caller's own words. */
-    async prepare({owner, topic, audience = '', ask = '', reference = '', signal, quiet = false, result = false} = {}) {
+    async prepare({owner, topic, audience = '', ask = '', reference = '', signal, quiet = false, result = false, assets = [], make = false} = {}) {
       const started = now();
       if (quiet) { hushed.add(owner); if (hushed.size > 500) hushed.delete(hushed.values().next().value); }
       // With the streaming illustrator the writer only writes the script and
@@ -414,6 +414,8 @@ export function createLessonWriter({complete, fallback = null, director, now = D
       const messages = [{role: 'system', content: scripted ? scriptInstructions : LESSON_INSTRUCTIONS},
         {role: 'user', content: JSON.stringify({topic: String(topic ?? '').slice(0, 400), audience: String(audience ?? '').slice(0, 80) || '成年人', today: new Date(now()).toLocaleDateString('sv-SE', {timeZone: 'Asia/Shanghai'}),
           ...(ask ? {ask: Array.from(String(ask)).slice(-300).join('')} : {}), ...(before ? {before} : {}), ...(result ? {source: 'result'} : {}),
+          // Things already made in this call that the lesson may show, and whether it may ask for a picture to be drawn (board-assets.mjs).
+          ...(scripted && assets.length ? {assets} : {}), ...(scripted && make ? {make: true} : {}),
           // What was looked up for this lesson (a search, V's memory), then the standing references.
           ...([reference && Array.from(String(reference)).slice(0, 6000).join(''), lessonReference(`${topic} ${ask}`)].filter(Boolean).length ? {reference: [reference && Array.from(String(reference)).slice(0, 6000).join(''), lessonReference(`${topic} ${ask}`)].filter(Boolean).join('\n\n')} : {})})}];
       // (`early`: once the script's first lines are written, its page is started from them while

@@ -1,0 +1,201 @@
+// A made thing on the board (board-assets.mjs): the picture or video V
+// generated in this call, in one frame. While it is being made the frame holds
+// a pencil sketch of what was asked for; the picture develops into it; and when
+// the picture is made to move, the video takes the same frame, so the print on
+// the page starts moving where it hangs. Every version stays one tap away
+// under the frame. A tap looks at it large, as with any picture on the board;
+// what has been looked at is "this one" for V, and what can be done with it
+// is offered beside it.
+import React, {useEffect, useRef, useState} from 'react';
+import {assetFamily} from '../board-assets-client.mjs';
+
+const ratio = value => { const [width, height] = String(value ?? '').split(':').map(Number); return width > 0 && height > 0 ? Math.min(2.4, Math.max(.5, width / height)) : 0; };
+const KIND = {image: '图', video: '视频'};
+
+// Seconds since the thing was asked for, counted on the page.
+function Elapsed({since}) {
+  const [seconds, setSeconds] = useState(() => Math.max(0, Math.round((Date.now() - since) / 1000)));
+  useEffect(() => {
+    const timer = setInterval(() => setSeconds(Math.max(0, Math.round((Date.now() - since) / 1000))), 1000);
+    return () => clearInterval(timer);
+  }, [since]);
+  return <b>{seconds}</b>;
+}
+
+// What V can be asked to do with the picked thing, in the caller's own words (sent as typed text).
+const ACTIONS = {
+  // (No ids in the words: the picked thing is "this one" for V, which is told which one the caller has picked.)
+  image: [{label: '动起来', say: '把这张图动起来'}, {label: '再来一版', say: '这张图再来一版，换个构图'}],
+  video: [{label: '再来一版', say: '这个视频再做一版'}],
+};
+
+export function Work({block, view}) {
+  const assets = view.assets, latest = assets?.get(block.asset) ?? null;
+  const family = latest ? assetFamily(assets, latest.id) : [];
+  // The caller may look back at an earlier version; a new version brings the frame back to itself.
+  const [back, setBack] = useState(null);
+  useEffect(() => { setBack(null); }, [block.asset]);
+  const shown = family.find(item => item.id === back) ?? latest;
+  // The frame keeps the shape of what it last held until the next thing reports its own.
+  const [shape, setShape] = useState(0);
+  // The picture or video the browser has actually fetched: until then the frame keeps what it held.
+  const [fetched, setFetched] = useState('');
+  const film = useRef(null), frame = useRef(null);
+  // A video is played once with its sound when it arrives, then goes on moving without it; the
+  // sound button plays it again from the start. (`quiet`: it is playing without sound.)
+  const [quiet, setQuiet] = useState(false);
+  // Where nothing may play before the caller has touched it (the iOS App: every kind of playback needs
+  // a tap, a silent video too), the video is not fetched at all: the frame then shows the picture it
+  // was made from with a play mark, and the caller's tap starts it. (11/22: the frame waited for the
+  // video's first frame before it could be tapped, and the first frame waited for a tap.)
+  const [held, setHeld] = useState('');
+  const settle = (width, height) => { if (width > 0 && height > 0) setShape(Math.min(2.4, Math.max(.5, width / height))); };
+  // (`inline: false`: where no video may start by itself, the frame holds its picture with a play mark and the
+  // video plays in the viewer. It used to wait for the video here, and waited for ever: 11/22 01:49.)
+  const still = view.inline === false;
+  const playing = !still && shown?.kind === 'video' && shown.state === 'ready' ? shown.id : '';
+  // From the start, once, with its sound; without it again when it ends or another video is heard.
+  // (Not while it is going back to its start by itself: WebKit then stays at the end, and is over at once.)
+  const asked = useRef(false);
+  const aloud = video => {
+    asked.current = true; setQuiet(false);
+    if (video.seeking) { video.addEventListener('seeked', () => { if (video.isConnected && asked.current) aloud(video); }, {once: true}); return; }
+    const silent = () => { video.loop = true; setQuiet(true); };
+    video.loop = false; video.currentTime = 0;
+    void view.film.on(video, {lost: silent}).then(heard => { if (!heard) silent(); });
+    if (video.paused) Promise.resolve(video.play()).catch(silent);
+  };
+  useEffect(() => {
+    const video = film.current;
+    if (!playing || !video) return;
+    let live = true;
+    setHeld('');
+    // (Its sound is fetched beside the picture, so that they start together.)
+    void view.film?.ready(video);
+    // Moving without sound, over and over. Refused: it waits for the caller's tap.
+    const hush = () => { asked.current = false; view.film?.off(video); video.muted = true; video.loop = true; setQuiet(true); return Promise.resolve(video.play()).then(() => { if (live) setHeld(''); }, () => { if (live) { setHeld(playing); view.shown?.(playing); } }); };
+    // Once it is really moving it is played once from the start with its sound, where the page may
+    // start sound by itself (`autoSound: false`: an App that cannot play it; it stays silent).
+    // (`film`: the App plays a video's sound itself, in time with the picture, which stays silent here.)
+    const sound = () => {
+      video.removeEventListener('playing', sound);
+      if (!live) return;
+      if (view.film) { void view.film.ready(video).then(has => { if (live && has) aloud(video); }); return; }
+      if (view.autoSound === false) return;
+      video.muted = false; video.loop = false; video.currentTime = 0; setQuiet(false);
+      Promise.resolve(video.play()).then(() => { if (video.paused) void hush(); }, () => void hush());
+    };
+    const again = () => void hush();
+    video.addEventListener('playing', sound);
+    video.addEventListener('ended', again);
+    void hush();
+    return () => { live = false; asked.current = false; view.film?.off(video); video.removeEventListener('playing', sound); video.removeEventListener('ended', again); };
+  }, [playing]);
+  const stillReady = still && shown?.kind === 'video' && shown.state === 'ready' ? shown.id : '';
+  useEffect(() => { if (stillReady) view.shown?.(stillReady); }, [stillReady]);
+  // A thing just asked for is brought into view on its page (up and down only: the strip of pages is the board's to move).
+  const making = shown?.state === 'making' ? shown.id : '';
+  useEffect(() => {
+    const host = frame.current?.closest('.board-scroll'), target = frame.current;
+    if (!making || !host || !target) return;
+    const at = target.getBoundingClientRect(), box = host.getBoundingClientRect();
+    if (at.top >= box.top && at.bottom <= box.bottom) return;
+    host.scrollTo?.({top: host.scrollTop + (at.top < box.top ? at.top - box.top - 12 : at.bottom - box.bottom + 12), behavior: 'smooth'});
+  }, [making]);
+  const sound = event => {
+    event.stopPropagation();
+    const video = film.current;
+    if (!video) return;
+    if (view.film) { if (quiet) aloud(video); else { asked.current = false; view.film.off(video); video.loop = true; setQuiet(true); } return; }
+    if (quiet) { video.muted = false; video.loop = false; video.currentTime = 0; setQuiet(false); video.play().catch(() => { video.muted = true; setQuiet(true); }); }
+    else { video.muted = true; video.loop = true; setQuiet(true); }
+  };
+  if (!shown) {
+    return (
+      <figure className="board-work" data-state="making">
+        <div className="board-work-frame" style={{'--shape': 4 / 3}}><div className="board-work-sketch"><i /><i /><i /></div></div>
+        <figcaption><span className="board-work-name">{block.caption ?? '正在准备'}</span></figcaption>
+      </figure>
+    );
+  }
+  // What the frame shows under a thing still being made: the picture it is made from.
+  const source = shown.from ? assets.get(shown.from) : null;
+  // (A video that waits for a tap counts as arrived: the frame can be tapped, and shows what it was made from.)
+  const waiting = shown.state === 'ready' && shown.kind === 'video' && (still || held === shown.id);
+  const ready = shown.state === 'ready', loaded = ready && (fetched === shown.id || waiting);
+  const under = (!loaded || waiting) && shown.state !== 'failed' && source?.kind === 'image' && source.url ? source.url : '';
+  const picked = view.picked === shown.id && shown.state === 'ready';
+  // A version goes by the name the thing was given when it was first looked at.
+  const name = shown.name || family.find(item => item.name)?.name || block.caption || (shown.state === 'making' ? '' : shown.kind === 'video' ? '视频' : '作品');
+  // (Not the picture a video is the moving version of: that one is in this very frame.)
+  const references = (shown.refs ?? []).filter(id => !(id === shown.from && family.some(item => item.id === id))).map(id => assets.get(id)?.name).filter(Boolean);
+  // A tap looks at it large, like any picture on the page; looked at is picked (board-viewer.jsx).
+  // (The tap is also what lets a waiting video start: it is started here, silent, inside the tap itself.)
+  const open = event => {
+    if (!loaded) return;
+    if (waiting && !still && film.current) { const video = film.current; video.muted = true; video.loop = true; Promise.resolve(video.play()).then(() => setHeld(''), () => {}); }
+    view.enlarge?.(event.currentTarget);
+  };
+  return (
+    <figure className="board-work" data-state={shown.state} data-kind={shown.kind} data-picked={picked || undefined}>
+      <div className="board-work-frame" ref={frame} style={{'--shape': shape || ratio(shown.aspect) || (shown.kind === 'video' ? 16 / 9 : 4 / 3)}}
+        role={loaded ? 'button' : undefined} tabIndex={loaded ? 0 : undefined} aria-label={loaded ? `放大：${name}` : undefined}
+        data-enlarge={loaded ? 'true' : undefined} data-kind={shown.kind} data-src={still && shown.kind === 'video' ? shown.url : undefined} data-asset={shown.id} data-name={name}
+        onClick={open} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(event); } }}>
+        {under && <img className="board-work-under" src={under} alt="" decoding="async" onLoad={event => settle(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />}
+        {waiting && <div className="board-work-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" /></svg><p>点一下播放</p></div>}
+        {(shown.state === 'making' || ready && !loaded) && (
+          <div className="board-work-sketch" data-over={under ? 'true' : undefined}>
+            <i /><i /><i />
+            {/* (Made, and on its way to this screen: the sketch stays until the picture itself has arrived.) */}
+            {ready ? <p>{shown.kind === 'video' ? '马上就动' : '正在显影'}</p>
+              : <p>{shown.kind === 'video' ? '正在让它动起来' : '正在画'}<span> · <Elapsed since={shown.at} /> 秒</span></p>}
+            {shown.prompt && !under && !ready && <q>{shown.prompt}</q>}
+          </div>
+        )}
+        {ready && shown.kind === 'image' && (
+          <img key={shown.id} className="board-work-print" data-loaded={loaded || undefined} src={shown.url} alt={name} decoding="async"
+            onLoad={event => { settle(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight); setFetched(shown.id); view.shown?.(shown.id); }} />
+        )}
+        {ready && shown.kind === 'video' && !still && (
+          <video key={shown.id} ref={film} className="board-work-print" data-loaded={loaded && !waiting || undefined} src={shown.url} muted loop autoPlay playsInline preload="auto"
+            onLoadedMetadata={event => settle(event.currentTarget.videoWidth, event.currentTarget.videoHeight)}
+            onLoadedData={() => { setFetched(shown.id); view.shown?.(shown.id); }} />
+        )}
+        {shown.state === 'failed' && <div className="board-work-failed"><p>{shown.kind === 'video' ? '这段没做成' : '这张没画成'}</p></div>}
+        {loaded && !waiting && shown.kind === 'video' && (
+          <button type="button" className="board-work-sound" data-quiet={quiet || undefined} aria-label={quiet ? '带声音再放一遍' : '关掉声音'} aria-pressed={!quiet} onClick={sound}>
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" />{quiet ? <path d="m16 9.5 5 5M21 9.5l-5 5" /> : <path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11" />}</svg>
+          </button>
+        )}
+        {picked && <span className="board-work-this" aria-hidden="true">{shown.kind === 'video' ? '这个' : '这张'}</span>}
+      </div>
+      <figcaption>
+        {/* (The page already carries the name as its title when the page is this thing's own.) */}
+        {name && name !== view.title && <span className="board-work-name">{name}</span>}
+        {shown.state === 'ready' && <small>{shown.source === 'backend' ? '后台生成' : shown.source === 'lesson' ? '讲解时现画' : 'V 生成'}{shown.kind === 'video' ? ' · 视频' : ''}</small>}
+        {/* What it was (or is being) made from, by name: a wrong picture is seen at once. */}
+        {references.length > 0 && <small className="board-work-refs">照着：{references.join('、')}</small>}
+      </figcaption>
+      {family.length > 1 && (
+        <ol className="board-work-line" aria-label="这件作品的各个版本">
+          {family.map((item, index) => (
+            <li key={item.id}>
+              <button type="button" data-current={item.id === shown.id || undefined} data-state={item.state} aria-label={`第 ${index + 1} 版：${KIND[item.kind] ?? '图'}`}
+                onClick={() => setBack(item.id === latest.id ? null : item.id)}>
+                {item.kind === 'image' && item.url ? <img src={item.url} alt="" decoding="async" /> : item.kind === 'video' && item.from && assets.get(item.from)?.url ? <img src={assets.get(item.from).url} alt="" decoding="async" /> : <i />}
+                {item.kind === 'video' && <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" /></svg>}
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+      {picked && view.act && (
+        <div className="board-work-acts" role="group" aria-label="对这件作品">
+          {(ACTIONS[shown.kind] ?? []).map(action => <button key={action.label} type="button" onClick={() => view.act(action.say)}>{action.label}</button>)}
+          <span>或者直接说：把它……</span>
+        </div>
+      )}
+    </figure>
+  );
+}
