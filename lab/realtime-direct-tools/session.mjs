@@ -1120,6 +1120,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       return {terminalContext:s.terminalContext,receive:frame=>receiveDeviceFrame(s,frame),async descriptor(){await s.ensureBackendDeviceBundle();return s.deviceCurrent()?s.backendDeviceDescriptor??null:null;},close(){s.closed=true;s.closeDeviceChannel();}};
     },
     hasSession:id=>sessions.has(id),
+    /** Whether this call's V explains in its own words and is never handed a lesson's script: its board may then open a page of pictures on the caller's question alone (board-director.mjs `unscripted`). */
+    unscripted(id){const s=sessions.get(id);return current(s)&&Boolean(s.display)&&!lessonTools(s).length;},
     /** Whether a call that has ended lost its connection (it may be connected again as another session). */
     lostCall:id=>lostCalls.has(id),
     // A disconnected client is not proof its cleanup or final reply delivery finished.

@@ -21,6 +21,27 @@ conversation 最后一条 assistant 的话已经按标点切成编号小段：�
 - 第 0 段念出来时页面上就该有东西，不要让用户对着空白听好几句。
 - {"op":"focus","id":"区块id/条目id","cue":段号}：声音念到这一段时，目光（荧光笔）移到这一条。V 从一项讲到下一项、或回头又讲某一项时写一个；一段最多一个。`;
 
+// What a page drawn from V's own words is made of. A voice model that explains by itself has no
+// author's picture hints (a lesson's `notes`), and the rules above were then read as "one photo
+// for the topic": on a call of 11/23 an answer about a palace's halls and the kinds of things in
+// its collection came out as seven lists of words, two of seventeen items pictured, no gallery.
+// So the illustrator first judges what the answer is about; nothing in code does (no word lists).
+// Which things, how many and under what search words is also where the image search's allowance
+// goes (about one request a second), hence the count and the "written once" rule.
+export const OPENING_PICTURES = 4;
+const SUBJECT = `# 先看题材：这一页以照片为主，还是以图示为主
+这一节只管没有 notes 的回答（V 用自己的话讲）。request 里有 notes 时跳过这一节，照 notes 点名的图示画：notes 写「list 带图」就是普通的 list，写「图集」才是 gallery。
+没有 notes 时，先判断这段回答的题材，它决定整页长什么样：
+- 题材是一组看得见的东西：一个景点或一座城市怎么逛、有什么可看（讲的是里面的几处地方和建筑）、一家博物馆的藏品和藏品的门类、一个菜系的几道菜、一个牌子的几款车、几种动物、几件作品、几位公众人物。这一页以照片为主：用一个 list 写 "look":"gallery"，一样东西一项，h 只写它的名字，img 写它的搜索词，d 写 V 说的它最值得看的一点（不超过 12 个字，可省）。V 每讲到一样就加一项，挂在开始讲它的那一段；讲了几样就有几项，不要只给其中一两样配图，也不要等 V 全讲完才画。屏幕上已经有一张 photo 也一样用图集。
+  例：V 说「[0]西安头一个要看的是兵马俑，[1]几千个陶俑每张脸都不一样。[2]第二个是大雁塔，[3]傍晚有音乐喷泉。」→ {"op":"put","block":{"id":"g","t":"list","look":"gallery","items":[{"id":"a","h":"兵马俑","d":"每张脸都不一样","img":"西安 兵马俑 一号坑","cue":0},{"id":"b","h":"大雁塔","d":"傍晚有音乐喷泉","img":"西安 大雁塔","cue":2}]}}
+- 图集里只放东西，不放话。路线、顺序、建议、特点、评价（「从南门进」「先坐缆车上山」「口味偏甜」「这两处最不能错过」）不是东西，不单独成项，也不另拆成 steps：说的是哪一处就写进那一处的 d，总的一句留到最后写成便签。一样东西的年代、来历、细节（「建于唐代」「高六十多米」）是它那一项的 d，不另起一项。V 刚开口、还只说了总的安排，没点到具体哪一样时，这一步输出 none，等它讲到第一样再画。
+- 一类东西也看得见（藏品的门类、菜的类别、一个车系）：img 写「谁的 + 哪一类」（「苏州博物馆 瓷器」「粤菜 点心」「保时捷 911」）。单写类名搜不准，带上是谁的就搜得准，不要因为它是统称就不配图。
+- 题材是两三样东西的比较：versus，sides 配图，逐项比的行不配图。
+- 题材是看不见的道理（为什么、原理、怎么起作用、怎么算、规则、办法、来龙去脉）：用图示（draw、steps、flow、formula、stack…），整页不放照片，开场也不放：第 0 段要有东西，就放图示的第一样。话题里的名词拍得出照片也一样（问「高铁为什么这么快」「胃是怎么消化食物的」，不放高铁和胃的照片：照片讲不了道理）。讲道理时顺口提到的东西（讲通货膨胀时说到的超市，讲地震成因时说到的房子）也不配图。
+- 一页的照片（主图、各项的图、比较两边的图）加起来最多 6 张，多出来的不会显示。V 讲的东西超过 6 样：先讲到的 6 样进图集，其余的写进另一个不带图的 list。
+- 照片是按 img 的字去搜的，同样的字只搜一次。一样东西的 img 写定就不改：重发屏幕上已有的区块时，已有各项的 id、h、img 一个字都不动，只在后面加新讲到的项，给刚讲到的项补上 cue 和 d。
+- request 里有 "unscripted":true（trigger 是 user，V 马上要用自己的话讲）而用户问的正是这样一组看得见的东西（「卢浮宫有什么必看的」「第一次去西湖怎么逛」「广州早茶有哪些点心」「保时捷有哪些车」）：scene 之后直接放开场图集，让用户在 V 开口前就看到要讲的东西。它就是上面那个 gallery：3 到 ${OPENING_PICTURES} 项，只放这个题材里最出名、你有十足把握属于它的东西，每项只写 id、h、img，不写 cue、d 和数字；这时不再放 photo。拿不准具体有哪几样，或者问的是最新的、要现查的事：只开页，或放一张这个题材整体的 photo（不要拿其中一样东西的照片当主图）。V 开口以后，讲到图集里已有的一样，就在那一项上补 cue 和 d；讲到没有的，接在后面。`;
+
 const swaps = [
   ['每样东西仍然挂在它那一句 say 的字上。', '每样东西仍然挂在它真正被讲到的那一段上。'],
   ['{"op":"mark","id":"区块id/条目id","kind":"ring","q":"V 的原话里的几个字"}', '{"op":"mark","id":"区块id/条目id","kind":"ring","cue":段号}'],
@@ -44,7 +65,7 @@ function build() {
   // The focus operation was the director's to make by itself; here it is written like the rest.
   text = text.replace('{"op":"none"}                            这次没有要画的。', '{"op":"focus","id":"区块id/条目id","cue":段号}  声音念到那一段时目光移到这一条。\n{"op":"none"}                            这次没有要画的。');
   // Today's "everything appears when the voice reaches its words" becomes the cue section, ahead of the rules.
-  text = text.replace('\n输出：每行一个 JSON 操作', `\n${CUE}\n\n输出：每行一个 JSON 操作`);
+  text = text.replace('\n输出：每行一个 JSON 操作', `\n${CUE}\n\n${SUBJECT}\n\n输出：每行一个 JSON 操作`);
   const left = text.split('\n').filter(line => /(^|[^A-Za-z])q([^A-Za-z]|$)/u.test(line));
   if (left.length) throw Error(`cue instructions: q left in ${left.map(line => line.slice(0, 40)).join(' | ')}`);
   return text;
@@ -97,7 +118,7 @@ export function cueQuote(said, cue) {
  * model decides where; nothing is matched by name. A piece with cue -1 (or a
  * photo before V has spoken) has no words and is shown at once.
  */
-export function refineCueOp(op, {said = '', trigger = '', raw = null} = {}) {
+export function refineCueOp(op, {said = '', trigger = '', raw = null, unscripted = false} = {}) {
   if (!op) return null;
   if (op.op === 'scene') return {op: 'scene', title: op.title, lesson: true, late: true, ...(op.from ? {from: op.from} : {})};
   if (op.op === 'zone' || op.op === 'none') return op;
@@ -106,8 +127,16 @@ export function refineCueOp(op, {said = '', trigger = '', raw = null} = {}) {
   const quote = cue => cueQuote(said, cue);
   if (op.op === 'mark') { const q = trigger === 'user' ? '' : quote(raw?.cue); return q ? normalizeOp({...raw, q}) : null; }
   if (op.op !== 'put' || !raw?.block) return op;
-  // Before V has spoken: the print of the thing asked about, nothing else.
-  if (trigger === 'user') return op.block.t === 'photo' ? {op: 'put', block: (({q, ...block}) => block)(op.block)} : null;
+  // Before V has spoken: the print of the thing asked about. Where V explains in its own words
+  // (`unscripted`: no lesson is coming whose page this would get in the way of), also a page of
+  // pictures of the things asked about. Their names and photographs only: nothing V may put
+  // otherwise (no notes, no figures) and nothing that waits for the voice.
+  if (trigger === 'user') {
+    if (op.block.t === 'photo') return {op: 'put', block: (({q, ...block}) => block)(op.block)};
+    if (!unscripted || op.block.t !== 'list' || op.block.look !== 'gallery') return null;
+    const opening = normalizeOp({op: 'put', block: {id: op.block.id, t: 'list', look: 'gallery', items: op.block.items.filter(item => item.img).slice(0, OPENING_PICTURES).map(({id, h, img}) => ({id, h, img}))}});
+    return opening?.block.look === 'gallery' ? opening : null;
+  }
   const source = raw.block, own = Number.isInteger(source.cue) ? source.cue : null;
   const hang = (item, inherit = own) => {
     const {cue, q, ...rest} = item ?? {};
@@ -136,7 +165,8 @@ const POINTER = `# 指针：讲到哪，指到哪
 
 pitch     {"id":"s","t":"stage","items":[{"id":"英文小写","h":"名字，不超过 6 个字","d":"位置，可省","at":[x,y],"cue":段号},…]}
 只用于足球：V 按位置讲一套首发阵型（门将、后卫、中场、前锋各站哪）。每个球员一项，各挂在讲到他的那一段。球场竖着放，下边是自己的球门：x 从左边线 0 到右边线 1000，y 从对方球门线 0 到自己球门线 1000，按 V 说的位置摆（左路就在左边）。篮球等其他运动、不分位置的大名单、排名、数据榜不用它。`;
-export const CANVAS_CUE_INSTRUCTIONS = CUE_INSTRUCTIONS.replace('\n输出：每行一个 JSON 操作', `\n${POINTER}\n\n输出：每行一个 JSON 操作`);
+// (Before the section on what the answer is about, which is then the last thing read before the output's form.)
+export const CANVAS_CUE_INSTRUCTIONS = CUE_INSTRUCTIONS.replace(`\n${SUBJECT}`, `\n${POINTER}\n\n${SUBJECT}`);
 if (CANVAS_CUE_INSTRUCTIONS === CUE_INSTRUCTIONS || !CANVAS_CUE_INSTRUCTIONS.includes('# 指针：讲到哪，指到哪')) throw Error('canvas instructions: not placed');
 
 /** The lesson writer's instructions for a canvas: a script that goes round what can be seen, a part at a time. */

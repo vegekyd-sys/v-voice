@@ -980,6 +980,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         res.on('close',()=>{ if (!res.writableEnded) gone.abort(); });
         const send = value => { if (collected) { if (collected.length < 200) collected.push(value); return; } if (!res.writableEnded && !gone.signal.aborted) res.write(`data: ${JSON.stringify(value)}\n\n`); };
         const result = await board.run({owner:params.voiceSessionId,...request,signal:gone.signal,quiet:binding?.permissionProfile!=='personal-tianyi',
+          // (A call whose model is never handed a lesson's script: nothing prepared ahead will take the page.)
+          unscripted:directVoice?.unscripted?.(params.voiceSessionId)===true,
           onOp:op=>{ if (context.active === active) send(op); }});
         send({op:'done',reason:result.reason,rev:result.rev??board.scene(params.voiceSessionId).rev,durationMs:result.durationMs,firstOpMs:result.firstOpMs??null});
         if (collected) return json(res,200,{ops:collected});

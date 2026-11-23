@@ -60,7 +60,8 @@ test('the canvas instructions are today\'s with the pointer laid over them', () 
   assert.ok(CANVAS_CUE_INSTRUCTIONS.includes('# 指针：讲到哪，指到哪') && CANVAS_CUE_INSTRUCTIONS.includes('# 画面怎么跟着声音走'));
   assert.ok(CANVAS_CUE_INSTRUCTIONS.length > CUE_INSTRUCTIONS.length && CANVAS_SCRIPT_INSTRUCTIONS.includes('# 指针'));
   // (Everything today's illustrator is told, it is still told.)
-  assert.equal(CANVAS_CUE_INSTRUCTIONS.replace(/\n# 指针：讲到哪，指到哪[\s\S]*?(?=\n\n输出：每行一个 JSON 操作)/u, '').replace(/\n\n输出：/u, '\n输出：'), CUE_INSTRUCTIONS);
+  // (The pointer's section comes before the one on what the answer is about, the last read before the output's form.)
+  assert.equal(CANVAS_CUE_INSTRUCTIONS.replace(/# 指针：讲到哪，指到哪[\s\S]*?\n\n(?=# 先看题材)/u, ''), CUE_INSTRUCTIONS);
   assert.equal(clauseOf(said, '它的尾巴又粗又长'), 4);
 });
 
@@ -121,16 +122,19 @@ test('a list\'s pictures are each looked at by themselves, with the clauses abou
 });
 
 test('the places pinned on a picture go when the picture does', async () => {
+  // (Drawn again for the caller's next turn: within one answer a thing keeps its picture, see board-director.test.mjs.)
   const pages = [lines({op: 'scene', title: '展品'}, {op: 'put', block: {id: 'l', t: 'list', items: [{id: 'a', h: '翠玉白菜', img: '翠玉白菜', cue: 0}, {id: 'b', h: '肉形石', img: '肉形石', cue: 1}]}}),
-    lines({op: 'put', block: {id: 'l', t: 'list', items: [{id: 'a', h: '翠玉白菜', img: '翠玉白菜 特写', cue: 0}, {id: 'b', h: '肉形石', img: '肉形石', cue: 1}]}})];
+    lines({op: 'none'}),
+    lines({op: 'put', block: {id: 'l', t: 'list', items: [{id: 'a', h: '翠玉白菜', img: '翠玉白菜 特写', cue: 0}, {id: 'b', h: '肉形石', img: '肉形石'}]}})];
   const complete = async function* () { yield pages.shift(); };
   const eye = {find: async query => ({bytes: Buffer.from(query), type: 'image/png'}), see: async ({shots}) => shots[0].img === '翠玉白菜 特写' ? [] : [{on: 'a', box: [1, 1, 9, 9], kind: 'ring', h: '看', q: shots[0].img.startsWith('翠玉') ? '先看翠玉白菜它' : '再看肉形石像一'}]};
   const director = createBoardDirector({complete, eye, stream});
-  const words = '先看翠玉白菜，它只有十八厘米高。再看肉形石，像一块红烧肉。';
-  await director.run({owner: 'c', trigger: 'assistant_progress', turns: [{role: 'user', text: '展品'}, {role: 'assistant', text: words}]});
+  const words = '先看翠玉白菜，它只有十八厘米高。再看肉形石，像一块红烧肉。', asked = [{role: 'user', text: '展品'}, {role: 'assistant', text: words}, {role: 'user', text: '白菜换一张近的'}];
+  await director.run({owner: 'c', trigger: 'assistant_end', turns: asked.slice(0, 2)});
   assert.deepEqual(director.scene('c').pins.map(item => item.img).sort(), ['翠玉白菜', '肉形石'].sort());
-  await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '展品'}, {role: 'assistant', text: words}]});
-  assert.deepEqual(director.scene('c').pins.map(item => item.img), ['肉形石']);
+  await director.run({owner: 'c', trigger: 'user', turns: asked});
+  await director.run({owner: 'c', trigger: 'assistant_end', turns: [...asked, {role: 'assistant', text: '好，换了一张翠玉白菜的近照，菜叶看得更清楚。'}]});
+  assert.deepEqual([director.scene('c').blocks[0].items[0].img, director.scene('c').pins.map(item => item.img)], ['翠玉白菜 特写', ['肉形石']]);
 });
 
 test('a later answer on the same page looks only at the pictures it is about', async () => {
@@ -148,4 +152,21 @@ test('a later answer on the same page looks only at the pictures it is about', a
   const again = await director.run({owner: 'c', trigger: 'assistant_end', turns: [...turns, {role: 'assistant', text: second}]});
   await director.run({owner: 'c', trigger: 'assistant_end', turns: [...turns, {role: 'assistant', text: second}, {role: 'user', text: '谢谢'}, {role: 'assistant', text: third}]});
   assert.deepEqual([asked, again.eye.shots], [['翠玉白菜', '肉形石', '肉形石'], 1]);
+});
+
+test('a picture put up before V spoke is looked at when V names it, with V\'s words from there on', async () => {
+  const gallery = {id: 'g', t: 'list', look: 'gallery', items: [{id: 'a', h: '钟楼', img: '钟楼 全景'}, {id: 'b', h: '石桥', img: '石桥 全景'}]};
+  const pages = [lines({op: 'scene', title: '老城怎么逛'}, {op: 'put', block: gallery}), lines({op: 'none'}), lines({op: 'none'})];
+  const complete = async function* () { yield pages.shift(); };
+  const asked = [];
+  const eye = {find: async query => ({bytes: Buffer.from(query), type: 'image/png'}), see: async ({shots, from, to}) => { asked.push([shots[0].img, from, to]); return []; }};
+  const director = createBoardDirector({complete, eye, stream});
+  const user = {role: 'user', text: '老城怎么逛'};
+  await director.run({owner: 'c', trigger: 'user', turns: [user], unscripted: true});
+  assert.deepEqual(director.scene('c').blocks[0].items.map(item => item.q), [undefined, undefined]);
+  // V's opening lines are about neither picture: nothing is looked at with them.
+  await director.run({owner: 'c', trigger: 'assistant_progress', turns: [user, {role: 'assistant', text: '老城不大，半天就能走完，我建议你早上去。'}]});
+  assert.deepEqual(asked, []);
+  await director.run({owner: 'c', trigger: 'assistant_progress', turns: [user, {role: 'assistant', text: '老城不大，半天就能走完，我建议你早上去。先到石桥，桥头有两只石狮子。'}]});
+  assert.deepEqual(asked, [['石桥 全景', 3, 5]]);
 });

@@ -1830,6 +1830,15 @@ test('the board for everyone: a guest caller gets the lesson tool only where the
  assert.equal(open.upstream.sent.find(e=>e.type==='session.update').session.tools.some(tool=>tool.name==='explain_on_board'),true);
 });
 
+test('a call says whether its V is ever handed a lesson\'s script: where it is not, the board may open a page of pictures on the question alone',async t=>{
+ const lessonFor=audience=>({available:true,audience,prepare:async()=>({say:'好。'})});
+ const scripted=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson:lessonFor('all')});t.after(()=>scripted.service.dispose());
+ const guest=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson:lessonFor('owner'),unidentified:true});t.after(()=>guest.service.dispose());
+ // (The answer is the same one that decides whether the lesson tool is offered.)
+ for(const f of [scripted,guest])assert.equal(f.service.unscripted(f.reservation.voiceSessionId),!f.upstream.sent.find(e=>e.type==='session.update').session.tools.some(tool=>tool.name==='explain_on_board'));
+ assert.deepEqual([scripted.service.unscripted(scripted.reservation.voiceSessionId),guest.service.unscripted(guest.reservation.voiceSessionId),guest.service.unscripted('no-such-call')],[false,true,false]);
+});
+
 test('call 9427aac1: with the board, a finished background task is told as one lesson written from its result; without a script it is said as before',async()=>{
  for(const works of [true,false]){
   const prepared=[];

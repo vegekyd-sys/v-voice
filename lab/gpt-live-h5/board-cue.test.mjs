@@ -178,3 +178,33 @@ test('a request to see pictures is a gallery: a list of real pictures, each with
   // Without pictures it is an ordinary list.
   assert.equal(normalizeOp({op: 'put', block: {id: 'l', t: 'list', look: 'gallery', items: [{id: 'a', h: '一'}, {id: 'b', h: '二'}]}}).block.look, undefined);
 });
+
+test('before V has spoken: a print; a page of pictures only where V explains in its own words, names and photographs alone', () => {
+  const refine = (block, options) => refineCueOp(normalizeOp({op: 'put', block}), {trigger: 'user', raw: {op: 'put', block}, ...options});
+  const gallery = {id: 'g', t: 'list', look: 'gallery', items: [
+    {id: 'a', h: '钟楼', img: '老城 钟楼', d: '建于某年', cue: 0, mark: 'star'}, {id: 'b', h: '石桥', img: '老城 石桥'}, {id: 'c', h: '半天走完'},
+    {id: 'd', h: '码头', img: '老城 码头'}, {id: 'e', h: '集市', img: '老城 集市'}, {id: 'f', h: '城墙', img: '老城 城墙'}]};
+  // (A script may be on its way, with a page of its own: nothing but the print, as before.)
+  assert.equal(refine(gallery), null);
+  assert.deepEqual(refine({id: 'p', t: 'photo', query: '老城', cue: -1}).block, {id: 'p', t: 'photo', query: '老城'});
+  const opening = refine(gallery, {unscripted: true}).block;
+  assert.equal(opening.look, 'gallery');
+  assert.deepEqual(opening.items, [{id: 'a', h: '钟楼', img: '老城 钟楼'}, {id: 'b', h: '石桥', img: '老城 石桥'}, {id: 'd', h: '码头', img: '老城 码头'}, {id: 'e', h: '集市', img: '老城 集市'}], 'four at most; no notes, marks or cues; nothing without a picture');
+  // A list of words, or a single picture, is not a page of pictures; nor is any other block.
+  assert.equal(refine({id: 'l', t: 'list', items: [{id: 'a', h: '钟楼', img: '老城 钟楼'}, {id: 'b', h: '石桥', img: '老城 石桥'}]}, {unscripted: true}), null);
+  assert.equal(refine({id: 'g', t: 'list', look: 'gallery', items: [{id: 'a', h: '钟楼', img: '老城 钟楼'}, {id: 'b', h: '石桥'}]}, {unscripted: true}), null);
+  assert.equal(refine({id: 's', t: 'steps', items: [{id: 'a', h: '先到钟楼'}]}, {unscripted: true}), null);
+});
+
+test('the illustrator is told to judge what an answer is about: pictures for a set of things one can see, diagrams for what cannot be seen', async () => {
+  const {CANVAS_CUE_INSTRUCTIONS} = await import('./board-cue.mjs');
+  for (const text of [CUE_INSTRUCTIONS, CANVAS_CUE_INSTRUCTIONS]) {
+    const at = text.indexOf('# 先看题材');
+    assert.ok(at > text.indexOf('# 画面怎么跟着声音走') && at < text.indexOf('\n输出：每行一个 JSON 操作'));
+    assert.equal(text.split('# 先看题材').length, 2);
+  }
+  assert.match(CUE_INSTRUCTIONS, /有 notes 时跳过这一节/u, 'a script\'s page follows its author\'s notes, as before');
+  assert.match(CUE_INSTRUCTIONS, /整页不放照片/u);
+  assert.match(CUE_INSTRUCTIONS, /加起来最多 6 张/u);
+  assert.match(CUE_INSTRUCTIONS, /"unscripted":true/u);
+});
