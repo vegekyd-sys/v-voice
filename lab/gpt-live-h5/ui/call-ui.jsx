@@ -570,7 +570,8 @@ function CallPage({view, actions, options}) {
                   <button id="start" className={`dial${state.confirmation?' confirmation-dial':''}`} type="button" disabled={state.confirmation?state.confirmation.phase!=='failed':state.dial.disabled} aria-label={state.confirmation?(state.confirmation.phase==='failed'?'重试身份确认':'等待飞书确认'):state.dial.label} title={state.dial.label} onClick={state.confirmation?actions.connectIdentity:actions.dial}><Icon d={PHONE} /></button>
                   {state.confirmation?<div className="confirmation-actions"><button type="button" disabled={state.confirmation.phase==='cancelling'} onClick={actions.skipConfirmation}>访客通话</button></div>:<>
                   <ModelPicker state={state} actions={actions} />
-                  <span id="badge" className="home-badge" role="status">{state.badge}</span>
+                  {/* (Ready to dial is what the dial itself says: the line is kept for when something is not ready.) */}
+                  {state.badge !== '可以拨号' && <span id="badge" className="home-badge" role="status">{state.badge}</span>}
                   <IdentitySummary context={state.accessContext} onClick={state.nativeSettings?undefined:()=>setAccessOpen(true)}/>
                   {state.nativeSettings&&!state.accessContext&&state.entrySummary&&<span className="access-summary">{state.entrySummary}</span>}
                   {state.accountLoginHref&&!state.accountLabel&&(state.confirmationAvailable?<button type="button" className="home-note identity-connect" onClick={actions.connectIdentity}>连接飞书身份</button>:<a className="home-note" href={state.accountLoginHref}>连接飞书账号</a>)}
