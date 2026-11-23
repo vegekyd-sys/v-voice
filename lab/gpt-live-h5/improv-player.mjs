@@ -28,7 +28,11 @@ export function createImprovPlayer({update,ended,keep,notice}){
     const frame=document.createElement('iframe');frame.hidden=true;frame.title='Makaron Director 直播连接';frame.allow='autoplay';
     const show={id:event.id,frame,listener:e=>{
       if(e.source!==frame.contentWindow || e.origin!==location.origin || e.data?.source!=='makaron-director' || e.data.id!==event.id)return;
-      if(e.data.action==='playing')update({id:event.id,stream:frame.contentDocument.querySelector('video')?.srcObject});
+      if(e.data.action==='playing'){show.stream=frame.contentDocument.querySelector('video')?.srcObject;update({id:event.id,stream:show.stream});}
+      if(e.data.action==='direction'){
+        const note={sent:'正在调整镜头',applied:'新镜头正在生成',rejected:'这条指令未被采用'}[e.data.state];
+        if(note)update({id:event.id,stream:show.stream,note});
+      }
       if(e.data.action==='ended'){ended(event.id);close();notice('直播结束，通话继续');}
     }};
     current=show;window.addEventListener('message',show.listener);

@@ -39,7 +39,7 @@ export function directorCommand(environment=process.env) {
   const env=Object.fromEntries(['PATH','LANG','MAKARON_API_KEY','MAKARON_DIRECTOR_URL'].filter(k=>environment[k]).map(k=>[k,environment[k]]));
   return async args=>{
     try{
-      const {stdout}=await execute(binary,['director',...args,'--json'],{env,timeout:45000,maxBuffer:65536});
+      const {stdout}=await execute(binary,['director','--json',...args],{env,timeout:45000,maxBuffer:65536});
       return JSON.parse(stdout);
     }catch{throw Error('Makaron Director 未确认操作，请查看本场状态');}
   };
@@ -58,7 +58,7 @@ export function createImprovShow({run}) {
     if(!show || !turn)return Promise.resolve({action:'chat'});
     if(turns.has(turn))return turns.get(turn);
     const id=show.id;
-    const result=run(['direct',id,'--host','--turn-id',turn.id||randomUUID(),'--',turn.text]).then(value=>{
+    const result=run(['direct',id,'--host','--turn-id',String(turn.id||randomUUID()),'--',turn.text]).then(value=>{
       if(value.action==='end' && show?.id===id){show=null;emit({type:'improv.live',id,action:'end'});}
       return value;
     });
