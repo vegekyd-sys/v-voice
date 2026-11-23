@@ -555,6 +555,54 @@ test('a promise to look something up that nobody delegated is kept for the model
   say(f,idOf(3),'我今天有什么日程安排');await pause(20);assert.equal(f.calls.length,1);
 });
 
+test('a lookup the caller\'s words call for is started when they stop speaking, and taken by the delegation that comes for it',async()=>{
+  const route=async({text})=>/记录|进展|heartbeat/iu.test(text)?{name:'memory_search',args:{query:'夜班项目进展'},via:'model'}:{name:'answer_directly',args:{},via:'decision'};
+  const f=await fixture({tools:END,route});await ready(f);
+  userSays(f,'u1','我们最近的夜班项目进展怎么样');await pause(10);
+  assert.equal(f.calls.length,1);assert.deepEqual([f.calls[0].name,f.calls[0].args],['memory_search',{query:'夜班项目进展'}]);assert.match(f.calls[0].callId,/^host_/u);
+  // The model delegates a moment later: no second lookup, the one under way answers it, on its own delegation.
+  say(f,idOf(1),'查一下夜班项目最近的进展');await pause(1700);assert.equal(f.calls.length,1);
+  f.bridge.submitToolResult(f.calls[0].callId,{results:[{text:'十一月十六号复核：正式线已切到新版本'}]});
+  const told=appends(f).at(-1);assert.equal(told.delegation_item_id,idOf(1));assert.match(told.content[0].text,/正式线已切到新版本/u);
+  // Already back when the delegation comes: answered at once.
+  const g=await fixture({tools:END,route});await ready(g);
+  userSays(g,'u1','再查一下最近的进展记录');await pause(10);g.bridge.submitToolResult(g.calls[0].callId,{results:[{text:'已上线'}]});
+  assert.equal(appends(g).length,0,'held until someone takes it');
+  say(g,idOf(2),'查进展记录');await pause(1700);assert.equal(g.calls.length,1);assert.equal(appends(g).at(-1).delegation_item_id,idOf(2));
+  // Words that call for no lookup start none; nor do they after the routing model fell back.
+  const h=await fixture({tools:END,route:async()=>({name:'memory_search',args:{query:'x'},via:'fallback'})});await ready(h);
+  userSays(h,'u1','随便聊聊今天天气挺好的');await pause(10);assert.equal(h.calls.length,0);
+});
+
+test('V answers from its own idea though the caller\'s words called for a lookup: the lookup is given to it after its reply',async()=>{
+  const route=async({text})=>/heartbeat|记录/iu.test(text)?{name:'memory_search',args:{query:'heartbeat'},via:'model'}:{name:'answer_directly',args:{},via:'decision'};
+  const f=await fixture({tools:END,route});await ready(f);
+  userSays(f,'u1','我想从 heartbeat 这一部分聊');await pause(10);
+  f.bridge.submitToolResult(f.calls[0].callId,{results:[{text:'Heartbeat 每六小时跑一次，盘点工作和生活线索'}]});
+  vSays(f,'a1','好啊，Heartbeat 就是一个很轻的提醒节奏。');await pause(2000);
+  assert.equal(appends(f).length,0,'the model is given its time to ask for it first');
+  await pause(800);
+  const told=appends(f).at(-1);assert.equal(told.channel,'speakable');assert.equal(told.delegation_item_id,undefined);
+  assert.match(appends(f).map(e=>e.content[0].text).join(''),/每六小时跑一次[\s\S]*“我想从 heartbeat 这一部分聊”[\s\S]*更正/u);
+  assert(f.events.some(e=>e.diag?.stage==='lookup-unasked'));
+  // Not when the caller has moved on, nor when the model asked for it after all.
+  const g=await fixture({tools:END,route});await ready(g);
+  userSays(g,'u1','我想从 heartbeat 这一部分聊');await pause(10);g.bridge.submitToolResult(g.calls[0].callId,{results:[{text:'旧'}]});
+  vSays(g,'a1','好啊。');await pause(500);userSays(g,'u2','算了说别的吧');await pause(2400);assert.equal(appends(g).length,0);
+  const k=await fixture({tools:END,route});await ready(k);
+  userSays(k,'u1','我想从 heartbeat 这一部分聊');await pause(10);say(k,idOf(4),'查 heartbeat 的记录');vSays(k,'a1','我去查一下。');await pause(1700);
+  k.bridge.submitToolResult(k.calls[0].callId,{results:[{text:'每六小时'}]});await pause(1200);
+  assert.equal(appends(k).filter(e=>/每六小时/u.test(e.content[0].text)).length,1);assert.equal(appends(k).find(e=>/每六小时/u.test(e.content[0].text)).delegation_item_id,idOf(4));
+  assert(!k.events.some(e=>e.diag?.stage==='lookup-unasked'));
+});
+
+test('a call that comes back gives the routing model the lost call\'s last words and lookups',async()=>{
+  let seen=null;const route=async({history})=>{seen=history;return {name:'answer_directly',args:{},via:'decision'};};
+  const f=await fixture({tools:END,route,resume:{user:'最近 AI 解了什么数学难题',reply:'是一个百年猜想，同行还在核验',unfinished:false,found:[{name:'web_search',text:'某团队宣布证明了百年猜想'}]}});await ready(f);
+  userSays(f,'u1','这一次是怎么弄出来的呢');await pause(10);
+  assert.deepEqual(seen.slice(0,3).map(e=>[e.role,e.name??e.text]),[['user','最近 AI 解了什么数学难题'],['tool','web_search'],['assistant','是一个百年猜想，同行还在核验']]);
+});
+
 test('a goodbye the caller plainly said is hung up on soon after V\'s own, not after the full wait',async()=>{
   const judge=judging([['拜拜',{farewell:.95}],['有需要再找我',{farewell:.9}]]);
   // The caller's words are read as a hang-up as they stop speaking; the model says goodbye and delegates nothing.
