@@ -87,7 +87,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
         if(['string','number','boolean'].includes(typeof value))safe['closed.'+key]=String(value).replace(/[\u0000-\u001f\u007f]/gu,' ').slice(0,120);
       if(['configuration','input-timeout','upstream-transient','upstream-rejected','network','setup-timeout'].includes(event.category))safe.category=event.category;
       if(typeof event.upstreamCode==='string'&&/^\d{3,8}$/.test(event.upstreamCode))safe.upstreamCode=event.upstreamCode;
-      for(const key of ['sessionAgeMs','attempt','stalledMs','arrivedMs','droppedMs','elapsedMs','rtpIn','rtpOut','pcmOut','peak','sources','lost','skippedMs','backlogMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      for(const key of ['sessionAgeMs','attempt','stalledMs','arrivedMs','droppedMs','elapsedMs','rtpIn','rtpOut','pcmOut','peak','sources','lost','skippedMs','backlogMs','gapMs','filledMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
     }
     // Which tool a GPT Live delegation became and how it was decided; never the words.

@@ -328,7 +328,7 @@ export class GptLiveBridge {
       // A mid-call snapshot: the close-time one is dropped once the call is no longer current.
       for(const delay of [4000,7000]){const t=setTimeout(()=>{if(!this.closed&&this.peer)this.request.onDiagnostic?.({stage:'media-stats',elapsedMs:Math.round(this.now()-this.startedAt),...this.peer.stats});},delay);t.unref?.();}
       // Each time late audio was caught up with (`skippedMs` grew), so the record shows how much a call would have fallen behind.
-      this.statsTimer=setInterval(()=>{const skipped=this.peer?.stats.skippedMs??0;if(this.closed||skipped-this.skippedReported<100)return;this.skippedReported=skipped;this.request.onDiagnostic?.({stage:'media-stats',elapsedMs:Math.round(this.now()-this.startedAt),...this.peer.stats});},5000);this.statsTimer.unref?.();
+      this.statsTimer=setInterval(()=>{const skipped=this.peer?.stats.skippedMs??0,filled=this.peer?.stats.filledMs??0;if(this.closed||skipped-this.skippedReported<100&&filled-(this.filledReported??0)<1000)return;this.skippedReported=skipped;this.filledReported=filled;this.request.onDiagnostic?.({stage:'media-stats',elapsedMs:Math.round(this.now()-this.startedAt),...this.peer.stats});},5000);this.statsTimer.unref?.();
     }
     if(event.type==='turn.created'&&event.turn?.role==='user'){
       // The caller is talking over V: whatever is still queued on the phone is dropped.
