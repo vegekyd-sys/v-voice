@@ -17,7 +17,7 @@ async function fixture(t, overrides = {}) {
   } };
   if (overrides.gatewayReady !== undefined) gateway.ready = overrides.gatewayReady;
   const offers = [];
-  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, enableGrok: overrides.enableGrok ?? true, enableGptLive11: overrides.enableGptLive11 ?? false, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, gptProvider:overrides.gptProvider, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate });
+  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, enableGrok: overrides.enableGrok ?? true, enableGptLive11: overrides.enableGptLive11 ?? false, enableGptLiveOne: overrides.enableGptLiveOne ?? true, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, gptProvider:overrides.gptProvider, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate });
   await new Promise((resolve) => bridge.server.listen(0, "127.0.0.1", resolve));
   t.after(() => bridge.dispose());
   const url = `http://127.0.0.1:${bridge.server.address().port}`;
@@ -513,6 +513,21 @@ test('only anonymous callers keep the tight dial limit',()=>{
   assert.equal(callAttemptLimit({permissionProfile:'unidentified'}),6);
   assert.equal(callAttemptLimit({permissionProfile:'personal-tianyi'}),30);
   assert.equal(callAttemptLimit({permissionProfile:'feishu-current'}),30);
+});
+
+test('GPT Live One can be taken out of the phone catalog: not listed, not dialled, and the default moves to a model that is offered',async t=>{
+ const reserved=[];const directVoice={models:()=>[{id:'seeduplex',available:true},{id:'gpt-live-11',available:true}],reserve:async p=>{reserved.push(p);return {voiceSessionId:'test-relay',transport:'gateway-relay'};},close:async()=>{},dispose:async()=>{}};
+ // With GPT Live 1.1 offered, it takes the default's place; without it, Doubao does.
+ const both=await fixture(t,{enableGptLiveOne:false,enableGptLive11:true,directVoice});
+ const status=await(await fetch(both.url+'/api/status',{headers:{cookie:both.cookie}})).json();
+ assert.deepEqual(status.models.map(m=>m.id),['seeduplex','gpt-live-11']);assert.equal(status.defaultModel,'gpt-live-11');
+ // An old page or App that still asks for it is told to choose again; nothing is reserved.
+ for(const params of [{},{model:'gpt-live'}]){const blocked=await both.request('session',params);assert.equal(blocked.status,409);const body=await blocked.json();assert.deepEqual([body.code,body.fallbackModel],['model_hidden','gpt-live-11']);}
+ assert.equal(reserved.length,0);
+ assert.equal((await both.request('session',{model:'seeduplex'})).status,200);assert.equal(reserved[0].model,'seeduplex');
+ const doubao=await fixture(t,{enableGptLiveOne:false,directVoice});
+ const only=await(await fetch(doubao.url+'/api/status',{headers:{cookie:doubao.cookie}})).json();
+ assert.deepEqual(only.models.map(m=>m.id),['seeduplex']);assert.equal(only.defaultModel,'seeduplex');
 });
 
 test('GPT Live 1.1 stays out of the catalog until the service enables it, then reserves through the relay',async t=>{

@@ -33,7 +33,7 @@ const SCRIPT_MATCH=6,SCRIPT_LOOSE=36,SCRIPT_WINDOW_MS=120_000,SCRIPT_SOURCE='V-b
 // until the caller ended it), and "let me think" / "I'll go and check" with nothing delegated (it cannot
 // work in the background; a real call had three such lines in a row). What a reply is, is judged by a
 // model (`judge`), not matched against words; these are only how long to wait and how sure to be.
-const FAREWELL_MS=500,HOLD_QUIET_MS=2000,HOLD_SETTLE_MS=400,HOLD_MAX_MS=12000,LOUD_PEAK=2500,LOUD_RUN_MS=160,LOUD_GAP_MS=300,NET_MS=2200,NET_MAX_CHARS=64,SURE_FAREWELL=0.7,SURE_PROMISE=0.6,SURE_STAYS=0.5;
+const OPENING_WAIT_MS=1600,OPENING_FRESH_MS=6000,FAREWELL_MS=500,HOLD_QUIET_MS=2000,HOLD_SETTLE_MS=400,HOLD_MAX_MS=12000,LOUD_PEAK=2500,LOUD_RUN_MS=160,LOUD_GAP_MS=300,NET_MS=2200,NET_MAX_CHARS=64,SURE_FAREWELL=0.7,SURE_PROMISE=0.6,SURE_STAYS=0.5;
 function scriptOf(text,at){
   const chars=Array.from(String(text)),map=[];let letters='';
   chars.forEach((character,index)=>{for(const letter of loose(character)){letters+=letter;map.push(index);}});
@@ -54,6 +54,7 @@ export const GPT_LIVE_IDENTITY=[
   '性格（最高优先级）：阳光、甜美、温柔。声音里带着笑意，亲近、软和，像很亲的朋友在讲电话；会开心、会撒娇、会心疼人，对小朋友更耐心。性格是用语气带出来的，不要说出来（不说“我很甜很暖”“我有主见”这类自我描述），也不要演：语气词随情绪自然出现，不要每句都加。讲正事时还是这个人，只是更稳。用对方说话的语言回答：他说中文就说中文，说英文就说英文。',
 ].join('\n');
 /** What the frontend model is told. It never sees schemas, only what the backend can do. */
+const onScreen=names=>`用户的屏幕上已经摆好了这几样的照片，按顺序是：${names.join('、')}。就按这个顺序把这几样讲到，讲到哪一样就说出它的名字；想补充别的，放在这几样之后。`;
 export function gptLiveDelegationPolicy(names,{display=true}={}){
   const has=name=>names.has(name);
   const can=[
@@ -520,12 +521,37 @@ export class GptLiveBridge {
     if(choice.name===GPT_LIVE_SELF_TOOL.name){
       // Nothing to look up: the model is told so, or it would wait for a result that is not coming.
       entry.state='done';const asked=bound(gptLiveText(this.userText)||text,200);
-      this.append(`这件事不用查，后台也没有在办的事：你自己现在就讲给用户听${asked?`——“${asked}”`:''}。按讲解或讲故事的方式讲完整，像当面讲给朋友听，不要说“我想想”“等一下”。`,{delegationId:id,channel:'speakable'});
+      // What the page has put up for this question is waited for a moment and told with it (see `boardOpening`).
+      const shown=await this.openingShown();
+      if(this.closed)return;
+      this.append(`这件事不用查，后台也没有在办的事：你自己现在就讲给用户听${asked?`——“${asked}”`:''}。按讲解或讲故事的方式讲完整，像当面讲给朋友听，不要说“我想想”“等一下”。${shown.length?onScreen(shown):''}`,{delegationId:id,channel:'speakable'});
       return;
     }
     this.request.onToolCall?.({callId:id,name:choice.name,args:choice.args});
   }
   get busy(){return this.working||Boolean(this.script)||[...this.delegations.values()].some(entry=>entry.state==='routing'||entry.state==='running');}
+  // The page draws what V explains from what V has already said, so a thing appears after V has moved on
+  // and the mark is always a step behind. The other way round works: on the caller's question the page puts
+  // up the best-known things at once, and V is told which, so that it names them in that order; the mark
+  // then follows its voice by their names, as it follows a script. (Told with "say it yourself" when the
+  // model delegated; in passing when it is already answering.)
+  boardOpening(names){
+    const shown=(Array.isArray(names)?names:[]).map(name=>gptLiveText(name)).filter(name=>name&&Array.from(name).length<=24).slice(0,6);
+    const waiting=this.openingWaiter;this.openingWaiter=null;
+    this.opening={at:this.now(),names:shown};this.openingSeen=true;
+    if(waiting){waiting(shown);return;}
+    if(shown.length&&!this.closed&&!this.ending&&this.display!==false)this.append(`（屏幕）${onScreen(shown)}`,{channel:'commentary'});
+  }
+  // The names on the page for what the caller just asked: already known, or waited for briefly.
+  openingShown(){
+    // (Only on a call whose page has reported one before: a page without a board never does, and nobody waits for it.)
+    if(this.display===false||!this.openingSeen)return Promise.resolve([]);
+    if(this.opening&&this.opening.at>this.userDoneAt&&this.now()-this.opening.at<OPENING_FRESH_MS)return Promise.resolve(this.opening.names);
+    return new Promise(resolve=>{
+      const timer=setTimeout(()=>{if(this.openingWaiter===done)this.openingWaiter=null;resolve([]);},OPENING_WAIT_MS);timer.unref?.();
+      const done=shown=>{clearTimeout(timer);resolve(shown);};this.openingWaiter=done;
+    });
+  }
   // After an ordinary reply: was it a goodbye nobody acted on, or a promise nobody is keeping?
   afterReply(text){
     clearTimeout(this.netTimer);

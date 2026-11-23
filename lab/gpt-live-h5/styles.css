@@ -283,23 +283,6 @@ p, h1, h2, h3 { margin: 0; }
 }
 .grok-voice-picker small { font-size: 11px; }
 .grok-listen-link { color: #96617d; font-size: 12px; text-underline-offset: 4px; }
-/* The voice in use: one quiet line under the name. Tapping it opens Settings. */
-.voice-line {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 36px;
-  margin-top: 4px;
-  padding: 0 12px;
-  border-radius: 18px;
-  font-size: 12px;
-  color: #8e809d;
-  transition: color .18s, background .18s;
-}
-.voice-line svg { width: 13px; height: 13px; }
-.voice-line > span:last-child { color: #b9adc2; }
-@media (hover: hover) { .voice-line:hover { color: #4e365f; background: #eee8f060; } }
-.voice-line + .dial { margin-top: 12px; }
 
 /* ---------- status: a few words on one line ---------- */
 .status {

@@ -44,7 +44,7 @@ import {createPhotoFinder} from './board-photo.mjs';
 import {STREAM_INSTRUCTIONS,createLessonWriter,refineStreamOp} from './board-lesson.mjs';
 import {CANVAS_CUE_INSTRUCTIONS,CANVAS_SCRIPT_INSTRUCTIONS,CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
 import {createBoardEye} from './board-eye.mjs';
-import {scenePictures} from './board-scene.mjs';
+import {scenePictures,namedThings} from './board-scene.mjs';
 import {ASSET_ID,ASSET_MAKE_NOTES,ASSET_NOTES,ASSET_SCRIPT_NOTES,SELF_IMAGE,SELF_IMAGE_FILE,SHELF_ID,createAssetEye,createAssetShelf,pictureName} from './board-assets.mjs';
 import {roomyPicture} from './board-picture-size.mjs';
 import {createVideoScriptWriter} from '../realtime-direct-tools/media-script.mjs';
@@ -65,16 +65,21 @@ const PAGE_FEATURES = Object.freeze({
 });
 export const callAttemptLimit = binding => binding.permissionProfile === 'unidentified' ? 6 : 30;
 
-export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, board = null, boardPhotos = null, boardAssets = null, boardAudience = 'owner', enableGrok = false, enableGptLive11 = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), relayUsageFile = process.env.VOICE_RELAY_USAGE_FILE || '/var/lib/v-voice-usage/snapshot.json', conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, board = null, boardPhotos = null, boardAssets = null, boardAudience = 'owner', enableGrok = false, enableGptLive11 = false, enableGptLiveOne = true, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), relayUsageFile = process.env.VOICE_RELAY_USAGE_FILE || '/var/lib/v-voice-usage/snapshot.json', conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
   let agentControl = null;
   if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
   if (!["gpt-live","seeduplex","grok","gpt-live-11"].includes(defaultModel)) throw new Error("Invalid default voice model");
   if (typeof enableGptLive11 !== 'boolean') throw new Error('Invalid GPT Live 1.1 visibility setting');
+  if (typeof enableGptLiveOne !== 'boolean') throw new Error('Invalid GPT Live One visibility setting');
   if (typeof enableGrok !== 'boolean') throw new Error('Invalid Grok visibility setting');
   // Visibility belongs to the phone product catalog, not provider/device capability.
-  const phoneModels = () => [{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'},...(directVoice?.models?.() ?? [])].filter(m => (enableGrok || m.id !== 'grok') && (enableGptLive11 || m.id !== 'gpt-live-11'));
-  if (defaultModel === 'gpt-live-11' && !enableGptLive11) defaultModel = 'gpt-live';
-  if (defaultModel === 'grok' && !enableGrok) defaultModel = phoneModels().find(m => m.id === 'seeduplex' && m.available)?.id ?? 'gpt-live';
+  // GPT Live One (the Gateway's browser session) can be taken out of the phone catalog: a service that
+  // offers the relay models only. Its default then moves to a model that is offered.
+  const phoneModels = () => [...(enableGptLiveOne ? [{id:'gpt-live',label:'GPT Live One',available:true,nativeTransport:'webrtc'}] : []),...(directVoice?.models?.() ?? [])].filter(m => (enableGrok || m.id !== 'grok') && (enableGptLive11 || m.id !== 'gpt-live-11'));
+  const fallback = () => (enableGptLiveOne ? 'gpt-live' : null) ?? phoneModels().find(m => m.id === 'gpt-live-11' && m.available)?.id ?? phoneModels().find(m => m.id === 'seeduplex')?.id ?? phoneModels()[0]?.id ?? 'seeduplex';
+  if (defaultModel === 'gpt-live-11' && !enableGptLive11) defaultModel = fallback();
+  if (defaultModel === 'grok' && !enableGrok) defaultModel = phoneModels().find(m => m.id === 'seeduplex' && m.available)?.id ?? fallback();
+  if (defaultModel === 'gpt-live' && !enableGptLiveOne) defaultModel = fallback();
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
   const hosted = Boolean(publicOrigin || accessToken);
@@ -321,6 +326,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     const reply=(status,body)=>({status,body});
     // An old cached native preference must not silently start another model or
     // end an existing call. The existing options refresh selects the new default.
+    if ((!params.model || params.model === 'gpt-live') && !enableGptLiveOne) return reply(409,{error:'GPT Live One 已下线，请返回首页刷新后选择可用模型。',code:'model_hidden',fallbackModel:defaultModel});
     if (params.model === 'gpt-live-11' && !enableGptLive11) return reply(409,{error:'GPT Live 1.1 尚未开放，请返回首页刷新后选择可用模型。',code:'model_hidden',fallbackModel:defaultModel});
     if (params.model === 'grok' && !enableGrok) return reply(409,{error:'Grok 目前仅供测试，请返回首页刷新后选择可用模型。',code:'model_hidden',fallbackModel:defaultModel});
     const externalCancelled=cancelled;
@@ -983,6 +989,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           // (A call whose model is never handed a lesson's script: nothing prepared ahead will take the page.)
           unscripted:directVoice?.unscripted?.(params.voiceSessionId)===true,
           onOp:op=>{ if (context.active === active) send(op); }});
+        // (A call whose V explains in its own words is told what the caller's question put on the page, or that
+        // nothing was: V then names those things in that order and the mark can follow its voice. See `namedThings`.)
+        if(request.trigger==='user'&&context.active===active&&directVoice?.boardOpening&&directVoice.unscripted?.(params.voiceSessionId)===true)
+          directVoice.boardOpening(params.voiceSessionId,result.reason==='drawn'?namedThings(board.scene(params.voiceSessionId)):[]);
         send({op:'done',reason:result.reason,rev:result.rev??board.scene(params.voiceSessionId).rev,durationMs:result.durationMs,firstOpMs:result.firstOpMs??null});
         if (collected) return json(res,200,{ops:collected});
         res.end();return;
@@ -1400,6 +1410,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       phoneInputPolicy:process.env.VOICE_PHONE_INPUT_POLICY ?? 'speaker',
       enableGrok: process.env.VOICE_ENABLE_GROK === '1',
       enableGptLive11: process.env.VOICE_ENABLE_GPT_LIVE_11 === '1',
+      // Offline unless asked for: the relay models are what the phone is offered.
+      enableGptLiveOne: process.env.VOICE_ENABLE_GPT_LIVE_ONE === '1',
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",
       feishuAccounts:process.env.VOICE_FEISHU_ACCOUNTS_FILE?JSON.parse(await readFile(process.env.VOICE_FEISHU_ACCOUNTS_FILE,'utf8')):config.channels?.feishu??{},
       personalReply: {replySync:!!process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID,accountId:process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID},

@@ -260,17 +260,8 @@ function GrokPicker({state, actions}) {
   );
 }
 
-// V's voice is half of its character, and only the listener can pick it. The home page says which
-// one is on in one quiet line; choosing is in Settings, the same place for every model.
-function VoiceLine({state, onOpen}) {
-  const {voices, current} = voiceChoice(state);
-  if (voices.length < 2 || !current) return null;
-  return (
-    <button id="voiceLine" type="button" className="voice-line" aria-haspopup="dialog" aria-label={`V 的声音：${current.label}，点按更换`} onClick={onOpen}>
-      <Icon d={WAVE} /><span>{current.label}</span><span aria-hidden="true">›</span>
-    </button>
-  );
-}
+// V's voice is half of its character, and only the listener can pick it: in Settings, the same place for
+// every model. (The home page does not say which one is on: nothing but V and the dial.)
 
 // Settings: the voice of the model chosen on the home page, and the way to the iPhone App.
 // A voice is fixed when a call is set up (both models take it in the session they open), so a
@@ -575,7 +566,7 @@ function CallPage({view, actions, options}) {
                 </>
               ) : state.entry&&!state.confirmation ? <EntryNotice entry={state.entry} /> : (
                 <>
-                  {state.confirmation?<InlineConfirmation value={state.confirmation} actions={actions}/>:<><GrokPicker state={state} actions={actions} />{!state.nativeSettings && <VoiceLine state={state} onOpen={() => setSettingsOpen(true)} />}</>}
+                  {state.confirmation?<InlineConfirmation value={state.confirmation} actions={actions}/>:<><GrokPicker state={state} actions={actions} /></>}
                   <button id="start" className={`dial${state.confirmation?' confirmation-dial':''}`} type="button" disabled={state.confirmation?state.confirmation.phase!=='failed':state.dial.disabled} aria-label={state.confirmation?(state.confirmation.phase==='failed'?'重试身份确认':'等待飞书确认'):state.dial.label} title={state.dial.label} onClick={state.confirmation?actions.connectIdentity:actions.dial}><Icon d={PHONE} /></button>
                   {state.confirmation?<div className="confirmation-actions"><button type="button" disabled={state.confirmation.phase==='cancelling'} onClick={actions.skipConfirmation}>访客通话</button></div>:<>
                   <ModelPicker state={state} actions={actions} />

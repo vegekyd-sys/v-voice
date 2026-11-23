@@ -1122,6 +1122,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     hasSession:id=>sessions.has(id),
     /** Whether this call's V explains in its own words and is never handed a lesson's script: its board may then open a page of pictures on the caller's question alone (board-director.mjs `unscripted`). */
     unscripted(id){const s=sessions.get(id);return current(s)&&Boolean(s.display)&&!lessonTools(s).length;},
+    /** What the caller's question put on that call's page before V answered (the names, in order; none when nothing was drawn): for a voice path that can tell its model. */
+    boardOpening(id,names){const s=sessions.get(id);if(current(s))s.bridge?.boardOpening?.(Array.isArray(names)?names.filter(name=>typeof name==='string').slice(0,6):[]);},
     /** Whether a call that has ended lost its connection (it may be connected again as another session). */
     lostCall:id=>lostCalls.has(id),
     // A disconnected client is not proof its cleanup or final reply delivery finished.

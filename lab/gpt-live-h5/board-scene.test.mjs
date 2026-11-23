@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {applyOp, createLineParser, emptyScene, flowLayout, focusExists, galleryLayout, normalizeOp, normalizeScene, scalePositions, sceneDigest, spokenFocus, spokenProgress} from './board-scene.mjs';
+import {applyOp, createLineParser, emptyScene, flowLayout, focusExists, galleryLayout, namedThings, normalizeOp, normalizeScene, scalePositions, sceneDigest, spokenFocus, spokenProgress} from './board-scene.mjs';
 
 const put = block => normalizeOp({op: 'put', block});
 const run = (...ops) => ops.reduce((scene, op) => applyOp(scene, normalizeOp(op)), emptyScene());
@@ -247,4 +247,16 @@ test('gallery pictures keep their shape in level rows that fit the room', () => 
   // Before the width is known: two to a row.
   assert.deepEqual(galleryLayout([1, 1, 1], 0).rows, [[0, 1], [2]]);
   assert.deepEqual(galleryLayout([], 500).rows, []);
+});
+
+test('the things named on a page are listed in the order they are laid out, once each, six at most', () => {
+  const scene = {blocks: [
+    {id: 'p', t: 'photo', query: 'a harbour'},
+    {id: 'g', t: 'list', look: 'gallery', items: [{id: 'a', h: '灯塔', img: 'x'}, {id: 'b', h: '码头'}, {id: 'c', h: ''}, {id: 'd', h: '灯塔'}]},
+    {id: 's', t: 'steps', items: [{id: 'e', h: '先买票'}, {id: 'f', h: '一个很长很长很长很长很长很长很长很长很长很长的说明不算名字'}]},
+    {id: 'n', t: 'sticky', text: '傍晚去'},
+  ]};
+  assert.deepEqual(namedThings(scene), ['灯塔', '码头', '先买票']);
+  assert.deepEqual(namedThings({blocks: [{id: 'l', t: 'list', items: Array.from({length: 9}, (_, i) => ({id: 'i' + i, h: '第' + i + '样'}))}]}).length, 6);
+  assert.deepEqual(namedThings(null), []);
 });

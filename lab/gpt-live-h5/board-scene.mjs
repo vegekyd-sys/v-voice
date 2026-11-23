@@ -361,6 +361,19 @@ export function normalizeOp(raw) {
 }
 
 const focusTargets = block => block.t === 'compare' ? block.cols : block.t === 'flow' ? block.nodes : block.items ?? [];
+/**
+ * The things named on a page, in the order they are laid out (the items of its lists, steps and
+ * comparisons that have a name; six at most). For a voice that explains in its own words: told what
+ * the page already shows, it can name those things in that order, and the mark follows it by name.
+ */
+export function namedThings(scene, limit = 6) {
+  const names = [];
+  for (const block of scene?.blocks ?? []) for (const item of focusTargets(block)) {
+    const name = String(item?.h ?? item?.label ?? '').trim();
+    if (name && Array.from(name).length <= 24 && !names.includes(name)) names.push(name);
+  }
+  return names.slice(0, limit);
+}
 /** Whether a focus id ("block" or "block/item") points at something on screen. */
 export function focusExists(scene, id) {
   const [blockId, itemId] = id.split('/'), block = scene.blocks.find(b => b.id === blockId);

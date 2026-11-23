@@ -570,3 +570,33 @@ test('without a lesson tool the model is told the page shows what it names, and 
   assert.doesNotMatch(gptLiveDelegationPolicy(new Set(['web_search','exec']),{display:false}),/屏幕会自动配上/u);
   assert.doesNotMatch(gptLiveDelegationPolicy(new Set(['web_search','explain_on_board']),{display:true}),/屏幕会自动配上/u);
 });
+
+test('V is told what the caller\'s question put on the page, and names those things in that order',async()=>{
+  const WEB=[{type:'function',name:'web_search',parameters:{type:'object',properties:{query:{type:'string'}},required:['query']}}];
+  const f=await fixture({tools:WEB,route:async()=>({name:'answer_directly',args:{}})});await ready(f);
+  const whole=()=>appends(f).map(e=>e.content[0].text).join('');
+  // A call whose page has never reported: "say it yourself" is not kept waiting.
+  userSays(f,'u1','给我介绍几种常见的盆栽');say(f,idOf(1),'给我介绍几种常见的盆栽');await pause(30);
+  assert.match(whole(),/你自己现在就讲给用户听/u);assert.doesNotMatch(whole(),/屏幕上已经摆好了/u);
+  // The page reports (here: nothing drawn for a greeting). From then on what it shows is waited for, and told with it.
+  f.bridge.boardOpening([]);
+  const before=appends(f).length;
+  userSays(f,'u2','再讲讲适合阳台的花');say(f,idOf(2),'再讲讲适合阳台的花');await pause(60);
+  assert.equal(appends(f).length,before,'waiting for the page');
+  f.bridge.boardOpening(['茉莉','月季','三角梅','x'.repeat(40),'']);await pause(20);
+  const told=appends(f).slice(before).map(e=>e.content[0].text).join('');
+  assert.match(told,/你自己现在就讲给用户听[\s\S]*屏幕上已经摆好了这几样的照片，按顺序是：茉莉、月季、三角梅。就按这个顺序把这几样讲到，讲到哪一样就说出它的名字/u);
+  assert.equal(appends(f).at(-1).channel,'speakable');
+  // The model already answering by itself (nothing delegated): told in passing, not as something to say.
+  const count=appends(f).length;userSays(f,'u3','那水培的呢');f.bridge.receive({type:'turn.created',turn:{id:'a3',role:'assistant'}});
+  f.bridge.boardOpening(['绿萝','富贵竹']);await pause(10);
+  const aside=appends(f).slice(count);assert.equal(aside.at(-1).channel,'commentary');assert.match(aside.map(e=>e.content[0].text).join(''),/^（屏幕）用户的屏幕上已经摆好了这几样的照片，按顺序是：绿萝、富贵竹。/u);
+  // Nothing on the page for a question: nothing said about it, and the next "say it yourself" is not delayed by it.
+  const quiet=appends(f).length;f.bridge.boardOpening([]);await pause(10);assert.equal(appends(f).length,quiet);
+});
+test('a page that does not report in time does not hold the answer',async()=>{
+  const WEB=[{type:'function',name:'web_search',parameters:{type:'object',properties:{query:{type:'string'}},required:['query']}}];
+  const f=await fixture({tools:WEB,route:async()=>({name:'answer_directly',args:{}})});await ready(f);f.bridge.boardOpening([]);
+  await pause(5);userSays(f,'u1','讲讲候鸟为什么迁徙');say(f,idOf(1),'讲讲候鸟为什么迁徙');await pause(1500);assert.equal(appends(f).length,0);
+  await pause(300);const told=appends(f).map(e=>e.content[0].text).join('');assert.match(told,/你自己现在就讲给用户听/u);assert.doesNotMatch(told,/屏幕上已经摆好了/u);
+});

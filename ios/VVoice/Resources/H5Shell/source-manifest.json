@@ -1,9 +1,9 @@
 {
   "sources": {
     "index.html": "ec12729a0da0ef472fc977e37bb75c413eb66bbcde725b1aa47a5fdf7f450105",
-    "styles.css": "c2419276d13419585e0f59173e33a1d033c22535ef584213e928f40a6a176af0",
-    "ui/call-ui.jsx": "b36dc042f1aff5f88f67efcd1bd1ed81e412a14388f75b47ffa18148465cd6be",
-    "ui-bundle.mjs": "515ada5a483887c67d4fd469f150e4ea09182b2c0b5f01fc6bccd5334fd6a9e9",
+    "styles.css": "ca26e8385013de0b7a8e92d7f9e59cf1306c1a22dce795ccc04d6449b54ec196",
+    "ui/call-ui.jsx": "59e01323e60c06195b97f5a63140dafcb319a165b8f07d3f28e031b6eef8ac44",
+    "ui-bundle.mjs": "03ee76fb70aefdf6f64b851e15fe3c6931218b4cb529ddb7a35870ddcad1131b",
     "app-handoff.mjs": "31705d0424c9043e64844ac047ef090fe4582f475b74d78e4b5dec04ebca3465",
     "call-view.mjs": "89eb8eeed7ce3043c2f0ff9dc57ad42a1e10d0b5467f6aec80ba41a9259bb0dc",
     "content-view.mjs": "b0b3fd358d3c3343b6f9bd7d78a5c3d08d7d3c4b934679142037435b4493b415",
@@ -130,13 +130,13 @@
     "assets/v-voice-apple-touch.png": "643f67cd7d67bb2563f79ec2938d01e869cd2634bd9f78e7597f98afe525763c",
     "ios/H5/native-h5.mjs": "e7abf7ff85ccdeec83ddbc888cabf169117b2debec1a28c916dada9c3a883993"
   },
-  "build": "8922857bd4da",
+  "build": "b7762964070e",
   "updated": "2026-11-22",
   "outputs": {
     "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
-    "native-h5.js": "c32ed3488b252b5a933520c026b0e38ad895c7e35fb607112cfd90ef90cf28af",
+    "native-h5.js": "e923a1fe488906f7258f30407e11b482a10ddc407814f8ebacc3a25e392b1c52",
     "comparison.html": "7beb6c5d3e5933b5c020ddf23e200679318faa98568904f927d0553ea3d33076",
-    "styles.css": "c2419276d13419585e0f59173e33a1d033c22535ef584213e928f40a6a176af0",
+    "styles.css": "ca26e8385013de0b7a8e92d7f9e59cf1306c1a22dce795ccc04d6449b54ec196",
     "comparison.css": "ae9fbcffb322e32737e2ce0ed830c1b86f9f27406b4ce8b686dc8cac9f36ba16",
     "comparison.mjs": "8fc7a4bd3323e4ff2aaab383103b950015f4fb3c05ca327ba09790fbc6f7113b",
     "assets/v-operator-home-1024.webp": "5cf1ddc6b9b9abd06c1ac15be325f9b86cbaa4db8363daeec0da6040e128d319",
